@@ -51,12 +51,12 @@ itest!(info_flag_location {
 });
 
 itest!(info_json {
-  args: "info --json --unstable",
+  args: "info --json",
   output: "info/info_json.out",
 });
 
 itest!(info_json_location {
-  args: "info --json --unstable --location https://deno.land",
+  args: "info --json --location https://deno.land",
   output: "info/info_json_location.out",
 });
 
@@ -67,7 +67,7 @@ itest!(info_flag_script_jsx {
 });
 
 itest!(json_file {
-  args: "info --quiet --json --unstable info/json_output/main.ts",
+  args: "info --quiet --json info/json_output/main.ts",
   output: "info/json_output/main.out",
   exit_code: 0,
 });
@@ -79,7 +79,7 @@ itest!(import_map_info {
 });
 
 itest!(info_json_deps_order {
-  args: "info --unstable --json info/076_info_json_deps_order.ts",
+  args: "info --json info/076_info_json_deps_order.ts",
   output: "info/076_info_json_deps_order.out",
 });
 

@@ -28,6 +28,36 @@ declare interface ImportMeta {
    */
   url: string;
 
+  /** The absolute path of the current module.
+   *
+   * This property is only provided for local modules (ie. using `file://` URLs).
+   *
+   * Example:
+   * ```
+   * // Unix
+   * console.log(import.meta.filename); // /home/alice/my_module.ts
+   *
+   * // Windows
+   * console.log(import.meta.filename); // C:\alice\my_module.ts
+   * ```
+   */
+  filename?: string;
+
+  /** The absolute path of the dirrectory containing the current module.
+   *
+   * This property is only provided for local modules (ie. using `file://` URLs).
+   *
+   * * Example:
+   * ```
+   * // Unix
+   * console.log(import.meta.dirname); // /home/alice/
+   *
+   * // Windows
+   * console.log(import.meta.dirname); // C:\alice\
+   * ```
+   */
+  dirname?: string;
+
   /** A flag that indicates if the current module is the main module that was
    * called when starting the program under Deno.
    *
@@ -2619,6 +2649,17 @@ declare namespace Deno {
      * @category I/O
      */
     setRaw(mode: boolean, options?: SetRawOptions): void;
+    /**
+     * Checks if `stdin` is a TTY (terminal).
+     *
+     * ```ts
+     * // This example is system and context specific
+     * Deno.stdin.isTerminal(); // true
+     * ```
+     *
+     * @category I/O
+     */
+    isTerminal(): boolean;
   };
   /** A reference to `stdout` which can be used to write directly to `stdout`.
    * It implements the Deno specific {@linkcode Writer}, {@linkcode WriterSync},
@@ -2641,6 +2682,17 @@ declare namespace Deno {
     readonly rid: number;
     /** A writable stream interface to `stdout`. */
     readonly writable: WritableStream<Uint8Array>;
+    /**
+     * Checks if `stdout` is a TTY (terminal).
+     *
+     * ```ts
+     * // This example is system and context specific
+     * Deno.stdout.isTerminal(); // true
+     * ```
+     *
+     * @category I/O
+     */
+    isTerminal(): boolean;
   };
   /** A reference to `stderr` which can be used to write directly to `stderr`.
    * It implements the Deno specific {@linkcode Writer}, {@linkcode WriterSync},
@@ -2663,6 +2715,17 @@ declare namespace Deno {
     readonly rid: number;
     /** A writable stream interface to `stderr`. */
     readonly writable: WritableStream<Uint8Array>;
+    /**
+     * Checks if `stderr` is a TTY (terminal).
+     *
+     * ```ts
+     * // This example is system and context specific
+     * Deno.stderr.isTerminal(); // true
+     * ```
+     *
+     * @category I/O
+     */
+    isTerminal(): boolean;
   };
 
   /**
@@ -2744,6 +2807,10 @@ declare namespace Deno {
    * Deno.close(nonTTYRid);
    * Deno.close(ttyRid);
    * ```
+   *
+   * @deprecated Use `Deno.stdin.isTerminal()`, `Deno.stdout.isTerminal()` or
+   * `Deno.stderr.isTerminal()` instead.
+   * {@linkcode Deno.isatty} will be removed in v2.0.0.
    *
    * @category I/O
    */
@@ -5091,8 +5158,8 @@ declare namespace Deno {
    * called when `Deno.inspect()` is called, or when the object is logged to
    * the console.
    *
-   * @deprecated This symbol is deprecated since 1.9. Use
-   * `Symbol.for("Deno.customInspect")` instead.
+   * @deprecated Use `Symbol.for("Deno.customInspect")` instead. This symbol
+   * will be removed in Deno 2.0.
    *
    * @category Console and Debugging
    */

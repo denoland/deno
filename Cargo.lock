@@ -635,6 +635,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "color-print"
+version = "0.3.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7a858372ff14bab9b1b30ea504f2a4bc534582aee3e42ba2d41d2a7baba63d5d"
+dependencies = [
+ "color-print-proc-macro",
+]
+
+[[package]]
+name = "color-print-proc-macro"
+version = "0.3.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "57e37866456a721d0a404439a1adae37a31be4e0055590d053dfe6981e05003f"
+dependencies = [
+ "nom 7.1.3",
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
+]
+
+[[package]]
 name = "color_quant"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -955,6 +976,7 @@ dependencies = [
  "clap",
  "clap_complete",
  "clap_complete_fig",
+ "color-print",
  "console_static_text",
  "dashmap",
  "data-encoding",
@@ -1037,6 +1059,7 @@ dependencies = [
  "trust-dns-server",
  "twox-hash",
  "typed-arena",
+ "unicode-width",
  "uuid",
  "walkdir",
  "winapi",
@@ -1173,9 +1196,9 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.248.0"
+version = "0.249.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "974d075b6647aa6cca14ea75c3833f8996b1c3e487adcde490977f21ac14e27e"
+checksum = "02ed91e4f3a224de2a6d73211a5462e66c4394472873506a58e2c5377cf7105f"
 dependencies = [
  "anyhow",
  "bit-set",
@@ -1623,9 +1646,9 @@ dependencies = [
 
 [[package]]
 name = "deno_ops"
-version = "0.124.0"
+version = "0.125.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a1bc46bc85a26530e196a5f675dab6e06fb86b9104dc6fdc31cfc9ae1832d911"
+checksum = "adc649e55c4fcd40b247dd1abdff2681e3b5c6331a6ab8d7900d885cd486a7c3"
 dependencies = [
  "proc-macro-rules",
  "proc-macro2",
@@ -5327,9 +5350,9 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.157.0"
+version = "0.158.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8853e607c700ade0acb853aafda7e4cc1f752f4ebb35b0e2ecbf42e784e6d0e0"
+checksum = "3035399dd0135f3c1a02e5fedd72d1c417dd3cd3107789ef9e3a4f657de4dd1d"
 dependencies = [
  "bytes",
  "derive_more",
@@ -7051,7 +7074,7 @@ dependencies = [
  "codespan-reporting",
  "log",
  "naga",
- "parking_lot 0.11.2",
+ "parking_lot 0.12.1",
  "profiling",
  "raw-window-handle",
  "ron",
@@ -7092,7 +7115,7 @@ dependencies = [
  "naga",
  "objc",
  "once_cell",
- "parking_lot 0.11.2",
+ "parking_lot 0.12.1",
  "profiling",
  "range-alloc",
  "raw-window-handle",

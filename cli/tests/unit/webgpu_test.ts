@@ -227,13 +227,25 @@ Deno.test({
   Deno.close(Number(resources[resources.length - 1]));
 });
 
-Deno.test(function webgpuNullWindowSurfaceThrows() {
+Deno.test({
+  ignore: isWsl || isLinuxOrMacCI,
+}, async function webgpuNullWindowSurfaceThrows() {
+  const adapter = await navigator.gpu.requestAdapter();
+  assert(adapter);
+
+  const device = await adapter.requestDevice();
+  assert(device);
+
   assertThrows(
     () => {
       // @ts-expect-error: runtime test for null handle
       new Deno.UnsafeWindowSurface("cocoa", null, null);
     },
   );
+
+  device.destroy();
+  const resources = Object.keys(Deno.resources());
+  Deno.close(Number(resources[resources.length - 1]));
 });
 
 async function checkIsWsl() {

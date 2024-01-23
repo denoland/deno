@@ -28,7 +28,7 @@ fn deno_doc() {
 }
 
 itest!(deno_doc_import_map {
-  args: "doc --unstable --import-map=doc/import_map.json doc/use_import_map.js",
+  args: "doc --import-map=doc/import_map.json doc/use_import_map.js",
   output: "doc/use_import_map.out",
 });
 

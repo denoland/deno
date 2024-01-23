@@ -138,6 +138,32 @@ declare namespace Deno {
     options: TcpListenOptions & { transport?: "tcp" },
   ): Listener;
 
+  /** Options which can be set when opening a Unix listener via
+   * {@linkcode Deno.listen} or {@linkcode Deno.listenDatagram}.
+   *
+   * @category Network
+   */
+  export interface UnixListenOptions {
+    /** A path to the Unix Socket. */
+    path: string;
+  }
+
+  /** Listen announces on the local transport address.
+   *
+   * ```ts
+   * const listener = Deno.listen({ path: "/foo/bar.sock", transport: "unix" })
+   * ```
+   *
+   * Requires `allow-read` and `allow-write` permission.
+   *
+   * @tags allow-read, allow-write
+   * @category Network
+   */
+  // deno-lint-ignore adjacent-overload-signatures
+  export function listen(
+    options: UnixListenOptions & { transport: "unix" },
+  ): Listener;
+
   /** @category Network */
   export interface ListenTlsOptions extends TcpListenOptions {
     /** Server private key in PEM format */
@@ -148,13 +174,17 @@ declare namespace Deno {
      * `--allow-read`.
      *
      * @tags allow-read
-     * @deprecated This option is deprecated and will be removed in Deno 2.0.
+     * @deprecated Pass the certificate file contents directly to the
+     * {@linkcode Deno.ListenTlsOptions.cert} option instead. This option will
+     * be removed in Deno 2.0.
      */
     certFile?: string;
     /** Server private key file. Requires `--allow-read`.
      *
      * @tags allow-read
-     * @deprecated This option is deprecated and will be removed in Deno 2.0.
+     * @deprecated Pass the key file contents directly to the
+     * {@linkcode Deno.ListenTlsOptions.key} option instead. This option will
+     * be removed in Deno 2.0.
      */
     keyFile?: string;
 
@@ -171,7 +201,11 @@ declare namespace Deno {
    * security).
    *
    * ```ts
-   * const lstnr = Deno.listenTls({ port: 443, certFile: "./server.crt", keyFile: "./server.key" });
+   * using listener = Deno.listenTls({
+   *   port: 443,
+   *   cert: Deno.readTextFileSync("./server.crt"),
+   *   key: Deno.readTextFileSync("./server.key"),
+   * });
    * ```
    *
    * Requires `allow-net` permission.
@@ -263,8 +297,9 @@ declare namespace Deno {
     /**
      * Server certificate file.
      *
-     * @deprecated This option is deprecated and will be removed in a future
-     * release.
+     * @deprecated Pass the cert file contents directly to the
+     * {@linkcode Deno.ConnectTlsOptions.caCerts} option instead. This option
+     * will be removed in Deno 2.0.
      */
     certFile?: string;
     /** A list of root certificates that will be used in addition to the

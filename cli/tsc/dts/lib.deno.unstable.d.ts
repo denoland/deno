@@ -1060,18 +1060,6 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * Unstable options which can be set when opening a Unix listener via
-   * {@linkcode Deno.listen} or {@linkcode Deno.listenDatagram}.
-   *
-   * @category Network
-   */
-  export interface UnixListenOptions {
-    /** A path to the Unix Socket. */
-    path: string;
-  }
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
    * Unstable options which can be set when opening a datagram listener via
    * {@linkcode Deno.listenDatagram}.
    *
@@ -1090,23 +1078,6 @@ declare namespace Deno {
      * @default {false} */
     loopback?: boolean;
   }
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Listen announces on the local transport address.
-   *
-   * ```ts
-   * const listener = Deno.listen({ path: "/foo/bar.sock", transport: "unix" })
-   * ```
-   *
-   * Requires `allow-read` and `allow-write` permission.
-   *
-   * @tags allow-read, allow-write
-   * @category Network
-   */
-  export function listen(
-    options: UnixListenOptions & { transport: "unix" },
-  ): Listener;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -1290,37 +1261,6 @@ declare namespace Deno {
     schedule: string | CronSchedule,
     options: { backoffSchedule?: number[]; signal?: AbortSignal },
     handler: () => Promise<void> | void,
-  ): Promise<void>;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Create a cron job that will periodically execute the provided handler
-   * callback based on the specified schedule.
-   *
-   * `schedule` can be a string in the Unix cron format or in JSON format
-   * as specified by interface {@linkcode CronSchedule}, where time is specified
-   * using UTC time zone.
-   *
-   * ```ts
-   * Deno.cron("sample cron", "20 * * * *", () => {
-   *   console.log("cron job executed");
-   * });
-   * ```
-   * `backoffSchedule` option can be used to specify the retry policy for failed
-   * executions. Each element in the array represents the number of milliseconds
-   * to wait before retrying the execution. For example, `[1000, 5000, 10000]`
-   * means that a failed execution will be retried at most 3 times, with 1
-   * second, 5 seconds, and 10 seconds delay between each retry.
-   *
-   * @category Cron
-   * @deprecated Use other {@linkcode cron} overloads instead. This overload
-   * will be removed in the future.
-   */
-  export function cron(
-    name: string,
-    schedule: string | CronSchedule,
-    handler: () => Promise<void> | void,
-    options: { backoffSchedule?: number[]; signal?: AbortSignal },
   ): Promise<void>;
 
   /** **UNSTABLE**: New API, yet to be vetted.

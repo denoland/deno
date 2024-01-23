@@ -19,8 +19,8 @@ process.on("rejectionHandled", (_) => {
 const a = Promise.reject(1);
 setTimeout(() => {
   a.catch(() => console.log("Added catch handler to the promise"));
-}, 10);
+}, 100);
 
 setTimeout(() => {
   console.log("Success");
-}, 50);
+}, 500);
