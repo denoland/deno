@@ -3374,7 +3374,16 @@ class Console {
   }
 }
 
-const customInspect = SymbolFor("Deno.customInspect");
+const customInspect = {
+  get() {
+    internals.warnOnDeprecatedApi(
+      "Deno.customInspect",
+      new Error().stack,
+      'Use `Symbol.for("Deno.customInspect")` instead.',
+    );
+    return SymbolFor("Deno.customInspect");
+  },
+};
 
 function inspect(
   value,
