@@ -5,7 +5,8 @@
     "location": {
       "filename": "file:///[WILDCARD]/lint_success.ts",
       "line": 2,
-      "col": 0
+      "col": 0,
+      "byteIndex": 22
     },
     "declarationKind": "export",
     "jsDoc": {
@@ -33,7 +34,8 @@
           "location": {
             "filename": "file:///[WILDCARD]/lint_success.ts",
             "line": 4,
-            "col": 2
+            "col": 2,
+            "byteIndex": 66
           }
         }
       ],
