@@ -6046,7 +6046,9 @@ declare namespace Deno {
 
   /**
    * @category HTTP Server
-   * @deprecated Use {@linkcode HttpServer} instead.
+   *
+   * @deprecated Use {@linkcode Deno.HttpServer} instead.
+   * {@linkcode Deno.Server} will be removed in Deno 2.0.
    */
   export type Server = HttpServer;
 

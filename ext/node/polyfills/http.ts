@@ -1575,7 +1575,7 @@ export class ServerImpl extends EventEmitter {
 
   #addr: Deno.NetAddr;
   #hasClosed = false;
-  #server: Deno.Server;
+  #server: Deno.HttpServer;
   #unref = false;
   #ac?: AbortController;
   #serveDeferred: ReturnType<typeof Promise.withResolvers<void>>;
