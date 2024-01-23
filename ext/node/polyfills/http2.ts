@@ -316,7 +316,7 @@ function closeSession(session: Http2Session, code?: number, error?: Error) {
     session[kDenoConnRid],
     session[kDenoClientRid],
   );
-  console.table(Deno.resources());
+  console.table(Deno[Deno.internal].core.resources());
   if (session[kDenoConnRid]) {
     core.tryClose(session[kDenoConnRid]);
   }
