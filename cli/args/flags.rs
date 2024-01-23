@@ -3404,9 +3404,9 @@ fn eval_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 
   if as_typescript {
     eprintln!(
-      "{}",
+      "⚠️ {}",
       crate::colors::yellow(
-        "Warning: --ts/-T flag is deprecated. Use --ext=ts instead."
+        "The `--ts` and `-T` flags are deprecated and will be removed in Deno 2.0. Use `--ext=ts` instead."
       ),
     );
 
