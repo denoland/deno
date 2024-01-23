@@ -1,16 +1,73 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::collections::HashSet;
+
 use deno_ast::ParsedSource;
-use deno_core::error::AnyError;
+use deno_core::serde_json;
 use deno_core::ModuleSpecifier;
 use deno_graph::DefaultModuleAnalyzer;
 use deno_graph::DependencyDescriptor;
 use deno_graph::DynamicTemplatePart;
-use deno_graph::MediaType;
 use deno_graph::TypeScriptReference;
+use deno_semver::jsr::JsrDepPackageReq;
+use deno_semver::jsr::JsrPackageReqReference;
+use deno_semver::npm::NpmPackageReqReference;
 use import_map::ImportMap;
 
 use crate::graph_util::format_range_with_colors;
+
+pub fn import_map_deps(value: &serde_json::Value) -> HashSet<JsrDepPackageReq> {
+  let Some(obj) = value.as_object() else {
+    return Default::default();
+  };
+  let values = imports_values(obj.get("imports"))
+    .into_iter()
+    .chain(scope_values(obj.get("scopes")));
+  values_to_set(values)
+}
+
+pub fn deno_json_deps(
+  config: &deno_config::ConfigFile,
+) -> HashSet<JsrDepPackageReq> {
+  let values = imports_values(config.json.imports.as_ref())
+    .into_iter()
+    .chain(scope_values(config.json.scopes.as_ref()));
+  values_to_set(values)
+}
+
+fn imports_values(value: Option<&serde_json::Value>) -> Vec<&String> {
+  let Some(obj) = value.and_then(|v| v.as_object()) else {
+    return Vec::new();
+  };
+  let mut items = Vec::with_capacity(obj.len());
+  for value in obj.values() {
+    if let serde_json::Value::String(value) = value {
+      items.push(value);
+    }
+  }
+  items
+}
+
+fn scope_values(value: Option<&serde_json::Value>) -> Vec<&String> {
+  let Some(obj) = value.and_then(|v| v.as_object()) else {
+    return Vec::new();
+  };
+  obj.values().flat_map(|v| imports_values(Some(v))).collect()
+}
+
+fn values_to_set<'a>(
+  values: impl Iterator<Item = &'a String>,
+) -> HashSet<JsrDepPackageReq> {
+  let mut entries = HashSet::new();
+  for value in values {
+    if let Ok(req_ref) = JsrPackageReqReference::from_str(value) {
+      entries.insert(JsrDepPackageReq::jsr(req_ref.into_inner().req));
+    } else if let Ok(req_ref) = NpmPackageReqReference::from_str(value) {
+      entries.insert(JsrDepPackageReq::npm(req_ref.into_inner().req));
+    }
+  }
+  entries
+}
 
 pub struct ImportMapUnfurler<'a> {
   import_map: &'a ImportMap,
@@ -24,46 +81,11 @@ impl<'a> ImportMapUnfurler<'a> {
   pub fn unfurl(
     &self,
     url: &ModuleSpecifier,
-    data: Vec<u8>,
-  ) -> Result<(Vec<u8>, Vec<String>), AnyError> {
-    let mut diagnostics = vec![];
-    let media_type = MediaType::from_specifier(url);
-
-    match media_type {
-      MediaType::JavaScript
-      | MediaType::Jsx
-      | MediaType::Mjs
-      | MediaType::Cjs
-      | MediaType::TypeScript
-      | MediaType::Mts
-      | MediaType::Cts
-      | MediaType::Dts
-      | MediaType::Dmts
-      | MediaType::Dcts
-      | MediaType::Tsx => {
-        // continue
-      }
-      MediaType::SourceMap
-      | MediaType::Unknown
-      | MediaType::Json
-      | MediaType::Wasm
-      | MediaType::TsBuildInfo => {
-        // not unfurlable data
-        return Ok((data, diagnostics));
-      }
-    }
-
-    let text = String::from_utf8(data)?;
-    let parsed_source = deno_ast::parse_module(deno_ast::ParseParams {
-      specifier: url.to_string(),
-      text_info: deno_ast::SourceTextInfo::from_string(text),
-      media_type,
-      capture_tokens: false,
-      maybe_syntax: None,
-      scope_analysis: false,
-    })?;
+    parsed_source: &ParsedSource,
+  ) -> (String, Vec<String>) {
+    let mut diagnostics = Vec::new();
     let mut text_changes = Vec::new();
-    let module_info = DefaultModuleAnalyzer::module_info(&parsed_source);
+    let module_info = DefaultModuleAnalyzer::module_info(parsed_source);
     let analyze_specifier =
       |specifier: &str,
        range: &deno_graph::PositionRange,
@@ -71,7 +93,7 @@ impl<'a> ImportMapUnfurler<'a> {
         let resolved = self.import_map.resolve(specifier, url);
         if let Ok(resolved) = resolved {
           text_changes.push(deno_ast::TextChange {
-            range: to_range(&parsed_source, range),
+            range: to_range(parsed_source, range),
             new_text: make_relative_to(url, &resolved),
           });
         }
@@ -89,7 +111,7 @@ impl<'a> ImportMapUnfurler<'a> {
           let success = try_unfurl_dynamic_dep(
             self.import_map,
             url,
-            &parsed_source,
+            parsed_source,
             dep,
             &mut text_changes,
           );
@@ -133,25 +155,12 @@ impl<'a> ImportMapUnfurler<'a> {
         &mut text_changes,
       );
     }
-    Ok((
-      deno_ast::apply_text_changes(
-        parsed_source.text_info().text_str(),
-        text_changes,
-      )
-      .into_bytes(),
-      diagnostics,
-    ))
-  }
 
-  #[cfg(test)]
-  fn unfurl_to_string(
-    &self,
-    url: &ModuleSpecifier,
-    data: Vec<u8>,
-  ) -> Result<(String, Vec<String>), AnyError> {
-    let (data, diagnostics) = self.unfurl(url, data)?;
-    let content = String::from_utf8(data)?;
-    Ok((content, diagnostics))
+    let rewritten_text = deno_ast::apply_text_changes(
+      parsed_source.text_info().text_str(),
+      text_changes,
+    );
+    (rewritten_text, diagnostics)
   }
 }
 
@@ -250,10 +259,25 @@ fn to_range(
 #[cfg(test)]
 mod tests {
   use super::*;
+  use deno_ast::MediaType;
   use deno_ast::ModuleSpecifier;
   use deno_core::serde_json::json;
+  use deno_core::url::Url;
   use import_map::ImportMapWithDiagnostics;
   use pretty_assertions::assert_eq;
+
+  fn parse_ast(specifier: &Url, source_code: &str) -> ParsedSource {
+    let media_type = MediaType::from_specifier(specifier);
+    deno_ast::parse_module(deno_ast::ParseParams {
+      specifier: specifier.to_string(),
+      media_type,
+      capture_tokens: false,
+      maybe_syntax: None,
+      scope_analysis: false,
+      text_info: deno_ast::SourceTextInfo::new(source_code.into()),
+    })
+    .unwrap()
+  }
 
   #[test]
   fn test_unfurling() {
@@ -286,9 +310,8 @@ const test5 = await import(`lib${expr}`);
 const test6 = await import(`${expr}`);
 "#;
       let specifier = ModuleSpecifier::parse("file:///dev/mod.ts").unwrap();
-      let (unfurled_source, d) = unfurler
-        .unfurl_to_string(&specifier, source_code.as_bytes().to_vec())
-        .unwrap();
+      let source = parse_ast(&specifier, source_code);
+      let (unfurled_source, d) = unfurler.unfurl(&specifier, &source);
       assert_eq!(d.len(), 2);
       assert!(d[0].starts_with("Dynamic import was not analyzable and won't use the import map once published."));
       assert!(d[1].starts_with("Dynamic import was not analyzable and won't use the import map once published."));
@@ -306,21 +329,6 @@ const test5 = await import(`lib${expr}`);
 const test6 = await import(`${expr}`);
 "#;
       assert_eq!(unfurled_source, expected_source);
-    }
-
-    // Unfurling file with "unknown" media type should leave it as is
-    {
-      let source_code = r#"import express from "express";"
-import foo from "lib/foo.ts";
-import bar from "lib/bar.ts";
-import fizz from "fizz";
-"#;
-      let specifier = ModuleSpecifier::parse("file:///dev/mod").unwrap();
-      let (unfurled_source, d) = unfurler
-        .unfurl_to_string(&specifier, source_code.as_bytes().to_vec())
-        .unwrap();
-      assert!(d.is_empty());
-      assert_eq!(unfurled_source, source_code);
     }
   }
 }

@@ -8250,7 +8250,6 @@
       "interface-objects": {
         "001.worker.html": [
           "The SharedWorker interface object should be exposed.",
-          "The ImageBitmap interface object should be exposed.",
           "The CanvasGradient interface object should be exposed.",
           "The CanvasPattern interface object should be exposed.",
           "The CanvasPath interface object should be exposed.",

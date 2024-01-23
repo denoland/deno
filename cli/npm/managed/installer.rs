@@ -82,7 +82,7 @@ impl PackageJsonDepsInstaller {
       return Ok(()); // already installed by something else
     }
 
-    let package_reqs = inner.deps_provider.reqs();
+    let package_reqs = inner.deps_provider.reqs().unwrap_or_default();
 
     // check if something needs resolving before bothering to load all
     // the package information (which is slow)

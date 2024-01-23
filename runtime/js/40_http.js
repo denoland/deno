@@ -7,7 +7,10 @@ const {
 import { HttpConn } from "ext:deno_http/01_http.js";
 
 function serveHttp(conn) {
-  internals.warnOnDeprecatedApi("Deno.serveHttp()", (new Error()).stack);
+  internals.warnOnDeprecatedApi(
+    "Deno.serveHttp()",
+    new Error().stack,
+    "Use `Deno.serve()` instead.",
   const rid = op_http_start(conn.rid);
   return new HttpConn(rid, conn.remoteAddr, conn.localAddr);
 }

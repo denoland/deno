@@ -64,7 +64,7 @@ itest!(worker_permissions_remote_remote {
   });
 
 itest!(worker_permissions_dynamic_remote {
-    args: "run --quiet --reload --allow-net --unstable workers/permissions_dynamic_remote.ts",
+    args: "run --quiet --reload --allow-net --unstable-worker-options workers/permissions_dynamic_remote.ts",
     output: "workers/permissions_dynamic_remote.ts.out",
     http_server: true,
     exit_code: 1,
