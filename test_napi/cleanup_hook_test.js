@@ -15,7 +15,7 @@ if (import.meta.main) {
         "--allow-read",
         "--allow-run",
         "--allow-ffi",
-        "--unstable",
+        "--unstable-ffi",
         import.meta.url,
       ],
     }).output();
