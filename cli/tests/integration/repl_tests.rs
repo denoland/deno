@@ -366,11 +366,7 @@ fn typescript_decorators() {
   );
   let config_path = temp_dir.target_path().join("./deno.json");
   util::with_pty(
-    &[
-      "repl",
-      "--config",
-      &config_path.to_string_lossy().to_string(),
-    ],
+    &["repl", "--config", config_path.to_string_lossy().as_ref()],
     |mut console| {
       console.write_line(
         "function dec(target) { target.prototype.test = () => 2; }",

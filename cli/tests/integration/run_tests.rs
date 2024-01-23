@@ -1511,6 +1511,11 @@ itest!(no_check_decorators {
   output: "run/decorators/experimental/no_check/main.out",
 });
 
+itest!(decorators_tc39_proposal {
+  args: "run --quiet --reload --check run/decorators/tc39_proposal/main.ts",
+  output: "run/decorators/tc39_proposal/main.out",
+});
+
 itest!(check_remote {
   args: "run --quiet --reload --check=all run/no_check_remote.ts",
   output: "run/no_check_remote.ts.disabled.out",
