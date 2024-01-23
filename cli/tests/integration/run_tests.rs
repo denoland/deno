@@ -758,10 +758,7 @@ itest!(env_file {
 
 itest!(env_file_missing {
   args: "run --env=missing --allow-env run/env_file.ts",
-  output_str: Some(
-    "error: Unable to load 'missing' environment variable file\n"
-  ),
-  exit_code: 1,
+  output: "run/env_file_missing.out",
 });
 
 itest!(_091_use_define_for_class_fields {
@@ -1018,6 +1015,170 @@ fn lock_redirects() {
 }
 "#,
   );
+}
+
+#[test]
+fn lock_deno_json_package_json_deps() {
+  let context = TestContextBuilder::new()
+    .use_temp_cwd()
+    .use_http_server()
+    .add_npm_env_vars()
+    .add_jsr_env_vars()
+    .build();
+  let temp_dir = context.temp_dir().path();
+  let deno_json = temp_dir.join("deno.json");
+  let package_json = temp_dir.join("package.json");
+
+  // add a jsr and npm dependency
+  deno_json.write_json(&json!({
+    "imports": {
+      "esm-basic": "npm:@denotest/esm-basic",
+      "module_graph": "jsr:@denotest/module_graph@1.4",
+    }
+  }));
+  let main_ts = temp_dir.join("main.ts");
+  main_ts.write("import 'esm-basic'; import 'module_graph';");
+  context
+    .new_command()
+    .args("cache main.ts")
+    .run()
+    .skip_output_check();
+  let lockfile = temp_dir.join("deno.lock");
+  // todo(dsherret): it would be nice if the test server didn't produce
+  // different hashes depending on what operating system it's running on
+  let esm_basic_integrity = lockfile
+    .read_json_value()
+    .get("packages")
+    .unwrap()
+    .get("npm")
+    .unwrap()
+    .get("@denotest/esm-basic@1.0.0")
+    .unwrap()
+    .get("integrity")
+    .unwrap()
+    .as_str()
+    .unwrap()
+    .to_string();
+  lockfile.assert_matches_json(json!({
+    "version": "3",
+    "packages": {
+      "specifiers": {
+        "jsr:@denotest/module_graph@1.4": "jsr:@denotest/module_graph@1.4.0",
+        "npm:@denotest/esm-basic": "npm:@denotest/esm-basic@1.0.0"
+      },
+      "npm": {
+        "@denotest/esm-basic@1.0.0": {
+          "integrity": esm_basic_integrity,
+          "dependencies": {}
+        }
+      }
+    },
+    "remote": {
+      "http://localhost:4545/jsr/registry/@denotest/module_graph/1.4.0/mod.ts": "5b0ce36e08d759118200d8b4627627b5a89b6261fbb0598e6961a6b287abb699",
+      "http://localhost:4545/jsr/registry/@denotest/module_graph/1.4.0/other.ts": "9ce27ca439cb0e218b6e1ec26c043dbc0b54c9babc4cb432df478dd1721faade"
+    },
+    "workspace": {
+      "dependencies": [
+        "jsr:@denotest/module_graph@1.4",
+        "npm:@denotest/esm-basic"
+      ]
+    }
+  }));
+
+  // now remove the npm dependency from the deno.json and move
+  // it to a package.json that uses an alias
+  deno_json.write_json(&json!({
+    "imports": {
+      "module_graph": "jsr:@denotest/module_graph@1.4",
+    }
+  }));
+  package_json.write_json(&json!({
+    "dependencies": {
+      "esm-basic": "npm:@denotest/esm-basic"
+    }
+  }));
+  context
+    .new_command()
+    .args("cache main.ts")
+    .run()
+    .skip_output_check();
+  main_ts.write("import 'module_graph';");
+  context
+    .new_command()
+    // ensure this doesn't clear out packageJson below
+    .args("cache --no-npm main.ts")
+    .run()
+    .skip_output_check();
+  lockfile.assert_matches_json(json!({
+    "version": "3",
+    "packages": {
+      "specifiers": {
+        "jsr:@denotest/module_graph@1.4": "jsr:@denotest/module_graph@1.4.0",
+        "npm:@denotest/esm-basic": "npm:@denotest/esm-basic@1.0.0"
+      },
+      "npm": {
+        "@denotest/esm-basic@1.0.0": {
+          "integrity": esm_basic_integrity,
+          "dependencies": {}
+        }
+      }
+    },
+    "remote": {
+      "http://localhost:4545/jsr/registry/@denotest/module_graph/1.4.0/mod.ts": "5b0ce36e08d759118200d8b4627627b5a89b6261fbb0598e6961a6b287abb699",
+      "http://localhost:4545/jsr/registry/@denotest/module_graph/1.4.0/other.ts": "9ce27ca439cb0e218b6e1ec26c043dbc0b54c9babc4cb432df478dd1721faade"
+    },
+    "workspace": {
+      "dependencies": [
+        "jsr:@denotest/module_graph@1.4"
+      ],
+      "packageJson": {
+        "dependencies": [
+          "npm:@denotest/esm-basic"
+        ]
+      }
+    }
+  }));
+
+  // now remove the package.json
+  package_json.remove_file();
+
+  // cache and it will remove the package.json
+  context
+    .new_command()
+    .args("cache main.ts")
+    .run()
+    .skip_output_check();
+  lockfile.assert_matches_json(json!({
+    "version": "3",
+    "packages": {
+      "specifiers": {
+        "jsr:@denotest/module_graph@1.4": "jsr:@denotest/module_graph@1.4.0",
+      }
+    },
+    "remote": {
+      "http://localhost:4545/jsr/registry/@denotest/module_graph/1.4.0/mod.ts": "5b0ce36e08d759118200d8b4627627b5a89b6261fbb0598e6961a6b287abb699",
+      "http://localhost:4545/jsr/registry/@denotest/module_graph/1.4.0/other.ts": "9ce27ca439cb0e218b6e1ec26c043dbc0b54c9babc4cb432df478dd1721faade"
+    },
+    "workspace": {
+      "dependencies": [
+        "jsr:@denotest/module_graph@1.4"
+      ]
+    }
+  }));
+
+  // now remove the deps from the deno.json
+  deno_json.write("{}");
+  main_ts.write("");
+  context
+    .new_command()
+    .args("cache main.ts")
+    .run()
+    .skip_output_check();
+
+  lockfile.assert_matches_json(json!({
+    "version": "3",
+    "remote": {}
+  }));
 }
 
 itest!(mts_dmts_mjs {
@@ -1564,17 +1725,6 @@ itest!(top_level_for_await {
 itest!(top_level_for_await_ts {
   args: "run --quiet run/top_level_await/top_level_for_await.ts",
   output: "run/top_level_await/top_level_for_await.out",
-});
-
-itest!(unstable_disabled {
-  args: "run --reload --check run/unstable.ts",
-  exit_code: 1,
-  output: "run/unstable_disabled.out",
-});
-
-itest!(unstable_enabled {
-  args: "run --quiet --reload --unstable run/unstable.ts",
-  output: "run/unstable_enabled.out",
 });
 
 itest!(unstable_disabled_js {
@@ -4938,4 +5088,26 @@ itest!(unstable_temporal_api_missing_flag {
   output: "run/unstable_temporal_api/missing_flag.out",
   http_server: false,
   exit_code: 1,
+});
+
+itest!(warn_on_deprecated_api {
+  args: "run -A run/warn_on_deprecated_api/main.js",
+  output: "run/warn_on_deprecated_api/main.out",
+  http_server: true,
+  exit_code: 0,
+});
+
+itest!(warn_on_deprecated_api_with_flag {
+  args: "run -A --quiet run/warn_on_deprecated_api/main.js",
+  output: "run/warn_on_deprecated_api/main_disabled_flag.out",
+  http_server: true,
+  exit_code: 0,
+});
+
+itest!(warn_on_deprecated_api_with_env_var {
+  args: "run -A run/warn_on_deprecated_api/main.js",
+  envs: vec![("DENO_NO_DEPRECATION_WARNINGS".to_string(), "1".to_string())],
+  output: "run/warn_on_deprecated_api/main_disabled_env.out",
+  http_server: true,
+  exit_code: 0,
 });

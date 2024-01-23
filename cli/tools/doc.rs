@@ -93,6 +93,7 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
 
       let module_specifiers = collect_specifiers(
         FilePatterns {
+          base: cli_options.initial_cwd().to_path_buf(),
           include: Some(PathOrPatternSet::from_relative_path_or_patterns(
             cli_options.initial_cwd(),
             source_files,

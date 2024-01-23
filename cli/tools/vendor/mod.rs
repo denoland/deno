@@ -227,14 +227,15 @@ fn maybe_update_config_file(
     return ModifiedResult::default();
   }
 
-  let fmt_config = config_file
+  let fmt_config_options = config_file
     .to_fmt_config()
     .ok()
-    .unwrap_or_default()
+    .flatten()
+    .map(|config| config.options)
     .unwrap_or_default();
   let result = update_config_file(
     config_file,
-    &fmt_config.options,
+    &fmt_config_options,
     if try_add_import_map {
       Some(
         ModuleSpecifier::from_file_path(output_dir.join("import_map.json"))

@@ -9,7 +9,6 @@ pub mod package_json;
 pub use self::import_map::resolve_import_map_from_specifier;
 use self::package_json::PackageJsonDeps;
 use ::import_map::ImportMap;
-use deno_config::glob::PathOrPattern;
 use deno_core::resolve_url_or_path;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmSystemInfo;
@@ -244,7 +243,7 @@ impl BenchOptions {
   }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct FmtOptions {
   pub check: bool,
   pub options: FmtOptionsConfig,
@@ -252,6 +251,14 @@ pub struct FmtOptions {
 }
 
 impl FmtOptions {
+  pub fn new_with_base(base: PathBuf) -> Self {
+    Self {
+      check: false,
+      options: FmtOptionsConfig::default(),
+      files: FilePatterns::new_with_base(base),
+    }
+  }
+
   pub fn resolve(
     maybe_fmt_config: Option<FmtConfig>,
     maybe_fmt_flags: Option<FmtFlags>,
@@ -369,7 +376,7 @@ pub enum LintReporterKind {
   Compact,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct LintOptions {
   pub rules: LintRulesConfig,
   pub files: FilePatterns,
@@ -377,6 +384,14 @@ pub struct LintOptions {
 }
 
 impl LintOptions {
+  pub fn new_with_base(base: PathBuf) -> Self {
+    Self {
+      rules: Default::default(),
+      files: FilePatterns::new_with_base(base),
+      reporter_kind: Default::default(),
+    }
+  }
+
   pub fn resolve(
     maybe_lint_config: Option<LintConfig>,
     maybe_lint_flags: Option<LintFlags>,
@@ -667,6 +682,7 @@ pub struct CliOptions {
   maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
   overrides: CliOptionOverrides,
   maybe_workspace_config: Option<WorkspaceConfig>,
+  pub disable_deprecated_api_warning: bool,
 }
 
 impl CliOptions {
@@ -709,9 +725,17 @@ impl CliOptions {
 
     if let Some(env_file_name) = &flags.env_file {
       if (from_filename(env_file_name)).is_err() {
-        bail!("Unable to load '{env_file_name}' environment variable file")
+        log::info!(
+          "{} The `--env` flag was used, but the dotenv file '{}' was not found.",
+          colors::yellow("Warning"),
+          env_file_name
+        );
       }
     }
+
+    let disable_deprecated_api_warning = flags.log_level
+      == Some(log::Level::Error)
+      || std::env::var("DENO_NO_DEPRECATION_WARNINGS").ok().is_some();
 
     Ok(Self {
       flags,
@@ -723,6 +747,7 @@ impl CliOptions {
       maybe_vendor_folder,
       overrides: Default::default(),
       maybe_workspace_config,
+      disable_deprecated_api_warning,
     })
   }
 
@@ -778,26 +803,11 @@ impl CliOptions {
   }
 
   pub fn ts_type_lib_window(&self) -> TsTypeLib {
-    if self.flags.unstable
-      || !self.flags.unstable_features.is_empty()
-      || self
-        .maybe_config_file
-        .as_ref()
-        .map(|f| !f.json.unstable.is_empty())
-        .unwrap_or(false)
-    {
-      TsTypeLib::UnstableDenoWindow
-    } else {
-      TsTypeLib::DenoWindow
-    }
+    TsTypeLib::DenoWindow
   }
 
   pub fn ts_type_lib_worker(&self) -> TsTypeLib {
-    if self.flags.unstable {
-      TsTypeLib::UnstableDenoWorker
-    } else {
-      TsTypeLib::DenoWorker
-    }
+    TsTypeLib::DenoWorker
   }
 
   pub fn cache_setting(&self) -> CacheSetting {
@@ -1043,6 +1053,7 @@ impl CliOptions {
       maybe_lockfile: self.maybe_lockfile.clone(),
       maybe_workspace_config: self.maybe_workspace_config.clone(),
       overrides: self.overrides.clone(),
+      disable_deprecated_api_warning: self.disable_deprecated_api_warning,
     }
   }
 
@@ -1333,6 +1344,10 @@ impl CliOptions {
     self.flags.no_npm
   }
 
+  pub fn no_config(&self) -> bool {
+    self.flags.config_flag == deno_config::ConfigFlag::Disabled
+  }
+
   pub fn permissions_options(&self) -> PermissionsOptions {
     PermissionsOptions {
       allow_env: self.flags.allow_env.clone(),
@@ -1398,12 +1413,12 @@ impl CliOptions {
     &self.flags.unsafely_ignore_certificate_errors
   }
 
-  pub fn unstable(&self) -> bool {
-    self.flags.unstable
+  pub fn legacy_unstable_flag(&self) -> bool {
+    self.flags.unstable_config.legacy_flag_enabled
   }
 
   pub fn unstable_bare_node_builtins(&self) -> bool {
-    self.flags.unstable_bare_node_builtins
+    self.flags.unstable_config.bare_node_builtins
       || self
         .maybe_config_file()
         .as_ref()
@@ -1412,7 +1427,7 @@ impl CliOptions {
   }
 
   pub fn unstable_byonm(&self) -> bool {
-    self.flags.unstable_byonm
+    self.flags.unstable_config.byonm
       || NPM_PROCESS_STATE
         .as_ref()
         .map(|s| matches!(s.kind, NpmProcessStateKind::Byonm))
@@ -1425,7 +1440,7 @@ impl CliOptions {
   }
 
   pub fn unstable_sloppy_imports(&self) -> bool {
-    self.flags.unstable_sloppy_imports
+    self.flags.unstable_config.sloppy_imports
       || self
         .maybe_config_file()
         .as_ref()
@@ -1440,7 +1455,7 @@ impl CliOptions {
       .map(|c| c.json.unstable.clone())
       .unwrap_or_default();
 
-    from_config_file.extend_from_slice(&self.flags.unstable_features);
+    from_config_file.extend_from_slice(&self.flags.unstable_config.features);
     from_config_file
   }
 
@@ -1648,7 +1663,8 @@ fn resolve_files(
   maybe_file_flags: Option<FileFlags>,
   initial_cwd: &Path,
 ) -> Result<FilePatterns, AnyError> {
-  let mut maybe_files_config = maybe_files_config.unwrap_or_default();
+  let mut maybe_files_config = maybe_files_config
+    .unwrap_or_else(|| FilePatterns::new_with_base(initial_cwd.to_path_buf()));
   if let Some(file_flags) = maybe_file_flags {
     if !file_flags.include.is_empty() {
       maybe_files_config.include =
@@ -1665,18 +1681,7 @@ fn resolve_files(
         )?;
     }
   }
-  Ok(FilePatterns {
-    include: {
-      let files = match maybe_files_config.include {
-        Some(include) => include,
-        None => PathOrPatternSet::new(vec![PathOrPattern::Path(
-          initial_cwd.to_path_buf(),
-        )]),
-      };
-      Some(files)
-    },
-    exclude: maybe_files_config.exclude,
-  })
+  Ok(maybe_files_config)
 }
 
 /// Resolves the no_prompt value based on the cli flags and environment.
@@ -1896,6 +1901,7 @@ mod test {
 
     let resolved_files = resolve_files(
       Some(FilePatterns {
+        base: temp_dir_path.to_path_buf(),
         include: Some(
           PathOrPatternSet::from_relative_path_or_patterns(
             temp_dir_path,
