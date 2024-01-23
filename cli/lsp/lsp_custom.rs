@@ -89,7 +89,8 @@ pub enum DenoConfigurationType {
 #[derive(Debug, Eq, Hash, PartialEq, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DenoConfigurationChangeEvent {
-  pub uri: lsp::Url,
+  pub scope_uri: lsp::Url,
+  pub file_uri: lsp::Url,
   #[serde(rename = "type")]
   pub typ: DenoConfigurationChangeType,
   pub configuration_type: DenoConfigurationType,

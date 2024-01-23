@@ -18,6 +18,9 @@
     },
     "./entry-a": {
       "import": "./dist/entry-a.js"
+    },
+    "./nested/entry-b": {
+      "import": "./dist/entry-b.js"
     }
   }
 }

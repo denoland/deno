@@ -34,6 +34,7 @@ let knownGlobals = [
   closed,
   confirm,
   console,
+  createImageBitmap,
   crypto,
   Deno,
   dispatchEvent,
