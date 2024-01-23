@@ -2174,7 +2174,7 @@ Directory arguments are expanded to all contained files matching the glob
       Arg::new("jobs")
         .short('j')
         .long("jobs")
-        .help("deprecated: Number of parallel workers, defaults to number of available CPUs when no value is provided. Defaults to 1 when the option is not present.")
+        .help("deprecated: The `--jobs` flag is deprecated and will be removed in Deno 2.0. Use the `--parallel` flag with possibly the `DENO_JOBS` environment variable instead.")
         .hide(true)
         .num_args(0..=1)
         .value_parser(value_parser!(NonZeroUsize)),
