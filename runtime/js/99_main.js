@@ -112,12 +112,13 @@ function warnOnDeprecatedApi(apiName, stack, suggestion) {
   // to make it more useful.
   const stackLines = StringPrototypeSplit(stack, "\n");
   ArrayPrototypeShift(stackLines);
-  while (true) {
+  while (stackLines.length > 0) {
     // Filter out internal frames at the top of the stack - they are not useful
     // to the user.
     if (
       StringPrototypeIncludes(stackLines[0], "(ext:") ||
-      StringPrototypeIncludes(stackLines[0], "(node:")
+      StringPrototypeIncludes(stackLines[0], "(node:") ||
+      StringPrototypeIncludes(stackLines[0], "<anonymous>")
     ) {
       ArrayPrototypeShift(stackLines);
     } else {
@@ -128,6 +129,7 @@ function warnOnDeprecatedApi(apiName, stack, suggestion) {
   // event loop tick or promise handler calling a user function - again not
   // useful to the user.
   if (
+    stackLines.length > 0 &&
     StringPrototypeIncludes(stackLines[stackLines.length - 1], "(ext:core/")
   ) {
     ArrayPrototypePop(stackLines);
@@ -169,16 +171,17 @@ function warnOnDeprecatedApi(apiName, stack, suggestion) {
       "color: yellow;",
     );
   }
-
-  console.error("%c\u2502", "color: yellow;");
-  console.error("%c\u2514 Stack trace:", "color: yellow;");
-  for (let i = 0; i < stackLines.length; i++) {
-    console.error(
-      `%c  ${i == stackLines.length - 1 ? "\u2514" : "\u251c"}\u2500 ${
-        StringPrototypeTrim(stackLines[i])
-      }`,
-      "color: yellow;",
-    );
+  if (stackLines.length > 0) {
+    console.error("%c\u2502", "color: yellow;");
+    console.error("%c\u2514 Stack trace:", "color: yellow;");
+    for (let i = 0; i < stackLines.length; i++) {
+      console.error(
+        `%c  ${i == stackLines.length - 1 ? "\u2514" : "\u251c"}\u2500 ${
+          StringPrototypeTrim(stackLines[i])
+        }`,
+        "color: yellow;",
+      );
+    }
   }
   console.error();
 }

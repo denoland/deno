@@ -1,7 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { core, primordials } from "ext:core/mod.js";
-const { ObjectDefineProperty } = primordials;
+import { core } from "ext:core/mod.js";
 const {
   op_net_listen_udp,
   op_net_listen_unixpacket,
