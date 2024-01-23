@@ -1801,8 +1801,8 @@ declare namespace Deno {
    * an error occurs. It resolves to the number of bytes copied or rejects with
    * the first error encountered while copying.
    *
-   * @deprecated Use {@linkcode ReadableStream.pipeTo} instead.
-   * {@linkcode Deno.copy} will be removed in v2.0.0.
+   * @deprecated Use {@linkcode https://deno.land/std/io/copy.ts?s=copy | copy}
+   * instead. {@linkcode Deno.copy} will be removed in v2.0.0.
    *
    * @category I/O
    *
