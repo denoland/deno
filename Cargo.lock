@@ -1151,6 +1151,7 @@ dependencies = [
 [[package]]
 name = "deno_config"
 version = "0.8.1"
+source = "git+https://github.com/denoland/deno_config.git?branch=main#254387b29e496a36bdde4a60c7143628ad6ab88e"
 dependencies = [
  "anyhow",
  "glob",
