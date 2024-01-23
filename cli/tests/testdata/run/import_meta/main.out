@@ -1,3 +1,4 @@
+other remote [WILDCARD]other.ts false undefined undefined
 other [WILDCARD]other.ts false [WILDCARD]other.ts [WILDCARD]
 main [WILDCARD]main.ts true [WILDCARD]main.ts [WILDCARD]
 Resolving ./foo.js file:///[WILDCARD]/foo.js

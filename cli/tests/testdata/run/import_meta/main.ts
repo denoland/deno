@@ -1,4 +1,6 @@
 import { assertThrows } from "../../../../../test_util/std/assert/mod.ts";
+import "http://localhost:4545/run/import_meta/other.ts";
+import "./other.ts";
 
 console.log(
   "main",
@@ -7,7 +9,6 @@ console.log(
   import.meta.filename,
   import.meta.dirname,
 );
-import "./other.ts";
 
 console.log("Resolving ./foo.js", import.meta.resolve("./foo.js"));
 console.log("Resolving bare from import map", import.meta.resolve("bare"));
