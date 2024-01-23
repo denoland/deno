@@ -161,6 +161,7 @@ pub fn ts_config_to_emit_options(
     // TODO(bartlomieju): change it to default to `false` and only enable
     // if tsconfig.json enabled experimental decorators
     use_ts_decorators: false,
+    use_decorators_proposal: true,
     emit_metadata: options.emit_decorator_metadata,
     imports_not_used_as_values,
     inline_source_map: options.inline_source_map,
