@@ -1060,18 +1060,6 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * Unstable options which can be set when opening a Unix listener via
-   * {@linkcode Deno.listen} or {@linkcode Deno.listenDatagram}.
-   *
-   * @category Network
-   */
-  export interface UnixListenOptions {
-    /** A path to the Unix Socket. */
-    path: string;
-  }
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
    * Unstable options which can be set when opening a datagram listener via
    * {@linkcode Deno.listenDatagram}.
    *
@@ -1090,23 +1078,6 @@ declare namespace Deno {
      * @default {false} */
     loopback?: boolean;
   }
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Listen announces on the local transport address.
-   *
-   * ```ts
-   * const listener = Deno.listen({ path: "/foo/bar.sock", transport: "unix" })
-   * ```
-   *
-   * Requires `allow-read` and `allow-write` permission.
-   *
-   * @tags allow-read, allow-write
-   * @category Network
-   */
-  export function listen(
-    options: UnixListenOptions & { transport: "unix" },
-  ): Listener;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
