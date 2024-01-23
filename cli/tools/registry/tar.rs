@@ -31,8 +31,7 @@ pub struct PublishableTarball {
 
 pub fn create_gzipped_tarball(
   dir: &Path,
-  // TODO(bartlomieju): this is too specific, factor it out into a callback that
-  // returns data
+  source_cache: &dyn deno_graph::ParsedSourceStore,
   unfurler: &ImportMapUnfurler,
   exclude_patterns: &PathOrPatternSet,
 ) -> Result<PublishableTarball, AnyError> {
@@ -71,12 +70,15 @@ pub fn create_gzipped_tarball(
         path: relative_path.to_path_buf(),
         size: data.len(),
       });
-      let (content, unfurl_diagnostics) =
-        unfurler.unfurl(&url, data).with_context(|| {
-          format!("Unable to unfurl file '{}'", entry.path().display())
-        })?;
-
-      diagnostics.extend_from_slice(&unfurl_diagnostics);
+      let content = match source_cache.get_parsed_source(&url) {
+        Some(parsed_source) => {
+          let (content, unfurl_diagnostics) =
+            unfurler.unfurl(&url, &parsed_source);
+          diagnostics.extend_from_slice(&unfurl_diagnostics);
+          content.into_bytes()
+        }
+        None => data,
+      };
       tar
         .add_file(relative_path_str.to_string(), &content)
         .with_context(|| {

@@ -1,1 +1,1 @@
-(prefer-const) `_a` is never reassigned
+error[prefer-const]: `_a` is never reassigned

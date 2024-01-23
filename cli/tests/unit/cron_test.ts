@@ -297,13 +297,13 @@ Deno.test(async function retriesWithBackoffScheduleOldApi() {
 
   let count = 0;
   const ac = new AbortController();
-  const c = Deno.cron("abc2", "*/20 * * * *", async () => {
+  const c = Deno.cron("abc2", "*/20 * * * *", {
+    signal: ac.signal,
+    backoffSchedule: [10, 20],
+  }, async () => {
     count += 1;
     await sleep(10);
     throw new TypeError("cron error");
-  }, {
-    signal: ac.signal,
-    backoffSchedule: [10, 20],
   });
 
   try {
@@ -379,4 +379,15 @@ Deno.test("Parse CronSchedule to string", () => {
 Deno.test("Parse schedule to string - string", () => {
   const result = parseScheduleToString("* * * * *");
   assertEquals(result, "* * * * *");
+});
+
+Deno.test("error on two handlers", () => {
+  assertThrows(
+    () => {
+      // @ts-ignore test
+      Deno.cron("abc", "* * * * *", () => {}, () => {});
+    },
+    TypeError,
+    "Deno.cron requires a single handler",
+  );
 });

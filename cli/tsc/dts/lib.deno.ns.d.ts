@@ -28,6 +28,36 @@ declare interface ImportMeta {
    */
   url: string;
 
+  /** The absolute path of the current module.
+   *
+   * This property is only provided for local modules (ie. using `file://` URLs).
+   *
+   * Example:
+   * ```
+   * // Unix
+   * console.log(import.meta.filename); // /home/alice/my_module.ts
+   *
+   * // Windows
+   * console.log(import.meta.filename); // C:\alice\my_module.ts
+   * ```
+   */
+  filename?: string;
+
+  /** The absolute path of the dirrectory containing the current module.
+   *
+   * This property is only provided for local modules (ie. using `file://` URLs).
+   *
+   * * Example:
+   * ```
+   * // Unix
+   * console.log(import.meta.dirname); // /home/alice/
+   *
+   * // Windows
+   * console.log(import.meta.dirname); // C:\alice\
+   * ```
+   */
+  dirname?: string;
+
   /** A flag that indicates if the current module is the main module that was
    * called when starting the program under Deno.
    *
@@ -1174,11 +1204,10 @@ declare namespace Deno {
      *
      * ```ts
      * Deno.bench("foo", async (t) => {
-     *   const file = await Deno.open("data.txt");
+     *   using file = await Deno.open("data.txt");
      *   t.start();
      *   // some operation on `file`...
      *   t.end();
-     *   file.close();
      * });
      * ```
      */
@@ -1846,8 +1875,17 @@ declare namespace Deno {
 
   /** Open a file and resolve to an instance of {@linkcode Deno.FsFile}. The
    * file does not need to previously exist if using the `create` or `createNew`
-   * open options. It is the caller's responsibility to close the file when
-   * finished with it.
+   * open options. The caller may have the resulting file automatically closed
+   * by the runtime once it's out of scope by declaring the file variable with
+   * the `using` keyword.
+   *
+   * ```ts
+   * using file = await Deno.open("/foo/bar.txt", { read: true, write: true });
+   * // Do work with file
+   * ```
+   *
+   * Alternatively, the caller may manually close the resource when finished with
+   * it.
    *
    * ```ts
    * const file = await Deno.open("/foo/bar.txt", { read: true, write: true });
@@ -1868,8 +1906,17 @@ declare namespace Deno {
 
   /** Synchronously open a file and return an instance of
    * {@linkcode Deno.FsFile}. The file does not need to previously exist if
-   * using the `create` or `createNew` open options. It is the caller's
-   * responsibility to close the file when finished with it.
+   * using the `create` or `createNew` open options. The caller may have the
+   * resulting file automatically closed by the runtime once it's out of scope
+   * by declaring the file variable with the `using` keyword.
+   *
+   * ```ts
+   * using file = Deno.openSync("/foo/bar.txt", { read: true, write: true });
+   * // Do work with file
+   * ```
+   *
+   * Alternatively, the caller may manually close the resource when finished with
+   * it.
    *
    * ```ts
    * const file = Deno.openSync("/foo/bar.txt", { read: true, write: true });
@@ -2021,7 +2068,7 @@ declare namespace Deno {
    *
    * ```ts
    * // Given file.rid pointing to file with "Hello world", which is 11 bytes long:
-   * const file = await Deno.open(
+   * using file = await Deno.open(
    *   "hello.txt",
    *   { read: true, write: true, truncate: true, create: true },
    * );
@@ -2033,14 +2080,13 @@ declare namespace Deno {
    * const buf = new Uint8Array(100);
    * await file.read(buf);
    * console.log(new TextDecoder().decode(buf)); // "world"
-   * file.close();
    * ```
    *
    * The seek modes work as follows:
    *
    * ```ts
    * // Given file.rid pointing to file with "Hello world", which is 11 bytes long:
-   * const file = await Deno.open(
+   * using file = await Deno.open(
    *   "hello.txt",
    *   { read: true, write: true, truncate: true, create: true },
    * );
@@ -2052,7 +2098,6 @@ declare namespace Deno {
    * console.log(await Deno.seek(file.rid, 2, Deno.SeekMode.Current)); // "8"
    * // Seek backwards 2 bytes from the end of the file
    * console.log(await Deno.seek(file.rid, -2, Deno.SeekMode.End)); // "9" (i.e. 11-2)
-   * file.close();
    * ```
    *
    * @category I/O
@@ -2068,7 +2113,7 @@ declare namespace Deno {
    * start) is returned.
    *
    * ```ts
-   * const file = Deno.openSync(
+   * using file = Deno.openSync(
    *   "hello.txt",
    *   { read: true, write: true, truncate: true, create: true },
    * );
@@ -2080,14 +2125,13 @@ declare namespace Deno {
    * const buf = new Uint8Array(100);
    * file.readSync(buf);
    * console.log(new TextDecoder().decode(buf)); // "world"
-   * file.close();
    * ```
    *
    * The seek modes work as follows:
    *
    * ```ts
    * // Given file.rid pointing to file with "Hello world", which is 11 bytes long:
-   * const file = Deno.openSync(
+   * using file = Deno.openSync(
    *   "hello.txt",
    *   { read: true, write: true, truncate: true, create: true },
    * );
@@ -2099,7 +2143,6 @@ declare namespace Deno {
    * console.log(Deno.seekSync(file.rid, 2, Deno.SeekMode.Current)); // "8"
    * // Seek backwards 2 bytes from the end of the file
    * console.log(Deno.seekSync(file.rid, -2, Deno.SeekMode.End)); // "9" (i.e. 11-2)
-   * file.close();
    * ```
    *
    * @category I/O
@@ -2122,7 +2165,7 @@ declare namespace Deno {
    * await Deno.write(file.rid, new TextEncoder().encode("Hello World"));
    * await Deno.ftruncate(file.rid, 1);
    * await Deno.fsync(file.rid);
-   * console.log(new TextDecoder().decode(await Deno.readFile("my_file.txt"))); // H
+   * console.log(await Deno.readTextFile("my_file.txt")); // H
    * ```
    *
    * @deprecated Use `file.sync()` instead. {@linkcode Deno.fsync} will be
@@ -2144,7 +2187,7 @@ declare namespace Deno {
    * Deno.writeSync(file.rid, new TextEncoder().encode("Hello World"));
    * Deno.ftruncateSync(file.rid, 1);
    * Deno.fsyncSync(file.rid);
-   * console.log(new TextDecoder().decode(Deno.readFileSync("my_file.txt"))); // H
+   * console.log(Deno.readTextFileSync("my_file.txt")); // H
    * ```
    *
    * @deprecated Use `file.syncSync()` instead. {@linkcode Deno.fsyncSync} will
@@ -2163,8 +2206,11 @@ declare namespace Deno {
    * );
    * await Deno.write(file.rid, new TextEncoder().encode("Hello World"));
    * await Deno.fdatasync(file.rid);
-   * console.log(new TextDecoder().decode(await Deno.readFile("my_file.txt"))); // Hello World
+   * console.log(await Deno.readTextFile("my_file.txt")); // Hello World
    * ```
+   *
+   * @deprecated Use {@linkcode Deno.FsFile.dataSync} instead.
+   * {@linkcode Deno.fdatasync} will be removed in v2.0.0.
    *
    * @category I/O
    */
@@ -2181,8 +2227,11 @@ declare namespace Deno {
    * );
    * Deno.writeSync(file.rid, new TextEncoder().encode("Hello World"));
    * Deno.fdatasyncSync(file.rid);
-   * console.log(new TextDecoder().decode(Deno.readFileSync("my_file.txt"))); // Hello World
+   * console.log(Deno.readTextFileSync("my_file.txt")); // Hello World
    * ```
+   *
+   * @deprecated Use {@linkcode Deno.FsFile.dataSyncSync} instead.
+   * {@linkcode Deno.fdatasyncSync} will be removed in v2.0.0.
    *
    * @category I/O
    */
@@ -2198,6 +2247,15 @@ declare namespace Deno {
    * Deno.close(file.rid);
    * ```
    *
+   * It is recommended to define the variable with the `using` keyword so the
+   * runtime will automatically close the resource when it goes out of scope.
+   * Doing so negates the need to manually close the resource.
+   *
+   * ```ts
+   * using file = await Deno.open("my_file.txt");
+   * // do work with "file" object
+   * ```
+   *
    * @category I/O
    */
   export function close(rid: number): void;
@@ -2208,14 +2266,13 @@ declare namespace Deno {
    * recommended over using the discreet functions within the `Deno` namespace.
    *
    * ```ts
-   * const file = await Deno.open("/foo/bar.txt", { read: true });
+   * using file = await Deno.open("/foo/bar.txt", { read: true });
    * const fileInfo = await file.stat();
    * if (fileInfo.isFile) {
    *   const buf = new Uint8Array(100);
    *   const numberOfBytesRead = await file.read(buf); // 11 bytes
    *   const text = new TextDecoder().decode(buf);  // "hello world"
    * }
-   * file.close();
    * ```
    *
    * @category File System
@@ -2238,7 +2295,7 @@ declare namespace Deno {
      * based APIs.
      *
      * ```ts
-     * const file = await Deno.open("my_file.txt", { read: true });
+     * using file = await Deno.open("my_file.txt", { read: true });
      * const decoder = new TextDecoder();
      * for await (const chunk of file.readable) {
      *   console.log(decoder.decode(chunk));
@@ -2252,13 +2309,12 @@ declare namespace Deno {
      *
      * ```ts
      * const items = ["hello", "world"];
-     * const file = await Deno.open("my_file.txt", { write: true });
+     * using file = await Deno.open("my_file.txt", { write: true });
      * const encoder = new TextEncoder();
      * const writer = file.writable.getWriter();
      * for (const item of items) {
      *   await writer.write(encoder.encode(item));
      * }
-     * file.close();
      * ```
      */
     readonly writable: WritableStream<Uint8Array>;
@@ -2276,9 +2332,8 @@ declare namespace Deno {
      * ```ts
      * const encoder = new TextEncoder();
      * const data = encoder.encode("Hello world");
-     * const file = await Deno.open("/foo/bar.txt", { write: true });
+     * using file = await Deno.open("/foo/bar.txt", { write: true });
      * const bytesWritten = await file.write(data); // 11
-     * file.close();
      * ```
      *
      * @category I/O
@@ -2294,9 +2349,8 @@ declare namespace Deno {
      * ```ts
      * const encoder = new TextEncoder();
      * const data = encoder.encode("Hello world");
-     * const file = Deno.openSync("/foo/bar.txt", { write: true });
+     * using file = Deno.openSync("/foo/bar.txt", { write: true });
      * const bytesWritten = file.writeSync(data); // 11
-     * file.close();
      * ```
      */
     writeSync(p: Uint8Array): number;
@@ -2306,21 +2360,19 @@ declare namespace Deno {
      * ### Truncate the entire file
      *
      * ```ts
-     * const file = await Deno.open("my_file.txt", { write: true });
+     * using file = await Deno.open("my_file.txt", { write: true });
      * await file.truncate();
-     * file.close();
      * ```
      *
      * ### Truncate part of the file
      *
      * ```ts
      * // if "my_file.txt" contains the text "hello world":
-     * const file = await Deno.open("my_file.txt", { write: true });
+     * using file = await Deno.open("my_file.txt", { write: true });
      * await file.truncate(7);
      * const buf = new Uint8Array(100);
      * await file.read(buf);
      * const text = new TextDecoder().decode(buf); // "hello w"
-     * file.close();
      * ```
      */
     truncate(len?: number): Promise<void>;
@@ -2331,21 +2383,19 @@ declare namespace Deno {
      * ### Truncate the entire file
      *
      * ```ts
-     * const file = Deno.openSync("my_file.txt", { write: true });
+     * using file = Deno.openSync("my_file.txt", { write: true });
      * file.truncateSync();
-     * file.close();
      * ```
      *
      * ### Truncate part of the file
      *
      * ```ts
      * // if "my_file.txt" contains the text "hello world":
-     * const file = Deno.openSync("my_file.txt", { write: true });
+     * using file = Deno.openSync("my_file.txt", { write: true });
      * file.truncateSync(7);
      * const buf = new Uint8Array(100);
      * file.readSync(buf);
      * const text = new TextDecoder().decode(buf); // "hello w"
-     * file.close();
      * ```
      */
     truncateSync(len?: number): void;
@@ -2362,11 +2412,10 @@ declare namespace Deno {
      *
      * ```ts
      * // if "/foo/bar.txt" contains the text "hello world":
-     * const file = await Deno.open("/foo/bar.txt");
+     * using file = await Deno.open("/foo/bar.txt");
      * const buf = new Uint8Array(100);
      * const numberOfBytesRead = await file.read(buf); // 11 bytes
      * const text = new TextDecoder().decode(buf);  // "hello world"
-     * file.close();
      * ```
      */
     read(p: Uint8Array): Promise<number | null>;
@@ -2383,11 +2432,10 @@ declare namespace Deno {
      *
      * ```ts
      * // if "/foo/bar.txt" contains the text "hello world":
-     * const file = Deno.openSync("/foo/bar.txt");
+     * using file = Deno.openSync("/foo/bar.txt");
      * const buf = new Uint8Array(100);
      * const numberOfBytesRead = file.readSync(buf); // 11 bytes
      * const text = new TextDecoder().decode(buf);  // "hello world"
-     * file.close();
      * ```
      */
     readSync(p: Uint8Array): number | null;
@@ -2396,7 +2444,7 @@ declare namespace Deno {
      *
      * ```ts
      * // Given file pointing to file with "Hello world", which is 11 bytes long:
-     * const file = await Deno.open(
+     * using file = await Deno.open(
      *   "hello.txt",
      *   { read: true, write: true, truncate: true, create: true },
      * );
@@ -2408,7 +2456,6 @@ declare namespace Deno {
      * const buf = new Uint8Array(100);
      * await file.read(buf);
      * console.log(new TextDecoder().decode(buf)); // "world"
-     * file.close();
      * ```
      *
      * The seek modes work as follows:
@@ -2434,7 +2481,7 @@ declare namespace Deno {
      * The new position within the resource (bytes from the start) is returned.
      *
      * ```ts
-     * const file = Deno.openSync(
+     * using file = Deno.openSync(
      *   "hello.txt",
      *   { read: true, write: true, truncate: true, create: true },
      * );
@@ -2446,14 +2493,13 @@ declare namespace Deno {
      * const buf = new Uint8Array(100);
      * file.readSync(buf);
      * console.log(new TextDecoder().decode(buf)); // "world"
-     * file.close();
      * ```
      *
      * The seek modes work as follows:
      *
      * ```ts
      * // Given file.rid pointing to file with "Hello world", which is 11 bytes long:
-     * const file = Deno.openSync(
+     * using file = Deno.openSync(
      *   "hello.txt",
      *   { read: true, write: true, truncate: true, create: true },
      * );
@@ -2465,7 +2511,6 @@ declare namespace Deno {
      * console.log(file.seekSync(2, Deno.SeekMode.Current)); // "8"
      * // Seek backwards 2 bytes from the end of the file
      * console.log(file.seekSync(-2, Deno.SeekMode.End)); // "9" (i.e. 11-2)
-     * file.close();
      * ```
      */
     seekSync(offset: number | bigint, whence: SeekMode): number;
@@ -2474,10 +2519,9 @@ declare namespace Deno {
      * ```ts
      * import { assert } from "https://deno.land/std/assert/mod.ts";
      *
-     * const file = await Deno.open("hello.txt");
+     * using file = await Deno.open("hello.txt");
      * const fileInfo = await file.stat();
      * assert(fileInfo.isFile);
-     * file.close();
      * ```
      */
     stat(): Promise<FileInfo>;
@@ -2486,10 +2530,9 @@ declare namespace Deno {
      * ```ts
      * import { assert } from "https://deno.land/std/assert/mod.ts";
      *
-     * const file = Deno.openSync("hello.txt")
+     * using file = Deno.openSync("hello.txt")
      * const fileInfo = file.statSync();
      * assert(fileInfo.isFile);
-     * file.close();
      * ```
      */
     statSync(): FileInfo;
@@ -2529,13 +2572,44 @@ declare namespace Deno {
      * @category I/O
      */
     syncSync(): void;
+    /**
+     * Flushes any pending data operations of the given file stream to disk.
+     *  ```ts
+     * using file = await Deno.open(
+     *   "my_file.txt",
+     *   { read: true, write: true, create: true },
+     * );
+     * await file.write(new TextEncoder().encode("Hello World"));
+     * await file.dataSync();
+     * console.log(await Deno.readTextFile("my_file.txt")); // Hello World
+     * ```
+     *
+     * @category I/O
+     */
+    dataSync(): Promise<void>;
+    /**
+     * Synchronously flushes any pending data operations of the given file stream
+     * to disk.
+     *
+     *  ```ts
+     * using file = Deno.openSync(
+     *   "my_file.txt",
+     *   { read: true, write: true, create: true },
+     * );
+     * file.writeSync(new TextEncoder().encode("Hello World"));
+     * file.dataSyncSync();
+     * console.log(Deno.readTextFileSync("my_file.txt")); // Hello World
+     * ```
+     *
+     * @category I/O
+     */
+    dataSyncSync(): void;
     /** Close the file. Closing a file when you are finished with it is
      * important to avoid leaking resources.
      *
      * ```ts
-     * const file = await Deno.open("my_file.txt");
+     * using file = await Deno.open("my_file.txt");
      * // do work with "file" object
-     * file.close();
      * ```
      */
     close(): void;
@@ -2618,6 +2692,17 @@ declare namespace Deno {
      * @category I/O
      */
     setRaw(mode: boolean, options?: SetRawOptions): void;
+    /**
+     * Checks if `stdin` is a TTY (terminal).
+     *
+     * ```ts
+     * // This example is system and context specific
+     * Deno.stdin.isTerminal(); // true
+     * ```
+     *
+     * @category I/O
+     */
+    isTerminal(): boolean;
   };
   /** A reference to `stdout` which can be used to write directly to `stdout`.
    * It implements the Deno specific {@linkcode Writer}, {@linkcode WriterSync},
@@ -2635,6 +2720,17 @@ declare namespace Deno {
     readonly rid: number;
     /** A writable stream interface to `stdout`. */
     readonly writable: WritableStream<Uint8Array>;
+    /**
+     * Checks if `stdout` is a TTY (terminal).
+     *
+     * ```ts
+     * // This example is system and context specific
+     * Deno.stdout.isTerminal(); // true
+     * ```
+     *
+     * @category I/O
+     */
+    isTerminal(): boolean;
   };
   /** A reference to `stderr` which can be used to write directly to `stderr`.
    * It implements the Deno specific {@linkcode Writer}, {@linkcode WriterSync},
@@ -2652,6 +2748,17 @@ declare namespace Deno {
     readonly rid: number;
     /** A writable stream interface to `stderr`. */
     readonly writable: WritableStream<Uint8Array>;
+    /**
+     * Checks if `stderr` is a TTY (terminal).
+     *
+     * ```ts
+     * // This example is system and context specific
+     * Deno.stderr.isTerminal(); // true
+     * ```
+     *
+     * @category I/O
+     */
+    isTerminal(): boolean;
   };
 
   /**
@@ -2733,6 +2840,10 @@ declare namespace Deno {
    * Deno.close(nonTTYRid);
    * Deno.close(ttyRid);
    * ```
+   *
+   * @deprecated Use `Deno.stdin.isTerminal()`, `Deno.stdout.isTerminal()` or
+   * `Deno.stderr.isTerminal()` instead.
+   * {@linkcode Deno.isatty} will be removed in v2.0.0.
    *
    * @category I/O
    */
@@ -3858,6 +3969,8 @@ declare namespace Deno {
    * A map of open resources that Deno is tracking. The key is the resource ID
    * (_rid_) and the value is its representation.
    *
+   * @deprecated {@linkcode Deno.resources} will be removed in Deno 2.0.
+   *
    * @category Observability */
   interface ResourceMap {
     [rid: number]: unknown;
@@ -3875,6 +3988,8 @@ declare namespace Deno {
    * console.log(Deno.resources());
    * // { 0: "stdin", 1: "stdout", 2: "stderr", 3: "fsFile" }
    * ```
+   *
+   * @deprecated {@linkcode Deno.resources} will be removed in Deno 2.0.
    *
    * @category Observability
    */
@@ -5070,8 +5185,8 @@ declare namespace Deno {
    * called when `Deno.inspect()` is called, or when the object is logged to
    * the console.
    *
-   * @deprecated This symbol is deprecated since 1.9. Use
-   * `Symbol.for("Deno.customInspect")` instead.
+   * @deprecated Use `Symbol.for("Deno.customInspect")` instead. This symbol
+   * will be removed in Deno 2.0.
    *
    * @category Console and Debugging
    */
@@ -5333,7 +5448,8 @@ declare namespace Deno {
    * request from a remote client.
    *
    * @category HTTP Server
-   * @deprecated Use {@linkcode serve} instead.
+   * @deprecated Use {@linkcode Deno.serve} instead. This will be removed in
+   * Deno 2.0.
    */
   export interface RequestEvent {
     /** The request from the client in the form of the web platform
@@ -5354,7 +5470,8 @@ declare namespace Deno {
    * requests on the HTTP server connection.
    *
    * @category HTTP Server
-   * @deprecated Use {@linkcode serve} instead.
+   * @deprecated Use {@linkcode Deno.serve} instead. This will be removed in
+   * Deno 2.0.
    */
   export interface HttpConn extends AsyncIterable<RequestEvent>, Disposable {
     /** The resource ID associated with this connection. Generally users do not
@@ -5420,7 +5537,8 @@ declare namespace Deno {
    * used elsewhere. In such a case, this function will fail.
    *
    * @category HTTP Server
-   * @deprecated Use {@linkcode serve} instead.
+   * @deprecated Use {@linkcode Deno.serve} instead. This will be removed in
+   * Deno 2.0.
    */
   export function serveHttp(conn: Conn): HttpConn;
 
@@ -6079,7 +6197,9 @@ declare namespace Deno {
 
   /**
    * @category HTTP Server
-   * @deprecated Use {@linkcode HttpServer} instead.
+   *
+   * @deprecated Use {@linkcode Deno.HttpServer} instead.
+   * {@linkcode Deno.Server} will be removed in Deno 2.0.
    */
   export type Server = HttpServer;
 

@@ -83,9 +83,6 @@ const denoNs = {
   futime: fs.futime,
   futimeSync: fs.futimeSync,
   errors: errors.errors,
-  // TODO(kt3k): Remove this export at v2
-  // See https://github.com/denoland/deno/issues/9294
-  customInspect: console.customInspect,
   inspect: console.inspect,
   env: os.env,
   exit: os.exit,
@@ -203,7 +200,6 @@ denoNsUnstableById[unstableIds.http] = {
   createHttpClient: httpClient.createHttpClient,
   // TODO(bartlomieju): why is it needed?
   http,
-  upgradeHttp: http.upgradeHttp,
 };
 
 denoNsUnstableById[unstableIds.kv] = {
@@ -250,7 +246,6 @@ const denoNsUnstable = {
   flockSync: fs.flockSync,
   funlock: fs.funlock,
   funlockSync: fs.funlockSync,
-  upgradeHttp: http.upgradeHttp,
   openKv: kv.openKv,
   AtomicOperation: kv.AtomicOperation,
   Kv: kv.Kv,

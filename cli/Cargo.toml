@@ -39,7 +39,7 @@ __runtime_js_sources = ["deno_runtime/__runtime_js_sources"]
 __vendored_zlib_ng = ["flate2/zlib-ng-compat", "libz-sys/zlib-ng"]
 
 [build-dependencies]
-deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting"] }
+deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting", "only_snapshotted_js_sources"] }
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
 lazy-regex.workspace = true
 serde.workspace = true
@@ -55,18 +55,18 @@ winres.workspace = true
 [dependencies]
 deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "dep_graph", "module_specifier", "proposal", "react", "sourcemap", "transforms", "typescript", "view", "visit"] }
 deno_cache_dir = "=0.6.1"
-deno_config = "=0.8.0"
+deno_config = "=0.8.1"
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
-deno_doc = { version = "=0.93.0", features = ["html"] }
-deno_emit = "=0.33.0"
-deno_graph = "=0.63.3"
-deno_lint = { version = "=0.53.0", features = ["docs"] }
+deno_doc = { version = "=0.94.1", features = ["html"] }
+deno_emit = "=0.34.0"
+deno_graph = "=0.63.5"
+deno_lint = { version = "=0.54.0", features = ["docs"] }
 deno_lockfile.workspace = true
-deno_npm = "=0.15.3"
+deno_npm = "=0.16.0"
 deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting"] }
 deno_semver = "=0.5.4"
 deno_task_shell = "=0.14.3"
-eszip = "=0.57.0"
+eszip = "=0.59.0"
 napi_sym.workspace = true
 
 async-trait.workspace = true
@@ -79,6 +79,7 @@ chrono.workspace = true
 clap = { version = "=4.4.17", features = ["env", "string"] }
 clap_complete = "=4.4.7"
 clap_complete_fig = "=4.4.2"
+color-print = "0.3.5"
 console_static_text.workspace = true
 dashmap = "5.5.3"
 data-encoding.workspace = true
@@ -88,7 +89,7 @@ dotenvy = "0.15.7"
 dprint-plugin-json = "=0.19.1"
 dprint-plugin-jupyter = "=0.1.2"
 dprint-plugin-markdown = "=0.16.3"
-dprint-plugin-typescript = "=0.88.8"
+dprint-plugin-typescript = "=0.88.10"
 encoding_rs.workspace = true
 env_logger = "=0.10.0"
 fancy-regex = "=0.10.0"
@@ -131,6 +132,7 @@ tokio-util.workspace = true
 tower-lsp.workspace = true
 twox-hash = "=1.6.3"
 typed-arena = "=2.0.1"
+unicode-width = "0.1"
 uuid = { workspace = true, features = ["serde"] }
 walkdir = "=2.3.2"
 zeromq = { version = "=0.3.4", default-features = false, features = ["tcp-transport", "tokio-runtime"] }
