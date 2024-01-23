@@ -33,7 +33,7 @@ import * as webgpuSurface from "ext:deno_webgpu/02_surface.js";
 
 const denoNs = {
   metrics: () => {
-    internals.warnOnDeprecatedApi("Deno.metrics()", (new Error()).stack);
+    internals.warnOnDeprecatedApi("Deno.metrics()", new Error().stack);
     return core.metrics();
   },
   Process: process.Process,
