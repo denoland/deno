@@ -2612,6 +2612,17 @@ declare namespace Deno {
      * @category I/O
      */
     setRaw(mode: boolean, options?: SetRawOptions): void;
+    /**
+     * Checks if `stdin` is a TTY (terminal).
+     *
+     * ```ts
+     * // This example is system and context specific
+     * Deno.stdin.isTerminal(); // true
+     * ```
+     *
+     * @category I/O
+     */
+    isTerminal(): boolean;
   };
   /** A reference to `stdout` which can be used to write directly to `stdout`.
    * It implements the Deno specific {@linkcode Writer}, {@linkcode WriterSync},
@@ -2629,6 +2640,17 @@ declare namespace Deno {
     readonly rid: number;
     /** A writable stream interface to `stdout`. */
     readonly writable: WritableStream<Uint8Array>;
+    /**
+     * Checks if `stdout` is a TTY (terminal).
+     *
+     * ```ts
+     * // This example is system and context specific
+     * Deno.stdout.isTerminal(); // true
+     * ```
+     *
+     * @category I/O
+     */
+    isTerminal(): boolean;
   };
   /** A reference to `stderr` which can be used to write directly to `stderr`.
    * It implements the Deno specific {@linkcode Writer}, {@linkcode WriterSync},
@@ -2646,6 +2668,17 @@ declare namespace Deno {
     readonly rid: number;
     /** A writable stream interface to `stderr`. */
     readonly writable: WritableStream<Uint8Array>;
+    /**
+     * Checks if `stderr` is a TTY (terminal).
+     *
+     * ```ts
+     * // This example is system and context specific
+     * Deno.stderr.isTerminal(); // true
+     * ```
+     *
+     * @category I/O
+     */
+    isTerminal(): boolean;
   };
 
   /**
@@ -2727,6 +2760,10 @@ declare namespace Deno {
    * Deno.close(nonTTYRid);
    * Deno.close(ttyRid);
    * ```
+   *
+   * @deprecated Use `Deno.stdin.isTerminal()`, `Deno.stdout.isTerminal()` or
+   * `Deno.stderr.isTerminal()` instead.
+   * {@linkcode Deno.isatty} will be removed in v2.0.0.
    *
    * @category I/O
    */
