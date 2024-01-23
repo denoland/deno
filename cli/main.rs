@@ -356,7 +356,7 @@ pub fn main() {
         eprintln!(
           "⚠️  {}",
           colors::yellow(
-            "The `--unstable` flag is deprecated and will be removed in Deno 2.0, use granular `--unstable-*` flags instead.\nLearn more at: https://docs.deno.com/runtime/manual/tools/unstable_flags"
+            "The `--unstable` flag is deprecated and will be removed in Deno 2.0. Use granular `--unstable-*` flags instead.\nLearn more at: https://docs.deno.com/runtime/manual/tools/unstable_flags"
           )
         );
       }
