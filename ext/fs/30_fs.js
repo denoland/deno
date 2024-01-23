@@ -69,7 +69,6 @@ const {
 } = core.ensureFastOps();
 const {
   op_cancel_handle,
-  op_is_terminal,
 } = core.ensureFastOps(true);
 const {
   ArrayPrototypeFilter,
@@ -724,10 +723,6 @@ class FsFile {
 
   [SymbolDispose]() {
     core.tryClose(this.rid);
-  }
-
-  isTerminal() {
-    return op_is_terminal(this.rid);
   }
 }
 

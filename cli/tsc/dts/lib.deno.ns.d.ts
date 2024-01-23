@@ -2494,18 +2494,6 @@ declare namespace Deno {
      * ```
      */
     statSync(): FileInfo;
-    /**
-     * Checks if the current resource is a TTY (terminal).
-     *
-     * ```ts
-     * // This example is system and context specific
-     * using file = await Deno.open("my_file.txt");
-     * file.isTerminal(); // false
-     * ```
-     *
-     * @category I/O
-     */
-    isTerminal(): boolean;
     /** Close the file. Closing a file when you are finished with it is
      * important to avoid leaking resources.
      *
@@ -2743,7 +2731,7 @@ declare namespace Deno {
    * Deno.close(ttyRid);
    * ```
    *
-   * @deprecated Use `resource.isTerminal()` instead.
+   * @deprecated Use `stdStream.isTerminal()` instead.
    * {@linkcode Deno.isatty} will be removed in v2.0.0.
    *
    * @category I/O
