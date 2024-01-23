@@ -2731,7 +2731,8 @@ declare namespace Deno {
    * Deno.close(ttyRid);
    * ```
    *
-   * @deprecated Use `stdStream.isTerminal()` instead.
+   * @deprecated Use `Deno.stdin.isTerminal()`, `Deno.stdout.isTerminal()` or
+   * `Deno.stderr.isTerminal()` instead.
    * {@linkcode Deno.isatty} will be removed in v2.0.0.
    *
    * @category I/O
