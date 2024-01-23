@@ -3,7 +3,6 @@
 // Interfaces 100% copied from Go.
 // Documentation liberally lifted from them too.
 // Thank you! We love Go! <3
-
 import { core, internals, primordials } from "ext:core/mod.js";
 const {
   op_stdin_set_raw,
@@ -39,7 +38,11 @@ async function copy(
   dst,
   options,
 ) {
-  internals.warnOnDeprecatedApi("Deno.copy()", (new Error()).stack);
+  internals.warnOnDeprecatedApi(
+    "Deno.copy()",
+    new Error().stack,
+    "Use `copy()` from `https://deno.land/std/io/copy.ts` instead.",
+  );
   let n = 0;
   const bufSize = options?.bufSize ?? DEFAULT_BUFFER_SIZE;
   const b = new Uint8Array(bufSize);
