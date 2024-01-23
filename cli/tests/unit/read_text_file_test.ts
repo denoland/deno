@@ -73,18 +73,14 @@ Deno.test({ permissions: { read: true } }, function readTextFileSyncLoop() {
 Deno.test(
   { permissions: { read: true } },
   async function readTextFileDoesNotLeakResources() {
-    const resourcesBefore = Deno.resources();
     await assertRejects(async () => await Deno.readTextFile("cli"));
-    assertEquals(resourcesBefore, Deno.resources());
   },
 );
 
 Deno.test(
   { permissions: { read: true } },
   function readTextFileSyncDoesNotLeakResources() {
-    const resourcesBefore = Deno.resources();
     assertThrows(() => Deno.readTextFileSync("cli"));
-    assertEquals(resourcesBefore, Deno.resources());
   },
 );
 

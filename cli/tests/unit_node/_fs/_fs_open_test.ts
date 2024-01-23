@@ -10,7 +10,6 @@ import {
   O_WRONLY,
 } from "node:constants";
 import {
-  assert,
   assertEquals,
   assertThrows,
   fail,
@@ -35,7 +34,6 @@ Deno.test({
     })
       .then((fd) => {
         fd1 = fd;
-        assert(Deno.resources()[fd], `${fd}`);
       }, () => fail())
       .finally(() => closeSync(fd1));
   },
@@ -46,7 +44,6 @@ Deno.test({
   fn() {
     const file = Deno.makeTempFileSync();
     const fd = openSync(file, "r");
-    assert(Deno.resources()[fd]);
     closeSync(fd);
   },
 });
@@ -58,7 +55,6 @@ Deno.test({
     const fd = openSync(file, "a");
     assertEquals(typeof fd, "number");
     assertEquals(existsSync(file), true);
-    assert(Deno.resources()[fd]);
     closeSync(fd);
   },
 });
@@ -225,7 +221,6 @@ Deno.test({
     const fd = openSync(file, O_APPEND | O_CREAT | O_WRONLY);
     assertEquals(typeof fd, "number");
     assertEquals(existsSync(file), true);
-    assert(Deno.resources()[fd]);
     closeSync(fd);
   },
 });
@@ -403,7 +398,6 @@ Deno.test("[std/node/fs] open callback isn't called twice if error is thrown", a
     fn() {
       const file = Deno.makeTempFileSync();
       const fd = openSync(file, 0);
-      assert(Deno.resources()[fd]);
       closeSync(fd);
     },
   });

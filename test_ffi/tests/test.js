@@ -20,7 +20,7 @@ const [libPrefix, libSuffix] = {
 }[Deno.build.os];
 const libPath = `${targetDir}/${libPrefix}test_ffi.${libSuffix}`;
 
-const resourcesPre = Deno.resources();
+const resourcesPre = Deno.core.resources();
 
 // dlopen shouldn't panic
 assertThrows(() => {
@@ -765,7 +765,7 @@ testOptimized(hash, () => hash());
   nestedCallback.close();
   addToFooCallback.close();
 
-  const resourcesPost = Deno.resources();
+  const resourcesPost = Deno.core.resources();
 
   const preStr = JSON.stringify(resourcesPre, null, 2);
   const postStr = JSON.stringify(resourcesPost, null, 2);

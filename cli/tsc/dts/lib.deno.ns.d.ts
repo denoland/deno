@@ -3816,6 +3816,8 @@ declare namespace Deno {
    * A map of open resources that Deno is tracking. The key is the resource ID
    * (_rid_) and the value is its representation.
    *
+   * @deprecated {@linkcode Deno.resources} will be removed in Deno 2.0.
+   *
    * @category Observability */
   interface ResourceMap {
     [rid: number]: unknown;
@@ -3833,6 +3835,8 @@ declare namespace Deno {
    * console.log(Deno.resources());
    * // { 0: "stdin", 1: "stdout", 2: "stderr", 3: "fsFile" }
    * ```
+   *
+   * @deprecated {@linkcode Deno.resources} will be removed in Deno 2.0.
    *
    * @category Observability
    */
