@@ -39,6 +39,13 @@ async function connectTls({
   privateKey = undefined,
   alpnProtocols = undefined,
 }) {
+  if (certFile !== undefined) {
+    internals.warnOnDeprecatedApi(
+      "Deno.ConnectTlsOptions.certFile",
+      new Error().stack,
+      "Pass the cert file contents to the `Deno.ConnectTlsOptions.certChain` option instead.",
+    );
+  }
   if (transport !== "tcp") {
     throw new TypeError(`Unsupported transport: '${transport}'`);
   }
@@ -80,14 +87,14 @@ function listenTls({
     internals.warnOnDeprecatedApi(
       "Deno.ListenTlsOptions.keyFile",
       new Error().stack,
-      "Pass the key to the `key` option instead.",
+      "Pass the key file contents to the `Deno.ListenTlsOptions.key` option instead.",
     );
   }
   if (certFile !== undefined) {
     internals.warnOnDeprecatedApi(
       "Deno.ListenTlsOptions.certFile",
       new Error().stack,
-      "Pass the cert to the `cert` option instead.",
+      "Pass the cert file contents to the `Deno.ListenTlsOptions.cert` option instead.",
     );
   }
   const { 0: rid, 1: localAddr } = op_net_listen_tls(
@@ -106,13 +113,6 @@ async function startTls(
     alpnProtocols = undefined,
   } = {},
 ) {
-  if (certFile !== undefined) {
-    internals.warnOnDeprecatedApi(
-      "Deno.ListenTlsOptions.certFile",
-      new Error().stack,
-      "Pass the cert to the `cert` option instead.",
-    );
-  }
   const { 0: rid, 1: localAddr, 2: remoteAddr } = await opStartTls({
     rid: conn.rid,
     hostname,

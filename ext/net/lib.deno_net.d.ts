@@ -148,15 +148,17 @@ declare namespace Deno {
      * `--allow-read`.
      *
      * @tags allow-read
-     * @deprecated Pass the certificate directly to the `cert` option instead.
-     * This option will be removed in Deno 2.0.
+     * @deprecated Pass the certificate file contents directly to the
+     * {@linkcode Deno.ListenTlsOptions.cert} option instead. This option will
+     * be removed in Deno 2.0.
      */
     certFile?: string;
     /** Server private key file. Requires `--allow-read`.
      *
      * @tags allow-read
-     * @deprecated Pass the key directly to the `key` option instead. This
-     * option will be removed in Deno 2.0.
+     * @deprecated Pass the key file contents directly to the
+     * {@linkcode Deno.ListenTlsOptions.key} option instead. This option will
+     * be removed in Deno 2.0.
      */
     keyFile?: string;
 
@@ -269,8 +271,9 @@ declare namespace Deno {
     /**
      * Server certificate file.
      *
-     * @deprecated Pass the certificate directly to the `caCerts` option. This
-     * option will be removed in Deno 2.0.
+     * @deprecated Pass the cert file contents directly to the
+     * {@linkcode Deno.ConnectTlsOptions.caCerts} option instead. This option
+     * will be removed in Deno 2.0.
      */
     certFile?: string;
     /** A list of root certificates that will be used in addition to the
