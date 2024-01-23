@@ -97,8 +97,8 @@ impl Diagnostic for PublishDiagnostic {
 
   fn snippet(&self) -> Option<DiagnosticSnippet<'_>> {
     match &self {
-      PublishDiagnostic::FastCheck { diagnostic } => match diagnostic.range() {
-        Some(range) => Some(DiagnosticSnippet {
+      PublishDiagnostic::FastCheck { diagnostic } => {
+        diagnostic.range().map(|range| DiagnosticSnippet {
           source: DiagnosticSnippetSource::Specifier(Cow::Borrowed(
             diagnostic.specifier(),
           )),
@@ -110,9 +110,8 @@ impl Diagnostic for PublishDiagnostic {
             },
             description: diagnostic.range_description().map(Cow::Borrowed),
           },
-        }),
-        None => None,
-      },
+        })
+      }
     }
   }
 
@@ -133,7 +132,7 @@ impl Diagnostic for PublishDiagnostic {
       PublishDiagnostic::FastCheck { diagnostic } => {
         let infos = diagnostic
           .additional_info()
-          .into_iter()
+          .iter()
           .map(|s| Cow::Borrowed(*s))
           .collect();
         Cow::Owned(infos)

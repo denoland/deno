@@ -209,7 +209,7 @@ fn line_text_split(
   source: &SourceTextInfo,
   pos: DiagnosticSourcePos,
 ) -> (&str, &str) {
-  let pos = pos.pos(&source);
+  let pos = pos.pos(source);
   let line_index = source.line_index(pos);
   let line_start_pos = source.line_start(line_index);
   let line_end_pos = source.line_end(line_index);
@@ -227,8 +227,8 @@ fn line_text_split3(
   start_pos: DiagnosticSourcePos,
   end_pos: DiagnosticSourcePos,
 ) -> (&str, &str, &str) {
-  let start_pos = start_pos.pos(&source);
-  let end_pos = end_pos.pos(&source);
+  let start_pos = start_pos.pos(source);
+  let end_pos = end_pos.pos(source);
   let line_index = source.line_index(start_pos);
   assert_eq!(
     line_index,
@@ -246,7 +246,7 @@ fn line_text_split3(
 /// Returns the line number (1 indexed) of the line that contains the given
 /// position.
 fn line_number(source: &SourceTextInfo, pos: DiagnosticSourcePos) -> usize {
-  source.line_index(pos.pos(&source)) + 1
+  source.line_index(pos.pos(source)) + 1
 }
 
 pub trait Diagnostic {
@@ -424,10 +424,7 @@ fn print_diagnostic(
   writeln!(io)?;
 
   if let Some(snippet) = diagnostic.snippet() {
-    let indent = print_snippet(io, sources, &snippet, max_line_number_digits)?;
-    Some(indent)
-  } else {
-    None
+    print_snippet(io, sources, &snippet, max_line_number_digits)?;
   };
 
   if let Some(hint) = diagnostic.hint() {
