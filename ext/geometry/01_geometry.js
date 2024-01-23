@@ -2,6 +2,7 @@
 
 import { primordials } from "ext:core/mod.js";
 const {
+  Float64Array,
   MathMax,
   MathMin,
   ObjectPrototypeIsPrototypeOf,
@@ -12,26 +13,19 @@ const {
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 
+const _raw = Symbol("[[raw]]");
 const _brand = webidl.brand;
 
-const _x = Symbol("[[x]]");
-const _y = Symbol("[[y]]");
-const _z = Symbol("[[z]]");
-const _w = Symbol("[[w]]");
-const _width = Symbol("[[width]]");
-const _height = Symbol("[[height]]");
-
 class DOMPointReadOnly {
-  [_x];
-  [_y];
-  [_z];
-  [_w];
+  [_raw];
 
   constructor(x = 0, y = 0, z = 0, w = 1) {
-    this[_x] = webidl.converters["unrestricted double"](x);
-    this[_y] = webidl.converters["unrestricted double"](y);
-    this[_z] = webidl.converters["unrestricted double"](z);
-    this[_w] = webidl.converters["unrestricted double"](w);
+    this[_raw] = new Float64Array([
+      webidl.converters["unrestricted double"](x),
+      webidl.converters["unrestricted double"](y),
+      webidl.converters["unrestricted double"](z),
+      webidl.converters["unrestricted double"](w),
+    ]);
     this[_brand] = _brand;
   }
 
@@ -46,19 +40,19 @@ class DOMPointReadOnly {
 
   get x() {
     webidl.assertBranded(this, DOMPointReadOnlyPrototype);
-    return this[_x];
+    return this[_raw][0];
   }
   get y() {
     webidl.assertBranded(this, DOMPointReadOnlyPrototype);
-    return this[_y];
+    return this[_raw][1];
   }
   get z() {
     webidl.assertBranded(this, DOMPointReadOnlyPrototype);
-    return this[_z];
+    return this[_raw][2];
   }
   get w() {
     webidl.assertBranded(this, DOMPointReadOnlyPrototype);
-    return this[_w];
+    return this[_raw][3];
   }
 
   // TODO
@@ -66,11 +60,12 @@ class DOMPointReadOnly {
 
   toJSON() {
     webidl.assertBranded(this, DOMPointReadOnlyPrototype);
+    const raw = this[_raw];
     return {
-      x: this[_x],
-      y: this[_y],
-      z: this[_z],
-      w: this[_w],
+      x: raw[0],
+      y: raw[1],
+      z: raw[2],
+      w: raw[3],
     };
   }
 
@@ -105,35 +100,35 @@ class DOMPoint extends DOMPointReadOnly {
 
   get x() {
     webidl.assertBranded(this, DOMPointPrototype);
-    return this[_x];
+    return this[_raw][0];
   }
   set x(value) {
     webidl.assertBranded(this, DOMPointPrototype);
-    this[_x] = webidl.converters["unrestricted double"](value);
+    this[_raw][0] = webidl.converters["unrestricted double"](value);
   }
   get y() {
     webidl.assertBranded(this, DOMPointPrototype);
-    return this[_y];
+    return this[_raw][1];
   }
   set y(value) {
     webidl.assertBranded(this, DOMPointPrototype);
-    this[_y] = webidl.converters["unrestricted double"](value);
+    this[_raw][1] = webidl.converters["unrestricted double"](value);
   }
   get z() {
     webidl.assertBranded(this, DOMPointPrototype);
-    return this[_z];
+    return this[_raw][2];
   }
   set z(value) {
     webidl.assertBranded(this, DOMPointPrototype);
-    this[_z] = webidl.converters["unrestricted double"](value);
+    this[_raw][2] = webidl.converters["unrestricted double"](value);
   }
   get w() {
     webidl.assertBranded(this, DOMPointPrototype);
-    return this[_w];
+    return this[_raw][3];
   }
   set w(value) {
     webidl.assertBranded(this, DOMPointPrototype);
-    this[_w] = webidl.converters["unrestricted double"](value);
+    this[_raw][3] = webidl.converters["unrestricted double"](value);
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
@@ -156,16 +151,15 @@ class DOMPoint extends DOMPointReadOnly {
 const DOMPointPrototype = DOMPoint.prototype;
 
 class DOMRectReadOnly {
-  [_x];
-  [_y];
-  [_width];
-  [_height];
+  [_raw];
 
   constructor(x = 0, y = 0, width = 0, height = 0) {
-    this[_x] = webidl.converters["unrestricted double"](x);
-    this[_y] = webidl.converters["unrestricted double"](y);
-    this[_width] = webidl.converters["unrestricted double"](width);
-    this[_height] = webidl.converters["unrestricted double"](height);
+    this[_raw] = new Float32Array([
+      webidl.converters["unrestricted double"](x),
+      webidl.converters["unrestricted double"](y),
+      webidl.converters["unrestricted double"](width),
+      webidl.converters["unrestricted double"](height),
+    ]);
     this[_brand] = _brand;
   }
 
@@ -180,48 +174,53 @@ class DOMRectReadOnly {
 
   get x() {
     webidl.assertBranded(this, DOMRectReadOnlyPrototype);
-    return this[_x];
+    return this[_raw][0];
   }
   get y() {
     webidl.assertBranded(this, DOMRectReadOnlyPrototype);
-    return this[_y];
+    return this[_raw][1];
   }
   get width() {
     webidl.assertBranded(this, DOMRectReadOnlyPrototype);
-    return this[_width];
+    return this[_raw][2];
   }
   get height() {
     webidl.assertBranded(this, DOMRectReadOnlyPrototype);
-    return this[_height];
+    return this[_raw][3];
   }
   get top() {
     webidl.assertBranded(this, DOMRectReadOnlyPrototype);
-    return MathMin(this[_y], this[_y] + this[_height]);
+    const raw = this[_raw];
+    return MathMin(raw[1], raw[1] + raw[3]);
   }
   get right() {
     webidl.assertBranded(this, DOMRectReadOnlyPrototype);
-    return MathMax(this[_x], this[_x] + this[_width]);
+    const raw = this[_raw];
+    return MathMax(raw[0], raw[0] + raw[2]);
   }
   get bottom() {
     webidl.assertBranded(this, DOMRectReadOnlyPrototype);
-    return MathMax(this[_y], this[_y] + this[_height]);
+    const raw = this[_raw];
+    return MathMax(raw[1], raw[1] + raw[3]);
   }
   get left() {
     webidl.assertBranded(this, DOMRectReadOnlyPrototype);
-    return MathMin(this[_x], this[_x] + this[_width]);
+    const raw = this[_raw];
+    return MathMin(raw[0], raw[0] + raw[2]);
   }
 
   toJSON() {
     webidl.assertBranded(this, DOMRectReadOnlyPrototype);
+    const raw = this[_raw];
     return {
-      x: this[_x],
-      y: this[_y],
-      width: this[_width],
-      height: this[_height],
-      top: MathMin(this[_y], this[_y] + this[_height]),
-      right: MathMax(this[_x], this[_x] + this[_width]),
-      bottom: MathMax(this[_y], this[_y] + this[_height]),
-      left: MathMin(this[_x], this[_x] + this[_width]),
+      x: raw[0],
+      y: raw[1],
+      width: raw[2],
+      height: raw[3],
+      top: MathMin(raw[1], raw[1] + raw[3]),
+      right: MathMax(raw[0], raw[0] + raw[2]),
+      bottom: MathMax(raw[1], raw[1] + raw[3]),
+      left: MathMin(raw[0], raw[0] + raw[2]),
     };
   }
 
@@ -260,35 +259,35 @@ class DOMRect extends DOMRectReadOnly {
 
   get x() {
     webidl.assertBranded(this, DOMRectPrototype);
-    return this[_x];
+    return this[_raw][0];
   }
   set x(value) {
     webidl.assertBranded(this, DOMRectPrototype);
-    this[_x] = webidl.converters["unrestricted double"](value);
+    this[_raw][0] = webidl.converters["unrestricted double"](value);
   }
   get y() {
     webidl.assertBranded(this, DOMRectPrototype);
-    return this[_y];
+    return this[_raw][1];
   }
   set y(value) {
     webidl.assertBranded(this, DOMRectPrototype);
-    this[_y] = webidl.converters["unrestricted double"](value);
+    this[_raw][1] = webidl.converters["unrestricted double"](value);
   }
   get width() {
     webidl.assertBranded(this, DOMRectPrototype);
-    return this[_width];
+    return this[_raw][2];
   }
   set width(value) {
     webidl.assertBranded(this, DOMRectPrototype);
-    this[_width] = webidl.converters["unrestricted double"](value);
+    this[_raw][2] = webidl.converters["unrestricted double"](value);
   }
   get height() {
     webidl.assertBranded(this, DOMRectPrototype);
-    return this[_height];
+    return this[_raw][3];
   }
   set height(value) {
     webidl.assertBranded(this, DOMRectPrototype);
-    this[_height] = webidl.converters["unrestricted double"](value);
+    this[_raw][3] = webidl.converters["unrestricted double"](value);
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
