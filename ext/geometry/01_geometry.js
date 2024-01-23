@@ -87,12 +87,14 @@ class DOMPointReadOnly {
       "Failed to call 'DOMPointReadOnly.fromPoint'",
       "Argument 1",
     );
-    return new DOMPointReadOnly(
+    const point = webidl.createBranded(DOMPointReadOnly);
+    point[_raw] = new Float64Array([
       other.x,
       other.y,
       other.z,
       other.w,
-    );
+    ]);
+    return point;
   }
 
   get x() {
@@ -152,12 +154,14 @@ class DOMPoint extends DOMPointReadOnly {
       "Failed to call 'DOMPoint.fromPoint'",
       "Argument 1",
     );
-    return new DOMPoint(
+    const point = webidl.createBranded(DOMPoint);
+    point[_raw] = new Float64Array([
       other.x,
       other.y,
       other.z,
       other.w,
-    );
+    ]);
+    return point;
   }
 
   get x() {
@@ -216,7 +220,7 @@ class DOMRectReadOnly {
   [_raw];
 
   constructor(x = 0, y = 0, width = 0, height = 0) {
-    this[_raw] = new Float32Array([
+    this[_raw] = new Float64Array([
       webidl.converters["unrestricted double"](x),
       webidl.converters["unrestricted double"](y),
       webidl.converters["unrestricted double"](width),
@@ -231,12 +235,14 @@ class DOMRectReadOnly {
       "Failed to call 'DOMRectReadOnly.fromRect'",
       "Argument 1",
     );
-    return new DOMRectReadOnly(
+    const rect = webidl.createBranded(DOMRectReadOnly);
+    rect[_raw] = new Float64Array([
       other.x,
       other.y,
       other.width,
       other.height,
-    );
+    ]);
+    return rect;
   }
 
   get x() {
@@ -321,12 +327,14 @@ class DOMRect extends DOMRectReadOnly {
       "Failed to call 'DOMRect.fromRect'",
       "Argument 1",
     );
-    return new DOMRect(
+    const rect = webidl.createBranded(DOMRect);
+    rect[_raw] = new Float64Array([
       other.x,
       other.y,
       other.width,
       other.height,
-    );
+    ]);
+    return rect;
   }
 
   get x() {
