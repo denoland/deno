@@ -50,6 +50,18 @@ itest!(javascript_missing_decl_file {
   temp_cwd: true,
 });
 
+
+itest!(unanalyzable_dynamic_import {
+  args: "publish --token 'sadfasdf'",
+  output: "publish/unanalyzable_dynamic_import.out",
+  cwd: Some("publish/unanalyzable_dynamic_import"),
+  copy_temp_dir: Some("publish/unanalyzable_dynamic_import"),
+  envs: env_vars_for_registry(),
+  exit_code: 0,
+  http_server: true,
+  temp_cwd: true,
+});
+
 itest!(javascript_decl_file {
   args: "publish --token 'sadfasdf'",
   output: "publish/javascript_decl_file.out",
