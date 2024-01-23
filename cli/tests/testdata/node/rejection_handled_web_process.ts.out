@@ -1,4 +1,3 @@
-[WILDCARD]
 Hello world!
 globalThis.addEventListener("unhandledrejection");
 Added catch handler to the promise

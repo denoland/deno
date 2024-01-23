@@ -197,7 +197,7 @@ itest!(unhandled_rejection_web_process {
 // Ensure that Web `onrejectionhandled` is fired before
 // Node's `process.on('rejectionHandled')`.
 itest!(rejection_handled_web_process {
-  args: "run -A node/rejection_handled_web_process.ts",
+  args: "run -A --quiet node/rejection_handled_web_process.ts",
   output: "node/rejection_handled_web_process.ts.out",
   envs: env_vars_for_npm_tests(),
   http_server: true,
