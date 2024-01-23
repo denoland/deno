@@ -456,10 +456,10 @@ class DOMQuad {
       "Argument 1",
     );
     const point = webidl.createBranded(DOMQuad);
-    point[_p1] = new DOMPoint.fromPoint(other.p1);
-    point[_p2] = new DOMPoint.fromPoint(other.p2);
-    point[_p3] = new DOMPoint.fromPoint(other.p3);
-    point[_p4] = new DOMPoint.fromPoint(other.p4);
+    point[_p1] = DOMPoint.fromPoint(other.p1);
+    point[_p2] = DOMPoint.fromPoint(other.p2);
+    point[_p3] = DOMPoint.fromPoint(other.p3);
+    point[_p4] = DOMPoint.fromPoint(other.p4);
     return point;
   }
 
