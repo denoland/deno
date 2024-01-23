@@ -4,7 +4,7 @@ use test_util::assert_contains;
 use test_util::TestContextBuilder;
 
 itest!(ignore_unexplicit_files {
-  args: "lint --unstable --ignore=./",
+  args: "lint --ignore=./",
   output_str: Some("error: No target files found.\n"),
   exit_code: 1,
 });
