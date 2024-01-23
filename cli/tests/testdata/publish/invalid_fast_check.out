@@ -1,8 +1,13 @@
 Checking fast check type graph for errors...
+error[zap-missing-explicit-return-type]: missing explicit return type in the public API
+ --> [WILDCARD]mod.ts:2:17
+  | 
+2 | export function getRandom() {
+  |                 ^^^^^^^^^ this function is missing an explicit return type
+  = hint: add an explit return type to the function
 
-missing explicit return type in the public API
-    at file:///[WILDCARD]/publish/invalid_fast_check/mod.ts@68
+  info: all functions in the public API must have an explicit return type
+  docs: https://jsr.io/go/zap-missing-explicit-return-type
 
-Fixing these fast check errors is required to make the code fast check compatible which enables type checking your package's TypeScript code with the same performance as if you had distributed declaration files. Do any of these errors seem too restrictive or incorrect? Please open an issue if so to help us improve: https://github.com/denoland/deno/issues
 
-error: Had 1 fast check error.
+error: Found 1 problem

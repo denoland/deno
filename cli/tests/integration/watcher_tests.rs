@@ -62,7 +62,7 @@ where
     if t.starts_with("Watcher") {
       break;
     }
-    if t.starts_with('(') {
+    if t.starts_with("error[") {
       str.push_str(&t);
       str.push('\n');
     }
