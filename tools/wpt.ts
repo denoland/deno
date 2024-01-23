@@ -34,7 +34,7 @@ import {
 } from "./wpt/utils.ts";
 import { pooledMap } from "../test_util/std/async/pool.ts";
 import { blue, bold, green, red, yellow } from "../test_util/std/fmt/colors.ts";
-import { writeAll, writeAllSync } from "../test_util/std/streams/write_all.ts";
+import { writeAll, writeAllSync } from "../test_util/std/io/write_all.ts";
 import { saveExpectation } from "./wpt/utils.ts";
 
 class TestFilter {

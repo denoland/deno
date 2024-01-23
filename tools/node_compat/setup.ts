@@ -6,9 +6,9 @@
 import { walk } from "../../test_util/std/fs/walk.ts";
 import { sep } from "../../test_util/std/path/mod.ts";
 import { ensureFile } from "../../test_util/std/fs/ensure_file.ts";
-import { writeAll } from "../../test_util/std/streams/write_all.ts";
+import { writeAll } from "../../test_util/std/io/write_all.ts";
 import { withoutAll } from "../../test_util/std/collections/without_all.ts";
-import { relative } from "../../test_util/std/path/posix.ts";
+import { relative } from "../../test_util/std/path/posix/relative.ts";
 
 import { config, ignoreList } from "../../cli/tests/node_compat/common.ts";
 

@@ -1,7 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import { Buffer, BufReader, BufWriter } from "../../../test_util/std/io/mod.ts";
 import { TextProtoReader } from "../testdata/run/textproto.ts";
-import { serve, serveTls } from "../../../test_util/std/http/server.ts";
 import {
   assert,
   assertEquals,
@@ -2180,49 +2179,6 @@ Deno.test({
     await Promise.all([server(), client()]);
     httpConn!.close();
   },
-});
-
-Deno.test("upgradeHttp tcp", async () => {
-  async function client() {
-    const tcpConn = await Deno.connect({ port: listenPort });
-    await tcpConn.write(
-      new TextEncoder().encode(
-        "CONNECT server.example.com:80 HTTP/1.1\r\n\r\nbla bla bla\nbla bla\nbla\n",
-      ),
-    );
-    setTimeout(async () => {
-      await tcpConn.write(
-        new TextEncoder().encode(
-          "bla bla bla\nbla bla\nbla\n",
-        ),
-      );
-      tcpConn.close();
-    }, 500);
-  }
-
-  const abortController = new AbortController();
-  const signal = abortController.signal;
-
-  const server = serve((req) => {
-    const p = Deno.upgradeHttp(req);
-
-    (async () => {
-      const [conn, firstPacket] = await p;
-      const buf = new Uint8Array(1024);
-      const firstPacketText = new TextDecoder().decode(firstPacket);
-      assertEquals(firstPacketText, "bla bla bla\nbla bla\nbla\n");
-      const n = await conn.read(buf);
-      assert(n != null);
-      const secondPacketText = new TextDecoder().decode(buf.slice(0, n));
-      assertEquals(secondPacketText, "bla bla bla\nbla bla\nbla\n");
-      abortController.abort();
-      conn.close();
-    })();
-
-    return new Response(null, { status: 101 });
-  }, { port: listenPort, signal });
-
-  await Promise.all([server, client()]);
 });
 
 Deno.test(

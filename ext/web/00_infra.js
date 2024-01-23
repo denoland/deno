@@ -394,7 +394,7 @@ const PATHNAME_WIN_RE = new SafeRegExp(/^\/*([A-Za-z]:)(\/|$)/);
 const SLASH_WIN_RE = new SafeRegExp(/\//g);
 const PERCENT_RE = new SafeRegExp(/%(?![0-9A-Fa-f]{2})/g);
 
-// Keep in sync with `fromFileUrl()` in `std/path/win32.ts`.
+// Keep in sync with `fromFileUrl()` in `std/path/windows/from_file_url.ts`.
 /**
  * @param {URL} url
  * @returns {string}
@@ -425,7 +425,7 @@ function pathFromURLWin32(url) {
   return path;
 }
 
-// Keep in sync with `fromFileUrl()` in `std/path/posix.ts`.
+// Keep in sync with `fromFileUrl()` in `std/path/posix/from_file_url.ts`.
 /**
  * @param {URL} url
  * @returns {string}

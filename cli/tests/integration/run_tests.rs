@@ -250,13 +250,6 @@ itest!(_044_bad_resource {
   exit_code: 1,
 });
 
-// TODO(bartlomieju): remove --unstable once Deno.Command is stabilized
-itest!(_045_proxy {
-  args: "run -L debug --unstable --allow-net --allow-env --allow-run --allow-read --reload --quiet run/045_proxy_test.ts",
-  output: "run/045_proxy_test.ts.out",
-  http_server: true,
-});
-
 itest!(_046_tsx {
   args: "run --quiet --reload run/046_jsx_test.tsx",
   output: "run/046_jsx_test.tsx.out",
