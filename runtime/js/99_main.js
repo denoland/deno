@@ -116,7 +116,8 @@ function warnOnDeprecatedApi(apiName, stack, ...suggestions) {
     // to the user.
     if (
       StringPrototypeIncludes(stackLines[0], "(ext:") ||
-      StringPrototypeIncludes(stackLines[0], "(node:")
+      StringPrototypeIncludes(stackLines[0], "(node:") ||
+      StringPrototypeIncludes(stackLines[0], "<anonymous>")
     ) {
       ArrayPrototypeShift(stackLines);
     } else {
