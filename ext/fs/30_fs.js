@@ -588,38 +588,18 @@ async function symlink(
 }
 
 function fdatasyncSync(rid) {
-  internals.warnOnDeprecatedApi(
-    "Deno.fdatasyncSync()",
-    new Error().stack,
-    "(suggestion)",
-  );
   op_fs_fdatasync_sync(rid);
 }
 
 async function fdatasync(rid) {
-  internals.warnOnDeprecatedApi(
-    "Deno.fdatasync()",
-    new Error().stack,
-    "(suggestion)",
-  );
   await op_fs_fdatasync_async(rid);
 }
 
 function fsyncSync(rid) {
-  internals.warnOnDeprecatedApi(
-    "Deno.fsyncSync()",
-    new Error().stack,
-    "(suggestion)",
-  );
   op_fs_fsync_sync(rid);
 }
 
 async function fsync(rid) {
-  internals.warnOnDeprecatedApi(
-    "Deno.fsync()",
-    new Error().stack,
-    "(suggestion)",
-  );
   await op_fs_fsync_async(rid);
 }
 

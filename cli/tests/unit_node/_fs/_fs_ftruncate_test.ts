@@ -25,7 +25,7 @@ Deno.test({
   async fn() {
     const filePath = Deno.makeTempFileSync();
     await Deno.writeTextFile(filePath, "hello world");
-    const file = await Deno.open(filePath, {
+    using file = await Deno.open(filePath, {
       read: true,
       write: true,
       create: true,
@@ -48,7 +48,6 @@ Deno.test({
       )
       .finally(() => {
         Deno.removeSync(filePath);
-        file.close();
       });
   },
 });
@@ -58,7 +57,7 @@ Deno.test({
   async fn() {
     const filePath = Deno.makeTempFileSync();
     await Deno.writeTextFile(filePath, "hello world");
-    const file = await Deno.open(filePath, {
+    using file = await Deno.open(filePath, {
       read: true,
       write: true,
       create: true,
@@ -81,7 +80,6 @@ Deno.test({
       )
       .finally(() => {
         Deno.removeSync(filePath);
-        file.close();
       });
   },
 });
@@ -91,7 +89,7 @@ Deno.test({
   fn() {
     const filePath = Deno.makeTempFileSync();
     Deno.writeFileSync(filePath, new TextEncoder().encode("hello world"));
-    const file = Deno.openSync(filePath, {
+    using file = Deno.openSync(filePath, {
       read: true,
       write: true,
       create: true,
@@ -103,7 +101,6 @@ Deno.test({
       assertEquals(fileInfo.size, 0);
     } finally {
       Deno.removeSync(filePath);
-      file.close();
     }
   },
 });
@@ -113,7 +110,7 @@ Deno.test({
   fn() {
     const filePath = Deno.makeTempFileSync();
     Deno.writeFileSync(filePath, new TextEncoder().encode("hello world"));
-    const file = Deno.openSync(filePath, {
+    using file = Deno.openSync(filePath, {
       read: true,
       write: true,
       create: true,
@@ -125,7 +122,6 @@ Deno.test({
       assertEquals(fileInfo.size, 3);
     } finally {
       Deno.removeSync(filePath);
-      file.close();
     }
   },
 });

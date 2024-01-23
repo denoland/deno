@@ -5,7 +5,7 @@ Deno.test(
   { permissions: { read: true, write: true } },
   function ftruncateSyncSuccess() {
     const filename = Deno.makeTempDirSync() + "/test_ftruncateSync.txt";
-    const file = Deno.openSync(filename, {
+    using file = Deno.openSync(filename, {
       create: true,
       read: true,
       write: true,
@@ -18,7 +18,6 @@ Deno.test(
     Deno.ftruncateSync(file.rid, -5);
     assertEquals(Deno.readFileSync(filename).byteLength, 0);
 
-    file.close();
     Deno.removeSync(filename);
   },
 );
@@ -27,7 +26,7 @@ Deno.test(
   { permissions: { read: true, write: true } },
   async function ftruncateSuccess() {
     const filename = Deno.makeTempDirSync() + "/test_ftruncate.txt";
-    const file = await Deno.open(filename, {
+    using file = await Deno.open(filename, {
       create: true,
       read: true,
       write: true,
@@ -40,7 +39,6 @@ Deno.test(
     await Deno.ftruncate(file.rid, -5);
     assertEquals((await Deno.readFile(filename)).byteLength, 0);
 
-    file.close();
     await Deno.remove(filename);
   },
 );

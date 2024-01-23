@@ -34,6 +34,6 @@ export const truncatePromise = promisify(truncate) as (
 export function truncateSync(path: string | URL, len?: number) {
   path = path instanceof URL ? pathFromURL(path) : path;
 
-  const file = Deno.openSync(path, { write: true });
+  using file = Deno.openSync(path, { write: true });
   file.truncateSync(len);
 }

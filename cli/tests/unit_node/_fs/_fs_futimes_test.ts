@@ -13,7 +13,7 @@ Deno.test({
     "ASYNC: change the file system timestamps of the object referenced by path",
   async fn() {
     const filePath = Deno.makeTempFileSync();
-    const file = await Deno.open(filePath, { create: true, write: true });
+    using file = await Deno.open(filePath, { create: true, write: true });
 
     await new Promise<void>((resolve, reject) => {
       futimes(file.rid, randomDate, randomDate, (err: Error | null) => {
@@ -33,7 +33,6 @@ Deno.test({
       )
       .finally(() => {
         Deno.removeSync(filePath);
-        file.close();
       });
   },
 });
@@ -69,7 +68,7 @@ Deno.test({
     "SYNC: change the file system timestamps of the object referenced by path",
   fn() {
     const filePath = Deno.makeTempFileSync();
-    const file = Deno.openSync(filePath, { create: true, write: true });
+    using file = Deno.openSync(filePath, { create: true, write: true });
 
     try {
       futimesSync(file.rid, randomDate, randomDate);
@@ -80,7 +79,6 @@ Deno.test({
       assertEquals(fileInfo.atime, randomDate);
     } finally {
       Deno.removeSync(filePath);
-      file.close();
     }
   },
 });

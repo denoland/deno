@@ -2156,9 +2156,6 @@ declare namespace Deno {
    * console.log(await Deno.readTextFile("my_file.txt")); // H
    * ```
    *
-   * @deprecated (suggestion). {@linkcode Deno.fsync} will be removed in
-   * v2.0.0.
-   *
    * @category I/O
    */
   export function fsync(rid: number): Promise<void>;
@@ -2178,9 +2175,6 @@ declare namespace Deno {
    * console.log(Deno.readTextFileSync("my_file.txt")); // H
    * ```
    *
-   * @deprecated (suggestion). {@linkcode Deno.fsyncSync} will be removed in
-   * v2.0.0.
-   *
    * @category I/O
    */
   export function fsyncSync(rid: number): void;
@@ -2196,9 +2190,6 @@ declare namespace Deno {
    * await Deno.fdatasync(file.rid);
    * console.log(await Deno.readTextFile("my_file.txt")); // Hello World
    * ```
-   *
-   * @deprecated (suggestion). {@linkcode Deno.fdatasync} will be removed in
-   * v2.0.0.
    *
    * @category I/O
    */
@@ -2217,9 +2208,6 @@ declare namespace Deno {
    * Deno.fdatasyncSync(file.rid);
    * console.log(Deno.readTextFileSync("my_file.txt")); // Hello World
    * ```
-   *
-   * @deprecated (suggestion). {@linkcode Deno.fdatasyncSync} will be removed
-   * in v2.0.0.
    *
    * @category I/O
    */
@@ -2756,9 +2744,6 @@ declare namespace Deno {
    * Deno.close(nonTTYRid);
    * Deno.close(ttyRid);
    * ```
-   *
-   * @deprecated (suggestion). {@linkcode Deno.isatty} will be removed in
-   * v2.0.0.
    *
    * @category I/O
    */

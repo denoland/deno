@@ -8,7 +8,7 @@ Deno.test({
   name: "ASYNC: get a file Stats",
   async fn() {
     const filePath = await Deno.makeTempFile();
-    const file = await Deno.open(filePath);
+    using file = await Deno.open(filePath);
 
     await new Promise<Stats>((resolve, reject) => {
       fstat(file.rid, (err: Error | null, stat: Stats) => {
@@ -24,7 +24,6 @@ Deno.test({
       )
       .finally(() => {
         Deno.removeSync(filePath);
-        file.close();
       });
   },
 });
@@ -33,7 +32,7 @@ Deno.test({
   name: "ASYNC: get a file BigInt Stats",
   async fn() {
     const filePath = await Deno.makeTempFile();
-    const file = await Deno.open(filePath);
+    using file = await Deno.open(filePath);
 
     await new Promise<BigIntStats>((resolve, reject) => {
       fstat(
@@ -51,7 +50,6 @@ Deno.test({
       )
       .finally(() => {
         Deno.removeSync(filePath);
-        file.close();
       });
   },
 });
@@ -60,13 +58,12 @@ Deno.test({
   name: "SYNC: get a file Stats",
   fn() {
     const filePath = Deno.makeTempFileSync();
-    const file = Deno.openSync(filePath);
+    using file = Deno.openSync(filePath);
 
     try {
       assertStats(fstatSync(file.rid), file.statSync());
     } finally {
       Deno.removeSync(filePath);
-      file.close();
     }
   },
 });
@@ -75,13 +72,12 @@ Deno.test({
   name: "SYNC: get a file BigInt Stats",
   fn() {
     const filePath = Deno.makeTempFileSync();
-    const file = Deno.openSync(filePath);
+    using file = Deno.openSync(filePath);
 
     try {
       assertStatsBigInt(fstatSync(file.rid, { bigint: true }), file.statSync());
     } finally {
       Deno.removeSync(filePath);
-      file.close();
     }
   },
 });
