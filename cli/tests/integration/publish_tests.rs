@@ -50,7 +50,6 @@ itest!(javascript_missing_decl_file {
   temp_cwd: true,
 });
 
-
 itest!(unanalyzable_dynamic_import {
   args: "publish --token 'sadfasdf'",
   output: "publish/unanalyzable_dynamic_import.out",
