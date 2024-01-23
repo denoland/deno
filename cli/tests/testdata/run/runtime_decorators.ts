@@ -1,5 +1,5 @@
 // deno-lint-ignore-file
-function A() {
+function a() {
   console.log("@A evaluated");
   return function (
     target: any,
@@ -15,7 +15,7 @@ function A() {
   };
 }
 
-function B() {
+function b() {
   console.log("@B evaluated");
   return function (
     target: any,
@@ -32,8 +32,8 @@ function B() {
 }
 
 class C {
-  @A()
-  @B()
+  @a()
+  @b()
   static test() {
     console.log("C.test() called");
   }
