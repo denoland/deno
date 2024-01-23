@@ -103,7 +103,7 @@ pub fn surface_fast_check_type_graph_errors(
             );
             break 'analyze_package; // no need to keep analyzing this package
           } else {
-            let message = diagnostic.message_with_range();
+            let message = diagnostic.message_with_range_for_test();
             if !seen_diagnostics.insert(message.clone()) {
               continue;
             }
