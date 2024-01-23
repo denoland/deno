@@ -79,6 +79,7 @@ chrono.workspace = true
 clap = { version = "=4.4.17", features = ["env", "string"] }
 clap_complete = "=4.4.7"
 clap_complete_fig = "=4.4.2"
+color-print = "0.3.5"
 console_static_text.workspace = true
 dashmap = "5.5.3"
 data-encoding.workspace = true
@@ -131,6 +132,7 @@ tokio-util.workspace = true
 tower-lsp.workspace = true
 twox-hash = "=1.6.3"
 typed-arena = "=2.0.1"
+unicode-width = "0.1"
 uuid = { workspace = true, features = ["serde"] }
 walkdir = "=2.3.2"
 zeromq = { version = "=0.3.4", default-features = false, features = ["tcp-transport", "tokio-runtime"] }
