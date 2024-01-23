@@ -598,7 +598,7 @@ impl ReplSession {
       .transpile(&deno_ast::EmitOptions {
         // TODO(bartlomieju): change it to default to `false` and only enable
         // if tsconfig.json enabled experimental decorators
-        use_ts_decorators: true,
+        use_ts_decorators: false,
         emit_metadata: false,
         source_map: false,
         inline_source_map: false,
