@@ -111,7 +111,3 @@ declare module "ext:deno_web/13_message_port.js" {
     transferables: Transferable[];
   }
 }
-
-declare module "ext:deno_web/16_image_data.js" {
-  const ImageData: typeof ImageData;
-}

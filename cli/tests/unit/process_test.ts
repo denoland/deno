@@ -361,7 +361,7 @@ Deno.test(
   async function runRedirectStdoutStderr() {
     const tempDir = await Deno.makeTempDir();
     const fileName = tempDir + "/redirected_stdio.txt";
-    const file = await Deno.open(fileName, {
+    using file = await Deno.open(fileName, {
       create: true,
       write: true,
     });
@@ -379,7 +379,6 @@ Deno.test(
 
     await p.status();
     p.close();
-    file.close();
 
     const fileContents = await Deno.readFile(fileName);
     const decoder = new TextDecoder();
@@ -396,7 +395,7 @@ Deno.test(
     const tempDir = await Deno.makeTempDir();
     const fileName = tempDir + "/redirected_stdio.txt";
     await Deno.writeTextFile(fileName, "hello");
-    const file = await Deno.open(fileName);
+    using file = await Deno.open(fileName);
 
     // deno-lint-ignore no-deprecated-deno-api
     const p = Deno.run({
@@ -411,7 +410,6 @@ Deno.test(
     const status = await p.status();
     assertEquals(status.code, 0);
     p.close();
-    file.close();
   },
 );
 

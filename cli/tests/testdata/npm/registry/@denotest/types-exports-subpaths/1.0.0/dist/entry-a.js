@@ -1,3 +1,3 @@
-export function entryC() {
+export function entryA() {
   return 12;
 }

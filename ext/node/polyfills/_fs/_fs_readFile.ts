@@ -92,11 +92,18 @@ export function readFile(
   }
 }
 
-export const readFilePromise = promisify(readFile) as (
-  & ((path: Path, opt: TextOptionsArgument) => Promise<string>)
-  & ((path: Path, opt?: BinaryOptionsArgument) => Promise<Buffer>)
-  & ((path: Path, opt?: FileOptionsArgument) => Promise<Buffer>)
-);
+export function readFilePromise(
+  path: Path,
+  options?: FileOptionsArgument | null | undefined,
+  // deno-lint-ignore no-explicit-any
+): Promise<any> {
+  return new Promise((resolve, reject) => {
+    readFile(path, options, (err, data) => {
+      if (err) reject(err);
+      else resolve(data);
+    });
+  });
+}
 
 export function readFileSync(
   path: string | URL,
