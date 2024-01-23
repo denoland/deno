@@ -65,6 +65,28 @@ webidl.converters["DOMRectInit"] = webidl.createDictionaryConverter(
   ],
 );
 
+webidl.converters["DOMQuadInit"] = webidl.createDictionaryConverter(
+  "DOMQuadInit",
+  [
+    {
+      key: "p1",
+      converter: webidl.converters["DOMPointInit"],
+    },
+    {
+      key: "p2",
+      converter: webidl.converters["DOMPointInit"],
+    },
+    {
+      key: "p3",
+      converter: webidl.converters["DOMPointInit"],
+    },
+    {
+      key: "p4",
+      converter: webidl.converters["DOMPointInit"],
+    },
+  ],
+);
+
 const _raw = Symbol("[[raw]]");
 const _brand = webidl.brand;
 
@@ -393,6 +415,122 @@ class DOMRect extends DOMRectReadOnly {
 
 const DOMRectPrototype = DOMRect.prototype;
 
+const _p1 = Symbol("[[p1]]");
+const _p2 = Symbol("[[p2]]");
+const _p3 = Symbol("[[p3]]");
+const _p4 = Symbol("[[p4]]");
+
+class DOMQuad {
+  [_p1];
+  [_p2];
+  [_p3];
+  [_p4];
+
+  constructor(p1 = {}, p2 = {}, p3 = {}, p4 = {}) {
+    this[_p1] = DOMPoint.fromPoint(p1);
+    this[_p2] = DOMPoint.fromPoint(p2);
+    this[_p3] = DOMPoint.fromPoint(p3);
+    this[_p4] = DOMPoint.fromPoint(p4);
+    this[_brand] = _brand;
+  }
+
+  static fromRect(other = {}) {
+    other = webidl.converters["DOMRectInit"](
+      other,
+      "Failed to call 'DOMQuad.fromRect'",
+      "Argument 1",
+    );
+    const { x, y, width, height } = other;
+    const point = webidl.createBranded(DOMQuad);
+    point[_p1] = new DOMPoint(x, y, 0, 1);
+    point[_p2] = new DOMPoint(x + width, y, 0, 1);
+    point[_p3] = new DOMPoint(x + width, y + height, 0, 1);
+    point[_p4] = new DOMPoint(x, y + height, 0, 1);
+    return point;
+  }
+
+  static fromQuad(other = {}) {
+    other = webidl.converters["DOMQuadInit"](
+      other,
+      "Failed to call 'DOMQuad.fromQuad'",
+      "Argument 1",
+    );
+    const point = webidl.createBranded(DOMQuad);
+    point[_p1] = new DOMPoint.fromPoint(other.p1);
+    point[_p2] = new DOMPoint.fromPoint(other.p2);
+    point[_p3] = new DOMPoint.fromPoint(other.p3);
+    point[_p4] = new DOMPoint.fromPoint(other.p4);
+    return point;
+  }
+
+  get p1() {
+    webidl.assertBranded(this, DOMQuadPrototype);
+    return this[_p1];
+  }
+  get p2() {
+    webidl.assertBranded(this, DOMQuadPrototype);
+    return this[_p2];
+  }
+  get p3() {
+    webidl.assertBranded(this, DOMQuadPrototype);
+    return this[_p3];
+  }
+  get p4() {
+    webidl.assertBranded(this, DOMQuadPrototype);
+    return this[_p4];
+  }
+
+  getBounds() {
+    webidl.assertBranded(this, DOMQuadPrototype);
+    const { x: p1x, y: p1y } = this[_p1];
+    const { x: p2x, y: p2y } = this[_p2];
+    const { x: p3x, y: p3y } = this[_p3];
+    const { x: p4x, y: p4y } = this[_p4];
+
+    const left = MathMin(p1x, p2x, p3x, p4x);
+    const top = MathMin(p1y, p2y, p3y, p4y);
+    const right = MathMax(p1x, p2x, p3x, p4x);
+    const bottom = MathMax(p1y, p2y, p3y, p4y);
+
+    const bounds = webidl.createBranded(DOMRect);
+    bounds[_raw] = new Float64Array([
+      left,
+      top,
+      right - left,
+      bottom - top,
+    ]);
+    return bounds;
+  }
+
+  toJSON() {
+    webidl.assertBranded(this, DOMQuadPrototype);
+    return {
+      p1: this[_p1],
+      p2: this[_p2],
+      p3: this[_p3],
+      p4: this[_p4],
+    };
+  }
+
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(DOMQuadPrototype, this),
+        keys: [
+          "p1",
+          "p2",
+          "p3",
+          "p4",
+        ],
+      }),
+      inspectOptions,
+    );
+  }
+}
+
+const DOMQuadPrototype = DOMQuad.prototype;
+
 export {
   DOMPoint,
   DOMPointPrototype,
@@ -402,4 +540,6 @@ export {
   DOMRectPrototype,
   DOMRectReadOnly,
   DOMRectReadOnlyPrototype,
+  DOMQuad,
+  DOMQuadPrototype,
 };

@@ -57,6 +57,7 @@ const windowOrWorkerGlobalScope = {
   DOMException: core.propNonEnumerable(DOMException),
   DOMPoint: core.propNonEnumerable(geometry.DOMPoint),
   DOMPointReadOnly: core.propNonEnumerable(geometry.DOMPointReadOnly),
+  DOMQuad: core.propNonEnumerable(geometry.DOMQuad),
   DOMRect: core.propNonEnumerable(geometry.DOMRect),
   DOMRectReadOnly: core.propNonEnumerable(geometry.DOMRectReadOnly),
   ErrorEvent: core.propNonEnumerable(event.ErrorEvent),
