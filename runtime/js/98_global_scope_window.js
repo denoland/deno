@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { core, primordials } from "ext:core/mod.js";
+import { core, internals, primordials } from "ext:core/mod.js";
 const {
   op_bootstrap_language,
   op_bootstrap_numcpus,
@@ -113,9 +113,9 @@ const mainRuntimeGlobalProperties = {
       "window",
       new Error().stack,
       "Use `globalThis` or `self` instead.",
-      "You can provide `window` in the current scope, using `const window = globalThis`.",
+      "You can provide `window` in the current scope with: `const window = globalThis`.",
     );
-    globalThis;
+    return globalThis;
   }),
   self: util.getterOnly(() => globalThis),
   Navigator: util.nonEnumerable(Navigator),
