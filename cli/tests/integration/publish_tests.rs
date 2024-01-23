@@ -130,6 +130,9 @@ fn ignores_directories() {
     "name": "@foo/bar",
     "version": "1.0.0",
     "exclude": [ "ignore" ],
+    "publish": {
+      "exclude": [ "ignore2" ]
+    },
     "exports": "./main_included.ts"
   }));
 
@@ -137,6 +140,7 @@ fn ignores_directories() {
     temp_dir.join(".git"),
     temp_dir.join("node_modules"),
     temp_dir.join("ignore"),
+    temp_dir.join("ignore2"),
   ];
   for ignored_dir in ignored_dirs {
     ignored_dir.create_dir_all();
@@ -160,6 +164,35 @@ fn ignores_directories() {
   let output = output.combined_output();
   assert_contains!(output, "sub_included.ts");
   assert_contains!(output, "main_included.ts");
+  assert_not_contains!(output, "ignored.ts");
+}
+
+#[test]
+fn includes_directories() {
+  let context = publish_context_builder().build();
+  let temp_dir = context.temp_dir().path();
+  temp_dir.join("deno.json").write_json(&json!({
+    "name": "@foo/bar",
+    "version": "1.0.0",
+    "exports": "./main.ts",
+    "publish": {
+      "include": [ "deno.json", "main.ts" ]
+    }
+  }));
+
+  temp_dir.join("main.ts").write("");
+  temp_dir.join("ignored.ts").write("");
+
+  let output = context
+    .new_command()
+    .arg("publish")
+    .arg("--log-level=debug")
+    .arg("--token")
+    .arg("sadfasdf")
+    .run();
+  output.assert_exit_code(0);
+  let output = output.combined_output();
+  assert_contains!(output, "main.ts");
   assert_not_contains!(output, "ignored.ts");
 }
 
