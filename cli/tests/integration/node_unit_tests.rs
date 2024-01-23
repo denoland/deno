@@ -17,6 +17,7 @@ util::unit_test_factory!(
     _fs_chown_test = _fs / _fs_chown_test,
     _fs_close_test = _fs / _fs_close_test,
     _fs_copy_test = _fs / _fs_copy_test,
+    _fs_cp_test = _fs / _fs_cp_test,
     _fs_dir_test = _fs / _fs_dir_test,
     _fs_dirent_test = _fs / _fs_dirent_test,
     _fs_open_test = _fs / _fs_open_test,
