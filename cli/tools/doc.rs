@@ -146,12 +146,9 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
       .await?;
       let (_, deno_ns) = deno_ns.first().unwrap();
 
-      let deno_ns_symbols =
-        deno_doc::html::compute_namespaced_symbols(deno_ns, &[]);
-
-      Some(deno_ns_symbols)
+      deno_doc::html::compute_namespaced_symbols(deno_ns, &[])
     } else {
-      None
+      Default::default()
     };
 
     generate_docs_directory(&doc_nodes_by_url, html_options, deno_ns)
@@ -178,15 +175,21 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
   }
 }
 
-struct DocResolver {}
+struct DocResolver {
+  deno_ns: std::collections::HashSet<Vec<String>>,
+}
 
 impl deno_doc::html::HrefResolver for DocResolver {
-  fn resolve_global_symbol(&self, symbol: &[String], _context: &str) -> String {
-    format!(
-      "https://deno.land/api@{}?s={}",
-      env!("CARGO_PKG_VERSION"),
-      symbol.join(".")
-    )
+  fn resolve_global_symbol(&self, symbol: &[String]) -> Option<String> {
+    if self.deno_ns.contains(symbol) {
+      Some(format!(
+        "https://deno.land/api@{}?s={}",
+        env!("CARGO_PKG_VERSION"),
+        symbol.join(".")
+      ))
+    } else {
+      None
+    }
   }
 
   fn resolve_import_href(
@@ -220,7 +223,7 @@ impl deno_doc::html::HrefResolver for DocResolver {
 async fn generate_docs_directory(
   doc_nodes_by_url: &IndexMap<ModuleSpecifier, Vec<doc::DocNode>>,
   html_options: &DocHtmlFlag,
-  deno_ns: Option<std::collections::HashSet<Vec<String>>>,
+  deno_ns: std::collections::HashSet<Vec<String>>,
 ) -> Result<(), AnyError> {
   let cwd = std::env::current_dir().context("Failed to get CWD")?;
   let output_dir_resolved = cwd.join(&html_options.output);
@@ -228,19 +231,9 @@ async fn generate_docs_directory(
   let options = deno_doc::html::GenerateOptions {
     package_name: Some(html_options.name.to_owned()),
     main_entrypoint: None,
-    global_symbols: deno_doc::html::NamespacedGlobalSymbols::new(
-      deno_ns
-        .map(|deno_ns| {
-          deno_ns
-            .into_iter()
-            .map(|symbol| (symbol, "deno".to_string()))
-            .collect()
-        })
-        .unwrap_or_default(),
-    ),
     rewrite_map: None,
     hide_module_doc_title: false,
-    href_resolver: Rc::new(DocResolver {}),
+    href_resolver: Rc::new(DocResolver { deno_ns }),
     sidebar_flatten_namespaces: false,
   };
 

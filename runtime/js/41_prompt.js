@@ -1,14 +1,15 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import { core, primordials } from "ext:core/mod.js";
 const {
+  op_read_line_prompt,
+} = core.ensureFastOps();
+const {
   ArrayPrototypePush,
   StringPrototypeCharCodeAt,
   Uint8Array,
 } = primordials;
 
 import { stdin } from "ext:deno_io/12_io.js";
-
-const ops = core.ops;
 
 const LF = StringPrototypeCharCodeAt("\n", 0);
 const CR = StringPrototypeCharCodeAt("\r", 0);
@@ -42,7 +43,7 @@ function prompt(message = "Prompt", defaultValue) {
     return null;
   }
 
-  return ops.op_read_line_prompt(
+  return op_read_line_prompt(
     `${message} `,
     `${defaultValue}`,
   );

@@ -39,7 +39,7 @@ __runtime_js_sources = ["deno_runtime/__runtime_js_sources"]
 __vendored_zlib_ng = ["flate2/zlib-ng-compat", "libz-sys/zlib-ng"]
 
 [build-dependencies]
-deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting"] }
+deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting", "only_snapshotted_js_sources"] }
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
 lazy-regex.workspace = true
 serde.workspace = true
@@ -57,16 +57,16 @@ deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "dep_gra
 deno_cache_dir = "=0.6.1"
 deno_config = "=0.8.1"
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
-deno_doc = { version = "=0.93.0", features = ["html"] }
-deno_emit = "=0.33.0"
-deno_graph = "=0.63.3"
-deno_lint = { version = "=0.53.0", features = ["docs"] }
+deno_doc = { version = "=0.94.1", features = ["html"] }
+deno_emit = "=0.34.0"
+deno_graph = "=0.63.5"
+deno_lint = { version = "=0.54.0", features = ["docs"] }
 deno_lockfile.workspace = true
-deno_npm = "=0.15.3"
+deno_npm = "=0.16.0"
 deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting"] }
 deno_semver = "=0.5.4"
 deno_task_shell = "=0.14.3"
-eszip = "=0.57.0"
+eszip = "=0.59.0"
 napi_sym.workspace = true
 
 async-trait.workspace = true
@@ -88,7 +88,7 @@ dotenvy = "0.15.7"
 dprint-plugin-json = "=0.19.1"
 dprint-plugin-jupyter = "=0.1.2"
 dprint-plugin-markdown = "=0.16.3"
-dprint-plugin-typescript = "=0.88.8"
+dprint-plugin-typescript = "=0.88.10"
 encoding_rs.workspace = true
 env_logger = "=0.10.0"
 fancy-regex = "=0.10.0"
