@@ -1133,7 +1133,10 @@ fn bundle_subcommand() -> Command {
   Command::new("bundle")
     .about("Bundle module and dependencies into single file")
     .long_about(
-      "Output a single JavaScript file with all dependencies.
+      "⚠️ Warning: `deno bundle` is deprecated and will be removed in Deno 2.0.
+Use an alternative bundler like \"deno_emit\", \"esbuild\" or \"rollup\" instead.
+
+Output a single JavaScript file with all dependencies.
 
   deno bundle https://deno.land/std/http/file_server.ts file_server.bundle.js
 
