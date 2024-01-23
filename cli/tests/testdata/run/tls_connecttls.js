@@ -12,8 +12,8 @@ const port = 3505;
 const listener = Deno.listenTls({
   hostname,
   port,
-  certFile: "./tls/localhost.crt",
-  keyFile: "./tls/localhost.key",
+  cert: Deno.readTextFileSync("./tls/localhost.crt"),
+  key: Deno.readTextFileSync("./tls/localhost.key"),
 });
 
 const response = encoder.encode(
