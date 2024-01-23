@@ -5,9 +5,7 @@ console.log(scope, Deno.createHttpClient);
 console.log(scope, Deno.http?.HttpConn);
 console.log(scope, Deno.http?._ws);
 console.log(scope, Deno.http?.serve);
-console.log(scope, Deno.http?.upgradeHttp);
 console.log(scope, Deno.http?.upgradeWebSocket);
-console.log(scope, Deno.upgradeHttp);
 
 if (scope === "worker") {
   postMessage("done");

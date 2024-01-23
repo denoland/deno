@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import { assertCallbackErrorUncaught } from "../_test_utils.ts";
-import { readFile, readFileSync } from "node:fs";
+import { promises, readFile, readFileSync } from "node:fs";
 import * as path from "../../../../test_util/std/path/mod.ts";
 import { assert, assertEquals } from "../../../../test_util/std/assert/mod.ts";
 
@@ -115,4 +115,9 @@ Deno.test("[std/node/fs] readFile callback isn't called twice if error is thrown
       await Deno.remove(tempFile);
     },
   });
+});
+
+Deno.test("fs.promises.readFile with no arg call rejects with error correctly", async () => {
+  // @ts-ignore no arg call needs to be supported
+  await promises.readFile().catch((_e) => {});
 });

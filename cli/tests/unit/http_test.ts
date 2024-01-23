@@ -949,9 +949,8 @@ Deno.test(
   { permissions: { net: true, write: true, read: true } },
   async function httpServerCorrectSizeResponse() {
     const tmpFile = await Deno.makeTempFile();
-    const file = await Deno.open(tmpFile, { write: true, read: true });
+    using file = await Deno.open(tmpFile, { write: true, read: true });
     await file.write(new Uint8Array(70 * 1024).fill(1)); // 70kb sent in 64kb + 6kb chunks
-    file.close();
 
     let httpConn: Deno.HttpConn;
     const listener = Deno.listen({ port: listenPort });
@@ -2179,119 +2178,6 @@ Deno.test({
     await Promise.all([server(), client()]);
     httpConn!.close();
   },
-});
-
-Deno.test(
-  "upgradeHttp tls",
-  { permissions: { net: true, read: true } },
-  async () => {
-    async function client() {
-      const caCerts = [
-        await Deno.readTextFile("cli/tests/testdata/tls/RootCA.pem"),
-      ];
-      const tlsConn = await Deno.connectTls({
-        hostname: "localhost",
-        port: listenPort,
-        caCerts,
-      });
-      await tlsConn.write(
-        new TextEncoder().encode(
-          "CONNECT server.example.com:80 HTTP/1.1\r\n\r\nbla bla bla\nbla bla\nbla\n",
-        ),
-      );
-      setTimeout(async () => {
-        await tlsConn.write(
-          new TextEncoder().encode(
-            "bla bla bla\nbla bla\nbla\n",
-          ),
-        );
-        tlsConn.close();
-      }, 500);
-    }
-
-    const abortController = new AbortController();
-    const signal = abortController.signal;
-    const certFile = "cli/tests/testdata/tls/localhost.crt";
-    const keyFile = "cli/tests/testdata/tls/localhost.key";
-
-    const server = serveTls((req) => {
-      const p = Deno.upgradeHttp(req);
-
-      (async () => {
-        const [conn, firstPacket] = await p;
-        const buf = new Uint8Array(1024);
-        const firstPacketText = new TextDecoder().decode(firstPacket);
-        assertEquals(firstPacketText, "bla bla bla\nbla bla\nbla\n");
-        const n = await conn.read(buf);
-        assert(n != null);
-        const secondPacketText = new TextDecoder().decode(buf.slice(0, n));
-        assertEquals(secondPacketText, "bla bla bla\nbla bla\nbla\n");
-        abortController.abort();
-        conn.close();
-      })();
-
-      return new Response(null, { status: 101 });
-    }, { hostname: "localhost", port: listenPort, signal, keyFile, certFile });
-
-    await Promise.all([server, client()]);
-  },
-);
-
-Deno.test("upgradeHttp unix", {
-  permissions: { read: true, write: true },
-  ignore: Deno.build.os === "windows",
-}, async () => {
-  const filePath = tmpUnixSocketPath();
-  const { promise, resolve } = Promise.withResolvers<void>();
-
-  async function client() {
-    const unixConn = await Deno.connect({ path: filePath, transport: "unix" });
-    await unixConn.write(
-      new TextEncoder().encode(
-        "CONNECT server.example.com:80 HTTP/1.1\r\n\r\nbla bla bla\nbla bla\nbla\n",
-      ),
-    );
-    setTimeout(async () => {
-      await unixConn.write(
-        new TextEncoder().encode(
-          "bla bla bla\nbla bla\nbla\n",
-        ),
-      );
-      unixConn.close();
-      resolve();
-    }, 500);
-    await promise;
-  }
-
-  const server = (async () => {
-    const listener = Deno.listen({ path: filePath, transport: "unix" });
-    const conn = await listener.accept();
-    listener.close();
-    const httpConn = Deno.serveHttp(conn);
-    const reqEvent = await httpConn.nextRequest();
-    assert(reqEvent);
-    const { request, respondWith } = reqEvent;
-    const p = Deno.upgradeHttp(request);
-
-    const promise = (async () => {
-      const [conn, firstPacket] = await p;
-      const buf = new Uint8Array(1024);
-      const firstPacketText = new TextDecoder().decode(firstPacket);
-      assertEquals(firstPacketText, "bla bla bla\nbla bla\nbla\n");
-      const n = await conn.read(buf);
-      assert(n != null);
-      const secondPacketText = new TextDecoder().decode(buf.slice(0, n));
-      assertEquals(secondPacketText, "bla bla bla\nbla bla\nbla\n");
-      conn.close();
-    })();
-
-    const resp = new Response(null, { status: 101 });
-    await respondWith(resp);
-    await promise;
-    httpConn!.close();
-  })();
-
-  await Promise.all([server, client()]);
 });
 
 Deno.test(
