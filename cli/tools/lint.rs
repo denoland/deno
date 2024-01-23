@@ -55,7 +55,7 @@ use std::sync::Mutex;
 
 use crate::cache::IncrementalCache;
 
-static STDIN_FILE_NAME: &str = "_stdin.ts";
+static STDIN_FILE_NAME: &str = "$deno$stdin.ts";
 
 fn create_reporter(kind: LintReporterKind) -> Box<dyn LintReporter + Send> {
   match kind {
@@ -123,9 +123,10 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
       let reporter_kind = lint_options.reporter_kind;
       let reporter_lock = Arc::new(Mutex::new(create_reporter(reporter_kind)));
       let lint_rules = get_config_rules_err_empty(lint_options.rules)?;
-      let r = lint_stdin(lint_rules);
-      let success =
-        handle_lint_result(STDIN_FILE_NAME, r, reporter_lock.clone());
+      let file_path = std::env::current_dir().unwrap().join(STDIN_FILE_NAME);
+      let file_path = file_path.to_string_lossy();
+      let r = lint_stdin(&file_path, lint_rules);
+      let success = handle_lint_result(&file_path, r, reporter_lock.clone());
       reporter_lock.lock().unwrap().close(1);
       success
     } else {
@@ -295,6 +296,7 @@ fn lint_file(
 /// Treats input as TypeScript.
 /// Compatible with `--json` flag.
 fn lint_stdin(
+  file_path: &str,
   lint_rules: Vec<&'static dyn LintRule>,
 ) -> Result<(Vec<LintDiagnostic>, ParsedSource), AnyError> {
   let mut source_code = String::new();
@@ -305,7 +307,7 @@ fn lint_stdin(
   let linter = create_linter(lint_rules);
 
   let (source, file_diagnostics) = linter.lint_file(LintFileOptions {
-    filename: STDIN_FILE_NAME.to_string(),
+    filename: file_path.to_string(),
     source_code: source_code.clone(),
     media_type: MediaType::TypeScript,
   })?;

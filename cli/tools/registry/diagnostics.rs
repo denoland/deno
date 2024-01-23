@@ -1,3 +1,5 @@
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
 use std::borrow::Cow;
 use std::fmt::Display;
 use std::sync::Arc;
