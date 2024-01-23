@@ -2782,7 +2782,7 @@ declare namespace Deno {
    * Uint8Array`.
    *
    * @deprecated Use
-   * {@linkcode https://deno.land/std@/io/read_all.ts?s=readAll | readAll}
+   * {@linkcode https://deno.land/std/io/read_all.ts?s=readAll | readAll}
    * instead. {@linkcode Deno.readAll} will be removed in v2.0.0.
    *
    * @category I/O
@@ -2794,7 +2794,7 @@ declare namespace Deno {
    * as `Uint8Array`.
    *
    * @deprecated Use
-   * {@linkcode https://deno.land/std@/io/read_all.ts?s=readAllSync | readAllSync}
+   * {@linkcode https://deno.land/std/io/read_all.ts?s=readAllSync | readAllSync}
    * instead. {@linkcode Deno.readAllSync} will be removed in v2.0.0.
    *
    * @category I/O

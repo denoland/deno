@@ -11,6 +11,7 @@ function serveHttp(conn) {
     "Deno.serveHttp()",
     new Error().stack,
     "Use `Deno.serve()` instead.",
+  );
   const rid = op_http_start(conn.rid);
   return new HttpConn(rid, conn.remoteAddr, conn.localAddr);
 }
