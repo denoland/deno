@@ -57,12 +57,12 @@ Connection: close
 // https://github.com/denoland/deno/pull/20120
 Deno.test("tls.connect mid-read tcp->tls upgrade", async () => {
   const ctl = new AbortController();
-  const serve = serveTls(() => new Response("hello"), {
+  const server = Deno.serve({
     port: 8443,
     key,
     cert,
     signal: ctl.signal,
-  });
+  }, () => new Response("hello"));
 
   await delay(200);
 
@@ -83,7 +83,7 @@ Deno.test("tls.connect mid-read tcp->tls upgrade", async () => {
     ctl.abort();
   });
 
-  await serve;
+  await server.finished;
 });
 
 Deno.test("tls.createServer creates a TLS server", async () => {
