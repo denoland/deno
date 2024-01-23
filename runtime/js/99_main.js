@@ -153,10 +153,12 @@ function warnOnDeprecatedApi(apiName, stack, suggestion) {
     "color: yellow;",
   );
   console.error("%c\u2502", "color: yellow;");
-  console.error(
-    `%c\u251c Suggestion: ${suggestion}`,
-    "color: yellow;",
-  );
+  if (suggestion) {
+    console.error(
+      `%c\u251c Suggestion: ${suggestion}`,
+      "color: yellow;",
+    );
+  }
   if (isFromRemoteDependency) {
     console.error("%c\u2502", "color: yellow;");
     console.error(

@@ -1819,8 +1819,8 @@ declare namespace Deno {
   /**
    * Turns a Reader, `r`, into an async iterator.
    *
-   * @deprecated Use {@linkcode ReadableStream} instead. {@linkcode Deno.iter}
-   * will be removed in v2.0.0.
+   * @deprecated Use {@linkcode ReadableStreamDefaultReader} instead.
+   * {@linkcode Deno.iter} will be removed in v2.0.0.
    *
    * @category I/O
    */
@@ -1832,7 +1832,7 @@ declare namespace Deno {
   /**
    * Turns a ReaderSync, `r`, into an iterator.
    *
-   * @deprecated Use {@linkcode ReadableStream} instead.
+   * @deprecated Use {@linkcode ReadableStreamDefaultReader} instead.
    * {@linkcode Deno.iterSync} will be removed in v2.0.0.
    *
    * @category I/O
@@ -2699,9 +2699,9 @@ declare namespace Deno {
   /**
    * A variable-sized buffer of bytes with `read()` and `write()` methods.
    *
-   * @deprecated Use the
-   * [Web Streams API]{@link https://developer.mozilla.org/en-US/docs/Web/API/Streams_API}
-   * instead. {@linkcode Deno.Buffer} will be removed in v2.0.0.
+   * @deprecated Use
+   * {@linkcode https://deno.land/std/io/buffer.ts?s=Buffer | Buffer} instead.
+   * {@linkcode Deno.Buffer} will be removed in v2.0.0.
    *
    * @category I/O
    */
@@ -2775,8 +2775,8 @@ declare namespace Deno {
    * Read Reader `r` until EOF (`null`) and resolve to the content as
    * Uint8Array`.
    *
-   * @deprecated Use {@linkcode ReadableStream} and
-   * [`toArrayBuffer()`](https://deno.land/std/streams/to_array_buffer.ts?s=toArrayBuffer)
+   * @deprecated Use
+   * {@linkcode https://deno.land/std@/io/read_all.ts?s=readAll | readAll}
    * instead. {@linkcode Deno.readAll} will be removed in v2.0.0.
    *
    * @category I/O
@@ -2787,8 +2787,8 @@ declare namespace Deno {
    * Synchronously reads Reader `r` until EOF (`null`) and returns the content
    * as `Uint8Array`.
    *
-   * @deprecated Use {@linkcode ReadableStream} and
-   * [`toArrayBuffer()`](https://deno.land/std/streams/to_array_buffer.ts?s=toArrayBuffer)
+   * @deprecated Use
+   * {@linkcode https://deno.land/std@/io/read_all.ts?s=readAllSync | readAllSync}
    * instead. {@linkcode Deno.readAllSync} will be removed in v2.0.0.
    *
    * @category I/O
@@ -2798,9 +2798,9 @@ declare namespace Deno {
   /**
    * Write all the content of the array buffer (`arr`) to the writer (`w`).
    *
-   * @deprecated Use {@linkcode WritableStream}, {@linkcode ReadableStream.from}
-   * and {@linkcode ReadableStream.pipeTo} instead. {@linkcode Deno.writeAll}
-   * will be removed in v2.0.0.
+   * @deprecated Use
+   * {@linkcode https://deno.land/std/io/write_all.ts?s=writeAll | writeAll}
+   * instead. {@linkcode Deno.writeAll} will be removed in v2.0.0.
    *
    * @category I/O
    */
@@ -2810,9 +2810,9 @@ declare namespace Deno {
    * Synchronously write all the content of the array buffer (`arr`) to the
    * writer (`w`).
    *
-   * @deprecated Use {@linkcode WritableStream}, {@linkcode ReadableStream.from}
-   * and {@linkcode ReadableStream.pipeTo} instead.
-   * {@linkcode Deno.writeAllSync} will be removed in v2.0.0.
+   * @deprecated Use
+   * {@linkcode https://deno.land/std/io/write_all.ts?s=writeAllSync | writeAllSync}
+   * instead. {@linkcode Deno.writeAllSync} will be removed in v2.0.0.
    *
    * @category I/O
    */
@@ -3882,7 +3882,7 @@ declare namespace Deno {
     /**
      * Stops watching the file system and closes the watcher resource.
      *
-     * @deprecated Will be removed in v2.0.0.
+     * @deprecated {@linkcode Deno.FsWatcher.return} will be removed in v2.0.0.
      */
     return?(value?: any): Promise<IteratorResult<FsEvent>>;
     [Symbol.asyncIterator](): AsyncIterableIterator<FsEvent>;

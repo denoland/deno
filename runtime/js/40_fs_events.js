@@ -51,7 +51,7 @@ class FsWatcher {
   return(value) {
     internals.warnOnDeprecatedApi(
       "Deno.FsWatcher.return()",
-      (new Error()).stack,
+      new Error().stack,
     );
     core.close(this.rid);
     return PromiseResolve({ value, done: true });
