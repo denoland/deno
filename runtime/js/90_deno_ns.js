@@ -83,9 +83,6 @@ const denoNs = {
   futime: fs.futime,
   futimeSync: fs.futimeSync,
   errors: errors.errors,
-  // TODO(kt3k): Remove this export at v2
-  // See https://github.com/denoland/deno/issues/9294
-  customInspect: console.customInspect,
   inspect: console.inspect,
   env: os.env,
   exit: os.exit,
