@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use clap::builder::styling::AnsiColor;
 use clap::builder::FalseyValueParser;
 use clap::value_parser;
 use clap::Arg;
@@ -806,61 +807,82 @@ impl Flags {
   }
 }
 
-static ENV_VARIABLES_HELP: &str = r#"ENVIRONMENT VARIABLES:
-    DENO_AUTH_TOKENS     A semi-colon separated list of bearer tokens and
+static ENV_VARIABLES_HELP: &str = color_print::cstr!(
+  r#"<y>Environment variables:</>
+    <g>DENO_AUTH_TOKENS</>     A semi-colon separated list of bearer tokens and
                          hostnames to use when fetching remote modules from
                          private repositories
                          (e.g. "abcde12345@deno.land;54321edcba@github.com")
-    DENO_TLS_CA_STORE    Comma-separated list of order dependent certificate
+
+    <g>DENO_TLS_CA_STORE</>    Comma-separated list of order dependent certificate
                          stores. Possible values: "system", "mozilla".
                          Defaults to "mozilla".
-    DENO_CERT            Load certificate authority from PEM encoded file
-    DENO_DIR             Set the cache directory
-    DENO_INSTALL_ROOT    Set deno install's output directory
+
+    <g>DENO_CERT</>            Load certificate authority from PEM encoded file
+
+    <g>DENO_DIR</>             Set the cache directory
+
+    <g>DENO_INSTALL_ROOT</>    Set deno install's output directory
                          (defaults to $HOME/.deno/bin)
-    DENO_REPL_HISTORY    Set REPL history file path
+
+    <g>DENO_REPL_HISTORY</>    Set REPL history file path
                          History file is disabled when the value is empty
                          (defaults to $DENO_DIR/deno_history.txt)
-    DENO_NO_PACKAGE_JSON Disables auto-resolution of package.json
-    DENO_NO_PROMPT       Set to disable permission prompts on access
+
+    <g>DENO_NO_PACKAGE_JSON</> Disables auto-resolution of package.json
+
+    <g>DENO_NO_PROMPT</>       Set to disable permission prompts on access
                          (alternative to passing --no-prompt on invocation)
-    DENO_NO_UPDATE_CHECK Set to disable checking if a newer Deno version is
+
+    <g>DENO_NO_UPDATE_CHECK</> Set to disable checking if a newer Deno version is
                          available
-    DENO_V8_FLAGS        Set V8 command line options
-    DENO_WEBGPU_TRACE    Directory to use for wgpu traces
-    DENO_JOBS            Number of parallel workers used for the --parallel
+
+    <g>DENO_V8_FLAGS</>        Set V8 command line options
+
+    <g>DENO_WEBGPU_TRACE</>    Directory to use for wgpu traces
+
+    <g>DENO_JOBS</>            Number of parallel workers used for the --parallel
                          flag with the test subcommand. Defaults to number
                          of available CPUs.
-    HTTP_PROXY           Proxy address for HTTP requests
+
+    <g>HTTP_PROXY</>           Proxy address for HTTP requests
                          (module downloads, fetch)
-    HTTPS_PROXY          Proxy address for HTTPS requests
+
+    <g>HTTPS_PROXY</>          Proxy address for HTTPS requests
                          (module downloads, fetch)
-    NPM_CONFIG_REGISTRY  URL to use for the npm registry.
-    NO_COLOR             Set to disable color
-    NO_PROXY             Comma-separated list of hosts which do not use a proxy
-                         (module downloads, fetch)"#;
+
+    <g>NPM_CONFIG_REGISTRY</>  URL to use for the npm registry.
+
+    <g>NO_COLOR</>             Set to disable color
+
+    <g>NO_PROXY</>             Comma-separated list of hosts which do not use a proxy
+                         (module downloads, fetch)"#
+);
 
 static DENO_HELP: &str = concat!(
-  "A modern JavaScript and TypeScript runtime
+  color_print::cstr!("<g>A modern JavaScript and TypeScript runtime</>"),
+  "
 
 Docs: https://deno.land/manual@v",
   env!("CARGO_PKG_VERSION"),
-  "
+  color_print::cstr!(
+    "
 Modules: https://deno.land/std/ https://deno.land/x/
 Bugs: https://github.com/denoland/deno/issues
 
 To start the REPL:
 
-  deno
+  <g>deno</>
 
 To execute a script:
 
-  deno run https://examples.deno.land/hello-world.ts
+  <g>deno run https://examples.deno.land/hello-world.ts</>
 
 To evaluate code in the shell:
 
-  deno eval \"console.log(30933 + 404)\"
+  <g>deno eval \"console.log(30933 + 404)\"</>
 "
+  )
 );
 
 /// Main entry point for parsing deno's command line flags.
@@ -971,7 +993,14 @@ fn clap_root() -> Command {
 
   let mut cmd = Command::new("deno")
     .bin_name("deno")
-    .color(ColorChoice::Never)
+    .styles(
+      clap::builder::Styles::styled()
+        .header(AnsiColor::Yellow.on_default())
+        .usage(AnsiColor::White.on_default())
+        .literal(AnsiColor::Green.on_default())
+        .placeholder(AnsiColor::Green.on_default())
+    )
+    .color(ColorChoice::Auto)
     .max_term_width(80)
     .version(crate::version::deno())
     .long_version(long_version)

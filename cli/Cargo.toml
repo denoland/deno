@@ -79,6 +79,7 @@ chrono.workspace = true
 clap = { version = "=4.4.17", features = ["env", "string"] }
 clap_complete = "=4.4.7"
 clap_complete_fig = "=4.4.2"
+color-print = "0.3.5"
 console_static_text.workspace = true
 dashmap = "5.5.3"
 data-encoding.workspace = true
