@@ -123,7 +123,7 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
       let reporter_kind = lint_options.reporter_kind;
       let reporter_lock = Arc::new(Mutex::new(create_reporter(reporter_kind)));
       let lint_rules = get_config_rules_err_empty(lint_options.rules)?;
-      let file_path = std::env::current_dir().unwrap().join(STDIN_FILE_NAME);
+      let file_path = cli_options.initial_cwd().join(STDIN_FILE_NAME);
       let file_path = file_path.to_string_lossy();
       let r = lint_stdin(&file_path, lint_rules);
       let success = handle_lint_result(&file_path, r, reporter_lock.clone());
