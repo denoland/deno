@@ -94,7 +94,7 @@ const OP_DETAILS = {
     "op_net_send_udp": ["send a datagram message via UDP", "awaiting the result of `Deno.DatagramConn#send` call"],
     "op_net_send_unixpacket": ["send a datagram message via Unixpacket", "awaiting the result of `Deno.DatagramConn#send` call"],
     "op_dns_resolve": ["resolve a DNS name", "awaiting the result of a `Deno.resolveDns` call"],
-    "op_fdatasync_async": ["flush pending data operations for a file to disk", "awaiting the result of a `Deno.fdatasync` call"],
+    "op_fdatasync_async": ["flush pending data operations for a file to disk", "awaiting the result of a `file.fdatasync` call"],
     "op_fetch_send": ["send a HTTP request", "awaiting the result of a `fetch` call"],
     "op_ffi_call_nonblocking": ["do a non blocking ffi call", "awaiting the returned promise"],
     "op_ffi_call_ptr_nonblocking": ["do a non blocking ffi call", "awaiting the returned promise"],
