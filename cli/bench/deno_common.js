@@ -39,8 +39,7 @@ Deno.bench("perf_now", { n: 5e5 }, () => {
 });
 
 Deno.bench("open_file_sync", () => {
-  const file = Deno.openSync("./cli/bench/testdata/128k.bin");
-  file.close();
+  using _file = Deno.openSync("./cli/bench/testdata/128k.bin");
 });
 
 // A common "language feature", that should be fast
