@@ -1630,19 +1630,23 @@ impl Inner {
       {
         files_to_check.insert(url.clone());
       }
-      config_changes.extend(
-        params
-          .changes
-          .iter()
-          .filter(|e| files_to_check.contains(&e.uri))
-          .map(|e| lsp_custom::DenoConfigurationChangeEvent {
-            uri: e.uri.clone(),
-            typ: lsp_custom::DenoConfigurationChangeType::from_file_change_type(
-              e.typ,
-            ),
-            configuration_type: lsp_custom::DenoConfigurationType::DenoJson,
-          }),
-      );
+      if let Some(root_uri) = self.config.root_uri() {
+        config_changes.extend(
+          params
+            .changes
+            .iter()
+            .filter(|e| files_to_check.contains(&e.uri))
+            .map(|e| lsp_custom::DenoConfigurationChangeEvent {
+              scope_uri: root_uri.clone(),
+              file_uri: e.uri.clone(),
+              typ:
+                lsp_custom::DenoConfigurationChangeType::from_file_change_type(
+                  e.typ,
+                ),
+              configuration_type: lsp_custom::DenoConfigurationType::DenoJson,
+            }),
+        );
+      }
       if let Err(err) = self.update_tsconfig().await {
         self.client.show_message(MessageType::WARNING, err);
       }
@@ -1664,19 +1668,24 @@ impl Inner {
       if let Some(package_json) = &self.maybe_package_json {
         files_to_check.insert(package_json.specifier());
       }
-      config_changes.extend(
-        params
-          .changes
-          .iter()
-          .filter(|e| files_to_check.contains(&e.uri))
-          .map(|e| lsp_custom::DenoConfigurationChangeEvent {
-            uri: e.uri.clone(),
-            typ: lsp_custom::DenoConfigurationChangeType::from_file_change_type(
-              e.typ,
-            ),
-            configuration_type: lsp_custom::DenoConfigurationType::PackageJson,
-          }),
-      );
+      if let Some(root_uri) = self.config.root_uri() {
+        config_changes.extend(
+          params
+            .changes
+            .iter()
+            .filter(|e| files_to_check.contains(&e.uri))
+            .map(|e| lsp_custom::DenoConfigurationChangeEvent {
+              scope_uri: root_uri.clone(),
+              file_uri: e.uri.clone(),
+              typ:
+                lsp_custom::DenoConfigurationChangeType::from_file_change_type(
+                  e.typ,
+                ),
+              configuration_type:
+                lsp_custom::DenoConfigurationType::PackageJson,
+            }),
+        );
+      }
       touched = true;
     }
 
@@ -3317,27 +3326,31 @@ impl tower_lsp::LanguageServer for LanguageServer {
         ls.maybe_testing_server = Some(test_server);
       }
 
-      let mut config_events = vec![];
-      if let Some(config_file) = ls.config.maybe_config_file() {
-        config_events.push(lsp_custom::DenoConfigurationChangeEvent {
-          uri: config_file.specifier.clone(),
-          typ: lsp_custom::DenoConfigurationChangeType::Added,
-          configuration_type: lsp_custom::DenoConfigurationType::DenoJson,
-        });
-      }
-      if let Some(package_json) = &ls.maybe_package_json {
-        config_events.push(lsp_custom::DenoConfigurationChangeEvent {
-          uri: package_json.specifier(),
-          typ: lsp_custom::DenoConfigurationChangeType::Added,
-          configuration_type: lsp_custom::DenoConfigurationType::PackageJson,
-        });
-      }
-      if !config_events.is_empty() {
-        ls.client.send_did_change_deno_configuration_notification(
-          lsp_custom::DidChangeDenoConfigurationNotificationParams {
-            changes: config_events,
-          },
-        );
+      if let Some(root_uri) = ls.config.root_uri() {
+        let mut config_events = vec![];
+        if let Some(config_file) = ls.config.maybe_config_file() {
+          config_events.push(lsp_custom::DenoConfigurationChangeEvent {
+            scope_uri: root_uri.clone(),
+            file_uri: config_file.specifier.clone(),
+            typ: lsp_custom::DenoConfigurationChangeType::Added,
+            configuration_type: lsp_custom::DenoConfigurationType::DenoJson,
+          });
+        }
+        if let Some(package_json) = &ls.maybe_package_json {
+          config_events.push(lsp_custom::DenoConfigurationChangeEvent {
+            scope_uri: root_uri.clone(),
+            file_uri: package_json.specifier(),
+            typ: lsp_custom::DenoConfigurationChangeType::Added,
+            configuration_type: lsp_custom::DenoConfigurationType::PackageJson,
+          });
+        }
+        if !config_events.is_empty() {
+          ls.client.send_did_change_deno_configuration_notification(
+            lsp_custom::DidChangeDenoConfigurationNotificationParams {
+              changes: config_events,
+            },
+          );
+        }
       }
 
       (ls.client.clone(), ls.http_client.clone())

@@ -80,7 +80,7 @@ impl fmt::Write for StdIoStdFmtWriter<'_> {
   }
 }
 
-struct Style<I: fmt::Display> {
+pub struct Style<I: fmt::Display> {
   colorspec: ColorSpec,
   inner: I,
 }
@@ -101,65 +101,68 @@ impl<I: fmt::Display> fmt::Display for Style<I> {
 }
 
 #[inline]
-fn style<'a>(
-  s: impl fmt::Display + 'a,
-  colorspec: ColorSpec,
-) -> impl fmt::Display + 'a {
+fn style<'a, S: fmt::Display + 'a>(s: S, colorspec: ColorSpec) -> Style<S> {
   Style {
     colorspec,
     inner: s,
   }
 }
 
-pub fn red_bold<'a>(s: impl fmt::Display + 'a) -> impl fmt::Display + 'a {
+pub fn red_bold<'a, S: fmt::Display + 'a>(s: S) -> Style<S> {
   let mut style_spec = ColorSpec::new();
   style_spec.set_fg(Some(Red)).set_bold(true);
   style(s, style_spec)
 }
 
-pub fn green_bold<'a>(s: impl fmt::Display + 'a) -> impl fmt::Display + 'a {
+pub fn green_bold<'a, S: fmt::Display + 'a>(s: S) -> Style<S> {
   let mut style_spec = ColorSpec::new();
   style_spec.set_fg(Some(Green)).set_bold(true);
   style(s, style_spec)
 }
 
-pub fn italic<'a>(s: impl fmt::Display + 'a) -> impl fmt::Display + 'a {
+pub fn yellow_bold<'a, S: fmt::Display + 'a>(s: S) -> Style<S> {
+  let mut style_spec = ColorSpec::new();
+  style_spec.set_fg(Some(Yellow)).set_bold(true);
+  style(s, style_spec)
+}
+
+pub fn italic<'a, S: fmt::Display + 'a>(s: S) -> Style<S> {
   let mut style_spec = ColorSpec::new();
   style_spec.set_italic(true);
   style(s, style_spec)
 }
 
-pub fn italic_gray<'a>(s: impl fmt::Display + 'a) -> impl fmt::Display + 'a {
+pub fn italic_gray<'a, S: fmt::Display + 'a>(s: S) -> Style<S> {
   let mut style_spec = ColorSpec::new();
   style_spec.set_fg(Some(Ansi256(8))).set_italic(true);
   style(s, style_spec)
 }
 
-pub fn italic_bold<'a>(s: impl fmt::Display + 'a) -> impl fmt::Display + 'a {
+pub fn italic_bold<'a, S: fmt::Display + 'a>(s: S) -> Style<S> {
   let mut style_spec = ColorSpec::new();
   style_spec.set_bold(true).set_italic(true);
   style(s, style_spec)
 }
 
-pub fn white_on_red<'a>(s: impl fmt::Display + 'a) -> impl fmt::Display + 'a {
+pub fn white_on_red<'a, S: fmt::Display + 'a>(s: S) -> Style<S> {
   let mut style_spec = ColorSpec::new();
   style_spec.set_bg(Some(Red)).set_fg(Some(White));
   style(s, style_spec)
 }
 
-pub fn black_on_green<'a>(s: impl fmt::Display + 'a) -> impl fmt::Display + 'a {
+pub fn black_on_green<'a, S: fmt::Display + 'a>(s: S) -> Style<S> {
   let mut style_spec = ColorSpec::new();
   style_spec.set_bg(Some(Green)).set_fg(Some(Black));
   style(s, style_spec)
 }
 
-pub fn yellow<'a>(s: impl fmt::Display + 'a) -> impl fmt::Display + 'a {
+pub fn yellow<'a, S: fmt::Display + 'a>(s: S) -> Style<S> {
   let mut style_spec = ColorSpec::new();
   style_spec.set_fg(Some(Yellow));
   style(s, style_spec)
 }
 
-pub fn cyan<'a>(s: impl fmt::Display + 'a) -> impl fmt::Display + 'a {
+pub fn cyan<'a, S: fmt::Display + 'a>(s: S) -> Style<S> {
   let mut style_spec = ColorSpec::new();
   style_spec.set_fg(Some(Cyan));
   style(s, style_spec)
@@ -173,43 +176,43 @@ pub fn cyan_with_underline<'a>(
   style(s, style_spec)
 }
 
-pub fn cyan_bold<'a>(s: impl fmt::Display + 'a) -> impl fmt::Display + 'a {
+pub fn cyan_bold<'a, S: fmt::Display + 'a>(s: S) -> Style<S> {
   let mut style_spec = ColorSpec::new();
   style_spec.set_fg(Some(Cyan)).set_bold(true);
   style(s, style_spec)
 }
 
-pub fn magenta<'a>(s: impl fmt::Display + 'a) -> impl fmt::Display + 'a {
+pub fn magenta<'a, S: fmt::Display + 'a>(s: S) -> Style<S> {
   let mut style_spec = ColorSpec::new();
   style_spec.set_fg(Some(Magenta));
   style(s, style_spec)
 }
 
-pub fn red<'a>(s: impl fmt::Display + 'a) -> impl fmt::Display + 'a {
+pub fn red<'a, S: fmt::Display + 'a>(s: S) -> Style<S> {
   let mut style_spec = ColorSpec::new();
   style_spec.set_fg(Some(Red));
   style(s, style_spec)
 }
 
-pub fn green<'a>(s: impl fmt::Display + 'a) -> impl fmt::Display + 'a {
+pub fn green<'a, S: fmt::Display + 'a>(s: S) -> Style<S> {
   let mut style_spec = ColorSpec::new();
   style_spec.set_fg(Some(Green));
   style(s, style_spec)
 }
 
-pub fn bold<'a>(s: impl fmt::Display + 'a) -> impl fmt::Display + 'a {
+pub fn bold<'a, S: fmt::Display + 'a>(s: S) -> Style<S> {
   let mut style_spec = ColorSpec::new();
   style_spec.set_bold(true);
   style(s, style_spec)
 }
 
-pub fn gray<'a>(s: impl fmt::Display + 'a) -> impl fmt::Display + 'a {
+pub fn gray<'a, S: fmt::Display + 'a>(s: S) -> Style<S> {
   let mut style_spec = ColorSpec::new();
   style_spec.set_fg(Some(Ansi256(245)));
   style(s, style_spec)
 }
 
-pub fn intense_blue<'a>(s: impl fmt::Display + 'a) -> impl fmt::Display + 'a {
+pub fn intense_blue<'a, S: fmt::Display + 'a>(s: S) -> Style<S> {
   let mut style_spec = ColorSpec::new();
   style_spec.set_fg(Some(Blue)).set_intense(true);
   style(s, style_spec)

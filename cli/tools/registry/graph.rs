@@ -12,6 +12,9 @@ use deno_core::error::AnyError;
 use deno_graph::FastCheckDiagnostic;
 use deno_graph::ModuleGraph;
 
+use super::diagnostics::PublishDiagnostic;
+use super::diagnostics::PublishDiagnosticsCollector;
+
 #[derive(Debug)]
 pub struct MemberRoots {
   pub name: String,
@@ -61,11 +64,13 @@ pub fn resolve_config_file_roots_from_exports(
   Ok(exports)
 }
 
-pub fn surface_fast_check_type_graph_errors(
+/// Collects diagnostics from the module graph for the given packages.
+/// Returns true if any diagnostics were collected.
+pub fn collect_fast_check_type_graph_diagnostics(
   graph: &ModuleGraph,
   packages: &[MemberRoots],
-) -> Result<(), AnyError> {
-  let mut diagnostic_count = 0;
+  diagnostics_collector: &PublishDiagnosticsCollector,
+) -> bool {
   let mut seen_diagnostics = HashSet::new();
   let mut seen_modules = HashSet::with_capacity(graph.specifiers_count());
   for package in packages {
@@ -85,31 +90,18 @@ pub fn surface_fast_check_type_graph_errors(
       };
       if let Some(diagnostic) = esm_module.fast_check_diagnostic() {
         for diagnostic in diagnostic.flatten_multiple() {
+          if !seen_diagnostics.insert(diagnostic.message_with_range_for_test())
+          {
+            continue;
+          }
+          diagnostics_collector.push(PublishDiagnostic::FastCheck {
+            diagnostic: diagnostic.clone(),
+          });
           if matches!(
             diagnostic,
             FastCheckDiagnostic::UnsupportedJavaScriptEntrypoint { .. }
           ) {
-            // ignore JS packages for fast check
-            log::warn!(
-              concat!(
-                "{} Package '{}' is a JavaScript package without a corresponding ",
-                "declaration file. This may lead to a non-optimal experience for ",
-                "users of your package. For performance reasons, it's recommended ",
-                "to ship a corresponding TypeScript declaration file or to ",
-                "convert to TypeScript.",
-              ),
-              deno_runtime::colors::yellow("Warning"),
-              package.name,
-            );
             break 'analyze_package; // no need to keep analyzing this package
-          } else {
-            let message = diagnostic.message_with_range();
-            if !seen_diagnostics.insert(message.clone()) {
-              continue;
-            }
-
-            log::error!("\n{}", message);
-            diagnostic_count += 1;
           }
         }
       }
@@ -133,22 +125,5 @@ pub fn surface_fast_check_type_graph_errors(
     }
   }
 
-  if diagnostic_count > 0 {
-    // for the time being, tell the user why we have these errors and the benefit they bring
-    log::error!(
-      concat!(
-        "\nFixing these fast check errors is required to make the code fast check compatible ",
-        "which enables type checking your package's TypeScript code with the same ",
-        "performance as if you had distributed declaration files. Do any of these ",
-        "errors seem too restrictive or incorrect? Please open an issue if so to ",
-        "help us improve: https://github.com/denoland/deno/issues\n",
-      )
-    );
-    bail!(
-      "Had {} fast check error{}.",
-      diagnostic_count,
-      if diagnostic_count == 1 { "" } else { "s" }
-    )
-  }
-  Ok(())
+  !seen_diagnostics.is_empty()
 }

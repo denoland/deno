@@ -62,7 +62,7 @@ where
     if t.starts_with("Watcher") {
       break;
     }
-    if t.starts_with('(') {
+    if t.starts_with("error[") {
       str.push_str(&t);
       str.push('\n');
     }
@@ -216,7 +216,6 @@ async fn lint_watch_test() {
     .arg("lint")
     .arg(&badly_linted)
     .arg("--watch")
-    .arg("--unstable")
     .piped_output()
     .spawn()
     .unwrap();
@@ -273,7 +272,6 @@ async fn lint_watch_without_args_test() {
     .current_dir(t.path())
     .arg("lint")
     .arg("--watch")
-    .arg("--unstable")
     .piped_output()
     .spawn()
     .unwrap();
@@ -365,7 +363,6 @@ async fn fmt_watch_test() {
     .arg("fmt")
     .arg(&badly_formatted)
     .arg("--watch")
-    .arg("--unstable")
     .piped_output()
     .spawn()
     .unwrap();
@@ -420,7 +417,6 @@ async fn fmt_watch_without_args_test() {
     .current_dir(t.path())
     .arg("fmt")
     .arg("--watch")
-    .arg("--unstable")
     .piped_output()
     .spawn()
     .unwrap();
@@ -514,7 +510,6 @@ async fn bundle_js_watch() {
     .arg(&file_to_watch)
     .arg(&bundle)
     .arg("--watch")
-    .arg("--unstable")
     .env("NO_COLOR", "1")
     .piped_output()
     .spawn()
@@ -586,7 +581,6 @@ async fn bundle_watch_not_exit() {
     .arg(&file_to_watch)
     .arg(&target_file)
     .arg("--watch")
-    .arg("--unstable")
     .env("NO_COLOR", "1")
     .piped_output()
     .spawn()
@@ -891,7 +885,6 @@ async fn run_watch_with_import_map_and_relative_paths() {
   let mut child = util::deno_cmd()
     .current_dir(temp_directory.path())
     .arg("run")
-    .arg("--unstable")
     .arg("--watch")
     .arg("--import-map")
     .arg(&import_map_path)
@@ -1191,7 +1184,6 @@ async fn test_watch_module_graph_error_referrer() {
     .current_dir(util::testdata_path())
     .arg("run")
     .arg("--watch")
-    .arg("--unstable")
     .arg(&file_to_watch)
     .env("NO_COLOR", "1")
     .piped_output()
@@ -1315,7 +1307,6 @@ async fn bench_watch_basic() {
     .current_dir(util::testdata_path())
     .arg("bench")
     .arg("--watch")
-    .arg("--unstable")
     .arg("--no-check")
     .arg(t.path())
     .env("NO_COLOR", "1")

@@ -13,7 +13,7 @@
           "bytePos": 11
         }
       },
-      "filename": "_stdin.ts",
+      "filename": "[WILDCARD]$deno$stdin.ts",
       "message": "`any` type is not allowed",
       "code": "no-explicit-any",
       "hint": [WILDCARD]

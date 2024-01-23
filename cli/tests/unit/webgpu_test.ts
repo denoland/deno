@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { assert, assertEquals } from "./test_util.ts";
+import { assert, assertEquals, assertThrows } from "./test_util.ts";
 
 let isCI: boolean;
 try {
@@ -223,6 +223,27 @@ Deno.test({
   const adapter = await navigator.gpu.requestAdapter();
   assert(adapter);
   assert(adapter.features);
+  const resources = Object.keys(Deno.resources());
+  Deno.close(Number(resources[resources.length - 1]));
+});
+
+Deno.test({
+  ignore: isWsl || isLinuxOrMacCI,
+}, async function webgpuNullWindowSurfaceThrows() {
+  const adapter = await navigator.gpu.requestAdapter();
+  assert(adapter);
+
+  const device = await adapter.requestDevice();
+  assert(device);
+
+  assertThrows(
+    () => {
+      // @ts-expect-error: runtime test for null handle
+      new Deno.UnsafeWindowSurface("cocoa", null, null);
+    },
+  );
+
+  device.destroy();
   const resources = Object.keys(Deno.resources());
   Deno.close(Number(resources[resources.length - 1]));
 });
