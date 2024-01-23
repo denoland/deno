@@ -13,6 +13,58 @@ const {
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 
+webidl.converters["DOMPointInit"] = webidl.createDictionaryConverter(
+  "DOMPointInit",
+  [
+    {
+      key: "x",
+      converter: webidl.converters["unrestricted double"],
+      defaultValue: 0,
+    },
+    {
+      key: "y",
+      converter: webidl.converters["unrestricted double"],
+      defaultValue: 0,
+    },
+    {
+      key: "z",
+      converter: webidl.converters["unrestricted double"],
+      defaultValue: 0,
+    },
+    {
+      key: "w",
+      converter: webidl.converters["unrestricted double"],
+      defaultValue: 1,
+    },
+  ],
+);
+
+webidl.converters["DOMRectInit"] = webidl.createDictionaryConverter(
+  "DOMRectInit",
+  [
+    {
+      key: "x",
+      converter: webidl.converters["unrestricted double"],
+      defaultValue: 0,
+    },
+    {
+      key: "y",
+      converter: webidl.converters["unrestricted double"],
+      defaultValue: 0,
+    },
+    {
+      key: "width",
+      converter: webidl.converters["unrestricted double"],
+      defaultValue: 0,
+    },
+    {
+      key: "height",
+      converter: webidl.converters["unrestricted double"],
+      defaultValue: 0,
+    },
+  ],
+);
+
 const _raw = Symbol("[[raw]]");
 const _brand = webidl.brand;
 
@@ -30,6 +82,11 @@ class DOMPointReadOnly {
   }
 
   static fromPoint(other = {}) {
+    other = webidl.converters["DOMPointInit"](
+      other,
+      "Failed to call 'DOMPointReadOnly.fromPoint'",
+      "Argument 1",
+    );
     return new DOMPointReadOnly(
       other.x,
       other.y,
@@ -90,6 +147,11 @@ const DOMPointReadOnlyPrototype = DOMPointReadOnly.prototype;
 
 class DOMPoint extends DOMPointReadOnly {
   static fromPoint(other = {}) {
+    other = webidl.converters["DOMPointInit"](
+      other,
+      "Failed to call 'DOMPoint.fromPoint'",
+      "Argument 1",
+    );
     return new DOMPoint(
       other.x,
       other.y,
@@ -164,6 +226,11 @@ class DOMRectReadOnly {
   }
 
   static fromRect(other = {}) {
+    other = webidl.converters["DOMRectInit"](
+      other,
+      "Failed to call 'DOMRectReadOnly.fromRect'",
+      "Argument 1",
+    );
     return new DOMRectReadOnly(
       other.x,
       other.y,
@@ -249,6 +316,11 @@ const DOMRectReadOnlyPrototype = DOMRectReadOnly.prototype;
 
 class DOMRect extends DOMRectReadOnly {
   static fromRect(other = {}) {
+    other = webidl.converters["DOMRectInit"](
+      other,
+      "Failed to call 'DOMRect.fromRect'",
+      "Argument 1",
+    );
     return new DOMRect(
       other.x,
       other.y,
