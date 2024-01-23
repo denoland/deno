@@ -108,7 +108,15 @@ const mainRuntimeGlobalProperties = {
   Location: location.locationConstructorDescriptor,
   location: location.locationDescriptor,
   Window: globalInterfaces.windowConstructorDescriptor,
-  window: util.getterOnly(() => globalThis),
+  window: util.getterOnly(() => {
+    internals.warnOnDeprecatedApi(
+      "window",
+      new Error().stack,
+      "Use `globalThis` or `self` instead.",
+      "You can provide `window` in the current scope, using `const window = globalThis`.",
+    );
+    globalThis;
+  }),
   self: util.getterOnly(() => globalThis),
   Navigator: util.nonEnumerable(Navigator),
   navigator: util.getterOnly(() => navigator),
