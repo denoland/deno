@@ -141,6 +141,7 @@ pub fn deno_registry_api_url() -> &'static Url {
 pub fn ts_config_to_emit_options(
   config: deno_config::TsConfig,
 ) -> deno_ast::EmitOptions {
+  // eprintln!("ts_config_to_emit_options options {:#?}", config);
   let options: deno_config::EmitConfigOptions =
     serde_json::from_value(config.0).unwrap();
   let imports_not_used_as_values =
@@ -157,11 +158,13 @@ pub fn ts_config_to_emit_options(
       "precompile" => (false, false, false, true),
       _ => (false, false, false, false),
     };
+  // eprintln!(
+  //   "ts_config_to_emit_options {}",
+  //   options.experimental_decorators
+  // );
   deno_ast::EmitOptions {
-    // TODO(bartlomieju): change it to default to `false` and only enable
-    // if tsconfig.json enabled experimental decorators
-    use_ts_decorators: false,
-    use_decorators_proposal: true,
+    use_ts_decorators: options.experimental_decorators,
+    use_decorators_proposal: !options.experimental_decorators,
     emit_metadata: options.emit_decorator_metadata,
     imports_not_used_as_values,
     inline_source_map: options.inline_source_map,
@@ -1088,10 +1091,26 @@ impl CliOptions {
     &self,
     config_type: TsConfigType,
   ) -> Result<TsConfigForEmit, AnyError> {
-    deno_config::get_ts_config_for_emit(
+    let result = deno_config::get_ts_config_for_emit(
       config_type,
       self.maybe_config_file.as_ref(),
-    )
+    );
+
+    match result {
+      Ok(mut ts_config_for_emit) => {
+        if matches!(self.flags.subcommand, DenoSubcommand::Bundle(..)) {
+          // For backwards compatibility, force `experimentalDecorators` setting
+          // to true.
+          *ts_config_for_emit
+            .ts_config
+            .0
+            .get_mut("experimentalDecorators")
+            .unwrap() = serde_json::Value::Bool(true);
+        }
+        Ok(ts_config_for_emit)
+      }
+      Err(err) => Err(err),
+    }
   }
 
   pub fn resolve_inspector_server(&self) -> Option<InspectorServer> {
