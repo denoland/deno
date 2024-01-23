@@ -43,6 +43,7 @@ import * as version from "ext:runtime/01_version.ts";
 import * as os from "ext:runtime/30_os.js";
 import * as timers from "ext:deno_web/02_timers.js";
 import {
+  customInspect,
   getDefaultInspectOptions,
   getNoColor,
   inspectArgs,
@@ -626,6 +627,18 @@ function bootstrapMainRuntime(runtimeOptions) {
     noColor: util.getterOnly(() => ops.op_bootstrap_no_color()),
     args: util.getterOnly(opArgs),
     mainModule: util.getterOnly(opMainModule),
+    // TODO(kt3k): Remove this export at v2
+    // See https://github.com/denoland/deno/issues/9294
+    customInspect: {
+      get() {
+        warnOnDeprecatedApi(
+          "Deno.customInspect",
+          new Error().stack,
+          'Use `Symbol.for("Deno.customInspect")` instead.',
+        );
+        return customInspect;
+      },
+    },
   });
 
   // TODO(bartlomieju): deprecate --unstable
@@ -769,6 +782,18 @@ function bootstrapWorkerRuntime(
     pid: util.getterOnly(opPid),
     noColor: util.getterOnly(() => ops.op_bootstrap_no_color()),
     args: util.getterOnly(opArgs),
+    // TODO(kt3k): Remove this export at v2
+    // See https://github.com/denoland/deno/issues/9294
+    customInspect: {
+      get() {
+        warnOnDeprecatedApi(
+          "Deno.customInspect",
+          new Error().stack,
+          'Use `Symbol.for("Deno.customInspect")` instead.',
+        );
+        return customInspect;
+      },
+    },
   });
   // Setup `Deno` global - we're actually overriding already
   // existing global `Deno` with `Deno` namespace from "./deno.ts".

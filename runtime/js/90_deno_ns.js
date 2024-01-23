@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { core } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
+const { ObjectDefineProperty } = primordials;
 const {
   op_net_listen_udp,
   op_net_listen_unixpacket,
@@ -83,9 +84,6 @@ const denoNs = {
   futime: fs.futime,
   futimeSync: fs.futimeSync,
   errors: errors.errors,
-  // TODO(kt3k): Remove this export at v2
-  // See https://github.com/denoland/deno/issues/9294
-  customInspect: console.customInspect,
   inspect: console.inspect,
   env: os.env,
   exit: os.exit,
