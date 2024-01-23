@@ -8,6 +8,7 @@
 
 import { core, primordials } from "ext:core/mod.js";
 const {
+  op_webgpu_surface_create,
   op_webgpu_surface_configure,
   op_webgpu_surface_get_current_texture,
   op_webgpu_surface_present,
@@ -175,7 +176,7 @@ class UnsafeWindowSurface {
   #surfaceRid;
 
   constructor(system, win, display) {
-    this.#surfaceRid = ops.op_webgpu_surface_create(system, win, display);
+    this.#surfaceRid = op_webgpu_surface_create(system, win, display);
   }
 
   getContext(context) {
