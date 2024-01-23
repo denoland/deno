@@ -32,15 +32,17 @@ use crate::factory::CliFactory;
 use crate::graph_util::ModuleGraphBuilder;
 use crate::http_util::HttpClient;
 use crate::tools::check::CheckOptions;
+use crate::tools::registry::diagnostics::PublishDiagnosticsCollector;
+use crate::tools::registry::graph::collect_fast_check_type_graph_diagnostics;
 use crate::tools::registry::graph::get_workspace_member_roots;
 use crate::tools::registry::graph::resolve_config_file_roots_from_exports;
-use crate::tools::registry::graph::surface_fast_check_type_graph_errors;
 use crate::tools::registry::graph::MemberRoots;
 use crate::util::display::human_size;
 use crate::util::import_map::ImportMapUnfurler;
 
 mod api;
 mod auth;
+mod diagnostics;
 mod graph;
 mod publish_order;
 mod tar;
@@ -164,47 +166,6 @@ pub enum Permission<'s> {
     version: &'s str,
     tarball_hash: &'s str,
   },
-}
-
-/// Prints diagnostics like so:
-/// ```
-///
-/// Warning
-/// ├╌ Dynamic import was not analyzable...
-/// ├╌╌ at file:///dev/foo/bar/foo.ts:4:5
-/// |
-/// ├╌ Dynamic import was not analyzable...
-/// ├╌╌ at file:///dev/foo/bar/foo.ts:4:5
-/// |
-/// ├╌ Dynamic import was not analyzable...
-/// └╌╌ at file:///dev/foo/bar/foo.ts:4:5
-///
-/// ```
-fn print_diagnostics(diagnostics: &[String]) {
-  if !diagnostics.is_empty() {
-    let len = diagnostics.len();
-    log::warn!("");
-    log::warn!("{}", crate::colors::yellow("Warning"));
-    for (i, diagnostic) in diagnostics.iter().enumerate() {
-      let last_diagnostic = i == len - 1;
-      let lines = diagnostic.split('\n').collect::<Vec<_>>();
-      let lines_len = lines.len();
-      if i != 0 {
-        log::warn!("|");
-      }
-      for (j, line) in lines.iter().enumerate() {
-        let last_line = j == lines_len - 1;
-        if j == 0 {
-          log::warn!("├╌ {}", line);
-        } else if last_line && last_diagnostic {
-          log::warn!("└╌╌ {}", line);
-        } else {
-          log::warn!("├╌╌ {}", line);
-        }
-      }
-    }
-    log::warn!("");
-  }
 }
 
 async fn get_auth_headers(
@@ -484,11 +445,6 @@ async fn perform_publish(
     .values()
     .cloned()
     .collect::<Vec<_>>();
-  let diagnostics = packages
-    .iter()
-    .flat_map(|p| p.tarball.diagnostics.iter().cloned())
-    .collect::<Vec<_>>();
-  print_diagnostics(&diagnostics);
 
   ensure_scopes_and_packages_exist(
     client,
@@ -679,6 +635,7 @@ async fn publish_package(
 
 async fn prepare_packages_for_publishing(
   cli_factory: &CliFactory,
+  diagnostics_collector: &PublishDiagnosticsCollector,
   deno_json: ConfigFile,
   import_map: Arc<ImportMap>,
 ) -> Result<
@@ -700,6 +657,7 @@ async fn prepare_packages_for_publishing(
       module_graph_builder,
       type_checker,
       cli_options,
+      diagnostics_collector,
       &[MemberRoots {
         name: get_deno_json_package_name(&deno_json)?,
         dir_url: deno_json.specifier.join("./").unwrap().clone(),
@@ -724,6 +682,7 @@ async fn prepare_packages_for_publishing(
     module_graph_builder,
     type_checker,
     cli_options,
+    diagnostics_collector,
     &roots,
   )
   .await?;
@@ -765,6 +724,7 @@ async fn build_and_check_graph_for_publish(
   module_graph_builder: &ModuleGraphBuilder,
   type_checker: &TypeChecker,
   cli_options: &CliOptions,
+  diagnostics_collector: &PublishDiagnosticsCollector,
   packages: &[MemberRoots],
 ) -> Result<Arc<deno_graph::ModuleGraph>, deno_core::anyhow::Error> {
   let graph = Arc::new(
@@ -784,28 +744,34 @@ async fn build_and_check_graph_for_publish(
   );
   graph.valid()?;
   log::info!("Checking fast check type graph for errors...");
-  surface_fast_check_type_graph_errors(&graph, packages)?;
-  log::info!("Ensuring type checks...");
-  let diagnostics = type_checker
-    .check_diagnostics(
-      graph.clone(),
-      CheckOptions {
-        lib: cli_options.ts_type_lib_window(),
-        log_ignored_options: false,
-        reload: cli_options.reload_flag(),
-      },
-    )
-    .await?;
-  if !diagnostics.is_empty() {
-    bail!(
-      concat!(
-        "{:#}\n\n",
-        "You may have discovered a bug in Deno's fast check implementation. ",
-        "Fast check is still early days and we would appreciate if you log a ",
-        "bug if you believe this is one: https://github.com/denoland/deno/issues/"
-      ),
-      diagnostics
-    );
+  let has_fast_check_diagnostics = collect_fast_check_type_graph_diagnostics(
+    &graph,
+    packages,
+    diagnostics_collector,
+  );
+  if !has_fast_check_diagnostics {
+    log::info!("Ensuring type checks...");
+    let diagnostics = type_checker
+      .check_diagnostics(
+        graph.clone(),
+        CheckOptions {
+          lib: cli_options.ts_type_lib_window(),
+          log_ignored_options: false,
+          reload: cli_options.reload_flag(),
+        },
+      )
+      .await?;
+    if !diagnostics.is_empty() {
+      bail!(
+        concat!(
+          "{:#}\n\n",
+          "You may have discovered a bug in Deno's fast check implementation. ",
+          "Fast check is still early days and we would appreciate if you log a ",
+          "bug if you believe this is one: https://github.com/denoland/deno/issues/"
+        ),
+        diagnostics
+      );
+    }
   }
   Ok(graph)
 }
@@ -836,13 +802,19 @@ pub async fn publish(
     );
   };
 
+  let diagnostics_collector = PublishDiagnosticsCollector::default();
+
   let (publish_order_graph, prepared_package_by_name) =
     prepare_packages_for_publishing(
       &cli_factory,
+      &diagnostics_collector,
       config_file.clone(),
       import_map,
     )
     .await?;
+
+  diagnostics_collector
+    .print_and_error(&**cli_factory.parsed_source_cache())?;
 
   if prepared_package_by_name.is_empty() {
     bail!("No packages to publish");

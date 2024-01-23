@@ -1561,7 +1561,7 @@ This command has implicit access to all permissions (--allow-all).",
             .conflicts_with("ext")
             .long("ts")
             .short('T')
-            .help("deprecated: Treat eval input as TypeScript")
+            .help("deprecated: Use `--ext=ts` instead. The `--ts` and `-T` flags are deprecated and will be removed in Deno 2.0.")
             .action(ArgAction::SetTrue)
             .hide(true),
         )
@@ -2729,15 +2729,6 @@ fn permission_args(app: Command) -> Command {
         .help(ALLOW_ALL_HELP),
     )
     .arg(
-      Arg::new("prompt")
-        .long("prompt")
-        .action(ArgAction::SetTrue)
-        .hide(true)
-        .help(
-          "deprecated: Fallback to prompt if required permission wasn't passed",
-        ),
-    )
-    .arg(
       Arg::new("no-prompt")
         .long("no-prompt")
         .action(ArgAction::SetTrue)
@@ -3411,9 +3402,9 @@ fn eval_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 
   if as_typescript {
     eprintln!(
-      "{}",
+      "⚠️ {}",
       crate::colors::yellow(
-        "Warning: --ts/-T flag is deprecated. Use --ext=ts instead."
+        "Use `--ext=ts` instead. The `--ts` and `-T` flags are deprecated and will be removed in Deno 2.0."
       ),
     );
 
