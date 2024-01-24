@@ -56,8 +56,8 @@ pub fn create_gzipped_tarball(
       .map(|p| p.matches_path(path))
       .unwrap_or(true);
     if !matches_pattern
-      && !(path.file_name() == Some(OsStr::new(".git"))
-        || path.file_name() == Some(OsStr::new("node_modules")))
+      || path.file_name() == Some(OsStr::new(".git"))
+      || path.file_name() == Some(OsStr::new("node_modules"))
     {
       if file_type.is_dir() {
         iterator.skip_current_dir();
