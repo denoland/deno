@@ -5290,7 +5290,7 @@ declare namespace Deno {
    *   "my_file.txt",
    *   { read: true, write: true, create: true }
    * );
-   * await file.write(new TextEncoder().encode("Hello World");
+   * await file.write(new TextEncoder().encode("Hello World"));
    * await Deno.ftruncate(file.rid, 7);
    * const data = new Uint8Array(32);
    * await Deno.read(file.rid, data);
