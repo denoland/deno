@@ -43,7 +43,10 @@ class FsFile extends fs.FsFile {
 }
 
 const denoNs = {
-  metrics: core.metrics,
+  metrics: () => {
+    internals.warnOnDeprecatedApi("Deno.metrics()", new Error().stack);
+    return core.metrics();
+  },
   Process: process.Process,
   run: process.run,
   isatty: tty.isatty,

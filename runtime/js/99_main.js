@@ -155,6 +155,7 @@ function warnOnDeprecatedApi(apiName, stack, ...suggestions) {
     "%c\u251c This API will be removed in Deno 2.0. Make sure to upgrade to a stable API before then.",
     "color: yellow;",
   );
+
   for (let i = 0; i < suggestions.length; i++) {
     const suggestion = suggestions[i];
     console.error("%c\u2502", "color: yellow;");
