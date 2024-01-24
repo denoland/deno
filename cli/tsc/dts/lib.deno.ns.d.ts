@@ -2616,11 +2616,7 @@ declare namespace Deno {
      *
      * @category File System
      */
-    utime(
-      rid: number,
-      atime: number | Date,
-      mtime: number | Date,
-    ): Promise<void>;
+    utime(atime: number | Date, mtime: number | Date): Promise<void>;
     /**
      * Synchronously changes the access (`atime`) and modification (`mtime`) times
      * of a file stream resource referenced by `rid`. Given times are either in
@@ -2633,11 +2629,7 @@ declare namespace Deno {
      *
      * @category File System
      */
-    utimeSync(
-      rid: number,
-      atime: number | Date,
-      mtime: number | Date,
-    ): void;
+    utimeSync(atime: number | Date, mtime: number | Date): void;
     /** Close the file. Closing a file when you are finished with it is
      * important to avoid leaking resources.
      *
