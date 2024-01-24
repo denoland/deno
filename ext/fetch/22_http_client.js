@@ -31,19 +31,21 @@ function createHttpClient(options) {
 }
 
 class HttpClient {
+  #rid;
+
   /**
    * @param {number} rid
    */
   constructor(rid) {
-    this.rid = rid;
+    this.#rid = rid;
   }
 
   close() {
-    core.close(this.rid);
+    core.close(this.#rid);
   }
 
   [SymbolDispose]() {
-    core.tryClose(this.rid);
+    core.tryClose(this.#rid);
   }
 }
 const HttpClientPrototype = HttpClient.prototype;

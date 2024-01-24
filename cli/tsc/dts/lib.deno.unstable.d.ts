@@ -876,8 +876,6 @@ declare namespace Deno {
    * @category Fetch API
    */
   export interface HttpClient extends Disposable {
-    /** The resource ID associated with the client. */
-    rid: number;
     /** Close the HTTP client. */
     close(): void;
   }
