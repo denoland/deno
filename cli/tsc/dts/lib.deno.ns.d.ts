@@ -2171,7 +2171,7 @@ declare namespace Deno {
    *   { read: true, write: true, create: true },
    * );
    * await Deno.write(file.rid, new TextEncoder().encode("Hello World"));
-   * await Deno.ftruncate(file.rid, 1);
+   * await file.truncate(1);
    * await Deno.fsync(file.rid);
    * console.log(await Deno.readTextFile("my_file.txt")); // H
    * ```
@@ -2193,7 +2193,7 @@ declare namespace Deno {
    *   { read: true, write: true, create: true },
    * );
    * Deno.writeSync(file.rid, new TextEncoder().encode("Hello World"));
-   * Deno.ftruncateSync(file.rid, 1);
+   * file.truncateSync(1);
    * Deno.fsyncSync(file.rid);
    * console.log(Deno.readTextFileSync("my_file.txt")); // H
    * ```
@@ -5311,6 +5311,9 @@ declare namespace Deno {
    * console.log(new TextDecoder().decode(data)); // Hello W
    * ```
    *
+   * @deprecated Use {@linkcode Deno.FsFile.truncate} instead.
+   * {@linkcode Deno.ftruncate} will be removed in Deno 2.0.
+   *
    * @category File System
    */
   export function ftruncate(rid: number, len?: number): Promise<void>;
@@ -5352,6 +5355,9 @@ declare namespace Deno {
    * Deno.readSync(file.rid, data);
    * console.log(new TextDecoder().decode(data)); // Hello W
    * ```
+   *
+   * @deprecated Use {@linkcode Deno.FsFile.truncateSync} instead.
+   * {@linkcode Deno.ftruncateSync} will be removed in Deno 2.0.
    *
    * @category File System
    */

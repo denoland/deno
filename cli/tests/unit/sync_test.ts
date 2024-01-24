@@ -44,7 +44,7 @@ Deno.test(
       create: true,
     });
     const size = 64;
-    Deno.ftruncateSync(file.rid, size);
+    file.truncateSync(size);
     Deno.fsyncSync(file.rid);
     assertEquals(Deno.statSync(filename).size, size);
     Deno.removeSync(filename);
@@ -61,7 +61,7 @@ Deno.test(
       create: true,
     });
     const size = 64;
-    await Deno.ftruncate(file.rid, size);
+    await file.truncate(size);
     await Deno.fsync(file.rid);
     assertEquals((await Deno.stat(filename)).size, size);
     await Deno.remove(filename);

@@ -12,7 +12,7 @@ Deno.test({
       create: true,
     });
     const size = 64;
-    await Deno.ftruncate(file.rid, size);
+    await file.truncate(size);
 
     await new Promise<void>((resolve, reject) => {
       fsync(file.rid, (err: Error | null) => {
@@ -44,7 +44,7 @@ Deno.test({
       create: true,
     });
     const size = 64;
-    Deno.ftruncateSync(file.rid, size);
+    file.truncateSync(size);
 
     try {
       fsyncSync(file.rid);
