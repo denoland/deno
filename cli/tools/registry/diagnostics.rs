@@ -21,6 +21,7 @@ use crate::diagnostics::DiagnosticSnippetSource;
 use crate::diagnostics::DiagnosticSourcePos;
 use crate::diagnostics::DiagnosticSourceRange;
 use crate::diagnostics::SourceTextParsedSourceStore;
+use crate::util::import_map::ImportMapUnfurlDiagnostic;
 
 #[derive(Clone, Default)]
 pub struct PublishDiagnosticsCollector {
@@ -36,7 +37,7 @@ impl PublishDiagnosticsCollector {
     let diagnostics = self.diagnostics.lock().unwrap().take();
     let sources = SourceTextParsedSourceStore(sources);
     for diagnostic in diagnostics {
-      eprintln!("{}", diagnostic.display(&sources));
+      eprint!("{}", diagnostic.display(&sources));
       if matches!(diagnostic.level(), DiagnosticLevel::Error) {
         errors += 1;
       }
@@ -58,34 +59,42 @@ impl PublishDiagnosticsCollector {
 }
 
 pub enum PublishDiagnostic {
-  FastCheck { diagnostic: FastCheckDiagnostic },
+  FastCheck(FastCheckDiagnostic),
+  ImportMapUnfurl(ImportMapUnfurlDiagnostic),
 }
 
 impl Diagnostic for PublishDiagnostic {
   fn level(&self) -> DiagnosticLevel {
     match self {
-      PublishDiagnostic::FastCheck {
-        diagnostic: FastCheckDiagnostic::UnsupportedJavaScriptEntrypoint { .. },
-      } => DiagnosticLevel::Warning,
-      PublishDiagnostic::FastCheck { .. } => DiagnosticLevel::Error,
+      PublishDiagnostic::FastCheck(
+        FastCheckDiagnostic::UnsupportedJavaScriptEntrypoint { .. },
+      ) => DiagnosticLevel::Warning,
+      PublishDiagnostic::FastCheck(_) => DiagnosticLevel::Error,
+      PublishDiagnostic::ImportMapUnfurl(_) => DiagnosticLevel::Warning,
     }
   }
 
   fn code(&self) -> impl Display + '_ {
     match &self {
-      PublishDiagnostic::FastCheck { diagnostic, .. } => diagnostic.code(),
+      PublishDiagnostic::FastCheck(diagnostic) => diagnostic.code(),
+      PublishDiagnostic::ImportMapUnfurl(diagnostic) => diagnostic.code(),
     }
   }
 
   fn message(&self) -> impl Display + '_ {
     match &self {
-      PublishDiagnostic::FastCheck { diagnostic, .. } => diagnostic.to_string(), // todo
+      PublishDiagnostic::FastCheck(diagnostic) => {
+        Cow::Owned(diagnostic.to_string())
+      }
+      PublishDiagnostic::ImportMapUnfurl(diagnostic) => {
+        Cow::Borrowed(diagnostic.message())
+      }
     }
   }
 
   fn location(&self) -> DiagnosticLocation {
     match &self {
-      PublishDiagnostic::FastCheck { diagnostic } => match diagnostic.range() {
+      PublishDiagnostic::FastCheck(diagnostic) => match diagnostic.range() {
         Some(range) => DiagnosticLocation::PositionInFile {
           specifier: Cow::Borrowed(diagnostic.specifier()),
           source_pos: DiagnosticSourcePos::SourcePos(range.range.start),
@@ -94,12 +103,21 @@ impl Diagnostic for PublishDiagnostic {
           specifier: Cow::Borrowed(diagnostic.specifier()),
         },
       },
+      PublishDiagnostic::ImportMapUnfurl(diagnostic) => match diagnostic {
+        ImportMapUnfurlDiagnostic::UnanalyzableDynamicImport {
+          specifier,
+          range,
+        } => DiagnosticLocation::PositionInFile {
+          specifier: Cow::Borrowed(specifier),
+          source_pos: DiagnosticSourcePos::SourcePos(range.start),
+        },
+      },
     }
   }
 
   fn snippet(&self) -> Option<DiagnosticSnippet<'_>> {
     match &self {
-      PublishDiagnostic::FastCheck { diagnostic } => {
+      PublishDiagnostic::FastCheck(diagnostic) => {
         diagnostic.range().map(|range| DiagnosticSnippet {
           source: DiagnosticSnippetSource::Specifier(Cow::Borrowed(
             diagnostic.specifier(),
@@ -114,14 +132,29 @@ impl Diagnostic for PublishDiagnostic {
           },
         })
       }
+      PublishDiagnostic::ImportMapUnfurl(diagnostic) => match diagnostic {
+        ImportMapUnfurlDiagnostic::UnanalyzableDynamicImport {
+          specifier,
+          range,
+        } => Some(DiagnosticSnippet {
+          source: DiagnosticSnippetSource::Specifier(Cow::Borrowed(specifier)),
+          highlight: DiagnosticSnippetHighlight {
+            style: DiagnosticSnippetHighlightStyle::Warning,
+            range: DiagnosticSourceRange {
+              start: DiagnosticSourcePos::SourcePos(range.start),
+              end: DiagnosticSourcePos::SourcePos(range.end),
+            },
+            description: Some("the unanalyzable dynamic import".into()),
+          },
+        }),
+      },
     }
   }
 
   fn hint(&self) -> Option<impl Display + '_> {
     match &self {
-      PublishDiagnostic::FastCheck { diagnostic } => {
-        Some(diagnostic.fix_hint())
-      }
+      PublishDiagnostic::FastCheck(diagnostic) => Some(diagnostic.fix_hint()),
+      PublishDiagnostic::ImportMapUnfurl(_) => None,
     }
   }
 
@@ -131,7 +164,7 @@ impl Diagnostic for PublishDiagnostic {
 
   fn info(&self) -> Cow<'_, [Cow<'_, str>]> {
     match &self {
-      PublishDiagnostic::FastCheck { diagnostic } => {
+      PublishDiagnostic::FastCheck(diagnostic) => {
         let infos = diagnostic
           .additional_info()
           .iter()
@@ -139,14 +172,24 @@ impl Diagnostic for PublishDiagnostic {
           .collect();
         Cow::Owned(infos)
       }
+      PublishDiagnostic::ImportMapUnfurl(diagnostic) => match diagnostic {
+        ImportMapUnfurlDiagnostic::UnanalyzableDynamicImport { .. } => Cow::Borrowed(&[
+          Cow::Borrowed("after publishing this package, imports from the local import map do not work"),
+          Cow::Borrowed("dynamic imports that can not be analyzed at publish time will not be rewritten automatically"),
+          Cow::Borrowed("make sure the dynamic import is resolvable at runtime without an import map")
+        ]),
+      },
     }
   }
 
   fn docs_url(&self) -> Option<impl Display + '_> {
     match &self {
-      PublishDiagnostic::FastCheck { diagnostic } => {
+      PublishDiagnostic::FastCheck(diagnostic) => {
         Some(format!("https://jsr.io/go/{}", diagnostic.code()))
       }
+      PublishDiagnostic::ImportMapUnfurl(diagnostic) => match diagnostic {
+        ImportMapUnfurlDiagnostic::UnanalyzableDynamicImport { .. } => None,
+      },
     }
   }
 }

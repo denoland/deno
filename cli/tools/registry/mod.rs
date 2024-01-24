@@ -11,9 +11,9 @@ use deno_config::ConfigFile;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
+use deno_core::futures::FutureExt;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
-use deno_core::unsync::JoinHandle;
 use deno_core::unsync::JoinSet;
 use deno_runtime::colors;
 use deno_runtime::deno_fetch::reqwest;
@@ -89,6 +89,7 @@ async fn prepare_publish(
   deno_json: &ConfigFile,
   source_cache: Arc<ParsedSourceCache>,
   import_map: Arc<ImportMap>,
+  diagnostics_collector: &PublishDiagnosticsCollector,
 ) -> Result<Rc<PreparedPublishPackage>, AnyError> {
   let config_path = deno_json.specifier.to_file_path().unwrap();
   let dir_path = config_path.parent().unwrap().to_path_buf();
@@ -134,11 +135,13 @@ async fn prepare_publish(
     .to_files_config()
     .map(|files| files.map(|f| f.exclude).unwrap_or_default())?;
 
+  let diagnostics_collector = diagnostics_collector.clone();
   let tarball = deno_core::unsync::spawn_blocking(move || {
     let unfurler = ImportMapUnfurler::new(&import_map);
     tar::create_gzipped_tarball(
       &dir_path,
       &*source_cache,
+      &diagnostics_collector,
       &unfurler,
       &exclude_patterns,
     )
@@ -666,8 +669,13 @@ async fn prepare_packages_for_publishing(
     )
     .await?;
     let mut prepared_package_by_name = HashMap::with_capacity(1);
-    let package =
-      prepare_publish(&deno_json, source_cache.clone(), import_map).await?;
+    let package = prepare_publish(
+      &deno_json,
+      source_cache.clone(),
+      import_map,
+      diagnostics_collector,
+    )
+    .await?;
     let package_name = format!("@{}/{}", package.scope, package.package);
     let publish_order_graph =
       PublishOrderGraph::new_single(package_name.clone());
@@ -692,29 +700,31 @@ async fn prepare_packages_for_publishing(
   let publish_order_graph =
     publish_order::build_publish_order_graph(&graph, &roots)?;
 
-  let results =
-    workspace_config
-      .members
-      .iter()
-      .cloned()
-      .map(|member| {
-        let import_map = import_map.clone();
-        let source_cache = source_cache.clone();
-        deno_core::unsync::spawn(async move {
-          let package = prepare_publish(&member.config_file, source_cache, import_map)
-            .await
-            .with_context(|| {
-              format!("Failed preparing '{}'.", member.package_name)
-            })?;
-          Ok((member.package_name, package))
-        })
-      })
-      .collect::<Vec<
-        JoinHandle<Result<(String, Rc<PreparedPublishPackage>), AnyError>>,
-      >>();
+  let results = workspace_config
+    .members
+    .iter()
+    .cloned()
+    .map(|member| {
+      let import_map = import_map.clone();
+      async move {
+        let package = prepare_publish(
+          &member.config_file,
+          source_cache.clone(),
+          import_map.clone(),
+          diagnostics_collector,
+        )
+        .await
+        .with_context(|| {
+          format!("Failed preparing '{}'.", member.package_name)
+        })?;
+        Ok::<_, AnyError>((member.package_name, package))
+      }
+      .boxed()
+    })
+    .collect::<Vec<_>>();
   let results = deno_core::futures::future::join_all(results).await;
   for result in results {
-    let (package_name, package) = result??;
+    let (package_name, package) = result?;
     prepared_package_by_name.insert(package_name, package);
   }
   Ok((publish_order_graph, prepared_package_by_name))

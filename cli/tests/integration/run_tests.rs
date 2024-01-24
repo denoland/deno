@@ -1508,8 +1508,13 @@ itest!(no_check {
 });
 
 itest!(no_check_decorators {
-  args: "run --quiet --reload --no-check run/no_check_decorators.ts",
-  output: "run/no_check_decorators.ts.out",
+  args: "run --quiet --reload --no-check run/decorators/experimental/no_check/main.ts",
+  output: "run/decorators/experimental/no_check/main.out",
+});
+
+itest!(decorators_tc39_proposal {
+  args: "run --quiet --reload --check run/decorators/tc39_proposal/main.ts",
+  output: "run/decorators/tc39_proposal/main.out",
 });
 
 itest!(check_remote {
@@ -1526,8 +1531,8 @@ itest!(no_check_remote {
 });
 
 itest!(runtime_decorators {
-  args: "run --quiet --reload --no-check run/runtime_decorators.ts",
-  output: "run/runtime_decorators.ts.out",
+  args: "run --quiet --reload --no-check run/decorators/experimental/runtime/main.ts",
+  output: "run/decorators/experimental/runtime/main.out",
 });
 
 itest!(seed_random {
@@ -1591,8 +1596,8 @@ itest!(ts_type_imports {
 });
 
 itest!(ts_decorators {
-  args: "run --reload --check run/ts_decorators.ts",
-  output: "run/ts_decorators.ts.out",
+  args: "run --reload --check run/decorators/experimental/ts/main.ts",
+  output: "run/decorators/experimental/ts/main.out",
 });
 
 itest!(ts_type_only_import {
