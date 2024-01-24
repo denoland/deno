@@ -34,6 +34,7 @@ use crate::http_util::HttpClient;
 use crate::tools::check::CheckOptions;
 use crate::tools::registry::diagnostics::PublishDiagnosticsCollector;
 use crate::tools::registry::graph::collect_fast_check_type_graph_diagnostics;
+use crate::tools::registry::graph::collect_invalid_external_imports;
 use crate::tools::registry::graph::get_workspace_member_roots;
 use crate::tools::registry::graph::resolve_config_file_roots_from_exports;
 use crate::tools::registry::graph::MemberRoots;
@@ -752,6 +753,9 @@ async fn build_and_check_graph_for_publish(
       .await?,
   );
   graph.valid()?;
+
+  collect_invalid_external_imports(&graph, diagnostics_collector);
+
   log::info!("Checking fast check type graph for errors...");
   let has_fast_check_diagnostics = collect_fast_check_type_graph_diagnostics(
     &graph,

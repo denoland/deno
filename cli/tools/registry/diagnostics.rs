@@ -63,60 +63,72 @@ impl PublishDiagnosticsCollector {
 pub enum PublishDiagnostic {
   FastCheck(FastCheckDiagnostic),
   ImportMapUnfurl(ImportMapUnfurlDiagnostic),
-  InvalidPath { path: PathBuf, message: String },
-  DuplicatePath { path: PathBuf },
-  UnsupportedFileType { specifier: Url, kind: String },
+  InvalidPath {
+    path: PathBuf,
+    message: String,
+  },
+  DuplicatePath {
+    path: PathBuf,
+  },
+  UnsupportedFileType {
+    specifier: Url,
+    kind: String,
+  },
+  InvalidExternalImport {
+    kind: String,
+    imported: Url,
+    referrer: deno_graph::Range,
+  },
 }
 
 impl Diagnostic for PublishDiagnostic {
   fn level(&self) -> DiagnosticLevel {
+    use PublishDiagnostic::*;
     match self {
-      PublishDiagnostic::FastCheck(
-        FastCheckDiagnostic::UnsupportedJavaScriptEntrypoint { .. },
-      ) => DiagnosticLevel::Warning,
-      PublishDiagnostic::FastCheck(_) => DiagnosticLevel::Error,
-      PublishDiagnostic::ImportMapUnfurl(_) => DiagnosticLevel::Warning,
-      PublishDiagnostic::InvalidPath { .. } => DiagnosticLevel::Error,
-      PublishDiagnostic::DuplicatePath { .. } => DiagnosticLevel::Error,
-      PublishDiagnostic::UnsupportedFileType { .. } => DiagnosticLevel::Warning,
+      FastCheck(FastCheckDiagnostic::UnsupportedJavaScriptEntrypoint {
+        ..
+      }) => DiagnosticLevel::Warning,
+      FastCheck(_) => DiagnosticLevel::Error,
+      ImportMapUnfurl(_) => DiagnosticLevel::Warning,
+      InvalidPath { .. } => DiagnosticLevel::Error,
+      DuplicatePath { .. } => DiagnosticLevel::Error,
+      UnsupportedFileType { .. } => DiagnosticLevel::Warning,
+      InvalidExternalImport { .. } => DiagnosticLevel::Error,
     }
   }
 
   fn code(&self) -> impl Display + '_ {
+    use PublishDiagnostic::*;
     match &self {
-      PublishDiagnostic::FastCheck(diagnostic) => diagnostic.code(),
-      PublishDiagnostic::ImportMapUnfurl(diagnostic) => diagnostic.code(),
-      PublishDiagnostic::InvalidPath { .. } => "invalid-path",
-      PublishDiagnostic::DuplicatePath { .. } => {
-        "case-insensitive-duplicate-path"
-      }
-      PublishDiagnostic::UnsupportedFileType { .. } => "unsupported-file-type",
+      FastCheck(diagnostic) => diagnostic.code(),
+      ImportMapUnfurl(diagnostic) => diagnostic.code(),
+      InvalidPath { .. } => "invalid-path",
+      DuplicatePath { .. } => "case-insensitive-duplicate-path",
+      UnsupportedFileType { .. } => "unsupported-file-type",
+      InvalidExternalImport { .. } => "invalid-external-import",
     }
   }
 
   fn message(&self) -> impl Display + '_ {
+    use PublishDiagnostic::*;
     match &self {
-      PublishDiagnostic::FastCheck(diagnostic) => {
-        Cow::Owned(diagnostic.to_string())
-      }
-      PublishDiagnostic::ImportMapUnfurl(diagnostic) => {
-        Cow::Borrowed(diagnostic.message())
-      }
-      PublishDiagnostic::InvalidPath { message, .. } => {
-        Cow::Borrowed(message.as_str())
-      }
-      PublishDiagnostic::DuplicatePath { .. } => {
+      FastCheck(diagnostic) => Cow::Owned(diagnostic.to_string()) ,
+      ImportMapUnfurl(diagnostic) => Cow::Borrowed(diagnostic.message()),
+      InvalidPath { message, .. } => Cow::Borrowed(message.as_str()),
+      DuplicatePath { .. } => {
         Cow::Borrowed("package path is a case insensitive duplicate of another path in the package")
       }
-      PublishDiagnostic::UnsupportedFileType { kind, .. } => {
-        Cow::Owned(format!("unsupported file type '{kind}'",))
+      UnsupportedFileType { kind, .. } => {
+        Cow::Owned(format!("unsupported file type '{kind}'"))
       }
+      InvalidExternalImport { kind, .. } => Cow::Owned(format!("invalid import to a {kind} specifier")),
     }
   }
 
   fn location(&self) -> DiagnosticLocation {
+    use PublishDiagnostic::*;
     match &self {
-      PublishDiagnostic::FastCheck(diagnostic) => match diagnostic.range() {
+      FastCheck(diagnostic) => match diagnostic.range() {
         Some(range) => DiagnosticLocation::ModulePosition {
           specifier: Cow::Borrowed(diagnostic.specifier()),
           source_pos: DiagnosticSourcePos::SourcePos(range.range.start),
@@ -125,7 +137,7 @@ impl Diagnostic for PublishDiagnostic {
           specifier: Cow::Borrowed(diagnostic.specifier()),
         },
       },
-      PublishDiagnostic::ImportMapUnfurl(diagnostic) => match diagnostic {
+      ImportMapUnfurl(diagnostic) => match diagnostic {
         ImportMapUnfurlDiagnostic::UnanalyzableDynamicImport {
           specifier,
           range,
@@ -134,15 +146,22 @@ impl Diagnostic for PublishDiagnostic {
           source_pos: DiagnosticSourcePos::SourcePos(range.start),
         },
       },
-      PublishDiagnostic::InvalidPath { path, .. } => {
+      InvalidPath { path, .. } => {
         DiagnosticLocation::Path { path: path.clone() }
       }
-      PublishDiagnostic::DuplicatePath { path, .. } => {
+      DuplicatePath { path, .. } => {
         DiagnosticLocation::Path { path: path.clone() }
       }
-      PublishDiagnostic::UnsupportedFileType { specifier, .. } => {
-        DiagnosticLocation::Module {
-          specifier: Cow::Borrowed(specifier),
+      UnsupportedFileType { specifier, .. } => DiagnosticLocation::Module {
+        specifier: Cow::Borrowed(specifier),
+      },
+      InvalidExternalImport { referrer, .. } => {
+        DiagnosticLocation::ModulePosition {
+          specifier: Cow::Borrowed(&referrer.specifier),
+          source_pos: DiagnosticSourcePos::LineAndCol {
+            line: referrer.start.line,
+            column: referrer.start.character,
+          },
         }
       }
     }
@@ -184,6 +203,27 @@ impl Diagnostic for PublishDiagnostic {
       PublishDiagnostic::InvalidPath { .. } => None,
       PublishDiagnostic::DuplicatePath { .. } => None,
       PublishDiagnostic::UnsupportedFileType { .. } => None,
+      PublishDiagnostic::InvalidExternalImport { referrer, .. } => {
+        Some(DiagnosticSnippet {
+          source: DiagnosticSnippetSource::Specifier(Cow::Borrowed(
+            &referrer.specifier,
+          )),
+          highlight: DiagnosticSnippetHighlight {
+            style: DiagnosticSnippetHighlightStyle::Error,
+            range: DiagnosticSourceRange {
+              start: DiagnosticSourcePos::LineAndCol {
+                line: referrer.start.line,
+                column: referrer.start.character,
+              },
+              end: DiagnosticSourcePos::LineAndCol {
+                line: referrer.end.line,
+                column: referrer.end.character,
+              },
+            },
+            description: Some("the specifier".into()),
+          },
+        })
+      }
     }
   }
 
@@ -200,6 +240,7 @@ impl Diagnostic for PublishDiagnostic {
       PublishDiagnostic::UnsupportedFileType { .. } => Some(
         "remove the file, or add it to 'publish.exclude' in the config file",
       ),
+      PublishDiagnostic::InvalidExternalImport { .. } => Some("replace this import with one from jsr or npm, or vendor the dependency into your package")
     }
   }
 
@@ -234,6 +275,11 @@ impl Diagnostic for PublishDiagnostic {
         Cow::Borrowed("only files and directories are supported"),
         Cow::Borrowed("the file was ignored and will not be published")
       ]),
+      PublishDiagnostic::InvalidExternalImport { imported, .. } => Cow::Owned(vec![
+        Cow::Owned(format!("the import was resolved to '{}'", imported)),
+        Cow::Borrowed("this specifier is not allowed to be imported on jsr"),
+        Cow::Borrowed("jsr only supports importing `jsr:`, `npm:`, and `data:` specifiers"),
+      ]),
     }
   }
 
@@ -251,7 +297,12 @@ impl Diagnostic for PublishDiagnostic {
       PublishDiagnostic::DuplicatePath { .. } => {
         Some("https://jsr.io/go/case-insensitive-duplicate-path".to_owned())
       }
-      PublishDiagnostic::UnsupportedFileType { .. } => None,
+      PublishDiagnostic::UnsupportedFileType { .. } => {
+        Some("https://jsr.io/go/unsupported-file-type".to_owned())
+      }
+      PublishDiagnostic::InvalidExternalImport { .. } => {
+        Some("https://jsr.io/go/invalid-external-import".to_owned())
+      }
     }
   }
 }

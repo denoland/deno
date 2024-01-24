@@ -7,5 +7,6 @@ warning[unsupported-file-type]: unsupported file type 'symlink'
 
   info: only files and directories are supported
   info: the file was ignored and will not be published
+  docs: https://jsr.io/go/unsupported-file-type
 
 Warning Aborting due to --dry-run
