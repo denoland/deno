@@ -110,8 +110,22 @@ const denoNs = {
   iter: io.iter,
   iterSync: io.iterSync,
   SeekMode: io.SeekMode,
-  read: io.read,
-  readSync: io.readSync,
+  read(rid, buffer) {
+    internals.warnOnDeprecatedApi(
+      "Deno.read()",
+      new Error().stack,
+      "Use `reader.read()` instead.",
+    );
+    return io.read(rid, buffer);
+  },
+  readSync(rid, buffer) {
+    internals.warnOnDeprecatedApi(
+      "Deno.readSync()",
+      new Error().stack,
+      "Use `reader.readSync()` instead.",
+    );
+    return io.readSync(rid, buffer);
+  },
   write: io.write,
   writeSync: io.writeSync,
   File: fs.File,
@@ -123,19 +137,54 @@ const denoNs = {
   stdin: io.stdin,
   stdout: io.stdout,
   stderr: io.stderr,
-  seek: fs.seek,
-  seekSync: fs.seekSync,
+  seek(rid, offset, whence) {
+    internals.warnOnDeprecatedApi(
+      "Deno.seek()",
+      new Error().stack,
+      "Use `file.seek()` instead.",
+    );
+    return fs.seek(rid, offset, whence);
+  },
+  seekSync(rid, offset, whence) {
+    internals.warnOnDeprecatedApi(
+      "Deno.seekSync()",
+      new Error().stack,
+      "Use `file.seekSync()` instead.",
+    );
+    return fs.seekSync(rid, offset, whence);
+  },
   connect: net.connect,
   listen: net.listen,
   loadavg: os.loadavg,
   connectTls: tls.connectTls,
   listenTls: tls.listenTls,
   startTls: tls.startTls,
-  shutdown: net.shutdown,
+  shutdown(rid) {
+    internals.warnOnDeprecatedApi(
+      "Deno.shutdown()",
+      new Error().stack,
+      "Use `Deno.Conn.closeWrite()` instead.",
+    );
+    net.shutdown(rid);
+  },
   fstatSync: fs.fstatSync,
   fstat: fs.fstat,
-  fsyncSync: fs.fsyncSync,
-  fsync: fs.fsync,
+  fsyncSync(rid) {
+    internals.warnOnDeprecatedApi(
+      "Deno.fsyncSync()",
+      new Error().stack,
+      "Use `Deno.FsFile.syncSync()` instead.",
+    );
+    fs.fsyncSync(rid);
+  },
+  async fsync(rid) {
+    internals.warnOnDeprecatedApi(
+      "Deno.fsync()",
+      new Error().stack,
+      "Use `Deno.FsFile.sync()` instead.",
+    );
+    await fs.fsync(rid);
+  },
   fdatasyncSync: fs.fdatasyncSync,
   fdatasync: fs.fdatasync,
   symlink: fs.symlink,
