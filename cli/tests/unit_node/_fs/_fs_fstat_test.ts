@@ -18,7 +18,7 @@ Deno.test({
     })
       .then(
         (stat) => {
-          assertStats(stat, Deno.fstatSync(file.rid));
+          assertStats(stat, file.statSync());
         },
         () => fail(),
       )
@@ -45,7 +45,7 @@ Deno.test({
       );
     })
       .then(
-        (stat) => assertStatsBigInt(stat, Deno.fstatSync(file.rid)),
+        (stat) => assertStatsBigInt(stat, file.statSync()),
         () => fail(),
       )
       .finally(() => {
@@ -61,7 +61,7 @@ Deno.test({
     using file = Deno.openSync(filePath);
 
     try {
-      assertStats(fstatSync(file.rid), Deno.fstatSync(file.rid));
+      assertStats(fstatSync(file.rid), file.statSync());
     } finally {
       Deno.removeSync(filePath);
     }
@@ -75,10 +75,14 @@ Deno.test({
     using file = Deno.openSync(filePath);
 
     try {
+      // HEAD
+      assertStatsBigInt(fstatSync(file.rid, { bigint: true }), file.statSync());
+      //
       assertStatsBigInt(
         fstatSync(file.rid, { bigint: true }),
         Deno.fstatSync(file.rid),
       );
+      //main
     } finally {
       Deno.removeSync(filePath);
     }
