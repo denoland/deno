@@ -576,10 +576,20 @@ async function fdatasync(rid) {
 }
 
 function fsyncSync(rid) {
+  internals.warnOnDeprecatedApi(
+    "Deno.fsyncSync()",
+    new Error().stack,
+    "Use `file.syncSync()` instead.",
+  );
   op_fs_fsync_sync(rid);
 }
 
 async function fsync(rid) {
+  internals.warnOnDeprecatedApi(
+    "Deno.fsync()",
+    new Error().stack,
+    "Use `file.sync()` instead.",
+  );
   await op_fs_fsync_async(rid);
 }
 
@@ -737,6 +747,14 @@ class FsFile {
       this.#writable = writableStreamForRid(this.rid);
     }
     return this.#writable;
+  }
+
+  async sync() {
+    await op_fs_fsync_async(this.rid);
+  }
+
+  syncSync() {
+    op_fs_fsync_sync(this.rid);
   }
 
   [SymbolDispose]() {
