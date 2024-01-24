@@ -40,6 +40,11 @@ async function copy(
   dst,
   options,
 ) {
+  internals.warnOnDeprecatedApi(
+    "Deno.copy()",
+    new Error().stack,
+    "Use `copy()` from `https://deno.land/std/io/copy.ts` instead.",
+  );
   let n = 0;
   const bufSize = options?.bufSize ?? DEFAULT_BUFFER_SIZE;
   const b = new Uint8Array(bufSize);
@@ -65,6 +70,11 @@ async function* iter(
   r,
   options,
 ) {
+  internals.warnOnDeprecatedApi(
+    "Deno.iter()",
+    new Error().stack,
+    "Use `ReadableStream` instead.",
+  );
   const bufSize = options?.bufSize ?? DEFAULT_BUFFER_SIZE;
   const b = new Uint8Array(bufSize);
   while (true) {
@@ -81,6 +91,11 @@ function* iterSync(
   r,
   options,
 ) {
+  internals.warnOnDeprecatedApi(
+    "Deno.iterSync()",
+    new Error().stack,
+    "Use `ReadableStream` instead.",
+  );
   const bufSize = options?.bufSize ?? DEFAULT_BUFFER_SIZE;
   const b = new Uint8Array(bufSize);
   while (true) {

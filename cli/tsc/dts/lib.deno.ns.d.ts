@@ -1830,8 +1830,8 @@ declare namespace Deno {
    * an error occurs. It resolves to the number of bytes copied or rejects with
    * the first error encountered while copying.
    *
-   * @deprecated Use {@linkcode ReadableStream.pipeTo} instead.
-   * {@linkcode Deno.copy} will be removed in v2.0.0.
+   * @deprecated Use {@linkcode https://deno.land/std/io/copy.ts?s=copy | copy}
+   * instead. {@linkcode Deno.copy} will be removed in v2.0.0.
    *
    * @category I/O
    *
@@ -1848,8 +1848,8 @@ declare namespace Deno {
   /**
    * Turns a Reader, `r`, into an async iterator.
    *
-   * @deprecated Use {@linkcode ReadableStream} instead. {@linkcode Deno.iter}
-   * will be removed in v2.0.0.
+   * @deprecated Use {@linkcode ReadableStream} instead.
+   * {@linkcode Deno.iter} will be removed in v2.0.0.
    *
    * @category I/O
    */
@@ -1977,12 +1977,14 @@ declare namespace Deno {
    *
    * ```ts
    * // if "/foo/bar.txt" contains the text "hello world":
-   * const file = await Deno.open("/foo/bar.txt");
+   * using file = await Deno.open("/foo/bar.txt");
    * const buf = new Uint8Array(100);
    * const numberOfBytesRead = await Deno.read(file.rid, buf); // 11 bytes
    * const text = new TextDecoder().decode(buf);  // "hello world"
-   * Deno.close(file.rid);
    * ```
+   *
+   * @deprecated Use `reader.read()` instead. {@linkcode Deno.read} will be
+   * removed in Deno 2.0.
    *
    * @category I/O
    */
@@ -2007,12 +2009,14 @@ declare namespace Deno {
    *
    * ```ts
    * // if "/foo/bar.txt" contains the text "hello world":
-   * const file = Deno.openSync("/foo/bar.txt");
+   * using file = Deno.openSync("/foo/bar.txt");
    * const buf = new Uint8Array(100);
    * const numberOfBytesRead = Deno.readSync(file.rid, buf); // 11 bytes
    * const text = new TextDecoder().decode(buf);  // "hello world"
-   * Deno.close(file.rid);
    * ```
+   *
+   * @deprecated Use `reader.readSync()` instead. {@linkcode Deno.readSync}
+   * will be removed in Deno 2.0.
    *
    * @category I/O
    */
@@ -2031,10 +2035,12 @@ declare namespace Deno {
    * ```ts
    * const encoder = new TextEncoder();
    * const data = encoder.encode("Hello world");
-   * const file = await Deno.open("/foo/bar.txt", { write: true });
+   * using file = await Deno.open("/foo/bar.txt", { write: true });
    * const bytesWritten = await Deno.write(file.rid, data); // 11
-   * Deno.close(file.rid);
    * ```
+   *
+   * @deprecated Use `writer.write()` instead. {@linkcode Deno.write} will be
+   * removed in Deno 2.0.
    *
    * @category I/O
    */
@@ -2054,10 +2060,12 @@ declare namespace Deno {
    * ```ts
    * const encoder = new TextEncoder();
    * const data = encoder.encode("Hello world");
-   * const file = Deno.openSync("/foo/bar.txt", { write: true });
+   * using file = Deno.openSync("/foo/bar.txt", { write: true });
    * const bytesWritten = Deno.writeSync(file.rid, data); // 11
-   * Deno.close(file.rid);
    * ```
+   *
+   * @deprecated Use `writer.writeSync()` instead. {@linkcode Deno.writeSync}
+   * will be removed in Deno 2.0.
    *
    * @category I/O
    */
@@ -2072,7 +2080,7 @@ declare namespace Deno {
    *   "hello.txt",
    *   { read: true, write: true, truncate: true, create: true },
    * );
-   * await Deno.write(file.rid, new TextEncoder().encode("Hello world"));
+   * await file.write(new TextEncoder().encode("Hello world"));
    *
    * // advance cursor 6 bytes
    * const cursorPosition = await Deno.seek(file.rid, 6, Deno.SeekMode.Start);
@@ -2090,7 +2098,7 @@ declare namespace Deno {
    *   "hello.txt",
    *   { read: true, write: true, truncate: true, create: true },
    * );
-   * await Deno.write(file.rid, new TextEncoder().encode("Hello world"));
+   * await file.write(new TextEncoder().encode("Hello world"));
    *
    * // Seek 6 bytes from the start of the file
    * console.log(await Deno.seek(file.rid, 6, Deno.SeekMode.Start)); // "6"
@@ -2099,6 +2107,9 @@ declare namespace Deno {
    * // Seek backwards 2 bytes from the end of the file
    * console.log(await Deno.seek(file.rid, -2, Deno.SeekMode.End)); // "9" (i.e. 11-2)
    * ```
+   *
+   * @deprecated Use `file.seek()` instead. {@linkcode Deno.seek} will be
+   * removed in Deno 2.0.
    *
    * @category I/O
    */
@@ -2145,6 +2156,9 @@ declare namespace Deno {
    * console.log(Deno.seekSync(file.rid, -2, Deno.SeekMode.End)); // "9" (i.e. 11-2)
    * ```
    *
+   * @deprecated Use `file.seekSync()` instead. {@linkcode Deno.seekSync}
+   * will be removed in Deno 2.0.
+   *
    * @category I/O
    */
   export function seekSync(
@@ -2162,14 +2176,14 @@ declare namespace Deno {
    *   "my_file.txt",
    *   { read: true, write: true, create: true },
    * );
-   * await Deno.write(file.rid, new TextEncoder().encode("Hello World"));
-   * await Deno.ftruncate(file.rid, 1);
+   * await file.write(new TextEncoder().encode("Hello World"));
+   * await file.truncate(1);
    * await Deno.fsync(file.rid);
    * console.log(await Deno.readTextFile("my_file.txt")); // H
    * ```
    *
-   * @deprecated Use `file.sync()` instead. {@linkcode Deno.fsync} will be
-   * removed in v2.0.0.
+   * @deprecated Use {@linkcode Deno.FsFile.sync} instead.
+   * {@linkcode Deno.fsync} will be removed in Deno 2.0.
    *
    * @category I/O
    */
@@ -2185,13 +2199,13 @@ declare namespace Deno {
    *   { read: true, write: true, create: true },
    * );
    * Deno.writeSync(file.rid, new TextEncoder().encode("Hello World"));
-   * Deno.ftruncateSync(file.rid, 1);
+   * file.truncateSync(1);
    * Deno.fsyncSync(file.rid);
    * console.log(Deno.readTextFileSync("my_file.txt")); // H
    * ```
    *
-   * @deprecated Use `file.syncSync()` instead. {@linkcode Deno.fsyncSync} will
-   * be removed in v2.0.0.
+   * @deprecated Use {@linkcode Deno.FsFile.syncSync} instead.
+   * {@linkcode Deno.fsyncSync} will be removed in Deno 2.0.
    *
    * @category I/O
    */
@@ -2204,7 +2218,7 @@ declare namespace Deno {
    *   "my_file.txt",
    *   { read: true, write: true, create: true },
    * );
-   * await Deno.write(file.rid, new TextEncoder().encode("Hello World"));
+   * await file.write(new TextEncoder().encode("Hello World"));
    * await Deno.fdatasync(file.rid);
    * console.log(await Deno.readTextFile("my_file.txt")); // Hello World
    * ```
@@ -2256,6 +2270,9 @@ declare namespace Deno {
    * // do work with "file" object
    * ```
    *
+   * @deprecated Use `.close()` method on the resource instead.
+   * {@linkcode Deno.close} will be removed in Deno 2.0.
+   *
    * @category I/O
    */
   export function close(rid: number): void;
@@ -2287,8 +2304,13 @@ declare namespace Deno {
       SeekerSync,
       Closer,
       Disposable {
-    /** The resource ID associated with the file instance. The resource ID
-     * should be considered an opaque reference to resource. */
+    /**
+     * The resource ID associated with the file instance. The resource ID
+     * should be considered an opaque reference to resource.
+     *
+     * @deprecated Use {@linkcode Deno.FsFile} instance methods instead.
+     * {@linkcode Deno.FsFile.rid} will be removed in Deno 2.0.
+     */
     readonly rid: number;
     /** A {@linkcode ReadableStream} instance representing to the byte contents
      * of the file. This makes it easy to interoperate with other web streams
@@ -2318,9 +2340,15 @@ declare namespace Deno {
      * ```
      */
     readonly writable: WritableStream<Uint8Array>;
-    /** The constructor which takes a resource ID. Generally `FsFile` should
+    /**
+     * The constructor which takes a resource ID. Generally `FsFile` should
      * not be constructed directly. Instead use {@linkcode Deno.open} or
-     * {@linkcode Deno.openSync} to create a new instance of `FsFile`. */
+     * {@linkcode Deno.openSync} to create a new instance of `FsFile`.
+     *
+     * @deprecated Use {@linkcode Deno.open} or {@linkcode Deno.openSync}
+     * instead. {@linkcode Deno.FsFile.constructor} will be removed in Deno
+     * 2.0.
+     */
     constructor(rid: number);
     /** Write the contents of the array buffer (`p`) to the file.
      *
@@ -2604,6 +2632,32 @@ declare namespace Deno {
      * @category I/O
      */
     dataSyncSync(): void;
+    /**
+     * Changes the access (`atime`) and modification (`mtime`) times of the
+     * file stream resource. Given times are either in seconds (UNIX epoch
+     * time) or as `Date` objects.
+     *
+     * ```ts
+     * using file = await Deno.open("file.txt", { create: true, write: true });
+     * await file.utime(1556495550, new Date());
+     * ```
+     *
+     * @category File System
+     */
+    utime(atime: number | Date, mtime: number | Date): Promise<void>;
+    /**
+     * Synchronously changes the access (`atime`) and modification (`mtime`)
+     * times of the file stream resource. Given times are either in seconds
+     * (UNIX epoch time) or as `Date` objects.
+     *
+     * ```ts
+     * using file = Deno.openSync("file.txt", { create: true, write: true });
+     * file.utime(1556495550, new Date());
+     * ```
+     *
+     * @category File System
+     */
+    utimeSync(atime: number | Date, mtime: number | Date): void;
     /** Close the file. Closing a file when you are finished with it is
      * important to avoid leaking resources.
      *
@@ -2852,8 +2906,6 @@ declare namespace Deno {
    * const ttyRid = Deno.openSync("/dev/tty6").rid;
    * console.log(Deno.isatty(nonTTYRid)); // false
    * console.log(Deno.isatty(ttyRid)); // true
-   * Deno.close(nonTTYRid);
-   * Deno.close(ttyRid);
    * ```
    *
    * @deprecated Use `Deno.stdin.isTerminal()`, `Deno.stdout.isTerminal()` or
@@ -2867,9 +2919,9 @@ declare namespace Deno {
   /**
    * A variable-sized buffer of bytes with `read()` and `write()` methods.
    *
-   * @deprecated Use the
-   * [Web Streams API]{@link https://developer.mozilla.org/en-US/docs/Web/API/Streams_API}
-   * instead. {@linkcode Deno.Buffer} will be removed in v2.0.0.
+   * @deprecated Use
+   * {@linkcode https://deno.land/std/io/buffer.ts?s=Buffer | Buffer} instead.
+   * {@linkcode Deno.Buffer} will be removed in v2.0.0.
    *
    * @category I/O
    */
@@ -2943,8 +2995,8 @@ declare namespace Deno {
    * Read Reader `r` until EOF (`null`) and resolve to the content as
    * Uint8Array`.
    *
-   * @deprecated Use {@linkcode ReadableStream} and
-   * [`toArrayBuffer()`](https://deno.land/std/streams/to_array_buffer.ts?s=toArrayBuffer)
+   * @deprecated Use
+   * {@linkcode https://deno.land/std/io/read_all.ts?s=readAll | readAll}
    * instead. {@linkcode Deno.readAll} will be removed in v2.0.0.
    *
    * @category I/O
@@ -2955,8 +3007,8 @@ declare namespace Deno {
    * Synchronously reads Reader `r` until EOF (`null`) and returns the content
    * as `Uint8Array`.
    *
-   * @deprecated Use {@linkcode ReadableStream} and
-   * [`toArrayBuffer()`](https://deno.land/std/streams/to_array_buffer.ts?s=toArrayBuffer)
+   * @deprecated Use
+   * {@linkcode https://deno.land/std/io/read_all.ts?s=readAllSync | readAllSync}
    * instead. {@linkcode Deno.readAllSync} will be removed in v2.0.0.
    *
    * @category I/O
@@ -2966,9 +3018,9 @@ declare namespace Deno {
   /**
    * Write all the content of the array buffer (`arr`) to the writer (`w`).
    *
-   * @deprecated Use {@linkcode WritableStream}, {@linkcode ReadableStream.from}
-   * and {@linkcode ReadableStream.pipeTo} instead. {@linkcode Deno.writeAll}
-   * will be removed in v2.0.0.
+   * @deprecated Use
+   * {@linkcode https://deno.land/std/io/write_all.ts?s=writeAll | writeAll}
+   * instead. {@linkcode Deno.writeAll} will be removed in v2.0.0.
    *
    * @category I/O
    */
@@ -2978,9 +3030,9 @@ declare namespace Deno {
    * Synchronously write all the content of the array buffer (`arr`) to the
    * writer (`w`).
    *
-   * @deprecated Use {@linkcode WritableStream}, {@linkcode ReadableStream.from}
-   * and {@linkcode ReadableStream.pipeTo} instead.
-   * {@linkcode Deno.writeAllSync} will be removed in v2.0.0.
+   * @deprecated Use
+   * {@linkcode https://deno.land/std/io/write_all.ts?s=writeAllSync | writeAllSync}
+   * instead. {@linkcode Deno.writeAllSync} will be removed in v2.0.0.
    *
    * @category I/O
    */
@@ -4054,7 +4106,7 @@ declare namespace Deno {
     /**
      * Stops watching the file system and closes the watcher resource.
      *
-     * @deprecated Will be removed in v2.0.0.
+     * @deprecated {@linkcode Deno.FsWatcher.return} will be removed in v2.0.0.
      */
     return?(value?: any): Promise<IteratorResult<FsEvent>>;
     [Symbol.asyncIterator](): AsyncIterableIterator<FsEvent>;
@@ -5299,12 +5351,15 @@ declare namespace Deno {
    *   "my_file.txt",
    *   { read: true, write: true, create: true }
    * );
-   * await Deno.write(file.rid, new TextEncoder().encode("Hello World"));
+   * await file.write(new TextEncoder().encode("Hello World"));
    * await Deno.ftruncate(file.rid, 7);
    * const data = new Uint8Array(32);
    * await Deno.read(file.rid, data);
    * console.log(new TextDecoder().decode(data)); // Hello W
    * ```
+   *
+   * @deprecated Use {@linkcode Deno.FsFile.truncate} instead.
+   * {@linkcode Deno.ftruncate} will be removed in Deno 2.0.
    *
    * @category File System
    */
@@ -5348,6 +5403,9 @@ declare namespace Deno {
    * console.log(new TextDecoder().decode(data)); // Hello W
    * ```
    *
+   * @deprecated Use {@linkcode Deno.FsFile.truncateSync} instead.
+   * {@linkcode Deno.ftruncateSync} will be removed in Deno 2.0.
+   *
    * @category File System
    */
   export function ftruncateSync(rid: number, len?: number): void;
@@ -5361,6 +5419,9 @@ declare namespace Deno {
    * const file = Deno.openSync("file.txt", { create: true, write: true });
    * Deno.futimeSync(file.rid, 1556495550, new Date());
    * ```
+   *
+   * @deprecated Use {@linkcode Deno.FsFile.utimeSync} instead.
+   * {@linkcode Deno.futimeSync} will be removed in Deno 2.0.
    *
    * @category File System
    */
@@ -5379,6 +5440,9 @@ declare namespace Deno {
    * const file = await Deno.open("file.txt", { create: true, write: true });
    * await Deno.futime(file.rid, 1556495550, new Date());
    * ```
+   *
+   * @deprecated Use {@linkcode Deno.FsFile.utime} instead.
+   * {@linkcode Deno.futime} will be removed in Deno 2.0.
    *
    * @category File System
    */
