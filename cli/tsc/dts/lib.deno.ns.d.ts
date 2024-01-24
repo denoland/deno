@@ -2168,8 +2168,8 @@ declare namespace Deno {
    * console.log(await Deno.readTextFile("my_file.txt")); // H
    * ```
    *
-   * @deprecated Use `file.sync()` instead. {@linkcode Deno.fsync} will be
-   * removed in v2.0.0.
+   * @deprecated Use {@linkcode Deno.FsFile.sync} instead.
+   * {@linkcode Deno.fsync} will be removed in Deno 2.0.
    *
    * @category I/O
    */
@@ -2190,8 +2190,8 @@ declare namespace Deno {
    * console.log(Deno.readTextFileSync("my_file.txt")); // H
    * ```
    *
-   * @deprecated Use `file.syncSync()` instead. {@linkcode Deno.fsyncSync} will
-   * be removed in v2.0.0.
+   * @deprecated Use {@linkcode Deno.FsFile.syncSync} instead.
+   * {@linkcode Deno.fsyncSync} will be removed in Deno 2.0.
    *
    * @category I/O
    */
