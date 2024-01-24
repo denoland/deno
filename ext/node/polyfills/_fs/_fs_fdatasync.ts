@@ -10,9 +10,9 @@ export function fdatasync(
   fd: number,
   callback: CallbackWithError,
 ) {
-  new FsFile(fd).dataSync().then(() => callback(null), callback);
+  new FsFile(fd).syncData().then(() => callback(null), callback);
 }
 
 export function fdatasyncSync(fd: number) {
-  new FsFile(fd).dataSyncSync();
+  new FsFile(fd).syncDataSync();
 }

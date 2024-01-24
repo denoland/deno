@@ -15,12 +15,16 @@ const {
   op_fs_cwd,
   op_fs_fdatasync_async,
   op_fs_fdatasync_sync,
+  op_fs_fdatasync_async_unstable,
+  op_fs_fdatasync_sync_unstable,
   op_fs_flock_async,
   op_fs_flock_sync,
   op_fs_fstat_async,
   op_fs_fstat_sync,
   op_fs_fsync_async,
   op_fs_fsync_sync,
+  op_fs_fsync_async_unstable,
+  op_fs_fsync_sync_unstable,
   op_fs_ftruncate_async,
   op_fs_ftruncate_sync,
   op_fs_funlock_async,
@@ -561,7 +565,7 @@ function fdatasyncSync(rid) {
   internals.warnOnDeprecatedApi(
     "Deno.fdatasyncSync()",
     new Error().stack,
-    "Use `file.dataSyncSync()` instead.",
+    "Use `Deno.FsFile.syncDataSync()` instead.",
   );
   op_fs_fdatasync_sync(rid);
 }
@@ -570,7 +574,7 @@ async function fdatasync(rid) {
   internals.warnOnDeprecatedApi(
     "Deno.fdatasync()",
     new Error().stack,
-    "Use `await file.dataSync()` instead.",
+    "Use `Deno.FsFile.syncData()` instead.",
   );
   await op_fs_fdatasync_async(rid);
 }
@@ -718,12 +722,12 @@ class FsFile {
     return fstatSync(this.#rid);
   }
 
-  async dataSync() {
-    await op_fs_fdatasync_async(this.#rid);
+  async syncData() {
+    await op_fs_fdatasync_async_unstable(this.#rid);
   }
 
-  dataSyncSync() {
-    op_fs_fdatasync_sync(this.#rid);
+  syncDataSync() {
+    op_fs_fdatasync_sync_unstable(this.#rid);
   }
 
   close() {
@@ -745,11 +749,11 @@ class FsFile {
   }
 
   async sync() {
-    await op_fs_fsync_async(this.#rid);
+    await op_fs_fsync_async_unstable(this.#rid);
   }
 
   syncSync() {
-    op_fs_fsync_sync(this.#rid);
+    op_fs_fsync_sync_unstable(this.#rid);
   }
 
   async utime(atime, mtime) {
