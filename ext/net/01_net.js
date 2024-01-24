@@ -106,6 +106,11 @@ class Conn {
   }
 
   get rid() {
+    internals.warnOnDeprecatedApi(
+      "Deno.Conn.rid",
+      new Error().stack,
+      "Use `Deno.Conn` instance methods instead.",
+    );
     return this.#rid;
   }
 
@@ -118,14 +123,14 @@ class Conn {
   }
 
   write(p) {
-    return write(this.rid, p);
+    return write(this.#rid, p);
   }
 
   async read(buffer) {
     if (buffer.length === 0) {
       return 0;
     }
-    const promise = core.read(this.rid, buffer);
+    const promise = core.read(this.#rid, buffer);
     if (this.#unref) core.unrefOpPromise(promise);
     SetPrototypeAdd(this.#pendingReadPromises, promise);
     let nread;
@@ -140,16 +145,16 @@ class Conn {
   }
 
   close() {
-    core.close(this.rid);
+    core.close(this.#rid);
   }
 
   closeWrite() {
-    return shutdown(this.rid);
+    return shutdown(this.#rid);
   }
 
   get readable() {
     if (this.#readable === undefined) {
-      this.#readable = readableStreamForRidUnrefable(this.rid);
+      this.#readable = readableStreamForRidUnrefable(this.#rid);
       if (this.#unref) {
         readableStreamForRidUnrefableUnref(this.#readable);
       }
@@ -159,7 +164,7 @@ class Conn {
 
   get writable() {
     if (this.#writable === undefined) {
-      this.#writable = writableStreamForRid(this.rid);
+      this.#writable = writableStreamForRid(this.#rid);
     }
     return this.#writable;
   }
@@ -193,16 +198,48 @@ class Conn {
 }
 
 class TcpConn extends Conn {
+  #rid = 0;
+
+  constructor(rid, remoteAddr, localAddr) {
+    super(rid, remoteAddr, localAddr);
+    this.#rid = rid;
+  }
+
+  get rid() {
+    internals.warnOnDeprecatedApi(
+      "Deno.TcpConn.rid",
+      new Error().stack,
+      "Use `Deno.TcpConn` instance methods instead.",
+    );
+    return this.#rid;
+  }
+
   setNoDelay(noDelay = true) {
-    return op_set_nodelay(this.rid, noDelay);
+    return op_set_nodelay(this.#rid, noDelay);
   }
 
   setKeepAlive(keepAlive = true) {
-    return op_set_keepalive(this.rid, keepAlive);
+    return op_set_keepalive(this.#rid, keepAlive);
   }
 }
 
-class UnixConn extends Conn {}
+class UnixConn extends Conn {
+  #rid = 0;
+
+  constructor(rid, remoteAddr, localAddr) {
+    super(rid, remoteAddr, localAddr);
+    this.#rid = rid;
+  }
+
+  get rid() {
+    internals.warnOnDeprecatedApi(
+      "Deno.UnixConn.rid",
+      new Error().stack,
+      "Use `Deno.UnixConn` instance methods instead.",
+    );
+    return this.#rid;
+  }
+}
 
 class Listener {
   #rid = 0;
