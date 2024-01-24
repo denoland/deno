@@ -230,7 +230,7 @@ class Stdin {
   }
 
   isTerminal() {
-    return op_is_terminal(this.rid);
+    return op_is_terminal(this.#rid);
   }
 }
 
@@ -250,8 +250,8 @@ class Stdout {
     return this.#rid;
   }
 
-  write(p) {
-    return core.write(this.#rid, p);
+  async write(p) {
+    return await core.write(this.#rid, p);
   }
 
   writeSync(p) {
@@ -270,7 +270,7 @@ class Stdout {
   }
 
   isTerminal() {
-    return op_is_terminal(this.rid);
+    return op_is_terminal(this.#rid);
   }
 }
 
@@ -290,8 +290,8 @@ class Stderr {
     return this.#rid;
   }
 
-  write(p) {
-    return core.write(this.#rid, p);
+  async write(p) {
+    return await core.write(this.#rid, p);
   }
 
   writeSync(p) {
@@ -310,7 +310,7 @@ class Stderr {
   }
 
   isTerminal() {
-    return op_is_terminal(this.rid);
+    return op_is_terminal(this.#rid);
   }
 }
 

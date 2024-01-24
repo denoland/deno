@@ -728,8 +728,8 @@ class FsFile {
     return this.#rid;
   }
 
-  write(p) {
-    return write(this.#rid, p);
+  async write(p) {
+    return await write(this.#rid, p);
   }
 
   writeSync(p) {
@@ -765,15 +765,16 @@ class FsFile {
   }
 
   statSync() {
-    return fstatSync(this.#rid);
+    op_fs_fstat_sync(this.#rid, statBuf);
+    return statStruct(statBuf);
   }
 
   async dataSync() {
-    await op_fs_fdatasync_async(this.rid);
+    await op_fs_fdatasync_async(this.#rid);
   }
 
   dataSyncSync() {
-    op_fs_fdatasync_sync(this.rid);
+    op_fs_fdatasync_sync(this.#rid);
   }
 
   close() {
@@ -795,11 +796,11 @@ class FsFile {
   }
 
   async sync() {
-    await op_fs_fsync_async(this.rid);
+    await op_fs_fsync_async(this.#rid);
   }
 
   syncSync() {
-    op_fs_fsync_sync(this.rid);
+    op_fs_fsync_sync(this.#rid);
   }
 
   [SymbolDispose]() {
