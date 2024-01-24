@@ -75,25 +75,9 @@ async function connectTls({
 }
 
 class TlsListener extends Listener {
-  #rid = 0;
-
-  constructor(rid, addr) {
-    super(rid, addr);
-    this.#rid = rid;
-  }
-
-  get rid() {
-    internals.warnOnDeprecatedApi(
-      "Deno.TlsListener.rid",
-      new Error().stack,
-      "Use `Deno.TlsListener` instance methods instead.",
-    );
-    return this.#rid;
-  }
-
   async accept() {
     const { 0: rid, 1: localAddr, 2: remoteAddr } = await op_net_accept_tls(
-      this.#rid,
+      this.rid,
     );
     localAddr.transport = "tcp";
     remoteAddr.transport = "tcp";
