@@ -889,7 +889,19 @@ impl CliOptions {
         .members
         .iter()
         .map(|member| {
-          let import_map_value = member.config_file.to_import_map_value();
+          let mut import_map_value = member.config_file.to_import_map_value();
+
+          let expanded_import_map_value = ::import_map::ext::expand_imports(
+            ::import_map::ext::ImportMapConfig {
+              base_url: member.config_file.specifier.clone(),
+              import_map_value: import_map_value.clone(),
+            },
+          );
+
+          import_map_value
+            .as_object_mut()
+            .unwrap()
+            .insert("imports".to_string(), expanded_import_map_value);
           ::import_map::ext::ImportMapConfig {
             base_url: member.config_file.specifier.clone(),
             import_map_value,
@@ -906,12 +918,24 @@ impl CliOptions {
           "Workspace config generated this import map {}",
           serde_json::to_string_pretty(&import_map).unwrap()
         );
-        return import_map::import_map_from_value(
+        let maybe_import_map_result = import_map::import_map_from_value(
           // TODO(bartlomieju): maybe should be stored on the workspace config?
           &self.maybe_config_file.as_ref().unwrap().specifier,
           import_map,
         )
         .map(Some);
+
+        return match maybe_import_map_result {
+          Ok(maybe_import_map) => {
+            if let Some(mut import_map) = maybe_import_map {
+              import_map.ext_expand_imports();
+              Ok(Some(import_map))
+            } else {
+              Ok(None)
+            }
+          }
+          Err(err) => Err(err),
+        };
       }
     }
 
@@ -919,7 +943,8 @@ impl CliOptions {
       Some(specifier) => specifier,
       None => return Ok(None),
     };
-    resolve_import_map_from_specifier(
+
+    let maybe_import_map_result = resolve_import_map_from_specifier(
       &import_map_specifier,
       self.maybe_config_file().as_ref(),
       file_fetcher,
@@ -928,7 +953,22 @@ impl CliOptions {
     .with_context(|| {
       format!("Unable to load '{import_map_specifier}' import map")
     })
-    .map(Some)
+    .map(Some);
+
+    match maybe_import_map_result {
+      Ok(maybe_import_map) => {
+        if let Some(mut import_map) = maybe_import_map {
+          let url = import_map.base_url().as_str();
+          if url.ends_with("deno.json") || url.ends_with("deno.jsonc") {
+            import_map.ext_expand_imports();
+          }
+          Ok(Some(import_map))
+        } else {
+          Ok(None)
+        }
+      }
+      Err(err) => Err(err),
+    }
   }
 
   pub fn node_ipc_fd(&self) -> Option<i64> {

@@ -5113,3 +5113,64 @@ itest!(warn_on_deprecated_api_with_env_var {
   http_server: true,
   exit_code: 0,
 });
+
+#[test]
+fn deno_json_imports_expand() {
+  let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let dir = test_context.temp_dir();
+  dir.write(
+    "deno.json",
+    r#"{
+    "imports": {
+      "basic": "npm:@denotest/esm-basic"
+    }
+}"#,
+  );
+
+  dir.write(
+    "main.ts",
+    r#"
+// import map should resolve
+import { setValue, getValue } from "basic";
+// this entry should have been added automatically
+import { hello } from "basic/other.mjs";
+
+setValue(5);
+console.log(getValue());
+console.log(hello());
+"#,
+  );
+  let output = test_context.new_command().args("run main.ts").run();
+  output.assert_matches_text("[WILDCARD]5\nhello, world!\n");
+}
+
+#[test]
+fn deno_json_imports_expand_doesnt_overwrite_existing_entries() {
+  let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let dir = test_context.temp_dir();
+  dir.write(
+    "deno.json",
+    r#"{
+    "imports": {
+      "basic": "npm:@denotest/esm-basic",
+      "basic/": "npm:/@denotest/sub-folders/folder_index_js/"
+    }
+}"#,
+  );
+
+  dir.write(
+    "main.ts",
+    r#"
+// import map should resolve
+import { setValue, getValue } from "basic";
+// this entry should map to explicitly specified "basic/" mapping
+import { add } from "basic/index.js";
+
+setValue(5);
+console.log(getValue());
+console.log(add(3, 4));
+"#,
+  );
+  let output = test_context.new_command().args("run main.ts").run();
+  output.assert_matches_text("[WILDCARD]5\n7\n");
+}
