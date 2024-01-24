@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { core } from "ext:core/mod.js";
+import { core, internals } from "ext:core/mod.js";
 const {
   op_net_listen_udp,
   op_net_listen_unixpacket,
@@ -78,8 +78,22 @@ const denoNs = {
   lstat: fs.lstat,
   truncateSync: fs.truncateSync,
   truncate: fs.truncate,
-  ftruncateSync: fs.ftruncateSync,
-  ftruncate: fs.ftruncate,
+  ftruncateSync(rid, len) {
+    internals.warnOnDeprecatedApi(
+      "Deno.ftruncateSync()",
+      new Error().stack,
+      "Use `Deno.FsFile.truncateSync()` instead.",
+    );
+    return fs.ftruncateSync(rid, len);
+  },
+  ftruncate(rid, len) {
+    internals.warnOnDeprecatedApi(
+      "Deno.ftruncate()",
+      new Error().stack,
+      "Use `Deno.FsFile.truncate()` instead.",
+    );
+    return fs.ftruncate(rid, len);
+  },
   futime: fs.futime,
   futimeSync: fs.futimeSync,
   errors: errors.errors,
