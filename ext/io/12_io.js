@@ -165,8 +165,12 @@ function concatBuffers(buffers) {
   return contents;
 }
 
+const STDIN_RID = 0;
+const STDOUT_RID = 1;
+const STDERR_RID = 2;
+
 class Stdin {
-  #rid = 0;
+  #rid = STDIN_RID;
   #readable;
 
   constructor() {
@@ -211,7 +215,7 @@ class Stdin {
 }
 
 class Stdout {
-  #rid = 1;
+  #rid = STDOUT_RID;
   #writable;
 
   constructor() {
@@ -251,7 +255,7 @@ class Stdout {
 }
 
 class Stderr {
-  #rid = 2;
+  #rid = STDERR_RID;
   #writable;
 
   constructor() {
@@ -304,8 +308,11 @@ export {
   readSync,
   SeekMode,
   stderr,
+  STDERR_RID,
   stdin,
+  STDIN_RID,
   stdout,
+  STDOUT_RID,
   write,
   writeSync,
 };
