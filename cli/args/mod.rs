@@ -1099,9 +1099,8 @@ impl CliOptions {
           *ts_config_for_emit
             .ts_config
             .0
-            .entry("experimentalDecorators")
-            .and_modify(|f| *f = serde_json::Value::Bool(true))
-            .or_insert(serde_json::Value::Bool(true));
+            .get_mut("experimentalDecorators")
+            .unwrap() = serde_json::Value::Bool(true);
         }
         Ok(ts_config_for_emit)
       }
