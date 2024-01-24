@@ -19,7 +19,7 @@ Deno.test(
     const atime = 1000;
     const mtime = 50000;
     await Deno.futime(file.rid, atime, mtime);
-    await file.flushData();
+    await file.dataSync();
 
     const fileInfo = Deno.statSync(filename);
     assertEquals(fileInfo.atime, new Date(atime * 1000));
@@ -40,7 +40,7 @@ Deno.test(
     const atime = 1000;
     const mtime = 50000;
     await file.utime(atime, mtime);
-    await file.flushData();
+    await file.dataSync();
 
     const fileInfo = Deno.statSync(filename);
     assertEquals(fileInfo.atime, new Date(atime * 1000));
@@ -61,7 +61,7 @@ Deno.test(
     const atime = 1000;
     const mtime = 50000;
     Deno.futimeSync(file.rid, atime, mtime);
-    file.flushDataSync();
+    file.dataSyncSync();
 
     const fileInfo = Deno.statSync(filename);
     assertEquals(fileInfo.atime, new Date(atime * 1000));
@@ -82,7 +82,7 @@ Deno.test(
     const atime = 1000;
     const mtime = 50000;
     file.utimeSync(atime, mtime);
-    file.flushDataSync();
+    file.dataSyncSync();
 
     const fileInfo = Deno.statSync(filename);
     assertEquals(fileInfo.atime, new Date(atime * 1000));

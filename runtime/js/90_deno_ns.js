@@ -229,7 +229,7 @@ const denoNs = {
     internals.warnOnDeprecatedApi(
       "Deno.fsyncSync()",
       new Error().stack,
-      "Use `Deno.FsFile.flushAllSync()` instead.",
+      "Use `Deno.FsFile.syncSync()` instead.",
     );
     fs.fsyncSync(rid);
   },
@@ -237,26 +237,12 @@ const denoNs = {
     internals.warnOnDeprecatedApi(
       "Deno.fsync()",
       new Error().stack,
-      "Use `Deno.FsFile.flushAll()` instead.",
+      "Use `Deno.FsFile.sync()` instead.",
     );
     await fs.fsync(rid);
   },
-  fdatasyncSync(rid) {
-    internals.warnOnDeprecatedApi(
-      "Deno.fdatasyncSync()",
-      new Error().stack,
-      "Use `Deno.FsFile.flushDataSync()` instead.",
-    );
-    return fs.fdatasyncSync(rid);
-  },
-  fdatasync(rid) {
-    internals.warnOnDeprecatedApi(
-      "Deno.fdatasync()",
-      new Error().stack,
-      "Use `Deno.FsFile.flushData()` instead.",
-    );
-    return fs.fdatasync(rid);
-  },
+  fdatasyncSync: fs.fdatasyncSync,
+  fdatasync: fs.fdatasync,
   symlink: fs.symlink,
   symlinkSync: fs.symlinkSync,
   link: fs.link,

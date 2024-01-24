@@ -2182,7 +2182,7 @@ declare namespace Deno {
    * console.log(await Deno.readTextFile("my_file.txt")); // H
    * ```
    *
-   * @deprecated Use {@linkcode Deno.FsFile.flushAll} instead.
+   * @deprecated Use {@linkcode Deno.FsFile.sync} instead.
    * {@linkcode Deno.fsync} will be removed in Deno 2.0.
    *
    * @category I/O
@@ -2204,7 +2204,7 @@ declare namespace Deno {
    * console.log(Deno.readTextFileSync("my_file.txt")); // H
    * ```
    *
-   * @deprecated Use {@linkcode Deno.FsFile.flushAllSync} instead.
+   * @deprecated Use {@linkcode Deno.FsFile.syncSync} instead.
    * {@linkcode Deno.fsyncSync} will be removed in Deno 2.0.
    *
    * @category I/O
@@ -2223,7 +2223,7 @@ declare namespace Deno {
    * console.log(await Deno.readTextFile("my_file.txt")); // Hello World
    * ```
    *
-   * @deprecated Use {@linkcode Deno.FsFile.flushData} instead.
+   * @deprecated Use {@linkcode Deno.FsFile.dataSync} instead.
    * {@linkcode Deno.fdatasync} will be removed in v2.0.0.
    *
    * @category I/O
@@ -2244,7 +2244,7 @@ declare namespace Deno {
    * console.log(Deno.readTextFileSync("my_file.txt")); // Hello World
    * ```
    *
-   * @deprecated Use {@linkcode Deno.FsFile.flushDataSync} instead.
+   * @deprecated Use {@linkcode Deno.FsFile.dataSyncSync} instead.
    * {@linkcode Deno.fdatasyncSync} will be removed in v2.0.0.
    *
    * @category I/O
@@ -2566,7 +2566,7 @@ declare namespace Deno {
     statSync(): FileInfo;
     /**
      * Flushes any pending data and metadata operations of the given file
-     * stream to disk  (equivalent to `fsync` syscall).
+     * stream to disk.
      *
      * ```ts
      * const file = await Deno.open(
@@ -2575,16 +2575,16 @@ declare namespace Deno {
      * );
      * await file.write(new TextEncoder().encode("Hello World"));
      * await file.truncate(1);
-     * await file.flushAll();
+     * await file.sync();
      * console.log(await Deno.readTextFile("my_file.txt")); // H
      * ```
      *
      * @category I/O
      */
-    flushAll(): Promise<void>;
+    sync(): Promise<void>;
     /**
      * Synchronously flushes any pending data and metadata operations of the given
-     * file stream to disk (equivalent to `fsync` syscall).
+     * file stream to disk.
      *
      * ```ts
      * const file = Deno.openSync(
@@ -2593,33 +2593,31 @@ declare namespace Deno {
      * );
      * file.writeSync(new TextEncoder().encode("Hello World"));
      * file.truncateSync(1);
-     * file.flushAllSync();
+     * file.syncSync();
      * console.log(Deno.readTextFileSync("my_file.txt")); // H
      * ```
      *
      * @category I/O
      */
-    flushAllSync(): void;
+    syncSync(): void;
     /**
-     * Flushes any pending data operations of the given file stream to disk
-     * (equivalent to `fdatasync` syscall).
-     *
+     * Flushes any pending data operations of the given file stream to disk.
      *  ```ts
      * using file = await Deno.open(
      *   "my_file.txt",
      *   { read: true, write: true, create: true },
      * );
      * await file.write(new TextEncoder().encode("Hello World"));
-     * await file.flushDataSync();
+     * await file.dataSync();
      * console.log(await Deno.readTextFile("my_file.txt")); // Hello World
      * ```
      *
      * @category I/O
      */
-    flushData(): Promise<void>;
+    dataSync(): Promise<void>;
     /**
      * Synchronously flushes any pending data operations of the given file stream
-     * to disk (equivalent to `fdatasync` syscall).
+     * to disk.
      *
      *  ```ts
      * using file = Deno.openSync(
@@ -2627,13 +2625,13 @@ declare namespace Deno {
      *   { read: true, write: true, create: true },
      * );
      * file.writeSync(new TextEncoder().encode("Hello World"));
-     * file.flushDataSync();
+     * file.dataSyncSync();
      * console.log(Deno.readTextFileSync("my_file.txt")); // Hello World
      * ```
      *
      * @category I/O
      */
-    flushDataSync(): void;
+    dataSyncSync(): void;
     /**
      * Changes the access (`atime`) and modification (`mtime`) times of the
      * file stream resource. Given times are either in seconds (UNIX epoch
