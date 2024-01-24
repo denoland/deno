@@ -2264,8 +2264,8 @@ declare namespace Deno {
    * // do work with "file" object
    * ```
    *
-   * @deprecated Use `closer.close()` instead. {@linkcode Deno.close} will be
-   * removed in Deno 2.0.
+   * @deprecated Use `.close()` method on the resource instead.
+   * {@linkcode Deno.close} will be removed in Deno 2.0.
    *
    * @category I/O
    */
