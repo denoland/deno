@@ -39,6 +39,7 @@ export function futimes(
   atime = getValidTime(atime, "atime");
   mtime = getValidTime(mtime, "mtime");
 
+  // TODO: Treat `fd` as real file descriptor.
   new FsFile(fd).utime(atime, mtime).then(() => callback(null), callback);
 }
 
@@ -50,5 +51,6 @@ export function futimesSync(
   atime = getValidTime(atime, "atime");
   mtime = getValidTime(mtime, "mtime");
 
+  // TODO: Treat `fd` as real file descriptor.
   new FsFile(fd).utimeSync(atime, mtime);
 }
