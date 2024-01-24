@@ -2039,6 +2039,9 @@ declare namespace Deno {
    * const bytesWritten = await Deno.write(file.rid, data); // 11
    * ```
    *
+   * @deprecated Use `writer.write()` instead. {@linkcode Deno.write} will be
+   * removed in Deno 2.0.
+   *
    * @category I/O
    */
   export function write(rid: number, data: Uint8Array): Promise<number>;
@@ -2061,6 +2064,9 @@ declare namespace Deno {
    * const bytesWritten = Deno.writeSync(file.rid, data); // 11
    * ```
    *
+   * @deprecated Use `writer.writeSync()` instead. {@linkcode Deno.writeSync}
+   * will be removed in Deno 2.0.
+   *
    * @category I/O
    */
   export function writeSync(rid: number, data: Uint8Array): number;
@@ -2074,7 +2080,7 @@ declare namespace Deno {
    *   "hello.txt",
    *   { read: true, write: true, truncate: true, create: true },
    * );
-   * await Deno.write(file.rid, new TextEncoder().encode("Hello world"));
+   * await file.write(new TextEncoder().encode("Hello world"));
    *
    * // advance cursor 6 bytes
    * const cursorPosition = await Deno.seek(file.rid, 6, Deno.SeekMode.Start);
@@ -2092,7 +2098,7 @@ declare namespace Deno {
    *   "hello.txt",
    *   { read: true, write: true, truncate: true, create: true },
    * );
-   * await Deno.write(file.rid, new TextEncoder().encode("Hello world"));
+   * await file.write(new TextEncoder().encode("Hello world"));
    *
    * // Seek 6 bytes from the start of the file
    * console.log(await Deno.seek(file.rid, 6, Deno.SeekMode.Start)); // "6"
@@ -2170,7 +2176,7 @@ declare namespace Deno {
    *   "my_file.txt",
    *   { read: true, write: true, create: true },
    * );
-   * await Deno.write(file.rid, new TextEncoder().encode("Hello World"));
+   * await file.write(new TextEncoder().encode("Hello World"));
    * await file.truncate(1);
    * await Deno.fsync(file.rid);
    * console.log(await Deno.readTextFile("my_file.txt")); // H
@@ -2212,7 +2218,7 @@ declare namespace Deno {
    *   "my_file.txt",
    *   { read: true, write: true, create: true },
    * );
-   * await Deno.write(file.rid, new TextEncoder().encode("Hello World"));
+   * await file.write(new TextEncoder().encode("Hello World"));
    * await Deno.fdatasync(file.rid);
    * console.log(await Deno.readTextFile("my_file.txt")); // Hello World
    * ```
@@ -5304,7 +5310,7 @@ declare namespace Deno {
    *   "my_file.txt",
    *   { read: true, write: true, create: true }
    * );
-   * await Deno.write(file.rid, new TextEncoder().encode("Hello World"));
+   * await file.write(new TextEncoder().encode("Hello World"));
    * await Deno.ftruncate(file.rid, 7);
    * const data = new Uint8Array(32);
    * await Deno.read(file.rid, data);

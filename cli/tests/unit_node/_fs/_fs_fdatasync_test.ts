@@ -13,7 +13,7 @@ Deno.test({
       create: true,
     });
     const data = new Uint8Array(64);
-    await Deno.write(file.rid, data);
+    await file.write(data);
 
     await new Promise<void>((resolve, reject) => {
       fdatasync(file.rid, (err: Error | null) => {
