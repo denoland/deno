@@ -141,7 +141,6 @@ pub fn deno_registry_api_url() -> &'static Url {
 pub fn ts_config_to_emit_options(
   config: deno_config::TsConfig,
 ) -> deno_ast::EmitOptions {
-  // eprintln!("ts_config_to_emit_options options {:#?}", config);
   let options: deno_config::EmitConfigOptions =
     serde_json::from_value(config.0).unwrap();
   let imports_not_used_as_values =
@@ -158,10 +157,6 @@ pub fn ts_config_to_emit_options(
       "precompile" => (false, false, false, true),
       _ => (false, false, false, false),
     };
-  // eprintln!(
-  //   "ts_config_to_emit_options {}",
-  //   options.experimental_decorators
-  // );
   deno_ast::EmitOptions {
     use_ts_decorators: options.experimental_decorators,
     use_decorators_proposal: !options.experimental_decorators,
