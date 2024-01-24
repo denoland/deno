@@ -60,7 +60,7 @@ class FsWatcher {
   }
 
   close() {
-    core.close(this.rid);
+    core.close(this.#rid);
   }
 
   [SymbolAsyncIterator]() {
