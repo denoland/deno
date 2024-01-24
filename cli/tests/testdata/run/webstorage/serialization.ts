@@ -1,4 +1,4 @@
-globalThis.sessionStorage.setItem("hello", "deno");
+window.sessionStorage.setItem("hello", "deno");
 
-console.log(globalThis.localStorage);
-console.log(globalThis.sessionStorage);
+console.log(window.localStorage);
+console.log(window.sessionStorage);
