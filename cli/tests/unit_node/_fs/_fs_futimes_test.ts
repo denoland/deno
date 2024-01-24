@@ -12,18 +12,18 @@ Deno.test({
   name:
     "ASYNC: change the file system timestamps of the object referenced by path",
   async fn() {
-    const file: string = Deno.makeTempFileSync();
-    const { rid } = await Deno.open(file, { create: true, write: true });
+    const filePath = Deno.makeTempFileSync();
+    using file = await Deno.open(filePath, { create: true, write: true });
 
     await new Promise<void>((resolve, reject) => {
-      futimes(rid, randomDate, randomDate, (err: Error | null) => {
+      futimes(file.rid, randomDate, randomDate, (err: Error | null) => {
         if (err !== null) reject();
         else resolve();
       });
     })
       .then(
         () => {
-          const fileInfo: Deno.FileInfo = Deno.lstatSync(file);
+          const fileInfo: Deno.FileInfo = Deno.lstatSync(filePath);
           assertEquals(fileInfo.mtime, randomDate);
           assertEquals(fileInfo.atime, randomDate);
         },
@@ -32,8 +32,7 @@ Deno.test({
         },
       )
       .finally(() => {
-        Deno.removeSync(file);
-        Deno.close(rid);
+        Deno.removeSync(filePath);
       });
   },
 });
@@ -68,19 +67,18 @@ Deno.test({
   name:
     "SYNC: change the file system timestamps of the object referenced by path",
   fn() {
-    const file: string = Deno.makeTempFileSync();
-    const { rid } = Deno.openSync(file, { create: true, write: true });
+    const filePath = Deno.makeTempFileSync();
+    using file = Deno.openSync(filePath, { create: true, write: true });
 
     try {
-      futimesSync(rid, randomDate, randomDate);
+      futimesSync(file.rid, randomDate, randomDate);
 
-      const fileInfo: Deno.FileInfo = Deno.lstatSync(file);
+      const fileInfo: Deno.FileInfo = Deno.lstatSync(filePath);
 
       assertEquals(fileInfo.mtime, randomDate);
       assertEquals(fileInfo.atime, randomDate);
     } finally {
-      Deno.removeSync(file);
-      Deno.close(rid);
+      Deno.removeSync(filePath);
     }
   },
 });

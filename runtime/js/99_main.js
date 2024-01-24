@@ -525,7 +525,14 @@ const finalDenoNs = {
     internals.warnOnDeprecatedApi("Deno.resources()", new Error().stack);
     return core.resources();
   },
-  close: core.close,
+  close(rid) {
+    internals.warnOnDeprecatedApi(
+      "Deno.close()",
+      new Error().stack,
+      "Use `closer.close()` instead.",
+    );
+    core.close(rid);
+  },
   ...denoNs,
   // Deno.test and Deno.bench are noops here, but kept for compatibility; so
   // that they don't cause errors when used outside of `deno test`/`deno bench`
