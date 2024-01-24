@@ -106,7 +106,6 @@ pub fn op_node_x509_check_email(
 
   if let Some(subject_alt) = subject_alt {
     for name in &subject_alt.general_names {
-      dbg!(name);
       if let extensions::GeneralName::RFC822Name(n) = name {
         if *n == email {
           return Ok(true);

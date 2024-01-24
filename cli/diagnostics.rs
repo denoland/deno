@@ -49,6 +49,12 @@ pub struct DiagnosticSourceRange {
 pub enum DiagnosticSourcePos {
   SourcePos(SourcePos),
   ByteIndex(usize),
+  LineAndCol {
+    // 0-indexed line number
+    line: usize,
+    // 0-indexed column number
+    column: usize,
+  },
 }
 
 impl DiagnosticSourcePos {
@@ -56,6 +62,9 @@ impl DiagnosticSourcePos {
     match self {
       DiagnosticSourcePos::SourcePos(pos) => *pos,
       DiagnosticSourcePos::ByteIndex(index) => source.range().start() + *index,
+      DiagnosticSourcePos::LineAndCol { line, column } => {
+        source.line_start(*line) + *column
+      }
     }
   }
 }

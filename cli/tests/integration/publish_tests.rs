@@ -3,6 +3,7 @@
 use deno_core::serde_json::json;
 use test_util::assert_contains;
 use test_util::assert_not_contains;
+use test_util::env_vars_for_npm_tests;
 use test_util::TestContextBuilder;
 
 static TEST_REGISTRY_URL: &str = "http://127.0.0.1:4250";
@@ -47,6 +48,15 @@ itest!(symlink {
   output: "publish/symlink.out",
   cwd: Some("publish/symlink"),
   exit_code: 0,
+});
+
+itest!(invalid_import {
+  args: "publish --token 'sadfasdf' --dry-run",
+  output: "publish/invalid_import.out",
+  cwd: Some("publish/invalid_import"),
+  envs: env_vars_for_npm_tests(),
+  exit_code: 1,
+  http_server: true,
 });
 
 itest!(javascript_missing_decl_file {
