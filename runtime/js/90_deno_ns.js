@@ -96,8 +96,22 @@ const denoNs = {
   iter: io.iter,
   iterSync: io.iterSync,
   SeekMode: io.SeekMode,
-  read: io.read,
-  readSync: io.readSync,
+  read(rid, buffer) {
+    internals.warnOnDeprecatedApi(
+      "Deno.read()",
+      new Error().stack,
+      "Use `reader.read()` instead.",
+    );
+    return io.read(rid, buffer);
+  },
+  readSync(rid, buffer) {
+    internals.warnOnDeprecatedApi(
+      "Deno.readSync()",
+      new Error().stack,
+      "Use `reader.readSync()` instead.",
+    );
+    return io.readSync(rid, buffer);
+  },
   write: io.write,
   writeSync: io.writeSync,
   File: fs.File,

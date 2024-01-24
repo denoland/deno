@@ -1984,6 +1984,9 @@ declare namespace Deno {
    * Deno.close(file.rid);
    * ```
    *
+   * @deprecated Use `reader.read()` instead. {@linkcode Deno.read} will be
+   * removed in Deno 2.0.
+   *
    * @category I/O
    */
   export function read(rid: number, buffer: Uint8Array): Promise<number | null>;
@@ -2013,6 +2016,9 @@ declare namespace Deno {
    * const text = new TextDecoder().decode(buf);  // "hello world"
    * Deno.close(file.rid);
    * ```
+   *
+   * @deprecated Use `reader.readSync()` instead. {@linkcode Deno.readSync}
+   * will be removed in Deno 2.0.
    *
    * @category I/O
    */
