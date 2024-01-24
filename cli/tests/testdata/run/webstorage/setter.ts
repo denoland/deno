@@ -1,1 +1,1 @@
-globalThis.localStorage.setItem("hello", "deno");
+window.localStorage.setItem("hello", "deno");

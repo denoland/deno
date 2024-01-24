@@ -2729,8 +2729,13 @@ declare namespace Deno {
    * @category I/O
    */
   export const stdin: Reader & ReaderSync & Closer & {
-    /** The resource ID assigned to `stdin`. This can be used with the discreet
-     * I/O functions in the `Deno` namespace. */
+    /**
+     * The resource ID assigned to `stdin`. This can be used with the discreet
+     * I/O functions in the `Deno` namespace.
+     *
+     * @deprecated Use {@linkcode Deno.stdin} instance methods instead.
+     * {@linkcode Deno.stdin.rid} will be removed in Deno 2.0.
+     */
     readonly rid: number;
     /** A readable stream interface to `stdin`. */
     readonly readable: ReadableStream<Uint8Array>;
@@ -2771,8 +2776,13 @@ declare namespace Deno {
    * @category I/O
    */
   export const stdout: Writer & WriterSync & Closer & {
-    /** The resource ID assigned to `stdout`. This can be used with the discreet
-     * I/O functions in the `Deno` namespace. */
+    /**
+     * The resource ID assigned to `stdout`. This can be used with the discreet
+     * I/O functions in the `Deno` namespace.
+     *
+     * @deprecated Use {@linkcode Deno.stdout} instance methods instead.
+     * {@linkcode Deno.stdout.rid} will be removed in Deno 2.0.
+     */
     readonly rid: number;
     /** A writable stream interface to `stdout`. */
     readonly writable: WritableStream<Uint8Array>;
@@ -2799,8 +2809,13 @@ declare namespace Deno {
    * @category I/O
    */
   export const stderr: Writer & WriterSync & Closer & {
-    /** The resource ID assigned to `stderr`. This can be used with the discreet
-     * I/O functions in the `Deno` namespace. */
+    /**
+     * The resource ID assigned to `stderr`. This can be used with the discreet
+     * I/O functions in the `Deno` namespace.
+     *
+     * @deprecated Use {@linkcode Deno.stderr} instance methods instead.
+     * {@linkcode Deno.stderr.rid} will be removed in Deno 2.0.
+     */
     readonly rid: number;
     /** A writable stream interface to `stderr`. */
     readonly writable: WritableStream<Uint8Array>;
