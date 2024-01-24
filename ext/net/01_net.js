@@ -40,6 +40,7 @@ const {
   SetPrototypeForEach,
   SymbolAsyncIterator,
   Symbol,
+  SymbolFor,
   TypeError,
   TypedArrayPrototypeSubarray,
   Uint8Array,
@@ -90,6 +91,7 @@ async function resolveDns(query, recordType, options) {
 }
 
 class Conn {
+  [SymbolFor("Deno.internal.rid")] = 0;
   #rid = 0;
   #remoteAddr = null;
   #localAddr = null;
@@ -100,6 +102,7 @@ class Conn {
   #writable;
 
   constructor(rid, remoteAddr, localAddr) {
+    this[SymbolFor("Deno.internal.rid")] = rid;
     this.#rid = rid;
     this.#remoteAddr = remoteAddr;
     this.#localAddr = localAddr;
@@ -198,10 +201,12 @@ class Conn {
 }
 
 class TcpConn extends Conn {
+  [SymbolFor("Deno.internal.rid")] = 0;
   #rid = 0;
 
   constructor(rid, remoteAddr, localAddr) {
     super(rid, remoteAddr, localAddr);
+    this[SymbolFor("Deno.internal.rid")] = rid;
     this.#rid = rid;
   }
 
@@ -224,10 +229,12 @@ class TcpConn extends Conn {
 }
 
 class UnixConn extends Conn {
+  [SymbolFor("Deno.internal.rid")] = 0;
   #rid = 0;
 
   constructor(rid, remoteAddr, localAddr) {
     super(rid, remoteAddr, localAddr);
+    this[SymbolFor("Deno.internal.rid")] = rid;
     this.#rid = rid;
   }
 
@@ -242,12 +249,14 @@ class UnixConn extends Conn {
 }
 
 class Listener {
+  [SymbolFor("Deno.internal.rid")] = 0;
   #rid = 0;
   #addr = null;
   #unref = false;
   #promise = null;
 
   constructor(rid, addr) {
+    this[SymbolFor("Deno.internal.rid")] = rid;
     this.#rid = rid;
     this.#addr = addr;
   }
