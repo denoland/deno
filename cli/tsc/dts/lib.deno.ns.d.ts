@@ -2078,7 +2078,7 @@ declare namespace Deno {
    *   "hello.txt",
    *   { read: true, write: true, truncate: true, create: true },
    * );
-   * await file.write(new TextEncoder().encode("Hello world");
+   * await file.write(new TextEncoder().encode("Hello world"));
    *
    * // advance cursor 6 bytes
    * const cursorPosition = await Deno.seek(file.rid, 6, Deno.SeekMode.Start);
@@ -2096,7 +2096,7 @@ declare namespace Deno {
    *   "hello.txt",
    *   { read: true, write: true, truncate: true, create: true },
    * );
-   * await file.write(new TextEncoder().encode("Hello world");
+   * await file.write(new TextEncoder().encode("Hello world"));
    *
    * // Seek 6 bytes from the start of the file
    * console.log(await Deno.seek(file.rid, 6, Deno.SeekMode.Start)); // "6"
