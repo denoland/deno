@@ -99,7 +99,7 @@ let globalThis_;
 let deprecatedApiWarningDisabled = false;
 const ALREADY_WARNED_DEPRECATED = new SafeSet();
 
-function warnOnDeprecatedApi(apiName, stack, suggestions) {
+function warnOnDeprecatedApi(apiName, stack, ...suggestions) {
   if (deprecatedApiWarningDisabled) {
     return;
   }
