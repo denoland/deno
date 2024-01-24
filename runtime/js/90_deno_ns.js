@@ -123,7 +123,7 @@ const denoNs = {
     internals.warnOnDeprecatedApi(
       "Deno.fstat()",
       new Error().stack,
-      "Use `file.stat()` instead.",
+      "Use `Deno.FsFile.stat()` instead.",
     );
     return fs.fstatSync(rid);
   },
@@ -131,7 +131,7 @@ const denoNs = {
     internals.warnOnDeprecatedApi(
       "Deno.fstatSync()",
       new Error().stack,
-      "Use `file.statSync()` instead.",
+      "Use `Deno.FsFile.statSync()` instead.",
     );
     return fs.fsyncSync(rid);
   },
