@@ -71,7 +71,7 @@ async function* iter(
   internals.warnOnDeprecatedApi(
     "Deno.iter()",
     new Error().stack,
-    "Use `ReadableStreamDefaultReader` instead.",
+    "Use `ReadableStream` instead.",
   );
   const bufSize = options?.bufSize ?? DEFAULT_BUFFER_SIZE;
   const b = new Uint8Array(bufSize);
@@ -92,7 +92,7 @@ function* iterSync(
   internals.warnOnDeprecatedApi(
     "Deno.iterSync()",
     new Error().stack,
-    "Use `ReadableStreamDefaultReader` instead.",
+    "Use `ReadableStream` instead.",
   );
   const bufSize = options?.bufSize ?? DEFAULT_BUFFER_SIZE;
   const b = new Uint8Array(bufSize);

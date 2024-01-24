@@ -1818,7 +1818,7 @@ declare namespace Deno {
   /**
    * Turns a Reader, `r`, into an async iterator.
    *
-   * @deprecated Use {@linkcode ReadableStreamDefaultReader} instead.
+   * @deprecated Use {@linkcode ReadableStream} instead.
    * {@linkcode Deno.iter} will be removed in v2.0.0.
    *
    * @category I/O
@@ -1831,7 +1831,7 @@ declare namespace Deno {
   /**
    * Turns a ReaderSync, `r`, into an iterator.
    *
-   * @deprecated Use {@linkcode ReadableStreamDefaultReader} instead.
+   * @deprecated Use {@linkcode ReadableStream} instead.
    * {@linkcode Deno.iterSync} will be removed in v2.0.0.
    *
    * @category I/O
