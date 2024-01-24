@@ -2101,7 +2101,7 @@ declare namespace Deno {
    * ```
    *
    * @deprecated Use `seeker.seek()` instead. {@linkcode Deno.seek} will be
-   * removed in Deno v2.
+   * removed in Deno 2.0.
    *
    * @category I/O
    */
@@ -2149,7 +2149,7 @@ declare namespace Deno {
    * ```
    *
    * @deprecated Use `seeker.seekSync()` instead. {@linkcode Deno.seekSync}
-   * will be removed in v2.0.0.
+   * will be removed in Deno 2.0.
    *
    * @category I/O
    */
