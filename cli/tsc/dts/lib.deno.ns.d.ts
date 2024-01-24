@@ -2182,9 +2182,6 @@ declare namespace Deno {
    * console.log(await Deno.readTextFile("my_file.txt")); // H
    * ```
    *
-   * @deprecated Use {@linkcode Deno.FsFile.sync} instead.
-   * {@linkcode Deno.fsync} will be removed in Deno 2.0.
-   *
    * @category I/O
    */
   export function fsync(rid: number): Promise<void>;
@@ -2204,9 +2201,6 @@ declare namespace Deno {
    * console.log(Deno.readTextFileSync("my_file.txt")); // H
    * ```
    *
-   * @deprecated Use {@linkcode Deno.FsFile.syncSync} instead.
-   * {@linkcode Deno.fsyncSync} will be removed in Deno 2.0.
-   *
    * @category I/O
    */
   export function fsyncSync(rid: number): void;
@@ -2222,9 +2216,6 @@ declare namespace Deno {
    * await Deno.fdatasync(file.rid);
    * console.log(await Deno.readTextFile("my_file.txt")); // Hello World
    * ```
-   *
-   * @deprecated Use {@linkcode Deno.FsFile.dataSync} instead.
-   * {@linkcode Deno.fdatasync} will be removed in v2.0.0.
    *
    * @category I/O
    */
@@ -2243,9 +2234,6 @@ declare namespace Deno {
    * Deno.fdatasyncSync(file.rid);
    * console.log(Deno.readTextFileSync("my_file.txt")); // Hello World
    * ```
-   *
-   * @deprecated Use {@linkcode Deno.FsFile.dataSyncSync} instead.
-   * {@linkcode Deno.fdatasyncSync} will be removed in v2.0.0.
    *
    * @category I/O
    */
@@ -2564,7 +2552,8 @@ declare namespace Deno {
      * ```
      */
     statSync(): FileInfo;
-    /**
+    /** **UNSTABLE**: New API, yet to be vetted.
+     *
      * Flushes any pending data and metadata operations of the given file
      * stream to disk.
      *
@@ -2582,7 +2571,8 @@ declare namespace Deno {
      * @category I/O
      */
     sync(): Promise<void>;
-    /**
+    /** **UNSTABLE**: New API, yet to be vetted.
+     *
      * Synchronously flushes any pending data and metadata operations of the given
      * file stream to disk.
      *
@@ -2600,7 +2590,8 @@ declare namespace Deno {
      * @category I/O
      */
     syncSync(): void;
-    /**
+    /** **UNSTABLE**: New API, yet to be vetted.
+     *
      * Flushes any pending data operations of the given file stream to disk.
      *  ```ts
      * using file = await Deno.open(
@@ -2608,14 +2599,15 @@ declare namespace Deno {
      *   { read: true, write: true, create: true },
      * );
      * await file.write(new TextEncoder().encode("Hello World"));
-     * await file.dataSync();
+     * await file.syncData();
      * console.log(await Deno.readTextFile("my_file.txt")); // Hello World
      * ```
      *
      * @category I/O
      */
-    dataSync(): Promise<void>;
-    /**
+    syncData(): Promise<void>;
+    /** **UNSTABLE**: New API, yet to be vetted.
+     *
      * Synchronously flushes any pending data operations of the given file stream
      * to disk.
      *
@@ -2625,13 +2617,13 @@ declare namespace Deno {
      *   { read: true, write: true, create: true },
      * );
      * file.writeSync(new TextEncoder().encode("Hello World"));
-     * file.dataSyncSync();
+     * file.syncDataSync();
      * console.log(Deno.readTextFileSync("my_file.txt")); // Hello World
      * ```
      *
      * @category I/O
      */
-    dataSyncSync(): void;
+    syncDataSync(): void;
     /**
      * Changes the access (`atime`) and modification (`mtime`) times of the
      * file stream resource. Given times are either in seconds (UNIX epoch
