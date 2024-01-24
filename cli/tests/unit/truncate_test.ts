@@ -11,11 +11,11 @@ Deno.test(
       write: true,
     });
 
-    Deno.ftruncateSync(file.rid, 20);
+    file.truncateSync(20);
     assertEquals(Deno.readFileSync(filename).byteLength, 20);
-    Deno.ftruncateSync(file.rid, 5);
+    file.truncateSync(5);
     assertEquals(Deno.readFileSync(filename).byteLength, 5);
-    Deno.ftruncateSync(file.rid, -5);
+    file.truncateSync(-5);
     assertEquals(Deno.readFileSync(filename).byteLength, 0);
 
     Deno.close(file.rid);
@@ -33,11 +33,11 @@ Deno.test(
       write: true,
     });
 
-    await Deno.ftruncate(file.rid, 20);
+    await file.truncate(20);
     assertEquals((await Deno.readFile(filename)).byteLength, 20);
-    await Deno.ftruncate(file.rid, 5);
+    await file.truncate(5);
     assertEquals((await Deno.readFile(filename)).byteLength, 5);
-    await Deno.ftruncate(file.rid, -5);
+    await file.truncate(-5);
     assertEquals((await Deno.readFile(filename)).byteLength, 0);
 
     Deno.close(file.rid);
