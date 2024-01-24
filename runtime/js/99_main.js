@@ -144,34 +144,30 @@ function warnOnDeprecatedApi(apiName, stack, ...suggestions) {
   ALREADY_WARNED_DEPRECATED.add(apiName + stack);
   console.error(
     `%cWarning: %cUse of deprecated "${apiName}" API. This API will be removed in Deno 2.0.`,
-    "color: yellow; font-weight: bold;",
     "color: yellow;",
+    "font-weight: bold;",
   );
 
   console.error();
   if (stackLines.length > 0) {
-    console.error("%cStack trace:", "color: yellow;");
+    console.error("Stack trace:");
     for (let i = 0; i < stackLines.length; i++) {
-      console.error(
-        `%c  ${StringPrototypeTrim(stackLines[i])}`,
-        "color: yellow;",
-      );
+      console.error(`  ${StringPrototypeTrim(stackLines[i])}`);
     }
     console.error();
   }
-  console.error();
 
   for (let i = 0; i < suggestions.length; i++) {
     const suggestion = suggestions[i];
     console.error(
       `%chint: ${suggestion}`,
-      "color: yellow;",
+      "font-weight: bold;",
     );
   }
   if (isFromRemoteDependency) {
     console.error(
       `%chint: It appears this API is used by a remote dependency. Try upgrading to the latest version of that dependency.`,
-      "color: yellow;",
+      "font-weight: bold;",
     );
   }
   console.error();
