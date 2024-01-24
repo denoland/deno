@@ -4,6 +4,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 import type { CallbackWithError } from "ext:deno_node/_fs/_fs_common.ts";
+import { FsFile } from "ext:deno_fs/30_fs.js";
 
 function getValidTime(
   time: number | string | Date,
@@ -38,7 +39,7 @@ export function futimes(
   atime = getValidTime(atime, "atime");
   mtime = getValidTime(mtime, "mtime");
 
-  Deno.futime(fd, atime, mtime).then(() => callback(null), callback);
+  new FsFile(fd).utime(atime, mtime).then(() => callback(null), callback);
 }
 
 export function futimesSync(
@@ -49,5 +50,5 @@ export function futimesSync(
   atime = getValidTime(atime, "atime");
   mtime = getValidTime(mtime, "mtime");
 
-  Deno.futimeSync(fd, atime, mtime);
+  new FsFile(fd).utimeSync(atime, mtime);
 }

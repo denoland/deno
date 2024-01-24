@@ -757,6 +757,14 @@ class FsFile {
     op_fs_fsync_sync(this.rid);
   }
 
+  async utime(atime, mtime) {
+    await futime(this.#rid, atime, mtime);
+  }
+
+  utimeSync(atime, mtime) {
+    futimeSync(this.#rid, atime, mtime);
+  }
+
   [SymbolDispose]() {
     core.tryClose(this.rid);
   }
