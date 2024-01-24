@@ -37,7 +37,14 @@ export function createWritableStdioStream(writer, name) {
       }
     },
   });
-  stream.fd = writer?.rid ?? -1;
+  let fd = -1;
+
+  if (writer instanceof io.Stdout) {
+    fd = io.STDOUT_RID;
+  } else if (writer instanceof io.Stderr) {
+    fd = io.STDERR_RID;
+  }
+  stream.fd = fd;
   stream.destroySoon = stream.destroy;
   stream._isStdio = true;
   stream.once("close", () => writer?.close());
@@ -117,7 +124,7 @@ export function setReadStream(s) {
 // https://github.com/nodejs/node/blob/v18.12.1/lib/internal/bootstrap/switches/is_main_thread.js#L189
 /** Create process.stdin */
 export const initStdin = () => {
-  const fd = io.stdin?.rid;
+  const fd = io.stdin ? io.STDIN_RID : undefined;
   let stdin;
   const stdinType = _guessStdinType(fd);
 
@@ -172,7 +179,7 @@ export const initStdin = () => {
   }
 
   stdin.on("close", () => io.stdin?.close());
-  stdin.fd = io.stdin?.rid ?? -1;
+  stdin.fd = io.stdin ? io.STDIN_RID : -1;
   Object.defineProperty(stdin, "isTTY", {
     enumerable: true,
     configurable: true,
