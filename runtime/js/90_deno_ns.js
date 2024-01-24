@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { core } from "ext:core/mod.js";
+import { core, internals } from "ext:core/mod.js";
 const {
   op_net_listen_udp,
   op_net_listen_unixpacket,
@@ -31,8 +31,22 @@ import * as kv from "ext:deno_kv/01_db.ts";
 import * as cron from "ext:deno_cron/01_cron.ts";
 import * as webgpuSurface from "ext:deno_webgpu/02_surface.js";
 
+class FsFile extends fs.FsFile {
+  constructor(rid) {
+    super(rid);
+    internals.warnOnDeprecatedApi(
+      "Deno.Fs",
+      new Error().stack,
+      "Use `Deno.open()` or `Deno.openSync()` instead.",
+    );
+  }
+}
+
 const denoNs = {
-  metrics: core.metrics,
+  metrics: () => {
+    internals.warnOnDeprecatedApi("Deno.metrics()", new Error().stack);
+    return core.metrics();
+  },
   Process: process.Process,
   run: process.run,
   isatty: tty.isatty,
@@ -96,12 +110,26 @@ const denoNs = {
   iter: io.iter,
   iterSync: io.iterSync,
   SeekMode: io.SeekMode,
-  read: io.read,
-  readSync: io.readSync,
+  read(rid, buffer) {
+    internals.warnOnDeprecatedApi(
+      "Deno.read()",
+      new Error().stack,
+      "Use `reader.read()` instead.",
+    );
+    return io.read(rid, buffer);
+  },
+  readSync(rid, buffer) {
+    internals.warnOnDeprecatedApi(
+      "Deno.readSync()",
+      new Error().stack,
+      "Use `reader.readSync()` instead.",
+    );
+    return io.readSync(rid, buffer);
+  },
   write: io.write,
   writeSync: io.writeSync,
   File: fs.File,
-  FsFile: fs.FsFile,
+  FsFile,
   open: fs.open,
   openSync: fs.openSync,
   create: fs.create,
@@ -109,19 +137,54 @@ const denoNs = {
   stdin: io.stdin,
   stdout: io.stdout,
   stderr: io.stderr,
-  seek: fs.seek,
-  seekSync: fs.seekSync,
+  seek(rid, offset, whence) {
+    internals.warnOnDeprecatedApi(
+      "Deno.seek()",
+      new Error().stack,
+      "Use `file.seek()` instead.",
+    );
+    return fs.seek(rid, offset, whence);
+  },
+  seekSync(rid, offset, whence) {
+    internals.warnOnDeprecatedApi(
+      "Deno.seekSync()",
+      new Error().stack,
+      "Use `file.seekSync()` instead.",
+    );
+    return fs.seekSync(rid, offset, whence);
+  },
   connect: net.connect,
   listen: net.listen,
   loadavg: os.loadavg,
   connectTls: tls.connectTls,
   listenTls: tls.listenTls,
   startTls: tls.startTls,
-  shutdown: net.shutdown,
+  shutdown(rid) {
+    internals.warnOnDeprecatedApi(
+      "Deno.shutdown()",
+      new Error().stack,
+      "Use `Deno.Conn.closeWrite()` instead.",
+    );
+    net.shutdown(rid);
+  },
   fstatSync: fs.fstatSync,
   fstat: fs.fstat,
-  fsyncSync: fs.fsyncSync,
-  fsync: fs.fsync,
+  fsyncSync(rid) {
+    internals.warnOnDeprecatedApi(
+      "Deno.fsyncSync()",
+      new Error().stack,
+      "Use `Deno.FsFile.syncSync()` instead.",
+    );
+    fs.fsyncSync(rid);
+  },
+  async fsync(rid) {
+    internals.warnOnDeprecatedApi(
+      "Deno.fsync()",
+      new Error().stack,
+      "Use `Deno.FsFile.sync()` instead.",
+    );
+    await fs.fsync(rid);
+  },
   fdatasyncSync: fs.fdatasyncSync,
   fdatasync: fs.fdatasync,
   symlink: fs.symlink,

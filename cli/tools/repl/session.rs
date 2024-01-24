@@ -184,6 +184,7 @@ pub struct ReplSession {
   /// This is only optional because it's temporarily taken when evaluating.
   test_event_receiver: Option<tokio::sync::mpsc::UnboundedReceiver<TestEvent>>,
   jsx: ReplJsxState,
+  experimental_decorators: bool,
 }
 
 impl ReplSession {
@@ -240,6 +241,11 @@ impl ReplSession {
       deno_core::resolve_path("./$deno$repl.ts", cli_options.initial_cwd())
         .unwrap();
 
+    let ts_config_for_emit = cli_options
+      .resolve_ts_config_for_emit(deno_config::TsConfigType::Emit)?;
+    let emit_options =
+      crate::args::ts_config_to_emit_options(ts_config_for_emit.ts_config);
+    let experimental_decorators = emit_options.use_ts_decorators;
     let mut repl_session = ReplSession {
       npm_resolver,
       resolver,
@@ -260,6 +266,7 @@ impl ReplSession {
         frag_factory: "React.Fragment".to_string(),
         import_source: None,
       },
+      experimental_decorators,
     };
 
     // inject prelude
@@ -596,10 +603,8 @@ impl ReplSession {
 
     let transpiled_src = parsed_source
       .transpile(&deno_ast::EmitOptions {
-        // TODO(bartlomieju): change it to default to `false` and only enable
-        // if tsconfig.json enabled experimental decorators
-        use_ts_decorators: true,
-        use_decorators_proposal: false,
+        use_ts_decorators: self.experimental_decorators,
+        use_decorators_proposal: !self.experimental_decorators,
         emit_metadata: false,
         source_map: false,
         inline_source_map: false,
