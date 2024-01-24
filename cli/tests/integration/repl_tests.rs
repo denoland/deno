@@ -358,15 +358,26 @@ fn typescript_declarations() {
 
 #[test]
 fn typescript_decorators() {
-  util::with_pty(&["repl"], |mut console| {
-    console
-      .write_line("function dec(target) { target.prototype.test = () => 2; }");
-    console.expect("undefined");
-    console.write_line("@dec class Test {}");
-    console.expect("[class Test]");
-    console.write_line("new Test().test()");
-    console.expect("2");
-  });
+  let context = TestContextBuilder::default().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "./deno.json",
+    r#"{ "compilerOptions": { "experimentalDecorators": true } }"#,
+  );
+  let config_path = temp_dir.target_path().join("./deno.json");
+  util::with_pty(
+    &["repl", "--config", config_path.to_string_lossy().as_ref()],
+    |mut console| {
+      console.write_line(
+        "function dec(target) { target.prototype.test = () => 2; }",
+      );
+      console.expect("undefined");
+      console.write_line("@dec class Test {}");
+      console.expect("[class Test]");
+      console.write_line("new Test().test()");
+      console.expect("2");
+    },
+  );
 }
 
 #[test]

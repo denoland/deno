@@ -238,7 +238,6 @@ Deno.test({
 
   assertThrows(
     () => {
-      // @ts-expect-error: runtime test for null handle
       new Deno.UnsafeWindowSurface("cocoa", null, null);
     },
   );

@@ -253,6 +253,11 @@ class Listener {
   }
 
   get rid() {
+    internals.warnOnDeprecatedApi(
+      "Deno.Listener.rid",
+      new Error().stack,
+      "Use `Deno.Listener` instance methods instead.",
+    );
     return this.#rid;
   }
 
@@ -264,10 +269,10 @@ class Listener {
     let promise;
     switch (this.addr.transport) {
       case "tcp":
-        promise = op_net_accept_tcp(this.rid);
+        promise = op_net_accept_tcp(this.#rid);
         break;
       case "unix":
-        promise = op_net_accept_unix(this.rid);
+        promise = op_net_accept_unix(this.#rid);
         break;
       default:
         throw new Error(`Unsupported transport: ${this.addr.transport}`);
@@ -313,7 +318,7 @@ class Listener {
   }
 
   close() {
-    core.close(this.rid);
+    core.close(this.#rid);
   }
 
   [SymbolDispose]() {

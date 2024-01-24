@@ -35,7 +35,12 @@ declare namespace Deno {
     /** Return the address of the `Listener`. */
     readonly addr: Addr;
 
-    /** Return the rid of the `Listener`. */
+    /**
+     * Return the rid of the `Listener`.
+     *
+     * @deprecated Use {@linkcode Deno.Listener} instance methods instead.
+     * {@linkcode Deno.Listener.rid} will be removed in Deno 2.0.
+     */
     readonly rid: number;
 
     [Symbol.asyncIterator](): AsyncIterableIterator<T>;
