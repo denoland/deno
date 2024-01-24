@@ -25,101 +25,95 @@ itest!(missing_deno_json {
   args: "publish --token 'sadfasdf'",
   output: "publish/missing_deno_json.out",
   cwd: Some("publish/missing_deno_json"),
-  copy_temp_dir: Some("publish/missing_deno_json"),
   exit_code: 1,
-  temp_cwd: true,
 });
 
 itest!(invalid_fast_check {
   args: "publish --token 'sadfasdf'",
   output: "publish/invalid_fast_check.out",
   cwd: Some("publish/invalid_fast_check"),
-  copy_temp_dir: Some("publish/invalid_fast_check"),
   exit_code: 1,
-  temp_cwd: true,
+});
+
+itest!(invalid_path {
+  args: "publish --token 'sadfasdf'",
+  output: "publish/invalid_path.out",
+  cwd: Some("publish/invalid_path"),
+  exit_code: 1,
+});
+
+itest!(symlink {
+  args: "publish --token 'sadfasdf' --dry-run",
+  output: "publish/symlink.out",
+  cwd: Some("publish/symlink"),
+  exit_code: 0,
 });
 
 itest!(javascript_missing_decl_file {
   args: "publish --token 'sadfasdf'",
   output: "publish/javascript_missing_decl_file.out",
   cwd: Some("publish/javascript_missing_decl_file"),
-  copy_temp_dir: Some("publish/javascript_missing_decl_file"),
   envs: env_vars_for_registry(),
   exit_code: 0,
   http_server: true,
-  temp_cwd: true,
 });
 
 itest!(unanalyzable_dynamic_import {
   args: "publish --token 'sadfasdf'",
   output: "publish/unanalyzable_dynamic_import.out",
   cwd: Some("publish/unanalyzable_dynamic_import"),
-  copy_temp_dir: Some("publish/unanalyzable_dynamic_import"),
   envs: env_vars_for_registry(),
   exit_code: 0,
   http_server: true,
-  temp_cwd: true,
 });
 
 itest!(javascript_decl_file {
   args: "publish --token 'sadfasdf'",
   output: "publish/javascript_decl_file.out",
   cwd: Some("publish/javascript_decl_file"),
-  copy_temp_dir: Some("publish/javascript_decl_file"),
   envs: env_vars_for_registry(),
   http_server: true,
   exit_code: 0,
-  temp_cwd: true,
 });
 
 itest!(successful {
   args: "publish --token 'sadfasdf'",
   output: "publish/successful.out",
   cwd: Some("publish/successful"),
-  copy_temp_dir: Some("publish/successful"),
   envs: env_vars_for_registry(),
   http_server: true,
-  temp_cwd: true,
 });
 
 itest!(config_file_jsonc {
   args: "publish --token 'sadfasdf'",
   output: "publish/deno_jsonc.out",
   cwd: Some("publish/deno_jsonc"),
-  copy_temp_dir: Some("publish/deno_jsonc"),
   envs: env_vars_for_registry(),
   http_server: true,
-  temp_cwd: true,
 });
 
 itest!(workspace_all {
   args: "publish --token 'sadfasdf'",
   output: "publish/workspace.out",
   cwd: Some("publish/workspace"),
-  copy_temp_dir: Some("publish/workspace"),
   envs: env_vars_for_registry(),
   http_server: true,
-  temp_cwd: true,
 });
 
 itest!(workspace_individual {
   args: "publish --token 'sadfasdf'",
   output: "publish/workspace_individual.out",
   cwd: Some("publish/workspace/bar"),
-  copy_temp_dir: Some("publish/workspace"),
   envs: env_vars_for_registry(),
   http_server: true,
-  temp_cwd: true,
 });
 
 itest!(dry_run {
   args: "publish --token 'sadfasdf' --dry-run",
   cwd: Some("publish/successful"),
-  copy_temp_dir: Some("publish/successful"),
   output: "publish/dry_run.out",
   envs: env_vars_for_registry(),
   http_server: true,
-  temp_cwd: true,
 });
 
 #[test]

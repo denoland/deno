@@ -2,17 +2,18 @@
 
 use bytes::Bytes;
 use deno_config::glob::FilePatterns;
-use deno_core::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
 use sha2::Digest;
+use std::collections::HashSet;
+use std::ffi::OsStr;
 use std::fmt::Write as FmtWrite;
 use std::io::Write;
 use std::path::Path;
-use std::path::PathBuf;
 use tar::Header;
 
+use crate::tools::registry::paths::PackagePath;
 use crate::util::import_map::ImportMapUnfurler;
 
 use super::diagnostics::PublishDiagnostic;
@@ -20,14 +21,13 @@ use super::diagnostics::PublishDiagnosticsCollector;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PublishableTarballFile {
-  pub path: PathBuf,
+  pub specifier: Url,
   pub size: usize,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PublishableTarball {
   pub files: Vec<PublishableTarballFile>,
-  pub diagnostics: Vec<String>,
   pub hash: String,
   pub bytes: Bytes,
 }
@@ -40,67 +40,121 @@ pub fn create_gzipped_tarball(
   file_patterns: Option<FilePatterns>,
 ) -> Result<PublishableTarball, AnyError> {
   let mut tar = TarGzArchive::new();
-  let mut diagnostics = vec![];
   let mut files = vec![];
+
+  let mut paths = HashSet::new();
 
   let mut iterator = walkdir::WalkDir::new(dir).follow_links(false).into_iter();
   while let Some(entry) = iterator.next() {
     let entry = entry?;
 
-    if let Some(file_patterns) = &file_patterns {
-      if !file_patterns.matches_path(entry.path()) {
-        if entry.file_type().is_dir() {
-          iterator.skip_current_dir();
-        }
-        continue;
+    let path = entry.path();
+    let file_type = entry.file_type();
+
+    let matches_pattern = file_patterns
+      .as_ref()
+      .map(|p| p.matches_path(path))
+      .unwrap_or(true);
+    if !matches_pattern
+      || path.file_name() == Some(OsStr::new(".git"))
+      || path.file_name() == Some(OsStr::new("node_modules"))
+    {
+      if file_type.is_dir() {
+        iterator.skip_current_dir();
       }
+      continue;
     }
 
-    if entry.file_type().is_file() {
-      let url = Url::from_file_path(entry.path())
-        .map_err(|_| anyhow::anyhow!("Unable to convert path to url"))?;
-      let relative_path = entry
-        .path()
-        .strip_prefix(dir)
-        .map_err(|err| anyhow::anyhow!("Unable to strip prefix: {err:#}"))?;
-      let relative_path_str = relative_path.to_str().ok_or_else(|| {
-        anyhow::anyhow!(
-          "Unable to convert path to string '{}'",
-          relative_path.display()
-        )
-      })?;
-      let data = std::fs::read(entry.path()).with_context(|| {
+    let Ok(specifier) = Url::from_file_path(path) else {
+      diagnostics_collector
+        .to_owned()
+        .push(PublishDiagnostic::InvalidPath {
+          path: path.to_path_buf(),
+          message: "unable to convert path to url".to_string(),
+        });
+      continue;
+    };
+
+    if file_type.is_file() {
+      let Ok(relative_path) = path.strip_prefix(dir) else {
+        diagnostics_collector
+          .to_owned()
+          .push(PublishDiagnostic::InvalidPath {
+            path: path.to_path_buf(),
+            message: "path is not in publish directory".to_string(),
+          });
+        continue;
+      };
+
+      let path_str = relative_path.components().fold(
+        "".to_string(),
+        |mut path, component| {
+          path.push('/');
+          match component {
+            std::path::Component::Normal(normal) => {
+              path.push_str(&normal.to_string_lossy())
+            }
+            std::path::Component::CurDir => path.push('.'),
+            std::path::Component::ParentDir => path.push_str(".."),
+            _ => unreachable!(),
+          }
+          path
+        },
+      );
+
+      match PackagePath::new(path_str.clone()) {
+        Ok(package_path) => {
+          if !paths.insert(package_path) {
+            diagnostics_collector.to_owned().push(
+              PublishDiagnostic::DuplicatePath {
+                path: path.to_path_buf(),
+              },
+            );
+          }
+        }
+        Err(err) => {
+          diagnostics_collector.to_owned().push(
+            PublishDiagnostic::InvalidPath {
+              path: path.to_path_buf(),
+              message: err.to_string(),
+            },
+          );
+        }
+      }
+
+      let data = std::fs::read(path).with_context(|| {
         format!("Unable to read file '{}'", entry.path().display())
       })?;
       files.push(PublishableTarballFile {
-        path: relative_path.to_path_buf(),
+        specifier: specifier.clone(),
         size: data.len(),
       });
-      let content = match source_cache.get_parsed_source(&url) {
+      let content = match source_cache.get_parsed_source(&specifier) {
         Some(parsed_source) => {
           let mut reporter = |diagnostic| {
             diagnostics_collector
               .push(PublishDiagnostic::ImportMapUnfurl(diagnostic));
           };
-          let content = unfurler.unfurl(&url, &parsed_source, &mut reporter);
+          let content =
+            unfurler.unfurl(&specifier, &parsed_source, &mut reporter);
           content.into_bytes()
         }
         None => data,
       };
       tar
-        .add_file(relative_path_str.to_string(), &content)
+        .add_file(format!(".{}", path_str), &content)
         .with_context(|| {
           format!("Unable to add file to tarball '{}'", entry.path().display())
         })?;
-    } else if entry.file_type().is_dir() {
-      if entry.file_name() == ".git" || entry.file_name() == "node_modules" {
-        iterator.skip_current_dir();
-      }
-    } else {
-      diagnostics.push(format!(
-        "Unsupported file type at path '{}'",
-        entry.path().display()
-      ));
+    } else if !file_type.is_dir() {
+      diagnostics_collector.push(PublishDiagnostic::UnsupportedFileType {
+        specifier,
+        kind: if file_type.is_symlink() {
+          "symlink".to_owned()
+        } else {
+          format!("{file_type:?}")
+        },
+      });
     }
   }
 
@@ -113,7 +167,6 @@ pub fn create_gzipped_tarball(
 
   Ok(PublishableTarball {
     files,
-    diagnostics,
     hash,
     bytes: Bytes::from(v),
   })
