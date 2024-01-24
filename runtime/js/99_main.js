@@ -143,49 +143,32 @@ function warnOnDeprecatedApi(apiName, stack, ...suggestions) {
 
   ALREADY_WARNED_DEPRECATED.add(apiName + stack);
   console.error(
-    "%cWarning",
-    "color: yellow; font-weight: bold;",
-  );
-  console.error(
-    `%c\u251c Use of deprecated "${apiName}" API.`,
+    `%cwarning: %cUse of deprecated "${apiName}" API. This API will be removed in Deno 2.`,
     "color: yellow;",
+    "font-weight: bold;",
   );
-  console.error("%c\u2502", "color: yellow;");
-  console.error(
-    "%c\u251c This API will be removed in Deno 2.0. Make sure to upgrade to a stable API before then.",
-    "color: yellow;",
-  );
+
+  console.error();
+  if (stackLines.length > 0) {
+    console.error("Stack trace:");
+    for (let i = 0; i < stackLines.length; i++) {
+      console.error(`  ${StringPrototypeTrim(stackLines[i])}`);
+    }
+    console.error();
+  }
 
   for (let i = 0; i < suggestions.length; i++) {
     const suggestion = suggestions[i];
-    console.error("%c\u2502", "color: yellow;");
     console.error(
-      `%c\u251c Suggestion: ${suggestion}`,
-      "color: yellow;",
+      `%chint: ${suggestion}`,
+      "font-weight: bold;",
     );
   }
   if (isFromRemoteDependency) {
-    console.error("%c\u2502", "color: yellow;");
     console.error(
-      `%c\u251c Suggestion: It appears this API is used by a remote dependency.`,
-      "color: yellow;",
+      `%chint: It appears this API is used by a remote dependency. Try upgrading to the latest version of that dependency.`,
+      "font-weight: bold;",
     );
-    console.error(
-      "%c\u2502             Try upgrading to the latest version of that dependency.",
-      "color: yellow;",
-    );
-  }
-  if (stackLines.length > 0) {
-    console.error("%c\u2502", "color: yellow;");
-    console.error("%c\u2514 Stack trace:", "color: yellow;");
-    for (let i = 0; i < stackLines.length; i++) {
-      console.error(
-        `%c  ${i == stackLines.length - 1 ? "\u2514" : "\u251c"}\u2500 ${
-          StringPrototypeTrim(stackLines[i])
-        }`,
-        "color: yellow;",
-      );
-    }
   }
   console.error();
 }
