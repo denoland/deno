@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { core } from "ext:core/mod.js";
+import { core, internals } from "ext:core/mod.js";
 const {
   op_net_listen_udp,
   op_net_listen_unixpacket,
@@ -98,8 +98,22 @@ const denoNs = {
   SeekMode: io.SeekMode,
   read: io.read,
   readSync: io.readSync,
-  write: io.write,
-  writeSync: io.writeSync,
+  write(rid, data) {
+    internals.warnOnDeprecatedApi(
+      "Deno.write()",
+      new Error().stack,
+      "Use `writer.write()` instead.",
+    );
+    return io.write(rid, data);
+  },
+  writeSync(rid, data) {
+    internals.warnOnDeprecatedApi(
+      "Deno.writeSync()",
+      new Error().stack,
+      "Use `writer.writeSync()` instead.",
+    );
+    return io.writeSync(rid, data);
+  },
   File: fs.File,
   FsFile: fs.FsFile,
   open: fs.open,

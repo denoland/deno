@@ -29,7 +29,7 @@ Deno.test(
       create: true,
     });
     const data = new Uint8Array(64);
-    await Deno.write(file.rid, data);
+    await file.write(data);
     await Deno.fdatasync(file.rid);
     assertEquals(await Deno.readFile(filename), data);
     Deno.close(file.rid);

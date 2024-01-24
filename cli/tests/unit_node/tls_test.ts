@@ -117,13 +117,13 @@ Deno.test("tls.createServer creates a TLS server", async () => {
     assertEquals(text.replaceAll("\0", ""), "welcome!\n");
     buf.fill(0);
 
-    Deno.write(conn.rid, new TextEncoder().encode("hey\n"));
+    await conn.write(new TextEncoder().encode("hey\n"));
     await Deno.read(conn.rid, buf);
     text = new TextDecoder().decode(buf);
     assertEquals(text.replaceAll("\0", ""), "hey\n");
     buf.fill(0);
 
-    Deno.write(conn.rid, new TextEncoder().encode("goodbye\n"));
+    await conn.write(new TextEncoder().encode("goodbye\n"));
     await Deno.read(conn.rid, buf);
     text = new TextDecoder().decode(buf);
     assertEquals(text.replaceAll("\0", ""), "goodbye\n");
