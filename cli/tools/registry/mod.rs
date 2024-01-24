@@ -44,6 +44,7 @@ mod api;
 mod auth;
 mod diagnostics;
 mod graph;
+mod paths;
 mod publish_order;
 mod tar;
 
@@ -474,7 +475,7 @@ async fn perform_publish(
           log::debug!(
             "  Tarball file {} {}",
             human_size(file.size as f64),
-            file.path.display()
+            file.specifier
           );
         }
       }

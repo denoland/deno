@@ -4,6 +4,7 @@ use std::borrow::Cow;
 use std::fmt;
 use std::fmt::Display;
 use std::fmt::Write as _;
+use std::path::PathBuf;
 
 use deno_ast::ModuleSpecifier;
 use deno_ast::SourcePos;
@@ -61,17 +62,19 @@ impl DiagnosticSourcePos {
 
 #[derive(Clone, Debug)]
 pub enum DiagnosticLocation<'a> {
-  /// The diagnostic is relevant to an entire file.
-  File {
+  /// The diagnostic is relevant to a specific path.
+  Path { path: PathBuf },
+  /// The diagnostic is relevant to an entire module.
+  Module {
     /// The specifier of the module that contains the diagnostic.
     specifier: Cow<'a, ModuleSpecifier>,
   },
-  /// The diagnostic is relevant to a specific position in a file.
+  /// The diagnostic is relevant to a specific position in a module.
   ///
   /// This variant will get the relevant `SouceTextInfo` from the cache using
   /// the given specifier, and will then calculate the line and column numbers
   /// from the given `SourcePos`.
-  PositionInFile {
+  ModulePosition {
     /// The specifier of the module that contains the diagnostic.
     specifier: Cow<'a, ModuleSpecifier>,
     /// The source position of the diagnostic.
@@ -80,13 +83,6 @@ pub enum DiagnosticLocation<'a> {
 }
 
 impl<'a> DiagnosticLocation<'a> {
-  fn specifier(&self) -> &ModuleSpecifier {
-    match self {
-      DiagnosticLocation::File { specifier } => specifier,
-      DiagnosticLocation::PositionInFile { specifier, .. } => specifier,
-    }
-  }
-
   /// Return the line and column number of the diagnostic.
   ///
   /// The line number is 1-indexed.
@@ -97,8 +93,9 @@ impl<'a> DiagnosticLocation<'a> {
   /// everyone uses VS Code. :)
   fn position(&self, sources: &dyn SourceTextStore) -> Option<(usize, usize)> {
     match self {
-      DiagnosticLocation::File { .. } => None,
-      DiagnosticLocation::PositionInFile {
+      DiagnosticLocation::Path { .. } => None,
+      DiagnosticLocation::Module { .. } => None,
+      DiagnosticLocation::ModulePosition {
         specifier,
         source_pos,
       } => {
@@ -384,7 +381,7 @@ fn print_diagnostic(
       write!(
         io,
         "{}",
-        colors::yellow(format_args!("warning[{}]", diagnostic.code()))
+        colors::yellow_bold(format_args!("warning[{}]", diagnostic.code()))
       )?;
     }
   }
@@ -410,11 +407,18 @@ fn print_diagnostic(
     RepeatingCharFmt(' ', max_line_number_digits as usize),
     colors::intense_blue("-->"),
   )?;
-  let location_specifier = location.specifier();
-  if let Ok(path) = location_specifier.to_file_path() {
-    write!(io, " {}", colors::cyan(path.display()))?;
-  } else {
-    write!(io, " {}", colors::cyan(location_specifier.as_str()))?;
+  match &location {
+    DiagnosticLocation::Path { path } => {
+      write!(io, " {}", colors::cyan(path.display()))?;
+    }
+    DiagnosticLocation::Module { specifier }
+    | DiagnosticLocation::ModulePosition { specifier, .. } => {
+      if let Ok(path) = specifier.to_file_path() {
+        write!(io, " {}", colors::cyan(path.display()))?;
+      } else {
+        write!(io, " {}", colors::cyan(specifier.as_str()))?;
+      }
+    }
   }
   if let Some((line, column)) = location.position(sources) {
     write!(
@@ -614,7 +618,7 @@ mod tests {
       specifier: specifier.clone(),
       text_info,
     };
-    let location = super::DiagnosticLocation::PositionInFile {
+    let location = super::DiagnosticLocation::ModulePosition {
       specifier: Cow::Borrowed(&specifier),
       source_pos: super::DiagnosticSourcePos::SourcePos(pos),
     };
@@ -631,7 +635,7 @@ mod tests {
       specifier: specifier.clone(),
       text_info,
     };
-    let location = super::DiagnosticLocation::PositionInFile {
+    let location = super::DiagnosticLocation::ModulePosition {
       specifier: Cow::Borrowed(&specifier),
       source_pos: super::DiagnosticSourcePos::SourcePos(pos),
     };

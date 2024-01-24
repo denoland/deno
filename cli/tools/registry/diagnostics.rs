@@ -2,6 +2,7 @@
 
 use std::borrow::Cow;
 use std::fmt::Display;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
 
@@ -10,6 +11,7 @@ use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_graph::FastCheckDiagnostic;
 use deno_graph::ParsedSourceStore;
+use lsp_types::Url;
 
 use crate::diagnostics::Diagnostic;
 use crate::diagnostics::DiagnosticLevel;
@@ -61,6 +63,9 @@ impl PublishDiagnosticsCollector {
 pub enum PublishDiagnostic {
   FastCheck(FastCheckDiagnostic),
   ImportMapUnfurl(ImportMapUnfurlDiagnostic),
+  InvalidPath { path: PathBuf, message: String },
+  DuplicatePath { path: PathBuf },
+  UnsupportedFileType { specifier: Url, kind: String },
 }
 
 impl Diagnostic for PublishDiagnostic {
@@ -71,6 +76,9 @@ impl Diagnostic for PublishDiagnostic {
       ) => DiagnosticLevel::Warning,
       PublishDiagnostic::FastCheck(_) => DiagnosticLevel::Error,
       PublishDiagnostic::ImportMapUnfurl(_) => DiagnosticLevel::Warning,
+      PublishDiagnostic::InvalidPath { .. } => DiagnosticLevel::Error,
+      PublishDiagnostic::DuplicatePath { .. } => DiagnosticLevel::Error,
+      PublishDiagnostic::UnsupportedFileType { .. } => DiagnosticLevel::Warning,
     }
   }
 
@@ -78,6 +86,11 @@ impl Diagnostic for PublishDiagnostic {
     match &self {
       PublishDiagnostic::FastCheck(diagnostic) => diagnostic.code(),
       PublishDiagnostic::ImportMapUnfurl(diagnostic) => diagnostic.code(),
+      PublishDiagnostic::InvalidPath { .. } => "invalid-path",
+      PublishDiagnostic::DuplicatePath { .. } => {
+        "case-insensitive-duplicate-path"
+      }
+      PublishDiagnostic::UnsupportedFileType { .. } => "unsupported-file-type",
     }
   }
 
@@ -89,17 +102,26 @@ impl Diagnostic for PublishDiagnostic {
       PublishDiagnostic::ImportMapUnfurl(diagnostic) => {
         Cow::Borrowed(diagnostic.message())
       }
+      PublishDiagnostic::InvalidPath { message, .. } => {
+        Cow::Borrowed(message.as_str())
+      }
+      PublishDiagnostic::DuplicatePath { .. } => {
+        Cow::Borrowed("package path is a case insensitive duplicate of another path in the package")
+      }
+      PublishDiagnostic::UnsupportedFileType { kind, .. } => {
+        Cow::Owned(format!("unsupported file type '{kind}'",))
+      }
     }
   }
 
   fn location(&self) -> DiagnosticLocation {
     match &self {
       PublishDiagnostic::FastCheck(diagnostic) => match diagnostic.range() {
-        Some(range) => DiagnosticLocation::PositionInFile {
+        Some(range) => DiagnosticLocation::ModulePosition {
           specifier: Cow::Borrowed(diagnostic.specifier()),
           source_pos: DiagnosticSourcePos::SourcePos(range.range.start),
         },
-        None => DiagnosticLocation::File {
+        None => DiagnosticLocation::Module {
           specifier: Cow::Borrowed(diagnostic.specifier()),
         },
       },
@@ -107,11 +129,22 @@ impl Diagnostic for PublishDiagnostic {
         ImportMapUnfurlDiagnostic::UnanalyzableDynamicImport {
           specifier,
           range,
-        } => DiagnosticLocation::PositionInFile {
+        } => DiagnosticLocation::ModulePosition {
           specifier: Cow::Borrowed(specifier),
           source_pos: DiagnosticSourcePos::SourcePos(range.start),
         },
       },
+      PublishDiagnostic::InvalidPath { path, .. } => {
+        DiagnosticLocation::Path { path: path.clone() }
+      }
+      PublishDiagnostic::DuplicatePath { path, .. } => {
+        DiagnosticLocation::Path { path: path.clone() }
+      }
+      PublishDiagnostic::UnsupportedFileType { specifier, .. } => {
+        DiagnosticLocation::Module {
+          specifier: Cow::Borrowed(specifier),
+        }
+      }
     }
   }
 
@@ -148,6 +181,9 @@ impl Diagnostic for PublishDiagnostic {
           },
         }),
       },
+      PublishDiagnostic::InvalidPath { .. } => None,
+      PublishDiagnostic::DuplicatePath { .. } => None,
+      PublishDiagnostic::UnsupportedFileType { .. } => None,
     }
   }
 
@@ -155,6 +191,15 @@ impl Diagnostic for PublishDiagnostic {
     match &self {
       PublishDiagnostic::FastCheck(diagnostic) => Some(diagnostic.fix_hint()),
       PublishDiagnostic::ImportMapUnfurl(_) => None,
+      PublishDiagnostic::InvalidPath { .. } => Some(
+        "rename or remove the file, or add it to 'publish.exclude' in the config file",
+      ),
+      PublishDiagnostic::DuplicatePath { .. } => Some(
+        "rename or remove the file",
+      ),
+      PublishDiagnostic::UnsupportedFileType { .. } => Some(
+        "remove the file, or add it to 'publish.exclude' in the config file",
+      ),
     }
   }
 
@@ -179,6 +224,16 @@ impl Diagnostic for PublishDiagnostic {
           Cow::Borrowed("make sure the dynamic import is resolvable at runtime without an import map")
         ]),
       },
+      PublishDiagnostic::InvalidPath { .. } => Cow::Borrowed(&[
+        Cow::Borrowed("to portably support all platforms, including windows, the allowed characters in package paths are limited"),
+      ]),
+      PublishDiagnostic::DuplicatePath { .. } => Cow::Borrowed(&[
+        Cow::Borrowed("to support case insensitive file systems, no two package paths may differ only by case"),
+      ]),
+      PublishDiagnostic::UnsupportedFileType { .. } => Cow::Borrowed(&[
+        Cow::Borrowed("only files and directories are supported"),
+        Cow::Borrowed("the file was ignored and will not be published")
+      ]),
     }
   }
 
@@ -190,6 +245,13 @@ impl Diagnostic for PublishDiagnostic {
       PublishDiagnostic::ImportMapUnfurl(diagnostic) => match diagnostic {
         ImportMapUnfurlDiagnostic::UnanalyzableDynamicImport { .. } => None,
       },
+      PublishDiagnostic::InvalidPath { .. } => {
+        Some("https://jsr.io/go/invalid-path".to_owned())
+      }
+      PublishDiagnostic::DuplicatePath { .. } => {
+        Some("https://jsr.io/go/case-insensitive-duplicate-path".to_owned())
+      }
+      PublishDiagnostic::UnsupportedFileType { .. } => None,
     }
   }
 }

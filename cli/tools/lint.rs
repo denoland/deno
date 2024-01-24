@@ -374,7 +374,7 @@ impl Diagnostic for LintDiagnostic {
 
   fn location(&self) -> DiagnosticLocation {
     let specifier = url::Url::from_file_path(&self.filename).unwrap();
-    DiagnosticLocation::PositionInFile {
+    DiagnosticLocation::ModulePosition {
       specifier: Cow::Owned(specifier),
       source_pos: DiagnosticSourcePos::ByteIndex(self.range.start.byte_index),
     }
