@@ -7,7 +7,7 @@ Deno.test({
     "ASYNC: flush any pending data operations of the given file stream to disk",
   async fn() {
     const filePath = await Deno.makeTempFile();
-    const file = await Deno.open(filePath, {
+    using file = await Deno.open(filePath, {
       read: true,
       write: true,
       create: true,
@@ -30,7 +30,6 @@ Deno.test({
         },
       )
       .finally(async () => {
-        Deno.close(file.rid);
         await Deno.remove(filePath);
       });
   },
@@ -40,21 +39,20 @@ Deno.test({
   name:
     "SYNC: flush any pending data operations of the given file stream to disk.",
   fn() {
-    const file: string = Deno.makeTempFileSync();
-    const { rid } = Deno.openSync(file, {
+    const filePath = Deno.makeTempFileSync();
+    using file = Deno.openSync(filePath, {
       read: true,
       write: true,
       create: true,
     });
     const data = new Uint8Array(64);
-    Deno.writeSync(rid, data);
+    Deno.writeSync(file.rid, data);
 
     try {
-      fdatasyncSync(rid);
-      assertEquals(Deno.readFileSync(file), data);
+      fdatasyncSync(file.rid);
+      assertEquals(Deno.readFileSync(filePath), data);
     } finally {
-      Deno.close(rid);
-      Deno.removeSync(file);
+      Deno.removeSync(filePath);
     }
   },
 });

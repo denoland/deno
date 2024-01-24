@@ -99,7 +99,7 @@ let globalThis_;
 let deprecatedApiWarningDisabled = false;
 const ALREADY_WARNED_DEPRECATED = new SafeSet();
 
-function warnOnDeprecatedApi(apiName, stack, suggestion) {
+function warnOnDeprecatedApi(apiName, stack, ...suggestions) {
   if (deprecatedApiWarningDisabled) {
     return;
   }
@@ -155,11 +155,15 @@ function warnOnDeprecatedApi(apiName, stack, suggestion) {
     "%c\u251c This API will be removed in Deno 2.0. Make sure to upgrade to a stable API before then.",
     "color: yellow;",
   );
-  console.error("%c\u2502", "color: yellow;");
-  console.error(
-    `%c\u251c Suggestion: ${suggestion}`,
-    "color: yellow;",
-  );
+
+  for (let i = 0; i < suggestions.length; i++) {
+    const suggestion = suggestions[i];
+    console.error("%c\u2502", "color: yellow;");
+    console.error(
+      `%c\u251c Suggestion: ${suggestion}`,
+      "color: yellow;",
+    );
+  }
   if (isFromRemoteDependency) {
     console.error("%c\u2502", "color: yellow;");
     console.error(
@@ -538,7 +542,14 @@ const finalDenoNs = {
     internals.warnOnDeprecatedApi("Deno.resources()", new Error().stack);
     return core.resources();
   },
-  close: core.close,
+  close(rid) {
+    internals.warnOnDeprecatedApi(
+      "Deno.close()",
+      new Error().stack,
+      "Use `closer.close()` instead.",
+    );
+    core.close(rid);
+  },
   ...denoNs,
   // Deno.test and Deno.bench are noops here, but kept for compatibility; so
   // that they don't cause errors when used outside of `deno test`/`deno bench`
