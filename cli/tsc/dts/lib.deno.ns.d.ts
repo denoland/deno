@@ -2566,7 +2566,7 @@ declare namespace Deno {
     statSync(): FileInfo;
     /**
      * Flushes any pending data and metadata operations of the given file
-     * stream to disk.
+     * stream to disk  (equivalent to `fsync` syscall).
      *
      * ```ts
      * const file = await Deno.open(
@@ -2584,7 +2584,7 @@ declare namespace Deno {
     flushAll(): Promise<void>;
     /**
      * Synchronously flushes any pending data and metadata operations of the given
-     * file stream to disk.
+     * file stream to disk (equivalent to `fsync` syscall).
      *
      * ```ts
      * const file = Deno.openSync(
@@ -2601,7 +2601,9 @@ declare namespace Deno {
      */
     flushAllSync(): void;
     /**
-     * Flushes any pending data operations of the given file stream to disk.
+     * Flushes any pending data operations of the given file stream to disk
+     * (equivalent to `fdatasync` syscall).
+     *
      *  ```ts
      * using file = await Deno.open(
      *   "my_file.txt",
@@ -2614,10 +2616,10 @@ declare namespace Deno {
      *
      * @category I/O
      */
-    flushDataSync(): Promise<void>;
+    flushData(): Promise<void>;
     /**
      * Synchronously flushes any pending data operations of the given file stream
-     * to disk.
+     * to disk (equivalent to `fdatasync` syscall).
      *
      *  ```ts
      * using file = Deno.openSync(
