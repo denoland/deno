@@ -121,7 +121,7 @@ const denoNs = {
     internals.warnOnDeprecatedApi(
       "Deno.shutdown()",
       new Error().stack,
-      "Use `conn.closeWrite()` instead.",
+      "Use `Deno.Conn.closeWrite()` instead.",
     );
     net.shutdown(rid);
   },
