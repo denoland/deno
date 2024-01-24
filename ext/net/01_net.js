@@ -202,7 +202,7 @@ class TcpConn extends Conn {
 
   constructor(rid, remoteAddr, localAddr) {
     super(rid, remoteAddr, localAddr);
-    this.#rid;
+    this.#rid = rid;
   }
 
   get rid() {
@@ -228,7 +228,7 @@ class UnixConn extends Conn {
 
   constructor(rid, remoteAddr, localAddr) {
     super(rid, remoteAddr, localAddr);
-    this.#rid;
+    this.#rid = rid;
   }
 
   get rid() {
