@@ -2605,9 +2605,9 @@ declare namespace Deno {
      */
     dataSyncSync(): void;
     /**
-     * Changes the access (`atime`) and modification (`mtime`) times of a file
-     * stream resource referenced by `rid`. Given times are either in seconds
-     * (UNIX epoch time) or as `Date` objects.
+     * Changes the access (`atime`) and modification (`mtime`) times of the
+     * file stream resource. Given times are either in seconds (UNIX epoch
+     * time) or as `Date` objects.
      *
      * ```ts
      * using file = await Deno.open("file.txt", { create: true, write: true });
@@ -2618,9 +2618,9 @@ declare namespace Deno {
      */
     utime(atime: number | Date, mtime: number | Date): Promise<void>;
     /**
-     * Synchronously changes the access (`atime`) and modification (`mtime`) times
-     * of a file stream resource referenced by `rid`. Given times are either in
-     * seconds (UNIX epoch time) or as `Date` objects.
+     * Synchronously changes the access (`atime`) and modification (`mtime`)
+     * times of the file stream resource. Given times are either in seconds
+     * (UNIX epoch time) or as `Date` objects.
      *
      * ```ts
      * using file = Deno.openSync("file.txt", { create: true, write: true });
