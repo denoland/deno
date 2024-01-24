@@ -104,7 +104,7 @@ Deno.test({
   // TODO(lucacasonato): webgpu spec should add a explicit destroy method for
   // adapters.
   const resources = Object.keys(Deno.resources());
-  Deno.close(Number(resources[resources.length - 1]));
+  Deno[Deno.internal].core.close(Number(resources[resources.length - 1]));
 });
 
 Deno.test({
@@ -214,7 +214,7 @@ Deno.test({
   // TODO(lucacasonato): webgpu spec should add a explicit destroy method for
   // adapters.
   const resources = Object.keys(Deno.resources());
-  Deno.close(Number(resources[resources.length - 1]));
+  Deno[Deno.internal].core.close(Number(resources[resources.length - 1]));
 });
 
 Deno.test({
@@ -224,7 +224,7 @@ Deno.test({
   assert(adapter);
   assert(adapter.features);
   const resources = Object.keys(Deno.resources());
-  Deno.close(Number(resources[resources.length - 1]));
+  Deno[Deno.internal].core.close(Number(resources[resources.length - 1]));
 });
 
 Deno.test({
@@ -245,7 +245,7 @@ Deno.test({
 
   device.destroy();
   const resources = Object.keys(Deno.resources());
-  Deno.close(Number(resources[resources.length - 1]));
+  Deno[Deno.internal].core.close(Number(resources[resources.length - 1]));
 });
 
 async function checkIsWsl() {

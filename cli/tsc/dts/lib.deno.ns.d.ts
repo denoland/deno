@@ -1977,11 +1977,10 @@ declare namespace Deno {
    *
    * ```ts
    * // if "/foo/bar.txt" contains the text "hello world":
-   * const file = await Deno.open("/foo/bar.txt");
+   * using file = await Deno.open("/foo/bar.txt");
    * const buf = new Uint8Array(100);
    * const numberOfBytesRead = await Deno.read(file.rid, buf); // 11 bytes
    * const text = new TextDecoder().decode(buf);  // "hello world"
-   * Deno.close(file.rid);
    * ```
    *
    * @category I/O
@@ -2007,11 +2006,10 @@ declare namespace Deno {
    *
    * ```ts
    * // if "/foo/bar.txt" contains the text "hello world":
-   * const file = Deno.openSync("/foo/bar.txt");
+   * using file = Deno.openSync("/foo/bar.txt");
    * const buf = new Uint8Array(100);
    * const numberOfBytesRead = Deno.readSync(file.rid, buf); // 11 bytes
    * const text = new TextDecoder().decode(buf);  // "hello world"
-   * Deno.close(file.rid);
    * ```
    *
    * @category I/O
@@ -2031,9 +2029,8 @@ declare namespace Deno {
    * ```ts
    * const encoder = new TextEncoder();
    * const data = encoder.encode("Hello world");
-   * const file = await Deno.open("/foo/bar.txt", { write: true });
+   * using file = await Deno.open("/foo/bar.txt", { write: true });
    * const bytesWritten = await Deno.write(file.rid, data); // 11
-   * Deno.close(file.rid);
    * ```
    *
    * @category I/O
@@ -2054,9 +2051,8 @@ declare namespace Deno {
    * ```ts
    * const encoder = new TextEncoder();
    * const data = encoder.encode("Hello world");
-   * const file = Deno.openSync("/foo/bar.txt", { write: true });
+   * using file = Deno.openSync("/foo/bar.txt", { write: true });
    * const bytesWritten = Deno.writeSync(file.rid, data); // 11
-   * Deno.close(file.rid);
    * ```
    *
    * @category I/O
@@ -2255,6 +2251,9 @@ declare namespace Deno {
    * using file = await Deno.open("my_file.txt");
    * // do work with "file" object
    * ```
+   *
+   * @deprecated Use `closer.close()` instead. {@linkcode Deno.close} will be
+   * removed in Deno 2.0.
    *
    * @category I/O
    */
@@ -2837,8 +2836,6 @@ declare namespace Deno {
    * const ttyRid = Deno.openSync("/dev/tty6").rid;
    * console.log(Deno.isatty(nonTTYRid)); // false
    * console.log(Deno.isatty(ttyRid)); // true
-   * Deno.close(nonTTYRid);
-   * Deno.close(ttyRid);
    * ```
    *
    * @deprecated Use `Deno.stdin.isTerminal()`, `Deno.stdout.isTerminal()` or

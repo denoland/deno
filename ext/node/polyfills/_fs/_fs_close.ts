@@ -11,7 +11,7 @@ export function close(fd: number, callback: CallbackWithError) {
   setTimeout(() => {
     let error = null;
     try {
-      Deno.close(fd);
+      Deno[Deno.internal].core.close(fd);
     } catch (err) {
       error = err instanceof Error ? err : new Error("[non-error thrown]");
     }
@@ -21,5 +21,5 @@ export function close(fd: number, callback: CallbackWithError) {
 
 export function closeSync(fd: number) {
   fd = getValidatedFd(fd);
-  Deno.close(fd);
+  Deno[Deno.internal].core.close(fd);
 }

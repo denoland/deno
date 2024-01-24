@@ -70,7 +70,7 @@ Deno.test({
   name: "Async: Data is written to passed in rid",
   async fn() {
     const tempFile: string = await Deno.makeTempFile();
-    const file: Deno.FsFile = await Deno.open(tempFile, {
+    using file: Deno.FsFile = await Deno.open(tempFile, {
       create: true,
       write: true,
       read: true,
@@ -88,7 +88,6 @@ Deno.test({
         fail("No error expected");
       })
       .finally(async () => {
-        Deno.close(file.rid);
         await Deno.remove(tempFile);
       });
   },
@@ -160,13 +159,12 @@ Deno.test({
   name: "Sync: Data is written to passed in rid",
   fn() {
     const tempFile: string = Deno.makeTempFileSync();
-    const file: Deno.FsFile = Deno.openSync(tempFile, {
+    using file: Deno.FsFile = Deno.openSync(tempFile, {
       create: true,
       write: true,
       read: true,
     });
     appendFileSync(file.rid, "hello world");
-    Deno.close(file.rid);
     const data = Deno.readFileSync(tempFile);
     assertEquals(decoder.decode(data), "hello world");
     Deno.removeSync(tempFile);
