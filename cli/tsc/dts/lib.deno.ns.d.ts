@@ -2186,6 +2186,9 @@ declare namespace Deno {
    * console.log(await Deno.readTextFile("my_file.txt")); // H
    * ```
    *
+   * @deprecated Use `file.sync()` instead. {@linkcode Deno.fsync} will be
+   * removed in v2.0.0.
+   *
    * @category I/O
    */
   export function fsync(rid: number): Promise<void>;
@@ -2205,6 +2208,9 @@ declare namespace Deno {
    * console.log(Deno.readTextFileSync("my_file.txt")); // H
    * ```
    *
+   * @deprecated Use `file.syncSync()` instead. {@linkcode Deno.fsyncSync} will
+   * be removed in v2.0.0.
+   *
    * @category I/O
    */
   export function fsyncSync(rid: number): void;
@@ -2220,6 +2226,9 @@ declare namespace Deno {
    * await Deno.fdatasync(file.rid);
    * console.log(await Deno.readTextFile("my_file.txt")); // Hello World
    * ```
+   *
+   * @deprecated Use {@linkcode Deno.FsFile.dataSync} instead.
+   * {@linkcode Deno.fdatasync} will be removed in v2.0.0.
    *
    * @category I/O
    */
@@ -2238,6 +2247,9 @@ declare namespace Deno {
    * Deno.fdatasyncSync(file.rid);
    * console.log(Deno.readTextFileSync("my_file.txt")); // Hello World
    * ```
+   *
+   * @deprecated Use {@linkcode Deno.FsFile.dataSyncSync} instead.
+   * {@linkcode Deno.fdatasyncSync} will be removed in v2.0.0.
    *
    * @category I/O
    */
@@ -2556,6 +2568,74 @@ declare namespace Deno {
      * ```
      */
     statSync(): FileInfo;
+    /**
+     * Flushes any pending data and metadata operations of the given file
+     * stream to disk.
+     *
+     * ```ts
+     * const file = await Deno.open(
+     *   "my_file.txt",
+     *   { read: true, write: true, create: true },
+     * );
+     * await file.write(new TextEncoder().encode("Hello World"));
+     * await file.truncate(1);
+     * await file.sync();
+     * console.log(await Deno.readTextFile("my_file.txt")); // H
+     * ```
+     *
+     * @category I/O
+     */
+    sync(): Promise<void>;
+    /**
+     * Synchronously flushes any pending data and metadata operations of the given
+     * file stream to disk.
+     *
+     * ```ts
+     * const file = Deno.openSync(
+     *   "my_file.txt",
+     *   { read: true, write: true, create: true },
+     * );
+     * file.writeSync(new TextEncoder().encode("Hello World"));
+     * file.truncateSync(1);
+     * file.syncSync();
+     * console.log(Deno.readTextFileSync("my_file.txt")); // H
+     * ```
+     *
+     * @category I/O
+     */
+    syncSync(): void;
+    /**
+     * Flushes any pending data operations of the given file stream to disk.
+     *  ```ts
+     * using file = await Deno.open(
+     *   "my_file.txt",
+     *   { read: true, write: true, create: true },
+     * );
+     * await file.write(new TextEncoder().encode("Hello World"));
+     * await file.dataSync();
+     * console.log(await Deno.readTextFile("my_file.txt")); // Hello World
+     * ```
+     *
+     * @category I/O
+     */
+    dataSync(): Promise<void>;
+    /**
+     * Synchronously flushes any pending data operations of the given file stream
+     * to disk.
+     *
+     *  ```ts
+     * using file = Deno.openSync(
+     *   "my_file.txt",
+     *   { read: true, write: true, create: true },
+     * );
+     * file.writeSync(new TextEncoder().encode("Hello World"));
+     * file.dataSyncSync();
+     * console.log(Deno.readTextFileSync("my_file.txt")); // Hello World
+     * ```
+     *
+     * @category I/O
+     */
+    dataSyncSync(): void;
     /** Close the file. Closing a file when you are finished with it is
      * important to avoid leaking resources.
      *
@@ -3936,6 +4016,8 @@ declare namespace Deno {
    * A map of open resources that Deno is tracking. The key is the resource ID
    * (_rid_) and the value is its representation.
    *
+   * @deprecated {@linkcode Deno.resources} will be removed in Deno 2.0.
+   *
    * @category Observability */
   interface ResourceMap {
     [rid: number]: unknown;
@@ -3953,6 +4035,8 @@ declare namespace Deno {
    * console.log(Deno.resources());
    * // { 0: "stdin", 1: "stdout", 2: "stderr", 3: "fsFile" }
    * ```
+   *
+   * @deprecated {@linkcode Deno.resources} will be removed in Deno 2.0.
    *
    * @category Observability
    */

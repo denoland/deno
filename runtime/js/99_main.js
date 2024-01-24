@@ -534,7 +534,6 @@ const internalSymbol = Symbol("Deno.internal");
 const finalDenoNs = {
   internal: internalSymbol,
   [internalSymbol]: internals,
-  resources: core.resources,
   close: (rid) => {
     warnOnDeprecatedApi(
       "Deno.close",
@@ -543,6 +542,10 @@ const finalDenoNs = {
     );
     core.close(rid);
   },
+  resources() {
+    internals.warnOnDeprecatedApi("Deno.resources()", new Error().stack);
+    return core.resources();
+  }
   ...denoNs,
   // Deno.test and Deno.bench are noops here, but kept for compatibility; so
   // that they don't cause errors when used outside of `deno test`/`deno bench`

@@ -588,18 +588,38 @@ async function symlink(
 }
 
 function fdatasyncSync(rid) {
+  internals.warnOnDeprecatedApi(
+    "Deno.fdatasyncSync()",
+    new Error().stack,
+    "Use `file.dataSyncSync()` instead.",
+  );
   op_fs_fdatasync_sync(rid);
 }
 
 async function fdatasync(rid) {
+  internals.warnOnDeprecatedApi(
+    "Deno.fdatasync()",
+    new Error().stack,
+    "Use `await file.dataSync()` instead.",
+  );
   await op_fs_fdatasync_async(rid);
 }
 
 function fsyncSync(rid) {
+  internals.warnOnDeprecatedApi(
+    "Deno.fsyncSync()",
+    new Error().stack,
+    "Use `file.syncSync()` instead.",
+  );
   op_fs_fsync_sync(rid);
 }
 
 async function fsync(rid) {
+  internals.warnOnDeprecatedApi(
+    "Deno.fsync()",
+    new Error().stack,
+    "Use `file.sync()` instead.",
+  );
   await op_fs_fsync_async(rid);
 }
 
@@ -748,6 +768,14 @@ class FsFile {
     return fstatSync(this.#rid);
   }
 
+  async dataSync() {
+    await op_fs_fdatasync_async(this.rid);
+  }
+
+  dataSyncSync() {
+    op_fs_fdatasync_sync(this.rid);
+  }
+
   close() {
     core.close(this.#rid);
   }
@@ -764,6 +792,14 @@ class FsFile {
       this.#writable = writableStreamForRid(this.#rid);
     }
     return this.#writable;
+  }
+
+  async sync() {
+    await op_fs_fsync_async(this.rid);
+  }
+
+  syncSync() {
+    op_fs_fsync_sync(this.rid);
   }
 
   [SymbolDispose]() {
