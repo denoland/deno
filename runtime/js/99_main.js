@@ -536,7 +536,10 @@ const internalSymbol = Symbol("Deno.internal");
 const finalDenoNs = {
   internal: internalSymbol,
   [internalSymbol]: internals,
-  resources: core.resources,
+  resources() {
+    internals.warnOnDeprecatedApi("Deno.resources()", new Error().stack);
+    return core.resources();
+  },
   close: core.close,
   ...denoNs,
   // Deno.test and Deno.bench are noops here, but kept for compatibility; so

@@ -1493,6 +1493,7 @@ itest!(if_main {
 itest!(import_meta {
   args: "run --quiet --reload --import-map=run/import_meta/importmap.json run/import_meta/main.ts",
   output: "run/import_meta/main.out",
+  http_server: true,
 });
 
 itest!(main_module {

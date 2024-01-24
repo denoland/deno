@@ -52,7 +52,7 @@ deno_core::extension!(
   deno_tty,
   ops = [
     op_stdin_set_raw,
-    op_isatty,
+    op_is_terminal,
     op_console_size,
     op_read_line_prompt
   ],
@@ -210,7 +210,7 @@ fn op_stdin_set_raw(
 }
 
 #[op2(fast)]
-fn op_isatty(state: &mut OpState, rid: u32) -> Result<bool, AnyError> {
+fn op_is_terminal(state: &mut OpState, rid: u32) -> Result<bool, AnyError> {
   let handle = state.resource_table.get_handle(rid)?;
   Ok(handle.is_terminal())
 }
