@@ -24,8 +24,24 @@ function opTlsHandshake(rid) {
 }
 
 class TlsConn extends Conn {
+  #rid = 0;
+
+  constructor(rid, remoteAddr, localAddr) {
+    super(rid, remoteAddr, localAddr);
+    this.#rid = rid;
+  }
+
+  get rid() {
+    internals.warnOnDeprecatedApi(
+      "Deno.TlsConn.rid",
+      new Error().stack,
+      "Use `Deno.TlsConn` instance methods instead.",
+    );
+    return this.#rid;
+  }
+
   handshake() {
-    return opTlsHandshake(this.rid);
+    return opTlsHandshake(this.#rid);
   }
 }
 
