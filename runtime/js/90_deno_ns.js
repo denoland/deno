@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { core } from "ext:core/mod.js";
+import { core, internals } from "ext:core/mod.js";
 const {
   op_net_listen_udp,
   op_net_listen_unixpacket,
@@ -83,9 +83,6 @@ const denoNs = {
   futime: fs.futime,
   futimeSync: fs.futimeSync,
   errors: errors.errors,
-  // TODO(kt3k): Remove this export at v2
-  // See https://github.com/denoland/deno/issues/9294
-  customInspect: console.customInspect,
   inspect: console.inspect,
   env: os.env,
   exit: os.exit,
@@ -120,7 +117,14 @@ const denoNs = {
   connectTls: tls.connectTls,
   listenTls: tls.listenTls,
   startTls: tls.startTls,
-  shutdown: net.shutdown,
+  shutdown(rid) {
+    internals.warnOnDeprecatedApi(
+      "Deno.shutdown()",
+      new Error().stack,
+      "Use `Deno.Conn.closeWrite()` instead.",
+    );
+    net.shutdown(rid);
+  },
   fstatSync: fs.fstatSync,
   fstat: fs.fstat,
   fsyncSync: fs.fsyncSync,
@@ -203,7 +207,6 @@ denoNsUnstableById[unstableIds.http] = {
   createHttpClient: httpClient.createHttpClient,
   // TODO(bartlomieju): why is it needed?
   http,
-  upgradeHttp: http.upgradeHttp,
 };
 
 denoNsUnstableById[unstableIds.kv] = {
@@ -250,7 +253,6 @@ const denoNsUnstable = {
   flockSync: fs.flockSync,
   funlock: fs.funlock,
   funlockSync: fs.funlockSync,
-  upgradeHttp: http.upgradeHttp,
   openKv: kv.openKv,
   AtomicOperation: kv.AtomicOperation,
   Kv: kv.Kv,

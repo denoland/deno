@@ -297,13 +297,13 @@ Deno.test(async function retriesWithBackoffScheduleOldApi() {
 
   let count = 0;
   const ac = new AbortController();
-  const c = Deno.cron("abc2", "*/20 * * * *", async () => {
+  const c = Deno.cron("abc2", "*/20 * * * *", {
+    signal: ac.signal,
+    backoffSchedule: [10, 20],
+  }, async () => {
     count += 1;
     await sleep(10);
     throw new TypeError("cron error");
-  }, {
-    signal: ac.signal,
-    backoffSchedule: [10, 20],
   });
 
   try {
@@ -379,4 +379,82 @@ Deno.test("Parse CronSchedule to string", () => {
 Deno.test("Parse schedule to string - string", () => {
   const result = parseScheduleToString("* * * * *");
   assertEquals(result, "* * * * *");
+});
+
+Deno.test("error on two handlers", () => {
+  assertThrows(
+    () => {
+      // @ts-ignore test
+      Deno.cron("abc", "* * * * *", () => {}, () => {});
+    },
+    TypeError,
+    "Deno.cron requires a single handler",
+  );
+});
+
+Deno.test("Parse test", () => {
+  assertEquals(
+    parseScheduleToString({
+      minute: 3,
+    }),
+    "3 * * * *",
+  );
+  assertEquals(
+    parseScheduleToString({
+      hour: { every: 2 },
+    }),
+    "0 */2 * * *",
+  );
+  assertEquals(
+    parseScheduleToString({
+      dayOfMonth: { every: 10 },
+    }),
+    "0 0 */10 * *",
+  );
+  assertEquals(
+    parseScheduleToString({
+      month: { every: 3 },
+    }),
+    "0 0 1 */3 *",
+  );
+  assertEquals(
+    parseScheduleToString({
+      dayOfWeek: { every: 2 },
+    }),
+    "0 0 * * */2",
+  );
+  assertEquals(
+    parseScheduleToString({
+      minute: 3,
+      hour: { every: 2 },
+    }),
+    "3 */2 * * *",
+  );
+  assertEquals(
+    parseScheduleToString({
+      dayOfMonth: { start: 1, end: 10 },
+    }),
+    "0 0 1-10 * *",
+  );
+  assertEquals(
+    parseScheduleToString({
+      minute: { every: 10 },
+      dayOfMonth: { every: 5 },
+    }),
+    "*/10 * */5 * *",
+  );
+  assertEquals(
+    parseScheduleToString({
+      hour: { every: 3 },
+      month: { every: 2 },
+    }),
+    "0 */3 * */2 *",
+  );
+  assertEquals(
+    parseScheduleToString({
+      minute: { every: 5 },
+      month: { every: 2 },
+    }),
+    "*/5 * * */2 *",
+  );
 });

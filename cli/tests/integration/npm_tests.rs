@@ -30,14 +30,14 @@ itest!(esm_module_eval {
 });
 
 itest!(esm_module_deno_test {
-  args: "test --allow-read --allow-env --unstable npm/esm/test.js",
+  args: "test --allow-read --allow-env npm/esm/test.js",
   output: "npm/esm/test.out",
   envs: env_vars_for_npm_tests(),
   http_server: true,
 });
 
 itest!(esm_import_cjs_default {
-  args: "run --allow-read --allow-env --unstable --quiet --check=all npm/esm_import_cjs_default/main.ts",
+  args: "run --allow-read --allow-env --quiet --check=all npm/esm_import_cjs_default/main.ts",
   output: "npm/esm_import_cjs_default/main.out",
   envs: env_vars_for_npm_tests(),
   http_server: true,
@@ -123,7 +123,7 @@ itest!(translate_cjs_to_esm {
 });
 
 itest!(compare_globals {
-  args: "run --allow-read --unstable --check=all npm/compare_globals/main.ts",
+  args: "run --allow-read --check=all npm/compare_globals/main.ts",
   output: "npm/compare_globals/main.out",
   envs: env_vars_for_npm_tests(),
   http_server: true,
@@ -160,14 +160,15 @@ itest!(child_process_fork_test {
 });
 
 itest!(cjs_module_export_assignment {
-  args: "run -A --unstable --quiet --check=all npm/cjs_module_export_assignment/main.ts",
+  args: "run -A --quiet --check=all npm/cjs_module_export_assignment/main.ts",
   output: "npm/cjs_module_export_assignment/main.out",
   envs: env_vars_for_npm_tests(),
   http_server: true,
 });
 
 itest!(cjs_module_export_assignment_number {
-  args: "run -A --unstable --quiet --check=all npm/cjs_module_export_assignment_number/main.ts",
+  args:
+    "run -A --quiet --check=all npm/cjs_module_export_assignment_number/main.ts",
   output: "npm/cjs_module_export_assignment_number/main.out",
   envs: env_vars_for_npm_tests(),
   http_server: true,
@@ -256,7 +257,7 @@ itest!(import_map {
     http_server: true,
   });
 
-itest!(lock_file {
+itest!(lock_file_integrity_failure {
     args: "run --allow-read --allow-env --lock npm/lock_file/lock.json npm/lock_file/main.js",
     output: "npm/lock_file/main.out",
     envs: env_vars_for_npm_tests(),
@@ -401,7 +402,7 @@ itest!(no_types_cjs {
 });
 
 itest!(no_types_in_conditional_exports {
-  args: "run --check --unstable npm/no_types_in_conditional_exports/main.ts",
+  args: "run --check npm/no_types_in_conditional_exports/main.ts",
   output: "npm/no_types_in_conditional_exports/main.out",
   exit_code: 0,
   envs: env_vars_for_npm_tests(),
@@ -1517,10 +1518,9 @@ fn lock_file_lock_write() {
 
 #[test]
 fn auto_discover_lock_file() {
-  let _server = http_server();
+  let context = TestContextBuilder::for_npm().use_temp_cwd().build();
 
-  let deno_dir = util::new_deno_dir();
-  let temp_dir = util::TempDir::new();
+  let temp_dir = context.temp_dir();
 
   // write empty config file
   temp_dir.write("deno.json", "{}");
@@ -1541,25 +1541,26 @@ fn auto_discover_lock_file() {
   }"#;
   temp_dir.write("deno.lock", lock_file_content);
 
-  let deno = util::deno_cmd_with_deno_dir(&deno_dir)
-    .current_dir(temp_dir.path())
-    .arg("run")
-    .arg("--unstable")
-    .arg("-A")
-    .arg("npm:@denotest/bin/cli-esm")
-    .arg("test")
-    .envs(env_vars_for_npm_tests())
-    .piped_output()
-    .spawn()
-    .unwrap();
-  let output = deno.wait_with_output().unwrap();
-  assert!(!output.status.success());
-  assert_eq!(output.status.code(), Some(10));
+  let output = context
+    .new_command()
+    .args("run -A npm:@denotest/bin/cli-esm test")
+    .run();
+  output
+    .assert_matches_text(
+r#"Download http://localhost:4545/npm/registry/@denotest/bin
+error: Integrity check failed for npm package: "@denotest/bin@1.0.0". Unable to verify that the package
+is the same as when the lockfile was generated.
 
-  let stderr = String::from_utf8(output.stderr).unwrap();
-  assert!(stderr.contains(
-    "Integrity check failed for npm package: \"@denotest/bin@1.0.0\""
-  ));
+Actual: sha512-[WILDCARD]
+Expected: sha512-foobar
+
+This could be caused by:
+  * the lock file may be corrupt
+  * the source itself may be corrupt
+
+Use "--lock-write" flag to regenerate the lockfile at "[WILDCARD]deno.lock".
+"#)
+    .assert_exit_code(10);
 }
 
 #[test]

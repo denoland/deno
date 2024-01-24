@@ -1,1 +1,1 @@
-Unstable API 'Deno.UnsafePointerView#getUint32'. The --unstable flag must be provided.
+Unstable API 'Deno.UnsafePointerView#getUint32'. The `--unstable-ffi` flag must be provided.
