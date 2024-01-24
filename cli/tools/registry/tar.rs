@@ -15,6 +15,9 @@ use tar::Header;
 use crate::util::import_map::ImportMapUnfurler;
 use deno_config::glob::PathOrPatternSet;
 
+use super::diagnostics::PublishDiagnostic;
+use super::diagnostics::PublishDiagnosticsCollector;
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct PublishableTarballFile {
   pub path: PathBuf,
@@ -32,6 +35,7 @@ pub struct PublishableTarball {
 pub fn create_gzipped_tarball(
   dir: &Path,
   source_cache: &dyn deno_graph::ParsedSourceStore,
+  diagnostics_collector: &PublishDiagnosticsCollector,
   unfurler: &ImportMapUnfurler,
   exclude_patterns: &PathOrPatternSet,
 ) -> Result<PublishableTarball, AnyError> {
@@ -72,9 +76,11 @@ pub fn create_gzipped_tarball(
       });
       let content = match source_cache.get_parsed_source(&url) {
         Some(parsed_source) => {
-          let (content, unfurl_diagnostics) =
-            unfurler.unfurl(&url, &parsed_source);
-          diagnostics.extend_from_slice(&unfurl_diagnostics);
+          let mut reporter = |diagnostic| {
+            diagnostics_collector
+              .push(PublishDiagnostic::ImportMapUnfurl(diagnostic));
+          };
+          let content = unfurler.unfurl(&url, &parsed_source, &mut reporter);
           content.into_bytes()
         }
         None => data,

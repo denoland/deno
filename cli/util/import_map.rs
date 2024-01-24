@@ -3,6 +3,7 @@
 use std::collections::HashSet;
 
 use deno_ast::ParsedSource;
+use deno_ast::SourceRange;
 use deno_core::serde_json;
 use deno_core::ModuleSpecifier;
 use deno_graph::DefaultModuleAnalyzer;
@@ -13,8 +14,6 @@ use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 use import_map::ImportMap;
-
-use crate::graph_util::format_range_with_colors;
 
 pub fn import_map_deps(value: &serde_json::Value) -> HashSet<JsrDepPackageReq> {
   let Some(obj) = value.as_object() else {
@@ -69,6 +68,30 @@ fn values_to_set<'a>(
   entries
 }
 
+#[derive(Debug, Clone)]
+pub enum ImportMapUnfurlDiagnostic {
+  UnanalyzableDynamicImport {
+    specifier: ModuleSpecifier,
+    range: SourceRange,
+  },
+}
+
+impl ImportMapUnfurlDiagnostic {
+  pub fn code(&self) -> &'static str {
+    match self {
+      Self::UnanalyzableDynamicImport { .. } => "unanalyzable-dynamic-import",
+    }
+  }
+
+  pub fn message(&self) -> &'static str {
+    match self {
+      Self::UnanalyzableDynamicImport { .. } => {
+        "unable to analyze dynamic import"
+      }
+    }
+  }
+}
+
 pub struct ImportMapUnfurler<'a> {
   import_map: &'a ImportMap,
 }
@@ -82,8 +105,8 @@ impl<'a> ImportMapUnfurler<'a> {
     &self,
     url: &ModuleSpecifier,
     parsed_source: &ParsedSource,
-  ) -> (String, Vec<String>) {
-    let mut diagnostics = Vec::new();
+    diagnostic_reporter: &mut dyn FnMut(ImportMapUnfurlDiagnostic),
+  ) -> String {
     let mut text_changes = Vec::new();
     let module_info = DefaultModuleAnalyzer::module_info(parsed_source);
     let analyze_specifier =
@@ -117,14 +140,17 @@ impl<'a> ImportMapUnfurler<'a> {
           );
 
           if !success {
-            diagnostics.push(
-              format!("Dynamic import was not analyzable and won't use the import map once published.\n    at {}",
-                format_range_with_colors(&deno_graph::Range {
-                  specifier: url.clone(),
-                  start: dep.range.start.clone(),
-                  end: dep.range.end.clone(),
-                })
-              )
+            let start_pos =
+              parsed_source.text_info().line_start(dep.range.start.line)
+                + dep.range.start.character;
+            let end_pos =
+              parsed_source.text_info().line_start(dep.range.end.line)
+                + dep.range.end.character;
+            diagnostic_reporter(
+              ImportMapUnfurlDiagnostic::UnanalyzableDynamicImport {
+                specifier: url.to_owned(),
+                range: SourceRange::new(start_pos, end_pos),
+              },
             );
           }
         }
@@ -160,7 +186,7 @@ impl<'a> ImportMapUnfurler<'a> {
       parsed_source.text_info().text_str(),
       text_changes,
     );
-    (rewritten_text, diagnostics)
+    rewritten_text
   }
 }
 
@@ -311,10 +337,26 @@ const test6 = await import(`${expr}`);
 "#;
       let specifier = ModuleSpecifier::parse("file:///dev/mod.ts").unwrap();
       let source = parse_ast(&specifier, source_code);
-      let (unfurled_source, d) = unfurler.unfurl(&specifier, &source);
+      let mut d = Vec::new();
+      let mut reporter = |diagnostic| d.push(diagnostic);
+      let unfurled_source = unfurler.unfurl(&specifier, &source, &mut reporter);
       assert_eq!(d.len(), 2);
-      assert!(d[0].starts_with("Dynamic import was not analyzable and won't use the import map once published."));
-      assert!(d[1].starts_with("Dynamic import was not analyzable and won't use the import map once published."));
+      assert!(
+        matches!(
+          d[0],
+          ImportMapUnfurlDiagnostic::UnanalyzableDynamicImport { .. }
+        ),
+        "{:?}",
+        d[0]
+      );
+      assert!(
+        matches!(
+          d[1],
+          ImportMapUnfurlDiagnostic::UnanalyzableDynamicImport { .. }
+        ),
+        "{:?}",
+        d[1]
+      );
       let expected_source = r#"import express from "npm:express@5";"
 import foo from "./lib/foo.ts";
 import bar from "./lib/bar.ts";
