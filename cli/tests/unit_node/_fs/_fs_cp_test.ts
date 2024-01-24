@@ -1,8 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-import {
-  assert,
-  assertEquals,
-} from "../../../../test_util/std/assert/mod.ts";
+import { assert, assertEquals } from "../../../../test_util/std/assert/mod.ts";
 import { cp, exists, readFile } from "node:fs/promise";
 import { cpSync } from "node:fs";
 import * as path from "../../../../test_util/std/path/mod.ts";
@@ -16,8 +13,8 @@ Deno.test("[std/node/fs] cp", async function () {
     await cp(testData, destFile);
     assert(await exists(destFile));
     assertEquals(
-      (await readFile(destFile, { encoding: "utf8" })),
-        (await readFile(testData, { encoding: "utf8" }))
+      await readFile(destFile, { encoding: "utf8" }),
+      await readFile(testData, { encoding: "utf8" }),
     );
   } finally {
     Deno.removeSync(destFile);
@@ -28,8 +25,8 @@ Deno.test("[std/node/fs] cpSync", async function () {
   cpSync(testData, destFile);
   assert(await exists(destFile));
   assertEquals(
-    (await readFile(destFile, { encoding: "utf8" })),
-      (await readFile(testData, { encoding: "utf8" }))
+    await readFile(destFile, { encoding: "utf8" }),
+    await readFile(testData, { encoding: "utf8" }),
   );
   Deno.removeSync(destFile);
 });
