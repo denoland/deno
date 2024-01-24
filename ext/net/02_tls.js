@@ -10,6 +10,7 @@ const {
 } = core.ensureFastOps();
 const {
   Number,
+  SymbolFor,
   TypeError,
 } = primordials;
 
@@ -24,10 +25,12 @@ function opTlsHandshake(rid) {
 }
 
 class TlsConn extends Conn {
+  [SymbolFor("Deno.internal.rid")] = 0;
   #rid = 0;
 
   constructor(rid, remoteAddr, localAddr) {
     super(rid, remoteAddr, localAddr);
+    this[SymbolFor("Deno.internal.rid")] = rid;
     this.#rid = rid;
   }
 
@@ -75,10 +78,12 @@ async function connectTls({
 }
 
 class TlsListener extends Listener {
+  [SymbolFor("Deno.internal.rid")] = 0;
   #rid = 0;
 
   constructor(rid, addr) {
     super(rid, addr);
+    this[SymbolFor("Deno.internal.rid")] = rid;
     this.#rid = rid;
   }
 
@@ -146,7 +151,7 @@ async function startTls(
   } = {},
 ) {
   const { 0: rid, 1: localAddr, 2: remoteAddr } = await opStartTls({
-    rid: conn.rid,
+    rid: conn[SymbolFor("Deno.internal.rid")],
     hostname,
     certFile,
     caCerts,

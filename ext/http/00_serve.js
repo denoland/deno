@@ -33,6 +33,7 @@ const {
   PromisePrototypeCatch,
   PromisePrototypeThen,
   Symbol,
+  SymbolFor,
   TypeError,
   TypedArrayPrototypeGetSymbolToStringTag,
   Uint8Array,
@@ -617,7 +618,7 @@ function serve(arg1, arg2) {
 function serveHttpOnListener(listener, signal, handler, onError, onListen) {
   const context = new CallbackContext(
     signal,
-    op_http_serve(listener.rid),
+    op_http_serve(listener[SymbolFor("Deno.internal.rid")]),
     listener,
   );
   const callback = mapToCallback(context, handler, onError);
@@ -633,7 +634,7 @@ function serveHttpOnListener(listener, signal, handler, onError, onListen) {
 function serveHttpOnConnection(connection, signal, handler, onError, onListen) {
   const context = new CallbackContext(
     signal,
-    op_http_serve_on(connection.rid),
+    op_http_serve_on(connection[SymbolFor("Deno.internal.rid")]),
     null,
   );
   const callback = mapToCallback(context, handler, onError);
