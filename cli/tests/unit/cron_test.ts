@@ -391,3 +391,70 @@ Deno.test("error on two handlers", () => {
     "Deno.cron requires a single handler",
   );
 });
+
+Deno.test("Parse test", () => {
+  assertEquals(
+    parseScheduleToString({
+      minute: 3,
+    }),
+    "3 * * * *",
+  );
+  assertEquals(
+    parseScheduleToString({
+      hour: { every: 2 },
+    }),
+    "0 */2 * * *",
+  );
+  assertEquals(
+    parseScheduleToString({
+      dayOfMonth: { every: 10 },
+    }),
+    "0 0 */10 * *",
+  );
+  assertEquals(
+    parseScheduleToString({
+      month: { every: 3 },
+    }),
+    "0 0 1 */3 *",
+  );
+  assertEquals(
+    parseScheduleToString({
+      dayOfWeek: { every: 2 },
+    }),
+    "0 0 * * */2",
+  );
+  assertEquals(
+    parseScheduleToString({
+      minute: 3,
+      hour: { every: 2 },
+    }),
+    "3 */2 * * *",
+  );
+  assertEquals(
+    parseScheduleToString({
+      dayOfMonth: { start: 1, end: 10 },
+    }),
+    "0 0 1-10 * *",
+  );
+  assertEquals(
+    parseScheduleToString({
+      minute: { every: 10 },
+      dayOfMonth: { every: 5 },
+    }),
+    "*/10 * */5 * *",
+  );
+  assertEquals(
+    parseScheduleToString({
+      hour: { every: 3 },
+      month: { every: 2 },
+    }),
+    "0 */3 * */2 *",
+  );
+  assertEquals(
+    parseScheduleToString({
+      minute: { every: 5 },
+      month: { every: 2 },
+    }),
+    "*/5 * * */2 *",
+  );
+});

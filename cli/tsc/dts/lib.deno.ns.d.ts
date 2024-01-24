@@ -1984,6 +1984,9 @@ declare namespace Deno {
    * Deno.close(file.rid);
    * ```
    *
+   * @deprecated Use `reader.read()` instead. {@linkcode Deno.read} will be
+   * removed in Deno 2.0.
+   *
    * @category I/O
    */
   export function read(rid: number, buffer: Uint8Array): Promise<number | null>;
@@ -2013,6 +2016,9 @@ declare namespace Deno {
    * const text = new TextDecoder().decode(buf);  // "hello world"
    * Deno.close(file.rid);
    * ```
+   *
+   * @deprecated Use `reader.readSync()` instead. {@linkcode Deno.readSync}
+   * will be removed in Deno 2.0.
    *
    * @category I/O
    */
@@ -2100,6 +2106,9 @@ declare namespace Deno {
    * console.log(await Deno.seek(file.rid, -2, Deno.SeekMode.End)); // "9" (i.e. 11-2)
    * ```
    *
+   * @deprecated Use `file.seek()` instead. {@linkcode Deno.seek} will be
+   * removed in Deno 2.0.
+   *
    * @category I/O
    */
   export function seek(
@@ -2145,6 +2154,9 @@ declare namespace Deno {
    * console.log(Deno.seekSync(file.rid, -2, Deno.SeekMode.End)); // "9" (i.e. 11-2)
    * ```
    *
+   * @deprecated Use `file.seekSync()` instead. {@linkcode Deno.seekSync}
+   * will be removed in Deno 2.0.
+   *
    * @category I/O
    */
   export function seekSync(
@@ -2168,8 +2180,8 @@ declare namespace Deno {
    * console.log(await Deno.readTextFile("my_file.txt")); // H
    * ```
    *
-   * @deprecated Use `file.sync()` instead. {@linkcode Deno.fsync} will be
-   * removed in v2.0.0.
+   * @deprecated Use {@linkcode Deno.FsFile.sync} instead.
+   * {@linkcode Deno.fsync} will be removed in Deno 2.0.
    *
    * @category I/O
    */
@@ -2190,8 +2202,8 @@ declare namespace Deno {
    * console.log(Deno.readTextFileSync("my_file.txt")); // H
    * ```
    *
-   * @deprecated Use `file.syncSync()` instead. {@linkcode Deno.fsyncSync} will
-   * be removed in v2.0.0.
+   * @deprecated Use {@linkcode Deno.FsFile.syncSync} instead.
+   * {@linkcode Deno.fsyncSync} will be removed in Deno 2.0.
    *
    * @category I/O
    */
@@ -2287,8 +2299,13 @@ declare namespace Deno {
       SeekerSync,
       Closer,
       Disposable {
-    /** The resource ID associated with the file instance. The resource ID
-     * should be considered an opaque reference to resource. */
+    /**
+     * The resource ID associated with the file instance. The resource ID
+     * should be considered an opaque reference to resource.
+     *
+     * @deprecated Use {@linkcode Deno.FsFile} instance methods instead.
+     * {@linkcode Deno.FsFile.rid} will be removed in Deno 2.0.
+     */
     readonly rid: number;
     /** A {@linkcode ReadableStream} instance representing to the byte contents
      * of the file. This makes it easy to interoperate with other web streams
@@ -2318,9 +2335,15 @@ declare namespace Deno {
      * ```
      */
     readonly writable: WritableStream<Uint8Array>;
-    /** The constructor which takes a resource ID. Generally `FsFile` should
+    /**
+     * The constructor which takes a resource ID. Generally `FsFile` should
      * not be constructed directly. Instead use {@linkcode Deno.open} or
-     * {@linkcode Deno.openSync} to create a new instance of `FsFile`. */
+     * {@linkcode Deno.openSync} to create a new instance of `FsFile`.
+     *
+     * @deprecated Use {@linkcode Deno.open} or {@linkcode Deno.openSync}
+     * instead. {@linkcode Deno.FsFile.constructor} will be removed in Deno
+     * 2.0.
+     */
     constructor(rid: number);
     /** Write the contents of the array buffer (`p`) to the file.
      *
