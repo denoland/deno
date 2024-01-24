@@ -4099,14 +4099,19 @@ declare namespace Deno {
    * @category File System
    */
   export interface FsWatcher extends AsyncIterable<FsEvent>, Disposable {
-    /** The resource id. */
+    /**
+     * The resource id.
+     *
+     * @deprecated Use {@linkcode Deno.FsWatcher} instance methods instead.
+     * {@linkcode Deno.FsWatcher.rid} will be removed in Deno 2.0.
+     */
     readonly rid: number;
     /** Stops watching the file system and closes the watcher resource. */
     close(): void;
     /**
      * Stops watching the file system and closes the watcher resource.
      *
-     * @deprecated {@linkcode Deno.FsWatcher.return} will be removed in v2.0.0.
+     * @deprecated {@linkcode Deno.FsWatcher.return} will be removed in Deno 2.0.
      */
     return?(value?: any): Promise<IteratorResult<FsEvent>>;
     [Symbol.asyncIterator](): AsyncIterableIterator<FsEvent>;
@@ -5463,6 +5468,9 @@ declare namespace Deno {
    * assert(fileInfo.isFile);
    * ```
    *
+   * @deprecated Use `file.stat()` instead.
+   * {@linkcode Deno.fstat} will be removed in Deno 2.0.
+   *
    * @category File System
    */
   export function fstat(rid: number): Promise<FileInfo>;
@@ -5478,6 +5486,9 @@ declare namespace Deno {
    * const fileInfo = Deno.fstatSync(file.rid);
    * assert(fileInfo.isFile);
    * ```
+   *
+   * @deprecated Use `file.statSync()` instead.
+   * {@linkcode Deno.fstatSync} will be removed in Deno 2.0.
    *
    * @category File System
    */
