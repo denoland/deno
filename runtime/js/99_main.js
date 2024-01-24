@@ -164,6 +164,7 @@ function warnOnDeprecatedApi(apiName, stack, ...suggestions) {
       "font-weight: bold;",
     );
   }
+
   if (isFromRemoteDependency) {
     console.error(
       `%chint: It appears this API is used by a remote dependency. Try upgrading to the latest version of that dependency.`,
