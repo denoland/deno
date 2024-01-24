@@ -131,9 +131,7 @@ async fn prepare_publish(
   let Some((scope, package_name)) = name.split_once('/') else {
     bail!("Invalid package name, use '@<scope_name>/<package_name> format");
   };
-  let exclude_patterns = deno_json
-    .to_files_config()
-    .map(|files| files.map(|f| f.exclude).unwrap_or_default())?;
+  let file_patterns = deno_json.to_publish_config()?.map(|c| c.files);
 
   let diagnostics_collector = diagnostics_collector.clone();
   let tarball = deno_core::unsync::spawn_blocking(move || {
@@ -143,7 +141,7 @@ async fn prepare_publish(
       &*source_cache,
       &diagnostics_collector,
       &unfurler,
-      &exclude_patterns,
+      file_patterns,
     )
     .context("Failed to create a tarball")
   })

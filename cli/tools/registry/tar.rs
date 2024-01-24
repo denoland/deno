@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use bytes::Bytes;
+use deno_config::glob::FilePatterns;
 use deno_core::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
@@ -13,7 +14,6 @@ use std::path::PathBuf;
 use tar::Header;
 
 use crate::util::import_map::ImportMapUnfurler;
-use deno_config::glob::PathOrPatternSet;
 
 use super::diagnostics::PublishDiagnostic;
 use super::diagnostics::PublishDiagnosticsCollector;
@@ -37,7 +37,7 @@ pub fn create_gzipped_tarball(
   source_cache: &dyn deno_graph::ParsedSourceStore,
   diagnostics_collector: &PublishDiagnosticsCollector,
   unfurler: &ImportMapUnfurler,
-  exclude_patterns: &PathOrPatternSet,
+  file_patterns: Option<FilePatterns>,
 ) -> Result<PublishableTarball, AnyError> {
   let mut tar = TarGzArchive::new();
   let mut diagnostics = vec![];
@@ -47,11 +47,13 @@ pub fn create_gzipped_tarball(
   while let Some(entry) = iterator.next() {
     let entry = entry?;
 
-    if exclude_patterns.matches_path(entry.path()) {
-      if entry.file_type().is_dir() {
-        iterator.skip_current_dir();
+    if let Some(file_patterns) = &file_patterns {
+      if !file_patterns.matches_path(entry.path()) {
+        if entry.file_type().is_dir() {
+          iterator.skip_current_dir();
+        }
+        continue;
       }
-      continue;
     }
 
     if entry.file_type().is_file() {
