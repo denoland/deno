@@ -147,6 +147,7 @@ function warnOnDeprecatedApi(apiName, stack, ...suggestions) {
     "color: yellow; font-weight: bold;",
     "color: yellow;",
   );
+
   console.error();
   if (stackLines.length > 0) {
     console.error("%cStack trace:", "color: yellow;");
@@ -159,6 +160,7 @@ function warnOnDeprecatedApi(apiName, stack, ...suggestions) {
     console.error();
   }
   console.error();
+
   for (let i = 0; i < suggestions.length; i++) {
     const suggestion = suggestions[i];
     console.error(
