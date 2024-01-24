@@ -57,7 +57,7 @@ Deno.test({
   async fn() {
     const filePath = Deno.makeTempFileSync();
     await Deno.writeTextFile(filePath, "hello world");
-    const file = await Deno.open(filePath, {
+    using file = await Deno.open(filePath, {
       read: true,
       write: true,
       create: true,
