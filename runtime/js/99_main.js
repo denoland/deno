@@ -143,7 +143,7 @@ function warnOnDeprecatedApi(apiName, stack, ...suggestions) {
 
   ALREADY_WARNED_DEPRECATED.add(apiName + stack);
   console.error(
-    `%cWarning: %cUse of deprecated "${apiName}" API. This API will be removed in Deno 2.0.`,
+    `%cWarning: %cUse of deprecated "${apiName}" API. This API will be removed in Deno 2.`,
     "color: yellow;",
     "font-weight: bold;",
   );
