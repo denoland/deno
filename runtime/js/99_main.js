@@ -158,21 +158,17 @@ function warnOnDeprecatedApi(apiName, stack, ...suggestions) {
     }
     console.error();
   }
-  console.error(
-    "%cMake sure to upgrade to a stable API before then.",
-    "color: yellow;",
-  );
   console.error();
   for (let i = 0; i < suggestions.length; i++) {
     const suggestion = suggestions[i];
     console.error(
-      `%hint: ${suggestion}`,
+      `%chint: ${suggestion}`,
       "color: yellow;",
     );
   }
   if (isFromRemoteDependency) {
     console.error(
-      `%hint: It appears this API is used by a remote dependency. Try upgrading to the latest version of that dependency.`,
+      `%chint: It appears this API is used by a remote dependency. Try upgrading to the latest version of that dependency.`,
       "color: yellow;",
     );
   }
