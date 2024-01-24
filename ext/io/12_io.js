@@ -3,6 +3,7 @@
 // Interfaces 100% copied from Go.
 // Documentation liberally lifted from them too.
 // Thank you! We love Go! <3
+
 import { core, internals, primordials } from "ext:core/mod.js";
 const {
   op_stdin_set_raw,
@@ -179,31 +180,41 @@ function concatBuffers(buffers) {
   return contents;
 }
 
+const STDIN_RID = 0;
+const STDOUT_RID = 1;
+const STDERR_RID = 2;
+
 class Stdin {
+  #rid = STDIN_RID;
   #readable;
 
   constructor() {
   }
 
   get rid() {
-    return 0;
+    internals.warnOnDeprecatedApi(
+      "Deno.stdin.rid",
+      new Error().stack,
+      "Use `Deno.stdin` instance methods instead.",
+    );
+    return this.#rid;
   }
 
   read(p) {
-    return read(this.rid, p);
+    return read(this.#rid, p);
   }
 
   readSync(p) {
-    return readSync(this.rid, p);
+    return readSync(this.#rid, p);
   }
 
   close() {
-    core.tryClose(this.rid);
+    core.tryClose(this.#rid);
   }
 
   get readable() {
     if (this.#readable === undefined) {
-      this.#readable = readableStreamForRid(this.rid);
+      this.#readable = readableStreamForRid(this.#rid);
     }
     return this.#readable;
   }
@@ -214,75 +225,87 @@ class Stdin {
   }
 
   isTerminal() {
-    return op_is_terminal(this.rid);
+    return op_is_terminal(this.#rid);
   }
 }
 
 class Stdout {
+  #rid = STDOUT_RID;
   #writable;
 
   constructor() {
   }
 
   get rid() {
-    return 1;
+    internals.warnOnDeprecatedApi(
+      "Deno.stdout.rid",
+      new Error().stack,
+      "Use `Deno.stdout` instance methods instead.",
+    );
+    return this.#rid;
   }
 
   write(p) {
-    return write(this.rid, p);
+    return write(this.#rid, p);
   }
 
   writeSync(p) {
-    return writeSync(this.rid, p);
+    return writeSync(this.#rid, p);
   }
 
   close() {
-    core.close(this.rid);
+    core.close(this.#rid);
   }
 
   get writable() {
     if (this.#writable === undefined) {
-      this.#writable = writableStreamForRid(this.rid);
+      this.#writable = writableStreamForRid(this.#rid);
     }
     return this.#writable;
   }
 
   isTerminal() {
-    return op_is_terminal(this.rid);
+    return op_is_terminal(this.#rid);
   }
 }
 
 class Stderr {
+  #rid = STDERR_RID;
   #writable;
 
   constructor() {
   }
 
   get rid() {
-    return 2;
+    internals.warnOnDeprecatedApi(
+      "Deno.stderr.rid",
+      new Error().stack,
+      "Use `Deno.stderr` instance methods instead.",
+    );
+    return this.#rid;
   }
 
   write(p) {
-    return write(this.rid, p);
+    return write(this.#rid, p);
   }
 
   writeSync(p) {
-    return writeSync(this.rid, p);
+    return writeSync(this.#rid, p);
   }
 
   close() {
-    core.close(this.rid);
+    core.close(this.#rid);
   }
 
   get writable() {
     if (this.#writable === undefined) {
-      this.#writable = writableStreamForRid(this.rid);
+      this.#writable = writableStreamForRid(this.#rid);
     }
     return this.#writable;
   }
 
   isTerminal() {
-    return op_is_terminal(this.rid);
+    return op_is_terminal(this.#rid);
   }
 }
 
@@ -299,9 +322,14 @@ export {
   readAllSync,
   readSync,
   SeekMode,
+  Stderr,
   stderr,
+  STDERR_RID,
   stdin,
+  STDIN_RID,
+  Stdout,
   stdout,
+  STDOUT_RID,
   write,
   writeSync,
 };
