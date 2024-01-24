@@ -1135,8 +1135,6 @@ enum GPUCanvasAlphaMode {
 dictionary GPUCanvasConfiguration {
     required GPUDevice device;
     required GPUTextureFormat format;
-    required long width;
-    required long height;
     GPUTextureUsageFlags usage = 0x10;  // GPUTextureUsage.RENDER_ATTACHMENT
     sequence<GPUTextureFormat> viewFormats = [];
     GPUCanvasAlphaMode alphaMode = "opaque";
