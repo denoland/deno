@@ -562,20 +562,10 @@ async function symlink(
 }
 
 function fdatasyncSync(rid) {
-  internals.warnOnDeprecatedApi(
-    "Deno.fdatasyncSync()",
-    new Error().stack,
-    "Use `Deno.FsFile.syncDataSync()` instead.",
-  );
   op_fs_fdatasync_sync(rid);
 }
 
 async function fdatasync(rid) {
-  internals.warnOnDeprecatedApi(
-    "Deno.fdatasync()",
-    new Error().stack,
-    "Use `Deno.FsFile.syncData()` instead.",
-  );
   await op_fs_fdatasync_async(rid);
 }
 

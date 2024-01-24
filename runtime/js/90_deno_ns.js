@@ -225,22 +225,8 @@ const denoNs = {
     );
     return fs.fstat(rid);
   },
-  fsyncSync(rid) {
-    internals.warnOnDeprecatedApi(
-      "Deno.fsyncSync()",
-      new Error().stack,
-      "Use `Deno.FsFile.syncSync()` instead.",
-    );
-    fs.fsyncSync(rid);
-  },
-  async fsync(rid) {
-    internals.warnOnDeprecatedApi(
-      "Deno.fsync()",
-      new Error().stack,
-      "Use `Deno.FsFile.sync()` instead.",
-    );
-    await fs.fsync(rid);
-  },
+  fsyncSync: fs.fsyncSync,
+  fsync: fs.fsync,
   fdatasyncSync: fs.fdatasyncSync,
   fdatasync: fs.fdatasync,
   symlink: fs.symlink,
