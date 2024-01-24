@@ -1,1 +1,1 @@
-console.log(window.localStorage);
+console.log(globalThis.localStorage);

@@ -8,7 +8,7 @@ import {
 } from "./test_util.ts";
 
 Deno.test({ permissions: { read: true } }, function fstatSyncSuccess() {
-  const file = Deno.openSync("README.md");
+  using file = Deno.openSync("README.md");
   const fileInfo = Deno.fstatSync(file.rid);
   assert(fileInfo.isFile);
   assert(!fileInfo.isSymlink);
@@ -18,12 +18,10 @@ Deno.test({ permissions: { read: true } }, function fstatSyncSuccess() {
   assert(fileInfo.mtime);
   // The `birthtime` field is not available on Linux before kernel version 4.11.
   assert(fileInfo.birthtime || Deno.build.os === "linux");
-
-  Deno.close(file.rid);
 });
 
 Deno.test({ permissions: { read: true } }, async function fstatSuccess() {
-  const file = await Deno.open("README.md");
+  using file = await Deno.open("README.md");
   const fileInfo = await Deno.fstat(file.rid);
   assert(fileInfo.isFile);
   assert(!fileInfo.isSymlink);
@@ -33,8 +31,6 @@ Deno.test({ permissions: { read: true } }, async function fstatSuccess() {
   assert(fileInfo.mtime);
   // The `birthtime` field is not available on Linux before kernel version 4.11.
   assert(fileInfo.birthtime || Deno.build.os === "linux");
-
-  Deno.close(file.rid);
 });
 
 Deno.test(
