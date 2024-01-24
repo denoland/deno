@@ -113,7 +113,7 @@ const denoNs = {
     internals.warnOnDeprecatedApi(
       "Deno.seek()",
       new Error().stack,
-      "Use `seeker.seek()` instead.",
+      "Use `file.seek()` instead.",
     );
     return fs.seek(rid, offset, whence);
   },
@@ -121,7 +121,7 @@ const denoNs = {
     internals.warnOnDeprecatedApi(
       "Deno.seekSync()",
       new Error().stack,
-      "Use `seeker.seekSync()` instead.",
+      "Use `file.seekSync()` instead.",
     );
     return fs.seekSync(rid, offset, whence);
   },
