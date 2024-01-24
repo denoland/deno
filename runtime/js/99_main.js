@@ -143,48 +143,38 @@ function warnOnDeprecatedApi(apiName, stack, ...suggestions) {
 
   ALREADY_WARNED_DEPRECATED.add(apiName + stack);
   console.error(
-    "%cWarning",
+    `%cWarning: %cUse of deprecated "${apiName}" API. This API will be removed in Deno 2.0.`,
     "color: yellow; font-weight: bold;",
-  );
-  console.error(
-    `%c\u251c Use of deprecated "${apiName}" API.`,
     "color: yellow;",
   );
-  console.error("%c\u2502", "color: yellow;");
+  console.error();
+  if (stackLines.length > 0) {
+    console.error("%cStack trace:", "color: yellow;");
+    for (let i = 0; i < stackLines.length; i++) {
+      console.error(
+        `%c  ${StringPrototypeTrim(stackLines[i])}`,
+        "color: yellow;",
+      );
+    }
+    console.error();
+  }
   console.error(
-    "%c\u251c This API will be removed in Deno 2.0. Make sure to upgrade to a stable API before then.",
+    "%cMake sure to upgrade to a stable API before then.",
     "color: yellow;",
   );
+  console.error();
   for (let i = 0; i < suggestions.length; i++) {
     const suggestion = suggestions[i];
-    console.error("%c\u2502", "color: yellow;");
     console.error(
-      `%c\u251c Suggestion: ${suggestion}`,
+      `%hint: ${suggestion}`,
       "color: yellow;",
     );
   }
   if (isFromRemoteDependency) {
-    console.error("%c\u2502", "color: yellow;");
     console.error(
-      `%c\u251c Suggestion: It appears this API is used by a remote dependency.`,
+      `%hint: It appears this API is used by a remote dependency. Try upgrading to the latest version of that dependency.`,
       "color: yellow;",
     );
-    console.error(
-      "%c\u2502             Try upgrading to the latest version of that dependency.",
-      "color: yellow;",
-    );
-  }
-  if (stackLines.length > 0) {
-    console.error("%c\u2502", "color: yellow;");
-    console.error("%c\u2514 Stack trace:", "color: yellow;");
-    for (let i = 0; i < stackLines.length; i++) {
-      console.error(
-        `%c  ${i == stackLines.length - 1 ? "\u2514" : "\u251c"}\u2500 ${
-          StringPrototypeTrim(stackLines[i])
-        }`,
-        "color: yellow;",
-      );
-    }
   }
   console.error();
 }
