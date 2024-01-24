@@ -94,9 +94,8 @@ pub fn collect_fast_check_type_graph_diagnostics(
           {
             continue;
           }
-          diagnostics_collector.push(PublishDiagnostic::FastCheck {
-            diagnostic: diagnostic.clone(),
-          });
+          diagnostics_collector
+            .push(PublishDiagnostic::FastCheck(diagnostic.clone()));
           if matches!(
             diagnostic,
             FastCheckDiagnostic::UnsupportedJavaScriptEntrypoint { .. }

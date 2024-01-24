@@ -1325,6 +1325,8 @@ declare interface GPUCanvasConfiguration {
   viewFormats?: GPUTextureFormat[];
   colorSpace?: "srgb" | "display-p3";
   alphaMode?: GPUCanvasAlphaMode;
+  width: number;
+  height: number;
 }
 /** @category WebGPU */
 declare interface GPUCanvasContext {
