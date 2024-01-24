@@ -20,7 +20,7 @@ pub async fn bundle(
   flags: Flags,
   bundle_flags: BundleFlags,
 ) -> Result<(), AnyError> {
-  eprintln!(
+  log::info!(
     "{}",
     colors::yellow("⚠️ Warning: `deno bundle` is deprecated and will be removed in Deno 2.0.\nUse an alternative bundler like \"deno_emit\", \"esbuild\" or \"rollup\" instead."),
   );
