@@ -2100,7 +2100,7 @@ declare namespace Deno {
    * console.log(await Deno.seek(file.rid, -2, Deno.SeekMode.End)); // "9" (i.e. 11-2)
    * ```
    *
-   * @deprecated Use `seeker.seek()` instead. {@linkcode Deno.seek} will be
+   * @deprecated Use `file.seek()` instead. {@linkcode Deno.seek} will be
    * removed in Deno 2.0.
    *
    * @category I/O
@@ -2148,7 +2148,7 @@ declare namespace Deno {
    * console.log(Deno.seekSync(file.rid, -2, Deno.SeekMode.End)); // "9" (i.e. 11-2)
    * ```
    *
-   * @deprecated Use `seeker.seekSync()` instead. {@linkcode Deno.seekSync}
+   * @deprecated Use `file.seekSync()` instead. {@linkcode Deno.seekSync}
    * will be removed in Deno 2.0.
    *
    * @category I/O
