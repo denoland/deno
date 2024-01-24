@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { core } from "ext:core/mod.js";
+import { core, internals } from "ext:core/mod.js";
 const {
   op_net_listen_udp,
   op_net_listen_unixpacket,
@@ -119,8 +119,22 @@ const denoNs = {
   startTls: tls.startTls,
   shutdown: net.shutdown,
   fstatSync: fs.fstatSync,
-  fstat: fs.fstat,
-  fsyncSync: fs.fsyncSync,
+  fstat(rid) {
+    internals.warnOnDeprecatedApi(
+      "Deno.fstat()",
+      new Error().stack,
+      "Use `file.stat()` instead.",
+    );
+    return fs.fstatSync(rid);
+  },
+  fsyncSync(rid) {
+    internals.warnOnDeprecatedApi(
+      "Deno.fstatSync()",
+      new Error().stack,
+      "Use `file.statSync()` instead.",
+    );
+    return fs.fsyncSync(rid);
+  },
   fsync: fs.fsync,
   fdatasyncSync: fs.fdatasyncSync,
   fdatasync: fs.fdatasync,

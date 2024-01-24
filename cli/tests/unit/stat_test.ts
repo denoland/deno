@@ -9,7 +9,7 @@ import {
 
 Deno.test({ permissions: { read: true } }, function fstatSyncSuccess() {
   const file = Deno.openSync("README.md");
-  const fileInfo = Deno.fstatSync(file.rid);
+  const fileInfo = file.statSync();
   assert(fileInfo.isFile);
   assert(!fileInfo.isSymlink);
   assert(!fileInfo.isDirectory);
@@ -24,7 +24,7 @@ Deno.test({ permissions: { read: true } }, function fstatSyncSuccess() {
 
 Deno.test({ permissions: { read: true } }, async function fstatSuccess() {
   const file = await Deno.open("README.md");
-  const fileInfo = await Deno.fstat(file.rid);
+  const fileInfo = await file.stat();
   assert(fileInfo.isFile);
   assert(!fileInfo.isSymlink);
   assert(!fileInfo.isDirectory);

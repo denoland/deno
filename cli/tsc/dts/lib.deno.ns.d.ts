@@ -5384,6 +5384,9 @@ declare namespace Deno {
    * assert(fileInfo.isFile);
    * ```
    *
+   * @deprecated Use `file.stat()` instead.
+   * {@linkcode Deno.fstat} will be removed in Deno 2.0.
+   *
    * @category File System
    */
   export function fstat(rid: number): Promise<FileInfo>;
@@ -5399,6 +5402,9 @@ declare namespace Deno {
    * const fileInfo = Deno.fstatSync(file.rid);
    * assert(fileInfo.isFile);
    * ```
+   *
+   * @deprecated Use `file.statSync()` instead.
+   * {@linkcode Deno.fstatSync} will be removed in Deno 2.0.
    *
    * @category File System
    */
