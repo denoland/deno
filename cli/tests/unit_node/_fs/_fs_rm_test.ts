@@ -6,7 +6,7 @@ import {
   fail,
 } from "../../../../test_util/std/assert/mod.ts";
 import { rm, rmSync } from "node:fs";
-import { closeSync, existsSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { join } from "../../../../test_util/std/path/mod.ts";
 
 Deno.test({
@@ -26,27 +26,14 @@ Deno.test({
   },
 });
 
-function closeRes(before: Deno.ResourceMap, after: Deno.ResourceMap) {
-  for (const key in after) {
-    if (!before[key]) {
-      try {
-        closeSync(Number(key));
-      } catch (error) {
-        return error;
-      }
-    }
-  }
-}
-
 Deno.test({
   name: "ASYNC: removing non-empty folder",
   async fn() {
-    const rBefore = Deno.resources();
     const dir = Deno.makeTempDirSync();
-    Deno.createSync(join(dir, "file1.txt"));
-    Deno.createSync(join(dir, "file2.txt"));
+    using _file1 = Deno.createSync(join(dir, "file1.txt"));
+    using _file2 = Deno.createSync(join(dir, "file2.txt"));
     Deno.mkdirSync(join(dir, "some_dir"));
-    Deno.createSync(join(dir, "some_dir", "file.txt"));
+    using _file = Deno.createSync(join(dir, "some_dir", "file.txt"));
     await new Promise<void>((resolve, reject) => {
       rm(dir, { recursive: true }, (err) => {
         if (err) reject(err);
@@ -56,8 +43,6 @@ Deno.test({
       .then(() => assertEquals(existsSync(dir), false), () => fail())
       .finally(() => {
         if (existsSync(dir)) Deno.removeSync(dir, { recursive: true });
-        const rAfter = Deno.resources();
-        closeRes(rBefore, rAfter);
       });
   },
   ignore: Deno.build.os === "windows",
@@ -116,17 +101,13 @@ Deno.test({
 Deno.test({
   name: "SYNC: removing non-empty folder",
   fn() {
-    const rBefore = Deno.resources();
     const dir = Deno.makeTempDirSync();
-    Deno.createSync(join(dir, "file1.txt"));
-    Deno.createSync(join(dir, "file2.txt"));
+    using _file1 = Deno.createSync(join(dir, "file1.txt"));
+    using _file2 = Deno.createSync(join(dir, "file2.txt"));
     Deno.mkdirSync(join(dir, "some_dir"));
-    Deno.createSync(join(dir, "some_dir", "file.txt"));
+    using _file = Deno.createSync(join(dir, "some_dir", "file.txt"));
     rmSync(dir, { recursive: true });
     assertEquals(existsSync(dir), false);
-    // closing resources
-    const rAfter = Deno.resources();
-    closeRes(rBefore, rAfter);
   },
   ignore: Deno.build.os === "windows",
 });

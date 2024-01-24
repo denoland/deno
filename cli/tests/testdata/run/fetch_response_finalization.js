@@ -1,6 +1,6 @@
 async function doAFetch() {
   const resp = await fetch("http://localhost:4545/README.md");
-  console.log(Deno.resources()); // print the current resources
+  console.log(Deno[Deno.internal].core.resources()); // print the current resources
   const _resp = resp;
   // at this point resp can be GC'ed
 }
@@ -13,4 +13,4 @@ globalThis.gc(); // force GC
 // the response body is not called and the resource is not closed.
 await new Promise((resolve) => setTimeout(resolve, 0));
 
-console.log(Deno.resources()); // print the current resources
+console.log(Deno[Deno.internal].core.resources()); // print the current resources

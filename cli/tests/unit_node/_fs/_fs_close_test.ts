@@ -13,18 +13,13 @@ Deno.test({
     const tempFile: string = await Deno.makeTempFile();
     const file: Deno.FsFile = await Deno.open(tempFile);
 
-    assert(Deno.resources()[file.rid]);
     await new Promise<void>((resolve, reject) => {
       close(file.rid, (err) => {
         if (err !== null) reject();
         else resolve();
       });
     })
-      .then(() => {
-        assert(!Deno.resources()[file.rid]);
-      }, () => {
-        fail("No error expected");
-      })
+      .catch(() => fail("No error expected"))
       .finally(async () => {
         await Deno.remove(tempFile);
       });
@@ -66,9 +61,7 @@ Deno.test({
     const tempFile: string = Deno.makeTempFileSync();
     const file: Deno.FsFile = Deno.openSync(tempFile);
 
-    assert(Deno.resources()[file.rid]);
     closeSync(file.rid);
-    assert(!Deno.resources()[file.rid]);
     Deno.removeSync(tempFile);
   },
 });

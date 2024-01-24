@@ -1,9 +1,12 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const {
   Error,
 } = primordials;
+const {
+  op_is_terminal,
+} = core.ensureFastOps(true);
 
 import { ERR_INVALID_FD } from "ext:deno_node/internal/errors.ts";
 import { LibuvStreamWrap } from "ext:deno_node/internal_binding/stream_wrap.ts";
@@ -17,7 +20,12 @@ function isatty(fd) {
     return false;
   }
   try {
-    return Deno.isatty(fd);
+    /**
+     * TODO: Treat `fd` as real file descriptors. Currently, `rid` 0, 1, 2
+     * correspond to `fd` 0, 1, 2 (stdin, stdout, stderr). This may change in
+     * the future.
+     */
+    return op_is_terminal(fd);
   } catch (_) {
     return false;
   }

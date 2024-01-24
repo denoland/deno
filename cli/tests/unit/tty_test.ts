@@ -4,7 +4,7 @@ import { assert } from "./test_util.ts";
 // Note tests for Deno.stdin.setRaw is in integration tests.
 
 Deno.test(function consoleSize() {
-  if (!Deno.isatty(Deno.stdout.rid)) {
+  if (!Deno.stdout.isTerminal()) {
     return;
   }
   const result = Deno.consoleSize();

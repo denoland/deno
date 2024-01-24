@@ -28,6 +28,36 @@ declare interface ImportMeta {
    */
   url: string;
 
+  /** The absolute path of the current module.
+   *
+   * This property is only provided for local modules (ie. using `file://` URLs).
+   *
+   * Example:
+   * ```
+   * // Unix
+   * console.log(import.meta.filename); // /home/alice/my_module.ts
+   *
+   * // Windows
+   * console.log(import.meta.filename); // C:\alice\my_module.ts
+   * ```
+   */
+  filename?: string;
+
+  /** The absolute path of the dirrectory containing the current module.
+   *
+   * This property is only provided for local modules (ie. using `file://` URLs).
+   *
+   * * Example:
+   * ```
+   * // Unix
+   * console.log(import.meta.dirname); // /home/alice/
+   *
+   * // Windows
+   * console.log(import.meta.dirname); // C:\alice\
+   * ```
+   */
+  dirname?: string;
+
   /** A flag that indicates if the current module is the main module that was
    * called when starting the program under Deno.
    *
@@ -1954,6 +1984,9 @@ declare namespace Deno {
    * Deno.close(file.rid);
    * ```
    *
+   * @deprecated Use `reader.read()` instead. {@linkcode Deno.read} will be
+   * removed in Deno 2.0.
+   *
    * @category I/O
    */
   export function read(rid: number, buffer: Uint8Array): Promise<number | null>;
@@ -1983,6 +2016,9 @@ declare namespace Deno {
    * const text = new TextDecoder().decode(buf);  // "hello world"
    * Deno.close(file.rid);
    * ```
+   *
+   * @deprecated Use `reader.readSync()` instead. {@linkcode Deno.readSync}
+   * will be removed in Deno 2.0.
    *
    * @category I/O
    */
@@ -2070,6 +2106,9 @@ declare namespace Deno {
    * console.log(await Deno.seek(file.rid, -2, Deno.SeekMode.End)); // "9" (i.e. 11-2)
    * ```
    *
+   * @deprecated Use `file.seek()` instead. {@linkcode Deno.seek} will be
+   * removed in Deno 2.0.
+   *
    * @category I/O
    */
   export function seek(
@@ -2115,6 +2154,9 @@ declare namespace Deno {
    * console.log(Deno.seekSync(file.rid, -2, Deno.SeekMode.End)); // "9" (i.e. 11-2)
    * ```
    *
+   * @deprecated Use `file.seekSync()` instead. {@linkcode Deno.seekSync}
+   * will be removed in Deno 2.0.
+   *
    * @category I/O
    */
   export function seekSync(
@@ -2138,6 +2180,9 @@ declare namespace Deno {
    * console.log(await Deno.readTextFile("my_file.txt")); // H
    * ```
    *
+   * @deprecated Use {@linkcode Deno.FsFile.sync} instead.
+   * {@linkcode Deno.fsync} will be removed in Deno 2.0.
+   *
    * @category I/O
    */
   export function fsync(rid: number): Promise<void>;
@@ -2157,6 +2202,9 @@ declare namespace Deno {
    * console.log(Deno.readTextFileSync("my_file.txt")); // H
    * ```
    *
+   * @deprecated Use {@linkcode Deno.FsFile.syncSync} instead.
+   * {@linkcode Deno.fsyncSync} will be removed in Deno 2.0.
+   *
    * @category I/O
    */
   export function fsyncSync(rid: number): void;
@@ -2172,6 +2220,9 @@ declare namespace Deno {
    * await Deno.fdatasync(file.rid);
    * console.log(await Deno.readTextFile("my_file.txt")); // Hello World
    * ```
+   *
+   * @deprecated Use {@linkcode Deno.FsFile.dataSync} instead.
+   * {@linkcode Deno.fdatasync} will be removed in v2.0.0.
    *
    * @category I/O
    */
@@ -2190,6 +2241,9 @@ declare namespace Deno {
    * Deno.fdatasyncSync(file.rid);
    * console.log(Deno.readTextFileSync("my_file.txt")); // Hello World
    * ```
+   *
+   * @deprecated Use {@linkcode Deno.FsFile.dataSyncSync} instead.
+   * {@linkcode Deno.fdatasyncSync} will be removed in v2.0.0.
    *
    * @category I/O
    */
@@ -2494,6 +2548,74 @@ declare namespace Deno {
      * ```
      */
     statSync(): FileInfo;
+    /**
+     * Flushes any pending data and metadata operations of the given file
+     * stream to disk.
+     *
+     * ```ts
+     * const file = await Deno.open(
+     *   "my_file.txt",
+     *   { read: true, write: true, create: true },
+     * );
+     * await file.write(new TextEncoder().encode("Hello World"));
+     * await file.truncate(1);
+     * await file.sync();
+     * console.log(await Deno.readTextFile("my_file.txt")); // H
+     * ```
+     *
+     * @category I/O
+     */
+    sync(): Promise<void>;
+    /**
+     * Synchronously flushes any pending data and metadata operations of the given
+     * file stream to disk.
+     *
+     * ```ts
+     * const file = Deno.openSync(
+     *   "my_file.txt",
+     *   { read: true, write: true, create: true },
+     * );
+     * file.writeSync(new TextEncoder().encode("Hello World"));
+     * file.truncateSync(1);
+     * file.syncSync();
+     * console.log(Deno.readTextFileSync("my_file.txt")); // H
+     * ```
+     *
+     * @category I/O
+     */
+    syncSync(): void;
+    /**
+     * Flushes any pending data operations of the given file stream to disk.
+     *  ```ts
+     * using file = await Deno.open(
+     *   "my_file.txt",
+     *   { read: true, write: true, create: true },
+     * );
+     * await file.write(new TextEncoder().encode("Hello World"));
+     * await file.dataSync();
+     * console.log(await Deno.readTextFile("my_file.txt")); // Hello World
+     * ```
+     *
+     * @category I/O
+     */
+    dataSync(): Promise<void>;
+    /**
+     * Synchronously flushes any pending data operations of the given file stream
+     * to disk.
+     *
+     *  ```ts
+     * using file = Deno.openSync(
+     *   "my_file.txt",
+     *   { read: true, write: true, create: true },
+     * );
+     * file.writeSync(new TextEncoder().encode("Hello World"));
+     * file.dataSyncSync();
+     * console.log(Deno.readTextFileSync("my_file.txt")); // Hello World
+     * ```
+     *
+     * @category I/O
+     */
+    dataSyncSync(): void;
     /** Close the file. Closing a file when you are finished with it is
      * important to avoid leaking resources.
      *
@@ -2582,6 +2704,17 @@ declare namespace Deno {
      * @category I/O
      */
     setRaw(mode: boolean, options?: SetRawOptions): void;
+    /**
+     * Checks if `stdin` is a TTY (terminal).
+     *
+     * ```ts
+     * // This example is system and context specific
+     * Deno.stdin.isTerminal(); // true
+     * ```
+     *
+     * @category I/O
+     */
+    isTerminal(): boolean;
   };
   /** A reference to `stdout` which can be used to write directly to `stdout`.
    * It implements the Deno specific {@linkcode Writer}, {@linkcode WriterSync},
@@ -2599,6 +2732,17 @@ declare namespace Deno {
     readonly rid: number;
     /** A writable stream interface to `stdout`. */
     readonly writable: WritableStream<Uint8Array>;
+    /**
+     * Checks if `stdout` is a TTY (terminal).
+     *
+     * ```ts
+     * // This example is system and context specific
+     * Deno.stdout.isTerminal(); // true
+     * ```
+     *
+     * @category I/O
+     */
+    isTerminal(): boolean;
   };
   /** A reference to `stderr` which can be used to write directly to `stderr`.
    * It implements the Deno specific {@linkcode Writer}, {@linkcode WriterSync},
@@ -2616,6 +2760,17 @@ declare namespace Deno {
     readonly rid: number;
     /** A writable stream interface to `stderr`. */
     readonly writable: WritableStream<Uint8Array>;
+    /**
+     * Checks if `stderr` is a TTY (terminal).
+     *
+     * ```ts
+     * // This example is system and context specific
+     * Deno.stderr.isTerminal(); // true
+     * ```
+     *
+     * @category I/O
+     */
+    isTerminal(): boolean;
   };
 
   /**
@@ -2697,6 +2852,10 @@ declare namespace Deno {
    * Deno.close(nonTTYRid);
    * Deno.close(ttyRid);
    * ```
+   *
+   * @deprecated Use `Deno.stdin.isTerminal()`, `Deno.stdout.isTerminal()` or
+   * `Deno.stderr.isTerminal()` instead.
+   * {@linkcode Deno.isatty} will be removed in v2.0.0.
    *
    * @category I/O
    */
@@ -3822,6 +3981,8 @@ declare namespace Deno {
    * A map of open resources that Deno is tracking. The key is the resource ID
    * (_rid_) and the value is its representation.
    *
+   * @deprecated {@linkcode Deno.resources} will be removed in Deno 2.0.
+   *
    * @category Observability */
   interface ResourceMap {
     [rid: number]: unknown;
@@ -3839,6 +4000,8 @@ declare namespace Deno {
    * console.log(Deno.resources());
    * // { 0: "stdin", 1: "stdout", 2: "stderr", 3: "fsFile" }
    * ```
+   *
+   * @deprecated {@linkcode Deno.resources} will be removed in Deno 2.0.
    *
    * @category Observability
    */
@@ -5034,8 +5197,8 @@ declare namespace Deno {
    * called when `Deno.inspect()` is called, or when the object is logged to
    * the console.
    *
-   * @deprecated This symbol is deprecated since 1.9. Use
-   * `Symbol.for("Deno.customInspect")` instead.
+   * @deprecated Use `Symbol.for("Deno.customInspect")` instead. This symbol
+   * will be removed in Deno 2.0.
    *
    * @category Console and Debugging
    */
