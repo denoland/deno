@@ -836,7 +836,7 @@ Deno.test(
     });
     const data = new Uint8Array(64);
     file.writeSync(data);
-    file.dataSyncSync();
+    file.flushDataSync();
     assertEquals(Deno.readFileSync(filename), data);
     file.close();
     Deno.removeSync(filename);
@@ -854,7 +854,7 @@ Deno.test(
     });
     const data = new Uint8Array(64);
     await file.write(data);
-    await file.dataSync();
+    await file.flushData();
     assertEquals(await Deno.readFile(filename), data);
     file.close();
     await Deno.remove(filename);
@@ -872,7 +872,7 @@ Deno.test(
     });
     const size = 64;
     file.truncateSync(size);
-    file.syncSync();
+    file.flushAllSync();
     assertEquals(file.statSync().size, size);
     file.close();
     Deno.removeSync(filename);
@@ -890,7 +890,7 @@ Deno.test(
     });
     const size = 64;
     await file.truncate(size);
-    await file.sync();
+    await file.flushAll();
     assertEquals((await file.stat()).size, size);
     file.close();
     await Deno.remove(filename);

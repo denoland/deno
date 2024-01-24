@@ -2182,7 +2182,7 @@ declare namespace Deno {
    * console.log(await Deno.readTextFile("my_file.txt")); // H
    * ```
    *
-   * @deprecated Use {@linkcode Deno.FsFile.sync} instead.
+   * @deprecated Use {@linkcode Deno.FsFile.flushAll} instead.
    * {@linkcode Deno.fsync} will be removed in Deno 2.0.
    *
    * @category I/O
@@ -2204,7 +2204,7 @@ declare namespace Deno {
    * console.log(Deno.readTextFileSync("my_file.txt")); // H
    * ```
    *
-   * @deprecated Use {@linkcode Deno.FsFile.syncSync} instead.
+   * @deprecated Use {@linkcode Deno.FsFile.flushAllSync} instead.
    * {@linkcode Deno.fsyncSync} will be removed in Deno 2.0.
    *
    * @category I/O
@@ -2223,7 +2223,7 @@ declare namespace Deno {
    * console.log(await Deno.readTextFile("my_file.txt")); // Hello World
    * ```
    *
-   * @deprecated Use {@linkcode Deno.FsFile.dataSync} instead.
+   * @deprecated Use {@linkcode Deno.FsFile.flushData} instead.
    * {@linkcode Deno.fdatasync} will be removed in v2.0.0.
    *
    * @category I/O
@@ -2244,7 +2244,7 @@ declare namespace Deno {
    * console.log(Deno.readTextFileSync("my_file.txt")); // Hello World
    * ```
    *
-   * @deprecated Use {@linkcode Deno.FsFile.dataSyncSync} instead.
+   * @deprecated Use {@linkcode Deno.FsFile.flushDataSync} instead.
    * {@linkcode Deno.fdatasyncSync} will be removed in v2.0.0.
    *
    * @category I/O
@@ -2575,13 +2575,13 @@ declare namespace Deno {
      * );
      * await file.write(new TextEncoder().encode("Hello World"));
      * await file.truncate(1);
-     * await file.sync();
+     * await file.flushAll();
      * console.log(await Deno.readTextFile("my_file.txt")); // H
      * ```
      *
      * @category I/O
      */
-    sync(): Promise<void>;
+    flushAll(): Promise<void>;
     /**
      * Synchronously flushes any pending data and metadata operations of the given
      * file stream to disk.
@@ -2593,13 +2593,13 @@ declare namespace Deno {
      * );
      * file.writeSync(new TextEncoder().encode("Hello World"));
      * file.truncateSync(1);
-     * file.syncSync();
+     * file.flushAllSync();
      * console.log(Deno.readTextFileSync("my_file.txt")); // H
      * ```
      *
      * @category I/O
      */
-    syncSync(): void;
+    flushAllSync(): void;
     /**
      * Flushes any pending data operations of the given file stream to disk.
      *  ```ts
@@ -2608,13 +2608,13 @@ declare namespace Deno {
      *   { read: true, write: true, create: true },
      * );
      * await file.write(new TextEncoder().encode("Hello World"));
-     * await file.dataSync();
+     * await file.flushDataSync();
      * console.log(await Deno.readTextFile("my_file.txt")); // Hello World
      * ```
      *
      * @category I/O
      */
-    dataSync(): Promise<void>;
+    flushDataSync(): Promise<void>;
     /**
      * Synchronously flushes any pending data operations of the given file stream
      * to disk.
@@ -2625,13 +2625,13 @@ declare namespace Deno {
      *   { read: true, write: true, create: true },
      * );
      * file.writeSync(new TextEncoder().encode("Hello World"));
-     * file.dataSyncSync();
+     * file.flushDataSync();
      * console.log(Deno.readTextFileSync("my_file.txt")); // Hello World
      * ```
      *
      * @category I/O
      */
-    dataSyncSync(): void;
+    flushDataSync(): void;
     /**
      * Changes the access (`atime`) and modification (`mtime`) times of the
      * file stream resource. Given times are either in seconds (UNIX epoch

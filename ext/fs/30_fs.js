@@ -558,20 +558,10 @@ async function symlink(
 }
 
 function fdatasyncSync(rid) {
-  internals.warnOnDeprecatedApi(
-    "Deno.fdatasyncSync()",
-    new Error().stack,
-    "Use `file.dataSyncSync()` instead.",
-  );
   op_fs_fdatasync_sync(rid);
 }
 
 async function fdatasync(rid) {
-  internals.warnOnDeprecatedApi(
-    "Deno.fdatasync()",
-    new Error().stack,
-    "Use `await file.dataSync()` instead.",
-  );
   await op_fs_fdatasync_async(rid);
 }
 
@@ -718,11 +708,11 @@ class FsFile {
     return fstatSync(this.#rid);
   }
 
-  async dataSync() {
+  async flushData() {
     await op_fs_fdatasync_async(this.#rid);
   }
 
-  dataSyncSync() {
+  flushDataSync() {
     op_fs_fdatasync_sync(this.#rid);
   }
 
@@ -744,11 +734,11 @@ class FsFile {
     return this.#writable;
   }
 
-  async sync() {
+  async flushAll() {
     await op_fs_fsync_async(this.#rid);
   }
 
-  syncSync() {
+  flushAllSync() {
     op_fs_fsync_sync(this.#rid);
   }
 
