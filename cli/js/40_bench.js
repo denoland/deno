@@ -36,10 +36,6 @@ function bench(
   optionsOrFn,
   maybeFn,
 ) {
-  if (typeof ops.op_register_bench != "function") {
-    return;
-  }
-
   if (!registeredWarmupBench) {
     registeredWarmupBench = true;
     const warmupBenchDesc = {

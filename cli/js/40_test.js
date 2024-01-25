@@ -625,10 +625,6 @@ function testInner(
   maybeFn,
   overrides = {},
 ) {
-  if (typeof ops.op_register_test != "function") {
-    return;
-  }
-
   let testDesc;
   const defaults = {
     ignore: false,
