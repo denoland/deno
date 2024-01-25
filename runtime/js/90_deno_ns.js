@@ -31,17 +31,6 @@ import * as kv from "ext:deno_kv/01_db.ts";
 import * as cron from "ext:deno_cron/01_cron.ts";
 import * as webgpuSurface from "ext:deno_webgpu/02_surface.js";
 
-class FsFile extends fs.FsFile {
-  constructor(rid) {
-    super(rid);
-    internals.warnOnDeprecatedApi(
-      "Deno.Fs",
-      new Error().stack,
-      "Use `Deno.open()` or `Deno.openSync()` instead.",
-    );
-  }
-}
-
 const denoNs = {
   metrics: () => {
     internals.warnOnDeprecatedApi("Deno.metrics()", new Error().stack);
@@ -171,7 +160,7 @@ const denoNs = {
     return io.writeSync(rid, data);
   },
   File: fs.File,
-  FsFile,
+  FsFile: fs.FsFile,
   open: fs.open,
   openSync: fs.openSync,
   create: fs.create,

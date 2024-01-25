@@ -21,6 +21,7 @@ const {
   PromisePrototypeThen,
   SafePromiseAll,
   Symbol,
+  SymbolFor,
 } = primordials;
 
 import { FsFile } from "ext:deno_fs/30_fs.js";
@@ -76,15 +77,21 @@ class Process {
     this.pid = res.pid;
 
     if (res.stdinRid && res.stdinRid > 0) {
-      this.stdin = new FsFile(res.stdinRid);
+      this.stdin = new FsFile(res.stdinRid, SymbolFor("Deno.internal.FsFile"));
     }
 
     if (res.stdoutRid && res.stdoutRid > 0) {
-      this.stdout = new FsFile(res.stdoutRid);
+      this.stdout = new FsFile(
+        res.stdoutRid,
+        SymbolFor("Deno.internal.FsFile"),
+      );
     }
 
     if (res.stderrRid && res.stderrRid > 0) {
-      this.stderr = new FsFile(res.stderrRid);
+      this.stderr = new FsFile(
+        res.stderrRid,
+        SymbolFor("Deno.internal.FsFile"),
+      );
     }
   }
 
