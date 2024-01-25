@@ -81,7 +81,6 @@ async function runTest(t: Deno.TestContext, path: string): Promise<void> {
         "run",
         "-A",
         "--quiet",
-        "--unstable",
         //"--unsafely-ignore-certificate-errors",
         "--unstable-bare-node-builtins",
         "--v8-flags=" + v8Flags.join(),

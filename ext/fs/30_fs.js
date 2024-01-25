@@ -88,6 +88,7 @@ const {
   StringPrototypeStartsWith,
   SymbolAsyncIterator,
   SymbolIterator,
+  SymbolFor,
   Uint32Array,
 } = primordials;
 
@@ -654,12 +655,14 @@ function create(path) {
 }
 
 class FsFile {
+  [SymbolFor("Deno.internal.rid")] = 0;
   #rid = 0;
 
   #readable;
   #writable;
 
   constructor(rid) {
+    this[SymbolFor("Deno.internal.rid")] = rid;
     this.#rid = rid;
   }
 
