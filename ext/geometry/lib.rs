@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 deno_core::extension!(
   deno_geometry,
-  deps = [deno_webidl, deno_console],
+  deps = [deno_webidl, deno_web, deno_console],
   esm = ["01_geometry.js"],
 );
 

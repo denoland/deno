@@ -9,7 +9,9 @@ import {
 const {
   ObjectDefineProperties,
   ObjectPrototypeIsPrototypeOf,
+  Float64Array,
   SymbolFor,
+  TypeError,
 } = primordials;
 
 import * as location from "ext:deno_web/12_location.js";
@@ -17,6 +19,7 @@ import * as console from "ext:deno_console/01_console.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import * as globalInterfaces from "ext:deno_web/04_global_interfaces.js";
 import * as webStorage from "ext:deno_webstorage/01_webstorage.js";
+import * as geometry from "ext:deno_geometry/01_geometry.js";
 import * as prompt from "ext:runtime/41_prompt.js";
 import { loadWebGPU } from "ext:deno_webgpu/00_init.js";
 
@@ -102,6 +105,26 @@ ObjectDefineProperties(Navigator.prototype, {
   },
 });
 const NavigatorPrototype = Navigator.prototype;
+
+geometry.enableWindowFeatures((transformList, prefix) => {
+  if (transformList === "") {
+    return {
+      // deno-fmt-ignore
+      matrix: new Float64Array([
+        1, 0, 0, 0,
+        0, 1, 0, 0,
+        0, 0, 1, 0,
+        0, 0, 0, 1,
+      ]),
+      is2D: true,
+    };
+  }
+
+  // TODO(petamoriken): Add CSS parser
+  throw new TypeError(
+    `${prefix}: CSS <transform-list> parser is not implemented`,
+  );
+});
 
 const mainRuntimeGlobalProperties = {
   Location: location.locationConstructorDescriptor,

@@ -2,19 +2,25 @@
 
 import { primordials } from "ext:core/mod.js";
 const {
+  ArrayPrototypeJoin,
   Float32Array,
   Float64Array,
   MathMax,
   MathMin,
+  NumberIsFinite,
+  ObjectDefineProperty,
   ObjectIs,
   ObjectPrototypeIsPrototypeOf,
   Symbol,
   SymbolFor,
+  TypedArrayPrototypeEvery,
+  TypedArrayPrototypeJoin,
   TypeError,
 } = primordials;
 
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { DOMException } from "ext:deno_web/01_dom_exception.js";
 
 webidl.converters.DOMPointInit = webidl.createDictionaryConverter(
   "DOMPointInit",
@@ -674,14 +680,16 @@ class DOMMatrixReadOnly {
 
   constructor(init = undefined) {
     const prefix = `Failed to construct '${this.constructor.name}'`;
-    if (typeof init === "string") {
-      // TODO(petamoriken): Add parser in Window global object
-      throw new TypeError(
-        `${prefix}: CSS <transform-list> parser is not implemented`,
-      );
-    }
     this[_brand] = _brand;
-    if (init === undefined) {
+    if (typeof init === "string") {
+      if (parseTransformList === null) {
+        throw new TypeError(`${prefix}: Cannot be constructed with string on Workers`);
+      } else {
+        const { matrix, is2D } = parseTransformList(init);
+        this[_raw] = matrix;
+        this[_is2D] = is2D;
+      }
+    } else if (init === undefined) {
       // deno-fmt-ignore
       this[_raw] = new Float64Array([
         1, 0, 0, 0,
@@ -704,7 +712,7 @@ class DOMMatrixReadOnly {
   static fromMatrix(other = {}) {
     const prefix = "Failed to call 'DOMMatrixReadOnly.fromMatrix'";
     other = webidl.converters.DOMMatrixInit(other, prefix, "Argument 1");
-    validateAndFixupMatrix(other, prefix);
+    validateAndFixupMatrixDictionary(other, prefix);
     const matrix = webidl.createBranded(DOMMatrixReadOnly);
     initMatrixFromDictonary(matrix, other);
     return matrix;
@@ -911,7 +919,7 @@ class DOMMatrix extends DOMMatrixReadOnly {
   static fromMatrix(other = {}) {
     const prefix = "Failed to call 'DOMMatrix.fromMatrix'";
     other = webidl.converters.DOMMatrixInit(other, prefix, "Argument 1");
-    validateAndFixupMatrix(other, prefix);
+    validateAndFixupMatrixDictionary(other, prefix);
     const matrix = webidl.createBranded(DOMMatrix);
     initMatrixFromDictonary(matrix, other);
     return matrix;
@@ -1193,70 +1201,70 @@ function sameValueZero(x, y) {
 
 /**
  * https://drafts.fxtf.org/geometry/#matrix-validate-and-fixup-2d
- * @param {object} init
+ * @param {object} dict
  * @param {string} prefix
  */
-function validateAndFixup2DMatrix(init, prefix) {
+function validateAndFixup2DMatrixDictionary(dict, prefix) {
   if (
     (
-      init.a !== undefined && init.m11 !== undefined &&
-      !sameValueZero(init.a, init.m11)
+      dict.a !== undefined && dict.m11 !== undefined &&
+      !sameValueZero(dict.a, dict.m11)
     ) ||
     (
-      init.b !== undefined && init.m12 !== undefined &&
-      !sameValueZero(init.b, init.m12)
+      dict.b !== undefined && dict.m12 !== undefined &&
+      !sameValueZero(dict.b, dict.m12)
     ) ||
     (
-      init.c !== undefined && init.m21 !== undefined &&
-      !sameValueZero(init.c, init.m21)
+      dict.c !== undefined && dict.m21 !== undefined &&
+      !sameValueZero(dict.c, dict.m21)
     ) ||
     (
-      init.d !== undefined && init.m22 !== undefined &&
-      !sameValueZero(init.d, init.m22)
+      dict.d !== undefined && dict.m22 !== undefined &&
+      !sameValueZero(dict.d, dict.m22)
     ) ||
     (
-      init.e !== undefined && init.m41 !== undefined &&
-      !sameValueZero(init.e, init.m41)
+      dict.e !== undefined && dict.m41 !== undefined &&
+      !sameValueZero(dict.e, dict.m41)
     ) ||
     (
-      init.f !== undefined && init.m42 !== undefined &&
-      !sameValueZero(init.f, init.m42)
+      dict.f !== undefined && dict.m42 !== undefined &&
+      !sameValueZero(dict.f, dict.m42)
     )
   ) {
     throw new TypeError(`${prefix}: Inconsistent 2d matrix value`);
   }
-  if (init.m11 === undefined) init.m11 = init.a ?? 1;
-  if (init.m12 === undefined) init.m12 = init.b ?? 0;
-  if (init.m21 === undefined) init.m21 = init.c ?? 0;
-  if (init.m22 === undefined) init.m22 = init.d ?? 1;
-  if (init.m41 === undefined) init.m41 = init.e ?? 0;
-  if (init.m42 === undefined) init.m42 = init.f ?? 0;
+  if (dict.m11 === undefined) dict.m11 = dict.a ?? 1;
+  if (dict.m12 === undefined) dict.m12 = dict.b ?? 0;
+  if (dict.m21 === undefined) dict.m21 = dict.c ?? 0;
+  if (dict.m22 === undefined) dict.m22 = dict.d ?? 1;
+  if (dict.m41 === undefined) dict.m41 = dict.e ?? 0;
+  if (dict.m42 === undefined) dict.m42 = dict.f ?? 0;
 }
 
 /**
  * https://drafts.fxtf.org/geometry/#matrix-validate-and-fixup
- * @param {object} init
+ * @param {object} dict
  * @param {string} prefix
  */
-function validateAndFixupMatrix(init, prefix) {
-  validateAndFixup2DMatrix(init, prefix);
-  const is2DCanBeTrue = init.m13 === 0 &&
-    init.m14 === 0 &&
-    init.m23 === 0 &&
-    init.m24 === 0 &&
-    init.m31 === 0 &&
-    init.m32 === 0 &&
-    init.m33 === 1 &&
-    init.m34 === 0 &&
-    init.m43 === 0 &&
-    init.m44 === 1;
-  if (init.is2D === true && !is2DCanBeTrue) {
+function validateAndFixupMatrixDictionary(dict, prefix) {
+  validateAndFixup2DMatrixDictionary(dict, prefix);
+  const is2DCanBeTrue = dict.m13 === 0 &&
+    dict.m14 === 0 &&
+    dict.m23 === 0 &&
+    dict.m24 === 0 &&
+    dict.m31 === 0 &&
+    dict.m32 === 0 &&
+    dict.m33 === 1 &&
+    dict.m34 === 0 &&
+    dict.m43 === 0 &&
+    dict.m44 === 1;
+  if (dict.is2D === true && !is2DCanBeTrue) {
     throw new TypeError(
       `${prefix}: is2D property is true but the input matrix is a 3d matrix`,
     );
   }
-  if (init.is2D === undefined) {
-    init.is2D = is2DCanBeTrue;
+  if (dict.is2D === undefined) {
+    dict.is2D = is2DCanBeTrue;
   }
 }
 
@@ -1346,6 +1354,68 @@ function isMatrixIdentity(matrix) {
   );
 }
 
+/**
+ * CSS <transform-list> parser
+ * @type {((transformList: string, prefix: string) => { matrix: Float64Array, is2D: boolean }) | null}
+ */
+let parseTransformList = null;
+
+/**
+ * @param {(transformList: string, prefix: string) => { matrix: Float64Array, is2D: boolean }} parser
+ */
+function enableWindowFeatures(parser) {
+  parseTransformList = parser;
+
+  // https://drafts.fxtf.org/geometry/#dommatrixreadonly-stringification-behavior
+  ObjectDefineProperty(DOMMatrixReadOnlyPrototype, "toString", {
+    value: function toString() {
+      webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
+      const raw = this[_raw];
+      if (!TypedArrayPrototypeEvery(raw, (value) => NumberIsFinite(value))) {
+        throw new DOMException(
+          "Failed to execute 'DOMMatrixReadOnly.prototype.toString': Cannot be serialized with NaN or Infinity values",
+          "InvalidStateError",
+        )
+      }
+      if (this[_is2D]) {
+        return `matrix(${ArrayPrototypeJoin([
+          raw[_a],
+          raw[_b],
+          raw[_c],
+          raw[_d],
+          raw[_e],
+          raw[_f],
+        ], ", ")})`;
+      } else {
+        return `matrix3d(${TypedArrayPrototypeJoin(raw, ", ")})`;
+      }
+    },
+    writable: true,
+    enumerable: false,
+    configurable: true,
+  });
+
+  // https://drafts.fxtf.org/geometry/#dom-dommatrix-setmatrixvalue
+  ObjectDefineProperty(DOMMatrixPrototype, "setMatrixValue", {
+    value: function setMatrixValue(transformList) {
+      webidl.assertBranded(this, DOMMatrixPrototype);
+      const prefix = "Failed to call 'DOMMatrix.prototype.setMatrixValue'";
+      webidl.requiredArguments(arguments.length, 1, prefix);
+      transformList = webidl.converters.DOMString(
+        transformList,
+        prefix,
+        "Argument 1",
+      );
+      const { matrix, is2D } = parser(transformList);
+      this[_raw] = matrix;
+      this[_is2D] = is2D;
+    },
+    writable: true,
+    enumerable: false,
+    configurable: true,
+  });
+}
+
 export {
   DOMMatrix,
   DOMMatrixPrototype,
@@ -1361,4 +1431,5 @@ export {
   DOMRectPrototype,
   DOMRectReadOnly,
   DOMRectReadOnlyPrototype,
+  enableWindowFeatures,
 };
