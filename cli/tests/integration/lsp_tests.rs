@@ -11045,3 +11045,106 @@ fn sloppy_imports_not_enabled() {
   );
   client.shutdown();
 }
+
+#[test]
+fn decorators_tc39() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("deno.json", r#"{}"#);
+
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+
+  let uri = Url::from_file_path(temp_dir.path().join("main.ts")).unwrap();
+
+  let diagnostics = client
+    .did_open(json!({
+      "textDocument": {
+        "uri": uri,
+        "languageId": "typescript",
+        "version": 1,
+        "text": r#"// deno-lint-ignore no-explicit-any
+function logged(value: any, { kind, name }: { kind: string; name: string }) {
+  if (kind === "method") {
+    return function (...args: unknown[]) {
+      console.log(`starting ${name} with arguments ${args.join(", ")}`);
+      // @ts-ignore this has implicit any type
+      const ret = value.call(this, ...args);
+      console.log(`ending ${name}`);
+      return ret;
+    };
+  }
+}
+
+class C {
+  @logged
+  m(arg: number) {
+    console.log("C.m", arg);
+  }
+}
+
+new C().m(1);
+"#
+      }
+    }))
+    .all();
+
+  assert_eq!(diagnostics.len(), 0);
+
+  client.shutdown();
+}
+
+#[test]
+fn decorators_ts() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    r#"{ "compilerOptions": { "experimentalDecorators": true } }"#,
+  );
+
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+
+  let uri = Url::from_file_path(temp_dir.path().join("main.ts")).unwrap();
+
+  let diagnostics = client
+    .did_open(json!({
+      "textDocument": {
+        "uri": uri,
+        "languageId": "typescript",
+        "version": 1,
+        "text": r#"// deno-lint-ignore-file
+function a() {
+  console.log("@A evaluated");
+  return function (
+    _target: any,
+    _propertyKey: string,
+    descriptor: PropertyDescriptor,
+  ) {
+    console.log("@A called");
+    const fn = descriptor.value;
+    descriptor.value = function () {
+      console.log("fn() called from @A");
+      fn();
+    };
+  };
+}
+        
+class C {
+  @a()
+  static test() {
+    console.log("C.test() called");
+  }
+}
+
+C.test();
+"#
+      }
+    }))
+    .all();
+
+  assert_eq!(diagnostics.len(), 0);
+
+  client.shutdown();
+}
