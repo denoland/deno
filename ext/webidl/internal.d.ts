@@ -348,6 +348,12 @@ declare module "ext:deno_webidl/00_webidl.js" {
       context?: string,
       opts?: any,
     ): number[];
+    ["sequence<unrestricted double>"](
+      v: any,
+      prefix?: string,
+      context?: string,
+      opts?: any,
+    ): number[];
 
     [type: string]: (
       v: any,

@@ -55,6 +55,8 @@ const windowOrWorkerGlobalScope = {
   CustomEvent: core.propNonEnumerable(event.CustomEvent),
   DecompressionStream: core.propNonEnumerable(compression.DecompressionStream),
   DOMException: core.propNonEnumerable(DOMException),
+  DOMMatrix: core.propNonEnumerable(geometry.DOMMatrix),
+  DOMMatrixReadOnly: core.propNonEnumerable(geometry.DOMMatrixReadOnly),
   DOMPoint: core.propNonEnumerable(geometry.DOMPoint),
   DOMPointReadOnly: core.propNonEnumerable(geometry.DOMPointReadOnly),
   DOMQuad: core.propNonEnumerable(geometry.DOMQuad),
