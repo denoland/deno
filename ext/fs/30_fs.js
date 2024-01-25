@@ -620,7 +620,7 @@ function openSync(
     options,
   );
 
-  return new FsFile(rid);
+  return new FsFile(rid, SymbolFor("Deno.internal.FsFile"));
 }
 
 async function open(
@@ -633,7 +633,7 @@ async function open(
     options,
   );
 
-  return new FsFile(rid);
+  return new FsFile(rid, SymbolFor("Deno.internal.FsFile"));
 }
 
 function createSync(path) {
@@ -661,9 +661,16 @@ class FsFile {
   #readable;
   #writable;
 
-  constructor(rid) {
+  constructor(rid, symbol) {
     this[SymbolFor("Deno.internal.rid")] = rid;
     this.#rid = rid;
+    if (!symbol || symbol !== SymbolFor("Deno.internal.FsFile")) {
+      internals.warnOnDeprecatedApi(
+        "new Deno.FsFile()",
+        new Error().stack,
+        "Use `Deno.open` or `Deno.openSync` instead.",
+      );
+    }
   }
 
   get rid() {
