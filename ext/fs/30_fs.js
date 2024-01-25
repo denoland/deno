@@ -655,12 +655,14 @@ function create(path) {
 }
 
 class FsFile {
+  [SymbolFor("Deno.internal.rid")] = 0;
   #rid = 0;
 
   #readable;
   #writable;
 
   constructor(rid, symbol) {
+    this[SymbolFor("Deno.internal.rid")] = rid;
     this.#rid = rid;
     if (!symbol || symbol !== SymbolFor("Deno.internal.FsFile")) {
       internals.warnOnDeprecatedApi(

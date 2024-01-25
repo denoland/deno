@@ -137,7 +137,7 @@ export function open(
       path as string,
       convertFlagAndModeToOptions(flags as openFlags, mode),
     ).then(
-      (file) => callback!(null, file.rid),
+      (file) => callback!(null, file[Symbol.for("Deno.internal.rid")]),
       (err) => (callback as (err: Error) => void)(err),
     );
   }
@@ -186,8 +186,10 @@ export function openSync(
     throw new Error(`EEXIST: file already exists, open '${path}'`);
   }
 
-  return Deno.openSync(path as string, convertFlagAndModeToOptions(flags, mode))
-    .rid;
+  return Deno.openSync(
+    path as string,
+    convertFlagAndModeToOptions(flags, mode),
+  )[Symbol.for("Deno.internal.rid")];
 }
 
 function existenceCheckRequired(flags: openFlags | number) {
