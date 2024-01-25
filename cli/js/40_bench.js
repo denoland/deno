@@ -2,7 +2,11 @@
 // deno-lint-ignore-file
 
 import { core, primordials } from "ext:core/mod.js";
-import { escapeName, pledgePermissions, restorePermissions } from "ext:cli/40_test_common.js";
+import {
+  escapeName,
+  pledgePermissions,
+  restorePermissions,
+} from "ext:cli/40_test_common.js";
 import { Console } from "ext:deno_console/01_console.js";
 import { setExitHandler } from "ext:runtime/30_os.js";
 const ops = core.ops;

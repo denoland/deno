@@ -28,59 +28,59 @@ import { setTimeout } from "ext:deno_web/02_timers.js";
 
 /**
  * @typedef {{
-*   id: number,
-*   name: string,
-*   fn: TestFunction
-*   origin: string,
-*   location: TestLocation,
-*   ignore: boolean,
-*   only: boolean.
-*   sanitizeOps: boolean,
-*   sanitizeResources: boolean,
-*   sanitizeExit: boolean,
-*   permissions: PermissionOptions,
-* }} TestDescription
-*
-* @typedef {{
-*   id: number,
-*   name: string,
-*   fn: TestFunction
-*   origin: string,
-*   location: TestLocation,
-*   ignore: boolean,
-*   level: number,
-*   parent: TestDescription | TestStepDescription,
-*   rootId: number,
-*   rootName: String,
-*   sanitizeOps: boolean,
-*   sanitizeResources: boolean,
-*   sanitizeExit: boolean,
-* }} TestStepDescription
-*
-* @typedef {{
-*   context: TestContext,
-*   children: TestStepDescription[],
-*   completed: boolean,
-* }} TestState
-*
-* @typedef {{
-*   context: TestContext,
-*   children: TestStepDescription[],
-*   completed: boolean,
-*   failed: boolean,
-* }} TestStepState
-*
-* @typedef {{
-*   id: number,
-*   name: string,
-*   fn: BenchFunction
-*   origin: string,
-*   ignore: boolean,
-*   only: boolean.
-*   sanitizeExit: boolean,
-*   permissions: PermissionOptions,
-* }} BenchDescription
-*/
+ *   id: number,
+ *   name: string,
+ *   fn: TestFunction
+ *   origin: string,
+ *   location: TestLocation,
+ *   ignore: boolean,
+ *   only: boolean.
+ *   sanitizeOps: boolean,
+ *   sanitizeResources: boolean,
+ *   sanitizeExit: boolean,
+ *   permissions: PermissionOptions,
+ * }} TestDescription
+ *
+ * @typedef {{
+ *   id: number,
+ *   name: string,
+ *   fn: TestFunction
+ *   origin: string,
+ *   location: TestLocation,
+ *   ignore: boolean,
+ *   level: number,
+ *   parent: TestDescription | TestStepDescription,
+ *   rootId: number,
+ *   rootName: String,
+ *   sanitizeOps: boolean,
+ *   sanitizeResources: boolean,
+ *   sanitizeExit: boolean,
+ * }} TestStepDescription
+ *
+ * @typedef {{
+ *   context: TestContext,
+ *   children: TestStepDescription[],
+ *   completed: boolean,
+ * }} TestState
+ *
+ * @typedef {{
+ *   context: TestContext,
+ *   children: TestStepDescription[],
+ *   completed: boolean,
+ *   failed: boolean,
+ * }} TestStepState
+ *
+ * @typedef {{
+ *   id: number,
+ *   name: string,
+ *   fn: BenchFunction
+ *   origin: string,
+ *   ignore: boolean,
+ *   only: boolean.
+ *   sanitizeExit: boolean,
+ *   permissions: PermissionOptions,
+ * }} BenchDescription
+ */
 
 /** @type {Map<number, TestState | TestStepState>} */
 const testStates = new Map();
