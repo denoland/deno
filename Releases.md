@@ -6,6 +6,10 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.40.1 / 2024.01.25
+
+- fix(lsp): disable experimentalDecorators by default (#22101)
+
 ### 1.40.0 / 2024.01.25
 
 - feat(unstable): remove `Deno.cron()` overload (#22035)
