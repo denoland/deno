@@ -8,7 +8,6 @@ https://github.com/denoland/deno_install
 
 ### 1.40.1 / 2024.01.25
 
-- Revert "chore: bump rustls-tokio-stream and rustls (#21955)" (#22097)
 - fix(lsp): disable experimentalDecorators by default (#22101)
 
 ### 1.40.0 / 2024.01.25
