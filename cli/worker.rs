@@ -633,14 +633,20 @@ impl CliMainWorkerFactory {
     );
 
     if self.shared.subcommand.needs_test() {
-      worker.js_runtime.lazy_load_es_module_from_code(
-        "ext:cli/40_testing.js",
-        deno_core::FastString::StaticAscii(include_str!("js/40_testing.js")),
-      )?;
-      worker.js_runtime.lazy_load_es_module_from_code(
-        "ext:cli/40_jupyter.js",
-        deno_core::FastString::StaticAscii(include_str!("js/40_jupyter.js")),
-      )?;
+      macro_rules! test_file {
+        ($($file:literal),*) => {
+          $(worker.js_runtime.lazy_load_es_module_from_code(
+            concat!("ext:cli/", $file),
+            deno_core::FastString::StaticAscii(include_str!(concat!("js/", $file))),
+          )?;)*
+        }
+      }
+      test_file!(
+        "40_test_common.js",
+        "40_test.js",
+        "40_bench.js",
+        "40_jupyter.js"
+      );
     }
 
     Ok(CliMainWorker {
