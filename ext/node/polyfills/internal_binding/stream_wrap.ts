@@ -46,6 +46,8 @@ import {
 } from "ext:deno_node/internal_binding/async_wrap.ts";
 import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
 
+const DENO_RID_SYMBOL = Symbol.for("Deno.internal.rid");
+
 interface Reader {
   read(p: Uint8Array): Promise<number | null>;
 }
@@ -203,7 +205,7 @@ export class LibuvStreamWrap extends HandleWrap {
     allBuffers: boolean,
   ): number {
     const supportsWritev = this.provider === providerType.TCPSERVERWRAP;
-    const rid = this[kStreamBaseField]!.rid;
+    const rid = this[kStreamBaseField]![DENO_RID_SYMBOL];
     // Fast case optimization: two chunks, and all buffers.
     if (
       chunks.length === 2 && allBuffers && supportsWritev &&
@@ -317,13 +319,15 @@ export class LibuvStreamWrap extends HandleWrap {
   async #read() {
     let buf = this.#buf;
     let nread: number | null;
-    const ridBefore = this[kStreamBaseField]!.rid;
+    const ridBefore = this[kStreamBaseField]![DENO_RID_SYMBOL];
     try {
       nread = await this[kStreamBaseField]!.read(buf);
     } catch (e) {
       // Try to read again if the underlying stream resource
       // changed. This can happen during TLS upgrades (eg. STARTTLS)
-      if (ridBefore != this[kStreamBaseField]!.rid) {
+      if (
+        ridBefore != this[kStreamBaseField]![DENO_RID_SYMBOL]
+      ) {
         return this.#read();
       }
 
@@ -373,7 +377,7 @@ export class LibuvStreamWrap extends HandleWrap {
   async #write(req: WriteWrap<LibuvStreamWrap>, data: Uint8Array) {
     const { byteLength } = data;
 
-    const ridBefore = this[kStreamBaseField]!.rid;
+    const ridBefore = this[kStreamBaseField]![DENO_RID_SYMBOL];
 
     let nwritten = 0;
     try {
@@ -386,7 +390,9 @@ export class LibuvStreamWrap extends HandleWrap {
     } catch (e) {
       // Try to read again if the underlying stream resource
       // changed. This can happen during TLS upgrades (eg. STARTTLS)
-      if (ridBefore != this[kStreamBaseField]!.rid) {
+      if (
+        ridBefore != this[kStreamBaseField]![DENO_RID_SYMBOL]
+      ) {
         return this.#write(req, data.subarray(nwritten));
       }
 
