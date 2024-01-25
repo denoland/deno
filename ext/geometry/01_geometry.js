@@ -929,6 +929,7 @@ class DOMMatrix extends DOMMatrixReadOnly {
 
   static fromFloat32Array(float32) {
     const prefix = "Failed to call 'DOMMatrix.fromFloat32Array'";
+    webidl.requiredArguments(arguments.length, 1, prefix);
     float32 = webidl.converters.Float32Array(float32, prefix, "Argument 1");
     const matrix = webidl.createBranded(DOMMatrix);
     initMatrixFromSequence(matrix, float32, prefix);
@@ -937,6 +938,7 @@ class DOMMatrix extends DOMMatrixReadOnly {
 
   static fromFloat64Array(float64) {
     const prefix = "Failed to call 'DOMMatrix.fromFloat64Array'";
+    webidl.requiredArguments(arguments.length, 1, prefix);
     float64 = webidl.converters.Float64Array(float64, prefix, "Argument 1");
     const matrix = webidl.createBranded(DOMMatrix);
     initMatrixFromSequence(matrix, float64, prefix);
