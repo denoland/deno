@@ -20,9 +20,12 @@ export function ftruncate(
 
   if (!callback) throw new Error("No callback function supplied");
 
-  new FsFile(fd).truncate(len).then(() => callback(null), callback);
+  new FsFile(fd, Symbol.for("Deno.internal.FsFile")).truncate(len).then(
+    () => callback(null),
+    callback,
+  );
 }
 
 export function ftruncateSync(fd: number, len?: number) {
-  new FsFile(fd).truncateSync(len);
+  new FsFile(fd, Symbol.for("Deno.internal.FsFile")).truncateSync(len);
 }

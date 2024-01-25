@@ -19,6 +19,8 @@ Deno.test(function filesStdioFileDescriptors() {
 Deno.test({ permissions: { read: true } }, async function filesCopyToStdout() {
   const filename = "cli/tests/testdata/assets/fixture.json";
   using file = await Deno.open(filename);
+  assert(file instanceof Deno.File);
+  assert(file instanceof Deno.FsFile);
   assert(file.rid > 2);
   const bytesWritten = await copy(file, Deno.stdout);
   const fileSize = Deno.statSync(filename).size;
