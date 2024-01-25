@@ -88,6 +88,7 @@ const {
   StringPrototypeStartsWith,
   SymbolAsyncIterator,
   SymbolIterator,
+  SymbolFor,
   Uint32Array,
 } = primordials;
 
