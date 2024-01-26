@@ -598,25 +598,16 @@ pub async fn run_tests_for_worker(
     }
     sender.send(TestEvent::Wait(desc.id))?;
 
-    // TODO(bartlomieju): this is a nasty (beautiful) hack, that was required
-    // when switching `JsRuntime` from `FuturesUnordered` to `JoinSet`. With
-    // `JoinSet` all pending ops are immediately polled and that caused a problem
-    // when some async ops were fired and canceled before running tests (giving
-    // false positives in the ops sanitizer). We should probably rewrite sanitizers
-    // to be done in Rust instead of in JS (40_testing.js).
-    for _ in 0..10 {
-      // Poll event loop once, this will allow all ops that are already resolved,
-      // but haven't responded to settle.
+    // Poll event loop once, to allow all ops that are already resolved, but haven't
+    // responded to settle.
+    // TODO(mmastrac): we should provide an API to poll the event loop until no futher
+    // progress is made.
+    {
       let waker = noop_waker();
       let mut cx = Context::from_waker(&waker);
       let _ = worker
         .js_runtime
         .poll_event_loop(&mut cx, PollEventLoopOptions::default());
-      tokio::task::yield_now().await;
-      worker
-        .js_runtime
-        .handle_scope()
-        .perform_microtask_checkpoint();
     }
 
     let mut filter = RuntimeActivityStatsFilter::default();
