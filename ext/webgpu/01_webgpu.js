@@ -11,7 +11,7 @@ const {
   isDataView,
   isTypedArray,
 } = core;
-const {
+import {
   op_webgpu_buffer_get_map_async,
   op_webgpu_buffer_get_mapped_range,
   op_webgpu_buffer_unmap,
@@ -87,7 +87,7 @@ const {
   op_webgpu_request_device,
   op_webgpu_write_buffer,
   op_webgpu_write_texture,
-} = core.ensureFastOps();
+} from "ext:core/ops";
 const {
   ArrayBuffer,
   ArrayBufferPrototypeGetByteLength,

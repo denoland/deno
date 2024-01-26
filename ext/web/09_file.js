@@ -17,7 +17,7 @@ const {
   isDataView,
   isTypedArray,
 } = core;
-const {
+import {
   op_blob_create_object_url,
   op_blob_create_part,
   op_blob_from_object_url,
@@ -25,7 +25,7 @@ const {
   op_blob_remove_part,
   op_blob_revoke_object_url,
   op_blob_slice_part,
-} = core.ensureFastOps();
+} from "ext:core/ops";
 const {
   ArrayBufferIsView,
   ArrayBufferPrototypeGetByteLength,

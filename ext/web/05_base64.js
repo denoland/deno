@@ -6,11 +6,8 @@
 /// <reference path="../web/internal.d.ts" />
 /// <reference lib="esnext" />
 
-import { core, primordials } from "ext:core/mod.js";
-const {
-  op_base64_atob,
-  op_base64_btoa,
-} = core.ensureFastOps();
+import { primordials } from "ext:core/mod.js";
+import { op_base64_atob, op_base64_btoa } from "ext:core/ops";
 const {
   ObjectPrototypeIsPrototypeOf,
   TypeErrorPrototype,
