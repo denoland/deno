@@ -123,6 +123,8 @@ fn op_register_test(
   #[string] name: String,
   ignore: bool,
   only: bool,
+  sanitize_ops: bool,
+  sanitize_resources: bool,
   #[string] file_name: String,
   #[smi] line_number: u32,
   #[smi] column_number: u32,
@@ -141,6 +143,8 @@ fn op_register_test(
     name,
     ignore,
     only,
+    sanitize_ops,
+    sanitize_resources,
     origin: origin.clone(),
     location: TestLocation {
       file_name,
