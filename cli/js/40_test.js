@@ -15,10 +15,8 @@ const {
   MapPrototypeGet,
   MapPrototypeHas,
   MapPrototypeSet,
-  ObjectKeys,
   Promise,
   SafeArrayIterator,
-  Set,
   SymbolToStringTag,
   TypeError,
 } = primordials;
