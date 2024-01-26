@@ -1,38 +1,5 @@
 Download http://localhost:4545/run/warn_on_deprecated_api/mod.ts
-warning: Use of deprecated "Deno.run()" API. This API will be removed in Deno 2.
-
-Stack trace:
-  at [WILDCARD]warn_on_deprecated_api/main.js:3:16
-
-hint: Use "Deno.Command()" API instead.
-
-hello world
-warning: Use of deprecated "Deno.run()" API. This API will be removed in Deno 2.
-
-Stack trace:
-  at runEcho ([WILDCARD]warn_on_deprecated_api/main.js:14:18)
-  at [WILDCARD]warn_on_deprecated_api/main.js:25:7
-
-hint: Use "Deno.Command()" API instead.
-
-hello world
-warning: Use of deprecated "Deno.run()" API. This API will be removed in Deno 2.
-
-Stack trace:
-  at runEcho ([WILDCARD]warn_on_deprecated_api/main.js:14:18)
-  at [WILDCARD]warn_on_deprecated_api/main.js:26:7
-
-hint: Use "Deno.Command()" API instead.
-
-hello world
-warning: Use of deprecated "Deno.run()" API. This API will be removed in Deno 2.
-
-Stack trace:
-  at runEcho ([WILDCARD]warn_on_deprecated_api/main.js:14:18)
-  at [WILDCARD]warn_on_deprecated_api/main.js:29:9
-
-hint: Use "Deno.Command()" API instead.
-
+warning: Use of deprecated "Deno.run()" API. This API will be removed in Deno 2. Run again with DENO_VERBOSE_WARNINGS=1 to get more details.
 hello world
 hello world
 hello world
@@ -43,13 +10,7 @@ hello world
 hello world
 hello world
 hello world
-warning: Use of deprecated "Deno.run()" API. This API will be removed in Deno 2.
-
-Stack trace:
-  at runEcho (http://localhost:4545/run/warn_on_deprecated_api/mod.ts:2:18)
-  at [WILDCARD]warn_on_deprecated_api/main.js:32:7
-
-hint: Use "Deno.Command()" API instead.
-hint: It appears this API is used by a remote dependency. Try upgrading to the latest version of that dependency.
-
+hello world
+hello world
+hello world
 hello world
