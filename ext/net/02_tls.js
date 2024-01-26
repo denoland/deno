@@ -11,6 +11,7 @@ const {
 } = core.ensureFastOps();
 const {
   Number,
+  ObjectDefineProperty,
   TypeError,
 } = primordials;
 
@@ -25,12 +26,14 @@ function opTlsHandshake(rid) {
 }
 
 class TlsConn extends Conn {
-  [internalRidSymbol] = 0;
   #rid = 0;
 
   constructor(rid, remoteAddr, localAddr) {
     super(rid, remoteAddr, localAddr);
-    this[internalRidSymbol] = rid;
+    ObjectDefineProperty(this, internalRidSymbol, {
+      enumerable: false,
+      value: rid,
+    });
     this.#rid = rid;
   }
 
@@ -78,12 +81,14 @@ async function connectTls({
 }
 
 class TlsListener extends Listener {
-  [internalRidSymbol] = 0;
   #rid = 0;
 
   constructor(rid, addr) {
     super(rid, addr);
-    this[internalRidSymbol] = rid;
+    ObjectDefineProperty(this, internalRidSymbol, {
+      enumerable: false,
+      value: rid,
+    });
     this.#rid = rid;
   }
 
