@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import { core, internals, primordials } from "ext:core/mod.js";
+const { internalRidSymbol } = core;
 const {
   op_net_accept_tls,
   op_net_connect_tls,
@@ -10,7 +11,6 @@ const {
 } = core.ensureFastOps();
 const {
   Number,
-  SymbolFor,
   TypeError,
 } = primordials;
 
@@ -25,12 +25,12 @@ function opTlsHandshake(rid) {
 }
 
 class TlsConn extends Conn {
-  [SymbolFor("Deno.internal.rid")] = 0;
+  [internalRidSymbol] = 0;
   #rid = 0;
 
   constructor(rid, remoteAddr, localAddr) {
     super(rid, remoteAddr, localAddr);
-    this[SymbolFor("Deno.internal.rid")] = rid;
+    this[internalRidSymbol] = rid;
     this.#rid = rid;
   }
 
@@ -78,12 +78,12 @@ async function connectTls({
 }
 
 class TlsListener extends Listener {
-  [SymbolFor("Deno.internal.rid")] = 0;
+  [internalRidSymbol] = 0;
   #rid = 0;
 
   constructor(rid, addr) {
     super(rid, addr);
-    this[SymbolFor("Deno.internal.rid")] = rid;
+    this[internalRidSymbol] = rid;
     this.#rid = rid;
   }
 
@@ -151,7 +151,7 @@ async function startTls(
   } = {},
 ) {
   const { 0: rid, 1: localAddr, 2: remoteAddr } = await opStartTls({
-    rid: conn[SymbolFor("Deno.internal.rid")],
+    rid: conn[internalRidSymbol],
     hostname,
     certFile,
     caCerts,
