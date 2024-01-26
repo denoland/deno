@@ -183,6 +183,27 @@ pub struct TestDescription {
   pub sanitize_resources: bool,
 }
 
+/// May represent a failure of a test or test step.
+#[derive(Debug, Clone, PartialEq, Deserialize, Eq, Hash)]
+#[serde(rename_all = "camelCase")]
+pub struct TestFailureDescription {
+  pub id: usize,
+  pub name: String,
+  pub origin: String,
+  pub location: TestLocation,
+}
+
+impl From<&TestDescription> for TestFailureDescription {
+  fn from(value: &TestDescription) -> Self {
+    Self {
+      id: value.id,
+      name: value.name.clone(),
+      origin: value.origin.clone(),
+      location: value.location.clone()
+    }
+  }
+}
+
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -338,7 +359,7 @@ pub struct TestSummary {
   pub ignored_steps: usize,
   pub filtered_out: usize,
   pub measured: usize,
-  pub failures: Vec<(TestDescription, TestFailure)>,
+  pub failures: Vec<(TestFailureDescription, TestFailure)>,
   pub uncaught_errors: Vec<(String, Box<JsError>)>,
 }
 
@@ -584,8 +605,7 @@ pub async fn run_tests_for_worker(
     // when some async ops were fired and canceled before running tests (giving
     // false positives in the ops sanitizer). We should probably rewrite sanitizers
     // to be done in Rust instead of in JS (40_testing.js).
-    for _ in 0..10
-    {
+    for _ in 0..10 {
       // Poll event loop once, this will allow all ops that are already resolved,
       // but haven't responded to settle.
       let waker = noop_waker();
@@ -594,7 +614,10 @@ pub async fn run_tests_for_worker(
         .js_runtime
         .poll_event_loop(&mut cx, PollEventLoopOptions::default());
       tokio::task::yield_now().await;
-      worker.js_runtime.handle_scope().perform_microtask_checkpoint();
+      worker
+        .js_runtime
+        .handle_scope()
+        .perform_microtask_checkpoint();
     }
 
     let mut filter = RuntimeActivityStatsFilter::default();
