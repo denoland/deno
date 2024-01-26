@@ -800,6 +800,11 @@ impl CliOptions {
     &self.initial_cwd
   }
 
+  #[inline(always)]
+  pub fn flags(&self) -> &Flags {
+    &self.flags
+  }
+
   pub fn maybe_config_file_specifier(&self) -> Option<ModuleSpecifier> {
     self.maybe_config_file.as_ref().map(|f| f.specifier.clone())
   }
