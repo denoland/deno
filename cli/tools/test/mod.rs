@@ -89,8 +89,8 @@ use tokio::sync::mpsc::WeakUnboundedSender;
 pub mod fmt;
 pub mod reporters;
 
-pub use fmt::format_test_error;
 use fmt::format_sanitizer_diff;
+pub use fmt::format_test_error;
 use reporters::CompoundTestReporter;
 use reporters::DotTestReporter;
 use reporters::JunitTestReporter;
@@ -198,7 +198,7 @@ impl From<&TestDescription> for TestFailureDescription {
       id: value.id,
       name: value.name.clone(),
       origin: value.origin.clone(),
-      location: value.location.clone()
+      location: value.location.clone(),
     }
   }
 }

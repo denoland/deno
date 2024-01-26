@@ -363,7 +363,9 @@ impl TestRun {
                   test::TestResult::Ignored => summary.ignored += 1,
                   test::TestResult::Failed(error) => {
                     summary.failed += 1;
-                    summary.failures.push(((&description).into(), error.clone()));
+                    summary
+                      .failures
+                      .push(((&description).into(), error.clone()));
                   }
                   test::TestResult::Cancelled => {
                     summary.failed += 1;

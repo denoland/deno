@@ -33,7 +33,10 @@ pub(super) fn format_test_step_ancestry(
   result
 }
 
-pub fn format_test_for_summary(cwd: &Url, desc: &TestFailureDescription) -> String {
+pub fn format_test_for_summary(
+  cwd: &Url,
+  desc: &TestFailureDescription,
+) -> String {
   format!(
     "{} {}",
     &desc.name,
@@ -107,7 +110,10 @@ pub(super) fn report_summary(
     #[allow(clippy::type_complexity)] // Type alias doesn't look better here
     let mut failures_by_origin: BTreeMap<
       String,
-      (Vec<(&TestFailureDescription, &TestFailure)>, Option<&JsError>),
+      (
+        Vec<(&TestFailureDescription, &TestFailure)>,
+        Option<&JsError>,
+      ),
     > = BTreeMap::default();
     let mut failure_titles = vec![];
     for (description, failure) in &summary.failures {

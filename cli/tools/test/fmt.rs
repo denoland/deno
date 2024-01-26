@@ -115,10 +115,13 @@ fn format_sanitizer_accum(
           Do not close resources in a test that were not created during that test."));
       }
     } else {
-      output.push(format!(
-        "{appeared} {} {:?} {}",
-        count, item_type, item_name
-      ));
+      // TODO(mmastrac): this will be done in a later PR
+      unimplemented!(
+        "Unhandled diff: {appeared} {} {:?} {}",
+        count,
+        item_type,
+        item_name
+      );
     }
   }
   output
@@ -139,8 +142,8 @@ fn format_sanitizer_accum_item(
 
 fn pretty_resource_name(
   name: &str,
-) -> (&'static str, &'static str, &'static str) {
-  match name {
+) -> (Cow<'static, str>, &'static str, &'static str) {
+  let (name, action1, action2) = match name {
     "fsFile" => ("A file", "opened", "closed"),
     "fetchRequest" => ("A fetch request", "started", "finished"),
     "fetchRequestBody" => ("A fetch request body", "created", "closed"),
@@ -171,8 +174,9 @@ fn pretty_resource_name(
     "stdout" => ("The stdout pipe", "opened", "closed"),
     "stderr" => ("The stderr pipe", "opened", "closed"),
     "compression" => ("A CompressionStream", "created", "closed"),
-    _ => ("", "created", "cleaned up"),
-  }
+    _ => return (format!("\"{name}\"").into(), "created", "cleaned up"),
+  };
+  (name.into(), action1, action2)
 }
 
 fn resource_close_hint(name: &str) -> &'static str {
