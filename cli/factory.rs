@@ -685,6 +685,12 @@ impl CliFactory {
       }
       let unstable_features = self.options.unstable_features();
       for (flag_name, _, _) in crate::UNSTABLE_GRANULAR_FLAGS {
+        if flag_name == &"temporal" {
+          let unrecognized =
+            deno_core::v8_set_flags(vec!["--harmony-temporal".to_string()]);
+          eprintln!("unreckognized {:#?}", unrecognized);
+          assert!(unrecognized.is_empty());
+        }
         if unstable_features.contains(&flag_name.to_string()) {
           checker.enable_feature(flag_name);
         }
