@@ -2,7 +2,11 @@
 
 [package]
 name = "deno_runtime"
+<<<<<<< HEAD
 version = "0.142.0"
+=======
+version = "0.143.0"
+>>>>>>> 9a55a72cf (1.40.2 (#22131))
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
