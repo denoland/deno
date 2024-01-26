@@ -1,11 +1,11 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import { core, internals } from "ext:core/mod.js";
-const {
+import {
   op_net_listen_udp,
   op_net_listen_unixpacket,
   op_runtime_memory_usage,
-} = core.ensureFastOps();
+} from "ext:core/ops";
 
 import * as timers from "ext:deno_web/02_timers.js";
 import * as httpClient from "ext:deno_fetch/22_http_client.js";

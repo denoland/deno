@@ -6,7 +6,9 @@ const {
   InterruptedPrototype,
   internalRidSymbol,
 } = core;
-const {
+import {
+  op_http_cancel,
+  op_http_close,
   op_http_close_after_finish,
   op_http_get_request_headers,
   op_http_get_request_method_and_url,
@@ -20,13 +22,11 @@ const {
   op_http_set_response_header,
   op_http_set_response_headers,
   op_http_set_response_trailers,
+  op_http_try_wait,
   op_http_upgrade_raw,
   op_http_upgrade_websocket_next,
-  op_http_try_wait,
   op_http_wait,
-  op_http_cancel,
-  op_http_close,
-} = core.ensureFastOps();
+} from "ext:core/ops";
 const {
   ArrayPrototypePush,
   ObjectHasOwn,

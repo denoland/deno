@@ -842,7 +842,7 @@ deno_core::extension!(deno_websocket,
     op_ws_send_pong,
     op_ws_get_buffered_amount,
   ],
-  esm = [ "00_ops.js", "01_websocket.js", "02_websocketstream.js" ],
+  esm = [ "01_websocket.js", "02_websocketstream.js" ],
   options = {
     user_agent: String,
     root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,

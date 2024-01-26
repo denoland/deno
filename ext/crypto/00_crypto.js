@@ -12,7 +12,7 @@ const {
   isTypedArray,
   isDataView,
 } = core;
-const {
+import {
   op_crypto_base64url_decode,
   op_crypto_base64url_encode,
   op_crypto_decrypt,
@@ -42,7 +42,7 @@ const {
   op_crypto_verify_ed25519,
   op_crypto_verify_key,
   op_crypto_wrap_key,
-} = core.ensureFastOps();
+} from "ext:core/ops";
 const {
   ArrayBufferIsView,
   ArrayBufferPrototypeGetByteLength,
