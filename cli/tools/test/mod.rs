@@ -90,14 +90,13 @@ pub mod fmt;
 pub mod reporters;
 
 pub use fmt::format_test_error;
+use fmt::format_sanitizer_diff;
 use reporters::CompoundTestReporter;
 use reporters::DotTestReporter;
 use reporters::JunitTestReporter;
 use reporters::PrettyTestReporter;
 use reporters::TapTestReporter;
 use reporters::TestReporter;
-
-use self::fmt::format_sanitizer_diff;
 
 /// The test mode is used to determine how a specifier is to be tested.
 #[derive(Debug, Clone, Eq, PartialEq)]
