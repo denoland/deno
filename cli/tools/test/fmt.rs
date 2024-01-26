@@ -3,6 +3,7 @@
 use deno_core::stats::RuntimeActivity;
 use deno_core::stats::RuntimeActivityDiff;
 use deno_core::stats::RuntimeActivityType;
+use std::borrow::Cow;
 use std::ops::AddAssign;
 
 use super::*;
@@ -110,7 +111,8 @@ fn format_sanitizer_accum(
       if appeared {
         output.push(format!("{name} was {action1} during the test, but not {action2} during the test. {hint}"));
       } else {
-        output.push(format!("{name} was {action1} before the test started, but was {action2} during the test. Do not close resources in a test that were not created during that test."));
+        output.push(format!("{name} was {action1} before the test started, but was {action2} during the test. \
+          Do not close resources in a test that were not created during that test."));
       }
     } else {
       output.push(format!(
@@ -124,13 +126,13 @@ fn format_sanitizer_accum(
 
 fn format_sanitizer_accum_item(
   activity: RuntimeActivity,
-) -> (RuntimeActivityType, String) {
+) -> (RuntimeActivityType, Cow<'static, str>) {
   let activity_type = activity.activity();
   let item = match activity {
-    RuntimeActivity::AsyncOp(_, name) => (activity_type, name),
-    RuntimeActivity::Interval(_) => (activity_type, "".to_owned()),
-    RuntimeActivity::Resource(_, name) => (activity_type, name),
-    RuntimeActivity::Timer(_) => (activity_type, "".to_owned()),
+    RuntimeActivity::AsyncOp(_, name) => (activity_type, name.into()),
+    RuntimeActivity::Interval(_) => (activity_type, "".into()),
+    RuntimeActivity::Resource(_, name) => (activity_type, name.into()),
+    RuntimeActivity::Timer(_) => (activity_type, "".into()),
   };
   item
 }

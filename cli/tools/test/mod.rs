@@ -554,6 +554,16 @@ pub async fn run_tests_for_worker(
   }))?;
   let mut had_uncaught_error = false;
   let stats = worker.js_runtime.runtime_activity_stats_factory();
+  let ops = worker.js_runtime.op_names();
+  let op_id_host_recv_message = ops
+    .iter()
+    .position(|op| *op == "op_host_recv_message")
+    .unwrap();
+  let op_id_host_recv_ctrl = ops
+    .iter()
+    .position(|op| *op == "op_host_recv_ctrl")
+    .unwrap();
+
   for (desc, function) in tests {
     if fail_fast_tracker.should_stop() {
       break;
@@ -587,13 +597,15 @@ pub async fn run_tests_for_worker(
     let mut filter = RuntimeActivityStatsFilter::default();
     if desc.sanitize_ops {
       filter = filter.with_ops().with_timers();
+      filter = filter.omit_op(op_id_host_recv_ctrl as _);
+      filter = filter.omit_op(op_id_host_recv_message as _);
     }
     if desc.sanitize_resources {
       filter = filter.with_resources();
     }
 
     let before = if !filter.is_empty() {
-      Some(stats.clone().capture(filter))
+      Some(stats.clone().capture(&filter))
     } else {
       None
     };
@@ -622,7 +634,7 @@ pub async fn run_tests_for_worker(
       }
     };
     if let Some(before) = before {
-      let after = stats.clone().capture(filter);
+      let after = stats.clone().capture(&filter);
       let diff = RuntimeActivityStats::diff(&before, &after);
       let formatted = format_sanitizer_diff(diff);
       if !formatted.is_empty() {
