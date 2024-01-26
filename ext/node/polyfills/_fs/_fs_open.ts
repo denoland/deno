@@ -3,6 +3,8 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
+import { core } from "ext:core/mod.js";
+const { internalRidSymbol } = core;
 import {
   O_APPEND,
   O_CREAT,
@@ -137,7 +139,7 @@ export function open(
       path as string,
       convertFlagAndModeToOptions(flags as openFlags, mode),
     ).then(
-      (file) => callback!(null, file[Symbol.for("Deno.internal.rid")]),
+      (file) => callback!(null, file[internalRidSymbol]),
       (err) => (callback as (err: Error) => void)(err),
     );
   }
@@ -189,7 +191,7 @@ export function openSync(
   return Deno.openSync(
     path as string,
     convertFlagAndModeToOptions(flags, mode),
-  )[Symbol.for("Deno.internal.rid")];
+  )[internalRidSymbol];
 }
 
 function existenceCheckRequired(flags: openFlags | number) {
