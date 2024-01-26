@@ -5099,6 +5099,14 @@ itest!(warn_on_deprecated_api {
   exit_code: 0,
 });
 
+itest!(warn_on_deprecated_api_verbose {
+  args: "run -A run/warn_on_deprecated_api/main.js",
+  output: "run/warn_on_deprecated_api/main.verbose.out",
+  envs: vec![("DENO_VERBOSE_WARNINGS".to_string(), "1".to_string())],
+  http_server: true,
+  exit_code: 0,
+});
+
 itest!(warn_on_deprecated_api_with_flag {
   args: "run -A --quiet run/warn_on_deprecated_api/main.js",
   output: "run/warn_on_deprecated_api/main_disabled_flag.out",
