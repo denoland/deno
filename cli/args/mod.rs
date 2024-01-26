@@ -685,6 +685,7 @@ pub struct CliOptions {
   overrides: CliOptionOverrides,
   maybe_workspace_config: Option<WorkspaceConfig>,
   pub disable_deprecated_api_warning: bool,
+  pub verbose_deprecated_api_warning: bool,
 }
 
 impl CliOptions {
@@ -739,6 +740,9 @@ impl CliOptions {
       == Some(log::Level::Error)
       || std::env::var("DENO_NO_DEPRECATION_WARNINGS").ok().is_some();
 
+    let verbose_deprecated_api_warning =
+      std::env::var("DENO_VERBOSE_WARNINGS").ok().is_some();
+
     Ok(Self {
       flags,
       initial_cwd,
@@ -750,6 +754,7 @@ impl CliOptions {
       overrides: Default::default(),
       maybe_workspace_config,
       disable_deprecated_api_warning,
+      verbose_deprecated_api_warning,
     })
   }
 
@@ -1101,6 +1106,7 @@ impl CliOptions {
       maybe_workspace_config: self.maybe_workspace_config.clone(),
       overrides: self.overrides.clone(),
       disable_deprecated_api_warning: self.disable_deprecated_api_warning,
+      verbose_deprecated_api_warning: self.verbose_deprecated_api_warning,
     }
   }
 
