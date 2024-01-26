@@ -584,6 +584,7 @@ pub async fn run_tests_for_worker(
     // when some async ops were fired and canceled before running tests (giving
     // false positives in the ops sanitizer). We should probably rewrite sanitizers
     // to be done in Rust instead of in JS (40_testing.js).
+    for _ in 0..10
     {
       // Poll event loop once, this will allow all ops that are already resolved,
       // but haven't responded to settle.
@@ -592,6 +593,8 @@ pub async fn run_tests_for_worker(
       let _ = worker
         .js_runtime
         .poll_event_loop(&mut cx, PollEventLoopOptions::default());
+      tokio::task::yield_now().await;
+      worker.js_runtime.handle_scope().perform_microtask_checkpoint();
     }
 
     let mut filter = RuntimeActivityStatsFilter::default();
