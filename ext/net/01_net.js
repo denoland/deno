@@ -6,7 +6,7 @@ const {
   InterruptedPrototype,
   internalRidSymbol,
 } = core;
-const {
+import {
   op_dns_resolve,
   op_net_accept_tcp,
   op_net_accept_unix,
@@ -26,7 +26,7 @@ const {
   op_net_set_multi_ttl_udp,
   op_set_keepalive,
   op_set_nodelay,
-} = core.ensureFastOps();
+} from "ext:core/ops";
 const {
   op_cancel_handle,
 } = core.ensureFastOps(true);

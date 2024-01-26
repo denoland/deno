@@ -1,13 +1,13 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import { core, primordials } from "ext:core/mod.js";
-const {
+import {
   op_cache_delete,
   op_cache_match,
   op_cache_put,
   op_cache_storage_delete,
   op_cache_storage_has,
   op_cache_storage_open,
-} = core.ensureFastOps();
+} from "ext:core/ops";
 const {
   ArrayPrototypePush,
   ObjectPrototypeIsPrototypeOf,
