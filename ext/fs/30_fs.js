@@ -83,6 +83,7 @@ const {
   Function,
   MathTrunc,
   ObjectEntries,
+  ObjectDefineProperty,
   ObjectPrototypeIsPrototypeOf,
   ObjectValues,
   StringPrototypeSlice,
@@ -656,14 +657,16 @@ function create(path) {
 }
 
 class FsFile {
-  [internalRidSymbol] = 0;
   #rid = 0;
 
   #readable;
   #writable;
 
   constructor(rid, symbol) {
-    this[internalRidSymbol] = rid;
+    ObjectDefineProperty(this, internalRidSymbol, {
+      enumerable: false,
+      value: rid,
+    });
     this.#rid = rid;
     if (!symbol || symbol !== SymbolFor("Deno.internal.FsFile")) {
       internals.warnOnDeprecatedApi(
