@@ -1,7 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import { core, internals } from "ext:core/mod.js";
+import { op_http_start } from "ext:core/ops";
 const { internalRidSymbol } = core;
-const { op_http_start } = core.ensureFastOps();
 
 import { HttpConn } from "ext:deno_http/01_http.js";
 

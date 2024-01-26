@@ -4,10 +4,7 @@ import { core, internals, primordials } from "ext:core/mod.js";
 const {
   isPromise,
 } = core;
-const {
-  op_cron_create,
-  op_cron_next,
-} = core.ensureFastOps();
+import { op_cron_create, op_cron_next } from "ext:core/ops";
 const {
   ArrayPrototypeJoin,
   NumberPrototypeToString,

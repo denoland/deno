@@ -2,13 +2,13 @@
 
 import { core, internals, primordials } from "ext:core/mod.js";
 const { internalRidSymbol } = core;
-const {
+import {
   op_net_accept_tls,
   op_net_connect_tls,
   op_net_listen_tls,
   op_tls_handshake,
   op_tls_start,
-} = core.ensureFastOps();
+} from "ext:core/ops";
 const {
   Number,
   ObjectDefineProperty,
