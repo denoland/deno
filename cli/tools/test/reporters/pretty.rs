@@ -323,6 +323,8 @@ impl TestReporter for PrettyTestReporter {
             name: common::format_test_step_ancestry(desc, tests, test_steps),
             ignore: false,
             only: false,
+            sanitize_ops: false,
+            sanitize_resources: false,
             origin: desc.origin.clone(),
             location: desc.location.clone(),
           },

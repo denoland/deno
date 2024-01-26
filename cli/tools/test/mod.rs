@@ -40,6 +40,8 @@ use deno_core::futures::StreamExt;
 use deno_core::located_script_name;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_v8;
+use deno_core::stats::RuntimeActivityStats;
+use deno_core::stats::RuntimeActivityStatsFilter;
 use deno_core::unsync::spawn;
 use deno_core::unsync::spawn_blocking;
 use deno_core::url::Url;
@@ -94,6 +96,8 @@ use reporters::JunitTestReporter;
 use reporters::PrettyTestReporter;
 use reporters::TapTestReporter;
 use reporters::TestReporter;
+
+use self::fmt::format_sanitizer_diff;
 
 /// The test mode is used to determine how a specifier is to be tested.
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -175,6 +179,8 @@ pub struct TestDescription {
   pub only: bool,
   pub origin: String,
   pub location: TestLocation,
+  pub sanitize_ops: bool,
+  pub sanitize_resources: bool,
 }
 
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -547,6 +553,7 @@ pub async fn run_tests_for_worker(
     used_only,
   }))?;
   let mut had_uncaught_error = false;
+  let stats = worker.js_runtime.runtime_activity_stats_factory();
   for (desc, function) in tests {
     if fail_fast_tracker.should_stop() {
       break;
@@ -577,6 +584,20 @@ pub async fn run_tests_for_worker(
         .poll_event_loop(&mut cx, PollEventLoopOptions::default());
     }
 
+    let mut filter = RuntimeActivityStatsFilter::default();
+    if desc.sanitize_ops {
+      filter = filter.with_ops().with_timers();
+    }
+    if desc.sanitize_resources {
+      filter = filter.with_resources();
+    }
+
+    let before = if !filter.is_empty() {
+      Some(stats.clone().capture(filter))
+    } else {
+      None
+    };
+
     let earlier = SystemTime::now();
     let call = worker.js_runtime.call(&function);
     let result = match worker
@@ -600,6 +621,22 @@ pub async fn run_tests_for_worker(
         }
       }
     };
+    if let Some(before) = before {
+      let after = stats.clone().capture(filter);
+      let diff = RuntimeActivityStats::diff(&before, &after);
+      let formatted = format_sanitizer_diff(diff);
+      if !formatted.is_empty() {
+        let failure = TestFailure::LeakedResources(formatted);
+        let elapsed = SystemTime::now().duration_since(earlier)?.as_millis();
+        sender.send(TestEvent::Result(
+          desc.id,
+          TestResult::Failed(failure),
+          elapsed as u64,
+        ))?;
+        continue;
+      }
+    }
+
     let scope = &mut worker.js_runtime.handle_scope();
     let result = v8::Local::new(scope, result);
     let result = serde_v8::from_v8::<TestResult>(scope, result)?;
