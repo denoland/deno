@@ -540,6 +540,7 @@ pub async fn run(
     },
     None,
     metadata.disable_deprecated_api_warning,
+    false,
   );
 
   v8_set_flags(construct_v8_flags(&[], &metadata.v8_flags, vec![]));

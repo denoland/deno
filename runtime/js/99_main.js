@@ -96,11 +96,25 @@ ObjectDefineProperties(Symbol, {
 let windowIsClosing = false;
 let globalThis_;
 
+let verboseDeprecatedApiWarning = false;
 let deprecatedApiWarningDisabled = false;
 const ALREADY_WARNED_DEPRECATED = new SafeSet();
 
 function warnOnDeprecatedApi(apiName, stack, ...suggestions) {
   if (deprecatedApiWarningDisabled) {
+    return;
+  }
+
+  if (!verboseDeprecatedApiWarning) {
+    if (ALREADY_WARNED_DEPRECATED.has(apiName)) {
+      return;
+    }
+    ALREADY_WARNED_DEPRECATED.add(apiName);
+    console.error(
+      `%cwarning: %cUse of deprecated "${apiName}" API. This API will be removed in Deno 2. Run again with DENO_VERBOSE_WARNINGS=1 to get more details.`,
+      "color: yellow;",
+      "font-weight: bold;",
+    );
     return;
   }
 
@@ -563,9 +577,11 @@ function bootstrapMainRuntime(runtimeOptions) {
     5: hasNodeModulesDir,
     6: maybeBinaryNpmCommandName,
     7: shouldDisableDeprecatedApiWarning,
+    8: shouldUseVerboseDeprecatedApiWarning,
   } = runtimeOptions;
 
   deprecatedApiWarningDisabled = shouldDisableDeprecatedApiWarning;
+  verboseDeprecatedApiWarning = shouldUseVerboseDeprecatedApiWarning;
   performance.setTimeOrigin(DateNow());
   globalThis_ = globalThis;
 
@@ -703,9 +719,11 @@ function bootstrapWorkerRuntime(
     5: hasNodeModulesDir,
     6: maybeBinaryNpmCommandName,
     7: shouldDisableDeprecatedApiWarning,
+    8: shouldUseVerboseDeprecatedApiWarning,
   } = runtimeOptions;
 
   deprecatedApiWarningDisabled = shouldDisableDeprecatedApiWarning;
+  verboseDeprecatedApiWarning = shouldUseVerboseDeprecatedApiWarning;
   performance.setTimeOrigin(DateNow());
   globalThis_ = globalThis;
 
