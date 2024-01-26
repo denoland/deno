@@ -4,6 +4,7 @@ import { core, internals, primordials } from "ext:core/mod.js";
 const {
   BadResourcePrototype,
   InterruptedPrototype,
+  internalRidSymbol,
 } = core;
 const {
   op_http_close_after_finish,
@@ -33,7 +34,6 @@ const {
   PromisePrototypeCatch,
   PromisePrototypeThen,
   Symbol,
-  SymbolFor,
   TypeError,
   TypedArrayPrototypeGetSymbolToStringTag,
   Uint8Array,
@@ -618,7 +618,7 @@ function serve(arg1, arg2) {
 function serveHttpOnListener(listener, signal, handler, onError, onListen) {
   const context = new CallbackContext(
     signal,
-    op_http_serve(listener[SymbolFor("Deno.internal.rid")]),
+    op_http_serve(listener[internalRidSymbol]),
     listener,
   );
   const callback = mapToCallback(context, handler, onError);
@@ -634,7 +634,7 @@ function serveHttpOnListener(listener, signal, handler, onError, onListen) {
 function serveHttpOnConnection(connection, signal, handler, onError, onListen) {
   const context = new CallbackContext(
     signal,
-    op_http_serve_on(connection[SymbolFor("Deno.internal.rid")]),
+    op_http_serve_on(connection[internalRidSymbol]),
     null,
   );
   const callback = mapToCallback(context, handler, onError);
