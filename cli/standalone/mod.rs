@@ -150,16 +150,16 @@ impl ModuleLoader for EmbeddedModuleLoader {
     maybe_referrer: Option<&ModuleSpecifier>,
     is_dynamic: bool,
     _requested_module_type: RequestedModuleType,
-  ) -> Pin<Box<deno_core::ModuleSourceFuture>> {
+  ) -> deno_core::ModuleLoadResponse {
     let is_data_uri = get_source_from_data_url(original_specifier).ok();
     if let Some((source, _)) = is_data_uri {
-      return Box::pin(deno_core::futures::future::ready(Ok(
+      return deno_core::ModuleLoadResponse::Sync(Ok(
         deno_core::ModuleSource::new(
           deno_core::ModuleType::JavaScript,
           ModuleSourceCode::String(source.into()),
           original_specifier,
         ),
-      )));
+      ));
     }
 
     let permissions = if is_dynamic {
@@ -174,34 +174,34 @@ impl ModuleLoader for EmbeddedModuleLoader {
         permissions,
       )
     {
-      return match result {
-        Ok(code_source) => Box::pin(deno_core::futures::future::ready(Ok(
-          deno_core::ModuleSource::new_with_redirect(
-            match code_source.media_type {
-              MediaType::Json => ModuleType::Json,
-              _ => ModuleType::JavaScript,
-            },
-            ModuleSourceCode::String(code_source.code),
-            original_specifier,
-            &code_source.found_url,
-          ),
-        ))),
-        Err(err) => Box::pin(deno_core::futures::future::ready(Err(err))),
-      };
+      let result = result.map(|code_source| {
+        deno_core::ModuleSource::new_with_redirect(
+          match code_source.media_type {
+            MediaType::Json => ModuleType::Json,
+            _ => ModuleType::JavaScript,
+          },
+          ModuleSourceCode::String(code_source.code),
+          original_specifier,
+          &code_source.found_url,
+        )
+      });
+
+      return deno_core::ModuleLoadResponse::Sync(result);
     }
 
     let Some(module) =
       self.shared.eszip.get_module(original_specifier.as_str())
     else {
-      return Box::pin(deno_core::futures::future::ready(Err(type_error(
-        format!("Module not found: {}", original_specifier),
+      return deno_core::ModuleLoadResponse::Sync(Err(type_error(format!(
+        "Module not found: {}",
+        original_specifier
       ))));
     };
     let original_specifier = original_specifier.clone();
     let found_specifier =
       ModuleSpecifier::parse(&module.specifier).expect("invalid url in eszip");
 
-    async move {
+    let fut = async move {
       let code = module.source().await.ok_or_else(|| {
         type_error(format!("Module not found: {}", original_specifier))
       })?;
@@ -223,7 +223,9 @@ impl ModuleLoader for EmbeddedModuleLoader {
         &found_specifier,
       ))
     }
-    .boxed_local()
+    .boxed_local();
+
+    deno_core::ModuleLoadResponse::Async(fut)
   }
 }
 

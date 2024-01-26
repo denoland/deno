@@ -653,16 +653,15 @@ impl ModuleLoader for CliModuleLoader {
     maybe_referrer: Option<&ModuleSpecifier>,
     is_dynamic: bool,
     requested_module_type: RequestedModuleType,
-  ) -> Pin<Box<deno_core::ModuleSourceFuture>> {
-    // NOTE: this block is async only because of `deno_core` interface
-    // requirements; module was already loaded when constructing module graph
+  ) -> deno_core::ModuleLoadResponse {
+    // NOTE: module was already loaded when constructing module graph
     // during call to `prepare_load` so we can load it synchronously.
-    Box::pin(deno_core::futures::future::ready(self.load_sync(
+    deno_core::ModuleLoadResponse::Sync(self.load_sync(
       specifier,
       maybe_referrer,
       is_dynamic,
       requested_module_type,
-    )))
+    ))
   }
 
   fn prepare_load(
