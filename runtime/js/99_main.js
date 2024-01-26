@@ -562,10 +562,12 @@ function bootstrapMainRuntime(runtimeOptions) {
     3: inspectFlag,
     5: hasNodeModulesDir,
     6: maybeBinaryNpmCommandName,
-    7: shouldDisableDeprecatedApiWarning,
+    7: _shouldDisableDeprecatedApiWarning,
   } = runtimeOptions;
 
-  deprecatedApiWarningDisabled = shouldDisableDeprecatedApiWarning;
+  // TODO(bartlomieju): reenable warnings
+  // deprecatedApiWarningDisabled = shouldDisableDeprecatedApiWarning;
+  deprecatedApiWarningDisabled = true;
   performance.setTimeOrigin(DateNow());
   globalThis_ = globalThis;
 
@@ -702,10 +704,12 @@ function bootstrapWorkerRuntime(
     4: enableTestingFeaturesFlag,
     5: hasNodeModulesDir,
     6: maybeBinaryNpmCommandName,
-    7: shouldDisableDeprecatedApiWarning,
+    7: _shouldDisableDeprecatedApiWarning,
   } = runtimeOptions;
 
-  deprecatedApiWarningDisabled = shouldDisableDeprecatedApiWarning;
+  // TODO(bartlomieju): reenable warnings
+  // deprecatedApiWarningDisabled = shouldDisableDeprecatedApiWarning;
+  deprecatedApiWarningDisabled = true;
   performance.setTimeOrigin(DateNow());
   globalThis_ = globalThis;
 
