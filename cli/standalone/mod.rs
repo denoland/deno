@@ -53,7 +53,6 @@ use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::WorkerLogLevel;
 use deno_semver::npm::NpmPackageReqReference;
 use import_map::parse_from_json;
-use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -150,16 +149,16 @@ impl ModuleLoader for EmbeddedModuleLoader {
     maybe_referrer: Option<&ModuleSpecifier>,
     is_dynamic: bool,
     _requested_module_type: RequestedModuleType,
-  ) -> Pin<Box<deno_core::ModuleSourceFuture>> {
+  ) -> deno_core::ModuleLoadResponse {
     let is_data_uri = get_source_from_data_url(original_specifier).ok();
     if let Some((source, _)) = is_data_uri {
-      return Box::pin(deno_core::futures::future::ready(Ok(
+      return deno_core::ModuleLoadResponse::Sync(Ok(
         deno_core::ModuleSource::new(
           deno_core::ModuleType::JavaScript,
           ModuleSourceCode::String(source.into()),
           original_specifier,
         ),
-      )));
+      ));
     }
 
     let permissions = if is_dynamic {
@@ -175,7 +174,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
       )
     {
       return match result {
-        Ok(code_source) => Box::pin(deno_core::futures::future::ready(Ok(
+        Ok(code_source) => deno_core::ModuleLoadResponse::Sync(Ok(
           deno_core::ModuleSource::new_with_redirect(
             match code_source.media_type {
               MediaType::Json => ModuleType::Json,
@@ -185,45 +184,48 @@ impl ModuleLoader for EmbeddedModuleLoader {
             original_specifier,
             &code_source.found_url,
           ),
-        ))),
-        Err(err) => Box::pin(deno_core::futures::future::ready(Err(err))),
+        )),
+        Err(err) => deno_core::ModuleLoadResponse::Sync(Err(err)),
       };
     }
 
     let Some(module) =
       self.shared.eszip.get_module(original_specifier.as_str())
     else {
-      return Box::pin(deno_core::futures::future::ready(Err(type_error(
-        format!("Module not found: {}", original_specifier),
+      return deno_core::ModuleLoadResponse::Sync(Err(type_error(format!(
+        "Module not found: {}",
+        original_specifier
       ))));
     };
     let original_specifier = original_specifier.clone();
     let found_specifier =
       ModuleSpecifier::parse(&module.specifier).expect("invalid url in eszip");
 
-    async move {
-      let code = module.source().await.ok_or_else(|| {
-        type_error(format!("Module not found: {}", original_specifier))
-      })?;
-      let code = arc_u8_to_arc_str(code)
-        .map_err(|_| type_error("Module source is not utf-8"))?;
-      Ok(deno_core::ModuleSource::new_with_redirect(
-        match module.kind {
-          eszip::ModuleKind::JavaScript => ModuleType::JavaScript,
-          eszip::ModuleKind::Json => ModuleType::Json,
-          eszip::ModuleKind::Jsonc => {
-            return Err(type_error("jsonc modules not supported"))
-          }
-          eszip::ModuleKind::OpaqueData => {
-            unreachable!();
-          }
-        },
-        ModuleSourceCode::String(code.into()),
-        &original_specifier,
-        &found_specifier,
-      ))
-    }
-    .boxed_local()
+    deno_core::ModuleLoadResponse::Async(
+      async move {
+        let code = module.source().await.ok_or_else(|| {
+          type_error(format!("Module not found: {}", original_specifier))
+        })?;
+        let code = arc_u8_to_arc_str(code)
+          .map_err(|_| type_error("Module source is not utf-8"))?;
+        Ok(deno_core::ModuleSource::new_with_redirect(
+          match module.kind {
+            eszip::ModuleKind::JavaScript => ModuleType::JavaScript,
+            eszip::ModuleKind::Json => ModuleType::Json,
+            eszip::ModuleKind::Jsonc => {
+              return Err(type_error("jsonc modules not supported"))
+            }
+            eszip::ModuleKind::OpaqueData => {
+              unreachable!();
+            }
+          },
+          ModuleSourceCode::String(code.into()),
+          &original_specifier,
+          &found_specifier,
+        ))
+      }
+      .boxed_local(),
+    )
   }
 }
 
