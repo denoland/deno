@@ -683,7 +683,9 @@ class DOMMatrixReadOnly {
     this[_brand] = _brand;
     if (typeof init === "string") {
       if (parseTransformList === null) {
-        throw new TypeError(`${prefix}: Cannot be constructed with string on Workers`);
+        throw new TypeError(
+          `${prefix}: Cannot be constructed with string on Workers`,
+        );
       } else {
         const { matrix, is2D } = parseTransformList(init);
         this[_raw] = matrix;
@@ -1152,9 +1154,6 @@ class DOMMatrix extends DOMMatrixReadOnly {
     this[_raw][_m44] = webidl.converters["unrestricted double"](value);
   }
 
-  // TODO(petamoriken): Add setMatrixValue in Window global object
-  // setMatrixValue(transformList) {}
-
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
     return inspect(
       createFilteredInspectProxy({
@@ -1314,12 +1313,23 @@ function initMatrixFromDictonary(target, dict) {
     ]);
     target[_is2D] = true;
   } else {
-    // deno-fmt-ignore
     const {
-      m11, m12, m13, m14,
-      m21, m22, m23, m24,
-      m31, m32, m33, m34,
-      m41, m42, m43, m44,
+      m11,
+      m12,
+      m13,
+      m14,
+      m21,
+      m22,
+      m23,
+      m24,
+      m31,
+      m32,
+      m33,
+      m34,
+      m41,
+      m42,
+      m43,
+      m44,
     } = dict;
     // deno-fmt-ignore
     target[_raw] = new Float64Array([
@@ -1379,17 +1389,19 @@ function enableWindowFeatures(parser) {
         throw new DOMException(
           "Failed to execute 'DOMMatrixReadOnly.prototype.toString': Cannot be serialized with NaN or Infinity values",
           "InvalidStateError",
-        )
+        );
       }
       if (this[_is2D]) {
-        return `matrix(${ArrayPrototypeJoin([
-          raw[_a],
-          raw[_b],
-          raw[_c],
-          raw[_d],
-          raw[_e],
-          raw[_f],
-        ], ", ")})`;
+        return `matrix(${
+          ArrayPrototypeJoin([
+            raw[_a],
+            raw[_b],
+            raw[_c],
+            raw[_d],
+            raw[_e],
+            raw[_f],
+          ], ", ")
+        })`;
       } else {
         return `matrix3d(${TypedArrayPrototypeJoin(raw, ", ")})`;
       }
