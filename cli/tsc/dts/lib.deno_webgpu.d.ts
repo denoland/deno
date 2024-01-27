@@ -78,6 +78,7 @@ declare class GPU {
   requestAdapter(
     options?: GPURequestAdapterOptions,
   ): Promise<GPUAdapter | null>;
+  getPreferredCanvasFormat(): GPUTextureFormat;
 }
 
 /** @category WebGPU */

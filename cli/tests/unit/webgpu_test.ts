@@ -247,6 +247,11 @@ Deno.test({
   Deno.close(Number(resources[resources.length - 1]));
 });
 
+Deno.test(function getPreferredCanvasFormat() {
+  const preferredFormat = navigator.gpu.getPreferredCanvasFormat();
+  assert(preferredFormat === "bgra8unorm" || preferredFormat === "rgba8unorm");
+});
+
 async function checkIsWsl() {
   return Deno.build.os === "linux" && await hasMicrosoftProcVersion();
 
