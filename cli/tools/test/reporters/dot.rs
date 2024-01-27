@@ -113,7 +113,7 @@ impl TestReporter for DotTestReporter {
         self
           .summary
           .failures
-          .push((description.into(), failure.clone()));
+          .push((description.clone(), failure.clone()));
       }
       TestResult::Cancelled => {
         self.summary.failed += 1;
@@ -162,9 +162,11 @@ impl TestReporter for DotTestReporter {
       TestStepResult::Failed(failure) => {
         self.summary.failed_steps += 1;
         self.summary.failures.push((
-          TestFailureDescription {
+          TestDescription {
             id: desc.id,
             name: common::format_test_step_ancestry(desc, tests, test_steps),
+            ignore: false,
+            only: false,
             origin: desc.origin.clone(),
             location: desc.location.clone(),
           },
