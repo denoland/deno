@@ -668,7 +668,6 @@ impl LspClient {
     self.initialize_with_config(
       do_build,
       json!({ "deno": {
-        "enableBuiltinCommands": true,
         "enable": true,
         "cache": null,
         "certificateStores": null,
