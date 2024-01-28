@@ -1,14 +1,11 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import { core, internals, primordials } from "ext:core/mod.js";
+import { op_fs_events_open, op_fs_events_poll } from "ext:core/ops";
 const {
   BadResourcePrototype,
   InterruptedPrototype,
 } = core;
-const {
-  op_fs_events_open,
-  op_fs_events_poll,
-} = core.ensureFastOps();
 const {
   ArrayIsArray,
   ObjectPrototypeIsPrototypeOf,

@@ -6,7 +6,7 @@ const {
   InterruptedPrototype,
   internalRidSymbol,
 } = core;
-const {
+import {
   op_dns_resolve,
   op_net_accept_tcp,
   op_net_accept_unix,
@@ -26,7 +26,7 @@ const {
   op_net_set_multi_ttl_udp,
   op_set_keepalive,
   op_set_nodelay,
-} = core.ensureFastOps();
+} from "ext:core/ops";
 const {
   op_cancel_handle,
 } = core.ensureFastOps(true);
@@ -34,6 +34,7 @@ const {
   Error,
   Number,
   ObjectPrototypeIsPrototypeOf,
+  ObjectDefineProperty,
   PromiseResolve,
   SafeSet,
   SetPrototypeAdd,
@@ -91,7 +92,6 @@ async function resolveDns(query, recordType, options) {
 }
 
 class Conn {
-  [internalRidSymbol] = 0;
   #rid = 0;
   #remoteAddr = null;
   #localAddr = null;
@@ -102,7 +102,10 @@ class Conn {
   #writable;
 
   constructor(rid, remoteAddr, localAddr) {
-    this[internalRidSymbol] = rid;
+    ObjectDefineProperty(this, internalRidSymbol, {
+      enumerable: false,
+      value: rid,
+    });
     this.#rid = rid;
     this.#remoteAddr = remoteAddr;
     this.#localAddr = localAddr;
@@ -201,12 +204,14 @@ class Conn {
 }
 
 class TcpConn extends Conn {
-  [internalRidSymbol] = 0;
   #rid = 0;
 
   constructor(rid, remoteAddr, localAddr) {
     super(rid, remoteAddr, localAddr);
-    this[internalRidSymbol] = rid;
+    ObjectDefineProperty(this, internalRidSymbol, {
+      enumerable: false,
+      value: rid,
+    });
     this.#rid = rid;
   }
 
@@ -229,12 +234,14 @@ class TcpConn extends Conn {
 }
 
 class UnixConn extends Conn {
-  [internalRidSymbol] = 0;
   #rid = 0;
 
   constructor(rid, remoteAddr, localAddr) {
     super(rid, remoteAddr, localAddr);
-    this[internalRidSymbol] = rid;
+    ObjectDefineProperty(this, internalRidSymbol, {
+      enumerable: false,
+      value: rid,
+    });
     this.#rid = rid;
   }
 
@@ -249,14 +256,16 @@ class UnixConn extends Conn {
 }
 
 class Listener {
-  [internalRidSymbol] = 0;
   #rid = 0;
   #addr = null;
   #unref = false;
   #promise = null;
 
   constructor(rid, addr) {
-    this[internalRidSymbol] = rid;
+    ObjectDefineProperty(this, internalRidSymbol, {
+      enumerable: false,
+      value: rid,
+    });
     this.#rid = rid;
     this.#addr = addr;
   }

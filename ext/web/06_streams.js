@@ -13,18 +13,18 @@ const {
   isSharedArrayBuffer,
   isTypedArray,
 } = core;
-const {
+import {
   op_arraybuffer_was_detached,
-  op_transfer_arraybuffer,
   op_readable_stream_resource_allocate,
   op_readable_stream_resource_allocate_sized,
-  op_readable_stream_resource_get_sink,
-  op_readable_stream_resource_write_error,
-  op_readable_stream_resource_write_buf,
-  op_readable_stream_resource_write_sync,
-  op_readable_stream_resource_close,
   op_readable_stream_resource_await_close,
-} = core.ensureFastOps();
+  op_readable_stream_resource_close,
+  op_readable_stream_resource_get_sink,
+  op_readable_stream_resource_write_buf,
+  op_readable_stream_resource_write_error,
+  op_readable_stream_resource_write_sync,
+  op_transfer_arraybuffer,
+} from "ext:core/ops";
 const {
   // TODO(mmastrac): use readAll
   op_read_all,

@@ -10,10 +10,8 @@
 /// <reference path="./internal.d.ts" />
 /// <reference lib="esnext" />
 
-import { core, primordials } from "ext:core/mod.js";
-const {
-  op_encode_binary_string,
-} = core.ensureFastOps();
+import { primordials } from "ext:core/mod.js";
+import { op_encode_binary_string } from "ext:core/ops";
 const {
   ArrayPrototypePush,
   ArrayPrototypeReduce,
