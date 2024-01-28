@@ -2649,6 +2649,13 @@ const compressionTestCases = [
     out: { "Content-Type": "text/plain", "Cache-Control": "no-transform" },
     expect: null,
   },
+  {
+    name: "BadHeader",
+    length: 1024,
+    in: { "Accept-Encoding": "\x81" },
+    out: { "Content-Type": "text/plain", "Cache-Control": "no-transform" },
+    expect: null,
+  },
 ];
 
 for (const testCase of compressionTestCases) {

@@ -24,6 +24,7 @@ import {
   validateStringAfterArrayBufferView,
 } from "ext:deno_node/internal/fs/utils.mjs";
 import { promisify } from "ext:deno_node/internal/util.mjs";
+import { FsFile } from "ext:deno_fs/30_fs.js";
 
 interface Writer {
   write(p: Uint8Array): Promise<number>;
@@ -73,7 +74,7 @@ export function writeFile(
   (async () => {
     try {
       file = isRid
-        ? new Deno.FsFile(pathOrRid as number)
+        ? new FsFile(pathOrRid as number, Symbol.for("Deno.internal.FsFile"))
         : await Deno.open(pathOrRid as string, openOptions);
 
       // ignore mode because it's not supported on windows
@@ -138,7 +139,7 @@ export function writeFileSync(
   let error: Error | null = null;
   try {
     file = isRid
-      ? new Deno.FsFile(pathOrRid as number)
+      ? new FsFile(pathOrRid as number, Symbol.for("Deno.internal.FsFile"))
       : Deno.openSync(pathOrRid as string, openOptions);
 
     // ignore mode because it's not supported on windows

@@ -1128,7 +1128,7 @@ impl Inner {
     let mut tsconfig = TsConfig::new(json!({
       "allowJs": true,
       "esModuleInterop": true,
-      "experimentalDecorators": true,
+      "experimentalDecorators": false,
       "isolatedModules": true,
       "jsx": "react",
       "lib": ["deno.ns", "deno.window", "deno.unstable"],

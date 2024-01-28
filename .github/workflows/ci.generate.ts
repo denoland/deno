@@ -5,7 +5,7 @@ import * as yaml from "https://deno.land/std@0.173.0/encoding/yaml.ts";
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 69;
+const cacheVersion = 72;
 
 const ubuntuRunner = "ubuntu-22.04";
 const ubuntuXlRunner = "ubuntu-22.04-xl";

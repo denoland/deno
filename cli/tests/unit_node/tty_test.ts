@@ -10,9 +10,8 @@ Deno.test("[node/tty isatty] returns true when fd is a tty, false otherwise", ()
   assert(Deno.stdout.isTerminal() === isatty(Deno.stdout.rid));
   assert(Deno.stderr.isTerminal() === isatty(Deno.stderr.rid));
 
-  const file = Deno.openSync("README.md");
+  using file = Deno.openSync("README.md");
   assert(!isatty(file.rid));
-  Deno.close(file.rid);
 });
 
 Deno.test("[node/tty isatty] returns false for irrelevant values", () => {

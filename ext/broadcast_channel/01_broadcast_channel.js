@@ -3,12 +3,12 @@
 /// <reference path="../../core/internal.d.ts" />
 
 import { core, primordials } from "ext:core/mod.js";
-const {
+import {
   op_broadcast_recv,
   op_broadcast_send,
   op_broadcast_subscribe,
   op_broadcast_unsubscribe,
-} = core.ensureFastOps();
+} from "ext:core/ops";
 const {
   ArrayPrototypeIndexOf,
   ArrayPrototypePush,

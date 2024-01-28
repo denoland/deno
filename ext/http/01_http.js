@@ -5,7 +5,7 @@ const {
   BadResourcePrototype,
   InterruptedPrototype,
 } = core;
-const {
+import {
   op_http_accept,
   op_http_headers,
   op_http_shutdown,
@@ -14,7 +14,7 @@ const {
   op_http_write,
   op_http_write_headers,
   op_http_write_resource,
-} = core.ensureFastOps();
+} from "ext:core/ops";
 const {
   ArrayPrototypeIncludes,
   ArrayPrototypeMap,

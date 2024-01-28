@@ -1,8 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import { core, primordials } from "ext:core/mod.js";
-const {
-  op_read_line_prompt,
-} = core.ensureFastOps();
+import { op_read_line_prompt } from "ext:core/ops";
 const {
   ArrayPrototypePush,
   StringPrototypeCharCodeAt,

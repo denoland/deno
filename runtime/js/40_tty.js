@@ -19,7 +19,7 @@ function isatty(rid) {
   internals.warnOnDeprecatedApi(
     "Deno.isatty()",
     new Error().stack,
-    "Use `stdStream.isTerminal()` instead.",
+    "Use `Deno.stdin.isTerminal()`, `Deno.stdout.isTerminal()` or `Deno.stderr.isTerminal()` instead.",
   );
   return op_is_terminal(rid);
 }

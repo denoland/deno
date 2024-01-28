@@ -1,11 +1,12 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { core, primordials } from "ext:core/mod.js";
+import { core, internals, primordials } from "ext:core/mod.js";
 const {
   BadResourcePrototype,
   InterruptedPrototype,
+  internalRidSymbol,
 } = core;
-const {
+import {
   op_dns_resolve,
   op_net_accept_tcp,
   op_net_accept_unix,
@@ -25,7 +26,7 @@ const {
   op_net_set_multi_ttl_udp,
   op_set_keepalive,
   op_set_nodelay,
-} = core.ensureFastOps();
+} from "ext:core/ops";
 const {
   op_cancel_handle,
 } = core.ensureFastOps(true);
@@ -33,6 +34,7 @@ const {
   Error,
   Number,
   ObjectPrototypeIsPrototypeOf,
+  ObjectDefineProperty,
   PromiseResolve,
   SafeSet,
   SetPrototypeAdd,
@@ -100,12 +102,21 @@ class Conn {
   #writable;
 
   constructor(rid, remoteAddr, localAddr) {
+    ObjectDefineProperty(this, internalRidSymbol, {
+      enumerable: false,
+      value: rid,
+    });
     this.#rid = rid;
     this.#remoteAddr = remoteAddr;
     this.#localAddr = localAddr;
   }
 
   get rid() {
+    internals.warnOnDeprecatedApi(
+      "Deno.Conn.rid",
+      new Error().stack,
+      "Use `Deno.Conn` instance methods instead.",
+    );
     return this.#rid;
   }
 
@@ -118,14 +129,14 @@ class Conn {
   }
 
   write(p) {
-    return write(this.rid, p);
+    return write(this.#rid, p);
   }
 
   async read(buffer) {
     if (buffer.length === 0) {
       return 0;
     }
-    const promise = core.read(this.rid, buffer);
+    const promise = core.read(this.#rid, buffer);
     if (this.#unref) core.unrefOpPromise(promise);
     SetPrototypeAdd(this.#pendingReadPromises, promise);
     let nread;
@@ -140,16 +151,16 @@ class Conn {
   }
 
   close() {
-    core.close(this.rid);
+    core.close(this.#rid);
   }
 
   closeWrite() {
-    return shutdown(this.rid);
+    return shutdown(this.#rid);
   }
 
   get readable() {
     if (this.#readable === undefined) {
-      this.#readable = readableStreamForRidUnrefable(this.rid);
+      this.#readable = readableStreamForRidUnrefable(this.#rid);
       if (this.#unref) {
         readableStreamForRidUnrefableUnref(this.#readable);
       }
@@ -159,7 +170,7 @@ class Conn {
 
   get writable() {
     if (this.#writable === undefined) {
-      this.#writable = writableStreamForRid(this.rid);
+      this.#writable = writableStreamForRid(this.#rid);
     }
     return this.#writable;
   }
@@ -193,16 +204,56 @@ class Conn {
 }
 
 class TcpConn extends Conn {
+  #rid = 0;
+
+  constructor(rid, remoteAddr, localAddr) {
+    super(rid, remoteAddr, localAddr);
+    ObjectDefineProperty(this, internalRidSymbol, {
+      enumerable: false,
+      value: rid,
+    });
+    this.#rid = rid;
+  }
+
+  get rid() {
+    internals.warnOnDeprecatedApi(
+      "Deno.TcpConn.rid",
+      new Error().stack,
+      "Use `Deno.TcpConn` instance methods instead.",
+    );
+    return this.#rid;
+  }
+
   setNoDelay(noDelay = true) {
-    return op_set_nodelay(this.rid, noDelay);
+    return op_set_nodelay(this.#rid, noDelay);
   }
 
   setKeepAlive(keepAlive = true) {
-    return op_set_keepalive(this.rid, keepAlive);
+    return op_set_keepalive(this.#rid, keepAlive);
   }
 }
 
-class UnixConn extends Conn {}
+class UnixConn extends Conn {
+  #rid = 0;
+
+  constructor(rid, remoteAddr, localAddr) {
+    super(rid, remoteAddr, localAddr);
+    ObjectDefineProperty(this, internalRidSymbol, {
+      enumerable: false,
+      value: rid,
+    });
+    this.#rid = rid;
+  }
+
+  get rid() {
+    internals.warnOnDeprecatedApi(
+      "Deno.UnixConn.rid",
+      new Error().stack,
+      "Use `Deno.UnixConn` instance methods instead.",
+    );
+    return this.#rid;
+  }
+}
 
 class Listener {
   #rid = 0;
@@ -211,11 +262,20 @@ class Listener {
   #promise = null;
 
   constructor(rid, addr) {
+    ObjectDefineProperty(this, internalRidSymbol, {
+      enumerable: false,
+      value: rid,
+    });
     this.#rid = rid;
     this.#addr = addr;
   }
 
   get rid() {
+    internals.warnOnDeprecatedApi(
+      "Deno.Listener.rid",
+      new Error().stack,
+      "Use `Deno.Listener` instance methods instead.",
+    );
     return this.#rid;
   }
 
@@ -227,10 +287,10 @@ class Listener {
     let promise;
     switch (this.addr.transport) {
       case "tcp":
-        promise = op_net_accept_tcp(this.rid);
+        promise = op_net_accept_tcp(this.#rid);
         break;
       case "unix":
-        promise = op_net_accept_unix(this.rid);
+        promise = op_net_accept_unix(this.#rid);
         break;
       default:
         throw new Error(`Unsupported transport: ${this.addr.transport}`);
@@ -276,7 +336,7 @@ class Listener {
   }
 
   close() {
-    core.close(this.rid);
+    core.close(this.#rid);
   }
 
   [SymbolDispose]() {

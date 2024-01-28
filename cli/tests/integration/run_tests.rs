@@ -1508,8 +1508,13 @@ itest!(no_check {
 });
 
 itest!(no_check_decorators {
-  args: "run --quiet --reload --no-check run/no_check_decorators.ts",
-  output: "run/no_check_decorators.ts.out",
+  args: "run --quiet --reload --no-check run/decorators/experimental/no_check/main.ts",
+  output: "run/decorators/experimental/no_check/main.out",
+});
+
+itest!(decorators_tc39_proposal {
+  args: "run --quiet --reload --check run/decorators/tc39_proposal/main.ts",
+  output: "run/decorators/tc39_proposal/main.out",
 });
 
 itest!(check_remote {
@@ -1526,8 +1531,8 @@ itest!(no_check_remote {
 });
 
 itest!(runtime_decorators {
-  args: "run --quiet --reload --no-check run/runtime_decorators.ts",
-  output: "run/runtime_decorators.ts.out",
+  args: "run --quiet --reload --no-check run/decorators/experimental/runtime/main.ts",
+  output: "run/decorators/experimental/runtime/main.out",
 });
 
 itest!(seed_random {
@@ -1591,8 +1596,8 @@ itest!(ts_type_imports {
 });
 
 itest!(ts_decorators {
-  args: "run --reload --check run/ts_decorators.ts",
-  output: "run/ts_decorators.ts.out",
+  args: "run --reload --check run/decorators/experimental/ts/main.ts",
+  output: "run/decorators/experimental/ts/main.out",
 });
 
 itest!(ts_type_only_import {
@@ -5094,6 +5099,14 @@ itest!(warn_on_deprecated_api {
   exit_code: 0,
 });
 
+itest!(warn_on_deprecated_api_verbose {
+  args: "run -A run/warn_on_deprecated_api/main.js",
+  output: "run/warn_on_deprecated_api/main.verbose.out",
+  envs: vec![("DENO_VERBOSE_WARNINGS".to_string(), "1".to_string())],
+  http_server: true,
+  exit_code: 0,
+});
+
 itest!(warn_on_deprecated_api_with_flag {
   args: "run -A --quiet run/warn_on_deprecated_api/main.js",
   output: "run/warn_on_deprecated_api/main_disabled_flag.out",
@@ -5108,3 +5121,64 @@ itest!(warn_on_deprecated_api_with_env_var {
   http_server: true,
   exit_code: 0,
 });
+
+#[test]
+fn deno_json_imports_expand() {
+  let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let dir = test_context.temp_dir();
+  dir.write(
+    "deno.json",
+    r#"{
+    "imports": {
+      "basic": "npm:@denotest/esm-basic"
+    }
+}"#,
+  );
+
+  dir.write(
+    "main.ts",
+    r#"
+// import map should resolve
+import { setValue, getValue } from "basic";
+// this entry should have been added automatically
+import { hello } from "basic/other.mjs";
+
+setValue(5);
+console.log(getValue());
+console.log(hello());
+"#,
+  );
+  let output = test_context.new_command().args("run main.ts").run();
+  output.assert_matches_text("[WILDCARD]5\nhello, world!\n");
+}
+
+#[test]
+fn deno_json_imports_expand_doesnt_overwrite_existing_entries() {
+  let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let dir = test_context.temp_dir();
+  dir.write(
+    "deno.json",
+    r#"{
+    "imports": {
+      "basic": "npm:@denotest/esm-basic",
+      "basic/": "npm:/@denotest/sub-folders/folder_index_js/"
+    }
+}"#,
+  );
+
+  dir.write(
+    "main.ts",
+    r#"
+// import map should resolve
+import { setValue, getValue } from "basic";
+// this entry should map to explicitly specified "basic/" mapping
+import { add } from "basic/index.js";
+
+setValue(5);
+console.log(getValue());
+console.log(add(3, 4));
+"#,
+  );
+  let output = test_context.new_command().args("run main.ts").run();
+  output.assert_matches_text("[WILDCARD]5\n7\n");
+}
