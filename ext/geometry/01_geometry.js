@@ -710,13 +710,17 @@ class DOMMatrixReadOnly {
     }
   }
 
-  // TODO: fast path from DOMMatrix, DOMMatrixReadOnly
   static fromMatrix(other = {}) {
     const prefix = "Failed to call 'DOMMatrixReadOnly.fromMatrix'";
-    other = webidl.converters.DOMMatrixInit(other, prefix, "Argument 1");
-    validateAndFixupMatrixDictionary(other, prefix);
     const matrix = webidl.createBranded(DOMMatrixReadOnly);
-    initMatrixFromDictonary(matrix, other);
+    // fast path for DOMMatrix or DOMMatrixReadOnly
+    if (ObjectPrototypeIsPrototypeOf(DOMMatrixReadOnly, other)) {
+      initMatrixFromMatrix(matrix, other);
+    } else {
+      other = webidl.converters.DOMMatrixInit(other, prefix, "Argument 1");
+      validateAndFixupMatrixDictionary(other, prefix);
+      initMatrixFromDictonary(matrix, other);
+    }
     return matrix;
   }
 
@@ -919,13 +923,17 @@ class DOMMatrixReadOnly {
 const DOMMatrixReadOnlyPrototype = DOMMatrixReadOnly.prototype;
 
 class DOMMatrix extends DOMMatrixReadOnly {
-  // TODO: fast path from DOMMatrix, DOMMatrixReadOnly
   static fromMatrix(other = {}) {
     const prefix = "Failed to call 'DOMMatrix.fromMatrix'";
-    other = webidl.converters.DOMMatrixInit(other, prefix, "Argument 1");
-    validateAndFixupMatrixDictionary(other, prefix);
     const matrix = webidl.createBranded(DOMMatrix);
-    initMatrixFromDictonary(matrix, other);
+    // fast path for DOMMatrix or DOMMatrixReadOnly
+    if (ObjectPrototypeIsPrototypeOf(DOMMatrixReadOnly, other)) {
+      initMatrixFromMatrix(matrix, other);
+    } else {
+      other = webidl.converters.DOMMatrixInit(other, prefix, "Argument 1");
+      validateAndFixupMatrixDictionary(other, prefix);
+      initMatrixFromDictonary(matrix, other);
+    }
     return matrix;
   }
 
@@ -1340,6 +1348,15 @@ function initMatrixFromDictonary(target, dict) {
     ]);
     target[_is2D] = false;
   }
+}
+
+/**
+ * @param {object} target
+ * @type {DOMMatrixReadOnly} matrix
+ */
+function initMatrixFromMatrix(target, matrix) {
+  target[_raw] = new Float64Array(matrix[_raw]);
+  target[_is2D] = matrix[_is2D];
 }
 
 /**
