@@ -650,12 +650,31 @@ class DOMQuad {
 
 const DOMQuadPrototype = DOMQuad.prototype;
 
+/**
+ * NOTE: column-major order
+ *
+ * For a 2D 3x2 matrix, the index of properties in
+ * | a c 0 e |    | 0 4 _ 12 |
+ * | b d 0 f |    | 1 5 _ 13 |
+ * | 0 0 1 0 | is | _ _ _  _ |
+ * | 0 0 0 1 |    | _ _ _  _ |
+ */
 const _a = 0;
 const _b = 1;
 const _c = 4;
 const _d = 5;
 const _e = 12;
 const _f = 13;
+
+/**
+ * NOTE: column-major order
+ *
+ * The index of properties in
+ * | m11 m21 m31 m41 |    | 0 4  8 12 |
+ * | m12 m22 m32 m42 |    | 1 5  9 13 |
+ * | m13 m23 m33 m43 | is | 2 6 10 14 |
+ * | m14 m24 m34 m44 |    | 3 7 11 15 |
+ */
 const _m11 = 0;
 const _m12 = 1;
 const _m13 = 2;
@@ -672,6 +691,7 @@ const _m41 = 12;
 const _m42 = 13;
 const _m43 = 14;
 const _m44 = 15;
+
 const _is2D = Symbol("[[is2D]]");
 
 class DOMMatrixReadOnly {
