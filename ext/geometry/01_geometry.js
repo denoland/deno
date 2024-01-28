@@ -1229,7 +1229,7 @@ class DOMMatrix extends DOMMatrixReadOnly {
     return this;
   }
 
-  premultiplySelf(other = {}) {
+  preMultiplySelf(other = {}) {
     webidl.assertBranded(this, DOMMatrixPrototype);
     const prefix = "Failed to call 'DOMMatrix.prototype.premultiplySelf'";
     if (!ObjectPrototypeIsPrototypeOf(DOMMatrixReadOnlyPrototype, other)) {
