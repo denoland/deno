@@ -4,8 +4,7 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { core } from "ext:core/mod.js";
-const {
+import {
   op_node_x509_ca,
   op_node_x509_check_email,
   op_node_x509_fingerprint,
@@ -18,7 +17,7 @@ const {
   op_node_x509_get_valid_to,
   op_node_x509_key_usage,
   op_node_x509_parse,
-} = core.ensureFastOps();
+} from "ext:core/ops";
 
 import { KeyObject } from "ext:deno_node/internal/crypto/keys.ts";
 import { Buffer } from "node:buffer";

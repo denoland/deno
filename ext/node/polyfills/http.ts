@@ -4,10 +4,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { core } from "ext:core/mod.js";
-const {
-  op_fetch_response_upgrade,
-  op_node_http_request,
-} = core.ensureFastOps();
+import { op_fetch_response_upgrade, op_node_http_request } from "ext:core/ops";
 // TODO(bartlomieju): this ops is also used in `ext/fetch/26_fetch.js`.
 const {
   op_fetch_send,
