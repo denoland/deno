@@ -178,6 +178,9 @@ zstd = "=0.12.4"
 hkdf = "0.12.3"
 rsa = { version = "0.9.3", default-features = false, features = ["std", "pem", "hazmat"] } # hazmat needed for PrehashSigner in ext/node
 
+# geometry
+nalgebra = { version = "0.32.3", default-features = false, features = ["std"] }
+
 # webgpu
 raw-window-handle = "0.5.0"
 wgpu-core = { version = "=0.18", features = ["raw-window-handle"] }

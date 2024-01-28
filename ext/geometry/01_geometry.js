@@ -1,6 +1,11 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import { primordials } from "ext:core/mod.js";
+import {
+  op_geometry_multiply,
+  op_geometry_multiply_self,
+  op_geometry_premultiply_self,
+} from "ext:core/ops";
 const {
   ArrayPrototypeJoin,
   Float32Array,
@@ -859,6 +864,26 @@ class DOMMatrixReadOnly {
     return isMatrixIdentity(this);
   }
 
+  multiply(other = {}) {
+    webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
+    const prefix = "Failed to call 'DOMMatrixReadOnly.prototype.multiply'";
+    if (!ObjectPrototypeIsPrototypeOf(DOMMatrixReadOnlyPrototype, other)) {
+      const _other = webidl.converters.DOMMatrixInit(
+        other,
+        prefix,
+        "Argument 1",
+      );
+      validateAndFixupMatrixDictionary(_other, prefix);
+      other = {};
+      initMatrixFromDictonary(other, _other);
+    }
+    const matrix = webidl.createBranded(DOMMatrix);
+    matrix[_raw] = new Float64Array(16);
+    op_geometry_multiply(this[_raw], other[_raw], matrix[_raw]);
+    matrix[_is2D] = this[_is2D] && other[_is2D];
+    return matrix;
+  }
+
   toFloat32Array() {
     webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
     return new Float32Array(this[_raw]);
@@ -1180,6 +1205,50 @@ class DOMMatrix extends DOMMatrixReadOnly {
       this[_is2D] = false;
     }
     this[_raw][_m44] = webidl.converters["unrestricted double"](value);
+  }
+
+  multiplySelf(other = {}) {
+    webidl.assertBranded(this, DOMMatrixPrototype);
+    const prefix = "Failed to call 'DOMMatrix.prototype.multiplySelf'";
+    if (!ObjectPrototypeIsPrototypeOf(DOMMatrixReadOnlyPrototype, other)) {
+      const _other = webidl.converters.DOMMatrixInit(
+        other,
+        prefix,
+        "Argument 1",
+      );
+      validateAndFixupMatrixDictionary(_other, prefix);
+      other = {};
+      initMatrixFromDictonary(other, _other);
+    } else if (this[_raw] === other[_raw]) {
+      other = {};
+      initMatrixFromMatrix(other, this);
+    }
+
+    op_geometry_multiply_self(other[_raw], this[_raw]);
+    this[_is2D] &&= other[_is2D];
+    return this;
+  }
+
+  premultiplySelf(other = {}) {
+    webidl.assertBranded(this, DOMMatrixPrototype);
+    const prefix = "Failed to call 'DOMMatrix.prototype.premultiplySelf'";
+    if (!ObjectPrototypeIsPrototypeOf(DOMMatrixReadOnlyPrototype, other)) {
+      const _other = webidl.converters.DOMMatrixInit(
+        other,
+        prefix,
+        "Argument 1",
+      );
+      validateAndFixupMatrixDictionary(_other, prefix);
+      other = {};
+      initMatrixFromDictonary(other, _other);
+    } else if (this[_raw] === other[_raw]) {
+      other = {};
+      initMatrixFromMatrix(other, this);
+    }
+
+    op_geometry_premultiply_self(other[_raw], this[_raw]);
+    this[_is2D] &&= other[_is2D];
+    return this;
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
