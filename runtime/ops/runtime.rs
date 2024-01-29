@@ -85,12 +85,12 @@ pub fn op_ppid() -> i32 {
       // wherein the parent process already exited and the OS
       // reassigned its ID.
       let parent_id = entry.th32ParentProcessID;
-      parent_id.into()
+      parent_id as i32
     }
   }
   #[cfg(not(windows))]
   {
     use std::os::unix::process::parent_id;
-    parent_id().into()
+    parent_id() as i32
   }
 }
