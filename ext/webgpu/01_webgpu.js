@@ -344,6 +344,16 @@ class GPU {
     }
   }
 
+  getPreferredCanvasFormat() {
+    // Same as Gecko.
+    //
+    // https://github.com/mozilla/gecko-dev/blob/b75080bb8b11844d18cb5f9ac6e68a866ef8e243/dom/webgpu/Instance.h#L42-L47
+    if (core.build.os == "android") {
+      return "rgba8unorm";
+    }
+    return "bgra8unorm";
+  }
+
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
     return `${this.constructor.name} ${inspect({}, inspectOptions)}`;
   }

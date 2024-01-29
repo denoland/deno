@@ -2,11 +2,7 @@
 
 // deno-lint-ignore-file prefer-primordials
 
-import { core } from "ext:core/mod.js";
-const {
-  op_node_cp,
-  op_node_cp_sync,
-} = core.ensureFastOps();
+import { op_node_cp, op_node_cp_sync } from "ext:core/ops";
 
 import {
   getValidatedPath,

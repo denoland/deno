@@ -3295,7 +3295,7 @@ fn lsp_code_lens() {
       },
       "command": {
         "title": "1 reference",
-        "command": "deno.showReferences",
+        "command": "deno.client.showReferences",
         "arguments": [
           "file:///a/file.ts",
           { "line": 0, "character": 6 },
@@ -3362,7 +3362,7 @@ fn lsp_code_lens() {
       },
       "command": {
         "title": "2 references",
-        "command": "deno.showReferences",
+        "command": "deno.client.showReferences",
         "arguments": [
           "file:///a/file.ts",
           { "line": 15, "character": 6 },
@@ -3490,7 +3490,7 @@ fn lsp_code_lens_impl() {
       },
       "command": {
         "title": "1 implementation",
-        "command": "deno.showReferences",
+        "command": "deno.client.showReferences",
         "arguments": [
           "file:///a/file.ts",
           { "line": 0, "character": 10 },
@@ -3568,7 +3568,7 @@ fn lsp_code_lens_test() {
       },
       "command": {
         "title": "▶︎ Run Test",
-        "command": "deno.test",
+        "command": "deno.client.test",
         "arguments": [
           "file:///a/file.ts",
           "test a",
@@ -3582,7 +3582,7 @@ fn lsp_code_lens_test() {
       },
       "command": {
         "title": "Debug",
-        "command": "deno.test",
+        "command": "deno.client.test",
         "arguments": [
           "file:///a/file.ts",
           "test a",
@@ -3596,7 +3596,7 @@ fn lsp_code_lens_test() {
       },
       "command": {
         "title": "▶︎ Run Test",
-        "command": "deno.test",
+        "command": "deno.client.test",
         "arguments": [
           "file:///a/file.ts",
           "test b",
@@ -3610,7 +3610,7 @@ fn lsp_code_lens_test() {
       },
       "command": {
         "title": "Debug",
-        "command": "deno.test",
+        "command": "deno.client.test",
         "arguments": [
           "file:///a/file.ts",
           "test b",
@@ -3624,7 +3624,7 @@ fn lsp_code_lens_test() {
       },
       "command": {
         "title": "▶︎ Run Test",
-        "command": "deno.test",
+        "command": "deno.client.test",
         "arguments": [
           "file:///a/file.ts",
           "test c",
@@ -3638,7 +3638,7 @@ fn lsp_code_lens_test() {
       },
       "command": {
         "title": "Debug",
-        "command": "deno.test",
+        "command": "deno.client.test",
         "arguments": [
           "file:///a/file.ts",
           "test c",
@@ -3652,7 +3652,7 @@ fn lsp_code_lens_test() {
       },
       "command": {
         "title": "▶︎ Run Test",
-        "command": "deno.test",
+        "command": "deno.client.test",
         "arguments": [
           "file:///a/file.ts",
           "test d",
@@ -3666,7 +3666,7 @@ fn lsp_code_lens_test() {
       },
       "command": {
         "title": "Debug",
-        "command": "deno.test",
+        "command": "deno.client.test",
         "arguments": [
           "file:///a/file.ts",
           "test d",
@@ -3680,7 +3680,7 @@ fn lsp_code_lens_test() {
       },
       "command": {
         "title": "▶︎ Run Test",
-        "command": "deno.test",
+        "command": "deno.client.test",
         "arguments": [
           "file:///a/file.ts",
           "test e",
@@ -3694,7 +3694,7 @@ fn lsp_code_lens_test() {
       },
       "command": {
         "title": "Debug",
-        "command": "deno.test",
+        "command": "deno.client.test",
         "arguments": [
           "file:///a/file.ts",
           "test e",
@@ -3708,7 +3708,7 @@ fn lsp_code_lens_test() {
       },
       "command": {
         "title": "▶︎ Run Test",
-        "command": "deno.test",
+        "command": "deno.client.test",
         "arguments": [
           "file:///a/file.ts",
           "test f",
@@ -3722,7 +3722,7 @@ fn lsp_code_lens_test() {
       },
       "command": {
         "title": "Debug",
-        "command": "deno.test",
+        "command": "deno.client.test",
         "arguments": [
           "file:///a/file.ts",
           "test f",
@@ -3736,7 +3736,7 @@ fn lsp_code_lens_test() {
       },
       "command": {
         "title": "▶︎ Run Test",
-        "command": "deno.test",
+        "command": "deno.client.test",
         "arguments": [
           "file:///a/file.ts",
           "test g",
@@ -3750,7 +3750,7 @@ fn lsp_code_lens_test() {
       },
       "command": {
         "title": "Debug",
-        "command": "deno.test",
+        "command": "deno.client.test",
         "arguments": [
           "file:///a/file.ts",
           "test g",
@@ -3764,7 +3764,7 @@ fn lsp_code_lens_test() {
       },
       "command": {
         "title": "▶︎ Run Test",
-        "command": "deno.test",
+        "command": "deno.client.test",
         "arguments": [
           "file:///a/file.ts",
           "test h",
@@ -3778,7 +3778,7 @@ fn lsp_code_lens_test() {
       },
       "command": {
         "title": "Debug",
-        "command": "deno.test",
+        "command": "deno.client.test",
         "arguments": [
           "file:///a/file.ts",
           "test h",
