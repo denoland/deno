@@ -7,10 +7,10 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { core, internals } from "ext:core/mod.js";
-const {
-  op_node_child_ipc_pipe,
+import {
   op_bootstrap_unstable_args,
-} = core.ensureFastOps();
+  op_node_child_ipc_pipe,
+} from "ext:core/ops";
 const {
   op_npm_process_state,
 } = core.ensureFastOps(true);

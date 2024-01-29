@@ -5,13 +5,13 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { core } from "ext:core/mod.js";
-const {
+import {
   op_node_dh_compute_secret,
   op_node_dh_generate2,
+  op_node_ecdh_compute_public_key,
   op_node_ecdh_compute_secret,
   op_node_ecdh_generate_keys,
-  op_node_ecdh_compute_public_key,
-} = core.ensureFastOps();
+} from "ext:core/ops";
 const {
   op_node_gen_prime,
 } = core.ensureFastOps(true);

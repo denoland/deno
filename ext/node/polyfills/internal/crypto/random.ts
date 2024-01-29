@@ -5,13 +5,13 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { core, primordials } from "ext:core/mod.js";
-const {
+import {
   op_node_check_prime,
   op_node_check_prime_async,
   op_node_check_prime_bytes,
   op_node_check_prime_bytes_async,
   op_node_gen_prime_async,
-} = core.ensureFastOps();
+} from "ext:core/ops";
 const {
   op_node_gen_prime,
 } = core.ensureFastOps(true);

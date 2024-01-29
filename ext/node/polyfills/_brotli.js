@@ -4,7 +4,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { core } from "ext:core/mod.js";
-const {
+import {
   op_brotli_compress,
   op_brotli_compress_async,
   op_brotli_compress_stream,
@@ -14,7 +14,7 @@ const {
   op_brotli_decompress_stream,
   op_create_brotli_compress,
   op_create_brotli_decompress,
-} = core.ensureFastOps();
+} from "ext:core/ops";
 
 import { zlib as constants } from "ext:deno_node/internal_binding/constants.ts";
 import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
