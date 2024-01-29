@@ -6,6 +6,7 @@ const {
   internalRidSymbol,
 } = core;
 import {
+  op_cancel_handle,
   op_fs_chdir,
   op_fs_chmod_async,
   op_fs_chmod_sync,
@@ -72,9 +73,6 @@ import {
   op_fs_write_file_async,
   op_fs_write_file_sync,
 } from "ext:core/ops";
-const {
-  op_cancel_handle,
-} = core.ensureFastOps(true);
 const {
   ArrayPrototypeFilter,
   Date,
