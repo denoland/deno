@@ -2701,24 +2701,8 @@ declare namespace Deno {
     cbreak: boolean;
   }
 
-  /** A reference to `stdin` which can be used to read directly from `stdin`.
-   * It implements the Deno specific {@linkcode Reader}, {@linkcode ReaderSync},
-   * and {@linkcode Closer} interfaces as well as provides a
-   * {@linkcode ReadableStream} interface.
-   *
-   * ### Reading chunks from the readable stream
-   *
-   * ```ts
-   * const decoder = new TextDecoder();
-   * for await (const chunk of Deno.stdin.readable) {
-   *   const text = decoder.decode(chunk);
-   *   // do something with the text
-   * }
-   * ```
-   *
-   * @category I/O
-   */
-  export const stdin: Reader & ReaderSync & Closer & {
+  /** @category I/O */
+  export interface Stdin extends Reader, ReaderSync, Closer {
     /**
      * The resource ID assigned to `stdin`. This can be used with the discreet
      * I/O functions in the `Deno` namespace.
@@ -2754,18 +2738,29 @@ declare namespace Deno {
      * @category I/O
      */
     isTerminal(): boolean;
-  };
-  /** A reference to `stdout` which can be used to write directly to `stdout`.
-   * It implements the Deno specific {@linkcode Writer}, {@linkcode WriterSync},
+  }
+
+  /** A reference to `stdin` which can be used to read directly from `stdin`.
+   * It implements the Deno specific {@linkcode Reader}, {@linkcode ReaderSync},
    * and {@linkcode Closer} interfaces as well as provides a
-   * {@linkcode WritableStream} interface.
+   * {@linkcode ReadableStream} interface.
    *
-   * These are low level constructs, and the {@linkcode console} interface is a
-   * more straight forward way to interact with `stdout` and `stderr`.
+   * ### Reading chunks from the readable stream
+   *
+   * ```ts
+   * const decoder = new TextDecoder();
+   * for await (const chunk of Deno.stdin.readable) {
+   *   const text = decoder.decode(chunk);
+   *   // do something with the text
+   * }
+   * ```
    *
    * @category I/O
    */
-  export const stdout: Writer & WriterSync & Closer & {
+  export const stdin: Stdin;
+
+  /** @category I/O */
+  export interface Stdout extends Writer, WriterSync, Closer {
     /**
      * The resource ID assigned to `stdout`. This can be used with the discreet
      * I/O functions in the `Deno` namespace.
@@ -2787,8 +2782,9 @@ declare namespace Deno {
      * @category I/O
      */
     isTerminal(): boolean;
-  };
-  /** A reference to `stderr` which can be used to write directly to `stderr`.
+  }
+
+  /** A reference to `stdout` which can be used to write directly to `stdout`.
    * It implements the Deno specific {@linkcode Writer}, {@linkcode WriterSync},
    * and {@linkcode Closer} interfaces as well as provides a
    * {@linkcode WritableStream} interface.
@@ -2798,7 +2794,10 @@ declare namespace Deno {
    *
    * @category I/O
    */
-  export const stderr: Writer & WriterSync & Closer & {
+  export const stdout: Stdout;
+
+  /** @category I/O */
+  export interface Stderr extends Writer, WriterSync, Closer {
     /**
      * The resource ID assigned to `stderr`. This can be used with the discreet
      * I/O functions in the `Deno` namespace.
@@ -2820,7 +2819,19 @@ declare namespace Deno {
      * @category I/O
      */
     isTerminal(): boolean;
-  };
+  }
+
+  /** A reference to `stderr` which can be used to write directly to `stderr`.
+   * It implements the Deno specific {@linkcode Writer}, {@linkcode WriterSync},
+   * and {@linkcode Closer} interfaces as well as provides a
+   * {@linkcode WritableStream} interface.
+   *
+   * These are low level constructs, and the {@linkcode console} interface is a
+   * more straight forward way to interact with `stdout` and `stderr`.
+   *
+   * @category I/O
+   */
+  export const stderr: Stderr;
 
   /**
    * Options which can be set when doing {@linkcode Deno.open} and
