@@ -1197,8 +1197,7 @@ dependencies = [
 [[package]]
 name = "deno_core"
 version = "0.256.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cd5997286bcc46199bbae727f43ee65cf4bd073ac2d240a36a6ceae3bfab14ac"
+source = "git+https://github.com/bartlomieju/deno_core.git?branch=op_metrics_fn_receives_only_name#f3b49df82da33a061bd07a868ed87ae3bfd61503"
 dependencies = [
  "anyhow",
  "bit-set",
@@ -1654,8 +1653,7 @@ dependencies = [
 [[package]]
 name = "deno_ops"
 version = "0.132.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "02163d08afdd6fcf21e37c399c7425987c7170203a853052a800e80c91c2e87b"
+source = "git+https://github.com/bartlomieju/deno_core.git?branch=op_metrics_fn_receives_only_name#f3b49df82da33a061bd07a868ed87ae3bfd61503"
 dependencies = [
  "proc-macro-rules",
  "proc-macro2",
@@ -5358,8 +5356,7 @@ dependencies = [
 [[package]]
 name = "serde_v8"
 version = "0.165.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "88862d513bcbc04a7f93b0f454dffd0b01a5c0d8e1964c7532ec55f52b9a6351"
+source = "git+https://github.com/bartlomieju/deno_core.git?branch=op_metrics_fn_receives_only_name#f3b49df82da33a061bd07a868ed87ae3bfd61503"
 dependencies = [
  "bytes",
  "derive_more",
