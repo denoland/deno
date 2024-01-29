@@ -5,9 +5,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { core, internals } from "ext:core/mod.js";
-const {
-  op_require_read_closest_package_json,
-} = core.ensureFastOps(true);
+import { op_require_read_closest_package_json } from "ext:core/ops";
 
 import { isAbsolute, resolve } from "node:path";
 import { notImplemented } from "ext:deno_node/_utils.ts";
