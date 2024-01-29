@@ -784,6 +784,7 @@ declare var ByteLengthQueuingStrategy: {
  */
 declare interface ReadableStream<R = any> {
   readonly locked: boolean;
+  from<T>(iterable: Iterable<T> | AsyncIterable<T>): ReadableStream<R>;
   cancel(reason?: any): Promise<void>;
   getReader(options: { mode: "byob" }): ReadableStreamBYOBReader;
   getReader(options?: { mode?: undefined }): ReadableStreamDefaultReader<R>;
