@@ -564,6 +564,15 @@ class Process extends EventEmitter {
     return pid;
   }
 
+  /** https://nodejs.org/api/process.html#processppid */
+  get ppid() {
+    // TODO(magurotuna): Deno.ppid now is of type bigint (although its type
+    // declaration says it's a number). Until it's fixed, we explicitly convert
+    // it to number to match Node.js behavior.
+    // https://github.com/denoland/deno/issues/22166
+    return Number(Deno.ppid);
+  }
+
   /** https://nodejs.org/api/process.html#process_process_platform */
   get platform() {
     if (!platform) {
