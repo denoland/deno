@@ -1197,7 +1197,7 @@ dependencies = [
 [[package]]
 name = "deno_core"
 version = "0.256.0"
-source = "git+https://github.com/bartlomieju/deno_core.git?branch=op_metrics_fn_receives_only_name#f3b49df82da33a061bd07a868ed87ae3bfd61503"
+source = "git+https://github.com/bartlomieju/deno_core.git?branch=op_metrics_fn_receives_only_name#6d649c6bc8135f359c6c7b982c67db5cc0f7f5a2"
 dependencies = [
  "anyhow",
  "bit-set",
@@ -1653,7 +1653,7 @@ dependencies = [
 [[package]]
 name = "deno_ops"
 version = "0.132.0"
-source = "git+https://github.com/bartlomieju/deno_core.git?branch=op_metrics_fn_receives_only_name#f3b49df82da33a061bd07a868ed87ae3bfd61503"
+source = "git+https://github.com/bartlomieju/deno_core.git?branch=op_metrics_fn_receives_only_name#6d649c6bc8135f359c6c7b982c67db5cc0f7f5a2"
 dependencies = [
  "proc-macro-rules",
  "proc-macro2",
@@ -5356,7 +5356,7 @@ dependencies = [
 [[package]]
 name = "serde_v8"
 version = "0.165.0"
-source = "git+https://github.com/bartlomieju/deno_core.git?branch=op_metrics_fn_receives_only_name#f3b49df82da33a061bd07a868ed87ae3bfd61503"
+source = "git+https://github.com/bartlomieju/deno_core.git?branch=op_metrics_fn_receives_only_name#6d649c6bc8135f359c6c7b982c67db5cc0f7f5a2"
 dependencies = [
  "bytes",
  "derive_more",
@@ -7078,7 +7078,7 @@ dependencies = [
  "codespan-reporting",
  "log",
  "naga",
- "parking_lot 0.12.1",
+ "parking_lot 0.11.2",
  "profiling",
  "raw-window-handle",
  "ron",
@@ -7119,7 +7119,7 @@ dependencies = [
  "naga",
  "objc",
  "once_cell",
- "parking_lot 0.12.1",
+ "parking_lot 0.11.2",
  "profiling",
  "range-alloc",
  "raw-window-handle",
