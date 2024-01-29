@@ -28,11 +28,11 @@ const {
   isWeakMap,
   isWeakSet,
 } = core;
-const {
+import {
   op_get_constructor_name,
   op_get_non_index_property_names,
   op_preview_entries,
-} = core.ensureFastOps(true);
+} from "ext:core/ops";
 const {
   Array,
   ArrayBufferPrototypeGetByteLength,

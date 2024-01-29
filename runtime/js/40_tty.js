@@ -1,9 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-import { core, internals, primordials } from "ext:core/mod.js";
-const {
-  op_console_size,
-  op_is_terminal,
-} = core.ensureFastOps(true);
+import { internals, primordials } from "ext:core/mod.js";
+import { op_console_size, op_is_terminal } from "ext:core/ops";
 const {
   Uint32Array,
 } = primordials;

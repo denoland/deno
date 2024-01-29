@@ -1,9 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { core } from "ext:core/mod.js";
-const {
-  op_node_build_os,
-} = core.ensureFastOps(true);
+import { op_node_build_os } from "ext:core/ops";
 
 let os: {
   dlopen: {
