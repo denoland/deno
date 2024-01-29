@@ -32,8 +32,8 @@ fn op_main_module(state: &mut OpState) -> Result<String, AnyError> {
 /// This is an op instead of being done at initialization time because
 /// it's expensive to retrieve the ppid on Windows.
 #[op2(fast)]
-#[bigint]
-pub fn op_ppid() -> i64 {
+#[smi]
+pub fn op_ppid() -> u32 {
   #[cfg(windows)]
   {
     // Adopted from rustup:
@@ -84,13 +84,12 @@ pub fn op_ppid() -> i64 {
       // FIXME: Using the process ID exposes a race condition
       // wherein the parent process already exited and the OS
       // reassigned its ID.
-      let parent_id = entry.th32ParentProcessID;
-      parent_id.into()
+      entry.th32ParentProcessID
     }
   }
   #[cfg(not(windows))]
   {
     use std::os::unix::process::parent_id;
-    parent_id().into()
+    parent_id()
   }
 }
