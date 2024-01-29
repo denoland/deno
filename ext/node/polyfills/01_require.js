@@ -3,7 +3,7 @@
 // deno-lint-ignore-file
 
 import { core, internals, primordials } from "ext:core/mod.js";
-const {
+import {
   op_require_as_file_path,
   op_require_break_on_next_statement,
   op_require_init_paths,
@@ -25,7 +25,7 @@ const {
   op_require_stat,
   op_require_try_self,
   op_require_try_self_parent_path,
-} = core.ensureFastOps();
+} from "ext:core/ops";
 const {
   op_napi_open,
   op_require_read_closest_package_json,
