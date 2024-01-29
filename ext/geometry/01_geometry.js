@@ -293,6 +293,7 @@ class DOMPointReadOnly {
 
 const DOMPointReadOnlyPrototype = DOMPointReadOnly.prototype;
 
+// TODO: protect for [[Prototype]] overwrite
 class DOMPoint extends DOMPointReadOnly {
   static fromPoint(other = {}) {
     other = webidl.converters.DOMPointInit(
@@ -466,6 +467,7 @@ class DOMRectReadOnly {
 
 const DOMRectReadOnlyPrototype = DOMRectReadOnly.prototype;
 
+// TODO: protect for [[Prototype]] overwrite
 class DOMRect extends DOMRectReadOnly {
   static fromRect(other = {}) {
     other = webidl.converters.DOMRectInit(
@@ -967,6 +969,7 @@ class DOMMatrixReadOnly {
 
 const DOMMatrixReadOnlyPrototype = DOMMatrixReadOnly.prototype;
 
+// TODO: protect for [[Prototype]] overwrite
 class DOMMatrix extends DOMMatrixReadOnly {
   static fromMatrix(other = {}) {
     const prefix = "Failed to call 'DOMMatrix.fromMatrix'";
