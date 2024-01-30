@@ -364,14 +364,14 @@ const ci = {
             os: Runners.macos,
             job: "test",
             profile: "release",
-            // TODO: re-enable before landing
+            // TODO(@lucacasonato): re-enable before landing
             // skip_pr: true,
           }, {
             os: Runners.macosArm,
             job: "test",
             profile: "release",
             // TODO(mmastrac): We don't want to run this M1 runner on every main commit because of the expense.
-            // TODO: re-enable before landing
+            // TODO(@lucacasonato): re-enable before landing
             // skip:
             //   "${{ github.event_name == 'pull_request' || github.ref == 'refs/heads/main' }}",
           }, {
@@ -382,7 +382,7 @@ const ci = {
             os: Runners.windowsXl,
             job: "test",
             profile: "release",
-            // TODO: re-enable before landing
+            // TODO(@lucacasonato):TODO: re-enable before landing
             // skip_pr: true,
           }, {
             os: Runners.ubuntuXl,
@@ -755,7 +755,7 @@ const ci = {
             "matrix.job == 'test' &&",
             "matrix.profile == 'release' &&",
             "github.repository == 'denoland/deno'",
-            // TODO: re-enable before landing
+            // TODO(@lucacasonato): re-enable before landing
             // "github.ref == 'refs/heads/main'",
           ].join("\n"),
           run: [
