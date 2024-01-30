@@ -195,9 +195,7 @@ jobs:
           !(matrix.skip) && (runner.os != 'Windows' &&
           matrix.profile == 'release' &&
           matrix.job == 'test' &&
-          github.repository == 'denoland/deno' &&
-          (github.ref == 'refs/heads/main' ||
-          startsWith(github.ref, 'refs/tags/')))
+          github.repository == 'denoland/deno')
         uses: google-github-actions/setup-gcloud@v1
         with:
           project_id: denoland
@@ -206,9 +204,7 @@ jobs:
           !(matrix.skip) && (runner.os == 'Windows' &&
           matrix.profile == 'release' &&
           matrix.job == 'test' &&
-          github.repository == 'denoland/deno' &&
-          (github.ref == 'refs/heads/main' ||
-          startsWith(github.ref, 'refs/tags/')))
+          github.repository == 'denoland/deno')
         uses: google-github-actions/setup-gcloud@v1
         env:
           CLOUDSDK_PYTHON: '${{env.pythonLocation}}\python.exe'

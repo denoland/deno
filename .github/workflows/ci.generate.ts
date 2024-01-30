@@ -490,9 +490,10 @@ const ci = {
             "runner.os != 'Windows' &&",
             "matrix.profile == 'release' &&",
             "matrix.job == 'test' &&",
-            "github.repository == 'denoland/deno' &&",
-            "(github.ref == 'refs/heads/main' ||",
-            "startsWith(github.ref, 'refs/tags/'))",
+            "github.repository == 'denoland/deno'",
+            // TODO(@lucacasonato): re-enable before landing
+            // "(github.ref == 'refs/heads/main' ||",
+            // "startsWith(github.ref, 'refs/tags/'))",
           ].join("\n"),
           uses: "google-github-actions/setup-gcloud@v1",
           with: {
@@ -505,9 +506,10 @@ const ci = {
             "runner.os == 'Windows' &&",
             "matrix.profile == 'release' &&",
             "matrix.job == 'test' &&",
-            "github.repository == 'denoland/deno' &&",
-            "(github.ref == 'refs/heads/main' ||",
-            "startsWith(github.ref, 'refs/tags/'))",
+            "github.repository == 'denoland/deno'",
+            // TODO(@lucacasonato): re-enable before landing
+            // "(github.ref == 'refs/heads/main' ||",
+            // "startsWith(github.ref, 'refs/tags/'))",
           ].join("\n"),
           uses: "google-github-actions/setup-gcloud@v1",
           env: {
