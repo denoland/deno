@@ -293,15 +293,38 @@ impl CliFactory {
   }
 
   pub fn maybe_lockfile(&self) -> &Option<Arc<Mutex<Lockfile>>> {
+    fn check_no_npm(lockfile: &Mutex<Lockfile>, options: &CliOptions) -> bool {
+      if options.no_npm() {
+        return true;
+      }
+      // Deno doesn't yet understand npm workspaces and the package.json resolution
+      // may be in a different folder than the deno.json/lockfile. So for now, ignore
+      // any package.jsons that are in different folders
+      options
+        .maybe_package_json()
+        .as_ref()
+        .map(|package_json| {
+          package_json.path.parent() != lockfile.lock().filename.parent()
+        })
+        .unwrap_or(false)
+    }
+
     self.services.lockfile.get_or_init(|| {
       let maybe_lockfile = self.options.maybe_lockfile();
 
       // initialize the lockfile with the workspace's configuration
       if let Some(lockfile) = &maybe_lockfile {
-        let package_json_deps = self
-          .package_json_deps_provider()
-          .reqs()
-          .map(|reqs| reqs.into_iter().map(|s| format!("npm:{}", s)).collect())
+        let no_npm = check_no_npm(lockfile, &self.options);
+        let package_json_deps = (!no_npm)
+          .then(|| {
+            self
+              .package_json_deps_provider()
+              .reqs()
+              .map(|reqs| {
+                reqs.into_iter().map(|s| format!("npm:{}", s)).collect()
+              })
+              .unwrap_or_default()
+          })
           .unwrap_or_default();
         let mut lockfile = lockfile.lock();
         let config = match self.options.maybe_workspace_config() {
@@ -352,7 +375,7 @@ impl CliFactory {
         };
         lockfile.set_workspace_config(
           deno_lockfile::SetWorkspaceConfigOptions {
-            no_npm: self.options.no_npm(),
+            no_npm,
             no_config: self.options.no_config(),
             config,
             nv_to_jsr_url: |nv| {
