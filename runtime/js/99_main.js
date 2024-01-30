@@ -638,6 +638,7 @@ const NOT_IMPORTED_OPS = [
   "op_is_weak_set",
   "op_main_module",
   "op_memory_usage",
+  "op_napi_open",
   "op_npm_process_state",
   "op_op_names",
   "op_panic",
