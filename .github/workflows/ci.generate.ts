@@ -364,14 +364,16 @@ const ci = {
             os: Runners.macos,
             job: "test",
             profile: "release",
-            skip_pr: true,
+            // TODO: re-enable before landing
+            // skip_pr: true,
           }, {
             os: Runners.macosArm,
             job: "test",
             profile: "release",
             // TODO(mmastrac): We don't want to run this M1 runner on every main commit because of the expense.
-            skip:
-              "${{ github.event_name == 'pull_request' || github.ref == 'refs/heads/main' }}",
+            // TODO: re-enable before landing
+            // skip:
+            //   "${{ github.event_name == 'pull_request' || github.ref == 'refs/heads/main' }}",
           }, {
             os: Runners.windows,
             job: "test",
@@ -380,7 +382,8 @@ const ci = {
             os: Runners.windowsXl,
             job: "test",
             profile: "release",
-            skip_pr: true,
+            // TODO: re-enable before landing
+            // skip_pr: true,
           }, {
             os: Runners.ubuntuXl,
             job: "test",
@@ -747,31 +750,19 @@ const ci = {
             "Compress-Archive -CompressionLevel Optimal -Force -Path target/release/deno.exe -DestinationPath target/release/deno-x86_64-pc-windows-msvc.zip",
         },
         {
-          name: "Upload canary to dl.deno.land (unix)",
+          name: "Upload canary to dl.deno.land",
           if: [
-            "runner.os != 'Windows' &&",
             "matrix.job == 'test' &&",
             "matrix.profile == 'release' &&",
-            "github.repository == 'denoland/deno' &&",
-            "github.ref == 'refs/heads/main'",
+            "github.repository == 'denoland/deno'",
+            // TODO: re-enable before landing
+            // "github.ref == 'refs/heads/main'",
           ].join("\n"),
-          run:
+          run: [
             'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/',
-        },
-        {
-          name: "Upload canary to dl.deno.land (windows)",
-          if: [
-            "runner.os == 'Windows' &&",
-            "matrix.job == 'test' &&",
-            "matrix.profile == 'release' &&",
-            "github.repository == 'denoland/deno' &&",
-            "github.ref == 'refs/heads/main'",
+            "echo ${{ github.sha }} > canary-latest.txt",
+            'gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt',
           ].join("\n"),
-          env: {
-            CLOUDSDK_PYTHON: "${{env.pythonLocation}}\\python.exe",
-          },
-          run:
-            'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/',
         },
         {
           name: "Autobahn testsuite",
@@ -1041,30 +1032,6 @@ const ci = {
           },
         },
       ]),
-    },
-    "publish-canary": {
-      name: "publish canary",
-      "runs-on": "ubuntu-22.04",
-      needs: ["build"],
-      if:
-        "github.repository == 'denoland/deno' && github.ref == 'refs/heads/main'",
-      steps: [
-        authenticateWithGoogleCloud,
-        {
-          name: "Setup gcloud",
-          uses: "google-github-actions/setup-gcloud@v1",
-          with: {
-            project_id: "denoland",
-          },
-        },
-        {
-          name: "Upload canary version file to dl.deno.land",
-          run: [
-            "echo ${{ github.sha }} > canary-latest.txt",
-            'gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-latest.txt',
-          ].join("\n"),
-        },
-      ],
     },
   },
 };

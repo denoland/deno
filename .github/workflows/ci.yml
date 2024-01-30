@@ -60,14 +60,10 @@ jobs:
           - os: macos-12
             job: test
             profile: release
-            skip: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'') }}'
-            runner: '${{ (!contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'')) && ''ubuntu-22.04'' || ''macos-12'' }}'
             os_display_name: macos-x86_64
           - os: macos-13-xlarge
             job: test
             profile: release
-            skip: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'' || github.ref == ''refs/heads/main'') }}'
-            runner: '${{ (!contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'' || github.ref == ''refs/heads/main'')) && ''ubuntu-22.04'' || ''macos-13-xlarge'' }}'
             os_display_name: macos-aarch64
           - os: windows-2022
             job: test
@@ -76,8 +72,6 @@ jobs:
           - os: '${{ github.repository == ''denoland/deno'' && ''windows-2022-xl'' || ''windows-2022'' }}'
             job: test
             profile: release
-            skip: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'') }}'
-            runner: '${{ (!contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'')) && ''ubuntu-22.04'' || github.repository == ''denoland/deno'' && ''windows-2022-xl'' || ''windows-2022'' }}'
             os_display_name: windows-x86_64
           - os: '${{ github.repository == ''denoland/deno'' && ''ubuntu-22.04-xl'' || ''ubuntu-22.04'' }}'
             job: test
@@ -437,24 +431,15 @@ jobs:
           github.repository == 'denoland/deno')
         shell: pwsh
         run: Compress-Archive -CompressionLevel Optimal -Force -Path target/release/deno.exe -DestinationPath target/release/deno-x86_64-pc-windows-msvc.zip
-      - name: Upload canary to dl.deno.land (unix)
+      - name: Upload canary to dl.deno.land
         if: |-
-          !(matrix.skip) && (runner.os != 'Windows' &&
-          matrix.job == 'test' &&
+          !(matrix.skip) && (matrix.job == 'test' &&
           matrix.profile == 'release' &&
-          github.repository == 'denoland/deno' &&
-          github.ref == 'refs/heads/main')
-        run: 'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/'
-      - name: Upload canary to dl.deno.land (windows)
-        if: |-
-          !(matrix.skip) && (runner.os == 'Windows' &&
-          matrix.job == 'test' &&
-          matrix.profile == 'release' &&
-          github.repository == 'denoland/deno' &&
-          github.ref == 'refs/heads/main')
-        env:
-          CLOUDSDK_PYTHON: '${{env.pythonLocation}}\python.exe'
-        run: 'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/'
+          github.repository == 'denoland/deno')
+        run: |-
+          gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/
+          echo ${{ github.sha }} > canary-latest.txt
+          gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt
       - name: Autobahn testsuite
         if: |-
           !(matrix.skip) && (matrix.job == 'test' && matrix.profile == 'release' &&
@@ -641,25 +626,3 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: '72-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ matrix.job }}-${{ github.sha }}'
-  publish-canary:
-    name: publish canary
-    runs-on: ubuntu-22.04
-    needs:
-      - build
-    if: github.repository == 'denoland/deno' && github.ref == 'refs/heads/main'
-    steps:
-      - name: Authenticate with Google Cloud
-        uses: google-github-actions/auth@v1
-        with:
-          project_id: denoland
-          credentials_json: '${{ secrets.GCP_SA_KEY }}'
-          export_environment_variables: true
-          create_credentials_file: true
-      - name: Setup gcloud
-        uses: google-github-actions/setup-gcloud@v1
-        with:
-          project_id: denoland
-      - name: Upload canary version file to dl.deno.land
-        run: |-
-          echo ${{ github.sha }} > canary-latest.txt
-          gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-latest.txt
