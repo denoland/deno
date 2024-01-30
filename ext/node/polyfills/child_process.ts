@@ -6,14 +6,12 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { core, internals } from "ext:core/mod.js";
-const {
-  op_node_child_ipc_pipe,
+import { internals } from "ext:core/mod.js";
+import {
   op_bootstrap_unstable_args,
-} = core.ensureFastOps();
-const {
+  op_node_child_ipc_pipe,
   op_npm_process_state,
-} = core.ensureFastOps(true);
+} from "ext:core/ops";
 
 import {
   ChildProcess,
