@@ -12,6 +12,8 @@ import {
   op_bootstrap_pid,
   op_main_module,
   op_ppid,
+  op_set_format_exception_callback,
+  op_snapshot_options,
 } from "ext:core/ops";
 const {
   ArrayPrototypeFilter,
@@ -437,7 +439,7 @@ function runtimeStart(
   core.setMacrotaskCallback(timers.handleTimerMacrotask);
   core.setWasmStreamingCallback(fetch.handleWasmStreaming);
   core.setReportExceptionCallback(event.reportException);
-  ops.op_set_format_exception_callback(formatException);
+  op_set_format_exception_callback(formatException);
   version.setVersions(
     denoVersion,
     v8Version,
@@ -565,7 +567,7 @@ const {
   tsVersion,
   v8Version,
   target,
-} = ops.op_snapshot_options();
+} = op_snapshot_options();
 
 function bootstrapMainRuntime(runtimeOptions) {
   if (hasBootstrapped) {
