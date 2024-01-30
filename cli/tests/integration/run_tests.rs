@@ -143,9 +143,8 @@ itest!(_023_no_ext {
   output: "run/023_no_ext.out",
 });
 
-// TODO(lucacasonato): remove --unstable when permissions goes stable
 itest!(_025_hrtime {
-  args: "run --quiet --allow-hrtime --unstable --reload run/025_hrtime.ts",
+  args: "run --quiet --allow-hrtime --reload run/025_hrtime.ts",
   output: "run/025_hrtime.ts.out",
 });
 
@@ -199,14 +198,14 @@ itest!(_033_import_map_in_flag_has_precedence {
 
 itest!(_033_import_map_remote {
   args:
-    "run --quiet --reload --import-map=http://127.0.0.1:4545/import_maps/import_map_remote.json --unstable import_maps/test_remote.ts",
+    "run --quiet --reload --import-map=http://127.0.0.1:4545/import_maps/import_map_remote.json import_maps/test_remote.ts",
   output: "run/033_import_map_remote.out",
   http_server: true,
 });
 
 itest!(_033_import_map_vendor_dir_remote {
   args:
-    "run --quiet --reload --import-map=http://127.0.0.1:4545/import_maps/import_map_remote.json --vendor --unstable $TESTDATA/import_maps/test_remote.ts",
+    "run --quiet --reload --import-map=http://127.0.0.1:4545/import_maps/import_map_remote.json --vendor $TESTDATA/import_maps/test_remote.ts",
   output: "run/033_import_map_remote.out",
   http_server: true,
   temp_cwd: true,
@@ -250,9 +249,8 @@ itest!(_044_bad_resource {
   exit_code: 1,
 });
 
-// TODO(bartlomieju): remove --unstable once Deno.Command is stabilized
 itest!(_045_proxy {
-  args: "run -L debug --unstable --allow-net --allow-env --allow-run --allow-read --reload --quiet run/045_proxy_test.ts",
+  args: "run -L debug --allow-net --allow-env --allow-run --allow-read --reload --quiet run/045_proxy_test.ts",
   output: "run/045_proxy_test.ts.out",
   http_server: true,
 });
@@ -758,10 +756,7 @@ itest!(env_file {
 
 itest!(env_file_missing {
   args: "run --env=missing --allow-env run/env_file.ts",
-  output_str: Some(
-    "error: Unable to load 'missing' environment variable file\n"
-  ),
-  exit_code: 1,
+  output: "run/env_file_missing.out",
 });
 
 itest!(_091_use_define_for_class_fields {
@@ -1018,6 +1013,294 @@ fn lock_redirects() {
 }
 "#,
   );
+}
+
+#[test]
+fn lock_deno_json_package_json_deps() {
+  let context = TestContextBuilder::new()
+    .use_temp_cwd()
+    .use_http_server()
+    .add_npm_env_vars()
+    .add_jsr_env_vars()
+    .build();
+  let temp_dir = context.temp_dir().path();
+  let deno_json = temp_dir.join("deno.json");
+  let package_json = temp_dir.join("package.json");
+
+  // add a jsr and npm dependency
+  deno_json.write_json(&json!({
+    "imports": {
+      "esm-basic": "npm:@denotest/esm-basic",
+      "module_graph": "jsr:@denotest/module_graph@1.4",
+    }
+  }));
+  let main_ts = temp_dir.join("main.ts");
+  main_ts.write("import 'esm-basic'; import 'module_graph';");
+  context
+    .new_command()
+    .args("cache main.ts")
+    .run()
+    .skip_output_check();
+  let lockfile = temp_dir.join("deno.lock");
+  let esm_basic_integrity =
+    get_lockfile_npm_package_integrity(&lockfile, "@denotest/esm-basic@1.0.0");
+  lockfile.assert_matches_json(json!({
+    "version": "3",
+    "packages": {
+      "specifiers": {
+        "jsr:@denotest/module_graph@1.4": "jsr:@denotest/module_graph@1.4.0",
+        "npm:@denotest/esm-basic": "npm:@denotest/esm-basic@1.0.0"
+      },
+      "npm": {
+        "@denotest/esm-basic@1.0.0": {
+          "integrity": esm_basic_integrity,
+          "dependencies": {}
+        }
+      }
+    },
+    "remote": {
+      "http://localhost:4545/jsr/registry/@denotest/module_graph/1.4.0/mod.ts": "5b0ce36e08d759118200d8b4627627b5a89b6261fbb0598e6961a6b287abb699",
+      "http://localhost:4545/jsr/registry/@denotest/module_graph/1.4.0/other.ts": "9ce27ca439cb0e218b6e1ec26c043dbc0b54c9babc4cb432df478dd1721faade"
+    },
+    "workspace": {
+      "dependencies": [
+        "jsr:@denotest/module_graph@1.4",
+        "npm:@denotest/esm-basic"
+      ]
+    }
+  }));
+
+  // now remove the npm dependency from the deno.json and move
+  // it to a package.json that uses an alias
+  deno_json.write_json(&json!({
+    "imports": {
+      "module_graph": "jsr:@denotest/module_graph@1.4",
+    }
+  }));
+  package_json.write_json(&json!({
+    "dependencies": {
+      "esm-basic": "npm:@denotest/esm-basic"
+    }
+  }));
+  context
+    .new_command()
+    .args("cache main.ts")
+    .run()
+    .skip_output_check();
+  main_ts.write("import 'module_graph';");
+  context
+    .new_command()
+    // ensure this doesn't clear out packageJson below
+    .args("cache --no-npm main.ts")
+    .run()
+    .skip_output_check();
+  lockfile.assert_matches_json(json!({
+    "version": "3",
+    "packages": {
+      "specifiers": {
+        "jsr:@denotest/module_graph@1.4": "jsr:@denotest/module_graph@1.4.0",
+        "npm:@denotest/esm-basic": "npm:@denotest/esm-basic@1.0.0"
+      },
+      "npm": {
+        "@denotest/esm-basic@1.0.0": {
+          "integrity": esm_basic_integrity,
+          "dependencies": {}
+        }
+      }
+    },
+    "remote": {
+      "http://localhost:4545/jsr/registry/@denotest/module_graph/1.4.0/mod.ts": "5b0ce36e08d759118200d8b4627627b5a89b6261fbb0598e6961a6b287abb699",
+      "http://localhost:4545/jsr/registry/@denotest/module_graph/1.4.0/other.ts": "9ce27ca439cb0e218b6e1ec26c043dbc0b54c9babc4cb432df478dd1721faade"
+    },
+    "workspace": {
+      "dependencies": [
+        "jsr:@denotest/module_graph@1.4"
+      ],
+      "packageJson": {
+        "dependencies": [
+          "npm:@denotest/esm-basic"
+        ]
+      }
+    }
+  }));
+
+  // now remove the package.json
+  package_json.remove_file();
+
+  // cache and it will remove the package.json
+  context
+    .new_command()
+    .args("cache main.ts")
+    .run()
+    .skip_output_check();
+  lockfile.assert_matches_json(json!({
+    "version": "3",
+    "packages": {
+      "specifiers": {
+        "jsr:@denotest/module_graph@1.4": "jsr:@denotest/module_graph@1.4.0",
+      }
+    },
+    "remote": {
+      "http://localhost:4545/jsr/registry/@denotest/module_graph/1.4.0/mod.ts": "5b0ce36e08d759118200d8b4627627b5a89b6261fbb0598e6961a6b287abb699",
+      "http://localhost:4545/jsr/registry/@denotest/module_graph/1.4.0/other.ts": "9ce27ca439cb0e218b6e1ec26c043dbc0b54c9babc4cb432df478dd1721faade"
+    },
+    "workspace": {
+      "dependencies": [
+        "jsr:@denotest/module_graph@1.4"
+      ]
+    }
+  }));
+
+  // now remove the deps from the deno.json
+  deno_json.write("{}");
+  main_ts.write("");
+  context
+    .new_command()
+    .args("cache main.ts")
+    .run()
+    .skip_output_check();
+
+  lockfile.assert_matches_json(json!({
+    "version": "3",
+    "remote": {}
+  }));
+}
+
+#[test]
+fn lock_deno_json_package_json_deps_workspace() {
+  let context = TestContextBuilder::new()
+    .use_temp_cwd()
+    .use_http_server()
+    .add_npm_env_vars()
+    .add_jsr_env_vars()
+    .build();
+  let temp_dir = context.temp_dir().path();
+
+  // deno.json
+  let deno_json = temp_dir.join("deno.json");
+  deno_json.write_json(&json!({}));
+
+  // package.json
+  let package_json = temp_dir.join("package.json");
+  package_json.write_json(&json!({
+    "workspaces": ["package-a"],
+    "dependencies": {
+      "@denotest/cjs-default-export": "1"
+    }
+  }));
+  // main.ts
+  let main_ts = temp_dir.join("main.ts");
+  main_ts.write("import '@denotest/cjs-default-export';");
+
+  // package-a/package.json
+  let a_package = temp_dir.join("package-a");
+  a_package.create_dir_all();
+  let a_package_json = a_package.join("package.json");
+  a_package_json.write_json(&json!({
+    "dependencies": {
+      "@denotest/esm-basic": "1"
+    }
+  }));
+  // package-a/main.ts
+  let main_ts = a_package.join("main.ts");
+  main_ts.write("import '@denotest/esm-basic';");
+  context
+    .new_command()
+    .args("run package-a/main.ts")
+    .run()
+    .skip_output_check();
+  let lockfile = temp_dir.join("deno.lock");
+  let esm_basic_integrity =
+    get_lockfile_npm_package_integrity(&lockfile, "@denotest/esm-basic@1.0.0");
+
+  // no "workspace" because deno isn't smart enough to figure this out yet
+  // since it discovered the package.json in a folder different from the lockfile
+  lockfile.assert_matches_json(json!({
+    "version": "3",
+    "packages": {
+      "specifiers": {
+        "npm:@denotest/esm-basic@1": "npm:@denotest/esm-basic@1.0.0"
+      },
+      "npm": {
+        "@denotest/esm-basic@1.0.0": {
+          "integrity": esm_basic_integrity,
+          "dependencies": {}
+        }
+      }
+    },
+    "remote": {},
+  }));
+
+  // run a command that causes discovery of the root package.json beside the lockfile
+  context
+    .new_command()
+    .args("run main.ts")
+    .run()
+    .skip_output_check();
+  // now we should see the dependencies
+  let cjs_default_export_integrity = get_lockfile_npm_package_integrity(
+    &lockfile,
+    "@denotest/cjs-default-export@1.0.0",
+  );
+  let expected_lockfile = json!({
+    "version": "3",
+    "packages": {
+      "specifiers": {
+        "npm:@denotest/cjs-default-export@1": "npm:@denotest/cjs-default-export@1.0.0",
+        "npm:@denotest/esm-basic@1": "npm:@denotest/esm-basic@1.0.0"
+      },
+      "npm": {
+        "@denotest/cjs-default-export@1.0.0": {
+          "integrity": cjs_default_export_integrity,
+          "dependencies": {}
+        },
+        "@denotest/esm-basic@1.0.0": {
+          "integrity": esm_basic_integrity,
+          "dependencies": {}
+        }
+      }
+    },
+    "remote": {},
+    "workspace": {
+      "packageJson": {
+        "dependencies": [
+          "npm:@denotest/cjs-default-export@1"
+        ]
+      }
+    }
+  });
+  lockfile.assert_matches_json(expected_lockfile.clone());
+
+  // now run the command again in the package with the nested package.json
+  context
+    .new_command()
+    .args("run package-a/main.ts")
+    .run()
+    .skip_output_check();
+  // the lockfile should stay the same as the above because the package.json
+  // was found in a different directory
+  lockfile.assert_matches_json(expected_lockfile.clone());
+}
+
+fn get_lockfile_npm_package_integrity(
+  lockfile: &PathRef,
+  package_name: &str,
+) -> String {
+  // todo(dsherret): it would be nice if the test server didn't produce
+  // different hashes depending on what operating system it's running on
+  lockfile
+    .read_json_value()
+    .get("packages")
+    .unwrap()
+    .get("npm")
+    .unwrap()
+    .get(package_name)
+    .unwrap()
+    .get("integrity")
+    .unwrap()
+    .as_str()
+    .unwrap()
+    .to_string()
 }
 
 itest!(mts_dmts_mjs {
@@ -1281,43 +1564,42 @@ itest!(exit_error42 {
 });
 
 itest!(set_exit_code_0 {
-  args: "run --no-check --unstable run/set_exit_code_0.ts",
+  args: "run --no-check run/set_exit_code_0.ts",
   output_str: Some(""),
   exit_code: 0,
 });
 
 itest!(set_exit_code_1 {
-  args: "run --no-check --unstable run/set_exit_code_1.ts",
+  args: "run --no-check run/set_exit_code_1.ts",
   output_str: Some(""),
   exit_code: 42,
 });
 
 itest!(set_exit_code_2 {
-  args: "run --no-check --unstable run/set_exit_code_2.ts",
+  args: "run --no-check run/set_exit_code_2.ts",
   output_str: Some(""),
   exit_code: 42,
 });
 
 itest!(op_exit_op_set_exit_code_in_worker {
-  args: "run --no-check --unstable --allow-read run/op_exit_op_set_exit_code_in_worker.ts",
+  args: "run --no-check --allow-read run/op_exit_op_set_exit_code_in_worker.ts",
   exit_code: 21,
   output_str: Some(""),
 });
 
 itest!(deno_exit_tampering {
-  args: "run --no-check --unstable run/deno_exit_tampering.ts",
+  args: "run --no-check run/deno_exit_tampering.ts",
   output_str: Some(""),
   exit_code: 42,
 });
 
 itest!(heapstats {
-  args: "run --quiet --unstable --v8-flags=--expose-gc run/heapstats.js",
+  args: "run --quiet --v8-flags=--expose-gc run/heapstats.js",
   output: "run/heapstats.js.out",
 });
 
 itest!(finalization_registry {
-  args:
-    "run --quiet --unstable --v8-flags=--expose-gc run/finalization_registry.js",
+  args: "run --quiet --v8-flags=--expose-gc run/finalization_registry.js",
   output: "run/finalization_registry.js.out",
 });
 
@@ -1335,6 +1617,7 @@ itest!(if_main {
 itest!(import_meta {
   args: "run --quiet --reload --import-map=run/import_meta/importmap.json run/import_meta/main.ts",
   output: "run/import_meta/main.out",
+  http_server: true,
 });
 
 itest!(main_module {
@@ -1349,8 +1632,13 @@ itest!(no_check {
 });
 
 itest!(no_check_decorators {
-  args: "run --quiet --reload --no-check run/no_check_decorators.ts",
-  output: "run/no_check_decorators.ts.out",
+  args: "run --quiet --reload --no-check run/decorators/experimental/no_check/main.ts",
+  output: "run/decorators/experimental/no_check/main.out",
+});
+
+itest!(decorators_tc39_proposal {
+  args: "run --quiet --reload --check run/decorators/tc39_proposal/main.ts",
+  output: "run/decorators/tc39_proposal/main.out",
 });
 
 itest!(check_remote {
@@ -1367,8 +1655,8 @@ itest!(no_check_remote {
 });
 
 itest!(runtime_decorators {
-  args: "run --quiet --reload --no-check run/runtime_decorators.ts",
-  output: "run/runtime_decorators.ts.out",
+  args: "run --quiet --reload --no-check run/decorators/experimental/runtime/main.ts",
+  output: "run/decorators/experimental/runtime/main.out",
 });
 
 itest!(seed_random {
@@ -1432,8 +1720,8 @@ itest!(ts_type_imports {
 });
 
 itest!(ts_decorators {
-  args: "run --reload --check run/ts_decorators.ts",
-  output: "run/ts_decorators.ts.out",
+  args: "run --reload --check run/decorators/experimental/ts/main.ts",
+  output: "run/decorators/experimental/ts/main.out",
 });
 
 itest!(ts_type_only_import {
@@ -1566,29 +1854,18 @@ itest!(top_level_for_await_ts {
   output: "run/top_level_await/top_level_for_await.out",
 });
 
-itest!(unstable_disabled {
-  args: "run --reload --check run/unstable.ts",
-  exit_code: 1,
-  output: "run/unstable_disabled.out",
-});
-
-itest!(unstable_enabled {
-  args: "run --quiet --reload --unstable run/unstable.ts",
-  output: "run/unstable_enabled.out",
-});
-
 itest!(unstable_disabled_js {
   args: "run --reload run/unstable.js",
   output: "run/unstable_disabled_js.out",
 });
 
 itest!(unstable_enabled_js {
-  args: "run --quiet --reload --unstable run/unstable.ts",
+  args: "run --quiet --reload --unstable-fs run/unstable.ts",
   output: "run/unstable_enabled_js.out",
 });
 
 itest!(unstable_worker {
-  args: "run --reload --unstable --quiet --allow-read run/unstable_worker.ts",
+  args: "run --reload --quiet --allow-read run/unstable_worker.ts",
   output: "run/unstable_worker.ts.out",
 });
 
@@ -2087,7 +2364,7 @@ itest!(worker_drop_handle_race {
 });
 
 itest!(worker_drop_handle_race_terminate {
-  args: "run --unstable run/worker_drop_handle_race_terminate.js",
+  args: "run run/worker_drop_handle_race_terminate.js",
   output: "run/worker_drop_handle_race_terminate.js.out",
 });
 
@@ -2895,7 +3172,7 @@ mod permissions {
 }
 
 itest!(tls_starttls {
-  args: "run --quiet --reload --allow-net --allow-read --unstable --cert tls/RootCA.pem run/tls_starttls.js",
+  args: "run --quiet --reload --allow-net --allow-read --cert tls/RootCA.pem run/tls_starttls.js",
   output: "run/tls.out",
 });
 
@@ -2913,7 +3190,7 @@ itest!(byte_order_mark {
 fn issue9750() {
   TestContext::default()
     .new_command()
-    .args_vec(["run", "--prompt", "run/issue9750.js"])
+    .args_vec(["run", "run/issue9750.js"])
     .with_pty(|mut console| {
       console.expect("Enter 'yy':");
       console.write_line_raw("yy");
@@ -3460,8 +3737,7 @@ itest!(event_listener_error_immediate_exit {
 
 // https://github.com/denoland/deno/pull/14159#issuecomment-1092285446
 itest!(event_listener_error_immediate_exit_worker {
-  args:
-    "run --quiet --unstable -A run/event_listener_error_immediate_exit_worker.ts",
+  args: "run --quiet -A run/event_listener_error_immediate_exit_worker.ts",
   output: "run/event_listener_error_immediate_exit_worker.ts.out",
   exit_code: 1,
 });
@@ -3541,7 +3817,7 @@ itest!(check_js_points_to_ts {
 });
 
 itest!(no_prompt_flag {
-  args: "run --quiet --unstable --no-prompt run/no_prompt.ts",
+  args: "run --quiet --no-prompt run/no_prompt.ts",
   output_str: Some(""),
 });
 
@@ -3590,7 +3866,7 @@ itest!(queue_microtask_error_handled {
 });
 
 itest!(spawn_stdout_inherit {
-  args: "run --quiet --unstable -A run/spawn_stdout_inherit.ts",
+  args: "run --quiet -A run/spawn_stdout_inherit.ts",
   output: "run/spawn_stdout_inherit.ts.out",
 });
 
@@ -3635,17 +3911,17 @@ itest!(test_and_bench_are_noops_in_run {
 
 #[cfg(not(target_os = "windows"))]
 itest!(spawn_kill_permissions {
-  args: "run --quiet --unstable --allow-run=cat spawn_kill_permissions.ts",
+  args: "run --quiet --allow-run=cat spawn_kill_permissions.ts",
   output_str: Some(""),
 });
 
 itest!(followup_dyn_import_resolved {
-  args: "run --unstable --allow-read run/followup_dyn_import_resolves/main.ts",
+  args: "run --allow-read run/followup_dyn_import_resolves/main.ts",
   output: "run/followup_dyn_import_resolves/main.ts.out",
 });
 
 itest!(allow_run_allowlist_resolution {
-  args: "run --quiet --unstable -A allow_run_allowlist_resolution.ts",
+  args: "run --quiet -A allow_run_allowlist_resolution.ts",
   output: "allow_run_allowlist_resolution.ts.out",
 });
 
@@ -3672,6 +3948,11 @@ itest!(unhandled_rejection_dynamic_import2 {
   output: "run/unhandled_rejection_dynamic_import2/main.ts.out",
 });
 
+itest!(rejection_handled {
+  args: "run --check run/rejection_handled.ts",
+  output: "run/rejection_handled.out",
+});
+
 itest!(nested_error {
   args: "run run/nested_error/main.ts",
   output: "run/nested_error/main.ts.out",
@@ -3679,7 +3960,7 @@ itest!(nested_error {
 });
 
 itest!(node_env_var_allowlist {
-  args: "run --unstable --no-prompt run/node_env_var_allowlist.ts",
+  args: "run --no-prompt run/node_env_var_allowlist.ts",
   output: "run/node_env_var_allowlist.ts.out",
   exit_code: 1,
 });
@@ -4799,7 +5080,7 @@ itest!(explicit_resource_management {
 });
 
 itest!(workspaces_basic {
-  args: "run -L debug -A --unstable-workspaces main.ts",
+  args: "run -L debug -A main.ts",
   output: "run/workspaces/basic/main.out",
   cwd: Some("run/workspaces/basic/"),
   copy_temp_dir: Some("run/workspaces/basic/"),
@@ -4808,7 +5089,7 @@ itest!(workspaces_basic {
 });
 
 itest!(workspaces_member_outside_root_dir {
-  args: "run -A --unstable-workspaces main.ts",
+  args: "run -A main.ts",
   output: "run/workspaces/member_outside_root_dir/main.out",
   cwd: Some("run/workspaces/member_outside_root_dir/"),
   copy_temp_dir: Some("run/workspaces/member_outside_root_dir/"),
@@ -4818,7 +5099,7 @@ itest!(workspaces_member_outside_root_dir {
 });
 
 itest!(workspaces_nested_member {
-  args: "run -A --unstable-workspaces main.ts",
+  args: "run -A main.ts",
   output: "run/workspaces/nested_member/main.out",
   cwd: Some("run/workspaces/nested_member/"),
   copy_temp_dir: Some("run/workspaces/nested_member/"),
@@ -4919,4 +5200,109 @@ Warning Sloppy module resolution (hint: specify path to index.tsx file in direct
 [class G]
 ",
     );
+}
+
+itest!(unstable_temporal_api {
+  args: "run --unstable-temporal --check run/unstable_temporal_api/main.ts",
+  output: "run/unstable_temporal_api/main.out",
+  http_server: false,
+  exit_code: 0,
+});
+
+itest!(unstable_temporal_api_missing_flag {
+  args: "run run/unstable_temporal_api/missing_flag.js",
+  output: "run/unstable_temporal_api/missing_flag.out",
+  http_server: false,
+  exit_code: 1,
+});
+
+itest!(warn_on_deprecated_api {
+  args: "run -A run/warn_on_deprecated_api/main.js",
+  output: "run/warn_on_deprecated_api/main.out",
+  http_server: true,
+  exit_code: 0,
+});
+
+itest!(warn_on_deprecated_api_verbose {
+  args: "run -A run/warn_on_deprecated_api/main.js",
+  output: "run/warn_on_deprecated_api/main.verbose.out",
+  envs: vec![("DENO_VERBOSE_WARNINGS".to_string(), "1".to_string())],
+  http_server: true,
+  exit_code: 0,
+});
+
+itest!(warn_on_deprecated_api_with_flag {
+  args: "run -A --quiet run/warn_on_deprecated_api/main.js",
+  output: "run/warn_on_deprecated_api/main_disabled_flag.out",
+  http_server: true,
+  exit_code: 0,
+});
+
+itest!(warn_on_deprecated_api_with_env_var {
+  args: "run -A run/warn_on_deprecated_api/main.js",
+  envs: vec![("DENO_NO_DEPRECATION_WARNINGS".to_string(), "1".to_string())],
+  output: "run/warn_on_deprecated_api/main_disabled_env.out",
+  http_server: true,
+  exit_code: 0,
+});
+
+#[test]
+fn deno_json_imports_expand() {
+  let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let dir = test_context.temp_dir();
+  dir.write(
+    "deno.json",
+    r#"{
+    "imports": {
+      "basic": "npm:@denotest/esm-basic"
+    }
+}"#,
+  );
+
+  dir.write(
+    "main.ts",
+    r#"
+// import map should resolve
+import { setValue, getValue } from "basic";
+// this entry should have been added automatically
+import { hello } from "basic/other.mjs";
+
+setValue(5);
+console.log(getValue());
+console.log(hello());
+"#,
+  );
+  let output = test_context.new_command().args("run main.ts").run();
+  output.assert_matches_text("[WILDCARD]5\nhello, world!\n");
+}
+
+#[test]
+fn deno_json_imports_expand_doesnt_overwrite_existing_entries() {
+  let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let dir = test_context.temp_dir();
+  dir.write(
+    "deno.json",
+    r#"{
+    "imports": {
+      "basic": "npm:@denotest/esm-basic",
+      "basic/": "npm:/@denotest/sub-folders/folder_index_js/"
+    }
+}"#,
+  );
+
+  dir.write(
+    "main.ts",
+    r#"
+// import map should resolve
+import { setValue, getValue } from "basic";
+// this entry should map to explicitly specified "basic/" mapping
+import { add } from "basic/index.js";
+
+setValue(5);
+console.log(getValue());
+console.log(add(3, 4));
+"#,
+  );
+  let output = test_context.new_command().args("run main.ts").run();
+  output.assert_matches_text("[WILDCARD]5\n7\n");
 }

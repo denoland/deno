@@ -1,12 +1,11 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { core } from "ext:core/mod.js";
-const {
+import {
+  op_node_idna_domain_to_ascii,
   op_node_idna_domain_to_unicode,
   op_node_idna_punycode_decode,
   op_node_idna_punycode_encode,
-  op_node_idna_domain_to_ascii,
-} = core.ensureFastOps();
+} from "ext:core/ops";
 
 import { ucs2 } from "ext:deno_node/internal/idna.ts";
 

@@ -4,10 +4,7 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { core } from "ext:core/mod.js";
-const {
-  op_preview_entries,
-} = core.ensureFastOps(true);
+import { op_preview_entries } from "ext:core/ops";
 
 // Mock trace for now
 const trace = () => {};

@@ -4,11 +4,7 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { core } from "ext:core/mod.js";
-const {
-  op_node_hkdf,
-  op_node_hkdf_async,
-} = core.ensureFastOps();
+import { op_node_hkdf, op_node_hkdf_async } from "ext:core/ops";
 
 import {
   validateFunction,

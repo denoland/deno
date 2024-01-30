@@ -6,6 +6,7 @@ use crate::permissions::PermissionsContainer;
 use crate::shared::runtime;
 use crate::tokio_util::create_and_run_current_thread;
 use crate::worker::import_meta_resolve_callback;
+use crate::worker::validate_import_attributes_callback;
 use crate::worker::FormatJsErrorFn;
 use crate::BootstrapOptions;
 use deno_broadcast_channel::InMemoryBroadcastChannel;
@@ -410,6 +411,7 @@ impl WebWorker {
         Some(main_module.clone()),
       ),
       deno_webgpu::deno_webgpu::init_ops_and_esm(),
+      deno_canvas::deno_canvas::init_ops_and_esm(),
       deno_fetch::deno_fetch::init_ops_and_esm::<PermissionsContainer>(
         deno_fetch::Options {
           user_agent: options.bootstrap.user_agent.clone(),
@@ -488,14 +490,16 @@ impl WebWorker {
       ops::web_worker::deno_web_worker::init_ops_and_esm(),
     ];
 
+    #[cfg(__runtime_js_sources)]
+    assert!(cfg!(not(feature = "only_snapshotted_js_sources")), "'__runtime_js_sources' is incompatible with 'only_snapshotted_js_sources'.");
+
     for extension in &mut extensions {
-      #[cfg(not(feature = "__runtime_js_sources"))]
-      {
+      if options.startup_snapshot.is_some() {
         extension.js_files = std::borrow::Cow::Borrowed(&[]);
         extension.esm_files = std::borrow::Cow::Borrowed(&[]);
         extension.esm_entry_point = None;
       }
-      #[cfg(feature = "__runtime_js_sources")]
+      #[cfg(not(feature = "only_snapshotted_js_sources"))]
       {
         use crate::shared::maybe_transpile_source;
         for source in extension.esm_files.to_mut() {
@@ -509,17 +513,8 @@ impl WebWorker {
 
     extensions.extend(std::mem::take(&mut options.extensions));
 
-    #[cfg(all(
-      feature = "include_js_files_for_snapshotting",
-      not(feature = "__runtime_js_sources")
-    ))]
-    options
-      .startup_snapshot
-      .as_ref()
-      .expect("Sources are not embedded and a user snapshot was not provided.");
-
-    #[cfg(not(feature = "dont_use_runtime_snapshot"))]
-    options.startup_snapshot.as_ref().expect("A user snapshot was not provided, if you want to create a runtime without a snapshot use 'dont_use_runtime_snapshot' Cargo feature.");
+    #[cfg(feature = "only_snapshotted_js_sources")]
+    options.startup_snapshot.as_ref().expect("A user snapshot was not provided, even though 'only_snapshotted_js_sources' is used.");
 
     // Hook up the summary metrics if the user or subcommand requested them
     let (op_summary_metrics, op_metrics_factory_fn) =
@@ -546,6 +541,9 @@ impl WebWorker {
       op_metrics_factory_fn,
       import_meta_resolve_callback: Some(Box::new(
         import_meta_resolve_callback,
+      )),
+      validate_import_attributes_cb: Some(Box::new(
+        validate_import_attributes_callback,
       )),
       ..Default::default()
     });

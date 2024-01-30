@@ -23,11 +23,8 @@ use crate::graph_util::FileWatcherReporter;
 use crate::graph_util::ModuleGraphBuilder;
 use crate::graph_util::ModuleGraphContainer;
 use crate::http_util::HttpClient;
-use crate::module_loader::CjsResolutionStore;
 use crate::module_loader::CliModuleLoaderFactory;
-use crate::module_loader::CliNodeResolver;
 use crate::module_loader::ModuleLoadPreparer;
-use crate::module_loader::NpmModuleLoader;
 use crate::node::CliCjsCodeAnalyzer;
 use crate::node::CliNodeCodeTranslator;
 use crate::npm::create_cli_npm_resolver;
@@ -37,13 +34,18 @@ use crate::npm::CliNpmResolverCreateOptions;
 use crate::npm::CliNpmResolverManagedCreateOptions;
 use crate::npm::CliNpmResolverManagedPackageJsonInstallerOption;
 use crate::npm::CliNpmResolverManagedSnapshotOption;
+use crate::resolver::CjsResolutionStore;
 use crate::resolver::CliGraphResolver;
 use crate::resolver::CliGraphResolverOptions;
+use crate::resolver::CliNodeResolver;
+use crate::resolver::NpmModuleLoader;
 use crate::resolver::SloppyImportsResolver;
 use crate::standalone::DenoCompileBinaryWriter;
 use crate::tools::check::TypeChecker;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
+use crate::util::import_map::deno_json_deps;
+use crate::util::import_map::import_map_deps;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 use crate::worker::CliMainWorkerFactory;
@@ -54,12 +56,14 @@ use deno_core::parking_lot::Mutex;
 use deno_core::FeatureChecker;
 
 use deno_graph::GraphKind;
+use deno_lockfile::WorkspaceMemberConfig;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::analyze::NodeCodeTranslator;
 use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::inspector_server::InspectorServer;
+use deno_semver::package::PackageNv;
 use import_map::ImportMap;
 use log::warn;
 use std::future::Future;
@@ -289,10 +293,107 @@ impl CliFactory {
   }
 
   pub fn maybe_lockfile(&self) -> &Option<Arc<Mutex<Lockfile>>> {
-    self
-      .services
-      .lockfile
-      .get_or_init(|| self.options.maybe_lockfile())
+    fn check_no_npm(lockfile: &Mutex<Lockfile>, options: &CliOptions) -> bool {
+      if options.no_npm() {
+        return true;
+      }
+      // Deno doesn't yet understand npm workspaces and the package.json resolution
+      // may be in a different folder than the deno.json/lockfile. So for now, ignore
+      // any package.jsons that are in different folders
+      options
+        .maybe_package_json()
+        .as_ref()
+        .map(|package_json| {
+          package_json.path.parent() != lockfile.lock().filename.parent()
+        })
+        .unwrap_or(false)
+    }
+
+    self.services.lockfile.get_or_init(|| {
+      let maybe_lockfile = self.options.maybe_lockfile();
+
+      // initialize the lockfile with the workspace's configuration
+      if let Some(lockfile) = &maybe_lockfile {
+        let no_npm = check_no_npm(lockfile, &self.options);
+        let package_json_deps = (!no_npm)
+          .then(|| {
+            self
+              .package_json_deps_provider()
+              .reqs()
+              .map(|reqs| {
+                reqs.into_iter().map(|s| format!("npm:{}", s)).collect()
+              })
+              .unwrap_or_default()
+          })
+          .unwrap_or_default();
+        let mut lockfile = lockfile.lock();
+        let config = match self.options.maybe_workspace_config() {
+          Some(workspace_config) => deno_lockfile::WorkspaceConfig {
+            root: WorkspaceMemberConfig {
+              package_json_deps,
+              dependencies: import_map_deps(
+                &workspace_config.base_import_map_value,
+              )
+              .into_iter()
+              .map(|req| req.to_string())
+              .collect(),
+            },
+            members: workspace_config
+              .members
+              .iter()
+              .map(|member| {
+                (
+                  member.package_name.clone(),
+                  WorkspaceMemberConfig {
+                    package_json_deps: Default::default(),
+                    dependencies: deno_json_deps(&member.config_file)
+                      .into_iter()
+                      .map(|req| req.to_string())
+                      .collect(),
+                  },
+                )
+              })
+              .collect(),
+          },
+          None => deno_lockfile::WorkspaceConfig {
+            root: WorkspaceMemberConfig {
+              package_json_deps,
+              dependencies: self
+                .options
+                .maybe_config_file()
+                .as_ref()
+                .map(|config| {
+                  deno_json_deps(config)
+                    .into_iter()
+                    .map(|req| req.to_string())
+                    .collect()
+                })
+                .unwrap_or_default(),
+            },
+            members: Default::default(),
+          },
+        };
+        lockfile.set_workspace_config(
+          deno_lockfile::SetWorkspaceConfigOptions {
+            no_npm,
+            no_config: self.options.no_config(),
+            config,
+            nv_to_jsr_url: |nv| {
+              let nv = PackageNv::from_str(nv).ok()?;
+              Some(
+                deno_graph::source::recommended_registry_package_url(
+                  crate::args::deno_registry_url(),
+                  &nv,
+                )
+                .to_string(),
+              )
+            },
+          },
+        );
+      }
+
+      maybe_lockfile
+    })
   }
 
   pub async fn npm_resolver(
@@ -320,7 +421,7 @@ impl CliFactory {
               Some(snapshot) => {
                 CliNpmResolverManagedSnapshotOption::Specified(Some(snapshot))
               }
-              None => match self.maybe_lockfile() {
+              None => match self.maybe_lockfile().as_ref() {
                 Some(lockfile) => {
                   CliNpmResolverManagedSnapshotOption::ResolveFromLockfile(
                     lockfile.clone(),
@@ -600,11 +701,10 @@ impl CliFactory {
     self.services.feature_checker.get_or_init(|| {
       let mut checker = FeatureChecker::default();
       checker.set_exit_cb(Box::new(crate::unstable_exit_cb));
-      // TODO(bartlomieju): enable, once we deprecate `--unstable` in favor
-      // of granular --unstable-* flags.
-      // feature_checker.set_warn_cb(Box::new(crate::unstable_warn_cb));
-      if self.options.unstable() {
+      checker.set_warn_cb(Box::new(crate::unstable_warn_cb));
+      if self.options.legacy_unstable_flag() {
         checker.enable_legacy_unstable();
+        checker.warn_on_legacy_unstable();
       }
       let unstable_features = self.options.unstable_features();
       for (flag_name, _, _) in crate::UNSTABLE_GRANULAR_FLAGS {
@@ -673,6 +773,8 @@ impl CliFactory {
       self.feature_checker().clone(),
       self.create_cli_main_worker_options()?,
       self.options.node_ipc_fd(),
+      self.options.disable_deprecated_api_warning,
+      self.options.verbose_deprecated_api_warning,
     ))
   }
 
@@ -708,7 +810,7 @@ impl CliFactory {
         .options
         .unsafely_ignore_certificate_errors()
         .clone(),
-      unstable: self.options.unstable(),
+      unstable: self.options.legacy_unstable_flag(),
       maybe_root_package_json_deps: self.options.maybe_package_json_deps(),
     })
   }

@@ -7,18 +7,11 @@
 /// <reference path="./lib.deno_web.d.ts" />
 
 import { core, primordials } from "ext:core/mod.js";
-const { InterruptedPrototype, ops } = core;
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 import {
-  defineEventHandler,
-  EventTarget,
-  MessageEvent,
-  setEventTargetData,
-  setIsTrusted,
-} from "ext:deno_web/02_event.js";
-import { isDetachedBuffer } from "ext:deno_web/06_streams.js";
-import { DOMException } from "ext:deno_web/01_dom_exception.js";
+  op_message_port_create_entangled,
+  op_message_port_post_message,
+  op_message_port_recv_message,
+} from "ext:core/ops";
 const {
   ArrayBufferPrototypeGetByteLength,
   ArrayPrototypeFilter,
@@ -31,11 +24,20 @@ const {
   TypeError,
 } = primordials;
 const {
+  InterruptedPrototype,
   isArrayBuffer,
 } = core;
-const {
-  op_message_port_recv_message,
-} = core.ensureFastOps();
+import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
+import {
+  defineEventHandler,
+  EventTarget,
+  MessageEvent,
+  setEventTargetData,
+  setIsTrusted,
+} from "ext:deno_web/02_event.js";
+import { isDetachedBuffer } from "ext:deno_web/06_streams.js";
+import { DOMException } from "ext:deno_web/01_dom_exception.js";
 
 class MessageChannel {
   /** @type {MessagePort} */
@@ -140,7 +142,7 @@ class MessagePort extends EventTarget {
     }
     const data = serializeJsMessageData(message, transfer);
     if (this[_id] === null) return;
-    ops.op_message_port_post_message(this[_id], data);
+    op_message_port_post_message(this[_id], data);
   }
 
   start() {
@@ -220,7 +222,7 @@ const MessagePortPrototype = MessagePort.prototype;
  * @returns {[number, number]}
  */
 function opCreateEntangledMessagePort() {
-  return ops.op_message_port_create_entangled();
+  return op_message_port_create_entangled();
 }
 
 /**

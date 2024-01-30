@@ -4,7 +4,7 @@ import { core, primordials } from "ext:core/mod.js";
 const {
   isPromise,
 } = core;
-const {
+import {
   op_kv_atomic_write,
   op_kv_database_open,
   op_kv_dequeue_next_message,
@@ -13,7 +13,7 @@ const {
   op_kv_snapshot_read,
   op_kv_watch,
   op_kv_watch_next,
-} = core.ensureFastOps();
+} from "ext:core/ops";
 const {
   ArrayFrom,
   ArrayPrototypeMap,

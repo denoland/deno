@@ -78,14 +78,14 @@ pub static COMPILER_SNAPSHOT: Lazy<Box<[u8]>> = Lazy::new(
   },
 );
 
-pub fn get_types_declaration_file_text(unstable: bool) -> String {
+pub fn get_types_declaration_file_text() -> String {
   let mut assets = get_asset_texts_from_new_runtime()
     .unwrap()
     .into_iter()
     .map(|a| (a.specifier, a.text))
     .collect::<HashMap<_, _>>();
 
-  let mut lib_names = vec![
+  let lib_names = vec![
     "deno.ns",
     "deno.console",
     "deno.url",
@@ -94,17 +94,15 @@ pub fn get_types_declaration_file_text(unstable: bool) -> String {
     "deno.webgpu",
     "deno.websocket",
     "deno.webstorage",
+    "deno.canvas",
     "deno.crypto",
     "deno.broadcast_channel",
     "deno.net",
     "deno.shared_globals",
     "deno.cache",
     "deno.window",
+    "deno.unstable",
   ];
-
-  if unstable {
-    lib_names.push("deno.unstable");
-  }
 
   lib_names
     .into_iter()
@@ -117,7 +115,17 @@ pub fn get_types_declaration_file_text(unstable: bool) -> String {
 }
 
 fn get_asset_texts_from_new_runtime() -> Result<Vec<AssetText>, AnyError> {
-  deno_core::extension!(deno_cli_tsc, ops_fn = deno_ops);
+  deno_core::extension!(
+    deno_cli_tsc,
+    ops = [
+      op_create_hash,
+      op_emit,
+      op_is_node_file,
+      op_load,
+      op_resolve,
+      op_respond,
+    ]
+  );
 
   // the assets are stored within the typescript isolate, so take them out of there
   let mut runtime = JsRuntime::new(RuntimeOptions {
@@ -807,7 +815,14 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
     .collect();
 
   deno_core::extension!(deno_cli_tsc,
-    ops_fn = deno_ops,
+    ops = [
+      op_create_hash,
+      op_emit,
+      op_is_node_file,
+      op_load,
+      op_resolve,
+      op_respond,
+    ],
     options = {
       request: Request,
       root_map: HashMap<String, Url>,
@@ -866,18 +881,6 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
     Err(anyhow!("The response for the exec request was not set."))
   }
 }
-
-deno_core::ops!(
-  deno_ops,
-  [
-    op_create_hash,
-    op_emit,
-    op_is_node_file,
-    op_load,
-    op_resolve,
-    op_respond,
-  ]
-);
 
 #[cfg(test)]
 mod tests {

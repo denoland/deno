@@ -10,7 +10,14 @@ use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_graph::FastCheckDiagnostic;
+use deno_graph::ModuleEntryRef;
 use deno_graph::ModuleGraph;
+use deno_graph::ResolutionResolved;
+use deno_graph::WalkOptions;
+use lsp_types::Url;
+
+use super::diagnostics::PublishDiagnostic;
+use super::diagnostics::PublishDiagnosticsCollector;
 
 #[derive(Debug)]
 pub struct MemberRoots {
@@ -61,11 +68,82 @@ pub fn resolve_config_file_roots_from_exports(
   Ok(exports)
 }
 
-pub fn surface_fast_check_type_graph_errors(
+pub fn collect_invalid_external_imports(
+  graph: &ModuleGraph,
+  diagnostics_collector: &PublishDiagnosticsCollector,
+) {
+  let mut visited = HashSet::new();
+  let mut skip_specifiers: HashSet<Url> = HashSet::new();
+
+  let mut collect_if_invalid =
+    |skip_specifiers: &mut HashSet<Url>, resolution: &ResolutionResolved| {
+      if visited.insert(resolution.specifier.clone()) {
+        match resolution.specifier.scheme() {
+          "file" | "data" => {}
+          "jsr" | "npm" => {
+            skip_specifiers.insert(resolution.specifier.clone());
+          }
+          "http" | "https" => {
+            skip_specifiers.insert(resolution.specifier.clone());
+            diagnostics_collector.push(
+              PublishDiagnostic::InvalidExternalImport {
+                kind: format!("non-JSR '{}'", resolution.specifier.scheme()),
+                imported: resolution.specifier.clone(),
+                referrer: resolution.range.clone(),
+              },
+            );
+          }
+          _ => {
+            skip_specifiers.insert(resolution.specifier.clone());
+            diagnostics_collector.push(
+              PublishDiagnostic::InvalidExternalImport {
+                kind: format!("'{}'", resolution.specifier.scheme()),
+                imported: resolution.specifier.clone(),
+                referrer: resolution.range.clone(),
+              },
+            );
+          }
+        }
+      }
+    };
+
+  let options = WalkOptions {
+    check_js: true,
+    follow_dynamic: true,
+    follow_type_only: true,
+  };
+  let mut iter = graph.walk(&graph.roots, options);
+  while let Some((specifier, entry)) = iter.next() {
+    if skip_specifiers.contains(specifier) {
+      iter.skip_previous_dependencies();
+      continue;
+    }
+
+    let ModuleEntryRef::Module(module) = entry else {
+      continue;
+    };
+    let Some(module) = module.esm() else {
+      continue;
+    };
+
+    for (_, dep) in &module.dependencies {
+      if let Some(resolved) = dep.maybe_code.ok() {
+        collect_if_invalid(&mut skip_specifiers, resolved);
+      }
+      if let Some(resolved) = dep.maybe_type.ok() {
+        collect_if_invalid(&mut skip_specifiers, resolved);
+      }
+    }
+  }
+}
+
+/// Collects diagnostics from the module graph for the given packages.
+/// Returns true if any diagnostics were collected.
+pub fn collect_fast_check_type_graph_diagnostics(
   graph: &ModuleGraph,
   packages: &[MemberRoots],
-) -> Result<(), AnyError> {
-  let mut diagnostic_count = 0;
+  diagnostics_collector: &PublishDiagnosticsCollector,
+) -> bool {
   let mut seen_diagnostics = HashSet::new();
   let mut seen_modules = HashSet::with_capacity(graph.specifiers_count());
   for package in packages {
@@ -85,31 +163,17 @@ pub fn surface_fast_check_type_graph_errors(
       };
       if let Some(diagnostic) = es_module.fast_check_diagnostic() {
         for diagnostic in diagnostic.flatten_multiple() {
+          if !seen_diagnostics.insert(diagnostic.message_with_range_for_test())
+          {
+            continue;
+          }
+          diagnostics_collector
+            .push(PublishDiagnostic::FastCheck(diagnostic.clone()));
           if matches!(
             diagnostic,
             FastCheckDiagnostic::UnsupportedJavaScriptEntrypoint { .. }
           ) {
-            // ignore JS packages for fast check
-            log::warn!(
-              concat!(
-                "{} Package '{}' is a JavaScript package without a corresponding ",
-                "declaration file. This may lead to a non-optimal experience for ",
-                "users of your package. For performance reasons, it's recommended ",
-                "to ship a corresponding TypeScript declaration file or to ",
-                "convert to TypeScript.",
-              ),
-              deno_runtime::colors::yellow("Warning"),
-              package.name,
-            );
             break 'analyze_package; // no need to keep analyzing this package
-          } else {
-            let message = diagnostic.message_with_range();
-            if !seen_diagnostics.insert(message.clone()) {
-              continue;
-            }
-
-            log::error!("\n{}", message);
-            diagnostic_count += 1;
           }
         }
       }
@@ -133,22 +197,5 @@ pub fn surface_fast_check_type_graph_errors(
     }
   }
 
-  if diagnostic_count > 0 {
-    // for the time being, tell the user why we have these errors and the benefit they bring
-    log::error!(
-      concat!(
-        "\nFixing these fast check errors is required to make the code fast check compatible ",
-        "which enables type checking your package's TypeScript code with the same ",
-        "performance as if you had distributed declaration files. Do any of these ",
-        "errors seem too restrictive or incorrect? Please open an issue if so to ",
-        "help us improve: https://github.com/denoland/deno/issues\n",
-      )
-    );
-    bail!(
-      "Had {} fast check error{}.",
-      diagnostic_count,
-      if diagnostic_count == 1 { "" } else { "s" }
-    )
-  }
-  Ok(())
+  !seen_diagnostics.is_empty()
 }

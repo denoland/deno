@@ -23,23 +23,23 @@ Deno.test({
 Deno.test({
   name: "ASYNC: truncate entire file contents",
   async fn() {
-    const file: string = Deno.makeTempFileSync();
-    await Deno.writeFile(file, new TextEncoder().encode("hello world"));
-    const { rid } = await Deno.open(file, {
+    const filePath = Deno.makeTempFileSync();
+    await Deno.writeTextFile(filePath, "hello world");
+    using file = await Deno.open(filePath, {
       read: true,
       write: true,
       create: true,
     });
 
     await new Promise<void>((resolve, reject) => {
-      ftruncate(rid, (err: Error | null) => {
+      ftruncate(file.rid, (err: Error | null) => {
         if (err !== null) reject();
         else resolve();
       });
     })
       .then(
         () => {
-          const fileInfo: Deno.FileInfo = Deno.lstatSync(file);
+          const fileInfo: Deno.FileInfo = Deno.lstatSync(filePath);
           assertEquals(fileInfo.size, 0);
         },
         () => {
@@ -47,8 +47,7 @@ Deno.test({
         },
       )
       .finally(() => {
-        Deno.removeSync(file);
-        Deno.close(rid);
+        Deno.removeSync(filePath);
       });
   },
 });
@@ -56,23 +55,23 @@ Deno.test({
 Deno.test({
   name: "ASYNC: truncate file to a size of precisely len bytes",
   async fn() {
-    const file: string = Deno.makeTempFileSync();
-    await Deno.writeFile(file, new TextEncoder().encode("hello world"));
-    const { rid } = await Deno.open(file, {
+    const filePath = Deno.makeTempFileSync();
+    await Deno.writeTextFile(filePath, "hello world");
+    using file = await Deno.open(filePath, {
       read: true,
       write: true,
       create: true,
     });
 
     await new Promise<void>((resolve, reject) => {
-      ftruncate(rid, 3, (err: Error | null) => {
+      ftruncate(file.rid, 3, (err: Error | null) => {
         if (err !== null) reject();
         else resolve();
       });
     })
       .then(
         () => {
-          const fileInfo: Deno.FileInfo = Deno.lstatSync(file);
+          const fileInfo: Deno.FileInfo = Deno.lstatSync(filePath);
           assertEquals(fileInfo.size, 3);
         },
         () => {
@@ -80,8 +79,7 @@ Deno.test({
         },
       )
       .finally(() => {
-        Deno.removeSync(file);
-        Deno.close(rid);
+        Deno.removeSync(filePath);
       });
   },
 });
@@ -89,21 +87,20 @@ Deno.test({
 Deno.test({
   name: "SYNC: truncate entire file contents",
   fn() {
-    const file: string = Deno.makeTempFileSync();
-    Deno.writeFileSync(file, new TextEncoder().encode("hello world"));
-    const { rid } = Deno.openSync(file, {
+    const filePath = Deno.makeTempFileSync();
+    Deno.writeFileSync(filePath, new TextEncoder().encode("hello world"));
+    using file = Deno.openSync(filePath, {
       read: true,
       write: true,
       create: true,
     });
 
     try {
-      ftruncateSync(rid);
-      const fileInfo: Deno.FileInfo = Deno.lstatSync(file);
+      ftruncateSync(file.rid);
+      const fileInfo: Deno.FileInfo = Deno.lstatSync(filePath);
       assertEquals(fileInfo.size, 0);
     } finally {
-      Deno.removeSync(file);
-      Deno.close(rid);
+      Deno.removeSync(filePath);
     }
   },
 });
@@ -111,21 +108,20 @@ Deno.test({
 Deno.test({
   name: "SYNC: truncate file to a size of precisely len bytes",
   fn() {
-    const file: string = Deno.makeTempFileSync();
-    Deno.writeFileSync(file, new TextEncoder().encode("hello world"));
-    const { rid } = Deno.openSync(file, {
+    const filePath = Deno.makeTempFileSync();
+    Deno.writeFileSync(filePath, new TextEncoder().encode("hello world"));
+    using file = Deno.openSync(filePath, {
       read: true,
       write: true,
       create: true,
     });
 
     try {
-      ftruncateSync(rid, 3);
-      const fileInfo: Deno.FileInfo = Deno.lstatSync(file);
+      ftruncateSync(file.rid, 3);
+      const fileInfo: Deno.FileInfo = Deno.lstatSync(filePath);
       assertEquals(fileInfo.size, 3);
     } finally {
-      Deno.removeSync(file);
-      Deno.close(rid);
+      Deno.removeSync(filePath);
     }
   },
 });

@@ -5,13 +5,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { core, internals } from "ext:core/mod.js";
-const {
-  op_process_abort,
-  op_geteuid,
-} = core.ensureFastOps();
-const {
-  op_set_exit_code,
-} = core.ensureFastOps(true);
+import { op_geteuid, op_process_abort, op_set_exit_code } from "ext:core/ops";
 
 import { notImplemented, warnNotImplemented } from "ext:deno_node/_utils.ts";
 import { EventEmitter } from "node:events";
@@ -75,7 +69,6 @@ import { buildAllowedFlags } from "ext:deno_node/internal/process/per_thread.mjs
 
 const notImplementedEvents = [
   "multipleResolves",
-  "rejectionHandled",
   "worker",
 ];
 
@@ -746,6 +739,7 @@ export const removeListener = process.removeListener;
 export const removeAllListeners = process.removeAllListeners;
 
 let unhandledRejectionListenerCount = 0;
+let rejectionHandledListenerCount = 0;
 let uncaughtExceptionListenerCount = 0;
 let beforeExitListenerCount = 0;
 let exitListenerCount = 0;
@@ -754,6 +748,9 @@ process.on("newListener", (event: string) => {
   switch (event) {
     case "unhandledRejection":
       unhandledRejectionListenerCount++;
+      break;
+    case "rejectionHandled":
+      rejectionHandledListenerCount++;
       break;
     case "uncaughtException":
       uncaughtExceptionListenerCount++;
@@ -774,6 +771,9 @@ process.on("removeListener", (event: string) => {
   switch (event) {
     case "unhandledRejection":
       unhandledRejectionListenerCount--;
+      break;
+    case "rejectionHandled":
+      rejectionHandledListenerCount--;
       break;
     case "uncaughtException":
       uncaughtExceptionListenerCount--;
@@ -835,6 +835,16 @@ function synchronizeListeners() {
     };
   } else {
     internals.nodeProcessUnhandledRejectionCallback = undefined;
+  }
+
+  // Install special "handledrejection" handler, that will be called
+  // last.
+  if (rejectionHandledListenerCount > 0) {
+    internals.nodeProcessRejectionHandledCallback = (event) => {
+      process.emit("rejectionHandled", event.reason, event.promise);
+    };
+  } else {
+    internals.nodeProcessRejectionHandledCallback = undefined;
   }
 
   if (uncaughtExceptionListenerCount > 0) {

@@ -7,10 +7,7 @@
 /// <reference path="../web/lib.deno_web.d.ts" />
 
 import { core, internals, primordials } from "ext:core/mod.js";
-const {
-  op_base64_encode,
-  op_base64_decode,
-} = core.ensureFastOps();
+import { op_base64_decode, op_base64_encode } from "ext:core/ops";
 const {
   ArrayPrototypeJoin,
   ArrayPrototypeMap,

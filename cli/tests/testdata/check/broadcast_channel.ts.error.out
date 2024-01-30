@@ -1,4 +1,0 @@
-error: TS2304 [ERROR]: Cannot find name 'BroadcastChannel'.
-const _channel = new BroadcastChannel("foo");
-                     ~~~~~~~~~~~~~~~~
-    at [WILDCARD]

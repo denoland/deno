@@ -78,6 +78,7 @@ declare class GPU {
   requestAdapter(
     options?: GPURequestAdapterOptions,
   ): Promise<GPUAdapter | null>;
+  getPreferredCanvasFormat(): GPUTextureFormat;
 }
 
 /** @category WebGPU */
@@ -1313,3 +1314,24 @@ declare interface GPUExtent3DDict {
 
 /** @category WebGPU */
 declare type GPUExtent3D = number[] | GPUExtent3DDict;
+
+/** @category WebGPU */
+declare type GPUCanvasAlphaMode = "opaque" | "premultiplied";
+
+/** @category WebGPU */
+declare interface GPUCanvasConfiguration {
+  device: GPUDevice;
+  format: GPUTextureFormat;
+  usage?: GPUTextureUsageFlags;
+  viewFormats?: GPUTextureFormat[];
+  colorSpace?: "srgb" | "display-p3";
+  alphaMode?: GPUCanvasAlphaMode;
+  width: number;
+  height: number;
+}
+/** @category WebGPU */
+declare interface GPUCanvasContext {
+  configure(configuration: GPUCanvasConfiguration): undefined;
+  unconfigure(): undefined;
+  getCurrentTexture(): GPUTexture;
+}

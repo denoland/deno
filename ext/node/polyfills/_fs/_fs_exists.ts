@@ -3,10 +3,7 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { core } from "ext:core/mod.js";
-const {
-  op_node_fs_exists_sync,
-} = core.ensureFastOps();
+import { op_node_fs_exists_sync } from "ext:core/ops";
 
 import { pathFromURL } from "ext:deno_web/00_infra.js";
 
