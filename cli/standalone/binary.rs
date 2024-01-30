@@ -2,12 +2,14 @@
 
 use std::collections::BTreeMap;
 use std::env::current_exe;
+use std::fs;
 use std::io::Read;
 use std::io::Seek;
 use std::io::SeekFrom;
 use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
+use std::process::Command;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
@@ -23,6 +25,7 @@ use deno_runtime::permissions::PermissionsOptions;
 use deno_semver::package::PackageReq;
 use deno_semver::VersionReqSpecifierParseError;
 use log::Level;
+use once_cell::sync::Lazy;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -337,6 +340,73 @@ fn u64_from_bytes(arr: &[u8]) -> Result<u64, AnyError> {
   Ok(u64::from_be_bytes(*fixed_arr))
 }
 
+pub static ARCHIVE_NAME: Lazy<String> =
+  Lazy::new(|| format!("deno-{}.zip", env!("TARGET")));
+
+pub fn unpack_into_dir(
+  archive_data: Vec<u8>,
+  is_windows: bool,
+  temp_dir: &tempfile::TempDir,
+) -> Result<PathBuf, AnyError> {
+  const EXE_NAME: &str = "deno";
+  let temp_dir_path = temp_dir.path();
+  let exe_ext = if is_windows { "exe" } else { "" };
+  let archive_path = temp_dir_path.join(EXE_NAME).with_extension("zip");
+  let exe_path = temp_dir_path.join(EXE_NAME).with_extension(exe_ext);
+  assert!(!exe_path.exists());
+
+  let archive_ext = Path::new(&*ARCHIVE_NAME)
+    .extension()
+    .and_then(|ext| ext.to_str())
+    .unwrap();
+  let unpack_status = match archive_ext {
+    "zip" if cfg!(windows) => {
+      fs::write(&archive_path, &archive_data)?;
+      Command::new("tar.exe")
+        .arg("xf")
+        .arg(&archive_path)
+        .arg("-C")
+        .arg(temp_dir_path)
+        .spawn()
+        .map_err(|err| {
+          if err.kind() == std::io::ErrorKind::NotFound {
+            std::io::Error::new(
+              std::io::ErrorKind::NotFound,
+              "`tar.exe` was not found in your PATH",
+            )
+          } else {
+            err
+          }
+        })?
+        .wait()?
+    }
+    "zip" => {
+      fs::write(&archive_path, &archive_data)?;
+      Command::new("unzip")
+        .current_dir(temp_dir_path)
+        .arg(&archive_path)
+        .spawn()
+        .map_err(|err| {
+          if err.kind() == std::io::ErrorKind::NotFound {
+            std::io::Error::new(
+              std::io::ErrorKind::NotFound,
+              "`unzip` was not found in your PATH, please install `unzip`",
+            )
+          } else {
+            err
+          }
+        })?
+        .wait()?
+    }
+    ext => bail!("Unsupported archive type: '{ext}'"),
+  };
+  if !unpack_status.success() {
+    bail!("Failed to unpack archive.");
+  }
+  assert!(exe_path.exists());
+  fs::remove_file(&archive_path)?;
+  Ok(exe_path)
+}
 pub struct DenoCompileBinaryWriter<'a> {
   file_fetcher: &'a FileFetcher,
   client: &'a HttpClient,
@@ -429,11 +499,8 @@ impl<'a> DenoCompileBinaryWriter<'a> {
 
     let archive_data = std::fs::read(binary_path)?;
     let temp_dir = tempfile::TempDir::new()?;
-    let base_binary_path = crate::tools::upgrade::unpack_into_dir(
-      archive_data,
-      target.contains("windows"),
-      &temp_dir,
-    )?;
+    let base_binary_path =
+      unpack_into_dir(archive_data, target.contains("windows"), &temp_dir)?;
     let base_binary = std::fs::read(base_binary_path)?;
     drop(temp_dir); // delete the temp dir
     Ok(base_binary)

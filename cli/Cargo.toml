@@ -16,6 +16,11 @@ name = "deno"
 path = "main.rs"
 doc = false
 
+[[bin]]
+name = "deno_standalone"
+path = "main_standalone.rs"
+doc = false
+
 [[bench]]
 name = "deno_bench"
 harness = false

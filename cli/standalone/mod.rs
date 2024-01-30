@@ -56,7 +56,7 @@ use import_map::parse_from_json;
 use std::rc::Rc;
 use std::sync::Arc;
 
-mod binary;
+pub mod binary;
 mod file_system;
 mod virtual_fs;
 

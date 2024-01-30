@@ -7,6 +7,7 @@ use crate::args::UpgradeFlags;
 use crate::colors;
 use crate::factory::CliFactory;
 use crate::http_util::HttpClient;
+use crate::standalone::binary::{unpack_into_dir, ARCHIVE_NAME};
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 use crate::util::time;
@@ -29,9 +30,6 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Arc;
 use std::time::Duration;
-
-static ARCHIVE_NAME: Lazy<String> =
-  Lazy::new(|| format!("deno-{}.zip", env!("TARGET")));
 
 const RELEASE_URL: &str = "https://github.com/denoland/deno/releases";
 
@@ -629,71 +627,6 @@ async fn download_package(
       std::process::exit(1)
     }
   }
-}
-
-pub fn unpack_into_dir(
-  archive_data: Vec<u8>,
-  is_windows: bool,
-  temp_dir: &tempfile::TempDir,
-) -> Result<PathBuf, AnyError> {
-  const EXE_NAME: &str = "deno";
-  let temp_dir_path = temp_dir.path();
-  let exe_ext = if is_windows { "exe" } else { "" };
-  let archive_path = temp_dir_path.join(EXE_NAME).with_extension("zip");
-  let exe_path = temp_dir_path.join(EXE_NAME).with_extension(exe_ext);
-  assert!(!exe_path.exists());
-
-  let archive_ext = Path::new(&*ARCHIVE_NAME)
-    .extension()
-    .and_then(|ext| ext.to_str())
-    .unwrap();
-  let unpack_status = match archive_ext {
-    "zip" if cfg!(windows) => {
-      fs::write(&archive_path, &archive_data)?;
-      Command::new("tar.exe")
-        .arg("xf")
-        .arg(&archive_path)
-        .arg("-C")
-        .arg(temp_dir_path)
-        .spawn()
-        .map_err(|err| {
-          if err.kind() == std::io::ErrorKind::NotFound {
-            std::io::Error::new(
-              std::io::ErrorKind::NotFound,
-              "`tar.exe` was not found in your PATH",
-            )
-          } else {
-            err
-          }
-        })?
-        .wait()?
-    }
-    "zip" => {
-      fs::write(&archive_path, &archive_data)?;
-      Command::new("unzip")
-        .current_dir(temp_dir_path)
-        .arg(&archive_path)
-        .spawn()
-        .map_err(|err| {
-          if err.kind() == std::io::ErrorKind::NotFound {
-            std::io::Error::new(
-              std::io::ErrorKind::NotFound,
-              "`unzip` was not found in your PATH, please install `unzip`",
-            )
-          } else {
-            err
-          }
-        })?
-        .wait()?
-    }
-    ext => bail!("Unsupported archive type: '{ext}'"),
-  };
-  if !unpack_status.success() {
-    bail!("Failed to unpack archive.");
-  }
-  assert!(exe_path.exists());
-  fs::remove_file(&archive_path)?;
-  Ok(exe_path)
 }
 
 fn replace_exe(from: &Path, to: &Path) -> Result<(), std::io::Error> {
