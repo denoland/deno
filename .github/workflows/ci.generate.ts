@@ -1042,7 +1042,7 @@ const ci = {
       needs: ["build"],
       if:
         // TODO(@lucacasonato): re-enable before landing
-        "github.repository == 'denoland/deno'" // && github.ref == 'refs/heads/main'",
+        "github.repository == 'denoland/deno'", // && github.ref == 'refs/heads/main'",
       steps: [
         authenticateWithGoogleCloud,
         {

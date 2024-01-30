@@ -625,7 +625,7 @@ jobs:
     runs-on: ubuntu-22.04
     needs:
       - build
-    if: github.repository == 'denoland/deno' && github.ref == 'refs/heads/main'
+    if: github.repository == 'denoland/deno'
     steps:
       - name: Authenticate with Google Cloud
         uses: google-github-actions/auth@v1
