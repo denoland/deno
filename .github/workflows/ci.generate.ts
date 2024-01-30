@@ -1036,6 +1036,31 @@ const ci = {
         },
       ]),
     },
+    "publish-canary": {
+      name: "publish canary",
+      "runs-on": "ubuntu-22.04",
+      needs: ["build"],
+      if:
+        // TODO(@lucacasonato): re-enable before landing
+        "github.repository == 'denoland/deno'" // && github.ref == 'refs/heads/main'",
+      steps: [
+        authenticateWithGoogleCloud,
+        {
+          name: "Setup gcloud",
+          uses: "google-github-actions/setup-gcloud@v1",
+          with: {
+            project_id: "denoland",
+          },
+        },
+        {
+          name: "Upload canary version file to dl.deno.land",
+          run: [
+            "echo ${{ github.sha }} > canary-latest.txt",
+            'gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-latest.txt',
+          ].join("\n"),
+        },
+      ],
+    },
   },
 };
 
