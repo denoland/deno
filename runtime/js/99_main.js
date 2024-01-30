@@ -757,16 +757,6 @@ const NOT_IMPORTED_OPS = [
   "op_test_op_sanitizer_report",
 ];
 
-{
-  const allOpNames = ObjectKeys(ops);
-  for (let i = 0; i < allOpNames.length; i++) {
-    const opName = ops[allOpNames[i]];
-    if (NOT_IMPORTED_OPS.indexOf(opName) < 0) {
-      delete ops[opName];
-    }
-  }
-}
-
 // FIXME(bartlomieju): temporarily add whole `Deno.core` to
 // `Deno[Deno.internal]` namespace. It should be removed and only necessary
 // methods should be left there.
@@ -818,6 +808,17 @@ function bootstrapMainRuntime(runtimeOptions) {
     7: shouldDisableDeprecatedApiWarning,
     8: shouldUseVerboseDeprecatedApiWarning,
   } = runtimeOptions;
+
+  {
+    const allOpNames = ObjectKeys(ops);
+    for (let i = 0; i < allOpNames.length; i++) {
+      const opName = ops[allOpNames[i]];
+      if (NOT_IMPORTED_OPS.indexOf(opName) === -1) {
+        ops.op_print(`Deleting op ${opName}\n`);
+        delete ops[opName];
+      }
+    }
+  }
 
   deprecatedApiWarningDisabled = shouldDisableDeprecatedApiWarning;
   verboseDeprecatedApiWarning = shouldUseVerboseDeprecatedApiWarning;
@@ -965,6 +966,16 @@ function bootstrapWorkerRuntime(
   verboseDeprecatedApiWarning = shouldUseVerboseDeprecatedApiWarning;
   performance.setTimeOrigin(DateNow());
   globalThis_ = globalThis;
+
+  {
+    const allOpNames = ObjectKeys(ops);
+    for (let i = 0; i < allOpNames.length; i++) {
+      const opName = ops[allOpNames[i]];
+      if (NOT_IMPORTED_OPS.indexOf(opName) < 0) {
+        delete ops[opName];
+      }
+    }
+  }
 
   // Remove bootstrapping data from the global scope
   delete globalThis.__bootstrap;
