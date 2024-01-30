@@ -60,10 +60,14 @@ jobs:
           - os: macos-12
             job: test
             profile: release
+            skip: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'') }}'
+            runner: '${{ (!contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'')) && ''ubuntu-22.04'' || ''macos-12'' }}'
             os_display_name: macos-x86_64
           - os: macos-13-xlarge
             job: test
             profile: release
+            skip: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'' || github.ref == ''refs/heads/main'') }}'
+            runner: '${{ (!contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'' || github.ref == ''refs/heads/main'')) && ''ubuntu-22.04'' || ''macos-13-xlarge'' }}'
             os_display_name: macos-aarch64
           - os: windows-2022
             job: test
@@ -72,6 +76,8 @@ jobs:
           - os: '${{ github.repository == ''denoland/deno'' && ''windows-2022-xl'' || ''windows-2022'' }}'
             job: test
             profile: release
+            skip: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'') }}'
+            runner: '${{ (!contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'')) && ''ubuntu-22.04'' || github.repository == ''denoland/deno'' && ''windows-2022-xl'' || ''windows-2022'' }}'
             os_display_name: windows-x86_64
           - os: '${{ github.repository == ''denoland/deno'' && ''ubuntu-22.04-xl'' || ''ubuntu-22.04'' }}'
             job: test
@@ -180,7 +186,9 @@ jobs:
       - if: |-
           !(matrix.skip) && (matrix.profile == 'release' &&
           matrix.job == 'test' &&
-          github.repository == 'denoland/deno')
+          github.repository == 'denoland/deno' &&
+          (github.ref == 'refs/heads/main' ||
+          startsWith(github.ref, 'refs/tags/')))
         name: Authenticate with Google Cloud
         uses: google-github-actions/auth@v1
         with:
@@ -193,7 +201,9 @@ jobs:
           !(matrix.skip) && (runner.os != 'Windows' &&
           matrix.profile == 'release' &&
           matrix.job == 'test' &&
-          github.repository == 'denoland/deno')
+          github.repository == 'denoland/deno' &&
+          (github.ref == 'refs/heads/main' ||
+          startsWith(github.ref, 'refs/tags/')))
         uses: google-github-actions/setup-gcloud@v1
         with:
           project_id: denoland
@@ -202,7 +212,9 @@ jobs:
           !(matrix.skip) && (runner.os == 'Windows' &&
           matrix.profile == 'release' &&
           matrix.job == 'test' &&
-          github.repository == 'denoland/deno')
+          github.repository == 'denoland/deno' &&
+          (github.ref == 'refs/heads/main' ||
+          startsWith(github.ref, 'refs/tags/')))
         uses: google-github-actions/setup-gcloud@v1
         env:
           CLOUDSDK_PYTHON: '${{env.pythonLocation}}\python.exe'
@@ -429,7 +441,8 @@ jobs:
         if: |-
           !(matrix.skip) && (matrix.job == 'test' &&
           matrix.profile == 'release' &&
-          github.repository == 'denoland/deno')
+          github.repository == 'denoland/deno' &&
+          github.ref == 'refs/heads/main')
         run: |-
           gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/
           echo ${{ github.sha }} > canary-latest.txt
@@ -625,7 +638,7 @@ jobs:
     runs-on: ubuntu-22.04
     needs:
       - build
-    if: github.repository == 'denoland/deno'
+    if: github.repository == 'denoland/deno' && github.ref == 'refs/heads/main'
     steps:
       - name: Authenticate with Google Cloud
         uses: google-github-actions/auth@v1

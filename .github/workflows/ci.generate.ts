@@ -364,16 +364,14 @@ const ci = {
             os: Runners.macos,
             job: "test",
             profile: "release",
-            // TODO(@lucacasonato): re-enable before landing
-            // skip_pr: true,
+            skip_pr: true,
           }, {
             os: Runners.macosArm,
             job: "test",
             profile: "release",
             // TODO(mmastrac): We don't want to run this M1 runner on every main commit because of the expense.
-            // TODO(@lucacasonato): re-enable before landing
-            // skip:
-            //   "${{ github.event_name == 'pull_request' || github.ref == 'refs/heads/main' }}",
+            skip:
+              "${{ github.event_name == 'pull_request' || github.ref == 'refs/heads/main' }}",
           }, {
             os: Runners.windows,
             job: "test",
@@ -382,8 +380,7 @@ const ci = {
             os: Runners.windowsXl,
             job: "test",
             profile: "release",
-            // TODO(@lucacasonato):TODO: re-enable before landing
-            // skip_pr: true,
+            skip_pr: true,
           }, {
             os: Runners.ubuntuXl,
             job: "test",
@@ -478,10 +475,9 @@ const ci = {
           if: [
             "matrix.profile == 'release' &&",
             "matrix.job == 'test' &&",
-            "github.repository == 'denoland/deno'",
-            // TODO(@lucacasonato): re-enable before landing
-            // "(github.ref == 'refs/heads/main' ||",
-            // "startsWith(github.ref, 'refs/tags/'))",
+            "github.repository == 'denoland/deno' &&",
+            "(github.ref == 'refs/heads/main' ||",
+            "startsWith(github.ref, 'refs/tags/'))",
           ].join("\n"),
           ...authenticateWithGoogleCloud,
         },
@@ -491,10 +487,9 @@ const ci = {
             "runner.os != 'Windows' &&",
             "matrix.profile == 'release' &&",
             "matrix.job == 'test' &&",
-            "github.repository == 'denoland/deno'",
-            // TODO(@lucacasonato): re-enable before landing
-            // "(github.ref == 'refs/heads/main' ||",
-            // "startsWith(github.ref, 'refs/tags/'))",
+            "github.repository == 'denoland/deno' &&",
+            "(github.ref == 'refs/heads/main' ||",
+            "startsWith(github.ref, 'refs/tags/'))",
           ].join("\n"),
           uses: "google-github-actions/setup-gcloud@v1",
           with: {
@@ -507,10 +502,9 @@ const ci = {
             "runner.os == 'Windows' &&",
             "matrix.profile == 'release' &&",
             "matrix.job == 'test' &&",
-            "github.repository == 'denoland/deno'",
-            // TODO(@lucacasonato): re-enable before landing
-            // "(github.ref == 'refs/heads/main' ||",
-            // "startsWith(github.ref, 'refs/tags/'))",
+            "github.repository == 'denoland/deno' &&",
+            "(github.ref == 'refs/heads/main' ||",
+            "startsWith(github.ref, 'refs/tags/'))",
           ].join("\n"),
           uses: "google-github-actions/setup-gcloud@v1",
           env: {
@@ -757,9 +751,8 @@ const ci = {
           if: [
             "matrix.job == 'test' &&",
             "matrix.profile == 'release' &&",
-            "github.repository == 'denoland/deno'",
-            // TODO(@lucacasonato): re-enable before landing
-            // "github.ref == 'refs/heads/main'",
+            "github.repository == 'denoland/deno' &&",
+            "github.ref == 'refs/heads/main'",
           ].join("\n"),
           run: [
             'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/',
@@ -1041,8 +1034,7 @@ const ci = {
       "runs-on": "ubuntu-22.04",
       needs: ["build"],
       if:
-        // TODO(@lucacasonato): re-enable before landing
-        "github.repository == 'denoland/deno'", // && github.ref == 'refs/heads/main'",
+        "github.repository == 'denoland/deno' && github.ref == 'refs/heads/main'",
       steps: [
         authenticateWithGoogleCloud,
         {
