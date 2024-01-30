@@ -125,11 +125,7 @@ Deno.test({
   name: "process.ppid",
   fn() {
     assertEquals(typeof process.ppid, "number");
-    // TODO(magurotuna): Deno.ppid now is of type bigint (although its type
-    // declaration says it's a number). Until it's fixed, we compare
-    // `process.ppid` with the casted value.
-    // https://github.com/denoland/deno/issues/22166
-    assertEquals(process.ppid, Number(Deno.ppid));
+    assertEquals(process.ppid, Deno.ppid);
   },
 });
 
