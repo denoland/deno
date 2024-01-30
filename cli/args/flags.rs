@@ -2320,7 +2320,10 @@ fn vendor_subcommand() -> Command {
   Command::new("vendor")
       .about("Vendor remote modules into a local directory")
       .long_about(
-        "Vendor remote modules into a local directory.
+        "⚠️ Warning: `deno vendor` is deprecated and will be removed in Deno 2.0.
+Add `\"vendor\": true` to your `deno.json` or use the `--vendor` flag instead.
+        
+Vendor remote modules into a local directory.
 
 Analyzes the provided modules along with their dependencies, downloads
 remote modules to the output directory, and produces an import map that
