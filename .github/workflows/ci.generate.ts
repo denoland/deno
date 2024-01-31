@@ -133,21 +133,6 @@ __0`,
 
 const installBenchTools = "./tools/install_prebuilt.js wrk hyperfine";
 
-// The Windows builder is a little strange -- there's lots of room on C: and not so much on D:
-// We'll check out to D:, but then all of our builds should happen on a C:-mapped drive
-const reconfigureWindowsStorage = {
-  name: "Reconfigure Windows Storage",
-  if: [
-    "matrix.os == 'windows' &&",
-    "!endsWith(matrix.runner, '-xl')",
-  ].join("\n"),
-  shell: "pwsh",
-  run: `
-New-Item -ItemType "directory" -Path "$env:TEMP/__target__"
-New-Item -ItemType Junction -Target "$env:TEMP/__target__" -Path "D:/a/deno/deno"
-`.trim(),
-};
-
 const cloneRepoStep = [{
   name: "Configure git",
   run: [
@@ -351,7 +336,7 @@ const ci = {
       name:
         "${{ matrix.job }} ${{ matrix.profile }} ${{ matrix.os }}-${{ matrix.arch }}",
       needs: ["pre_build"],
-      if: "${{ needs.pre_build.outputs.skip_build != 'true' }}",
+      if: "${{ needs.pre_build.outputs.skip_build != 'true' && !(matrix.skip) }}",
       "runs-on": "${{ matrix.runner }}",
       "timeout-minutes": 120,
       defaults: {
