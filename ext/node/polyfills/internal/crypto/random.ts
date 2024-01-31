@@ -4,17 +4,15 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { core, primordials } from "ext:core/mod.js";
-const {
+import { primordials } from "ext:core/mod.js";
+import {
   op_node_check_prime,
   op_node_check_prime_async,
   op_node_check_prime_bytes,
   op_node_check_prime_bytes_async,
-  op_node_gen_prime_async,
-} = core.ensureFastOps();
-const {
   op_node_gen_prime,
-} = core.ensureFastOps(true);
+  op_node_gen_prime_async,
+} from "ext:core/ops";
 const {
   StringPrototypePadStart,
   StringPrototypeToString,
