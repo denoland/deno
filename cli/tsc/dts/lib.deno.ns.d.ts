@@ -1983,8 +1983,9 @@ declare namespace Deno {
    * const text = new TextDecoder().decode(buf);  // "hello world"
    * ```
    *
-   * @deprecated Use `reader.read()` instead. {@linkcode Deno.read} will be
-   * removed in Deno 2.0.
+   * @deprecated This will be removed in Deno 2.0. See the
+   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+   * for migration instructions.
    *
    * @category I/O
    */
