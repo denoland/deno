@@ -204,7 +204,7 @@ jobs:
           create_credentials_file: true
       - name: Setup gcloud (unix)
         if: |-
-          !(matrix.skip) && (matrix.os == 'windows' &&
+          !(matrix.skip) && (matrix.os != 'windows' &&
           matrix.profile == 'release' &&
           matrix.job == 'test' &&
           github.repository == 'denoland/deno' &&
