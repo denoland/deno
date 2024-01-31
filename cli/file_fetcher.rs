@@ -750,6 +750,9 @@ mod tests {
     )
   }
 
+  // this test used to test how the file fetcher decoded strings, but
+  // now we're using it as a bit of an integration test with the functionality
+  // in deno_graph
   async fn test_fetch_remote_encoded(
     fixture: &str,
     charset: &str,
@@ -1479,44 +1482,36 @@ mod tests {
 
   #[tokio::test]
   async fn test_fetch_local_utf_16be() {
-    let expected = String::from_utf8(
-      b"\xEF\xBB\xBFconsole.log(\"Hello World\");\x0A".to_vec(),
-    )
-    .unwrap();
+    let expected =
+      String::from_utf8(b"console.log(\"Hello World\");\x0A".to_vec()).unwrap();
     test_fetch_local_encoded("utf-16be", expected).await;
   }
 
   #[tokio::test]
   async fn test_fetch_local_utf_16le() {
-    let expected = String::from_utf8(
-      b"\xEF\xBB\xBFconsole.log(\"Hello World\");\x0A".to_vec(),
-    )
-    .unwrap();
+    let expected =
+      String::from_utf8(b"console.log(\"Hello World\");\x0A".to_vec()).unwrap();
     test_fetch_local_encoded("utf-16le", expected).await;
   }
 
   #[tokio::test]
   async fn test_fetch_local_utf8_with_bom() {
-    let expected = String::from_utf8(
-      b"\xEF\xBB\xBFconsole.log(\"Hello World\");\x0A".to_vec(),
-    )
-    .unwrap();
+    let expected =
+      String::from_utf8(b"console.log(\"Hello World\");\x0A".to_vec()).unwrap();
     test_fetch_local_encoded("utf-8", expected).await;
   }
 
   #[tokio::test]
   async fn test_fetch_remote_utf16_le() {
     let expected =
-      std::str::from_utf8(b"\xEF\xBB\xBFconsole.log(\"Hello World\");\x0A")
-        .unwrap();
+      std::str::from_utf8(b"console.log(\"Hello World\");\x0A").unwrap();
     test_fetch_remote_encoded("utf-16le.ts", "utf-16le", expected).await;
   }
 
   #[tokio::test]
   async fn test_fetch_remote_utf16_be() {
     let expected =
-      std::str::from_utf8(b"\xEF\xBB\xBFconsole.log(\"Hello World\");\x0A")
-        .unwrap();
+      std::str::from_utf8(b"console.log(\"Hello World\");\x0A").unwrap();
     test_fetch_remote_encoded("utf-16be.ts", "utf-16be", expected).await;
   }
 
