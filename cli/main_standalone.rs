@@ -1,4 +1,10 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
+// Allow unused code warnings because we share
+// code between the two bin targets.
+#![allow(dead_code)]
+#![allow(unused_imports)]
+
 mod standalone;
 
 mod args;

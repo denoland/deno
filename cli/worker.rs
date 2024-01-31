@@ -209,26 +209,26 @@ impl CliMainWorker {
 
     self.worker.dispatch_unload_event(located_script_name!())?;
 
-//     if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
-//       self
-//         .worker
-//         .js_runtime
-//         .with_event_loop_future(
-//           coverage_collector.stop_collecting().boxed_local(),
-//           PollEventLoopOptions::default(),
-//         )
-//         .await?;
-//     }
-//     if let Some(hmr_runner) = maybe_hmr_runner.as_mut() {
-//       self
-//         .worker
-//         .js_runtime
-//         .with_event_loop_future(
-//           hmr_runner.stop().boxed_local(),
-//           PollEventLoopOptions::default(),
-//         )
-//         .await?;
-//     }
+    //     if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
+    //       self
+    //         .worker
+    //         .js_runtime
+    //         .with_event_loop_future(
+    //           coverage_collector.stop_collecting().boxed_local(),
+    //           PollEventLoopOptions::default(),
+    //         )
+    //         .await?;
+    //     }
+    //     if let Some(hmr_runner) = maybe_hmr_runner.as_mut() {
+    //       self
+    //         .worker
+    //         .js_runtime
+    //         .with_event_loop_future(
+    //           hmr_runner.stop().boxed_local(),
+    //           PollEventLoopOptions::default(),
+    //         )
+    //         .await?;
+    //     }
 
     Ok(self.worker.exit_code())
   }
@@ -323,7 +323,7 @@ impl CliMainWorker {
   ) -> Result<(), AnyError> {
     self.worker.evaluate_module(id).await
   }
-  
+
   pub async fn maybe_setup_coverage_collector(
     &mut self,
   ) -> Result<Option<()>, AnyError> {

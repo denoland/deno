@@ -340,22 +340,20 @@ fn u64_from_bytes(arr: &[u8]) -> Result<u64, AnyError> {
   Ok(u64::from_be_bytes(*fixed_arr))
 }
 
-pub static ARCHIVE_NAME: Lazy<String> =
-  Lazy::new(|| format!("deno-{}.zip", env!("TARGET")));
-
 pub fn unpack_into_dir(
+  exe_name: &str,
+  archive_name: &str,
   archive_data: Vec<u8>,
   is_windows: bool,
   temp_dir: &tempfile::TempDir,
 ) -> Result<PathBuf, AnyError> {
-  const EXE_NAME: &str = "deno";
   let temp_dir_path = temp_dir.path();
   let exe_ext = if is_windows { "exe" } else { "" };
-  let archive_path = temp_dir_path.join(EXE_NAME).with_extension("zip");
-  let exe_path = temp_dir_path.join(EXE_NAME).with_extension(exe_ext);
+  let archive_path = temp_dir_path.join(exe_name).with_extension("zip");
+  let exe_path = temp_dir_path.join(exe_name).with_extension(exe_ext);
   assert!(!exe_path.exists());
 
-  let archive_ext = Path::new(&*ARCHIVE_NAME)
+  let archive_ext = Path::new(&*archive_name)
     .extension()
     .and_then(|ext| ext.to_str())
     .unwrap();
@@ -474,13 +472,16 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     &self,
     compile_flags: &CompileFlags,
   ) -> Result<Vec<u8>, AnyError> {
-    if compile_flags.target.is_none() {
-      let path = std::env::current_exe()?;
+    // Used for testing.
+    //
+    // Phase 2 of the 'min sized' deno compile RFC talks
+    // about adding this as a flag.
+    if let Some(path) = std::env::var_os("DENO_STANDALONE_BIN") {
       return Ok(std::fs::read(path)?);
     }
 
     let target = compile_flags.resolve_target();
-    let binary_name = format!("deno-{target}.zip");
+    let binary_name = format!("deno-standalone-{target}.zip");
 
     let binary_path_suffix = if crate::version::is_canary() {
       format!("canary/{}/{}", crate::version::GIT_COMMIT_HASH, binary_name)
@@ -499,8 +500,13 @@ impl<'a> DenoCompileBinaryWriter<'a> {
 
     let archive_data = std::fs::read(binary_path)?;
     let temp_dir = tempfile::TempDir::new()?;
-    let base_binary_path =
-      unpack_into_dir(archive_data, target.contains("windows"), &temp_dir)?;
+    let base_binary_path = unpack_into_dir(
+      "deno-standalone",
+      &binary_name,
+      archive_data,
+      target.contains("windows"),
+      &temp_dir,
+    )?;
     let base_binary = std::fs::read(base_binary_path)?;
     drop(temp_dir); // delete the temp dir
     Ok(base_binary)

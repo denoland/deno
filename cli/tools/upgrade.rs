@@ -7,7 +7,7 @@ use crate::args::UpgradeFlags;
 use crate::colors;
 use crate::factory::CliFactory;
 use crate::http_util::HttpClient;
-use crate::standalone::binary::{unpack_into_dir, ARCHIVE_NAME};
+use crate::standalone::binary::unpack_into_dir;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 use crate::util::time;
@@ -32,6 +32,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 const RELEASE_URL: &str = "https://github.com/denoland/deno/releases";
+
+pub static ARCHIVE_NAME: Lazy<String> =
+  Lazy::new(|| format!("deno-{}.zip", env!("TARGET")));
 
 // How often query server for new version. In hours.
 const UPGRADE_CHECK_INTERVAL: i64 = 24;
@@ -505,7 +508,13 @@ pub async fn upgrade(
   log::info!("Deno is upgrading to version {}", &install_version);
 
   let temp_dir = tempfile::TempDir::new()?;
-  let new_exe_path = unpack_into_dir(archive_data, cfg!(windows), &temp_dir)?;
+  let new_exe_path = unpack_into_dir(
+    "deno",
+    &ARCHIVE_NAME,
+    archive_data,
+    cfg!(windows),
+    &temp_dir,
+  )?;
   fs::set_permissions(&new_exe_path, permissions)?;
   check_exe(&new_exe_path)?;
 
