@@ -239,13 +239,8 @@ fn visit_modules(
   parsed_source_cache: &ParsedSourceCache,
 ) -> Result<(), AnyError> {
   for module in modules {
-    let (module, source_text) = match module {
-      Module::Esm(module) => {
-        let Some(source_text) = module.source.maybe_text() else {
-          continue;
-        };
-        (module, source_text)
-      }
+    let module = match module {
+      Module::Js(module) => module,
       // skip visiting Json modules as they are leaves
       Module::Json(_)
       | Module::Npm(_)
@@ -253,11 +248,8 @@ fn visit_modules(
       | Module::External(_) => continue,
     };
 
-    let parsed_source = parsed_source_cache.get_or_parse_module(
-      &module.specifier,
-      source_text.clone(),
-      module.media_type,
-    )?;
+    let parsed_source =
+      parsed_source_cache.get_parsed_source_from_js_module(module)?;
     let text_info = parsed_source.text_info().clone();
 
     for dep in module.dependencies.values() {
@@ -268,7 +260,7 @@ fn visit_modules(
         &module.specifier,
         mappings,
         &text_info,
-        source_text,
+        &module.source,
       );
       visit_resolution(
         &dep.maybe_type,
@@ -277,7 +269,7 @@ fn visit_modules(
         &module.specifier,
         mappings,
         &text_info,
-        source_text,
+        &module.source,
       );
     }
 
@@ -289,7 +281,7 @@ fn visit_modules(
         &module.specifier,
         mappings,
         &text_info,
-        source_text,
+        &module.source,
       );
     }
   }

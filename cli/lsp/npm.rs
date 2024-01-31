@@ -88,7 +88,8 @@ impl NpmSearchApi for CliNpmSearchApi {
       .file_fetcher
       .fetch(&info_url, PermissionsContainer::allow_all())
       .await?;
-    let info = Arc::new(serde_json::from_str::<NpmPackageInfo>(&file.source)?);
+    let info =
+      Arc::new(serde_json::from_slice::<NpmPackageInfo>(&file.source)?);
     self
       .info_cache
       .lock()
@@ -97,7 +98,7 @@ impl NpmSearchApi for CliNpmSearchApi {
   }
 }
 
-fn parse_npm_search_response(source: &str) -> Result<Vec<String>, AnyError> {
+fn parse_npm_search_response(source: &[u8]) -> Result<Vec<String>, AnyError> {
   #[derive(Debug, Deserialize)]
   struct Package {
     name: String,
@@ -110,7 +111,7 @@ fn parse_npm_search_response(source: &str) -> Result<Vec<String>, AnyError> {
   struct Response {
     objects: Vec<Object>,
   }
-  let objects = serde_json::from_str::<Response>(source)?.objects;
+  let objects = serde_json::from_slice::<Response>(source)?.objects;
   Ok(objects.into_iter().map(|o| o.package.name).collect())
 }
 
@@ -122,7 +123,7 @@ mod tests {
   fn test_parse_npm_search_response() {
     // This is a subset of a realistic response only containing data currently
     // used by our parser. It's enough to catch regressions.
-    let names = parse_npm_search_response(r#"{"objects":[{"package":{"name":"puppeteer"}},{"package":{"name":"puppeteer-core"}},{"package":{"name":"puppeteer-extra-plugin-stealth"}},{"package":{"name":"puppeteer-extra-plugin"}}]}"#).unwrap();
+    let names = parse_npm_search_response(br#"{"objects":[{"package":{"name":"puppeteer"}},{"package":{"name":"puppeteer-core"}},{"package":{"name":"puppeteer-extra-plugin-stealth"}},{"package":{"name":"puppeteer-extra-plugin"}}]}"#).unwrap();
     assert_eq!(
       names,
       vec![

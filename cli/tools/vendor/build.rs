@@ -12,7 +12,7 @@ use deno_core::error::AnyError;
 use deno_core::futures::future::LocalBoxFuture;
 use deno_core::parking_lot::Mutex;
 use deno_graph::source::ResolutionMode;
-use deno_graph::EsModule;
+use deno_graph::JsModule;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_runtime::deno_fs;
@@ -195,7 +195,7 @@ pub async fn build<
       resolver,
       parsed_source_cache,
     })?;
-    environment.write_file(&import_map_path, &import_map_text.as_bytes())?;
+    environment.write_file(&import_map_path, import_map_text.as_bytes())?;
   }
 
   Ok(BuildOutput {
@@ -242,7 +242,7 @@ fn validate_original_import_map(
 }
 
 fn build_proxy_module_source(
-  module: &EsModule,
+  module: &JsModule,
   proxied_module: &ProxiedModule,
   parsed_source_cache: &ParsedSourceCache,
 ) -> Result<String, AnyError> {
@@ -269,7 +269,7 @@ fn build_proxy_module_source(
 
   // add a default export if one exists in the module
   let parsed_source =
-    parsed_source_cache.get_parsed_source_from_es_module(module)?;
+    parsed_source_cache.get_parsed_source_from_js_module(module)?;
   if has_default_export(&parsed_source) {
     writeln!(text, "export {{ default }} from \"{relative_specifier}\";")
       .unwrap();

@@ -28,7 +28,8 @@ pub async fn resolve_import_map_from_specifier(
       None => {
         let file = file_fetcher
           .fetch(specifier, PermissionsContainer::allow_all())
-          .await?;
+          .await?
+          .into_text_decoded()?;
         serde_json::from_str(&file.source)?
       }
     }

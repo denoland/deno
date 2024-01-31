@@ -142,7 +142,7 @@ async fn read_eval_file(
   cli_options: &CliOptions,
   file_fetcher: &FileFetcher,
   eval_file: &str,
-) -> Result<String, AnyError> {
+) -> Result<Arc<str>, AnyError> {
   let specifier =
     deno_core::resolve_url_or_path(eval_file, cli_options.initial_cwd())?;
 
@@ -150,7 +150,7 @@ async fn read_eval_file(
     .fetch(&specifier, PermissionsContainer::allow_all())
     .await?;
 
-  Ok(String::from_utf8(file.source.to_vec())?)
+  Ok(file.into_text_decoded()?.source)
 }
 
 pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {

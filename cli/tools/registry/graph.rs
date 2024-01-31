@@ -122,7 +122,7 @@ pub fn collect_invalid_external_imports(
     let ModuleEntryRef::Module(module) = entry else {
       continue;
     };
-    let Some(module) = module.esm() else {
+    let Some(module) = module.js() else {
       continue;
     };
 
@@ -158,7 +158,7 @@ pub fn collect_fast_check_type_graph_diagnostics(
       let Ok(Some(module)) = graph.try_get_prefer_types(&specifier) else {
         continue;
       };
-      let Some(es_module) = module.esm() else {
+      let Some(es_module) = module.js() else {
         continue;
       };
       if let Some(diagnostic) = es_module.fast_check_diagnostic() {

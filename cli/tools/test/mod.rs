@@ -685,10 +685,8 @@ fn extract_files_from_regex_blocks(
           .unwrap_or(file_specifier);
 
       Some(File {
-        maybe_types: None,
-        media_type: file_media_type,
-        source: file_source.into(),
         specifier: file_specifier,
+        source: file_source.into_bytes().into(),
         maybe_headers: None,
       })
     })
@@ -769,7 +767,10 @@ async fn fetch_inline_files(
   let mut files = Vec::new();
   for specifier in specifiers {
     let fetch_permissions = PermissionsContainer::allow_all();
-    let file = file_fetcher.fetch(&specifier, fetch_permissions).await?;
+    let file = file_fetcher
+      .fetch(&specifier, fetch_permissions)
+      .await?
+      .into_text_decoded()?;
 
     let inline_files = if file.media_type == MediaType::Unknown {
       extract_files_from_fenced_blocks(
@@ -1177,9 +1178,8 @@ async fn fetch_specifiers_with_test_mode(
       .fetch(specifier, PermissionsContainer::allow_all())
       .await?;
 
-    if file.media_type == MediaType::Unknown
-      || file.media_type == MediaType::Dts
-    {
+    let (media_type, _) = file.resolve_media_type_and_charset();
+    if matches!(media_type, MediaType::Unknown | MediaType::Dts) {
       *mode = TestMode::Documentation
     }
   }

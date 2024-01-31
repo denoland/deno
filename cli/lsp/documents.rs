@@ -15,7 +15,6 @@ use crate::cache::FastInsecureHasher;
 use crate::cache::HttpCache;
 use crate::file_fetcher::get_source_from_bytes;
 use crate::file_fetcher::get_source_from_data_url;
-use crate::file_fetcher::map_content_type;
 use crate::lsp::logging::lsp_warn;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliGraphResolver;
@@ -278,7 +277,7 @@ impl DocumentDependencies {
     }
   }
 
-  pub fn from_module(module: &deno_graph::EsModule) -> Self {
+  pub fn from_module(module: &deno_graph::JsModule) -> Self {
     Self {
       deps: module.dependencies.clone(),
       maybe_types_dependency: module.maybe_types_dependency.clone(),
@@ -286,7 +285,7 @@ impl DocumentDependencies {
   }
 }
 
-type ModuleResult = Result<deno_graph::EsModule, deno_graph::ModuleGraphError>;
+type ModuleResult = Result<deno_graph::JsModule, deno_graph::ModuleGraphError>;
 type ParsedSourceResult = Result<ParsedSource, deno_ast::Diagnostic>;
 
 #[derive(Debug)]
@@ -798,8 +797,7 @@ impl FileSystemDocuments {
       let path = specifier_to_file_path(specifier).ok()?;
       let fs_version = calculate_fs_version_at_path(&path)?;
       let bytes = fs::read(path).ok()?;
-      let maybe_charset =
-        Some(text_encoding::detect_charset(&bytes).to_string());
+      let maybe_charset = Some(text_encoding::detect_charset(&bytes));
       let content = get_source_from_bytes(bytes, maybe_charset).ok()?;
       Document::new(
         specifier.clone(),
@@ -824,10 +822,13 @@ impl FileSystemDocuments {
       let cache_key = cache.cache_item_key(specifier).ok()?;
       let bytes = cache.read_file_bytes(&cache_key).ok()??;
       let specifier_metadata = cache.read_metadata(&cache_key).ok()??;
-      let maybe_content_type = specifier_metadata.headers.get("content-type");
-      let (_, maybe_charset) = map_content_type(specifier, maybe_content_type);
-      let maybe_headers = Some(specifier_metadata.headers);
+      let (_, maybe_charset) =
+        deno_graph::source::resolve_media_type_and_charset_from_headers(
+          specifier,
+          Some(&specifier_metadata.headers),
+        );
       let content = get_source_from_bytes(bytes, maybe_charset).ok()?;
+      let maybe_headers = Some(specifier_metadata.headers);
       Document::new(
         specifier.clone(),
         fs_version,
@@ -1752,7 +1753,7 @@ impl<'a> OpenDocumentsGraphLoader<'a> {
       if let Some(doc) = self.open_docs.get(specifier) {
         return Some(
           future::ready(Ok(Some(deno_graph::source::LoadResponse::Module {
-            content: doc.content(),
+            content: Arc::from(doc.content()),
             specifier: doc.specifier().clone(),
             maybe_headers: None,
           })))
@@ -1816,7 +1817,7 @@ impl<'a> deno_graph::source::Loader for OpenDocumentsGraphLoader<'a> {
   fn cache_module_info(
     &mut self,
     specifier: &deno_ast::ModuleSpecifier,
-    source: &StringOrBytes,
+    source: &Arc<[u8]>,
     module_info: &deno_graph::ModuleInfo,
   ) {
     self

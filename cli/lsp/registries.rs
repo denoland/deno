@@ -529,7 +529,8 @@ impl ModuleRegistry {
       self.http_cache.set(specifier, headers_map, &[])?;
     }
     let file = fetch_result?;
-    let config: RegistryConfigurationJson = serde_json::from_str(&file.source)?;
+    let config: RegistryConfigurationJson =
+      serde_json::from_slice(&file.source)?;
     validate_config(&config)?;
     Ok(config.registries)
   }
@@ -612,7 +613,7 @@ impl ModuleRegistry {
           .await
           .ok()?;
         let documentation: lsp::Documentation =
-          serde_json::from_str(&file.source).ok()?;
+          serde_json::from_slice(&file.source).ok()?;
         return match documentation {
           lsp::Documentation::String(doc) => Some(doc),
           lsp::Documentation::MarkupContent(lsp::MarkupContent {
@@ -975,7 +976,7 @@ impl ModuleRegistry {
       .fetch(&specifier, PermissionsContainer::allow_all())
       .await
       .ok()?;
-    serde_json::from_str(&file.source).ok()
+    serde_json::from_slice(&file.source).ok()
   }
 
   pub fn get_origin_completions(
@@ -1038,7 +1039,7 @@ impl ModuleRegistry {
         );
       })
       .ok()?;
-    let items: VariableItems = serde_json::from_str(&file.source)
+    let items: VariableItems = serde_json::from_slice(&file.source)
       .map_err(|err| {
         error!(
           "Error parsing response from endpoint \"{}\". {}",
@@ -1074,7 +1075,7 @@ impl ModuleRegistry {
         );
       })
       .ok()?;
-    let items: VariableItems = serde_json::from_str(&file.source)
+    let items: VariableItems = serde_json::from_slice(&file.source)
       .map_err(|err| {
         error!(
           "Error parsing response from endpoint \"{}\". {}",

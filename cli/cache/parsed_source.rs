@@ -17,6 +17,17 @@ pub struct ParsedSourceCache {
 }
 
 impl ParsedSourceCache {
+  pub fn get_parsed_source_from_js_module(
+    &self,
+    module: &deno_graph::JsModule,
+  ) -> Result<ParsedSource, deno_ast::Diagnostic> {
+    self.get_or_parse_module(
+      &module.specifier,
+      module.source.clone(),
+      module.media_type,
+    )
+  }
+
   /// Gets the matching `ParsedSource` from the cache
   /// or parses a new one and stores that in the cache.
   pub fn get_or_parse_module(

@@ -1,7 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::cache::LocalLspHttpCache;
-use crate::file_fetcher::map_content_type;
 
 use data_url::DataUrl;
 use deno_ast::MediaType;
@@ -195,7 +194,7 @@ impl LspUrlMap {
             .map_err(|e| uri_error(format!("{e:?}")))?;
           let mime = data_url.mime_type();
           let (media_type, _) =
-            map_content_type(specifier, Some(&format!("{mime}")));
+            deno_graph::source::resolve_media_type_and_charset_from_content_type(specifier, Some(&format!("{mime}")));
           let extension = if media_type == MediaType::Unknown {
             ""
           } else {

@@ -40,7 +40,7 @@ impl Emitter {
     graph: &ModuleGraph,
   ) -> Result<(), AnyError> {
     for module in graph.modules() {
-      if let Module::Esm(module) = module {
+      if let Module::Js(module) = module {
         let is_emittable = matches!(
           module.media_type,
           MediaType::TypeScript
@@ -65,9 +65,9 @@ impl Emitter {
   pub fn maybe_cached_emit(
     &self,
     specifier: &ModuleSpecifier,
-    source: &[u8],
+    source: &str,
   ) -> Option<String> {
-    let source_hash = self.get_source_hash(source);
+    let source_hash = self.get_source_hash(source.as_bytes());
     self.emit_cache.get_emit_code(specifier, source_hash)
   }
 
@@ -77,7 +77,7 @@ impl Emitter {
     media_type: MediaType,
     source: &Arc<str>,
   ) -> Result<ModuleCodeString, AnyError> {
-    let source_hash = self.get_source_hash(source);
+    let source_hash = self.get_source_hash(source.as_bytes());
 
     if let Some(emit_code) =
       self.emit_cache.get_emit_code(specifier, source_hash)
@@ -126,7 +126,7 @@ impl Emitter {
   /// determine if the cached emit is valid or not.
   fn get_source_hash(&self, source_text: &[u8]) -> u64 {
     FastInsecureHasher::new()
-      .write_str(source_text)
+      .write(source_text)
       .write_u64(self.emit_options_hash)
       .finish()
   }
