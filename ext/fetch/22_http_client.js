@@ -15,7 +15,8 @@ import { core, primordials } from "ext:core/mod.js";
 import { SymbolDispose } from "ext:deno_web/00_infra.js";
 import { op_fetch_custom_client } from "ext:core/ops";
 
-const { SymbolFor } = primordials;
+const { internalRidSymbol } = core;
+const { ObjectDefineProperty } = primordials;
 
 /**
  * @param {Deno.CreateHttpClientOptions} options
@@ -31,14 +32,16 @@ function createHttpClient(options) {
 }
 
 class HttpClient {
-  [SymbolFor("Deno.internal.rid")];
   #rid;
 
   /**
    * @param {number} rid
    */
   constructor(rid) {
-    this[SymbolFor("Deno.internal.rid")] = rid;
+    ObjectDefineProperty(this, internalRidSymbol, {
+      enumerable: false,
+      value: rid,
+    });
     this.#rid = rid;
   }
 
