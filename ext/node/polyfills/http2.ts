@@ -5,8 +5,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { core } from "ext:core/mod.js";
-const {
-  op_http2_connect,
+import {
   op_http2_client_get_response,
   op_http2_client_get_response_body_chunk,
   op_http2_client_get_response_trailers,
@@ -14,8 +13,9 @@ const {
   op_http2_client_reset_stream,
   op_http2_client_send_data,
   op_http2_client_send_trailers,
+  op_http2_connect,
   op_http2_poll_client_connection,
-} = core.ensureFastOps();
+} from "ext:core/ops";
 
 import { notImplemented, warnNotImplemented } from "ext:deno_node/_utils.ts";
 import { EventEmitter } from "node:events";

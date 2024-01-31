@@ -96,11 +96,25 @@ ObjectDefineProperties(Symbol, {
 let windowIsClosing = false;
 let globalThis_;
 
+let verboseDeprecatedApiWarning = false;
 let deprecatedApiWarningDisabled = false;
 const ALREADY_WARNED_DEPRECATED = new SafeSet();
 
-function warnOnDeprecatedApi(apiName, stack, suggestion) {
+function warnOnDeprecatedApi(apiName, stack, ...suggestions) {
   if (deprecatedApiWarningDisabled) {
+    return;
+  }
+
+  if (!verboseDeprecatedApiWarning) {
+    if (ALREADY_WARNED_DEPRECATED.has(apiName)) {
+      return;
+    }
+    ALREADY_WARNED_DEPRECATED.add(apiName);
+    console.error(
+      `%cwarning: %cUse of deprecated "${apiName}" API. This API will be removed in Deno 2. Run again with DENO_VERBOSE_WARNINGS=1 to get more details.`,
+      "color: yellow;",
+      "font-weight: bold;",
+    );
     return;
   }
 
@@ -143,45 +157,33 @@ function warnOnDeprecatedApi(apiName, stack, suggestion) {
 
   ALREADY_WARNED_DEPRECATED.add(apiName + stack);
   console.error(
-    "%cWarning",
-    "color: yellow; font-weight: bold;",
-  );
-  console.error(
-    `%c\u251c Use of deprecated "${apiName}" API.`,
+    `%cwarning: %cUse of deprecated "${apiName}" API. This API will be removed in Deno 2.`,
     "color: yellow;",
+    "font-weight: bold;",
   );
-  console.error("%c\u2502", "color: yellow;");
-  console.error(
-    "%c\u251c This API will be removed in Deno 2.0. Make sure to upgrade to a stable API before then.",
-    "color: yellow;",
-  );
-  console.error("%c\u2502", "color: yellow;");
-  console.error(
-    `%c\u251c Suggestion: ${suggestion}`,
-    "color: yellow;",
-  );
-  if (isFromRemoteDependency) {
-    console.error("%c\u2502", "color: yellow;");
+
+  console.error();
+  if (stackLines.length > 0) {
+    console.error("Stack trace:");
+    for (let i = 0; i < stackLines.length; i++) {
+      console.error(`  ${StringPrototypeTrim(stackLines[i])}`);
+    }
+    console.error();
+  }
+
+  for (let i = 0; i < suggestions.length; i++) {
+    const suggestion = suggestions[i];
     console.error(
-      `%c\u251c Suggestion: It appears this API is used by a remote dependency.`,
-      "color: yellow;",
-    );
-    console.error(
-      "%c\u2502             Try upgrading to the latest version of that dependency.",
-      "color: yellow;",
+      `%chint: ${suggestion}`,
+      "font-weight: bold;",
     );
   }
-  if (stackLines.length > 0) {
-    console.error("%c\u2502", "color: yellow;");
-    console.error("%c\u2514 Stack trace:", "color: yellow;");
-    for (let i = 0; i < stackLines.length; i++) {
-      console.error(
-        `%c  ${i == stackLines.length - 1 ? "\u2514" : "\u251c"}\u2500 ${
-          StringPrototypeTrim(stackLines[i])
-        }`,
-        "color: yellow;",
-      );
-    }
+
+  if (isFromRemoteDependency) {
+    console.error(
+      `%chint: It appears this API is used by a remote dependency. Try upgrading to the latest version of that dependency.`,
+      "font-weight: bold;",
+    );
   }
   console.error();
 }
@@ -538,7 +540,14 @@ const finalDenoNs = {
     internals.warnOnDeprecatedApi("Deno.resources()", new Error().stack);
     return core.resources();
   },
-  close: core.close,
+  close(rid) {
+    internals.warnOnDeprecatedApi(
+      "Deno.close()",
+      new Error().stack,
+      "Use `closer.close()` instead.",
+    );
+    core.close(rid);
+  },
   ...denoNs,
   // Deno.test and Deno.bench are noops here, but kept for compatibility; so
   // that they don't cause errors when used outside of `deno test`/`deno bench`
@@ -568,9 +577,11 @@ function bootstrapMainRuntime(runtimeOptions) {
     5: hasNodeModulesDir,
     6: maybeBinaryNpmCommandName,
     7: shouldDisableDeprecatedApiWarning,
+    8: shouldUseVerboseDeprecatedApiWarning,
   } = runtimeOptions;
 
   deprecatedApiWarningDisabled = shouldDisableDeprecatedApiWarning;
+  verboseDeprecatedApiWarning = shouldUseVerboseDeprecatedApiWarning;
   performance.setTimeOrigin(DateNow());
   globalThis_ = globalThis;
 
@@ -708,9 +719,11 @@ function bootstrapWorkerRuntime(
     5: hasNodeModulesDir,
     6: maybeBinaryNpmCommandName,
     7: shouldDisableDeprecatedApiWarning,
+    8: shouldUseVerboseDeprecatedApiWarning,
   } = runtimeOptions;
 
   deprecatedApiWarningDisabled = shouldDisableDeprecatedApiWarning;
+  verboseDeprecatedApiWarning = shouldUseVerboseDeprecatedApiWarning;
   performance.setTimeOrigin(DateNow());
   globalThis_ = globalThis;
 

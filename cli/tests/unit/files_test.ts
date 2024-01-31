@@ -19,6 +19,8 @@ Deno.test(function filesStdioFileDescriptors() {
 Deno.test({ permissions: { read: true } }, async function filesCopyToStdout() {
   const filename = "cli/tests/testdata/assets/fixture.json";
   using file = await Deno.open(filename);
+  assert(file instanceof Deno.File);
+  assert(file instanceof Deno.FsFile);
   assert(file.rid > 2);
   const bytesWritten = await copy(file, Deno.stdout);
   const fileSize = Deno.statSync(filename).size;
@@ -836,7 +838,7 @@ Deno.test(
     });
     const data = new Uint8Array(64);
     file.writeSync(data);
-    file.dataSyncSync();
+    file.syncDataSync();
     assertEquals(Deno.readFileSync(filename), data);
     file.close();
     Deno.removeSync(filename);
@@ -854,7 +856,7 @@ Deno.test(
     });
     const data = new Uint8Array(64);
     await file.write(data);
-    await file.dataSync();
+    await file.syncData();
     assertEquals(await Deno.readFile(filename), data);
     file.close();
     await Deno.remove(filename);

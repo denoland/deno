@@ -1,15 +1,17 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import { core, internals, primordials } from "ext:core/mod.js";
-const {
+const { internalRidSymbol } = core;
+import {
   op_net_accept_tls,
   op_net_connect_tls,
   op_net_listen_tls,
   op_tls_handshake,
   op_tls_start,
-} = core.ensureFastOps();
+} from "ext:core/ops";
 const {
   Number,
+  ObjectDefineProperty,
   TypeError,
 } = primordials;
 
@@ -24,8 +26,28 @@ function opTlsHandshake(rid) {
 }
 
 class TlsConn extends Conn {
+  #rid = 0;
+
+  constructor(rid, remoteAddr, localAddr) {
+    super(rid, remoteAddr, localAddr);
+    ObjectDefineProperty(this, internalRidSymbol, {
+      enumerable: false,
+      value: rid,
+    });
+    this.#rid = rid;
+  }
+
+  get rid() {
+    internals.warnOnDeprecatedApi(
+      "Deno.TlsConn.rid",
+      new Error().stack,
+      "Use `Deno.TlsConn` instance methods instead.",
+    );
+    return this.#rid;
+  }
+
   handshake() {
-    return opTlsHandshake(this.rid);
+    return opTlsHandshake(this.#rid);
   }
 }
 
@@ -59,9 +81,29 @@ async function connectTls({
 }
 
 class TlsListener extends Listener {
+  #rid = 0;
+
+  constructor(rid, addr) {
+    super(rid, addr);
+    ObjectDefineProperty(this, internalRidSymbol, {
+      enumerable: false,
+      value: rid,
+    });
+    this.#rid = rid;
+  }
+
+  get rid() {
+    internals.warnOnDeprecatedApi(
+      "Deno.TlsListener.rid",
+      new Error().stack,
+      "Use `Deno.TlsListener` instance methods instead.",
+    );
+    return this.#rid;
+  }
+
   async accept() {
     const { 0: rid, 1: localAddr, 2: remoteAddr } = await op_net_accept_tls(
-      this.rid,
+      this.#rid,
     );
     localAddr.transport = "tcp";
     remoteAddr.transport = "tcp";
@@ -114,7 +156,7 @@ async function startTls(
   } = {},
 ) {
   const { 0: rid, 1: localAddr, 2: remoteAddr } = await opStartTls({
-    rid: conn.rid,
+    rid: conn[internalRidSymbol],
     hostname,
     certFile,
     caCerts,

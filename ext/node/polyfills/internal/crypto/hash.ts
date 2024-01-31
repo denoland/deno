@@ -4,16 +4,15 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { core } from "ext:core/mod.js";
-const {
+import {
   op_node_create_hash,
   op_node_get_hashes,
   op_node_hash_clone,
-  op_node_hash_digest_hex,
   op_node_hash_digest,
-  op_node_hash_update_str,
+  op_node_hash_digest_hex,
   op_node_hash_update,
-} = core.ensureFastOps();
+  op_node_hash_update_str,
+} from "ext:core/ops";
 
 import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
 import { Buffer } from "node:buffer";

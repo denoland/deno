@@ -158,10 +158,8 @@ pub fn ts_config_to_emit_options(
       _ => (false, false, false, false),
     };
   deno_ast::EmitOptions {
-    // TODO(bartlomieju): change it to default to `false` and only enable
-    // if tsconfig.json enabled experimental decorators
-    use_ts_decorators: true,
-    use_decorators_proposal: false,
+    use_ts_decorators: options.experimental_decorators,
+    use_decorators_proposal: !options.experimental_decorators,
     emit_metadata: options.emit_decorator_metadata,
     imports_not_used_as_values,
     inline_source_map: options.inline_source_map,
@@ -687,6 +685,7 @@ pub struct CliOptions {
   overrides: CliOptionOverrides,
   maybe_workspace_config: Option<WorkspaceConfig>,
   pub disable_deprecated_api_warning: bool,
+  pub verbose_deprecated_api_warning: bool,
 }
 
 impl CliOptions {
@@ -741,6 +740,9 @@ impl CliOptions {
       == Some(log::Level::Error)
       || std::env::var("DENO_NO_DEPRECATION_WARNINGS").ok().is_some();
 
+    let verbose_deprecated_api_warning =
+      std::env::var("DENO_VERBOSE_WARNINGS").ok().is_some();
+
     Ok(Self {
       flags,
       initial_cwd,
@@ -752,6 +754,7 @@ impl CliOptions {
       overrides: Default::default(),
       maybe_workspace_config,
       disable_deprecated_api_warning,
+      verbose_deprecated_api_warning,
     })
   }
 
@@ -891,7 +894,19 @@ impl CliOptions {
         .members
         .iter()
         .map(|member| {
-          let import_map_value = member.config_file.to_import_map_value();
+          let mut import_map_value = member.config_file.to_import_map_value();
+
+          let expanded_import_map_value = ::import_map::ext::expand_imports(
+            ::import_map::ext::ImportMapConfig {
+              base_url: member.config_file.specifier.clone(),
+              import_map_value: import_map_value.clone(),
+            },
+          );
+
+          import_map_value
+            .as_object_mut()
+            .unwrap()
+            .insert("imports".to_string(), expanded_import_map_value);
           ::import_map::ext::ImportMapConfig {
             base_url: member.config_file.specifier.clone(),
             import_map_value,
@@ -908,12 +923,24 @@ impl CliOptions {
           "Workspace config generated this import map {}",
           serde_json::to_string_pretty(&import_map).unwrap()
         );
-        return import_map::import_map_from_value(
+        let maybe_import_map_result = import_map::import_map_from_value(
           // TODO(bartlomieju): maybe should be stored on the workspace config?
           &self.maybe_config_file.as_ref().unwrap().specifier,
           import_map,
         )
         .map(Some);
+
+        return match maybe_import_map_result {
+          Ok(maybe_import_map) => {
+            if let Some(mut import_map) = maybe_import_map {
+              import_map.ext_expand_imports();
+              Ok(Some(import_map))
+            } else {
+              Ok(None)
+            }
+          }
+          Err(err) => Err(err),
+        };
       }
     }
 
@@ -921,7 +948,8 @@ impl CliOptions {
       Some(specifier) => specifier,
       None => return Ok(None),
     };
-    resolve_import_map_from_specifier(
+
+    let maybe_import_map_result = resolve_import_map_from_specifier(
       &import_map_specifier,
       self.maybe_config_file().as_ref(),
       file_fetcher,
@@ -930,7 +958,22 @@ impl CliOptions {
     .with_context(|| {
       format!("Unable to load '{import_map_specifier}' import map")
     })
-    .map(Some)
+    .map(Some);
+
+    match maybe_import_map_result {
+      Ok(maybe_import_map) => {
+        if let Some(mut import_map) = maybe_import_map {
+          let url = import_map.base_url().as_str();
+          if url.ends_with("deno.json") || url.ends_with("deno.jsonc") {
+            import_map.ext_expand_imports();
+          }
+          Ok(Some(import_map))
+        } else {
+          Ok(None)
+        }
+      }
+      Err(err) => Err(err),
+    }
   }
 
   pub fn node_ipc_fd(&self) -> Option<i64> {
@@ -1058,6 +1101,7 @@ impl CliOptions {
       maybe_workspace_config: self.maybe_workspace_config.clone(),
       overrides: self.overrides.clone(),
       disable_deprecated_api_warning: self.disable_deprecated_api_warning,
+      verbose_deprecated_api_warning: self.verbose_deprecated_api_warning,
     }
   }
 
@@ -1088,10 +1132,26 @@ impl CliOptions {
     &self,
     config_type: TsConfigType,
   ) -> Result<TsConfigForEmit, AnyError> {
-    deno_config::get_ts_config_for_emit(
+    let result = deno_config::get_ts_config_for_emit(
       config_type,
       self.maybe_config_file.as_ref(),
-    )
+    );
+
+    match result {
+      Ok(mut ts_config_for_emit) => {
+        if matches!(self.flags.subcommand, DenoSubcommand::Bundle(..)) {
+          // For backwards compatibility, force `experimentalDecorators` setting
+          // to true.
+          *ts_config_for_emit
+            .ts_config
+            .0
+            .get_mut("experimentalDecorators")
+            .unwrap() = serde_json::Value::Bool(true);
+        }
+        Ok(ts_config_for_emit)
+      }
+      Err(err) => Err(err),
+    }
   }
 
   pub fn resolve_inspector_server(&self) -> Option<InspectorServer> {

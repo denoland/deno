@@ -13,9 +13,7 @@
 import { core } from "ext:core/mod.js";
 
 import { SymbolDispose } from "ext:deno_web/00_infra.js";
-const {
-  op_fetch_custom_client,
-} = core.ensureFastOps();
+import { op_fetch_custom_client } from "ext:core/ops";
 
 /**
  * @param {Deno.CreateHttpClientOptions} options

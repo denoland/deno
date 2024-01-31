@@ -28,10 +28,7 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { core } from "ext:core/mod.js";
-const {
-  op_node_guess_handle_type,
-} = core.ensureFastOps();
+import { op_node_guess_handle_type } from "ext:core/ops";
 
 const handleTypes = ["TCP", "TTY", "UDP", "FILE", "PIPE", "UNKNOWN"];
 export function guessHandleType(fd: number): string {

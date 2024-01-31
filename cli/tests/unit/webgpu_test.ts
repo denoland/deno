@@ -238,7 +238,6 @@ Deno.test({
 
   assertThrows(
     () => {
-      // @ts-expect-error: runtime test for null handle
       new Deno.UnsafeWindowSurface("cocoa", null, null);
     },
   );
@@ -246,6 +245,11 @@ Deno.test({
   device.destroy();
   const resources = Object.keys(Deno.resources());
   Deno.close(Number(resources[resources.length - 1]));
+});
+
+Deno.test(function getPreferredCanvasFormat() {
+  const preferredFormat = navigator.gpu.getPreferredCanvasFormat();
+  assert(preferredFormat === "bgra8unorm" || preferredFormat === "rgba8unorm");
 });
 
 async function checkIsWsl() {

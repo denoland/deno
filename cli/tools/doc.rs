@@ -339,7 +339,7 @@ impl Diagnostic for DocDiagnostic {
 
   fn location(&self) -> DiagnosticLocation {
     let specifier = Url::parse(&self.location.filename).unwrap();
-    DiagnosticLocation::PositionInFile {
+    DiagnosticLocation::ModulePosition {
       specifier: Cow::Owned(specifier),
       source_pos: DiagnosticSourcePos::ByteIndex(self.location.byte_index),
     }
