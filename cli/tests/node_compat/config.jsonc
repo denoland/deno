@@ -75,7 +75,6 @@
       "test-fs-rmdir-recursive.js",
       "test-fs-write-file.js",
       "test-fs-write.js",
-      "test-fs-watchfile.js",
       "test-http-url.parse-https.request.js",
       "test-net-better-error-messages-path.js",
       "test-net-connect-buffer.js",
@@ -728,7 +727,8 @@
   "darwinIgnore": {
     "parallel": [
       "test-net-allow-half-open.js",
-      "test-net-socket-close-after-end.js"
+      "test-net-socket-close-after-end.js",
+      "test-fs-watchfile.js"
     ]
   },
   "suitesFolder": "test",

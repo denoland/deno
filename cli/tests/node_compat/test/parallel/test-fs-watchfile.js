@@ -91,7 +91,7 @@ watcher.on('stop', common.mustCall());
 
 // Watch events should callback with a filename on supported systems.
 // Omitting AIX. It works but not reliably.
-if (common.isLinux || (common.isOSX && process.arch !== "arm64") || common.isWindows) {
+if (common.isLinux || common.isOSX || common.isWindows) {
   const dir = path.join(tmpdir.path, 'watch');
 
   fs.mkdir(dir, common.mustCall(function(err) {
