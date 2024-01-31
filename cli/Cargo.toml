@@ -57,7 +57,7 @@ deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "dep_gra
 deno_cache_dir = "=0.6.1"
 deno_config = "=0.9.1"
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
-deno_doc = { version = "=0.94.1", features = ["html"] }
+deno_doc = { version = "=0.98.0", features = ["html"] }
 deno_emit = "=0.34.0"
 deno_graph = "=0.63.6"
 deno_lint = { version = "=0.55.0", features = ["docs"] }
@@ -135,6 +135,7 @@ typed-arena = "=2.0.1"
 unicode-width = "0.1"
 uuid = { workspace = true, features = ["serde"] }
 walkdir = "=2.3.2"
+webbrowser = "0.8.12"
 zeromq = { version = "=0.3.4", default-features = false, features = ["tcp-transport", "tokio-runtime"] }
 zstd.workspace = true
 

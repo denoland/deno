@@ -477,7 +477,7 @@ const ci = {
         {
           name: "Setup gcloud (unix)",
           if: [
-            "matrix.os == 'windows' &&",
+            "matrix.os != 'windows' &&",
             "matrix.profile == 'release' &&",
             "matrix.job == 'test' &&",
             "github.repository == 'denoland/deno' &&",
@@ -726,7 +726,7 @@ const ci = {
           run: [
             'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/',
             "echo ${{ github.sha }} > canary-latest.txt",
-            'gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-${{ matrix.arch }}-latest.txt',
+            'gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt',
           ].join("\n"),
         },
         {
@@ -992,8 +992,7 @@ const ci = {
           name: "Save cache build output (main)",
           uses: "actions/cache/save@v3",
           if:
-            // TODO(@lucacasonato): revert before landing
-            "(matrix.job == 'test' || matrix.job == 'lint')", // && github.ref == 'refs/heads/main'",
+            "(matrix.job == 'test' || matrix.job == 'lint') && github.ref == 'refs/heads/main'",
           with: {
             path: [
               "./target",

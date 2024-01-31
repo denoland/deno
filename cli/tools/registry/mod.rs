@@ -208,9 +208,10 @@ async fn get_auth_headers(
           .await
           .context("Failed to create interactive authorization")?;
 
+      let auth_url = format!("{}?code={}", auth.verification_url, auth.code);
       print!(
         "Visit {} to authorize publishing of",
-        colors::cyan(format!("{}?code={}", auth.verification_url, auth.code))
+        colors::cyan(&auth_url)
       );
       if packages.len() > 1 {
         println!(" {} packages", packages.len());
@@ -220,6 +221,7 @@ async fn get_auth_headers(
 
       ring_bell();
       println!("{}", colors::gray("Waiting..."));
+      let _ = webbrowser::open(&auth_url);
 
       let interval = std::time::Duration::from_secs(auth.poll_interval);
 
@@ -410,9 +412,10 @@ async fn ensure_scopes_and_packages_exist(
       "'@{}/{}' doesn't exist yet. Visit {} to create the package",
       &package.scope,
       &package.package,
-      colors::cyan_with_underline(create_package_url)
+      colors::cyan_with_underline(&create_package_url)
     );
     println!("{}", colors::gray("Waiting..."));
+    let _ = webbrowser::open(&create_package_url);
 
     let package_api_url = api::get_package_api_url(
       &registry_api_url,
@@ -638,6 +641,7 @@ async fn publish_package(
 
 async fn prepare_packages_for_publishing(
   cli_factory: &CliFactory,
+  no_fast_check: bool,
   diagnostics_collector: &PublishDiagnosticsCollector,
   deno_json: ConfigFile,
   import_map: Arc<ImportMap>,
@@ -660,6 +664,7 @@ async fn prepare_packages_for_publishing(
       module_graph_builder,
       type_checker,
       cli_options,
+      no_fast_check,
       diagnostics_collector,
       &[MemberRoots {
         name: get_deno_json_package_name(&deno_json)?,
@@ -690,6 +695,7 @@ async fn prepare_packages_for_publishing(
     module_graph_builder,
     type_checker,
     cli_options,
+    no_fast_check,
     diagnostics_collector,
     &roots,
   )
@@ -734,6 +740,7 @@ async fn build_and_check_graph_for_publish(
   module_graph_builder: &ModuleGraphBuilder,
   type_checker: &TypeChecker,
   cli_options: &CliOptions,
+  no_fast_check: bool,
   diagnostics_collector: &PublishDiagnosticsCollector,
   packages: &[MemberRoots],
 ) -> Result<Arc<deno_graph::ModuleGraph>, deno_core::anyhow::Error> {
@@ -756,12 +763,16 @@ async fn build_and_check_graph_for_publish(
 
   collect_invalid_external_imports(&graph, diagnostics_collector);
 
-  log::info!("Checking fast check type graph for errors...");
-  let has_fast_check_diagnostics = collect_fast_check_type_graph_diagnostics(
-    &graph,
-    packages,
-    diagnostics_collector,
-  );
+  let mut has_fast_check_diagnostics = false;
+  if !no_fast_check {
+    log::info!("Checking fast check type graph for errors...");
+    has_fast_check_diagnostics = collect_fast_check_type_graph_diagnostics(
+      &graph,
+      packages,
+      diagnostics_collector,
+    );
+  }
+
   if !has_fast_check_diagnostics {
     log::info!("Ensuring type checks...");
     let diagnostics = type_checker
@@ -820,6 +831,7 @@ pub async fn publish(
   let (publish_order_graph, prepared_package_by_name) =
     prepare_packages_for_publishing(
       &cli_factory,
+      publish_flags.no_fast_check,
       &diagnostics_collector,
       config_file.clone(),
       import_map,
