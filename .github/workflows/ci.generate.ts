@@ -747,31 +747,18 @@ const ci = {
             "Compress-Archive -CompressionLevel Optimal -Force -Path target/release/deno.exe -DestinationPath target/release/deno-x86_64-pc-windows-msvc.zip",
         },
         {
-          name: "Upload canary to dl.deno.land (unix)",
+          name: "Upload canary to dl.deno.land",
           if: [
-            "runner.os != 'Windows' &&",
             "matrix.job == 'test' &&",
             "matrix.profile == 'release' &&",
             "github.repository == 'denoland/deno' &&",
             "github.ref == 'refs/heads/main'",
           ].join("\n"),
-          run:
+          run: [
             'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/',
-        },
-        {
-          name: "Upload canary to dl.deno.land (windows)",
-          if: [
-            "runner.os == 'Windows' &&",
-            "matrix.job == 'test' &&",
-            "matrix.profile == 'release' &&",
-            "github.repository == 'denoland/deno' &&",
-            "github.ref == 'refs/heads/main'",
+            "echo ${{ github.sha }} > canary-latest.txt",
+            'gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt',
           ].join("\n"),
-          env: {
-            CLOUDSDK_PYTHON: "${{env.pythonLocation}}\\python.exe",
-          },
-          run:
-            'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/',
         },
         {
           name: "Autobahn testsuite",
