@@ -477,7 +477,7 @@ const ci = {
         {
           name: "Setup gcloud (unix)",
           if: [
-            "matrix.os == 'windows' &&",
+            "matrix.os != 'windows' &&",
             "matrix.profile == 'release' &&",
             "matrix.job == 'test' &&",
             "github.repository == 'denoland/deno' &&",
