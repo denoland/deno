@@ -208,9 +208,10 @@ async fn get_auth_headers(
           .await
           .context("Failed to create interactive authorization")?;
 
+      let auth_url = format!("{}?code={}", auth.verification_url, auth.code);
       print!(
         "Visit {} to authorize publishing of",
-        colors::cyan(format!("{}?code={}", auth.verification_url, auth.code))
+        colors::cyan(&auth_url)
       );
       if packages.len() > 1 {
         println!(" {} packages", packages.len());
@@ -220,6 +221,7 @@ async fn get_auth_headers(
 
       ring_bell();
       println!("{}", colors::gray("Waiting..."));
+      let _ = webbrowser::open(&auth_url);
 
       let interval = std::time::Duration::from_secs(auth.poll_interval);
 
@@ -410,9 +412,10 @@ async fn ensure_scopes_and_packages_exist(
       "'@{}/{}' doesn't exist yet. Visit {} to create the package",
       &package.scope,
       &package.package,
-      colors::cyan_with_underline(create_package_url)
+      colors::cyan_with_underline(&create_package_url)
     );
     println!("{}", colors::gray("Waiting..."));
+    let _ = webbrowser::open(&create_package_url);
 
     let package_api_url = api::get_package_api_url(
       &registry_api_url,
