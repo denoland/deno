@@ -3,11 +3,10 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { core } from "ext:core/mod.js";
-const {
+import {
   op_node_generate_secret,
   op_node_generate_secret_async,
-} = core.ensureFastOps(true);
+} from "ext:core/ops";
 
 import {
   MAX_SIZE as kMaxUint32,

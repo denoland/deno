@@ -1,9 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { core } from "ext:core/mod.js";
-const {
-  op_lazy_load_esm,
-} = core.ensureFastOps(true);
+import { op_lazy_load_esm } from "ext:core/ops";
 
 let webgpu;
 
