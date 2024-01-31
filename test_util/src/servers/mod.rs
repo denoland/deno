@@ -1056,7 +1056,17 @@ async fn main_server(
           .unwrap(),
       );
     }
-    (&Method::GET, "/canary-latest.txt") => {
+    (
+      &Method::GET,
+      "/canary-latest.txt"
+      | "/canary-x86_64-apple-darwin-latest.txt"
+      | "/canary-aarch64-apple-darwin-latest.txt"
+      | "/canary-x86_64-unknown-linux-gnu-latest.txt"
+      | "/canary-aarch64-unknown-linux-gnu-latest.txt"
+      | "/canary-x86_64-unknown-linux-musl-latest.txt"
+      | "/canary-aarch64-unknown-linux-musl-latest.txt"
+      | "/canary-x86_64-pc-windows-msvc-latest.txt",
+    ) => {
       return Ok(
         Response::builder()
           .status(StatusCode::OK)
