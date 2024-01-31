@@ -5216,35 +5216,36 @@ itest!(unstable_temporal_api_missing_flag {
   exit_code: 1,
 });
 
-itest!(warn_on_deprecated_api {
-  args: "run -A run/warn_on_deprecated_api/main.js",
-  output: "run/warn_on_deprecated_api/main.out",
-  http_server: true,
-  exit_code: 0,
-});
+// TODO(bartlomieju): temporary disabled
+// itest!(warn_on_deprecated_api {
+//   args: "run -A run/warn_on_deprecated_api/main.js",
+//   output: "run/warn_on_deprecated_api/main.out",
+//   http_server: true,
+//   exit_code: 0,
+// });
 
-itest!(warn_on_deprecated_api_verbose {
-  args: "run -A run/warn_on_deprecated_api/main.js",
-  output: "run/warn_on_deprecated_api/main.verbose.out",
-  envs: vec![("DENO_VERBOSE_WARNINGS".to_string(), "1".to_string())],
-  http_server: true,
-  exit_code: 0,
-});
+// itest!(warn_on_deprecated_api_verbose {
+//   args: "run -A run/warn_on_deprecated_api/main.js",
+//   output: "run/warn_on_deprecated_api/main.verbose.out",
+//   envs: vec![("DENO_VERBOSE_WARNINGS".to_string(), "1".to_string())],
+//   http_server: true,
+//   exit_code: 0,
+// });
 
-itest!(warn_on_deprecated_api_with_flag {
-  args: "run -A --quiet run/warn_on_deprecated_api/main.js",
-  output: "run/warn_on_deprecated_api/main_disabled_flag.out",
-  http_server: true,
-  exit_code: 0,
-});
+// itest!(warn_on_deprecated_api_with_flag {
+//   args: "run -A --quiet run/warn_on_deprecated_api/main.js",
+//   output: "run/warn_on_deprecated_api/main_disabled_flag.out",
+//   http_server: true,
+//   exit_code: 0,
+// });
 
-itest!(warn_on_deprecated_api_with_env_var {
-  args: "run -A run/warn_on_deprecated_api/main.js",
-  envs: vec![("DENO_NO_DEPRECATION_WARNINGS".to_string(), "1".to_string())],
-  output: "run/warn_on_deprecated_api/main_disabled_env.out",
-  http_server: true,
-  exit_code: 0,
-});
+// itest!(warn_on_deprecated_api_with_env_var {
+//   args: "run -A run/warn_on_deprecated_api/main.js",
+//   envs: vec![("DENO_NO_DEPRECATION_WARNINGS".to_string(), "1".to_string())],
+//   output: "run/warn_on_deprecated_api/main_disabled_env.out",
+//   http_server: true,
+//   exit_code: 0,
+// });
 
 #[test]
 fn deno_json_imports_expand() {

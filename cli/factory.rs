@@ -773,7 +773,9 @@ impl CliFactory {
       self.feature_checker().clone(),
       self.create_cli_main_worker_options()?,
       self.options.node_ipc_fd(),
-      self.options.disable_deprecated_api_warning,
+      // TODO(bartlomieju): temporarily disabled
+      // self.options.disable_deprecated_api_warning,
+      true,
       self.options.verbose_deprecated_api_warning,
     ))
   }
