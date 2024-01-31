@@ -439,7 +439,6 @@ const ci = {
         RUST_LIB_BACKTRACE: 0,
       },
       steps: skipJobsIfPrAndMarkedSkip([
-        reconfigureWindowsStorage,
         ...cloneRepoStep,
         submoduleStep("./test_util/std"),
         {
