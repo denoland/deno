@@ -20,7 +20,6 @@ use crate::util::file_watcher;
 use crate::util::fs::canonicalize_path;
 use crate::util::fs::FileCollector;
 use crate::util::path::get_extension;
-use crate::util::text_encoding;
 use deno_ast::ParsedSource;
 use deno_config::glob::FilePatterns;
 use deno_core::anyhow::anyhow;
@@ -609,7 +608,7 @@ fn read_file_contents(file_path: &Path) -> Result<FileContents, AnyError> {
     .with_context(|| format!("Error reading {}", file_path.display()))?;
   let had_bom = file_bytes.starts_with(&[0xEF, 0xBB, 0xBF]);
   // will have the BOM stripped
-  let text = deno_graph::source::decode_owned_local_source(file_bytes)
+  let text = deno_graph::source::decode_owned_file_source(file_bytes)
     .with_context(|| {
       anyhow!("{} is not a valid UTF-8 file", file_path.display())
     })?;
@@ -619,11 +618,12 @@ fn read_file_contents(file_path: &Path) -> Result<FileContents, AnyError> {
 
 fn write_file_contents(
   file_path: &Path,
-  file_contents: FileContents,
+  mut file_contents: FileContents,
 ) -> Result<(), AnyError> {
   let file_text = if file_contents.had_bom {
     // add back the BOM
-    format!("{}{}", text_encoding::BOM_CHAR, file_contents.text)
+    file_contents.text.insert(0, '\u{FEFF}');
+    file_contents.text
   } else {
     file_contents.text
   };

@@ -13,7 +13,6 @@ use crate::args::ConfigFile;
 use crate::args::JsxImportSourceConfig;
 use crate::cache::FastInsecureHasher;
 use crate::cache::HttpCache;
-use crate::file_fetcher::get_source_from_bytes;
 use crate::lsp::logging::lsp_warn;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliGraphResolver;
@@ -22,7 +21,6 @@ use crate::resolver::SloppyImportsFsEntry;
 use crate::resolver::SloppyImportsResolution;
 use crate::resolver::SloppyImportsResolver;
 use crate::util::path::specifier_to_file_path;
-use crate::util::text_encoding;
 
 use deno_ast::MediaType;
 use deno_ast::ParsedSource;
@@ -797,8 +795,7 @@ impl FileSystemDocuments {
       let fs_version = calculate_fs_version_at_path(&path)?;
       let bytes = fs::read(path).ok()?;
       let content =
-        deno_graph::source::decode_owned_source(&specifier, bytes, None)
-          .ok()?;
+        deno_graph::source::decode_owned_source(specifier, bytes, None).ok()?;
       Document::new(
         specifier.clone(),
         fs_version,

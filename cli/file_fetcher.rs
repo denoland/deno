@@ -12,7 +12,6 @@ use crate::http_util::HeadersMap;
 use crate::http_util::HttpClient;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::UpdateGuard;
-use crate::util::text_encoding;
 
 use deno_ast::MediaType;
 use deno_core::anyhow::Context;
@@ -239,7 +238,7 @@ impl FileFetcher {
     specifier: &ModuleSpecifier,
   ) -> Result<File, AnyError> {
     debug!("FileFetcher::fetch_data_url() - specifier: {}", specifier);
-    let data_url = deno_graph::source::RawDataUrl::parse(&specifier)?;
+    let data_url = deno_graph::source::RawDataUrl::parse(specifier)?;
     let (bytes, headers) = data_url.into_bytes_and_headers();
     Ok(File {
       specifier: specifier.clone(),
