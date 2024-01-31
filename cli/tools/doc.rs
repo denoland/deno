@@ -224,12 +224,12 @@ impl deno_doc::html::HrefResolver for DocResolver {
     &self,
     _current_specifier: &ModuleSpecifier,
     current_file: &str,
-  ) -> String {
-    current_file.to_string()
+  ) -> Option<String> {
+    Some(current_file.to_string())
   }
 
-  fn resolve_source(&self, location: &deno_doc::Location) -> String {
-    location.filename.clone()
+  fn resolve_source(&self, location: &deno_doc::Location) -> Option<String> {
+    Some(location.filename.clone())
   }
 }
 
