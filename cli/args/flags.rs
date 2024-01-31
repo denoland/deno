@@ -301,6 +301,7 @@ pub struct VendorFlags {
 pub struct PublishFlags {
   pub token: Option<String>,
   pub dry_run: bool,
+  pub no_fast_check: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -2384,6 +2385,12 @@ fn publish_subcommand() -> Command {
           .help("Prepare the package for publishing performing all checks and validations without uploading")
           .action(ArgAction::SetTrue),
       )
+      .arg(
+        Arg::new("no-fast-check")
+          .long("no-fast-check")
+          .help("Skip Fast Check compatibility validation")
+          .action(ArgAction::SetTrue),
+      )
     })
 }
 
@@ -3817,6 +3824,7 @@ fn publish_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   flags.subcommand = DenoSubcommand::Publish(PublishFlags {
     token: matches.remove_one("token"),
     dry_run: matches.get_flag("dry-run"),
+    no_fast_check: matches.get_flag("no-fast-check"),
   });
 }
 
