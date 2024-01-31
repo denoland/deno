@@ -623,7 +623,7 @@ jobs:
           draft: true
       - name: Save cache build output (main)
         uses: actions/cache/save@v3
-        if: '!(matrix.skip) && ((matrix.job == ''test'' || matrix.job == ''lint'') && github.ref == ''refs/heads/main'')'
+        if: '!(matrix.skip) && ((matrix.job == ''test'' || matrix.job == ''lint''))'
         with:
           path: |-
             ./target
