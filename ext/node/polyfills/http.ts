@@ -65,6 +65,8 @@ import { clearTimeout as webClearTimeout } from "ext:deno_web/02_timers.js";
 import { resourceForReadableStream } from "ext:deno_web/06_streams.js";
 import { TcpConn } from "ext:deno_net/01_net.js";
 
+const { internalRidSymbol } = core;
+
 enum STATUS_CODES {
   /** RFC 7231, 6.2.1 */
   Continue = 100,
@@ -616,7 +618,7 @@ class ClientRequest extends OutgoingMessage {
       this.method,
       url,
       headers,
-      client[Symbol.for("Deno.internal.rid")],
+      client[internalRidSymbol],
       this._bodyWriteRid,
     );
   }
