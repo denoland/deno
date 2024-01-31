@@ -284,7 +284,8 @@ impl LanguageServer {
   /// in the Deno cache, including any of their dependencies.
   pub async fn cache_request(
     &self,
-    params: Option<Value>,
+    specifiers: Vec<ModuleSpecifier>,
+    referrer: ModuleSpecifier,
   ) -> LspResult<Option<Value>> {
     async fn create_graph_for_caching(
       cli_options: CliOptions,
@@ -330,50 +331,44 @@ impl LanguageServer {
       Ok(())
     }
 
-    match params.map(serde_json::from_value) {
-      Some(Ok(params)) => {
-        // do as much as possible in a read, then do a write outside
-        let maybe_prepare_cache_result = {
-          let inner = self.0.read().await; // ensure dropped
-          match inner.prepare_cache(params) {
-            Ok(maybe_cache_result) => maybe_cache_result,
-            Err(err) => {
-              self
-                .0
-                .read()
-                .await
-                .client
-                .show_message(MessageType::WARNING, err);
-              return Err(LspError::internal_error());
-            }
-          }
-        };
-        if let Some(result) = maybe_prepare_cache_result {
-          let cli_options = result.cli_options;
-          let roots = result.roots;
-          let open_docs = result.open_docs;
-          let handle = spawn(async move {
-            create_graph_for_caching(cli_options, roots, open_docs).await
-          });
-          if let Err(err) = handle.await.unwrap() {
-            self
-              .0
-              .read()
-              .await
-              .client
-              .show_message(MessageType::WARNING, err);
-          }
-          // do npm resolution in a write—we should have everything
-          // cached by this point anyway
-          self.0.write().await.refresh_npm_specifiers().await;
-          // now refresh the data in a read
-          self.0.read().await.post_cache(result.mark).await;
+    // do as much as possible in a read, then do a write outside
+    let maybe_prepare_cache_result = {
+      let inner = self.0.read().await; // ensure dropped
+      match inner.prepare_cache(specifiers, referrer) {
+        Ok(maybe_cache_result) => maybe_cache_result,
+        Err(err) => {
+          self
+            .0
+            .read()
+            .await
+            .client
+            .show_message(MessageType::WARNING, err);
+          return Err(LspError::internal_error());
         }
-        Ok(Some(json!(true)))
       }
-      Some(Err(err)) => Err(LspError::invalid_params(err.to_string())),
-      None => Err(LspError::invalid_params("Missing parameters")),
+    };
+    if let Some(result) = maybe_prepare_cache_result {
+      let cli_options = result.cli_options;
+      let roots = result.roots;
+      let open_docs = result.open_docs;
+      let handle = spawn(async move {
+        create_graph_for_caching(cli_options, roots, open_docs).await
+      });
+      if let Err(err) = handle.await.unwrap() {
+        self
+          .0
+          .read()
+          .await
+          .client
+          .show_message(MessageType::WARNING, err);
+      }
+      // do npm resolution in a write—we should have everything
+      // cached by this point anyway
+      self.0.write().await.refresh_npm_specifiers().await;
+      // now refresh the data in a read
+      self.0.read().await.post_cache(result.mark).await;
     }
+    Ok(Some(json!(true)))
   }
 
   /// This request is only used by the lsp integration tests to
@@ -394,12 +389,6 @@ impl LanguageServer {
 
   pub async fn performance_request(&self) -> LspResult<Option<Value>> {
     Ok(Some(self.0.read().await.get_performance()))
-  }
-
-  pub async fn reload_import_registries_request(
-    &self,
-  ) -> LspResult<Option<Value>> {
-    self.0.write().await.reload_import_registries().await
   }
 
   pub async fn task_definitions(&self) -> LspResult<Vec<TaskDefinition>> {
@@ -1081,24 +1070,18 @@ impl Inner {
               compiler_options_obj.get("jsxImportSource")
             {
               if let Some(jsx_import_source) = jsx_import_source.as_str() {
-                let cache_params = lsp_custom::CacheParams {
-                  referrer: TextDocumentIdentifier {
-                    uri: config_file.specifier.clone(),
-                  },
-                  uris: vec![TextDocumentIdentifier {
-                    uri: Url::parse(&format!(
-                      "data:application/typescript;base64,{}",
-                      base64::engine::general_purpose::STANDARD.encode(
-                        format!("import '{jsx_import_source}/jsx-runtime';")
-                      )
-                    ))
-                    .unwrap(),
-                  }],
-                };
+                let specifiers = vec![Url::parse(&format!(
+                  "data:application/typescript;base64,{}",
+                  base64::engine::general_purpose::STANDARD.encode(format!(
+                    "import '{jsx_import_source}/jsx-runtime';"
+                  ))
+                ))
+                .unwrap()];
+                let referrer = config_file.specifier.clone();
                 self.task_queue.queue_task(Box::new(|ls: LanguageServer| {
                   spawn(async move {
                     if let Err(err) =
-                      ls.cache_request(Some(json!(cache_params))).await
+                      ls.cache_request(specifiers, referrer).await
                     {
                       lsp_warn!("{}", err);
                     }
@@ -3222,24 +3205,13 @@ impl tower_lsp::LanguageServer for LanguageServer {
   ) -> LspResult<Option<Value>> {
     if params.command == "deno.cache" {
       let mut arguments = params.arguments.into_iter();
-      let uris = serde_json::to_value(arguments.next()).unwrap();
-      let uris: Vec<Url> = serde_json::from_value(uris)
+      let specifiers = serde_json::to_value(arguments.next()).unwrap();
+      let specifiers: Vec<Url> = serde_json::from_value(specifiers)
         .map_err(|err| LspError::invalid_params(err.to_string()))?;
       let referrer = serde_json::to_value(arguments.next()).unwrap();
       let referrer: Url = serde_json::from_value(referrer)
         .map_err(|err| LspError::invalid_params(err.to_string()))?;
-      self
-        .cache_request(Some(
-          serde_json::to_value(lsp_custom::CacheParams {
-            referrer: TextDocumentIdentifier { uri: referrer },
-            uris: uris
-              .into_iter()
-              .map(|uri| TextDocumentIdentifier { uri })
-              .collect(),
-          })
-          .expect("well formed json"),
-        ))
-        .await
+      self.cache_request(specifiers, referrer).await
     } else if params.command == "deno.reloadImportRegistries" {
       self.0.write().await.reload_import_registries().await
     } else {
@@ -3421,7 +3393,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
 
   async fn did_save(&self, params: DidSaveTextDocumentParams) {
     let uri = &params.text_document.uri;
-    {
+    let specifier = {
       let mut inner = self.0.write().await;
       let specifier = inner.url_map.normalize_url(uri, LspUrlKind::File);
       inner.documents.save(&specifier);
@@ -3438,18 +3410,10 @@ impl tower_lsp::LanguageServer for LanguageServer {
         Ok(path) if is_importable_ext(&path) => {}
         _ => return,
       }
-    }
-    if let Err(err) = self
-      .cache_request(Some(
-        serde_json::to_value(lsp_custom::CacheParams {
-          referrer: TextDocumentIdentifier { uri: uri.clone() },
-          uris: vec![TextDocumentIdentifier { uri: uri.clone() }],
-        })
-        .unwrap(),
-      ))
-      .await
-    {
-      lsp_warn!("Failed to cache \"{}\" on save: {}", uri.to_string(), err);
+      specifier
+    };
+    if let Err(err) = self.cache_request(vec![], specifier.clone()).await {
+      lsp_warn!("Failed to cache \"{}\" on save: {}", &specifier, err);
     }
   }
 
@@ -3693,22 +3657,17 @@ struct PrepareCacheResult {
 impl Inner {
   fn prepare_cache(
     &self,
-    params: lsp_custom::CacheParams,
+    specifiers: Vec<ModuleSpecifier>,
+    referrer: ModuleSpecifier,
   ) -> Result<Option<PrepareCacheResult>, AnyError> {
-    let referrer = self
-      .url_map
-      .normalize_url(&params.referrer.uri, LspUrlKind::File);
-    let mark = self.performance.mark_with_args("lsp.cache", &params);
-    let roots = if !params.uris.is_empty() {
-      params
-        .uris
-        .iter()
-        .map(|t| self.url_map.normalize_url(&t.uri, LspUrlKind::File))
-        .collect()
+    let mark = self
+      .performance
+      .mark_with_args("lsp.cache", (&specifiers, &referrer));
+    let roots = if !specifiers.is_empty() {
+      specifiers
     } else {
       vec![referrer]
     };
-
     let workspace_settings = self.config.workspace_settings();
     let mut cli_options = CliOptions::new(
       Flags {
