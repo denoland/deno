@@ -616,7 +616,7 @@ class ClientRequest extends OutgoingMessage {
       this.method,
       url,
       headers,
-      client.rid,
+      client[Symbol.for("Deno.internal.rid")],
       this._bodyWriteRid,
     );
   }
