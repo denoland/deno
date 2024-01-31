@@ -5,6 +5,16 @@ delete Intl.v8BreakIterator;
 
 import { core, internals, primordials } from "ext:core/mod.js";
 const ops = core.ops;
+import {
+  op_bootstrap_args,
+  op_bootstrap_is_tty,
+  op_bootstrap_no_color,
+  op_bootstrap_pid,
+  op_main_module,
+  op_ppid,
+  op_set_format_exception_callback,
+  op_snapshot_options,
+} from "ext:core/ops";
 const {
   ArrayPrototypeFilter,
   ArrayPrototypeIncludes,
@@ -331,14 +341,10 @@ function importScripts(...urls) {
   }
 }
 
-function opMainModule() {
-  return ops.op_main_module();
-}
-
-const opArgs = memoizeLazy(() => ops.op_bootstrap_args());
-const opPid = memoizeLazy(() => ops.op_bootstrap_pid());
-const opPpid = memoizeLazy(() => ops.op_ppid());
-setNoColorFn(() => ops.op_bootstrap_no_color() || !ops.op_bootstrap_is_tty());
+const opArgs = memoizeLazy(() => op_bootstrap_args());
+const opPid = memoizeLazy(() => op_bootstrap_pid());
+const opPpid = memoizeLazy(() => op_ppid());
+setNoColorFn(() => op_bootstrap_no_color() || !op_bootstrap_is_tty());
 
 function formatException(error) {
   if (
@@ -433,7 +439,7 @@ function runtimeStart(
   core.setMacrotaskCallback(timers.handleTimerMacrotask);
   core.setWasmStreamingCallback(fetch.handleWasmStreaming);
   core.setReportExceptionCallback(event.reportException);
-  ops.op_set_format_exception_callback(formatException);
+  op_set_format_exception_callback(formatException);
   version.setVersions(
     denoVersion,
     v8Version,
@@ -741,7 +747,7 @@ const {
   tsVersion,
   v8Version,
   target,
-} = ops.op_snapshot_options();
+} = op_snapshot_options();
 
 function bootstrapMainRuntime(runtimeOptions) {
   if (hasBootstrapped) {
@@ -823,9 +829,9 @@ function bootstrapMainRuntime(runtimeOptions) {
   ObjectDefineProperties(finalDenoNs, {
     pid: util.getterOnly(opPid),
     ppid: util.getterOnly(opPpid),
-    noColor: util.getterOnly(() => ops.op_bootstrap_no_color()),
+    noColor: util.getterOnly(() => op_bootstrap_no_color()),
     args: util.getterOnly(opArgs),
-    mainModule: util.getterOnly(opMainModule),
+    mainModule: util.getterOnly(() => op_main_module()),
     // TODO(kt3k): Remove this export at v2
     // See https://github.com/denoland/deno/issues/9294
     customInspect: {
@@ -983,7 +989,7 @@ function bootstrapWorkerRuntime(
 
   ObjectDefineProperties(finalDenoNs, {
     pid: util.getterOnly(opPid),
-    noColor: util.getterOnly(() => ops.op_bootstrap_no_color()),
+    noColor: util.getterOnly(() => op_bootstrap_no_color()),
     args: util.getterOnly(opArgs),
     // TODO(kt3k): Remove this export at v2
     // See https://github.com/denoland/deno/issues/9294
