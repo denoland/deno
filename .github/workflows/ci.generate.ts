@@ -140,7 +140,7 @@ const reconfigureWindowsStorage = {
   if: [
     "matrix.os == 'windows' &&",
     "!endsWith(matrix.runner, '-xl')",
-  ],
+  ].join("\n"),
   shell: "pwsh",
   run: `
 New-Item -ItemType "directory" -Path "$env:TEMP/__target__"

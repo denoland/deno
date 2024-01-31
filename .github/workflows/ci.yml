@@ -128,7 +128,9 @@ jobs:
       RUST_LIB_BACKTRACE: 0
     steps:
       - name: Reconfigure Windows Storage
-        if: '!(matrix.skip) && (matrix.os == ''windows'' &&,!endsWith(matrix.runner, ''-xl''))'
+        if: |-
+          !(matrix.skip) && (matrix.os == 'windows' &&
+          !endsWith(matrix.runner, '-xl'))
         shell: pwsh
         run: |-
           New-Item -ItemType "directory" -Path "$env:TEMP/__target__"
