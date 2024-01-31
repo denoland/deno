@@ -143,7 +143,7 @@ impl Cipher {
 
         Aes256Gcm(Box::new(cipher))
       }
-      "aes256" => {
+      "aes256" | "aes-256-cbc" => {
         Aes256Cbc(Box::new(cbc::Encryptor::new(key.into(), iv.into())))
       }
       _ => return Err(type_error(format!("Unknown cipher {algorithm_name}"))),
@@ -277,7 +277,7 @@ impl Decipher {
 
         Aes256Gcm(Box::new(decipher))
       }
-      "aes256" => {
+      "aes256" | "aes-256-cbc" => {
         Aes256Cbc(Box::new(cbc::Decryptor::new(key.into(), iv.into())))
       }
       _ => return Err(type_error(format!("Unknown cipher {algorithm_name}"))),
