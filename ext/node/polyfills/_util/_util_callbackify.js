@@ -33,6 +33,7 @@ const {
   ObjectGetOwnPropertyDescriptors,
   ObjectSetPrototypeOf,
   ObjectValues,
+  PromisePrototypeThen,
 } = primordials;
 
 import { nextTick } from "ext:deno_node/_next_tick.ts";
@@ -58,11 +59,14 @@ function callbackify(original) {
     const cb = FunctionPrototypeBind(maybeCb, this);
     // In true node style we process the callback on `nextTick` with all the
     // implications (stack, `uncaughtException`, `async_hooks`)
-    ReflectApply(original, this, args)
-      .then((ret) => nextTick(cb, null, ret), (rej) => {
+    PromisePrototypeThen(
+      ReflectApply(original, this, args),
+      (ret) => nextTick(cb, null, ret),
+      (rej) => {
         rej = rej || new NodeFalsyValueRejectionError(rej);
         return nextTick(cb, rej);
-      });
+      },
+    );
   }
 
   const descriptors = ObjectGetOwnPropertyDescriptors(original);

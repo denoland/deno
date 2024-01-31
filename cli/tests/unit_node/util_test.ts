@@ -308,7 +308,7 @@ Deno.test({
   name: "[util] callbackify(undefined) throws",
   fn() {
     assertThrows(
-      // @ts-expect-error
+      // @ts-expect-error: testing runtime error
       () => util.callbackify(undefined),
       TypeError,
       'The "original" argument must be of type function',
