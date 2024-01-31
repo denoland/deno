@@ -3295,7 +3295,7 @@ fn lsp_code_lens() {
       },
       "command": {
         "title": "1 reference",
-        "command": "deno.showReferences",
+        "command": "deno.client.showReferences",
         "arguments": [
           "file:///a/file.ts",
           { "line": 0, "character": 6 },
@@ -3362,7 +3362,7 @@ fn lsp_code_lens() {
       },
       "command": {
         "title": "2 references",
-        "command": "deno.showReferences",
+        "command": "deno.client.showReferences",
         "arguments": [
           "file:///a/file.ts",
           { "line": 15, "character": 6 },
@@ -3490,7 +3490,7 @@ fn lsp_code_lens_impl() {
       },
       "command": {
         "title": "1 implementation",
-        "command": "deno.showReferences",
+        "command": "deno.client.showReferences",
         "arguments": [
           "file:///a/file.ts",
           { "line": 0, "character": 10 },
@@ -3568,7 +3568,7 @@ fn lsp_code_lens_test() {
       },
       "command": {
         "title": "▶︎ Run Test",
-        "command": "deno.test",
+        "command": "deno.client.test",
         "arguments": [
           "file:///a/file.ts",
           "test a",
@@ -3582,7 +3582,7 @@ fn lsp_code_lens_test() {
       },
       "command": {
         "title": "Debug",
-        "command": "deno.test",
+        "command": "deno.client.test",
         "arguments": [
           "file:///a/file.ts",
           "test a",
@@ -3596,7 +3596,7 @@ fn lsp_code_lens_test() {
       },
       "command": {
         "title": "▶︎ Run Test",
-        "command": "deno.test",
+        "command": "deno.client.test",
         "arguments": [
           "file:///a/file.ts",
           "test b",
@@ -3610,7 +3610,7 @@ fn lsp_code_lens_test() {
       },
       "command": {
         "title": "Debug",
-        "command": "deno.test",
+        "command": "deno.client.test",
         "arguments": [
           "file:///a/file.ts",
           "test b",
@@ -3624,7 +3624,7 @@ fn lsp_code_lens_test() {
       },
       "command": {
         "title": "▶︎ Run Test",
-        "command": "deno.test",
+        "command": "deno.client.test",
         "arguments": [
           "file:///a/file.ts",
           "test c",
@@ -3638,7 +3638,7 @@ fn lsp_code_lens_test() {
       },
       "command": {
         "title": "Debug",
-        "command": "deno.test",
+        "command": "deno.client.test",
         "arguments": [
           "file:///a/file.ts",
           "test c",
@@ -3652,7 +3652,7 @@ fn lsp_code_lens_test() {
       },
       "command": {
         "title": "▶︎ Run Test",
-        "command": "deno.test",
+        "command": "deno.client.test",
         "arguments": [
           "file:///a/file.ts",
           "test d",
@@ -3666,7 +3666,7 @@ fn lsp_code_lens_test() {
       },
       "command": {
         "title": "Debug",
-        "command": "deno.test",
+        "command": "deno.client.test",
         "arguments": [
           "file:///a/file.ts",
           "test d",
@@ -3680,7 +3680,7 @@ fn lsp_code_lens_test() {
       },
       "command": {
         "title": "▶︎ Run Test",
-        "command": "deno.test",
+        "command": "deno.client.test",
         "arguments": [
           "file:///a/file.ts",
           "test e",
@@ -3694,7 +3694,7 @@ fn lsp_code_lens_test() {
       },
       "command": {
         "title": "Debug",
-        "command": "deno.test",
+        "command": "deno.client.test",
         "arguments": [
           "file:///a/file.ts",
           "test e",
@@ -3708,7 +3708,7 @@ fn lsp_code_lens_test() {
       },
       "command": {
         "title": "▶︎ Run Test",
-        "command": "deno.test",
+        "command": "deno.client.test",
         "arguments": [
           "file:///a/file.ts",
           "test f",
@@ -3722,7 +3722,7 @@ fn lsp_code_lens_test() {
       },
       "command": {
         "title": "Debug",
-        "command": "deno.test",
+        "command": "deno.client.test",
         "arguments": [
           "file:///a/file.ts",
           "test f",
@@ -3736,7 +3736,7 @@ fn lsp_code_lens_test() {
       },
       "command": {
         "title": "▶︎ Run Test",
-        "command": "deno.test",
+        "command": "deno.client.test",
         "arguments": [
           "file:///a/file.ts",
           "test g",
@@ -3750,7 +3750,7 @@ fn lsp_code_lens_test() {
       },
       "command": {
         "title": "Debug",
-        "command": "deno.test",
+        "command": "deno.client.test",
         "arguments": [
           "file:///a/file.ts",
           "test g",
@@ -3764,7 +3764,7 @@ fn lsp_code_lens_test() {
       },
       "command": {
         "title": "▶︎ Run Test",
-        "command": "deno.test",
+        "command": "deno.client.test",
         "arguments": [
           "file:///a/file.ts",
           "test h",
@@ -3778,7 +3778,7 @@ fn lsp_code_lens_test() {
       },
       "command": {
         "title": "Debug",
-        "command": "deno.test",
+        "command": "deno.client.test",
         "arguments": [
           "file:///a/file.ts",
           "test h",
@@ -4943,6 +4943,73 @@ fn lsp_cache_on_save() {
   assert_eq!(client.read_diagnostics().all(), vec![]);
 
   client.shutdown();
+}
+
+// Regression test for https://github.com/denoland/deno/issues/22122.
+#[test]
+fn lsp_cache_then_definition() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"import "http://localhost:4545/run/002_hello.ts";"#,
+    },
+  }));
+  // Prior to the fix, this would cause a faulty memoization that maps the
+  // URL "http://localhost:4545/run/002_hello.ts" to itself, preventing it from
+  // being reverse-mapped to "deno:/http/localhost%3A4545/run/002_hello.ts" on
+  // "textDocument/definition" request.
+  client.write_request(
+    "workspace/executeCommand",
+    json!({
+      "command": "deno.cache",
+      "arguments": [
+        ["http://localhost:4545/run/002_hello.ts"],
+        temp_dir.uri().join("file.ts").unwrap(),
+      ],
+    }),
+  );
+  let res = client.write_request(
+    "textDocument/definition",
+    json!({
+      "textDocument": { "uri": temp_dir.uri().join("file.ts").unwrap() },
+      "position": { "line": 0, "character": 8 },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([{
+      "targetUri": "deno:/http/localhost%3A4545/run/002_hello.ts",
+      "targetRange": {
+        "start": {
+          "line": 0,
+          "character": 0,
+        },
+        "end": {
+          "line": 1,
+          "character": 0,
+        },
+      },
+      "targetSelectionRange": {
+        "start": {
+          "line": 0,
+          "character": 0,
+        },
+        "end": {
+          "line": 1,
+          "character": 0,
+        },
+      },
+    }]),
+  );
 }
 
 #[test]
@@ -9037,8 +9104,8 @@ fn lsp_completions_complete_function_calls() {
         "value": "Calls a defined callback function on each element of an array, and returns an array that contains the results.\n\n*@param* - callbackfn A function that accepts up to three arguments. The map method calls the callbackfn function one time for each element in the array.*@param* - thisArg An object to which the this keyword can refer in the callbackfn function. If thisArg is omitted, undefined is used as the this value."
       },
       "sortText": "1",
-      "insertText": "map(callbackfn)",
-      "insertTextFormat": 1
+      "insertText": "map(${1:callbackfn})",
+      "insertTextFormat": 2,
     })
   );
   client.shutdown();
@@ -11043,5 +11110,108 @@ fn sloppy_imports_not_enabled() {
       }
     }])
   );
+  client.shutdown();
+}
+
+#[test]
+fn decorators_tc39() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("deno.json", r#"{}"#);
+
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+
+  let uri = Url::from_file_path(temp_dir.path().join("main.ts")).unwrap();
+
+  let diagnostics = client
+    .did_open(json!({
+      "textDocument": {
+        "uri": uri,
+        "languageId": "typescript",
+        "version": 1,
+        "text": r#"// deno-lint-ignore no-explicit-any
+function logged(value: any, { kind, name }: { kind: string; name: string }) {
+  if (kind === "method") {
+    return function (...args: unknown[]) {
+      console.log(`starting ${name} with arguments ${args.join(", ")}`);
+      // @ts-ignore this has implicit any type
+      const ret = value.call(this, ...args);
+      console.log(`ending ${name}`);
+      return ret;
+    };
+  }
+}
+
+class C {
+  @logged
+  m(arg: number) {
+    console.log("C.m", arg);
+  }
+}
+
+new C().m(1);
+"#
+      }
+    }))
+    .all();
+
+  assert_eq!(diagnostics.len(), 0);
+
+  client.shutdown();
+}
+
+#[test]
+fn decorators_ts() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    r#"{ "compilerOptions": { "experimentalDecorators": true } }"#,
+  );
+
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+
+  let uri = Url::from_file_path(temp_dir.path().join("main.ts")).unwrap();
+
+  let diagnostics = client
+    .did_open(json!({
+      "textDocument": {
+        "uri": uri,
+        "languageId": "typescript",
+        "version": 1,
+        "text": r#"// deno-lint-ignore-file
+function a() {
+  console.log("@A evaluated");
+  return function (
+    _target: any,
+    _propertyKey: string,
+    descriptor: PropertyDescriptor,
+  ) {
+    console.log("@A called");
+    const fn = descriptor.value;
+    descriptor.value = function () {
+      console.log("fn() called from @A");
+      fn();
+    };
+  };
+}
+
+class C {
+  @a()
+  static test() {
+    console.log("C.test() called");
+  }
+}
+
+C.test();
+"#
+      }
+    }))
+    .all();
+
+  assert_eq!(diagnostics.len(), 0);
+
   client.shutdown();
 }

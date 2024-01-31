@@ -487,6 +487,26 @@
         }
       }
     },
+    "publish": {
+      "description": "Configuration for deno publish",
+      "type": "object",
+      "properties": {
+        "include": {
+          "type": "array",
+          "description": "List of files, directories or globs that will be included in the published package.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "exclude": {
+          "type": "array",
+          "description": "List of files, directories or globs that will be excluded from the published package.",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
     "bench": {
       "description": "Configuration for deno bench",
       "type": "object",

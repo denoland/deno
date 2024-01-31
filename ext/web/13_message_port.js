@@ -7,11 +7,11 @@
 /// <reference path="./lib.deno_web.d.ts" />
 
 import { core, primordials } from "ext:core/mod.js";
-const {
+import {
+  op_message_port_create_entangled,
   op_message_port_post_message,
   op_message_port_recv_message,
-  op_message_port_create_entangled,
-} = core.ensureFastOps();
+} from "ext:core/ops";
 const {
   ArrayBufferPrototypeGetByteLength,
   ArrayPrototypeFilter,

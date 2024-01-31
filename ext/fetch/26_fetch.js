@@ -11,15 +11,12 @@
 /// <reference lib="esnext" />
 
 import { core, primordials } from "ext:core/mod.js";
-const {
+import {
   op_fetch,
+  op_fetch_send,
   op_wasm_streaming_feed,
   op_wasm_streaming_set_url,
-} = core.ensureFastOps();
-// TODO(bartlomieju): this ops is also used in `ext/node/polyfills/http.ts`.
-const {
-  op_fetch_send,
-} = core.ensureFastOps(true);
+} from "ext:core/ops";
 const {
   ArrayPrototypePush,
   ArrayPrototypeSplice,

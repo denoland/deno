@@ -1,11 +1,11 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { core, primordials } from "ext:core/mod.js";
-const {
+import { primordials } from "ext:core/mod.js";
+import {
   op_bootstrap_language,
   op_bootstrap_numcpus,
   op_bootstrap_user_agent,
-} = core.ensureFastOps(true);
+} from "ext:core/ops";
 const {
   ObjectDefineProperties,
   ObjectPrototypeIsPrototypeOf,

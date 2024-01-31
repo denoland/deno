@@ -23,11 +23,8 @@ use crate::graph_util::FileWatcherReporter;
 use crate::graph_util::ModuleGraphBuilder;
 use crate::graph_util::ModuleGraphContainer;
 use crate::http_util::HttpClient;
-use crate::module_loader::CjsResolutionStore;
 use crate::module_loader::CliModuleLoaderFactory;
-use crate::module_loader::CliNodeResolver;
 use crate::module_loader::ModuleLoadPreparer;
-use crate::module_loader::NpmModuleLoader;
 use crate::node::CliCjsCodeAnalyzer;
 use crate::node::CliNodeCodeTranslator;
 use crate::npm::create_cli_npm_resolver;
@@ -37,8 +34,11 @@ use crate::npm::CliNpmResolverCreateOptions;
 use crate::npm::CliNpmResolverManagedCreateOptions;
 use crate::npm::CliNpmResolverManagedPackageJsonInstallerOption;
 use crate::npm::CliNpmResolverManagedSnapshotOption;
+use crate::resolver::CjsResolutionStore;
 use crate::resolver::CliGraphResolver;
 use crate::resolver::CliGraphResolverOptions;
+use crate::resolver::CliNodeResolver;
+use crate::resolver::NpmModuleLoader;
 use crate::resolver::SloppyImportsResolver;
 use crate::standalone::DenoCompileBinaryWriter;
 use crate::tools::check::TypeChecker;
@@ -293,15 +293,38 @@ impl CliFactory {
   }
 
   pub fn maybe_lockfile(&self) -> &Option<Arc<Mutex<Lockfile>>> {
+    fn check_no_npm(lockfile: &Mutex<Lockfile>, options: &CliOptions) -> bool {
+      if options.no_npm() {
+        return true;
+      }
+      // Deno doesn't yet understand npm workspaces and the package.json resolution
+      // may be in a different folder than the deno.json/lockfile. So for now, ignore
+      // any package.jsons that are in different folders
+      options
+        .maybe_package_json()
+        .as_ref()
+        .map(|package_json| {
+          package_json.path.parent() != lockfile.lock().filename.parent()
+        })
+        .unwrap_or(false)
+    }
+
     self.services.lockfile.get_or_init(|| {
       let maybe_lockfile = self.options.maybe_lockfile();
 
       // initialize the lockfile with the workspace's configuration
       if let Some(lockfile) = &maybe_lockfile {
-        let package_json_deps = self
-          .package_json_deps_provider()
-          .reqs()
-          .map(|reqs| reqs.into_iter().map(|s| format!("npm:{}", s)).collect())
+        let no_npm = check_no_npm(lockfile, &self.options);
+        let package_json_deps = (!no_npm)
+          .then(|| {
+            self
+              .package_json_deps_provider()
+              .reqs()
+              .map(|reqs| {
+                reqs.into_iter().map(|s| format!("npm:{}", s)).collect()
+              })
+              .unwrap_or_default()
+          })
           .unwrap_or_default();
         let mut lockfile = lockfile.lock();
         let config = match self.options.maybe_workspace_config() {
@@ -352,7 +375,7 @@ impl CliFactory {
         };
         lockfile.set_workspace_config(
           deno_lockfile::SetWorkspaceConfigOptions {
-            no_npm: self.options.no_npm(),
+            no_npm,
             no_config: self.options.no_config(),
             config,
             nv_to_jsr_url: |nv| {
@@ -751,6 +774,7 @@ impl CliFactory {
       self.create_cli_main_worker_options()?,
       self.options.node_ipc_fd(),
       self.options.disable_deprecated_api_warning,
+      self.options.verbose_deprecated_api_warning,
     ))
   }
 

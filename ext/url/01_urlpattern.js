@@ -7,11 +7,11 @@
 /// <reference path="./internal.d.ts" />
 /// <reference path="./lib.deno_url.d.ts" />
 
-import { core, primordials } from "ext:core/mod.js";
-const {
+import { primordials } from "ext:core/mod.js";
+import {
   op_urlpattern_parse,
   op_urlpattern_process_match_input,
-} = core.ensureFastOps();
+} from "ext:core/ops";
 const {
   ArrayPrototypePush,
   MathRandom,

@@ -1,9 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { core, primordials } from "ext:core/mod.js";
-const {
-  op_bootstrap_log_level,
-} = core.ensureFastOps();
+import { primordials } from "ext:core/mod.js";
+import { op_bootstrap_log_level } from "ext:core/ops";
 const {
   Promise,
   SafeArrayIterator,
