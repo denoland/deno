@@ -8,9 +8,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { core } from "ext:core/mod.js";
-const {
-  op_node_is_promise_rejected,
-} = core.ensureFastOps();
+import { op_node_is_promise_rejected } from "ext:core/ops";
 import { validateFunction } from "ext:deno_node/internal/validators.mjs";
 
 function assert(cond: boolean) {
