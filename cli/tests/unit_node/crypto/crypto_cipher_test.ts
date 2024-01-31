@@ -118,6 +118,11 @@ Deno.test({
         "dc95c078a2408989ad48a21492842087dc95c078a2408989ad48a21492842087dc95c078a2408989ad48a21492842087",
         "0ac1d7e8655254c6814b46753932df88",
       ],
+      [
+        ["aes256", 32, 16],
+        "dc95c078a2408989ad48a2149284208708c374848c228233c2b34f332bd2e9d38b70c515a6663d38cdb8e6532b266491",
+        "2e62607a5e8b715e4cb229a12169f2b2",
+      ],
     ] as const;
     for (
       const [[alg, keyLen, ivLen], expectedUpdate, expectedFinal] of table
