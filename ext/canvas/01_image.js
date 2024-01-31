@@ -1,7 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { core, internals, primordials } from "ext:core/mod.js";
-const ops = core.ops;
+import { internals, primordials } from "ext:core/mod.js";
+import { op_image_decode_png, op_image_process } from "ext:core/ops";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { DOMException } from "ext:deno_web/01_dom_exception.js";
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
@@ -438,7 +438,7 @@ function createImageBitmap(
           "InvalidStateError",
         );
       }
-      const { data: imageData, width, height } = ops.op_image_decode_png(data);
+      const { data: imageData, width, height } = op_image_decode_png(data);
       const processedImage = processImage(
         imageData,
         width,
@@ -517,7 +517,7 @@ function processImage(input, width, height, sx, sy, sw, sh, options) {
    * the image at the correct location, which is the inverse of the x & y of
    * sourceRectangle's top-left corner.
    */
-  const data = ops.op_image_process(
+  const data = op_image_process(
     new Uint8Array(TypedArrayPrototypeGetBuffer(input)),
     {
       width,
