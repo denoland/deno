@@ -292,3 +292,26 @@ Deno.test({
     fn();
   },
 });
+
+Deno.test({
+  name: "[util] callbackify() works",
+  fn() {
+    const fn = util.callbackify(() => Promise.resolve("foo"));
+    fn((err, value) => {
+      assert(err === null);
+      assert(value === "foo");
+    });
+  },
+});
+
+Deno.test({
+  name: "[util] callbackify(undefined) throws",
+  fn() {
+    assertThrows(
+      // @ts-expect-error
+      () => util.callbackify(undefined),
+      TypeError,
+      'The "original" argument must be of type function',
+    );
+  },
+});
