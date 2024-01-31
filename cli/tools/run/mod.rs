@@ -94,7 +94,7 @@ pub async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
   let source_file = File {
     maybe_types: None,
     media_type: MediaType::TypeScript,
-    source: String::from_utf8(source)?.into(),
+    source: source.into(),
     specifier: main_module.clone(),
     maybe_headers: None,
   };

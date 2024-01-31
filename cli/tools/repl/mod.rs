@@ -1,5 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::sync::Arc;
+
 use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::ReplFlags;
@@ -148,7 +150,7 @@ async fn read_eval_file(
     .fetch(&specifier, PermissionsContainer::allow_all())
     .await?;
 
-  Ok((*file.source).to_string())
+  Ok(String::from_utf8(file.source.to_vec())?)
 }
 
 pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {

@@ -818,7 +818,7 @@ mod tests {
     let url_str = format!("http://127.0.0.1:4545/encoding/{fixture}");
     let specifier = resolve_url(&url_str).unwrap();
     let (file, headers) = test_fetch_remote(&specifier).await;
-    assert_eq!(&*file.source, expected);
+    assert_eq!(&String::from_utf8(file.source.to_vec()).unwrap(), expected);
     assert_eq!(file.media_type, MediaType::TypeScript);
     assert_eq!(
       headers.get("content-type").unwrap(),
@@ -830,7 +830,7 @@ mod tests {
     let p = test_util::testdata_path().join(format!("encoding/{charset}.ts"));
     let specifier = ModuleSpecifier::from_file_path(p).unwrap();
     let (file, _) = test_fetch(&specifier).await;
-    assert_eq!(&*file.source, expected);
+    assert_eq!(String::from_utf8(file.source.to_vec()).unwrap(), expected);
   }
 
   #[test]

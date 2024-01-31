@@ -159,8 +159,8 @@ pub async fn build<
   // write out all the files
   for module in &remote_modules {
     let source = match module {
-      Module::Esm(module) => &module.source.bytes,
-      Module::Json(module) => &module.bytes,
+      Module::Js(module) => &module.source,
+      Module::Json(module) => &module.source,
       Module::Node(_) | Module::Npm(_) | Module::External(_) => continue,
     };
     let specifier = module.specifier();
@@ -169,13 +169,13 @@ pub async fn build<
       .unwrap_or_else(|| mappings.local_path(specifier));
 
     environment.create_dir_all(local_path.parent().unwrap())?;
-    environment.write_file(&local_path, source)?;
+    environment.write_file(&local_path, source.as_bytes())?;
   }
 
   // write out the proxies
   for (specifier, proxied_module) in mappings.proxied_modules() {
     let proxy_path = mappings.local_path(specifier);
-    let module = graph.get(specifier).unwrap().esm().unwrap();
+    let module = graph.get(specifier).unwrap().js().unwrap();
     let text =
       build_proxy_module_source(module, proxied_module, parsed_source_cache)?;
 
