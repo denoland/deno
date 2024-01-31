@@ -14,7 +14,6 @@ use crate::args::JsxImportSourceConfig;
 use crate::cache::FastInsecureHasher;
 use crate::cache::HttpCache;
 use crate::file_fetcher::get_source_from_bytes;
-use crate::file_fetcher::get_source_from_data_url;
 use crate::lsp::logging::lsp_warn;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliGraphResolver;
@@ -797,8 +796,9 @@ impl FileSystemDocuments {
       let path = specifier_to_file_path(specifier).ok()?;
       let fs_version = calculate_fs_version_at_path(&path)?;
       let bytes = fs::read(path).ok()?;
-      let maybe_charset = Some(text_encoding::detect_charset(&bytes));
-      let content = get_source_from_bytes(bytes, maybe_charset).ok()?;
+      let content =
+        deno_graph::source::decode_owned_source(&specifier, bytes, None)
+          .ok()?;
       Document::new(
         specifier.clone(),
         fs_version,
@@ -808,7 +808,10 @@ impl FileSystemDocuments {
         npm_resolver,
       )
     } else if specifier.scheme() == "data" {
-      let (source, _) = get_source_from_data_url(specifier).ok()?;
+      let source = deno_graph::source::RawDataUrl::parse(specifier)
+        .ok()?
+        .decode()
+        .ok()?;
       Document::new(
         specifier.clone(),
         "1".to_string(),
@@ -827,7 +830,12 @@ impl FileSystemDocuments {
           specifier,
           Some(&specifier_metadata.headers),
         );
-      let content = get_source_from_bytes(bytes, maybe_charset).ok()?;
+      let content = deno_graph::source::decode_owned_source(
+        specifier,
+        bytes,
+        maybe_charset,
+      )
+      .ok()?;
       let maybe_headers = Some(specifier_metadata.headers);
       Document::new(
         specifier.clone(),

@@ -607,17 +607,12 @@ struct FileContents {
 fn read_file_contents(file_path: &Path) -> Result<FileContents, AnyError> {
   let file_bytes = fs::read(file_path)
     .with_context(|| format!("Error reading {}", file_path.display()))?;
-  let charset = text_encoding::detect_charset(&file_bytes);
-  let file_text = text_encoding::convert_to_utf8(&file_bytes, charset)
-    .map_err(|_| {
+  let had_bom = file_bytes.starts_with(&[0xEF, 0xBB, 0xBF]);
+  // will have the BOM stripped
+  let text = deno_graph::source::decode_owned_local_source(file_bytes)
+    .with_context(|| {
       anyhow!("{} is not a valid UTF-8 file", file_path.display())
     })?;
-  let had_bom = file_text.starts_with(text_encoding::BOM_CHAR);
-  let text = if had_bom {
-    text_encoding::strip_bom(&file_text).to_string()
-  } else {
-    file_text.to_string()
-  };
 
   Ok(FileContents { text, had_bom })
 }

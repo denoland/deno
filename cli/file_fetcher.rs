@@ -14,7 +14,6 @@ use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::UpdateGuard;
 use crate::util::text_encoding;
 
-use data_url::DataUrl;
 use deno_ast::MediaType;
 use deno_core::anyhow::Context;
 use deno_core::error::custom_error;
@@ -62,9 +61,9 @@ pub struct File {
   /// The _final_ specifier for the file.  The requested specifier and the final
   /// specifier maybe different for remote files that have been redirected.
   pub specifier: ModuleSpecifier,
+  pub maybe_headers: Option<HashMap<String, String>>,
   /// The source of the file.
   pub source: Arc<[u8]>,
-  pub maybe_headers: Option<HashMap<String, String>>,
 }
 
 impl File {
@@ -127,40 +126,10 @@ fn fetch_local(specifier: &ModuleSpecifier) -> Result<File, AnyError> {
   let bytes = fs::read(local)?;
 
   Ok(File {
-    source: bytes.into(),
     specifier: specifier.clone(),
     maybe_headers: None,
+    source: bytes.into(),
   })
-}
-
-/// Returns the decoded body and content-type of a provided
-/// data URL.
-pub fn get_source_from_data_url(
-  specifier: &ModuleSpecifier,
-) -> Result<(String, String), AnyError> {
-  let data_url = DataUrl::process(specifier.as_str())
-    .map_err(|e| uri_error(format!("{e:?}")))?;
-  let mime = data_url.mime_type();
-  let charset = mime.get_parameter("charset");
-  let (bytes, _) = data_url
-    .decode_to_vec()
-    .map_err(|e| uri_error(format!("{e:?}")))?;
-  Ok((get_source_from_bytes(bytes, charset)?, format!("{mime}")))
-}
-
-/// Given a vector of bytes and optionally a charset, decode the bytes to a
-/// string.
-pub fn get_source_from_bytes(
-  bytes: Vec<u8>,
-  maybe_charset: Option<&str>,
-) -> Result<String, AnyError> {
-  let source = if let Some(charset) = maybe_charset {
-    text_encoding::convert_to_utf8(&bytes, charset)?.to_string()
-  } else {
-    String::from_utf8(bytes)?
-  };
-
-  Ok(source)
 }
 
 /// Return a validated scheme for a given module specifier.
@@ -258,8 +227,8 @@ impl FileFetcher {
 
     Ok(Some(File {
       specifier: specifier.clone(),
-      source: Arc::from(bytes),
       maybe_headers: Some(headers),
+      source: Arc::from(bytes),
     }))
   }
 
@@ -270,12 +239,12 @@ impl FileFetcher {
     specifier: &ModuleSpecifier,
   ) -> Result<File, AnyError> {
     debug!("FileFetcher::fetch_data_url() - specifier: {}", specifier);
-    let (source, content_type) = get_source_from_data_url(specifier)?;
-    let headers = HashMap::from([("content-type".to_string(), content_type)]);
+    let data_url = deno_graph::source::RawDataUrl::parse(&specifier)?;
+    let (bytes, headers) = data_url.into_bytes_and_headers();
     Ok(File {
-      source: Arc::from(source.into_bytes()),
       specifier: specifier.clone(),
       maybe_headers: Some(headers),
+      source: Arc::from(bytes),
     })
   }
 
@@ -301,8 +270,8 @@ impl FileFetcher {
 
     Ok(File {
       specifier: specifier.clone(),
-      source: Arc::from(bytes),
       maybe_headers: Some(headers),
+      source: Arc::from(bytes),
     })
   }
 
@@ -433,8 +402,8 @@ impl FileFetcher {
               .set(&specifier, headers.clone(), &bytes)?;
             Ok(File {
               specifier,
-              source: Arc::from(bytes),
               maybe_headers: Some(headers),
+              source: Arc::from(bytes),
             })
           }
           FetchOnceResult::RequestError(err) => {

@@ -980,7 +980,6 @@ dependencies = [
  "console_static_text",
  "dashmap",
  "data-encoding",
- "data-url",
  "deno_ast",
  "deno_bench_util",
  "deno_cache_dir",
@@ -1001,7 +1000,6 @@ dependencies = [
  "dprint-plugin-jupyter",
  "dprint-plugin-markdown",
  "dprint-plugin-typescript",
- "encoding_rs",
  "env_logger",
  "eszip",
  "fancy-regex",
@@ -1280,9 +1278,7 @@ dependencies = [
 
 [[package]]
 name = "deno_doc"
-version = "0.98.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "837af595f7a7bf3f96c54973a82174149edd4e94544890b619db3a7a8f11c407"
+version = "0.99.0"
 dependencies = [
  "anyhow",
  "cfg-if",
@@ -1305,8 +1301,6 @@ dependencies = [
 [[package]]
 name = "deno_emit"
 version = "0.34.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b568ac3d8f6fba012d7cb0d9fc792bfd7ee0ed70e1dfc0784030aeada0a8b31d"
 dependencies = [
  "anyhow",
  "base64",
@@ -1375,14 +1369,13 @@ dependencies = [
 [[package]]
 name = "deno_graph"
 version = "0.63.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4a3744708bc2efb969bd9a78a0ccb8d2267c4d49baaae1243a5b3af8e2fdedee"
 dependencies = [
  "anyhow",
  "async-trait",
  "data-url",
  "deno_ast",
  "deno_semver",
+ "encoding_rs",
  "futures",
  "import_map",
  "indexmap",
@@ -2372,8 +2365,6 @@ dependencies = [
 [[package]]
 name = "eszip"
 version = "0.59.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c44cb502967cc1602a5a7ed1ae7022fc371f83ae709e95bfb9b510eb25d71a5a"
 dependencies = [
  "anyhow",
  "base64",

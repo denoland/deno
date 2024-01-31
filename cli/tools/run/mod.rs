@@ -93,8 +93,8 @@ pub async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
   // to allow module access by TS compiler
   file_fetcher.insert_cached(File {
     specifier: main_module.clone(),
-    source: source.into(),
     maybe_headers: None,
+    source: source.into(),
   });
 
   let mut worker = worker_factory
@@ -176,8 +176,8 @@ pub async fn eval_command(
   // to allow module access by TS compiler.
   file_fetcher.insert_cached(File {
     specifier: main_module.clone(),
-    source: source_code.into_bytes().into(),
     maybe_headers: None,
+    source: source_code.into_bytes().into(),
   });
 
   let permissions = PermissionsContainer::new(Permissions::from_options(

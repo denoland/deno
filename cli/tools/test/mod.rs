@@ -686,8 +686,8 @@ fn extract_files_from_regex_blocks(
 
       Some(File {
         specifier: file_specifier,
-        source: file_source.into_bytes().into(),
         maybe_headers: None,
+        source: file_source.into_bytes().into(),
       })
     })
     .collect();

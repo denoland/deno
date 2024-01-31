@@ -9,7 +9,6 @@ use import_map::ImportMapDiagnostic;
 use log::warn;
 
 use super::ConfigFile;
-use crate::file_fetcher::get_source_from_data_url;
 use crate::file_fetcher::FileFetcher;
 
 pub async fn resolve_import_map_from_specifier(
@@ -18,7 +17,9 @@ pub async fn resolve_import_map_from_specifier(
   file_fetcher: &FileFetcher,
 ) -> Result<ImportMap, AnyError> {
   let value: serde_json::Value = if specifier.scheme() == "data" {
-    serde_json::from_str(&get_source_from_data_url(specifier)?.0)?
+    let data_url_text =
+      deno_graph::source::RawDataUrl::parse(specifier)?.decode()?;
+    serde_json::from_str(&data_url_text)?
   } else {
     let import_map_config = maybe_config_file
       .as_ref()
