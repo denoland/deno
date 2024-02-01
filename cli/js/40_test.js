@@ -214,7 +214,7 @@ let opIdHostRecvCtrl = -1;
 let opNames = null;
 
 function populateOpNames() {
-  opNames = ops.op_op_names();
+  opNames = core.opNames();
   opIdHostRecvMessage = opNames.indexOf("op_host_recv_message");
   opIdHostRecvCtrl = opNames.indexOf("op_host_recv_ctrl");
 }
