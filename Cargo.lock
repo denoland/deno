@@ -1214,7 +1214,7 @@ dependencies = [
 [[package]]
 name = "deno_core"
 version = "0.256.0"
-source = "git+https://github.com/bartlomieju/deno_core.git?branch=op_metrics_fn_receives_only_name#6d649c6bc8135f359c6c7b982c67db5cc0f7f5a2"
+source = "git+https://github.com/bartlomieju/deno_core.git?branch=deno_core_core_ops#082370a0e5956ec481d5e78e738cb1e8c7f7c7bb"
 dependencies = [
  "anyhow",
  "bit-set",
@@ -1662,7 +1662,7 @@ dependencies = [
 [[package]]
 name = "deno_ops"
 version = "0.132.0"
-source = "git+https://github.com/bartlomieju/deno_core.git?branch=op_metrics_fn_receives_only_name#6d649c6bc8135f359c6c7b982c67db5cc0f7f5a2"
+source = "git+https://github.com/bartlomieju/deno_core.git?branch=deno_core_core_ops#082370a0e5956ec481d5e78e738cb1e8c7f7c7bb"
 dependencies = [
  "proc-macro-rules",
  "proc-macro2",
@@ -5421,7 +5421,7 @@ dependencies = [
 [[package]]
 name = "serde_v8"
 version = "0.165.0"
-source = "git+https://github.com/bartlomieju/deno_core.git?branch=op_metrics_fn_receives_only_name#6d649c6bc8135f359c6c7b982c67db5cc0f7f5a2"
+source = "git+https://github.com/bartlomieju/deno_core.git?branch=deno_core_core_ops#082370a0e5956ec481d5e78e738cb1e8c7f7c7bb"
 dependencies = [
  "bytes",
  "derive_more",
