@@ -413,7 +413,6 @@ fn copy_file(from: &Path, to: &Path) -> FsResult<()> {
     use std::io::Read;
     use std::os::unix::fs::OpenOptionsExt;
     use std::os::unix::fs::PermissionsExt;
-    use std::os::unix::prelude::OsStrExt;
 
     let from_str = CString::new(from.as_os_str().as_encoded_bytes())
       .map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?;
