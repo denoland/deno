@@ -528,9 +528,8 @@ impl ModuleRegistry {
       );
       self.http_cache.set(specifier, headers_map, &[])?;
     }
-    let file = fetch_result?;
-    let config: RegistryConfigurationJson =
-      serde_json::from_slice(&file.source)?;
+    let file = fetch_result?.into_text_decoded()?;
+    let config: RegistryConfigurationJson = serde_json::from_str(&file.source)?;
     validate_config(&config)?;
     Ok(config.registries)
   }
@@ -611,9 +610,10 @@ impl ModuleRegistry {
           .file_fetcher
           .fetch(&endpoint, PermissionsContainer::allow_all())
           .await
-          .ok()?;
+          .ok()?
+          .into_text_decoded()?;
         let documentation: lsp::Documentation =
-          serde_json::from_slice(&file.source).ok()?;
+          serde_json::from_str(&file.source).ok()?;
         return match documentation {
           lsp::Documentation::String(doc) => Some(doc),
           lsp::Documentation::MarkupContent(lsp::MarkupContent {
@@ -975,8 +975,10 @@ impl ModuleRegistry {
       .file_fetcher
       .fetch(&specifier, PermissionsContainer::allow_all())
       .await
+      .ok()?
+      .into_text_decoded()
       .ok()?;
-    serde_json::from_slice(&file.source).ok()
+    serde_json::from_str(&file.source).ok()
   }
 
   pub fn get_origin_completions(
@@ -1038,8 +1040,10 @@ impl ModuleRegistry {
           specifier, err
         );
       })
+      .ok()?
+      .into_text_decoded()
       .ok()?;
-    let items: VariableItems = serde_json::from_slice(&file.source)
+    let items: VariableItems = serde_json::from_str(&file.source)
       .map_err(|err| {
         error!(
           "Error parsing response from endpoint \"{}\". {}",
@@ -1074,8 +1078,10 @@ impl ModuleRegistry {
           specifier, err
         );
       })
+      .ok()?
+      .into_text_decoded()
       .ok()?;
-    let items: VariableItems = serde_json::from_slice(&file.source)
+    let items: VariableItems = serde_json::from_str(&file.source)
       .map_err(|err| {
         error!(
           "Error parsing response from endpoint \"{}\". {}",
