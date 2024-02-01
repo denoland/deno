@@ -6,6 +6,23 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.40.3 / 2024.02.01
+
+- Revert "refactor(cli): use new sanitizer for resources (#22125)" (#22153)
+- feat(unstable): implement `navigator.gpu.getPreferredCanvasFormat()` (#22149)
+- fix(ext/node): add `aes256` algorithm support (#22198)
+- fix(ext/node): limit OpState borrow in op_napi_open (#22151)
+- fix(fs): copyFile NUL path on macOS (#22216)
+- fix(install): forward granular --unstable-* flags (#22164)
+- fix(lockfile): only consider package.json beside lockfile in workspace property (#22179)
+- fix(lsp): don't normalize urls in cache command params (#22182)
+- fix(node): `util.callbackify` (#22200)
+- fix(node): add `ppid` getter for `node:process` (#22167)
+- fix(publish): add node specifiers (#22213)
+- fix(publish): rename --no-fast-check to --no-zap (#22214)
+- fix(runtime): return number from `op_ppid` instead of bigint (#22169)
+- fix: canary for arm64 macos (#22187)
+
 ### 1.40.2 / 2024.01.26
 
 - feat(lsp): complete parameters as tab stops and placeholders (#22126)
