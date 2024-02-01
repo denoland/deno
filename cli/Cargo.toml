@@ -133,7 +133,6 @@ typed-arena = "=2.0.1"
 unicode-width = "0.1"
 uuid = { workspace = true, features = ["serde"] }
 walkdir = "=2.3.2"
-webbrowser = "0.8.12"
 zeromq = { version = "=0.3.4", default-features = false, features = ["tcp-transport", "tokio-runtime"] }
 zstd.workspace = true
 
