@@ -16,6 +16,8 @@ pub use deno_kv;
 pub use deno_napi;
 pub use deno_net;
 pub use deno_node;
+pub use deno_permissions;
+pub use deno_permissions::colors;
 pub use deno_tls;
 pub use deno_url;
 pub use deno_web;
@@ -24,7 +26,6 @@ pub use deno_webidl;
 pub use deno_websocket;
 pub use deno_webstorage;
 
-pub mod colors;
 pub mod errors;
 pub mod fmt_errors;
 pub mod fs_util;

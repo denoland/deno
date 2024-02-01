@@ -1,0 +1,24 @@
+# Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
+[package]
+name = "deno_permissions"
+version = "0.1.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Provides the deno permissions implementation."
+
+[lib]
+name = "deno_permissions"
+path = "lib.rs"
+
+[dependencies]
+console_static_text.workspace = true
+deno_core.workspace = true
+libc.workspace = true
+log.workspace = true
+once_cell.workspace = true
+serde.workspace = true
+termcolor.workspace = true
+which = "4.2.5"
