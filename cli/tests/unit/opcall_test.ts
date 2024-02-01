@@ -37,14 +37,6 @@ Deno.test(async function sendAsyncStackTraceDeferred() {
   }
 });
 
-Deno.test(function syncAdd() {
-  assertEquals(30, core.ops.op_add(10, 20));
-});
-
-Deno.test(async function asyncAdd() {
-  assertEquals(30, await core.ops.op_add_async(10, 20));
-});
-
 // @ts-ignore This is not publicly typed namespace, but it's there for sure.
 const core = Deno[Deno.internal].core;
 
@@ -65,7 +57,7 @@ Deno.test(async function opsAsyncBadResource() {
 Deno.test(function opsSyncBadResource() {
   try {
     const nonExistingRid = 9999;
-    core.ops.op_read_sync(
+    core.readSync(
       nonExistingRid,
       new Uint8Array(0),
     );

@@ -5,18 +5,8 @@ Deno.bench("date_now", { n: 5e5 }, () => {
   Date.now();
 });
 
-const { op_void_sync, op_void_async, op_add } = Deno[Deno.internal].core
+const { op_void_sync, op_void_async } = Deno[Deno.internal].core
   .ensureFastOps();
-
-// Fast API calls
-{
-  // deno-lint-ignore no-inner-declarations
-  function addJS(a, b) {
-    return a + b;
-  }
-  Deno.bench("op_add", () => op_add(1, 2));
-  Deno.bench("add_js", () => addJS(1, 2));
-}
 
 // Void ops measure op-overhead
 Deno.bench("op_void_sync", () => op_void_sync());
