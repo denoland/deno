@@ -1,6 +1,58 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import { assertEquals, assertStrictEquals } from "./test_util.ts";
 
+Deno.test(function matrixTranslate() {
+  // deno-fmt-ignore
+  const init = {
+    m11:  1, m21:  2, m31:  3, m41:  4,
+    m12:  5, m22:  6, m32:  7, m42:  8,
+    m13:  9, m23: 10, m33: 11, m43: 12,
+    m14: 13, m24: 14, m34: 15, m44: 16,
+  };
+  const matrix = DOMMatrix.fromMatrix(init);
+  const matrix2 = matrix.translate(1, 2, 3);
+  assertEquals(
+    matrix,
+    DOMMatrix.fromMatrix(init),
+  );
+  assertEquals(
+    matrix2,
+    // deno-fmt-ignore
+    DOMMatrix.fromMatrix({
+      m11:  1, m21:  2, m31:  3, m41:  1 * 1 +  2 * 2 +  3 * 3 +  4 * 1,
+      m12:  5, m22:  6, m32:  7, m42:  5 * 1 +  6 * 2 +  7 * 3 +  8 * 1,
+      m13:  9, m23: 10, m33: 11, m43:  9 * 1 + 10 * 2 + 11 * 3 + 12 * 1,
+      m14: 13, m24: 14, m34: 15, m44: 13 * 1 + 14 * 2 + 15 * 3 + 16 * 1,
+    }),
+  );
+});
+
+Deno.test(function matrixTranslateSelf() {
+  // deno-fmt-ignore
+  const init = {
+    m11:  1, m21:  2, m31:  3, m41:  4,
+    m12:  5, m22:  6, m32:  7, m42:  8,
+    m13:  9, m23: 10, m33: 11, m43: 12,
+    m14: 13, m24: 14, m34: 15, m44: 16,
+  };
+  const matrix = DOMMatrix.fromMatrix(init);
+  const matrix2 = matrix.translateSelf(1, 2, 3);
+  assertStrictEquals(
+    matrix,
+    matrix2,
+  );
+  assertEquals(
+    matrix,
+    // deno-fmt-ignore
+    DOMMatrix.fromMatrix({
+      m11:  1, m21:  2, m31:  3, m41:  1 * 1 +  2 * 2 +  3 * 3 +  4 * 1,
+      m12:  5, m22:  6, m32:  7, m42:  5 * 1 +  6 * 2 +  7 * 3 +  8 * 1,
+      m13:  9, m23: 10, m33: 11, m43:  9 * 1 + 10 * 2 + 11 * 3 + 12 * 1,
+      m14: 13, m24: 14, m34: 15, m44: 13 * 1 + 14 * 2 + 15 * 3 + 16 * 1,
+    }),
+  );
+});
+
 Deno.test(function matrixMultiply() {
   // deno-fmt-ignore
   const init = {

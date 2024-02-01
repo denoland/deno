@@ -5,6 +5,8 @@ import {
   op_geometry_multiply,
   op_geometry_multiply_self,
   op_geometry_premultiply_self,
+  op_geometry_translate,
+  op_geometry_translate_self,
 } from "ext:core/ops";
 const {
   ArrayPrototypeJoin,
@@ -866,6 +868,21 @@ class DOMMatrixReadOnly {
     return isMatrixIdentity(this);
   }
 
+  translate(tx = 0, ty = 0, tz = 0) {
+    webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
+    const matrix = webidl.createBranded(DOMMatrix);
+    matrix[_raw] = new Float64Array(16);
+    op_geometry_translate(
+      this[_raw],
+      webidl.converters["unrestricted double"](tx),
+      webidl.converters["unrestricted double"](ty),
+      webidl.converters["unrestricted double"](tz),
+      matrix[_raw],
+    );
+    matrix[_is2D] = this[_is2D] && tz === 0;
+    return matrix;
+  }
+
   multiply(other = {}) {
     webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
     const prefix = "Failed to call 'DOMMatrixReadOnly.prototype.multiply'";
@@ -1251,6 +1268,18 @@ class DOMMatrix extends DOMMatrixReadOnly {
 
     op_geometry_premultiply_self(other[_raw], this[_raw]);
     this[_is2D] &&= other[_is2D];
+    return this;
+  }
+
+  translateSelf(tx = 0, ty = 0, tz = 0) {
+    webidl.assertBranded(this, DOMMatrixPrototype);
+    op_geometry_translate_self(
+      webidl.converters["unrestricted double"](tx),
+      webidl.converters["unrestricted double"](ty),
+      webidl.converters["unrestricted double"](tz),
+      this[_raw],
+    );
+    this[_is2D] &&= tz === 0;
     return this;
   }
 
