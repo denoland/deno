@@ -5,10 +5,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { core, internals } from "ext:core/mod.js";
-import { op_geteuid, op_process_abort } from "ext:core/ops";
-const {
-  op_set_exit_code,
-} = core.ensureFastOps(true);
+import { op_geteuid, op_process_abort, op_set_exit_code } from "ext:core/ops";
 
 import { notImplemented, warnNotImplemented } from "ext:deno_node/_utils.ts";
 import { EventEmitter } from "node:events";
