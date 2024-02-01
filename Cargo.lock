@@ -1214,7 +1214,7 @@ dependencies = [
 [[package]]
 name = "deno_core"
 version = "0.256.0"
-source = "git+https://github.com/bartlomieju/deno_core.git?branch=deno_core_core_ops#655e3626302486f2062d41a31d7d79713582cb01"
+source = "git+https://github.com/denoland/deno_core.git#5f908ba3370213fa1a4ef809cf8a99aab9a06012"
 dependencies = [
  "anyhow",
  "bit-set",
@@ -1662,7 +1662,7 @@ dependencies = [
 [[package]]
 name = "deno_ops"
 version = "0.132.0"
-source = "git+https://github.com/bartlomieju/deno_core.git?branch=deno_core_core_ops#655e3626302486f2062d41a31d7d79713582cb01"
+source = "git+https://github.com/denoland/deno_core.git#5f908ba3370213fa1a4ef809cf8a99aab9a06012"
 dependencies = [
  "proc-macro-rules",
  "proc-macro2",
@@ -5421,7 +5421,7 @@ dependencies = [
 [[package]]
 name = "serde_v8"
 version = "0.165.0"
-source = "git+https://github.com/bartlomieju/deno_core.git?branch=deno_core_core_ops#655e3626302486f2062d41a31d7d79713582cb01"
+source = "git+https://github.com/denoland/deno_core.git#5f908ba3370213fa1a4ef809cf8a99aab9a06012"
 dependencies = [
  "bytes",
  "derive_more",
