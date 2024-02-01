@@ -85,8 +85,6 @@ import {
   workerRuntimeGlobalProperties,
 } from "ext:runtime/98_global_scope_worker.js";
 import { SymbolAsyncDispose, SymbolDispose } from "ext:deno_web/00_infra.js";
-import console from "node:console";
-
 // deno-lint-ignore prefer-primordials
 if (Symbol.dispose) throw "V8 supports Symbol.dispose now, no need to shim it!";
 ObjectDefineProperties(Symbol, {
