@@ -5,6 +5,16 @@ delete Intl.v8BreakIterator;
 
 import { core, internals, primordials } from "ext:core/mod.js";
 const ops = core.ops;
+import {
+  op_bootstrap_args,
+  op_bootstrap_is_tty,
+  op_bootstrap_no_color,
+  op_bootstrap_pid,
+  op_main_module,
+  op_ppid,
+  op_set_format_exception_callback,
+  op_snapshot_options,
+} from "ext:core/ops";
 const {
   ArrayPrototypeFilter,
   ArrayPrototypeIncludes,
@@ -336,14 +346,10 @@ function importScripts(...urls) {
   }
 }
 
-function opMainModule() {
-  return ops.op_main_module();
-}
-
-const opArgs = memoizeLazy(() => ops.op_bootstrap_args());
-const opPid = memoizeLazy(() => ops.op_bootstrap_pid());
-const opPpid = memoizeLazy(() => ops.op_ppid());
-setNoColorFn(() => ops.op_bootstrap_no_color() || !ops.op_bootstrap_is_tty());
+const opArgs = memoizeLazy(() => op_bootstrap_args());
+const opPid = memoizeLazy(() => op_bootstrap_pid());
+const opPpid = memoizeLazy(() => op_ppid());
+setNoColorFn(() => op_bootstrap_no_color() || !op_bootstrap_is_tty());
 
 function formatException(error) {
   if (
@@ -438,7 +444,7 @@ function runtimeStart(
   core.setMacrotaskCallback(timers.handleTimerMacrotask);
   core.setWasmStreamingCallback(fetch.handleWasmStreaming);
   core.setReportExceptionCallback(event.reportException);
-  ops.op_set_format_exception_callback(formatException);
+  op_set_format_exception_callback(formatException);
   version.setVersions(
     denoVersion,
     v8Version,
@@ -533,6 +539,186 @@ function exposeUnstableFeaturesForWindowOrWorkerGlobalScope(options) {
   }
 }
 
+// NOTE(bartlomieju): remove all the ops that have already been imported using
+// "virtual op module" (`ext:core/ops`).
+const NOT_IMPORTED_OPS = [
+  "op_abort_wasm_streaming",
+  "op_add_async",
+  "op_add",
+  "op_apply_source_map_filename",
+  "op_apply_source_map",
+  "op_bench_now",
+  "op_bootstrap_args",
+  "op_bootstrap_is_tty",
+  "op_bootstrap_no_color",
+  "op_bootstrap_pid",
+  "op_broadcast_unsubscribe",
+  "op_can_write_vectored",
+  "op_close",
+  "op_cpus",
+  "op_create_brotli_compress",
+  "op_create_brotli_decompress",
+  "op_current_user_call_site",
+  "op_decode",
+  "op_deserialize",
+  "op_destructure_error",
+  "op_dispatch_bench_event",
+  "op_dispatch_exception",
+  "op_encode_binary_string",
+  "op_encode",
+  "op_error_async_deferred",
+  "op_error_async",
+  "op_eval_context",
+  "op_event_loop_has_more_work",
+  "op_ffi_buf_copy_into",
+  "op_ffi_call_nonblocking",
+  "op_ffi_call_ptr_nonblocking",
+  "op_ffi_call_ptr",
+  "op_ffi_cstr_read",
+  "op_ffi_get_buf",
+  "op_ffi_get_static",
+  "op_ffi_load",
+  "op_ffi_ptr_create",
+  "op_ffi_ptr_equals",
+  "op_ffi_ptr_of_exact",
+  "op_ffi_ptr_of",
+  "op_ffi_ptr_offset",
+  "op_ffi_ptr_value",
+  "op_ffi_read_bool",
+  "op_ffi_read_f32",
+  "op_ffi_read_f64",
+  "op_ffi_read_i16",
+  "op_ffi_read_i32",
+  "op_ffi_read_i64",
+  "op_ffi_read_i8",
+  "op_ffi_read_ptr",
+  "op_ffi_read_u16",
+  "op_ffi_read_u32",
+  "op_ffi_read_u64",
+  "op_ffi_read_u8",
+  "op_ffi_unsafe_callback_close",
+  "op_ffi_unsafe_callback_create",
+  "op_ffi_unsafe_callback_ref",
+  "op_format_file_name",
+  "op_get_promise_details",
+  "op_get_proxy_details",
+  "op_has_tick_scheduled",
+  "op_http_get_request_header",
+  "op_http2_accept",
+  "op_http2_client_end_stream",
+  "op_http2_client_get_response_body_chunk",
+  "op_http2_client_get_response_trailers",
+  "op_http2_client_get_response",
+  "op_http2_client_request",
+  "op_http2_client_reset_stream",
+  "op_http2_client_send_data",
+  "op_http2_client_send_trailers",
+  "op_http2_connect",
+  "op_http2_listen",
+  "op_http2_poll_client_connection",
+  "op_http2_send_response",
+  "op_image_decode_png",
+  "op_image_process",
+  "op_is_any_array_buffer",
+  "op_is_arguments_object",
+  "op_is_array_buffer_view",
+  "op_is_array_buffer",
+  "op_is_async_function",
+  "op_is_big_int_object",
+  "op_is_boolean_object",
+  "op_is_boxed_primitive",
+  "op_is_data_view",
+  "op_is_date",
+  "op_is_generator_function",
+  "op_is_generator_object",
+  "op_is_map_iterator",
+  "op_is_map",
+  "op_is_module_namespace_object",
+  "op_is_native_error",
+  "op_is_number_object",
+  "op_is_promise",
+  "op_is_proxy",
+  "op_is_reg_exp",
+  "op_is_set_iterator",
+  "op_is_set",
+  "op_is_shared_array_buffer",
+  "op_is_string_object",
+  "op_is_symbol_object",
+  "op_is_typed_array",
+  "op_is_weak_map",
+  "op_is_weak_set",
+  "op_main_module",
+  "op_memory_usage",
+  "op_napi_open",
+  "op_npm_process_state",
+  "op_op_names",
+  "op_panic",
+  "op_pledge_test_permissions",
+  "op_ppid",
+  "op_print",
+  "op_queue_microtask",
+  "op_raw_write_vectored",
+  "op_read_all",
+  "op_read_sync",
+  "op_read",
+  "op_ref_op",
+  "op_register_bench",
+  "op_register_test_step",
+  "op_register_test",
+  "op_resources",
+  "op_restore_test_permissions",
+  "op_run_microtasks",
+  "op_serialize",
+  "op_set_exit_code",
+  "op_set_format_exception_callback",
+  "op_set_handled_promise_rejection_handler",
+  "op_set_has_tick_scheduled",
+  "op_set_promise_hooks",
+  "op_set_wasm_streaming_callback",
+  "op_shutdown",
+  "op_snapshot_options",
+  "op_spawn_child",
+  "op_str_byte_length",
+  "op_test_event_step_result_failed",
+  "op_test_event_step_result_ignored",
+  "op_test_event_step_result_ok",
+  "op_test_event_step_wait",
+  "op_test_op_sanitizer_collect",
+  "op_test_op_sanitizer_finish",
+  "op_test_op_sanitizer_report",
+  "op_timer_cancel",
+  "op_timer_queue",
+  "op_timer_ref",
+  "op_timer_unref",
+  "op_try_close",
+  "op_unref_op",
+  "op_v8_cached_data_version_tag",
+  "op_v8_get_heap_statistics",
+  "op_vm_run_in_new_context",
+  "op_void_async",
+  "op_void_sync",
+  "op_worker_close",
+  "op_worker_get_type",
+  "op_worker_post_message",
+  "op_worker_recv_message",
+  "op_worker_sync_fetch",
+  "op_write_all",
+  "op_write_sync",
+  "op_write_type_error",
+  "op_write",
+  "op_ws_send_pong",
+];
+
+function removeImportedOps() {
+  const allOpNames = ObjectKeys(ops);
+  for (let i = 0; i < allOpNames.length; i++) {
+    const opName = allOpNames[i];
+    if (!ArrayPrototypeIncludes(NOT_IMPORTED_OPS, opName)) {
+      delete ops[opName];
+    }
+  }
+}
+
 // FIXME(bartlomieju): temporarily add whole `Deno.core` to
 // `Deno[Deno.internal]` namespace. It should be removed and only necessary
 // methods should be left there.
@@ -566,7 +752,7 @@ const {
   tsVersion,
   v8Version,
   target,
-} = ops.op_snapshot_options();
+} = op_snapshot_options();
 
 function bootstrapMainRuntime(runtimeOptions) {
   if (hasBootstrapped) {
@@ -584,6 +770,8 @@ function bootstrapMainRuntime(runtimeOptions) {
     7: shouldDisableDeprecatedApiWarning,
     8: shouldUseVerboseDeprecatedApiWarning,
   } = runtimeOptions;
+
+  removeImportedOps();
 
   deprecatedApiWarningDisabled = shouldDisableDeprecatedApiWarning;
   verboseDeprecatedApiWarning = shouldUseVerboseDeprecatedApiWarning;
@@ -646,9 +834,9 @@ function bootstrapMainRuntime(runtimeOptions) {
   ObjectDefineProperties(finalDenoNs, {
     pid: util.getterOnly(opPid),
     ppid: util.getterOnly(opPpid),
-    noColor: util.getterOnly(() => ops.op_bootstrap_no_color()),
+    noColor: util.getterOnly(() => op_bootstrap_no_color()),
     args: util.getterOnly(opArgs),
-    mainModule: util.getterOnly(opMainModule),
+    mainModule: util.getterOnly(() => op_main_module()),
     // TODO(kt3k): Remove this export at v2
     // See https://github.com/denoland/deno/issues/9294
     customInspect: {
@@ -732,6 +920,8 @@ function bootstrapWorkerRuntime(
   performance.setTimeOrigin(DateNow());
   globalThis_ = globalThis;
 
+  removeImportedOps();
+
   // Remove bootstrapping data from the global scope
   delete globalThis.__bootstrap;
   delete globalThis.bootstrap;
@@ -804,7 +994,7 @@ function bootstrapWorkerRuntime(
 
   ObjectDefineProperties(finalDenoNs, {
     pid: util.getterOnly(opPid),
-    noColor: util.getterOnly(() => ops.op_bootstrap_no_color()),
+    noColor: util.getterOnly(() => op_bootstrap_no_color()),
     args: util.getterOnly(opArgs),
     // TODO(kt3k): Remove this export at v2
     // See https://github.com/denoland/deno/issues/9294
