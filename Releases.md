@@ -14,7 +14,8 @@ https://github.com/denoland/deno_install
 - fix(ext/node): limit OpState borrow in op_napi_open (#22151)
 - fix(fs): copyFile NUL path on macOS (#22216)
 - fix(install): forward granular --unstable-* flags (#22164)
-- fix(lockfile): only consider package.json beside lockfile in workspace property (#22179)
+- fix(lockfile): only consider package.json beside lockfile in workspace
+  property (#22179)
 - fix(lsp): don't normalize urls in cache command params (#22182)
 - fix(node): `util.callbackify` (#22200)
 - fix(node): add `ppid` getter for `node:process` (#22167)
