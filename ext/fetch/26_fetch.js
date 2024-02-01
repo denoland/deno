@@ -11,12 +11,7 @@
 /// <reference lib="esnext" />
 
 import { core, primordials } from "ext:core/mod.js";
-import {
-  op_fetch,
-  op_fetch_send,
-  op_wasm_streaming_feed,
-  op_wasm_streaming_set_url,
-} from "ext:core/ops";
+import { op_fetch, op_fetch_send } from "ext:core/ops";
 const {
   ArrayPrototypePush,
   ArrayPrototypeSplice,
@@ -450,7 +445,7 @@ function handleWasmStreaming(source, rid) {
     }
 
     // Pass the resolved URL to v8.
-    op_wasm_streaming_set_url(rid, res.url);
+    core.wasmStreamingSetUrl(rid, res.url);
 
     if (res.body !== null) {
       // 2.6.
@@ -462,7 +457,7 @@ function handleWasmStreaming(source, rid) {
           while (true) {
             const { value: chunk, done } = await reader.read();
             if (done) break;
-            op_wasm_streaming_feed(rid, chunk);
+            core.wasmStreamingFeed(rid, chunk);
           }
         })(),
         // 2.7

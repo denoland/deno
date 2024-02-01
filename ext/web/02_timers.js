@@ -1,12 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import { core, primordials } from "ext:core/mod.js";
-import {
-  op_now,
-  op_sleep,
-  op_timer_handle,
-  op_void_async_deferred,
-} from "ext:core/ops";
+import { op_now, op_sleep, op_timer_handle } from "ext:core/ops";
 const {
   ArrayPrototypePush,
   ArrayPrototypeShift,
@@ -229,7 +224,7 @@ function runAfterTimeout(task, millis, timerInfo) {
   // since its lowest resolution is 1ms. Firing of a "void async" op is better
   // in this case, because the timer will take closer to 0ms instead of >1ms.
   if (millis === 0) {
-    sleepPromise = op_void_async_deferred();
+    sleepPromise = core.opVoidAsyncDeferred();
   } else {
     sleepPromise = op_sleep(millis, cancelRid);
   }
@@ -264,7 +259,7 @@ function runAfterTimeout(task, millis, timerInfo) {
         return;
       }
 
-      // "op_void_async_deferred" returns null
+      // "core.opVoidAsyncDeferred" returns null
       if (cancelled !== null && !cancelled) {
         // The timer was cancelled.
         removeFromScheduledTimers(timerObject);
@@ -395,7 +390,7 @@ function unrefTimer(id) {
 // for that reason: it lets promises make forward progress but can
 // still starve other parts of the event loop.
 function defer(go) {
-  PromisePrototypeThen(op_void_async_deferred(), () => go());
+  PromisePrototypeThen(core.opVoidAsyncDeferred(), () => go());
 }
 
 export {

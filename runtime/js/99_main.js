@@ -12,7 +12,6 @@ import {
   op_bootstrap_pid,
   op_main_module,
   op_ppid,
-  op_set_format_exception_callback,
   op_snapshot_options,
 } from "ext:core/ops";
 const {
@@ -439,7 +438,7 @@ function runtimeStart(
   core.setMacrotaskCallback(timers.handleTimerMacrotask);
   core.setWasmStreamingCallback(fetch.handleWasmStreaming);
   core.setReportExceptionCallback(event.reportException);
-  op_set_format_exception_callback(formatException);
+  core.setFormatExceptionCallback(formatException);
   version.setVersions(
     denoVersion,
     v8Version,
