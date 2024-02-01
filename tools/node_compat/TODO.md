@@ -3,7 +3,7 @@
 
 NOTE: This file should not be manually edited. Please edit `cli/tests/node_compat/config.json` and run `deno task setup` in `tools/node_compat` dir instead.
 
-Total: 2999
+Total: 2998
 
 - [abort/test-abort-backtrace.js](https://github.com/nodejs/node/tree/v18.12.1/test/abort/test-abort-backtrace.js)
 - [abort/test-abort-fatal-error.js](https://github.com/nodejs/node/tree/v18.12.1/test/abort/test-abort-fatal-error.js)
@@ -469,7 +469,6 @@ Total: 2999
 - [parallel/test-crypto-no-algorithm.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-no-algorithm.js)
 - [parallel/test-crypto-op-during-process-exit.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-op-during-process-exit.js)
 - [parallel/test-crypto-padding-aes256.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-padding-aes256.js)
-- [parallel/test-crypto-padding.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-padding.js)
 - [parallel/test-crypto-pbkdf2.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-pbkdf2.js)
 - [parallel/test-crypto-private-decrypt-gh32240.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-private-decrypt-gh32240.js)
 - [parallel/test-crypto-psychic-signatures.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-psychic-signatures.js)

@@ -271,6 +271,20 @@ pub fn op_node_cipheriv_set_aad(
 }
 
 #[op2(fast)]
+pub fn op_node_cipheriv_set_auto_padding(
+  state: &mut OpState,
+  #[smi] rid: u32,
+  ap: bool,
+) -> bool {
+  let context = match state.resource_table.get::<cipher::CipherContext>(rid) {
+    Ok(context) => context,
+    Err(_) => return false,
+  };
+  context.set_auto_padding(ap);
+  true
+}
+
+#[op2(fast)]
 pub fn op_node_cipheriv_encrypt(
   state: &mut OpState,
   #[smi] rid: u32,

@@ -59,6 +59,10 @@ impl CipherContext {
     self.cipher.borrow_mut().set_aad(aad);
   }
 
+  pub fn set_auto_padding(self, ap: bool) {
+    self.cipher.borrow_mut().set_auto_padding(ap);
+  }
+
   pub fn encrypt(&self, input: &[u8], output: &mut [u8]) {
     self.cipher.borrow_mut().encrypt(input, output);
   }
@@ -158,6 +162,16 @@ impl Cipher {
       }
       Aes256Gcm(cipher) => {
         cipher.set_aad(aad);
+      }
+      _ => {}
+    }
+  }
+
+  fn set_auto_padding(&mut self, ap: bool) {
+    use Cipher::*;
+    match self {
+      Aes128Cbc(cipher) => {
+        cipher.set_auto_padding(ap);
       }
       _ => {}
     }
