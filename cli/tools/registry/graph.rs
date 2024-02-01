@@ -122,7 +122,7 @@ pub fn collect_invalid_external_imports(
     let ModuleEntryRef::Module(module) = entry else {
       continue;
     };
-    let Some(module) = module.esm() else {
+    let Some(module) = module.js() else {
       continue;
     };
 
@@ -158,10 +158,10 @@ pub fn collect_fast_check_type_graph_diagnostics(
       let Ok(Some(module)) = graph.try_get_prefer_types(&specifier) else {
         continue;
       };
-      let Some(esm_module) = module.esm() else {
+      let Some(es_module) = module.js() else {
         continue;
       };
-      if let Some(diagnostic) = esm_module.fast_check_diagnostic() {
+      if let Some(diagnostic) = es_module.fast_check_diagnostic() {
         for diagnostic in diagnostic.flatten_multiple() {
           if !seen_diagnostics.insert(diagnostic.message_with_range_for_test())
           {
@@ -179,7 +179,7 @@ pub fn collect_fast_check_type_graph_diagnostics(
       }
 
       // analyze the next dependencies
-      for dep in esm_module.dependencies_prefer_fast_check().values() {
+      for dep in es_module.dependencies_prefer_fast_check().values() {
         let Some(specifier) = graph.resolve_dependency_from_dep(dep, true)
         else {
           continue;

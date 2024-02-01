@@ -240,7 +240,7 @@ fn visit_modules(
 ) -> Result<(), AnyError> {
   for module in modules {
     let module = match module {
-      Module::Esm(module) => module,
+      Module::Js(module) => module,
       // skip visiting Json modules as they are leaves
       Module::Json(_)
       | Module::Npm(_)
@@ -249,9 +249,8 @@ fn visit_modules(
     };
 
     let parsed_source =
-      parsed_source_cache.get_parsed_source_from_esm_module(module)?;
+      parsed_source_cache.get_parsed_source_from_js_module(module)?;
     let text_info = parsed_source.text_info().clone();
-    let source_text = &module.source;
 
     for dep in module.dependencies.values() {
       visit_resolution(
@@ -261,7 +260,7 @@ fn visit_modules(
         &module.specifier,
         mappings,
         &text_info,
-        source_text,
+        &module.source,
       );
       visit_resolution(
         &dep.maybe_type,
@@ -270,7 +269,7 @@ fn visit_modules(
         &module.specifier,
         mappings,
         &text_info,
-        source_text,
+        &module.source,
       );
     }
 
@@ -282,7 +281,7 @@ fn visit_modules(
         &module.specifier,
         mappings,
         &text_info,
-        source_text,
+        &module.source,
       );
     }
   }

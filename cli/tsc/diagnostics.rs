@@ -298,7 +298,7 @@ impl Diagnostics {
       {
         if let Ok(Some(module)) = graph.try_get_prefer_types(&specifier) {
           if let Some(fast_check_module) =
-            module.esm().and_then(|m| m.fast_check_module())
+            module.js().and_then(|m| m.fast_check_module())
           {
             // todo(dsherret): use a short lived cache to prevent parsing
             // source maps so often

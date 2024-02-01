@@ -118,6 +118,10 @@ impl PathRef {
       .with_context(|| format!("Could not read file: {}", self))
   }
 
+  pub fn read_to_bytes_if_exists(&self) -> Result<Vec<u8>, anyhow::Error> {
+    fs::read(self).with_context(|| format!("Could not read file: {}", self))
+  }
+
   pub fn read_json<TValue: DeserializeOwned>(&self) -> TValue {
     serde_json::from_str(&self.read_to_string()).unwrap()
   }
