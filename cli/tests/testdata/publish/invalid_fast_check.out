@@ -9,6 +9,8 @@ error[zap-missing-explicit-return-type]: missing explicit return type in the pub
   info: all functions in the public API must have an explicit return type
   docs: https://jsr.io/go/zap-missing-explicit-return-type
 
-This package contains Fast Check errors. You can skip Fast Check with --no-fast-check flag.
+This package contains Zap errors. Although conforming to Zap will 
+significantly improve the type checking performance of your library,
+you can choose to skip it by providing the --no-zap flag.
 
 error: Found 1 problem

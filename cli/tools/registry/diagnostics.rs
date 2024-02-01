@@ -36,7 +36,7 @@ impl PublishDiagnosticsCollector {
     sources: &dyn ParsedSourceStore,
   ) -> Result<(), AnyError> {
     let mut errors = 0;
-    let mut has_fast_check_error = false;
+    let mut has_zap_errors = false;
     let diagnostics = self.diagnostics.lock().unwrap().take();
     let sources = SourceTextParsedSourceStore(sources);
     for diagnostic in diagnostics {
@@ -45,12 +45,17 @@ impl PublishDiagnosticsCollector {
         errors += 1;
       }
       if matches!(diagnostic, PublishDiagnostic::FastCheck(..)) {
-        has_fast_check_error = true;
+        has_zap_errors = true;
       }
     }
     if errors > 0 {
-      if has_fast_check_error {
-        eprintln!("This package contains Fast Check errors. You can skip Fast Check with --no-fast-check flag.\n");
+      if has_zap_errors {
+        eprintln!(
+          "This package contains Zap errors. Although conforming to Zap will"
+        );
+        eprintln!("significantly improve the type checking performance of your library,");
+        eprintln!("you can choose to skip it by providing the --no-zap flag.");
+        eprintln!();
       }
 
       Err(anyhow!(
