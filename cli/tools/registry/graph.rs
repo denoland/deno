@@ -79,7 +79,7 @@ pub fn collect_invalid_external_imports(
     |skip_specifiers: &mut HashSet<Url>, resolution: &ResolutionResolved| {
       if visited.insert(resolution.specifier.clone()) {
         match resolution.specifier.scheme() {
-          "file" | "data" => {}
+          "file" | "data" | "node" => {}
           "jsr" | "npm" => {
             skip_specifiers.insert(resolution.specifier.clone());
           }
