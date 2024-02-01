@@ -36,9 +36,9 @@ itest!(invalid_fast_check {
   exit_code: 1,
 });
 
-itest!(no_fast_check {
-  args: "publish --no-fast-check --token 'sadfasdf'",
-  output: "publish/no_fast_check.out",
+itest!(no_zap {
+  args: "publish --no-zap --token 'sadfasdf'",
+  output: "publish/no_zap.out",
   cwd: Some("publish/invalid_fast_check"),
   exit_code: 1,
 });
