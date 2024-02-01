@@ -28,11 +28,7 @@ const {
   isWeakMap,
   isWeakSet,
 } = core;
-import {
-  op_get_constructor_name,
-  op_get_non_index_property_names,
-  op_preview_entries,
-} from "ext:core/ops";
+import { op_preview_entries } from "ext:core/ops";
 const {
   Array,
   ArrayBufferPrototypeGetByteLength,
@@ -643,7 +639,7 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
         const prefix = (constructor !== "Array" || tag !== "")
           ? getPrefix(constructor, tag, "Array", `(${value.length})`)
           : "";
-        keys = op_get_non_index_property_names(value, filter);
+        keys = core.getNonIndexPropertyNames(value, filter);
         braces = [`${prefix}[`, "]"];
         if (
           value.length === 0 && keys.length === 0 && protoProps === undefined
@@ -687,7 +683,7 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
         (proxyDetails !== null && isTypedArray(proxyDetails[0]))
       ) {
         const typedArray = proxyDetails?.[0] ?? value;
-        keys = op_get_non_index_property_names(typedArray, filter);
+        keys = core.getNonIndexPropertyNames(typedArray, filter);
         const bound = typedArray;
         const fallback = "";
         if (constructor === null) {
@@ -1116,7 +1112,7 @@ function getConstructorName(obj, ctx, recurseTimes, protoProps) {
     return null;
   }
 
-  const res = op_get_constructor_name(tmp);
+  const res = core.getConstructorName(tmp);
 
   if (recurseTimes > ctx.depth && ctx.depth !== null) {
     return `${res} <Complex prototype>`;
@@ -1226,7 +1222,7 @@ function formatArray(ctx, value, recurseTimes) {
 function getCtxStyle(value, constructor, tag) {
   let fallback = "";
   if (constructor === null) {
-    fallback = op_get_constructor_name(value);
+    fallback = core.getConstructorName(value);
     if (fallback === tag) {
       fallback = "Object";
     }

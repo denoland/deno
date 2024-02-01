@@ -14,9 +14,9 @@ const {
   isTypedArray,
 } = core;
 import {
-  op_arraybuffer_was_detached,
+  // op_arraybuffer_was_detached,
   // TODO(mmastrac): use readAll
-  op_read_all,
+  // op_read_all,
   op_readable_stream_resource_allocate,
   op_readable_stream_resource_allocate_sized,
   op_readable_stream_resource_await_close,
@@ -280,7 +280,7 @@ function isDetachedBuffer(O) {
     return false;
   }
   return ArrayBufferPrototypeGetByteLength(O) === 0 &&
-    op_arraybuffer_was_detached(O);
+    core.arrayBufferWasDetached(O);
 }
 
 /**
@@ -1066,7 +1066,7 @@ async function readableStreamCollectIntoUint8Array(stream) {
     // fast path, read whole body in a single op call
     try {
       readableStreamDisturb(stream);
-      const promise = op_read_all(resourceBacking.rid);
+      const promise = core.op_read_all(resourceBacking.rid);
       if (readableStreamIsUnrefable(stream)) {
         stream[promiseSymbol] = promise;
         if (stream[_isUnref]) core.unrefOpPromise(promise);

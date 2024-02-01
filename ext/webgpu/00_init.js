@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { op_lazy_load_esm } from "ext:core/ops";
+import { core } from "ext:core/mod.js";
 
 let webgpu;
 
@@ -31,7 +31,7 @@ function webGPUNonEnumerable(getter) {
 
 function loadWebGPU() {
   if (!webgpu) {
-    webgpu = op_lazy_load_esm("ext:deno_webgpu/01_webgpu.js");
+    webgpu = core.lazyLoadEsm("ext:deno_webgpu/01_webgpu.js");
   }
 }
 

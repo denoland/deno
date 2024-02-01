@@ -1,7 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import { core } from "ext:core/mod.js";
-import { op_lazy_load_esm } from "ext:core/ops";
 
 import * as util from "ext:runtime/06_util.js";
 import * as event from "ext:deno_web/02_event.js";
@@ -88,7 +87,7 @@ function ImageWritable(getter) {
 }
 function loadImage() {
   if (!image) {
-    image = op_lazy_load_esm("ext:deno_canvas/01_image.js");
+    image = core.lazyLoadEsm("ext:deno_canvas/01_image.js");
   }
 }
 
