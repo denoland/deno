@@ -101,6 +101,17 @@ itest!(successful {
   http_server: true,
 });
 
+itest!(node_specifier {
+  args: "publish --token 'sadfasdf'",
+  output: "publish/node_specifier.out",
+  cwd: Some("publish/node_specifier"),
+  envs: env_vars_for_registry()
+    .into_iter()
+    .chain(env_vars_for_npm_tests().into_iter())
+    .collect(),
+  http_server: true,
+});
+
 itest!(config_file_jsonc {
   args: "publish --token 'sadfasdf'",
   output: "publish/deno_jsonc.out",

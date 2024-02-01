@@ -2,7 +2,6 @@
 
 use std::io::Read;
 
-use deno_ast::MediaType;
 use deno_core::error::AnyError;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
@@ -90,17 +89,13 @@ pub async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
   )?);
   let mut source = Vec::new();
   std::io::stdin().read_to_end(&mut source)?;
-  // Create a dummy source file.
-  let source_file = File {
-    maybe_types: None,
-    media_type: MediaType::TypeScript,
-    source: String::from_utf8(source)?.into(),
+  // Save a fake file into file fetcher cache
+  // to allow module access by TS compiler
+  file_fetcher.insert_cached(File {
     specifier: main_module.clone(),
     maybe_headers: None,
-  };
-  // Save our fake file into file fetcher cache
-  // to allow module access by TS compiler
-  file_fetcher.insert_cached(source_file);
+    source: source.into(),
+  });
 
   let mut worker = worker_factory
     .create_main_worker(main_module, permissions)
@@ -175,20 +170,15 @@ pub async fn eval_command(
     format!("console.log({})", eval_flags.code)
   } else {
     eval_flags.code
-  }
-  .into_bytes();
-
-  let file = File {
-    maybe_types: None,
-    media_type: MediaType::Unknown,
-    source: String::from_utf8(source_code)?.into(),
-    specifier: main_module.clone(),
-    maybe_headers: None,
   };
 
-  // Save our fake file into file fetcher cache
+  // Save a fake file into file fetcher cache
   // to allow module access by TS compiler.
-  file_fetcher.insert_cached(file);
+  file_fetcher.insert_cached(File {
+    specifier: main_module.clone(),
+    maybe_headers: None,
+    source: source_code.into_bytes().into(),
+  });
 
   let permissions = PermissionsContainer::new(Permissions::from_options(
     &cli_options.permissions_options(),

@@ -492,7 +492,7 @@ fn op_load(
     };
     let maybe_source = if let Some(module) = graph.get(specifier) {
       match module {
-        Module::Esm(module) => {
+        Module::Js(module) => {
           media_type = module.media_type;
           let source = module
             .fast_check_module()
@@ -597,7 +597,7 @@ fn op_resolve(
     let graph = &state.graph;
     let resolved_dep = graph
       .get(&referrer)
-      .and_then(|m| m.esm())
+      .and_then(|m| m.js())
       .and_then(|m| m.dependencies_prefer_fast_check().get(&specifier))
       .and_then(|d| d.maybe_type.ok().or_else(|| d.maybe_code.ok()));
 
@@ -653,7 +653,7 @@ fn resolve_graph_specifier_types(
   let maybe_module = graph.get(specifier);
   // follow the types reference directive, which may be pointing at an npm package
   let maybe_module = match maybe_module {
-    Some(Module::Esm(module)) => {
+    Some(Module::Js(module)) => {
       let maybe_types_dep = module
         .maybe_types_dependency
         .as_ref()
@@ -668,7 +668,7 @@ fn resolve_graph_specifier_types(
 
   // now get the types from the resolved module
   match maybe_module {
-    Some(Module::Esm(module)) => {
+    Some(Module::Js(module)) => {
       Ok(Some((module.specifier.clone(), module.media_type)))
     }
     Some(Module::Json(module)) => {
@@ -913,7 +913,7 @@ mod tests {
         .replace("://", "_")
         .replace('/', "-");
       let source_path = self.fixtures.join(specifier_text);
-      let response = source_path.read_to_string_if_exists().map(|c| {
+      let response = source_path.read_to_bytes_if_exists().map(|c| {
         Some(deno_graph::source::LoadResponse::Module {
           specifier: specifier.clone(),
           maybe_headers: None,

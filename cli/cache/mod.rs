@@ -279,10 +279,10 @@ impl Loader for FetchCacher {
   fn cache_module_info(
     &mut self,
     specifier: &ModuleSpecifier,
-    source: &str,
+    source: &Arc<[u8]>,
     module_info: &deno_graph::ModuleInfo,
   ) {
-    let source_hash = ModuleInfoCacheSourceHash::from_source(source.as_bytes());
+    let source_hash = ModuleInfoCacheSourceHash::from_source(source);
     let result = self.module_info_cache.set_module_info(
       specifier,
       MediaType::from_specifier(specifier),
