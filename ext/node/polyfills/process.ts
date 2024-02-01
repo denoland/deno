@@ -558,6 +558,11 @@ class Process extends EventEmitter {
     return pid;
   }
 
+  /** https://nodejs.org/api/process.html#processppid */
+  get ppid() {
+    return Deno.ppid;
+  }
+
   /** https://nodejs.org/api/process.html#process_process_platform */
   get platform() {
     if (!platform) {
