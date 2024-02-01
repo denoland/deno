@@ -221,7 +221,7 @@ async fn get_auth_headers(
 
       ring_bell();
       println!("{}", colors::gray("Waiting..."));
-      let _ = webbrowser::open(&auth_url);
+      let _ = open::that_detached(&auth_url);
 
       let interval = std::time::Duration::from_secs(auth.poll_interval);
 
@@ -415,7 +415,7 @@ async fn ensure_scopes_and_packages_exist(
       colors::cyan_with_underline(&create_package_url)
     );
     println!("{}", colors::gray("Waiting..."));
-    let _ = webbrowser::open(&create_package_url);
+    let _ = open::that_detached(&create_package_url);
 
     let package_api_url = api::get_package_api_url(
       &registry_api_url,

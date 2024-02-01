@@ -107,6 +107,7 @@ lsp-types.workspace = true
 monch.workspace = true
 notify.workspace = true
 once_cell.workspace = true
+open = "5.0.1"
 os_pipe.workspace = true
 percent-encoding.workspace = true
 pin-project.workspace = true
@@ -133,7 +134,6 @@ typed-arena = "=2.0.1"
 unicode-width = "0.1"
 uuid = { workspace = true, features = ["serde"] }
 walkdir = "=2.3.2"
-webbrowser = "0.8.12"
 zeromq = { version = "=0.3.4", default-features = false, features = ["tcp-transport", "tokio-runtime"] }
 zstd.workspace = true
 
