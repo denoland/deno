@@ -59,7 +59,6 @@ util::unit_test_factory!(
     navigator_test,
     net_test,
     network_interfaces_test,
-    opcall_test,
     os_test,
     ops_test,
     path_from_url_test,
