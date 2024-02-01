@@ -131,7 +131,7 @@ const denoNs = {
     internals.warnOnDeprecatedApi(
       "Deno.read()",
       new Error().stack,
-      "See the Deno 1 to 2 Migration Guide for more information at https://docs.deno.com/runtime/manual/advanced/migrate_deprecations",
+      "Use `reader.read()` instead.",
     );
     return io.read(rid, buffer);
   },
