@@ -589,7 +589,7 @@ impl Document {
     self.0.maybe_lsp_version
   }
 
-  fn maybe_es_module(&self) -> Option<&ModuleResult> {
+  fn maybe_js_module(&self) -> Option<&ModuleResult> {
     self.0.maybe_module.as_ref()
   }
 
@@ -628,7 +628,7 @@ impl Document {
     &self,
     position: &lsp::Position,
   ) -> Option<(String, deno_graph::Dependency, deno_graph::Range)> {
-    let module = self.maybe_es_module()?.as_ref().ok()?;
+    let module = self.maybe_js_module()?.as_ref().ok()?;
     let position = deno_graph::Position {
       line: position.line as usize,
       character: position.character as usize,
@@ -1687,7 +1687,7 @@ impl Documents {
       return node_resolve_npm_req_ref(npm_ref, maybe_npm, referrer);
     }
     let doc = self.get(specifier)?;
-    let maybe_module = doc.maybe_es_module().and_then(|r| r.as_ref().ok());
+    let maybe_module = doc.maybe_js_module().and_then(|r| r.as_ref().ok());
     let maybe_types_dependency = maybe_module
       .and_then(|m| m.maybe_types_dependency.as_ref().map(|d| &d.dependency));
     if let Some(specifier) =
