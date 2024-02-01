@@ -1,1 +1,1 @@
-module.exports.Test = require("./esm/my_esm_module.js");
+module.exports.Test = require("./esm/my_es_module.js");
