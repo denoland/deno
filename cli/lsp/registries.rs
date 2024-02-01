@@ -611,7 +611,8 @@ impl ModuleRegistry {
           .fetch(&endpoint, PermissionsContainer::allow_all())
           .await
           .ok()?
-          .into_text_decoded()?;
+          .into_text_decoded()
+          .ok()?;
         let documentation: lsp::Documentation =
           serde_json::from_str(&file.source).ok()?;
         return match documentation {
