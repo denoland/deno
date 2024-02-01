@@ -550,7 +550,9 @@ pub async fn run(
       maybe_root_package_json_deps: package_json_deps_provider.deps().cloned(),
     },
     None,
-    metadata.disable_deprecated_api_warning,
+    // TODO(bartlomieju): temporarily disabled
+    // metadata.disable_deprecated_api_warning,
+    true,
     false,
   );
 
