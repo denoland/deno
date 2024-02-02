@@ -69,6 +69,7 @@ pub fn op_pledge_test_permissions(
   state.put::<PermissionsHolder>(PermissionsHolder(token, parent_permissions));
 
   // NOTE: This call overrides current permission set for the worker
+  state.put(worker_permissions.0.clone());
   state.put::<PermissionsContainer>(worker_permissions);
 
   Ok(token)
@@ -85,6 +86,7 @@ pub fn op_restore_test_permissions(
     }
 
     let permissions = permissions_holder.1;
+    state.put(permissions.0.clone());
     state.put::<PermissionsContainer>(permissions);
     Ok(())
   } else {
