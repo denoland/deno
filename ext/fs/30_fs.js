@@ -72,6 +72,7 @@ import {
   op_fs_utime_sync,
   op_fs_write_file_async,
   op_fs_write_file_sync,
+  op_is_terminal,
 } from "ext:core/ops";
 const {
   ArrayPrototypeFilter,
@@ -764,6 +765,10 @@ class FsFile {
 
   utimeSync(atime, mtime) {
     futimeSync(this.#rid, atime, mtime);
+  }
+
+  isTerminal() {
+    return op_is_terminal(this.#rid);
   }
 
   [SymbolDispose]() {
