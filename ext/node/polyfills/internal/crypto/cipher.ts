@@ -166,6 +166,8 @@ export class Cipheriv extends Transform implements Cipher {
 
   #authTag?: Buffer;
 
+  #autoPadding: boolean;
+
   constructor(
     cipher: string,
     key: CipherKey,
@@ -190,6 +192,7 @@ export class Cipheriv extends Transform implements Cipher {
     if (this.#context == 0) {
       throw new TypeError("Unknown cipher");
     }
+    this.#autoPadding = true;
   }
 
   final(encoding: string = getDefaultEncoding()): Buffer | string {
@@ -198,6 +201,7 @@ export class Cipheriv extends Transform implements Cipher {
       this.#context,
       this.#cache.cache,
       buf,
+      this.#autoPadding,
     );
     if (maybeTag) {
       this.#authTag = Buffer.from(maybeTag);
@@ -220,8 +224,8 @@ export class Cipheriv extends Transform implements Cipher {
     return this;
   }
 
-  setAutoPadding(_autoPadding?: boolean): this {
-    notImplemented("crypto.Cipheriv.prototype.setAutoPadding");
+  setAutoPadding(autoPadding = true): this {
+    this.#autoPadding = autoPadding;
     return this;
   }
 
@@ -309,6 +313,8 @@ export class Decipheriv extends Transform implements Cipher {
 
   #authTag?: BinaryLike;
 
+  #autoPadding: boolean;
+
   constructor(
     cipher: string,
     key: CipherKey,
@@ -333,6 +339,7 @@ export class Decipheriv extends Transform implements Cipher {
     if (this.#context == 0) {
       throw new TypeError("Unknown cipher");
     }
+    this.#autoPadding = true;
   }
 
   final(encoding: string = getDefaultEncoding()): Buffer | string {
@@ -342,6 +349,7 @@ export class Decipheriv extends Transform implements Cipher {
       this.#cache.cache,
       buf,
       this.#authTag || NO_TAG,
+      this.#autoPadding,
     );
 
     if (!this.#needsBlockCache) {
@@ -367,8 +375,9 @@ export class Decipheriv extends Transform implements Cipher {
     return this;
   }
 
-  setAutoPadding(_autoPadding?: boolean): this {
-    notImplemented("crypto.Decipheriv.prototype.setAutoPadding");
+  setAutoPadding(autoPadding = true): this {
+    this.#autoPadding = autoPadding;
+    return this;
   }
 
   update(

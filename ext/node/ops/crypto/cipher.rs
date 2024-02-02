@@ -59,10 +59,6 @@ impl CipherContext {
     self.cipher.borrow_mut().set_aad(aad);
   }
 
-  pub fn set_auto_padding(self, ap: bool) {
-    self.cipher.borrow_mut().set_auto_padding(ap);
-  }
-
   pub fn encrypt(&self, input: &[u8], output: &mut [u8]) {
     self.cipher.borrow_mut().encrypt(input, output);
   }
@@ -71,11 +67,12 @@ impl CipherContext {
     self,
     input: &[u8],
     output: &mut [u8],
+    auto_padding: bool,
   ) -> Result<Tag, AnyError> {
     Rc::try_unwrap(self.cipher)
       .map_err(|_| type_error("Cipher context is already in use"))?
       .into_inner()
-      .r#final(input, output)
+      .r#final(input, output, auto_padding)
   }
 }
 
@@ -99,11 +96,12 @@ impl DecipherContext {
     input: &[u8],
     output: &mut [u8],
     auth_tag: &[u8],
+    auto_padding: bool,
   ) -> Result<(), AnyError> {
     Rc::try_unwrap(self.decipher)
       .map_err(|_| type_error("Decipher context is already in use"))?
       .into_inner()
-      .r#final(input, output, auth_tag)
+      .r#final(input, output, auth_tag, auto_padding)
   }
 }
 
@@ -167,16 +165,6 @@ impl Cipher {
     }
   }
 
-  fn set_auto_padding(&mut self, ap: bool) {
-    use Cipher::*;
-    match self {
-      Aes128Cbc(cipher) => {
-        cipher.set_auto_padding(ap);
-      }
-      _ => {}
-    }
-  }
-
   /// encrypt encrypts the data in the middle of the input.
   fn encrypt(&mut self, input: &[u8], output: &mut [u8]) {
     use Cipher::*;
@@ -223,40 +211,96 @@ impl Cipher {
   }
 
   /// r#final encrypts the last block of the input data.
-  fn r#final(self, input: &[u8], output: &mut [u8]) -> Result<Tag, AnyError> {
+  fn r#final(
+    self,
+    input: &[u8],
+    output: &mut [u8],
+    auto_padding: bool,
+  ) -> Result<Tag, AnyError> {
     assert!(input.len() < 16);
     use Cipher::*;
     match self {
-      Aes128Cbc(encryptor) => {
-        let _ = (*encryptor)
-          .encrypt_padded_b2b_mut::<Pkcs7>(input, output)
-          .map_err(|_| type_error("Cannot pad the input data"))?;
+      Aes128Cbc(mut encryptor) => {
+        if auto_padding {
+          let _ = (*encryptor)
+            .encrypt_padded_b2b_mut::<Pkcs7>(input, output)
+            .map_err(|_| type_error("Cannot pad the input data"))?;
+        } else {
+          assert!(input.len() % 16 == 0);
+          for (input, output) in input.chunks(16).zip(output.chunks_mut(16)) {
+            encryptor.encrypt_block_b2b_mut(input.into(), output.into());
+          }
+        }
         Ok(None)
       }
-      Aes128Ecb(encryptor) => {
-        let _ = (*encryptor)
-          .encrypt_padded_b2b_mut::<Pkcs7>(input, output)
-          .map_err(|_| type_error("Cannot pad the input data"))?;
+      Aes128Ecb(mut encryptor) => {
+        if auto_padding {
+          let _ = (*encryptor)
+            .encrypt_padded_b2b_mut::<Pkcs7>(input, output)
+            .map_err(|_| type_error("Cannot pad the input data"))?;
+        } else {
+          assert!(input.len() % 16 == 0);
+          for (input, output) in input.chunks(16).zip(output.chunks_mut(16)) {
+            encryptor.encrypt_block_b2b_mut(input.into(), output.into());
+          }
+        }
         Ok(None)
       }
-      Aes192Ecb(encryptor) => {
-        let _ = (*encryptor)
-          .encrypt_padded_b2b_mut::<Pkcs7>(input, output)
-          .map_err(|_| type_error("Cannot pad the input data"))?;
+      Aes192Ecb(mut encryptor) => {
+        if auto_padding {
+          let _ = (*encryptor)
+            .encrypt_padded_b2b_mut::<Pkcs7>(input, output)
+            .map_err(|_| type_error("Cannot pad the input data"))?;
+        } else {
+          assert!(input.len() % 16 == 0);
+          for (input, output) in input.chunks(16).zip(output.chunks_mut(16)) {
+            encryptor.encrypt_block_b2b_mut(input.into(), output.into());
+          }
+        }
         Ok(None)
       }
-      Aes256Ecb(encryptor) => {
-        let _ = (*encryptor)
-          .encrypt_padded_b2b_mut::<Pkcs7>(input, output)
-          .map_err(|_| type_error("Cannot pad the input data"))?;
+      Aes256Ecb(mut encryptor) => {
+        if auto_padding {
+          let _ = (*encryptor)
+            .encrypt_padded_b2b_mut::<Pkcs7>(input, output)
+            .map_err(|_| type_error("Cannot pad the input data"))?;
+        } else {
+          assert!(input.len() % 16 == 0);
+          for (input, output) in input.chunks(16).zip(output.chunks_mut(16)) {
+            encryptor.encrypt_block_b2b_mut(input.into(), output.into());
+          }
+        }
         Ok(None)
       }
-      Aes128Gcm(cipher) => Ok(Some(cipher.finish().to_vec())),
-      Aes256Gcm(cipher) => Ok(Some(cipher.finish().to_vec())),
-      Aes256Cbc(encryptor) => {
-        let _ = (*encryptor)
-          .encrypt_padded_b2b_mut::<Pkcs7>(input, output)
-          .map_err(|_| type_error("Cannot pad the input data"))?;
+      Aes128Gcm(mut cipher) => {
+        if auto_padding {
+          Ok(Some(cipher.finish().to_vec()))
+        } else {
+          output[..input.len()].copy_from_slice(input);
+          cipher.encrypt(output);
+          Ok(None)
+        }
+      }
+      Aes256Gcm(mut cipher) => {
+        if auto_padding {
+          Ok(Some(cipher.finish().to_vec()))
+        } else {
+          output[..input.len()].copy_from_slice(input);
+          cipher.encrypt(output);
+          Ok(None)
+        }
+      }
+      Aes256Cbc(mut encryptor) => {
+        if auto_padding {
+          let _ = (*encryptor)
+            .encrypt_padded_b2b_mut::<Pkcs7>(input, output)
+            .map_err(|_| type_error("Cannot pad the input data"))?;
+        } else {
+          assert!(input.len() % 16 == 0);
+          for (input, output) in input.chunks(16).zip(output.chunks_mut(16)) {
+            encryptor.encrypt_block_b2b_mut(input.into(), output.into());
+          }
+        }
         Ok(None)
       }
     }
@@ -362,14 +406,22 @@ impl Decipher {
     input: &[u8],
     output: &mut [u8],
     auth_tag: &[u8],
+    auto_padding: bool,
   ) -> Result<(), AnyError> {
     use Decipher::*;
     match self {
-      Aes128Cbc(decryptor) => {
-        assert!(input.len() == 16);
-        let _ = (*decryptor)
-          .decrypt_padded_b2b_mut::<Pkcs7>(input, output)
-          .map_err(|_| type_error("Cannot unpad the input data"))?;
+      Aes128Cbc(mut decryptor) => {
+        if auto_padding {
+          assert!(input.len() == 16);
+          let _ = (*decryptor)
+            .decrypt_padded_b2b_mut::<Pkcs7>(input, output)
+            .map_err(|_| type_error("Cannot unpad the input data"))?;
+        } else {
+          assert!(input.len() % 16 == 0);
+          for (input, output) in input.chunks(16).zip(output.chunks_mut(16)) {
+            decryptor.decrypt_block_b2b_mut(input.into(), output.into());
+          }
+        }
         Ok(())
       }
       Aes128Ecb(decryptor) => {
