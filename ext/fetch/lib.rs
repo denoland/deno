@@ -127,6 +127,7 @@ deno_core::extension!(deno_fetch,
     options: Options,
   },
   state = |state, options| {
+      println!("fetch state");
     state.put::<Options>(options.options);
   },
 );

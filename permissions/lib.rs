@@ -15,7 +15,6 @@ use deno_core::serde_json;
 use deno_core::url;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
-use log;
 use once_cell::sync::Lazy;
 use std::borrow::Cow;
 use std::collections::HashSet;
