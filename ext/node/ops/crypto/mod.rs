@@ -352,7 +352,7 @@ pub fn op_node_decipheriv_final(
   #[buffer] input: &[u8],
   #[buffer] output: &mut [u8],
   #[buffer] auth_tag: &[u8],
-  auto_padding: bool
+  auto_padding: bool,
 ) -> Result<(), AnyError> {
   let context = state.resource_table.take::<cipher::DecipherContext>(rid)?;
   let context = Rc::try_unwrap(context)
