@@ -249,6 +249,7 @@
       "test-crypto-hkdf.js",
       "test-crypto-hmac.js",
       "test-crypto-padding.js",
+      "test-crypto-padding-aes256.js",
       "test-crypto-prime.js",
       "test-crypto-secret-keygen.js",
       "test-crypto-stream.js",

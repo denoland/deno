@@ -225,7 +225,7 @@ export class Cipheriv extends Transform implements Cipher {
   }
 
   setAutoPadding(autoPadding = true): this {
-    this.#autoPadding = autoPadding;
+    this.#autoPadding = !!autoPadding;
     return this;
   }
 
@@ -376,7 +376,7 @@ export class Decipheriv extends Transform implements Cipher {
   }
 
   setAutoPadding(autoPadding = true): this {
-    this.#autoPadding = autoPadding;
+    this.#autoPadding = !!autoPadding;
     return this;
   }
 
