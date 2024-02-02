@@ -702,6 +702,7 @@ const NOT_IMPORTED_OPS = [
   "op_write_type_error",
   "op_write",
   "op_ws_send_pong",
+  "op_jupyter_broadcast",
 ];
 
 function removeImportedOps() {
