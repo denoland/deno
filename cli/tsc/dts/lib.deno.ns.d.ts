@@ -43,7 +43,7 @@ declare interface ImportMeta {
    */
   filename?: string;
 
-  /** The absolute path of the dirrectory containing the current module.
+  /** The absolute path of the directory containing the current module.
    *
    * This property is only provided for local modules (ie. using `file://` URLs).
    *
