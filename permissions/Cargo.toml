@@ -22,3 +22,6 @@ once_cell.workspace = true
 serde.workspace = true
 termcolor.workspace = true
 which = "4.2.5"
+
+[target.'cfg(windows)'.dependencies]
+winapi = { workspace = true, features = ["commapi", "knownfolders", "mswsock", "objbase", "psapi", "shlobj", "tlhelp32", "winbase", "winerror", "winuser", "winsock2"] }
