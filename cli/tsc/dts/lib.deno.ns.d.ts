@@ -2666,7 +2666,8 @@ declare namespace Deno {
      * @category File System
      */
     utimeSync(atime: number | Date, mtime: number | Date): void;
-    /**
+    /** **UNSTABLE**: New API, yet to be vetted.
+     * 
      * Checks if the file resource is a TTY (terminal).
      *
      * ```ts
