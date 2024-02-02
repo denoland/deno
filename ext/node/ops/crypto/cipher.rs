@@ -463,20 +463,32 @@ impl Decipher {
 
         Ok(())
       }
-      Aes128Gcm(decipher) => {
-        let tag = decipher.finish();
-        if tag.as_slice() == auth_tag {
-          Ok(())
+      Aes128Gcm(mut decipher) => {
+        if auto_padding {
+          let tag = decipher.finish();
+          if tag.as_slice() == auth_tag {
+            Ok(())
+          } else {
+            Err(type_error("Failed to authenticate data"))
+          }
         } else {
-          Err(type_error("Failed to authenticate data"))
+          output[..input.len()].copy_from_slice(input);
+          decipher.decrypt(output);
+          Ok(())
         }
       }
-      Aes256Gcm(decipher) => {
-        let tag = decipher.finish();
-        if tag.as_slice() == auth_tag {
-          Ok(())
+      Aes256Gcm(mut decipher) => {
+        if auto_padding {
+          let tag = decipher.finish();
+          if tag.as_slice() == auth_tag {
+            Ok(())
+          } else {
+            Err(type_error("Failed to authenticate data"))
+          }
         } else {
-          Err(type_error("Failed to authenticate data"))
+          output[..input.len()].copy_from_slice(input);
+          decipher.decrypt(output);
+          Ok(())
         }
       }
       Aes256Cbc(mut decryptor) => {
