@@ -412,17 +412,15 @@ impl WebWorker {
       ),
       deno_webgpu::deno_webgpu::init_ops_and_esm(),
       deno_canvas::deno_canvas::init_ops_and_esm(),
-      deno_fetch::deno_fetch::init_ops_and_esm::<PermissionsContainer>(
-        deno_fetch::Options {
-          user_agent: options.bootstrap.user_agent.clone(),
-          root_cert_store_provider: options.root_cert_store_provider.clone(),
-          unsafely_ignore_certificate_errors: options
-            .unsafely_ignore_certificate_errors
-            .clone(),
-          file_fetch_handler: Rc::new(deno_fetch::FsFetchHandler),
-          ..Default::default()
-        },
-      ),
+      deno_fetch::deno_fetch::init_ops_and_esm(deno_fetch::Options {
+        user_agent: options.bootstrap.user_agent.clone(),
+        root_cert_store_provider: options.root_cert_store_provider.clone(),
+        unsafely_ignore_certificate_errors: options
+          .unsafely_ignore_certificate_errors
+          .clone(),
+        file_fetch_handler: Rc::new(deno_fetch::FsFetchHandler),
+        ..Default::default()
+      }),
       deno_cache::deno_cache::init_ops_and_esm::<SqliteBackedCache>(
         create_cache,
       ),

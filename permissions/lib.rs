@@ -13,6 +13,7 @@ use deno_core::serde::Deserializer;
 use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::url;
+use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use log;
 use once_cell::sync::Lazy;
@@ -28,7 +29,7 @@ use std::sync::Arc;
 use which::which;
 
 pub mod colors;
-mod prompter;
+pub mod prompter;
 use prompter::permission_prompt;
 use prompter::PromptResponse;
 use prompter::PERMISSION_EMOJI;
@@ -1283,6 +1284,11 @@ impl PermissionsContainer {
     Self(Arc::new(Mutex::new(perms)))
   }
 
+  #[inline(always)]
+  pub fn allow_hrtime(&mut self) -> bool {
+    self.0.lock().hrtime.check().is_ok()
+  }
+
   pub fn allow_all() -> Self {
     Self::new(Permissions::allow_all())
   }
@@ -1302,6 +1308,15 @@ impl PermissionsContainer {
     api_name: &str,
   ) -> Result<(), AnyError> {
     self.0.lock().read.check(path, Some(api_name))
+  }
+
+  #[inline(always)]
+  pub fn check_read_with_api_name(
+    &self,
+    path: &Path,
+    api_name: Option<&str>,
+  ) -> Result<(), AnyError> {
+    self.0.lock().read.check(path, api_name)
   }
 
   #[inline(always)]
@@ -1329,6 +1344,15 @@ impl PermissionsContainer {
   }
 
   #[inline(always)]
+  pub fn check_write_with_api_name(
+    &self,
+    path: &Path,
+    api_name: Option<&str>,
+  ) -> Result<(), AnyError> {
+    self.0.lock().write.check(path, api_name)
+  }
+
+  #[inline(always)]
   pub fn check_write_all(&mut self, api_name: &str) -> Result<(), AnyError> {
     self.0.lock().write.check_all(Some(api_name))
   }
@@ -1341,6 +1365,15 @@ impl PermissionsContainer {
     api_name: &str,
   ) -> Result<(), AnyError> {
     self.0.lock().write.check_blind(path, display, api_name)
+  }
+
+  #[inline(always)]
+  pub fn check_write_partial(
+    &mut self,
+    path: &Path,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    self.0.lock().write.check_partial(path, Some(api_name))
   }
 
   #[inline(always)]
@@ -1358,11 +1391,7 @@ impl PermissionsContainer {
   }
 
   #[inline(always)]
-  pub fn check_sys(
-    &mut self,
-    kind: &str,
-    api_name: &str,
-  ) -> Result<(), AnyError> {
+  pub fn check_sys(&self, kind: &str, api_name: &str) -> Result<(), AnyError> {
     self.0.lock().sys.check(kind, Some(api_name))
   }
 
@@ -1374,6 +1403,37 @@ impl PermissionsContainer {
   #[inline(always)]
   pub fn check_env_all(&mut self) -> Result<(), AnyError> {
     self.0.lock().env.check_all()
+  }
+
+  #[inline(always)]
+  pub fn check_net_url(
+    &mut self,
+    url: &Url,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    self.0.lock().net.check_url(url, Some(api_name))
+  }
+
+  #[inline(always)]
+  pub fn check_net<T: AsRef<str>>(
+    &mut self,
+    host: &(T, Option<u16>),
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    self.0.lock().net.check(host, Some(api_name))
+  }
+
+  #[inline(always)]
+  pub fn check_ffi(&mut self, path: Option<&Path>) -> Result<(), AnyError> {
+    self.0.lock().ffi.check(path.unwrap(), None)
+  }
+
+  #[inline(always)]
+  pub fn check_ffi_partial(
+    &mut self,
+    path: Option<&Path>,
+  ) -> Result<(), AnyError> {
+    self.0.lock().ffi.check_partial(path)
   }
 }
 

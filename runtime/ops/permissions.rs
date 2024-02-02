@@ -1,8 +1,8 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::permissions::parse_sys_kind;
-use crate::permissions::PermissionState;
-use crate::permissions::PermissionsContainer;
+use ::deno_permissions::parse_sys_kind;
+use ::deno_permissions::PermissionState;
+use ::deno_permissions::PermissionsContainer;
 use deno_core::error::custom_error;
 use deno_core::error::uri_error;
 use deno_core::error::AnyError;

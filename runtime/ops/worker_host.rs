@@ -151,7 +151,7 @@ fn op_create_worker(
   let parent_permissions = state.borrow_mut::<PermissionsContainer>();
   let worker_permissions = if let Some(child_permissions_arg) = args.permissions
   {
-    let mut parent_permissions = parent_permissions.0.lock();
+    let mut parent_permissions = parent_permissions.0 .0.lock();
     let perms =
       create_child_permissions(&mut parent_permissions, child_permissions_arg)?;
     PermissionsContainer::new(perms)

@@ -70,7 +70,7 @@ pub fn op_pledge_test_permissions(
   let token = Uuid::new_v4();
   let parent_permissions = state.borrow_mut::<PermissionsContainer>();
   let worker_permissions = {
-    let mut parent_permissions = parent_permissions.0.lock();
+    let mut parent_permissions = parent_permissions.0 .0.lock();
     let perms = create_child_permissions(&mut parent_permissions, args)?;
     PermissionsContainer::new(perms)
   };
