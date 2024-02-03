@@ -85,7 +85,6 @@ import {
   workerRuntimeGlobalProperties,
 } from "ext:runtime/98_global_scope_worker.js";
 import { SymbolAsyncDispose, SymbolDispose } from "ext:deno_web/00_infra.js";
-
 // deno-lint-ignore prefer-primordials
 if (Symbol.dispose) throw "V8 supports Symbol.dispose now, no need to shim it!";
 ObjectDefineProperties(Symbol, {
@@ -172,6 +171,10 @@ function warnOnDeprecatedApi(apiName, stack, ...suggestions) {
     "font-weight: bold;",
   );
 
+  console.error();
+  console.error(
+    "See the Deno 1 to 2 Migration Guide for more information at https://docs.deno.com/runtime/manual/advanced/migrate_deprecations",
+  );
   console.error();
   if (stackLines.length > 0) {
     console.error("Stack trace:");
@@ -702,6 +705,7 @@ const NOT_IMPORTED_OPS = [
   "op_write_type_error",
   "op_write",
   "op_ws_send_pong",
+  "op_jupyter_broadcast",
 ];
 
 function removeImportedOps() {
