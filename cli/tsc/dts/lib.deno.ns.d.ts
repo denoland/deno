@@ -43,7 +43,7 @@ declare interface ImportMeta {
    */
   filename?: string;
 
-  /** The absolute path of the dirrectory containing the current module.
+  /** The absolute path of the directory containing the current module.
    *
    * This property is only provided for local modules (ie. using `file://` URLs).
    *
@@ -1653,8 +1653,9 @@ declare namespace Deno {
    * An abstract interface which when implemented provides an interface to read
    * bytes into an array buffer asynchronously.
    *
-   * @deprecated Use {@linkcode ReadableStream} instead. {@linkcode Reader}
-   * will be removed in v2.0.0.
+   * @deprecated This will be removed in Deno 2.0. See the
+   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+   * for migration instructions.
    *
    * @category I/O */
   export interface Reader {
@@ -1690,8 +1691,9 @@ declare namespace Deno {
    * An abstract interface which when implemented provides an interface to read
    * bytes into an array buffer synchronously.
    *
-   * @deprecated Use {@linkcode ReadableStream} instead. {@linkcode ReaderSync}
-   * will be removed in v2.0.0.
+   * @deprecated This will be removed in Deno 2.0. See the
+   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+   * for migration instructions.
    *
    * @category I/O */
   export interface ReaderSync {
@@ -1727,8 +1729,9 @@ declare namespace Deno {
    * An abstract interface which when implemented provides an interface to write
    * bytes from an array buffer to a file/resource asynchronously.
    *
-   * @deprecated Use {@linkcode WritableStream} instead. {@linkcode Writer}
-   * will be removed in v2.0.0.
+   * @deprecated This will be removed in Deno 2.0. See the
+   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+   * for migration instructions.
    *
    * @category I/O */
   export interface Writer {
@@ -1754,8 +1757,9 @@ declare namespace Deno {
    * An abstract interface which when implemented provides an interface to write
    * bytes from an array buffer to a file/resource synchronously.
    *
-   * @deprecated Use {@linkcode WritableStream} instead. {@linkcode WriterSync}
-   * will be removed in v2.0.0.
+   * @deprecated This will be removed in Deno 2.0. See the
+   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+   * for migration instructions.
    *
    * @category I/O */
   export interface WriterSync {
@@ -1775,8 +1779,9 @@ declare namespace Deno {
    * An abstract interface which when implemented provides an interface to close
    * files/resources that were previously opened.
    *
-   * @deprecated Use {@linkcode ReadableStream} and {@linkcode WritableStream}
-   * instead. {@linkcode Closer} will be removed in v2.0.0.
+   * @deprecated This will be removed in Deno 2.0. See the
+   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+   * for migration instructions.
    *
    * @category I/O */
   export interface Closer {
@@ -1830,8 +1835,9 @@ declare namespace Deno {
    * an error occurs. It resolves to the number of bytes copied or rejects with
    * the first error encountered while copying.
    *
-   * @deprecated Use {@linkcode https://deno.land/std/io/copy.ts?s=copy | copy}
-   * instead. {@linkcode Deno.copy} will be removed in v2.0.0.
+   * @deprecated This will be removed in Deno 2.0. See the
+   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+   * for migration instructions.
    *
    * @category I/O
    *
@@ -1848,8 +1854,9 @@ declare namespace Deno {
   /**
    * Turns a Reader, `r`, into an async iterator.
    *
-   * @deprecated Use {@linkcode ReadableStream} instead.
-   * {@linkcode Deno.iter} will be removed in v2.0.0.
+   * @deprecated This will be removed in Deno 2.0. See the
+   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+   * for migration instructions.
    *
    * @category I/O
    */
@@ -1861,8 +1868,9 @@ declare namespace Deno {
   /**
    * Turns a ReaderSync, `r`, into an iterator.
    *
-   * @deprecated Use {@linkcode ReadableStream} instead.
-   * {@linkcode Deno.iterSync} will be removed in v2.0.0.
+   * @deprecated This will be removed in Deno 2.0. See the
+   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+   * for migration instructions.
    *
    * @category I/O
    */
@@ -1983,8 +1991,9 @@ declare namespace Deno {
    * const text = new TextDecoder().decode(buf);  // "hello world"
    * ```
    *
-   * @deprecated Use `reader.read()` instead. {@linkcode Deno.read} will be
-   * removed in Deno 2.0.
+   * @deprecated This will be removed in Deno 2.0. See the
+   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+   * for migration instructions.
    *
    * @category I/O
    */
@@ -2015,8 +2024,9 @@ declare namespace Deno {
    * const text = new TextDecoder().decode(buf);  // "hello world"
    * ```
    *
-   * @deprecated Use `reader.readSync()` instead. {@linkcode Deno.readSync}
-   * will be removed in Deno 2.0.
+   * @deprecated This will be removed in Deno 2.0. See the
+   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+   * for migration instructions.
    *
    * @category I/O
    */
@@ -2039,8 +2049,9 @@ declare namespace Deno {
    * const bytesWritten = await Deno.write(file.rid, data); // 11
    * ```
    *
-   * @deprecated Use `writer.write()` instead. {@linkcode Deno.write} will be
-   * removed in Deno 2.0.
+   * @deprecated This will be removed in Deno 2.0. See the
+   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+   * for migration instructions.
    *
    * @category I/O
    */
@@ -2064,8 +2075,9 @@ declare namespace Deno {
    * const bytesWritten = Deno.writeSync(file.rid, data); // 11
    * ```
    *
-   * @deprecated Use `writer.writeSync()` instead. {@linkcode Deno.writeSync}
-   * will be removed in Deno 2.0.
+   * @deprecated This will be removed in Deno 2.0. See the
+   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+   * for migration instructions.
    *
    * @category I/O
    */
@@ -2108,8 +2120,9 @@ declare namespace Deno {
    * console.log(await Deno.seek(file.rid, -2, Deno.SeekMode.End)); // "9" (i.e. 11-2)
    * ```
    *
-   * @deprecated Use `file.seek()` instead. {@linkcode Deno.seek} will be
-   * removed in Deno 2.0.
+   * @deprecated This will be removed in Deno 2.0. See the
+   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+   * for migration instructions.
    *
    * @category I/O
    */
@@ -2156,8 +2169,9 @@ declare namespace Deno {
    * console.log(Deno.seekSync(file.rid, -2, Deno.SeekMode.End)); // "9" (i.e. 11-2)
    * ```
    *
-   * @deprecated Use `file.seekSync()` instead. {@linkcode Deno.seekSync}
-   * will be removed in Deno 2.0.
+   * @deprecated This will be removed in Deno 2.0. See the
+   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+   * for migration instructions.
    *
    * @category I/O
    */
@@ -2258,8 +2272,9 @@ declare namespace Deno {
    * // do work with "file" object
    * ```
    *
-   * @deprecated Use `.close()` method on the resource instead.
-   * {@linkcode Deno.close} will be removed in Deno 2.0.
+   * @deprecated This will be removed in Deno 2.0. See the
+   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+   * for migration instructions.
    *
    * @category I/O
    */
@@ -2296,8 +2311,9 @@ declare namespace Deno {
      * The resource ID associated with the file instance. The resource ID
      * should be considered an opaque reference to resource.
      *
-     * @deprecated Use {@linkcode Deno.FsFile} instance methods instead.
-     * {@linkcode Deno.FsFile.rid} will be removed in Deno 2.0.
+     * @deprecated This will be removed in Deno 2.0. See the
+     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+     * for migration instructions.
      */
     readonly rid: number;
     /** A {@linkcode ReadableStream} instance representing to the byte contents
@@ -2333,9 +2349,9 @@ declare namespace Deno {
      * not be constructed directly. Instead use {@linkcode Deno.open} or
      * {@linkcode Deno.openSync} to create a new instance of `FsFile`.
      *
-     * @deprecated Use {@linkcode Deno.open} or {@linkcode Deno.openSync}
-     * instead. {@linkcode Deno.FsFile.constructor} will be removed in Deno
-     * 2.0.
+     * @deprecated This will be removed in Deno 2.0. See the
+     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+     * for migration instructions.
      */
     constructor(rid: number);
     /** Write the contents of the array buffer (`p`) to the file.
@@ -2666,8 +2682,9 @@ declare namespace Deno {
   /**
    * The Deno abstraction for reading and writing files.
    *
-   * @deprecated Use {@linkcode Deno.FsFile} instead. {@linkcode Deno.File}
-   * will be removed in v2.0.0.
+   * @deprecated This will be removed in Deno 2.0. See the
+   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+   * for migration instructions.
    *
    * @category File System
    */
@@ -2723,8 +2740,9 @@ declare namespace Deno {
      * The resource ID assigned to `stdin`. This can be used with the discreet
      * I/O functions in the `Deno` namespace.
      *
-     * @deprecated Use {@linkcode Deno.stdin} instance methods instead.
-     * {@linkcode Deno.stdin.rid} will be removed in Deno 2.0.
+     * @deprecated This will be removed in Deno 2.0. See the
+     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+     * for migration instructions.
      */
     readonly rid: number;
     /** A readable stream interface to `stdin`. */
@@ -2770,8 +2788,9 @@ declare namespace Deno {
      * The resource ID assigned to `stdout`. This can be used with the discreet
      * I/O functions in the `Deno` namespace.
      *
-     * @deprecated Use {@linkcode Deno.stdout} instance methods instead.
-     * {@linkcode Deno.stdout.rid} will be removed in Deno 2.0.
+     * @deprecated This will be removed in Deno 2.0. See the
+     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+     * for migration instructions.
      */
     readonly rid: number;
     /** A writable stream interface to `stdout`. */
@@ -2803,8 +2822,9 @@ declare namespace Deno {
      * The resource ID assigned to `stderr`. This can be used with the discreet
      * I/O functions in the `Deno` namespace.
      *
-     * @deprecated Use {@linkcode Deno.stderr} instance methods instead.
-     * {@linkcode Deno.stderr.rid} will be removed in Deno 2.0.
+     * @deprecated This will be removed in Deno 2.0. See the
+     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+     * for migration instructions.
      */
     readonly rid: number;
     /** A writable stream interface to `stderr`. */
@@ -2900,9 +2920,9 @@ declare namespace Deno {
    * console.log(Deno.isatty(ttyRid)); // true
    * ```
    *
-   * @deprecated Use `Deno.stdin.isTerminal()`, `Deno.stdout.isTerminal()` or
-   * `Deno.stderr.isTerminal()` instead.
-   * {@linkcode Deno.isatty} will be removed in v2.0.0.
+   * @deprecated This will be removed in Deno 2.0. See the
+   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+   * for migration instructions.
    *
    * @category I/O
    */
@@ -2911,9 +2931,9 @@ declare namespace Deno {
   /**
    * A variable-sized buffer of bytes with `read()` and `write()` methods.
    *
-   * @deprecated Use
-   * {@linkcode https://deno.land/std/io/buffer.ts?s=Buffer | Buffer} instead.
-   * {@linkcode Deno.Buffer} will be removed in v2.0.0.
+   * @deprecated This will be removed in Deno 2.0. See the
+   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+   * for migration instructions.
    *
    * @category I/O
    */
@@ -2987,9 +3007,9 @@ declare namespace Deno {
    * Read Reader `r` until EOF (`null`) and resolve to the content as
    * Uint8Array`.
    *
-   * @deprecated Use
-   * {@linkcode https://deno.land/std/io/read_all.ts?s=readAll | readAll}
-   * instead. {@linkcode Deno.readAll} will be removed in v2.0.0.
+   * @deprecated This will be removed in Deno 2.0. See the
+   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+   * for migration instructions.
    *
    * @category I/O
    */
@@ -2999,9 +3019,9 @@ declare namespace Deno {
    * Synchronously reads Reader `r` until EOF (`null`) and returns the content
    * as `Uint8Array`.
    *
-   * @deprecated Use
-   * {@linkcode https://deno.land/std/io/read_all.ts?s=readAllSync | readAllSync}
-   * instead. {@linkcode Deno.readAllSync} will be removed in v2.0.0.
+   * @deprecated This will be removed in Deno 2.0. See the
+   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+   * for migration instructions.
    *
    * @category I/O
    */
@@ -3010,9 +3030,9 @@ declare namespace Deno {
   /**
    * Write all the content of the array buffer (`arr`) to the writer (`w`).
    *
-   * @deprecated Use
-   * {@linkcode https://deno.land/std/io/write_all.ts?s=writeAll | writeAll}
-   * instead. {@linkcode Deno.writeAll} will be removed in v2.0.0.
+   * @deprecated This will be removed in Deno 2.0. See the
+   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+   * for migration instructions.
    *
    * @category I/O
    */
@@ -3022,9 +3042,9 @@ declare namespace Deno {
    * Synchronously write all the content of the array buffer (`arr`) to the
    * writer (`w`).
    *
-   * @deprecated Use
-   * {@linkcode https://deno.land/std/io/write_all.ts?s=writeAllSync | writeAllSync}
-   * instead. {@linkcode Deno.writeAllSync} will be removed in v2.0.0.
+   * @deprecated This will be removed in Deno 2.0. See the
+   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+   * for migration instructions.
    *
    * @category I/O
    */
@@ -3971,7 +3991,7 @@ declare namespace Deno {
 
   /** @category Observability
    *
-   * @deprecated {@linkcode Deno.metrics} will be removed in v2.0.0.
+   * @deprecated This will be removed in Deno 2.0.
    */
   export interface OpMetrics {
     opsDispatched: number;
@@ -3989,7 +4009,7 @@ declare namespace Deno {
 
   /** @category Observability
    *
-   * @deprecated {@linkcode Deno.metrics} will be removed in v2.0.0.
+   * @deprecated This will be removed in Deno 2.0.
    */
   export interface Metrics extends OpMetrics {
     ops: Record<string, OpMetrics>;
@@ -4020,7 +4040,7 @@ declare namespace Deno {
    *
    * @category Observability
    *
-   * @deprecated {@linkcode Deno.metrics} will be removed in v2.0.0.
+   * @deprecated This will be removed in Deno 2.0.
    */
   export function metrics(): Metrics;
 
@@ -4028,7 +4048,7 @@ declare namespace Deno {
    * A map of open resources that Deno is tracking. The key is the resource ID
    * (_rid_) and the value is its representation.
    *
-   * @deprecated {@linkcode Deno.resources} will be removed in Deno 2.0.
+   * @deprecated This will be removed in Deno 2.0.
    *
    * @category Observability */
   interface ResourceMap {
@@ -4048,7 +4068,7 @@ declare namespace Deno {
    * // { 0: "stdin", 1: "stdout", 2: "stderr", 3: "fsFile" }
    * ```
    *
-   * @deprecated {@linkcode Deno.resources} will be removed in Deno 2.0.
+   * @deprecated This will be removed in Deno 2.0.
    *
    * @category Observability
    */
@@ -4094,8 +4114,9 @@ declare namespace Deno {
     /**
      * The resource id.
      *
-     * @deprecated Use {@linkcode Deno.FsWatcher} instance methods instead.
-     * {@linkcode Deno.FsWatcher.rid} will be removed in Deno 2.0.
+     * @deprecated This will be removed in Deno 2.0. See the
+     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+     * for migration instructions.
      */
     readonly rid: number;
     /** Stops watching the file system and closes the watcher resource. */
@@ -4103,7 +4124,9 @@ declare namespace Deno {
     /**
      * Stops watching the file system and closes the watcher resource.
      *
-     * @deprecated {@linkcode Deno.FsWatcher.return} will be removed in Deno 2.0.
+     * @deprecated This will be removed in Deno 2.0. See the
+     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+     * for migration instructions.
      */
     return?(value?: any): Promise<IteratorResult<FsEvent>>;
     [Symbol.asyncIterator](): AsyncIterableIterator<FsEvent>;
@@ -4156,8 +4179,9 @@ declare namespace Deno {
   /**
    * Options which can be used with {@linkcode Deno.run}.
    *
-   * @deprecated Use {@linkcode Deno.Command} instead. {@linkcode Deno.run}
-   * will be removed in v2.0.0.
+   * @deprecated This will be removed in Deno 2.0. See the
+   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+   * for migration instructions.
    *
    * @category Sub Process */
   export interface RunOptions {
@@ -4222,8 +4246,9 @@ declare namespace Deno {
    * If `success` is `true`, then `code` will be `0`, but if `success` is
    * `false`, the sub-process exit code will be set in `code`.
    *
-   * @deprecated Use {@linkcode Deno.Command} instead. {@linkcode Deno.run}
-   * will be removed in v2.0.0.
+   * @deprecated This will be removed in Deno 2.0. See the
+   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+   * for migration instructions.
    *
    * @category Sub Process */
   export type ProcessStatus =
@@ -4242,8 +4267,9 @@ declare namespace Deno {
    * Represents an instance of a sub process that is returned from
    * {@linkcode Deno.run} which can be used to manage the sub-process.
    *
-   * @deprecated Use {@linkcode Deno.Command} instead. {@linkcode Deno.run}
-   * will be removed in v2.0.0.
+   * @deprecated This will be removed in Deno 2.0. See the
+   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+   * for migration instructions.
    *
    * @category Sub Process */
   export class Process<T extends RunOptions = RunOptions> {
@@ -4444,8 +4470,9 @@ declare namespace Deno {
    *
    * Requires `allow-run` permission.
    *
-   * @deprecated Use {@linkcode Deno.Command} instead. {@linkcode Deno.run}
-   * will be removed in v2.0.0.
+   * @deprecated This will be removed in Deno 2.0. See the
+   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+   * for migration instructions.
    *
    * @tags allow-run
    * @category Sub Process
@@ -5249,8 +5276,9 @@ declare namespace Deno {
    * called when `Deno.inspect()` is called, or when the object is logged to
    * the console.
    *
-   * @deprecated Use `Symbol.for("Deno.customInspect")` instead. This symbol
-   * will be removed in Deno 2.0.
+   * @deprecated This will be removed in Deno 2.0. See the
+   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+   * for migration instructions.
    *
    * @category Console and Debugging
    */
@@ -5355,8 +5383,9 @@ declare namespace Deno {
    * console.log(new TextDecoder().decode(data)); // Hello W
    * ```
    *
-   * @deprecated Use {@linkcode Deno.FsFile.truncate} instead.
-   * {@linkcode Deno.ftruncate} will be removed in Deno 2.0.
+   * @deprecated This will be removed in Deno 2.0. See the
+   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+   * for migration instructions.
    *
    * @category File System
    */
@@ -5400,8 +5429,9 @@ declare namespace Deno {
    * console.log(new TextDecoder().decode(data)); // Hello W
    * ```
    *
-   * @deprecated Use {@linkcode Deno.FsFile.truncateSync} instead.
-   * {@linkcode Deno.ftruncateSync} will be removed in Deno 2.0.
+   * @deprecated This will be removed in Deno 2.0. See the
+   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+   * for migration instructions.
    *
    * @category File System
    */
@@ -5417,8 +5447,9 @@ declare namespace Deno {
    * Deno.futimeSync(file.rid, 1556495550, new Date());
    * ```
    *
-   * @deprecated Use {@linkcode Deno.FsFile.utimeSync} instead.
-   * {@linkcode Deno.futimeSync} will be removed in Deno 2.0.
+   * @deprecated This will be removed in Deno 2.0. See the
+   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+   * for migration instructions.
    *
    * @category File System
    */
@@ -5438,8 +5469,9 @@ declare namespace Deno {
    * await Deno.futime(file.rid, 1556495550, new Date());
    * ```
    *
-   * @deprecated Use {@linkcode Deno.FsFile.utime} instead.
-   * {@linkcode Deno.futime} will be removed in Deno 2.0.
+   * @deprecated This will be removed in Deno 2.0. See the
+   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+   * for migration instructions.
    *
    * @category File System
    */
@@ -5460,8 +5492,9 @@ declare namespace Deno {
    * assert(fileInfo.isFile);
    * ```
    *
-   * @deprecated Use `file.stat()` instead.
-   * {@linkcode Deno.fstat} will be removed in Deno 2.0.
+   * @deprecated This will be removed in Deno 2.0. See the
+   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+   * for migration instructions.
    *
    * @category File System
    */
@@ -5479,8 +5512,9 @@ declare namespace Deno {
    * assert(fileInfo.isFile);
    * ```
    *
-   * @deprecated Use `file.statSync()` instead.
-   * {@linkcode Deno.fstatSync} will be removed in Deno 2.0.
+   * @deprecated This will be removed in Deno 2.0. See the
+   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+   * for migration instructions.
    *
    * @category File System
    */
@@ -5530,8 +5564,10 @@ declare namespace Deno {
    * request from a remote client.
    *
    * @category HTTP Server
-   * @deprecated Use {@linkcode Deno.serve} instead. This will be removed in
-   * Deno 2.0.
+   *
+   * @deprecated This will be removed in Deno 2.0. See the
+   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+   * for migration instructions.
    */
   export interface RequestEvent {
     /** The request from the client in the form of the web platform
@@ -5552,8 +5588,10 @@ declare namespace Deno {
    * requests on the HTTP server connection.
    *
    * @category HTTP Server
-   * @deprecated Use {@linkcode Deno.serve} instead. This will be removed in
-   * Deno 2.0.
+   *
+   * @deprecated This will be removed in Deno 2.0. See the
+   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+   * for migration instructions.
    */
   export interface HttpConn extends AsyncIterable<RequestEvent>, Disposable {
     /** The resource ID associated with this connection. Generally users do not
@@ -5619,8 +5657,9 @@ declare namespace Deno {
    * used elsewhere. In such a case, this function will fail.
    *
    * @category HTTP Server
-   * @deprecated Use {@linkcode Deno.serve} instead. This will be removed in
-   * Deno 2.0.
+   * @deprecated This will be removed in Deno 2.0. See the
+   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+   * for migration instructions.
    */
   export function serveHttp(conn: Conn): HttpConn;
 
@@ -6280,8 +6319,9 @@ declare namespace Deno {
   /**
    * @category HTTP Server
    *
-   * @deprecated Use {@linkcode Deno.HttpServer} instead.
-   * {@linkcode Deno.Server} will be removed in Deno 2.0.
+   * @deprecated This will be removed in Deno 2.0. See the
+   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+   * for migration instructions.
    */
   export type Server = HttpServer;
 
