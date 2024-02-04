@@ -2691,6 +2691,8 @@ declare namespace Deno {
      * ```
      */
     setRaw(mode: boolean, options?: SetRawOptions): void;
+    /** **UNSTABLE**: New API, yet to be vetted.
+     *
      * Acquire an advisory file-system lock for the file.
      *
      * @param [exclusive=false]

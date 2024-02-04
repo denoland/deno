@@ -776,7 +776,7 @@ class FsFile {
     const cbreak = !!(options.cbreak ?? false);
     op_set_raw(this.#rid, mode, cbreak);
   }
-  
+
   lockSync(exclusive = false) {
     op_fs_flock_sync(this.#rid, exclusive);
   }

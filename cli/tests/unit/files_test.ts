@@ -10,6 +10,8 @@ import {
 } from "./test_util.ts";
 import { copy } from "../../../test_util/std/streams/copy.ts";
 
+// Note tests for Deno.FsFile.setRaw is in integration tests.
+
 Deno.test(function filesStdioFileDescriptors() {
   assertEquals(Deno.stdin.rid, 0);
   assertEquals(Deno.stdout.rid, 1);
