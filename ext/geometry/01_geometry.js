@@ -5,6 +5,10 @@ import {
   op_geometry_multiply,
   op_geometry_multiply_self,
   op_geometry_premultiply_self,
+  op_geometry_scale,
+  op_geometry_scale_self,
+  op_geometry_scale_with_origin,
+  op_geometry_scale_with_origin_self,
   op_geometry_translate,
   op_geometry_translate_self,
 } from "ext:core/ops";
@@ -883,6 +887,91 @@ class DOMMatrixReadOnly {
     return matrix;
   }
 
+  scale(
+    scaleX = 1,
+    scaleY = scaleX,
+    scaleZ = 1,
+    originX = 0,
+    originY = 0,
+    originZ = 0,
+  ) {
+    webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
+    originX = webidl.converters["unrestricted double"](originX);
+    originY = webidl.converters["unrestricted double"](originY);
+    originZ = webidl.converters["unrestricted double"](originZ);
+    const matrix = webidl.createBranded(DOMMatrix);
+    matrix[_raw] = new Float64Array(16);
+    if (originX === 0 && originY === 0 && originZ === 0) {
+      op_geometry_scale(
+        this[_raw],
+        webidl.converters["unrestricted double"](scaleX),
+        webidl.converters["unrestricted double"](scaleY),
+        webidl.converters["unrestricted double"](scaleZ),
+        matrix[_raw],
+      );
+    } else {
+      op_geometry_scale_with_origin(
+        this[_raw],
+        webidl.converters["unrestricted double"](scaleX),
+        webidl.converters["unrestricted double"](scaleY),
+        webidl.converters["unrestricted double"](scaleZ),
+        originX,
+        originY,
+        originZ,
+        matrix[_raw],
+      );
+    }
+    matrix[_is2D] = this[_is2D] && scaleZ === 1;
+    return matrix;
+  }
+
+  scaleNonUniform(scaleX = 1, scaleY = 1) {
+    webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
+    const matrix = webidl.createBranded(DOMMatrix);
+    matrix[_raw] = new Float64Array(16);
+    op_geometry_scale(
+      this[_raw],
+      webidl.converters["unrestricted double"](scaleX),
+      webidl.converters["unrestricted double"](scaleY),
+      1,
+      matrix[_raw],
+    );
+    matrix[_is2D] = this[_is2D];
+    return matrix;
+  }
+
+  scale3d(scale = 1, originX = 0, originY = 0, originZ = 0) {
+    webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
+    scale = webidl.converters["unrestricted double"](scale);
+    originX = webidl.converters["unrestricted double"](originX);
+    originY = webidl.converters["unrestricted double"](originY);
+    originZ = webidl.converters["unrestricted double"](originZ);
+    const matrix = webidl.createBranded(DOMMatrix);
+    matrix[_raw] = new Float64Array(16);
+    if (originX === 0 && originY === 0 && originZ === 0) {
+      op_geometry_scale(
+        this[_raw],
+        scale,
+        scale,
+        scale,
+        matrix[_raw],
+      );
+    } else {
+      op_geometry_scale_with_origin(
+        this[_raw],
+        scale,
+        scale,
+        scale,
+        originX,
+        originY,
+        originZ,
+        matrix[_raw],
+      );
+    }
+    matrix[_is2D] = this[_is2D] && scale === 1;
+    return matrix;
+  }
+
   multiply(other = {}) {
     webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
     const prefix = "Failed to call 'DOMMatrixReadOnly.prototype.multiply'";
@@ -1280,6 +1369,68 @@ class DOMMatrix extends DOMMatrixReadOnly {
       this[_raw],
     );
     this[_is2D] &&= tz === 0;
+    return this;
+  }
+
+  scaleSelf(
+    scaleX = 1,
+    scaleY = scaleX,
+    scaleZ = 1,
+    originX = 0,
+    originY = 0,
+    originZ = 0,
+  ) {
+    webidl.assertBranded(this, DOMMatrixPrototype);
+    originX = webidl.converters["unrestricted double"](originX);
+    originY = webidl.converters["unrestricted double"](originY);
+    originZ = webidl.converters["unrestricted double"](originZ);
+    if (originX === 0 && originY === 0 && originZ === 0) {
+      op_geometry_scale_self(
+        webidl.converters["unrestricted double"](scaleX),
+        webidl.converters["unrestricted double"](scaleY),
+        webidl.converters["unrestricted double"](scaleZ),
+        this[_raw],
+      );
+    } else {
+      op_geometry_scale_with_origin_self(
+        webidl.converters["unrestricted double"](scaleX),
+        webidl.converters["unrestricted double"](scaleY),
+        webidl.converters["unrestricted double"](scaleZ),
+        originX,
+        originY,
+        originZ,
+        this[_raw],
+      );
+    }
+    this[_is2D] &&= scaleZ === 1;
+    return this;
+  }
+
+  scale3dSelf(scale = 1, originX = 0, originY = 0, originZ = 0) {
+    webidl.assertBranded(this, DOMMatrixPrototype);
+    scale = webidl.converters["unrestricted double"](scale);
+    originX = webidl.converters["unrestricted double"](originX);
+    originY = webidl.converters["unrestricted double"](originY);
+    originZ = webidl.converters["unrestricted double"](originZ);
+    if (originX === 0 && originY === 0 && originZ === 0) {
+      op_geometry_scale_self(
+        scale,
+        scale,
+        scale,
+        this[_raw],
+      );
+    } else {
+      op_geometry_scale_with_origin_self(
+        scale,
+        scale,
+        scale,
+        originX,
+        originY,
+        originZ,
+        this[_raw],
+      );
+    }
+    this[_is2D] &&= scale === 1;
     return this;
   }
 

@@ -53,6 +53,240 @@ Deno.test(function matrixTranslateSelf() {
   );
 });
 
+Deno.test(function matrixScale() {
+  // deno-fmt-ignore
+  const init = {
+    m11:  1, m21:  2, m31:  3, m41:  4,
+    m12:  5, m22:  6, m32:  7, m42:  8,
+    m13:  9, m23: 10, m33: 11, m43: 12,
+    m14: 13, m24: 14, m34: 15, m44: 16,
+  };
+  const matrix = DOMMatrix.fromMatrix(init);
+  const matrix2 = matrix.scale(1, 2, 3);
+  assertEquals(
+    matrix,
+    DOMMatrix.fromMatrix(init),
+  );
+  assertEquals(
+    matrix2,
+    // deno-fmt-ignore
+    DOMMatrix.fromMatrix({
+      m11:  1, m21:  2 * 2, m31:  3 * 3, m41:  4,
+      m12:  5, m22:  6 * 2, m32:  7 * 3, m42:  8,
+      m13:  9, m23: 10 * 2, m33: 11 * 3, m43: 12,
+      m14: 13, m24: 14 * 2, m34: 15 * 3, m44: 16,
+    }),
+  );
+});
+
+Deno.test(function matrixScaleSelf() {
+  // deno-fmt-ignore
+  const init = {
+    m11:  1, m21:  2, m31:  3, m41:  4,
+    m12:  5, m22:  6, m32:  7, m42:  8,
+    m13:  9, m23: 10, m33: 11, m43: 12,
+    m14: 13, m24: 14, m34: 15, m44: 16,
+  };
+  const matrix = DOMMatrix.fromMatrix(init);
+  const matrix2 = matrix.scaleSelf(1, 2, 3);
+  assertStrictEquals(
+    matrix,
+    matrix2,
+  );
+  assertEquals(
+    matrix,
+    // deno-fmt-ignore
+    DOMMatrix.fromMatrix({
+      m11:  1, m21:  2 * 2, m31:  3 * 3, m41:  4,
+      m12:  5, m22:  6 * 2, m32:  7 * 3, m42:  8,
+      m13:  9, m23: 10 * 2, m33: 11 * 3, m43: 12,
+      m14: 13, m24: 14 * 2, m34: 15 * 3, m44: 16,
+    }),
+  );
+});
+
+Deno.test(function matrixScaleWithOrigin() {
+  // deno-fmt-ignore
+  const init = {
+    m11:  1, m21:  2, m31:  3, m41:  4,
+    m12:  5, m22:  6, m32:  7, m42:  8,
+    m13:  9, m23: 10, m33: 11, m43: 12,
+    m14: 13, m24: 14, m34: 15, m44: 16,
+  };
+  const matrix = DOMMatrix.fromMatrix(init);
+  const matrix2 = matrix.scale(1, 2, 3, 4, 5, 6);
+  assertEquals(
+    matrix,
+    DOMMatrix.fromMatrix(init),
+  );
+  assertEquals(
+    matrix2,
+    // deno-fmt-ignore
+    DOMMatrix.fromMatrix({
+      m11:  1, m21:  2 * 2, m31:  3 * 3, m41:  -42,
+      m12:  5, m22:  6 * 2, m32:  7 * 3, m42: -106,
+      m13:  9, m23: 10 * 2, m33: 11 * 3, m43: -170,
+      m14: 13, m24: 14 * 2, m34: 15 * 3, m44: -234,
+    }),
+  );
+});
+
+Deno.test(function matrixScaleWithOriginSelf() {
+  // deno-fmt-ignore
+  const init = {
+    m11:  1, m21:  2, m31:  3, m41:  4,
+    m12:  5, m22:  6, m32:  7, m42:  8,
+    m13:  9, m23: 10, m33: 11, m43: 12,
+    m14: 13, m24: 14, m34: 15, m44: 16,
+  };
+  const matrix = DOMMatrix.fromMatrix(init);
+  const matrix2 = matrix.scaleSelf(1, 2, 3, 4, 5, 6);
+  assertStrictEquals(
+    matrix,
+    matrix2,
+  );
+  assertEquals(
+    matrix,
+    // deno-fmt-ignore
+    DOMMatrix.fromMatrix({
+      m11:  1, m21:  2 * 2, m31:  3 * 3, m41:  -42,
+      m12:  5, m22:  6 * 2, m32:  7 * 3, m42: -106,
+      m13:  9, m23: 10 * 2, m33: 11 * 3, m43: -170,
+      m14: 13, m24: 14 * 2, m34: 15 * 3, m44: -234,
+    }),
+  );
+});
+
+Deno.test(function matrixScaleNonUniform() {
+  // deno-fmt-ignore
+  const init = {
+    m11:  1, m21:  2, m31:  3, m41:  4,
+    m12:  5, m22:  6, m32:  7, m42:  8,
+    m13:  9, m23: 10, m33: 11, m43: 12,
+    m14: 13, m24: 14, m34: 15, m44: 16,
+  };
+  const matrix = DOMMatrix.fromMatrix(init);
+  const matrix2 = matrix.scaleNonUniform(1, 2);
+  assertEquals(
+    matrix,
+    DOMMatrix.fromMatrix(init),
+  );
+  assertEquals(
+    matrix2,
+    // deno-fmt-ignore
+    DOMMatrix.fromMatrix({
+      m11:  1, m21:  2 * 2, m31:  3, m41:  4,
+      m12:  5, m22:  6 * 2, m32:  7, m42:  8,
+      m13:  9, m23: 10 * 2, m33: 11, m43: 12,
+      m14: 13, m24: 14 * 2, m34: 15, m44: 16,
+    }),
+  );
+});
+
+Deno.test(function matrixScale3d() {
+  // deno-fmt-ignore
+  const init = {
+    m11:  1, m21:  2, m31:  3, m41:  4,
+    m12:  5, m22:  6, m32:  7, m42:  8,
+    m13:  9, m23: 10, m33: 11, m43: 12,
+    m14: 13, m24: 14, m34: 15, m44: 16,
+  };
+  const matrix = DOMMatrix.fromMatrix(init);
+  const matrix2 = matrix.scale3d(2);
+  assertEquals(
+    matrix,
+    DOMMatrix.fromMatrix(init),
+  );
+  assertEquals(
+    matrix2,
+    // deno-fmt-ignore
+    DOMMatrix.fromMatrix({
+      m11:  1 * 2, m21:  2 * 2, m31:  3 * 2, m41:  4,
+      m12:  5 * 2, m22:  6 * 2, m32:  7 * 2, m42:  8,
+      m13:  9 * 2, m23: 10 * 2, m33: 11 * 2, m43: 12,
+      m14: 13 * 2, m24: 14 * 2, m34: 15 * 2, m44: 16,
+    }),
+  );
+});
+
+Deno.test(function matrixScale3dSelf() {
+  // deno-fmt-ignore
+  const init = {
+    m11:  1, m21:  2, m31:  3, m41:  4,
+    m12:  5, m22:  6, m32:  7, m42:  8,
+    m13:  9, m23: 10, m33: 11, m43: 12,
+    m14: 13, m24: 14, m34: 15, m44: 16,
+  };
+  const matrix = DOMMatrix.fromMatrix(init);
+  const matrix2 = matrix.scale3dSelf(2);
+  assertStrictEquals(
+    matrix,
+    matrix2,
+  );
+  assertEquals(
+    matrix,
+    // deno-fmt-ignore
+    DOMMatrix.fromMatrix({
+      m11:  1 * 2, m21:  2 * 2, m31:  3 * 2, m41:  4,
+      m12:  5 * 2, m22:  6 * 2, m32:  7 * 2, m42:  8,
+      m13:  9 * 2, m23: 10 * 2, m33: 11 * 2, m43: 12,
+      m14: 13 * 2, m24: 14 * 2, m34: 15 * 2, m44: 16,
+    }),
+  );
+});
+
+Deno.test(function matrixScale3dWithOrigin() {
+  // deno-fmt-ignore
+  const init = {
+    m11:  1, m21:  2, m31:  3, m41:  4,
+    m12:  5, m22:  6, m32:  7, m42:  8,
+    m13:  9, m23: 10, m33: 11, m43: 12,
+    m14: 13, m24: 14, m34: 15, m44: 16,
+  };
+  const matrix = DOMMatrix.fromMatrix(init);
+  const matrix2 = matrix.scale3d(2, 4, 5, 6);
+  assertEquals(
+    matrix,
+    DOMMatrix.fromMatrix(init),
+  );
+  assertEquals(
+    matrix2,
+    // deno-fmt-ignore
+    DOMMatrix.fromMatrix({
+      m11:  1 * 2, m21:  2 * 2, m31:  3 * 2, m41:  -28,
+      m12:  5 * 2, m22:  6 * 2, m32:  7 * 2, m42:  -84,
+      m13:  9 * 2, m23: 10 * 2, m33: 11 * 2, m43: -140,
+      m14: 13 * 2, m24: 14 * 2, m34: 15 * 2, m44: -196,
+    }),
+  );
+});
+
+Deno.test(function matrixScale3dWithOriginSelf() {
+  // deno-fmt-ignore
+  const init = {
+    m11:  1, m21:  2, m31:  3, m41:  4,
+    m12:  5, m22:  6, m32:  7, m42:  8,
+    m13:  9, m23: 10, m33: 11, m43: 12,
+    m14: 13, m24: 14, m34: 15, m44: 16,
+  };
+  const matrix = DOMMatrix.fromMatrix(init);
+  const matrix2 = matrix.scale3dSelf(2, 4, 5, 6);
+  assertStrictEquals(
+    matrix,
+    matrix2,
+  );
+  assertEquals(
+    matrix,
+    // deno-fmt-ignore
+    DOMMatrix.fromMatrix({
+      m11:  1 * 2, m21:  2 * 2, m31:  3 * 2, m41:  -28,
+      m12:  5 * 2, m22:  6 * 2, m32:  7 * 2, m42:  -84,
+      m13:  9 * 2, m23: 10 * 2, m33: 11 * 2, m43: -140,
+      m14: 13 * 2, m24: 14 * 2, m34: 15 * 2, m44: -196,
+    }),
+  );
+});
+
 Deno.test(function matrixMultiply() {
   // deno-fmt-ignore
   const init = {

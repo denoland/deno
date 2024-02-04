@@ -17,6 +17,10 @@ deno_core::extension!(
   ops = [
     op_geometry_translate,
     op_geometry_translate_self,
+    op_geometry_scale,
+    op_geometry_scale_self,
+    op_geometry_scale_with_origin,
+    op_geometry_scale_with_origin_self,
     op_geometry_multiply,
     op_geometry_multiply_self,
     op_geometry_premultiply_self,
@@ -51,6 +55,72 @@ pub fn op_geometry_translate_self(
 ) -> () {
   let shift = Vector3::new(x, y, z);
   let mut out = MatrixViewMut::from_slice(out);
+  out.prepend_translation_mut(&shift);
+}
+
+#[op2(fast)]
+pub fn op_geometry_scale(
+  #[buffer] input: &[f64],
+  x: f64,
+  y: f64,
+  z: f64,
+  #[buffer] out: &mut [f64],
+) -> () {
+  let scaling = Vector3::new(x, y, z);
+  let mut out = MatrixViewMut::from_slice(out);
+  out.copy_from_slice(input);
+  out.prepend_nonuniform_scaling_mut(&scaling);
+}
+
+#[op2(fast)]
+pub fn op_geometry_scale_self(
+  x: f64,
+  y: f64,
+  z: f64,
+  #[buffer] out: &mut [f64],
+) -> () {
+  let scaling = Vector3::new(x, y, z);
+  let mut out = MatrixViewMut::from_slice(out);
+  out.prepend_nonuniform_scaling_mut(&scaling);
+}
+
+#[op2(fast)]
+pub fn op_geometry_scale_with_origin(
+  #[buffer] input: &[f64],
+  x: f64,
+  y: f64,
+  z: f64,
+  origin_x: f64,
+  origin_y: f64,
+  origin_z: f64,
+  #[buffer] out: &mut [f64],
+) -> () {
+  let scaling = Vector3::new(x, y, z);
+  let mut shift = Vector3::new(origin_x, origin_y, origin_z);
+  let mut out = MatrixViewMut::from_slice(out);
+  out.copy_from_slice(input);
+  out.prepend_translation_mut(&shift);
+  out.prepend_nonuniform_scaling_mut(&scaling);
+  shift.neg_mut();
+  out.prepend_translation_mut(&shift);
+}
+
+#[op2(fast)]
+pub fn op_geometry_scale_with_origin_self(
+  x: f64,
+  y: f64,
+  z: f64,
+  origin_x: f64,
+  origin_y: f64,
+  origin_z: f64,
+  #[buffer] out: &mut [f64],
+) -> () {
+  let scaling = Vector3::new(x, y, z);
+  let mut shift = Vector3::new(origin_x, origin_y, origin_z);
+  let mut out = MatrixViewMut::from_slice(out);
+  out.prepend_translation_mut(&shift);
+  out.prepend_nonuniform_scaling_mut(&scaling);
+  shift.neg_mut();
   out.prepend_translation_mut(&shift);
 }
 
