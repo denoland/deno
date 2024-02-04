@@ -2686,6 +2686,7 @@ declare namespace Deno {
      * from a TTY device in canonical mode.
      *
      * ```ts
+     * using file = await Deno.open("/dev/tty6");
      * file.setRaw(true, { cbreak: true });
      * ```
      */
