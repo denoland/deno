@@ -2677,6 +2677,19 @@ declare namespace Deno {
      * ```
      */
     isTerminal(): boolean;
+    /** **UNSTABLE**: New API, yet to be vetted.
+     * 
+     * Set TTY to be under raw mode or not. In raw mode, characters are read and
+     * returned as is, without being processed. All special processing of
+     * characters by the terminal is disabled, including echoing input
+     * characters. Reading from a TTY device in raw mode is faster than reading
+     * from a TTY device in canonical mode.
+     *
+     * ```ts
+     * file.setRaw(true, { cbreak: true });
+     * ```
+     */
+    setRaw(mode: boolean, options?: SetRawOptions): void;
     /** Close the file. Closing a file when you are finished with it is
      * important to avoid leaking resources.
      *
