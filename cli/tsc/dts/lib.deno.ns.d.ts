@@ -4912,7 +4912,8 @@ declare namespace Deno {
       | "osRelease"
       | "osUptime"
       | "uid"
-      | "gid";
+      | "gid"
+      | "cpus";
   }
 
   /** The permission descriptor for the `allow-ffi` and `deny-ffi` permissions, which controls
