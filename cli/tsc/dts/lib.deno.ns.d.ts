@@ -2678,7 +2678,7 @@ declare namespace Deno {
      */
     isTerminal(): boolean;
     /** **UNSTABLE**: New API, yet to be vetted.
-     * 
+     *
      * Set TTY to be under raw mode or not. In raw mode, characters are read and
      * returned as is, without being processed. All special processing of
      * characters by the terminal is disabled, including echoing input

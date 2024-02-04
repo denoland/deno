@@ -51,7 +51,7 @@ use winapi::um::wincon;
 deno_core::extension!(
   deno_tty,
   ops = [
-    op_stdin_set_raw,
+    op_set_raw,
     op_is_terminal,
     op_console_size,
     op_read_line_prompt
@@ -83,12 +83,12 @@ fn mode_raw_input_off(original_mode: DWORD) -> DWORD {
 }
 
 #[op2(fast)]
-fn op_stdin_set_raw(
+fn op_set_raw(
   state: &mut OpState,
+  rid: u32,
   is_raw: bool,
   cbreak: bool,
 ) -> Result<(), AnyError> {
-  let rid = 0; // stdin is always rid=0
   let handle_or_fd = state.resource_table.get_fd(rid)?;
 
   // From https://github.com/kkawakam/rustyline/blob/master/src/tty/windows.rs

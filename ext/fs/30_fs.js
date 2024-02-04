@@ -73,6 +73,7 @@ import {
   op_fs_write_file_async,
   op_fs_write_file_sync,
   op_is_terminal,
+  op_set_raw,
 } from "ext:core/ops";
 const {
   ArrayPrototypeFilter,
@@ -769,6 +770,11 @@ class FsFile {
 
   isTerminal() {
     return op_is_terminal(this.#rid);
+  }
+
+  setRaw(mode, options = {}) {
+    const cbreak = !!(options.cbreak ?? false);
+    op_set_raw(this.#rid, mode, cbreak);
   }
 
   [SymbolDispose]() {
