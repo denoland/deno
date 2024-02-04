@@ -189,7 +189,7 @@ interface DOMMatrixReadOnly {
     originY?: number,
     originZ?: number,
   ): DOMMatrix;
-  /** @deprecated Supported for legacy reasons to be compatible with SVGMatrix as defined in SVG 1.1. Use scale() instead. */
+  /** @deprecated Supported for legacy reasons to be compatible with `SVGMatrix` as defined in SVG 1.1. Use `scale()` instead. */
   scaleNonUniform(scaleX?: number, scaleY?: number): DOMMatrix;
   skewX(sx?: number): DOMMatrix;
   skewY(sy?: number): DOMMatrix;
@@ -259,6 +259,7 @@ interface DOMPointInit {
 }
 
 /**
+ * A object represents a 2D or 3D point in a coordinate system; it includes values for the coordinates in up to three dimensions, as well as an optional perspective value.
  * [MDN](https://developer.mozilla.org/docs/Web/API/DOMPoint)
  *
  * @category Geometry Interfaces Module API
@@ -271,6 +272,7 @@ interface DOMPoint extends DOMPointReadOnly {
 }
 
 /**
+ * A object represents a 2D or 3D point in a coordinate system; it includes values for the coordinates in up to three dimensions, as well as an optional perspective value.
  * [MDN](https://developer.mozilla.org/docs/Web/API/DOMPoint)
  *
  * @category Geometry Interfaces Module API
@@ -282,6 +284,7 @@ declare var DOMPoint: {
 };
 
 /**
+ * A read-only object represents a 2D or 3D point in a coordinate system; it includes values for the coordinates in up to three dimensions, as well as an optional perspective value.
  * [MDN](https://developer.mozilla.org/docs/Web/API/DOMPointReadOnly)
  *
  * @category Geometry Interfaces Module API
@@ -301,6 +304,7 @@ interface DOMPointReadOnly {
 }
 
 /**
+ * A read-only object represents a 2D or 3D point in a coordinate system; it includes values for the coordinates in up to three dimensions, as well as an optional perspective value.
  * [MDN](https://developer.mozilla.org/docs/Web/API/DOMPointReadOnly)
  *
  * @category Geometry Interfaces Module API
@@ -320,6 +324,7 @@ interface DOMQuadInit {
 }
 
 /**
+ * A collection of four DOMPoints defining the corners of an arbitrary quadrilateral.
  * [MDN](https://developer.mozilla.org/docs/Web/API/DOMQuad)
  *
  * @category Geometry Interfaces Module API
@@ -339,6 +344,7 @@ interface DOMQuad {
 }
 
 /**
+ * A collection of four DOMPoints defining the corners of an arbitrary quadrilateral.
  * [MDN](https://developer.mozilla.org/docs/Web/API/DOMQuad)
  *
  * @category Geometry Interfaces Module API
@@ -387,7 +393,7 @@ declare var DOMRect: {
 };
 
 /**
- * [MDN Reference](https://developer.mozilla.org/docs/Web/API/DOMRectReadOnly)
+ * [MDN](https://developer.mozilla.org/docs/Web/API/DOMRectReadOnly)
  *
  * @category Geometry Interfaces Module API
  */
@@ -413,7 +419,7 @@ interface DOMRectReadOnly {
 }
 
 /**
- * [MDN Reference](https://developer.mozilla.org/docs/Web/API/DOMRectReadOnly)
+ * [MDN](https://developer.mozilla.org/docs/Web/API/DOMRectReadOnly)
  *
  * @category Geometry Interfaces Module API
  */
