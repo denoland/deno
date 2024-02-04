@@ -744,7 +744,7 @@ impl Flags {
             .to_owned();
           Some(p)
         } else if module_specifier.scheme() == "npm" {
-          Some(current_dir)
+          Some(current_dir.to_path_buf())
         } else {
           None
         }
