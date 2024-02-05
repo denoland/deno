@@ -681,6 +681,7 @@ const NOT_IMPORTED_OPS = [
   "op_test_event_step_wait",
   "op_test_op_sanitizer_collect",
   "op_test_op_sanitizer_finish",
+  "op_test_op_sanitizer_get_async_message",
   "op_test_op_sanitizer_report",
   "op_timer_cancel",
   "op_timer_queue",

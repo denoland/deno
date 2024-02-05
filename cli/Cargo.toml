@@ -110,6 +110,7 @@ once_cell.workspace = true
 open = "5.0.1"
 os_pipe.workspace = true
 percent-encoding.workspace = true
+phf.workspace = true
 pin-project.workspace = true
 quick-junit = "^0.3.5"
 rand = { workspace = true, features = ["small_rng"] }
