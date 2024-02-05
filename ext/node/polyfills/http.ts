@@ -804,7 +804,7 @@ class ClientRequest extends OutgoingMessage {
     }
     this.destroyed = true;
 
-    const rid = this._client?.rid;
+    const rid = this._client?.[internalRidSymbol];
     if (rid) {
       core.tryClose(rid);
     }

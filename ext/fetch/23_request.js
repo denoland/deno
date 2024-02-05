@@ -9,7 +9,7 @@
 /// <reference path="./lib.deno_fetch.d.ts" />
 /// <reference lib="esnext" />
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const {
   ArrayPrototypeMap,
   ArrayPrototypeSlice,
@@ -44,6 +44,8 @@ import {
 } from "ext:deno_fetch/20_headers.js";
 import { HttpClientPrototype } from "ext:deno_fetch/22_http_client.js";
 import * as abortSignal from "ext:deno_web/03_abort_signal.js";
+
+const { internalRidSymbol } = core;
 
 const _request = Symbol("request");
 const _headers = Symbol("headers");
@@ -355,7 +357,7 @@ class Request {
           "Argument 2",
         );
       }
-      request.clientRid = init.client?.rid ?? null;
+      request.clientRid = init.client?.[internalRidSymbol] ?? null;
     }
 
     // 28.
