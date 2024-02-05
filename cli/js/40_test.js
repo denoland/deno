@@ -3,7 +3,20 @@
 import { core, primordials } from "ext:core/mod.js";
 import { escapeName, withPermissions } from "ext:cli/40_test_common.js";
 
-const ops = core.ops;
+// TODO(mmastrac): We cannot import these from "ext:core/ops" yet
+const {
+  op_op_names,
+  op_register_test_step,
+  op_register_test,
+  op_test_event_step_result_failed,
+  op_test_event_step_result_ignored,
+  op_test_event_step_result_ok,
+  op_test_event_step_wait,
+  op_test_op_sanitizer_collect,
+  op_test_op_sanitizer_finish,
+  op_test_op_sanitizer_get_async_message,
+  op_test_op_sanitizer_report,
+} = core.ops;
 const {
   ArrayPrototypeFilter,
   ArrayPrototypeJoin,
@@ -126,93 +139,12 @@ function handleOpSanitizerDelayMacrotask() {
   return undefined; // we performed no work, so can skip microtasks checkpoint
 }
 
-// An async operation to $0 was started in this test, but never completed. This is often caused by not $1.
-// An async operation to $0 was started in this test, but never completed. Async operations should not complete in a test if they were not started in that test.
-// deno-fmt-ignore
-const OP_DETAILS = {
-    "op_blob_read_part": ["read from a Blob or File", "awaiting the result of a Blob or File read"],
-    "op_broadcast_recv": ["receive a message from a BroadcastChannel", "closing the BroadcastChannel"],
-    "op_broadcast_send": ["send a message to a BroadcastChannel", "closing the BroadcastChannel"],
-    "op_chmod_async": ["change the permissions of a file", "awaiting the result of a `Deno.chmod` call"],
-    "op_chown_async": ["change the owner of a file", "awaiting the result of a `Deno.chown` call"],
-    "op_copy_file_async": ["copy a file", "awaiting the result of a `Deno.copyFile` call"],
-    "op_crypto_decrypt": ["decrypt data", "awaiting the result of a `crypto.subtle.decrypt` call"],
-    "op_crypto_derive_bits": ["derive bits from a key", "awaiting the result of a `crypto.subtle.deriveBits` call"],
-    "op_crypto_encrypt": ["encrypt data", "awaiting the result of a `crypto.subtle.encrypt` call"],
-    "op_crypto_generate_key": ["generate a key", "awaiting the result of a `crypto.subtle.generateKey` call"],
-    "op_crypto_sign_key": ["sign data", "awaiting the result of a `crypto.subtle.sign` call"],
-    "op_crypto_subtle_digest": ["digest data", "awaiting the result of a `crypto.subtle.digest` call"],
-    "op_crypto_verify_key": ["verify data", "awaiting the result of a `crypto.subtle.verify` call"],
-    "op_net_recv_udp": ["receive a datagram message via UDP", "awaiting the result of `Deno.DatagramConn#receive` call, or not breaking out of a for await loop looping over a `Deno.DatagramConn`"],
-    "op_net_recv_unixpacket": ["receive a datagram message via Unixpacket", "awaiting the result of `Deno.DatagramConn#receive` call, or not breaking out of a for await loop looping over a `Deno.DatagramConn`"],
-    "op_net_send_udp": ["send a datagram message via UDP", "awaiting the result of `Deno.DatagramConn#send` call"],
-    "op_net_send_unixpacket": ["send a datagram message via Unixpacket", "awaiting the result of `Deno.DatagramConn#send` call"],
-    "op_dns_resolve": ["resolve a DNS name", "awaiting the result of a `Deno.resolveDns` call"],
-    "op_fdatasync_async": ["flush pending data operations for a file to disk", "awaiting the result of a `file.fdatasync` call"],
-    "op_fetch_send": ["send a HTTP request", "awaiting the result of a `fetch` call"],
-    "op_ffi_call_nonblocking": ["do a non blocking ffi call", "awaiting the returned promise"],
-    "op_ffi_call_ptr_nonblocking": ["do a non blocking ffi call", "awaiting the returned promise"],
-    "op_flock_async": ["lock a file", "awaiting the result of a `Deno.flock` call"],
-    "op_fs_events_poll": ["get the next file system event", "breaking out of a for await loop looping over `Deno.FsEvents`"],
-    "op_fstat_async": ["get file metadata", "awaiting the result of a `Deno.File#fstat` call"],
-    "op_fsync_async": ["flush pending data operations for a file to disk", "awaiting the result of a `file.fsync` call"],
-    "op_ftruncate_async": ["truncate a file", "awaiting the result of a `Deno.ftruncate` call"],
-    "op_funlock_async": ["unlock a file", "awaiting the result of a `Deno.funlock` call"],
-    "op_futime_async": ["change file timestamps", "awaiting the result of a `Deno.futime` call"],
-    "op_http_accept": ["accept a HTTP request", "closing a `Deno.HttpConn`"],
-    "op_http_shutdown": ["shutdown a HTTP connection", "awaiting `Deno.HttpEvent#respondWith`"],
-    "op_http_upgrade_websocket": ["upgrade a HTTP connection to a WebSocket", "awaiting `Deno.HttpEvent#respondWith`"],
-    "op_http_write_headers": ["write HTTP response headers", "awaiting `Deno.HttpEvent#respondWith`"],
-    "op_http_write": ["write HTTP response body", "awaiting `Deno.HttpEvent#respondWith`"],
-    "op_link_async": ["create a hard link", "awaiting the result of a `Deno.link` call"],
-    "op_make_temp_dir_async": ["create a temporary directory", "awaiting the result of a `Deno.makeTempDir` call"],
-    "op_make_temp_file_async": ["create a temporary file", "awaiting the result of a `Deno.makeTempFile` call"],
-    "op_message_port_recv_message": ["receive a message from a MessagePort", "awaiting the result of not closing a `MessagePort`"],
-    "op_mkdir_async": ["create a directory", "awaiting the result of a `Deno.mkdir` call"],
-    "op_net_accept_tcp": ["accept a TCP stream", "closing a `Deno.Listener`"],
-    "op_net_accept_unix": ["accept a Unix stream", "closing a `Deno.Listener`"],
-    "op_net_connect_tcp": ["connect to a TCP server", "awaiting a `Deno.connect` call"],
-    "op_net_connect_unix": ["connect to a Unix server", "awaiting a `Deno.connect` call"],
-    "op_open_async": ["open a file", "awaiting the result of a `Deno.open` call"],
-    "op_read_dir_async": ["read a directory", "collecting all items in the async iterable returned from a `Deno.readDir` call"],
-    "op_read_link_async": ["read a symlink", "awaiting the result of a `Deno.readLink` call"],
-    "op_realpath_async": ["resolve a path", "awaiting the result of a `Deno.realpath` call"],
-    "op_remove_async": ["remove a file or directory", "awaiting the result of a `Deno.remove` call"],
-    "op_rename_async": ["rename a file or directory", "awaiting the result of a `Deno.rename` call"],
-    "op_run_status": ["get the status of a subprocess", "awaiting the result of a `Deno.Process#status` call"],
-    "op_seek_async": ["seek in a file", "awaiting the result of a `Deno.File#seek` call"],
-    "op_signal_poll": ["get the next signal", "un-registering a OS signal handler"],
-    "op_sleep": ["sleep for a duration", "cancelling a `setTimeout` or `setInterval` call"],
-    "op_stat_async": ["get file metadata", "awaiting the result of a `Deno.stat` call"],
-    "op_symlink_async": ["create a symlink", "awaiting the result of a `Deno.symlink` call"],
-    "op_net_accept_tls": ["accept a TLS stream", "closing a `Deno.TlsListener`"],
-    "op_net_connect_tls": ["connect to a TLS server", "awaiting a `Deno.connectTls` call"],
-    "op_tls_handshake": ["perform a TLS handshake", "awaiting a `Deno.TlsConn#handshake` call"],
-    "op_tls_start": ["start a TLS connection", "awaiting a `Deno.startTls` call"],
-    "op_truncate_async": ["truncate a file", "awaiting the result of a `Deno.truncate` call"],
-    "op_utime_async": ["change file timestamps", "awaiting the result of a `Deno.utime` call"],
-    "op_host_recv_message": ["receive a message from a web worker", "terminating a `Worker`"],
-    "op_host_recv_ctrl": ["receive a message from a web worker", "terminating a `Worker`"],
-    "op_webgpu_buffer_get_map_async": ["map a WebGPU buffer", "awaiting the result of a `GPUBuffer#mapAsync` call"],
-	  "op_webgpu_request_adapter": ["request a WebGPU adapter", "awaiting the result of a `navigator.gpu.requestAdapter` call"],
-	  "op_webgpu_request_device": ["request a WebGPU device", "awaiting the result of a `GPUAdapter#requestDevice` call"],
-	  "op_ws_close": ["close a WebSocket", "awaiting until the `close` event is emitted on a `WebSocket`, or the `WebSocketStream#closed` promise resolves"],
-    "op_ws_create": ["create a WebSocket", "awaiting until the `open` event is emitted on a `WebSocket`, or the result of a `WebSocketStream#connection` promise"],
-    "op_ws_next_event": ["receive the next message on a WebSocket", "closing a `WebSocket` or `WebSocketStream`"],
-    "op_ws_send_text": ["send a message on a WebSocket", "closing a `WebSocket` or `WebSocketStream`"],
-    "op_ws_send_binary": ["send a message on a WebSocket", "closing a `WebSocket` or `WebSocketStream`"],
-    "op_ws_send_binary_ab": ["send a message on a WebSocket", "closing a `WebSocket` or `WebSocketStream`"],
-    "op_ws_send_ping": ["send a message on a WebSocket", "closing a `WebSocket` or `WebSocketStream`"],
-    "op_ws_send_pong": ["send a message on a WebSocket", "closing a `WebSocket` or `WebSocketStream`"],
-    "op_spawn_wait": ["wait for a subprocess to exit", "awaiting the result of a `Deno.Process#status` call"],
-  };
-
 let opIdHostRecvMessage = -1;
 let opIdHostRecvCtrl = -1;
 let opNames = null;
 
 function populateOpNames() {
-  opNames = ops.op_op_names();
+  opNames = op_op_names();
   opIdHostRecvMessage = opNames.indexOf("op_host_recv_message");
   opIdHostRecvCtrl = opNames.indexOf("op_host_recv_ctrl");
 }
@@ -226,7 +158,7 @@ function assertOps(fn) {
   /** @param desc {TestDescription | TestStepDescription} */
   return async function asyncOpSanitizer(desc) {
     if (opNames === null) populateOpNames();
-    const res = ops.op_test_op_sanitizer_collect(
+    const res = op_test_op_sanitizer_collect(
       desc.id,
       false,
       opIdHostRecvMessage,
@@ -234,7 +166,7 @@ function assertOps(fn) {
     );
     if (res !== 0) {
       await opSanitizerDelay(res === 2);
-      ops.op_test_op_sanitizer_collect(
+      op_test_op_sanitizer_collect(
         desc.id,
         true,
         opIdHostRecvMessage,
@@ -249,7 +181,7 @@ function assertOps(fn) {
       const innerResult = await fn(desc);
       if (innerResult) return innerResult;
     } finally {
-      let res = ops.op_test_op_sanitizer_finish(
+      let res = op_test_op_sanitizer_finish(
         desc.id,
         false,
         opIdHostRecvMessage,
@@ -257,7 +189,7 @@ function assertOps(fn) {
       );
       if (res === 1 || res === 2) {
         await opSanitizerDelay(res === 2);
-        res = ops.op_test_op_sanitizer_finish(
+        res = op_test_op_sanitizer_finish(
           desc.id,
           true,
           opIdHostRecvMessage,
@@ -266,7 +198,7 @@ function assertOps(fn) {
       }
       postTraces = new Map(core.opCallTraces);
       if (res === 3) {
-        report = ops.op_test_op_sanitizer_report(desc.id);
+        report = op_test_op_sanitizer_report(desc.id);
       }
     }
 
@@ -278,7 +210,7 @@ function assertOps(fn) {
       const diff = opReport.diff;
 
       if (diff > 0) {
-        const [name, hint] = OP_DETAILS[opName] || [opName, null];
+        const [name, hint] = op_test_op_sanitizer_get_async_message(opName);
         const count = diff;
         let message = `${count} async operation${
           count === 1 ? "" : "s"
@@ -303,7 +235,7 @@ function assertOps(fn) {
         }
         ArrayPrototypePush(details, message);
       } else if (diff < 0) {
-        const [name, hint] = OP_DETAILS[opName] || [opName, null];
+        const [name, hint] = op_test_op_sanitizer_get_async_message(opName);
         const count = -diff;
         let message = `${count} async operation${
           count === 1 ? "" : "s"
@@ -537,7 +469,7 @@ function testInner(
   testDesc.fn = wrapTest(testDesc);
   testDesc.name = escapeName(testDesc.name);
 
-  const origin = ops.op_register_test(
+  const origin = op_register_test(
     testDesc.fn,
     testDesc.name,
     testDesc.ignore,
@@ -596,11 +528,11 @@ function stepReportResult(desc, result, elapsed) {
     stepReportResult(childDesc, { failed: "incomplete" }, 0);
   }
   if (result === "ok") {
-    ops.op_test_event_step_result_ok(desc.id, elapsed);
+    op_test_event_step_result_ok(desc.id, elapsed);
   } else if (result === "ignored") {
-    ops.op_test_event_step_result_ignored(desc.id, elapsed);
+    op_test_event_step_result_ignored(desc.id, elapsed);
   } else {
-    ops.op_test_event_step_result_failed(desc.id, result.failed, elapsed);
+    op_test_event_step_result_failed(desc.id, result.failed, elapsed);
   }
 }
 
@@ -687,7 +619,7 @@ function createTestContext(desc) {
       stepDesc.name = escapeName(stepDesc.name);
       stepDesc.rootName = escapeName(rootName);
       stepDesc.fn = wrapTest(stepDesc);
-      const id = ops.op_register_test_step(
+      const id = op_register_test_step(
         stepDesc.name,
         stepDesc.location.fileName,
         stepDesc.location.lineNumber,
@@ -711,7 +643,7 @@ function createTestContext(desc) {
         stepDesc,
       );
 
-      ops.op_test_event_step_wait(stepDesc.id);
+      op_test_event_step_wait(stepDesc.id);
       const earlier = DateNow();
       const result = await stepDesc.fn(stepDesc);
       const elapsed = DateNow() - earlier;

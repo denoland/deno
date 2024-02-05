@@ -42,7 +42,7 @@ memmem.workspace = true
 mime = "0.3.16"
 once_cell.workspace = true
 percent-encoding.workspace = true
-phf = { version = "0.11", features = ["macros"] }
+phf.workspace = true
 pin-project.workspace = true
 ring.workspace = true
 scopeguard.workspace = true
