@@ -1229,7 +1229,6 @@ dependencies = [
  "async-trait",
  "chrono",
  "deno_core",
- "deno_unsync",
  "saffron",
  "tokio",
 ]
@@ -1452,7 +1451,6 @@ dependencies = [
  "deno_fetch",
  "deno_node",
  "deno_tls",
- "deno_unsync",
  "denokv_proto",
  "denokv_remote",
  "denokv_sqlite",
@@ -6217,7 +6215,6 @@ dependencies = [
  "base64",
  "bytes",
  "console_static_text",
- "deno_unsync",
  "denokv_proto",
  "fastwebsockets",
  "flate2",

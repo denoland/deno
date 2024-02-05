@@ -22,7 +22,6 @@ deno_core.workspace = true
 deno_fetch.workspace = true
 deno_node.workspace = true
 deno_tls.workspace = true
-deno_unsync.workspace = true
 denokv_proto.workspace = true
 denokv_remote.workspace = true
 denokv_sqlite.workspace = true

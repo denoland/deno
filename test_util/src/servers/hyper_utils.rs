@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use bytes::Bytes;
+use deno_core::deno_unsync;
 use futures::Future;
 use futures::FutureExt;
 use futures::Stream;
