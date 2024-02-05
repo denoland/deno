@@ -1176,7 +1176,7 @@ Deno.test(
 
 Deno.test(
   { permissions: { read: true, net: true } },
-  async function connectTLSBadCertPrivateKey(): Promise<void> {
+  async function connectTLSBadCertKey(): Promise<void> {
     await assertRejects(async () => {
       await Deno.connectTls({
         hostname: "deno.land",
