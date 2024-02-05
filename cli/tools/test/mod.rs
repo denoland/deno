@@ -47,7 +47,6 @@ use deno_core::unsync::spawn_blocking;
 use deno_core::url::Url;
 use deno_core::v8;
 use deno_core::ModuleSpecifier;
-use deno_core::OpId;
 use deno_core::PollEventLoopOptions;
 use deno_runtime::deno_io::Stdio;
 use deno_runtime::deno_io::StdioPipe;
@@ -575,21 +574,6 @@ pub async fn run_tests_for_worker(
   }))?;
   let mut had_uncaught_error = false;
   let stats = worker.js_runtime.runtime_activity_stats_factory();
-  let ops = worker.js_runtime.op_names();
-
-  // These are worker and worker host control ops that may start and complete during a test as expected.
-  // TODO(mmastrac): ideally we should be upstreaming worker infrastructure and avoid having to deal with
-  // these ops in a special way.
-  let special_ops: [OpId; deno_runtime::WEB_WORKER_UNSANITIZABLE_OPS.len()] = {
-    // Collect the ops into an array with a known size so we can give the compiler enough information
-    // to unroll this later on
-    deno_runtime::WEB_WORKER_UNSANITIZABLE_OPS
-      .iter()
-      .map(|wo| ops.iter().position(|op| *op == *wo).unwrap() as _)
-      .collect::<Vec<_>>()
-      .try_into()
-      .unwrap()
-  };
 
   for (desc, function) in tests {
     if fail_fast_tracker.should_stop() {
@@ -618,12 +602,6 @@ pub async fn run_tests_for_worker(
     }
 
     let mut filter = RuntimeActivityStatsFilter::default();
-    if desc.sanitize_ops {
-      filter = filter.with_ops().with_timers();
-      for op in special_ops {
-        filter = filter.omit_op(op);
-      }
-    }
     if desc.sanitize_resources {
       filter = filter.with_resources();
     }
