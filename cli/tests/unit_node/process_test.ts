@@ -122,6 +122,14 @@ Deno.test({
 });
 
 Deno.test({
+  name: "process.ppid",
+  fn() {
+    assertEquals(typeof process.ppid, "number");
+    assertEquals(process.ppid, Deno.ppid);
+  },
+});
+
+Deno.test({
   name: "process.on",
   async fn() {
     assertEquals(typeof process.on, "function");
