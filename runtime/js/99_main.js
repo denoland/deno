@@ -546,7 +546,6 @@ const NOT_IMPORTED_OPS = [
   "op_bench_now",
   "op_broadcast_unsubscribe",
   "op_can_write_vectored",
-  "op_close",
   "op_current_user_call_site",
   "op_decode",
   "op_deserialize",
@@ -633,7 +632,6 @@ const NOT_IMPORTED_OPS = [
   "op_raw_write_vectored",
   "op_read_all",
   "op_read_sync",
-  "op_read",
   "op_ref_op",
   "op_register_bench",
   "op_register_test_step",
@@ -676,7 +674,6 @@ const NOT_IMPORTED_OPS = [
   "op_write_all",
   "op_write_sync",
   "op_write_type_error",
-  "op_write",
   "op_ws_send_pong",
   "op_jupyter_broadcast",
 ];
