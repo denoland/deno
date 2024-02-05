@@ -47,7 +47,7 @@ use deno_core::ResolutionKind;
 use deno_core::SourceMapGetter;
 use deno_graph::source::ResolutionMode;
 use deno_graph::source::Resolver;
-use deno_graph::EsmModule;
+use deno_graph::JsModule;
 use deno_graph::JsonModule;
 use deno_graph::Module;
 use deno_graph::Resolution;
@@ -296,7 +296,7 @@ impl PreparedModuleLoader {
         found_url: specifier.clone(),
         media_type: *media_type,
       }),
-      Some(deno_graph::Module::Esm(EsmModule {
+      Some(deno_graph::Module::Js(JsModule {
         source,
         media_type,
         specifier,
@@ -335,7 +335,12 @@ impl PreparedModuleLoader {
           media_type: *media_type,
         })
       }
-      _ => {
+      Some(
+        deno_graph::Module::External(_)
+        | deno_graph::Module::Node(_)
+        | deno_graph::Module::Npm(_),
+      )
+      | None => {
         let mut msg = format!("Loading unprepared module: {specifier}");
         if let Some(referrer) = maybe_referrer {
           msg = format!("{}, imported from: {}", msg, referrer.as_str());
@@ -542,7 +547,7 @@ impl ModuleLoader for CliModuleLoader {
 
       let graph = self.shared.graph_container.graph();
       let maybe_resolved = match graph.get(referrer) {
-        Some(Module::Esm(module)) => {
+        Some(Module::Js(module)) => {
           module.dependencies.get(specifier).map(|d| &d.maybe_code)
         }
         _ => None,
@@ -577,7 +582,7 @@ impl ModuleLoader for CliModuleLoader {
                 })
             }
             Some(Module::Node(module)) => Ok(module.specifier.clone()),
-            Some(Module::Esm(module)) => Ok(module.specifier.clone()),
+            Some(Module::Js(module)) => Ok(module.specifier.clone()),
             Some(Module::Json(module)) => Ok(module.specifier.clone()),
             Some(Module::External(module)) => {
               Ok(node::resolve_specifier_into_node_modules(&module.specifier))
@@ -715,7 +720,7 @@ impl SourceMapGetter for CliSourceMapGetter {
   ) -> Option<String> {
     let graph = self.shared.graph_container.graph();
     let code = match graph.get(&resolve_url(file_name).ok()?) {
-      Some(deno_graph::Module::Esm(module)) => &module.source,
+      Some(deno_graph::Module::Js(module)) => &module.source,
       Some(deno_graph::Module::Json(module)) => &module.source,
       _ => return None,
     };
