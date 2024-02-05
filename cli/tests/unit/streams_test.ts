@@ -245,21 +245,21 @@ Deno.test(async function readableStreamPartial() {
 
 Deno.test(async function readableStreamLongReadAll() {
   const rid = resourceForReadableStream(longStream());
-  const buffer = await core.read_all(rid);
+  const buffer = await core.readAll(rid);
   assertEquals(buffer.length, LOREM.length * 4);
   core.close(rid);
 });
 
 Deno.test(async function readableStreamLongAsyncReadAll() {
   const rid = resourceForReadableStream(longAsyncStream());
-  const buffer = await core.read_all(rid);
+  const buffer = await core.readAll(rid);
   assertEquals(buffer.length, LOREM.length * 100);
   core.close(rid);
 });
 
 Deno.test(async function readableStreamVeryLongReadAll() {
   const rid = resourceForReadableStream(veryLongTinyPacketStream(1_000_000));
-  const buffer = await core.read_all(rid);
+  const buffer = await core.readAll(rid);
   assertEquals(buffer.length, 1_000_000);
   core.close(rid);
 });
@@ -322,14 +322,14 @@ Deno.test(async function readableStreamEmptyOnPull() {
 
 Deno.test(async function readableStreamEmptyReadAll() {
   const rid = resourceForReadableStream(emptyStream(false));
-  const buffer = await core.read_all(rid);
+  const buffer = await core.readAll(rid);
   assertEquals(buffer.length, 0);
   core.close(rid);
 });
 
 Deno.test(async function readableStreamWithEmptyChunk() {
   const rid = resourceForReadableStream(emptyChunkStream());
-  const buffer = await core.read_all(rid);
+  const buffer = await core.readAll(rid);
   assertEquals(buffer, new Uint8Array([1, 2]));
   core.close(rid);
 });
