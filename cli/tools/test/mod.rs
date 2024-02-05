@@ -40,6 +40,8 @@ use deno_core::futures::StreamExt;
 use deno_core::located_script_name;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_v8;
+use deno_core::stats::RuntimeActivityStats;
+use deno_core::stats::RuntimeActivityStatsFilter;
 use deno_core::unsync::spawn;
 use deno_core::unsync::spawn_blocking;
 use deno_core::url::Url;
@@ -87,6 +89,7 @@ use tokio::sync::mpsc::WeakUnboundedSender;
 pub mod fmt;
 pub mod reporters;
 
+use fmt::format_sanitizer_diff;
 pub use fmt::format_test_error;
 use reporters::CompoundTestReporter;
 use reporters::DotTestReporter;
@@ -175,6 +178,8 @@ pub struct TestDescription {
   pub only: bool,
   pub origin: String,
   pub location: TestLocation,
+  pub sanitize_ops: bool,
+  pub sanitize_resources: bool,
 }
 
 /// May represent a failure of a test or test step.
@@ -568,6 +573,8 @@ pub async fn run_tests_for_worker(
     used_only,
   }))?;
   let mut had_uncaught_error = false;
+  let stats = worker.js_runtime.runtime_activity_stats_factory();
+
   for (desc, function) in tests {
     if fail_fast_tracker.should_stop() {
       break;
@@ -582,21 +589,28 @@ pub async fn run_tests_for_worker(
     }
     sender.send(TestEvent::Wait(desc.id))?;
 
-    // TODO(bartlomieju): this is a nasty (beautiful) hack, that was required
-    // when switching `JsRuntime` from `FuturesUnordered` to `JoinSet`. With
-    // `JoinSet` all pending ops are immediately polled and that caused a problem
-    // when some async ops were fired and canceled before running tests (giving
-    // false positives in the ops sanitizer). We should probably rewrite sanitizers
-    // to be done in Rust instead of in JS (40_testing.js).
+    // Poll event loop once, to allow all ops that are already resolved, but haven't
+    // responded to settle.
+    // TODO(mmastrac): we should provide an API to poll the event loop until no futher
+    // progress is made.
     {
-      // Poll event loop once, this will allow all ops that are already resolved,
-      // but haven't responded to settle.
       let waker = noop_waker();
       let mut cx = Context::from_waker(&waker);
       let _ = worker
         .js_runtime
         .poll_event_loop(&mut cx, PollEventLoopOptions::default());
     }
+
+    let mut filter = RuntimeActivityStatsFilter::default();
+    if desc.sanitize_resources {
+      filter = filter.with_resources();
+    }
+
+    let before = if !filter.is_empty() {
+      Some(stats.clone().capture(&filter))
+    } else {
+      None
+    };
 
     let earlier = SystemTime::now();
     let call = worker.js_runtime.call(&function);
@@ -621,6 +635,22 @@ pub async fn run_tests_for_worker(
         }
       }
     };
+    if let Some(before) = before {
+      let after = stats.clone().capture(&filter);
+      let diff = RuntimeActivityStats::diff(&before, &after);
+      let formatted = format_sanitizer_diff(diff);
+      if !formatted.is_empty() {
+        let failure = TestFailure::LeakedResources(formatted);
+        let elapsed = SystemTime::now().duration_since(earlier)?.as_millis();
+        sender.send(TestEvent::Result(
+          desc.id,
+          TestResult::Failed(failure),
+          elapsed as u64,
+        ))?;
+        continue;
+      }
+    }
+
     let scope = &mut worker.js_runtime.handle_scope();
     let result = v8::Local::new(scope, result);
     let result = serde_v8::from_v8::<TestResult>(scope, result)?;

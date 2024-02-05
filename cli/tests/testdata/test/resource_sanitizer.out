@@ -6,8 +6,10 @@ leak ... FAILED ([WILDCARD])
 
 leak => ./test/resource_sanitizer.ts:[WILDCARD]
 error: Leaking resources:
-  - The stdin pipe (rid 0) was opened before the test started, but was closed during the test. Do not close resources in a test that were not created during that test.
-  - A file (rid 3) was opened during the test, but not closed during the test. Close the file handle by calling `file.close()`.
+[UNORDERED_START]
+  - The stdin pipe was opened before the test started, but was closed during the test. Do not close resources in a test that were not created during that test.
+  - A file was opened during the test, but not closed during the test. Close the file handle by calling `file.close()`.
+[UNORDERED_END]
 
  FAILURES 
 
