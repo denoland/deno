@@ -16,7 +16,7 @@ function isatty(rid) {
   internals.warnOnDeprecatedApi(
     "Deno.isatty()",
     new Error().stack,
-    "Use `Deno.FsFile.isTerminal()`, `Deno.stdin.isTerminal()`, `Deno.stdout.isTerminal()` or `Deno.stderr.isTerminal()` instead.",
+    "Use `Deno.stdin.isTerminal()`, `Deno.stdout.isTerminal()`, `Deno.stderr.isTerminal()` or `Deno.FsFile.isTerminal()` instead.",
   );
   return op_is_terminal(rid);
 }
