@@ -15,7 +15,7 @@ import {
   readFileSync,
   writeFileSync,
 } from "node:fs";
-import { constants as fsPromiseConstants } from "node:fs/promises";
+import { constants as fsPromiseConstants, cp } from "node:fs/promises";
 import { pathToAbsoluteFileUrl } from "../unit/test_util.ts";
 
 Deno.test(
@@ -100,3 +100,16 @@ Deno.test(
     assertEquals(constants, promises.constants);
   },
 );
+
+Deno.test(
+  "[node/fs/promises cp] copy file",
+  async () => {
+    const src = mkdtempSync(join(tmpdir(), "foo-")) + "/test.txt";
+    const dest = mkdtempSync(join(tmpdir(), "foo-")) + "/test.txt";
+    writeFileSync(src, "Hello");
+
+    await cp(src, dest);
+
+    const dataRead = readFileSync(dest, "utf8");
+    assert(dataRead === "Hello");
+  });
