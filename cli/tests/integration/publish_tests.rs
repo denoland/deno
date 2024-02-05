@@ -36,9 +36,9 @@ itest!(invalid_fast_check {
   exit_code: 1,
 });
 
-itest!(no_fast_check {
-  args: "publish --no-fast-check --token 'sadfasdf'",
-  output: "publish/no_fast_check.out",
+itest!(no_zap {
+  args: "publish --no-zap --token 'sadfasdf'",
+  output: "publish/no_zap.out",
   cwd: Some("publish/invalid_fast_check"),
   exit_code: 1,
 });
@@ -98,6 +98,17 @@ itest!(successful {
   output: "publish/successful.out",
   cwd: Some("publish/successful"),
   envs: env_vars_for_registry(),
+  http_server: true,
+});
+
+itest!(node_specifier {
+  args: "publish --token 'sadfasdf'",
+  output: "publish/node_specifier.out",
+  cwd: Some("publish/node_specifier"),
+  envs: env_vars_for_registry()
+    .into_iter()
+    .chain(env_vars_for_npm_tests().into_iter())
+    .collect(),
   http_server: true,
 });
 

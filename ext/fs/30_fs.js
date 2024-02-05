@@ -766,6 +766,22 @@ class FsFile {
     futimeSync(this.#rid, atime, mtime);
   }
 
+  lockSync(exclusive = false) {
+    op_fs_flock_sync(this.#rid, exclusive);
+  }
+
+  async lock(exclusive = false) {
+    await op_fs_flock_async(this.#rid, exclusive);
+  }
+
+  unlockSync() {
+    op_fs_funlock_sync(this.#rid);
+  }
+
+  async unlock() {
+    await op_fs_funlock_async(this.#rid);
+  }
+
   [SymbolDispose]() {
     core.tryClose(this.#rid);
   }

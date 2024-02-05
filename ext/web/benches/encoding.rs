@@ -5,8 +5,6 @@ use deno_bench_util::bench_or_profile;
 use deno_bench_util::bencher::benchmark_group;
 use deno_bench_util::bencher::Bencher;
 use deno_core::Extension;
-use deno_core::ExtensionFileSource;
-use deno_core::ExtensionFileSourceCode;
 
 #[derive(Clone)]
 struct Permissions;
@@ -18,6 +16,21 @@ impl deno_web::TimersPermission for Permissions {
 }
 
 fn setup() -> Vec<Extension> {
+  deno_core::extension!(
+    bench_setup,
+    esm_entry_point = "ext:bench_setup/setup",
+    esm = ["ext:bench_setup/setup" = {
+      source = r#"
+        import { TextDecoder } from "ext:deno_web/08_text_encoding.js";
+        globalThis.TextDecoder = TextDecoder;
+        globalThis.hello12k = Deno.core.encode("hello world\n".repeat(1e3));
+      "#
+    }],
+    state = |state| {
+      state.put(Permissions {});
+    },
+  );
+
   vec![
     deno_webidl::deno_webidl::init_ops_and_esm(),
     deno_url::deno_url::init_ops_and_esm(),
@@ -26,24 +39,7 @@ fn setup() -> Vec<Extension> {
       Default::default(),
       None,
     ),
-    Extension {
-      name: "bench_setup",
-      esm_files: std::borrow::Cow::Borrowed(&[ExtensionFileSource {
-        specifier: "ext:bench_setup/setup",
-        code: ExtensionFileSourceCode::IncludedInBinary(
-          r#"
-          import { TextDecoder } from "ext:deno_web/08_text_encoding.js";
-          globalThis.TextDecoder = TextDecoder;
-          globalThis.hello12k = Deno.core.encode("hello world\n".repeat(1e3));
-        "#,
-        ),
-      }]),
-      esm_entry_point: Some("ext:bench_setup/setup"),
-      op_state_fn: Some(Box::new(|state| {
-        state.put(Permissions {});
-      })),
-      ..Default::default()
-    },
+    bench_setup::init_ops_and_esm(),
   ]
 }
 

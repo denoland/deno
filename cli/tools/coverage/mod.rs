@@ -530,24 +530,24 @@ pub async fn cover_files(
           Before generating coverage report, run `deno test --coverage` to ensure consistent state.",
           module_specifier
         )
-    })?;
+    })?.into_text_decoded()?;
 
-    // Check if file was transpiled
     let original_source = file.source.clone();
-    let transpiled_code: ModuleCodeString = match file.media_type {
+    // Check if file was transpiled
+    let transpiled_code = match file.media_type {
       MediaType::JavaScript
       | MediaType::Unknown
       | MediaType::Cjs
       | MediaType::Mjs
-      | MediaType::Json => file.source.clone().into(),
-      MediaType::Dts | MediaType::Dmts | MediaType::Dcts => Default::default(),
+      | MediaType::Json => None,
+      MediaType::Dts | MediaType::Dmts | MediaType::Dcts => Some(String::new()),
       MediaType::TypeScript
       | MediaType::Jsx
       | MediaType::Mts
       | MediaType::Cts
       | MediaType::Tsx => {
-        match emitter.maybe_cached_emit(&file.specifier, &file.source) {
-          Some(code) => code.into(),
+        Some(match emitter.maybe_cached_emit(&file.specifier, &file.source) {
+          Some(code) => code,
           None => {
             return Err(anyhow!(
               "Missing transpiled source code for: \"{}\".
@@ -555,17 +555,20 @@ pub async fn cover_files(
               file.specifier,
             ))
           }
-        }
+        })
       }
       MediaType::Wasm | MediaType::TsBuildInfo | MediaType::SourceMap => {
         unreachable!()
       }
     };
+    let runtime_code: ModuleCodeString = transpiled_code
+      .map(|c| c.into())
+      .unwrap_or_else(|| original_source.clone().into());
 
-    let source_map = source_map_from_code(&transpiled_code);
+    let source_map = source_map_from_code(&runtime_code);
     let coverage_report = generate_coverage_report(
       &script_coverage,
-      transpiled_code.as_str().to_owned(),
+      runtime_code.as_str().to_owned(),
       &source_map,
       &out_mode,
     );
