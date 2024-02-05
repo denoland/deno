@@ -1032,6 +1032,7 @@ dependencies = [
  "open",
  "os_pipe",
  "percent-encoding",
+ "phf",
  "pin-project",
  "pretty_assertions",
  "quick-junit",
