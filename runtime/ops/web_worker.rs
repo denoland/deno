@@ -15,8 +15,8 @@ use std::rc::Rc;
 
 use self::sync_fetch::op_worker_sync_fetch;
 
-/// A list of special ops for web workers.
-pub const WEB_WORKER_OPS: &[&str] = &[
+// These are worker and worker host control ops that may start and complete during a test as expected.
+pub const WEB_WORKER_UNSANITIZABLE_OPS: &[&str] = &[
   op_worker_post_message::DECL.name,
   op_worker_recv_message::DECL.name,
 ];

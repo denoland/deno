@@ -578,13 +578,12 @@ pub async fn run_tests_for_worker(
   let ops = worker.js_runtime.op_names();
 
   // These are worker and worker host control ops that may start and complete during a test as expected.
-
   // TODO(mmastrac): ideally we should be upstreaming worker infrastructure and avoid having to deal with
   // these ops in a special way.
-  let special_ops: [OpId; deno_runtime::WEB_WORKER_OPS.len()] = {
+  let special_ops: [OpId; deno_runtime::WEB_WORKER_UNSANITIZABLE_OPS.len()] = {
     // Collect the ops into an array with a known size so we can give the compiler enough information
     // to unroll this later on
-    deno_runtime::WEB_WORKER_OPS
+    deno_runtime::WEB_WORKER_UNSANITIZABLE_OPS
       .iter()
       .map(|wo| ops.iter().position(|op| *op == *wo).unwrap() as _)
       .collect::<Vec<_>>()
