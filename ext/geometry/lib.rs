@@ -15,11 +15,8 @@ deno_core::extension!(
   deno_geometry,
   deps = [deno_webidl, deno_web, deno_console],
   ops = [
-    op_geometry_translate,
     op_geometry_translate_self,
-    op_geometry_scale,
     op_geometry_scale_self,
-    op_geometry_scale_with_origin,
     op_geometry_scale_with_origin_self,
     op_geometry_multiply,
     op_geometry_multiply_self,
@@ -33,43 +30,15 @@ pub fn get_declaration() -> PathBuf {
 }
 
 #[op2(fast)]
-pub fn op_geometry_translate(
-  #[buffer] input: &[f64],
-  x: f64,
-  y: f64,
-  z: f64,
-  #[buffer] out: &mut [f64],
-) -> () {
-  let shift = Vector3::new(x, y, z);
-  let mut out = MatrixViewMut::from_slice(out);
-  out.copy_from_slice(input);
-  out.prepend_translation_mut(&shift);
-}
-
-#[op2(fast)]
 pub fn op_geometry_translate_self(
   x: f64,
   y: f64,
   z: f64,
-  #[buffer] out: &mut [f64],
+  #[buffer] inout: &mut [f64],
 ) -> () {
   let shift = Vector3::new(x, y, z);
-  let mut out = MatrixViewMut::from_slice(out);
-  out.prepend_translation_mut(&shift);
-}
-
-#[op2(fast)]
-pub fn op_geometry_scale(
-  #[buffer] input: &[f64],
-  x: f64,
-  y: f64,
-  z: f64,
-  #[buffer] out: &mut [f64],
-) -> () {
-  let scaling = Vector3::new(x, y, z);
-  let mut out = MatrixViewMut::from_slice(out);
-  out.copy_from_slice(input);
-  out.prepend_nonuniform_scaling_mut(&scaling);
+  let mut inout = MatrixViewMut::from_slice(inout);
+  inout.prepend_translation_mut(&shift);
 }
 
 #[op2(fast)]
@@ -77,32 +46,11 @@ pub fn op_geometry_scale_self(
   x: f64,
   y: f64,
   z: f64,
-  #[buffer] out: &mut [f64],
+  #[buffer] inout: &mut [f64],
 ) -> () {
   let scaling = Vector3::new(x, y, z);
-  let mut out = MatrixViewMut::from_slice(out);
-  out.prepend_nonuniform_scaling_mut(&scaling);
-}
-
-#[op2(fast)]
-pub fn op_geometry_scale_with_origin(
-  #[buffer] input: &[f64],
-  x: f64,
-  y: f64,
-  z: f64,
-  origin_x: f64,
-  origin_y: f64,
-  origin_z: f64,
-  #[buffer] out: &mut [f64],
-) -> () {
-  let scaling = Vector3::new(x, y, z);
-  let mut shift = Vector3::new(origin_x, origin_y, origin_z);
-  let mut out = MatrixViewMut::from_slice(out);
-  out.copy_from_slice(input);
-  out.prepend_translation_mut(&shift);
-  out.prepend_nonuniform_scaling_mut(&scaling);
-  shift.neg_mut();
-  out.prepend_translation_mut(&shift);
+  let mut inout = MatrixViewMut::from_slice(inout);
+  inout.prepend_nonuniform_scaling_mut(&scaling);
 }
 
 #[op2(fast)]
@@ -113,15 +61,15 @@ pub fn op_geometry_scale_with_origin_self(
   origin_x: f64,
   origin_y: f64,
   origin_z: f64,
-  #[buffer] out: &mut [f64],
+  #[buffer] inout: &mut [f64],
 ) -> () {
   let scaling = Vector3::new(x, y, z);
   let mut shift = Vector3::new(origin_x, origin_y, origin_z);
-  let mut out = MatrixViewMut::from_slice(out);
-  out.prepend_translation_mut(&shift);
-  out.prepend_nonuniform_scaling_mut(&scaling);
+  let mut inout = MatrixViewMut::from_slice(inout);
+  inout.prepend_translation_mut(&shift);
+  inout.prepend_nonuniform_scaling_mut(&scaling);
   shift.neg_mut();
-  out.prepend_translation_mut(&shift);
+  inout.prepend_translation_mut(&shift);
 }
 
 #[op2(fast)]
@@ -139,23 +87,23 @@ pub fn op_geometry_multiply(
 #[op2(fast)]
 pub fn op_geometry_multiply_self(
   #[buffer] rhs: &[f64],
-  #[buffer] out: &mut [f64],
+  #[buffer] inout: &mut [f64],
 ) -> () {
   let rhs = MatrixView::from_slice(rhs);
-  let mut out = MatrixViewMut::from_slice(out);
+  let mut inout = MatrixViewMut::from_slice(inout);
   let mut result = Matrix::zeros();
-  out.mul_to(&rhs, &mut result);
-  out.copy_from(&result);
+  inout.mul_to(&rhs, &mut result);
+  inout.copy_from(&result);
 }
 
 #[op2(fast)]
 pub fn op_geometry_premultiply_self(
   #[buffer] lhs: &[f64],
-  #[buffer] out: &mut [f64],
+  #[buffer] inout: &mut [f64],
 ) -> () {
   let lhs = MatrixView::from_slice(lhs);
-  let mut out = MatrixViewMut::from_slice(out);
+  let mut inout = MatrixViewMut::from_slice(inout);
   let mut result = Matrix::zeros();
-  lhs.mul_to(&out, &mut result);
-  out.copy_from(&result);
+  lhs.mul_to(&inout, &mut result);
+  inout.copy_from(&result);
 }
