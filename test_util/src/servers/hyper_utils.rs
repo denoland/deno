@@ -1,7 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use bytes::Bytes;
-use deno_core::deno_unsync;
+use deno_core::unsync;
 use futures::Future;
 use futures::FutureExt;
 use futures::Stream;
@@ -46,7 +46,7 @@ where
       loop {
         let (stream, _) = listener.accept().await?;
         let io = TokioIo::new(stream);
-        deno_unsync::spawn(hyper_serve_connection(
+        unsync::spawn(hyper_serve_connection(
           io,
           handler,
           options.error_msg,
@@ -79,9 +79,7 @@ pub async fn run_server_with_acceptor<'a, A, F, S>(
       while let Some(result) = acceptor.next().await {
         let stream = result?;
         let io = TokioIo::new(stream);
-        deno_unsync::spawn(hyper_serve_connection(
-          io, handler, error_msg, kind,
-        ));
+        unsync::spawn(hyper_serve_connection(io, handler, error_msg, kind));
       }
       Ok(())
     }
@@ -150,6 +148,6 @@ where
   Fut::Output: 'static,
 {
   fn execute(&self, fut: Fut) {
-    deno_unsync::spawn(fut);
+    unsync::spawn(fut);
   }
 }
