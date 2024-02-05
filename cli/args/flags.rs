@@ -301,6 +301,7 @@ pub struct VendorFlags {
 pub struct PublishFlags {
   pub token: Option<String>,
   pub dry_run: bool,
+  pub no_zap: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -743,7 +744,7 @@ impl Flags {
             .to_owned();
           Some(p)
         } else if module_specifier.scheme() == "npm" {
-          Some(std::env::current_dir().unwrap())
+          Some(current_dir.to_path_buf())
         } else {
           None
         }
@@ -2384,6 +2385,12 @@ fn publish_subcommand() -> Command {
           .help("Prepare the package for publishing performing all checks and validations without uploading")
           .action(ArgAction::SetTrue),
       )
+      .arg(
+        Arg::new("no-zap")
+          .long("no-zap")
+          .help("Skip Zap compatibility validation")
+          .action(ArgAction::SetTrue),
+      )
     })
 }
 
@@ -3817,6 +3824,7 @@ fn publish_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   flags.subcommand = DenoSubcommand::Publish(PublishFlags {
     token: matches.remove_one("token"),
     dry_run: matches.get_flag("dry-run"),
+    no_zap: matches.get_flag("no-zap"),
   });
 }
 
