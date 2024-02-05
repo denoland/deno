@@ -59,6 +59,8 @@ async function connectTls({
   caCerts = [],
   certChain = undefined,
   privateKey = undefined,
+  cert = undefined,
+  key = undefined,
   alpnProtocols = undefined,
 }) {
   if (certFile !== undefined) {
@@ -71,6 +73,18 @@ async function connectTls({
   if (transport !== "tcp") {
     throw new TypeError(`Unsupported transport: '${transport}'`);
   }
+  if (certChain !== undefined && cert !== undefined) {
+    throw new TypeError(
+      "Cannot specify both `certChain` and `cert`",
+    );
+  }
+  if (privateKey !== undefined && key !== undefined) {
+    throw new TypeError(
+      "Cannot specify both `privateKey` and `key`",
+    );
+  }
+  certChain ??= cert;
+  privateKey ??= key;
   const { 0: rid, 1: localAddr, 2: remoteAddr } = await op_net_connect_tls(
     { hostname, port },
     { certFile, caCerts, certChain, privateKey, alpnProtocols },

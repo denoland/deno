@@ -347,6 +347,16 @@ declare namespace Deno {
     certChain?: string;
     /** PEM formatted (RSA or PKCS8) private key of client certificate.  */
     privateKey?: string;
+    /** **UNSTABLE**: New API, yet to be vetted.
+     *
+     * Server private key in PEM format.
+     */
+    key?: string;
+    /** **UNSTABLE**: New API, yet to be vetted.
+     *
+     * Cert chain in PEM format.
+     */
+    cert?: string;
   }
 
   /** Establishes a secure connection over TLS (transport layer security) using
