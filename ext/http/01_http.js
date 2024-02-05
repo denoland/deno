@@ -464,7 +464,7 @@ function upgradeWebSocket(request, options = {}) {
       }
     } else {
       for (const key in options.headers) {
-        ArrayPrototypePush(r.headerList, [ key, options.headers[key] ]);
+        ArrayPrototypePush(r.headerList, [key, options.headers[key]]);
       }
     }
   }

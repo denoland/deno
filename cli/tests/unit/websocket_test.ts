@@ -416,10 +416,13 @@ Deno.test(function websocketServerOptionsHeaders() {
   });
   const headers1 = new Headers({ name1: "value1" });
   const headers2 = { name2: "value2" };
-  const headers3 = [ [ "name3", "value3" ] ];
-  const response1 = Deno.upgradeWebSocket(request, { headers: headers1 }).response;
-  const response2 = Deno.upgradeWebSocket(request, { headers: headers2 }).response;
-  const response3 = Deno.upgradeWebSocket(request, { headers: headers3 }).response;
+  const headers3 = [[ "name3", "value3" ]];
+  const response1 =
+    Deno.upgradeWebSocket(request, { headers: headers1 }).response;
+  const response2 =
+    Deno.upgradeWebSocket(request, { headers: headers2 }).response;
+  const response3 =
+    Deno.upgradeWebSocket(request, { headers: headers3 }).response;
   assertEquals(response1.headers.get("name1"), "value1");
   assertEquals(response2.headers.get("name2"), "value2");
   assertEquals(response3.headers.get("name3"), "value3");
