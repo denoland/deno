@@ -55,6 +55,7 @@ denokv_proto = "0.5.0"
 denokv_remote = "0.5.0"
 # denokv_sqlite brings in bundled sqlite if we don't disable the default features
 denokv_sqlite = { default-features = false, version = "0.5.0" }
+deno_unsync = "0"
 
 # exts
 deno_broadcast_channel = { version = "0.130.0", path = "./ext/broadcast_channel" }
@@ -150,7 +151,7 @@ scopeguard = "1.2.0"
 serde = { version = "1.0.149", features = ["derive"] }
 serde_bytes = "0.11"
 serde_json = "1.0.85"
-serde_repr = "=0.1.16"
+serde_repr = "=0.1.18"
 sha2 = { version = "0.10.8", features = ["oid"] }
 signature = "2.1"
 slab = "0.4"

@@ -18,6 +18,6 @@ anyhow.workspace = true
 async-trait.workspace = true
 chrono.workspace = true
 deno_core.workspace = true
-deno_unsync = "0.1.1"
+deno_unsync.workspace = true
 saffron.workspace = true
 tokio.workspace = true
