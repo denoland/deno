@@ -7,6 +7,7 @@ const {
   internalRidSymbol,
 } = core;
 import {
+  op_cancel_handle,
   op_dns_resolve,
   op_net_accept_tcp,
   op_net_accept_unix,
@@ -27,9 +28,6 @@ import {
   op_set_keepalive,
   op_set_nodelay,
 } from "ext:core/ops";
-const {
-  op_cancel_handle,
-} = core.ensureFastOps(true);
 const {
   Error,
   Number,

@@ -26,105 +26,48 @@
 import { primordials } from "ext:core/mod.js";
 const {
   ArrayPrototypePop,
-  ReflectApply,
   Error,
   FunctionPrototypeBind,
+  ReflectApply,
   ObjectDefineProperties,
   ObjectGetOwnPropertyDescriptors,
+  ObjectSetPrototypeOf,
+  ObjectValues,
   PromisePrototypeThen,
-  TypeError,
 } = primordials;
 
 import { nextTick } from "ext:deno_node/_next_tick.ts";
+import { validateFunction } from "ext:deno_node/internal/validators.mjs";
 
 class NodeFalsyValueRejectionError extends Error {
-  public reason: unknown;
-  public code = "ERR_FALSY_VALUE_REJECTION";
-  constructor(reason: unknown) {
+  code = "ERR_FALSY_VALUE_REJECTION";
+  constructor(reason) {
     super("Promise was rejected with falsy value");
     this.reason = reason;
   }
 }
-class NodeInvalidArgTypeError extends TypeError {
-  public code = "ERR_INVALID_ARG_TYPE";
-  constructor(argumentName: string) {
-    super(`The ${argumentName} argument must be of type function.`);
-  }
-}
 
-type Callback<ResultT> =
-  | ((err: Error) => void)
-  | ((err: null, result: ResultT) => void);
+function callbackify(original) {
+  validateFunction(original, "original");
 
-function callbackify<ResultT>(
-  fn: () => PromiseLike<ResultT>,
-): (callback: Callback<ResultT>) => void;
-function callbackify<ArgT, ResultT>(
-  fn: (arg: ArgT) => PromiseLike<ResultT>,
-): (arg: ArgT, callback: Callback<ResultT>) => void;
-function callbackify<Arg1T, Arg2T, ResultT>(
-  fn: (arg1: Arg1T, arg2: Arg2T) => PromiseLike<ResultT>,
-): (arg1: Arg1T, arg2: Arg2T, callback: Callback<ResultT>) => void;
-function callbackify<Arg1T, Arg2T, Arg3T, ResultT>(
-  fn: (arg1: Arg1T, arg2: Arg2T, arg3: Arg3T) => PromiseLike<ResultT>,
-): (arg1: Arg1T, arg2: Arg2T, arg3: Arg3T, callback: Callback<ResultT>) => void;
-function callbackify<Arg1T, Arg2T, Arg3T, Arg4T, ResultT>(
-  fn: (
-    arg1: Arg1T,
-    arg2: Arg2T,
-    arg3: Arg3T,
-    arg4: Arg4T,
-  ) => PromiseLike<ResultT>,
-): (
-  arg1: Arg1T,
-  arg2: Arg2T,
-  arg3: Arg3T,
-  arg4: Arg4T,
-  callback: Callback<ResultT>,
-) => void;
-function callbackify<Arg1T, Arg2T, Arg3T, Arg4T, Arg5T, ResultT>(
-  fn: (
-    arg1: Arg1T,
-    arg2: Arg2T,
-    arg3: Arg3T,
-    arg4: Arg4T,
-    arg5: Arg5T,
-  ) => PromiseLike<ResultT>,
-): (
-  arg1: Arg1T,
-  arg2: Arg2T,
-  arg3: Arg3T,
-  arg4: Arg4T,
-  arg5: Arg5T,
-  callback: Callback<ResultT>,
-) => void;
-
-function callbackify<ResultT>(
-  original: (...args: unknown[]) => PromiseLike<ResultT>,
-): (...args: unknown[]) => void {
-  if (typeof original !== "function") {
-    throw new NodeInvalidArgTypeError('"original"');
-  }
-
-  const callbackified = function (this: unknown, ...args: unknown[]) {
+  // We DO NOT return the promise as it gives the user a false sense that
+  // the promise is actually somehow related to the callback's execution
+  // and that the callback throwing will reject the promise.
+  function callbackified(...args) {
     const maybeCb = ArrayPrototypePop(args);
-    if (typeof maybeCb !== "function") {
-      throw new NodeInvalidArgTypeError("last");
-    }
-    const cb = (...args: unknown[]) => {
-      ReflectApply(maybeCb, this, args);
-    };
+    validateFunction(maybeCb, "last argument");
+    const cb = FunctionPrototypeBind(maybeCb, this);
+    // In true node style we process the callback on `nextTick` with all the
+    // implications (stack, `uncaughtException`, `async_hooks`)
     PromisePrototypeThen(
-      ReflectApply(this, args),
-      (ret: unknown) => {
-        nextTick(FunctionPrototypeBind(cb, this, null, ret));
-      },
-      (rej: unknown) => {
+      ReflectApply(original, this, args),
+      (ret) => nextTick(cb, null, ret),
+      (rej) => {
         rej = rej || new NodeFalsyValueRejectionError(rej);
-        nextTick(FunctionPrototypeBind(cb, this, rej));
+        return nextTick(cb, rej);
       },
     );
-  };
+  }
 
   const descriptors = ObjectGetOwnPropertyDescriptors(original);
   // It is possible to manipulate a functions `length` or `name` property. This
@@ -134,6 +77,12 @@ function callbackify<ResultT>(
   }
   if (typeof descriptors.name.value === "string") {
     descriptors.name.value += "Callbackified";
+  }
+  const propertiesValues = ObjectValues(descriptors);
+  for (let i = 0; i < propertiesValues.length; i++) {
+    // We want to use null-prototype objects to not rely on globally mutable
+    // %Object.prototype%.
+    ObjectSetPrototypeOf(propertiesValues[i], null);
   }
   ObjectDefineProperties(callbackified, descriptors);
   return callbackified;

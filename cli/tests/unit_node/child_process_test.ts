@@ -754,3 +754,20 @@ Deno.test(async function forkIpcKillDoesNotHang() {
 
   await p.promise;
 });
+
+Deno.test(async function execFileWithUndefinedTimeout() {
+  const { promise, resolve, reject } = Promise.withResolvers<void>();
+  CP.execFile(
+    "git",
+    ["-v"],
+    { timeout: undefined, encoding: "utf8" },
+    (err) => {
+      if (err) {
+        reject(err);
+        return;
+      }
+      resolve();
+    },
+  );
+  await promise;
+});

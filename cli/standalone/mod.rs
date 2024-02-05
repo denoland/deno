@@ -9,7 +9,6 @@ use crate::args::StorageKeyResolver;
 use crate::cache::Caches;
 use crate::cache::DenoDirProvider;
 use crate::cache::NodeAnalysisCache;
-use crate::file_fetcher::get_source_from_data_url;
 use crate::http_util::HttpClient;
 use crate::node::CliCjsCodeAnalyzer;
 use crate::npm::create_cli_npm_resolver;
@@ -150,12 +149,22 @@ impl ModuleLoader for EmbeddedModuleLoader {
     is_dynamic: bool,
     _requested_module_type: RequestedModuleType,
   ) -> deno_core::ModuleLoadResponse {
-    let is_data_uri = get_source_from_data_url(original_specifier).ok();
-    if let Some((source, _)) = is_data_uri {
+    if original_specifier.scheme() == "data" {
+      let data_url_text =
+        match deno_graph::source::RawDataUrl::parse(original_specifier)
+          .and_then(|url| url.decode().map_err(|err| err.into()))
+        {
+          Ok(response) => response,
+          Err(err) => {
+            return deno_core::ModuleLoadResponse::Sync(Err(type_error(
+              format!("{:#}", err),
+            )));
+          }
+        };
       return deno_core::ModuleLoadResponse::Sync(Ok(
         deno_core::ModuleSource::new(
           deno_core::ModuleType::JavaScript,
-          ModuleSourceCode::String(source.into()),
+          ModuleSourceCode::String(data_url_text.into()),
           original_specifier,
         ),
       ));
@@ -541,7 +550,9 @@ pub async fn run(
       maybe_root_package_json_deps: package_json_deps_provider.deps().cloned(),
     },
     None,
-    metadata.disable_deprecated_api_warning,
+    // TODO(bartlomieju): temporarily disabled
+    // metadata.disable_deprecated_api_warning,
+    true,
     false,
   );
 

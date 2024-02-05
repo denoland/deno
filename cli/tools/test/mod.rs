@@ -177,6 +177,27 @@ pub struct TestDescription {
   pub location: TestLocation,
 }
 
+/// May represent a failure of a test or test step.
+#[derive(Debug, Clone, PartialEq, Deserialize, Eq, Hash)]
+#[serde(rename_all = "camelCase")]
+pub struct TestFailureDescription {
+  pub id: usize,
+  pub name: String,
+  pub origin: String,
+  pub location: TestLocation,
+}
+
+impl From<&TestDescription> for TestFailureDescription {
+  fn from(value: &TestDescription) -> Self {
+    Self {
+      id: value.id,
+      name: value.name.clone(),
+      origin: value.origin.clone(),
+      location: value.location.clone(),
+    }
+  }
+}
+
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -332,7 +353,7 @@ pub struct TestSummary {
   pub ignored_steps: usize,
   pub filtered_out: usize,
   pub measured: usize,
-  pub failures: Vec<(TestDescription, TestFailure)>,
+  pub failures: Vec<(TestFailureDescription, TestFailure)>,
   pub uncaught_errors: Vec<(String, Box<JsError>)>,
 }
 
@@ -685,11 +706,9 @@ fn extract_files_from_regex_blocks(
           .unwrap_or(file_specifier);
 
       Some(File {
-        maybe_types: None,
-        media_type: file_media_type,
-        source: file_source.into(),
         specifier: file_specifier,
         maybe_headers: None,
+        source: file_source.into_bytes().into(),
       })
     })
     .collect();
@@ -769,7 +788,10 @@ async fn fetch_inline_files(
   let mut files = Vec::new();
   for specifier in specifiers {
     let fetch_permissions = PermissionsContainer::allow_all();
-    let file = file_fetcher.fetch(&specifier, fetch_permissions).await?;
+    let file = file_fetcher
+      .fetch(&specifier, fetch_permissions)
+      .await?
+      .into_text_decoded()?;
 
     let inline_files = if file.media_type == MediaType::Unknown {
       extract_files_from_fenced_blocks(
@@ -1177,9 +1199,8 @@ async fn fetch_specifiers_with_test_mode(
       .fetch(specifier, PermissionsContainer::allow_all())
       .await?;
 
-    if file.media_type == MediaType::Unknown
-      || file.media_type == MediaType::Dts
-    {
+    let (media_type, _) = file.resolve_media_type_and_charset();
+    if matches!(media_type, MediaType::Unknown | MediaType::Dts) {
       *mode = TestMode::Documentation
     }
   }

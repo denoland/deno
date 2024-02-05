@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import { core } from "ext:core/mod.js";
+import { op_lazy_load_esm } from "ext:core/ops";
 
 import * as util from "ext:runtime/06_util.js";
 import * as event from "ext:deno_web/02_event.js";
@@ -35,7 +36,6 @@ import { webgpu, webGPUNonEnumerable } from "ext:deno_webgpu/00_init.js";
 import * as webgpuSurface from "ext:deno_webgpu/02_surface.js";
 import { unstableIds } from "ext:runtime/90_deno_ns.js";
 
-const { op_lazy_load_esm } = core.ensureFastOps(true);
 let image;
 
 function ImageNonEnumerable(getter) {

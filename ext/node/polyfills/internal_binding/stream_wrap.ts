@@ -32,10 +32,7 @@
 
 import { core } from "ext:core/mod.js";
 const { internalRidSymbol } = core;
-const {
-  op_can_write_vectored,
-  op_raw_write_vectored,
-} = core.ensureFastOps();
+import { op_can_write_vectored, op_raw_write_vectored } from "ext:core/ops";
 
 import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
 import { Buffer } from "node:buffer";
