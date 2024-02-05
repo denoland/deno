@@ -147,6 +147,7 @@ nix.workspace = true
 
 [dev-dependencies]
 deno_bench_util.workspace = true
+deno_core = { workspace = true, features = ["include_js_files_for_snapshotting", "unsafe_use_unprotected_platform"] }
 fastwebsockets = { workspace = true, features = ["upgrade", "unstable-split"] }
 flaky_test = "=0.1.0"
 http.workspace = true
