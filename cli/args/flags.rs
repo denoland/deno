@@ -3506,8 +3506,7 @@ fn info_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   location_arg_parse(flags, matches);
   ca_file_arg_parse(flags, matches);
   node_modules_and_vendor_dir_arg_parse(flags, matches);
-  lock_arg_parse(flags, matches);
-  no_lock_arg_parse(flags, matches);
+  lock_args_parse(flags, matches);
   no_remote_arg_parse(flags, matches);
   no_npm_arg_parse(flags, matches);
   let json = matches.get_flag("json");
