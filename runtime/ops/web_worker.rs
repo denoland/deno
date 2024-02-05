@@ -6,14 +6,20 @@ use crate::web_worker::WebWorkerInternalHandle;
 use crate::web_worker::WebWorkerType;
 use deno_core::error::AnyError;
 use deno_core::op2;
-
 use deno_core::CancelFuture;
+use deno_core::Op;
 use deno_core::OpState;
 use deno_web::JsMessageData;
 use std::cell::RefCell;
 use std::rc::Rc;
 
 use self::sync_fetch::op_worker_sync_fetch;
+
+/// A list of special ops for web workers.
+pub const WEB_WORKER_OPS: &[&str] = &[
+  op_worker_post_message::DECL.name,
+  op_worker_recv_message::DECL.name,
+];
 
 deno_core::extension!(
   deno_web_worker,

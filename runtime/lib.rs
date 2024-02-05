@@ -41,6 +41,8 @@ mod worker_bootstrap;
 pub use worker_bootstrap::BootstrapOptions;
 pub use worker_bootstrap::WorkerLogLevel;
 
+pub use ops::web_worker::WEB_WORKER_OPS;
+
 mod shared;
 pub use shared::runtime;
 
