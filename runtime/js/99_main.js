@@ -602,6 +602,9 @@ const NOT_IMPORTED_OPS = [
   "op_worker_sync_fetch",
   "op_ws_send_pong",
   "op_jupyter_broadcast",
+  "op_format_file_name",
+  "op_apply_source_map",
+  "op_apply_source_map_filename",
 ];
 
 function removeImportedOps() {
