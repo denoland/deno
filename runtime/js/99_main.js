@@ -14,6 +14,11 @@ import {
   op_ppid,
   op_set_format_exception_callback,
   op_snapshot_options,
+  op_worker_close,
+  op_worker_get_type,
+  op_worker_post_message,
+  op_worker_recv_message,
+  op_worker_sync_fetch,
 } from "ext:core/ops";
 const {
   ArrayPrototypeFilter,
@@ -223,7 +228,7 @@ function workerClose() {
   }
 
   isClosing = true;
-  ops.op_worker_close();
+  op_worker_close();
 }
 
 function postMessage(message, transferOrOptions = {}) {
@@ -252,15 +257,13 @@ function postMessage(message, transferOrOptions = {}) {
   }
   const { transfer } = options;
   const data = messagePort.serializeJsMessageData(message, transfer);
-  ops.op_worker_post_message(data);
+  op_worker_post_message(data);
 }
 
 let isClosing = false;
 let globalDispatchEvent;
 
 async function pollForMessages() {
-  const { op_worker_recv_message } = core.ensureFastOps();
-
   if (!globalDispatchEvent) {
     globalDispatchEvent = FunctionPrototypeBind(
       globalThis.dispatchEvent,
@@ -309,7 +312,7 @@ async function pollForMessages() {
 let loadedMainWorkerScript = false;
 
 function importScripts(...urls) {
-  if (ops.op_worker_get_type() === "module") {
+  if (op_worker_get_type() === "module") {
     throw new TypeError("Can't import scripts in a module worker.");
   }
 
@@ -329,7 +332,7 @@ function importScripts(...urls) {
   // imported scripts, so we use `loadedMainWorkerScript` to distinguish them.
   // TODO(andreubotella) Refactor worker creation so the main script isn't
   // loaded with `importScripts()`.
-  const scripts = ops.op_worker_sync_fetch(
+  const scripts = op_worker_sync_fetch(
     parsedUrls,
     !loadedMainWorkerScript,
   );
@@ -595,11 +598,6 @@ const NOT_IMPORTED_OPS = [
   "op_test_op_sanitizer_report",
   "op_void_async",
   "op_void_sync",
-  "op_worker_close",
-  "op_worker_get_type",
-  "op_worker_post_message",
-  "op_worker_recv_message",
-  "op_worker_sync_fetch",
   "op_ws_send_pong",
   "op_jupyter_broadcast",
   "op_format_file_name",
