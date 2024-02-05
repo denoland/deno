@@ -260,7 +260,6 @@ pub fn mem_info() -> Option<MemInfo> {
         std::ptr::null_mut(),
         0,
       );
-      mem_info.total /= 1024;
 
       let mut xs: libc::xsw_usage = std::mem::zeroed::<libc::xsw_usage>();
       mib[0] = libc::CTL_VM;
@@ -320,9 +319,9 @@ pub fn mem_info() -> Option<MemInfo> {
     let result = sysinfoapi::GlobalMemoryStatusEx(mem_status.as_mut_ptr());
     if result != 0 {
       let stat = mem_status.assume_init();
-      mem_info.total = stat.ullTotalPhys / 1024;
+      mem_info.total = stat.ullTotalPhys;
       mem_info.available = 0;
-      mem_info.free = stat.ullAvailPhys / 1024;
+      mem_info.free = stat.ullAvailPhys;
       mem_info.cached = 0;
       mem_info.buffers = 0;
 
