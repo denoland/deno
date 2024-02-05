@@ -2666,6 +2666,30 @@ declare namespace Deno {
      * @category File System
      */
     utimeSync(atime: number | Date, mtime: number | Date): void;
+    /** **UNSTABLE**: New API, yet to be vetted.
+     *
+     * Acquire an advisory file-system lock for the file.
+     *
+     * @param [exclusive=false]
+     */
+    lock(exclusive?: boolean): Promise<void>;
+    /** **UNSTABLE**: New API, yet to be vetted.
+     *
+     * Synchronously acquire an advisory file-system lock synchronously for the file.
+     *
+     * @param [exclusive=false]
+     */
+    lockSync(exclusive?: boolean): void;
+    /** **UNSTABLE**: New API, yet to be vetted.
+     *
+     * Release an advisory file-system lock for the file.
+     */
+    unlock(): Promise<void>;
+    /** **UNSTABLE**: New API, yet to be vetted.
+     *
+     * Synchronously release an advisory file-system lock for the file.
+     */
+    unlockSync(): void;
     /** Close the file. Closing a file when you are finished with it is
      * important to avoid leaking resources.
      *
