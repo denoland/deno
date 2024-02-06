@@ -181,7 +181,7 @@ const installNodeStep = {
 };
 const installProtocStep = {
   name: "Install protoc",
-  uses: "arduino/setup-protoc@v2",
+  uses: "arduino/setup-protoc@v3",
   with: { "version": "21.12", "repo-token": "${{ secrets.GITHUB_TOKEN }}" },
 };
 const installDenoStep = {
@@ -558,7 +558,7 @@ const ci = {
         },
         {
           name: "Cache Cargo home",
-          uses: "actions/cache@v3",
+          uses: "actions/cache@v4",
           with: {
             // See https://doc.rust-lang.org/cargo/guide/cargo-home.html#caching-the-cargo-home-in-ci
             // Note that with the new sparse registry format, we no longer have to cache a `.git` dir
@@ -990,7 +990,7 @@ const ci = {
         {
           // In main branch, always create a fresh cache
           name: "Save cache build output (main)",
-          uses: "actions/cache/save@v3",
+          uses: "actions/cache/save@v4",
           if:
             "(matrix.job == 'test' || matrix.job == 'lint') && github.ref == 'refs/heads/main'",
           with: {

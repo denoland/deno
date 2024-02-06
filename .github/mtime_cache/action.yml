@@ -7,4 +7,4 @@ inputs:
     required: true
 runs:
   main: action.js
-  using: node16
+  using: node20
