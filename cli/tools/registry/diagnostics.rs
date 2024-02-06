@@ -10,9 +10,9 @@ use deno_ast::swc::common::util::take::Take;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_graph::FastCheckDiagnostic;
-use deno_graph::ParsedSourceStore;
 use lsp_types::Url;
 
+use crate::cache::LazyGraphSourceParser;
 use crate::diagnostics::Diagnostic;
 use crate::diagnostics::DiagnosticLevel;
 use crate::diagnostics::DiagnosticLocation;
@@ -33,7 +33,7 @@ pub struct PublishDiagnosticsCollector {
 impl PublishDiagnosticsCollector {
   pub fn print_and_error(
     &self,
-    sources: &dyn ParsedSourceStore,
+    sources: LazyGraphSourceParser,
   ) -> Result<(), AnyError> {
     let mut errors = 0;
     let mut has_zap_errors = false;

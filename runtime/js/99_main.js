@@ -14,6 +14,11 @@ import {
   op_ppid,
   op_set_format_exception_callback,
   op_snapshot_options,
+  op_worker_close,
+  op_worker_get_type,
+  op_worker_post_message,
+  op_worker_recv_message,
+  op_worker_sync_fetch,
 } from "ext:core/ops";
 const {
   ArrayPrototypeFilter,
@@ -46,7 +51,6 @@ const {
 const {
   isNativeError,
 } = core;
-import * as util from "ext:runtime/06_util.js";
 import * as event from "ext:deno_web/02_event.js";
 import * as location from "ext:deno_web/12_location.js";
 import * as version from "ext:runtime/01_version.ts";
@@ -84,9 +88,21 @@ import {
 import {
   workerRuntimeGlobalProperties,
 } from "ext:runtime/98_global_scope_worker.js";
-import { SymbolAsyncDispose, SymbolDispose } from "ext:deno_web/00_infra.js";
+import {
+  SymbolAsyncDispose,
+  SymbolDispose,
+  SymbolMetadata,
+} from "ext:deno_web/00_infra.js";
 // deno-lint-ignore prefer-primordials
 if (Symbol.dispose) throw "V8 supports Symbol.dispose now, no need to shim it!";
+// deno-lint-ignore prefer-primordials
+if (Symbol.asyncDispose) {
+  throw "V8 supports Symbol.asyncDispose now, no need to shim it!";
+}
+// deno-lint-ignore prefer-primordials
+if (Symbol.metadata) {
+  throw "V8 supports Symbol.metadata now, no need to shim it!";
+}
 ObjectDefineProperties(Symbol, {
   dispose: {
     value: SymbolDispose,
@@ -96,6 +112,12 @@ ObjectDefineProperties(Symbol, {
   },
   asyncDispose: {
     value: SymbolAsyncDispose,
+    enumerable: false,
+    writable: false,
+    configurable: false,
+  },
+  metadata: {
+    value: SymbolMetadata,
     enumerable: false,
     writable: false,
     configurable: false,
@@ -223,7 +245,7 @@ function workerClose() {
   }
 
   isClosing = true;
-  ops.op_worker_close();
+  op_worker_close();
 }
 
 function postMessage(message, transferOrOptions = {}) {
@@ -252,15 +274,13 @@ function postMessage(message, transferOrOptions = {}) {
   }
   const { transfer } = options;
   const data = messagePort.serializeJsMessageData(message, transfer);
-  ops.op_worker_post_message(data);
+  op_worker_post_message(data);
 }
 
 let isClosing = false;
 let globalDispatchEvent;
 
 async function pollForMessages() {
-  const { op_worker_recv_message } = core.ensureFastOps();
-
   if (!globalDispatchEvent) {
     globalDispatchEvent = FunctionPrototypeBind(
       globalThis.dispatchEvent,
@@ -309,7 +329,7 @@ async function pollForMessages() {
 let loadedMainWorkerScript = false;
 
 function importScripts(...urls) {
-  if (ops.op_worker_get_type() === "module") {
+  if (op_worker_get_type() === "module") {
     throw new TypeError("Can't import scripts in a module worker.");
   }
 
@@ -329,7 +349,7 @@ function importScripts(...urls) {
   // imported scripts, so we use `loadedMainWorkerScript` to distinguish them.
   // TODO(andreubotella) Refactor worker creation so the main script isn't
   // loaded with `importScripts()`.
-  const scripts = ops.op_worker_sync_fetch(
+  const scripts = op_worker_sync_fetch(
     parsedUrls,
     !loadedMainWorkerScript,
   );
@@ -538,34 +558,37 @@ function exposeUnstableFeaturesForWindowOrWorkerGlobalScope(options) {
 // NOTE(bartlomieju): remove all the ops that have already been imported using
 // "virtual op module" (`ext:core/ops`).
 const NOT_IMPORTED_OPS = [
-  "op_abort_wasm_streaming",
-  "op_add_async",
-  "op_add",
-  "op_apply_source_map_filename",
-  "op_apply_source_map",
+  // Related to `Deno.bench()` API
   "op_bench_now",
-  "op_bootstrap_args",
-  "op_bootstrap_is_tty",
-  "op_bootstrap_no_color",
-  "op_bootstrap_pid",
-  "op_broadcast_unsubscribe",
-  "op_can_write_vectored",
-  "op_close",
-  "op_cpus",
-  "op_create_brotli_compress",
-  "op_create_brotli_decompress",
-  "op_current_user_call_site",
-  "op_decode",
-  "op_deserialize",
-  "op_destructure_error",
   "op_dispatch_bench_event",
-  "op_dispatch_exception",
-  "op_encode_binary_string",
-  "op_encode",
-  "op_error_async_deferred",
-  "op_error_async",
-  "op_eval_context",
-  "op_event_loop_has_more_work",
+  "op_register_bench",
+
+  // Related to `Deno.jupyter` API
+  "op_jupyter_broadcast",
+
+  // Related to `Deno.test()` API
+  "op_test_event_step_result_failed",
+  "op_test_event_step_result_ignored",
+  "op_test_event_step_result_ok",
+  "op_test_event_step_wait",
+  "op_test_op_sanitizer_collect",
+  "op_test_op_sanitizer_finish",
+  "op_test_op_sanitizer_get_async_message",
+  "op_test_op_sanitizer_report",
+  "op_restore_test_permissions",
+  "op_register_test_step",
+  "op_register_test",
+  "op_pledge_test_permissions",
+
+  // TODO(bartlomieju): used in various integration tests - figure out a way
+  // to not depend on them.
+  "op_set_exit_code",
+  "op_napi_open",
+  "op_npm_process_state",
+
+  // TODO(bartlomieju): used in integration tests for FFI API, to check if
+  // they require unstable flag. These tests are questionable and should be
+  // removed (most likely).
   "op_ffi_buf_copy_into",
   "op_ffi_call_nonblocking",
   "op_ffi_call_ptr_nonblocking",
@@ -595,116 +618,19 @@ const NOT_IMPORTED_OPS = [
   "op_ffi_unsafe_callback_close",
   "op_ffi_unsafe_callback_create",
   "op_ffi_unsafe_callback_ref",
-  "op_format_file_name",
-  "op_get_promise_details",
-  "op_get_proxy_details",
-  "op_has_tick_scheduled",
-  "op_http_get_request_header",
-  "op_http2_accept",
-  "op_http2_client_end_stream",
-  "op_http2_client_get_response_body_chunk",
-  "op_http2_client_get_response_trailers",
-  "op_http2_client_get_response",
-  "op_http2_client_request",
-  "op_http2_client_reset_stream",
-  "op_http2_client_send_data",
-  "op_http2_client_send_trailers",
-  "op_http2_connect",
-  "op_http2_listen",
-  "op_http2_poll_client_connection",
-  "op_http2_send_response",
-  "op_image_decode_png",
-  "op_image_process",
-  "op_is_any_array_buffer",
-  "op_is_arguments_object",
-  "op_is_array_buffer_view",
-  "op_is_array_buffer",
-  "op_is_async_function",
-  "op_is_big_int_object",
-  "op_is_boolean_object",
-  "op_is_boxed_primitive",
-  "op_is_data_view",
-  "op_is_date",
-  "op_is_generator_function",
-  "op_is_generator_object",
-  "op_is_map_iterator",
-  "op_is_map",
-  "op_is_module_namespace_object",
-  "op_is_native_error",
-  "op_is_number_object",
-  "op_is_promise",
-  "op_is_proxy",
-  "op_is_reg_exp",
-  "op_is_set_iterator",
-  "op_is_set",
-  "op_is_shared_array_buffer",
-  "op_is_string_object",
-  "op_is_symbol_object",
-  "op_is_typed_array",
-  "op_is_weak_map",
-  "op_is_weak_set",
-  "op_main_module",
-  "op_memory_usage",
-  "op_napi_open",
-  "op_npm_process_state",
-  "op_op_names",
-  "op_panic",
-  "op_pledge_test_permissions",
-  "op_ppid",
-  "op_print",
-  "op_queue_microtask",
-  "op_raw_write_vectored",
-  "op_read_all",
-  "op_read_sync",
-  "op_read",
-  "op_ref_op",
-  "op_register_bench",
-  "op_register_test_step",
-  "op_register_test",
-  "op_resources",
-  "op_restore_test_permissions",
-  "op_run_microtasks",
-  "op_serialize",
-  "op_set_exit_code",
-  "op_set_format_exception_callback",
-  "op_set_handled_promise_rejection_handler",
-  "op_set_has_tick_scheduled",
-  "op_set_promise_hooks",
-  "op_set_wasm_streaming_callback",
-  "op_shutdown",
-  "op_snapshot_options",
+
+  // TODO(bartlomieju): used in a regression test, but probably not needed
+  // anymore if ops are not user accessible.
   "op_spawn_child",
-  "op_str_byte_length",
-  "op_test_event_step_result_failed",
-  "op_test_event_step_result_ignored",
-  "op_test_event_step_result_ok",
-  "op_test_event_step_wait",
-  "op_test_op_sanitizer_collect",
-  "op_test_op_sanitizer_finish",
-  "op_test_op_sanitizer_get_async_message",
-  "op_test_op_sanitizer_report",
-  "op_timer_cancel",
-  "op_timer_queue",
-  "op_timer_ref",
-  "op_timer_unref",
-  "op_try_close",
-  "op_unref_op",
-  "op_v8_cached_data_version_tag",
-  "op_v8_get_heap_statistics",
-  "op_vm_run_in_new_context",
+
+  // TODO(bartlomieju): used in one of the benches, needs to be removed.
   "op_void_async",
-  "op_void_sync",
-  "op_worker_close",
-  "op_worker_get_type",
-  "op_worker_post_message",
-  "op_worker_recv_message",
-  "op_worker_sync_fetch",
-  "op_write_all",
-  "op_write_sync",
-  "op_write_type_error",
-  "op_write",
-  "op_ws_send_pong",
-  "op_jupyter_broadcast",
+
+  // TODO(bartlomieju): can be removed after the `deno_core` upgrade.
+  "op_encode_binary_string",
+  "op_format_file_name",
+  "op_apply_source_map",
+  "op_apply_source_map_filename",
 ];
 
 function removeImportedOps() {
@@ -802,9 +728,9 @@ function bootstrapMainRuntime(runtimeOptions) {
     // TODO(bartlomieju): in the future we might want to change the
     // behavior of setting `name` to actually update the process name.
     // Empty string matches what browsers do.
-    name: util.writable(""),
-    close: util.writable(windowClose),
-    closed: util.getterOnly(() => windowIsClosing),
+    name: core.propWritable(""),
+    close: core.propWritable(windowClose),
+    closed: core.propGetterOnly(() => windowIsClosing),
   });
   ObjectSetPrototypeOf(globalThis, Window.prototype);
 
@@ -830,11 +756,11 @@ function bootstrapMainRuntime(runtimeOptions) {
   );
 
   ObjectDefineProperties(finalDenoNs, {
-    pid: util.getterOnly(opPid),
-    ppid: util.getterOnly(opPpid),
-    noColor: util.getterOnly(() => op_bootstrap_no_color()),
-    args: util.getterOnly(opArgs),
-    mainModule: util.getterOnly(() => op_main_module()),
+    pid: core.propGetterOnly(opPid),
+    ppid: core.propGetterOnly(opPpid),
+    noColor: core.propGetterOnly(() => op_bootstrap_no_color()),
+    args: core.propGetterOnly(opArgs),
+    mainModule: core.propGetterOnly(() => op_main_module()),
     // TODO(kt3k): Remove this export at v2
     // See https://github.com/denoland/deno/issues/9294
     customInspect: {
@@ -884,7 +810,7 @@ function bootstrapMainRuntime(runtimeOptions) {
 
   // Setup `Deno` global - we're actually overriding already existing global
   // `Deno` with `Deno` namespace from "./deno.ts".
-  ObjectDefineProperty(globalThis, "Deno", util.readOnly(finalDenoNs));
+  ObjectDefineProperty(globalThis, "Deno", core.propReadOnly(finalDenoNs));
 
   if (nodeBootstrap) {
     nodeBootstrap(hasNodeModulesDir, maybeBinaryNpmCommandName);
@@ -932,16 +858,16 @@ function bootstrapWorkerRuntime(
   });
   ObjectDefineProperties(globalThis, workerRuntimeGlobalProperties);
   ObjectDefineProperties(globalThis, {
-    name: util.writable(name),
+    name: core.propWritable(name),
     // TODO(bartlomieju): should be readonly?
-    close: util.nonEnumerable(workerClose),
-    postMessage: util.writable(postMessage),
+    close: core.propNonEnumerable(workerClose),
+    postMessage: core.propWritable(postMessage),
   });
   if (enableTestingFeaturesFlag) {
     ObjectDefineProperty(
       globalThis,
       "importScripts",
-      util.writable(importScripts),
+      core.propWritable(importScripts),
     );
   }
   ObjectSetPrototypeOf(globalThis, DedicatedWorkerGlobalScope.prototype);
@@ -991,9 +917,9 @@ function bootstrapWorkerRuntime(
   }
 
   ObjectDefineProperties(finalDenoNs, {
-    pid: util.getterOnly(opPid),
-    noColor: util.getterOnly(() => op_bootstrap_no_color()),
-    args: util.getterOnly(opArgs),
+    pid: core.propGetterOnly(opPid),
+    noColor: core.propGetterOnly(() => op_bootstrap_no_color()),
+    args: core.propGetterOnly(opArgs),
     // TODO(kt3k): Remove this export at v2
     // See https://github.com/denoland/deno/issues/9294
     customInspect: {
@@ -1009,7 +935,7 @@ function bootstrapWorkerRuntime(
   });
   // Setup `Deno` global - we're actually overriding already
   // existing global `Deno` with `Deno` namespace from "./deno.ts".
-  ObjectDefineProperty(globalThis, "Deno", util.readOnly(finalDenoNs));
+  ObjectDefineProperty(globalThis, "Deno", core.propReadOnly(finalDenoNs));
 
   if (nodeBootstrap) {
     nodeBootstrap(hasNodeModulesDir, maybeBinaryNpmCommandName);
