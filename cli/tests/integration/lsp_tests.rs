@@ -4658,6 +4658,29 @@ fn lsp_code_actions_deno_cache() {
 }
 
 #[test]
+fn lsp_jsr_uncached() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"import "jsr:@foo/bar";"#,
+    },
+  }));
+  // TODO(nayeemrmn): This should check if the jsr dep is cached and give a
+  // diagnostic.
+  assert_eq!(json!(diagnostics.all()), json!([]));
+  client.shutdown();
+}
+
+#[test]
 fn lsp_code_actions_deno_cache_npm() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
