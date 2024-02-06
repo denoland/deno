@@ -66,6 +66,38 @@ itest!(invalid_import {
   http_server: true,
 });
 
+#[test]
+fn publish_non_exported_files_using_import_map() {
+  let context = publish_context_builder().build();
+  let temp_dir = context.temp_dir().path();
+  temp_dir.join("deno.json").write_json(&json!({
+    "name": "@foo/bar",
+    "version": "1.0.0",
+    "exports": "./mod.ts",
+    "imports": {
+      "@denotest/add": "jsr:@denotest/add@1"
+    }
+  }));
+  // file not in the graph
+  let other_ts = temp_dir.join("_other.ts");
+  other_ts
+    .write("import { add } from '@denotest/add'; console.log(add(1, 3));");
+  let mod_ts = temp_dir.join("mod.ts");
+  mod_ts.write("import { add } from '@denotest/add'; console.log(add(1, 2));");
+  let output = context
+    .new_command()
+    .args("publish --log-level=debug --token 'sadfasdf'")
+    .run();
+  assert_contains!(
+    output.combined_output(),
+    &format!("Unfurling {}", mod_ts.uri_file())
+  );
+  assert_contains!(
+    output.combined_output(),
+    &format!("Unfurling {}", other_ts.uri_file())
+  );
+}
+
 itest!(javascript_missing_decl_file {
   args: "publish --token 'sadfasdf'",
   output: "publish/javascript_missing_decl_file.out",

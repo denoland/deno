@@ -11,8 +11,10 @@ use deno_graph::CapturingModuleParser;
 use deno_graph::ModuleParser;
 use deno_graph::ParseOptions;
 
-/// Lazily parses JS/TS sources from the graph given
-/// a `ParsedSourceCache` and a `deno_graph::ModuleGraph`.
+/// Lazily parses JS/TS sources from a `deno_graph::ModuleGraph` given
+/// a `ParsedSourceCache`. Note that deno_graph doesn't necessarily cause
+/// files to end up in the `ParsedSourceCache` because it might have all
+/// the information it needs via caching in order to skip parsing.
 #[derive(Clone, Copy)]
 pub struct LazyGraphSourceParser<'a> {
   cache: &'a ParsedSourceCache,
