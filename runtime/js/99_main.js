@@ -614,9 +614,6 @@ const NOT_IMPORTED_OPS = [
   "op_format_file_name",
   "op_apply_source_map",
   "op_apply_source_map_filename",
-
-  // TODO(bartlomieju): this might be dead code.
-  "op_ws_send_pong",
 ];
 
 function removeImportedOps() {
