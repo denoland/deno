@@ -8,7 +8,6 @@ const {
   SymbolFor,
   TypedArrayPrototypeGetLength,
   TypedArrayPrototypeGetSymbolToStringTag,
-  Uint8Array,
   Uint8ClampedArray,
 } = primordials;
 
