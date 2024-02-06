@@ -55,23 +55,20 @@ pub enum AuthDomain {
 impl<T: ToString> From<T> for AuthDomain {
   fn from(value: T) -> Self {
     let s = value.to_string().to_lowercase();
-    match SocketAddr::from_str(&s) {
-      Ok(ip) => return AuthDomain::IPPort(ip),
-      Err(_) => {}
+    if let Ok(ip) = SocketAddr::from_str(&s) {
+      return AuthDomain::IPPort(ip);
     };
     if s.starts_with('[') && s.ends_with(']') {
-      match Ipv6Addr::from_str(&s[1..s.len() - 1]) {
-        Ok(ip) => return AuthDomain::IP(ip.into()),
-        Err(_) => {}
-      };
+      if let Ok(ip) = Ipv6Addr::from_str(&s[1..s.len() - 1]) {
+        return AuthDomain::IP(ip.into());
+      }
     } else {
-      match Ipv4Addr::from_str(&s) {
-        Ok(ip) => return AuthDomain::IP(ip.into()),
-        Err(_) => {}
-      };
+      if let Ok(ip) = Ipv4Addr::from_str(&s) {
+        return AuthDomain::IP(ip.into());
+      }
     }
-    if s.starts_with('.') {
-      AuthDomain::Suffix(Cow::Owned(s[1..].to_owned()))
+    if let Some(s) = s.strip_prefix('.') {
+      AuthDomain::Suffix(Cow::Owned(s.to_owned()))
     } else {
       AuthDomain::Suffix(Cow::Owned(s))
     }
@@ -114,7 +111,7 @@ impl AuthDomain {
           return true;
         }
 
-        return false;
+        false
       }
     }
   }
@@ -276,10 +273,13 @@ mod tests {
     let candidates = [
       "example.com",
       "www.example.com",
-      "notexample.com",
-      "www.notexample.com",
       "1.1.1.1",
       "[2001:db8:a::123]",
+      // These will never match
+      "example.com.evil.com",
+      "1.1.1.1.evil.com",
+      "notexample.com",
+      "www.notexample.com",
     ];
     let domains = [
       ("example.com", vec!["example.com", "www.example.com"]),
@@ -295,8 +295,7 @@ mod tests {
     // Generate each candidate with and without a port
     let candidates = candidates
       .into_iter()
-      .map(|c| [url(c), url_port(c)])
-      .flatten()
+      .flat_map(|c| [url(c), url_port(c)])
       .collect::<Vec<_>>();
 
     for (domain, expected_domain) in domains {
@@ -307,8 +306,7 @@ mod tests {
         .filter(|c| auth_domain.matches(c))
         .cloned()
         .collect::<Vec<_>>();
-      let expected =
-        expected_domain.iter().map(|u| url(*u)).collect::<Vec<_>>();
+      let expected = expected_domain.iter().map(|u| url(u)).collect::<Vec<_>>();
       assert_eq!(actual, expected);
 
       // Test with a port, all candidates return with a port
@@ -320,7 +318,7 @@ mod tests {
         .collect::<Vec<_>>();
       let expected = expected_domain
         .iter()
-        .map(|u| url_port(*u))
+        .map(|u| url_port(u))
         .collect::<Vec<_>>();
       assert_eq!(actual, expected);
     }
