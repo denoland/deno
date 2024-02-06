@@ -70,23 +70,86 @@ interface DOMMatrix extends DOMMatrixReadOnly {
   m42: number;
   m43: number;
   m44: number;
+  /**
+   * Modifies the matrix by inverting it.
+   * If the matrix can't be inverted, its components are all set to `NaN`, and is2D property is set to `false`.
+   */
   invertSelf(): DOMMatrix;
+  /**
+   * Modifies the matrix by post-multiplying it with the specified DOMMatrix.
+   * This is equivalent to the dot product `A⋅B`, where matrix `A` is the source matrix and `B` is the matrix given as an input to the method.
+   *
+   * @param other
+   */
   multiplySelf(other?: DOMMatrixInit): DOMMatrix;
+  /**
+   * Modifies the matrix by pre-multiplying it with the specified DOMMatrix.
+   * This is equivalent to the dot product B⋅A, where matrix `A` is the source matrix and `B` is the matrix given as an input to the method.
+   *
+   * @param other
+   */
   preMultiplySelf(other?: DOMMatrixInit): DOMMatrix;
+  /**
+   * Modifies the matrix by rotating it by the specified angle around the given vector.
+   *
+   * @param x
+   * @param y
+   * @param z
+   * @param angle in degrees
+   */
   rotateAxisAngleSelf(
     x?: number,
     y?: number,
     z?: number,
     angle?: number,
   ): DOMMatrix;
+  /**
+   * Modifies the matrix by rotating it by the angle between the specified vector and `(1, 0)`.
+   *
+   * @param x
+   * @param y
+   */
   rotateFromVectorSelf(x?: number, y?: number): DOMMatrix;
+  /**
+   * Modifies the matrix by rotating itself around each axis by the specified number of degrees.
+   *
+   * @param rotZ yaw angle in degrees
+   */
+  rotateSelf(rotZ?: number): DOMMatrix;
+  /**
+   * Modifies the matrix by rotating itself around each axis by the specified number of degrees.
+   *
+   * @param rotX roll angle in degrees
+   * @param rotY pitch angle in degrees
+   * @param rotZ yaw angle in degrees
+   */
   rotateSelf(rotX?: number, rotY?: number, rotZ?: number): DOMMatrix;
+  /**
+   * Modifies the matrix by applying the specified scaling factor to all three axes, centered on the given origin.
+   *
+   * @param scale
+   * @param originX
+   * @param originY
+   * @param originZ
+   */
   scale3dSelf(
     scale?: number,
     originX?: number,
     originY?: number,
     originZ?: number,
   ): DOMMatrix;
+  /**
+   * Modifies the matrix by applying the specified scaling factors, with the center located at the specified origin. Also returns itself.
+   * By default, the X and Z axes are scaled by `1` and the Y axis is given the same scaling value as the X axis.
+   * The default origin is `(0, 0, 0)`.
+   *
+   * @param scaleX
+   * @param scaleY
+   * @param scaleZ
+   * @param originX
+   * @param originY
+   * @param originZ
+   */
   scaleSelf(
     scaleX?: number,
     scaleY?: number,
@@ -95,10 +158,33 @@ interface DOMMatrix extends DOMMatrixReadOnly {
     originY?: number,
     originZ?: number,
   ): DOMMatrix;
-  /** Not available in Worker */
+  /**
+   * NOTE: Not available in Worker
+   *
+   * Replaces the contents of the matrix with the matrix described by the specified transform or transforms.
+   *
+   * @param transformList
+   */
   setMatrixValue(transformList: string): DOMMatrix;
+  /**
+   * Modifies the matrix by applying the specified skew transformation along the X-axis.
+   *
+   * @param sx
+   */
   skewXSelf(sx?: number): DOMMatrix;
+  /**
+   * Modifies the matrix by applying the specified skew transformation along the Y-axis.
+   *
+   * @param sy
+   */
   skewYSelf(sy?: number): DOMMatrix;
+  /**
+   * Modifies the matrix by applying the specified vector. The default vector is `(0, 0, 0)`.
+   *
+   * @param tx
+   * @param ty
+   * @param tz
+   */
   translateSelf(tx?: number, ty?: number, tz?: number): DOMMatrix;
 }
 
@@ -118,7 +204,7 @@ interface DOMMatrix extends DOMMatrixReadOnly {
 declare var DOMMatrix: {
   prototype: DOMMatrix;
   new (init?: number[]): DOMMatrix;
-  /** Not available in Worker */
+  /** NOTE: Not available in Worker */
   new (init: string): DOMMatrix;
   fromFloat32Array(array32: Float32Array): DOMMatrix;
   fromFloat64Array(array64: Float64Array): DOMMatrix;
@@ -163,18 +249,68 @@ interface DOMMatrixReadOnly {
   readonly m42: number;
   readonly m43: number;
   readonly m44: number;
+  /** Returns a new `DOMMatrix` created by flipping the source matrix around its X-axis. */
   flipX(): DOMMatrix;
+  /** Returns a new `DOMMatrix` created by flipping the source matrix around its Y-axis. */
   flipY(): DOMMatrix;
+  /**
+   * Returns a new `DOMMatrix` created by inverting the source matrix.
+   * If the matrix cannot be inverted, the new matrix's components are all set to `NaN` and its is2D property is set to `false`.
+   */
   inverse(): DOMMatrix;
+  /**
+   * Returns a new `DOMMatrix` created by computing the dot product of the source matrix and the specified matrix: `A⋅B`.
+   *
+   * @param other
+   */
   multiply(other?: DOMMatrixInit): DOMMatrix;
+  /**
+   * Returns a new `DOMMatrix` created by rotating the source matrix around each of its axes by the specified number of degrees.
+   *
+   * @param rotZ yaw angle in degrees
+   */
+  rotate(rotZ?: number): DOMMatrix;
+  /**
+   * Returns a new `DOMMatrix` created by rotating the source matrix around each of its axes by the specified number of degrees.
+   *
+   * @param rotX roll angle in degrees
+   * @param rotY pitch angle in degrees
+   * @param rotZ yaw angle in degrees
+   */
   rotate(rotX?: number, rotY?: number, rotZ?: number): DOMMatrix;
+  /**
+   * Returns a new DOMMatrix created by rotating the source matrix by the given angle around the specified vector.
+   *
+   * @param x
+   * @param y
+   * @param z
+   * @param angle in degrees
+   */
   rotateAxisAngle(
     x?: number,
     y?: number,
     z?: number,
     angle?: number,
   ): DOMMatrix;
+  /**
+   * Returns a new `DOMMatrix` created by rotating the source matrix by the angle between the specified vector and `(1, 0)`.
+   *
+   * @param x
+   * @param y
+   */
   rotateFromVector(x?: number, y?: number): DOMMatrix;
+  /**
+   * Returns a new `DOMMatrix` created by scaling the source matrix by the amount specified for each axis, centered on the given origin.
+   * By default, the X and Z axes are scaled by `1` and the Y axis is given the same scaling value as the X axis.
+   * The default origin is `(0, 0, 0)`.
+   *
+   * @param scaleX
+   * @param scaleY
+   * @param scaleZ
+   * @param originX
+   * @param originY
+   * @param originZ
+   */
   scale(
     scaleX?: number,
     scaleY?: number,
@@ -183,15 +319,43 @@ interface DOMMatrixReadOnly {
     originY?: number,
     originZ?: number,
   ): DOMMatrix;
+  /**
+   * Returns a new `DOMMatrix` created by scaling the source 3D matrix by the given factor along all its axes, centered on the specified origin point.
+   * The default origin is `(0, 0, 0)`.
+   *
+   * @param scale
+   * @param originX
+   * @param originY
+   * @param originZ
+   */
   scale3d(
     scale?: number,
     originX?: number,
     originY?: number,
     originZ?: number,
   ): DOMMatrix;
-  /** @deprecated Supported for legacy reasons to be compatible with `SVGMatrix` as defined in SVG 1.1. Use `scale()` instead. */
+  /**
+   * Returns a new `DOMMatrix` created by applying the specified scaling on the X, Y, and Z axes, centered at the given origin.
+   * By default, the Y and Z axes' scaling factors are both `1`, but the scaling factor for X must be specified.
+   * The default origin is `(0, 0, 0)`.
+   *
+   * @deprecated Supported for legacy reasons to be compatible with `SVGMatrix` as defined in SVG 1.1. Use `scale()` instead.
+   *
+   * @param scaleX
+   * @param scaleY
+   */
   scaleNonUniform(scaleX?: number, scaleY?: number): DOMMatrix;
+  /**
+   * Returns a new DOMMatrix created by applying the specified skew transformation to the source matrix along its X-axis.
+   *
+   * @param sx
+   */
   skewX(sx?: number): DOMMatrix;
+  /**
+   * Returns a new DOMMatrix created by applying the specified skew transformation to the source matrix along its Y-axis.
+   *
+   * @param sy
+   */
   skewY(sy?: number): DOMMatrix;
   toFloat32Array(): Float32Array;
   toFloat64Array(): Float64Array;
@@ -223,7 +387,7 @@ interface DOMMatrixReadOnly {
   };
   transformPoint(point?: DOMPointInit): DOMPoint;
   translate(tx?: number, ty?: number, tz?: number): DOMMatrix;
-  /** Not available in Worker */
+  /** NOTE: Not available in Worker */
   toString(): string;
 }
 
