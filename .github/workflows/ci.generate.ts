@@ -9,6 +9,7 @@ const cacheVersion = 73;
 
 const ubuntuX86Runner = "ubuntu-22.04";
 const ubuntuX86XlRunner = "ubuntu-22.04-xl";
+const ubuntuARMRunner = "ubicloud-standard-8-arm"
 const windowsX86Runner = "windows-2022";
 const windowsX86XlRunner = "windows-2022-xl";
 const macosX86Runner = "macos-12";
@@ -25,6 +26,11 @@ const Runners = {
     arch: "x86_64",
     runner:
       `\${{ github.repository == 'denoland/deno' && '${ubuntuX86XlRunner}' || '${ubuntuX86Runner}' }}`,
+  },
+  linuxArm: {
+    os: "linux",
+    arch: "aarch64",
+    runner: ubuntuARMRunner
   },
   macosX86: {
     os: "macos",
@@ -400,6 +406,14 @@ const ci = {
             job: "lint",
             profile: "debug",
           }, {
+            ...Runners.linuxArm,
+            job: "lint",
+            profile: "debug",
+          }, {
+            ...Runners.linuxArm,
+            job: "test",
+            profile: "debug",
+          }, {
             ...Runners.macosX86,
             job: "lint",
             profile: "debug",
@@ -456,7 +470,7 @@ const ci = {
           ...installDenoStep,
         },
         ...installPythonSteps.map((s) =>
-          withCondition(s, "matrix.job != 'lint'")
+          withCondition(s, "matrix.job != 'lint' && (matrix.os != 'linux' || matrix.arch != 'aarch64')")
         ),
         {
           // only necessary for benchmarks

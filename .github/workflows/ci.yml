@@ -29,7 +29,7 @@ jobs:
           git config --global fetch.parallel 32
         if: github.event.pull_request.draft == true
       - name: Clone repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 5
           submodules: false
@@ -53,11 +53,6 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: linux
-            arch: aarch64
-            runner: ubicloud-standard-8-arm
-            job: test
-            profile: debug
           - os: macos
             arch: x86_64
             runner: macos-12
@@ -116,6 +111,16 @@ jobs:
             runner: ubuntu-22.04
             job: lint
             profile: debug
+          - os: linux
+            arch: aarch64
+            runner: ubicloud-standard-8-arm
+            job: lint
+            profile: debug
+          - os: linux
+            arch: aarch64
+            runner: ubicloud-standard-8-arm
+            job: test
+            profile: debug
           - os: macos
             arch: x86_64
             runner: macos-12
@@ -138,7 +143,7 @@ jobs:
           git config --global fetch.parallel 32
         if: '!(matrix.skip)'
       - name: Clone repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 5
           submodules: false
@@ -165,7 +170,7 @@ jobs:
               -czvf target/release/deno_src.tar.gz -C .. deno
       - uses: dsherret/rust-toolchain-file@v1
         if: '!(matrix.skip)'
-      - if: '!(matrix.skip) && (matrix.job == ''lint'' || matrix.job == ''test'' || matrix.job == ''bench'') && matrix.runner != ''ubicloud-standard-8-arm'''
+      - if: '!(matrix.skip) && (matrix.job == ''lint'' || matrix.job == ''test'' || matrix.job == ''bench'')'
         name: Install Deno
         uses: denoland/setup-deno@v1
         with:
@@ -174,9 +179,9 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: 3.11
-        if: '!(matrix.skip) && (matrix.job != ''lint'') && (matrix.runner != ''ubicloud-standard-8-arm'')'
+        if: '!(matrix.skip) && (matrix.job != ''lint'' && (matrix.os != ''linux'' || matrix.arch != ''aarch64''))'
       - name: Remove unused versions of Python
-        if: '!(matrix.skip) && (matrix.job != ''lint'' && (matrix.os == ''windows''))'
+        if: '!(matrix.skip) && (matrix.job != ''lint'' && (matrix.os != ''linux'' || matrix.arch != ''aarch64'') && (matrix.os == ''windows''))'
         shell: pwsh
         run: |-
           $env:PATH -split ";" |
@@ -189,7 +194,7 @@ jobs:
         with:
           node-version: 18
       - name: Install protoc
-        uses: arduino/setup-protoc@v2
+        uses: arduino/setup-protoc@v3
         with:
           version: '21.12'
           repo-token: '${{ secrets.GITHUB_TOKEN }}'
@@ -326,9 +331,9 @@ jobs:
           rustc --version
           cargo --version
           which dpkg && dpkg -l
-          #if [[ "${{ matrix.job }}" == "lint" ]] || [[ "${{ matrix.job }}" == "test" ]]; then
-          #  deno --version
-          #fi
+          if [[ "${{ matrix.job }}" == "lint" ]] || [[ "${{ matrix.job }}" == "test" ]]; then
+            deno --version
+          fi
           if [ "${{ matrix.job }}" == "bench" ]
           then
             node -v
@@ -336,7 +341,7 @@ jobs:
           fi
         if: '!(matrix.skip)'
       - name: Cache Cargo home
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |-
             ~/.cargo/registry/index
@@ -627,7 +632,7 @@ jobs:
           body_path: target/release/release-notes.md
           draft: true
       - name: Save cache build output (main)
-        uses: actions/cache/save@v3
+        uses: actions/cache/save@v4
         if: '!(matrix.skip) && ((matrix.job == ''test'' || matrix.job == ''lint'') && github.ref == ''refs/heads/main'')'
         with:
           path: |-
