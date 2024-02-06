@@ -1374,9 +1374,9 @@ dependencies = [
 
 [[package]]
 name = "deno_graph"
-version = "0.64.1"
+version = "0.64.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c0eb6ad784fa5885867ba00e0db8ddcb2d98a4a0234fe336d50a13092e268c44"
+checksum = "a60def166df99195520b3b020974fdf7d3865b7a07eca5284ff0d24235f972da"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1390,7 +1390,7 @@ dependencies = [
  "log",
  "monch",
  "once_cell",
- "parking_lot 0.12.1",
+ "parking_lot",
  "regex",
  "serde",
  "serde_json",
