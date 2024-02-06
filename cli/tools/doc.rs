@@ -5,7 +5,6 @@ use crate::args::DocHtmlFlag;
 use crate::args::DocSourceFileFlag;
 use crate::args::Flags;
 use crate::cache::LazyGraphSourceParser;
-use crate::cache::ParsedSourceCache;
 use crate::colors;
 use crate::diagnostics::Diagnostic;
 use crate::diagnostics::DiagnosticLevel;
