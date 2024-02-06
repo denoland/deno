@@ -259,11 +259,22 @@ mod tests {
   #[test]
   fn test_parse_ip() {
     let ip = AuthDomain::from("[2001:db8:a::123]");
-    assert_eq!("IP(2001:db8:a::123)", format!("{ip:?}"));
+    assert_eq!("Ip(2001:db8:a::123)", format!("{ip:?}"));
     let ip = AuthDomain::from("[2001:db8:a::123]:8080");
-    assert_eq!("IPPort([2001:db8:a::123]:8080)", format!("{ip:?}"));
+    assert_eq!("IpPort([2001:db8:a::123]:8080)", format!("{ip:?}"));
     let ip = AuthDomain::from("1.1.1.1");
-    assert_eq!("IP(1.1.1.1)", format!("{ip:?}"));
+    assert_eq!("Ip(1.1.1.1)", format!("{ip:?}"));
+  }
+
+  #[test]
+  fn test_case_insensitive() {
+    let domain = AuthDomain::from("EXAMPLE.com");
+    assert!(
+      domain.matches(&ModuleSpecifier::parse("http://example.com").unwrap())
+    );
+    assert!(
+      domain.matches(&ModuleSpecifier::parse("http://example.COM").unwrap())
+    );
   }
 
   #[test]
