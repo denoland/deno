@@ -5,13 +5,16 @@
 
 import { denoErrorToNodeError } from "ext:deno_node/internal/errors.ts";
 import { promisify } from "ext:deno_node/internal/util.mjs";
+import { primordials } from "ext:core/mod.js";
+
+const { ObjectCreate, ObjectAssign } = primordials;
 
 export type statOptions = {
   bigint: boolean;
   throwIfNoEntry?: boolean;
 };
 
-export type Stats = {
+interface IStats {
   /** ID of the device containing the file.
    *
    * _Linux/Mac OS only._ */
@@ -80,9 +83,11 @@ export type Stats = {
   isFile: () => boolean;
   isSocket: () => boolean;
   isSymbolicLink: () => boolean;
-};
+}
 
-export type BigIntStats = {
+export class Stats {}
+
+export interface IBigIntStats {
   /** ID of the device containing the file.
    *
    * _Linux/Mac OS only._ */
@@ -159,10 +164,13 @@ export type BigIntStats = {
   isFile: () => boolean;
   isSocket: () => boolean;
   isSymbolicLink: () => boolean;
-};
+}
+
+export class BigIntStats {}
 
 export function convertFileInfoToStats(origin: Deno.FileInfo): Stats {
-  return {
+  const stats = ObjectCreate(Stats.prototype);
+  ObjectAssign(stats, {
     dev: origin.dev,
     ino: origin.ino,
     mode: origin.mode,
@@ -189,7 +197,9 @@ export function convertFileInfoToStats(origin: Deno.FileInfo): Stats {
     isSocket: () => false,
     ctime: origin.mtime,
     ctimeMs: origin.mtime?.getTime() || null,
-  };
+  });
+
+  return stats;
 }
 
 function toBigInt(number?: number | null) {
@@ -200,7 +210,8 @@ function toBigInt(number?: number | null) {
 export function convertFileInfoToBigIntStats(
   origin: Deno.FileInfo,
 ): BigIntStats {
-  return {
+  const stats = ObjectCreate(BigIntStats.prototype);
+  ObjectAssign(stats, {
     dev: toBigInt(origin.dev),
     ino: toBigInt(origin.ino),
     mode: toBigInt(origin.mode),
@@ -233,7 +244,8 @@ export function convertFileInfoToBigIntStats(
     ctime: origin.mtime,
     ctimeMs: origin.mtime ? BigInt(origin.mtime.getTime()) : null,
     ctimeNs: origin.mtime ? BigInt(origin.mtime.getTime()) * 1000000n : null,
-  };
+  });
+  return stats;
 }
 
 // shortcut for Convert File Info to Stats or BigIntStats
