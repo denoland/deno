@@ -13,6 +13,7 @@ use std::io::Write;
 use std::path::Path;
 use tar::Header;
 
+use crate::cache::LazyGraphSourceParser;
 use crate::tools::registry::paths::PackagePath;
 use crate::util::import_map::ImportMapUnfurler;
 
@@ -34,7 +35,7 @@ pub struct PublishableTarball {
 
 pub fn create_gzipped_tarball(
   dir: &Path,
-  source_cache: &dyn deno_graph::ParsedSourceStore,
+  source_parser: LazyGraphSourceParser,
   diagnostics_collector: &PublishDiagnosticsCollector,
   unfurler: &ImportMapUnfurler,
   file_patterns: Option<FilePatterns>,
@@ -129,7 +130,7 @@ pub fn create_gzipped_tarball(
         specifier: specifier.clone(),
         size: data.len(),
       });
-      let content = match source_cache.get_parsed_source(&specifier) {
+      let content = match source_parser.get_or_parse_source(&specifier)? {
         Some(parsed_source) => {
           let mut reporter = |diagnostic| {
             diagnostics_collector

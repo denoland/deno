@@ -11,9 +11,10 @@ use deno_ast::SourcePos;
 use deno_ast::SourceRange;
 use deno_ast::SourceRanged;
 use deno_ast::SourceTextInfo;
-use deno_graph::ParsedSourceStore;
 use deno_runtime::colors;
 use unicode_width::UnicodeWidthStr;
+
+use crate::cache::LazyGraphSourceParser;
 
 pub trait SourceTextStore {
   fn get_source_text<'a>(
@@ -22,14 +23,14 @@ pub trait SourceTextStore {
   ) -> Option<Cow<'a, SourceTextInfo>>;
 }
 
-pub struct SourceTextParsedSourceStore<'a>(pub &'a dyn ParsedSourceStore);
+pub struct SourceTextParsedSourceStore<'a>(pub LazyGraphSourceParser<'a>);
 
 impl SourceTextStore for SourceTextParsedSourceStore<'_> {
   fn get_source_text<'a>(
     &'a self,
     specifier: &ModuleSpecifier,
   ) -> Option<Cow<'a, SourceTextInfo>> {
-    let parsed_source = self.0.get_parsed_source(specifier)?;
+    let parsed_source = self.0.get_or_parse_source(specifier).ok()??;
     Some(Cow::Owned(parsed_source.text_info().clone()))
   }
 }

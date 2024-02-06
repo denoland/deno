@@ -11,6 +11,37 @@ use deno_graph::CapturingModuleParser;
 use deno_graph::ModuleParser;
 use deno_graph::ParseOptions;
 
+/// Lazily parses JS/TS sources from the graph given
+/// a `ParsedSourceCache` and a `deno_graph::ModuleGraph`.
+#[derive(Clone, Copy)]
+pub struct LazyGraphSourceParser<'a> {
+  cache: &'a ParsedSourceCache,
+  graph: &'a deno_graph::ModuleGraph,
+}
+
+impl<'a> LazyGraphSourceParser<'a> {
+  pub fn new(
+    cache: &'a ParsedSourceCache,
+    graph: &'a deno_graph::ModuleGraph,
+  ) -> Self {
+    Self { cache, graph }
+  }
+
+  pub fn get_or_parse_source(
+    &self,
+    module_specifier: &ModuleSpecifier,
+  ) -> Result<Option<deno_ast::ParsedSource>, deno_ast::Diagnostic> {
+    let Some(deno_graph::Module::Js(module)) = self.graph.get(module_specifier)
+    else {
+      return Ok(None);
+    };
+    self
+      .cache
+      .get_parsed_source_from_js_module(module)
+      .map(Some)
+  }
+}
+
 #[derive(Default)]
 pub struct ParsedSourceCache {
   sources: Mutex<HashMap<ModuleSpecifier, ParsedSource>>,

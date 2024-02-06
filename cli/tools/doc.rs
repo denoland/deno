@@ -4,6 +4,8 @@ use crate::args::DocFlags;
 use crate::args::DocHtmlFlag;
 use crate::args::DocSourceFileFlag;
 use crate::args::Flags;
+use crate::cache::LazyGraphSourceParser;
+use crate::cache::ParsedSourceCache;
 use crate::colors;
 use crate::diagnostics::Diagnostic;
 use crate::diagnostics::DiagnosticLevel;
@@ -142,7 +144,7 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
 
       if doc_flags.lint {
         let diagnostics = doc_parser.take_diagnostics();
-        check_diagnostics(&**parsed_source_cache, &diagnostics)?;
+        check_diagnostics(parsed_source_cache, &graph, &diagnostics)?;
       }
 
       doc_nodes_by_url
@@ -413,12 +415,16 @@ impl Diagnostic for DocDiagnostic {
 }
 
 fn check_diagnostics(
-  parsed_source_cache: &dyn deno_graph::ParsedSourceStore,
+  parsed_source_cache: &ParsedSourceCache,
+  graph: &deno_graph::ModuleGraph,
   diagnostics: &[DocDiagnostic],
 ) -> Result<(), AnyError> {
   if diagnostics.is_empty() {
     return Ok(());
   }
+
+  let lazy_graph_parser =
+    LazyGraphSourceParser::new(parsed_source_cache, graph);
 
   // group by location then by line (sorted) then column (sorted)
   let mut diagnostic_groups = IndexMap::new();
@@ -437,7 +443,7 @@ fn check_diagnostics(
     for (_, diagnostics_by_col) in diagnostics_by_lc {
       for (_, diagnostics) in diagnostics_by_col {
         for diagnostic in diagnostics {
-          let sources = SourceTextParsedSourceStore(parsed_source_cache);
+          let sources = SourceTextParsedSourceStore(lazy_graph_parser);
           eprintln!("{}", diagnostic.display(&sources));
         }
       }
