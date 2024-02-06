@@ -5,6 +5,9 @@ import {
   op_geometry_multiply,
   op_geometry_multiply_self,
   op_geometry_premultiply_self,
+  op_geometry_rotate_axis_angle_self,
+  op_geometry_rotate_from_vector_self,
+  op_geometry_rotate_self,
   op_geometry_scale_self,
   op_geometry_scale_with_origin_self,
   op_geometry_translate_self,
@@ -963,6 +966,66 @@ class DOMMatrixReadOnly {
     return matrix;
   }
 
+  rotate(rotX = 0, rotY, rotZ) {
+    webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
+    rotX = webidl.converters["unrestricted double"](rotX);
+    if (rotY === undefined && rotZ === undefined) {
+      rotZ = rotX;
+      rotX = 0;
+      rotY = 0;
+    } else {
+      rotY = rotY !== undefined
+        ? webidl.converters["unrestricted double"](rotY)
+        : 0;
+      rotZ = rotZ !== undefined
+        ? webidl.converters["unrestricted double"](rotZ)
+        : 0;
+    }
+    const matrix = webidl.createBranded(DOMMatrix);
+    matrix[_raw] = new Float64Array(this[_raw]);
+    op_geometry_rotate_self(
+      rotX,
+      rotY,
+      rotZ,
+      matrix[_raw],
+    );
+    matrix[_is2D] = this[_is2D] && rotX === 0 && rotY === 0;
+    return matrix;
+  }
+
+  rotateFromVector(x = 0, y = 0) {
+    webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
+    const matrix = webidl.createBranded(DOMMatrix);
+    matrix[_raw] = new Float64Array(this[_raw]);
+    op_geometry_rotate_from_vector_self(
+      webidl.converters["unrestricted double"](x),
+      webidl.converters["unrestricted double"](y),
+      matrix[_raw],
+    );
+    matrix[_is2D] = this[_is2D];
+    return matrix;
+  }
+
+  rotateAxisAngle(x = 0, y = 0, z = 0, angle = 0) {
+    webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
+    x = webidl.converters["unrestricted double"](x);
+    y = webidl.converters["unrestricted double"](y);
+    z = webidl.converters["unrestricted double"](z);
+    const matrix = webidl.createBranded(DOMMatrix);
+    matrix[_raw] = new Float64Array(this[_raw]);
+    if (x !== 0 || y !== 0 || z !== 0) {
+      op_geometry_rotate_axis_angle_self(
+        x,
+        y,
+        z,
+        webidl.converters["unrestricted double"](angle),
+        matrix[_raw],
+      );
+    }
+    matrix[_is2D] = this[_is2D] && x === 0 && y === 0;
+    return matrix;
+  }
+
   multiply(other = {}) {
     webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
     const prefix = "Failed to call 'DOMMatrixReadOnly.prototype.multiply'";
@@ -1422,6 +1485,59 @@ class DOMMatrix extends DOMMatrixReadOnly {
       );
     }
     this[_is2D] &&= scale === 1;
+    return this;
+  }
+
+  rotateSelf(rotX = 0, rotY, rotZ) {
+    webidl.assertBranded(this, DOMMatrixPrototype);
+    rotX = webidl.converters["unrestricted double"](rotX);
+    if (rotY === undefined && rotZ === undefined) {
+      rotZ = rotX;
+      rotX = 0;
+      rotY = 0;
+    } else {
+      rotY = rotY !== undefined
+        ? webidl.converters["unrestricted double"](rotY)
+        : 0;
+      rotZ = rotZ !== undefined
+        ? webidl.converters["unrestricted double"](rotZ)
+        : 0;
+    }
+    op_geometry_rotate_self(
+      rotX,
+      rotY,
+      rotZ,
+      this[_raw],
+    );
+    this[_is2D] &&= rotX === 0 && rotY === 0;
+    return this;
+  }
+
+  rotateFromVectorSelf(x = 0, y = 0) {
+    webidl.assertBranded(this, DOMMatrixPrototype);
+    op_geometry_rotate_from_vector_self(
+      webidl.converters["unrestricted double"](x),
+      webidl.converters["unrestricted double"](y),
+      this[_raw],
+    );
+    return this;
+  }
+
+  rotateAxisAngleSelf(x = 0, y = 0, z = 0, angle = 0) {
+    webidl.assertBranded(this, DOMMatrixPrototype);
+    x = webidl.converters["unrestricted double"](x);
+    y = webidl.converters["unrestricted double"](y);
+    z = webidl.converters["unrestricted double"](z);
+    if (x !== 0 || y !== 0 || z !== 0) {
+      op_geometry_rotate_axis_angle_self(
+        x,
+        y,
+        z,
+        webidl.converters["unrestricted double"](angle),
+        this[_raw],
+      );
+    }
+    this[_is2D] &&= x === 0 && y === 0;
     return this;
   }
 

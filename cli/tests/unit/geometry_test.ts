@@ -1,5 +1,9 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-import { assertEquals, assertStrictEquals } from "./test_util.ts";
+import {
+  assertAlmostEquals,
+  assertEquals,
+  assertStrictEquals,
+} from "./test_util.ts";
 
 Deno.test(function matrixTranslate() {
   // deno-fmt-ignore
@@ -285,6 +289,210 @@ Deno.test(function matrixScale3dWithOriginSelf() {
       m14: 13 * 2, m24: 14 * 2, m34: 15 * 2, m44: -196,
     }),
   );
+});
+
+Deno.test(function matrixRotate() {
+  // deno-fmt-ignore
+  const init = {
+    m11:  1, m21:  2, m31:  3, m41:  4,
+    m12:  5, m22:  6, m32:  7, m42:  8,
+    m13:  9, m23: 10, m33: 11, m43: 12,
+    m14: 13, m24: 14, m34: 15, m44: 16,
+  };
+  // deno-fmt-ignore
+  const expect = {
+    m11:  -3, m21:  -2, m31:  -1, m41:  4,
+    m12:  -7, m22:  -6, m32:  -5, m42:  8,
+    m13: -11, m23: -10, m33:  -9, m43: 12,
+    m14: -15, m24: -14, m34: -13, m44: 16,
+  };
+  const matrix = DOMMatrix.fromMatrix(init);
+  const matrix2 = matrix.rotate(0, 90, 180);
+  assertEquals(
+    matrix,
+    DOMMatrix.fromMatrix(init),
+  );
+  for (
+    const [key, value] of Object.entries(expect) as [
+      keyof typeof expect,
+      number,
+    ][]
+  ) {
+    assertAlmostEquals(
+      matrix2[key],
+      value,
+    );
+  }
+});
+
+Deno.test(function matrixRotateSelf() {
+  // deno-fmt-ignore
+  const init = {
+    m11:  1, m21:  2, m31:  3, m41:  4,
+    m12:  5, m22:  6, m32:  7, m42:  8,
+    m13:  9, m23: 10, m33: 11, m43: 12,
+    m14: 13, m24: 14, m34: 15, m44: 16,
+  };
+  // deno-fmt-ignore
+  const expect = {
+    m11:  -3, m21:  -2, m31:  -1, m41:  4,
+    m12:  -7, m22:  -6, m32:  -5, m42:  8,
+    m13: -11, m23: -10, m33:  -9, m43: 12,
+    m14: -15, m24: -14, m34: -13, m44: 16,
+  };
+  const matrix = DOMMatrix.fromMatrix(init);
+  const matrix2 = matrix.rotateSelf(0, 90, 180);
+  assertStrictEquals(
+    matrix,
+    matrix2,
+  );
+  for (
+    const [key, value] of Object.entries(expect) as [
+      keyof typeof expect,
+      number,
+    ][]
+  ) {
+    assertAlmostEquals(
+      matrix[key],
+      value,
+    );
+  }
+});
+
+Deno.test(function matrixRotateFromVector() {
+  // deno-fmt-ignore
+  const init = {
+    m11:  1, m21:  2, m31:  3, m41:  4,
+    m12:  5, m22:  6, m32:  7, m42:  8,
+    m13:  9, m23: 10, m33: 11, m43: 12,
+    m14: 13, m24: 14, m34: 15, m44: 16,
+  };
+  // deno-fmt-ignore
+  const expect = {
+    m11:  2.121320343559643, m21: 0.7071067811865476, m31:  3, m41:  4,
+    m12:  7.778174593052023, m22: 0.7071067811865479, m32:  7, m42:  8,
+    m13: 13.435028842544405, m23: 0.707106781186547 , m33: 11, m43: 12,
+    m14: 19.091883092036785, m24: 0.7071067811865461, m34: 15, m44: 16,
+  };
+  const matrix = DOMMatrix.fromMatrix(init);
+  const matrix2 = matrix.rotateFromVector(1, 1);
+  assertEquals(
+    matrix,
+    DOMMatrix.fromMatrix(init),
+  );
+  for (
+    const [key, value] of Object.entries(expect) as [
+      keyof typeof expect,
+      number,
+    ][]
+  ) {
+    assertAlmostEquals(
+      matrix2[key],
+      value,
+    );
+  }
+});
+
+Deno.test(function matrixRotateFromVectorSelf() {
+  // deno-fmt-ignore
+  const init = {
+    m11:  1, m21:  2, m31:  3, m41:  4,
+    m12:  5, m22:  6, m32:  7, m42:  8,
+    m13:  9, m23: 10, m33: 11, m43: 12,
+    m14: 13, m24: 14, m34: 15, m44: 16,
+  };
+  // deno-fmt-ignore
+  const expect = {
+    m11:  2.121320343559643, m21: 0.7071067811865476, m31:  3, m41:  4,
+    m12:  7.778174593052023, m22: 0.7071067811865479, m32:  7, m42:  8,
+    m13: 13.435028842544405, m23: 0.7071067811865470, m33: 11, m43: 12,
+    m14: 19.091883092036785, m24: 0.7071067811865461, m34: 15, m44: 16,
+  };
+  const matrix = DOMMatrix.fromMatrix(init);
+  const matrix2 = matrix.rotateFromVectorSelf(1, 1);
+  assertStrictEquals(
+    matrix,
+    matrix2,
+  );
+  for (
+    const [key, value] of Object.entries(expect) as [
+      keyof typeof expect,
+      number,
+    ][]
+  ) {
+    assertAlmostEquals(
+      matrix[key],
+      value,
+    );
+  }
+});
+
+Deno.test(function matrixRotateAxisAngle() {
+  // deno-fmt-ignore
+  const init = {
+    m11:  1, m21:  2, m31:  3, m41:  4,
+    m12:  5, m22:  6, m32:  7, m42:  8,
+    m13:  9, m23: 10, m33: 11, m43: 12,
+    m14: 13, m24: 14, m34: 15, m44: 16,
+  };
+  // deno-fmt-ignore
+  const expect = {
+    m11:  1,                 m21:  2,                 m31:  3,                  m41:  4,
+    m12:  5.228294835332138, m22:  4.854398120227125, m32:  7.6876363080712045, m42:  8,
+    m13:  9.456589670664275, m23:  7.708796240454249, m33: 12.3752726161424090, m43: 12,
+    m14: 13.684884505996411, m24: 10.563194360681376, m34: 17.0629089242136120, m44: 16,
+  };
+  const matrix = DOMMatrix.fromMatrix(init);
+  const matrix2 = matrix.rotateAxisAngle(1, 2, 3, 30);
+  assertEquals(
+    matrix,
+    DOMMatrix.fromMatrix(init),
+  );
+  for (
+    const [key, value] of Object.entries(expect) as [
+      keyof typeof expect,
+      number,
+    ][]
+  ) {
+    assertAlmostEquals(
+      matrix2[key],
+      value,
+    );
+  }
+});
+
+Deno.test(function matrixRotateAxisAngleSelf() {
+  // deno-fmt-ignore
+  const init = {
+    m11:  1, m21:  2, m31:  3, m41:  4,
+    m12:  5, m22:  6, m32:  7, m42:  8,
+    m13:  9, m23: 10, m33: 11, m43: 12,
+    m14: 13, m24: 14, m34: 15, m44: 16,
+  };
+  // deno-fmt-ignore
+  const expect = {
+    m11:  1,                 m21:  2,                 m31:  3,                  m41:  4,
+    m12:  5.228294835332138, m22:  4.854398120227125, m32:  7.6876363080712045, m42:  8,
+    m13:  9.456589670664275, m23:  7.708796240454249, m33: 12.3752726161424090, m43: 12,
+    m14: 13.684884505996411, m24: 10.563194360681376, m34: 17.0629089242136120, m44: 16,
+  };
+  const matrix = DOMMatrix.fromMatrix(init);
+  const matrix2 = matrix.rotateAxisAngleSelf(1, 2, 3, 30);
+  assertStrictEquals(
+    matrix,
+    matrix2,
+  );
+  for (
+    const [key, value] of Object.entries(expect) as [
+      keyof typeof expect,
+      number,
+    ][]
+  ) {
+    assertAlmostEquals(
+      matrix[key],
+      value,
+    );
+  }
 });
 
 Deno.test(function matrixMultiply() {

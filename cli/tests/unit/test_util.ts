@@ -5,6 +5,7 @@ export { colors };
 import { join, resolve } from "@test_util/std/path/mod.ts";
 export {
   assert,
+  assertAlmostEquals,
   assertEquals,
   assertFalse,
   AssertionError,

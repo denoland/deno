@@ -4,6 +4,8 @@ use deno_core::op2;
 use nalgebra::Matrix4;
 use nalgebra::MatrixView4;
 use nalgebra::MatrixViewMut4;
+use nalgebra::Rotation3;
+use nalgebra::UnitVector3;
 use nalgebra::Vector3;
 use std::path::PathBuf;
 
@@ -18,6 +20,9 @@ deno_core::extension!(
     op_geometry_translate_self,
     op_geometry_scale_self,
     op_geometry_scale_with_origin_self,
+    op_geometry_rotate_self,
+    op_geometry_rotate_from_vector_self,
+    op_geometry_rotate_axis_angle_self,
     op_geometry_multiply,
     op_geometry_multiply_self,
     op_geometry_premultiply_self,
@@ -70,6 +75,58 @@ pub fn op_geometry_scale_with_origin_self(
   inout.prepend_nonuniform_scaling_mut(&scaling);
   shift.neg_mut();
   inout.prepend_translation_mut(&shift);
+}
+
+#[op2(fast)]
+pub fn op_geometry_rotate_self(
+  roll_degrees: f64,
+  pitch_degrees: f64,
+  yaw_degrees: f64,
+  #[buffer] inout: &mut [f64],
+) -> () {
+  let rotation = Rotation3::from_euler_angles(
+    roll_degrees.to_radians(),
+    pitch_degrees.to_radians(),
+    yaw_degrees.to_radians(),
+  )
+  .to_homogeneous();
+  let mut inout = MatrixViewMut::from_slice(inout);
+  let mut result = Matrix::zeros();
+  inout.mul_to(&rotation, &mut result);
+  inout.copy_from(&result);
+}
+
+#[op2(fast)]
+pub fn op_geometry_rotate_from_vector_self(
+  x: f64,
+  y: f64,
+  #[buffer] inout: &mut [f64],
+) -> () {
+  let rotation =
+    Rotation3::from_axis_angle(&Vector3::z_axis(), y.atan2(x)).to_homogeneous();
+  let mut inout = MatrixViewMut::from_slice(inout);
+  let mut result = Matrix::zeros();
+  inout.mul_to(&rotation, &mut result);
+  inout.copy_from(&result);
+}
+
+#[op2(fast)]
+pub fn op_geometry_rotate_axis_angle_self(
+  x: f64,
+  y: f64,
+  z: f64,
+  angle_degrees: f64,
+  #[buffer] inout: &mut [f64],
+) -> () {
+  let rotation = Rotation3::from_axis_angle(
+    &UnitVector3::new_normalize(Vector3::new(x, y, z)),
+    angle_degrees.to_radians(),
+  )
+  .to_homogeneous();
+  let mut inout = MatrixViewMut::from_slice(inout);
+  let mut result = Matrix::zeros();
+  inout.mul_to(&rotation, &mut result);
+  inout.copy_from(&result);
 }
 
 #[op2(fast)]
