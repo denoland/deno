@@ -990,7 +990,7 @@ const ci = {
         {
           // In main branch, always create a fresh cache
           name: "Save cache build output (main)",
-          uses: "actions/cache/save@v3",
+          uses: "actions/cache/save@v4",
           if:
             "(matrix.job == 'test' || matrix.job == 'lint') && github.ref == 'refs/heads/main'",
           with: {
