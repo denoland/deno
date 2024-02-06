@@ -328,9 +328,9 @@ declare namespace Deno {
     /**
      * Server certificate file.
      *
-     * @deprecated Pass the cert file contents directly to the
-     * {@linkcode Deno.ConnectTlsOptions.caCerts} option instead. This option
-     * will be removed in Deno 2.0.
+     * @deprecated This will be removed in Deno 2.0. See the
+     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+     * for migration instructions.
      */
     certFile?: string;
     /** A list of root certificates that will be used in addition to the
@@ -343,19 +343,25 @@ declare namespace Deno {
      * TLS handshake.
      */
     alpnProtocols?: string[];
-    /** PEM formatted client certificate chain. */
+    /**
+     * PEM formatted client certificate chain.
+     *
+     * @deprecated This will be removed in Deno 2.0. See the
+     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+     * for migration instructions.
+     */
     certChain?: string;
-    /** PEM formatted (RSA or PKCS8) private key of client certificate.  */
+    /**
+     * PEM formatted (RSA or PKCS8) private key of client certificate.
+     *
+     * @deprecated This will be removed in Deno 2.0. See the
+     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+     * for migration instructions.
+     */
     privateKey?: string;
-    /** **UNSTABLE**: New API, yet to be vetted.
-     *
-     * Server private key in PEM format.
-     */
+    /** Server private key in PEM format. */
     key?: string;
-    /** **UNSTABLE**: New API, yet to be vetted.
-     *
-     * Cert chain in PEM format.
-     */
+    /** Cert chain in PEM format. */
     cert?: string;
   }
 
