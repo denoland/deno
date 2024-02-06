@@ -112,4 +112,5 @@ Deno.test(
 
     const dataRead = readFileSync(dest, "utf8");
     assert(dataRead === "Hello");
-  });
+  },
+);
