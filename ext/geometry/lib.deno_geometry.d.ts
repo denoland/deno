@@ -169,13 +169,13 @@ interface DOMMatrix extends DOMMatrixReadOnly {
   /**
    * Modifies the matrix by applying the specified skew transformation along the X-axis.
    *
-   * @param sx
+   * @param sx in degrees
    */
   skewXSelf(sx?: number): DOMMatrix;
   /**
    * Modifies the matrix by applying the specified skew transformation along the Y-axis.
    *
-   * @param sy
+   * @param sy in degrees
    */
   skewYSelf(sy?: number): DOMMatrix;
   /**
@@ -348,13 +348,13 @@ interface DOMMatrixReadOnly {
   /**
    * Returns a new DOMMatrix created by applying the specified skew transformation to the source matrix along its X-axis.
    *
-   * @param sx
+   * @param sx in degrees
    */
   skewX(sx?: number): DOMMatrix;
   /**
    * Returns a new DOMMatrix created by applying the specified skew transformation to the source matrix along its Y-axis.
    *
-   * @param sy
+   * @param sy in degrees
    */
   skewY(sy?: number): DOMMatrix;
   toFloat32Array(): Float32Array;
