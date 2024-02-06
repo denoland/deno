@@ -679,7 +679,8 @@ mod tests {
   use deno_core::resolve_url;
   use deno_core::url::Url;
   use deno_runtime::deno_fetch::create_http_client;
-  use deno_runtime::deno_fetch::reqwest::dns::{Resolve, Resolving};
+  use deno_runtime::deno_fetch::reqwest::dns::Resolve;
+  use deno_runtime::deno_fetch::reqwest::dns::Resolving;
   use deno_runtime::deno_fetch::CreateHttpClientOptions;
   use deno_runtime::deno_tls::rustls::RootCertStore;
   use deno_runtime::deno_web::Blob;
@@ -1705,7 +1706,10 @@ mod tests {
   struct TestResolver;
 
   impl Resolve for TestResolver {
-    fn resolve(&self, _name: hyper_v014::client::connect::dns::Name) -> Resolving {
+    fn resolve(
+      &self,
+      _name: hyper_v014::client::connect::dns::Name,
+    ) -> Resolving {
       let iter: Box<dyn Iterator<Item = SocketAddr> + Send> = Box::new(
         vec!["127.0.0.1:0".parse::<SocketAddr>().unwrap()].into_iter(),
       );
