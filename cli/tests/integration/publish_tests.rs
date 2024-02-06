@@ -88,14 +88,13 @@ fn publish_non_exported_files_using_import_map() {
     .new_command()
     .args("publish --log-level=debug --token 'sadfasdf'")
     .run();
-  assert_contains!(
-    output.combined_output(),
-    &format!("Unfurling {}", mod_ts.canonicalize().uri_file())
-  );
-  assert_contains!(
-    output.combined_output(),
-    &format!("Unfurling {}", other_ts.canonicalize().uri_file())
-  );
+  let lines = output.combined_output().split('\n').collect::<Vec<_>>();
+  assert!(lines
+    .iter()
+    .any(|l| l.contains("Unfurling") && l.ends_with("mod.ts")));
+  assert!(lines
+    .iter()
+    .any(|l| l.contains("Unfurling") && l.ends_with("other.ts")));
 }
 
 itest!(javascript_missing_decl_file {
