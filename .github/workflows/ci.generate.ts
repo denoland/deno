@@ -141,7 +141,7 @@ const cloneRepoStep = [{
   ].join("\n"),
 }, {
   name: "Clone repository",
-  uses: "actions/checkout@v3",
+  uses: "actions/checkout@v4",
   with: {
     // Use depth > 1, because sometimes we need to rebuild main and if
     // other commits have landed it will become impossible to rebuild if
