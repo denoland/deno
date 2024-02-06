@@ -110,6 +110,7 @@ once_cell.workspace = true
 open = "5.0.1"
 os_pipe.workspace = true
 percent-encoding.workspace = true
+phf.workspace = true
 pin-project.workspace = true
 quick-junit = "^0.3.5"
 rand = { workspace = true, features = ["small_rng"] }
@@ -147,6 +148,7 @@ nix.workspace = true
 
 [dev-dependencies]
 deno_bench_util.workspace = true
+deno_core = { workspace = true, features = ["include_js_files_for_snapshotting", "unsafe_use_unprotected_platform"] }
 fastwebsockets = { workspace = true, features = ["upgrade", "unstable-split"] }
 flaky_test = "=0.1.0"
 http.workspace = true
