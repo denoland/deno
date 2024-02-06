@@ -60,8 +60,11 @@ const windowOrWorkerGlobalScope = {
   FileReader: core.propNonEnumerable(fileReader.FileReader),
   FormData: core.propNonEnumerable(formData.FormData),
   Headers: core.propNonEnumerable(headers.Headers),
-  ImageData: core.propWritableLazyLoaded((image) => image.ImageData, loadImage),
-  ImageBitmap: core.propWritableLazyLoaded(
+  ImageData: core.propNonEnumerableLazyLoaded(
+    (image) => image.ImageData,
+    loadImage,
+  ),
+  ImageBitmap: core.propNonEnumerableLazyLoaded(
     (image) => image.ImageBitmap,
     loadImage,
   ),
