@@ -46,8 +46,8 @@ pub struct AuthTokens(Vec<AuthToken>);
 /// An authorization domain, either an exact or suffix match.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AuthDomain {
-  IP(IpAddr),
-  IPPort(SocketAddr),
+  Ip(IpAddr),
+  IpPort(SocketAddr),
   /// Suffix match, no dot. May include a port.
   Suffix(Cow<'static, str>),
 }
@@ -56,15 +56,15 @@ impl<T: ToString> From<T> for AuthDomain {
   fn from(value: T) -> Self {
     let s = value.to_string().to_lowercase();
     if let Ok(ip) = SocketAddr::from_str(&s) {
-      return AuthDomain::IPPort(ip);
+      return AuthDomain::IpPort(ip);
     };
     if s.starts_with('[') && s.ends_with(']') {
       if let Ok(ip) = Ipv6Addr::from_str(&s[1..s.len() - 1]) {
-        return AuthDomain::IP(ip.into());
+        return AuthDomain::Ip(ip.into());
       }
     } else {
       if let Ok(ip) = Ipv4Addr::from_str(&s) {
-        return AuthDomain::IP(ip.into());
+        return AuthDomain::Ip(ip.into());
       }
     }
     if let Some(s) = s.strip_prefix('.') {
@@ -81,14 +81,14 @@ impl AuthDomain {
       return false;
     };
     match *self {
-      Self::IP(ip) => {
-        let AuthDomain::IP(parsed) = AuthDomain::from(host) else {
+      Self::Ip(ip) => {
+        let AuthDomain::Ip(parsed) = AuthDomain::from(host) else {
           return false;
         };
         ip == parsed && specifier.port().is_none()
       }
-      Self::IPPort(ip) => {
-        let AuthDomain::IP(parsed) = AuthDomain::from(host) else {
+      Self::IpPort(ip) => {
+        let AuthDomain::Ip(parsed) = AuthDomain::from(host) else {
           return false;
         };
         ip.ip() == parsed && specifier.port() == Some(ip.port())
