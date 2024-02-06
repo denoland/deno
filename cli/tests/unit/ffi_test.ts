@@ -134,7 +134,7 @@ Deno.test(
     const fnPointer = new Deno.UnsafeFnPointer<{
       parameters: [];
       result: "void";
-      nonblocking: true;
+      nonblocking?: boolean;
     }>(cb.pointer, {
       parameters: [],
       result: "void",
