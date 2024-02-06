@@ -5,7 +5,6 @@ import { escapeName, withPermissions } from "ext:cli/40_test_common.js";
 
 // TODO(mmastrac): We cannot import these from "ext:core/ops" yet
 const {
-  op_op_names,
   op_register_test_step,
   op_register_test,
   op_test_event_step_result_failed,
@@ -144,7 +143,7 @@ let opIdHostRecvCtrl = -1;
 let opNames = null;
 
 function populateOpNames() {
-  opNames = op_op_names();
+  opNames = core.opNames();
   opIdHostRecvMessage = opNames.indexOf("op_host_recv_message");
   opIdHostRecvCtrl = opNames.indexOf("op_host_recv_ctrl");
 }
