@@ -679,6 +679,7 @@ mod tests {
   use deno_core::resolve_url;
   use deno_core::url::Url;
   use deno_runtime::deno_fetch::create_http_client;
+  use deno_runtime::deno_fetch::reqwest::dns::{Resolve, Resolving};
   use deno_runtime::deno_fetch::CreateHttpClientOptions;
   use deno_runtime::deno_tls::rustls::RootCertStore;
   use deno_runtime::deno_web::Blob;
@@ -686,6 +687,7 @@ mod tests {
   use std::collections::hash_map::RandomState;
   use std::collections::HashSet;
   use std::fs::read;
+  use std::net::SocketAddr;
   use test_util::TempDir;
 
   fn setup(
@@ -1524,8 +1526,23 @@ mod tests {
 
   fn create_test_client() -> HttpClient {
     HttpClient::from_client(
-      create_http_client("test_client", CreateHttpClientOptions::default())
-        .unwrap(),
+      create_http_client(
+        "test_client",
+        None,
+        CreateHttpClientOptions::default(),
+      )
+      .unwrap(),
+    )
+  }
+
+  fn create_test_client_with_dns_resolver() -> HttpClient {
+    HttpClient::from_client(
+      create_http_client(
+        "test_client",
+        Some(Arc::new(TestResolver)),
+        CreateHttpClientOptions::default(),
+      )
+      .unwrap(),
     )
   }
 
@@ -1685,6 +1702,41 @@ mod tests {
     }
   }
 
+  struct TestResolver;
+
+  impl Resolve for TestResolver {
+    fn resolve(&self, _name: hyper_v014::client::connect::dns::Name) -> Resolving {
+      let iter: Box<dyn Iterator<Item = SocketAddr> + Send> = Box::new(
+        vec!["127.0.0.1:0".parse::<SocketAddr>().unwrap()].into_iter(),
+      );
+      Box::pin(async move { Ok(iter) })
+    }
+  }
+
+  #[tokio::test]
+  async fn test_custom_dns_resolver() {
+    let _http_server_guard = test_util::http_server();
+    // Relies on external http server. See target/debug/test_server
+    let url = Url::parse("http://google.com:4545/echo_accept").unwrap();
+    let client = create_test_client_with_dns_resolver();
+    let result = fetch_once(
+      &client,
+      FetchOnceArgs {
+        url,
+        maybe_accept: Some("application/json".to_string()),
+        maybe_etag: None,
+        maybe_auth_token: None,
+        maybe_progress_guard: None,
+      },
+    )
+    .await;
+    if let Ok(FetchOnceResult::Code(body, _)) = result {
+      assert_eq!(body, r#"{"accept":"application/json"}"#.as_bytes());
+    } else {
+      panic!();
+    }
+  }
+
   #[tokio::test]
   async fn test_fetch_once_with_redirect() {
     let _http_server_guard = test_util::http_server();
@@ -1721,6 +1773,7 @@ mod tests {
     let client = HttpClient::from_client(
       create_http_client(
         version::get_user_agent(),
+        None,
         CreateHttpClientOptions {
           ca_certs: vec![read(
             test_util::testdata_path().join("tls/RootCA.pem"),
@@ -1775,6 +1828,7 @@ mod tests {
       let client = HttpClient::from_client(
         create_http_client(
           version::get_user_agent(),
+          None,
           CreateHttpClientOptions::default(),
         )
         .unwrap(),
@@ -1836,6 +1890,7 @@ mod tests {
     let client = HttpClient::from_client(
       create_http_client(
         version::get_user_agent(),
+        None,
         CreateHttpClientOptions {
           root_cert_store: Some(root_cert_store),
           ..Default::default()
@@ -1887,6 +1942,7 @@ mod tests {
     let client = HttpClient::from_client(
       create_http_client(
         version::get_user_agent(),
+        None,
         CreateHttpClientOptions {
           ca_certs: vec![read(
             test_util::testdata_path()
@@ -1930,6 +1986,7 @@ mod tests {
     let client = HttpClient::from_client(
       create_http_client(
         version::get_user_agent(),
+        None,
         CreateHttpClientOptions {
           ca_certs: vec![read(
             test_util::testdata_path()
@@ -1990,6 +2047,7 @@ mod tests {
     let client = HttpClient::from_client(
       create_http_client(
         version::get_user_agent(),
+        None,
         CreateHttpClientOptions {
           ca_certs: vec![read(
             test_util::testdata_path()

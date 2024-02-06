@@ -18,6 +18,7 @@ use deno_tls::Proxy;
 use deno_tls::RootCertStoreProvider;
 use denokv_remote::MetadataEndpoint;
 use denokv_remote::Remote;
+use reqwest::dns::Resolve;
 use url::Url;
 
 #[derive(Clone)]
@@ -27,6 +28,7 @@ pub struct HttpOptions {
   pub proxy: Option<Proxy>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub client_cert_chain_and_key: Option<(String, String)>,
+  pub dns_resolver: Option<Arc<dyn Resolve>>,
 }
 
 impl HttpOptions {
@@ -127,6 +129,7 @@ impl<P: RemoteDbHandlerPermissions + 'static> DatabaseHandler
     let options = &self.http_options;
     let client = create_http_client(
       &options.user_agent,
+      options.dns_resolver.clone(),
       CreateHttpClientOptions {
         root_cert_store: options.root_cert_store()?,
         ca_certs: vec![],

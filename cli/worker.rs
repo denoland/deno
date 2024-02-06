@@ -628,6 +628,7 @@ impl CliMainWorkerFactory {
       stdio,
       feature_checker,
       skip_op_registration: shared.options.skip_op_registration,
+      dns_resolver: None,
     };
 
     let mut worker = MainWorker::bootstrap_from_options(
@@ -829,6 +830,7 @@ fn create_web_worker_callback(
       stdio: stdio.clone(),
       cache_storage_dir,
       feature_checker,
+      dns_resolver: None,
     };
 
     WebWorker::bootstrap_from_options(

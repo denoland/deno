@@ -35,6 +35,7 @@ use deno_core::SharedArrayBufferStore;
 use deno_core::Snapshot;
 use deno_core::SourceMapGetter;
 use deno_cron::local::LocalCronHandler;
+use deno_fetch::reqwest::dns::Resolve;
 use deno_fs::FileSystem;
 use deno_http::DefaultHttpPropertyExtractor;
 use deno_io::Stdio;
@@ -189,6 +190,9 @@ pub struct WorkerOptions {
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
   pub stdio: Stdio,
   pub feature_checker: Arc<FeatureChecker>,
+
+  /// Custom DNS resolver to use with the `fetch` API.
+  pub dns_resolver: Option<Arc<dyn Resolve>>,
 }
 
 impl Default for WorkerOptions {
@@ -223,6 +227,7 @@ impl Default for WorkerOptions {
       bootstrap: Default::default(),
       stdio: Default::default(),
       feature_checker: Default::default(),
+      dns_resolver: Default::default(),
     }
   }
 }
@@ -355,6 +360,7 @@ impl MainWorker {
             .unsafely_ignore_certificate_errors
             .clone(),
           file_fetch_handler: Rc::new(deno_fetch::FsFetchHandler),
+          dns_resolver: options.dns_resolver.clone(),
           ..Default::default()
         },
       ),
@@ -391,6 +397,7 @@ impl MainWorker {
               .clone(),
             client_cert_chain_and_key: None,
             proxy: None,
+            dns_resolver: options.dns_resolver.clone(),
           },
         ),
       ),

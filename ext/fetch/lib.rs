@@ -46,6 +46,7 @@ use deno_tls::RootCertStoreProvider;
 use data_url::DataUrl;
 use http_v02::header::CONTENT_LENGTH;
 use http_v02::Uri;
+use reqwest::dns::{Resolve, Resolving};
 use reqwest::header::HeaderMap;
 use reqwest::header::HeaderName;
 use reqwest::header::HeaderValue;
@@ -80,6 +81,7 @@ pub struct Options {
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub client_cert_chain_and_key: Option<(String, String)>,
   pub file_fetch_handler: Rc<dyn FetchHandler>,
+  pub dns_resolver: Option<Arc<dyn Resolve>>,
 }
 
 impl Options {
@@ -101,6 +103,7 @@ impl Default for Options {
       unsafely_ignore_certificate_errors: None,
       client_cert_chain_and_key: None,
       file_fetch_handler: Rc::new(DefaultFileFetchHandler),
+      dns_resolver: None,
     }
   }
 }
@@ -196,6 +199,7 @@ pub fn get_or_create_client_from_state(
     let options = state.borrow::<Options>();
     let client = create_http_client(
       &options.user_agent,
+      options.dns_resolver.clone(),
       CreateHttpClientOptions {
         root_cert_store: options.root_cert_store()?,
         ca_certs: vec![],
@@ -849,6 +853,7 @@ where
 
   let client = create_http_client(
     &options.user_agent,
+    options.dns_resolver.clone(),
     CreateHttpClientOptions {
       root_cert_store: options.root_cert_store()?,
       ca_certs,
@@ -912,6 +917,7 @@ impl Default for CreateHttpClientOptions {
 /// proxies and doesn't follow redirects.
 pub fn create_http_client(
   user_agent: &str,
+  dns_resolver: Option<Arc<dyn Resolve>>,
   options: CreateHttpClientOptions,
 ) -> Result<Client, AnyError> {
   let mut tls_config = deno_tls::create_client_config(
@@ -966,6 +972,10 @@ pub fn create_http_client(
     }
   }
 
+  if let Some(dns_resolver) = dns_resolver {
+    builder = builder.dns_resolver(Arc::new(ResolverWrapper(dns_resolver)));
+  }
+
   builder.build().map_err(|e| e.into())
 }
 
@@ -975,4 +985,12 @@ pub fn op_utf8_to_byte_string(
   #[string] input: String,
 ) -> Result<ByteString, AnyError> {
   Ok(input.into())
+}
+
+struct ResolverWrapper(Arc<dyn Resolve>);
+
+impl Resolve for ResolverWrapper {
+  fn resolve(&self, name: hyper_v014::client::connect::dns::Name) -> Resolving {
+    self.0.resolve(name)
+  }
 }
