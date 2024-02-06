@@ -1059,8 +1059,8 @@ fn lock_deno_json_package_json_deps() {
       }
     },
     "remote": {
-      "http://localhost:4545/jsr/registry/@denotest/module_graph/1.4.0/mod.ts": "5b0ce36e08d759118200d8b4627627b5a89b6261fbb0598e6961a6b287abb699",
-      "http://localhost:4545/jsr/registry/@denotest/module_graph/1.4.0/other.ts": "9ce27ca439cb0e218b6e1ec26c043dbc0b54c9babc4cb432df478dd1721faade"
+      "http://127.0.0.1:4250/@denotest/module_graph/1.4.0/mod.ts": "5b0ce36e08d759118200d8b4627627b5a89b6261fbb0598e6961a6b287abb699",
+      "http://127.0.0.1:4250/@denotest/module_graph/1.4.0/other.ts": "9ce27ca439cb0e218b6e1ec26c043dbc0b54c9babc4cb432df478dd1721faade"
     },
     "workspace": {
       "dependencies": [
@@ -1109,8 +1109,8 @@ fn lock_deno_json_package_json_deps() {
       }
     },
     "remote": {
-      "http://localhost:4545/jsr/registry/@denotest/module_graph/1.4.0/mod.ts": "5b0ce36e08d759118200d8b4627627b5a89b6261fbb0598e6961a6b287abb699",
-      "http://localhost:4545/jsr/registry/@denotest/module_graph/1.4.0/other.ts": "9ce27ca439cb0e218b6e1ec26c043dbc0b54c9babc4cb432df478dd1721faade"
+      "http://127.0.0.1:4250/@denotest/module_graph/1.4.0/mod.ts": "5b0ce36e08d759118200d8b4627627b5a89b6261fbb0598e6961a6b287abb699",
+      "http://127.0.0.1:4250/@denotest/module_graph/1.4.0/other.ts": "9ce27ca439cb0e218b6e1ec26c043dbc0b54c9babc4cb432df478dd1721faade"
     },
     "workspace": {
       "dependencies": [
@@ -1141,8 +1141,8 @@ fn lock_deno_json_package_json_deps() {
       }
     },
     "remote": {
-      "http://localhost:4545/jsr/registry/@denotest/module_graph/1.4.0/mod.ts": "5b0ce36e08d759118200d8b4627627b5a89b6261fbb0598e6961a6b287abb699",
-      "http://localhost:4545/jsr/registry/@denotest/module_graph/1.4.0/other.ts": "9ce27ca439cb0e218b6e1ec26c043dbc0b54c9babc4cb432df478dd1721faade"
+      "http://127.0.0.1:4250/@denotest/module_graph/1.4.0/mod.ts": "5b0ce36e08d759118200d8b4627627b5a89b6261fbb0598e6961a6b287abb699",
+      "http://127.0.0.1:4250/@denotest/module_graph/1.4.0/other.ts": "9ce27ca439cb0e218b6e1ec26c043dbc0b54c9babc4cb432df478dd1721faade"
     },
     "workspace": {
       "dependencies": [
