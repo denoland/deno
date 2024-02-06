@@ -62,10 +62,8 @@ impl<T: ToString> From<T> for AuthDomain {
       if let Ok(ip) = Ipv6Addr::from_str(&s[1..s.len() - 1]) {
         return AuthDomain::Ip(ip.into());
       }
-    } else {
-      if let Ok(ip) = Ipv4Addr::from_str(&s) {
-        return AuthDomain::Ip(ip.into());
-      }
+    } else if let Ok(ip) = Ipv4Addr::from_str(&s) {
+      return AuthDomain::Ip(ip.into());
     }
     if let Some(s) = s.strip_prefix('.') {
       AuthDomain::Suffix(Cow::Owned(s.to_owned()))
