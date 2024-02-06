@@ -53,6 +53,11 @@ jobs:
     strategy:
       matrix:
         include:
+          - os: linux
+            arch: aarch64
+            runner: ubicloud-standard-8-arm
+            job: test
+            profile: debug
           - os: macos
             arch: x86_64
             runner: macos-12
@@ -160,7 +165,7 @@ jobs:
               -czvf target/release/deno_src.tar.gz -C .. deno
       - uses: dsherret/rust-toolchain-file@v1
         if: '!(matrix.skip)'
-      - if: '!(matrix.skip) && (matrix.job == ''lint'' || matrix.job == ''test'' || matrix.job == ''bench'')'
+      - if: '!(matrix.skip) && (matrix.job == ''lint'' || matrix.job == ''test'' || matrix.job == ''bench'') && matrix.runner != ''ubicloud-standard-8-arm'''
         name: Install Deno
         uses: denoland/setup-deno@v1
         with:
@@ -169,7 +174,7 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: 3.11
-        if: '!(matrix.skip) && (matrix.job != ''lint'')'
+        if: '!(matrix.skip) && (matrix.job != ''lint'') && (matrix.runner != ''ubicloud-standard-8-arm'')'
       - name: Remove unused versions of Python
         if: '!(matrix.skip) && (matrix.job != ''lint'' && (matrix.os == ''windows''))'
         shell: pwsh
@@ -321,9 +326,9 @@ jobs:
           rustc --version
           cargo --version
           which dpkg && dpkg -l
-          if [[ "${{ matrix.job }}" == "lint" ]] || [[ "${{ matrix.job }}" == "test" ]]; then
-            deno --version
-          fi
+          #if [[ "${{ matrix.job }}" == "lint" ]] || [[ "${{ matrix.job }}" == "test" ]]; then
+          #  deno --version
+          #fi
           if [ "${{ matrix.job }}" == "bench" ]
           then
             node -v
