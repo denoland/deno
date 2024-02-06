@@ -82,7 +82,10 @@ const THROW_CB_DEFINITION = {
 const cb = new Deno.UnsafeCallback(THROW_CB_DEFINITION, throwCb);
 
 try {
-  const fnPointer = new Deno.UnsafeFnPointer(cb.pointer, THROW_CB_DEFINITION);
+  const fnPointer = new Deno.UnsafeFnPointer<{
+    readonly parameters: readonly [U8CallCase];
+    readonly result: "u8";
+  }>(cb.pointer, THROW_CB_DEFINITION);
 
   fnPointer.call(CallCase.SyncSelf);
 } catch (_err) {
@@ -101,7 +104,10 @@ try {
 }
 
 try {
-  const fnPointer = new Deno.UnsafeFnPointer(cb.pointer, {
+  const fnPointer = new Deno.UnsafeFnPointer<{
+    readonly parameters: readonly [U8CallCase];
+    readonly result: "u8";
+  }>(cb.pointer, {
     ...THROW_CB_DEFINITION,
     nonblocking: true,
   });

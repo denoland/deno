@@ -28,7 +28,10 @@ Deno.test({ permissions: { ffi: false } }, function ffiPermissionDenied() {
   assertThrows(() => {
     Deno.dlopen("/usr/lib/libc.so.6", {});
   }, Deno.errors.PermissionDenied);
-  const fnptr = new Deno.UnsafeFnPointer(
+  const fnptr = new Deno.UnsafeFnPointer<{
+    readonly parameters: ["u32", "pointer"];
+    readonly result: "void";
+  }>(
     // @ts-expect-error: Not NonNullable but null check is after permissions check.
     null,
     {
@@ -107,7 +110,10 @@ Deno.test({ permissions: { ffi: true } }, function callWithError() {
     parameters: [],
     result: "void",
   }, throwCb);
-  const fnPointer = new Deno.UnsafeFnPointer(cb.pointer, {
+  const fnPointer = new Deno.UnsafeFnPointer<{
+    parameters: [];
+    result: "void";
+  }>(cb.pointer, {
     parameters: [],
     result: "void",
   });
@@ -125,7 +131,11 @@ Deno.test(
       parameters: [],
       result: "void",
     }, throwCb);
-    const fnPointer = new Deno.UnsafeFnPointer(cb.pointer, {
+    const fnPointer = new Deno.UnsafeFnPointer<{
+      parameters: [];
+      result: "void";
+      nonblocking: true;
+    }>(cb.pointer, {
       parameters: [],
       result: "void",
       nonblocking: true,

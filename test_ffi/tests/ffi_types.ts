@@ -172,7 +172,7 @@ const result4 = remote.symbols.method19();
 result4.then((_0: Deno.BufferSource) => {});
 result4.then((_1: null | Deno.UnsafePointer) => {});
 
-const fnptr = new Deno.UnsafeFnPointer(
+const fnptr = new Deno.UnsafeFnPointer<Deno.ForeignFunction>(
   {} as Deno.PointerObject,
   {
     parameters: ["u32", "pointer"],
