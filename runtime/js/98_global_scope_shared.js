@@ -189,7 +189,7 @@ unstableForWindowOrWorkerGlobalScope[unstableIds.webgpu] = {
   GPUError: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUError, loadWebGPU),
   GPUValidationError: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUValidationError, loadWebGPU),
   GPUOutOfMemoryError: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUOutOfMemoryError, loadWebGPU),
-  GPUCanvasContext: webgpuSurface.GPUCanvasContext,
+  GPUCanvasContext: core.propNonEnumerable(webgpuSurface.GPUCanvasContext),
 };
 
 export { unstableForWindowOrWorkerGlobalScope, windowOrWorkerGlobalScope };
