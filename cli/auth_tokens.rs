@@ -283,6 +283,7 @@ mod tests {
     ];
     let domains = [
       ("example.com", vec!["example.com", "www.example.com"]),
+      (".example.com", vec!["example.com", "www.example.com"]),
       ("www.example.com", vec!["www.example.com"]),
       ("1.1.1.1", vec!["1.1.1.1"]),
       ("[2001:db8:a::123]", vec!["[2001:db8:a::123]"]),
