@@ -85,7 +85,80 @@ interface IStats {
   isSymbolicLink: () => boolean;
 }
 
-export class Stats {}
+class StatsBase {
+  constructor(
+    dev,
+    mode,
+    nlink,
+    uid,
+    gid,
+    rdev,
+    blksize,
+    ino,
+    size,
+    blocks,
+  ) {
+    this.dev = dev;
+    this.mode = mode;
+    this.nlink = nlink;
+    this.uid = uid;
+    this.gid = gid;
+    this.rdev = rdev;
+    this.blksize = blksize;
+    this.ino = ino;
+    this.size = size;
+    this.blocks = blocks;
+  }
+}
+
+// The Date constructor performs Math.floor() to the timestamp.
+// https://www.ecma-international.org/ecma-262/#sec-timeclip
+// Since there may be a precision loss when the timestamp is
+// converted to a floating point number, we manually round
+// the timestamp here before passing it to Date().
+function dateFromMs(ms) {
+  return new Date(Number(ms) + 0.5);
+}
+
+export class Stats extends StatsBase {
+  constructor(
+    dev,
+    mode,
+    nlink,
+    uid,
+    gid,
+    rdev,
+    blksize,
+    ino,
+    size,
+    blocks,
+    atimeMs,
+    mtimeMs,
+    ctimeMs,
+    birthtimeMs,
+  ) {
+    super(
+      dev,
+      mode,
+      nlink,
+      uid,
+      gid,
+      rdev,
+      blksize,
+      ino,
+      size,
+      blocks,
+    );
+    this.atimeMs = atimeMs;
+    this.mtimeMs = mtimeMs;
+    this.ctimeMs = ctimeMs;
+    this.birthtimeMs = birthtimeMs;
+    this.atime = dateFromMs(atimeMs);
+    this.mtime = dateFromMs(mtimeMs);
+    this.ctime = dateFromMs(ctimeMs);
+    this.birthtime = dateFromMs(birthtimeMs);
+  }
+}
 
 export interface IBigIntStats {
   /** ID of the device containing the file.
