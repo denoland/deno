@@ -1332,6 +1332,8 @@ fn diagnose_resolution(
             None => diagnostics.push(DenoDiagnostic::NoAttributeType),
           }
         }
+      } else if specifier.scheme() == "jsr" {
+        // TODO(nayeemrmn): Check if jsr specifiers are cached.
       } else if let Ok(pkg_ref) =
         NpmPackageReqReference::from_specifier(specifier)
       {
