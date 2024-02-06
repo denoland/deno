@@ -216,7 +216,7 @@ fn resolve_content_maybe_unfurling(
     }
   };
 
-  log::debug!("Unfurling {}...", specifier);
+  log::debug!("Unfurling {}", specifier);
   let mut reporter = |diagnostic| {
     diagnostics_collector.push(PublishDiagnostic::ImportMapUnfurl(diagnostic));
   };

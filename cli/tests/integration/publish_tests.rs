@@ -90,11 +90,11 @@ fn publish_non_exported_files_using_import_map() {
     .run();
   assert_contains!(
     output.combined_output(),
-    &format!("Unfurling {}", mod_ts.uri_file())
+    &format!("Unfurling {}", mod_ts.canonicalize().uri_file())
   );
   assert_contains!(
     output.combined_output(),
-    &format!("Unfurling {}", other_ts.uri_file())
+    &format!("Unfurling {}", other_ts.canonicalize().uri_file())
   );
 }
 
