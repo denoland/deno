@@ -84,6 +84,7 @@ util::unit_test_factory!(
     stdio_test,
     streams_test,
     structured_clone_test,
+    symbol_test,
     symlink_test,
     sync_test,
     test_util,

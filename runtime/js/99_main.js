@@ -89,9 +89,21 @@ import {
 import {
   workerRuntimeGlobalProperties,
 } from "ext:runtime/98_global_scope_worker.js";
-import { SymbolAsyncDispose, SymbolDispose } from "ext:deno_web/00_infra.js";
+import {
+  SymbolAsyncDispose,
+  SymbolDispose,
+  SymbolMetadata,
+} from "ext:deno_web/00_infra.js";
 // deno-lint-ignore prefer-primordials
 if (Symbol.dispose) throw "V8 supports Symbol.dispose now, no need to shim it!";
+// deno-lint-ignore prefer-primordials
+if (Symbol.asyncDispose) {
+  throw "V8 supports Symbol.asyncDispose now, no need to shim it!";
+}
+// deno-lint-ignore prefer-primordials
+if (Symbol.metadata) {
+  throw "V8 supports Symbol.metadata now, no need to shim it!";
+}
 ObjectDefineProperties(Symbol, {
   dispose: {
     value: SymbolDispose,
@@ -101,6 +113,12 @@ ObjectDefineProperties(Symbol, {
   },
   asyncDispose: {
     value: SymbolAsyncDispose,
+    enumerable: false,
+    writable: false,
+    configurable: false,
+  },
+  metadata: {
+    value: SymbolMetadata,
     enumerable: false,
     writable: false,
     configurable: false,
@@ -614,9 +632,6 @@ const NOT_IMPORTED_OPS = [
   "op_format_file_name",
   "op_apply_source_map",
   "op_apply_source_map_filename",
-
-  // TODO(bartlomieju): this might be dead code.
-  "op_ws_send_pong",
 ];
 
 function removeImportedOps() {
