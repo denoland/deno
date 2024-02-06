@@ -18,17 +18,18 @@ Deno.test(function filesStdioFileDescriptors() {
 
 Deno.test({ permissions: { read: true } }, async function filesCopyToStdout() {
   const filename = "cli/tests/testdata/assets/fixture.json";
-  const file = await Deno.open(filename);
+  using file = await Deno.open(filename);
+  assert(file instanceof Deno.File);
+  assert(file instanceof Deno.FsFile);
   assert(file.rid > 2);
   const bytesWritten = await copy(file, Deno.stdout);
   const fileSize = Deno.statSync(filename).size;
   assertEquals(bytesWritten, fileSize);
-  file.close();
 });
 
 Deno.test({ permissions: { read: true } }, async function filesIter() {
   const filename = "cli/tests/testdata/assets/hello.txt";
-  const file = await Deno.open(filename);
+  using file = await Deno.open(filename);
 
   let totalSize = 0;
   for await (const buf of Deno.iter(file)) {
@@ -36,14 +37,13 @@ Deno.test({ permissions: { read: true } }, async function filesIter() {
   }
 
   assertEquals(totalSize, 12);
-  file.close();
 });
 
 Deno.test(
   { permissions: { read: true } },
   async function filesIterCustomBufSize() {
     const filename = "cli/tests/testdata/assets/hello.txt";
-    const file = await Deno.open(filename);
+    using file = await Deno.open(filename);
 
     let totalSize = 0;
     let iterations = 0;
@@ -54,13 +54,12 @@ Deno.test(
 
     assertEquals(totalSize, 12);
     assertEquals(iterations, 2);
-    file.close();
   },
 );
 
 Deno.test({ permissions: { read: true } }, function filesIterSync() {
   const filename = "cli/tests/testdata/assets/hello.txt";
-  const file = Deno.openSync(filename);
+  using file = Deno.openSync(filename);
 
   let totalSize = 0;
   for (const buf of Deno.iterSync(file)) {
@@ -68,14 +67,13 @@ Deno.test({ permissions: { read: true } }, function filesIterSync() {
   }
 
   assertEquals(totalSize, 12);
-  file.close();
 });
 
 Deno.test(
   { permissions: { read: true } },
   function filesIterSyncCustomBufSize() {
     const filename = "cli/tests/testdata/assets/hello.txt";
-    const file = Deno.openSync(filename);
+    using file = Deno.openSync(filename);
 
     let totalSize = 0;
     let iterations = 0;
@@ -86,7 +84,6 @@ Deno.test(
 
     assertEquals(totalSize, 12);
     assertEquals(iterations, 2);
-    file.close();
   },
 );
 
@@ -166,12 +163,11 @@ Deno.test(
   },
   function openSyncMode() {
     const path = Deno.makeTempDirSync() + "/test_openSync.txt";
-    const file = Deno.openSync(path, {
+    using _file = Deno.openSync(path, {
       write: true,
       createNew: true,
       mode: 0o626,
     });
-    file.close();
     const pathInfo = Deno.statSync(path);
     if (Deno.build.os !== "windows") {
       assertEquals(pathInfo.mode! & 0o777, 0o626 & ~Deno.umask());
@@ -185,12 +181,11 @@ Deno.test(
   },
   async function openMode() {
     const path = (await Deno.makeTempDir()) + "/test_open.txt";
-    const file = await Deno.open(path, {
+    using _file = await Deno.open(path, {
       write: true,
       createNew: true,
       mode: 0o626,
     });
-    file.close();
     const pathInfo = Deno.statSync(path);
     if (Deno.build.os !== "windows") {
       assertEquals(pathInfo.mode! & 0o777, 0o626 & ~Deno.umask());
@@ -209,12 +204,11 @@ Deno.test(
         Deno.build.os === "windows" ? "/" : ""
       }${tempDir}/test_open.txt`,
     );
-    const file = Deno.openSync(fileUrl, {
+    using _file = Deno.openSync(fileUrl, {
       write: true,
       createNew: true,
       mode: 0o626,
     });
-    file.close();
     const pathInfo = Deno.statSync(fileUrl);
     if (Deno.build.os !== "windows") {
       assertEquals(pathInfo.mode! & 0o777, 0o626 & ~Deno.umask());
@@ -235,12 +229,11 @@ Deno.test(
         Deno.build.os === "windows" ? "/" : ""
       }${tempDir}/test_open.txt`,
     );
-    const file = await Deno.open(fileUrl, {
+    using _file = await Deno.open(fileUrl, {
       write: true,
       createNew: true,
       mode: 0o626,
     });
-    file.close();
     const pathInfo = Deno.statSync(fileUrl);
     if (Deno.build.os !== "windows") {
       assertEquals(pathInfo.mode! & 0o777, 0o626 & ~Deno.umask());
@@ -314,7 +307,7 @@ Deno.test(
       truncate: true,
       create: true,
     };
-    const file = await Deno.open(filename, w);
+    using file = await Deno.open(filename, w);
 
     // writing null should throw an error
     await assertRejects(
@@ -323,7 +316,6 @@ Deno.test(
         await file.write(null as any);
       },
     ); // TODO(bartlomieju): Check error kind when dispatch_minimal pipes errors properly
-    file.close();
     await Deno.remove(tempDir, { recursive: true });
   },
 );
@@ -333,7 +325,7 @@ Deno.test(
   async function readNullBufferFailure() {
     const tempDir = Deno.makeTempDirSync();
     const filename = tempDir + "hello.txt";
-    const file = await Deno.open(filename, {
+    using file = await Deno.open(filename, {
       read: true,
       write: true,
       truncate: true,
@@ -351,7 +343,6 @@ Deno.test(
     }, TypeError);
     // TODO(bartlomieju): Check error kind when dispatch_minimal pipes errors properly
 
-    file.close();
     await Deno.remove(tempDir, { recursive: true });
   },
 );
@@ -529,7 +520,7 @@ Deno.test(
     const filename = tempDir + "hello.txt";
     const data = encoder.encode("Hello world!\n");
 
-    const file = await Deno.open(filename, {
+    using file = await Deno.open(filename, {
       write: true,
       truncate: true,
       create: true,
@@ -551,7 +542,6 @@ Deno.test(
     assertEquals(seekPosition, cursorPosition);
     const result = await file.read(buf);
     assertEquals(result, 13);
-    file.close();
 
     await Deno.remove(tempDir, { recursive: true });
   },
@@ -559,7 +549,7 @@ Deno.test(
 
 Deno.test({ permissions: { read: true } }, async function seekStart() {
   const filename = "cli/tests/testdata/assets/hello.txt";
-  const file = await Deno.open(filename);
+  using file = await Deno.open(filename);
   const seekPosition = 6;
   // Deliberately move 1 step forward
   await file.read(new Uint8Array(1)); // "H"
@@ -571,12 +561,11 @@ Deno.test({ permissions: { read: true } }, async function seekStart() {
   await file.read(buf);
   const decoded = new TextDecoder().decode(buf);
   assertEquals(decoded, "world!");
-  file.close();
 });
 
 Deno.test({ permissions: { read: true } }, async function seekStartBigInt() {
   const filename = "cli/tests/testdata/assets/hello.txt";
-  const file = await Deno.open(filename);
+  using file = await Deno.open(filename);
   const seekPosition = 6n;
   // Deliberately move 1 step forward
   await file.read(new Uint8Array(1)); // "H"
@@ -588,12 +577,11 @@ Deno.test({ permissions: { read: true } }, async function seekStartBigInt() {
   await file.read(buf);
   const decoded = new TextDecoder().decode(buf);
   assertEquals(decoded, "world!");
-  file.close();
 });
 
 Deno.test({ permissions: { read: true } }, function seekSyncStart() {
   const filename = "cli/tests/testdata/assets/hello.txt";
-  const file = Deno.openSync(filename);
+  using file = Deno.openSync(filename);
   const seekPosition = 6;
   // Deliberately move 1 step forward
   file.readSync(new Uint8Array(1)); // "H"
@@ -605,12 +593,11 @@ Deno.test({ permissions: { read: true } }, function seekSyncStart() {
   file.readSync(buf);
   const decoded = new TextDecoder().decode(buf);
   assertEquals(decoded, "world!");
-  file.close();
 });
 
 Deno.test({ permissions: { read: true } }, async function seekCurrent() {
   const filename = "cli/tests/testdata/assets/hello.txt";
-  const file = await Deno.open(filename);
+  using file = await Deno.open(filename);
   // Deliberately move 1 step forward
   await file.read(new Uint8Array(1)); // "H"
   // Skipping "ello "
@@ -622,12 +609,11 @@ Deno.test({ permissions: { read: true } }, async function seekCurrent() {
   await file.read(buf);
   const decoded = new TextDecoder().decode(buf);
   assertEquals(decoded, "world!");
-  file.close();
 });
 
 Deno.test({ permissions: { read: true } }, function seekSyncCurrent() {
   const filename = "cli/tests/testdata/assets/hello.txt";
-  const file = Deno.openSync(filename);
+  using file = Deno.openSync(filename);
   // Deliberately move 1 step forward
   file.readSync(new Uint8Array(1)); // "H"
   // Skipping "ello "
@@ -639,12 +625,11 @@ Deno.test({ permissions: { read: true } }, function seekSyncCurrent() {
   file.readSync(buf);
   const decoded = new TextDecoder().decode(buf);
   assertEquals(decoded, "world!");
-  file.close();
 });
 
 Deno.test({ permissions: { read: true } }, async function seekEnd() {
   const filename = "cli/tests/testdata/assets/hello.txt";
-  const file = await Deno.open(filename);
+  using file = await Deno.open(filename);
   const seekPosition = -6;
   // seek from end of file that has 12 chars, 12 - 6  = 6
   const cursorPosition = await file.seek(seekPosition, Deno.SeekMode.End);
@@ -653,12 +638,11 @@ Deno.test({ permissions: { read: true } }, async function seekEnd() {
   await file.read(buf);
   const decoded = new TextDecoder().decode(buf);
   assertEquals(decoded, "world!");
-  file.close();
 });
 
 Deno.test({ permissions: { read: true } }, function seekSyncEnd() {
   const filename = "cli/tests/testdata/assets/hello.txt";
-  const file = Deno.openSync(filename);
+  using file = Deno.openSync(filename);
   const seekPosition = -6;
   // seek from end of file that has 12 chars, 12 - 6  = 6
   const cursorPosition = file.seekSync(seekPosition, Deno.SeekMode.End);
@@ -667,12 +651,11 @@ Deno.test({ permissions: { read: true } }, function seekSyncEnd() {
   file.readSync(buf);
   const decoded = new TextDecoder().decode(buf);
   assertEquals(decoded, "world!");
-  file.close();
 });
 
 Deno.test({ permissions: { read: true } }, async function seekMode() {
   const filename = "cli/tests/testdata/assets/hello.txt";
-  const file = await Deno.open(filename);
+  using file = await Deno.open(filename);
   await assertRejects(
     async () => {
       await file.seek(1, -1 as unknown as Deno.SeekMode);
@@ -686,14 +669,13 @@ Deno.test({ permissions: { read: true } }, async function seekMode() {
   const buf = new Uint8Array(1);
   await file.read(buf); // "H"
   assertEquals(new TextDecoder().decode(buf), "H");
-  file.close();
 });
 
 Deno.test(
   { permissions: { read: true, write: true } },
   function fileTruncateSyncSuccess() {
     const filename = Deno.makeTempDirSync() + "/test_fileTruncateSync.txt";
-    const file = Deno.openSync(filename, {
+    using file = Deno.openSync(filename, {
       create: true,
       read: true,
       write: true,
@@ -706,7 +688,6 @@ Deno.test(
     file.truncateSync(-5);
     assertEquals(Deno.readFileSync(filename).byteLength, 0);
 
-    file.close();
     Deno.removeSync(filename);
   },
 );
@@ -715,7 +696,7 @@ Deno.test(
   { permissions: { read: true, write: true } },
   async function fileTruncateSuccess() {
     const filename = Deno.makeTempDirSync() + "/test_fileTruncate.txt";
-    const file = await Deno.open(filename, {
+    using file = await Deno.open(filename, {
       create: true,
       read: true,
       write: true,
@@ -728,13 +709,12 @@ Deno.test(
     await file.truncate(-5);
     assertEquals((await Deno.readFile(filename)).byteLength, 0);
 
-    file.close();
     await Deno.remove(filename);
   },
 );
 
 Deno.test({ permissions: { read: true } }, function fileStatSyncSuccess() {
-  const file = Deno.openSync("README.md");
+  using file = Deno.openSync("README.md");
   const fileInfo = file.statSync();
   assert(fileInfo.isFile);
   assert(!fileInfo.isSymlink);
@@ -744,12 +724,10 @@ Deno.test({ permissions: { read: true } }, function fileStatSyncSuccess() {
   assert(fileInfo.mtime);
   // The `birthtime` field is not available on Linux before kernel version 4.11.
   assert(fileInfo.birthtime || Deno.build.os === "linux");
-
-  file.close();
 });
 
 Deno.test(async function fileStatSuccess() {
-  const file = await Deno.open("README.md");
+  using file = await Deno.open("README.md");
   const fileInfo = await file.stat();
   assert(fileInfo.isFile);
   assert(!fileInfo.isSymlink);
@@ -759,8 +737,6 @@ Deno.test(async function fileStatSuccess() {
   assert(fileInfo.mtime);
   // The `birthtime` field is not available on Linux before kernel version 4.11.
   assert(fileInfo.birthtime || Deno.build.os === "linux");
-
-  file.close();
 });
 
 Deno.test({ permissions: { read: true } }, async function readableStream() {
@@ -813,10 +789,9 @@ Deno.test(
   { permissions: { read: true, write: true } },
   async function readTextFileNonUtf8() {
     const path = await Deno.makeTempFile();
-    const file = await Deno.open(path, { write: true });
+    using file = await Deno.open(path, { write: true });
     await file.write(new TextEncoder().encode("hello "));
     await file.write(new Uint8Array([0xC0]));
-    file.close();
 
     const res = await Deno.readTextFile(path);
     const resSync = Deno.readTextFileSync(path);
@@ -851,3 +826,270 @@ Deno.test(
     // calling [Symbol.dispose] after manual close is a no-op
   },
 );
+
+Deno.test(
+  { permissions: { read: true, write: true } },
+  function fsFileDatasyncSyncSuccess() {
+    const filename = Deno.makeTempDirSync() + "/test_fdatasyncSync.txt";
+    const file = Deno.openSync(filename, {
+      read: true,
+      write: true,
+      create: true,
+    });
+    const data = new Uint8Array(64);
+    file.writeSync(data);
+    file.syncDataSync();
+    assertEquals(Deno.readFileSync(filename), data);
+    file.close();
+    Deno.removeSync(filename);
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, write: true } },
+  async function fsFileDatasyncSuccess() {
+    const filename = (await Deno.makeTempDir()) + "/test_fdatasync.txt";
+    const file = await Deno.open(filename, {
+      read: true,
+      write: true,
+      create: true,
+    });
+    const data = new Uint8Array(64);
+    await file.write(data);
+    await file.syncData();
+    assertEquals(await Deno.readFile(filename), data);
+    file.close();
+    await Deno.remove(filename);
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, write: true } },
+  function fsFileSyncSyncSuccess() {
+    const filename = Deno.makeTempDirSync() + "/test_fsyncSync.txt";
+    const file = Deno.openSync(filename, {
+      read: true,
+      write: true,
+      create: true,
+    });
+    const size = 64;
+    file.truncateSync(size);
+    file.syncSync();
+    assertEquals(file.statSync().size, size);
+    file.close();
+    Deno.removeSync(filename);
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, write: true } },
+  async function fsFileSyncSuccess() {
+    const filename = (await Deno.makeTempDir()) + "/test_fsync.txt";
+    const file = await Deno.open(filename, {
+      read: true,
+      write: true,
+      create: true,
+    });
+    const size = 64;
+    await file.truncate(size);
+    await file.sync();
+    assertEquals((await file.stat()).size, size);
+    file.close();
+    await Deno.remove(filename);
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, run: true, hrtime: true } },
+  async function fsFileLockFileSync() {
+    await runFlockTests({ sync: true });
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, run: true, hrtime: true } },
+  async function fsFileLockFileAsync() {
+    await runFlockTests({ sync: false });
+  },
+);
+
+async function runFlockTests(opts: { sync: boolean }) {
+  assertEquals(
+    await checkFirstBlocksSecond({
+      firstExclusive: true,
+      secondExclusive: false,
+      sync: opts.sync,
+    }),
+    true,
+    "exclusive blocks shared",
+  );
+  assertEquals(
+    await checkFirstBlocksSecond({
+      firstExclusive: false,
+      secondExclusive: true,
+      sync: opts.sync,
+    }),
+    true,
+    "shared blocks exclusive",
+  );
+  assertEquals(
+    await checkFirstBlocksSecond({
+      firstExclusive: true,
+      secondExclusive: true,
+      sync: opts.sync,
+    }),
+    true,
+    "exclusive blocks exclusive",
+  );
+  assertEquals(
+    await checkFirstBlocksSecond({
+      firstExclusive: false,
+      secondExclusive: false,
+      sync: opts.sync,
+      // need to wait for both to enter the lock to prevent the case where the
+      // first process enters and exits the lock before the second even enters
+      waitBothEnteredLock: true,
+    }),
+    false,
+    "shared does not block shared",
+  );
+}
+
+async function checkFirstBlocksSecond(opts: {
+  firstExclusive: boolean;
+  secondExclusive: boolean;
+  sync: boolean;
+  waitBothEnteredLock?: boolean;
+}) {
+  const firstProcess = runFlockTestProcess({
+    exclusive: opts.firstExclusive,
+    sync: opts.sync,
+  });
+  const secondProcess = runFlockTestProcess({
+    exclusive: opts.secondExclusive,
+    sync: opts.sync,
+  });
+  try {
+    const sleep = (time: number) => new Promise((r) => setTimeout(r, time));
+
+    await Promise.all([
+      firstProcess.waitStartup(),
+      secondProcess.waitStartup(),
+    ]);
+
+    await firstProcess.enterLock();
+    await firstProcess.waitEnterLock();
+
+    await secondProcess.enterLock();
+    await sleep(100);
+
+    if (!opts.waitBothEnteredLock) {
+      await firstProcess.exitLock();
+    }
+
+    await secondProcess.waitEnterLock();
+
+    if (opts.waitBothEnteredLock) {
+      await firstProcess.exitLock();
+    }
+
+    await secondProcess.exitLock();
+
+    // collect the final output
+    const firstPsTimes = await firstProcess.getTimes();
+    const secondPsTimes = await secondProcess.getTimes();
+    return firstPsTimes.exitTime < secondPsTimes.enterTime;
+  } finally {
+    await firstProcess.close();
+    await secondProcess.close();
+  }
+}
+
+function runFlockTestProcess(opts: { exclusive: boolean; sync: boolean }) {
+  const path = "cli/tests/testdata/assets/lock_target.txt";
+  const scriptText = `
+    const file = Deno.openSync("${path}");
+
+    // ready signal
+    Deno.stdout.writeSync(new Uint8Array(1));
+    // wait for enter lock signal
+    Deno.stdin.readSync(new Uint8Array(1));
+
+    // entering signal
+    Deno.stdout.writeSync(new Uint8Array(1));
+    // lock and record the entry time
+    ${
+    opts.sync
+      ? `file.lockSync(${opts.exclusive ? "true" : "false"});`
+      : `await file.lock(${opts.exclusive ? "true" : "false"});`
+  }
+    const enterTime = new Date().getTime();
+    // entered signal
+    Deno.stdout.writeSync(new Uint8Array(1));
+
+    // wait for exit lock signal
+    Deno.stdin.readSync(new Uint8Array(1));
+
+    // record the exit time and wait a little bit before releasing
+    // the lock so that the enter time of the next process doesn't
+    // occur at the same time as this exit time
+    const exitTime = new Date().getTime();
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    // release the lock
+    ${opts.sync ? "file.unlockSync();" : "await file.unlock();"}
+
+    // exited signal
+    Deno.stdout.writeSync(new Uint8Array(1));
+
+    // output the enter and exit time
+    console.log(JSON.stringify({ enterTime, exitTime }));
+`;
+
+  const process = new Deno.Command(Deno.execPath(), {
+    args: ["eval", "--unstable", scriptText],
+    stdin: "piped",
+    stdout: "piped",
+    stderr: "null",
+  }).spawn();
+
+  const waitSignal = async () => {
+    const reader = process.stdout.getReader({ mode: "byob" });
+    await reader.read(new Uint8Array(1));
+    reader.releaseLock();
+  };
+  const signal = async () => {
+    const writer = process.stdin.getWriter();
+    await writer.write(new Uint8Array(1));
+    writer.releaseLock();
+  };
+
+  return {
+    async waitStartup() {
+      await waitSignal();
+    },
+    async enterLock() {
+      await signal();
+      await waitSignal(); // entering signal
+    },
+    async waitEnterLock() {
+      await waitSignal();
+    },
+    async exitLock() {
+      await signal();
+      await waitSignal();
+    },
+    getTimes: async () => {
+      const { stdout } = await process.output();
+      const text = new TextDecoder().decode(stdout);
+      return JSON.parse(text) as {
+        enterTime: number;
+        exitTime: number;
+      };
+    },
+    close: async () => {
+      await process.status;
+      await process.stdin.close();
+    },
+  };
+}

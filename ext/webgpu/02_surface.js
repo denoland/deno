@@ -6,12 +6,13 @@
 /// <reference path="../web/lib.deno_web.d.ts" />
 /// <reference path="./lib.deno_webgpu.d.ts" />
 
-import { core, primordials } from "ext:core/mod.js";
-const {
+import { primordials } from "ext:core/mod.js";
+import {
   op_webgpu_surface_configure,
+  op_webgpu_surface_create,
   op_webgpu_surface_get_current_texture,
   op_webgpu_surface_present,
-} = core.ensureFastOps();
+} from "ext:core/ops";
 const {
   ObjectPrototypeIsPrototypeOf,
   Symbol,
@@ -175,7 +176,7 @@ class UnsafeWindowSurface {
   #surfaceRid;
 
   constructor(system, win, display) {
-    this.#surfaceRid = ops.op_webgpu_surface_create(system, win, display);
+    this.#surfaceRid = op_webgpu_surface_create(system, win, display);
   }
 
   getContext(context) {

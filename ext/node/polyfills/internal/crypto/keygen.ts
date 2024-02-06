@@ -29,8 +29,7 @@ import {
 import { Buffer } from "node:buffer";
 import { KeyFormat, KeyType } from "ext:deno_node/internal/crypto/types.ts";
 
-import { core } from "ext:core/mod.js";
-const {
+import {
   op_node_dh_generate,
   op_node_dh_generate_async,
   op_node_dh_generate_group,
@@ -43,13 +42,11 @@ const {
   op_node_ed25519_generate_async,
   op_node_generate_rsa,
   op_node_generate_rsa_async,
-  op_node_x25519_generate,
-  op_node_x25519_generate_async,
-} = core.ensureFastOps();
-const {
   op_node_generate_secret,
   op_node_generate_secret_async,
-} = core.ensureFastOps(true);
+  op_node_x25519_generate,
+  op_node_x25519_generate_async,
+} from "ext:core/ops";
 
 function validateGenerateKey(
   type: "hmac" | "aes",

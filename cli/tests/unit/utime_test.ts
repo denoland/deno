@@ -11,7 +11,7 @@ Deno.test(
   async function futimeSyncSuccess() {
     const testDir = await Deno.makeTempDir();
     const filename = testDir + "/file.txt";
-    const file = await Deno.open(filename, {
+    using file = await Deno.open(filename, {
       create: true,
       write: true,
     });
@@ -19,12 +19,32 @@ Deno.test(
     const atime = 1000;
     const mtime = 50000;
     await Deno.futime(file.rid, atime, mtime);
-    await Deno.fdatasync(file.rid);
+    await file.syncData();
 
     const fileInfo = Deno.statSync(filename);
     assertEquals(fileInfo.atime, new Date(atime * 1000));
     assertEquals(fileInfo.mtime, new Date(mtime * 1000));
-    file.close();
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, write: true } },
+  async function fsFileUtimeSyncSuccess() {
+    const testDir = await Deno.makeTempDir();
+    const filename = testDir + "/file.txt";
+    using file = await Deno.open(filename, {
+      create: true,
+      write: true,
+    });
+
+    const atime = 1000;
+    const mtime = 50000;
+    await file.utime(atime, mtime);
+    await file.syncData();
+
+    const fileInfo = Deno.statSync(filename);
+    assertEquals(fileInfo.atime, new Date(atime * 1000));
+    assertEquals(fileInfo.mtime, new Date(mtime * 1000));
   },
 );
 
@@ -33,7 +53,7 @@ Deno.test(
   function futimeSyncSuccess() {
     const testDir = Deno.makeTempDirSync();
     const filename = testDir + "/file.txt";
-    const file = Deno.openSync(filename, {
+    using file = Deno.openSync(filename, {
       create: true,
       write: true,
     });
@@ -41,12 +61,32 @@ Deno.test(
     const atime = 1000;
     const mtime = 50000;
     Deno.futimeSync(file.rid, atime, mtime);
-    Deno.fdatasyncSync(file.rid);
+    file.syncDataSync();
 
     const fileInfo = Deno.statSync(filename);
     assertEquals(fileInfo.atime, new Date(atime * 1000));
     assertEquals(fileInfo.mtime, new Date(mtime * 1000));
-    file.close();
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, write: true } },
+  function futimeSyncSuccess() {
+    const testDir = Deno.makeTempDirSync();
+    const filename = testDir + "/file.txt";
+    using file = Deno.openSync(filename, {
+      create: true,
+      write: true,
+    });
+
+    const atime = 1000;
+    const mtime = 50000;
+    file.utimeSync(atime, mtime);
+    file.syncDataSync();
+
+    const fileInfo = Deno.statSync(filename);
+    assertEquals(fileInfo.atime, new Date(atime * 1000));
+    assertEquals(fileInfo.mtime, new Date(mtime * 1000));
   },
 );
 

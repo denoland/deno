@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use clap::builder::styling::AnsiColor;
 use clap::builder::FalseyValueParser;
 use clap::value_parser;
 use clap::Arg;
@@ -300,6 +301,7 @@ pub struct VendorFlags {
 pub struct PublishFlags {
   pub token: Option<String>,
   pub dry_run: bool,
+  pub no_zap: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -405,6 +407,17 @@ pub enum CaData {
   Bytes(Vec<u8>),
 }
 
+#[derive(
+  Clone, Default, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize,
+)]
+pub struct UnstableConfig {
+  pub legacy_flag_enabled: bool, // --unstable
+  pub bare_node_builtins: bool,  // --unstable-bare-node-builts
+  pub byonm: bool,
+  pub sloppy_imports: bool,
+  pub features: Vec<String>, // --unstabe-kv --unstable-cron
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub struct Flags {
   /// Vector of CLI arguments - these are user script arguments, all Deno
@@ -460,12 +473,7 @@ pub struct Flags {
   pub reload: bool,
   pub seed: Option<u64>,
   pub strace_ops: Option<Vec<String>>,
-  pub unstable: bool,
-  pub unstable_bare_node_builtins: bool,
-  pub unstable_byonm: bool,
-  pub unstable_sloppy_imports: bool,
-  pub unstable_workspaces: bool,
-  pub unstable_features: Vec<String>,
+  pub unstable_config: UnstableConfig,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub v8_flags: Vec<String>,
 }
@@ -736,7 +744,7 @@ impl Flags {
             .to_owned();
           Some(p)
         } else if module_specifier.scheme() == "npm" {
-          Some(std::env::current_dir().unwrap())
+          Some(current_dir.to_path_buf())
         } else {
           None
         }
@@ -800,61 +808,82 @@ impl Flags {
   }
 }
 
-static ENV_VARIABLES_HELP: &str = r#"ENVIRONMENT VARIABLES:
-    DENO_AUTH_TOKENS     A semi-colon separated list of bearer tokens and
+static ENV_VARIABLES_HELP: &str = color_print::cstr!(
+  r#"<y>Environment variables:</>
+    <g>DENO_AUTH_TOKENS</>     A semi-colon separated list of bearer tokens and
                          hostnames to use when fetching remote modules from
                          private repositories
                          (e.g. "abcde12345@deno.land;54321edcba@github.com")
-    DENO_TLS_CA_STORE    Comma-separated list of order dependent certificate
+
+    <g>DENO_TLS_CA_STORE</>    Comma-separated list of order dependent certificate
                          stores. Possible values: "system", "mozilla".
                          Defaults to "mozilla".
-    DENO_CERT            Load certificate authority from PEM encoded file
-    DENO_DIR             Set the cache directory
-    DENO_INSTALL_ROOT    Set deno install's output directory
+
+    <g>DENO_CERT</>            Load certificate authority from PEM encoded file
+
+    <g>DENO_DIR</>             Set the cache directory
+
+    <g>DENO_INSTALL_ROOT</>    Set deno install's output directory
                          (defaults to $HOME/.deno/bin)
-    DENO_REPL_HISTORY    Set REPL history file path
+
+    <g>DENO_REPL_HISTORY</>    Set REPL history file path
                          History file is disabled when the value is empty
                          (defaults to $DENO_DIR/deno_history.txt)
-    DENO_NO_PACKAGE_JSON Disables auto-resolution of package.json
-    DENO_NO_PROMPT       Set to disable permission prompts on access
+
+    <g>DENO_NO_PACKAGE_JSON</> Disables auto-resolution of package.json
+
+    <g>DENO_NO_PROMPT</>       Set to disable permission prompts on access
                          (alternative to passing --no-prompt on invocation)
-    DENO_NO_UPDATE_CHECK Set to disable checking if a newer Deno version is
+
+    <g>DENO_NO_UPDATE_CHECK</> Set to disable checking if a newer Deno version is
                          available
-    DENO_V8_FLAGS        Set V8 command line options
-    DENO_WEBGPU_TRACE    Directory to use for wgpu traces
-    DENO_JOBS            Number of parallel workers used for the --parallel
+
+    <g>DENO_V8_FLAGS</>        Set V8 command line options
+
+    <g>DENO_WEBGPU_TRACE</>    Directory to use for wgpu traces
+
+    <g>DENO_JOBS</>            Number of parallel workers used for the --parallel
                          flag with the test subcommand. Defaults to number
                          of available CPUs.
-    HTTP_PROXY           Proxy address for HTTP requests
+
+    <g>HTTP_PROXY</>           Proxy address for HTTP requests
                          (module downloads, fetch)
-    HTTPS_PROXY          Proxy address for HTTPS requests
+
+    <g>HTTPS_PROXY</>          Proxy address for HTTPS requests
                          (module downloads, fetch)
-    NPM_CONFIG_REGISTRY  URL to use for the npm registry.
-    NO_COLOR             Set to disable color
-    NO_PROXY             Comma-separated list of hosts which do not use a proxy
-                         (module downloads, fetch)"#;
+
+    <g>NPM_CONFIG_REGISTRY</>  URL to use for the npm registry.
+
+    <g>NO_COLOR</>             Set to disable color
+
+    <g>NO_PROXY</>             Comma-separated list of hosts which do not use a proxy
+                         (module downloads, fetch)"#
+);
 
 static DENO_HELP: &str = concat!(
-  "A modern JavaScript and TypeScript runtime
+  color_print::cstr!("<g>A modern JavaScript and TypeScript runtime</>"),
+  "
 
 Docs: https://deno.land/manual@v",
   env!("CARGO_PKG_VERSION"),
-  "
+  color_print::cstr!(
+    "
 Modules: https://deno.land/std/ https://deno.land/x/
 Bugs: https://github.com/denoland/deno/issues
 
 To start the REPL:
 
-  deno
+  <g>deno</>
 
 To execute a script:
 
-  deno run https://examples.deno.land/hello-world.ts
+  <g>deno run https://examples.deno.land/hello-world.ts</>
 
 To evaluate code in the shell:
 
-  deno eval \"console.log(30933 + 404)\"
+  <g>deno eval \"console.log(30933 + 404)\"</>
 "
+  )
 );
 
 /// Main entry point for parsing deno's command line flags.
@@ -865,19 +894,20 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::error::Result<Flags> {
   let mut flags = Flags::default();
 
   if matches.get_flag("unstable") {
-    flags.unstable = true;
+    flags.unstable_config.legacy_flag_enabled = true;
   }
 
   for (name, _, _) in crate::UNSTABLE_GRANULAR_FLAGS {
     if matches.get_flag(&format!("unstable-{}", name)) {
-      flags.unstable_features.push(name.to_string());
+      flags.unstable_config.features.push(name.to_string());
     }
   }
 
-  flags.unstable_bare_node_builtins =
+  flags.unstable_config.bare_node_builtins =
     matches.get_flag("unstable-bare-node-builtins");
-  flags.unstable_byonm = matches.get_flag("unstable-byonm");
-  flags.unstable_sloppy_imports = matches.get_flag("unstable-sloppy-imports");
+  flags.unstable_config.byonm = matches.get_flag("unstable-byonm");
+  flags.unstable_config.sloppy_imports =
+    matches.get_flag("unstable-sloppy-imports");
 
   if matches.get_flag("quiet") {
     flags.log_level = Some(Level::Error);
@@ -964,7 +994,14 @@ fn clap_root() -> Command {
 
   let mut cmd = Command::new("deno")
     .bin_name("deno")
-    .color(ColorChoice::Never)
+    .styles(
+      clap::builder::Styles::styled()
+        .header(AnsiColor::Yellow.on_default())
+        .usage(AnsiColor::White.on_default())
+        .literal(AnsiColor::Green.on_default())
+        .placeholder(AnsiColor::Green.on_default())
+    )
+    .color(ColorChoice::Auto)
     .max_term_width(80)
     .version(crate::version::deno())
     .long_version(long_version)
@@ -1133,7 +1170,10 @@ fn bundle_subcommand() -> Command {
   Command::new("bundle")
     .about("Bundle module and dependencies into single file")
     .long_about(
-      "Output a single JavaScript file with all dependencies.
+      "⚠️ Warning: `deno bundle` is deprecated and will be removed in Deno 2.0.
+Use an alternative bundler like \"deno_emit\", \"esbuild\" or \"rollup\" instead.
+
+Output a single JavaScript file with all dependencies.
 
   deno bundle https://deno.land/std/http/file_server.ts file_server.bundle.js
 
@@ -1554,7 +1594,7 @@ This command has implicit access to all permissions (--allow-all).",
             .conflicts_with("ext")
             .long("ts")
             .short('T')
-            .help("deprecated: Treat eval input as TypeScript")
+            .help("deprecated: Use `--ext=ts` instead. The `--ts` and `-T` flags are deprecated and will be removed in Deno 2.0.")
             .action(ArgAction::SetTrue)
             .hide(true),
         )
@@ -2174,7 +2214,7 @@ Directory arguments are expanded to all contained files matching the glob
       Arg::new("jobs")
         .short('j')
         .long("jobs")
-        .help("deprecated: Number of parallel workers, defaults to number of available CPUs when no value is provided. Defaults to 1 when the option is not present.")
+        .help("deprecated: The `--jobs` flag is deprecated and will be removed in Deno 2.0. Use the `--parallel` flag with possibly the `DENO_JOBS` environment variable instead.")
         .hide(true)
         .num_args(0..=1)
         .value_parser(value_parser!(NonZeroUsize)),
@@ -2343,6 +2383,12 @@ fn publish_subcommand() -> Command {
         Arg::new("dry-run")
           .long("dry-run")
           .help("Prepare the package for publishing performing all checks and validations without uploading")
+          .action(ArgAction::SetTrue),
+      )
+      .arg(
+        Arg::new("no-zap")
+          .long("no-zap")
+          .help("Skip Zap compatibility validation")
           .action(ArgAction::SetTrue),
       )
     })
@@ -2720,15 +2766,6 @@ fn permission_args(app: Command) -> Command {
         .long("allow-all")
         .action(ArgAction::SetTrue)
         .help(ALLOW_ALL_HELP),
-    )
-    .arg(
-      Arg::new("prompt")
-        .long("prompt")
-        .action(ArgAction::SetTrue)
-        .hide(true)
-        .help(
-          "deprecated: Fallback to prompt if required permission wasn't passed",
-        ),
     )
     .arg(
       Arg::new("no-prompt")
@@ -3404,9 +3441,9 @@ fn eval_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 
   if as_typescript {
     eprintln!(
-      "{}",
+      "⚠️ {}",
       crate::colors::yellow(
-        "Warning: --ts/-T flag is deprecated. Use --ext=ts instead."
+        "Use `--ext=ts` instead. The `--ts` and `-T` flags are deprecated and will be removed in Deno 2.0."
       ),
     );
 
@@ -3690,8 +3727,8 @@ fn test_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     // deprecated though so it's not worth changing the code to use the log
     // crate here and this is only done for testing anyway.
     eprintln!(
-      "{}",
-      crate::colors::yellow("Warning: --jobs flag is deprecated. Use the --parallel flag with possibly the 'DENO_JOBS' environment variable."),
+      "⚠️ {}",
+      crate::colors::yellow("The `--jobs` flag is deprecated and will be removed in Deno 2.0.\nUse the `--parallel` flag with possibly the `DENO_JOBS` environment variable instead.\nLearn more at: https://docs.deno.com/runtime/manual/basics/env_variables"),
     );
     if let Some(value) = matches.remove_one::<NonZeroUsize>("jobs") {
       Some(value)
@@ -3787,6 +3824,7 @@ fn publish_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   flags.subcommand = DenoSubcommand::Publish(PublishFlags {
     token: matches.remove_one("token"),
     dry_run: matches.get_flag("dry-run"),
+    no_zap: matches.get_flag("no-zap"),
   });
 }
 
@@ -4199,7 +4237,10 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags::new_default(
           "script.ts".to_string()
         )),
-        unstable: true,
+        unstable_config: UnstableConfig {
+          legacy_flag_enabled: true,
+          ..Default::default()
+        },
         log_level: Some(Level::Error),
         ..Flags::default()
       }
@@ -7054,7 +7095,10 @@ mod tests {
           reporter: Default::default(),
           junit_path: None,
         }),
-        unstable: true,
+        unstable_config: UnstableConfig {
+          legacy_flag_enabled: true,
+          ..Default::default()
+        },
         no_prompt: true,
         no_npm: true,
         no_remote: true,
@@ -8189,7 +8233,10 @@ mod tests {
           cwd: None,
           task: Some("build".to_string()),
         }),
-        unstable: true,
+        unstable_config: UnstableConfig {
+          legacy_flag_enabled: true,
+          ..Default::default()
+        },
         log_level: Some(log::Level::Error),
         ..Flags::default()
       }
@@ -8286,7 +8333,10 @@ mod tests {
           },
           watch: Default::default(),
         }),
-        unstable: true,
+        unstable_config: UnstableConfig {
+          legacy_flag_enabled: true,
+          ..Default::default()
+        },
         no_npm: true,
         no_remote: true,
         type_check_mode: TypeCheckMode::Local,
@@ -8430,7 +8480,7 @@ mod tests {
 
   #[test]
   fn jupyter() {
-    let r = flags_from_vec(svec!["deno", "jupyter", "--unstable"]);
+    let r = flags_from_vec(svec!["deno", "jupyter"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -8439,12 +8489,11 @@ mod tests {
           kernel: false,
           conn_file: None,
         }),
-        unstable: true,
         ..Flags::default()
       }
     );
 
-    let r = flags_from_vec(svec!["deno", "jupyter", "--unstable", "--install"]);
+    let r = flags_from_vec(svec!["deno", "jupyter", "--install"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -8453,7 +8502,6 @@ mod tests {
           kernel: false,
           conn_file: None,
         }),
-        unstable: true,
         ..Flags::default()
       }
     );
@@ -8461,7 +8509,6 @@ mod tests {
     let r = flags_from_vec(svec![
       "deno",
       "jupyter",
-      "--unstable",
       "--kernel",
       "--conn",
       "path/to/conn/file"
@@ -8474,7 +8521,6 @@ mod tests {
           kernel: true,
           conn_file: Some(PathBuf::from("path/to/conn/file")),
         }),
-        unstable: true,
         ..Flags::default()
       }
     );

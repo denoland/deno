@@ -6,6 +6,7 @@ use std::fmt;
 use std::fmt::Write;
 
 use deno_ast::ModuleSpecifier;
+use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
@@ -405,7 +406,7 @@ impl<'a> GraphDisplayContext<'a> {
     graph: &'a ModuleGraph,
     npm_resolver: &'a dyn CliNpmResolver,
     writer: &mut TWrite,
-  ) -> fmt::Result {
+  ) -> Result<(), AnyError> {
     let npm_info = match npm_resolver.as_managed() {
       Some(npm_resolver) => {
         let npm_snapshot = npm_resolver.snapshot();
@@ -421,20 +422,19 @@ impl<'a> GraphDisplayContext<'a> {
     .into_writer(writer)
   }
 
-  fn into_writer<TWrite: Write>(mut self, writer: &mut TWrite) -> fmt::Result {
+  fn into_writer<TWrite: Write>(
+    mut self,
+    writer: &mut TWrite,
+  ) -> Result<(), AnyError> {
     if self.graph.roots.is_empty() || self.graph.roots.len() > 1 {
-      return writeln!(
-        writer,
-        "{} displaying graphs that have multiple roots is not supported.",
-        colors::red("error:")
-      );
+      bail!("displaying graphs that have multiple roots is not supported.");
     }
 
     let root_specifier = self.graph.resolve(&self.graph.roots[0]);
     match self.graph.try_get(&root_specifier) {
       Ok(Some(root)) => {
         let maybe_cache_info = match root {
-          Module::Esm(module) => module.maybe_cache_info.as_ref(),
+          Module::Js(module) => module.maybe_cache_info.as_ref(),
           Module::Json(module) => module.maybe_cache_info.as_ref(),
           Module::Node(_) | Module::Npm(_) | Module::External(_) => None,
         };
@@ -464,7 +464,7 @@ impl<'a> GraphDisplayContext<'a> {
             )?;
           }
         }
-        if let Some(module) = root.esm() {
+        if let Some(module) = root.js() {
           writeln!(writer, "{} {}", colors::bold("type:"), module.media_type)?;
         }
         let total_modules_size = self
@@ -472,7 +472,7 @@ impl<'a> GraphDisplayContext<'a> {
           .modules()
           .map(|m| {
             let size = match m {
-              Module::Esm(module) => module.size(),
+              Module::Js(module) => module.size(),
               Module::Json(module) => module.size(),
               Module::Node(_) | Module::Npm(_) | Module::External(_) => 0,
             };
@@ -508,21 +508,13 @@ impl<'a> GraphDisplayContext<'a> {
       }
       Err(err) => {
         if let ModuleError::Missing(_, _) = *err {
-          writeln!(
-            writer,
-            "{} module could not be found",
-            colors::red("error:")
-          )
+          bail!("module could not be found");
         } else {
-          writeln!(writer, "{} {:#}", colors::red("error:"), err)
+          bail!("{:#}", err);
         }
       }
       Ok(None) => {
-        writeln!(
-          writer,
-          "{} an internal error occurred",
-          colors::red("error:")
-        )
+        bail!("an internal error occurred");
       }
     }
   }
@@ -579,7 +571,7 @@ impl<'a> GraphDisplayContext<'a> {
           self.npm_info.package_sizes.get(&package.id).copied()
         }
         Specifier(_) => match module {
-          Module::Esm(module) => Some(module.size() as u64),
+          Module::Js(module) => Some(module.size() as u64),
           Module::Json(module) => Some(module.size() as u64),
           Module::Node(_) | Module::Npm(_) | Module::External(_) => None,
         },
@@ -595,7 +587,7 @@ impl<'a> GraphDisplayContext<'a> {
           tree_node.children.extend(self.build_npm_deps(package));
         }
         Specifier(_) => {
-          if let Some(module) = module.esm() {
+          if let Some(module) = module.js() {
             if let Some(types_dep) = &module.maybe_types_dependency {
               if let Some(child) =
                 self.build_resolved_info(&types_dep.dependency, true)

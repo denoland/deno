@@ -4,14 +4,11 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { core } from "ext:core/mod.js";
-const {
+import {
   op_fetch_response_upgrade,
-  op_node_http_request,
-} = core.ensureFastOps();
-// TODO(bartlomieju): this ops is also used in `ext/fetch/26_fetch.js`.
-const {
   op_fetch_send,
-} = core.ensureFastOps(true);
+  op_node_http_request,
+} from "ext:core/ops";
 
 import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
 import { setTimeout } from "ext:deno_web/02_timers.js";
@@ -1575,7 +1572,7 @@ export class ServerImpl extends EventEmitter {
 
   #addr: Deno.NetAddr;
   #hasClosed = false;
-  #server: Deno.Server;
+  #server: Deno.HttpServer;
   #unref = false;
   #ac?: AbortController;
   #serveDeferred: ReturnType<typeof Promise.withResolvers<void>>;

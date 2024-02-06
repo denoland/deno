@@ -9,11 +9,7 @@ use crate::args::StorageKeyResolver;
 use crate::cache::Caches;
 use crate::cache::DenoDirProvider;
 use crate::cache::NodeAnalysisCache;
-use crate::file_fetcher::get_source_from_data_url;
 use crate::http_util::HttpClient;
-use crate::module_loader::CjsResolutionStore;
-use crate::module_loader::CliNodeResolver;
-use crate::module_loader::NpmModuleLoader;
 use crate::node::CliCjsCodeAnalyzer;
 use crate::npm::create_cli_npm_resolver;
 use crate::npm::CliNpmResolverByonmCreateOptions;
@@ -22,7 +18,10 @@ use crate::npm::CliNpmResolverManagedCreateOptions;
 use crate::npm::CliNpmResolverManagedPackageJsonInstallerOption;
 use crate::npm::CliNpmResolverManagedSnapshotOption;
 use crate::npm::NpmCacheDir;
+use crate::resolver::CjsResolutionStore;
+use crate::resolver::CliNodeResolver;
 use crate::resolver::MappedSpecifierResolver;
+use crate::resolver::NpmModuleLoader;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 use crate::util::v8::construct_v8_flags;
@@ -53,7 +52,6 @@ use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::WorkerLogLevel;
 use deno_semver::npm::NpmPackageReqReference;
 use import_map::parse_from_json;
-use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -150,16 +148,26 @@ impl ModuleLoader for EmbeddedModuleLoader {
     maybe_referrer: Option<&ModuleSpecifier>,
     is_dynamic: bool,
     _requested_module_type: RequestedModuleType,
-  ) -> Pin<Box<deno_core::ModuleSourceFuture>> {
-    let is_data_uri = get_source_from_data_url(original_specifier).ok();
-    if let Some((source, _)) = is_data_uri {
-      return Box::pin(deno_core::futures::future::ready(Ok(
+  ) -> deno_core::ModuleLoadResponse {
+    if original_specifier.scheme() == "data" {
+      let data_url_text =
+        match deno_graph::source::RawDataUrl::parse(original_specifier)
+          .and_then(|url| url.decode().map_err(|err| err.into()))
+        {
+          Ok(response) => response,
+          Err(err) => {
+            return deno_core::ModuleLoadResponse::Sync(Err(type_error(
+              format!("{:#}", err),
+            )));
+          }
+        };
+      return deno_core::ModuleLoadResponse::Sync(Ok(
         deno_core::ModuleSource::new(
           deno_core::ModuleType::JavaScript,
-          ModuleSourceCode::String(source.into()),
+          ModuleSourceCode::String(data_url_text.into()),
           original_specifier,
         ),
-      )));
+      ));
     }
 
     let permissions = if is_dynamic {
@@ -175,7 +183,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
       )
     {
       return match result {
-        Ok(code_source) => Box::pin(deno_core::futures::future::ready(Ok(
+        Ok(code_source) => deno_core::ModuleLoadResponse::Sync(Ok(
           deno_core::ModuleSource::new_with_redirect(
             match code_source.media_type {
               MediaType::Json => ModuleType::Json,
@@ -185,45 +193,48 @@ impl ModuleLoader for EmbeddedModuleLoader {
             original_specifier,
             &code_source.found_url,
           ),
-        ))),
-        Err(err) => Box::pin(deno_core::futures::future::ready(Err(err))),
+        )),
+        Err(err) => deno_core::ModuleLoadResponse::Sync(Err(err)),
       };
     }
 
     let Some(module) =
       self.shared.eszip.get_module(original_specifier.as_str())
     else {
-      return Box::pin(deno_core::futures::future::ready(Err(type_error(
-        format!("Module not found: {}", original_specifier),
+      return deno_core::ModuleLoadResponse::Sync(Err(type_error(format!(
+        "Module not found: {}",
+        original_specifier
       ))));
     };
     let original_specifier = original_specifier.clone();
     let found_specifier =
       ModuleSpecifier::parse(&module.specifier).expect("invalid url in eszip");
 
-    async move {
-      let code = module.source().await.ok_or_else(|| {
-        type_error(format!("Module not found: {}", original_specifier))
-      })?;
-      let code = arc_u8_to_arc_str(code)
-        .map_err(|_| type_error("Module source is not utf-8"))?;
-      Ok(deno_core::ModuleSource::new_with_redirect(
-        match module.kind {
-          eszip::ModuleKind::JavaScript => ModuleType::JavaScript,
-          eszip::ModuleKind::Json => ModuleType::Json,
-          eszip::ModuleKind::Jsonc => {
-            return Err(type_error("jsonc modules not supported"))
-          }
-          eszip::ModuleKind::OpaqueData => {
-            unreachable!();
-          }
-        },
-        ModuleSourceCode::String(code.into()),
-        &original_specifier,
-        &found_specifier,
-      ))
-    }
-    .boxed_local()
+    deno_core::ModuleLoadResponse::Async(
+      async move {
+        let code = module.source().await.ok_or_else(|| {
+          type_error(format!("Module not found: {}", original_specifier))
+        })?;
+        let code = arc_u8_to_arc_str(code)
+          .map_err(|_| type_error("Module source is not utf-8"))?;
+        Ok(deno_core::ModuleSource::new_with_redirect(
+          match module.kind {
+            eszip::ModuleKind::JavaScript => ModuleType::JavaScript,
+            eszip::ModuleKind::Json => ModuleType::Json,
+            eszip::ModuleKind::Jsonc => {
+              return Err(type_error("jsonc modules not supported"))
+            }
+            eszip::ModuleKind::OpaqueData => {
+              unreachable!();
+            }
+          },
+          ModuleSourceCode::String(code.into()),
+          &original_specifier,
+          &found_specifier,
+        ))
+      }
+      .boxed_local(),
+    )
   }
 }
 
@@ -487,10 +498,10 @@ pub async fn run(
     // TODO(bartlomieju): enable, once we deprecate `--unstable` in favor
     // of granular --unstable-* flags.
     // feature_checker.set_warn_cb(Box::new(crate::unstable_warn_cb));
-    if metadata.unstable {
+    if metadata.unstable_config.legacy_flag_enabled {
       checker.enable_legacy_unstable();
     }
-    for feature in metadata.unstable_features {
+    for feature in metadata.unstable_config.features {
       // `metadata` is valid for the whole lifetime of the program, so we
       // can leak the string here.
       checker.enable_feature(feature.leak());
@@ -535,11 +546,14 @@ pub async fn run(
       seed: metadata.seed,
       unsafely_ignore_certificate_errors: metadata
         .unsafely_ignore_certificate_errors,
-      unstable: metadata.unstable,
+      unstable: metadata.unstable_config.legacy_flag_enabled,
       maybe_root_package_json_deps: package_json_deps_provider.deps().cloned(),
     },
     None,
-    metadata.disable_deprecated_api_warning,
+    // TODO(bartlomieju): temporarily disabled
+    // metadata.disable_deprecated_api_warning,
+    true,
+    false,
   );
 
   v8_set_flags(construct_v8_flags(&[], &metadata.v8_flags, vec![]));

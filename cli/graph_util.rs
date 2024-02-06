@@ -169,8 +169,8 @@ pub fn graph_valid(
 pub fn graph_lock_or_exit(graph: &ModuleGraph, lockfile: &mut Lockfile) {
   for module in graph.modules() {
     let source = match module {
-      Module::Esm(module) if module.media_type.is_declaration() => continue, // skip declaration files
-      Module::Esm(module) => &module.source,
+      Module::Js(module) if module.media_type.is_declaration() => continue, // skip declaration files
+      Module::Js(module) => &module.source,
       Module::Json(module) => &module.source,
       Module::Node(_) | Module::Npm(_) | Module::External(_) => continue,
     };
@@ -504,6 +504,10 @@ impl ModuleGraphBuilder {
             format!("jsr:{}", to),
           );
         }
+        for (name, deps) in graph.packages.package_deps() {
+          lockfile
+            .insert_package_deps(name.to_string(), deps.map(|s| s.to_string()));
+        }
       }
     }
 
@@ -554,7 +558,7 @@ pub fn error_for_any_npm_specifier(
       Module::Node(module) => {
         bail!("Node specifiers have not yet been implemented for this subcommand (https://github.com/denoland/deno/issues/15960). Found: node:{}", module.module_name)
       }
-      Module::Esm(_) | Module::Json(_) | Module::External(_) => {}
+      Module::Js(_) | Module::Json(_) | Module::External(_) => {}
     }
   }
   Ok(())

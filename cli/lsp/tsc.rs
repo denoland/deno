@@ -3057,7 +3057,11 @@ fn get_parameters_from_parts(parts: &[SymbolDisplayPart]) -> Vec<String> {
           matches!(parts.get(idx + 1), Some(next) if next.text == "?");
         // Skip `this` and optional parameters.
         if !is_optional && part.text != "this" {
-          parameters.push(part.text.clone());
+          parameters.push(format!(
+            "${{{}:{}}}",
+            parameters.len() + 1,
+            &part.text
+          ));
         }
       }
     } else if part.kind == "punctuation" {
@@ -3165,7 +3169,9 @@ impl CompletionEntryDetails {
       specifier,
       language_server,
     )?;
+    let mut insert_text_format = original_item.insert_text_format;
     let insert_text = if data.use_code_snippet {
+      insert_text_format = Some(lsp::InsertTextFormat::SNIPPET);
       Some(format!(
         "{}({})",
         original_item
@@ -3186,6 +3192,7 @@ impl CompletionEntryDetails {
       text_edit,
       additional_text_edits,
       insert_text,
+      insert_text_format,
       // NOTE(bartlomieju): it's not entirely clear to me why we need to do that,
       // but when `completionItem/resolve` is called, we get a list of commit chars
       // even though we might have returned an empty list in `completion` request.

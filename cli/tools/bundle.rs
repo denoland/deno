@@ -21,11 +21,8 @@ pub async fn bundle(
   bundle_flags: BundleFlags,
 ) -> Result<(), AnyError> {
   log::info!(
-    "{} \"deno bundle\" is deprecated and will be removed in the future.",
-    colors::yellow("Warning"),
-  );
-  log::info!(
-    "Use alternative bundlers like \"deno_emit\", \"esbuild\" or \"rollup\" instead."
+    "{}",
+    colors::yellow("⚠️ Warning: `deno bundle` is deprecated and will be removed in Deno 2.0.\nUse an alternative bundler like \"deno_emit\", \"esbuild\" or \"rollup\" instead."),
   );
 
   if let Some(watch_flags) = &bundle_flags.watch {
@@ -76,7 +73,7 @@ async fn bundle_action(
     .specifiers()
     .filter_map(|(_, r)| {
       r.ok().and_then(|module| match module {
-        Module::Esm(m) => m.specifier.to_file_path().ok(),
+        Module::Js(m) => m.specifier.to_file_path().ok(),
         Module::Json(m) => m.specifier.to_file_path().ok(),
         // nothing to watch
         Module::Node(_) | Module::Npm(_) | Module::External(_) => None,

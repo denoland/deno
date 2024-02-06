@@ -212,6 +212,7 @@ pub fn create_runtime_snapshot(
       Default::default(),
     ),
     deno_webgpu::deno_webgpu::init_ops_and_esm(),
+    deno_canvas::deno_canvas::init_ops_and_esm(),
     deno_fetch::deno_fetch::init_ops_and_esm::<Permissions>(Default::default()),
     deno_cache::deno_cache::init_ops_and_esm::<SqliteBackedCache>(None),
     deno_websocket::deno_websocket::init_ops_and_esm::<Permissions>(
@@ -252,6 +253,7 @@ pub fn create_runtime_snapshot(
     ops::tty::deno_tty::init_ops(),
     ops::http::deno_http_runtime::init_ops(),
     ops::bootstrap::deno_bootstrap::init_ops(Some(snapshot_options)),
+    ops::web_worker::deno_web_worker::init_ops(),
   ];
 
   for extension in &mut extensions {

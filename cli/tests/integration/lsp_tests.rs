@@ -856,7 +856,8 @@ fn lsp_did_change_deno_configuration_notification() {
     res,
     Some(json!({
       "changes": [{
-        "uri": temp_dir.uri().join("deno.json").unwrap(),
+        "scopeUri": temp_dir.uri(),
+        "fileUri": temp_dir.uri().join("deno.json").unwrap(),
         "type": "added",
         "configurationType": "denoJson"
       }],
@@ -879,7 +880,8 @@ fn lsp_did_change_deno_configuration_notification() {
     res,
     Some(json!({
       "changes": [{
-        "uri": temp_dir.uri().join("deno.json").unwrap(),
+        "scopeUri": temp_dir.uri(),
+        "fileUri": temp_dir.uri().join("deno.json").unwrap(),
         "type": "changed",
         "configurationType": "denoJson"
       }],
@@ -899,7 +901,8 @@ fn lsp_did_change_deno_configuration_notification() {
     res,
     Some(json!({
       "changes": [{
-        "uri": temp_dir.uri().join("deno.json").unwrap(),
+        "scopeUri": temp_dir.uri(),
+        "fileUri": temp_dir.uri().join("deno.json").unwrap(),
         "type": "removed",
         "configurationType": "denoJson"
       }],
@@ -919,7 +922,8 @@ fn lsp_did_change_deno_configuration_notification() {
     res,
     Some(json!({
       "changes": [{
-        "uri": temp_dir.uri().join("package.json").unwrap(),
+        "scopeUri": temp_dir.uri(),
+        "fileUri": temp_dir.uri().join("package.json").unwrap(),
         "type": "added",
         "configurationType": "packageJson"
       }],
@@ -939,7 +943,8 @@ fn lsp_did_change_deno_configuration_notification() {
     res,
     Some(json!({
       "changes": [{
-        "uri": temp_dir.uri().join("package.json").unwrap(),
+        "scopeUri": temp_dir.uri(),
+        "fileUri": temp_dir.uri().join("package.json").unwrap(),
         "type": "changed",
         "configurationType": "packageJson"
       }],
@@ -959,7 +964,8 @@ fn lsp_did_change_deno_configuration_notification() {
     res,
     Some(json!({
       "changes": [{
-        "uri": temp_dir.uri().join("package.json").unwrap(),
+        "scopeUri": temp_dir.uri(),
+        "fileUri": temp_dir.uri().join("package.json").unwrap(),
         "type": "removed",
         "configurationType": "packageJson"
       }],
@@ -3289,7 +3295,7 @@ fn lsp_code_lens() {
       },
       "command": {
         "title": "1 reference",
-        "command": "deno.showReferences",
+        "command": "deno.client.showReferences",
         "arguments": [
           "file:///a/file.ts",
           { "line": 0, "character": 6 },
@@ -3356,7 +3362,7 @@ fn lsp_code_lens() {
       },
       "command": {
         "title": "2 references",
-        "command": "deno.showReferences",
+        "command": "deno.client.showReferences",
         "arguments": [
           "file:///a/file.ts",
           { "line": 15, "character": 6 },
@@ -3484,7 +3490,7 @@ fn lsp_code_lens_impl() {
       },
       "command": {
         "title": "1 implementation",
-        "command": "deno.showReferences",
+        "command": "deno.client.showReferences",
         "arguments": [
           "file:///a/file.ts",
           { "line": 0, "character": 10 },
@@ -3562,7 +3568,7 @@ fn lsp_code_lens_test() {
       },
       "command": {
         "title": "▶︎ Run Test",
-        "command": "deno.test",
+        "command": "deno.client.test",
         "arguments": [
           "file:///a/file.ts",
           "test a",
@@ -3576,7 +3582,7 @@ fn lsp_code_lens_test() {
       },
       "command": {
         "title": "Debug",
-        "command": "deno.test",
+        "command": "deno.client.test",
         "arguments": [
           "file:///a/file.ts",
           "test a",
@@ -3590,7 +3596,7 @@ fn lsp_code_lens_test() {
       },
       "command": {
         "title": "▶︎ Run Test",
-        "command": "deno.test",
+        "command": "deno.client.test",
         "arguments": [
           "file:///a/file.ts",
           "test b",
@@ -3604,7 +3610,7 @@ fn lsp_code_lens_test() {
       },
       "command": {
         "title": "Debug",
-        "command": "deno.test",
+        "command": "deno.client.test",
         "arguments": [
           "file:///a/file.ts",
           "test b",
@@ -3618,7 +3624,7 @@ fn lsp_code_lens_test() {
       },
       "command": {
         "title": "▶︎ Run Test",
-        "command": "deno.test",
+        "command": "deno.client.test",
         "arguments": [
           "file:///a/file.ts",
           "test c",
@@ -3632,7 +3638,7 @@ fn lsp_code_lens_test() {
       },
       "command": {
         "title": "Debug",
-        "command": "deno.test",
+        "command": "deno.client.test",
         "arguments": [
           "file:///a/file.ts",
           "test c",
@@ -3646,7 +3652,7 @@ fn lsp_code_lens_test() {
       },
       "command": {
         "title": "▶︎ Run Test",
-        "command": "deno.test",
+        "command": "deno.client.test",
         "arguments": [
           "file:///a/file.ts",
           "test d",
@@ -3660,7 +3666,7 @@ fn lsp_code_lens_test() {
       },
       "command": {
         "title": "Debug",
-        "command": "deno.test",
+        "command": "deno.client.test",
         "arguments": [
           "file:///a/file.ts",
           "test d",
@@ -3674,7 +3680,7 @@ fn lsp_code_lens_test() {
       },
       "command": {
         "title": "▶︎ Run Test",
-        "command": "deno.test",
+        "command": "deno.client.test",
         "arguments": [
           "file:///a/file.ts",
           "test e",
@@ -3688,7 +3694,7 @@ fn lsp_code_lens_test() {
       },
       "command": {
         "title": "Debug",
-        "command": "deno.test",
+        "command": "deno.client.test",
         "arguments": [
           "file:///a/file.ts",
           "test e",
@@ -3702,7 +3708,7 @@ fn lsp_code_lens_test() {
       },
       "command": {
         "title": "▶︎ Run Test",
-        "command": "deno.test",
+        "command": "deno.client.test",
         "arguments": [
           "file:///a/file.ts",
           "test f",
@@ -3716,7 +3722,7 @@ fn lsp_code_lens_test() {
       },
       "command": {
         "title": "Debug",
-        "command": "deno.test",
+        "command": "deno.client.test",
         "arguments": [
           "file:///a/file.ts",
           "test f",
@@ -3730,7 +3736,7 @@ fn lsp_code_lens_test() {
       },
       "command": {
         "title": "▶︎ Run Test",
-        "command": "deno.test",
+        "command": "deno.client.test",
         "arguments": [
           "file:///a/file.ts",
           "test g",
@@ -3744,7 +3750,7 @@ fn lsp_code_lens_test() {
       },
       "command": {
         "title": "Debug",
-        "command": "deno.test",
+        "command": "deno.client.test",
         "arguments": [
           "file:///a/file.ts",
           "test g",
@@ -3758,7 +3764,7 @@ fn lsp_code_lens_test() {
       },
       "command": {
         "title": "▶︎ Run Test",
-        "command": "deno.test",
+        "command": "deno.client.test",
         "arguments": [
           "file:///a/file.ts",
           "test h",
@@ -3772,7 +3778,7 @@ fn lsp_code_lens_test() {
       },
       "command": {
         "title": "Debug",
-        "command": "deno.test",
+        "command": "deno.client.test",
         "arguments": [
           "file:///a/file.ts",
           "test h",
@@ -4937,6 +4943,73 @@ fn lsp_cache_on_save() {
   assert_eq!(client.read_diagnostics().all(), vec![]);
 
   client.shutdown();
+}
+
+// Regression test for https://github.com/denoland/deno/issues/22122.
+#[test]
+fn lsp_cache_then_definition() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"import "http://localhost:4545/run/002_hello.ts";"#,
+    },
+  }));
+  // Prior to the fix, this would cause a faulty memoization that maps the
+  // URL "http://localhost:4545/run/002_hello.ts" to itself, preventing it from
+  // being reverse-mapped to "deno:/http/localhost%3A4545/run/002_hello.ts" on
+  // "textDocument/definition" request.
+  client.write_request(
+    "workspace/executeCommand",
+    json!({
+      "command": "deno.cache",
+      "arguments": [
+        ["http://localhost:4545/run/002_hello.ts"],
+        temp_dir.uri().join("file.ts").unwrap(),
+      ],
+    }),
+  );
+  let res = client.write_request(
+    "textDocument/definition",
+    json!({
+      "textDocument": { "uri": temp_dir.uri().join("file.ts").unwrap() },
+      "position": { "line": 0, "character": 8 },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([{
+      "targetUri": "deno:/http/localhost%3A4545/run/002_hello.ts",
+      "targetRange": {
+        "start": {
+          "line": 0,
+          "character": 0,
+        },
+        "end": {
+          "line": 1,
+          "character": 0,
+        },
+      },
+      "targetSelectionRange": {
+        "start": {
+          "line": 0,
+          "character": 0,
+        },
+        "end": {
+          "line": 1,
+          "character": 0,
+        },
+      },
+    }]),
+  );
 }
 
 #[test]
@@ -6450,6 +6523,7 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
     "imports": {
       "print_hello": "http://localhost:4545/subdir/print_hello.ts",
       "chalk": "npm:chalk@~5",
+      "nested/": "npm:/@denotest/types-exports-subpaths@1/nested/",
       "types-exports-subpaths/": "npm:/@denotest/types-exports-subpaths@1/"
     }
   }"#;
@@ -6470,6 +6544,7 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
           "import _test1 from 'npm:chalk@^5.0';\n",
           "import chalk from 'npm:chalk@~5';\n",
           "import chalk from 'npm:chalk@~5';\n",
+          "import {entryB} from 'npm:@denotest/types-exports-subpaths@1/nested/entry-b';\n",
           "import {printHello} from 'print_hello';\n",
           "\n",
         ),
@@ -6483,6 +6558,7 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
       "arguments": [
         [
           "npm:@denotest/types-exports-subpaths@1/client",
+          "npm:@denotest/types-exports-subpaths@1/nested/entry-b",
           "npm:chalk@^5.0",
           "npm:chalk@~5",
           "http://localhost:4545/subdir/print_hello.ts",
@@ -6821,6 +6897,54 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
         }]
       }
     }])
+  );
+
+  // try auto-import with npm package with sub-path on value side of import map
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/nested_path.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "entry",
+    }
+  }));
+  let list = client.get_completion_list(
+    "file:///a/nested_path.ts",
+    (0, 5),
+    json!({ "triggerKind": 1 }),
+  );
+  assert!(!list.is_incomplete);
+  let item = list
+    .items
+    .iter()
+    .find(|item| item.label == "entryB")
+    .unwrap();
+
+  let res = client.write_request("completionItem/resolve", item);
+  assert_eq!(
+    res,
+    json!({
+      "label": "entryB",
+      "labelDetails": {
+        "description": "nested/entry-b",
+      },
+      "kind": 3,
+      "detail": "function entryB(): \"b\"",
+      "documentation": {
+        "kind": "markdown",
+        "value": ""
+      },
+      "sortText": "￿16_0",
+      "additionalTextEdits": [
+        {
+          "range": {
+            "start": { "line": 0, "character": 0 },
+            "end": { "line": 0, "character": 0 }
+          },
+          "newText": "import { entryB } from \"nested/entry-b\";\n\n"
+        }
+      ]
+    })
   );
 }
 
@@ -8980,8 +9104,8 @@ fn lsp_completions_complete_function_calls() {
         "value": "Calls a defined callback function on each element of an array, and returns an array that contains the results.\n\n*@param* - callbackfn A function that accepts up to three arguments. The map method calls the callbackfn function one time for each element in the array.*@param* - thisArg An object to which the this keyword can refer in the callbackfn function. If thisArg is omitted, undefined is used as the this value."
       },
       "sortText": "1",
-      "insertText": "map(callbackfn)",
-      "insertTextFormat": 1
+      "insertText": "map(${1:callbackfn})",
+      "insertTextFormat": 2,
     })
   );
   client.shutdown();
@@ -9008,12 +9132,27 @@ fn lsp_workspace_symbol() {
       "text": "export class B {\n  fieldC: string;\n  fieldD: string;\n}\n",
     }
   }));
-  let res = client.write_request(
+  let mut res = client.write_request(
     "workspace/symbol",
     json!({
       "query": "field"
     }),
   );
+
+  // Replace `range` fields with `null` values. These are not important
+  // for assertion and require to be updated if we change unstable APIs.
+  for obj in res.as_array_mut().unwrap().iter_mut() {
+    *obj
+      .as_object_mut()
+      .unwrap()
+      .get_mut("location")
+      .unwrap()
+      .as_object_mut()
+      .unwrap()
+      .get_mut("range")
+      .unwrap() = Value::Null;
+  }
+
   assert_eq!(
     res,
     json!([
@@ -9022,16 +9161,7 @@ fn lsp_workspace_symbol() {
         "kind": 8,
         "location": {
           "uri": "file:///a/file.ts",
-          "range": {
-            "start": {
-              "line": 1,
-              "character": 2
-            },
-            "end": {
-              "line": 1,
-              "character": 17
-            }
-          }
+          "range": null,
         },
         "containerName": "A"
       },
@@ -9040,16 +9170,7 @@ fn lsp_workspace_symbol() {
         "kind": 8,
         "location": {
           "uri": "file:///a/file.ts",
-          "range": {
-            "start": {
-              "line": 2,
-              "character": 2
-            },
-            "end": {
-              "line": 2,
-              "character": 17
-            }
-          }
+          "range": null,
         },
         "containerName": "A"
       },
@@ -9058,16 +9179,7 @@ fn lsp_workspace_symbol() {
         "kind": 8,
         "location": {
           "uri": "file:///a/file_01.ts",
-          "range": {
-            "start": {
-              "line": 1,
-              "character": 2
-            },
-            "end": {
-              "line": 1,
-              "character": 17
-            }
-          }
+          "range": null,
         },
         "containerName": "B"
       },
@@ -9076,16 +9188,7 @@ fn lsp_workspace_symbol() {
         "kind": 8,
         "location": {
           "uri": "file:///a/file_01.ts",
-          "range": {
-            "start": {
-              "line": 2,
-              "character": 2
-            },
-            "end": {
-              "line": 2,
-              "character": 17
-            }
-          }
+          "range": null,
         },
         "containerName": "B"
       },
@@ -9094,16 +9197,7 @@ fn lsp_workspace_symbol() {
         "kind": 6,
         "location": {
           "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": {
-            "start": {
-              "line": 3165,
-              "character": 4
-            },
-            "end": {
-              "line": 3165,
-              "character": 55
-            }
-          }
+          "range": null,
         },
         "containerName": "CalendarProtocol"
       },
@@ -9112,16 +9206,7 @@ fn lsp_workspace_symbol() {
         "kind": 6,
         "location": {
           "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": {
-            "start": {
-              "line": 3335,
-              "character": 4
-            },
-            "end": {
-              "line": 3335,
-              "character": 47
-            }
-          }
+          "range": null,
         },
         "containerName": "Calendar"
       },
@@ -9130,16 +9215,7 @@ fn lsp_workspace_symbol() {
         "kind": 11,
         "location": {
           "uri": "deno:/asset/lib.decorators.d.ts",
-          "range": {
-            "start": {
-              "line": 343,
-              "character": 0
-            },
-            "end": {
-              "line": 385,
-              "character": 1
-            }
-          }
+          "range": null,
         },
         "containerName": ""
       },
@@ -9148,16 +9224,7 @@ fn lsp_workspace_symbol() {
         "kind": 6,
         "location": {
           "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": {
-            "start": {
-              "line": 3143,
-              "character": 4
-            },
-            "end": {
-              "line": 3146,
-              "character": 26
-            }
-          }
+          "range": null,
         },
         "containerName": "CalendarProtocol"
       },
@@ -9166,16 +9233,7 @@ fn lsp_workspace_symbol() {
         "kind": 6,
         "location": {
           "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": {
-            "start": {
-              "line": 3313,
-              "character": 4
-            },
-            "end": {
-              "line": 3316,
-              "character": 26
-            }
-          }
+          "range": null,
         },
         "containerName": "Calendar"
       },
@@ -9184,16 +9242,7 @@ fn lsp_workspace_symbol() {
         "kind": 6,
         "location": {
           "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": {
-            "start": {
-              "line": 3439,
-              "character": 4
-            },
-            "end": {
-              "line": 3439,
-              "character": 39
-            }
-          }
+          "range": null,
         },
         "containerName": "PlainDate"
       },
@@ -9202,16 +9251,7 @@ fn lsp_workspace_symbol() {
         "kind": 6,
         "location": {
           "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": {
-            "start": {
-              "line": 3602,
-              "character": 4
-            },
-            "end": {
-              "line": 3602,
-              "character": 43
-            }
-          }
+          "range": null,
         },
         "containerName": "PlainDateTime"
       },
@@ -9220,16 +9260,7 @@ fn lsp_workspace_symbol() {
         "kind": 6,
         "location": {
           "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": {
-            "start": {
-              "line": 3651,
-              "character": 4
-            },
-            "end": {
-              "line": 3651,
-              "character": 39
-            }
-          }
+          "range": null,
         },
         "containerName": "PlainMonthDay"
       },
@@ -9238,16 +9269,7 @@ fn lsp_workspace_symbol() {
         "kind": 6,
         "location": {
           "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": {
-            "start": {
-              "line": 3770,
-              "character": 4
-            },
-            "end": {
-              "line": 3770,
-              "character": 39
-            }
-          }
+          "range": null,
         },
         "containerName": "PlainTime"
       },
@@ -9256,16 +9278,7 @@ fn lsp_workspace_symbol() {
         "kind": 6,
         "location": {
           "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": {
-            "start": {
-              "line": 3923,
-              "character": 4
-            },
-            "end": {
-              "line": 3923,
-              "character": 39
-            }
-          }
+          "range": null,
         },
         "containerName": "PlainYearMonth"
       },
@@ -9274,16 +9287,7 @@ fn lsp_workspace_symbol() {
         "kind": 6,
         "location": {
           "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": {
-            "start": {
-              "line": 4082,
-              "character": 4
-            },
-            "end": {
-              "line": 4082,
-              "character": 43
-            }
-          }
+          "range": null,
         },
         "containerName": "ZonedDateTime"
       },
@@ -9292,16 +9296,7 @@ fn lsp_workspace_symbol() {
         "kind": 6,
         "location": {
           "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": {
-            "start": {
-              "line": 3166,
-              "character": 4
-            },
-            "end": {
-              "line": 3169,
-              "character": 31
-            }
-          }
+          "range": null,
         },
         "containerName": "CalendarProtocol"
       },
@@ -9310,16 +9305,7 @@ fn lsp_workspace_symbol() {
         "kind": 6,
         "location": {
           "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": {
-            "start": {
-              "line": 3336,
-              "character": 4
-            },
-            "end": {
-              "line": 3339,
-              "character": 31
-            }
-          }
+          "range": null,
         },
         "containerName": "Calendar"
       },
@@ -9328,16 +9314,7 @@ fn lsp_workspace_symbol() {
         "kind": 6,
         "location": {
           "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": {
-            "start": {
-              "line": 3151,
-              "character": 4
-            },
-            "end": {
-              "line": 3154,
-              "character": 30
-            }
-          }
+          "range": null,
         },
         "containerName": "CalendarProtocol"
       },
@@ -9346,16 +9323,7 @@ fn lsp_workspace_symbol() {
         "kind": 6,
         "location": {
           "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": {
-            "start": {
-              "line": 3321,
-              "character": 4
-            },
-            "end": {
-              "line": 3324,
-              "character": 30
-            }
-          }
+          "range": null,
         },
         "containerName": "Calendar"
       },
@@ -9364,16 +9332,7 @@ fn lsp_workspace_symbol() {
         "kind": 5,
         "location": {
           "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": {
-            "start": {
-              "line": 3355,
-              "character": 2
-            },
-            "end": {
-              "line": 3360,
-              "character": 4
-            }
-          }
+          "range": null,
         },
         "containerName": "Temporal"
       },
@@ -9382,16 +9341,7 @@ fn lsp_workspace_symbol() {
         "kind": 5,
         "location": {
           "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": {
-            "start": {
-              "line": 3466,
-              "character": 2
-            },
-            "end": {
-              "line": 3477,
-              "character": 4
-            }
-          }
+          "range": null,
         },
         "containerName": "Temporal"
       },
@@ -9400,16 +9350,7 @@ fn lsp_workspace_symbol() {
         "kind": 5,
         "location": {
           "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": {
-            "start": {
-              "line": 3671,
-              "character": 2
-            },
-            "end": {
-              "line": 3678,
-              "character": 4
-            }
-          }
+          "range": null,
         },
         "containerName": "Temporal"
       },
@@ -9418,16 +9359,7 @@ fn lsp_workspace_symbol() {
         "kind": 6,
         "location": {
           "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": {
-            "start": {
-              "line": 3147,
-              "character": 4
-            },
-            "end": {
-              "line": 3150,
-              "character": 31
-            }
-          }
+          "range": null,
         },
         "containerName": "CalendarProtocol"
       },
@@ -9436,16 +9368,7 @@ fn lsp_workspace_symbol() {
         "kind": 6,
         "location": {
           "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": {
-            "start": {
-              "line": 3317,
-              "character": 4
-            },
-            "end": {
-              "line": 3320,
-              "character": 31
-            }
-          }
+          "range": null,
         },
         "containerName": "Calendar"
       },
@@ -9454,16 +9377,7 @@ fn lsp_workspace_symbol() {
         "kind": 5,
         "location": {
           "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": {
-            "start": {
-              "line": 3952,
-              "character": 2
-            },
-            "end": {
-              "line": 3965,
-              "character": 4
-            }
-          }
+          "range": null,
         },
         "containerName": "Temporal"
       }
@@ -11196,5 +11110,108 @@ fn sloppy_imports_not_enabled() {
       }
     }])
   );
+  client.shutdown();
+}
+
+#[test]
+fn decorators_tc39() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("deno.json", r#"{}"#);
+
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+
+  let uri = Url::from_file_path(temp_dir.path().join("main.ts")).unwrap();
+
+  let diagnostics = client
+    .did_open(json!({
+      "textDocument": {
+        "uri": uri,
+        "languageId": "typescript",
+        "version": 1,
+        "text": r#"// deno-lint-ignore no-explicit-any
+function logged(value: any, { kind, name }: { kind: string; name: string }) {
+  if (kind === "method") {
+    return function (...args: unknown[]) {
+      console.log(`starting ${name} with arguments ${args.join(", ")}`);
+      // @ts-ignore this has implicit any type
+      const ret = value.call(this, ...args);
+      console.log(`ending ${name}`);
+      return ret;
+    };
+  }
+}
+
+class C {
+  @logged
+  m(arg: number) {
+    console.log("C.m", arg);
+  }
+}
+
+new C().m(1);
+"#
+      }
+    }))
+    .all();
+
+  assert_eq!(diagnostics.len(), 0);
+
+  client.shutdown();
+}
+
+#[test]
+fn decorators_ts() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    r#"{ "compilerOptions": { "experimentalDecorators": true } }"#,
+  );
+
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+
+  let uri = Url::from_file_path(temp_dir.path().join("main.ts")).unwrap();
+
+  let diagnostics = client
+    .did_open(json!({
+      "textDocument": {
+        "uri": uri,
+        "languageId": "typescript",
+        "version": 1,
+        "text": r#"// deno-lint-ignore-file
+function a() {
+  console.log("@A evaluated");
+  return function (
+    _target: any,
+    _propertyKey: string,
+    descriptor: PropertyDescriptor,
+  ) {
+    console.log("@A called");
+    const fn = descriptor.value;
+    descriptor.value = function () {
+      console.log("fn() called from @A");
+      fn();
+    };
+  };
+}
+
+class C {
+  @a()
+  static test() {
+    console.log("C.test() called");
+  }
+}
+
+C.test();
+"#
+      }
+    }))
+    .all();
+
+  assert_eq!(diagnostics.len(), 0);
+
   client.shutdown();
 }

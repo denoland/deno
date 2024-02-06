@@ -1,11 +1,8 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::cache::LocalLspHttpCache;
-use crate::file_fetcher::map_content_type;
 
-use data_url::DataUrl;
 use deno_ast::MediaType;
-use deno_core::error::uri_error;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::url::Position;
@@ -191,11 +188,8 @@ impl LspUrlMap {
         let specifier_str = if specifier.scheme() == "asset" {
           format!("deno:/asset{}", specifier.path())
         } else if specifier.scheme() == "data" {
-          let data_url = DataUrl::process(specifier.as_str())
-            .map_err(|e| uri_error(format!("{e:?}")))?;
-          let mime = data_url.mime_type();
-          let (media_type, _) =
-            map_content_type(specifier, Some(&format!("{mime}")));
+          let data_url = deno_graph::source::RawDataUrl::parse(specifier)?;
+          let media_type = data_url.media_type();
           let extension = if media_type == MediaType::Unknown {
             ""
           } else {

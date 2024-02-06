@@ -6,13 +6,12 @@ import { isatty } from "node:tty";
 import process from "node:process";
 
 Deno.test("[node/tty isatty] returns true when fd is a tty, false otherwise", () => {
-  assert(Deno.isatty(Deno.stdin.rid) === isatty(Deno.stdin.rid));
-  assert(Deno.isatty(Deno.stdout.rid) === isatty(Deno.stdout.rid));
-  assert(Deno.isatty(Deno.stderr.rid) === isatty(Deno.stderr.rid));
+  assert(Deno.stdin.isTerminal() === isatty(Deno.stdin.rid));
+  assert(Deno.stdout.isTerminal() === isatty(Deno.stdout.rid));
+  assert(Deno.stderr.isTerminal() === isatty(Deno.stderr.rid));
 
-  const file = Deno.openSync("README.md");
+  using file = Deno.openSync("README.md");
   assert(!isatty(file.rid));
-  Deno.close(file.rid);
 });
 
 Deno.test("[node/tty isatty] returns false for irrelevant values", () => {
@@ -32,6 +31,6 @@ Deno.test("[node/tty isatty] returns false for irrelevant values", () => {
 });
 
 Deno.test("[node/tty WriteStream.isTTY] returns true when fd is a tty", () => {
-  assert(Deno.isatty(Deno.stdin.rid) === process.stdin.isTTY);
-  assert(Deno.isatty(Deno.stdout.rid) === process.stdout.isTTY);
+  assert(Deno.stdin.isTerminal() === process.stdin.isTTY);
+  assert(Deno.stdout.isTerminal() === process.stdout.isTTY);
 });

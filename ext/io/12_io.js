@@ -4,10 +4,8 @@
 // Documentation liberally lifted from them too.
 // Thank you! We love Go! <3
 
-import { core, primordials } from "ext:core/mod.js";
-const {
-  op_stdin_set_raw,
-} = core.ensureFastOps(true);
+import { core, internals, primordials } from "ext:core/mod.js";
+import { op_is_terminal, op_stdin_set_raw } from "ext:core/ops";
 const {
   Uint8Array,
   ArrayPrototypePush,
@@ -39,6 +37,11 @@ async function copy(
   dst,
   options,
 ) {
+  internals.warnOnDeprecatedApi(
+    "Deno.copy()",
+    new Error().stack,
+    "Use `copy()` from `https://deno.land/std/io/copy.ts` instead.",
+  );
   let n = 0;
   const bufSize = options?.bufSize ?? DEFAULT_BUFFER_SIZE;
   const b = new Uint8Array(bufSize);
@@ -64,6 +67,11 @@ async function* iter(
   r,
   options,
 ) {
+  internals.warnOnDeprecatedApi(
+    "Deno.iter()",
+    new Error().stack,
+    "Use `ReadableStream` instead.",
+  );
   const bufSize = options?.bufSize ?? DEFAULT_BUFFER_SIZE;
   const b = new Uint8Array(bufSize);
   while (true) {
@@ -80,6 +88,11 @@ function* iterSync(
   r,
   options,
 ) {
+  internals.warnOnDeprecatedApi(
+    "Deno.iterSync()",
+    new Error().stack,
+    "Use `ReadableStream` instead.",
+  );
   const bufSize = options?.bufSize ?? DEFAULT_BUFFER_SIZE;
   const b = new Uint8Array(bufSize);
   while (true) {
@@ -164,31 +177,41 @@ function concatBuffers(buffers) {
   return contents;
 }
 
+const STDIN_RID = 0;
+const STDOUT_RID = 1;
+const STDERR_RID = 2;
+
 class Stdin {
+  #rid = STDIN_RID;
   #readable;
 
   constructor() {
   }
 
   get rid() {
-    return 0;
+    internals.warnOnDeprecatedApi(
+      "Deno.stdin.rid",
+      new Error().stack,
+      "Use `Deno.stdin` instance methods instead.",
+    );
+    return this.#rid;
   }
 
   read(p) {
-    return read(this.rid, p);
+    return read(this.#rid, p);
   }
 
   readSync(p) {
-    return readSync(this.rid, p);
+    return readSync(this.#rid, p);
   }
 
   close() {
-    core.tryClose(this.rid);
+    core.tryClose(this.#rid);
   }
 
   get readable() {
     if (this.#readable === undefined) {
-      this.#readable = readableStreamForRid(this.rid);
+      this.#readable = readableStreamForRid(this.#rid);
     }
     return this.#readable;
   }
@@ -197,65 +220,89 @@ class Stdin {
     const cbreak = !!(options.cbreak ?? false);
     op_stdin_set_raw(mode, cbreak);
   }
+
+  isTerminal() {
+    return op_is_terminal(this.#rid);
+  }
 }
 
 class Stdout {
+  #rid = STDOUT_RID;
   #writable;
 
   constructor() {
   }
 
   get rid() {
-    return 1;
+    internals.warnOnDeprecatedApi(
+      "Deno.stdout.rid",
+      new Error().stack,
+      "Use `Deno.stdout` instance methods instead.",
+    );
+    return this.#rid;
   }
 
   write(p) {
-    return write(this.rid, p);
+    return write(this.#rid, p);
   }
 
   writeSync(p) {
-    return writeSync(this.rid, p);
+    return writeSync(this.#rid, p);
   }
 
   close() {
-    core.close(this.rid);
+    core.close(this.#rid);
   }
 
   get writable() {
     if (this.#writable === undefined) {
-      this.#writable = writableStreamForRid(this.rid);
+      this.#writable = writableStreamForRid(this.#rid);
     }
     return this.#writable;
+  }
+
+  isTerminal() {
+    return op_is_terminal(this.#rid);
   }
 }
 
 class Stderr {
+  #rid = STDERR_RID;
   #writable;
 
   constructor() {
   }
 
   get rid() {
-    return 2;
+    internals.warnOnDeprecatedApi(
+      "Deno.stderr.rid",
+      new Error().stack,
+      "Use `Deno.stderr` instance methods instead.",
+    );
+    return this.#rid;
   }
 
   write(p) {
-    return write(this.rid, p);
+    return write(this.#rid, p);
   }
 
   writeSync(p) {
-    return writeSync(this.rid, p);
+    return writeSync(this.#rid, p);
   }
 
   close() {
-    core.close(this.rid);
+    core.close(this.#rid);
   }
 
   get writable() {
     if (this.#writable === undefined) {
-      this.#writable = writableStreamForRid(this.rid);
+      this.#writable = writableStreamForRid(this.#rid);
     }
     return this.#writable;
+  }
+
+  isTerminal() {
+    return op_is_terminal(this.#rid);
   }
 }
 
@@ -272,9 +319,14 @@ export {
   readAllSync,
   readSync,
   SeekMode,
+  Stderr,
   stderr,
+  STDERR_RID,
   stdin,
+  STDIN_RID,
+  Stdout,
   stdout,
+  STDOUT_RID,
   write,
   writeSync,
 };

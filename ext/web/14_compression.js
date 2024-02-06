@@ -5,12 +5,12 @@
 /// <reference path="./internal.d.ts" />
 /// <reference path="./lib.deno_web.d.ts" />
 
-import { core, primordials } from "ext:core/mod.js";
-const {
+import { primordials } from "ext:core/mod.js";
+import {
   op_compression_finish,
   op_compression_new,
   op_compression_write,
-} = core.ensureFastOps();
+} from "ext:core/ops";
 const {
   SymbolFor,
   ObjectPrototypeIsPrototypeOf,

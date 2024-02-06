@@ -378,8 +378,12 @@ async fn resolve_shim_data(
     TypeCheckMode::Local => executable_args.push("--check".to_string()),
   }
 
-  if flags.unstable {
+  if flags.unstable_config.legacy_flag_enabled {
     executable_args.push("--unstable".to_string());
+  }
+
+  for feature in &flags.unstable_config.features {
+    executable_args.push(format!("--unstable-{}", feature));
   }
 
   if flags.no_remote {
@@ -499,6 +503,7 @@ fn is_in_path(dir: &Path) -> bool {
 mod tests {
   use super::*;
 
+  use crate::args::UnstableConfig;
   use crate::util::fs::canonicalize_path;
   use deno_config::ConfigFlag;
   use std::process::Command;
@@ -647,7 +652,10 @@ mod tests {
 
     create_install_shim(
       Flags {
-        unstable: true,
+        unstable_config: UnstableConfig {
+          legacy_flag_enabled: true,
+          ..Default::default()
+        },
         ..Flags::default()
       },
       InstallFlags {
@@ -699,6 +707,73 @@ mod tests {
     assert_eq!(
       shim_data.args,
       vec!["run", "--no-config", "http://localhost:4545/echo_server.ts",]
+    );
+  }
+
+  #[tokio::test]
+  async fn install_unstable_legacy() {
+    let shim_data = resolve_shim_data(
+      &Flags {
+        unstable_config: UnstableConfig {
+          legacy_flag_enabled: true,
+          ..Default::default()
+        },
+        ..Default::default()
+      },
+      &InstallFlags {
+        module_url: "http://localhost:4545/echo_server.ts".to_string(),
+        args: vec![],
+        name: None,
+        root: Some(env::temp_dir().to_string_lossy().to_string()),
+        force: false,
+      },
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(shim_data.name, "echo_server");
+    assert_eq!(
+      shim_data.args,
+      vec![
+        "run",
+        "--unstable",
+        "--no-config",
+        "http://localhost:4545/echo_server.ts",
+      ]
+    );
+  }
+
+  #[tokio::test]
+  async fn install_unstable_features() {
+    let shim_data = resolve_shim_data(
+      &Flags {
+        unstable_config: UnstableConfig {
+          features: vec!["kv".to_string(), "cron".to_string()],
+          ..Default::default()
+        },
+        ..Default::default()
+      },
+      &InstallFlags {
+        module_url: "http://localhost:4545/echo_server.ts".to_string(),
+        args: vec![],
+        name: None,
+        root: Some(env::temp_dir().to_string_lossy().to_string()),
+        force: false,
+      },
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(shim_data.name, "echo_server");
+    assert_eq!(
+      shim_data.args,
+      vec![
+        "run",
+        "--unstable-kv",
+        "--unstable-cron",
+        "--no-config",
+        "http://localhost:4545/echo_server.ts",
+      ]
     );
   }
 

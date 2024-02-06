@@ -6,6 +6,98 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.40.3 / 2024.02.01
+
+- Revert "refactor(cli): use new sanitizer for resources (#22125)" (#22153)
+- feat(unstable): implement `navigator.gpu.getPreferredCanvasFormat()` (#22149)
+- fix(ext/node): add `aes256` algorithm support (#22198)
+- fix(ext/node): limit OpState borrow in op_napi_open (#22151)
+- fix(fs): copyFile NUL path on macOS (#22216)
+- fix(install): forward granular --unstable-* flags (#22164)
+- fix(lockfile): only consider package.json beside lockfile in workspace
+  property (#22179)
+- fix(lsp): don't normalize urls in cache command params (#22182)
+- fix(node): `util.callbackify` (#22200)
+- fix(node): add `ppid` getter for `node:process` (#22167)
+- fix(publish): add node specifiers (#22213)
+- fix(publish): rename --no-fast-check to --no-zap (#22214)
+- fix(runtime): return number from `op_ppid` instead of bigint (#22169)
+- fix: canary for arm64 macos (#22187)
+
+### 1.40.2 / 2024.01.26
+
+- feat(lsp): complete parameters as tab stops and placeholders (#22126)
+- fix(ext/http): smarter handling of Accept-Encoding (#22130)
+- fix(fs): instanceof check for Deno.FsFile (#22121)
+- fix(node): remove deprecation warnings (#22120)
+- fix(testing): add op_spawn_wait mapping in resource sanitizer (#22129)
+- fix: make deprecation warnings less verbose (#22128)
+
+### 1.40.1 / 2024.01.25
+
+- fix(lsp): disable experimentalDecorators by default (#22101)
+
+### 1.40.0 / 2024.01.25
+
+- feat(unstable): remove `Deno.cron()` overload (#22035)
+- feat: improved diagnostics printing (#22049)
+- feat(jupyter): don't require --unstable flag (#21963)
+- feat(lockfile): track JSR and npm dependencies in config file (#22004)
+- feat(lsp): include scope uri in "deno/didChangeDenoConfiguration" (#22002)
+- feat(lsp): send "deno/didChangeDenoConfiguration" on init (#21965)
+- feat(publish): error on invalid external imports (#22088)
+- feat(publish): exclude and include (#22055)
+- feat(publish): give diagnostic on invalid package files (#22082)
+- feat(unstable): add Temporal API support (#21738)
+- feat(unstable): remove Deno.upgradeHttp API (#21856)
+- feat(web): ImageBitmap (#21898)
+- feat: "rejectionhandled" Web event and "rejectionHandled" Node event (#21875)
+- feat: Expand 'imports' section of deno.json (#22087)
+- feat: Stabilize Deno.connect for 'unix' transport (#21937)
+- feat: Stabilize Deno.listen for 'unix' transport (#21938)
+- feat: TC39 decorator proposal support (#22040)
+- feat: `Deno.FsFile.dataSync()` and `Deno.FsFile.dataSyncSync()` (#22019)
+- feat: `Deno.FsFile.{utime,utimeSync}()` and deprecate
+  `Deno.{futime,futimeSync}` (#22070)
+- feat: `Deno.{stdin,stdout,stderr}.isTerminal()`, deprecate `Deno.isatty()`
+  (#22011)
+- feat: `FsFile.sync()` and `FsFile.syncSync()` (#22017)
+- feat: deprecate `Deno.serveHttp` API (#21874)
+- feat: deprecate `Deno.FsFile` constructor and `Deno.FsFile.rid` (#22072)
+- feat: deprecate `Deno.FsWatcher.rid` (#22074)
+- feat: deprecate `Deno.Listener.rid` (#22076)
+- feat: deprecate `Deno.close()` (#22066)
+- feat: deprecate `Deno.fstat()` and `Deno.fstatSync()` (#22068)
+- feat: deprecate `Deno.ftruncate()` and `Deno.ftruncateSync()` (#22069)
+- feat: deprecate `Deno.read()` and `Deno.readSync()` (#22063)
+- feat: deprecate `Deno.resources()` (#22059)
+- feat: deprecate `Deno.seek()` and `Deno.seekSync()` (#22065)
+- feat: deprecate `Deno.shutdown()` (#22067)
+- feat: deprecate `Deno.write()` and `Deno.writeSync()` (#22064)
+- feat: deprecate `Deno.{Conn,TcpConn,TlsConn,UnixConn}.rid` (#22077)
+- feat: deprecate `Deno.{stdin,stdout,stderr}.rid` (#22073)
+- feat: deprecate `window` global (#22057)
+- feat: import.meta.filename and import.meta.dirname (#22061)
+- feat: remove conditional unstable type-checking (#21825)
+- feat: stabilize Deno.Conn.ref/unref (#21890)
+- feat: stabilize Deno.connectTls options and Deno.TlsConn.handshake (#21889)
+- feat: warn when using --unstable, prefer granular flags (#21452)
+- feat: External webgpu surfaces / BYOW (#21835)
+- fix(BREAKING): remove dead `--prompt` flag (#22038)
+- fix(ext/cron): automatically override unspecified values (#22042)
+- fix(ext/node): fix no arg call of fs.promises.readFile (#22030)
+- fix(info): return proper exit code on error (#21952)
+- fix(lsp): improved npm specifier to import map entry mapping (#22016)
+- fix(lsp): regression - formatting was broken on windows (#21972)
+- fix(node): remove use of non existing `FunctionPrototypeApply` primordial
+  (#21986)
+- fix(node): update `req.socket` on WS upgrade (#21984)
+- fix(node): use `cppgc` for managing X509Certificate (#21999)
+- fix(node/fs): promises not exporting fs constants (#21997)
+- fix(node/http): remoteAddress and remotePort not being set (#21998)
+- fix(types): align global deno worker type with deno.worker/webworker one
+  (#21936)
+
 ### 1.39.4 / 2024.01.13
 
 - fix(config): regression - handle relative patterns with leading dot slash
