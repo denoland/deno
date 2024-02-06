@@ -660,21 +660,6 @@ pub fn op_ws_get_buffered_amount(
 }
 
 #[op2(async)]
-pub async fn op_ws_send_pong(
-  state: Rc<RefCell<OpState>>,
-  #[smi] rid: ResourceId,
-) -> Result<(), AnyError> {
-  let resource = state
-    .borrow_mut()
-    .resource_table
-    .get::<ServerWebSocket>(rid)?;
-  let lock = resource.reserve_lock();
-  resource
-    .write_frame(lock, Frame::pong(EMPTY_PAYLOAD.into()))
-    .await
-}
-
-#[op2(async)]
 pub async fn op_ws_send_ping(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -839,7 +824,6 @@ deno_core::extension!(deno_websocket,
     op_ws_send_binary_async,
     op_ws_send_text_async,
     op_ws_send_ping,
-    op_ws_send_pong,
     op_ws_get_buffered_amount,
   ],
   esm = [ "01_websocket.js", "02_websocketstream.js" ],
