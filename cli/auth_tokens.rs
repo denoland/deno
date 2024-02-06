@@ -5,7 +5,13 @@ use base64::Engine;
 use deno_core::ModuleSpecifier;
 use log::debug;
 use log::error;
+use std::borrow::Cow;
 use std::fmt;
+use std::net::IpAddr;
+use std::net::Ipv4Addr;
+use std::net::Ipv6Addr;
+use std::net::SocketAddr;
+use std::str::FromStr;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AuthTokenData {
@@ -15,7 +21,7 @@ pub enum AuthTokenData {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AuthToken {
-  host: String,
+  host: AuthDomain,
   token: AuthTokenData,
 }
 
@@ -37,6 +43,83 @@ impl fmt::Display for AuthToken {
 #[derive(Debug, Clone)]
 pub struct AuthTokens(Vec<AuthToken>);
 
+/// An authorization domain, either an exact or suffix match.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AuthDomain {
+  IP(IpAddr),
+  IPPort(SocketAddr),
+  /// Suffix match, no dot. May include a port.
+  Suffix(Cow<'static, str>),
+}
+
+impl<T: ToString> From<T> for AuthDomain {
+  fn from(value: T) -> Self {
+    let s = value.to_string().to_lowercase();
+    match SocketAddr::from_str(&s) {
+      Ok(ip) => return AuthDomain::IPPort(ip),
+      Err(_) => {}
+    };
+    if s.starts_with('[') && s.ends_with(']') {
+      match Ipv6Addr::from_str(&s[1..s.len() - 1]) {
+        Ok(ip) => return AuthDomain::IP(ip.into()),
+        Err(_) => {}
+      };
+    } else {
+      match Ipv4Addr::from_str(&s) {
+        Ok(ip) => return AuthDomain::IP(ip.into()),
+        Err(_) => {}
+      };
+    }
+    if s.starts_with('.') {
+      AuthDomain::Suffix(Cow::Owned(s[1..].to_owned()))
+    } else {
+      AuthDomain::Suffix(Cow::Owned(s))
+    }
+  }
+}
+
+impl AuthDomain {
+  pub fn matches(&self, specifier: &ModuleSpecifier) -> bool {
+    let Some(host) = specifier.host_str() else {
+      return false;
+    };
+    match *self {
+      Self::IP(ip) => {
+        let AuthDomain::IP(parsed) = AuthDomain::from(host) else {
+          return false;
+        };
+        ip == parsed && specifier.port().is_none()
+      }
+      Self::IPPort(ip) => {
+        let AuthDomain::IP(parsed) = AuthDomain::from(host) else {
+          return false;
+        };
+        ip.ip() == parsed && specifier.port() == Some(ip.port())
+      }
+      Self::Suffix(ref suffix) => {
+        let hostname = if let Some(port) = specifier.port() {
+          Cow::Owned(format!("{}:{}", host, port))
+        } else {
+          Cow::Borrowed(host)
+        };
+
+        if suffix.len() == hostname.len() {
+          return suffix == &hostname;
+        }
+
+        // If it's a suffix match, ensure a dot
+        if hostname.ends_with(suffix.as_ref())
+          && hostname.ends_with(&format!(".{suffix}"))
+        {
+          return true;
+        }
+
+        return false;
+      }
+    }
+  }
+}
+
 impl AuthTokens {
   /// Create a new set of tokens based on the provided string. It is intended
   /// that the string be the value of an environment variable and the string is
@@ -49,7 +132,7 @@ impl AuthTokens {
         if token_str.contains('@') {
           let pair: Vec<&str> = token_str.rsplitn(2, '@').collect();
           let token = pair[1];
-          let host = pair[0].to_lowercase();
+          let host = AuthDomain::from(pair[0]);
           if token.contains(':') {
             let pair: Vec<&str> = token.rsplitn(2, ':').collect();
             let username = pair[1].to_string();
@@ -81,12 +164,7 @@ impl AuthTokens {
   /// matching is case insensitive.
   pub fn get(&self, specifier: &ModuleSpecifier) -> Option<AuthToken> {
     self.0.iter().find_map(|t| {
-      let hostname = if let Some(port) = specifier.port() {
-        format!("{}:{}", specifier.host_str()?, port)
-      } else {
-        specifier.host_str()?.to_string()
-      };
-      if hostname.to_lowercase().ends_with(&t.host) {
+      if t.host.matches(specifier) {
         Some(t.clone())
       } else {
         None
@@ -181,5 +259,66 @@ mod tests {
     assert_eq!(auth_tokens.get(&fixture), None);
     let fixture = resolve_url("https://deno.land:8080/x/mod.ts").unwrap();
     assert_eq!(auth_tokens.get(&fixture), None);
+  }
+
+  #[test]
+  fn test_parse_ip() {
+    let ip = AuthDomain::from("[2001:db8:a::123]");
+    assert_eq!("IP(2001:db8:a::123)", format!("{ip:?}"));
+    let ip = AuthDomain::from("[2001:db8:a::123]:8080");
+    assert_eq!("IPPort([2001:db8:a::123]:8080)", format!("{ip:?}"));
+    let ip = AuthDomain::from("1.1.1.1");
+    assert_eq!("IP(1.1.1.1)", format!("{ip:?}"));
+  }
+
+  #[test]
+  fn test_matches() {
+    let candidates = [
+      "example.com",
+      "www.example.com",
+      "notexample.com",
+      "www.notexample.com",
+      "1.1.1.1",
+      "[2001:db8:a::123]",
+    ];
+    let domains = [
+      ("example.com", vec!["example.com", "www.example.com"]),
+      ("www.example.com", vec!["www.example.com"]),
+      ("1.1.1.1", vec!["1.1.1.1"]),
+      ("[2001:db8:a::123]", vec!["[2001:db8:a::123]"]),
+    ];
+    let url = |c: &str| ModuleSpecifier::parse(&format!("http://{c}")).unwrap();
+    let url_port =
+      |c: &str| ModuleSpecifier::parse(&format!("http://{c}:8080")).unwrap();
+
+    let candidates = candidates
+      .into_iter()
+      .map(|c| [url(c), url_port(c)])
+      .flatten()
+      .collect::<Vec<_>>();
+
+    for (domain, expected_domain) in domains {
+      let auth_domain = AuthDomain::from(domain);
+      let actual = candidates
+        .iter()
+        .filter(|c| auth_domain.matches(c))
+        .cloned()
+        .collect::<Vec<_>>();
+      let expected =
+        expected_domain.iter().map(|u| url(*u)).collect::<Vec<_>>();
+      assert_eq!(actual, expected);
+
+      let auth_domain = AuthDomain::from(&format!("{domain}:8080"));
+      let actual = candidates
+        .iter()
+        .filter(|c| auth_domain.matches(c))
+        .cloned()
+        .collect::<Vec<_>>();
+      let expected = expected_domain
+        .iter()
+        .map(|u| url_port(*u))
+        .collect::<Vec<_>>();
+      assert_eq!(actual, expected);
+    }
   }
 }
