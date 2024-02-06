@@ -10,9 +10,6 @@ function addJS(a, b) {
 }
 Deno.bench("add_js", () => addJS(1, 2));
 
-// Void ops measure op-overhead
-Deno.bench("op_void_sync", () => op_void_sync());
-
 // A very lightweight op, that should be highly optimizable
 Deno.bench("perf_now", { n: 5e5 }, () => {
   performance.now();
