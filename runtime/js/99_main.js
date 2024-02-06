@@ -541,12 +541,37 @@ function exposeUnstableFeaturesForWindowOrWorkerGlobalScope(options) {
 // NOTE(bartlomieju): remove all the ops that have already been imported using
 // "virtual op module" (`ext:core/ops`).
 const NOT_IMPORTED_OPS = [
-  "op_add_async",
-  "op_add",
+  // Related to `Deno.bench()` API
   "op_bench_now",
-  "op_decode",
   "op_dispatch_bench_event",
-  "op_encode_binary_string",
+  "op_register_bench",
+
+  // Related to `Deno.jupyter` API
+  "op_jupyter_broadcast",
+
+  // Related to `Deno.test()` API
+  "op_test_event_step_result_failed",
+  "op_test_event_step_result_ignored",
+  "op_test_event_step_result_ok",
+  "op_test_event_step_wait",
+  "op_test_op_sanitizer_collect",
+  "op_test_op_sanitizer_finish",
+  "op_test_op_sanitizer_get_async_message",
+  "op_test_op_sanitizer_report",
+  "op_restore_test_permissions",
+  "op_register_test_step",
+  "op_register_test",
+  "op_pledge_test_permissions",
+
+  // TODO(bartlomieju): used in various integration tests - figure out a way
+  // to not depend on them.
+  "op_set_exit_code",
+  "op_napi_open",
+  "op_npm_process_state",
+
+  // TODO(bartlomieju): used in integration tests for FFI API, to check if
+  // they require unstable flag. These tests are questionable and should be
+  // removed (most likely).
   "op_ffi_buf_copy_into",
   "op_ffi_call_nonblocking",
   "op_ffi_call_ptr_nonblocking",
@@ -576,33 +601,22 @@ const NOT_IMPORTED_OPS = [
   "op_ffi_unsafe_callback_close",
   "op_ffi_unsafe_callback_create",
   "op_ffi_unsafe_callback_ref",
-  "op_napi_open",
-  "op_npm_process_state",
-  "op_op_names",
-  "op_pledge_test_permissions",
-  "op_print",
-  "op_register_bench",
-  "op_register_test_step",
-  "op_register_test",
-  "op_restore_test_permissions",
-  "op_set_exit_code",
-  "op_snapshot_options",
+
+  // TODO(bartlomieju): used in a regression test, but probably not needed
+  // anymore if ops are not user accessible.
   "op_spawn_child",
-  "op_test_event_step_result_failed",
-  "op_test_event_step_result_ignored",
-  "op_test_event_step_result_ok",
-  "op_test_event_step_wait",
-  "op_test_op_sanitizer_collect",
-  "op_test_op_sanitizer_finish",
-  "op_test_op_sanitizer_get_async_message",
-  "op_test_op_sanitizer_report",
+
+  // TODO(bartlomieju): used in one of the benches, needs to be removed.
   "op_void_async",
-  "op_void_sync",
-  "op_ws_send_pong",
-  "op_jupyter_broadcast",
+
+  // TODO(bartlomieju): can be removed after the `deno_core` upgrade.
+  "op_encode_binary_string",
   "op_format_file_name",
   "op_apply_source_map",
   "op_apply_source_map_filename",
+
+  // TODO(bartlomieju): this might be dead code.
+  "op_ws_send_pong",
 ];
 
 function removeImportedOps() {
