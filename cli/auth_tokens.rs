@@ -292,6 +292,7 @@ mod tests {
     let url_port =
       |c: &str| ModuleSpecifier::parse(&format!("http://{c}:8080")).unwrap();
 
+    // Generate each candidate with and without a port
     let candidates = candidates
       .into_iter()
       .map(|c| [url(c), url_port(c)])
@@ -299,6 +300,7 @@ mod tests {
       .collect::<Vec<_>>();
 
     for (domain, expected_domain) in domains {
+      // Test without a port -- all candidates return without a port
       let auth_domain = AuthDomain::from(domain);
       let actual = candidates
         .iter()
@@ -309,6 +311,7 @@ mod tests {
         expected_domain.iter().map(|u| url(*u)).collect::<Vec<_>>();
       assert_eq!(actual, expected);
 
+      // Test with a port, all candidates return with a port
       let auth_domain = AuthDomain::from(&format!("{domain}:8080"));
       let actual = candidates
         .iter()
