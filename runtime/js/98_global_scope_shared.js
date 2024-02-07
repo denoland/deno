@@ -30,6 +30,7 @@ import * as messagePort from "ext:deno_web/13_message_port.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { DOMException } from "ext:deno_web/01_dom_exception.js";
 import * as abortSignal from "ext:deno_web/03_abort_signal.js";
+import * as imageData from "ext:deno_web/16_image_data.js";
 import { loadWebGPU } from "ext:deno_webgpu/00_init.js";
 import * as webgpuSurface from "ext:deno_webgpu/02_surface.js";
 import { unstableIds } from "ext:runtime/90_deno_ns.js";
@@ -60,10 +61,7 @@ const windowOrWorkerGlobalScope = {
   FileReader: core.propNonEnumerable(fileReader.FileReader),
   FormData: core.propNonEnumerable(formData.FormData),
   Headers: core.propNonEnumerable(headers.Headers),
-  ImageData: core.propNonEnumerableLazyLoaded(
-    (image) => image.ImageData,
-    loadImage,
-  ),
+  ImageData: core.propNonEnumerable(imageData.ImageData),
   ImageBitmap: core.propNonEnumerableLazyLoaded(
     (image) => image.ImageBitmap,
     loadImage,
