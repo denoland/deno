@@ -3968,7 +3968,8 @@
       "Parsing: <////one/two> against <file:///>",
       "Parsing: <file:///.//> against <file:////>",
       "Parsing: <file:.//p> without base",
-      "Parsing: <file:/.//p> without base"
+      "Parsing: <file:/.//p> without base",
+      "Parsing: </\\//\\/a/../> against <file:///>"
     ],
     "url-constructor.any.html?include=javascript": true,
     "url-constructor.any.html?include=mailto": true,
@@ -4030,7 +4031,8 @@
       "Parsing: <////one/two> against <file:///>",
       "Parsing: <file:///.//> against <file:////>",
       "Parsing: <file:.//p> without base",
-      "Parsing: <file:/.//p> without base"
+      "Parsing: <file:/.//p> without base",
+      "Parsing: </\\//\\/a/../> against <file:///>"
     ],
     "url-constructor.any.worker.html?include=javascript": true,
     "url-constructor.any.worker.html?include=mailto": true,
