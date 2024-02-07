@@ -119,6 +119,9 @@ fn js_unit_test(test: String) {
   let deno = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("test")
+    .arg("--config")
+    .arg("cli/tests/deno.json")
+    .arg("--no-lock")
     .arg("--unstable")
     .arg("--location=http://js-unit-tests/foo/bar")
     .arg("--no-prompt");
