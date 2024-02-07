@@ -761,3 +761,55 @@ Deno.test(function matrixPreMultiplySelfWithSelf() {
   );
 });
 
+Deno.test(function matrixflipX() {
+  // deno-fmt-ignore
+  const init = {
+    m11:  1, m21:  2, m31:  3, m41:  4,
+    m12:  5, m22:  6, m32:  7, m42:  8,
+    m13:  9, m23: 10, m33: 11, m43: 12,
+    m14: 13, m24: 14, m34: 15, m44: 16,
+  };
+  const matrix = DOMMatrix.fromMatrix(init);
+  const matrix2 = matrix.flipX();
+  assertEquals(
+    matrix,
+    DOMMatrix.fromMatrix(init),
+  );
+  assertEquals(
+    matrix2,
+    // deno-fmt-ignore
+    DOMMatrix.fromMatrix({
+      m11:  -1, m21:  2, m31:  3, m41:  4,
+      m12:  -5, m22:  6, m32:  7, m42:  8,
+      m13:  -9, m23: 10, m33: 11, m43: 12,
+      m14: -13, m24: 14, m34: 15, m44: 16,
+    }),
+  );
+});
+
+Deno.test(function matrixflipX() {
+  // deno-fmt-ignore
+  const init = {
+    m11:  1, m21:  2, m31:  3, m41:  4,
+    m12:  5, m22:  6, m32:  7, m42:  8,
+    m13:  9, m23: 10, m33: 11, m43: 12,
+    m14: 13, m24: 14, m34: 15, m44: 16,
+  };
+  const matrix = DOMMatrix.fromMatrix(init);
+  const matrix2 = matrix.flipY();
+  assertEquals(
+    matrix,
+    DOMMatrix.fromMatrix(init),
+  );
+  assertEquals(
+    matrix2,
+    // deno-fmt-ignore
+    DOMMatrix.fromMatrix({
+      m11:  1, m21:  -2, m31:  3, m41:  4,
+      m12:  5, m22:  -6, m32:  7, m42:  8,
+      m13:  9, m23: -10, m33: 11, m43: 12,
+      m14: 13, m24: -14, m34: 15, m44: 16,
+    }),
+  );
+});
+

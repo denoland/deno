@@ -2,6 +2,8 @@
 
 import { primordials } from "ext:core/mod.js";
 import {
+  op_geometry_flip_x_self,
+  op_geometry_flip_y_self,
   op_geometry_multiply,
   op_geometry_multiply_self,
   op_geometry_premultiply_self,
@@ -1070,6 +1072,24 @@ class DOMMatrixReadOnly {
     matrix[_raw] = new Float64Array(16);
     op_geometry_multiply(this[_raw], other[_raw], matrix[_raw]);
     matrix[_is2D] = this[_is2D] && other[_is2D];
+    return matrix;
+  }
+
+  flipX() {
+    webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
+    const matrix = webidl.createBranded(DOMMatrix);
+    matrix[_raw] = new Float64Array(this[_raw]);
+    op_geometry_flip_x_self(matrix[_raw]);
+    matrix[_is2D] = this[_is2D];
+    return matrix;
+  }
+
+  flipY() {
+    webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
+    const matrix = webidl.createBranded(DOMMatrix);
+    matrix[_raw] = new Float64Array(this[_raw]);
+    op_geometry_flip_y_self(matrix[_raw]);
+    matrix[_is2D] = this[_is2D];
     return matrix;
   }
 

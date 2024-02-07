@@ -2,6 +2,7 @@
 
 use deno_core::op2;
 use nalgebra::Matrix4;
+use nalgebra::Matrix4x2;
 use nalgebra::MatrixView4;
 use nalgebra::MatrixViewMut4;
 use nalgebra::Rotation3;
@@ -23,6 +24,8 @@ deno_core::extension!(
     op_geometry_multiply,
     op_geometry_multiply_self,
     op_geometry_premultiply_self,
+    op_geometry_flip_x_self,
+    op_geometry_flip_y_self,
   ],
   esm = ["01_geometry.js"],
 );
@@ -183,4 +186,16 @@ pub fn op_geometry_premultiply_self(
   let mut result = Matrix4::zeros();
   lhs.mul_to(&inout, &mut result);
   inout.copy_from(&result);
+}
+
+#[op2(fast)]
+pub fn op_geometry_flip_x_self(#[buffer] inout: &mut [f64]) -> () {
+  let mut inout = MatrixViewMut4::from_slice(inout);
+  inout.column_mut(0).neg_mut()
+}
+
+#[op2(fast)]
+pub fn op_geometry_flip_y_self(#[buffer] inout: &mut [f64]) -> () {
+  let mut inout = MatrixViewMut4::from_slice(inout);
+  inout.column_mut(1).neg_mut()
 }
