@@ -492,13 +492,13 @@ async fn get_npm_completions(
       .and_then(|idx| {
         bare_specifier[idx..]
           .find('@')
-          .filter(|idx2| !bare_specifier[(idx + 1)..*idx2].is_empty())
+          .filter(|idx_diff| *idx_diff > 1_usize)
+          .map(|idx_diff| idx + idx_diff)
           .filter(|idx2| !bare_specifier[(idx + 1)..*idx2].contains('/'))
       })
   } else {
     bare_specifier
       .find('@')
-      .filter(|idx| !bare_specifier[..*idx].is_empty())
       .filter(|idx| !bare_specifier[..*idx].contains('/'))
   };
 
