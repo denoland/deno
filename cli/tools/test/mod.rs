@@ -496,7 +496,7 @@ async fn test_specifier_inner(
   if options.trace_ops {
     worker.execute_script_static(
       located_script_name!(),
-      "Deno[Deno.internal].core.enableOpCallTracing();",
+      "Deno[Deno.internal].core.setOpCallTracingEnabled(true);",
     )?;
   }
 
