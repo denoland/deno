@@ -9,10 +9,6 @@ use nalgebra::UnitVector3;
 use nalgebra::Vector3;
 use std::path::PathBuf;
 
-type Matrix = Matrix4<f64>;
-type MatrixView<'a> = MatrixView4<'a, f64>;
-type MatrixViewMut<'a> = MatrixViewMut4<'a, f64>;
-
 deno_core::extension!(
   deno_geometry,
   deps = [deno_webidl, deno_web, deno_console],
@@ -43,7 +39,7 @@ pub fn op_geometry_translate_self(
   #[buffer] inout: &mut [f64],
 ) -> () {
   let shift = Vector3::new(x, y, z);
-  let mut inout = MatrixViewMut::from_slice(inout);
+  let mut inout = MatrixViewMut4::from_slice(inout);
   inout.prepend_translation_mut(&shift);
 }
 
@@ -55,7 +51,7 @@ pub fn op_geometry_scale_self(
   #[buffer] inout: &mut [f64],
 ) -> () {
   let scaling = Vector3::new(x, y, z);
-  let mut inout = MatrixViewMut::from_slice(inout);
+  let mut inout = MatrixViewMut4::from_slice(inout);
   inout.prepend_nonuniform_scaling_mut(&scaling);
 }
 
@@ -71,7 +67,7 @@ pub fn op_geometry_scale_with_origin_self(
 ) -> () {
   let scaling = Vector3::new(x, y, z);
   let mut shift = Vector3::new(origin_x, origin_y, origin_z);
-  let mut inout = MatrixViewMut::from_slice(inout);
+  let mut inout = MatrixViewMut4::from_slice(inout);
   inout.prepend_translation_mut(&shift);
   inout.prepend_nonuniform_scaling_mut(&scaling);
   shift.neg_mut();
@@ -91,8 +87,8 @@ pub fn op_geometry_rotate_self(
     yaw_degrees.to_radians(),
   )
   .to_homogeneous();
-  let mut inout = MatrixViewMut::from_slice(inout);
-  let mut result = Matrix::zeros();
+  let mut inout = MatrixViewMut4::from_slice(inout);
+  let mut result = Matrix4::zeros();
   inout.mul_to(&rotation, &mut result);
   inout.copy_from(&result);
 }
@@ -105,8 +101,8 @@ pub fn op_geometry_rotate_from_vector_self(
 ) -> () {
   let rotation =
     Rotation3::from_axis_angle(&Vector3::z_axis(), y.atan2(x)).to_homogeneous();
-  let mut inout = MatrixViewMut::from_slice(inout);
-  let mut result = Matrix::zeros();
+  let mut inout = MatrixViewMut4::from_slice(inout);
+  let mut result = Matrix4::zeros();
   inout.mul_to(&rotation, &mut result);
   inout.copy_from(&result);
 }
@@ -124,8 +120,8 @@ pub fn op_geometry_rotate_axis_angle_self(
     angle_degrees.to_radians(),
   )
   .to_homogeneous();
-  let mut inout = MatrixViewMut::from_slice(inout);
-  let mut result = Matrix::zeros();
+  let mut inout = MatrixViewMut4::from_slice(inout);
+  let mut result = Matrix4::zeros();
   inout.mul_to(&rotation, &mut result);
   inout.copy_from(&result);
 }
@@ -136,12 +132,7 @@ pub fn op_geometry_skew_self(
   y_degrees: f64,
   #[buffer] inout: &mut [f64],
 ) -> () {
-  let skew: nalgebra::Matrix<
-    f64,
-    nalgebra::Const<4>,
-    nalgebra::Const<4>,
-    nalgebra::ArrayStorage<f64, 4, 4>,
-  > = Matrix::new(
+  let skew = Matrix4::new(
     1.0,
     x_degrees.to_radians().tan(),
     0.0,
@@ -159,8 +150,8 @@ pub fn op_geometry_skew_self(
     0.0,
     1.0,
   );
-  let mut inout = MatrixViewMut::from_slice(inout);
-  let mut result = Matrix::zeros();
+  let mut inout = MatrixViewMut4::from_slice(inout);
+  let mut result = Matrix4::zeros();
   inout.mul_to(&skew, &mut result);
   inout.copy_from(&result);
 }
@@ -171,9 +162,9 @@ pub fn op_geometry_multiply(
   #[buffer] rhs: &[f64],
   #[buffer] out: &mut [f64],
 ) -> () {
-  let lhs = MatrixView::from_slice(lhs);
-  let rhs = MatrixView::from_slice(rhs);
-  let mut out = MatrixViewMut::from_slice(out);
+  let lhs = MatrixView4::from_slice(lhs);
+  let rhs = MatrixView4::from_slice(rhs);
+  let mut out = MatrixViewMut4::from_slice(out);
   lhs.mul_to(&rhs, &mut out);
 }
 
@@ -182,9 +173,9 @@ pub fn op_geometry_multiply_self(
   #[buffer] rhs: &[f64],
   #[buffer] inout: &mut [f64],
 ) -> () {
-  let rhs = MatrixView::from_slice(rhs);
-  let mut inout = MatrixViewMut::from_slice(inout);
-  let mut result = Matrix::zeros();
+  let rhs = MatrixView4::from_slice(rhs);
+  let mut inout = MatrixViewMut4::from_slice(inout);
+  let mut result = Matrix4::zeros();
   inout.mul_to(&rhs, &mut result);
   inout.copy_from(&result);
 }
@@ -194,9 +185,9 @@ pub fn op_geometry_premultiply_self(
   #[buffer] lhs: &[f64],
   #[buffer] inout: &mut [f64],
 ) -> () {
-  let lhs = MatrixView::from_slice(lhs);
-  let mut inout = MatrixViewMut::from_slice(inout);
-  let mut result = Matrix::zeros();
+  let lhs = MatrixView4::from_slice(lhs);
+  let mut inout = MatrixViewMut4::from_slice(inout);
+  let mut result = Matrix4::zeros();
   lhs.mul_to(&inout, &mut result);
   inout.copy_from(&result);
 }
