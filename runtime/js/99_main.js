@@ -585,10 +585,6 @@ const NOT_IMPORTED_OPS = [
   "op_set_exit_code",
   "op_napi_open",
   "op_npm_process_state",
-
-  // TODO(bartlomieju): used in a regression test, but probably not needed
-  // anymore if ops are not user accessible.
-  "op_spawn_child",
 ];
 
 function removeImportedOps() {
