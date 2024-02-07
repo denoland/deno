@@ -91,6 +91,32 @@ fn publish_non_exported_files_using_import_map() {
     .any(|l| l.contains("Unfurling") && l.ends_with("other.ts")));
 }
 
+#[test]
+fn publish_warning_not_in_graph() {
+  let context = publish_context_builder().build();
+  let temp_dir = context.temp_dir().path();
+  temp_dir.join("deno.json").write_json(&json!({
+    "name": "@foo/bar",
+    "version": "1.0.0",
+    "exports": "./mod.ts",
+  }));
+  // file not in the graph that uses a non-analyzable dynamic import (cause a diagnostic)
+  let other_ts = temp_dir.join("_other.ts");
+  other_ts
+    .write("const nonAnalyzable = './_other.ts'; await import(nonAnalyzable);");
+  let mod_ts = temp_dir.join("mod.ts");
+  mod_ts.write(
+    "export function test(a: number, b: number): number { return a + b; }",
+  );
+  context
+    .new_command()
+    .args("publish --token 'sadfasdf'")
+    .run()
+    .assert_matches_text(
+      "[WILDCARD]unable to analyze dynamic import[WILDCARD]",
+    );
+}
+
 itest!(javascript_missing_decl_file {
   args: "publish --token 'sadfasdf'",
   output: "publish/javascript_missing_decl_file.out",
