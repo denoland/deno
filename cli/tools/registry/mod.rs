@@ -27,6 +27,7 @@ use crate::args::deno_registry_url;
 use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::PublishFlags;
+use crate::cache::LazyGraphSourceParser;
 use crate::cache::ParsedSourceCache;
 use crate::factory::CliFactory;
 use crate::graph_util::ModuleGraphBuilder;
@@ -90,6 +91,7 @@ fn get_deno_json_package_name(
 async fn prepare_publish(
   deno_json: &ConfigFile,
   source_cache: Arc<ParsedSourceCache>,
+  graph: Arc<deno_graph::ModuleGraph>,
   import_map: Arc<ImportMap>,
   diagnostics_collector: &PublishDiagnosticsCollector,
 ) -> Result<Rc<PreparedPublishPackage>, AnyError> {
@@ -140,7 +142,7 @@ async fn prepare_publish(
     let unfurler = ImportMapUnfurler::new(&import_map);
     tar::create_gzipped_tarball(
       &dir_path,
-      &*source_cache,
+      LazyGraphSourceParser::new(&source_cache, &graph),
       &diagnostics_collector,
       &unfurler,
       file_patterns,
@@ -639,19 +641,19 @@ async fn publish_package(
   Ok(())
 }
 
+struct PreparePackagesData {
+  publish_order_graph: PublishOrderGraph,
+  graph: Arc<deno_graph::ModuleGraph>,
+  package_by_name: HashMap<String, Rc<PreparedPublishPackage>>,
+}
+
 async fn prepare_packages_for_publishing(
   cli_factory: &CliFactory,
   no_zap: bool,
   diagnostics_collector: &PublishDiagnosticsCollector,
   deno_json: ConfigFile,
   import_map: Arc<ImportMap>,
-) -> Result<
-  (
-    PublishOrderGraph,
-    HashMap<String, Rc<PreparedPublishPackage>>,
-  ),
-  AnyError,
-> {
+) -> Result<PreparePackagesData, AnyError> {
   let maybe_workspace_config = deno_json.to_workspace_config()?;
   let module_graph_builder = cli_factory.module_graph_builder().await?.as_ref();
   let source_cache = cli_factory.parsed_source_cache();
@@ -660,7 +662,7 @@ async fn prepare_packages_for_publishing(
 
   let Some(workspace_config) = maybe_workspace_config else {
     let roots = resolve_config_file_roots_from_exports(&deno_json)?;
-    build_and_check_graph_for_publish(
+    let graph = build_and_check_graph_for_publish(
       module_graph_builder,
       type_checker,
       cli_options,
@@ -673,10 +675,10 @@ async fn prepare_packages_for_publishing(
       }],
     )
     .await?;
-    let mut prepared_package_by_name = HashMap::with_capacity(1);
     let package = prepare_publish(
       &deno_json,
       source_cache.clone(),
+      graph.clone(),
       import_map,
       diagnostics_collector,
     )
@@ -684,8 +686,12 @@ async fn prepare_packages_for_publishing(
     let package_name = format!("@{}/{}", package.scope, package.package);
     let publish_order_graph =
       PublishOrderGraph::new_single(package_name.clone());
-    prepared_package_by_name.insert(package_name, package);
-    return Ok((publish_order_graph, prepared_package_by_name));
+    let package_by_name = HashMap::from([(package_name, package)]);
+    return Ok(PreparePackagesData {
+      publish_order_graph,
+      graph,
+      package_by_name,
+    });
   };
 
   println!("Publishing a workspace...");
@@ -701,7 +707,7 @@ async fn prepare_packages_for_publishing(
   )
   .await?;
 
-  let mut prepared_package_by_name =
+  let mut package_by_name =
     HashMap::with_capacity(workspace_config.members.len());
   let publish_order_graph =
     publish_order::build_publish_order_graph(&graph, &roots)?;
@@ -712,11 +718,13 @@ async fn prepare_packages_for_publishing(
     .cloned()
     .map(|member| {
       let import_map = import_map.clone();
+      let graph = graph.clone();
       async move {
         let package = prepare_publish(
           &member.config_file,
           source_cache.clone(),
-          import_map.clone(),
+          graph,
+          import_map,
           diagnostics_collector,
         )
         .await
@@ -731,9 +739,13 @@ async fn prepare_packages_for_publishing(
   let results = deno_core::futures::future::join_all(results).await;
   for result in results {
     let (package_name, package) = result?;
-    prepared_package_by_name.insert(package_name, package);
+    package_by_name.insert(package_name, package);
   }
-  Ok((publish_order_graph, prepared_package_by_name))
+  Ok(PreparePackagesData {
+    publish_order_graph,
+    graph,
+    package_by_name,
+  })
 }
 
 async fn build_and_check_graph_for_publish(
@@ -828,20 +840,22 @@ pub async fn publish(
 
   let diagnostics_collector = PublishDiagnosticsCollector::default();
 
-  let (publish_order_graph, prepared_package_by_name) =
-    prepare_packages_for_publishing(
-      &cli_factory,
-      publish_flags.no_zap,
-      &diagnostics_collector,
-      config_file.clone(),
-      import_map,
-    )
-    .await?;
+  let prepared_data = prepare_packages_for_publishing(
+    &cli_factory,
+    publish_flags.no_zap,
+    &diagnostics_collector,
+    config_file.clone(),
+    import_map,
+  )
+  .await?;
 
-  diagnostics_collector
-    .print_and_error(&**cli_factory.parsed_source_cache())?;
+  let source_parser = LazyGraphSourceParser::new(
+    cli_factory.parsed_source_cache(),
+    &prepared_data.graph,
+  );
+  diagnostics_collector.print_and_error(source_parser)?;
 
-  if prepared_package_by_name.is_empty() {
+  if prepared_data.package_by_name.is_empty() {
     bail!("No packages to publish");
   }
 
@@ -855,8 +869,8 @@ pub async fn publish(
 
   perform_publish(
     cli_factory.http_client(),
-    publish_order_graph,
-    prepared_package_by_name,
+    prepared_data.publish_order_graph,
+    prepared_data.package_by_name,
     auth_method,
   )
   .await

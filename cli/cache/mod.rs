@@ -46,6 +46,7 @@ pub use emit::EmitCache;
 pub use incremental::IncrementalCache;
 pub use module_info::ModuleInfoCache;
 pub use node::NodeAnalysisCache;
+pub use parsed_source::LazyGraphSourceParser;
 pub use parsed_source::ParsedSourceCache;
 
 /// Permissions used to save a file in the disk caches.

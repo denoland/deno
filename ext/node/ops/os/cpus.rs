@@ -245,11 +245,13 @@ pub fn cpu_info() -> Option<Vec<CpuInfo>> {
   let fp = std::fs::File::open("/proc/stat").ok()?;
   let reader = std::io::BufReader::new(fp);
 
+  let mut count = 0;
   for (i, line) in reader.lines().enumerate() {
     let line = line.ok()?;
     if !line.starts_with("cpu") {
       break;
     }
+    count = i;
     let mut fields = line.split_whitespace();
     fields.next()?;
     let user = fields.next()?.parse::<u64>().ok()?;
@@ -268,7 +270,7 @@ pub fn cpu_info() -> Option<Vec<CpuInfo>> {
   let fp = std::fs::File::open("/proc/cpuinfo").ok()?;
   let reader = std::io::BufReader::new(fp);
 
-  let mut i = 0;
+  let mut j = 0;
   for line in reader.lines() {
     let line = line.ok()?;
     if !line.starts_with("model name") {
@@ -278,11 +280,16 @@ pub fn cpu_info() -> Option<Vec<CpuInfo>> {
     fields.next()?;
     let model = fields.next()?.trim();
 
-    cpus[i].model = model.to_string();
-    i += 1;
+    cpus[j].model = model.to_string();
+    j += 1;
   }
 
-  cpus.truncate(i);
+  while j < count {
+    cpus[j].model = "unknown".to_string();
+    j += 1;
+  }
+
+  cpus.truncate(count);
   Some(cpus)
 }
 

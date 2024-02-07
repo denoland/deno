@@ -11,9 +11,10 @@ use deno_ast::SourcePos;
 use deno_ast::SourceRange;
 use deno_ast::SourceRanged;
 use deno_ast::SourceTextInfo;
-use deno_graph::ParsedSourceStore;
 use deno_runtime::colors;
 use unicode_width::UnicodeWidthStr;
+
+use crate::cache::LazyGraphSourceParser;
 
 pub trait SourceTextStore {
   fn get_source_text<'a>(
@@ -22,15 +23,38 @@ pub trait SourceTextStore {
   ) -> Option<Cow<'a, SourceTextInfo>>;
 }
 
-pub struct SourceTextParsedSourceStore<'a>(pub &'a dyn ParsedSourceStore);
+pub struct SourceTextParsedSourceStore<'a>(pub LazyGraphSourceParser<'a>);
+
+impl<'a> SourceTextParsedSourceStore<'a> {
+  pub fn get_source_text_from_store(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<Cow<'_, SourceTextInfo>> {
+    let parsed_source = self.0.get_or_parse_source(specifier).ok()??;
+    Some(Cow::Owned(parsed_source.text_info().clone()))
+  }
+}
 
 impl SourceTextStore for SourceTextParsedSourceStore<'_> {
   fn get_source_text<'a>(
     &'a self,
     specifier: &ModuleSpecifier,
   ) -> Option<Cow<'a, SourceTextInfo>> {
-    let parsed_source = self.0.get_parsed_source(specifier)?;
-    Some(Cow::Owned(parsed_source.text_info().clone()))
+    match self.get_source_text_from_store(specifier) {
+      Some(text_info) => Some(text_info),
+      None => {
+        // todo(#22117): this is extremely hacky and bad because the file
+        // may have changed by the time we get here. Instead of doing this,
+        // we should store the text info in the diagnostics
+        if specifier.scheme() == "file" {
+          let path = specifier.to_file_path().ok()?;
+          let text = std::fs::read_to_string(path).ok()?;
+          Some(Cow::Owned(SourceTextInfo::new(text.into())))
+        } else {
+          None
+        }
+      }
+    }
   }
 }
 
