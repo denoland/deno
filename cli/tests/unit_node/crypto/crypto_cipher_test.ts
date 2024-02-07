@@ -261,53 +261,99 @@ Deno.test({
   },
 });
 
-const iv = Buffer.from("00000000000000000000000000000000", "hex");
-const key = Buffer.from(
-  "0123456789abcdef0123456789abcdef" +
-    "0123456789abcdef0123456789abcdef",
-  "hex",
-);
+function setAutoPaddingTest(
+  { algorithm, keyLength, pad }: {
+    algorithm: string;
+    keyLength: number;
+    pad: boolean;
+  },
+) {
+  const key = crypto.randomBytes(keyLength);
+  const iv = algorithm.endsWith("ecb") ? null : crypto.randomBytes(16);
+  const data = pad
+    ? "0123456789abcdef0123456789abcde" // Not a multiple of block size
+    : "0123456789abcdef0123456789abcdef"; // Multiple of block size
 
-function encrypt(alg: string, val: string, pad: boolean): string {
-  const c = crypto.createCipheriv(alg, key, iv);
-  c.setAutoPadding(pad);
-  return c.update(val, "utf8", "latin1") + c.final("latin1");
+  const cipher = crypto.createCipheriv(algorithm, key, iv);
+  cipher.setAutoPadding(pad);
+  const encrypted = cipher.update(data, "utf8", "latin1") +
+    cipher.final("latin1");
+
+  const decipher = crypto.createDecipheriv(algorithm, key, iv);
+  decipher.setAutoPadding(pad);
+  const decrypted = decipher.update(encrypted, "latin1", "utf8") +
+    decipher.final("utf8");
+
+  assertStrictEquals(decrypted, data);
 }
 
-function decrypt(alg: string, val: string, pad: boolean): string {
-  const c = crypto.createDecipheriv(alg, key, iv);
-  c.setAutoPadding(pad);
-  return c.update(val, "latin1", "utf8") + c.final("utf8");
-}
-
-// Taken from parallel/test-crypto-padding-aes256.js
-Deno.test("setAutoPadding()", () => {
-  const algs = [
-    "aes-128-cbc",
-    "aes-128-ecb",
-    "aes-192-ecb",
-    "aes-256-ecb",
-    "aes-128-gcm",
-    "aes-256-gcm",
-    "aes256",
-    "aes-256-cbc",
-  ];
-
-  for (const alg of algs) {
-    // echo 0123456789abcdef0123456789abcdef \
-    // | openssl enc -e -<alg> -nopad -K <key> -iv <iv> \
-    // | openssl enc -d -<alg> -nopad -K <key> -iv <iv>
-    let plaintext = "0123456789abcdef0123456789abcdef"; // Multiple of block size
-    let encrypted = encrypt(alg, plaintext, false);
-    let decrypted = decrypt(alg, encrypted, false);
-    assertStrictEquals(decrypted, plaintext);
-
-    // echo 0123456789abcdef0123456789abcde \
-    // | openssl enc -e -<alg> -K <key> -iv <iv> \
-    // | openssl enc -d -<alg> -K <key> -iv <iv>
-    plaintext = "0123456789abcdef0123456789abcde"; // not a multiple
-    encrypted = encrypt(alg, plaintext, true);
-    decrypted = decrypt(alg, encrypted, true);
-    assertStrictEquals(decrypted, plaintext);
-  }
+/**
+ * @todo(iuioiua) Add `*-gcm` algorithms once `Cipher.getAuthTag()` and
+ * `Decipher.setAuthTag()` are implemented.
+ */
+[
+  {
+    algorithm: "aes-128-cbc",
+    keyLength: 16,
+    pad: false,
+  },
+  {
+    algorithm: "aes-128-cbc",
+    keyLength: 16,
+    pad: true,
+  },
+  {
+    algorithm: "aes-128-ecb",
+    keyLength: 16,
+    pad: false,
+  },
+  {
+    algorithm: "aes-128-ecb",
+    keyLength: 16,
+    pad: true,
+  },
+  {
+    algorithm: "aes-192-ecb",
+    keyLength: 24,
+    pad: false,
+  },
+  {
+    algorithm: "aes-192-ecb",
+    keyLength: 24,
+    pad: true,
+  },
+  {
+    algorithm: "aes256",
+    keyLength: 32,
+    pad: false,
+  },
+  {
+    algorithm: "aes256",
+    keyLength: 32,
+    pad: true,
+  },
+  {
+    algorithm: "aes-256-cbc",
+    keyLength: 32,
+    pad: false,
+  },
+  {
+    algorithm: "aes-256-cbc",
+    keyLength: 32,
+    pad: true,
+  },
+  {
+    algorithm: "aes-256-ecb",
+    keyLength: 32,
+    pad: false,
+  },
+  {
+    algorithm: "aes-256-ecb",
+    keyLength: 32,
+    pad: true,
+  },
+].forEach((options) => {
+  Deno.test(`cipher.setAutoPadding() and decipher.setAutoPadding() - ${options.algorithm} ${options.pad ? "with" : "without"} padding`, () => {
+    setAutoPaddingTest(options);
+  });
 });
