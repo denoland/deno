@@ -468,6 +468,7 @@ Total: 2998
 - [parallel/test-crypto-modp1-error.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-modp1-error.js)
 - [parallel/test-crypto-no-algorithm.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-no-algorithm.js)
 - [parallel/test-crypto-op-during-process-exit.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-op-during-process-exit.js)
+- [parallel/test-crypto-padding.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-padding.js)
 - [parallel/test-crypto-pbkdf2.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-pbkdf2.js)
 - [parallel/test-crypto-private-decrypt-gh32240.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-private-decrypt-gh32240.js)
 - [parallel/test-crypto-psychic-signatures.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-psychic-signatures.js)
