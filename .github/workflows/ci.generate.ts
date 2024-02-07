@@ -682,9 +682,9 @@ const ci = {
             "(github.ref == 'refs/heads/main' ||",
             "startsWith(github.ref, 'refs/tags/'))))",
           ].join("\n"),
-          uses: "actions/upload-artifact@v3",
+          uses: "actions/upload-artifact@v4",
           with: {
-            name: "deno-${{ github.event.number }}",
+            name: "deno-${{ matrix.os }}-${{ matrix.arch }}-${{ github.event.number }}",
             path: "target/release/deno",
           },
         },
