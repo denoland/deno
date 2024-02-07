@@ -622,12 +622,6 @@ const NOT_IMPORTED_OPS = [
   // TODO(bartlomieju): used in a regression test, but probably not needed
   // anymore if ops are not user accessible.
   "op_spawn_child",
-
-  // TODO(bartlomieju): can be removed after the `deno_core` upgrade.
-  "op_encode_binary_string",
-  "op_format_file_name",
-  "op_apply_source_map",
-  "op_apply_source_map_filename",
 ];
 
 function removeImportedOps() {
