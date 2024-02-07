@@ -2196,7 +2196,7 @@ declare namespace Deno {
    * console.log(await Deno.readTextFile("my_file.txt")); // H
    * ```
    *
-   * @category I/O
+   * @category File System
    */
   export function fsync(rid: number): Promise<void>;
 
@@ -2215,7 +2215,7 @@ declare namespace Deno {
    * console.log(Deno.readTextFileSync("my_file.txt")); // H
    * ```
    *
-   * @category I/O
+   * @category File System
    */
   export function fsyncSync(rid: number): void;
 
@@ -2231,7 +2231,7 @@ declare namespace Deno {
    * console.log(await Deno.readTextFile("my_file.txt")); // Hello World
    * ```
    *
-   * @category I/O
+   * @category File System
    */
   export function fdatasync(rid: number): Promise<void>;
 
@@ -2249,7 +2249,7 @@ declare namespace Deno {
    * console.log(Deno.readTextFileSync("my_file.txt")); // Hello World
    * ```
    *
-   * @category I/O
+   * @category File System
    */
   export function fdatasyncSync(rid: number): void;
 
