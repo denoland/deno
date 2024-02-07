@@ -9,7 +9,7 @@ const cacheVersion = 73;
 
 const ubuntuX86Runner = "ubuntu-22.04";
 const ubuntuX86XlRunner = "ubuntu-22.04-xl";
-const ubuntuARMRunner = "ubicloud-standard-8-arm"
+const ubuntuARMRunner = "ubicloud-standard-8-arm";
 const windowsX86Runner = "windows-2022";
 const windowsX86XlRunner = "windows-2022-xl";
 const macosX86Runner = "macos-12";
@@ -30,7 +30,7 @@ const Runners = {
   linuxArm: {
     os: "linux",
     arch: "aarch64",
-    runner: ubuntuARMRunner
+    runner: ubuntuARMRunner,
   },
   macosX86: {
     os: "macos",
@@ -470,7 +470,10 @@ const ci = {
           ...installDenoStep,
         },
         ...installPythonSteps.map((s) =>
-          withCondition(s, "matrix.job != 'lint' && (matrix.os != 'linux' || matrix.arch != 'aarch64')")
+          withCondition(
+            s,
+            "matrix.job != 'lint' && (matrix.os != 'linux' || matrix.arch != 'aarch64')",
+          )
         ),
         {
           // only necessary for benchmarks
