@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import { randomInt } from "node:crypto";
-import { assert, assertThrows } from "../../../../test_util/std/assert/mod.ts";
+import { assert, assertThrows } from "@test_util/std/assert/mod.ts";
 
 const between = (x: number, min: number, max: number) => x >= min && x < max;
 

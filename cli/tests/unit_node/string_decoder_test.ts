@@ -1,5 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-import { assertEquals } from "../../../test_util/std/assert/mod.ts";
+import { assertEquals } from "@test_util/std/assert/mod.ts";
 import { Buffer } from "node:buffer";
 import { StringDecoder } from "node:string_decoder";
 

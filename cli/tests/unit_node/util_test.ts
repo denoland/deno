@@ -5,8 +5,8 @@ import {
   assertEquals,
   assertStrictEquals,
   assertThrows,
-} from "../../../test_util/std/assert/mod.ts";
-import { stripColor } from "../../../test_util/std/fmt/colors.ts";
+} from "@test_util/std/assert/mod.ts";
+import { stripColor } from "@test_util/std/fmt/colors.ts";
 import * as util from "node:util";
 import { Buffer } from "node:buffer";
 

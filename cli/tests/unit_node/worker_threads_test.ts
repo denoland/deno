@@ -4,8 +4,8 @@ import {
   assert,
   assertEquals,
   assertObjectMatch,
-} from "../../../test_util/std/assert/mod.ts";
-import { fromFileUrl, relative } from "../../../test_util/std/path/mod.ts";
+} from "@test_util/std/assert/mod.ts";
+import { fromFileUrl, relative } from "@test_util/std/path/mod.ts";
 import * as workerThreads from "node:worker_threads";
 import { EventEmitter, once } from "node:events";
 

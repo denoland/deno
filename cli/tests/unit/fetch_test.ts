@@ -8,7 +8,7 @@ import {
   fail,
   unimplemented,
 } from "./test_util.ts";
-import { Buffer } from "../../../test_util/std/io/buffer.ts";
+import { Buffer } from "@test_util/std/io/buffer.ts";
 
 const listenPort = 4506;
 
