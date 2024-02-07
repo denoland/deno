@@ -271,7 +271,11 @@ jobs:
           wget -q https://github.com/denoland/deno_sysroot_build/releases/download/sysroot-20240207/sysroot-`uname -m`.tar.xz -O /tmp/sysroot.tar.xz
           cd /
           xzcat /tmp/sysroot.tar.xz | sudo tar -x
-          cd /tmp/
+          sudo mount --rbind /dev /sysroot/dev
+          sudo mount --rbind /sys /sysroot/sys
+          sudo mount --rbind /home /sysroot/home
+          sudo mount -t proc /proc /sysroot/proc
+          cd
 
           if [[ `uname -m` == "aarch64" ]]; then
             echo "Copying libdl.a"
