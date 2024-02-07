@@ -114,11 +114,6 @@ jobs:
           - os: linux
             arch: aarch64
             runner: ubicloud-standard-8-arm
-            job: lint
-            profile: debug
-          - os: linux
-            arch: aarch64
-            runner: ubicloud-standard-8-arm
             job: test
             profile: debug
           - os: macos

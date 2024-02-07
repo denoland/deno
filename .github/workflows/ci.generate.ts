@@ -407,10 +407,6 @@ const ci = {
             profile: "debug",
           }, {
             ...Runners.linuxArm,
-            job: "lint",
-            profile: "debug",
-          }, {
-            ...Runners.linuxArm,
             job: "test",
             profile: "debug",
           }, {
