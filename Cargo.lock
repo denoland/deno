@@ -994,6 +994,7 @@ dependencies = [
  "deno_runtime",
  "deno_semver",
  "deno_task_shell",
+ "deno_terminal",
  "dissimilar",
  "dotenvy",
  "dprint-plugin-json",
@@ -1681,6 +1682,7 @@ dependencies = [
  "deno_napi",
  "deno_net",
  "deno_node",
+ "deno_terminal",
  "deno_tls",
  "deno_url",
  "deno_web",
@@ -1712,7 +1714,6 @@ dependencies = [
  "rustyline",
  "serde",
  "signal-hook-registry",
- "termcolor",
  "test_util",
  "tokio",
  "tokio-metrics",
@@ -1750,6 +1751,16 @@ dependencies = [
  "path-dedot",
  "tokio",
  "tokio-util",
+]
+
+[[package]]
+name = "deno_terminal"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b847702ef57565e1417fad2291f65a3c8a5ecf2ba38d64e56f02828e7546d891"
+dependencies = [
+ "once_cell",
+ "termcolor",
 ]
 
 [[package]]
