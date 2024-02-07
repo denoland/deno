@@ -3,17 +3,9 @@
 use deno_core::serde_json::json;
 use test_util::assert_contains;
 use test_util::assert_not_contains;
+use test_util::env_vars_for_jsr_tests;
 use test_util::env_vars_for_npm_tests;
 use test_util::TestContextBuilder;
-
-static TEST_REGISTRY_URL: &str = "http://127.0.0.1:4250";
-
-pub fn env_vars_for_registry() -> Vec<(String, String)> {
-  vec![(
-    "DENO_REGISTRY_URL".to_string(),
-    TEST_REGISTRY_URL.to_string(),
-  )]
-}
 
 itest!(no_token {
   args: "publish",
@@ -40,7 +32,9 @@ itest!(no_zap {
   args: "publish --no-zap --token 'sadfasdf'",
   output: "publish/no_zap.out",
   cwd: Some("publish/invalid_fast_check"),
-  exit_code: 1,
+  envs: env_vars_for_jsr_tests(),
+  http_server: true,
+  exit_code: 0,
 });
 
 itest!(invalid_path {
@@ -127,7 +121,7 @@ itest!(javascript_missing_decl_file {
   args: "publish --token 'sadfasdf'",
   output: "publish/javascript_missing_decl_file.out",
   cwd: Some("publish/javascript_missing_decl_file"),
-  envs: env_vars_for_registry(),
+  envs: env_vars_for_jsr_tests(),
   exit_code: 0,
   http_server: true,
 });
@@ -136,7 +130,7 @@ itest!(unanalyzable_dynamic_import {
   args: "publish --token 'sadfasdf'",
   output: "publish/unanalyzable_dynamic_import.out",
   cwd: Some("publish/unanalyzable_dynamic_import"),
-  envs: env_vars_for_registry(),
+  envs: env_vars_for_jsr_tests(),
   exit_code: 0,
   http_server: true,
 });
@@ -145,7 +139,7 @@ itest!(javascript_decl_file {
   args: "publish --token 'sadfasdf'",
   output: "publish/javascript_decl_file.out",
   cwd: Some("publish/javascript_decl_file"),
-  envs: env_vars_for_registry(),
+  envs: env_vars_for_jsr_tests(),
   http_server: true,
   exit_code: 0,
 });
@@ -154,7 +148,7 @@ itest!(successful {
   args: "publish --token 'sadfasdf'",
   output: "publish/successful.out",
   cwd: Some("publish/successful"),
-  envs: env_vars_for_registry(),
+  envs: env_vars_for_jsr_tests(),
   http_server: true,
 });
 
@@ -162,7 +156,7 @@ itest!(node_specifier {
   args: "publish --token 'sadfasdf'",
   output: "publish/node_specifier.out",
   cwd: Some("publish/node_specifier"),
-  envs: env_vars_for_registry()
+  envs: env_vars_for_jsr_tests()
     .into_iter()
     .chain(env_vars_for_npm_tests().into_iter())
     .collect(),
@@ -173,7 +167,7 @@ itest!(config_file_jsonc {
   args: "publish --token 'sadfasdf'",
   output: "publish/deno_jsonc.out",
   cwd: Some("publish/deno_jsonc"),
-  envs: env_vars_for_registry(),
+  envs: env_vars_for_jsr_tests(),
   http_server: true,
 });
 
@@ -181,7 +175,7 @@ itest!(workspace_all {
   args: "publish --token 'sadfasdf'",
   output: "publish/workspace.out",
   cwd: Some("publish/workspace"),
-  envs: env_vars_for_registry(),
+  envs: env_vars_for_jsr_tests(),
   http_server: true,
 });
 
@@ -189,7 +183,7 @@ itest!(workspace_individual {
   args: "publish --token 'sadfasdf'",
   output: "publish/workspace_individual.out",
   cwd: Some("publish/workspace/bar"),
-  envs: env_vars_for_registry(),
+  envs: env_vars_for_jsr_tests(),
   http_server: true,
 });
 
@@ -197,7 +191,7 @@ itest!(dry_run {
   args: "publish --token 'sadfasdf' --dry-run",
   cwd: Some("publish/successful"),
   output: "publish/dry_run.out",
-  envs: env_vars_for_registry(),
+  envs: env_vars_for_jsr_tests(),
   http_server: true,
 });
 
@@ -278,6 +272,6 @@ fn includes_directories() {
 fn publish_context_builder() -> TestContextBuilder {
   TestContextBuilder::new()
     .use_http_server()
-    .envs(env_vars_for_registry())
+    .envs(env_vars_for_jsr_tests())
     .use_temp_cwd()
 }
