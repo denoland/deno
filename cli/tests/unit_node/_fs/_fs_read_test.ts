@@ -4,11 +4,11 @@ import {
   assertFalse,
   assertMatch,
   assertStrictEquals,
-} from "../../../../test_util/std/assert/mod.ts";
+} from "@test_util/std/assert/mod.ts";
 import { read, readSync } from "node:fs";
 import { open, openSync } from "node:fs";
 import { Buffer } from "node:buffer";
-import * as path from "../../../../test_util/std/path/mod.ts";
+import * as path from "@test_util/std/path/mod.ts";
 import { closeSync } from "node:fs";
 
 async function readTest(

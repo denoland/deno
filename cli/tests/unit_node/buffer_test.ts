@@ -1,9 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import { Buffer } from "node:buffer";
-import {
-  assertEquals,
-  assertThrows,
-} from "../../../test_util/std/assert/mod.ts";
+import { assertEquals, assertThrows } from "@test_util/std/assert/mod.ts";
 
 Deno.test({
   name: "[node/buffer] alloc fails if size is not a number",

@@ -1,9 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import {
-  assertMatch,
-  assertRejects,
-} from "@test_util/std/assert/mod.ts";
+import { assertMatch, assertRejects } from "@test_util/std/assert/mod.ts";
 import { Buffer, BufReader, BufWriter } from "@test_util/std/io/mod.ts";
 import { TextProtoReader } from "../testdata/run/textproto.ts";
 import {

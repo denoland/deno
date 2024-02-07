@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import { write, writeSync } from "node:fs";
-import { assertEquals } from "../../../../test_util/std/assert/mod.ts";
+import { assertEquals } from "@test_util/std/assert/mod.ts";
 import { Buffer } from "node:buffer";
 
 const decoder = new TextDecoder("utf-8");
