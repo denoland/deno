@@ -132,28 +132,21 @@ pub fn op_geometry_skew_self(
   y_degrees: f64,
   #[buffer] inout: &mut [f64],
 ) -> () {
-  let skew = Matrix4::new(
+  let skew = Matrix4x2::new(
     1.0,
     x_degrees.to_radians().tan(),
-    0.0,
-    0.0,
     y_degrees.to_radians().tan(),
     1.0,
     0.0,
     0.0,
     0.0,
     0.0,
-    1.0,
-    0.0,
-    0.0,
-    0.0,
-    0.0,
-    1.0,
   );
   let mut inout = MatrixViewMut4::from_slice(inout);
-  let mut result = Matrix4::zeros();
+  let mut result = Matrix4x2::zeros();
   inout.mul_to(&skew, &mut result);
-  inout.copy_from(&result);
+  inout.set_column(0, &result.column(0));
+  inout.set_column(1, &result.column(1));
 }
 
 #[op2(fast)]
