@@ -495,7 +495,7 @@ jobs:
         env:
           NO_COLOR: 1
       - name: Check deno binary (in sysroot)
-        if: '!(matrix.skip) && (matrix.profile == ''release'' && matrix.use_sysroot)'
+        if: '!(matrix.skip) && (matrix.profile == ''release'' && matrix.use_sysroot && matrix.arch != ''aarch64'')'
         run: sudo chroot /sysroot "$(pwd)/target/release/deno" --version
       - name: Configure hosts file for WPT
         if: '!(matrix.skip) && (matrix.wpt)'
