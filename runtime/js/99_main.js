@@ -618,10 +618,6 @@ const NOT_IMPORTED_OPS = [
   "op_ffi_unsafe_callback_close",
   "op_ffi_unsafe_callback_create",
   "op_ffi_unsafe_callback_ref",
-
-  // TODO(bartlomieju): used in a regression test, but probably not needed
-  // anymore if ops are not user accessible.
-  "op_spawn_child",
 ];
 
 function removeImportedOps() {
