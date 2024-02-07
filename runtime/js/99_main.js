@@ -586,39 +586,6 @@ const NOT_IMPORTED_OPS = [
   "op_napi_open",
   "op_npm_process_state",
 
-  // TODO(bartlomieju): used in integration tests for FFI API, to check if
-  // they require unstable flag. These tests are questionable and should be
-  // removed (most likely).
-  "op_ffi_buf_copy_into",
-  "op_ffi_call_nonblocking",
-  "op_ffi_call_ptr_nonblocking",
-  "op_ffi_call_ptr",
-  "op_ffi_cstr_read",
-  "op_ffi_get_buf",
-  "op_ffi_get_static",
-  "op_ffi_load",
-  "op_ffi_ptr_create",
-  "op_ffi_ptr_equals",
-  "op_ffi_ptr_of_exact",
-  "op_ffi_ptr_of",
-  "op_ffi_ptr_offset",
-  "op_ffi_ptr_value",
-  "op_ffi_read_bool",
-  "op_ffi_read_f32",
-  "op_ffi_read_f64",
-  "op_ffi_read_i16",
-  "op_ffi_read_i32",
-  "op_ffi_read_i64",
-  "op_ffi_read_i8",
-  "op_ffi_read_ptr",
-  "op_ffi_read_u16",
-  "op_ffi_read_u32",
-  "op_ffi_read_u64",
-  "op_ffi_read_u8",
-  "op_ffi_unsafe_callback_close",
-  "op_ffi_unsafe_callback_create",
-  "op_ffi_unsafe_callback_ref",
-
   // TODO(bartlomieju): used in a regression test, but probably not needed
   // anymore if ops are not user accessible.
   "op_spawn_child",
