@@ -410,6 +410,10 @@ const ci = {
             job: "test",
             profile: "debug",
           }, {
+            ...Runners.linuxArm,
+            job: "test",
+            profile: "release",
+          }, {
             ...Runners.macosX86,
             job: "lint",
             profile: "debug",
