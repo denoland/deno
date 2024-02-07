@@ -816,7 +816,8 @@ const ci = {
           // Verify that the binary actually works in the Ubuntu-16.04 sysroot.
           // TODO(mmastrac): make this work for aarch64 as well
           name: "Check deno binary (in sysroot)",
-          if: "matrix.profile == 'release' && matrix.use_sysroot && matrix.arch != 'aarch64'",
+          if:
+            "matrix.profile == 'release' && matrix.use_sysroot && matrix.arch != 'aarch64'",
           run: 'sudo chroot /sysroot "$(pwd)/target/release/deno" --version',
         },
         {
