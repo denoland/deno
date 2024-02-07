@@ -68,9 +68,10 @@ const sysRootStep = {
 export DEBIAN_FRONTEND=noninteractive
 # Avoid running man-db triggers, which sometimes takes several minutes
 # to complete.
-sudo apt-get -qq remove --purge -y man-db
+sudo apt-get -qq remove --purge -y man-db  > /dev/null 2> /dev/null
 # Remove older clang before we install
-sudo apt-get -qq remove 'clang-12*' 'clang-13*' 'clang-14*' 'clang-15*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'llvm-15*' 'lld-12*' 'lld-13*' 'lld-14*' 'lld-15*'
+sudo apt-get -qq remove \
+  'clang-12*' 'clang-13*' 'clang-14*' 'clang-15*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'llvm-15*' 'lld-12*' 'lld-13*' 'lld-14*' 'lld-15*' > /dev/null 2> /dev/null
 
 # Install clang-XXX, lld-XXX, and debootstrap.
 echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-${llvmVersion} main" |
@@ -82,7 +83,7 @@ sudo apt-get update
 # this was unreliable sometimes, so try again if it fails
 ${installPkgsCommand} || echo 'Failed. Trying again.' && sudo apt-get clean && sudo apt-get update && ${installPkgsCommand}
 # Fix alternatives
-(yes '' | sudo update-alternatives --force --all) || true > /dev/null
+(yes '' | sudo update-alternatives --force --all) || true > /dev/null 2> /dev/null
 
 echo "Decompressing sysroot..."
 wget -q https://github.com/denoland/deno_sysroot_build/releases/download/sysroot-20240207/sysroot-\`uname -m\`.tar.xz -O /tmp/sysroot.tar.xz
