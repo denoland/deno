@@ -474,6 +474,29 @@ fn get_relative_specifiers(
     .collect()
 }
 
+/// Find the index of the '@' delimiting the package name and version, if any.
+fn parse_npm_specifier_version_index(specifier: &str) -> Option<usize> {
+  let bare_specifier = specifier.strip_prefix("npm:")?;
+  if bare_specifier.starts_with('@') {
+    bare_specifier
+      .find('/')
+      .filter(|idx| !bare_specifier[1..*idx].is_empty())
+      .and_then(|idx| {
+        bare_specifier[idx..]
+          .find('@')
+          .filter(|idx2| !bare_specifier[idx..][1..*idx2].is_empty())
+          .filter(|idx2| !bare_specifier[idx..][1..*idx2].contains('/'))
+          .map(|idx2| 4 + idx + idx2)
+      })
+  } else {
+    bare_specifier
+      .find('@')
+      .filter(|idx| !bare_specifier[1..*idx].is_empty())
+      .filter(|idx| !bare_specifier[1..*idx].contains('/'))
+      .map(|idx| 4 + idx)
+  }
+}
+
 /// Get completions for `npm:` specifiers.
 async fn get_npm_completions(
   referrer: &ModuleSpecifier,
@@ -481,31 +504,10 @@ async fn get_npm_completions(
   range: &lsp::Range,
   npm_search_api: &impl NpmSearchApi,
 ) -> Option<Vec<lsp::CompletionItem>> {
-  debug_assert!(specifier.starts_with("npm:"));
-  let bare_specifier = &specifier[4..];
-
-  // Find the index of the '@' delimiting the package name and version, if any.
-  let v_index = if bare_specifier.starts_with('@') {
-    bare_specifier
-      .find('/')
-      .filter(|idx| !bare_specifier[1..*idx].is_empty())
-      .and_then(|idx| {
-        bare_specifier[idx..]
-          .find('@')
-          .filter(|idx2| !bare_specifier[(idx + 1)..*idx2].is_empty())
-          .filter(|idx2| !bare_specifier[(idx + 1)..*idx2].contains('/'))
-      })
-  } else {
-    bare_specifier
-      .find('@')
-      .filter(|idx| !bare_specifier[..*idx].is_empty())
-      .filter(|idx| !bare_specifier[..*idx].contains('/'))
-  };
-
   // First try to match `npm:some-package@<version-to-complete>`.
-  if let Some(v_index) = v_index {
-    let package_name = &bare_specifier[..v_index];
-    let v_prefix = &bare_specifier[(v_index + 1)..];
+  if let Some(v_index) = parse_npm_specifier_version_index(specifier) {
+    let package_name = &specifier[..v_index].strip_prefix("npm:")?;
+    let v_prefix = &specifier[(v_index + 1)..];
     let versions = &npm_search_api
       .package_info(package_name)
       .await
@@ -550,7 +552,8 @@ async fn get_npm_completions(
   }
 
   // Otherwise match `npm:<package-to-complete>`.
-  let names = npm_search_api.search(bare_specifier).await.ok()?;
+  let package_name_prefix = specifier.strip_prefix("npm:")?;
+  let names = npm_search_api.search(package_name_prefix).await.ok()?;
   let items = names
     .iter()
     .enumerate()
@@ -839,6 +842,37 @@ mod tests {
         ),
         ..Default::default()
       }]
+    );
+  }
+
+  #[test]
+  fn test_parse_npm_specifier_version_index() {
+    assert_eq!(parse_npm_specifier_version_index("npm:"), None);
+    assert_eq!(parse_npm_specifier_version_index("npm:/"), None);
+    assert_eq!(parse_npm_specifier_version_index("npm:/@"), None);
+    assert_eq!(parse_npm_specifier_version_index("npm:@"), None);
+    assert_eq!(parse_npm_specifier_version_index("npm:@/"), None);
+    assert_eq!(parse_npm_specifier_version_index("npm:@/@"), None);
+    assert_eq!(parse_npm_specifier_version_index("npm:foo"), None);
+    assert_eq!(parse_npm_specifier_version_index("npm:foo/bar"), None);
+    assert_eq!(parse_npm_specifier_version_index("npm:foo/bar@"), None);
+    assert_eq!(parse_npm_specifier_version_index("npm:@org/foo/bar"), None);
+    assert_eq!(parse_npm_specifier_version_index("npm:@org/foo/bar@"), None);
+
+    assert_eq!(parse_npm_specifier_version_index("npm:foo@"), Some(7));
+    assert_eq!(parse_npm_specifier_version_index("npm:foo@1."), Some(7));
+    assert_eq!(parse_npm_specifier_version_index("npm:@org/foo@"), Some(12));
+    assert_eq!(
+      parse_npm_specifier_version_index("npm:@org/foo@1."),
+      Some(12)
+    );
+
+    // Regression test for https://github.com/denoland/deno/issues/22325.
+    assert_eq!(
+      parse_npm_specifier_version_index(
+        "npm:@longer_than_right_one/arbitrary_string@"
+      ),
+      Some(43)
     );
   }
 
