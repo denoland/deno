@@ -5,6 +5,7 @@ import { Readable } from "node:stream";
 import { buffer, text } from "node:stream/consumers";
 import {
   assertEquals,
+  assertStrictEquals,
   assertThrows,
 } from "../../../../test_util/std/assert/mod.ts";
 
@@ -258,4 +259,55 @@ Deno.test({
       "Unknown cipher",
     );
   },
+});
+
+const iv = Buffer.from("00000000000000000000000000000000", "hex");
+const key = Buffer.from(
+  "0123456789abcdef0123456789abcdef" +
+    "0123456789abcdef0123456789abcdef",
+  "hex",
+);
+
+function encrypt(alg: string, val: string, pad: boolean): string {
+  const c = crypto.createCipheriv(alg, key, iv);
+  c.setAutoPadding(pad);
+  return c.update(val, "utf8", "latin1") + c.final("latin1");
+}
+
+function decrypt(alg: string, val: string, pad: boolean): string {
+  const c = crypto.createDecipheriv(alg, key, iv);
+  c.setAutoPadding(pad);
+  return c.update(val, "latin1", "utf8") + c.final("utf8");
+}
+
+// Taken from parallel/test-crypto-padding-aes256.js
+Deno.test("setAutoPadding()", () => {
+  const algs = [
+    "aes-128-cbc",
+    "aes-128-ecb",
+    "aes-192-ecb",
+    "aes-256-ecb",
+    "aes-128-gcm",
+    "aes-256-gcm",
+    "aes256",
+    "aes-256-cbc",
+  ];
+
+  for (const alg of algs) {
+    // echo 0123456789abcdef0123456789abcdef \
+    // | openssl enc -e -<alg> -nopad -K <key> -iv <iv> \
+    // | openssl enc -d -<alg> -nopad -K <key> -iv <iv>
+    let plaintext = "0123456789abcdef0123456789abcdef"; // Multiple of block size
+    let encrypted = encrypt(alg, plaintext, false);
+    let decrypted = decrypt(alg, encrypted, false);
+    assertStrictEquals(decrypted, plaintext);
+
+    // echo 0123456789abcdef0123456789abcde \
+    // | openssl enc -e -<alg> -K <key> -iv <iv> \
+    // | openssl enc -d -<alg> -K <key> -iv <iv>
+    plaintext = "0123456789abcdef0123456789abcde"; // not a multiple
+    encrypted = encrypt(alg, plaintext, true);
+    decrypted = decrypt(alg, encrypted, true);
+    assertStrictEquals(decrypted, plaintext);
+  }
 });
