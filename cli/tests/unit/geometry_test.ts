@@ -495,6 +495,142 @@ Deno.test(function matrixRotateAxisAngleSelf() {
   }
 });
 
+Deno.test(function matrixSkewX() {
+  // deno-fmt-ignore
+  const init = {
+    m11:  1, m21:  2, m31:  3, m41:  4,
+    m12:  5, m22:  6, m32:  7, m42:  8,
+    m13:  9, m23: 10, m33: 11, m43: 12,
+    m14: 13, m24: 14, m34: 15, m44: 16,
+  };
+  // deno-fmt-ignore
+  const expect = {
+    m11:  1, m21:  2.5773502691896257, m31:  3, m41:  4,
+    m12:  5, m22:  8.8867513459481270, m32:  7, m42:  8,
+    m13:  9, m23: 15.1961524227066300, m33: 11, m43: 12,
+    m14: 13, m24: 21.5055534994651330, m34: 15, m44: 16,
+  };
+  const matrix = DOMMatrix.fromMatrix(init);
+  const matrix2 = matrix.skewX(30);
+  assertEquals(
+    matrix,
+    DOMMatrix.fromMatrix(init),
+  );
+  for (
+    const [key, value] of Object.entries(expect) as [
+      keyof typeof expect,
+      number,
+    ][]
+  ) {
+    assertAlmostEquals(
+      matrix2[key],
+      value,
+    );
+  }
+});
+
+Deno.test(function matrixSkewXSelf() {
+  // deno-fmt-ignore
+  const init = {
+    m11:  1, m21:  2, m31:  3, m41:  4,
+    m12:  5, m22:  6, m32:  7, m42:  8,
+    m13:  9, m23: 10, m33: 11, m43: 12,
+    m14: 13, m24: 14, m34: 15, m44: 16,
+  };
+  // deno-fmt-ignore
+  const expect = {
+    m11:  1, m21:  2.5773502691896257, m31:  3, m41:  4,
+    m12:  5, m22:  8.8867513459481270, m32:  7, m42:  8,
+    m13:  9, m23: 15.1961524227066300, m33: 11, m43: 12,
+    m14: 13, m24: 21.5055534994651330, m34: 15, m44: 16,
+  };
+  const matrix = DOMMatrix.fromMatrix(init);
+  const matrix2 = matrix.skewXSelf(30);
+  assertStrictEquals(
+    matrix,
+    matrix2,
+  );
+  for (
+    const [key, value] of Object.entries(expect) as [
+      keyof typeof expect,
+      number,
+    ][]
+  ) {
+    assertAlmostEquals(
+      matrix[key],
+      value,
+    );
+  }
+});
+
+Deno.test(function matrixSkewY() {
+  // deno-fmt-ignore
+  const init = {
+    m11:  1, m21:  2, m31:  3, m41:  4,
+    m12:  5, m22:  6, m32:  7, m42:  8,
+    m13:  9, m23: 10, m33: 11, m43: 12,
+    m14: 13, m24: 14, m34: 15, m44: 16,
+  };
+  // deno-fmt-ignore
+  const expect = {
+    m11:  2.1547005383792515, m21:  2, m31:  3, m41:  4,
+    m12:  8.4641016151377530, m22:  6, m32:  7, m42:  8,
+    m13: 14.7735026918962560, m23: 10, m33: 11, m43: 12,
+    m14: 21.0829037686547600, m24: 14, m34: 15, m44: 16,
+  };
+  const matrix = DOMMatrix.fromMatrix(init);
+  const matrix2 = matrix.skewY(30);
+  assertEquals(
+    matrix,
+    DOMMatrix.fromMatrix(init),
+  );
+  for (
+    const [key, value] of Object.entries(expect) as [
+      keyof typeof expect,
+      number,
+    ][]
+  ) {
+    assertAlmostEquals(
+      matrix2[key],
+      value,
+    );
+  }
+});
+
+Deno.test(function matrixSkewYSelf() {
+  // deno-fmt-ignore
+  const init = {
+    m11:  1, m21:  2, m31:  3, m41:  4,
+    m12:  5, m22:  6, m32:  7, m42:  8,
+    m13:  9, m23: 10, m33: 11, m43: 12,
+    m14: 13, m24: 14, m34: 15, m44: 16,
+  };
+  // deno-fmt-ignore
+  const expect = {
+    m11:  2.1547005383792515, m21:  2, m31:  3, m41:  4,
+    m12:  8.4641016151377530, m22:  6, m32:  7, m42:  8,
+    m13: 14.7735026918962560, m23: 10, m33: 11, m43: 12,
+    m14: 21.0829037686547600, m24: 14, m34: 15, m44: 16,
+  };
+  const matrix = DOMMatrix.fromMatrix(init);
+  const matrix2 = matrix.skewYSelf(30);
+  assertStrictEquals(
+    matrix,
+    matrix2,
+  );
+  for (
+    const [key, value] of Object.entries(expect) as [
+      keyof typeof expect,
+      number,
+    ][]
+  ) {
+    assertAlmostEquals(
+      matrix[key],
+      value,
+    );
+  }
+});
+
 Deno.test(function matrixMultiply() {
   // deno-fmt-ignore
   const init = {

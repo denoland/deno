@@ -10,6 +10,7 @@ import {
   op_geometry_rotate_self,
   op_geometry_scale_self,
   op_geometry_scale_with_origin_self,
+  op_geometry_skew_self,
   op_geometry_translate_self,
 } from "ext:core/ops";
 const {
@@ -1026,6 +1027,32 @@ class DOMMatrixReadOnly {
     return matrix;
   }
 
+  skewX(sx = 0) {
+    webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
+    const matrix = webidl.createBranded(DOMMatrix);
+    matrix[_raw] = new Float64Array(this[_raw]);
+    op_geometry_skew_self(
+      webidl.converters["unrestricted double"](sx),
+      0,
+      matrix[_raw],
+    );
+    matrix[_is2D] = this[_is2D];
+    return matrix;
+  }
+
+  skewY(sy = 0) {
+    webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
+    const matrix = webidl.createBranded(DOMMatrix);
+    matrix[_raw] = new Float64Array(this[_raw]);
+    op_geometry_skew_self(
+      0,
+      webidl.converters["unrestricted double"](sy),
+      matrix[_raw],
+    );
+    matrix[_is2D] = this[_is2D];
+    return matrix;
+  }
+
   multiply(other = {}) {
     webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
     const prefix = "Failed to call 'DOMMatrixReadOnly.prototype.multiply'";
@@ -1538,6 +1565,26 @@ class DOMMatrix extends DOMMatrixReadOnly {
       );
     }
     this[_is2D] &&= x === 0 && y === 0;
+    return this;
+  }
+
+  skewXSelf(sx = 0) {
+    webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
+    op_geometry_skew_self(
+      webidl.converters["unrestricted double"](sx),
+      0,
+      this[_raw],
+    );
+    return this;
+  }
+
+  skewYSelf(sy = 0) {
+    webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
+    op_geometry_skew_self(
+      0,
+      webidl.converters["unrestricted double"](sy),
+      this[_raw],
+    );
     return this;
   }
 

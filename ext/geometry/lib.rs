@@ -23,6 +23,7 @@ deno_core::extension!(
     op_geometry_rotate_self,
     op_geometry_rotate_from_vector_self,
     op_geometry_rotate_axis_angle_self,
+    op_geometry_skew_self,
     op_geometry_multiply,
     op_geometry_multiply_self,
     op_geometry_premultiply_self,
@@ -126,6 +127,41 @@ pub fn op_geometry_rotate_axis_angle_self(
   let mut inout = MatrixViewMut::from_slice(inout);
   let mut result = Matrix::zeros();
   inout.mul_to(&rotation, &mut result);
+  inout.copy_from(&result);
+}
+
+#[op2(fast)]
+pub fn op_geometry_skew_self(
+  x_degrees: f64,
+  y_degrees: f64,
+  #[buffer] inout: &mut [f64],
+) -> () {
+  let skew: nalgebra::Matrix<
+    f64,
+    nalgebra::Const<4>,
+    nalgebra::Const<4>,
+    nalgebra::ArrayStorage<f64, 4, 4>,
+  > = Matrix::new(
+    1.0,
+    x_degrees.to_radians().tan(),
+    0.0,
+    0.0,
+    y_degrees.to_radians().tan(),
+    1.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    1.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    1.0,
+  );
+  let mut inout = MatrixViewMut::from_slice(inout);
+  let mut result = Matrix::zeros();
+  inout.mul_to(&skew, &mut result);
   inout.copy_from(&result);
 }
 
