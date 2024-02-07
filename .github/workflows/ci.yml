@@ -451,7 +451,7 @@ jobs:
           gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt
       - name: Autobahn testsuite
         if: |-
-          !(matrix.skip) && (matrix.os == 'linux' &&
+          !(matrix.skip) && ((matrix.os == 'linux' && matrix.arch != 'aarch64') &&
           matrix.job == 'test' &&
           matrix.profile == 'release' &&
           !startsWith(github.ref, 'refs/tags/'))

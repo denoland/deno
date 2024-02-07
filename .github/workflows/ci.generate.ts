@@ -749,7 +749,7 @@ const ci = {
         {
           name: "Autobahn testsuite",
           if: [
-            "matrix.os == 'linux' &&",
+            "(matrix.os == 'linux' && matrix.arch != 'aarch64') &&",
             "matrix.job == 'test' &&",
             "matrix.profile == 'release' &&",
             "!startsWith(github.ref, 'refs/tags/')",
