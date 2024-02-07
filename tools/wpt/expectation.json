@@ -999,7 +999,15 @@
         "Good parameters: P-521 bits (jwk, object(kty, crv, x, y, d), {name: ECDH, namedCurve: P-521}, false, [deriveBits, deriveKey])",
         "Good parameters: P-521 bits (jwk, object(kty, crv, x, y, d), {name: ECDH, namedCurve: P-521}, false, [deriveBits])",
         "Good parameters: P-521 bits (jwk, object(kty, crv, x, y, d), {name: ECDH, namedCurve: P-521}, false, [deriveKey, deriveBits, deriveKey, deriveBits])",
-        "Empty Usages: P-521 bits (jwk, object(kty, crv, x, y, d), {name: ECDH, namedCurve: P-521}, false, [])"
+        "Empty Usages: P-521 bits (jwk, object(kty, crv, x, y, d), {name: ECDH, namedCurve: P-521}, false, [])",
+        "ECDH any JWK alg: P-521 bits (jwk, object(kty, crv, x, y, d, alg), {name: ECDH, namedCurve: P-521}, true, [deriveKey])",
+        "ECDH any JWK alg: P-521 bits (jwk, object(kty, crv, x, y, d, alg), {name: ECDH, namedCurve: P-521}, true, [deriveBits, deriveKey])",
+        "ECDH any JWK alg: P-521 bits (jwk, object(kty, crv, x, y, d, alg), {name: ECDH, namedCurve: P-521}, true, [deriveBits])",
+        "ECDH any JWK alg: P-521 bits (jwk, object(kty, crv, x, y, d, alg), {name: ECDH, namedCurve: P-521}, true, [deriveKey, deriveBits, deriveKey, deriveBits])",
+        "ECDH any JWK alg: P-521 bits (jwk, object(kty, crv, x, y, d, alg), {name: ECDH, namedCurve: P-521}, false, [deriveKey])",
+        "ECDH any JWK alg: P-521 bits (jwk, object(kty, crv, x, y, d, alg), {name: ECDH, namedCurve: P-521}, false, [deriveBits, deriveKey])",
+        "ECDH any JWK alg: P-521 bits (jwk, object(kty, crv, x, y, d, alg), {name: ECDH, namedCurve: P-521}, false, [deriveBits])",
+        "ECDH any JWK alg: P-521 bits (jwk, object(kty, crv, x, y, d, alg), {name: ECDH, namedCurve: P-521}, false, [deriveKey, deriveBits, deriveKey, deriveBits])"
       ],
       "ec_importKey.https.any.worker.html": [
         "Good parameters: P-256 bits (spki, buffer(59, compressed), {name: ECDSA, namedCurve: P-256}, true, [verify])",
@@ -1085,7 +1093,15 @@
         "Good parameters: P-521 bits (jwk, object(kty, crv, x, y, d), {name: ECDH, namedCurve: P-521}, false, [deriveBits, deriveKey])",
         "Good parameters: P-521 bits (jwk, object(kty, crv, x, y, d), {name: ECDH, namedCurve: P-521}, false, [deriveBits])",
         "Good parameters: P-521 bits (jwk, object(kty, crv, x, y, d), {name: ECDH, namedCurve: P-521}, false, [deriveKey, deriveBits, deriveKey, deriveBits])",
-        "Empty Usages: P-521 bits (jwk, object(kty, crv, x, y, d), {name: ECDH, namedCurve: P-521}, false, [])"
+        "Empty Usages: P-521 bits (jwk, object(kty, crv, x, y, d), {name: ECDH, namedCurve: P-521}, false, [])",
+        "ECDH any JWK alg: P-521 bits (jwk, object(kty, crv, x, y, d, alg), {name: ECDH, namedCurve: P-521}, true, [deriveKey])",
+        "ECDH any JWK alg: P-521 bits (jwk, object(kty, crv, x, y, d, alg), {name: ECDH, namedCurve: P-521}, true, [deriveBits, deriveKey])",
+        "ECDH any JWK alg: P-521 bits (jwk, object(kty, crv, x, y, d, alg), {name: ECDH, namedCurve: P-521}, true, [deriveBits])",
+        "ECDH any JWK alg: P-521 bits (jwk, object(kty, crv, x, y, d, alg), {name: ECDH, namedCurve: P-521}, true, [deriveKey, deriveBits, deriveKey, deriveBits])",
+        "ECDH any JWK alg: P-521 bits (jwk, object(kty, crv, x, y, d, alg), {name: ECDH, namedCurve: P-521}, false, [deriveKey])",
+        "ECDH any JWK alg: P-521 bits (jwk, object(kty, crv, x, y, d, alg), {name: ECDH, namedCurve: P-521}, false, [deriveBits, deriveKey])",
+        "ECDH any JWK alg: P-521 bits (jwk, object(kty, crv, x, y, d, alg), {name: ECDH, namedCurve: P-521}, false, [deriveBits])",
+        "ECDH any JWK alg: P-521 bits (jwk, object(kty, crv, x, y, d, alg), {name: ECDH, namedCurve: P-521}, false, [deriveKey, deriveBits, deriveKey, deriveBits])"
       ],
       "rsa_importKey.https.any.html": [
         "Empty Usages: 1024 bits (pkcs8, object(spki, pkcs8, jwk), {hash: SHA-1, name: RSA-OAEP}, true, [])",
@@ -2742,7 +2758,8 @@
       "XSLTProcessor interface: operation clearParameters()",
       "XSLTProcessor interface: operation reset()",
       "Window interface: attribute event",
-      "idl_test setup"
+      "idl_test setup",
+      "ShadowRoot interface: attribute clonable"
     ],
     "idlharness.window.html?include=Node": [
       "Node interface: existence and properties of interface object",
@@ -3905,7 +3922,15 @@
       "Parsing: <..//path> against <non-spec:/p>",
       "Parsing: <a/..//path> against <non-spec:/p>",
       "Parsing: <> against <non-spec:/..//p>",
-      "Parsing: <path> against <non-spec:/..//p>"
+      "Parsing: <path> against <non-spec:/..//p>",
+      "Parsing: <///test> against <http://example.org/>",
+      "Parsing: <///\\//\\//test> against <http://example.org/>",
+      "Parsing: <///example.org/path> against <http://example.org/>",
+      "Parsing: <///example.org/../path> against <http://example.org/>",
+      "Parsing: <///example.org/../../> against <http://example.org/>",
+      "Parsing: <///example.org/../path/../../> against <http://example.org/>",
+      "Parsing: <///example.org/../path/../../path> against <http://example.org/>",
+      "Parsing: </\\//\\/a/../> against <file:///>"
     ],
     "url-constructor.any.html?include=file": [
       "Parsing: </> against <file://h/C:/a/b>",
@@ -3959,7 +3984,15 @@
       "Parsing: <..//path> against <non-spec:/p>",
       "Parsing: <a/..//path> against <non-spec:/p>",
       "Parsing: <> against <non-spec:/..//p>",
-      "Parsing: <path> against <non-spec:/..//p>"
+      "Parsing: <path> against <non-spec:/..//p>",
+      "Parsing: <///test> against <http://example.org/>",
+      "Parsing: <///\\//\\//test> against <http://example.org/>",
+      "Parsing: <///example.org/path> against <http://example.org/>",
+      "Parsing: <///example.org/../path> against <http://example.org/>",
+      "Parsing: <///example.org/../../> against <http://example.org/>",
+      "Parsing: <///example.org/../path/../../> against <http://example.org/>",
+      "Parsing: <///example.org/../path/../../path> against <http://example.org/>",
+      "Parsing: </\\//\\/a/../> against <file:///>"
     ],
     "url-constructor.any.worker.html?include=file": [
       "Parsing: </> against <file://h/C:/a/b>",
