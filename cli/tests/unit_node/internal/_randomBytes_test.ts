@@ -4,7 +4,7 @@ import {
   assertEquals,
   assertRejects,
   assertThrows,
-} from "../../../../test_util/std/assert/mod.ts";
+} from "@test_util/std/assert/mod.ts";
 import { assertCallbackErrorUncaught } from "../_test_utils.ts";
 import { pseudoRandomBytes, randomBytes } from "node:crypto";
 

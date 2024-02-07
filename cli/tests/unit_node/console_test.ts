@@ -1,8 +1,8 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import vm from "node:vm";
-import { stripColor } from "../../../test_util/std/fmt/colors.ts";
-import { assertStringIncludes } from "../../../test_util/std/assert/mod.ts";
+import { stripColor } from "@test_util/std/fmt/colors.ts";
+import { assertStringIncludes } from "@test_util/std/assert/mod.ts";
 
 Deno.test(function inspectCrossRealmObjects() {
   assertStringIncludes(

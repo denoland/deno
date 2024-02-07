@@ -1,7 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { assert, assertEquals } from "../../../test_util/std/assert/mod.ts";
-import { fromFileUrl, relative } from "../../../test_util/std/path/mod.ts";
+import { assert, assertEquals } from "@test_util/std/assert/mod.ts";
+import { fromFileUrl, relative } from "@test_util/std/path/mod.ts";
 import {
   brotliCompress,
   brotliCompressSync,
@@ -14,6 +14,8 @@ import {
 } from "node:zlib";
 import { Buffer } from "node:buffer";
 import { createReadStream, createWriteStream } from "node:fs";
+import { Readable } from "node:stream";
+import { buffer } from "node:stream/consumers";
 
 Deno.test("brotli compression sync", () => {
   const buf = Buffer.from("hello world");
@@ -154,4 +156,17 @@ Deno.test("zlib compression with an encoded string", {
   const compressed = gzipSync(buffer);
   const decompressed = unzipSync(compressed);
   assertEquals(decompressed.toString(), "hello world");
+});
+
+Deno.test("brotli large chunk size", async () => {
+  const input = new Uint8Array(1000000);
+  for (let i = 0; i < input.length; i++) {
+    input[i] = Math.random() * 256;
+  }
+  const output = await buffer(
+    Readable.from([input])
+      .pipe(createBrotliCompress())
+      .pipe(createBrotliDecompress()),
+  );
+  assertEquals(output.length, input.length);
 });

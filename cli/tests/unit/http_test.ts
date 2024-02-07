@@ -1,5 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-import { Buffer, BufReader, BufWriter } from "../../../test_util/std/io/mod.ts";
+import { Buffer, BufReader, BufWriter } from "@test_util/std/io/mod.ts";
 import { TextProtoReader } from "../testdata/run/textproto.ts";
 import {
   assert,
@@ -10,7 +10,7 @@ import {
   delay,
   fail,
 } from "./test_util.ts";
-import { join } from "../../../test_util/std/path/mod.ts";
+import { join } from "@test_util/std/path/mod.ts";
 
 const listenPort = 4507;
 const listenPort2 = 4508;
