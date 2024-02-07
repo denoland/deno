@@ -64,11 +64,13 @@ const installPkgsCommand =
   `sudo apt-get install --no-install-recommends debootstrap clang-${llvmVersion} lld-${llvmVersion} clang-tools-${llvmVersion} clang-format-${llvmVersion} clang-tidy-${llvmVersion}`;
 const sysRootStep = {
   name: "Set up incremental LTO and sysroot build",
-  run: `# Avoid running man-db triggers, which sometimes takes several minutes
+  run: `# Setting up sysroot
+export DEBIAN_FRONTEND=noninteractive
+# Avoid running man-db triggers, which sometimes takes several minutes
 # to complete.
-sudo apt-get remove --purge -y man-db
+sudo apt-get -qq remove --purge -y man-db
 # Remove older clang before we install
-sudo apt-get remove 'clang-12*' 'clang-13*' 'clang-14*' 'clang-15*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'llvm-15*' 'lld-12*' 'lld-13*' 'lld-14*' 'lld-15*'
+sudo apt-get -qq remove 'clang-12*' 'clang-13*' 'clang-14*' 'clang-15*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'llvm-15*' 'lld-12*' 'lld-13*' 'lld-14*' 'lld-15*'
 
 # Install clang-XXX, lld-XXX, and debootstrap.
 echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-${llvmVersion} main" |
@@ -80,27 +82,26 @@ sudo apt-get update
 # this was unreliable sometimes, so try again if it fails
 ${installPkgsCommand} || echo 'Failed. Trying again.' && sudo apt-get clean && sudo apt-get update && ${installPkgsCommand}
 # Fix alternatives
-(yes '' | sudo update-alternatives --force --all) || true
+(yes '' | sudo update-alternatives --force --all) || true > /dev/null
 
-# Create ubuntu-16.04 sysroot environment, which is used to avoid
-# depending on a very recent version of glibc.
-# \`libc6-dev\` is required for building any C source files.
-# \`file\` and \`make\` are needed to build libffi-sys.
-# \`curl\` is needed to build rusty_v8.
-sudo debootstrap                                     \\
-  --include=ca-certificates,curl,file,libc6-dev,make \\
-  --no-merged-usr --variant=minbase xenial /sysroot  \\
-  http://azure.archive.ubuntu.com/ubuntu
-sudo mount --rbind /dev /sysroot/dev
-sudo mount --rbind /sys /sysroot/sys
-sudo mount --rbind /home /sysroot/home
-sudo mount -t proc /proc /sysroot/proc
+echo "Decompressing sysroot..."
+wget -q https://github.com/denoland/deno_sysroot_build/releases/download/sysroot-20240207/sysroot-\`uname -m\`.tar.xz -O /tmp/sysroot.tar.xz
+cd /
+xzcat /tmp/sysroot.tar.xz | sudo tar -x
+cd /tmp/
 
-wget https://github.com/denoland/deno_third_party/raw/master/prebuilt/linux64/libdl/libdl.a
-wget https://github.com/denoland/deno_third_party/raw/master/prebuilt/linux64/libdl/libdl.so.2
+if [[ \`uname -m\` == "aarch64" ]]; then
+  echo "Copying libdl.a"
+  sudo cp /sysroot/usr/lib/aarch64-linux-gnu/libdl.a /sysroot/lib/aarch64-linux-gnu/libdl.a
+  echo "Copying libdl.so"
+  sudo cp /sysroot/lib/aarch64-linux-gnu/libdl.so.2 /sysroot/lib/aarch64-linux-gnu/libdl.so
+else
+  wget https://github.com/denoland/deno_third_party/raw/master/prebuilt/linux64/libdl/libdl.a
+  wget https://github.com/denoland/deno_third_party/raw/master/prebuilt/linux64/libdl/libdl.so.2
 
-sudo ln -s libdl.so.2 /sysroot/lib/x86_64-linux-gnu/libdl.so
-sudo ln -s libdl.a /sysroot/lib/x86_64-linux-gnu/libdl.a
+  sudo ln -s libdl.so.2 /sysroot/lib/x86_64-linux-gnu/libdl.so
+  sudo ln -s libdl.a /sysroot/lib/x86_64-linux-gnu/libdl.a
+fi
 
 # Configure the build environment. Both Rust and Clang will produce
 # llvm bitcode only, so we can use lld's incremental LTO support.
@@ -413,6 +414,7 @@ const ci = {
             ...Runners.linuxArm,
             job: "test",
             profile: "release",
+            use_sysroot: true,
           }, {
             ...Runners.macosX86,
             job: "lint",
