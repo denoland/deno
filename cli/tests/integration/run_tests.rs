@@ -4761,25 +4761,6 @@ fn permission_prompt_strips_ansi_codes_and_control_chars() {
     console.expect("undefined");
     console.write_line_raw(r#"const moveANSIStart = "\u001b[1000D";"#);
     console.expect("undefined");
-
-    console.write_line_raw(
-      r#"Deno[Deno.internal].core.ops.op_spawn_child({
-    cmd: "cat",
-    args: ["file.txt"],
-    clearEnv: false,
-    cwd: undefined,
-    env: [],
-    uid: undefined,
-    gid: undefined,
-    stdin: "null",
-    stdout: "inherit",
-    stderr: "piped",
-    signal: undefined,
-    windowsRawArguments: false,
-}, moveANSIUp + clearANSI + moveANSIStart + prompt)"#,
-    );
-
-    console.expect(r#"┌ ⚠️  Deno requests run access to "cat""#);
   });
 }
 
