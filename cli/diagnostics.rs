@@ -11,7 +11,7 @@ use deno_ast::SourcePos;
 use deno_ast::SourceRange;
 use deno_ast::SourceRanged;
 use deno_ast::SourceTextInfo;
-use deno_runtime::colors;
+use deno_terminal::colors;
 use unicode_width::UnicodeWidthStr;
 
 use crate::cache::LazyGraphSourceParser;
