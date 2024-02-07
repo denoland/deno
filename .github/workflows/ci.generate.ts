@@ -685,7 +685,8 @@ const ci = {
           ].join("\n"),
           uses: "actions/upload-artifact@v4",
           with: {
-            name: "deno-${{ matrix.os }}-${{ matrix.arch }}-${{ github.event.number }}",
+            name:
+              "deno-${{ matrix.os }}-${{ matrix.arch }}-${{ github.event.number }}",
             path: "target/release/deno",
           },
         },
