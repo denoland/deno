@@ -623,9 +623,6 @@ const NOT_IMPORTED_OPS = [
   // anymore if ops are not user accessible.
   "op_spawn_child",
 
-  // TODO(bartlomieju): used in one of the benches, needs to be removed.
-  "op_void_async",
-
   // TODO(bartlomieju): can be removed after the `deno_core` upgrade.
   "op_encode_binary_string",
   "op_format_file_name",
