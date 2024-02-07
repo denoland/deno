@@ -24,6 +24,7 @@ use crate::env_vars_for_jsr_tests;
 use crate::env_vars_for_npm_tests;
 use crate::fs::PathRef;
 use crate::http_server;
+use crate::jsr_registry_unset_url;
 use crate::lsp::LspClientBuilder;
 use crate::npm_registry_unset_url;
 use crate::pty::Pty;
@@ -685,6 +686,9 @@ impl TestCommandBuilder {
     }
     if !envs.contains_key("DENO_NO_UPDATE_CHECK") {
       envs.insert("DENO_NO_UPDATE_CHECK".to_string(), "1".to_string());
+    }
+    if !envs.contains_key("DENO_REGISTRY_URL") {
+      envs.insert("DENO_REGISTRY_URL".to_string(), jsr_registry_unset_url());
     }
     for key in &self.envs_remove {
       envs.remove(key);

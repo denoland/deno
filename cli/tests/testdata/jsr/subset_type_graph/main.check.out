@@ -1,16 +1,16 @@
-Download http://localhost:4545/jsr/registry/@denotest/subset_type_graph/meta.json
-Download http://localhost:4545/jsr/registry/@denotest/subset_type_graph_invalid/meta.json
-Download http://localhost:4545/jsr/registry/@denotest/subset_type_graph/0.1.0_meta.json
-Download http://localhost:4545/jsr/registry/@denotest/subset_type_graph_invalid/0.1.0_meta.json
+Download http://127.0.0.1:4250/@denotest/subset_type_graph/meta.json
+Download http://127.0.0.1:4250/@denotest/subset_type_graph_invalid/meta.json
+Download http://127.0.0.1:4250/@denotest/subset_type_graph/0.1.0_meta.json
+Download http://127.0.0.1:4250/@denotest/subset_type_graph_invalid/0.1.0_meta.json
 [UNORDERED_START]
-Download http://localhost:4545/jsr/registry/@denotest/subset_type_graph/0.1.0/mod.ts
-Download http://localhost:4545/jsr/registry/@denotest/subset_type_graph_invalid/0.1.0/mod.ts
+Download http://127.0.0.1:4250/@denotest/subset_type_graph/0.1.0/mod.ts
+Download http://127.0.0.1:4250/@denotest/subset_type_graph_invalid/0.1.0/mod.ts
 [UNORDERED_END]
 Check file:///[WILDCARD]/subset_type_graph/main.ts
 error: TS2322 [ERROR]: Type 'string' is not assignable to type 'number'.
 const invalidTypeCheck: number = "";
       ~~~~~~~~~~~~~~~~
-    at http://localhost:4545/jsr/registry/@denotest/subset_type_graph_invalid/0.1.0/mod.ts:11:7
+    at http://127.0.0.1:4250/@denotest/subset_type_graph_invalid/0.1.0/mod.ts:11:7
 
 TS2322 [ERROR]: Type 'number' is not assignable to type 'string'.
 const error1: string = new Foo1().method();
@@ -30,7 +30,7 @@ new Foo1().method2();
     'method' is declared here.
       method(): number {
       ~~~~~~
-        at http://localhost:4545/jsr/registry/@denotest/subset_type_graph/0.1.0/mod.ts:8:3
+        at http://127.0.0.1:4250/@denotest/subset_type_graph/0.1.0/mod.ts:8:3
 
 TS2551 [ERROR]: Property 'method2' does not exist on type 'Foo'. Did you mean 'method'?
 new Foo2().method2();
@@ -40,6 +40,6 @@ new Foo2().method2();
     'method' is declared here.
       method() {
       ~~~~~~
-        at http://localhost:4545/jsr/registry/@denotest/subset_type_graph_invalid/0.1.0/mod.ts:2:3
+        at http://127.0.0.1:4250/@denotest/subset_type_graph_invalid/0.1.0/mod.ts:2:3
 
 Found 5 errors.
