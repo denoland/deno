@@ -3,7 +3,7 @@
 
 NOTE: This file should not be manually edited. Please edit `cli/tests/node_compat/config.json` and run `deno task setup` in `tools/node_compat` dir instead.
 
-Total: 2997
+Total: 2998
 
 - [abort/test-abort-backtrace.js](https://github.com/nodejs/node/tree/v18.12.1/test/abort/test-abort-backtrace.js)
 - [abort/test-abort-fatal-error.js](https://github.com/nodejs/node/tree/v18.12.1/test/abort/test-abort-fatal-error.js)
