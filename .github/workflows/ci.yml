@@ -113,12 +113,12 @@ jobs:
             profile: debug
           - os: linux
             arch: aarch64
-            runner: ubicloud-standard-8-arm
+            runner: ubicloud-standard-16-arm
             job: test
             profile: debug
           - os: linux
             arch: aarch64
-            runner: ubicloud-standard-8-arm
+            runner: ubicloud-standard-16-arm
             job: test
             profile: release
           - os: macos
