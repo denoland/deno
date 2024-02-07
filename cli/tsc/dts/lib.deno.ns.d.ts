@@ -5717,7 +5717,8 @@ declare namespace Deno {
      * `pong` within the timeout specified, the connection is deemed
      * unhealthy and is closed. The `close` and `error` event will be emitted.
      *
-     * The default is 120 seconds. Set to `0` to disable timeouts. */
+     * The unit is seconds, with a default of 120.
+     * Set to `0` to disable timeouts. */
     idleTimeout?: number;
   }
 
