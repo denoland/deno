@@ -96,6 +96,9 @@ fn node_unit_test(test: String) {
   let mut deno = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("test")
+    .arg("--config")
+    .arg("cli/tests/config/deno.json")
+    .arg("--no-lock")
     .arg("--unstable")
     // TODO(kt3k): This option is required to pass tls_test.ts,
     // but this shouldn't be necessary. tls.connect currently doesn't

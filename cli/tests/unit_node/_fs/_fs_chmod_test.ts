@@ -4,7 +4,7 @@ import {
   assertRejects,
   assertThrows,
   fail,
-} from "../../../../test_util/std/assert/mod.ts";
+} from "@test_util/std/assert/mod.ts";
 import { assertCallbackErrorUncaught } from "../_test_utils.ts";
 import { chmod, chmodSync } from "node:fs";
 
