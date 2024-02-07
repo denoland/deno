@@ -29,7 +29,7 @@ jobs:
           git config --global fetch.parallel 32
         if: github.event.pull_request.draft == true
       - name: Clone repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 5
           submodules: false
@@ -111,6 +111,16 @@ jobs:
             runner: ubuntu-22.04
             job: lint
             profile: debug
+          - os: linux
+            arch: aarch64
+            runner: ubicloud-standard-16-arm
+            job: test
+            profile: debug
+          - os: linux
+            arch: aarch64
+            runner: ubicloud-standard-16-arm
+            job: test
+            profile: release
           - os: macos
             arch: x86_64
             runner: macos-12
@@ -133,7 +143,7 @@ jobs:
           git config --global fetch.parallel 32
         if: '!(matrix.skip)'
       - name: Clone repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 5
           submodules: false
@@ -169,9 +179,9 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: 3.11
-        if: '!(matrix.skip) && (matrix.job != ''lint'')'
+        if: '!(matrix.skip) && (matrix.job != ''lint'' && (matrix.os != ''linux'' || matrix.arch != ''aarch64''))'
       - name: Remove unused versions of Python
-        if: '!(matrix.skip) && (matrix.job != ''lint'' && (matrix.os == ''windows''))'
+        if: '!(matrix.skip) && (matrix.job != ''lint'' && (matrix.os != ''linux'' || matrix.arch != ''aarch64'') && (matrix.os == ''windows''))'
         shell: pwsh
         run: |-
           $env:PATH -split ";" |
@@ -184,7 +194,7 @@ jobs:
         with:
           node-version: 18
       - name: Install protoc
-        uses: arduino/setup-protoc@v2
+        uses: arduino/setup-protoc@v3
         with:
           version: '21.12'
           repo-token: '${{ secrets.GITHUB_TOKEN }}'
@@ -331,7 +341,7 @@ jobs:
           fi
         if: '!(matrix.skip)'
       - name: Cache Cargo home
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |-
             ~/.cargo/registry/index
@@ -441,7 +451,7 @@ jobs:
           gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt
       - name: Autobahn testsuite
         if: |-
-          !(matrix.skip) && (matrix.os == 'linux' &&
+          !(matrix.skip) && ((matrix.os == 'linux' && matrix.arch != 'aarch64') &&
           matrix.job == 'test' &&
           matrix.profile == 'release' &&
           !startsWith(github.ref, 'refs/tags/'))
@@ -622,7 +632,7 @@ jobs:
           body_path: target/release/release-notes.md
           draft: true
       - name: Save cache build output (main)
-        uses: actions/cache/save@v3
+        uses: actions/cache/save@v4
         if: '!(matrix.skip) && ((matrix.job == ''test'' || matrix.job == ''lint'') && github.ref == ''refs/heads/main'')'
         with:
           path: |-

@@ -372,7 +372,9 @@ assertEquals(isNullBufferDeopt(new Uint8Array()), true, "isNullBufferDeopt(new U
 
 // V8 bug: inline Uint8Array creation to fast call sees non-null pointer
 // https://bugs.chromium.org/p/v8/issues/detail?id=13489
-assertEquals(isNullBuffer(new Uint8Array()), false, "isNullBuffer(new Uint8Array()) !== false");
+if (Deno.build.os != "linux" || Deno.build.arch != "aarch64") {
+  assertEquals(isNullBuffer(new Uint8Array()), false, "isNullBuffer(new Uint8Array()) !== false");
+}
 
 // Externally backed ArrayBuffer has a non-null data pointer, even though its length is zero.
 const externalZeroBuffer = new Uint8Array(Deno.UnsafePointerView.getArrayBuffer(ptr0, 0));
