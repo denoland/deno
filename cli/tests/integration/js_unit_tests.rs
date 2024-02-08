@@ -105,9 +105,10 @@ util::unit_test_factory!(
     webcrypto_test,
     webgpu_test,
     websocket_test,
+    websocketstream_test,
     webstorage_test,
     worker_permissions_test,
-    worker_types,
+    worker_test,
     write_file_test,
     write_text_file_test,
   ]
@@ -123,7 +124,7 @@ fn js_unit_test(test: String) {
     .arg("cli/tests/config/deno.json")
     .arg("--no-lock")
     .arg("--unstable")
-    .arg("--location=http://js-unit-tests/foo/bar")
+    .arg("--location=http://127.0.0.1:4545/")
     .arg("--no-prompt");
 
   // TODO(mmastrac): it would be better to just load a test CA for all tests

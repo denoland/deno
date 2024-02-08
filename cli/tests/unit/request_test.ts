@@ -33,7 +33,7 @@ Deno.test(function methodNonString() {
 Deno.test(function requestRelativeUrl() {
   assertEquals(
     new Request("relative-url").url,
-    "http://js-unit-tests/foo/relative-url",
+    "http://127.0.0.1:4545/relative-url",
   );
 });
 

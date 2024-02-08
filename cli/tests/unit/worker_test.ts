@@ -7,17 +7,33 @@ import {
   assertEquals,
   assertMatch,
   assertThrows,
-} from "../../../../test_util/std/assert/mod.ts";
+} from "@test_util/std/assert/mod.ts";
+
+function resolveWorker(worker: string): string {
+  return import.meta.resolve(`../testdata/workers/${worker}`);
+}
+
+Deno.test(
+  { permissions: { read: true } },
+  function utimeSyncFileSuccess() {
+    const w = new Worker(
+      resolveWorker("worker_types.ts"),
+      { type: "module" },
+    );
+    assert(w);
+    w.terminate();
+  },
+);
 
 Deno.test({
   name: "worker terminate",
   fn: async function () {
     const jsWorker = new Worker(
-      import.meta.resolve("./test_worker.js"),
+      resolveWorker("test_worker.js"),
       { type: "module" },
     );
     const tsWorker = new Worker(
-      import.meta.resolve("./test_worker.ts"),
+      resolveWorker("test_worker.ts"),
       { type: "module", name: "tsWorker" },
     );
 
@@ -63,7 +79,7 @@ Deno.test({
   name: "worker nested",
   fn: async function () {
     const nestedWorker = new Worker(
-      import.meta.resolve("./nested_worker.js"),
+      resolveWorker("nested_worker.js"),
       { type: "module", name: "nested" },
     );
 
@@ -83,7 +99,7 @@ Deno.test({
   name: "worker throws when executing",
   fn: async function () {
     const throwingWorker = new Worker(
-      import.meta.resolve("./throwing_worker.js"),
+      resolveWorker("throwing_worker.js"),
       { type: "module" },
     );
 
@@ -107,7 +123,7 @@ Deno.test({
   fn: async function () {
     const workerOptions: WorkerOptions = { type: "module" };
     const w = new Worker(
-      import.meta.resolve("./worker_globals.ts"),
+      resolveWorker("worker_globals.ts"),
       workerOptions,
     );
 
@@ -127,7 +143,7 @@ Deno.test({
   fn: async function () {
     const workerOptions: WorkerOptions = { type: "module" };
     const w = new Worker(
-      import.meta.resolve("./worker_navigator.ts"),
+      resolveWorker("worker_navigator.ts"),
       workerOptions,
     );
 
@@ -146,7 +162,7 @@ Deno.test({
   name: "worker fetch API",
   fn: async function () {
     const fetchingWorker = new Worker(
-      import.meta.resolve("./fetching_worker.js"),
+      resolveWorker("fetching_worker.js"),
       { type: "module" },
     );
 
@@ -172,7 +188,7 @@ Deno.test({
     const { promise, resolve } = Promise.withResolvers<number>();
 
     const busyWorker = new Worker(
-      import.meta.resolve("./busy_worker.js"),
+      resolveWorker("busy_worker.js"),
       { type: "module" },
     );
 
@@ -204,7 +220,7 @@ Deno.test({
     const { promise, resolve } = Promise.withResolvers<void>();
 
     const racyWorker = new Worker(
-      import.meta.resolve("./racy_worker.js"),
+      resolveWorker("racy_worker.js"),
       { type: "module" },
     );
 
@@ -229,7 +245,7 @@ Deno.test({
     const deferred2 = Promise.withResolvers<void>();
 
     const worker = new Worker(
-      import.meta.resolve("./event_worker.js"),
+      resolveWorker("event_worker.js"),
       { type: "module" },
     );
 
@@ -271,7 +287,7 @@ Deno.test({
   name: "worker scope is event listener",
   fn: async function () {
     const worker = new Worker(
-      import.meta.resolve("./event_worker_scope.js"),
+      resolveWorker("event_worker_scope.js"),
       { type: "module" },
     );
 
@@ -298,7 +314,7 @@ Deno.test({
   name: "worker with Deno namespace",
   fn: async function () {
     const denoWorker = new Worker(
-      import.meta.resolve("./deno_worker.ts"),
+      resolveWorker("deno_worker.ts"),
       { type: "module", deno: { permissions: "inherit" } },
     );
 
@@ -317,7 +333,7 @@ Deno.test({
   name: "worker with crypto in scope",
   fn: async function () {
     const w = new Worker(
-      import.meta.resolve("./worker_crypto.js"),
+      resolveWorker("worker_crypto.js"),
       { type: "module" },
     );
 
@@ -337,7 +353,7 @@ Deno.test({
   fn: async function () {
     const { promise, resolve } = Promise.withResolvers<void>();
     const w = new Worker(
-      import.meta.resolve("./test_worker.ts"),
+      resolveWorker("test_worker.ts"),
       { type: "module", name: "tsWorker" },
     );
     const arr: number[] = [];
@@ -361,7 +377,7 @@ Deno.test({
   fn: async function () {
     const { promise, resolve } = Promise.withResolvers<void>();
     const w = new Worker(
-      import.meta.resolve("./immediately_close_worker.js"),
+      resolveWorker("immediately_close_worker.js"),
       { type: "module" },
     );
     setTimeout(() => {
@@ -377,7 +393,7 @@ Deno.test({
   fn: async function () {
     const { promise, resolve } = Promise.withResolvers<void>();
     const worker = new Worker(
-      import.meta.resolve("./post_undefined.ts"),
+      resolveWorker("post_undefined.ts"),
       { type: "module" },
     );
 
@@ -399,7 +415,7 @@ Deno.test({
 
 Deno.test("Worker inherits permissions", async function () {
   const worker = new Worker(
-    import.meta.resolve("./read_check_worker.js"),
+    resolveWorker("read_check_worker.js"),
     { type: "module", deno: { permissions: "inherit" } },
   );
 
@@ -415,7 +431,7 @@ Deno.test("Worker inherits permissions", async function () {
 
 Deno.test("Worker limit children permissions", async function () {
   const worker = new Worker(
-    import.meta.resolve("./read_check_worker.js"),
+    resolveWorker("read_check_worker.js"),
     { type: "module", deno: { permissions: { read: false } } },
   );
 
@@ -430,8 +446,9 @@ Deno.test("Worker limit children permissions", async function () {
 });
 
 Deno.test("Worker limit children permissions granularly", async function () {
+  const workerUrl = resolveWorker("read_check_granular_worker.js");
   const worker = new Worker(
-    import.meta.resolve("./read_check_granular_worker.js"),
+    workerUrl,
     {
       type: "module",
       deno: {
@@ -439,10 +456,10 @@ Deno.test("Worker limit children permissions granularly", async function () {
           env: ["foo"],
           hrtime: true,
           net: ["foo", "bar:8000"],
-          ffi: [new URL("foo", import.meta.url), "bar"],
-          read: [new URL("foo", import.meta.url), "bar"],
-          run: [new URL("foo", import.meta.url), "bar", "./baz"],
-          write: [new URL("foo", import.meta.url), "bar"],
+          ffi: [new URL("foo", workerUrl), "bar"],
+          read: [new URL("foo", workerUrl), "bar"],
+          run: [new URL("foo", workerUrl), "bar", "./baz"],
+          write: [new URL("foo", workerUrl), "bar"],
         },
       },
     },
@@ -484,7 +501,7 @@ Deno.test("Worker limit children permissions granularly", async function () {
 Deno.test("Nested worker limit children permissions", async function () {
   /** This worker has permissions but doesn't grant them to its children */
   const worker = new Worker(
-    import.meta.resolve("./parent_read_check_worker.js"),
+    resolveWorker("parent_read_check_worker.js"),
     { type: "module", deno: { permissions: "inherit" } },
   );
   // deno-lint-ignore no-explicit-any
@@ -530,7 +547,7 @@ Deno.test({
     assertThrows(
       () => {
         const worker = new Worker(
-          import.meta.resolve("./deno_worker.ts"),
+          resolveWorker("deno_worker.ts"),
           { type: "module", deno: { permissions: { env: true } } },
         );
         worker.terminate();
@@ -543,7 +560,7 @@ Deno.test({
 
 Deno.test("Worker with disabled permissions", async function () {
   const worker = new Worker(
-    import.meta.resolve("./no_permissions_worker.js"),
+    resolveWorker("no_permissions_worker.js"),
     { type: "module", deno: { permissions: "none" } },
   );
 
@@ -559,7 +576,7 @@ Deno.test("Worker with disabled permissions", async function () {
 
 Deno.test("Worker permissions are not inherited with empty permission object", async function () {
   const worker = new Worker(
-    import.meta.resolve("./permission_echo.js"),
+    resolveWorker("permission_echo.js"),
     { type: "module", deno: { permissions: {} } },
   );
 
@@ -584,7 +601,7 @@ Deno.test("Worker permissions are not inherited with empty permission object", a
 
 Deno.test("Worker permissions are not inherited with single specified permission", async function () {
   const worker = new Worker(
-    import.meta.resolve("./permission_echo.js"),
+    resolveWorker("permission_echo.js"),
     { type: "module", deno: { permissions: { net: true } } },
   );
 
@@ -624,7 +641,7 @@ Deno.test({
   name: "worker location",
   fn: async function () {
     const { promise, resolve } = Promise.withResolvers<string>();
-    const workerModuleHref = import.meta.resolve("./worker_location.ts");
+    const workerModuleHref = resolveWorker("worker_location.ts");
     const w = new Worker(workerModuleHref, { type: "module" });
     w.onmessage = (e) => {
       resolve(e.data);
@@ -636,29 +653,11 @@ Deno.test({
 });
 
 Deno.test({
-  name: "worker with relative specifier",
-  fn: async function () {
-    assertEquals(location.href, "http://127.0.0.1:4545/");
-    const w = new Worker(
-      "./workers/test_worker.ts",
-      { type: "module", name: "tsWorker" },
-    );
-    const { promise, resolve } = Promise.withResolvers<string>();
-    w.onmessage = (e) => {
-      resolve(e.data);
-    };
-    w.postMessage("Hello, world!");
-    assertEquals(await promise, "Hello, world!");
-    w.terminate();
-  },
-});
-
-Deno.test({
   name: "Worker with top-level-await",
   fn: async function () {
     const { promise, resolve, reject } = Promise.withResolvers<void>();
     const worker = new Worker(
-      import.meta.resolve("./worker_with_top_level_await.ts"),
+      resolveWorker("worker_with_top_level_await.ts"),
       { type: "module" },
     );
     worker.onmessage = (e) => {
@@ -680,7 +679,7 @@ Deno.test({
   fn: async function () {
     const { promise, resolve } = Promise.withResolvers<void>();
     const worker = new Worker(
-      import.meta.resolve("./http_worker.js"),
+      resolveWorker("http_worker.js"),
       { type: "module", deno: { permissions: "inherit" } },
     );
     worker.onmessage = () => {
@@ -699,7 +698,7 @@ Deno.test({
   name: "structured cloning postMessage",
   fn: async function () {
     const worker = new Worker(
-      import.meta.resolve("./worker_structured_cloning.ts"),
+      resolveWorker("worker_structured_cloning.ts"),
       { type: "module" },
     );
 
@@ -753,7 +752,7 @@ Deno.test({
     const { promise, resolve } = Promise.withResolvers<void>();
     const workerOptions: WorkerOptions = { type: "module" };
     const w = new Worker(
-      import.meta.resolve("./shared_array_buffer.ts"),
+      resolveWorker("shared_array_buffer.ts"),
       workerOptions,
     );
     const sab1 = new SharedArrayBuffer(1);
@@ -779,7 +778,7 @@ Deno.test({
   name: "Send MessagePorts from / to workers",
   fn: async function () {
     const worker = new Worker(
-      import.meta.resolve("./message_port.ts"),
+      resolveWorker("message_port.ts"),
       { type: "module" },
     );
     const channel = new MessageChannel();
