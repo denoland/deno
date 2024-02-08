@@ -42,6 +42,7 @@ use crate::resolver::NpmModuleLoader;
 use crate::resolver::SloppyImportsResolver;
 use crate::standalone::DenoCompileBinaryWriter;
 use crate::tools::check::TypeChecker;
+use crate::tools::coverage::CoverageCollector;
 use crate::tools::run::hmr::HmrRunner;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
@@ -51,6 +52,7 @@ use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 use crate::worker::CliMainWorkerFactory;
 use crate::worker::CliMainWorkerOptions;
+use std::path::PathBuf;
 
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
@@ -767,7 +769,6 @@ impl CliFactory {
       )),
       self.root_cert_store_provider().clone(),
       self.fs().clone(),
-      Some(self.emitter()?.clone()),
       maybe_file_watcher_communicator,
       self.maybe_inspector_server().clone(),
       self.maybe_lockfile().clone(),
@@ -784,13 +785,22 @@ impl CliFactory {
   fn create_cli_main_worker_options(
     &self,
   ) -> Result<CliMainWorkerOptions, AnyError> {
-    let hmr_runner = if self.options.has_hmr() {
-      let watcher_communicator = self.watcher_communicator.clone().unwrap();
-      let emitter = self.emitter()?.clone();
-      Some(HmrRunner::new(emitter, watcher_communicator))
-    } else {
-      None
-    };
+    let hmr_runner: Option<Box<dyn crate::worker::HmrRunner>> =
+      if self.options.has_hmr() {
+        let watcher_communicator = self.watcher_communicator.clone().unwrap();
+        let emitter = self.emitter()?.clone();
+        Some(Box::new(HmrRunner::new(emitter, watcher_communicator)))
+      } else {
+        None
+      };
+
+    let coverage_collector: Option<Box<dyn crate::worker::CoverageCollector>> =
+      if let Some(coverage_dir) = self.options.coverage_dir() {
+        let coverage_dir = PathBuf::from(coverage_dir);
+        Some(Box::new(CoverageCollector::new(coverage_dir)))
+      } else {
+        None
+      };
 
     Ok(CliMainWorkerOptions {
       argv: self.options.argv().clone(),
@@ -823,7 +833,8 @@ impl CliFactory {
         .clone(),
       unstable: self.options.legacy_unstable_flag(),
       maybe_root_package_json_deps: self.options.maybe_package_json_deps(),
-      hmr_runner: Default::default(),
+      hmr_runner: Arc::new(Mutex::new(hmr_runner)),
+      coverage_collector: Arc::new(Mutex::new(coverage_collector)),
     })
   }
 }

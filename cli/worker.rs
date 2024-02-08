@@ -49,12 +49,8 @@ use tokio::select;
 use crate::args::package_json::PackageJsonDeps;
 use crate::args::DenoSubcommand;
 use crate::args::StorageKeyResolver;
-use crate::emit::Emitter;
 use crate::errors;
 use crate::npm::CliNpmResolver;
-// use crate::tools;
-// use crate::tools::coverage::CoverageCollector;
-// use crate::tools::run::hmr::HmrRunner;
 use crate::util::checksum;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::file_watcher::WatcherRestartMode;
@@ -91,6 +87,14 @@ pub trait HmrRunner: Send + Sync {
   async fn run(&mut self) -> Result<(), AnyError>;
 }
 
+#[async_trait::async_trait(?Send)]
+pub trait CoverageCollector: Send + Sync {
+  fn setup(&mut self, session: deno_core::LocalInspectorSession);
+
+  async fn start_collecting(&mut self) -> Result<(), AnyError>;
+  async fn stop_collecting(&mut self) -> Result<(), AnyError>;
+}
+
 pub struct CliMainWorkerOptions {
   pub argv: Vec<String>,
   pub log_level: WorkerLogLevel,
@@ -113,6 +117,7 @@ pub struct CliMainWorkerOptions {
   pub skip_op_registration: bool,
   pub maybe_root_package_json_deps: Option<PackageJsonDeps>,
   pub hmr_runner: Arc<Mutex<Option<Box<dyn HmrRunner>>>>,
+  pub coverage_collector: Arc<Mutex<Option<Box<dyn CoverageCollector>>>>,
 }
 
 struct SharedWorkerState {
@@ -128,7 +133,6 @@ struct SharedWorkerState {
   module_loader_factory: Box<dyn ModuleLoaderFactory>,
   root_cert_store_provider: Arc<dyn RootCertStoreProvider>,
   fs: Arc<dyn deno_fs::FileSystem>,
-  emitter: Option<Arc<Emitter>>,
   maybe_file_watcher_communicator: Option<Arc<WatcherCommunicator>>,
   maybe_inspector_server: Option<Arc<InspectorServer>>,
   maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
@@ -218,16 +222,16 @@ impl CliMainWorker {
 
     self.worker.dispatch_unload_event(located_script_name!())?;
 
-    //     if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
-    //       self
-    //         .worker
-    //         .js_runtime
-    //         .with_event_loop_future(
-    //           coverage_collector.stop_collecting().boxed_local(),
-    //           PollEventLoopOptions::default(),
-    //         )
-    //         .await?;
-    //     }
+    if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
+      self
+        .worker
+        .js_runtime
+        .with_event_loop_future(
+          coverage_collector.stop_collecting().boxed_local(),
+          PollEventLoopOptions::default(),
+        )
+        .await?;
+    }
     if let Some(hmr_runner) = maybe_hmr_runner.as_mut() {
       self
         .worker
@@ -333,12 +337,6 @@ impl CliMainWorker {
     self.worker.evaluate_module(id).await
   }
 
-  pub async fn maybe_setup_coverage_collector(
-    &mut self,
-  ) -> Result<Option<()>, AnyError> {
-    Ok(None)
-  }
-
   pub async fn maybe_setup_hmr_runner(
     &mut self,
   ) -> Result<Option<Box<dyn HmrRunner>>, AnyError> {
@@ -365,54 +363,27 @@ impl CliMainWorker {
     Ok(Some(hmr_runner))
   }
 
-  // pub async fn maybe_setup_coverage_collector(
-  //   &mut self,
-  // ) -> Result<Option<CoverageCollector>, AnyError> {
-  //   if let Some(coverage_dir) = &self.shared.options.coverage_dir {
-  //     let session = self.worker.create_inspector_session().await;
+  pub async fn maybe_setup_coverage_collector(
+    &mut self,
+  ) -> Result<Option<Box<dyn CoverageCollector>>, AnyError> {
+    let Some(mut coverage_collector) =
+      self.shared.options.coverage_collector.lock().take()
+    else {
+      return Ok(None);
+    };
 
-  //     let coverage_dir = PathBuf::from(coverage_dir);
-  //     let mut coverage_collector =
-  //       tools::coverage::CoverageCollector::new(coverage_dir, session);
-  //     self
-  //       .worker
-  //       .js_runtime
-  //       .with_event_loop_future(
-  //         coverage_collector.start_collecting().boxed_local(),
-  //         PollEventLoopOptions::default(),
-  //       )
-  //       .await?;
-  //     Ok(Some(coverage_collector))
-  //   } else {
-  //     Ok(None)
-  //   }
-  // }
-
-  // pub async fn maybe_setup_hmr_runner(
-  //   &mut self,
-  // ) -> Result<Option<HmrRunner>, AnyError> {
-  //   if !self.shared.options.hmr {
-  //     return Ok(None);
-  //   }
-
-  //   let watcher_communicator =
-  //     self.shared.maybe_file_watcher_communicator.clone().unwrap();
-  //   let emitter = self.shared.emitter.clone().unwrap();
-
-  //   let session = self.worker.create_inspector_session().await;
-  //   let mut hmr_runner = HmrRunner::new(emitter, session, watcher_communicator);
-
-  //   self
-  //     .worker
-  //     .js_runtime
-  //     .with_event_loop_future(
-  //       hmr_runner.start().boxed_local(),
-  //       PollEventLoopOptions::default(),
-  //     )
-  //     .await?;
-
-  //   Ok(Some(hmr_runner))
-  // }
+    let session = self.worker.create_inspector_session().await;
+    coverage_collector.setup(session);
+    self
+      .worker
+      .js_runtime
+      .with_event_loop_future(
+        coverage_collector.start_collecting().boxed_local(),
+        PollEventLoopOptions::default(),
+      )
+      .await?;
+    Ok(Some(coverage_collector))
+  }
 
   pub fn execute_script_static(
     &mut self,
@@ -441,7 +412,6 @@ impl CliMainWorkerFactory {
     module_loader_factory: Box<dyn ModuleLoaderFactory>,
     root_cert_store_provider: Arc<dyn RootCertStoreProvider>,
     fs: Arc<dyn deno_fs::FileSystem>,
-    emitter: Option<Arc<Emitter>>,
     maybe_file_watcher_communicator: Option<Arc<WatcherCommunicator>>,
     maybe_inspector_server: Option<Arc<InspectorServer>>,
     maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
@@ -464,7 +434,6 @@ impl CliMainWorkerFactory {
         compiled_wasm_module_store: Default::default(),
         module_loader_factory,
         root_cert_store_provider,
-        emitter,
         fs,
         maybe_file_watcher_communicator,
         maybe_inspector_server,

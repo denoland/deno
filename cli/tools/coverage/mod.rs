@@ -43,74 +43,16 @@ use merge::ProcessCoverage;
 
 pub struct CoverageCollector {
   pub dir: PathBuf,
-  session: LocalInspectorSession,
+  session: Option<LocalInspectorSession>,
 }
 
-impl CoverageCollector {
-  pub fn new(dir: PathBuf, session: LocalInspectorSession) -> Self {
-    Self { dir, session }
+#[async_trait::async_trait(?Send)]
+impl crate::worker::CoverageCollector for CoverageCollector {
+  fn setup(&mut self, session: LocalInspectorSession) {
+    self.session = Some(session);
   }
 
-  async fn enable_debugger(&mut self) -> Result<(), AnyError> {
-    self
-      .session
-      .post_message::<()>("Debugger.enable", None)
-      .await?;
-    Ok(())
-  }
-
-  async fn enable_profiler(&mut self) -> Result<(), AnyError> {
-    self
-      .session
-      .post_message::<()>("Profiler.enable", None)
-      .await?;
-    Ok(())
-  }
-
-  async fn disable_debugger(&mut self) -> Result<(), AnyError> {
-    self
-      .session
-      .post_message::<()>("Debugger.disable", None)
-      .await?;
-    Ok(())
-  }
-
-  async fn disable_profiler(&mut self) -> Result<(), AnyError> {
-    self
-      .session
-      .post_message::<()>("Profiler.disable", None)
-      .await?;
-    Ok(())
-  }
-
-  async fn start_precise_coverage(
-    &mut self,
-    parameters: cdp::StartPreciseCoverageArgs,
-  ) -> Result<cdp::StartPreciseCoverageResponse, AnyError> {
-    let return_value = self
-      .session
-      .post_message("Profiler.startPreciseCoverage", Some(parameters))
-      .await?;
-
-    let return_object = serde_json::from_value(return_value)?;
-
-    Ok(return_object)
-  }
-
-  async fn take_precise_coverage(
-    &mut self,
-  ) -> Result<cdp::TakePreciseCoverageResponse, AnyError> {
-    let return_value = self
-      .session
-      .post_message::<()>("Profiler.takePreciseCoverage", None)
-      .await?;
-
-    let return_object = serde_json::from_value(return_value)?;
-
-    Ok(return_object)
-  }
-
-  pub async fn start_collecting(&mut self) -> Result<(), AnyError> {
+  async fn start_collecting(&mut self) -> Result<(), AnyError> {
     self.enable_debugger().await?;
     self.enable_profiler().await?;
     self
@@ -124,7 +66,7 @@ impl CoverageCollector {
     Ok(())
   }
 
-  pub async fn stop_collecting(&mut self) -> Result<(), AnyError> {
+  async fn stop_collecting(&mut self) -> Result<(), AnyError> {
     fs::create_dir_all(&self.dir)?;
 
     let script_coverages = self.take_precise_coverage().await?.result;
@@ -155,6 +97,83 @@ impl CoverageCollector {
     self.disable_profiler().await?;
 
     Ok(())
+  }
+}
+
+impl CoverageCollector {
+  pub fn new(dir: PathBuf) -> Self {
+    Self { dir, session: None }
+  }
+
+  async fn enable_debugger(&mut self) -> Result<(), AnyError> {
+    self
+      .session
+      .as_mut()
+      .unwrap()
+      .post_message::<()>("Debugger.enable", None)
+      .await?;
+    Ok(())
+  }
+
+  async fn enable_profiler(&mut self) -> Result<(), AnyError> {
+    self
+      .session
+      .as_mut()
+      .unwrap()
+      .post_message::<()>("Profiler.enable", None)
+      .await?;
+    Ok(())
+  }
+
+  async fn disable_debugger(&mut self) -> Result<(), AnyError> {
+    self
+      .session
+      .as_mut()
+      .unwrap()
+      .post_message::<()>("Debugger.disable", None)
+      .await?;
+    Ok(())
+  }
+
+  async fn disable_profiler(&mut self) -> Result<(), AnyError> {
+    self
+      .session
+      .as_mut()
+      .unwrap()
+      .post_message::<()>("Profiler.disable", None)
+      .await?;
+    Ok(())
+  }
+
+  async fn start_precise_coverage(
+    &mut self,
+    parameters: cdp::StartPreciseCoverageArgs,
+  ) -> Result<cdp::StartPreciseCoverageResponse, AnyError> {
+    let return_value = self
+      .session
+      .as_mut()
+      .unwrap()
+      .post_message("Profiler.startPreciseCoverage", Some(parameters))
+      .await?;
+
+    let return_object = serde_json::from_value(return_value)?;
+
+    Ok(return_object)
+  }
+
+  async fn take_precise_coverage(
+    &mut self,
+  ) -> Result<cdp::TakePreciseCoverageResponse, AnyError> {
+    let return_value = self
+      .session
+      .as_mut()
+      .unwrap()
+      .post_message::<()>("Profiler.takePreciseCoverage", None)
+      .await?;
+
+    let return_object = serde_json::from_value(return_value)?;
+
+    Ok(return_object)
   }
 }
 

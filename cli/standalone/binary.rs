@@ -25,7 +25,6 @@ use deno_runtime::permissions::PermissionsOptions;
 use deno_semver::package::PackageReq;
 use deno_semver::VersionReqSpecifierParseError;
 use log::Level;
-use once_cell::sync::Lazy;
 use serde::Deserialize;
 use serde::Serialize;
 

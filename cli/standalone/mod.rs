@@ -520,7 +520,6 @@ pub async fn run(
     None,
     None,
     None,
-    None,
     feature_checker,
     CliMainWorkerOptions {
       argv: metadata.argv,
@@ -549,6 +548,7 @@ pub async fn run(
       unstable: metadata.unstable_config.legacy_flag_enabled,
       maybe_root_package_json_deps: package_json_deps_provider.deps().cloned(),
       hmr_runner: Default::default(),
+      coverage_collector: Default::default(),
     },
     None,
     // TODO(bartlomieju): temporarily disabled

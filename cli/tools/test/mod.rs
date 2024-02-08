@@ -523,13 +523,13 @@ async fn test_specifier_inner(
   worker.run_up_to_duration(Duration::from_millis(0)).await?;
 
   if let Some(coverage_collector) = coverage_collector.as_mut() {
-    // worker
-    //   .js_runtime
-    //   .with_event_loop_future(
-    //     coverage_collector.stop_collecting().boxed_local(),
-    //     PollEventLoopOptions::default(),
-    //   )
-    //   .await?;
+    worker
+      .js_runtime
+      .with_event_loop_future(
+        coverage_collector.stop_collecting().boxed_local(),
+        PollEventLoopOptions::default(),
+      )
+      .await?;
   }
   Ok(())
 }
