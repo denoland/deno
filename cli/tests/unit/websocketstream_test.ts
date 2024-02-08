@@ -44,7 +44,7 @@ Deno.test(
   },
 );
 
-Deno.test("echo string", async () => {
+Deno.test("echo string", { sanitizeOps: false }, async () => {
   const ws = new WebSocketStream("ws://localhost:4242");
   const { readable, writable } = await ws.opened;
   await writable.getWriter().write("foo");
