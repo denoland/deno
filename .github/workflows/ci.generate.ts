@@ -411,15 +411,15 @@ const ci = {
             job: "lint",
             profile: "debug",
           }, {
-            //   ...Runners.linuxArm,
-            //   job: "test",
-            //   profile: "debug",
-            // }, {
-            //   ...Runners.linuxArm,
-            //   job: "test",
-            //   profile: "release",
-            //   use_sysroot: true,
-            // }, {
+            ...Runners.linuxArm,
+            job: "test",
+            profile: "debug",
+          }, {
+            ...Runners.linuxArm,
+            job: "test",
+            profile: "release",
+            use_sysroot: true,
+          }, {
             ...Runners.macosX86,
             job: "lint",
             profile: "debug",
@@ -562,21 +562,25 @@ const ci = {
         {
           name: "Log versions",
           run: [
-            "python --version",
-            "rustc --version",
-            "cargo --version",
-            "which dpkg && dpkg -l",
-            // Deno is installed when linting or testing.
-            'if [[ "${{ matrix.job }}" == "lint" ]] || [[ "${{ matrix.job }}" == "test" ]]; then',
-            "  deno --version",
-            "fi",
-            // Node is installed for benchmarks.
-            'if [ "${{ matrix.job }}" == "bench" ]',
-            "then",
-            "  node -v",
-            // Install benchmark tools.
-            "  " + installBenchTools,
-            "fi",
+            "echo '*** Python'",
+            "command -v python && python --version || echo 'No python found or bad executable'",
+            "echo '*** Rust'",
+            "command -v rustc && rustc --version || echo 'No rustc found or bad executable'",
+            "echo '*** Cargo'",
+            "command -v cargo && cargo --version || echo 'No cargo found or bad executable'",
+            "echo '*** Deno'",
+            "command -v deno && deno --version || echo 'No deno found or bad executable'",
+            "echo '*** Node'",
+            "command -v node && node --version || echo 'No node found or bad executable'",
+            "echo '*** Installed packages'",
+            "command -v dpkg && dpkg -l || echo 'No dpkg found or bad executable'",
+          ].join("\n"),
+        },
+        {
+          name: "Install benchmark tools",
+          if: "matrix.job == 'bench'",
+          run: [
+            installBenchTools,
           ].join("\n"),
         },
         {
@@ -1005,6 +1009,7 @@ const ci = {
               "target/release/deno-x86_64-pc-windows-msvc.zip",
               "target/release/deno-x86_64-unknown-linux-gnu.zip",
               "target/release/deno-x86_64-apple-darwin.zip",
+              "target/release/deno-aarch64-unknown-linux-gnu.zip",
               "target/release/deno-aarch64-apple-darwin.zip",
               "target/release/deno_src.tar.gz",
               "target/release/lib.deno.d.ts",
