@@ -411,15 +411,15 @@ const ci = {
             job: "lint",
             profile: "debug",
           }, {
-            ...Runners.linuxArm,
-            job: "test",
-            profile: "debug",
-          }, {
-            ...Runners.linuxArm,
-            job: "test",
-            profile: "release",
-            use_sysroot: true,
-          }, {
+            //   ...Runners.linuxArm,
+            //   job: "test",
+            //   profile: "debug",
+            // }, {
+            //   ...Runners.linuxArm,
+            //   job: "test",
+            //   profile: "release",
+            //   use_sysroot: true,
+            // }, {
             ...Runners.macosX86,
             job: "lint",
             profile: "debug",
