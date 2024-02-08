@@ -111,17 +111,6 @@ jobs:
             runner: ubuntu-22.04
             job: lint
             profile: debug
-          - os: linux
-            arch: aarch64
-            runner: ubicloud-standard-16-arm
-            job: test
-            profile: debug
-          - os: linux
-            arch: aarch64
-            runner: ubicloud-standard-16-arm
-            job: test
-            profile: release
-            use_sysroot: true
           - os: macos
             arch: x86_64
             runner: macos-12
