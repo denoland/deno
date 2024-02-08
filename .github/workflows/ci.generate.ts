@@ -301,6 +301,9 @@ function handleMatrixItems(items: {
 
 const ci = {
   name: "ci",
+  permissions: {
+    contents: "write",
+  },
   on: {
     push: {
       branches: ["main"],
