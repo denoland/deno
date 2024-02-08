@@ -5,7 +5,7 @@ import * as yaml from "https://deno.land/std@0.173.0/encoding/yaml.ts";
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 73;
+const cacheVersion = 74;
 
 const ubuntuX86Runner = "ubuntu-22.04";
 const ubuntuX86XlRunner = "ubuntu-22.04-xl";
@@ -83,7 +83,7 @@ sudo apt-get update
 # this was unreliable sometimes, so try again if it fails
 ${installPkgsCommand} || echo 'Failed. Trying again.' && sudo apt-get clean && sudo apt-get update && ${installPkgsCommand}
 # Fix alternatives
-(yes '' | sudo update-alternatives --force --all) || true > /dev/null 2> /dev/null
+(yes '' | sudo update-alternatives --force --all) > /dev/null 2> /dev/null || true
 
 echo "Decompressing sysroot..."
 wget -q https://github.com/denoland/deno_sysroot_build/releases/download/sysroot-20240207/sysroot-\`uname -m\`.tar.xz -O /tmp/sysroot.tar.xz
@@ -101,11 +101,10 @@ if [[ \`uname -m\` == "aarch64" ]]; then
   echo "Copying libdl.so"
   sudo cp /sysroot/lib/aarch64-linux-gnu/libdl.so.2 /sysroot/lib/aarch64-linux-gnu/libdl.so
 else
-  wget https://github.com/denoland/deno_third_party/raw/master/prebuilt/linux64/libdl/libdl.a
-  wget https://github.com/denoland/deno_third_party/raw/master/prebuilt/linux64/libdl/libdl.so.2
-
-  sudo ln -s libdl.so.2 /sysroot/lib/x86_64-linux-gnu/libdl.so
-  sudo ln -s libdl.a /sysroot/lib/x86_64-linux-gnu/libdl.a
+  echo "Copying libdl.a"
+  sudo cp /sysroot/usr/lib/x86_64-linux-gnu/libdl.a /sysroot/lib/x86_64-linux-gnu/libdl.a
+  echo "Copying libdl.so"
+  sudo cp /sysroot/lib/x86_64-linux-gnu/libdl.so.2 /sysroot/lib/x86_64-linux-gnu/libdl.so
 fi
 
 # Configure the build environment. Both Rust and Clang will produce
@@ -173,7 +172,7 @@ const installRustStep = {
 };
 const installPythonSteps = [{
   name: "Install Python",
-  uses: "actions/setup-python@v4",
+  uses: "actions/setup-python@v5",
   with: { "python-version": 3.11 },
 }, {
   name: "Remove unused versions of Python",
@@ -188,7 +187,7 @@ const installPythonSteps = [{
 }];
 const installNodeStep = {
   name: "Install Node",
-  uses: "actions/setup-node@v3",
+  uses: "actions/setup-node@v4",
   with: { "node-version": 18 },
 };
 const installProtocStep = {
@@ -563,21 +562,25 @@ const ci = {
         {
           name: "Log versions",
           run: [
-            "python --version",
-            "rustc --version",
-            "cargo --version",
-            "which dpkg && dpkg -l",
-            // Deno is installed when linting or testing.
-            'if [[ "${{ matrix.job }}" == "lint" ]] || [[ "${{ matrix.job }}" == "test" ]]; then',
-            "  deno --version",
-            "fi",
-            // Node is installed for benchmarks.
-            'if [ "${{ matrix.job }}" == "bench" ]',
-            "then",
-            "  node -v",
-            // Install benchmark tools.
-            "  " + installBenchTools,
-            "fi",
+            "echo '*** Python'",
+            "command -v python && python --version || echo 'No python found or bad executable'",
+            "echo '*** Rust'",
+            "command -v rustc && rustc --version || echo 'No rustc found or bad executable'",
+            "echo '*** Cargo'",
+            "command -v cargo && cargo --version || echo 'No cargo found or bad executable'",
+            "echo '*** Deno'",
+            "command -v deno && deno --version || echo 'No deno found or bad executable'",
+            "echo '*** Node'",
+            "command -v node && node --version || echo 'No node found or bad executable'",
+            "echo '*** Installed packages'",
+            "command -v dpkg && dpkg -l || echo 'No dpkg found or bad executable'",
+          ].join("\n"),
+        },
+        {
+          name: "Install benchmark tools",
+          if: "matrix.job == 'bench'",
+          run: [
+            installBenchTools,
           ].join("\n"),
         },
         {
@@ -600,7 +603,7 @@ const ci = {
         {
           // Restore cache from the latest 'main' branch build.
           name: "Restore cache build output (PR)",
-          uses: "actions/cache/restore@v3",
+          uses: "actions/cache/restore@v4",
           if:
             "github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')",
           with: {
@@ -1006,6 +1009,7 @@ const ci = {
               "target/release/deno-x86_64-pc-windows-msvc.zip",
               "target/release/deno-x86_64-unknown-linux-gnu.zip",
               "target/release/deno-x86_64-apple-darwin.zip",
+              "target/release/deno-aarch64-unknown-linux-gnu.zip",
               "target/release/deno-aarch64-apple-darwin.zip",
               "target/release/deno_src.tar.gz",
               "target/release/lib.deno.d.ts",

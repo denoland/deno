@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "1.40.3"
+version = "1.40.4"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -60,7 +60,7 @@ deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"]
 deno_doc = { version = "=0.100.0", features = ["html"] }
 deno_emit = "=0.35.0"
 deno_graph = "=0.64.2"
-deno_lint = { version = "=0.55.0", features = ["docs"] }
+deno_lint = { version = "=0.55.2", features = ["docs"] }
 deno_lockfile.workspace = true
 deno_npm = "=0.16.0"
 deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting"] }
