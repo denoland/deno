@@ -111,6 +111,17 @@ jobs:
             runner: ubuntu-22.04
             job: lint
             profile: debug
+          - os: linux
+            arch: aarch64
+            runner: ubicloud-standard-16-arm
+            job: test
+            profile: debug
+          - os: linux
+            arch: aarch64
+            runner: ubicloud-standard-16-arm
+            job: test
+            profile: release
+            use_sysroot: true
           - os: macos
             arch: x86_64
             runner: macos-12
@@ -321,19 +332,22 @@ jobs:
         if: '!(matrix.skip) && (matrix.os == ''macos'')'
       - name: Log versions
         run: |-
-          python --version
-          rustc --version
-          cargo --version
-          which dpkg && dpkg -l
-          if [[ "${{ matrix.job }}" == "lint" ]] || [[ "${{ matrix.job }}" == "test" ]]; then
-            deno --version
-          fi
-          if [ "${{ matrix.job }}" == "bench" ]
-          then
-            node -v
-            ./tools/install_prebuilt.js wrk hyperfine
-          fi
+          echo '*** Python'
+          command -v python && python --version || echo 'No python found or bad executable'
+          echo '*** Rust'
+          command -v rustc && rustc --version || echo 'No rustc found or bad executable'
+          echo '*** Cargo'
+          command -v cargo && cargo --version || echo 'No cargo found or bad executable'
+          echo '*** Deno'
+          command -v deno && deno --version || echo 'No deno found or bad executable'
+          echo '*** Node'
+          command -v node && node --version || echo 'No node found or bad executable'
+          echo '*** Installed packages'
+          command -v dpkg && dpkg -l || echo 'No dpkg found or bad executable'
         if: '!(matrix.skip)'
+      - name: Install benchmark tools
+        if: '!(matrix.skip) && (matrix.job == ''bench'')'
+        run: ./tools/install_prebuilt.js wrk hyperfine
       - name: Cache Cargo home
         uses: actions/cache@v4
         with:
@@ -620,6 +634,7 @@ jobs:
             target/release/deno-x86_64-pc-windows-msvc.zip
             target/release/deno-x86_64-unknown-linux-gnu.zip
             target/release/deno-x86_64-apple-darwin.zip
+            target/release/deno-aarch64-unknown-linux-gnu.zip
             target/release/deno-aarch64-apple-darwin.zip
             target/release/deno_src.tar.gz
             target/release/lib.deno.d.ts
