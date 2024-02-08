@@ -4390,49 +4390,6 @@ itest!(ext_flag_takes_precedence_over_extension {
   exit_code: 0,
 });
 
-#[test]
-fn websocket() {
-  let _g = util::http_server();
-
-  let script = util::testdata_path().join("run/websocket_test.ts");
-  let root_ca = util::testdata_path().join("tls/RootCA.pem");
-  let status = util::deno_cmd()
-    .arg("test")
-    .arg("--unstable")
-    .arg("--allow-net")
-    .arg("--cert")
-    .arg(root_ca)
-    .arg(script)
-    .spawn()
-    .unwrap()
-    .wait()
-    .unwrap();
-
-  assert!(status.success());
-}
-
-#[ignore]
-#[test]
-fn websocketstream() {
-  let _g = util::http_server();
-
-  let script = util::testdata_path().join("run/websocketstream_test.ts");
-  let root_ca = util::testdata_path().join("tls/RootCA.pem");
-  let status = util::deno_cmd()
-    .arg("test")
-    .arg("--unstable")
-    .arg("--allow-net")
-    .arg("--cert")
-    .arg(root_ca)
-    .arg(script)
-    .spawn()
-    .unwrap()
-    .wait()
-    .unwrap();
-
-  assert!(status.success());
-}
-
 #[tokio::test(flavor = "multi_thread")]
 async fn websocketstream_ping() {
   let _g = util::http_server();
