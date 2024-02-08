@@ -53,21 +53,21 @@ winapi.workspace = true
 winres.workspace = true
 
 [dependencies]
-deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "dep_graph", "proposal", "react", "sourcemap", "transforms", "typescript", "view", "visit"] }
+deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "proposal", "react", "sourcemap", "transforms", "typescript", "view", "visit"] }
 deno_cache_dir = "=0.6.1"
 deno_config = "=0.9.2"
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
-deno_doc = { version = "=0.100.0", features = ["html"] }
-deno_emit = "=0.35.0"
-deno_graph = "=0.64.2"
-deno_lint = { version = "=0.55.2", features = ["docs"] }
+deno_doc = { version = "=0.103.0", features = ["html"] }
+deno_emit = "=0.36.0"
+deno_graph = "=0.65.0"
+deno_lint = { version = "=0.56.0", features = ["docs"] }
 deno_lockfile.workspace = true
 deno_npm = "=0.16.0"
 deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting"] }
 deno_semver = "=0.5.4"
 deno_task_shell = "=0.14.3"
 deno_terminal.workspace = true
-eszip = "=0.60.0"
+eszip = "=0.62.0"
 napi_sym.workspace = true
 
 async-trait.workspace = true
@@ -89,7 +89,7 @@ dotenvy = "0.15.7"
 dprint-plugin-json = "=0.19.1"
 dprint-plugin-jupyter = "=0.1.2"
 dprint-plugin-markdown = "=0.16.3"
-dprint-plugin-typescript = "=0.88.10"
+dprint-plugin-typescript = "=0.89.0"
 env_logger = "=0.10.0"
 fancy-regex = "=0.10.0"
 # If you disable the default __vendored_zlib_ng feature above, you _must_ be able to link against `-lz`.
