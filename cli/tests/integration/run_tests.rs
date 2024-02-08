@@ -3,7 +3,7 @@
 use bytes::Bytes;
 use deno_core::serde_json::json;
 use deno_core::url;
-use deno_runtime::deno_fetch::reqwest;
+use deno_fetch::reqwest;
 use pretty_assertions::assert_eq;
 use std::io::Read;
 use std::io::Write;

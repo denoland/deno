@@ -8,7 +8,7 @@ use util::env_vars_for_npm_tests;
 
 util::unit_test_factory!(
   node_unit_test,
-  "tests/unit_node",
+  "../tests/unit_node",
   "**/*_test.ts",
   [
     _fs_access_test = _fs / _fs_access_test,

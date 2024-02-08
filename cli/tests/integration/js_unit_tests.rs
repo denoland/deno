@@ -7,7 +7,7 @@ use test_util as util;
 
 util::unit_test_factory!(
   js_unit_test,
-  "tests/unit",
+  "../tests/unit",
   "*.ts",
   [
     abort_controller_test,
