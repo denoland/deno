@@ -41,7 +41,7 @@ license = "MIT"
 repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
-deno_ast = { version = "0.32.0", features = ["transpiling"] }
+deno_ast = { version = "0.32.1", features = ["transpiling"] }
 deno_core = { version = "0.260.0" }
 
 deno_bench_util = { version = "0.130.0", path = "./bench_util" }
@@ -356,3 +356,12 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.base64-simd]
 opt-level = 3
+
+[patch.crates-io]
+deno_ast = { path = "../deno_ast" }
+deno_graph = { path = "../deno_graph" }
+eszip = { path = "../eszip" }
+deno_doc = { path = "../deno_doc" }
+deno_emit = { path = "../deno_emit/rs-lib" }
+deno_lint = { path = "../deno_lint" }
+dprint-plugin-typescript = { path = "../dprint-plugin-typescript" }
