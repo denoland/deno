@@ -82,7 +82,15 @@ pub trait HasNodeSpecifierChecker: Send + Sync {
   fn has_node_specifier(&self) -> bool;
 }
 
-#[derive(Clone)]
+#[async_trait::async_trait(?Send)]
+pub trait HmrRunner: Send + Sync {
+  fn setup(&mut self, session: deno_core::LocalInspectorSession);
+
+  async fn start(&mut self) -> Result<(), AnyError>;
+  async fn stop(&mut self) -> Result<(), AnyError>;
+  async fn run(&mut self) -> Result<(), AnyError>;
+}
+
 pub struct CliMainWorkerOptions {
   pub argv: Vec<String>,
   pub log_level: WorkerLogLevel,
@@ -104,6 +112,7 @@ pub struct CliMainWorkerOptions {
   pub unstable: bool,
   pub skip_op_registration: bool,
   pub maybe_root_package_json_deps: Option<PackageJsonDeps>,
+  pub hmr_runner: Arc<Mutex<Option<Box<dyn HmrRunner>>>>,
 }
 
 struct SharedWorkerState {
@@ -172,26 +181,26 @@ impl CliMainWorker {
 
     loop {
       if let Some(hmr_runner) = maybe_hmr_runner.as_mut() {
-        // let watcher_communicator =
-        //   self.shared.maybe_file_watcher_communicator.clone().unwrap();
+        let watcher_communicator =
+          self.shared.maybe_file_watcher_communicator.clone().unwrap();
 
-        // let hmr_future = hmr_runner.run().boxed_local();
-        // let event_loop_future = self.worker.run_event_loop(false).boxed_local();
+        let hmr_future = hmr_runner.run().boxed_local();
+        let event_loop_future = self.worker.run_event_loop(false).boxed_local();
 
-        // let result;
-        // select! {
-        //   hmr_result = hmr_future => {
-        //     result = hmr_result;
-        //   },
-        //   event_loop_result = event_loop_future => {
-        //     result = event_loop_result;
-        //   }
-        // }
-        // if let Err(e) = result {
-        //   watcher_communicator
-        //     .change_restart_mode(WatcherRestartMode::Automatic);
-        //   return Err(e);
-        // }
+        let result;
+        select! {
+          hmr_result = hmr_future => {
+            result = hmr_result;
+          },
+          event_loop_result = event_loop_future => {
+            result = event_loop_result;
+          }
+        }
+        if let Err(e) = result {
+          watcher_communicator
+            .change_restart_mode(WatcherRestartMode::Automatic);
+          return Err(e);
+        }
       } else {
         self
           .worker
@@ -219,16 +228,16 @@ impl CliMainWorker {
     //         )
     //         .await?;
     //     }
-    //     if let Some(hmr_runner) = maybe_hmr_runner.as_mut() {
-    //       self
-    //         .worker
-    //         .js_runtime
-    //         .with_event_loop_future(
-    //           hmr_runner.stop().boxed_local(),
-    //           PollEventLoopOptions::default(),
-    //         )
-    //         .await?;
-    //     }
+    if let Some(hmr_runner) = maybe_hmr_runner.as_mut() {
+      self
+        .worker
+        .js_runtime
+        .with_event_loop_future(
+          hmr_runner.stop().boxed_local(),
+          PollEventLoopOptions::default(),
+        )
+        .await?;
+    }
 
     Ok(self.worker.exit_code())
   }
@@ -332,8 +341,28 @@ impl CliMainWorker {
 
   pub async fn maybe_setup_hmr_runner(
     &mut self,
-  ) -> Result<Option<()>, AnyError> {
-    Ok(None)
+  ) -> Result<Option<Box<dyn HmrRunner>>, AnyError> {
+    if !self.shared.options.hmr {
+      return Ok(None);
+    }
+    let Some(mut hmr_runner) = self.shared.options.hmr_runner.lock().take()
+    else {
+      return Ok(None);
+    };
+
+    let session = self.worker.create_inspector_session().await;
+
+    hmr_runner.setup(session);
+
+    self
+      .worker
+      .js_runtime
+      .with_event_loop_future(
+        hmr_runner.start().boxed_local(),
+        PollEventLoopOptions::default(),
+      )
+      .await?;
+    Ok(Some(hmr_runner))
   }
 
   // pub async fn maybe_setup_coverage_collector(

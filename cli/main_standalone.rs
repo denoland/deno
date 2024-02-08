@@ -23,8 +23,8 @@ mod version;
 mod worker;
 
 use crate::args::Flags;
-use deno_runtime::colors;
 pub use deno_runtime::UNSTABLE_GRANULAR_FLAGS;
+use deno_terminal::colors;
 
 pub(crate) fn unstable_exit_cb(feature: &str, api_name: &str) {
   eprintln!(

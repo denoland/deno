@@ -42,6 +42,7 @@ use crate::resolver::NpmModuleLoader;
 use crate::resolver::SloppyImportsResolver;
 use crate::standalone::DenoCompileBinaryWriter;
 use crate::tools::check::TypeChecker;
+use crate::tools::run::hmr::HmrRunner;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::util::import_map::deno_json_deps;
@@ -783,6 +784,14 @@ impl CliFactory {
   fn create_cli_main_worker_options(
     &self,
   ) -> Result<CliMainWorkerOptions, AnyError> {
+    let hmr_runner = if self.options.has_hmr() {
+      let watcher_communicator = self.watcher_communicator.clone().unwrap();
+      let emitter = self.emitter()?.clone();
+      Some(HmrRunner::new(emitter, watcher_communicator))
+    } else {
+      None
+    };
+
     Ok(CliMainWorkerOptions {
       argv: self.options.argv().clone(),
       // This optimization is only available for "run" subcommand
@@ -814,6 +823,7 @@ impl CliFactory {
         .clone(),
       unstable: self.options.legacy_unstable_flag(),
       maybe_root_package_json_deps: self.options.maybe_package_json_deps(),
+      hmr_runner: Default::default(),
     })
   }
 }
