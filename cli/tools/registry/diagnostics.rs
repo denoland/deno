@@ -7,6 +7,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 use deno_ast::swc::common::util::take::Take;
+use deno_ast::SourceTextInfo;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_graph::FastCheckDiagnostic;
@@ -258,7 +259,32 @@ impl Diagnostic for PublishDiagnostic {
   }
 
   fn snippet_fixed(&self) -> Option<DiagnosticSnippet<'_>> {
-    None
+    match &self {
+      PublishDiagnostic::InvalidExternalImport {
+        imported, referrer, ..
+      } => match super::api::get_jsr_alternative(imported) {
+        Some(replacement) => {
+          let replacement = SourceTextInfo::new(replacement.into());
+          let start = replacement.line_start(0);
+          let end = replacement.line_end(0);
+          Some(DiagnosticSnippet {
+            source: DiagnosticSnippetSource::SourceTextInfo(Cow::Owned(
+              replacement,
+            )),
+            highlight: DiagnosticSnippetHighlight {
+              style: DiagnosticSnippetHighlightStyle::Hint,
+              range: DiagnosticSourceRange {
+                start: DiagnosticSourcePos::SourcePos(start),
+                end: DiagnosticSourcePos::SourcePos(end),
+              },
+              description: Some("try this specifier".into()),
+            },
+          })
+        }
+        None => None,
+      },
+      _ => None,
+    }
   }
 
   fn info(&self) -> Cow<'_, [Cow<'_, str>]> {

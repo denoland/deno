@@ -3,6 +3,7 @@
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_runtime::deno_fetch::reqwest;
+use lsp_types::Url;
 use serde::de::DeserializeOwned;
 
 #[derive(serde::Deserialize)]
@@ -141,4 +142,17 @@ pub async fn get_package(
   let package_url = get_package_api_url(registry_api_url, scope, package);
   let response = client.get(&package_url).send().await?;
   Ok(response)
+}
+
+pub fn get_jsr_alternative(imported: &Url) -> Option<String> {
+  if !matches!(imported.host_str(), Some("esm.sh")) {
+    return None;
+  }
+
+  let mut segments = imported.path_segments().unwrap();
+  match segments.next() {
+    Some("gh") => None,
+    Some(module) => Some(format!("\"npm:{module}\"")),
+    None => None,
+  }
 }
