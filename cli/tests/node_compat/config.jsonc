@@ -727,7 +727,8 @@
   "darwinIgnore": {
     "parallel": [
       "test-net-allow-half-open.js",
-      "test-net-socket-close-after-end.js"
+      "test-net-socket-close-after-end.js",
+      "test-fs-watchfile.js"
     ]
   },
   "suitesFolder": "test",

@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use deno_core::error::AnyError;
 use deno_graph::Module;
-use deno_runtime::colors;
+use deno_terminal::colors;
 
 use crate::args::BundleFlags;
 use crate::args::CliOptions;
@@ -73,7 +73,7 @@ async fn bundle_action(
     .specifiers()
     .filter_map(|(_, r)| {
       r.ok().and_then(|module| match module {
-        Module::Esm(m) => m.specifier.to_file_path().ok(),
+        Module::Js(m) => m.specifier.to_file_path().ok(),
         Module::Json(m) => m.specifier.to_file_path().ok(),
         // nothing to watch
         Module::Node(_) | Module::Npm(_) | Module::External(_) => None,

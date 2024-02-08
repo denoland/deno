@@ -20,10 +20,10 @@ use deno_graph::Resolution;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
-use deno_runtime::colors;
 use deno_semver::npm::NpmPackageNvReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageNv;
+use deno_terminal::colors;
 
 use crate::args::Flags;
 use crate::args::InfoFlags;
@@ -434,7 +434,7 @@ impl<'a> GraphDisplayContext<'a> {
     match self.graph.try_get(&root_specifier) {
       Ok(Some(root)) => {
         let maybe_cache_info = match root {
-          Module::Esm(module) => module.maybe_cache_info.as_ref(),
+          Module::Js(module) => module.maybe_cache_info.as_ref(),
           Module::Json(module) => module.maybe_cache_info.as_ref(),
           Module::Node(_) | Module::Npm(_) | Module::External(_) => None,
         };
@@ -464,7 +464,7 @@ impl<'a> GraphDisplayContext<'a> {
             )?;
           }
         }
-        if let Some(module) = root.esm() {
+        if let Some(module) = root.js() {
           writeln!(writer, "{} {}", colors::bold("type:"), module.media_type)?;
         }
         let total_modules_size = self
@@ -472,7 +472,7 @@ impl<'a> GraphDisplayContext<'a> {
           .modules()
           .map(|m| {
             let size = match m {
-              Module::Esm(module) => module.size(),
+              Module::Js(module) => module.size(),
               Module::Json(module) => module.size(),
               Module::Node(_) | Module::Npm(_) | Module::External(_) => 0,
             };
@@ -571,7 +571,7 @@ impl<'a> GraphDisplayContext<'a> {
           self.npm_info.package_sizes.get(&package.id).copied()
         }
         Specifier(_) => match module {
-          Module::Esm(module) => Some(module.size() as u64),
+          Module::Js(module) => Some(module.size() as u64),
           Module::Json(module) => Some(module.size() as u64),
           Module::Node(_) | Module::Npm(_) | Module::External(_) => None,
         },
@@ -587,7 +587,7 @@ impl<'a> GraphDisplayContext<'a> {
           tree_node.children.extend(self.build_npm_deps(package));
         }
         Specifier(_) => {
-          if let Some(module) = module.esm() {
+          if let Some(module) = module.js() {
             if let Some(types_dep) = &module.maybe_types_dependency {
               if let Some(child) =
                 self.build_resolved_info(&types_dep.dependency, true)

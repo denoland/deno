@@ -7,7 +7,7 @@ import {
   assertRejects,
   assertThrows,
 } from "./test_util.ts";
-import { assertType, IsExact } from "../../../test_util/std/testing/types.ts";
+import { assertType, IsExact } from "@test_util/std/testing/types.ts";
 
 const sleep = (time: number) => new Promise((r) => setTimeout(r, time));
 
@@ -702,6 +702,24 @@ dbTest("list prefix with start empty", async (db) => {
   assertEquals(entries.length, 0);
 });
 
+dbTest("list prefix with start equal to prefix", async (db) => {
+  await setupData(db);
+  await assertRejects(
+    async () => await collect(db.list({ prefix: ["a"], start: ["a"] })),
+    TypeError,
+    "start key is not in the keyspace defined by prefix",
+  );
+});
+
+dbTest("list prefix with start out of bounds", async (db) => {
+  await setupData(db);
+  await assertRejects(
+    async () => await collect(db.list({ prefix: ["b"], start: ["a"] })),
+    TypeError,
+    "start key is not in the keyspace defined by prefix",
+  );
+});
+
 dbTest("list prefix with end", async (db) => {
   const versionstamp = await setupData(db);
   const entries = await collect(db.list({ prefix: ["a"], end: ["a", "c"] }));
@@ -715,6 +733,24 @@ dbTest("list prefix with end empty", async (db) => {
   await setupData(db);
   const entries = await collect(db.list({ prefix: ["a"], end: ["a", "a"] }));
   assertEquals(entries.length, 0);
+});
+
+dbTest("list prefix with end equal to prefix", async (db) => {
+  await setupData(db);
+  await assertRejects(
+    async () => await collect(db.list({ prefix: ["a"], end: ["a"] })),
+    TypeError,
+    "end key is not in the keyspace defined by prefix",
+  );
+});
+
+dbTest("list prefix with end out of bounds", async (db) => {
+  await setupData(db);
+  await assertRejects(
+    async () => await collect(db.list({ prefix: ["a"], end: ["b"] })),
+    TypeError,
+    "end key is not in the keyspace defined by prefix",
+  );
 });
 
 dbTest("list prefix with empty prefix", async (db) => {
@@ -1018,6 +1054,21 @@ dbTest("list range with manual cursor reverse", async (db) => {
     { key: ["a", "c"], value: 2, versionstamp },
     { key: ["a", "b"], value: 1, versionstamp },
   ]);
+});
+
+dbTest("list range with start greater than end", async (db) => {
+  await setupData(db);
+  await assertRejects(
+    async () => await collect(db.list({ start: ["b"], end: ["a"] })),
+    TypeError,
+    "start key is greater than end key",
+  );
+});
+
+dbTest("list range with start equal to end", async (db) => {
+  await setupData(db);
+  const entries = await collect(db.list({ start: ["a"], end: ["a"] }));
+  assertEquals(entries.length, 0);
 });
 
 dbTest("list invalid selector", async (db) => {

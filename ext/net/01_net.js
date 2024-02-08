@@ -5,6 +5,7 @@ const {
   BadResourcePrototype,
   InterruptedPrototype,
   internalRidSymbol,
+  createCancelHandle,
 } = core;
 import {
   op_dns_resolve,
@@ -27,9 +28,6 @@ import {
   op_set_keepalive,
   op_set_nodelay,
 } from "ext:core/ops";
-const {
-  op_cancel_handle,
-} = core.ensureFastOps(true);
 const {
   Error,
   Number,
@@ -69,7 +67,7 @@ async function resolveDns(query, recordType, options) {
   let abortHandler;
   if (options?.signal) {
     options.signal.throwIfAborted();
-    cancelRid = op_cancel_handle();
+    cancelRid = createCancelHandle();
     abortHandler = () => core.tryClose(cancelRid);
     options.signal[abortSignal.add](abortHandler);
   }

@@ -484,12 +484,6 @@ pub async fn upgrade(
   };
 
   let download_url = if upgrade_flags.canary {
-    // NOTE(bartlomieju): to keep clippy happy on M1 macs.
-    #[allow(clippy::eq_op)]
-    if env!("TARGET") == "aarch64-apple-darwin" {
-      bail!("Canary builds are not available for M1/M2");
-    }
-
     format!(
       "https://dl.deno.land/canary/{}/{}",
       install_version, *ARCHIVE_NAME
@@ -503,7 +497,7 @@ pub async fn upgrade(
 
   let archive_data = download_package(client, &download_url)
     .await
-    .with_context(|| format!("Failed downloading {download_url}"))?;
+    .with_context(|| format!("Failed downloading {download_url}. The version you requested may not have been built for the current architechture."))?;
 
   log::info!("Deno is upgrading to version {}", &install_version);
 
@@ -575,7 +569,7 @@ async fn get_latest_version(
   release_kind: UpgradeReleaseKind,
   check_kind: UpgradeCheckKind,
 ) -> Result<String, AnyError> {
-  let url = get_url(release_kind, check_kind);
+  let url = get_url(release_kind, env!("TARGET"), check_kind);
   let text = client.download_text(url).await?;
   Ok(normalize_version_from_server(release_kind, &text))
 }
@@ -593,11 +587,14 @@ fn normalize_version_from_server(
 
 fn get_url(
   release_kind: UpgradeReleaseKind,
+  target_tuple: &str,
   check_kind: UpgradeCheckKind,
 ) -> String {
   let file_name = match release_kind {
-    UpgradeReleaseKind::Stable => "release-latest.txt",
-    UpgradeReleaseKind::Canary => "canary-latest.txt",
+    UpgradeReleaseKind::Stable => Cow::Borrowed("release-latest.txt"),
+    UpgradeReleaseKind::Canary => {
+      Cow::Owned(format!("canary-{target_tuple}-latest.txt"))
+    }
   };
   let query_param = match check_kind {
     UpgradeCheckKind::Execution => "",
@@ -966,19 +963,67 @@ mod test {
   #[test]
   fn test_get_url() {
     assert_eq!(
-      get_url(UpgradeReleaseKind::Canary, UpgradeCheckKind::Execution),
-      "https://dl.deno.land/canary-latest.txt"
+      get_url(
+        UpgradeReleaseKind::Canary,
+        "aarch64-apple-darwin",
+        UpgradeCheckKind::Execution
+      ),
+      "https://dl.deno.land/canary-aarch64-apple-darwin-latest.txt"
     );
     assert_eq!(
-      get_url(UpgradeReleaseKind::Canary, UpgradeCheckKind::Lsp),
-      "https://dl.deno.land/canary-latest.txt?lsp"
+      get_url(
+        UpgradeReleaseKind::Canary,
+        "aarch64-apple-darwin",
+        UpgradeCheckKind::Lsp
+      ),
+      "https://dl.deno.land/canary-aarch64-apple-darwin-latest.txt?lsp"
     );
     assert_eq!(
-      get_url(UpgradeReleaseKind::Stable, UpgradeCheckKind::Execution),
+      get_url(
+        UpgradeReleaseKind::Canary,
+        "x86_64-pc-windows-msvc",
+        UpgradeCheckKind::Execution
+      ),
+      "https://dl.deno.land/canary-x86_64-pc-windows-msvc-latest.txt"
+    );
+    assert_eq!(
+      get_url(
+        UpgradeReleaseKind::Canary,
+        "x86_64-pc-windows-msvc",
+        UpgradeCheckKind::Lsp
+      ),
+      "https://dl.deno.land/canary-x86_64-pc-windows-msvc-latest.txt?lsp"
+    );
+    assert_eq!(
+      get_url(
+        UpgradeReleaseKind::Stable,
+        "aarch64-apple-darwin",
+        UpgradeCheckKind::Execution
+      ),
       "https://dl.deno.land/release-latest.txt"
     );
     assert_eq!(
-      get_url(UpgradeReleaseKind::Stable, UpgradeCheckKind::Lsp),
+      get_url(
+        UpgradeReleaseKind::Stable,
+        "aarch64-apple-darwin",
+        UpgradeCheckKind::Lsp
+      ),
+      "https://dl.deno.land/release-latest.txt?lsp"
+    );
+    assert_eq!(
+      get_url(
+        UpgradeReleaseKind::Stable,
+        "x86_64-pc-windows-msvc",
+        UpgradeCheckKind::Execution
+      ),
+      "https://dl.deno.land/release-latest.txt"
+    );
+    assert_eq!(
+      get_url(
+        UpgradeReleaseKind::Stable,
+        "x86_64-pc-windows-msvc",
+        UpgradeCheckKind::Lsp
+      ),
       "https://dl.deno.land/release-latest.txt?lsp"
     );
   }

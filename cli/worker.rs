@@ -23,7 +23,6 @@ use deno_core::PollEventLoopOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::SourceMapGetter;
 use deno_lockfile::Lockfile;
-use deno_runtime::colors;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node;
@@ -44,6 +43,7 @@ use deno_runtime::BootstrapOptions;
 use deno_runtime::WorkerLogLevel;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReqReference;
+use deno_terminal::colors;
 use tokio::select;
 
 use crate::args::package_json::PackageJsonDeps;
@@ -595,7 +595,7 @@ impl CliMainWorkerFactory {
         locale: deno_core::v8::icu::get_language_tag(),
         location: shared.options.location.clone(),
         no_color: !colors::use_color(),
-        is_tty: colors::is_tty(),
+        is_tty: deno_terminal::is_stdout_tty(),
         unstable: shared.options.unstable,
         unstable_features,
         user_agent: version::get_user_agent().to_string(),
@@ -801,7 +801,7 @@ fn create_web_worker_callback(
         locale: deno_core::v8::icu::get_language_tag(),
         location: Some(args.main_module.clone()),
         no_color: !colors::use_color(),
-        is_tty: colors::is_tty(),
+        is_tty: deno_terminal::is_stdout_tty(),
         unstable: shared.options.unstable,
         unstable_features,
         user_agent: version::get_user_agent().to_string(),

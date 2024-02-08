@@ -4658,6 +4658,29 @@ fn lsp_code_actions_deno_cache() {
 }
 
 #[test]
+fn lsp_jsr_uncached() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"import "jsr:@foo/bar";"#,
+    },
+  }));
+  // TODO(nayeemrmn): This should check if the jsr dep is cached and give a
+  // diagnostic.
+  assert_eq!(json!(diagnostics.all()), json!([]));
+  client.shutdown();
+}
+
+#[test]
 fn lsp_code_actions_deno_cache_npm() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -4943,6 +4966,73 @@ fn lsp_cache_on_save() {
   assert_eq!(client.read_diagnostics().all(), vec![]);
 
   client.shutdown();
+}
+
+// Regression test for https://github.com/denoland/deno/issues/22122.
+#[test]
+fn lsp_cache_then_definition() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"import "http://localhost:4545/run/002_hello.ts";"#,
+    },
+  }));
+  // Prior to the fix, this would cause a faulty memoization that maps the
+  // URL "http://localhost:4545/run/002_hello.ts" to itself, preventing it from
+  // being reverse-mapped to "deno:/http/localhost%3A4545/run/002_hello.ts" on
+  // "textDocument/definition" request.
+  client.write_request(
+    "workspace/executeCommand",
+    json!({
+      "command": "deno.cache",
+      "arguments": [
+        ["http://localhost:4545/run/002_hello.ts"],
+        temp_dir.uri().join("file.ts").unwrap(),
+      ],
+    }),
+  );
+  let res = client.write_request(
+    "textDocument/definition",
+    json!({
+      "textDocument": { "uri": temp_dir.uri().join("file.ts").unwrap() },
+      "position": { "line": 0, "character": 8 },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([{
+      "targetUri": "deno:/http/localhost%3A4545/run/002_hello.ts",
+      "targetRange": {
+        "start": {
+          "line": 0,
+          "character": 0,
+        },
+        "end": {
+          "line": 1,
+          "character": 0,
+        },
+      },
+      "targetSelectionRange": {
+        "start": {
+          "line": 0,
+          "character": 0,
+        },
+        "end": {
+          "line": 1,
+          "character": 0,
+        },
+      },
+    }]),
+  );
 }
 
 #[test]

@@ -4,7 +4,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { core } from "ext:core/mod.js";
-const {
+import {
   op_brotli_compress,
   op_brotli_compress_async,
   op_brotli_compress_stream,
@@ -14,7 +14,7 @@ const {
   op_brotli_decompress_stream,
   op_create_brotli_compress,
   op_create_brotli_decompress,
-} = core.ensureFastOps();
+} from "ext:core/ops";
 
 import { zlib as constants } from "ext:deno_node/internal_binding/constants.ts";
 import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
@@ -51,7 +51,7 @@ export class BrotliDecompress extends Transform {
       // TODO(littledivy): use `encoding` argument
       transform(chunk, _encoding, callback) {
         const input = toU8(chunk);
-        const output = new Uint8Array(1024);
+        const output = new Uint8Array(chunk.byteLength);
         const avail = op_brotli_decompress_stream(context, input, output);
         this.push(output.slice(0, avail));
         callback();
@@ -76,14 +76,19 @@ export class BrotliCompress extends Transform {
       transform(chunk, _encoding, callback) {
         const input = toU8(chunk);
         const output = new Uint8Array(brotliMaxCompressedSize(input.length));
-        const avail = op_brotli_compress_stream(context, input, output);
-        this.push(output.slice(0, avail));
+        const written = op_brotli_compress_stream(context, input, output);
+        if (written > 0) {
+          this.push(output.slice(0, written));
+        }
         callback();
       },
       flush(callback) {
         const output = new Uint8Array(1024);
-        const avail = op_brotli_compress_stream_end(context, output);
-        this.push(output.slice(0, avail));
+        let avail;
+        while ((avail = op_brotli_compress_stream_end(context, output)) > 0) {
+          this.push(output.slice(0, avail));
+        }
+        core.close(context);
         callback();
       },
     });

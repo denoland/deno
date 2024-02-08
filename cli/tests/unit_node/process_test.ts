@@ -11,10 +11,10 @@ import {
   assertObjectMatch,
   assertStrictEquals,
   assertThrows,
-} from "../../../test_util/std/assert/mod.ts";
-import { stripColor } from "../../../test_util/std/fmt/colors.ts";
-import * as path from "../../../test_util/std/path/mod.ts";
-import { delay } from "../../../test_util/std/async/delay.ts";
+} from "@test_util/std/assert/mod.ts";
+import { stripColor } from "@test_util/std/fmt/colors.ts";
+import * as path from "@test_util/std/path/mod.ts";
+import { delay } from "@test_util/std/async/delay.ts";
 
 const testDir = new URL(".", import.meta.url);
 
@@ -118,6 +118,14 @@ Deno.test({
   fn() {
     assertEquals(typeof process.pid, "number");
     assertEquals(process.pid, Deno.pid);
+  },
+});
+
+Deno.test({
+  name: "process.ppid",
+  fn() {
+    assertEquals(typeof process.ppid, "number");
+    assertEquals(process.ppid, Deno.ppid);
   },
 });
 

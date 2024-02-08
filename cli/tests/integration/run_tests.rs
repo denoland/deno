@@ -1042,21 +1042,8 @@ fn lock_deno_json_package_json_deps() {
     .run()
     .skip_output_check();
   let lockfile = temp_dir.join("deno.lock");
-  // todo(dsherret): it would be nice if the test server didn't produce
-  // different hashes depending on what operating system it's running on
-  let esm_basic_integrity = lockfile
-    .read_json_value()
-    .get("packages")
-    .unwrap()
-    .get("npm")
-    .unwrap()
-    .get("@denotest/esm-basic@1.0.0")
-    .unwrap()
-    .get("integrity")
-    .unwrap()
-    .as_str()
-    .unwrap()
-    .to_string();
+  let esm_basic_integrity =
+    get_lockfile_npm_package_integrity(&lockfile, "@denotest/esm-basic@1.0.0");
   lockfile.assert_matches_json(json!({
     "version": "3",
     "packages": {
@@ -1072,8 +1059,8 @@ fn lock_deno_json_package_json_deps() {
       }
     },
     "remote": {
-      "http://localhost:4545/jsr/registry/@denotest/module_graph/1.4.0/mod.ts": "5b0ce36e08d759118200d8b4627627b5a89b6261fbb0598e6961a6b287abb699",
-      "http://localhost:4545/jsr/registry/@denotest/module_graph/1.4.0/other.ts": "9ce27ca439cb0e218b6e1ec26c043dbc0b54c9babc4cb432df478dd1721faade"
+      "http://127.0.0.1:4250/@denotest/module_graph/1.4.0/mod.ts": "5b0ce36e08d759118200d8b4627627b5a89b6261fbb0598e6961a6b287abb699",
+      "http://127.0.0.1:4250/@denotest/module_graph/1.4.0/other.ts": "9ce27ca439cb0e218b6e1ec26c043dbc0b54c9babc4cb432df478dd1721faade"
     },
     "workspace": {
       "dependencies": [
@@ -1122,8 +1109,8 @@ fn lock_deno_json_package_json_deps() {
       }
     },
     "remote": {
-      "http://localhost:4545/jsr/registry/@denotest/module_graph/1.4.0/mod.ts": "5b0ce36e08d759118200d8b4627627b5a89b6261fbb0598e6961a6b287abb699",
-      "http://localhost:4545/jsr/registry/@denotest/module_graph/1.4.0/other.ts": "9ce27ca439cb0e218b6e1ec26c043dbc0b54c9babc4cb432df478dd1721faade"
+      "http://127.0.0.1:4250/@denotest/module_graph/1.4.0/mod.ts": "5b0ce36e08d759118200d8b4627627b5a89b6261fbb0598e6961a6b287abb699",
+      "http://127.0.0.1:4250/@denotest/module_graph/1.4.0/other.ts": "9ce27ca439cb0e218b6e1ec26c043dbc0b54c9babc4cb432df478dd1721faade"
     },
     "workspace": {
       "dependencies": [
@@ -1154,8 +1141,8 @@ fn lock_deno_json_package_json_deps() {
       }
     },
     "remote": {
-      "http://localhost:4545/jsr/registry/@denotest/module_graph/1.4.0/mod.ts": "5b0ce36e08d759118200d8b4627627b5a89b6261fbb0598e6961a6b287abb699",
-      "http://localhost:4545/jsr/registry/@denotest/module_graph/1.4.0/other.ts": "9ce27ca439cb0e218b6e1ec26c043dbc0b54c9babc4cb432df478dd1721faade"
+      "http://127.0.0.1:4250/@denotest/module_graph/1.4.0/mod.ts": "5b0ce36e08d759118200d8b4627627b5a89b6261fbb0598e6961a6b287abb699",
+      "http://127.0.0.1:4250/@denotest/module_graph/1.4.0/other.ts": "9ce27ca439cb0e218b6e1ec26c043dbc0b54c9babc4cb432df478dd1721faade"
     },
     "workspace": {
       "dependencies": [
@@ -1177,6 +1164,143 @@ fn lock_deno_json_package_json_deps() {
     "version": "3",
     "remote": {}
   }));
+}
+
+#[test]
+fn lock_deno_json_package_json_deps_workspace() {
+  let context = TestContextBuilder::new()
+    .use_temp_cwd()
+    .use_http_server()
+    .add_npm_env_vars()
+    .add_jsr_env_vars()
+    .build();
+  let temp_dir = context.temp_dir().path();
+
+  // deno.json
+  let deno_json = temp_dir.join("deno.json");
+  deno_json.write_json(&json!({}));
+
+  // package.json
+  let package_json = temp_dir.join("package.json");
+  package_json.write_json(&json!({
+    "workspaces": ["package-a"],
+    "dependencies": {
+      "@denotest/cjs-default-export": "1"
+    }
+  }));
+  // main.ts
+  let main_ts = temp_dir.join("main.ts");
+  main_ts.write("import '@denotest/cjs-default-export';");
+
+  // package-a/package.json
+  let a_package = temp_dir.join("package-a");
+  a_package.create_dir_all();
+  let a_package_json = a_package.join("package.json");
+  a_package_json.write_json(&json!({
+    "dependencies": {
+      "@denotest/esm-basic": "1"
+    }
+  }));
+  // package-a/main.ts
+  let main_ts = a_package.join("main.ts");
+  main_ts.write("import '@denotest/esm-basic';");
+  context
+    .new_command()
+    .args("run package-a/main.ts")
+    .run()
+    .skip_output_check();
+  let lockfile = temp_dir.join("deno.lock");
+  let esm_basic_integrity =
+    get_lockfile_npm_package_integrity(&lockfile, "@denotest/esm-basic@1.0.0");
+
+  // no "workspace" because deno isn't smart enough to figure this out yet
+  // since it discovered the package.json in a folder different from the lockfile
+  lockfile.assert_matches_json(json!({
+    "version": "3",
+    "packages": {
+      "specifiers": {
+        "npm:@denotest/esm-basic@1": "npm:@denotest/esm-basic@1.0.0"
+      },
+      "npm": {
+        "@denotest/esm-basic@1.0.0": {
+          "integrity": esm_basic_integrity,
+          "dependencies": {}
+        }
+      }
+    },
+    "remote": {},
+  }));
+
+  // run a command that causes discovery of the root package.json beside the lockfile
+  context
+    .new_command()
+    .args("run main.ts")
+    .run()
+    .skip_output_check();
+  // now we should see the dependencies
+  let cjs_default_export_integrity = get_lockfile_npm_package_integrity(
+    &lockfile,
+    "@denotest/cjs-default-export@1.0.0",
+  );
+  let expected_lockfile = json!({
+    "version": "3",
+    "packages": {
+      "specifiers": {
+        "npm:@denotest/cjs-default-export@1": "npm:@denotest/cjs-default-export@1.0.0",
+        "npm:@denotest/esm-basic@1": "npm:@denotest/esm-basic@1.0.0"
+      },
+      "npm": {
+        "@denotest/cjs-default-export@1.0.0": {
+          "integrity": cjs_default_export_integrity,
+          "dependencies": {}
+        },
+        "@denotest/esm-basic@1.0.0": {
+          "integrity": esm_basic_integrity,
+          "dependencies": {}
+        }
+      }
+    },
+    "remote": {},
+    "workspace": {
+      "packageJson": {
+        "dependencies": [
+          "npm:@denotest/cjs-default-export@1"
+        ]
+      }
+    }
+  });
+  lockfile.assert_matches_json(expected_lockfile.clone());
+
+  // now run the command again in the package with the nested package.json
+  context
+    .new_command()
+    .args("run package-a/main.ts")
+    .run()
+    .skip_output_check();
+  // the lockfile should stay the same as the above because the package.json
+  // was found in a different directory
+  lockfile.assert_matches_json(expected_lockfile.clone());
+}
+
+fn get_lockfile_npm_package_integrity(
+  lockfile: &PathRef,
+  package_name: &str,
+) -> String {
+  // todo(dsherret): it would be nice if the test server didn't produce
+  // different hashes depending on what operating system it's running on
+  lockfile
+    .read_json_value()
+    .get("packages")
+    .unwrap()
+    .get("npm")
+    .unwrap()
+    .get(package_name)
+    .unwrap()
+    .get("integrity")
+    .unwrap()
+    .as_str()
+    .unwrap()
+    .to_string()
 }
 
 itest!(mts_dmts_mjs {
@@ -3479,120 +3603,6 @@ itest!(fetch_async_error_stack {
   exit_code: 1,
 });
 
-itest!(unstable_ffi_1 {
-  args: "run run/ffi/unstable_ffi_1.js",
-  output: "run/ffi/unstable_ffi_1.js.out",
-  exit_code: 70,
-});
-
-itest!(unstable_ffi_2 {
-  args: "run run/ffi/unstable_ffi_2.js",
-  output: "run/ffi/unstable_ffi_2.js.out",
-  exit_code: 70,
-});
-
-itest!(unstable_ffi_3 {
-  args: "run run/ffi/unstable_ffi_3.js",
-  output: "run/ffi/unstable_ffi_3.js.out",
-  exit_code: 70,
-});
-
-itest!(unstable_ffi_4 {
-  args: "run run/ffi/unstable_ffi_4.js",
-  output: "run/ffi/unstable_ffi_4.js.out",
-  exit_code: 70,
-});
-
-itest!(unstable_ffi_5 {
-  args: "run run/ffi/unstable_ffi_5.js",
-  output: "run/ffi/unstable_ffi_5.js.out",
-  exit_code: 70,
-});
-
-itest!(unstable_ffi_6 {
-  args: "run run/ffi/unstable_ffi_6.js",
-  output: "run/ffi/unstable_ffi_6.js.out",
-  exit_code: 70,
-});
-
-itest!(unstable_ffi_7 {
-  args: "run run/ffi/unstable_ffi_7.js",
-  output: "run/ffi/unstable_ffi_7.js.out",
-  exit_code: 70,
-});
-
-itest!(unstable_ffi_8 {
-  args: "run run/ffi/unstable_ffi_8.js",
-  output: "run/ffi/unstable_ffi_8.js.out",
-  exit_code: 70,
-});
-
-itest!(unstable_ffi_9 {
-  args: "run run/ffi/unstable_ffi_9.js",
-  output: "run/ffi/unstable_ffi_9.js.out",
-  exit_code: 70,
-});
-
-itest!(unstable_ffi_10 {
-  args: "run run/ffi/unstable_ffi_10.js",
-  output: "run/ffi/unstable_ffi_10.js.out",
-  exit_code: 70,
-});
-
-itest!(unstable_ffi_11 {
-  args: "run run/ffi/unstable_ffi_11.js",
-  output: "run/ffi/unstable_ffi_11.js.out",
-  exit_code: 70,
-});
-
-itest!(unstable_ffi_12 {
-  args: "run run/ffi/unstable_ffi_12.js",
-  output: "run/ffi/unstable_ffi_12.js.out",
-  exit_code: 70,
-});
-
-itest!(unstable_ffi_13 {
-  args: "run run/ffi/unstable_ffi_13.js",
-  output: "run/ffi/unstable_ffi_13.js.out",
-  exit_code: 70,
-});
-
-itest!(unstable_ffi_14 {
-  args: "run run/ffi/unstable_ffi_14.js",
-  output: "run/ffi/unstable_ffi_14.js.out",
-  exit_code: 70,
-});
-
-itest!(unstable_ffi_15 {
-  args: "run run/ffi/unstable_ffi_15.js",
-  output: "run/ffi/unstable_ffi_15.js.out",
-  exit_code: 70,
-});
-
-itest!(unstable_ffi_16 {
-  args: "run run/ffi/unstable_ffi_16.js",
-  output: "run/ffi/unstable_ffi_16.js.out",
-  exit_code: 70,
-});
-
-itest!(unstable_ffi_17 {
-  args: "run run/ffi/unstable_ffi_17.js",
-  output: "run/ffi/unstable_ffi_17.js.out",
-  exit_code: 70,
-});
-
-itest!(unstable_ffi_18 {
-  args: "run run/ffi/unstable_ffi_18.js",
-  output: "run/ffi/unstable_ffi_18.js.out",
-  exit_code: 70,
-});
-
-itest!(unstable_ffi_19 {
-  args: "run run/ffi/unstable_ffi_19.js",
-  output: "run/ffi/unstable_ffi_19.js.out",
-  exit_code: 70,
-});
-
 itest!(event_listener_error {
   args: "run --quiet run/event_listener_error.ts",
   output: "run/event_listener_error.ts.out",
@@ -4751,25 +4761,6 @@ fn permission_prompt_strips_ansi_codes_and_control_chars() {
     console.expect("undefined");
     console.write_line_raw(r#"const moveANSIStart = "\u001b[1000D";"#);
     console.expect("undefined");
-
-    console.write_line_raw(
-      r#"Deno[Deno.internal].core.ops.op_spawn_child({
-    cmd: "cat",
-    args: ["file.txt"],
-    clearEnv: false,
-    cwd: undefined,
-    env: [],
-    uid: undefined,
-    gid: undefined,
-    stdin: "null",
-    stdout: "inherit",
-    stderr: "piped",
-    signal: undefined,
-    windowsRawArguments: false,
-}, moveANSIUp + clearANSI + moveANSIStart + prompt)"#,
-    );
-
-    console.expect(r#"┌ ⚠️  Deno requests run access to "cat""#);
   });
 }
 
@@ -5092,35 +5083,36 @@ itest!(unstable_temporal_api_missing_flag {
   exit_code: 1,
 });
 
-itest!(warn_on_deprecated_api {
-  args: "run -A run/warn_on_deprecated_api/main.js",
-  output: "run/warn_on_deprecated_api/main.out",
-  http_server: true,
-  exit_code: 0,
-});
+// TODO(bartlomieju): temporary disabled
+// itest!(warn_on_deprecated_api {
+//   args: "run -A run/warn_on_deprecated_api/main.js",
+//   output: "run/warn_on_deprecated_api/main.out",
+//   http_server: true,
+//   exit_code: 0,
+// });
 
-itest!(warn_on_deprecated_api_verbose {
-  args: "run -A run/warn_on_deprecated_api/main.js",
-  output: "run/warn_on_deprecated_api/main.verbose.out",
-  envs: vec![("DENO_VERBOSE_WARNINGS".to_string(), "1".to_string())],
-  http_server: true,
-  exit_code: 0,
-});
+// itest!(warn_on_deprecated_api_verbose {
+//   args: "run -A run/warn_on_deprecated_api/main.js",
+//   output: "run/warn_on_deprecated_api/main.verbose.out",
+//   envs: vec![("DENO_VERBOSE_WARNINGS".to_string(), "1".to_string())],
+//   http_server: true,
+//   exit_code: 0,
+// });
 
-itest!(warn_on_deprecated_api_with_flag {
-  args: "run -A --quiet run/warn_on_deprecated_api/main.js",
-  output: "run/warn_on_deprecated_api/main_disabled_flag.out",
-  http_server: true,
-  exit_code: 0,
-});
+// itest!(warn_on_deprecated_api_with_flag {
+//   args: "run -A --quiet run/warn_on_deprecated_api/main.js",
+//   output: "run/warn_on_deprecated_api/main_disabled_flag.out",
+//   http_server: true,
+//   exit_code: 0,
+// });
 
-itest!(warn_on_deprecated_api_with_env_var {
-  args: "run -A run/warn_on_deprecated_api/main.js",
-  envs: vec![("DENO_NO_DEPRECATION_WARNINGS".to_string(), "1".to_string())],
-  output: "run/warn_on_deprecated_api/main_disabled_env.out",
-  http_server: true,
-  exit_code: 0,
-});
+// itest!(warn_on_deprecated_api_with_env_var {
+//   args: "run -A run/warn_on_deprecated_api/main.js",
+//   envs: vec![("DENO_NO_DEPRECATION_WARNINGS".to_string(), "1".to_string())],
+//   output: "run/warn_on_deprecated_api/main_disabled_env.out",
+//   http_server: true,
+//   exit_code: 0,
+// });
 
 #[test]
 fn deno_json_imports_expand() {

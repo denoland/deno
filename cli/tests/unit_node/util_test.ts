@@ -5,8 +5,8 @@ import {
   assertEquals,
   assertStrictEquals,
   assertThrows,
-} from "../../../test_util/std/assert/mod.ts";
-import { stripColor } from "../../../test_util/std/fmt/colors.ts";
+} from "@test_util/std/assert/mod.ts";
+import { stripColor } from "@test_util/std/fmt/colors.ts";
 import * as util from "node:util";
 import { Buffer } from "node:buffer";
 
@@ -290,5 +290,28 @@ Deno.test({
   fn() {
     const fn = util.deprecate(() => {}, "foo");
     fn();
+  },
+});
+
+Deno.test({
+  name: "[util] callbackify() works",
+  fn() {
+    const fn = util.callbackify(() => Promise.resolve("foo"));
+    fn((err, value) => {
+      assert(err === null);
+      assert(value === "foo");
+    });
+  },
+});
+
+Deno.test({
+  name: "[util] callbackify(undefined) throws",
+  fn() {
+    assertThrows(
+      // @ts-expect-error: testing runtime error
+      () => util.callbackify(undefined),
+      TypeError,
+      'The "original" argument must be of type function',
+    );
   },
 });

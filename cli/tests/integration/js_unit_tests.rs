@@ -59,8 +59,8 @@ util::unit_test_factory!(
     navigator_test,
     net_test,
     network_interfaces_test,
-    opcall_test,
     os_test,
+    ops_test,
     path_from_url_test,
     performance_test,
     permissions_test,
@@ -84,6 +84,7 @@ util::unit_test_factory!(
     stdio_test,
     streams_test,
     structured_clone_test,
+    symbol_test,
     symlink_test,
     sync_test,
     test_util,
@@ -118,6 +119,9 @@ fn js_unit_test(test: String) {
   let deno = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("test")
+    .arg("--config")
+    .arg("cli/tests/config/deno.json")
+    .arg("--no-lock")
     .arg("--unstable")
     .arg("--location=http://js-unit-tests/foo/bar")
     .arg("--no-prompt");
