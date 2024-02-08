@@ -8,10 +8,8 @@ https://github.com/denoland/deno_install
 
 ### 1.40.4 / 2024.02.08
 
-- Reland refactor(cli): use new sanitizer for resources (#22226)
 - feat(unstable): `Deno.FsFile.lock[Sync]()` and `Deno.FsFile.unlock[Sync]()` (#22235)
 - feat: ARM64 builds (#22298)
-- feat: use sysroot for ARM64 (#22329)
 - fix(cli): Add IP address support to DENO_AUTH_TOKEN (#22297)
 - fix(ext/node): Ensure os.cpus() works on arm64 linux (#22302)
 - fix(ext/node): fix timeout param validation in cp.execFile (#22262)
