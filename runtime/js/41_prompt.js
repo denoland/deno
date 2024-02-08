@@ -1,95 +1,77 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import { core, primordials } from "ext:core/mod.js";
-const ops = core.ops;
-import { isatty } from "ext:runtime/40_tty.js";
+import { op_read_line_prompt } from "ext:core/ops";
+const {
+  ArrayPrototypePush,
+  StringPrototypeCharCodeAt,
+  Uint8Array,
+} = primordials;
+
 import { stdin } from "ext:deno_io/12_io.js";
-import { getNoColor } from "ext:deno_console/01_console.js";
-const { Uint8Array, StringFromCodePoint } = primordials;
 
-const ESC = "\x1b";
-const CTRL_C = "\x03";
-const CTRL_D = "\x04";
-
-const bold = ansi(1, 22);
-const italic = ansi(3, 23);
-const yellow = ansi(33, 0);
-function ansi(start, end) {
-  return (str) => getNoColor() ? str : `\x1b[${start}m${str}\x1b[${end}m`;
-}
+const LF = StringPrototypeCharCodeAt("\n", 0);
+const CR = StringPrototypeCharCodeAt("\r", 0);
 
 function alert(message = "Alert") {
-  if (!isatty(stdin.rid)) {
+  if (!stdin.isTerminal()) {
     return;
   }
 
-  core.print(
-    `${yellow(bold(`${message}`))} [${italic("Press any key to continue")}] `,
-  );
+  core.print(`${message} [Enter] `, false);
 
-  try {
-    stdin.setRaw(true);
-    stdin.readSync(new Uint8Array(1024));
-  } finally {
-    stdin.setRaw(false);
-  }
-
-  core.print("\n");
+  readLineFromStdinSync();
 }
 
-function prompt(message = "Prompt", defaultValue = "") {
-  if (!isatty(stdin.rid)) {
+function confirm(message = "Confirm") {
+  if (!stdin.isTerminal()) {
+    return false;
+  }
+
+  core.print(`${message} [y/N] `, false);
+
+  const answer = readLineFromStdinSync();
+
+  return answer === "Y" || answer === "y";
+}
+
+function prompt(message = "Prompt", defaultValue) {
+  defaultValue ??= "";
+
+  if (!stdin.isTerminal()) {
     return null;
   }
 
-  return ops.op_read_line_prompt(
+  return op_read_line_prompt(
     `${message} `,
     `${defaultValue}`,
   );
 }
 
-const inputMap = new primordials.Map([
-  ["Y", true],
-  ["y", true],
-  ["\r", true],
-  ["\n", true],
-  ["\r\n", true],
-  ["N", false],
-  ["n", false],
-  [ESC, false],
-  [CTRL_C, false],
-  [CTRL_D, false],
-]);
+function readLineFromStdinSync() {
+  const c = new Uint8Array(1);
+  const buf = [];
 
-function confirm(message = "Confirm") {
-  if (!isatty(stdin.rid)) {
-    return false;
-  }
-
-  core.print(`${yellow(bold(`${message}`))} [${italic("Y/n")}] `);
-
-  let val = false;
-  try {
-    stdin.setRaw(true);
-
-    while (true) {
-      const b = new Uint8Array(1024);
-      stdin.readSync(b);
-      let byteString = "";
-
-      let i = 0;
-      while (b[i]) byteString += StringFromCodePoint(b[i++]);
-
-      if (inputMap.has(byteString)) {
-        val = inputMap.get(byteString);
+  while (true) {
+    const n = stdin.readSync(c);
+    if (n === null || n === 0) {
+      break;
+    }
+    if (c[0] === CR) {
+      const n = stdin.readSync(c);
+      if (c[0] === LF) {
+        break;
+      }
+      ArrayPrototypePush(buf, CR);
+      if (n === null || n === 0) {
         break;
       }
     }
-  } finally {
-    stdin.setRaw(false);
+    if (c[0] === LF) {
+      break;
+    }
+    ArrayPrototypePush(buf, c[0]);
   }
-
-  core.print(`${val ? "y" : "n"}\n`);
-  return val;
+  return core.decode(new Uint8Array(buf));
 }
 
 export { alert, confirm, prompt };

@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import {
   assert,
@@ -208,8 +208,7 @@ Deno.test(
   async function commandRedirectStdin() {
     const tempDir = await Deno.makeTempDir();
     const fileName = tempDir + "/redirected_stdio.txt";
-    const encoder = new TextEncoder();
-    await Deno.writeFile(fileName, encoder.encode("hello"));
+    await Deno.writeTextFile(fileName, "hello");
     const file = await Deno.open(fileName);
 
     const command = new Deno.Command(Deno.execPath(), {

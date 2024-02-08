@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::deno_exe_path;
 use crate::npm_registry_url;
@@ -668,7 +668,6 @@ impl LspClient {
     self.initialize_with_config(
       do_build,
       json!({ "deno": {
-        "enableBuiltinCommands": true,
         "enable": true,
         "cache": null,
         "certificateStores": null,

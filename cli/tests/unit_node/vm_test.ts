@@ -1,9 +1,6 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { runInNewContext } from "node:vm";
-import {
-  assertEquals,
-  assertThrows,
-} from "../../../test_util/std/assert/mod.ts";
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+import { isContext, runInNewContext } from "node:vm";
+import { assertEquals, assertThrows } from "@test_util/std/assert/mod.ts";
 
 Deno.test({
   name: "vm runInNewContext",
@@ -53,5 +50,17 @@ Deno.test({
       const expectedKey = comment.split(":")[0].trim();
       assertEquals(key, expectedKey);
     }
+  },
+});
+
+Deno.test({
+  name: "vm isContext",
+  fn() {
+    // Currently we do not expose VM contexts so this is always false.
+    const obj = {};
+    assertEquals(isContext(obj), false);
+    assertEquals(isContext(globalThis), false);
+    const sandbox = runInNewContext("{}");
+    assertEquals(isContext(sandbox), false);
   },
 });

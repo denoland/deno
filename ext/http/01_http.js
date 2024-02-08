@@ -1,9 +1,41 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import { core, internals, primordials } from "ext:core/mod.js";
-const { BadResourcePrototype, InterruptedPrototype, ops } = core;
-const { op_http_write } = Deno.core.ensureFastOps();
-import * as webidl from "ext:deno_webidl/00_webidl.js";
+const {
+  BadResourcePrototype,
+  InterruptedPrototype,
+} = core;
+import {
+  op_http_accept,
+  op_http_headers,
+  op_http_shutdown,
+  op_http_upgrade_websocket,
+  op_http_websocket_accept_header,
+  op_http_write,
+  op_http_write_headers,
+  op_http_write_resource,
+} from "ext:core/ops";
+const {
+  ArrayPrototypeIncludes,
+  ArrayPrototypeMap,
+  ArrayPrototypePush,
+  ObjectPrototypeIsPrototypeOf,
+  SafeSet,
+  SafeSetIterator,
+  SetPrototypeAdd,
+  SetPrototypeDelete,
+  StringPrototypeCharCodeAt,
+  StringPrototypeIncludes,
+  StringPrototypeSplit,
+  StringPrototypeToLowerCase,
+  StringPrototypeToUpperCase,
+  Symbol,
+  SymbolAsyncIterator,
+  TypeError,
+  TypedArrayPrototypeGetSymbolToStringTag,
+  Uint8Array,
+} = primordials;
+
 import { InnerBody } from "ext:deno_fetch/22_body.js";
 import { Event, setEventTargetData } from "ext:deno_web/02_event.js";
 import { BlobPrototype } from "ext:deno_web/09_file.js";
@@ -29,13 +61,11 @@ import {
   _role,
   _server,
   _serverHandleIdleTimeout,
+  createWebSocketBranded,
   SERVER,
   WebSocket,
 } from "ext:deno_websocket/01_websocket.js";
-import { TcpConn, UnixConn } from "ext:deno_net/01_net.js";
-import { TlsConn } from "ext:deno_net/02_tls.js";
 import {
-  Deferred,
   getReadableStreamResourceBacking,
   readableStreamClose,
   readableStreamForRid,
@@ -43,30 +73,8 @@ import {
 } from "ext:deno_web/06_streams.js";
 import { serve } from "ext:deno_http/00_serve.js";
 import { SymbolDispose } from "ext:deno_web/00_infra.js";
-const {
-  ArrayPrototypeIncludes,
-  ArrayPrototypeMap,
-  ArrayPrototypePush,
-  Error,
-  ObjectPrototypeIsPrototypeOf,
-  SafeSet,
-  SafeSetIterator,
-  SetPrototypeAdd,
-  SetPrototypeDelete,
-  StringPrototypeCharCodeAt,
-  StringPrototypeIncludes,
-  StringPrototypeSplit,
-  StringPrototypeToLowerCase,
-  StringPrototypeToUpperCase,
-  Symbol,
-  SymbolAsyncIterator,
-  TypeError,
-  Uint8Array,
-  Uint8ArrayPrototype,
-} = primordials;
 
 const connErrorSymbol = Symbol("connError");
-const _deferred = Symbol("upgradeHttpDeferred");
 
 /** @type {(self: HttpConn, rid: number) => boolean} */
 let deleteManagedResource;
@@ -103,7 +111,7 @@ class HttpConn {
   async nextRequest() {
     let nextRequest;
     try {
-      nextRequest = await core.opAsync("op_http_accept", this.#rid);
+      nextRequest = await op_http_accept(this.#rid);
     } catch (error) {
       this.close();
       // A connection error seen here would cause disrupted responses to throw
@@ -144,7 +152,7 @@ class HttpConn {
     const innerRequest = newInnerRequest(
       method,
       url,
-      () => ops.op_http_headers(streamRid),
+      () => op_http_headers(streamRid),
       body !== null ? new InnerBody(body) : null,
       false,
     );
@@ -160,9 +168,6 @@ class HttpConn {
     const respondWith = createRespondWith(
       this,
       streamRid,
-      request,
-      this.#remoteAddr,
-      this.#localAddr,
       abortController,
     );
 
@@ -205,9 +210,6 @@ class HttpConn {
 function createRespondWith(
   httpConn,
   streamRid,
-  request,
-  remoteAddr,
-  localAddr,
   abortController,
 ) {
   return async function respondWith(resp) {
@@ -264,11 +266,10 @@ function createRespondWith(
       }
       const isStreamingResponseBody = !(
         typeof respBody === "string" ||
-        ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, respBody)
+        TypedArrayPrototypeGetSymbolToStringTag(respBody) === "Uint8Array"
       );
       try {
-        await core.opAsync(
-          "op_http_write_headers",
+        await op_http_write_headers(
           streamRid,
           innerResp.status ?? 200,
           innerResp.headerList,
@@ -308,8 +309,7 @@ function createRespondWith(
           }
           reader = respBody.getReader(); // Acquire JS lock.
           try {
-            await core.opAsync(
-              "op_http_write_resource",
+            await op_http_write_resource(
               streamRid,
               resourceBacking.rid,
             );
@@ -333,7 +333,9 @@ function createRespondWith(
           while (true) {
             const { value, done } = await reader.read();
             if (done) break;
-            if (!ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, value)) {
+            if (
+              TypedArrayPrototypeGetSymbolToStringTag(value) !== "Uint8Array"
+            ) {
               await reader.cancel(new TypeError("Value not a Uint8Array"));
               break;
             }
@@ -357,7 +359,7 @@ function createRespondWith(
 
         if (success) {
           try {
-            await core.opAsync("op_http_shutdown", streamRid);
+            await op_http_shutdown(streamRid);
           } catch (error) {
             await reader.cancel(error);
             throw error;
@@ -365,26 +367,9 @@ function createRespondWith(
         }
       }
 
-      const deferred = request[_deferred];
-      if (deferred) {
-        const res = await core.opAsync("op_http_upgrade", streamRid);
-        let conn;
-        if (res.connType === "tcp") {
-          conn = new TcpConn(res.connRid, remoteAddr, localAddr);
-        } else if (res.connType === "tls") {
-          conn = new TlsConn(res.connRid, remoteAddr, localAddr);
-        } else if (res.connType === "unix") {
-          conn = new UnixConn(res.connRid, remoteAddr, localAddr);
-        } else {
-          throw new Error("unreachable");
-        }
-
-        deferred.resolve([conn, res.readBuf]);
-      }
       const ws = resp[_ws];
       if (ws) {
-        const wsRid = await core.opAsync(
-          "op_http_upgrade_websocket",
+        const wsRid = await op_http_upgrade_websocket(
           streamRid,
         );
         ws[_rid] = wsRid;
@@ -448,7 +433,7 @@ function upgradeWebSocket(request, options = {}) {
     );
   }
 
-  const accept = ops.op_http_websocket_accept_header(websocketKey);
+  const accept = op_http_websocket_accept_header(websocketKey);
 
   const r = newInnerResponse(101);
   r.headerList = [
@@ -472,7 +457,7 @@ function upgradeWebSocket(request, options = {}) {
     }
   }
 
-  const socket = webidl.createBranded(WebSocket);
+  const socket = createWebSocketBranded(WebSocket);
   setEventTargetData(socket);
   socket[_server] = true;
   socket[_idleTimeoutDuration] = options.idleTimeout ?? 120;
@@ -487,16 +472,6 @@ function upgradeWebSocket(request, options = {}) {
   response[_ws] = socket;
 
   return { response, socket };
-}
-
-function upgradeHttp(req) {
-  const inner = toInnerRequest(req);
-  if (inner._wantsUpgrade) {
-    return inner._wantsUpgrade("upgradeHttp", arguments);
-  }
-
-  req[_deferred] = new Deferred();
-  return req[_deferred].promise;
 }
 
 const spaceCharCode = StringPrototypeCharCodeAt(" ", 0);
@@ -576,4 +551,4 @@ function buildCaseInsensitiveCommaValueFinder(checkText) {
 internals.buildCaseInsensitiveCommaValueFinder =
   buildCaseInsensitiveCommaValueFinder;
 
-export { _ws, HttpConn, serve, upgradeHttp, upgradeWebSocket };
+export { _ws, HttpConn, serve, upgradeWebSocket };

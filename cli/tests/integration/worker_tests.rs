@@ -1,10 +1,10 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 itest!(workers {
-    args: "test --reload --location http://127.0.0.1:4545/ -A --unstable workers/test.ts",
-    output: "workers/test.ts.out",
-    http_server: true,
-  });
+  args: "test --reload --location http://127.0.0.1:4545/ -A --unstable-worker-options workers/test.ts",
+  output: "workers/test.ts.out",
+  http_server: true,
+});
 
 itest!(worker_error {
   args: "run -A workers/worker_error.ts",
@@ -64,7 +64,7 @@ itest!(worker_permissions_remote_remote {
   });
 
 itest!(worker_permissions_dynamic_remote {
-    args: "run --quiet --reload --allow-net --unstable workers/permissions_dynamic_remote.ts",
+    args: "run --quiet --reload --allow-net --unstable-worker-options workers/permissions_dynamic_remote.ts",
     output: "workers/permissions_dynamic_remote.ts.out",
     http_server: true,
     exit_code: 1,

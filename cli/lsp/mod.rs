@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
 use deno_core::unsync::spawn;
@@ -48,19 +48,9 @@ pub async fn start() -> Result<(), AnyError> {
       token.clone(),
     )
   })
-  // TODO(nayeemrmn): The extension has replaced this with the `deno.cache`
-  // command as of vscode_deno 3.21.0 / 2023.09.05. Remove this eventually.
-  .custom_method(lsp_custom::CACHE_REQUEST, LanguageServer::cache_request)
   .custom_method(
     lsp_custom::PERFORMANCE_REQUEST,
     LanguageServer::performance_request,
-  )
-  // TODO(nayeemrmn): The extension has replaced this with the
-  // `deno.reloadImportRegistries` command as of vscode_deno
-  // 3.26.0 / 2023.10.10. Remove this eventually.
-  .custom_method(
-    lsp_custom::RELOAD_IMPORT_REGISTRIES_REQUEST,
-    LanguageServer::reload_import_registries_request,
   )
   .custom_method(lsp_custom::TASK_REQUEST, LanguageServer::task_definitions)
   // TODO(nayeemrmn): Rename this to `deno/taskDefinitions` in vscode_deno and

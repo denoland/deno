@@ -1,12 +1,9 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import {
-  assertEquals,
-  assertInstanceOf,
-} from "../../../test_util/std/assert/mod.ts";
-import { delay } from "../../../test_util/std/async/delay.ts";
-import { fromFileUrl, join } from "../../../test_util/std/path/mod.ts";
-import { serveTls } from "../../../test_util/std/http/server.ts";
+import { assertEquals, assertInstanceOf } from "@test_util/std/assert/mod.ts";
+import { delay } from "@test_util/std/async/delay.ts";
+import { fromFileUrl, join } from "@test_util/std/path/mod.ts";
+import { serveTls } from "@test_util/std/http/server.ts";
 import * as tls from "node:tls";
 import * as net from "node:net";
 import * as stream from "node:stream";
@@ -111,20 +108,20 @@ Deno.test("tls.createServer creates a TLS server", async () => {
     });
 
     const buf = new Uint8Array(100);
-    await Deno.read(conn.rid, buf);
+    await conn.read(buf);
     let text: string;
     text = new TextDecoder().decode(buf);
     assertEquals(text.replaceAll("\0", ""), "welcome!\n");
     buf.fill(0);
 
-    Deno.write(conn.rid, new TextEncoder().encode("hey\n"));
-    await Deno.read(conn.rid, buf);
+    await conn.write(new TextEncoder().encode("hey\n"));
+    await conn.read(buf);
     text = new TextDecoder().decode(buf);
     assertEquals(text.replaceAll("\0", ""), "hey\n");
     buf.fill(0);
 
-    Deno.write(conn.rid, new TextEncoder().encode("goodbye\n"));
-    await Deno.read(conn.rid, buf);
+    await conn.write(new TextEncoder().encode("goodbye\n"));
+    await conn.read(buf);
     text = new TextDecoder().decode(buf);
     assertEquals(text.replaceAll("\0", ""), "goodbye\n");
 

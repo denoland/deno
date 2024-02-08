@@ -1,7 +1,6 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::CliOptions;
-use crate::args::FilesConfig;
 use crate::args::Flags;
 use crate::args::TestFlags;
 use crate::args::TestReporterConfig;
@@ -25,6 +24,8 @@ use crate::worker::CliMainWorkerFactory;
 use deno_ast::swc::common::comments::CommentKind;
 use deno_ast::MediaType;
 use deno_ast::SourceRangedForSpanned;
+use deno_config::glob::FilePatterns;
+use deno_config::glob::PathOrPattern;
 use deno_core::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context as _;
@@ -39,6 +40,8 @@ use deno_core::futures::StreamExt;
 use deno_core::located_script_name;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_v8;
+use deno_core::stats::RuntimeActivityStats;
+use deno_core::stats::RuntimeActivityStatsFilter;
 use deno_core::unsync::spawn;
 use deno_core::unsync::spawn_blocking;
 use deno_core::url::Url;
@@ -86,6 +89,7 @@ use tokio::sync::mpsc::WeakUnboundedSender;
 pub mod fmt;
 pub mod reporters;
 
+use fmt::format_sanitizer_diff;
 pub use fmt::format_test_error;
 use reporters::CompoundTestReporter;
 use reporters::DotTestReporter;
@@ -174,6 +178,29 @@ pub struct TestDescription {
   pub only: bool,
   pub origin: String,
   pub location: TestLocation,
+  pub sanitize_ops: bool,
+  pub sanitize_resources: bool,
+}
+
+/// May represent a failure of a test or test step.
+#[derive(Debug, Clone, PartialEq, Deserialize, Eq, Hash)]
+#[serde(rename_all = "camelCase")]
+pub struct TestFailureDescription {
+  pub id: usize,
+  pub name: String,
+  pub origin: String,
+  pub location: TestLocation,
+}
+
+impl From<&TestDescription> for TestFailureDescription {
+  fn from(value: &TestDescription) -> Self {
+    Self {
+      id: value.id,
+      name: value.name.clone(),
+      origin: value.origin.clone(),
+      location: value.location.clone(),
+    }
+  }
 }
 
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -331,7 +358,7 @@ pub struct TestSummary {
   pub ignored_steps: usize,
   pub filtered_out: usize,
   pub measured: usize,
-  pub failures: Vec<(TestDescription, TestFailure)>,
+  pub failures: Vec<(TestFailureDescription, TestFailure)>,
   pub uncaught_errors: Vec<(String, Box<JsError>)>,
 }
 
@@ -469,7 +496,7 @@ async fn test_specifier_inner(
   if options.trace_ops {
     worker.execute_script_static(
       located_script_name!(),
-      "Deno[Deno.internal].core.enableOpCallTracing();",
+      "Deno[Deno.internal].core.setOpCallTracingEnabled(true);",
     )?;
   }
 
@@ -498,12 +525,9 @@ async fn test_specifier_inner(
   if let Some(coverage_collector) = coverage_collector.as_mut() {
     worker
       .js_runtime
-      .with_event_loop(
+      .with_event_loop_future(
         coverage_collector.stop_collecting().boxed_local(),
-        PollEventLoopOptions {
-          wait_for_inspector: false,
-          ..Default::default()
-        },
+        PollEventLoopOptions::default(),
       )
       .await?;
   }
@@ -549,6 +573,8 @@ pub async fn run_tests_for_worker(
     used_only,
   }))?;
   let mut had_uncaught_error = false;
+  let stats = worker.js_runtime.runtime_activity_stats_factory();
+
   for (desc, function) in tests {
     if fail_fast_tracker.should_stop() {
       break;
@@ -563,22 +589,36 @@ pub async fn run_tests_for_worker(
     }
     sender.send(TestEvent::Wait(desc.id))?;
 
-    // TODO(bartlomieju): this is a nasty (beautiful) hack, that was required
-    // when switching `JsRuntime` from `FuturesUnordered` to `JoinSet`. With
-    // `JoinSet` all pending ops are immediately polled and that caused a problem
-    // when some async ops were fired and canceled before running tests (giving
-    // false positives in the ops sanitizer). We should probably rewrite sanitizers
-    // to be done in Rust instead of in JS (40_testing.js).
+    // Poll event loop once, to allow all ops that are already resolved, but haven't
+    // responded to settle.
+    // TODO(mmastrac): we should provide an API to poll the event loop until no futher
+    // progress is made.
     {
-      // Poll event loop once, this will allow all ops that are already resolved,
-      // but haven't responded to settle.
       let waker = noop_waker();
       let mut cx = Context::from_waker(&waker);
-      let _ = worker.js_runtime.poll_event_loop(&mut cx, false);
+      let _ = worker
+        .js_runtime
+        .poll_event_loop(&mut cx, PollEventLoopOptions::default());
     }
 
+    let mut filter = RuntimeActivityStatsFilter::default();
+    if desc.sanitize_resources {
+      filter = filter.with_resources();
+    }
+
+    let before = if !filter.is_empty() {
+      Some(stats.clone().capture(&filter))
+    } else {
+      None
+    };
+
     let earlier = SystemTime::now();
-    let result = match worker.js_runtime.call_and_await(&function).await {
+    let call = worker.js_runtime.call(&function);
+    let result = match worker
+      .js_runtime
+      .with_event_loop_promise(call, PollEventLoopOptions::default())
+      .await
+    {
       Ok(r) => r,
       Err(error) => {
         if error.is::<JsError>() {
@@ -595,6 +635,22 @@ pub async fn run_tests_for_worker(
         }
       }
     };
+    if let Some(before) = before {
+      let after = stats.clone().capture(&filter);
+      let diff = RuntimeActivityStats::diff(&before, &after);
+      let formatted = format_sanitizer_diff(diff);
+      if !formatted.is_empty() {
+        let failure = TestFailure::LeakedResources(formatted);
+        let elapsed = SystemTime::now().duration_since(earlier)?.as_millis();
+        sender.send(TestEvent::Result(
+          desc.id,
+          TestResult::Failed(failure),
+          elapsed as u64,
+        ))?;
+        continue;
+      }
+    }
+
     let scope = &mut worker.js_runtime.handle_scope();
     let result = v8::Local::new(scope, result);
     let result = serde_v8::from_v8::<TestResult>(scope, result)?;
@@ -680,11 +736,9 @@ fn extract_files_from_regex_blocks(
           .unwrap_or(file_specifier);
 
       Some(File {
-        maybe_types: None,
-        media_type: file_media_type,
-        source: file_source.into(),
         specifier: file_specifier,
         maybe_headers: None,
+        source: file_source.into_bytes().into(),
       })
     })
     .collect();
@@ -764,7 +818,10 @@ async fn fetch_inline_files(
   let mut files = Vec::new();
   for specifier in specifiers {
     let fetch_permissions = PermissionsContainer::allow_all();
-    let file = file_fetcher.fetch(&specifier, fetch_permissions).await?;
+    let file = file_fetcher
+      .fetch(&specifier, fetch_permissions)
+      .await?
+      .into_text_decoded()?;
 
     let inline_files = if file.media_type == MediaType::Unknown {
       extract_files_from_fenced_blocks(
@@ -1044,14 +1101,42 @@ pub async fn report_tests(
   (Ok(()), receiver)
 }
 
+fn is_supported_test_path_predicate(
+  path: &Path,
+  patterns: &FilePatterns,
+) -> bool {
+  if !is_script_ext(path) {
+    false
+  } else if has_supported_test_path_name(path) {
+    true
+  } else {
+    // allow someone to explicitly specify a path
+    let matches_exact_path_or_pattern = patterns
+      .include
+      .as_ref()
+      .map(|p| {
+        p.inner().iter().any(|p| match p {
+          PathOrPattern::Path(p) => p == path,
+          PathOrPattern::RemoteUrl(_) => true,
+          PathOrPattern::Pattern(p) => p.matches_path(path),
+        })
+      })
+      .unwrap_or(false);
+    matches_exact_path_or_pattern
+  }
+}
+
 /// Checks if the path has a basename and extension Deno supports for tests.
 pub(crate) fn is_supported_test_path(path: &Path) -> bool {
+  has_supported_test_path_name(path) && is_script_ext(path)
+}
+
+fn has_supported_test_path_name(path: &Path) -> bool {
   if let Some(name) = path.file_stem() {
     let basename = name.to_string_lossy();
-    (basename.ends_with("_test")
+    basename.ends_with("_test")
       || basename.ends_with(".test")
-      || basename == "test")
-      && is_script_ext(path)
+      || basename == "test"
   } else {
     false
   }
@@ -1090,13 +1175,15 @@ fn is_supported_test_ext(path: &Path) -> bool {
 /// - Specifiers matching the `is_supported_test_path` are marked as `TestMode::Executable`.
 /// - Specifiers matching both predicates are marked as `TestMode::Both`
 fn collect_specifiers_with_test_mode(
-  files: &FilesConfig,
+  files: FilePatterns,
   include_inline: &bool,
 ) -> Result<Vec<(ModuleSpecifier, TestMode)>, AnyError> {
-  let module_specifiers = collect_specifiers(files, is_supported_test_path)?;
+  // todo(dsherret): there's no need to collect twice as it's slow
+  let module_specifiers =
+    collect_specifiers(files.clone(), is_supported_test_path_predicate)?;
 
   if *include_inline {
-    return collect_specifiers(files, is_supported_test_ext).map(
+    return collect_specifiers(files, |p, _| is_supported_test_ext(p)).map(
       |specifiers| {
         specifiers
           .into_iter()
@@ -1132,7 +1219,7 @@ fn collect_specifiers_with_test_mode(
 /// as well.
 async fn fetch_specifiers_with_test_mode(
   file_fetcher: &FileFetcher,
-  files: &FilesConfig,
+  files: FilePatterns,
   doc: &bool,
 ) -> Result<Vec<(ModuleSpecifier, TestMode)>, AnyError> {
   let mut specifiers_with_mode = collect_specifiers_with_test_mode(files, doc)?;
@@ -1142,9 +1229,8 @@ async fn fetch_specifiers_with_test_mode(
       .fetch(specifier, PermissionsContainer::allow_all())
       .await?;
 
-    if file.media_type == MediaType::Unknown
-      || file.media_type == MediaType::Dts
-    {
+    let (media_type, _) = file.resolve_media_type_and_charset();
+    if matches!(media_type, MediaType::Unknown | MediaType::Dts) {
       *mode = TestMode::Documentation
     }
   }
@@ -1170,7 +1256,7 @@ pub async fn run_tests(
 
   let specifiers_with_mode = fetch_specifiers_with_test_mode(
     file_fetcher,
-    &test_options.files,
+    test_options.files.clone(),
     &test_options.doc,
   )
   .await?;
@@ -1260,8 +1346,11 @@ pub async fn run_tests_with_watch(
         let test_options = cli_options.resolve_test_options(test_flags)?;
 
         let _ = watcher_communicator.watch_paths(cli_options.watch_paths());
-        if let Some(include) = &test_options.files.include {
-          let _ = watcher_communicator.watch_paths(include.clone());
+        if let Some(set) = &test_options.files.include {
+          let watch_paths = set.base_paths();
+          if !watch_paths.is_empty() {
+            let _ = watcher_communicator.watch_paths(watch_paths);
+          }
         }
 
         let graph_kind = cli_options.type_check_mode().as_graph_kind();
@@ -1270,13 +1359,18 @@ pub async fn run_tests_with_watch(
         let module_graph_builder = factory.module_graph_builder().await?;
         let file_fetcher = factory.file_fetcher()?;
         let test_modules = if test_options.doc {
-          collect_specifiers(&test_options.files, is_supported_test_ext)
+          collect_specifiers(test_options.files.clone(), |p, _| {
+            is_supported_test_ext(p)
+          })
         } else {
-          collect_specifiers(&test_options.files, is_supported_test_path)
+          collect_specifiers(
+            test_options.files.clone(),
+            is_supported_test_path_predicate,
+          )
         }?;
+
         let permissions =
           Permissions::from_options(&cli_options.permissions_options())?;
-
         let graph = module_graph_builder
           .create_graph(graph_kind, test_modules.clone())
           .await?;
@@ -1289,16 +1383,13 @@ pub async fn run_tests_with_watch(
 
         let test_modules_to_reload = if let Some(changed_paths) = changed_paths
         {
-          let changed_specifiers = changed_paths
-            .into_iter()
-            .filter_map(|p| ModuleSpecifier::from_file_path(p).ok())
-            .collect::<HashSet<_>>();
           let mut result = Vec::new();
+          let changed_paths = changed_paths.into_iter().collect::<HashSet<_>>();
           for test_module_specifier in test_modules {
             if has_graph_root_local_dependent_changed(
               &graph,
               &test_module_specifier,
-              &changed_specifiers,
+              &changed_paths,
             ) {
               result.push(test_module_specifier.clone());
             }
@@ -1313,7 +1404,7 @@ pub async fn run_tests_with_watch(
         let module_load_preparer = factory.module_load_preparer().await?;
         let specifiers_with_mode = fetch_specifiers_with_test_mode(
           file_fetcher,
-          &test_options.files,
+          test_options.files.clone(),
           &test_options.doc,
         )
         .await?

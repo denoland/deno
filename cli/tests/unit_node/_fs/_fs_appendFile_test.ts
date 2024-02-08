@@ -1,11 +1,7 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import {
-  assertEquals,
-  assertThrows,
-  fail,
-} from "../../../../test_util/std/assert/mod.ts";
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+import { assertEquals, assertThrows, fail } from "@test_util/std/assert/mod.ts";
 import { appendFile, appendFileSync } from "node:fs";
-import { fromFileUrl } from "../../../../test_util/std/path/mod.ts";
+import { fromFileUrl } from "@test_util/std/path/mod.ts";
 import { assertCallbackErrorUncaught } from "../_test_utils.ts";
 
 const decoder = new TextDecoder("utf-8");
@@ -70,7 +66,7 @@ Deno.test({
   name: "Async: Data is written to passed in rid",
   async fn() {
     const tempFile: string = await Deno.makeTempFile();
-    const file: Deno.FsFile = await Deno.open(tempFile, {
+    using file = await Deno.open(tempFile, {
       create: true,
       write: true,
       read: true,
@@ -88,7 +84,6 @@ Deno.test({
         fail("No error expected");
       })
       .finally(async () => {
-        Deno.close(file.rid);
         await Deno.remove(tempFile);
       });
   },
@@ -97,7 +92,6 @@ Deno.test({
 Deno.test({
   name: "Async: Data is written to passed in file path",
   async fn() {
-    const openResourcesBeforeAppend: Deno.ResourceMap = Deno.resources();
     await new Promise<void>((resolve, reject) => {
       appendFile("_fs_appendFile_test_file.txt", "hello world", (err) => {
         if (err) reject(err);
@@ -105,7 +99,6 @@ Deno.test({
       });
     })
       .then(async () => {
-        assertEquals(Deno.resources(), openResourcesBeforeAppend);
         const data = await Deno.readFile("_fs_appendFile_test_file.txt");
         assertEquals(decoder.decode(data), "hello world");
       }, (err) => {
@@ -120,7 +113,6 @@ Deno.test({
 Deno.test({
   name: "Async: Data is written to passed in URL",
   async fn() {
-    const openResourcesBeforeAppend: Deno.ResourceMap = Deno.resources();
     const fileURL = new URL("_fs_appendFile_test_file.txt", import.meta.url);
     await new Promise<void>((resolve, reject) => {
       appendFile(fileURL, "hello world", (err) => {
@@ -129,7 +121,6 @@ Deno.test({
       });
     })
       .then(async () => {
-        assertEquals(Deno.resources(), openResourcesBeforeAppend);
         const data = await Deno.readFile(fromFileUrl(fileURL));
         assertEquals(decoder.decode(data), "hello world");
       }, (err) => {
@@ -145,7 +136,6 @@ Deno.test({
   name:
     "Async: Callback is made with error if attempting to append data to an existing file with 'ax' flag",
   async fn() {
-    const openResourcesBeforeAppend: Deno.ResourceMap = Deno.resources();
     const tempFile: string = await Deno.makeTempFile();
     await new Promise<void>((resolve, reject) => {
       appendFile(tempFile, "hello world", { flag: "ax" }, (err) => {
@@ -153,11 +143,8 @@ Deno.test({
         else resolve();
       });
     })
-      .then(() => {
-        fail("Expected error to be thrown");
-      }, () => {
-        assertEquals(Deno.resources(), openResourcesBeforeAppend);
-      })
+      .then(() => fail("Expected error to be thrown"))
+      .catch(() => {})
       .finally(async () => {
         await Deno.remove(tempFile);
       });
@@ -168,13 +155,12 @@ Deno.test({
   name: "Sync: Data is written to passed in rid",
   fn() {
     const tempFile: string = Deno.makeTempFileSync();
-    const file: Deno.FsFile = Deno.openSync(tempFile, {
+    using file = Deno.openSync(tempFile, {
       create: true,
       write: true,
       read: true,
     });
     appendFileSync(file.rid, "hello world");
-    Deno.close(file.rid);
     const data = Deno.readFileSync(tempFile);
     assertEquals(decoder.decode(data), "hello world");
     Deno.removeSync(tempFile);
@@ -184,9 +170,7 @@ Deno.test({
 Deno.test({
   name: "Sync: Data is written to passed in file path",
   fn() {
-    const openResourcesBeforeAppend: Deno.ResourceMap = Deno.resources();
     appendFileSync("_fs_appendFile_test_file_sync.txt", "hello world");
-    assertEquals(Deno.resources(), openResourcesBeforeAppend);
     const data = Deno.readFileSync("_fs_appendFile_test_file_sync.txt");
     assertEquals(decoder.decode(data), "hello world");
     Deno.removeSync("_fs_appendFile_test_file_sync.txt");
@@ -197,14 +181,12 @@ Deno.test({
   name:
     "Sync: error thrown if attempting to append data to an existing file with 'ax' flag",
   fn() {
-    const openResourcesBeforeAppend: Deno.ResourceMap = Deno.resources();
     const tempFile: string = Deno.makeTempFileSync();
     assertThrows(
       () => appendFileSync(tempFile, "hello world", { flag: "ax" }),
       Error,
       "",
     );
-    assertEquals(Deno.resources(), openResourcesBeforeAppend);
     Deno.removeSync(tempFile);
   },
 });
@@ -212,10 +194,8 @@ Deno.test({
 Deno.test({
   name: "Sync: Data is written in Uint8Array to passed in file path",
   fn() {
-    const openResourcesBeforeAppend: Deno.ResourceMap = Deno.resources();
     const testData = new TextEncoder().encode("hello world");
     appendFileSync("_fs_appendFile_test_file_sync.txt", testData);
-    assertEquals(Deno.resources(), openResourcesBeforeAppend);
     const data = Deno.readFileSync("_fs_appendFile_test_file_sync.txt");
     assertEquals(data, testData);
     Deno.removeSync("_fs_appendFile_test_file_sync.txt");
@@ -225,7 +205,6 @@ Deno.test({
 Deno.test({
   name: "Async: Data is written in Uint8Array to passed in file path",
   async fn() {
-    const openResourcesBeforeAppend: Deno.ResourceMap = Deno.resources();
     const testData = new TextEncoder().encode("hello world");
     await new Promise<void>((resolve, reject) => {
       appendFile("_fs_appendFile_test_file.txt", testData, (err) => {
@@ -234,7 +213,6 @@ Deno.test({
       });
     })
       .then(async () => {
-        assertEquals(Deno.resources(), openResourcesBeforeAppend);
         const data = await Deno.readFile("_fs_appendFile_test_file.txt");
         assertEquals(data, testData);
       }, (err) => {

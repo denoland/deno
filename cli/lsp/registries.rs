@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use super::completions::IMPORT_COMMIT_CHARS;
 use super::logging::lsp_log;
@@ -528,7 +528,7 @@ impl ModuleRegistry {
       );
       self.http_cache.set(specifier, headers_map, &[])?;
     }
-    let file = fetch_result?;
+    let file = fetch_result?.into_text_decoded()?;
     let config: RegistryConfigurationJson = serde_json::from_str(&file.source)?;
     validate_config(&config)?;
     Ok(config.registries)
@@ -610,6 +610,8 @@ impl ModuleRegistry {
           .file_fetcher
           .fetch(&endpoint, PermissionsContainer::allow_all())
           .await
+          .ok()?
+          .into_text_decoded()
           .ok()?;
         let documentation: lsp::Documentation =
           serde_json::from_str(&file.source).ok()?;
@@ -974,6 +976,8 @@ impl ModuleRegistry {
       .file_fetcher
       .fetch(&specifier, PermissionsContainer::allow_all())
       .await
+      .ok()?
+      .into_text_decoded()
       .ok()?;
     serde_json::from_str(&file.source).ok()
   }
@@ -1037,6 +1041,8 @@ impl ModuleRegistry {
           specifier, err
         );
       })
+      .ok()?
+      .into_text_decoded()
       .ok()?;
     let items: VariableItems = serde_json::from_str(&file.source)
       .map_err(|err| {
@@ -1073,6 +1079,8 @@ impl ModuleRegistry {
           specifier, err
         );
       })
+      .ok()?
+      .into_text_decoded()
       .ok()?;
     let items: VariableItems = serde_json::from_str(&file.source)
       .map_err(|err| {

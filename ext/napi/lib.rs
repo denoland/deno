@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 #![allow(non_camel_case_types)]
 #![allow(non_upper_case_globals)]
@@ -479,15 +479,15 @@ pub unsafe fn weak_local(
 #[op2]
 fn op_napi_open<NP, 'scope>(
   scope: &mut v8::HandleScope<'scope>,
-  op_state: &mut OpState,
+  op_state: Rc<RefCell<OpState>>,
   #[string] path: String,
   global: v8::Local<'scope, v8::Value>,
 ) -> std::result::Result<v8::Local<'scope, v8::Value>, AnyError>
 where
   NP: NapiPermissions + 'static,
 {
-  let permissions = op_state.borrow_mut::<NP>();
-  permissions.check(Some(&PathBuf::from(&path)))?;
+  // We must limit the OpState borrow because this function can trigger a
+  // re-borrow through the NAPI module.
   let (
     async_work_sender,
     tsfn_sender,
@@ -495,6 +495,9 @@ where
     cleanup_hooks,
     tsfn_ref_counters,
   ) = {
+    let mut op_state = op_state.borrow_mut();
+    let permissions = op_state.borrow_mut::<NP>();
+    permissions.check(Some(&PathBuf::from(&path)))?;
     let napi_state = op_state.borrow::<NapiState>();
     let isolate_ptr = op_state.borrow::<*mut v8::OwnedIsolate>();
     (

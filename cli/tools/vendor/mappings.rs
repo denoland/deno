@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -55,7 +55,7 @@ impl Mappings {
       for specifier in specifiers {
         let module = graph.get(&specifier).unwrap();
         let media_type = match module {
-          Module::Esm(module) => module.media_type,
+          Module::Js(module) => module.media_type,
           Module::Json(_) => MediaType::Json,
           Module::Node(_) | Module::Npm(_) | Module::External(_) => continue,
         };
@@ -81,7 +81,7 @@ impl Mappings {
 
     // resolve all the "proxy" paths to use for when an x-typescript-types header is specified
     for module in remote_modules {
-      if let Some(module) = module.esm() {
+      if let Some(module) = module.js() {
         if let Some(resolved) = &module
           .maybe_types_dependency
           .as_ref()

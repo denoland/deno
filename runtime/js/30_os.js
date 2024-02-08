@@ -1,13 +1,30 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { core, primordials } from "ext:core/mod.js";
-const ops = core.ops;
-import { Event, EventTarget } from "ext:deno_web/02_event.js";
+import { primordials } from "ext:core/mod.js";
+import {
+  op_delete_env,
+  op_env,
+  op_exec_path,
+  op_exit,
+  op_get_env,
+  op_gid,
+  op_hostname,
+  op_loadavg,
+  op_network_interfaces,
+  op_os_release,
+  op_os_uptime,
+  op_set_env,
+  op_set_exit_code,
+  op_system_memory_info,
+  op_uid,
+} from "ext:core/ops";
 const {
   Error,
   FunctionPrototypeBind,
   SymbolFor,
 } = primordials;
+
+import { Event, EventTarget } from "ext:deno_web/02_event.js";
 
 const windowDispatchEvent = FunctionPrototypeBind(
   EventTarget.prototype.dispatchEvent,
@@ -15,35 +32,35 @@ const windowDispatchEvent = FunctionPrototypeBind(
 );
 
 function loadavg() {
-  return ops.op_loadavg();
+  return op_loadavg();
 }
 
 function hostname() {
-  return ops.op_hostname();
+  return op_hostname();
 }
 
 function osRelease() {
-  return ops.op_os_release();
+  return op_os_release();
 }
 
 function osUptime() {
-  return ops.op_os_uptime();
+  return op_os_uptime();
 }
 
 function systemMemoryInfo() {
-  return ops.op_system_memory_info();
+  return op_system_memory_info();
 }
 
 function networkInterfaces() {
-  return ops.op_network_interfaces();
+  return op_network_interfaces();
 }
 
 function gid() {
-  return ops.op_gid();
+  return op_gid();
 }
 
 function uid() {
-  return ops.op_uid();
+  return op_uid();
 }
 
 // This is an internal only method used by the test harness to override the
@@ -56,7 +73,7 @@ function setExitHandler(fn) {
 function exit(code) {
   // Set exit code first so unload event listeners can override it.
   if (typeof code === "number") {
-    ops.op_set_exit_code(code);
+    op_set_exit_code(code);
   } else {
     code = 0;
   }
@@ -73,26 +90,26 @@ function exit(code) {
     return;
   }
 
-  ops.op_exit();
+  op_exit();
   throw new Error("Code not reachable");
 }
 
 function setEnv(key, value) {
-  ops.op_set_env(key, value);
+  op_set_env(key, value);
 }
 
 function getEnv(key) {
-  return ops.op_get_env(key) ?? undefined;
+  return op_get_env(key) ?? undefined;
 }
 
 function deleteEnv(key) {
-  ops.op_delete_env(key);
+  op_delete_env(key);
 }
 
 const env = {
   get: getEnv,
   toObject() {
-    return ops.op_env();
+    return op_env();
   },
   set: setEnv,
   has(key) {
@@ -102,7 +119,7 @@ const env = {
 };
 
 function execPath() {
-  return ops.op_exec_path();
+  return op_exec_path();
 }
 
 export {

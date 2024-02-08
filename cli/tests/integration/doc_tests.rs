@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use test_util as util;
 use util::assert_contains;
@@ -28,7 +28,7 @@ fn deno_doc() {
 }
 
 itest!(deno_doc_import_map {
-  args: "doc --unstable --import-map=doc/import_map.json doc/use_import_map.js",
+  args: "doc --import-map=doc/import_map.json doc/use_import_map.js",
   output: "doc/use_import_map.out",
 });
 

@@ -1,9 +1,6 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { stripColor } from "../../../test_util/std/fmt/colors.ts";
-import {
-  assert,
-  assertStrictEquals,
-} from "../../../test_util/std/assert/mod.ts";
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+import { stripColor } from "@test_util/std/fmt/colors.ts";
+import { assert, assertStrictEquals } from "@test_util/std/assert/mod.ts";
 import { AssertionError } from "node:assert";
 
 Deno.test({

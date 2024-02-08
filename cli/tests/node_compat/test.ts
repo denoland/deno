@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 /**
  * This script will run the test files specified in the configuration file.
@@ -13,10 +13,10 @@
  * all share the same working directory.
  */
 
-import { magenta } from "../../../test_util/std/fmt/colors.ts";
-import { pooledMap } from "../../../test_util/std/async/pool.ts";
-import { dirname, fromFileUrl, join } from "../../../test_util/std/path/mod.ts";
-import { fail } from "../../../test_util/std/assert/mod.ts";
+import { magenta } from "@test_util/std/fmt/colors.ts";
+import { pooledMap } from "@test_util/std/async/pool.ts";
+import { dirname, fromFileUrl, join } from "@test_util/std/path/mod.ts";
+import { fail } from "@test_util/std/assert/mod.ts";
 import {
   config,
   getPathsFromTestSuites,
@@ -81,7 +81,6 @@ async function runTest(t: Deno.TestContext, path: string): Promise<void> {
         "run",
         "-A",
         "--quiet",
-        "--unstable",
         //"--unsafely-ignore-certificate-errors",
         "--unstable-bare-node-builtins",
         "--v8-flags=" + v8Flags.join(),

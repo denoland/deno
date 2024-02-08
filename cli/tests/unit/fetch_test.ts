@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
   assertEquals,
@@ -8,7 +8,7 @@ import {
   fail,
   unimplemented,
 } from "./test_util.ts";
-import { Buffer } from "../../../test_util/std/io/buffer.ts";
+import { Buffer } from "@test_util/std/io/buffer.ts";
 
 const listenPort = 4506;
 
@@ -1155,6 +1155,16 @@ Deno.test(
     });
     const json = await response.json();
     assertEquals(json.name, "deno");
+    client.close();
+  },
+);
+
+Deno.test(
+  { permissions: { net: true, read: true } },
+  function createHttpClientAcceptPoolIdleTimeout() {
+    const client = Deno.createHttpClient({
+      poolIdleTimeout: 1000,
+    });
     client.close();
   },
 );

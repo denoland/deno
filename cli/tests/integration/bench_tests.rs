@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::url::Url;
 use test_util as util;
@@ -80,7 +80,7 @@ itest!(only {
 });
 
 itest!(multifile_summary {
-  args: "bench bench/group_baseline.ts bench/pass.ts bench/group_baseline.ts",
+  args: "bench bench/group_baseline.ts bench/pass.ts bench/multiple_group.ts",
   exit_code: 0,
   output: "bench/multifile_summary.out",
 });

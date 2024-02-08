@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../../core/internal.d.ts" />
@@ -7,10 +7,11 @@
 /// <reference path="./internal.d.ts" />
 /// <reference path="./lib.deno_url.d.ts" />
 
-import { core, primordials } from "ext:core/mod.js";
-const ops = core.ops;
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
+import { primordials } from "ext:core/mod.js";
+import {
+  op_urlpattern_parse,
+  op_urlpattern_process_match_input,
+} from "ext:core/ops";
 const {
   ArrayPrototypePush,
   MathRandom,
@@ -25,6 +26,9 @@ const {
   SymbolFor,
   TypeError,
 } = primordials;
+
+import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 
 const _components = Symbol("components");
 
@@ -152,7 +156,7 @@ class URLPattern {
       baseURL = webidl.converters.USVString(baseURL, prefix, "Argument 2");
     }
 
-    const components = ops.op_urlpattern_parse(input, baseURL);
+    const components = op_urlpattern_parse(input, baseURL);
 
     for (let i = 0; i < COMPONENTS_KEYS.length; ++i) {
       const key = COMPONENTS_KEYS[i];
@@ -225,9 +229,9 @@ class URLPattern {
     const res = baseURL === undefined
       ? matchInputCache.getOrInsert(
         input,
-        ops.op_urlpattern_process_match_input,
+        op_urlpattern_process_match_input,
       )
-      : ops.op_urlpattern_process_match_input(input, baseURL);
+      : op_urlpattern_process_match_input(input, baseURL);
     if (res === null) return false;
 
     const values = res[0];
@@ -267,9 +271,9 @@ class URLPattern {
     const res = baseURL === undefined
       ? matchInputCache.getOrInsert(
         input,
-        ops.op_urlpattern_process_match_input,
+        op_urlpattern_process_match_input,
       )
-      : ops.op_urlpattern_process_match_input(input, baseURL);
+      : op_urlpattern_process_match_input(input, baseURL);
     if (res === null) {
       return null;
     }

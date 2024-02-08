@@ -1,5 +1,6 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use pretty_assertions::assert_eq;
 use std::borrow::Cow;
 use std::ffi::OsStr;
 use std::fs;
@@ -117,6 +118,10 @@ impl PathRef {
       .with_context(|| format!("Could not read file: {}", self))
   }
 
+  pub fn read_to_bytes_if_exists(&self) -> Result<Vec<u8>, anyhow::Error> {
+    fs::read(self).with_context(|| format!("Could not read file: {}", self))
+  }
+
   pub fn read_json<TValue: DeserializeOwned>(&self) -> TValue {
     serde_json::from_str(&self.read_to_string()).unwrap()
   }
@@ -218,6 +223,7 @@ impl PathRef {
     }
   }
 
+  #[track_caller]
   pub fn assert_matches_file(&self, wildcard_file: impl AsRef<Path>) -> &Self {
     let wildcard_file = testdata_path().join(wildcard_file);
     println!("output path {}", wildcard_file);
@@ -225,10 +231,21 @@ impl PathRef {
     self.assert_matches_text(&expected_text)
   }
 
+  #[track_caller]
   pub fn assert_matches_text(&self, wildcard_text: impl AsRef<str>) -> &Self {
     let actual = self.read_to_string();
     assert_wildcard_match(&actual, wildcard_text.as_ref());
     self
+  }
+
+  #[track_caller]
+  pub fn assert_matches_json(&self, expected: serde_json::Value) {
+    let actual_json = self.read_json_value();
+    if actual_json != expected {
+      let actual_text = serde_json::to_string_pretty(&actual_json).unwrap();
+      let expected_text = serde_json::to_string_pretty(&expected).unwrap();
+      assert_eq!(actual_text, expected_text);
+    }
   }
 }
 

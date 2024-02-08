@@ -1,13 +1,13 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
   assertEquals,
   assertNotEquals,
   assertRejects,
   assertThrows,
-} from "../../../../test_util/std/assert/mod.ts";
+} from "@test_util/std/assert/mod.ts";
 import { writeFile, writeFileSync } from "node:fs";
-import * as path from "../../../../test_util/std/path/mod.ts";
+import * as path from "@test_util/std/path/mod.ts";
 
 type TextEncodings =
   | "ascii"
@@ -107,7 +107,7 @@ Deno.test(
   "Data is written to correct rid",
   async function testCorrectWriteUsingRid() {
     const tempFile: string = await Deno.makeTempFile();
-    const file: Deno.FsFile = await Deno.open(tempFile, {
+    using file = await Deno.open(tempFile, {
       create: true,
       write: true,
       read: true,
@@ -119,7 +119,6 @@ Deno.test(
         resolve();
       });
     });
-    Deno.close(file.rid);
 
     const data = await Deno.readFile(tempFile);
     await Deno.remove(tempFile);
@@ -213,7 +212,7 @@ Deno.test(
     if (Deno.build.os === "windows") return;
 
     const filename: string = await Deno.makeTempFile();
-    const file: Deno.FsFile = await Deno.open(filename, {
+    using file = await Deno.open(filename, {
       create: true,
       write: true,
       read: true,
@@ -225,7 +224,6 @@ Deno.test(
         resolve();
       });
     });
-    Deno.close(file.rid);
 
     const fileInfo = await Deno.stat(filename);
     await Deno.remove(filename);
@@ -264,14 +262,13 @@ Deno.test(
   "Data is written synchronously to correct rid",
   function testCorrectWriteSyncUsingRid() {
     const tempFile: string = Deno.makeTempFileSync();
-    const file: Deno.FsFile = Deno.openSync(tempFile, {
+    using file = Deno.openSync(tempFile, {
       create: true,
       write: true,
       read: true,
     });
 
     writeFileSync(file.rid, "hello world");
-    Deno.close(file.rid);
 
     const data = Deno.readFileSync(tempFile);
     Deno.removeSync(tempFile);

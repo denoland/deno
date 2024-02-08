@@ -1,9 +1,5 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import {
-  assertEquals,
-  assertThrows,
-  fail,
-} from "../../../../test_util/std/assert/mod.ts";
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+import { assertEquals, assertThrows, fail } from "@test_util/std/assert/mod.ts";
 import { truncate, truncateSync } from "node:fs";
 
 Deno.test({
@@ -24,7 +20,7 @@ Deno.test({
   name: "ASYNC: truncate entire file contents",
   async fn() {
     const file: string = Deno.makeTempFileSync();
-    await Deno.writeFile(file, new TextEncoder().encode("hello world"));
+    await Deno.writeTextFile(file, "hello world");
 
     await new Promise<void>((resolve, reject) => {
       truncate(file, (err: Error | null) => {
@@ -49,7 +45,7 @@ Deno.test({
   name: "ASYNC: truncate file to a size of precisely len bytes",
   async fn() {
     const file: string = Deno.makeTempFileSync();
-    await Deno.writeFile(file, new TextEncoder().encode("hello world"));
+    await Deno.writeTextFile(file, "hello world");
 
     await new Promise<void>((resolve, reject) => {
       truncate(file, 3, (err: Error | null) => {

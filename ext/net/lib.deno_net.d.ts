@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
@@ -35,7 +35,13 @@ declare namespace Deno {
     /** Return the address of the `Listener`. */
     readonly addr: Addr;
 
-    /** Return the rid of the `Listener`. */
+    /**
+     * Return the rid of the `Listener`.
+     *
+     * @deprecated This will be removed in Deno 2.0. See the
+     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+     * for migration instructions.
+     */
     readonly rid: number;
 
     [Symbol.asyncIterator](): AsyncIterableIterator<T>;
@@ -64,24 +70,25 @@ declare namespace Deno {
     readonly localAddr: Addr;
     /** The remote address of the connection. */
     readonly remoteAddr: Addr;
-    /** The resource ID of the connection. */
+    /**
+     * The resource ID of the connection.
+     *
+     * @deprecated This will be removed in Deno 2.0. See the
+     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+     * for migration instructions.
+     */
     readonly rid: number;
     /** Shuts down (`shutdown(2)`) the write side of the connection. Most
      * callers should just use `close()`. */
     closeWrite(): Promise<void>;
 
-    /** **UNSTABLE**: New API, yet to be vetted.
-     *
-     * Make the connection block the event loop from finishing.
+    /** Make the connection block the event loop from finishing.
      *
      * Note: the connection blocks the event loop from finishing by default.
      * This method is only meaningful after `.unref()` is called.
      */
     ref(): void;
-    /** **UNSTABLE**: New API, yet to be vetted.
-     *
-     * Make the connection not block the event loop from finishing.
-     */
+    /** Make the connection not block the event loop from finishing. */
     unref(): void;
 
     readonly readable: ReadableStream<Uint8Array>;
@@ -89,8 +96,13 @@ declare namespace Deno {
   }
 
   /** @category Network */
-  // deno-lint-ignore no-empty-interface
-  export interface TlsHandshakeInfo {}
+  export interface TlsHandshakeInfo {
+    /**
+     * Contains the ALPN protocol selected during negotiation with the server.
+     * If no ALPN protocol selected, returns `null`.
+     */
+    alpnProtocol: string | null;
+  }
 
   /** @category Network */
   export interface TlsConn extends Conn {
@@ -98,6 +110,14 @@ declare namespace Deno {
      * not happened yet. Calling this method is optional; the TLS handshake
      * will be completed automatically as soon as data is sent or received. */
     handshake(): Promise<TlsHandshakeInfo>;
+    /**
+     * The resource ID of the connection.
+     *
+     * @deprecated This will be removed in Deno 2.0. See the
+     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+     * for migration instructions.
+     */
+    readonly rid: number;
   }
 
   /** @category Network */
@@ -138,6 +158,32 @@ declare namespace Deno {
     options: TcpListenOptions & { transport?: "tcp" },
   ): Listener;
 
+  /** Options which can be set when opening a Unix listener via
+   * {@linkcode Deno.listen} or {@linkcode Deno.listenDatagram}.
+   *
+   * @category Network
+   */
+  export interface UnixListenOptions {
+    /** A path to the Unix Socket. */
+    path: string;
+  }
+
+  /** Listen announces on the local transport address.
+   *
+   * ```ts
+   * const listener = Deno.listen({ path: "/foo/bar.sock", transport: "unix" })
+   * ```
+   *
+   * Requires `allow-read` and `allow-write` permission.
+   *
+   * @tags allow-read, allow-write
+   * @category Network
+   */
+  // deno-lint-ignore adjacent-overload-signatures
+  export function listen(
+    options: UnixListenOptions & { transport: "unix" },
+  ): Listener;
+
   /** @category Network */
   export interface ListenTlsOptions extends TcpListenOptions {
     /** Server private key in PEM format */
@@ -148,13 +194,17 @@ declare namespace Deno {
      * `--allow-read`.
      *
      * @tags allow-read
-     * @deprecated This option is deprecated and will be removed in Deno 2.0.
+     * @deprecated This will be removed in Deno 2.0. See the
+     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+     * for migration instructions.
      */
     certFile?: string;
     /** Server private key file. Requires `--allow-read`.
      *
      * @tags allow-read
-     * @deprecated This option is deprecated and will be removed in Deno 2.0.
+     * @deprecated This will be removed in Deno 2.0. See the
+     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+     * for migration instructions.
      */
     keyFile?: string;
 
@@ -171,7 +221,11 @@ declare namespace Deno {
    * security).
    *
    * ```ts
-   * const lstnr = Deno.listenTls({ port: 443, certFile: "./server.crt", keyFile: "./server.key" });
+   * using listener = Deno.listenTls({
+   *   port: 443,
+   *   cert: Deno.readTextFileSync("./server.crt"),
+   *   key: Deno.readTextFileSync("./server.key"),
+   * });
    * ```
    *
    * Requires `allow-net` permission.
@@ -221,11 +275,52 @@ declare namespace Deno {
     setNoDelay(noDelay?: boolean): void;
     /** Enable/disable keep-alive functionality. */
     setKeepAlive(keepAlive?: boolean): void;
+    /**
+     * The resource ID of the connection.
+     *
+     * @deprecated This will be removed in Deno 2.0. See the
+     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+     * for migration instructions.
+     */
+    readonly rid: number;
   }
 
   /** @category Network */
-  // deno-lint-ignore no-empty-interface
-  export interface UnixConn extends Conn {}
+  export interface UnixConnectOptions {
+    transport: "unix";
+    path: string;
+  }
+
+  /** @category Network */
+  export interface UnixConn extends Conn {
+    /**
+     * The resource ID of the connection.
+     *
+     * @deprecated This will be removed in Deno 2.0. See the
+     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+     * for migration instructions.
+     */
+    readonly rid: number;
+  }
+
+  /** Connects to the hostname (default is "127.0.0.1") and port on the named
+   * transport (default is "tcp"), and resolves to the connection (`Conn`).
+   *
+   * ```ts
+   * const conn1 = await Deno.connect({ port: 80 });
+   * const conn2 = await Deno.connect({ hostname: "192.0.2.1", port: 80 });
+   * const conn3 = await Deno.connect({ hostname: "[2001:db8::1]", port: 80 });
+   * const conn4 = await Deno.connect({ hostname: "golang.org", port: 80, transport: "tcp" });
+   * const conn5 = await Deno.connect({ path: "/foo/bar.sock", transport: "unix" });
+   * ```
+   *
+   * Requires `allow-net` permission for "tcp" and `allow-read` for "unix".
+   *
+   * @tags allow-net, allow-read
+   * @category Network
+   */
+  // deno-lint-ignore adjacent-overload-signatures
+  export function connect(options: UnixConnectOptions): Promise<UnixConn>;
 
   /** @category Network */
   export interface ConnectTlsOptions {
@@ -238,8 +333,9 @@ declare namespace Deno {
     /**
      * Server certificate file.
      *
-     * @deprecated This option is deprecated and will be removed in a future
-     * release.
+     * @deprecated This will be removed in Deno 2.0. See the
+     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+     * for migration instructions.
      */
     certFile?: string;
     /** A list of root certificates that will be used in addition to the
@@ -252,6 +348,10 @@ declare namespace Deno {
      * TLS handshake.
      */
     alpnProtocols?: string[];
+    /** PEM formatted client certificate chain. */
+    certChain?: string;
+    /** PEM formatted (RSA or PKCS8) private key of client certificate.  */
+    privateKey?: string;
   }
 
   /** Establishes a secure connection over TLS (transport layer security) using
@@ -332,6 +432,10 @@ declare namespace Deno {
    * const conn = await listener.accept();
    * Deno.shutdown(conn.rid);
    * ```
+   *
+   * @deprecated This will be removed in Deno 2.0. See the
+   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+   * for migration instructions.
    *
    * @category Network
    */

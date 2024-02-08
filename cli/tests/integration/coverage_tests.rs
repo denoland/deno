@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::serde_json;
 use std::fs;
@@ -630,3 +630,9 @@ File         | Branch % | Line % |
 ",
   );
 }
+
+itest!(no_files_found {
+  args: "coverage doesnt_exist.js",
+  exit_code: 1,
+  output: "coverage/doesnt_exist.out",
+});

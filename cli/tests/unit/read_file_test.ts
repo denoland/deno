@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
   assertEquals,
@@ -75,18 +75,14 @@ Deno.test({ permissions: { read: true } }, function readFileSyncLoop() {
 Deno.test(
   { permissions: { read: true } },
   async function readFileDoesNotLeakResources() {
-    const resourcesBefore = Deno.resources();
     await assertRejects(async () => await Deno.readFile("cli"));
-    assertEquals(resourcesBefore, Deno.resources());
   },
 );
 
 Deno.test(
   { permissions: { read: true } },
   function readFileSyncDoesNotLeakResources() {
-    const resourcesBefore = Deno.resources();
     assertThrows(() => Deno.readFileSync("cli"));
-    assertEquals(resourcesBefore, Deno.resources());
   },
 );
 

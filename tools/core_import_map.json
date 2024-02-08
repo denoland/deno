@@ -2,6 +2,7 @@
   "imports": {
     "ext:deno_broadcast_channel/01_broadcast_channel.js": "../ext/broadcast_channel/01_broadcast_channel.js",
     "ext:deno_cache/01_cache.js": "../ext/cache/01_cache.js",
+    "ext:deno_canvas/01_image.js": "../ext/canvas/01_image.js",
     "ext:deno_console/01_console.js": "../ext/console/01_console.js",
     "ext:deno_cron/01_cron.ts": "../ext/cron/01_cron.ts",
     "ext:deno_crypto/00_crypto.js": "../ext/crypto/00_crypto.js",
@@ -181,7 +182,7 @@
     "node:perf_hooks": "../ext/node/polyfills/perf_hooks.ts",
     "node:process": "../ext/node/polyfills/process.ts",
     "node:punycode": "../ext/node/polyfills/punycode.ts",
-    "node:querystring": "../ext/node/polyfills/querystring.ts",
+    "node:querystring": "../ext/node/polyfills/querystring.js",
     "node:readline": "../ext/node/polyfills/readline.ts",
     "ext:deno_node/readline/promises.ts": "../ext/node/polyfills/readline/promises.ts",
     "ext:deno_node/repl.ts": "../ext/node/polyfills/repl.ts",

@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use deno_lockfile::Lockfile;
 use test_util as util;
@@ -52,6 +52,14 @@ itest!(deps_info {
   output: "jsr/deps/main_info.out",
   envs: env_vars_for_jsr_tests(),
   http_server: true,
+});
+
+itest!(subset_type_graph {
+  args: "check --all jsr/subset_type_graph/main.ts",
+  output: "jsr/subset_type_graph/main.check.out",
+  envs: env_vars_for_jsr_tests(),
+  http_server: true,
+  exit_code: 1,
 });
 
 itest!(version_not_found {

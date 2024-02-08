@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
   assertEquals,
@@ -158,10 +158,12 @@ Deno.test({ permissions: { env: true } }, function envInvalidChars() {
 });
 
 Deno.test(function osPid() {
+  assertEquals(typeof Deno.pid, "number");
   assert(Deno.pid > 0);
 });
 
 Deno.test(function osPpid() {
+  assertEquals(typeof Deno.ppid, "number");
   assert(Deno.ppid > 0);
 });
 

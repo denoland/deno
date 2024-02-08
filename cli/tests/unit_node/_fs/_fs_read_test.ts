@@ -1,14 +1,14 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import {
   assertEquals,
   assertFalse,
   assertMatch,
   assertStrictEquals,
-} from "../../../../test_util/std/assert/mod.ts";
+} from "@test_util/std/assert/mod.ts";
 import { read, readSync } from "node:fs";
 import { open, openSync } from "node:fs";
 import { Buffer } from "node:buffer";
-import * as path from "../../../../test_util/std/path/mod.ts";
+import * as path from "@test_util/std/path/mod.ts";
 import { closeSync } from "node:fs";
 
 async function readTest(

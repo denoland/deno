@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
@@ -56,7 +56,10 @@ class NodeTestContext {
     const prepared = prepareOptions(name, options, fn, {});
     return this.#denoContext.step({
       name: prepared.name,
-      fn: prepared.fn,
+      fn: async (denoTestContext) => {
+        const newNodeTextContext = new NodeTestContext(denoTestContext);
+        await prepared.fn(newNodeTextContext);
+      },
       ignore: prepared.options.todo || prepared.options.skip,
     }).then(() => undefined);
   }

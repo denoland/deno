@@ -1,8 +1,8 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import * as net from "node:net";
-import { assert, assertEquals } from "../../../test_util/std/assert/mod.ts";
-import * as path from "../../../test_util/std/path/mod.ts";
+import { assert, assertEquals } from "@test_util/std/assert/mod.ts";
+import * as path from "@test_util/std/path/mod.ts";
 import * as http from "node:http";
 
 Deno.test("[node/net] close event emits after error event", async () => {

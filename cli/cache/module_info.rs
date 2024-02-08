@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::sync::Arc;
 
@@ -6,11 +6,9 @@ use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
-use deno_graph::CapturingModuleParser;
 use deno_graph::DefaultModuleAnalyzer;
 use deno_graph::ModuleInfo;
 use deno_graph::ModuleParser;
-use deno_graph::ParsedSourceStore;
 use deno_runtime::deno_webstorage::rusqlite::params;
 
 use super::cache_db::CacheDB;
@@ -41,6 +39,22 @@ pub static MODULE_INFO_CACHE_DB: CacheDBConfiguration = CacheDBConfiguration {
   on_failure: CacheFailure::InMemory,
 };
 
+pub struct ModuleInfoCacheSourceHash(String);
+
+impl ModuleInfoCacheSourceHash {
+  pub fn new(hash: u64) -> Self {
+    Self(hash.to_string())
+  }
+
+  pub fn from_source(source: &[u8]) -> Self {
+    Self::new(FastInsecureHasher::hash(source))
+  }
+
+  pub fn as_str(&self) -> &str {
+    &self.0
+  }
+}
+
 /// A cache of `deno_graph::ModuleInfo` objects. Using this leads to a considerable
 /// performance improvement because when it exists we can skip parsing a module for
 /// deno_graph.
@@ -70,7 +84,7 @@ impl ModuleInfoCache {
     &self,
     specifier: &ModuleSpecifier,
     media_type: MediaType,
-    expected_source_hash: &str,
+    expected_source_hash: &ModuleInfoCacheSourceHash,
   ) -> Result<Option<ModuleInfo>, AnyError> {
     let query = SELECT_MODULE_INFO;
     let res = self.conn.query_row(
@@ -78,7 +92,7 @@ impl ModuleInfoCache {
       params![
         &specifier.as_str(),
         serialize_media_type(media_type),
-        &expected_source_hash,
+        expected_source_hash.as_str(),
       ],
       |row| {
         let module_info: String = row.get(0)?;
@@ -93,7 +107,7 @@ impl ModuleInfoCache {
     &self,
     specifier: &ModuleSpecifier,
     media_type: MediaType,
-    source_hash: &str,
+    source_hash: &ModuleInfoCacheSourceHash,
     module_info: &ModuleInfo,
   ) -> Result<(), AnyError> {
     let sql = "
@@ -106,7 +120,7 @@ impl ModuleInfoCache {
       params![
         specifier.as_str(),
         serialize_media_type(media_type),
-        &source_hash,
+        source_hash.as_str(),
         &serde_json::to_string(&module_info)?,
       ],
     )?;
@@ -115,19 +129,18 @@ impl ModuleInfoCache {
 
   pub fn as_module_analyzer<'a>(
     &'a self,
-    parser: Option<&'a dyn ModuleParser>,
-    store: &'a dyn ParsedSourceStore,
+    parser: &'a dyn ModuleParser,
   ) -> ModuleInfoCacheModuleAnalyzer<'a> {
     ModuleInfoCacheModuleAnalyzer {
       module_info_cache: self,
-      parser: CapturingModuleParser::new(parser, store),
+      parser,
     }
   }
 }
 
 pub struct ModuleInfoCacheModuleAnalyzer<'a> {
   module_info_cache: &'a ModuleInfoCache,
-  parser: CapturingModuleParser<'a>,
+  parser: &'a dyn ModuleParser,
 }
 
 impl<'a> deno_graph::ModuleAnalyzer for ModuleInfoCacheModuleAnalyzer<'a> {
@@ -138,7 +151,7 @@ impl<'a> deno_graph::ModuleAnalyzer for ModuleInfoCacheModuleAnalyzer<'a> {
     media_type: MediaType,
   ) -> Result<ModuleInfo, deno_ast::Diagnostic> {
     // attempt to load from the cache
-    let source_hash = FastInsecureHasher::hash(source.as_bytes()).to_string();
+    let source_hash = ModuleInfoCacheSourceHash::from_source(source.as_bytes());
     match self.module_info_cache.get_module_info(
       specifier,
       media_type,
@@ -156,7 +169,7 @@ impl<'a> deno_graph::ModuleAnalyzer for ModuleInfoCacheModuleAnalyzer<'a> {
     }
 
     // otherwise, get the module info from the parsed source cache
-    let analyzer = DefaultModuleAnalyzer::new(&self.parser);
+    let analyzer = DefaultModuleAnalyzer::new(self.parser);
     let module_info = analyzer.analyze(specifier, source, media_type)?;
 
     // then attempt to cache it
@@ -217,7 +230,11 @@ mod test {
       ModuleSpecifier::parse("https://localhost/mod2.ts").unwrap();
     assert_eq!(
       cache
-        .get_module_info(&specifier1, MediaType::JavaScript, "1")
+        .get_module_info(
+          &specifier1,
+          MediaType::JavaScript,
+          &ModuleInfoCacheSourceHash::new(1)
+        )
         .unwrap(),
       None
     );
@@ -237,31 +254,52 @@ mod test {
       text: "test".to_string(),
     });
     cache
-      .set_module_info(&specifier1, MediaType::JavaScript, "1", &module_info)
+      .set_module_info(
+        &specifier1,
+        MediaType::JavaScript,
+        &ModuleInfoCacheSourceHash::new(1),
+        &module_info,
+      )
       .unwrap();
     assert_eq!(
       cache
-        .get_module_info(&specifier1, MediaType::JavaScript, "1")
+        .get_module_info(
+          &specifier1,
+          MediaType::JavaScript,
+          &ModuleInfoCacheSourceHash::new(1)
+        )
         .unwrap(),
       Some(module_info.clone())
     );
     assert_eq!(
       cache
-        .get_module_info(&specifier2, MediaType::JavaScript, "1")
+        .get_module_info(
+          &specifier2,
+          MediaType::JavaScript,
+          &ModuleInfoCacheSourceHash::new(1)
+        )
         .unwrap(),
       None,
     );
     // different media type
     assert_eq!(
       cache
-        .get_module_info(&specifier1, MediaType::TypeScript, "1")
+        .get_module_info(
+          &specifier1,
+          MediaType::TypeScript,
+          &ModuleInfoCacheSourceHash::new(1)
+        )
         .unwrap(),
       None,
     );
     // different source hash
     assert_eq!(
       cache
-        .get_module_info(&specifier1, MediaType::JavaScript, "2")
+        .get_module_info(
+          &specifier1,
+          MediaType::JavaScript,
+          &ModuleInfoCacheSourceHash::new(2)
+        )
         .unwrap(),
       None,
     );
@@ -272,7 +310,11 @@ mod test {
     // should get it
     assert_eq!(
       cache
-        .get_module_info(&specifier1, MediaType::JavaScript, "1")
+        .get_module_info(
+          &specifier1,
+          MediaType::JavaScript,
+          &ModuleInfoCacheSourceHash::new(1)
+        )
         .unwrap(),
       Some(module_info)
     );
@@ -283,7 +325,11 @@ mod test {
     // should no longer exist
     assert_eq!(
       cache
-        .get_module_info(&specifier1, MediaType::JavaScript, "1")
+        .get_module_info(
+          &specifier1,
+          MediaType::JavaScript,
+          &ModuleInfoCacheSourceHash::new(1)
+        )
         .unwrap(),
       None,
     );

@@ -1,8 +1,9 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use deno_runtime::deno_napi::*;
 
 use crate::check_env;
+use crate::napi::threadsafe_functions::SendPtr;
 
 #[repr(C)]
 pub struct AsyncWork {
@@ -64,10 +65,6 @@ fn napi_queue_async_work(
     return napi_invalid_arg;
   };
 
-  #[repr(transparent)]
-  struct SendPtr<T>(*const T);
-  unsafe impl<T> Send for SendPtr<T> {}
-  unsafe impl<T> Sync for SendPtr<T> {}
   let send_env = SendPtr(env_ptr);
 
   #[inline(always)]

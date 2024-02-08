@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::io::Error;
 
@@ -52,9 +52,9 @@ deno_core::extension!(
   deno_tty,
   ops = [
     op_stdin_set_raw,
-    op_isatty,
+    op_is_terminal,
     op_console_size,
-    op_read_line_prompt,
+    op_read_line_prompt
   ],
   state = |state| {
     #[cfg(unix)]
@@ -210,7 +210,7 @@ fn op_stdin_set_raw(
 }
 
 #[op2(fast)]
-fn op_isatty(state: &mut OpState, rid: u32) -> Result<bool, AnyError> {
+fn op_is_terminal(state: &mut OpState, rid: u32) -> Result<bool, AnyError> {
   let handle = state.resource_table.get_handle(rid)?;
   Ok(handle.is_terminal())
 }
@@ -336,8 +336,8 @@ mod tests {
 #[op2]
 #[string]
 pub fn op_read_line_prompt(
-  #[string] prompt_text: String,
-  #[string] default_value: String,
+  #[string] prompt_text: &str,
+  #[string] default_value: &str,
 ) -> Result<Option<String>, AnyError> {
   let mut editor = Editor::<(), rustyline::history::DefaultHistory>::new()
     .expect("Failed to create editor.");
@@ -347,10 +347,17 @@ pub fn op_read_line_prompt(
     .bind_sequence(KeyEvent(KeyCode::Esc, Modifiers::empty()), Cmd::Interrupt);
 
   let read_result =
-    editor.readline_with_initial(&prompt_text, (&default_value, ""));
+    editor.readline_with_initial(prompt_text, (default_value, ""));
   match read_result {
     Ok(line) => Ok(Some(line)),
-    Err(ReadlineError::Interrupted | ReadlineError::Eof) => Ok(None),
+    Err(ReadlineError::Interrupted) => {
+      // SAFETY: Disable raw mode and raise SIGINT.
+      unsafe {
+        libc::raise(libc::SIGINT);
+      }
+      Ok(None)
+    }
+    Err(ReadlineError::Eof) => Ok(None),
     Err(err) => Err(err.into()),
   }
 }

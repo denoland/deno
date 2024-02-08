@@ -1,18 +1,8 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../../core/internal.d.ts" />
 
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { assert } from "ext:deno_web/00_infra.js";
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
-import {
-  defineEventHandler,
-  Event,
-  EventTarget,
-  listenerCount,
-  setIsTrusted,
-} from "ext:deno_web/02_event.js";
 import { primordials } from "ext:core/mod.js";
 const {
   ArrayPrototypeEvery,
@@ -32,6 +22,17 @@ const {
   WeakSetPrototypeAdd,
   WeakSetPrototypeHas,
 } = primordials;
+
+import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { assert } from "ext:deno_web/00_infra.js";
+import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
+import {
+  defineEventHandler,
+  Event,
+  EventTarget,
+  listenerCount,
+  setIsTrusted,
+} from "ext:deno_web/02_event.js";
 import { refTimer, setTimeout, unrefTimer } from "ext:deno_web/02_timers.js";
 
 // Since WeakSet is not a iterable, WeakRefSet class is provided to store and

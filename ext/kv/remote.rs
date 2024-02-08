@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::cell::RefCell;
 use std::marker::PhantomData;
@@ -137,7 +137,7 @@ impl<P: RemoteDbHandlerPermissions + 'static> DatabaseHandler
         client_cert_chain_and_key: options.client_cert_chain_and_key.clone(),
         pool_max_idle_per_host: None,
         pool_idle_timeout: None,
-        http1: true,
+        http1: false,
         http2: true,
       },
     )?;

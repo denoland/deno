@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // This module follows most of the WHATWG Living Standard for the DOM logic.
 // Many parts of the DOM are not implemented in Deno, but the logic for those
@@ -6,9 +6,6 @@
 // and impossible logic branches based on what Deno currently supports.
 
 import { core, primordials } from "ext:core/mod.js";
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import DOMException from "ext:deno_web/01_dom_exception.js";
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 const {
   ArrayPrototypeFilter,
   ArrayPrototypeIncludes,
@@ -36,6 +33,10 @@ const {
   SymbolToStringTag,
   TypeError,
 } = primordials;
+
+import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { DOMException } from "ext:deno_web/01_dom_exception.js";
+import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 
 // This should be set via setGlobalThis this is required so that if even
 // user deletes globalThis it is still usable

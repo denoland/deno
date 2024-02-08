@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use test_util as util;
 
@@ -85,8 +85,5 @@ itest!(env_file {
 
 itest!(env_file_missing {
   args: "eval --env=missing console.log(Deno.env.get(\"ANOTHER_FOO\"))",
-  output_str: Some(
-    "error: Unable to load 'missing' environment variable file\n"
-  ),
-  exit_code: 1,
+  output: "eval/env_file_missing.out",
 });

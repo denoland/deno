@@ -1,12 +1,9 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import crypto from "node:crypto";
 import { Buffer } from "node:buffer";
 import { Readable } from "node:stream";
 import { buffer, text } from "node:stream/consumers";
-import {
-  assertEquals,
-  assertThrows,
-} from "../../../../test_util/std/assert/mod.ts";
+import { assertEquals, assertThrows } from "@test_util/std/assert/mod.ts";
 
 const rsaPrivateKey = Deno.readTextFileSync(
   new URL("../testdata/rsa_private.pem", import.meta.url),
@@ -108,6 +105,26 @@ Deno.test({
         "66e94bd4ef8a2c3b884cfa59ca342b2e66e94bd4ef8a2c3b884cfa59ca342b2e66e94bd4ef8a2c3b884cfa59ca342b2e",
         "baf823258ca2e6994f638daa3515e986",
       ],
+      [
+        ["aes-192-ecb", 24, 0],
+        "aae06992acbf52a3e8f4a96ec9300bd7aae06992acbf52a3e8f4a96ec9300bd7aae06992acbf52a3e8f4a96ec9300bd7",
+        "2e0f33b51bb184654311ead507ea55fc",
+      ],
+      [
+        ["aes-256-ecb", 32, 0],
+        "dc95c078a2408989ad48a21492842087dc95c078a2408989ad48a21492842087dc95c078a2408989ad48a21492842087",
+        "0ac1d7e8655254c6814b46753932df88",
+      ],
+      [
+        ["aes256", 32, 16],
+        "dc95c078a2408989ad48a2149284208708c374848c228233c2b34f332bd2e9d38b70c515a6663d38cdb8e6532b266491",
+        "2e62607a5e8b715e4cb229a12169f2b2",
+      ],
+      [
+        ["aes-256-cbc", 32, 16],
+        "dc95c078a2408989ad48a2149284208708c374848c228233c2b34f332bd2e9d38b70c515a6663d38cdb8e6532b266491",
+        "2e62607a5e8b715e4cb229a12169f2b2",
+      ],
     ] as const;
     for (
       const [[alg, keyLen, ivLen], expectedUpdate, expectedFinal] of table
@@ -167,6 +184,22 @@ Deno.test({
       [
         ["aes-128-ecb", 16, 0],
         "66e94bd4ef8a2c3b884cfa59ca342b2e66e94bd4ef8a2c3b884cfa59ca342b2e66e94bd4ef8a2c3b884cfa59ca342b2e66e94bd4ef8a2c3b884cfa59ca342b2e66e94bd4ef8a2c3b884cfa59ca342b2ec29a917cbaf72fa9bc32129bb0d17663",
+      ],
+      [
+        ["aes-192-ecb", 24, 0],
+        "aae06992acbf52a3e8f4a96ec9300bd7aae06992acbf52a3e8f4a96ec9300bd7aae06992acbf52a3e8f4a96ec9300bd7aae06992acbf52a3e8f4a96ec9300bd7aae06992acbf52a3e8f4a96ec9300bd7ab40eb56b6fc2aacf2e9254685cce891",
+      ],
+      [
+        ["aes-256-ecb", 32, 0],
+        "dc95c078a2408989ad48a21492842087dc95c078a2408989ad48a21492842087dc95c078a2408989ad48a21492842087dc95c078a2408989ad48a21492842087dc95c078a2408989ad48a214928420877c45b49560579dd1ffc7ec626de2a968",
+      ],
+      [
+        ["aes256", 32, 16],
+        "dc95c078a2408989ad48a2149284208708c374848c228233c2b34f332bd2e9d38b70c515a6663d38cdb8e6532b2664915d0dcc192580aee9ef8a8568193f1b44bfca557c6bab7dc79da07ffd42191b2659e6bee99cb2a6a7299f0e9a21686fc7",
+      ],
+      [
+        ["aes-256-cbc", 32, 16],
+        "dc95c078a2408989ad48a2149284208708c374848c228233c2b34f332bd2e9d38b70c515a6663d38cdb8e6532b2664915d0dcc192580aee9ef8a8568193f1b44bfca557c6bab7dc79da07ffd42191b2659e6bee99cb2a6a7299f0e9a21686fc7",
       ],
     ] as const;
     for (

@@ -1,10 +1,10 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import crypto from "node:crypto";
 import { Buffer } from "node:buffer";
 import testVectors128 from "./gcmEncryptExtIV128.json" assert { type: "json" };
 import testVectors256 from "./gcmEncryptExtIV256.json" assert { type: "json" };
-import { assertEquals } from "../../../../test_util/std/assert/mod.ts";
+import { assertEquals } from "@test_util/std/assert/mod.ts";
 
 const aesGcm = (bits: string, key: Uint8Array) => {
   const ALGO = bits == "128" ? `aes-128-gcm` : `aes-256-gcm`;

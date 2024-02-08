@@ -1,9 +1,24 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 /// <reference path="../../core/internal.d.ts" />
 
 import { core, primordials } from "ext:core/mod.js";
-const ops = core.ops;
+import {
+  op_broadcast_recv,
+  op_broadcast_send,
+  op_broadcast_subscribe,
+  op_broadcast_unsubscribe,
+} from "ext:core/ops";
+const {
+  ArrayPrototypeIndexOf,
+  ArrayPrototypePush,
+  ArrayPrototypeSplice,
+  ObjectPrototypeIsPrototypeOf,
+  Symbol,
+  SymbolFor,
+  Uint8Array,
+} = primordials;
+
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 import {
@@ -12,17 +27,8 @@ import {
   setIsTrusted,
   setTarget,
 } from "ext:deno_web/02_event.js";
-import DOMException from "ext:deno_web/01_dom_exception.js";
-const {
-  ArrayPrototypeIndexOf,
-  ArrayPrototypePush,
-  ArrayPrototypeSplice,
-  ObjectPrototypeIsPrototypeOf,
-  PromisePrototypeThen,
-  Symbol,
-  SymbolFor,
-  Uint8Array,
-} = primordials;
+import { defer } from "ext:deno_web/02_timers.js";
+import { DOMException } from "ext:deno_web/01_dom_exception.js";
 
 const _name = Symbol("[[name]]");
 const _closed = Symbol("[[closed]]");
@@ -32,7 +38,7 @@ let rid = null;
 
 async function recv() {
   while (channels.length > 0) {
-    const message = await core.opAsync("op_broadcast_recv", rid);
+    const message = await op_broadcast_recv(rid);
 
     if (message === null) {
       break;
@@ -68,14 +74,6 @@ function dispatch(source, name, data) {
     defer(go);
   }
 }
-
-// Defer to avoid starving the event loop. Not using queueMicrotask()
-// for that reason: it lets promises make forward progress but can
-// still starve other parts of the event loop.
-function defer(go) {
-  PromisePrototypeThen(core.ops.op_void_async_deferred(), () => go());
-}
-
 class BroadcastChannel extends EventTarget {
   [_name];
   [_closed] = false;
@@ -99,7 +97,7 @@ class BroadcastChannel extends EventTarget {
     if (rid === null) {
       // Create the rid immediately, otherwise there is a time window (and a
       // race condition) where messages can get lost, because recv() is async.
-      rid = ops.op_broadcast_subscribe();
+      rid = op_broadcast_subscribe();
       recv();
     }
   }
@@ -126,7 +124,7 @@ class BroadcastChannel extends EventTarget {
     // Send to listeners in other VMs.
     defer(() => {
       if (!this[_closed]) {
-        core.opAsync("op_broadcast_send", rid, this[_name], data);
+        op_broadcast_send(rid, this[_name], data);
       }
     });
   }
@@ -140,7 +138,7 @@ class BroadcastChannel extends EventTarget {
 
     ArrayPrototypeSplice(channels, index, 1);
     if (channels.length === 0) {
-      ops.op_broadcast_unsubscribe(rid);
+      op_broadcast_unsubscribe(rid);
     }
   }
 

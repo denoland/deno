@@ -1,10 +1,7 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import * as perfHooks from "node:perf_hooks";
 import { performance } from "node:perf_hooks";
-import {
-  assertEquals,
-  assertThrows,
-} from "../../../test_util/std/assert/mod.ts";
+import { assertEquals, assertThrows } from "@test_util/std/assert/mod.ts";
 
 Deno.test({
   name: "[perf_hooks] performance",

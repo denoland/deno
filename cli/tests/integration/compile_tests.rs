@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use test_util as util;
 use util::assert_contains;
@@ -1122,4 +1122,59 @@ fn dynamic_imports_tmp_lit() {
   output.skip_output_check();
   let output = context.new_command().name(&exe).run();
   output.assert_matches_text("a\nb\n{ data: 5 }\n{ data: 1 }\n");
+}
+
+#[test]
+fn granular_unstable_features() {
+  let context = TestContextBuilder::new().build();
+  let dir = context.temp_dir();
+  let exe = if cfg!(windows) {
+    dir.path().join("app.exe")
+  } else {
+    dir.path().join("app")
+  };
+  let output = context
+    .new_command()
+    .args_vec([
+      "compile",
+      "--output",
+      &exe.to_string_lossy(),
+      "--unstable-kv",
+      "./compile/unstable_features.ts",
+    ])
+    .run();
+  output.assert_exit_code(0);
+  output.skip_output_check();
+  let output = context.new_command().name(&exe).run();
+  output.assert_exit_code(0);
+  output.assert_matches_text("Kv {}\n");
+}
+
+#[test]
+fn dynamic_import_bad_data_uri() {
+  let context = TestContextBuilder::new().build();
+  let dir = context.temp_dir();
+  let exe = if cfg!(windows) {
+    dir.path().join("app.exe")
+  } else {
+    dir.path().join("app")
+  };
+  let file = dir.path().join("bad_data_uri.ts");
+  file.write("await import('data:application/')");
+  let output = context
+    .new_command()
+    .args_vec([
+      "compile",
+      "--output",
+      &exe.to_string_lossy(),
+      &file.to_string_lossy(),
+    ])
+    .run();
+  output.assert_exit_code(0);
+  output.skip_output_check();
+  let output = context.new_command().name(&exe).run();
+  output.assert_exit_code(1);
+  output.assert_matches_text(
+    "[WILDCARD]TypeError: Unable to decode data url.[WILDCARD]",
+  );
 }

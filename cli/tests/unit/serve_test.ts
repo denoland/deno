@@ -1,10 +1,7 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import {
-  assertMatch,
-  assertRejects,
-} from "../../../test_util/std/assert/mod.ts";
-import { Buffer, BufReader, BufWriter } from "../../../test_util/std/io/mod.ts";
+import { assertMatch, assertRejects } from "@test_util/std/assert/mod.ts";
+import { Buffer, BufReader, BufWriter } from "@test_util/std/io/mod.ts";
 import { TextProtoReader } from "../testdata/run/textproto.ts";
 import {
   assert,
@@ -2567,10 +2564,9 @@ function makeTempData(size: number) {
 
 async function makeTempFile(size: number) {
   const tmpFile = await Deno.makeTempFile();
-  const file = await Deno.open(tmpFile, { write: true, read: true });
+  using file = await Deno.open(tmpFile, { write: true, read: true });
   const data = makeTempData(size);
   await file.write(data);
-  file.close();
 
   return await Deno.open(tmpFile, { write: true, read: true });
 }
@@ -2647,6 +2643,13 @@ const compressionTestCases = [
     name: "IncompressibleCC",
     length: 1024,
     in: { "Accept-Encoding": "gzip" },
+    out: { "Content-Type": "text/plain", "Cache-Control": "no-transform" },
+    expect: null,
+  },
+  {
+    name: "BadHeader",
+    length: 1024,
+    in: { "Accept-Encoding": "\x81" },
     out: { "Content-Type": "text/plain", "Cache-Control": "no-transform" },
     expect: null,
   },
@@ -3816,7 +3819,7 @@ async function curlRequestWithStdErr(args: string[]) {
   return [new TextDecoder().decode(stdout), new TextDecoder().decode(stderr)];
 }
 
-Deno.test("Deno.Server is not thenable", async () => {
+Deno.test("Deno.HttpServer is not thenable", async () => {
   // deno-lint-ignore require-await
   async function serveTest() {
     const server = Deno.serve({ port: servePort }, (_) => new Response(""));

@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::BTreeMap;
 use std::env::current_exe;
@@ -18,7 +18,6 @@ use deno_core::futures::AsyncReadExt;
 use deno_core::futures::AsyncSeekExt;
 use deno_core::serde_json;
 use deno_core::url::Url;
-use deno_npm::registry::PackageDepNpmSchemeValueParseError;
 use deno_npm::NpmSystemInfo;
 use deno_runtime::permissions::PermissionsOptions;
 use deno_semver::package::PackageReq;
@@ -33,6 +32,7 @@ use crate::args::CaData;
 use crate::args::CliOptions;
 use crate::args::CompileFlags;
 use crate::args::PackageJsonDepsProvider;
+use crate::args::UnstableConfig;
 use crate::cache::DenoDir;
 use crate::file_fetcher::FileFetcher;
 use crate::http_util::HttpClient;
@@ -50,7 +50,6 @@ const MAGIC_TRAILER: &[u8; 8] = b"d3n0l4nd";
 
 #[derive(Serialize, Deserialize)]
 enum SerializablePackageJsonDepValueParseError {
-  SchemeValue(String),
   Specifier(String),
   Unsupported { scheme: String },
 }
@@ -58,9 +57,6 @@ enum SerializablePackageJsonDepValueParseError {
 impl SerializablePackageJsonDepValueParseError {
   pub fn from_err(err: PackageJsonDepValueParseError) -> Self {
     match err {
-      PackageJsonDepValueParseError::SchemeValue(err) => {
-        Self::SchemeValue(err.value)
-      }
       PackageJsonDepValueParseError::Specifier(err) => {
         Self::Specifier(err.source.to_string())
       }
@@ -72,11 +68,6 @@ impl SerializablePackageJsonDepValueParseError {
 
   pub fn into_err(self) -> PackageJsonDepValueParseError {
     match self {
-      SerializablePackageJsonDepValueParseError::SchemeValue(value) => {
-        PackageJsonDepValueParseError::SchemeValue(
-          PackageDepNpmSchemeValueParseError { value },
-        )
-      }
       SerializablePackageJsonDepValueParseError::Specifier(source) => {
         PackageJsonDepValueParseError::Specifier(
           VersionReqSpecifierParseError {
@@ -137,7 +128,6 @@ pub enum NodeModules {
 #[derive(Deserialize, Serialize)]
 pub struct Metadata {
   pub argv: Vec<String>,
-  pub unstable: bool,
   pub seed: Option<u64>,
   pub permissions: PermissionsOptions,
   pub location: Option<Url>,
@@ -149,6 +139,8 @@ pub struct Metadata {
   pub maybe_import_map: Option<(Url, String)>,
   pub entrypoint: ModuleSpecifier,
   pub node_modules: Option<NodeModules>,
+  pub disable_deprecated_api_warning: bool,
+  pub unstable_config: UnstableConfig,
 }
 
 pub fn load_npm_vfs(root_dir_path: PathBuf) -> Result<FileBackedVfs, AnyError> {
@@ -541,7 +533,6 @@ impl<'a> DenoCompileBinaryWriter<'a> {
 
     let metadata = Metadata {
       argv: compile_flags.args.clone(),
-      unstable: cli_options.unstable(),
       seed: cli_options.seed(),
       location: cli_options.location_flag().clone(),
       permissions: cli_options.permissions_options(),
@@ -555,6 +546,15 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       entrypoint: entrypoint.clone(),
       maybe_import_map,
       node_modules,
+      disable_deprecated_api_warning: cli_options
+        .disable_deprecated_api_warning,
+      unstable_config: UnstableConfig {
+        legacy_flag_enabled: cli_options.legacy_unstable_flag(),
+        bare_node_builtins: cli_options.unstable_bare_node_builtins(),
+        byonm: cli_options.unstable_byonm(),
+        sloppy_imports: cli_options.unstable_sloppy_imports(),
+        features: cli_options.unstable_features(),
+      },
     };
 
     write_binary_bytes(

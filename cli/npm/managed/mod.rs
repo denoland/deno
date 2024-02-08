@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::path::Path;
 use std::path::PathBuf;
@@ -225,13 +225,21 @@ async fn snapshot_from_lockfile(
   lockfile: Arc<Mutex<Lockfile>>,
   api: &dyn NpmRegistryApi,
 ) -> Result<ValidSerializedNpmResolutionSnapshot, AnyError> {
-  let incomplete_snapshot = {
+  let (incomplete_snapshot, skip_integrity_check) = {
     let lock = lockfile.lock();
-    deno_npm::resolution::incomplete_snapshot_from_lockfile(&lock)?
+    (
+      deno_npm::resolution::incomplete_snapshot_from_lockfile(&lock)?,
+      lock.overwrite,
+    )
   };
-  let snapshot =
-    deno_npm::resolution::snapshot_from_lockfile(incomplete_snapshot, api)
-      .await?;
+  let snapshot = deno_npm::resolution::snapshot_from_lockfile(
+    deno_npm::resolution::SnapshotFromLockfileParams {
+      incomplete_snapshot,
+      api,
+      skip_integrity_check,
+    },
+  )
+  .await?;
   Ok(snapshot)
 }
 

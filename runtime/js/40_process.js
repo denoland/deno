@@ -1,7 +1,15 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { core, primordials } from "ext:core/mod.js";
-const ops = core.ops;
+import { core, internals, primordials } from "ext:core/mod.js";
+import {
+  op_kill,
+  op_run,
+  op_run_status,
+  op_spawn_child,
+  op_spawn_kill,
+  op_spawn_sync,
+  op_spawn_wait,
+} from "ext:core/ops";
 const {
   ArrayPrototypeMap,
   ArrayPrototypeSlice,
@@ -13,7 +21,9 @@ const {
   PromisePrototypeThen,
   SafePromiseAll,
   Symbol,
+  SymbolFor,
 } = primordials;
+
 import { FsFile } from "ext:deno_fs/30_fs.js";
 import { readAll } from "ext:deno_io/12_io.js";
 import {
@@ -32,7 +42,7 @@ import {
 } from "ext:deno_web/06_streams.js";
 
 function opKill(pid, signo, apiName) {
-  ops.op_kill(pid, signo, apiName);
+  op_kill(pid, signo, apiName);
 }
 
 function kill(pid, signo = "SIGTERM") {
@@ -40,12 +50,12 @@ function kill(pid, signo = "SIGTERM") {
 }
 
 function opRunStatus(rid) {
-  return core.opAsync("op_run_status", rid);
+  return op_run_status(rid);
 }
 
 function opRun(request) {
   assert(request.cmd.length > 0);
-  return ops.op_run(request);
+  return op_run(request);
 }
 
 async function runStatus(rid) {
@@ -67,15 +77,21 @@ class Process {
     this.pid = res.pid;
 
     if (res.stdinRid && res.stdinRid > 0) {
-      this.stdin = new FsFile(res.stdinRid);
+      this.stdin = new FsFile(res.stdinRid, SymbolFor("Deno.internal.FsFile"));
     }
 
     if (res.stdoutRid && res.stdoutRid > 0) {
-      this.stdout = new FsFile(res.stdoutRid);
+      this.stdout = new FsFile(
+        res.stdoutRid,
+        SymbolFor("Deno.internal.FsFile"),
+      );
     }
 
     if (res.stderrRid && res.stderrRid > 0) {
-      this.stderr = new FsFile(res.stderrRid);
+      this.stderr = new FsFile(
+        res.stderrRid,
+        SymbolFor("Deno.internal.FsFile"),
+      );
     }
   }
 
@@ -131,6 +147,11 @@ function run({
       ...new SafeArrayIterator(ArrayPrototypeSlice(cmd, 1)),
     ];
   }
+  internals.warnOnDeprecatedApi(
+    "Deno.run()",
+    (new Error()).stack,
+    `Use "Deno.Command()" API instead.`,
+  );
   const res = opRun({
     cmd: ArrayPrototypeMap(cmd, String),
     cwd,
@@ -183,7 +204,7 @@ function spawnChildInner(opFn, command, apiName, {
 
 function spawnChild(command, options = {}) {
   return spawnChildInner(
-    ops.op_spawn_child,
+    op_spawn_child,
     command,
     "Deno.Command().spawn()",
     options,
@@ -200,16 +221,16 @@ function collectOutput(readableStream) {
   return readableStreamCollectIntoUint8Array(readableStream);
 }
 
+const _pipeFd = Symbol("[[pipeFd]]");
+
+internals.getPipeFd = (process) => process[_pipeFd];
+
 class ChildProcess {
   #rid;
   #waitPromise;
   #waitComplete = false;
 
-  #pipeFd;
-  // internal, used by ext/node
-  get _pipeFd() {
-    return this.#pipeFd;
-  }
+  [_pipeFd];
 
   #pid;
   get pid() {
@@ -255,7 +276,7 @@ class ChildProcess {
 
     this.#rid = rid;
     this.#pid = pid;
-    this.#pipeFd = pipeFd;
+    this[_pipeFd] = pipeFd;
 
     if (stdinRid !== null) {
       this.#stdin = writableStreamForRid(stdinRid);
@@ -272,7 +293,7 @@ class ChildProcess {
     const onAbort = () => this.kill("SIGTERM");
     signal?.[abortSignal.add](onAbort);
 
-    const waitPromise = core.opAsync("op_spawn_wait", this.#rid);
+    const waitPromise = op_spawn_wait(this.#rid);
     this.#waitPromise = waitPromise;
     this.#status = PromisePrototypeThen(waitPromise, (res) => {
       signal?.[abortSignal.remove](onAbort);
@@ -327,12 +348,12 @@ class ChildProcess {
     if (this.#waitComplete) {
       throw new TypeError("Child process has already terminated.");
     }
-    ops.op_spawn_kill(this.#rid, signo);
+    op_spawn_kill(this.#rid, signo);
   }
 
   async [SymbolAsyncDispose]() {
     try {
-      ops.op_spawn_kill(this.#rid, "SIGTERM");
+      op_spawn_kill(this.#rid, "SIGTERM");
     } catch {
       // ignore errors from killing the process (such as ESRCH or BadResource)
     }
@@ -359,7 +380,7 @@ function spawn(command, options) {
     );
   }
   return spawnChildInner(
-    ops.op_spawn_child,
+    op_spawn_child,
     command,
     "Deno.Command().output()",
     options,
@@ -384,7 +405,7 @@ function spawnSync(command, {
       "Piped stdin is not supported for this function, use 'Deno.Command().spawn()' instead",
     );
   }
-  const result = ops.op_spawn_sync({
+  const result = op_spawn_sync({
     cmd: pathFromURL(command),
     args: ArrayPrototypeMap(args, String),
     cwd: pathFromURL(cwd),

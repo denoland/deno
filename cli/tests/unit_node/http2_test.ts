@@ -1,8 +1,8 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import * as http2 from "node:http2";
 import * as net from "node:net";
-import { assertEquals } from "../../../test_util/std/assert/mod.ts";
+import { assertEquals } from "@test_util/std/assert/mod.ts";
 
 for (const url of ["http://127.0.0.1:4246", "https://127.0.0.1:4247"]) {
   Deno.test(`[node/http2 client] ${url}`, {

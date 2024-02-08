@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // Documentation partially adapted from [MDN](https://developer.mozilla.org/),
 // by Mozilla Contributors, which is licensed under CC-BY-SA 2.5.
@@ -8,6 +8,8 @@
 /// <reference lib="deno.console" />
 /// <reference lib="deno.url" />
 /// <reference lib="deno.web" />
+/// <reference lib="deno.webgpu" />
+/// <reference lib="deno.canvas" />
 /// <reference lib="deno.fetch" />
 /// <reference lib="deno.websocket" />
 /// <reference lib="deno.crypto" />
@@ -522,9 +524,9 @@ declare interface WorkerOptions {
 
 /** @category Web Workers */
 declare interface Worker extends EventTarget {
-  onerror?: (e: ErrorEvent) => void;
-  onmessage?: (e: MessageEvent) => void;
-  onmessageerror?: (e: MessageEvent) => void;
+  onerror: (this: Worker, e: ErrorEvent) => any | null;
+  onmessage: (this: Worker, e: MessageEvent) => any | null;
+  onmessageerror: (this: Worker, e: MessageEvent) => any | null;
   postMessage(message: any, transfer: Transferable[]): void;
   postMessage(message: any, options?: StructuredSerializeOptions): void;
   addEventListener<K extends keyof WorkerEventMap>(

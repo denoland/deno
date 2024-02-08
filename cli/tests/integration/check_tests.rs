@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use test_util as util;
 use util::env_vars_for_npm_tests;
@@ -99,20 +99,14 @@ itest!(check_node_builtin_modules_js {
 });
 
 itest!(check_no_error_truncation {
-    args: "check --quiet check/no_error_truncation/main.ts --config check/no_error_truncation/deno.json",
-    output: "check/no_error_truncation/main.out",
-    envs: vec![("NO_COLOR".to_string(), "1".to_string())],
-    exit_code: 1,
-  });
-
-itest!(check_broadcast_channel_stable {
-  args: "check --quiet check/broadcast_channel.ts",
-  output: "check/broadcast_channel.ts.error.out",
+  args: "check --quiet check/no_error_truncation/main.ts --config check/no_error_truncation/deno.json",
+  output: "check/no_error_truncation/main.out",
+  envs: vec![("NO_COLOR".to_string(), "1".to_string())],
   exit_code: 1,
 });
 
-itest!(check_broadcast_channel_unstable {
-  args: "check --quiet --unstable check/broadcast_channel.ts",
+itest!(check_broadcast_channel {
+  args: "check --quiet check/broadcast_channel.ts",
   exit_code: 0,
 });
 
@@ -122,15 +116,38 @@ itest!(check_deno_not_found {
   exit_code: 1,
 });
 
-itest!(check_deno_unstable_not_found {
-  args: "check --quiet --no-config check/deno_unstable_not_found/main.ts",
-  output: "check/deno_unstable_not_found/main.out",
+itest!(check_with_exclude_option_by_dir {
+  args:
+    "check --quiet --config check/exclude_option/deno.exclude_dir.json check/exclude_option/ignored/index.ts",
+  output_str: Some(""),
+  exit_code: 0,
+});
+
+itest!(check_with_exclude_option_by_glob {
+  args:
+    "check --quiet --config check/exclude_option/deno.exclude_glob.json check/exclude_option/ignored/index.ts",
+  output_str: Some(""),
+  exit_code: 0,
+});
+
+itest!(check_without_exclude_option {
+  args:
+    "check --quiet --config check/exclude_option/deno.json check/exclude_option/ignored/index.ts",
+  output: "check/exclude_option/exclude_option.ts.error.out",
   exit_code: 1,
 });
 
-itest!(check_deno_unstable_from_config {
-  args: "check --quiet --config check/deno_unstable_not_found/deno.json check/deno_unstable_not_found/main.ts",
-  output_str: Some(""),
+itest!(check_imported_files_listed_in_exclude_option {
+  args:
+    "check --quiet --config check/exclude_option/deno.exclude_dir.json check/exclude_option/index.ts",
+  output: "check/exclude_option/exclude_option.ts.error.out",
+  exit_code: 1,
+});
+
+itest!(check_with_excluded_file_specified {
+  args: "check lib/types.d.ts",
+  cwd: Some("check/excluded_file_specified/"),
+  output: "check/excluded_file_specified/check.out",
 });
 
 #[test]

@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use super::common;
 use super::fmt::to_relative_path_or_remote_url;
@@ -113,7 +113,7 @@ impl TestReporter for DotTestReporter {
         self
           .summary
           .failures
-          .push((description.clone(), failure.clone()));
+          .push((description.into(), failure.clone()));
       }
       TestResult::Cancelled => {
         self.summary.failed += 1;
@@ -162,11 +162,9 @@ impl TestReporter for DotTestReporter {
       TestStepResult::Failed(failure) => {
         self.summary.failed_steps += 1;
         self.summary.failures.push((
-          TestDescription {
+          TestFailureDescription {
             id: desc.id,
             name: common::format_test_step_ancestry(desc, tests, test_steps),
-            ignore: false,
-            only: false,
             origin: desc.origin.clone(),
             location: desc.location.clone(),
           },

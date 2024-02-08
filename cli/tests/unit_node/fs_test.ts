@@ -1,9 +1,21 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { assert, assertThrows } from "../../../test_util/std/assert/mod.ts";
+import {
+  assert,
+  assertEquals,
+  assertThrows,
+} from "@test_util/std/assert/mod.ts";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  constants,
+  existsSync,
+  mkdtempSync,
+  promises,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
+import { constants as fsPromiseConstants, cp } from "node:fs/promises";
 import { pathToAbsoluteFileUrl } from "../unit/test_util.ts";
 
 Deno.test(
@@ -78,5 +90,27 @@ Deno.test(
   { permissions: { read: true } },
   () => {
     assert(!existsSync("bad_filename"));
+  },
+);
+
+Deno.test(
+  "[node/fs/promises constants] is the same as from node:fs",
+  () => {
+    assertEquals(constants, fsPromiseConstants);
+    assertEquals(constants, promises.constants);
+  },
+);
+
+Deno.test(
+  "[node/fs/promises cp] copy file",
+  async () => {
+    const src = mkdtempSync(join(tmpdir(), "foo-")) + "/test.txt";
+    const dest = mkdtempSync(join(tmpdir(), "foo-")) + "/test.txt";
+    writeFileSync(src, "Hello");
+
+    await cp(src, dest);
+
+    const dataRead = readFileSync(dest, "utf8");
+    assert(dataRead === "Hello");
   },
 );

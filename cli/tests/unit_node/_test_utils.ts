@@ -1,9 +1,6 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import {
-  assert,
-  assertStringIncludes,
-} from "../../../test_util/std/assert/mod.ts";
+import { assert, assertStringIncludes } from "@test_util/std/assert/mod.ts";
 
 /** Asserts that an error thrown in a callback will not be wrongly caught. */
 export async function assertCallbackErrorUncaught(

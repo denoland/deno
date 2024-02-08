@@ -1,5 +1,5 @@
-#!/usr/bin/env -S deno run --unstable --allow-write --allow-read --allow-run --allow-net
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+#!/usr/bin/env -S deno run --allow-write --allow-read --allow-run --allow-net
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import { buildMode, getPrebuilt, getSources, join, ROOT_PATH } from "./util.js";
 import { checkCopyright } from "./copyright_checker.js";
 
@@ -96,13 +96,11 @@ async function dlintPreferPrimordials() {
   const execPath = await getPrebuilt("dlint");
   const sourceFiles = await getSources(ROOT_PATH, [
     "runtime/**/*.js",
+    "runtime/**/*.ts",
     "ext/**/*.js",
+    "ext/**/*.ts",
+    ":!:ext/**/*.d.ts",
     "ext/node/polyfills/*.mjs",
-    "ext/node/polyfills/*.ts",
-    ":!:ext/node/polyfills/*.d.ts",
-    "core/*.js",
-    ":!:core/*_test.js",
-    ":!:core/examples/**",
   ]);
 
   if (!sourceFiles.length) {

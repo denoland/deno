@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Utilities shared between `build.rs` and the rest of the crate.
 
 use deno_ast::MediaType;
@@ -49,23 +49,19 @@ extension!(runtime,
     "40_tty.js",
     "41_prompt.js",
     "90_deno_ns.js",
-    "98_global_scope.js"
+    "98_global_scope_shared.js",
+    "98_global_scope_window.js",
+    "98_global_scope_worker.js"
   ],
   customizer = |ext: &mut Extension| {
     #[cfg(not(feature = "exclude_runtime_main_js"))]
     {
-      ext.esm_files.to_mut().push(ExtensionFileSource {
-        specifier: "ext:runtime_main/js/99_main.js",
-        code: ExtensionFileSourceCode::IncludedInBinary(
-          include_str!("./js/99_main.js"),
-        ),
-      });
+      ext.esm_files.to_mut().push(ExtensionFileSource::new("ext:runtime_main/js/99_main.js", include_str!("./js/99_main.js")));
       ext.esm_entry_point = Some("ext:runtime_main/js/99_main.js");
     }
   }
 );
 
-#[allow(dead_code)]
 pub fn maybe_transpile_source(
   source: &mut ExtensionFileSource,
 ) -> Result<(), AnyError> {

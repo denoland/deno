@@ -1,7 +1,5 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use std::cell::RefCell;
-use std::rc::Rc;
 use std::sync::Arc;
 
 use crate::args::CliOptions;
@@ -49,6 +47,7 @@ use deno_semver::npm::NpmPackageReqReference;
 use once_cell::sync::Lazy;
 use regex::Match;
 use regex::Regex;
+use tokio::sync::Mutex;
 
 fn comment_source_to_position_range(
   comment_start: SourcePos,
@@ -177,7 +176,7 @@ pub struct ReplSession {
   session: LocalInspectorSession,
   pub context_id: u64,
   pub language_server: ReplLanguageServer,
-  pub notifications: Rc<RefCell<UnboundedReceiver<Value>>>,
+  pub notifications: Arc<Mutex<UnboundedReceiver<Value>>>,
   referrer: ModuleSpecifier,
   main_module: ModuleSpecifier,
   test_reporter_factory: Box<dyn Fn() -> Box<dyn TestReporter>>,
@@ -185,6 +184,7 @@ pub struct ReplSession {
   /// This is only optional because it's temporarily taken when evaluating.
   test_event_receiver: Option<tokio::sync::mpsc::UnboundedReceiver<TestEvent>>,
   jsx: ReplJsxState,
+  experimental_decorators: bool,
 }
 
 impl ReplSession {
@@ -202,14 +202,11 @@ impl ReplSession {
 
     worker
       .js_runtime
-      .with_event_loop(
+      .with_event_loop_future(
         session
           .post_message::<()>("Runtime.enable", None)
           .boxed_local(),
-        PollEventLoopOptions {
-          wait_for_inspector: false,
-          ..Default::default()
-        },
+        PollEventLoopOptions::default(),
       )
       .await?;
 
@@ -221,18 +218,20 @@ impl ReplSession {
 
     loop {
       let notification = notification_rx.next().await.unwrap();
-      let method = notification.get("method").unwrap().as_str().unwrap();
-      let params = notification.get("params").unwrap();
-      if method == "Runtime.executionContextCreated" {
-        let context = params.get("context").unwrap();
-        assert!(context
-          .get("auxData")
-          .unwrap()
+      let notification =
+        serde_json::from_value::<cdp::Notification>(notification)?;
+      if notification.method == "Runtime.executionContextCreated" {
+        let execution_context_created = serde_json::from_value::<
+          cdp::ExecutionContextCreated,
+        >(notification.params)?;
+        assert!(execution_context_created
+          .context
+          .aux_data
           .get("isDefault")
           .unwrap()
           .as_bool()
           .unwrap());
-        context_id = context.get("id").unwrap().as_u64().unwrap();
+        context_id = execution_context_created.context.id;
         break;
       }
     }
@@ -242,6 +241,11 @@ impl ReplSession {
       deno_core::resolve_path("./$deno$repl.ts", cli_options.initial_cwd())
         .unwrap();
 
+    let ts_config_for_emit = cli_options
+      .resolve_ts_config_for_emit(deno_config::TsConfigType::Emit)?;
+    let emit_options =
+      crate::args::ts_config_to_emit_options(ts_config_for_emit.ts_config);
+    let experimental_decorators = emit_options.use_ts_decorators;
     let mut repl_session = ReplSession {
       npm_resolver,
       resolver,
@@ -250,7 +254,7 @@ impl ReplSession {
       context_id,
       language_server,
       referrer,
-      notifications: Rc::new(RefCell::new(notification_rx)),
+      notifications: Arc::new(Mutex::new(notification_rx)),
       test_reporter_factory: Box::new(|| {
         Box::new(PrettyTestReporter::new(false, true, false, true))
       }),
@@ -262,6 +266,7 @@ impl ReplSession {
         frag_factory: "React.Fragment".to_string(),
         import_source: None,
       },
+      experimental_decorators,
     };
 
     // inject prelude
@@ -298,14 +303,14 @@ impl ReplSession {
     self
       .worker
       .js_runtime
-      .with_event_loop(
+      .with_event_loop_future(
         self.session.post_message(method, params).boxed_local(),
         PollEventLoopOptions {
-          wait_for_inspector: false,
           // NOTE(bartlomieju): this is an important bit; we don't want to pump V8
           // message loop here, so that GC won't run. Otherwise, the resulting
           // object might be GC'ed before we have a chance to inspect it.
           pump_v8_message_loop: false,
+          ..Default::default()
         },
       )
       .await
@@ -598,6 +603,8 @@ impl ReplSession {
 
     let transpiled_src = parsed_source
       .transpile(&deno_ast::EmitOptions {
+        use_ts_decorators: self.experimental_decorators,
+        use_decorators_proposal: !self.experimental_decorators,
         emit_metadata: false,
         source_map: false,
         inline_source_map: false,
@@ -841,7 +848,7 @@ fn analyze_jsx_pragmas(
 
   let mut analyzed_pragmas = AnalyzedJsxPragmas::default();
 
-  for c in parsed_source.get_leading_comments().iter() {
+  for c in parsed_source.get_leading_comments()?.iter() {
     if c.kind != CommentKind::Block {
       continue; // invalid
     }

@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::serde_json;
 use deno_core::serde_json::json;
@@ -12,14 +12,14 @@ use util::TestContextBuilder;
 
 // NOTE: See how to make test npm packages at ./testdata/npm/README.md
 
-itest!(esm_module {
+itest!(es_module {
   args: "run --allow-read --allow-env npm/esm/main.js",
   output: "npm/esm/main.out",
   envs: env_vars_for_npm_tests(),
   http_server: true,
 });
 
-itest!(esm_module_eval {
+itest!(es_module_eval {
   args_vec: vec![
     "eval",
     "import chalk from 'npm:chalk@5'; console.log(chalk.green('chalk esm loads'));",
@@ -29,15 +29,15 @@ itest!(esm_module_eval {
   http_server: true,
 });
 
-itest!(esm_module_deno_test {
-  args: "test --allow-read --allow-env --unstable npm/esm/test.js",
+itest!(es_module_deno_test {
+  args: "test --allow-read --allow-env npm/esm/test.js",
   output: "npm/esm/test.out",
   envs: env_vars_for_npm_tests(),
   http_server: true,
 });
 
 itest!(esm_import_cjs_default {
-  args: "run --allow-read --allow-env --unstable --quiet --check=all npm/esm_import_cjs_default/main.ts",
+  args: "run --allow-read --allow-env --quiet --check=all npm/esm_import_cjs_default/main.ts",
   output: "npm/esm_import_cjs_default/main.out",
   envs: env_vars_for_npm_tests(),
   http_server: true,
@@ -123,7 +123,7 @@ itest!(translate_cjs_to_esm {
 });
 
 itest!(compare_globals {
-  args: "run --allow-read --unstable --check=all npm/compare_globals/main.ts",
+  args: "run --allow-read --check=all npm/compare_globals/main.ts",
   output: "npm/compare_globals/main.out",
   envs: env_vars_for_npm_tests(),
   http_server: true,
@@ -160,14 +160,15 @@ itest!(child_process_fork_test {
 });
 
 itest!(cjs_module_export_assignment {
-  args: "run -A --unstable --quiet --check=all npm/cjs_module_export_assignment/main.ts",
+  args: "run -A --quiet --check=all npm/cjs_module_export_assignment/main.ts",
   output: "npm/cjs_module_export_assignment/main.out",
   envs: env_vars_for_npm_tests(),
   http_server: true,
 });
 
 itest!(cjs_module_export_assignment_number {
-  args: "run -A --unstable --quiet --check=all npm/cjs_module_export_assignment_number/main.ts",
+  args:
+    "run -A --quiet --check=all npm/cjs_module_export_assignment_number/main.ts",
   output: "npm/cjs_module_export_assignment_number/main.out",
   envs: env_vars_for_npm_tests(),
   http_server: true,
@@ -256,7 +257,7 @@ itest!(import_map {
     http_server: true,
   });
 
-itest!(lock_file {
+itest!(lock_file_integrity_failure {
     args: "run --allow-read --allow-env --lock npm/lock_file/lock.json npm/lock_file/main.js",
     output: "npm/lock_file/main.out",
     envs: env_vars_for_npm_tests(),
@@ -401,7 +402,7 @@ itest!(no_types_cjs {
 });
 
 itest!(no_types_in_conditional_exports {
-  args: "run --check --unstable npm/no_types_in_conditional_exports/main.ts",
+  args: "run --check npm/no_types_in_conditional_exports/main.ts",
   output: "npm/no_types_in_conditional_exports/main.out",
   exit_code: 0,
   envs: env_vars_for_npm_tests(),
@@ -1517,10 +1518,9 @@ fn lock_file_lock_write() {
 
 #[test]
 fn auto_discover_lock_file() {
-  let _server = http_server();
+  let context = TestContextBuilder::for_npm().use_temp_cwd().build();
 
-  let deno_dir = util::new_deno_dir();
-  let temp_dir = util::TempDir::new();
+  let temp_dir = context.temp_dir();
 
   // write empty config file
   temp_dir.write("deno.json", "{}");
@@ -1541,25 +1541,26 @@ fn auto_discover_lock_file() {
   }"#;
   temp_dir.write("deno.lock", lock_file_content);
 
-  let deno = util::deno_cmd_with_deno_dir(&deno_dir)
-    .current_dir(temp_dir.path())
-    .arg("run")
-    .arg("--unstable")
-    .arg("-A")
-    .arg("npm:@denotest/bin/cli-esm")
-    .arg("test")
-    .envs(env_vars_for_npm_tests())
-    .piped_output()
-    .spawn()
-    .unwrap();
-  let output = deno.wait_with_output().unwrap();
-  assert!(!output.status.success());
-  assert_eq!(output.status.code(), Some(10));
+  let output = context
+    .new_command()
+    .args("run -A npm:@denotest/bin/cli-esm test")
+    .run();
+  output
+    .assert_matches_text(
+r#"Download http://localhost:4545/npm/registry/@denotest/bin
+error: Integrity check failed for npm package: "@denotest/bin@1.0.0". Unable to verify that the package
+is the same as when the lockfile was generated.
 
-  let stderr = String::from_utf8(output.stderr).unwrap();
-  assert!(stderr.contains(
-    "Integrity check failed for npm package: \"@denotest/bin@1.0.0\""
-  ));
+Actual: sha512-[WILDCARD]
+Expected: sha512-foobar
+
+This could be caused by:
+  * the lock file may be corrupt
+  * the source itself may be corrupt
+
+Use "--lock-write" flag to regenerate the lockfile at "[WILDCARD]deno.lock".
+"#)
+    .assert_exit_code(10);
 }
 
 #[test]
@@ -2076,7 +2077,7 @@ fn binary_package_with_optional_dependencies() {
 }
 
 #[test]
-pub fn node_modules_dir_config_file() {
+fn node_modules_dir_config_file() {
   let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
   let temp_dir = test_context.temp_dir();
   let node_modules_dir = temp_dir.path().join("node_modules");
@@ -2233,7 +2234,7 @@ itest!(require_resolve_url_paths {
 });
 
 #[test]
-pub fn byonm_cjs_esm_packages() {
+fn byonm_cjs_esm_packages() {
   let test_context = TestContextBuilder::for_npm()
     .env("DENO_UNSTABLE_BYONM", "1")
     .use_temp_cwd()
@@ -2318,7 +2319,51 @@ console.log(getKind());
 }
 
 #[test]
-pub fn byonm_package_specifier_not_installed_and_invalid_subpath() {
+fn byonm_import_map() {
+  let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let dir = test_context.temp_dir();
+  dir.write(
+    "deno.json",
+    r#"{
+    "imports": {
+      "basic": "npm:@denotest/esm-basic"
+    },
+    "unstable": [ "byonm" ]
+}"#,
+  );
+  dir.write(
+    "package.json",
+    r#"{
+    "name": "my-project",
+    "version": "1.0.0",
+    "type": "module",
+    "dependencies": {
+      "@denotest/esm-basic": "^1.0"
+    }
+}"#,
+  );
+  test_context.run_npm("install");
+
+  dir.write(
+    "main.ts",
+    r#"
+// import map should resolve
+import { getValue } from "basic";
+// and resolving via node resolution
+import { setValue } from "@denotest/esm-basic";
+
+setValue(5);
+console.log(getValue());
+"#,
+  );
+  let output = test_context.new_command().args("run main.ts").run();
+  output.assert_matches_text("5\n");
+  let output = test_context.new_command().args("check main.ts").run();
+  output.assert_matches_text("Check file:///[WILDCARD]/main.ts\n");
+}
+
+#[test]
+fn byonm_package_specifier_not_installed_and_invalid_subpath() {
   let test_context = TestContextBuilder::for_npm()
     .env("DENO_UNSTABLE_BYONM", "1")
     .use_temp_cwd()
@@ -2362,7 +2407,7 @@ pub fn byonm_package_specifier_not_installed_and_invalid_subpath() {
 }
 
 #[test]
-pub fn byonm_package_npm_specifier_not_installed_and_invalid_subpath() {
+fn byonm_package_npm_specifier_not_installed_and_invalid_subpath() {
   let test_context = TestContextBuilder::for_npm()
     .env("DENO_UNSTABLE_BYONM", "1")
     .use_temp_cwd()
@@ -2406,7 +2451,7 @@ pub fn byonm_package_npm_specifier_not_installed_and_invalid_subpath() {
 }
 
 #[test]
-pub fn byonm_npm_workspaces() {
+fn byonm_npm_workspaces() {
   let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
   let dir = test_context.temp_dir();
   dir.write("deno.json", r#"{ "unstable": [ "byonm" ] }"#);
@@ -2486,10 +2531,27 @@ console.log(add(1, 2));
     .args("check ./project-b/main.ts")
     .run();
   output.assert_matches_text("Check file:///[WILDCARD]/project-b/main.ts\n");
+
+  // Now a file in the main directory should just be able to
+  // import it via node resolution even though a package.json
+  // doesn't exist here
+  dir.write(
+    "main.ts",
+    r#"
+import { getValue, setValue } from "@denotest/esm-basic";
+
+setValue(7);
+console.log(getValue());
+"#,
+  );
+  let output = test_context.new_command().args("run main.ts").run();
+  output.assert_matches_text("7\n");
+  let output = test_context.new_command().args("check main.ts").run();
+  output.assert_matches_text("Check file:///[WILDCARD]/main.ts\n");
 }
 
 #[test]
-pub fn cjs_export_analysis_require_re_export() {
+fn cjs_export_analysis_require_re_export() {
   let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
   let dir = test_context.temp_dir();
   dir.write("deno.json", r#"{ "unstable": [ "byonm" ] }"#);
@@ -2543,7 +2605,7 @@ pub fn cjs_export_analysis_require_re_export() {
 }
 
 #[test]
-pub fn cjs_rexport_analysis_json() {
+fn cjs_rexport_analysis_json() {
   let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
   let dir = test_context.temp_dir();
   dir.write("deno.json", r#"{ "unstable": [ "byonm" ] }"#);
@@ -2651,7 +2713,7 @@ itest!(different_nested_dep_node_modules_dir_true {
 });
 
 #[test]
-pub fn different_nested_dep_byonm() {
+fn different_nested_dep_byonm() {
   let test_context = TestContextBuilder::for_npm()
     .use_copy_temp_dir("npm/different_nested_dep")
     .cwd("npm/different_nested_dep/")
@@ -2667,7 +2729,7 @@ pub fn different_nested_dep_byonm() {
 }
 
 #[test]
-pub fn run_cjs_in_node_modules_folder() {
+fn run_cjs_in_node_modules_folder() {
   let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
   let temp_dir = test_context.temp_dir();
   temp_dir.write("package.json", "{}");

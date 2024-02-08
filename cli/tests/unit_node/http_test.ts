@@ -1,18 +1,14 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import EventEmitter from "node:events";
 import http, { type RequestOptions } from "node:http";
 import https from "node:https";
-import {
-  assert,
-  assertEquals,
-  fail,
-} from "../../../test_util/std/assert/mod.ts";
-import { assertSpyCalls, spy } from "../../../test_util/std/testing/mock.ts";
+import { assert, assertEquals, fail } from "@test_util/std/assert/mod.ts";
+import { assertSpyCalls, spy } from "@test_util/std/testing/mock.ts";
 
 import { gzip } from "node:zlib";
 import { Buffer } from "node:buffer";
-import { serve } from "../../../test_util/std/http/server.ts";
+import { serve } from "@test_util/std/http/server.ts";
 import { execCode } from "../unit/test_util.ts";
 
 Deno.test("[node/http listen]", async () => {
@@ -182,6 +178,30 @@ Deno.test("[node/http] server can respond with 101, 204, 205, 304 status", async
     });
     await promise;
   }
+});
+
+Deno.test("[node/http] IncomingRequest socket has remoteAddress + remotePort", async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+
+  let remoteAddress: string | undefined;
+  let remotePort: number | undefined;
+  const server = http.createServer((req, res) => {
+    remoteAddress = req.socket.remoteAddress;
+    remotePort = req.socket.remotePort;
+    res.end();
+  });
+  server.listen(async () => {
+    // deno-lint-ignore no-explicit-any
+    const port = (server.address() as any).port;
+    const res = await fetch(
+      `http://127.0.0.1:${port}/`,
+    );
+    await res.arrayBuffer();
+    assertEquals(remoteAddress, "127.0.0.1");
+    assertEquals(typeof remotePort, "number");
+    server.close(() => resolve());
+  });
+  await promise;
 });
 
 Deno.test("[node/http] request default protocol", async () => {
@@ -584,6 +604,27 @@ Deno.test("[node/http] ClientRequest setTimeout", async () => {
   assertEquals(body, "HTTP/1.1");
 });
 
+Deno.test("[node/http] ClientRequest setNoDelay", async () => {
+  let body = "";
+  const { promise, resolve, reject } = Promise.withResolvers<void>();
+  const timer = setTimeout(() => reject("timed out"), 50000);
+  const req = http.request("http://localhost:4545/http_version", (resp) => {
+    resp.on("data", (chunk) => {
+      body += chunk;
+    });
+
+    resp.on("end", () => {
+      resolve();
+    });
+  });
+  req.setNoDelay(true);
+  req.once("error", (e) => reject(e));
+  req.end();
+  await promise;
+  clearTimeout(timer);
+  assertEquals(body, "HTTP/1.1");
+});
+
 Deno.test("[node/http] ClientRequest PATCH", async () => {
   let body = "";
   const { promise, resolve, reject } = Promise.withResolvers<void>();
@@ -695,7 +736,9 @@ Deno.test(
     });
     // @ts-ignore it's a socket for real
     let serverSocket;
-    server.on("upgrade", (_req, socket, _head) => {
+    server.on("upgrade", (req, socket, _head) => {
+      // https://github.com/denoland/deno/issues/21979
+      assert(req.socket?.write);
       socket.write(
         "HTTP/1.1 101 Web Socket Protocol Handshake\r\n" +
           "Upgrade: WebSocket\r\n" +

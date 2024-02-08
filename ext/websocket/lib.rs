@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 use crate::stream::WebSocketStream;
 use bytes::Bytes;
 use deno_core::anyhow::bail;
@@ -33,7 +33,6 @@ use http::Method;
 use http::Request;
 use http::StatusCode;
 use http::Uri;
-use hyper::Body;
 use once_cell::sync::Lazy;
 use rustls_tokio_stream::rustls::RootCertStore;
 use rustls_tokio_stream::rustls::ServerName;
@@ -183,7 +182,7 @@ async fn handshake_websocket(
   request =
     populate_common_request_headers(request, &user_agent, protocols, &headers)?;
 
-  let request = request.body(Body::empty())?;
+  let request = request.body(http_body_util::Empty::new())?;
   let domain = &uri.host().unwrap().to_string();
   let port = &uri.port_u16().unwrap_or(match uri.scheme_str() {
     Some("wss") => 443,
@@ -218,7 +217,7 @@ async fn handshake_websocket(
 }
 
 async fn handshake_http1_ws(
-  request: Request<Body>,
+  request: Request<http_body_util::Empty<Bytes>>,
   addr: &String,
 ) -> Result<(WebSocket<WebSocketStream>, http::HeaderMap), AnyError> {
   let tcp_socket = TcpStream::connect(addr).await?;
@@ -227,7 +226,7 @@ async fn handshake_http1_ws(
 
 async fn handshake_http1_wss(
   state: &Rc<RefCell<OpState>>,
-  request: Request<Body>,
+  request: Request<http_body_util::Empty<Bytes>>,
   domain: &str,
   addr: &str,
 ) -> Result<(WebSocket<WebSocketStream>, http::HeaderMap), AnyError> {
@@ -302,7 +301,7 @@ async fn handshake_http2_wss(
 async fn handshake_connection<
   S: AsyncRead + AsyncWrite + Send + Unpin + 'static,
 >(
-  request: Request<Body>,
+  request: Request<http_body_util::Empty<Bytes>>,
   socket: S,
 ) -> Result<(WebSocket<WebSocketStream>, http::HeaderMap), AnyError> {
   let (upgraded, response) =
@@ -563,7 +562,7 @@ fn send_binary(state: &mut OpState, rid: ResourceId, data: &[u8]) {
   });
 }
 
-#[op2(fast)]
+#[op2]
 pub fn op_ws_send_binary(
   state: &mut OpState,
   #[smi] rid: ResourceId,
@@ -658,21 +657,6 @@ pub fn op_ws_get_buffered_amount(
     .unwrap()
     .buffered
     .get() as u32
-}
-
-#[op2(async)]
-pub async fn op_ws_send_pong(
-  state: Rc<RefCell<OpState>>,
-  #[smi] rid: ResourceId,
-) -> Result<(), AnyError> {
-  let resource = state
-    .borrow_mut()
-    .resource_table
-    .get::<ServerWebSocket>(rid)?;
-  let lock = resource.reserve_lock();
-  resource
-    .write_frame(lock, Frame::pong(EMPTY_PAYLOAD.into()))
-    .await
 }
 
 #[op2(async)]
@@ -840,7 +824,6 @@ deno_core::extension!(deno_websocket,
     op_ws_send_binary_async,
     op_ws_send_text_async,
     op_ws_send_ping,
-    op_ws_send_pong,
     op_ws_get_buffered_amount,
   ],
   esm = [ "01_websocket.js", "02_websocketstream.js" ],

@@ -6,6 +6,315 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.40.4 / 2024.02.08
+
+- feat(unstable): `Deno.FsFile.lock[Sync]()` and `Deno.FsFile.unlock[Sync]()`
+  (#22235)
+- feat: ARM64 builds (#22298)
+- fix(cli): Add IP address support to DENO_AUTH_TOKEN (#22297)
+- fix(ext/node): Ensure os.cpus() works on arm64 linux (#22302)
+- fix(ext/node): fix timeout param validation in cp.execFile (#22262)
+- fix(jupyter): ensure op is available (#22240)
+- fix(lint): point to migration docs in deprecated APIs rule (#22338)
+- fix(lsp): disable no-cache diagnostics for jsr specifiers (#22284)
+- fix(node): add `cp` to fs/promises (#22263)
+- fix(node): handle brotli compression end chunk sizes (#22322)
+- fix(os): total and free memory in bytes (#22247)
+- fix(publish): 'explit' typo (#22296)
+- fix(publish): handle diagnostic outside graph (#22310)
+- fix(publish): lazily parse sources (#22301)
+- fix(publish): use lighter crate for opening browser (#22224)
+- fix(test/regression): handle CLI arg directory using `../` in path (#22244)
+- fix(unstable): validate kv list selector (#22265)
+- fix: Fix segmentation fault in tests on CPUs with PKU support (#22152)
+- fix: Support Symbol.metadata (#22282)
+- fix: enable "--allow-sys=cpus" for "deno run" (#22260)
+- perf: remove duplicate `env::current_dir` call in package.json search (#22255)
+
+### 1.40.3 / 2024.02.01
+
+- Revert "refactor(cli): use new sanitizer for resources (#22125)" (#22153)
+- feat(unstable): implement `navigator.gpu.getPreferredCanvasFormat()` (#22149)
+- fix(ext/node): add `aes256` algorithm support (#22198)
+- fix(ext/node): limit OpState borrow in op_napi_open (#22151)
+- fix(fs): copyFile NUL path on macOS (#22216)
+- fix(install): forward granular --unstable-* flags (#22164)
+- fix(lockfile): only consider package.json beside lockfile in workspace
+  property (#22179)
+- fix(lsp): don't normalize urls in cache command params (#22182)
+- fix(node): `util.callbackify` (#22200)
+- fix(node): add `ppid` getter for `node:process` (#22167)
+- fix(publish): add node specifiers (#22213)
+- fix(publish): rename --no-fast-check to --no-zap (#22214)
+- fix(runtime): return number from `op_ppid` instead of bigint (#22169)
+- fix: canary for arm64 macos (#22187)
+
+### 1.40.2 / 2024.01.26
+
+- feat(lsp): complete parameters as tab stops and placeholders (#22126)
+- fix(ext/http): smarter handling of Accept-Encoding (#22130)
+- fix(fs): instanceof check for Deno.FsFile (#22121)
+- fix(node): remove deprecation warnings (#22120)
+- fix(testing): add op_spawn_wait mapping in resource sanitizer (#22129)
+- fix: make deprecation warnings less verbose (#22128)
+
+### 1.40.1 / 2024.01.25
+
+- fix(lsp): disable experimentalDecorators by default (#22101)
+
+### 1.40.0 / 2024.01.25
+
+- feat(unstable): remove `Deno.cron()` overload (#22035)
+- feat: improved diagnostics printing (#22049)
+- feat(jupyter): don't require --unstable flag (#21963)
+- feat(lockfile): track JSR and npm dependencies in config file (#22004)
+- feat(lsp): include scope uri in "deno/didChangeDenoConfiguration" (#22002)
+- feat(lsp): send "deno/didChangeDenoConfiguration" on init (#21965)
+- feat(publish): error on invalid external imports (#22088)
+- feat(publish): exclude and include (#22055)
+- feat(publish): give diagnostic on invalid package files (#22082)
+- feat(unstable): add Temporal API support (#21738)
+- feat(unstable): remove Deno.upgradeHttp API (#21856)
+- feat(web): ImageBitmap (#21898)
+- feat: "rejectionhandled" Web event and "rejectionHandled" Node event (#21875)
+- feat: Expand 'imports' section of deno.json (#22087)
+- feat: Stabilize Deno.connect for 'unix' transport (#21937)
+- feat: Stabilize Deno.listen for 'unix' transport (#21938)
+- feat: TC39 decorator proposal support (#22040)
+- feat: `Deno.FsFile.dataSync()` and `Deno.FsFile.dataSyncSync()` (#22019)
+- feat: `Deno.FsFile.{utime,utimeSync}()` and deprecate
+  `Deno.{futime,futimeSync}` (#22070)
+- feat: `Deno.{stdin,stdout,stderr}.isTerminal()`, deprecate `Deno.isatty()`
+  (#22011)
+- feat: `FsFile.sync()` and `FsFile.syncSync()` (#22017)
+- feat: deprecate `Deno.serveHttp` API (#21874)
+- feat: deprecate `Deno.FsFile` constructor and `Deno.FsFile.rid` (#22072)
+- feat: deprecate `Deno.FsWatcher.rid` (#22074)
+- feat: deprecate `Deno.Listener.rid` (#22076)
+- feat: deprecate `Deno.close()` (#22066)
+- feat: deprecate `Deno.fstat()` and `Deno.fstatSync()` (#22068)
+- feat: deprecate `Deno.ftruncate()` and `Deno.ftruncateSync()` (#22069)
+- feat: deprecate `Deno.read()` and `Deno.readSync()` (#22063)
+- feat: deprecate `Deno.resources()` (#22059)
+- feat: deprecate `Deno.seek()` and `Deno.seekSync()` (#22065)
+- feat: deprecate `Deno.shutdown()` (#22067)
+- feat: deprecate `Deno.write()` and `Deno.writeSync()` (#22064)
+- feat: deprecate `Deno.{Conn,TcpConn,TlsConn,UnixConn}.rid` (#22077)
+- feat: deprecate `Deno.{stdin,stdout,stderr}.rid` (#22073)
+- feat: deprecate `window` global (#22057)
+- feat: import.meta.filename and import.meta.dirname (#22061)
+- feat: remove conditional unstable type-checking (#21825)
+- feat: stabilize Deno.Conn.ref/unref (#21890)
+- feat: stabilize Deno.connectTls options and Deno.TlsConn.handshake (#21889)
+- feat: warn when using --unstable, prefer granular flags (#21452)
+- feat: External webgpu surfaces / BYOW (#21835)
+- fix(BREAKING): remove dead `--prompt` flag (#22038)
+- fix(ext/cron): automatically override unspecified values (#22042)
+- fix(ext/node): fix no arg call of fs.promises.readFile (#22030)
+- fix(info): return proper exit code on error (#21952)
+- fix(lsp): improved npm specifier to import map entry mapping (#22016)
+- fix(lsp): regression - formatting was broken on windows (#21972)
+- fix(node): remove use of non existing `FunctionPrototypeApply` primordial
+  (#21986)
+- fix(node): update `req.socket` on WS upgrade (#21984)
+- fix(node): use `cppgc` for managing X509Certificate (#21999)
+- fix(node/fs): promises not exporting fs constants (#21997)
+- fix(node/http): remoteAddress and remotePort not being set (#21998)
+- fix(types): align global deno worker type with deno.worker/webworker one
+  (#21936)
+
+### 1.39.4 / 2024.01.13
+
+- fix(config): regression - handle relative patterns with leading dot slash
+  (#21922)
+- fix(check): should not panic when all specified files excluded (#21929)
+
+### 1.39.3 / 2024.01.12
+
+- feat(unstable): fast subset type checking of JSR dependencies (#21873)
+- fix(ci): update copright year for _fs_cp.js (#21803)
+- fix(cli): update import map url (#21824)
+- fix(compile): preserve granular unstable features (#21827)
+- fix(ext): enable prefer-primordials for internal TypeScript (#21813)
+- fix(ext/crypto): initial support for p521 in `generateKey` and `importKey`
+  (#21815)
+- fix(ext/node): add WriteStream.isTTY (#21801)
+- fix(ext/node): add fs.cp, fs.cpSync, promises.cp (#21745)
+- fix(ext/websocket): pass on uncaught errors in idleTimeout (#21846)
+- fix(fast_check): analyze identifiers in type assertions/as exprs (#21899)
+- fix(kv): improve .listenQueue types (#21781)
+- fix(lsp): implement host.getGlobalTypingsCacheLocation() (#21882)
+- fix(lsp): show test code lens for template literal names (#21798)
+- fix(lsp): use a dedicated thread for the parent process checker (#21869)
+- fix(registry): wait for already pending publish (#21663)
+- fix(task): do not eagerly auto-install packages in package.json when
+  `"nodeModulesDir": false` (#21858)
+- fix(unstable/tar): skip node_modules, .git, and config "exclude" (#21816)
+- fix(web): use rustyline for prompt (#21893)
+- fix: add EventSource typings (#21908)
+- fix: android support (#19437)
+- fix: cjs export rewritten to invalid identifier (#21853)
+- fix: update deno_lint and swc (#21718)
+- perf(lsp): use host-owned cache for auto-import completions (#21852)
+- perf: skip expanding exclude globs (#21817)
+
+### 1.39.2 / 2024.01.04
+
+- Revert "fix(runtime): Make native modal keyboard interaction consistent with
+  browsers" (#21739)
+- feat(lsp): allow to connect V8 inspector (#21482)
+- feat(lsp): cache jsxImportSource automatically (#21687)
+- feat(unstable): only allow http2 for kv remote backend (#21616)
+- fix(ci): copyright year for console_test.ts (#21787)
+- fix(cli): harden permission stdio check (#21778)
+- fix(cli): make signals tests more reliable (#21772)
+- fix(cli): respect `exclude` option for `deno check` command (#21779)
+- fix(ext/http): use arraybuffer binaryType for server websocket (#21741)
+- fix(ext/node): Implement `aes-192-ecb` and `aes-256-ecb` (#21710)
+- fix(ext/node): UdpSocket ref and unref (#21777)
+- fix(ext/node): add ClientRequest#setNoDelay (#21694)
+- fix(ext/node): add process.abort() (#21742)
+- fix(ext/node): implement os.machine (#21751)
+- fix(ext/node): querystring stringify without encode callback (#21740)
+- fix(ext/node): use node:process in _streams.mjs (#21755)
+- fix(http_client): Fix Deno.createHttpClient to accept poolIdleTimeout
+  parameter (#21603)
+- fix(jupyter): error message when install fails due to jupyter command not
+  being on PATH (#21767)
+- fix(lsp): support test code lens for Deno.test.{ignore,only}() (#21775)
+- fix(node): Implement os.cpus() (#21697)
+- fix(node): support nested tests in "node:test" (#21717)
+- fix(node/zlib): accept dataview and buffer in zlib bindings (#21756)
+- fix(node/zlib): cast Dataview and Buffer to uint8 (#21746)
+- fix(node/zlib): consistently return buffer (#21747)
+- fix(unstable): kv watch should stop when db is closed (#21665)
+- fix(unstable/byonm): support using an import map with byonm (#21786)
+- fix: `Object.groupBy` return type should be a partial (#21680)
+- fix: allow npm: specifiers in import.meta.resolve (#21716)
+- fix: strict type check for cross realms (#21669)
+- perf(coverage): faster source mapping (#21783)
+- perf(lsp): use LanguageServiceHost::getProjectVersion() (#21719)
+- perf: remove opAsync (#21690)
+
+### 1.39.1 / 2023.12.21
+
+- fix(bench): added group banner to bench output. (#21551)
+- fix(console): inspect for `{Set,Map}Iterator` and `Weak{Set,Map}` (#21554)
+- fix(coverage): add default coverage include dir (#21625)
+- fix(coverage): error if no files found (#21615)
+- fix(devcontainer): moved settings to customizations/vscode (#21512)
+- fix(ext/napi): don't close handle scopes in NAPI as the pointers are invalid
+  (#21629)
+- fix(jupyter): Deno.test() panic (#21606)
+- fix(lsp): apply specifier rewrite to CompletionItem::text_edit (#21564)
+- fix(net): remove unstable check for unix socket listen (#21592)
+- fix(node): add crypto.pseudoRandomBytes (#21649)
+- fix(node): child_process IPC on Windows (#21597)
+- fix(node): child_process kill cancel pending IPC reads (#21647)
+- fix(node): return false from vm.isContext (#21568)
+- fix(node): support resolving a package.json import to a builtin node module
+  (#21576)
+- fix(repl): remove stray debug log (#21635)
+- fix: prompts when publishing (#21596)
+- fix: urls for publishing (#21613)
+
+### 1.39.0 / 2023.12.13
+
+- Reland "fix(ext/console): fix inspecting iterators error. (#20720)" (#21370)
+- Update doc for deno fmt `--no-semicolons` arg. (#21414)
+- feat(compile): support "bring your own node_modules" in deno compile (#21377)
+- feat(compile): support discovering modules for more dynamic arguments (#21381)
+- feat(coverage): add html reporter (#21495)
+- feat(coverage): add summary reporter (#21535)
+- feat(cron): added the support for json type schedule to cron api (#21340)
+- feat(ext/fetch): allow `Deno.HttpClient` to be declared with `using` (#21453)
+- feat(ext/kv) add backoffSchedule to enqueue (#21474)
+- feat(ext/web): add ImageData Web API (#21183)
+- feat(fmt): support formatting code blocks in Jupyter notebooks (#21310)
+- feat(lsp): debug log file (#21500)
+- feat(lsp): provide quick fixes for specifiers that could be resolved sloppily
+  (#21506)
+- feat(streams): ReadableStream.read min option (#20849)
+- feat(test): add default to --coverage option (#21510)
+- feat(unstable): --unstable-unsafe-proto (#21313)
+- feat(unstable): ability to resolve specifiers with no extension, specifiers
+  for a directory, and TS files from JS extensions (#21464)
+- feat(unstable): append commit versionstamp to key (#21556)
+- feat: TypeScript 5.3 (#21480)
+- feat: add suggestions to module not found error messages for file urls
+  (#21498)
+- feat: bring back WebGPU (#20812)
+- feat: stabilize Deno.HttpServer.shutdown and Unix socket support (#21463)
+- fix (doc): Typo in `runtime/README.md` (#20020)
+- fix(cli/installer): percent decode name (#21392)
+- fix(compile/npm): ignore symlinks to non-existent paths in node_modules
+  directory (#21479)
+- fix(coverage): escape source code in html coverage report (#21531)
+- fix(coverage): rename --pretty to --detailed (#21543)
+- fix(cron): move deprecated Deno.cron overload (#21407)
+- fix(doc): ambient namespaces should have members as exports (#21483)
+- fix(dts): `Deno.ChildProcess` actually implements `AsyncDisposable` (#21326)
+- fix(ext/kv): throw error if already closed (#21459)
+- fix(ext/node): ServerResponse getHeader() return undefined (#21525)
+- fix(ext/node): add stubbed process.report (#21373)
+- fix(ext/node): add util.parseArgs (#21342)
+- fix(ext/node): allow null value for req.setHeader (#21391)
+- fix(ext/node): basic vm.runInNewContext implementation (#21527)
+- fix(ext/node): fix Buffer.copy when sourceStart > source.length (#21345)
+- fix(ext/node): fix duplexify compatibility (#21346)
+- fix(ext/node): fix os.freemem (#21347)
+- fix(ext/node): include non-enumerable keys in `Reflect.ownKeys(globalThis)`
+  (#21485)
+- fix(ext/node): sign with PEM private keys (#21287)
+- fix(ext/node): stub ServerResponse#flushHeaders (#21526)
+- fix(ext/node): use primordials in ext/node/polyfills/_util (#21444)
+- fix(ext/websocket): don't panic on bad resource id (#21431)
+- fix(fmt): `"singleQuote": true` should prefer single quote—not always use one
+  (#21470)
+- fix(fmt): remove trailing comma for single type param in default export in jsx
+  (#21425)
+- fix(fmt/jupyter): handle "source" property that's a string (#21361)
+- fix(lsp): handle byonm specifiers in jupyter notebooks (#21332)
+- fix(node): setting process.exitCode should change exit code of process
+  (#21429)
+- fix(node/tls): fix NotValidForName for host set via socket / servername
+  (#21441)
+- fix(npm): do not create symlink for non-system optional dep in node_modules
+  directory (#21478)
+- fix(perm): allow-net with port 80 (#21221)
+- fix(permissions): fix panics when revoking net permission (#21388)
+- fix(runtime): Make native modal keyboard interaction consistent with browsers
+  (#18453)
+- fix(task): handle node_modules/.bin directory with byonm (#21386)
+- fix(task): use exit code 127 for command not found and parse escaped parens
+  (#21316)
+- fix(unstable): Honor granular unstable flags in js runtime (#21466)
+- fix(websockets): server socket field initialization (#21433)
+- fix(zlib): handle no flush flag in handle_.write (#21432)
+- fix: add more warnings when using sloppy imports (#21503)
+- fix: allow reserved word 'mod' in exports (#21537)
+- fix: batch upload authentication (#21397)
+- fix: correct flag in tar & upload (#21327)
+- fix: correct the batch upload length (#21401)
+- fix: display unstable flags at bottom of help text (#21468)
+- fix: don't error if a version already published (#21455)
+- fix: error code used for duplicate version publish (#21457)
+- fix: extraneous slash in tar & upload (#21349)
+- fix: ignore more paths in dynamic arg module search (#21539)
+- fix: implement child_process IPC (#21490)
+- fix: use correct import map in tar & upload (#21380)
+- perf(ext/ffi): switch from middleware to tasks (#21239)
+- perf(ext/napi): port NAPI to v8 tasks (#21406)
+- perf(ext/url): improve URLPattern perf (#21488)
+- perf(ext/web): Avoid changing prototype by setting hostObjectBrand directly
+  (#21358)
+- perf(lsp): collect counts and durations of all requests (#21540)
+- perf(lsp): instrument all ops with performance marks (#21536)
+- perf(lsp): simplify some of the startup code (#21538)
+- perf(lsp): use null types instead of stub modules (#21541)
+- perf(node/fs): faster `existsSync` when not exists (#21458)
+- perf: move "cli/js/40_testing.js" out of main snapshot (#21212)
+
 ### 1.38.5 / 2023.12.05
 
 - feat(unstable): kv.watch() (#21147)

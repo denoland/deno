@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use super::diagnostics::DenoDiagnostic;
 use super::diagnostics::DiagnosticSource;
@@ -25,12 +25,14 @@ use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_node::NpmResolver;
 use deno_runtime::deno_node::PathClean;
 use deno_runtime::permissions::PermissionsContainer;
+use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
 use import_map::ImportMap;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::cmp::Ordering;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::path::Path;
 use tower_lsp::lsp_types as lsp;
 use tower_lsp::lsp_types::Position;
@@ -133,7 +135,7 @@ pub fn get_lint_references(
   parsed_source: &deno_ast::ParsedSource,
   lint_rules: Vec<&'static dyn LintRule>,
 ) -> Result<Vec<Reference>, AnyError> {
-  let linter = create_linter(parsed_source.media_type(), lint_rules);
+  let linter = create_linter(lint_rules);
   let lint_diagnostics = linter.lint_with_ast(parsed_source);
 
   Ok(
@@ -211,19 +213,30 @@ impl<'a> TsResponseImportMapper<'a> {
           if !pkg_reqs.is_empty() {
             let sub_path = self.resolve_package_path(specifier);
             if let Some(import_map) = self.maybe_import_map {
-              for pkg_req in &pkg_reqs {
-                let paths = vec![
-                  concat_npm_specifier("npm:", pkg_req, sub_path.as_deref()),
-                  concat_npm_specifier("npm:/", pkg_req, sub_path.as_deref()),
-                ];
-                for path in paths {
-                  if let Some(mapped_path) = ModuleSpecifier::parse(&path)
-                    .ok()
-                    .and_then(|s| import_map.lookup(&s, referrer))
+              let pkg_reqs = pkg_reqs.iter().collect::<HashSet<_>>();
+              let mut matches = Vec::new();
+              for entry in import_map.entries_for_referrer(referrer) {
+                if let Some(value) = entry.raw_value {
+                  if let Ok(package_ref) =
+                    NpmPackageReqReference::from_str(value)
                   {
-                    return Some(mapped_path);
+                    if pkg_reqs.contains(package_ref.req()) {
+                      let sub_path = sub_path.as_deref().unwrap_or("");
+                      let value_sub_path = package_ref.sub_path().unwrap_or("");
+                      if let Some(key_sub_path) =
+                        sub_path.strip_prefix(value_sub_path)
+                      {
+                        matches
+                          .push(format!("{}{}", entry.raw_key, key_sub_path));
+                      }
+                    }
                   }
                 }
+              }
+              // select the shortest match
+              matches.sort_by_key(|a| a.len());
+              if let Some(matched) = matches.first() {
+                return Some(matched.to_string());
               }
             }
 
@@ -267,6 +280,22 @@ impl<'a> TsResponseImportMapper<'a> {
     // a search for the .d.ts file instead
     if specifier_path.extension().and_then(|e| e.to_str()) == Some("js") {
       search_paths.insert(0, specifier_path.with_extension("d.ts"));
+    } else if let Some(file_name) =
+      specifier_path.file_name().and_then(|f| f.to_str())
+    {
+      // In some other cases, typescript will provide the .d.ts extension, but the
+      // export might not have a .d.ts defined. In that case, look for the corresponding
+      // JavaScript file after not being able to find the .d.ts file.
+      if let Some(file_stem) = file_name.strip_suffix(".d.ts") {
+        search_paths
+          .push(specifier_path.with_file_name(format!("{}.js", file_stem)));
+      } else if let Some(file_stem) = file_name.strip_suffix(".d.cts") {
+        search_paths
+          .push(specifier_path.with_file_name(format!("{}.cjs", file_stem)));
+      } else if let Some(file_stem) = file_name.strip_suffix(".d.mts") {
+        search_paths
+          .push(specifier_path.with_file_name(format!("{}.mjs", file_stem)));
+      }
     }
 
     for search_path in search_paths {
@@ -423,11 +452,11 @@ fn fix_ts_import_action(
   if action.fix_name == "import" {
     let change = action
       .changes
-      .get(0)
+      .first()
       .ok_or_else(|| anyhow!("Unexpected action changes."))?;
     let text_change = change
       .text_changes
-      .get(0)
+      .first()
       .ok_or_else(|| anyhow!("Missing text change."))?;
     if let Some(captures) = IMPORT_SPECIFIER_RE.captures(&text_change.new_text)
     {

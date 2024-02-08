@@ -1,5 +1,6 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use crate::tools::test::fmt::OP_DETAILS;
 use crate::tools::test::TestDescription;
 use crate::tools::test::TestEvent;
 use crate::tools::test::TestEventSender;
@@ -47,6 +48,7 @@ deno_core::extension!(deno_test,
     op_test_op_sanitizer_collect,
     op_test_op_sanitizer_finish,
     op_test_op_sanitizer_report,
+    op_test_op_sanitizer_get_async_message,
   ],
   options = {
     sender: TestEventSender,
@@ -123,6 +125,8 @@ fn op_register_test(
   #[string] name: String,
   ignore: bool,
   only: bool,
+  sanitize_ops: bool,
+  sanitize_resources: bool,
   #[string] file_name: String,
   #[smi] line_number: u32,
   #[smi] column_number: u32,
@@ -141,6 +145,8 @@ fn op_register_test(
     name,
     ignore,
     only,
+    sanitize_ops,
+    sanitize_resources,
     origin: origin.clone(),
     location: TestLocation {
       file_name,
@@ -414,5 +420,17 @@ fn op_test_op_sanitizer_report(
     _ => Err(generic_error(format!(
       "Metrics not finished collecting for test id {id}",
     ))),
+  }
+}
+
+#[op2]
+#[serde]
+fn op_test_op_sanitizer_get_async_message(
+  #[string] op_name: &str,
+) -> (String, Option<String>) {
+  if let Some(output) = OP_DETAILS.get(op_name) {
+    (output[0].to_string(), Some(output[1].to_string()))
+  } else {
+    (op_name.to_string(), None)
   }
 }

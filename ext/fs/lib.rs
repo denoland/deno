@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 mod interface;
 mod ops;
@@ -130,8 +130,12 @@ deno_core::extension!(deno_fs,
     op_fs_seek_async,
     op_fs_fdatasync_sync,
     op_fs_fdatasync_async,
+    op_fs_fdatasync_sync_unstable,
+    op_fs_fdatasync_async_unstable,
     op_fs_fsync_sync,
     op_fs_fsync_async,
+    op_fs_fsync_sync_unstable,
+    op_fs_fsync_async_unstable,
     op_fs_fstat_sync,
     op_fs_fstat_async,
     op_fs_flock_sync,

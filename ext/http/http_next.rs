@@ -1,7 +1,6 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 use crate::compressible::is_content_compressible;
 use crate::extract_network_stream;
-use crate::hyper_util_tokioio::TokioIo;
 use crate::network_buffered_stream::NetworkStreamPrefixCheck;
 use crate::request_body::HttpRequestBody;
 use crate::request_properties::HttpConnectionProperties;
@@ -44,23 +43,23 @@ use deno_core::ResourceId;
 use deno_net::ops_tls::TlsStream;
 use deno_net::raw::NetworkStream;
 use deno_websocket::ws_create_server_stream;
-use fly_accept_encoding::Encoding;
-use http::header::ACCEPT_ENCODING;
-use http::header::CACHE_CONTROL;
-use http::header::CONTENT_ENCODING;
-use http::header::CONTENT_LENGTH;
-use http::header::CONTENT_RANGE;
-use http::header::CONTENT_TYPE;
-use http::HeaderMap;
-use hyper1::body::Incoming;
-use hyper1::header::COOKIE;
-use hyper1::http::HeaderName;
-use hyper1::http::HeaderValue;
-use hyper1::server::conn::http1;
-use hyper1::server::conn::http2;
-use hyper1::service::service_fn;
-use hyper1::service::HttpService;
-use hyper1::StatusCode;
+use hyper::body::Incoming;
+use hyper::header::HeaderMap;
+use hyper::header::ACCEPT_ENCODING;
+use hyper::header::CACHE_CONTROL;
+use hyper::header::CONTENT_ENCODING;
+use hyper::header::CONTENT_LENGTH;
+use hyper::header::CONTENT_RANGE;
+use hyper::header::CONTENT_TYPE;
+use hyper::header::COOKIE;
+use hyper::http::HeaderName;
+use hyper::http::HeaderValue;
+use hyper::server::conn::http1;
+use hyper::server::conn::http2;
+use hyper::service::service_fn;
+use hyper::service::HttpService;
+use hyper::StatusCode;
+use hyper_util::rt::TokioIo;
 use once_cell::sync::Lazy;
 use smallvec::SmallVec;
 use std::borrow::Cow;
@@ -72,10 +71,13 @@ use std::pin::Pin;
 use std::ptr::null;
 use std::rc::Rc;
 
+use super::fly_accept_encoding;
+use fly_accept_encoding::Encoding;
+
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 
-type Request = hyper1::Request<Incoming>;
+type Request = hyper::Request<Incoming>;
 
 static USE_WRITEV: Lazy<bool> = Lazy::new(|| {
   let enable = std::env::var("DENO_USE_WRITEV").ok();
@@ -556,24 +558,25 @@ fn is_request_compressible(
     return Compression::None;
   };
 
-  match accept_encoding.to_str().unwrap() {
+  match accept_encoding.to_str() {
     // Firefox and Chrome send this -- no need to parse
-    "gzip, deflate, br" => return Compression::Brotli,
-    "gzip" => return Compression::GZip,
-    "br" => return Compression::Brotli,
+    Ok("gzip, deflate, br") => return Compression::Brotli,
+    Ok("gzip") => return Compression::GZip,
+    Ok("br") => return Compression::Brotli,
     _ => (),
   }
 
   // Fall back to the expensive parser
-  let accepted = fly_accept_encoding::encodings_iter(headers).filter(|r| {
-    matches!(
-      r,
-      Ok((
-        Some(Encoding::Identity | Encoding::Gzip | Encoding::Brotli),
-        _
-      ))
-    )
-  });
+  let accepted =
+    fly_accept_encoding::encodings_iter_http_1(headers).filter(|r| {
+      matches!(
+        r,
+        Ok((
+          Some(Encoding::Identity | Encoding::Gzip | Encoding::Brotli),
+          _
+        ))
+      )
+    });
   match fly_accept_encoding::preferred(accepted) {
     Ok(Some(fly_accept_encoding::Encoding::Gzip)) => Compression::GZip,
     Ok(Some(fly_accept_encoding::Encoding::Brotli)) => Compression::Brotli,
@@ -766,7 +769,7 @@ pub fn op_http_set_response_body_text(
   }
 }
 
-#[op2(fast)]
+#[op2]
 pub fn op_http_set_response_body_bytes(
   external: *const c_void,
   #[buffer] buffer: JsBuffer,
@@ -788,7 +791,7 @@ fn serve_http11_unconditional(
   io: impl HttpServeStream,
   svc: impl HttpService<Incoming, ResBody = HttpRecordResponse> + 'static,
   cancel: Rc<CancelHandle>,
-) -> impl Future<Output = Result<(), hyper1::Error>> + 'static {
+) -> impl Future<Output = Result<(), hyper::Error>> + 'static {
   let conn = http1::Builder::new()
     .keep_alive(true)
     .writev(*USE_WRITEV)
@@ -810,7 +813,7 @@ fn serve_http2_unconditional(
   io: impl HttpServeStream,
   svc: impl HttpService<Incoming, ResBody = HttpRecordResponse> + 'static,
   cancel: Rc<CancelHandle>,
-) -> impl Future<Output = Result<(), hyper1::Error>> + 'static {
+) -> impl Future<Output = Result<(), hyper::Error>> + 'static {
   let conn =
     http2::Builder::new(LocalExecutor).serve_connection(TokioIo::new(io), svc);
   async {

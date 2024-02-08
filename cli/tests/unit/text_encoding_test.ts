@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
   assertEquals,
@@ -270,7 +270,7 @@ Deno.test(function textEncoderShouldCoerceToString() {
 
 Deno.test(function binaryEncode() {
   // @ts-ignore: Deno[Deno.internal].core allowed
-  const ops = Deno[Deno.internal].core.ops;
+  const core = Deno[Deno.internal].core;
   function asBinaryString(bytes: Uint8Array): string {
     return Array.from(bytes).map(
       (v: number) => String.fromCodePoint(v),
@@ -281,30 +281,6 @@ Deno.test(function binaryEncode() {
     const chars: string[] = Array.from(binaryString);
     return chars.map((v: string): number | undefined => v.codePointAt(0));
   }
-
-  // invalid utf-8 code points
-  const invalid = new Uint8Array([0xC0]);
-  assertEquals(
-    ops.op_encode_binary_string(invalid),
-    asBinaryString(invalid),
-  );
-
-  const invalid2 = new Uint8Array([0xC1]);
-  assertEquals(
-    ops.op_encode_binary_string(invalid2),
-    asBinaryString(invalid2),
-  );
-
-  for (let i = 0, j = 255; i <= 255; i++, j--) {
-    const bytes = new Uint8Array([i, j]);
-    const binaryString = ops.op_encode_binary_string(bytes);
-    assertEquals(
-      binaryString,
-      asBinaryString(bytes),
-    );
-    assertEquals(Array.from(bytes), decodeBinary(binaryString));
-  }
-
   const inputs = [
     "σ😀",
     "Кириллица is Cyrillic",
@@ -315,7 +291,7 @@ Deno.test(function binaryEncode() {
   ];
   for (const input of inputs) {
     const bytes = new TextEncoder().encode(input);
-    const binaryString = ops.op_encode_binary_string(bytes);
+    const binaryString = core.encodeBinaryString(bytes);
     assertEquals(
       binaryString,
       asBinaryString(bytes),

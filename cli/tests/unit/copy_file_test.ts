@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import { assertEquals, assertRejects, assertThrows } from "./test_util.ts";
 
 function readFileString(filename: string | URL): string {
@@ -234,5 +234,16 @@ Deno.test(
     // > 128 KB
     copyFileSyncMode("Hello world!");
     copyFileSyncMode("Hello world!".repeat(128 * 1024));
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, write: true } },
+  async function copyFileNulPath() {
+    const fromFilename = "from.txt\0";
+    const toFilename = "to.txt\0";
+    await assertRejects(async () => {
+      await Deno.copyFile(fromFilename, toFilename);
+    }, TypeError);
   },
 );

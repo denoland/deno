@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import { $, ReleasesMdFile, Repo } from "./deps.ts";
 
@@ -54,7 +54,7 @@ export class DenoWorkspace {
 
   async runFormatter() {
     await this.#repo.command(
-      "deno run --unstable --allow-write --allow-read --allow-net --allow-run ./tools/format.js",
+      "deno run --allow-write --allow-read --allow-net --allow-run ./tools/format.js",
     );
   }
 }

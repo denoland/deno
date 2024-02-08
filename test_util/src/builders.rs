@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -24,6 +24,7 @@ use crate::env_vars_for_jsr_tests;
 use crate::env_vars_for_npm_tests;
 use crate::fs::PathRef;
 use crate::http_server;
+use crate::jsr_registry_unset_url;
 use crate::lsp::LspClientBuilder;
 use crate::npm_registry_unset_url;
 use crate::pty::Pty;
@@ -128,6 +129,19 @@ impl TestContextBuilder {
   pub fn cwd(mut self, cwd: impl AsRef<str>) -> Self {
     self.cwd = Some(cwd.as_ref().to_string());
     self
+  }
+
+  pub fn envs<I, K, V>(self, vars: I) -> Self
+  where
+    I: IntoIterator<Item = (K, V)>,
+    K: AsRef<str>,
+    V: AsRef<str>,
+  {
+    let mut this = self;
+    for (key, value) in vars {
+      this = this.env(key, value);
+    }
+    this
   }
 
   pub fn env(mut self, key: impl AsRef<str>, value: impl AsRef<str>) -> Self {
@@ -672,6 +686,9 @@ impl TestCommandBuilder {
     }
     if !envs.contains_key("DENO_NO_UPDATE_CHECK") {
       envs.insert("DENO_NO_UPDATE_CHECK".to_string(), "1".to_string());
+    }
+    if !envs.contains_key("DENO_REGISTRY_URL") {
+      envs.insert("DENO_REGISTRY_URL".to_string(), jsr_registry_unset_url());
     }
     for key in &self.envs_remove {
       envs.remove(key);

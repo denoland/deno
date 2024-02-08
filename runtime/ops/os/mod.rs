@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use super::utils::into_string;
 use crate::permissions::PermissionsContainer;
@@ -17,9 +17,9 @@ use std::env;
 
 mod sys_info;
 
-deno_core::ops!(
-  deno_ops,
-  [
+deno_core::extension!(
+  deno_os,
+  ops = [
     op_env,
     op_exec_path,
     op_exit,
@@ -36,12 +36,7 @@ deno_core::ops!(
     op_system_memory_info,
     op_uid,
     op_runtime_memory_usage,
-  ]
-);
-
-deno_core::extension!(
-  deno_os,
-  ops_fn = deno_ops,
+  ],
   options = {
     exit_code: ExitCode,
   },
@@ -52,7 +47,24 @@ deno_core::extension!(
 
 deno_core::extension!(
   deno_os_worker,
-  ops_fn = deno_ops,
+  ops = [
+    op_env,
+    op_exec_path,
+    op_exit,
+    op_delete_env,
+    op_get_env,
+    op_gid,
+    op_hostname,
+    op_loadavg,
+    op_network_interfaces,
+    op_os_release,
+    op_os_uptime,
+    op_set_env,
+    op_set_exit_code,
+    op_system_memory_info,
+    op_uid,
+    op_runtime_memory_usage,
+  ],
   middleware = |op| match op.name {
     "op_exit" | "op_set_exit_code" =>
       op.with_implementation_from(&deno_core::op_void_sync::DECL),
@@ -320,7 +332,7 @@ fn op_runtime_memory_usage(scope: &mut v8::HandleScope) -> MemoryUsage {
   }
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 fn rss() -> usize {
   // Inspired by https://github.com/Arc-blroth/memory-stats/blob/5364d0d09143de2a470d33161b2330914228fde9/src/linux.rs
 

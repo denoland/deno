@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // deno-lint-ignore-file
 
 // Run using cargo test or `--v8-flags=--allow-natives-syntax`
@@ -20,7 +20,7 @@ const [libPrefix, libSuffix] = {
 }[Deno.build.os];
 const libPath = `${targetDir}/${libPrefix}test_ffi.${libSuffix}`;
 
-const resourcesPre = Deno.resources();
+const resourcesPre = Deno[Deno.internal].core.resources();
 
 // dlopen shouldn't panic
 assertThrows(() => {
@@ -372,7 +372,9 @@ assertEquals(isNullBufferDeopt(new Uint8Array()), true, "isNullBufferDeopt(new U
 
 // V8 bug: inline Uint8Array creation to fast call sees non-null pointer
 // https://bugs.chromium.org/p/v8/issues/detail?id=13489
-assertEquals(isNullBuffer(new Uint8Array()), false, "isNullBuffer(new Uint8Array()) !== false");
+if (Deno.build.os != "linux" || Deno.build.arch != "aarch64") {
+  assertEquals(isNullBuffer(new Uint8Array()), false, "isNullBuffer(new Uint8Array()) !== false");
+}
 
 // Externally backed ArrayBuffer has a non-null data pointer, even though its length is zero.
 const externalZeroBuffer = new Uint8Array(Deno.UnsafePointerView.getArrayBuffer(ptr0, 0));
@@ -765,7 +767,7 @@ testOptimized(hash, () => hash());
   nestedCallback.close();
   addToFooCallback.close();
 
-  const resourcesPost = Deno.resources();
+  const resourcesPost = Deno[Deno.internal].core.resources();
 
   const preStr = JSON.stringify(resourcesPre, null, 2);
   const postStr = JSON.stringify(resourcesPost, null, 2);

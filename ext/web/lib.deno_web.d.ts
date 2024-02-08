@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // deno-lint-ignore-file no-explicit-any no-var
 
@@ -1239,15 +1239,15 @@ declare function reportError(
 ): void;
 
 /** @category Web APIs */
-type PredefinedColorSpace = "srgb" | "display-p3";
+declare type PredefinedColorSpace = "srgb" | "display-p3";
 
 /** @category Web APIs */
-interface ImageDataSettings {
+declare interface ImageDataSettings {
   readonly colorSpace?: PredefinedColorSpace;
 }
 
 /** @category Web APIs */
-interface ImageData {
+declare interface ImageData {
   readonly colorSpace: PredefinedColorSpace;
   readonly data: Uint8ClampedArray;
   readonly height: number;

@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use super::definitions::TestDefinition;
 use super::definitions::TestModule;
@@ -363,7 +363,9 @@ impl TestRun {
                   test::TestResult::Ignored => summary.ignored += 1,
                   test::TestResult::Failed(error) => {
                     summary.failed += 1;
-                    summary.failures.push((description.clone(), error.clone()));
+                    summary
+                      .failures
+                      .push(((&description).into(), error.clone()));
                   }
                   test::TestResult::Cancelled => {
                     summary.failed += 1;

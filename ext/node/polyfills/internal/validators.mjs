@@ -4,16 +4,16 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { codes } from "ext:deno_node/internal/error_codes.ts";
-import { hideStackFrames } from "ext:deno_node/internal/hide_stack_frames.ts";
-import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
-import { normalizeEncoding } from "ext:deno_node/internal/normalize_encoding.mjs";
-
 import { primordials } from "ext:core/mod.js";
 const {
   ArrayPrototypeIncludes,
   ArrayPrototypeJoin,
 } = primordials;
+
+import { codes } from "ext:deno_node/internal/error_codes.ts";
+import { hideStackFrames } from "ext:deno_node/internal/hide_stack_frames.ts";
+import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
+import { normalizeEncoding } from "ext:deno_node/internal/normalize_encoding.mjs";
 
 /**
  * @param {number} value

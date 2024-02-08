@@ -1,11 +1,15 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-// import { ReadableStreamPrototype } from "ext:deno_web/06_streams.js";
+import { core } from "ext:core/mod.js";
+import {
+  op_fetch_response_upgrade,
+  op_fetch_send,
+  op_node_http_request,
+} from "ext:core/ops";
 
-const core = globalThis.__bootstrap.core;
 import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
 import { setTimeout } from "ext:deno_web/02_timers.js";
 import {
@@ -276,10 +280,16 @@ const kError = Symbol("kError");
 const kUniqueHeaders = Symbol("kUniqueHeaders");
 
 class FakeSocket extends EventEmitter {
-  constructor(opts = {}) {
+  constructor(
+    opts: {
+      encrypted?: boolean | undefined;
+      remotePort?: number | undefined;
+      remoteAddress?: string | undefined;
+    } = {},
+  ) {
     super();
-    this.remoteAddress = opts.hostname;
-    this.remotePort = opts.port;
+    this.remoteAddress = opts.remoteAddress;
+    this.remotePort = opts.remotePort;
     this.encrypted = opts.encrypted;
     this.writable = true;
     this.readable = true;
@@ -602,7 +612,7 @@ class ClientRequest extends OutgoingMessage {
       this._bodyWriteRid = resourceForReadableStream(readable);
     }
 
-    this._req = core.ops.op_node_http_request(
+    this._req = op_node_http_request(
       this.method,
       url,
       headers,
@@ -656,7 +666,7 @@ class ClientRequest extends OutgoingMessage {
 
     (async () => {
       try {
-        const res = await core.opAsync("op_fetch_send", this._req.requestRid);
+        const res = await op_fetch_send(this._req.requestRid);
         try {
           cb?.();
         } catch (_) {
@@ -710,8 +720,7 @@ class ClientRequest extends OutgoingMessage {
             throw new Error("not implemented CONNECT");
           }
 
-          const upgradeRid = await core.opAsync(
-            "op_fetch_response_upgrade",
+          const upgradeRid = await op_fetch_response_upgrade(
             res.responseRid,
           );
           assert(typeof res.remoteAddrIp !== "undefined");
@@ -891,6 +900,11 @@ class ClientRequest extends OutgoingMessage {
       value = value.join("; ");
     }
     headers.push([key, value]);
+  }
+
+  // Once a socket is assigned to this request and is connected socket.setNoDelay() will be called.
+  setNoDelay() {
+    this.socket?.setNoDelay?.();
   }
 }
 
@@ -1558,7 +1572,7 @@ export class ServerImpl extends EventEmitter {
 
   #addr: Deno.NetAddr;
   #hasClosed = false;
-  #server: Deno.Server;
+  #server: Deno.HttpServer;
   #unref = false;
   #ac?: AbortController;
   #serveDeferred: ReturnType<typeof Promise.withResolvers<void>>;
@@ -1629,6 +1643,8 @@ export class ServerImpl extends EventEmitter {
         const socket = new Socket({
           handle: new TCP(constants.SERVER, conn),
         });
+        // Update socket held by `req`.
+        req.socket = socket;
         this.emit("upgrade", req, socket, Buffer.from([]));
         return response;
       } else {

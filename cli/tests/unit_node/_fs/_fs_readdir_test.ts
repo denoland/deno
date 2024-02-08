@@ -1,12 +1,12 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import {
   assertEquals,
   assertNotEquals,
   fail,
-} from "../../../../test_util/std/assert/mod.ts";
+} from "@test_util/std/assert/mod.ts";
 import { assertCallbackErrorUncaught } from "../_test_utils.ts";
 import { readdir, readdirSync } from "node:fs";
-import { join } from "../../../../test_util/std/path/mod.ts";
+import { join } from "@test_util/std/path/mod.ts";
 
 Deno.test({
   name: "ASYNC: reading empty directory",

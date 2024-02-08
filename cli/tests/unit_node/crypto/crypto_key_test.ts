@@ -1,6 +1,6 @@
 // deno-lint-ignore-file no-explicit-any
 
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import {
   createPrivateKey,
   createSecretKey,
@@ -11,10 +11,7 @@ import {
 } from "node:crypto";
 import { promisify } from "node:util";
 import { Buffer } from "node:buffer";
-import {
-  assertEquals,
-  assertThrows,
-} from "../../../../test_util/std/assert/mod.ts";
+import { assertEquals, assertThrows } from "@test_util/std/assert/mod.ts";
 import { createHmac } from "node:crypto";
 
 const RUN_SLOW_TESTS = Deno.env.get("SLOW_TESTS") === "1";

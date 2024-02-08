@@ -1,5 +1,5 @@
 // deno-lint-ignore-file no-undef
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import os from "node:os";
 import {
@@ -7,7 +7,7 @@ import {
   assertEquals,
   assertNotEquals,
   assertThrows,
-} from "../../../test_util/std/assert/mod.ts";
+} from "@test_util/std/assert/mod.ts";
 
 Deno.test({
   name: "build architecture is a string",
@@ -25,6 +25,17 @@ Deno.test({
       assertEquals(os.arch(), "arm64");
     } else {
       throw new Error("unreachable");
+    }
+  },
+});
+
+Deno.test({
+  name: "os machine (arch)",
+  fn() {
+    if (Deno.build.arch == "aarch64") {
+      assertEquals(os.machine(), "arm64");
+    } else {
+      assertEquals(os.machine(), Deno.build.arch);
     }
   },
 });
@@ -241,13 +252,11 @@ Deno.test({
     assertEquals(os.cpus().length, navigator.hardwareConcurrency);
 
     for (const cpu of os.cpus()) {
-      assertEquals(cpu.model, "");
-      assertEquals(cpu.speed, 0);
-      assertEquals(cpu.times.user, 0);
-      assertEquals(cpu.times.nice, 0);
-      assertEquals(cpu.times.sys, 0);
-      assertEquals(cpu.times.idle, 0);
-      assertEquals(cpu.times.irq, 0);
+      assert(cpu.model.length > 0);
+      assert(cpu.speed >= 0);
+      assert(cpu.times.user > 0);
+      assert(cpu.times.sys > 0);
+      assert(cpu.times.idle > 0);
     }
   },
 });

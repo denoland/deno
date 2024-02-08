@@ -1,24 +1,23 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import { assertEquals, assertRejects, assertThrows } from "./test_util.ts";
 
 Deno.test(
   { permissions: { read: true, write: true } },
   function ftruncateSyncSuccess() {
     const filename = Deno.makeTempDirSync() + "/test_ftruncateSync.txt";
-    const file = Deno.openSync(filename, {
+    using file = Deno.openSync(filename, {
       create: true,
       read: true,
       write: true,
     });
 
-    Deno.ftruncateSync(file.rid, 20);
+    file.truncateSync(20);
     assertEquals(Deno.readFileSync(filename).byteLength, 20);
-    Deno.ftruncateSync(file.rid, 5);
+    file.truncateSync(5);
     assertEquals(Deno.readFileSync(filename).byteLength, 5);
-    Deno.ftruncateSync(file.rid, -5);
+    file.truncateSync(-5);
     assertEquals(Deno.readFileSync(filename).byteLength, 0);
 
-    Deno.close(file.rid);
     Deno.removeSync(filename);
   },
 );
@@ -27,20 +26,19 @@ Deno.test(
   { permissions: { read: true, write: true } },
   async function ftruncateSuccess() {
     const filename = Deno.makeTempDirSync() + "/test_ftruncate.txt";
-    const file = await Deno.open(filename, {
+    using file = await Deno.open(filename, {
       create: true,
       read: true,
       write: true,
     });
 
-    await Deno.ftruncate(file.rid, 20);
+    await file.truncate(20);
     assertEquals((await Deno.readFile(filename)).byteLength, 20);
-    await Deno.ftruncate(file.rid, 5);
+    await file.truncate(5);
     assertEquals((await Deno.readFile(filename)).byteLength, 5);
-    await Deno.ftruncate(file.rid, -5);
+    await file.truncate(-5);
     assertEquals((await Deno.readFile(filename)).byteLength, 0);
 
-    Deno.close(file.rid);
     await Deno.remove(filename);
   },
 );

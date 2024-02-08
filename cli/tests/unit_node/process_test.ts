@@ -1,5 +1,5 @@
 // deno-lint-ignore-file no-undef
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import process, { argv, env } from "node:process";
 import { Readable } from "node:stream";
@@ -11,10 +11,10 @@ import {
   assertObjectMatch,
   assertStrictEquals,
   assertThrows,
-} from "../../../test_util/std/assert/mod.ts";
-import { stripColor } from "../../../test_util/std/fmt/colors.ts";
-import * as path from "../../../test_util/std/path/mod.ts";
-import { delay } from "../../../test_util/std/async/delay.ts";
+} from "@test_util/std/assert/mod.ts";
+import { stripColor } from "@test_util/std/fmt/colors.ts";
+import * as path from "@test_util/std/path/mod.ts";
+import { delay } from "@test_util/std/async/delay.ts";
 
 const testDir = new URL(".", import.meta.url);
 
@@ -118,6 +118,14 @@ Deno.test({
   fn() {
     assertEquals(typeof process.pid, "number");
     assertEquals(process.pid, Deno.pid);
+  },
+});
+
+Deno.test({
+  name: "process.ppid",
+  fn() {
+    assertEquals(typeof process.ppid, "number");
+    assertEquals(process.ppid, Deno.ppid);
   },
 });
 
@@ -356,14 +364,14 @@ Deno.test({
   name: "process.stdin",
   fn() {
     assertEquals(process.stdin.fd, Deno.stdin.rid);
-    assertEquals(process.stdin.isTTY, Deno.isatty(Deno.stdin.rid));
+    assertEquals(process.stdin.isTTY, Deno.stdin.isTerminal());
   },
 });
 
 Deno.test({
   name: "process.stdin readable with a TTY",
   // TODO(PolarETech): Run this test even in non tty environment
-  ignore: !Deno.isatty(Deno.stdin.rid),
+  ignore: !Deno.stdin.isTerminal(),
   // stdin resource is present before the test starts.
   sanitizeResources: false,
   async fn() {
@@ -535,7 +543,7 @@ Deno.test({
   name: "process.stdout",
   fn() {
     assertEquals(process.stdout.fd, Deno.stdout.rid);
-    const isTTY = Deno.isatty(Deno.stdout.rid);
+    const isTTY = Deno.stdout.isTerminal();
     assertEquals(process.stdout.isTTY, isTTY);
     const consoleSize = isTTY ? Deno.consoleSize() : undefined;
     assertEquals(process.stdout.columns, consoleSize?.columns);
@@ -563,7 +571,7 @@ Deno.test({
   name: "process.stderr",
   fn() {
     assertEquals(process.stderr.fd, Deno.stderr.rid);
-    const isTTY = Deno.isatty(Deno.stderr.rid);
+    const isTTY = Deno.stderr.isTerminal();
     assertEquals(process.stderr.isTTY, isTTY);
     const consoleSize = isTTY ? Deno.consoleSize() : undefined;
     assertEquals(process.stderr.columns, consoleSize?.columns);

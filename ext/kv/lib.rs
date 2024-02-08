@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 pub mod dynamic;
 mod interface;
@@ -444,16 +444,21 @@ async fn op_kv_watch_next(
   let cancel_handle = resource.cancel_handle.clone();
   let stream = RcRef::map(resource, |r| &r.stream)
     .borrow_mut()
-    .or_cancel(db_cancel_handle)
-    .or_cancel(cancel_handle)
+    .or_cancel(db_cancel_handle.clone())
+    .or_cancel(cancel_handle.clone())
     .await;
   let Ok(Ok(mut stream)) = stream else {
     return Ok(None);
   };
 
-  // doesn't need a cancel handle because the stream ends when the database
-  // connection is closed
-  let Some(res) = stream.next().await else {
+  // We hold a strong reference to `resource`, so we can't rely on the stream
+  // being dropped when the db connection is closed
+  let Ok(Ok(Some(res))) = stream
+    .next()
+    .or_cancel(db_cancel_handle)
+    .or_cancel(cancel_handle)
+    .await
+  else {
     return Ok(None);
   };
 
@@ -530,6 +535,9 @@ fn mutation_from_v8(
     ("sum", Some(value)) => MutationKind::Sum(value.try_into()?),
     ("min", Some(value)) => MutationKind::Min(value.try_into()?),
     ("max", Some(value)) => MutationKind::Max(value.try_into()?),
+    ("setSuffixVersionstampedKey", Some(value)) => {
+      MutationKind::SetSuffixVersionstampedKey(value.try_into()?)
+    }
     (op, Some(_)) => {
       return Err(type_error(format!("invalid mutation '{op}' with value")))
     }
@@ -597,17 +605,36 @@ impl RawSelector {
         start: None,
         end: None,
       }),
-      (Some(prefix), Some(start), None) => Ok(Self::Prefixed {
-        prefix,
-        start: Some(start),
-        end: None,
-      }),
-      (Some(prefix), None, Some(end)) => Ok(Self::Prefixed {
-        prefix,
-        start: None,
-        end: Some(end),
-      }),
-      (None, Some(start), Some(end)) => Ok(Self::Range { start, end }),
+      (Some(prefix), Some(start), None) => {
+        if !start.starts_with(&prefix) || start.len() == prefix.len() {
+          return Err(type_error(
+            "start key is not in the keyspace defined by prefix",
+          ));
+        }
+        Ok(Self::Prefixed {
+          prefix,
+          start: Some(start),
+          end: None,
+        })
+      }
+      (Some(prefix), None, Some(end)) => {
+        if !end.starts_with(&prefix) || end.len() == prefix.len() {
+          return Err(type_error(
+            "end key is not in the keyspace defined by prefix",
+          ));
+        }
+        Ok(Self::Prefixed {
+          prefix,
+          start: None,
+          end: Some(end),
+        })
+      }
+      (None, Some(start), Some(end)) => {
+        if start > end {
+          return Err(type_error("start key is greater than end key"));
+        }
+        Ok(Self::Range { start, end })
+      }
       (None, Some(start), None) => {
         let end = start.iter().copied().chain(Some(0)).collect();
         Ok(Self::Range { start, end })

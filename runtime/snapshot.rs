@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::ops;
 use crate::ops::bootstrap::SnapshotOptions;
@@ -78,6 +78,13 @@ impl deno_node::NodePermissions for Permissions {
     unreachable!("snapshotting!")
   }
   fn check_read_with_api_name(
+    &self,
+    _p: &Path,
+    _api_name: Option<&str>,
+  ) -> Result<(), deno_core::error::AnyError> {
+    unreachable!("snapshotting!")
+  }
+  fn check_write_with_api_name(
     &self,
     _p: &Path,
     _api_name: Option<&str>,
@@ -205,6 +212,7 @@ pub fn create_runtime_snapshot(
       Default::default(),
     ),
     deno_webgpu::deno_webgpu::init_ops_and_esm(),
+    deno_canvas::deno_canvas::init_ops_and_esm(),
     deno_fetch::deno_fetch::init_ops_and_esm::<Permissions>(Default::default()),
     deno_cache::deno_cache::init_ops_and_esm::<SqliteBackedCache>(None),
     deno_websocket::deno_websocket::init_ops_and_esm::<Permissions>(
@@ -245,6 +253,7 @@ pub fn create_runtime_snapshot(
     ops::tty::deno_tty::init_ops(),
     ops::http::deno_http_runtime::init_ops(),
     ops::bootstrap::deno_bootstrap::init_ops(Some(snapshot_options)),
+    ops::web_worker::deno_web_worker::init_ops(),
   ];
 
   for extension in &mut extensions {

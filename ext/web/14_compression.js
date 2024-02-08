@@ -1,17 +1,22 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../../core/lib.deno_core.d.ts" />
 /// <reference path="./internal.d.ts" />
 /// <reference path="./lib.deno_web.d.ts" />
 
-import { core, primordials } from "ext:core/mod.js";
-const ops = core.ops;
+import { primordials } from "ext:core/mod.js";
+import {
+  op_compression_finish,
+  op_compression_new,
+  op_compression_write,
+} from "ext:core/ops";
 const {
   SymbolFor,
   ObjectPrototypeIsPrototypeOf,
   TypedArrayPrototypeGetByteLength,
 } = primordials;
+
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 import { TransformStream } from "ext:deno_web/06_streams.js";
@@ -33,19 +38,19 @@ class CompressionStream {
     webidl.requiredArguments(arguments.length, 1, prefix);
     format = webidl.converters.CompressionFormat(format, prefix, "Argument 1");
 
-    const rid = ops.op_compression_new(format, false);
+    const rid = op_compression_new(format, false);
 
     this.#transform = new TransformStream({
       transform(chunk, controller) {
         chunk = webidl.converters.BufferSource(chunk, prefix, "chunk");
-        const output = ops.op_compression_write(
+        const output = op_compression_write(
           rid,
           chunk,
         );
         maybeEnqueue(controller, output);
       },
       flush(controller) {
-        const output = ops.op_compression_finish(rid);
+        const output = op_compression_finish(rid);
         maybeEnqueue(controller, output);
       },
     });
@@ -92,19 +97,19 @@ class DecompressionStream {
     webidl.requiredArguments(arguments.length, 1, prefix);
     format = webidl.converters.CompressionFormat(format, prefix, "Argument 1");
 
-    const rid = ops.op_compression_new(format, true);
+    const rid = op_compression_new(format, true);
 
     this.#transform = new TransformStream({
       transform(chunk, controller) {
         chunk = webidl.converters.BufferSource(chunk, prefix, "chunk");
-        const output = ops.op_compression_write(
+        const output = op_compression_write(
           rid,
           chunk,
         );
         maybeEnqueue(controller, output);
       },
       flush(controller) {
-        const output = ops.op_compression_finish(rid);
+        const output = op_compression_finish(rid);
         maybeEnqueue(controller, output);
       },
     });

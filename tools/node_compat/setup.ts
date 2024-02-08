@@ -1,14 +1,14 @@
 #!/usr/bin/env -S deno run --allow-read=. --allow-write=. --allow-run=git
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 /** This copies the test files according to the config file `cli/tests/node_compat/config.jsonc` */
 
-import { walk } from "../../test_util/std/fs/walk.ts";
-import { sep } from "../../test_util/std/path/mod.ts";
-import { ensureFile } from "../../test_util/std/fs/ensure_file.ts";
-import { writeAll } from "../../test_util/std/streams/write_all.ts";
-import { withoutAll } from "../../test_util/std/collections/without_all.ts";
-import { relative } from "../../test_util/std/path/posix.ts";
+import { walk } from "@test_util/std/fs/walk.ts";
+import { sep } from "@test_util/std/path/mod.ts";
+import { ensureFile } from "@test_util/std/fs/ensure_file.ts";
+import { writeAll } from "@test_util/std/streams/write_all.ts";
+import { withoutAll } from "@test_util/std/collections/without_all.ts";
+import { relative } from "@test_util/std/path/posix.ts";
 
 import { config, ignoreList } from "../../cli/tests/node_compat/common.ts";
 
@@ -65,7 +65,7 @@ function getDenoTests() {
 }
 
 async function updateToDo() {
-  const file = await Deno.open(new URL("./TODO.md", import.meta.url), {
+  using file = await Deno.open(new URL("./TODO.md", import.meta.url), {
     write: true,
     create: true,
     truncate: true,
@@ -88,7 +88,6 @@ Total: ${missingTests.length}
       ),
     );
   }
-  file.close();
 }
 
 async function clearTests() {

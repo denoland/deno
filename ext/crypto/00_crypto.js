@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../../core/internal.d.ts" />
@@ -7,13 +7,44 @@
 /// <reference path="../web/lib.deno_web.d.ts" />
 
 import { core, primordials } from "ext:core/mod.js";
-const ops = core.ops;
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
-import DOMException from "ext:deno_web/01_dom_exception.js";
+const {
+  isArrayBuffer,
+  isTypedArray,
+  isDataView,
+} = core;
+import {
+  op_crypto_base64url_decode,
+  op_crypto_base64url_encode,
+  op_crypto_decrypt,
+  op_crypto_derive_bits,
+  op_crypto_derive_bits_x25519,
+  op_crypto_encrypt,
+  op_crypto_export_key,
+  op_crypto_export_pkcs8_ed25519,
+  op_crypto_export_pkcs8_x25519,
+  op_crypto_export_spki_ed25519,
+  op_crypto_export_spki_x25519,
+  op_crypto_generate_ed25519_keypair,
+  op_crypto_generate_key,
+  op_crypto_generate_x25519_keypair,
+  op_crypto_get_random_values,
+  op_crypto_import_key,
+  op_crypto_import_pkcs8_ed25519,
+  op_crypto_import_pkcs8_x25519,
+  op_crypto_import_spki_ed25519,
+  op_crypto_import_spki_x25519,
+  op_crypto_jwk_x_ed25519,
+  op_crypto_random_uuid,
+  op_crypto_sign_ed25519,
+  op_crypto_sign_key,
+  op_crypto_subtle_digest,
+  op_crypto_unwrap_key,
+  op_crypto_verify_ed25519,
+  op_crypto_verify_key,
+  op_crypto_wrap_key,
+} from "ext:core/ops";
 const {
   ArrayBufferIsView,
-  ArrayBufferPrototype,
   ArrayBufferPrototypeGetByteLength,
   ArrayBufferPrototypeSlice,
   ArrayPrototypeEvery,
@@ -49,8 +80,11 @@ const {
   WeakMapPrototypeSet,
 } = primordials;
 
-// P-521 is not yet supported.
-const supportedNamedCurves = ["P-256", "P-384"];
+import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
+import { DOMException } from "ext:deno_web/01_dom_exception.js";
+
+const supportedNamedCurves = ["P-256", "P-384", "P-521"];
 const recognisedUsages = [
   "encrypt",
   "decrypt",
@@ -270,26 +304,22 @@ function normalizeAlgorithm(algorithm, op) {
  * @returns {Uint8Array}
  */
 function copyBuffer(input) {
-  if (ArrayBufferIsView(input)) {
-    if (TypedArrayPrototypeGetSymbolToStringTag(input) !== undefined) {
-      // TypedArray
-      return TypedArrayPrototypeSlice(
-        new Uint8Array(
-          TypedArrayPrototypeGetBuffer(/** @type {Uint8Array} */ (input)),
-          TypedArrayPrototypeGetByteOffset(/** @type {Uint8Array} */ (input)),
-          TypedArrayPrototypeGetByteLength(/** @type {Uint8Array} */ (input)),
-        ),
-      );
-    } else {
-      // DataView
-      return TypedArrayPrototypeSlice(
-        new Uint8Array(
-          DataViewPrototypeGetBuffer(/** @type {DataView} */ (input)),
-          DataViewPrototypeGetByteOffset(/** @type {DataView} */ (input)),
-          DataViewPrototypeGetByteLength(/** @type {DataView} */ (input)),
-        ),
-      );
-    }
+  if (isTypedArray(input)) {
+    return TypedArrayPrototypeSlice(
+      new Uint8Array(
+        TypedArrayPrototypeGetBuffer(/** @type {Uint8Array} */ (input)),
+        TypedArrayPrototypeGetByteOffset(/** @type {Uint8Array} */ (input)),
+        TypedArrayPrototypeGetByteLength(/** @type {Uint8Array} */ (input)),
+      ),
+    );
+  } else if (isDataView(input)) {
+    return TypedArrayPrototypeSlice(
+      new Uint8Array(
+        DataViewPrototypeGetBuffer(/** @type {DataView} */ (input)),
+        DataViewPrototypeGetByteOffset(/** @type {DataView} */ (input)),
+        DataViewPrototypeGetByteLength(/** @type {DataView} */ (input)),
+      ),
+    );
   }
   // ArrayBuffer
   return TypedArrayPrototypeSlice(
@@ -491,8 +521,7 @@ class SubtleCrypto {
 
     algorithm = normalizeAlgorithm(algorithm, "digest");
 
-    const result = await core.opAsync(
-      "op_crypto_subtle_digest",
+    const result = await op_crypto_subtle_digest(
       algorithm.name,
       data,
     );
@@ -605,7 +634,7 @@ class SubtleCrypto {
 
         // 3-5.
         const hashAlgorithm = key[_algorithm].hash.name;
-        const plainText = await core.opAsync("op_crypto_decrypt", {
+        const plainText = await op_crypto_decrypt({
           key: keyData,
           algorithm: "RSA-OAEP",
           hash: hashAlgorithm,
@@ -626,7 +655,7 @@ class SubtleCrypto {
           );
         }
 
-        const plainText = await core.opAsync("op_crypto_decrypt", {
+        const plainText = await op_crypto_decrypt({
           key: keyData,
           algorithm: "AES-CBC",
           iv: normalizedAlgorithm.iv,
@@ -660,7 +689,7 @@ class SubtleCrypto {
         }
 
         // 3.
-        const cipherText = await core.opAsync("op_crypto_decrypt", {
+        const cipherText = await op_crypto_decrypt({
           key: keyData,
           algorithm: "AES-CTR",
           keyLength: key[_algorithm].length,
@@ -728,7 +757,7 @@ class SubtleCrypto {
         }
 
         // 5-8.
-        const plaintext = await core.opAsync("op_crypto_decrypt", {
+        const plaintext = await op_crypto_decrypt({
           key: keyData,
           algorithm: "AES-GCM",
           length: key[_algorithm].length,
@@ -801,7 +830,7 @@ class SubtleCrypto {
 
         // 2.
         const hashAlgorithm = key[_algorithm].hash.name;
-        const signature = await core.opAsync("op_crypto_sign_key", {
+        const signature = await op_crypto_sign_key({
           key: keyData,
           algorithm: "RSASSA-PKCS1-v1_5",
           hash: hashAlgorithm,
@@ -820,7 +849,7 @@ class SubtleCrypto {
 
         // 2.
         const hashAlgorithm = key[_algorithm].hash.name;
-        const signature = await core.opAsync("op_crypto_sign_key", {
+        const signature = await op_crypto_sign_key({
           key: keyData,
           algorithm: "RSA-PSS",
           hash: hashAlgorithm,
@@ -857,7 +886,7 @@ class SubtleCrypto {
           );
         }
 
-        const signature = await core.opAsync("op_crypto_sign_key", {
+        const signature = await op_crypto_sign_key({
           key: keyData,
           algorithm: "ECDSA",
           hash: hashAlgorithm,
@@ -869,7 +898,7 @@ class SubtleCrypto {
       case "HMAC": {
         const hashAlgorithm = key[_algorithm].hash.name;
 
-        const signature = await core.opAsync("op_crypto_sign_key", {
+        const signature = await op_crypto_sign_key({
           key: keyData,
           algorithm: "HMAC",
           hash: hashAlgorithm,
@@ -889,7 +918,7 @@ class SubtleCrypto {
         // https://briansmith.org/rustdoc/src/ring/ec/curve25519/ed25519/signing.rs.html#260
         const SIGNATURE_LEN = 32 * 2; // ELEM_LEN + SCALAR_LEN
         const signature = new Uint8Array(SIGNATURE_LEN);
-        if (!ops.op_crypto_sign_ed25519(keyData, data, signature)) {
+        if (!op_crypto_sign_ed25519(keyData, data, signature)) {
           throw new DOMException(
             "Failed to sign",
             "OperationError",
@@ -935,19 +964,13 @@ class SubtleCrypto {
 
     // 2.
     if (format !== "jwk") {
-      if (
-        ArrayBufferIsView(keyData) ||
-        ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, keyData)
-      ) {
+      if (ArrayBufferIsView(keyData) || isArrayBuffer(keyData)) {
         keyData = copyBuffer(keyData);
       } else {
         throw new TypeError("keyData is a JsonWebKey");
       }
     } else {
-      if (
-        ArrayBufferIsView(keyData) ||
-        ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, keyData)
-      ) {
+      if (ArrayBufferIsView(keyData) || isArrayBuffer(keyData)) {
         throw new TypeError("keyData is not a JsonWebKey");
       }
     }
@@ -1297,7 +1320,7 @@ class SubtleCrypto {
         }
 
         const hashAlgorithm = key[_algorithm].hash.name;
-        return await core.opAsync("op_crypto_verify_key", {
+        return await op_crypto_verify_key({
           key: keyData,
           algorithm: "RSASSA-PKCS1-v1_5",
           hash: hashAlgorithm,
@@ -1313,7 +1336,7 @@ class SubtleCrypto {
         }
 
         const hashAlgorithm = key[_algorithm].hash.name;
-        return await core.opAsync("op_crypto_verify_key", {
+        return await op_crypto_verify_key({
           key: keyData,
           algorithm: "RSA-PSS",
           hash: hashAlgorithm,
@@ -1323,7 +1346,7 @@ class SubtleCrypto {
       }
       case "HMAC": {
         const hash = key[_algorithm].hash.name;
-        return await core.opAsync("op_crypto_verify_key", {
+        return await op_crypto_verify_key({
           key: keyData,
           algorithm: "HMAC",
           hash,
@@ -1352,7 +1375,7 @@ class SubtleCrypto {
         }
 
         // 3-8.
-        return await core.opAsync("op_crypto_verify_key", {
+        return await op_crypto_verify_key({
           key: keyData,
           algorithm: "ECDSA",
           hash,
@@ -1369,7 +1392,7 @@ class SubtleCrypto {
           );
         }
 
-        return ops.op_crypto_verify_ed25519(keyData, data, signature);
+        return op_crypto_verify_ed25519(keyData, data, signature);
       }
     }
 
@@ -1459,7 +1482,7 @@ class SubtleCrypto {
 
       switch (normalizedAlgorithm.name) {
         case "AES-KW": {
-          const cipherText = await ops.op_crypto_wrap_key({
+          const cipherText = await op_crypto_wrap_key({
             key: keyData,
             algorithm: normalizedAlgorithm.name,
           }, bytes);
@@ -1591,7 +1614,7 @@ class SubtleCrypto {
 
       switch (normalizedAlgorithm.name) {
         case "AES-KW": {
-          const plainText = await ops.op_crypto_unwrap_key({
+          const plainText = await op_crypto_unwrap_key({
             key: keyData,
             algorithm: normalizedAlgorithm.name,
           }, wrappedKey);
@@ -1739,8 +1762,7 @@ async function generateKey(normalizedAlgorithm, extractable, usages) {
       }
 
       // 2.
-      const keyData = await core.opAsync(
-        "op_crypto_generate_key",
+      const keyData = await op_crypto_generate_key(
         {
           algorithm: "RSA",
           modulusLength: normalizedAlgorithm.modulusLength,
@@ -1799,8 +1821,7 @@ async function generateKey(normalizedAlgorithm, extractable, usages) {
       }
 
       // 2.
-      const keyData = await core.opAsync(
-        "op_crypto_generate_key",
+      const keyData = await op_crypto_generate_key(
         {
           algorithm: "RSA",
           modulusLength: normalizedAlgorithm.modulusLength,
@@ -1863,7 +1884,7 @@ async function generateKey(normalizedAlgorithm, extractable, usages) {
           namedCurve,
         )
       ) {
-        const keyData = await core.opAsync("op_crypto_generate_key", {
+        const keyData = await op_crypto_generate_key({
           algorithm: "EC",
           namedCurve,
         });
@@ -1923,7 +1944,7 @@ async function generateKey(normalizedAlgorithm, extractable, usages) {
           namedCurve,
         )
       ) {
-        const keyData = await core.opAsync("op_crypto_generate_key", {
+        const keyData = await op_crypto_generate_key({
           algorithm: "EC",
           namedCurve,
         });
@@ -2007,7 +2028,7 @@ async function generateKey(normalizedAlgorithm, extractable, usages) {
       }
       const privateKeyData = new Uint8Array(32);
       const publicKeyData = new Uint8Array(32);
-      ops.op_crypto_generate_x25519_keypair(privateKeyData, publicKeyData);
+      op_crypto_generate_x25519_keypair(privateKeyData, publicKeyData);
 
       const handle = {};
       WeakMapPrototypeSet(KEY_STORE, handle, privateKeyData);
@@ -2052,7 +2073,7 @@ async function generateKey(normalizedAlgorithm, extractable, usages) {
       const privateKeyData = new Uint8Array(ED25519_SEED_LEN);
       const publicKeyData = new Uint8Array(ED25519_PUBLIC_KEY_LEN);
       if (
-        !ops.op_crypto_generate_ed25519_keypair(privateKeyData, publicKeyData)
+        !op_crypto_generate_ed25519_keypair(privateKeyData, publicKeyData)
       ) {
         throw new DOMException("Failed to generate key", "OperationError");
       }
@@ -2107,7 +2128,7 @@ async function generateKey(normalizedAlgorithm, extractable, usages) {
       }
 
       // 3-4.
-      const keyData = await core.opAsync("op_crypto_generate_key", {
+      const keyData = await op_crypto_generate_key({
         algorithm: "HMAC",
         hash: normalizedAlgorithm.hash.name,
         length,
@@ -2189,7 +2210,7 @@ function importKeyEd25519(
       }
 
       const publicKeyData = new Uint8Array(32);
-      if (!ops.op_crypto_import_spki_ed25519(keyData, publicKeyData)) {
+      if (!op_crypto_import_spki_ed25519(keyData, publicKeyData)) {
         throw new DOMException("Invalid key data", "DataError");
       }
 
@@ -2220,7 +2241,7 @@ function importKeyEd25519(
       }
 
       const privateKeyData = new Uint8Array(32);
-      if (!ops.op_crypto_import_pkcs8_ed25519(keyData, privateKeyData)) {
+      if (!op_crypto_import_pkcs8_ed25519(keyData, privateKeyData)) {
         throw new DOMException("Invalid key data", "DataError");
       }
 
@@ -2326,7 +2347,7 @@ function importKeyEd25519(
         // https://www.rfc-editor.org/rfc/rfc8037#section-2
         let privateKeyData;
         try {
-          privateKeyData = ops.op_crypto_base64url_decode(jwk.d);
+          privateKeyData = op_crypto_base64url_decode(jwk.d);
         } catch (_) {
           throw new DOMException("invalid private key data", "DataError");
         }
@@ -2349,7 +2370,7 @@ function importKeyEd25519(
         // https://www.rfc-editor.org/rfc/rfc8037#section-2
         let publicKeyData;
         try {
-          publicKeyData = ops.op_crypto_base64url_decode(jwk.x);
+          publicKeyData = op_crypto_base64url_decode(jwk.x);
         } catch (_) {
           throw new DOMException("invalid public key data", "DataError");
         }
@@ -2412,7 +2433,7 @@ function importKeyX25519(
       }
 
       const publicKeyData = new Uint8Array(32);
-      if (!ops.op_crypto_import_spki_x25519(keyData, publicKeyData)) {
+      if (!op_crypto_import_spki_x25519(keyData, publicKeyData)) {
         throw new DOMException("Invalid key data", "DataError");
       }
 
@@ -2443,7 +2464,7 @@ function importKeyX25519(
       }
 
       const privateKeyData = new Uint8Array(32);
-      if (!ops.op_crypto_import_pkcs8_x25519(keyData, privateKeyData)) {
+      if (!op_crypto_import_pkcs8_x25519(keyData, privateKeyData)) {
         throw new DOMException("Invalid key data", "DataError");
       }
 
@@ -2539,7 +2560,7 @@ function importKeyX25519(
       // 9.
       if (jwk.d !== undefined) {
         // https://www.rfc-editor.org/rfc/rfc8037#section-2
-        const privateKeyData = ops.op_crypto_base64url_decode(jwk.d);
+        const privateKeyData = op_crypto_base64url_decode(jwk.d);
 
         const handle = {};
         WeakMapPrototypeSet(KEY_STORE, handle, privateKeyData);
@@ -2557,7 +2578,7 @@ function importKeyX25519(
         );
       } else {
         // https://www.rfc-editor.org/rfc/rfc8037#section-2
-        const publicKeyData = ops.op_crypto_base64url_decode(jwk.x);
+        const publicKeyData = op_crypto_base64url_decode(jwk.x);
 
         const handle = {};
         WeakMapPrototypeSet(KEY_STORE, handle, publicKeyData);
@@ -2600,7 +2621,7 @@ function exportKeyAES(
       };
 
       // 3.
-      const data = ops.op_crypto_export_key({
+      const data = op_crypto_export_key({
         format: "jwksecret",
         algorithm: "AES",
       }, innerKey);
@@ -2697,7 +2718,7 @@ function importKeyAES(
       }
 
       // 4.
-      const { rawData } = ops.op_crypto_import_key(
+      const { rawData } = op_crypto_import_key(
         { algorithm: "AES" },
         { jwkSecret: jwk },
       );
@@ -2857,7 +2878,7 @@ function importKeyHMAC(
       }
 
       // 4.
-      const { rawData } = ops.op_crypto_import_key(
+      const { rawData } = op_crypto_import_key(
         { algorithm: "HMAC" },
         { jwkSecret: jwk },
       );
@@ -3042,7 +3063,7 @@ function importKeyEC(
       }
 
       // 3.
-      const { rawData } = ops.op_crypto_import_key({
+      const { rawData } = op_crypto_import_key({
         algorithm: normalizedAlgorithm.name,
         namedCurve: normalizedAlgorithm.namedCurve,
       }, { raw: keyData });
@@ -3083,7 +3104,7 @@ function importKeyEC(
       }
 
       // 2-9.
-      const { rawData } = ops.op_crypto_import_key({
+      const { rawData } = op_crypto_import_key({
         algorithm: normalizedAlgorithm.name,
         namedCurve: normalizedAlgorithm.namedCurve,
       }, { pkcs8: keyData });
@@ -3126,7 +3147,7 @@ function importKeyEC(
       }
 
       // 2-12
-      const { rawData } = ops.op_crypto_import_key({
+      const { rawData } = op_crypto_import_key({
         algorithm: normalizedAlgorithm.name,
         namedCurve: normalizedAlgorithm.namedCurve,
       }, { spki: keyData });
@@ -3270,7 +3291,7 @@ function importKeyEC(
 
       if (jwk.d !== undefined) {
         // it's also a Private key
-        const { rawData } = ops.op_crypto_import_key({
+        const { rawData } = op_crypto_import_key({
           algorithm: normalizedAlgorithm.name,
           namedCurve: normalizedAlgorithm.namedCurve,
         }, { jwkPrivateEc: jwk });
@@ -3293,7 +3314,7 @@ function importKeyEC(
 
         return key;
       } else {
-        const { rawData } = ops.op_crypto_import_key({
+        const { rawData } = op_crypto_import_key({
           algorithm: normalizedAlgorithm.name,
           namedCurve: normalizedAlgorithm.namedCurve,
         }, { jwkPublicEc: jwk });
@@ -3374,15 +3395,14 @@ function importKeyRSA(
       }
 
       // 2-9.
-      const { modulusLength, publicExponent, rawData } = ops
-        .op_crypto_import_key(
-          {
-            algorithm: normalizedAlgorithm.name,
-            // Needed to perform step 7 without normalization.
-            hash: normalizedAlgorithm.hash.name,
-          },
-          { pkcs8: keyData },
-        );
+      const { modulusLength, publicExponent, rawData } = op_crypto_import_key(
+        {
+          algorithm: normalizedAlgorithm.name,
+          // Needed to perform step 7 without normalization.
+          hash: normalizedAlgorithm.hash.name,
+        },
+        { pkcs8: keyData },
+      );
 
       const handle = {};
       WeakMapPrototypeSet(KEY_STORE, handle, rawData);
@@ -3420,15 +3440,14 @@ function importKeyRSA(
       }
 
       // 2-9.
-      const { modulusLength, publicExponent, rawData } = ops
-        .op_crypto_import_key(
-          {
-            algorithm: normalizedAlgorithm.name,
-            // Needed to perform step 7 without normalization.
-            hash: normalizedAlgorithm.hash.name,
-          },
-          { spki: keyData },
-        );
+      const { modulusLength, publicExponent, rawData } = op_crypto_import_key(
+        {
+          algorithm: normalizedAlgorithm.name,
+          // Needed to perform step 7 without normalization.
+          hash: normalizedAlgorithm.hash.name,
+        },
+        { spki: keyData },
+      );
 
       const handle = {};
       WeakMapPrototypeSet(KEY_STORE, handle, rawData);
@@ -3670,14 +3689,13 @@ function importKeyRSA(
           );
         }
 
-        const { modulusLength, publicExponent, rawData } = ops
-          .op_crypto_import_key(
-            {
-              algorithm: normalizedAlgorithm.name,
-              hash: normalizedAlgorithm.hash.name,
-            },
-            { jwkPrivateRsa: jwk },
-          );
+        const { modulusLength, publicExponent, rawData } = op_crypto_import_key(
+          {
+            algorithm: normalizedAlgorithm.name,
+            hash: normalizedAlgorithm.hash.name,
+          },
+          { jwkPrivateRsa: jwk },
+        );
 
         const handle = {};
         WeakMapPrototypeSet(KEY_STORE, handle, rawData);
@@ -3713,14 +3731,13 @@ function importKeyRSA(
           );
         }
 
-        const { modulusLength, publicExponent, rawData } = ops
-          .op_crypto_import_key(
-            {
-              algorithm: normalizedAlgorithm.name,
-              hash: normalizedAlgorithm.hash.name,
-            },
-            { jwkPublicRsa: jwk },
-          );
+        const { modulusLength, publicExponent, rawData } = op_crypto_import_key(
+          {
+            algorithm: normalizedAlgorithm.name,
+            hash: normalizedAlgorithm.hash.name,
+          },
+          { jwkPublicRsa: jwk },
+        );
 
         const handle = {};
         WeakMapPrototypeSet(KEY_STORE, handle, rawData);
@@ -3875,7 +3892,7 @@ function exportKeyHMAC(format, key, innerKey) {
       };
 
       // 3.
-      const data = ops.op_crypto_export_key({
+      const data = op_crypto_export_key({
         format: "jwksecret",
         algorithm: key[_algorithm].name,
       }, innerKey);
@@ -3929,7 +3946,7 @@ function exportKeyRSA(format, key, innerKey) {
       }
 
       // 2.
-      const data = ops.op_crypto_export_key({
+      const data = op_crypto_export_key({
         algorithm: key[_algorithm].name,
         format: "pkcs8",
       }, innerKey);
@@ -3947,7 +3964,7 @@ function exportKeyRSA(format, key, innerKey) {
       }
 
       // 2.
-      const data = ops.op_crypto_export_key({
+      const data = op_crypto_export_key({
         algorithm: key[_algorithm].name,
         format: "spki",
       }, innerKey);
@@ -4028,7 +4045,7 @@ function exportKeyRSA(format, key, innerKey) {
       }
 
       // 5-6.
-      const data = ops.op_crypto_export_key({
+      const data = op_crypto_export_key({
         format: key[_type] === "private" ? "jwkprivate" : "jwkpublic",
         algorithm: key[_algorithm].name,
       }, innerKey);
@@ -4070,7 +4087,7 @@ function exportKeyEd25519(format, key, innerKey) {
         );
       }
 
-      const spkiDer = ops.op_crypto_export_spki_ed25519(innerKey);
+      const spkiDer = op_crypto_export_spki_ed25519(innerKey);
       return TypedArrayPrototypeGetBuffer(spkiDer);
     }
     case "pkcs8": {
@@ -4082,7 +4099,7 @@ function exportKeyEd25519(format, key, innerKey) {
         );
       }
 
-      const pkcs8Der = ops.op_crypto_export_pkcs8_ed25519(
+      const pkcs8Der = op_crypto_export_pkcs8_ed25519(
         new Uint8Array([0x04, 0x22, ...new SafeArrayIterator(innerKey)]),
       );
       pkcs8Der[15] = 0x20;
@@ -4090,8 +4107,8 @@ function exportKeyEd25519(format, key, innerKey) {
     }
     case "jwk": {
       const x = key[_type] === "private"
-        ? ops.op_crypto_jwk_x_ed25519(innerKey)
-        : ops.op_crypto_base64url_encode(innerKey);
+        ? op_crypto_jwk_x_ed25519(innerKey)
+        : op_crypto_base64url_encode(innerKey);
       const jwk = {
         kty: "OKP",
         crv: "Ed25519",
@@ -4100,7 +4117,7 @@ function exportKeyEd25519(format, key, innerKey) {
         ext: key[_extractable],
       };
       if (key[_type] === "private") {
-        jwk.d = ops.op_crypto_base64url_encode(innerKey);
+        jwk.d = op_crypto_base64url_encode(innerKey);
       }
       return jwk;
     }
@@ -4132,7 +4149,7 @@ function exportKeyX25519(format, key, innerKey) {
         );
       }
 
-      const spkiDer = ops.op_crypto_export_spki_x25519(innerKey);
+      const spkiDer = op_crypto_export_spki_x25519(innerKey);
       return TypedArrayPrototypeGetBuffer(spkiDer);
     }
     case "pkcs8": {
@@ -4144,7 +4161,7 @@ function exportKeyX25519(format, key, innerKey) {
         );
       }
 
-      const pkcs8Der = ops.op_crypto_export_pkcs8_x25519(
+      const pkcs8Der = op_crypto_export_pkcs8_x25519(
         new Uint8Array([0x04, 0x22, ...new SafeArrayIterator(innerKey)]),
       );
       pkcs8Der[15] = 0x20;
@@ -4154,7 +4171,7 @@ function exportKeyX25519(format, key, innerKey) {
       if (key[_type] === "private") {
         throw new DOMException("Not implemented", "NotSupportedError");
       }
-      const x = ops.op_crypto_base64url_encode(innerKey);
+      const x = op_crypto_base64url_encode(innerKey);
       const jwk = {
         kty: "OKP",
         crv: "X25519",
@@ -4181,7 +4198,7 @@ function exportKeyEC(format, key, innerKey) {
       }
 
       // 2.
-      const data = ops.op_crypto_export_key({
+      const data = op_crypto_export_key({
         algorithm: key[_algorithm].name,
         namedCurve: key[_algorithm].namedCurve,
         format: "raw",
@@ -4199,7 +4216,7 @@ function exportKeyEC(format, key, innerKey) {
       }
 
       // 2.
-      const data = ops.op_crypto_export_key({
+      const data = op_crypto_export_key({
         algorithm: key[_algorithm].name,
         namedCurve: key[_algorithm].namedCurve,
         format: "pkcs8",
@@ -4217,7 +4234,7 @@ function exportKeyEC(format, key, innerKey) {
       }
 
       // 2.
-      const data = ops.op_crypto_export_key({
+      const data = op_crypto_export_key({
         algorithm: key[_algorithm].name,
         namedCurve: key[_algorithm].namedCurve,
         format: "spki",
@@ -4261,7 +4278,7 @@ function exportKeyEC(format, key, innerKey) {
         jwk.alg = algNamedCurve;
 
         // 3.2 - 3.4.
-        const data = ops.op_crypto_export_key({
+        const data = op_crypto_export_key({
           format: key[_type] === "private" ? "jwkprivate" : "jwkpublic",
           algorithm: key[_algorithm].name,
           namedCurve: key[_algorithm].namedCurve,
@@ -4288,7 +4305,7 @@ function exportKeyEC(format, key, innerKey) {
         jwk.crv = key[_algorithm].namedCurve;
 
         // 3.2 - 3.4
-        const data = ops.op_crypto_export_key({
+        const data = op_crypto_export_key({
           format: key[_type] === "private" ? "jwkprivate" : "jwkpublic",
           algorithm: key[_algorithm].name,
           namedCurve: key[_algorithm].namedCurve,
@@ -4318,7 +4335,7 @@ async function generateKeyAES(normalizedAlgorithm, extractable, usages) {
   }
 
   // 3.
-  const keyData = await core.opAsync("op_crypto_generate_key", {
+  const keyData = await op_crypto_generate_key({
     algorithm: "AES",
     length: normalizedAlgorithm.length,
   });
@@ -4367,7 +4384,7 @@ async function deriveBits(normalizedAlgorithm, baseKey, length) {
 
       normalizedAlgorithm.salt = copyBuffer(normalizedAlgorithm.salt);
 
-      const buf = await core.opAsync("op_crypto_derive_bits", {
+      const buf = await op_crypto_derive_bits({
         key: keyData,
         algorithm: "PBKDF2",
         hash: normalizedAlgorithm.hash.name,
@@ -4416,7 +4433,7 @@ async function deriveBits(normalizedAlgorithm, baseKey, length) {
         const publicKeyhandle = publicKey[_handle];
         const publicKeyData = WeakMapPrototypeGet(KEY_STORE, publicKeyhandle);
 
-        const buf = await core.opAsync("op_crypto_derive_bits", {
+        const buf = await op_crypto_derive_bits({
           key: baseKeyData,
           publicKey: publicKeyData,
           algorithm: "ECDH",
@@ -4453,7 +4470,7 @@ async function deriveBits(normalizedAlgorithm, baseKey, length) {
 
       normalizedAlgorithm.info = copyBuffer(normalizedAlgorithm.info);
 
-      const buf = await core.opAsync("op_crypto_derive_bits", {
+      const buf = await op_crypto_derive_bits({
         key: keyDerivationKey,
         algorithm: "HKDF",
         hash: normalizedAlgorithm.hash.name,
@@ -4490,7 +4507,7 @@ async function deriveBits(normalizedAlgorithm, baseKey, length) {
       const u = WeakMapPrototypeGet(KEY_STORE, uHandle);
 
       const secret = new Uint8Array(32);
-      const isIdentity = ops.op_crypto_derive_bits_x25519(k, u, secret);
+      const isIdentity = op_crypto_derive_bits_x25519(k, u, secret);
 
       // 6.
       if (isIdentity) {
@@ -4540,7 +4557,7 @@ async function encrypt(normalizedAlgorithm, key, data) {
 
       // 3-5.
       const hashAlgorithm = key[_algorithm].hash.name;
-      const cipherText = await core.opAsync("op_crypto_encrypt", {
+      const cipherText = await op_crypto_encrypt({
         key: keyData,
         algorithm: "RSA-OAEP",
         hash: hashAlgorithm,
@@ -4562,7 +4579,7 @@ async function encrypt(normalizedAlgorithm, key, data) {
       }
 
       // 2.
-      const cipherText = await core.opAsync("op_crypto_encrypt", {
+      const cipherText = await op_crypto_encrypt({
         key: keyData,
         algorithm: "AES-CBC",
         length: key[_algorithm].length,
@@ -4596,7 +4613,7 @@ async function encrypt(normalizedAlgorithm, key, data) {
       }
 
       // 3.
-      const cipherText = await core.opAsync("op_crypto_encrypt", {
+      const cipherText = await op_crypto_encrypt({
         key: keyData,
         algorithm: "AES-CTR",
         keyLength: key[_algorithm].length,
@@ -4664,7 +4681,7 @@ async function encrypt(normalizedAlgorithm, key, data) {
         );
       }
       // 6-7.
-      const cipherText = await core.opAsync("op_crypto_encrypt", {
+      const cipherText = await op_crypto_encrypt({
         key: keyData,
         algorithm: "AES-GCM",
         length: key[_algorithm].length,
@@ -4696,7 +4713,7 @@ class Crypto {
     // Fast path for Uint8Array
     const tag = TypedArrayPrototypeGetSymbolToStringTag(typedArray);
     if (tag === "Uint8Array") {
-      ops.op_crypto_get_random_values(typedArray);
+      op_crypto_get_random_values(typedArray);
       return typedArray;
     }
     typedArray = webidl.converters.ArrayBufferView(
@@ -4725,13 +4742,13 @@ class Crypto {
       TypedArrayPrototypeGetByteOffset(typedArray),
       TypedArrayPrototypeGetByteLength(typedArray),
     );
-    ops.op_crypto_get_random_values(ui8);
+    op_crypto_get_random_values(ui8);
     return typedArray;
   }
 
   randomUUID() {
     webidl.assertBranded(this, CryptoPrototype);
-    return ops.op_crypto_random_uuid();
+    return op_crypto_random_uuid();
   }
 
   get subtle() {
@@ -4771,10 +4788,7 @@ webidl.converters["BufferSource or JsonWebKey"] = (
   opts,
 ) => {
   // Union for (BufferSource or JsonWebKey)
-  if (
-    ArrayBufferIsView(V) ||
-    ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, V)
-  ) {
+  if (ArrayBufferIsView(V) || isArrayBuffer(V)) {
     return webidl.converters.BufferSource(V, prefix, context, opts);
   }
   return webidl.converters.JsonWebKey(V, prefix, context, opts);

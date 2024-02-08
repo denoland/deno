@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
   assertEquals,
@@ -7,7 +7,7 @@ import {
   assertRejects,
   assertThrows,
 } from "./test_util.ts";
-import { assertType, IsExact } from "../../../test_util/std/testing/types.ts";
+import { assertType, IsExact } from "@test_util/std/testing/types.ts";
 
 const sleep = (time: number) => new Promise((r) => setTimeout(r, time));
 
@@ -702,6 +702,24 @@ dbTest("list prefix with start empty", async (db) => {
   assertEquals(entries.length, 0);
 });
 
+dbTest("list prefix with start equal to prefix", async (db) => {
+  await setupData(db);
+  await assertRejects(
+    async () => await collect(db.list({ prefix: ["a"], start: ["a"] })),
+    TypeError,
+    "start key is not in the keyspace defined by prefix",
+  );
+});
+
+dbTest("list prefix with start out of bounds", async (db) => {
+  await setupData(db);
+  await assertRejects(
+    async () => await collect(db.list({ prefix: ["b"], start: ["a"] })),
+    TypeError,
+    "start key is not in the keyspace defined by prefix",
+  );
+});
+
 dbTest("list prefix with end", async (db) => {
   const versionstamp = await setupData(db);
   const entries = await collect(db.list({ prefix: ["a"], end: ["a", "c"] }));
@@ -715,6 +733,24 @@ dbTest("list prefix with end empty", async (db) => {
   await setupData(db);
   const entries = await collect(db.list({ prefix: ["a"], end: ["a", "a"] }));
   assertEquals(entries.length, 0);
+});
+
+dbTest("list prefix with end equal to prefix", async (db) => {
+  await setupData(db);
+  await assertRejects(
+    async () => await collect(db.list({ prefix: ["a"], end: ["a"] })),
+    TypeError,
+    "end key is not in the keyspace defined by prefix",
+  );
+});
+
+dbTest("list prefix with end out of bounds", async (db) => {
+  await setupData(db);
+  await assertRejects(
+    async () => await collect(db.list({ prefix: ["a"], end: ["b"] })),
+    TypeError,
+    "end key is not in the keyspace defined by prefix",
+  );
 });
 
 dbTest("list prefix with empty prefix", async (db) => {
@@ -1018,6 +1054,21 @@ dbTest("list range with manual cursor reverse", async (db) => {
     { key: ["a", "c"], value: 2, versionstamp },
     { key: ["a", "b"], value: 1, versionstamp },
   ]);
+});
+
+dbTest("list range with start greater than end", async (db) => {
+  await setupData(db);
+  await assertRejects(
+    async () => await collect(db.list({ start: ["b"], end: ["a"] })),
+    TypeError,
+    "start key is greater than end key",
+  );
+});
+
+dbTest("list range with start equal to end", async (db) => {
+  await setupData(db);
+  const entries = await collect(db.list({ start: ["a"], end: ["a"] }));
+  assertEquals(entries.length, 0);
 });
 
 dbTest("list invalid selector", async (db) => {
@@ -2215,4 +2266,56 @@ dbTest("key watch", async (db) => {
 
   await work;
   await reader.cancel();
+});
+
+dbTest("set with key versionstamp suffix", async (db) => {
+  const result1 = await Array.fromAsync(db.list({ prefix: ["a"] }));
+  assertEquals(result1, []);
+
+  const setRes1 = await db.set(["a", db.commitVersionstamp()], "b");
+  assert(setRes1.ok);
+  assert(setRes1.versionstamp > ZERO_VERSIONSTAMP);
+
+  const result2 = await Array.fromAsync(db.list({ prefix: ["a"] }));
+  assertEquals(result2.length, 1);
+  assertEquals(result2[0].key[1], setRes1.versionstamp);
+  assertEquals(result2[0].value, "b");
+  assertEquals(result2[0].versionstamp, setRes1.versionstamp);
+
+  const setRes2 = await db.atomic().set(["a", db.commitVersionstamp()], "c")
+    .commit();
+  assert(setRes2.ok);
+  assert(setRes2.versionstamp > setRes1.versionstamp);
+
+  const result3 = await Array.fromAsync(db.list({ prefix: ["a"] }));
+  assertEquals(result3.length, 2);
+  assertEquals(result3[1].key[1], setRes2.versionstamp);
+  assertEquals(result3[1].value, "c");
+  assertEquals(result3[1].versionstamp, setRes2.versionstamp);
+
+  await assertRejects(
+    async () => await db.set(["a", db.commitVersionstamp(), "a"], "x"),
+    TypeError,
+    "expected string, number, bigint, ArrayBufferView, boolean",
+  );
+});
+
+Deno.test({
+  name: "watch should stop when db closed",
+  async fn() {
+    const db = await Deno.openKv(":memory:");
+
+    const watch = db.watch([["a"]]);
+    const completion = (async () => {
+      for await (const _item of watch) {
+        // pass
+      }
+    })();
+
+    setTimeout(() => {
+      db.close();
+    }, 100);
+
+    await completion;
+  },
 });

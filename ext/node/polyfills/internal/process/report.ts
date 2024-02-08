@@ -1,7 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-
-import { arch, versions } from "ext:deno_node/_process/process.ts";
-import { cpus, hostname, networkInterfaces } from "node:os";
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import { primordials } from "ext:core/mod.js";
 const {
@@ -12,6 +9,9 @@ const {
   Date,
   DatePrototypeGetTime,
 } = primordials;
+
+import { arch, versions } from "ext:deno_node/_process/process.ts";
+import { cpus, hostname, networkInterfaces } from "node:os";
 
 function writeReport(_filename: string, _err: typeof Error) {
   return "";

@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use test_util as util;
 use util::env_vars_for_npm_tests;
@@ -8,6 +8,9 @@ fn node_compat_tests() {
   let mut deno = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("test")
+    .arg("--config")
+    .arg("cli/tests/config/deno.json")
+    .arg("--no-lock")
     .arg("--unstable")
     .arg("-A")
     .arg(util::tests_path().join("node_compat"))

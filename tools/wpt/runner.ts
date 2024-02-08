@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import { delay, join, ROOT_PATH, TextLineStream, toFileUrl } from "../util.js";
 import { assert, denoBinary, ManifestTestOptions, runPy } from "./utils.ts";
 import { DOMParser } from "https://deno.land/x/deno_dom@v0.1.3-alpha2/deno-dom-wasm.ts";
@@ -100,7 +100,9 @@ export async function runSingleTest(
     const args = [
       "run",
       "-A",
-      "--unstable",
+      "--unstable-broadcast-channel",
+      "--unstable-webgpu",
+      "--unstable-net",
       "--v8-flags=--expose-gc",
     ];
 

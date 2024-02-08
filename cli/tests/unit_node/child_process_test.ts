@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import CP from "node:child_process";
 import { Buffer } from "node:buffer";
@@ -9,8 +9,8 @@ import {
   assertNotStrictEquals,
   assertStrictEquals,
   assertStringIncludes,
-} from "../../../test_util/std/assert/mod.ts";
-import * as path from "../../../test_util/std/path/mod.ts";
+} from "@test_util/std/assert/mod.ts";
+import * as path from "@test_util/std/path/mod.ts";
 
 const { spawn, spawnSync, execFile, execFileSync, ChildProcess } = CP;
 
@@ -730,4 +730,44 @@ Deno.test(function spawnSyncExitNonZero() {
   );
 
   assertEquals(ret.status, 22);
+});
+
+// https://github.com/denoland/deno/issues/21630
+Deno.test(async function forkIpcKillDoesNotHang() {
+  const testdataDir = path.join(
+    path.dirname(path.fromFileUrl(import.meta.url)),
+    "testdata",
+  );
+  const script = path.join(
+    testdataDir,
+    "node_modules",
+    "foo",
+    "index.js",
+  );
+  const p = Promise.withResolvers<void>();
+  const cp = CP.fork(script, [], {
+    cwd: testdataDir,
+    stdio: ["inherit", "inherit", "inherit", "ipc"],
+  });
+  cp.on("close", () => p.resolve());
+  cp.kill();
+
+  await p.promise;
+});
+
+Deno.test(async function execFileWithUndefinedTimeout() {
+  const { promise, resolve, reject } = Promise.withResolvers<void>();
+  CP.execFile(
+    "git",
+    ["-v"],
+    { timeout: undefined, encoding: "utf8" },
+    (err) => {
+      if (err) {
+        reject(err);
+        return;
+      }
+      resolve();
+    },
+  );
+  await promise;
 });

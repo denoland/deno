@@ -154,7 +154,7 @@ await assert.rejects(
 }
 
 // read dir
-const readDirNames = ["main.d.mts", "main.mjs", "package.json"];
+const readDirNames = ["main.d.mts", "main.mjs", "other.mjs", "package.json"];
 {
   const names = Array.from(Deno.readDirSync(dirPath))
     .map((e) => e.name);

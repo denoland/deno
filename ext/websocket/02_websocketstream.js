@@ -1,19 +1,19 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 /// <reference path="../../core/internal.d.ts" />
 
 import { core, primordials } from "ext:core/mod.js";
-const ops = core.ops;
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
-import { Deferred, writableStreamClose } from "ext:deno_web/06_streams.js";
-import DOMException from "ext:deno_web/01_dom_exception.js";
-import { add, remove } from "ext:deno_web/03_abort_signal.js";
 import {
-  fillHeaders,
-  headerListFromHeaders,
-  headersFromHeaderList,
-} from "ext:deno_fetch/20_headers.js";
+  op_ws_check_permission_and_cancel_handle,
+  op_ws_close,
+  op_ws_create,
+  op_ws_get_buffer,
+  op_ws_get_buffer_as_string,
+  op_ws_get_error,
+  op_ws_next_event,
+  op_ws_send_binary_async,
+  op_ws_send_text_async,
+} from "ext:core/ops";
 const {
   ArrayPrototypeJoin,
   ArrayPrototypeMap,
@@ -30,18 +30,19 @@ const {
   SymbolFor,
   TypeError,
   TypedArrayPrototypeGetByteLength,
-  Uint8ArrayPrototype,
+  TypedArrayPrototypeGetSymbolToStringTag,
 } = primordials;
-const {
-  op_ws_send_text_async,
-  op_ws_send_binary_async,
-  op_ws_next_event,
-  op_ws_get_buffer,
-  op_ws_get_buffer_as_string,
-  op_ws_get_error,
-  op_ws_create,
-  op_ws_close,
-} = core.ensureFastOps();
+
+import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
+import { Deferred, writableStreamClose } from "ext:deno_web/06_streams.js";
+import { DOMException } from "ext:deno_web/01_dom_exception.js";
+import { add, remove } from "ext:deno_web/03_abort_signal.js";
+import {
+  fillHeaders,
+  headerListFromHeaders,
+  headersFromHeaderList,
+} from "ext:deno_fetch/20_headers.js";
 
 webidl.converters.WebSocketStreamOptions = webidl.createDictionaryConverter(
   "WebSocketStreamOptions",
@@ -146,7 +147,7 @@ class WebSocketStream {
       fillHeaders(headers, options.headers);
     }
 
-    const cancelRid = ops.op_ws_check_permission_and_cancel_handle(
+    const cancelRid = op_ws_check_permission_and_cancel_handle(
       "WebSocketStream.abort()",
       this[_url],
       true,
@@ -214,7 +215,8 @@ class WebSocketStream {
                 if (typeof chunk === "string") {
                   await op_ws_send_text_async(this[_rid], chunk);
                 } else if (
-                  ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, chunk)
+                  TypedArrayPrototypeGetSymbolToStringTag(chunk) ===
+                    "Uint8Array"
                 ) {
                   await op_ws_send_binary_async(this[_rid], chunk);
                 } else {

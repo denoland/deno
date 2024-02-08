@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::url::Url;
 use test_util as util;
@@ -50,7 +50,7 @@ itest!(ignore {
 });
 
 itest!(ignore_permissions {
-  args: "test --unstable test/ignore_permissions.ts",
+  args: "test test/ignore_permissions.ts",
   exit_code: 0,
   output: "test/ignore_permissions.out",
 });
@@ -200,25 +200,25 @@ itest!(no_check {
 });
 
 itest!(no_run {
-  args: "test --unstable --no-run test/no_run.ts",
+  args: "test --no-run test/no_run.ts",
   output: "test/no_run.out",
   exit_code: 1,
 });
 
 itest!(allow_all {
-  args: "test --unstable --allow-all test/allow_all.ts",
+  args: "test --allow-all test/allow_all.ts",
   exit_code: 0,
   output: "test/allow_all.out",
 });
 
 itest!(allow_none {
-  args: "test --unstable test/allow_none.ts",
+  args: "test test/allow_none.ts",
   exit_code: 1,
   output: "test/allow_none.out",
 });
 
 itest!(ops_sanitizer_unstable {
-  args: "test --unstable --trace-ops test/ops_sanitizer_unstable.ts",
+  args: "test --trace-ops test/ops_sanitizer_unstable.ts",
   exit_code: 1,
   output: "test/ops_sanitizer_unstable.out",
 });
@@ -449,7 +449,7 @@ fn captured_output() {
   let context = TestContext::default();
   let output = context
     .new_command()
-    .args("test --allow-run --allow-read --unstable test/captured_output.ts")
+    .args("test --allow-run --allow-read test/captured_output.ts")
     .env("NO_COLOR", "1")
     .run();
 
@@ -663,3 +663,9 @@ fn conditionally_loads_type_graph() {
     .run();
   assert_not_contains!(output.combined_output(), "type_reference.d.ts");
 }
+
+itest!(test_include_relative_pattern_dot_slash {
+  args: "test",
+  output: "test/relative_pattern_dot_slash/output.out",
+  cwd: Some("test/relative_pattern_dot_slash"),
+});

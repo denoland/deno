@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
@@ -12,6 +12,7 @@ import {
   ReadOptions,
   TextOptionsArgument,
 } from "ext:deno_node/_fs/_fs_common.ts";
+import { core } from "ext:core/mod.js";
 
 interface WriteResult {
   bytesWritten: number;
@@ -134,7 +135,7 @@ export class FileHandle extends EventEmitter {
 
   close(): Promise<void> {
     // Note that Deno.close is not async
-    return Promise.resolve(Deno.close(this.fd));
+    return Promise.resolve(core.close(this.fd));
   }
 }
 

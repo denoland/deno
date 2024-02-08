@@ -1,14 +1,31 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // Remove Intl.v8BreakIterator because it is a non-standard API.
 delete Intl.v8BreakIterator;
 
 import { core, internals, primordials } from "ext:core/mod.js";
 const ops = core.ops;
+import {
+  op_bootstrap_args,
+  op_bootstrap_is_tty,
+  op_bootstrap_no_color,
+  op_bootstrap_pid,
+  op_main_module,
+  op_ppid,
+  op_set_format_exception_callback,
+  op_snapshot_options,
+  op_worker_close,
+  op_worker_get_type,
+  op_worker_post_message,
+  op_worker_recv_message,
+  op_worker_sync_fetch,
+} from "ext:core/ops";
 const {
   ArrayPrototypeFilter,
   ArrayPrototypeIncludes,
   ArrayPrototypeMap,
+  ArrayPrototypePop,
+  ArrayPrototypeShift,
   DateNow,
   Error,
   ErrorPrototype,
@@ -23,23 +40,29 @@ const {
   ObjectValues,
   PromisePrototypeThen,
   PromiseResolve,
+  SafeSet,
+  StringPrototypeIncludes,
+  StringPrototypeSplit,
+  StringPrototypeTrim,
   Symbol,
   SymbolIterator,
   TypeError,
 } = primordials;
-import * as util from "ext:runtime/06_util.js";
+const {
+  isNativeError,
+} = core;
 import * as event from "ext:deno_web/02_event.js";
 import * as location from "ext:deno_web/12_location.js";
 import * as version from "ext:runtime/01_version.ts";
 import * as os from "ext:runtime/30_os.js";
 import * as timers from "ext:deno_web/02_timers.js";
 import {
+  customInspect,
   getDefaultInspectOptions,
   getNoColor,
   inspectArgs,
   quoteString,
   setNoColorFn,
-  wrapConsole,
 } from "ext:deno_console/01_console.js";
 import * as performance from "ext:deno_web/15_performance.js";
 import * as url from "ext:deno_url/00_url.js";
@@ -53,18 +76,33 @@ import {
 } from "ext:runtime/90_deno_ns.js";
 import { errors } from "ext:runtime/01_errors.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
-import DOMException from "ext:deno_web/01_dom_exception.js";
+import { DOMException } from "ext:deno_web/01_dom_exception.js";
+import {
+  unstableForWindowOrWorkerGlobalScope,
+  windowOrWorkerGlobalScope,
+} from "ext:runtime/98_global_scope_shared.js";
 import {
   mainRuntimeGlobalProperties,
   memoizeLazy,
-  unstableForWindowOrWorkerGlobalScope,
-  windowOrWorkerGlobalScope,
+} from "ext:runtime/98_global_scope_window.js";
+import {
   workerRuntimeGlobalProperties,
-} from "ext:runtime/98_global_scope.js";
-import { SymbolAsyncDispose, SymbolDispose } from "ext:deno_web/00_infra.js";
-
+} from "ext:runtime/98_global_scope_worker.js";
+import {
+  SymbolAsyncDispose,
+  SymbolDispose,
+  SymbolMetadata,
+} from "ext:deno_web/00_infra.js";
 // deno-lint-ignore prefer-primordials
 if (Symbol.dispose) throw "V8 supports Symbol.dispose now, no need to shim it!";
+// deno-lint-ignore prefer-primordials
+if (Symbol.asyncDispose) {
+  throw "V8 supports Symbol.asyncDispose now, no need to shim it!";
+}
+// deno-lint-ignore prefer-primordials
+if (Symbol.metadata) {
+  throw "V8 supports Symbol.metadata now, no need to shim it!";
+}
 ObjectDefineProperties(Symbol, {
   dispose: {
     value: SymbolDispose,
@@ -78,10 +116,112 @@ ObjectDefineProperties(Symbol, {
     writable: false,
     configurable: false,
   },
+  metadata: {
+    value: SymbolMetadata,
+    enumerable: false,
+    writable: false,
+    configurable: false,
+  },
 });
 
 let windowIsClosing = false;
 let globalThis_;
+
+let verboseDeprecatedApiWarning = false;
+let deprecatedApiWarningDisabled = false;
+const ALREADY_WARNED_DEPRECATED = new SafeSet();
+
+function warnOnDeprecatedApi(apiName, stack, ...suggestions) {
+  if (deprecatedApiWarningDisabled) {
+    return;
+  }
+
+  if (!verboseDeprecatedApiWarning) {
+    if (ALREADY_WARNED_DEPRECATED.has(apiName)) {
+      return;
+    }
+    ALREADY_WARNED_DEPRECATED.add(apiName);
+    console.error(
+      `%cwarning: %cUse of deprecated "${apiName}" API. This API will be removed in Deno 2. Run again with DENO_VERBOSE_WARNINGS=1 to get more details.`,
+      "color: yellow;",
+      "font-weight: bold;",
+    );
+    return;
+  }
+
+  if (ALREADY_WARNED_DEPRECATED.has(apiName + stack)) {
+    return;
+  }
+
+  // If we haven't warned yet, let's do some processing of the stack trace
+  // to make it more useful.
+  const stackLines = StringPrototypeSplit(stack, "\n");
+  ArrayPrototypeShift(stackLines);
+  while (stackLines.length > 0) {
+    // Filter out internal frames at the top of the stack - they are not useful
+    // to the user.
+    if (
+      StringPrototypeIncludes(stackLines[0], "(ext:") ||
+      StringPrototypeIncludes(stackLines[0], "(node:") ||
+      StringPrototypeIncludes(stackLines[0], "<anonymous>")
+    ) {
+      ArrayPrototypeShift(stackLines);
+    } else {
+      break;
+    }
+  }
+  // Now remove the last frame if it's coming from "ext:core" - this is most likely
+  // event loop tick or promise handler calling a user function - again not
+  // useful to the user.
+  if (
+    stackLines.length > 0 &&
+    StringPrototypeIncludes(stackLines[stackLines.length - 1], "(ext:core/")
+  ) {
+    ArrayPrototypePop(stackLines);
+  }
+
+  let isFromRemoteDependency = false;
+  const firstStackLine = stackLines[0];
+  if (firstStackLine && !StringPrototypeIncludes(firstStackLine, "file:")) {
+    isFromRemoteDependency = true;
+  }
+
+  ALREADY_WARNED_DEPRECATED.add(apiName + stack);
+  console.error(
+    `%cwarning: %cUse of deprecated "${apiName}" API. This API will be removed in Deno 2.`,
+    "color: yellow;",
+    "font-weight: bold;",
+  );
+
+  console.error();
+  console.error(
+    "See the Deno 1 to 2 Migration Guide for more information at https://docs.deno.com/runtime/manual/advanced/migrate_deprecations",
+  );
+  console.error();
+  if (stackLines.length > 0) {
+    console.error("Stack trace:");
+    for (let i = 0; i < stackLines.length; i++) {
+      console.error(`  ${StringPrototypeTrim(stackLines[i])}`);
+    }
+    console.error();
+  }
+
+  for (let i = 0; i < suggestions.length; i++) {
+    const suggestion = suggestions[i];
+    console.error(
+      `%chint: ${suggestion}`,
+      "font-weight: bold;",
+    );
+  }
+
+  if (isFromRemoteDependency) {
+    console.error(
+      `%chint: It appears this API is used by a remote dependency. Try upgrading to the latest version of that dependency.`,
+      "font-weight: bold;",
+    );
+  }
+  console.error();
+}
 
 function windowClose() {
   if (!windowIsClosing) {
@@ -105,7 +245,7 @@ function workerClose() {
   }
 
   isClosing = true;
-  ops.op_worker_close();
+  op_worker_close();
 }
 
 function postMessage(message, transferOrOptions = {}) {
@@ -134,7 +274,7 @@ function postMessage(message, transferOrOptions = {}) {
   }
   const { transfer } = options;
   const data = messagePort.serializeJsMessageData(message, transfer);
-  ops.op_worker_post_message(data);
+  op_worker_post_message(data);
 }
 
 let isClosing = false;
@@ -148,7 +288,7 @@ async function pollForMessages() {
     );
   }
   while (!isClosing) {
-    const data = await core.opAsync("op_worker_recv_message");
+    const data = await op_worker_recv_message();
     if (data === null) break;
     const v = messagePort.deserializeJsMessageData(data);
     const message = v[0];
@@ -189,7 +329,7 @@ async function pollForMessages() {
 let loadedMainWorkerScript = false;
 
 function importScripts(...urls) {
-  if (ops.op_worker_get_type() === "module") {
+  if (op_worker_get_type() === "module") {
     throw new TypeError("Can't import scripts in a module worker.");
   }
 
@@ -209,7 +349,7 @@ function importScripts(...urls) {
   // imported scripts, so we use `loadedMainWorkerScript` to distinguish them.
   // TODO(andreubotella) Refactor worker creation so the main script isn't
   // loaded with `importScripts()`.
-  const scripts = ops.op_worker_sync_fetch(
+  const scripts = op_worker_sync_fetch(
     parsedUrls,
     !loadedMainWorkerScript,
   );
@@ -224,17 +364,16 @@ function importScripts(...urls) {
   }
 }
 
-function opMainModule() {
-  return ops.op_main_module();
-}
-
-const opArgs = memoizeLazy(() => ops.op_bootstrap_args());
-const opPid = memoizeLazy(() => ops.op_bootstrap_pid());
-const opPpid = memoizeLazy(() => ops.op_ppid());
-setNoColorFn(() => ops.op_bootstrap_no_color() || !ops.op_bootstrap_is_tty());
+const opArgs = memoizeLazy(() => op_bootstrap_args());
+const opPid = memoizeLazy(() => op_bootstrap_pid());
+const opPpid = memoizeLazy(() => op_ppid());
+setNoColorFn(() => op_bootstrap_no_color() || !op_bootstrap_is_tty());
 
 function formatException(error) {
-  if (ObjectPrototypeIsPrototypeOf(ErrorPrototype, error)) {
+  if (
+    isNativeError(error) ||
+    ObjectPrototypeIsPrototypeOf(ErrorPrototype, error)
+  ) {
     return null;
   } else if (typeof error == "string") {
     return `Uncaught ${
@@ -259,11 +398,9 @@ core.registerErrorClass("BrokenPipe", errors.BrokenPipe);
 core.registerErrorClass("AlreadyExists", errors.AlreadyExists);
 core.registerErrorClass("InvalidData", errors.InvalidData);
 core.registerErrorClass("TimedOut", errors.TimedOut);
-core.registerErrorClass("Interrupted", errors.Interrupted);
 core.registerErrorClass("WouldBlock", errors.WouldBlock);
 core.registerErrorClass("WriteZero", errors.WriteZero);
 core.registerErrorClass("UnexpectedEof", errors.UnexpectedEof);
-core.registerErrorClass("BadResource", errors.BadResource);
 core.registerErrorClass("Http", errors.Http);
 core.registerErrorClass("Busy", errors.Busy);
 core.registerErrorClass("NotSupported", errors.NotSupported);
@@ -323,7 +460,7 @@ function runtimeStart(
   core.setMacrotaskCallback(timers.handleTimerMacrotask);
   core.setWasmStreamingCallback(fetch.handleWasmStreaming);
   core.setReportExceptionCallback(event.reportException);
-  ops.op_set_format_exception_callback(formatException);
+  op_set_format_exception_callback(formatException);
   version.setVersions(
     denoVersion,
     v8Version,
@@ -333,6 +470,8 @@ function runtimeStart(
 }
 
 core.setUnhandledPromiseRejectionHandler(processUnhandledPromiseRejection);
+core.setHandledPromiseRejectionHandler(processRejectionHandled);
+
 // Notification that the core received an unhandled promise rejection that is about to
 // terminate the runtime. If we can handle it, attempt to do so.
 function processUnhandledPromiseRejection(promise, reason) {
@@ -364,6 +503,20 @@ function processUnhandledPromiseRejection(promise, reason) {
   }
 
   return false;
+}
+
+function processRejectionHandled(promise, reason) {
+  const rejectionHandledEvent = new event.PromiseRejectionEvent(
+    "rejectionhandled",
+    { promise, reason },
+  );
+
+  // Note that the handler may throw, causing a recursive "error" event
+  globalThis_.dispatchEvent(rejectionHandledEvent);
+
+  if (typeof internals.nodeProcessRejectionHandledCallback !== "undefined") {
+    internals.nodeProcessRejectionHandledCallback(rejectionHandledEvent);
+  }
 }
 
 let hasBootstrapped = false;
@@ -402,16 +555,68 @@ function exposeUnstableFeaturesForWindowOrWorkerGlobalScope(options) {
   }
 }
 
+// NOTE(bartlomieju): remove all the ops that have already been imported using
+// "virtual op module" (`ext:core/ops`).
+const NOT_IMPORTED_OPS = [
+  // Related to `Deno.bench()` API
+  "op_bench_now",
+  "op_dispatch_bench_event",
+  "op_register_bench",
+
+  // Related to `Deno.jupyter` API
+  "op_jupyter_broadcast",
+
+  // Related to `Deno.test()` API
+  "op_test_event_step_result_failed",
+  "op_test_event_step_result_ignored",
+  "op_test_event_step_result_ok",
+  "op_test_event_step_wait",
+  "op_test_op_sanitizer_collect",
+  "op_test_op_sanitizer_finish",
+  "op_test_op_sanitizer_get_async_message",
+  "op_test_op_sanitizer_report",
+  "op_restore_test_permissions",
+  "op_register_test_step",
+  "op_register_test",
+  "op_pledge_test_permissions",
+
+  // TODO(bartlomieju): used in various integration tests - figure out a way
+  // to not depend on them.
+  "op_set_exit_code",
+  "op_napi_open",
+  "op_npm_process_state",
+];
+
+function removeImportedOps() {
+  const allOpNames = ObjectKeys(ops);
+  for (let i = 0; i < allOpNames.length; i++) {
+    const opName = allOpNames[i];
+    if (!ArrayPrototypeIncludes(NOT_IMPORTED_OPS, opName)) {
+      delete ops[opName];
+    }
+  }
+}
+
 // FIXME(bartlomieju): temporarily add whole `Deno.core` to
 // `Deno[Deno.internal]` namespace. It should be removed and only necessary
 // methods should be left there.
-ObjectAssign(internals, { core });
+ObjectAssign(internals, { core, warnOnDeprecatedApi });
 const internalSymbol = Symbol("Deno.internal");
 const finalDenoNs = {
   internal: internalSymbol,
   [internalSymbol]: internals,
-  resources: core.resources,
-  close: core.close,
+  resources() {
+    internals.warnOnDeprecatedApi("Deno.resources()", new Error().stack);
+    return core.resources();
+  },
+  close(rid) {
+    internals.warnOnDeprecatedApi(
+      "Deno.close()",
+      new Error().stack,
+      "Use `closer.close()` instead.",
+    );
+    core.close(rid);
+  },
   ...denoNs,
   // Deno.test and Deno.bench are noops here, but kept for compatibility; so
   // that they don't cause errors when used outside of `deno test`/`deno bench`
@@ -425,7 +630,7 @@ const {
   tsVersion,
   v8Version,
   target,
-} = ops.op_snapshot_options();
+} = op_snapshot_options();
 
 function bootstrapMainRuntime(runtimeOptions) {
   if (hasBootstrapped) {
@@ -440,9 +645,14 @@ function bootstrapMainRuntime(runtimeOptions) {
     3: inspectFlag,
     5: hasNodeModulesDir,
     6: maybeBinaryNpmCommandName,
-    7: nodeIpcFd,
+    7: shouldDisableDeprecatedApiWarning,
+    8: shouldUseVerboseDeprecatedApiWarning,
   } = runtimeOptions;
 
+  removeImportedOps();
+
+  deprecatedApiWarningDisabled = shouldDisableDeprecatedApiWarning;
+  verboseDeprecatedApiWarning = shouldUseVerboseDeprecatedApiWarning;
   performance.setTimeOrigin(DateNow());
   globalThis_ = globalThis;
 
@@ -472,16 +682,15 @@ function bootstrapMainRuntime(runtimeOptions) {
     // TODO(bartlomieju): in the future we might want to change the
     // behavior of setting `name` to actually update the process name.
     // Empty string matches what browsers do.
-    name: util.writable(""),
-    close: util.writable(windowClose),
-    closed: util.getterOnly(() => windowIsClosing),
+    name: core.propWritable(""),
+    close: core.propWritable(windowClose),
+    closed: core.propGetterOnly(() => windowIsClosing),
   });
   ObjectSetPrototypeOf(globalThis, Window.prototype);
 
   if (inspectFlag) {
-    const consoleFromV8 = core.console;
     const consoleFromDeno = globalThis.console;
-    wrapConsole(consoleFromDeno, consoleFromV8);
+    core.wrapConsole(consoleFromDeno, core.v8Console);
   }
 
   event.setEventTargetData(globalThis);
@@ -501,11 +710,23 @@ function bootstrapMainRuntime(runtimeOptions) {
   );
 
   ObjectDefineProperties(finalDenoNs, {
-    pid: util.getterOnly(opPid),
-    ppid: util.getterOnly(opPpid),
-    noColor: util.getterOnly(() => ops.op_bootstrap_no_color()),
-    args: util.getterOnly(opArgs),
-    mainModule: util.getterOnly(opMainModule),
+    pid: core.propGetterOnly(opPid),
+    ppid: core.propGetterOnly(opPpid),
+    noColor: core.propGetterOnly(() => op_bootstrap_no_color()),
+    args: core.propGetterOnly(opArgs),
+    mainModule: core.propGetterOnly(() => op_main_module()),
+    // TODO(kt3k): Remove this export at v2
+    // See https://github.com/denoland/deno/issues/9294
+    customInspect: {
+      get() {
+        warnOnDeprecatedApi(
+          "Deno.customInspect",
+          new Error().stack,
+          'Use `Symbol.for("Deno.customInspect")` instead.',
+        );
+        return customInspect;
+      },
+    },
   });
 
   // TODO(bartlomieju): deprecate --unstable
@@ -543,10 +764,10 @@ function bootstrapMainRuntime(runtimeOptions) {
 
   // Setup `Deno` global - we're actually overriding already existing global
   // `Deno` with `Deno` namespace from "./deno.ts".
-  ObjectDefineProperty(globalThis, "Deno", util.readOnly(finalDenoNs));
+  ObjectDefineProperty(globalThis, "Deno", core.propReadOnly(finalDenoNs));
 
   if (nodeBootstrap) {
-    nodeBootstrap(hasNodeModulesDir, maybeBinaryNpmCommandName, nodeIpcFd);
+    nodeBootstrap(hasNodeModulesDir, maybeBinaryNpmCommandName);
   }
 }
 
@@ -568,12 +789,16 @@ function bootstrapWorkerRuntime(
     4: enableTestingFeaturesFlag,
     5: hasNodeModulesDir,
     6: maybeBinaryNpmCommandName,
+    7: shouldDisableDeprecatedApiWarning,
+    8: shouldUseVerboseDeprecatedApiWarning,
   } = runtimeOptions;
 
+  deprecatedApiWarningDisabled = shouldDisableDeprecatedApiWarning;
+  verboseDeprecatedApiWarning = shouldUseVerboseDeprecatedApiWarning;
   performance.setTimeOrigin(DateNow());
   globalThis_ = globalThis;
 
-  const consoleFromV8 = globalThis.Deno.core.console;
+  removeImportedOps();
 
   // Remove bootstrapping data from the global scope
   delete globalThis.__bootstrap;
@@ -587,22 +812,22 @@ function bootstrapWorkerRuntime(
   });
   ObjectDefineProperties(globalThis, workerRuntimeGlobalProperties);
   ObjectDefineProperties(globalThis, {
-    name: util.writable(name),
+    name: core.propWritable(name),
     // TODO(bartlomieju): should be readonly?
-    close: util.nonEnumerable(workerClose),
-    postMessage: util.writable(postMessage),
+    close: core.propNonEnumerable(workerClose),
+    postMessage: core.propWritable(postMessage),
   });
   if (enableTestingFeaturesFlag) {
     ObjectDefineProperty(
       globalThis,
       "importScripts",
-      util.writable(importScripts),
+      core.propWritable(importScripts),
     );
   }
   ObjectSetPrototypeOf(globalThis, DedicatedWorkerGlobalScope.prototype);
 
   const consoleFromDeno = globalThis.console;
-  wrapConsole(consoleFromDeno, consoleFromV8);
+  core.wrapConsole(consoleFromDeno, core.v8Console);
 
   event.setEventTargetData(globalThis);
   event.saveGlobalThisReference(globalThis);
@@ -646,13 +871,25 @@ function bootstrapWorkerRuntime(
   }
 
   ObjectDefineProperties(finalDenoNs, {
-    pid: util.getterOnly(opPid),
-    noColor: util.getterOnly(() => ops.op_bootstrap_no_color()),
-    args: util.getterOnly(opArgs),
+    pid: core.propGetterOnly(opPid),
+    noColor: core.propGetterOnly(() => op_bootstrap_no_color()),
+    args: core.propGetterOnly(opArgs),
+    // TODO(kt3k): Remove this export at v2
+    // See https://github.com/denoland/deno/issues/9294
+    customInspect: {
+      get() {
+        warnOnDeprecatedApi(
+          "Deno.customInspect",
+          new Error().stack,
+          'Use `Symbol.for("Deno.customInspect")` instead.',
+        );
+        return customInspect;
+      },
+    },
   });
   // Setup `Deno` global - we're actually overriding already
   // existing global `Deno` with `Deno` namespace from "./deno.ts".
-  ObjectDefineProperty(globalThis, "Deno", util.readOnly(finalDenoNs));
+  ObjectDefineProperty(globalThis, "Deno", core.propReadOnly(finalDenoNs));
 
   if (nodeBootstrap) {
     nodeBootstrap(hasNodeModulesDir, maybeBinaryNpmCommandName);
