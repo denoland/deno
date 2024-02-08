@@ -172,7 +172,7 @@ const installRustStep = {
 };
 const installPythonSteps = [{
   name: "Install Python",
-  uses: "actions/setup-python@v4",
+  uses: "actions/setup-python@v5",
   with: { "python-version": 3.11 },
 }, {
   name: "Remove unused versions of Python",
@@ -599,7 +599,7 @@ const ci = {
         {
           // Restore cache from the latest 'main' branch build.
           name: "Restore cache build output (PR)",
-          uses: "actions/cache/restore@v3",
+          uses: "actions/cache/restore@v4",
           if:
             "github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')",
           with: {
