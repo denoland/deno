@@ -97,6 +97,15 @@ export const exit = (code?: number | string) => {
   process.reallyExit(process.exitCode || 0);
 };
 
+/** https://nodejs.org/api/process.html#processumaskmask */
+export const umask = () => {
+  // Always return the system default umask value.
+  // We don't use Deno.umask here because it has a race
+  // condition bug.
+  // See https://github.com/denoland/deno_std/issues/1893#issuecomment-1032897779
+  return 0o22;
+};
+
 export const abort = () => {
   op_process_abort();
 };
