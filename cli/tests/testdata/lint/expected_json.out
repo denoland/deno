@@ -1,6 +1,7 @@
 {
   "diagnostics": [
     {
+      "filename": "[WILDCARD]file1.js",
       "range": {
         "start": {
           "line": 1,
@@ -13,12 +14,12 @@
           "bytePos": 19
         }
       },
-      "filename": "[WILDCARD]file1.js",
       "message": "Ignore directive requires lint rule name(s)",
       "code": "ban-untagged-ignore",
       "hint": [WILDCARD]
     },
     {
+      "filename": "[WILDCARD]file1.js",
       "range": {
         "start": {
           "line": 2,
@@ -31,12 +32,12 @@
           "bytePos": 36
         }
       },
-      "filename": "[WILDCARD]file1.js",
       "message": "Empty block statement",
       "code": "no-empty",
       "hint": [WILDCARD]
     },
     {
+      "filename": "[WILDCARD]file2.ts",
       "range": {
         "start": {
           "line": 3,
@@ -49,7 +50,6 @@
           "bytePos": 59
         }
       },
-      "filename": "[WILDCARD]file2.ts",
       "message": "Empty block statement",
       "code": "no-empty",
       "hint": [WILDCARD]
