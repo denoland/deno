@@ -37,6 +37,11 @@ jobs:
           version: "21.12"
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Install Deno
+        uses: denoland/setup-deno@v1
+        with:
+          deno-version: v1.x
+
       - name: Build release
         run: cargo build --release --locked --all-targets
 
