@@ -834,7 +834,7 @@ impl CliFactory {
       unstable: self.options.legacy_unstable_flag(),
       maybe_root_package_json_deps: self.options.maybe_package_json_deps(),
       hmr_runner: Arc::new(Mutex::new(hmr_runner)),
-      coverage_collector: coverage_collector,
+      coverage_collector,
     })
   }
 }
