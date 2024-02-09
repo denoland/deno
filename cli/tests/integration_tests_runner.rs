@@ -1,14 +1,12 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 pub fn main() {
-  let mut args = vec![
-    "cargo",
-    "test",
-    "-p",
-    "cli_tests",
-    "--features",
-    "run",
-    "--",
-  ];
+  let mut args = vec!["cargo", "test", "-p", "cli_tests", "--features", "run"];
+
+  if !cfg!(debug_assertions) {
+    args.push("--release");
+  }
+
+  args.push("--");
 
   // If any args were passed to this process, pass them through to the child
   let orig_args = std::env::args().skip(1).collect::<Vec<_>>();
