@@ -475,12 +475,12 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     //
     // Phase 2 of the 'min sized' deno compile RFC talks
     // about adding this as a flag.
-    if let Some(path) = std::env::var_os("DENO_STANDALONE_BIN") {
+    if let Some(path) = std::env::var_os("DENORT_BIN") {
       return Ok(std::fs::read(path)?);
     }
 
     let target = compile_flags.resolve_target();
-    let binary_name = format!("deno-standalone-{target}.zip");
+    let binary_name = format!("denort-{target}.zip");
 
     let binary_path_suffix = if crate::version::is_canary() {
       format!("canary/{}/{}", crate::version::GIT_COMMIT_HASH, binary_name)
@@ -500,7 +500,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     let archive_data = std::fs::read(binary_path)?;
     let temp_dir = tempfile::TempDir::new()?;
     let base_binary_path = unpack_into_dir(
-      "deno-standalone",
+      "denort",
       &binary_name,
       archive_data,
       target.contains("windows"),

@@ -17,8 +17,8 @@ path = "main.rs"
 doc = false
 
 [[bin]]
-name = "deno_standalone"
-path = "main_standalone.rs"
+name = "denort"
+path = "mainrt.rs"
 doc = false
 
 [[bench]]
