@@ -1051,6 +1051,9 @@ fn lock_deno_json_package_json_deps() {
         "jsr:@denotest/module_graph@1.4": "jsr:@denotest/module_graph@1.4.0",
         "npm:@denotest/esm-basic": "npm:@denotest/esm-basic@1.0.0"
       },
+      "jsr": {
+        "@denotest/module_graph@1.4.0": {}
+      },
       "npm": {
         "@denotest/esm-basic@1.0.0": {
           "integrity": esm_basic_integrity,
@@ -1101,6 +1104,9 @@ fn lock_deno_json_package_json_deps() {
         "jsr:@denotest/module_graph@1.4": "jsr:@denotest/module_graph@1.4.0",
         "npm:@denotest/esm-basic": "npm:@denotest/esm-basic@1.0.0"
       },
+      "jsr": {
+        "@denotest/module_graph@1.4.0": {}
+      },
       "npm": {
         "@denotest/esm-basic@1.0.0": {
           "integrity": esm_basic_integrity,
@@ -1138,6 +1144,9 @@ fn lock_deno_json_package_json_deps() {
     "packages": {
       "specifiers": {
         "jsr:@denotest/module_graph@1.4": "jsr:@denotest/module_graph@1.4.0",
+      },
+      "jsr": {
+        "@denotest/module_graph@1.4.0": {}
       }
     },
     "remote": {
