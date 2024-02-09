@@ -560,7 +560,7 @@ mod tests {
       Deno.test(`test template literal name`, () => {});
     "#;
     let parsed_module = deno_ast::parse_module(deno_ast::ParseParams {
-      specifier: specifier.to_string(),
+      specifier: specifier.clone(),
       text_info: SourceTextInfo::new(source.into()),
       media_type: MediaType::TypeScript,
       capture_tokens: true,
