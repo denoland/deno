@@ -1,14 +1,14 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use deno_runtime::deno_net::ops_tls::TlsStream;
-use deno_runtime::deno_tls::rustls;
-use deno_runtime::deno_tls::rustls_pemfile;
-use lsp_types::Url;
+use deno_tls::rustls;
+use deno_tls::rustls_pemfile;
+use deno_tls::rustls_tokio_stream::TlsStream;
 use std::io::BufReader;
 use std::io::Cursor;
 use std::io::Read;
 use std::sync::Arc;
 use test_util as util;
+use url::Url;
 use util::testdata_path;
 use util::TestContext;
 

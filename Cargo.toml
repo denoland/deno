@@ -6,6 +6,7 @@ members = [
   "bench_util",
   "cli",
   "cli/napi/sym",
+  "cli/tests",
   "ext/broadcast_channel",
   "ext/cache",
   "ext/canvas",
