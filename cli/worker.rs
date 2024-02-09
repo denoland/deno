@@ -89,7 +89,10 @@ pub trait HmrRunner: Send + Sync {
 
 #[async_trait::async_trait(?Send)]
 pub trait CoverageCollector: Send + Sync {
-  fn setup(&mut self, session: deno_core::LocalInspectorSession);
+  fn setup(
+    &self,
+    session: deno_core::LocalInspectorSession,
+  ) -> Box<dyn CoverageCollector>;
 
   async fn start_collecting(&mut self) -> Result<(), AnyError>;
   async fn stop_collecting(&mut self) -> Result<(), AnyError>;
@@ -117,7 +120,7 @@ pub struct CliMainWorkerOptions {
   pub skip_op_registration: bool,
   pub maybe_root_package_json_deps: Option<PackageJsonDeps>,
   pub hmr_runner: Arc<Mutex<Option<Box<dyn HmrRunner>>>>,
-  pub coverage_collector: Arc<Mutex<Option<Box<dyn CoverageCollector>>>>,
+  pub coverage_collector: Option<Box<dyn CoverageCollector>>,
 }
 
 struct SharedWorkerState {
@@ -366,14 +369,14 @@ impl CliMainWorker {
   pub async fn maybe_setup_coverage_collector(
     &mut self,
   ) -> Result<Option<Box<dyn CoverageCollector>>, AnyError> {
-    let Some(mut coverage_collector) =
-      self.shared.options.coverage_collector.lock().take()
+    let Some(coverage_collector) =
+      self.shared.options.coverage_collector.as_ref()
     else {
       return Ok(None);
     };
 
     let session = self.worker.create_inspector_session().await;
-    coverage_collector.setup(session);
+    let mut coverage_collector = coverage_collector.setup(session);
     self
       .worker
       .js_runtime

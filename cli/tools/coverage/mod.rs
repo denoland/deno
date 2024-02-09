@@ -48,8 +48,14 @@ pub struct CoverageCollector {
 
 #[async_trait::async_trait(?Send)]
 impl crate::worker::CoverageCollector for CoverageCollector {
-  fn setup(&mut self, session: LocalInspectorSession) {
-    self.session = Some(session);
+  fn setup(
+    &self,
+    session: LocalInspectorSession,
+  ) -> Box<dyn crate::worker::CoverageCollector> {
+    Box::new(Self {
+      dir: self.dir.clone(),
+      session: Some(session),
+    })
   }
 
   async fn start_collecting(&mut self) -> Result<(), AnyError> {
