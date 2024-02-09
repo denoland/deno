@@ -1403,9 +1403,9 @@ dependencies = [
 
 [[package]]
 name = "deno_graph"
-version = "0.65.0"
+version = "0.65.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bd7e17cc32255286c37c81a44425b71c4a7e1aadb7bdf65968a31d28415fa1d0"
+checksum = "06fadc0cd21f54794ab22e852d6c92487a65f0dd70b40eadbf3a8e249c760223"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1530,9 +1530,9 @@ dependencies = [
 
 [[package]]
 name = "deno_lockfile"
-version = "0.18.0"
+version = "0.18.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dfe06eda519ed05b69da567bcba1d728c482fd553ddaa2ffe008468158da6de0"
+checksum = "9f348633cc4425b2a9011436e256b1ae8f6c8026ec2705d852baee8643dc5562"
 dependencies = [
  "ring",
  "serde",
