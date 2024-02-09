@@ -7,7 +7,7 @@ import {
   assertEquals,
   assertStrictEquals,
   assertThrows,
-} from "../../../../test_util/std/assert/mod.ts";
+} from "@/std/assert/mod.ts";
 
 const rsaPrivateKey = Deno.readTextFileSync(
   new URL("../testdata/rsa_private.pem", import.meta.url),

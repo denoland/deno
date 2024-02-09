@@ -1,12 +1,9 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import {
-  assertEquals,
-  assertInstanceOf,
-} from "../../../test_util/std/assert/mod.ts";
-import { delay } from "../../../test_util/std/async/delay.ts";
-import { fromFileUrl, join } from "../../../test_util/std/path/mod.ts";
-import { serveTls } from "../../../test_util/std/http/server.ts";
+import { assertEquals, assertInstanceOf } from "@test_util/std/assert/mod.ts";
+import { delay } from "@test_util/std/async/delay.ts";
+import { fromFileUrl, join } from "@test_util/std/path/mod.ts";
+import { serveTls } from "@test_util/std/http/server.ts";
 import * as tls from "node:tls";
 import * as net from "node:net";
 import * as stream from "node:stream";

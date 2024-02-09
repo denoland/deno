@@ -59,7 +59,6 @@ util::unit_test_factory!(
     navigator_test,
     net_test,
     network_interfaces_test,
-    opcall_test,
     os_test,
     ops_test,
     path_from_url_test,
@@ -85,6 +84,7 @@ util::unit_test_factory!(
     stdio_test,
     streams_test,
     structured_clone_test,
+    symbol_test,
     symlink_test,
     sync_test,
     test_util,
@@ -105,9 +105,10 @@ util::unit_test_factory!(
     webcrypto_test,
     webgpu_test,
     websocket_test,
+    websocketstream_test,
     webstorage_test,
     worker_permissions_test,
-    worker_types,
+    worker_test,
     write_file_test,
     write_text_file_test,
   ]
@@ -119,8 +120,11 @@ fn js_unit_test(test: String) {
   let deno = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("test")
+    .arg("--config")
+    .arg("cli/tests/config/deno.json")
+    .arg("--no-lock")
     .arg("--unstable")
-    .arg("--location=http://js-unit-tests/foo/bar")
+    .arg("--location=http://127.0.0.1:4545/")
     .arg("--no-prompt");
 
   // TODO(mmastrac): it would be better to just load a test CA for all tests

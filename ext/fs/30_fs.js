@@ -4,9 +4,9 @@ import { core, internals, primordials } from "ext:core/mod.js";
 const {
   isDate,
   internalRidSymbol,
+  createCancelHandle,
 } = core;
 import {
-  op_cancel_handle,
   op_fs_chdir,
   op_fs_chmod_async,
   op_fs_chmod_sync,
@@ -766,6 +766,22 @@ class FsFile {
     futimeSync(this.#rid, atime, mtime);
   }
 
+  lockSync(exclusive = false) {
+    op_fs_flock_sync(this.#rid, exclusive);
+  }
+
+  async lock(exclusive = false) {
+    await op_fs_flock_async(this.#rid, exclusive);
+  }
+
+  unlockSync() {
+    op_fs_funlock_sync(this.#rid);
+  }
+
+  async unlock() {
+    await op_fs_funlock_async(this.#rid);
+  }
+
   [SymbolDispose]() {
     core.tryClose(this.#rid);
   }
@@ -807,7 +823,7 @@ async function readFile(path, options) {
   let abortHandler;
   if (options?.signal) {
     options.signal.throwIfAborted();
-    cancelRid = op_cancel_handle();
+    cancelRid = createCancelHandle();
     abortHandler = () => core.tryClose(cancelRid);
     options.signal[abortSignal.add](abortHandler);
   }
@@ -837,7 +853,7 @@ async function readTextFile(path, options) {
   let abortHandler;
   if (options?.signal) {
     options.signal.throwIfAborted();
-    cancelRid = op_cancel_handle();
+    cancelRid = createCancelHandle();
     abortHandler = () => core.tryClose(cancelRid);
     options.signal[abortSignal.add](abortHandler);
   }
@@ -883,7 +899,7 @@ async function writeFile(
   let abortHandler;
   if (options.signal) {
     options.signal.throwIfAborted();
-    cancelRid = op_cancel_handle();
+    cancelRid = createCancelHandle();
     abortHandler = () => core.tryClose(cancelRid);
     options.signal[abortSignal.add](abortHandler);
   }

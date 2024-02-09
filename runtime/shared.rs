@@ -56,12 +56,7 @@ extension!(runtime,
   customizer = |ext: &mut Extension| {
     #[cfg(not(feature = "exclude_runtime_main_js"))]
     {
-      ext.esm_files.to_mut().push(ExtensionFileSource {
-        specifier: "ext:runtime_main/js/99_main.js",
-        code: ExtensionFileSourceCode::IncludedInBinary(
-          include_str!("./js/99_main.js"),
-        ),
-      });
+      ext.esm_files.to_mut().push(ExtensionFileSource::new("ext:runtime_main/js/99_main.js", include_str!("./js/99_main.js")));
       ext.esm_entry_point = Some("ext:runtime_main/js/99_main.js");
     }
   }
@@ -89,7 +84,7 @@ pub fn maybe_transpile_source(
   let code = source.load()?;
 
   let parsed = deno_ast::parse_module(ParseParams {
-    specifier: source.specifier.to_string(),
+    specifier: deno_core::url::Url::parse(source.specifier).unwrap(),
     text_info: SourceTextInfo::from_string(code.as_str().to_owned()),
     media_type,
     capture_tokens: false,

@@ -430,6 +430,11 @@ impl MainWorker {
         enable_testing_features,
       ),
       runtime::init_ops_and_esm(),
+      // NOTE(bartlomieju): this is done, just so that ops from this extension
+      // are available and importing them in `99_main.js` doesn't cause an
+      // error because they're not defined. Trying to use these ops in non-worker
+      // context will cause a panic.
+      ops::web_worker::deno_web_worker::init_ops_and_esm().disable(),
     ];
 
     #[cfg(__runtime_js_sources)]

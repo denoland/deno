@@ -41,6 +41,7 @@ Deno.test(async function permissionSysValidKind() {
   await Deno.permissions.query({ name: "sys", kind: "hostname" });
   await Deno.permissions.query({ name: "sys", kind: "uid" });
   await Deno.permissions.query({ name: "sys", kind: "gid" });
+  await Deno.permissions.query({ name: "sys", kind: "cpus" });
 });
 
 Deno.test(function permissionSysValidKindSync() {
@@ -51,6 +52,7 @@ Deno.test(function permissionSysValidKindSync() {
   Deno.permissions.querySync({ name: "sys", kind: "hostname" });
   Deno.permissions.querySync({ name: "sys", kind: "uid" });
   Deno.permissions.querySync({ name: "sys", kind: "gid" });
+  Deno.permissions.querySync({ name: "sys", kind: "cpus" });
 });
 
 Deno.test(async function permissionSysInvalidKind() {

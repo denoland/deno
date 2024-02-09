@@ -9,8 +9,8 @@ import {
   assertNotStrictEquals,
   assertStrictEquals,
   assertStringIncludes,
-} from "../../../test_util/std/assert/mod.ts";
-import * as path from "../../../test_util/std/path/mod.ts";
+} from "@test_util/std/assert/mod.ts";
+import * as path from "@test_util/std/path/mod.ts";
 
 const { spawn, spawnSync, execFile, execFileSync, ChildProcess } = CP;
 
@@ -753,4 +753,21 @@ Deno.test(async function forkIpcKillDoesNotHang() {
   cp.kill();
 
   await p.promise;
+});
+
+Deno.test(async function execFileWithUndefinedTimeout() {
+  const { promise, resolve, reject } = Promise.withResolvers<void>();
+  CP.execFile(
+    "git",
+    ["-v"],
+    { timeout: undefined, encoding: "utf8" },
+    (err) => {
+      if (err) {
+        reject(err);
+        return;
+      }
+      resolve();
+    },
+  );
+  await promise;
 });

@@ -6,7 +6,7 @@ use serde::Serialize;
 use std::cell::RefCell;
 use std::thread;
 
-use crate::colors;
+use deno_terminal::colors;
 
 /// The log level to use when printing diagnostic log messages, warnings,
 /// or errors in the worker.
@@ -77,7 +77,7 @@ impl Default for BootstrapOptions {
       user_agent,
       cpu_count,
       no_color: !colors::use_color(),
-      is_tty: colors::is_tty(),
+      is_tty: deno_terminal::is_stdout_tty(),
       enable_op_summary_metrics: Default::default(),
       enable_testing_features: Default::default(),
       log_level: Default::default(),

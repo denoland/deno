@@ -1,4 +1,7 @@
 {
+  "imports": {
+    "@test_util/": "../../test_util/"
+  },
   "tasks": {
     "setup": "deno run --allow-read --allow-write ./setup.ts",
     "test": "deno test -A ../../cli/tests/node_compat/test.ts --"

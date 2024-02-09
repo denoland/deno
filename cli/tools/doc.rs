@@ -5,22 +5,13 @@ use crate::args::DocHtmlFlag;
 use crate::args::DocSourceFileFlag;
 use crate::args::Flags;
 use crate::colors;
-use crate::diagnostics::Diagnostic;
-use crate::diagnostics::DiagnosticLevel;
-use crate::diagnostics::DiagnosticLocation;
-use crate::diagnostics::DiagnosticSnippet;
-use crate::diagnostics::DiagnosticSnippetHighlight;
-use crate::diagnostics::DiagnosticSnippetHighlightStyle;
-use crate::diagnostics::DiagnosticSnippetSource;
-use crate::diagnostics::DiagnosticSourcePos;
-use crate::diagnostics::DiagnosticSourceRange;
-use crate::diagnostics::SourceTextParsedSourceStore;
 use crate::display::write_json_to_stdout;
 use crate::display::write_to_stdout_ignore_sigpipe;
 use crate::factory::CliFactory;
 use crate::graph_util::graph_lock_or_exit;
 use crate::tsc::get_types_declaration_file_text;
 use crate::util::fs::collect_specifiers;
+use deno_ast::diagnostics::Diagnostic;
 use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPatternSet;
 use deno_core::anyhow::bail;
@@ -33,10 +24,7 @@ use deno_graph::ModuleAnalyzer;
 use deno_graph::ModuleParser;
 use deno_graph::ModuleSpecifier;
 use doc::DocDiagnostic;
-use doc::DocDiagnosticKind;
 use indexmap::IndexMap;
-use lsp_types::Url;
-use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::rc::Rc;
 
@@ -142,7 +130,7 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
 
       if doc_flags.lint {
         let diagnostics = doc_parser.take_diagnostics();
-        check_diagnostics(&**parsed_source_cache, &diagnostics)?;
+        check_diagnostics(&diagnostics)?;
       }
 
       doc_nodes_by_url
@@ -248,6 +236,7 @@ async fn generate_docs_directory(
     hide_module_doc_title: false,
     href_resolver: Rc::new(DocResolver { deno_ns }),
     sidebar_flatten_namespaces: false,
+    usage_composer: None,
   };
 
   let files = deno_doc::html::generate(options, doc_nodes_by_url)
@@ -304,118 +293,7 @@ fn print_docs_to_stdout(
   write_to_stdout_ignore_sigpipe(details.as_bytes()).map_err(AnyError::from)
 }
 
-impl Diagnostic for DocDiagnostic {
-  fn level(&self) -> DiagnosticLevel {
-    DiagnosticLevel::Error
-  }
-
-  fn code(&self) -> impl std::fmt::Display + '_ {
-    match self.kind {
-      DocDiagnosticKind::MissingJsDoc => "missing-jsdoc",
-      DocDiagnosticKind::MissingExplicitType => "missing-explicit-type",
-      DocDiagnosticKind::MissingReturnType => "missing-return-type",
-      DocDiagnosticKind::PrivateTypeRef { .. } => "private-type-ref",
-    }
-  }
-
-  fn message(&self) -> impl std::fmt::Display + '_ {
-    match &self.kind {
-      DocDiagnosticKind::MissingJsDoc => {
-        Cow::Borrowed("exported symbol is missing JSDoc documentation")
-      }
-      DocDiagnosticKind::MissingExplicitType => {
-        Cow::Borrowed("exported symbol is missing an explicit type annotation")
-      }
-      DocDiagnosticKind::MissingReturnType => Cow::Borrowed(
-        "exported function is missing an explicit return type annotation",
-      ),
-      DocDiagnosticKind::PrivateTypeRef {
-        reference, name, ..
-      } => Cow::Owned(format!(
-        "public type '{name}' references private type '{reference}'",
-      )),
-    }
-  }
-
-  fn location(&self) -> DiagnosticLocation {
-    let specifier = Url::parse(&self.location.filename).unwrap();
-    DiagnosticLocation::ModulePosition {
-      specifier: Cow::Owned(specifier),
-      source_pos: DiagnosticSourcePos::ByteIndex(self.location.byte_index),
-    }
-  }
-
-  fn snippet(&self) -> Option<DiagnosticSnippet<'_>> {
-    let specifier = Url::parse(&self.location.filename).unwrap();
-    Some(DiagnosticSnippet {
-      source: DiagnosticSnippetSource::Specifier(Cow::Owned(specifier)),
-      highlight: DiagnosticSnippetHighlight {
-        style: DiagnosticSnippetHighlightStyle::Error,
-        range: DiagnosticSourceRange {
-          start: DiagnosticSourcePos::ByteIndex(self.location.byte_index),
-          end: DiagnosticSourcePos::ByteIndex(self.location.byte_index + 1),
-        },
-        description: None,
-      },
-    })
-  }
-
-  fn hint(&self) -> Option<impl std::fmt::Display + '_> {
-    match &self.kind {
-      DocDiagnosticKind::PrivateTypeRef { .. } => {
-        Some("make the referenced type public or remove the reference")
-      }
-      _ => None,
-    }
-  }
-  fn snippet_fixed(&self) -> Option<DiagnosticSnippet<'_>> {
-    match &self.kind {
-      DocDiagnosticKind::PrivateTypeRef {
-        reference_location, ..
-      } => {
-        let specifier = Url::parse(&reference_location.filename).unwrap();
-        Some(DiagnosticSnippet {
-          source: DiagnosticSnippetSource::Specifier(Cow::Owned(specifier)),
-          highlight: DiagnosticSnippetHighlight {
-            style: DiagnosticSnippetHighlightStyle::Hint,
-            range: DiagnosticSourceRange {
-              start: DiagnosticSourcePos::ByteIndex(
-                reference_location.byte_index,
-              ),
-              end: DiagnosticSourcePos::ByteIndex(
-                reference_location.byte_index + 1,
-              ),
-            },
-            description: Some(Cow::Borrowed("this is the referenced type")),
-          },
-        })
-      }
-      _ => None,
-    }
-  }
-
-  fn info(&self) -> std::borrow::Cow<'_, [std::borrow::Cow<'_, str>]> {
-    match &self.kind {
-      DocDiagnosticKind::MissingJsDoc => Cow::Borrowed(&[]),
-      DocDiagnosticKind::MissingExplicitType => Cow::Borrowed(&[]),
-      DocDiagnosticKind::MissingReturnType => Cow::Borrowed(&[]),
-      DocDiagnosticKind::PrivateTypeRef { .. } => {
-        Cow::Borrowed(&[Cow::Borrowed(
-          "to ensure documentation is complete all types that are exposed in the public API must be public",
-        )])
-      }
-    }
-  }
-
-  fn docs_url(&self) -> Option<impl std::fmt::Display + '_> {
-    None::<&str>
-  }
-}
-
-fn check_diagnostics(
-  parsed_source_cache: &dyn deno_graph::ParsedSourceStore,
-  diagnostics: &[DocDiagnostic],
-) -> Result<(), AnyError> {
+fn check_diagnostics(diagnostics: &[DocDiagnostic]) -> Result<(), AnyError> {
   if diagnostics.is_empty() {
     return Ok(());
   }
@@ -437,8 +315,7 @@ fn check_diagnostics(
     for (_, diagnostics_by_col) in diagnostics_by_lc {
       for (_, diagnostics) in diagnostics_by_col {
         for diagnostic in diagnostics {
-          let sources = SourceTextParsedSourceStore(parsed_source_cache);
-          eprintln!("{}", diagnostic.display(&sources));
+          log::error!("{}", diagnostic.display());
         }
       }
     }

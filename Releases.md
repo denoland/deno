@@ -6,6 +6,49 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.40.4 / 2024.02.08
+
+- feat(unstable): `Deno.FsFile.lock[Sync]()` and `Deno.FsFile.unlock[Sync]()`
+  (#22235)
+- feat: ARM64 builds (#22298)
+- fix(cli): Add IP address support to DENO_AUTH_TOKEN (#22297)
+- fix(ext/node): Ensure os.cpus() works on arm64 linux (#22302)
+- fix(ext/node): fix timeout param validation in cp.execFile (#22262)
+- fix(jupyter): ensure op is available (#22240)
+- fix(lint): point to migration docs in deprecated APIs rule (#22338)
+- fix(lsp): disable no-cache diagnostics for jsr specifiers (#22284)
+- fix(node): add `cp` to fs/promises (#22263)
+- fix(node): handle brotli compression end chunk sizes (#22322)
+- fix(os): total and free memory in bytes (#22247)
+- fix(publish): 'explit' typo (#22296)
+- fix(publish): handle diagnostic outside graph (#22310)
+- fix(publish): lazily parse sources (#22301)
+- fix(publish): use lighter crate for opening browser (#22224)
+- fix(test/regression): handle CLI arg directory using `../` in path (#22244)
+- fix(unstable): validate kv list selector (#22265)
+- fix: Fix segmentation fault in tests on CPUs with PKU support (#22152)
+- fix: Support Symbol.metadata (#22282)
+- fix: enable "--allow-sys=cpus" for "deno run" (#22260)
+- perf: remove duplicate `env::current_dir` call in package.json search (#22255)
+
+### 1.40.3 / 2024.02.01
+
+- Revert "refactor(cli): use new sanitizer for resources (#22125)" (#22153)
+- feat(unstable): implement `navigator.gpu.getPreferredCanvasFormat()` (#22149)
+- fix(ext/node): add `aes256` algorithm support (#22198)
+- fix(ext/node): limit OpState borrow in op_napi_open (#22151)
+- fix(fs): copyFile NUL path on macOS (#22216)
+- fix(install): forward granular --unstable-* flags (#22164)
+- fix(lockfile): only consider package.json beside lockfile in workspace
+  property (#22179)
+- fix(lsp): don't normalize urls in cache command params (#22182)
+- fix(node): `util.callbackify` (#22200)
+- fix(node): add `ppid` getter for `node:process` (#22167)
+- fix(publish): add node specifiers (#22213)
+- fix(publish): rename --no-fast-check to --no-zap (#22214)
+- fix(runtime): return number from `op_ppid` instead of bigint (#22169)
+- fix: canary for arm64 macos (#22187)
+
 ### 1.40.2 / 2024.01.26
 
 - feat(lsp): complete parameters as tab stops and placeholders (#22126)
