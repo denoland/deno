@@ -352,7 +352,7 @@ pub fn unpack_into_dir(
   let exe_path = temp_dir_path.join(exe_name).with_extension(exe_ext);
   assert!(!exe_path.exists());
 
-  let archive_ext = Path::new(&*archive_name)
+  let archive_ext = Path::new(archive_name)
     .extension()
     .and_then(|ext| ext.to_str())
     .unwrap();

@@ -22,13 +22,13 @@ mod util;
 mod version;
 mod worker;
 
+use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
-use deno_core::error::generic_error;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::tokio_util::create_and_run_current_thread_with_maybe_metrics;
-use deno_terminal::colors;
 pub use deno_runtime::UNSTABLE_GRANULAR_FLAGS;
+use deno_terminal::colors;
 
 use std::env;
 use std::env::current_exe;
