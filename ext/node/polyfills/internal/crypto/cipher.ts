@@ -151,7 +151,8 @@ export interface DecipherOCB extends Decipher {
   ): this;
 }
 
-function toU8(input: string | Uint8Array): Uint8Array {
+function toU8(input: string | Uint8Array | null): Uint8Array {
+  if (input === null) return new Uint8Array(0);
   return typeof input === "string" ? encode(input) : input;
 }
 
