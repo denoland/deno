@@ -97,7 +97,7 @@ flate2.workspace = true
 fs3.workspace = true
 glob = "0.3.1"
 hex.workspace = true
-import_map = { version = "=0.18.2", features = ["ext"] }
+import_map = { version = "=0.18.3", features = ["ext"] }
 indexmap.workspace = true
 jsonc-parser = { version = "=0.23.0", features = ["serde"] }
 lazy-regex.workspace = true
