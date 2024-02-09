@@ -130,6 +130,14 @@ pub fn deno_exe_path() -> PathRef {
   PathRef::new(p)
 }
 
+pub fn denort_exe_path() -> PathRef {
+  let mut p = target_dir().join("denort").to_path_buf();
+  if cfg!(windows) {
+    p.set_extension("exe");
+  }
+  PathRef::new(p)
+}
+
 pub fn prebuilt_tool_path(tool: &str) -> PathRef {
   let mut exe = tool.to_string();
   exe.push_str(if cfg!(windows) { ".exe" } else { "" });
