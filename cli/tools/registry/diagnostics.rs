@@ -244,9 +244,7 @@ impl Diagnostic for PublishDiagnostic {
             let start = replacement.line_start(0);
             let end = replacement.line_end(0);
             Some(DiagnosticSnippet {
-              source: DiagnosticSnippetSource::SourceTextInfo(Cow::Owned(
-                replacement,
-              )),
+              source: Cow::Owned(replacement),
               highlight: DiagnosticSnippetHighlight {
                 style: DiagnosticSnippetHighlightStyle::Hint,
                 range: DiagnosticSourceRange {
