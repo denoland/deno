@@ -105,7 +105,6 @@ util::unit_test_factory!(
     webcrypto_test,
     webgpu_test,
     websocket_test,
-    websocketstream_test,
     webstorage_test,
     worker_permissions_test,
     worker_test,
