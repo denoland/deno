@@ -4,6 +4,7 @@
 name = "deno"
 version = "1.40.4"
 authors.workspace = true
+autotests = false
 default-run = "deno"
 edition.workspace = true
 exclude = ["tests/testdata/npm/registry/*"]
@@ -15,6 +16,11 @@ description = "Provides the deno executable"
 name = "deno"
 path = "main.rs"
 doc = false
+
+[[test]]
+name = "integration"
+path = "tests/integration_tests_runner.rs"
+harness = false
 
 [[bench]]
 name = "deno_bench"
@@ -149,19 +155,8 @@ nix.workspace = true
 
 [dev-dependencies]
 deno_bench_util.workspace = true
-deno_core = { workspace = true, features = ["include_js_files_for_snapshotting", "unsafe_use_unprotected_platform"] }
-fastwebsockets = { workspace = true, features = ["upgrade", "unstable-split"] }
-flaky_test = "=0.1.0"
-http.workspace = true
-http-body-util.workspace = true
-hyper.workspace = true
-hyper-util.workspace = true
-once_cell.workspace = true
-os_pipe.workspace = true
 pretty_assertions.workspace = true
 test_util.workspace = true
-trust-dns-client = "=0.22.0"
-trust-dns-server = "=0.22.1"
 
 [package.metadata.winres]
 # This section defines the metadata that appears in the deno.exe PE header.
