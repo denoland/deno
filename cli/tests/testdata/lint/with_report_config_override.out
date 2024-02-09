@@ -1,6 +1,7 @@
 {
   "diagnostics": [
     {
+      "filename": "[WILDCARD]a.ts",
       "range": {
         "start": {
           "line": 1,
@@ -13,12 +14,12 @@
           "bytePos": 12
         }
       },
-      "filename": "[WILDCARD]a.ts",
       "message": "TODO should be tagged with (@username) or (#issue)",
       "code": "ban-untagged-todo",
       "hint": "Add a user tag or issue reference to the TODO comment, e.g. TODO(@djones), TODO(djones), TODO(#123)"
     },
     {
+      "filename": "[WILDCARD]a.ts",
       "range": {
         "start": {
           "line": 2,
@@ -31,7 +32,6 @@
           "bytePos": 25
         }
       },
-      "filename": "[WILDCARD]a.ts",
       "message": "`add` is never used",
       "code": "no-unused-vars",
       "hint": "If this is intentional, prefix it with an underscore like `_add`"
