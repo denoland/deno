@@ -2915,12 +2915,12 @@ Deno.test(
       signal: ac.signal,
       onListen: onListen(resolve),
       onError: createOnErrorCb(ac),
-      cert: Deno.readTextFileSync("cli/tests/testdata/tls/localhost.crt"),
-      key: Deno.readTextFileSync("cli/tests/testdata/tls/localhost.key"),
+      cert: Deno.readTextFileSync("tests/testdata/tls/localhost.crt"),
+      key: Deno.readTextFileSync("tests/testdata/tls/localhost.key"),
     });
 
     await promise;
-    const caCert = Deno.readTextFileSync("cli/tests/testdata/tls/RootCA.pem");
+    const caCert = Deno.readTextFileSync("tests/testdata/tls/RootCA.pem");
     const client = Deno.createHttpClient({ caCerts: [caCert] });
     const resp = await fetch(`https://localhost:${servePort}/`, {
       client,
@@ -3794,8 +3794,8 @@ Deno.test(
       {
         signal: ac.signal,
         port: servePort,
-        cert: Deno.readTextFileSync("cli/tests/testdata/tls/localhost.crt"),
-        key: Deno.readTextFileSync("cli/tests/testdata/tls/localhost.key"),
+        cert: Deno.readTextFileSync("tests/testdata/tls/localhost.crt"),
+        key: Deno.readTextFileSync("tests/testdata/tls/localhost.key"),
       },
       () => new Response("hello world!"),
     );
