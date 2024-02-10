@@ -24,7 +24,7 @@ jobs:
 
     steps:
       - name: Clone repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           submodules: true
           persist-credentials: false
@@ -32,10 +32,15 @@ jobs:
       - uses: dsherret/rust-toolchain-file@v1
 
       - name: Install protoc
-        uses: arduino/setup-protoc@v2
+        uses: arduino/setup-protoc@v3
         with:
           version: "21.12"
           repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Deno
+        uses: denoland/setup-deno@v1
+        with:
+          deno-version: v1.x
 
       - name: Build release
         run: cargo build --release --locked --all-targets

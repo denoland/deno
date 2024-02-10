@@ -141,7 +141,7 @@ impl PrettyTestReporter {
       .child_results_buffer
       .entry(description.parent_id)
       .or_default()
-      .remove(&description.id);
+      .shift_remove(&description.id);
   }
 
   fn write_output_end(&mut self) {

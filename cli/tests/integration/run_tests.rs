@@ -3,7 +3,7 @@
 use bytes::Bytes;
 use deno_core::serde_json::json;
 use deno_core::url;
-use deno_runtime::deno_fetch::reqwest;
+use deno_fetch::reqwest;
 use pretty_assertions::assert_eq;
 use std::io::Read;
 use std::io::Write;
@@ -1051,6 +1051,9 @@ fn lock_deno_json_package_json_deps() {
         "jsr:@denotest/module_graph@1.4": "jsr:@denotest/module_graph@1.4.0",
         "npm:@denotest/esm-basic": "npm:@denotest/esm-basic@1.0.0"
       },
+      "jsr": {
+        "@denotest/module_graph@1.4.0": {}
+      },
       "npm": {
         "@denotest/esm-basic@1.0.0": {
           "integrity": esm_basic_integrity,
@@ -1059,8 +1062,8 @@ fn lock_deno_json_package_json_deps() {
       }
     },
     "remote": {
-      "http://localhost:4545/jsr/registry/@denotest/module_graph/1.4.0/mod.ts": "5b0ce36e08d759118200d8b4627627b5a89b6261fbb0598e6961a6b287abb699",
-      "http://localhost:4545/jsr/registry/@denotest/module_graph/1.4.0/other.ts": "9ce27ca439cb0e218b6e1ec26c043dbc0b54c9babc4cb432df478dd1721faade"
+      "http://127.0.0.1:4250/@denotest/module_graph/1.4.0/mod.ts": "5b0ce36e08d759118200d8b4627627b5a89b6261fbb0598e6961a6b287abb699",
+      "http://127.0.0.1:4250/@denotest/module_graph/1.4.0/other.ts": "9ce27ca439cb0e218b6e1ec26c043dbc0b54c9babc4cb432df478dd1721faade"
     },
     "workspace": {
       "dependencies": [
@@ -1101,6 +1104,9 @@ fn lock_deno_json_package_json_deps() {
         "jsr:@denotest/module_graph@1.4": "jsr:@denotest/module_graph@1.4.0",
         "npm:@denotest/esm-basic": "npm:@denotest/esm-basic@1.0.0"
       },
+      "jsr": {
+        "@denotest/module_graph@1.4.0": {}
+      },
       "npm": {
         "@denotest/esm-basic@1.0.0": {
           "integrity": esm_basic_integrity,
@@ -1109,8 +1115,8 @@ fn lock_deno_json_package_json_deps() {
       }
     },
     "remote": {
-      "http://localhost:4545/jsr/registry/@denotest/module_graph/1.4.0/mod.ts": "5b0ce36e08d759118200d8b4627627b5a89b6261fbb0598e6961a6b287abb699",
-      "http://localhost:4545/jsr/registry/@denotest/module_graph/1.4.0/other.ts": "9ce27ca439cb0e218b6e1ec26c043dbc0b54c9babc4cb432df478dd1721faade"
+      "http://127.0.0.1:4250/@denotest/module_graph/1.4.0/mod.ts": "5b0ce36e08d759118200d8b4627627b5a89b6261fbb0598e6961a6b287abb699",
+      "http://127.0.0.1:4250/@denotest/module_graph/1.4.0/other.ts": "9ce27ca439cb0e218b6e1ec26c043dbc0b54c9babc4cb432df478dd1721faade"
     },
     "workspace": {
       "dependencies": [
@@ -1138,11 +1144,14 @@ fn lock_deno_json_package_json_deps() {
     "packages": {
       "specifiers": {
         "jsr:@denotest/module_graph@1.4": "jsr:@denotest/module_graph@1.4.0",
+      },
+      "jsr": {
+        "@denotest/module_graph@1.4.0": {}
       }
     },
     "remote": {
-      "http://localhost:4545/jsr/registry/@denotest/module_graph/1.4.0/mod.ts": "5b0ce36e08d759118200d8b4627627b5a89b6261fbb0598e6961a6b287abb699",
-      "http://localhost:4545/jsr/registry/@denotest/module_graph/1.4.0/other.ts": "9ce27ca439cb0e218b6e1ec26c043dbc0b54c9babc4cb432df478dd1721faade"
+      "http://127.0.0.1:4250/@denotest/module_graph/1.4.0/mod.ts": "5b0ce36e08d759118200d8b4627627b5a89b6261fbb0598e6961a6b287abb699",
+      "http://127.0.0.1:4250/@denotest/module_graph/1.4.0/other.ts": "9ce27ca439cb0e218b6e1ec26c043dbc0b54c9babc4cb432df478dd1721faade"
     },
     "workspace": {
       "dependencies": [
@@ -3603,120 +3612,6 @@ itest!(fetch_async_error_stack {
   exit_code: 1,
 });
 
-itest!(unstable_ffi_1 {
-  args: "run run/ffi/unstable_ffi_1.js",
-  output: "run/ffi/unstable_ffi_1.js.out",
-  exit_code: 70,
-});
-
-itest!(unstable_ffi_2 {
-  args: "run run/ffi/unstable_ffi_2.js",
-  output: "run/ffi/unstable_ffi_2.js.out",
-  exit_code: 70,
-});
-
-itest!(unstable_ffi_3 {
-  args: "run run/ffi/unstable_ffi_3.js",
-  output: "run/ffi/unstable_ffi_3.js.out",
-  exit_code: 70,
-});
-
-itest!(unstable_ffi_4 {
-  args: "run run/ffi/unstable_ffi_4.js",
-  output: "run/ffi/unstable_ffi_4.js.out",
-  exit_code: 70,
-});
-
-itest!(unstable_ffi_5 {
-  args: "run run/ffi/unstable_ffi_5.js",
-  output: "run/ffi/unstable_ffi_5.js.out",
-  exit_code: 70,
-});
-
-itest!(unstable_ffi_6 {
-  args: "run run/ffi/unstable_ffi_6.js",
-  output: "run/ffi/unstable_ffi_6.js.out",
-  exit_code: 70,
-});
-
-itest!(unstable_ffi_7 {
-  args: "run run/ffi/unstable_ffi_7.js",
-  output: "run/ffi/unstable_ffi_7.js.out",
-  exit_code: 70,
-});
-
-itest!(unstable_ffi_8 {
-  args: "run run/ffi/unstable_ffi_8.js",
-  output: "run/ffi/unstable_ffi_8.js.out",
-  exit_code: 70,
-});
-
-itest!(unstable_ffi_9 {
-  args: "run run/ffi/unstable_ffi_9.js",
-  output: "run/ffi/unstable_ffi_9.js.out",
-  exit_code: 70,
-});
-
-itest!(unstable_ffi_10 {
-  args: "run run/ffi/unstable_ffi_10.js",
-  output: "run/ffi/unstable_ffi_10.js.out",
-  exit_code: 70,
-});
-
-itest!(unstable_ffi_11 {
-  args: "run run/ffi/unstable_ffi_11.js",
-  output: "run/ffi/unstable_ffi_11.js.out",
-  exit_code: 70,
-});
-
-itest!(unstable_ffi_12 {
-  args: "run run/ffi/unstable_ffi_12.js",
-  output: "run/ffi/unstable_ffi_12.js.out",
-  exit_code: 70,
-});
-
-itest!(unstable_ffi_13 {
-  args: "run run/ffi/unstable_ffi_13.js",
-  output: "run/ffi/unstable_ffi_13.js.out",
-  exit_code: 70,
-});
-
-itest!(unstable_ffi_14 {
-  args: "run run/ffi/unstable_ffi_14.js",
-  output: "run/ffi/unstable_ffi_14.js.out",
-  exit_code: 70,
-});
-
-itest!(unstable_ffi_15 {
-  args: "run run/ffi/unstable_ffi_15.js",
-  output: "run/ffi/unstable_ffi_15.js.out",
-  exit_code: 70,
-});
-
-itest!(unstable_ffi_16 {
-  args: "run run/ffi/unstable_ffi_16.js",
-  output: "run/ffi/unstable_ffi_16.js.out",
-  exit_code: 70,
-});
-
-itest!(unstable_ffi_17 {
-  args: "run run/ffi/unstable_ffi_17.js",
-  output: "run/ffi/unstable_ffi_17.js.out",
-  exit_code: 70,
-});
-
-itest!(unstable_ffi_18 {
-  args: "run run/ffi/unstable_ffi_18.js",
-  output: "run/ffi/unstable_ffi_18.js.out",
-  exit_code: 70,
-});
-
-itest!(unstable_ffi_19 {
-  args: "run run/ffi/unstable_ffi_19.js",
-  output: "run/ffi/unstable_ffi_19.js.out",
-  exit_code: 70,
-});
-
 itest!(event_listener_error {
   args: "run --quiet run/event_listener_error.ts",
   output: "run/event_listener_error.ts.out",
@@ -4504,49 +4399,6 @@ itest!(ext_flag_takes_precedence_over_extension {
   exit_code: 0,
 });
 
-#[test]
-fn websocket() {
-  let _g = util::http_server();
-
-  let script = util::testdata_path().join("run/websocket_test.ts");
-  let root_ca = util::testdata_path().join("tls/RootCA.pem");
-  let status = util::deno_cmd()
-    .arg("test")
-    .arg("--unstable")
-    .arg("--allow-net")
-    .arg("--cert")
-    .arg(root_ca)
-    .arg(script)
-    .spawn()
-    .unwrap()
-    .wait()
-    .unwrap();
-
-  assert!(status.success());
-}
-
-#[ignore]
-#[test]
-fn websocketstream() {
-  let _g = util::http_server();
-
-  let script = util::testdata_path().join("run/websocketstream_test.ts");
-  let root_ca = util::testdata_path().join("tls/RootCA.pem");
-  let status = util::deno_cmd()
-    .arg("test")
-    .arg("--unstable")
-    .arg("--allow-net")
-    .arg("--cert")
-    .arg(root_ca)
-    .arg(script)
-    .spawn()
-    .unwrap()
-    .wait()
-    .unwrap();
-
-  assert!(status.success());
-}
-
 #[tokio::test(flavor = "multi_thread")]
 async fn websocketstream_ping() {
   let _g = util::http_server();
@@ -4875,25 +4727,6 @@ fn permission_prompt_strips_ansi_codes_and_control_chars() {
     console.expect("undefined");
     console.write_line_raw(r#"const moveANSIStart = "\u001b[1000D";"#);
     console.expect("undefined");
-
-    console.write_line_raw(
-      r#"Deno[Deno.internal].core.ops.op_spawn_child({
-    cmd: "cat",
-    args: ["file.txt"],
-    clearEnv: false,
-    cwd: undefined,
-    env: [],
-    uid: undefined,
-    gid: undefined,
-    stdin: "null",
-    stdout: "inherit",
-    stderr: "piped",
-    signal: undefined,
-    windowsRawArguments: false,
-}, moveANSIUp + clearANSI + moveANSIStart + prompt)"#,
-    );
-
-    console.expect(r#"┌ ⚠️  Deno requests run access to "cat""#);
   });
 }
 

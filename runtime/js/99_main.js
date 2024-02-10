@@ -51,7 +51,6 @@ const {
 const {
   isNativeError,
 } = core;
-import * as util from "ext:runtime/06_util.js";
 import * as event from "ext:deno_web/02_event.js";
 import * as location from "ext:deno_web/12_location.js";
 import * as version from "ext:runtime/01_version.ts";
@@ -89,9 +88,21 @@ import {
 import {
   workerRuntimeGlobalProperties,
 } from "ext:runtime/98_global_scope_worker.js";
-import { SymbolAsyncDispose, SymbolDispose } from "ext:deno_web/00_infra.js";
+import {
+  SymbolAsyncDispose,
+  SymbolDispose,
+  SymbolMetadata,
+} from "ext:deno_web/00_infra.js";
 // deno-lint-ignore prefer-primordials
 if (Symbol.dispose) throw "V8 supports Symbol.dispose now, no need to shim it!";
+// deno-lint-ignore prefer-primordials
+if (Symbol.asyncDispose) {
+  throw "V8 supports Symbol.asyncDispose now, no need to shim it!";
+}
+// deno-lint-ignore prefer-primordials
+if (Symbol.metadata) {
+  throw "V8 supports Symbol.metadata now, no need to shim it!";
+}
 ObjectDefineProperties(Symbol, {
   dispose: {
     value: SymbolDispose,
@@ -101,6 +112,12 @@ ObjectDefineProperties(Symbol, {
   },
   asyncDispose: {
     value: SymbolAsyncDispose,
+    enumerable: false,
+    writable: false,
+    configurable: false,
+  },
+  metadata: {
+    value: SymbolMetadata,
     enumerable: false,
     writable: false,
     configurable: false,
@@ -568,52 +585,6 @@ const NOT_IMPORTED_OPS = [
   "op_set_exit_code",
   "op_napi_open",
   "op_npm_process_state",
-
-  // TODO(bartlomieju): used in integration tests for FFI API, to check if
-  // they require unstable flag. These tests are questionable and should be
-  // removed (most likely).
-  "op_ffi_buf_copy_into",
-  "op_ffi_call_nonblocking",
-  "op_ffi_call_ptr_nonblocking",
-  "op_ffi_call_ptr",
-  "op_ffi_cstr_read",
-  "op_ffi_get_buf",
-  "op_ffi_get_static",
-  "op_ffi_load",
-  "op_ffi_ptr_create",
-  "op_ffi_ptr_equals",
-  "op_ffi_ptr_of_exact",
-  "op_ffi_ptr_of",
-  "op_ffi_ptr_offset",
-  "op_ffi_ptr_value",
-  "op_ffi_read_bool",
-  "op_ffi_read_f32",
-  "op_ffi_read_f64",
-  "op_ffi_read_i16",
-  "op_ffi_read_i32",
-  "op_ffi_read_i64",
-  "op_ffi_read_i8",
-  "op_ffi_read_ptr",
-  "op_ffi_read_u16",
-  "op_ffi_read_u32",
-  "op_ffi_read_u64",
-  "op_ffi_read_u8",
-  "op_ffi_unsafe_callback_close",
-  "op_ffi_unsafe_callback_create",
-  "op_ffi_unsafe_callback_ref",
-
-  // TODO(bartlomieju): used in a regression test, but probably not needed
-  // anymore if ops are not user accessible.
-  "op_spawn_child",
-
-  // TODO(bartlomieju): used in one of the benches, needs to be removed.
-  "op_void_async",
-
-  // TODO(bartlomieju): can be removed after the `deno_core` upgrade.
-  "op_encode_binary_string",
-  "op_format_file_name",
-  "op_apply_source_map",
-  "op_apply_source_map_filename",
 ];
 
 function removeImportedOps() {
@@ -711,9 +682,9 @@ function bootstrapMainRuntime(runtimeOptions) {
     // TODO(bartlomieju): in the future we might want to change the
     // behavior of setting `name` to actually update the process name.
     // Empty string matches what browsers do.
-    name: util.writable(""),
-    close: util.writable(windowClose),
-    closed: util.getterOnly(() => windowIsClosing),
+    name: core.propWritable(""),
+    close: core.propWritable(windowClose),
+    closed: core.propGetterOnly(() => windowIsClosing),
   });
   ObjectSetPrototypeOf(globalThis, Window.prototype);
 
@@ -739,11 +710,11 @@ function bootstrapMainRuntime(runtimeOptions) {
   );
 
   ObjectDefineProperties(finalDenoNs, {
-    pid: util.getterOnly(opPid),
-    ppid: util.getterOnly(opPpid),
-    noColor: util.getterOnly(() => op_bootstrap_no_color()),
-    args: util.getterOnly(opArgs),
-    mainModule: util.getterOnly(() => op_main_module()),
+    pid: core.propGetterOnly(opPid),
+    ppid: core.propGetterOnly(opPpid),
+    noColor: core.propGetterOnly(() => op_bootstrap_no_color()),
+    args: core.propGetterOnly(opArgs),
+    mainModule: core.propGetterOnly(() => op_main_module()),
     // TODO(kt3k): Remove this export at v2
     // See https://github.com/denoland/deno/issues/9294
     customInspect: {
@@ -793,7 +764,7 @@ function bootstrapMainRuntime(runtimeOptions) {
 
   // Setup `Deno` global - we're actually overriding already existing global
   // `Deno` with `Deno` namespace from "./deno.ts".
-  ObjectDefineProperty(globalThis, "Deno", util.readOnly(finalDenoNs));
+  ObjectDefineProperty(globalThis, "Deno", core.propReadOnly(finalDenoNs));
 
   if (nodeBootstrap) {
     nodeBootstrap(hasNodeModulesDir, maybeBinaryNpmCommandName);
@@ -841,16 +812,16 @@ function bootstrapWorkerRuntime(
   });
   ObjectDefineProperties(globalThis, workerRuntimeGlobalProperties);
   ObjectDefineProperties(globalThis, {
-    name: util.writable(name),
+    name: core.propWritable(name),
     // TODO(bartlomieju): should be readonly?
-    close: util.nonEnumerable(workerClose),
-    postMessage: util.writable(postMessage),
+    close: core.propNonEnumerable(workerClose),
+    postMessage: core.propWritable(postMessage),
   });
   if (enableTestingFeaturesFlag) {
     ObjectDefineProperty(
       globalThis,
       "importScripts",
-      util.writable(importScripts),
+      core.propWritable(importScripts),
     );
   }
   ObjectSetPrototypeOf(globalThis, DedicatedWorkerGlobalScope.prototype);
@@ -900,9 +871,9 @@ function bootstrapWorkerRuntime(
   }
 
   ObjectDefineProperties(finalDenoNs, {
-    pid: util.getterOnly(opPid),
-    noColor: util.getterOnly(() => op_bootstrap_no_color()),
-    args: util.getterOnly(opArgs),
+    pid: core.propGetterOnly(opPid),
+    noColor: core.propGetterOnly(() => op_bootstrap_no_color()),
+    args: core.propGetterOnly(opArgs),
     // TODO(kt3k): Remove this export at v2
     // See https://github.com/denoland/deno/issues/9294
     customInspect: {
@@ -918,7 +889,7 @@ function bootstrapWorkerRuntime(
   });
   // Setup `Deno` global - we're actually overriding already
   // existing global `Deno` with `Deno` namespace from "./deno.ts".
-  ObjectDefineProperty(globalThis, "Deno", util.readOnly(finalDenoNs));
+  ObjectDefineProperty(globalThis, "Deno", core.propReadOnly(finalDenoNs));
 
   if (nodeBootstrap) {
     nodeBootstrap(hasNodeModulesDir, maybeBinaryNpmCommandName);

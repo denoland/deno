@@ -1,4 +1,5 @@
 Ensuring type checks...
 Check file:///[WILDCARD]/mod.ts
-error: Following packages don't exist, follow the links and create them:
- - https://jsr.io/new?scope=foo&package=bar&from=cli
+Publishing @foo/bar@1.1.0 ...
+Successfully published @foo/bar@1.1.0
+Visit http://127.0.0.1:4250/@foo/bar@1.1.0 for details

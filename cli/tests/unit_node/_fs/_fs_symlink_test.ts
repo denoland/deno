@@ -1,9 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-import {
-  assert,
-  assertThrows,
-  fail,
-} from "../../../../test_util/std/assert/mod.ts";
+import { assert, assertThrows, fail } from "@test_util/std/assert/mod.ts";
 import { symlink, symlinkSync } from "node:fs";
 
 Deno.test({

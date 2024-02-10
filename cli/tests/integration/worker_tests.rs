@@ -1,11 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-itest!(workers {
-  args: "test --reload --location http://127.0.0.1:4545/ -A --unstable-worker-options workers/test.ts",
-  output: "workers/test.ts.out",
-  http_server: true,
-});
-
 itest!(worker_error {
   args: "run -A workers/worker_error.ts",
   output: "workers/worker_error.ts.out",

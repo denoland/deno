@@ -4,10 +4,10 @@ import {
   assertRejects,
   assertThrows,
   fail,
-} from "../../../../test_util/std/assert/mod.ts";
+} from "@test_util/std/assert/mod.ts";
 import { rm, rmSync } from "node:fs";
 import { existsSync } from "node:fs";
-import { join } from "../../../../test_util/std/path/mod.ts";
+import { join } from "@test_util/std/path/mod.ts";
 
 Deno.test({
   name: "ASYNC: removing empty folder",

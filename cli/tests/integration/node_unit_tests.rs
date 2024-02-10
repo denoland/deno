@@ -8,7 +8,7 @@ use util::env_vars_for_npm_tests;
 
 util::unit_test_factory!(
   node_unit_test,
-  "tests/unit_node",
+  "../tests/unit_node",
   "**/*_test.ts",
   [
     _fs_access_test = _fs / _fs_access_test,
@@ -96,6 +96,9 @@ fn node_unit_test(test: String) {
   let mut deno = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("test")
+    .arg("--config")
+    .arg("cli/tests/config/deno.json")
+    .arg("--no-lock")
     .arg("--unstable")
     // TODO(kt3k): This option is required to pass tls_test.ts,
     // but this shouldn't be necessary. tls.connect currently doesn't
