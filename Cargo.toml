@@ -6,7 +6,6 @@ members = [
   "bench_util",
   "cli",
   "cli/napi/sym",
-  "cli/tests",
   "ext/broadcast_channel",
   "ext/cache",
   "ext/canvas",
@@ -32,6 +31,7 @@ members = [
   "test_ffi",
   "test_napi",
   "test_util",
+  "tests",
 ]
 exclude = ["test_util/std/hash/_wasm"]
 
@@ -97,6 +97,7 @@ chrono = { version = "0.4", default-features = false, features = ["std", "serde"
 console_static_text = "=0.8.1"
 data-encoding = "2.3.3"
 data-url = "=0.3.0"
+deno_cache_dir = "=0.6.1"
 dlopen2 = "0.6.1"
 ecb = "=0.1.2"
 elliptic-curve = { version = "0.13.4", features = ["alloc", "arithmetic", "ecdh", "std", "pem"] }
