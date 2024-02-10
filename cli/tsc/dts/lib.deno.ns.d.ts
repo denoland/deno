@@ -5719,8 +5719,7 @@ declare namespace Deno {
      *
      * The default is 120 seconds. Set to `0` to disable timeouts. */
     idleTimeout?: number;
-    /** Add headers to the websocket upgrade response with a Headers
-     * object, an object literal, or an array of two-item arrays. */
+    /** Adds headers to the websocket upgrade response. */
     headers?: Headers;
   }
 
