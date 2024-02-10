@@ -206,7 +206,7 @@ interface DOMMatrix extends DOMMatrixReadOnly {
 declare var DOMMatrix: {
   prototype: DOMMatrix;
   new (init?: number[]): DOMMatrix;
-  new (init: DOMMatrix|DOMMatrixReadOnly): DOMMatrix;
+  new (init: DOMMatrix | DOMMatrixReadOnly): DOMMatrix;
   /** NOTE: Not available in Worker */
   new (init: string): DOMMatrix;
   fromFloat32Array(array32: Float32Array): DOMMatrix;
@@ -410,7 +410,7 @@ interface DOMMatrixReadOnly {
 declare var DOMMatrixReadOnly: {
   prototype: DOMMatrixReadOnly;
   new (init?: number[]): DOMMatrixReadOnly;
-  new (init: DOMMatrix|DOMMatrixReadOnly): DOMMatrixReadOnly;
+  new (init: DOMMatrix | DOMMatrixReadOnly): DOMMatrixReadOnly;
   /** Not available in Worker */
   new (init: string): DOMMatrixReadOnly;
   fromFloat32Array(array32: Float32Array): DOMMatrixReadOnly;
