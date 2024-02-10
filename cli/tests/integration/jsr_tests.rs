@@ -1,7 +1,9 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::serde_json::Value;
 use deno_lockfile::Lockfile;
 use test_util as util;
+use url::Url;
 use util::env_vars_for_jsr_tests;
 use util::TestContextBuilder;
 
@@ -104,4 +106,78 @@ console.log(version);"#,
     .args("run --quiet main.ts")
     .run()
     .assert_matches_text("0.1.0\n");
+}
+
+#[test]
+fn reload_info_not_found_cache_but_exists_remote() {
+  fn remove_version(registry_json: &mut Value, version: &str) {
+    registry_json
+      .as_object_mut()
+      .unwrap()
+      .get_mut("versions")
+      .unwrap()
+      .as_object_mut()
+      .unwrap()
+      .remove(version);
+  }
+
+  fn remove_version_for_package(
+    deno_dir: &util::TempDir,
+    package: &str,
+    version: &str,
+  ) {
+    let specifier =
+      Url::parse(&format!("http://127.0.0.1:4250/{}/meta.json", package))
+        .unwrap();
+    let registry_json_path = deno_dir
+      .path()
+      .join("deps")
+      .join(deno_cache_dir::url_to_filename(&specifier).unwrap());
+    let mut registry_json = registry_json_path.read_json_value();
+    remove_version(&mut registry_json, version);
+    registry_json_path.write_json(&registry_json);
+  }
+
+  // This tests that when a local machine doesn't have a version
+  // specified in a dependency that exists in the npm registry
+  let test_context = TestContextBuilder::for_jsr().use_temp_cwd().build();
+  let deno_dir = test_context.deno_dir();
+  let temp_dir = test_context.temp_dir();
+  temp_dir.write(
+    "main.ts",
+    "import { add } from 'jsr:@denotest/add@1'; console.log(add(1, 2));",
+  );
+
+  // cache successfully to the deno_dir
+  let output = test_context.new_command().args("cache main.ts").run();
+  output.assert_matches_text(concat!(
+    "Download http://127.0.0.1:4250/@denotest/add/meta.json\n",
+    "Download http://127.0.0.1:4250/@denotest/add/1.0.0_meta.json\n",
+    "Download http://127.0.0.1:4250/@denotest/add/1.0.0/mod.ts\n",
+  ));
+
+  // modify the package information in the cache to remove the latest version
+  remove_version_for_package(deno_dir, "@denotest/add", "1.0.0");
+
+  // should error when `--cache-only` is used now because the version is not in the cache
+  let output = test_context
+    .new_command()
+    .args("run --cached-only main.ts")
+    .run();
+  output.assert_exit_code(1);
+  output.assert_matches_text("error: Failed to resolve version constraint. Try running again without --cached-only
+    at file:///[WILDCARD]main.ts:1:21
+");
+
+  // now try running without it, it should download the package now
+  test_context
+    .new_command()
+    .args("run main.ts")
+    .run()
+    .assert_matches_text(concat!(
+      "Download http://127.0.0.1:4250/@denotest/add/meta.json\n",
+      "Download http://127.0.0.1:4250/@denotest/add/1.0.0_meta.json\n",
+      "3\n",
+    ))
+    .assert_exit_code(0);
 }
