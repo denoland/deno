@@ -3,6 +3,7 @@ import {
   assertAlmostEquals,
   assertEquals,
   assertStrictEquals,
+  assertThrows,
 } from "./test_util.ts";
 
 Deno.test(function matrixTransformPoint() {
@@ -887,5 +888,256 @@ Deno.test(function matrixInvertSelf() {
       m13: 0, m23:  0, m33:  1, m43:  -12,
       m14: 0, m24:  0, m34:  0, m44:    1,
     }),
+  );
+});
+
+Deno.test(function prototypeOverwrite() {
+  const point = new DOMPointReadOnly();
+  Object.setPrototypeOf(point, DOMPoint.prototype);
+  assertThrows(
+    () => {
+      // @ts-ignore
+      point.x = 1;
+    },
+    TypeError,
+    "Illegal invocation",
+  );
+  assertThrows(
+    () => {
+      // @ts-ignore
+      point.y = 1;
+    },
+    TypeError,
+    "Illegal invocation",
+  );
+  assertThrows(
+    () => {
+      // @ts-ignore
+      point.z = 1;
+    },
+    TypeError,
+    "Illegal invocation",
+  );
+  assertThrows(
+    () => {
+      // @ts-ignore
+      point.w = 1;
+    },
+    TypeError,
+    "Illegal invocation",
+  );
+
+  const rect = new DOMRectReadOnly();
+  Object.setPrototypeOf(rect, DOMRect.prototype);
+  assertThrows(
+    () => {
+      // @ts-ignore
+      rect.x = 1;
+    },
+    TypeError,
+    "Illegal invocation",
+  );
+  assertThrows(
+    () => {
+      // @ts-ignore
+      rect.y = 1;
+    },
+    TypeError,
+    "Illegal invocation",
+  );
+  assertThrows(
+    () => {
+      // @ts-ignore
+      rect.width = 1;
+    },
+    TypeError,
+    "Illegal invocation",
+  );
+  assertThrows(
+    () => {
+      // @ts-ignore
+      rect.height = 1;
+    },
+    TypeError,
+    "Illegal invocation",
+  );
+
+  const matrix = new DOMMatrixReadOnly();
+  Object.setPrototypeOf(matrix, DOMMatrix.prototype);
+  assertThrows(
+    () => {
+      // @ts-ignore
+      matrix.a = 1;
+    },
+    TypeError,
+    "Illegal invocation",
+  );
+  assertThrows(
+    () => {
+      // @ts-ignore
+      matrix.b = 1;
+    },
+    TypeError,
+    "Illegal invocation",
+  );
+  assertThrows(
+    () => {
+      // @ts-ignore
+      matrix.c = 1;
+    },
+    TypeError,
+    "Illegal invocation",
+  );
+  assertThrows(
+    () => {
+      // @ts-ignore
+      matrix.d = 1;
+    },
+    TypeError,
+    "Illegal invocation",
+  );
+  assertThrows(
+    () => {
+      // @ts-ignore
+      matrix.e = 1;
+    },
+    TypeError,
+    "Illegal invocation",
+  );
+  assertThrows(
+    () => {
+      // @ts-ignore
+      matrix.f = 1;
+    },
+    TypeError,
+    "Illegal invocation",
+  );
+  assertThrows(
+    () => {
+      // @ts-ignore
+      matrix.m11 = 1;
+    },
+    TypeError,
+    "Illegal invocation",
+  );
+  assertThrows(
+    () => {
+      // @ts-ignore
+      matrix.m12 = 1;
+    },
+    TypeError,
+    "Illegal invocation",
+  );
+  assertThrows(
+    () => {
+      // @ts-ignore
+      matrix.m13 = 1;
+    },
+    TypeError,
+    "Illegal invocation",
+  );
+  assertThrows(
+    () => {
+      // @ts-ignore
+      matrix.m14 = 1;
+    },
+    TypeError,
+    "Illegal invocation",
+  );
+  assertThrows(
+    () => {
+      // @ts-ignore
+      matrix.m21 = 1;
+    },
+    TypeError,
+    "Illegal invocation",
+  );
+  assertThrows(
+    () => {
+      // @ts-ignore
+      matrix.m22 = 1;
+    },
+    TypeError,
+    "Illegal invocation",
+  );
+  assertThrows(
+    () => {
+      // @ts-ignore
+      matrix.m23 = 1;
+    },
+    TypeError,
+    "Illegal invocation",
+  );
+  assertThrows(
+    () => {
+      // @ts-ignore
+      matrix.m24 = 1;
+    },
+    TypeError,
+    "Illegal invocation",
+  );
+  assertThrows(
+    () => {
+      // @ts-ignore
+      matrix.m31 = 1;
+    },
+    TypeError,
+    "Illegal invocation",
+  );
+  assertThrows(
+    () => {
+      // @ts-ignore
+      matrix.m32 = 1;
+    },
+    TypeError,
+    "Illegal invocation",
+  );
+  assertThrows(
+    () => {
+      // @ts-ignore
+      matrix.m33 = 1;
+    },
+    TypeError,
+    "Illegal invocation",
+  );
+  assertThrows(
+    () => {
+      // @ts-ignore
+      matrix.m34 = 1;
+    },
+    TypeError,
+    "Illegal invocation",
+  );
+  assertThrows(
+    () => {
+      // @ts-ignore
+      matrix.m41 = 1;
+    },
+    TypeError,
+    "Illegal invocation",
+  );
+  assertThrows(
+    () => {
+      // @ts-ignore
+      matrix.m42 = 1;
+    },
+    TypeError,
+    "Illegal invocation",
+  );
+  assertThrows(
+    () => {
+      // @ts-ignore
+      matrix.m43 = 1;
+    },
+    TypeError,
+    "Illegal invocation",
+  );
+  assertThrows(
+    () => {
+      // @ts-ignore
+      matrix.m44 = 1;
+    },
+    TypeError,
+    "Illegal invocation",
   );
 });
