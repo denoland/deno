@@ -19,7 +19,7 @@ doc = false
 
 [[test]]
 name = "integration"
-path = "tests/integration_tests_runner.rs"
+path = "../tests/integration_tests_runner.rs"
 harness = false
 
 [[bench]]

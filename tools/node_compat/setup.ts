@@ -1,7 +1,7 @@
 #!/usr/bin/env -S deno run --allow-read=. --allow-write=. --allow-run=git
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-/** This copies the test files according to the config file `cli/tests/node_compat/config.jsonc` */
+/** This copies the test files according to the config file `tests/node_compat/config.jsonc` */
 
 import { walk } from "@test_util/std/fs/walk.ts";
 import { sep } from "@test_util/std/path/mod.ts";
@@ -10,7 +10,7 @@ import { writeAll } from "@test_util/std/streams/write_all.ts";
 import { withoutAll } from "@test_util/std/collections/without_all.ts";
 import { relative } from "@test_util/std/path/posix.ts";
 
-import { config, ignoreList } from "../../cli/tests/node_compat/common.ts";
+import { config, ignoreList } from "../../tests/node_compat/common.ts";
 
 const encoder = new TextEncoder();
 
@@ -39,7 +39,7 @@ const NODE_IGNORED_TEST_DIRS = [
 
 const VENDORED_NODE_TEST = new URL("node/test/", import.meta.url);
 const NODE_COMPAT_TEST_DEST_URL = new URL(
-  "../../cli/tests/node_compat/test/",
+  "../../tests/node_compat/test/",
   import.meta.url,
 );
 
@@ -76,7 +76,7 @@ async function updateToDo() {
   await file.write(encoder.encode(`<!-- deno-fmt-ignore-file -->
 # Remaining Node Tests
 
-NOTE: This file should not be manually edited. Please edit \`cli/tests/node_compat/config.json\` and run \`deno task setup\` in \`tools/node_compat\` dir instead.
+NOTE: This file should not be manually edited. Please edit \`tests/node_compat/config.json\` and run \`deno task setup\` in \`tools/node_compat\` dir instead.
 
 Total: ${missingTests.length}
 

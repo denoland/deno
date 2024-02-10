@@ -24,15 +24,15 @@ export async function checkCopyright() {
     "*.js",
     "*.ts",
     ":!:.github/mtime_cache/action.js",
-    ":!:cli/tests/testdata/**",
+    ":!:tests/testdata/**",
     ":!:cli/bench/testdata/**",
     ":!:cli/tsc/dts/**",
     ":!:cli/tsc/*typescript.js",
     ":!:cli/tsc/compiler.d.ts",
     ":!:test_util/wpt/**",
     ":!:cli/tools/init/templates/**",
-    ":!:cli/tests/unit_node/testdata/**",
-    ":!:cli/tests/node_compat/test/**",
+    ":!:tests/unit_node/testdata/**",
+    ":!:tests/node_compat/test/**",
     ":!:cli/tools/bench/mitata.rs",
 
     // rust
