@@ -45,7 +45,7 @@ pub fn op_geometry_translate_self(
   y: f64,
   z: f64,
   #[buffer] inout: &mut [f64],
-) -> () {
+) {
   let shift = Vector3::new(x, y, z);
   let mut inout = MatrixViewMut4::from_slice(inout);
   inout.prepend_translation_mut(&shift);
@@ -57,7 +57,7 @@ pub fn op_geometry_scale_self(
   y: f64,
   z: f64,
   #[buffer] inout: &mut [f64],
-) -> () {
+) {
   let scaling = Vector3::new(x, y, z);
   let mut inout = MatrixViewMut4::from_slice(inout);
   inout.prepend_nonuniform_scaling_mut(&scaling);
@@ -72,7 +72,7 @@ pub fn op_geometry_scale_with_origin_self(
   origin_y: f64,
   origin_z: f64,
   #[buffer] inout: &mut [f64],
-) -> () {
+) {
   let scaling = Vector3::new(x, y, z);
   let mut shift = Vector3::new(origin_x, origin_y, origin_z);
   let mut inout = MatrixViewMut4::from_slice(inout);
@@ -88,7 +88,7 @@ pub fn op_geometry_rotate_self(
   pitch_degrees: f64,
   yaw_degrees: f64,
   #[buffer] inout: &mut [f64],
-) -> () {
+) {
   let rotation = Rotation3::from_euler_angles(
     roll_degrees.to_radians(),
     pitch_degrees.to_radians(),
@@ -108,7 +108,7 @@ pub fn op_geometry_rotate_from_vector_self(
   x: f64,
   y: f64,
   #[buffer] inout: &mut [f64],
-) -> () {
+) {
   let rotation =
     Rotation3::from_axis_angle(&Vector3::z_axis(), y.atan2(x)).to_homogeneous();
   let mut inout = MatrixViewMut4::from_slice(inout);
@@ -126,7 +126,7 @@ pub fn op_geometry_rotate_axis_angle_self(
   z: f64,
   angle_degrees: f64,
   #[buffer] inout: &mut [f64],
-) -> () {
+) {
   let rotation = Rotation3::from_axis_angle(
     &UnitVector3::new_normalize(Vector3::new(x, y, z)),
     angle_degrees.to_radians(),
@@ -145,7 +145,7 @@ pub fn op_geometry_skew_self(
   x_degrees: f64,
   y_degrees: f64,
   #[buffer] inout: &mut [f64],
-) -> () {
+) {
   let skew = Matrix4x2::new(
     1.0,
     x_degrees.to_radians().tan(),
@@ -168,7 +168,7 @@ pub fn op_geometry_multiply(
   #[buffer] lhs: &[f64],
   #[buffer] rhs: &[f64],
   #[buffer] out: &mut [f64],
-) -> () {
+) {
   let lhs = MatrixView4::from_slice(lhs);
   let rhs = MatrixView4::from_slice(rhs);
   let mut out = MatrixViewMut4::from_slice(out);
@@ -179,7 +179,7 @@ pub fn op_geometry_multiply(
 pub fn op_geometry_multiply_self(
   #[buffer] rhs: &[f64],
   #[buffer] inout: &mut [f64],
-) -> () {
+) {
   let rhs = MatrixView4::from_slice(rhs);
   let mut inout = MatrixViewMut4::from_slice(inout);
   let mut result = Matrix4::zeros();
@@ -191,7 +191,7 @@ pub fn op_geometry_multiply_self(
 pub fn op_geometry_premultiply_self(
   #[buffer] lhs: &[f64],
   #[buffer] inout: &mut [f64],
-) -> () {
+) {
   let lhs = MatrixView4::from_slice(lhs);
   let mut inout = MatrixViewMut4::from_slice(inout);
   let mut result = Matrix4::zeros();
@@ -200,13 +200,13 @@ pub fn op_geometry_premultiply_self(
 }
 
 #[op2(fast)]
-pub fn op_geometry_flip_x_self(#[buffer] inout: &mut [f64]) -> () {
+pub fn op_geometry_flip_x_self(#[buffer] inout: &mut [f64]) {
   let mut inout = MatrixViewMut4::from_slice(inout);
   inout.column_mut(0).neg_mut();
 }
 
 #[op2(fast)]
-pub fn op_geometry_flip_y_self(#[buffer] inout: &mut [f64]) -> () {
+pub fn op_geometry_flip_y_self(#[buffer] inout: &mut [f64]) {
   let mut inout = MatrixViewMut4::from_slice(inout);
   inout.column_mut(1).neg_mut();
 }
@@ -232,7 +232,7 @@ pub fn op_geometry_invert_self(#[buffer] inout: &mut [f64]) -> bool {
 pub fn op_geometry_premultiply_point_self(
   #[buffer] lhs: &[f64],
   #[buffer] inout: &mut [f64],
-) -> () {
+) {
   let lhs = MatrixView4::from_slice(lhs);
   let mut inout = VectorViewMut4::from_slice(inout);
   let mut result = Vector4::zeros();

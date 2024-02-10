@@ -896,7 +896,7 @@ Deno.test(function prototypeOverwrite() {
   Object.setPrototypeOf(point, DOMPoint.prototype);
   assertThrows(
     () => {
-      // @ts-ignore
+      // @ts-ignore test
       point.x = 1;
     },
     TypeError,
@@ -904,7 +904,7 @@ Deno.test(function prototypeOverwrite() {
   );
   assertThrows(
     () => {
-      // @ts-ignore
+      // @ts-ignore test
       point.y = 1;
     },
     TypeError,
@@ -912,7 +912,7 @@ Deno.test(function prototypeOverwrite() {
   );
   assertThrows(
     () => {
-      // @ts-ignore
+      // @ts-ignore test
       point.z = 1;
     },
     TypeError,
@@ -920,7 +920,7 @@ Deno.test(function prototypeOverwrite() {
   );
   assertThrows(
     () => {
-      // @ts-ignore
+      // @ts-ignore test
       point.w = 1;
     },
     TypeError,
@@ -931,7 +931,7 @@ Deno.test(function prototypeOverwrite() {
   Object.setPrototypeOf(rect, DOMRect.prototype);
   assertThrows(
     () => {
-      // @ts-ignore
+      // @ts-ignore test
       rect.x = 1;
     },
     TypeError,
@@ -939,7 +939,7 @@ Deno.test(function prototypeOverwrite() {
   );
   assertThrows(
     () => {
-      // @ts-ignore
+      // @ts-ignore test
       rect.y = 1;
     },
     TypeError,
@@ -947,7 +947,7 @@ Deno.test(function prototypeOverwrite() {
   );
   assertThrows(
     () => {
-      // @ts-ignore
+      // @ts-ignore test
       rect.width = 1;
     },
     TypeError,
@@ -955,7 +955,7 @@ Deno.test(function prototypeOverwrite() {
   );
   assertThrows(
     () => {
-      // @ts-ignore
+      // @ts-ignore test
       rect.height = 1;
     },
     TypeError,
@@ -966,7 +966,7 @@ Deno.test(function prototypeOverwrite() {
   Object.setPrototypeOf(matrix, DOMMatrix.prototype);
   assertThrows(
     () => {
-      // @ts-ignore
+      // @ts-ignore test
       matrix.a = 1;
     },
     TypeError,
@@ -974,7 +974,7 @@ Deno.test(function prototypeOverwrite() {
   );
   assertThrows(
     () => {
-      // @ts-ignore
+      // @ts-ignore test
       matrix.b = 1;
     },
     TypeError,
@@ -982,7 +982,7 @@ Deno.test(function prototypeOverwrite() {
   );
   assertThrows(
     () => {
-      // @ts-ignore
+      // @ts-ignore test
       matrix.c = 1;
     },
     TypeError,
@@ -990,7 +990,7 @@ Deno.test(function prototypeOverwrite() {
   );
   assertThrows(
     () => {
-      // @ts-ignore
+      // @ts-ignore test
       matrix.d = 1;
     },
     TypeError,
@@ -998,7 +998,7 @@ Deno.test(function prototypeOverwrite() {
   );
   assertThrows(
     () => {
-      // @ts-ignore
+      // @ts-ignore test
       matrix.e = 1;
     },
     TypeError,
@@ -1006,7 +1006,7 @@ Deno.test(function prototypeOverwrite() {
   );
   assertThrows(
     () => {
-      // @ts-ignore
+      // @ts-ignore test
       matrix.f = 1;
     },
     TypeError,
@@ -1014,7 +1014,7 @@ Deno.test(function prototypeOverwrite() {
   );
   assertThrows(
     () => {
-      // @ts-ignore
+      // @ts-ignore test
       matrix.m11 = 1;
     },
     TypeError,
@@ -1022,7 +1022,7 @@ Deno.test(function prototypeOverwrite() {
   );
   assertThrows(
     () => {
-      // @ts-ignore
+      // @ts-ignore test
       matrix.m12 = 1;
     },
     TypeError,
@@ -1030,7 +1030,7 @@ Deno.test(function prototypeOverwrite() {
   );
   assertThrows(
     () => {
-      // @ts-ignore
+      // @ts-ignore test
       matrix.m13 = 1;
     },
     TypeError,
@@ -1038,7 +1038,7 @@ Deno.test(function prototypeOverwrite() {
   );
   assertThrows(
     () => {
-      // @ts-ignore
+      // @ts-ignore test
       matrix.m14 = 1;
     },
     TypeError,
@@ -1046,7 +1046,7 @@ Deno.test(function prototypeOverwrite() {
   );
   assertThrows(
     () => {
-      // @ts-ignore
+      // @ts-ignore test
       matrix.m21 = 1;
     },
     TypeError,
@@ -1054,7 +1054,7 @@ Deno.test(function prototypeOverwrite() {
   );
   assertThrows(
     () => {
-      // @ts-ignore
+      // @ts-ignore test
       matrix.m22 = 1;
     },
     TypeError,
@@ -1062,7 +1062,7 @@ Deno.test(function prototypeOverwrite() {
   );
   assertThrows(
     () => {
-      // @ts-ignore
+      // @ts-ignore test
       matrix.m23 = 1;
     },
     TypeError,
@@ -1070,7 +1070,7 @@ Deno.test(function prototypeOverwrite() {
   );
   assertThrows(
     () => {
-      // @ts-ignore
+      // @ts-ignore test
       matrix.m24 = 1;
     },
     TypeError,
@@ -1078,7 +1078,7 @@ Deno.test(function prototypeOverwrite() {
   );
   assertThrows(
     () => {
-      // @ts-ignore
+      // @ts-ignore test
       matrix.m31 = 1;
     },
     TypeError,
@@ -1086,7 +1086,7 @@ Deno.test(function prototypeOverwrite() {
   );
   assertThrows(
     () => {
-      // @ts-ignore
+      // @ts-ignore test
       matrix.m32 = 1;
     },
     TypeError,
@@ -1094,7 +1094,7 @@ Deno.test(function prototypeOverwrite() {
   );
   assertThrows(
     () => {
-      // @ts-ignore
+      // @ts-ignore test
       matrix.m33 = 1;
     },
     TypeError,
@@ -1102,7 +1102,7 @@ Deno.test(function prototypeOverwrite() {
   );
   assertThrows(
     () => {
-      // @ts-ignore
+      // @ts-ignore test
       matrix.m34 = 1;
     },
     TypeError,
@@ -1110,7 +1110,7 @@ Deno.test(function prototypeOverwrite() {
   );
   assertThrows(
     () => {
-      // @ts-ignore
+      // @ts-ignore test
       matrix.m41 = 1;
     },
     TypeError,
@@ -1118,7 +1118,7 @@ Deno.test(function prototypeOverwrite() {
   );
   assertThrows(
     () => {
-      // @ts-ignore
+      // @ts-ignore test
       matrix.m42 = 1;
     },
     TypeError,
@@ -1126,7 +1126,7 @@ Deno.test(function prototypeOverwrite() {
   );
   assertThrows(
     () => {
-      // @ts-ignore
+      // @ts-ignore test
       matrix.m43 = 1;
     },
     TypeError,
@@ -1134,7 +1134,7 @@ Deno.test(function prototypeOverwrite() {
   );
   assertThrows(
     () => {
-      // @ts-ignore
+      // @ts-ignore test
       matrix.m44 = 1;
     },
     TypeError,
