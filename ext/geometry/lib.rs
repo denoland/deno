@@ -9,6 +9,8 @@ use nalgebra::MatrixViewMut4;
 use nalgebra::Rotation3;
 use nalgebra::UnitVector3;
 use nalgebra::Vector3;
+use nalgebra::Vector4;
+use nalgebra::VectorViewMut4;
 use std::path::PathBuf;
 
 deno_core::extension!(
@@ -28,6 +30,7 @@ deno_core::extension!(
     op_geometry_flip_x_self,
     op_geometry_flip_y_self,
     op_geometry_invert_self,
+    op_geometry_premultiply_point_self,
   ],
   esm = ["01_geometry.js"],
 );
@@ -223,4 +226,16 @@ pub fn op_geometry_invert_self(#[buffer] inout: &mut [f64]) -> bool {
   }
 
   true
+}
+
+#[op2(fast)]
+pub fn op_geometry_premultiply_point_self(
+  #[buffer] lhs: &[f64],
+  #[buffer] inout: &mut [f64],
+) -> () {
+  let lhs = MatrixView4::from_slice(lhs);
+  let mut inout = VectorViewMut4::from_slice(inout);
+  let mut result = Vector4::zeros();
+  lhs.mul_to(&inout, &mut result);
+  inout.copy_from(&result);
 }

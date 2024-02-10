@@ -7,6 +7,7 @@ import {
   op_geometry_invert_self,
   op_geometry_multiply,
   op_geometry_multiply_self,
+  op_geometry_premultiply_point_self,
   op_geometry_premultiply_self,
   op_geometry_rotate_axis_angle_self,
   op_geometry_rotate_from_vector_self,
@@ -270,8 +271,26 @@ class DOMPointReadOnly {
     return this[_raw][3];
   }
 
-  // TODO
-  matrixTransform() {}
+  matrixTransform(matrix = {}) {
+    webidl.assertBranded(this, DOMPointReadOnlyPrototype);
+    const prefix =
+      "Failed to call 'DOMPointReadOnly.prototype.matrixTransform'";
+    if (!ObjectPrototypeIsPrototypeOf(DOMMatrixReadOnlyPrototype, matrix)) {
+      const _matrix = webidl.converters.DOMMatrixInit(
+        matrix,
+        prefix,
+        "Argument 1",
+      );
+      validateAndFixupMatrixDictionary(_matrix, prefix);
+      matrix = {};
+      initMatrixFromDictonary(matrix, _matrix);
+    }
+
+    const point = webidl.createBranded(DOMPoint);
+    point[_raw] = new Float64Array(this[_raw]);
+    op_geometry_premultiply_point_self(matrix[_raw], point[_raw]);
+    return point;
+  }
 
   toJSON() {
     webidl.assertBranded(this, DOMPointReadOnlyPrototype);
@@ -1101,6 +1120,24 @@ class DOMMatrixReadOnly {
     const invertible = op_geometry_invert_self(matrix[_raw]);
     matrix[_is2D] = this[_is2D] && invertible;
     return matrix;
+  }
+
+  transformPoint(point = {}) {
+    webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
+    point = webidl.converters.DOMPointInit(
+      point,
+      "Failed to call 'DOMMatrixReadOnly.prototype.transformPoint'",
+      "Argument 1",
+    );
+    const result = webidl.createBranded(DOMPoint);
+    result[_raw] = new Float64Array([
+      point.x,
+      point.y,
+      point.z,
+      point.w,
+    ]);
+    op_geometry_premultiply_point_self(this[_raw], result[_raw]);
+    return result;
   }
 
   toFloat32Array() {

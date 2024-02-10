@@ -5,6 +5,31 @@ import {
   assertStrictEquals,
 } from "./test_util.ts";
 
+Deno.test(function matrixTransformPoint() {
+  const point = new DOMPoint(1, 2, 3, 4);
+  // deno-fmt-ignore
+  const matrix = DOMMatrix.fromMatrix({
+    m11:  1, m21:  2, m31:  3, m41:  4,
+    m12:  5, m22:  6, m32:  7, m42:  8,
+    m13:  9, m23: 10, m33: 11, m43: 12,
+    m14: 13, m24: 14, m34: 15, m44: 16,
+  });
+  const point2 = point.matrixTransform(matrix);
+  const point3 = matrix.transformPoint(point);
+  assertEquals(
+    point,
+    new DOMPoint(1, 2, 3, 4),
+  );
+  assertEquals(
+    point2,
+    new DOMPoint(30, 70, 110, 150),
+  );
+  assertEquals(
+    point3,
+    new DOMPoint(30, 70, 110, 150),
+  );
+});
+
 Deno.test(function matrixTranslate() {
   // deno-fmt-ignore
   const init = {
