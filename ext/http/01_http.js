@@ -464,9 +464,11 @@ function upgradeWebSocket(request, options = {}) {
     'sec-websocket-protocol',
   ];
 
-  if (options.headers) { 
+  if (options.headers) {
     options.headers.forEach((value, name) => {
-      if (!ArrayPrototypeIncludes(denyHeaderList, StringPrototypeToLowerCase(name))) ArrayPrototypePush(r.headerList, [name, value]);
+      if (!ArrayPrototypeIncludes(denyHeaderList, StringPrototypeToLowerCase(name))) {
+        ArrayPrototypePush(r.headerList, [name, value]);
+      }
     });
   }
 
