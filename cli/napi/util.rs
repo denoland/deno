@@ -3,6 +3,7 @@
 use deno_runtime::deno_napi::*;
 use std::cell::Cell;
 
+#[allow(invalid_reference_casting)]
 unsafe fn get_backing_store_slice(
   backing_store: &mut v8::SharedRef<v8::BackingStore>,
   byte_offset: usize,

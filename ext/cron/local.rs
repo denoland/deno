@@ -319,7 +319,7 @@ fn compute_next_deadline(cron_expression: &str) -> Result<u64, AnyError> {
 }
 
 fn validate_backoff_schedule(
-  backoff_schedule: &Vec<u32>,
+  backoff_schedule: &[u32],
 ) -> Result<(), AnyError> {
   if backoff_schedule.len() > MAX_BACKOFF_COUNT {
     return Err(type_error("Invalid backoff schedule"));

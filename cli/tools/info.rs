@@ -284,7 +284,7 @@ fn print_tree_node<TWrite: Write>(
   fn print_children<TWrite: Write>(
     writer: &mut TWrite,
     prefix: &str,
-    children: &Vec<TreeNode>,
+    children: &[TreeNode],
   ) -> fmt::Result {
     const SIBLING_CONNECTOR: char = '├';
     const LAST_SIBLING_CONNECTOR: char = '└';
