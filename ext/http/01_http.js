@@ -457,18 +457,9 @@ function upgradeWebSocket(request, options = {}) {
     }
   }
 
-  const denyHeaderList = [
-    'upgrade',
-    'connection',
-    'sec-websocket-accept',
-    'sec-websocket-protocol',
-  ];
-
   if (options.headers) {
     options.headers.forEach((value, name) => {
-      if (!ArrayPrototypeIncludes(denyHeaderList, StringPrototypeToLowerCase(name))) {
-        ArrayPrototypePush(r.headerList, [name, value]);
-      }
+      ArrayPrototypePush(r.headerList, [name, value]);
     });
   }
 

@@ -1511,7 +1511,7 @@ Deno.test(
   },
 );
 
-Deno.test({ permissions: { net: true, run: true } }, async function httpServerWebSocketHeader() {
+Deno.test({ permissions: { net: true } }, async function httpServerWebSocketHeader() {
   const headers = new Headers({ name: "value" });
   const wsClosed = Promise.withResolvers<void>();
   const server = Deno.serve({
