@@ -1533,8 +1533,9 @@ Deno.test(
       ),
     );
     let text = "";
+    const decoder = new TextDecoder();
     while (!text.includes("\r\n\r\n")) {
-      text += new TextDecoder().decode((await r.read()).value);
+      text += decoder.decode((await r.read()).value, { stream: true });
     }
     assert(text.includes("name: value"));
     w.write(new Uint8Array([0xff, 0x00]));
