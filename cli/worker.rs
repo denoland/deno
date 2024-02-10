@@ -73,7 +73,7 @@ pub trait ModuleLoaderFactory: Send + Sync {
     dynamic_permissions: PermissionsContainer,
   ) -> Rc<dyn ModuleLoader>;
 
-  fn create_source_map_getter(&self) -> Option<Box<dyn SourceMapGetter>>;
+  fn create_source_map_getter(&self) -> Option<Rc<dyn SourceMapGetter>>;
 }
 
 // todo(dsherret): this is temporary and we should remove this
