@@ -795,17 +795,7 @@ class DOMMatrixReadOnly {
     const prefix = `Failed to construct '${this.constructor.name}'`;
     this[_writable] = false;
     this[_brand] = _brand;
-    if (typeof init === "string") {
-      if (parseTransformList === null) {
-        throw new TypeError(
-          `${prefix}: Cannot be constructed with string on Workers`,
-        );
-      } else {
-        const { matrix, is2D } = parseTransformList(init);
-        this[_raw] = matrix;
-        this[_is2D] = is2D;
-      }
-    } else if (init === undefined) {
+    if (init === undefined) {
       // deno-fmt-ignore
       this[_raw] = new Float64Array([
         1, 0, 0, 0,
@@ -817,13 +807,28 @@ class DOMMatrixReadOnly {
     } else if (ObjectPrototypeIsPrototypeOf(DOMMatrixReadOnlyPrototype, init)) {
       this[_raw] = new Float64Array(init[_raw]);
       this[_is2D] = init[_is2D];
-    } else {
+    } else if (webidl.type(init) === "Object") {
       init = webidl.converters["sequence<unrestricted double>"](
         init,
         prefix,
         "Argument 1",
       );
       initMatrixFromSequence(this, init, prefix);
+    } else {
+      init = webidl.converters.DOMString(
+        init,
+        prefix,
+        "Argument 1",
+      );
+      if (parseTransformList === null) {
+        throw new TypeError(
+          `${prefix}: Cannot be constructed with string on Workers`,
+        );
+      } else {
+        const { matrix, is2D } = parseTransformList(init);
+        this[_raw] = matrix;
+        this[_is2D] = is2D;
+      }
     }
   }
 
