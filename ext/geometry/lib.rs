@@ -32,7 +32,7 @@ deno_core::extension!(
     op_geometry_invert_self,
     op_geometry_premultiply_point_self,
   ],
-  esm = ["01_geometry.js"],
+  lazy_loaded_esm = ["01_geometry.js"],
 );
 
 pub fn get_declaration() -> PathBuf {

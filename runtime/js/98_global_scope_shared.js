@@ -26,7 +26,6 @@ import * as request from "ext:deno_fetch/23_request.js";
 import * as response from "ext:deno_fetch/23_response.js";
 import * as fetch from "ext:deno_fetch/26_fetch.js";
 import * as eventSource from "ext:deno_fetch/27_eventsource.js";
-import * as geometry from "ext:deno_geometry/01_geometry.js";
 import * as messagePort from "ext:deno_web/13_message_port.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { DOMException } from "ext:deno_web/01_dom_exception.js";
@@ -55,13 +54,6 @@ const windowOrWorkerGlobalScope = {
   CustomEvent: core.propNonEnumerable(event.CustomEvent),
   DecompressionStream: core.propNonEnumerable(compression.DecompressionStream),
   DOMException: core.propNonEnumerable(DOMException),
-  DOMMatrix: core.propNonEnumerable(geometry.DOMMatrix),
-  DOMMatrixReadOnly: core.propNonEnumerable(geometry.DOMMatrixReadOnly),
-  DOMPoint: core.propNonEnumerable(geometry.DOMPoint),
-  DOMPointReadOnly: core.propNonEnumerable(geometry.DOMPointReadOnly),
-  DOMQuad: core.propNonEnumerable(geometry.DOMQuad),
-  DOMRect: core.propNonEnumerable(geometry.DOMRect),
-  DOMRectReadOnly: core.propNonEnumerable(geometry.DOMRectReadOnly),
   ErrorEvent: core.propNonEnumerable(event.ErrorEvent),
   Event: core.propNonEnumerable(event.Event),
   EventTarget: core.propNonEnumerable(event.EventTarget),

@@ -19,9 +19,9 @@ import * as console from "ext:deno_console/01_console.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import * as globalInterfaces from "ext:deno_web/04_global_interfaces.js";
 import * as webStorage from "ext:deno_webstorage/01_webstorage.js";
-import * as geometry from "ext:deno_geometry/01_geometry.js";
 import * as prompt from "ext:runtime/41_prompt.js";
 import { loadWebGPU } from "ext:deno_webgpu/00_init.js";
+const loadGeometry = core.createLazyLoader("ext:deno_geometry/01_geometry.js");
 
 class Navigator {
   constructor() {
@@ -106,25 +106,33 @@ ObjectDefineProperties(Navigator.prototype, {
 });
 const NavigatorPrototype = Navigator.prototype;
 
-geometry.enableWindowFeatures((transformList, prefix) => {
-  if (transformList === "") {
-    return {
-      // deno-fmt-ignore
-      matrix: new Float64Array([
-        1, 0, 0, 0,
-        0, 1, 0, 0,
-        0, 0, 1, 0,
-        0, 0, 0, 1,
-      ]),
-      is2D: true,
-    };
+let geometry;
+
+function initGeometry() {
+  if (geometry === undefined) {
+    geometry = loadGeometry();
+    geometry.enableWindowFeatures((transformList, prefix) => {
+      if (transformList === "") {
+        return {
+          // deno-fmt-ignore
+          matrix: new Float64Array([
+            1, 0, 0, 0,
+            0, 1, 0, 0,
+            0, 0, 1, 0,
+            0, 0, 0, 1,
+          ]),
+          is2D: true,
+        };
+      }
+      // TODO(petamoriken): Add CSS parser
+      throw new TypeError(
+        `${prefix}: CSS <transform-list> parser is not implemented`,
+      );
+    });
   }
 
-  // TODO(petamoriken): Add CSS parser
-  throw new TypeError(
-    `${prefix}: CSS <transform-list> parser is not implemented`,
-  );
-});
+  return geometry;
+}
 
 const mainRuntimeGlobalProperties = {
   Location: location.locationConstructorDescriptor,
@@ -140,6 +148,34 @@ const mainRuntimeGlobalProperties = {
   localStorage: core.propGetterOnly(webStorage.localStorage),
   sessionStorage: core.propGetterOnly(webStorage.sessionStorage),
   Storage: core.propNonEnumerable(webStorage.Storage),
+  DOMMatrix: core.propNonEnumerableLazyLoaded(
+    (geometry) => geometry.DOMMatrix,
+    initGeometry,
+  ),
+  DOMMatrixReadOnly: core.propNonEnumerableLazyLoaded(
+    (geometry) => geometry.DOMMatrixReadOnly,
+    initGeometry,
+  ),
+  DOMPoint: core.propNonEnumerableLazyLoaded(
+    (geometry) => geometry.DOMPoint,
+    initGeometry,
+  ),
+  DOMPointReadOnly: core.propNonEnumerableLazyLoaded(
+    (geometry) => geometry.DOMPointReadOnly,
+    initGeometry,
+  ),
+  DOMQuad: core.propNonEnumerableLazyLoaded(
+    (geometry) => geometry.DOMQuad,
+    initGeometry,
+  ),
+  DOMRect: core.propNonEnumerableLazyLoaded(
+    (geometry) => geometry.DOMRect,
+    initGeometry,
+  ),
+  DOMRectReadOnly: core.propNonEnumerableLazyLoaded(
+    (geometry) => geometry.DOMRectReadOnly,
+    initGeometry,
+  ),
 };
 
 export { mainRuntimeGlobalProperties, memoizeLazy };
