@@ -643,7 +643,6 @@ async fn publish_package(
 
 struct PreparePackagesData {
   publish_order_graph: PublishOrderGraph,
-  graph: Arc<deno_graph::ModuleGraph>,
   package_by_name: HashMap<String, Rc<PreparedPublishPackage>>,
 }
 
@@ -678,7 +677,7 @@ async fn prepare_packages_for_publishing(
     let package = prepare_publish(
       &deno_json,
       source_cache.clone(),
-      graph.clone(),
+      graph,
       import_map,
       diagnostics_collector,
     )
@@ -689,7 +688,6 @@ async fn prepare_packages_for_publishing(
     let package_by_name = HashMap::from([(package_name, package)]);
     return Ok(PreparePackagesData {
       publish_order_graph,
-      graph,
       package_by_name,
     });
   };
@@ -743,7 +741,6 @@ async fn prepare_packages_for_publishing(
   }
   Ok(PreparePackagesData {
     publish_order_graph,
-    graph,
     package_by_name,
   })
 }
@@ -849,11 +846,7 @@ pub async fn publish(
   )
   .await?;
 
-  let source_parser = LazyGraphSourceParser::new(
-    cli_factory.parsed_source_cache(),
-    &prepared_data.graph,
-  );
-  diagnostics_collector.print_and_error(source_parser)?;
+  diagnostics_collector.print_and_error()?;
 
   if prepared_data.package_by_name.is_empty() {
     bail!("No packages to publish");

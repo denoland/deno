@@ -3,7 +3,7 @@
 use bytes::Bytes;
 use deno_core::serde_json::json;
 use deno_core::url;
-use deno_runtime::deno_fetch::reqwest;
+use deno_fetch::reqwest;
 use pretty_assertions::assert_eq;
 use std::io::Read;
 use std::io::Write;
@@ -1051,6 +1051,9 @@ fn lock_deno_json_package_json_deps() {
         "jsr:@denotest/module_graph@1.4": "jsr:@denotest/module_graph@1.4.0",
         "npm:@denotest/esm-basic": "npm:@denotest/esm-basic@1.0.0"
       },
+      "jsr": {
+        "@denotest/module_graph@1.4.0": {}
+      },
       "npm": {
         "@denotest/esm-basic@1.0.0": {
           "integrity": esm_basic_integrity,
@@ -1101,6 +1104,9 @@ fn lock_deno_json_package_json_deps() {
         "jsr:@denotest/module_graph@1.4": "jsr:@denotest/module_graph@1.4.0",
         "npm:@denotest/esm-basic": "npm:@denotest/esm-basic@1.0.0"
       },
+      "jsr": {
+        "@denotest/module_graph@1.4.0": {}
+      },
       "npm": {
         "@denotest/esm-basic@1.0.0": {
           "integrity": esm_basic_integrity,
@@ -1138,6 +1144,9 @@ fn lock_deno_json_package_json_deps() {
     "packages": {
       "specifiers": {
         "jsr:@denotest/module_graph@1.4": "jsr:@denotest/module_graph@1.4.0",
+      },
+      "jsr": {
+        "@denotest/module_graph@1.4.0": {}
       }
     },
     "remote": {
@@ -4389,49 +4398,6 @@ itest!(ext_flag_takes_precedence_over_extension {
   output: "file_extensions/ts_with_js_extension.out",
   exit_code: 0,
 });
-
-#[test]
-fn websocket() {
-  let _g = util::http_server();
-
-  let script = util::testdata_path().join("run/websocket_test.ts");
-  let root_ca = util::testdata_path().join("tls/RootCA.pem");
-  let status = util::deno_cmd()
-    .arg("test")
-    .arg("--unstable")
-    .arg("--allow-net")
-    .arg("--cert")
-    .arg(root_ca)
-    .arg(script)
-    .spawn()
-    .unwrap()
-    .wait()
-    .unwrap();
-
-  assert!(status.success());
-}
-
-#[ignore]
-#[test]
-fn websocketstream() {
-  let _g = util::http_server();
-
-  let script = util::testdata_path().join("run/websocketstream_test.ts");
-  let root_ca = util::testdata_path().join("tls/RootCA.pem");
-  let status = util::deno_cmd()
-    .arg("test")
-    .arg("--unstable")
-    .arg("--allow-net")
-    .arg("--cert")
-    .arg(root_ca)
-    .arg(script)
-    .spawn()
-    .unwrap()
-    .wait()
-    .unwrap();
-
-  assert!(status.success());
-}
 
 #[tokio::test(flavor = "multi_thread")]
 async fn websocketstream_ping() {

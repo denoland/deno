@@ -4,6 +4,7 @@ use std::collections::HashSet;
 
 use deno_ast::ParsedSource;
 use deno_ast::SourceRange;
+use deno_ast::SourceTextInfo;
 use deno_core::serde_json;
 use deno_core::ModuleSpecifier;
 use deno_graph::DefaultModuleAnalyzer;
@@ -72,6 +73,7 @@ fn values_to_set<'a>(
 pub enum ImportMapUnfurlDiagnostic {
   UnanalyzableDynamicImport {
     specifier: ModuleSpecifier,
+    text_info: SourceTextInfo,
     range: SourceRange,
   },
 }
@@ -150,6 +152,7 @@ impl<'a> ImportMapUnfurler<'a> {
               ImportMapUnfurlDiagnostic::UnanalyzableDynamicImport {
                 specifier: url.to_owned(),
                 range: SourceRange::new(start_pos, end_pos),
+                text_info: parsed_source.text_info().clone(),
               },
             );
           }
@@ -295,7 +298,7 @@ mod tests {
   fn parse_ast(specifier: &Url, source_code: &str) -> ParsedSource {
     let media_type = MediaType::from_specifier(specifier);
     deno_ast::parse_module(deno_ast::ParseParams {
-      specifier: specifier.to_string(),
+      specifier: specifier.clone(),
       media_type,
       capture_tokens: false,
       maybe_syntax: None,

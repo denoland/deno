@@ -149,7 +149,7 @@ impl<'a> deno_graph::ModuleAnalyzer for ModuleInfoCacheModuleAnalyzer<'a> {
     specifier: &ModuleSpecifier,
     source: Arc<str>,
     media_type: MediaType,
-  ) -> Result<ModuleInfo, deno_ast::Diagnostic> {
+  ) -> Result<ModuleInfo, deno_ast::ParseDiagnostic> {
     // attempt to load from the cache
     let source_hash = ModuleInfoCacheSourceHash::from_source(source.as_bytes());
     match self.module_info_cache.get_module_info(

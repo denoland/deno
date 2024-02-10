@@ -38,8 +38,9 @@ declare namespace Deno {
     /**
      * Return the rid of the `Listener`.
      *
-     * @deprecated Use {@linkcode Deno.Listener} instance methods instead.
-     * {@linkcode Deno.Listener.rid} will be removed in Deno 2.0.
+     * @deprecated This will be removed in Deno 2.0. See the
+     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+     * for migration instructions.
      */
     readonly rid: number;
 
@@ -72,8 +73,9 @@ declare namespace Deno {
     /**
      * The resource ID of the connection.
      *
-     * @deprecated Use {@linkcode Deno.Conn} instance methods instead.
-     * {@linkcode Deno.Conn.rid} will be removed in Deno 2.0.
+     * @deprecated This will be removed in Deno 2.0. See the
+     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+     * for migration instructions.
      */
     readonly rid: number;
     /** Shuts down (`shutdown(2)`) the write side of the connection. Most
@@ -111,8 +113,9 @@ declare namespace Deno {
     /**
      * The resource ID of the connection.
      *
-     * @deprecated Use {@linkcode Deno.TlsConn} instance methods instead.
-     * {@linkcode Deno.TlsConn.rid} will be removed in Deno 2.0.
+     * @deprecated This will be removed in Deno 2.0. See the
+     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+     * for migration instructions.
      */
     readonly rid: number;
   }
@@ -191,17 +194,17 @@ declare namespace Deno {
      * `--allow-read`.
      *
      * @tags allow-read
-     * @deprecated Pass the certificate file contents directly to the
-     * {@linkcode Deno.ListenTlsOptions.cert} option instead. This option will
-     * be removed in Deno 2.0.
+     * @deprecated This will be removed in Deno 2.0. See the
+     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+     * for migration instructions.
      */
     certFile?: string;
     /** Server private key file. Requires `--allow-read`.
      *
      * @tags allow-read
-     * @deprecated Pass the key file contents directly to the
-     * {@linkcode Deno.ListenTlsOptions.key} option instead. This option will
-     * be removed in Deno 2.0.
+     * @deprecated This will be removed in Deno 2.0. See the
+     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+     * for migration instructions.
      */
     keyFile?: string;
 
@@ -275,8 +278,9 @@ declare namespace Deno {
     /**
      * The resource ID of the connection.
      *
-     * @deprecated Use {@linkcode Deno.Conn} instance methods instead.
-     * {@linkcode Deno.Conn.rid} will be removed in Deno 2.0.
+     * @deprecated This will be removed in Deno 2.0. See the
+     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+     * for migration instructions.
      */
     readonly rid: number;
   }
@@ -292,8 +296,9 @@ declare namespace Deno {
     /**
      * The resource ID of the connection.
      *
-     * @deprecated Use {@linkcode Deno.UnixConn} instance methods instead.
-     * {@linkcode Deno.UnixConn.rid} will be removed in Deno 2.0.
+     * @deprecated This will be removed in Deno 2.0. See the
+     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+     * for migration instructions.
      */
     readonly rid: number;
   }
@@ -328,9 +333,9 @@ declare namespace Deno {
     /**
      * Server certificate file.
      *
-     * @deprecated Pass the cert file contents directly to the
-     * {@linkcode Deno.ConnectTlsOptions.caCerts} option instead. This option
-     * will be removed in Deno 2.0.
+     * @deprecated This will be removed in Deno 2.0. See the
+     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+     * for migration instructions.
      */
     certFile?: string;
     /** A list of root certificates that will be used in addition to the
@@ -428,8 +433,9 @@ declare namespace Deno {
    * Deno.shutdown(conn.rid);
    * ```
    *
-   * @deprecated Use {@linkcode Deno.Conn.closeWrite} instead.
-   * {@linkcode Deno.shutdown} will be removed in Deno 2.0.
+   * @deprecated This will be removed in Deno 2.0. See the
+   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+   * for migration instructions.
    *
    * @category Network
    */

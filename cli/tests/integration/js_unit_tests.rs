@@ -7,7 +7,7 @@ use test_util as util;
 
 util::unit_test_factory!(
   js_unit_test,
-  "tests/unit",
+  "../tests/unit",
   "*.ts",
   [
     abort_controller_test,
@@ -107,7 +107,7 @@ util::unit_test_factory!(
     websocket_test,
     webstorage_test,
     worker_permissions_test,
-    worker_types,
+    worker_test,
     write_file_test,
     write_text_file_test,
   ]
@@ -123,7 +123,7 @@ fn js_unit_test(test: String) {
     .arg("cli/tests/config/deno.json")
     .arg("--no-lock")
     .arg("--unstable")
-    .arg("--location=http://js-unit-tests/foo/bar")
+    .arg("--location=http://127.0.0.1:4545/")
     .arg("--no-prompt");
 
   // TODO(mmastrac): it would be better to just load a test CA for all tests

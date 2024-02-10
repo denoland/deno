@@ -5,7 +5,7 @@ import * as yaml from "https://deno.land/std@0.173.0/encoding/yaml.ts";
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 73;
+const cacheVersion = 74;
 
 const ubuntuX86Runner = "ubuntu-22.04";
 const ubuntuX86XlRunner = "ubuntu-22.04-xl";
@@ -64,11 +64,14 @@ const installPkgsCommand =
   `sudo apt-get install --no-install-recommends debootstrap clang-${llvmVersion} lld-${llvmVersion} clang-tools-${llvmVersion} clang-format-${llvmVersion} clang-tidy-${llvmVersion}`;
 const sysRootStep = {
   name: "Set up incremental LTO and sysroot build",
-  run: `# Avoid running man-db triggers, which sometimes takes several minutes
+  run: `# Setting up sysroot
+export DEBIAN_FRONTEND=noninteractive
+# Avoid running man-db triggers, which sometimes takes several minutes
 # to complete.
-sudo apt-get remove --purge -y man-db
+sudo apt-get -qq remove --purge -y man-db  > /dev/null 2> /dev/null
 # Remove older clang before we install
-sudo apt-get remove 'clang-12*' 'clang-13*' 'clang-14*' 'clang-15*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'llvm-15*' 'lld-12*' 'lld-13*' 'lld-14*' 'lld-15*'
+sudo apt-get -qq remove \
+  'clang-12*' 'clang-13*' 'clang-14*' 'clang-15*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'llvm-15*' 'lld-12*' 'lld-13*' 'lld-14*' 'lld-15*' > /dev/null 2> /dev/null
 
 # Install clang-XXX, lld-XXX, and debootstrap.
 echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-${llvmVersion} main" |
@@ -80,27 +83,29 @@ sudo apt-get update
 # this was unreliable sometimes, so try again if it fails
 ${installPkgsCommand} || echo 'Failed. Trying again.' && sudo apt-get clean && sudo apt-get update && ${installPkgsCommand}
 # Fix alternatives
-(yes '' | sudo update-alternatives --force --all) || true
+(yes '' | sudo update-alternatives --force --all) > /dev/null 2> /dev/null || true
 
-# Create ubuntu-16.04 sysroot environment, which is used to avoid
-# depending on a very recent version of glibc.
-# \`libc6-dev\` is required for building any C source files.
-# \`file\` and \`make\` are needed to build libffi-sys.
-# \`curl\` is needed to build rusty_v8.
-sudo debootstrap                                     \\
-  --include=ca-certificates,curl,file,libc6-dev,make \\
-  --no-merged-usr --variant=minbase xenial /sysroot  \\
-  http://azure.archive.ubuntu.com/ubuntu
+echo "Decompressing sysroot..."
+wget -q https://github.com/denoland/deno_sysroot_build/releases/download/sysroot-20240207/sysroot-\`uname -m\`.tar.xz -O /tmp/sysroot.tar.xz
+cd /
+xzcat /tmp/sysroot.tar.xz | sudo tar -x
 sudo mount --rbind /dev /sysroot/dev
 sudo mount --rbind /sys /sysroot/sys
 sudo mount --rbind /home /sysroot/home
 sudo mount -t proc /proc /sysroot/proc
+cd
 
-wget https://github.com/denoland/deno_third_party/raw/master/prebuilt/linux64/libdl/libdl.a
-wget https://github.com/denoland/deno_third_party/raw/master/prebuilt/linux64/libdl/libdl.so.2
-
-sudo ln -s libdl.so.2 /sysroot/lib/x86_64-linux-gnu/libdl.so
-sudo ln -s libdl.a /sysroot/lib/x86_64-linux-gnu/libdl.a
+if [[ \`uname -m\` == "aarch64" ]]; then
+  echo "Copying libdl.a"
+  sudo cp /sysroot/usr/lib/aarch64-linux-gnu/libdl.a /sysroot/lib/aarch64-linux-gnu/libdl.a
+  echo "Copying libdl.so"
+  sudo cp /sysroot/lib/aarch64-linux-gnu/libdl.so.2 /sysroot/lib/aarch64-linux-gnu/libdl.so
+else
+  echo "Copying libdl.a"
+  sudo cp /sysroot/usr/lib/x86_64-linux-gnu/libdl.a /sysroot/lib/x86_64-linux-gnu/libdl.a
+  echo "Copying libdl.so"
+  sudo cp /sysroot/lib/x86_64-linux-gnu/libdl.so.2 /sysroot/lib/x86_64-linux-gnu/libdl.so
+fi
 
 # Configure the build environment. Both Rust and Clang will produce
 # llvm bitcode only, so we can use lld's incremental LTO support.
@@ -167,7 +172,7 @@ const installRustStep = {
 };
 const installPythonSteps = [{
   name: "Install Python",
-  uses: "actions/setup-python@v4",
+  uses: "actions/setup-python@v5",
   with: { "python-version": 3.11 },
 }, {
   name: "Remove unused versions of Python",
@@ -182,7 +187,7 @@ const installPythonSteps = [{
 }];
 const installNodeStep = {
   name: "Install Node",
-  uses: "actions/setup-node@v3",
+  uses: "actions/setup-node@v4",
   with: { "node-version": 18 },
 };
 const installProtocStep = {
@@ -413,6 +418,7 @@ const ci = {
             ...Runners.linuxArm,
             job: "test",
             profile: "release",
+            use_sysroot: true,
           }, {
             ...Runners.macosX86,
             job: "lint",
@@ -556,21 +562,25 @@ const ci = {
         {
           name: "Log versions",
           run: [
-            "python --version",
-            "rustc --version",
-            "cargo --version",
-            "which dpkg && dpkg -l",
-            // Deno is installed when linting or testing.
-            'if [[ "${{ matrix.job }}" == "lint" ]] || [[ "${{ matrix.job }}" == "test" ]]; then',
-            "  deno --version",
-            "fi",
-            // Node is installed for benchmarks.
-            'if [ "${{ matrix.job }}" == "bench" ]',
-            "then",
-            "  node -v",
-            // Install benchmark tools.
-            "  " + installBenchTools,
-            "fi",
+            "echo '*** Python'",
+            "command -v python && python --version || echo 'No python found or bad executable'",
+            "echo '*** Rust'",
+            "command -v rustc && rustc --version || echo 'No rustc found or bad executable'",
+            "echo '*** Cargo'",
+            "command -v cargo && cargo --version || echo 'No cargo found or bad executable'",
+            "echo '*** Deno'",
+            "command -v deno && deno --version || echo 'No deno found or bad executable'",
+            "echo '*** Node'",
+            "command -v node && node --version || echo 'No node found or bad executable'",
+            "echo '*** Installed packages'",
+            "command -v dpkg && dpkg -l || echo 'No dpkg found or bad executable'",
+          ].join("\n"),
+        },
+        {
+          name: "Install benchmark tools",
+          if: "matrix.job == 'bench'",
+          run: [
+            installBenchTools,
           ].join("\n"),
         },
         {
@@ -593,7 +603,7 @@ const ci = {
         {
           // Restore cache from the latest 'main' branch build.
           name: "Restore cache build output (PR)",
-          uses: "actions/cache/restore@v3",
+          uses: "actions/cache/restore@v4",
           if:
             "github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')",
           with: {
@@ -676,9 +686,10 @@ const ci = {
             "(github.ref == 'refs/heads/main' ||",
             "startsWith(github.ref, 'refs/tags/'))))",
           ].join("\n"),
-          uses: "actions/upload-artifact@v3",
+          uses: "actions/upload-artifact@v4",
           with: {
-            name: "deno-${{ github.event.number }}",
+            name:
+              "deno-${{ matrix.os }}-${{ matrix.arch }}-${{ github.event.number }}",
             path: "target/release/deno",
           },
         },
@@ -780,7 +791,7 @@ const ci = {
             // Run unit then integration tests. Skip doc tests here
             // since they are sometimes very slow on Mac.
             "cargo test --locked --lib",
-            "cargo test --locked --test '*'",
+            "cargo test --locked --tests",
           ].join("\n"),
           env: { CARGO_PROFILE_DEV_DEBUG: 0 },
         },
@@ -808,8 +819,10 @@ const ci = {
         },
         {
           // Verify that the binary actually works in the Ubuntu-16.04 sysroot.
+          // TODO(mmastrac): make this work for aarch64 as well
           name: "Check deno binary (in sysroot)",
-          if: "matrix.profile == 'release' && matrix.use_sysroot",
+          if:
+            "matrix.profile == 'release' && matrix.use_sysroot && matrix.arch != 'aarch64'",
           run: 'sudo chroot /sysroot "$(pwd)/target/release/deno" --version',
         },
         {
@@ -996,6 +1009,7 @@ const ci = {
               "target/release/deno-x86_64-pc-windows-msvc.zip",
               "target/release/deno-x86_64-unknown-linux-gnu.zip",
               "target/release/deno-x86_64-apple-darwin.zip",
+              "target/release/deno-aarch64-unknown-linux-gnu.zip",
               "target/release/deno-aarch64-apple-darwin.zip",
               "target/release/deno_src.tar.gz",
               "target/release/lib.deno.d.ts",
