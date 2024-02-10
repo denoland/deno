@@ -623,6 +623,7 @@ dependencies = [
  "bytes",
  "deno_ast",
  "deno_bench_util",
+ "deno_cache_dir",
  "deno_core",
  "deno_fetch",
  "deno_lockfile",

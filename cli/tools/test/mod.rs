@@ -873,7 +873,7 @@ pub async fn check_specifiers(
       .collect();
 
     for file in inline_files {
-      file_fetcher.insert_cached(file);
+      file_fetcher.insert_memory_files(file);
     }
 
     module_load_preparer

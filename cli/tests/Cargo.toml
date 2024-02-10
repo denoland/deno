@@ -24,6 +24,7 @@ required-features = ["run"]
 bytes.workspace = true
 deno_ast.workspace = true
 deno_bench_util.workspace = true
+deno_cache_dir = { workspace = true }
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting", "unsafe_use_unprotected_platform"] }
 deno_fetch.workspace = true
 deno_lockfile.workspace = true
