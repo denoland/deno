@@ -32,6 +32,7 @@ pub mod lsp;
 mod npm;
 pub mod pty;
 pub mod servers;
+pub mod spawn;
 
 pub use builders::DenoChild;
 pub use builders::TestCommandBuilder;

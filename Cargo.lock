@@ -608,6 +608,38 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "702fc72eb24e5a1e48ce58027a675bc24edd52096d5397d4aea7c6dd9eca0bd1"
 
 [[package]]
+name = "cli_tests"
+version = "0.0.0"
+dependencies = [
+ "bytes",
+ "deno_ast",
+ "deno_bench_util",
+ "deno_core",
+ "deno_fetch",
+ "deno_lockfile",
+ "deno_tls",
+ "fastwebsockets",
+ "flaky_test",
+ "http 1.0.0",
+ "http-body-util",
+ "hyper 1.1.0",
+ "hyper-util",
+ "nix 0.26.2",
+ "once_cell",
+ "os_pipe",
+ "pretty_assertions",
+ "serde",
+ "serde_repr",
+ "test_util",
+ "tokio",
+ "tokio-util",
+ "tower-lsp",
+ "trust-dns-client",
+ "trust-dns-server",
+ "url",
+]
+
+[[package]]
 name = "clipboard-win"
 version = "5.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1005,18 +1037,12 @@ dependencies = [
  "env_logger",
  "eszip",
  "fancy-regex",
- "fastwebsockets",
- "flaky_test",
  "flate2",
  "fs3",
  "fwdansi",
  "glibc_version",
  "glob",
  "hex",
- "http 1.0.0",
- "http-body-util",
- "hyper 1.1.0",
- "hyper-util",
  "import_map",
  "indexmap",
  "jsonc-parser",
@@ -1057,8 +1083,6 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tower-lsp",
- "trust-dns-client",
- "trust-dns-server",
  "twox-hash",
  "typed-arena",
  "unicode-width",
@@ -1379,9 +1403,9 @@ dependencies = [
 
 [[package]]
 name = "deno_graph"
-version = "0.65.0"
+version = "0.65.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bd7e17cc32255286c37c81a44425b71c4a7e1aadb7bdf65968a31d28415fa1d0"
+checksum = "06fadc0cd21f54794ab22e852d6c92487a65f0dd70b40eadbf3a8e249c760223"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1506,9 +1530,9 @@ dependencies = [
 
 [[package]]
 name = "deno_lockfile"
-version = "0.18.0"
+version = "0.18.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dfe06eda519ed05b69da567bcba1d728c482fd553ddaa2ffe008468158da6de0"
+checksum = "9f348633cc4425b2a9011436e256b1ae8f6c8026ec2705d852baee8643dc5562"
 dependencies = [
  "ring",
  "serde",
@@ -1776,6 +1800,7 @@ dependencies = [
  "once_cell",
  "rustls",
  "rustls-pemfile",
+ "rustls-tokio-stream",
  "rustls-webpki",
  "serde",
  "webpki-roots",
@@ -2838,7 +2863,7 @@ dependencies = [
  "presser",
  "thiserror",
  "winapi",
- "windows",
+ "windows 0.51.1",
 ]
 
 [[package]]
@@ -6309,6 +6334,7 @@ dependencies = [
  "termcolor",
  "tokio",
  "url",
+ "win32job",
  "winapi",
 ]
 
@@ -7179,6 +7205,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "653f141f39ec16bba3c5abe400a0c60da7468261cc2cbf36805022876bc721a8"
 
 [[package]]
+name = "win32job"
+version = "2.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5b2b1bf557d947847a30eb73f79aa6cdb3eaf3ce02f5e9599438f77896a62b3c"
+dependencies = [
+ "thiserror",
+ "windows 0.52.0",
+]
+
+[[package]]
 name = "winapi"
 version = "0.3.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7215,8 +7251,18 @@ version = "0.51.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ca229916c5ee38c2f2bc1e9d8f04df975b4bd93f9955dc69fabb5d91270045c9"
 dependencies = [
- "windows-core",
+ "windows-core 0.51.1",
  "windows-targets 0.48.5",
+]
+
+[[package]]
+name = "windows"
+version = "0.52.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e48a53791691ab099e5e2ad123536d0fff50652600abaf43bbf952894110d0be"
+dependencies = [
+ "windows-core 0.52.0",
+ "windows-targets 0.52.0",
 ]
 
 [[package]]
@@ -7226,6 +7272,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f1f8cf84f35d2db49a46868f947758c7a1138116f7fac3bc844f43ade1292e64"
 dependencies = [
  "windows-targets 0.48.5",
+]
+
+[[package]]
+name = "windows-core"
+version = "0.52.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "33ab640c8d7e35bf8ba19b884ba838ceb4fba93a4e8c65a9059d08afcfc683d9"
+dependencies = [
+ "windows-targets 0.52.0",
 ]
 
 [[package]]
