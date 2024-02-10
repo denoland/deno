@@ -221,15 +221,7 @@ pub fn op_geometry_invert_2d_self(#[buffer] inout: &mut [f64]) -> bool {
   }
 
   let mut matrix = Matrix3::new(
-    inout[0],
-    inout[4],
-    inout[12],
-    inout[1],
-    inout[5],
-    inout[13],
-    0.0,
-    0.0,
-    1.0,
+    inout[0], inout[4], inout[12], inout[1], inout[5], inout[13], 0.0, 0.0, 1.0,
   );
 
   if !matrix.try_inverse_mut() {
