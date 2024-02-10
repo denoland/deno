@@ -3,6 +3,7 @@
 use deno_core::op2;
 use nalgebra::Matrix4;
 use nalgebra::Matrix4x2;
+use nalgebra::Matrix4x3;
 use nalgebra::MatrixView4;
 use nalgebra::MatrixViewMut4;
 use nalgebra::Rotation3;
@@ -91,9 +92,11 @@ pub fn op_geometry_rotate_self(
   )
   .to_homogeneous();
   let mut inout = MatrixViewMut4::from_slice(inout);
-  let mut result = Matrix4::zeros();
-  inout.mul_to(&rotation, &mut result);
-  inout.copy_from(&result);
+  let mut result = Matrix4x3::zeros();
+  inout.mul_to(&rotation.fixed_view::<4, 3>(0, 0), &mut result);
+  inout.set_column(0, &result.column(0));
+  inout.set_column(1, &result.column(1));
+  inout.set_column(2, &result.column(2));
 }
 
 #[op2(fast)]
@@ -105,9 +108,11 @@ pub fn op_geometry_rotate_from_vector_self(
   let rotation =
     Rotation3::from_axis_angle(&Vector3::z_axis(), y.atan2(x)).to_homogeneous();
   let mut inout = MatrixViewMut4::from_slice(inout);
-  let mut result = Matrix4::zeros();
-  inout.mul_to(&rotation, &mut result);
-  inout.copy_from(&result);
+  let mut result = Matrix4x3::zeros();
+  inout.mul_to(&rotation.fixed_view::<4, 3>(0, 0), &mut result);
+  inout.set_column(0, &result.column(0));
+  inout.set_column(1, &result.column(1));
+  inout.set_column(2, &result.column(2));
 }
 
 #[op2(fast)]
@@ -124,9 +129,11 @@ pub fn op_geometry_rotate_axis_angle_self(
   )
   .to_homogeneous();
   let mut inout = MatrixViewMut4::from_slice(inout);
-  let mut result = Matrix4::zeros();
-  inout.mul_to(&rotation, &mut result);
-  inout.copy_from(&result);
+  let mut result = Matrix4x3::zeros();
+  inout.mul_to(&rotation.fixed_view::<4, 3>(0, 0), &mut result);
+  inout.set_column(0, &result.column(0));
+  inout.set_column(1, &result.column(1));
+  inout.set_column(2, &result.column(2));
 }
 
 #[op2(fast)]
