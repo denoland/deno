@@ -55,7 +55,7 @@ fn should_retry(status: &cdp::Status) -> bool {
 /// of an ES module cannot be hot-replaced. In such situation the runner will
 /// force a full restart of a program by notifying the `FileWatcher`.
 pub struct HmrRunner {
-  session: Option<LocalInspectorSession>,
+  session: LocalInspectorSession,
   watcher_communicator: Arc<WatcherCommunicator>,
   script_ids: HashMap<String, String>,
   emitter: Arc<Emitter>,
@@ -76,15 +76,11 @@ impl crate::worker::HmrRunner for HmrRunner {
     self.disable_debugger().await
   }
 
-  fn setup(&mut self, session: LocalInspectorSession) {
-    self.session = Some(session);
-  }
-
   async fn run(&mut self) -> Result<(), AnyError> {
     self
       .watcher_communicator
       .change_restart_mode(WatcherRestartMode::Manual);
-    let mut session_rx = self.session.as_mut().unwrap().take_notification_rx();
+    let mut session_rx = self.session.take_notification_rx();
     loop {
       select! {
         biased;
@@ -168,7 +164,7 @@ impl crate::worker::HmrRunner for HmrRunner {
             }
           }
         }
-        _ = self.session.as_mut().unwrap().receive_from_v8_session() => {}
+        _ = self.session.receive_from_v8_session() => {}
       }
     }
   }
@@ -177,10 +173,11 @@ impl crate::worker::HmrRunner for HmrRunner {
 impl HmrRunner {
   pub fn new(
     emitter: Arc<Emitter>,
+    session: LocalInspectorSession,
     watcher_communicator: Arc<WatcherCommunicator>,
   ) -> Self {
     Self {
-      session: None,
+      session,
       emitter,
       watcher_communicator,
       script_ids: HashMap::new(),
@@ -191,14 +188,10 @@ impl HmrRunner {
   async fn enable_debugger(&mut self) -> Result<(), AnyError> {
     self
       .session
-      .as_mut()
-      .unwrap()
       .post_message::<()>("Debugger.enable", None)
       .await?;
     self
       .session
-      .as_mut()
-      .unwrap()
       .post_message::<()>("Runtime.enable", None)
       .await?;
     Ok(())
@@ -208,14 +201,10 @@ impl HmrRunner {
   async fn disable_debugger(&mut self) -> Result<(), AnyError> {
     self
       .session
-      .as_mut()
-      .unwrap()
       .post_message::<()>("Debugger.disable", None)
       .await?;
     self
       .session
-      .as_mut()
-      .unwrap()
       .post_message::<()>("Runtime.disable", None)
       .await?;
     Ok(())
@@ -228,8 +217,6 @@ impl HmrRunner {
   ) -> Result<cdp::SetScriptSourceResponse, AnyError> {
     let result = self
       .session
-      .as_mut()
-      .unwrap()
       .post_message(
         "Debugger.setScriptSource",
         Some(json!({
@@ -256,8 +243,6 @@ impl HmrRunner {
 
     let _result = self
       .session
-      .as_mut()
-      .unwrap()
       .post_message(
         "Runtime.evaluate",
         Some(json!({

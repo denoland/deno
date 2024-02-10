@@ -80,8 +80,6 @@ pub trait HasNodeSpecifierChecker: Send + Sync {
 
 #[async_trait::async_trait(?Send)]
 pub trait HmrRunner: Send + Sync {
-  fn setup(&mut self, session: deno_core::LocalInspectorSession);
-
   async fn start(&mut self) -> Result<(), AnyError>;
   async fn stop(&mut self) -> Result<(), AnyError>;
   async fn run(&mut self) -> Result<(), AnyError>;
@@ -89,14 +87,19 @@ pub trait HmrRunner: Send + Sync {
 
 #[async_trait::async_trait(?Send)]
 pub trait CoverageCollector: Send + Sync {
-  fn setup(
-    &self,
-    session: deno_core::LocalInspectorSession,
-  ) -> Box<dyn CoverageCollector>;
-
   async fn start_collecting(&mut self) -> Result<(), AnyError>;
   async fn stop_collecting(&mut self) -> Result<(), AnyError>;
 }
+
+pub type CreateHmrRunnerCb = Box<
+  dyn Fn(deno_core::LocalInspectorSession) -> Box<dyn HmrRunner> + Send + Sync,
+>;
+
+pub type CreateCoverageCollectorCb = Box<
+  dyn Fn(deno_core::LocalInspectorSession) -> Box<dyn CoverageCollector>
+    + Send
+    + Sync,
+>;
 
 pub struct CliMainWorkerOptions {
   pub argv: Vec<String>,
@@ -119,8 +122,8 @@ pub struct CliMainWorkerOptions {
   pub unstable: bool,
   pub skip_op_registration: bool,
   pub maybe_root_package_json_deps: Option<PackageJsonDeps>,
-  pub hmr_runner: Arc<Mutex<Option<Box<dyn HmrRunner>>>>,
-  pub coverage_collector: Option<Box<dyn CoverageCollector>>,
+  pub create_hmr_runner: Option<CreateHmrRunnerCb>,
+  pub create_coverage_collector: Option<CreateCoverageCollectorCb>,
 }
 
 struct SharedWorkerState {
@@ -346,14 +349,14 @@ impl CliMainWorker {
     if !self.shared.options.hmr {
       return Ok(None);
     }
-    let Some(mut hmr_runner) = self.shared.options.hmr_runner.lock().take()
+    let Some(setup_hmr_runner) = self.shared.options.create_hmr_runner.as_ref()
     else {
       return Ok(None);
     };
 
     let session = self.worker.create_inspector_session().await;
 
-    hmr_runner.setup(session);
+    let mut hmr_runner = setup_hmr_runner(session);
 
     self
       .worker
@@ -369,14 +372,14 @@ impl CliMainWorker {
   pub async fn maybe_setup_coverage_collector(
     &mut self,
   ) -> Result<Option<Box<dyn CoverageCollector>>, AnyError> {
-    let Some(coverage_collector) =
-      self.shared.options.coverage_collector.as_ref()
+    let Some(create_coverage_collector) =
+      self.shared.options.create_coverage_collector.as_ref()
     else {
       return Ok(None);
     };
 
     let session = self.worker.create_inspector_session().await;
-    let mut coverage_collector = coverage_collector.setup(session);
+    let mut coverage_collector = create_coverage_collector(session);
     self
       .worker
       .js_runtime

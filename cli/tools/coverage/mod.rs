@@ -43,21 +43,11 @@ use merge::ProcessCoverage;
 
 pub struct CoverageCollector {
   pub dir: PathBuf,
-  session: Option<LocalInspectorSession>,
+  session: LocalInspectorSession,
 }
 
 #[async_trait::async_trait(?Send)]
 impl crate::worker::CoverageCollector for CoverageCollector {
-  fn setup(
-    &self,
-    session: LocalInspectorSession,
-  ) -> Box<dyn crate::worker::CoverageCollector> {
-    Box::new(Self {
-      dir: self.dir.clone(),
-      session: Some(session),
-    })
-  }
-
   async fn start_collecting(&mut self) -> Result<(), AnyError> {
     self.enable_debugger().await?;
     self.enable_profiler().await?;
@@ -107,15 +97,13 @@ impl crate::worker::CoverageCollector for CoverageCollector {
 }
 
 impl CoverageCollector {
-  pub fn new(dir: PathBuf) -> Self {
-    Self { dir, session: None }
+  pub fn new(dir: PathBuf, session: LocalInspectorSession) -> Self {
+    Self { dir, session }
   }
 
   async fn enable_debugger(&mut self) -> Result<(), AnyError> {
     self
       .session
-      .as_mut()
-      .unwrap()
       .post_message::<()>("Debugger.enable", None)
       .await?;
     Ok(())
@@ -124,8 +112,6 @@ impl CoverageCollector {
   async fn enable_profiler(&mut self) -> Result<(), AnyError> {
     self
       .session
-      .as_mut()
-      .unwrap()
       .post_message::<()>("Profiler.enable", None)
       .await?;
     Ok(())
@@ -134,8 +120,6 @@ impl CoverageCollector {
   async fn disable_debugger(&mut self) -> Result<(), AnyError> {
     self
       .session
-      .as_mut()
-      .unwrap()
       .post_message::<()>("Debugger.disable", None)
       .await?;
     Ok(())
@@ -144,8 +128,6 @@ impl CoverageCollector {
   async fn disable_profiler(&mut self) -> Result<(), AnyError> {
     self
       .session
-      .as_mut()
-      .unwrap()
       .post_message::<()>("Profiler.disable", None)
       .await?;
     Ok(())
@@ -157,8 +139,6 @@ impl CoverageCollector {
   ) -> Result<cdp::StartPreciseCoverageResponse, AnyError> {
     let return_value = self
       .session
-      .as_mut()
-      .unwrap()
       .post_message("Profiler.startPreciseCoverage", Some(parameters))
       .await?;
 
@@ -172,8 +152,6 @@ impl CoverageCollector {
   ) -> Result<cdp::TakePreciseCoverageResponse, AnyError> {
     let return_value = self
       .session
-      .as_mut()
-      .unwrap()
       .post_message::<()>("Profiler.takePreciseCoverage", None)
       .await?;
 

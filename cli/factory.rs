@@ -785,19 +785,28 @@ impl CliFactory {
   fn create_cli_main_worker_options(
     &self,
   ) -> Result<CliMainWorkerOptions, AnyError> {
-    let hmr_runner: Option<Box<dyn crate::worker::HmrRunner>> =
-      if self.options.has_hmr() {
-        let watcher_communicator = self.watcher_communicator.clone().unwrap();
-        let emitter = self.emitter()?.clone();
-        Some(Box::new(HmrRunner::new(emitter, watcher_communicator)))
-      } else {
-        None
-      };
-
-    let coverage_collector: Option<Box<dyn crate::worker::CoverageCollector>> =
+    let create_hmr_runner = if self.options.has_hmr() {
+      let watcher_communicator = self.watcher_communicator.clone().unwrap();
+      let emitter = self.emitter()?.clone();
+      let fn_: crate::worker::CreateHmrRunnerCb = Box::new(move |session| {
+        Box::new(HmrRunner::new(
+          emitter.clone(),
+          session,
+          watcher_communicator.clone(),
+        ))
+      });
+      Some(fn_)
+    } else {
+      None
+    };
+    let create_coverage_collector =
       if let Some(coverage_dir) = self.options.coverage_dir() {
         let coverage_dir = PathBuf::from(coverage_dir);
-        Some(Box::new(CoverageCollector::new(coverage_dir)))
+        let fn_: crate::worker::CreateCoverageCollectorCb =
+          Box::new(move |session| {
+            Box::new(CoverageCollector::new(coverage_dir.clone(), session))
+          });
+        Some(fn_)
       } else {
         None
       };
@@ -833,8 +842,8 @@ impl CliFactory {
         .clone(),
       unstable: self.options.legacy_unstable_flag(),
       maybe_root_package_json_deps: self.options.maybe_package_json_deps(),
-      hmr_runner: Arc::new(Mutex::new(hmr_runner)),
-      coverage_collector,
+      create_hmr_runner,
+      create_coverage_collector,
     })
   }
 }
