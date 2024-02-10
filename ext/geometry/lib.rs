@@ -27,6 +27,7 @@ deno_core::extension!(
     op_geometry_premultiply_self,
     op_geometry_flip_x_self,
     op_geometry_flip_y_self,
+    op_geometry_invert_self,
   ],
   esm = ["01_geometry.js"],
 );
@@ -198,11 +199,28 @@ pub fn op_geometry_premultiply_self(
 #[op2(fast)]
 pub fn op_geometry_flip_x_self(#[buffer] inout: &mut [f64]) -> () {
   let mut inout = MatrixViewMut4::from_slice(inout);
-  inout.column_mut(0).neg_mut()
+  inout.column_mut(0).neg_mut();
 }
 
 #[op2(fast)]
 pub fn op_geometry_flip_y_self(#[buffer] inout: &mut [f64]) -> () {
   let mut inout = MatrixViewMut4::from_slice(inout);
-  inout.column_mut(1).neg_mut()
+  inout.column_mut(1).neg_mut();
+}
+
+#[op2(fast)]
+pub fn op_geometry_invert_self(#[buffer] inout: &mut [f64]) -> bool {
+  let mut inout = MatrixViewMut4::from_slice(inout);
+
+  if inout.iter().any(|&x| x.is_infinite()) {
+    inout.fill(f64::NAN);
+    return false;
+  }
+
+  if !inout.try_inverse_mut() {
+    inout.fill(f64::NAN);
+    return false;
+  }
+
+  true
 }

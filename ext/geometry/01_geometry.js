@@ -4,6 +4,7 @@ import { primordials } from "ext:core/mod.js";
 import {
   op_geometry_flip_x_self,
   op_geometry_flip_y_self,
+  op_geometry_invert_self,
   op_geometry_multiply,
   op_geometry_multiply_self,
   op_geometry_premultiply_self,
@@ -1093,6 +1094,15 @@ class DOMMatrixReadOnly {
     return matrix;
   }
 
+  inverse() {
+    webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
+    const matrix = webidl.createBranded(DOMMatrix);
+    matrix[_raw] = new Float64Array(this[_raw]);
+    const invertible = op_geometry_invert_self(matrix[_raw]);
+    matrix[_is2D] = this[_is2D] && invertible;
+    return matrix;
+  }
+
   toFloat32Array() {
     webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
     return new Float32Array(this[_raw]);
@@ -1589,7 +1599,7 @@ class DOMMatrix extends DOMMatrixReadOnly {
   }
 
   skewXSelf(sx = 0) {
-    webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
+    webidl.assertBranded(this, DOMMatrixPrototype);
     op_geometry_skew_self(
       webidl.converters["unrestricted double"](sx),
       0,
@@ -1599,12 +1609,19 @@ class DOMMatrix extends DOMMatrixReadOnly {
   }
 
   skewYSelf(sy = 0) {
-    webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
+    webidl.assertBranded(this, DOMMatrixPrototype);
     op_geometry_skew_self(
       0,
       webidl.converters["unrestricted double"](sy),
       this[_raw],
     );
+    return this;
+  }
+
+  invertSelf() {
+    webidl.assertBranded(this, DOMMatrixPrototype);
+    const invertible = op_geometry_invert_self(this[_raw]);
+    this[_is2D] &&= invertible;
     return this;
   }
 
