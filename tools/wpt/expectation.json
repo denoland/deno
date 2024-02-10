@@ -11004,7 +11004,6 @@
   "css": {
     "geometry": {
       "DOMMatrix-001.html": [
-        "new DOMMatrix(new DOMMatrix())",
         "new DOMMatrix(\"none\")",
         "new DOMMatrix(\" none\")",
         "new DOMMatrix(\"none \")",
@@ -11051,9 +11050,7 @@
         "new DOMMatrix(\"inherit\")",
         "new DOMMatrix(\"initial\")",
         "new DOMMatrix(\"unset\")",
-        "new DOMMatrix(matrix)",
         "new DOMMatrix(\"scale(2, 2), translateX(5px) translateY(5px)\")",
-        "new DOMMatrixReadOnly(new DOMMatrixReadOnly())",
         "new DOMMatrixReadOnly(\"none\")",
         "new DOMMatrixReadOnly(\" none\")",
         "new DOMMatrixReadOnly(\"none \")",
@@ -11100,7 +11097,6 @@
         "new DOMMatrixReadOnly(\"inherit\")",
         "new DOMMatrixReadOnly(\"initial\")",
         "new DOMMatrixReadOnly(\"unset\")",
-        "new DOMMatrixReadOnly(matrix)",
         "new DOMMatrixReadOnly(\"scale(2, 2), translateX(5px) translateY(5px)\")"
       ],
       "DOMMatrix-002.html": true,

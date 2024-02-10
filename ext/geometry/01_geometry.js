@@ -813,6 +813,9 @@ class DOMMatrixReadOnly {
         0, 0, 0, 1,
       ]);
       this[_is2D] = true;
+    } else if (ObjectPrototypeIsPrototypeOf(DOMMatrixReadOnlyPrototype, init)) {
+      this[_raw] = new Float64Array(init[_raw]);
+      this[_is2D] = init[_is2D];
     } else {
       init = webidl.converters["sequence<unrestricted double>"](
         init,
