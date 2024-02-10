@@ -319,8 +319,8 @@ Deno.test(
 );
 
 Deno.test(async function websocketTlsSocketWorks() {
-  const cert = await Deno.readTextFile("cli/tests/testdata/tls/localhost.crt");
-  const key = await Deno.readTextFile("cli/tests/testdata/tls/localhost.key");
+  const cert = await Deno.readTextFile("tests/testdata/tls/localhost.crt");
+  const key = await Deno.readTextFile("tests/testdata/tls/localhost.key");
 
   const messages: string[] = [],
     errors: { server?: Event; client?: Event }[] = [];

@@ -108,7 +108,7 @@ async function checkFirstBlocksSecond(opts: {
 }
 
 function runFlockTestProcess(opts: { exclusive: boolean; sync: boolean }) {
-  const path = "cli/tests/testdata/assets/lock_target.txt";
+  const path = "tests/testdata/assets/lock_target.txt";
   const scriptText = `
     const { rid } = Deno.openSync("${path}");
 

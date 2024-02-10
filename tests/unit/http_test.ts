@@ -326,8 +326,8 @@ Deno.test(
       const listener = Deno.listenTls({
         hostname,
         port,
-        cert: Deno.readTextFileSync("cli/tests/testdata/tls/localhost.crt"),
-        key: Deno.readTextFileSync("cli/tests/testdata/tls/localhost.key"),
+        cert: Deno.readTextFileSync("tests/testdata/tls/localhost.crt"),
+        key: Deno.readTextFileSync("tests/testdata/tls/localhost.key"),
       });
       const conn = await listener.accept();
       const httpConn = Deno.serveHttp(conn);
@@ -344,7 +344,7 @@ Deno.test(
       listener.close();
     })();
 
-    const caCert = Deno.readTextFileSync("cli/tests/testdata/tls/RootCA.pem");
+    const caCert = Deno.readTextFileSync("tests/testdata/tls/RootCA.pem");
     const client = Deno.createHttpClient({ caCerts: [caCert] });
     const resp = await fetch(`https://${hostname}:${port}/`, {
       headers: { "connection": "close" },
@@ -2286,12 +2286,12 @@ Deno.test(
     const listener = Deno.listenTls({
       hostname,
       port,
-      cert: await Deno.readTextFile("cli/tests/testdata/tls/localhost.crt"),
-      key: await Deno.readTextFile("cli/tests/testdata/tls/localhost.key"),
+      cert: await Deno.readTextFile("tests/testdata/tls/localhost.crt"),
+      key: await Deno.readTextFile("tests/testdata/tls/localhost.key"),
     });
 
     const caCerts = [
-      await Deno.readTextFile("cli/tests/testdata/tls/RootCA.pem"),
+      await Deno.readTextFile("tests/testdata/tls/RootCA.pem"),
     ];
     const [clientConn, serverConn] = await Promise.all([
       Deno.connectTls({ hostname, port, caCerts }),
@@ -2592,13 +2592,13 @@ for (const compression of [true, false]) {
       const listener = Deno.listenTls({
         hostname,
         port,
-        cert: await Deno.readTextFile("cli/tests/testdata/tls/localhost.crt"),
-        key: await Deno.readTextFile("cli/tests/testdata/tls/localhost.key"),
+        cert: await Deno.readTextFile("tests/testdata/tls/localhost.crt"),
+        key: await Deno.readTextFile("tests/testdata/tls/localhost.key"),
         alpnProtocols: ["h2"],
       });
       const server = httpServerWithErrorBody(listener, compression);
 
-      const caCert = Deno.readTextFileSync("cli/tests/testdata/tls/RootCA.pem");
+      const caCert = Deno.readTextFileSync("tests/testdata/tls/RootCA.pem");
       const client = Deno.createHttpClient({ caCerts: [caCert] });
       const resp = await fetch(`https://${hostname}:${port}/`, { client });
       client.close();

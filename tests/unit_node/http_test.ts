@@ -694,11 +694,11 @@ Deno.test("[node/http] HTTPS server", async () => {
   const deferred = Promise.withResolvers<void>();
   const deferred2 = Promise.withResolvers<void>();
   const client = Deno.createHttpClient({
-    caCerts: [Deno.readTextFileSync("cli/tests/testdata/tls/RootCA.pem")],
+    caCerts: [Deno.readTextFileSync("tests/testdata/tls/RootCA.pem")],
   });
   const server = https.createServer({
-    cert: Deno.readTextFileSync("cli/tests/testdata/tls/localhost.crt"),
-    key: Deno.readTextFileSync("cli/tests/testdata/tls/localhost.key"),
+    cert: Deno.readTextFileSync("tests/testdata/tls/localhost.crt"),
+    key: Deno.readTextFileSync("tests/testdata/tls/localhost.key"),
   }, (req, res) => {
     // @ts-ignore: It exists on TLSSocket
     assert(req.socket.encrypted);

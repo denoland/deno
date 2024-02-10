@@ -9,7 +9,7 @@ fn node_compat_tests() {
     .current_dir(util::root_path())
     .arg("test")
     .arg("--config")
-    .arg("cli/tests/config/deno.json")
+    .arg("tests/config/deno.json")
     .arg("--no-lock")
     .arg("--unstable")
     .arg("-A")

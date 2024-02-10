@@ -384,7 +384,7 @@ Deno.test(async function generateImportHmacJwk() {
 // 2048-bits publicExponent=65537
 const pkcs8TestVectors = [
   // rsaEncryption
-  { pem: "cli/tests/testdata/webcrypto/id_rsaEncryption.pem", hash: "SHA-256" },
+  { pem: "tests/testdata/webcrypto/id_rsaEncryption.pem", hash: "SHA-256" },
 ];
 
 Deno.test({ permissions: { read: true } }, async function importRsaPkcs8() {
@@ -425,17 +425,17 @@ Deno.test({ permissions: { read: true } }, async function importRsaPkcs8() {
 const nonInteroperableVectors = [
   // id-RSASSA-PSS (sha256)
   // `openssl genpkey -algorithm rsa-pss -pkeyopt rsa_pss_keygen_md:sha256 -out id_rsassaPss.pem`
-  { pem: "cli/tests/testdata/webcrypto/id_rsassaPss.pem", hash: "SHA-256" },
+  { pem: "tests/testdata/webcrypto/id_rsassaPss.pem", hash: "SHA-256" },
   // id-RSASSA-PSS (default parameters)
   // `openssl genpkey -algorithm rsa-pss -out id_rsassaPss.pem`
   {
-    pem: "cli/tests/testdata/webcrypto/id_rsassaPss_default.pem",
+    pem: "tests/testdata/webcrypto/id_rsassaPss_default.pem",
     hash: "SHA-1",
   },
   // id-RSASSA-PSS (default hash)
   // `openssl genpkey -algorithm rsa-pss -pkeyopt rsa_pss_keygen_saltlen:30 -out rsaPss_saltLen_30.pem`
   {
-    pem: "cli/tests/testdata/webcrypto/id_rsassaPss_saltLen_30.pem",
+    pem: "tests/testdata/webcrypto/id_rsassaPss_saltLen_30.pem",
     hash: "SHA-1",
   },
 ];

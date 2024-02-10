@@ -120,7 +120,7 @@ fn js_unit_test(test: String) {
     .current_dir(util::root_path())
     .arg("test")
     .arg("--config")
-    .arg("cli/tests/config/deno.json")
+    .arg("tests/config/deno.json")
     .arg("--no-lock")
     .arg("--unstable")
     .arg("--location=http://127.0.0.1:4545/")

@@ -920,7 +920,7 @@ Deno.test({ permissions: { net: true } }, async function whatwgStreams() {
 Deno.test(
   { permissions: { read: true } },
   async function readableStreamTextEncoderPipe() {
-    const filename = "cli/tests/testdata/assets/hello.txt";
+    const filename = "tests/testdata/assets/hello.txt";
     const file = await Deno.open(filename);
     const readable = file.readable.pipeThrough(new TextDecoderStream());
     const chunks = [];

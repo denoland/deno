@@ -24,7 +24,7 @@ fn compile_basic() {
         "compile",
         "--output",
         &exe.to_string_lossy(),
-        "../../../cli/tests/testdata/welcome.ts",
+        "../../tests/testdata/welcome.ts",
       ])
       .run();
     output.assert_exit_code(0);
@@ -706,7 +706,7 @@ fn dynamic_import_unanalyzable() {
 
   context
     .new_command()
-    .current_dir(util::root_path().join("cli"))
+    .current_dir(util::root_path())
     .name(&exe)
     .env("NO_COLOR", "")
     .run()

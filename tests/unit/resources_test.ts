@@ -39,7 +39,7 @@ Deno.test({ permissions: { net: true } }, async function resourcesNet() {
 
 Deno.test({ permissions: { read: true } }, async function resourcesFile() {
   const resourcesBefore = Deno.resources();
-  const f = await Deno.open("cli/tests/testdata/assets/hello.txt");
+  const f = await Deno.open("tests/testdata/assets/hello.txt");
   const resourcesAfter = Deno.resources();
   f.close();
 

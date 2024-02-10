@@ -1148,7 +1148,7 @@ Deno.test(
   async function fetchCustomHttpClientParamCertificateSuccess(): Promise<
     void
   > {
-    const caCert = Deno.readTextFileSync("cli/tests/testdata/tls/RootCA.pem");
+    const caCert = Deno.readTextFileSync("tests/testdata/tls/RootCA.pem");
     const client = Deno.createHttpClient({ caCerts: [caCert] });
     const response = await fetch("https://localhost:5545/assets/fixture.json", {
       client,
@@ -1335,7 +1335,7 @@ Deno.test(
       const client = Deno.createHttpClient({
         certChain: "bad data",
         privateKey: await Deno.readTextFile(
-          "cli/tests/testdata/tls/localhost.key",
+          "tests/testdata/tls/localhost.key",
         ),
       });
       await fetch("https://localhost:5552/assets/fixture.json", {
@@ -1351,7 +1351,7 @@ Deno.test(
     await assertRejects(async () => {
       const client = Deno.createHttpClient({
         certChain: await Deno.readTextFile(
-          "cli/tests/testdata/tls/localhost.crt",
+          "tests/testdata/tls/localhost.crt",
         ),
         privateKey: "bad data",
       });
@@ -1368,7 +1368,7 @@ Deno.test(
     await assertRejects(async () => {
       const client = Deno.createHttpClient({
         certChain: await Deno.readTextFile(
-          "cli/tests/testdata/tls/localhost.crt",
+          "tests/testdata/tls/localhost.crt",
         ),
         privateKey: "",
       });
@@ -1385,13 +1385,13 @@ Deno.test(
     void
   > {
     const data = "Hello World";
-    const caCert = await Deno.readTextFile("cli/tests/testdata/tls/RootCA.crt");
+    const caCert = await Deno.readTextFile("tests/testdata/tls/RootCA.crt");
     const client = Deno.createHttpClient({
       certChain: await Deno.readTextFile(
-        "cli/tests/testdata/tls/localhost.crt",
+        "tests/testdata/tls/localhost.crt",
       ),
       privateKey: await Deno.readTextFile(
-        "cli/tests/testdata/tls/localhost.key",
+        "tests/testdata/tls/localhost.key",
       ),
       caCerts: [caCert],
     });
@@ -1540,7 +1540,7 @@ Deno.test(
 Deno.test(
   { permissions: { net: true, read: true } },
   async function fetchSupportsHttpsOverIpAddress() {
-    const caCert = await Deno.readTextFile("cli/tests/testdata/tls/RootCA.pem");
+    const caCert = await Deno.readTextFile("tests/testdata/tls/RootCA.pem");
     const client = Deno.createHttpClient({ caCerts: [caCert] });
     const res = await fetch("https://localhost:5546/http_version", { client });
     assert(res.ok);
@@ -1552,7 +1552,7 @@ Deno.test(
 Deno.test(
   { permissions: { net: true, read: true } },
   async function fetchSupportsHttp1Only() {
-    const caCert = await Deno.readTextFile("cli/tests/testdata/tls/RootCA.pem");
+    const caCert = await Deno.readTextFile("tests/testdata/tls/RootCA.pem");
     const client = Deno.createHttpClient({ caCerts: [caCert] });
     const res = await fetch("https://localhost:5546/http_version", { client });
     assert(res.ok);
@@ -1564,7 +1564,7 @@ Deno.test(
 Deno.test(
   { permissions: { net: true, read: true } },
   async function fetchSupportsHttp2() {
-    const caCert = await Deno.readTextFile("cli/tests/testdata/tls/RootCA.pem");
+    const caCert = await Deno.readTextFile("tests/testdata/tls/RootCA.pem");
     const client = Deno.createHttpClient({ caCerts: [caCert] });
     const res = await fetch("https://localhost:5547/http_version", { client });
     assert(res.ok);
@@ -1600,7 +1600,7 @@ Deno.test(
 Deno.test(
   { permissions: { net: true, read: true } },
   async function fetchPrefersHttp2() {
-    const caCert = await Deno.readTextFile("cli/tests/testdata/tls/RootCA.pem");
+    const caCert = await Deno.readTextFile("tests/testdata/tls/RootCA.pem");
     const client = Deno.createHttpClient({ caCerts: [caCert] });
     const res = await fetch("https://localhost:5545/http_version", { client });
     assert(res.ok);
@@ -1708,7 +1708,7 @@ Deno.test(
     );
     assert(res.ok);
     const fixture = await Deno.readTextFile(
-      "cli/tests/testdata/subdir/json_1.json",
+      "tests/testdata/subdir/json_1.json",
     );
     assertEquals(await res.text(), fixture);
   },

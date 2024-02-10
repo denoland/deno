@@ -14,7 +14,7 @@ Deno.test(function consoleSize() {
 
 Deno.test({ permissions: { read: true } }, function isatty() {
   // CI not under TTY, so cannot test stdin/stdout/stderr.
-  const f = Deno.openSync("cli/tests/testdata/assets/hello.txt");
+  const f = Deno.openSync("tests/testdata/assets/hello.txt");
   assert(!Deno.isatty(f.rid));
   f.close();
 });

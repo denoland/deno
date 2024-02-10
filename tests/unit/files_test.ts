@@ -17,7 +17,7 @@ Deno.test(function filesStdioFileDescriptors() {
 });
 
 Deno.test({ permissions: { read: true } }, async function filesCopyToStdout() {
-  const filename = "cli/tests/testdata/assets/fixture.json";
+  const filename = "tests/testdata/assets/fixture.json";
   using file = await Deno.open(filename);
   assert(file instanceof Deno.File);
   assert(file instanceof Deno.FsFile);
@@ -28,7 +28,7 @@ Deno.test({ permissions: { read: true } }, async function filesCopyToStdout() {
 });
 
 Deno.test({ permissions: { read: true } }, async function filesIter() {
-  const filename = "cli/tests/testdata/assets/hello.txt";
+  const filename = "tests/testdata/assets/hello.txt";
   using file = await Deno.open(filename);
 
   let totalSize = 0;
@@ -42,7 +42,7 @@ Deno.test({ permissions: { read: true } }, async function filesIter() {
 Deno.test(
   { permissions: { read: true } },
   async function filesIterCustomBufSize() {
-    const filename = "cli/tests/testdata/assets/hello.txt";
+    const filename = "tests/testdata/assets/hello.txt";
     using file = await Deno.open(filename);
 
     let totalSize = 0;
@@ -58,7 +58,7 @@ Deno.test(
 );
 
 Deno.test({ permissions: { read: true } }, function filesIterSync() {
-  const filename = "cli/tests/testdata/assets/hello.txt";
+  const filename = "tests/testdata/assets/hello.txt";
   using file = Deno.openSync(filename);
 
   let totalSize = 0;
@@ -72,7 +72,7 @@ Deno.test({ permissions: { read: true } }, function filesIterSync() {
 Deno.test(
   { permissions: { read: true } },
   function filesIterSyncCustomBufSize() {
-    const filename = "cli/tests/testdata/assets/hello.txt";
+    const filename = "tests/testdata/assets/hello.txt";
     using file = Deno.openSync(filename);
 
     let totalSize = 0;
@@ -257,7 +257,7 @@ Deno.test(
 );
 
 Deno.test(async function openOptions() {
-  const filename = "cli/tests/testdata/assets/fixture.json";
+  const filename = "tests/testdata/assets/fixture.json";
   await assertRejects(
     async () => {
       await Deno.open(filename, { write: false });
@@ -548,7 +548,7 @@ Deno.test(
 );
 
 Deno.test({ permissions: { read: true } }, async function seekStart() {
-  const filename = "cli/tests/testdata/assets/hello.txt";
+  const filename = "tests/testdata/assets/hello.txt";
   using file = await Deno.open(filename);
   const seekPosition = 6;
   // Deliberately move 1 step forward
@@ -564,7 +564,7 @@ Deno.test({ permissions: { read: true } }, async function seekStart() {
 });
 
 Deno.test({ permissions: { read: true } }, async function seekStartBigInt() {
-  const filename = "cli/tests/testdata/assets/hello.txt";
+  const filename = "tests/testdata/assets/hello.txt";
   using file = await Deno.open(filename);
   const seekPosition = 6n;
   // Deliberately move 1 step forward
@@ -580,7 +580,7 @@ Deno.test({ permissions: { read: true } }, async function seekStartBigInt() {
 });
 
 Deno.test({ permissions: { read: true } }, function seekSyncStart() {
-  const filename = "cli/tests/testdata/assets/hello.txt";
+  const filename = "tests/testdata/assets/hello.txt";
   using file = Deno.openSync(filename);
   const seekPosition = 6;
   // Deliberately move 1 step forward
@@ -596,7 +596,7 @@ Deno.test({ permissions: { read: true } }, function seekSyncStart() {
 });
 
 Deno.test({ permissions: { read: true } }, async function seekCurrent() {
-  const filename = "cli/tests/testdata/assets/hello.txt";
+  const filename = "tests/testdata/assets/hello.txt";
   using file = await Deno.open(filename);
   // Deliberately move 1 step forward
   await file.read(new Uint8Array(1)); // "H"
@@ -612,7 +612,7 @@ Deno.test({ permissions: { read: true } }, async function seekCurrent() {
 });
 
 Deno.test({ permissions: { read: true } }, function seekSyncCurrent() {
-  const filename = "cli/tests/testdata/assets/hello.txt";
+  const filename = "tests/testdata/assets/hello.txt";
   using file = Deno.openSync(filename);
   // Deliberately move 1 step forward
   file.readSync(new Uint8Array(1)); // "H"
@@ -628,7 +628,7 @@ Deno.test({ permissions: { read: true } }, function seekSyncCurrent() {
 });
 
 Deno.test({ permissions: { read: true } }, async function seekEnd() {
-  const filename = "cli/tests/testdata/assets/hello.txt";
+  const filename = "tests/testdata/assets/hello.txt";
   using file = await Deno.open(filename);
   const seekPosition = -6;
   // seek from end of file that has 12 chars, 12 - 6  = 6
@@ -641,7 +641,7 @@ Deno.test({ permissions: { read: true } }, async function seekEnd() {
 });
 
 Deno.test({ permissions: { read: true } }, function seekSyncEnd() {
-  const filename = "cli/tests/testdata/assets/hello.txt";
+  const filename = "tests/testdata/assets/hello.txt";
   using file = Deno.openSync(filename);
   const seekPosition = -6;
   // seek from end of file that has 12 chars, 12 - 6  = 6
@@ -654,7 +654,7 @@ Deno.test({ permissions: { read: true } }, function seekSyncEnd() {
 });
 
 Deno.test({ permissions: { read: true } }, async function seekMode() {
-  const filename = "cli/tests/testdata/assets/hello.txt";
+  const filename = "tests/testdata/assets/hello.txt";
   using file = await Deno.open(filename);
   await assertRejects(
     async () => {
@@ -740,7 +740,7 @@ Deno.test(async function fileStatSuccess() {
 });
 
 Deno.test({ permissions: { read: true } }, async function readableStream() {
-  const filename = "cli/tests/testdata/assets/hello.txt";
+  const filename = "tests/testdata/assets/hello.txt";
   const file = await Deno.open(filename);
   assert(file.readable instanceof ReadableStream);
   const chunks = [];
@@ -754,7 +754,7 @@ Deno.test({ permissions: { read: true } }, async function readableStream() {
 Deno.test(
   { permissions: { read: true } },
   async function readableStreamTextEncoderPipe() {
-    const filename = "cli/tests/testdata/assets/hello.txt";
+    const filename = "tests/testdata/assets/hello.txt";
     const file = await Deno.open(filename);
     const readable = file.readable.pipeThrough(new TextDecoderStream());
     const chunks = [];
@@ -806,7 +806,7 @@ Deno.test(
     let file2: Deno.FsFile;
 
     {
-      using file = await Deno.open("cli/tests/testdata/assets/hello.txt");
+      using file = await Deno.open("tests/testdata/assets/hello.txt");
       file2 = file;
 
       const stat = file.statSync();
@@ -820,7 +820,7 @@ Deno.test(
 Deno.test(
   { permissions: { read: true } },
   async function fsFileExplicitResourceManagementManualClose() {
-    using file = await Deno.open("cli/tests/testdata/assets/hello.txt");
+    using file = await Deno.open("tests/testdata/assets/hello.txt");
     file.close();
     assertThrows(() => file.statSync(), Deno.errors.BadResource); // definitely closed
     // calling [Symbol.dispose] after manual close is a no-op
@@ -1006,7 +1006,7 @@ async function checkFirstBlocksSecond(opts: {
 }
 
 function runFlockTestProcess(opts: { exclusive: boolean; sync: boolean }) {
-  const path = "cli/tests/testdata/assets/lock_target.txt";
+  const path = "tests/testdata/assets/lock_target.txt";
   const scriptText = `
     const file = Deno.openSync("${path}");
 
