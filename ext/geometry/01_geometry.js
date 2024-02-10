@@ -4,6 +4,7 @@ import { primordials } from "ext:core/mod.js";
 import {
   op_geometry_flip_x_self,
   op_geometry_flip_y_self,
+  op_geometry_invert_2d_self,
   op_geometry_invert_self,
   op_geometry_multiply,
   op_geometry_multiply_self,
@@ -1006,7 +1007,7 @@ class DOMMatrixReadOnly {
         matrix[_raw],
       );
     }
-    matrix[_is2D] = this[_is2D] && scaleZ === 1;
+    matrix[_is2D] = this[_is2D] && scaleZ === 1 && originZ === 0;
     return matrix;
   }
 
@@ -1052,7 +1053,7 @@ class DOMMatrixReadOnly {
         matrix[_raw],
       );
     }
-    matrix[_is2D] = this[_is2D] && scale === 1;
+    matrix[_is2D] = this[_is2D] && scale === 1 && originZ === 0;
     return matrix;
   }
 
@@ -1193,7 +1194,12 @@ class DOMMatrixReadOnly {
     const matrix = webidl.createBranded(DOMMatrix);
     matrix[_writable] = true;
     matrix[_raw] = new Float64Array(this[_raw]);
-    const invertible = op_geometry_invert_self(matrix[_raw]);
+    let invertible;
+    if (this[_is2D]) {
+      invertible = op_geometry_invert_2d_self(matrix[_raw]);
+    } else {
+      invertible = op_geometry_invert_self(matrix[_raw]);
+    }
     matrix[_is2D] = this[_is2D] && invertible;
     return matrix;
   }
@@ -1660,7 +1666,7 @@ class DOMMatrix extends DOMMatrixReadOnly {
         this[_raw],
       );
     }
-    this[_is2D] &&= scaleZ === 1;
+    this[_is2D] &&= scaleZ === 1 && originZ === 0;
     return this;
   }
 
@@ -1688,7 +1694,7 @@ class DOMMatrix extends DOMMatrixReadOnly {
         this[_raw],
       );
     }
-    this[_is2D] &&= scale === 1;
+    this[_is2D] &&= scale === 1 && originZ === 0;
     return this;
   }
 
@@ -1767,7 +1773,12 @@ class DOMMatrix extends DOMMatrixReadOnly {
 
   invertSelf() {
     webidl.assertBranded(this, DOMMatrixPrototype);
-    const invertible = op_geometry_invert_self(this[_raw]);
+    let invertible;
+    if (this[_is2D]) {
+      invertible = op_geometry_invert_2d_self(this[_raw]);
+    } else {
+      invertible = op_geometry_invert_self(this[_raw]);
+    }
     this[_is2D] &&= invertible;
     return this;
   }

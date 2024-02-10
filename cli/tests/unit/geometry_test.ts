@@ -891,6 +891,58 @@ Deno.test(function matrixInvertSelf() {
   );
 });
 
+Deno.test(function matrixInverse2D() {
+  // deno-fmt-ignore
+  const init = {
+    m11: 1, m21: 2, m31: 0, m41: 4,
+    m12: 0, m22: 1, m32: 0, m42: 8,
+    m13: 0, m23: 0, m33: 1, m43: 0,
+    m14: 0, m24: 0, m34: 0, m44: 1,
+  };
+  const matrix = DOMMatrix.fromMatrix(init);
+  const matrix2 = matrix.inverse();
+  assertEquals(
+    matrix,
+    DOMMatrix.fromMatrix(init),
+  );
+  assertEquals(
+    matrix2,
+    // deno-fmt-ignore
+    DOMMatrix.fromMatrix({
+      m11: 1, m21: -2, m31: 0, m41: 12,
+      m12: 0, m22:  1, m32: 0, m42: -8,
+      m13: 0, m23:  0, m33: 1, m43:  0,
+      m14: 0, m24:  0, m34: 0, m44:  1,
+    }),
+  );
+});
+
+Deno.test(function matrixInvert2DSelf() {
+  // deno-fmt-ignore
+  const init = {
+    m11: 1, m21: 2, m31: 0, m41: 4,
+    m12: 0, m22: 1, m32: 0, m42: 8,
+    m13: 0, m23: 0, m33: 1, m43: 0,
+    m14: 0, m24: 0, m34: 0, m44: 1,
+  };
+  const matrix = DOMMatrix.fromMatrix(init);
+  const matrix2 = matrix.invertSelf();
+  assertStrictEquals(
+    matrix,
+    matrix2,
+  );
+  assertEquals(
+    matrix,
+    // deno-fmt-ignore
+    DOMMatrix.fromMatrix({
+      m11: 1, m21: -2, m31: 0, m41: 12,
+      m12: 0, m22:  1, m32: 0, m42: -8,
+      m13: 0, m23:  0, m33: 1, m43:  0,
+      m14: 0, m24:  0, m34: 0, m44:  1,
+    }),
+  );
+});
+
 Deno.test(function prototypeOverwrite() {
   const point = new DOMPointReadOnly();
   Object.setPrototypeOf(point, DOMPoint.prototype);

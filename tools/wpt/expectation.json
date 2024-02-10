@@ -11100,17 +11100,13 @@
         "new DOMMatrixReadOnly(\"scale(2, 2), translateX(5px) translateY(5px)\")"
       ],
       "DOMMatrix-002.html": true,
-      "DOMMatrix-003.html": [
-        "test scale() with identity scale and nonzero originZ"
-      ],
+      "DOMMatrix-003.html": true,
       "DOMMatrix-a-f-alias.html": true,
       "DOMMatrix-attributes.html": true,
       "DOMMatrix-css-string.worker.html": true,
       "DOMMatrix-invert-invertible.html": true,
       "DOMMatrix-invert-non-invertible.html": true,
-      "DOMMatrix-invert-preserves-2d.html": [
-        "scale"
-      ],
+      "DOMMatrix-invert-preserves-2d.html": true,
       "DOMMatrix-newobject.html": true,
       "DOMMatrix-stringifier.html": [
         "WebKitCSSMatrix stringifier: identity (2d)",
