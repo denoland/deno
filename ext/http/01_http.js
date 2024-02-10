@@ -21,6 +21,7 @@ const {
   ArrayPrototypePush,
   ObjectPrototypeIsPrototypeOf,
   SafeSet,
+  SafeArrayIterator,
   SafeSetIterator,
   SetPrototypeAdd,
   SetPrototypeDelete,
@@ -31,6 +32,7 @@ const {
   StringPrototypeToUpperCase,
   Symbol,
   SymbolAsyncIterator,
+  SymbolIterator,
   TypeError,
   TypedArrayPrototypeGetSymbolToStringTag,
   Uint8Array,
@@ -457,16 +459,17 @@ function upgradeWebSocket(request, options = {}) {
     }
   }
 
-  if (options.headers) {
-    if (options.headers[Symbol.iterator]) {
-      for (const header of options.headers) {
-        ArrayPrototypePush(r.headerList, header);
-      }
-    } else {
-      for (const key in options.headers) {
-        ArrayPrototypePush(r.headerList, [key, options.headers[key]]);
-      }
-    }
+  const denyHeaderList = [
+    'upgrade',
+    'connection',
+    'sec-websocket-accept',
+    'sec-websocket-protocol',
+  ];
+
+  if (options.headers) { 
+    options.headers.forEach((value, name) => {
+      if (!ArrayPrototypeIncludes(denyHeaderList, StringPrototypeToLowerCase(name))) ArrayPrototypePush(r.headerList, [name, value]);
+    });
   }
 
   const socket = createWebSocketBranded(WebSocket);

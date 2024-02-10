@@ -1511,6 +1511,32 @@ Deno.test(
   },
 );
 
+Deno.test({ permissions: { net: true, run: true } }, async function httpServerWebSocketHeader() {
+  const headers = new Headers({ name: "value" });
+  const wsClosed = Promise.withResolvers<void>();
+  const server = Deno.serve({
+    port: servePort,
+    handler: (req) => {
+      const { socket, response } = Deno.upgradeWebSocket(req, { headers });
+      socket.onclose = () => wsClosed.resolve();
+      return response;
+    },
+  });
+  const conn = await Deno.connect({ port: servePort });
+  const w = conn.writable.getWriter();
+  const r = conn.readable.getReader();
+  await w.write(new TextEncoder().encode(`GET / HTTP/1.1\nConnection: upgrade\nUpgrade: websocket\nSec-WebSocket-Key: SGVsbG8sIHdvcmxkIQ==\n\n`));
+  let text = "";
+  while (!text.includes("\r\n\r\n")) {
+    text += new TextDecoder().decode((await r.read()).value);
+  }
+  assert(text.includes('name: value'));
+  w.write(new Uint8Array([0xff, 0x00]));
+  await wsClosed.promise;
+  conn.close();
+  await server.shutdown();
+});
+
 Deno.test(
   { permissions: { net: true } },
   async function httpVeryLargeRequest() {

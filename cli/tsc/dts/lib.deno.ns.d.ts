@@ -5721,7 +5721,7 @@ declare namespace Deno {
     idleTimeout?: number;
     /** Add headers to the websocket upgrade response with a Headers
      * object, an object literal, or an array of two-item arrays. */
-    headers?: HeadersInit;
+    headers?: Headers;
   }
 
   /**
