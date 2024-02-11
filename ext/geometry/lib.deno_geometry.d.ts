@@ -339,8 +339,7 @@ interface DOMMatrixReadOnly {
   ): DOMMatrix;
   /**
    * Returns a new `DOMMatrix` created by applying the specified scaling on the X, Y, and Z axes, centered at the given origin.
-   * By default, the Y and Z axes' scaling factors are both `1`, but the scaling factor for X must be specified.
-   * The default origin is `(0, 0, 0)`.
+   * By default, the X and Y axes' scaling factors are both `1`.
    *
    * @deprecated Supported for legacy reasons to be compatible with `SVGMatrix` as defined in SVG 1.1. Use `scale()` instead.
    *

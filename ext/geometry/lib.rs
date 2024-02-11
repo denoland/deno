@@ -214,6 +214,22 @@ pub fn op_geometry_flip_y_self(#[buffer] inout: &mut [f64]) {
 }
 
 #[op2(fast)]
+pub fn op_geometry_invert_self(#[buffer] inout: &mut [f64]) -> bool {
+  if inout.iter().any(|&x| x.is_infinite()) {
+    inout.fill(f64::NAN);
+    return false;
+  }
+
+  let mut inout = MatrixViewMut4::from_slice(inout);
+  if !inout.try_inverse_mut() {
+    inout.fill(f64::NAN);
+    return false;
+  }
+
+  true
+}
+
+#[op2(fast)]
 pub fn op_geometry_invert_2d_self(#[buffer] inout: &mut [f64]) -> bool {
   if inout.iter().any(|&x| x.is_infinite()) {
     inout.fill(f64::NAN);
@@ -223,7 +239,6 @@ pub fn op_geometry_invert_2d_self(#[buffer] inout: &mut [f64]) -> bool {
   let mut matrix = Matrix3::new(
     inout[0], inout[4], inout[12], inout[1], inout[5], inout[13], 0.0, 0.0, 1.0,
   );
-
   if !matrix.try_inverse_mut() {
     inout.fill(f64::NAN);
     return false;
@@ -236,22 +251,6 @@ pub fn op_geometry_invert_2d_self(#[buffer] inout: &mut [f64]) -> bool {
   inout[5] = matrix[4];
   inout[12] = matrix[6];
   inout[13] = matrix[7];
-
-  true
-}
-
-#[op2(fast)]
-pub fn op_geometry_invert_self(#[buffer] inout: &mut [f64]) -> bool {
-  if inout.iter().any(|&x| x.is_infinite()) {
-    inout.fill(f64::NAN);
-    return false;
-  }
-
-  let mut inout = MatrixViewMut4::from_slice(inout);
-  if !inout.try_inverse_mut() {
-    inout.fill(f64::NAN);
-    return false;
-  }
 
   true
 }
