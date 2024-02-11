@@ -1330,6 +1330,7 @@ impl Inner {
       maybe_import_map: self.maybe_import_map.clone(),
       maybe_config_file: self.config.maybe_config_file(),
       maybe_package_json: self.maybe_package_json.as_ref(),
+      maybe_lockfile: self.config.maybe_lockfile().cloned(),
       node_resolver: self.npm.node_resolver.clone(),
       npm_resolver: self.npm.resolver.clone(),
     });

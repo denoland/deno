@@ -4676,7 +4676,20 @@ fn lsp_jsr_uncached() {
   }));
   // TODO(nayeemrmn): This should check if the jsr dep is cached and give a
   // diagnostic.
-  assert_eq!(json!(diagnostics.all()), json!([]));
+  assert_eq!(
+    json!(diagnostics.all()),
+    json!([{
+      "range": {
+        "start": { "line": 0, "character": 7 },
+        "end": { "line": 0, "character": 21 },
+      },
+      "severity": 1,
+      "code": "no-cache-jsr",
+      "source": "deno",
+      "message": "Uncached or missing jsr package: @foo/bar",
+      "data": { "specifier": "jsr:@foo/bar" },
+    }]),
+  );
   client.shutdown();
 }
 
