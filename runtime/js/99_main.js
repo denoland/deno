@@ -632,7 +632,7 @@ const {
   target,
 } = op_snapshot_options();
 
-function bootstrapMainRuntime(runtimeOptions) {
+function bootstrapMainRuntime(runtimeOptions, warmup) {
   if (hasBootstrapped) {
     throw new Error("Worker runtime already bootstrapped");
   }
@@ -656,118 +656,124 @@ function bootstrapMainRuntime(runtimeOptions) {
   performance.setTimeOrigin(DateNow());
   globalThis_ = globalThis;
 
-  // Remove bootstrapping data from the global scope
-  delete globalThis.__bootstrap;
-  delete globalThis.bootstrap;
-  delete globalThis.nodeBootstrap;
-  hasBootstrapped = true;
+  // We don't want to set up the global object if we're just warming up
+  // the bootstrap process.
+  //
+  // TODO(@littledivy): Investigate more into warming up more parts.
+  if (!warmup) {
+    // Remove bootstrapping data from the global scope
+    delete globalThis.__bootstrap;
+    delete globalThis.bootstrap;
+    delete globalThis.nodeBootstrap;
+    hasBootstrapped = true;
 
-  // If the `--location` flag isn't set, make `globalThis.location` `undefined` and
-  // writable, so that they can mock it themselves if they like. If the flag was
-  // set, define `globalThis.location`, using the provided value.
-  if (location_ == null) {
-    mainRuntimeGlobalProperties.location = {
-      writable: true,
-    };
-  } else {
-    location.setLocationHref(location_);
-  }
+    // If the `--location` flag isn't set, make `globalThis.location` `undefined` and
+    // writable, so that they can mock it themselves if they like. If the flag was
+    // set, define `globalThis.location`, using the provided value.
+    if (location_ == null) {
+      mainRuntimeGlobalProperties.location = {
+        writable: true,
+      };
+    } else {
+      location.setLocationHref(location_);
+    }
 
-  exposeUnstableFeaturesForWindowOrWorkerGlobalScope({
-    unstableFlag,
-    unstableFeatures,
-  });
-  ObjectDefineProperties(globalThis, mainRuntimeGlobalProperties);
-  ObjectDefineProperties(globalThis, {
-    // TODO(bartlomieju): in the future we might want to change the
-    // behavior of setting `name` to actually update the process name.
-    // Empty string matches what browsers do.
-    name: core.propWritable(""),
-    close: core.propWritable(windowClose),
-    closed: core.propGetterOnly(() => windowIsClosing),
-  });
-  ObjectSetPrototypeOf(globalThis, Window.prototype);
+    exposeUnstableFeaturesForWindowOrWorkerGlobalScope({
+      unstableFlag,
+      unstableFeatures,
+    });
+    ObjectDefineProperties(globalThis, mainRuntimeGlobalProperties);
+    ObjectDefineProperties(globalThis, {
+      // TODO(bartlomieju): in the future we might want to change the
+      // behavior of setting `name` to actually update the process name.
+      // Empty string matches what browsers do.
+      name: core.propWritable(""),
+      close: core.propWritable(windowClose),
+      closed: core.propGetterOnly(() => windowIsClosing),
+    });
+    ObjectSetPrototypeOf(globalThis, Window.prototype);
 
-  if (inspectFlag) {
-    const consoleFromDeno = globalThis.console;
-    core.wrapConsole(consoleFromDeno, core.v8Console);
-  }
+    if (inspectFlag) {
+      const consoleFromDeno = globalThis.console;
+      core.wrapConsole(consoleFromDeno, core.v8Console);
+    }
 
-  event.setEventTargetData(globalThis);
-  event.saveGlobalThisReference(globalThis);
+    event.setEventTargetData(globalThis);
+    event.saveGlobalThisReference(globalThis);
 
-  event.defineEventHandler(globalThis, "error");
-  event.defineEventHandler(globalThis, "load");
-  event.defineEventHandler(globalThis, "beforeunload");
-  event.defineEventHandler(globalThis, "unload");
-  event.defineEventHandler(globalThis, "unhandledrejection");
+    event.defineEventHandler(globalThis, "error");
+    event.defineEventHandler(globalThis, "load");
+    event.defineEventHandler(globalThis, "beforeunload");
+    event.defineEventHandler(globalThis, "unload");
+    event.defineEventHandler(globalThis, "unhandledrejection");
 
-  runtimeStart(
-    denoVersion,
-    v8Version,
-    tsVersion,
-    target,
-  );
+    runtimeStart(
+      denoVersion,
+      v8Version,
+      tsVersion,
+      target,
+    );
 
-  ObjectDefineProperties(finalDenoNs, {
-    pid: core.propGetterOnly(opPid),
-    ppid: core.propGetterOnly(opPpid),
-    noColor: core.propGetterOnly(() => op_bootstrap_no_color()),
-    args: core.propGetterOnly(opArgs),
-    mainModule: core.propGetterOnly(() => op_main_module()),
-    // TODO(kt3k): Remove this export at v2
-    // See https://github.com/denoland/deno/issues/9294
-    customInspect: {
-      get() {
-        warnOnDeprecatedApi(
-          "Deno.customInspect",
-          new Error().stack,
-          'Use `Symbol.for("Deno.customInspect")` instead.',
-        );
-        return customInspect;
-      },
-    },
-  });
-
-  // TODO(bartlomieju): deprecate --unstable
-  if (unstableFlag) {
-    ObjectAssign(finalDenoNs, denoNsUnstable);
-    // TODO(bartlomieju): this is not ideal, but because we use `ObjectAssign`
-    // above any properties that are defined elsewhere using `Object.defineProperty`
-    // are lost.
-    let jupyterNs = undefined;
-    ObjectDefineProperty(finalDenoNs, "jupyter", {
-      get() {
-        if (jupyterNs) {
-          return jupyterNs;
-        }
-        throw new Error(
-          "Deno.jupyter is only available in `deno jupyter` subcommand.",
-        );
-      },
-      set(val) {
-        jupyterNs = val;
+    ObjectDefineProperties(finalDenoNs, {
+      pid: core.propGetterOnly(opPid),
+      ppid: core.propGetterOnly(opPpid),
+      noColor: core.propGetterOnly(() => op_bootstrap_no_color()),
+      args: core.propGetterOnly(opArgs),
+      mainModule: core.propGetterOnly(() => op_main_module()),
+      // TODO(kt3k): Remove this export at v2
+      // See https://github.com/denoland/deno/issues/9294
+      customInspect: {
+        get() {
+          warnOnDeprecatedApi(
+            "Deno.customInspect",
+            new Error().stack,
+            'Use `Symbol.for("Deno.customInspect")` instead.',
+          );
+          return customInspect;
+        },
       },
     });
-  } else {
-    for (let i = 0; i <= unstableFeatures.length; i++) {
-      const id = unstableFeatures[i];
-      ObjectAssign(finalDenoNs, denoNsUnstableById[id]);
+
+    // TODO(bartlomieju): deprecate --unstable
+    if (unstableFlag) {
+      ObjectAssign(finalDenoNs, denoNsUnstable);
+      // TODO(bartlomieju): this is not ideal, but because we use `ObjectAssign`
+      // above any properties that are defined elsewhere using `Object.defineProperty`
+      // are lost.
+      let jupyterNs = undefined;
+      ObjectDefineProperty(finalDenoNs, "jupyter", {
+        get() {
+          if (jupyterNs) {
+            return jupyterNs;
+          }
+          throw new Error(
+            "Deno.jupyter is only available in `deno jupyter` subcommand.",
+          );
+        },
+        set(val) {
+          jupyterNs = val;
+        },
+      });
+    } else {
+      for (let i = 0; i <= unstableFeatures.length; i++) {
+        const id = unstableFeatures[i];
+        ObjectAssign(finalDenoNs, denoNsUnstableById[id]);
+      }
     }
-  }
 
-  if (!ArrayPrototypeIncludes(unstableFeatures, unstableIds.unsafeProto)) {
-    // Removes the `__proto__` for security reasons.
-    // https://tc39.es/ecma262/#sec-get-object.prototype.__proto__
-    delete Object.prototype.__proto__;
-  }
+    if (!ArrayPrototypeIncludes(unstableFeatures, unstableIds.unsafeProto)) {
+      // Removes the `__proto__` for security reasons.
+      // https://tc39.es/ecma262/#sec-get-object.prototype.__proto__
+      delete Object.prototype.__proto__;
+    }
 
-  // Setup `Deno` global - we're actually overriding already existing global
-  // `Deno` with `Deno` namespace from "./deno.ts".
-  ObjectDefineProperty(globalThis, "Deno", core.propReadOnly(finalDenoNs));
+    // Setup `Deno` global - we're actually overriding already existing global
+    // `Deno` with `Deno` namespace from "./deno.ts".
+    ObjectDefineProperty(globalThis, "Deno", core.propReadOnly(finalDenoNs));
 
-  if (nodeBootstrap) {
-    nodeBootstrap(hasNodeModulesDir, maybeBinaryNpmCommandName);
+    if (nodeBootstrap) {
+      nodeBootstrap(hasNodeModulesDir, maybeBinaryNpmCommandName);
+    }
   }
 }
 

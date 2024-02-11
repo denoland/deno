@@ -199,6 +199,7 @@ impl deno_kv::sqlite::SqliteDbHandlerPermissions for Permissions {
 pub fn create_runtime_snapshot(
   snapshot_path: PathBuf,
   snapshot_options: SnapshotOptions,
+  warmup_script: Option<&'static str>,
 ) {
   // NOTE(bartlomieju): ordering is important here, keep it in sync with
   // `runtime/worker.rs`, `runtime/web_worker.rs` and `runtime/snapshot.rs`!
@@ -265,21 +266,24 @@ pub fn create_runtime_snapshot(
     }
   }
 
-  let output = create_snapshot(CreateSnapshotOptions {
-    cargo_manifest_dir: env!("CARGO_MANIFEST_DIR"),
-    snapshot_path,
-    startup_snapshot: None,
-    extensions,
-    compression_cb: None,
-    with_runtime_cb: Some(Box::new(|rt| {
-      let isolate = rt.v8_isolate();
-      let scope = &mut v8::HandleScope::new(isolate);
+  let output = create_snapshot(
+    CreateSnapshotOptions {
+      cargo_manifest_dir: env!("CARGO_MANIFEST_DIR"),
+      snapshot_path,
+      startup_snapshot: None,
+      extensions,
+      compression_cb: None,
+      with_runtime_cb: Some(Box::new(|rt| {
+        let isolate = rt.v8_isolate();
+        let scope = &mut v8::HandleScope::new(isolate);
 
-      let ctx = v8::Context::new(scope);
-      assert_eq!(scope.add_context(ctx), deno_node::VM_CONTEXT_INDEX);
-    })),
-    skip_op_registration: false,
-  });
+        let ctx = v8::Context::new(scope);
+        assert_eq!(scope.add_context(ctx), deno_node::VM_CONTEXT_INDEX);
+      })),
+      skip_op_registration: false,
+    },
+    warmup_script,
+  );
   for path in output.files_loaded_during_snapshot {
     println!("cargo:rerun-if-changed={}", path.display());
   }
