@@ -1587,6 +1587,7 @@ class DOMMatrix extends DOMMatrixReadOnly {
 
   multiplySelf(other = {}) {
     webidl.assertBranded(this, DOMMatrixPrototype);
+    assertWritable(this);
     const prefix = "Failed to call 'DOMMatrix.prototype.multiplySelf'";
     if (!ObjectPrototypeIsPrototypeOf(DOMMatrixReadOnlyPrototype, other)) {
       const _other = webidl.converters.DOMMatrixInit(
@@ -1609,6 +1610,7 @@ class DOMMatrix extends DOMMatrixReadOnly {
 
   preMultiplySelf(other = {}) {
     webidl.assertBranded(this, DOMMatrixPrototype);
+    assertWritable(this);
     const prefix = "Failed to call 'DOMMatrix.prototype.premultiplySelf'";
     if (!ObjectPrototypeIsPrototypeOf(DOMMatrixReadOnlyPrototype, other)) {
       const _other = webidl.converters.DOMMatrixInit(
@@ -1631,6 +1633,7 @@ class DOMMatrix extends DOMMatrixReadOnly {
 
   translateSelf(tx = 0, ty = 0, tz = 0) {
     webidl.assertBranded(this, DOMMatrixPrototype);
+    assertWritable(this);
     op_geometry_translate_self(
       webidl.converters["unrestricted double"](tx),
       webidl.converters["unrestricted double"](ty),
@@ -1650,6 +1653,7 @@ class DOMMatrix extends DOMMatrixReadOnly {
     originZ = 0,
   ) {
     webidl.assertBranded(this, DOMMatrixPrototype);
+    assertWritable(this);
     originX = webidl.converters["unrestricted double"](originX);
     originY = webidl.converters["unrestricted double"](originY);
     originZ = webidl.converters["unrestricted double"](originZ);
@@ -1677,6 +1681,7 @@ class DOMMatrix extends DOMMatrixReadOnly {
 
   scale3dSelf(scale = 1, originX = 0, originY = 0, originZ = 0) {
     webidl.assertBranded(this, DOMMatrixPrototype);
+    assertWritable(this);
     scale = webidl.converters["unrestricted double"](scale);
     originX = webidl.converters["unrestricted double"](originX);
     originY = webidl.converters["unrestricted double"](originY);
@@ -1705,6 +1710,7 @@ class DOMMatrix extends DOMMatrixReadOnly {
 
   rotateSelf(rotX = 0, rotY, rotZ) {
     webidl.assertBranded(this, DOMMatrixPrototype);
+    assertWritable(this);
     rotX = webidl.converters["unrestricted double"](rotX);
     if (rotY === undefined && rotZ === undefined) {
       rotZ = rotX;
@@ -1730,6 +1736,7 @@ class DOMMatrix extends DOMMatrixReadOnly {
 
   rotateFromVectorSelf(x = 0, y = 0) {
     webidl.assertBranded(this, DOMMatrixPrototype);
+    assertWritable(this);
     op_geometry_rotate_from_vector_self(
       webidl.converters["unrestricted double"](x),
       webidl.converters["unrestricted double"](y),
@@ -1740,6 +1747,7 @@ class DOMMatrix extends DOMMatrixReadOnly {
 
   rotateAxisAngleSelf(x = 0, y = 0, z = 0, angle = 0) {
     webidl.assertBranded(this, DOMMatrixPrototype);
+    assertWritable(this);
     x = webidl.converters["unrestricted double"](x);
     y = webidl.converters["unrestricted double"](y);
     z = webidl.converters["unrestricted double"](z);
@@ -1758,6 +1766,7 @@ class DOMMatrix extends DOMMatrixReadOnly {
 
   skewXSelf(sx = 0) {
     webidl.assertBranded(this, DOMMatrixPrototype);
+    assertWritable(this);
     op_geometry_skew_self(
       webidl.converters["unrestricted double"](sx),
       0,
@@ -1768,6 +1777,7 @@ class DOMMatrix extends DOMMatrixReadOnly {
 
   skewYSelf(sy = 0) {
     webidl.assertBranded(this, DOMMatrixPrototype);
+    assertWritable(this);
     op_geometry_skew_self(
       0,
       webidl.converters["unrestricted double"](sy),
@@ -1778,6 +1788,7 @@ class DOMMatrix extends DOMMatrixReadOnly {
 
   invertSelf() {
     webidl.assertBranded(this, DOMMatrixPrototype);
+    assertWritable(this);
     let invertible;
     if (this[_is2D]) {
       invertible = op_geometry_invert_2d_self(this[_raw]);
