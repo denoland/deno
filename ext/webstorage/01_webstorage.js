@@ -2,8 +2,8 @@
 
 /// <reference path="../../core/internal.d.ts" />
 
-import { core, primordials } from "ext:core/mod.js";
-const {
+import { primordials } from "ext:core/mod.js";
+import {
   op_webstorage_clear,
   op_webstorage_get,
   op_webstorage_iterate_keys,
@@ -11,7 +11,7 @@ const {
   op_webstorage_length,
   op_webstorage_remove,
   op_webstorage_set,
-} = core.ensureFastOps();
+} from "ext:core/ops";
 const {
   Symbol,
   SymbolFor,

@@ -1,7 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { core, primordials } from "ext:core/mod.js";
-const {
+import { primordials } from "ext:core/mod.js";
+import {
   op_delete_env,
   op_env,
   op_exec_path,
@@ -14,12 +14,10 @@ const {
   op_os_release,
   op_os_uptime,
   op_set_env,
+  op_set_exit_code,
   op_system_memory_info,
   op_uid,
-} = core.ensureFastOps();
-const {
-  op_set_exit_code,
-} = core.ensureFastOps(true);
+} from "ext:core/ops";
 const {
   Error,
   FunctionPrototypeBind,

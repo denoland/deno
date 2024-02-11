@@ -11,7 +11,7 @@ const {
   isDataView,
   isTypedArray,
 } = core;
-const {
+import {
   op_webgpu_buffer_get_map_async,
   op_webgpu_buffer_get_mapped_range,
   op_webgpu_buffer_unmap,
@@ -87,7 +87,7 @@ const {
   op_webgpu_request_device,
   op_webgpu_write_buffer,
   op_webgpu_write_texture,
-} = core.ensureFastOps();
+} from "ext:core/ops";
 const {
   ArrayBuffer,
   ArrayBufferPrototypeGetByteLength,
@@ -342,6 +342,16 @@ class GPU {
     } else {
       return createGPUAdapter(data);
     }
+  }
+
+  getPreferredCanvasFormat() {
+    // Same as Gecko.
+    //
+    // https://github.com/mozilla/gecko-dev/blob/b75080bb8b11844d18cb5f9ac6e68a866ef8e243/dom/webgpu/Instance.h#L42-L47
+    if (core.build.os == "android") {
+      return "rgba8unorm";
+    }
+    return "bgra8unorm";
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {

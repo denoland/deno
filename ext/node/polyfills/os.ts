@@ -23,13 +23,12 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { core } from "ext:core/mod.js";
-const {
+import {
   op_cpus,
   op_node_os_get_priority,
   op_node_os_set_priority,
   op_node_os_username,
-} = core.ensureFastOps();
+} from "ext:core/ops";
 
 import { validateIntegerRange } from "ext:deno_node/_utils.ts";
 import process from "node:process";

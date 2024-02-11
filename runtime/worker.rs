@@ -1,4 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicI32;
@@ -60,6 +61,32 @@ pub fn import_meta_resolve_callback(
     &referrer,
     deno_core::ResolutionKind::DynamicImport,
   )
+}
+
+// TODO(bartlomieju): temporary measurement until we start supporting more
+// module types
+pub fn validate_import_attributes_callback(
+  scope: &mut v8::HandleScope,
+  attributes: &HashMap<String, String>,
+) {
+  for (key, value) in attributes {
+    let msg = if key != "type" {
+      Some(format!("\"{key}\" attribute is not supported."))
+    } else if value != "json" {
+      Some(format!("\"{value}\" is not a valid module type."))
+    } else {
+      None
+    };
+
+    let Some(msg) = msg else {
+      continue;
+    };
+
+    let message = v8::String::new(scope, &msg).unwrap();
+    let exception = v8::Exception::type_error(scope, message);
+    scope.throw_exception(exception);
+    return;
+  }
 }
 
 #[derive(Clone, Default)]
@@ -126,7 +153,7 @@ pub struct WorkerOptions {
   pub format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
 
   /// Source map reference for errors.
-  pub source_map_getter: Option<Box<dyn SourceMapGetter>>,
+  pub source_map_getter: Option<Rc<dyn SourceMapGetter>>,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
   // If true, the worker will wait for inspector session and break on first
   // statement of user code. Takes higher precedence than
@@ -319,6 +346,7 @@ impl MainWorker {
         options.bootstrap.location.clone(),
       ),
       deno_webgpu::deno_webgpu::init_ops_and_esm(),
+      deno_canvas::deno_canvas::init_ops_and_esm(),
       deno_fetch::deno_fetch::init_ops_and_esm::<PermissionsContainer>(
         deno_fetch::Options {
           user_agent: options.bootstrap.user_agent.clone(),
@@ -390,31 +418,35 @@ impl MainWorker {
       ops::signal::deno_signal::init_ops_and_esm(),
       ops::tty::deno_tty::init_ops_and_esm(),
       ops::http::deno_http_runtime::init_ops_and_esm(),
-      ops::bootstrap::deno_bootstrap::init_ops_and_esm({
-        #[cfg(feature = "__runtime_js_sources")]
-        {
-          Some(Default::default())
-        }
-        #[cfg(not(feature = "__runtime_js_sources"))]
-        {
+      ops::bootstrap::deno_bootstrap::init_ops_and_esm(
+        if options.startup_snapshot.is_some() {
           None
-        }
-      }),
+        } else {
+          Some(Default::default())
+        },
+      ),
       deno_permissions_worker::init_ops_and_esm(
         permissions,
         enable_testing_features,
       ),
       runtime::init_ops_and_esm(),
+      // NOTE(bartlomieju): this is done, just so that ops from this extension
+      // are available and importing them in `99_main.js` doesn't cause an
+      // error because they're not defined. Trying to use these ops in non-worker
+      // context will cause a panic.
+      ops::web_worker::deno_web_worker::init_ops_and_esm().disable(),
     ];
 
+    #[cfg(__runtime_js_sources)]
+    assert!(cfg!(not(feature = "only_snapshotted_js_sources")), "'__runtime_js_sources' is incompatible with 'only_snapshotted_js_sources'.");
+
     for extension in &mut extensions {
-      #[cfg(not(feature = "__runtime_js_sources"))]
-      {
+      if options.startup_snapshot.is_some() {
         extension.js_files = std::borrow::Cow::Borrowed(&[]);
         extension.esm_files = std::borrow::Cow::Borrowed(&[]);
         extension.esm_entry_point = None;
       }
-      #[cfg(feature = "__runtime_js_sources")]
+      #[cfg(not(feature = "only_snapshotted_js_sources"))]
       {
         use crate::shared::maybe_transpile_source;
         for source in extension.esm_files.to_mut() {
@@ -428,17 +460,8 @@ impl MainWorker {
 
     extensions.extend(std::mem::take(&mut options.extensions));
 
-    #[cfg(all(
-      feature = "include_js_files_for_snapshotting",
-      not(feature = "__runtime_js_sources")
-    ))]
-    options
-      .startup_snapshot
-      .as_ref()
-      .expect("Sources are not embedded and a user snapshot was not provided.");
-
-    #[cfg(not(feature = "dont_use_runtime_snapshot"))]
-    options.startup_snapshot.as_ref().expect("A user snapshot was not provided, if you want to create a runtime without a snapshot use 'dont_use_runtime_snapshot' Cargo feature.");
+    #[cfg(feature = "only_snapshotted_js_sources")]
+    options.startup_snapshot.as_ref().expect("A user snapshot was not provided, even though 'only_snapshotted_js_sources' is used.");
 
     let has_notified_of_inspector_disconnect = AtomicBool::new(false);
     let wait_for_inspector_disconnect_callback = Box::new(move || {
@@ -468,6 +491,9 @@ impl MainWorker {
       ),
       import_meta_resolve_callback: Some(Box::new(
         import_meta_resolve_callback,
+      )),
+      validate_import_attributes_cb: Some(Box::new(
+        validate_import_attributes_callback,
       )),
       ..Default::default()
     });

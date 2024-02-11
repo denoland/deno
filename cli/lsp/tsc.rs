@@ -70,8 +70,6 @@ use std::net::SocketAddr;
 use std::ops::Range;
 use std::path::Path;
 use std::rc::Rc;
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::thread;
 use text_size::TextRange;
@@ -222,7 +220,6 @@ pub struct TsServer {
   sender: mpsc::UnboundedSender<Request>,
   receiver: Mutex<Option<mpsc::UnboundedReceiver<Request>>>,
   specifier_map: Arc<TscSpecifierMap>,
-  project_version: Arc<AtomicUsize>,
   inspector_server: Mutex<Option<Arc<InspectorServer>>>,
 }
 
@@ -234,7 +231,6 @@ impl std::fmt::Debug for TsServer {
       .field("sender", &self.sender)
       .field("receiver", &self.receiver)
       .field("specifier_map", &self.specifier_map)
-      .field("project_version", &self.project_version)
       .field("inspector_server", &self.inspector_server.lock().is_some())
       .finish()
   }
@@ -249,7 +245,6 @@ impl TsServer {
       sender: tx,
       receiver: Mutex::new(Some(request_rx)),
       specifier_map: Arc::new(TscSpecifierMap::new()),
-      project_version: Arc::new(AtomicUsize::new(1)),
       inspector_server: Mutex::new(None),
     }
   }
@@ -272,14 +267,12 @@ impl TsServer {
     let performance = self.performance.clone();
     let cache = self.cache.clone();
     let specifier_map = self.specifier_map.clone();
-    let project_version = self.project_version.clone();
     let _join_handle = thread::spawn(move || {
       run_tsc_thread(
         receiver,
         performance.clone(),
         cache.clone(),
         specifier_map.clone(),
-        project_version,
         maybe_inspector_server,
       )
     });
@@ -359,10 +352,6 @@ impl TsServer {
       args: json!([tsconfig]),
     };
     self.request(snapshot, req).await
-  }
-
-  pub fn increment_project_version(&self) {
-    self.project_version.fetch_add(1, Ordering::Relaxed);
   }
 
   pub async fn get_supported_code_fixes(
@@ -3068,7 +3057,11 @@ fn get_parameters_from_parts(parts: &[SymbolDisplayPart]) -> Vec<String> {
           matches!(parts.get(idx + 1), Some(next) if next.text == "?");
         // Skip `this` and optional parameters.
         if !is_optional && part.text != "this" {
-          parameters.push(part.text.clone());
+          parameters.push(format!(
+            "${{{}:{}}}",
+            parameters.len() + 1,
+            &part.text
+          ));
         }
       }
     } else if part.kind == "punctuation" {
@@ -3176,7 +3169,9 @@ impl CompletionEntryDetails {
       specifier,
       language_server,
     )?;
+    let mut insert_text_format = original_item.insert_text_format;
     let insert_text = if data.use_code_snippet {
+      insert_text_format = Some(lsp::InsertTextFormat::SNIPPET);
       Some(format!(
         "{}({})",
         original_item
@@ -3197,6 +3192,7 @@ impl CompletionEntryDetails {
       text_edit,
       additional_text_edits,
       insert_text,
+      insert_text_format,
       // NOTE(bartlomieju): it's not entirely clear to me why we need to do that,
       // but when `completionItem/resolve` is called, we get a list of commit chars
       // even though we might have returned an empty list in `completion` request.
@@ -3841,7 +3837,6 @@ struct State {
   response: Option<Response>,
   state_snapshot: Arc<StateSnapshot>,
   specifier_map: Arc<TscSpecifierMap>,
-  project_version: Arc<AtomicUsize>,
   token: CancellationToken,
 }
 
@@ -3850,7 +3845,6 @@ impl State {
     state_snapshot: Arc<StateSnapshot>,
     specifier_map: Arc<TscSpecifierMap>,
     performance: Arc<Performance>,
-    project_version: Arc<AtomicUsize>,
   ) -> Self {
     Self {
       last_id: 1,
@@ -3858,7 +3852,6 @@ impl State {
       response: None,
       state_snapshot,
       specifier_map,
-      project_version,
       token: Default::default(),
     }
   }
@@ -4077,7 +4070,7 @@ fn op_script_version(
 fn op_project_version(state: &mut OpState) -> String {
   let state = state.borrow_mut::<State>();
   let mark = state.performance.mark("tsc.op.op_project_version");
-  let r = state.project_version.load(Ordering::Relaxed).to_string();
+  let r = state.state_snapshot.documents.project_version();
   state.performance.measure(mark);
   r
 }
@@ -4087,7 +4080,6 @@ fn run_tsc_thread(
   performance: Arc<Performance>,
   cache: Arc<dyn HttpCache>,
   specifier_map: Arc<TscSpecifierMap>,
-  project_version: Arc<AtomicUsize>,
   maybe_inspector_server: Option<Arc<InspectorServer>>,
 ) {
   let has_inspector_server = maybe_inspector_server.is_some();
@@ -4095,12 +4087,7 @@ fn run_tsc_thread(
   // supplied snapshot is an isolate that contains the TypeScript language
   // server.
   let mut tsc_runtime = JsRuntime::new(RuntimeOptions {
-    extensions: vec![deno_tsc::init_ops(
-      performance,
-      cache,
-      specifier_map,
-      project_version,
-    )],
+    extensions: vec![deno_tsc::init_ops(performance, cache, specifier_map)],
     startup_snapshot: Some(tsc::compiler_snapshot()),
     inspector: maybe_inspector_server.is_some(),
     ..Default::default()
@@ -4173,7 +4160,6 @@ deno_core::extension!(deno_tsc,
     performance: Arc<Performance>,
     cache: Arc<dyn HttpCache>,
     specifier_map: Arc<TscSpecifierMap>,
-    project_version: Arc<AtomicUsize>,
   },
   state = |state, options| {
     state.put(State::new(
@@ -4187,7 +4173,6 @@ deno_core::extension!(deno_tsc,
       }),
       options.specifier_map,
       options.performance,
-      options.project_version,
     ));
   },
 );
@@ -5115,7 +5100,14 @@ mod tests {
         b"export const b = \"b\";\n\nexport const a = \"b\";\n",
       )
       .unwrap();
-    ts_server.increment_project_version();
+    let snapshot = {
+      let mut documents = snapshot.documents.clone();
+      documents.increment_project_version();
+      Arc::new(StateSnapshot {
+        documents,
+        ..snapshot.as_ref().clone()
+      })
+    };
     let specifier = resolve_url("file:///a.ts").unwrap();
     let diagnostics = ts_server
       .get_diagnostics(snapshot.clone(), vec![specifier], Default::default())

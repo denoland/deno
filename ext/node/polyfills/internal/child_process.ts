@@ -7,10 +7,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { core, internals } from "ext:core/mod.js";
-const {
-  op_node_ipc_read,
-  op_node_ipc_write,
-} = core.ensureFastOps();
+import { op_node_ipc_read, op_node_ipc_write } from "ext:core/ops";
 import {
   ArrayIsArray,
   ArrayPrototypeFilter,

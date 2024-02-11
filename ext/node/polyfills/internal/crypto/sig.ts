@@ -4,11 +4,7 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { core } from "ext:core/mod.js";
-const {
-  op_node_sign,
-  op_node_verify,
-} = core.ensureFastOps();
+import { op_node_sign, op_node_verify } from "ext:core/ops";
 
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import {

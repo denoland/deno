@@ -46,6 +46,7 @@ pub use emit::EmitCache;
 pub use incremental::IncrementalCache;
 pub use module_info::ModuleInfoCache;
 pub use node::NodeAnalysisCache;
+pub use parsed_source::LazyGraphSourceParser;
 pub use parsed_source::ParsedSourceCache;
 
 /// Permissions used to save a file in the disk caches.
@@ -95,6 +96,8 @@ pub type LocalHttpCache = deno_cache_dir::LocalHttpCache<RealDenoCacheEnv>;
 pub type LocalLspHttpCache =
   deno_cache_dir::LocalLspHttpCache<RealDenoCacheEnv>;
 pub use deno_cache_dir::HttpCache;
+
+use self::module_info::ModuleInfoCacheSourceHash;
 
 /// A "wrapper" for the FileFetcher and DiskCache for the Deno CLI that provides
 /// a concise interface to the DENO_DIR when building module graphs.
@@ -277,13 +280,14 @@ impl Loader for FetchCacher {
   fn cache_module_info(
     &mut self,
     specifier: &ModuleSpecifier,
-    source: &str,
+    source: &Arc<[u8]>,
     module_info: &deno_graph::ModuleInfo,
   ) {
+    let source_hash = ModuleInfoCacheSourceHash::from_source(source);
     let result = self.module_info_cache.set_module_info(
       specifier,
       MediaType::from_specifier(specifier),
-      source,
+      &source_hash,
       module_info,
     );
     if let Err(err) = result {

@@ -2,10 +2,8 @@
 
 /// <reference path="../../core/internal.d.ts" />
 
-import { core, primordials } from "ext:core/mod.js";
-const {
-  op_utf8_to_byte_string,
-} = core.ensureFastOps();
+import { primordials } from "ext:core/mod.js";
+import { op_utf8_to_byte_string } from "ext:core/ops";
 const {
   ArrayPrototypeFind,
   Number,

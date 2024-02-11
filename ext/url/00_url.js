@@ -5,15 +5,15 @@
 /// <reference path="../../core/lib.deno_core.d.ts" />
 /// <reference path="../webidl/internal.d.ts" />
 
-import { core, primordials } from "ext:core/mod.js";
-const {
+import { primordials } from "ext:core/mod.js";
+import {
   op_url_get_serialization,
   op_url_parse,
   op_url_parse_search_params,
   op_url_parse_with_base,
   op_url_reparse,
   op_url_stringify_search_params,
-} = core.ensureFastOps();
+} from "ext:core/ops";
 const {
   ArrayIsArray,
   ArrayPrototypeMap,

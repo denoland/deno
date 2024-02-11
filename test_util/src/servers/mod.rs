@@ -327,9 +327,9 @@ async fn get_tcp_listener_stream(
 
 /// This server responds with 'PASS' if client authentication was successful. Try it by running
 /// test_server and
-///   curl --key cli/tests/testdata/tls/localhost.key \
+///   curl --key tests/testdata/tls/localhost.key \
 ///        --cert cli/tests/testsdata/tls/localhost.crt \
-///        --cacert cli/tests/testdata/tls/RootCA.crt https://localhost:4552/
+///        --cacert tests/testdata/tls/RootCA.crt https://localhost:4552/
 async fn run_tls_client_auth_server(port: u16) {
   let mut tls =
     get_tls_listener_stream("tls client auth", port, Default::default()).await;
@@ -352,7 +352,7 @@ async fn run_tls_client_auth_server(port: u16) {
 
 /// This server responds with 'PASS' if client authentication was successful. Try it by running
 /// test_server and
-///   curl --cacert cli/tests/testdata/tls/RootCA.crt https://localhost:4553/
+///   curl --cacert tests/testdata/tls/RootCA.crt https://localhost:4553/
 async fn run_tls_server(port: u16) {
   let mut tls = get_tls_listener_stream("tls", port, Default::default()).await;
   while let Some(Ok(mut tls_stream)) = tls.next().await {
@@ -1056,7 +1056,17 @@ async fn main_server(
           .unwrap(),
       );
     }
-    (&Method::GET, "/canary-latest.txt") => {
+    (
+      &Method::GET,
+      "/canary-latest.txt"
+      | "/canary-x86_64-apple-darwin-latest.txt"
+      | "/canary-aarch64-apple-darwin-latest.txt"
+      | "/canary-x86_64-unknown-linux-gnu-latest.txt"
+      | "/canary-aarch64-unknown-linux-gnu-latest.txt"
+      | "/canary-x86_64-unknown-linux-musl-latest.txt"
+      | "/canary-aarch64-unknown-linux-musl-latest.txt"
+      | "/canary-x86_64-pc-windows-msvc-latest.txt",
+    ) => {
       return Ok(
         Response::builder()
           .status(StatusCode::OK)

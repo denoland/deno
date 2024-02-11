@@ -15,14 +15,14 @@ const {
   isSharedArrayBuffer,
   isTypedArray,
 } = core;
-const {
+import {
   op_encoding_decode,
   op_encoding_decode_single,
   op_encoding_decode_utf8,
   op_encoding_encode_into,
   op_encoding_new_decoder,
   op_encoding_normalize_label,
-} = core.ensureFastOps();
+} from "ext:core/ops";
 const {
   DataViewPrototypeGetBuffer,
   DataViewPrototypeGetByteLength,

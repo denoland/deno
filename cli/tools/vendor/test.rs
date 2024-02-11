@@ -122,7 +122,7 @@ impl Loader for TestLoader {
     let result = self.files.get(specifier).map(|result| match result {
       Ok(result) => Ok(LoadResponse::Module {
         specifier: specifier.clone(),
-        content: result.0.clone().into(),
+        content: result.0.clone().into_bytes().into(),
         maybe_headers: result.1.clone(),
       }),
       Err(err) => Err(err),
@@ -160,15 +160,15 @@ impl VendorEnvironment for TestVendorEnvironment {
     Ok(())
   }
 
-  fn write_file(&self, file_path: &Path, text: &str) -> Result<(), AnyError> {
+  fn write_file(&self, file_path: &Path, text: &[u8]) -> Result<(), AnyError> {
     let parent = file_path.parent().unwrap();
     if !self.directories.borrow().contains(parent) {
       bail!("Directory not found: {}", parent.display());
     }
-    self
-      .files
-      .borrow_mut()
-      .insert(file_path.to_path_buf(), text.to_string());
+    self.files.borrow_mut().insert(
+      file_path.to_path_buf(),
+      String::from_utf8(text.to_vec()).unwrap(),
+    );
     Ok(())
   }
 

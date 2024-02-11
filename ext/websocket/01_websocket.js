@@ -20,7 +20,7 @@ import {
   op_ws_send_binary_ab,
   op_ws_send_ping,
   op_ws_send_text,
-} from "ext:deno_websocket/00_ops.js";
+} from "ext:core/ops";
 const {
   ArrayBufferIsView,
   ArrayPrototypeJoin,

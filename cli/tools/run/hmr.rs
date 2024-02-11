@@ -11,7 +11,7 @@ use deno_core::serde_json::json;
 use deno_core::serde_json::{self};
 use deno_core::url::Url;
 use deno_core::LocalInspectorSession;
-use deno_runtime::colors;
+use deno_terminal::colors;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;

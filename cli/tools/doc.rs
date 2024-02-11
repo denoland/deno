@@ -1,6 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::args::CliOptions;
 use crate::args::DocFlags;
 use crate::args::DocHtmlFlag;
 use crate::args::DocSourceFileFlag;
@@ -12,8 +11,9 @@ use crate::factory::CliFactory;
 use crate::graph_util::graph_lock_or_exit;
 use crate::tsc::get_types_declaration_file_text;
 use crate::util::fs::collect_specifiers;
-use crate::util::glob::FilePatterns;
-use crate::util::glob::PathOrPatternSet;
+use deno_ast::diagnostics::Diagnostic;
+use deno_config::glob::FilePatterns;
+use deno_config::glob::PathOrPatternSet;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
@@ -26,19 +26,16 @@ use deno_graph::ModuleSpecifier;
 use doc::DocDiagnostic;
 use indexmap::IndexMap;
 use std::collections::BTreeMap;
-use std::path::PathBuf;
 use std::rc::Rc;
-use std::sync::Arc;
 
 async fn generate_doc_nodes_for_builtin_types(
   doc_flags: DocFlags,
-  cli_options: &Arc<CliOptions>,
   parser: &dyn ModuleParser,
   analyzer: &dyn ModuleAnalyzer,
 ) -> Result<IndexMap<ModuleSpecifier, Vec<doc::DocNode>>, AnyError> {
   let source_file_specifier =
     ModuleSpecifier::parse("internal://lib.deno.d.ts").unwrap();
-  let content = get_types_declaration_file_text(cli_options.unstable());
+  let content = get_types_declaration_file_text();
   let mut loader = deno_graph::source::MemoryLoader::new(
     vec![(
       source_file_specifier.to_string(),
@@ -86,7 +83,6 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
     DocSourceFileFlag::Builtin => {
       generate_doc_nodes_for_builtin_types(
         doc_flags.clone(),
-        cli_options,
         &capturing_parser,
         &analyzer,
       )
@@ -98,21 +94,10 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
 
       let module_specifiers = collect_specifiers(
         FilePatterns {
-          include: Some(PathOrPatternSet::from_absolute_paths(
-            source_files
-              .iter()
-              .map(|p| {
-                if p.starts_with("https:")
-                  || p.starts_with("http:")
-                  || p.starts_with("file:")
-                {
-                  // todo(dsherret): don't store URLs in PathBufs
-                  PathBuf::from(p)
-                } else {
-                  cli_options.initial_cwd().join(p)
-                }
-              })
-              .collect(),
+          base: cli_options.initial_cwd().to_path_buf(),
+          include: Some(PathOrPatternSet::from_relative_path_or_patterns(
+            cli_options.initial_cwd(),
+            source_files,
           )?),
           exclude: Default::default(),
         },
@@ -156,19 +141,15 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
     let deno_ns = if doc_flags.source_files != DocSourceFileFlag::Builtin {
       let deno_ns = generate_doc_nodes_for_builtin_types(
         doc_flags.clone(),
-        cli_options,
         &capturing_parser,
         &analyzer,
       )
       .await?;
       let (_, deno_ns) = deno_ns.first().unwrap();
 
-      let deno_ns_symbols =
-        deno_doc::html::compute_namespaced_symbols(deno_ns, &[]);
-
-      Some(deno_ns_symbols)
+      deno_doc::html::compute_namespaced_symbols(deno_ns, &[])
     } else {
-      None
+      Default::default()
     };
 
     generate_docs_directory(&doc_nodes_by_url, html_options, deno_ns)
@@ -195,15 +176,21 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
   }
 }
 
-struct DocResolver {}
+struct DocResolver {
+  deno_ns: std::collections::HashSet<Vec<String>>,
+}
 
 impl deno_doc::html::HrefResolver for DocResolver {
-  fn resolve_global_symbol(&self, symbol: &[String], _context: &str) -> String {
-    format!(
-      "https://deno.land/api@{}?s={}",
-      env!("CARGO_PKG_VERSION"),
-      symbol.join(".")
-    )
+  fn resolve_global_symbol(&self, symbol: &[String]) -> Option<String> {
+    if self.deno_ns.contains(symbol) {
+      Some(format!(
+        "https://deno.land/api@{}?s={}",
+        env!("CARGO_PKG_VERSION"),
+        symbol.join(".")
+      ))
+    } else {
+      None
+    }
   }
 
   fn resolve_import_href(
@@ -225,19 +212,19 @@ impl deno_doc::html::HrefResolver for DocResolver {
     &self,
     _current_specifier: &ModuleSpecifier,
     current_file: &str,
-  ) -> String {
-    current_file.to_string()
+  ) -> Option<String> {
+    Some(current_file.to_string())
   }
 
-  fn resolve_source(&self, location: &deno_doc::Location) -> String {
-    location.filename.clone()
+  fn resolve_source(&self, location: &deno_doc::Location) -> Option<String> {
+    Some(location.filename.clone())
   }
 }
 
 async fn generate_docs_directory(
   doc_nodes_by_url: &IndexMap<ModuleSpecifier, Vec<doc::DocNode>>,
   html_options: &DocHtmlFlag,
-  deno_ns: Option<std::collections::HashSet<Vec<String>>>,
+  deno_ns: std::collections::HashSet<Vec<String>>,
 ) -> Result<(), AnyError> {
   let cwd = std::env::current_dir().context("Failed to get CWD")?;
   let output_dir_resolved = cwd.join(&html_options.output);
@@ -245,20 +232,11 @@ async fn generate_docs_directory(
   let options = deno_doc::html::GenerateOptions {
     package_name: Some(html_options.name.to_owned()),
     main_entrypoint: None,
-    global_symbols: deno_doc::html::NamespacedGlobalSymbols::new(
-      deno_ns
-        .map(|deno_ns| {
-          deno_ns
-            .into_iter()
-            .map(|symbol| (symbol, "deno".to_string()))
-            .collect()
-        })
-        .unwrap_or_default(),
-    ),
     rewrite_map: None,
     hide_module_doc_title: false,
-    href_resolver: Rc::new(DocResolver {}),
+    href_resolver: Rc::new(DocResolver { deno_ns }),
     sidebar_flatten_namespaces: false,
+    usage_composer: None,
   };
 
   let files = deno_doc::html::generate(options, doc_nodes_by_url)
@@ -333,18 +311,12 @@ fn check_diagnostics(diagnostics: &[DocDiagnostic]) -> Result<(), AnyError> {
       .push(diagnostic);
   }
 
-  for (filename, diagnostics_by_lc) in diagnostic_groups {
-    for (line, diagnostics_by_col) in diagnostics_by_lc {
-      for (col, diagnostics) in diagnostics_by_col {
+  for (_, diagnostics_by_lc) in diagnostic_groups {
+    for (_, diagnostics_by_col) in diagnostics_by_lc {
+      for (_, diagnostics) in diagnostics_by_col {
         for diagnostic in diagnostics {
-          log::warn!("{}", diagnostic.message());
+          log::error!("{}", diagnostic.display());
         }
-        log::warn!(
-          "    at {}:{}:{}\n",
-          colors::cyan(filename.as_str()),
-          colors::yellow(&line.to_string()),
-          colors::yellow(&(col + 1).to_string())
-        )
       }
     }
   }

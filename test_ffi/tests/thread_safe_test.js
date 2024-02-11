@@ -9,8 +9,6 @@ const [libPrefix, libSuffix] = {
 }[Deno.build.os];
 const libPath = `${targetDir}/${libPrefix}test_ffi.${libSuffix}`;
 
-const resourcesPre = Deno.resources();
-
 const dylib = Deno.dlopen(libPath, {
   store_function: {
     parameters: ["function"],

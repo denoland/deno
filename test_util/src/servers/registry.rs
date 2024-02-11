@@ -1,5 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use crate::testdata_path;
+
 use super::run_server;
 use super::ServerKind;
 use super::ServerOptions;
@@ -57,6 +59,16 @@ async fn registry_server_handler(
     .unwrap();
     let res = Response::new(UnsyncBoxBody::new(Full::from(body)));
     return Ok(res);
+  }
+
+  // serve the registry package files
+  let mut file_path =
+    testdata_path().to_path_buf().join("jsr").join("registry");
+  file_path.push(&req.uri().path()[1..].replace("%2f", "/"));
+  if let Ok(body) = tokio::fs::read(&file_path).await {
+    return Ok(Response::new(UnsyncBoxBody::new(
+      http_body_util::Full::new(Bytes::from(body)),
+    )));
   }
 
   let empty_body = UnsyncBoxBody::new(Empty::new());

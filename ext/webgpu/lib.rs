@@ -67,6 +67,7 @@ mod macros {
 pub mod binding;
 pub mod buffer;
 pub mod bundle;
+pub mod byow;
 pub mod command_encoder;
 pub mod compute_pass;
 pub mod error;
@@ -214,7 +215,9 @@ deno_core::extension!(
     // surface
     surface::op_webgpu_surface_configure,
     surface::op_webgpu_surface_get_current_texture,
-    surface::op_webgpu_surface_present
+    surface::op_webgpu_surface_present,
+    // byow
+    byow::op_webgpu_surface_create,
   ],
   esm = ["00_init.js", "02_surface.js"],
   lazy_loaded_esm = ["01_webgpu.js"],

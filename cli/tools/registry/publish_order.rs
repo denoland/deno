@@ -139,7 +139,7 @@ fn build_pkg_deps(
     let mut pending = VecDeque::new();
     pending.extend(root.exports.clone());
     while let Some(specifier) = pending.pop_front() {
-      let Some(module) = graph.get(&specifier).and_then(|m| m.esm()) else {
+      let Some(module) = graph.get(&specifier).and_then(|m| m.js()) else {
         continue;
       };
       let mut dep_specifiers =

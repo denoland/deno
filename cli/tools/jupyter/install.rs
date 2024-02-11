@@ -33,7 +33,7 @@ pub fn status() -> Result<(), AnyError> {
     }
   }
 
-  println!("ℹ️ Deno kernel is not yet installed, run `deno jupyter --unstable --install` to set it up");
+  println!("ℹ️ Deno kernel is not yet installed, run `deno jupyter --install` to set it up");
   Ok(())
 }
 
@@ -56,7 +56,7 @@ pub fn install() -> Result<(), AnyError> {
   // https://jupyter-client.readthedocs.io/en/stable/kernels.html#kernel-specs
   // FIXME(bartlomieju): replace `current_exe` before landing?
   let json_data = json!({
-      "argv": [current_exe().unwrap().to_string_lossy(), "--unstable", "jupyter", "--kernel", "--conn", "{connection_file}"],
+      "argv": [current_exe().unwrap().to_string_lossy(), "jupyter", "--kernel", "--conn", "{connection_file}"],
       "display_name": "Deno",
       "language": "typescript",
   });

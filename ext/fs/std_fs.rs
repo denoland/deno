@@ -413,10 +413,11 @@ fn copy_file(from: &Path, to: &Path) -> FsResult<()> {
     use std::io::Read;
     use std::os::unix::fs::OpenOptionsExt;
     use std::os::unix::fs::PermissionsExt;
-    use std::os::unix::prelude::OsStrExt;
 
-    let from_str = CString::new(from.as_os_str().as_bytes()).unwrap();
-    let to_str = CString::new(to.as_os_str().as_bytes()).unwrap();
+    let from_str = CString::new(from.as_os_str().as_encoded_bytes())
+      .map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?;
+    let to_str = CString::new(to.as_os_str().as_encoded_bytes())
+      .map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?;
 
     // SAFETY: `from` and `to` are valid C strings.
     // std::fs::copy does open() + fcopyfile() on macOS. We try to use
@@ -555,8 +556,10 @@ fn cp(from: &Path, to: &Path) -> FsResult<()> {
     use std::ffi::CString;
     use std::os::unix::ffi::OsStrExt;
 
-    let from_str = CString::new(from.as_os_str().as_bytes()).unwrap();
-    let to_str = CString::new(to.as_os_str().as_bytes()).unwrap();
+    let from_str = CString::new(from.as_os_str().as_bytes())
+      .map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?;
+    let to_str = CString::new(to.as_os_str().as_bytes())
+      .map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?;
 
     // SAFETY: `from` and `to` are valid C strings.
     unsafe {

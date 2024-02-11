@@ -1,15 +1,17 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { core, primordials } from "ext:core/mod.js";
-const {
+import { core, internals, primordials } from "ext:core/mod.js";
+const { internalRidSymbol } = core;
+import {
   op_net_accept_tls,
   op_net_connect_tls,
   op_net_listen_tls,
   op_tls_handshake,
   op_tls_start,
-} = core.ensureFastOps();
+} from "ext:core/ops";
 const {
   Number,
+  ObjectDefineProperty,
   TypeError,
 } = primordials;
 
@@ -24,8 +26,28 @@ function opTlsHandshake(rid) {
 }
 
 class TlsConn extends Conn {
+  #rid = 0;
+
+  constructor(rid, remoteAddr, localAddr) {
+    super(rid, remoteAddr, localAddr);
+    ObjectDefineProperty(this, internalRidSymbol, {
+      enumerable: false,
+      value: rid,
+    });
+    this.#rid = rid;
+  }
+
+  get rid() {
+    internals.warnOnDeprecatedApi(
+      "Deno.TlsConn.rid",
+      new Error().stack,
+      "Use `Deno.TlsConn` instance methods instead.",
+    );
+    return this.#rid;
+  }
+
   handshake() {
-    return opTlsHandshake(this.rid);
+    return opTlsHandshake(this.#rid);
   }
 }
 
@@ -39,6 +61,13 @@ async function connectTls({
   privateKey = undefined,
   alpnProtocols = undefined,
 }) {
+  if (certFile !== undefined) {
+    internals.warnOnDeprecatedApi(
+      "Deno.ConnectTlsOptions.certFile",
+      new Error().stack,
+      "Pass the cert file contents to the `Deno.ConnectTlsOptions.certChain` option instead.",
+    );
+  }
   if (transport !== "tcp") {
     throw new TypeError(`Unsupported transport: '${transport}'`);
   }
@@ -52,9 +81,29 @@ async function connectTls({
 }
 
 class TlsListener extends Listener {
+  #rid = 0;
+
+  constructor(rid, addr) {
+    super(rid, addr);
+    ObjectDefineProperty(this, internalRidSymbol, {
+      enumerable: false,
+      value: rid,
+    });
+    this.#rid = rid;
+  }
+
+  get rid() {
+    internals.warnOnDeprecatedApi(
+      "Deno.TlsListener.rid",
+      new Error().stack,
+      "Use `Deno.TlsListener` instance methods instead.",
+    );
+    return this.#rid;
+  }
+
   async accept() {
     const { 0: rid, 1: localAddr, 2: remoteAddr } = await op_net_accept_tls(
-      this.rid,
+      this.#rid,
     );
     localAddr.transport = "tcp";
     remoteAddr.transport = "tcp";
@@ -76,6 +125,20 @@ function listenTls({
   if (transport !== "tcp") {
     throw new TypeError(`Unsupported transport: '${transport}'`);
   }
+  if (keyFile !== undefined) {
+    internals.warnOnDeprecatedApi(
+      "Deno.ListenTlsOptions.keyFile",
+      new Error().stack,
+      "Pass the key file contents to the `Deno.ListenTlsOptions.key` option instead.",
+    );
+  }
+  if (certFile !== undefined) {
+    internals.warnOnDeprecatedApi(
+      "Deno.ListenTlsOptions.certFile",
+      new Error().stack,
+      "Pass the cert file contents to the `Deno.ListenTlsOptions.cert` option instead.",
+    );
+  }
   const { 0: rid, 1: localAddr } = op_net_listen_tls(
     { hostname, port: Number(port) },
     { cert, certFile, key, keyFile, alpnProtocols, reusePort },
@@ -93,7 +156,7 @@ async function startTls(
   } = {},
 ) {
   const { 0: rid, 1: localAddr, 2: remoteAddr } = await opStartTls({
-    rid: conn.rid,
+    rid: conn[internalRidSymbol],
     hostname,
     certFile,
     caCerts,
