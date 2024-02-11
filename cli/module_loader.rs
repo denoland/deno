@@ -443,8 +443,8 @@ impl ModuleLoaderFactory for CliModuleLoaderFactory {
     )
   }
 
-  fn create_source_map_getter(&self) -> Option<Box<dyn SourceMapGetter>> {
-    Some(Box::new(CliSourceMapGetter {
+  fn create_source_map_getter(&self) -> Option<Rc<dyn SourceMapGetter>> {
+    Some(Rc::new(CliSourceMapGetter {
       shared: self.shared.clone(),
     }))
   }

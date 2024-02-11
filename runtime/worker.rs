@@ -153,7 +153,7 @@ pub struct WorkerOptions {
   pub format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
 
   /// Source map reference for errors.
-  pub source_map_getter: Option<Box<dyn SourceMapGetter>>,
+  pub source_map_getter: Option<Rc<dyn SourceMapGetter>>,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
   // If true, the worker will wait for inspector session and break on first
   // statement of user code. Takes higher precedence than

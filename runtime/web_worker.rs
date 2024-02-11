@@ -345,7 +345,7 @@ pub struct WebWorkerOptions {
   pub npm_resolver: Option<Arc<dyn deno_node::NpmResolver>>,
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
   pub format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
-  pub source_map_getter: Option<Box<dyn SourceMapGetter>>,
+  pub source_map_getter: Option<Rc<dyn SourceMapGetter>>,
   pub worker_type: WebWorkerType,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
   pub get_error_class_fn: Option<GetErrorClassFn>,
