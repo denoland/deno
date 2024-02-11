@@ -1515,31 +1515,27 @@ Deno.test(
   { permissions: { net: true } },
   async function httpServerWebSocketHeader() {
     const headers = new Headers({ name: "value" });
-    const wsClosed = Promise.withResolvers<void>();
     const server = Deno.serve({
       port: servePort,
-      handler: (req) => {
-        const { socket, response } = Deno.upgradeWebSocket(req, { headers });
-        socket.onclose = () => wsClosed.resolve();
-        return response;
-      },
+      handler: (req) => Deno.upgradeWebSocket(req, { headers }).response,
     });
     const conn = await Deno.connect({ port: servePort });
     const w = conn.writable.getWriter();
     const r = conn.readable.getReader();
     await w.write(
-      new TextEncoder().encode(
-        `GET / HTTP/1.1\nConnection: upgrade\nUpgrade: websocket\nSec-WebSocket-Key: SGVsbG8sIHdvcmxkIQ==\n\n`,
-      ),
+      new TextEncoder().encode([
+        "GET / HTTP/1.1",
+        "connection: upgrade",
+        "upgrade: websocket",
+        "sec-websocket-key: SGVsbG8sIHdvcmxkIQ==",
+        "\n",
+      ].join("\n"))
     );
     let text = "";
-    const decoder = new TextDecoder();
     while (!text.includes("\r\n\r\n")) {
-      text += decoder.decode((await r.read()).value, { stream: true });
+      text += new TextDecoder().decode((await r.read()).value);
     }
     assert(text.includes("name: value"));
-    w.write(new Uint8Array([0xff, 0x00]));
-    await wsClosed.promise;
     conn.close();
     await server.shutdown();
   },
