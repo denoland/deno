@@ -280,7 +280,7 @@ impl ModuleLoaderFactory for StandaloneModuleLoaderFactory {
 
   fn create_source_map_getter(
     &self,
-  ) -> Option<Box<dyn deno_core::SourceMapGetter>> {
+  ) -> Option<Rc<dyn deno_core::SourceMapGetter>> {
     None
   }
 }
