@@ -6,7 +6,6 @@ members = [
   "bench_util",
   "cli",
   "cli/napi/sym",
-  "cli/tests",
   "ext/broadcast_channel",
   "ext/cache",
   "ext/canvas",
@@ -33,6 +32,7 @@ members = [
   "test_ffi",
   "test_napi",
   "test_util",
+  "tests",
 ]
 exclude = ["test_util/std/hash/_wasm"]
 
