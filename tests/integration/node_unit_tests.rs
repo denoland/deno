@@ -1,4 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
+use test_util::itest;
 use std::io::BufRead;
 use std::io::BufReader;
 use std::time::Duration;

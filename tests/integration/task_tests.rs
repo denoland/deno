@@ -3,6 +3,7 @@
 // Most of the tests for this are in deno_task_shell.
 // These tests are intended to only test integration.
 
+use test_util::itest;
 use deno_core::serde_json::json;
 use test_util::env_vars_for_npm_tests;
 use test_util::TestContext;

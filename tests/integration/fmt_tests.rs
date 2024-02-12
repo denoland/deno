@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use test_util::itest;
 use test_util as util;
 use util::assert_contains;
 use util::PathRef;

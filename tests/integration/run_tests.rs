@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use test_util::itest;
 use bytes::Bytes;
 use deno_core::serde_json::json;
 use deno_core::url;
@@ -2651,6 +2652,7 @@ fn dont_cache_on_check_fail() {
 }
 
 mod permissions {
+  use test_util::itest;
   use test_util as util;
   use util::TestContext;
 

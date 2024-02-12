@@ -1,5 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use test_util::itest;
+use test_util::itest_flaky;
 use deno_tls::rustls;
 use deno_tls::rustls_pemfile;
 use deno_tls::rustls_tokio_stream::TlsStream;

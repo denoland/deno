@@ -1,5 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use test_util::itest_flaky;
+use test_util::itest;
 use deno_core::url::Url;
 use test_util as util;
 use util::assert_contains;
