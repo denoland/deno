@@ -4767,7 +4767,19 @@ fn lsp_code_actions_deno_cache_jsr() {
       "type": 1,
     }],
   }));
-  let diagnostics = client.read_diagnostics();
+  // The new diagnostics from the lockfile change arrive inconsistently on CI
+  // for some reason. Force it with this.
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"
+        import { add } from "jsr:@denotest/add@1";
+        console.log(add(1, 2));
+      "#,
+    },
+  }));
   assert_eq!(json!(diagnostics.all()), json!([]));
   client.shutdown();
 }
