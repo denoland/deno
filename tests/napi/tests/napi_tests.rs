@@ -2,6 +2,7 @@
 
 use std::process::Command;
 use test_util::deno_cmd;
+use test_util::deno_config_path;
 use test_util::env_vars_for_npm_tests;
 use test_util::http_server;
 
@@ -64,6 +65,8 @@ fn napi_tests() {
     .arg("--allow-env")
     .arg("--allow-ffi")
     .arg("--allow-run")
+    .arg("--config")
+    .arg(deno_config_path())
     .envs(env_vars_for_npm_tests())
     .spawn()
     .unwrap()

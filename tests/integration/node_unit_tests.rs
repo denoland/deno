@@ -97,7 +97,7 @@ fn node_unit_test(test: String) {
     .current_dir(util::root_path())
     .arg("test")
     .arg("--config")
-    .arg("tests/config/deno.json")
+    .arg(deno_config_path())
     .arg("--no-lock")
     .arg("--unstable")
     // TODO(kt3k): This option is required to pass tls_test.ts,
