@@ -1512,7 +1512,7 @@ Deno.test(
 );
 
 Deno.test(
-  { permissions: { net: true }, only: true },
+  { permissions: { net: true } },
   async function httpServerWebSocketHeader() {
     const headers = new Headers({ name: "value" });
     const wsClosed = Promise.withResolvers<void>();
