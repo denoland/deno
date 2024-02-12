@@ -7,7 +7,7 @@ const [libPrefix, libSuffix] = {
   linux: ["lib", "so"],
   windows: ["", "dll"],
 }[Deno.build.os];
-const libPath = `${targetDir}/${libPrefix}test_ffi.${libSuffix}`;
+const libPath = `${targetDir}/${libPrefix}tests/ffi.${libSuffix}`;
 
 const dylib = Deno.dlopen(libPath, {
   "nop": { parameters: [], result: "void" },

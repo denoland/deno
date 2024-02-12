@@ -17,7 +17,7 @@ export const [libPrefix, libSuffix] = {
 }[Deno.build.os];
 
 export function loadTestLibrary() {
-  const specifier = `${targetDir}/${libPrefix}test_napi.${libSuffix}`;
+  const specifier = `${targetDir}/${libPrefix}tests/napi.${libSuffix}`;
 
   // Internal, used in ext/node
   const module = {};

@@ -88,7 +88,7 @@ pub fn third_party_path() -> PathRef {
 }
 
 pub fn napi_tests_path() -> PathRef {
-  root_path().join("test_napi")
+  root_path().join("tests").join("napi")
 }
 
 /// Test server registry url.

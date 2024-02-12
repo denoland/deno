@@ -28,10 +28,10 @@ members = [
   "ext/websocket",
   "ext/webstorage",
   "runtime",
-  "test_ffi",
-  "test_napi",
   "test_util",
   "tests",
+  "tests/ffi",
+  "tests/napi",
 ]
 exclude = ["test_util/std/hash/_wasm"]
 
