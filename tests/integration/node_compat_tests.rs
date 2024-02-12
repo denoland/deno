@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use test_util as util;
+use util::deno_config_path;
 use util::env_vars_for_npm_tests;
 
 #[test]

@@ -4,6 +4,7 @@ use std::io::BufReader;
 use std::time::Duration;
 use std::time::Instant;
 use test_util as util;
+use util::deno_config_path;
 use util::env_vars_for_npm_tests;
 
 util::unit_test_factory!(
