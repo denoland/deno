@@ -32,6 +32,7 @@ pub mod lsp;
 mod npm;
 pub mod pty;
 pub mod servers;
+pub mod spawn;
 
 pub use builders::DenoChild;
 pub use builders::TestCommandBuilder;
@@ -75,7 +76,7 @@ pub fn prebuilt_path() -> PathRef {
 }
 
 pub fn tests_path() -> PathRef {
-  root_path().join("cli").join("tests")
+  root_path().join("tests")
 }
 
 pub fn testdata_path() -> PathRef {
