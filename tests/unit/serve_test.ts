@@ -1532,10 +1532,12 @@ Deno.test(
         "upgrade: websocket",
         "sec-websocket-key: SGVsbG8sIHdvcmxkIQ==",
         "\n",
-      ].join("\n"))
+      ].join("\n")),
     );
     let response = "";
-    for await (const text of tcp.readable.pipeThrough(new TextDecoderStream())) {
+    for await (
+      const text of tcp.readable.pipeThrough(new TextDecoderStream())
+    ) {
       if ((response += text).includes("\r\n\r\n")) break;
     }
     assert(response.includes("name: value"));
