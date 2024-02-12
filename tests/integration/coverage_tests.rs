@@ -1,9 +1,9 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use test_util::itest;
 use deno_core::serde_json;
 use std::fs;
 use test_util as util;
+use test_util::itest;
 use test_util::TempDir;
 use util::assert_starts_with;
 use util::env_vars_for_npm_tests;

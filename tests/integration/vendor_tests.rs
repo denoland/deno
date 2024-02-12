@@ -1,12 +1,12 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use test_util::itest;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use pretty_assertions::assert_eq;
 use std::fmt::Write as _;
 use std::path::PathBuf;
 use test_util as util;
+use test_util::itest;
 use test_util::TempDir;
 use util::http_server;
 use util::new_deno_dir;

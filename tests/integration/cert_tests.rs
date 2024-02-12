@@ -1,7 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use test_util::itest;
-use test_util::itest_flaky;
 use deno_tls::rustls;
 use deno_tls::rustls_pemfile;
 use deno_tls::rustls_tokio_stream::TlsStream;
@@ -10,6 +8,8 @@ use std::io::Cursor;
 use std::io::Read;
 use std::sync::Arc;
 use test_util as util;
+use test_util::itest;
+use test_util::itest_flaky;
 use url::Url;
 use util::testdata_path;
 use util::TestContext;

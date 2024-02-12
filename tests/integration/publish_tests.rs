@@ -1,11 +1,11 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use test_util::itest;
 use deno_core::serde_json::json;
 use test_util::assert_contains;
 use test_util::assert_not_contains;
 use test_util::env_vars_for_jsr_tests;
 use test_util::env_vars_for_npm_tests;
+use test_util::itest;
 use test_util::TestContextBuilder;
 
 itest!(no_token {

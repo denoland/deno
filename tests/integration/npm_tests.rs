@@ -1,11 +1,11 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use test_util::itest;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use pretty_assertions::assert_eq;
 use test_util as util;
+use test_util::itest;
 use util::assert_contains;
 use util::env_vars_for_npm_tests;
 use util::http_server;
