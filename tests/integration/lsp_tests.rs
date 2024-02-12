@@ -4666,7 +4666,7 @@ fn lsp_code_actions_deno_cache_jsr() {
   let temp_dir = context.temp_dir();
   // TODO(nayeemrmn): JSR resolution currently depends on a lockfile being
   // created on cache. Remove this when that's not the case.
-  temp_dir.write("deno.json", "{ \"vendor\": true }");
+  temp_dir.write("deno.json", "{}");
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
   let diagnostics = client.did_open(json!({
