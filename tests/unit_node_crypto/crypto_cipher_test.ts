@@ -3,7 +3,11 @@ import crypto from "node:crypto";
 import { Buffer } from "node:buffer";
 import { Readable } from "node:stream";
 import { buffer, text } from "node:stream/consumers";
-import { assertEquals, assertStrictEquals, assertThrows } from "@test_util/std/assert/mod.ts";
+import {
+  assertEquals,
+  assertStrictEquals,
+  assertThrows,
+} from "@test_util/std/assert/mod.ts";
 
 const rsaPrivateKey = Deno.readTextFileSync(
   new URL("../testdata/rsa_private.pem", import.meta.url),
@@ -256,7 +260,6 @@ Deno.test({
     );
   },
 });
-
 
 function setAutoPaddingTest(
   { algorithm, keyLength, pad }: {
