@@ -762,7 +762,6 @@ class DOMMatrixReadOnly {
 
   constructor(init = undefined) {
     const prefix = `Failed to construct '${this.constructor.name}'`;
-    this[_writable] = false;
     this[_brand] = _brand;
     if (init === undefined) {
       // deno-fmt-ignore
@@ -774,8 +773,8 @@ class DOMMatrixReadOnly {
       ]);
       this[_is2D] = true;
     } else if (ObjectPrototypeIsPrototypeOf(DOMMatrixReadOnlyPrototype, init)) {
-      this[_raw] = new Float64Array(init[_raw]);
-      this[_is2D] = init[_is2D];
+      // NOTE: not in the spec, but requested by wpt
+      initMatrixFromMatrix(this, init);
     } else if (webidl.type(init) === "Object") {
       init = webidl.converters["sequence<unrestricted double>"](
         init,
@@ -806,7 +805,7 @@ class DOMMatrixReadOnly {
     const matrix = webidl.createBranded(DOMMatrixReadOnly);
     matrix[_writable] = false;
     // fast path for DOMMatrix or DOMMatrixReadOnly
-    if (ObjectPrototypeIsPrototypeOf(DOMMatrixReadOnly, other)) {
+    if (ObjectPrototypeIsPrototypeOf(DOMMatrixReadOnlyPrototype, other)) {
       initMatrixFromMatrix(matrix, other);
     } else {
       other = webidl.converters.DOMMatrixInit(other, prefix, "Argument 1");
@@ -1289,7 +1288,7 @@ class DOMMatrix extends DOMMatrixReadOnly {
     const matrix = webidl.createBranded(DOMMatrix);
     matrix[_writable] = true;
     // fast path for DOMMatrix or DOMMatrixReadOnly
-    if (ObjectPrototypeIsPrototypeOf(DOMMatrixReadOnly, other)) {
+    if (ObjectPrototypeIsPrototypeOf(DOMMatrixReadOnlyPrototype, other)) {
       initMatrixFromMatrix(matrix, other);
     } else {
       other = webidl.converters.DOMMatrixInit(other, prefix, "Argument 1");
