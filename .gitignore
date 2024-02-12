@@ -12,9 +12,9 @@ gclient_config.py_entries
 /std/hash/_wasm/target
 /tools/wpt/manifest.json
 /third_party/
-/test_napi/node_modules
-/test_napi/build
-/test_napi/third_party_tests/node_modules
+/tests/napi/node_modules
+/tests/napi/build
+/tests/napi/third_party_tests/node_modules
 
 # MacOS generated files
 .DS_Store
