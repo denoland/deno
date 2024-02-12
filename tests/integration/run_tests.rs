@@ -5140,3 +5140,17 @@ console.log(add(3, 4));
   let output = test_context.new_command().args("run main.ts").run();
   output.assert_matches_text("[WILDCARD]5\n7\n");
 }
+
+#[test]
+fn inspect_color_overwrite() {
+  let test_context = TestContextBuilder::new().build();
+  let output = test_context
+    .new_command()
+    .skip_strip_ansi()
+    .split_output()
+    .env("NO_COLOR", "1")
+    .args("run run/inspect_color_overwrite.ts")
+    .run();
+
+  assert_eq!(output.stdout(), "foo\u{1b}[31mbar\u{1b}[0m\n");
+}
