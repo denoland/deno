@@ -133,7 +133,7 @@ fn format_sanitizer_accum_item(
 ) -> (RuntimeActivityType, Cow<'static, str>) {
   let activity_type = activity.activity();
   match activity {
-    RuntimeActivity::AsyncOp(_, name) => (activity_type, name.into()),
+    RuntimeActivity::AsyncOp(_, name, _) => (activity_type, name.into()),
     RuntimeActivity::Interval(_) => (activity_type, "".into()),
     RuntimeActivity::Resource(_, name) => (activity_type, name.into()),
     RuntimeActivity::Timer(_) => (activity_type, "".into()),
