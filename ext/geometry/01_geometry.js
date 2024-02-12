@@ -2031,7 +2031,7 @@ function enableWindowFeatures(parser) {
       }
     },
     writable: true,
-    enumerable: false,
+    enumerable: true,
     configurable: true,
   });
 
@@ -2051,7 +2051,7 @@ function enableWindowFeatures(parser) {
       this[_is2D] = is2D;
     },
     writable: true,
-    enumerable: false,
+    enumerable: true,
     configurable: true,
   });
 }

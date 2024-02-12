@@ -11165,9 +11165,7 @@
         "DOMRectList interface: operation item(unsigned long)",
         "DOMQuad interface: existence and properties of interface object",
         "DOMMatrixReadOnly interface: existence and properties of interface object",
-        "DOMMatrixReadOnly interface: stringifier",
-        "DOMMatrix interface: existence and properties of interface object",
-        "DOMMatrix interface: operation setMatrixValue(DOMString)"
+        "DOMMatrix interface: existence and properties of interface object"
       ],
       "idlharness.any.worker.html": [
         "DOMPointReadOnly interface: existence and properties of interface object",
