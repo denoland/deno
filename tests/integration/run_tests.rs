@@ -4351,14 +4351,6 @@ fn broken_stdout() {
   assert!(!stderr.contains("panic"));
 }
 
-itest!(inspect_color_overwrite {
-  args: "run run/inspect_color_overwrite.ts",
-  envs: vec![("NO_COLOR".to_string(), "1".to_string())],
-  skip_strip_ansi: true,
-  output: "run/inspect_color_overwrite.ts.out",
-  exit_code: 0,
-});
-
 itest!(error_cause {
   args: "run run/error_cause.ts",
   output: "run/error_cause.ts.out",
@@ -5147,4 +5139,18 @@ console.log(add(3, 4));
   );
   let output = test_context.new_command().args("run main.ts").run();
   output.assert_matches_text("[WILDCARD]5\n7\n");
+}
+
+#[test]
+fn inspect_color_overwrite() {
+  let test_context = TestContextBuilder::new().build();
+  let output = test_context
+    .new_command()
+    .skip_strip_ansi()
+    .split_output()
+    .env("NO_COLOR", "1")
+    .args("run run/inspect_color_overwrite.ts")
+    .run();
+
+  assert_eq!(output.stdout(), "foo\u{1b}[31mbar\u{1b}[0m\n");
 }
