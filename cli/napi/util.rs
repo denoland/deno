@@ -4,7 +4,5 @@ use deno_runtime::deno_napi::*;
 pub fn get_array_buffer_ptr(ab: v8::Local<v8::ArrayBuffer>) -> *mut u8 {
   // SAFETY: Thanks to the null pointer optimization, NonNull<T> and Option<NonNull<T>> are guaranteed
   // to have the same size and alignment.
-  unsafe {
-    std::mem::transmute(ab.data())
-  }
+  unsafe { std::mem::transmute(ab.data()) }
 }
