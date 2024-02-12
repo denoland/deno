@@ -1512,17 +1512,20 @@ Deno.test(
 );
 
 Deno.test(
-  { permissions: { net: true } },
+  { permissions: { net: true }, only: true },
   async function httpServerWebSocketHeader() {
     const headers = new Headers({ name: "value" });
+    const wsClosed = Promise.withResolvers<void>();
     const server = Deno.serve({
       port: servePort,
-      handler: (req) => Deno.upgradeWebSocket(req, { headers }).response,
+      handler: (req) => {
+        const { socket, response } = Deno.upgradeWebSocket(req, { headers });
+        socket.onclose = () => wsClosed.resolve();
+        return response;
+      },
     });
-    const conn = await Deno.connect({ port: servePort });
-    const w = conn.writable.getWriter();
-    const r = conn.readable.getReader();
-    await w.write(
+    const tcp = await Deno.connect({ port: servePort });
+    await tcp.writable.getWriter().write(
       new TextEncoder().encode([
         "GET / HTTP/1.1",
         "connection: upgrade",
@@ -1531,12 +1534,12 @@ Deno.test(
         "\n",
       ].join("\n"))
     );
-    let text = "";
-    while (!text.includes("\r\n\r\n")) {
-      text += new TextDecoder().decode((await r.read()).value);
+    let response = "";
+    for await (const text of tcp.readable.pipeThrough(new TextDecoderStream())) {
+      if ((response += text).includes("\r\n\r\n")) break;
     }
-    assert(text.includes("name: value"));
-    conn.close();
+    assert(response.includes("name: value"));
+    await wsClosed.promise;
     await server.shutdown();
   },
 );
