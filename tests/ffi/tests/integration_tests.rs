@@ -2,7 +2,9 @@
 
 use pretty_assertions::assert_eq;
 use std::process::Command;
-use test_util::{deno_cmd, deno_config_path, ffi_tests_path};
+use test_util::deno_cmd;
+use test_util::deno_config_path;
+use test_util::ffi_tests_path;
 
 #[cfg(debug_assertions)]
 const BUILD_VARIANT: &str = "debug";
@@ -30,6 +32,7 @@ fn basic() {
     .arg("run")
     .arg("--config")
     .arg(deno_config_path())
+    .arg("--no-lock")
     .arg("--allow-ffi")
     .arg("--allow-read")
     .arg("--unstable-ffi")
@@ -141,6 +144,7 @@ fn symbol_types() {
     .arg("check")
     .arg("--config")
     .arg(deno_config_path())
+    .arg("--no-lock")
     .arg("--unstable-ffi")
     .arg("--quiet")
     .arg("tests/ffi_types.ts")
@@ -167,6 +171,7 @@ fn thread_safe_callback() {
     .arg("run")
     .arg("--config")
     .arg(deno_config_path())
+    .arg("--no-lock")
     .arg("--allow-ffi")
     .arg("--allow-read")
     .arg("--unstable-ffi")
@@ -204,6 +209,7 @@ fn event_loop_integration() {
     .arg("run")
     .arg("--config")
     .arg(deno_config_path())
+    .arg("--no-lock")
     .arg("--allow-ffi")
     .arg("--allow-read")
     .arg("--unstable-ffi")
@@ -259,6 +265,7 @@ fn ffi_callback_errors_test() {
     .arg("run")
     .arg("--config")
     .arg(deno_config_path())
+    .arg("--no-lock")
     .arg("--allow-ffi")
     .arg("--allow-read")
     .arg("--unstable-ffi")
