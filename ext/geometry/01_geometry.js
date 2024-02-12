@@ -30,7 +30,6 @@ const {
   ObjectPrototypeIsPrototypeOf,
   Symbol,
   SymbolFor,
-  SymbolToStringTag,
   TypedArrayPrototypeEvery,
   TypedArrayPrototypeJoin,
   TypeError,
@@ -326,14 +325,8 @@ class DOMPointReadOnly {
   }
 }
 
+webidl.configureInterface(DOMPointReadOnly);
 const DOMPointReadOnlyPrototype = DOMPointReadOnly.prototype;
-
-ObjectDefineProperty(DOMPointReadOnlyPrototype, SymbolToStringTag, {
-  value: "DOMPointReadOnly",
-  configurable: true,
-  enumerable: false,
-  writable: false,
-});
 
 class DOMPoint extends DOMPointReadOnly {
   [_writable] = true;
@@ -409,14 +402,8 @@ class DOMPoint extends DOMPointReadOnly {
   }
 }
 
+webidl.configureInterface(DOMPoint);
 const DOMPointPrototype = DOMPoint.prototype;
-
-ObjectDefineProperty(DOMPointPrototype, SymbolToStringTag, {
-  value: "DOMPoint",
-  configurable: true,
-  enumerable: false,
-  writable: false,
-});
 
 class DOMRectReadOnly {
   [_writable] = false;
@@ -522,14 +509,8 @@ class DOMRectReadOnly {
   }
 }
 
+webidl.configureInterface(DOMRectReadOnly);
 const DOMRectReadOnlyPrototype = DOMRectReadOnly.prototype;
-
-ObjectDefineProperty(DOMRectReadOnlyPrototype, SymbolToStringTag, {
-  value: "DOMRectReadOnly",
-  configurable: true,
-  enumerable: false,
-  writable: false,
-});
 
 class DOMRect extends DOMRectReadOnly {
   [_writable] = true;
@@ -609,14 +590,8 @@ class DOMRect extends DOMRectReadOnly {
   }
 }
 
+webidl.configureInterface(DOMRect);
 const DOMRectPrototype = DOMRect.prototype;
-
-ObjectDefineProperty(DOMRectPrototype, SymbolToStringTag, {
-  value: "DOMRect",
-  configurable: true,
-  enumerable: false,
-  writable: false,
-});
 
 const _p1 = Symbol("[[p1]]");
 const _p2 = Symbol("[[p2]]");
@@ -733,14 +708,8 @@ class DOMQuad {
   }
 }
 
+webidl.configureInterface(DOMQuad);
 const DOMQuadPrototype = DOMQuad.prototype;
-
-ObjectDefineProperty(DOMQuadPrototype, SymbolToStringTag, {
-  value: "DOMQuad",
-  configurable: true,
-  enumerable: false,
-  writable: false,
-});
 
 /**
  * NOTE: column-major order
@@ -1309,14 +1278,8 @@ class DOMMatrixReadOnly {
   }
 }
 
+webidl.configureInterface(DOMMatrixReadOnly);
 const DOMMatrixReadOnlyPrototype = DOMMatrixReadOnly.prototype;
-
-ObjectDefineProperty(DOMMatrixReadOnlyPrototype, SymbolToStringTag, {
-  value: "DOMMatrixReadOnly",
-  configurable: true,
-  enumerable: false,
-  writable: false,
-});
 
 class DOMMatrix extends DOMMatrixReadOnly {
   [_writable] = true;
@@ -1836,14 +1799,8 @@ class DOMMatrix extends DOMMatrixReadOnly {
   }
 }
 
+webidl.configureInterface(DOMMatrix);
 const DOMMatrixPrototype = DOMMatrix.prototype;
-
-ObjectDefineProperty(DOMMatrixPrototype, SymbolToStringTag, {
-  value: "DOMMatrix",
-  configurable: true,
-  enumerable: false,
-  writable: false,
-});
 
 function assertWritable(self) {
   if (self[_writable] !== true) {
