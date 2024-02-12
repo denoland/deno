@@ -4758,6 +4758,7 @@ fn lsp_code_actions_deno_cache_jsr() {
       ],
     }),
   );
+  client.read_diagnostics();
   // TODO(nayeemrmn): JSR resolution currently depends on a lockfile being
   // created on cache. Remove this when that's not the case.
   client.did_change_watched_files(json!({
