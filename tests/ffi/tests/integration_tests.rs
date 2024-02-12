@@ -2,7 +2,7 @@
 
 use pretty_assertions::assert_eq;
 use std::process::Command;
-use test_util::deno_cmd;
+use test_util::{deno_cmd, deno_config_path};
 
 #[cfg(debug_assertions)]
 const BUILD_VARIANT: &str = "debug";
@@ -195,6 +195,8 @@ fn event_loop_integration() {
     .arg("--allow-ffi")
     .arg("--allow-read")
     .arg("--unstable-ffi")
+    .arg("--config")
+    .arg(deno_config_path())
     .arg("--quiet")
     .arg("tests/event_loop_integration.ts")
     .env("NO_COLOR", "1")
@@ -247,6 +249,8 @@ fn ffi_callback_errors_test() {
     .arg("--allow-ffi")
     .arg("--allow-read")
     .arg("--unstable-ffi")
+    .arg("--config")
+    .arg(deno_config_path())
     .arg("--quiet")
     .arg("tests/ffi_callback_errors.ts")
     .env("NO_COLOR", "1")
