@@ -4758,28 +4758,7 @@ fn lsp_code_actions_deno_cache_jsr() {
       ],
     }),
   );
-  client.read_diagnostics();
-  // TODO(nayeemrmn): JSR resolution currently depends on a lockfile being
-  // created on cache. Remove this when that's not the case.
-  client.did_change_watched_files(json!({
-    "changes": [{
-      "uri": temp_dir.uri().join("deno.lock").unwrap(),
-      "type": 1,
-    }],
-  }));
-  // The new diagnostics from the lockfile change arrive inconsistently on CI
-  // for some reason. Force it with this.
-  let diagnostics = client.did_open(json!({
-    "textDocument": {
-      "uri": temp_dir.uri().join("file.ts").unwrap(),
-      "languageId": "typescript",
-      "version": 1,
-      "text": r#"
-        import { add } from "jsr:@denotest/add@1";
-        console.log(add(1, 2));
-      "#,
-    },
-  }));
+  let diagnostics = client.read_diagnostics();
   assert_eq!(json!(diagnostics.all()), json!([]));
   client.shutdown();
 }

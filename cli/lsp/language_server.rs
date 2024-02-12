@@ -362,9 +362,24 @@ impl LanguageServer {
           .client
           .show_message(MessageType::WARNING, err);
       }
-      // do npm resolution in a write—we should have everything
-      // cached by this point anyway
-      self.0.write().await.refresh_npm_specifiers().await;
+      let mut lockfile_content_changed = false;
+      if let Some(lockfile) = self.0.read().await.config.maybe_lockfile() {
+        let lockfile = lockfile.lock();
+        let path = lockfile.filename.clone();
+        if let Ok(new_lockfile) = Lockfile::new(path, false) {
+          lockfile_content_changed = FastInsecureHasher::hash(&*lockfile)
+            != FastInsecureHasher::hash(new_lockfile);
+        } else {
+          lockfile_content_changed = true;
+        }
+      }
+      if lockfile_content_changed {
+        // TODO(nayeemrmn): Remove this branch when the documents config no
+        // longer depends on the lockfile for JSR resolution.
+        self.0.write().await.refresh_documents_config().await;
+      } else {
+        self.0.write().await.refresh_npm_specifiers().await;
+      }
       // now refresh the data in a read
       self.0.read().await.post_cache(result.mark).await;
     }
