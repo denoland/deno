@@ -2,6 +2,7 @@
 
 use super::cache::calculate_fs_version;
 use super::cache::calculate_fs_version_at_path;
+use super::jsr_resolver::JsrResolver;
 use super::language_server::StateNpmSnapshot;
 use super::text::LineIndex;
 use super::tsc;
@@ -38,6 +39,7 @@ use deno_core::ModuleSpecifier;
 use deno_graph::source::ResolutionMode;
 use deno_graph::GraphImport;
 use deno_graph::Resolution;
+use deno_lockfile::Lockfile;
 use deno_runtime::deno_fs::RealFs;
 use deno_runtime::deno_node;
 use deno_runtime::deno_node::NodeResolution;
@@ -855,6 +857,7 @@ pub struct UpdateDocumentConfigOptions<'a> {
   pub maybe_import_map: Option<Arc<import_map::ImportMap>>,
   pub maybe_config_file: Option<&'a ConfigFile>,
   pub maybe_package_json: Option<&'a PackageJson>,
+  pub maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
   pub node_resolver: Option<Arc<NodeResolver>>,
   pub npm_resolver: Option<Arc<dyn CliNpmResolver>>,
 }
@@ -893,6 +896,7 @@ pub struct Documents {
   /// A resolver that takes into account currently loaded import map and JSX
   /// settings.
   resolver: Arc<CliGraphResolver>,
+  jsr_resolver: Arc<JsrResolver>,
   /// The npm package requirements found in npm specifiers.
   npm_specifier_reqs: Arc<Vec<PackageReq>>,
   /// Gets if any document had a node: specifier such that a @types/node package
@@ -927,6 +931,7 @@ impl Documents {
         bare_node_builtins_enabled: false,
         sloppy_imports_resolver: None,
       })),
+      jsr_resolver: Default::default(),
       npm_specifier_reqs: Default::default(),
       has_injected_types_node_package: false,
       redirect_resolver: Arc::new(RedirectResolver::new(cache)),
@@ -1084,7 +1089,11 @@ impl Documents {
           .into_owned(),
       )
     } else {
-      self.redirect_resolver.resolve(specifier)
+      let specifier = match self.jsr_resolver.jsr_to_registry_url(specifier) {
+        Some(url) => Cow::Owned(url),
+        None => Cow::Borrowed(specifier),
+      };
+      self.redirect_resolver.resolve(&specifier)
     }
   }
 
@@ -1425,6 +1434,10 @@ impl Documents {
       // specifier for free.
       sloppy_imports_resolver: None,
     }));
+    self.jsr_resolver = Arc::new(JsrResolver::from_cache_and_lockfile(
+      self.cache.clone(),
+      options.maybe_lockfile,
+    ));
     self.redirect_resolver =
       Arc::new(RedirectResolver::new(self.cache.clone()));
     self.imports = Arc::new(
@@ -2252,6 +2265,7 @@ console.log(b, "hello deno");
         maybe_import_map: Some(Arc::new(import_map)),
         maybe_config_file: None,
         maybe_package_json: None,
+        maybe_lockfile: None,
         node_resolver: None,
         npm_resolver: None,
       });
@@ -2295,6 +2309,7 @@ console.log(b, "hello deno");
         maybe_import_map: Some(Arc::new(import_map)),
         maybe_config_file: None,
         maybe_package_json: None,
+        maybe_lockfile: None,
         node_resolver: None,
         npm_resolver: None,
       });
