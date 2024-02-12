@@ -490,6 +490,7 @@ pub struct CheckOutputIntegrationTest<'a> {
   pub http_server: bool,
   pub envs: Vec<(String, String)>,
   pub env_clear: bool,
+  pub skip_strip_ansi: bool,
   pub temp_cwd: bool,
   /// Copies the files at the specified directory in the "testdata" directory
   /// to the temp folder and runs the test from there. This is useful when
@@ -530,6 +531,9 @@ impl<'a> CheckOutputIntegrationTest<'a> {
     }
     if self.env_clear {
       command_builder = command_builder.env_clear();
+    }
+    if self.skip_strip_ansi {
+      command_builder = command_builder.skip_strip_ansi();
     }
     if let Some(cwd) = &self.cwd {
       command_builder = command_builder.current_dir(cwd);
