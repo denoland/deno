@@ -15,36 +15,12 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct JsrResolver {
   nv_by_req: HashMap<PackageReq, PackageNv>,
   /// The `module_graph` field of the version infos should be forcibly absent.
   /// It can be large and we don't want to store it.
   info_by_nv: HashMap<PackageNv, JsrPackageVersionInfo>,
-}
-
-// TODO(nayeemrmn): Derive `Debug` on `PackageReq` etc..
-impl std::fmt::Debug for JsrResolver {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    f.debug_struct("JsrResolver")
-      .field(
-        "nv_by_req",
-        &self
-          .nv_by_req
-          .iter()
-          .map(|(r, n)| (r.to_string(), n.to_string()))
-          .collect::<HashMap<_, _>>(),
-      )
-      .field(
-        "info_by_nv",
-        &self
-          .info_by_nv
-          .iter()
-          .map(|(n, i)| (n.to_string(), json!(i).to_string()))
-          .collect::<HashMap<_, _>>(),
-      )
-      .finish()
-  }
 }
 
 impl JsrResolver {
