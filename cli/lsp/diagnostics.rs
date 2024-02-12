@@ -330,6 +330,8 @@ impl DiagnosticsState {
       if diagnostic.code
         == Some(lsp::NumberOrString::String("no-cache".to_string()))
         || diagnostic.code
+          == Some(lsp::NumberOrString::String("no-cache-jsr".to_string()))
+        || diagnostic.code
           == Some(lsp::NumberOrString::String("no-cache-npm".to_string()))
       {
         no_cache_diagnostics.push(diagnostic.clone());
@@ -1076,7 +1078,7 @@ impl DenoDiagnostic {
           }),
           ..Default::default()
         },
-        "no-cache" | "no-cache-npm" => {
+        "no-cache" | "no-cache-jsr" | "no-cache-npm" => {
           let data = diagnostic
             .data
             .clone()
@@ -1192,6 +1194,7 @@ impl DenoDiagnostic {
       match code.as_str() {
         "import-map-remap"
         | "no-cache"
+        | "no-cache-jsr"
         | "no-cache-npm"
         | "no-attribute-type"
         | "redirect"
