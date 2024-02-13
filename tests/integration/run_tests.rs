@@ -11,6 +11,7 @@ use std::process::Command;
 use std::process::Stdio;
 use std::time::Duration;
 use test_util as util;
+use test_util::itest;
 use test_util::TempDir;
 use trust_dns_client::serialize::txt::Lexer;
 use trust_dns_client::serialize::txt::Parser;
@@ -2652,6 +2653,7 @@ fn dont_cache_on_check_fail() {
 
 mod permissions {
   use test_util as util;
+  use test_util::itest;
   use util::TestContext;
 
   // TODO(bartlomieju): remove --unstable once Deno.Command is stabilized

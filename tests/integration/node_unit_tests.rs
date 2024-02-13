@@ -1,9 +1,11 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
 use std::io::BufRead;
 use std::io::BufReader;
 use std::time::Duration;
 use std::time::Instant;
 use test_util as util;
+use test_util::itest;
 use util::deno_config_path;
 use util::env_vars_for_npm_tests;
 

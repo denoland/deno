@@ -29,6 +29,7 @@ pub mod factory;
 mod fs;
 mod https;
 pub mod lsp;
+mod macros;
 mod npm;
 pub mod pty;
 pub mod servers;
