@@ -100,20 +100,16 @@ impl File {
   }
 }
 
-/// Simple struct implementing in-process caching to prevent multiple
-/// fs reads/net fetches for same file.
 #[derive(Debug, Clone, Default)]
-struct FileCache(Arc<Mutex<HashMap<ModuleSpecifier, File>>>);
+struct MemoryFiles(Arc<Mutex<HashMap<ModuleSpecifier, File>>>);
 
-impl FileCache {
+impl MemoryFiles {
   pub fn get(&self, specifier: &ModuleSpecifier) -> Option<File> {
-    let cache = self.0.lock();
-    cache.get(specifier).cloned()
+    self.0.lock().get(specifier).cloned()
   }
 
   pub fn insert(&self, specifier: ModuleSpecifier, file: File) -> Option<File> {
-    let mut cache = self.0.lock();
-    cache.insert(specifier, file)
+    self.0.lock().insert(specifier, file)
   }
 }
 
@@ -157,7 +153,7 @@ pub struct FetchOptions<'a> {
 pub struct FileFetcher {
   auth_tokens: AuthTokens,
   allow_remote: bool,
-  cache: FileCache,
+  memory_files: MemoryFiles,
   cache_setting: CacheSetting,
   http_cache: Arc<dyn HttpCache>,
   http_client: Arc<HttpClient>,
@@ -178,7 +174,7 @@ impl FileFetcher {
     Self {
       auth_tokens: AuthTokens::new(env::var("DENO_AUTH_TOKENS").ok()),
       allow_remote,
-      cache: Default::default(),
+      memory_files: Default::default(),
       cache_setting,
       http_cache,
       http_client,
@@ -498,7 +494,7 @@ impl FileFetcher {
     debug!("FileFetcher::fetch() - specifier: {}", specifier);
     let scheme = get_validated_scheme(specifier)?;
     options.permissions.check_specifier(specifier)?;
-    if let Some(file) = self.cache.get(specifier) {
+    if let Some(file) = self.memory_files.get(specifier) {
       Ok(file)
     } else if scheme == "file" {
       // we do not in memory cache files, as this would prevent files on the
@@ -514,7 +510,7 @@ impl FileFetcher {
         format!("A remote specifier was requested: \"{specifier}\", but --no-remote is specified."),
       ))
     } else {
-      let result = self
+      self
         .fetch_remote(
           specifier,
           options.permissions,
@@ -522,11 +518,7 @@ impl FileFetcher {
           options.maybe_accept.map(String::from),
           options.maybe_cache_setting.unwrap_or(&self.cache_setting),
         )
-        .await;
-      if let Ok(file) = &result {
-        self.cache.insert(specifier.clone(), file.clone());
-      }
-      result
+        .await
     }
   }
 
@@ -534,7 +526,7 @@ impl FileFetcher {
   /// been cached in memory it will be returned, otherwise for local files will
   /// be read from disk.
   pub fn get_source(&self, specifier: &ModuleSpecifier) -> Option<File> {
-    let maybe_file = self.cache.get(specifier);
+    let maybe_file = self.memory_files.get(specifier);
     if maybe_file.is_none() {
       let is_local = specifier.scheme() == "file";
       if is_local {
@@ -548,9 +540,9 @@ impl FileFetcher {
     }
   }
 
-  /// Insert a temporary module into the in memory cache for the file fetcher.
-  pub fn insert_cached(&self, file: File) -> Option<File> {
-    self.cache.insert(file.specifier.clone(), file)
+  /// Insert a temporary module for the file fetcher.
+  pub fn insert_memory_files(&self, file: File) -> Option<File> {
+    self.memory_files.insert(file.specifier.clone(), file)
   }
 }
 
@@ -826,7 +818,7 @@ mod tests {
         "application/javascript".to_string(),
       )])),
     };
-    file_fetcher.insert_cached(file.clone());
+    file_fetcher.insert_memory_files(file.clone());
 
     let result = file_fetcher
       .fetch(&specifier, PermissionsContainer::allow_all())
@@ -834,30 +826,6 @@ mod tests {
     assert!(result.is_ok());
     let result_file = result.unwrap();
     assert_eq!(result_file, file);
-  }
-
-  #[tokio::test]
-  async fn test_get_source() {
-    let _http_server_guard = test_util::http_server();
-    let (file_fetcher, _) = setup(CacheSetting::Use, None);
-    let specifier =
-      resolve_url("http://localhost:4548/subdir/redirects/redirect1.js")
-        .unwrap();
-
-    let result = file_fetcher
-      .fetch(&specifier, PermissionsContainer::allow_all())
-      .await;
-    assert!(result.is_ok());
-
-    let maybe_file = file_fetcher.get_source(&specifier);
-    assert!(maybe_file.is_some());
-    let file = maybe_file.unwrap().into_text_decoded().unwrap();
-    assert_eq!(file.source.as_ref(), "export const redirect = 1;\n");
-    assert_eq!(
-      file.specifier,
-      resolve_url("http://localhost:4545/subdir/redirects/redirect1.js")
-        .unwrap()
-    );
   }
 
   #[tokio::test]

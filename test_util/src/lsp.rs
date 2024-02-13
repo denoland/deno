@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::deno_exe_path;
+use crate::jsr_registry_url;
 use crate::npm_registry_url;
 use crate::PathRef;
 
@@ -523,6 +524,7 @@ impl LspClientBuilder {
     command
       .env("DENO_DIR", deno_dir.path())
       .env("NPM_CONFIG_REGISTRY", npm_registry_url())
+      .env("DENO_REGISTRY_URL", jsr_registry_url())
       // turn on diagnostic synchronization communication
       .env(
         "DENO_DONT_USE_INTERNAL_LSP_DIAGNOSTIC_SYNC_FLAG",

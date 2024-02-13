@@ -1,6 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::colors;
 use crate::fs_util::resolve_from_cwd;
 use deno_core::error::custom_error;
 use deno_core::error::type_error;
@@ -15,6 +14,7 @@ use deno_core::serde_json;
 use deno_core::url;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
+use deno_terminal::colors;
 use log;
 use once_cell::sync::Lazy;
 use std::borrow::Cow;
@@ -688,7 +688,7 @@ impl Descriptor for SysDescriptor {
 pub fn parse_sys_kind(kind: &str) -> Result<&str, AnyError> {
   match kind {
     "hostname" | "osRelease" | "osUptime" | "loadavg" | "networkInterfaces"
-    | "systemMemoryInfo" | "uid" | "gid" => Ok(kind),
+    | "systemMemoryInfo" | "uid" | "gid" | "cpus" => Ok(kind),
     _ => Err(type_error(format!("unknown system info kind \"{kind}\""))),
   }
 }

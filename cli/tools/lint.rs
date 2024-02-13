@@ -8,33 +8,22 @@ use crate::args::LintOptions;
 use crate::args::LintReporterKind;
 use crate::args::LintRulesConfig;
 use crate::colors;
-use crate::diagnostics::Diagnostic;
-use crate::diagnostics::DiagnosticLevel;
-use crate::diagnostics::DiagnosticLocation;
-use crate::diagnostics::DiagnosticSnippet;
-use crate::diagnostics::DiagnosticSnippetHighlight;
-use crate::diagnostics::DiagnosticSnippetHighlightStyle;
-use crate::diagnostics::DiagnosticSnippetSource;
-use crate::diagnostics::DiagnosticSourcePos;
-use crate::diagnostics::DiagnosticSourceRange;
-use crate::diagnostics::SourceTextStore;
 use crate::factory::CliFactory;
 use crate::tools::fmt::run_parallelized;
 use crate::util::file_watcher;
 use crate::util::fs::canonicalize_path;
+use crate::util::fs::specifier_from_file_path;
 use crate::util::fs::FileCollector;
 use crate::util::path::is_script_ext;
 use crate::util::sync::AtomicFlag;
+use deno_ast::diagnostics::Diagnostic;
 use deno_ast::MediaType;
-use deno_ast::ModuleSpecifier;
 use deno_ast::ParsedSource;
-use deno_ast::SourceTextInfo;
 use deno_config::glob::FilePatterns;
 use deno_core::anyhow::bail;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
-use deno_core::url;
 use deno_lint::diagnostic::LintDiagnostic;
 use deno_lint::linter::LintFileOptions;
 use deno_lint::linter::Linter;
@@ -44,7 +33,6 @@ use deno_lint::rules::LintRule;
 use log::debug;
 use log::info;
 use serde::Serialize;
-use std::borrow::Cow;
 use std::fs;
 use std::io::stdin;
 use std::io::Read;
@@ -124,9 +112,12 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
       let reporter_lock = Arc::new(Mutex::new(create_reporter(reporter_kind)));
       let lint_rules = get_config_rules_err_empty(lint_options.rules)?;
       let file_path = cli_options.initial_cwd().join(STDIN_FILE_NAME);
-      let file_path = file_path.to_string_lossy();
       let r = lint_stdin(&file_path, lint_rules);
-      let success = handle_lint_result(&file_path, r, reporter_lock.clone());
+      let success = handle_lint_result(
+        &file_path.to_string_lossy(),
+        r,
+        reporter_lock.clone(),
+      );
       reporter_lock.lock().unwrap().close(1);
       success
     } else {
@@ -278,13 +269,13 @@ fn lint_file(
   source_code: String,
   lint_rules: Vec<&'static dyn LintRule>,
 ) -> Result<(Vec<LintDiagnostic>, ParsedSource), AnyError> {
-  let filename = file_path.to_string_lossy().to_string();
-  let media_type = MediaType::from_path(file_path);
+  let specifier = specifier_from_file_path(file_path)?;
+  let media_type = MediaType::from_specifier(&specifier);
 
   let linter = create_linter(lint_rules);
 
   let (source, file_diagnostics) = linter.lint_file(LintFileOptions {
-    filename,
+    specifier,
     media_type,
     source_code: source_code.clone(),
   })?;
@@ -296,7 +287,7 @@ fn lint_file(
 /// Treats input as TypeScript.
 /// Compatible with `--json` flag.
 fn lint_stdin(
-  file_path: &str,
+  file_path: &Path,
   lint_rules: Vec<&'static dyn LintRule>,
 ) -> Result<(Vec<LintDiagnostic>, ParsedSource), AnyError> {
   let mut source_code = String::new();
@@ -307,7 +298,7 @@ fn lint_stdin(
   let linter = create_linter(lint_rules);
 
   let (source, file_diagnostics) = linter.lint_file(LintFileOptions {
-    filename: file_path.to_string(),
+    specifier: specifier_from_file_path(file_path)?,
     source_code: source_code.clone(),
     media_type: MediaType::TypeScript,
   })?;
@@ -324,7 +315,10 @@ fn handle_lint_result(
 
   match result {
     Ok((mut file_diagnostics, source)) => {
-      sort_diagnostics(&mut file_diagnostics);
+      file_diagnostics.sort_by(|a, b| match a.specifier.cmp(&b.specifier) {
+        std::cmp::Ordering::Equal => a.range.start.cmp(&b.range.start),
+        file_order => file_order,
+      });
       for d in file_diagnostics.iter() {
         reporter.visit_diagnostic(d, &source);
       }
@@ -359,77 +353,11 @@ impl PrettyLintReporter {
   }
 }
 
-impl Diagnostic for LintDiagnostic {
-  fn level(&self) -> DiagnosticLevel {
-    DiagnosticLevel::Error
-  }
-
-  fn code(&self) -> impl std::fmt::Display + '_ {
-    &self.code
-  }
-
-  fn message(&self) -> impl std::fmt::Display + '_ {
-    &self.message
-  }
-
-  fn location(&self) -> DiagnosticLocation {
-    let specifier = url::Url::from_file_path(&self.filename).unwrap();
-    DiagnosticLocation::ModulePosition {
-      specifier: Cow::Owned(specifier),
-      source_pos: DiagnosticSourcePos::ByteIndex(self.range.start.byte_index),
-    }
-  }
-
-  fn snippet(&self) -> Option<DiagnosticSnippet<'_>> {
-    let specifier = url::Url::from_file_path(&self.filename).unwrap();
-    let range = DiagnosticSourceRange {
-      start: DiagnosticSourcePos::ByteIndex(self.range.start.byte_index),
-      end: DiagnosticSourcePos::ByteIndex(self.range.end.byte_index),
-    };
-    Some(DiagnosticSnippet {
-      source: DiagnosticSnippetSource::Specifier(Cow::Owned(specifier)),
-      highlight: DiagnosticSnippetHighlight {
-        range,
-        style: DiagnosticSnippetHighlightStyle::Error,
-        description: None,
-      },
-    })
-  }
-
-  fn hint(&self) -> Option<impl std::fmt::Display + '_> {
-    self.hint.as_ref().map(|h| h as &dyn std::fmt::Display)
-  }
-
-  fn snippet_fixed(&self) -> Option<DiagnosticSnippet<'_>> {
-    None // todo
-  }
-
-  fn info(&self) -> Cow<'_, [std::borrow::Cow<'_, str>]> {
-    Cow::Borrowed(&[])
-  }
-
-  fn docs_url(&self) -> Option<impl std::fmt::Display + '_> {
-    Some(format!("https://lint.deno.land/#{}", &self.code))
-  }
-}
-
-struct OneSource<'a>(&'a ParsedSource);
-
-impl SourceTextStore for OneSource<'_> {
-  fn get_source_text<'a>(
-    &'a self,
-    _specifier: &ModuleSpecifier,
-  ) -> Option<Cow<'a, SourceTextInfo>> {
-    Some(Cow::Borrowed(self.0.text_info()))
-  }
-}
-
 impl LintReporter for PrettyLintReporter {
-  fn visit_diagnostic(&mut self, d: &LintDiagnostic, source: &ParsedSource) {
+  fn visit_diagnostic(&mut self, d: &LintDiagnostic, _source: &ParsedSource) {
     self.lint_count += 1;
 
-    let sources = OneSource(source);
-    eprintln!("{}", d.display(&sources));
+    eprintln!("{}", d.display());
   }
 
   fn visit_error(&mut self, file_path: &str, err: &AnyError) {
@@ -466,11 +394,12 @@ impl LintReporter for CompactLintReporter {
   fn visit_diagnostic(&mut self, d: &LintDiagnostic, _source: &ParsedSource) {
     self.lint_count += 1;
 
+    let line_and_column = d.text_info.line_and_column_display(d.range.start);
     eprintln!(
       "{}: line {}, col {} - {} ({})",
-      d.filename,
-      d.range.start.line_index + 1,
-      d.range.start.column_index + 1,
+      d.specifier,
+      line_and_column.line_number,
+      line_and_column.column_number,
       d.message,
       d.code
     )
@@ -496,9 +425,47 @@ impl LintReporter for CompactLintReporter {
   }
 }
 
+// WARNING: Ensure doesn't change because it's used in the JSON output
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JsonDiagnosticLintPosition {
+  /// The 1-indexed line number.
+  pub line: usize,
+  /// The 0-indexed column index.
+  pub col: usize,
+  pub byte_pos: usize,
+}
+
+impl JsonDiagnosticLintPosition {
+  pub fn new(byte_index: usize, loc: deno_ast::LineAndColumnIndex) -> Self {
+    JsonDiagnosticLintPosition {
+      line: loc.line_index + 1,
+      col: loc.column_index,
+      byte_pos: byte_index,
+    }
+  }
+}
+
+// WARNING: Ensure doesn't change because it's used in the JSON output
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+struct JsonLintDiagnosticRange {
+  pub start: JsonDiagnosticLintPosition,
+  pub end: JsonDiagnosticLintPosition,
+}
+
+// WARNING: Ensure doesn't change because it's used in the JSON output
+#[derive(Clone, Serialize)]
+struct JsonLintDiagnostic {
+  pub filename: String,
+  pub range: JsonLintDiagnosticRange,
+  pub message: String,
+  pub code: String,
+  pub hint: Option<String>,
+}
+
 #[derive(Serialize)]
 struct JsonLintReporter {
-  diagnostics: Vec<LintDiagnostic>,
+  diagnostics: Vec<JsonLintDiagnostic>,
   errors: Vec<LintError>,
 }
 
@@ -513,7 +480,22 @@ impl JsonLintReporter {
 
 impl LintReporter for JsonLintReporter {
   fn visit_diagnostic(&mut self, d: &LintDiagnostic, _source: &ParsedSource) {
-    self.diagnostics.push(d.clone());
+    self.diagnostics.push(JsonLintDiagnostic {
+      filename: d.specifier.to_string(),
+      range: JsonLintDiagnosticRange {
+        start: JsonDiagnosticLintPosition::new(
+          d.range.start.as_byte_index(d.text_info.range().start),
+          d.text_info.line_and_column_index(d.range.start),
+        ),
+        end: JsonDiagnosticLintPosition::new(
+          d.range.end.as_byte_index(d.text_info.range().start),
+          d.text_info.line_and_column_index(d.range.end),
+        ),
+      },
+      message: d.message.clone(),
+      code: d.code.clone(),
+      hint: d.hint.clone(),
+    });
   }
 
   fn visit_error(&mut self, file_path: &str, err: &AnyError) {
@@ -530,19 +512,16 @@ impl LintReporter for JsonLintReporter {
   }
 }
 
-fn sort_diagnostics(diagnostics: &mut [LintDiagnostic]) {
+fn sort_diagnostics(diagnostics: &mut [JsonLintDiagnostic]) {
   // Sort so that we guarantee a deterministic output which is useful for tests
   diagnostics.sort_by(|a, b| {
     use std::cmp::Ordering;
     let file_order = a.filename.cmp(&b.filename);
     match file_order {
       Ordering::Equal => {
-        let line_order =
-          a.range.start.line_index.cmp(&b.range.start.line_index);
+        let line_order = a.range.start.line.cmp(&b.range.start.line);
         match line_order {
-          Ordering::Equal => {
-            a.range.start.column_index.cmp(&b.range.start.column_index)
-          }
+          Ordering::Equal => a.range.start.col.cmp(&b.range.start.col),
           _ => line_order,
         }
       }

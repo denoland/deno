@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use deno_core::error::AnyError;
 use deno_graph::Module;
-use deno_runtime::colors;
+use deno_terminal::colors;
 
 use crate::args::BundleFlags;
 use crate::args::CliOptions;
