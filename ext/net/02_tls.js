@@ -67,7 +67,21 @@ async function connectTls({
     internals.warnOnDeprecatedApi(
       "Deno.ConnectTlsOptions.certFile",
       new Error().stack,
-      "Pass the cert file contents to the `Deno.ConnectTlsOptions.certChain` option instead.",
+      "Pass the cert file contents to the `Deno.ConnectTlsOptions.cert` option instead.",
+    );
+  }
+  if (certChain !== undefined) {
+    internals.warnOnDeprecatedApi(
+      "Deno.ConnectTlsOptions.certChain",
+      new Error().stack,
+      "Use the `Deno.ConnectTlsOptions.cert` option instead.",
+    );
+  }
+  if (privateKey !== undefined) {
+    internals.warnOnDeprecatedApi(
+      "Deno.ConnectTlsOptions.privateKey",
+      new Error().stack,
+      "Use the `Deno.ConnectTlsOptions.key` option instead.",
     );
   }
   if (transport !== "tcp") {
