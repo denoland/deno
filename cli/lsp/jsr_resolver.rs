@@ -70,6 +70,7 @@ impl JsrResolver {
         continue;
       };
       let info = JsrPackageVersionInfo {
+        manifest: Default::default(),
         exports: json!(info.as_object().and_then(|o| o.get("exports"))),
         module_graph: None,
       };
