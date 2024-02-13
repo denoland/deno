@@ -159,6 +159,8 @@ async fn prepare_publish(
     package: package_name.to_string(),
     version: version.to_string(),
     tarball,
+    // the config file is always at the root of a publishing dir,
+    // so getting the file name is always correct
     config: config_path.file_name().unwrap().to_string_lossy().to_string(),
   }))
 }
