@@ -161,7 +161,11 @@ async fn prepare_publish(
     tarball,
     // the config file is always at the root of a publishing dir,
     // so getting the file name is always correct
-    config: config_path.file_name().unwrap().to_string_lossy().to_string(),
+    config: config_path
+      .file_name()
+      .unwrap()
+      .to_string_lossy()
+      .to_string(),
   }))
 }
 
@@ -546,7 +550,11 @@ async fn publish_package(
 
   let url = format!(
     "{}scopes/{}/packages/{}/versions/{}?config=/{}",
-    registry_api_url, package.scope, package.package, package.version, package.config
+    registry_api_url,
+    package.scope,
+    package.package,
+    package.version,
+    package.config
   );
 
   let response = client
