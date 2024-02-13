@@ -1,10 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import {
-  assert,
-  assertEquals,
-  assertObjectMatch,
-} from "@std/assert/mod.ts";
+import { assert, assertEquals, assertObjectMatch } from "@std/assert/mod.ts";
 import { fromFileUrl, relative } from "@std/path/mod.ts";
 import * as workerThreads from "node:worker_threads";
 import { EventEmitter, once } from "node:events";

@@ -1,9 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-import {
-  assertEquals,
-  assertNotEquals,
-  fail,
-} from "@std/assert/mod.ts";
+import { assertEquals, assertNotEquals, fail } from "@std/assert/mod.ts";
 import { assertCallbackErrorUncaught } from "../_test_utils.ts";
 import { readdir, readdirSync } from "node:fs";
 import { join } from "@std/path/mod.ts";
