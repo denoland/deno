@@ -89,11 +89,11 @@ async function connectTls({
       "Cannot specify both `privateKey` and `key`",
     );
   }
-  certChain ??= cert;
-  privateKey ??= key;
+  cert ??= certChain;
+  key ??= privateKey;
   const { 0: rid, 1: localAddr, 2: remoteAddr } = await op_net_connect_tls(
     { hostname, port },
-    { certFile, caCerts, certChain, privateKey, alpnProtocols },
+    { certFile, caCerts, cert, key, alpnProtocols },
   );
   localAddr.transport = "tcp";
   remoteAddr.transport = "tcp";
