@@ -130,7 +130,7 @@ export function runPy<T extends Omit<Deno.CommandOptions, "cwd">>(
     stdout: "inherit",
     stderr: "inherit",
     ...options,
-    cwd: join(ROOT_PATH, "./test_util/wpt/"),
+    cwd: join(ROOT_PATH, "./tests/util/wpt/"),
   }).spawn();
 }
 

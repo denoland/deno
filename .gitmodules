@@ -2,8 +2,8 @@
 	path = test_util/std
 	url = https://github.com/denoland/deno_std
 	shallow = true
-[submodule "test_util/wpt"]
-	path = test_util/wpt
+[submodule "tests/util/wpt"]
+	path = tests/util/wpt
 	url = https://github.com/web-platform-tests/wpt.git
 
 [submodule "tools/node_compat/node"]

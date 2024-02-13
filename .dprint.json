@@ -47,7 +47,7 @@
     "target",
     "tests/ffi/tests/test.js",
     "test_util/std",
-    "test_util/wpt",
+    "tests/util/wpt",
     "third_party",
     "tools/node_compat/TODO.md",
     "tools/node_compat/node",

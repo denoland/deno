@@ -29,7 +29,7 @@ export async function checkCopyright() {
     ":!:cli/tsc/dts/**",
     ":!:cli/tsc/*typescript.js",
     ":!:cli/tsc/compiler.d.ts",
-    ":!:test_util/wpt/**",
+    ":!:tests/util/wpt/**",
     ":!:cli/tools/init/templates/**",
     ":!:tests/unit_node/testdata/**",
     ":!:tests/node_compat/test/**",
