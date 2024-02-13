@@ -1,4 +1,4 @@
-import { join } from "../../../../test_util/std/path/mod.ts";
+import { join } from "../../../../tests/util/std/path/mod.ts";
 
 console.log("Starting the main module");
 
