@@ -61,6 +61,7 @@ fn export_specifier_has_default(s: &ExportSpecifier) -> bool {
 #[cfg(test)]
 mod test {
   use deno_ast::MediaType;
+  use deno_ast::ModuleSpecifier;
   use deno_ast::ParseParams;
   use deno_ast::ParsedSource;
   use deno_ast::SourceTextInfo;
@@ -101,7 +102,7 @@ mod test {
 
   fn parse_module(text: &str) -> ParsedSource {
     deno_ast::parse_module(ParseParams {
-      specifier: "file:///mod.ts".to_string(),
+      specifier: ModuleSpecifier::parse("file:///mod.ts").unwrap(),
       capture_tokens: false,
       maybe_syntax: None,
       media_type: MediaType::TypeScript,

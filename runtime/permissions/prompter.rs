@@ -1,8 +1,8 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::colors;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
+use deno_terminal::colors;
 use once_cell::sync::Lazy;
 use std::fmt::Write;
 use std::io::BufRead;

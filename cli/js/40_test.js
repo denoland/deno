@@ -172,7 +172,7 @@ function assertOps(fn) {
         opIdHostRecvCtrl,
       );
     }
-    const preTraces = new Map(core.opCallTraces);
+    const preTraces = core.getAllOpCallTraces();
     let postTraces;
     let report = null;
 
@@ -195,7 +195,7 @@ function assertOps(fn) {
           opIdHostRecvCtrl,
         );
       }
-      postTraces = new Map(core.opCallTraces);
+      postTraces = core.getAllOpCallTraces();
       if (res === 3) {
         report = op_test_op_sanitizer_report(desc.id);
       }
