@@ -123,8 +123,8 @@ impl CacheMetadata {
       return None;
     }
     let cache_key = self.cache.cache_item_key(specifier).ok()?;
-    let specifier_metadata = self.cache.read_metadata(&cache_key).ok()??;
-    let values = Arc::new(parse_metadata(&specifier_metadata.headers));
+    let headers = self.cache.read_headers(&cache_key).ok()??;
+    let values = Arc::new(parse_metadata(&headers));
     let version = calculate_fs_version_in_cache(&self.cache, specifier);
     let mut metadata_map = self.metadata.lock();
     let metadata = Metadata { values, version };

@@ -736,12 +736,7 @@ impl RedirectResolver {
   ) -> Option<ModuleSpecifier> {
     if redirect_limit > 0 {
       let cache_key = self.cache.cache_item_key(specifier).ok()?;
-      let headers = self
-        .cache
-        .read_metadata(&cache_key)
-        .ok()
-        .flatten()
-        .map(|m| m.headers)?;
+      let headers = self.cache.read_headers(&cache_key).ok().flatten()?;
       if let Some(location) = headers.get("location") {
         let redirect =
           deno_core::resolve_import(location, specifier.as_str()).ok()?;
@@ -823,11 +818,11 @@ impl FileSystemDocuments {
       let fs_version = calculate_fs_version(cache, specifier)?;
       let cache_key = cache.cache_item_key(specifier).ok()?;
       let bytes = cache.read_file_bytes(&cache_key).ok()??;
-      let specifier_metadata = cache.read_metadata(&cache_key).ok()??;
+      let specifier_headers = cache.read_headers(&cache_key).ok()??;
       let (_, maybe_charset) =
         deno_graph::source::resolve_media_type_and_charset_from_headers(
           specifier,
-          Some(&specifier_metadata.headers),
+          Some(&specifier_headers),
         );
       let content = deno_graph::source::decode_owned_source(
         specifier,
@@ -835,7 +830,7 @@ impl FileSystemDocuments {
         maybe_charset,
       )
       .ok()?;
-      let maybe_headers = Some(specifier_metadata.headers);
+      let maybe_headers = Some(specifier_headers);
       Document::new(
         specifier.clone(),
         fs_version,

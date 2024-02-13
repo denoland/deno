@@ -207,10 +207,9 @@ impl FileFetcher {
     }
 
     let cache_key = self.http_cache.cache_item_key(specifier)?; // compute this once
-    let Some(metadata) = self.http_cache.read_metadata(&cache_key)? else {
+    let Some(headers) = self.http_cache.read_headers(&cache_key)? else {
       return Ok(None);
     };
-    let headers = metadata.headers;
     if let Some(redirect_to) = headers.get("location") {
       let redirect =
         deno_core::resolve_import(redirect_to, specifier.as_str())?;
@@ -331,8 +330,8 @@ impl FileFetcher {
       .http_cache
       .cache_item_key(specifier)
       .ok()
-      .and_then(|key| self.http_cache.read_metadata(&key).ok().flatten())
-      .and_then(|metadata| metadata.headers.get("etag").cloned());
+      .and_then(|key| self.http_cache.read_headers(&key).ok().flatten())
+      .and_then(|headers| headers.get("etag").cloned());
     let maybe_auth_token = self.auth_tokens.get(specifier);
     let specifier = specifier.clone();
     let client = self.http_client.clone();
@@ -438,15 +437,16 @@ impl FileFetcher {
         let Ok(cache_key) = self.http_cache.cache_item_key(specifier) else {
           return false;
         };
-        let Ok(Some(metadata)) = self.http_cache.read_metadata(&cache_key)
+        let Ok(Some(headers)) = self.http_cache.read_headers(&cache_key) else {
+          return false;
+        };
+        let Ok(Some(download_time)) =
+          self.http_cache.read_download_time(&cache_key)
         else {
           return false;
         };
-        let cache_semantics = CacheSemantics::new(
-          metadata.headers,
-          metadata.time,
-          SystemTime::now(),
-        );
+        let cache_semantics =
+          CacheSemantics::new(headers, download_time, SystemTime::now());
         cache_semantics.should_use()
       }
       CacheSetting::ReloadSome(list) => {
