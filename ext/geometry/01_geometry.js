@@ -113,58 +113,66 @@ webidl.converters.DOMQuadInit = webidl.createDictionaryConverter(
   ],
 );
 
+/** @type {webidl.Dictionary} */
+const dictDOMMatrix2DInit = [
+  {
+    key: "a",
+    converter: webidl.converters["unrestricted double"],
+  },
+  {
+    key: "b",
+    converter: webidl.converters["unrestricted double"],
+  },
+  {
+    key: "c",
+    converter: webidl.converters["unrestricted double"],
+  },
+  {
+    key: "d",
+    converter: webidl.converters["unrestricted double"],
+  },
+  {
+    key: "e",
+    converter: webidl.converters["unrestricted double"],
+  },
+  {
+    key: "f",
+    converter: webidl.converters["unrestricted double"],
+  },
+  {
+    key: "m11",
+    converter: webidl.converters["unrestricted double"],
+  },
+  {
+    key: "m12",
+    converter: webidl.converters["unrestricted double"],
+  },
+  {
+    key: "m21",
+    converter: webidl.converters["unrestricted double"],
+  },
+  {
+    key: "m22",
+    converter: webidl.converters["unrestricted double"],
+  },
+  {
+    key: "m41",
+    converter: webidl.converters["unrestricted double"],
+  },
+  {
+    key: "m42",
+    converter: webidl.converters["unrestricted double"],
+  },
+];
+
+webidl.converters.DOMMatrix2DInit = webidl.createDictionaryConverter(
+  "DOMMatrix2DInit",
+  dictDOMMatrix2DInit,
+);
+
 webidl.converters.DOMMatrixInit = webidl.createDictionaryConverter(
   "DOMMatrixInit",
-  [
-    {
-      key: "a",
-      converter: webidl.converters["unrestricted double"],
-    },
-    {
-      key: "b",
-      converter: webidl.converters["unrestricted double"],
-    },
-    {
-      key: "c",
-      converter: webidl.converters["unrestricted double"],
-    },
-    {
-      key: "d",
-      converter: webidl.converters["unrestricted double"],
-    },
-    {
-      key: "e",
-      converter: webidl.converters["unrestricted double"],
-    },
-    {
-      key: "f",
-      converter: webidl.converters["unrestricted double"],
-    },
-    {
-      key: "m11",
-      converter: webidl.converters["unrestricted double"],
-    },
-    {
-      key: "m12",
-      converter: webidl.converters["unrestricted double"],
-    },
-    {
-      key: "m21",
-      converter: webidl.converters["unrestricted double"],
-    },
-    {
-      key: "m22",
-      converter: webidl.converters["unrestricted double"],
-    },
-    {
-      key: "m41",
-      converter: webidl.converters["unrestricted double"],
-    },
-    {
-      key: "m42",
-      converter: webidl.converters["unrestricted double"],
-    },
-  ],
+  dictDOMMatrix2DInit,
   [
     {
       key: "m13",
@@ -619,12 +627,12 @@ class DOMQuad {
       "Argument 1",
     );
     const { x, y, width, height } = other;
-    const point = webidl.createBranded(DOMQuad);
-    point[_p1] = new DOMPoint(x, y, 0, 1);
-    point[_p2] = new DOMPoint(x + width, y, 0, 1);
-    point[_p3] = new DOMPoint(x + width, y + height, 0, 1);
-    point[_p4] = new DOMPoint(x, y + height, 0, 1);
-    return point;
+    const quad = webidl.createBranded(DOMQuad);
+    quad[_p1] = new DOMPoint(x, y, 0, 1);
+    quad[_p2] = new DOMPoint(x + width, y, 0, 1);
+    quad[_p3] = new DOMPoint(x + width, y + height, 0, 1);
+    quad[_p4] = new DOMPoint(x, y + height, 0, 1);
+    return quad;
   }
 
   static fromQuad(other = {}) {
@@ -633,12 +641,12 @@ class DOMQuad {
       "Failed to call 'DOMQuad.fromQuad'",
       "Argument 1",
     );
-    const point = webidl.createBranded(DOMQuad);
-    point[_p1] = DOMPoint.fromPoint(other.p1);
-    point[_p2] = DOMPoint.fromPoint(other.p2);
-    point[_p3] = DOMPoint.fromPoint(other.p3);
-    point[_p4] = DOMPoint.fromPoint(other.p4);
-    return point;
+    const quad = webidl.createBranded(DOMQuad);
+    quad[_p1] = DOMPoint.fromPoint(other.p1);
+    quad[_p2] = DOMPoint.fromPoint(other.p2);
+    quad[_p3] = DOMPoint.fromPoint(other.p3);
+    quad[_p4] = DOMPoint.fromPoint(other.p4);
+    return quad;
   }
 
   get p1() {
@@ -929,7 +937,7 @@ class DOMMatrixReadOnly {
   }
   get isIdentity() {
     webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
-    return isMatrixIdentity(this);
+    return isIdentityMatrix(this);
   }
 
   translate(tx = 0, ty = 0, tz = 0) {
@@ -1233,7 +1241,7 @@ class DOMMatrixReadOnly {
       m43: raw[_m43],
       m44: raw[_m44],
       is2D: this[_is2D],
-      isIdentity: isMatrixIdentity(this),
+      isIdentity: isIdentityMatrix(this),
     };
   }
 
@@ -1969,7 +1977,7 @@ function initMatrixFromMatrix(target, matrix) {
  * https://drafts.fxtf.org/geometry/#dom-dommatrixreadonly-isidentity
  * @param {DOMMatrixReadOnly} matrix
  */
-function isMatrixIdentity(matrix) {
+function isIdentityMatrix(matrix) {
   const raw = matrix[_raw];
   return (
     raw[_m11] === 1 &&
