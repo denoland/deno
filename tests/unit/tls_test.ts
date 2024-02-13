@@ -1183,7 +1183,7 @@ Deno.test(
         port: 443,
         cert: "bad data",
         key: await Deno.readTextFile(
-          "cli/tests/testdata/tls/localhost.key",
+          "tests/testdata/tls/localhost.key",
         ),
       });
     }, Deno.errors.InvalidData);
@@ -1214,7 +1214,7 @@ Deno.test(
         hostname: "deno.land",
         port: 443,
         cert: await Deno.readTextFile(
-          "cli/tests/testdata/tls/localhost.crt",
+          "tests/testdata/tls/localhost.crt",
         ),
         key: "bad data",
       });
@@ -1246,7 +1246,7 @@ Deno.test(
         hostname: "deno.land",
         port: 443,
         cert: await Deno.readTextFile(
-          "cli/tests/testdata/tls/localhost.crt",
+          "tests/testdata/tls/localhost.crt",
         ),
         key: "",
       });
@@ -1291,12 +1291,12 @@ Deno.test(
       hostname: "localhost",
       port: 4552,
       cert: await Deno.readTextFile(
-        "cli/tests/testdata/tls/localhost.crt",
+        "tests/testdata/tls/localhost.crt",
       ),
       key: await Deno.readTextFile(
-        "cli/tests/testdata/tls/localhost.key",
+        "tests/testdata/tls/localhost.key",
       ),
-      caCerts: [Deno.readTextFileSync("cli/tests/testdata/tls/RootCA.pem")],
+      caCerts: [Deno.readTextFileSync("tests/testdata/tls/RootCA.pem")],
     });
     const result = decoder.decode(await readAll(conn));
     assertEquals(result, "PASS");
@@ -1313,13 +1313,13 @@ Deno.test(
           hostname: "deno.land",
           port: 443,
           cert: await Deno.readTextFile(
-            "cli/tests/testdata/tls/localhost.crt",
+            "tests/testdata/tls/localhost.crt",
           ),
           certChain: await Deno.readTextFile(
-            "cli/tests/testdata/tls/localhost.crt",
+            "tests/testdata/tls/localhost.crt",
           ),
           key: await Deno.readTextFile(
-            "cli/tests/testdata/tls/localhost.key",
+            "tests/testdata/tls/localhost.key",
           ),
         });
       },
@@ -1338,13 +1338,13 @@ Deno.test(
           hostname: "deno.land",
           port: 443,
           cert: await Deno.readTextFile(
-            "cli/tests/testdata/tls/localhost.crt",
+            "tests/testdata/tls/localhost.crt",
           ),
           privateKey: await Deno.readTextFile(
-            "cli/tests/testdata/tls/localhost.crt",
+            "tests/testdata/tls/localhost.crt",
           ),
           key: await Deno.readTextFile(
-            "cli/tests/testdata/tls/localhost.key",
+            "tests/testdata/tls/localhost.key",
           ),
         });
       },
