@@ -3,6 +3,7 @@
 use test_util as util;
 use test_util::assert_contains;
 use test_util::assert_ends_with;
+use test_util::itest;
 use test_util::TempDir;
 
 #[test]

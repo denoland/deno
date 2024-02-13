@@ -5,8 +5,8 @@ export {
   assertEquals,
   assertRejects,
   assertThrows,
-} from "../test_util/std/assert/mod.ts";
-export { fromFileUrl } from "../test_util/std/path/mod.ts";
+} from "@std/assert/mod.ts";
+export { fromFileUrl } from "@std/path/mod.ts";
 import process from "node:process";
 
 const targetDir = Deno.execPath().replace(/[^\/\\]+$/, "");
