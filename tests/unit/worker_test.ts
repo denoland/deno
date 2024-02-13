@@ -7,7 +7,7 @@ import {
   assertEquals,
   assertMatch,
   assertThrows,
-} from "@test_util/std/assert/mod.ts";
+} from "@std/assert/mod.ts";
 
 function resolveWorker(worker: string): string {
   return import.meta.resolve(`../testdata/workers/${worker}`);

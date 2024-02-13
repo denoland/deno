@@ -11,10 +11,10 @@ import {
   assertObjectMatch,
   assertStrictEquals,
   assertThrows,
-} from "@test_util/std/assert/mod.ts";
-import { stripColor } from "@test_util/std/fmt/colors.ts";
-import * as path from "@test_util/std/path/mod.ts";
-import { delay } from "@test_util/std/async/delay.ts";
+} from "@std/assert/mod.ts";
+import { stripColor } from "@std/fmt/colors.ts";
+import * as path from "@std/path/mod.ts";
+import { delay } from "@std/async/delay.ts";
 
 const testDir = new URL(".", import.meta.url);
 
