@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use test_util::env_vars_for_npm_tests;
+use test_util::itest;
 use test_util::TestContext;
 use test_util::TestContextBuilder;
 

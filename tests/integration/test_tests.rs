@@ -2,6 +2,7 @@
 
 use deno_core::url::Url;
 use test_util as util;
+use test_util::itest;
 use util::assert_contains;
 use util::assert_not_contains;
 use util::env_vars_for_npm_tests;

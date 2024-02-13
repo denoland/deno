@@ -4,10 +4,8 @@
 name = "deno"
 version = "1.40.4"
 authors.workspace = true
-autotests = false
 default-run = "deno"
 edition.workspace = true
-exclude = ["tests/testdata/npm/registry/*"]
 license.workspace = true
 repository.workspace = true
 description = "Provides the deno executable"
@@ -19,7 +17,7 @@ doc = false
 
 [[test]]
 name = "integration"
-path = "../tests/integration_tests_runner.rs"
+path = "integration_tests_runner.rs"
 harness = false
 
 [[bench]]

@@ -8,6 +8,8 @@ use std::io::Cursor;
 use std::io::Read;
 use std::sync::Arc;
 use test_util as util;
+use test_util::itest;
+use test_util::itest_flaky;
 use url::Url;
 use util::testdata_path;
 use util::TestContext;
