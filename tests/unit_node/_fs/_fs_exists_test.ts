@@ -1,9 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-import {
-  assert,
-  assertEquals,
-  assertStringIncludes,
-} from "@test_util/std/assert/mod.ts";
+import { assert, assertEquals, assertStringIncludes } from "@std/assert/mod.ts";
 import { exists, existsSync } from "node:fs";
 import { promisify } from "node:util";
 
