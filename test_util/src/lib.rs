@@ -118,7 +118,7 @@ pub fn jsr_registry_unset_url() -> String {
 }
 
 pub fn std_path() -> PathRef {
-  root_path().join("test_util").join("std")
+  root_path().join("tests").join("util").join("std")
 }
 
 pub fn std_file_url() -> String {
