@@ -34,6 +34,7 @@ export async function checkCopyright() {
     ":!:tests/unit_node/testdata/**",
     ":!:tests/node_compat/test/**",
     ":!:cli/tools/bench/mitata.rs",
+    ":!:tests/util/std/**",
 
     // rust
     "*.rs",
