@@ -1,5 +1,6 @@
 {
   "imports": {
-    "@test_util/": "../../test_util/"
+    "@test_util/": "../../test_util/",
+    "@std/": "../../test_util/std/"
   }
 }
