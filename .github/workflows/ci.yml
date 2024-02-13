@@ -149,8 +149,8 @@ jobs:
           fetch-depth: 5
           submodules: false
         if: '!(matrix.skip)'
-      - name: Clone submodule ./test_util/std
-        run: git submodule update --init --recursive --depth=1 -- ./test_util/std
+      - name: Clone submodule ./tests/util/std
+        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
         if: '!(matrix.skip)'
       - name: Clone submodule ./test_util/wpt
         run: git submodule update --init --recursive --depth=1 -- ./test_util/wpt

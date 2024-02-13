@@ -445,7 +445,7 @@ const ci = {
       },
       steps: skipJobsIfPrAndMarkedSkip([
         ...cloneRepoStep,
-        submoduleStep("./test_util/std"),
+        submoduleStep("./tests/util/std"),
         {
           ...submoduleStep("./test_util/wpt"),
           if: "matrix.wpt",
