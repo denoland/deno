@@ -15,6 +15,11 @@ name = "deno"
 path = "main.rs"
 doc = false
 
+[[bin]]
+name = "denort"
+path = "mainrt.rs"
+doc = false
+
 [[test]]
 name = "integration"
 path = "integration_tests_runner.rs"
