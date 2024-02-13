@@ -1,0 +1,56 @@
+[strings]
+str0 = "deno"
+str1 = """
+Roses are not Deno
+          Violets are not Deno either"""
+# On a Unix system, the above multi-line string will most likely be the same as:
+str2 = "Roses are not Deno\nViolets are not Deno either"
+
+# On a Windows system, it will most likely be equivalent to:
+str3 = "Roses are not Deno\r\nViolets are not Deno either"
+str4 = "this is a \"quote\""
+
+str5 = """
+The quick brown \
+
+
+  fox jumps over \
+    the lazy dog."""
+
+str6 = """\
+       The quick brown \
+       fox jumps over \
+       the lazy dog.\
+       """
+str7 = "Roses are red\tViolets are blue"
+str8 = "Roses are red\fViolets are blue"
+str9 = "Roses are red\bViolets are blue"
+str10 = "Roses are red\\Violets are blue"
+str11 = """
+dobule "quote"
+single 'quote'
+"""
+str12 = """Here are two quotation marks: "". Simple enough."""
+str13 = """Here are three quotation marks: ""\"."""
+str14 = """Here are fifteen quotation marks: ""\"""\"""\"""\"""\"."""
+str15 = """"This," she said, "is just a pointless statement.""""
+
+literal1  = '''
+The first newline is
+trimmed in raw strings.
+   All other whitespace
+   is preserved.
+'''
+
+literal2 = '"\n#=*{'
+literal3 = '''
+\n\t is 'literal'\
+'''
+literal4 = '''Here are fifteen quotation marks: """""""""""""""'''
+literal5 = "Here are fifteen apostrophes: '''''''''''''''"
+
+withApostrophe = "What if it's not?"
+withSemicolon = "const message = 'hello world';"
+withHexNumberLiteral = "Prevent bug from stripping string here ->0xabcdef"
+withUnicodeChar1 = "\u3042"
+withUnicodeChar2 = "Deno\U01F995"

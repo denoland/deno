@@ -1,0 +1,1090 @@
+[
+  {
+    "desc": "Windows 95",
+    "ua": "Mozilla/1.22 (compatible; MSIE 2.0; Windows 95)",
+    "expect": {
+      "name": "Windows",
+      "version": "95"
+    }
+  },
+  {
+    "desc": "Windows 98",
+    "ua": "Mozilla/4.0 (compatible; MSIE 4.01; Windows 98)",
+    "expect": {
+      "name": "Windows",
+      "version": "98"
+    }
+  },
+  {
+    "desc": "Windows ME",
+    "ua": "Mozilla/5.0 (Windows; U; Win 9x 4.90) Gecko/20020502 CS 2000 7.0/7.0",
+    "expect": {
+      "name": "Windows",
+      "version": "ME"
+    }
+  },
+  {
+    "desc": "Windows 2000",
+    "ua": "Mozilla/3.0 (compatible; MSIE 3.0; Windows NT 5.0)",
+    "expect": {
+      "name": "Windows",
+      "version": "2000"
+    }
+  },
+  {
+    "desc": "Windows XP",
+    "ua": "Mozilla/5.0 (Windows; U; MSIE 7.0; Windows NT 5.2)",
+    "expect": {
+      "name": "Windows",
+      "version": "XP"
+    }
+  },
+  {
+    "desc": "Windows Vista",
+    "ua": "Mozilla/5.0 (compatible; MSIE 7.0; Windows NT 6.0; fr-FR)",
+    "expect": {
+      "name": "Windows",
+      "version": "Vista"
+    }
+  },
+  {
+    "desc": "Windows 7",
+    "ua": "Mozilla/5.0 (compatible; MSIE 10.0; Windows NT 6.1; Trident/6.0)",
+    "expect": {
+      "name": "Windows",
+      "version": "7"
+    }
+  },
+  {
+    "desc": "Windows 8",
+    "ua": "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 6.2; Win64; x64; Trident/6.0; .NET4.0E; .NET4.0C)",
+    "expect": {
+      "name": "Windows",
+      "version": "8"
+    }
+  },
+  {
+    "desc": "Windows 10",
+    "ua": "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/39.0.2171.71 Safari/537.36 Edge/12.0",
+    "expect": {
+      "name": "Windows",
+      "version": "10"
+    }
+  },
+  {
+    "desc": "Windows RT",
+    "ua": "Mozilla/5.0 (compatible; MSIE 10.0; Windows NT 6.2; ARM; Trident/6.0)",
+    "expect": {
+      "name": "Windows",
+      "version": "RT"
+    }
+  },
+  {
+    "desc": "Windows CE",
+    "ua": "Mozilla/4.0 (compatible; MSIE 6.0; Windows CE; IEMobile 7.11)",
+    "expect": {
+      "name": "Windows",
+      "version": "CE"
+    }
+  },
+  {
+    "desc": "Windows Mobile",
+    "ua": "Mozilla/5.0 (ZTE-E_N72/N72V1.0.0B02;U;Windows Mobile/6.1;Profile/MIDP-2.0 Configuration/CLDC-1.1;320*240;CTC/2.0) IE/6.0 (compatible; MSIE 4.01; Windows CE; PPC)/UC Browser7.7.1.88",
+    "expect": {
+      "name": "Windows Mobile",
+      "version": "6.1"
+    }
+  },
+  {
+    "desc": "Windows Mobile",
+    "ua": "Opera/9.80 (Windows Mobile; WCE; Opera Mobi/WMD-50433; U; en) Presto/2.4.13 Version/10.00",
+    "expect": {
+      "name": "Windows Mobile",
+      "version": "undefined"
+    }
+  },
+  {
+    "desc": "Windows Phone",
+    "ua": "Opera/9.80 (Windows Phone; Opera Mini/7.6.8/35.7518; U; ru) Presto/2.8.119 Version/11.10",
+    "expect": {
+      "name": "Windows Phone",
+      "version": "undefined"
+    }
+  },
+  {
+    "desc": "Windows Phone OS",
+    "ua": "Mozilla/4.0 (compatible; MSIE 7.0; Windows Phone OS 7.0; Trident/3.1; IEMobile/7.0; DELL; Venue Pro)",
+    "expect": {
+      "name": "Windows Phone OS",
+      "version": "7.0"
+    }
+  },
+  {
+    "desc": "Windows Phone 8",
+    "ua": "Mozilla/5.0 (compatible; MSIE 10.0; Windows Phone 8.0; Trident/6.0; IEMobile/10.0; ARM; Touch; HTC; Windows Phone 8X by HTC)",
+    "expect": {
+      "name": "Windows Phone",
+      "version": "8.0"
+    }
+  },
+  {
+    "desc": "Windows NT on x86 or aarch64 CPU using Firefox",
+    "ua": "Mozilla/5.0 (Windows NT x.y; rv:10.0) Gecko/20100101 Firefox/10.0",
+    "expect": {
+      "name": "Windows",
+      "version": "NT x"
+    }
+  },
+  {
+    "desc": "Windows NT on x64 CPU using Firefox",
+    "ua": "Mozilla/5.0 (Windows NT x.y; Win64; x64; rv:10.0) Gecko/20100101 Firefox/10.0",
+    "expect": {
+      "name": "Windows",
+      "version": "NT x"
+    }
+  },
+  {
+    "desc": "BlackBerry",
+    "ua": "BlackBerry9300/5.0.0.912 Profile/MIDP-2.1 Configuration/CLDC-1.1 VendorID/378",
+    "expect": {
+      "name": "BlackBerry",
+      "version": "5.0.0.912"
+    }
+  },
+  {
+    "desc": "BlackBerry 10",
+    "ua": "Mozilla/5.0 (BB10; Touch) AppleWebKit/537.3+ (KHTML, like Gecko) Version/10.0.9.386 Mobile Safari/537.3+",
+    "expect": {
+      "name": "BlackBerry",
+      "version": "10"
+    }
+  },
+  {
+    "desc": "Tizen",
+    "ua": "Mozilla/5.0 (SMART-TV; Linux; Tizen 2.3) AppleWebkit/538.1 (KHTML, like Gecko) SamsungBrowser/1.0 TV Safari/538.1",
+    "expect": {
+      "name": "Tizen",
+      "version": "2.3"
+    }
+  },
+  {
+    "desc": "Tizen",
+    "ua": "Mozilla/5.0 (Linux; Tizen 2.3; SAMSUNG SM-Z130H) AppleWebKit/537.3 (KHTML, like Gecko) Version/2.3 Mobile Safari/537.3",
+    "expect": {
+      "name": "Tizen",
+      "version": "2.3"
+    }
+  },
+  {
+    "desc": "Tizen 6.0",
+    "ua": "HbbTV/1.5.1 (+DRM;Samsung;SmartTV2021:UAU7000;T-KSU2EDEUC-1506.0;KantSU2e;urn:samsungtv:familyname:21_KANTSU2E_UHD_BASIC:2021;) Tizen/6.0 (+TVPLUS+SmartHubLink) Chrome/76 LaTivu_1.0.1_2021 RVID/17",
+    "expect": {
+      "name": "Tizen",
+      "version": "6.0"
+    }
+  },
+  {
+    "desc": "Android",
+    "ua": "Mozilla/5.0 (Linux; U; Android 2.2.2; en-us; VM670 Build/FRG83G) AppleWebKit/533.1 (KHTML, like Gecko)",
+    "expect": {
+      "name": "Android",
+      "version": "2.2.2"
+    }
+  },
+  {
+    "desc": "HarmonyOS",
+    "ua": "Mozilla/5.0 (Linux; Android 10; HarmonyOS; YAL-AL10; HMSCore 6.3.0.327; GMSCore 21.48.15) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.105 HuaweiBrowser/12.0.3.310 Mobile Safari/537.36",
+    "expect": {
+      "name": "HarmonyOS",
+      "version": "10"
+    }
+  },
+  {
+    "desc": "Sailfish",
+    "ua": "Mozilla/5.0 (Linux; U; Sailfish 3.0; Mobile; rv:45.0) Gecko/45.0 Firefox/45.0 SailfishBrowser/1.0",
+    "expect": {
+      "name": "Sailfish",
+      "version": "3.0"
+    }
+  },
+  {
+    "desc": "WebOS",
+    "ua": "Mozilla/5.0 (hp-tablet; Linux; hpwOS/3.0.5; U; en-US) AppleWebKit/534.6 (KHTML, like Gecko) wOSBrowser/234.83 Safari/534.6 TouchPad/1.0",
+    "expect": {
+      "name": "webOS",
+      "version": "3.0.5"
+    }
+  },
+  {
+    "desc": "WebOS",
+    "ua": "Mozilla/5.0 (webOS/1.4.5; U; en-US) AppleWebKit/532.2 (KHTML, like Gecko) Version/1.0 Safari/532.2 Pre/1.0",
+    "expect": {
+      "name": "webOS",
+      "version": "1.4.5"
+    }
+  },
+  {
+    "desc": "WebOS TV 5.x",
+    "ua": "Mozilla/5.0 (Web0S; Linux/SmartTV) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/68.0.3440.106 Safari/537.36 WebAppManager",
+    "expect": {
+      "name": "webOS",
+      "version": "TV"
+    }
+  },
+  {
+    "desc": "WebOS TV 4.x",
+    "ua": "Mozilla/5.0 (Web0S; Linux/SmartTV) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/53.0.2785.34 Safari/537.36 WebAppManager",
+    "expect": {
+      "name": "webOS",
+      "version": "TV"
+    }
+  },
+  {
+    "desc": "WebOS TV 3.x",
+    "ua": "Mozilla/5.0 (Web0S; Linux/SmartTV) AppleWebKit/537.36 (KHTML, like Gecko) QtWebEngine/5.2.1 Chrome/38.0.2125.122 Safari/537.36 WebAppManager",
+    "expect": {
+      "name": "webOS",
+      "version": "TV"
+    }
+  },
+  {
+    "desc": "WebOS TV 2.x",
+    "ua": "Mozilla/5.0 (Web0S; Linux/SmartTV) AppleWebKit/538.2 (KHTML, like Gecko) Large Screen WebAppManager Safari/538.2",
+    "expect": {
+      "name": "webOS",
+      "version": "TV"
+    }
+  },
+  {
+    "desc": "WebOS TV 1.x",
+    "ua": "Mozilla/5.0 (Web0S; Linux/SmartTV) AppleWebKit/537.41 (KHTML, like Gecko) Large Screen WebAppManager Safari/537.41",
+    "expect": {
+      "name": "webOS",
+      "version": "TV"
+    }
+  },
+  {
+    "desc": "QNX",
+    "ua": "Mozilla/5.0 (Photon; U; QNX x86pc; en-US; rv:1.8.1.20) Gecko/20090127 BonEcho/2.0.0.20",
+    "expect": {
+      "name": "QNX",
+      "version": "x86pc"
+    }
+  },
+  {
+    "desc": "Bada",
+    "ua": "Mozilla/5.0 (SAMSUNG; SAMSUNG-GT-S5253/S5253DDKC1; U; Bada/1.0; en-us) AppleWebKit/533.1 (KHTML, like Gecko) Dolfin/2.0 Mobile WQVGA SMM-MMS/1.2.0 OPN-B",
+    "expect": {
+      "name": "Bada",
+      "version": "1.0"
+    }
+  },
+  {
+    "desc": "RIM Tablet OS",
+    "ua": "Mozilla/5.0 (PlayBook; U; RIM Tablet OS 2.1.0; en-US) AppleWebKit/536.2+ (KHTML like Gecko) Version/7.2.1.0 Safari/536.2+",
+    "expect": {
+      "name": "RIM Tablet OS",
+      "version": "2.1.0"
+    }
+  },
+  {
+    "desc": "Nokia N900 Linux mobile, on the Fennec browser",
+    "ua": "Mozilla/5.0 (Maemo; Linux armv7l; rv:10.0) Gecko/20100101 Firefox/10.0 Fennec/10.0",
+    "expect": {
+      "name": "Maemo",
+      "version": "undefined"
+    }
+  },
+  {
+    "desc": "MeeGo",
+    "ua": "Mozilla/5.0 (MeeGo; NokiaN9) AppleWebKit/534.13 (KHTML, like Gecko) NokiaBrowser/8.5.0 Mobile Safari/534.13",
+    "expect": {
+      "name": "MeeGo",
+      "version": "undefined"
+    }
+  },
+  {
+    "desc": "Symbian",
+    "ua": "Nokia5250/10.0.011 (SymbianOS/9.4; U; Series60/5.0 Mozilla/5.0; Profile/MIDP-2.1 Configuration/CLDC-1.1 ) AppleWebKit/525 (KHTML, like Gecko) Safari/525 3gpp-gba",
+    "expect": {
+      "name": "Symbian",
+      "version": "9.4"
+    }
+  },
+  {
+    "desc": "Symbian",
+    "ua": "Mozilla/5.0 (Symbian/3; Series60/5.2 NokiaC7-00/024.001; Profile/MIDP-2.1 Configuration/CLDC-1.1 ) AppleWebKit/533.4 (KHTML, like Gecko) NokiaBrowser/7.3.1.37 Mobile Safari/533.4 3gpp-gba",
+    "expect": {
+      "name": "Symbian",
+      "version": "5.2"
+    }
+  },
+  {
+    "desc": "Series40",
+    "ua": "Mozilla/5.0 (Series40; Nokia2055/03.20; Profile/MIDP-2.1 Configuration/CLDC-1.1) Gecko/20100401 S40OviBrowser/2.2.0.0.34",
+    "expect": {
+      "name": "Series40",
+      "version": "undefined"
+    }
+  },
+  {
+    "desc": "Firefox OS",
+    "ua": "Mozilla/5.0 (Mobile; rv:14.0) Gecko/14.0 Firefox/14.0",
+    "expect": {
+      "name": "Firefox OS",
+      "version": "14.0"
+    }
+  },
+  {
+    "desc": "Firefox OS on Tablet",
+    "ua": "Mozilla/5.0 (Tablet; rv:26.0) Gecko/26.0 Firefox/26.0",
+    "expect": {
+      "name": "Firefox OS",
+      "version": "26.0"
+    }
+  },
+  {
+    "desc": "Firefox OS on TV",
+    "ua": "Mozilla/5.0 (TV; rv:44.0) Gecko/44.0 Firefox/44.0",
+    "expect": {
+      "name": "Firefox OS",
+      "version": "44.0"
+    }
+  },
+  {
+    "desc": "Google Chromecast",
+    "ua": "Mozilla/5.0 (X11; Linux aarch64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/76.0.3809.81 Safari/537.36 CrKey/1.42.183786",
+    "expect": {
+      "name": "Chromecast",
+      "version": "1.42.183786"
+    }
+  },
+  {
+    "desc": "Nintendo Switch",
+    "ua": "Mozilla/5.0 (Nintendo Switch; WifiWebAuthApplet) AppleWebKit/606.4 (KHTML, like Gecko) NF/6.0.1.15.4 NintendoBrowser/5.1.0.20393",
+    "expect": {
+      "name": "Nintendo",
+      "version": "Switch"
+    }
+  },
+  {
+    "desc": "PlayStation 4",
+    "ua": "Mozilla/5.0 (PlayStation 4 3.00) AppleWebKit/537.73 (KHTML, like Gecko)",
+    "expect": {
+      "name": "PlayStation",
+      "version": "4"
+    }
+  },
+  {
+    "desc": "Xbox 360",
+    "ua": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; Xbox; Xbox 360) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.121 Safari/537.36",
+    "expect": {
+      "name": "Xbox",
+      "version": "360"
+    }
+  },
+  {
+    "desc": "Xbox One",
+    "ua": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; Xbox; Xbox One; WebView/3.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.102 Safari/537.36 Edge/18.19041",
+    "expect": {
+      "name": "Xbox",
+      "version": "One"
+    }
+  },
+  {
+    "desc": "Xbox X",
+    "ua": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; Xbox; Xbox X) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/48.0.2564.82 Safari/537.36 Edge/20.02",
+    "expect": {
+      "name": "Xbox",
+      "version": "X"
+    }
+  },
+  {
+    "desc": "Xbox Series X",
+    "ua": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; Xbox; Xbox Series X) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/48.0.2564.82 Safari/537.36 Edge/20.02 ",
+    "expect": {
+      "name": "Xbox",
+      "version": "Series X"
+    }
+  },
+  {
+    "desc": "Mint",
+    "ua": "Opera/9.80 (X11; Linux x86_64; Edition Linux Mint) Presto/2.12.388 Version/12.16",
+    "expect": {
+      "name": "Mint",
+      "version": "undefined"
+    }
+  },
+  {
+    "desc": "Mint",
+    "ua": "Opera/9.64 (X11; Linux i686; U; Linux Mint; nb) Presto/2.1.1",
+    "expect": {
+      "name": "Mint",
+      "version": "undefined"
+    }
+  },
+  {
+    "desc": "Mint",
+    "ua": "Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.9.0.5) Gecko/2008121622 Linux Mint/6 (Felicia) Firefox/3.0.4",
+    "expect": {
+      "name": "Mint",
+      "version": "6"
+    }
+  },
+  {
+    "desc": "Ubuntu",
+    "ua": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/535.22+ (KHTML, like Gecko) Chromium/17.0.963.56 Chrome/17.0.963.56 Safari/535.22+ Ubuntu/12.04 (3.4.1-0ubuntu1) Epiphany/3.4.1",
+    "expect": {
+      "name": "Ubuntu",
+      "version": "12.04"
+    }
+  },
+  {
+    "desc": "Ubuntu",
+    "ua": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Ubuntu Chromium/31.0.1650.63 Chrome/31.0.1650.63 Safari/537.36",
+    "expect": {
+      "name": "Ubuntu",
+      "version": "undefined"
+    }
+  },
+  {
+    "desc": "Kubuntu",
+    "ua": "Mozilla/5.0 (compatible; Konqueror/4.4; Linux 2.6.32-22-generic; X11; en_US) KHTML/4.4.3 (like Gecko) Kubuntu",
+    "expect": {
+      "name": "Kubuntu",
+      "version": "undefined"
+    }
+  },
+  {
+    "desc": "Debian",
+    "ua": "Mozilla/5.0 (compatible; Konqueror/3.5; Linux) KHTML/3.5.7 (like Gecko) (Debian)",
+    "expect": {
+      "name": "Debian",
+      "version": "undefined"
+    }
+  },
+  {
+    "desc": "Debian",
+    "ua": "Mozilla/5.0 (X11; Linux x86_64; Debian GNU/Linux 8.1 (jessie)) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/33.0.1750.0 Maxthon/1.0.5.3 Safari/537.36",
+    "expect": {
+      "name": "Debian",
+      "version": "8.1"
+    }
+  },
+  {
+    "desc": "Debian",
+    "ua": "ELinks/0.12~pre5-4 (textmode; Debian; Linux 3.2.0-4-amd64 x86_64 192x47-2)",
+    "expect": {
+      "name": "Debian",
+      "version": "undefined"
+    }
+  },
+  {
+    "desc": "Debian",
+    "ua": "w3m/0.5.3+debian-19",
+    "expect": {
+      "name": "debian",
+      "version": "19"
+    }
+  },
+  {
+    "desc": "Debian",
+    "ua": "Mozilla/5.0 (X11; U; Linux x86_64; en-US; rv:1.9.0.3) Gecko/2008092814 (Debian-3.0.1-1)",
+    "expect": {
+      "name": "Debian",
+      "version": "3.0.1-1"
+    }
+  },
+  {
+    "desc": "Debian",
+    "ua": "Mozilla/5.0 (compatible; Konqueror/3.5; Linux 2.6.24.4; X11) KHTML/3.5.9 (like Gecko) (Debian package 4:3.5.9.dfsg.1-2+b1)",
+    "expect": {
+      "name": "Debian",
+      "version": "undefined"
+    }
+  },
+  {
+    "desc": "OpenSUSE",
+    "ua": "Mozilla/5.0 (X11; U; Linux x86_64; en-US; rv:1.9.2.17) Gecko/20110420 SUSE/3.6.17-0.2.1 Firefox/3.6.17",
+    "expect": {
+      "name": "SUSE",
+      "version": "3.6.17-0.2.1"
+    }
+  },
+  {
+    "desc": "Gentoo",
+    "ua": "Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.8.1.16) Gecko/20080716 (Gentoo) Galeon/2.0.6",
+    "expect": {
+      "name": "Gentoo",
+      "version": "undefined"
+    }
+  },
+  {
+    "desc": "Gentoo",
+    "ua": "Xombrero (X11; U; Gentoo Linux amd64; en-US) Webkit/2.8.5",
+    "expect": {
+      "name": "Gentoo",
+      "version": "amd64"
+    }
+  },
+  {
+    "desc": "Gentoo",
+    "ua": "Xombrero/1.6.4 (Linux amd64; en; Gentoo)",
+    "expect": {
+      "name": "Gentoo",
+      "version": "undefined"
+    }
+  },
+  {
+    "desc": "Gentoo",
+    "ua": "Links (2.8; Linux 3.17.2-gentoo-x86 i686; GNU C 4.8.2; x)",
+    "expect": {
+      "name": "gentoo",
+      "version": "x86"
+    }
+  },
+  {
+    "desc": "Arch",
+    "ua": "Uzbl (Webkit 1.1.10) (Arch Linux)",
+    "expect": {
+      "name": "Arch",
+      "version": "undefined"
+    }
+  },
+  {
+    "desc": "Slackware",
+    "ua": "Mozilla/5.0 Slackware/13.37 (X11; U; Linux x86_64; en-US) AppleWebKit/535.1 (KHTML, like Gecko) Chrome/13.0.782.41",
+    "expect": {
+      "name": "Slackware",
+      "version": "13.37"
+    }
+  },
+  {
+    "desc": "Fedora",
+    "ua": "Mozilla/5.0 (X11; Fedora; Linux x86_64; rv:40.0) Gecko/20100101 Firefox/40.0",
+    "expect": {
+      "name": "Fedora",
+      "version": "undefined"
+    }
+  },
+  {
+    "desc": "Fedora",
+    "ua": "Mozilla/5.0 (X11; U; Linux i686; en-GB; rv:2.0) Gecko/20110404 Fedora/16-dev Firefox/4.0",
+    "expect": {
+      "name": "Fedora",
+      "version": "16-dev"
+    }
+  },
+  {
+    "desc": "Fedora",
+    "ua": "Mozilla/5.0 (X11; U; Linux i686; sk; rv:1.9.0.4) Gecko/2008111217 Fedora/3.0.4-1.fc10 Firefox/3.0.4",
+    "expect": {
+      "name": "Fedora",
+      "version": "3.0.4-1.fc10"
+    }
+  },
+  {
+    "desc": "Mandriva",
+    "ua": "Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.9.2.22) Gecko/20110907 Mandriva Linux/1.9.2.22-0.1mdv2010.2 (2010.2) Firefox/3.6.22",
+    "expect": {
+      "name": "Mandriva",
+      "version": "1.9.2.22-0.1mdv2010.2"
+    }
+  },
+  {
+    "desc": "Chrome OS",
+    "ua": "Mozilla/5.0 (X11; CrOS x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/99.0.0.0 Safari/537.36",
+    "expect": {
+      "name": "Chrome OS",
+      "version": "undefined"
+    }
+  },
+  {
+    "desc": "Chromium OS",
+    "ua": "Mozilla/5.0 (X11; CrOS x86_64 10575.58.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/67.0.3396.99 Safari/537.36",
+    "expect": {
+      "name": "Chrome OS",
+      "version": "10575.58.0"
+    }
+  },
+  {
+    "desc": "Fuchsia",
+    "ua": "Mozilla/5.0 (X11; Fuchsia x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/71.0.3557.0 Safari/537.36",
+    "expect": {
+      "name": "Fuchsia",
+      "version": "undefined"
+    }
+  },
+  {
+    "desc": "Solaris",
+    "ua": "Mozilla/5.0 (X11; U; SunOS sun4u; en-US; rv:1.7) Gecko/20070606",
+    "expect": {
+      "name": "Solaris",
+      "version": "sun4u"
+    }
+  },
+  {
+    "desc": "FreeBSD",
+    "ua": "Mozilla/5.0 (X11; U; FreeBSD x86_64; en-US) AppleWebKit/534.16 (KHTML, like Gecko) Chrome/10.0.648.204 Safari/534.16",
+    "expect": {
+      "name": "FreeBSD",
+      "version": "undefined"
+    }
+  },
+  {
+    "desc": "OpenBSD",
+    "ua": "Mozilla/5.0 (X11; U; OpenBSD i386; en-US; rv:1.9.1) Gecko/20090702 Firefox/3.5",
+    "expect": {
+      "name": "OpenBSD",
+      "version": "undefined"
+    }
+  },
+  {
+    "desc": "NetBSD",
+    "ua": "ELinks (0.4.3; NetBSD 3.0.2PATCH sparc64; 141x19)",
+    "expect": {
+      "name": "NetBSD",
+      "version": "3.0.2PATCH"
+    }
+  },
+  {
+    "desc": "DragonFly",
+    "ua": "Mozilla/5.0 (X11; U; DragonFly i386; de; rv:1.9.1) Gecko/20090720 Firefox/3.5.1",
+    "expect": {
+      "name": "DragonFly",
+      "version": "undefined"
+    }
+  },
+  {
+    "desc": "iOS in App",
+    "ua": "AppName/version CFNetwork/version Darwin/version",
+    "expect": {
+      "name": "iOS",
+      "version": "undefined"
+    }
+  },
+  {
+    "desc": "iOS with Chrome",
+    "ua": "Mozilla/5.0 (iPhone; U; CPU iPhone OS 5_1_1 like Mac OS X; en) AppleWebKit/534.46.0 (KHTML, like Gecko) CriOS/19.0.1084.60 Mobile/9B206 Safari/7534.48.3",
+    "expect": {
+      "name": "iOS",
+      "version": "5.1.1"
+    }
+  },
+  {
+    "desc": "iOS with Opera Mini",
+    "ua": "Opera/9.80 (iPhone; Opera Mini/7.1.32694/27.1407; U; en) Presto/2.8.119 Version/11.10",
+    "expect": {
+      "name": "iOS",
+      "version": "undefined"
+    }
+  },
+  {
+    "desc": "iOS with FaceBook Mobile App",
+    "ua": "[FBAN/FBIOS;FBAV/283.0.0.44.117;FBBV/238386386;FBDV/iPhone12,1;FBMD/iPhone;FBSN/iOS;FBSV/13.6.1;FBSS/2;FBID/phone;FBLC/en_US;FBOP/5;FBRV/240127608]",
+    "expect": {
+      "name": "iOS",
+      "version": "13.6.1"
+    }
+  },
+  {
+    "desc": "iOS with Slack App",
+    "ua": "com.tinyspeck.chatlyio/23.04.10 (iPhone; iOS 16.4.1; Scale/3.00)",
+    "expect": {
+      "name": "iOS",
+      "version": "16.4.1"
+    }
+  },
+  {
+    "desc": "watchOS",
+    "ua": "server-bag [Watch OS,8.4,19S546,Watch3,4]",
+    "expect": {
+      "name": "watchOS",
+      "version": "8.4"
+    }
+  },
+  {
+    "desc": "watchOS",
+    "ua": "atc/1.0 watchOS/7.4.1 model/Watch3,3 hwp/t8004 build/18T201 (6; dt:155)",
+    "expect": {
+      "name": "watchOS",
+      "version": "7.4.1"
+    }
+  },
+  {
+    "desc": "watchOS",
+    "ua": "Watch4,3/5.3.8 (16U680)",
+    "expect": {
+      "name": "watchOS",
+      "version": "5.3.8"
+    }
+  },
+  {
+    "desc": "Mac OS on PowerPC",
+    "ua": "Mozilla/4.0 (compatible; MSIE 5.0b1; Mac_PowerPC)",
+    "expect": {
+      "name": "macOS",
+      "version": "undefined"
+    }
+  },
+  {
+    "desc": "Mac OS X on x86, x86_64, or aarch64 using Firefox",
+    "ua": "Mozilla/5.0 (Macintosh; Intel Mac OS X x.y; rv:10.0) Gecko/20100101 Firefox/10.0",
+    "expect": {
+      "name": "macOS",
+      "version": "x.y"
+    }
+  },
+  {
+    "desc": "Mac OS X on PowerPC using Firefox",
+    "ua": "Mozilla/5.0 (Macintosh; PPC Mac OS X x.y; rv:10.0) Gecko/20100101 Firefox/10.0",
+    "expect": {
+      "name": "macOS",
+      "version": "x.y"
+    }
+  },
+  {
+    "desc": "Mac OS",
+    "ua": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_6_8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/28.0.1500.95 Safari/537.36",
+    "expect": {
+      "name": "macOS",
+      "version": "10.6.8"
+    }
+  },
+  {
+    "desc": "Haiku",
+    "ua": "Mozilla/5.0 (Macintosh; Intel Haiku R1 x86) AppleWebKit/602.1.1 (KHTML, like Gecko) WebPositive/1.2 Version/8.0 Safari/602.1.1",
+    "expect": {
+      "name": "Haiku",
+      "version": "R1"
+    }
+  },
+  {
+    "desc": "KaiOS",
+    "ua": "Mozilla/5.0 (Mobile; Nokia_8110_4G; rv:48.0) Gecko/48.0 Firefox/48.0 KAIOS/2.5",
+    "expect": {
+      "name": "KAIOS",
+      "version": "2.5"
+    }
+  },
+  {
+    "desc": "iTunes Windows Vista",
+    "ua": "iTunes/10.7 (Windows; Microsoft Windows Vista Home Premium Edition Service Pack 1 (Build 6001)) AppleWebKit/536.26.9",
+    "expect": {
+      "name": "Windows",
+      "version": "Vista"
+    }
+  },
+  {
+    "desc": "iOS BE App",
+    "ua": "APP-BE Test/1.0 (iPad; Apple; CPU iPhone OS 7_0_2 like Mac OS X)",
+    "expect": {
+      "name": "iOS",
+      "version": "7.0.2"
+    }
+  },
+  {
+    "desc": "KTB-Nexus 5",
+    "ua": "APP-My App/1.0 (Linux; Android 4.2.1; Nexus 5 Build/JOP40D)",
+    "expect": {
+      "name": "Android",
+      "version": "4.2.1"
+    }
+  },
+  {
+    "desc": "Solaris",
+    "ua": "NCSA Mosaic/1.0 (X11;SunOS 4.1.4 sun4m)",
+    "expect": {
+      "name": "Solaris",
+      "version": "4.1.4"
+    }
+  },
+  {
+    "desc": "Raspbian",
+    "ua": "Mozilla/5.0 (X11; Linux armv7l) AppleWebKit/537.36 (KHTML, like Gecko) Raspbian Chromium/72.0.3626.121 HeadlessChrome/72.0.3626.121 Safari/537.36",
+    "expect": {
+      "name": "Raspbian",
+      "version": "undefined"
+    }
+  },
+  {
+    "desc": "Raspbian",
+    "ua": "Mozilla/5.0 (X11; Linux armv7l) AppleWebKit/538.15 (KHTML, like Gecko) Version/8.0 Safari/538.15 Raspbian/9.0 (1:3.8.2.0-0rpi28) Epiphany/3.8.2",
+    "expect": {
+      "name": "Raspbian",
+      "version": "9.0"
+    }
+  },
+  {
+    "desc": "AIX",
+    "ua": "Mozilla/5.0 (X11; U; AIX 000138384C00; en-US; rv:1.0.1) Gecko/20030213 Netscape/7.0",
+    "expect": {
+      "name": "AIX",
+      "version": "undefined"
+    }
+  },
+  {
+    "desc": "Plan9",
+    "ua": "NCSA_Mosaic/5.0 (X11;Plan 9 4.0)",
+    "expect": {
+      "name": "Plan 9",
+      "version": "4.0"
+    }
+  },
+  {
+    "desc": "Minix",
+    "ua": "Mozilla/5.0 (X11; Original ; Minix 3.3 ; rv:3.0)",
+    "expect": {
+      "name": "Minix",
+      "version": "3.3"
+    }
+  },
+  {
+    "desc": "BeOS",
+    "ua": "Mozilla/5.0 (BeOS; U; BeOS BePC; en-US; rv:1.8.1.8pre) Gecko/20070926 SeaMonkey/1.1.5pre",
+    "expect": {
+      "name": "BeOS",
+      "version": "undefined"
+    }
+  },
+  {
+    "desc": "OS/2",
+    "ua": "Links (2.1pre14; OS/2 1 i386; 80x33)",
+    "expect": {
+      "name": "OS/2",
+      "version": "undefined"
+    }
+  },
+  {
+    "desc": "AmigaOS",
+    "ua": "Mozilla/4.0 (compatible; AWEB 3.4 SE; AmigaOS)",
+    "expect": {
+      "name": "AmigaOS",
+      "version": "undefined"
+    }
+  },
+  {
+    "desc": "MorphOS",
+    "ua": "AmigaVoyager/3.4.4 (MorphOS/PPC native)",
+    "expect": {
+      "name": "MorphOS",
+      "version": "undefined"
+    }
+  },
+  {
+    "desc": "UNIX",
+    "ua": "Surf/0.4.1 (X11; U; Unix; en-US) AppleWebKit/531.2+ Compatible (Safari)",
+    "expect": {
+      "name": "Unix",
+      "version": "undefined"
+    }
+  },
+  {
+    "desc": "Joli",
+    "ua": "Mozilla/5.0 (X11; Jolicloud Linux i686) AppleWebKit/537.6 (KHTML, like Gecko) Joli OS/1.2 Chromium/23.0.1240.0 Chrome/23.0.1240.0 Safari/537.6",
+    "expect": {
+      "name": "Joli",
+      "version": "1.2"
+    }
+  },
+  {
+    "desc": "CentOS",
+    "ua": "Konqueror/15.13 (CentOS Linux 7.4; cs-CZ;)",
+    "expect": {
+      "name": "CentOS",
+      "version": "7.4"
+    }
+  },
+  {
+    "desc": "PCLinuxOS",
+    "ua": "Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.9.2.13) Gecko/20101209 PCLinuxOS/1.9.2.13-1pclos2010 (2010) Firefox/3.6.13",
+    "expect": {
+      "name": "PCLinuxOS",
+      "version": "1.9.2.13-1pclos2010"
+    }
+  },
+  {
+    "desc": "RedHat",
+    "ua": "Mozilla/5.0 (compatible; Konqueror/4.3; Linux) KHTML/4.3.4 (like Gecko) Red Hat Enterprise Linux/4.3.4-11.el6_1.4",
+    "expect": {
+      "name": "Red Hat",
+      "version": "4.3.4-11.el6_1.4"
+    }
+  },
+  {
+    "desc": "RedHat",
+    "ua": "Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.8.0.13pre) Gecko/20070717 Red Hat/1.0.9-4.el4 SeaMonkey/1.0.9",
+    "expect": {
+      "name": "Red Hat",
+      "version": "1.0.9-4.el4"
+    }
+  },
+  {
+    "desc": "RedHat",
+    "ua": "iTunes/4.7.1 (Linux; N; Red Hat; x86_64-linux; EN; utf8) SqueezeCenter, Squeezebox Server, Logitech Media Server/7.9.1/1522157629",
+    "expect": {
+      "name": "Red Hat",
+      "version": "undefined"
+    }
+  },
+  {
+    "desc": "RedHat",
+    "ua": "curl/7.20.0 (x86_64-redhat-linux-gnu) libcurl/7.20.0 OpenSSL/0.9.8b zlib/1.2.3 libidn/0.6.5",
+    "expect": {
+      "name": "redhat",
+      "version": "undefined"
+    }
+  },
+  {
+    "desc": "RISC OS",
+    "ua": "Mozilla/1.10 [en] (Compatible; RISC OS 3.70; Oregano 1.10)",
+    "expect": {
+      "name": "RISC OS",
+      "version": "3.70"
+    }
+  },
+  {
+    "desc": "Zenwalk",
+    "ua": "Flock/2.16 (Zenwalk 7.3; es_PR;)",
+    "expect": {
+      "name": "Zenwalk",
+      "version": "7.3"
+    }
+  },
+  {
+    "desc": "Hurd",
+    "ua": "Mozilla/5.0 (X11; Hurd 0.9 i386; en-US) libwww-FM/2.14 SSL-MM/1.4.1 GNUTLS/3.7.0 Safari/696.96",
+    "expect": {
+      "name": "Hurd",
+      "version": "0.9"
+    }
+  },
+  {
+    "desc": "Linux",
+    "ua": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/44.0.2403.157 Safari/537.36",
+    "expect": {
+      "name": "Linux",
+      "version": "x86_64"
+    }
+  },
+  {
+    "desc": "Deepin",
+    "ua": "Mozilla/5.0 (X11; Linux x86_64; Deepin 15.5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/55.0.2883.75 Safari/537.36 NFSBrowser/5.0.0.1886",
+    "expect": {
+      "name": "Deepin",
+      "version": "15.5"
+    }
+  },
+  {
+    "desc": "Palm OS",
+    "ua": "Mozilla/4.76 [en] (PalmOS; U; WebPro3.0; Palm-Arz1)",
+    "expect": {
+      "name": "Palm",
+      "version": "undefined"
+    }
+  },
+  {
+    "desc": "Panasonic Viera",
+    "ua": "HbbTV/1.2.1 (;Panasonic;VIERA 2015;3.014;a001-003 4000-0000;)",
+    "expect": {
+      "name": "VIERA",
+      "version": "undefined"
+    }
+  },
+  {
+    "desc": "Netrange Smart TV",
+    "ua": "Mozilla/5.0 (Linux; U) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/59.0.3071.115 Safari/537.36 OPR/46.0.2207.0 LOEWE-SL410/5.2.0.0 HbbTV/1.4.1 (; LOEWE; SL410; LOH/5.2.0.0;;) FVC/3.0 (LOEWE; SL410;) CE-HTML/1.0 Config (L:deu,CC:DEU) NETRANGEMMH",
+    "expect": {
+      "name": "NETRANGE",
+      "version": "undefined"
+    }
+  },
+  {
+    "desc": "NetTV 3.2.1",
+    "ua": "Opera/9.80 (Linux mips ; U; HbbTV/1.1.1 (; Philips; ; ; ; ) CE-HTML/1.0 NETTV/3.2.1; en) Presto/2.6.33 Version/10.70",
+    "expect": {
+      "name": "NETTV",
+      "version": "3.2.1"
+    }
+  },
+  {
+    "desc": "HP-UX",
+    "ua": "Mozilla/5.0 (X11; U; HP-UX 9000/785; es-ES; rv:1.0.1) Gecko/20020827 Netscape/7.0",
+    "expect": {
+      "name": "HP-UX",
+      "version": "undefined"
+    }
+  },
+  {
+    "desc": "Contiki",
+    "ua": "Contiki/1.0 (Commodore 64; http://dunkels.com/adam/contiki/)",
+    "expect": {
+      "name": "Contiki",
+      "version": "1.0"
+    }
+  },
+  {
+    "desc": "Linpus",
+    "ua": "Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.9b5pre) Gecko/2008032619 Linpus/3.0-0.49",
+    "expect": {
+      "name": "Linpus",
+      "version": "3.0-0.49"
+    }
+  },
+  {
+    "desc": "Manjaro",
+    "ua": "Mozilla/5.0 (X11; Manjaro 19.0.2; Arch; x64; rv:84.0) Gecko/20100101 Firefox/84.0",
+    "expect": {
+      "name": "Manjaro",
+      "version": "19.0.2"
+    }
+  },
+  {
+    "desc": "elementary OS",
+    "ua": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/604.1 (KHTML, like Gecko) Version/11.0 Safari/604.1 elementary OS/0.4 (Loki) Epiphany/3.18.11",
+    "expect": {
+      "name": "elementary OS",
+      "version": "0.4"
+    }
+  },
+  {
+    "desc": "GhostBSD",
+    "ua": "Mozilla/5.0 (X11; GhostBSD/10.3; x86_64; rv:50.0.1) Gecko/20100101 Firefox/50.0.1",
+    "expect": {
+      "name": "GhostBSD",
+      "version": "10.3"
+    }
+  },
+  {
+    "desc": "Android-x86",
+    "ua": "Mozilla/5.0 (Linux; Android 7.1.2; Generic Android-x86) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.198 Safari/537.36 OPR/61.2.3076.56749",
+    "expect": {
+      "name": "Android-x86",
+      "version": "7.1.2"
+    }
+  },
+  {
+    "desc": "Sabayon",
+    "ua": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/536.5 (KHTML, like Gecko) Sabayon Chrome/19.0.1084.46 Safari/536.5",
+    "expect": {
+      "name": "Sabayon",
+      "version": "undefined"
+    }
+  },
+  {
+    "desc": "Linspire",
+    "ua": "Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.8.0.4) Gecko/20060803 Firefox/1.5.0.4 Linspire/1.5.0.4",
+    "expect": {
+      "name": "Linspire",
+      "version": "1.5.0.4"
+    }
+  },
+  {
+    "desc": "SerenityOS",
+    "ua": "Mozilla/4.0 (SerenityOS; x86) LibWeb+LibJS (Not KHTML, nor Gecko) LibWeb",
+    "expect": {
+      "name": "SerenityOS",
+      "version": "undefined"
+    }
+  }
+]

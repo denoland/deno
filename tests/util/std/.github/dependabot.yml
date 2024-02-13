@@ -1,0 +1,13 @@
+version: 2
+updates:
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      # Check for updates to GitHub Actions every week
+      interval: "weekly"
+
+  - package-ecosystem: "cargo"
+    directory: "/crypto/_wasm"
+    schedule:
+      interval: "weekly"

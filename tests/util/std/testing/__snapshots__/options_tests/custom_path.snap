@@ -1,0 +1,17 @@
+export const snapshot = {};
+
+snapshot[`Snapshot Test - Options > path > relative 1`] = `
+[
+  1,
+  2,
+  3,
+]
+`;
+
+snapshot[`Snapshot Test - Options > path > absolute 1`] = `
+[
+  1,
+  2,
+  3,
+]
+`;

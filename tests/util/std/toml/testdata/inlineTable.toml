@@ -1,0 +1,11 @@
+[inlinetable]
+name = { first = "Tom", last = "Preston-Werner" }
+point = { x = 1, y = 2 }
+dog = { type = { name = "pug" } }
+animal.as.leaders = "tosin"
+"tosin.abasi" = "guitarist"
+nile = { derek.roddy = "drummer", also = { malevolant.creation = { drum.kit = "Tama" } } }
+annotation_filter = { "kubernetes.io/ingress.class" = "nginx" }
+literal_key = { 'foo\nbar' = 'foo\nbar' }
+nested = { parent = { children = ["{", "}"], "child.ren" = ["[", "]"] } } # comment
+empty = {}

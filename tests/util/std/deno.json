@@ -1,0 +1,38 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "useUnknownInCatchVariables": true,
+    "noImplicitOverride": true
+  },
+  "imports": {
+    "https://deno.land/std@$STD_VERSION/": "./",
+    "deno_graph": "https://deno.land/x/deno_graph@0.60.0/mod.ts",
+    "deno_doc": "https://deno.land/x/deno_doc@0.73.0/mod.ts",
+    "npm:/typescript": "npm:typescript@5.2.2",
+    "automation/": "https://raw.githubusercontent.com/denoland/automation/0.10.0/"
+  },
+  "tasks": {
+    "test": "deno test --doc --unstable --allow-all --parallel --coverage=./cov --trace-ops",
+    "test:browser": "git grep --name-only \"This module is browser compatible.\" | grep -v deno.json | grep -v .github/workflows | grep -v _tools | xargs deno check --config browser-compat.tsconfig.json",
+    "fmt:licence-headers": "deno run --allow-read --allow-write ./_tools/check_licence.ts",
+    "lint:deprecations": "deno run --allow-read --allow-net --allow-env=HOME ./_tools/check_deprecation.ts",
+    "lint:doc-imports": "deno run --allow-env --allow-read ./_tools/check_doc_imports.ts",
+    "lint:circular": "deno run --allow-env --allow-read --allow-net=deno.land ./_tools/check_circular_submodule_dependencies.ts",
+    "lint:tools-types": "deno check _tools/*.ts",
+    "lint": "deno lint && deno task fmt:licence-headers --check && deno task lint:deprecations && deno task lint:doc-imports && deno task lint:circular && deno task lint:tools-types",
+    "typos": "typos -c ./.github/workflows/typos.toml",
+    "build:crypto": "deno task --cwd crypto/_wasm wasmbuild",
+    "wasmbuild": "deno run --unstable -A https://deno.land/x/wasmbuild@0.15.0/main.ts --js-ext mjs --sync",
+    "cov:clean": "rm -rf cov html_cov cov.lcov",
+    "cov:gen": "deno coverage ./cov/ --lcov --output=cov.lcov",
+    "cov:view": "genhtml --ignore-errors unmapped -o html_cov cov.lcov && open html_cov/index.html",
+    "ok": "deno task lint && deno fmt --check && deno task test:browser && deno task test"
+  },
+  "exclude": [
+    ".git",
+    "crypto/_wasm/target",
+    "cov",
+    "jsonc/testdata",
+    "front_matter/testdata"
+  ]
+}

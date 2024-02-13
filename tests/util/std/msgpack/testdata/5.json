@@ -1,0 +1,12 @@
+{
+  "name": "test",
+  "greeting": "Hello, World!",
+  "flag": true,
+  "littleNum": 3,
+  "biggerNum": 32254435,
+  "decimal": 1.33,
+  "bigDecimal": 3.5522E35,
+  "negative": -54,
+  "aNull": null,
+  "more": "another string"
+}

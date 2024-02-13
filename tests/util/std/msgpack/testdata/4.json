@@ -1,0 +1,380 @@
+{
+  "metadata": {
+    "Designs": ["Randomized Controlled Trial"],
+    "Types": [],
+    "BriefSummary": "To determine the efficacy, long-term safety, and tolerability of alirocumab 300 mg every 4\n weeks (Q4W), in comparison with placebo, as well as its potential as a starting regimen. The\n dose regimen of 75 mg every 2 weeks (Q2W), as used in other studies, was added as a\n calibrator.",
+    "Abstract": "To determine the efficacy, long-term safety, and tolerability of alirocumab 300 mg every 4\n weeks (Q4W), in comparison with placebo, as well as its potential as a starting regimen. The\n dose regimen of 75 mg every 2 weeks (Q2W), as used in other studies, was added as a\n calibrator.",
+    "Acronym": null,
+    "ArticleId": "Qy3gwKWSoaWRmbmFEQA",
+    "Authors": null,
+    "CochraneID": null,
+    "Confidential": false,
+    "CorporateAuthor": null,
+    "Country": "Bulgaria, Canada, Hungary, Israel, Norway, Slovakia, United Kingdom, United States",
+    "CustomData": null,
+    "DatabaseType": "ClinicalTrials.gov",
+    "DOI": null,
+    "EmbaseAccessionNumber": null,
+    "Emtree": null,
+    "ErrataText": null,
+    "FullTextURL": null,
+    "Institution": null,
+    "ISSN": null,
+    "Issue": null,
+    "JournalTitle": null,
+    "MedlineID": null,
+    "MeSH": "Hypercholesterolemia|Antibodies, Monoclonal",
+    "Pages": null,
+    "ParentChildStatus": null,
+    "ParentID": null,
+    "PublicationDate": "March 21, 2017",
+    "PublicationYear": 2017,
+    "PubType": null,
+    "ReferenceStudy": null,
+    "SecondarySourceID": null,
+    "Source": "Regeneron Pharmaceuticals",
+    "SourceReferenceId": "NCT01926782",
+    "TaStudyDesign": "Randomized",
+    "Title": "A Randomized, Double-Blind, Placebo-Controlled Study to Evaluate the Efficacy and Safety of an Every Four Weeks Treatment Regimen of Alirocumab in Patients With Primary Hypercholesterolemia",
+    "TrialOutcome": null,
+    "Volume": null,
+    "Id": 179246831,
+    "Created": "2020-04-10T14:48:20.4384957Z",
+    "VersionNo": 2,
+    "ExtractData": null,
+    "Digitized": true,
+    "IsRapidExtract": false,
+    "IsUploaded": false
+  },
+  "design": "Randomized Controlled Trial",
+  "conditions": [{ "label": "Cholesterol Total Increased", "id": "SUE_c" }],
+  "phase": 3,
+  "name": "NCT01926782",
+  "trialIds": ["NCT01926782"],
+  "acronyms": [],
+  "outcomeCount": 156,
+  "id": 179246831,
+  "groups": [
+    {
+      "Id": "4r",
+      "RefId": "B5|O2~Alirocumab 75 mg Q2W/Up 150 mg Q2W Without Concomitant Statin",
+      "OriginalName": "Alirocumab 75 mg Q2W/Up 150 mg Q2W Without Concomitant Statin",
+      "N": 37,
+      "age": 59.3,
+      "ageSD": 11.3,
+      "male": 37.83783783783784,
+      "Interventions": [{ "termIds": [["SUBYEL", "SUB_Oc"], ["SUNUVb"]] }],
+      "analyzeAs": "Alirocumab",
+      "analyzableScore": 1.0717734625362931,
+      "matchingScore": 0
+    },
+    {
+      "Id": "zB",
+      "RefId": "B6|O3~Alirocumab 300 mg Q4W/Up 150 mg Q2W Without Concomitant Statin",
+      "OriginalName": "Alirocumab 300 mg Q4W/Up 150 mg Q2W Without Concomitant Statin",
+      "N": 146,
+      "age": 59.2,
+      "ageSD": 10.8,
+      "male": 45.205479452054796,
+      "Interventions": [{ "termIds": [["SUBYEL", "SUB_Oc"]] }],
+      "analyzeAs": "Statins",
+      "analyzableScore": 1.0717734625362931,
+      "matchingScore": 0
+    },
+    {
+      "Id": "3!",
+      "RefId": "B4|O1~Placebo Q2W Without Concomitant Statin",
+      "OriginalName": "Placebo Q2W Without Concomitant Statin",
+      "N": 73,
+      "age": 59.4,
+      "ageSD": 10.2,
+      "male": 54.794520547945204,
+      "Interventions": [{ "termIds": [["SUGeLS"], ["SUBYEL", "SUB_Oc"]] }],
+      "analyzeAs": "Control",
+      "analyzableScore": 1.2020833333333334,
+      "matchingScore": 0
+    },
+    {
+      "Id": "tv",
+      "RefId": "E3",
+      "OriginalName": "Alirocumab 300 mg Q4W/Up 150 mg Q2W",
+      "Interventions": [{ "termIds": [["SUCO54", "SUNUVb"]] }]
+    },
+    {
+      "Id": "jt",
+      "RefId": "B3|O3~Alirocumab 300 mg Q4W/Up 150 mg Q2W With Concomitant Statin",
+      "OriginalName": "Alirocumab 300 mg Q4W/Up 150 mg Q2W With Concomitant Statin",
+      "N": 312,
+      "age": 61.6,
+      "ageSD": 10,
+      "male": 60.8974358974359,
+      "Interventions": [{ "termIds": [["SUBYEL", "SUB_Oc"]] }]
+    },
+    {
+      "Id": "5!",
+      "RefId": "E2",
+      "OriginalName": "Alirocumab 75 mg Q2W/Up 150 mg Q2W",
+      "Interventions": [{ "termIds": [["SUNUVb"]] }]
+    },
+    {
+      "Id": "4E",
+      "RefId": "B2|O2~Alirocumab 75 mg Q2W/Up 150 mg Q2W With Concomitant Statin",
+      "OriginalName": "Alirocumab 75 mg Q2W/Up 150 mg Q2W With Concomitant Statin",
+      "N": 78,
+      "age": 60.7,
+      "ageSD": 9.1,
+      "male": 65.38461538461539,
+      "Interventions": [{ "termIds": [["SUBYEL", "SUB_Oc"], ["SUNUVb"]] }]
+    },
+    {
+      "Id": "i4",
+      "Interventions": [
+        {
+          "Id": "Ya",
+          "Name": 178613599,
+          "Treatments": [{ "Id": "((", "Phase": "k)" }],
+          "Type": "Drug",
+          "termIds": [["SUGeLS"], ["SUNUVb"]],
+          "terms": [["Placebo"], ["Alirocumab"]]
+        },
+        {
+          "Id": "o)",
+          "Name": 2159990,
+          "Treatments": [{ "Id": "1$", "Phase": "k)" }],
+          "Type": "Drug",
+          "termIds": [["SUBYEL"]],
+          "terms": [["Statins"]]
+        }
+      ],
+      "RefId": "E1|Placebo Q2W",
+      "OriginalName": "Placebo Q2W"
+    },
+    {
+      "Id": "Ls",
+      "RefId": "B1|O1~Placebo Q2W With Concomitant Statin",
+      "OriginalName": "Placebo Q2W With Concomitant Statin",
+      "N": 157,
+      "age": 61.6,
+      "ageSD": 9.7,
+      "male": 64.3312101910828,
+      "Interventions": [{ "termIds": [["SUGeLS"], ["SUBYEL", "SUB_Oc"]] }]
+    }
+  ],
+  "hasDocData": true,
+  "hasRapidExtract": false,
+  "N": 803,
+  "queryScore": 1.4868329805051381,
+  "matchingScore": 7.960635921410255,
+  "score": 22.084654254966498,
+  "outcomes": [
+    {
+      "id": "179246387",
+      "type": "Change",
+      "unit": "%",
+      "termIds": [["SUF0R", "SUBskP"]],
+      "quantifiers": [],
+      "name": "Calculated LDL-C in Not Receiving Concomitant Statin Therapy - On-Treatment Analysis",
+      "cells": [
+        {
+          "number": -0.4,
+          "unit": "%",
+          "group": "3!",
+          "varType": "se",
+          "N": 70,
+          "se": 2,
+          "sd": 16.73
+        },
+        {
+          "number": -54.6,
+          "unit": "%",
+          "group": "4r",
+          "varType": "se",
+          "N": 37,
+          "se": 2.8,
+          "sd": 17.03
+        },
+        {
+          "number": -59.4,
+          "unit": "%",
+          "group": "zB",
+          "varType": "se",
+          "N": 141,
+          "se": 1.4,
+          "sd": 16.62
+        }
+      ],
+      "time": {
+        "Id": 67122072,
+        "Low": { "Value": "Baseline" },
+        "High": { "Number": 24, "Unit": "wk" },
+        "Type": "Total",
+        "days": 168,
+        "description": "24wk"
+      },
+      "score": 2.08,
+      "matchingTerm": "SUF0R",
+      "suggestedPositive": false,
+      "sourceUnit": "%"
+    },
+    {
+      "id": "179246389",
+      "type": "Change",
+      "unit": "%",
+      "termIds": [["SUF0R", "SUBskP"]],
+      "quantifiers": [],
+      "name": "Calculated LDL-C in Receiving Concomitant Statin Therapy - On-Treatment Analysis",
+      "cells": [
+        {
+          "number": -0.3,
+          "unit": "%",
+          "group": "Ls",
+          "varType": "se",
+          "N": 151,
+          "se": 2.1,
+          "sd": 25.81
+        },
+        {
+          "number": -55.1,
+          "unit": "%",
+          "group": "4E",
+          "varType": "se",
+          "N": 75,
+          "se": 3,
+          "sd": 25.98
+        },
+        {
+          "number": -62.3,
+          "unit": "%",
+          "group": "jt",
+          "varType": "se",
+          "N": 302,
+          "se": 1.5,
+          "sd": 26.07
+        }
+      ],
+      "time": {
+        "Id": 67122072,
+        "Low": { "Value": "Baseline" },
+        "High": { "Number": 24, "Unit": "wk" },
+        "Type": "Total",
+        "days": 168,
+        "description": "24wk"
+      },
+      "score": 2.08,
+      "matchingTerm": "SUF0R",
+      "suggestedPositive": false,
+      "sourceUnit": "%"
+    },
+    {
+      "id": "179246393",
+      "type": "Change",
+      "unit": "%",
+      "termIds": [["SUF0R", "SUBskP"]],
+      "quantifiers": [],
+      "name": "Calculated LDL-C in Not Receiving Concomitant Statin Therapy - On-Treatment Analysis",
+      "cells": [
+        {
+          "number": -0.5,
+          "unit": "%",
+          "group": "3!",
+          "varType": "se",
+          "N": 70,
+          "se": 2,
+          "sd": 16.73
+        },
+        {
+          "number": -53.9,
+          "unit": "%",
+          "group": "4r",
+          "varType": "se",
+          "N": 37,
+          "se": 2.7,
+          "sd": 16.42
+        },
+        {
+          "number": -60,
+          "unit": "%",
+          "group": "zB",
+          "varType": "se",
+          "N": 141,
+          "se": 1.4,
+          "sd": 16.62
+        }
+      ],
+      "time": {
+        "Id": 67122069,
+        "Low": { "Value": "Baseline" },
+        "High": { "Number": 12, "Unit": "wk" },
+        "Type": "Total",
+        "days": 84,
+        "description": "12wk"
+      },
+      "score": 2.08,
+      "matchingTerm": "SUF0R",
+      "suggestedPositive": false,
+      "sourceUnit": "%"
+    },
+    {
+      "id": "179246394",
+      "type": "Change",
+      "unit": "%",
+      "termIds": [["SUF0R", "SUBskP"]],
+      "quantifiers": [],
+      "name": "Calculated LDL-C in Receiving Concomitant Statin Therapy - On-Treatment Analysis",
+      "cells": [
+        {
+          "number": 1.4,
+          "unit": "%",
+          "group": "Ls",
+          "varType": "se",
+          "N": 151,
+          "se": 1.9,
+          "sd": 23.35
+        },
+        {
+          "number": -47.3,
+          "unit": "%",
+          "group": "4E",
+          "varType": "se",
+          "N": 75,
+          "se": 2.8,
+          "sd": 24.25
+        },
+        {
+          "number": -58,
+          "unit": "%",
+          "group": "jt",
+          "varType": "se",
+          "N": 302,
+          "se": 1.4,
+          "sd": 24.33
+        }
+      ],
+      "time": {
+        "Id": 67122069,
+        "Low": { "Value": "Baseline" },
+        "High": { "Number": 12, "Unit": "wk" },
+        "Type": "Total",
+        "days": 84,
+        "description": "12wk"
+      },
+      "score": 2.08,
+      "matchingTerm": "SUF0R",
+      "suggestedPositive": false,
+      "sourceUnit": "%"
+    }
+  ],
+  "characteristics": [
+    {
+      "id": "179246354",
+      "type": "Binary",
+      "isCharacteristic": true,
+      "termIds": [["SUE_c", "SUCbN", "SUyJj"]],
+      "quantifiers": [],
+      "name": "Patients not having adequate control of their hypercholesterolemia based on their individual level of CVD risk",
+      "cells": [],
+      "number": 100
+    }
+  ],
+  "outcomesScore": 18.97947630112307
+}

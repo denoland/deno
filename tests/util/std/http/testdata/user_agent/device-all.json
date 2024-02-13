@@ -1,0 +1,3337 @@
+[
+  {
+    "desc": "K",
+    "ua": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "undefined",
+      "model": "K",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "ASUS Nexus 7",
+    "ua": "Mozilla/5.0 (Linux; Android 4.4.2; Nexus 7 Build/KOT49H) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/32.0.1700.99 Safari/537.36",
+    "expect": {
+      "vendor": "ASUS",
+      "model": "Nexus 7",
+      "type": "tablet"
+    }
+  },
+  {
+    "desc": "ASUS Padfone",
+    "ua": "Mozilla/5.0 (Linux; Android 4.1.1; PadFone 2 Build/JRO03L) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/37.0.2062.117 Safari/537.36",
+    "expect": {
+      "vendor": "ASUS",
+      "model": "PadFone",
+      "type": "tablet"
+    }
+  },
+  {
+    "desc": "ASUS ZenPad 10",
+    "ua": "Mozilla/5.0 (Linux; Android 6.0; P00C Build/MRA58K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/46.0.2490.76 Safari/537.36",
+    "expect": {
+      "vendor": "ASUS",
+      "model": "P00C",
+      "type": "tablet"
+    }
+  },
+  {
+    "desc": "ASUS ZenPad Z8s",
+    "ua": "Mozilla/5.0 (Linux; Android 7.0; ASUS_P00J) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/76.0.3809.111 Safari/537.36\n",
+    "expect": {
+      "vendor": "ASUS",
+      "model": "P00J",
+      "type": "tablet"
+    }
+  },
+  {
+    "desc": "ASUS ROG",
+    "ua": "Mozilla/5.0 (Linux; Android 8.1; ZS600KL Build/OPM1.171019.026) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/66.0.3359.126 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "ASUS",
+      "model": "ZS600KL",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "ASUS ROG II",
+    "ua": "Mozilla/5.0 (Linux; Android 9; ASUS_I001DA Build/PKQ1.190414.001; xx-xx) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/74.0.3729.136 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "ASUS",
+      "model": "I001DA",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "ASUS Zenfone 2",
+    "ua": "Mozilla/5.0 (Linux; Android 5.0; ASUS ZenFone 2 Build/LRX22C) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/37.0.0.0 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "ASUS",
+      "model": "ZenFone 2",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "ASUS Zenfone 3 Deluxe",
+    "ua": "Mozilla/5.0 (Linux; Android 6.0; ASUS_Z016D Build/MXB48T) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/57.0.2987.132 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "ASUS",
+      "model": "Z016D",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "ASUS Zenfone 5",
+    "ua": "Mozilla/5.0 (Linux; Android 8.0; ZE620KL Build/OPR1.170623.032) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/66.0.3359.158 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "ASUS",
+      "model": "ZE620KL",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "ASUS Zenfone 7",
+    "ua": "Mozilla/5.0 (Linux; Android 10; ASUS_I002D) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.81 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "ASUS",
+      "model": "I002D",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "ASUS Zenfone 7 Pro",
+    "ua": "Mozilla/5.0 (Linux; Android 10; ZS671KS) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/89.0.4389.72 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "ASUS",
+      "model": "ZS671KS",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "ASUS Zenfone Max Pro",
+    "ua": "Mozilla/5.0 (Linux; Android 9; ZB602KL) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/79.0.3945.116 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "ASUS",
+      "model": "ZB602KL",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "ASUS Zenfone Max Pro (M1)",
+    "ua": "Mozilla/5.0 (Linux; Android 8.1; ASUS_X00TD Build/OPM1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/64.0.3282.137 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "ASUS",
+      "model": "X00TD",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "ASUS Zenfone Max M2",
+    "ua": "Mozilla/5.0 (Linux; Android 8.1; ASUS_X01AD) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/71.0.3578.99 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "ASUS",
+      "model": "X01AD",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "ASUS Zenfone Max Pro M2",
+    "ua": "Mozilla/5.0 (Linux; Android 8.1; ASUS_X01BDA) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/71.0.3578.99 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "ASUS",
+      "model": "X01BDA",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "ASUS Zenfone Go",
+    "ua": "Mozilla/5.0 (Linux; Android 6.0; ASUS_X009DA Build/MMB29M) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/56.0.2924.87 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "ASUS",
+      "model": "X009DA",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Acer Iconia A1-810",
+    "ua": "Mozilla/5.0 (Linux; Android 4.2.2; A1-810 Build/JDQ39) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3325.109 Safari/537.36",
+    "expect": {
+      "vendor": "Acer",
+      "model": "A1-810",
+      "type": "tablet"
+    }
+  },
+  {
+    "desc": "BlackBerry Priv",
+    "ua": "User-Agent: Mozilla/5.0 (Linux; Android 5.1.1; STV100-1 Build/LMY47V; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/46.0.2490.76 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "BlackBerry",
+      "model": "STV100-1",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "BlackBerry Keyone",
+    "ua": "Mozilla/5.0 (Linux; Android 8.1.0; BBB100-1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/84.0.4147.111 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "BlackBerry",
+      "model": "BBB100-1",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "BlackBerry Key2",
+    "ua": "Mozilla/5.0 (Linux; Android 8.1.0; BBF100-1 Build/OPM1.171019.026) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/68.0.3440.91 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "BlackBerry",
+      "model": "BBF100-1",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "BlackBerry Key2 LE",
+    "ua": "User-Agent: Mozilla/5.0 (Linux; Android 8.1.0; BBE100-1 Build/OPM1.171019.026) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/69.0.3497 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "BlackBerry",
+      "model": "BBE100-1",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Blackview 4900Pro",
+    "ua": "Mozilla/5.0 (Linux; Android 12; BV4900Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "undefined",
+      "model": "BV4900Pro",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Desktop (IE11 with Tablet string)",
+    "ua": "Mozilla/5.0 (Windows NT 6.3; WOW64; Trident/7.0; .NET4.0E; .NET4.0C; .NET CLR 3.5.30729; .NET CLR 2.0.50727; .NET CLR 3.0.30729; Tablet PC 2.0; GWX:MANAGED; rv:11.0) like Gecko",
+    "expect": {
+      "vendor": "undefined",
+      "model": "undefined",
+      "type": "undefined"
+    }
+  },
+  {
+    "desc": "Mobile (DuckDuckGo mobile browser)",
+    "ua": "Mozilla/5.0 (Linux; Android 8.1.0) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/92.0.4515.131 Mobile DuckDuckGo/5 Safari/537.36",
+    "expect": {
+      "vendor": "undefined",
+      "model": "undefined",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Fairphone 1U",
+    "ua": "Mozilla/5.0 (Linux; U; Android 4.2.2; FP1U Build/JDQ39) AppleWebKit/534.30 (KHTML, like Gecko) Version/4.0 Mobile Safari/534.30",
+    "expect": {
+      "vendor": "Fairphone",
+      "model": "FP1U",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Fairphone 2",
+    "ua": "Mozilla/5.0 (Linux; Android 7.1.2; FP2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/79.0.3945.136 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Fairphone",
+      "model": "FP2",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Fairphone 3",
+    "ua": "Mozilla/5.0 (Linux; Android 9; FP3) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/79.0.3945.93 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Fairphone",
+      "model": "FP3",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "HTC Desire 820",
+    "ua": "Mozilla/5.0 (Linux; Android 6.0.1; HTC Desire 820 Build/MMB29M) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/46.0.2490.76 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "HTC",
+      "model": "Desire 820",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "HTC Evo Shift 4G",
+    "ua": "Mozilla/5.0 (Linux; U; Android 2.3.4; en-us; Sprint APA7373KT Build/GRJ22) AppleWebKit/533.1 (KHTML, like Gecko) Version/4.0",
+    "expect": {
+      "vendor": "Sprint",
+      "model": "APA7373KT",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "HTC Nexus 9",
+    "ua": "Mozilla/5.0 (Linux; Android 5.0; Nexus 9 Build/LRX21R) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/36.0.1985.143 Mobile Crosswalk/7.36.154.13 Safari/537.36",
+    "expect": {
+      "vendor": "HTC",
+      "model": "Nexus 9",
+      "type": "tablet"
+    }
+  },
+  {
+    "desc": "Huawei Honor",
+    "ua": "Mozilla/5.0 (Linux; U; Android 2.3; xx-xx; U8860 Build/HuaweiU8860) AppleWebKit/533.1 (KHTML, like Gecko) Version/4.0 Mobile Safari/533.1",
+    "expect": {
+      "vendor": "Huawei",
+      "model": "U8860",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Huawei Honor 20 Pro",
+    "ua": "Mozilla/5.0 (Linux; Android 10; YAL-L41) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.127 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Huawei",
+      "model": "YAL-L41",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Huawei Honor 20 Pro",
+    "ua": "Mozilla/5.0 (Linux; Android 10; YAL-AL10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.127 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Huawei",
+      "model": "YAL-AL10",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Huawei Nexus 6P",
+    "ua": "Mozilla/5.0 (Linux; Android 6.0.1; Nexus 6P Build/MTC19V) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/51.0.2704.81 Mobile Safari/537",
+    "expect": {
+      "vendor": "Huawei",
+      "model": "Nexus 6P",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Huawei P10",
+    "ua": "Mozilla/5.0 (Linux; Android 7.0; VTR-L09 Build/HUAWEIVTR-L09; xx-xx) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/56.0.2924.87 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Huawei",
+      "model": "VTR-L09",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Huawei Y3II",
+    "ua": "Mozilla/5.0 (Linux; U; Android 5.1; xx-xx; HUAWEI LUA-L03 Build/HUAWEILUA-L03) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/39.0.0.0 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Huawei",
+      "model": "LUA-L03",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "HUAWEI MediaPad M3 Lite 10",
+    "ua": "Mozilla/5.0 (Linux; Android 7.0; BAH-L09) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.80 Safari/537.36",
+    "expect": {
+      "vendor": "Huawei",
+      "model": "BAH-L09",
+      "type": "tablet"
+    }
+  },
+  {
+    "desc": "HUAWEI MediaPad M5 Lite",
+    "ua": "Mozilla/5.0 (Linux; Android 8.0.0; BAH2-W19 Build/HUAWEIBAH2-W19; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/83.0.4103.106 Safari/537.36",
+    "expect": {
+      "vendor": "Huawei",
+      "model": "BAH2-W19",
+      "type": "tablet"
+    }
+  },
+  {
+    "desc": "HUAWEI MediaPad M5",
+    "ua": "Mozilla/5.0 (Linux; Android 9; SHT-AL09 Build/HUAWEISHT-AL09; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/89.0.4389.90 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Huawei",
+      "model": "SHT-AL09",
+      "type": "tablet"
+    }
+  },
+  {
+    "desc": "HUAWEI MediaPad T5",
+    "ua": "Mozilla/5.0 (Linux; Android 8.0.0; AGS2-L09 Build/HUAWEIAGS2-L09; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/84.0.4147.125 Safari/537.36",
+    "expect": {
+      "vendor": "Huawei",
+      "model": "AGS2-L09",
+      "type": "tablet"
+    }
+  },
+  {
+    "desc": "HUAWEI MediaPad T10",
+    "ua": "Mozilla/5.0 (Linux; Android 10; AGR-W09 Build/HUAWEIAGR-W09; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/78.0.3904.108 Safari/537.36",
+    "expect": {
+      "vendor": "Huawei",
+      "model": "AGR-W09",
+      "type": "tablet"
+    }
+  },
+  {
+    "desc": "HUAWEI MediaPad T10s",
+    "ua": "Mozilla/5.0 (Linux; Android 10; AGS3-W09 Build/HUAWEIAGS3-W09; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/78.0.3904.108 Safari/537.36",
+    "expect": {
+      "vendor": "Huawei",
+      "model": "AGS3-W09",
+      "type": "tablet"
+    }
+  },
+  {
+    "desc": "Huawei MatePad T 10",
+    "ua": "Mozilla/5.0 (Linux; Android 10; AGR-L09; HMSCore 5.0.4.301) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.106 HuaweiBrowser/11.0.3.304 Safari/537.36",
+    "expect": {
+      "vendor": "Huawei",
+      "model": "AGR-L09",
+      "type": "tablet"
+    }
+  },
+  {
+    "desc": "Huawei M3",
+    "ua": "Mozilla/5.0 (Linux; Android 7.0; BTV-W09) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/79.0.3945.116 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Huawei",
+      "model": "BTV-W09",
+      "type": "tablet"
+    }
+  },
+  {
+    "desc": "Huawei Mate 10 Pro",
+    "ua": "Mozilla/5.0 (Linux; Android 8.0; BLA-L29 Build/HUAWEIBLA-L29) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/63.0.3236.6 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Huawei",
+      "model": "BLA-L29",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Huawei Mate X",
+    "ua": "Mozilla/5.0 (Linux; Android 9; TAH-AN00) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/84.0.4147.111 Safari/537.36",
+    "expect": {
+      "vendor": "Huawei",
+      "model": "TAH-AN00",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Huawei Mate X2",
+    "ua": "Mozilla/5.0 (Linux; Android 10; TET-AN00) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/78.0.3904.96 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Huawei",
+      "model": "TET-AN00",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Huawei Mate 20 X",
+    "ua": "Mozilla/5.0 (Linux; Android 9; EVR-L29 Build/HUAWEIEVR-L29; xx-xx) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/70.0.3538.110 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Huawei",
+      "model": "EVR-L29",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Huawei Mate 20 Pro",
+    "ua": "Mozilla/5.0 (Linux; Android 9; LYA-L09) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/78.0.3904.90 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Huawei",
+      "model": "LYA-L09",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Huawei Mate 20 Pro",
+    "ua": "Mozilla/5.0 (Linux; Android 9; LYA-AL00) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/78.0.3904.90 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Huawei",
+      "model": "LYA-AL00",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Huawei Mate 20 Pro",
+    "ua": "Mozilla/5.0 (Linux; Android 9; LYA-AL10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/78.0.3904.90 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Huawei",
+      "model": "LYA-AL10",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Huawei Mate 20 Pro",
+    "ua": "Mozilla/5.0 (Linux; Android 9; LYA-L0C) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/78.0.3904.90 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Huawei",
+      "model": "LYA-L0C",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Huawei Mate 20 Pro",
+    "ua": "Mozilla/5.0 (Linux; Android 9; LYA-L29) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/78.0.3904.90 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Huawei",
+      "model": "LYA-L29",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Huawei Mate 20 Pro",
+    "ua": "Mozilla/5.0 (Linux; Android 9; LYA-TL00) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/78.0.3904.90 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Huawei",
+      "model": "LYA-TL00",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Huawei Mate 50 Pro",
+    "ua": "Mozilla/5.0 (Linux; Android 12; DCO-LX9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Huawei",
+      "model": "DCO-LX9",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Huawei P20 Lite",
+    "ua": "Mozilla/5.0 (Linux; Android 8.0.0; ANE-LX1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/75.0.3770.143 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Huawei",
+      "model": "ANE-LX1",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Huawei P20",
+    "ua": "Mozilla/5.0 (Linux; Android 8.1.0; EML-L29) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/74.0.3729.157 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Huawei",
+      "model": "EML-L29",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Huawei P20 Pro",
+    "ua": "Mozilla/5.0 (Linux; Android 9; CLT-L29) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/78.0.3904.90 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Huawei",
+      "model": "CLT-L29",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Huawei P30",
+    "ua": "Mozilla/5.0 (Linux; Android 9; ELE-L29) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/73.0.3683.90 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Huawei",
+      "model": "ELE-L29",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Huawei P30 Pro",
+    "ua": "Mozilla/5.0 (Linux; Android 9; VOG-L29) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/75.0.3770.143 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Huawei",
+      "model": "VOG-L29",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Huawei P40",
+    "ua": "Mozilla/5.0 (Linux; Android 10; ANA-AN00 Build/HUAWEIANA-AN00; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/76.0.3809.89 Mobile Safari/537.36 T7/11.26 SP-engine/2.22.0 baiduboxapp/11.26.0.10 (Baidu; P1 10) NABar/1.0",
+    "expect": {
+      "vendor": "Huawei",
+      "model": "ANA-AN00",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Huawei P40 Pro",
+    "ua": "Mozilla/5.0 (Linux; Android 10; ELS-AN00 Build/HUAWEIELS-AN00; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/78.0.3904.108 Mobile Safari/537.36 mailapp/6.0.0",
+    "expect": {
+      "vendor": "Huawei",
+      "model": "ELS-AN00",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Huawei 30 Pro+",
+    "ua": "Mozilla/5.0 (Linux; Android 10; EBG-AN10 Build/HUAWEIEBG-AN10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/69.0.3497.86 Mobile Safari/537.36 EdgA/42.0.0.2741",
+    "expect": {
+      "vendor": "Huawei",
+      "model": "EBG-AN10",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Huawei 30S",
+    "ua": "Mozilla/5.0 (Linux; Android 10; CDY-AN90 Build/HUAWEICDY-AN90; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/78.0.3904.108 Mobile Safari/537.36 mailapp/5.8.0",
+    "expect": {
+      "vendor": "Huawei",
+      "model": "CDY-AN90",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Huawei Nova 5T",
+    "ua": "Mozilla/5.0 (Linux; Android 10; YAL-L21) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.132 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Huawei",
+      "model": "YAL-L21",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Huawei Nova 5T",
+    "ua": "Mozilla/5.0 (Linux; Android 10; YAL-L61) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.132 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Huawei",
+      "model": "YAL-L61",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Huawei Nova 5T",
+    "ua": "Mozilla/5.0 (Linux; Android 10; YAL-L71) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.132 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Huawei",
+      "model": "YAL-L71",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Huawei Nova 5T",
+    "ua": "Mozilla/5.0 (Linux; Android 10; YAL-L61D) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.132 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Huawei",
+      "model": "YAL-L61D",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Huawei Nova 5T",
+    "ua": "Mozilla/5.0 (Linux; Android 10; YALE-L61A) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.132 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Huawei",
+      "model": "YALE-L61A",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Huawei Nova 5T",
+    "ua": "Mozilla/5.0 (Linux; Android 10; YALE-L61D) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.132 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Huawei",
+      "model": "YALE-L61D",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Huawei Nova 5T",
+    "ua": "Mozilla/5.0 (Linux; Android 10; YALE-L71A) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.132 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Huawei",
+      "model": "YALE-L71A",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Huawei Enjoy10e",
+    "ua": "Dalvik/2.1.0 (Linux; U; Android 10; MED-AL00 Build/HUAWEIMED-AL00)",
+    "expect": {
+      "vendor": "Huawei",
+      "model": "MED-AL00",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Huawei Honor 6A",
+    "ua": "Mozilla/5.0 (Linux; Android 7.0; DLI-L22 Build/HONORDLI-L22; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/79.0.3945.116 Mobile Safari/537.36 [FB_IAB/FB4A;FBAV/252.0.0.22.355;]",
+    "expect": {
+      "vendor": "Huawei",
+      "model": "DLI-L22",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Huawei Honor 7",
+    "ua": "Mozilla/5.0 (Linux; Android 6.0; PLK-L01 Build/HONORPLK-L01; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/79.0.3945.116 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Huawei",
+      "model": "PLK-L01",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Huawei 10 Lite",
+    "ua": "Mozilla/5.0 (Linux; Android 9; HRY-LX1 Build/HONORHRY-LX1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/68.0.3440.91 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Huawei",
+      "model": "HRY-LX1",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Huawei Y7 2018",
+    "ua": "Mozilla/5.0 (Linux; Android 8.0.0; LDN-L01) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/78.0.3904.62 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Huawei",
+      "model": "LDN-L01",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Huawei Honor 8X",
+    "ua": "Mozilla/5.0 (Linux; Android 9; JSN-L21) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/76.0.3809.132 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Huawei",
+      "model": "JSN-L21",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Huawei Y6 2019",
+    "ua": "Mozilla/5.0 (Linux; Android 9; MRD-LX1N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.110 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Huawei",
+      "model": "MRD-LX1N",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Huawei Y9 2019",
+    "ua": "Mozilla/5.0 (Linux; Android 9; JKM-LX2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/74.0.3729.136 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Huawei",
+      "model": "JKM-LX2",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Huawei Y5",
+    "ua": "Mozilla/5.0 (Linux; Android 9; AMN-LX3) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/79.0.3945.116 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Huawei",
+      "model": "AMN-LX3",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Huawei Y7p",
+    "ua": "Mozilla/5.0 (Linux; Android 9; ART-L29) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/77.0.3865.92 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Huawei",
+      "model": "ART-L29",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Huawei Mate 20 Lite",
+    "ua": "Mozilla/5.0 (Linux; Android 8.1.0; SNE-LX1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/77.0.3865.116 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Huawei",
+      "model": "SNE-LX1",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Huawei P10 Lite",
+    "ua": "Mozilla/5.0 (Linux; Android 8.0.0; WAS-LX1A) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/73.0.3683.90 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Huawei",
+      "model": "WAS-LX1A",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Huawei Y5 Lite 2018",
+    "ua": "Mozilla/5.0 (Linux; Android 8.1.0; DRA-LX5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/78.0.3904.108 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Huawei",
+      "model": "DRA-LX5",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Huawei Honor 8C",
+    "ua": "Mozilla/5.0 (Linux; Android 8.1.0; BKK-LX2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/79.0.3945.136 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Huawei",
+      "model": "BKK-LX2",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Infinix Hot 7 Pro",
+    "ua": "Mozilla/5.0 (Linux; Android 9; Infinix X625C) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Infinix",
+      "model": "X625C",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Infinix Hot 10T",
+    "ua": "Mozilla/5.0 (Linux; Android 11; Infinix X689C) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Infinix",
+      "model": "X689C",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Infinix Hot 11s",
+    "ua": "Mozilla/5.0 (Linux; Android 11; Infinix X6812 Build/RP1A.200720.011; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/111.0.5563.116 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Infinix",
+      "model": "X6812",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Infinix Smart 5",
+    "ua": "Mozilla/5.0 (Linux; Android 10; Infinix X657C) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/105.0.0.0 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Infinix",
+      "model": "X657C",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Infinix Zero 5G",
+    "ua": "Mozilla/5.0 (Linux; Android 12; Infinix X6815B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Infinix",
+      "model": "X6815B",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Apple Desktop",
+    "ua": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_6) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0.3 Safari/605.1.15",
+    "expect": {
+      "vendor": "Apple",
+      "model": "Macintosh",
+      "type": "undefined"
+    }
+  },
+  {
+    "desc": "Apple Watch",
+    "ua": "atc/1.0 watchOS/7.3.3 model/Watch4,2 hwp/t8006 build/18S830 (6; dt:191)",
+    "expect": {
+      "vendor": "Apple",
+      "model": "watch",
+      "type": "wearable"
+    }
+  },
+  {
+    "desc": "iPad using UCBrowser",
+    "ua": "Mozilla/5.0 (iPad; U; CPU OS 11_2 like Mac OS X; zh-CN; iPad5,3) AppleWebKit/534.46 (KHTML, like Gecko) UCBrowser/3.0.1.776 U3/ Mobile/10A403 Safari/7543.48.3",
+    "expect": {
+      "vendor": "Apple",
+      "model": "iPad",
+      "type": "tablet"
+    }
+  },
+  {
+    "desc": "iPad Air",
+    "ua": "Mozilla/5.0 (iPad; CPU OS 12_4_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 [FBAN/FBIOS;FBDV/iPad4,1;FBMD/iPad;FBSN/iOS;FBSV/12.4.5;FBSS/2;FBID/tablet;FBLC/en_US;FBOP/5;FBCR/]",
+    "expect": {
+      "vendor": "Apple",
+      "model": "iPad",
+      "type": "tablet"
+    }
+  },
+  {
+    "desc": "iPad using Facebook Browser",
+    "ua": "Mozilla/5.0 (iPad; CPU OS 14_4_2 like Mac OS X) WebKit/8610 (KHTML, like Gecko) Mobile/18D70 [FBAN/FBIOS;FBDV/iPad7,11;FBMD/iPad;FBSN/iOS;FBSV/14.4.2;FBSS/2;FBID/tablet;FBLC/en_US;FBOP/5]",
+    "expect": {
+      "vendor": "Apple",
+      "model": "iPad",
+      "type": "tablet"
+    }
+  },
+  {
+    "desc": "iPod",
+    "ua": "Mozilla/5.0 (iPod touch; CPU iPhone OS 7_0_4 like Mac OS X) AppleWebKit/537.51.1 (KHTML, like Gecko) Version/7.0 Mobile/11B554a Safari/9537.53",
+    "expect": {
+      "vendor": "Apple",
+      "model": "iPod touch",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "JVC LT-43V55LFA Smart TV",
+    "ua": "Mozilla/5.0 (Linux armv7l) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/53.0.2785.143 Safari/537.36 OPR/40.0.2207.0 OMI/4.9.0.237.DOM3-OPT.245 Model/Vestel-MB211 VSTVB MB200 HbbTV/1.2.1 (; JVC; MB211; 3.19.4.2; _TV_NT72563_2017 SmartTvA/3.0.0",
+    "expect": {
+      "vendor": "JVC",
+      "model": "MB211",
+      "type": "smarttv"
+    }
+  },
+  {
+    "desc": "JVC LT-43V65LUA Smart TV",
+    "ua": "Mozilla/5.0 (Linux armv7l) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/53.0.2785.143 Safari/537.36 OPR/40.0.2207.0 OMI/4.9.0.237.DOM3-OPT.245 Model/Vestel-MB130 VSTVB MB100 HbbTV/1.2.1 (; JVC; MB130; 5.7.20.0; _TV_G10_2017;) SmartTvA/3.0.0",
+    "expect": {
+      "vendor": "JVC",
+      "model": "MB130",
+      "type": "smarttv"
+    }
+  },
+  {
+    "desc": "Kobo eReader",
+    "ua": "Mozilla/5.0 (Unknown; Linux) AppleWebKit/538.1 (KHTML, like Gecko) Kobo eReader Safari/538.1",
+    "expect": {
+      "vendor": "Kobo",
+      "model": "eReader",
+      "type": "tablet"
+    }
+  },
+  {
+    "desc": "Kobo Touch",
+    "ua": "Mozilla/5.0 (Linux; U; Android 2.0; en-us;) AppleWebKit/538.1 (KHTML, like Gecko) Version/4.0 Mobile Safari/538.1 (Kobo Touch 0377/4.20.14622)",
+    "expect": {
+      "vendor": "Kobo",
+      "model": "Touch",
+      "type": "tablet"
+    }
+  },
+  {
+    "desc": "Lenovo Tab 2",
+    "ua": "Mozilla/5.0 (Linux; Android 5.0.1; Lenovo TAB 2 A7-30HC Build/LRX21M; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/74.0.3729.157 Safari/537.36",
+    "expect": {
+      "vendor": "Lenovo",
+      "model": "TAB 2 A7",
+      "type": "tablet"
+    }
+  },
+  {
+    "desc": "Lenovo Phone",
+    "ua": "Mozilla/5.0 (Linux; Android 6.0; Lenovo PB2-650M Build/MRA58K; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/89.0.4389.105 Mobile Safari/537.36 [FB_IAB/FB4A;FBAV/311.0.0.44.117;]",
+    "expect": {
+      "vendor": "Lenovo",
+      "model": "PB2-650M",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Lenovo Tab 3 Pro",
+    "ua": "Mozilla/5.0 (Linux; Android 6.0.1; Lenovo YT3-X90F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.99 Safari/537.36",
+    "expect": {
+      "vendor": "Lenovo",
+      "model": "YT3-X90F",
+      "type": "tablet"
+    }
+  },
+  {
+    "desc": "Lenovo Tab 4",
+    "ua": "Mozilla/5.0 (Linux; Android 7.1.1; Lenovo TB-X304F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.99 Safari/537.36",
+    "expect": {
+      "vendor": "Lenovo",
+      "model": "TB-X304F",
+      "type": "tablet"
+    }
+  },
+  {
+    "desc": "Lenovo Tab 4",
+    "ua": "Mozilla/5.0 (Linux; Android 4.4.2; Lenovo TAB 2 A7-30HC) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.138 Safari/537.36",
+    "expect": {
+      "vendor": "Lenovo",
+      "model": "TAB 2 A7",
+      "type": "tablet"
+    }
+  },
+  {
+    "desc": "Lenovo Tab 7 Essential",
+    "ua": "Mozilla/5.0 (Linux; Android 7.0; Lenovo TB-7304X) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.198 Safari/537.36",
+    "expect": {
+      "vendor": "Lenovo",
+      "model": "TB-7304X",
+      "type": "tablet"
+    }
+  },
+  {
+    "desc": "Lenovo Tab M10",
+    "ua": "Mozilla/5.0 (Linux; arm_64; Android 9; Lenovo TB-X606F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.127 YaBrowser/20.9.4.99.01 Safari/537.36",
+    "expect": {
+      "vendor": "Lenovo",
+      "model": "TB-X606F",
+      "type": "tablet"
+    }
+  },
+  {
+    "desc": "LG V40 ThinQ",
+    "ua": "Mozilla/5.0 (Linux; Android 9; LM-V405) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/74.0.3729.136 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "LG",
+      "model": "LM-V405",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "LG K30",
+    "ua": "Mozilla/5.0 (Linux; Android 8.1.0; LM-X410.F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/79.0.3945.116 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "LG",
+      "model": "LM-X410.F",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "LG K30",
+    "ua": "Mozilla/5.0 (Linux; Android 9; LM-X410.FGN) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/79.0.3945.93 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "LG",
+      "model": "LM-X410.FGN",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "LG K40",
+    "ua": "Mozilla/5.0 (Linux; Android 10; LM-X420) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.5563.57 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "LG",
+      "model": "LM-X420",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "LG Stylo 4",
+    "ua": "Mozilla/5.0 (Linux; Android 10; LM-Q710(FGN)) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.5563.57 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "undefined",
+      "model": "LM-Q710(FGN)",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "LG Stylo 5",
+    "ua": "Mozilla/5.0 (Linux; Android 9; LM-Q720) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/78.0.3904.96 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "LG",
+      "model": "LM-Q720",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "LG G7 ThinQ",
+    "ua": "Mozilla/5.0 (Linux; Android 9; LM-G710VM Build/PKQ1.181105.001; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/79.0.3945.136 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "LG",
+      "model": "LM-G710VM",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "LG K20",
+    "ua": "Mozilla/5.0 (Android 13; Mobile; LG-M255; rv:111.0) Gecko/111.0 Firefox/111.0",
+    "expect": {
+      "vendor": "LG",
+      "model": "M255",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "LG K500",
+    "ua": "Mozilla/5.0 (Linux; Android 6.0.1; LG-K500 Build/MMB29M) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/63.0.3239.111 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "LG",
+      "model": "K500",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "LG Nexus 4",
+    "ua": "Mozilla/5.0 (Linux; Android 4.2.1; Nexus 4 Build/JOP40D) AppleWebKit/535.19 (KHTML, like Gecko) Chrome/18.0.1025.166 Mobile Safari/535.19",
+    "expect": {
+      "vendor": "LG",
+      "model": "Nexus 4",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "LG Nexus 4",
+    "ua": "Mozilla/5.0 (Linux; U; Android 4.3; en-us; Google Nexus 4 - 4.3 - API 18 - 768x1280 Build/JLS36G) AppleWebKit/534.30 (KHTML, like Gecko) Version/4.0 Mobile Safari/534.30",
+    "expect": {
+      "vendor": "LG",
+      "model": "Nexus 4",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "LG Nexus 5",
+    "ua": "Mozilla/5.0 (Linux; Android 4.2.1; en-us; Nexus 5 Build/JOP40D) AppleWebKit/535.19 (KHTML, like Gecko) Chrome/18.0.1025.166 Mobile Safari/535.19",
+    "expect": {
+      "vendor": "LG",
+      "model": "Nexus 5",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "LG Wing",
+    "ua": "Mozilla/5.0 (Linux; Android 10; LM-F100N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.101 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "LG",
+      "model": "LM-F100N",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "LG Smart TV",
+    "ua": "Mozilla/5.0 (DirectFB; U; Linux mips; en) AppleWebKit/528.5+ (KHTML, like Gecko, Safari/528.5+) LG Browser (; LG NetCast.TV-2011)",
+    "expect": {
+      "vendor": "LG",
+      "model": "undefined",
+      "type": "smarttv"
+    }
+  },
+  {
+    "desc": "LG Smart TV",
+    "ua": "Mozilla/5.0 (Linux; NetCast; U) AppleWebKit/537.31 (KHTML, like Gecko) Chrome/53.0.2785 34 Safari/537.31 SmartTV/8.5",
+    "expect": {
+      "vendor": "LG",
+      "model": "undefined",
+      "type": "smarttv"
+    }
+  },
+  {
+    "desc": "LG Android TV",
+    "ua": "Mozilla/5.0 (Linux; U; Android 4.2.2; zh-cn; LG Android TV Build/JDQ39) AppleWebKit/534.30 (KHTML, like Gecko) Version/4.0 Safari/534.30",
+    "expect": {
+      "vendor": "LG",
+      "model": "undefined",
+      "type": "smarttv"
+    }
+  },
+  {
+    "desc": "Loewe Smart TV",
+    "ua": "Mozilla/5.0 (Linux; U) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/59.0.3071.115 Safari/537.36 OPR/46.0.2207.0 LOEWE-SL410/5.2.0.0 HbbTV/1.4.1 (; LOEWE; SL410; LOH/5.2.0.0;;) FVC/3.0 (LOEWE; SL410;) CE-HTML/1.0 Config (L:deu,CC:DEU) NETRANGEMMH",
+    "expect": {
+      "vendor": "LOEWE",
+      "model": "SL410",
+      "type": "smarttv"
+    }
+  },
+  {
+    "desc": "Meizu M5 Note",
+    "ua": "Mozilla/5.0 (Linux; Android 6.0; M5 Note Build/MRA58K; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/53.0.2785.49 Mobile MQQBrowser/6.2 TBS/043024 Safari/537.36 MicroMessenger/6.5.7.1040 NetType/WIFI Language/zh_CN",
+    "expect": {
+      "vendor": "Meizu",
+      "model": "M5 Note",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Microsoft Lumia 950",
+    "ua": "Mozilla/5.0 (Windows Phone 10.0; Android 4.2.1; Microsoft; Lumia 950) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/46.0.2486.0 Mobile Safari/537.36 Edge/13.10586",
+    "expect": {
+      "vendor": "Microsoft",
+      "model": "Lumia 950",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Microsoft Surface Duo",
+    "ua": "Dalvik/2.1.0 (Linux; U; Android 10; Surface Duo Build/2020.1014.61)",
+    "expect": {
+      "vendor": "Microsoft",
+      "model": "Surface Duo",
+      "type": "tablet"
+    }
+  },
+  {
+    "desc": "Motorola Moto X",
+    "ua": "Mozilla/5.0 (Linux; Android 4.4.4; XT1097 Build/KXE21.187-38) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/40.0.2214.109 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Motorola",
+      "model": "XT1097",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Motorola Moto Z3 Play",
+    "ua": "Mozilla/5.0 (Linux; Android 9; Moto Z3 Play) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Motorola",
+      "model": "Moto Z3 Play",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Meizu M3S",
+    "ua": "Mozilla/5.0 (X11; Linux; Android 5.1; MZ-M3s Build/LMY47I) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrom/45.0.2454.94 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Meizu",
+      "model": "M3s",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Microsoft Lumia 950",
+    "ua": "Mozilla/5.0 (Windows Phone 10.0; Android 4.2.1; Microsoft; Lumia 950) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/46.0.2486.0 Mobile Safari/537.36 Edge/13.10586",
+    "expect": {
+      "vendor": "Microsoft",
+      "model": "Lumia 950",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Motorola Nexus 6",
+    "ua": "Mozilla/5.0 (Linux; Android 5.1.1; Nexus 6 Build/LYZ28E) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/44.0.2403.20 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Motorola",
+      "model": "Nexus 6",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Motorola Droid RAZR 4G",
+    "ua": "Mozilla/5.0 (Linux; U; Android 2.3; xx-xx; DROID RAZR 4G Build/6.5.1-73_DHD-11_M1-29) AppleWebKit/533.1 (KHTML, like Gecko) Version/4.0 Mobile Safari/533.1",
+    "expect": {
+      "vendor": "Motorola",
+      "model": "DROID RAZR 4G",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Motorola RAZR 2019",
+    "ua": "Mozilla/5.0 (Linux; Android 9; motorola razr) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/11.1 Chrome/75.0.3770.143 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Motorola",
+      "model": "razr",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "iPhone",
+    "ua": "Mozilla/5.0 (iPhone; CPU iPhone OS 7_0 like Mac OS X) AppleWebKit/537.51.1 (KHTML, like Gecko) Version/7.0 Mobile/11A465 Safari/9537.53",
+    "expect": {
+      "vendor": "Apple",
+      "model": "iPhone",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "iPhone SE",
+    "ua": "Mozilla/5.0 (iPhone; CPU iPhone OS 13_3_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 [FBAN/FBIOS;FBDV/iPhone8,4;FBMD/iPhone;FBSN/iOS;FBSV/13.3.1;FBSS/2;FBID/phone;FBLC/en_US;FBOP/5;FBCR/]",
+    "expect": {
+      "vendor": "Apple",
+      "model": "iPhone",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "iPhone SE using Facebook App",
+    "ua": "Mozilla/5.0 (iPhone; CPU iPhone OS 13_3_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 [FBAN/FBIOS;FBDV/iPhone8,4;FBMD/iPhone;FBSN/iOS;FBSV/13.3.1;FBSS/2;FBID/phone;FBLC/en_US;FBOP/5;FBCR/]",
+    "expect": {
+      "vendor": "Apple",
+      "model": "iPhone",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "iPhone 11 Pro Max",
+    "ua": "Mozilla/5.0 (iPhone; CPU iPhone OS 13_3_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 [FBAN/FBIOS;FBDV/iPhone12,5;FBMD/iPhone;FBSN/iOS;FBSV/13.3.1;FBSS/3;FBID/phone;FBLC/en_US;FBOP/5;FBCR/]",
+    "expect": {
+      "vendor": "Apple",
+      "model": "iPhone",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "iPhone XS",
+    "ua": "Mozilla/5.0 (iPhone; CPU iPhone OS 13_3_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 [FBAN/FBIOS;FBDV/iPhone11,2;FBMD/iPhone;FBSN/iOS;FBSV/13.3.1;FBSS/3;FBID/phone;FBLC/en_US;FBOP/5;FBCR/]",
+    "expect": {
+      "vendor": "Apple",
+      "model": "iPhone",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "iPod touch",
+    "ua": "Mozilla/5.0 (iPod touch; CPU iPhone OS 7_0_2 like Mac OS X) AppleWebKit/537.51.1 (KHTML, like Gecko) Version/7.0 Mobile/11A501 Safari/9537.53",
+    "expect": {
+      "vendor": "Apple",
+      "model": "iPod touch",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Moto X",
+    "ua": "Mozilla/5.0 (Linux; U; Android 4.2; xx-xx; XT1058 Build/13.9.0Q2.X-70-GHOST-ATT_LE-2) AppleWebKit/534.30 (KHTML, like Gecko) Version/4.0 Mobile Safari/534.30",
+    "expect": {
+      "vendor": "Motorola",
+      "model": "XT1058",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Motorola Moto g(6) Play",
+    "ua": "Mozilla/5.0 (Linux; Android 9; moto g(6) play) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/79.0.3945.136 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Motorola",
+      "model": "moto g(6) play",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Motorola Moto g(7) Supra",
+    "ua": "Mozilla/5.0 (Linux; Android 9; moto g(7) supra Build/PCOS29.114-134-2; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/73.0.3683.90 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Motorola",
+      "model": "moto g(7) supra",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Motorola Moto E",
+    "ua": "Mozilla/5.0 (Linux; Android 7.1.1; Moto E (4) Build/NDQS26.69-64-11-7; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/56.0.2924.87 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Motorola",
+      "model": "Moto E (4)",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Nokia3xx",
+    "ua": "Nokia303/14.87 CLDC-1.1",
+    "expect": {
+      "vendor": "Nokia",
+      "model": "303",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Nokia 3.2",
+    "ua": "Mozilla/5.0 (Linux; Android 10; Nokia 3.2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.141 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Nokia",
+      "model": "3.2",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Nokia 7",
+    "ua": "Mozilla/5.0 (Linux; Android 11; Nokia 7.2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/105.0.0.0 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Nokia",
+      "model": "7.2",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Nokia N9",
+    "ua": "Mozilla/5.0 (MeeGo; NokiaN9) AppleWebKit/534.13 (KHTML, like Gecko) NokiaBrowser/8.5.0 Mobile Safari/534.13",
+    "expect": {
+      "vendor": "Nokia",
+      "model": "N9",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Nokia 2720 Flip",
+    "ua": "Mozilla/5.0 (Mobile; Nokia_2720_Flip; rv:48.0) Gecko/48.0 Firefox/48.0 KAIOS/2.5.2",
+    "expect": {
+      "vendor": "Nokia",
+      "model": "2720 Flip",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Oculus Quest",
+    "ua": "Mozilla/5.0 (Linux; Android 10; Quest) AppleWebKit/537.36 (KHTML, like Gecko) OculusBrowser/15.0.0.0.22.280317669 SamsungBrowser/4.0 Chrome/89.0.4389.90 VR Safari/537.36",
+    "expect": {
+      "vendor": "Facebook",
+      "model": "Quest",
+      "type": "wearable"
+    }
+  },
+  {
+    "desc": "Oculus Quest 2",
+    "ua": "Mozilla/5.0 (Linux; Android 10; Quest 2) AppleWebKit/537.36 (KHTML, like Gecko) OculusBrowser/15.0.0.0.22.280317669 SamsungBrowser/4.0 Chrome/89.0.4389.90 VR Safari/537.36",
+    "expect": {
+      "vendor": "Facebook",
+      "model": "Quest 2",
+      "type": "wearable"
+    }
+  },
+  {
+    "desc": "Oculus Quest Pro",
+    "ua": "Mozilla/5.0 (X11; Linux x86_64; Quest Pro) AppleWebKit/537.36 (KHTML, like Gecko) OculusBrowser/24.4.0.22.60.426469926 SamsungBrowser/4.0 Chrome/106.0.5249.181 VR Safari/537.36",
+    "expect": {
+      "vendor": "Facebook",
+      "model": "Quest Pro",
+      "type": "wearable"
+    }
+  },
+  {
+    "desc": "OnePlus One",
+    "ua": "Mozilla/5.0 (Linux; Android 4.4.4; A0001 Build/KTU84Q) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/39.0.2171.59 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "OnePlus",
+      "model": "A0001",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "OnePlus One",
+    "ua": "Mozilla/5.0 (Linux; Android 4.4.2; OnePlus One A0001 Build/KVT49L) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/37.0.2062.117 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "OnePlus",
+      "model": "A0001",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "OnePlus 2",
+    "ua": "Mozilla/5.0 (Linux; Android 6.0.1; ONE A2003) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/79.0.3945.93 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "OnePlus",
+      "model": "A2003",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "OnePlus 3",
+    "ua": "Mozilla/5.0 (Linux; Android 7.1.1; ONEPLUS A3000 Build/NMF26F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/61.0.3163.98 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "OnePlus",
+      "model": "A3000",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "OnePlus 6",
+    "ua": "Mozilla/5.0 (Linux; Android 9; ONEPLUS A6003) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/76.0.3809.89 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "OnePlus",
+      "model": "A6003",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "OnePlus 6T",
+    "ua": "Mozilla/5.0 (Linux; Android 9; ONEPLUS A6010) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/78.0.3904.96 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "OnePlus",
+      "model": "A6010",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "OnePlus 7T Pro",
+    "ua": "Mozilla/5.0 (Linux; Android 10; HD1913) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.5563.57 Mobile Safari/537.36 EdgA/110.0.1587.66",
+    "expect": {
+      "vendor": "undefined",
+      "model": "HD1913",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "OnePlus 8T",
+    "ua": "Mozilla/5.0 (Linux; Android 11; KB2005) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.127 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "OnePlus",
+      "model": "KB2005",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "OnePlus 8 Pro",
+    "ua": "Mozilla/5.0 (Linux; Android 10; IN2025) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.119 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "OnePlus",
+      "model": "IN2025",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "OnePlus 10RT",
+    "ua": "Mozilla/5.0 (Linux; Android 13; CPH2413) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "OPPO",
+      "model": "CPH2413",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "OnePlus Nord N100",
+    "ua": "Mozilla/5.0 (Linux; Android 10; BE2015 Build/QKQ1.200719.002; xx-xx) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/83.0.4103.106 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "OnePlus",
+      "model": "BE2015",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "OnePlus Nord N10 5G",
+    "ua": "Mozilla/5.0 (Linux; Android 10; BE2029) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.185 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "OnePlus",
+      "model": "BE2029",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "OPPO Neo",
+    "ua": "Mozilla/5.0 (Linux; U; Android 4.2.2; zh-cn; R831T Build/JDQ39) AppleWebKit/534.30 (KHTML, like Gecko) Version/4.0 OppoBrowser/3.3.2 Mobile Safari/534.30",
+    "expect": {
+      "vendor": "OPPO",
+      "model": "R831T",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "OPPO R7s",
+    "ua": "Mozilla/5.0 (Linux; U; Android 4.4.4; zh-cn; OPPO R7s Build/KTU84P) AppleWebKit/537.36 (KHTML, like Gecko)Version/4.0 Chrome/37.0.0.0 MQQBrowser/7.1 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "OPPO",
+      "model": "R7s",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "OPPO A3s",
+    "ua": "Mozilla/5.0 (Linux; Android 8.1; CPH1803 Build/OPM1.171019.026; xx-xx) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/66.0.3359.126 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "OPPO",
+      "model": "CPH1803",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "OPPO A12",
+    "ua": "Mozilla/5.0 (Linux; Android 9; CPH2083) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/79.0.3945.116 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "OPPO",
+      "model": "CPH2083",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "OPPO Reno",
+    "ua": "Mozilla/5.0 (Linux; Android 9; PCAT00 Build/PKQ1.190101.001; xx-xx) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/70.0.3538.110 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "OPPO",
+      "model": "PCAT00",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "OPPO Reno3 Pro 5G",
+    "ua": "Mozilla/5.0 (Linux; Android 10; PCLM50) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.117 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "OPPO",
+      "model": "PCLM50",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "OPPO Reno4 SE",
+    "ua": "Mozilla/5.0 (Linux; U; Android 10; xx-xx; PEAM00 Build/QP1A.190711.020) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/70.0.3538.80 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "OPPO",
+      "model": "PEAM00",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "OPPO Reno4 5G",
+    "ua": "Mozilla/5.0 (Linux; Android 10; PDPM00 Build/QKQ1.200216.002; xx-xx) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/76.0.3809.89 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "OPPO",
+      "model": "PDPM00",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "OPPO Reno4 Pro 5G",
+    "ua": "Mozilla/5.0 (Linux; U; Android 10; xx-xx; PDNT00 Build/QKQ1.200216.002) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/70.0.3538.80 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "OPPO",
+      "model": "PDNT00",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "OPPO Reno5 A",
+    "ua": "Mozilla/5.0 (Linux; Android 11; A101OP) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.159 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "OPPO",
+      "model": "A101OP",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "OPPO Find X",
+    "ua": "Mozilla/5.0 (Linux; Android 8.1; PAFM00 Build/OPM1.171019.026) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/69.0.3497.100 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "OPPO",
+      "model": "PAFM00",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "OPPO Find 7a",
+    "ua": "Mozilla/5.0 (Linux; U; Android 4.3; xx-xx; X9007 Build/JLS36C) AppleWebKit/534.30 (KHTML, like Gecko) Version/4.0 Mobile Safari/534.30",
+    "expect": {
+      "vendor": "OPPO",
+      "model": "X9007",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Realme C1",
+    "ua": "Mozilla/5.0 (Linux; Android 8.1; RMX1811 Build/OPM1.171019.026) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/66.0.3359.126 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Realme",
+      "model": "RMX1811",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Realme C2",
+    "ua": "Mozilla/5.0 (Linux; Android 9; RMX1941) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/78.0.3904.108 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Realme",
+      "model": "RMX1941",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Realme Narzo 20",
+    "ua": "Mozilla/5.0 (Linux; U; Android 10; xx-xx; RMX2193 Build/QP1A.190711.020) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/70.0.3538.80 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Realme",
+      "model": "RMX2193",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Realme 2 Pro",
+    "ua": "Mozilla/5.0 (Linux; Android 9; RMX1801) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/74.0.3729.136 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Realme",
+      "model": "RMX1801",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Realme 3 Pro",
+    "ua": "Mozilla/5.0 (Linux; Android 11; RMX1851) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Realme",
+      "model": "RMX1851",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Realme 9 Pro",
+    "ua": "Mozilla/5.0 (Linux; Android 13; RMX3471) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "undefined",
+      "model": "RMX3471",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Realme GT Master",
+    "ua": "Mozilla/5.0 (Linux; Android 13; RMX3363) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/105.0.0.0 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "undefined",
+      "model": "RMX3363",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Panasonic T31",
+    "ua": "Mozilla/5.0 (Linux; Android 4.2.2; Panasonic T31 Build/JDQ39) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/33.0.1750.170 Mobile Safari/537.36 ",
+    "expect": {
+      "vendor": "Panasonic",
+      "model": "T31",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Panasonic TX-32CSW514 SmartTV",
+    "ua": "HbbTV/1.2.1 (;Panasonic;VIERA 2015;3.014;a001-003 4000-0000;)",
+    "expect": {
+      "vendor": "Panasonic",
+      "model": "VIERA 2015",
+      "type": "smarttv"
+    }
+  },
+  {
+    "desc": "Panasonic TX-40FXW724 SmartTV",
+    "ua": "HbbTV/1.4.1 (+DRM;Panasonic;SmartTV2018mid;3.024;4301-0003 0002-0000;SmartTV2018;)",
+    "expect": {
+      "vendor": "Panasonic",
+      "model": "SmartTV2018mid",
+      "type": "smarttv"
+    }
+  },
+  {
+    "desc": "Panasonic TX-43HXW904 SmartTV",
+    "ua": "HbbTV/1.5.1 (+DRM;Panasonic;SmartTV2020mid;3.326;4301-0003 0008-0000;com.panasonic.SmartTV2020mid;)",
+    "expect": {
+      "vendor": "Panasonic",
+      "model": "SmartTV2020mid",
+      "type": "smarttv"
+    }
+  },
+  {
+    "desc": "Panasonic DMR-HST130 SAT receiver",
+    "ua": "HbbTV/1.1.1 (+PVR;Panasonic;DIGA WebKit M8658;3.420;;)",
+    "expect": {
+      "vendor": "Panasonic",
+      "model": "DIGA WebKit M8658",
+      "type": "smarttv"
+    }
+  },
+  {
+    "desc": "Philips SmartTV",
+    "ua": "Opera/9.80 HbbTV/1.1.1 (; Philips; ; ; ; ) NETTV/4.0.2; en) Version/11.60",
+    "expect": {
+      "vendor": "Philips",
+      "model": "",
+      "type": "smarttv"
+    }
+  },
+  {
+    "desc": "Philips 32PFL6606K/02 SmartTV (2011)",
+    "ua": "Opera/9.80 (Linux mips ; U; HbbTV/1.1.1 (; Philips; ; ; ; ) CE-HTML/1.0 NETTV/3.1.0; en) Presto/2.6.33 Version/10.70",
+    "expect": {
+      "vendor": "Philips",
+      "model": "",
+      "type": "smarttv"
+    }
+  },
+  {
+    "desc": "Philips 32PFL6606K/02 SmartTV (2013)",
+    "ua": "Opera/9.80 (Linux mips ; U; HbbTV/1.1.1 (; Philips; ; ; ; ) CE-HTML/1.0 NETTV/3.1.0; en) Presto/2.6.33 Version/10.70",
+    "expect": {
+      "vendor": "Philips",
+      "model": "",
+      "type": "smarttv"
+    }
+  },
+  {
+    "desc": "Philips 32PHS5301/12 SmartTV (2016)",
+    "ua": "Mozilla/5.0 (Linux armv7l) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/42.0.2311.152 Safari/537.36 OPR/29.0.1803.0 OMI/4.5.23.37.MOT2.13 HbbTV/1.2.1 (;Philips;32PHS5301/12;;_TV_MT5800;) Firmware/TPM161E_012.002.045.001 en",
+    "expect": {
+      "vendor": "Philips",
+      "model": "32PHS5301/12",
+      "type": "smarttv"
+    }
+  },
+  {
+    "desc": "Roku",
+    "ua": "Mozilla/5.0 (Roku) AppleWebKit/537.36 (KHTML, like Gecko) Web/1.1 Safari/537.36",
+    "expect": {
+      "vendor": "Roku",
+      "model": "",
+      "type": "smarttv"
+    }
+  },
+  {
+    "desc": "Roku",
+    "ua": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36 Roku/DVP-8.10 (468.10E04145A)",
+    "expect": {
+      "vendor": "Roku",
+      "model": "DVP-8.10",
+      "type": "smarttv"
+    }
+  },
+  {
+    "desc": "Roku",
+    "ua": "Roku4640X/DVP-7.70 (297.70E04154A)",
+    "expect": {
+      "vendor": "Roku",
+      "model": "DVP-7.70",
+      "type": "smarttv"
+    }
+  },
+  {
+    "desc": "Xiaomi TV",
+    "ua": "Mozilla/5.0 (Linux; Android 10; MiTV-MOOQ0 Build/QTG3.200305.006; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/94.0.4606.61 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Xiaomi",
+      "model": "MiTV-MOOQ0",
+      "type": "smarttv"
+    }
+  },
+  {
+    "desc": "Kindle Fire HD",
+    "ua": "Mozilla/5.0 (Linux; U; Android 4.0.3; en-us; KFTT Build/IML74K) AppleWebKit/535.19 (KHTML, like Gecko) Silk/3.4 Mobile Safari/535.19 Silk-Accelerated=true",
+    "expect": {
+      "vendor": "Amazon",
+      "model": "KFTT",
+      "type": "tablet"
+    }
+  },
+  {
+    "desc": "Kindle Fire HD",
+    "ua": "Mozilla/5.0 (Linux; U; Android 4.0.3; en-us; KFTT) AppleWebKit/535.19 (KHTML, like Gecko) Silk/3.4 Mobile Safari/535.19 Silk-Accelerated=true",
+    "expect": {
+      "vendor": "Amazon",
+      "model": "KFTT",
+      "type": "tablet"
+    }
+  },
+  {
+    "desc": "Echo Show 5",
+    "ua": "Mozilla/5.0 (Linux; Android 5.1; AEORK Build/LVY48F; xx-xx) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/70.0.3538.110 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Amazon",
+      "model": "AEORK",
+      "type": "tablet"
+    }
+  },
+  {
+    "desc": "Echo Show 8",
+    "ua": "Mozilla/5.0 (Linux; Android 7.1; AEOCH) AppleWebKit/537.36 (KHTML, like Gecko) Silk/77.2.21 like Chrome/77.0.3865.92 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Amazon",
+      "model": "AEOCH",
+      "type": "tablet"
+    }
+  },
+  {
+    "desc": "Echo Dot",
+    "ua": "Dalvik/2.1.0 (Linux; U; Android 5.1.1; AEOBC Build/LVY48F)",
+    "expect": {
+      "vendor": "Amazon",
+      "model": "AEOBC",
+      "type": "embedded"
+    }
+  },
+  {
+    "desc": "Samsung Galaxy A21s",
+    "ua": "Mozilla/5.0 (Linux; Android 10; SAMSUNG SM-A217F) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/11.0 Chrome/75.0.3770.143 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Samsung",
+      "model": "SM-A217F",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Samsung Galaxy A31",
+    "ua": "Mozilla/5.0 (Linux; Android 10; SM-A315G) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.138 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Samsung",
+      "model": "SM-A315G",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Samsung Galaxy A50",
+    "ua": "Mozilla/5.0 (Linux; Android 9; SM-A505F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/72.0.3626.105 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Samsung",
+      "model": "SM-A505F",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Samsung Galaxy A50s",
+    "ua": "Mozilla/5.0 (Linux; Android 11; SM-A507FN) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Samsung",
+      "model": "SM-A507FN",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Samsung Galaxy A52s",
+    "ua": "Mozilla/5.0 (Linux; Android 13; SM-A528B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Samsung",
+      "model": "SM-A528B",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Samsung Galaxy A80",
+    "ua": "Mozilla/5.0 (Linux; Android 9; SM-A805F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/74.0.3729.112 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Samsung",
+      "model": "SM-A805F",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Samsung Galaxy Fold",
+    "ua": "Mozilla/5.0 (Linux; Android 9; SAMSUNG SM-F900U Build/PPR1.180610.011) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/9.2 Chrome/67.0.3396.87 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Samsung",
+      "model": "SM-F900U",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Samsung Galaxy Z Flip",
+    "ua": "Mozilla/5.0 (Linux; Android 10; SM-F700N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/79.0.3945.136 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Samsung",
+      "model": "SM-F700N",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Samsung Galaxy Z Fold2",
+    "ua": "Mozilla/5.0 (Linux; Android 10; SM-F916B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.138 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Samsung",
+      "model": "SM-F916B",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Samsung Galaxy S10E",
+    "ua": "Mozilla/5.0 (Linux; Android 9; SM-G970F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.110 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Samsung",
+      "model": "SM-G970F",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Samsung Galaxy S20 5G",
+    "ua": "Mozilla/5.0 (Linux; Android 10; SCG01) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.127 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Samsung",
+      "model": "SCG01",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Samsung Galaxy Note 10+",
+    "ua": "Mozilla/5.0 (Linux; Android 9; SM-N976V) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/76.0.3809.89 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Samsung",
+      "model": "SM-N976V",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Samsung SM-C5000",
+    "ua": "Mozilla/5.0 (Linux; Android 6.0.1; SM-C5000 Build/MMB29M; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/51.0.2704.81 Mobile Safari/537.36 wkbrowser 4.1.35 3065",
+    "expect": {
+      "vendor": "Samsung",
+      "model": "SM-C5000",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Samsung C8",
+    "ua": "Mozilla/5.0 (Linux; Android 7.1.1; SM-C7108) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Samsung",
+      "model": "SM-C7108",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Samsung Galaxy Note 8",
+    "ua": "Mozilla/5.0 (Linux; Android 4.2.2; GT-N5100 Build/JDQ39) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/35.0.1916.141 Safari/537.36",
+    "expect": {
+      "vendor": "Samsung",
+      "model": "GT-N5100",
+      "type": "tablet"
+    }
+  },
+  {
+    "desc": "Samsung SM-T231",
+    "ua": "Mozilla/5.0 (Linux; Android 4.4.2; SM-T231 Build/KOT49H) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/36.0.1985.135 Safari/537.36",
+    "expect": {
+      "vendor": "Samsung",
+      "model": "SM-T231",
+      "type": "tablet"
+    }
+  },
+  {
+    "desc": "Samsung Galaxy Tab 6 Lite",
+    "ua": "Mozilla/5.0 (Linux; Android 10; SAMSUNG SM-P610) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/12.0 Chrome/79.0.3945.136 Safari/537.36",
+    "expect": {
+      "vendor": "Samsung",
+      "model": "SM-P610",
+      "type": "tablet"
+    }
+  },
+  {
+    "desc": "Samsung Galaxy Tab A 9.7",
+    "ua": "Mozilla/5.0 (Linux; Android 7.1.1; SM-P550 Build/NMF26X; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/89.0.4389.90 Safari/537.36",
+    "expect": {
+      "vendor": "Samsung",
+      "model": "SM-P550",
+      "type": "tablet"
+    }
+  },
+  {
+    "desc": "Samsung Galaxy Tab A 10.1",
+    "ua": " Mozilla/5.0 (Linux; Android 10; SAMSUNG SM-T515) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/13.0 Chrome/83.0.4103.106 Safari/537.36",
+    "expect": {
+      "vendor": "Samsung",
+      "model": "SM-T515",
+      "type": "tablet"
+    }
+  },
+  {
+    "desc": "Samsung Galaxy Tab S7",
+    "ua": "Mozilla/5.0 (Linux; Android 10; SM-T870) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/84.0.4147.89 Safari/537.36",
+    "expect": {
+      "vendor": "Samsung",
+      "model": "SM-T870",
+      "type": "tablet"
+    }
+  },
+  {
+    "desc": "Samsung Galaxy Tab S8",
+    "ua": "Mozilla/5.0 (Linux; Android 12; SM-X706B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.5060.53 Safari/537.36",
+    "expect": {
+      "vendor": "Samsung",
+      "model": "SM-X706B",
+      "type": "tablet"
+    }
+  },
+  {
+    "desc": "Samsung Galaxy Tab S",
+    "ua": "Mozilla/5.0 (Linux; Android 4.4.2; SM-T700 Build/KOT49H) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/36.0.1985.135 Safari/537.36",
+    "expect": {
+      "vendor": "Samsung",
+      "model": "SM-T700",
+      "type": "tablet"
+    }
+  },
+  {
+    "desc": "Samsung Galaxy Tab Pro 10.1",
+    "ua": "Mozilla/5.0 (Linux; Android 4.4.2; SM-T520 Build/KOT49H) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/36.0.1985.135 Safari/537.36",
+    "expect": {
+      "vendor": "Samsung",
+      "model": "SM-T520",
+      "type": "tablet"
+    }
+  },
+  {
+    "desc": "Samsung Note 10.1",
+    "ua": "Mozilla/5.0 (Linux; Android 5.1.1; SM-P605) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.106 Safari/537.36",
+    "expect": {
+      "vendor": "Samsung",
+      "model": "SM-P605",
+      "type": "tablet"
+    }
+  },
+  {
+    "desc": "Samsung SmartTV2011",
+    "ua": "HbbTV/1.1.1 (;;;;;) Maple;2011",
+    "expect": {
+      "vendor": "Samsung",
+      "model": "SmartTV2011",
+      "type": "smarttv"
+    }
+  },
+  {
+    "desc": "Samsung SmartTV2012",
+    "ua": "HbbTV/1.1.1 (;Samsung;SmartTV2012;;;) WebKit",
+    "expect": {
+      "vendor": "Samsung",
+      "model": "SmartTV2012",
+      "type": "smarttv"
+    }
+  },
+  {
+    "desc": "Samsung SmartTV2014",
+    "ua": "HbbTV/1.1.1 (;Samsung;SmartTV2014;T-NT14UDEUC-1060.4;;) WebKit",
+    "expect": {
+      "vendor": "Samsung",
+      "model": "SmartTV2014",
+      "type": "smarttv"
+    }
+  },
+  {
+    "desc": "Samsung SmartTV",
+    "ua": "Mozilla/5.0 (SMART-TV; X11; Linux armv7l) AppleWebkit/537.42 (KHTML, like Gecko) Safari/537.42",
+    "expect": {
+      "vendor": "undefined",
+      "model": "undefined",
+      "type": "smarttv"
+    }
+  },
+  {
+    "desc": "Samsung SmartTV",
+    "ua": "Mozilla/5.0 (SMART-TV; Linux; Tizen 2.3) AppleWebkit/538.1 (KHTML, like Gecko) SamsungBrowser/1.0 TV Safari/538.1",
+    "expect": {
+      "vendor": "Samsung",
+      "model": "undefined",
+      "type": "smarttv"
+    }
+  },
+  {
+    "desc": "Samsung SmartTV HBBTV",
+    "ua": "HbbTV/1.5.1 (+DRM;Samsung;SmartTV2021:UAU7000;T-KSU2EDEUC-1506.0;KantSU2e;urn:samsungtv:familyname:21_KANTSU2E_UHD_BASIC:2021;) Tizen/6.0 (+TVPLUS+SmartHubLink) Chrome/76 LaTivu_1.0.1_2021 RVID/17",
+    "expect": {
+      "vendor": "Samsung",
+      "model": "SmartTV2021:UAU7000",
+      "type": "smarttv"
+    }
+  },
+  {
+    "desc": "Sharp AQUOS-TVX19B",
+    "ua": "Mozilla/5.0 (Linux; Android 9; AQUOS-TVX19B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Sharp",
+      "model": "AQUOS-TVX19B",
+      "type": "smarttv"
+    }
+  },
+  {
+    "desc": "Sharp Aquos B10",
+    "ua": "Mozilla/5.0 (Linux; Android 7.0; SH-A01) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.149 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Sharp",
+      "model": "SH-A01",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Sharp Aquos L2",
+    "ua": "Mozilla/5.0 (Linux; Android 7.0; SH-L02 Build/S4045) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/56.0.2924.87 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Sharp",
+      "model": "SH-L02",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Sharp Aquos L2",
+    "ua": "Mozilla/5.0 (Linux; Android 7.0; SH-L02) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Sharp",
+      "model": "SH-L02",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Sharp Aquos R2",
+    "ua": "Mozilla/5.0 (Linux; Android 8.0; SHV42) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/77.0.3865.92 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Sharp",
+      "model": "SHV42",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "SONY Xperia 1 III",
+    "ua": "Mozilla/5.0 (Linux; Android 11; A101SO) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.45 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Sony",
+      "model": "A101SO",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Sony G8141 (Xperia XZ1)",
+    "ua": "Mozilla/5.0 (Linux; Android 9; SO-01K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Sony",
+      "model": "SO-01K",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Sony G8141 (Xperia XZ Premium)",
+    "ua": "Mozilla/5.0 (Linux; Android 8.0.0; G8141) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.80 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Sony",
+      "model": "G8141",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Sony C5303 (Xperia SP)",
+    "ua": "Mozilla/5.0 (Linux; Android 4.3; C5303 Build/12.1.A.1.205) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/39.0.2171.93 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Sony",
+      "model": "C5303",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Sony SO-02F (Xperia Z1 F)",
+    "ua": "Mozilla/5.0 (Linux; Android 4.2.2; SO-02F Build/14.1.H.2.119) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.114 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Sony",
+      "model": "SO-02F",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Sony D6653 (Xperia Z3)",
+    "ua": "Mozilla/5.0 (Linux; Android 4.4; D6653 Build/23.0.A.0.376) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/35.0.1916.141 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Sony",
+      "model": "D6653",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Sony Xperia SOL25 (ZL2)",
+    "ua": "Mozilla/5.0 (Linux; U; Android 4.4; SOL25 Build/17.1.1.C.1.64) AppleWebKit/534.30 (KHTML, like Gecko) Version/4.0 Mobile Safari/534.30",
+    "expect": {
+      "vendor": "Sony",
+      "model": "SOL25",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Sony Xperia SP",
+    "ua": "Mozilla/5.0 (Linux; Android 4.3; C5302 Build/12.1.A.1.201) AppleWebkit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.114 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Sony",
+      "model": "C5302",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Sony Xperia L4",
+    "ua": "Mozilla/5.0 (Linux; Android 9; XQ-AD51) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.83 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Sony",
+      "model": "XQ-AD51",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Sony Xperia 1ii",
+    "ua": "Mozilla/5.0 (Linux; Android 10; XQ-AT51) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.106 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Sony",
+      "model": "XQ-AT51",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Sony Xperia 1ii",
+    "ua": "Mozilla/5.0 (Linux; Android 10; SOG01) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.127 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Sony",
+      "model": "SOG01",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Sony Xperia 10ii",
+    "ua": "Mozilla/5.0 (Linux; Android 10; XQ-AU52) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.138 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Sony",
+      "model": "XQ-AU52",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Sony Xperia Pro",
+    "ua": "Mozilla/5.0 (Linux; Android 10; XQ-AQ52) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.185 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Sony",
+      "model": "XQ-AQ52",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Sony SGP521 (Xperia Z2 Tablet)",
+    "ua": "Mozilla/5.0 (Linux; Android 4.4; SGP521 Build/17.1.A.0.432) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/32.0.1700.99 Safari/537.36",
+    "expect": {
+      "vendor": "Sony",
+      "model": "Xperia Tablet",
+      "type": "tablet"
+    }
+  },
+  {
+    "desc": "Sony Xperia Z2 Tablet",
+    "ua": "Mozilla/5.0 (Linux; Android 5.1.1; SGP561) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.99 Safari/537.36",
+    "expect": {
+      "vendor": "Sony",
+      "model": "Xperia Tablet",
+      "type": "tablet"
+    }
+  },
+  {
+    "desc": "Sony Tablet S",
+    "ua": "Mozilla/5.0 (Linux; U; Android 3.1; Sony Tablet S Build/THMAS10000) AppleWebKit/534.13 (KHTML, like Gecko) Version/4.0 Safari/534.13",
+    "expect": {
+      "vendor": "Sony",
+      "model": "Xperia Tablet",
+      "type": "tablet"
+    }
+  },
+  {
+    "desc": "Sony Tablet Z LTE",
+    "ua": "Mozilla/5.0 (Linux; U; Android 4.1; SonySGP321 Build/10.2.C.0.143) AppleWebKit/534.30 (KHTML, like Gecko) Version/4.0 Safari/534.30",
+    "expect": {
+      "vendor": "Sony",
+      "model": "Xperia Tablet",
+      "type": "tablet"
+    }
+  },
+  {
+    "desc": "Sony BRAVIA 4K GB ATV3",
+    "ua": "Mozilla/5.0 (Linux; Andr0id 9; BRAVIA 4K GB ATV3 Build/PTT1.190515.001.S38) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/67.0.3396.99 Safari/537.36 OPR/46.0.2207.0 OMI/4.13.0.180.DIA5.104 Model/Sony-BRAVIA-4K-GB-ATV3",
+    "expect": {
+      "vendor": "Sony",
+      "model": "BRAVIA 4K GB ATV3",
+      "type": "smarttv"
+    }
+  },
+  {
+    "desc": "Sony BRAVIA 4K GB ATV3",
+    "ua": "Mozilla/5.0 (Linux; Android 9; BRAVIA 4K GB ATV3) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Sony",
+      "model": "BRAVIA 4K GB ATV3",
+      "type": "smarttv"
+    }
+  },
+  {
+    "desc": "Sony Bravia 4k UR2",
+    "ua": "Mozilla/5.0 (Linux: Andr0id 9: BRAVIA 4K UR2 Build/PTT1.190515.001.S104) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/67.0.3396.99 Safari/537.36 OPR/46.0.2207.0 OMI/4.13.5.431.DIA5HBBTV.250 Model/Sony-BRAVIA-4K-UR2",
+    "expect": {
+      "vendor": "Sony",
+      "model": "BRAVIA 4K UR2",
+      "type": "smarttv"
+    }
+  },
+  {
+    "desc": "Tecno KC8",
+    "ua": "Mozilla/5.0 (Linux; Android 10; TECNO KC8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "TECNO",
+      "model": "KC8",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Tesla",
+    "ua": "Mozilla/5.0 (X11; GNU/Linux) AppleWebKit/601.1 (KHTML, like Gecko) Tesla QtCarBrowser Safari/601.1",
+    "expect": {
+      "vendor": "Tesla",
+      "model": "undefined",
+      "type": "embedded"
+    }
+  },
+  {
+    "desc": "Tesla",
+    "ua": "Mozilla/5.0 (X11; GNU/Linux) AppleWebKit/537.36 (KHTML, like Gecko) Chromium/79.0.3945.130 Chrome/79.0.3945.130 Safari/537.36 Tesla/2020.16.2.1-e99c70fff409",
+    "expect": {
+      "vendor": "Tesla",
+      "model": "undefined",
+      "type": "embedded"
+    }
+  },
+  {
+    "desc": "TechniSAT Digit ISIO S SAT receiver",
+    "ua": "Opera/9.80 (Linux sh4; U; HbbTV/1.1.1 (;;;;;); CE-HTML; TechniSat Digit ISIO S; de) Presto/2.9.167 Version/11.50",
+    "expect": {
+      "vendor": "TechniSat",
+      "model": "Digit ISIO S",
+      "type": "smarttv"
+    }
+  },
+  {
+    "desc": "TechniSAT MultyVision SmartTV",
+    "ua": "Opera/9.80 (Linux i686; U; HbbTV/1.1.1 (;;;;;); CE-HTML; TechniSat MultyVision ISIO; de) Presto/2.9.167 Version/11.50",
+    "expect": {
+      "vendor": "TechniSat",
+      "model": "MultyVision ISIO",
+      "type": "smarttv"
+    }
+  },
+  {
+    "desc": "Xiaomi 2013023",
+    "ua": "Mozilla/5.0 (Linux; U; Android 4.2.2; en-US; 2013023 Build/HM2013023) AppleWebKit/533.1 (KHTML, like Gecko) Version/4.0 UCBrowser/10.0.1.512 U3/0.8.0 Mobile Safari/533.1",
+    "expect": {
+      "vendor": "Xiaomi",
+      "model": "2013023",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Xiaomi Hongmi Note 1W",
+    "ua": "Mozilla/5.0 (Linux; U; Android 4.2.2; zh-CN; HM NOTE 1W Build/JDQ39) AppleWebKit/533.1 (KHTML, like Gecko) Version/4.0 UCBrowser/9.7.9.439 U3/0.8.0 Mobile Safari/533.1",
+    "expect": {
+      "vendor": "Xiaomi",
+      "model": "HM NOTE 1W",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Xiaomi Mi 3C",
+    "ua": "Mozilla/5.0 (Linux; U; Android 4.3; zh-CN; MI 3C Build/JLS36C) AppleWebKit/533.1 (KHTML, like Gecko) Version/4.0 UCBrowser/9.7.9.439 U3/0.8.0 Mobile Safari/533.1",
+    "expect": {
+      "vendor": "Xiaomi",
+      "model": "MI 3C",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Xiaomi Mi 5",
+    "ua": "Mozilla/5.0 (Linux; Android 7.0; MI 5 Build/NRD90M) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/63.0.3239.83 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Xiaomi",
+      "model": "MI 5",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Xiaomi Mi 6",
+    "ua": "Mozilla/5.0 (Linux; Android 7.1; MI 6 Build/NMF26X; xx-xx) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/59.0.3071.125 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Xiaomi",
+      "model": "MI 6",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Xiaomi Mi 5s Plus",
+    "ua": "Mozilla/5.0 (Linux; U; Android 6.0.1; zh-cn; MI 5s Plus Build/MXB48T) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/53.0.2785.146 Mobile Safari/537.36 XiaoMi/MiuiBrowser/8.7.1",
+    "expect": {
+      "vendor": "Xiaomi",
+      "model": "MI 5s Plus",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Xiaomi Mi A1",
+    "ua": "Mozilla/5.0 (Linux; Android 8.0.0; Mi A1 Build/OPR1.170623.026) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/63.0.3239.111 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Xiaomi",
+      "model": "Mi A1",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Xiaomi Mi Note",
+    "ua": "Mozilla/5.0 (Linux; Android 4.4.4; MI NOTE LTE Build/KTU84P) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/46.0.2490.76 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Xiaomi",
+      "model": "MI NOTE LTE",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Xiaomi Mi One Plus",
+    "ua": "Mozilla/5.0 (Linux; U; Android 4.0.4; en-us; MI-ONE Plus Build/IMM76D) AppleWebKit/534.30 (KHTML, like Gecko) Version/4.0 Mobile Safari/534.30",
+    "expect": {
+      "vendor": "Xiaomi",
+      "model": "MI-ONE Plus",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Xiaomi Mi Max 3",
+    "ua": "Mozilla/5.0 (Linux; Android 9; MI MAX 3 Build/PKQ1.181007.001; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/79.0.3945.116 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Xiaomi",
+      "model": "MI MAX 3",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Xiaomi Mi A1",
+    "ua": "Mozilla/5.0 (Linux; Android 9; Mi A1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/75.0.3770.101 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Xiaomi",
+      "model": "Mi A1",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Xiaomi Mi A2 Lite",
+    "ua": "Mozilla/5.0 (Linux; Android 9; Mi A2 Lite) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/78.0.3904.62 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Xiaomi",
+      "model": "Mi A2 Lite",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Xiaomi Mi 9 SE",
+    "ua": "Mozilla/5.0 (Linux; Android 9; Mi 9 SE) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/74.0.3729.136 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Xiaomi",
+      "model": "Mi 9 SE",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Xiaomi Mi A2",
+    "ua": "Mozilla/5.0 (Linux; Android 9; Mi A2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/76.0.3809.132 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Xiaomi",
+      "model": "Mi A2",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Xiaomi Mi CC9",
+    "ua": "Mozilla/5.0 (Linux; U; Android 11; zh-cn; MI CC 9 Build/RKQ1.200826.002) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/89.0.4389.116 Mobile Safari/537.36 XiaoMi/MiuiBrowser/15.5.18",
+    "expect": {
+      "vendor": "Xiaomi",
+      "model": "MI CC 9",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Xiaomi MI PAD 2",
+    "ua": "Mozilla/5.0 (Linux; Android 5.1; MI PAD 2 Build/LMY47I; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/60.0.3112.107 Safari/537.36 [FB_IAB/FB4A;FBAV/137.0.0.24.91;]",
+    "expect": {
+      "vendor": "Xiaomi",
+      "model": "MI PAD 2",
+      "type": "tablet"
+    }
+  },
+  {
+    "desc": "Xiaomi MI PAD 4 PLUS",
+    "ua": "Mozilla/5.0 (Linux; Android 8.1; MI PAD 4 PLUS) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/76.0.3809.132 Safari/537.36",
+    "expect": {
+      "vendor": "Xiaomi",
+      "model": "MI PAD 4 PLUS",
+      "type": "tablet"
+    }
+  },
+  {
+    "desc": "Xiaomi POCO X2",
+    "ua": "Mozilla/5.0 (Linux; Android 10; POCO X2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/79.0.3945.136 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Xiaomi",
+      "model": "POCO X2",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Xiaomi POCO X3 Pro",
+    "ua": "Mozilla/5.0 (Linux; Android 11; M2102J20SI) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Xiaomi",
+      "model": "M2102J20SI",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Xiaomi POCO X3 Pro",
+    "ua": "Mozilla/5.0 (Linux; Android 12; M2102J20SG) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Xiaomi",
+      "model": "M2102J20SG",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Xiaomi POCO X3 NFC",
+    "ua": "Mozilla/5.0 (Linux; Android 12; M2007J20CG) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Xiaomi",
+      "model": "M2007J20CG",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Xiaomi POCO M2 Pro",
+    "ua": "Mozilla/5.0 (Linux; arm_64; Android 11; POCO M2 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/106.0.0.0 YaBrowser/22.11.7.42.00 SA/3 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Xiaomi",
+      "model": "POCO M2 Pro",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Xiaomi POCO M3",
+    "ua": "Mozilla/5.0 (Linux; Android 10; M2010J19CI) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Xiaomi",
+      "model": "M2010J19CI",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Xiaomi Redmi 4A",
+    "ua": "Mozilla/5.0 (Linux; Android 6.0; Redmi 4A Build/MMB29M; xx-xx) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/56.0.2924.87 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Xiaomi",
+      "model": "Redmi 4A",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Xiaomi Redmi 10C",
+    "ua": "Mozilla/5.0 (Linux; Android 12; 220333QAG) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/105.0.0.0 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "undefined",
+      "model": "220333QAG",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Xiaomi Redmi K30 5G",
+    "ua": "Mozilla/5.0 (Linux; Android 10; Redmi K30 5G) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/78.0.3904.96 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Xiaomi",
+      "model": "Redmi K30 5G",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Xiaomi Redmi K30 Pro",
+    "ua": "Mozilla/5.0 (Linux; Android 10; Redmi K30 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.138 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Xiaomi",
+      "model": "Redmi K30 Pro",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Xiaomi Redmi Note 3",
+    "ua": "Mozilla/5.0 (Linux; Android 6.0.1; Redmi Note 3 Build/MMB29M) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.116 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Xiaomi",
+      "model": "Redmi Note 3",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Xiaomi Redmi Note 9 Pro Max",
+    "ua": "Mozilla/5.0 (Linux; Android 10; Redmi Note 9 Pro Max) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.99 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Xiaomi",
+      "model": "Redmi Note 9 Pro Max",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "XiaoMi Redmi Note 9S",
+    "ua": "Mozilla/5.0 (Linux; Android 10; Redmi Note 9S) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Xiaomi",
+      "model": "Redmi Note 9S",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "XiaoMi Redmi Note 10 5G",
+    "ua": "Mozilla/5.0 (Linux; Android 12; M2103K19C) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/99.0.4844.88 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "undefined",
+      "model": "M2103K19C",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "XiaoMi Redmi Note 10 Pro",
+    "ua": "Mozilla/5.0 (Linux; Android 13; M2101K6P) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "undefined",
+      "model": "M2101K6P",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "XiaoMi Redmi Note 10 Pro",
+    "ua": "Mozilla/5.0 (Linux; Android 12; M2101K6G) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/105.0.0.0 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "undefined",
+      "model": "M2101K6G",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "XiaoMi Redmi Note 8",
+    "ua": "Mozilla/5.0 (Linux; Android 10; Redmi Note 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Xiaomi",
+      "model": "Redmi Note 8",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "PlayStation 4",
+    "ua": "Mozilla/5.0 (PlayStation 4 3.00) AppleWebKit/537.73 (KHTML, like Gecko)",
+    "expect": {
+      "vendor": "Sony",
+      "model": "PlayStation 4",
+      "type": "console"
+    }
+  },
+  {
+    "desc": "PlayStation 5",
+    "ua": "Mozilla/5.0 (Playstation; Playstation 5/1.05) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.0 Safari/605.1.15",
+    "expect": {
+      "vendor": "Sony",
+      "model": "Playstation 5",
+      "type": "console"
+    }
+  },
+  {
+    "desc": "PlayStation Vita",
+    "ua": "Mozilla/5.0 (PlayStation Vita 3.52) AppleWebKit/537.73 (KHTML, like Gecko) Silk/3.2",
+    "expect": {
+      "vendor": "Sony",
+      "model": "PlayStation Vita",
+      "type": "console"
+    }
+  },
+  {
+    "desc": "Nintendo Switch",
+    "ua": "Mozilla/5.0 (Nintendo Switch; WifiWebAuthApplet) AppleWebKit/606.4 (KHTML, like Gecko) NF/6.0.1.15.4 NintendoBrowser/5.1.0.20393",
+    "expect": {
+      "vendor": "Nintendo",
+      "model": "Switch",
+      "type": "console"
+    }
+  },
+  {
+    "desc": "Nintendo WiiU",
+    "ua": "Mozilla/5.0 (Nintendo WiiU) AppleWebKit/536.30 (KHTML, like Gecko) NX/3.0.4.2.9 NintendoBrowser/4.2.0.11146.EU",
+    "expect": {
+      "vendor": "Nintendo",
+      "model": "WiiU",
+      "type": "console"
+    }
+  },
+  {
+    "desc": "Nintendo Wii",
+    "ua": "Opera/9.10 (Nintendo Wii; U; ; 1621; en)",
+    "expect": {
+      "vendor": "Nintendo",
+      "model": "Wii",
+      "type": "console"
+    }
+  },
+  {
+    "desc": "Nintendo 3DS",
+    "ua": "Mozilla/5.0 (Nintendo 3DS; U; ; en) Version/1.7610.EU",
+    "expect": {
+      "vendor": "Nintendo",
+      "model": "3DS",
+      "type": "console"
+    }
+  },
+  {
+    "desc": "Nintendo 3DS",
+    "ua": "Mozilla/5.0 (New Nintendo 3DS like iPhone) AppleWebKit/536.30 (KHTML, like Gecko) NX/3.0.0.5.15 Mobile NintendoBrowser/1.3.10126.EU",
+    "expect": {
+      "vendor": "Nintendo",
+      "model": "3DS",
+      "type": "console"
+    }
+  },
+  {
+    "desc": "Galaxy Nexus",
+    "ua": "Mozilla/5.0 (Linux; Android 4.0.4; Galaxy Nexus Build/IMM76B) AppleWebKit/535.19 (KHTML, like Gecko) Chrome/18.0.1025.133 Mobile Safari/535.19",
+    "expect": {
+      "vendor": "Samsung",
+      "model": "Galaxy Nexus",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Samsung Galaxy C9 Pro",
+    "ua": "Mozilla/5.0 (Linux; Android 6.0; SAMSUNG SM-C900F Build/MMB29M) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/4.2 Chrome/44.0.2403.133 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Samsung",
+      "model": "SM-C900F",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Samsung Galaxy S5",
+    "ua": "Mozilla/5.0 (Linux; Android 5.0; SM-G900F Build/LRX21T) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/43.0.2357.78 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Samsung",
+      "model": "SM-G900F",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Samsung Galaxy J7 Prime",
+    "ua": "Mozilla/5.0 (Linux; Android 8.1.0; SM-G610F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Samsung",
+      "model": "SM-G610F",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Samsung Galaxy S6",
+    "ua": "Mozilla/5.0 (Linux; Android 4.4.2; SM-G920I Build/KOT49H) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/36.0.1985.135 Safari/537.36",
+    "expect": {
+      "vendor": "Samsung",
+      "model": "SM-G920I",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Samsung Galaxy S6 Edge",
+    "ua": "Mozilla/5.0 (Linux; Android 4.4.2; SM-G925I Build/KOT49H) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/36.0.1985.135 Safari/537.36",
+    "expect": {
+      "vendor": "Samsung",
+      "model": "SM-G925I",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Samsung Galaxy Note 5 Chrome",
+    "ua": "Mozilla/5.0 (Linux; Android 5.1.1; SM-N920C Build/LMY47X) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/49.0.2623.91 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Samsung",
+      "model": "SM-N920C",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Samsung Galaxy Note 5 Samsung Browser",
+    "ua": "Mozilla/5.0 (Linux; Android 5.1.1; SAMSUNG SM-N920C Build/LMY47X) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/4.0 Chrome/44.0.2403.133 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Samsung",
+      "model": "SM-N920C",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Google Chromecast",
+    "ua": "Mozilla/5.0 (X11; Linux armv7l) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/52.0.2743.84 Safari/537.36 CrKey/1.22.79313",
+    "expect": {
+      "vendor": "Google",
+      "model": "Chromecast",
+      "type": "smarttv"
+    }
+  },
+  {
+    "desc": "Google Pixel C",
+    "ua": "Mozilla/5.0 (Linux; Android 7.0; Pixel C Build/NRD90M; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/52.0.2743.98 Safari/537.36",
+    "expect": {
+      "vendor": "Google",
+      "model": "Pixel C",
+      "type": "tablet"
+    }
+  },
+  {
+    "desc": "Google Pixel C",
+    "ua": "Mozilla/5.0 (Linux; Android 8.0.0; Pixel C) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.64 Safari/537.36",
+    "expect": {
+      "vendor": "Google",
+      "model": "Pixel C",
+      "type": "tablet"
+    }
+  },
+  {
+    "desc": "Google Pixel",
+    "ua": "Mozilla/5.0 (Linux; Android 7.1; Pixel Build/NDE63V) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/54.0.2840.85 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Google",
+      "model": "Pixel",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Google Pixel XL",
+    "ua": "Mozilla/5.0 (Linux; Android 7.1; Pixel XL Build/NDE63X) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/54.0.2840.85 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Google",
+      "model": "Pixel XL",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Google Pixel XL",
+    "ua": "Mozilla/5.0 (Linux; Android 9; Pixel XL) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.110 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Google",
+      "model": "Pixel XL",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Google Pixel 2",
+    "ua": "Mozilla/5.0 (Linux; Android 8.1.0; Pixel 2 Build/OPM1.171019.013) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/63.0.3239.111 Safari/537.36",
+    "expect": {
+      "vendor": "Google",
+      "model": "Pixel 2",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Google Pixel 2 XL",
+    "ua": "Mozilla/5.0 (Linux; Android 8.1.0; Pixel 2 XL Build/OPM1.171019.013) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/63.0.3239.111 Safari/537.36",
+    "expect": {
+      "vendor": "Google",
+      "model": "Pixel 2 XL",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Google Pixel 2 XL",
+    "ua": "Mozilla/5.0 (Linux; Android 9; Pixel 2 XL) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.110 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Google",
+      "model": "Pixel 2 XL",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Google Pixel 3",
+    "ua": "Mozilla/5.0 (Linux; Android 9; Pixel 3 Build/PD1A.180720.030) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/69.0.3497.100 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Google",
+      "model": "Pixel 3",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Google Pixel 3 XL",
+    "ua": "Mozilla/5.0 (Linux; Android 9; Pixel 3 XL Build/PD1A.180720.030) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/69.0.3497.100 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Google",
+      "model": "Pixel 3 XL",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Google Pixel 3 XL",
+    "ua": "Mozilla/5.0 (Linux; Android 9; Pixel 3 XL) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.110 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Google",
+      "model": "Pixel 3 XL",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Google Pixel 3a",
+    "ua": "Mozilla/5.0 (Linux; Android 10; Pixel 3a) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/78.0.3904.108 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Google",
+      "model": "Pixel 3a",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Google Pixel 3a XL",
+    "ua": "Mozilla/5.0 (Linux; Android 10; Pixel 3a XL) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/78.0.3904.108 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Google",
+      "model": "Pixel 3a XL",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Google Pixel 4",
+    "ua": "Mozilla/5.0 (Linux; Android 10; Pixel 4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/78.0.3904.108 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Google",
+      "model": "Pixel 4",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Google Pixel 4a",
+    "ua": "Mozilla/5.0 (Linux; Android 10; Pixel 4a) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.83 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Google",
+      "model": "Pixel 4a",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Google Pixel 4 XL",
+    "ua": "Mozilla/5.0 (Linux; Android 10; Pixel 4 XL) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/78.0.3904.108 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Google",
+      "model": "Pixel 4 XL",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Google Pixel 5",
+    "ua": "Mozilla/5.0 (Linux; Android 11; Pixel 5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.120 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Google",
+      "model": "Pixel 5",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Generic Android Device",
+    "ua": "Mozilla/5.0 (Linux; U; Android 6.0.1; i980 Build/MRA58K)",
+    "expect": {
+      "vendor": "Generic",
+      "model": "Android 6.0.1"
+    }
+  },
+  {
+    "desc": "Android Phone Unidentified Vendor (docomo F-04K)",
+    "ua": "Mozilla/5.0 (Linux; Android 8.1.0; F-04K Build/V15R060P) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/64.0.3282.137 Mobile Safari/537.36",
+    "expect": {
+      "model": "F-04K",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "docomo SH-02M",
+    "ua": "Mozilla/5.0 (Linux; Android 9; SH-02M) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/74.0.3729.136 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Sharp",
+      "model": "SH-02M",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Android Tablet Unidentified Vendor (docomo F-02K)",
+    "ua": "Mozilla/5.0 (Linux; Android 8.1.0; F-02K Build/V44R059G) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3325.109 Safari/537.36",
+    "expect": {
+      "model": "F-02K",
+      "type": "tablet"
+    }
+  },
+  {
+    "desc": "Android Tablet Unidentified Vendor (docomo d-02K)",
+    "ua": "Mozilla/5.0 (Linux; Android 9; d-02K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/74.0.3729.136 Safari/537.36",
+    "expect": {
+      "model": "d-02K",
+      "type": "tablet"
+    }
+  },
+  {
+    "desc": "LG VK Series Tablet",
+    "ua": "Mozilla/5.0 (Linux; Android 5.0.2; VK700 Build/LRX22G) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/55.0.2883.84 Safari/537.36",
+    "expect": {
+      "vendor": "LG",
+      "model": "VK700",
+      "type": "tablet"
+    }
+  },
+  {
+    "desc": "LG LK Series Tablet",
+    "ua": "Mozilla/5.0 (Linux; Android 5.0.1; LGLK430 Build/LRX21Y) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/38.0.2125.102 Safari/537.36",
+    "expect": {
+      "vendor": "LG",
+      "model": "LK430",
+      "type": "tablet"
+    }
+  },
+  {
+    "desc": "Amazon Alexa Echo Show",
+    "ua": "AlexaWebMediaPlayer/1.0.200641.0 (Linux;Android 5.1.1)",
+    "expect": {
+      "vendor": "Amazon",
+      "model": "Alexa",
+      "type": "tablet"
+    }
+  },
+  {
+    "desc": "Amazon Kindle Fire Tablet",
+    "ua": "Mozilla/5.0 (Linux; U; Android 4.4.3; en-us; KFSAWI Build/KTU84M) AppleWebKit/537.36 (KHTML, like Gecko) Silk/3.66 like Chrome/39.0.2171.93 Safari/537.36",
+    "expect": {
+      "vendor": "Amazon",
+      "model": "KFSAWI",
+      "type": "tablet"
+    }
+  },
+  {
+    "desc": "Amazon Kindle Fire Tablet",
+    "ua": "Mozilla/5.0 (Linux; U; Android 4.4.3; en-us; KFSAWI) AppleWebKit/537.36 (KHTML, like Gecko) Silk/3.66 like Chrome/39.0.2171.93 Safari/537.36",
+    "expect": {
+      "vendor": "Amazon",
+      "model": "KFSAWI",
+      "type": "tablet"
+    }
+  },
+  {
+    "desc": "Amazon Kindle Fire Tablet",
+    "ua": "Mozilla/5.0 (Linux; Android 9; KFMAWI Build/PS7312; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/70.0.3538.110 Safari/537.36",
+    "expect": {
+      "vendor": "Amazon",
+      "model": "KFMAWI",
+      "type": "tablet"
+    }
+  },
+  {
+    "desc": "Amazon Fire TV",
+    "ua": "Mozilla/5.0 (Linux; Android 4.2.2; AFTB Build/JDQ39) AppleWebKit/537.22 (KHTML, like Gecko) Chrome/25.0.1364.173 Mobile Safari/537.22",
+    "expect": {
+      "vendor": "Amazon",
+      "model": "B",
+      "type": "smarttv"
+    }
+  },
+  {
+    "desc": "Amazon Fire TV",
+    "ua": "Mozilla/5.0 (Linux; Android 5.1.1; AFTT) AppleWebKit/537.36 (KHTML, like Gecko) Silk/86.3.20 like Chrome/86.0.4240.198 Safari/537.36",
+    "expect": {
+      "vendor": "Amazon",
+      "model": "T",
+      "type": "smarttv"
+    }
+  },
+  {
+    "desc": "Android TV",
+    "ua": "Mozilla/5.0 (Linux; Android 10; 2020/2021 UHD Android TV Build/QTG3.201102.001; wv) AppleWebKit/537.36 (KHTML, like Gecko) version/4.0 Chrome/83.0.4103.101 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "undefined",
+      "model": "undefined",
+      "type": "smarttv"
+    }
+  },
+  {
+    "desc": "Amazon Fire 7",
+    "ua": "Mozilla/5.0 (Linux; Android 5.1.1; KFAUWI) AppleWebKit/537.36 (KHTML, like Gecko) Silk/80.5.3 like Chrome/80.0.3987.162 Safari/537.36",
+    "expect": {
+      "vendor": "Amazon",
+      "model": "KFAUWI",
+      "type": "tablet"
+    }
+  },
+  {
+    "desc": "FaceBook Mobile App",
+    "ua": "[FBAN/FBIOS;FBAV/283.0.0.44.117;FBBV/238386386;FBDV/iPhone12,1;FBMD/iPhone;FBSN/iOS;FBSV/13.6.1;FBSS/2;FBID/phone;FBLC/en_US;FBOP/5;FBRV/240127608]",
+    "expect": {
+      "vendor": "Apple",
+      "model": "iPhone12,1",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Custom App Version on iOS",
+    "ua": "ios/iPhone/14.2/SOME_CUSTOM_APP_VERSION",
+    "expect": {
+      "vendor": "Apple",
+      "model": "iPhone",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Non Tablet",
+    "ua": "Mosamzilla/5.0 (Windows; U; Win98; en-US; rv:1.7.5) Gecko/20050603 Netscape/8.0.2",
+    "expect": {
+      "vendor": "undefined",
+      "model": "undefined",
+      "type": "undefined"
+    }
+  },
+  {
+    "desc": "Alcatel",
+    "ua": "Mozilla/5.0 (Linux; Android 4.4.2; ALCATEL A564C Build/KVT49L) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/44.0.2403.133 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "ALCATEL",
+      "model": "A564C",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Alcatel Go Flip",
+    "ua": "Mozilla/5.0 (Mobile; ALCATEL4044T; rv:37.0) Gecko/37.0 Firefox/37.0 KaiOS/1.0",
+    "expect": {
+      "vendor": "ALCATEL",
+      "model": "4044T",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Jolla",
+    "ua": "Mozilla/5.0 (Maemo; Linux; U; Jolla; Sailfish; Mobile; rv:31.0) Gecko/31.0 Firefox/31.0 SailfishBrowser/1.0",
+    "expect": {
+      "vendor": "Jolla",
+      "model": "undefined",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Xbox One",
+    "ua": "Mozilla/5.0 (compatible; MSIE 10.0; Windows Phone 8.0; Trident/6.0; IEMobile/10.0; Xbox; Xbox One)",
+    "expect": {
+      "vendor": "Microsoft",
+      "model": "Xbox One",
+      "type": "console"
+    }
+  },
+  {
+    "desc": "Xbox",
+    "ua": "Mozilla/5.0 (compatible; MSIE 9.0; Windows Phone OS 7.5; Trident/5.0; IEMobile/9.0; Xbox)",
+    "expect": {
+      "vendor": "Microsoft",
+      "model": "Xbox",
+      "type": "console"
+    }
+  },
+  {
+    "desc": "Nvidia Shield Tablet",
+    "ua": "Mozilla/5.0 (Linux; Android 5.1.1; SHIELD Tablet Build/LVY48E; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/45.0.2454.19 Safari/537.36",
+    "expect": {
+      "vendor": "Nvidia",
+      "model": "SHIELD Tablet",
+      "type": "tablet"
+    }
+  },
+  {
+    "desc": "Ouya",
+    "ua": "Mozilla/5.0 (Linux; Android 4.1.2; OUYA Console Build/JZO54L-OUYA) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/45.0.2454.84 Safari/537.36",
+    "expect": {
+      "vendor": "OUYA",
+      "model": "undefined",
+      "type": "console"
+    }
+  },
+  {
+    "desc": "Vivo Y52s",
+    "ua": "Mozilla/5.0 (Linux; Android 10; V2057A Build/QP1A.190711.020; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/76.0.3809.89 Mobile Safari/537.36 T7/12.10 SP-engine/2.28.0 baiduboxapp/12.10.0.10 (Baidu; P1 10) NABar/1.0",
+    "expect": {
+      "vendor": "Vivo",
+      "model": "V2057A",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Vivo X60",
+    "ua": "Mozilla/5.0 (Linux; Android 11; V2046A; wv) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/62.0.3202.84 Mobile Safari/537.36 VivoBrowser/8.8.71.0",
+    "expect": {
+      "vendor": "Vivo",
+      "model": "V2046A",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Vivo Y79A",
+    "ua": "Mozilla/5.0 (Linux; Android 7.1.2; vivo Y79A Build/N2G47H; wv) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/62.0.3202.84 Mobile Safari/537.36 VivoBrowser/9.0.14.0",
+    "expect": {
+      "vendor": "Vivo",
+      "model": "Y79A",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Vivo Y93",
+    "ua": "Mozilla/5.0 (Linux; Android 8.1.0; vivo 1814) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Vivo",
+      "model": "1814",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Vivo Y97",
+    "ua": "Mozilla/5.0 (Linux; Android 8.1.0; V1813T Build/O11019; wv) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/62.0.3202.84 Mobile Safari/537.36 VivoBrowser/9.0.14.0",
+    "expect": {
+      "vendor": "Vivo",
+      "model": "V1813T",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Vivo iQOO Pro",
+    "ua": "Mozilla/5.0 (Linux; Android 11; V1916A; wv) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/62.0.3202.84 Mobile Safari/537.36 VivoBrowser/9.1.10.6",
+    "expect": {
+      "vendor": "Vivo",
+      "model": "V1916A",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Vivo 1906 (Y11)",
+    "ua": "Mozilla/5.0 (Linux; Android 11; vivo 1906) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "Vivo",
+      "model": "1906",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Unknown Mobile using Firefox",
+    "ua": "Mozilla/5.0 (Android 4.4; Mobile; rv:41.0) Gecko/41.0 Firefox/41.0",
+    "expect": {
+      "vendor": "undefined",
+      "model": "undefined",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Unknown Tablet using Firefox",
+    "ua": "Mozilla/5.0 (Android 4.4; Tablet; rv:41.0) Gecko/41.0 Firefox/41.0",
+    "expect": {
+      "vendor": "undefined",
+      "model": "undefined",
+      "type": "tablet"
+    }
+  },
+  {
+    "desc": "Unknown Mobile using Focus for Android",
+    "ua": "Mozilla/5.0 (Linux; Android 7.0) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Focus/1.0 Chrome/59.0.3029.83 Mobile Safari/537.36",
+    "expect": {
+      "vendor": "undefined",
+      "model": "undefined",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Unknown Tablet using Focus for Android",
+    "ua": "Mozilla/5.0 (Linux; Android 7.0) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Focus/1.0 Chrome/59.0.3029.83 Safari/537.36",
+    "expect": {
+      "vendor": "undefined",
+      "model": "undefined",
+      "type": "tablet"
+    }
+  },
+  {
+    "desc": "Unknown Device using Focus for Android with GeckoView",
+    "ua": "Mozilla/5.0 (Android 7.0; Mobile; rv:62.0) Gecko/62.0 Firefox/62.0",
+    "expect": {
+      "vendor": "undefined",
+      "model": "undefined",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Unknown Mobile using Firefox OS",
+    "ua": "Mozilla/5.0 (Mobile; rv:26.0) Gecko/26.0 Firefox/26.0",
+    "expect": {
+      "vendor": "undefined",
+      "model": "undefined",
+      "type": "mobile"
+    }
+  },
+  {
+    "desc": "Unknown Tablet using Firefox OS",
+    "ua": "Mozilla/5.0 (Tablet; rv:26.0) Gecko/26.0 Firefox/26.0",
+    "expect": {
+      "vendor": "undefined",
+      "model": "undefined",
+      "type": "tablet"
+    }
+  },
+  {
+    "desc": "Unknown TV using Firefox OS",
+    "ua": "Mozilla/5.0 (TV; rv:44.0) Gecko/44.0 Firefox/44.0",
+    "expect": {
+      "vendor": "undefined",
+      "model": "undefined",
+      "type": "smarttv"
+    }
+  },
+  {
+    "desc": "PDA with Windows CE",
+    "ua": "Mozilla/4.0 (PDA; Windows CE/1.0.1) NetFront/3.0",
+    "expect": {
+      "vendor": "undefined",
+      "model": "undefined",
+      "type": "mobile"
+    }
+  }
+]

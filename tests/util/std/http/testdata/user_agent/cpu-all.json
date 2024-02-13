@@ -1,0 +1,226 @@
+[
+  {
+    "desc": "i686",
+    "ua": "Mozilla/5.0 (X11; Ubuntu; Linux i686; rv:19.0) Gecko/20100101 Firefox/19.0",
+    "expect": {
+      "architecture": "ia32"
+    }
+  },
+  {
+    "desc": "i386",
+    "ua": "Mozilla/5.0 (X11; U; FreeBSD i386; en-US; rv:1.7) Gecko/20040628 Epiphany/1.2.6",
+    "expect": {
+      "architecture": "ia32"
+    }
+  },
+  {
+    "desc": "x86-64",
+    "ua": "Opera/9.80 (X11; Linux x86_64; U; Linux Mint; en) Presto/2.2.15 Version/10.10",
+    "expect": {
+      "architecture": "amd64"
+    }
+  },
+  {
+    "desc": "Vivaldi on Windows",
+    "ua": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.0.0 Safari/537.36 Vivaldi/6.0.2979.18",
+    "expect": {
+      "architecture": "amd64"
+    }
+  },
+  {
+    "desc": "Vivaldi on Windows",
+    "ua": "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.0.0 Safari/537.36 Vivaldi/6.0.2979.18",
+    "expect": {
+      "architecture": "amd64"
+    }
+  },
+  {
+    "desc": "Vivaldi on Linux",
+    "ua": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.0.0 Safari/537.36 Vivaldi/6.0.2979.18",
+    "expect": {
+      "architecture": "amd64"
+    }
+  },
+  {
+    "desc": "Vivaldi on Linux",
+    "ua": "Mozilla/5.0 (X11; Linux i686) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.0.0 Safari/537.36 Vivaldi/6.0.2979.18",
+    "expect": {
+      "architecture": "ia32"
+    }
+  },
+  {
+    "desc": "Xiaomi POCO M2 Pro",
+    "ua": "Mozilla/5.0 (Linux; arm_64; Android 11; POCO M2 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/106.0.0.0 YaBrowser/22.11.7.42.00 SA/3 Mobile Safari/537.36",
+    "expect": {
+      "architecture": "arm64"
+    }
+  },
+  {
+    "desc": "win64",
+    "ua": "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 6.2; Win64; x64; Trident/6.0; .NET4.0E; .NET4.0C)",
+    "expect": {
+      "architecture": "amd64"
+    }
+  },
+  {
+    "desc": "WOW64",
+    "ua": "Mozilla/5.0 (compatible; MSIE 10.0; Windows NT 6.1; WOW64; Trident/6.0)",
+    "expect": {
+      "architecture": "amd64"
+    }
+  },
+  {
+    "desc": "ARM",
+    "ua": "Mozilla/5.0 (Mobile; Windows Phone 8.1; Android 4.0; ARM; Trident/7.0; Touch; rv:11.0; IEMobile/11.0; NOKIA; Lumia 635) like iPhone OS 7_0_3 Mac OS X AppleWebKit/537 (KHTML, like Gecko) Mobile Safari/537",
+    "expect": {
+      "architecture": "arm"
+    }
+  },
+  {
+    "desc": "ARMv61",
+    "ua": "Mozilla/5.0 (X11; U; Linux armv61; en-US; rv:1.9.1b2pre) Gecko/20081015 Fennec/1.0a1",
+    "expect": {
+      "architecture": "arm"
+    }
+  },
+  {
+    "desc": "ARMv7",
+    "ua": "Mozilla/5.0 (Linux ARMv7) WebKitGTK+/3.4.9 vimprobable2",
+    "expect": {
+      "architecture": "arm"
+    }
+  },
+  {
+    "desc": "ARMv7l",
+    "ua": "Mozilla/5.0 (SMART-TV; X11; Linux armv7l) AppleWebKit/537.42 (KHTML, like Gecko) Chromium/25.0.1349.2 Chrome/25.0.1349.2 Safari/537.42",
+    "expect": {
+      "architecture": "arm"
+    }
+  },
+  {
+    "desc": "ARMv7l",
+    "ua": "Mozilla/5.0 (X11; CrOS armv7l 9765.85.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/61.0.3163.123 Safari/537.36",
+    "expect": {
+      "architecture": "arm"
+    }
+  },
+  {
+    "desc": "Nokia N900 Linux mobile",
+    "ua": "Mozilla/5.0 (Maemo; Linux armv7l; rv:10.0) Gecko/20100101 Firefox/10.0 Fennec/10.0",
+    "expect": {
+      "architecture": "arm"
+    }
+  },
+  {
+    "desc": "ARMEABI",
+    "ua": "[FBAN/FB4A;FBAV/237.0.0.44.120;FBBV/170693408;FBDM/{density=1.75,width=720,height=1280};FBLC/en_US;FBRV/172067074;FBCR/ ;FBMF/samsung;FBBD/samsung;FBPN/com.facebook.katana;FBDV/SM-S367VL;FBSV/9;FBBK/1;FBOP/19;FBCA/armeabi-v7a:armeabi;]",
+    "expect": {
+      "architecture": "arm"
+    }
+  },
+  {
+    "desc": "ARMv8",
+    "ua": "Mozilla/5.0 (X11; Linux armv8l; rv:45.0) Gecko/20100101 Firefox/45.0",
+    "expect": {
+      "architecture": "arm64"
+    }
+  },
+  {
+    "desc": "AARCH64",
+    "ua": "Mozilla/5.0 (X11; CrOS aarch64 13310.93.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.133 Safari/537.36",
+    "expect": {
+      "architecture": "arm64"
+    }
+  },
+  {
+    "desc": "ARM64",
+    "ua": "Mozilla/5.0 (Windows NT 10.0; ARM64; RM-1096) AppleWebKit/537.36 (KHTML like Gecko) Chrome/51.0.2704.79 Safari/537.36 Edge/14.14393",
+    "expect": {
+      "architecture": "arm64"
+    }
+  },
+  {
+    "desc": "ARM64",
+    "ua": "Mozilla/5.0 (Linux; arm_64; Android 9; HRY-LX1T) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/78.0.3904.97 YaBrowser/19.12.1.121.00 Mobile Safari/537.36",
+    "expect": {
+      "architecture": "arm64"
+    }
+  },
+  {
+    "desc": "Pocket PC",
+    "ua": "Opera/9.7 (Windows Mobile; PPC; Opera Mobi/35166; U; en) Presto/2.2.1",
+    "expect": {
+      "architecture": "arm"
+    }
+  },
+  {
+    "desc": "Mac PowerPC",
+    "ua": "Mozilla/4.0 (compatible; MSIE 4.5; Mac_PowerPC)",
+    "expect": {
+      "architecture": "ppc"
+    }
+  },
+  {
+    "desc": "Mac PowerPC",
+    "ua": "Mozilla/4.0 (compatible; MSIE 5.17; Mac_PowerPC Mac OS; en)",
+    "expect": {
+      "architecture": "ppc"
+    }
+  },
+  {
+    "desc": "Mac PowerPC",
+    "ua": "iCab/2.9.5 (Macintosh; U; PPC; Mac OS X)",
+    "expect": {
+      "architecture": "ppc"
+    }
+  },
+  {
+    "desc": "Mac OS X on PowerPC using Firefox",
+    "ua": "Mozilla/5.0 (Macintosh; PPC Mac OS X x.y; rv:10.0) Gecko/20100101 Firefox/10.0",
+    "expect": {
+      "architecture": "ppc"
+    }
+  },
+  {
+    "desc": "UltraSPARC",
+    "ua": "Mozilla/5.0 (X11; U; SunOS sun4u; en-US; rv:1.9b5) Gecko/2008032620 Firefox/3.0b5",
+    "expect": {
+      "architecture": "sparc"
+    }
+  },
+  {
+    "desc": "sparc64",
+    "ua": "ELinks (0.4.3; NetBSD 3.0.2PATCH sparc64; 141x19)",
+    "expect": {
+      "architecture": "sparc64"
+    }
+  },
+  {
+    "desc": "QuickTime",
+    "ua": "QuickTime/7.5.6 (qtver=7.5.6;cpu=IA32;os=Mac 10.5.8)",
+    "expect": {
+      "architecture": "ia32"
+    }
+  },
+  {
+    "desc": "XBMC",
+    "ua": "XBMC/12.0 Git:20130127-fb595f2 (Windows NT 6.1;WOW64;Win64;x64; http://www.xbmc.org)",
+    "expect": {
+      "architecture": "amd64"
+    }
+  },
+  {
+    "desc": "IRIX64",
+    "ua": "Mozilla/4.8C-SGI [en] (X11; U; IRIX64 6.5 IP27",
+    "expect": {
+      "architecture": "irix64"
+    }
+  },
+  {
+    "desc": "68k",
+    "ua": "'Mozilla/1.1 (Macintosh; U; 68K)'",
+    "expect": {
+      "architecture": "68k"
+    }
+  }
+]

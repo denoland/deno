@@ -1,0 +1,134 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        deno:
+          - v1.x
+          - canary
+        os:
+          - ubuntu-22.04
+          - windows-2022
+          - macOS-12
+
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Set up Deno
+        uses: denoland/setup-deno@v1
+        with:
+          deno-version: ${{ matrix.deno }}
+
+      - name: Run tests canary
+        run: deno task test
+
+      - name: Run timezone-dependent tests
+        run: |
+          TZ=Australia/Sydney deno test datetime
+          TZ=Europe/London deno test datetime
+          TZ=America/Toronto deno test datetime
+        if: matrix.os == 'ubuntu-22.04'
+
+      - name: Type check browser compatible modules
+        shell: bash
+        run: deno task test:browser
+
+      - name: Generate lcov
+        run: deno task cov:gen
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v3
+        with:
+          name: ${{ matrix.os }}-${{ matrix.deno }}
+          files: cov.lcov
+
+      - name: Release if version change
+        if: |
+          matrix.os == 'ubuntu-22.04' &&
+          github.repository == 'denoland/deno_std' &&
+          github.ref == 'refs/heads/main'
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.DENOBOT_PAT }}
+        run: ./_tools/release/03_release.ts
+
+  lint:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+          persist-credentials: false
+
+      - name: Set up Deno
+        uses: denoland/setup-deno@v1
+        with:
+          deno-version: canary
+
+      - name: Format
+        run: deno fmt --check
+
+      - name: Lint
+        run: deno task lint
+
+      - name: Spell-check
+        uses: crate-ci/typos@master
+        with:
+          config: ./.github/workflows/typos.toml
+
+  wasm:
+    name: wasm
+    runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        module: [ crypto/_wasm ]
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@v4
+        with:
+          # required to check for changes
+          fetch-depth: 2
+          submodules: false
+          persist-credentials: false
+
+      - name: Check for changes
+        id: source
+        run: |-
+          set -o errexit
+          shopt -s inherit_errexit
+          declare modifications="$(git diff --name-only HEAD~ -- ${{ matrix.module }})"
+          declare modified="$([[ "$modifications" ]] && echo true || echo false)"
+          echo "modified=$modified" >> $GITHUB_OUTPUT
+          echo "${{ matrix.module }} WASM source modified in this commit? $modified"
+          echo "$modifications"
+
+      - name: Set up Deno
+        uses: denoland/setup-deno@v1
+        if: success() && steps.source.outputs.modified == 'true'
+
+      - name: Set up Rust
+        uses: hecrj/setup-rust-action@v2
+        if: success() && steps.source.outputs.modified == 'true'
+        with:
+          # This must match the version in _wasm/rust-toolchain.toml of the module folder
+          rust-version: 1.74.0
+          targets: wasm32-unknown-unknown
+          components: rustfmt
+
+      - name: Rebuild Wasm and verify it hasn't changed
+        if: success() && steps.source.outputs.modified == 'true'
+        run: deno task --cwd ${{ matrix.module }} wasmbuild --check

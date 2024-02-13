@@ -1,0 +1,12 @@
+[arrays]
+data = [["gamma", "delta"], [1, 2]] # comment after an array caused issue #7072
+
+# Line breaks are OK when inside arrays
+hosts = [
+  "alpha",
+  "omega",
+] # comment
+
+profiles = [{ name = "John", "john@example.com" = true }, { name = "Doe", "doe@example.com" = true }]
+
+floats = [0.1, -1.25]

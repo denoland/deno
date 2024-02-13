@@ -1,0 +1,12 @@
+[package]
+name = "unicode_width_crate"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+libc = "0.2.140"
+serde_json = "1.0.95"
+unicode-width = "0.1.10"
+
+[lib]
+crate-type = ["cdylib"]

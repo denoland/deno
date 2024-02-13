@@ -1,0 +1,43 @@
+name: version_bump
+
+on:
+  workflow_dispatch:
+    inputs:
+      releaseKind:
+        description: 'Kind of version bump'
+        default: 'minor'
+        type: choice
+        options:
+        - patch
+        - minor
+        - major
+        required: true
+
+jobs:
+  build:
+    name: version bump
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Set up Deno
+        uses: denoland/setup-deno@v1
+
+      - name: Run version bump
+        run: |
+          git remote add upstream https://github.com/denoland/deno_std
+          ./_tools/release/01_bump_version.ts --${{github.event.inputs.releaseKind}}
+
+      - name: Create PR
+        env:
+          GITHUB_TOKEN: ${{ secrets.DENOBOT_PAT }}
+          GH_WORKFLOW_ACTOR: ${{ github.actor }}
+        run: |
+          git config user.email "${{ github.actor }}@users.noreply.github.com"
+          git config user.name "${{ github.actor }}"
+          ./_tools/release/02_create_pr.ts

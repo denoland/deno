@@ -1,0 +1,463 @@
+export const snapshot = {};
+
+snapshot[`Snapshot Test 1`] = `
+{
+  a: 1,
+  b: 2,
+}
+`;
+
+snapshot[`Snapshot Test 2`] = `
+TestClass {
+  a: 1,
+  b: 2,
+}
+`;
+
+snapshot[`Snapshot Test 3`] = `
+Map(3) {
+  "Hello" => "World!",
+  1 => 2,
+  [Function (anonymous)] => "World!",
+}
+`;
+
+snapshot[`Snapshot Test 4`] = `
+Set(3) {
+  1,
+  2,
+  3,
+}
+`;
+
+snapshot[`Snapshot Test 5`] = `
+{
+  fn: [Function: fn],
+}
+`;
+
+snapshot[`Snapshot Test 6`] = `[Function: fn]`;
+
+snapshot[`Snapshot Test 7`] = `
+[
+  1,
+  2,
+  3,
+]
+`;
+
+snapshot[`Snapshot Test 8`] = `"hello world"`;
+
+snapshot[`Snapshot Test - step 1`] = `
+{
+  a: 1,
+  b: 2,
+}
+`;
+
+snapshot[`Snapshot Test - step > Nested 1`] = `
+TestClass {
+  a: 1,
+  b: 2,
+}
+`;
+
+snapshot[`Snapshot Test - step > Nested 2`] = `
+Map(3) {
+  "Hello" => "World!",
+  1 => 2,
+  [Function (anonymous)] => "World!",
+}
+`;
+
+snapshot[`Snapshot Test - step > Nested > Nested Nested 1`] = `
+Set(3) {
+  1,
+  2,
+  3,
+}
+`;
+
+snapshot[`Snapshot Test - step > Nested > Nested Nested 2`] = `
+{
+  fn: [Function: fn],
+}
+`;
+
+snapshot[`Snapshot Test - step > Nested > Nested Nested 3`] = `[Function: fn]`;
+
+snapshot[`Snapshot Test - step > Nested 3`] = `
+[
+  1,
+  2,
+  3,
+]
+`;
+
+snapshot[`Snapshot Test - step 2`] = `"hello world"`;
+
+snapshot[`Snapshot Test - Adverse String \\ \` \${} 1`] = `"\\\\ \` \${}"`;
+
+snapshot[`Snapshot Test - Default serializer 1`] = `
+"a
+b	c"
+`;
+
+snapshot[`Snapshot Test - Multi-Line Strings > string 1`] = `
+"
+<html>
+  <head>
+    <title>Snapshot Test - Multi-Line Strings</title>
+  </head>
+  <body>
+    <h1>
+      Snapshot Test - Multi-Line Strings
+    </h2>
+    <p>
+      This is a snapshot of a multi-line string.
+    </p>
+  </body>
+</html>"
+`;
+
+snapshot[`Snapshot Test - Multi-Line Strings > string in array 1`] = `
+[
+  "
+<h1>
+  Header
+</h1>",
+  "
+<p>
+  Content
+</p>",
+]
+`;
+
+snapshot[`Snapshot Test - Multi-Line Strings > string in object 1`] = `
+{
+  str: "
+        Line #1
+        Line #2
+        Line #3",
+}
+`;
+
+snapshot[`Snapshot Test - Failed Assertion > Object 1`] = `
+"Snapshot does not match:
+
+
+    [Diff] Actual / Expected
+
+
+    [
+      1,
+      2,
++     3,
+    ]
+"
+`;
+
+snapshot[`Snapshot Test - Failed Assertion > String 1`] = `
+'Snapshot does not match:
+
+
+    [Diff] Actual / Expected
+
+
+-   "Hello!"
++   "Hello World!"
+
+'
+`;
+
+snapshot[`custom name 1`] = `
+[
+  1,
+  2,
+  3,
+]
+`;
+
+snapshot[`custom name 2`] = `
+[
+  1,
+  2,
+  3,
+]
+`;
+
+snapshot[`Snapshot Test - Options > serializer 1`] = `
+Array Length: 3
+
+[
+  1,
+  2,
+  3,
+]
+`;
+
+snapshot[`Snapshot Test - Options > msg > missing snapshot 1`] = `"[CUSTOM ERROR MESSAGE - MISSING SNAPSHOT]"`;
+
+snapshot[`Snapshot Test - Options > msg > missing snapshot file 1`] = `"[CUSTOM ERROR MESSAGE - MISSING SNAPSHOT]"`;
+
+snapshot[`Snapshot Test - Options > mode 1`] = `
+"
+[
+  1,
+  2,
+  3,
+]
+"
+`;
+
+snapshot[`Snapshot Test - Options > mode 2`] = `
+"running 1 test from <tempDir>/test.ts
+snapshot ... ok (--ms)
+------- output -------
+
+ > 1 snapshot updated.
+
+ok | 1 passed | 0 failed (--ms)
+
+"
+`;
+
+snapshot[`Snapshot Test - Update - New snapshot 1`] = `
+"running 1 test from <tempDir>/test.ts
+Snapshot Test - Update ... ok (--ms)
+------- output -------
+
+ > 1 snapshot updated.
+
+ok | 1 passed | 0 failed (--ms)
+
+"
+`;
+
+snapshot[`Snapshot Test - Update - New snapshot 2`] = `
+"export const snapshot = {};
+
+snapshot[\`Snapshot Test - Update 1\`] = \`
+[
+  1,
+  2,
+]
+\`;
+"
+`;
+
+snapshot[`Snapshot Test - Update - Existing snapshot - no changes 1`] = `
+"running 1 test from <tempDir>/test.ts
+Snapshot Test - Update ... ok (--ms)
+
+ok | 1 passed | 0 failed (--ms)
+
+"
+`;
+
+snapshot[`Snapshot Test - Update - Existing snapshot - no changes 2`] = `
+"export const snapshot = {};
+
+snapshot[\`Snapshot Test - Update 1\`] = \`
+[
+  1,
+  2,
+]
+\`;
+"
+`;
+
+snapshot[`Snapshot Test - Update - Existing snapshot - updates 1`] = `
+"running 1 test from <tempDir>/test.ts
+Snapshot Test - Update ... ok (--ms)
+------- output -------
+
+ > 1 snapshot updated.
+
+ok | 1 passed | 0 failed (--ms)
+
+"
+`;
+
+snapshot[`Snapshot Test - Update - Existing snapshot - updates 2`] = `
+"export const snapshot = {};
+
+snapshot[\`Snapshot Test - Update 1\`] = \`
+[
+  1,
+  2,
+  3,
+  5,
+]
+\`;
+"
+`;
+
+snapshot[`Snapshot Test - Update - Existing snapshots - reverse order 1 1`] = `
+"running 2 tests from <tempDir>/test.ts
+Snapshot Test - First ... ok (--ms)
+Snapshot Test - Second ... ok (--ms)
+------- output -------
+
+ > 2 snapshots updated.
+
+ > 1 snapshot removed.
+   • Snapshot Test - Update 1
+
+ok | 2 passed | 0 failed (--ms)
+
+"
+`;
+
+snapshot[`Snapshot Test - Update - Existing snapshots - reverse order 1 2`] = `
+'export const snapshot = {};
+
+snapshot[\`Snapshot Test - First 1\`] = \`"FIRST"\`;
+
+snapshot[\`Snapshot Test - Second 1\`] = \`"SECOND"\`;
+'
+`;
+
+snapshot[`Snapshot Test - Update - Existing snapshots - reverse order 2 1`] = `
+"running 2 tests from <tempDir>/test.ts
+Snapshot Test - Second ... ok (--ms)
+Snapshot Test - First ... ok (--ms)
+
+ok | 2 passed | 0 failed (--ms)
+
+"
+`;
+
+snapshot[`Snapshot Test - Update - Existing snapshots - reverse order 2 2`] = `
+'export const snapshot = {};
+
+snapshot[\`Snapshot Test - Second 1\`] = \`"SECOND"\`;
+
+snapshot[\`Snapshot Test - First 1\`] = \`"FIRST"\`;
+'
+`;
+
+snapshot[`Snapshot Test - Remove - New snapshot 1`] = `
+"running 5 tests from <tempDir>/test.ts
+Snapshot Test - Remove - First ... ok (--ms)
+Snapshot Test - Remove - Second ... ok (--ms)
+Snapshot Test - Remove - Third ... ok (--ms)
+Snapshot Test - Remove - Fourth ... ok (--ms)
+Snapshot Test - Remove - Fifth ... ok (--ms)
+------- output -------
+
+ > 5 snapshots updated.
+
+ok | 5 passed | 0 failed (--ms)
+
+"
+`;
+
+snapshot[`Snapshot Test - Remove - Existing snapshot - removed one 1`] = `
+"running 4 tests from <tempDir>/test.ts
+Snapshot Test - Remove - First ... ok (--ms)
+Snapshot Test - Remove - Second ... ok (--ms)
+Snapshot Test - Remove - Fourth ... ok (--ms)
+Snapshot Test - Remove - Fifth ... ok (--ms)
+------- output -------
+
+ > 1 snapshot removed.
+   • Snapshot Test - Remove - Third 1
+
+ok | 4 passed | 0 failed (--ms)
+
+"
+`;
+
+snapshot[`Snapshot Test - Remove - Existing snapshot - removed several 1`] = `
+"running 1 test from <tempDir>/test.ts
+Snapshot Test - Remove - First ... ok (--ms)
+------- output -------
+
+ > 3 snapshots removed.
+   • Snapshot Test - Remove - Second 1
+   • Snapshot Test - Remove - Fourth 1
+   • Snapshot Test - Remove - Fifth 1
+
+ok | 1 passed | 0 failed (--ms)
+
+"
+`;
+
+snapshot[`Snapshot Test - Different Dir - New snapshot 1`] = `
+"running 2 tests from <tempDir>/test.ts
+Snapshot Test - First ... ok (--ms)
+Snapshot Test - Second ... ok (--ms)
+------- output -------
+
+ > 2 snapshots updated.
+running 2 tests from <tempDir>/test.ts
+Snapshot Test - First ...----- output end -----
+Snapshot Test - First ... ok (--ms)
+Snapshot Test - Second ... ok (--ms)
+------- output -------
+
+ > 2 snapshots updated.
+
+ok | 4 passed | 0 failed (--ms)
+
+"
+`;
+
+snapshot[`Snapshot Test - Different Dir - Existing snapshot - update 1`] = `
+"running 2 tests from <tempDir>/test.ts
+Snapshot Test - First ... ok (--ms)
+Snapshot Test - Second ... ok (--ms)
+------- output -------
+
+ > 1 snapshot updated.
+running 2 tests from <tempDir>/test.ts
+Snapshot Test - First ...----- output end -----
+Snapshot Test - First ... ok (--ms)
+Snapshot Test - Second ... ok (--ms)
+------- output -------
+
+ > 2 snapshots updated.
+
+ok | 4 passed | 0 failed (--ms)
+
+"
+`;
+
+snapshot[`Snapshot Test - Regression #2140 1`] = `
+{
+  content: "
+      <h1>Testing a page</h1>
+      <p>This is a test</p>
+      <ul>
+        <li>1</li>
+        <li>2</li>
+        <li>3</li>
+        <li>4</li>
+      </ul>
+      ",
+  title: "Testing a page",
+}
+`;
+
+snapshot[`Snapshot Test - Regression #2144 1`] = `
+{
+  fmt: {
+    files: {
+      exclude: [],
+      include: [],
+    },
+    options: {},
+  },
+}
+`;
+
+snapshot[`Snapshot Test - Empty #2245 1`] = ``;
+
+snapshot[`SnapshotTest - createAssertSnapshot > No Options 1`] = `This green text has had it's colours stripped`;
+
+snapshot[`SnapshotTest - createAssertSnapshot - Options Object - Custom Name 1`] = `This green text has had it's colours stripped`;
+
+snapshot[`SnapshotTest - createAssertSnapshot > Message 1`] = `"This snapshot has failed as expected"`;
+
+snapshot[`SnapshotTest - createAssertSnapshot - Composite - Custom Name 1`] = `This green text has had it's colours stripped`;

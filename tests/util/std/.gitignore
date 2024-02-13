@@ -1,0 +1,10 @@
+.DS_Store
+.idea
+.vscode/settings.json
+.vim
+**/cov/
+/crypto/_wasm/target
+deno.lock
+/console/testdata/unicode_width_crate/target
+html_cov/
+cov.lcov

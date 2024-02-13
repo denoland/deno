@@ -1,0 +1,15 @@
+"" = 1
+"127.0.0.1" = 1
+"ʎǝʞ" = 1
+'this is "literal"' = 1
+"double \"quote\"" = 1
+
+site."google.com".bar = 1
+site."google.com".baz = 1
+
+a.b.c = 1
+a.b.d = 1
+a.e = 1
+
+'literal__\n__' = 1
+"basic__\n__" = 1
