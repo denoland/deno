@@ -458,9 +458,9 @@ function upgradeWebSocket(request, options = {}) {
   }
 
   if (options.headers) {
-    options.headers.forEach((value, name) => {
-      ArrayPrototypePush(r.headerList, [name, value]);
-    });
+    for (const h of options.headers) {
+      ArrayPrototypePush(r.headerList, [h[0], h[1]]);
+    }
   }
 
   const socket = createWebSocketBranded(WebSocket);
