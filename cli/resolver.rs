@@ -40,13 +40,22 @@ use std::sync::Arc;
 use crate::args::package_json::PackageJsonDeps;
 use crate::args::JsxImportSourceConfig;
 use crate::args::PackageJsonDepsProvider;
-use crate::graph_util::format_range_with_colors;
+use crate::colors;
 use crate::node::CliNodeCodeTranslator;
 use crate::npm::ByonmCliNpmResolver;
 use crate::npm::CliNpmResolver;
 use crate::npm::InnerCliNpmResolverRef;
 use crate::util::path::specifier_to_file_path;
 use crate::util::sync::AtomicFlag;
+
+pub fn format_range_with_colors(range: &deno_graph::Range) -> String {
+  format!(
+    "{}:{}:{}",
+    colors::cyan(range.specifier.as_str()),
+    colors::yellow(&(range.start.line + 1).to_string()),
+    colors::yellow(&(range.start.character + 1).to_string())
+  )
+}
 
 pub struct ModuleCodeStringSource {
   pub code: ModuleCodeString,

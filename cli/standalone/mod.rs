@@ -55,7 +55,7 @@ use import_map::parse_from_json;
 use std::rc::Rc;
 use std::sync::Arc;
 
-mod binary;
+pub mod binary;
 mod file_system;
 mod virtual_fs;
 
@@ -520,7 +520,6 @@ pub async fn run(
     None,
     None,
     None,
-    None,
     feature_checker,
     CliMainWorkerOptions {
       argv: metadata.argv,
@@ -548,6 +547,8 @@ pub async fn run(
         .unsafely_ignore_certificate_errors,
       unstable: metadata.unstable_config.legacy_flag_enabled,
       maybe_root_package_json_deps: package_json_deps_provider.deps().cloned(),
+      create_hmr_runner: None,
+      create_coverage_collector: None,
     },
     None,
     // TODO(bartlomieju): temporarily disabled

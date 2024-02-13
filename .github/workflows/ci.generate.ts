@@ -704,6 +704,7 @@ const ci = {
           run: [
             "cd target/release",
             "zip -r deno-${{ matrix.arch }}-unknown-linux-gnu.zip deno",
+            "zip -r denort-${{ matrix.arch }}-unknown-linux-gnu.zip denort",
             "./deno types > lib.deno.d.ts",
           ].join("\n"),
         },
@@ -728,6 +729,7 @@ const ci = {
             "--entitlements-xml-file=cli/entitlements.plist",
             "cd target/release",
             "zip -r deno-${{ matrix.arch }}-apple-darwin.zip deno",
+            "zip -r denort-${{ matrix.arch }}-apple-darwin.zip denort",
           ]
             .join("\n"),
         },
@@ -740,8 +742,10 @@ const ci = {
             "github.repository == 'denoland/deno'",
           ].join("\n"),
           shell: "pwsh",
-          run:
+          run: [
             "Compress-Archive -CompressionLevel Optimal -Force -Path target/release/deno.exe -DestinationPath target/release/deno-${{ matrix.arch }}-pc-windows-msvc.zip",
+            "Compress-Archive -CompressionLevel Optimal -Force -Path target/release/denort.exe -DestinationPath target/release/denort-${{ matrix.arch }}-pc-windows-msvc.zip",
+          ].join("\n"),
         },
         {
           name: "Upload canary to dl.deno.land",
@@ -942,6 +946,7 @@ const ci = {
           run: [
             'du -hd1 "./target/${{ matrix.profile }}"',
             'du -ha  "./target/${{ matrix.profile }}/deno"',
+            'du -ha  "./target/${{ matrix.profile }}/denort"',
           ].join("\n"),
         },
         {
@@ -1007,10 +1012,15 @@ const ci = {
           with: {
             files: [
               "target/release/deno-x86_64-pc-windows-msvc.zip",
+              "target/release/denort-x86_64-pc-windows-msvc.zip",
               "target/release/deno-x86_64-unknown-linux-gnu.zip",
+              "target/release/denort-x86_64-unknown-linux-gnu.zip",
               "target/release/deno-x86_64-apple-darwin.zip",
+              "target/release/denort-x86_64-apple-darwin.zip",
               "target/release/deno-aarch64-unknown-linux-gnu.zip",
+              "target/release/denort-aarch64-unknown-linux-gnu.zip",
               "target/release/deno-aarch64-apple-darwin.zip",
+              "target/release/denort-aarch64-apple-darwin.zip",
               "target/release/deno_src.tar.gz",
               "target/release/lib.deno.d.ts",
             ].join("\n"),
