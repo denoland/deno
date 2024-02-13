@@ -29,9 +29,11 @@ pub mod factory;
 mod fs;
 mod https;
 pub mod lsp;
+mod macros;
 mod npm;
 pub mod pty;
 pub mod servers;
+pub mod spawn;
 
 pub use builders::DenoChild;
 pub use builders::TestCommandBuilder;
@@ -75,7 +77,7 @@ pub fn prebuilt_path() -> PathRef {
 }
 
 pub fn tests_path() -> PathRef {
-  root_path().join("cli").join("tests")
+  root_path().join("tests")
 }
 
 pub fn testdata_path() -> PathRef {
@@ -86,8 +88,16 @@ pub fn third_party_path() -> PathRef {
   root_path().join("third_party")
 }
 
+pub fn ffi_tests_path() -> PathRef {
+  root_path().join("tests").join("ffi")
+}
+
 pub fn napi_tests_path() -> PathRef {
-  root_path().join("test_napi")
+  root_path().join("tests").join("napi")
+}
+
+pub fn deno_config_path() -> PathRef {
+  root_path().join("tests").join("config").join("deno.json")
 }
 
 /// Test server registry url.
@@ -100,11 +110,15 @@ pub fn npm_registry_unset_url() -> String {
 }
 
 pub fn jsr_registry_url() -> String {
-  "http://localhost:4545/jsr/registry/".to_string()
+  "http://127.0.0.1:4250/".to_string()
+}
+
+pub fn jsr_registry_unset_url() -> String {
+  "http://DENO_REGISTRY_URL.is.unset".to_string()
 }
 
 pub fn std_path() -> PathRef {
-  root_path().join("test_util").join("std")
+  root_path().join("tests").join("util").join("std")
 }
 
 pub fn std_file_url() -> String {
@@ -120,6 +134,14 @@ pub fn target_dir() -> PathRef {
 pub fn deno_exe_path() -> PathRef {
   // Something like /Users/rld/src/deno/target/debug/deps/deno
   let mut p = target_dir().join("deno").to_path_buf();
+  if cfg!(windows) {
+    p.set_extension("exe");
+  }
+  PathRef::new(p)
+}
+
+pub fn denort_exe_path() -> PathRef {
+  let mut p = target_dir().join("denort").to_path_buf();
   if cfg!(windows) {
     p.set_extension("exe");
   }
@@ -441,6 +463,7 @@ pub fn deno_cmd_with_deno_dir(deno_dir: &TempDir) -> TestCommandBuilder {
   TestCommandBuilder::new(deno_dir.clone())
     .env("DENO_DIR", deno_dir.path())
     .env("NPM_CONFIG_REGISTRY", npm_registry_unset_url())
+    .env("DENO_REGISTRY_URL", jsr_registry_unset_url())
 }
 
 pub fn run_powershell_script_file(
@@ -484,6 +507,7 @@ pub struct CheckOutputIntegrationTest<'a> {
   pub http_server: bool,
   pub envs: Vec<(String, String)>,
   pub env_clear: bool,
+  pub skip_strip_ansi: bool,
   pub temp_cwd: bool,
   /// Copies the files at the specified directory in the "testdata" directory
   /// to the temp folder and runs the test from there. This is useful when
@@ -524,6 +548,9 @@ impl<'a> CheckOutputIntegrationTest<'a> {
     }
     if self.env_clear {
       command_builder = command_builder.env_clear();
+    }
+    if self.skip_strip_ansi {
+      command_builder = command_builder.skip_strip_ansi();
     }
     if let Some(cwd) = &self.cwd {
       command_builder = command_builder.current_dir(cwd);

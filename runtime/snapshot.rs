@@ -253,6 +253,7 @@ pub fn create_runtime_snapshot(
     ops::tty::deno_tty::init_ops(),
     ops::http::deno_http_runtime::init_ops(),
     ops::bootstrap::deno_bootstrap::init_ops(Some(snapshot_options)),
+    ops::web_worker::deno_web_worker::init_ops(),
   ];
 
   for extension in &mut extensions {

@@ -20,10 +20,10 @@ use deno_graph::Resolution;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
-use deno_runtime::colors;
 use deno_semver::npm::NpmPackageNvReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageNv;
+use deno_terminal::colors;
 
 use crate::args::Flags;
 use crate::args::InfoFlags;
@@ -284,7 +284,7 @@ fn print_tree_node<TWrite: Write>(
   fn print_children<TWrite: Write>(
     writer: &mut TWrite,
     prefix: &str,
-    children: &Vec<TreeNode>,
+    children: &[TreeNode],
   ) -> fmt::Result {
     const SIBLING_CONNECTOR: char = '├';
     const LAST_SIBLING_CONNECTOR: char = '└';

@@ -2,7 +2,7 @@
 
 use deno_ast::ModuleSpecifier;
 use deno_graph::ModuleGraph;
-use deno_runtime::colors;
+use deno_terminal::colors;
 
 use deno_core::serde::Deserialize;
 use deno_core::serde::Deserializer;

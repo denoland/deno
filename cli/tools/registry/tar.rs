@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use bytes::Bytes;
+use deno_ast::MediaType;
 use deno_config::glob::FilePatterns;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
@@ -13,6 +14,7 @@ use std::io::Write;
 use std::path::Path;
 use tar::Header;
 
+use crate::cache::LazyGraphSourceParser;
 use crate::tools::registry::paths::PackagePath;
 use crate::util::import_map::ImportMapUnfurler;
 
@@ -34,7 +36,7 @@ pub struct PublishableTarball {
 
 pub fn create_gzipped_tarball(
   dir: &Path,
-  source_cache: &dyn deno_graph::ParsedSourceStore,
+  source_parser: LazyGraphSourceParser,
   diagnostics_collector: &PublishDiagnosticsCollector,
   unfurler: &ImportMapUnfurler,
   file_patterns: Option<FilePatterns>,
@@ -122,25 +124,17 @@ pub fn create_gzipped_tarball(
         }
       }
 
-      let data = std::fs::read(path).with_context(|| {
-        format!("Unable to read file '{}'", entry.path().display())
-      })?;
+      let content = resolve_content_maybe_unfurling(
+        path,
+        &specifier,
+        unfurler,
+        source_parser,
+        diagnostics_collector,
+      )?;
       files.push(PublishableTarballFile {
         specifier: specifier.clone(),
-        size: data.len(),
+        size: content.len(),
       });
-      let content = match source_cache.get_parsed_source(&specifier) {
-        Some(parsed_source) => {
-          let mut reporter = |diagnostic| {
-            diagnostics_collector
-              .push(PublishDiagnostic::ImportMapUnfurl(diagnostic));
-          };
-          let content =
-            unfurler.unfurl(&specifier, &parsed_source, &mut reporter);
-          content.into_bytes()
-        }
-        None => data,
-      };
       tar
         .add_file(format!(".{}", path_str), &content)
         .with_context(|| {
@@ -170,6 +164,64 @@ pub fn create_gzipped_tarball(
     hash,
     bytes: Bytes::from(v),
   })
+}
+
+fn resolve_content_maybe_unfurling(
+  path: &Path,
+  specifier: &Url,
+  unfurler: &ImportMapUnfurler,
+  source_parser: LazyGraphSourceParser,
+  diagnostics_collector: &PublishDiagnosticsCollector,
+) -> Result<Vec<u8>, AnyError> {
+  let parsed_source = match source_parser.get_or_parse_source(specifier)? {
+    Some(parsed_source) => parsed_source,
+    None => {
+      let data = std::fs::read(path)
+        .with_context(|| format!("Unable to read file '{}'", path.display()))?;
+      let media_type = MediaType::from_specifier(specifier);
+
+      match media_type {
+        MediaType::JavaScript
+        | MediaType::Jsx
+        | MediaType::Mjs
+        | MediaType::Cjs
+        | MediaType::TypeScript
+        | MediaType::Mts
+        | MediaType::Cts
+        | MediaType::Dts
+        | MediaType::Dmts
+        | MediaType::Dcts
+        | MediaType::Tsx => {
+          // continue
+        }
+        MediaType::SourceMap
+        | MediaType::Unknown
+        | MediaType::Json
+        | MediaType::Wasm
+        | MediaType::TsBuildInfo => {
+          // not unfurlable data
+          return Ok(data);
+        }
+      }
+
+      let text = String::from_utf8(data)?;
+      deno_ast::parse_module(deno_ast::ParseParams {
+        specifier: specifier.clone(),
+        text_info: deno_ast::SourceTextInfo::from_string(text),
+        media_type,
+        capture_tokens: false,
+        maybe_syntax: None,
+        scope_analysis: false,
+      })?
+    }
+  };
+
+  log::debug!("Unfurling {}", specifier);
+  let mut reporter = |diagnostic| {
+    diagnostics_collector.push(PublishDiagnostic::ImportMapUnfurl(diagnostic));
+  };
+  let content = unfurler.unfurl(specifier, &parsed_source, &mut reporter);
+  Ok(content.into_bytes())
 }
 
 struct TarGzArchive {

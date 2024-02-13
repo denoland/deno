@@ -132,8 +132,8 @@ verify on GitHub that everything looks correct.
   (https://github.com/denoland/deno/releases).
 
 - ⛔ Verify that:
-  - [ ] There are 8 assets on the release draft.
-  - [ ] There are 4 zip files for this version on
+  - [ ] There are 9 assets on the release draft.
+  - [ ] There are 5 zip files for this version on
         [dl.deno.land](https://console.cloud.google.com/storage/browser/dl.deno.land/release/v$VERSION).
 
 - [ ] Publish the release on Github

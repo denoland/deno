@@ -20,6 +20,7 @@ use deno_core::serde::Deserialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
+use deno_lint::diagnostic::LintDiagnostic;
 use deno_lint::rules::LintRule;
 use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_node::NpmResolver;
@@ -118,15 +119,21 @@ impl Reference {
   }
 }
 
-fn as_lsp_range(range: &deno_lint::diagnostic::Range) -> Range {
+fn as_lsp_range(diagnostic: &LintDiagnostic) -> Range {
+  let start_lc = diagnostic
+    .text_info
+    .line_and_column_index(diagnostic.range.start);
+  let end_lc = diagnostic
+    .text_info
+    .line_and_column_index(diagnostic.range.end);
   Range {
     start: Position {
-      line: range.start.line_index as u32,
-      character: range.start.column_index as u32,
+      line: start_lc.line_index as u32,
+      character: start_lc.column_index as u32,
     },
     end: Position {
-      line: range.end.line_index as u32,
-      character: range.end.column_index as u32,
+      line: end_lc.line_index as u32,
+      character: end_lc.column_index as u32,
     },
   }
 }
@@ -142,12 +149,12 @@ pub fn get_lint_references(
     lint_diagnostics
       .into_iter()
       .map(|d| Reference {
+        range: as_lsp_range(&d),
         category: Category::Lint {
           message: d.message,
           code: d.code,
           hint: d.hint,
         },
-        range: as_lsp_range(&d.range),
       })
       .collect(),
   )
@@ -1058,36 +1065,6 @@ mod tests {
       let actual = input.to_diagnostic();
       assert_eq!(&actual, expected);
     }
-  }
-
-  #[test]
-  fn test_as_lsp_range() {
-    let fixture = deno_lint::diagnostic::Range {
-      start: deno_lint::diagnostic::Position {
-        line_index: 0,
-        column_index: 2,
-        byte_index: 23,
-      },
-      end: deno_lint::diagnostic::Position {
-        line_index: 1,
-        column_index: 0,
-        byte_index: 33,
-      },
-    };
-    let actual = as_lsp_range(&fixture);
-    assert_eq!(
-      actual,
-      lsp::Range {
-        start: lsp::Position {
-          line: 0,
-          character: 2,
-        },
-        end: lsp::Position {
-          line: 1,
-          character: 0,
-        },
-      }
-    );
   }
 
   #[test]
