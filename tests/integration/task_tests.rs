@@ -5,6 +5,7 @@
 
 use deno_core::serde_json::json;
 use test_util::env_vars_for_npm_tests;
+use test_util::itest;
 use test_util::TestContext;
 use test_util::TestContextBuilder;
 

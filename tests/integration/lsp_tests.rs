@@ -4658,12 +4658,15 @@ fn lsp_code_actions_deno_cache() {
 }
 
 #[test]
-fn lsp_jsr_uncached() {
+fn lsp_code_actions_deno_cache_jsr() {
   let context = TestContextBuilder::new()
     .use_http_server()
     .use_temp_cwd()
     .build();
   let temp_dir = context.temp_dir();
+  // TODO(nayeemrmn): JSR resolution currently depends on a lockfile being
+  // created on cache. Remove this when that's not the case.
+  temp_dir.write("deno.json", "{}");
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
   let diagnostics = client.did_open(json!({
@@ -4671,11 +4674,91 @@ fn lsp_jsr_uncached() {
       "uri": temp_dir.uri().join("file.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
-      "text": r#"import "jsr:@foo/bar";"#,
+      "text": r#"
+        import { add } from "jsr:@denotest/add@1";
+        console.log(add(1, 2));
+      "#,
     },
   }));
-  // TODO(nayeemrmn): This should check if the jsr dep is cached and give a
-  // diagnostic.
+  assert_eq!(
+    json!(diagnostics.messages_with_source("deno")),
+    json!({
+      "uri": temp_dir.uri().join("file.ts").unwrap(),
+      "diagnostics": [{
+        "range": {
+          "start": { "line": 1, "character": 28 },
+          "end": { "line": 1, "character": 49 },
+        },
+        "severity": 1,
+        "code": "no-cache-jsr",
+        "source": "deno",
+        "message": "Uncached or missing jsr package: @denotest/add@1",
+        "data": { "specifier": "jsr:@denotest/add@1" },
+      }],
+      "version": 1,
+    })
+  );
+  let res = client.write_request(
+    "textDocument/codeAction",
+    json!({
+      "textDocument": { "uri": temp_dir.uri().join("file.ts").unwrap() },
+      "range": {
+        "start": { "line": 1, "character": 28 },
+        "end": { "line": 1, "character": 49 },
+      },
+      "context": {
+        "diagnostics": [{
+          "range": {
+            "start": { "line": 1, "character": 28 },
+            "end": { "line": 1, "character": 49 },
+          },
+          "severity": 1,
+          "code": "no-cache-jsr",
+          "source": "deno",
+          "message": "Uncached or missing jsr package: @denotest/add@1",
+          "data": { "specifier": "jsr:@denotest/add@1" },
+        }],
+        "only": ["quickfix"],
+      }
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([{
+      "title": "Cache \"jsr:@denotest/add@1\" and its dependencies.",
+      "kind": "quickfix",
+      "diagnostics": [{
+        "range": {
+          "start": { "line": 1, "character": 28 },
+          "end": { "line": 1, "character": 49 },
+        },
+        "severity": 1,
+        "code": "no-cache-jsr",
+        "source": "deno",
+        "message": "Uncached or missing jsr package: @denotest/add@1",
+        "data": { "specifier": "jsr:@denotest/add@1" },
+      }],
+      "command": {
+        "title": "",
+        "command": "deno.cache",
+        "arguments": [
+          ["jsr:@denotest/add@1"],
+          temp_dir.uri().join("file.ts").unwrap(),
+        ],
+      },
+    }])
+  );
+  client.write_request(
+    "workspace/executeCommand",
+    json!({
+      "command": "deno.cache",
+      "arguments": [
+        ["jsr:@denotest/add@1"],
+        temp_dir.uri().join("file.ts").unwrap(),
+      ],
+    }),
+  );
+  let diagnostics = client.read_diagnostics();
   assert_eq!(json!(diagnostics.all()), json!([]));
   client.shutdown();
 }
