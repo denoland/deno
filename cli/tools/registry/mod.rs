@@ -68,6 +68,7 @@ struct PreparedPublishPackage {
   package: String,
   version: String,
   tarball: PublishableTarball,
+  config: String,
 }
 
 impl PreparedPublishPackage {
@@ -158,6 +159,7 @@ async fn prepare_publish(
     package: package_name.to_string(),
     version: version.to_string(),
     tarball,
+    config: config_path.file_name().unwrap().to_string_lossy().to_string(),
   }))
 }
 
@@ -541,8 +543,8 @@ async fn publish_package(
   );
 
   let url = format!(
-    "{}scopes/{}/packages/{}/versions/{}",
-    registry_api_url, package.scope, package.package, package.version
+    "{}scopes/{}/packages/{}/versions/{}?config=/{}",
+    registry_api_url, package.scope, package.package, package.version, package.config
   );
 
   let response = client
