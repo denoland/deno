@@ -123,7 +123,7 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
       "check",
       "--reload",
       "--unstable",
-      "test_util/std/http/file_server_test.ts",
+      "tests/util/std/http/file_server_test.ts",
     ],
     None,
   ),
@@ -134,7 +134,7 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
       "--reload",
       "--no-check",
       "--unstable",
-      "test_util/std/http/file_server_test.ts",
+      "tests/util/std/http/file_server_test.ts",
     ],
     None,
   ),
@@ -143,7 +143,7 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
     &[
       "bundle",
       "--unstable",
-      "test_util/std/http/file_server_test.ts",
+      "tests/util/std/http/file_server_test.ts",
     ],
     None,
   ),
@@ -153,7 +153,7 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
       "bundle",
       "--no-check",
       "--unstable",
-      "test_util/std/http/file_server_test.ts",
+      "tests/util/std/http/file_server_test.ts",
     ],
     None,
   ),
@@ -306,7 +306,7 @@ fn get_binary_sizes(target_dir: &Path) -> Result<HashMap<String, i64>> {
 }
 
 const BUNDLES: &[(&str, &str)] = &[
-  ("file_server", "./test_util/std/http/file_server.ts"),
+  ("file_server", "./tests/util/std/http/file_server.ts"),
   ("welcome", "./tests/testdata/welcome.ts"),
 ];
 fn bundle_benchmark(deno_exe: &Path) -> Result<HashMap<String, i64>> {

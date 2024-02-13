@@ -33,7 +33,7 @@ members = [
   "tests/ffi",
   "tests/napi",
 ]
-exclude = ["test_util/std/hash/_wasm"]
+exclude = ["tests/util/std/hash/_wasm"]
 
 [workspace.package]
 authors = ["the Deno authors"]

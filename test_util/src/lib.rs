@@ -118,7 +118,7 @@ pub fn jsr_registry_unset_url() -> String {
 }
 
 pub fn std_path() -> PathRef {
-  root_path().join("test_util").join("std")
+  root_path().join("tests").join("util").join("std")
 }
 
 pub fn std_file_url() -> String {
@@ -134,6 +134,14 @@ pub fn target_dir() -> PathRef {
 pub fn deno_exe_path() -> PathRef {
   // Something like /Users/rld/src/deno/target/debug/deps/deno
   let mut p = target_dir().join("deno").to_path_buf();
+  if cfg!(windows) {
+    p.set_extension("exe");
+  }
+  PathRef::new(p)
+}
+
+pub fn denort_exe_path() -> PathRef {
+  let mut p = target_dir().join("denort").to_path_buf();
   if cfg!(windows) {
     p.set_extension("exe");
   }

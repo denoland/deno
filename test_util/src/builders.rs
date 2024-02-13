@@ -20,6 +20,7 @@ use os_pipe::pipe;
 
 use crate::assertions::assert_wildcard_match;
 use crate::deno_exe_path;
+use crate::denort_exe_path;
 use crate::env_vars_for_jsr_tests;
 use crate::env_vars_for_npm_tests;
 use crate::fs::PathRef;
@@ -80,7 +81,7 @@ pub struct TestContextBuilder {
 
 impl TestContextBuilder {
   pub fn new() -> Self {
-    Self::default()
+    Self::default().add_compile_env_vars()
   }
 
   pub fn for_npm() -> Self {
@@ -155,6 +156,13 @@ impl TestContextBuilder {
     for (key, value) in env_vars_for_npm_tests() {
       self = self.env(key, value);
     }
+    self
+  }
+
+  pub fn add_compile_env_vars(mut self) -> Self {
+    // The `denort` binary is in the same artifact directory as the `deno` binary.
+    let denort_bin = denort_exe_path();
+    self = self.env("DENORT_BIN", denort_bin.to_string());
     self
   }
 
@@ -236,7 +244,7 @@ impl Default for TestContext {
 
 impl TestContext {
   pub fn with_http_server() -> Self {
-    TestContextBuilder::default().use_http_server().build()
+    TestContextBuilder::new().use_http_server().build()
   }
 
   pub fn deno_dir(&self) -> &TempDir {
