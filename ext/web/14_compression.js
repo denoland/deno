@@ -54,7 +54,7 @@ class CompressionStream {
         maybeEnqueue(controller, output);
       },
       cancel: (_reason) => {
-        ops.op_compression_finish(rid, false);
+        op_compression_finish(rid, false);
       },
     });
 
@@ -116,7 +116,7 @@ class DecompressionStream {
         maybeEnqueue(controller, output);
       },
       cancel: (_reason) => {
-        ops.op_compression_finish(rid, false);
+        op_compression_finish(rid, false);
       },
     });
 
