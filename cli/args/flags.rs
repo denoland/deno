@@ -2379,6 +2379,7 @@ fn publish_subcommand() -> Command {
           .long("token")
           .help("The API token to use when publishing. If unset, interactive authentication is be used")
       )
+      .arg(config_arg())
       .arg(
         Arg::new("dry-run")
           .long("dry-run")
@@ -3821,6 +3822,8 @@ fn vendor_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 }
 
 fn publish_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  config_args_parse(flags, matches);
+
   flags.subcommand = DenoSubcommand::Publish(PublishFlags {
     token: matches.remove_one("token"),
     dry_run: matches.get_flag("dry-run"),
