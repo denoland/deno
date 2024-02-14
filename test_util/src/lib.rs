@@ -59,7 +59,7 @@ pub fn env_vars_for_npm_tests() -> Vec<(String, String)> {
 
 pub fn env_vars_for_jsr_tests() -> Vec<(String, String)> {
   vec![
-    ("DENO_REGISTRY_URL".to_string(), jsr_registry_url()),
+    ("JSR_URL".to_string(), jsr_registry_url()),
     ("NO_COLOR".to_string(), "1".to_string()),
   ]
 }
@@ -114,7 +114,7 @@ pub fn jsr_registry_url() -> String {
 }
 
 pub fn jsr_registry_unset_url() -> String {
-  "http://DENO_REGISTRY_URL.is.unset".to_string()
+  "http://JSR_URL.is.unset".to_string()
 }
 
 pub fn std_path() -> PathRef {
@@ -463,7 +463,7 @@ pub fn deno_cmd_with_deno_dir(deno_dir: &TempDir) -> TestCommandBuilder {
   TestCommandBuilder::new(deno_dir.clone())
     .env("DENO_DIR", deno_dir.path())
     .env("NPM_CONFIG_REGISTRY", npm_registry_unset_url())
-    .env("DENO_REGISTRY_URL", jsr_registry_unset_url())
+    .env("JSR_URL", jsr_registry_unset_url())
 }
 
 pub fn run_powershell_script_file(

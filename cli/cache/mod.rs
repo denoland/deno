@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::args::deno_registry_url;
+use crate::args::jsr_url;
 use crate::args::CacheSetting;
 use crate::errors::get_error_class_name;
 use crate::file_fetcher::FetchOptions;
@@ -168,7 +168,7 @@ impl FetchCacher {
 
 impl Loader for FetchCacher {
   fn registry_url(&self) -> &Url {
-    deno_registry_url()
+    jsr_url()
   }
 
   fn get_cache_info(&self, specifier: &ModuleSpecifier) -> Option<CacheInfo> {

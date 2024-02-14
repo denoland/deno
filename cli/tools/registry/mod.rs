@@ -22,8 +22,8 @@ use lsp_types::Url;
 use serde::Serialize;
 use sha2::Digest;
 
-use crate::args::deno_registry_api_url;
-use crate::args::deno_registry_url;
+use crate::args::jsr_api_url;
+use crate::args::jsr_url;
 use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::PublishFlags;
@@ -454,8 +454,8 @@ async fn perform_publish(
   auth_method: AuthMethod,
 ) -> Result<(), AnyError> {
   let client = http_client.client()?;
-  let registry_api_url = deno_registry_api_url().to_string();
-  let registry_url = deno_registry_url().to_string();
+  let registry_api_url = jsr_api_url().to_string();
+  let registry_url = jsr_url().to_string();
 
   let packages = prepared_package_by_name
     .values()
