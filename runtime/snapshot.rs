@@ -265,21 +265,24 @@ pub fn create_runtime_snapshot(
     }
   }
 
-  let output = create_snapshot(CreateSnapshotOptions {
-    cargo_manifest_dir: env!("CARGO_MANIFEST_DIR"),
-    snapshot_path,
-    startup_snapshot: None,
-    extensions,
-    compression_cb: None,
-    with_runtime_cb: Some(Box::new(|rt| {
-      let isolate = rt.v8_isolate();
-      let scope = &mut v8::HandleScope::new(isolate);
+  let output = create_snapshot(
+    CreateSnapshotOptions {
+      cargo_manifest_dir: env!("CARGO_MANIFEST_DIR"),
+      snapshot_path,
+      startup_snapshot: None,
+      extensions,
+      compression_cb: None,
+      with_runtime_cb: Some(Box::new(|rt| {
+        let isolate = rt.v8_isolate();
+        let scope = &mut v8::HandleScope::new(isolate);
 
-      let ctx = v8::Context::new(scope);
-      assert_eq!(scope.add_context(ctx), deno_node::VM_CONTEXT_INDEX);
-    })),
-    skip_op_registration: false,
-  });
+        let ctx = v8::Context::new(scope);
+        assert_eq!(scope.add_context(ctx), deno_node::VM_CONTEXT_INDEX);
+      })),
+      skip_op_registration: false,
+    },
+    None,
+  );
   for path in output.files_loaded_during_snapshot {
     println!("cargo:rerun-if-changed={}", path.display());
   }
