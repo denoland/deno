@@ -5,7 +5,6 @@ use dashmap::DashMap;
 use deno_cache_dir::HttpCache;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
-use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
 use deno_graph::packages::JsrPackageInfo;
 use deno_graph::packages::JsrPackageVersionInfo;
@@ -127,9 +126,10 @@ fn read_cached_package_version_info(
   let meta_bytes = cache.read_file_bytes(&meta_cache_item_key).ok()??;
   // This is a roundabout way of deserializing `JsrPackageVersionInfo`,
   // because we only want the `exports` field and `module_graph` is large.
-  let info = serde_json::from_slice::<serde_json::Value>(&meta_bytes).ok()?;
+  let mut info =
+    serde_json::from_slice::<serde_json::Value>(&meta_bytes).ok()?;
   Some(JsrPackageVersionInfo {
-    exports: json!(info.as_object().and_then(|o| o.get("exports"))),
+    exports: info.as_object_mut()?.remove("exports")?,
     module_graph: None,
   })
 }
