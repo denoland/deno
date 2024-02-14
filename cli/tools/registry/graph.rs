@@ -2,8 +2,10 @@
 
 use std::collections::HashSet;
 use std::collections::VecDeque;
+use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
+use deno_ast::SourceTextInfo;
 use deno_config::ConfigFile;
 use deno_config::WorkspaceConfig;
 use deno_core::anyhow::bail;
@@ -76,7 +78,9 @@ pub fn collect_invalid_external_imports(
   let mut skip_specifiers: HashSet<Url> = HashSet::new();
 
   let mut collect_if_invalid =
-    |skip_specifiers: &mut HashSet<Url>, resolution: &ResolutionResolved| {
+    |skip_specifiers: &mut HashSet<Url>,
+     text: &Arc<str>,
+     resolution: &ResolutionResolved| {
       if visited.insert(resolution.specifier.clone()) {
         match resolution.specifier.scheme() {
           "file" | "data" | "node" => {}
@@ -88,6 +92,7 @@ pub fn collect_invalid_external_imports(
             diagnostics_collector.push(
               PublishDiagnostic::InvalidExternalImport {
                 kind: format!("non-JSR '{}'", resolution.specifier.scheme()),
+                text_info: SourceTextInfo::new(text.clone()),
                 imported: resolution.specifier.clone(),
                 referrer: resolution.range.clone(),
               },
@@ -98,6 +103,7 @@ pub fn collect_invalid_external_imports(
             diagnostics_collector.push(
               PublishDiagnostic::InvalidExternalImport {
                 kind: format!("'{}'", resolution.specifier.scheme()),
+                text_info: SourceTextInfo::new(text.clone()),
                 imported: resolution.specifier.clone(),
                 referrer: resolution.range.clone(),
               },
@@ -128,10 +134,10 @@ pub fn collect_invalid_external_imports(
 
     for (_, dep) in &module.dependencies {
       if let Some(resolved) = dep.maybe_code.ok() {
-        collect_if_invalid(&mut skip_specifiers, resolved);
+        collect_if_invalid(&mut skip_specifiers, &module.source, resolved);
       }
       if let Some(resolved) = dep.maybe_type.ok() {
-        collect_if_invalid(&mut skip_specifiers, resolved);
+        collect_if_invalid(&mut skip_specifiers, &module.source, resolved);
       }
     }
   }
@@ -144,7 +150,7 @@ pub fn collect_fast_check_type_graph_diagnostics(
   packages: &[MemberRoots],
   diagnostics_collector: &PublishDiagnosticsCollector,
 ) -> bool {
-  let mut seen_diagnostics = HashSet::new();
+  let mut had_diagnostic = false;
   let mut seen_modules = HashSet::with_capacity(graph.specifiers_count());
   for package in packages {
     let mut pending = VecDeque::new();
@@ -161,12 +167,9 @@ pub fn collect_fast_check_type_graph_diagnostics(
       let Some(es_module) = module.js() else {
         continue;
       };
-      if let Some(diagnostic) = es_module.fast_check_diagnostic() {
-        for diagnostic in diagnostic.flatten_multiple() {
-          if !seen_diagnostics.insert(diagnostic.message_with_range_for_test())
-          {
-            continue;
-          }
+      if let Some(diagnostics) = es_module.fast_check_diagnostics() {
+        for diagnostic in diagnostics {
+          had_diagnostic = true;
           diagnostics_collector
             .push(PublishDiagnostic::FastCheck(diagnostic.clone()));
           if matches!(
@@ -197,5 +200,5 @@ pub fn collect_fast_check_type_graph_diagnostics(
     }
   }
 
-  !seen_diagnostics.is_empty()
+  had_diagnostic
 }

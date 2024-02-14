@@ -2335,10 +2335,14 @@ const denoInspectDefaultOptions = {
 };
 
 function getDefaultInspectOptions() {
+  const color = !getNoColor();
+
   return {
     budget: {},
     seen: [],
     ...denoInspectDefaultOptions,
+    colors: color,
+    stylize: color ? createStylizeWithColor(styles, colors) : stylizeNoColor,
   };
 }
 
@@ -2939,7 +2943,6 @@ function inspectArgs(args, inspectOptions = {}) {
   if (ctx.maxArrayLength === null) ctx.maxArrayLength = Infinity;
   if (ctx.maxStringLength === null) ctx.maxStringLength = Infinity;
 
-  const noColor = getNoColor();
   const first = args[0];
   let a = 0;
   let string = "";
@@ -2982,7 +2985,7 @@ function inspectArgs(args, inspectOptions = {}) {
             formattedArg = formatValue(ctx, args[a++], 0);
           } else if (char == "c") {
             const value = args[a++];
-            if (!noColor) {
+            if (ctx.colors) {
               const css = parseCss(value);
               formattedArg = cssToAnsi(css, prevCss);
               if (formattedArg != "") {
@@ -3053,15 +3056,6 @@ const countMap = new SafeMap();
 const timerMap = new SafeMap();
 const isConsoleInstance = Symbol("isConsoleInstance");
 
-function getConsoleInspectOptions() {
-  const color = !getNoColor();
-  return {
-    ...getDefaultInspectOptions(),
-    colors: color,
-    stylize: color ? createStylizeWithColor(styles, colors) : stylizeNoColor,
-  };
-}
-
 class Console {
   #printFunc = null;
   [isConsoleInstance] = false;
@@ -3090,7 +3084,7 @@ class Console {
   log = (...args) => {
     this.#printFunc(
       inspectArgs(args, {
-        ...getConsoleInspectOptions(),
+        ...getDefaultInspectOptions(),
         indentLevel: this.indentLevel,
       }) + "\n",
       1,
@@ -3100,7 +3094,7 @@ class Console {
   debug = (...args) => {
     this.#printFunc(
       inspectArgs(args, {
-        ...getConsoleInspectOptions(),
+        ...getDefaultInspectOptions(),
         indentLevel: this.indentLevel,
       }) + "\n",
       0,
@@ -3110,7 +3104,7 @@ class Console {
   info = (...args) => {
     this.#printFunc(
       inspectArgs(args, {
-        ...getConsoleInspectOptions(),
+        ...getDefaultInspectOptions(),
         indentLevel: this.indentLevel,
       }) + "\n",
       1,
@@ -3119,7 +3113,7 @@ class Console {
 
   dir = (obj = undefined, options = {}) => {
     this.#printFunc(
-      inspectArgs([obj], { ...getConsoleInspectOptions(), ...options }) +
+      inspectArgs([obj], { ...getDefaultInspectOptions(), ...options }) +
         "\n",
       1,
     );
@@ -3130,7 +3124,7 @@ class Console {
   warn = (...args) => {
     this.#printFunc(
       inspectArgs(args, {
-        ...getConsoleInspectOptions(),
+        ...getDefaultInspectOptions(),
         indentLevel: this.indentLevel,
       }) + "\n",
       2,
@@ -3140,7 +3134,7 @@ class Console {
   error = (...args) => {
     this.#printFunc(
       inspectArgs(args, {
-        ...getConsoleInspectOptions(),
+        ...getDefaultInspectOptions(),
         indentLevel: this.indentLevel,
       }) + "\n",
       3,
@@ -3353,7 +3347,7 @@ class Console {
   trace = (...args) => {
     const message = inspectArgs(
       args,
-      { ...getConsoleInspectOptions(), indentLevel: 0 },
+      { ...getDefaultInspectOptions(), indentLevel: 0 },
     );
     const err = {
       name: "Trace",

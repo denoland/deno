@@ -91,7 +91,7 @@ pub async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
   std::io::stdin().read_to_end(&mut source)?;
   // Save a fake file into file fetcher cache
   // to allow module access by TS compiler
-  file_fetcher.insert_cached(File {
+  file_fetcher.insert_memory_files(File {
     specifier: main_module.clone(),
     maybe_headers: None,
     source: source.into(),
@@ -174,7 +174,7 @@ pub async fn eval_command(
 
   // Save a fake file into file fetcher cache
   // to allow module access by TS compiler.
-  file_fetcher.insert_cached(File {
+  file_fetcher.insert_memory_files(File {
     specifier: main_module.clone(),
     maybe_headers: None,
     source: source_code.into_bytes().into(),
