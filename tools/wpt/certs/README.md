@@ -18,13 +18,13 @@ index 87a8cc9cc7..bbf500d8ca 100644
         "duration": duration,
 ```
 
-2. `cd test_util/wpt/`
+2. `cd tests/wpt/suite/`
 3. `./wpt serve --config tools/certs/config.json`
 4. Run:
 
 ```
-cp test_util/wpt/tools/certs/cacert.key tools/wpt/certs/cacert.key
-cp test_util/wpt/tools/certs/cacert.pem tools/wpt/certs/cacert.pem
-cp test_util/wpt/tools/certs/web-platform.test.key tools/wpt/certs/web-platform.test.key
-cp test_util/wpt/tools/certs/web-platform.test.pem tools/wpt/certs/web-platform.test.pem
+cp tests/wpt/suite/tools/certs/cacert.key tools/wpt/certs/cacert.key
+cp tests/wpt/suite/tools/certs/cacert.pem tools/wpt/certs/cacert.pem
+cp tests/wpt/suite/tools/certs/web-platform.test.key tools/wpt/certs/web-platform.test.key
+cp tests/wpt/suite/tools/certs/web-platform.test.pem tools/wpt/certs/web-platform.test.pem
 ```
