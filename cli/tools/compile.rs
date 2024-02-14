@@ -11,7 +11,7 @@ use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_graph::GraphKind;
-use deno_runtime::colors;
+use deno_terminal::colors;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;

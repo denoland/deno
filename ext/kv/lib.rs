@@ -605,17 +605,36 @@ impl RawSelector {
         start: None,
         end: None,
       }),
-      (Some(prefix), Some(start), None) => Ok(Self::Prefixed {
-        prefix,
-        start: Some(start),
-        end: None,
-      }),
-      (Some(prefix), None, Some(end)) => Ok(Self::Prefixed {
-        prefix,
-        start: None,
-        end: Some(end),
-      }),
-      (None, Some(start), Some(end)) => Ok(Self::Range { start, end }),
+      (Some(prefix), Some(start), None) => {
+        if !start.starts_with(&prefix) || start.len() == prefix.len() {
+          return Err(type_error(
+            "start key is not in the keyspace defined by prefix",
+          ));
+        }
+        Ok(Self::Prefixed {
+          prefix,
+          start: Some(start),
+          end: None,
+        })
+      }
+      (Some(prefix), None, Some(end)) => {
+        if !end.starts_with(&prefix) || end.len() == prefix.len() {
+          return Err(type_error(
+            "end key is not in the keyspace defined by prefix",
+          ));
+        }
+        Ok(Self::Prefixed {
+          prefix,
+          start: None,
+          end: Some(end),
+        })
+      }
+      (None, Some(start), Some(end)) => {
+        if start > end {
+          return Err(type_error("start key is greater than end key"));
+        }
+        Ok(Self::Range { start, end })
+      }
       (None, Some(start), None) => {
         let end = start.iter().copied().chain(Some(0)).collect();
         Ok(Self::Range { start, end })

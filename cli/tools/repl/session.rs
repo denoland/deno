@@ -16,14 +16,15 @@ use crate::tools::test::worker_has_tests;
 use crate::tools::test::TestEvent;
 use crate::tools::test::TestEventSender;
 
+use deno_ast::diagnostics::Diagnostic;
 use deno_ast::swc::ast as swc_ast;
 use deno_ast::swc::common::comments::CommentKind;
 use deno_ast::swc::visit::noop_visit_type;
 use deno_ast::swc::visit::Visit;
 use deno_ast::swc::visit::VisitWith;
-use deno_ast::DiagnosticsError;
 use deno_ast::ImportsNotUsedAsValues;
 use deno_ast::ModuleSpecifier;
+use deno_ast::ParseDiagnosticsError;
 use deno_ast::ParsedSource;
 use deno_ast::SourcePos;
 use deno_ast::SourceRangedForSpanned;
@@ -324,7 +325,7 @@ impl ReplSession {
     &mut self,
     line: &str,
   ) -> EvaluationOutput {
-    fn format_diagnostic(diagnostic: &deno_ast::Diagnostic) -> String {
+    fn format_diagnostic(diagnostic: &deno_ast::ParseDiagnostic) -> String {
       let display_position = diagnostic.display_position();
       format!(
         "{}: {} at {}:{}",
@@ -377,11 +378,11 @@ impl ReplSession {
         }
         Err(err) => {
           // handle a parsing diagnostic
-          match err.downcast_ref::<deno_ast::Diagnostic>() {
+          match err.downcast_ref::<deno_ast::ParseDiagnostic>() {
             Some(diagnostic) => {
               Ok(EvaluationOutput::Error(format_diagnostic(diagnostic)))
             }
-            None => match err.downcast_ref::<DiagnosticsError>() {
+            None => match err.downcast_ref::<ParseDiagnosticsError>() {
               Some(diagnostics) => Ok(EvaluationOutput::Error(
                 diagnostics
                   .0
@@ -786,13 +787,13 @@ fn parse_source_as(
   media_type: deno_ast::MediaType,
 ) -> Result<deno_ast::ParsedSource, AnyError> {
   let specifier = if media_type == deno_ast::MediaType::Tsx {
-    "repl.tsx"
+    ModuleSpecifier::parse("file:///repl.tsx").unwrap()
   } else {
-    "repl.ts"
+    ModuleSpecifier::parse("file:///repl.ts").unwrap()
   };
 
   let parsed = deno_ast::parse_module(deno_ast::ParseParams {
-    specifier: specifier.to_string(),
+    specifier,
     text_info: deno_ast::SourceTextInfo::from_string(source),
     media_type,
     capture_tokens: true,

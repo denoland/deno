@@ -21,6 +21,7 @@ mod completions;
 mod config;
 mod diagnostics;
 mod documents;
+mod jsr_resolver;
 pub mod language_server;
 mod logging;
 mod lsp_custom;
