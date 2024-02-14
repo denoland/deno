@@ -385,7 +385,7 @@ impl CliFactory {
               let nv = PackageNv::from_str(nv).ok()?;
               Some(
                 deno_graph::source::recommended_registry_package_url(
-                  crate::args::deno_registry_url(),
+                  crate::args::jsr_url(),
                   &nv,
                 )
                 .to_string(),
