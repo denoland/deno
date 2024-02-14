@@ -73,7 +73,7 @@ impl JsrResolver {
       let version = package_info
         .versions
         .keys()
-        .find(|v| req.version_req.matches(v))
+        .find(|v| req.version_req.tag().is_none() && req.version_req.matches(v))
         .cloned()?;
       Some(PackageNv { name, version })
     });
