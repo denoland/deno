@@ -4664,9 +4664,6 @@ fn lsp_code_actions_deno_cache_jsr() {
     .use_temp_cwd()
     .build();
   let temp_dir = context.temp_dir();
-  // TODO(nayeemrmn): JSR resolution currently depends on a lockfile being
-  // created on cache. Remove this when that's not the case.
-  temp_dir.write("deno.json", "{}");
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
   let diagnostics = client.did_open(json!({
@@ -4754,6 +4751,56 @@ fn lsp_code_actions_deno_cache_jsr() {
       "command": "deno.cache",
       "arguments": [
         ["jsr:@denotest/add@1"],
+        temp_dir.uri().join("file.ts").unwrap(),
+      ],
+    }),
+  );
+  let diagnostics = client.read_diagnostics();
+  assert_eq!(json!(diagnostics.all()), json!([]));
+  client.shutdown();
+}
+
+#[test]
+fn lsp_jsr_lockfile() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("./deno.json", json!({}).to_string());
+  temp_dir.write(
+    "./deno.lock",
+    json!({
+      "version": "3",
+      "packages": {
+        "specifiers": {
+          // This is an old version of the package which exports `sum()` instead
+          // of `add()`.
+          "jsr:@denotest/add": "jsr:@denotest/add@0.2.0",
+        },
+      },
+    })
+    .to_string(),
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"
+        import { add } from "jsr:@denotest/add";
+        console.log(add(1, 2));
+      "#,
+    },
+  }));
+  client.write_request(
+    "workspace/executeCommand",
+    json!({
+      "command": "deno.cache",
+      "arguments": [
+        [],
         temp_dir.uri().join("file.ts").unwrap(),
       ],
     }),
