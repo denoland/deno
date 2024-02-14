@@ -70,10 +70,26 @@ impl JsrResolver {
         .entry(name.clone())
         .or_insert_with(|| read_cached_package_info(&name, &self.cache));
       let package_info = maybe_package_info.as_ref()?;
+      // Find the first matching version of the package which is cached.
       let version = package_info
         .versions
         .keys()
-        .find(|v| req.version_req.tag().is_none() && req.version_req.matches(v))
+        .find(|v| {
+          if req.version_req.tag().is_some() || !req.version_req.matches(v) {
+            return false;
+          }
+          let nv = PackageNv {
+            name: name.clone(),
+            version: (*v).clone(),
+          };
+          self
+            .info_by_nv
+            .entry(nv.clone())
+            .or_insert_with(|| {
+              read_cached_package_version_info(&nv, &self.cache)
+            })
+            .is_some()
+        })
         .cloned()?;
       Some(PackageNv { name, version })
     });
