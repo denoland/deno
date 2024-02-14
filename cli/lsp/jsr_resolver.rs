@@ -4,6 +4,7 @@ use crate::args::deno_registry_url;
 use deno_cache_dir::HttpCache;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
+use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
 use deno_graph::packages::JsrPackageVersionInfo;
 use deno_lockfile::Lockfile;
