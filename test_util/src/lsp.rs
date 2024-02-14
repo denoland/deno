@@ -524,7 +524,7 @@ impl LspClientBuilder {
     command
       .env("DENO_DIR", deno_dir.path())
       .env("NPM_CONFIG_REGISTRY", npm_registry_url())
-      .env("DENO_REGISTRY_URL", jsr_registry_url())
+      .env("JSR_URL", jsr_registry_url())
       // turn on diagnostic synchronization communication
       .env(
         "DENO_DONT_USE_INTERNAL_LSP_DIAGNOSTIC_SYNC_FLAG",

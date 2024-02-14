@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::args::deno_registry_url;
+use crate::args::jsr_url;
 use deno_cache_dir::HttpCache;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
@@ -51,8 +51,8 @@ impl JsrResolver {
       if info_by_nv.contains_key(nv) {
         continue;
       }
-      let Ok(meta_url) = deno_registry_url()
-        .join(&format!("{}/{}_meta.json", &nv.name, &nv.version))
+      let Ok(meta_url) =
+        jsr_url().join(&format!("{}/{}_meta.json", &nv.name, &nv.version))
       else {
         continue;
       };
@@ -89,7 +89,7 @@ impl JsrResolver {
     let nv = self.nv_by_req.get(req_ref.req())?;
     let info = self.info_by_nv.get(nv)?;
     let path = info.export(&normalize_export_name(req_ref.sub_path()))?;
-    deno_registry_url()
+    jsr_url()
       .join(&format!("{}/{}/{}", &nv.name, &nv.version, &path))
       .ok()
   }
