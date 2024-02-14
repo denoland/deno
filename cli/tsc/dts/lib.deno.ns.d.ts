@@ -5259,7 +5259,7 @@ declare namespace Deno {
    *
    * @category Runtime Environment
    */
-  export const version: {
+  export interface Version {
     /** Deno CLI's version. For example: `"1.26.0"`. */
     deno: string;
     /** The V8 version used by Deno. For example: `"10.7.100.0"`.
@@ -5272,7 +5272,21 @@ declare namespace Deno {
      * A version of the TypeScript type checker and language server is built-in
      * to the Deno CLI. */
     typescript: string;
-  };
+  }
+
+  /** Returns version information related to the current Deno CLI runtime
+   * environment.
+   *
+   * Users are discouraged from code branching based on this information, as
+   * assumptions about what is available in what build environment might change
+   * over time. Developers should specifically sniff out the features they
+   * intend to use.
+   *
+   * The intended use for the information is for logging and debugging purposes.
+   *
+   * @category Runtime Environment
+   */
+  export const version: Version;
 
   /** Returns the script arguments to the program.
    *
