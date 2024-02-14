@@ -196,6 +196,14 @@ itest!(dry_run {
   http_server: true,
 });
 
+itest!(config_flag {
+  args: "publish --token 'sadfasdf' --config=successful/deno.json",
+  output: "publish/successful.out",
+  cwd: Some("publish"),
+  envs: env_vars_for_jsr_tests(),
+  http_server: true,
+});
+
 #[test]
 fn ignores_directories() {
   let context = publish_context_builder().build();
