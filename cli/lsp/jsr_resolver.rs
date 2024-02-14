@@ -4,7 +4,6 @@ use crate::args::deno_registry_url;
 use deno_cache_dir::HttpCache;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
-use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
 use deno_graph::packages::JsrPackageVersionInfo;
 use deno_lockfile::Lockfile;
@@ -14,6 +13,8 @@ use deno_semver::package::PackageReq;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::Arc;
+
+use super::cache::LSP_DISALLOW_GLOBAL_TO_LOCAL_COPY;
 
 #[derive(Debug, Default)]
 pub struct JsrResolver {
@@ -59,8 +60,11 @@ impl JsrResolver {
       let Ok(meta_cache_item_key) = cache.cache_item_key(&meta_url) else {
         continue;
       };
-      let Ok(Some(meta_bytes)) = cache.read_file_bytes(&meta_cache_item_key)
-      else {
+      let Ok(Some(meta_bytes)) = cache.read_file_bytes(
+        &meta_cache_item_key,
+        None,
+        LSP_DISALLOW_GLOBAL_TO_LOCAL_COPY,
+      ) else {
         continue;
       };
       // This is a roundabout way of deserializing `JsrPackageVersionInfo`,

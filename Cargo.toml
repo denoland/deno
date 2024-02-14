@@ -361,5 +361,9 @@ opt-level = 3
 
 [patch.crates-io]
 deno_graph = { path = "../deno_graph" }
+deno_doc = { path = "../deno_doc" }
+deno_emit = { path = "../deno_emit/rs-lib" }
+eszip = { path = "../eszip" }
 deno_lockfile = { path = "../deno_lockfile" }
 deno_cache_dir = { path = "../deno_cache/rs_lib" }
+deno_npm = { path = "../deno_npm" }
