@@ -2380,6 +2380,7 @@ fn publish_subcommand() -> Command {
           .help("The API token to use when publishing. If unset, interactive authentication is be used")
       )
       .arg(config_arg())
+      .arg(no_config_arg())
       .arg(
         Arg::new("dry-run")
           .long("dry-run")
