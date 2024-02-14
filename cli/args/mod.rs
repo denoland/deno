@@ -129,13 +129,13 @@ pub fn jsr_url() -> &'static Url {
 }
 
 pub fn jsr_api_url() -> &'static Url {
-  static DENO_REGISTRY_API_URL: Lazy<Url> = Lazy::new(|| {
+  static JSR_API_URL: Lazy<Url> = Lazy::new(|| {
     let mut jsr_api_url = jsr_url().clone();
     jsr_api_url.set_path("api/");
     jsr_api_url
   });
 
-  &DENO_REGISTRY_API_URL
+  &JSR_API_URL
 }
 
 pub fn ts_config_to_emit_options(
