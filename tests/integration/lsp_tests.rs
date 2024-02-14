@@ -4778,7 +4778,13 @@ fn lsp_jsr_lockfile() {
           // of `add()`.
           "jsr:@denotest/add": "jsr:@denotest/add@0.2.0",
         },
+        "jsr": {
+          "@denotest/add@0.2.0": {
+            "integrity": ""
+          }
+        }
       },
+      "remote": {},
     })
     .to_string(),
   );
@@ -4790,8 +4796,8 @@ fn lsp_jsr_lockfile() {
       "languageId": "typescript",
       "version": 1,
       "text": r#"
-        import { add } from "jsr:@denotest/add";
-        console.log(add(1, 2));
+        import { sum } from "jsr:@denotest/add";
+        console.log(sum(1, 2));
       "#,
     },
   }));
