@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::args::deno_registry_url;
+use crate::args::jsr_url;
 use crate::args::CliOptions;
 use crate::args::Lockfile;
 use crate::args::TsTypeLib;
@@ -179,7 +179,7 @@ pub fn graph_lock_or_exit(graph: &ModuleGraph, lockfile: &mut Lockfile) {
     // skip over any specifiers in JSR packages because those
     // are enforced via the integrity
     if deno_graph::source::recommended_registry_package_url_to_nv(
-      deno_registry_url(),
+      jsr_url(),
       module.specifier(),
     )
     .is_some()

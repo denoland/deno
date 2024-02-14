@@ -42,12 +42,12 @@ pretty_assertions.workspace = true
 prost.workspace = true
 regex.workspace = true
 reqwest.workspace = true
-ring.workspace = true
 rustls-pemfile.workspace = true
 rustls-tokio-stream.workspace = true
 semver = "=1.0.14"
 serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
 tar.workspace = true
 tempfile.workspace = true
 termcolor.workspace = true
