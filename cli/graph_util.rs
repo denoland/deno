@@ -22,6 +22,7 @@ use crate::util::sync::TaskQueue;
 use crate::util::sync::TaskQueuePermit;
 
 use deno_config::ConfigFile;
+use deno_config::WorkspaceMemberConfig;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::custom_error;
@@ -263,7 +264,7 @@ impl ModuleGraphBuilder {
     graph_kind: GraphKind,
     roots: Vec<ModuleSpecifier>,
     loader: &mut dyn Loader,
-  ) -> Result<deno_graph::ModuleGraph, AnyError> {
+  ) -> Result<ModuleGraph, AnyError> {
     self
       .create_graph_with_options(CreateGraphOptions {
         graph_kind,
@@ -274,10 +275,28 @@ impl ModuleGraphBuilder {
       .await
   }
 
+  pub async fn create_publish_graph(
+    &self,
+    packages: &[WorkspaceMemberConfig],
+  ) -> Result<ModuleGraph, AnyError> {
+    let mut roots = Vec::new();
+    for package in packages {
+      roots.extend(package.config_file.resolve_export_value_urls()?);
+    }
+    self
+      .create_graph_with_options(CreateGraphOptions {
+        graph_kind: deno_graph::GraphKind::All,
+        roots,
+        workspace_fast_check: true,
+        loader: None,
+      })
+      .await
+  }
+
   pub async fn create_graph_with_options(
     &self,
     options: CreateGraphOptions<'_>,
-  ) -> Result<deno_graph::ModuleGraph, AnyError> {
+  ) -> Result<ModuleGraph, AnyError> {
     enum MutLoaderRef<'a> {
       Borrowed(&'a mut dyn Loader),
       Owned(cache::FetchCacher),
@@ -629,6 +648,25 @@ fn get_resolution_error_bare_specifier(
   } else {
     None
   }
+}
+
+/// Gets the graphs for the given workspace members.
+pub fn segment_graph_by_workspace_member(
+  graph: &ModuleGraph,
+  members: &[WorkspaceMemberConfig],
+) -> Result<Vec<(WorkspaceMemberConfig, ModuleGraph)>, AnyError> {
+  if members.len() == 1 {
+    return Ok(vec![(members.first().unwrap().clone(), graph.clone())]);
+  }
+
+  let mut result = Vec::with_capacity(members.len());
+  for package in members {
+    result.push((
+      package.clone(),
+      graph.segment(&package.config_file.resolve_export_value_urls()?),
+    ));
+  }
+  Ok(result)
 }
 
 #[derive(Debug)]

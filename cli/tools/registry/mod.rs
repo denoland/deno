@@ -7,7 +7,9 @@ use std::sync::Arc;
 
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
+use deno_ast::ModuleSpecifier;
 use deno_config::ConfigFile;
+use deno_config::WorkspaceMemberConfig;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
@@ -30,15 +32,14 @@ use crate::args::PublishFlags;
 use crate::cache::LazyGraphSourceParser;
 use crate::cache::ParsedSourceCache;
 use crate::factory::CliFactory;
+use crate::graph_util::segment_graph_by_workspace_member;
 use crate::graph_util::ModuleGraphBuilder;
 use crate::http_util::HttpClient;
 use crate::tools::check::CheckOptions;
+use crate::tools::lint::no_slow_types;
+use crate::tools::registry::diagnostics::PublishDiagnostic;
 use crate::tools::registry::diagnostics::PublishDiagnosticsCollector;
-use crate::tools::registry::graph::collect_fast_check_type_graph_diagnostics;
 use crate::tools::registry::graph::collect_invalid_external_imports;
-use crate::tools::registry::graph::get_workspace_member_roots;
-use crate::tools::registry::graph::resolve_config_file_roots_from_exports;
-use crate::tools::registry::graph::MemberRoots;
 use crate::util::display::human_size;
 use crate::util::import_map::ImportMapUnfurler;
 
@@ -80,16 +81,8 @@ impl PreparedPublishPackage {
 static SUGGESTED_ENTRYPOINTS: [&str; 4] =
   ["mod.ts", "mod.js", "index.ts", "index.js"];
 
-fn get_deno_json_package_name(
-  deno_json: &ConfigFile,
-) -> Result<String, AnyError> {
-  match deno_json.json.name.clone() {
-    Some(name) => Ok(name),
-    None => bail!("{} is missing 'name' field", deno_json.specifier),
-  }
-}
-
 async fn prepare_publish(
+  package_name: &str,
   deno_json: &ConfigFile,
   source_cache: Arc<ParsedSourceCache>,
   graph: Arc<deno_graph::ModuleGraph>,
@@ -101,7 +94,6 @@ async fn prepare_publish(
   let Some(version) = deno_json.json.version.clone() else {
     bail!("{} is missing 'version' field", deno_json.specifier);
   };
-  let name = get_deno_json_package_name(deno_json)?;
   if deno_json.json.exports.is_none() {
     let mut suggested_entrypoint = None;
 
@@ -118,22 +110,22 @@ async fn prepare_publish(
   "version": "{}",
   "exports": "{}"
 }}"#,
-      name,
+      package_name,
       version,
       suggested_entrypoint.unwrap_or("<path_to_entrypoint>")
     );
 
     bail!(
       "You did not specify an entrypoint to \"{}\" package in {}. Add `exports` mapping in the configuration file, eg:\n{}",
-      name,
+      package_name,
       deno_json.specifier,
       exports_content
     );
   }
-  let Some(name) = name.strip_prefix('@') else {
+  let Some(name_no_at) = package_name.strip_prefix('@') else {
     bail!("Invalid package name, use '@<scope_name>/<package_name> format");
   };
-  let Some((scope, package_name)) = name.split_once('/') else {
+  let Some((scope, name_no_scope)) = name_no_at.split_once('/') else {
     bail!("Invalid package name, use '@<scope_name>/<package_name> format");
   };
   let file_patterns = deno_json.to_publish_config()?.map(|c| c.files);
@@ -152,11 +144,11 @@ async fn prepare_publish(
   })
   .await??;
 
-  log::debug!("Tarball size ({}): {}", name, tarball.bytes.len());
+  log::debug!("Tarball size ({}): {}", package_name, tarball.bytes.len());
 
   Ok(Rc::new(PreparedPublishPackage {
     scope: scope.to_string(),
-    package: package_name.to_string(),
+    package: name_no_scope.to_string(),
     version: version.to_string(),
     tarball,
     // the config file is always at the root of a publishing dir,
@@ -660,77 +652,44 @@ struct PreparePackagesData {
 
 async fn prepare_packages_for_publishing(
   cli_factory: &CliFactory,
-  no_zap: bool,
+  allow_slow_types: bool,
   diagnostics_collector: &PublishDiagnosticsCollector,
   deno_json: ConfigFile,
   import_map: Arc<ImportMap>,
 ) -> Result<PreparePackagesData, AnyError> {
-  let maybe_workspace_config = deno_json.to_workspace_config()?;
+  let members = deno_json.to_workspace_members()?;
   let module_graph_builder = cli_factory.module_graph_builder().await?.as_ref();
   let source_cache = cli_factory.parsed_source_cache();
   let type_checker = cli_factory.type_checker().await?;
   let cli_options = cli_factory.cli_options();
 
-  let Some(workspace_config) = maybe_workspace_config else {
-    let roots = resolve_config_file_roots_from_exports(&deno_json)?;
-    let graph = build_and_check_graph_for_publish(
-      module_graph_builder,
-      type_checker,
-      cli_options,
-      no_zap,
-      diagnostics_collector,
-      &[MemberRoots {
-        name: get_deno_json_package_name(&deno_json)?,
-        dir_url: deno_json.specifier.join("./").unwrap().clone(),
-        exports: roots,
-      }],
-    )
-    .await?;
-    let package = prepare_publish(
-      &deno_json,
-      source_cache.clone(),
-      graph,
-      import_map,
-      diagnostics_collector,
-    )
-    .await?;
-    let package_name = format!("@{}/{}", package.scope, package.package);
-    let publish_order_graph =
-      PublishOrderGraph::new_single(package_name.clone());
-    let package_by_name = HashMap::from([(package_name, package)]);
-    return Ok(PreparePackagesData {
-      publish_order_graph,
-      package_by_name,
-    });
-  };
+  if members.len() > 1 {
+    println!("Publishing a workspace...");
+  }
 
-  println!("Publishing a workspace...");
   // create the module graph
-  let roots = get_workspace_member_roots(&workspace_config)?;
   let graph = build_and_check_graph_for_publish(
     module_graph_builder,
     type_checker,
     cli_options,
-    no_zap,
+    allow_slow_types,
     diagnostics_collector,
-    &roots,
+    &members,
   )
   .await?;
 
-  let mut package_by_name =
-    HashMap::with_capacity(workspace_config.members.len());
+  let mut package_by_name = HashMap::with_capacity(members.len());
   let publish_order_graph =
-    publish_order::build_publish_order_graph(&graph, &roots)?;
+    publish_order::build_publish_order_graph(&graph, &members)?;
 
-  let results = workspace_config
-    .members
-    .iter()
-    .cloned()
+  let results = members
+    .into_iter()
     .map(|member| {
       let import_map = import_map.clone();
       let graph = graph.clone();
       async move {
         let package = prepare_publish(
+          &member.package_name,
           &member.config_file,
           source_cache.clone(),
           graph,
@@ -761,63 +720,66 @@ async fn build_and_check_graph_for_publish(
   module_graph_builder: &ModuleGraphBuilder,
   type_checker: &TypeChecker,
   cli_options: &CliOptions,
-  no_zap: bool,
+  allow_slow_types: bool,
   diagnostics_collector: &PublishDiagnosticsCollector,
-  packages: &[MemberRoots],
+  packages: &[WorkspaceMemberConfig],
 ) -> Result<Arc<deno_graph::ModuleGraph>, deno_core::anyhow::Error> {
-  let graph = Arc::new(
-    module_graph_builder
-      .create_graph_with_options(crate::graph_util::CreateGraphOptions {
-        // All because we're going to use this same graph to determine the publish order later
-        graph_kind: deno_graph::GraphKind::All,
-        roots: packages
-          .iter()
-          .flat_map(|r| r.exports.iter())
-          .cloned()
-          .collect(),
-        workspace_fast_check: true,
-        loader: None,
-      })
-      .await?,
-  );
+  let graph =
+    Arc::new(module_graph_builder.create_publish_graph(packages).await?);
   graph.valid()?;
 
+  // todo(dsherret): move to lint rule
   collect_invalid_external_imports(&graph, diagnostics_collector);
 
-  let mut has_fast_check_diagnostics = false;
-  if !no_zap {
-    log::info!("Checking fast check type graph for errors...");
-    has_fast_check_diagnostics = collect_fast_check_type_graph_diagnostics(
-      &graph,
-      packages,
-      diagnostics_collector,
-    );
-  }
-
-  if !has_fast_check_diagnostics {
-    log::info!("Ensuring type checks...");
-    let diagnostics = type_checker
-      .check_diagnostics(
-        graph.clone(),
-        CheckOptions {
-          lib: cli_options.ts_type_lib_window(),
-          log_ignored_options: false,
-          reload: cli_options.reload_flag(),
-        },
-      )
-      .await?;
-    if !diagnostics.is_empty() {
-      bail!(
-        concat!(
-          "{:#}\n\n",
-          "You may have discovered a bug in Deno's fast check implementation. ",
-          "Fast check is still early days and we would appreciate if you log a ",
-          "bug if you believe this is one: https://github.com/denoland/deno/issues/"
-        ),
-        diagnostics
+  if !allow_slow_types {
+    log::info!("Linting public types...");
+    // todo(dsherret): parallelize
+    for (package, graph) in segment_graph_by_workspace_member(&graph, packages)?
+    {
+      let output = no_slow_types::collect_no_slow_type_diagnostics(
+        &ModuleSpecifier::from_file_path(&package.dir_path).unwrap(),
+        &graph,
       );
+      match output {
+        no_slow_types::NoSlowTypesOutput::Pass => {
+          // this is a temporary measure until we know that fast check is reliable and stable
+          let check_diagnostics = type_checker
+            .check_diagnostics(
+              graph.into(),
+              CheckOptions {
+                lib: cli_options.ts_type_lib_window(),
+                log_ignored_options: false,
+                reload: cli_options.reload_flag(),
+              },
+            )
+            .await?;
+          if !check_diagnostics.is_empty() {
+            bail!(
+              concat!(
+                "Failed ensuring fast output type checks for '{}'.\n",
+                "{:#}\n\n",
+                "You may have discovered a bug in Deno's fast check implementation. ",
+                "Fast check is still early days and we would appreciate if you log a ",
+                "bug if you believe this is one: https://github.com/denoland/deno/issues/"
+              ),
+              package.package_name,
+              check_diagnostics
+            );
+          }
+        }
+        no_slow_types::NoSlowTypesOutput::HasJsExport => {
+          // ignore
+        }
+        no_slow_types::NoSlowTypesOutput::Fail(diagnostics) => {
+          for diagnostic in diagnostics {
+            diagnostics_collector
+              .push(PublishDiagnostic::FastCheck(diagnostic));
+          }
+        }
+      }
     }
   }
+
   Ok(graph)
 }
 
@@ -851,7 +813,7 @@ pub async fn publish(
 
   let prepared_data = prepare_packages_for_publishing(
     &cli_factory,
-    publish_flags.no_zap,
+    publish_flags.allow_slow_types,
     &diagnostics_collector,
     config_file.clone(),
     import_map,
