@@ -15,7 +15,8 @@ https://github.com/denoland/deno_install
 - perf: denort binary for `deno compile` (#22205)
 - fix(console): support NO_COLOR and colors option in all scenarios (#21910)
 - fix(ext/node): export process.umask (#22348)
-- fix(ext/web): Prevent (De-)CompressionStream resource leak on stream cancellation (#21199)
+- fix(ext/web): Prevent (De-)CompressionStream resource leak on stream
+  cancellation (#21199)
 - fix(lsp): complete npm specifier versions correctly (#22332)
 - fix: cache bust jsr deps on constraint failure (#22372)
 - fix: handle non-file scopes in synthetic import map (#22361)
