@@ -24,6 +24,7 @@ use deno_core::futures::future::FutureExt;
 use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
+use deno_graph::source::LoaderChecksum;
 use deno_runtime::deno_fetch::reqwest::header::HeaderValue;
 use deno_runtime::deno_fetch::reqwest::header::ACCEPT;
 use deno_runtime::deno_fetch::reqwest::header::AUTHORIZATION;
@@ -146,7 +147,7 @@ pub struct FetchOptions<'a> {
   pub permissions: PermissionsContainer,
   pub maybe_accept: Option<&'a str>,
   pub maybe_cache_setting: Option<&'a CacheSetting>,
-  pub maybe_checksum: Option<String>,
+  pub maybe_checksum: Option<LoaderChecksum>,
 }
 
 /// A structure for resolving, fetching and caching source files.
@@ -200,7 +201,7 @@ impl FileFetcher {
   pub fn fetch_cached(
     &self,
     specifier: &ModuleSpecifier,
-    maybe_checksum: Option<String>,
+    maybe_checksum: Option<LoaderChecksum>,
     redirect_limit: i64,
   ) -> Result<Option<File>, AnyError> {
     debug!("FileFetcher::fetch_cached - specifier: {}", specifier);
@@ -219,7 +220,9 @@ impl FileFetcher {
     }
     let Some(bytes) = self.http_cache.read_file_bytes(
       &cache_key,
-      maybe_checksum.as_deref().map(deno_cache_dir::Checksum::new),
+      maybe_checksum
+        .as_ref()
+        .map(|c| deno_cache_dir::Checksum::new(c.as_str())),
       deno_cache_dir::GlobalToLocalCopy::Allow,
     )?
     else {
@@ -288,7 +291,7 @@ impl FileFetcher {
     redirect_limit: i64,
     maybe_accept: Option<String>,
     cache_setting: &CacheSetting,
-    maybe_checksum: Option<String>,
+    maybe_checksum: Option<LoaderChecksum>,
   ) -> Pin<Box<dyn Future<Output = Result<File, AnyError>> + Send>> {
     debug!("FileFetcher::fetch_remote() - specifier: {}", specifier);
     if redirect_limit < 0 {
@@ -403,6 +406,9 @@ impl FileFetcher {
               .await
           }
           FetchOnceResult::Code(bytes, headers) => {
+            if let Some(checksum) = &maybe_checksum {
+              checksum.check_source(&bytes)?;
+            }
             file_fetcher
               .http_cache
               .set(&specifier, headers.clone(), &bytes)?;

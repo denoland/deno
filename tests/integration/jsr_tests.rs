@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_lockfile::Lockfile;
 use test_util as util;
@@ -68,6 +69,14 @@ itest!(subset_type_graph {
 itest!(version_not_found {
   args: "run jsr/version_not_found/main.ts",
   output: "jsr/version_not_found/main.out",
+  envs: env_vars_for_jsr_tests(),
+  http_server: true,
+  exit_code: 1,
+});
+
+itest!(bad_manifest_checksum {
+  args: "run jsr/bad_manifest_checksum/main.ts",
+  output: "jsr/bad_manifest_checksum/main.out",
   envs: env_vars_for_jsr_tests(),
   http_server: true,
   exit_code: 1,
@@ -181,4 +190,117 @@ fn reload_info_not_found_cache_but_exists_remote() {
       "3\n",
     ))
     .assert_exit_code(0);
+}
+
+#[test]
+fn lockfile_bad_package_integrity() {
+  let test_context = TestContextBuilder::for_jsr().use_temp_cwd().build();
+  let temp_dir = test_context.temp_dir();
+
+  temp_dir.write(
+    "main.ts",
+    r#"import version from "jsr:@denotest/no_module_graph@0.1";
+
+console.log(version);"#,
+  );
+  temp_dir.write("deno.json", "{}"); // to automatically create a lockfile
+
+  test_context
+    .new_command()
+    .args("run --quiet main.ts")
+    .run()
+    .assert_matches_text("0.1.1\n");
+
+  let lockfile_path = temp_dir.path().join("deno.lock");
+  let mut lockfile = Lockfile::new(lockfile_path.to_path_buf(), false).unwrap();
+  let pkg_name = "@denotest/no_module_graph@0.1.1";
+  let original_integrity = get_lockfile_pkg_integrity(&lockfile, pkg_name);
+  set_lockfile_pkg_integrity(&mut lockfile, pkg_name, "bad_integrity");
+  lockfile_path.write(lockfile.as_json_string());
+
+  let integrity_check_failed_msg = "error: Integrity check failed for http://127.0.0.1:4250/@denotest/no_module_graph/0.1.1_meta.json
+
+Actual: 82217953211c65937bcab92dba441da1329010ef14b8649e5eaf2a86dc8e4dea
+Expected: bad_integrity
+    at file:///[WILDCARD]/main.ts:1:21
+";
+  test_context
+    .new_command()
+    .args("run --quiet main.ts")
+    .run()
+    .assert_matches_text(integrity_check_failed_msg)
+    .assert_exit_code(1);
+
+  // now try with a vendor folder
+  temp_dir
+    .path()
+    .join("deno.json")
+    .write_json(&json!({ "vendor": true }));
+
+  // should fail again
+  test_context
+    .new_command()
+    .args("run --quiet main.ts")
+    .run()
+    .assert_matches_text(integrity_check_failed_msg)
+    .assert_exit_code(1);
+
+  // now update to the correct integrity
+  set_lockfile_pkg_integrity(&mut lockfile, pkg_name, &original_integrity);
+  lockfile_path.write(lockfile.as_json_string());
+
+  // should pass now
+  test_context
+    .new_command()
+    .args("run --quiet main.ts")
+    .run()
+    .assert_matches_text("0.1.1\n")
+    .assert_exit_code(0);
+
+  // now update to a bad integrity again
+  set_lockfile_pkg_integrity(&mut lockfile, pkg_name, "bad_integrity");
+  lockfile_path.write(lockfile.as_json_string());
+
+  // shouldn't matter because we have a vendor folder
+  test_context
+    .new_command()
+    .args("run --quiet main.ts")
+    .run()
+    .assert_matches_text("0.1.1\n")
+    .assert_exit_code(0);
+
+  // now remove the vendor dir and it should fail again
+  temp_dir.path().join("vendor").remove_dir_all();
+
+  test_context
+    .new_command()
+    .args("run --quiet main.ts")
+    .run()
+    .assert_matches_text(integrity_check_failed_msg)
+    .assert_exit_code(1);
+}
+
+fn get_lockfile_pkg_integrity(lockfile: &Lockfile, pkg_name: &str) -> String {
+  lockfile
+    .content
+    .packages
+    .jsr
+    .get(pkg_name)
+    .unwrap()
+    .integrity
+    .clone()
+}
+
+fn set_lockfile_pkg_integrity(
+  lockfile: &mut Lockfile,
+  pkg_name: &str,
+  integrity: &str,
+) {
+  lockfile
+    .content
+    .packages
+    .jsr
+    .get_mut(pkg_name)
+    .unwrap()
+    .integrity = integrity.to_string();
 }

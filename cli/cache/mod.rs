@@ -240,7 +240,7 @@ impl Loader for FetchCacher {
           permissions,
           maybe_accept: None,
           maybe_cache_setting: maybe_cache_setting.as_ref(),
-          maybe_checksum: maybe_checksum.map(|c| c.into_string())
+          maybe_checksum,
         })
         .await
         .map(|file| {

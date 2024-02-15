@@ -120,10 +120,10 @@ fn fill_manifest_at_dir(
   manifest: &mut BTreeMap<String, serde_json::Value>,
   dir: &Path,
 ) {
-  let file_system_manifest = get_checksums_dir(dir);
-  for (checksum, value) in file_system_manifest {
-    if !manifest.contains_key(&checksum) {
-      manifest.insert(checksum, value);
+  let file_system_manifest = get_manifest_entries_for_dir(dir);
+  for (file_path, value) in file_system_manifest {
+    if !manifest.contains_key(&file_path) {
+      manifest.insert(file_path, value);
     }
   }
 }
@@ -132,7 +132,9 @@ static DIR_MANIFEST_CACHE: Lazy<
   Mutex<HashMap<String, BTreeMap<String, serde_json::Value>>>,
 > = Lazy::new(Default::default);
 
-fn get_checksums_dir(dir: &Path) -> BTreeMap<String, serde_json::Value> {
+fn get_manifest_entries_for_dir(
+  dir: &Path,
+) -> BTreeMap<String, serde_json::Value> {
   fn inner_fill(
     root_dir: &Path,
     dir: &Path,

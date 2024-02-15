@@ -1034,7 +1034,7 @@ dependencies = [
  "deno_core",
  "deno_doc",
  "deno_emit",
- "deno_graph",
+ "deno_graph 0.66.0",
  "deno_lint",
  "deno_lockfile",
  "deno_npm",
@@ -1328,7 +1328,7 @@ dependencies = [
  "cfg-if",
  "comrak",
  "deno_ast",
- "deno_graph",
+ "deno_graph 0.65.3",
  "futures",
  "handlebars",
  "html-escape",
@@ -1348,7 +1348,7 @@ dependencies = [
  "anyhow",
  "base64",
  "deno_ast",
- "deno_graph",
+ "deno_graph 0.66.0",
  "escape8259",
  "futures",
  "import_map",
@@ -1412,6 +1412,34 @@ dependencies = [
 [[package]]
 name = "deno_graph"
 version = "0.65.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4d12c87f92df950ad0eed3ea8951f30bf9c54f69b3a903b805950d6761b35002"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "data-url",
+ "deno_ast",
+ "deno_semver",
+ "encoding_rs",
+ "futures",
+ "import_map",
+ "indexmap",
+ "log",
+ "monch",
+ "once_cell",
+ "parking_lot 0.12.1",
+ "regex",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "url",
+]
+
+[[package]]
+name = "deno_graph"
+version = "0.66.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8c67c7c05d70e43560b1dfa38ee385d2d0153ccd4ea16fdc6a706881fd60f3c5"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1537,7 +1565,9 @@ dependencies = [
 
 [[package]]
 name = "deno_lockfile"
-version = "0.18.2"
+version = "0.19.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8835418ae924f25ab20f508bf6240193b22d893519d44432b670a27b8fb1efeb"
 dependencies = [
  "serde",
  "serde_json",
@@ -1663,7 +1693,9 @@ dependencies = [
 
 [[package]]
 name = "deno_npm"
-version = "0.16.0"
+version = "0.17.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "53a333104d3fb6aa52e499384e523aefc09d3ac8ecd05ca7f65f856044fbcb09"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2421,7 +2453,7 @@ dependencies = [
  "anyhow",
  "base64",
  "deno_ast",
- "deno_graph",
+ "deno_graph 0.65.3",
  "deno_npm",
  "deno_semver",
  "futures",

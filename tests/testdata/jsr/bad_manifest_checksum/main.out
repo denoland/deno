@@ -1,0 +1,8 @@
+Download http://127.0.0.1:4250/@denotest/bad-manifest-checksum/meta.json
+Download http://127.0.0.1:4250/@denotest/bad-manifest-checksum/1.0.0_meta.json
+Download http://127.0.0.1:4250/@denotest/bad-manifest-checksum/1.0.0/mod.ts
+error: Integrity check failed.
+
+Actual: 9a30ac96b5d5c1b67eca69e1e2cf0798817d9578c8d7d904a81a67b983b35cba
+Expected: bad-checksum
+    at file:///[WILDCARD]main.ts:1:21
