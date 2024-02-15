@@ -1718,7 +1718,7 @@ fn test_deno_futures_env() {
     .new_command()
     .args("run --quiet --reload run/deno_futures_env.ts")
     .run();
-  output.assert_success();
+  output.assert_exit_code(0);
 }
 
 itest!(type_directives_redirect {
