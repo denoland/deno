@@ -122,9 +122,7 @@ fn fill_manifest_at_dir(
 ) {
   let file_system_manifest = get_manifest_entries_for_dir(dir);
   for (file_path, value) in file_system_manifest {
-    if !manifest.contains_key(&file_path) {
-      manifest.insert(file_path, value);
-    }
+    manifest.entry(file_path).or_insert(value);
   }
 }
 
@@ -150,7 +148,7 @@ fn get_manifest_entries_for_dir(
           .to_string_lossy()
           .strip_prefix(&root_dir.to_string_lossy().to_string())
           .unwrap()
-          .replace("\\", "/");
+          .replace('\\', "/");
         manifest.insert(
           relative_path,
           json!({
