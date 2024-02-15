@@ -4782,32 +4782,28 @@ fn lsp_code_actions_deno_cache_jsr() {
 
 #[test]
 fn lsp_jsr_lockfile() {
-  let context = TestContextBuilder::new()
-    .use_http_server()
-    .use_temp_cwd()
-    .build();
+  let context = TestContextBuilder::for_jsr().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
   temp_dir.write("./deno.json", json!({}).to_string());
-  temp_dir.write(
-    "./deno.lock",
-    json!({
-      "version": "3",
-      "packages": {
-        "specifiers": {
-          // This is an old version of the package which exports `sum()` instead
-          // of `add()`.
-          "jsr:@denotest/add": "jsr:@denotest/add@0.2.0",
-        },
-        "jsr": {
-          "@denotest/add@0.2.0": {
-            "integrity": ""
-          }
-        }
+  let lockfile = temp_dir.path().join("deno.lock");
+  let integrity = context.get_jsr_package_integrity("@denotest/add/0.2.0");
+  eprintln!("INTEGRITY: {}", integrity);
+  lockfile.write_json(&json!({
+    "version": "3",
+    "packages": {
+      "specifiers": {
+        // This is an old version of the package which exports `sum()` instead
+        // of `add()`.
+        "jsr:@denotest/add": "jsr:@denotest/add@0.2.0",
       },
-      "remote": {},
-    })
-    .to_string(),
-  );
+      "jsr": {
+        "@denotest/add@0.2.0": {
+          "integrity": integrity
+        }
+      }
+    },
+    "remote": {},
+  }));
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.did_open(json!({

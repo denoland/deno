@@ -218,17 +218,19 @@ console.log(version);"#,
   set_lockfile_pkg_integrity(&mut lockfile, pkg_name, "bad_integrity");
   lockfile_path.write(lockfile.as_json_string());
 
-  let integrity_check_failed_msg = "error: Integrity check failed for http://127.0.0.1:4250/@denotest/no_module_graph/0.1.1_meta.json
+  let actual_integrity =
+    test_context.get_jsr_package_integrity("@denotest/no_module_graph/0.1.1");
+  let integrity_check_failed_msg = format!("error: Integrity check failed for http://127.0.0.1:4250/@denotest/no_module_graph/0.1.1_meta.json
 
-Actual: 82217953211c65937bcab92dba441da1329010ef14b8649e5eaf2a86dc8e4dea
+Actual: {}
 Expected: bad_integrity
     at file:///[WILDCARD]/main.ts:1:21
-";
+", actual_integrity);
   test_context
     .new_command()
     .args("run --quiet main.ts")
     .run()
-    .assert_matches_text(integrity_check_failed_msg)
+    .assert_matches_text(&integrity_check_failed_msg)
     .assert_exit_code(1);
 
   // now try with a vendor folder
@@ -242,7 +244,7 @@ Expected: bad_integrity
     .new_command()
     .args("run --quiet main.ts")
     .run()
-    .assert_matches_text(integrity_check_failed_msg)
+    .assert_matches_text(&integrity_check_failed_msg)
     .assert_exit_code(1);
 
   // now update to the correct integrity
@@ -276,7 +278,7 @@ Expected: bad_integrity
     .new_command()
     .args("run --quiet main.ts")
     .run()
-    .assert_matches_text(integrity_check_failed_msg)
+    .assert_matches_text(&integrity_check_failed_msg)
     .assert_exit_code(1);
 }
 
