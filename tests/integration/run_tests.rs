@@ -1053,7 +1053,9 @@ fn lock_deno_json_package_json_deps() {
         "npm:@denotest/esm-basic": "npm:@denotest/esm-basic@1.0.0"
       },
       "jsr": {
-        "@denotest/module_graph@1.4.0": {}
+        "@denotest/module_graph@1.4.0": {
+          "integrity": "555bbe259f55a4a2e7a39e8bf4bcbf25da4c874a313c3e98771eddceedac050b"
+        }
       },
       "npm": {
         "@denotest/esm-basic@1.0.0": {
@@ -1062,10 +1064,7 @@ fn lock_deno_json_package_json_deps() {
         }
       }
     },
-    "remote": {
-      "http://127.0.0.1:4250/@denotest/module_graph/1.4.0/mod.ts": "5b0ce36e08d759118200d8b4627627b5a89b6261fbb0598e6961a6b287abb699",
-      "http://127.0.0.1:4250/@denotest/module_graph/1.4.0/other.ts": "9ce27ca439cb0e218b6e1ec26c043dbc0b54c9babc4cb432df478dd1721faade"
-    },
+    "remote": {},
     "workspace": {
       "dependencies": [
         "jsr:@denotest/module_graph@1.4",
@@ -1106,7 +1105,9 @@ fn lock_deno_json_package_json_deps() {
         "npm:@denotest/esm-basic": "npm:@denotest/esm-basic@1.0.0"
       },
       "jsr": {
-        "@denotest/module_graph@1.4.0": {}
+        "@denotest/module_graph@1.4.0": {
+          "integrity": "555bbe259f55a4a2e7a39e8bf4bcbf25da4c874a313c3e98771eddceedac050b"
+        }
       },
       "npm": {
         "@denotest/esm-basic@1.0.0": {
@@ -1115,10 +1116,7 @@ fn lock_deno_json_package_json_deps() {
         }
       }
     },
-    "remote": {
-      "http://127.0.0.1:4250/@denotest/module_graph/1.4.0/mod.ts": "5b0ce36e08d759118200d8b4627627b5a89b6261fbb0598e6961a6b287abb699",
-      "http://127.0.0.1:4250/@denotest/module_graph/1.4.0/other.ts": "9ce27ca439cb0e218b6e1ec26c043dbc0b54c9babc4cb432df478dd1721faade"
-    },
+    "remote": {},
     "workspace": {
       "dependencies": [
         "jsr:@denotest/module_graph@1.4"
@@ -1147,13 +1145,12 @@ fn lock_deno_json_package_json_deps() {
         "jsr:@denotest/module_graph@1.4": "jsr:@denotest/module_graph@1.4.0",
       },
       "jsr": {
-        "@denotest/module_graph@1.4.0": {}
+        "@denotest/module_graph@1.4.0": {
+          "integrity": "555bbe259f55a4a2e7a39e8bf4bcbf25da4c874a313c3e98771eddceedac050b"
+        }
       }
     },
-    "remote": {
-      "http://127.0.0.1:4250/@denotest/module_graph/1.4.0/mod.ts": "5b0ce36e08d759118200d8b4627627b5a89b6261fbb0598e6961a6b287abb699",
-      "http://127.0.0.1:4250/@denotest/module_graph/1.4.0/other.ts": "9ce27ca439cb0e218b6e1ec26c043dbc0b54c9babc4cb432df478dd1721faade"
-    },
+    "remote": {},
     "workspace": {
       "dependencies": [
         "jsr:@denotest/module_graph@1.4"
