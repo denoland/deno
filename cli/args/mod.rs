@@ -987,6 +987,10 @@ impl CliOptions {
     }
   }
 
+  pub fn enable_future_features(&self) -> bool {
+    std::env::var("DENO_FUTURE").is_ok()
+  }
+
   pub fn resolve_main_module(&self) -> Result<ModuleSpecifier, AnyError> {
     match &self.flags.subcommand {
       DenoSubcommand::Bundle(bundle_flags) => {
