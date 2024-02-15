@@ -11,7 +11,7 @@ export async function runWithTestUtil<T>(
     "wpt",
     "serve",
     "--config",
-    "../../tools/wpt/config.json",
+    "../../../tools/wpt/config.json",
   ], {
     stdout: verbose ? "inherit" : "piped",
     stderr: verbose ? "inherit" : "piped",
