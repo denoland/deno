@@ -4787,7 +4787,6 @@ fn lsp_jsr_lockfile() {
   temp_dir.write("./deno.json", json!({}).to_string());
   let lockfile = temp_dir.path().join("deno.lock");
   let integrity = context.get_jsr_package_integrity("@denotest/add/0.2.0");
-  eprintln!("INTEGRITY: {}", integrity);
   lockfile.write_json(&json!({
     "version": "3",
     "packages": {
