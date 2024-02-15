@@ -3,7 +3,11 @@ import crypto from "node:crypto";
 import { Buffer } from "node:buffer";
 import { Readable } from "node:stream";
 import { buffer, text } from "node:stream/consumers";
-import { assertEquals, assertThrows } from "@std/assert/mod.ts";
+import {
+  assertEquals,
+  assertStrictEquals,
+  assertThrows,
+} from "@std/assert/mod.ts";
 
 const rsaPrivateKey = Deno.readTextFileSync(
   new URL("../testdata/rsa_private.pem", import.meta.url),
@@ -255,4 +259,101 @@ Deno.test({
       "Unknown cipher",
     );
   },
+});
+
+function setAutoPaddingTest(
+  { algorithm, keyLength, pad }: {
+    algorithm: string;
+    keyLength: number;
+    pad: boolean;
+  },
+) {
+  const key = crypto.randomBytes(keyLength);
+  const iv = algorithm.endsWith("ecb") ? null : crypto.randomBytes(16);
+  const data = pad
+    ? "0123456789abcdef0123456789abcde" // Not a multiple of block size
+    : "0123456789abcdef0123456789abcdef"; // Multiple of block size
+
+  const cipher = crypto.createCipheriv(algorithm, key, iv);
+  cipher.setAutoPadding(pad);
+  const encrypted = cipher.update(data, "utf8", "latin1") +
+    cipher.final("latin1");
+
+  const decipher = crypto.createDecipheriv(algorithm, key, iv);
+  decipher.setAutoPadding(pad);
+  const decrypted = decipher.update(encrypted, "latin1", "utf8") +
+    decipher.final("utf8");
+
+  assertStrictEquals(decrypted, data);
+}
+
+/**
+ * @todo(iuioiua) Add `*-gcm` algorithms once `Cipher.getAuthTag()` and
+ * `Decipher.setAuthTag()` are implemented.
+ */
+[
+  {
+    algorithm: "aes-128-cbc",
+    keyLength: 16,
+    pad: false,
+  },
+  {
+    algorithm: "aes-128-cbc",
+    keyLength: 16,
+    pad: true,
+  },
+  {
+    algorithm: "aes-128-ecb",
+    keyLength: 16,
+    pad: false,
+  },
+  {
+    algorithm: "aes-128-ecb",
+    keyLength: 16,
+    pad: true,
+  },
+  {
+    algorithm: "aes-192-ecb",
+    keyLength: 24,
+    pad: false,
+  },
+  {
+    algorithm: "aes-192-ecb",
+    keyLength: 24,
+    pad: true,
+  },
+  {
+    algorithm: "aes256",
+    keyLength: 32,
+    pad: false,
+  },
+  {
+    algorithm: "aes256",
+    keyLength: 32,
+    pad: true,
+  },
+  {
+    algorithm: "aes-256-cbc",
+    keyLength: 32,
+    pad: false,
+  },
+  {
+    algorithm: "aes-256-cbc",
+    keyLength: 32,
+    pad: true,
+  },
+  {
+    algorithm: "aes-256-ecb",
+    keyLength: 32,
+    pad: false,
+  },
+  {
+    algorithm: "aes-256-ecb",
+    keyLength: 32,
+    pad: true,
+  },
+].forEach((options) => {
+  Deno.test(`cipher.setAutoPadding() and decipher.setAutoPadding() - ${options.algorithm} ${options.pad ? "with" : "without"} padding`, () => {
+    setAutoPaddingTest(options);
+  });
 });
