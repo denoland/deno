@@ -406,12 +406,12 @@ impl FileFetcher {
               .await
           }
           FetchOnceResult::Code(bytes, headers) => {
-            if let Some(checksum) = &maybe_checksum {
-              checksum.check_source(&bytes)?;
-            }
             file_fetcher
               .http_cache
               .set(&specifier, headers.clone(), &bytes)?;
+            if let Some(checksum) = &maybe_checksum {
+              checksum.check_source(&bytes)?;
+            }
             Ok(File {
               specifier,
               maybe_headers: Some(headers),

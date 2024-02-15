@@ -74,14 +74,6 @@ itest!(version_not_found {
   exit_code: 1,
 });
 
-itest!(bad_manifest_checksum {
-  args: "run jsr/bad_manifest_checksum/main.ts",
-  output: "jsr/bad_manifest_checksum/main.out",
-  envs: env_vars_for_jsr_tests(),
-  http_server: true,
-  exit_code: 1,
-});
-
 #[test]
 fn specifiers_in_lockfile() {
   let test_context = TestContextBuilder::for_jsr().use_temp_cwd().build();
@@ -279,6 +271,55 @@ Expected: bad_integrity
     .args("run --quiet main.ts")
     .run()
     .assert_matches_text(&integrity_check_failed_msg)
+    .assert_exit_code(1);
+}
+
+#[test]
+fn bad_manifest_checksum() {
+  let test_context = TestContextBuilder::for_jsr().use_temp_cwd().build();
+  let temp_dir = test_context.temp_dir();
+
+  temp_dir.write(
+    "main.ts",
+    r#"import { add } from "jsr:@denotest/bad-manifest-checksum@1.0.0";
+console.log(add);"#,
+  );
+
+  // test it properly checks the checksum on download
+  test_context
+    .new_command()
+    .args("run  main.ts")
+    .run()
+    .assert_matches_text(
+      "Download http://127.0.0.1:4250/@denotest/bad-manifest-checksum/meta.json
+Download http://127.0.0.1:4250/@denotest/bad-manifest-checksum/1.0.0_meta.json
+Download http://127.0.0.1:4250/@denotest/bad-manifest-checksum/1.0.0/mod.ts
+error: Integrity check failed.
+
+Actual: 9a30ac96b5d5c1b67eca69e1e2cf0798817d9578c8d7d904a81a67b983b35cba
+Expected: bad-checksum
+    at file:///[WILDCARD]main.ts:1:21
+",
+    )
+    .assert_exit_code(1);
+
+  // test it properly checks the checksum when loading from the cache
+  test_context
+    .new_command()
+    .args("run  main.ts")
+    .run()
+    .assert_matches_text(
+      // ideally the two error messages would be the same... this one comes from
+      // deno_cache and the one above comes from deno_graph. The thing is, in deno_cache
+      // (source of this error) it makes sense to include the url in the error message
+      // because it's not always used in the context of deno_graph
+      "error: Integrity check failed for http://127.0.0.1:4250/@denotest/bad-manifest-checksum/1.0.0/mod.ts
+
+Actual: 9a30ac96b5d5c1b67eca69e1e2cf0798817d9578c8d7d904a81a67b983b35cba
+Expected: bad-checksum
+    at file:///[WILDCARD]main.ts:1:21
+",
+    )
     .assert_exit_code(1);
 }
 
