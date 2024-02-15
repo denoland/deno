@@ -233,14 +233,13 @@ impl Loader for FetchCacher {
         }
         LoaderCacheSetting::Only => Some(CacheSetting::Only),
       };
-      let maybe_checksum = options.maybe_checksum;
       file_fetcher
         .fetch_with_options(FetchOptions {
           specifier: &specifier,
           permissions,
           maybe_accept: None,
           maybe_cache_setting: maybe_cache_setting.as_ref(),
-          maybe_checksum,
+          maybe_checksum: options.maybe_checksum,
         })
         .await
         .map(|file| {
