@@ -10694,9 +10694,27 @@ fn lsp_vendor_dir() {
   refresh_config(&mut client);
 
   let diagnostics = client.read_diagnostics();
-  assert_eq!(diagnostics.all().len(), 0, "{:#?}", diagnostics); // cached
+  // won't be cached until a manual cache occurs
+  assert_eq!(
+    diagnostics
+      .all()
+      .iter()
+      .map(|d| d.message.as_str())
+      .collect::<Vec<_>>(),
+    vec![
+      "Uncached or missing remote URL: http://localhost:4545/subdir/mod1.ts"
+    ]
+  );
 
-  // no caching necessary because it was already cached. It should exist now
+  assert!(!temp_dir
+    .path()
+    .join("vendor/http_localhost_4545/subdir/mod1.ts")
+    .exists());
+
+  // now cache
+  cache(&mut client);
+  let diagnostics = client.read_diagnostics();
+  assert_eq!(diagnostics.all().len(), 0, "{:#?}", diagnostics); // cached
   assert!(temp_dir
     .path()
     .join("vendor/http_localhost_4545/subdir/mod1.ts")
