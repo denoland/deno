@@ -1,9 +1,12 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
 use std::io::BufRead;
 use std::io::BufReader;
 use std::time::Duration;
 use std::time::Instant;
 use test_util as util;
+use test_util::itest;
+use util::deno_config_path;
 use util::env_vars_for_npm_tests;
 
 util::unit_test_factory!(
@@ -97,7 +100,7 @@ fn node_unit_test(test: String) {
     .current_dir(util::root_path())
     .arg("test")
     .arg("--config")
-    .arg("tests/config/deno.json")
+    .arg(deno_config_path())
     .arg("--no-lock")
     .arg("--unstable")
     // TODO(kt3k): This option is required to pass tls_test.ts,

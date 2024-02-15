@@ -17,7 +17,12 @@ run = []
 
 [[test]]
 name = "integration_tests"
-path = "integration_tests.rs"
+path = "integration/mod.rs"
+required-features = ["run"]
+
+[[test]]
+name = "node_compat_tests"
+path = "node_compat/test_runner.rs"
 required-features = ["run"]
 
 [dev-dependencies]

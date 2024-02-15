@@ -102,9 +102,9 @@ pub fn npm_registry_default_url() -> &'static Url {
   &NPM_REGISTRY_DEFAULT_URL
 }
 
-pub fn deno_registry_url() -> &'static Url {
-  static DENO_REGISTRY_URL: Lazy<Url> = Lazy::new(|| {
-    let env_var_name = "DENO_REGISTRY_URL";
+pub fn jsr_url() -> &'static Url {
+  static JSR_URL: Lazy<Url> = Lazy::new(|| {
+    let env_var_name = "JSR_URL";
     if let Ok(registry_url) = std::env::var(env_var_name) {
       // ensure there is a trailing slash for the directory
       let registry_url = format!("{}/", registry_url.trim_end_matches('/'));
@@ -125,17 +125,17 @@ pub fn deno_registry_url() -> &'static Url {
     Url::parse("https://jsr.io/").unwrap()
   });
 
-  &DENO_REGISTRY_URL
+  &JSR_URL
 }
 
-pub fn deno_registry_api_url() -> &'static Url {
-  static DENO_REGISTRY_API_URL: Lazy<Url> = Lazy::new(|| {
-    let mut deno_registry_api_url = deno_registry_url().clone();
-    deno_registry_api_url.set_path("api/");
-    deno_registry_api_url
+pub fn jsr_api_url() -> &'static Url {
+  static JSR_API_URL: Lazy<Url> = Lazy::new(|| {
+    let mut jsr_api_url = jsr_url().clone();
+    jsr_api_url.set_path("api/");
+    jsr_api_url
   });
 
-  &DENO_REGISTRY_API_URL
+  &JSR_API_URL
 }
 
 pub fn ts_config_to_emit_options(
@@ -2018,10 +2018,10 @@ mod test {
   }
 
   #[test]
-  fn deno_registry_urls() {
-    let reg_url = deno_registry_url();
+  fn jsr_urls() {
+    let reg_url = jsr_url();
     assert!(reg_url.as_str().ends_with('/'));
-    let reg_api_url = deno_registry_api_url();
+    let reg_api_url = jsr_api_url();
     assert!(reg_api_url.as_str().ends_with('/'));
   }
 }

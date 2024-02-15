@@ -1,10 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import {
-  assert,
-  assertEquals,
-  assertThrows,
-} from "@test_util/std/assert/mod.ts";
+import { assert, assertEquals, assertThrows } from "@std/assert/mod.ts";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {

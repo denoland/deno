@@ -28,12 +28,12 @@ members = [
   "ext/websocket",
   "ext/webstorage",
   "runtime",
-  "test_ffi",
-  "test_napi",
   "test_util",
   "tests",
+  "tests/ffi",
+  "tests/napi",
 ]
-exclude = ["test_util/std/hash/_wasm"]
+exclude = ["tests/util/std/hash/_wasm"]
 
 [workspace.package]
 authors = ["the Deno authors"]
@@ -43,7 +43,7 @@ repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
 deno_ast = { version = "0.33.2", features = ["transpiling"] }
-deno_core = { version = "0.261.0" }
+deno_core = { version = "0.262.0" }
 
 deno_bench_util = { version = "0.131.0", path = "./bench_util" }
 deno_lockfile = "0.18.2"

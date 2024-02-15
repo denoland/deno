@@ -12,6 +12,9 @@ if (import.meta.main) {
     const { stdout, stderr, code } = await new Deno.Command(Deno.execPath(), {
       args: [
         "run",
+        "--config",
+        Deno.realPathSync("../config/deno.json"),
+        "--no-lock",
         "--allow-read",
         "--allow-run",
         "--allow-ffi",
@@ -20,8 +23,8 @@ if (import.meta.main) {
       ],
     }).output();
 
-    assertEquals(code, 0);
     assertEquals(new TextDecoder().decode(stderr), "");
+    assertEquals(code, 0);
 
     const stdoutText = new TextDecoder().decode(stdout);
     const stdoutLines = stdoutText.split("\n");

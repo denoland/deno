@@ -22,8 +22,8 @@ use lsp_types::Url;
 use serde::Serialize;
 use sha2::Digest;
 
-use crate::args::deno_registry_api_url;
-use crate::args::deno_registry_url;
+use crate::args::jsr_api_url;
+use crate::args::jsr_url;
 use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::PublishFlags;
@@ -68,6 +68,7 @@ struct PreparedPublishPackage {
   package: String,
   version: String,
   tarball: PublishableTarball,
+  config: String,
 }
 
 impl PreparedPublishPackage {
@@ -158,6 +159,13 @@ async fn prepare_publish(
     package: package_name.to_string(),
     version: version.to_string(),
     tarball,
+    // the config file is always at the root of a publishing dir,
+    // so getting the file name is always correct
+    config: config_path
+      .file_name()
+      .unwrap()
+      .to_string_lossy()
+      .to_string(),
   }))
 }
 
@@ -446,8 +454,8 @@ async fn perform_publish(
   auth_method: AuthMethod,
 ) -> Result<(), AnyError> {
   let client = http_client.client()?;
-  let registry_api_url = deno_registry_api_url().to_string();
-  let registry_url = deno_registry_url().to_string();
+  let registry_api_url = jsr_api_url().to_string();
+  let registry_url = jsr_url().to_string();
 
   let packages = prepared_package_by_name
     .values()
@@ -541,8 +549,12 @@ async fn publish_package(
   );
 
   let url = format!(
-    "{}scopes/{}/packages/{}/versions/{}",
-    registry_api_url, package.scope, package.package, package.version
+    "{}scopes/{}/packages/{}/versions/{}?config=/{}",
+    registry_api_url,
+    package.scope,
+    package.package,
+    package.version,
+    package.config
   );
 
   let response = client

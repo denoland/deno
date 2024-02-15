@@ -6271,6 +6271,7 @@ declare namespace Deno {
     handler: ServeHandler;
   }
 
+  /** @category HTTP Server */
   export interface ServeUnixOptions {
     /** The unix domain socket path to listen on. */
     path: string;

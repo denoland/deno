@@ -11,6 +11,7 @@ use std::process::Command;
 use std::process::Stdio;
 use std::time::Duration;
 use test_util as util;
+use test_util::itest;
 use test_util::TempDir;
 use trust_dns_client::serialize::txt::Lexer;
 use trust_dns_client::serialize::txt::Parser;
@@ -2652,6 +2653,7 @@ fn dont_cache_on_check_fail() {
 
 mod permissions {
   use test_util as util;
+  use test_util::itest;
   use util::TestContext;
 
   // TODO(bartlomieju): remove --unstable once Deno.Command is stabilized
@@ -5139,4 +5141,18 @@ console.log(add(3, 4));
   );
   let output = test_context.new_command().args("run main.ts").run();
   output.assert_matches_text("[WILDCARD]5\n7\n");
+}
+
+#[test]
+fn inspect_color_overwrite() {
+  let test_context = TestContextBuilder::new().build();
+  let output = test_context
+    .new_command()
+    .skip_strip_ansi()
+    .split_output()
+    .env("NO_COLOR", "1")
+    .args("run run/inspect_color_overwrite.ts")
+    .run();
+
+  assert_eq!(output.stdout(), "foo\u{1b}[31mbar\u{1b}[0m\n");
 }

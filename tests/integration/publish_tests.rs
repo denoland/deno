@@ -5,6 +5,7 @@ use test_util::assert_contains;
 use test_util::assert_not_contains;
 use test_util::env_vars_for_jsr_tests;
 use test_util::env_vars_for_npm_tests;
+use test_util::itest;
 use test_util::TestContextBuilder;
 
 itest!(no_token {
@@ -191,6 +192,14 @@ itest!(dry_run {
   args: "publish --token 'sadfasdf' --dry-run",
   cwd: Some("publish/successful"),
   output: "publish/dry_run.out",
+  envs: env_vars_for_jsr_tests(),
+  http_server: true,
+});
+
+itest!(config_flag {
+  args: "publish --token 'sadfasdf' --config=successful/deno.json",
+  output: "publish/successful.out",
+  cwd: Some("publish"),
   envs: env_vars_for_jsr_tests(),
   http_server: true,
 });

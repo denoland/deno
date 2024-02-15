@@ -20,6 +20,7 @@ use os_pipe::pipe;
 
 use crate::assertions::assert_wildcard_match;
 use crate::deno_exe_path;
+use crate::denort_exe_path;
 use crate::env_vars_for_jsr_tests;
 use crate::env_vars_for_npm_tests;
 use crate::fs::PathRef;
@@ -80,7 +81,7 @@ pub struct TestContextBuilder {
 
 impl TestContextBuilder {
   pub fn new() -> Self {
-    Self::default()
+    Self::default().add_compile_env_vars()
   }
 
   pub fn for_npm() -> Self {
@@ -155,6 +156,13 @@ impl TestContextBuilder {
     for (key, value) in env_vars_for_npm_tests() {
       self = self.env(key, value);
     }
+    self
+  }
+
+  pub fn add_compile_env_vars(mut self) -> Self {
+    // The `denort` binary is in the same artifact directory as the `deno` binary.
+    let denort_bin = denort_exe_path();
+    self = self.env("DENORT_BIN", denort_bin.to_string());
     self
   }
 
@@ -236,7 +244,7 @@ impl Default for TestContext {
 
 impl TestContext {
   pub fn with_http_server() -> Self {
-    TestContextBuilder::default().use_http_server().build()
+    TestContextBuilder::new().use_http_server().build()
   }
 
   pub fn deno_dir(&self) -> &TempDir {
@@ -316,6 +324,7 @@ pub struct TestCommandBuilder {
   args_text: String,
   args_vec: Vec<String>,
   split_output: bool,
+  skip_strip_ansi: bool,
 }
 
 impl TestCommandBuilder {
@@ -327,6 +336,7 @@ impl TestCommandBuilder {
       stderr: None,
       stdin_text: None,
       split_output: false,
+      skip_strip_ansi: false,
       cwd: None,
       envs: Default::default(),
       envs_remove: Default::default(),
@@ -407,6 +417,11 @@ impl TestCommandBuilder {
     self
       .envs_remove
       .insert(key.as_ref().to_string_lossy().to_string());
+    self
+  }
+
+  pub fn skip_strip_ansi(mut self) -> Self {
+    self.skip_strip_ansi = true;
     self
   }
 
@@ -533,8 +548,14 @@ impl TestCommandBuilder {
       output
     }
 
-    fn sanitize_output(text: String, args: &[OsString]) -> String {
-      let mut text = strip_ansi_codes(&text).to_string();
+    fn sanitize_output(
+      mut text: String,
+      args: &[OsString],
+      skip_strip_ansi: bool,
+    ) -> String {
+      if !skip_strip_ansi {
+        text = strip_ansi_codes(&text).to_string();
+      }
       // deno test's output capturing flushes with a zero-width space in order to
       // synchronize the output pipes. Occasionally this zero width space
       // might end up in the output so strip it from the output comparison here.
@@ -581,14 +602,15 @@ impl TestCommandBuilder {
     // and dropping it closes them.
     drop(command);
 
-    let combined = combined_reader
-      .map(|pipe| sanitize_output(read_pipe_to_string(pipe), &args));
+    let combined = combined_reader.map(|pipe| {
+      sanitize_output(read_pipe_to_string(pipe), &args, self.skip_strip_ansi)
+    });
 
     let status = process.wait().unwrap();
     let std_out_err = std_out_err_handle.map(|(stdout, stderr)| {
       (
-        sanitize_output(stdout.join().unwrap(), &args),
-        sanitize_output(stderr.join().unwrap(), &args),
+        sanitize_output(stdout.join().unwrap(), &args, self.skip_strip_ansi),
+        sanitize_output(stderr.join().unwrap(), &args, self.skip_strip_ansi),
       )
     });
     let exit_code = status.code();
@@ -687,8 +709,8 @@ impl TestCommandBuilder {
     if !envs.contains_key("DENO_NO_UPDATE_CHECK") {
       envs.insert("DENO_NO_UPDATE_CHECK".to_string(), "1".to_string());
     }
-    if !envs.contains_key("DENO_REGISTRY_URL") {
-      envs.insert("DENO_REGISTRY_URL".to_string(), jsr_registry_unset_url());
+    if !envs.contains_key("JSR_URL") {
+      envs.insert("JSR_URL".to_string(), jsr_registry_unset_url());
     }
     for key in &self.envs_remove {
       envs.remove(key);

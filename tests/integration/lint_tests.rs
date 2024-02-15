@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use test_util::assert_contains;
+use test_util::itest;
 use test_util::TestContextBuilder;
 
 itest!(ignore_unexplicit_files {
