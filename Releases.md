@@ -6,6 +6,23 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.40.5 / 2024.02.15
+
+- feat(lsp): jsr support first pass (#22382)
+- feat(lsp): jsr support with cache probing (#22418)
+- feat(publish): allow passing config flag (#22416)
+- feat(unstable): define config in publish url (#22406)
+- perf: denort binary for `deno compile` (#22205)
+- fix(console): support NO_COLOR and colors option in all scenarios (#21910)
+- fix(ext/node): export process.umask (#22348)
+- fix(ext/web): Prevent (De-)CompressionStream resource leak on stream
+  cancellation (#21199)
+- fix(lsp): complete npm specifier versions correctly (#22332)
+- fix: cache bust jsr deps on constraint failure (#22372)
+- fix: handle non-file scopes in synthetic import map (#22361)
+- fix: lockfile was sometimes getting corrupt when changing config deps (#22359)
+- fix: upgrade to deno_ast 0.33 (#22341)
+
 ### 1.40.4 / 2024.02.08
 
 - feat(unstable): `Deno.FsFile.lock[Sync]()` and `Deno.FsFile.unlock[Sync]()`

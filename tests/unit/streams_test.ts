@@ -1,5 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-import { assertEquals, fail } from "./test_util.ts";
+import { assertEquals, assertRejects, fail } from "./test_util.ts";
 
 const {
   core,
@@ -476,3 +476,60 @@ for (const packetCount of [1, 1024]) {
     assertEquals(await promise, "resource closed");
   });
 }
+
+Deno.test(async function compressionStreamWritableMayBeAborted() {
+  await Promise.all([
+    new CompressionStream("gzip").writable.getWriter().abort(),
+    new CompressionStream("deflate").writable.getWriter().abort(),
+    new CompressionStream("deflate-raw").writable.getWriter().abort(),
+  ]);
+});
+
+Deno.test(async function compressionStreamReadableMayBeCancelled() {
+  await Promise.all([
+    new CompressionStream("gzip").readable.getReader().cancel(),
+    new CompressionStream("deflate").readable.getReader().cancel(),
+    new CompressionStream("deflate-raw").readable.getReader().cancel(),
+  ]);
+});
+
+Deno.test(async function decompressionStreamWritableMayBeAborted() {
+  await Promise.all([
+    new DecompressionStream("gzip").writable.getWriter().abort(),
+    new DecompressionStream("deflate").writable.getWriter().abort(),
+    new DecompressionStream("deflate-raw").writable.getWriter().abort(),
+  ]);
+});
+
+Deno.test(async function decompressionStreamReadableMayBeCancelled() {
+  await Promise.all([
+    new DecompressionStream("gzip").readable.getReader().cancel(),
+    new DecompressionStream("deflate").readable.getReader().cancel(),
+    new DecompressionStream("deflate-raw").readable.getReader().cancel(),
+  ]);
+});
+
+Deno.test(async function decompressionStreamValidGzipDoesNotThrow() {
+  const cs = new CompressionStream("gzip");
+  const ds = new DecompressionStream("gzip");
+  cs.readable.pipeThrough(ds);
+  const writer = cs.writable.getWriter();
+  await writer.write(new Uint8Array([1]));
+  writer.releaseLock();
+  await cs.writable.close();
+  let result = new Uint8Array();
+  for await (const chunk of ds.readable.values()) {
+    result = new Uint8Array([...result, ...chunk]);
+  }
+  assertEquals(result, new Uint8Array([1]));
+});
+
+Deno.test(async function decompressionStreamInvalidGzipStillReported() {
+  await assertRejects(
+    async () => {
+      await new DecompressionStream("gzip").writable.close();
+    },
+    TypeError,
+    "corrupt gzip stream does not have a matching checksum",
+  );
+});

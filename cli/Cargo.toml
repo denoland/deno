@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "1.40.4"
+version = "1.40.5"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -13,6 +13,11 @@ description = "Provides the deno executable"
 [[bin]]
 name = "deno"
 path = "main.rs"
+doc = false
+
+[[bin]]
+name = "denort"
+path = "mainrt.rs"
 doc = false
 
 [[test]]

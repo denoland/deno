@@ -49,12 +49,8 @@ use tokio::select;
 use crate::args::package_json::PackageJsonDeps;
 use crate::args::DenoSubcommand;
 use crate::args::StorageKeyResolver;
-use crate::emit::Emitter;
 use crate::errors;
 use crate::npm::CliNpmResolver;
-use crate::tools;
-use crate::tools::coverage::CoverageCollector;
-use crate::tools::run::hmr::HmrRunner;
 use crate::util::checksum;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::file_watcher::WatcherRestartMode;
@@ -82,7 +78,29 @@ pub trait HasNodeSpecifierChecker: Send + Sync {
   fn has_node_specifier(&self) -> bool;
 }
 
-#[derive(Clone)]
+#[async_trait::async_trait(?Send)]
+pub trait HmrRunner: Send + Sync {
+  async fn start(&mut self) -> Result<(), AnyError>;
+  async fn stop(&mut self) -> Result<(), AnyError>;
+  async fn run(&mut self) -> Result<(), AnyError>;
+}
+
+#[async_trait::async_trait(?Send)]
+pub trait CoverageCollector: Send + Sync {
+  async fn start_collecting(&mut self) -> Result<(), AnyError>;
+  async fn stop_collecting(&mut self) -> Result<(), AnyError>;
+}
+
+pub type CreateHmrRunnerCb = Box<
+  dyn Fn(deno_core::LocalInspectorSession) -> Box<dyn HmrRunner> + Send + Sync,
+>;
+
+pub type CreateCoverageCollectorCb = Box<
+  dyn Fn(deno_core::LocalInspectorSession) -> Box<dyn CoverageCollector>
+    + Send
+    + Sync,
+>;
+
 pub struct CliMainWorkerOptions {
   pub argv: Vec<String>,
   pub log_level: WorkerLogLevel,
@@ -104,6 +122,8 @@ pub struct CliMainWorkerOptions {
   pub unstable: bool,
   pub skip_op_registration: bool,
   pub maybe_root_package_json_deps: Option<PackageJsonDeps>,
+  pub create_hmr_runner: Option<CreateHmrRunnerCb>,
+  pub create_coverage_collector: Option<CreateCoverageCollectorCb>,
 }
 
 struct SharedWorkerState {
@@ -119,12 +139,12 @@ struct SharedWorkerState {
   module_loader_factory: Box<dyn ModuleLoaderFactory>,
   root_cert_store_provider: Arc<dyn RootCertStoreProvider>,
   fs: Arc<dyn deno_fs::FileSystem>,
-  emitter: Option<Arc<Emitter>>,
   maybe_file_watcher_communicator: Option<Arc<WatcherCommunicator>>,
   maybe_inspector_server: Option<Arc<InspectorServer>>,
   maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
   feature_checker: Arc<FeatureChecker>,
   node_ipc: Option<i64>,
+  enable_future_features: bool,
   disable_deprecated_api_warning: bool,
   verbose_deprecated_api_warning: bool,
 }
@@ -324,42 +344,20 @@ impl CliMainWorker {
     self.worker.evaluate_module(id).await
   }
 
-  pub async fn maybe_setup_coverage_collector(
-    &mut self,
-  ) -> Result<Option<CoverageCollector>, AnyError> {
-    if let Some(coverage_dir) = &self.shared.options.coverage_dir {
-      let session = self.worker.create_inspector_session().await;
-
-      let coverage_dir = PathBuf::from(coverage_dir);
-      let mut coverage_collector =
-        tools::coverage::CoverageCollector::new(coverage_dir, session);
-      self
-        .worker
-        .js_runtime
-        .with_event_loop_future(
-          coverage_collector.start_collecting().boxed_local(),
-          PollEventLoopOptions::default(),
-        )
-        .await?;
-      Ok(Some(coverage_collector))
-    } else {
-      Ok(None)
-    }
-  }
-
   pub async fn maybe_setup_hmr_runner(
     &mut self,
-  ) -> Result<Option<HmrRunner>, AnyError> {
+  ) -> Result<Option<Box<dyn HmrRunner>>, AnyError> {
     if !self.shared.options.hmr {
       return Ok(None);
     }
-
-    let watcher_communicator =
-      self.shared.maybe_file_watcher_communicator.clone().unwrap();
-    let emitter = self.shared.emitter.clone().unwrap();
+    let Some(setup_hmr_runner) = self.shared.options.create_hmr_runner.as_ref()
+    else {
+      return Ok(None);
+    };
 
     let session = self.worker.create_inspector_session().await;
-    let mut hmr_runner = HmrRunner::new(emitter, session, watcher_communicator);
+
+    let mut hmr_runner = setup_hmr_runner(session);
 
     self
       .worker
@@ -369,8 +367,29 @@ impl CliMainWorker {
         PollEventLoopOptions::default(),
       )
       .await?;
-
     Ok(Some(hmr_runner))
+  }
+
+  pub async fn maybe_setup_coverage_collector(
+    &mut self,
+  ) -> Result<Option<Box<dyn CoverageCollector>>, AnyError> {
+    let Some(create_coverage_collector) =
+      self.shared.options.create_coverage_collector.as_ref()
+    else {
+      return Ok(None);
+    };
+
+    let session = self.worker.create_inspector_session().await;
+    let mut coverage_collector = create_coverage_collector(session);
+    self
+      .worker
+      .js_runtime
+      .with_event_loop_future(
+        coverage_collector.start_collecting().boxed_local(),
+        PollEventLoopOptions::default(),
+      )
+      .await?;
+    Ok(Some(coverage_collector))
   }
 
   pub fn execute_script_static(
@@ -400,13 +419,13 @@ impl CliMainWorkerFactory {
     module_loader_factory: Box<dyn ModuleLoaderFactory>,
     root_cert_store_provider: Arc<dyn RootCertStoreProvider>,
     fs: Arc<dyn deno_fs::FileSystem>,
-    emitter: Option<Arc<Emitter>>,
     maybe_file_watcher_communicator: Option<Arc<WatcherCommunicator>>,
     maybe_inspector_server: Option<Arc<InspectorServer>>,
     maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
     feature_checker: Arc<FeatureChecker>,
     options: CliMainWorkerOptions,
     node_ipc: Option<i64>,
+    enable_future_features: bool,
     disable_deprecated_api_warning: bool,
     verbose_deprecated_api_warning: bool,
   ) -> Self {
@@ -423,13 +442,13 @@ impl CliMainWorkerFactory {
         compiled_wasm_module_store: Default::default(),
         module_loader_factory,
         root_cert_store_provider,
-        emitter,
         fs,
         maybe_file_watcher_communicator,
         maybe_inspector_server,
         maybe_lockfile,
         feature_checker,
         node_ipc,
+        enable_future_features,
         disable_deprecated_api_warning,
         verbose_deprecated_api_warning,
       }),
@@ -596,6 +615,7 @@ impl CliMainWorkerFactory {
         node_ipc_fd: shared.node_ipc,
         disable_deprecated_api_warning: shared.disable_deprecated_api_warning,
         verbose_deprecated_api_warning: shared.verbose_deprecated_api_warning,
+        future: shared.enable_future_features,
       },
       extensions: custom_extensions,
       startup_snapshot: crate::js::deno_isolate_init(),
@@ -802,6 +822,7 @@ fn create_web_worker_callback(
         node_ipc_fd: None,
         disable_deprecated_api_warning: shared.disable_deprecated_api_warning,
         verbose_deprecated_api_warning: shared.verbose_deprecated_api_warning,
+        future: false,
       },
       extensions: vec![],
       startup_snapshot: crate::js::deno_isolate_init(),

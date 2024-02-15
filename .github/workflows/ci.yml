@@ -149,8 +149,8 @@ jobs:
           fetch-depth: 5
           submodules: false
         if: '!(matrix.skip)'
-      - name: Clone submodule ./test_util/std
-        run: git submodule update --init --recursive --depth=1 -- ./test_util/std
+      - name: Clone submodule ./tests/util/std
+        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
         if: '!(matrix.skip)'
       - name: Clone submodule ./test_util/wpt
         run: git submodule update --init --recursive --depth=1 -- ./test_util/wpt
@@ -354,8 +354,8 @@ jobs:
           path: |-
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
-          key: '74-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-${{ hashFiles(''Cargo.lock'') }}'
-          restore-keys: '74-cargo-home-${{ matrix.os }}-${{ matrix.arch }}'
+          key: '75-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: '75-cargo-home-${{ matrix.os }}-${{ matrix.arch }}'
         if: '!(matrix.skip)'
       - name: Restore cache build output (PR)
         uses: actions/cache/restore@v4
@@ -367,7 +367,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: '74-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-'
+          restore-keys: '75-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-'
       - name: Apply and update mtime cache
         if: '!(matrix.skip) && (!startsWith(github.ref, ''refs/tags/''))'
         uses: ./.github/mtime_cache
@@ -424,6 +424,7 @@ jobs:
         run: |-
           cd target/release
           zip -r deno-${{ matrix.arch }}-unknown-linux-gnu.zip deno
+          zip -r denort-${{ matrix.arch }}-unknown-linux-gnu.zip denort
           ./deno types > lib.deno.d.ts
       - name: Pre-release (mac)
         if: |-
@@ -439,6 +440,7 @@ jobs:
           rcodesign sign target/release/deno --code-signature-flags=runtime --p12-password="$APPLE_CODESIGN_PASSWORD" --p12-file=<(echo $APPLE_CODESIGN_KEY | base64 -d) --entitlements-xml-file=cli/entitlements.plist
           cd target/release
           zip -r deno-${{ matrix.arch }}-apple-darwin.zip deno
+          zip -r denort-${{ matrix.arch }}-apple-darwin.zip denort
       - name: Pre-release (windows)
         if: |-
           !(matrix.skip) && (matrix.os == 'windows' &&
@@ -446,7 +448,9 @@ jobs:
           matrix.profile == 'release' &&
           github.repository == 'denoland/deno')
         shell: pwsh
-        run: 'Compress-Archive -CompressionLevel Optimal -Force -Path target/release/deno.exe -DestinationPath target/release/deno-${{ matrix.arch }}-pc-windows-msvc.zip'
+        run: |-
+          Compress-Archive -CompressionLevel Optimal -Force -Path target/release/deno.exe -DestinationPath target/release/deno-${{ matrix.arch }}-pc-windows-msvc.zip
+          Compress-Archive -CompressionLevel Optimal -Force -Path target/release/denort.exe -DestinationPath target/release/denort-${{ matrix.arch }}-pc-windows-msvc.zip
       - name: Upload canary to dl.deno.land
         if: |-
           !(matrix.skip) && (matrix.job == 'test' &&
@@ -588,6 +592,7 @@ jobs:
         run: |-
           du -hd1 "./target/${{ matrix.profile }}"
           du -ha  "./target/${{ matrix.profile }}/deno"
+          du -ha  "./target/${{ matrix.profile }}/denort"
       - name: Worker info
         if: '!(matrix.skip) && (matrix.job == ''bench'')'
         run: |-
@@ -632,10 +637,15 @@ jobs:
         with:
           files: |-
             target/release/deno-x86_64-pc-windows-msvc.zip
+            target/release/denort-x86_64-pc-windows-msvc.zip
             target/release/deno-x86_64-unknown-linux-gnu.zip
+            target/release/denort-x86_64-unknown-linux-gnu.zip
             target/release/deno-x86_64-apple-darwin.zip
+            target/release/denort-x86_64-apple-darwin.zip
             target/release/deno-aarch64-unknown-linux-gnu.zip
+            target/release/denort-aarch64-unknown-linux-gnu.zip
             target/release/deno-aarch64-apple-darwin.zip
+            target/release/denort-aarch64-apple-darwin.zip
             target/release/deno_src.tar.gz
             target/release/lib.deno.d.ts
           body_path: target/release/release-notes.md
@@ -649,7 +659,7 @@ jobs:
             !./target/*/gn_out
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '74-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-${{ github.sha }}'
+          key: '75-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-${{ github.sha }}'
   publish-canary:
     name: publish canary
     runs-on: ubuntu-22.04

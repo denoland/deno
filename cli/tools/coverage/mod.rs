@@ -46,6 +46,56 @@ pub struct CoverageCollector {
   session: LocalInspectorSession,
 }
 
+#[async_trait::async_trait(?Send)]
+impl crate::worker::CoverageCollector for CoverageCollector {
+  async fn start_collecting(&mut self) -> Result<(), AnyError> {
+    self.enable_debugger().await?;
+    self.enable_profiler().await?;
+    self
+      .start_precise_coverage(cdp::StartPreciseCoverageArgs {
+        call_count: true,
+        detailed: true,
+        allow_triggered_updates: false,
+      })
+      .await?;
+
+    Ok(())
+  }
+
+  async fn stop_collecting(&mut self) -> Result<(), AnyError> {
+    fs::create_dir_all(&self.dir)?;
+
+    let script_coverages = self.take_precise_coverage().await?.result;
+    for script_coverage in script_coverages {
+      // Filter out internal JS files from being included in coverage reports
+      if script_coverage.url.starts_with("ext:")
+        || script_coverage.url.starts_with("[ext:")
+      {
+        continue;
+      }
+
+      let filename = format!("{}.json", Uuid::new_v4());
+      let filepath = self.dir.join(filename);
+
+      let mut out = BufWriter::new(File::create(&filepath)?);
+      let coverage = serde_json::to_string(&script_coverage)?;
+      let formatted_coverage =
+        format_json(&filepath, &coverage, &Default::default())
+          .ok()
+          .flatten()
+          .unwrap_or(coverage);
+
+      out.write_all(formatted_coverage.as_bytes())?;
+      out.flush()?;
+    }
+
+    self.disable_debugger().await?;
+    self.disable_profiler().await?;
+
+    Ok(())
+  }
+}
+
 impl CoverageCollector {
   pub fn new(dir: PathBuf, session: LocalInspectorSession) -> Self {
     Self { dir, session }
@@ -108,53 +158,6 @@ impl CoverageCollector {
     let return_object = serde_json::from_value(return_value)?;
 
     Ok(return_object)
-  }
-
-  pub async fn start_collecting(&mut self) -> Result<(), AnyError> {
-    self.enable_debugger().await?;
-    self.enable_profiler().await?;
-    self
-      .start_precise_coverage(cdp::StartPreciseCoverageArgs {
-        call_count: true,
-        detailed: true,
-        allow_triggered_updates: false,
-      })
-      .await?;
-
-    Ok(())
-  }
-
-  pub async fn stop_collecting(&mut self) -> Result<(), AnyError> {
-    fs::create_dir_all(&self.dir)?;
-
-    let script_coverages = self.take_precise_coverage().await?.result;
-    for script_coverage in script_coverages {
-      // Filter out internal JS files from being included in coverage reports
-      if script_coverage.url.starts_with("ext:")
-        || script_coverage.url.starts_with("[ext:")
-      {
-        continue;
-      }
-
-      let filename = format!("{}.json", Uuid::new_v4());
-      let filepath = self.dir.join(filename);
-
-      let mut out = BufWriter::new(File::create(&filepath)?);
-      let coverage = serde_json::to_string(&script_coverage)?;
-      let formatted_coverage =
-        format_json(&filepath, &coverage, &Default::default())
-          .ok()
-          .flatten()
-          .unwrap_or(coverage);
-
-      out.write_all(formatted_coverage.as_bytes())?;
-      out.flush()?;
-    }
-
-    self.disable_debugger().await?;
-    self.disable_profiler().await?;
-
-    Ok(())
   }
 }
 

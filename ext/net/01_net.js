@@ -605,7 +605,6 @@ export {
   Conn,
   connect,
   createListenDatagram,
-  Datagram,
   listen,
   Listener,
   listenOptionApiName,

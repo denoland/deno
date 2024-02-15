@@ -931,7 +931,10 @@ impl Documents {
         bare_node_builtins_enabled: false,
         sloppy_imports_resolver: None,
       })),
-      jsr_resolver: Default::default(),
+      jsr_resolver: Arc::new(JsrResolver::from_cache_and_lockfile(
+        cache.clone(),
+        None,
+      )),
       npm_specifier_reqs: Default::default(),
       has_injected_types_node_package: false,
       redirect_resolver: Arc::new(RedirectResolver::new(cache)),
@@ -1330,6 +1333,16 @@ impl Documents {
       }
     }
     Ok(())
+  }
+
+  pub fn refresh_jsr_resolver(
+    &mut self,
+    lockfile: Option<Arc<Mutex<Lockfile>>>,
+  ) {
+    self.jsr_resolver = Arc::new(JsrResolver::from_cache_and_lockfile(
+      self.cache.clone(),
+      lockfile,
+    ));
   }
 
   pub fn update_config(&mut self, options: UpdateDocumentConfigOptions) {

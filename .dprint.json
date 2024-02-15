@@ -46,7 +46,7 @@
     "gh-pages",
     "target",
     "tests/ffi/tests/test.js",
-    "test_util/std",
+    "tests/util/std",
     "test_util/wpt",
     "third_party",
     "tools/node_compat/TODO.md",

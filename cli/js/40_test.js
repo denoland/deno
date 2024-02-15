@@ -156,6 +156,7 @@ function populateOpNames() {
 function assertOps(fn) {
   /** @param desc {TestDescription | TestStepDescription} */
   return async function asyncOpSanitizer(desc) {
+    let hasTraces = false;
     if (opNames === null) populateOpNames();
     const res = op_test_op_sanitizer_collect(
       desc.id,
@@ -220,8 +221,7 @@ function assertOps(fn) {
           message += ` This is often caused by not ${hint}.`;
         }
         const traces = [];
-        for (const [id, { opName: traceOpName, stack }] of postTraces) {
-          if (traceOpName !== opName) continue;
+        for (const [id, stack] of postTraces) {
           if (MapPrototypeHas(preTraces, id)) continue;
           ArrayPrototypePush(traces, stack);
         }
@@ -232,6 +232,7 @@ function assertOps(fn) {
           message += " The operations were started here:\n";
           message += ArrayPrototypeJoin(traces, "\n\n");
         }
+        hasTraces |= traces.length > 0;
         ArrayPrototypePush(details, message);
       } else if (diff < 0) {
         const [name, hint] = op_test_op_sanitizer_get_async_message(opName);
@@ -247,8 +248,7 @@ function assertOps(fn) {
           message += ` This is often caused by not ${hint}.`;
         }
         const traces = [];
-        for (const [id, { opName: traceOpName, stack }] of preTraces) {
-          if (opName !== traceOpName) continue;
+        for (const [id, stack] of preTraces) {
           if (MapPrototypeHas(postTraces, id)) continue;
           ArrayPrototypePush(traces, stack);
         }
@@ -259,6 +259,7 @@ function assertOps(fn) {
           message += " The operations were started here:\n";
           message += ArrayPrototypeJoin(traces, "\n\n");
         }
+        hasTraces |= traces.length > 0;
         ArrayPrototypePush(details, message);
       } else {
         throw new Error("unreachable");
@@ -266,7 +267,7 @@ function assertOps(fn) {
     }
 
     return {
-      failed: { leakedOps: [details, core.isOpCallTracingEnabled()] },
+      failed: { leakedOps: [details, hasTraces] },
     };
   };
 }
