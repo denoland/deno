@@ -551,6 +551,7 @@ pub async fn run(
       create_coverage_collector: None,
     },
     None,
+    false,
     // TODO(bartlomieju): temporarily disabled
     // metadata.disable_deprecated_api_warning,
     true,
