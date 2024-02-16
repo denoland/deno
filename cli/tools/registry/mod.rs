@@ -729,7 +729,18 @@ async fn build_and_check_graph_for_publish(
   // todo(dsherret): move to lint rule
   collect_invalid_external_imports(&graph, diagnostics_collector);
 
-  if !allow_slow_types {
+  if allow_slow_types {
+    log::info!(
+      concat!(
+        "{} Publishing a library with slow types is not recommended. ",
+        "This may lead to poor type checking performance for users of ",
+        "your package, may affect the quality of automatic documentation ",
+        "generation, and your package will not be shipped with a .d.ts ",
+        "file for Node.js users."
+      ),
+      colors::yellow("Warning"),
+    );
+  } else {
     log::info!("Checking for slow types in the public API...");
     let mut any_pkg_had_diagnostics = false;
     for package in packages {
@@ -817,10 +828,7 @@ pub async fn publish(
   }
 
   if publish_flags.dry_run {
-    log::warn!(
-      "{} Aborting due to --dry-run",
-      crate::colors::yellow("Warning")
-    );
+    log::warn!("{} Aborting due to --dry-run", colors::yellow("Warning"));
     return Ok(());
   }
 

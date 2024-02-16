@@ -44,13 +44,17 @@ impl PublishDiagnosticsCollector {
     if errors > 0 {
       if has_slow_types_errors {
         eprintln!(
-          "This package contains errors for slow types. Although fixing these errors"
+          "This package contains errors for slow types. Fixing these errors will:\n"
         );
-        eprintln!("will significantly improve the type checking performance of your library,");
         eprintln!(
-          "you can choose to skip it by providing the --allow-slow-types flag."
+          "  1. Significantly improve your package's type checking performance."
         );
-        eprintln!();
+        eprintln!("  2. Improve the automatic documentation generation.");
+        eprintln!("  3. Enable automatic .d.ts generation for Node.js.");
+        eprintln!(
+          "\nDon't want to bother? You can choose to skip this step by"
+        );
+        eprintln!("providing the --allow-slow-types flag.\n");
       }
 
       Err(anyhow!(
