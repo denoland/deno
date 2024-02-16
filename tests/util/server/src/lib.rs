@@ -67,9 +67,12 @@ pub fn env_vars_for_jsr_tests() -> Vec<(String, String)> {
 pub fn root_path() -> PathRef {
   PathRef::new(
     PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR")))
-      .parent().unwrap()
-      .parent().unwrap()
-      .parent().unwrap()
+      .parent()
+      .unwrap()
+      .parent()
+      .unwrap()
+      .parent()
+      .unwrap(),
   )
 }
 
@@ -128,9 +131,7 @@ pub fn std_file_url() -> String {
 
 pub fn target_dir() -> PathRef {
   let current_exe = std::env::current_exe().unwrap();
-  let target_dir = current_exe
-    .parent().unwrap()
-    .parent().unwrap();
+  let target_dir = current_exe.parent().unwrap().parent().unwrap();
   PathRef::new(target_dir)
 }
 
