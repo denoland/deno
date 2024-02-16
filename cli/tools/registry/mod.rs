@@ -731,39 +731,42 @@ async fn build_and_check_graph_for_publish(
 
   if !allow_slow_types {
     log::info!("Checking for slow types in the public API...");
+    let mut any_pkg_had_diagnostics = false;
     for package in packages {
       let export_urls = package.config_file.resolve_export_value_urls()?;
       let diagnostics =
         no_slow_types::collect_no_slow_type_diagnostics(&export_urls, &graph);
-      if diagnostics.is_empty() {
-        // this is a temporary measure until we know that fast check is reliable and stable
-        let check_diagnostics = type_checker
-          .check_diagnostics(
-            graph.clone(),
-            CheckOptions {
-              lib: cli_options.ts_type_lib_window(),
-              log_ignored_options: false,
-              reload: cli_options.reload_flag(),
-            },
-          )
-          .await?;
-        if !check_diagnostics.is_empty() {
-          bail!(
-              concat!(
-                "Failed ensuring fast types are valid for '{}'.\n",
-                "{:#}\n\n",
-                "You may have discovered a bug in Deno's fast types implementation. ",
-                "Fast types is still early days and we would appreciate if you log a ",
-                "bug: https://github.com/denoland/deno/issues/"
-              ),
-              package.package_name,
-              check_diagnostics
-            );
-        }
-      } else {
+      if !diagnostics.is_empty() {
+        any_pkg_had_diagnostics = true;
         for diagnostic in diagnostics {
           diagnostics_collector.push(PublishDiagnostic::FastCheck(diagnostic));
         }
+      }
+    }
+
+    if !any_pkg_had_diagnostics {
+      // this is a temporary measure until we know that fast check is reliable and stable
+      let check_diagnostics = type_checker
+        .check_diagnostics(
+          graph.clone(),
+          CheckOptions {
+            lib: cli_options.ts_type_lib_window(),
+            log_ignored_options: false,
+            reload: cli_options.reload_flag(),
+          },
+        )
+        .await?;
+      if !check_diagnostics.is_empty() {
+        bail!(
+          concat!(
+      "Failed ensuring fast types are valid.\n",
+      "{:#}\n\n",
+      "You may have discovered a bug in Deno's fast types implementation. ",
+      "Fast types is still early days and we would appreciate if you log a ",
+      "bug: https://github.com/denoland/deno/issues/"
+    ),
+          check_diagnostics
+        );
       }
     }
   }
