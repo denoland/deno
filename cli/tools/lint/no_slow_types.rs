@@ -16,7 +16,8 @@ pub fn collect_no_slow_type_diagnostics(
     .iter()
     .filter_map(|url| graph.get(url).and_then(|m| m.js()));
   // fast check puts the same diagnostics in each entrypoint for the
-  // package, so we only need to check the first one
+  // package (since it's all or nothing), so we only need to check
+  // the first one JS entrypoint
   let Some(module) = js_exports.next() else {
     // could happen if all the exports are JSON
     return Ok(vec![]);
@@ -24,9 +25,9 @@ pub fn collect_no_slow_type_diagnostics(
 
   if let Some(diagnostics) = module.fast_check_diagnostics() {
     // todo(https://github.com/denoland/deno_graph/issues/384): move to deno_graph
-    let mut diagnostics = diagnostics.iter().cloned().collect::<Vec<_>>();
+    let mut diagnostics = diagnostics.clone();
     diagnostics.sort_by_cached_key(|d| {
-      (d.specifier().clone(), d.range().map(|r| r.range.clone()))
+      (d.specifier().clone(), d.range().map(|r| r.range))
     });
     Ok(diagnostics)
   } else {

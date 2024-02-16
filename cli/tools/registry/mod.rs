@@ -733,12 +733,12 @@ async fn build_and_check_graph_for_publish(
     log::info!("Checking for slow public types...");
     for package in packages {
       let diagnostics =
-        no_slow_types::collect_no_slow_type_diagnostics(&package, &graph)?;
+        no_slow_types::collect_no_slow_type_diagnostics(package, &graph)?;
       if diagnostics.is_empty() {
         // this is a temporary measure until we know that fast check is reliable and stable
         let check_diagnostics = type_checker
           .check_diagnostics(
-            graph.clone().into(),
+            graph.clone(),
             CheckOptions {
               lib: cli_options.ts_type_lib_window(),
               log_ignored_options: false,
