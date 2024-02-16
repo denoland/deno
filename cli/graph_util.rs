@@ -5,6 +5,7 @@ use crate::args::CliOptions;
 use crate::args::Lockfile;
 use crate::args::TsTypeLib;
 use crate::cache;
+use crate::cache::FastCheckCache;
 use crate::cache::GlobalHttpCache;
 use crate::cache::ModuleInfoCache;
 use crate::cache::ParsedSourceCache;
@@ -215,6 +216,7 @@ pub struct CreateGraphOptions<'a> {
 
 pub struct ModuleGraphBuilder {
   options: Arc<CliOptions>,
+  caches: Arc<cache::Caches>,
   fs: Arc<dyn FileSystem>,
   resolver: Arc<CliGraphResolver>,
   npm_resolver: Arc<dyn CliNpmResolver>,
@@ -232,6 +234,7 @@ impl ModuleGraphBuilder {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
     options: Arc<CliOptions>,
+    caches: Arc<cache::Caches>,
     fs: Arc<dyn FileSystem>,
     resolver: Arc<CliGraphResolver>,
     npm_resolver: Arc<dyn CliNpmResolver>,
@@ -246,6 +249,7 @@ impl ModuleGraphBuilder {
   ) -> Self {
     Self {
       options,
+      caches,
       fs,
       resolver,
       npm_resolver,
@@ -321,14 +325,24 @@ impl ModuleGraphBuilder {
     };
 
     let mut graph = ModuleGraph::new(options.graph_kind);
+    let fast_check_cache =
+      if options.graph_kind.include_types() && !options.workspace_fast_check {
+        Some(FastCheckCache::new(self.caches.fast_check_db()))
+      } else {
+        None
+      };
     self
       .build_graph_with_npm_resolution(
         &mut graph,
         options.roots,
         loader.as_mut_loader(),
         deno_graph::BuildOptions {
+          fast_check_dts: false,
           is_dynamic: false,
           imports: maybe_imports,
+          fast_check_cache: fast_check_cache
+            .as_ref()
+            .map(|r| r.as_deno_graph_cache()),
           resolver: Some(graph_resolver),
           file_system: Some(&DenoGraphFsAdapter(self.fs.as_ref())),
           npm_resolver: Some(graph_npm_resolver),
@@ -354,38 +368,15 @@ impl ModuleGraphBuilder {
     &self,
     roots: Vec<ModuleSpecifier>,
   ) -> Result<Arc<deno_graph::ModuleGraph>, AnyError> {
-    let mut cache = self.create_graph_loader();
-    let maybe_imports = self.options.to_maybe_imports()?;
-    let cli_resolver = self.resolver.clone();
-    let graph_resolver = cli_resolver.as_graph_resolver();
-    let graph_npm_resolver = cli_resolver.as_graph_npm_resolver();
-    let parser = self.parsed_source_cache.as_capturing_parser();
-    let analyzer = self.module_info_cache.as_module_analyzer(&parser);
     let graph_kind = self.options.type_check_mode().as_graph_kind();
-    let mut graph = ModuleGraph::new(graph_kind);
-    let maybe_file_watcher_reporter = self
-      .maybe_file_watcher_reporter
-      .as_ref()
-      .map(|r| r.as_reporter());
 
-    self
-      .build_graph_with_npm_resolution(
-        &mut graph,
+    let graph = self
+      .create_graph_with_options(CreateGraphOptions {
+        graph_kind,
         roots,
-        &mut cache,
-        deno_graph::BuildOptions {
-          is_dynamic: false,
-          imports: maybe_imports,
-          file_system: Some(&DenoGraphFsAdapter(self.fs.as_ref())),
-          resolver: Some(graph_resolver),
-          npm_resolver: Some(graph_npm_resolver),
-          module_analyzer: Some(&analyzer),
-          module_parser: Some(&parser),
-          reporter: maybe_file_watcher_reporter,
-          workspace_fast_check: false,
-          workspace_members: self.get_deno_graph_workspace_members()?,
-        },
-      )
+        loader: None,
+        workspace_fast_check: false,
+      })
       .await?;
 
     let graph = Arc::new(graph);

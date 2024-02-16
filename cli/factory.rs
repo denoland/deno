@@ -216,8 +216,11 @@ impl CliFactory {
           _ = caches.dep_analysis_db();
           _ = caches.node_analysis_db();
         }
-        DenoSubcommand::Check(_) => {
+        DenoSubcommand::Check(_)
+        | DenoSubcommand::Bench(_)
+        | DenoSubcommand::Test(_) => {
           _ = caches.dep_analysis_db();
+          _ = caches.fast_check_db();
           _ = caches.node_analysis_db();
           _ = caches.type_checking_cache_db();
         }
@@ -610,6 +613,7 @@ impl CliFactory {
       .get_or_try_init_async(async {
         Ok(Arc::new(ModuleGraphBuilder::new(
           self.options.clone(),
+          self.caches()?.clone(),
           self.fs().clone(),
           self.resolver().await?.clone(),
           self.npm_resolver().await?.clone(),

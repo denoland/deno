@@ -139,6 +139,8 @@ impl ModuleLoadPreparer {
 
     let parser = self.parsed_source_cache.as_capturing_parser();
     let analyzer = self.module_info_cache.as_module_analyzer(&parser);
+    let should_type_check = self.options.type_check_mode().is_true()
+      && !self.graph_container.is_type_checked(&roots, lib);
 
     log::debug!("Creating module graph.");
     let mut graph_update_permit =
