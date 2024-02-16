@@ -180,10 +180,14 @@ async fn lint_files(
       let module_graph_builder = factory.module_graph_builder().await?.clone();
       futures.push(deno_core::unsync::spawn(async move {
         let graph = module_graph_builder.create_publish_graph(&members).await?;
+        // todo(dsherret): this isn't exactly correct as linting isn't properly
+        // setup to handle workspaces. Iterating over the workspace members
+        // should be done at a higher level because it also needs to take into
+        // account the config per workspace member.
         for member in &members {
-          let result =
+          let diagnostics =
             no_slow_types::collect_no_slow_type_diagnostics(member, &graph)?;
-          if let no_slow_types::NoSlowTypesOutput::Fail(diagnostics) = result {
+          if !diagnostics.is_empty() {
             has_error.raise();
             let mut reporter = reporter_lock.lock();
             for diagnostic in &diagnostics {
@@ -713,8 +717,9 @@ pub fn get_configured_rules(
   maybe_config_file: Option<&deno_config::ConfigFile>,
 ) -> ConfiguredRules {
   const NO_SLOW_TYPES_NAME: &str = "no-slow-types";
-  let implicit_no_slow_types =
-    maybe_config_file.map(|c| c.is_package()).unwrap_or(false);
+  let implicit_no_slow_types = maybe_config_file
+    .map(|c| c.is_package() || !c.json.workspaces.is_empty())
+    .unwrap_or(false);
   if rules.tags.is_none() && rules.include.is_none() && rules.exclude.is_none()
   {
     ConfiguredRules {

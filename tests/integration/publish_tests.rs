@@ -83,7 +83,9 @@ fn publish_non_exported_files_using_import_map() {
     .new_command()
     .args("publish --log-level=debug --token 'sadfasdf'")
     .run();
+  output.assert_exit_code(0);
   let lines = output.combined_output().split('\n').collect::<Vec<_>>();
+  eprintln!("{}", output.combined_output());
   assert!(lines
     .iter()
     .any(|l| l.contains("Unfurling") && l.ends_with("mod.ts")));

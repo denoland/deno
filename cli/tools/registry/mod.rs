@@ -732,23 +732,22 @@ async fn build_and_check_graph_for_publish(
   if !allow_slow_types {
     log::info!("Checking for slow public types...");
     for package in packages {
-      let output =
+      let diagnostics =
         no_slow_types::collect_no_slow_type_diagnostics(&package, &graph)?;
-      match output {
-        no_slow_types::NoSlowTypesOutput::Pass => {
-          // this is a temporary measure until we know that fast check is reliable and stable
-          let check_diagnostics = type_checker
-            .check_diagnostics(
-              graph.clone().into(),
-              CheckOptions {
-                lib: cli_options.ts_type_lib_window(),
-                log_ignored_options: false,
-                reload: cli_options.reload_flag(),
-              },
-            )
-            .await?;
-          if !check_diagnostics.is_empty() {
-            bail!(
+      if diagnostics.is_empty() {
+        // this is a temporary measure until we know that fast check is reliable and stable
+        let check_diagnostics = type_checker
+          .check_diagnostics(
+            graph.clone().into(),
+            CheckOptions {
+              lib: cli_options.ts_type_lib_window(),
+              log_ignored_options: false,
+              reload: cli_options.reload_flag(),
+            },
+          )
+          .await?;
+        if !check_diagnostics.is_empty() {
+          bail!(
               concat!(
                 "Failed ensuring fast types are valid for '{}'.\n",
                 "{:#}\n\n",
@@ -759,16 +758,10 @@ async fn build_and_check_graph_for_publish(
               package.package_name,
               check_diagnostics
             );
-          }
         }
-        no_slow_types::NoSlowTypesOutput::HasJsExport => {
-          // ignore
-        }
-        no_slow_types::NoSlowTypesOutput::Fail(diagnostics) => {
-          for diagnostic in diagnostics {
-            diagnostics_collector
-              .push(PublishDiagnostic::FastCheck(diagnostic));
-          }
+      } else {
+        for diagnostic in diagnostics {
+          diagnostics_collector.push(PublishDiagnostic::FastCheck(diagnostic));
         }
       }
     }
