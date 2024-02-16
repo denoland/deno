@@ -1,10 +1,10 @@
-Check [WILDCARD]/test/resource_sanitizer.ts
-running 1 test from ./test/resource_sanitizer.ts
+Check [WILDCARD]/resource_sanitizer.ts
+running 1 test from [WILDCARD]/resource_sanitizer.ts
 leak ... FAILED ([WILDCARD])
 
  ERRORS 
 
-leak => ./test/resource_sanitizer.ts:[WILDCARD]
+leak => [WILDCARD]/resource_sanitizer.ts:[WILDCARD]
 error: Leaking resources:
 [UNORDERED_START]
   - The stdin pipe was opened before the test started, but was closed during the test. Do not close resources in a test that were not created during that test.
@@ -13,7 +13,7 @@ error: Leaking resources:
 
  FAILURES 
 
-leak => ./test/resource_sanitizer.ts:[WILDCARD]
+leak => [WILDCARD]/resource_sanitizer.ts:[WILDCARD]
 
 FAILED | 0 passed | 1 failed ([WILDCARD])
 
