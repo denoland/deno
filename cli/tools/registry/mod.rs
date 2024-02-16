@@ -730,7 +730,7 @@ async fn build_and_check_graph_for_publish(
   collect_invalid_external_imports(&graph, diagnostics_collector);
 
   if !allow_slow_types {
-    log::info!("Checking for slow public types...");
+    log::info!("Checking for slow types in the public API...");
     for package in packages {
       let export_urls = package.config_file.resolve_export_value_urls()?;
       let diagnostics =
