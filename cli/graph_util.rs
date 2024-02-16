@@ -206,6 +206,7 @@ pub fn graph_lock_or_exit(graph: &ModuleGraph, lockfile: &mut Lockfile) {
 pub struct CreateGraphOptions<'a> {
   pub graph_kind: GraphKind,
   pub roots: Vec<ModuleSpecifier>,
+  pub is_dynamic: bool,
   /// Whether to do fast check on workspace members. This is mostly only
   /// useful when publishing.
   pub workspace_fast_check: bool,
@@ -279,6 +280,7 @@ impl ModuleGraphBuilder {
   ) -> Result<deno_graph::ModuleGraph, AnyError> {
     self
       .create_graph_with_options(CreateGraphOptions {
+        is_dynamic: false,
         graph_kind,
         roots,
         loader: Some(loader),
@@ -291,54 +293,10 @@ impl ModuleGraphBuilder {
     &self,
     options: CreateGraphOptions<'_>,
   ) -> Result<deno_graph::ModuleGraph, AnyError> {
-    enum MutLoaderRef<'a> {
-      Borrowed(&'a mut dyn Loader),
-      Owned(cache::FetchCacher),
-    }
-
-    impl<'a> MutLoaderRef<'a> {
-      pub fn as_mut_loader(&mut self) -> &mut dyn Loader {
-        match self {
-          Self::Borrowed(loader) => *loader,
-          Self::Owned(loader) => loader,
-        }
-      }
-    }
-
-    let parser = self.parsed_source_cache.as_capturing_parser();
-    let analyzer = self.module_info_cache.as_module_analyzer(&parser);
-    let maybe_imports = self.options.to_maybe_imports()?;
-    let cli_resolver = self.resolver.clone();
-    let graph_resolver = cli_resolver.as_graph_resolver();
-    let graph_npm_resolver = cli_resolver.as_graph_npm_resolver();
-    let maybe_file_watcher_reporter = self
-      .maybe_file_watcher_reporter
-      .as_ref()
-      .map(|r| r.as_reporter());
-    let mut loader = match options.loader {
-      Some(loader) => MutLoaderRef::Borrowed(loader),
-      None => MutLoaderRef::Owned(self.create_graph_loader()),
-    };
-
     let mut graph = ModuleGraph::new(options.graph_kind);
+
     self
-      .build_graph_with_npm_resolution(
-        &mut graph,
-        options.roots,
-        loader.as_mut_loader(),
-        deno_graph::BuildOptions {
-          is_dynamic: false,
-          imports: maybe_imports,
-          resolver: Some(graph_resolver),
-          file_system: Some(&DenoGraphFsAdapter(self.fs.as_ref())),
-          npm_resolver: Some(graph_npm_resolver),
-          module_analyzer: Some(&analyzer),
-          module_parser: Some(&parser),
-          reporter: maybe_file_watcher_reporter,
-          workspace_fast_check: options.workspace_fast_check,
-          workspace_members: self.get_deno_graph_workspace_members()?,
-        },
-      )
+      .build_graph_with_npm_resolution(&mut graph, options)
       .await?;
 
     if let Some(npm_resolver) = self.npm_resolver.as_managed() {
@@ -354,38 +312,16 @@ impl ModuleGraphBuilder {
     &self,
     roots: Vec<ModuleSpecifier>,
   ) -> Result<Arc<deno_graph::ModuleGraph>, AnyError> {
-    let mut cache = self.create_graph_loader();
-    let maybe_imports = self.options.to_maybe_imports()?;
-    let cli_resolver = self.resolver.clone();
-    let graph_resolver = cli_resolver.as_graph_resolver();
-    let graph_npm_resolver = cli_resolver.as_graph_npm_resolver();
-    let parser = self.parsed_source_cache.as_capturing_parser();
-    let analyzer = self.module_info_cache.as_module_analyzer(&parser);
     let graph_kind = self.options.type_check_mode().as_graph_kind();
-    let mut graph = ModuleGraph::new(graph_kind);
-    let maybe_file_watcher_reporter = self
-      .maybe_file_watcher_reporter
-      .as_ref()
-      .map(|r| r.as_reporter());
 
-    self
-      .build_graph_with_npm_resolution(
-        &mut graph,
+    let graph = self
+      .create_graph_with_options(CreateGraphOptions {
+        is_dynamic: false,
+        graph_kind,
         roots,
-        &mut cache,
-        deno_graph::BuildOptions {
-          is_dynamic: false,
-          imports: maybe_imports,
-          file_system: Some(&DenoGraphFsAdapter(self.fs.as_ref())),
-          resolver: Some(graph_resolver),
-          npm_resolver: Some(graph_npm_resolver),
-          module_analyzer: Some(&analyzer),
-          module_parser: Some(&parser),
-          reporter: maybe_file_watcher_reporter,
-          workspace_fast_check: false,
-          workspace_members: self.get_deno_graph_workspace_members()?,
-        },
-      )
+        loader: None,
+        workspace_fast_check: false,
+      })
       .await?;
 
     let graph = Arc::new(graph);
@@ -441,6 +377,60 @@ impl ModuleGraphBuilder {
   }
 
   pub async fn build_graph_with_npm_resolution<'a>(
+    &self,
+    graph: &mut ModuleGraph,
+    options: CreateGraphOptions<'a>,
+  ) -> Result<(), AnyError> {
+    enum MutLoaderRef<'a> {
+      Borrowed(&'a mut dyn Loader),
+      Owned(cache::FetchCacher),
+    }
+
+    impl<'a> MutLoaderRef<'a> {
+      pub fn as_mut_loader(&mut self) -> &mut dyn Loader {
+        match self {
+          Self::Borrowed(loader) => *loader,
+          Self::Owned(loader) => loader,
+        }
+      }
+    }
+
+    let maybe_imports = self.options.to_maybe_imports()?;
+    let parser = self.parsed_source_cache.as_capturing_parser();
+    let analyzer = self.module_info_cache.as_module_analyzer(&parser);
+    let mut loader = match options.loader {
+      Some(loader) => MutLoaderRef::Borrowed(loader),
+      None => MutLoaderRef::Owned(self.create_graph_loader()),
+    };
+    let cli_resolver = self.resolver.clone();
+    let graph_resolver = cli_resolver.as_graph_resolver();
+    let graph_npm_resolver = cli_resolver.as_graph_npm_resolver();
+    let maybe_file_watcher_reporter = self
+      .maybe_file_watcher_reporter
+      .as_ref()
+      .map(|r| r.as_reporter());
+    self
+      .build_graph_with_npm_resolution_and_build_options(
+        graph,
+        options.roots,
+        loader.as_mut_loader(),
+        deno_graph::BuildOptions {
+          is_dynamic: options.is_dynamic,
+          imports: maybe_imports,
+          resolver: Some(graph_resolver),
+          file_system: Some(&DenoGraphFsAdapter(self.fs.as_ref())),
+          npm_resolver: Some(graph_npm_resolver),
+          module_analyzer: Some(&analyzer),
+          module_parser: Some(&parser),
+          reporter: maybe_file_watcher_reporter,
+          workspace_fast_check: options.workspace_fast_check,
+          workspace_members: self.get_deno_graph_workspace_members()?,
+        },
+      )
+      .await
+  }
+
+  async fn build_graph_with_npm_resolution_and_build_options<'a>(
     &self,
     graph: &mut ModuleGraph,
     roots: Vec<ModuleSpecifier>,
@@ -841,7 +831,7 @@ impl deno_graph::source::Reporter for FileWatcherReporter {
   }
 }
 
-pub fn workspace_config_to_workspace_members(
+fn workspace_config_to_workspace_members(
   workspace_config: &deno_config::WorkspaceConfig,
 ) -> Result<Vec<deno_graph::WorkspaceMember>, AnyError> {
   workspace_config
