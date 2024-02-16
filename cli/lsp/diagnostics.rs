@@ -1558,7 +1558,7 @@ mod tests {
   use std::path::Path;
   use std::path::PathBuf;
   use std::sync::Arc;
-  use test_util::TempDir;
+  use test_server::TempDir;
 
   fn mock_state_snapshot(
     fixtures: &[(&str, &str, i32, LanguageId)],

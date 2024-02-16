@@ -12,7 +12,7 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::process::Stdio;
 use std::time::SystemTime;
-use test_util::PathRef;
+use test_server::PathRef;
 
 include!("../util/time.rs");
 
@@ -165,7 +165,7 @@ fn run_exec_time(
   deno_exe: &Path,
   target_dir: &PathRef,
 ) -> Result<HashMap<String, HashMap<String, f64>>> {
-  let hyperfine_exe = test_util::prebuilt_tool_path("hyperfine").to_string();
+  let hyperfine_exe = test_server::prebuilt_tool_path("hyperfine").to_string();
 
   let benchmark_file = target_dir.join("hyperfine_results.json");
   let benchmark_file_str = benchmark_file.to_string();
@@ -197,7 +197,7 @@ fn run_exec_time(
     ));
   }
 
-  test_util::run(
+  test_server::run(
     &command.iter().map(|s| s.as_ref()).collect::<Vec<_>>(),
     None,
     None,
@@ -263,7 +263,7 @@ fn get_binary_sizes(target_dir: &Path) -> Result<HashMap<String, i64>> {
 
   sizes.insert(
     "deno".to_string(),
-    test_util::deno_exe_path().as_path().metadata()?.len() as i64,
+    test_server::deno_exe_path().as_path().metadata()?.len() as i64,
   );
 
   // add up size for everything in target/release/deps/libswc*
@@ -314,7 +314,7 @@ fn bundle_benchmark(deno_exe: &Path) -> Result<HashMap<String, i64>> {
 
   for (name, url) in BUNDLES {
     let path = format!("{name}.bundle.js");
-    test_util::run(
+    test_server::run(
       &[
         deno_exe.to_str().unwrap(),
         "bundle",
@@ -356,7 +356,7 @@ fn run_max_mem_benchmark(deno_exe: &Path) -> Result<HashMap<String, i64>> {
 
     results.insert(
       name.to_string(),
-      test_util::parse_max_mem(&out).unwrap() as i64,
+      test_server::parse_max_mem(&out).unwrap() as i64,
     );
   }
 
@@ -364,7 +364,7 @@ fn run_max_mem_benchmark(deno_exe: &Path) -> Result<HashMap<String, i64>> {
 }
 
 fn cargo_deps() -> usize {
-  let cargo_lock = test_util::root_path().join("Cargo.lock");
+  let cargo_lock = test_server::root_path().join("Cargo.lock");
   let mut count = 0;
   let file = std::fs::File::open(cargo_lock).unwrap();
   use std::io::BufRead;
@@ -430,13 +430,13 @@ async fn main() -> Result<()> {
 
   println!("Starting Deno benchmark");
 
-  let target_dir = test_util::target_dir();
-  let deno_exe = test_util::deno_exe_path().to_path_buf();
-  env::set_current_dir(test_util::root_path())?;
+  let target_dir = test_server::target_dir();
+  let deno_exe = test_server::deno_exe_path().to_path_buf();
+  env::set_current_dir(test_server::root_path())?;
 
   let mut new_data = BenchResult {
     created_at: utc_now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
-    sha1: test_util::run_collect(
+    sha1: test_server::run_collect(
       &["git", "rev-parse", "HEAD"],
       None,
       None,
@@ -517,7 +517,7 @@ async fn main() -> Result<()> {
       let mut output = String::new();
       file.as_file_mut().read_to_string(&mut output)?;
 
-      let strace_result = test_util::parse_strace_output(&output);
+      let strace_result = test_server::parse_strace_output(&output);
       let clone =
         strace_result
           .get("clone")

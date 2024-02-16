@@ -392,7 +392,7 @@ mod test {
 
   #[tokio::test]
   async fn test_http_client_download_redirect() {
-    let _http_server_guard = test_util::http_server();
+    let _http_server_guard = test_server::http_server();
     let client = HttpClient::new(None, None);
 
     // make a request to the redirect server

@@ -4,7 +4,7 @@ use std::io::BufRead;
 use std::io::BufReader;
 use std::time::Duration;
 use std::time::Instant;
-use test_util as util;
+use test_server as util;
 
 util::unit_test_factory!(
   js_unit_test,

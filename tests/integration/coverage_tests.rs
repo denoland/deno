@@ -2,9 +2,9 @@
 
 use deno_core::serde_json;
 use std::fs;
-use test_util as util;
-use test_util::itest;
-use test_util::TempDir;
+use test_server as util;
+use test_server::itest;
+use test_server::TempDir;
 use util::assert_starts_with;
 use util::env_vars_for_npm_tests;
 use util::TestContext;

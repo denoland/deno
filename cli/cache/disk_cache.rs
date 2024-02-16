@@ -127,7 +127,7 @@ impl DiskCache {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use test_util::TempDir;
+  use test_server::TempDir;
 
   #[test]
   fn test_set_get_cache_file() {

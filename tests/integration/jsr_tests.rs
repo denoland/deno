@@ -3,8 +3,8 @@
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_lockfile::Lockfile;
-use test_util as util;
-use test_util::itest;
+use test_server as util;
+use test_server::itest;
 use url::Url;
 use util::env_vars_for_jsr_tests;
 use util::TestContextBuilder;

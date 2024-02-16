@@ -893,7 +893,8 @@ mod tests {
   use deno_core::OpState;
   use deno_graph::GraphKind;
   use deno_graph::ModuleGraph;
-  use test_util::PathRef;
+  use test_server::PathRef;
+  use tokio::test;
 
   #[derive(Debug, Default)]
   pub struct MockLoader {
@@ -931,7 +932,7 @@ mod tests {
     let specifier = maybe_specifier
       .unwrap_or_else(|| ModuleSpecifier::parse("file:///main.ts").unwrap());
     let hash_data = maybe_hash_data.unwrap_or(0);
-    let fixtures = test_util::testdata_path().join("tsc2");
+    let fixtures = test_server::testdata_path().join("tsc2");
     let mut loader = MockLoader { fixtures };
     let mut graph = ModuleGraph::new(GraphKind::TypesOnly);
     graph
@@ -957,7 +958,7 @@ mod tests {
     specifier: &ModuleSpecifier,
   ) -> Result<Response, AnyError> {
     let hash_data = 123; // something random
-    let fixtures = test_util::testdata_path().join("tsc2");
+    let fixtures = test_server::testdata_path().join("tsc2");
     let mut loader = MockLoader { fixtures };
     let mut graph = ModuleGraph::new(GraphKind::TypesOnly);
     graph
@@ -1002,7 +1003,7 @@ mod tests {
   // to allow removing some of the ops before taking a snapshot.
   #[ignore]
   #[test]
-  fn test_compiler_snapshot() {
+  async fn test_compiler_snapshot() {
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       startup_snapshot: Some(compiler_snapshot()),
       ..Default::default()
@@ -1028,7 +1029,7 @@ mod tests {
   }
 
   #[test]
-  fn test_hash_url() {
+  async fn test_hash_url() {
     let specifier = deno_core::resolve_url(
       "data:application/javascript,console.log(\"Hello%20Deno\");",
     )

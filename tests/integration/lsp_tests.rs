@@ -8,12 +8,12 @@ use deno_core::serde_json::Value;
 use deno_core::url::Url;
 use pretty_assertions::assert_eq;
 use std::fs;
-use test_util::assert_starts_with;
-use test_util::deno_cmd_with_deno_dir;
-use test_util::env_vars_for_npm_tests;
-use test_util::lsp::LspClient;
-use test_util::testdata_path;
-use test_util::TestContextBuilder;
+use test_server::assert_starts_with;
+use test_server::deno_cmd_with_deno_dir;
+use test_server::env_vars_for_npm_tests;
+use test_server::lsp::LspClient;
+use test_server::testdata_path;
+use test_server::TestContextBuilder;
 use tower_lsp::lsp_types as lsp;
 
 #[test]

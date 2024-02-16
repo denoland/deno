@@ -16,7 +16,7 @@ crate-type = ["cdylib"]
 napi-sys = { version = "=2.2.2", default-features = false, features = ["napi7"] }
 
 [dev-dependencies]
-test_util.workspace = true
+test_server.workspace = true
 
 [build-dependencies]
 napi-build = "1"

@@ -152,7 +152,7 @@ fn compute_emit_hash(bytes: &[u8], cli_version: &str) -> String {
 
 #[cfg(test)]
 mod test {
-  use test_util::TempDir;
+  use test_server::TempDir;
 
   use super::*;
 

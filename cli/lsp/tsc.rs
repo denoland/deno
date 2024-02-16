@@ -4592,7 +4592,7 @@ mod tests {
   use crate::lsp::text::LineIndex;
   use pretty_assertions::assert_eq;
   use std::path::Path;
-  use test_util::TempDir;
+  use test_server::TempDir;
 
   fn mock_state_snapshot(
     fixtures: &[(&str, &str, i32, LanguageId)],

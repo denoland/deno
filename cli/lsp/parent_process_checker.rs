@@ -54,7 +54,7 @@ fn is_process_active(process_id: u32) -> bool {
 mod test {
   use super::is_process_active;
   use std::process::Command;
-  use test_util::deno_exe_path;
+  use test_server::deno_exe_path;
 
   #[test]
   fn process_active() {

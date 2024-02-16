@@ -1,9 +1,9 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use flaky_test::flaky_test;
-use test_util as util;
-use test_util::assert_contains;
-use test_util::TempDir;
+use test_server as util;
+use test_server::assert_contains;
+use test_server::TempDir;
 use tokio::io::AsyncBufReadExt;
 use util::DenoChild;
 

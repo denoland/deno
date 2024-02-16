@@ -136,7 +136,7 @@ nix.workspace = true
 
 [dev-dependencies]
 # Used in benchmark
-test_util.workspace = true
+test_server.workspace = true
 
 [package.metadata.docs.rs]
 features = ["docsrs"]

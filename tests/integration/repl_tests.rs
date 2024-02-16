@@ -1,9 +1,9 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use test_util as util;
-use test_util::assert_contains;
-use test_util::assert_ends_with;
-use test_util::assert_not_contains;
+use test_server as util;
+use test_server::assert_contains;
+use test_server::assert_ends_with;
+use test_server::assert_not_contains;
 use util::TempDir;
 use util::TestContext;
 use util::TestContextBuilder;
@@ -698,7 +698,7 @@ fn eval_flag_parse_error() {
     false,
   );
   assert_contains!(
-    test_util::strip_ansi_codes(&out),
+    test_server::strip_ansi_codes(&out),
     "Error in --eval flag: parse error: Unexpected token `%`."
   );
   assert_contains!(out, "2500"); // should not prevent input

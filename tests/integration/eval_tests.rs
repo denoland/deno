@@ -1,7 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use test_util as util;
-use test_util::itest;
+use test_server as util;
+use test_server::itest;
 
 #[test]
 fn eval_p() {

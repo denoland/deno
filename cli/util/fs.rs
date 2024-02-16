@@ -715,8 +715,8 @@ mod tests {
   use deno_core::futures;
   use deno_core::parking_lot::Mutex;
   use pretty_assertions::assert_eq;
-  use test_util::PathRef;
-  use test_util::TempDir;
+  use test_server::PathRef;
+  use test_server::TempDir;
   use tokio::sync::Notify;
 
   #[test]

@@ -1,10 +1,10 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use test_util as util;
-use test_util::assert_contains;
-use test_util::assert_ends_with;
-use test_util::itest;
-use test_util::TempDir;
+use test_server as util;
+use test_server::assert_contains;
+use test_server::assert_ends_with;
+use test_server::itest;
+use test_server::TempDir;
 
 #[test]
 fn bundle_exports() {

@@ -4,7 +4,7 @@
 #[test]
 // https://github.com/denoland/deno/issues/18266
 fn linux_shared_libraries() {
-  use test_util as util;
+  use test_server as util;
 
   const EXPECTED: [&str; 7] = [
     "linux-vdso.so.1",
@@ -40,7 +40,7 @@ fn linux_shared_libraries() {
 // This test is to prevent inadvertently linking to more shared system libraries that usually
 // increases dyld startup time.
 fn macos_shared_libraries() {
-  use test_util as util;
+  use test_server as util;
 
   // target/release/deno:
   //  /System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation (compatibility version 150.0.0, current version 1953.1.0)

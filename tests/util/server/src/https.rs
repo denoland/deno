@@ -61,6 +61,7 @@ pub async fn get_tls_config(
   ca: &str,
   http_versions: SupportedHttpVersions,
 ) -> io::Result<Arc<rustls::ServerConfig>> {
+  println!("testdata_path: {:?}", testdata_path());
   let cert_path = testdata_path().join(cert);
   let key_path = testdata_path().join(key);
   let ca_path = testdata_path().join(ca);
