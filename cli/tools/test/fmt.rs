@@ -271,6 +271,7 @@ pub const OP_DETAILS: phf::Map<&'static str, [&'static str; 2]> = phf_map! {
   "op_run_status" => ["get the status of a subprocess", "awaiting the result of a `Deno.Process#status` call"],
   "op_seek_async" => ["seek in a file", "awaiting the result of a `Deno.File#seek` call"],
   "op_signal_poll" => ["get the next signal", "un-registering a OS signal handler"],
+  "op_sleep_interval" => ["sleep for a duration", "cancelling a `setTimeout` or `setInterval` call"],
   "op_sleep" => ["sleep for a duration", "cancelling a `setTimeout` or `setInterval` call"],
   "op_stat_async" => ["get file metadata", "awaiting the result of a `Deno.stat` call"],
   "op_symlink_async" => ["create a symlink", "awaiting the result of a `Deno.symlink` call"],
