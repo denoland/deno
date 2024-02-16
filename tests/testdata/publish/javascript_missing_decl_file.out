@@ -1,5 +1,5 @@
 Checking for slow types in the public API...
-warning[unsupported-javascript-entrypoint]: used a JavaScript module without type declarations as an entrypoints
+warning[unsupported-javascript-entrypoint]: used a JavaScript module without type declarations as an entrypoint
  --> [WILDCARD]mod.js
   = hint: add a type declaration (d.ts) for the JavaScript module, or rewrite it to TypeScript
 
@@ -7,7 +7,7 @@ warning[unsupported-javascript-entrypoint]: used a JavaScript module without typ
   info: fast check avoids type inference, so JavaScript entrypoints should be avoided
   docs: https://jsr.io/go/slow-type-unsupported-javascript-entrypoint
 
-warning[unsupported-javascript-entrypoint]: used a JavaScript module without type declarations as an entrypoints
+warning[unsupported-javascript-entrypoint]: used a JavaScript module without type declarations as an entrypoint
  --> [WILDCARD]other.js
   = hint: add a type declaration (d.ts) for the JavaScript module, or rewrite it to TypeScript
 
