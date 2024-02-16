@@ -178,6 +178,13 @@ script generates the symbols based on the latest tags.
 - [ ] This will open a PR. Review and merge it.
 - [ ] Create a tag with the version number (_without_ `v` prefix).
 
+## Updating `deno-lambda`
+
+- [ ] Run the version bump workflow:
+      https://github.com/denoland/deno-lambda/actions/workflows/bump.yml
+- [ ] This will open a PR. Review and merge it.
+- [ ] Create a release with the version number (_without_ `v` prefix).
+
 ## All done!
 
 - [ ] Write a message in company's #cli channel:
