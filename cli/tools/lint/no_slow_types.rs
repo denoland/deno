@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use deno_ast::diagnostics::Diagnostic;
 use deno_ast::ModuleSpecifier;
 use deno_graph::FastCheckDiagnostic;
 use deno_graph::ModuleGraph;
@@ -22,10 +23,13 @@ pub fn collect_no_slow_type_diagnostics(
   };
 
   if let Some(diagnostics) = module.fast_check_diagnostics() {
-    // todo(https://github.com/denoland/deno_graph/issues/384): move to deno_graph
     let mut diagnostics = diagnostics.clone();
     diagnostics.sort_by_cached_key(|d| {
-      (d.specifier().clone(), d.range().map(|r| r.range))
+      (
+        d.specifier().clone(),
+        d.range().map(|r| r.range),
+        d.code().to_string(),
+      )
     });
     diagnostics
   } else {
