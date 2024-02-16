@@ -904,8 +904,7 @@ mod tests {
     fn load(
       &mut self,
       specifier: &ModuleSpecifier,
-      _is_dynamic: bool,
-      _cache_setting: deno_graph::source::CacheSetting,
+      _options: deno_graph::source::LoadOptions,
     ) -> deno_graph::source::LoadFuture {
       let specifier_text = specifier
         .to_string()

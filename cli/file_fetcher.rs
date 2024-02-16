@@ -24,6 +24,7 @@ use deno_core::futures::future::FutureExt;
 use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
+use deno_graph::source::LoaderChecksum;
 use deno_runtime::deno_fetch::reqwest::header::HeaderValue;
 use deno_runtime::deno_fetch::reqwest::header::ACCEPT;
 use deno_runtime::deno_fetch::reqwest::header::AUTHORIZATION;
@@ -146,6 +147,7 @@ pub struct FetchOptions<'a> {
   pub permissions: PermissionsContainer,
   pub maybe_accept: Option<&'a str>,
   pub maybe_cache_setting: Option<&'a CacheSetting>,
+  pub maybe_checksum: Option<LoaderChecksum>,
 }
 
 /// A structure for resolving, fetching and caching source files.
@@ -199,6 +201,7 @@ impl FileFetcher {
   pub fn fetch_cached(
     &self,
     specifier: &ModuleSpecifier,
+    maybe_checksum: Option<LoaderChecksum>,
     redirect_limit: i64,
   ) -> Result<Option<File>, AnyError> {
     debug!("FileFetcher::fetch_cached - specifier: {}", specifier);
@@ -207,16 +210,22 @@ impl FileFetcher {
     }
 
     let cache_key = self.http_cache.cache_item_key(specifier)?; // compute this once
-    let Some(metadata) = self.http_cache.read_metadata(&cache_key)? else {
+    let Some(headers) = self.http_cache.read_headers(&cache_key)? else {
       return Ok(None);
     };
-    let headers = metadata.headers;
     if let Some(redirect_to) = headers.get("location") {
       let redirect =
         deno_core::resolve_import(redirect_to, specifier.as_str())?;
-      return self.fetch_cached(&redirect, redirect_limit - 1);
+      return self.fetch_cached(&redirect, maybe_checksum, redirect_limit - 1);
     }
-    let Some(bytes) = self.http_cache.read_file_bytes(&cache_key)? else {
+    let Some(bytes) = self.http_cache.read_file_bytes(
+      &cache_key,
+      maybe_checksum
+        .as_ref()
+        .map(|c| deno_cache_dir::Checksum::new(c.as_str())),
+      deno_cache_dir::GlobalToLocalCopy::Allow,
+    )?
+    else {
       return Ok(None);
     };
 
@@ -282,6 +291,7 @@ impl FileFetcher {
     redirect_limit: i64,
     maybe_accept: Option<String>,
     cache_setting: &CacheSetting,
+    maybe_checksum: Option<LoaderChecksum>,
   ) -> Pin<Box<dyn Future<Output = Result<File, AnyError>> + Send>> {
     debug!("FileFetcher::fetch_remote() - specifier: {}", specifier);
     if redirect_limit < 0 {
@@ -294,7 +304,8 @@ impl FileFetcher {
     }
 
     if self.should_use_cache(specifier, cache_setting) {
-      match self.fetch_cached(specifier, redirect_limit) {
+      match self.fetch_cached(specifier, maybe_checksum.clone(), redirect_limit)
+      {
         Ok(Some(file)) => {
           return futures::future::ok(file).boxed();
         }
@@ -331,8 +342,8 @@ impl FileFetcher {
       .http_cache
       .cache_item_key(specifier)
       .ok()
-      .and_then(|key| self.http_cache.read_metadata(&key).ok().flatten())
-      .and_then(|metadata| metadata.headers.get("etag").cloned());
+      .and_then(|key| self.http_cache.read_headers(&key).ok().flatten())
+      .and_then(|headers| headers.get("etag").cloned());
     let maybe_auth_token = self.auth_tokens.get(specifier);
     let specifier = specifier.clone();
     let client = self.http_client.clone();
@@ -376,7 +387,9 @@ impl FileFetcher {
         .await?
         {
           FetchOnceResult::NotModified => {
-            let file = file_fetcher.fetch_cached(&specifier, 10)?.unwrap();
+            let file = file_fetcher
+              .fetch_cached(&specifier, maybe_checksum, 10)?
+              .unwrap();
             Ok(file)
           }
           FetchOnceResult::Redirect(redirect_url, headers) => {
@@ -388,6 +401,7 @@ impl FileFetcher {
                 redirect_limit - 1,
                 maybe_accept,
                 &cache_setting,
+                maybe_checksum,
               )
               .await
           }
@@ -395,6 +409,9 @@ impl FileFetcher {
             file_fetcher
               .http_cache
               .set(&specifier, headers.clone(), &bytes)?;
+            if let Some(checksum) = &maybe_checksum {
+              checksum.check_source(&bytes)?;
+            }
             Ok(File {
               specifier,
               maybe_headers: Some(headers),
@@ -438,15 +455,16 @@ impl FileFetcher {
         let Ok(cache_key) = self.http_cache.cache_item_key(specifier) else {
           return false;
         };
-        let Ok(Some(metadata)) = self.http_cache.read_metadata(&cache_key)
+        let Ok(Some(headers)) = self.http_cache.read_headers(&cache_key) else {
+          return false;
+        };
+        let Ok(Some(download_time)) =
+          self.http_cache.read_download_time(&cache_key)
         else {
           return false;
         };
-        let cache_semantics = CacheSemantics::new(
-          metadata.headers,
-          metadata.time,
-          SystemTime::now(),
-        );
+        let cache_semantics =
+          CacheSemantics::new(headers, download_time, SystemTime::now());
         cache_semantics.should_use()
       }
       CacheSetting::ReloadSome(list) => {
@@ -482,6 +500,7 @@ impl FileFetcher {
         permissions,
         maybe_accept: None,
         maybe_cache_setting: None,
+        maybe_checksum: None,
       })
       .await
   }
@@ -517,6 +536,7 @@ impl FileFetcher {
           10,
           options.maybe_accept.map(String::from),
           options.maybe_cache_setting.unwrap_or(&self.cache_setting),
+          options.maybe_checksum,
         )
         .await
     }
@@ -728,6 +748,7 @@ mod tests {
         1,
         None,
         &file_fetcher.cache_setting,
+        None,
       )
       .await;
     let cache_key = file_fetcher.http_cache.cache_item_key(specifier).unwrap();
@@ -735,10 +756,9 @@ mod tests {
       result.unwrap(),
       file_fetcher
         .http_cache
-        .read_metadata(&cache_key)
+        .read_headers(&cache_key)
         .unwrap()
-        .unwrap()
-        .headers,
+        .unwrap(),
     )
   }
 
@@ -899,18 +919,11 @@ mod tests {
 
     let cache_item_key =
       file_fetcher.http_cache.cache_item_key(&specifier).unwrap();
-    let mut metadata = file_fetcher
-      .http_cache
-      .read_metadata(&cache_item_key)
-      .unwrap()
-      .unwrap();
-    metadata.headers = HashMap::new();
-    metadata
-      .headers
-      .insert("content-type".to_string(), "text/javascript".to_string());
+    let mut headers = HashMap::new();
+    headers.insert("content-type".to_string(), "text/javascript".to_string());
     file_fetcher
       .http_cache
-      .set(&specifier, metadata.headers.clone(), file.source.as_bytes())
+      .set(&specifier, headers.clone(), file.source.as_bytes())
       .unwrap();
 
     let result = file_fetcher_01
@@ -926,20 +939,17 @@ mod tests {
     // the value above.
     assert_eq!(file.media_type, MediaType::JavaScript);
 
-    let headers = file_fetcher_02
+    let headers2 = file_fetcher_02
       .http_cache
-      .read_metadata(&cache_item_key)
+      .read_headers(&cache_item_key)
       .unwrap()
-      .unwrap()
-      .headers;
-    assert_eq!(headers.get("content-type").unwrap(), "text/javascript");
-    metadata.headers = HashMap::new();
-    metadata
-      .headers
-      .insert("content-type".to_string(), "application/json".to_string());
+      .unwrap();
+    assert_eq!(headers2.get("content-type").unwrap(), "text/javascript");
+    headers = HashMap::new();
+    headers.insert("content-type".to_string(), "application/json".to_string());
     file_fetcher_02
       .http_cache
-      .set(&specifier, metadata.headers.clone(), file.source.as_bytes())
+      .set(&specifier, headers.clone(), file.source.as_bytes())
       .unwrap();
 
     let result = file_fetcher_02
@@ -1013,7 +1023,12 @@ mod tests {
           .unwrap(),
         file_fetcher
           .http_cache
-          .read_metadata(&cache_key)
+          .read_headers(&cache_key)
+          .unwrap()
+          .unwrap(),
+        file_fetcher
+          .http_cache
+          .read_download_time(&cache_key)
           .unwrap()
           .unwrap(),
       )
@@ -1045,7 +1060,12 @@ mod tests {
           .unwrap(),
         file_fetcher
           .http_cache
-          .read_metadata(&cache_key)
+          .read_headers(&cache_key)
+          .unwrap()
+          .unwrap(),
+        file_fetcher
+          .http_cache
+          .read_download_time(&cache_key)
           .unwrap()
           .unwrap(),
       )
@@ -1182,7 +1202,12 @@ mod tests {
           .unwrap(),
         file_fetcher
           .http_cache
-          .read_metadata(&cache_key)
+          .read_headers(&cache_key)
+          .unwrap()
+          .unwrap(),
+        file_fetcher
+          .http_cache
+          .read_download_time(&cache_key)
           .unwrap()
           .unwrap(),
       )
@@ -1216,7 +1241,12 @@ mod tests {
           .unwrap(),
         file_fetcher
           .http_cache
-          .read_metadata(&cache_key)
+          .read_headers(&cache_key)
+          .unwrap()
+          .unwrap(),
+        file_fetcher
+          .http_cache
+          .read_download_time(&cache_key)
           .unwrap()
           .unwrap(),
       )
@@ -1240,6 +1270,7 @@ mod tests {
         2,
         None,
         &file_fetcher.cache_setting,
+        None,
       )
       .await;
     assert!(result.is_ok());
@@ -1251,14 +1282,15 @@ mod tests {
         1,
         None,
         &file_fetcher.cache_setting,
+        None,
       )
       .await;
     assert!(result.is_err());
 
-    let result = file_fetcher.fetch_cached(&specifier, 2);
+    let result = file_fetcher.fetch_cached(&specifier, None, 2);
     assert!(result.is_ok());
 
-    let result = file_fetcher.fetch_cached(&specifier, 1);
+    let result = file_fetcher.fetch_cached(&specifier, None, 1);
     assert!(result.is_err());
   }
 
@@ -2072,7 +2104,11 @@ mod tests {
     let cache_key = file_fetcher.http_cache.cache_item_key(url).unwrap();
     let bytes = file_fetcher
       .http_cache
-      .read_file_bytes(&cache_key)
+      .read_file_bytes(
+        &cache_key,
+        None,
+        deno_cache_dir::GlobalToLocalCopy::Allow,
+      )
       .unwrap()
       .unwrap();
     String::from_utf8(bytes).unwrap()
@@ -2086,10 +2122,9 @@ mod tests {
     let cache_key = file_fetcher.http_cache.cache_item_key(url).unwrap();
     file_fetcher
       .http_cache
-      .read_metadata(&cache_key)
+      .read_headers(&cache_key)
       .unwrap()
       .unwrap()
-      .headers
       .remove("location")
   }
 }

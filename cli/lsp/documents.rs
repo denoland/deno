@@ -2,6 +2,7 @@
 
 use super::cache::calculate_fs_version;
 use super::cache::calculate_fs_version_at_path;
+use super::cache::LSP_DISALLOW_GLOBAL_TO_LOCAL_COPY;
 use super::jsr_resolver::JsrResolver;
 use super::language_server::StateNpmSnapshot;
 use super::text::LineIndex;
@@ -736,12 +737,7 @@ impl RedirectResolver {
   ) -> Option<ModuleSpecifier> {
     if redirect_limit > 0 {
       let cache_key = self.cache.cache_item_key(specifier).ok()?;
-      let headers = self
-        .cache
-        .read_metadata(&cache_key)
-        .ok()
-        .flatten()
-        .map(|m| m.headers)?;
+      let headers = self.cache.read_headers(&cache_key).ok().flatten()?;
       if let Some(location) = headers.get("location") {
         let redirect =
           deno_core::resolve_import(location, specifier.as_str()).ok()?;
@@ -822,12 +818,14 @@ impl FileSystemDocuments {
     } else {
       let fs_version = calculate_fs_version(cache, specifier)?;
       let cache_key = cache.cache_item_key(specifier).ok()?;
-      let bytes = cache.read_file_bytes(&cache_key).ok()??;
-      let specifier_metadata = cache.read_metadata(&cache_key).ok()??;
+      let bytes = cache
+        .read_file_bytes(&cache_key, None, LSP_DISALLOW_GLOBAL_TO_LOCAL_COPY)
+        .ok()??;
+      let specifier_headers = cache.read_headers(&cache_key).ok()??;
       let (_, maybe_charset) =
         deno_graph::source::resolve_media_type_and_charset_from_headers(
           specifier,
-          Some(&specifier_metadata.headers),
+          Some(&specifier_headers),
         );
       let content = deno_graph::source::decode_owned_source(
         specifier,
@@ -835,7 +833,7 @@ impl FileSystemDocuments {
         maybe_charset,
       )
       .ok()?;
-      let maybe_headers = Some(specifier_metadata.headers);
+      let maybe_headers = Some(specifier_headers);
       Document::new(
         specifier.clone(),
         fs_version,
@@ -931,7 +929,10 @@ impl Documents {
         bare_node_builtins_enabled: false,
         sloppy_imports_resolver: None,
       })),
-      jsr_resolver: Default::default(),
+      jsr_resolver: Arc::new(JsrResolver::from_cache_and_lockfile(
+        cache.clone(),
+        None,
+      )),
       npm_specifier_reqs: Default::default(),
       has_injected_types_node_package: false,
       redirect_resolver: Arc::new(RedirectResolver::new(cache)),
@@ -1330,6 +1331,16 @@ impl Documents {
       }
     }
     Ok(())
+  }
+
+  pub fn refresh_jsr_resolver(
+    &mut self,
+    lockfile: Option<Arc<Mutex<Lockfile>>>,
+  ) {
+    self.jsr_resolver = Arc::new(JsrResolver::from_cache_and_lockfile(
+      self.cache.clone(),
+      lockfile,
+    ));
   }
 
   pub fn update_config(&mut self, options: UpdateDocumentConfigOptions) {
@@ -1813,8 +1824,7 @@ impl<'a> deno_graph::source::Loader for OpenDocumentsGraphLoader<'a> {
   fn load(
     &mut self,
     specifier: &ModuleSpecifier,
-    is_dynamic: bool,
-    cache_setting: deno_graph::source::CacheSetting,
+    options: deno_graph::source::LoadOptions,
   ) -> deno_graph::source::LoadFuture {
     let specifier = if self.unstable_sloppy_imports {
       self
@@ -1826,9 +1836,7 @@ impl<'a> deno_graph::source::Loader for OpenDocumentsGraphLoader<'a> {
 
     match self.load_from_docs(&specifier) {
       Some(fut) => fut,
-      None => self
-        .inner_loader
-        .load(&specifier, is_dynamic, cache_setting),
+      None => self.inner_loader.load(&specifier, options),
     }
   }
 

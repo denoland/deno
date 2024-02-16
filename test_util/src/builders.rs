@@ -166,6 +166,11 @@ impl TestContextBuilder {
     self
   }
 
+  pub fn add_future_env_vars(mut self) -> Self {
+    self = self.env("DENO_FUTURE", "1");
+    self
+  }
+
   pub fn add_jsr_env_vars(mut self) -> Self {
     for (key, value) in env_vars_for_jsr_tests() {
       self = self.env(key, value);
@@ -275,6 +280,34 @@ impl TestContext {
       .run()
       .skip_output_check();
   }
+
+  pub fn get_jsr_package_integrity(&self, sub_path: &str) -> String {
+    fn get_checksum(bytes: &[u8]) -> String {
+      use sha2::Digest;
+      let mut hasher = sha2::Sha256::new();
+      hasher.update(bytes);
+      format!("{:x}", hasher.finalize())
+    }
+
+    let url = url::Url::parse(self.envs.get("JSR_URL").unwrap()).unwrap();
+    let url = url.join(&format!("{}_meta.json", sub_path)).unwrap();
+    let bytes = sync_fetch(url);
+    get_checksum(&bytes)
+  }
+}
+
+fn sync_fetch(url: url::Url) -> bytes::Bytes {
+  let runtime = tokio::runtime::Builder::new_current_thread()
+    .enable_io()
+    .enable_time()
+    .build()
+    .unwrap();
+  runtime.block_on(async move {
+    let client = reqwest::Client::new();
+    let response = client.get(url).send().await.unwrap();
+    assert!(response.status().is_success());
+    response.bytes().await.unwrap()
+  })
 }
 
 /// We can't clone an stdio, so if someone clones a DenoCmd,
@@ -709,8 +742,8 @@ impl TestCommandBuilder {
     if !envs.contains_key("DENO_NO_UPDATE_CHECK") {
       envs.insert("DENO_NO_UPDATE_CHECK".to_string(), "1".to_string());
     }
-    if !envs.contains_key("DENO_REGISTRY_URL") {
-      envs.insert("DENO_REGISTRY_URL".to_string(), jsr_registry_unset_url());
+    if !envs.contains_key("JSR_URL") {
+      envs.insert("JSR_URL".to_string(), jsr_registry_unset_url());
     }
     for key in &self.envs_remove {
       envs.remove(key);

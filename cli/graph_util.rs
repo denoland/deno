@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::jsr_url;
 use crate::args::CliOptions;
 use crate::args::Lockfile;
 use crate::args::TsTypeLib;
@@ -174,6 +175,18 @@ pub fn graph_lock_or_exit(graph: &ModuleGraph, lockfile: &mut Lockfile) {
       Module::Json(module) => &module.source,
       Module::Node(_) | Module::Npm(_) | Module::External(_) => continue,
     };
+
+    // skip over any specifiers in JSR packages because those
+    // are enforced via the integrity
+    if deno_graph::source::recommended_registry_package_url_to_nv(
+      jsr_url(),
+      module.specifier(),
+    )
+    .is_some()
+    {
+      continue;
+    }
+
     if !lockfile.check_or_insert_remote(module.specifier().as_str(), source) {
       let err = format!(
         concat!(
@@ -475,6 +488,19 @@ impl ModuleGraphBuilder {
             }
           }
         }
+        for (nv, value) in &lockfile.content.packages.jsr {
+          if let Ok(nv) = PackageNv::from_str(nv) {
+            graph
+              .packages
+              .add_manifest_checksum(nv, value.integrity.clone())
+              .map_err(|err| deno_lockfile::IntegrityCheckFailedError {
+                package_display_id: format!("jsr:{}", err.nv),
+                actual: err.actual,
+                expected: err.expected,
+                filename: lockfile.filename.display().to_string(),
+              })?;
+          }
+        }
       }
     }
 
@@ -504,9 +530,14 @@ impl ModuleGraphBuilder {
             format!("jsr:{}", to),
           );
         }
-        for (name, deps) in graph.packages.package_deps() {
-          lockfile
-            .insert_package_deps(name.to_string(), deps.map(|s| s.to_string()));
+        for (name, checksum, deps) in
+          graph.packages.packages_with_checksum_and_deps()
+        {
+          lockfile.insert_package(
+            name.to_string(),
+            checksum.clone(),
+            deps.map(|s| s.to_string()),
+          );
         }
       }
     }
