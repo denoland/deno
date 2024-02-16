@@ -64,9 +64,6 @@ impl CustomNpmPackageCache {
 }
 
 fn get_npm_package(package_name: &str) -> Result<Option<CustomNpmPackage>> {
-  use ring::digest::Context;
-  use ring::digest::SHA512;
-
   let package_folder = testdata_path().join("npm/registry").join(package_name);
   if !package_folder.exists() {
     return Ok(None);
@@ -103,10 +100,7 @@ fn get_npm_package(package_name: &str) -> Result<Option<CustomNpmPackage>> {
     }
 
     // get tarball hash
-    let mut hash_ctx = Context::new(&SHA512);
-    hash_ctx.update(&tarball_bytes);
-    let digest = hash_ctx.finish();
-    let tarball_checksum = BASE64_STANDARD.encode(digest.as_ref());
+    let tarball_checksum = get_tarball_checksum(&tarball_bytes);
 
     // create the registry file JSON for this version
     let mut dist = serde_json::Map::new();
@@ -175,4 +169,11 @@ fn get_npm_package(package_name: &str) -> Result<Option<CustomNpmPackage>> {
     registry_file: serde_json::to_string(&registry_file).unwrap(),
     tarballs,
   }))
+}
+
+fn get_tarball_checksum(bytes: &[u8]) -> String {
+  use sha2::Digest;
+  let mut hasher = sha2::Sha512::new();
+  hasher.update(bytes);
+  BASE64_STANDARD.encode(hasher.finalize())
 }
