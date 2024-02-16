@@ -25,6 +25,7 @@ use log::debug;
 use log::info;
 use serde::Serialize;
 use std::borrow::Cow;
+use std::collections::HashSet;
 use std::fs;
 use std::io::stdin;
 use std::io::Read;
@@ -178,6 +179,10 @@ async fn lint_files(
       let has_error = has_error.clone();
       let reporter_lock = reporter_lock.clone();
       let module_graph_builder = factory.module_graph_builder().await?.clone();
+      let path_urls = paths
+        .iter()
+        .filter_map(|p| ModuleSpecifier::from_file_path(p).ok())
+        .collect::<HashSet<_>>();
       futures.push(deno_core::unsync::spawn(async move {
         let graph = module_graph_builder.create_publish_graph(&members).await?;
         // todo(dsherret): this isn't exactly correct as linting isn't properly
@@ -185,8 +190,14 @@ async fn lint_files(
         // should be done at a higher level because it also needs to take into
         // account the config per workspace member.
         for member in &members {
-          let diagnostics =
-            no_slow_types::collect_no_slow_type_diagnostics(member, &graph)?;
+          let export_urls = member.config_file.resolve_export_value_urls()?;
+          if !export_urls.iter().any(|url| path_urls.contains(url)) {
+            continue; // entrypoint is not specified, so skip
+          }
+          let diagnostics = no_slow_types::collect_no_slow_type_diagnostics(
+            &export_urls,
+            &graph,
+          );
           if !diagnostics.is_empty() {
             has_error.raise();
             let mut reporter = reporter_lock.lock();

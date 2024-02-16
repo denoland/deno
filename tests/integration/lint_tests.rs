@@ -213,9 +213,23 @@ fn lint_with_glob_config_and_flags() {
 
 itest!(no_slow_types {
   args: "lint",
-  output: "lint/no_slow_types/config.out",
+  output: "lint/no_slow_types/no_slow_types.out",
   cwd: Some("lint/no_slow_types"),
   exit_code: 1,
+});
+
+itest!(no_slow_types_entrypoint {
+  args: "lint a.ts",
+  output: "lint/no_slow_types/no_slow_types_entrypoint.out",
+  cwd: Some("lint/no_slow_types"),
+  exit_code: 1,
+});
+
+itest!(no_slow_types_non_entrypoint {
+  args: "lint d.ts",
+  output_str: Some("Checked 1 file\n"),
+  cwd: Some("lint/no_slow_types"),
+  exit_code: 0,
 });
 
 itest!(no_slow_types_excluded {
