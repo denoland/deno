@@ -759,12 +759,11 @@ async fn build_and_check_graph_for_publish(
       if !check_diagnostics.is_empty() {
         bail!(
           concat!(
-      "Failed ensuring fast types are valid.\n",
-      "{:#}\n\n",
-      "You may have discovered a bug in Deno's fast types implementation. ",
-      "Fast types is still early days and we would appreciate if you log a ",
-      "bug: https://github.com/denoland/deno/issues/"
-    ),
+            "Failed ensuring public API type output is valid.\n\n",
+            "{:#}\n\n",
+            "You may have discovered a bug in Deno. Please open an issue at: ",
+            "https://github.com/denoland/deno/issues/"
+          ),
           check_diagnostics
         );
       }
