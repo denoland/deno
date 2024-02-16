@@ -7,7 +7,6 @@ use std::sync::Arc;
 
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
-use deno_ast::ModuleSpecifier;
 use deno_config::ConfigFile;
 use deno_config::WorkspaceMemberConfig;
 use deno_core::anyhow::bail;
@@ -32,7 +31,6 @@ use crate::args::PublishFlags;
 use crate::cache::LazyGraphSourceParser;
 use crate::cache::ParsedSourceCache;
 use crate::factory::CliFactory;
-use crate::graph_util::segment_graph_by_workspace_member;
 use crate::graph_util::ModuleGraphBuilder;
 use crate::http_util::HttpClient;
 use crate::tools::check::CheckOptions;
@@ -732,20 +730,16 @@ async fn build_and_check_graph_for_publish(
   collect_invalid_external_imports(&graph, diagnostics_collector);
 
   if !allow_slow_types {
-    log::info!("Linting public types...");
-    // todo(dsherret): parallelize
-    for (package, graph) in segment_graph_by_workspace_member(&graph, packages)?
-    {
-      let output = no_slow_types::collect_no_slow_type_diagnostics(
-        &ModuleSpecifier::from_file_path(&package.dir_path).unwrap(),
-        &graph,
-      );
+    log::info!("Checking for slow public types...");
+    for package in packages {
+      let output =
+        no_slow_types::collect_no_slow_type_diagnostics(&package, &graph)?;
       match output {
         no_slow_types::NoSlowTypesOutput::Pass => {
           // this is a temporary measure until we know that fast check is reliable and stable
           let check_diagnostics = type_checker
             .check_diagnostics(
-              graph.into(),
+              graph.clone().into(),
               CheckOptions {
                 lib: cli_options.ts_type_lib_window(),
                 log_ignored_options: false,
@@ -756,11 +750,11 @@ async fn build_and_check_graph_for_publish(
           if !check_diagnostics.is_empty() {
             bail!(
               concat!(
-                "Failed ensuring fast output type checks for '{}'.\n",
+                "Failed ensuring fast types are valid for '{}'.\n",
                 "{:#}\n\n",
-                "You may have discovered a bug in Deno's fast check implementation. ",
-                "Fast check is still early days and we would appreciate if you log a ",
-                "bug if you believe this is one: https://github.com/denoland/deno/issues/"
+                "You may have discovered a bug in Deno's fast types implementation. ",
+                "Fast types is still early days and we would appreciate if you log a ",
+                "bug: https://github.com/denoland/deno/issues/"
               ),
               package.package_name,
               check_diagnostics

@@ -40,7 +40,6 @@ use crate::args::LintRulesConfig;
 use crate::cache::IncrementalCache;
 use crate::colors;
 use crate::factory::CliFactory;
-use crate::graph_util::segment_graph_by_workspace_member;
 use crate::tools::fmt::run_parallelized;
 use crate::util::file_watcher;
 use crate::util::fs::canonicalize_path;
@@ -181,13 +180,9 @@ async fn lint_files(
       let module_graph_builder = factory.module_graph_builder().await?.clone();
       futures.push(deno_core::unsync::spawn(async move {
         let graph = module_graph_builder.create_publish_graph(&members).await?;
-        for (package, graph) in
-          segment_graph_by_workspace_member(&graph, &members)?
-        {
-          let result = no_slow_types::collect_no_slow_type_diagnostics(
-            &ModuleSpecifier::from_file_path(&package.dir_path).unwrap(),
-            &graph,
-          );
+        for member in &members {
+          let result =
+            no_slow_types::collect_no_slow_type_diagnostics(member, &graph)?;
           if let no_slow_types::NoSlowTypesOutput::Fail(diagnostics) = result {
             has_error.raise();
             let mut reporter = reporter_lock.lock();

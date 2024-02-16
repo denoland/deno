@@ -650,25 +650,6 @@ fn get_resolution_error_bare_specifier(
   }
 }
 
-/// Gets the graphs for the given workspace members.
-pub fn segment_graph_by_workspace_member(
-  graph: &ModuleGraph,
-  members: &[WorkspaceMemberConfig],
-) -> Result<Vec<(WorkspaceMemberConfig, ModuleGraph)>, AnyError> {
-  if members.len() == 1 {
-    return Ok(vec![(members.first().unwrap().clone(), graph.clone())]);
-  }
-
-  let mut result = Vec::with_capacity(members.len());
-  for package in members {
-    result.push((
-      package.clone(),
-      graph.segment(&package.config_file.resolve_export_value_urls()?),
-    ));
-  }
-  Ok(result)
-}
-
 #[derive(Debug)]
 struct GraphData {
   graph: Arc<ModuleGraph>,

@@ -48,7 +48,7 @@ impl PublishDiagnosticsCollector {
         );
         eprintln!("will significantly improve the type checking performance of your library,");
         eprintln!(
-          "you can choose to skip it by running with --allow-slow-types"
+          "you can choose to skip it by providing the --allow-slow-types flag."
         );
         eprintln!();
       }

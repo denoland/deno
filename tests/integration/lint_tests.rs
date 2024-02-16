@@ -210,3 +210,10 @@ fn lint_with_glob_config_and_flags() {
   assert_contains!(output, "Found 2 problems");
   assert_contains!(output, "Checked 2 files");
 }
+
+itest!(no_slow_types {
+  args: "lint",
+  output: "lint/no_slow_types/config.out",
+  cwd: Some("lint/no_slow_types"),
+  exit_code: 1,
+});
