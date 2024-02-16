@@ -82,17 +82,23 @@ pub fn format_test_error(js_error: &JsError) -> String {
   format_js_error(&js_error)
 }
 
-pub fn format_sanitizer_diff(diff: RuntimeActivityDiff) -> Vec<String> {
-  let mut output = format_sanitizer_accum(diff.appeared, true);
-  output.extend(format_sanitizer_accum(diff.disappeared, false));
-  output.sort();
-  output
+pub fn format_sanitizer_diff(
+  diff: RuntimeActivityDiff,
+) -> (Vec<String>, Vec<String>) {
+  let (mut messages, trailers) = format_sanitizer_accum(diff.appeared, true);
+  let disappeared = format_sanitizer_accum(diff.disappeared, false);
+  messages.extend(disappeared.0);
+  messages.sort();
+  let mut trailers = BTreeSet::from_iter(trailers);
+  trailers.extend(disappeared.1);
+  (messages, trailers.into_iter().collect::<Vec<_>>())
 }
 
 fn format_sanitizer_accum(
   activities: Vec<RuntimeActivity>,
   appeared: bool,
-) -> Vec<String> {
+) -> (Vec<String>, Vec<String>) {
+  // Aggregate the sanitizer information
   let mut accum = HashMap::new();
   for activity in activities {
     let item = format_sanitizer_accum_item(activity);
@@ -100,21 +106,46 @@ fn format_sanitizer_accum(
   }
 
   let mut output = vec![];
-  for ((item_type, item_name), count) in accum.into_iter() {
+  let mut needs_trace_ops = false;
+  for ((item_type, item_name, trace), count) in accum.into_iter() {
     if item_type == RuntimeActivityType::Resource {
-      // TODO(mmastrac): until we implement the new timers and op sanitization, these must be ignored in this path
-      if item_name == "timer" {
-        continue;
-      }
       let (name, action1, action2) = pretty_resource_name(&item_name);
       let hint = resource_close_hint(&item_name);
 
-      if appeared {
-        output.push(format!("{name} was {action1} during the test, but not {action2} during the test. {hint}"));
+      let value = if appeared {
+        format!("{name} was {action1} during the test, but not {action2} during the test. {hint}")
       } else {
-        output.push(format!("{name} was {action1} before the test started, but was {action2} during the test. \
-          Do not close resources in a test that were not created during that test."));
-      }
+        format!("{name} was {action1} before the test started, but was {action2} during the test. \
+          Do not close resources in a test that were not created during that test.")
+      };
+      output.push(value);
+    } else if item_type == RuntimeActivityType::AsyncOp {
+      let (count_str, plural, tense) = if count == 1 {
+        (Cow::Borrowed("An"), "", "was")
+      } else {
+        (Cow::Owned(count.to_string()), "s", "were")
+      };
+      let phrase = if appeared {
+        "started in this test, but never completed"
+      } else {
+        "started before the test, but completed during the test. Async operations should not complete in a test if they were not started in that test"
+      };
+      let mut value = if let Some([operation, hint]) =
+        OP_DETAILS.get(&item_name)
+      {
+        format!("{count_str} async operation{plural} to {operation} {tense} {phrase}. This is often caused by not {hint}.")
+      } else {
+        format!(
+          "{count_str} async call{plural} to {item_name} {tense} {phrase}."
+        )
+      };
+      value += &if let Some(trace) = trace {
+        format!(" The operation {tense} started here:\n{trace}")
+      } else {
+        needs_trace_ops = true;
+        String::new()
+      };
+      output.push(value);
     } else {
       // TODO(mmastrac): this will be done in a later PR
       unimplemented!(
@@ -125,18 +156,25 @@ fn format_sanitizer_accum(
       );
     }
   }
-  output
+  if needs_trace_ops {
+    (output, vec!["To get more details where ops were leaked, run again with --trace-ops flag.".to_owned()])
+  } else {
+    (output, vec![])
+  }
 }
 
 fn format_sanitizer_accum_item(
   activity: RuntimeActivity,
-) -> (RuntimeActivityType, Cow<'static, str>) {
+) -> (RuntimeActivityType, Cow<'static, str>, Option<String>) {
   let activity_type = activity.activity();
   match activity {
-    RuntimeActivity::AsyncOp(_, name, _) => (activity_type, name.into()),
-    RuntimeActivity::Interval(_) => (activity_type, "".into()),
-    RuntimeActivity::Resource(_, name) => (activity_type, name.into()),
-    RuntimeActivity::Timer(_) => (activity_type, "".into()),
+    // TODO(mmastrac): OpCallTrace needs to be Eq
+    RuntimeActivity::AsyncOp(_, name, trace) => {
+      (activity_type, name.into(), trace.map(|x| x.to_string()))
+    }
+    RuntimeActivity::Interval(_) => (activity_type, "".into(), None),
+    RuntimeActivity::Resource(_, name) => (activity_type, name.into(), None),
+    RuntimeActivity::Timer(_) => (activity_type, "".into(), None),
   }
 }
 
@@ -215,9 +253,6 @@ fn resource_close_hint(name: &str) -> &'static str {
   }
 }
 
-// An async operation to $0 was started in this test, but never completed. This is often caused by not $1.
-// An async operation to $0 was started in this test, but never completed. Async operations should not complete in a test if they were not started in that test.
-// deno-fmt-ignore
 pub const OP_DETAILS: phf::Map<&'static str, [&'static str; 2]> = phf_map! {
   "op_blob_read_part" => ["read from a Blob or File", "awaiting the result of a Blob or File read"],
   "op_broadcast_recv" => ["receive a message from a BroadcastChannel", "closing the BroadcastChannel"],
@@ -295,3 +330,31 @@ pub const OP_DETAILS: phf::Map<&'static str, [&'static str; 2]> = phf_map! {
   "op_ws_send_ping" => ["send a message on a WebSocket", "closing a `WebSocket` or `WebSocketStream`"],
   "op_spawn_wait" => ["wait for a subprocess to exit", "awaiting the result of a `Deno.Process#status` call"],
 };
+
+#[cfg(test)]
+mod tests {
+  use deno_core::stats::RuntimeActivity;
+
+  macro_rules! leak_format_test {
+    ($name:ident, $appeared:literal, [$($activity:expr),*], $expected:literal) => {
+      #[test]
+      fn $name() {
+        let (leaks, trailer_notes) = super::format_sanitizer_accum(vec![$($activity),*], $appeared);
+        let mut output = String::new();
+        for leak in leaks {
+          output += &format!(" - {leak}\n");
+        }
+        for trailer in trailer_notes {
+          output += &format!("{trailer}\n");
+        }
+        assert_eq!(output, $expected);
+      }
+    }
+  }
+
+  // https://github.com/denoland/deno/issues/13729
+  // https://github.com/denoland/deno/issues/13938
+  leak_format_test!(op_unknown, true, [RuntimeActivity::AsyncOp(0, "op_unknown", None)], 
+    " - An async call to op_unknown was started in this test, but never completed.\n\
+    To get more details where ops were leaked, run again with --trace-ops flag.\n");
+}

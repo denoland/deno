@@ -6,14 +6,14 @@ test 2 ... FAILED ([WILDCARD])
  ERRORS 
 
 test 1 => [WILDCARD]/ops_sanitizer_multiple_timeout_tests.ts:[WILDCARD]
-error: Leaking async ops:
-  - 2 async operations to sleep for a duration were started in this test, but never completed. This is often caused by not cancelling a `setTimeout` or `setInterval` call. The operations were started here:
+error: Leaks detected:
+  - An async operation to sleep for a duration was started in this test, but never completed. This is often caused by not cancelling a `setTimeout` or `setInterval` call. The operation was started here:
     at [WILDCARD]
     at setTimeout ([WILDCARD])
     at test ([WILDCARD]/ops_sanitizer_multiple_timeout_tests.ts:[WILDCARD])
     at [WILDCARD]/ops_sanitizer_multiple_timeout_tests.ts:8:27
     at [WILDCARD]
-
+  - An async operation to sleep for a duration was started in this test, but never completed. This is often caused by not cancelling a `setTimeout` or `setInterval` call. The operation was started here:
     at [WILDCARD]
     at setTimeout ([WILDCARD])
     at test ([WILDCARD]/ops_sanitizer_multiple_timeout_tests.ts:[WILDCARD])
@@ -21,14 +21,14 @@ error: Leaking async ops:
     at [WILDCARD]
 
 test 2 => [WILDCARD]/ops_sanitizer_multiple_timeout_tests.ts:[WILDCARD]
-error: Leaking async ops:
-  - 2 async operations to sleep for a duration were started in this test, but never completed. This is often caused by not cancelling a `setTimeout` or `setInterval` call. The operations were started here:
+error: Leaks detected:
+  - An async operation to sleep for a duration was started in this test, but never completed. This is often caused by not cancelling a `setTimeout` or `setInterval` call. The operation was started here:
     at [WILDCARD]
     at setTimeout ([WILDCARD])
     at test ([WILDCARD]/ops_sanitizer_multiple_timeout_tests.ts:[WILDCARD])
     at [WILDCARD]/ops_sanitizer_multiple_timeout_tests.ts:10:27
     at [WILDCARD]
-
+  - An async operation to sleep for a duration was started in this test, but never completed. This is often caused by not cancelling a `setTimeout` or `setInterval` call. The operation was started here:
     at [WILDCARD]
     at setTimeout ([WILDCARD])
     at test ([WILDCARD]/ops_sanitizer_multiple_timeout_tests.ts:[WILDCARD])
