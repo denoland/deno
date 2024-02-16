@@ -447,7 +447,7 @@ const ci = {
         ...cloneRepoStep,
         submoduleStep("./tests/util/std"),
         {
-          ...submoduleStep("./test_util/wpt"),
+          ...submoduleStep("./tests/wpt/suite"),
           if: "matrix.wpt",
         },
         {
@@ -833,7 +833,7 @@ const ci = {
           name: "Configure hosts file for WPT",
           if: "matrix.wpt",
           run: "./wpt make-hosts-file | sudo tee -a /etc/hosts",
-          "working-directory": "test_util/wpt/",
+          "working-directory": "tests/wpt/suite/",
         },
         {
           name: "Run web platform tests (debug)",
