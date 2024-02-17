@@ -130,7 +130,7 @@ export function runPy<T extends Omit<Deno.CommandOptions, "cwd">>(
     stdout: "inherit",
     stderr: "inherit",
     ...options,
-    cwd: join(ROOT_PATH, "./test_util/wpt/"),
+    cwd: join(ROOT_PATH, "./tests/wpt/suite/"),
   }).spawn();
 }
 
@@ -181,13 +181,13 @@ export async function generateRunInfo(): Promise<unknown> {
   };
   const proc = await new Deno.Command("git", {
     args: ["rev-parse", "HEAD"],
-    cwd: join(ROOT_PATH, "test_util", "wpt"),
+    cwd: join(ROOT_PATH, "tests", "wpt", "suite"),
     stderr: "inherit",
   }).output();
   const revision = (new TextDecoder().decode(proc.stdout)).trim();
   const proc2 = await new Deno.Command(denoBinary(), {
     args: ["eval", "console.log(JSON.stringify(Deno.version))"],
-    cwd: join(ROOT_PATH, "test_util", "wpt"),
+    cwd: join(ROOT_PATH, "tests", "wpt", "suite"),
   }).output();
   const version = JSON.parse(new TextDecoder().decode(proc2.stdout));
   const runInfo = {

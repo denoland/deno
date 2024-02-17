@@ -1,3 +1,4 @@
+// https://github.com/denoland/deno/pull/16970
 Deno.test("handle thrown error in async function", async () => {
   const dirPath = Deno.makeTempDirSync();
   const filePath = `${dirPath}/file.txt`;

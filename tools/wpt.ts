@@ -149,7 +149,7 @@ async function setup() {
       if (Deno.build.os == "windows") {
         console.log("To do this run the following command in PowerShell:");
         console.log("");
-        console.log("    cd test_util/wpt/");
+        console.log("    cd tests/wpt/suite/");
         console.log(
           "    python.exe wpt make-hosts-file | Out-File $env:SystemRoot\\System32\\drivers\\etc\\hosts -Encoding ascii -Append",
         );
@@ -157,7 +157,7 @@ async function setup() {
       } else {
         console.log("To do this run the following command in your shell:");
         console.log("");
-        console.log("    cd test_util/wpt/");
+        console.log("    cd tests/wpt/suite/");
         console.log(
           "    python3 ./wpt make-hosts-file | sudo tee -a /etc/hosts",
         );

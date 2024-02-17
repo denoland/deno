@@ -152,8 +152,8 @@ jobs:
       - name: Clone submodule ./tests/util/std
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
         if: '!(matrix.skip)'
-      - name: Clone submodule ./test_util/wpt
-        run: git submodule update --init --recursive --depth=1 -- ./test_util/wpt
+      - name: Clone submodule ./tests/wpt/suite
+        run: git submodule update --init --recursive --depth=1 -- ./tests/wpt/suite
         if: '!(matrix.skip) && (matrix.wpt)'
       - name: Clone submodule ./tools/node_compat/node
         run: git submodule update --init --recursive --depth=1 -- ./tools/node_compat/node
@@ -506,7 +506,7 @@ jobs:
       - name: Configure hosts file for WPT
         if: '!(matrix.skip) && (matrix.wpt)'
         run: ./wpt make-hosts-file | sudo tee -a /etc/hosts
-        working-directory: test_util/wpt/
+        working-directory: tests/wpt/suite/
       - name: Run web platform tests (debug)
         if: '!(matrix.skip) && (matrix.wpt && matrix.profile == ''debug'')'
         env:

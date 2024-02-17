@@ -66,7 +66,6 @@ use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::inspector_server::InspectorServer;
-use deno_semver::package::PackageNv;
 use import_map::ImportMap;
 use log::warn;
 use std::future::Future;
@@ -381,16 +380,6 @@ impl CliFactory {
             no_npm,
             no_config: self.options.no_config(),
             config,
-            nv_to_jsr_url: |nv| {
-              let nv = PackageNv::from_str(nv).ok()?;
-              Some(
-                deno_graph::source::recommended_registry_package_url(
-                  crate::args::jsr_url(),
-                  &nv,
-                )
-                .to_string(),
-              )
-            },
           },
         );
       }
@@ -668,12 +657,8 @@ impl CliFactory {
           self.fs().clone(),
           self.graph_container().clone(),
           self.maybe_lockfile().clone(),
-          self.maybe_file_watcher_reporter().clone(),
           self.module_graph_builder().await?.clone(),
-          self.module_info_cache()?.clone(),
-          self.parsed_source_cache().clone(),
           self.text_only_progress_bar().clone(),
-          self.resolver().await?.clone(),
           self.type_checker().await?.clone(),
         )))
       })

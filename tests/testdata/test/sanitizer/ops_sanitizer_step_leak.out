@@ -1,5 +1,5 @@
-Check [WILDCARD]/tests/testdata/test/ops_sanitizer_step_leak.ts
-running 1 test from ./tests/testdata/test/ops_sanitizer_step_leak.ts
+Check [WILDCARD]/ops_sanitizer_step_leak.ts
+running 1 test from [WILDCARD]/ops_sanitizer_step_leak.ts
 timeout ...
   step ... ok [WILDCARD]
 ------- output -------
