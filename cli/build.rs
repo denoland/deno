@@ -296,7 +296,7 @@ mod ts {
               &zstd::bulk::compress(&snapshot, 22)
                 .expect("snapshot compression failed"),
             );
-            vec
+            Ok(vec)
           },
         )),
         with_runtime_cb: None,
