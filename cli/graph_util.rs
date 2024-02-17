@@ -203,12 +203,31 @@ pub fn graph_lock_or_exit(graph: &ModuleGraph, lockfile: &mut Lockfile) {
   }
 }
 
+enum MutLoaderRef<'a> {
+  Borrowed(&'a mut dyn Loader),
+  Owned(cache::FetchCacher),
+}
+
+impl<'a> MutLoaderRef<'a> {
+  pub fn as_mut_loader(&mut self) -> &mut dyn Loader {
+    match self {
+      Self::Borrowed(loader) => *loader,
+      Self::Owned(loader) => loader,
+    }
+  }
+}
+
 pub struct CreateGraphOptions<'a> {
   pub graph_kind: GraphKind,
   pub roots: Vec<ModuleSpecifier>,
   pub is_dynamic: bool,
-  /// Whether to do fast check on workspace members. This is mostly only
-  /// useful when publishing.
+  /// Specify `None` to use the default CLI loader.
+  pub loader: Option<&'a mut dyn Loader>,
+}
+
+pub struct BuildFastCheckGraphOptions<'a> {
+  /// Whether to do fast check on workspace members. This
+  /// is mostly only useful when publishing.
   pub workspace_fast_check: bool,
   /// Specify `None` to use the default CLI loader.
   pub loader: Option<&'a mut dyn Loader>,
@@ -287,7 +306,6 @@ impl ModuleGraphBuilder {
         graph_kind,
         roots,
         loader: Some(loader),
-        workspace_fast_check: false,
       })
       .await
   }
@@ -317,13 +335,12 @@ impl ModuleGraphBuilder {
   ) -> Result<Arc<deno_graph::ModuleGraph>, AnyError> {
     let graph_kind = self.options.type_check_mode().as_graph_kind();
 
-    let graph = self
+    let mut graph = self
       .create_graph_with_options(CreateGraphOptions {
         is_dynamic: false,
         graph_kind,
         roots,
         loader: None,
-        workspace_fast_check: false,
       })
       .await?;
 
@@ -384,20 +401,6 @@ impl ModuleGraphBuilder {
     graph: &mut ModuleGraph,
     options: CreateGraphOptions<'a>,
   ) -> Result<(), AnyError> {
-    enum MutLoaderRef<'a> {
-      Borrowed(&'a mut dyn Loader),
-      Owned(cache::FetchCacher),
-    }
-
-    impl<'a> MutLoaderRef<'a> {
-      pub fn as_mut_loader(&mut self) -> &mut dyn Loader {
-        match self {
-          Self::Borrowed(loader) => *loader,
-          Self::Owned(loader) => loader,
-        }
-      }
-    }
-
     let maybe_imports = self.options.to_maybe_imports()?;
     let parser = self.parsed_source_cache.as_capturing_parser();
     let analyzer = self.module_info_cache.as_module_analyzer(&parser);
@@ -405,19 +408,14 @@ impl ModuleGraphBuilder {
       Some(loader) => MutLoaderRef::Borrowed(loader),
       None => MutLoaderRef::Owned(self.create_graph_loader()),
     };
-    let cli_resolver = self.resolver.clone();
+    let cli_resolver = &self.resolver;
     let graph_resolver = cli_resolver.as_graph_resolver();
     let graph_npm_resolver = cli_resolver.as_graph_npm_resolver();
     let maybe_file_watcher_reporter = self
       .maybe_file_watcher_reporter
       .as_ref()
       .map(|r| r.as_reporter());
-    let fast_check_cache =
-      if graph.graph_kind().include_types() && !options.workspace_fast_check {
-        Some(cache::FastCheckCache::new(self.caches.fast_check_db()))
-      } else {
-        None
-      };
+    let workspace_members = self.get_deno_graph_workspace_members()?;
     self
       .build_graph_with_npm_resolution_and_build_options(
         graph,
@@ -426,21 +424,57 @@ impl ModuleGraphBuilder {
         deno_graph::BuildOptions {
           is_dynamic: options.is_dynamic,
           imports: maybe_imports,
-          fast_check_cache: fast_check_cache
-            .as_ref()
-            .map(|c| c.as_deno_graph_cache()),
-          fast_check_dts: false,
           resolver: Some(graph_resolver),
           file_system: Some(&DenoGraphFsAdapter(self.fs.as_ref())),
           npm_resolver: Some(graph_npm_resolver),
           module_analyzer: Some(&analyzer),
           module_parser: Some(&parser),
           reporter: maybe_file_watcher_reporter,
-          workspace_fast_check: options.workspace_fast_check,
-          workspace_members: self.get_deno_graph_workspace_members()?,
+          workspace_members: &workspace_members,
         },
       )
       .await
+  }
+
+  // todo: move to other file for use in type checker
+  pub fn build_fast_check_graph<'a>(
+    &self,
+    graph: &mut ModuleGraph,
+    options: BuildFastCheckGraphOptions<'a>,
+  ) {
+    if graph.graph_kind().include_types() {
+      return;
+    }
+
+    let fast_check_cache = if !options.workspace_fast_check {
+      Some(cache::FastCheckCache::new(self.caches.fast_check_db()))
+    } else {
+      None
+    };
+    let mut loader = match options.loader {
+      Some(loader) => MutLoaderRef::Borrowed(loader),
+      None => MutLoaderRef::Owned(self.create_graph_loader()),
+    };
+    let parser = self.parsed_source_cache.as_capturing_parser();
+    let cli_resolver = &self.resolver;
+    let graph_resolver = cli_resolver.as_graph_resolver();
+    let graph_npm_resolver = cli_resolver.as_graph_npm_resolver();
+    let workspace_members = self.get_deno_graph_workspace_members()?;
+
+    graph.build_fast_check_type_graph(
+      loader.as_mut_loader(),
+      deno_graph::BuildFastCheckTypeGraphOptions {
+        fast_check_cache: fast_check_cache
+          .as_ref()
+          .map(|c| c.as_deno_graph_cache()),
+        fast_check_dts: false,
+        module_parser: Some(&parser),
+        resolver: Some(graph_resolver),
+        npm_resolver: Some(graph_npm_resolver),
+        workspace_fast_check: options.workspace_fast_check,
+        workspace_members: &workspace_members,
+      },
+    );
   }
 
   async fn build_graph_with_npm_resolution_and_build_options<'a>(

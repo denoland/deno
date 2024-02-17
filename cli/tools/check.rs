@@ -67,10 +67,10 @@ impl TypeChecker {
   /// before the function is called.
   pub async fn check(
     &self,
-    graph: Arc<ModuleGraph>,
+    graph: ModuleGraph,
     options: CheckOptions,
   ) -> Result<(), AnyError> {
-    let diagnostics = self.check_diagnostics(graph, options).await?;
+    let (_graph, diagnostics) = self.check_diagnostics(graph, options).await?;
     if diagnostics.is_empty() {
       Ok(())
     } else {
@@ -84,11 +84,11 @@ impl TypeChecker {
   /// before the function is called.
   pub async fn check_diagnostics(
     &self,
-    graph: Arc<ModuleGraph>,
+    graph: ModuleGraph,
     options: CheckOptions,
-  ) -> Result<Diagnostics, AnyError> {
+  ) -> Result<(Arc<ModuleGraph>, Diagnostics), AnyError> {
     if graph.roots.is_empty() {
-      return Ok(Default::default());
+      return Ok((graph.into(), Default::default()));
     }
 
     // node built-in specifiers use the @types/node package to determine
@@ -112,9 +112,6 @@ impl TypeChecker {
 
     let ts_config = ts_config_result.ts_config;
     let type_check_mode = self.cli_options.type_check_mode();
-    let debug = self.cli_options.log_level() == Some(log::Level::Debug);
-    let cache = TypeCheckCache::new(self.caches.type_checking_cache_db());
-    let check_js = ts_config.get_check_js();
     let maybe_check_hash = match self.npm_resolver.check_state_hash() {
       Some(npm_check_hash) => {
         match get_check_hash(
@@ -123,7 +120,9 @@ impl TypeChecker {
           type_check_mode,
           &ts_config,
         ) {
-          CheckHashResult::NoFiles => return Ok(Default::default()),
+          CheckHashResult::NoFiles => {
+            return Ok((graph.into(), Default::default()))
+          }
           CheckHashResult::Hash(hash) => Some(hash),
         }
       }
@@ -131,10 +130,11 @@ impl TypeChecker {
     };
 
     // do not type check if we know this is type checked
+    let cache = TypeCheckCache::new(self.caches.type_checking_cache_db());
     if !options.reload {
       if let Some(check_hash) = maybe_check_hash {
         if cache.has_check_hash(check_hash) {
-          return Ok(Default::default());
+          return Ok((graph.into(), Default::default()));
         }
       }
     }
@@ -144,6 +144,7 @@ impl TypeChecker {
       log::info!("{} {}", colors::green("Check"), root_str);
     }
 
+    let check_js = ts_config.get_check_js();
     let root_names = get_tsc_roots(&graph, check_js);
     // while there might be multiple roots, we can't "merge" the build info, so we
     // try to retrieve the build info for first root, which is the most common use
@@ -161,9 +162,10 @@ impl TypeChecker {
       .write_str(version::deno())
       .finish();
 
+    let graph = Arc::new(graph);
     let response = tsc::exec(tsc::Request {
       config: ts_config,
-      debug,
+      debug: self.cli_options.log_level() == Some(log::Level::Debug),
       graph: graph.clone(),
       hash_data,
       maybe_npm: Some(tsc::RequestNpmState {
@@ -212,7 +214,7 @@ impl TypeChecker {
 
     log::debug!("{}", response.stats);
 
-    Ok(diagnostics)
+    Ok((graph, diagnostics))
   }
 }
 

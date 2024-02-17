@@ -157,7 +157,7 @@ impl ModuleLoadPreparer {
     if self.options.type_check_mode().is_true()
       && !self.graph_container.is_type_checked(&roots, lib)
     {
-      let graph = Arc::new(graph.segment(&roots));
+      let graph = graph.segment(&roots);
       self
         .type_checker
         .check(
