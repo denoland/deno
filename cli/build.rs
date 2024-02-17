@@ -292,6 +292,7 @@ mod ts {
           |snapshot| {
             eprintln!("Compressing TSC snapshot...");
             let mut vec = Vec::with_capacity(snapshot.len());
+            vec.extend((snapshot.len() as u32).to_le_bytes());
             vec.extend_from_slice(
               &zstd::bulk::compress(&snapshot, 22)
                 .expect("snapshot compression failed"),
