@@ -31,7 +31,7 @@ use crate::args::PublishFlags;
 use crate::cache::LazyGraphSourceParser;
 use crate::cache::ParsedSourceCache;
 use crate::factory::CliFactory;
-use crate::graph_util::ModuleGraphBuilder;
+use crate::graph_util::ModuleGraphCreator;
 use crate::http_util::HttpClient;
 use crate::tools::check::CheckOptions;
 use crate::tools::lint::no_slow_types;
@@ -656,7 +656,7 @@ async fn prepare_packages_for_publishing(
   import_map: Arc<ImportMap>,
 ) -> Result<PreparePackagesData, AnyError> {
   let members = deno_json.to_workspace_members()?;
-  let module_graph_builder = cli_factory.module_graph_builder().await?.as_ref();
+  let module_graph_creator = cli_factory.module_graph_creator().await?.as_ref();
   let source_cache = cli_factory.parsed_source_cache();
   let type_checker = cli_factory.type_checker().await?;
   let cli_options = cli_factory.cli_options();
@@ -667,7 +667,7 @@ async fn prepare_packages_for_publishing(
 
   // create the module graph
   let graph = build_and_check_graph_for_publish(
-    module_graph_builder,
+    module_graph_creator,
     type_checker,
     cli_options,
     allow_slow_types,
@@ -715,15 +715,14 @@ async fn prepare_packages_for_publishing(
 }
 
 async fn build_and_check_graph_for_publish(
-  module_graph_builder: &ModuleGraphBuilder,
+  module_graph_creator: &ModuleGraphCreator,
   type_checker: &TypeChecker,
   cli_options: &CliOptions,
   allow_slow_types: bool,
   diagnostics_collector: &PublishDiagnosticsCollector,
   packages: &[WorkspaceMemberConfig],
 ) -> Result<Arc<deno_graph::ModuleGraph>, deno_core::anyhow::Error> {
-  let graph =
-    Arc::new(module_graph_builder.create_publish_graph(packages).await?);
+  let graph = module_graph_creator.create_publish_graph(packages).await?;
   graph.valid()?;
 
   // todo(dsherret): move to lint rule
@@ -740,6 +739,7 @@ async fn build_and_check_graph_for_publish(
       ),
       colors::yellow("Warning"),
     );
+    Ok(Arc::new(graph))
   } else {
     log::info!("Checking for slow types in the public API...");
     let mut any_pkg_had_diagnostics = false;
@@ -755,12 +755,16 @@ async fn build_and_check_graph_for_publish(
       }
     }
 
-    if !any_pkg_had_diagnostics {
-      // this is a temporary measure until we know that fast check is reliable and stable
-      let check_diagnostics = type_checker
+    if any_pkg_had_diagnostics {
+      Ok(Arc::new(graph))
+    } else {
+      // fast check passed, type check the output as a temporary measure
+      // until we know that it's reliable and stable
+      let (graph, check_diagnostics) = type_checker
         .check_diagnostics(
-          graph.clone(),
+          graph,
           CheckOptions {
+            build_fast_check_graph: false, // already built
             lib: cli_options.ts_type_lib_window(),
             log_ignored_options: false,
             reload: cli_options.reload_flag(),
@@ -778,10 +782,9 @@ async fn build_and_check_graph_for_publish(
           check_diagnostics
         );
       }
+      Ok(graph)
     }
   }
-
-  Ok(graph)
 }
 
 pub async fn publish(

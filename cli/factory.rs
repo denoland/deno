@@ -22,6 +22,7 @@ use crate::file_fetcher::FileFetcher;
 use crate::graph_util::FileWatcherReporter;
 use crate::graph_util::ModuleGraphBuilder;
 use crate::graph_util::ModuleGraphContainer;
+use crate::graph_util::ModuleGraphCreator;
 use crate::http_util::HttpClient;
 use crate::module_loader::CliModuleLoaderFactory;
 use crate::module_loader::ModuleLoadPreparer;
@@ -164,6 +165,7 @@ struct CliFactoryServices {
   resolver: Deferred<Arc<CliGraphResolver>>,
   maybe_file_watcher_reporter: Deferred<Option<FileWatcherReporter>>,
   module_graph_builder: Deferred<Arc<ModuleGraphBuilder>>,
+  module_graph_creator: Deferred<Arc<ModuleGraphCreator>>,
   module_load_preparer: Deferred<Arc<ModuleLoadPreparer>>,
   node_code_translator: Deferred<Arc<CliNodeCodeTranslator>>,
   node_resolver: Deferred<Arc<NodeResolver>>,
@@ -596,6 +598,7 @@ impl CliFactory {
         Ok(Arc::new(TypeChecker::new(
           self.caches()?.clone(),
           self.options.clone(),
+          self.module_graph_builder().await?.clone(),
           self.node_resolver().await?.clone(),
           self.npm_resolver().await?.clone(),
         )))
@@ -623,6 +626,24 @@ impl CliFactory {
           self.emit_cache()?.clone(),
           self.file_fetcher()?.clone(),
           self.global_http_cache()?.clone(),
+        )))
+      })
+      .await
+  }
+
+  pub async fn module_graph_creator(
+    &self,
+  ) -> Result<&Arc<ModuleGraphCreator>, AnyError> {
+    self
+      .services
+      .module_graph_creator
+      .get_or_try_init_async(async {
+        Ok(Arc::new(ModuleGraphCreator::new(
+          self.options.clone(),
+          self.fs().clone(),
+          self.npm_resolver().await?.clone(),
+          self.module_graph_builder().await?.clone(),
+          self.maybe_lockfile().clone(),
           self.type_checker().await?.clone(),
         )))
       })

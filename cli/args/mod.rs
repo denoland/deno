@@ -1304,6 +1304,67 @@ impl CliOptions {
     )
   }
 
+  pub fn resolve_deno_graph_workspace_members(
+    &self,
+  ) -> Result<Vec<deno_graph::WorkspaceMember>, AnyError> {
+    fn workspace_config_to_workspace_members(
+      workspace_config: &deno_config::WorkspaceConfig,
+    ) -> Result<Vec<deno_graph::WorkspaceMember>, AnyError> {
+      workspace_config
+        .members
+        .iter()
+        .map(|member| {
+          config_to_workspace_member(&member.config_file).with_context(|| {
+            format!(
+              "Failed to resolve configuration for '{}' workspace member at '{}'",
+              member.member_name,
+              member.config_file.specifier.as_str()
+            )
+          })
+        })
+        .collect()
+    }
+
+    fn config_to_workspace_member(
+      config: &ConfigFile,
+    ) -> Result<deno_graph::WorkspaceMember, AnyError> {
+      let nv = deno_semver::package::PackageNv {
+        name: match &config.json.name {
+          Some(name) => name.clone(),
+          None => bail!("Missing 'name' field in config file."),
+        },
+        version: match &config.json.version {
+          Some(name) => deno_semver::Version::parse_standard(name)?,
+          None => bail!("Missing 'version' field in config file."),
+        },
+      };
+      Ok(deno_graph::WorkspaceMember {
+        base: config.specifier.join("./").unwrap(),
+        nv,
+        exports: config.to_exports_config()?.into_map(),
+      })
+    }
+
+    let maybe_workspace_config = self.maybe_workspace_config();
+    if let Some(wc) = maybe_workspace_config {
+      workspace_config_to_workspace_members(wc)
+    } else {
+      Ok(
+        self
+          .maybe_config_file()
+          .as_ref()
+          .and_then(|c| match config_to_workspace_member(c) {
+            Ok(m) => Some(vec![m]),
+            Err(e) => {
+              log::debug!("Deno config was not a package: {:#}", e);
+              None
+            }
+          })
+          .unwrap_or_default(),
+      )
+    }
+  }
+
   /// Vector of user script CLI arguments.
   pub fn argv(&self) -> &Vec<String> {
     &self.flags.argv

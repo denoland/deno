@@ -10,6 +10,7 @@ use crate::graph_util::graph_valid_with_cli_options;
 use crate::graph_util::CreateGraphOptions;
 use crate::graph_util::ModuleGraphBuilder;
 use crate::graph_util::ModuleGraphContainer;
+use crate::graph_util::ModuleGraphCreator;
 use crate::node;
 use crate::resolver::CliGraphResolver;
 use crate::resolver::CliNodeResolver;
@@ -127,7 +128,6 @@ impl ModuleLoadPreparer {
           graph_kind: graph.graph_kind(),
           roots: roots.clone(),
           loader: Some(&mut cache),
-          workspace_fast_check: false,
         },
       )
       .await?;
@@ -163,6 +163,7 @@ impl ModuleLoadPreparer {
         .check(
           graph,
           check::CheckOptions {
+            build_fast_check_graph: true,
             lib,
             log_ignored_options: false,
             reload: self.options.reload_flag()
