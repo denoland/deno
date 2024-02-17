@@ -212,17 +212,16 @@ impl CliFactory {
       let caches = Arc::new(Caches::new(self.deno_dir_provider().clone()));
       // Warm up the caches we know we'll likely need based on the CLI mode
       match self.options.sub_command() {
-        DenoSubcommand::Run(_) => {
-          _ = caches.dep_analysis_db();
-          _ = caches.node_analysis_db();
-        }
-        DenoSubcommand::Check(_)
+        DenoSubcommand::Run(_)
         | DenoSubcommand::Bench(_)
-        | DenoSubcommand::Test(_) => {
+        | DenoSubcommand::Test(_)
+        | DenoSubcommand::Check(_) => {
           _ = caches.dep_analysis_db();
-          _ = caches.fast_check_db();
           _ = caches.node_analysis_db();
-          _ = caches.type_checking_cache_db();
+          if self.options.type_check_mode().is_true() {
+            _ = caches.fast_check_db();
+            _ = caches.type_checking_cache_db();
+          }
         }
         _ => {}
       }
