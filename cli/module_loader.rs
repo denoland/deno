@@ -10,7 +10,6 @@ use crate::graph_util::graph_valid_with_cli_options;
 use crate::graph_util::CreateGraphOptions;
 use crate::graph_util::ModuleGraphBuilder;
 use crate::graph_util::ModuleGraphContainer;
-use crate::graph_util::ModuleGraphCreator;
 use crate::node;
 use crate::resolver::CliGraphResolver;
 use crate::resolver::CliNodeResolver;
