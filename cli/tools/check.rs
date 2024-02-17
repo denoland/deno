@@ -155,7 +155,6 @@ impl TypeChecker {
     }
 
     let check_js = ts_config.get_check_js();
-    let root_names = get_tsc_roots(&graph, check_js);
     // while there might be multiple roots, we can't "merge" the build info, so we
     // try to retrieve the build info for first root, which is the most common use
     // case.
@@ -172,7 +171,7 @@ impl TypeChecker {
       .write_str(version::deno())
       .finish();
 
-    // add fast check to the graph
+    // add fast check to the graph before getting the roots
     if options.build_fast_check_graph {
       self.module_graph_builder.build_fast_check_graph(
         &mut graph,
@@ -183,6 +182,7 @@ impl TypeChecker {
       )?;
     }
 
+    let root_names = get_tsc_roots(&graph, check_js);
     let graph = Arc::new(graph);
     let response = tsc::exec(tsc::Request {
       config: ts_config,

@@ -101,7 +101,7 @@ impl DenoDir {
   /// Path for the cache used for fast check.
   pub fn fast_check_cache_db_file_path(&self) -> PathBuf {
     // bump this version name to invalidate the entire cache
-    self.root.join("fast_check_v1")
+    self.root.join("fast_check_cache_v1")
   }
 
   /// Path for caching node analysis.

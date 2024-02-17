@@ -589,10 +589,11 @@ impl ModuleGraphBuilder {
     graph: &mut ModuleGraph,
     options: BuildFastCheckGraphOptions<'a>,
   ) -> Result<(), AnyError> {
-    if graph.graph_kind().include_types() {
+    if !graph.graph_kind().include_types() {
       return Ok(());
     }
 
+    log::debug!("Building fast check graph");
     let fast_check_cache = if !options.workspace_fast_check {
       Some(cache::FastCheckCache::new(self.caches.fast_check_db()))
     } else {
