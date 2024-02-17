@@ -2342,6 +2342,8 @@ declare var AbortSignal: {
     abort(reason?: any): AbortSignal;
     /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AbortSignal/timeout_static) */
     timeout(milliseconds: number): AbortSignal;
+    /** [MDN Reference](https://developer.mozilla.org/en-US/docs/Web/API/AbortSignal/any_static) */
+    any(signals: AbortSignal[]): AbortSignal;
 };
 
 /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AbstractRange) */
