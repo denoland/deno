@@ -216,6 +216,7 @@ pub struct CreateGraphOptions<'a> {
 
 pub struct ModuleGraphBuilder {
   options: Arc<CliOptions>,
+  caches: Arc<cache::Caches>,
   fs: Arc<dyn FileSystem>,
   resolver: Arc<CliGraphResolver>,
   npm_resolver: Arc<dyn CliNpmResolver>,
@@ -233,6 +234,7 @@ impl ModuleGraphBuilder {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
     options: Arc<CliOptions>,
+    caches: Arc<cache::Caches>,
     fs: Arc<dyn FileSystem>,
     resolver: Arc<CliGraphResolver>,
     npm_resolver: Arc<dyn CliNpmResolver>,
@@ -247,6 +249,7 @@ impl ModuleGraphBuilder {
   ) -> Self {
     Self {
       options,
+      caches,
       fs,
       resolver,
       npm_resolver,
@@ -409,6 +412,12 @@ impl ModuleGraphBuilder {
       .maybe_file_watcher_reporter
       .as_ref()
       .map(|r| r.as_reporter());
+    let fast_check_cache =
+      if graph.graph_kind().include_types() && !options.workspace_fast_check {
+        Some(cache::FastCheckCache::new(self.caches.fast_check_db()))
+      } else {
+        None
+      };
     self
       .build_graph_with_npm_resolution_and_build_options(
         graph,
@@ -417,6 +426,10 @@ impl ModuleGraphBuilder {
         deno_graph::BuildOptions {
           is_dynamic: options.is_dynamic,
           imports: maybe_imports,
+          fast_check_cache: fast_check_cache
+            .as_ref()
+            .map(|c| c.as_deno_graph_cache()),
+          fast_check_dts: false,
           resolver: Some(graph_resolver),
           file_system: Some(&DenoGraphFsAdapter(self.fs.as_ref())),
           npm_resolver: Some(graph_npm_resolver),

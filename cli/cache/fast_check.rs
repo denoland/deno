@@ -83,14 +83,14 @@ impl FastCheckCacheInner {
       FROM
         fastcheckcache
       WHERE
-        hash=?2
+        hash=?1
       LIMIT 1";
     let res = self
       .conn
       // key is a string because SQLite can't handle u64
       .query_row(query, params![key.as_u64().to_string()], |row| {
         let value: Vec<u8> = row.get(0)?;
-        Ok(bincode::deserialize(&value)?)
+        Ok(bincode::deserialize::<FastCheckCacheItem>(&value)?)
       })?;
     Ok(res)
   }
