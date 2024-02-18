@@ -1333,8 +1333,8 @@ Deno.test(
   async function fetchClientCertWrongPrivateKey(): Promise<void> {
     await assertRejects(async () => {
       const client = Deno.createHttpClient({
-        certChain: "bad data",
-        privateKey: await Deno.readTextFile(
+        cert: "bad data",
+        key: await Deno.readTextFile(
           "tests/testdata/tls/localhost.key",
         ),
       });
@@ -1350,10 +1350,10 @@ Deno.test(
   async function fetchClientCertBadPrivateKey(): Promise<void> {
     await assertRejects(async () => {
       const client = Deno.createHttpClient({
-        certChain: await Deno.readTextFile(
+        cert: await Deno.readTextFile(
           "tests/testdata/tls/localhost.crt",
         ),
-        privateKey: "bad data",
+        key: "bad data",
       });
       await fetch("https://localhost:5552/assets/fixture.json", {
         client,
@@ -1367,10 +1367,10 @@ Deno.test(
   async function fetchClientCertNotPrivateKey(): Promise<void> {
     await assertRejects(async () => {
       const client = Deno.createHttpClient({
-        certChain: await Deno.readTextFile(
+        cert: await Deno.readTextFile(
           "tests/testdata/tls/localhost.crt",
         ),
-        privateKey: "",
+        key: "",
       });
       await fetch("https://localhost:5552/assets/fixture.json", {
         client,
@@ -1387,10 +1387,10 @@ Deno.test(
     const data = "Hello World";
     const caCert = await Deno.readTextFile("tests/testdata/tls/RootCA.crt");
     const client = Deno.createHttpClient({
-      certChain: await Deno.readTextFile(
+      cert: await Deno.readTextFile(
         "tests/testdata/tls/localhost.crt",
       ),
-      privateKey: await Deno.readTextFile(
+      key: await Deno.readTextFile(
         "tests/testdata/tls/localhost.key",
       ),
       caCerts: [caCert],
