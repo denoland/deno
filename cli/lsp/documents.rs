@@ -1333,6 +1333,10 @@ impl Documents {
     Ok(())
   }
 
+  pub fn get_jsr_resolver(&self) -> &Arc<JsrResolver> {
+    &self.jsr_resolver
+  }
+
   pub fn refresh_jsr_resolver(
     &mut self,
     lockfile: Option<Arc<Mutex<Lockfile>>>,

@@ -6,6 +6,7 @@ use super::documents::Documents;
 use super::language_server;
 use super::tsc;
 
+use crate::args::jsr_url;
 use crate::npm::CliNpmResolver;
 use crate::tools::lint::create_linter;
 use crate::util::path::specifier_to_file_path;
@@ -27,7 +28,11 @@ use deno_runtime::deno_node::NpmResolver;
 use deno_runtime::deno_node::PathClean;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
+use deno_semver::package::PackageNv;
+use deno_semver::package::PackageNvReference;
 use deno_semver::package::PackageReq;
+use deno_semver::package::PackageReqReference;
+use deno_semver::Version;
 use import_map::ImportMap;
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -206,6 +211,27 @@ impl<'a> TsResponseImportMapper<'a> {
         Some(path) => format!("{}/{}", result, path),
         None => result,
       }
+    }
+
+    if let Some(jsr_path) = specifier.as_str().strip_prefix(jsr_url().as_str())
+    {
+      let mut segments = jsr_path.split('/');
+      let name = if jsr_path.starts_with('@') {
+        format!("{}/{}", segments.next()?, segments.next()?)
+      } else {
+        segments.next()?.to_string()
+      };
+      let version = Version::parse_standard(segments.next()?).ok()?;
+      let nv = PackageNv { name, version };
+      let path = segments.collect::<Vec<_>>().join("/");
+      let jsr_resolver = self.documents.get_jsr_resolver();
+      let export = jsr_resolver.lookup_export_for_path(&nv, &path)?;
+      let sub_path = (export != ".").then_some(export);
+      // TODO(nayeemrmn): Check import map values like for npm below.
+      if let Some(req) = jsr_resolver.lookup_req_for_nv(&nv) {
+        return Some(PackageReqReference { req, sub_path }.to_string());
+      }
+      return Some(PackageNvReference { nv, sub_path }.to_string());
     }
 
     if let Some(npm_resolver) =
