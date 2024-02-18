@@ -876,8 +876,6 @@ declare namespace Deno {
    * @category Fetch API
    */
   export interface HttpClient extends Disposable {
-    /** The resource ID associated with the client. */
-    rid: number;
     /** Close the HTTP client. */
     close(): void;
   }
@@ -896,10 +894,10 @@ declare namespace Deno {
     caCerts?: string[];
     /** A HTTP proxy to use for new connections. */
     proxy?: Proxy;
-    /** PEM formatted client certificate chain. */
-    certChain?: string;
-    /** PEM formatted (RSA or PKCS8) private key of client certificate. */
-    privateKey?: string;
+    /** Server private key in PEM format. */
+    cert?: string;
+    /** Cert chain in PEM format. */
+    key?: string;
     /** Sets the maximum numer of idle connections per host allowed in the pool. */
     poolMaxIdlePerHost?: number;
     /** Set an optional timeout for idle sockets being kept-alive.
