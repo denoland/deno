@@ -10,9 +10,9 @@ use std::io::Write;
 use std::process::Command;
 use std::process::Stdio;
 use std::time::Duration;
-use test_server as util;
-use test_server::itest;
-use test_server::TempDir;
+use test_util as util;
+use test_util::itest;
+use test_util::TempDir;
 use trust_dns_client::serialize::txt::Lexer;
 use trust_dns_client::serialize::txt::Parser;
 use util::assert_contains;
@@ -2516,7 +2516,7 @@ enum WinProcConstraints {
 
 #[cfg(windows)]
 fn run_deno_script_constrained(
-  script_path: test_server::PathRef,
+  script_path: test_util::PathRef,
   constraints: WinProcConstraints,
 ) -> Result<(), i64> {
   let file_path = "assets/DenoWinRunner.ps1";
@@ -2659,8 +2659,8 @@ fn dont_cache_on_check_fail() {
 }
 
 mod permissions {
-  use test_server as util;
-  use test_server::itest;
+  use test_util as util;
+  use test_util::itest;
   use util::TestContext;
 
   // TODO(bartlomieju): remove --unstable once Deno.Command is stabilized

@@ -1050,7 +1050,7 @@ mod test {
   use std::collections::BTreeMap;
 
   use deno_runtime::deno_fs::RealFs;
-  use test_server::TestContext;
+  use test_util::TestContext;
 
   use super::*;
 

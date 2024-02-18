@@ -893,7 +893,7 @@ mod tests {
   use deno_core::OpState;
   use deno_graph::GraphKind;
   use deno_graph::ModuleGraph;
-  use test_server::PathRef;
+  use test_util::PathRef;
   use tokio::test;
 
   #[derive(Debug, Default)]
@@ -932,7 +932,7 @@ mod tests {
     let specifier = maybe_specifier
       .unwrap_or_else(|| ModuleSpecifier::parse("file:///main.ts").unwrap());
     let hash_data = maybe_hash_data.unwrap_or(0);
-    let fixtures = test_server::testdata_path().join("tsc2");
+    let fixtures = test_util::testdata_path().join("tsc2");
     let mut loader = MockLoader { fixtures };
     let mut graph = ModuleGraph::new(GraphKind::TypesOnly);
     graph
@@ -958,7 +958,7 @@ mod tests {
     specifier: &ModuleSpecifier,
   ) -> Result<Response, AnyError> {
     let hash_data = 123; // something random
-    let fixtures = test_server::testdata_path().join("tsc2");
+    let fixtures = test_util::testdata_path().join("tsc2");
     let mut loader = MockLoader { fixtures };
     let mut graph = ModuleGraph::new(GraphKind::TypesOnly);
     graph

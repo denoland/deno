@@ -17,7 +17,7 @@ use hyper::Response;
 use hyper_util::rt::TokioIo;
 use std::io::BufRead;
 use std::time::Duration;
-use test_server as util;
+use test_util as util;
 use tokio::net::TcpStream;
 use tokio::time::timeout;
 use url::Url;

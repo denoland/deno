@@ -3,8 +3,8 @@
 use std::process::Command;
 use std::process::Stdio;
 use std::time::Instant;
-use test_server as util;
-use test_server::TempDir;
+use test_util as util;
+use test_util::TempDir;
 use util::TestContextBuilder;
 
 // Warning: this test requires internet access.

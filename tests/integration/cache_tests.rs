@@ -1,9 +1,9 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use test_server::env_vars_for_npm_tests;
-use test_server::itest;
-use test_server::TestContext;
-use test_server::TestContextBuilder;
+use test_util::env_vars_for_npm_tests;
+use test_util::itest;
+use test_util::TestContext;
+use test_util::TestContextBuilder;
 
 itest!(_036_import_map_fetch {
   args:

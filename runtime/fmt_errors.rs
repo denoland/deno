@@ -292,7 +292,7 @@ pub fn format_js_error(js_error: &JsError) -> String {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use test_server::strip_ansi_codes;
+  use test_util::strip_ansi_codes;
 
   #[test]
   fn test_format_none_source_line() {

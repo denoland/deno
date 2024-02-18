@@ -698,7 +698,7 @@ mod tests {
   use std::collections::hash_map::RandomState;
   use std::collections::HashSet;
   use std::fs::read;
-  use test_server::TempDir;
+  use test_util::TempDir;
 
   fn setup(
     cache_setting: CacheSetting,
@@ -739,7 +739,7 @@ mod tests {
   async fn test_fetch_remote(
     specifier: &ModuleSpecifier,
   ) -> (File, HashMap<String, String>) {
-    let _http_server_guard = test_server::http_server();
+    let _http_server_guard = test_util::http_server();
     let (file_fetcher, _) = setup(CacheSetting::ReloadAll, None);
     let result: Result<File, AnyError> = file_fetcher
       .fetch_remote(
@@ -792,7 +792,7 @@ mod tests {
   }
 
   async fn test_fetch_local_encoded(charset: &str, expected: String) {
-    let p = test_server::testdata_path().join(format!("encoding/{charset}.ts"));
+    let p = test_util::testdata_path().join(format!("encoding/{charset}.ts"));
     let specifier = ModuleSpecifier::from_file_path(p).unwrap();
     let (file, _) = test_fetch(&specifier).await;
     assert_eq!(
@@ -899,7 +899,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_fetch_complex() {
-    let _http_server_guard = test_server::http_server();
+    let _http_server_guard = test_util::http_server();
     let (file_fetcher, temp_dir) = setup(CacheSetting::Use, None);
     let (file_fetcher_01, _) = setup(CacheSetting::Use, Some(temp_dir.clone()));
     let (file_fetcher_02, _) = setup(CacheSetting::Use, Some(temp_dir.clone()));
@@ -991,7 +991,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_fetch_uses_cache() {
-    let _http_server_guard = test_server::http_server();
+    let _http_server_guard = test_util::http_server();
     let temp_dir = TempDir::new();
     let location = temp_dir.path().join("deps").to_path_buf();
     let specifier =
@@ -1076,7 +1076,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_fetch_redirected() {
-    let _http_server_guard = test_server::http_server();
+    let _http_server_guard = test_util::http_server();
     let (file_fetcher, _) = setup(CacheSetting::Use, None);
     let specifier =
       resolve_url("http://localhost:4546/subdir/redirects/redirect1.js")
@@ -1114,7 +1114,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_fetch_multiple_redirects() {
-    let _http_server_guard = test_server::http_server();
+    let _http_server_guard = test_util::http_server();
     let (file_fetcher, _) = setup(CacheSetting::Use, None);
     let specifier =
       resolve_url("http://localhost:4548/subdir/redirects/redirect1.js")
@@ -1165,7 +1165,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_fetch_uses_cache_with_redirects() {
-    let _http_server_guard = test_server::http_server();
+    let _http_server_guard = test_util::http_server();
     let temp_dir = TempDir::new();
     let location = temp_dir.path().join("deps").to_path_buf();
     let specifier =
@@ -1257,7 +1257,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_fetcher_limits_redirects() {
-    let _http_server_guard = test_server::http_server();
+    let _http_server_guard = test_util::http_server();
     let (file_fetcher, _) = setup(CacheSetting::Use, None);
     let specifier =
       resolve_url("http://localhost:4548/subdir/redirects/redirect1.js")
@@ -1296,7 +1296,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_fetch_same_host_redirect() {
-    let _http_server_guard = test_server::http_server();
+    let _http_server_guard = test_util::http_server();
     let (file_fetcher, _) = setup(CacheSetting::Use, None);
     let specifier = resolve_url(
       "http://localhost:4550/REDIRECT/subdir/redirects/redirect1.js",
@@ -1335,7 +1335,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_fetch_no_remote() {
-    let _http_server_guard = test_server::http_server();
+    let _http_server_guard = test_util::http_server();
     let temp_dir = TempDir::new();
     let location = temp_dir.path().join("deps").to_path_buf();
     let file_fetcher = FileFetcher::new(
@@ -1363,7 +1363,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_fetch_cache_only() {
-    let _http_server_guard = test_server::http_server();
+    let _http_server_guard = test_util::http_server();
     let temp_dir = TempDir::new();
     let location = temp_dir.path().join("deps").to_path_buf();
     let file_fetcher_01 = FileFetcher::new(
@@ -1428,7 +1428,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_respect_cache_revalidates() {
-    let _g = test_server::http_server();
+    let _g = test_util::http_server();
     let temp_dir = TempDir::new();
     let (file_fetcher, _) =
       setup(CacheSetting::RespectHeaders, Some(temp_dir.clone()));
@@ -1455,7 +1455,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_respect_cache_still_fresh() {
-    let _g = test_server::http_server();
+    let _g = test_util::http_server();
     let temp_dir = TempDir::new();
     let (file_fetcher, _) =
       setup(CacheSetting::RespectHeaders, Some(temp_dir.clone()));
@@ -1531,7 +1531,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_fetch_string() {
-    let _http_server_guard = test_server::http_server();
+    let _http_server_guard = test_util::http_server();
     // Relies on external http server. See target/debug/test_server
     let url = Url::parse("http://127.0.0.1:4545/assets/fixture.json").unwrap();
     let client = create_test_client();
@@ -1558,7 +1558,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_fetch_gzip() {
-    let _http_server_guard = test_server::http_server();
+    let _http_server_guard = test_util::http_server();
     // Relies on external http server. See target/debug/test_server
     let url = Url::parse("http://127.0.0.1:4545/run/import_compression/gziped")
       .unwrap();
@@ -1589,7 +1589,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_fetch_with_etag() {
-    let _http_server_guard = test_server::http_server();
+    let _http_server_guard = test_util::http_server();
     let url = Url::parse("http://127.0.0.1:4545/etag_script.ts").unwrap();
     let client = create_test_client();
     let result = fetch_once(
@@ -1631,7 +1631,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_fetch_brotli() {
-    let _http_server_guard = test_server::http_server();
+    let _http_server_guard = test_util::http_server();
     // Relies on external http server. See target/debug/test_server
     let url = Url::parse("http://127.0.0.1:4545/run/import_compression/brotli")
       .unwrap();
@@ -1663,7 +1663,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_fetch_accept() {
-    let _http_server_guard = test_server::http_server();
+    let _http_server_guard = test_util::http_server();
     // Relies on external http server. See target/debug/test_server
     let url = Url::parse("http://127.0.0.1:4545/echo_accept").unwrap();
     let client = create_test_client();
@@ -1687,7 +1687,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_fetch_once_with_redirect() {
-    let _http_server_guard = test_server::http_server();
+    let _http_server_guard = test_util::http_server();
     // Relies on external http server. See target/debug/test_server
     let url = Url::parse("http://127.0.0.1:4546/assets/fixture.json").unwrap();
     // Dns resolver substitutes `127.0.0.1` with `localhost`
@@ -1714,7 +1714,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_fetch_with_cafile_string() {
-    let _http_server_guard = test_server::http_server();
+    let _http_server_guard = test_util::http_server();
     // Relies on external http server. See target/debug/test_server
     let url = Url::parse("https://localhost:5545/assets/fixture.json").unwrap();
 
@@ -1723,7 +1723,7 @@ mod tests {
         version::get_user_agent(),
         CreateHttpClientOptions {
           ca_certs: vec![read(
-            test_server::testdata_path().join("tls/RootCA.pem"),
+            test_util::testdata_path().join("tls/RootCA.pem"),
           )
           .unwrap()],
           ..Default::default()
@@ -1879,7 +1879,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_fetch_with_cafile_gzip() {
-    let _http_server_guard = test_server::http_server();
+    let _http_server_guard = test_util::http_server();
     // Relies on external http server. See target/debug/test_server
     let url =
       Url::parse("https://localhost:5545/run/import_compression/gziped")
@@ -1889,7 +1889,7 @@ mod tests {
         version::get_user_agent(),
         CreateHttpClientOptions {
           ca_certs: vec![read(
-            test_server::testdata_path()
+            test_util::testdata_path()
               .join("tls/RootCA.pem")
               .to_string(),
           )
@@ -1925,14 +1925,14 @@ mod tests {
 
   #[tokio::test]
   async fn test_fetch_with_cafile_with_etag() {
-    let _http_server_guard = test_server::http_server();
+    let _http_server_guard = test_util::http_server();
     let url = Url::parse("https://localhost:5545/etag_script.ts").unwrap();
     let client = HttpClient::from_client(
       create_http_client(
         version::get_user_agent(),
         CreateHttpClientOptions {
           ca_certs: vec![read(
-            test_server::testdata_path()
+            test_util::testdata_path()
               .join("tls/RootCA.pem")
               .to_string(),
           )
@@ -1982,7 +1982,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_fetch_with_cafile_brotli() {
-    let _http_server_guard = test_server::http_server();
+    let _http_server_guard = test_util::http_server();
     // Relies on external http server. See target/debug/test_server
     let url =
       Url::parse("https://localhost:5545/run/import_compression/brotli")
@@ -1992,7 +1992,7 @@ mod tests {
         version::get_user_agent(),
         CreateHttpClientOptions {
           ca_certs: vec![read(
-            test_server::testdata_path()
+            test_util::testdata_path()
               .join("tls/RootCA.pem")
               .to_string(),
           )
@@ -2029,7 +2029,7 @@ mod tests {
 
   #[tokio::test]
   async fn bad_redirect() {
-    let _g = test_server::http_server();
+    let _g = test_util::http_server();
     let url_str = "http://127.0.0.1:4545/bad_redirect";
     let url = Url::parse(url_str).unwrap();
     let client = create_test_client();
@@ -2052,7 +2052,7 @@ mod tests {
 
   #[tokio::test]
   async fn server_error() {
-    let _g = test_server::http_server();
+    let _g = test_util::http_server();
     let url_str = "http://127.0.0.1:4545/server_error";
     let url = Url::parse(url_str).unwrap();
     let client = create_test_client();
@@ -2077,7 +2077,7 @@ mod tests {
 
   #[tokio::test]
   async fn request_error() {
-    let _g = test_server::http_server();
+    let _g = test_util::http_server();
     let url_str = "http://127.0.0.1:9999/";
     let url = Url::parse(url_str).unwrap();
     let client = create_test_client();

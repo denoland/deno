@@ -5620,7 +5620,7 @@ mod tests {
 
   #[test]
   fn allow_read_allowlist() {
-    use test_server::TempDir;
+    use test_util::TempDir;
     let temp_dir_guard = TempDir::new();
     let temp_dir = temp_dir_guard.path().to_path_buf();
 
@@ -5644,7 +5644,7 @@ mod tests {
 
   #[test]
   fn deny_read_denylist() {
-    use test_server::TempDir;
+    use test_util::TempDir;
     let temp_dir_guard = TempDir::new();
     let temp_dir = temp_dir_guard.path().to_path_buf();
 
@@ -5668,7 +5668,7 @@ mod tests {
 
   #[test]
   fn allow_write_allowlist() {
-    use test_server::TempDir;
+    use test_util::TempDir;
     let temp_dir_guard = TempDir::new();
     let temp_dir = temp_dir_guard.path().to_path_buf();
 
@@ -5692,7 +5692,7 @@ mod tests {
 
   #[test]
   fn deny_write_denylist() {
-    use test_server::TempDir;
+    use test_util::TempDir;
     let temp_dir_guard = TempDir::new();
     let temp_dir = temp_dir_guard.path().to_path_buf();
 

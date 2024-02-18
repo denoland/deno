@@ -848,7 +848,7 @@ impl FileBackedVfs {
 #[cfg(test)]
 mod test {
   use std::io::Write;
-  use test_server::TempDir;
+  use test_util::TempDir;
 
   use super::*;
 

@@ -4,10 +4,10 @@
 // These tests are intended to only test integration.
 
 use deno_core::serde_json::json;
-use test_server::env_vars_for_npm_tests;
-use test_server::itest;
-use test_server::TestContext;
-use test_server::TestContextBuilder;
+use test_util::env_vars_for_npm_tests;
+use test_util::itest;
+use test_util::TestContext;
+use test_util::TestContextBuilder;
 
 itest!(task_no_args {
   args: "task -q --config task/deno_json/deno.json",

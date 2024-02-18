@@ -2,9 +2,9 @@
 
 use pretty_assertions::assert_eq;
 use std::process::Command;
-use test_server::deno_cmd;
-use test_server::deno_config_path;
-use test_server::ffi_tests_path;
+use test_util::deno_cmd;
+use test_util::deno_config_path;
+use test_util::ffi_tests_path;
 
 #[cfg(debug_assertions)]
 const BUILD_VARIANT: &str = "debug";

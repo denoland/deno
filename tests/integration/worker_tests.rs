@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use test_server::itest;
+use test_util::itest;
 
 itest!(worker_error {
   args: "run -A workers/worker_error.ts",

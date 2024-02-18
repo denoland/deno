@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use test_server::itest;
+use test_util::itest;
 
 itest!(jupyter_install_command_not_exists {
   args: "jupyter --install",

@@ -1,8 +1,8 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use test_server::assert_contains;
-use test_server::itest;
-use test_server::TestContextBuilder;
+use test_util::assert_contains;
+use test_util::itest;
+use test_util::TestContextBuilder;
 
 itest!(ignore_unexplicit_files {
   args: "lint --ignore=./",

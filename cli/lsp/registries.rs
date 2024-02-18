@@ -1098,7 +1098,7 @@ impl ModuleRegistry {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use test_server::TempDir;
+  use test_util::TempDir;
 
   #[test]
   fn test_validate_registry_configuration() {
@@ -1252,7 +1252,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_registry_completions_origin_match() {
-    let _g = test_server::http_server();
+    let _g = test_util::http_server();
     let temp_dir = TempDir::new();
     let location = temp_dir.path().join("registries").to_path_buf();
     let mut module_registry =
@@ -1313,7 +1313,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_registry_completions() {
-    let _g = test_server::http_server();
+    let _g = test_util::http_server();
     let temp_dir = TempDir::new();
     let location = temp_dir.path().join("registries").to_path_buf();
     let mut module_registry =
@@ -1536,7 +1536,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_registry_completions_key_first() {
-    let _g = test_server::http_server();
+    let _g = test_util::http_server();
     let temp_dir = TempDir::new();
     let location = temp_dir.path().join("registries").to_path_buf();
     let mut module_registry =
@@ -1606,7 +1606,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_registry_completions_complex() {
-    let _g = test_server::http_server();
+    let _g = test_util::http_server();
     let temp_dir = TempDir::new();
     let location = temp_dir.path().join("registries").to_path_buf();
     let mut module_registry =
@@ -1657,7 +1657,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_check_origin_supported() {
-    let _g = test_server::http_server();
+    let _g = test_util::http_server();
     let temp_dir = TempDir::new();
     let location = temp_dir.path().join("registries").to_path_buf();
     let module_registry =
@@ -1668,7 +1668,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_check_origin_not_supported() {
-    let _g = test_server::http_server();
+    let _g = test_util::http_server();
     let temp_dir = TempDir::new();
     let location = temp_dir.path().join("registries").to_path_buf();
     let module_registry =

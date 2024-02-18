@@ -1933,7 +1933,7 @@ mod test {
 
   #[test]
   fn resolve_files_test() {
-    use test_server::TempDir;
+    use test_util::TempDir;
     let temp_dir = TempDir::new();
 
     temp_dir.create_dir_all("data");

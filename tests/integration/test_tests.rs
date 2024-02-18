@@ -1,8 +1,8 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::url::Url;
-use test_server as util;
-use test_server::itest;
+use test_util as util;
+use test_util::itest;
 use util::assert_contains;
 use util::assert_not_contains;
 use util::env_vars_for_npm_tests;

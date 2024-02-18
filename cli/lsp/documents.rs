@@ -2133,8 +2133,8 @@ mod tests {
   use super::*;
   use import_map::ImportMap;
   use pretty_assertions::assert_eq;
-  use test_server::PathRef;
-  use test_server::TempDir;
+  use test_util::PathRef;
+  use test_util::TempDir;
 
   fn setup(temp_dir: &TempDir) -> (Documents, PathRef) {
     let location = temp_dir.path().join("deps");

@@ -1,11 +1,11 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::process::Command;
-use test_server::deno_cmd;
-use test_server::deno_config_path;
-use test_server::env_vars_for_npm_tests;
-use test_server::http_server;
-use test_server::napi_tests_path;
+use test_util::deno_cmd;
+use test_util::deno_config_path;
+use test_util::env_vars_for_npm_tests;
+use test_util::http_server;
+use test_util::napi_tests_path;
 
 #[cfg(debug_assertions)]
 const BUILD_VARIANT: &str = "debug";

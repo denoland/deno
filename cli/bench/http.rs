@@ -11,8 +11,8 @@ use std::time::Instant;
 
 use super::Result;
 
-pub use test_server::parse_wrk_output;
-pub use test_server::WrkOutput as HttpBenchmarkResult;
+pub use test_util::parse_wrk_output;
+pub use test_util::WrkOutput as HttpBenchmarkResult;
 // Some of the benchmarks in this file have been renamed. In case the history
 // somehow gets messed up:
 //   "node_http" was once called "node"
@@ -24,7 +24,7 @@ const DURATION: &str = "10s";
 pub fn benchmark(
   target_path: &Path,
 ) -> Result<HashMap<String, HttpBenchmarkResult>> {
-  let deno_exe = test_server::deno_exe_path();
+  let deno_exe = test_util::deno_exe_path();
   let deno_exe = deno_exe.to_string();
 
   let hyper_hello_exe = target_path.join("test_server");
@@ -118,7 +118,7 @@ fn run(
   TcpStream::connect(&addr).expect("Failed to connect to server in time");
   println!("Server took {} ms to start", now.elapsed().as_millis());
 
-  let wrk = test_server::prebuilt_tool_path("wrk");
+  let wrk = test_util::prebuilt_tool_path("wrk");
   assert!(wrk.is_file());
 
   let addr = format!("http://{addr}/");
@@ -131,7 +131,7 @@ fn run(
   }
 
   println!("{}", wrk_cmd.join(" "));
-  let output = test_server::run_collect(&wrk_cmd, None, None, None, true).0;
+  let output = test_util::run_collect(&wrk_cmd, None, None, None, true).0;
 
   std::thread::sleep(Duration::from_secs(1)); // wait to capture failure. TODO racy.
 

@@ -210,7 +210,7 @@ mod test {
       terminal_width: 50,
     };
     let text = renderer.render(data.clone());
-    let text = test_server::strip_ansi_codes(&text);
+    let text = test_util::strip_ansi_codes(&text);
     assert_eq!(
       text,
       concat!(
@@ -224,13 +224,13 @@ mod test {
     data.display_entry.message = String::new();
     data.total_entries = 3;
     let text = renderer.render(data.clone());
-    let text = test_server::strip_ansi_codes(&text);
+    let text = test_util::strip_ansi_codes(&text);
     assert_eq!(text, "[00:01] [####>------] 5.00KiB/10.00KiB (2/3)",);
 
     // just ensure this doesn't panic
     data.terminal_width = 0;
     let text = renderer.render(data.clone());
-    let text = test_server::strip_ansi_codes(&text);
+    let text = test_util::strip_ansi_codes(&text);
     assert_eq!(text, "[00:01] [-] 5.00KiB/10.00KiB (2/3)",);
 
     data.terminal_width = 50;
@@ -238,7 +238,7 @@ mod test {
     data.display_entry.position = 10 * BYTES_TO_KIB;
     data.percent_done = 1.0f64;
     let text = renderer.render(data.clone());
-    let text = test_server::strip_ansi_codes(&text);
+    let text = test_util::strip_ansi_codes(&text);
     assert_eq!(text, "[00:01] [###########] 10.00KiB/10.00KiB (3/3)",);
 
     data.display_entry.position = 0;
@@ -246,7 +246,7 @@ mod test {
     data.pending_entries = 0;
     data.total_entries = 1;
     let text = renderer.render(data);
-    let text = test_server::strip_ansi_codes(&text);
+    let text = test_util::strip_ansi_codes(&text);
     assert_eq!(text, "[00:01] [###################################]",);
   }
 
@@ -267,7 +267,7 @@ mod test {
       terminal_width: 50,
     };
     let text = renderer.render(data.clone());
-    let text = test_server::strip_ansi_codes(&text);
+    let text = test_util::strip_ansi_codes(&text);
     assert_eq!(text, "Blocking data 0.00KiB/10.00KiB (2/3)");
 
     data.pending_entries = 0;
@@ -275,7 +275,7 @@ mod test {
     data.display_entry.position = 0;
     data.display_entry.total_size = 0;
     let text = renderer.render(data);
-    let text = test_server::strip_ansi_codes(&text);
+    let text = test_util::strip_ansi_codes(&text);
     assert_eq!(text, "Blocking data");
   }
 }

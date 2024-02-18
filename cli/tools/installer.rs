@@ -507,8 +507,8 @@ mod tests {
   use crate::util::fs::canonicalize_path;
   use deno_config::ConfigFlag;
   use std::process::Command;
-  use test_server::testdata_path;
-  use test_server::TempDir;
+  use test_util::testdata_path;
+  use test_util::TempDir;
 
   #[tokio::test]
   async fn install_infer_name_from_url() {
@@ -801,7 +801,7 @@ mod tests {
 
   #[tokio::test]
   async fn install_inferred_name_after_redirect_for_no_path_url() {
-    let _http_server_guard = test_server::http_server();
+    let _http_server_guard = test_util::http_server();
     let shim_data = resolve_shim_data(
       &Flags::default(),
       &InstallFlags {
@@ -1209,7 +1209,7 @@ mod tests {
     let status = Command::new(file_path)
       .env_clear()
       // use the deno binary in the target directory
-      .env("PATH", test_server::target_dir())
+      .env("PATH", test_util::target_dir())
       .spawn()
       .unwrap()
       .wait()

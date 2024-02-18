@@ -652,7 +652,7 @@ mod tests {
   use deno_npm::registry::TestNpmRegistryApi;
   use std::collections::HashMap;
   use std::path::Path;
-  use test_server::TempDir;
+  use test_util::TempDir;
 
   #[derive(Default)]
   struct TestNpmSearchApi(

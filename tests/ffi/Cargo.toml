@@ -14,4 +14,4 @@ crate-type = ["cdylib"]
 
 [dev-dependencies]
 pretty_assertions.workspace = true
-test_server.workspace = true
+test_util.workspace = true

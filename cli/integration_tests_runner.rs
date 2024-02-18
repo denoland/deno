@@ -14,5 +14,5 @@ pub fn main() {
     orig_args.iter().map(|x| x.as_ref()).collect::<Vec<_>>();
   args.extend(orig_args);
 
-  test_server::spawn::exec_replace("cargo", &args).unwrap();
+  test_util::spawn::exec_replace("cargo", &args).unwrap();
 }

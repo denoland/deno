@@ -707,7 +707,7 @@ fn join_package_name(path: &Path, package_name: &str) -> PathBuf {
 mod test {
   use deno_npm::NpmPackageCacheFolderId;
   use deno_semver::package::PackageNv;
-  use test_server::TempDir;
+  use test_util::TempDir;
 
   use super::*;
 
