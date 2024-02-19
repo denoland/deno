@@ -4725,7 +4725,7 @@ fn stdio_streams_are_locked_in_permission_prompt() {
 }
 
 #[test]
-fn permission_prompt_strips_ansi_codes_and_control_chars() {
+fn permission_prompt_escapes_ansi_codes_and_control_chars() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line(
         r#"Deno.permissions.request({ name: "env", variable: "\rDo you like ice cream? y/n" });"#
