@@ -27,6 +27,8 @@ use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_node::NpmResolver;
 use deno_runtime::deno_node::PathClean;
 use deno_runtime::permissions::PermissionsContainer;
+use deno_semver::jsr::JsrPackageNvReference;
+use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageNvReference;
@@ -227,11 +229,41 @@ impl<'a> TsResponseImportMapper<'a> {
       let jsr_resolver = self.documents.get_jsr_resolver();
       let export = jsr_resolver.lookup_export_for_path(&nv, &path)?;
       let sub_path = (export != ".").then_some(export);
-      // TODO(nayeemrmn): Check import map values like for npm below.
-      if let Some(req) = jsr_resolver.lookup_req_for_nv(&nv) {
-        return Some(PackageReqReference { req, sub_path }.to_string());
+      let mut req = None;
+      req = req.or_else(|| {
+        let import_map = self.maybe_import_map?;
+        for entry in import_map.entries_for_referrer(referrer) {
+          let Some(value) = entry.raw_value else {
+            continue;
+          };
+          let Ok(req_ref) = JsrPackageReqReference::from_str(value) else {
+            continue;
+          };
+          let req = req_ref.req();
+          if req.name == nv.name
+            && req.version_req.tag().is_none()
+            && req.version_req.matches(&nv.version)
+          {
+            return Some(req.clone());
+          }
+        }
+        None
+      });
+      req = req.or_else(|| jsr_resolver.lookup_req_for_nv(&nv));
+      let spec_str = if let Some(req) = req {
+        let req_ref = PackageReqReference { req, sub_path };
+        JsrPackageReqReference::new(req_ref).to_string()
+      } else {
+        let nv_ref = PackageNvReference { nv, sub_path };
+        JsrPackageNvReference::new(nv_ref).to_string()
+      };
+      let specifier = ModuleSpecifier::parse(&spec_str).ok()?;
+      if let Some(import_map) = self.maybe_import_map {
+        if let Some(result) = import_map.lookup(&specifier, referrer) {
+          return Some(result);
+        }
       }
-      return Some(PackageNvReference { nv, sub_path }.to_string());
+      return Some(spec_str);
     }
 
     if let Some(npm_resolver) =
