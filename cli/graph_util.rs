@@ -202,20 +202,6 @@ pub fn graph_lock_or_exit(graph: &ModuleGraph, lockfile: &mut Lockfile) {
   }
 }
 
-enum MutLoaderRef<'a> {
-  Borrowed(&'a mut dyn Loader),
-  Owned(cache::FetchCacher),
-}
-
-impl<'a> MutLoaderRef<'a> {
-  pub fn as_mut_loader(&mut self) -> &mut dyn Loader {
-    match self {
-      Self::Borrowed(loader) => *loader,
-      Self::Owned(loader) => loader,
-    }
-  }
-}
-
 pub struct CreateGraphOptions<'a> {
   pub graph_kind: GraphKind,
   pub roots: Vec<ModuleSpecifier>,
@@ -431,6 +417,20 @@ impl ModuleGraphBuilder {
     graph: &mut ModuleGraph,
     options: CreateGraphOptions<'a>,
   ) -> Result<(), AnyError> {
+    enum MutLoaderRef<'a> {
+      Borrowed(&'a mut dyn Loader),
+      Owned(cache::FetchCacher),
+    }
+
+    impl<'a> MutLoaderRef<'a> {
+      pub fn as_mut_loader(&mut self) -> &mut dyn Loader {
+        match self {
+          Self::Borrowed(loader) => *loader,
+          Self::Owned(loader) => loader,
+        }
+      }
+    }
+
     let maybe_imports = self.options.to_maybe_imports()?;
     let parser = self.parsed_source_cache.as_capturing_parser();
     let analyzer = self.module_info_cache.as_module_analyzer(&parser);
@@ -454,6 +454,7 @@ impl ModuleGraphBuilder {
         loader.as_mut_loader(),
         deno_graph::BuildOptions {
           is_dynamic: options.is_dynamic,
+          jsr_url_provider: Some(&CliJsrUrlProvider::default()),
           imports: maybe_imports,
           resolver: Some(graph_resolver),
           file_system: Some(&DenoGraphFsAdapter(self.fs.as_ref())),
@@ -462,60 +463,6 @@ impl ModuleGraphBuilder {
           module_parser: Some(&parser),
           reporter: maybe_file_watcher_reporter,
           workspace_members: &workspace_members,
-        },
-      )
-      .await
-  }
-
-  async fn build_graph_with_npm_resolution_and_build_options<'a>(
-    &self,
-    graph: &mut ModuleGraph,
-    options: CreateGraphOptions<'a>,
-  ) -> Result<(), AnyError> {
-    enum MutLoaderRef<'a> {
-      Borrowed(&'a mut dyn Loader),
-      Owned(cache::FetchCacher),
-    }
-
-    impl<'a> MutLoaderRef<'a> {
-      pub fn as_mut_loader(&mut self) -> &mut dyn Loader {
-        match self {
-          Self::Borrowed(loader) => *loader,
-          Self::Owned(loader) => loader,
-        }
-      }
-    }
-
-    let maybe_imports = self.options.to_maybe_imports()?;
-    let parser = self.parsed_source_cache.as_capturing_parser();
-    let analyzer = self.module_info_cache.as_module_analyzer(&parser);
-    let mut loader = match options.loader {
-      Some(loader) => MutLoaderRef::Borrowed(loader),
-      None => MutLoaderRef::Owned(self.create_graph_loader()),
-    };
-    let cli_resolver = self.resolver.clone();
-    let graph_resolver = cli_resolver.as_graph_resolver();
-    let graph_npm_resolver = cli_resolver.as_graph_npm_resolver();
-    let maybe_file_watcher_reporter = self
-      .maybe_file_watcher_reporter
-      .as_ref()
-      .map(|r| r.as_reporter());
-    self
-      .build_graph_with_npm_resolution_and_build_options(
-        graph,
-        options.roots,
-        loader.as_mut_loader(),
-        deno_graph::BuildOptions {
-          is_dynamic: options.is_dynamic,
-          imports: maybe_imports,
-          resolver: Some(graph_resolver),
-          file_system: Some(&DenoGraphFsAdapter(self.fs.as_ref())),
-          npm_resolver: Some(graph_npm_resolver),
-          module_analyzer: Some(&analyzer),
-          module_parser: Some(&parser),
-          reporter: maybe_file_watcher_reporter,
-          workspace_fast_check: options.workspace_fast_check,
-          workspace_members: self.get_deno_graph_workspace_members()?,
         },
       )
       .await
@@ -653,10 +600,6 @@ impl ModuleGraphBuilder {
     } else {
       None
     };
-    let mut loader = match options.loader {
-      Some(loader) => MutLoaderRef::Borrowed(loader),
-      None => MutLoaderRef::Owned(self.create_graph_loader()),
-    };
     let parser = self.parsed_source_cache.as_capturing_parser();
     let cli_resolver = &self.resolver;
     let graph_resolver = cli_resolver.as_graph_resolver();
@@ -665,11 +608,8 @@ impl ModuleGraphBuilder {
       self.options.resolve_deno_graph_workspace_members()?;
 
     graph.build_fast_check_type_graph(
-      // todo: THERE IS NO REASON TO PROVIDE A LOADER HERE
-      // WE NEED TO EXTRACT OUT THE LOADER METHODS TO A
-      // JSRREGISTRYURLPROVIDER
-      loader.as_mut_loader(),
       deno_graph::BuildFastCheckTypeGraphOptions {
+        jsr_url_provider: Some(&CliJsrUrlProvider::default()),
         fast_check_cache: fast_check_cache
           .as_ref()
           .map(|c| c.as_deno_graph_cache()),
@@ -1040,6 +980,15 @@ pub fn format_range_with_colors(range: &deno_graph::Range) -> String {
     colors::yellow(&(range.start.line + 1).to_string()),
     colors::yellow(&(range.start.character + 1).to_string())
   )
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+struct CliJsrUrlProvider;
+
+impl deno_graph::source::JsrUrlProvider for CliJsrUrlProvider {
+  fn url(&self) -> &'static ModuleSpecifier {
+    jsr_url()
+  }
 }
 
 #[cfg(test)]
