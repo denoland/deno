@@ -75,6 +75,16 @@ pub fn op_timer_handle(state: &mut OpState) -> ResourceId {
     .add(TimerHandle(CancelHandle::new_rc()))
 }
 
+/// Bifurcate the op_sleep op into an interval one we can use for sanitization purposes.
+#[op2(async(lazy), fast)]
+pub async fn op_sleep_interval(
+  state: Rc<RefCell<OpState>>,
+  #[smi] millis: u64,
+  #[smi] rid: ResourceId,
+) -> Result<bool, AnyError> {
+  op_sleep::call(state, millis, rid).await
+}
+
 /// Waits asynchronously until either `millis` milliseconds have passed or the
 /// [`TimerHandle`] resource given by `rid` has been canceled.
 ///
@@ -85,6 +95,13 @@ pub async fn op_sleep(
   #[smi] millis: u64,
   #[smi] rid: ResourceId,
 ) -> Result<bool, AnyError> {
+  // If this timeout is scheduled for 0ms it means we want it to run at the
+  // end of the event loop turn. Since this is a lazy op, we can just return
+  // having already spun the event loop.
+  if millis == 0 {
+    return Ok(true);
+  }
+
   // If the timer is not present in the resource table it was cancelled before
   // this op was polled.
   let Ok(handle) = state.borrow().resource_table.get::<TimerHandle>(rid) else {

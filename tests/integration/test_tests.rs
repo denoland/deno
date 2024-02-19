@@ -219,63 +219,55 @@ itest!(allow_none {
 });
 
 itest!(ops_sanitizer_unstable {
-  args: "test --trace-ops test/ops_sanitizer_unstable.ts",
+  args: "test --trace-ops test/sanitizer/ops_sanitizer_unstable.ts",
   exit_code: 1,
-  output: "test/ops_sanitizer_unstable.out",
+  output: "test/sanitizer/ops_sanitizer_unstable.out",
 });
 
 itest!(ops_sanitizer_timeout_failure {
-  args: "test test/ops_sanitizer_timeout_failure.ts",
-  output: "test/ops_sanitizer_timeout_failure.out",
+  args: "test test/sanitizer/ops_sanitizer_timeout_failure.ts",
+  output: "test/sanitizer/ops_sanitizer_timeout_failure.out",
 });
 
 itest!(ops_sanitizer_multiple_timeout_tests {
-  args: "test --trace-ops test/ops_sanitizer_multiple_timeout_tests.ts",
+  args:
+    "test --trace-ops test/sanitizer/ops_sanitizer_multiple_timeout_tests.ts",
   exit_code: 1,
-  output: "test/ops_sanitizer_multiple_timeout_tests.out",
+  output: "test/sanitizer/ops_sanitizer_multiple_timeout_tests.out",
 });
 
 itest!(ops_sanitizer_multiple_timeout_tests_no_trace {
-  args: "test test/ops_sanitizer_multiple_timeout_tests.ts",
+  args: "test test/sanitizer/ops_sanitizer_multiple_timeout_tests.ts",
   exit_code: 1,
-  output: "test/ops_sanitizer_multiple_timeout_tests_no_trace.out",
+  output: "test/sanitizer/ops_sanitizer_multiple_timeout_tests_no_trace.out",
 });
 
-itest!(trace_ops_catch_error {
-  args: "test -A --trace-ops test/trace_ops_caught_error/main.ts",
+itest!(sanitizer_trace_ops_catch_error {
+  args: "test -A --trace-ops test/sanitizer/trace_ops_caught_error/main.ts",
   exit_code: 0,
-  output: "test/trace_ops_caught_error/main.out",
+  output: "test/sanitizer/trace_ops_caught_error/main.out",
 });
-
-// TODO(@littledivy): re-enable this test, recent optimizations made output non deterministic.
-// https://github.com/denoland/deno/issues/14268
-//
-// itest!(ops_sanitizer_missing_details {
-//  args: "test --allow-write --allow-read test/ops_sanitizer_missing_details.ts",
-//  exit_code: 1,
-//  output: "test/ops_sanitizer_missing_details.out",
-// });
 
 itest!(ops_sanitizer_closed_inside_started_before {
-  args: "test --trace-ops test/ops_sanitizer_closed_inside_started_before.ts",
+  args: "test --trace-ops test/sanitizer/ops_sanitizer_closed_inside_started_before.ts",
   exit_code: 1,
-  output: "test/ops_sanitizer_closed_inside_started_before.out",
+  output: "test/sanitizer/ops_sanitizer_closed_inside_started_before.out",
 });
 
 itest!(ops_sanitizer_nexttick {
-  args: "test --no-check test/ops_sanitizer_nexttick.ts",
-  output: "test/ops_sanitizer_nexttick.out",
+  args: "test --no-check test/sanitizer/ops_sanitizer_nexttick.ts",
+  output: "test/sanitizer/ops_sanitizer_nexttick.out",
 });
 
 itest!(resource_sanitizer {
-  args: "test --allow-read test/resource_sanitizer.ts",
+  args: "test --allow-read test/sanitizer/resource_sanitizer.ts",
   exit_code: 1,
-  output: "test/resource_sanitizer.out",
+  output: "test/sanitizer/resource_sanitizer.out",
 });
 
 itest!(exit_sanitizer {
-  args: "test test/exit_sanitizer.ts",
-  output: "test/exit_sanitizer.out",
+  args: "test test/sanitizer/exit_sanitizer.ts",
+  output: "test/sanitizer/exit_sanitizer.out",
   exit_code: 1,
 });
 

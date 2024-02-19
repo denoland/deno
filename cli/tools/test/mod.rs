@@ -34,13 +34,15 @@ use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::futures::future;
 use deno_core::futures::stream;
-use deno_core::futures::task::noop_waker;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::located_script_name;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_v8;
+use deno_core::stats::RuntimeActivity;
+use deno_core::stats::RuntimeActivityDiff;
 use deno_core::stats::RuntimeActivityStats;
+use deno_core::stats::RuntimeActivityStatsFactory;
 use deno_core::stats::RuntimeActivityStatsFilter;
 use deno_core::unsync::spawn;
 use deno_core::unsync::spawn_blocking;
@@ -68,6 +70,7 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt::Write as _;
+use std::future::poll_fn;
 use std::io::Read;
 use std::io::Write;
 use std::num::NonZeroUsize;
@@ -76,7 +79,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use std::task::Context;
+use std::task::Poll;
 use std::time::Duration;
 use std::time::Instant;
 use std::time::SystemTime;
@@ -97,6 +100,9 @@ use reporters::JunitTestReporter;
 use reporters::PrettyTestReporter;
 use reporters::TapTestReporter;
 use reporters::TestReporter;
+
+/// How many times we're allowed to spin the event loop before considering something a leak.
+const MAX_SANITIZER_LOOP_SPINS: usize = 16;
 
 /// The test mode is used to determine how a specifier is to be tested.
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -210,8 +216,7 @@ pub enum TestFailure {
   JsError(Box<JsError>),
   FailedSteps(usize),
   IncompleteSteps,
-  LeakedOps(Vec<String>, bool), // Details, isOpCallTracingEnabled
-  LeakedResources(Vec<String>), // Details
+  Leaked(Vec<String>, Vec<String>), // Details, trailer notes
   // The rest are for steps only.
   Incomplete,
   OverlapsWithSanitizers(IndexSet<String>), // Long names of overlapped tests
@@ -226,20 +231,13 @@ impl ToString for TestFailure {
       TestFailure::FailedSteps(n) => format!("{} test steps failed.", n),
       TestFailure::IncompleteSteps => "Completed while steps were still running. Ensure all steps are awaited with `await t.step(...)`.".to_string(),
       TestFailure::Incomplete => "Didn't complete before parent. Await step with `await t.step(...)`.".to_string(),
-      TestFailure::LeakedOps(details, is_op_call_tracing_enabled) => {
-        let mut string = "Leaking async ops:".to_string();
+      TestFailure::Leaked(details, trailer_notes) => {
+        let mut string = "Leaks detected:".to_string();
         for detail in details {
-          string.push_str(&format!("\n  - {}", detail));
+          string.push_str(&format!("\n  - {detail}"));
         }
-        if !is_op_call_tracing_enabled {
-          string.push_str("\nTo get more details where ops were leaked, run again with --trace-ops flag.");
-        }
-        string
-      }
-      TestFailure::LeakedResources(details) => {
-        let mut string = "Leaking resources:".to_string();
-        for detail in details {
-          string.push_str(&format!("\n  - {}", detail));
+        for trailer in trailer_notes {
+          string.push_str(&format!("\n{trailer}"));
         }
         string
       }
@@ -540,6 +538,25 @@ pub fn worker_has_tests(worker: &mut MainWorker) -> bool {
   !state.borrow::<ops::testing::TestContainer>().0.is_empty()
 }
 
+/// Yields to tokio to allow async work to process, and then polls
+/// the event loop once.
+#[must_use = "The event loop result should be checked"]
+pub async fn poll_event_loop(worker: &mut MainWorker) -> Result<(), AnyError> {
+  // Allow any ops that to do work in the tokio event loop to do so
+  tokio::task::yield_now().await;
+  // Spin the event loop once
+  poll_fn(|cx| {
+    if let Poll::Ready(Err(err)) = worker
+      .js_runtime
+      .poll_event_loop(cx, PollEventLoopOptions::default())
+    {
+      return Poll::Ready(Err(err));
+    }
+    Poll::Ready(Ok(()))
+  })
+  .await
+}
+
 pub async fn run_tests_for_worker(
   worker: &mut MainWorker,
   specifier: &ModuleSpecifier,
@@ -574,11 +591,43 @@ pub async fn run_tests_for_worker(
   }))?;
   let mut had_uncaught_error = false;
   let stats = worker.js_runtime.runtime_activity_stats_factory();
+  let ops = worker.js_runtime.op_names();
+
+  // These particular ops may start and stop independently of tests, so we just filter them out
+  // completely.
+  let op_id_host_recv_message = ops
+    .iter()
+    .position(|op| *op == "op_host_recv_message")
+    .unwrap();
+  let op_id_host_recv_ctrl = ops
+    .iter()
+    .position(|op| *op == "op_host_recv_ctrl")
+    .unwrap();
+
+  // For consistency between tests with and without sanitizers, we _always_ include
+  // the actual sanitizer capture before and after a test, but a test that ignores resource
+  // or op sanitization simply doesn't throw if one of these constraints is violated.
+  let mut filter = RuntimeActivityStatsFilter::default();
+  filter = filter.with_resources();
+  filter = filter.with_ops();
+  filter = filter.omit_op(op_id_host_recv_ctrl as _);
+  filter = filter.omit_op(op_id_host_recv_message as _);
 
   for (desc, function) in tests {
     if fail_fast_tracker.should_stop() {
       break;
     }
+
+    // Each test needs a fresh reqwest connection pool to avoid inter-test weirdness with connections
+    // failing. If we don't do this, a connection to a test server we just tore down might be re-used in
+    // the next test.
+    // TODO(mmastrac): this should be some sort of callback that we can implement for any subsystem
+    worker
+      .js_runtime
+      .op_state()
+      .borrow_mut()
+      .try_take::<deno_runtime::deno_fetch::reqwest::Client>();
+
     if desc.ignore {
       sender.send(TestEvent::Result(desc.id, TestResult::Ignored, 0))?;
       continue;
@@ -593,24 +642,10 @@ pub async fn run_tests_for_worker(
     // responded to settle.
     // TODO(mmastrac): we should provide an API to poll the event loop until no futher
     // progress is made.
-    {
-      let waker = noop_waker();
-      let mut cx = Context::from_waker(&waker);
-      let _ = worker
-        .js_runtime
-        .poll_event_loop(&mut cx, PollEventLoopOptions::default());
-    }
+    poll_event_loop(worker).await?;
 
-    let mut filter = RuntimeActivityStatsFilter::default();
-    if desc.sanitize_resources {
-      filter = filter.with_resources();
-    }
-
-    let before = if !filter.is_empty() {
-      Some(stats.clone().capture(&filter))
-    } else {
-      None
-    };
+    // We always capture stats, regardless of sanitization state
+    let before = stats.clone().capture(&filter);
 
     let earlier = SystemTime::now();
     let call = worker.js_runtime.call(&function);
@@ -635,12 +670,21 @@ pub async fn run_tests_for_worker(
         }
       }
     };
-    if let Some(before) = before {
-      let after = stats.clone().capture(&filter);
-      let diff = RuntimeActivityStats::diff(&before, &after);
-      let formatted = format_sanitizer_diff(diff);
+
+    // Await activity stabilization
+    if let Some(diff) = wait_for_activity_to_stabilize(
+      worker,
+      &stats,
+      &filter,
+      before,
+      desc.sanitize_ops,
+      desc.sanitize_resources,
+    )
+    .await?
+    {
+      let (formatted, trailer_notes) = format_sanitizer_diff(diff);
       if !formatted.is_empty() {
-        let failure = TestFailure::LeakedResources(formatted);
+        let failure = TestFailure::Leaked(formatted, trailer_notes);
         let elapsed = SystemTime::now().duration_since(earlier)?.as_millis();
         sender.send(TestEvent::Result(
           desc.id,
@@ -661,6 +705,96 @@ pub async fn run_tests_for_worker(
     sender.send(TestEvent::Result(desc.id, result, elapsed as u64))?;
   }
   Ok(())
+}
+
+/// Removes timer resources and op_sleep_interval calls. When an interval is started before a test
+/// and resolves during a test, there's a false alarm.
+fn preprocess_timer_activity(activities: &mut Vec<RuntimeActivity>) {
+  // TODO(mmastrac): Once we get to the new timer implementation, all of this
+  // code can go away and be replaced by a proper timer sanitizer.
+  let mut timer_resource_leaked = false;
+
+  // First, search for any timer resources which will indicate that we have an interval leak
+  activities.retain(|activity| {
+    if let RuntimeActivity::Resource(_, name) = activity {
+      if name == "timer" {
+        timer_resource_leaked = true;
+        return false;
+      }
+    }
+    true
+  });
+
+  // If we've leaked a timer resource, we un-mute op_sleep_interval calls. Otherwise, we remove
+  // them.
+  if !timer_resource_leaked {
+    activities.retain(|activity| {
+      if let RuntimeActivity::AsyncOp(_, op, _) = activity {
+        *op != "op_sleep_interval"
+      } else {
+        true
+      }
+    })
+  }
+}
+
+async fn wait_for_activity_to_stabilize(
+  worker: &mut MainWorker,
+  stats: &RuntimeActivityStatsFactory,
+  filter: &RuntimeActivityStatsFilter,
+  before: RuntimeActivityStats,
+  sanitize_ops: bool,
+  sanitize_resources: bool,
+) -> Result<Option<RuntimeActivityDiff>, AnyError> {
+  // First, check to see if there's any diff at all. If not, just continue.
+  let after = stats.clone().capture(filter);
+  let mut diff = RuntimeActivityStats::diff(&before, &after);
+  preprocess_timer_activity(&mut diff.appeared);
+  preprocess_timer_activity(&mut diff.disappeared);
+  if diff.appeared.is_empty() && diff.disappeared.is_empty() {
+    // No activity, so we return early
+    return Ok(None);
+  }
+
+  // We allow for up to MAX_SANITIZER_LOOP_SPINS to get to a point where there is no difference.
+  // TODO(mmastrac): We could be much smarter about this if we had the concept of "progress" in
+  // an event loop tick. Ideally we'd be able to tell if we were spinning and doing nothing, or
+  // spinning and resolving ops.
+  for _ in 0..MAX_SANITIZER_LOOP_SPINS {
+    // There was a diff, so let the event loop run once
+    poll_event_loop(worker).await?;
+
+    let after = stats.clone().capture(filter);
+    diff = RuntimeActivityStats::diff(&before, &after);
+    preprocess_timer_activity(&mut diff.appeared);
+    preprocess_timer_activity(&mut diff.disappeared);
+    if diff.appeared.is_empty() && diff.disappeared.is_empty() {
+      return Ok(None);
+    }
+  }
+
+  if !sanitize_ops {
+    diff
+      .appeared
+      .retain(|activity| !matches!(activity, RuntimeActivity::AsyncOp(..)));
+    diff
+      .disappeared
+      .retain(|activity| !matches!(activity, RuntimeActivity::AsyncOp(..)));
+  }
+  if !sanitize_resources {
+    diff
+      .appeared
+      .retain(|activity| !matches!(activity, RuntimeActivity::Resource(..)));
+    diff
+      .disappeared
+      .retain(|activity| !matches!(activity, RuntimeActivity::Resource(..)));
+  }
+
+  Ok(if diff.appeared.is_empty() && diff.disappeared.is_empty() {
+    None
+  } else {
+    Some(diff)
+  })
 }
 
 fn extract_files_from_regex_blocks(

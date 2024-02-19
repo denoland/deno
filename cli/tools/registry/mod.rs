@@ -768,6 +768,7 @@ async fn build_and_check_graph_for_publish(
   let graph = Arc::new(
     module_graph_builder
       .create_graph_with_options(crate::graph_util::CreateGraphOptions {
+        is_dynamic: false,
         // All because we're going to use this same graph to determine the publish order later
         graph_kind: deno_graph::GraphKind::All,
         roots: packages

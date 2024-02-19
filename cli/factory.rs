@@ -657,12 +657,8 @@ impl CliFactory {
           self.fs().clone(),
           self.graph_container().clone(),
           self.maybe_lockfile().clone(),
-          self.maybe_file_watcher_reporter().clone(),
           self.module_graph_builder().await?.clone(),
-          self.module_info_cache()?.clone(),
-          self.parsed_source_cache().clone(),
           self.text_only_progress_bar().clone(),
-          self.resolver().await?.clone(),
           self.type_checker().await?.clone(),
         )))
       })
