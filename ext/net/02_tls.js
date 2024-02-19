@@ -51,21 +51,49 @@ async function connectTls({
   caCerts = [],
   certChain = undefined,
   privateKey = undefined,
+  cert = undefined,
+  key = undefined,
   alpnProtocols = undefined,
 }) {
   if (certFile !== undefined) {
     internals.warnOnDeprecatedApi(
       "Deno.ConnectTlsOptions.certFile",
       new Error().stack,
-      "Pass the cert file contents to the `Deno.ConnectTlsOptions.certChain` option instead.",
+      "Pass the cert file contents to the `Deno.ConnectTlsOptions.cert` option instead.",
+    );
+  }
+  if (certChain !== undefined) {
+    internals.warnOnDeprecatedApi(
+      "Deno.ConnectTlsOptions.certChain",
+      new Error().stack,
+      "Use the `Deno.ConnectTlsOptions.cert` option instead.",
+    );
+  }
+  if (privateKey !== undefined) {
+    internals.warnOnDeprecatedApi(
+      "Deno.ConnectTlsOptions.privateKey",
+      new Error().stack,
+      "Use the `Deno.ConnectTlsOptions.key` option instead.",
     );
   }
   if (transport !== "tcp") {
     throw new TypeError(`Unsupported transport: '${transport}'`);
   }
+  if (certChain !== undefined && cert !== undefined) {
+    throw new TypeError(
+      "Cannot specify both `certChain` and `cert`",
+    );
+  }
+  if (privateKey !== undefined && key !== undefined) {
+    throw new TypeError(
+      "Cannot specify both `privateKey` and `key`",
+    );
+  }
+  cert ??= certChain;
+  key ??= privateKey;
   const { 0: rid, 1: localAddr, 2: remoteAddr } = await op_net_connect_tls(
     { hostname, port },
-    { certFile, caCerts, certChain, privateKey, alpnProtocols },
+    { certFile, caCerts, cert, key, alpnProtocols },
   );
   localAddr.transport = "tcp";
   remoteAddr.transport = "tcp";

@@ -2668,6 +2668,31 @@ declare namespace Deno {
     utimeSync(atime: number | Date, mtime: number | Date): void;
     /** **UNSTABLE**: New API, yet to be vetted.
      *
+     * Checks if the file resource is a TTY (terminal).
+     *
+     * ```ts
+     * // This example is system and context specific
+     * using file = await Deno.open("/dev/tty6");
+     * file.isTerminal(); // true
+     * ```
+     */
+    isTerminal(): boolean;
+    /** **UNSTABLE**: New API, yet to be vetted.
+     *
+     * Set TTY to be under raw mode or not. In raw mode, characters are read and
+     * returned as is, without being processed. All special processing of
+     * characters by the terminal is disabled, including echoing input
+     * characters. Reading from a TTY device in raw mode is faster than reading
+     * from a TTY device in canonical mode.
+     *
+     * ```ts
+     * using file = await Deno.open("/dev/tty6");
+     * file.setRaw(true, { cbreak: true });
+     * ```
+     */
+    setRaw(mode: boolean, options?: SetRawOptions): void;
+    /** **UNSTABLE**: New API, yet to be vetted.
+     *
      * Acquire an advisory file-system lock for the file.
      *
      * @param [exclusive=false]

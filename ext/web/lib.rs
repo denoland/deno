@@ -52,6 +52,7 @@ pub use crate::message_port::MessagePort;
 
 use crate::timers::op_now;
 use crate::timers::op_sleep;
+use crate::timers::op_sleep_interval;
 use crate::timers::op_timer_handle;
 use crate::timers::StartTime;
 pub use crate::timers::TimersPermission;
@@ -86,6 +87,7 @@ deno_core::extension!(deno_web,
     op_now<P>,
     op_timer_handle,
     op_sleep,
+    op_sleep_interval,
     op_transfer_arraybuffer,
     stream_resource::op_readable_stream_resource_allocate,
     stream_resource::op_readable_stream_resource_allocate_sized,
