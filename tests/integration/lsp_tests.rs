@@ -693,11 +693,19 @@ fn lsp_format_vendor_path() {
     .use_http_server()
     .use_temp_cwd()
     .build();
+
+  // put this dependency in the global cache
+  context
+    .new_command()
+    .args("cache http://localhost:4545/run/002_hello.ts")
+    .run()
+    .skip_output_check();
+
   let temp_dir = context.temp_dir();
   temp_dir.write("deno.json", json!({ "vendor": true }).to_string());
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
-  client.did_open(json!({
+  let diagnostics = client.did_open(json!({
     "textDocument": {
       "uri": "file:///a/file.ts",
       "languageId": "typescript",
@@ -705,6 +713,18 @@ fn lsp_format_vendor_path() {
       "text": r#"import "http://localhost:4545/run/002_hello.ts";"#,
     },
   }));
+  // copying from the global cache to the local cache requires explicitly
+  // running the cache command so that the checksums can be verified
+  assert_eq!(
+    diagnostics
+      .all()
+      .iter()
+      .map(|d| d.message.as_str())
+      .collect::<Vec<_>>(),
+    vec![
+      "Uncached or missing remote URL: http://localhost:4545/run/002_hello.ts"
+    ]
+  );
   client.write_request(
     "workspace/executeCommand",
     json!({
@@ -4358,7 +4378,8 @@ fn lsp_code_actions() {
     }])
   );
   let res = client
-    .write_request(      "codeAction/resolve",
+    .write_request(
+      "codeAction/resolve",
       json!({
         "title": "Add all missing 'async' modifiers",
         "kind": "quickfix",
@@ -4378,8 +4399,7 @@ fn lsp_code_actions() {
           "fixId": "fixAwaitInSyncFunction"
         }
       }),
-    )
-    ;
+    );
   assert_eq!(
     res,
     json!({
@@ -4762,26 +4782,27 @@ fn lsp_code_actions_deno_cache_jsr() {
 
 #[test]
 fn lsp_jsr_lockfile() {
-  let context = TestContextBuilder::new()
-    .use_http_server()
-    .use_temp_cwd()
-    .build();
+  let context = TestContextBuilder::for_jsr().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
   temp_dir.write("./deno.json", json!({}).to_string());
-  temp_dir.write(
-    "./deno.lock",
-    json!({
-      "version": "3",
-      "packages": {
-        "specifiers": {
-          // This is an old version of the package which exports `sum()` instead
-          // of `add()`.
-          "jsr:@denotest/add": "jsr:@denotest/add@0.2.0",
-        },
+  let lockfile = temp_dir.path().join("deno.lock");
+  let integrity = context.get_jsr_package_integrity("@denotest/add/0.2.0");
+  lockfile.write_json(&json!({
+    "version": "3",
+    "packages": {
+      "specifiers": {
+        // This is an old version of the package which exports `sum()` instead
+        // of `add()`.
+        "jsr:@denotest/add": "jsr:@denotest/add@0.2.0",
       },
-    })
-    .to_string(),
-  );
+      "jsr": {
+        "@denotest/add@0.2.0": {
+          "integrity": integrity
+        }
+      }
+    },
+    "remote": {},
+  }));
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.did_open(json!({
@@ -4790,8 +4811,8 @@ fn lsp_jsr_lockfile() {
       "languageId": "typescript",
       "version": 1,
       "text": r#"
-        import { add } from "jsr:@denotest/add";
-        console.log(add(1, 2));
+        import { sum } from "jsr:@denotest/add";
+        console.log(sum(1, 2));
       "#,
     },
   }));
@@ -10672,9 +10693,27 @@ fn lsp_vendor_dir() {
   refresh_config(&mut client);
 
   let diagnostics = client.read_diagnostics();
-  assert_eq!(diagnostics.all().len(), 0, "{:#?}", diagnostics); // cached
+  // won't be cached until a manual cache occurs
+  assert_eq!(
+    diagnostics
+      .all()
+      .iter()
+      .map(|d| d.message.as_str())
+      .collect::<Vec<_>>(),
+    vec![
+      "Uncached or missing remote URL: http://localhost:4545/subdir/mod1.ts"
+    ]
+  );
 
-  // no caching necessary because it was already cached. It should exist now
+  assert!(!temp_dir
+    .path()
+    .join("vendor/http_localhost_4545/subdir/mod1.ts")
+    .exists());
+
+  // now cache
+  cache(&mut client);
+  let diagnostics = client.read_diagnostics();
+  assert_eq!(diagnostics.all().len(), 0, "{:#?}", diagnostics); // cached
   assert!(temp_dir
     .path()
     .join("vendor/http_localhost_4545/subdir/mod1.ts")

@@ -196,8 +196,7 @@ impl Loader for FetchCacher {
   fn load(
     &mut self,
     specifier: &ModuleSpecifier,
-    _is_dynamic: bool,
-    cache_setting: deno_graph::source::CacheSetting,
+    options: deno_graph::source::LoadOptions,
   ) -> LoadFuture {
     use deno_graph::source::CacheSetting as LoaderCacheSetting;
 
@@ -222,7 +221,7 @@ impl Loader for FetchCacher {
     let specifier = specifier.clone();
 
     async move {
-      let maybe_cache_setting = match cache_setting {
+      let maybe_cache_setting = match options.cache_setting {
         LoaderCacheSetting::Use => None,
         LoaderCacheSetting::Reload => {
           if matches!(file_fetcher.cache_setting(), CacheSetting::Only) {
@@ -240,6 +239,7 @@ impl Loader for FetchCacher {
           permissions,
           maybe_accept: None,
           maybe_cache_setting: maybe_cache_setting.as_ref(),
+          maybe_checksum: options.maybe_checksum,
         })
         .await
         .map(|file| {
@@ -269,7 +269,7 @@ impl Loader for FetchCacher {
           let error_class_name = get_error_class_name(&err);
           match error_class_name {
             "NotFound" => Ok(None),
-            "NotCached" if cache_setting == LoaderCacheSetting::Only => Ok(None),
+            "NotCached" if options.cache_setting == LoaderCacheSetting::Only => Ok(None),
             _ => Err(err),
           }
         })

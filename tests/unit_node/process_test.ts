@@ -226,6 +226,7 @@ Deno.test({
   },
 });
 
+// Only supported on Windows (but won't throw anywhere)
 Deno.test({
   name: "process.on SIGBREAK doesn't throw",
   fn() {
@@ -235,9 +236,9 @@ Deno.test({
   },
 });
 
+// Not supported on Windows (but won't throw anywhere)
 Deno.test({
-  name: "process.on SIGTERM doesn't throw on windows",
-  ignore: Deno.build.os !== "windows",
+  name: "process.on SIGTERM doesn't throw",
   fn() {
     const listener = () => {};
     process.on("SIGTERM", listener);

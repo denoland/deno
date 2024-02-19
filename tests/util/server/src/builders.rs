@@ -280,6 +280,34 @@ impl TestContext {
       .run()
       .skip_output_check();
   }
+
+  pub fn get_jsr_package_integrity(&self, sub_path: &str) -> String {
+    fn get_checksum(bytes: &[u8]) -> String {
+      use sha2::Digest;
+      let mut hasher = sha2::Sha256::new();
+      hasher.update(bytes);
+      format!("{:x}", hasher.finalize())
+    }
+
+    let url = url::Url::parse(self.envs.get("JSR_URL").unwrap()).unwrap();
+    let url = url.join(&format!("{}_meta.json", sub_path)).unwrap();
+    let bytes = sync_fetch(url);
+    get_checksum(&bytes)
+  }
+}
+
+fn sync_fetch(url: url::Url) -> bytes::Bytes {
+  let runtime = tokio::runtime::Builder::new_current_thread()
+    .enable_io()
+    .enable_time()
+    .build()
+    .unwrap();
+  runtime.block_on(async move {
+    let client = reqwest::Client::new();
+    let response = client.get(url).send().await.unwrap();
+    assert!(response.status().is_success());
+    response.bytes().await.unwrap()
+  })
 }
 
 /// We can't clone an stdio, so if someone clones a DenoCmd,

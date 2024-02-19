@@ -10,6 +10,8 @@ import {
 } from "./test_util.ts";
 import { copy } from "@std/streams/copy.ts";
 
+// Note tests for Deno.FsFile.setRaw is in integration tests.
+
 Deno.test(function filesStdioFileDescriptors() {
   assertEquals(Deno.stdin.rid, 0);
   assertEquals(Deno.stdout.rid, 1);
@@ -898,6 +900,12 @@ Deno.test(
     await Deno.remove(filename);
   },
 );
+
+Deno.test({ permissions: { read: true } }, function fsFileIsTerminal() {
+  // CI not under TTY, so cannot test stdin/stdout/stderr.
+  using file = Deno.openSync("tests/testdata/assets/hello.txt");
+  assert(!file.isTerminal());
+});
 
 Deno.test(
   { permissions: { read: true, run: true, hrtime: true } },

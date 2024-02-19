@@ -11,30 +11,21 @@ const {
   op_test_event_step_result_ignored,
   op_test_event_step_result_ok,
   op_test_event_step_wait,
-  op_test_op_sanitizer_collect,
-  op_test_op_sanitizer_finish,
-  op_test_op_sanitizer_get_async_message,
-  op_test_op_sanitizer_report,
 } = core.ops;
 const {
   ArrayPrototypeFilter,
-  ArrayPrototypeJoin,
   ArrayPrototypePush,
-  ArrayPrototypeShift,
   DateNow,
   Error,
   Map,
   MapPrototypeGet,
-  MapPrototypeHas,
   MapPrototypeSet,
-  Promise,
   SafeArrayIterator,
   SymbolToStringTag,
   TypeError,
 } = primordials;
 
 import { setExitHandler } from "ext:runtime/30_os.js";
-import { setTimeout } from "ext:deno_web/02_timers.js";
 
 /**
  * @typedef {{
@@ -94,183 +85,6 @@ import { setTimeout } from "ext:deno_web/02_timers.js";
 
 /** @type {Map<number, TestState | TestStepState>} */
 const testStates = new Map();
-
-const opSanitizerDelayResolveQueue = [];
-let hasSetOpSanitizerDelayMacrotask = false;
-
-// Even if every resource is closed by the end of a test, there can be a delay
-// until the pending ops have all finished. This function returns a promise
-// that resolves when it's (probably) fine to run the op sanitizer.
-//
-// This is implemented by adding a macrotask callback that runs after the
-// all ready async ops resolve, and the timer macrotask. Using just a macrotask
-// callback without delaying is sufficient, because when the macrotask callback
-// runs after async op dispatch, we know that all async ops that can currently
-// return `Poll::Ready` have done so, and have been dispatched to JS.
-//
-// Worker ops are an exception to this, because there is no way for the user to
-// await shutdown of the worker from the thread calling `worker.terminate()`.
-// Because of this, we give extra leeway for worker ops to complete, by waiting
-// for a whole millisecond if there are pending worker ops.
-function opSanitizerDelay(hasPendingWorkerOps) {
-  if (!hasSetOpSanitizerDelayMacrotask) {
-    core.setMacrotaskCallback(handleOpSanitizerDelayMacrotask);
-    hasSetOpSanitizerDelayMacrotask = true;
-  }
-  const p = new Promise((resolve) => {
-    // Schedule an async op to complete immediately to ensure the macrotask is
-    // run. We rely on the fact that enqueueing the resolver callback during the
-    // timeout callback will mean that the resolver gets called in the same
-    // event loop tick as the timeout callback.
-    setTimeout(() => {
-      ArrayPrototypePush(opSanitizerDelayResolveQueue, resolve);
-    }, hasPendingWorkerOps ? 1 : 0);
-  });
-  return p;
-}
-
-function handleOpSanitizerDelayMacrotask() {
-  const resolve = ArrayPrototypeShift(opSanitizerDelayResolveQueue);
-  if (resolve) {
-    resolve();
-    return opSanitizerDelayResolveQueue.length === 0;
-  }
-  return undefined; // we performed no work, so can skip microtasks checkpoint
-}
-
-let opIdHostRecvMessage = -1;
-let opIdHostRecvCtrl = -1;
-let opNames = null;
-
-function populateOpNames() {
-  opNames = core.opNames();
-  opIdHostRecvMessage = opNames.indexOf("op_host_recv_message");
-  opIdHostRecvCtrl = opNames.indexOf("op_host_recv_ctrl");
-}
-
-// Wrap test function in additional assertion that makes sure
-// the test case does not leak async "ops" - ie. number of async
-// completed ops after the test is the same as number of dispatched
-// ops. Note that "unref" ops are ignored since in nature that are
-// optional.
-function assertOps(fn) {
-  /** @param desc {TestDescription | TestStepDescription} */
-  return async function asyncOpSanitizer(desc) {
-    let hasTraces = false;
-    if (opNames === null) populateOpNames();
-    const res = op_test_op_sanitizer_collect(
-      desc.id,
-      false,
-      opIdHostRecvMessage,
-      opIdHostRecvCtrl,
-    );
-    if (res !== 0) {
-      await opSanitizerDelay(res === 2);
-      op_test_op_sanitizer_collect(
-        desc.id,
-        true,
-        opIdHostRecvMessage,
-        opIdHostRecvCtrl,
-      );
-    }
-    const preTraces = core.getAllOpCallTraces();
-    let postTraces;
-    let report = null;
-
-    try {
-      const innerResult = await fn(desc);
-      if (innerResult) return innerResult;
-    } finally {
-      let res = op_test_op_sanitizer_finish(
-        desc.id,
-        false,
-        opIdHostRecvMessage,
-        opIdHostRecvCtrl,
-      );
-      if (res === 1 || res === 2) {
-        await opSanitizerDelay(res === 2);
-        res = op_test_op_sanitizer_finish(
-          desc.id,
-          true,
-          opIdHostRecvMessage,
-          opIdHostRecvCtrl,
-        );
-      }
-      postTraces = core.getAllOpCallTraces();
-      if (res === 3) {
-        report = op_test_op_sanitizer_report(desc.id);
-      }
-    }
-
-    if (report === null) return null;
-
-    const details = [];
-    for (const opReport of report) {
-      const opName = opNames[opReport.id];
-      const diff = opReport.diff;
-
-      if (diff > 0) {
-        const [name, hint] = op_test_op_sanitizer_get_async_message(opName);
-        const count = diff;
-        let message = `${count} async operation${
-          count === 1 ? "" : "s"
-        } to ${name} ${
-          count === 1 ? "was" : "were"
-        } started in this test, but never completed.`;
-        if (hint) {
-          message += ` This is often caused by not ${hint}.`;
-        }
-        const traces = [];
-        for (const [id, stack] of postTraces) {
-          if (MapPrototypeHas(preTraces, id)) continue;
-          ArrayPrototypePush(traces, stack);
-        }
-        if (traces.length === 1) {
-          message += " The operation was started here:\n";
-          message += traces[0];
-        } else if (traces.length > 1) {
-          message += " The operations were started here:\n";
-          message += ArrayPrototypeJoin(traces, "\n\n");
-        }
-        hasTraces |= traces.length > 0;
-        ArrayPrototypePush(details, message);
-      } else if (diff < 0) {
-        const [name, hint] = op_test_op_sanitizer_get_async_message(opName);
-        const count = -diff;
-        let message = `${count} async operation${
-          count === 1 ? "" : "s"
-        } to ${name} ${
-          count === 1 ? "was" : "were"
-        } started before this test, but ${
-          count === 1 ? "was" : "were"
-        } completed during the test. Async operations should not complete in a test if they were not started in that test.`;
-        if (hint) {
-          message += ` This is often caused by not ${hint}.`;
-        }
-        const traces = [];
-        for (const [id, stack] of preTraces) {
-          if (MapPrototypeHas(postTraces, id)) continue;
-          ArrayPrototypePush(traces, stack);
-        }
-        if (traces.length === 1) {
-          message += " The operation was started here:\n";
-          message += traces[0];
-        } else if (traces.length > 1) {
-          message += " The operations were started here:\n";
-          message += ArrayPrototypeJoin(traces, "\n\n");
-        }
-        hasTraces |= traces.length > 0;
-        ArrayPrototypePush(details, message);
-      } else {
-        throw new Error("unreachable");
-      }
-    }
-
-    return {
-      failed: { leakedOps: [details, hasTraces] },
-    };
-  };
-}
 
 // Wrap test function in additional assertion that makes sure
 // that the test case does not accidentally exit prematurely.
@@ -474,7 +288,7 @@ function testInner(
     testDesc.name,
     testDesc.ignore,
     testDesc.only,
-    false, /*testDesc.sanitizeOps*/
+    testDesc.sanitizeOps,
     testDesc.sanitizeResources,
     testDesc.location.fileName,
     testDesc.location.lineNumber,
@@ -663,9 +477,6 @@ function createTestContext(desc) {
  */
 function wrapTest(desc) {
   let testFn = wrapInner(desc.fn);
-  if (desc.sanitizeOps) {
-    testFn = assertOps(testFn);
-  }
   if (desc.sanitizeExit) {
     testFn = assertExit(testFn, true);
   }

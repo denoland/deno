@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_lockfile::Lockfile;
 use test_util as util;
@@ -181,4 +182,168 @@ fn reload_info_not_found_cache_but_exists_remote() {
       "3\n",
     ))
     .assert_exit_code(0);
+}
+
+#[test]
+fn lockfile_bad_package_integrity() {
+  let test_context = TestContextBuilder::for_jsr().use_temp_cwd().build();
+  let temp_dir = test_context.temp_dir();
+
+  temp_dir.write(
+    "main.ts",
+    r#"import version from "jsr:@denotest/no_module_graph@0.1";
+
+console.log(version);"#,
+  );
+  temp_dir.write("deno.json", "{}"); // to automatically create a lockfile
+
+  test_context
+    .new_command()
+    .args("run --quiet main.ts")
+    .run()
+    .assert_matches_text("0.1.1\n");
+
+  let lockfile_path = temp_dir.path().join("deno.lock");
+  let mut lockfile = Lockfile::new(lockfile_path.to_path_buf(), false).unwrap();
+  let pkg_name = "@denotest/no_module_graph@0.1.1";
+  let original_integrity = get_lockfile_pkg_integrity(&lockfile, pkg_name);
+  set_lockfile_pkg_integrity(&mut lockfile, pkg_name, "bad_integrity");
+  lockfile_path.write(lockfile.as_json_string());
+
+  let actual_integrity =
+    test_context.get_jsr_package_integrity("@denotest/no_module_graph/0.1.1");
+  let integrity_check_failed_msg = format!("error: Integrity check failed for http://127.0.0.1:4250/@denotest/no_module_graph/0.1.1_meta.json
+
+Actual: {}
+Expected: bad_integrity
+    at file:///[WILDCARD]/main.ts:1:21
+", actual_integrity);
+  test_context
+    .new_command()
+    .args("run --quiet main.ts")
+    .run()
+    .assert_matches_text(&integrity_check_failed_msg)
+    .assert_exit_code(1);
+
+  // now try with a vendor folder
+  temp_dir
+    .path()
+    .join("deno.json")
+    .write_json(&json!({ "vendor": true }));
+
+  // should fail again
+  test_context
+    .new_command()
+    .args("run --quiet main.ts")
+    .run()
+    .assert_matches_text(&integrity_check_failed_msg)
+    .assert_exit_code(1);
+
+  // now update to the correct integrity
+  set_lockfile_pkg_integrity(&mut lockfile, pkg_name, &original_integrity);
+  lockfile_path.write(lockfile.as_json_string());
+
+  // should pass now
+  test_context
+    .new_command()
+    .args("run --quiet main.ts")
+    .run()
+    .assert_matches_text("0.1.1\n")
+    .assert_exit_code(0);
+
+  // now update to a bad integrity again
+  set_lockfile_pkg_integrity(&mut lockfile, pkg_name, "bad_integrity");
+  lockfile_path.write(lockfile.as_json_string());
+
+  // shouldn't matter because we have a vendor folder
+  test_context
+    .new_command()
+    .args("run --quiet main.ts")
+    .run()
+    .assert_matches_text("0.1.1\n")
+    .assert_exit_code(0);
+
+  // now remove the vendor dir and it should fail again
+  temp_dir.path().join("vendor").remove_dir_all();
+
+  test_context
+    .new_command()
+    .args("run --quiet main.ts")
+    .run()
+    .assert_matches_text(&integrity_check_failed_msg)
+    .assert_exit_code(1);
+}
+
+#[test]
+fn bad_manifest_checksum() {
+  let test_context = TestContextBuilder::for_jsr().use_temp_cwd().build();
+  let temp_dir = test_context.temp_dir();
+
+  temp_dir.write(
+    "main.ts",
+    r#"import { add } from "jsr:@denotest/bad-manifest-checksum@1.0.0";
+console.log(add);"#,
+  );
+
+  // test it properly checks the checksum on download
+  test_context
+    .new_command()
+    .args("run  main.ts")
+    .run()
+    .assert_matches_text(
+      "Download http://127.0.0.1:4250/@denotest/bad-manifest-checksum/meta.json
+Download http://127.0.0.1:4250/@denotest/bad-manifest-checksum/1.0.0_meta.json
+Download http://127.0.0.1:4250/@denotest/bad-manifest-checksum/1.0.0/mod.ts
+error: Integrity check failed.
+
+Actual: 9a30ac96b5d5c1b67eca69e1e2cf0798817d9578c8d7d904a81a67b983b35cba
+Expected: bad-checksum
+    at file:///[WILDCARD]main.ts:1:21
+",
+    )
+    .assert_exit_code(1);
+
+  // test it properly checks the checksum when loading from the cache
+  test_context
+    .new_command()
+    .args("run  main.ts")
+    .run()
+    .assert_matches_text(
+      // ideally the two error messages would be the same... this one comes from
+      // deno_cache and the one above comes from deno_graph. The thing is, in deno_cache
+      // (source of this error) it makes sense to include the url in the error message
+      // because it's not always used in the context of deno_graph
+      "error: Integrity check failed for http://127.0.0.1:4250/@denotest/bad-manifest-checksum/1.0.0/mod.ts
+
+Actual: 9a30ac96b5d5c1b67eca69e1e2cf0798817d9578c8d7d904a81a67b983b35cba
+Expected: bad-checksum
+    at file:///[WILDCARD]main.ts:1:21
+",
+    )
+    .assert_exit_code(1);
+}
+
+fn get_lockfile_pkg_integrity(lockfile: &Lockfile, pkg_name: &str) -> String {
+  lockfile
+    .content
+    .packages
+    .jsr
+    .get(pkg_name)
+    .unwrap()
+    .integrity
+    .clone()
+}
+
+fn set_lockfile_pkg_integrity(
+  lockfile: &mut Lockfile,
+  pkg_name: &str,
+  integrity: &str,
+) {
+  lockfile
+    .content
+    .packages
+    .jsr
+    .get_mut(pkg_name)
+    .unwrap()
+    .integrity = integrity.to_string();
 }

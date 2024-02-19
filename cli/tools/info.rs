@@ -7,6 +7,7 @@ use std::fmt::Write;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
+use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
@@ -66,8 +67,13 @@ pub async fn info(flags: Flags, info_flags: InfoFlags) -> Result<(), AnyError> {
       .create_graph_with_loader(GraphKind::All, vec![specifier], &mut loader)
       .await?;
 
-    if let Some(lockfile) = maybe_lockfile {
-      graph_lock_or_exit(&graph, &mut lockfile.lock());
+    // If there is a lockfile...
+    if let Some(lockfile) = &maybe_lockfile {
+      let mut lockfile = lockfile.lock();
+      // validate the integrity of all the modules
+      graph_lock_or_exit(&graph, &mut lockfile);
+      // update it with anything new
+      lockfile.write().context("Failed writing lockfile.")?;
     }
 
     if info_flags.json {

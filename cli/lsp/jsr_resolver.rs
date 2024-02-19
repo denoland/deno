@@ -15,6 +15,8 @@ use deno_semver::package::PackageReq;
 use std::borrow::Cow;
 use std::sync::Arc;
 
+use super::cache::LSP_DISALLOW_GLOBAL_TO_LOCAL_COPY;
+
 #[derive(Debug)]
 pub struct JsrResolver {
   nv_by_req: DashMap<PackageReq, Option<PackageNv>>,
@@ -111,7 +113,13 @@ fn read_cached_package_info(
 ) -> Option<JsrPackageInfo> {
   let meta_url = jsr_url().join(&format!("{}/meta.json", name)).ok()?;
   let meta_cache_item_key = cache.cache_item_key(&meta_url).ok()?;
-  let meta_bytes = cache.read_file_bytes(&meta_cache_item_key).ok()??;
+  let meta_bytes = cache
+    .read_file_bytes(
+      &meta_cache_item_key,
+      None,
+      LSP_DISALLOW_GLOBAL_TO_LOCAL_COPY,
+    )
+    .ok()??;
   serde_json::from_slice::<JsrPackageInfo>(&meta_bytes).ok()
 }
 
@@ -123,12 +131,19 @@ fn read_cached_package_version_info(
     .join(&format!("{}/{}_meta.json", &nv.name, &nv.version))
     .ok()?;
   let meta_cache_item_key = cache.cache_item_key(&meta_url).ok()?;
-  let meta_bytes = cache.read_file_bytes(&meta_cache_item_key).ok()??;
+  let meta_bytes = cache
+    .read_file_bytes(
+      &meta_cache_item_key,
+      None,
+      LSP_DISALLOW_GLOBAL_TO_LOCAL_COPY,
+    )
+    .ok()??;
   // This is a roundabout way of deserializing `JsrPackageVersionInfo`,
   // because we only want the `exports` field and `module_graph` is large.
   let mut info =
     serde_json::from_slice::<serde_json::Value>(&meta_bytes).ok()?;
   Some(JsrPackageVersionInfo {
+    manifest: Default::default(), // not used by the LSP (only caching checks this in deno_graph)
     exports: info.as_object_mut()?.remove("exports")?,
     module_graph: None,
   })

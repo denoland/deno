@@ -1053,7 +1053,9 @@ fn lock_deno_json_package_json_deps() {
         "npm:@denotest/esm-basic": "npm:@denotest/esm-basic@1.0.0"
       },
       "jsr": {
-        "@denotest/module_graph@1.4.0": {}
+        "@denotest/module_graph@1.4.0": {
+          "integrity": "555bbe259f55a4a2e7a39e8bf4bcbf25da4c874a313c3e98771eddceedac050b"
+        }
       },
       "npm": {
         "@denotest/esm-basic@1.0.0": {
@@ -1062,10 +1064,7 @@ fn lock_deno_json_package_json_deps() {
         }
       }
     },
-    "remote": {
-      "http://127.0.0.1:4250/@denotest/module_graph/1.4.0/mod.ts": "5b0ce36e08d759118200d8b4627627b5a89b6261fbb0598e6961a6b287abb699",
-      "http://127.0.0.1:4250/@denotest/module_graph/1.4.0/other.ts": "9ce27ca439cb0e218b6e1ec26c043dbc0b54c9babc4cb432df478dd1721faade"
-    },
+    "remote": {},
     "workspace": {
       "dependencies": [
         "jsr:@denotest/module_graph@1.4",
@@ -1106,7 +1105,9 @@ fn lock_deno_json_package_json_deps() {
         "npm:@denotest/esm-basic": "npm:@denotest/esm-basic@1.0.0"
       },
       "jsr": {
-        "@denotest/module_graph@1.4.0": {}
+        "@denotest/module_graph@1.4.0": {
+          "integrity": "555bbe259f55a4a2e7a39e8bf4bcbf25da4c874a313c3e98771eddceedac050b"
+        }
       },
       "npm": {
         "@denotest/esm-basic@1.0.0": {
@@ -1115,10 +1116,7 @@ fn lock_deno_json_package_json_deps() {
         }
       }
     },
-    "remote": {
-      "http://127.0.0.1:4250/@denotest/module_graph/1.4.0/mod.ts": "5b0ce36e08d759118200d8b4627627b5a89b6261fbb0598e6961a6b287abb699",
-      "http://127.0.0.1:4250/@denotest/module_graph/1.4.0/other.ts": "9ce27ca439cb0e218b6e1ec26c043dbc0b54c9babc4cb432df478dd1721faade"
-    },
+    "remote": {},
     "workspace": {
       "dependencies": [
         "jsr:@denotest/module_graph@1.4"
@@ -1147,13 +1145,12 @@ fn lock_deno_json_package_json_deps() {
         "jsr:@denotest/module_graph@1.4": "jsr:@denotest/module_graph@1.4.0",
       },
       "jsr": {
-        "@denotest/module_graph@1.4.0": {}
+        "@denotest/module_graph@1.4.0": {
+          "integrity": "555bbe259f55a4a2e7a39e8bf4bcbf25da4c874a313c3e98771eddceedac050b"
+        }
       }
     },
-    "remote": {
-      "http://127.0.0.1:4250/@denotest/module_graph/1.4.0/mod.ts": "5b0ce36e08d759118200d8b4627627b5a89b6261fbb0598e6961a6b287abb699",
-      "http://127.0.0.1:4250/@denotest/module_graph/1.4.0/other.ts": "9ce27ca439cb0e218b6e1ec26c043dbc0b54c9babc4cb432df478dd1721faade"
-    },
+    "remote": {},
     "workspace": {
       "dependencies": [
         "jsr:@denotest/module_graph@1.4"
@@ -4307,6 +4304,25 @@ fn set_raw_should_not_panic_on_no_tty() {
   assert!(stderr.contains("BadResource"));
 }
 
+#[cfg(not(windows))]
+#[test]
+fn fsfile_set_raw_should_not_panic_on_no_tty() {
+  let output = util::deno_cmd()
+    .arg("eval")
+    .arg("Deno.openSync(\"/dev/stdin\").setRaw(true)")
+    // stdin set to piped so it certainly does not refer to TTY
+    .stdin(std::process::Stdio::piped())
+    // stderr is piped so we can capture output.
+    .stderr_piped()
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(!output.status.success());
+  let stderr = std::str::from_utf8(&output.stderr).unwrap().trim();
+  assert!(stderr.contains("BadResource"));
+}
+
 #[test]
 fn timeout_clear() {
   // https://github.com/denoland/deno/issues/7599
@@ -4709,19 +4725,19 @@ fn stdio_streams_are_locked_in_permission_prompt() {
 }
 
 #[test]
-fn permission_prompt_strips_ansi_codes_and_control_chars() {
+fn permission_prompt_escapes_ansi_codes_and_control_chars() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line(
         r#"Deno.permissions.request({ name: "env", variable: "\rDo you like ice cream? y/n" });"#
       );
     // will be uppercase on windows
     let env_name = if cfg!(windows) {
-      "DO YOU LIKE ICE CREAM? Y/N"
+      "\\rDO YOU LIKE ICE CREAM? Y/N"
     } else {
-      "Do you like ice cream? y/n"
+      "\\rDo you like ice cream? y/n"
     };
     console.expect(format!(
-      "┌ ⚠️  Deno requests env access to \"{}\".",
+      "\u{250c} \u{26a0}\u{fe0f}  Deno requests env access to \"{}\".",
       env_name
     ))
   });
@@ -4731,14 +4747,10 @@ fn permission_prompt_strips_ansi_codes_and_control_chars() {
     console.expect("undefined");
     console.write_line_raw(r#"const unboldANSI = "\u001b[22m";"#);
     console.expect("undefined");
-    console.write_line_raw(r#"const prompt = `┌ ⚠️  ${boldANSI}Deno requests run access to "echo"${unboldANSI}\n ├ Requested by \`Deno.Command().output()`"#);
-    console.expect("undefined");
-    console.write_line_raw(r#"const moveANSIUp = "\u001b[1A";"#);
-    console.expect("undefined");
-    console.write_line_raw(r#"const clearANSI = "\u001b[2K";"#);
-    console.expect("undefined");
-    console.write_line_raw(r#"const moveANSIStart = "\u001b[1000D";"#);
-    console.expect("undefined");
+    console.write_line_raw(
+      r#"new Deno.Command(`${boldANSI}cat${unboldANSI}`).spawn();"#,
+    );
+    console.expect("\u{250c} \u{26a0}\u{fe0f}  Deno requests run access to \"\\u{1b}[1mcat\\u{1b}[22m\".");
   });
 }
 

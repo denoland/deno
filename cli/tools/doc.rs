@@ -211,9 +211,9 @@ impl deno_doc::html::HrefResolver for DocResolver {
   fn resolve_usage(
     &self,
     _current_specifier: &ModuleSpecifier,
-    current_file: &str,
+    current_file: Option<&str>,
   ) -> Option<String> {
-    Some(current_file.to_string())
+    current_file.map(|f| f.to_string())
   }
 
   fn resolve_source(&self, location: &deno_doc::Location) -> Option<String> {
