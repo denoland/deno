@@ -28,10 +28,10 @@ members = [
   "ext/websocket",
   "ext/webstorage",
   "runtime",
-  "test_util",
   "tests",
   "tests/ffi",
   "tests/napi",
+  "tests/util/server",
 ]
 exclude = ["tests/util/std/hash/_wasm"]
 
@@ -51,7 +51,7 @@ deno_media_type = { version = "0.1.1", features = ["module_specifier"] }
 deno_runtime = { version = "0.146.0", path = "./runtime" }
 deno_terminal = "0.1.1"
 napi_sym = { version = "0.68.0", path = "./cli/napi/sym" }
-test_util = { path = "./test_util" }
+test_util = { package = "test_server", path = "./tests/util/server" }
 
 denokv_proto = "0.5.0"
 denokv_remote = "0.5.0"

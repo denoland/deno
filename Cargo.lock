@@ -644,7 +644,7 @@ dependencies = [
  "pretty_assertions",
  "serde",
  "serde_repr",
- "test_util",
+ "test_server",
  "tokio",
  "tokio-util",
  "tower-lsp",
@@ -1090,7 +1090,7 @@ dependencies = [
  "shell-escape",
  "tar",
  "tempfile",
- "test_util",
+ "test_server",
  "text-size",
  "text_lines",
  "thiserror",
@@ -1758,7 +1758,7 @@ dependencies = [
  "rustyline",
  "serde",
  "signal-hook-registry",
- "test_util",
+ "test_server",
  "tokio",
  "tokio-metrics",
  "uuid",
@@ -6378,7 +6378,7 @@ name = "test_ffi"
 version = "0.1.0"
 dependencies = [
  "pretty_assertions",
- "test_util",
+ "test_server",
 ]
 
 [[package]]
@@ -6387,11 +6387,11 @@ version = "0.1.0"
 dependencies = [
  "napi-build",
  "napi-sys",
- "test_util",
+ "test_server",
 ]
 
 [[package]]
-name = "test_util"
+name = "test_server"
 version = "0.1.0"
 dependencies = [
  "anyhow",
