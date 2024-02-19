@@ -20,7 +20,6 @@ const {
   ArrayPrototypeMap,
   ArrayPrototypePush,
   ObjectPrototypeIsPrototypeOf,
-  SafeIterator,
   SafeSet,
   SafeSetIterator,
   SetPrototypeAdd,
@@ -459,7 +458,7 @@ function upgradeWebSocket(request, options = {}) {
   }
 
   if (options.headers) {
-    for (const h of new SafeIterator(options.headers)) {
+    for (const h of options.headers) {
       ArrayPrototypePush(r.headerList, [h[0], h[1]]);
     }
   }
