@@ -66,6 +66,26 @@ itest!(subset_type_graph {
   exit_code: 1,
 });
 
+#[test]
+fn fast_check_cache() {
+  let test_context = TestContextBuilder::for_jsr().use_temp_cwd().build();
+  let temp_dir = test_context.temp_dir();
+
+  temp_dir.write(
+    "main.ts",
+    r#"import { add } from "jsr:@denotest/add@1";
+    const value: number = add(1, 2);
+    console.log(value);"#,
+  );
+
+  let output = test_context
+    .new_command()
+    .args("check --log-level=debug main.ts")
+    .run();
+
+  eprintln!("{}", output.combined_output());
+}
+
 itest!(version_not_found {
   args: "run jsr/version_not_found/main.ts",
   output: "jsr/version_not_found/main.out",
