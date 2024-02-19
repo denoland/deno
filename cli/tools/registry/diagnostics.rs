@@ -47,7 +47,7 @@ impl PublishDiagnosticsCollector {
           "This package contains errors for slow types. Fixing these errors will:\n"
         );
         eprintln!(
-          "  1. Significantly improve your package's type checking performance."
+          "  1. Significantly improve your package users' type checking performance."
         );
         eprintln!("  2. Improve the automatic documentation generation.");
         eprintln!("  3. Enable automatic .d.ts generation for Node.js.");
