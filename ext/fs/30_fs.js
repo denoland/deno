@@ -580,22 +580,6 @@ async function fsync(rid) {
   await op_fs_fsync_async(rid);
 }
 
-function flockSync(rid, exclusive) {
-  op_fs_flock_sync(rid, exclusive === true);
-}
-
-async function flock(rid, exclusive) {
-  await op_fs_flock_async(rid, exclusive === true);
-}
-
-function funlockSync(rid) {
-  op_fs_funlock_sync(rid);
-}
-
-async function funlock(rid) {
-  await op_fs_funlock_async(rid);
-}
-
 function seekSync(
   rid,
   offset,
@@ -987,8 +971,6 @@ export {
   fdatasync,
   fdatasyncSync,
   File,
-  flock,
-  flockSync,
   FsFile,
   fstat,
   fstatSync,
@@ -996,8 +978,6 @@ export {
   fsyncSync,
   ftruncate,
   ftruncateSync,
-  funlock,
-  funlockSync,
   futime,
   futimeSync,
   link,
