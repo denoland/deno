@@ -300,6 +300,7 @@ impl ModuleGraphBuilder {
     }
     self
       .create_graph_with_options(CreateGraphOptions {
+        is_dynamic: false,
         graph_kind: deno_graph::GraphKind::All,
         roots,
         workspace_fast_check: true,

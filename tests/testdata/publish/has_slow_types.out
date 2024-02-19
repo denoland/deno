@@ -11,7 +11,7 @@ error[missing-explicit-return-type]: missing explicit return type in the public 
 
 This package contains errors for slow types. Fixing these errors will:
 
-  1. Significantly improve your package's type checking performance.
+  1. Significantly improve your package users' type checking performance.
   2. Improve the automatic documentation generation.
   3. Enable automatic .d.ts generation for Node.js.
 
