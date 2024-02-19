@@ -604,21 +604,25 @@ impl ModuleGraphBuilder {
     let cli_resolver = &self.resolver;
     let graph_resolver = cli_resolver.as_graph_resolver();
     let graph_npm_resolver = cli_resolver.as_graph_npm_resolver();
-    let workspace_members =
-      self.options.resolve_deno_graph_workspace_members()?;
+    let workspace_members = if options.workspace_fast_check {
+      Some(self.options.resolve_deno_graph_workspace_members()?)
+    } else {
+      None
+    };
 
     graph.build_fast_check_type_graph(
       deno_graph::BuildFastCheckTypeGraphOptions {
         jsr_url_provider: Some(&CliJsrUrlProvider::default()),
-        fast_check_cache: fast_check_cache
-          .as_ref()
-          .map(|c| c.as_deno_graph_cache()),
+        fast_check_cache: fast_check_cache.as_ref().map(|c| c as _),
         fast_check_dts: false,
         module_parser: Some(&parser),
         resolver: Some(graph_resolver),
         npm_resolver: Some(graph_npm_resolver),
-        workspace_fast_check: options.workspace_fast_check,
-        workspace_members: &workspace_members,
+        workspace_fast_check: if let Some(members) = &workspace_members {
+          deno_graph::WorkspaceFastCheckOption::Enabled(&members)
+        } else {
+          deno_graph::WorkspaceFastCheckOption::Disabled
+        },
       },
     );
     Ok(())

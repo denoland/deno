@@ -31,10 +31,6 @@ impl FastCheckCache {
     }
   }
 
-  pub fn as_deno_graph_cache(&self) -> &dyn deno_graph::FastCheckCache {
-    self
-  }
-
   fn ensure_ok<T: Default>(res: Result<T, AnyError>) -> T {
     match res {
       Ok(x) => x,
