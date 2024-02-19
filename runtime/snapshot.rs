@@ -6,7 +6,7 @@ use crate::shared::maybe_transpile_source;
 use crate::shared::runtime;
 use deno_cache::SqliteBackedCache;
 use deno_core::error::AnyError;
-use deno_core::snapshot_util::*;
+use deno_core::snapshot::*;
 use deno_core::v8;
 use deno_core::Extension;
 use deno_http::DefaultHttpPropertyExtractor;
@@ -268,10 +268,11 @@ pub fn create_runtime_snapshot(
   let output = create_snapshot(
     CreateSnapshotOptions {
       cargo_manifest_dir: env!("CARGO_MANIFEST_DIR"),
-      snapshot_path,
       startup_snapshot: None,
       extensions,
-      compression_cb: None,
+      serializer: Box::new(SnapshotFileSerializer::new(
+        std::fs::File::create(snapshot_path).unwrap(),
+      )),
       with_runtime_cb: Some(Box::new(|rt| {
         let isolate = rt.v8_isolate();
         let scope = &mut v8::HandleScope::new(isolate);
@@ -282,7 +283,8 @@ pub fn create_runtime_snapshot(
       skip_op_registration: false,
     },
     None,
-  );
+  )
+  .unwrap();
   for path in output.files_loaded_during_snapshot {
     println!("cargo:rerun-if-changed={}", path.display());
   }

@@ -68,6 +68,10 @@ pub fn root_path() -> PathRef {
   PathRef::new(
     PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR")))
       .parent()
+      .unwrap()
+      .parent()
+      .unwrap()
+      .parent()
       .unwrap(),
   )
 }

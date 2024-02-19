@@ -315,3 +315,10 @@ Deno.test({
     );
   },
 });
+
+Deno.test({
+  name: "[util] parseArgs() with no args works",
+  fn() {
+    util.parseArgs({});
+  },
+});
