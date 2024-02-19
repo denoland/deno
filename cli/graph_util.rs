@@ -23,6 +23,7 @@ use crate::util::sync::TaskQueue;
 use crate::util::sync::TaskQueuePermit;
 
 use deno_config::ConfigFile;
+use deno_config::WorkspaceMemberConfig;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::custom_error;
@@ -277,7 +278,7 @@ impl ModuleGraphBuilder {
     graph_kind: GraphKind,
     roots: Vec<ModuleSpecifier>,
     loader: &mut dyn Loader,
-  ) -> Result<deno_graph::ModuleGraph, AnyError> {
+  ) -> Result<ModuleGraph, AnyError> {
     self
       .create_graph_with_options(CreateGraphOptions {
         is_dynamic: false,
@@ -289,10 +290,29 @@ impl ModuleGraphBuilder {
       .await
   }
 
+  pub async fn create_publish_graph(
+    &self,
+    packages: &[WorkspaceMemberConfig],
+  ) -> Result<ModuleGraph, AnyError> {
+    let mut roots = Vec::new();
+    for package in packages {
+      roots.extend(package.config_file.resolve_export_value_urls()?);
+    }
+    self
+      .create_graph_with_options(CreateGraphOptions {
+        is_dynamic: false,
+        graph_kind: deno_graph::GraphKind::All,
+        roots,
+        workspace_fast_check: true,
+        loader: None,
+      })
+      .await
+  }
+
   pub async fn create_graph_with_options(
     &self,
     options: CreateGraphOptions<'_>,
-  ) -> Result<deno_graph::ModuleGraph, AnyError> {
+  ) -> Result<ModuleGraph, AnyError> {
     let mut graph = ModuleGraph::new(options.graph_kind);
 
     self

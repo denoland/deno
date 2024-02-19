@@ -1424,7 +1424,7 @@ pub async fn op_fs_fsync_async_unstable(
 }
 
 #[op2(fast)]
-pub fn op_fs_fstat_sync(
+pub fn op_fs_file_stat_sync(
   state: &mut OpState,
   #[smi] rid: ResourceId,
   #[buffer] stat_out_buf: &mut [u32],
@@ -1438,7 +1438,7 @@ pub fn op_fs_fstat_sync(
 
 #[op2(async)]
 #[serde]
-pub async fn op_fs_fstat_async(
+pub async fn op_fs_file_stat_async(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
 ) -> Result<SerializableStat, AnyError> {

@@ -22,17 +22,17 @@ itest!(missing_deno_json {
   exit_code: 1,
 });
 
-itest!(invalid_fast_check {
+itest!(has_slow_types {
   args: "publish --token 'sadfasdf'",
-  output: "publish/invalid_fast_check.out",
-  cwd: Some("publish/invalid_fast_check"),
+  output: "publish/has_slow_types.out",
+  cwd: Some("publish/has_slow_types"),
   exit_code: 1,
 });
 
-itest!(no_zap {
-  args: "publish --no-zap --token 'sadfasdf'",
-  output: "publish/no_zap.out",
-  cwd: Some("publish/invalid_fast_check"),
+itest!(allow_slow_types {
+  args: "publish --allow-slow-types --token 'sadfasdf'",
+  output: "publish/allow_slow_types.out",
+  cwd: Some("publish/has_slow_types"),
   envs: env_vars_for_jsr_tests(),
   http_server: true,
   exit_code: 0,
@@ -83,7 +83,9 @@ fn publish_non_exported_files_using_import_map() {
     .new_command()
     .args("publish --log-level=debug --token 'sadfasdf'")
     .run();
+  output.assert_exit_code(0);
   let lines = output.combined_output().split('\n').collect::<Vec<_>>();
+  eprintln!("{}", output.combined_output());
   assert!(lines
     .iter()
     .any(|l| l.contains("Unfurling") && l.ends_with("mod.ts")));

@@ -30,7 +30,7 @@ pub struct PublishDiagnosticsCollector {
 impl PublishDiagnosticsCollector {
   pub fn print_and_error(&self) -> Result<(), AnyError> {
     let mut errors = 0;
-    let mut has_zap_errors = false;
+    let mut has_slow_types_errors = false;
     let diagnostics = self.diagnostics.lock().unwrap().take();
     for diagnostic in diagnostics {
       eprint!("{}", diagnostic.display());
@@ -38,17 +38,23 @@ impl PublishDiagnosticsCollector {
         errors += 1;
       }
       if matches!(diagnostic, PublishDiagnostic::FastCheck(..)) {
-        has_zap_errors = true;
+        has_slow_types_errors = true;
       }
     }
     if errors > 0 {
-      if has_zap_errors {
+      if has_slow_types_errors {
         eprintln!(
-          "This package contains Zap errors. Although conforming to Zap will"
+          "This package contains errors for slow types. Fixing these errors will:\n"
         );
-        eprintln!("significantly improve the type checking performance of your library,");
-        eprintln!("you can choose to skip it by providing the --no-zap flag.");
-        eprintln!();
+        eprintln!(
+          "  1. Significantly improve your package users' type checking performance."
+        );
+        eprintln!("  2. Improve the automatic documentation generation.");
+        eprintln!("  3. Enable automatic .d.ts generation for Node.js.");
+        eprintln!(
+          "\nDon't want to bother? You can choose to skip this step by"
+        );
+        eprintln!("providing the --allow-slow-types flag.\n");
       }
 
       Err(anyhow!(
