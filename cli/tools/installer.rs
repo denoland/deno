@@ -1268,7 +1268,6 @@ mod tests {
   async fn install_file_url() {
     let temp_dir = TempDir::new();
     let bin_dir = temp_dir.path().join("bin");
-    print!("{:?}", testdata_path());
     let module_path = fs::canonicalize(testdata_path().join("cat.ts")).unwrap();
     let file_module_string =
       Url::from_file_path(module_path).unwrap().to_string();
