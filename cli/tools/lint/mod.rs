@@ -2,28 +2,19 @@
 
 //! This module provides file linting utilities using
 //! [`deno_lint`](https://github.com/denoland/deno_lint).
-use crate::args::Flags;
-use crate::args::LintFlags;
-use crate::args::LintOptions;
-use crate::args::LintReporterKind;
-use crate::args::LintRulesConfig;
-use crate::colors;
-use crate::factory::CliFactory;
-use crate::tools::fmt::run_parallelized;
-use crate::util::file_watcher;
-use crate::util::fs::canonicalize_path;
-use crate::util::fs::specifier_from_file_path;
-use crate::util::fs::FileCollector;
-use crate::util::path::is_script_ext;
-use crate::util::sync::AtomicFlag;
 use deno_ast::diagnostics::Diagnostic;
 use deno_ast::MediaType;
+use deno_ast::ModuleSpecifier;
 use deno_ast::ParsedSource;
+use deno_ast::SourceRange;
+use deno_ast::SourceTextInfo;
 use deno_config::glob::FilePatterns;
 use deno_core::anyhow::bail;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
+use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
+use deno_graph::FastCheckDiagnostic;
 use deno_lint::diagnostic::LintDiagnostic;
 use deno_lint::linter::LintFileOptions;
 use deno_lint::linter::Linter;
@@ -33,15 +24,32 @@ use deno_lint::rules::LintRule;
 use log::debug;
 use log::info;
 use serde::Serialize;
+use std::borrow::Cow;
+use std::collections::HashSet;
 use std::fs;
 use std::io::stdin;
 use std::io::Read;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::Mutex;
 
+use crate::args::Flags;
+use crate::args::LintFlags;
+use crate::args::LintOptions;
+use crate::args::LintReporterKind;
+use crate::args::LintRulesConfig;
 use crate::cache::IncrementalCache;
+use crate::colors;
+use crate::factory::CliFactory;
+use crate::tools::fmt::run_parallelized;
+use crate::util::file_watcher;
+use crate::util::fs::canonicalize_path;
+use crate::util::fs::specifier_from_file_path;
+use crate::util::fs::FileCollector;
+use crate::util::path::is_script_ext;
+use crate::util::sync::AtomicFlag;
+
+pub mod no_slow_types;
 
 static STDIN_FILE_NAME: &str = "$deno$stdin.ts";
 
@@ -110,15 +118,18 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
     let success = if is_stdin {
       let reporter_kind = lint_options.reporter_kind;
       let reporter_lock = Arc::new(Mutex::new(create_reporter(reporter_kind)));
-      let lint_rules = get_config_rules_err_empty(lint_options.rules)?;
+      let lint_rules = get_config_rules_err_empty(
+        lint_options.rules,
+        cli_options.maybe_config_file().as_ref(),
+      )?;
       let file_path = cli_options.initial_cwd().join(STDIN_FILE_NAME);
-      let r = lint_stdin(&file_path, lint_rules);
+      let r = lint_stdin(&file_path, lint_rules.rules);
       let success = handle_lint_result(
         &file_path.to_string_lossy(),
         r,
         reporter_lock.clone(),
       );
-      reporter_lock.lock().unwrap().close(1);
+      reporter_lock.lock().close(1);
       success
     } else {
       let target_files =
@@ -146,61 +157,105 @@ async fn lint_files(
   paths: Vec<PathBuf>,
 ) -> Result<bool, AnyError> {
   let caches = factory.caches()?;
-  let lint_rules = get_config_rules_err_empty(lint_options.rules)?;
+  let maybe_config_file = factory.cli_options().maybe_config_file().as_ref();
+  let lint_rules =
+    get_config_rules_err_empty(lint_options.rules, maybe_config_file)?;
   let incremental_cache = Arc::new(IncrementalCache::new(
     caches.lint_incremental_cache_db(),
-    // use a hash of the rule names in order to bust the cache
-    &{
-      // ensure this is stable by sorting it
-      let mut names = lint_rules.iter().map(|r| r.code()).collect::<Vec<_>>();
-      names.sort_unstable();
-      names
-    },
+    &lint_rules.incremental_cache_state(),
     &paths,
   ));
   let target_files_len = paths.len();
   let reporter_kind = lint_options.reporter_kind;
+  // todo(dsherret): abstract away this lock behind a performant interface
   let reporter_lock =
     Arc::new(Mutex::new(create_reporter(reporter_kind.clone())));
   let has_error = Arc::new(AtomicFlag::default());
 
-  run_parallelized(paths, {
+  let mut futures = Vec::with_capacity(2);
+  if lint_rules.no_slow_types {
+    if let Some(config_file) = maybe_config_file {
+      let members = config_file.to_workspace_members()?;
+      let has_error = has_error.clone();
+      let reporter_lock = reporter_lock.clone();
+      let module_graph_builder = factory.module_graph_builder().await?.clone();
+      let path_urls = paths
+        .iter()
+        .filter_map(|p| ModuleSpecifier::from_file_path(p).ok())
+        .collect::<HashSet<_>>();
+      futures.push(deno_core::unsync::spawn(async move {
+        let graph = module_graph_builder.create_publish_graph(&members).await?;
+        // todo(dsherret): this isn't exactly correct as linting isn't properly
+        // setup to handle workspaces. Iterating over the workspace members
+        // should be done at a higher level because it also needs to take into
+        // account the config per workspace member.
+        for member in &members {
+          let export_urls = member.config_file.resolve_export_value_urls()?;
+          if !export_urls.iter().any(|url| path_urls.contains(url)) {
+            continue; // entrypoint is not specified, so skip
+          }
+          let diagnostics = no_slow_types::collect_no_slow_type_diagnostics(
+            &export_urls,
+            &graph,
+          );
+          if !diagnostics.is_empty() {
+            has_error.raise();
+            let mut reporter = reporter_lock.lock();
+            for diagnostic in &diagnostics {
+              reporter
+                .visit_diagnostic(LintOrCliDiagnostic::FastCheck(diagnostic));
+            }
+          }
+        }
+        Ok(())
+      }));
+    }
+  }
+
+  futures.push({
     let has_error = has_error.clone();
-    let lint_rules = lint_rules.clone();
+    let lint_rules = lint_rules.rules.clone();
     let reporter_lock = reporter_lock.clone();
     let incremental_cache = incremental_cache.clone();
-    move |file_path| {
-      let file_text = fs::read_to_string(&file_path)?;
+    deno_core::unsync::spawn(async move {
+      run_parallelized(paths, {
+        move |file_path| {
+          let file_text = fs::read_to_string(&file_path)?;
 
-      // don't bother rechecking this file if it didn't have any diagnostics before
-      if incremental_cache.is_file_same(&file_path, &file_text) {
-        return Ok(());
-      }
+          // don't bother rechecking this file if it didn't have any diagnostics before
+          if incremental_cache.is_file_same(&file_path, &file_text) {
+            return Ok(());
+          }
 
-      let r = lint_file(&file_path, file_text, lint_rules);
-      if let Ok((file_diagnostics, file_source)) = &r {
-        if file_diagnostics.is_empty() {
-          // update the incremental cache if there were no diagnostics
-          incremental_cache
-            .update_file(&file_path, file_source.text_info().text_str())
+          let r = lint_file(&file_path, file_text, lint_rules);
+          if let Ok((file_diagnostics, file_source)) = &r {
+            if file_diagnostics.is_empty() {
+              // update the incremental cache if there were no diagnostics
+              incremental_cache
+                .update_file(&file_path, file_source.text_info().text_str())
+            }
+          }
+
+          let success = handle_lint_result(
+            &file_path.to_string_lossy(),
+            r,
+            reporter_lock.clone(),
+          );
+          if !success {
+            has_error.raise();
+          }
+
+          Ok(())
         }
-      }
+      })
+      .await
+    })
+  });
 
-      let success = handle_lint_result(
-        &file_path.to_string_lossy(),
-        r,
-        reporter_lock.clone(),
-      );
-      if !success {
-        has_error.raise();
-      }
+  deno_core::futures::future::try_join_all(futures).await?;
 
-      Ok(())
-    }
-  })
-  .await?;
   incremental_cache.wait_completion().await;
-  reporter_lock.lock().unwrap().close(target_files_len);
+  reporter_lock.lock().close(target_files_len);
 
   Ok(!has_error.is_raised())
 }
@@ -311,16 +366,16 @@ fn handle_lint_result(
   result: Result<(Vec<LintDiagnostic>, ParsedSource), AnyError>,
   reporter_lock: Arc<Mutex<Box<dyn LintReporter + Send>>>,
 ) -> bool {
-  let mut reporter = reporter_lock.lock().unwrap();
+  let mut reporter = reporter_lock.lock();
 
   match result {
-    Ok((mut file_diagnostics, source)) => {
+    Ok((mut file_diagnostics, _source)) => {
       file_diagnostics.sort_by(|a, b| match a.specifier.cmp(&b.specifier) {
         std::cmp::Ordering::Equal => a.range.start.cmp(&b.range.start),
         file_order => file_order,
       });
-      for d in file_diagnostics.iter() {
-        reporter.visit_diagnostic(d, &source);
+      for d in &file_diagnostics {
+        reporter.visit_diagnostic(LintOrCliDiagnostic::Lint(d));
       }
       file_diagnostics.is_empty()
     }
@@ -331,8 +386,99 @@ fn handle_lint_result(
   }
 }
 
+#[derive(Clone, Copy)]
+pub enum LintOrCliDiagnostic<'a> {
+  Lint(&'a LintDiagnostic),
+  FastCheck(&'a FastCheckDiagnostic),
+}
+
+impl<'a> LintOrCliDiagnostic<'a> {
+  pub fn specifier(&self) -> &ModuleSpecifier {
+    match self {
+      LintOrCliDiagnostic::Lint(d) => &d.specifier,
+      LintOrCliDiagnostic::FastCheck(d) => d.specifier(),
+    }
+  }
+
+  pub fn range(&self) -> Option<(&SourceTextInfo, SourceRange)> {
+    match self {
+      LintOrCliDiagnostic::Lint(d) => Some((&d.text_info, d.range)),
+      LintOrCliDiagnostic::FastCheck(d) => {
+        d.range().map(|r| (&r.text_info, r.range))
+      }
+    }
+  }
+}
+
+impl<'a> deno_ast::diagnostics::Diagnostic for LintOrCliDiagnostic<'a> {
+  fn level(&self) -> deno_ast::diagnostics::DiagnosticLevel {
+    match self {
+      LintOrCliDiagnostic::Lint(d) => d.level(),
+      LintOrCliDiagnostic::FastCheck(d) => d.level(),
+    }
+  }
+
+  fn code(&self) -> Cow<'_, str> {
+    match self {
+      LintOrCliDiagnostic::Lint(d) => d.code(),
+      LintOrCliDiagnostic::FastCheck(_) => Cow::Borrowed("no-slow-types"),
+    }
+  }
+
+  fn message(&self) -> Cow<'_, str> {
+    match self {
+      LintOrCliDiagnostic::Lint(d) => d.message(),
+      LintOrCliDiagnostic::FastCheck(d) => d.message(),
+    }
+  }
+
+  fn location(&self) -> deno_ast::diagnostics::DiagnosticLocation {
+    match self {
+      LintOrCliDiagnostic::Lint(d) => d.location(),
+      LintOrCliDiagnostic::FastCheck(d) => d.location(),
+    }
+  }
+
+  fn snippet(&self) -> Option<deno_ast::diagnostics::DiagnosticSnippet<'_>> {
+    match self {
+      LintOrCliDiagnostic::Lint(d) => d.snippet(),
+      LintOrCliDiagnostic::FastCheck(d) => d.snippet(),
+    }
+  }
+
+  fn hint(&self) -> Option<Cow<'_, str>> {
+    match self {
+      LintOrCliDiagnostic::Lint(d) => d.hint(),
+      LintOrCliDiagnostic::FastCheck(d) => d.hint(),
+    }
+  }
+
+  fn snippet_fixed(
+    &self,
+  ) -> Option<deno_ast::diagnostics::DiagnosticSnippet<'_>> {
+    match self {
+      LintOrCliDiagnostic::Lint(d) => d.snippet_fixed(),
+      LintOrCliDiagnostic::FastCheck(d) => d.snippet_fixed(),
+    }
+  }
+
+  fn info(&self) -> Cow<'_, [Cow<'_, str>]> {
+    match self {
+      LintOrCliDiagnostic::Lint(d) => d.info(),
+      LintOrCliDiagnostic::FastCheck(d) => d.info(),
+    }
+  }
+
+  fn docs_url(&self) -> Option<Cow<'_, str>> {
+    match self {
+      LintOrCliDiagnostic::Lint(d) => d.docs_url(),
+      LintOrCliDiagnostic::FastCheck(d) => d.docs_url(),
+    }
+  }
+}
+
 trait LintReporter {
-  fn visit_diagnostic(&mut self, d: &LintDiagnostic, source: &ParsedSource);
+  fn visit_diagnostic(&mut self, d: LintOrCliDiagnostic);
   fn visit_error(&mut self, file_path: &str, err: &AnyError);
   fn close(&mut self, check_count: usize);
 }
@@ -354,7 +500,7 @@ impl PrettyLintReporter {
 }
 
 impl LintReporter for PrettyLintReporter {
-  fn visit_diagnostic(&mut self, d: &LintDiagnostic, _source: &ParsedSource) {
+  fn visit_diagnostic(&mut self, d: LintOrCliDiagnostic) {
     self.lint_count += 1;
 
     eprintln!("{}", d.display());
@@ -391,18 +537,25 @@ impl CompactLintReporter {
 }
 
 impl LintReporter for CompactLintReporter {
-  fn visit_diagnostic(&mut self, d: &LintDiagnostic, _source: &ParsedSource) {
+  fn visit_diagnostic(&mut self, d: LintOrCliDiagnostic) {
     self.lint_count += 1;
 
-    let line_and_column = d.text_info.line_and_column_display(d.range.start);
-    eprintln!(
-      "{}: line {}, col {} - {} ({})",
-      d.specifier,
-      line_and_column.line_number,
-      line_and_column.column_number,
-      d.message,
-      d.code
-    )
+    match d.range() {
+      Some((text_info, range)) => {
+        let line_and_column = text_info.line_and_column_display(range.start);
+        eprintln!(
+          "{}: line {}, col {} - {} ({})",
+          d.specifier(),
+          line_and_column.line_number,
+          line_and_column.column_number,
+          d.message(),
+          d.code(),
+        )
+      }
+      None => {
+        eprintln!("{}: {} ({})", d.specifier(), d.message(), d.code())
+      }
+    }
   }
 
   fn visit_error(&mut self, file_path: &str, err: &AnyError) {
@@ -457,7 +610,7 @@ struct JsonLintDiagnosticRange {
 #[derive(Clone, Serialize)]
 struct JsonLintDiagnostic {
   pub filename: String,
-  pub range: JsonLintDiagnosticRange,
+  pub range: Option<JsonLintDiagnosticRange>,
   pub message: String,
   pub code: String,
   pub hint: Option<String>,
@@ -479,22 +632,22 @@ impl JsonLintReporter {
 }
 
 impl LintReporter for JsonLintReporter {
-  fn visit_diagnostic(&mut self, d: &LintDiagnostic, _source: &ParsedSource) {
+  fn visit_diagnostic(&mut self, d: LintOrCliDiagnostic) {
     self.diagnostics.push(JsonLintDiagnostic {
-      filename: d.specifier.to_string(),
-      range: JsonLintDiagnosticRange {
+      filename: d.specifier().to_string(),
+      range: d.range().map(|(text_info, range)| JsonLintDiagnosticRange {
         start: JsonDiagnosticLintPosition::new(
-          d.range.start.as_byte_index(d.text_info.range().start),
-          d.text_info.line_and_column_index(d.range.start),
+          range.start.as_byte_index(text_info.range().start),
+          text_info.line_and_column_index(range.start),
         ),
         end: JsonDiagnosticLintPosition::new(
-          d.range.end.as_byte_index(d.text_info.range().start),
-          d.text_info.line_and_column_index(d.range.end),
+          range.end.as_byte_index(text_info.range().start),
+          text_info.line_and_column_index(range.end),
         ),
-      },
-      message: d.message.clone(),
-      code: d.code.clone(),
-      hint: d.hint.clone(),
+      }),
+      message: d.message().to_string(),
+      code: d.code().to_string(),
+      hint: d.hint().map(|h| h.to_string()),
     });
   }
 
@@ -518,13 +671,22 @@ fn sort_diagnostics(diagnostics: &mut [JsonLintDiagnostic]) {
     use std::cmp::Ordering;
     let file_order = a.filename.cmp(&b.filename);
     match file_order {
-      Ordering::Equal => {
-        let line_order = a.range.start.line.cmp(&b.range.start.line);
-        match line_order {
-          Ordering::Equal => a.range.start.col.cmp(&b.range.start.col),
-          _ => line_order,
-        }
-      }
+      Ordering::Equal => match &a.range {
+        Some(a_range) => match &b.range {
+          Some(b_range) => {
+            let line_order = a_range.start.line.cmp(&b_range.start.line);
+            match line_order {
+              Ordering::Equal => a_range.start.col.cmp(&b_range.start.col),
+              _ => line_order,
+            }
+          }
+          None => Ordering::Less,
+        },
+        None => match &b.range {
+          Some(_) => Ordering::Greater,
+          None => Ordering::Equal,
+        },
+      },
       _ => file_order,
     }
   });
@@ -532,26 +694,75 @@ fn sort_diagnostics(diagnostics: &mut [JsonLintDiagnostic]) {
 
 fn get_config_rules_err_empty(
   rules: LintRulesConfig,
-) -> Result<Vec<&'static dyn LintRule>, AnyError> {
-  let lint_rules = get_configured_rules(rules);
-  if lint_rules.is_empty() {
+  maybe_config_file: Option<&deno_config::ConfigFile>,
+) -> Result<ConfiguredRules, AnyError> {
+  let lint_rules = get_configured_rules(rules, maybe_config_file);
+  if lint_rules.rules.is_empty() {
     bail!("No rules have been configured")
   }
   Ok(lint_rules)
 }
 
+#[derive(Debug, Clone)]
+pub struct ConfiguredRules {
+  pub rules: Vec<&'static dyn LintRule>,
+  // cli specific rules
+  pub no_slow_types: bool,
+}
+
+impl ConfiguredRules {
+  fn incremental_cache_state(&self) -> Vec<&str> {
+    // use a hash of the rule names in order to bust the cache
+    let mut names = self.rules.iter().map(|r| r.code()).collect::<Vec<_>>();
+    // ensure this is stable by sorting it
+    names.sort_unstable();
+    if self.no_slow_types {
+      names.push("no-slow-types");
+    }
+    names
+  }
+}
+
 pub fn get_configured_rules(
   rules: LintRulesConfig,
-) -> Vec<&'static dyn LintRule> {
+  maybe_config_file: Option<&deno_config::ConfigFile>,
+) -> ConfiguredRules {
+  const NO_SLOW_TYPES_NAME: &str = "no-slow-types";
+  let implicit_no_slow_types = maybe_config_file
+    .map(|c| c.is_package() || !c.json.workspaces.is_empty())
+    .unwrap_or(false);
   if rules.tags.is_none() && rules.include.is_none() && rules.exclude.is_none()
   {
-    rules::get_recommended_rules()
+    ConfiguredRules {
+      rules: rules::get_recommended_rules(),
+      no_slow_types: implicit_no_slow_types,
+    }
   } else {
-    rules::get_filtered_rules(
+    let no_slow_types = implicit_no_slow_types
+      && !rules
+        .exclude
+        .as_ref()
+        .map(|exclude| exclude.iter().any(|i| i == NO_SLOW_TYPES_NAME))
+        .unwrap_or(false);
+    let rules = rules::get_filtered_rules(
       rules.tags.or_else(|| Some(vec!["recommended".to_string()])),
-      rules.exclude,
-      rules.include,
-    )
+      rules.exclude.map(|exclude| {
+        exclude
+          .into_iter()
+          .filter(|c| c != NO_SLOW_TYPES_NAME)
+          .collect()
+      }),
+      rules.include.map(|include| {
+        include
+          .into_iter()
+          .filter(|c| c != NO_SLOW_TYPES_NAME)
+          .collect()
+      }),
+    );
+    ConfiguredRules {
+      rules,
+      no_slow_types,
+    }
   }
 }
 
@@ -569,8 +780,9 @@ mod test {
       include: None,
       tags: None,
     };
-    let rules = get_configured_rules(rules_config);
+    let rules = get_configured_rules(rules_config, None);
     let mut rule_names = rules
+      .rules
       .into_iter()
       .map(|r| r.code().to_string())
       .collect::<Vec<_>>();
