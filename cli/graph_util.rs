@@ -454,7 +454,7 @@ impl ModuleGraphBuilder {
         loader.as_mut_loader(),
         deno_graph::BuildOptions {
           is_dynamic: options.is_dynamic,
-          jsr_url_provider: Some(&CliJsrUrlProvider::default()),
+          jsr_url_provider: Some(&CliJsrUrlProvider),
           imports: maybe_imports,
           resolver: Some(graph_resolver),
           file_system: Some(&DenoGraphFsAdapter(self.fs.as_ref())),
@@ -585,10 +585,10 @@ impl ModuleGraphBuilder {
     Ok(())
   }
 
-  pub fn build_fast_check_graph<'a>(
+  pub fn build_fast_check_graph(
     &self,
     graph: &mut ModuleGraph,
-    options: BuildFastCheckGraphOptions<'a>,
+    options: BuildFastCheckGraphOptions,
   ) -> Result<(), AnyError> {
     if !graph.graph_kind().include_types() {
       return Ok(());
@@ -612,14 +612,14 @@ impl ModuleGraphBuilder {
 
     graph.build_fast_check_type_graph(
       deno_graph::BuildFastCheckTypeGraphOptions {
-        jsr_url_provider: Some(&CliJsrUrlProvider::default()),
+        jsr_url_provider: Some(&CliJsrUrlProvider),
         fast_check_cache: fast_check_cache.as_ref().map(|c| c as _),
         fast_check_dts: false,
         module_parser: Some(&parser),
         resolver: Some(graph_resolver),
         npm_resolver: Some(graph_npm_resolver),
         workspace_fast_check: if let Some(members) = &workspace_members {
-          deno_graph::WorkspaceFastCheckOption::Enabled(&members)
+          deno_graph::WorkspaceFastCheckOption::Enabled(members)
         } else {
           deno_graph::WorkspaceFastCheckOption::Disabled
         },
