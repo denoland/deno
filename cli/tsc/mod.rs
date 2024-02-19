@@ -894,7 +894,6 @@ mod tests {
   use deno_graph::GraphKind;
   use deno_graph::ModuleGraph;
   use test_util::PathRef;
-  use tokio::test;
 
   #[derive(Debug, Default)]
   pub struct MockLoader {
@@ -1002,7 +1001,7 @@ mod tests {
   // be used again after the snapshot is taken. We should figure out a mechanism
   // to allow removing some of the ops before taking a snapshot.
   #[ignore]
-  #[test]
+  #[tokio::test]
   async fn test_compiler_snapshot() {
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       startup_snapshot: Some(compiler_snapshot()),
@@ -1028,7 +1027,7 @@ mod tests {
     assert_eq!(actual, "11905938177474799758");
   }
 
-  #[test]
+  #[tokio::test]
   async fn test_hash_url() {
     let specifier = deno_core::resolve_url(
       "data:application/javascript,console.log(\"Hello%20Deno\");",
