@@ -178,7 +178,6 @@ impl TypeChecker {
         &mut graph,
         BuildFastCheckGraphOptions {
           workspace_fast_check: false,
-          loader: None,
         },
       )?;
     }

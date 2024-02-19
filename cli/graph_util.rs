@@ -285,7 +285,6 @@ impl ModuleGraphCreator {
       &mut graph,
       BuildFastCheckGraphOptions {
         workspace_fast_check: true,
-        loader: None,
       },
     )?;
     Ok(graph)
@@ -357,12 +356,10 @@ impl ModuleGraphCreator {
   }
 }
 
-pub struct BuildFastCheckGraphOptions<'a> {
+pub struct BuildFastCheckGraphOptions {
   /// Whether to do fast check on workspace members. This
   /// is mostly only useful when publishing.
   pub workspace_fast_check: bool,
-  /// Specify `None` to use the default CLI loader.
-  pub loader: Option<&'a mut dyn Loader>,
 }
 
 pub struct ModuleGraphBuilder {
