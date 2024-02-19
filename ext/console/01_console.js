@@ -3462,7 +3462,6 @@ export {
   createFilteredInspectProxy,
   createStylizeWithColor,
   CSI,
-  customInspect,
   formatBigInt,
   formatNumber,
   formatValue,
