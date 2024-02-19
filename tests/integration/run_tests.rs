@@ -4725,19 +4725,19 @@ fn stdio_streams_are_locked_in_permission_prompt() {
 }
 
 #[test]
-fn permission_prompt_strips_ansi_codes_and_control_chars() {
+fn permission_prompt_escapes_ansi_codes_and_control_chars() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line(
         r#"Deno.permissions.request({ name: "env", variable: "\rDo you like ice cream? y/n" });"#
       );
     // will be uppercase on windows
     let env_name = if cfg!(windows) {
-      "DO YOU LIKE ICE CREAM? Y/N"
+      "\\rDO YOU LIKE ICE CREAM? Y/N"
     } else {
-      "Do you like ice cream? y/n"
+      "\\rDo you like ice cream? y/n"
     };
     console.expect(format!(
-      "┌ ⚠️  Deno requests env access to \"{}\".",
+      "\u{250c} \u{26a0}\u{fe0f}  Deno requests env access to \"{}\".",
       env_name
     ))
   });
@@ -4747,14 +4747,10 @@ fn permission_prompt_strips_ansi_codes_and_control_chars() {
     console.expect("undefined");
     console.write_line_raw(r#"const unboldANSI = "\u001b[22m";"#);
     console.expect("undefined");
-    console.write_line_raw(r#"const prompt = `┌ ⚠️  ${boldANSI}Deno requests run access to "echo"${unboldANSI}\n ├ Requested by \`Deno.Command().output()`"#);
-    console.expect("undefined");
-    console.write_line_raw(r#"const moveANSIUp = "\u001b[1A";"#);
-    console.expect("undefined");
-    console.write_line_raw(r#"const clearANSI = "\u001b[2K";"#);
-    console.expect("undefined");
-    console.write_line_raw(r#"const moveANSIStart = "\u001b[1000D";"#);
-    console.expect("undefined");
+    console.write_line_raw(
+      r#"new Deno.Command(`${boldANSI}cat${unboldANSI}`).spawn();"#,
+    );
+    console.expect("\u{250c} \u{26a0}\u{fe0f}  Deno requests run access to \"\\u{1b}[1mcat\\u{1b}[22m\".");
   });
 }
 
