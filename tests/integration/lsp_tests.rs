@@ -10666,6 +10666,10 @@ fn lsp_vendor_dir() {
 
   assert!(!temp_dir.path().join("vendor").exists());
 
+  // read the diagnostic update after caching
+  let diagnostics = client.read_diagnostics();
+  assert_eq!(diagnostics.all().len(), 0);
+
   temp_dir.write(
     temp_dir.path().join("deno.json"),
     "{ \"vendor\": true, \"lock\": false }\n",
