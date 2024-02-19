@@ -144,6 +144,7 @@ impl TypeChecker {
     if !options.reload {
       if let Some(check_hash) = maybe_check_hash {
         if cache.has_check_hash(check_hash) {
+          log::debug!("Already type checked.");
           return Ok((graph.into(), Default::default()));
         }
       }

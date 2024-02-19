@@ -111,44 +111,52 @@ impl FastCheckCacheInner {
 
 #[cfg(test)]
 mod test {
+  use std::collections::BTreeSet;
+
+  use deno_ast::ModuleSpecifier;
+  use deno_graph::FastCheckCacheModuleItem;
+  use deno_graph::FastCheckCacheModuleItemDiagnostic;
+  use deno_semver::package::PackageNv;
+
   use super::*;
 
-  // todo...
-  // #[test]
-  // pub fn cache_general_use() {
-  //   let conn = CacheDB::in_memory(&FAST_CHECK_CACHE_DB, "1.0.0");
-  //   let cache = FastCheckCacheInner::new(conn);
+  #[test]
+  pub fn cache_general_use() {
+    let conn = CacheDB::in_memory(&FAST_CHECK_CACHE_DB, "1.0.0");
+    let cache = FastCheckCacheInner::new(conn);
 
-  //   assert!(cache.get_cjs_analysis("file.js", "2").unwrap().is_none());
-  //   let cjs_analysis = CjsAnalysis {
-  //     exports: vec!["export1".to_string()],
-  //     reexports: vec!["re-export1".to_string()],
-  //   };
-  //   cache
-  //     .set_cjs_analysis("file.js", "2", &cjs_analysis)
-  //     .unwrap();
-  //   assert!(cache.get_cjs_analysis("file.js", "3").unwrap().is_none()); // different hash
-  //   let actual_cjs_analysis =
-  //     cache.get_cjs_analysis("file.js", "2").unwrap().unwrap();
-  //   assert_eq!(actual_cjs_analysis.exports, cjs_analysis.exports);
-  //   assert_eq!(actual_cjs_analysis.reexports, cjs_analysis.reexports);
+    let key = FastCheckCacheKey::build(
+      &PackageNv::from_str("@scope/a@1.0.0").unwrap(),
+      &Default::default(),
+    );
+    assert!(cache.get(key).unwrap().is_none());
+    let value = FastCheckCacheItem {
+      dependencies: BTreeSet::from([
+        PackageNv::from_str("@scope/b@1.0.0").unwrap()
+      ]),
+      modules: vec![(
+        ModuleSpecifier::parse("https://jsr.io/test.ts").unwrap(),
+        FastCheckCacheModuleItem::Diagnostic(
+          FastCheckCacheModuleItemDiagnostic { source_hash: 123 },
+        ),
+      )],
+    };
+    cache.set(key, &value).unwrap();
+    let stored_value = cache.get(key).unwrap().unwrap();
+    assert_eq!(stored_value, value);
 
-  //   // adding when already exists should not cause issue
-  //   cache
-  //     .set_cjs_analysis("file.js", "2", &cjs_analysis)
-  //     .unwrap();
+    // adding when already exists should not cause issue
+    cache.set(key, &value).unwrap();
 
-  //   // recreating with same cli version should still have it
-  //   let conn = cache.conn.recreate_with_version("1.0.0");
-  //   let cache = FastCheckCacheInner::new(conn);
-  //   let actual_analysis =
-  //     cache.get_cjs_analysis("file.js", "2").unwrap().unwrap();
-  //   assert_eq!(actual_analysis.exports, cjs_analysis.exports);
-  //   assert_eq!(actual_analysis.reexports, cjs_analysis.reexports);
+    // recreating with same cli version should still have it
+    let conn = cache.conn.recreate_with_version("1.0.0");
+    let cache = FastCheckCacheInner::new(conn);
+    let stored_value = cache.get(key).unwrap().unwrap();
+    assert_eq!(stored_value, value);
 
-  //   // now changing the cli version should clear it
-  //   let conn = cache.conn.recreate_with_version("2.0.0");
-  //   let cache = FastCheckCacheInner::new(conn);
-  //   assert!(cache.get_cjs_analysis("file.js", "2").unwrap().is_none());
-  // }
+    // now changing the cli version should clear it
+    let conn = cache.conn.recreate_with_version("2.0.0");
+    let cache = FastCheckCacheInner::new(conn);
+    assert!(cache.get(key).unwrap().is_none());
+  }
 }
