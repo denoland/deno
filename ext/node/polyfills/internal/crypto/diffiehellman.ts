@@ -7,6 +7,7 @@
 import {
   op_node_dh_compute_secret,
   op_node_dh_generate2,
+  op_node_dh_stateless,
   op_node_ecdh_compute_public_key,
   op_node_ecdh_compute_secret,
   op_node_ecdh_generate_keys,
@@ -1334,6 +1335,10 @@ export function diffieHellman(options: {
       `${privateType} and ${publicType}`,
     );
   }
+
+  const secret = new Buffer();
+  op_node_dh_stateless(privateKey, publicKey, secret);
+  return secret;
 }
 
 export default {
