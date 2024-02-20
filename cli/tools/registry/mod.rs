@@ -828,6 +828,16 @@ pub async fn publish(
   }
 
   if publish_flags.dry_run {
+    for (_, package) in prepared_data.package_by_name {
+      log::info!(
+        "{} of {} with files:",
+        colors::green_bold("Simulating publish"),
+        colors::gray(package.display_name()),
+      );
+      for file in &package.tarball.files {
+        log::info!("   {} ({})", file.specifier, human_size(file.size as f64),);
+      }
+    }
     log::warn!("{} Aborting due to --dry-run", colors::yellow("Warning"));
     return Ok(());
   }
