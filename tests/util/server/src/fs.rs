@@ -4,6 +4,8 @@ use pretty_assertions::assert_eq;
 use std::borrow::Cow;
 use std::ffi::OsStr;
 use std::fs;
+use std::fs::OpenOptions;
+use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
@@ -132,6 +134,11 @@ impl PathRef {
 
   pub fn rename(&self, to: impl AsRef<Path>) {
     fs::rename(self, self.join(to)).unwrap();
+  }
+
+  pub fn append(&self, text: impl AsRef<str>) {
+    let mut file = OpenOptions::new().append(true).open(self).unwrap();
+    file.write_all(text.as_ref().as_bytes()).unwrap();
   }
 
   pub fn write(&self, text: impl AsRef<str>) {

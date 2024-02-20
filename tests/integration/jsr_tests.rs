@@ -6,6 +6,8 @@ use deno_lockfile::Lockfile;
 use test_util as util;
 use test_util::itest;
 use url::Url;
+use util::assert_contains;
+use util::assert_not_contains;
 use util::env_vars_for_jsr_tests;
 use util::TestContextBuilder;
 
@@ -65,6 +67,118 @@ itest!(subset_type_graph {
   http_server: true,
   exit_code: 1,
 });
+
+#[test]
+fn fast_check_cache() {
+  let test_context = TestContextBuilder::for_jsr().use_temp_cwd().build();
+  let deno_dir = test_context.deno_dir();
+  let temp_dir = test_context.temp_dir();
+  let type_check_cache_path = deno_dir.path().join("check_cache_v1");
+
+  temp_dir.write(
+    "main.ts",
+    r#"import { add } from "jsr:@denotest/add@1";
+    const value: number = add(1, 2);
+    console.log(value);"#,
+  );
+  temp_dir.path().join("deno.json").write_json(&json!({
+    "vendor": true
+  }));
+
+  test_context
+    .new_command()
+    .args("check main.ts")
+    .run()
+    .skip_output_check();
+
+  type_check_cache_path.remove_file();
+  let check_debug_cmd = test_context
+    .new_command()
+    .args("check --log-level=debug main.ts");
+  let output = check_debug_cmd.run();
+  assert_contains!(
+    output.combined_output(),
+    "Using FastCheck cache for: @denotest/add@1.0.0"
+  );
+
+  // modify the file in the vendor folder
+  let vendor_dir = temp_dir.path().join("vendor");
+  let pkg_dir = vendor_dir.join("http_127.0.0.1_4250/@denotest/add/1.0.0/");
+  pkg_dir
+    .join("mod.ts")
+    .append("\nexport * from './other.ts';");
+  let nested_pkg_file = pkg_dir.join("other.ts");
+  nested_pkg_file.write("export function other(): string { return ''; }");
+
+  // invalidated
+  let output = check_debug_cmd.run();
+  assert_not_contains!(
+    output.combined_output(),
+    "Using FastCheck cache for: @denotest/add@1.0.0"
+  );
+
+  // ensure cache works
+  let output = check_debug_cmd.run();
+  assert_contains!(output.combined_output(), "Already type checked.");
+  let building_fast_check_msg = "Building fast check graph";
+  assert_not_contains!(output.combined_output(), building_fast_check_msg);
+
+  // now validated
+  type_check_cache_path.remove_file();
+  let output = check_debug_cmd.run();
+  assert_contains!(output.combined_output(), building_fast_check_msg);
+  assert_contains!(
+    output.combined_output(),
+    "Using FastCheck cache for: @denotest/add@1.0.0"
+  );
+
+  // cause a fast check error in the nested package
+  nested_pkg_file
+    .append("\nexport function asdf(a: number) { let err: number = ''; return Math.random(); }");
+  check_debug_cmd.run().skip_output_check();
+
+  // ensure the cache still picks it up for this file
+  type_check_cache_path.remove_file();
+  let output = check_debug_cmd.run();
+  assert_contains!(output.combined_output(), building_fast_check_msg);
+  assert_contains!(
+    output.combined_output(),
+    "Using FastCheck cache for: @denotest/add@1.0.0"
+  );
+
+  // see that the type checking error in the internal function gets surfaced with --all
+  test_context
+    .new_command()
+    .args("check --all main.ts")
+    .run()
+    .assert_matches_text(
+      "Check file:///[WILDCARD]main.ts
+error: TS2322 [ERROR]: Type 'string' is not assignable to type 'number'.
+export function asdf(a: number) { let err: number = ''; return Math.random(); }
+                                      ~~~
+    at http://127.0.0.1:4250/@denotest/add/1.0.0/other.ts:2:39
+",
+    )
+    .assert_exit_code(1);
+
+  // now fix the package
+  nested_pkg_file.write("export function test() {}");
+  let output = check_debug_cmd.run();
+  assert_contains!(output.combined_output(), building_fast_check_msg);
+  assert_not_contains!(
+    output.combined_output(),
+    "Using FastCheck cache for: @denotest/add@1.0.0"
+  );
+
+  // finally ensure it uses the cache
+  type_check_cache_path.remove_file();
+  let output = check_debug_cmd.run();
+  assert_contains!(output.combined_output(), building_fast_check_msg);
+  assert_contains!(
+    output.combined_output(),
+    "Using FastCheck cache for: @denotest/add@1.0.0"
+  );
+}
 
 itest!(version_not_found {
   args: "run jsr/version_not_found/main.ts",
