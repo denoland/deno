@@ -56,6 +56,7 @@ use crate::worker::CliMainWorkerOptions;
 use std::path::PathBuf;
 
 use deno_core::error::AnyError;
+use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
 use deno_core::FeatureChecker;
 
@@ -117,6 +118,7 @@ impl<T> Default for Deferred<T> {
 }
 
 impl<T> Deferred<T> {
+  #[inline(always)]
   pub fn get_or_try_init(
     &self,
     create: impl FnOnce() -> Result<T, AnyError>,
@@ -124,12 +126,16 @@ impl<T> Deferred<T> {
     self.0.get_or_try_init(create)
   }
 
+  #[inline(always)]
   pub fn get_or_init(&self, create: impl FnOnce() -> T) -> &T {
     self.0.get_or_init(create)
   }
 
   pub async fn get_or_try_init_async(
     &self,
+    // some futures passed here are boxed because it was discovered
+    // that they were called a lot, causing other futures to get
+    // really big causing stack overflows on Windows
     create: impl Future<Output = Result<T, AnyError>>,
   ) -> Result<&T, AnyError> {
     if self.0.get().is_none() {
@@ -441,7 +447,7 @@ impl CliFactory {
             npm_registry_url: crate::args::npm_registry_default_url().to_owned(),
           })
         }).await
-      })
+      }.boxed_local())
       .await
   }
 
@@ -475,32 +481,37 @@ impl CliFactory {
     self
       .services
       .resolver
-      .get_or_try_init_async(async {
-        Ok(Arc::new(CliGraphResolver::new(CliGraphResolverOptions {
-          fs: self.fs().clone(),
-          cjs_resolutions: Some(self.cjs_resolutions().clone()),
-          sloppy_imports_resolver: if self.options.unstable_sloppy_imports() {
-            Some(SloppyImportsResolver::new(self.fs().clone()))
-          } else {
-            None
-          },
-          node_resolver: Some(self.node_resolver().await?.clone()),
-          npm_resolver: if self.options.no_npm() {
-            None
-          } else {
-            Some(self.npm_resolver().await?.clone())
-          },
-          package_json_deps_provider: self.package_json_deps_provider().clone(),
-          maybe_jsx_import_source_config: self
-            .options
-            .to_maybe_jsx_import_source_config()?,
-          maybe_import_map: self.maybe_import_map().await?.clone(),
-          maybe_vendor_dir: self.options.vendor_dir_path(),
-          bare_node_builtins_enabled: self
-            .options
-            .unstable_bare_node_builtins(),
-        })))
-      })
+      .get_or_try_init_async(
+        async {
+          Ok(Arc::new(CliGraphResolver::new(CliGraphResolverOptions {
+            fs: self.fs().clone(),
+            cjs_resolutions: Some(self.cjs_resolutions().clone()),
+            sloppy_imports_resolver: if self.options.unstable_sloppy_imports() {
+              Some(SloppyImportsResolver::new(self.fs().clone()))
+            } else {
+              None
+            },
+            node_resolver: Some(self.node_resolver().await?.clone()),
+            npm_resolver: if self.options.no_npm() {
+              None
+            } else {
+              Some(self.npm_resolver().await?.clone())
+            },
+            package_json_deps_provider: self
+              .package_json_deps_provider()
+              .clone(),
+            maybe_jsx_import_source_config: self
+              .options
+              .to_maybe_jsx_import_source_config()?,
+            maybe_import_map: self.maybe_import_map().await?.clone(),
+            maybe_vendor_dir: self.options.vendor_dir_path(),
+            bare_node_builtins_enabled: self
+              .options
+              .unstable_bare_node_builtins(),
+          })))
+        }
+        .boxed_local(),
+      )
       .await
   }
 
@@ -558,12 +569,15 @@ impl CliFactory {
     self
       .services
       .node_resolver
-      .get_or_try_init_async(async {
-        Ok(Arc::new(NodeResolver::new(
-          self.fs().clone(),
-          self.npm_resolver().await?.clone().into_npm_resolver(),
-        )))
-      })
+      .get_or_try_init_async(
+        async {
+          Ok(Arc::new(NodeResolver::new(
+            self.fs().clone(),
+            self.npm_resolver().await?.clone().into_npm_resolver(),
+          )))
+        }
+        .boxed_local(),
+      )
       .await
   }
 
