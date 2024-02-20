@@ -122,6 +122,7 @@ impl TypeChecker {
 
     let ts_config = ts_config_result.ts_config;
     let type_check_mode = self.cli_options.type_check_mode();
+    eprintln!("TYPE CHECK MODE: {:?}", type_check_mode);
     let maybe_check_hash = match self.npm_resolver.check_state_hash() {
       Some(npm_check_hash) => {
         match get_check_hash(

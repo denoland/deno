@@ -3823,6 +3823,7 @@ fn vendor_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 }
 
 fn publish_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  flags.type_check_mode = TypeCheckMode::Local;
   config_args_parse(flags, matches);
 
   flags.subcommand = DenoSubcommand::Publish(PublishFlags {
@@ -8541,5 +8542,28 @@ mod tests {
     r.unwrap_err();
     let r = flags_from_vec(svec!["deno", "jupyter", "--install", "--kernel",]);
     r.unwrap_err();
+  }
+
+  #[test]
+  fn publish_args() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "publish",
+      "--dry-run",
+      "--allow-slow-types",
+      "--token=asdf"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Publish(PublishFlags {
+          token: Some("asdf".to_string()),
+          dry_run: true,
+          allow_slow_types: true,
+        }),
+        type_check_mode: TypeCheckMode::Local,
+        ..Flags::default()
+      }
+    );
   }
 }
