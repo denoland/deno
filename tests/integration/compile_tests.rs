@@ -876,7 +876,7 @@ fn compile_npm_bin_cjs() {
 fn compile_npm_cowsay_main() {
   run_npm_bin_compile_test(RunNpmBinCompileOptions {
     input_specifier: "npm:cowsay@1.5.0",
-    compile_args: vec!["--allow-read"],
+    compile_args: vec!["--allow-read", "--allow-env"],
     run_args: vec!["Hello"],
     output_file: "npm/deno_run_cowsay.out",
     node_modules_dir: false,
@@ -918,7 +918,7 @@ fn compile_npm_no_permissions() {
 fn compile_npm_cowsay_explicit() {
   run_npm_bin_compile_test(RunNpmBinCompileOptions {
     input_specifier: "npm:cowsay@1.5.0/cowsay",
-    compile_args: vec!["--allow-read"],
+    compile_args: vec!["--allow-read", "--allow-env"],
     run_args: vec!["Hello"],
     output_file: "npm/deno_run_cowsay.out",
     node_modules_dir: false,
@@ -932,7 +932,7 @@ fn compile_npm_cowsay_explicit() {
 fn compile_npm_cowthink() {
   run_npm_bin_compile_test(RunNpmBinCompileOptions {
     input_specifier: "npm:cowsay@1.5.0/cowthink",
-    compile_args: vec!["--allow-read"],
+    compile_args: vec!["--allow-read", "--allow-env"],
     run_args: vec!["Hello"],
     output_file: "npm/deno_run_cowthink.out",
     node_modules_dir: false,

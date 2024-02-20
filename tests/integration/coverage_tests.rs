@@ -350,6 +350,7 @@ fn no_npm_cache_coverage() {
       "test".to_string(),
       "--quiet".to_string(),
       "--allow-read".to_string(),
+      "--allow-env".to_string(),
       format!("--coverage={}", tempdir),
       format!("coverage/no_npm_coverage/no_npm_coverage_test.ts"),
     ])

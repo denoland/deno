@@ -2288,7 +2288,7 @@ console.log(getKind());
   );
   let output = test_context
     .new_command()
-    .args("run --allow-read chalk.ts")
+    .args("run --allow-read --allow-env chalk.ts")
     .run();
   output.assert_matches_text("chalk cjs loads\n");
 
@@ -2299,7 +2299,7 @@ console.log(getKind());
   );
   let output = test_context
     .new_command()
-    .args("run --allow-read chalk.ts")
+    .args("run --allow-read --allow-env chalk.ts")
     .run();
   output.assert_matches_text("chalk cjs loads\n");
 
@@ -2310,7 +2310,7 @@ console.log(getKind());
   );
   let output = test_context
     .new_command()
-    .args("run --allow-read chalk.ts")
+    .args("run --allow-read --allow-env chalk.ts")
     .run();
   output.assert_matches_text(
     r#"error: Could not find a matching package for 'npm:chalk@5' in '[WILDCARD]package.json'. You must specify this as a package.json dependency when the node_modules folder is not managed by Deno.
