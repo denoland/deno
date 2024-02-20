@@ -1083,11 +1083,7 @@ fn validate_temporary_filename_component(
   #[allow(unused_variables)] suffix: bool,
 ) -> Result<(), AnyError> {
   // Ban ASCII and Unicode control characters: these will often fail
-  if let Some(c) = component
-    .matches(|c: char| c.is_control())
-    .into_iter()
-    .next()
-  {
+  if let Some(c) = component.matches(|c: char| c.is_control()).next() {
     bail!("Invalid control character in prefix or suffix: {:?}", c);
   }
   // Windows has the most restrictive filenames. As temp files aren't normal files, we just
@@ -1102,7 +1098,6 @@ fn validate_temporary_filename_component(
   // https://learn.microsoft.com/en-ca/archive/blogs/jeremykuhne/wildcards-in-windows
   if let Some(c) = component
     .matches(|c: char| "<>:\"/\\|?*".contains(c))
-    .into_iter()
     .next()
   {
     bail!("Invalid character in prefix or suffix: {:?}", c);
@@ -1111,11 +1106,7 @@ fn validate_temporary_filename_component(
   // This check is only for Windows
   #[cfg(windows)]
   if suffix {
-    if let Some(c) = component
-      .matches(|c: char| ". ".contains(c))
-      .into_iter()
-      .next()
-    {
+    if let Some(c) = component.matches(|c: char| ". ".contains(c)).next() {
       bail!("Invalid trailing character in suffix: {:?}", c);
     }
   }
