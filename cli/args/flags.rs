@@ -2375,8 +2375,7 @@ fn publish_subcommand() -> Command {
     .about("Unstable preview feature: Publish the current working directory's package or workspace")
     // TODO: .long_about()
     .defer(|cmd| {
-      cmd
-      .arg(
+      cmd.arg(
         Arg::new("token")
           .long("token")
           .help("The API token to use when publishing. If unset, interactive authentication is be used")
