@@ -9,6 +9,6 @@ warning[unsupported-file-type]: unsupported file type 'symlink'
   docs: https://jsr.io/go/unsupported-file-type
 
 Simulating publish of @foo/bar@1.0.0 with files:
-   [WILDCARD]mod.ts (56B)
    [WILDCARD]deno.json (87B)
+   [WILDCARD]mod.ts (56B)
 Warning Aborting due to --dry-run

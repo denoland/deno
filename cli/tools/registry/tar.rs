@@ -160,6 +160,8 @@ pub fn create_gzipped_tarball(
     write!(&mut hash, "{:02x}", byte).unwrap();
   }
 
+  files.sort_by(|a, b| a.specifier.cmp(&b.specifier));
+
   Ok(PublishableTarball {
     files,
     hash,
