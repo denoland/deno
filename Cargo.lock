@@ -1402,6 +1402,7 @@ name = "deno_fs"
 version = "0.48.0"
 dependencies = [
  "async-trait",
+ "base32",
  "deno_core",
  "deno_io",
  "filetime",
