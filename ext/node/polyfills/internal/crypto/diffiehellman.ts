@@ -19,12 +19,16 @@ import {
   isArrayBufferView,
 } from "ext:deno_node/internal/util/types.ts";
 import {
+  ERR_CRYPTO_INCOMPATIBLE_KEY,
+  ERR_CRYPTO_INVALID_KEY_OBJECT_TYPE,
   ERR_CRYPTO_UNKNOWN_DH_GROUP,
   ERR_INVALID_ARG_TYPE,
+  ERR_INVALID_ARG_VALUE,
   NodeError,
 } from "ext:deno_node/internal/errors.ts";
 import {
   validateInt32,
+  validateObject,
   validateString,
 } from "ext:deno_node/internal/validators.mjs";
 import { Buffer } from "node:buffer";
@@ -1293,11 +1297,43 @@ export class ECDH {
   }
 }
 
-export function diffieHellman(_options: {
+const dhEnabledKeyTypes = new Set(["dh", "ec", "x448", "x25519"]);
+
+export function diffieHellman(options: {
   privateKey: KeyObject;
   publicKey: KeyObject;
 }): Buffer {
-  notImplemented("crypto.diffieHellman");
+  // @todo(iuioiua) This isn't calling the correct error class
+  validateObject(options, "options");
+
+  const { privateKey, publicKey } = options;
+  if (!(privateKey instanceof KeyObject)) {
+    throw new ERR_INVALID_ARG_VALUE("options.privateKey", privateKey);
+  }
+
+  if (!(publicKey instanceof KeyObject)) {
+    throw new ERR_INVALID_ARG_VALUE("options.publicKey", publicKey);
+  }
+
+  if (privateKey.type !== "private") {
+    throw new ERR_CRYPTO_INVALID_KEY_OBJECT_TYPE(privateKey.type, "private");
+  }
+
+  if (publicKey.type !== "public" && publicKey.type !== "private") {
+    throw new ERR_CRYPTO_INVALID_KEY_OBJECT_TYPE(
+      publicKey.type,
+      "private or public",
+    );
+  }
+
+  const privateType = privateKey.asymmetricKeyType;
+  const publicType = publicKey.asymmetricKeyType;
+  if (privateType !== publicType || !dhEnabledKeyTypes.has(privateType)) {
+    throw new ERR_CRYPTO_INCOMPATIBLE_KEY(
+      "key types for Diffie-Hellman",
+      `${privateType} and ${publicType}`,
+    );
+  }
 }
 
 export default {

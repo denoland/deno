@@ -3,7 +3,7 @@
 
 NOTE: This file should not be manually edited. Please edit `tests/node_compat/config.json` and run `deno task setup` in `tools/node_compat` dir instead.
 
-Total: 2999
+Total: 2998
 
 - [abort/test-abort-backtrace.js](https://github.com/nodejs/node/tree/v18.12.1/test/abort/test-abort-backtrace.js)
 - [abort/test-abort-fatal-error.js](https://github.com/nodejs/node/tree/v18.12.1/test/abort/test-abort-fatal-error.js)
@@ -449,7 +449,6 @@ Total: 2999
 - [parallel/test-crypto-dh-modp2.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-dh-modp2.js)
 - [parallel/test-crypto-dh-odd-key.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-dh-odd-key.js)
 - [parallel/test-crypto-dh-padding.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-dh-padding.js)
-- [parallel/test-crypto-dh-stateless.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-dh-stateless.js)
 - [parallel/test-crypto-domain.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-domain.js)
 - [parallel/test-crypto-domains.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-domains.js)
 - [parallel/test-crypto-ecb.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-ecb.js)
