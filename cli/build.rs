@@ -303,11 +303,12 @@ mod ts {
         with_runtime_cb: None,
         skip_op_registration: false,
       },
-        // TODO(littledivy): Is a TSC snapshot warmup viable?
-        //
-        // To readers: please benchmark, compiled bytecode can increase snapshot size.
+      // TODO(littledivy): Is a TSC snapshot warmup viable?
+      //
+      // To readers: please benchmark, compiled bytecode can increase snapshot size.
       None,
-    ).unwrap();
+    )
+    .unwrap();
     for path in output.files_loaded_during_snapshot {
       println!("cargo:rerun-if-changed={}", path.display());
     }
