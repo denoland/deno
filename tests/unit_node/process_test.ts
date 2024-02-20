@@ -342,7 +342,7 @@ Deno.test({
     assert("FOO" in process.env);
     assertThrows(() => "BAR" in process.env);
     assert(Object.hasOwn(process.env, "FOO"));
-    assertThrows(() => (Object.hasOwn(process.env, "BAR"));
+    assertThrows(() => Object.hasOwn(process.env, "BAR"));
   },
 });
 
