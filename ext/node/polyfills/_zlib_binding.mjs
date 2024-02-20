@@ -43,8 +43,7 @@ export const DEFLATERAW = 5;
 export const INFLATERAW = 6;
 export const UNZIP = 7;
 
-import { core } from "ext:core/mod.js";
-const {
+import {
   op_zlib_close,
   op_zlib_close_if_pending,
   op_zlib_init,
@@ -52,7 +51,7 @@ const {
   op_zlib_reset,
   op_zlib_write,
   op_zlib_write_async,
-} = core.ensureFastOps();
+} from "ext:core/ops";
 
 const writeResult = new Uint32Array(2);
 

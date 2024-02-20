@@ -16,14 +16,15 @@ use crate::tools::test::worker_has_tests;
 use crate::tools::test::TestEvent;
 use crate::tools::test::TestEventSender;
 
+use deno_ast::diagnostics::Diagnostic;
 use deno_ast::swc::ast as swc_ast;
 use deno_ast::swc::common::comments::CommentKind;
 use deno_ast::swc::visit::noop_visit_type;
 use deno_ast::swc::visit::Visit;
 use deno_ast::swc::visit::VisitWith;
-use deno_ast::DiagnosticsError;
 use deno_ast::ImportsNotUsedAsValues;
 use deno_ast::ModuleSpecifier;
+use deno_ast::ParseDiagnosticsError;
 use deno_ast::ParsedSource;
 use deno_ast::SourcePos;
 use deno_ast::SourceRangedForSpanned;
@@ -184,6 +185,7 @@ pub struct ReplSession {
   /// This is only optional because it's temporarily taken when evaluating.
   test_event_receiver: Option<tokio::sync::mpsc::UnboundedReceiver<TestEvent>>,
   jsx: ReplJsxState,
+  experimental_decorators: bool,
 }
 
 impl ReplSession {
@@ -240,6 +242,11 @@ impl ReplSession {
       deno_core::resolve_path("./$deno$repl.ts", cli_options.initial_cwd())
         .unwrap();
 
+    let ts_config_for_emit = cli_options
+      .resolve_ts_config_for_emit(deno_config::TsConfigType::Emit)?;
+    let emit_options =
+      crate::args::ts_config_to_emit_options(ts_config_for_emit.ts_config);
+    let experimental_decorators = emit_options.use_ts_decorators;
     let mut repl_session = ReplSession {
       npm_resolver,
       resolver,
@@ -260,6 +267,7 @@ impl ReplSession {
         frag_factory: "React.Fragment".to_string(),
         import_source: None,
       },
+      experimental_decorators,
     };
 
     // inject prelude
@@ -317,7 +325,7 @@ impl ReplSession {
     &mut self,
     line: &str,
   ) -> EvaluationOutput {
-    fn format_diagnostic(diagnostic: &deno_ast::Diagnostic) -> String {
+    fn format_diagnostic(diagnostic: &deno_ast::ParseDiagnostic) -> String {
       let display_position = diagnostic.display_position();
       format!(
         "{}: {} at {}:{}",
@@ -370,11 +378,11 @@ impl ReplSession {
         }
         Err(err) => {
           // handle a parsing diagnostic
-          match err.downcast_ref::<deno_ast::Diagnostic>() {
+          match err.downcast_ref::<deno_ast::ParseDiagnostic>() {
             Some(diagnostic) => {
               Ok(EvaluationOutput::Error(format_diagnostic(diagnostic)))
             }
-            None => match err.downcast_ref::<DiagnosticsError>() {
+            None => match err.downcast_ref::<ParseDiagnosticsError>() {
               Some(diagnostics) => Ok(EvaluationOutput::Error(
                 diagnostics
                   .0
@@ -596,6 +604,8 @@ impl ReplSession {
 
     let transpiled_src = parsed_source
       .transpile(&deno_ast::EmitOptions {
+        use_ts_decorators: self.experimental_decorators,
+        use_decorators_proposal: !self.experimental_decorators,
         emit_metadata: false,
         source_map: false,
         inline_source_map: false,
@@ -777,13 +787,13 @@ fn parse_source_as(
   media_type: deno_ast::MediaType,
 ) -> Result<deno_ast::ParsedSource, AnyError> {
   let specifier = if media_type == deno_ast::MediaType::Tsx {
-    "repl.tsx"
+    ModuleSpecifier::parse("file:///repl.tsx").unwrap()
   } else {
-    "repl.ts"
+    ModuleSpecifier::parse("file:///repl.ts").unwrap()
   };
 
   let parsed = deno_ast::parse_module(deno_ast::ParseParams {
-    specifier: specifier.to_string(),
+    specifier,
     text_info: deno_ast::SourceTextInfo::from_string(source),
     media_type,
     capture_tokens: true,

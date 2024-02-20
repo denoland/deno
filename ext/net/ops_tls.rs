@@ -27,7 +27,6 @@ use deno_tls::create_client_config;
 use deno_tls::load_certs;
 use deno_tls::load_private_keys;
 use deno_tls::rustls::Certificate;
-use deno_tls::rustls::ClientConnection;
 use deno_tls::rustls::PrivateKey;
 use deno_tls::rustls::ServerConfig;
 use deno_tls::rustls::ServerName;
@@ -146,8 +145,8 @@ impl Resource for TlsStreamResource {
 pub struct ConnectTlsArgs {
   cert_file: Option<String>,
   ca_certs: Vec<String>,
-  cert_chain: Option<String>,
-  private_key: Option<String>,
+  cert: Option<String>,
+  key: Option<String>,
   alpn_protocols: Option<Vec<String>>,
 }
 
@@ -231,7 +230,8 @@ where
   let tls_config = Arc::new(tls_config);
   let tls_stream = TlsStream::new_client_side(
     tcp_stream,
-    ClientConnection::new(tls_config, hostname_dns).unwrap(),
+    tls_config,
+    hostname_dns,
     TLS_BUFFER_SIZE,
   );
 
@@ -297,24 +297,23 @@ where
   let local_addr = tcp_stream.local_addr()?;
   let remote_addr = tcp_stream.peer_addr()?;
 
-  let cert_chain_and_key =
-    if args.cert_chain.is_some() || args.private_key.is_some() {
-      let cert_chain = args
-        .cert_chain
-        .ok_or_else(|| type_error("No certificate chain provided"))?;
-      let private_key = args
-        .private_key
-        .ok_or_else(|| type_error("No private key provided"))?;
-      Some((cert_chain, private_key))
-    } else {
-      None
-    };
+  let cert_and_key = if args.cert.is_some() || args.key.is_some() {
+    let cert = args
+      .cert
+      .ok_or_else(|| type_error("No certificate chain provided"))?;
+    let key = args
+      .key
+      .ok_or_else(|| type_error("No private key provided"))?;
+    Some((cert, key))
+  } else {
+    None
+  };
 
   let mut tls_config = create_client_config(
     root_cert_store,
     ca_certs,
     unsafely_ignore_certificate_errors,
-    cert_chain_and_key,
+    cert_and_key,
     SocketUse::GeneralSsl,
   )?;
 
@@ -327,7 +326,8 @@ where
 
   let tls_stream = TlsStream::new_client_side(
     tcp_stream,
-    ClientConnection::new(tls_config, hostname_dns).unwrap(),
+    tls_config,
+    hostname_dns,
     TLS_BUFFER_SIZE,
   );
 

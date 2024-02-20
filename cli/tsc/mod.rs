@@ -94,6 +94,7 @@ pub fn get_types_declaration_file_text() -> String {
     "deno.webgpu",
     "deno.websocket",
     "deno.webstorage",
+    "deno.canvas",
     "deno.crypto",
     "deno.broadcast_channel",
     "deno.net",
@@ -114,7 +115,17 @@ pub fn get_types_declaration_file_text() -> String {
 }
 
 fn get_asset_texts_from_new_runtime() -> Result<Vec<AssetText>, AnyError> {
-  deno_core::extension!(deno_cli_tsc, ops_fn = deno_ops);
+  deno_core::extension!(
+    deno_cli_tsc,
+    ops = [
+      op_create_hash,
+      op_emit,
+      op_is_node_file,
+      op_load,
+      op_resolve,
+      op_respond,
+    ]
+  );
 
   // the assets are stored within the typescript isolate, so take them out of there
   let mut runtime = JsRuntime::new(RuntimeOptions {
@@ -481,7 +492,7 @@ fn op_load(
     };
     let maybe_source = if let Some(module) = graph.get(specifier) {
       match module {
-        Module::Esm(module) => {
+        Module::Js(module) => {
           media_type = module.media_type;
           let source = module
             .fast_check_module()
@@ -586,7 +597,7 @@ fn op_resolve(
     let graph = &state.graph;
     let resolved_dep = graph
       .get(&referrer)
-      .and_then(|m| m.esm())
+      .and_then(|m| m.js())
       .and_then(|m| m.dependencies_prefer_fast_check().get(&specifier))
       .and_then(|d| d.maybe_type.ok().or_else(|| d.maybe_code.ok()));
 
@@ -642,7 +653,7 @@ fn resolve_graph_specifier_types(
   let maybe_module = graph.get(specifier);
   // follow the types reference directive, which may be pointing at an npm package
   let maybe_module = match maybe_module {
-    Some(Module::Esm(module)) => {
+    Some(Module::Js(module)) => {
       let maybe_types_dep = module
         .maybe_types_dependency
         .as_ref()
@@ -657,7 +668,7 @@ fn resolve_graph_specifier_types(
 
   // now get the types from the resolved module
   match maybe_module {
-    Some(Module::Esm(module)) => {
+    Some(Module::Js(module)) => {
       Ok(Some((module.specifier.clone(), module.media_type)))
     }
     Some(Module::Json(module)) => {
@@ -804,7 +815,14 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
     .collect();
 
   deno_core::extension!(deno_cli_tsc,
-    ops_fn = deno_ops,
+    ops = [
+      op_create_hash,
+      op_emit,
+      op_is_node_file,
+      op_load,
+      op_resolve,
+      op_respond,
+    ],
     options = {
       request: Request,
       root_map: HashMap<String, Url>,
@@ -864,18 +882,6 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
   }
 }
 
-deno_core::ops!(
-  deno_ops,
-  [
-    op_create_hash,
-    op_emit,
-    op_is_node_file,
-    op_load,
-    op_resolve,
-    op_respond,
-  ]
-);
-
 #[cfg(test)]
 mod tests {
   use super::Diagnostic;
@@ -898,8 +904,7 @@ mod tests {
     fn load(
       &mut self,
       specifier: &ModuleSpecifier,
-      _is_dynamic: bool,
-      _cache_setting: deno_graph::source::CacheSetting,
+      _options: deno_graph::source::LoadOptions,
     ) -> deno_graph::source::LoadFuture {
       let specifier_text = specifier
         .to_string()
@@ -907,7 +912,7 @@ mod tests {
         .replace("://", "_")
         .replace('/', "-");
       let source_path = self.fixtures.join(specifier_text);
-      let response = source_path.read_to_string_if_exists().map(|c| {
+      let response = source_path.read_to_bytes_if_exists().map(|c| {
         Some(deno_graph::source::LoadResponse::Module {
           specifier: specifier.clone(),
           maybe_headers: None,
@@ -996,8 +1001,8 @@ mod tests {
   // be used again after the snapshot is taken. We should figure out a mechanism
   // to allow removing some of the ops before taking a snapshot.
   #[ignore]
-  #[test]
-  fn test_compiler_snapshot() {
+  #[tokio::test]
+  async fn test_compiler_snapshot() {
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       startup_snapshot: Some(compiler_snapshot()),
       ..Default::default()
@@ -1022,8 +1027,8 @@ mod tests {
     assert_eq!(actual, "11905938177474799758");
   }
 
-  #[test]
-  fn test_hash_url() {
+  #[tokio::test]
+  async fn test_hash_url() {
     let specifier = deno_core::resolve_url(
       "data:application/javascript,console.log(\"Hello%20Deno\");",
     )

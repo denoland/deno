@@ -9,7 +9,6 @@ pub mod package_json;
 pub use self::import_map::resolve_import_map_from_specifier;
 use self::package_json::PackageJsonDeps;
 use ::import_map::ImportMap;
-use deno_config::glob::PathOrPattern;
 use deno_core::resolve_url_or_path;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmSystemInfo;
@@ -43,7 +42,6 @@ use deno_core::normalize_path;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use deno_core::url::Url;
-use deno_runtime::colors;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::deno_tls::deno_native_certs::load_native_certs;
 use deno_runtime::deno_tls::rustls;
@@ -52,6 +50,7 @@ use deno_runtime::deno_tls::rustls_pemfile;
 use deno_runtime::deno_tls::webpki_roots;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::permissions::PermissionsOptions;
+use deno_terminal::colors;
 use dotenvy::from_filename;
 use once_cell::sync::Lazy;
 use once_cell::sync::OnceCell;
@@ -103,9 +102,9 @@ pub fn npm_registry_default_url() -> &'static Url {
   &NPM_REGISTRY_DEFAULT_URL
 }
 
-pub fn deno_registry_url() -> &'static Url {
-  static DENO_REGISTRY_URL: Lazy<Url> = Lazy::new(|| {
-    let env_var_name = "DENO_REGISTRY_URL";
+pub fn jsr_url() -> &'static Url {
+  static JSR_URL: Lazy<Url> = Lazy::new(|| {
+    let env_var_name = "JSR_URL";
     if let Ok(registry_url) = std::env::var(env_var_name) {
       // ensure there is a trailing slash for the directory
       let registry_url = format!("{}/", registry_url.trim_end_matches('/'));
@@ -126,17 +125,17 @@ pub fn deno_registry_url() -> &'static Url {
     Url::parse("https://jsr.io/").unwrap()
   });
 
-  &DENO_REGISTRY_URL
+  &JSR_URL
 }
 
-pub fn deno_registry_api_url() -> &'static Url {
-  static DENO_REGISTRY_API_URL: Lazy<Url> = Lazy::new(|| {
-    let mut deno_registry_api_url = deno_registry_url().clone();
-    deno_registry_api_url.set_path("api/");
-    deno_registry_api_url
+pub fn jsr_api_url() -> &'static Url {
+  static JSR_API_URL: Lazy<Url> = Lazy::new(|| {
+    let mut jsr_api_url = jsr_url().clone();
+    jsr_api_url.set_path("api/");
+    jsr_api_url
   });
 
-  &DENO_REGISTRY_API_URL
+  &JSR_API_URL
 }
 
 pub fn ts_config_to_emit_options(
@@ -159,6 +158,8 @@ pub fn ts_config_to_emit_options(
       _ => (false, false, false, false),
     };
   deno_ast::EmitOptions {
+    use_ts_decorators: options.experimental_decorators,
+    use_decorators_proposal: !options.experimental_decorators,
     emit_metadata: options.emit_decorator_metadata,
     imports_not_used_as_values,
     inline_source_map: options.inline_source_map,
@@ -244,7 +245,7 @@ impl BenchOptions {
   }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct FmtOptions {
   pub check: bool,
   pub options: FmtOptionsConfig,
@@ -252,6 +253,14 @@ pub struct FmtOptions {
 }
 
 impl FmtOptions {
+  pub fn new_with_base(base: PathBuf) -> Self {
+    Self {
+      check: false,
+      options: FmtOptionsConfig::default(),
+      files: FilePatterns::new_with_base(base),
+    }
+  }
+
   pub fn resolve(
     maybe_fmt_config: Option<FmtConfig>,
     maybe_fmt_flags: Option<FmtFlags>,
@@ -369,7 +378,7 @@ pub enum LintReporterKind {
   Compact,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct LintOptions {
   pub rules: LintRulesConfig,
   pub files: FilePatterns,
@@ -377,6 +386,14 @@ pub struct LintOptions {
 }
 
 impl LintOptions {
+  pub fn new_with_base(base: PathBuf) -> Self {
+    Self {
+      rules: Default::default(),
+      files: FilePatterns::new_with_base(base),
+      reporter_kind: Default::default(),
+    }
+  }
+
   pub fn resolve(
     maybe_lint_config: Option<LintConfig>,
     maybe_lint_flags: Option<LintFlags>,
@@ -667,6 +684,8 @@ pub struct CliOptions {
   maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
   overrides: CliOptionOverrides,
   maybe_workspace_config: Option<WorkspaceConfig>,
+  pub disable_deprecated_api_warning: bool,
+  pub verbose_deprecated_api_warning: bool,
 }
 
 impl CliOptions {
@@ -709,9 +728,20 @@ impl CliOptions {
 
     if let Some(env_file_name) = &flags.env_file {
       if (from_filename(env_file_name)).is_err() {
-        bail!("Unable to load '{env_file_name}' environment variable file")
+        log::info!(
+          "{} The `--env` flag was used, but the dotenv file '{}' was not found.",
+          colors::yellow("Warning"),
+          env_file_name
+        );
       }
     }
+
+    let disable_deprecated_api_warning = flags.log_level
+      == Some(log::Level::Error)
+      || std::env::var("DENO_NO_DEPRECATION_WARNINGS").ok().is_some();
+
+    let verbose_deprecated_api_warning =
+      std::env::var("DENO_VERBOSE_WARNINGS").ok().is_some();
 
     Ok(Self {
       flags,
@@ -723,6 +753,8 @@ impl CliOptions {
       maybe_vendor_folder,
       overrides: Default::default(),
       maybe_workspace_config,
+      disable_deprecated_api_warning,
+      verbose_deprecated_api_warning,
     })
   }
 
@@ -778,26 +810,11 @@ impl CliOptions {
   }
 
   pub fn ts_type_lib_window(&self) -> TsTypeLib {
-    if self.flags.unstable
-      || !self.flags.unstable_features.is_empty()
-      || self
-        .maybe_config_file
-        .as_ref()
-        .map(|f| !f.json.unstable.is_empty())
-        .unwrap_or(false)
-    {
-      TsTypeLib::UnstableDenoWindow
-    } else {
-      TsTypeLib::DenoWindow
-    }
+    TsTypeLib::DenoWindow
   }
 
   pub fn ts_type_lib_worker(&self) -> TsTypeLib {
-    if self.flags.unstable {
-      TsTypeLib::UnstableDenoWorker
-    } else {
-      TsTypeLib::DenoWorker
-    }
+    TsTypeLib::DenoWorker
   }
 
   pub fn cache_setting(&self) -> CacheSetting {
@@ -877,7 +894,19 @@ impl CliOptions {
         .members
         .iter()
         .map(|member| {
-          let import_map_value = member.config_file.to_import_map_value();
+          let mut import_map_value = member.config_file.to_import_map_value();
+
+          let expanded_import_map_value = ::import_map::ext::expand_imports(
+            ::import_map::ext::ImportMapConfig {
+              base_url: member.config_file.specifier.clone(),
+              import_map_value: import_map_value.clone(),
+            },
+          );
+
+          import_map_value
+            .as_object_mut()
+            .unwrap()
+            .insert("imports".to_string(), expanded_import_map_value);
           ::import_map::ext::ImportMapConfig {
             base_url: member.config_file.specifier.clone(),
             import_map_value,
@@ -894,12 +923,24 @@ impl CliOptions {
           "Workspace config generated this import map {}",
           serde_json::to_string_pretty(&import_map).unwrap()
         );
-        return import_map::import_map_from_value(
+        let maybe_import_map_result = import_map::import_map_from_value(
           // TODO(bartlomieju): maybe should be stored on the workspace config?
           &self.maybe_config_file.as_ref().unwrap().specifier,
           import_map,
         )
         .map(Some);
+
+        return match maybe_import_map_result {
+          Ok(maybe_import_map) => {
+            if let Some(mut import_map) = maybe_import_map {
+              import_map.ext_expand_imports();
+              Ok(Some(import_map))
+            } else {
+              Ok(None)
+            }
+          }
+          Err(err) => Err(err),
+        };
       }
     }
 
@@ -907,7 +948,8 @@ impl CliOptions {
       Some(specifier) => specifier,
       None => return Ok(None),
     };
-    resolve_import_map_from_specifier(
+
+    let maybe_import_map_result = resolve_import_map_from_specifier(
       &import_map_specifier,
       self.maybe_config_file().as_ref(),
       file_fetcher,
@@ -916,7 +958,22 @@ impl CliOptions {
     .with_context(|| {
       format!("Unable to load '{import_map_specifier}' import map")
     })
-    .map(Some)
+    .map(Some);
+
+    match maybe_import_map_result {
+      Ok(maybe_import_map) => {
+        if let Some(mut import_map) = maybe_import_map {
+          let url = import_map.base_url().as_str();
+          if url.ends_with("deno.json") || url.ends_with("deno.jsonc") {
+            import_map.ext_expand_imports();
+          }
+          Ok(Some(import_map))
+        } else {
+          Ok(None)
+        }
+      }
+      Err(err) => Err(err),
+    }
   }
 
   pub fn node_ipc_fd(&self) -> Option<i64> {
@@ -928,6 +985,10 @@ impl CliOptions {
     } else {
       None
     }
+  }
+
+  pub fn enable_future_features(&self) -> bool {
+    std::env::var("DENO_FUTURE").is_ok()
   }
 
   pub fn resolve_main_module(&self) -> Result<ModuleSpecifier, AnyError> {
@@ -1043,6 +1104,8 @@ impl CliOptions {
       maybe_lockfile: self.maybe_lockfile.clone(),
       maybe_workspace_config: self.maybe_workspace_config.clone(),
       overrides: self.overrides.clone(),
+      disable_deprecated_api_warning: self.disable_deprecated_api_warning,
+      verbose_deprecated_api_warning: self.verbose_deprecated_api_warning,
     }
   }
 
@@ -1073,10 +1136,26 @@ impl CliOptions {
     &self,
     config_type: TsConfigType,
   ) -> Result<TsConfigForEmit, AnyError> {
-    deno_config::get_ts_config_for_emit(
+    let result = deno_config::get_ts_config_for_emit(
       config_type,
       self.maybe_config_file.as_ref(),
-    )
+    );
+
+    match result {
+      Ok(mut ts_config_for_emit) => {
+        if matches!(self.flags.subcommand, DenoSubcommand::Bundle(..)) {
+          // For backwards compatibility, force `experimentalDecorators` setting
+          // to true.
+          *ts_config_for_emit
+            .ts_config
+            .0
+            .get_mut("experimentalDecorators")
+            .unwrap() = serde_json::Value::Bool(true);
+        }
+        Ok(ts_config_for_emit)
+      }
+      Err(err) => Err(err),
+    }
   }
 
   pub fn resolve_inspector_server(&self) -> Option<InspectorServer> {
@@ -1333,6 +1412,10 @@ impl CliOptions {
     self.flags.no_npm
   }
 
+  pub fn no_config(&self) -> bool {
+    self.flags.config_flag == deno_config::ConfigFlag::Disabled
+  }
+
   pub fn permissions_options(&self) -> PermissionsOptions {
     PermissionsOptions {
       allow_env: self.flags.allow_env.clone(),
@@ -1398,12 +1481,12 @@ impl CliOptions {
     &self.flags.unsafely_ignore_certificate_errors
   }
 
-  pub fn unstable(&self) -> bool {
-    self.flags.unstable
+  pub fn legacy_unstable_flag(&self) -> bool {
+    self.flags.unstable_config.legacy_flag_enabled
   }
 
   pub fn unstable_bare_node_builtins(&self) -> bool {
-    self.flags.unstable_bare_node_builtins
+    self.flags.unstable_config.bare_node_builtins
       || self
         .maybe_config_file()
         .as_ref()
@@ -1412,7 +1495,7 @@ impl CliOptions {
   }
 
   pub fn unstable_byonm(&self) -> bool {
-    self.flags.unstable_byonm
+    self.flags.unstable_config.byonm
       || NPM_PROCESS_STATE
         .as_ref()
         .map(|s| matches!(s.kind, NpmProcessStateKind::Byonm))
@@ -1425,7 +1508,7 @@ impl CliOptions {
   }
 
   pub fn unstable_sloppy_imports(&self) -> bool {
-    self.flags.unstable_sloppy_imports
+    self.flags.unstable_config.sloppy_imports
       || self
         .maybe_config_file()
         .as_ref()
@@ -1440,7 +1523,7 @@ impl CliOptions {
       .map(|c| c.json.unstable.clone())
       .unwrap_or_default();
 
-    from_config_file.extend_from_slice(&self.flags.unstable_features);
+    from_config_file.extend_from_slice(&self.flags.unstable_config.features);
     from_config_file
   }
 
@@ -1648,7 +1731,8 @@ fn resolve_files(
   maybe_file_flags: Option<FileFlags>,
   initial_cwd: &Path,
 ) -> Result<FilePatterns, AnyError> {
-  let mut maybe_files_config = maybe_files_config.unwrap_or_default();
+  let mut maybe_files_config = maybe_files_config
+    .unwrap_or_else(|| FilePatterns::new_with_base(initial_cwd.to_path_buf()));
   if let Some(file_flags) = maybe_file_flags {
     if !file_flags.include.is_empty() {
       maybe_files_config.include =
@@ -1665,18 +1749,7 @@ fn resolve_files(
         )?;
     }
   }
-  Ok(FilePatterns {
-    include: {
-      let files = match maybe_files_config.include {
-        Some(include) => include,
-        None => PathOrPatternSet::new(vec![PathOrPattern::Path(
-          initial_cwd.to_path_buf(),
-        )]),
-      };
-      Some(files)
-    },
-    exclude: maybe_files_config.exclude,
-  })
+  Ok(maybe_files_config)
 }
 
 /// Resolves the no_prompt value based on the cli flags and environment.
@@ -1896,6 +1969,7 @@ mod test {
 
     let resolved_files = resolve_files(
       Some(FilePatterns {
+        base: temp_dir_path.to_path_buf(),
         include: Some(
           PathOrPatternSet::from_relative_path_or_patterns(
             temp_dir_path,
@@ -1948,10 +2022,10 @@ mod test {
   }
 
   #[test]
-  fn deno_registry_urls() {
-    let reg_url = deno_registry_url();
+  fn jsr_urls() {
+    let reg_url = jsr_url();
     assert!(reg_url.as_str().ends_with('/'));
-    let reg_api_url = deno_registry_api_url();
+    let reg_api_url = jsr_api_url();
     assert!(reg_api_url.as_str().ends_with('/'));
   }
 }

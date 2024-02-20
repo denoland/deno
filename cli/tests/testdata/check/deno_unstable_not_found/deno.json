@@ -1,3 +1,0 @@
-{
-  "unstable": ["cron", "http", "kv"]
-}

@@ -46,6 +46,56 @@ pub struct CoverageCollector {
   session: LocalInspectorSession,
 }
 
+#[async_trait::async_trait(?Send)]
+impl crate::worker::CoverageCollector for CoverageCollector {
+  async fn start_collecting(&mut self) -> Result<(), AnyError> {
+    self.enable_debugger().await?;
+    self.enable_profiler().await?;
+    self
+      .start_precise_coverage(cdp::StartPreciseCoverageArgs {
+        call_count: true,
+        detailed: true,
+        allow_triggered_updates: false,
+      })
+      .await?;
+
+    Ok(())
+  }
+
+  async fn stop_collecting(&mut self) -> Result<(), AnyError> {
+    fs::create_dir_all(&self.dir)?;
+
+    let script_coverages = self.take_precise_coverage().await?.result;
+    for script_coverage in script_coverages {
+      // Filter out internal JS files from being included in coverage reports
+      if script_coverage.url.starts_with("ext:")
+        || script_coverage.url.starts_with("[ext:")
+      {
+        continue;
+      }
+
+      let filename = format!("{}.json", Uuid::new_v4());
+      let filepath = self.dir.join(filename);
+
+      let mut out = BufWriter::new(File::create(&filepath)?);
+      let coverage = serde_json::to_string(&script_coverage)?;
+      let formatted_coverage =
+        format_json(&filepath, &coverage, &Default::default())
+          .ok()
+          .flatten()
+          .unwrap_or(coverage);
+
+      out.write_all(formatted_coverage.as_bytes())?;
+      out.flush()?;
+    }
+
+    self.disable_debugger().await?;
+    self.disable_profiler().await?;
+
+    Ok(())
+  }
+}
+
 impl CoverageCollector {
   pub fn new(dir: PathBuf, session: LocalInspectorSession) -> Self {
     Self { dir, session }
@@ -108,53 +158,6 @@ impl CoverageCollector {
     let return_object = serde_json::from_value(return_value)?;
 
     Ok(return_object)
-  }
-
-  pub async fn start_collecting(&mut self) -> Result<(), AnyError> {
-    self.enable_debugger().await?;
-    self.enable_profiler().await?;
-    self
-      .start_precise_coverage(cdp::StartPreciseCoverageArgs {
-        call_count: true,
-        detailed: true,
-        allow_triggered_updates: false,
-      })
-      .await?;
-
-    Ok(())
-  }
-
-  pub async fn stop_collecting(&mut self) -> Result<(), AnyError> {
-    fs::create_dir_all(&self.dir)?;
-
-    let script_coverages = self.take_precise_coverage().await?.result;
-    for script_coverage in script_coverages {
-      // Filter out internal JS files from being included in coverage reports
-      if script_coverage.url.starts_with("ext:")
-        || script_coverage.url.starts_with("[ext:")
-      {
-        continue;
-      }
-
-      let filename = format!("{}.json", Uuid::new_v4());
-      let filepath = self.dir.join(filename);
-
-      let mut out = BufWriter::new(File::create(&filepath)?);
-      let coverage = serde_json::to_string(&script_coverage)?;
-      let formatted_coverage =
-        format_json(&filepath, &coverage, &Default::default())
-          .ok()
-          .flatten()
-          .unwrap_or(coverage);
-
-      out.write_all(formatted_coverage.as_bytes())?;
-      out.flush()?;
-    }
-
-    self.disable_debugger().await?;
-    self.disable_profiler().await?;
-
-    Ok(())
   }
 }
 
@@ -378,6 +381,7 @@ fn collect_coverages(
 ) -> Result<Vec<cdp::ScriptCoverage>, AnyError> {
   let mut coverages: Vec<cdp::ScriptCoverage> = Vec::new();
   let file_patterns = FilePatterns {
+    base: initial_cwd.to_path_buf(),
     include: Some({
       if files.include.is_empty() {
         PathOrPatternSet::new(vec![PathOrPattern::Path(
@@ -519,7 +523,7 @@ pub async fn cover_files(
       file_fetcher.get_source(&module_specifier)
     } else {
       file_fetcher
-        .fetch_cached(&module_specifier, 10)
+        .fetch_cached(&module_specifier, None, 10)
         .with_context(|| {
           format!("Failed to fetch \"{module_specifier}\" from cache.")
         })?
@@ -529,24 +533,24 @@ pub async fn cover_files(
           Before generating coverage report, run `deno test --coverage` to ensure consistent state.",
           module_specifier
         )
-    })?;
+    })?.into_text_decoded()?;
 
-    // Check if file was transpiled
     let original_source = file.source.clone();
-    let transpiled_code: ModuleCodeString = match file.media_type {
+    // Check if file was transpiled
+    let transpiled_code = match file.media_type {
       MediaType::JavaScript
       | MediaType::Unknown
       | MediaType::Cjs
       | MediaType::Mjs
-      | MediaType::Json => file.source.clone().into(),
-      MediaType::Dts | MediaType::Dmts | MediaType::Dcts => Default::default(),
+      | MediaType::Json => None,
+      MediaType::Dts | MediaType::Dmts | MediaType::Dcts => Some(String::new()),
       MediaType::TypeScript
       | MediaType::Jsx
       | MediaType::Mts
       | MediaType::Cts
       | MediaType::Tsx => {
-        match emitter.maybe_cached_emit(&file.specifier, &file.source) {
-          Some(code) => code.into(),
+        Some(match emitter.maybe_cached_emit(&file.specifier, &file.source) {
+          Some(code) => code,
           None => {
             return Err(anyhow!(
               "Missing transpiled source code for: \"{}\".
@@ -554,17 +558,20 @@ pub async fn cover_files(
               file.specifier,
             ))
           }
-        }
+        })
       }
       MediaType::Wasm | MediaType::TsBuildInfo | MediaType::SourceMap => {
         unreachable!()
       }
     };
+    let runtime_code: ModuleCodeString = transpiled_code
+      .map(|c| c.into())
+      .unwrap_or_else(|| original_source.clone().into());
 
-    let source_map = source_map_from_code(&transpiled_code);
+    let source_map = source_map_from_code(&runtime_code);
     let coverage_report = generate_coverage_report(
       &script_coverage,
-      transpiled_code.as_str().to_owned(),
+      runtime_code.as_str().to_owned(),
       &source_map,
       &out_mode,
     );

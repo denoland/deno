@@ -6,7 +6,7 @@ use crate::shared::maybe_transpile_source;
 use crate::shared::runtime;
 use deno_cache::SqliteBackedCache;
 use deno_core::error::AnyError;
-use deno_core::snapshot_util::*;
+use deno_core::snapshot::*;
 use deno_core::v8;
 use deno_core::Extension;
 use deno_http::DefaultHttpPropertyExtractor;
@@ -212,6 +212,7 @@ pub fn create_runtime_snapshot(
       Default::default(),
     ),
     deno_webgpu::deno_webgpu::init_ops_and_esm(),
+    deno_canvas::deno_canvas::init_ops_and_esm(),
     deno_fetch::deno_fetch::init_ops_and_esm::<Permissions>(Default::default()),
     deno_cache::deno_cache::init_ops_and_esm::<SqliteBackedCache>(None),
     deno_websocket::deno_websocket::init_ops_and_esm::<Permissions>(
@@ -252,6 +253,7 @@ pub fn create_runtime_snapshot(
     ops::tty::deno_tty::init_ops(),
     ops::http::deno_http_runtime::init_ops(),
     ops::bootstrap::deno_bootstrap::init_ops(Some(snapshot_options)),
+    ops::web_worker::deno_web_worker::init_ops(),
   ];
 
   for extension in &mut extensions {
@@ -263,21 +265,26 @@ pub fn create_runtime_snapshot(
     }
   }
 
-  let output = create_snapshot(CreateSnapshotOptions {
-    cargo_manifest_dir: env!("CARGO_MANIFEST_DIR"),
-    snapshot_path,
-    startup_snapshot: None,
-    extensions,
-    compression_cb: None,
-    with_runtime_cb: Some(Box::new(|rt| {
-      let isolate = rt.v8_isolate();
-      let scope = &mut v8::HandleScope::new(isolate);
+  let output = create_snapshot(
+    CreateSnapshotOptions {
+      cargo_manifest_dir: env!("CARGO_MANIFEST_DIR"),
+      startup_snapshot: None,
+      extensions,
+      serializer: Box::new(SnapshotFileSerializer::new(
+        std::fs::File::create(snapshot_path).unwrap(),
+      )),
+      with_runtime_cb: Some(Box::new(|rt| {
+        let isolate = rt.v8_isolate();
+        let scope = &mut v8::HandleScope::new(isolate);
 
-      let ctx = v8::Context::new(scope);
-      assert_eq!(scope.add_context(ctx), deno_node::VM_CONTEXT_INDEX);
-    })),
-    skip_op_registration: false,
-  });
+        let ctx = v8::Context::new(scope);
+        assert_eq!(scope.add_context(ctx), deno_node::VM_CONTEXT_INDEX);
+      })),
+      skip_op_registration: false,
+    },
+    None,
+  )
+  .unwrap();
   for path in output.files_loaded_during_snapshot {
     println!("cargo:rerun-if-changed={}", path.display());
   }

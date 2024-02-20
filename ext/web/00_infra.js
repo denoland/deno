@@ -7,10 +7,7 @@
 /// <reference path="../web/lib.deno_web.d.ts" />
 
 import { core, internals, primordials } from "ext:core/mod.js";
-const {
-  op_base64_encode,
-  op_base64_decode,
-} = core.ensureFastOps();
+import { op_base64_decode, op_base64_encode } from "ext:core/ops";
 const {
   ArrayPrototypeJoin,
   ArrayPrototypeMap,
@@ -466,6 +463,9 @@ export const SymbolDispose = Symbol.dispose ?? Symbol("Symbol.dispose");
 // deno-lint-ignore prefer-primordials
 export const SymbolAsyncDispose = Symbol.asyncDispose ??
   Symbol("Symbol.asyncDispose");
+// deno-lint-ignore prefer-primordials
+export const SymbolMetadata = Symbol.metadata ??
+  Symbol("Symbol.metadata");
 
 export {
   ASCII_ALPHA,

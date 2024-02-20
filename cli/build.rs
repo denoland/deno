@@ -3,7 +3,7 @@
 use std::env;
 use std::path::PathBuf;
 
-use deno_core::snapshot_util::*;
+use deno_core::snapshot::*;
 use deno_runtime::*;
 
 mod ts {
@@ -152,6 +152,7 @@ mod ts {
     op_crate_libs.insert("deno.webgpu", deno_webgpu_get_declaration());
     op_crate_libs.insert("deno.websocket", deno_websocket::get_declaration());
     op_crate_libs.insert("deno.webstorage", deno_webstorage::get_declaration());
+    op_crate_libs.insert("deno.canvas", deno_canvas::get_declaration());
     op_crate_libs.insert("deno.crypto", deno_crypto::get_declaration());
     op_crate_libs.insert(
       "deno.broadcast_channel",
@@ -265,33 +266,46 @@ mod ts {
     )
     .unwrap();
 
-    let output = create_snapshot(CreateSnapshotOptions {
-      cargo_manifest_dir: env!("CARGO_MANIFEST_DIR"),
-      snapshot_path,
-      startup_snapshot: None,
-      extensions: vec![deno_tsc::init_ops_and_esm(
-        op_crate_libs,
-        build_libs,
-        path_dts,
-      )],
-      // NOTE(bartlomieju): Compressing the TSC snapshot in debug build took
-      // ~45s on M1 MacBook Pro; without compression it took ~1s.
-      // Thus we're not not using compressed snapshot, trading off
-      // a lot of build time for some startup time in debug build.
-      #[cfg(debug_assertions)]
-      compression_cb: None,
+    let snapshot_to_file = SnapshotFileSerializer::new(
+      std::fs::File::create(snapshot_path).unwrap(),
+    );
 
-      #[cfg(not(debug_assertions))]
-      compression_cb: Some(Box::new(|vec, snapshot_slice| {
-        eprintln!("Compressing TSC snapshot...");
-        vec.extend_from_slice(
-          &zstd::bulk::compress(snapshot_slice, 22)
-            .expect("snapshot compression failed"),
-        );
-      })),
-      with_runtime_cb: None,
-      skip_op_registration: false,
-    });
+    let output = create_snapshot(
+      CreateSnapshotOptions {
+        cargo_manifest_dir: env!("CARGO_MANIFEST_DIR"),
+        startup_snapshot: None,
+        extensions: vec![deno_tsc::init_ops_and_esm(
+          op_crate_libs,
+          build_libs,
+          path_dts,
+        )],
+        // NOTE(bartlomieju): Compressing the TSC snapshot in debug build took
+        // ~45s on M1 MacBook Pro; without compression it took ~1s.
+        // Thus we're not not using compressed snapshot, trading off
+        // a lot of build time for some startup time in debug build.
+        #[cfg(debug_assertions)]
+        serializer: Box::new(snapshot_to_file),
+
+        #[cfg(not(debug_assertions))]
+        serializer: Box::new(SnapshotBulkCompressingSerializer::new(
+          snapshot_to_file,
+          |snapshot| {
+            eprintln!("Compressing TSC snapshot...");
+            let mut vec = Vec::with_capacity(snapshot.len());
+            vec.extend((snapshot.len() as u32).to_le_bytes());
+            vec.extend_from_slice(
+              &zstd::bulk::compress(&snapshot, 22)
+                .expect("snapshot compression failed"),
+            );
+            Ok(vec)
+          },
+        )),
+        with_runtime_cb: None,
+        skip_op_registration: false,
+      },
+      None,
+    )
+    .unwrap();
     for path in output.files_loaded_during_snapshot {
       println!("cargo:rerun-if-changed={}", path.display());
     }

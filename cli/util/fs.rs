@@ -285,8 +285,8 @@ impl<TFilter: Fn(&Path, &FilePatterns) -> bool> FileCollector<TFilter> {
     let mut target_files = Vec::new();
     let mut visited_paths = HashSet::new();
     let file_patterns_by_base = file_patterns.split_by_base();
-    for (base, file_patterns) in file_patterns_by_base {
-      let file = normalize_path(base);
+    for file_patterns in file_patterns_by_base {
+      let file = normalize_path(&file_patterns.base);
       // use an iterator in order to minimize the number of file system operations
       let mut iterator = WalkDir::new(&file)
         .follow_links(false) // the default, but be explicit
@@ -361,8 +361,7 @@ pub fn collect_specifiers(
           if path.is_dir() {
             result.push(PathOrPattern::Path(path));
           } else if !files.exclude.matches_path(&path) {
-            let url = ModuleSpecifier::from_file_path(&path)
-              .map_err(|_| anyhow!("Invalid file path '{}'", path.display()))?;
+            let url = specifier_from_file_path(&path)?;
             prepared.push(url);
           }
         }
@@ -385,7 +384,7 @@ pub fn collect_specifiers(
     .collect_file_patterns(files)?;
   let mut collected_files_as_urls = collected_files
     .iter()
-    .map(|f| ModuleSpecifier::from_file_path(f).unwrap())
+    .map(|f| specifier_from_file_path(f).unwrap())
     .collect::<Vec<ModuleSpecifier>>();
 
   collected_files_as_urls.sort();
@@ -703,6 +702,13 @@ impl LaxSingleProcessFsFlag {
   }
 }
 
+pub fn specifier_from_file_path(
+  path: &Path,
+) -> Result<ModuleSpecifier, AnyError> {
+  ModuleSpecifier::from_file_path(path)
+    .map_err(|_| anyhow!("Invalid file path '{}'", path.display()))
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -807,9 +813,8 @@ mod tests {
     create_files(&ignore_dir_path, &ignore_dir_files);
 
     let file_patterns = FilePatterns {
-      include: Some(PathOrPatternSet::new(vec![PathOrPattern::Path(
-        root_dir_path.to_path_buf(),
-      )])),
+      base: root_dir_path.to_path_buf(),
+      include: None,
       exclude: PathOrPatternSet::new(vec![PathOrPattern::Path(
         ignore_dir_path.to_path_buf(),
       )]),
@@ -871,6 +876,7 @@ mod tests {
 
     // test opting out of ignoring by specifying the dir
     let file_patterns = FilePatterns {
+      base: root_dir_path.to_path_buf(),
       include: Some(PathOrPatternSet::new(vec![
         PathOrPattern::Path(root_dir_path.to_path_buf()),
         PathOrPattern::Path(
@@ -948,6 +954,7 @@ mod tests {
 
     let result = collect_specifiers(
       FilePatterns {
+        base: root_dir_path.to_path_buf(),
         include: Some(
           PathOrPatternSet::from_relative_path_or_patterns(
             root_dir_path.as_path(),
@@ -997,6 +1004,7 @@ mod tests {
     };
     let result = collect_specifiers(
       FilePatterns {
+        base: root_dir_path.to_path_buf(),
         include: Some(PathOrPatternSet::new(vec![PathOrPattern::new(
           &format!(
             "{}{}",

@@ -3,20 +3,18 @@
 use crate::args::CliOptions;
 use crate::args::DenoSubcommand;
 use crate::args::TsTypeLib;
-use crate::cache::ModuleInfoCache;
 use crate::cache::ParsedSourceCache;
 use crate::emit::Emitter;
 use crate::graph_util::graph_lock_or_exit;
 use crate::graph_util::graph_valid_with_cli_options;
-use crate::graph_util::workspace_config_to_workspace_members;
-use crate::graph_util::DenoGraphFsAdapter;
-use crate::graph_util::FileWatcherReporter;
+use crate::graph_util::CreateGraphOptions;
 use crate::graph_util::ModuleGraphBuilder;
 use crate::graph_util::ModuleGraphContainer;
 use crate::node;
-use crate::node::CliNodeCodeTranslator;
-use crate::npm::CliNpmResolver;
 use crate::resolver::CliGraphResolver;
+use crate::resolver::CliNodeResolver;
+use crate::resolver::ModuleCodeStringSource;
+use crate::resolver::NpmModuleLoader;
 use crate::tools::check;
 use crate::tools::check::TypeChecker;
 use crate::util::progress_bar::ProgressBar;
@@ -46,21 +44,17 @@ use deno_core::ResolutionKind;
 use deno_core::SourceMapGetter;
 use deno_graph::source::ResolutionMode;
 use deno_graph::source::Resolver;
-use deno_graph::EsmModule;
+use deno_graph::JsModule;
 use deno_graph::JsonModule;
 use deno_graph::Module;
 use deno_graph::Resolution;
 use deno_lockfile::Lockfile;
-use deno_runtime::colors;
 use deno_runtime::deno_fs;
-use deno_runtime::deno_node::NodeResolution;
-use deno_runtime::deno_node::NodeResolutionMode;
-use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
+use deno_terminal::colors;
 use std::borrow::Cow;
 use std::collections::HashSet;
-use std::path::Path;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::str;
@@ -71,12 +65,8 @@ pub struct ModuleLoadPreparer {
   fs: Arc<dyn deno_fs::FileSystem>,
   graph_container: Arc<ModuleGraphContainer>,
   lockfile: Option<Arc<Mutex<Lockfile>>>,
-  maybe_file_watcher_reporter: Option<FileWatcherReporter>,
   module_graph_builder: Arc<ModuleGraphBuilder>,
-  module_info_cache: Arc<ModuleInfoCache>,
-  parsed_source_cache: Arc<ParsedSourceCache>,
   progress_bar: ProgressBar,
-  resolver: Arc<CliGraphResolver>,
   type_checker: Arc<TypeChecker>,
 }
 
@@ -87,12 +77,8 @@ impl ModuleLoadPreparer {
     fs: Arc<dyn deno_fs::FileSystem>,
     graph_container: Arc<ModuleGraphContainer>,
     lockfile: Option<Arc<Mutex<Lockfile>>>,
-    maybe_file_watcher_reporter: Option<FileWatcherReporter>,
     module_graph_builder: Arc<ModuleGraphBuilder>,
-    module_info_cache: Arc<ModuleInfoCache>,
-    parsed_source_cache: Arc<ParsedSourceCache>,
     progress_bar: ProgressBar,
-    resolver: Arc<CliGraphResolver>,
     type_checker: Arc<TypeChecker>,
   ) -> Self {
     Self {
@@ -100,12 +86,8 @@ impl ModuleLoadPreparer {
       fs,
       graph_container,
       lockfile,
-      maybe_file_watcher_reporter,
       module_graph_builder,
-      module_info_cache,
-      parsed_source_cache,
       progress_bar,
-      resolver,
       type_checker,
     }
   }
@@ -126,23 +108,6 @@ impl ModuleLoadPreparer {
     let _pb_clear_guard = self.progress_bar.clear_guard();
 
     let mut cache = self.module_graph_builder.create_fetch_cacher(permissions);
-    let maybe_imports = self.options.to_maybe_imports()?;
-    let maybe_workspace_config = self.options.maybe_workspace_config();
-    let workspace_members = if let Some(wc) = maybe_workspace_config {
-      workspace_config_to_workspace_members(wc)?
-    } else {
-      vec![]
-    };
-    let graph_resolver = self.resolver.as_graph_resolver();
-    let graph_npm_resolver = self.resolver.as_graph_npm_resolver();
-    let maybe_file_watcher_reporter = self
-      .maybe_file_watcher_reporter
-      .as_ref()
-      .map(|r| r.as_reporter());
-
-    let parser = self.parsed_source_cache.as_capturing_parser();
-    let analyzer = self.module_info_cache.as_module_analyzer(&parser);
-
     log::debug!("Creating module graph.");
     let mut graph_update_permit =
       self.graph_container.acquire_update_permit().await;
@@ -157,19 +122,12 @@ impl ModuleLoadPreparer {
       .module_graph_builder
       .build_graph_with_npm_resolution(
         graph,
-        roots.clone(),
-        &mut cache,
-        deno_graph::BuildOptions {
+        CreateGraphOptions {
           is_dynamic,
-          imports: maybe_imports,
-          file_system: Some(&DenoGraphFsAdapter(self.fs.as_ref())),
-          resolver: Some(graph_resolver),
-          npm_resolver: Some(graph_npm_resolver),
-          module_parser: Some(&parser),
-          module_analyzer: Some(&analyzer),
-          reporter: maybe_file_watcher_reporter,
+          graph_kind: graph.graph_kind(),
+          roots: roots.clone(),
+          loader: Some(&mut cache),
           workspace_fast_check: false,
-          workspace_members,
         },
       )
       .await?;
@@ -271,12 +229,6 @@ impl ModuleLoadPreparer {
   }
 }
 
-pub struct ModuleCodeStringSource {
-  pub code: ModuleCodeString,
-  pub found_url: ModuleSpecifier,
-  pub media_type: MediaType,
-}
-
 struct PreparedModuleLoader {
   emitter: Arc<Emitter>,
   graph_container: Arc<ModuleGraphContainer>,
@@ -305,7 +257,7 @@ impl PreparedModuleLoader {
         found_url: specifier.clone(),
         media_type: *media_type,
       }),
-      Some(deno_graph::Module::Esm(EsmModule {
+      Some(deno_graph::Module::Js(JsModule {
         source,
         media_type,
         specifier,
@@ -344,7 +296,12 @@ impl PreparedModuleLoader {
           media_type: *media_type,
         })
       }
-      _ => {
+      Some(
+        deno_graph::Module::External(_)
+        | deno_graph::Module::Node(_)
+        | deno_graph::Module::Npm(_),
+      )
+      | None => {
         let mut msg = format!("Loading unprepared module: {specifier}");
         if let Some(referrer) = maybe_referrer {
           msg = format!("{}, imported from: {}", msg, referrer.as_str());
@@ -447,8 +404,8 @@ impl ModuleLoaderFactory for CliModuleLoaderFactory {
     )
   }
 
-  fn create_source_map_getter(&self) -> Option<Box<dyn SourceMapGetter>> {
-    Some(Box::new(CliSourceMapGetter {
+  fn create_source_map_getter(&self) -> Option<Rc<dyn SourceMapGetter>> {
+    Some(Rc::new(CliSourceMapGetter {
       shared: self.shared.clone(),
     }))
   }
@@ -551,7 +508,7 @@ impl ModuleLoader for CliModuleLoader {
 
       let graph = self.shared.graph_container.graph();
       let maybe_resolved = match graph.get(referrer) {
-        Some(Module::Esm(module)) => {
+        Some(Module::Js(module)) => {
           module.dependencies.get(specifier).map(|d| &d.maybe_code)
         }
         _ => None,
@@ -586,7 +543,7 @@ impl ModuleLoader for CliModuleLoader {
                 })
             }
             Some(Module::Node(module)) => Ok(module.specifier.clone()),
-            Some(Module::Esm(module)) => Ok(module.specifier.clone()),
+            Some(Module::Js(module)) => Ok(module.specifier.clone()),
             Some(Module::Json(module)) => Ok(module.specifier.clone()),
             Some(Module::External(module)) => {
               Ok(node::resolve_specifier_into_node_modules(&module.specifier))
@@ -653,16 +610,16 @@ impl ModuleLoader for CliModuleLoader {
     maybe_referrer: Option<&ModuleSpecifier>,
     is_dynamic: bool,
     requested_module_type: RequestedModuleType,
-  ) -> Pin<Box<deno_core::ModuleSourceFuture>> {
+  ) -> deno_core::ModuleLoadResponse {
     // NOTE: this block is async only because of `deno_core` interface
     // requirements; module was already loaded when constructing module graph
     // during call to `prepare_load` so we can load it synchronously.
-    Box::pin(deno_core::futures::future::ready(self.load_sync(
+    deno_core::ModuleLoadResponse::Sync(self.load_sync(
       specifier,
       maybe_referrer,
       is_dynamic,
       requested_module_type,
-    )))
+    ))
   }
 
   fn prepare_load(
@@ -724,7 +681,7 @@ impl SourceMapGetter for CliSourceMapGetter {
   ) -> Option<String> {
     let graph = self.shared.graph_container.graph();
     let code = match graph.get(&resolve_url(file_name).ok()?) {
-      Some(deno_graph::Module::Esm(module)) => &module.source,
+      Some(deno_graph::Module::Js(module)) => &module.source,
       Some(deno_graph::Module::Json(module)) => &module.source,
       _ => return None,
     };
@@ -739,228 +696,5 @@ impl SourceMapGetter for CliSourceMapGetter {
     } else {
       Some(lines[line_number].to_string())
     }
-  }
-}
-
-pub struct CliNodeResolver {
-  cjs_resolutions: Arc<CjsResolutionStore>,
-  node_resolver: Arc<NodeResolver>,
-  npm_resolver: Arc<dyn CliNpmResolver>,
-}
-
-impl CliNodeResolver {
-  pub fn new(
-    cjs_resolutions: Arc<CjsResolutionStore>,
-    node_resolver: Arc<NodeResolver>,
-    npm_resolver: Arc<dyn CliNpmResolver>,
-  ) -> Self {
-    Self {
-      cjs_resolutions,
-      node_resolver,
-      npm_resolver,
-    }
-  }
-
-  pub fn in_npm_package(&self, referrer: &ModuleSpecifier) -> bool {
-    self.npm_resolver.in_npm_package(referrer)
-  }
-
-  pub fn resolve_if_in_npm_package(
-    &self,
-    specifier: &str,
-    referrer: &ModuleSpecifier,
-    permissions: &PermissionsContainer,
-  ) -> Option<Result<ModuleSpecifier, AnyError>> {
-    if self.in_npm_package(referrer) {
-      // we're in an npm package, so use node resolution
-      Some(
-        self
-          .handle_node_resolve_result(self.node_resolver.resolve(
-            specifier,
-            referrer,
-            NodeResolutionMode::Execution,
-            permissions,
-          ))
-          .with_context(|| {
-            format!("Could not resolve '{specifier}' from '{referrer}'.")
-          }),
-      )
-    } else {
-      None
-    }
-  }
-
-  pub fn resolve_req_reference(
-    &self,
-    req_ref: &NpmPackageReqReference,
-    permissions: &PermissionsContainer,
-    referrer: &ModuleSpecifier,
-  ) -> Result<ModuleSpecifier, AnyError> {
-    let package_folder = self
-      .npm_resolver
-      .resolve_pkg_folder_from_deno_module_req(req_ref.req(), referrer)?;
-    self
-      .resolve_package_sub_path(
-        &package_folder,
-        req_ref.sub_path(),
-        referrer,
-        permissions,
-      )
-      .with_context(|| format!("Could not resolve '{}'.", req_ref))
-  }
-
-  pub fn resolve_package_sub_path(
-    &self,
-    package_folder: &Path,
-    sub_path: Option<&str>,
-    referrer: &ModuleSpecifier,
-    permissions: &PermissionsContainer,
-  ) -> Result<ModuleSpecifier, AnyError> {
-    self.handle_node_resolve_result(
-      self.node_resolver.resolve_package_subpath_from_deno_module(
-        package_folder,
-        sub_path,
-        referrer,
-        NodeResolutionMode::Execution,
-        permissions,
-      ),
-    )
-  }
-
-  fn handle_node_resolve_result(
-    &self,
-    result: Result<Option<NodeResolution>, AnyError>,
-  ) -> Result<ModuleSpecifier, AnyError> {
-    let response = match result? {
-      Some(response) => response,
-      None => return Err(generic_error("not found")),
-    };
-    if let NodeResolution::CommonJs(specifier) = &response {
-      // remember that this was a common js resolution
-      self.cjs_resolutions.insert(specifier.clone());
-    }
-    Ok(response.into_url())
-  }
-}
-
-pub struct NpmModuleLoader {
-  cjs_resolutions: Arc<CjsResolutionStore>,
-  node_code_translator: Arc<CliNodeCodeTranslator>,
-  fs: Arc<dyn deno_fs::FileSystem>,
-  node_resolver: Arc<CliNodeResolver>,
-}
-
-impl NpmModuleLoader {
-  pub fn new(
-    cjs_resolutions: Arc<CjsResolutionStore>,
-    node_code_translator: Arc<CliNodeCodeTranslator>,
-    fs: Arc<dyn deno_fs::FileSystem>,
-    node_resolver: Arc<CliNodeResolver>,
-  ) -> Self {
-    Self {
-      cjs_resolutions,
-      node_code_translator,
-      fs,
-      node_resolver,
-    }
-  }
-
-  pub fn maybe_prepare_load(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Option<Result<(), AnyError>> {
-    if self.node_resolver.in_npm_package(specifier) {
-      // nothing to prepare
-      Some(Ok(()))
-    } else {
-      None
-    }
-  }
-
-  pub fn load_sync_if_in_npm_package(
-    &self,
-    specifier: &ModuleSpecifier,
-    maybe_referrer: Option<&ModuleSpecifier>,
-    permissions: &PermissionsContainer,
-  ) -> Option<Result<ModuleCodeStringSource, AnyError>> {
-    if self.node_resolver.in_npm_package(specifier) {
-      Some(self.load_sync(specifier, maybe_referrer, permissions))
-    } else {
-      None
-    }
-  }
-
-  fn load_sync(
-    &self,
-    specifier: &ModuleSpecifier,
-    maybe_referrer: Option<&ModuleSpecifier>,
-    permissions: &PermissionsContainer,
-  ) -> Result<ModuleCodeStringSource, AnyError> {
-    let file_path = specifier.to_file_path().unwrap();
-    let code = self
-      .fs
-      .read_text_file_sync(&file_path)
-      .map_err(AnyError::from)
-      .with_context(|| {
-        if file_path.is_dir() {
-          // directory imports are not allowed when importing from an
-          // ES module, so provide the user with a helpful error message
-          let dir_path = file_path;
-          let mut msg = "Directory import ".to_string();
-          msg.push_str(&dir_path.to_string_lossy());
-          if let Some(referrer) = &maybe_referrer {
-            msg.push_str(" is not supported resolving import from ");
-            msg.push_str(referrer.as_str());
-            let entrypoint_name = ["index.mjs", "index.js", "index.cjs"]
-              .iter()
-              .find(|e| dir_path.join(e).is_file());
-            if let Some(entrypoint_name) = entrypoint_name {
-              msg.push_str("\nDid you mean to import ");
-              msg.push_str(entrypoint_name);
-              msg.push_str(" within the directory?");
-            }
-          }
-          msg
-        } else {
-          let mut msg = "Unable to load ".to_string();
-          msg.push_str(&file_path.to_string_lossy());
-          if let Some(referrer) = &maybe_referrer {
-            msg.push_str(" imported from ");
-            msg.push_str(referrer.as_str());
-          }
-          msg
-        }
-      })?;
-
-    let code = if self.cjs_resolutions.contains(specifier) {
-      // translate cjs to esm if it's cjs and inject node globals
-      self.node_code_translator.translate_cjs_to_esm(
-        specifier,
-        Some(code.as_str()),
-        permissions,
-      )?
-    } else {
-      // esm and json code is untouched
-      code
-    };
-    Ok(ModuleCodeStringSource {
-      code: code.into(),
-      found_url: specifier.clone(),
-      media_type: MediaType::from_specifier(specifier),
-    })
-  }
-}
-
-/// Keeps track of what module specifiers were resolved as CJS.
-#[derive(Debug, Default)]
-pub struct CjsResolutionStore(Mutex<HashSet<ModuleSpecifier>>);
-
-impl CjsResolutionStore {
-  pub fn contains(&self, specifier: &ModuleSpecifier) -> bool {
-    self.0.lock().contains(specifier)
-  }
-
-  pub fn insert(&self, specifier: ModuleSpecifier) {
-    self.0.lock().insert(specifier);
   }
 }

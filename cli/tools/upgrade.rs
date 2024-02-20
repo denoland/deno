@@ -7,6 +7,7 @@ use crate::args::UpgradeFlags;
 use crate::colors;
 use crate::factory::CliFactory;
 use crate::http_util::HttpClient;
+use crate::standalone::binary::unpack_into_dir;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 use crate::util::time;
@@ -30,10 +31,10 @@ use std::process::Command;
 use std::sync::Arc;
 use std::time::Duration;
 
-static ARCHIVE_NAME: Lazy<String> =
-  Lazy::new(|| format!("deno-{}.zip", env!("TARGET")));
-
 const RELEASE_URL: &str = "https://github.com/denoland/deno/releases";
+
+pub static ARCHIVE_NAME: Lazy<String> =
+  Lazy::new(|| format!("deno-{}.zip", env!("TARGET")));
 
 // How often query server for new version. In hours.
 const UPGRADE_CHECK_INTERVAL: i64 = 24;
@@ -483,12 +484,6 @@ pub async fn upgrade(
   };
 
   let download_url = if upgrade_flags.canary {
-    // NOTE(bartlomieju): to keep clippy happy on M1 macs.
-    #[allow(clippy::eq_op)]
-    if env!("TARGET") == "aarch64-apple-darwin" {
-      bail!("Canary builds are not available for M1/M2");
-    }
-
     format!(
       "https://dl.deno.land/canary/{}/{}",
       install_version, *ARCHIVE_NAME
@@ -502,12 +497,18 @@ pub async fn upgrade(
 
   let archive_data = download_package(client, &download_url)
     .await
-    .with_context(|| format!("Failed downloading {download_url}"))?;
+    .with_context(|| format!("Failed downloading {download_url}. The version you requested may not have been built for the current architechture."))?;
 
   log::info!("Deno is upgrading to version {}", &install_version);
 
   let temp_dir = tempfile::TempDir::new()?;
-  let new_exe_path = unpack_into_dir(archive_data, cfg!(windows), &temp_dir)?;
+  let new_exe_path = unpack_into_dir(
+    "deno",
+    &ARCHIVE_NAME,
+    archive_data,
+    cfg!(windows),
+    &temp_dir,
+  )?;
   fs::set_permissions(&new_exe_path, permissions)?;
   check_exe(&new_exe_path)?;
 
@@ -568,7 +569,7 @@ async fn get_latest_version(
   release_kind: UpgradeReleaseKind,
   check_kind: UpgradeCheckKind,
 ) -> Result<String, AnyError> {
-  let url = get_url(release_kind, check_kind);
+  let url = get_url(release_kind, env!("TARGET"), check_kind);
   let text = client.download_text(url).await?;
   Ok(normalize_version_from_server(release_kind, &text))
 }
@@ -586,11 +587,14 @@ fn normalize_version_from_server(
 
 fn get_url(
   release_kind: UpgradeReleaseKind,
+  target_tuple: &str,
   check_kind: UpgradeCheckKind,
 ) -> String {
   let file_name = match release_kind {
-    UpgradeReleaseKind::Stable => "release-latest.txt",
-    UpgradeReleaseKind::Canary => "canary-latest.txt",
+    UpgradeReleaseKind::Stable => Cow::Borrowed("release-latest.txt"),
+    UpgradeReleaseKind::Canary => {
+      Cow::Owned(format!("canary-{target_tuple}-latest.txt"))
+    }
   };
   let query_param = match check_kind {
     UpgradeCheckKind::Execution => "",
@@ -629,71 +633,6 @@ async fn download_package(
       std::process::exit(1)
     }
   }
-}
-
-pub fn unpack_into_dir(
-  archive_data: Vec<u8>,
-  is_windows: bool,
-  temp_dir: &tempfile::TempDir,
-) -> Result<PathBuf, AnyError> {
-  const EXE_NAME: &str = "deno";
-  let temp_dir_path = temp_dir.path();
-  let exe_ext = if is_windows { "exe" } else { "" };
-  let archive_path = temp_dir_path.join(EXE_NAME).with_extension("zip");
-  let exe_path = temp_dir_path.join(EXE_NAME).with_extension(exe_ext);
-  assert!(!exe_path.exists());
-
-  let archive_ext = Path::new(&*ARCHIVE_NAME)
-    .extension()
-    .and_then(|ext| ext.to_str())
-    .unwrap();
-  let unpack_status = match archive_ext {
-    "zip" if cfg!(windows) => {
-      fs::write(&archive_path, &archive_data)?;
-      Command::new("tar.exe")
-        .arg("xf")
-        .arg(&archive_path)
-        .arg("-C")
-        .arg(temp_dir_path)
-        .spawn()
-        .map_err(|err| {
-          if err.kind() == std::io::ErrorKind::NotFound {
-            std::io::Error::new(
-              std::io::ErrorKind::NotFound,
-              "`tar.exe` was not found in your PATH",
-            )
-          } else {
-            err
-          }
-        })?
-        .wait()?
-    }
-    "zip" => {
-      fs::write(&archive_path, &archive_data)?;
-      Command::new("unzip")
-        .current_dir(temp_dir_path)
-        .arg(&archive_path)
-        .spawn()
-        .map_err(|err| {
-          if err.kind() == std::io::ErrorKind::NotFound {
-            std::io::Error::new(
-              std::io::ErrorKind::NotFound,
-              "`unzip` was not found in your PATH, please install `unzip`",
-            )
-          } else {
-            err
-          }
-        })?
-        .wait()?
-    }
-    ext => bail!("Unsupported archive type: '{ext}'"),
-  };
-  if !unpack_status.success() {
-    bail!("Failed to unpack archive.");
-  }
-  assert!(exe_path.exists());
-  fs::remove_file(&archive_path)?;
-  Ok(exe_path)
 }
 
 fn replace_exe(from: &Path, to: &Path) -> Result<(), std::io::Error> {
@@ -1024,19 +963,67 @@ mod test {
   #[test]
   fn test_get_url() {
     assert_eq!(
-      get_url(UpgradeReleaseKind::Canary, UpgradeCheckKind::Execution),
-      "https://dl.deno.land/canary-latest.txt"
+      get_url(
+        UpgradeReleaseKind::Canary,
+        "aarch64-apple-darwin",
+        UpgradeCheckKind::Execution
+      ),
+      "https://dl.deno.land/canary-aarch64-apple-darwin-latest.txt"
     );
     assert_eq!(
-      get_url(UpgradeReleaseKind::Canary, UpgradeCheckKind::Lsp),
-      "https://dl.deno.land/canary-latest.txt?lsp"
+      get_url(
+        UpgradeReleaseKind::Canary,
+        "aarch64-apple-darwin",
+        UpgradeCheckKind::Lsp
+      ),
+      "https://dl.deno.land/canary-aarch64-apple-darwin-latest.txt?lsp"
     );
     assert_eq!(
-      get_url(UpgradeReleaseKind::Stable, UpgradeCheckKind::Execution),
+      get_url(
+        UpgradeReleaseKind::Canary,
+        "x86_64-pc-windows-msvc",
+        UpgradeCheckKind::Execution
+      ),
+      "https://dl.deno.land/canary-x86_64-pc-windows-msvc-latest.txt"
+    );
+    assert_eq!(
+      get_url(
+        UpgradeReleaseKind::Canary,
+        "x86_64-pc-windows-msvc",
+        UpgradeCheckKind::Lsp
+      ),
+      "https://dl.deno.land/canary-x86_64-pc-windows-msvc-latest.txt?lsp"
+    );
+    assert_eq!(
+      get_url(
+        UpgradeReleaseKind::Stable,
+        "aarch64-apple-darwin",
+        UpgradeCheckKind::Execution
+      ),
       "https://dl.deno.land/release-latest.txt"
     );
     assert_eq!(
-      get_url(UpgradeReleaseKind::Stable, UpgradeCheckKind::Lsp),
+      get_url(
+        UpgradeReleaseKind::Stable,
+        "aarch64-apple-darwin",
+        UpgradeCheckKind::Lsp
+      ),
+      "https://dl.deno.land/release-latest.txt?lsp"
+    );
+    assert_eq!(
+      get_url(
+        UpgradeReleaseKind::Stable,
+        "x86_64-pc-windows-msvc",
+        UpgradeCheckKind::Execution
+      ),
+      "https://dl.deno.land/release-latest.txt"
+    );
+    assert_eq!(
+      get_url(
+        UpgradeReleaseKind::Stable,
+        "x86_64-pc-windows-msvc",
+        UpgradeCheckKind::Lsp
+      ),
       "https://dl.deno.land/release-latest.txt?lsp"
     );
   }

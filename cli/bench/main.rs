@@ -37,7 +37,7 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
   // invalidating that cache.
   (
     "cold_hello",
-    &["run", "--reload", "cli/tests/testdata/run/002_hello.ts"],
+    &["run", "--reload", "tests/testdata/run/002_hello.ts"],
     None,
   ),
   (
@@ -45,23 +45,19 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
     &[
       "run",
       "--reload",
-      "cli/tests/testdata/run/003_relative_import.ts",
+      "tests/testdata/run/003_relative_import.ts",
     ],
     None,
   ),
-  (
-    "hello",
-    &["run", "cli/tests/testdata/run/002_hello.ts"],
-    None,
-  ),
+  ("hello", &["run", "tests/testdata/run/002_hello.ts"], None),
   (
     "relative_import",
-    &["run", "cli/tests/testdata/run/003_relative_import.ts"],
+    &["run", "tests/testdata/run/003_relative_import.ts"],
     None,
   ),
   (
     "error_001",
-    &["run", "cli/tests/testdata/run/error_001.ts"],
+    &["run", "tests/testdata/run/error_001.ts"],
     Some(1),
   ),
   (
@@ -70,7 +66,7 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
       "run",
       "--reload",
       "--no-check",
-      "cli/tests/testdata/run/002_hello.ts",
+      "tests/testdata/run/002_hello.ts",
     ],
     None,
   ),
@@ -79,7 +75,7 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
     &[
       "run",
       "--allow-read",
-      "cli/tests/testdata/workers/bench_startup.ts",
+      "tests/testdata/workers/bench_startup.ts",
     ],
     None,
   ),
@@ -88,7 +84,7 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
     &[
       "run",
       "--allow-read",
-      "cli/tests/testdata/workers/bench_round_robin.ts",
+      "tests/testdata/workers/bench_round_robin.ts",
     ],
     None,
   ),
@@ -97,31 +93,28 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
     &[
       "run",
       "--allow-read",
-      "cli/tests/testdata/workers/bench_large_message.ts",
+      "tests/testdata/workers/bench_large_message.ts",
     ],
     None,
   ),
   (
     "text_decoder",
-    &["run", "cli/tests/testdata/benches/text_decoder_perf.js"],
+    &["run", "tests/testdata/benches/text_decoder_perf.js"],
     None,
   ),
   (
     "text_encoder",
-    &["run", "cli/tests/testdata/benches/text_encoder_perf.js"],
+    &["run", "tests/testdata/benches/text_encoder_perf.js"],
     None,
   ),
   (
     "text_encoder_into",
-    &[
-      "run",
-      "cli/tests/testdata/benches/text_encoder_into_perf.js",
-    ],
+    &["run", "tests/testdata/benches/text_encoder_into_perf.js"],
     None,
   ),
   (
     "response_string",
-    &["run", "cli/tests/testdata/benches/response_string_perf.js"],
+    &["run", "tests/testdata/benches/response_string_perf.js"],
     None,
   ),
   (
@@ -130,7 +123,7 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
       "check",
       "--reload",
       "--unstable",
-      "test_util/std/http/file_server_test.ts",
+      "tests/util/std/http/file_server_test.ts",
     ],
     None,
   ),
@@ -141,7 +134,7 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
       "--reload",
       "--no-check",
       "--unstable",
-      "test_util/std/http/file_server_test.ts",
+      "tests/util/std/http/file_server_test.ts",
     ],
     None,
   ),
@@ -150,7 +143,7 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
     &[
       "bundle",
       "--unstable",
-      "test_util/std/http/file_server_test.ts",
+      "tests/util/std/http/file_server_test.ts",
     ],
     None,
   ),
@@ -160,7 +153,7 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
       "bundle",
       "--no-check",
       "--unstable",
-      "test_util/std/http/file_server_test.ts",
+      "tests/util/std/http/file_server_test.ts",
     ],
     None,
   ),
@@ -313,8 +306,8 @@ fn get_binary_sizes(target_dir: &Path) -> Result<HashMap<String, i64>> {
 }
 
 const BUNDLES: &[(&str, &str)] = &[
-  ("file_server", "./test_util/std/http/file_server.ts"),
-  ("welcome", "./cli/tests/testdata/welcome.ts"),
+  ("file_server", "./tests/util/std/http/file_server.ts"),
+  ("welcome", "./tests/testdata/welcome.ts"),
 ];
 fn bundle_benchmark(deno_exe: &Path) -> Result<HashMap<String, i64>> {
   let mut sizes = HashMap::<String, i64>::new();

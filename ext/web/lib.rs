@@ -14,7 +14,6 @@ use deno_core::op2;
 use deno_core::url::Url;
 use deno_core::v8;
 use deno_core::ByteString;
-use deno_core::CancelHandle;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
@@ -53,6 +52,7 @@ pub use crate::message_port::MessagePort;
 
 use crate::timers::op_now;
 use crate::timers::op_sleep;
+use crate::timers::op_sleep_interval;
 use crate::timers::op_timer_handle;
 use crate::timers::StartTime;
 pub use crate::timers::TimersPermission;
@@ -71,7 +71,6 @@ deno_core::extension!(deno_web,
     op_encoding_new_decoder,
     op_encoding_decode,
     op_encoding_encode_into,
-    op_encode_binary_string,
     op_blob_create_part,
     op_blob_slice_part,
     op_blob_read_part,
@@ -87,8 +86,8 @@ deno_core::extension!(deno_web,
     compression::op_compression_finish,
     op_now<P>,
     op_timer_handle,
-    op_cancel_handle,
     op_sleep,
+    op_sleep_interval,
     op_transfer_arraybuffer,
     stream_resource::op_readable_stream_resource_allocate,
     stream_resource::op_readable_stream_resource_allocate_sized,
@@ -437,19 +436,6 @@ fn op_transfer_arraybuffer<'a>(
   let bs = ab.get_backing_store();
   ab.detach(None);
   Ok(v8::ArrayBuffer::with_backing_store(scope, &bs))
-}
-
-#[op2]
-#[serde]
-fn op_encode_binary_string(#[buffer] s: &[u8]) -> ByteString {
-  ByteString::from(s)
-}
-
-/// Creates a [`CancelHandle`] resource that can be used to cancel invocations of certain ops.
-#[op2(fast)]
-#[smi]
-pub fn op_cancel_handle(state: &mut OpState) -> u32 {
-  state.resource_table.add(CancelHandle::new())
 }
 
 pub fn get_declaration() -> PathBuf {

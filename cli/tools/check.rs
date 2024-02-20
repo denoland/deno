@@ -9,8 +9,8 @@ use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
-use deno_runtime::colors;
 use deno_runtime::deno_node::NodeResolver;
+use deno_terminal::colors;
 use once_cell::sync::Lazy;
 use regex::Regex;
 
@@ -243,7 +243,7 @@ fn get_check_hash(
   // this iterator of modules is already deterministic, so no need to sort it
   for module in graph.modules() {
     match module {
-      Module::Esm(module) => {
+      Module::Js(module) => {
         let ts_check = has_ts_check(module.media_type, &module.source);
         if ts_check {
           has_file_to_type_check = true;
@@ -329,7 +329,7 @@ fn get_tsc_roots(
     check_js: bool,
   ) -> Option<(ModuleSpecifier, MediaType)> {
     match module {
-      Module::Esm(module) => match module.media_type {
+      Module::Js(module) => match module.media_type {
         MediaType::TypeScript
         | MediaType::Tsx
         | MediaType::Mts
@@ -404,7 +404,7 @@ fn get_tsc_roots(
     if let Some(entry) = maybe_get_check_entry(module, check_js) {
       result.push(entry);
     }
-    if let Some(module) = module.esm() {
+    if let Some(module) = module.js() {
       let deps = module.dependencies_prefer_fast_check();
       for dep in deps.values() {
         // walk both the code and type dependencies

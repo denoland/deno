@@ -62,7 +62,8 @@ impl NpmSearchApi for CliNpmSearchApi {
     let file = self
       .file_fetcher
       .fetch(&search_url, PermissionsContainer::allow_all())
-      .await?;
+      .await?
+      .into_text_decoded()?;
     let names = Arc::new(parse_npm_search_response(&file.source)?);
     self
       .search_cache
@@ -88,7 +89,8 @@ impl NpmSearchApi for CliNpmSearchApi {
       .file_fetcher
       .fetch(&info_url, PermissionsContainer::allow_all())
       .await?;
-    let info = Arc::new(serde_json::from_str::<NpmPackageInfo>(&file.source)?);
+    let info =
+      Arc::new(serde_json::from_slice::<NpmPackageInfo>(&file.source)?);
     self
       .info_cache
       .lock()

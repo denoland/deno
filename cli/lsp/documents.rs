@@ -2,6 +2,8 @@
 
 use super::cache::calculate_fs_version;
 use super::cache::calculate_fs_version_at_path;
+use super::cache::LSP_DISALLOW_GLOBAL_TO_LOCAL_COPY;
+use super::jsr_resolver::JsrResolver;
 use super::language_server::StateNpmSnapshot;
 use super::text::LineIndex;
 use super::tsc;
@@ -13,9 +15,6 @@ use crate::args::ConfigFile;
 use crate::args::JsxImportSourceConfig;
 use crate::cache::FastInsecureHasher;
 use crate::cache::HttpCache;
-use crate::file_fetcher::get_source_from_bytes;
-use crate::file_fetcher::get_source_from_data_url;
-use crate::file_fetcher::map_content_type;
 use crate::lsp::logging::lsp_warn;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliGraphResolver;
@@ -24,7 +23,6 @@ use crate::resolver::SloppyImportsFsEntry;
 use crate::resolver::SloppyImportsResolution;
 use crate::resolver::SloppyImportsResolver;
 use crate::util::path::specifier_to_file_path;
-use crate::util::text_encoding;
 
 use deno_ast::MediaType;
 use deno_ast::ParsedSource;
@@ -42,6 +40,7 @@ use deno_core::ModuleSpecifier;
 use deno_graph::source::ResolutionMode;
 use deno_graph::GraphImport;
 use deno_graph::Resolution;
+use deno_lockfile::Lockfile;
 use deno_runtime::deno_fs::RealFs;
 use deno_runtime::deno_node;
 use deno_runtime::deno_node::NodeResolution;
@@ -250,7 +249,7 @@ impl AssetOrDocument {
 
   pub fn maybe_parsed_source(
     &self,
-  ) -> Option<Result<deno_ast::ParsedSource, deno_ast::Diagnostic>> {
+  ) -> Option<Result<deno_ast::ParsedSource, deno_ast::ParseDiagnostic>> {
     self.document().and_then(|d| d.maybe_parsed_source())
   }
 
@@ -278,7 +277,7 @@ impl DocumentDependencies {
     }
   }
 
-  pub fn from_module(module: &deno_graph::EsmModule) -> Self {
+  pub fn from_module(module: &deno_graph::JsModule) -> Self {
     Self {
       deps: module.dependencies.clone(),
       maybe_types_dependency: module.maybe_types_dependency.clone(),
@@ -286,8 +285,8 @@ impl DocumentDependencies {
   }
 }
 
-type ModuleResult = Result<deno_graph::EsmModule, deno_graph::ModuleGraphError>;
-type ParsedSourceResult = Result<ParsedSource, deno_ast::Diagnostic>;
+type ModuleResult = Result<deno_graph::JsModule, deno_graph::ModuleGraphError>;
+type ParsedSourceResult = Result<ParsedSource, deno_ast::ParseDiagnostic>;
 
 #[derive(Debug)]
 struct DocumentInner {
@@ -593,13 +592,13 @@ impl Document {
     self.0.maybe_lsp_version
   }
 
-  fn maybe_esm_module(&self) -> Option<&ModuleResult> {
+  fn maybe_js_module(&self) -> Option<&ModuleResult> {
     self.0.maybe_module.as_ref()
   }
 
   pub fn maybe_parsed_source(
     &self,
-  ) -> Option<Result<deno_ast::ParsedSource, deno_ast::Diagnostic>> {
+  ) -> Option<Result<deno_ast::ParsedSource, deno_ast::ParseDiagnostic>> {
     self.0.maybe_parsed_source.clone()
   }
 
@@ -632,7 +631,7 @@ impl Document {
     &self,
     position: &lsp::Position,
   ) -> Option<(String, deno_graph::Dependency, deno_graph::Range)> {
-    let module = self.maybe_esm_module()?.as_ref().ok()?;
+    let module = self.maybe_js_module()?.as_ref().ok()?;
     let position = deno_graph::Position {
       line: position.line as usize,
       character: position.character as usize,
@@ -738,12 +737,7 @@ impl RedirectResolver {
   ) -> Option<ModuleSpecifier> {
     if redirect_limit > 0 {
       let cache_key = self.cache.cache_item_key(specifier).ok()?;
-      let headers = self
-        .cache
-        .read_metadata(&cache_key)
-        .ok()
-        .flatten()
-        .map(|m| m.headers)?;
+      let headers = self.cache.read_headers(&cache_key).ok().flatten()?;
       if let Some(location) = headers.get("location") {
         let redirect =
           deno_core::resolve_import(location, specifier.as_str()).ok()?;
@@ -798,9 +792,8 @@ impl FileSystemDocuments {
       let path = specifier_to_file_path(specifier).ok()?;
       let fs_version = calculate_fs_version_at_path(&path)?;
       let bytes = fs::read(path).ok()?;
-      let maybe_charset =
-        Some(text_encoding::detect_charset(&bytes).to_string());
-      let content = get_source_from_bytes(bytes, maybe_charset).ok()?;
+      let content =
+        deno_graph::source::decode_owned_source(specifier, bytes, None).ok()?;
       Document::new(
         specifier.clone(),
         fs_version,
@@ -810,7 +803,10 @@ impl FileSystemDocuments {
         npm_resolver,
       )
     } else if specifier.scheme() == "data" {
-      let (source, _) = get_source_from_data_url(specifier).ok()?;
+      let source = deno_graph::source::RawDataUrl::parse(specifier)
+        .ok()?
+        .decode()
+        .ok()?;
       Document::new(
         specifier.clone(),
         "1".to_string(),
@@ -822,12 +818,22 @@ impl FileSystemDocuments {
     } else {
       let fs_version = calculate_fs_version(cache, specifier)?;
       let cache_key = cache.cache_item_key(specifier).ok()?;
-      let bytes = cache.read_file_bytes(&cache_key).ok()??;
-      let specifier_metadata = cache.read_metadata(&cache_key).ok()??;
-      let maybe_content_type = specifier_metadata.headers.get("content-type");
-      let (_, maybe_charset) = map_content_type(specifier, maybe_content_type);
-      let maybe_headers = Some(specifier_metadata.headers);
-      let content = get_source_from_bytes(bytes, maybe_charset).ok()?;
+      let bytes = cache
+        .read_file_bytes(&cache_key, None, LSP_DISALLOW_GLOBAL_TO_LOCAL_COPY)
+        .ok()??;
+      let specifier_headers = cache.read_headers(&cache_key).ok()??;
+      let (_, maybe_charset) =
+        deno_graph::source::resolve_media_type_and_charset_from_headers(
+          specifier,
+          Some(&specifier_headers),
+        );
+      let content = deno_graph::source::decode_owned_source(
+        specifier,
+        bytes,
+        maybe_charset,
+      )
+      .ok()?;
+      let maybe_headers = Some(specifier_headers);
       Document::new(
         specifier.clone(),
         fs_version,
@@ -844,12 +850,12 @@ impl FileSystemDocuments {
 }
 
 pub struct UpdateDocumentConfigOptions<'a> {
-  pub enabled_paths: PathOrPatternSet,
-  pub disabled_paths: PathOrPatternSet,
+  pub file_patterns: FilePatterns,
   pub document_preload_limit: usize,
   pub maybe_import_map: Option<Arc<import_map::ImportMap>>,
   pub maybe_config_file: Option<&'a ConfigFile>,
   pub maybe_package_json: Option<&'a PackageJson>,
+  pub maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
   pub node_resolver: Option<Arc<NodeResolver>>,
   pub npm_resolver: Option<Arc<dyn CliNpmResolver>>,
 }
@@ -888,6 +894,7 @@ pub struct Documents {
   /// A resolver that takes into account currently loaded import map and JSX
   /// settings.
   resolver: Arc<CliGraphResolver>,
+  jsr_resolver: Arc<JsrResolver>,
   /// The npm package requirements found in npm specifiers.
   npm_specifier_reqs: Arc<Vec<PackageReq>>,
   /// Gets if any document had a node: specifier such that a @types/node package
@@ -922,6 +929,10 @@ impl Documents {
         bare_node_builtins_enabled: false,
         sloppy_imports_resolver: None,
       })),
+      jsr_resolver: Arc::new(JsrResolver::from_cache_and_lockfile(
+        cache.clone(),
+        None,
+      )),
       npm_specifier_reqs: Default::default(),
       has_injected_types_node_package: false,
       redirect_resolver: Arc::new(RedirectResolver::new(cache)),
@@ -1079,7 +1090,11 @@ impl Documents {
           .into_owned(),
       )
     } else {
-      self.redirect_resolver.resolve(specifier)
+      let specifier = match self.jsr_resolver.jsr_to_registry_url(specifier) {
+        Some(url) => Cow::Owned(url),
+        None => Cow::Borrowed(specifier),
+      };
+      self.redirect_resolver.resolve(&specifier)
     }
   }
 
@@ -1318,11 +1333,20 @@ impl Documents {
     Ok(())
   }
 
+  pub fn refresh_jsr_resolver(
+    &mut self,
+    lockfile: Option<Arc<Mutex<Lockfile>>>,
+  ) {
+    self.jsr_resolver = Arc::new(JsrResolver::from_cache_and_lockfile(
+      self.cache.clone(),
+      lockfile,
+    ));
+  }
+
   pub fn update_config(&mut self, options: UpdateDocumentConfigOptions) {
     #[allow(clippy::too_many_arguments)]
     fn calculate_resolver_config_hash(
-      enabled_paths: &PathOrPatternSet,
-      disabled_paths: &PathOrPatternSet,
+      file_patterns: &FilePatterns,
       document_preload_limit: usize,
       maybe_import_map: Option<&import_map::ImportMap>,
       maybe_jsx_config: Option<&JsxImportSourceConfig>,
@@ -1349,8 +1373,10 @@ impl Documents {
 
       let mut hasher = FastInsecureHasher::default();
       hasher.write_hashable(document_preload_limit);
-      hasher.write_hashable(&get_pattern_set_vec(enabled_paths));
-      hasher.write_hashable(&get_pattern_set_vec(disabled_paths));
+      hasher.write_hashable(
+        &file_patterns.include.as_ref().map(get_pattern_set_vec),
+      );
+      hasher.write_hashable(&get_pattern_set_vec(&file_patterns.exclude));
       if let Some(import_map) = maybe_import_map {
         hasher.write_str(&import_map.to_json());
         hasher.write_str(import_map.base_url().as_str());
@@ -1387,8 +1413,7 @@ impl Documents {
       .maybe_config_file
       .and_then(|cf| cf.to_maybe_jsx_import_source_config().ok().flatten());
     let new_resolver_config_hash = calculate_resolver_config_hash(
-      &options.enabled_paths,
-      &options.disabled_paths,
+      &options.file_patterns,
       options.document_preload_limit,
       options.maybe_import_map.as_deref(),
       maybe_jsx_config.as_ref(),
@@ -1420,6 +1445,10 @@ impl Documents {
       // specifier for free.
       sloppy_imports_resolver: None,
     }));
+    self.jsr_resolver = Arc::new(JsrResolver::from_cache_and_lockfile(
+      self.cache.clone(),
+      options.maybe_lockfile,
+    ));
     self.redirect_resolver =
       Arc::new(RedirectResolver::new(self.cache.clone()));
     self.imports = Arc::new(
@@ -1450,8 +1479,7 @@ impl Documents {
     // only refresh the dependencies if the underlying configuration has changed
     if self.resolver_config_hash != new_resolver_config_hash {
       self.refresh_dependencies(
-        options.enabled_paths,
-        options.disabled_paths,
+        options.file_patterns,
         options.document_preload_limit,
       );
       self.resolver_config_hash = new_resolver_config_hash;
@@ -1464,8 +1492,7 @@ impl Documents {
 
   fn refresh_dependencies(
     &mut self,
-    enabled_paths: PathOrPatternSet,
-    disabled_paths: PathOrPatternSet,
+    file_patterns: FilePatterns,
     document_preload_limit: usize,
   ) {
     let resolver = self.resolver.as_graph_resolver();
@@ -1487,8 +1514,7 @@ impl Documents {
       log::debug!("Preloading documents from enabled urls...");
       let mut finder =
         PreloadDocumentFinder::new(PreloadDocumentFinderOptions {
-          enabled_paths,
-          disabled_paths,
+          file_patterns,
           limit: document_preload_limit,
         });
       for specifier in finder.by_ref() {
@@ -1685,7 +1711,7 @@ impl Documents {
       return node_resolve_npm_req_ref(npm_ref, maybe_npm, referrer);
     }
     let doc = self.get(specifier)?;
-    let maybe_module = doc.maybe_esm_module().and_then(|r| r.as_ref().ok());
+    let maybe_module = doc.maybe_js_module().and_then(|r| r.as_ref().ok());
     let maybe_types_dependency = maybe_module
       .and_then(|m| m.maybe_types_dependency.as_ref().map(|d| &d.dependency));
     if let Some(specifier) =
@@ -1756,7 +1782,7 @@ impl<'a> OpenDocumentsGraphLoader<'a> {
       if let Some(doc) = self.open_docs.get(specifier) {
         return Some(
           future::ready(Ok(Some(deno_graph::source::LoadResponse::Module {
-            content: doc.content(),
+            content: Arc::from(doc.content()),
             specifier: doc.specifier().clone(),
             maybe_headers: None,
           })))
@@ -1798,8 +1824,7 @@ impl<'a> deno_graph::source::Loader for OpenDocumentsGraphLoader<'a> {
   fn load(
     &mut self,
     specifier: &ModuleSpecifier,
-    is_dynamic: bool,
-    cache_setting: deno_graph::source::CacheSetting,
+    options: deno_graph::source::LoadOptions,
   ) -> deno_graph::source::LoadFuture {
     let specifier = if self.unstable_sloppy_imports {
       self
@@ -1811,16 +1836,14 @@ impl<'a> deno_graph::source::Loader for OpenDocumentsGraphLoader<'a> {
 
     match self.load_from_docs(&specifier) {
       Some(fut) => fut,
-      None => self
-        .inner_loader
-        .load(&specifier, is_dynamic, cache_setting),
+      None => self.inner_loader.load(&specifier, options),
     }
   }
 
   fn cache_module_info(
     &mut self,
     specifier: &deno_ast::ModuleSpecifier,
-    source: &str,
+    source: &Arc<[u8]>,
     module_info: &deno_graph::ModuleInfo,
   ) {
     self
@@ -1853,7 +1876,7 @@ fn parse_source(
   maybe_headers: Option<&HashMap<String, String>>,
 ) -> ParsedSourceResult {
   deno_ast::parse_module(deno_ast::ParseParams {
-    specifier: specifier.to_string(),
+    specifier: specifier.clone(),
     text_info,
     media_type: MediaType::from_specifier_and_headers(specifier, maybe_headers),
     capture_tokens: true,
@@ -1900,8 +1923,7 @@ enum PendingEntry {
 }
 
 struct PreloadDocumentFinderOptions {
-  enabled_paths: PathOrPatternSet,
-  disabled_paths: PathOrPatternSet,
+  file_patterns: FilePatterns,
   limit: usize,
 }
 
@@ -1933,24 +1955,21 @@ impl PreloadDocumentFinder {
       visited_paths: Default::default(),
     };
 
-    let file_patterns = FilePatterns {
-      include: Some(options.enabled_paths),
-      exclude: options.disabled_paths,
-    };
-    let file_patterns_by_base = file_patterns.split_by_base();
+    let file_patterns_by_base = options.file_patterns.split_by_base();
 
     // initialize the finder with the initial paths
-    for (path, file_patterns) in file_patterns_by_base {
+    for file_patterns in file_patterns_by_base {
+      let path = &file_patterns.base;
       if path.is_dir() {
-        if is_allowed_root_dir(&path) {
+        if is_allowed_root_dir(path) {
           finder
             .root_dir_entries
-            .push(PendingEntry::Dir(path, Rc::new(file_patterns)));
+            .push(PendingEntry::Dir(path.clone(), Rc::new(file_patterns)));
         }
       } else {
         finder
           .pending_entries
-          .push_back(PendingEntry::SpecifiedRootFile(path));
+          .push_back(PendingEntry::SpecifiedRootFile(path.clone()));
       }
     }
     finder
@@ -2247,12 +2266,14 @@ console.log(b, "hello deno");
         .unwrap();
 
       documents.update_config(UpdateDocumentConfigOptions {
-        enabled_paths: Default::default(),
-        disabled_paths: Default::default(),
+        file_patterns: FilePatterns::new_with_base(
+          documents_path.to_path_buf(),
+        ),
         document_preload_limit: 1_000,
         maybe_import_map: Some(Arc::new(import_map)),
         maybe_config_file: None,
         maybe_package_json: None,
+        maybe_lockfile: None,
         node_resolver: None,
         npm_resolver: None,
       });
@@ -2289,12 +2310,14 @@ console.log(b, "hello deno");
         .unwrap();
 
       documents.update_config(UpdateDocumentConfigOptions {
-        enabled_paths: Default::default(),
-        disabled_paths: Default::default(),
+        file_patterns: FilePatterns::new_with_base(
+          documents_path.to_path_buf(),
+        ),
         document_preload_limit: 1_000,
         maybe_import_map: Some(Arc::new(import_map)),
         maybe_config_file: None,
         maybe_package_json: None,
+        maybe_lockfile: None,
         node_resolver: None,
         npm_resolver: None,
       });
@@ -2357,17 +2380,22 @@ console.log(b, "hello deno");
     temp_dir.write("root3/mod.ts", ""); // no, not provided
 
     let mut urls = PreloadDocumentFinder::new(PreloadDocumentFinderOptions {
-      enabled_paths: PathOrPatternSet::from_relative_path_or_patterns(
-        temp_dir.path().as_path(),
-        &[
-          "root1".to_string(),
-          "root2/file1.ts".to_string(),
-          "root2/main.min.ts".to_string(),
-          "root2/folder".to_string(),
-        ],
-      )
-      .unwrap(),
-      disabled_paths: Default::default(),
+      file_patterns: FilePatterns {
+        base: temp_dir.path().to_path_buf(),
+        include: Some(
+          PathOrPatternSet::from_relative_path_or_patterns(
+            temp_dir.path().as_path(),
+            &[
+              "root1".to_string(),
+              "root2/file1.ts".to_string(),
+              "root2/main.min.ts".to_string(),
+              "root2/folder".to_string(),
+            ],
+          )
+          .unwrap(),
+        ),
+        exclude: Default::default(),
+      },
       limit: 1_000,
     })
     .collect::<Vec<_>>();
@@ -2397,10 +2425,11 @@ console.log(b, "hello deno");
 
     // now try iterating with a low limit
     let urls = PreloadDocumentFinder::new(PreloadDocumentFinderOptions {
-      enabled_paths: PathOrPatternSet::new(vec![PathOrPattern::Path(
-        temp_dir.path().to_path_buf(),
-      )]),
-      disabled_paths: Default::default(),
+      file_patterns: FilePatterns {
+        base: temp_dir.path().to_path_buf(),
+        include: Default::default(),
+        exclude: Default::default(),
+      },
       limit: 10, // entries and not results
     })
     .collect::<Vec<_>>();
@@ -2412,18 +2441,19 @@ console.log(b, "hello deno");
 
     // now try with certain directories and files disabled
     let mut urls = PreloadDocumentFinder::new(PreloadDocumentFinderOptions {
-      enabled_paths: PathOrPatternSet::new(vec![PathOrPattern::Path(
-        temp_dir.path().to_path_buf(),
-      )]),
-      disabled_paths: PathOrPatternSet::from_relative_path_or_patterns(
-        temp_dir.path().as_path(),
-        &[
-          "root1".to_string(),
-          "root2/file1.ts".to_string(),
-          "**/*.js".to_string(), // ignore js files
-        ],
-      )
-      .unwrap(),
+      file_patterns: FilePatterns {
+        base: temp_dir.path().to_path_buf(),
+        include: Default::default(),
+        exclude: PathOrPatternSet::from_relative_path_or_patterns(
+          temp_dir.path().as_path(),
+          &[
+            "root1".to_string(),
+            "root2/file1.ts".to_string(),
+            "**/*.js".to_string(), // ignore js files
+          ],
+        )
+        .unwrap(),
+      },
       limit: 1_000,
     })
     .collect::<Vec<_>>();
@@ -2443,20 +2473,22 @@ console.log(b, "hello deno");
   pub fn test_pre_load_document_finder_disallowed_dirs() {
     if cfg!(windows) {
       let paths = PreloadDocumentFinder::new(PreloadDocumentFinderOptions {
-        enabled_paths: PathOrPatternSet::new(vec![PathOrPattern::Path(
-          PathBuf::from("C:\\"),
-        )]),
-        disabled_paths: Default::default(),
+        file_patterns: FilePatterns {
+          base: PathBuf::from("C:\\"),
+          include: Default::default(),
+          exclude: Default::default(),
+        },
         limit: 1_000,
       })
       .collect::<Vec<_>>();
       assert_eq!(paths, vec![]);
     } else {
       let paths = PreloadDocumentFinder::new(PreloadDocumentFinderOptions {
-        enabled_paths: PathOrPatternSet::new(vec![PathOrPattern::Path(
-          PathBuf::from("/"),
-        )]),
-        disabled_paths: Default::default(),
+        file_patterns: FilePatterns {
+          base: PathBuf::from("/"),
+          include: Default::default(),
+          exclude: Default::default(),
+        },
         limit: 1_000,
       })
       .collect::<Vec<_>>();

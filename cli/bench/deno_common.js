@@ -5,33 +5,10 @@ Deno.bench("date_now", { n: 5e5 }, () => {
   Date.now();
 });
 
-const { op_void_sync, op_void_async, op_add } = Deno[Deno.internal].core
-  .ensureFastOps();
-
-// Fast API calls
-{
-  // deno-lint-ignore no-inner-declarations
-  function addJS(a, b) {
-    return a + b;
-  }
-  Deno.bench("op_add", () => op_add(1, 2));
-  Deno.bench("add_js", () => addJS(1, 2));
+function addJS(a, b) {
+  return a + b;
 }
-
-// Void ops measure op-overhead
-Deno.bench("op_void_sync", () => op_void_sync());
-
-Deno.bench(
-  "op_void_async",
-  { n: 1e6 },
-  () => op_void_async(),
-);
-
-Deno.bench(
-  "op_void_await_async",
-  { n: 1e6 },
-  async () => await op_void_async(),
-);
+Deno.bench("add_js", () => addJS(1, 2));
 
 // A very lightweight op, that should be highly optimizable
 Deno.bench("perf_now", { n: 5e5 }, () => {
@@ -39,8 +16,7 @@ Deno.bench("perf_now", { n: 5e5 }, () => {
 });
 
 Deno.bench("open_file_sync", () => {
-  const file = Deno.openSync("./cli/bench/testdata/128k.bin");
-  file.close();
+  using _file = Deno.openSync("./cli/bench/testdata/128k.bin");
 });
 
 // A common "language feature", that should be fast

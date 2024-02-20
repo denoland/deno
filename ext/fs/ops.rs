@@ -1349,11 +1349,33 @@ pub fn op_fs_fdatasync_sync(
   Ok(())
 }
 
+#[op2(fast)]
+pub fn op_fs_fdatasync_sync_unstable(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+) -> Result<(), AnyError> {
+  check_unstable(state, "Deno.FsFile.syncDataSync");
+  let file = FileResource::get_file(state, rid)?;
+  file.datasync_sync()?;
+  Ok(())
+}
+
 #[op2(async)]
 pub async fn op_fs_fdatasync_async(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
 ) -> Result<(), AnyError> {
+  let file = FileResource::get_file(&state.borrow(), rid)?;
+  file.datasync_async().await?;
+  Ok(())
+}
+
+#[op2(async)]
+pub async fn op_fs_fdatasync_async_unstable(
+  state: Rc<RefCell<OpState>>,
+  #[smi] rid: ResourceId,
+) -> Result<(), AnyError> {
+  check_unstable(&state.borrow(), "Deno.FsFile.syncData");
   let file = FileResource::get_file(&state.borrow(), rid)?;
   file.datasync_async().await?;
   Ok(())
@@ -1369,6 +1391,17 @@ pub fn op_fs_fsync_sync(
   Ok(())
 }
 
+#[op2(fast)]
+pub fn op_fs_fsync_sync_unstable(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+) -> Result<(), AnyError> {
+  check_unstable(state, "Deno.FsFile.syncSync");
+  let file = FileResource::get_file(state, rid)?;
+  file.sync_sync()?;
+  Ok(())
+}
+
 #[op2(async)]
 pub async fn op_fs_fsync_async(
   state: Rc<RefCell<OpState>>,
@@ -1379,8 +1412,19 @@ pub async fn op_fs_fsync_async(
   Ok(())
 }
 
+#[op2(async)]
+pub async fn op_fs_fsync_async_unstable(
+  state: Rc<RefCell<OpState>>,
+  #[smi] rid: ResourceId,
+) -> Result<(), AnyError> {
+  check_unstable(&state.borrow(), "Deno.FsFile.sync");
+  let file = FileResource::get_file(&state.borrow(), rid)?;
+  file.sync_async().await?;
+  Ok(())
+}
+
 #[op2(fast)]
-pub fn op_fs_fstat_sync(
+pub fn op_fs_file_stat_sync(
   state: &mut OpState,
   #[smi] rid: ResourceId,
   #[buffer] stat_out_buf: &mut [u32],
@@ -1394,7 +1438,7 @@ pub fn op_fs_fstat_sync(
 
 #[op2(async)]
 #[serde]
-pub async fn op_fs_fstat_async(
+pub async fn op_fs_file_stat_async(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
 ) -> Result<SerializableStat, AnyError> {

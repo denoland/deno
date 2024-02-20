@@ -1,13 +1,13 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { core, primordials } from "ext:core/mod.js";
-const {
+import { primordials } from "ext:core/mod.js";
+import {
   op_create_worker,
   op_host_post_message,
   op_host_recv_ctrl,
   op_host_recv_message,
   op_host_terminate_worker,
-} = core.ensureFastOps();
+} from "ext:core/ops";
 const {
   ArrayPrototypeFilter,
   Error,

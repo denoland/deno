@@ -6,13 +6,12 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { core, internals } from "ext:core/mod.js";
-const {
+import { internals } from "ext:core/mod.js";
+import {
+  op_bootstrap_unstable_args,
   op_node_child_ipc_pipe,
-} = core.ensureFastOps();
-const {
   op_npm_process_state,
-} = core.ensureFastOps(true);
+} from "ext:core/ops";
 
 import {
   ChildProcess,
@@ -130,7 +129,7 @@ export function fork(
   }
   args = [
     "run",
-    "--unstable", // TODO(kt3k): Remove when npm: is stable
+    ...op_bootstrap_unstable_args(),
     "--node-modules-dir",
     "-A",
     ...stringifiedV8Flags,
@@ -437,15 +436,7 @@ export function execFile(
     shell: false,
     ...options,
   };
-  if (!Number.isInteger(execOptions.timeout) || execOptions.timeout < 0) {
-    // In Node source, the first argument to error constructor is "timeout" instead of "options.timeout".
-    // timeout is indeed a member of options object.
-    throw new ERR_OUT_OF_RANGE(
-      "timeout",
-      "an unsigned integer",
-      execOptions.timeout,
-    );
-  }
+  validateTimeout(execOptions.timeout);
   if (execOptions.maxBuffer < 0) {
     throw new ERR_OUT_OF_RANGE(
       "options.maxBuffer",

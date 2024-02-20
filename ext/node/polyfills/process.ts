@@ -5,13 +5,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { core, internals } from "ext:core/mod.js";
-const {
-  op_process_abort,
-  op_geteuid,
-} = core.ensureFastOps();
-const {
-  op_set_exit_code,
-} = core.ensureFastOps(true);
+import { op_geteuid, op_process_abort, op_set_exit_code } from "ext:core/ops";
 
 import { notImplemented, warnNotImplemented } from "ext:deno_node/_utils.ts";
 import { EventEmitter } from "node:events";
@@ -101,6 +95,15 @@ export const exit = (code?: number | string) => {
   }
 
   process.reallyExit(process.exitCode || 0);
+};
+
+/** https://nodejs.org/api/process.html#processumaskmask */
+export const umask = () => {
+  // Always return the system default umask value.
+  // We don't use Deno.umask here because it has a race
+  // condition bug.
+  // See https://github.com/denoland/deno_std/issues/1893#issuecomment-1032897779
+  return 0o22;
 };
 
 export const abort = () => {
@@ -562,6 +565,11 @@ class Process extends EventEmitter {
       pid = Deno.pid;
     }
     return pid;
+  }
+
+  /** https://nodejs.org/api/process.html#processppid */
+  get ppid() {
+    return Deno.ppid;
   }
 
   /** https://nodejs.org/api/process.html#process_process_platform */

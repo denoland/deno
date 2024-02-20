@@ -4,11 +4,11 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { core } from "ext:core/mod.js";
-const {
+import {
   op_fetch_response_upgrade,
   op_fetch_send,
   op_node_http_request,
-} = core.ensureFastOps();
+} from "ext:core/ops";
 
 import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
 import { setTimeout } from "ext:deno_web/02_timers.js";
@@ -64,6 +64,8 @@ import { timerId } from "ext:deno_web/03_abort_signal.js";
 import { clearTimeout as webClearTimeout } from "ext:deno_web/02_timers.js";
 import { resourceForReadableStream } from "ext:deno_web/06_streams.js";
 import { TcpConn } from "ext:deno_net/01_net.js";
+
+const { internalRidSymbol } = core;
 
 enum STATUS_CODES {
   /** RFC 7231, 6.2.1 */
@@ -280,10 +282,16 @@ const kError = Symbol("kError");
 const kUniqueHeaders = Symbol("kUniqueHeaders");
 
 class FakeSocket extends EventEmitter {
-  constructor(opts = {}) {
+  constructor(
+    opts: {
+      encrypted?: boolean | undefined;
+      remotePort?: number | undefined;
+      remoteAddress?: string | undefined;
+    } = {},
+  ) {
     super();
-    this.remoteAddress = opts.hostname;
-    this.remotePort = opts.port;
+    this.remoteAddress = opts.remoteAddress;
+    this.remotePort = opts.remotePort;
     this.encrypted = opts.encrypted;
     this.writable = true;
     this.readable = true;
@@ -610,7 +618,7 @@ class ClientRequest extends OutgoingMessage {
       this.method,
       url,
       headers,
-      client.rid,
+      client[internalRidSymbol],
       this._bodyWriteRid,
     );
   }
@@ -796,7 +804,7 @@ class ClientRequest extends OutgoingMessage {
     }
     this.destroyed = true;
 
-    const rid = this._client?.rid;
+    const rid = this._client?.[internalRidSymbol];
     if (rid) {
       core.tryClose(rid);
     }
@@ -1566,7 +1574,7 @@ export class ServerImpl extends EventEmitter {
 
   #addr: Deno.NetAddr;
   #hasClosed = false;
-  #server: Deno.Server;
+  #server: Deno.HttpServer;
   #unref = false;
   #ac?: AbortController;
   #serveDeferred: ReturnType<typeof Promise.withResolvers<void>>;
@@ -1637,6 +1645,8 @@ export class ServerImpl extends EventEmitter {
         const socket = new Socket({
           handle: new TCP(constants.SERVER, conn),
         });
+        // Update socket held by `req`.
+        req.socket = socket;
         this.emit("upgrade", req, socket, Buffer.from([]));
         return response;
       } else {

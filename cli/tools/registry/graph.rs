@@ -1,154 +1,87 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::HashSet;
-use std::collections::VecDeque;
+use std::sync::Arc;
 
-use deno_ast::ModuleSpecifier;
-use deno_config::ConfigFile;
-use deno_config::WorkspaceConfig;
-use deno_core::anyhow::bail;
-use deno_core::anyhow::Context;
-use deno_core::error::AnyError;
-use deno_graph::FastCheckDiagnostic;
+use deno_ast::SourceTextInfo;
+use deno_graph::ModuleEntryRef;
 use deno_graph::ModuleGraph;
+use deno_graph::ResolutionResolved;
+use deno_graph::WalkOptions;
+use lsp_types::Url;
 
-#[derive(Debug)]
-pub struct MemberRoots {
-  pub name: String,
-  pub dir_url: ModuleSpecifier,
-  pub exports: Vec<ModuleSpecifier>,
-}
+use super::diagnostics::PublishDiagnostic;
+use super::diagnostics::PublishDiagnosticsCollector;
 
-pub fn get_workspace_member_roots(
-  config: &WorkspaceConfig,
-) -> Result<Vec<MemberRoots>, AnyError> {
-  let mut members = Vec::with_capacity(config.members.len());
-  let mut seen_names = HashSet::with_capacity(config.members.len());
-  for member in &config.members {
-    if !seen_names.insert(&member.package_name) {
-      bail!(
-        "Cannot have two workspace packages with the same name ('{}' at {})",
-        member.package_name,
-        member.path.display(),
-      );
-    }
-    members.push(MemberRoots {
-      name: member.package_name.clone(),
-      dir_url: member.config_file.specifier.join("./").unwrap().clone(),
-      exports: resolve_config_file_roots_from_exports(&member.config_file)?,
-    });
-  }
-  Ok(members)
-}
-
-pub fn resolve_config_file_roots_from_exports(
-  config_file: &ConfigFile,
-) -> Result<Vec<ModuleSpecifier>, AnyError> {
-  let exports_config = config_file
-    .to_exports_config()
-    .with_context(|| {
-      format!("Failed to parse exports at {}", config_file.specifier)
-    })?
-    .into_map();
-  let mut exports = Vec::with_capacity(exports_config.len());
-  for (_, value) in exports_config {
-    let entry_point =
-      config_file.specifier.join(&value).with_context(|| {
-        format!("Failed to join {} with {}", config_file.specifier, value)
-      })?;
-    exports.push(entry_point);
-  }
-  Ok(exports)
-}
-
-pub fn surface_fast_check_type_graph_errors(
+pub fn collect_invalid_external_imports(
   graph: &ModuleGraph,
-  packages: &[MemberRoots],
-) -> Result<(), AnyError> {
-  let mut diagnostic_count = 0;
-  let mut seen_diagnostics = HashSet::new();
-  let mut seen_modules = HashSet::with_capacity(graph.specifiers_count());
-  for package in packages {
-    let mut pending = VecDeque::new();
-    for export in &package.exports {
-      if seen_modules.insert(export.clone()) {
-        pending.push_back(export.clone());
-      }
-    }
+  diagnostics_collector: &PublishDiagnosticsCollector,
+) {
+  let mut visited = HashSet::new();
+  let mut skip_specifiers: HashSet<Url> = HashSet::new();
 
-    'analyze_package: while let Some(specifier) = pending.pop_front() {
-      let Ok(Some(module)) = graph.try_get_prefer_types(&specifier) else {
-        continue;
-      };
-      let Some(esm_module) = module.esm() else {
-        continue;
-      };
-      if let Some(diagnostic) = esm_module.fast_check_diagnostic() {
-        for diagnostic in diagnostic.flatten_multiple() {
-          if matches!(
-            diagnostic,
-            FastCheckDiagnostic::UnsupportedJavaScriptEntrypoint { .. }
-          ) {
-            // ignore JS packages for fast check
-            log::warn!(
-              concat!(
-                "{} Package '{}' is a JavaScript package without a corresponding ",
-                "declaration file. This may lead to a non-optimal experience for ",
-                "users of your package. For performance reasons, it's recommended ",
-                "to ship a corresponding TypeScript declaration file or to ",
-                "convert to TypeScript.",
-              ),
-              deno_runtime::colors::yellow("Warning"),
-              package.name,
+  let mut collect_if_invalid =
+    |skip_specifiers: &mut HashSet<Url>,
+     text: &Arc<str>,
+     resolution: &ResolutionResolved| {
+      if visited.insert(resolution.specifier.clone()) {
+        match resolution.specifier.scheme() {
+          "file" | "data" | "node" => {}
+          "jsr" | "npm" => {
+            skip_specifiers.insert(resolution.specifier.clone());
+          }
+          "http" | "https" => {
+            skip_specifiers.insert(resolution.specifier.clone());
+            diagnostics_collector.push(
+              PublishDiagnostic::InvalidExternalImport {
+                kind: format!("non-JSR '{}'", resolution.specifier.scheme()),
+                text_info: SourceTextInfo::new(text.clone()),
+                imported: resolution.specifier.clone(),
+                referrer: resolution.range.clone(),
+              },
             );
-            break 'analyze_package; // no need to keep analyzing this package
-          } else {
-            let message = diagnostic.message_with_range();
-            if !seen_diagnostics.insert(message.clone()) {
-              continue;
-            }
-
-            log::error!("\n{}", message);
-            diagnostic_count += 1;
+          }
+          _ => {
+            skip_specifiers.insert(resolution.specifier.clone());
+            diagnostics_collector.push(
+              PublishDiagnostic::InvalidExternalImport {
+                kind: format!("'{}'", resolution.specifier.scheme()),
+                text_info: SourceTextInfo::new(text.clone()),
+                imported: resolution.specifier.clone(),
+                referrer: resolution.range.clone(),
+              },
+            );
           }
         }
       }
+    };
 
-      // analyze the next dependencies
-      for dep in esm_module.dependencies_prefer_fast_check().values() {
-        let Some(specifier) = graph.resolve_dependency_from_dep(dep, true)
-        else {
-          continue;
-        };
+  let options = WalkOptions {
+    check_js: true,
+    follow_dynamic: true,
+    follow_type_only: true,
+  };
+  let mut iter = graph.walk(&graph.roots, options);
+  while let Some((specifier, entry)) = iter.next() {
+    if skip_specifiers.contains(specifier) {
+      iter.skip_previous_dependencies();
+      continue;
+    }
 
-        let dep_in_same_package =
-          specifier.as_str().starts_with(package.dir_url.as_str());
-        if dep_in_same_package {
-          let is_new = seen_modules.insert(specifier.clone());
-          if is_new {
-            pending.push_back(specifier.clone());
-          }
-        }
+    let ModuleEntryRef::Module(module) = entry else {
+      continue;
+    };
+    let Some(module) = module.js() else {
+      continue;
+    };
+
+    for (_, dep) in &module.dependencies {
+      if let Some(resolved) = dep.maybe_code.ok() {
+        collect_if_invalid(&mut skip_specifiers, &module.source, resolved);
+      }
+      if let Some(resolved) = dep.maybe_type.ok() {
+        collect_if_invalid(&mut skip_specifiers, &module.source, resolved);
       }
     }
   }
-
-  if diagnostic_count > 0 {
-    // for the time being, tell the user why we have these errors and the benefit they bring
-    log::error!(
-      concat!(
-        "\nFixing these fast check errors is required to make the code fast check compatible ",
-        "which enables type checking your package's TypeScript code with the same ",
-        "performance as if you had distributed declaration files. Do any of these ",
-        "errors seem too restrictive or incorrect? Please open an issue if so to ",
-        "help us improve: https://github.com/denoland/deno/issues\n",
-      )
-    );
-    bail!(
-      "Had {} fast check error{}.",
-      diagnostic_count,
-      if diagnostic_count == 1 { "" } else { "s" }
-    )
-  }
-  Ok(())
 }

@@ -6,7 +6,7 @@ use serde::Serialize;
 use std::cell::RefCell;
 use std::thread;
 
-use crate::colors;
+use deno_terminal::colors;
 
 /// The log level to use when printing diagnostic log messages, warnings,
 /// or errors in the worker.
@@ -60,6 +60,9 @@ pub struct BootstrapOptions {
   pub has_node_modules_dir: bool,
   pub maybe_binary_npm_command_name: Option<String>,
   pub node_ipc_fd: Option<i64>,
+  pub disable_deprecated_api_warning: bool,
+  pub verbose_deprecated_api_warning: bool,
+  pub future: bool,
 }
 
 impl Default for BootstrapOptions {
@@ -75,7 +78,7 @@ impl Default for BootstrapOptions {
       user_agent,
       cpu_count,
       no_color: !colors::use_color(),
-      is_tty: colors::is_tty(),
+      is_tty: deno_terminal::is_stdout_tty(),
       enable_op_summary_metrics: Default::default(),
       enable_testing_features: Default::default(),
       log_level: Default::default(),
@@ -88,6 +91,9 @@ impl Default for BootstrapOptions {
       has_node_modules_dir: Default::default(),
       maybe_binary_npm_command_name: None,
       node_ipc_fd: None,
+      disable_deprecated_api_warning: false,
+      verbose_deprecated_api_warning: false,
+      future: false,
     }
   }
 }
@@ -117,6 +123,12 @@ struct BootstrapV8<'a>(
   bool,
   // maybe_binary_npm_command_name
   Option<&'a str>,
+  // disable_deprecated_api_warning,
+  bool,
+  // verbose_deprecated_api_warning
+  bool,
+  // future
+  bool,
 );
 
 impl BootstrapOptions {
@@ -136,6 +148,9 @@ impl BootstrapOptions {
       self.enable_testing_features,
       self.has_node_modules_dir,
       self.maybe_binary_npm_command_name.as_deref(),
+      self.disable_deprecated_api_warning,
+      self.verbose_deprecated_api_warning,
+      self.future,
     );
 
     bootstrap.serialize(ser).unwrap()
