@@ -2375,7 +2375,7 @@ fn publish_subcommand() -> Command {
     .about("Unstable preview feature: Publish the current working directory's package or workspace")
     // TODO: .long_about()
     .defer(|cmd| {
-      compile_args(cmd)
+      cmd
       .arg(
         Arg::new("token")
           .long("token")
@@ -2394,6 +2394,7 @@ fn publish_subcommand() -> Command {
           .action(ArgAction::SetTrue),
       )
       .arg(check_arg(/* type checks by default */ true))
+      .arg(no_check_arg())
     })
 }
 
@@ -3824,7 +3825,8 @@ fn vendor_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 
 fn publish_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   flags.type_check_mode = TypeCheckMode::Local; // local by default
-  compile_args_parse(flags, matches);
+  no_check_arg_parse(flags, matches);
+  check_arg_parse(flags, matches);
 
   flags.subcommand = DenoSubcommand::Publish(PublishFlags {
     token: matches.remove_one("token"),
