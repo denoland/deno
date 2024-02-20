@@ -2375,13 +2375,12 @@ fn publish_subcommand() -> Command {
     .about("Unstable preview feature: Publish the current working directory's package or workspace")
     // TODO: .long_about()
     .defer(|cmd| {
-      cmd.arg(
+      compile_args(cmd)
+      .arg(
         Arg::new("token")
           .long("token")
           .help("The API token to use when publishing. If unset, interactive authentication is be used")
       )
-      .arg(config_arg())
-      .arg(no_config_arg())
       .arg(
         Arg::new("dry-run")
           .long("dry-run")
@@ -2394,6 +2393,7 @@ fn publish_subcommand() -> Command {
           .help("Allow publishing with slow types")
           .action(ArgAction::SetTrue),
       )
+      .arg(check_arg(/* type checks by default */ true))
     })
 }
 
@@ -3823,8 +3823,8 @@ fn vendor_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 }
 
 fn publish_parse(flags: &mut Flags, matches: &mut ArgMatches) {
-  flags.type_check_mode = TypeCheckMode::Local;
-  config_args_parse(flags, matches);
+  flags.type_check_mode = TypeCheckMode::Local; // local by default
+  compile_args_parse(flags, matches);
 
   flags.subcommand = DenoSubcommand::Publish(PublishFlags {
     token: matches.remove_one("token"),
@@ -8551,7 +8551,7 @@ mod tests {
       "publish",
       "--dry-run",
       "--allow-slow-types",
-      "--token=asdf"
+      "--token=asdf",
     ]);
     assert_eq!(
       r.unwrap(),

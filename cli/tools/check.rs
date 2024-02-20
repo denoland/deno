@@ -44,6 +44,8 @@ pub struct CheckOptions {
   /// If true, valid `.tsbuildinfo` files will be ignored and type checking
   /// will always occur.
   pub reload: bool,
+  /// Mode to type check with.
+  pub type_check_mode: TypeCheckMode,
 }
 
 pub struct TypeChecker {
@@ -97,6 +99,7 @@ impl TypeChecker {
     mut graph: ModuleGraph,
     options: CheckOptions,
   ) -> Result<(Arc<ModuleGraph>, Diagnostics), AnyError> {
+    debug_assert_ne!(options.type_check_mode, TypeCheckMode::None);
     if graph.roots.is_empty() {
       return Ok((graph.into(), Default::default()));
     }
@@ -120,8 +123,8 @@ impl TypeChecker {
       }
     }
 
+    let type_check_mode = options.type_check_mode;
     let ts_config = ts_config_result.ts_config;
-    let type_check_mode = self.cli_options.type_check_mode();
     let maybe_check_hash = match self.npm_resolver.check_state_hash() {
       Some(npm_check_hash) => {
         match get_check_hash(
@@ -300,7 +303,13 @@ fn get_check_hash(
         }
 
         hasher.write_str(module.specifier.as_str());
-        hasher.write_str(&module.source);
+        hasher.write_str(
+          // the fast check module will only be set when publishing
+          module
+            .fast_check_module()
+            .map(|s| s.source.as_ref())
+            .unwrap_or(&module.source),
+        );
       }
       Module::Node(_) => {
         // the @types/node package will be in the resolved
