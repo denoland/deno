@@ -175,6 +175,7 @@ itest!(info_import_map {
   args: "info preact/debug",
   output: "info/with_import_map/with_import_map.out",
   cwd: Some("info/with_import_map"),
+  copy_temp_dir: Some("info/with_import_map"),
   exit_code: 0,
 });
 

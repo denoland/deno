@@ -24,7 +24,7 @@ pub async fn compile(
 ) -> Result<(), AnyError> {
   let factory = CliFactory::from_flags(flags).await?;
   let cli_options = factory.cli_options();
-  let module_graph_builder = factory.module_graph_builder().await?;
+  let module_graph_creator = factory.module_graph_creator().await?;
   let parsed_source_cache = factory.parsed_source_cache();
   let binary_writer = factory.create_compile_binary_writer().await?;
   let module_specifier = cli_options.resolve_main_module()?;
@@ -56,7 +56,7 @@ pub async fn compile(
   .await?;
 
   let graph = Arc::try_unwrap(
-    module_graph_builder
+    module_graph_creator
       .create_graph_and_maybe_check(module_roots.clone())
       .await?,
   )
@@ -65,7 +65,7 @@ pub async fn compile(
     // In this case, the previous graph creation did type checking, which will
     // create a module graph with types information in it. We don't want to
     // store that in the eszip so create a code only module graph from scratch.
-    module_graph_builder
+    module_graph_creator
       .create_graph(GraphKind::CodeOnly, module_roots)
       .await?
   } else {

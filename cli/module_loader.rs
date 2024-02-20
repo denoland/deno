@@ -127,7 +127,6 @@ impl ModuleLoadPreparer {
           graph_kind: graph.graph_kind(),
           roots: roots.clone(),
           loader: Some(&mut cache),
-          workspace_fast_check: false,
         },
       )
       .await?;
@@ -157,12 +156,13 @@ impl ModuleLoadPreparer {
     if self.options.type_check_mode().is_true()
       && !self.graph_container.is_type_checked(&roots, lib)
     {
-      let graph = Arc::new(graph.segment(&roots));
+      let graph = graph.segment(&roots);
       self
         .type_checker
         .check(
           graph,
           check::CheckOptions {
+            build_fast_check_graph: true,
             lib,
             log_ignored_options: false,
             reload: self.options.reload_flag()
