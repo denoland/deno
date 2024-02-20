@@ -23,6 +23,7 @@ use deno_graph::GraphKind;
 use deno_graph::ModuleAnalyzer;
 use deno_graph::ModuleParser;
 use deno_graph::ModuleSpecifier;
+use doc::html::ShortPath;
 use doc::DocDiagnostic;
 use indexmap::IndexMap;
 use std::collections::BTreeMap;
@@ -211,9 +212,9 @@ impl deno_doc::html::HrefResolver for DocResolver {
   fn resolve_usage(
     &self,
     _current_specifier: &ModuleSpecifier,
-    current_file: Option<&str>,
+    current_file: Option<&ShortPath>,
   ) -> Option<String> {
-    current_file.map(|f| f.to_string())
+    current_file.map(|f| f.as_str().to_string())
   }
 
   fn resolve_source(&self, location: &deno_doc::Location) -> Option<String> {
