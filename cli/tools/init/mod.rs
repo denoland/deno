@@ -43,13 +43,23 @@ pub async fn init_project(init_flags: InitFlags) -> Result<(), AnyError> {
     cwd
   };
 
+  // Extract the directory name to use as the project name
+  let project_name = dir
+    .file_name()
+    .unwrap_or_else(|| dir.as_os_str())
+    .to_str()
+    .unwrap();
+
   let main_ts = include_str!("./templates/main.ts");
   create_file(&dir, "main.ts", main_ts)?;
 
   let main_test_ts = include_str!("./templates/main_test.ts")
     .replace("{CURRENT_STD_URL}", deno_std::CURRENT_STD_URL_STR);
   create_file(&dir, "main_test.ts", &main_test_ts)?;
-  create_file(&dir, "deno.json", include_str!("./templates/deno.json"))?;
+
+  let template_content = include_str!("./templates/deno.json");
+  let new_content = template_content.replace("{{name}}", project_name);
+  create_file(&dir, "deno.json", &new_content)?;
 
   info!("✅ {}", colors::green("Project initialized"));
   info!("");
