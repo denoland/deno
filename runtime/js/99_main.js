@@ -647,6 +647,7 @@ function bootstrapMainRuntime(runtimeOptions, warmup) {
     6: maybeBinaryNpmCommandName,
     7: shouldDisableDeprecatedApiWarning,
     8: shouldUseVerboseDeprecatedApiWarning,
+    9: future,
   } = runtimeOptions;
 
   removeImportedOps();
@@ -774,6 +775,10 @@ function bootstrapMainRuntime(runtimeOptions, warmup) {
     if (nodeBootstrap) {
       nodeBootstrap(hasNodeModulesDir, maybeBinaryNpmCommandName);
     }
+  }
+
+  if (future) {
+    delete globalThis.window;
   }
 }
 

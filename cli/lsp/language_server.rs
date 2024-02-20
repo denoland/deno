@@ -362,9 +362,12 @@ impl LanguageServer {
           .client
           .show_message(MessageType::WARNING, err);
       }
-      // do npm resolution in a write—we should have everything
-      // cached by this point anyway
-      self.0.write().await.refresh_npm_specifiers().await;
+      {
+        let mut inner = self.0.write().await;
+        let lockfile = inner.config.maybe_lockfile().cloned();
+        inner.documents.refresh_jsr_resolver(lockfile);
+        inner.refresh_npm_specifiers().await;
+      }
       // now refresh the data in a read
       self.0.read().await.post_cache(result.mark).await;
     }
@@ -1330,6 +1333,7 @@ impl Inner {
       maybe_import_map: self.maybe_import_map.clone(),
       maybe_config_file: self.config.maybe_config_file(),
       maybe_package_json: self.maybe_package_json.as_ref(),
+      maybe_lockfile: self.config.maybe_lockfile().cloned(),
       node_resolver: self.npm.node_resolver.clone(),
       npm_resolver: self.npm.resolver.clone(),
     });
@@ -2009,6 +2013,8 @@ impl Inner {
           Some("deno") => {
             if diagnostic.code
               == Some(NumberOrString::String("no-cache".to_string()))
+              || diagnostic.code
+                == Some(NumberOrString::String("no-cache-jsr".to_string()))
               || diagnostic.code
                 == Some(NumberOrString::String("no-cache-npm".to_string()))
             {

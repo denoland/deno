@@ -4,8 +4,8 @@ import { core, primordials } from "ext:core/mod.js";
 import {
   op_now,
   op_sleep,
+  op_sleep_interval,
   op_timer_handle,
-  op_void_async_deferred,
 } from "ext:core/ops";
 const {
   ArrayPrototypePush,
@@ -193,6 +193,7 @@ function initializeTimer(
     task,
     timeout,
     timerInfo,
+    repeat,
   );
 
   return id;
@@ -220,19 +221,13 @@ const scheduledTimers = { head: null, tail: null };
  * after the timeout, if it hasn't been cancelled.
  * @param {number} millis
  * @param {{ cancelRid: number, isRef: boolean, promise: Promise<void> }} timerInfo
+ * @param {boolean} repeat
  */
-function runAfterTimeout(task, millis, timerInfo) {
+function runAfterTimeout(task, millis, timerInfo, repeat) {
   const cancelRid = timerInfo.cancelRid;
-  let sleepPromise;
-  // If this timeout is scheduled for 0ms it means we want it to run at the
-  // end of the event loop turn. There's no point in setting up a Tokio timer,
-  // since its lowest resolution is 1ms. Firing of a "void async" op is better
-  // in this case, because the timer will take closer to 0ms instead of >1ms.
-  if (millis === 0) {
-    sleepPromise = op_void_async_deferred();
-  } else {
-    sleepPromise = op_sleep(millis, cancelRid);
-  }
+  const sleepPromise = repeat
+    ? op_sleep_interval(millis, cancelRid)
+    : op_sleep(millis, cancelRid);
   timerInfo.promise = sleepPromise;
   if (!timerInfo.isRef) {
     core.unrefOpPromise(timerInfo.promise);
@@ -395,7 +390,8 @@ function unrefTimer(id) {
 // for that reason: it lets promises make forward progress but can
 // still starve other parts of the event loop.
 function defer(go) {
-  PromisePrototypeThen(op_void_async_deferred(), () => go());
+  // If we pass a delay of zero to op_sleep, it returns at the next event spin
+  PromisePrototypeThen(op_sleep(0, 0), () => go());
 }
 
 export {
