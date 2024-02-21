@@ -53,7 +53,7 @@ pub fn create_gzipped_tarball(
     .add("!.DS_Store")?
     .build()?;
 
-  let mut iterator = WalkBuilder::new(dir)
+  let iterator = WalkBuilder::new(dir)
     .follow_links(false)
     .require_git(false)
     .git_ignore(true)
