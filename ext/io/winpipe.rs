@@ -12,6 +12,7 @@ use winapi::um::minwinbase::SECURITY_ATTRIBUTES;
 use winapi::um::winbase::CreateNamedPipeA;
 use winapi::um::winbase::FILE_FLAG_FIRST_PIPE_INSTANCE;
 use winapi::um::winbase::FILE_FLAG_OVERLAPPED;
+use winapi::um::winbase::PIPE_READMODE_BYTE;
 use winapi::um::winbase::PIPE_TYPE_BYTE;
 use winapi::um::winnt::FILE_ATTRIBUTE_NORMAL;
 use winapi::um::winnt::GENERIC_READ;
@@ -40,7 +41,8 @@ pub fn create_named_pipe() -> io::Result<(RawHandle, RawHandle)> {
         | GENERIC_WRITE
         | FILE_FLAG_OVERLAPPED
         | FILE_FLAG_FIRST_PIPE_INSTANCE,
-      PIPE_TYPE_BYTE,
+      // Read and write bytes, not messages
+      PIPE_TYPE_BYTE | PIPE_READMODE_BYTE,
       1,
       4096,
       4096,
