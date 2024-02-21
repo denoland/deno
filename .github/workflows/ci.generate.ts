@@ -704,6 +704,7 @@ const ci = {
           run: [
             "cd target/release",
             "zip -r deno-${{ matrix.arch }}-unknown-linux-gnu.zip deno",
+            "strip denort",
             "zip -r denort-${{ matrix.arch }}-unknown-linux-gnu.zip denort",
             "./deno types > lib.deno.d.ts",
           ].join("\n"),
@@ -729,6 +730,7 @@ const ci = {
             "--entitlements-xml-file=cli/entitlements.plist",
             "cd target/release",
             "zip -r deno-${{ matrix.arch }}-apple-darwin.zip deno",
+            "strip denort",
             "zip -r denort-${{ matrix.arch }}-apple-darwin.zip denort",
           ]
             .join("\n"),

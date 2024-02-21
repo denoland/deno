@@ -357,7 +357,6 @@ pub struct TestCommandBuilder {
   args_text: String,
   args_vec: Vec<String>,
   split_output: bool,
-  skip_strip_ansi: bool,
 }
 
 impl TestCommandBuilder {
@@ -369,7 +368,6 @@ impl TestCommandBuilder {
       stderr: None,
       stdin_text: None,
       split_output: false,
-      skip_strip_ansi: false,
       cwd: None,
       envs: Default::default(),
       envs_remove: Default::default(),
@@ -450,11 +448,6 @@ impl TestCommandBuilder {
     self
       .envs_remove
       .insert(key.as_ref().to_string_lossy().to_string());
-    self
-  }
-
-  pub fn skip_strip_ansi(mut self) -> Self {
-    self.skip_strip_ansi = true;
     self
   }
 
@@ -581,14 +574,8 @@ impl TestCommandBuilder {
       output
     }
 
-    fn sanitize_output(
-      mut text: String,
-      args: &[OsString],
-      skip_strip_ansi: bool,
-    ) -> String {
-      if !skip_strip_ansi {
-        text = strip_ansi_codes(&text).to_string();
-      }
+    fn sanitize_output(text: String, args: &[OsString]) -> String {
+      let mut text = strip_ansi_codes(&text).to_string();
       // deno test's output capturing flushes with a zero-width space in order to
       // synchronize the output pipes. Occasionally this zero width space
       // might end up in the output so strip it from the output comparison here.
@@ -635,15 +622,14 @@ impl TestCommandBuilder {
     // and dropping it closes them.
     drop(command);
 
-    let combined = combined_reader.map(|pipe| {
-      sanitize_output(read_pipe_to_string(pipe), &args, self.skip_strip_ansi)
-    });
+    let combined = combined_reader
+      .map(|pipe| sanitize_output(read_pipe_to_string(pipe), &args));
 
     let status = process.wait().unwrap();
     let std_out_err = std_out_err_handle.map(|(stdout, stderr)| {
       (
-        sanitize_output(stdout.join().unwrap(), &args, self.skip_strip_ansi),
-        sanitize_output(stderr.join().unwrap(), &args, self.skip_strip_ansi),
+        sanitize_output(stdout.join().unwrap(), &args),
+        sanitize_output(stderr.join().unwrap(), &args),
       )
     });
     let exit_code = status.code();

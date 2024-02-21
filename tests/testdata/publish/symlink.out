@@ -1,3 +1,4 @@
+Check [WILDCARD]mod.ts
 Checking for slow types in the public API...
 Check [WILDCARD]mod.ts
 warning[unsupported-file-type]: unsupported file type 'symlink'
