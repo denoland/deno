@@ -59,6 +59,15 @@ pub struct ApiError {
   pub x_deno_ray: Option<String>,
 }
 
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Package {
+  pub scope: String,
+  pub name: String,
+  pub description: String,
+  pub latest_version: Option<String>,
+}
+
 impl std::fmt::Display for ApiError {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     write!(f, "{} ({})", self.message, self.code)?;

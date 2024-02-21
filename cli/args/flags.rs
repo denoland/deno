@@ -765,9 +765,9 @@ impl Flags {
       | Test(_) | Bench(_) | Repl(_) | Compile(_) => {
         std::env::current_dir().ok()
       }
-      Bundle(_) | Completions(_) | Doc(_) | Fmt(_) | Init(_) | Install(_)
-      | Uninstall(_) | Jupyter(_) | Lsp | Lint(_) | Types | Upgrade(_)
-      | Vendor(_) | Publish(_) => None,
+      Add(_) | Bundle(_) | Completions(_) | Doc(_) | Fmt(_) | Init(_)
+      | Install(_) | Uninstall(_) | Jupyter(_) | Lsp | Lint(_) | Types
+      | Upgrade(_) | Vendor(_) | Publish(_) => None,
     }
   }
 

@@ -7,6 +7,7 @@ use std::sync::Arc;
 
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
+use deno_ast::TextChange;
 use deno_config::ConfigFile;
 use deno_config::WorkspaceMemberConfig;
 use deno_core::anyhow::bail;
@@ -855,7 +856,124 @@ pub async fn publish(
   .await
 }
 
+async fn find_packages_latest_version(
+  client: &reqwest::Client,
+  registry_api_url: &str,
+  package_name: &str,
+) -> Result<Option<String>, AnyError> {
+  let Some(name_no_at) = package_name.strip_prefix('@') else {
+    bail!("Invalid package name, use '@<scope_name>/<package_name> format");
+  };
+  let Some((scope, name_no_scope)) = name_no_at.split_once('/') else {
+    bail!("Invalid package name, use '@<scope_name>/<package_name> format");
+  };
+
+  let response =
+    api::get_package(client, registry_api_url, scope, name_no_scope).await?;
+  let package = api::parse_response::<api::Package>(response).await?;
+  Ok(package.latest_version)
+}
+
 pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
-  eprintln!("trying to add packages {:?}", add_flags.packages);
+  let cli_factory = CliFactory::from_flags(flags).await?;
+  let cli_options = cli_factory.cli_options();
+
+  let Some(config_file) = cli_options.maybe_config_file() else {
+    bail!("No config file available");
+  };
+  if config_file.specifier.scheme() != "file" {
+    bail!("Can't add dependencies to a remote configuration file");
+  }
+  let config_file_path = config_file.specifier.to_file_path().unwrap();
+
+  // https://jsr.io/api/scopes/david/packages
+
+  let http_client = cli_factory.http_client();
+  let client = http_client.client()?;
+  let registry_api_url = jsr_api_url().to_string();
+
+  let mut packages_to_version = vec![];
+  for package in add_flags.packages {
+    let last_version =
+      find_packages_latest_version(client, &registry_api_url, &package).await?;
+    eprintln!("Last version for {} is {:?}", package, last_version);
+    let Some(last_version) = last_version else {
+      bail!("{} has no published version", package);
+    };
+    packages_to_version.push((package, last_version));
+  }
+
+  let config_file_contents =
+    tokio::fs::read_to_string(&config_file_path).await.unwrap();
+  let ast = jsonc_parser::parse_to_ast(
+    &config_file_contents,
+    &Default::default(),
+    &Default::default(),
+  )?;
+  use jsonc_parser::ast::ObjectProp;
+  use jsonc_parser::ast::Value;
+  let obj = match ast.value {
+    Some(Value::Object(obj)) => obj,
+    _ => bail!("Failed updating config file due to no object."),
+  };
+  let mut text_changes = vec![];
+
+  fn generate_imports(packages_to_version: Vec<(String, String)>) -> String {
+    let mut contents = vec![];
+    let len = packages_to_version.len();
+    for (index, (package, version)) in packages_to_version.iter().enumerate() {
+      contents
+        .push(format!("\"{}\": \"jsr:{}@{}\"", package, package, version));
+      if index != len - 1 {
+        contents.push(",".to_string());
+      }
+    }
+    contents.join("\n")
+  }
+
+  match obj.get("imports") {
+    Some(ObjectProp {
+      value: Value::Object(lit),
+      ..
+    }) => text_changes.push(TextChange {
+      range: (lit.range.end - 1)..(lit.range.end - 1),
+      new_text: generate_imports(packages_to_version),
+    }),
+    None => {
+      let insert_position = obj.range.end - 1;
+      text_changes.push(TextChange {
+        range: insert_position..insert_position,
+        new_text: format!(
+          "\"imports\": {{ {} }}",
+          generate_imports(packages_to_version)
+        ),
+      })
+    }
+    // shouldn't happen
+    Some(_) => {
+      bail!("Failed updating imports in config file due to invalid type.")
+    }
+  }
+
+  let fmt_config_options = config_file
+    .to_fmt_config()
+    .ok()
+    .flatten()
+    .map(|config| config.options)
+    .unwrap_or_default();
+  let new_text =
+    deno_ast::apply_text_changes(&config_file_contents, text_changes);
+  use std::path::PathBuf;
+  let new_text = crate::tools::fmt::format_json(
+    &PathBuf::from("deno.json"),
+    &new_text,
+    &fmt_config_options,
+  )
+  .ok()
+  .map(|formatted_text| formatted_text.unwrap_or_else(|| new_text.clone()))
+  .unwrap_or(new_text);
+  tokio::fs::write(&config_file_path, new_text).await.unwrap();
+
+  // eprintln!("trying to add packages {:?}", add_flags.packages);
   Ok(())
 }
