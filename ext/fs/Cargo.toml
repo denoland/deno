@@ -18,6 +18,7 @@ sync_fs = []
 
 [dependencies]
 async-trait.workspace = true
+base32.workspace = true
 deno_core.workspace = true
 deno_io.workspace = true
 filetime.workspace = true
