@@ -1194,10 +1194,10 @@ fn standalone_config_file_respects_compiler_options() {
       "compile",
       "--allow-read",
       "--config",
-      "compile/standalone_compiler_options.json",
+      "compile/compiler_options/deno.json",
       "--output",
       &exe.to_string_lossy(),
-      "./compile/standalone_compiler_options.ts",
+      "./compile/compiler_options/main.ts",
     ])
     .run()
     .skip_output_check()
