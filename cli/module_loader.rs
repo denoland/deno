@@ -167,6 +167,7 @@ impl ModuleLoadPreparer {
             log_ignored_options: false,
             reload: self.options.reload_flag()
               && !roots.iter().all(|r| reload_exclusions.contains(r)),
+            type_check_mode: self.options.type_check_mode(),
           },
         )
         .await?;
