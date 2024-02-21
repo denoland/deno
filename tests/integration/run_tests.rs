@@ -1054,7 +1054,7 @@ fn lock_deno_json_package_json_deps() {
       },
       "jsr": {
         "@denotest/module_graph@1.4.0": {
-          "integrity": "555bbe259f55a4a2e7a39e8bf4bcbf25da4c874a313c3e98771eddceedac050b"
+          "integrity": "32de0973c5fa55772326fcd504a757f386d2b010db3e13e78f3bcf851e69473d"
         }
       },
       "npm": {
@@ -1106,7 +1106,7 @@ fn lock_deno_json_package_json_deps() {
       },
       "jsr": {
         "@denotest/module_graph@1.4.0": {
-          "integrity": "555bbe259f55a4a2e7a39e8bf4bcbf25da4c874a313c3e98771eddceedac050b"
+          "integrity": "32de0973c5fa55772326fcd504a757f386d2b010db3e13e78f3bcf851e69473d"
         }
       },
       "npm": {
@@ -1146,7 +1146,7 @@ fn lock_deno_json_package_json_deps() {
       },
       "jsr": {
         "@denotest/module_graph@1.4.0": {
-          "integrity": "555bbe259f55a4a2e7a39e8bf4bcbf25da4c874a313c3e98771eddceedac050b"
+          "integrity": "32de0973c5fa55772326fcd504a757f386d2b010db3e13e78f3bcf851e69473d"
         }
       }
     },
