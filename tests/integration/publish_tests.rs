@@ -155,6 +155,15 @@ itest!(successful {
   http_server: true,
 });
 
+itest!(no_check {
+  args: "publish --token 'sadfasdf' --no-check",
+  // still type checks the slow types output though
+  output: "publish/successful_no_check.out",
+  cwd: Some("publish/successful"),
+  envs: env_vars_for_jsr_tests(),
+  http_server: true,
+});
+
 itest!(node_specifier {
   args: "publish --token 'sadfasdf'",
   output: "publish/node_specifier.out",
