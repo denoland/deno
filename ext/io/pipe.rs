@@ -20,7 +20,7 @@ pub struct AsyncPipeWrite {
   #[cfg(windows)]
   write: tokio::process::ChildStdin,
   #[cfg(not(windows))]
-  write: tokio::net::unix::pipe::Sender
+  write: tokio::net::unix::pipe::Sender,
 }
 
 impl PipeRead {
@@ -28,11 +28,15 @@ impl PipeRead {
   pub fn into_async(self) -> AsyncPipeRead {
     let owned: std::os::windows::io::OwnedHandle = self.file.into();
     let stdout = std::process::ChildStdout::from(owned);
-    AsyncPipeRead { read: tokio::process::ChildStdout::from_std(stdout).unwrap() }
+    AsyncPipeRead {
+      read: tokio::process::ChildStdout::from_std(stdout).unwrap(),
+    }
   }
   #[cfg(not(windows))]
   pub fn into_async(self) -> AsyncPipeRead {
-    AsyncPipeRead { read: tokio::net::unix::pipe::Receiver::from_file(self.file).unwrap() }
+    AsyncPipeRead {
+      read: tokio::net::unix::pipe::Receiver::from_file(self.file).unwrap(),
+    }
   }
 }
 
@@ -54,17 +58,20 @@ impl std::io::Read for PipeRead {
     self.file.read(buf)
   }
 
-  fn read_vectored(&mut self, bufs: &mut [io::IoSliceMut<'_>]) -> io::Result<usize> {
+  fn read_vectored(
+    &mut self,
+    bufs: &mut [io::IoSliceMut<'_>],
+  ) -> io::Result<usize> {
     self.file.read_vectored(bufs)
-  }  
+  }
 }
 
 impl tokio::io::AsyncRead for AsyncPipeRead {
   fn poll_read(
-          self: Pin<&mut Self>,
-          cx: &mut std::task::Context<'_>,
-          buf: &mut tokio::io::ReadBuf<'_>,
-      ) -> std::task::Poll<io::Result<()>> {
+    self: Pin<&mut Self>,
+    cx: &mut std::task::Context<'_>,
+    buf: &mut tokio::io::ReadBuf<'_>,
+  ) -> std::task::Poll<io::Result<()>> {
     Pin::new(&mut self.get_mut().read).poll_read(cx, buf)
   }
 }
@@ -74,11 +81,15 @@ impl PipeWrite {
   pub fn into_async(self) -> AsyncPipeWrite {
     let owned: std::os::windows::io::OwnedHandle = self.file.into();
     let stdin = std::process::ChildStdin::from(owned);
-    AsyncPipeWrite { write: tokio::process::ChildStdin::from_std(stdin).unwrap() }
+    AsyncPipeWrite {
+      write: tokio::process::ChildStdin::from_std(stdin).unwrap(),
+    }
   }
   #[cfg(not(windows))]
   pub fn into_async(self) -> AsyncPipeWrite {
-    AsyncPipeWrite { write: tokio::net::unix::pipe::Sender::from_file(self.file).unwrap() }
+    AsyncPipeWrite {
+      write: tokio::net::unix::pipe::Sender::from_file(self.file).unwrap(),
+    }
   }
 }
 
@@ -112,20 +123,26 @@ impl std::io::Write for PipeWrite {
 impl tokio::io::AsyncWrite for AsyncPipeWrite {
   #[inline(always)]
   fn poll_write(
-          self: std::pin::Pin<&mut Self>,
-          cx: &mut std::task::Context<'_>,
-          buf: &[u8],
-      ) -> std::task::Poll<Result<usize, io::Error>> {
-        Pin::new(&mut self.get_mut().write).poll_write(cx, buf)
+    self: std::pin::Pin<&mut Self>,
+    cx: &mut std::task::Context<'_>,
+    buf: &[u8],
+  ) -> std::task::Poll<Result<usize, io::Error>> {
+    Pin::new(&mut self.get_mut().write).poll_write(cx, buf)
   }
 
   #[inline(always)]
-  fn poll_flush(self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<Result<(), io::Error>> {
+  fn poll_flush(
+    self: Pin<&mut Self>,
+    cx: &mut std::task::Context<'_>,
+  ) -> std::task::Poll<Result<(), io::Error>> {
     Pin::new(&mut self.get_mut().write).poll_flush(cx)
   }
 
   #[inline(always)]
-  fn poll_shutdown(self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<Result<(), io::Error>> {
+  fn poll_shutdown(
+    self: Pin<&mut Self>,
+    cx: &mut std::task::Context<'_>,
+  ) -> std::task::Poll<Result<(), io::Error>> {
     Pin::new(&mut self.get_mut().write).poll_shutdown(cx)
   }
 
@@ -136,10 +153,10 @@ impl tokio::io::AsyncWrite for AsyncPipeWrite {
 
   #[inline(always)]
   fn poll_write_vectored(
-          self: Pin<&mut Self>,
-          cx: &mut std::task::Context<'_>,
-          bufs: &[io::IoSlice<'_>],
-      ) -> std::task::Poll<Result<usize, io::Error>> {
+    self: Pin<&mut Self>,
+    cx: &mut std::task::Context<'_>,
+    bufs: &[io::IoSlice<'_>],
+  ) -> std::task::Poll<Result<usize, io::Error>> {
     Pin::new(&mut self.get_mut().write).poll_write_vectored(cx, bufs)
   }
 }
@@ -155,8 +172,8 @@ pub fn pipe() -> io::Result<(PipeRead, PipeWrite)> {
 pub fn pipe_impl() -> io::Result<(PipeRead, PipeWrite)> {
   // SAFETY: We're careful with handles here
   unsafe {
-    use std::os::windows::io::OwnedHandle;
     use std::os::windows::io::FromRawHandle;
+    use std::os::windows::io::OwnedHandle;
     let (server, client) = crate::winpipe::create_named_pipe()?;
     let read = std::fs::File::from(OwnedHandle::from_raw_handle(client));
     let write = std::fs::File::from(OwnedHandle::from_raw_handle(server));
@@ -178,11 +195,11 @@ pub fn pipe_impl() -> io::Result<(PipeRead, PipeWrite)> {
 mod tests {
   use super::*;
 
-  use tokio::io::AsyncReadExt;
-  use tokio::io::AsyncWriteExt;
   use std::io::Read;
   use std::io::Write;
-  
+  use tokio::io::AsyncReadExt;
+  use tokio::io::AsyncWriteExt;
+
   #[test]
   fn test_pipe() {
     let (mut read, mut write) = pipe().unwrap();
@@ -244,7 +261,7 @@ mod tests {
     let a = tokio::spawn(async move {
       let mut buf: [u8; 5] = Default::default();
       read.read_exact(&mut buf).await.unwrap();
-      assert_eq!(&buf, b"hello");  
+      assert_eq!(&buf, b"hello");
     });
     let b = tokio::spawn(async move {
       write.write_all(b"hello").await.unwrap();
