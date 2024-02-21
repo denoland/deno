@@ -20,6 +20,7 @@ use super::urls::LspClientUrl;
 use super::urls::LspUrlMap;
 use super::urls::INVALID_SPECIFIER;
 
+use crate::args::jsr_url;
 use crate::args::FmtOptionsConfig;
 use crate::args::TsConfig;
 use crate::cache::HttpCache;
@@ -3228,7 +3229,7 @@ impl CompletionInfo {
     let items = self
       .entries
       .iter()
-      .map(|entry| {
+      .flat_map(|entry| {
         entry.as_completion_item(
           line_index.clone(),
           self,
@@ -3405,7 +3406,7 @@ impl CompletionEntry {
     specifier: &ModuleSpecifier,
     position: u32,
     language_server: &language_server::Inner,
-  ) -> lsp::CompletionItem {
+  ) -> Option<lsp::CompletionItem> {
     let mut label = self.name.clone();
     let mut label_details: Option<lsp::CompletionItemLabelDetails> = None;
     let mut kind: Option<lsp::CompletionItemKind> =
@@ -3481,6 +3482,8 @@ impl CompletionEntry {
                 specifier_rewrite =
                   Some((import_data.module_specifier, new_module_specifier));
               }
+            } else if source.starts_with(jsr_url().as_str()) {
+              return None;
             }
           }
         }
@@ -3520,7 +3523,7 @@ impl CompletionEntry {
       use_code_snippet,
     };
 
-    lsp::CompletionItem {
+    Some(lsp::CompletionItem {
       label,
       label_details,
       kind,
@@ -3535,7 +3538,7 @@ impl CompletionEntry {
       commit_characters,
       data: Some(json!({ "tsc": tsc })),
       ..Default::default()
-    }
+    })
   }
 }
 

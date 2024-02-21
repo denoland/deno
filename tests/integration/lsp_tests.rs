@@ -4832,6 +4832,154 @@ fn lsp_jsr_lockfile() {
 }
 
 #[test]
+fn lsp_jsr_auto_import_completion() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "main.ts",
+    r#"
+      import "jsr:@denotest/add@1";
+    "#,
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.write_request(
+    "workspace/executeCommand",
+    json!({
+      "command": "deno.cache",
+      "arguments": [
+        [],
+        temp_dir.uri().join("main.ts").unwrap(),
+      ],
+    }),
+  );
+  client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"add"#,
+    }
+  }));
+  let list = client.get_completion_list(
+    temp_dir.uri().join("file.ts").unwrap(),
+    (0, 3),
+    json!({ "triggerKind": 1 }),
+  );
+  assert!(!list.is_incomplete);
+  assert_eq!(list.items.len(), 261);
+  let item = list.items.iter().find(|i| i.label == "add").unwrap();
+  assert_eq!(&item.label, "add");
+  assert_eq!(
+    json!(&item.label_details),
+    json!({ "description": "jsr:@denotest/add@1" })
+  );
+
+  let res = client.write_request("completionItem/resolve", json!(item));
+  assert_eq!(
+    res,
+    json!({
+      "label": "add",
+      "labelDetails": { "description": "jsr:@denotest/add@1" },
+      "kind": 3,
+      "detail": "function add(a: number, b: number): number",
+      "documentation": { "kind": "markdown", "value": "" },
+      "sortText": "\u{ffff}16_1",
+      "additionalTextEdits": [
+        {
+          "range": {
+            "start": { "line": 0, "character": 0 },
+            "end": { "line": 0, "character": 0 },
+          },
+          "newText": "import { add } from \"jsr:@denotest/add@1\";\n\n",
+        },
+      ],
+    })
+  );
+  client.shutdown();
+}
+
+#[test]
+fn lsp_jsr_auto_import_completion_import_map() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "imports": {
+        "add": "jsr:@denotest/add@^1.0",
+      },
+    })
+    .to_string(),
+  );
+  temp_dir.write(
+    "main.ts",
+    r#"
+      import "jsr:@denotest/add@1";
+    "#,
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.write_request(
+    "workspace/executeCommand",
+    json!({
+      "command": "deno.cache",
+      "arguments": [
+        [],
+        temp_dir.uri().join("main.ts").unwrap(),
+      ],
+    }),
+  );
+  client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"add"#,
+    }
+  }));
+  let list = client.get_completion_list(
+    temp_dir.uri().join("file.ts").unwrap(),
+    (0, 3),
+    json!({ "triggerKind": 1 }),
+  );
+  assert!(!list.is_incomplete);
+  assert_eq!(list.items.len(), 261);
+  let item = list.items.iter().find(|i| i.label == "add").unwrap();
+  assert_eq!(&item.label, "add");
+  assert_eq!(json!(&item.label_details), json!({ "description": "add" }));
+
+  let res = client.write_request("completionItem/resolve", json!(item));
+  assert_eq!(
+    res,
+    json!({
+      "label": "add",
+      "labelDetails": { "description": "add" },
+      "kind": 3,
+      "detail": "function add(a: number, b: number): number",
+      "documentation": { "kind": "markdown", "value": "" },
+      "sortText": "\u{ffff}16_0",
+      "additionalTextEdits": [
+        {
+          "range": {
+            "start": { "line": 0, "character": 0 },
+            "end": { "line": 0, "character": 0 },
+          },
+          "newText": "import { add } from \"add\";\n\n",
+        },
+      ],
+    })
+  );
+  client.shutdown();
+}
+
+#[test]
 fn lsp_code_actions_deno_cache_npm() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();

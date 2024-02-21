@@ -105,6 +105,37 @@ impl JsrResolver {
       .join(&format!("{}/{}/{}", &nv.name, &nv.version, &path))
       .ok()
   }
+
+  pub fn lookup_export_for_path(
+    &self,
+    nv: &PackageNv,
+    path: &str,
+  ) -> Option<String> {
+    let maybe_info = self
+      .info_by_nv
+      .entry(nv.clone())
+      .or_insert_with(|| read_cached_package_version_info(nv, &self.cache));
+    let info = maybe_info.as_ref()?;
+    let path = path.strip_prefix("./").unwrap_or(path);
+    for (export, path_) in info.exports() {
+      if path_.strip_prefix("./").unwrap_or(path_) == path {
+        return Some(export.strip_prefix("./").unwrap_or(export).to_string());
+      }
+    }
+    None
+  }
+
+  pub fn lookup_req_for_nv(&self, nv: &PackageNv) -> Option<PackageReq> {
+    for entry in self.nv_by_req.iter() {
+      let Some(nv_) = entry.value() else {
+        continue;
+      };
+      if nv_ == nv {
+        return Some(entry.key().clone());
+      }
+    }
+    None
+  }
 }
 
 fn read_cached_package_info(
