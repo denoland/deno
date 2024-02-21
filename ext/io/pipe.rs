@@ -2,23 +2,33 @@
 use std::io;
 use std::pin::Pin;
 
+// The synchronous read end of a unidirectional pipe.
 pub struct PipeRead {
   file: std::fs::File,
 }
 
+// The asynchronous read end of a unidirectional pipe.
 pub struct AsyncPipeRead {
   #[cfg(windows)]
+  /// We use a `ChildStdout` here as it's a much better fit for a Windows named pipe on Windows. We
+  /// might also be able to use `tokio::net::windows::named_pipe::NamedPipeClient` in the future
+  /// if those can be created from raw handles down the road.
   read: tokio::process::ChildStdout,
   #[cfg(not(windows))]
   read: tokio::net::unix::pipe::Receiver,
 }
 
+// The synchronous write end of a unidirectional pipe.
 pub struct PipeWrite {
   file: std::fs::File,
 }
 
+// The asynchronous write end of a unidirectional pipe.
 pub struct AsyncPipeWrite {
   #[cfg(windows)]
+  /// We use a `ChildStdin` here as it's a much better fit for a Windows named pipe on Windows. We
+  /// might also be able to use `tokio::net::windows::named_pipe::NamedPipeClient` in the future
+  /// if those can be created from raw handles down the road.
   write: tokio::process::ChildStdin,
   #[cfg(not(windows))]
   write: tokio::net::unix::pipe::Sender,
