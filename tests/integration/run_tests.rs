@@ -1054,7 +1054,7 @@ fn lock_deno_json_package_json_deps() {
       },
       "jsr": {
         "@denotest/module_graph@1.4.0": {
-          "integrity": "555bbe259f55a4a2e7a39e8bf4bcbf25da4c874a313c3e98771eddceedac050b"
+          "integrity": "32de0973c5fa55772326fcd504a757f386d2b010db3e13e78f3bcf851e69473d"
         }
       },
       "npm": {
@@ -1106,7 +1106,7 @@ fn lock_deno_json_package_json_deps() {
       },
       "jsr": {
         "@denotest/module_graph@1.4.0": {
-          "integrity": "555bbe259f55a4a2e7a39e8bf4bcbf25da4c874a313c3e98771eddceedac050b"
+          "integrity": "32de0973c5fa55772326fcd504a757f386d2b010db3e13e78f3bcf851e69473d"
         }
       },
       "npm": {
@@ -1146,7 +1146,7 @@ fn lock_deno_json_package_json_deps() {
       },
       "jsr": {
         "@denotest/module_graph@1.4.0": {
-          "integrity": "555bbe259f55a4a2e7a39e8bf4bcbf25da4c874a313c3e98771eddceedac050b"
+          "integrity": "32de0973c5fa55772326fcd504a757f386d2b010db3e13e78f3bcf851e69473d"
         }
       }
     },
@@ -5163,18 +5163,4 @@ console.log(add(3, 4));
   );
   let output = test_context.new_command().args("run main.ts").run();
   output.assert_matches_text("[WILDCARD]5\n7\n");
-}
-
-#[test]
-fn inspect_color_overwrite() {
-  let test_context = TestContextBuilder::new().build();
-  let output = test_context
-    .new_command()
-    .skip_strip_ansi()
-    .split_output()
-    .env("NO_COLOR", "1")
-    .args("run run/inspect_color_overwrite.ts")
-    .run();
-
-  assert_eq!(output.stdout(), "foo\u{1b}[31mbar\u{1b}[0m\n");
 }

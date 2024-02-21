@@ -51,7 +51,6 @@ use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
 use indexmap::IndexMap;
-use lsp::Url;
 use once_cell::sync::Lazy;
 use package_json::PackageJsonDepsProvider;
 use std::borrow::Cow;
@@ -1333,6 +1332,10 @@ impl Documents {
     Ok(())
   }
 
+  pub fn get_jsr_resolver(&self) -> &Arc<JsrResolver> {
+    &self.jsr_resolver
+  }
+
   pub fn refresh_jsr_resolver(
     &mut self,
     lockfile: Option<Arc<Mutex<Lockfile>>>,
@@ -1817,10 +1820,6 @@ impl<'a> OpenDocumentsGraphLoader<'a> {
 }
 
 impl<'a> deno_graph::source::Loader for OpenDocumentsGraphLoader<'a> {
-  fn registry_url(&self) -> &Url {
-    self.inner_loader.registry_url()
-  }
-
   fn load(
     &mut self,
     specifier: &ModuleSpecifier,

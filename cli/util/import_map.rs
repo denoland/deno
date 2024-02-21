@@ -142,12 +142,14 @@ impl<'a> ImportMapUnfurler<'a> {
           );
 
           if !success {
-            let start_pos =
-              parsed_source.text_info().line_start(dep.range.start.line)
-                + dep.range.start.character;
-            let end_pos =
-              parsed_source.text_info().line_start(dep.range.end.line)
-                + dep.range.end.character;
+            let start_pos = parsed_source
+              .text_info()
+              .line_start(dep.argument_range.start.line)
+              + dep.argument_range.start.character;
+            let end_pos = parsed_source
+              .text_info()
+              .line_start(dep.argument_range.end.line)
+              + dep.argument_range.end.character;
             diagnostic_reporter(
               ImportMapUnfurlDiagnostic::UnanalyzableDynamicImport {
                 specifier: url.to_owned(),

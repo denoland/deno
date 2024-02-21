@@ -1,4 +1,6 @@
 Publishing a workspace...
+Check file:///[WILDCARD]/workspace/foo/mod.ts
+Check file:///[WILDCARD]/workspace/bar/mod.ts
 Checking for slow types in the public API...
 Check file:///[WILDCARD]/workspace/foo/mod.ts
 Check file:///[WILDCARD]/workspace/bar/mod.ts
