@@ -1,3 +1,4 @@
+// deno-lint-ignore-file
 function a() {
   console.log("@A evaluated");
   return function (
