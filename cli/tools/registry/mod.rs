@@ -873,6 +873,9 @@ async fn find_packages_latest_version(
 
   let response =
     api::get_package(client, registry_api_url, scope, name_no_scope).await?;
+  if response.status() == 404 {
+    return Ok(None);
+  }
   let package = api::parse_response::<api::Package>(response).await?;
   Ok(package.latest_version)
 }
@@ -896,14 +899,21 @@ pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
   let registry_api_url = jsr_api_url().to_string();
 
   let mut packages_to_version = vec![];
+  // TODO: parallelize
   for package in add_flags.packages {
     let last_version =
       find_packages_latest_version(client, &registry_api_url, &package).await?;
-    eprintln!("Last version for {} is {:?}", package, last_version);
-    let Some(last_version) = last_version else {
-      bail!("{} has no published version", package);
-    };
-    packages_to_version.push((package, last_version));
+    if let Some(last_version) = last_version {
+      packages_to_version.push((package, last_version));
+    } else {
+      eprintln!(
+        "{}",
+        crate::colors::yellow(format!(
+          "{} has no published version, skipping...",
+          package
+        )),
+      );
+    }
   }
 
   let config_file_contents =
@@ -934,28 +944,46 @@ pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
     contents.join("\n")
   }
 
+  let mut existing_imports =
+    if let Some(imports) = config_file.json.imports.clone() {
+      match serde_json::from_value::<HashMap<String, String>>(imports) {
+        Ok(i) => i,
+        Err(_) => bail!("Malformed \"imports\" configuration"),
+      }
+    } else {
+      HashMap::default()
+    };
+
+  for (package, version) in packages_to_version {
+    eprintln!(
+      "{}",
+      crate::colors::green(format!("Added {} - {}", package, version))
+    );
+    existing_imports.insert(package, version);
+  }
+  let mut import_list: Vec<(String, String)> =
+    existing_imports.into_iter().collect();
+
+  import_list.sort_by(|(k1, _), (k2, _)| k1.cmp(k2));
+  let generated_imports = generate_imports(import_list);
+
   match obj.get("imports") {
     Some(ObjectProp {
       value: Value::Object(lit),
       ..
     }) => text_changes.push(TextChange {
-      range: (lit.range.end - 1)..(lit.range.end - 1),
-      new_text: generate_imports(packages_to_version),
+      range: (lit.range.start + 1)..(lit.range.end - 1),
+      new_text: generated_imports,
     }),
     None => {
       let insert_position = obj.range.end - 1;
       text_changes.push(TextChange {
         range: insert_position..insert_position,
-        new_text: format!(
-          "\"imports\": {{ {} }}",
-          generate_imports(packages_to_version)
-        ),
+        new_text: format!("\"imports\": {{ {} }}", generated_imports),
       })
     }
-    // shouldn't happen
-    Some(_) => {
-      bail!("Failed updating imports in config file due to invalid type.")
-    }
+    // we verified the shape of `imports` above
+    Some(_) => unreachable!(),
   }
 
   let fmt_config_options = config_file
