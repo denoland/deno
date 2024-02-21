@@ -137,40 +137,31 @@ Deno.test("[node/http2 server]", { sanitizeOps: false }, async () => {
   await new Promise((resolve) => server.close(resolve));
 });
 
-Deno.test(
-  "[node/http2 client GET https://google.com]",
-  {
-    // TODO(satyarohith): re-enable sanitizers after fixing the leaks
-    // 2 async operations to resolve a DNS name were started in this test, but never completed.
-    // This is often caused by not awaiting the result of a `Deno.resolveDns` call
-    sanitizeOps: false,
-  },
-  async () => {
-    const clientSession = http2.connect("https://google.com");
-    const req = clientSession.request({
-      ":method": "GET",
-      ":path": "/",
-    });
-    let headers = {};
-    let status: number | undefined = 0;
-    let chunk = new Uint8Array();
-    const endPromise = Promise.withResolvers<void>();
-    req.on("response", (h) => {
-      status = h[":status"];
-      headers = h;
-    });
-    req.on("data", (c) => {
-      chunk = c;
-    });
-    req.on("end", () => {
-      clientSession.close();
-      req.close();
-      endPromise.resolve();
-    });
-    req.end();
-    await endPromise.promise;
-    assert(Object.keys(headers).length > 0);
-    assertEquals(status, 200);
-    assert(chunk.length > 0);
-  },
-);
+Deno.test("[node/http2 client GET https://www.example.com]", async () => {
+  const clientSession = http2.connect("https://www.example.com");
+  const req = clientSession.request({
+    ":method": "GET",
+    ":path": "/",
+  });
+  let headers = {};
+  let status: number | undefined = 0;
+  let chunk = new Uint8Array();
+  const endPromise = Promise.withResolvers<void>();
+  req.on("response", (h) => {
+    status = h[":status"];
+    headers = h;
+  });
+  req.on("data", (c) => {
+    chunk = c;
+  });
+  req.on("end", () => {
+    clientSession.close();
+    req.close();
+    endPromise.resolve();
+  });
+  req.end();
+  await endPromise.promise;
+  assert(Object.keys(headers).length > 0);
+  assertEquals(status, 200);
+  assert(chunk.length > 0);
+});
