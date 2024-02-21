@@ -2,10 +2,10 @@ Check file://[WILDCARD]/mod.ts
 Checking for slow types in the public API...
 Check file://[WILDCARD]/mod.ts
 warning[unanalyzable-dynamic-import]: unable to analyze dynamic import
- --> [WILDCARD]mod.ts:2:7
+ --> [WILDCARD]mod.ts:2:14
   | 
 2 | await import("asd " + asd);
-  |       ^^^^^^^^^^^^^^^^^^^^ the unanalyzable dynamic import
+  |              ^^^^^^^^^^^^ the unanalyzable dynamic import
 
   info: after publishing this package, imports from the local import map do not work
   info: dynamic imports that can not be analyzed at publish time will not be rewritten automatically

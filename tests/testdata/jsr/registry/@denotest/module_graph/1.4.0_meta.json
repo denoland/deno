@@ -8,7 +8,6 @@
       "dependencies": [{
         "kind": "import",
         "type": "static",
-        "range": [[0, 0], [0, 35]],
         "specifier": "./other.ts",
         "specifierRange": [[0, 22], [0, 34]]
       }]
