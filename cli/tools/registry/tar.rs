@@ -10,7 +10,6 @@ use ignore::overrides::OverrideBuilder;
 use ignore::WalkBuilder;
 use sha2::Digest;
 use std::collections::HashSet;
-use std::ffi::OsStr;
 use std::fmt::Write as FmtWrite;
 use std::io::Write;
 use std::path::Path;
@@ -68,8 +67,7 @@ pub fn create_gzipped_tarball(
         .unwrap_or(true);
       matches_pattern
     })
-    .build()
-    .into_iter();
+    .build();
 
   while let Some(entry) = iterator.next() {
     let entry = entry?;
