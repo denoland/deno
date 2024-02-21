@@ -66,17 +66,17 @@ deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "proposa
 deno_cache_dir = { workspace = true }
 deno_config = "=0.10.0"
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
-deno_doc = { version = "=0.110.0", features = ["html"] }
-deno_emit = "=0.38.0"
-deno_graph = "=0.68.1"
-deno_lint = { version = "=0.57.0", features = ["docs"] }
+deno_doc = { version = "=0.110.1", features = ["html"] }
+deno_emit = "=0.38.1"
+deno_graph = { version = "=0.69.0", features = ["tokio_executor"] }
+deno_lint = { version = "=0.57.1", features = ["docs"] }
 deno_lockfile.workspace = true
 deno_npm = "=0.17.0"
 deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting"] }
 deno_semver = "=0.5.4"
 deno_task_shell = "=0.14.3"
 deno_terminal.workspace = true
-eszip = "=0.64.0"
+eszip = "=0.64.1"
 napi_sym.workspace = true
 
 async-trait.workspace = true
@@ -98,7 +98,7 @@ dotenvy = "0.15.7"
 dprint-plugin-json = "=0.19.1"
 dprint-plugin-jupyter = "=0.1.2"
 dprint-plugin-markdown = "=0.16.3"
-dprint-plugin-typescript = "=0.89.1"
+dprint-plugin-typescript = "=0.89.2"
 env_logger = "=0.10.0"
 fancy-regex = "=0.10.0"
 # If you disable the default __vendored_zlib_ng feature above, you _must_ be able to link against `-lz`.
