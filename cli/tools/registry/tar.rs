@@ -56,6 +56,10 @@ pub fn create_gzipped_tarball(
 
   let mut iterator = WalkBuilder::new(dir)
     .follow_links(false)
+    .require_git(false)
+    .git_ignore(true)
+    .git_global(true)
+    .git_exclude(true)
     .overrides(overrides)
     .filter_entry(move |entry| {
       let matches_pattern = file_patterns
