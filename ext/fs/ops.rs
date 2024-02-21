@@ -1106,7 +1106,7 @@ fn validate_temporary_filename_component(
   // This check is only for Windows
   #[cfg(windows)]
   if suffix && component.ends_with(|c: char| ". ".contains(c)) {
-    bail!("Invalid trailing character in suffix: {:?}", c);
+    bail!("Invalid trailing character in suffix");
   }
 
   Ok(())
