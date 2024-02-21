@@ -145,23 +145,32 @@ Deno.test(
     // This is often caused by not awaiting the result of a `Deno.resolveDns` call
     sanitizeOps: false,
   },
-  () => {
+  async () => {
     const clientSession = http2.connect("https://google.com");
     const req = clientSession.request({
       ":method": "GET",
       ":path": "/",
     });
-    req.on("response", (headers) => {
-      assertEquals(headers[":status"], 200);
-      assert(Object.keys(headers).length > 0);
+    let headers = {};
+    let status: number | undefined = 0;
+    let chunk = new Uint8Array();
+    const endPromise = Promise.withResolvers<void>();
+    req.on("response", (h) => {
+      status = h[":status"];
+      headers = h;
     });
-    req.on("data", (chunk) => {
-      assert(chunk.length > 0);
+    req.on("data", (c) => {
+      chunk = c;
     });
     req.on("end", () => {
       clientSession.close();
       req.close();
+      endPromise.resolve();
     });
     req.end();
+    await endPromise.promise;
+    assert(Object.keys(headers).length > 0);
+    assertEquals(status, 200);
+    assert(chunk.length > 0);
   },
 );
