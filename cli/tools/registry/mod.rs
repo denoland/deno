@@ -25,6 +25,7 @@ use sha2::Digest;
 
 use crate::args::jsr_api_url;
 use crate::args::jsr_url;
+use crate::args::AddFlags;
 use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::PublishFlags;
@@ -852,4 +853,9 @@ pub async fn publish(
     auth_method,
   )
   .await
+}
+
+pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
+  eprintln!("trying to add packages {:?}", add_flags.packages);
+  Ok(())
 }
