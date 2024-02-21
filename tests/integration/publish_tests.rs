@@ -207,6 +207,43 @@ itest!(config_flag {
 });
 
 #[test]
+fn ignores_gitignore() {
+  let context = publish_context_builder().build();
+  let temp_dir = context.temp_dir().path();
+  temp_dir.join("deno.json").write_json(&json!({
+    "name": "@foo/bar",
+    "version": "1.0.0",
+    "exports": "./main.ts"
+  }));
+
+  temp_dir.join("main.ts").write("import './sub_dir/b.ts';");
+
+  let gitignore = temp_dir.join(".gitignore");
+  gitignore.write("ignored.ts\nsub_dir/ignored.wasm");
+
+  let sub_dir = temp_dir.join("sub_dir");
+  sub_dir.create_dir_all();
+  sub_dir.join("ignored.wasm").write("");
+  sub_dir.join("b.ts").write("export default {}");
+
+  temp_dir.join("ignored.ts").write("");
+
+  let output = context
+    .new_command()
+    .arg("publish")
+    .arg("--dry-run")
+    .arg("--token")
+    .arg("sadfasdf")
+    .run();
+  output.assert_exit_code(0);
+  let output = output.combined_output();
+  assert_contains!(output, "b.ts");
+  assert_contains!(output, "main.ts");
+  assert_not_contains!(output, "ignored.ts");
+  assert_not_contains!(output, "ignored.wasm");
+}
+
+#[test]
 fn ignores_directories() {
   let context = publish_context_builder().build();
   let temp_dir = context.temp_dir().path();
