@@ -66,7 +66,7 @@ pub fn create_named_pipe() -> io::Result<(RawHandle, RawHandle)> {
       pipe_name.as_ptr() as *const i8,
       GENERIC_READ | GENERIC_WRITE | FILE_FLAG_OVERLAPPED,
       0,
-      std::ptr::null_mut(),
+      &mut security_attributes,
       OPEN_EXISTING,
       FILE_ATTRIBUTE_NORMAL,
       std::ptr::null_mut(),
