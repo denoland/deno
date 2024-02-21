@@ -57,6 +57,7 @@ pub fn create_named_pipe() -> io::Result<(RawHandle, RawHandle)> {
   };
 
   if server_handle == INVALID_HANDLE_VALUE {
+    eprintln!("Failed server side");
     return Err(io::Error::last_os_error());
   }
 
@@ -74,6 +75,7 @@ pub fn create_named_pipe() -> io::Result<(RawHandle, RawHandle)> {
   };
 
   if client_handle == INVALID_HANDLE_VALUE {
+    eprintln!("Failed client side");
     // SAFETY: Close the handles if we failed
     unsafe {
       CloseHandle(server_handle);
