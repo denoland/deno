@@ -12,6 +12,7 @@ use winapi::um::minwinbase::SECURITY_ATTRIBUTES;
 use winapi::um::winbase::CreateNamedPipeA;
 use winapi::um::winbase::FILE_FLAG_FIRST_PIPE_INSTANCE;
 use winapi::um::winbase::FILE_FLAG_OVERLAPPED;
+use winapi::um::winbase::PIPE_ACCESS_DUPLEX;
 use winapi::um::winbase::PIPE_READMODE_BYTE;
 use winapi::um::winbase::PIPE_TYPE_BYTE;
 use winapi::um::winnt::FILE_ATTRIBUTE_NORMAL;
@@ -37,10 +38,7 @@ pub fn create_named_pipe() -> io::Result<(RawHandle, RawHandle)> {
   let server_handle = unsafe {
     CreateNamedPipeA(
       pipe_name.as_ptr() as *const i8,
-      GENERIC_READ
-        | GENERIC_WRITE
-        | FILE_FLAG_OVERLAPPED
-        | FILE_FLAG_FIRST_PIPE_INSTANCE,
+      PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED | FILE_FLAG_FIRST_PIPE_INSTANCE,
       // Read and write bytes, not messages
       PIPE_TYPE_BYTE | PIPE_READMODE_BYTE,
       // The maximum number of instances that can be created for this pipe.
