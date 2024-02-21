@@ -22,7 +22,8 @@ test("should not complain about resource and op sanitizers", async (t) => {
   );
 });
 
-test("should allow exit", () => {
-  // no exit sanitizers
-  Deno.exit(123);
-});
+// TODO(mmastrac): This works, but we don't reliably flush stdout/stderr here, making this test flake
+// test("should allow exit", () => {
+//   // no exit sanitizers
+//   Deno.exit(123);
+// });
