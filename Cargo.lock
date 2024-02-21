@@ -1493,6 +1493,8 @@ dependencies = [
  "filetime",
  "fs3",
  "once_cell",
+ "os_pipe",
+ "rand",
  "tokio",
  "winapi",
 ]
