@@ -1,6 +1,0 @@
-{
-  "imports": {
-    "@david/which": "jsr:@david/which@0.3.0",
-    "@luca/flag": "jsr:@luca/flag@1.0.1"
-  }
-}
