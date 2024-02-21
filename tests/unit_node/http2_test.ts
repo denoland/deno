@@ -2,7 +2,7 @@
 
 import * as http2 from "node:http2";
 import * as net from "node:net";
-import { assertEquals } from "@std/assert/mod.ts";
+import { assert, assertEquals } from "@std/assert/mod.ts";
 
 for (const url of ["http://127.0.0.1:4246", "https://127.0.0.1:4247"]) {
   Deno.test(`[node/http2 client] ${url}`, {
@@ -136,3 +136,32 @@ Deno.test("[node/http2 server]", { sanitizeOps: false }, async () => {
 
   await new Promise((resolve) => server.close(resolve));
 });
+
+Deno.test(
+  "[node/http2 client GET https://google.com]",
+  {
+    // TODO(satyarohith): re-enable sanitizers after fixing the leaks
+    // 2 async operations to resolve a DNS name were started in this test, but never completed.
+    // This is often caused by not awaiting the result of a `Deno.resolveDns` call
+    sanitizeOps: false,
+  },
+  () => {
+    const clientSession = http2.connect("https://google.com");
+    const req = clientSession.request({
+      ":method": "GET",
+      ":path": "/",
+    });
+    req.on("response", (headers) => {
+      assertEquals(headers[":status"], 200);
+      assert(Object.keys(headers).length > 0);
+    });
+    req.on("data", (chunk) => {
+      assert(chunk.length > 0);
+    });
+    req.on("end", () => {
+      clientSession.close();
+      req.close();
+    });
+    req.end();
+  },
+);
