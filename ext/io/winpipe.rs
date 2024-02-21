@@ -20,7 +20,7 @@ use winapi::um::winnt::GENERIC_WRITE;
 /// Create a pair of file descriptors for a named pipe with non-inheritable handles
 pub fn create_named_pipe() -> io::Result<(RawHandle, RawHandle)> {
   let pipe_name = format!(
-    r#"\\.\pipe\deno_pipe_{:x}_{:x}"#,
+    r#"\\.\pipe\deno_pipe_{:x}_{:x}\0"#,
     std::process::id(),
     thread_rng().next_u64()
   );
