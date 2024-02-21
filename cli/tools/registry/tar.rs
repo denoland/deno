@@ -6,6 +6,8 @@ use deno_config::glob::FilePatterns;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
+use ignore::overrides::OverrideBuilder;
+use ignore::WalkBuilder;
 use sha2::Digest;
 use std::collections::HashSet;
 use std::ffi::OsStr;
@@ -46,27 +48,33 @@ pub fn create_gzipped_tarball(
 
   let mut paths = HashSet::new();
 
-  let mut iterator = walkdir::WalkDir::new(dir).follow_links(false).into_iter();
+  let overrides = OverrideBuilder::new(dir)
+    .add("!.git")?
+    .add("!node_modules")?
+    .add("!.DS_Store")?
+    .build()?;
+
+  let mut iterator = WalkBuilder::new(dir)
+    .follow_links(false)
+    .overrides(overrides)
+    .filter_entry(move |entry| {
+      let matches_pattern = file_patterns
+        .as_ref()
+        .map(|p| p.matches_path(entry.path()))
+        .unwrap_or(true);
+      matches_pattern
+    })
+    .build()
+    .into_iter();
+
   while let Some(entry) = iterator.next() {
     let entry = entry?;
 
     let path = entry.path();
-    let file_type = entry.file_type();
-
-    let matches_pattern = file_patterns
-      .as_ref()
-      .map(|p| p.matches_path(path))
-      .unwrap_or(true);
-    if !matches_pattern
-      || path.file_name() == Some(OsStr::new(".git"))
-      || path.file_name() == Some(OsStr::new("node_modules"))
-      || path.file_name() == Some(OsStr::new(".DS_Store"))
-    {
-      if file_type.is_dir() {
-        iterator.skip_current_dir();
-      }
+    let Some(file_type) = entry.file_type() else {
+      // entry doesn’t have a file type if it corresponds to stdin.
       continue;
-    }
+    };
 
     let Ok(specifier) = Url::from_file_path(path) else {
       diagnostics_collector
