@@ -239,9 +239,12 @@ export function createPrivateKey(
 }
 
 export function createPublicKey(
-  _key: PublicKeyInput | string | Buffer | KeyObject | JsonWebKeyInput,
-): KeyObject {
-  notImplemented("crypto.createPublicKey");
+  key: PublicKeyInput | string | Buffer | JsonWebKeyInput,
+): PublicKeyObject {
+  const { data, format, type } = prepareAsymmetricKey(key);
+  const details = op_node_create_private_key(data, format, type);
+  const handle = setOwnedKey(copyBuffer(data));
+  return new PublicKeyObject(handle, details);
 }
 
 function getKeyTypes(allowKeyObject: boolean, bufferOnly = false) {
@@ -355,6 +358,16 @@ class PrivateKeyObject extends AsymmetricKeyObject {
 
   export(_options: unknown) {
     notImplemented("crypto.PrivateKeyObject.prototype.export");
+  }
+}
+
+class PublicKeyObject extends AsymmetricKeyObject {
+  constructor(handle: unknown, details: unknown) {
+    super("public", handle, details);
+  }
+
+  export(_options: unknown) {
+    notImplemented("crypto.PublicKeyObject.prototype.export");
   }
 }
 
