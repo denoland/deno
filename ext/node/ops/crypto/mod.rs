@@ -1270,6 +1270,8 @@ static MGF1_SHA1_MASK_ALGORITHM: Lazy<
 
 pub const RSA_ENCRYPTION_OID: const_oid::ObjectIdentifier =
   const_oid::ObjectIdentifier::new_unwrap("1.2.840.113549.1.1.1");
+pub const RSA_ENCRYPTION_OID_ALT: const_oid::ObjectIdentifier =
+  const_oid::ObjectIdentifier::new_unwrap("1.2.840.113549.1.3.1");
 pub const RSASSA_PSS_OID: const_oid::ObjectIdentifier =
   const_oid::ObjectIdentifier::new_unwrap("1.2.840.113549.1.1.10");
 pub const EC_OID: const_oid::ObjectIdentifier =
@@ -1390,7 +1392,7 @@ pub fn op_node_create_private_key(
   let alg = pk_info.algorithm.oid;
 
   match alg {
-    RSA_ENCRYPTION_OID => {
+    RSA_ENCRYPTION_OID | RSA_ENCRYPTION_OID_ALT => {
       let private_key =
         rsa::pkcs1::RsaPrivateKey::from_der(pk_info.private_key)?;
       let modulus_length = private_key.modulus.as_bytes().len() * 8;
