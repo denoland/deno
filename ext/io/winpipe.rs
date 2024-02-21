@@ -43,9 +43,14 @@ pub fn create_named_pipe() -> io::Result<(RawHandle, RawHandle)> {
         | FILE_FLAG_FIRST_PIPE_INSTANCE,
       // Read and write bytes, not messages
       PIPE_TYPE_BYTE | PIPE_READMODE_BYTE,
+      // The maximum number of instances that can be created for this pipe.
       1,
+      // 4kB buffer sizes
       4096,
       4096,
+      // "The default time-out value, in milliseconds, if the WaitNamedPipe function specifies NMPWAIT_USE_DEFAULT_WAIT.
+      // Each instance of a named pipe must specify the same value. A value of zero will result in a default time-out of
+      // 50 milliseconds."
       0,
       &mut security_attributes,
     )
