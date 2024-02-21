@@ -210,11 +210,12 @@ export class Http2Session extends EventEmitter {
   }
 
   goaway(
-    _code: number,
-    _lastStreamID: number,
-    _opaqueData: Buffer | TypedArray | DataView,
+    code?: number,
+    lastStreamID?: number,
+    opaqueData?: Buffer | TypedArray | DataView,
   ) {
-    warnNotImplemented("Http2Session.goaway");
+    // TODO(satyarohith): create goaway op and pass the args
+    debugHttp2(">>> goaway - ignored args", code, lastStreamID, opaqueData);
     if (this[kDenoConnRid]) {
       core.tryClose(this[kDenoConnRid]);
     }
