@@ -69,7 +69,7 @@ pub fn create_gzipped_tarball(
     })
     .build();
 
-  while let Some(entry) = iterator.next() {
+  for entry in iterator {
     let entry = entry?;
 
     let path = entry.path();
