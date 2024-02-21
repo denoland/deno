@@ -810,8 +810,12 @@ pub async fn publish(
 
   let cli_options = cli_factory.cli_options();
   let Some(config_file) = cli_options.maybe_config_file() else {
+    // Check if there's `jsr.json` or `jsr.jsonc` file.
+    if !directory_path.join("jsr.json").exists()
+      && !directory_path.join("jsr.jsonc").exists()
+    {}
     bail!(
-      "Couldn't find a deno.json or a deno.jsonc configuration file in {}.",
+      "Couldn't find a deno.json, deno.jsonc, jsr.json or jsr.jsonc configuration file in {}.",
       directory_path.display()
     );
   };
