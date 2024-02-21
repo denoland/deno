@@ -281,6 +281,9 @@ impl ModuleGraphCreator {
         loader: None,
       })
       .await?;
+    if self.options.type_check_mode().is_true() {
+      self.type_check_graph(graph.clone()).await?;
+    }
     self.module_graph_builder.build_fast_check_graph(
       &mut graph,
       BuildFastCheckGraphOptions {
@@ -337,22 +340,30 @@ impl ModuleGraphCreator {
 
     if self.options.type_check_mode().is_true() {
       // provide the graph to the type checker, then get it back after it's done
-      let graph = self
-        .type_checker
-        .check(
-          graph,
-          check::CheckOptions {
-            build_fast_check_graph: true,
-            lib: self.options.ts_type_lib_window(),
-            log_ignored_options: true,
-            reload: self.options.reload_flag(),
-          },
-        )
-        .await?;
+      let graph = self.type_check_graph(graph).await?;
       Ok(graph)
     } else {
       Ok(Arc::new(graph))
     }
+  }
+
+  async fn type_check_graph(
+    &self,
+    graph: ModuleGraph,
+  ) -> Result<Arc<ModuleGraph>, AnyError> {
+    self
+      .type_checker
+      .check(
+        graph,
+        check::CheckOptions {
+          build_fast_check_graph: true,
+          lib: self.options.ts_type_lib_window(),
+          log_ignored_options: true,
+          reload: self.options.reload_flag(),
+          type_check_mode: self.options.type_check_mode(),
+        },
+      )
+      .await
   }
 }
 
