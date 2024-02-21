@@ -29,7 +29,7 @@ pub fn create_named_pipe() -> io::Result<(RawHandle, RawHandle)> {
     bInheritHandle: 0,
   };
 
-  // Create the pipe server with non-inheritable handle
+  // SAFETY: Create the pipe server with non-inheritable handle
   let server_handle = unsafe {
     CreateNamedPipeA(
       pipe_name.as_ptr() as *const i8,
@@ -47,7 +47,7 @@ pub fn create_named_pipe() -> io::Result<(RawHandle, RawHandle)> {
     return Err(io::Error::last_os_error());
   }
 
-  // Create the pipe client with non-inheritable handle
+  // SAFETY: Create the pipe client with non-inheritable handle
   let client_handle = unsafe {
     CreateFileA(
       pipe_name.as_ptr() as *const i8,
@@ -60,8 +60,8 @@ pub fn create_named_pipe() -> io::Result<(RawHandle, RawHandle)> {
     )
   };
 
-  // Close the handles if we failed
   if client_handle == INVALID_HANDLE_VALUE {
+    // SAFETY: Close the handles if we failed
     unsafe {
       CloseHandle(server_handle);
     }
@@ -82,7 +82,9 @@ mod tests {
   #[test]
   fn make_named_pipe() {
     let (server, client) = create_named_pipe().unwrap();
+    // SAFETY: For testing
     let mut server = unsafe { File::from_raw_handle(server) };
+    // SAFETY: For testing
     let mut client = unsafe { File::from_raw_handle(client) };
 
     // Write to the server and read from the client
