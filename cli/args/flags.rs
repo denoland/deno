@@ -8520,7 +8520,6 @@ mod tests {
         ..Flags::default()
       }
     );
-
   }
 
   #[test]
