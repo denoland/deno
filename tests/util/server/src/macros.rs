@@ -1,10 +1,27 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 #[macro_export]
+macro_rules! timeout {
+  () => {
+    let _drop_detect = ::std::sync::Arc::new(());
+    {
+      let clone = _drop_detect.clone();
+      ::std::thread::spawn(move || {
+        ::std::thread::sleep(::std::time::Duration::from_secs(120));
+        if ::std::sync::Arc::strong_count(&clone) > 1 {
+          panic!("Test timed out after 120 seconds");
+        }
+      });
+    }
+  };
+}
+
+#[macro_export]
 macro_rules! itest(
 ($name:ident {$( $key:ident: $value:expr,)*})  => {
   #[test]
   fn $name() {
+    $crate::timeout!();
     let test = $crate::CheckOutputIntegrationTest {
       $(
         $key: $value,
@@ -28,6 +45,7 @@ macro_rules! itest_flaky(
 ($name:ident {$( $key:ident: $value:expr,)*})  => {
   #[flaky_test::flaky_test]
   fn $name() {
+    $crate::timeout!();
     let test = $crate::CheckOutputIntegrationTest {
       $(
         $key: $value,
