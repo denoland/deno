@@ -43,7 +43,7 @@ jobs:
         with:
           # use a recent version instead of the latest version in case
           # the latest version ever has issues that breaks publishing
-          deno-version: v1.x
+          deno-version: v1.40.5
 
       - name: Run version bump
         run: |
