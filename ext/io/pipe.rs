@@ -182,7 +182,7 @@ pub fn pipe() -> io::Result<(PipeRead, PipeWrite)> {
   pipe_impl()
 }
 
-/// Creates a unidirectional pipe on top of a naned pipe (which is technically bidirectional).
+/// Creates a unidirectional pipe on top of a named pipe (which is technically bidirectional).
 #[cfg(windows)]
 pub fn pipe_impl() -> io::Result<(PipeRead, PipeWrite)> {
   // SAFETY: We're careful with handles here
