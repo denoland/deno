@@ -6,6 +6,34 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.41.0 / 2024.02.22
+
+- BREAKING(net/unstable): remove `Deno.DatagramConn.rid` (#22475)
+- BREAKING(unstable): remove `Deno.HttpClient.rid` (#22075)
+- BREAKING: add `Deno.CreateHttpClientOptions.{cert,key}` (#22280)
+- feat(fs): `Deno.FsFile.{isTerminal,setRaw}()` (#22234)
+- feat(lsp): auto-import completions for jsr specifiers (#22462)
+- feat(publish): type check on publish (#22506)
+- feat(unstable): single checksum per JSR package in the lockfile (#22421)
+- feat(unstable/lint): no-slow-types for JSR packages (#22430)
+- feat: `Deno.ConnectTlsOptions.{cert,key}` (#22274)
+- fix(compile): respect compiler options for emit (#22521)
+- fix(ext/fs): make errors in tempfile creation clearer (#22498)
+- fix(ext/node): pass alpnProtocols to Deno.startTls (#22512)
+- fix(ext/node): permission prompt for missing `process.env` permissions
+  (#22487)
+- fix(fmt): remove debug output when formatting dynamic imports (#22433)
+- fix(lsp): add schema for JSR related config options (#22497)
+- fix(node/test): disable Deno test sanitizers (#22480)
+- fix(publish): better no-slow-types type discovery (#22517)
+- fix(publish): ignore .DS_Store while publishing (#22478)
+- fix(publish): print files that will be published (#22495)
+- fix: util.parseArgs() missing node:process import (#22405)
+- fix: write lockfile in `deno info` (#22272)
+- perf(jsr): fast check cache and lazy fast check graph (#22485)
+- perf: linter lsp memory leak fix and deno_graph executor (#22519)
+- perf: strip `denort` on unix (#22426)
+
 ### 1.40.5 / 2024.02.15
 
 - feat(lsp): jsr support first pass (#22382)
