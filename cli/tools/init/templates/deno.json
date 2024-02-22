@@ -1,7 +1,4 @@
 {
-  "name" : "{{name}}", 
-  "version": "1.0.0",
-  "imports": {},
   "tasks": {
     "dev": "deno run --watch main.ts"
   }
