@@ -317,7 +317,6 @@ fn includes_directories_with_gitignore() {
   let output = context
     .new_command()
     .arg("publish")
-    .arg("--log-level=debug")
     .arg("--token")
     .arg("sadfasdf")
     .run();
@@ -346,7 +345,6 @@ fn includes_directories() {
   let output = context
     .new_command()
     .arg("publish")
-    .arg("--log-level=debug")
     .arg("--token")
     .arg("sadfasdf")
     .run();
