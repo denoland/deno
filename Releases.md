@@ -11,9 +11,6 @@ https://github.com/denoland/deno_install
 - BREAKING(net/unstable): remove `Deno.DatagramConn.rid` (#22475)
 - BREAKING(unstable): remove `Deno.HttpClient.rid` (#22075)
 - BREAKING: add `Deno.CreateHttpClientOptions.{cert,key}` (#22280)
-- Revert "fix(console): support NO_COLOR and colors option in all scena…
-  (#22507)
-- feat(core): highlight unprintable chars in permission prompts (#22468)
 - feat(fs): `Deno.FsFile.{isTerminal,setRaw}()` (#22234)
 - feat(lsp): auto-import completions for jsr specifiers (#22462)
 - feat(publish): type check on publish (#22506)
@@ -25,7 +22,6 @@ https://github.com/denoland/deno_install
 - fix(ext/node): pass alpnProtocols to Deno.startTls (#22512)
 - fix(ext/node): permission prompt for missing `process.env` permissions
   (#22487)
-- fix(ext/node): unimplemented code when not IPC child_process (#22488)
 - fix(fmt): remove debug output when formatting dynamic imports (#22433)
 - fix(lsp): add schema for JSR related config options (#22497)
 - fix(node/test): disable Deno test sanitizers (#22480)
