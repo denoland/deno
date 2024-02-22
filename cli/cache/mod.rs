@@ -1,6 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::args::jsr_url;
 use crate::args::CacheSetting;
 use crate::errors::get_error_class_name;
 use crate::file_fetcher::FetchOptions;
@@ -11,7 +10,6 @@ use crate::util::fs::atomic_write_file;
 use deno_ast::MediaType;
 use deno_core::futures;
 use deno_core::futures::FutureExt;
-use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_graph::source::CacheInfo;
 use deno_graph::source::LoadFuture;
@@ -31,6 +29,7 @@ mod common;
 mod deno_dir;
 mod disk_cache;
 mod emit;
+mod fast_check;
 mod incremental;
 mod module_info;
 mod node;
@@ -43,6 +42,7 @@ pub use deno_dir::DenoDir;
 pub use deno_dir::DenoDirProvider;
 pub use disk_cache::DiskCache;
 pub use emit::EmitCache;
+pub use fast_check::FastCheckCache;
 pub use incremental::IncrementalCache;
 pub use module_info::ModuleInfoCache;
 pub use node::NodeAnalysisCache;
@@ -167,10 +167,6 @@ impl FetchCacher {
 }
 
 impl Loader for FetchCacher {
-  fn registry_url(&self) -> &Url {
-    jsr_url()
-  }
-
   fn get_cache_info(&self, specifier: &ModuleSpecifier) -> Option<CacheInfo> {
     if !self.cache_info_enabled {
       return None;

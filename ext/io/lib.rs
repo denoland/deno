@@ -50,6 +50,15 @@ use winapi::um::processenv::GetStdHandle;
 use winapi::um::winbase;
 
 pub mod fs;
+mod pipe;
+#[cfg(windows)]
+mod winpipe;
+
+pub use pipe::pipe;
+pub use pipe::AsyncPipeRead;
+pub use pipe::AsyncPipeWrite;
+pub use pipe::PipeRead;
+pub use pipe::PipeWrite;
 
 // Store the stdio fd/handles in global statics in order to keep them
 // alive for the duration of the application since the last handle/fd

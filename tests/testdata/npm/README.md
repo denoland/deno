@@ -4,7 +4,7 @@ This folder contains test data for npm specifiers.
 
 ## Registry
 
-The registry is served by the test server (server in test_util) at
+The registry is served by the test server (server in `tests/util/server`) at
 http://localhost:4545/npm/registry/ via the `./registry` folder.
 
 ### Updating with real npm packages

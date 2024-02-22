@@ -300,7 +300,9 @@ export class ChildProcess extends EventEmitter {
     }
 
     /* Cancel any pending IPC I/O */
-    this.disconnect?.();
+    if (this.implementsDisconnect) {
+      this.disconnect?.();
+    }
 
     this.killed = true;
     this.signalCode = denoSignal;
@@ -1148,6 +1150,7 @@ export function setupChannel(target, ipc) {
       target.emit("disconnect");
     });
   };
+  target.implementsDisconnect = true;
 
   // Start reading messages from the channel.
   readLoop();

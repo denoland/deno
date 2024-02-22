@@ -125,6 +125,7 @@ declare namespace Deno {
   export type NativeTypedPointer<T extends PointerObject> = "pointer" & {
     [brand]: T;
   };
+  /** @category FFI */
   export type NativeTypedFunction<T extends UnsafeCallbackDefinition> =
     & "function"
     & {
@@ -2247,7 +2248,9 @@ declare var WebSocketStream: {
  * @category Temporal
  */
 declare namespace Temporal {
+  /** @category Temporal */
   export type ComparisonResult = -1 | 0 | 1;
+  /** @category Temporal */
   export type RoundingMode =
     | "ceil"
     | "floor"
@@ -4243,6 +4246,7 @@ declare namespace Temporal {
 
 /** @category Intl */
 declare namespace Intl {
+  /** @category Intl */
   type Formattable =
     | Date
     | Temporal.Instant
@@ -4253,6 +4257,7 @@ declare namespace Intl {
     | Temporal.PlainYearMonth
     | Temporal.PlainMonthDay;
 
+  /** @category Intl */
   interface DateTimeFormatRangePart {
     source: "shared" | "startRange" | "endRange";
   }

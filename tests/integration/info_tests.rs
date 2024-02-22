@@ -30,6 +30,28 @@ fn info_with_compiled_source() {
   assert_eq!(output.stderr(), "");
 }
 
+#[test]
+fn info_lock_write() {
+  let context = TestContextBuilder::new().use_http_server().build();
+
+  context.temp_dir().write("deno.json", "{}");
+
+  let module_path = "http://127.0.0.1:4545/run/048_media_types_jsx.ts";
+
+  let output = context
+    .new_command()
+    .current_dir(context.temp_dir().path())
+    .args_vec(["info", module_path])
+    .run();
+  output.assert_exit_code(0);
+  output.skip_output_check();
+
+  assert!(
+    context.temp_dir().path().join("deno.lock").exists(),
+    "missing deno.lock"
+  );
+}
+
 itest!(multiple_imports {
   args: "info http://127.0.0.1:4545/run/019_media_types.ts",
   output: "info/multiple_imports.out",
@@ -153,6 +175,7 @@ itest!(info_import_map {
   args: "info preact/debug",
   output: "info/with_import_map/with_import_map.out",
   cwd: Some("info/with_import_map"),
+  copy_temp_dir: Some("info/with_import_map"),
   exit_code: 0,
 });
 

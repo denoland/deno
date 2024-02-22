@@ -60,6 +60,7 @@ pub fn create_gzipped_tarball(
     if !matches_pattern
       || path.file_name() == Some(OsStr::new(".git"))
       || path.file_name() == Some(OsStr::new("node_modules"))
+      || path.file_name() == Some(OsStr::new(".DS_Store"))
     {
       if file_type.is_dir() {
         iterator.skip_current_dir();
@@ -158,6 +159,8 @@ pub fn create_gzipped_tarball(
   for byte in hash_bytes {
     write!(&mut hash, "{:02x}", byte).unwrap();
   }
+
+  files.sort_by(|a, b| a.specifier.cmp(&b.specifier));
 
   Ok(PublishableTarball {
     files,
