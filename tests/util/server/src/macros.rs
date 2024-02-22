@@ -1,10 +1,50 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 #[macro_export]
+// https://stackoverflow.com/questions/38088067/equivalent-of-func-or-function-in-rust
+macro_rules! function {
+  () => {{
+    fn f() {}
+    fn type_name_of<T>(_: T) -> &'static str {
+      ::std::any::type_name::<T>()
+    }
+    let name = type_name_of(f);
+    let name = name.strip_suffix("::f").unwrap_or(name);
+    let name = name.strip_suffix("::{{closure}}").unwrap_or(name);
+    name
+  }};
+}
+
+/// Detect a test timeout and panic with a message that includes the test name.
+/// By default, the test timeout is 300 seconds (5 minutes), but any value may
+/// be specified as an argument to this function.
+#[macro_export]
+macro_rules! timeout {
+  ( $($timeout:literal)? ) => {
+    struct TestTimeoutHolder(::std::sync::mpsc::Sender<()>);
+
+    let _test_timeout_holder = {
+      let function = $crate::function!();
+      let (tx, rx) = ::std::sync::mpsc::channel::<()>();
+      let timeout: &[u64] = &[$($timeout)?];
+      let timeout = *timeout.get(0).unwrap_or(&300);
+      ::std::thread::spawn(move || {
+        if rx.recv_timeout(::std::time::Duration::from_secs(timeout)) == Err(::std::sync::mpsc::RecvTimeoutError::Timeout) {
+          eprintln!("Test {function} timed out after {timeout} seconds, aborting");
+          ::std::process::exit(1);
+        }
+      });
+      TestTimeoutHolder(tx)
+    };
+  };
+}
+
+#[macro_export]
 macro_rules! itest(
 ($name:ident {$( $key:ident: $value:expr,)*})  => {
   #[test]
   fn $name() {
+    $crate::timeout!();
     let test = $crate::CheckOutputIntegrationTest {
       $(
         $key: $value,
@@ -28,6 +68,7 @@ macro_rules! itest_flaky(
 ($name:ident {$( $key:ident: $value:expr,)*})  => {
   #[flaky_test::flaky_test]
   fn $name() {
+    $crate::timeout!();
     let test = $crate::CheckOutputIntegrationTest {
       $(
         $key: $value,
