@@ -1,8 +1,8 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 /// FLAGS
 
-import { parse } from "../../tests/util/std/flags/mod.ts";
-import { join, resolve, ROOT_PATH } from "../util.js";
+import { parse } from "../../util/std/flags/mod.ts";
+import { join, resolve, ROOT_PATH } from "../../../tools/util.js";
 
 export const {
   json,
@@ -51,7 +51,7 @@ export interface ManifestTestOptions {
   script_metadata: [string, string][];
 }
 
-const MANIFEST_PATH = join(ROOT_PATH, "./tools/wpt/manifest.json");
+const MANIFEST_PATH = join(ROOT_PATH, "./tests/wpt/runner/manifest.json");
 
 export async function updateManifest() {
   const status = await runPy(
@@ -76,7 +76,7 @@ export function getManifest(): Manifest {
 
 /// WPT TEST EXPECTATIONS
 
-const EXPECTATION_PATH = join(ROOT_PATH, "./tools/wpt/expectation.json");
+const EXPECTATION_PATH = join(ROOT_PATH, "./tests/wpt/runner/expectation.json");
 
 export interface Expectation {
   [key: string]: Expectation | boolean | string[];
