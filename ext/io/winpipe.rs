@@ -19,7 +19,14 @@ use winapi::um::winnt::FILE_ATTRIBUTE_NORMAL;
 use winapi::um::winnt::GENERIC_READ;
 use winapi::um::winnt::GENERIC_WRITE;
 
-/// Create a pair of file descriptors for a named pipe with non-inheritable handles
+/// Create a pair of file descriptors for a named pipe with non-inheritable handles. We cannot use
+/// the anonymous pipe from `os_pipe` because that does not support OVERLAPPED (aka async) I/O.
+///
+/// This is the same way that Rust and pretty much everyone else does it.
+///
+/// For more information, there is an interesting S.O. question that explains the history, as
+/// well as offering a complex NTAPI solution if we decide to try to make these pipes truely
+/// anonymous: https://stackoverflow.com/questions/60645/overlapped-i-o-on-anonymous-pipe
 pub fn create_named_pipe() -> io::Result<(RawHandle, RawHandle)> {
   let pipe_name = format!(
     r#"\\.\pipe\deno_pipe_{:x}_{:x}\0"#,

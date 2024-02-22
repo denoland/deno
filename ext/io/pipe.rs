@@ -174,6 +174,10 @@ impl tokio::io::AsyncWrite for AsyncPipeWrite {
 
 /// Create a unidirectional pipe pair that starts off as a pair of synchronous file handles,
 /// but either side may be promoted to an async-capable reader/writer.
+///
+/// On Windows, we use a named pipe because that's the only way to get reliable async I/O
+/// support. On Unix platforms, we use the `os_pipe` library, which uses `pipe2` under the hood
+/// (or `pipe` on OSX).
 pub fn pipe() -> io::Result<(PipeRead, PipeWrite)> {
   pipe_impl()
 }
