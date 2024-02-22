@@ -21,5 +21,9 @@ fs3.workspace = true
 once_cell.workspace = true
 tokio.workspace = true
 
+[target.'cfg(not(windows))'.dependencies]
+os_pipe.workspace = true
+
 [target.'cfg(windows)'.dependencies]
 winapi = { workspace = true, features = ["winbase", "processenv"] }
+rand.workspace = true
