@@ -3,6 +3,7 @@
 use bytes::Bytes;
 use deno_ast::MediaType;
 use deno_config::glob::FilePatterns;
+use deno_config::glob::PathOrPattern;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
@@ -47,11 +48,20 @@ pub fn create_gzipped_tarball(
 
   let mut paths = HashSet::new();
 
-  let overrides = OverrideBuilder::new(dir)
-    .add("!.git")?
-    .add("!node_modules")?
-    .add("!.DS_Store")?
-    .build()?;
+  let mut ob = OverrideBuilder::new(dir);
+  ob.add("!.git")?.add("!node_modules")?.add("!.DS_Store")?;
+
+  for pattern in file_patterns.as_ref().iter().flat_map(|p| p.include.iter()) {
+    for path_or_pat in pattern.inner() {
+      match path_or_pat {
+        PathOrPattern::Path(p) => ob.add(p.to_str().unwrap())?,
+        PathOrPattern::Pattern(p) => ob.add(p.as_str())?,
+        PathOrPattern::RemoteUrl(_) => continue,
+      };
+    }
+  }
+
+  let overrides = ob.build()?;
 
   let iterator = WalkBuilder::new(dir)
     .follow_links(false)
