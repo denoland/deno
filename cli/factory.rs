@@ -48,7 +48,6 @@ use crate::tools::run::hmr::HmrRunner;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::util::import_map::deno_json_deps;
-use crate::util::import_map::import_map_deps;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 use crate::worker::CliMainWorkerFactory;
@@ -343,8 +342,8 @@ impl CliFactory {
           Some(workspace_config) => deno_lockfile::WorkspaceConfig {
             root: WorkspaceMemberConfig {
               package_json_deps,
-              dependencies: import_map_deps(
-                &workspace_config.base_import_map_value,
+              dependencies: deno_json_deps(
+                self.options.maybe_config_file().as_ref().unwrap(),
               )
               .into_iter()
               .map(|req| req.to_string())
