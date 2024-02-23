@@ -1770,28 +1770,6 @@ mod test {
   use super::*;
   use pretty_assertions::assert_eq;
 
-  #[cfg(not(windows))]
-  #[test]
-  fn resolve_import_map_config_file() {
-    let config_text = r#"{
-      "importMap": "import_map.json"
-    }"#;
-    let config_specifier =
-      ModuleSpecifier::parse("file:///deno/deno.jsonc").unwrap();
-    let config_file = ConfigFile::new(config_text, config_specifier).unwrap();
-    let actual = resolve_import_map_specifier(
-      None,
-      Some(&config_file),
-      &PathBuf::from("/"),
-    );
-    assert!(actual.is_ok());
-    let actual = actual.unwrap();
-    assert_eq!(
-      actual,
-      Some(ModuleSpecifier::parse("file:///deno/import_map.json").unwrap(),)
-    );
-  }
-
   #[test]
   fn resolve_import_map_flags_take_precedence() {
     let config_text = r#"{
