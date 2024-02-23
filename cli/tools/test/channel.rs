@@ -297,6 +297,16 @@ impl TestEventSenderFactory {
   }
 
   /// A [`TestEventWeakSender`] has a unique ID, but will not keep the [`TestEventReceiver`] alive.
+  /// This may be useful to add a `SIGINT` or other break handler to tests that isn't part of a
+  /// specific test, but handles the overall orchestration of running tests:
+  ///
+  /// ```nocompile
+  /// let mut cancel_sender = test_event_sender_factory.weak_sender();
+  /// let sigint_handler_handle = spawn(async move {
+  ///   signal::ctrl_c().await.unwrap();
+  ///   cancel_sender.send(TestEvent::Sigint).ok();
+  /// });
+  /// ```
   pub fn weak_sender(&self) -> TestEventWeakSender {
     TestEventWeakSender {
       id: self.worker_id.fetch_add(1, Ordering::AcqRel),
