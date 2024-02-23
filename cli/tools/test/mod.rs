@@ -1197,7 +1197,7 @@ pub async fn report_tests(
     match event {
       TestEvent::Register(description) => {
         for (_, description) in description.into_iter() {
-          reporter.report_register(&description);
+          reporter.report_register(description);
           // TODO(mmastrac): We shouldn't need to clone here -- we can reuse the descriptions everywhere
           tests.insert(description.id, description.clone());
         }

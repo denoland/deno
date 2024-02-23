@@ -325,7 +325,7 @@ impl TestRun {
           match event {
             test::TestEvent::Register(description) => {
               for (_, description) in description.into_iter() {
-                reporter.report_register(&description);
+                reporter.report_register(description);
                 // TODO(mmastrac): we shouldn't need to clone here - we can re-use the descriptions
                 tests.write().insert(description.id, description.clone());
               }
