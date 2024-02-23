@@ -5,7 +5,12 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { core, internals } from "ext:core/mod.js";
-import { op_geteuid, op_process_abort, op_set_exit_code } from "ext:core/ops";
+import {
+  op_geteuid,
+  op_process_abort,
+  op_process_argv0,
+  op_set_exit_code,
+} from "ext:core/ops";
 
 import { notImplemented, warnNotImplemented } from "ext:deno_node/_utils.ts";
 import { EventEmitter } from "node:events";
@@ -44,9 +49,6 @@ import {
 import { isWindows } from "ext:deno_node/_util/os.ts";
 import * as io from "ext:deno_io/12_io.js";
 import { Command } from "ext:runtime/40_process.js";
-
-let argv0Getter = () => "";
-export let argv0 = "deno";
 
 // TODO(kt3k): This should be set at start up time
 export let arch = "";
@@ -395,10 +397,7 @@ class Process extends EventEmitter {
   argv = argv;
 
   get argv0() {
-    if (!argv0) {
-      argv0 = argv0Getter();
-    }
-    return argv0;
+    return op_process_argv0();
   }
 
   set argv0(_val) {}

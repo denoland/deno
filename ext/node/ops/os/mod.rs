@@ -81,6 +81,12 @@ pub fn op_process_abort() {
 }
 
 #[op2]
+#[string]
+pub fn op_process_argv0() -> String {
+  std::env::args().next().unwrap_or("deno".to_string())
+}
+
+#[op2]
 #[serde]
 pub fn op_cpus<P>(state: &mut OpState) -> Result<Vec<cpus::CpuInfo>, AnyError>
 where
