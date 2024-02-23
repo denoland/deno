@@ -28,10 +28,10 @@ members = [
   "ext/websocket",
   "ext/webstorage",
   "runtime",
-  "test_util",
   "tests",
   "tests/ffi",
   "tests/napi",
+  "tests/util/server",
 ]
 exclude = ["tests/util/std/hash/_wasm"]
 
@@ -42,16 +42,16 @@ license = "MIT"
 repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
-deno_ast = { version = "0.33.2", features = ["transpiling"] }
-deno_core = { version = "0.263.0", features = ["snapshot_data_bincode"] }
+deno_ast = { version = "0.34.0", features = ["transpiling"] }
+deno_core = { version = "0.264.0", features = ["snapshot_data_bincode"] }
 
-deno_bench_util = { version = "0.132.0", path = "./bench_util" }
+deno_bench_util = { version = "0.133.0", path = "./bench_util" }
 deno_lockfile = "0.19.0"
 deno_media_type = { version = "0.1.1", features = ["module_specifier"] }
-deno_runtime = { version = "0.146.0", path = "./runtime" }
+deno_runtime = { version = "0.147.0", path = "./runtime" }
 deno_terminal = "0.1.1"
-napi_sym = { version = "0.68.0", path = "./cli/napi/sym" }
-test_util = { path = "./test_util" }
+napi_sym = { version = "0.69.0", path = "./cli/napi/sym" }
+test_util = { package = "test_server", path = "./tests/util/server" }
 
 denokv_proto = "0.5.0"
 denokv_remote = "0.5.0"
@@ -59,32 +59,33 @@ denokv_remote = "0.5.0"
 denokv_sqlite = { default-features = false, version = "0.5.0" }
 
 # exts
-deno_broadcast_channel = { version = "0.132.0", path = "./ext/broadcast_channel" }
-deno_cache = { version = "0.70.0", path = "./ext/cache" }
-deno_canvas = { version = "0.7.0", path = "./ext/canvas" }
-deno_console = { version = "0.138.0", path = "./ext/console" }
-deno_cron = { version = "0.18.0", path = "./ext/cron" }
-deno_crypto = { version = "0.152.0", path = "./ext/crypto" }
-deno_fetch = { version = "0.162.0", path = "./ext/fetch" }
-deno_ffi = { version = "0.125.0", path = "./ext/ffi" }
-deno_fs = { version = "0.48.0", path = "./ext/fs" }
-deno_http = { version = "0.135.0", path = "./ext/http" }
-deno_io = { version = "0.48.0", path = "./ext/io" }
-deno_kv = { version = "0.46.0", path = "./ext/kv" }
-deno_napi = { version = "0.68.0", path = "./ext/napi" }
-deno_net = { version = "0.130.0", path = "./ext/net" }
-deno_node = { version = "0.75.0", path = "./ext/node" }
-deno_tls = { version = "0.125.0", path = "./ext/tls" }
-deno_url = { version = "0.138.0", path = "./ext/url" }
-deno_web = { version = "0.169.0", path = "./ext/web" }
-deno_webgpu = { version = "0.105.0", path = "./ext/webgpu" }
-deno_webidl = { version = "0.138.0", path = "./ext/webidl" }
-deno_websocket = { version = "0.143.0", path = "./ext/websocket" }
-deno_webstorage = { version = "0.133.0", path = "./ext/webstorage" }
+deno_broadcast_channel = { version = "0.133.0", path = "./ext/broadcast_channel" }
+deno_cache = { version = "0.71.0", path = "./ext/cache" }
+deno_canvas = { version = "0.8.0", path = "./ext/canvas" }
+deno_console = { version = "0.139.0", path = "./ext/console" }
+deno_cron = { version = "0.19.0", path = "./ext/cron" }
+deno_crypto = { version = "0.153.0", path = "./ext/crypto" }
+deno_fetch = { version = "0.163.0", path = "./ext/fetch" }
+deno_ffi = { version = "0.126.0", path = "./ext/ffi" }
+deno_fs = { version = "0.49.0", path = "./ext/fs" }
+deno_http = { version = "0.136.0", path = "./ext/http" }
+deno_io = { version = "0.49.0", path = "./ext/io" }
+deno_kv = { version = "0.47.0", path = "./ext/kv" }
+deno_napi = { version = "0.69.0", path = "./ext/napi" }
+deno_net = { version = "0.131.0", path = "./ext/net" }
+deno_node = { version = "0.76.0", path = "./ext/node" }
+deno_tls = { version = "0.126.0", path = "./ext/tls" }
+deno_url = { version = "0.139.0", path = "./ext/url" }
+deno_web = { version = "0.170.0", path = "./ext/web" }
+deno_webgpu = { version = "0.106.0", path = "./ext/webgpu" }
+deno_webidl = { version = "0.139.0", path = "./ext/webidl" }
+deno_websocket = { version = "0.144.0", path = "./ext/websocket" }
+deno_webstorage = { version = "0.134.0", path = "./ext/webstorage" }
 
 aes = "=0.8.3"
 anyhow = "1.0.57"
 async-trait = "0.1.73"
+base32 = "=0.4.0"
 base64 = "0.21.4"
 bencher = "0.1"
 brotli = "3.3.4"
@@ -128,7 +129,7 @@ monch = "=0.5.0"
 notify = "=5.0.0"
 num-bigint = { version = "0.4", features = ["rand"] }
 once_cell = "1.17.1"
-os_pipe = "=1.1.4"
+os_pipe = { version = "=1.1.5", features = ["io_safety"] }
 p224 = { version = "0.13.0", features = ["ecdh"] }
 p256 = { version = "0.13.2", features = ["ecdh"] }
 p384 = { version = "0.13.0", features = ["ecdh"] }
@@ -164,7 +165,7 @@ tar = "=0.4.40"
 tempfile = "3.4.0"
 termcolor = "1.1.3"
 thiserror = "1.0.40"
-tokio = { version = "1.28.1", features = ["full"] }
+tokio = { version = "1.36.0", features = ["full"] }
 tokio-metrics = { version = "0.3.0", features = ["rt"] }
 tokio-util = "0.7.4"
 tower-lsp = { version = "=0.20.0", features = ["proposed"] }

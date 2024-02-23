@@ -1001,8 +1001,8 @@ mod tests {
   // be used again after the snapshot is taken. We should figure out a mechanism
   // to allow removing some of the ops before taking a snapshot.
   #[ignore]
-  #[test]
-  fn test_compiler_snapshot() {
+  #[tokio::test]
+  async fn test_compiler_snapshot() {
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       startup_snapshot: Some(compiler_snapshot()),
       ..Default::default()
@@ -1027,8 +1027,8 @@ mod tests {
     assert_eq!(actual, "11905938177474799758");
   }
 
-  #[test]
-  fn test_hash_url() {
+  #[tokio::test]
+  async fn test_hash_url() {
     let specifier = deno_core::resolve_url(
       "data:application/javascript,console.log(\"Hello%20Deno\");",
     )

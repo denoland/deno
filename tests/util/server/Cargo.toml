@@ -1,7 +1,7 @@
 # Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 [package]
-name = "test_util"
+name = "test_server"
 version = "0.1.0"
 authors.workspace = true
 edition.workspace = true

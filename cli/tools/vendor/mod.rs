@@ -51,12 +51,12 @@ pub async fn vendor(
   let entry_points =
     resolve_entry_points(&vendor_flags, cli_options.initial_cwd())?;
   let jsx_import_source = cli_options.to_maybe_jsx_import_source_config()?;
-  let module_graph_builder = factory.module_graph_builder().await?.clone();
+  let module_graph_creator = factory.module_graph_creator().await?.clone();
   let output = build::build(build::BuildInput {
     entry_points,
     build_graph: move |entry_points| {
       async move {
-        module_graph_builder
+        module_graph_creator
           .create_graph(GraphKind::All, entry_points)
           .await
       }

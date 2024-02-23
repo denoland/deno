@@ -62,10 +62,10 @@ async fn bundle_action(
   let cli_options = factory.cli_options();
   let module_specifier = cli_options.resolve_main_module()?;
   log::debug!(">>>>> bundle START");
-  let module_graph_builder = factory.module_graph_builder().await?;
+  let module_graph_creator = factory.module_graph_creator().await?;
   let cli_options = factory.cli_options();
 
-  let graph = module_graph_builder
+  let graph = module_graph_creator
     .create_graph_and_maybe_check(vec![module_specifier.clone()])
     .await?;
 

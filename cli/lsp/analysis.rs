@@ -6,6 +6,7 @@ use super::documents::Documents;
 use super::language_server;
 use super::tsc;
 
+use crate::args::jsr_url;
 use crate::npm::CliNpmResolver;
 use crate::tools::lint::create_linter;
 use crate::util::path::specifier_to_file_path;
@@ -26,8 +27,14 @@ use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_node::NpmResolver;
 use deno_runtime::deno_node::PathClean;
 use deno_runtime::permissions::PermissionsContainer;
+use deno_semver::jsr::JsrPackageNvReference;
+use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
+use deno_semver::package::PackageNv;
+use deno_semver::package::PackageNvReference;
 use deno_semver::package::PackageReq;
+use deno_semver::package::PackageReqReference;
+use deno_semver::Version;
 use import_map::ImportMap;
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -206,6 +213,57 @@ impl<'a> TsResponseImportMapper<'a> {
         Some(path) => format!("{}/{}", result, path),
         None => result,
       }
+    }
+
+    if let Some(jsr_path) = specifier.as_str().strip_prefix(jsr_url().as_str())
+    {
+      let mut segments = jsr_path.split('/');
+      let name = if jsr_path.starts_with('@') {
+        format!("{}/{}", segments.next()?, segments.next()?)
+      } else {
+        segments.next()?.to_string()
+      };
+      let version = Version::parse_standard(segments.next()?).ok()?;
+      let nv = PackageNv { name, version };
+      let path = segments.collect::<Vec<_>>().join("/");
+      let jsr_resolver = self.documents.get_jsr_resolver();
+      let export = jsr_resolver.lookup_export_for_path(&nv, &path)?;
+      let sub_path = (export != ".").then_some(export);
+      let mut req = None;
+      req = req.or_else(|| {
+        let import_map = self.maybe_import_map?;
+        for entry in import_map.entries_for_referrer(referrer) {
+          let Some(value) = entry.raw_value else {
+            continue;
+          };
+          let Ok(req_ref) = JsrPackageReqReference::from_str(value) else {
+            continue;
+          };
+          let req = req_ref.req();
+          if req.name == nv.name
+            && req.version_req.tag().is_none()
+            && req.version_req.matches(&nv.version)
+          {
+            return Some(req.clone());
+          }
+        }
+        None
+      });
+      req = req.or_else(|| jsr_resolver.lookup_req_for_nv(&nv));
+      let spec_str = if let Some(req) = req {
+        let req_ref = PackageReqReference { req, sub_path };
+        JsrPackageReqReference::new(req_ref).to_string()
+      } else {
+        let nv_ref = PackageNvReference { nv, sub_path };
+        JsrPackageNvReference::new(nv_ref).to_string()
+      };
+      let specifier = ModuleSpecifier::parse(&spec_str).ok()?;
+      if let Some(import_map) = self.maybe_import_map {
+        if let Some(result) = import_map.lookup(&specifier, referrer) {
+          return Some(result);
+        }
+      }
+      return Some(spec_str);
     }
 
     if let Some(npm_resolver) =

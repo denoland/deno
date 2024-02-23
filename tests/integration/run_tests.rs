@@ -1054,7 +1054,7 @@ fn lock_deno_json_package_json_deps() {
       },
       "jsr": {
         "@denotest/module_graph@1.4.0": {
-          "integrity": "555bbe259f55a4a2e7a39e8bf4bcbf25da4c874a313c3e98771eddceedac050b"
+          "integrity": "32de0973c5fa55772326fcd504a757f386d2b010db3e13e78f3bcf851e69473d"
         }
       },
       "npm": {
@@ -1106,7 +1106,7 @@ fn lock_deno_json_package_json_deps() {
       },
       "jsr": {
         "@denotest/module_graph@1.4.0": {
-          "integrity": "555bbe259f55a4a2e7a39e8bf4bcbf25da4c874a313c3e98771eddceedac050b"
+          "integrity": "32de0973c5fa55772326fcd504a757f386d2b010db3e13e78f3bcf851e69473d"
         }
       },
       "npm": {
@@ -1146,7 +1146,7 @@ fn lock_deno_json_package_json_deps() {
       },
       "jsr": {
         "@denotest/module_graph@1.4.0": {
-          "integrity": "555bbe259f55a4a2e7a39e8bf4bcbf25da4c874a313c3e98771eddceedac050b"
+          "integrity": "32de0973c5fa55772326fcd504a757f386d2b010db3e13e78f3bcf851e69473d"
         }
       }
     },
@@ -4725,19 +4725,19 @@ fn stdio_streams_are_locked_in_permission_prompt() {
 }
 
 #[test]
-fn permission_prompt_strips_ansi_codes_and_control_chars() {
+fn permission_prompt_escapes_ansi_codes_and_control_chars() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line(
         r#"Deno.permissions.request({ name: "env", variable: "\rDo you like ice cream? y/n" });"#
       );
     // will be uppercase on windows
     let env_name = if cfg!(windows) {
-      "DO YOU LIKE ICE CREAM? Y/N"
+      "\\rDO YOU LIKE ICE CREAM? Y/N"
     } else {
-      "Do you like ice cream? y/n"
+      "\\rDo you like ice cream? y/n"
     };
     console.expect(format!(
-      "┌ ⚠️  Deno requests env access to \"{}\".",
+      "\u{250c} \u{26a0}\u{fe0f}  Deno requests env access to \"{}\".",
       env_name
     ))
   });
@@ -4747,14 +4747,10 @@ fn permission_prompt_strips_ansi_codes_and_control_chars() {
     console.expect("undefined");
     console.write_line_raw(r#"const unboldANSI = "\u001b[22m";"#);
     console.expect("undefined");
-    console.write_line_raw(r#"const prompt = `┌ ⚠️  ${boldANSI}Deno requests run access to "echo"${unboldANSI}\n ├ Requested by \`Deno.Command().output()`"#);
-    console.expect("undefined");
-    console.write_line_raw(r#"const moveANSIUp = "\u001b[1A";"#);
-    console.expect("undefined");
-    console.write_line_raw(r#"const clearANSI = "\u001b[2K";"#);
-    console.expect("undefined");
-    console.write_line_raw(r#"const moveANSIStart = "\u001b[1000D";"#);
-    console.expect("undefined");
+    console.write_line_raw(
+      r#"new Deno.Command(`${boldANSI}cat${unboldANSI}`).spawn();"#,
+    );
+    console.expect("\u{250c} \u{26a0}\u{fe0f}  Deno requests run access to \"\\u{1b}[1mcat\\u{1b}[22m\".");
   });
 }
 
@@ -5167,18 +5163,4 @@ console.log(add(3, 4));
   );
   let output = test_context.new_command().args("run main.ts").run();
   output.assert_matches_text("[WILDCARD]5\n7\n");
-}
-
-#[test]
-fn inspect_color_overwrite() {
-  let test_context = TestContextBuilder::new().build();
-  let output = test_context
-    .new_command()
-    .skip_strip_ansi()
-    .split_output()
-    .env("NO_COLOR", "1")
-    .args("run run/inspect_color_overwrite.ts")
-    .run();
-
-  assert_eq!(output.stdout(), "foo\u{1b}[31mbar\u{1b}[0m\n");
 }

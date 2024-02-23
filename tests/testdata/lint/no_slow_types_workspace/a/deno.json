@@ -1,0 +1,8 @@
+{
+  "name": "@pkg/a",
+  "version": "1.0.0",
+  "exports": {
+    "./a": "./mod.ts",
+    "./b": "./b.ts"
+  }
+}
