@@ -106,6 +106,7 @@ flate2.workspace = true
 fs3.workspace = true
 glob = "0.3.1"
 hex.workspace = true
+ignore = "0.4"
 import_map = { version = "=0.18.3", features = ["ext"] }
 indexmap.workspace = true
 jsonc-parser = { version = "=0.23.0", features = ["serde"] }
