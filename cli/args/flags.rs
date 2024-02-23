@@ -756,12 +756,12 @@ impl Flags {
           .ok()
       }
       Task(_) | Check(_) | Coverage(_) | Cache(_) | Info(_) | Eval(_)
-      | Test(_) | Bench(_) | Repl(_) | Compile(_) => {
+      | Test(_) | Bench(_) | Repl(_) | Compile(_) | Publish(_) => {
         std::env::current_dir().ok()
       }
       Bundle(_) | Completions(_) | Doc(_) | Fmt(_) | Init(_) | Install(_)
       | Uninstall(_) | Jupyter(_) | Lsp | Lint(_) | Types | Upgrade(_)
-      | Vendor(_) | Publish(_) => None,
+      | Vendor(_) => None,
     }
   }
 
@@ -1312,6 +1312,7 @@ supported in canary.
           .help("Target OS architecture")
           .value_parser([
             "x86_64-unknown-linux-gnu",
+            "aarch64-unknown-linux-gnu",
             "x86_64-pc-windows-msvc",
             "x86_64-apple-darwin",
             "aarch64-apple-darwin",
