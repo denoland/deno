@@ -1,5 +1,9 @@
-import pc from "picocolors";
+import * as test from "@denotest/esm-basic";
 
-export function foobar(): string {
-  return pc.green("hello");
+export function add(a: number, b: number): number {
+  return a + b;
+}
+
+export function getValue(): any {
+  return test.getValue();
 }

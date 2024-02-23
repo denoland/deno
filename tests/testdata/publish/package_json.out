@@ -1,4 +1,4 @@
-Download http://localhost:4545/npm/registry/picocolors
+Download http://localhost:4545/npm/registry/@denotest/esm-basic
 Check file:///[WILDCARD]/publish/package_json/mod.ts
 Checking for slow types in the public API...
 Check file:///[WILDCARD]/publish/package_json/mod.ts

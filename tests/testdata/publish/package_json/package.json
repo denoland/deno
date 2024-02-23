@@ -2,6 +2,6 @@
   "name": "@deno/foo",
   "version": "0.0.1",
   "dependencies": {
-    "picocolors": "1.0.0"
+    "@denotest/esm-basic": "*"
   }
 }
