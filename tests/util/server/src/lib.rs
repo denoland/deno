@@ -64,6 +64,14 @@ pub fn env_vars_for_jsr_tests() -> Vec<(String, String)> {
   ]
 }
 
+pub fn env_vars_for_jsr_npm_tests() -> Vec<(String, String)> {
+  vec![
+    ("NPM_CONFIG_REGISTRY".to_string(), npm_registry_url()),
+    ("JSR_URL".to_string(), jsr_registry_url()),
+    ("NO_COLOR".to_string(), "1".to_string()),
+  ]
+}
+
 pub fn root_path() -> PathRef {
   PathRef::new(
     PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR")))
