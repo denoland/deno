@@ -843,6 +843,10 @@ impl CliOptions {
             os: "darwin".to_string(),
             cpu: "arm64".to_string(),
           },
+          "aarch64-unknown-linux-gnu" => NpmSystemInfo {
+            os: "linux".to_string(),
+            cpu: "arm64".to_string(),
+          },
           "x86_64-apple-darwin" => NpmSystemInfo {
             os: "darwin".to_string(),
             cpu: "x64".to_string(),
