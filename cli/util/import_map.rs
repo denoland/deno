@@ -14,7 +14,8 @@ use deno_graph::TypeScriptReference;
 use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
-use import_map::ImportMap;
+
+use crate::resolver::MappedSpecifierResolver;
 
 pub fn import_map_deps(value: &serde_json::Value) -> HashSet<JsrDepPackageReq> {
   let Some(obj) = value.as_object() else {
@@ -95,11 +96,11 @@ impl ImportMapUnfurlDiagnostic {
 }
 
 pub struct ImportMapUnfurler<'a> {
-  import_map: &'a ImportMap,
+  import_map: &'a MappedSpecifierResolver,
 }
 
 impl<'a> ImportMapUnfurler<'a> {
-  pub fn new(import_map: &'a ImportMap) -> Self {
+  pub fn new(import_map: &'a MappedSpecifierResolver) -> Self {
     Self { import_map }
   }
 
@@ -117,10 +118,12 @@ impl<'a> ImportMapUnfurler<'a> {
        text_changes: &mut Vec<deno_ast::TextChange>| {
         let resolved = self.import_map.resolve(specifier, url);
         if let Ok(resolved) = resolved {
-          text_changes.push(deno_ast::TextChange {
-            range: to_range(parsed_source, range),
-            new_text: make_relative_to(url, &resolved),
-          });
+          if let Some(resolved) = resolved.into_specifier() {
+            text_changes.push(deno_ast::TextChange {
+              range: to_range(parsed_source, range),
+              new_text: make_relative_to(url, &resolved),
+            });
+          }
         }
       };
     for dep in &module_info.dependencies {
@@ -206,7 +209,7 @@ fn make_relative_to(from: &ModuleSpecifier, to: &ModuleSpecifier) -> String {
 /// Attempts to unfurl the dynamic dependency returning `true` on success
 /// or `false` when the import was not analyzable.
 fn try_unfurl_dynamic_dep(
-  import_map: &ImportMap,
+  mapped_resolver: &MappedSpecifierResolver,
   module_url: &lsp_types::Url,
   parsed_source: &ParsedSource,
   dep: &deno_graph::DynamicDependencyDescriptor,
@@ -220,8 +223,11 @@ fn try_unfurl_dynamic_dep(
       let Some(relative_index) = maybe_relative_index else {
         return false;
       };
-      let resolved = import_map.resolve(value, module_url);
+      let resolved = mapped_resolver.resolve(value, module_url);
       let Ok(resolved) = resolved else {
+        return false;
+      };
+      let Some(resolved) = resolved.into_specifier() else {
         return false;
       };
       let start = range.start + relative_index;
@@ -241,7 +247,10 @@ fn try_unfurl_dynamic_dep(
         if !value.ends_with('/') {
           return false;
         }
-        let Ok(resolved) = import_map.resolve(value, module_url) else {
+        let Ok(resolved) = mapped_resolver.resolve(value, module_url) else {
+          return false;
+        };
+        let Some(resolved) = resolved.into_specifier() else {
           return false;
         };
         let range = to_range(parsed_source, &dep.argument_range);
@@ -289,6 +298,10 @@ fn to_range(
 
 #[cfg(test)]
 mod tests {
+  use std::sync::Arc;
+
+  use crate::args::PackageJsonDepsProvider;
+
   use super::*;
   use deno_ast::MediaType;
   use deno_ast::ModuleSpecifier;
@@ -323,7 +336,11 @@ mod tests {
     });
     let ImportMapWithDiagnostics { import_map, .. } =
       import_map::parse_from_value(&deno_json_url, value).unwrap();
-    let unfurler = ImportMapUnfurler::new(&import_map);
+    let mapped_resolved = MappedSpecifierResolver::new(
+      Some(Arc::new(import_map)),
+      Arc::new(PackageJsonDepsProvider::new(None)),
+    );
+    let unfurler = ImportMapUnfurler::new(&mapped_resolved);
 
     // Unfurling TS file should apply changes.
     {

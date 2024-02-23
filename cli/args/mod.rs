@@ -843,6 +843,10 @@ impl CliOptions {
             os: "darwin".to_string(),
             cpu: "arm64".to_string(),
           },
+          "aarch64-unknown-linux-gnu" => NpmSystemInfo {
+            os: "linux".to_string(),
+            cpu: "arm64".to_string(),
+          },
           "x86_64-apple-darwin" => NpmSystemInfo {
             os: "darwin".to_string(),
             cpu: "x64".to_string(),
@@ -856,7 +860,13 @@ impl CliOptions {
             cpu: "x64".to_string(),
           },
           value => {
-            log::warn!("Not implemented NPM system info for target '{value}'. Using current system default. This may impact NPM ");
+            log::warn!(
+              concat!(
+                "Not implemented npm system info for target '{}'. Using current ",
+                "system default. This may impact architecture specific dependencies."
+              ),
+              value,
+            );
             NpmSystemInfo::default()
           }
         }
