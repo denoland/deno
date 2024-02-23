@@ -861,7 +861,7 @@ pub async fn publish(
       bail!("Automatic provenance is only available in GitHub Actions");
     }
 
-    if !std::env::var("ACTIONS_ID_TOKEN_REQUEST_TOKEN").is_err() {
+    if std::env::var("ACTIONS_ID_TOKEN_REQUEST_TOKEN").is_err() {
       bail!("Provenance generation in Github Actions requires 'write' access the 'id-token' permission");
     }
 
@@ -898,7 +898,7 @@ mod ci_info {
     env::var("GITHUB_ACTIONS").is_ok()
   }
 
-  pub fn gha_token(audience: &str) -> String {
+  pub async fn gha_token(audience: &str) -> String {
     let Ok(req_url) = env::var("ACTIONS_ID_TOKEN_REQUEST_URL") else {
       panic!("Not running in GitHub Actions");
     };
@@ -908,17 +908,27 @@ mod ci_info {
     let mut url = Url::parse(&req_url).unwrap();
     url.query_pairs_mut().append_pair("audience", audience);
 
-    todo!()
+    let client = reqwest::Client::new();
+    client
+      .get(url)
+      .bearer_auth(token)
+      .send()
+      .await
+      .unwrap()
+      .json::<super::api::OidcTokenResponse>()
+      .await
+      .unwrap()
+      .value
   }
 }
 
 mod dsse {
   use super::fulcio;
-  use deno_core::serde::Serialize;
   use deno_core::serde::Deserialize;
+  use deno_core::serde::Serialize;
   use deno_core::serde_json;
-  use std::collections::HashMap;
   use sha2::Digest;
+  use std::collections::HashMap;
 
   const PAE_PREFIX: &str = "DSSEv1";
 
@@ -1008,7 +1018,9 @@ mod dsse {
   const DEFAULT_REKOR_URL: &str = "https://rekor.sigstore.dev";
 
   #[derive(Debug, Deserialize)]
+  #[serde(rename_all = "camelCase")]
   struct LogEntry {
+    #[serde(rename = "logID")]
     log_id: String,
     log_index: u64,
   }
@@ -1019,8 +1031,9 @@ mod dsse {
     // Rekor "intoto" entry for the given DSSE envelope and signature.
     //
     // Calculate the value for the payloadHash field into the Rekor entry
-    let payload_hash =
-      hex::encode(sha2::Sha256::digest(content.dsse_envelope.payload.as_bytes()));
+    let payload_hash = hex::encode(sha2::Sha256::digest(
+      content.dsse_envelope.payload.as_bytes(),
+    ));
 
     // Calculate the value for the hash field into the Rekor entry
     let envelope_hash = hex::encode({
@@ -1087,6 +1100,8 @@ mod dsse {
 }
 
 mod fulcio {
+  use base64::prelude::BASE64_STANDARD;
+  use base64::{engine::general_purpose::STANDARD_NO_PAD, Engine as _};
   use deno_core::serde_json;
   use p256::elliptic_curve;
   use p256::pkcs8::AssociatedOid;
@@ -1100,7 +1115,7 @@ mod fulcio {
 
   #[derive(Debug, serde::Deserialize)]
   struct JwtSubject {
-    email: String,
+    email: Option<String>,
     sub: String,
     iss: String,
   }
@@ -1110,12 +1125,12 @@ mod fulcio {
 
     let parts: Vec<&str> = jwt.split('.').collect();
     let payload = parts[1];
-    let decoded = base64::decode(payload).unwrap();
+    let decoded = STANDARD_NO_PAD.decode(payload).unwrap();
 
     let subject: JwtSubject = serde_json::from_slice(&decoded).unwrap();
     match subject.iss.as_str() {
       "https://accounts.google.com" | "https://oauth2.sigstore.dev/auth" => {
-        subject.email
+        subject.email.unwrap()
       }
       _ => subject.sub,
     }
@@ -1141,12 +1156,12 @@ mod fulcio {
     pub fn new() -> Self {
       let rng = ring::rand::SystemRandom::new();
       let document = EcdsaKeyPair::generate_pkcs8(
-        &ring::signature::ECDSA_P256_SHA256_FIXED_SIGNING,
+        &ring::signature::ECDSA_P256_SHA256_ASN1_SIGNING,
         &rng,
       )
       .unwrap();
       let ephemeral_signer = EcdsaKeyPair::from_pkcs8(
-        &ring::signature::ECDSA_P256_SHA256_FIXED_SIGNING,
+        &ring::signature::ECDSA_P256_SHA256_ASN1_SIGNING,
         document.as_ref(),
         &rng,
       )
@@ -1161,9 +1176,10 @@ mod fulcio {
     }
 
     pub async fn sign(self, data: &[u8]) -> Signature {
-      let token = super::ci_info::gha_token("sigstore");
+      let token = super::ci_info::gha_token("sigstore").await;
       let subject = extract_jwt_subject(&token);
 
+      println!("subject: {}", &subject);
       let challenge = self
         .ephemeral_signer
         .sign(&self.rng, subject.as_bytes())
@@ -1184,6 +1200,7 @@ mod fulcio {
       };
 
       let pem = spki.to_pem(LineEnding::LF).unwrap();
+      println!("pem: {}", &pem);
 
       // Create signing certificate
       let certificates = self
@@ -1218,17 +1235,22 @@ mod fulcio {
           "publicKeyRequest": {
             "publicKey": {
               "algorithm": "ECDSA",
-              "key": public_key,
+              "content": public_key,
             },
-            "proofOfPossession": base64::encode(challenge.as_ref()),
+            "proofOfPossession": BASE64_STANDARD.encode(challenge.as_ref()),
           }
         }))
         .send()
         .await
         .unwrap();
-      assert!(response.status().is_success());
 
+      let is_success = response.status().is_success();
       let body = response.json::<serde_json::Value>().await.unwrap();
+
+      if !is_success {
+        println!("Failed to create signing certificate: {}", body);
+      }
+
       let key = body
         .get("signedCertificateEmbeddedSct")
         .or_else(|| body.get("signedCertificateDetachedSct"))
@@ -1259,6 +1281,7 @@ fn slsa_payload(subject: Subject) -> String {
   const INTOTO_STATEMENT_TYPE: &str = "https://in-toto.io/Statement/v1";
   const SLSA_PREDICATE_TYPE: &str = "https://slsa.dev/provenance/v1";
 
+  const GITHUB_BUILDER_ID_PREFIX: &str = "https://github.com/actions/runner";
   const GITHUB_BUILD_TYPE: &str =
     "https://slsa-framework.github.io/github-actions-buildtypes/workflow/v1";
 
@@ -1293,9 +1316,9 @@ fn slsa_payload(subject: Subject) -> String {
         },
         "internalParameters": {
           "github": {
-            "event_name": std::env::var("GITHUB_EVENT_NAME").unwrap(),
-            "repository_id": std::env::var("GITHUB_REPOSITORY_ID").unwrap(),
-            "repository_owner_id": std::env::var("GITHUB_REPOSITORY_OWNER_ID").unwrap(),
+            "event_name": std::env::var("GITHUB_EVENT_NAME").unwrap_or_default(),
+            "repository_id": std::env::var("GITHUB_REPOSITORY_ID").unwrap_or_default(),
+            "repository_owner_id": std::env::var("GITHUB_REPOSITORY_OWNER_ID").unwrap_or_default(),
           }
         },
         "resolvedDependencies": [
@@ -1316,8 +1339,8 @@ fn slsa_payload(subject: Subject) -> String {
           "builder": {
             "id": format!(
               "{}/{}",
-              std::env::var("GITHUB_BUILDER").unwrap(),
-              std::env::var("GITHUB_ACTOR").unwrap()
+              &GITHUB_BUILDER_ID_PREFIX,
+              std::env::var("RUNNER_ENVIRONMENT").unwrap()
             ),
           },
           "metadata": {
