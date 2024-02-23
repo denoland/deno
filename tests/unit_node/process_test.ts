@@ -1,7 +1,14 @@
 // deno-lint-ignore-file no-undef
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import process, { argv, env } from "node:process";
+import process, {
+  arch as importedArch,
+  argv,
+  env,
+  pid as importedPid,
+  platform as importedPlatform,
+} from "node:process";
+
 import { Readable } from "node:stream";
 import { once } from "node:events";
 import {
@@ -83,7 +90,11 @@ Deno.test({
 Deno.test({
   name: "process.platform",
   fn() {
+    const expectedOs = Deno.build.os == "windows" ? "win32" : Deno.build.os;
     assertEquals(typeof process.platform, "string");
+    assertEquals(process.platform, expectedOs);
+    assertEquals(typeof importedPlatform, "string");
+    assertEquals(importedPlatform, expectedOs);
   },
 });
 
@@ -102,14 +113,20 @@ Deno.test({
 Deno.test({
   name: "process.arch",
   fn() {
-    assertEquals(typeof process.arch, "string");
-    if (Deno.build.arch == "x86_64") {
-      assertEquals(process.arch, "x64");
-    } else if (Deno.build.arch == "aarch64") {
-      assertEquals(process.arch, "arm64");
-    } else {
-      throw new Error("unreachable");
+    function testValue(arch: string) {
+      if (Deno.build.arch == "x86_64") {
+        assertEquals(arch, "x64");
+      } else if (Deno.build.arch == "aarch64") {
+        assertEquals(arch, "arm64");
+      } else {
+        throw new Error("unreachable");
+      }
     }
+
+    assertEquals(typeof process.arch, "string");
+    testValue(process.arch);
+    assertEquals(typeof importedArch, "string");
+    testValue(importedArch);
   },
 });
 
@@ -118,6 +135,8 @@ Deno.test({
   fn() {
     assertEquals(typeof process.pid, "number");
     assertEquals(process.pid, Deno.pid);
+    assertEquals(typeof importedPid, "number");
+    assertEquals(importedPid, Deno.pid);
   },
 });
 
