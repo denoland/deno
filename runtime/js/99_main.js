@@ -644,7 +644,7 @@ function bootstrapMainRuntime(runtimeOptions) {
     2: unstableFeatures,
     3: inspectFlag,
     5: hasNodeModulesDir,
-    6: maybeBinaryNpmCommandName,
+    6: argv0,
     7: shouldDisableDeprecatedApiWarning,
     8: shouldUseVerboseDeprecatedApiWarning,
     9: future,
@@ -768,7 +768,7 @@ function bootstrapMainRuntime(runtimeOptions) {
   ObjectDefineProperty(globalThis, "Deno", core.propReadOnly(finalDenoNs));
 
   if (nodeBootstrap) {
-    nodeBootstrap(hasNodeModulesDir, maybeBinaryNpmCommandName);
+    nodeBootstrap(hasNodeModulesDir, argv0);
   }
 
   if (future) {
@@ -793,7 +793,7 @@ function bootstrapWorkerRuntime(
     2: unstableFeatures,
     4: enableTestingFeaturesFlag,
     5: hasNodeModulesDir,
-    6: maybeBinaryNpmCommandName,
+    6: argv0,
     7: shouldDisableDeprecatedApiWarning,
     8: shouldUseVerboseDeprecatedApiWarning,
   } = runtimeOptions;
@@ -897,7 +897,7 @@ function bootstrapWorkerRuntime(
   ObjectDefineProperty(globalThis, "Deno", core.propReadOnly(finalDenoNs));
 
   if (nodeBootstrap) {
-    nodeBootstrap(hasNodeModulesDir, maybeBinaryNpmCommandName);
+    nodeBootstrap(hasNodeModulesDir, argv0);
   }
 }
 
