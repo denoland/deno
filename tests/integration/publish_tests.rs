@@ -3,6 +3,7 @@
 use deno_core::serde_json::json;
 use test_util::assert_contains;
 use test_util::assert_not_contains;
+use test_util::env_vars_for_jsr_npm_tests;
 use test_util::env_vars_for_jsr_tests;
 use test_util::env_vars_for_npm_tests;
 use test_util::itest;
@@ -145,6 +146,14 @@ itest!(javascript_decl_file {
   envs: env_vars_for_jsr_tests(),
   http_server: true,
   exit_code: 0,
+});
+
+itest!(package_json {
+  args: "publish --token 'sadfasdf'",
+  output: "publish/package_json.out",
+  cwd: Some("publish/package_json"),
+  envs: env_vars_for_jsr_npm_tests(),
+  http_server: true,
 });
 
 itest!(successful {
