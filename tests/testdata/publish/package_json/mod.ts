@@ -1,5 +1,5 @@
-import camelCase from "camelcase";
+import pc from "picocolors";
 
 export function foobar(): string {
-  return camelCase("it works");
+  return pc.green("hello");
 }
