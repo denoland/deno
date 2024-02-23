@@ -860,7 +860,13 @@ impl CliOptions {
             cpu: "x64".to_string(),
           },
           value => {
-            log::warn!("Not implemented NPM system info for target '{value}'. Using current system default. This may impact NPM ");
+            log::warn!(
+              concat!(
+                "Not implemented npm system info for target '{}'. Using current ",
+                "system default. This may impact architecture specific dependencies."
+              ),
+              value,
+            );
             NpmSystemInfo::default()
           }
         }
