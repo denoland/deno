@@ -854,5 +854,484 @@ pub async fn publish(
     prepared_data.package_by_name,
     auth_method,
   )
-  .await
+  .await?;
+
+  if publish_flags.provenance {
+    if !ci_info::is_gha() {
+      bail!("Automatic provenance is only available in GitHub Actions");
+    }
+
+    if !std::env::var("ACTIONS_ID_TOKEN_REQUEST_TOKEN").is_err() {
+      bail!("Provenance generation in Github Actions requires 'write' access the 'id-token' permission");
+    }
+
+    // Get the version manifest from JSR
+    let name = "deno";
+    let version = "1.0.0";
+    let meta_url =
+      jsr_url().join(&format!("{}/{}_meta.json", name, version))?;
+
+    let client = reqwest::Client::new();
+    let response = client.get(meta_url).send().await?;
+    let meta_bytes = response.bytes().await?;
+
+    // TODO: Verify manifest.
+
+    const INTOTO_PAYLOAD_TYPE: &str = "application/vnd.in-toto+json";
+    let payload = slsa_payload(Subject {
+      name: name.to_string(),
+      digest: SubjectDigest {
+        sha512: hex::encode(sha2::Sha512::digest(&meta_bytes)),
+      },
+    });
+    let bundle = dsse::attest(&payload, INTOTO_PAYLOAD_TYPE).await;
+  }
+
+  Ok(())
+}
+
+mod ci_info {
+  use lsp_types::Url;
+  use std::env;
+
+  pub fn is_gha() -> bool {
+    env::var("GITHUB_ACTIONS").is_ok()
+  }
+
+  pub fn gha_token(audience: &str) -> String {
+    let Ok(req_url) = env::var("ACTIONS_ID_TOKEN_REQUEST_URL") else {
+      panic!("Not running in GitHub Actions");
+    };
+
+    let token = env::var("ACTIONS_ID_TOKEN_REQUEST_TOKEN").unwrap();
+
+    let mut url = Url::parse(&req_url).unwrap();
+    url.query_pairs_mut().append_pair("audience", audience);
+
+    todo!()
+  }
+}
+
+mod dsse {
+  use super::fulcio;
+  use deno_core::serde::Serialize;
+  use deno_core::serde::Deserialize;
+  use deno_core::serde_json;
+  use std::collections::HashMap;
+  use sha2::Digest;
+
+  const PAE_PREFIX: &str = "DSSEv1";
+
+  /// DSSE Pre-Auth Encoding
+  ///
+  /// https://github.com/secure-systems-lab/dsse/blob/master/protocol.md#signature-definition
+  pub fn pre_auth_encoding(payload_type: &str, payload: &str) -> Vec<u8> {
+    format!(
+      "{} {} {} {} {}",
+      PAE_PREFIX,
+      payload_type.len(),
+      payload_type,
+      payload.len(),
+      payload,
+    )
+    .into_bytes()
+  }
+
+  #[derive(Serialize)]
+  #[serde(rename_all = "camelCase")]
+  struct Signature {
+    keyid: &'static str,
+    sig: String,
+  }
+
+  #[derive(Serialize)]
+  #[serde(rename_all = "camelCase")]
+  struct Envelope {
+    payload_type: String,
+    payload: String,
+    signatures: Vec<Signature>,
+  }
+
+  #[derive(Serialize)]
+  #[serde(rename_all = "camelCase")]
+  struct SignatureBundle {
+    #[serde(rename = "$case")]
+    case: &'static str,
+    dsse_envelope: Envelope,
+  }
+
+  pub async fn attest(data: &str, type_: &str) -> serde_json::Value {
+    let pae = pre_auth_encoding(type_, data);
+
+    let bundler = fulcio::FulcioSigner::new();
+    let signature = bundler.sign(&pae).await;
+
+    // Rekor witness
+    const BUNDLE_V02_MEDIA_TYPE: &str =
+      "application/vnd.dev.sigstore.bundle+json;version=0.2";
+
+    let content = SignatureBundle {
+      case: "dsseEnvelope",
+      dsse_envelope: Envelope {
+        payload_type: type_.to_string(),
+        payload: base64::encode(data),
+        signatures: vec![Signature {
+          keyid: "",
+          sig: base64::encode(signature.signature.as_ref()),
+        }],
+      },
+    };
+
+    testify(&content, &signature.key.certificate).await;
+
+    let bundle = serde_json::json!({
+      "mediaType": BUNDLE_V02_MEDIA_TYPE,
+      "content": content,
+      "verificationMaterial": {
+        "content": {
+          "$case": "x509CertificateChain",
+          "x509CertificateChain": {
+            "certificates": [{
+              "rawBytes": base64::encode(signature.key.certificate.as_bytes()),
+            }],
+          },
+        },
+        "tlogEntries": [],
+        "timestampVerificationData": {
+          "rfc3161Timestamps": []
+        }
+      }
+    });
+    bundle
+  }
+
+  const DEFAULT_REKOR_URL: &str = "https://rekor.sigstore.dev";
+
+  #[derive(Debug, Deserialize)]
+  struct LogEntry {
+    log_id: String,
+    log_index: u64,
+  }
+
+  type RekorEntry = HashMap<String, LogEntry>;
+
+  pub async fn testify(content: &SignatureBundle, public_key: &str) {
+    // Rekor "intoto" entry for the given DSSE envelope and signature.
+    //
+    // Calculate the value for the payloadHash field into the Rekor entry
+    let payload_hash =
+      hex::encode(sha2::Sha256::digest(content.dsse_envelope.payload.as_bytes()));
+
+    // Calculate the value for the hash field into the Rekor entry
+    let envelope_hash = hex::encode({
+      let dsse = serde_json::json!({
+          "payloadType": content.dsse_envelope.payload_type,
+          "payload": content.dsse_envelope.payload,
+          "signatures": [
+              {
+                  "sig": content.dsse_envelope.signatures[0].sig,
+                  "publicKey": public_key
+              }
+          ]
+      });
+
+      sha2::Sha256::digest(serde_json::to_string(&dsse).unwrap().as_bytes())
+    });
+
+    // Re-create the DSSE envelop. `publicKey` is not the standard part of
+    // DSSE, but it's required by Rekor.
+    //
+    // Double-encode payload and signature cause that's what Rekor expects
+    let dsse = serde_json::json!({
+      "payloadType": content.dsse_envelope.payload_type,
+      "payload": base64::encode(content.dsse_envelope.payload.clone()),
+      "signatures": [
+        {
+          "sig": base64::encode(content.dsse_envelope.signatures[0].sig.clone()),
+          "publicKey": base64::encode(public_key)
+        }
+      ]
+    });
+
+    let propose_intoto_entry = serde_json::json!({
+        "apiVersion": "0.0.2",
+        "kind": "intoto",
+        "spec": {
+          "content": {
+            "envelope": dsse,
+            "hash": {
+              "algorithm": "sha256",
+              "value": envelope_hash
+            },
+            "payloadHash": {
+              "algorithm": "sha256",
+              "value": payload_hash
+            }
+          }
+        }
+    });
+
+    let client = reqwest::Client::new();
+    let response = client
+      .post(format!("{}/api/v1/log/entries", DEFAULT_REKOR_URL))
+      .json(&propose_intoto_entry)
+      .send()
+      .await
+      .unwrap();
+
+    assert!(response.status().is_success());
+    let entry: RekorEntry = response.json().await.unwrap();
+
+    println!("Rekor entry: {:?}", entry);
+  }
+}
+
+mod fulcio {
+  use deno_core::serde_json;
+  use p256::elliptic_curve;
+  use p256::pkcs8::AssociatedOid;
+  use ring::signature::EcdsaKeyPair;
+  use ring::signature::KeyPair;
+  use spki::der::asn1;
+  use spki::der::pem::LineEnding;
+  use spki::der::EncodePem;
+
+  const DEFAULT_FULCIO_URL: &str = "https://fulcio.sigstore.dev";
+
+  #[derive(Debug, serde::Deserialize)]
+  struct JwtSubject {
+    email: String,
+    sub: String,
+    iss: String,
+  }
+
+  fn extract_jwt_subject(jwt: &str) -> String {
+    // TODO: identity token parse error
+
+    let parts: Vec<&str> = jwt.split('.').collect();
+    let payload = parts[1];
+    let decoded = base64::decode(payload).unwrap();
+
+    let subject: JwtSubject = serde_json::from_slice(&decoded).unwrap();
+    match subject.iss.as_str() {
+      "https://accounts.google.com" | "https://oauth2.sigstore.dev/auth" => {
+        subject.email
+      }
+      _ => subject.sub,
+    }
+  }
+
+  pub struct FulcioSigner {
+    ephemeral_signer: EcdsaKeyPair,
+    rng: ring::rand::SystemRandom,
+    client: reqwest::Client,
+  }
+
+  pub struct KeyMaterial {
+    case: &'static str,
+    pub certificate: String,
+  }
+
+  pub struct Signature {
+    pub signature: ring::signature::Signature,
+    pub key: KeyMaterial,
+  }
+
+  impl FulcioSigner {
+    pub fn new() -> Self {
+      let rng = ring::rand::SystemRandom::new();
+      let document = EcdsaKeyPair::generate_pkcs8(
+        &ring::signature::ECDSA_P256_SHA256_FIXED_SIGNING,
+        &rng,
+      )
+      .unwrap();
+      let ephemeral_signer = EcdsaKeyPair::from_pkcs8(
+        &ring::signature::ECDSA_P256_SHA256_FIXED_SIGNING,
+        document.as_ref(),
+        &rng,
+      )
+      .unwrap();
+
+      let client = reqwest::Client::new();
+      Self {
+        ephemeral_signer,
+        rng,
+        client,
+      }
+    }
+
+    pub async fn sign(self, data: &[u8]) -> Signature {
+      let token = super::ci_info::gha_token("sigstore");
+      let subject = extract_jwt_subject(&token);
+
+      let challenge = self
+        .ephemeral_signer
+        .sign(&self.rng, subject.as_bytes())
+        .unwrap();
+
+      // Export the public key in SPKI format
+
+      // encoded point
+      let subject_public_key = self.ephemeral_signer.public_key().as_ref();
+      let algorithm = spki::AlgorithmIdentifier {
+        oid: elliptic_curve::ALGORITHM_OID,
+        parameters: Some((&p256::NistP256::OID).into()),
+      };
+      let spki = spki::SubjectPublicKeyInfoRef {
+        algorithm,
+        subject_public_key: asn1::BitStringRef::from_bytes(subject_public_key)
+          .unwrap(),
+      };
+
+      let pem = spki.to_pem(LineEnding::LF).unwrap();
+
+      // Create signing certificate
+      let certificates = self
+        .create_signing_certificate(&token, pem, challenge)
+        .await;
+
+      let signature = self.ephemeral_signer.sign(&self.rng, data).unwrap();
+
+      Signature {
+        signature,
+        key: KeyMaterial {
+          case: "x509Certificate",
+          certificate: certificates[0].clone(),
+        },
+      }
+    }
+
+    async fn create_signing_certificate(
+      &self,
+      token: &str,
+      public_key: String,
+      challenge: ring::signature::Signature,
+    ) -> Vec<String> {
+      let url = format!("{}/api/v2/signingCert", DEFAULT_FULCIO_URL);
+      let response = self
+        .client
+        .post(url)
+        .json(&serde_json::json!({
+          "credentials": {
+            "oidcIdentityToken": token,
+          },
+          "publicKeyRequest": {
+            "publicKey": {
+              "algorithm": "ECDSA",
+              "key": public_key,
+            },
+            "proofOfPossession": base64::encode(challenge.as_ref()),
+          }
+        }))
+        .send()
+        .await
+        .unwrap();
+      assert!(response.status().is_success());
+
+      let body = response.json::<serde_json::Value>().await.unwrap();
+      let key = body
+        .get("signedCertificateEmbeddedSct")
+        .or_else(|| body.get("signedCertificateDetachedSct"))
+        .unwrap();
+      let certs = &key["chain"]["certificates"];
+
+      let mut result = vec![];
+      for cert in certs.as_array().unwrap() {
+        result.push(cert.as_str().unwrap().to_string());
+      }
+      result
+    }
+  }
+}
+
+#[derive(Serialize)]
+struct SubjectDigest {
+  sha512: String,
+}
+
+#[derive(Serialize)]
+struct Subject {
+  name: String,
+  digest: SubjectDigest,
+}
+
+fn slsa_payload(subject: Subject) -> String {
+  const INTOTO_STATEMENT_TYPE: &str = "https://in-toto.io/Statement/v1";
+  const SLSA_PREDICATE_TYPE: &str = "https://slsa.dev/provenance/v1";
+
+  const GITHUB_BUILD_TYPE: &str =
+    "https://slsa-framework.github.io/github-actions-buildtypes/workflow/v1";
+
+  let repo =
+    std::env::var("GITHUB_REPOSITORY").expect("GITHUB_REPOSITORY not set");
+  let rel_ref = std::env::var("GITHUB_WORKFLOW_REF")
+    .unwrap_or_default()
+    .replace(&format!("{}/", repo), "");
+
+  let delimn = rel_ref.find('@').unwrap();
+  let (workflow_path, workflow_ref) = rel_ref.split_at(delimn);
+
+  let server_url = std::env::var("GITHUB_SERVER_URL").unwrap();
+
+  let statement = json!({
+    "_type": INTOTO_STATEMENT_TYPE,
+    "subject": subject,
+    "predicateType": SLSA_PREDICATE_TYPE,
+    "predicate": {
+      "buildDefinitions": {
+        "buildType": GITHUB_BUILD_TYPE,
+        "externalParameters": {
+          "workflow": {
+            "ref": workflow_ref,
+            "repository": format!(
+                "{}/{}",
+                &server_url,
+                std::env::var("GITHUB_REPOSITORY").unwrap()
+              ),
+            "path": workflow_path
+          }
+        },
+        "internalParameters": {
+          "github": {
+            "event_name": std::env::var("GITHUB_EVENT_NAME").unwrap(),
+            "repository_id": std::env::var("GITHUB_REPOSITORY_ID").unwrap(),
+            "repository_owner_id": std::env::var("GITHUB_REPOSITORY_OWNER_ID").unwrap(),
+          }
+        },
+        "resolvedDependencies": [
+          {
+            "uri": format!(
+              "git+{}/{}@{}",
+              &server_url,
+              std::env::var("GITHUB_REPOSITORY").unwrap(),
+              std::env::var("GITHUB_REF").unwrap()
+            ),
+            "digest": {
+              "gitCommit": std::env::var("GITHUB_SHA").unwrap(),
+            }
+          }
+        ],
+      },
+        "runDetails": {
+          "builder": {
+            "id": format!(
+              "{}/{}",
+              std::env::var("GITHUB_BUILDER").unwrap(),
+              std::env::var("GITHUB_ACTOR").unwrap()
+            ),
+          },
+          "metadata": {
+            "invocationId": format!(
+              "{}/{}/actions/runs/{}/attempts/{}",
+              server_url,
+              std::env::var("GITHUB_REPOSITORY").unwrap(),
+              std::env::var("GITHUB_RUN_ID").unwrap(),
+              std::env::var("GITHUB_RUN_ATTEMPT").unwrap()
+            ),
+          }
+        }
+    },
+  });
+
+  serde_json::to_string(&statement).unwrap()
 }
