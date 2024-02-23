@@ -4,6 +4,7 @@
 import process, {
   arch as importedArch,
   argv,
+  argv0 as importedArgv0,
   env,
   pid as importedPid,
   platform as importedPlatform,
@@ -303,6 +304,12 @@ Deno.test({
       process.argv0.match(/[^/\\]*deno[^/\\]*$/),
       "deno included in the file name of argv[0]",
     );
+    assertEquals(typeof importedArgv0, "string");
+    assert(
+      importedArgv0.match(/[^/\\]*deno[^/\\]*$/),
+      "deno included in the file name of argv[0]",
+    );
+
     // Setting should be a noop
     process.argv0 = "foobar";
     assert(
