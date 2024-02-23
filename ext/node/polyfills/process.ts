@@ -45,8 +45,7 @@ import { isWindows } from "ext:deno_node/_util/os.ts";
 import * as io from "ext:deno_io/12_io.js";
 import { Command } from "ext:runtime/40_process.js";
 
-let argv0Getter = () => "";
-export let argv0 = "deno";
+export let argv0 = "";
 
 export let arch = "";
 
@@ -389,9 +388,6 @@ class Process extends EventEmitter {
   argv = argv;
 
   get argv0() {
-    if (!argv0) {
-      argv0 = argv0Getter();
-    }
     return argv0;
   }
 
@@ -875,19 +871,14 @@ internals.__bootstrapNodeProcess = function (
 ) {
   // Overwrites the 1st item with getter.
   if (typeof argv0Val === "string") {
+    argv0 = argv0Val;
     Object.defineProperty(argv, "0", {
       get: () => {
         return argv0Val;
       },
     });
-    argv0Getter = () => argv0Val;
   } else {
-    Object.defineProperty(argv, "0", {
-      get: () => {
-        return Deno.execPath();
-      },
-    });
-    argv0Getter = () => Deno.execPath();
+    Object.defineProperty(argv, "0", { get: () => argv0 });
   }
 
   // Overwrites the 2st item with getter.

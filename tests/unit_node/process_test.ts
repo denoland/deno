@@ -287,7 +287,17 @@ Deno.test({
 
 Deno.test({
   name: "process.argv0",
-  fn() {
+  async fn() {
+    const { stdout } = await new Deno.Command(Deno.execPath(), {
+      args: [
+        "eval",
+        `import process from "node:process";console.log(process.argv0);`,
+      ],
+      stdout: "piped",
+      stderr: "null",
+    }).output();
+    assertEquals(new TextDecoder().decode(stdout).trim(), Deno.execPath());
+
     assertEquals(typeof process.argv0, "string");
     assert(
       process.argv0.match(/[^/\\]*deno[^/\\]*$/),
