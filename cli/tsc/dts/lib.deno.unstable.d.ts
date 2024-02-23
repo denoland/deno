@@ -125,6 +125,7 @@ declare namespace Deno {
   export type NativeTypedPointer<T extends PointerObject> = "pointer" & {
     [brand]: T;
   };
+  /** @category FFI */
   export type NativeTypedFunction<T extends UnsafeCallbackDefinition> =
     & "function"
     & {
@@ -876,8 +877,6 @@ declare namespace Deno {
    * @category Fetch API
    */
   export interface HttpClient extends Disposable {
-    /** The resource ID associated with the client. */
-    rid: number;
     /** Close the HTTP client. */
     close(): void;
   }
@@ -896,10 +895,10 @@ declare namespace Deno {
     caCerts?: string[];
     /** A HTTP proxy to use for new connections. */
     proxy?: Proxy;
-    /** PEM formatted client certificate chain. */
-    certChain?: string;
-    /** PEM formatted (RSA or PKCS8) private key of client certificate. */
-    privateKey?: string;
+    /** Server private key in PEM format. */
+    cert?: string;
+    /** Cert chain in PEM format. */
+    key?: string;
     /** Sets the maximum numer of idle connections per host allowed in the pool. */
     poolMaxIdlePerHost?: number;
     /** Set an optional timeout for idle sockets being kept-alive.
@@ -2249,7 +2248,9 @@ declare var WebSocketStream: {
  * @category Temporal
  */
 declare namespace Temporal {
+  /** @category Temporal */
   export type ComparisonResult = -1 | 0 | 1;
+  /** @category Temporal */
   export type RoundingMode =
     | "ceil"
     | "floor"
@@ -4245,6 +4246,7 @@ declare namespace Temporal {
 
 /** @category Intl */
 declare namespace Intl {
+  /** @category Intl */
   type Formattable =
     | Date
     | Temporal.Instant
@@ -4255,6 +4257,7 @@ declare namespace Intl {
     | Temporal.PlainYearMonth
     | Temporal.PlainMonthDay;
 
+  /** @category Intl */
   interface DateTimeFormatRangePart {
     source: "shared" | "startRange" | "endRange";
   }

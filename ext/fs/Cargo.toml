@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_fs"
-version = "0.48.0"
+version = "0.49.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -18,6 +18,7 @@ sync_fs = []
 
 [dependencies]
 async-trait.workspace = true
+base32.workspace = true
 deno_core.workspace = true
 deno_io.workspace = true
 filetime.workspace = true

@@ -22,17 +22,17 @@ itest!(missing_deno_json {
   exit_code: 1,
 });
 
-itest!(invalid_fast_check {
+itest!(has_slow_types {
   args: "publish --token 'sadfasdf'",
-  output: "publish/invalid_fast_check.out",
-  cwd: Some("publish/invalid_fast_check"),
+  output: "publish/has_slow_types.out",
+  cwd: Some("publish/has_slow_types"),
   exit_code: 1,
 });
 
-itest!(no_zap {
-  args: "publish --no-zap --token 'sadfasdf'",
-  output: "publish/no_zap.out",
-  cwd: Some("publish/invalid_fast_check"),
+itest!(allow_slow_types {
+  args: "publish --allow-slow-types --token 'sadfasdf'",
+  output: "publish/allow_slow_types.out",
+  cwd: Some("publish/has_slow_types"),
   envs: env_vars_for_jsr_tests(),
   http_server: true,
   exit_code: 0,
@@ -83,7 +83,9 @@ fn publish_non_exported_files_using_import_map() {
     .new_command()
     .args("publish --log-level=debug --token 'sadfasdf'")
     .run();
+  output.assert_exit_code(0);
   let lines = output.combined_output().split('\n').collect::<Vec<_>>();
+  eprintln!("{}", output.combined_output());
   assert!(lines
     .iter()
     .any(|l| l.contains("Unfurling") && l.ends_with("mod.ts")));
@@ -153,6 +155,15 @@ itest!(successful {
   http_server: true,
 });
 
+itest!(no_check {
+  args: "publish --token 'sadfasdf' --no-check",
+  // still type checks the slow types output though
+  output: "publish/successful_no_check.out",
+  cwd: Some("publish/successful"),
+  envs: env_vars_for_jsr_tests(),
+  http_server: true,
+});
+
 itest!(node_specifier {
   args: "publish --token 'sadfasdf'",
   output: "publish/node_specifier.out",
@@ -205,6 +216,43 @@ itest!(config_flag {
 });
 
 #[test]
+fn ignores_gitignore() {
+  let context = publish_context_builder().build();
+  let temp_dir = context.temp_dir().path();
+  temp_dir.join("deno.json").write_json(&json!({
+    "name": "@foo/bar",
+    "version": "1.0.0",
+    "exports": "./main.ts"
+  }));
+
+  temp_dir.join("main.ts").write("import './sub_dir/b.ts';");
+
+  let gitignore = temp_dir.join(".gitignore");
+  gitignore.write("ignored.ts\nsub_dir/ignored.wasm");
+
+  let sub_dir = temp_dir.join("sub_dir");
+  sub_dir.create_dir_all();
+  sub_dir.join("ignored.wasm").write("");
+  sub_dir.join("b.ts").write("export default {}");
+
+  temp_dir.join("ignored.ts").write("");
+
+  let output = context
+    .new_command()
+    .arg("publish")
+    .arg("--dry-run")
+    .arg("--token")
+    .arg("sadfasdf")
+    .run();
+  output.assert_exit_code(0);
+  let output = output.combined_output();
+  assert_contains!(output, "b.ts");
+  assert_contains!(output, "main.ts");
+  assert_not_contains!(output, "ignored.ts");
+  assert_not_contains!(output, "ignored.wasm");
+}
+
+#[test]
 fn ignores_directories() {
   let context = publish_context_builder().build();
   let temp_dir = context.temp_dir().path();
@@ -250,6 +298,35 @@ fn ignores_directories() {
 }
 
 #[test]
+fn includes_directories_with_gitignore() {
+  let context = publish_context_builder().build();
+  let temp_dir = context.temp_dir().path();
+  temp_dir.join("deno.json").write_json(&json!({
+    "name": "@foo/bar",
+    "version": "1.0.0",
+    "exports": "./main.ts",
+    "publish": {
+      "include": [ "deno.json", "main.ts" ]
+    }
+  }));
+
+  temp_dir.join(".gitignore").write("main.ts");
+  temp_dir.join("main.ts").write("");
+  temp_dir.join("ignored.ts").write("");
+
+  let output = context
+    .new_command()
+    .arg("publish")
+    .arg("--token")
+    .arg("sadfasdf")
+    .run();
+  output.assert_exit_code(0);
+  let output = output.combined_output();
+  assert_contains!(output, "main.ts");
+  assert_not_contains!(output, "ignored.ts");
+}
+
+#[test]
 fn includes_directories() {
   let context = publish_context_builder().build();
   let temp_dir = context.temp_dir().path();
@@ -268,7 +345,6 @@ fn includes_directories() {
   let output = context
     .new_command()
     .arg("publish")
-    .arg("--log-level=debug")
     .arg("--token")
     .arg("sadfasdf")
     .run();

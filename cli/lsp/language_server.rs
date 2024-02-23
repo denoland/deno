@@ -299,13 +299,14 @@ impl LanguageServer {
       let cli_options = Arc::new(cli_options);
       let factory = CliFactory::from_cli_options(cli_options.clone());
       let module_graph_builder = factory.module_graph_builder().await?;
+      let module_graph_creator = factory.module_graph_creator().await?;
       let mut inner_loader = module_graph_builder.create_graph_loader();
       let mut loader = crate::lsp::documents::OpenDocumentsGraphLoader {
         inner_loader: &mut inner_loader,
         open_docs: &open_docs,
         unstable_sloppy_imports: cli_options.unstable_sloppy_imports(),
       };
-      let graph = module_graph_builder
+      let graph = module_graph_creator
         .create_graph_with_loader(GraphKind::All, roots.clone(), &mut loader)
         .await?;
       graph_util::graph_valid(

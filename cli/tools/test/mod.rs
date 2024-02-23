@@ -1490,7 +1490,7 @@ pub async fn run_tests_with_watch(
         let graph_kind = cli_options.type_check_mode().as_graph_kind();
         let log_level = cli_options.log_level();
         let cli_options = cli_options.clone();
-        let module_graph_builder = factory.module_graph_builder().await?;
+        let module_graph_creator = factory.module_graph_creator().await?;
         let file_fetcher = factory.file_fetcher()?;
         let test_modules = if test_options.doc {
           collect_specifiers(test_options.files.clone(), |p, _| {
@@ -1505,7 +1505,7 @@ pub async fn run_tests_with_watch(
 
         let permissions =
           Permissions::from_options(&cli_options.permissions_options())?;
-        let graph = module_graph_builder
+        let graph = module_graph_creator
           .create_graph(graph_kind, test_modules.clone())
           .await?;
         graph_valid_with_cli_options(

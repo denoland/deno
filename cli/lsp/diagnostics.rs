@@ -796,7 +796,11 @@ fn generate_lint_diagnostics(
   let documents = snapshot
     .documents
     .documents(DocumentsFilter::OpenDiagnosable);
-  let lint_rules = get_configured_rules(lint_options.rules.clone());
+  let lint_rules = get_configured_rules(
+    lint_options.rules.clone(),
+    config.config_file.as_ref(),
+  )
+  .rules;
   let mut diagnostics_vec = Vec::new();
   for document in documents {
     let settings =
