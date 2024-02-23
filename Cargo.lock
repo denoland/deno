@@ -2168,12 +2168,13 @@ checksum = "1aaf95b3e5c8f23aa320147307562d361db0ae0d51242340f558153b4eb2439b"
 
 [[package]]
 name = "dprint-core"
-version = "0.63.3"
+version = "0.66.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7227b28d24aafee21ff72512336c797fa00bb3ea803186b1b105a68abc97660b"
+checksum = "317f9cd1da390ab12e1858b3a71c7d6c8e8ad633454cb0b73ce5589964d9c177"
 dependencies = [
  "anyhow",
  "bumpalo",
+ "hashbrown 0.14.3",
  "indexmap",
  "rustc-hash",
  "serde",
@@ -2181,13 +2182,24 @@ dependencies = [
 ]
 
 [[package]]
-name = "dprint-plugin-json"
-version = "0.19.1"
+name = "dprint-core-macros"
+version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0b6bf034eebeab36b78f45c07df87c6a578215e4f3238b5c0b6e5e66300ac348"
+checksum = "1675ad2b358481f3cc46202040d64ac7a36c4ade414a696df32e0e45421a6e9f"
+dependencies = [
+ "quote",
+ "syn 1.0.109",
+]
+
+[[package]]
+name = "dprint-plugin-json"
+version = "0.19.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e292d0d74f3f51b1ff3e446c8809bcdd0b6079b49cf6c0d452c85927a2575246"
 dependencies = [
  "anyhow",
  "dprint-core",
+ "dprint-core-macros",
  "jsonc-parser",
  "serde",
  "text_lines",
@@ -2195,9 +2207,9 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-jupyter"
-version = "0.1.2"
+version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "75afc7a6b9e2b36976010eac441f3140ee642620c2c5b930873ccbf9d8510a59"
+checksum = "c67b0e54b552a4775c221b44ed33be918c400bd8041d1f044f947fbb01025cc0"
 dependencies = [
  "anyhow",
  "dprint-core",
@@ -2208,12 +2220,13 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-markdown"
-version = "0.16.3"
+version = "0.16.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "afa43a107cebe8989fa739fa4bafcce3b98725e13dddfe061744bce86071eb60"
+checksum = "e9153b4bd411eea99ed14afa19b7aede250594d96a6ebeee3130b18b575a9ac7"
 dependencies = [
  "anyhow",
  "dprint-core",
+ "dprint-core-macros",
  "pulldown-cmark",
  "regex",
  "serde",
@@ -2222,13 +2235,14 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-typescript"
-version = "0.89.2"
+version = "0.89.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0cda77621a5fefe88f55f8a2256c4c7874085d5876b5b567717106cab3eef07a"
+checksum = "8d572ba77c357e38c0bc08290fa5a1cf191e772c26bb030bd8eedc1c5faae649"
 dependencies = [
  "anyhow",
  "deno_ast",
  "dprint-core",
+ "dprint-core-macros",
  "percent-encoding",
  "rustc-hash",
  "serde",
