@@ -5,12 +5,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { core, internals } from "ext:core/mod.js";
-import {
-  op_geteuid,
-  op_process_abort,
-  op_process_argv0,
-  op_set_exit_code,
-} from "ext:core/ops";
+import { op_geteuid, op_process_abort, op_set_exit_code } from "ext:core/ops";
 
 import { notImplemented, warnNotImplemented } from "ext:deno_node/_utils.ts";
 import { EventEmitter } from "node:events";
@@ -49,6 +44,8 @@ import {
 import { isWindows } from "ext:deno_node/_util/os.ts";
 import * as io from "ext:deno_io/12_io.js";
 import { Command } from "ext:runtime/40_process.js";
+
+export let argv0 = "";
 
 // TODO(kt3k): This should be set at start up time
 export let arch = "";
@@ -397,7 +394,7 @@ class Process extends EventEmitter {
   argv = argv;
 
   get argv0() {
-    return op_process_argv0();
+    return argv0;
   }
 
   set argv0(_val) {}
@@ -886,19 +883,14 @@ internals.__bootstrapNodeProcess = function (
 ) {
   // Overwrites the 1st item with getter.
   if (typeof argv0Val === "string") {
+    argv0 = argv0Val;
     Object.defineProperty(argv, "0", {
       get: () => {
         return argv0Val;
       },
     });
-    argv0Getter = () => argv0Val;
   } else {
-    Object.defineProperty(argv, "0", {
-      get: () => {
-        return Deno.execPath();
-      },
-    });
-    argv0Getter = () => Deno.execPath();
+    Object.defineProperty(argv, "0", { get: () => argv0 });
   }
 
   // Overwrites the 2st item with getter.
