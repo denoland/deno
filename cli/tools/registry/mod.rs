@@ -677,7 +677,9 @@ async fn publish_package(
     client
       .post(provenance_url)
       .header(reqwest::header::AUTHORIZATION, authorization)
-      .json(&json!({ "rekorlogId": transparency_log.rekor_log_index }))
+      .json(
+        &json!({ "rekorLogId": transparency_log.rekor_log_index.to_string() }),
+      )
       .send()
       .await?;
   }
