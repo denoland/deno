@@ -610,7 +610,7 @@ async fn testify(
   };
 
   let client = Client::new();
-  let url = format!("{}/api/v1/log.entries", DEFAULT_REKOR_URL);
+  let url = format!("{}/api/v1/log/entries", DEFAULT_REKOR_URL);
   let res = client
     .post(&url)
     .json(&proposed_intoto_entry)
