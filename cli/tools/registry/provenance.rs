@@ -5,6 +5,7 @@ use super::auth::gha_oidc_token;
 use super::auth::is_gha;
 use base64::prelude::BASE64_STANDARD;
 use base64::{engine::general_purpose::STANDARD_NO_PAD, Engine as _};
+use deno_core::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
@@ -65,7 +66,7 @@ struct SignatureBundle {
 
 #[derive(Serialize)]
 pub struct SubjectDigest {
-  pub sha512: String,
+  pub sha256: String,
 }
 
 #[derive(Serialize)]
@@ -159,7 +160,8 @@ impl Predicate {
       .replace(&format!("{}/", &repo), "");
 
     let delimn = rel_ref.find('@').unwrap();
-    let (workflow_path, workflow_ref) = rel_ref.split_at(delimn);
+    let (workflow_path, mut workflow_ref) = rel_ref.split_at(delimn);
+    workflow_ref = &workflow_ref[1..];
 
     let server_url = std::env::var("GITHUB_SERVER_URL").unwrap();
 
@@ -442,7 +444,7 @@ impl FulcioSigner {
     let key = body
       .signed_certificate_embedded_sct
       .or_else(|| body.signed_certificate_detached_sct)
-      .unwrap();
+      .ok_or_else(|| anyhow::anyhow!("No certificate chain returned"))?;
     Ok(key.certificates)
   }
 }

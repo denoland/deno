@@ -652,9 +652,12 @@ async fn publish_package(
     // TODO: Verify manifest.
 
     let subject = provenance::Subject {
-      name: format!("{}/{}", package.scope, package.package),
+      name: format!(
+        "pkg:jsr/@{}/{}@{}",
+        package.scope, package.package, package.version
+      ),
       digest: provenance::SubjectDigest {
-        sha512: hex::encode(sha2::Sha512::digest(&meta_bytes)),
+        sha256: hex::encode(sha2::Sha256::digest(&meta_bytes)),
       },
     };
     let transparency_log = provenance::generate_provenance(subject).await?;
