@@ -246,15 +246,17 @@ const GITHUB_BUILD_TYPE: &str =
   "https://slsa-framework.github.io/github-actions-buildtypes/workflow/v1";
 
 pub struct TransparencyLog {
-  pub rekor_log_index: u64
+  pub rekor_log_index: u64,
 }
 
-pub async fn generate_provenance(subject: Subject) -> Result<TransparencyLog, AnyError> {
+pub async fn generate_provenance(
+  subject: Subject,
+) -> Result<TransparencyLog, AnyError> {
   if !is_gha() {
     bail!("Automatic provenance is only available in GitHub Actions");
   }
 
-  let Some(token) = gha_oidc_token() else {
+  if gha_oidc_token().is_none() {
     bail!(
       "Provenance generation in Github Actions requires 'id-token' permission"
     );
@@ -268,7 +270,10 @@ pub async fn generate_provenance(subject: Subject) -> Result<TransparencyLog, An
   Ok(transparency_log)
 }
 
-pub async fn attest(data: &str, type_: &str) -> Result<TransparencyLog, AnyError> {
+pub async fn attest(
+  data: &str,
+  type_: &str,
+) -> Result<TransparencyLog, AnyError> {
   // DSSE Pre-Auth Encoding (PAE) payload
   let pae = pre_auth_encoding(type_, data);
 
@@ -280,7 +285,7 @@ pub async fn attest(data: &str, type_: &str) -> Result<TransparencyLog, AnyError
       case: "dsseSignature",
       dsse_envelope: Envelope {
         payload_type: type_.to_string(),
-        payload: base64::encode(data),
+        payload: BASE64_STANDARD.encode(data),
         signatures: vec![Signature {
           keyid: "",
           sig: BASE64_STANDARD.encode(signature.as_ref()),
@@ -288,7 +293,8 @@ pub async fn attest(data: &str, type_: &str) -> Result<TransparencyLog, AnyError
       },
     },
     &key_material.certificate,
-  ).await?;
+  )
+  .await?;
 
   // First log entry is the one we're interested in
   let (_, log_entry) = transparency_logs.iter().next().unwrap();
@@ -311,7 +317,7 @@ static ALGORITHM: &'static ring::signature::EcdsaSigningAlgorithm =
   &ring::signature::ECDSA_P256_SHA256_ASN1_SIGNING;
 
 struct KeyMaterial {
-  case: &'static str,
+  pub _case: &'static str,
   pub certificate: String,
 }
 
@@ -403,7 +409,7 @@ impl FulcioSigner {
     Ok((
       signature,
       KeyMaterial {
-        case: "x509Certificate",
+        _case: "x509Certificate",
         certificate: certificates[0].clone(),
       },
     ))
@@ -487,17 +493,14 @@ async fn gha_request_token(aud: &str) -> Result<String, AnyError> {
   Ok(res.value)
 }
 
-const BUNDLE_V02_MEDIA_TYPE: &str =
-  "application/vnd.dev.sigstore.bundle+json;version=0.2";
-
 const DEFAULT_REKOR_URL: &str = "https://rekor.sigstore.dev";
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct LogEntry {
+pub struct LogEntry {
   #[serde(rename = "logID")]
-  log_id: String,
-  log_index: u64,
+  pub log_id: String,
+  pub log_index: u64,
 }
 
 type RekorEntry = HashMap<String, LogEntry>;
@@ -580,10 +583,11 @@ async fn testify(
   // Double-encode payload and signature cause that's what Rekor expects
   let dsse = DsseEnvelope {
     payload_type: content.dsse_envelope.payload_type.clone(),
-    payload: base64::encode(content.dsse_envelope.payload.clone()),
+    payload: BASE64_STANDARD.encode(content.dsse_envelope.payload.clone()),
     signatures: [RekorSignature {
-      sig: base64::encode(content.dsse_envelope.signatures[0].sig.clone()),
-      public_key: base64::encode(public_key),
+      sig: BASE64_STANDARD
+        .encode(content.dsse_envelope.signatures[0].sig.clone()),
+      public_key: BASE64_STANDARD.encode(public_key),
     }],
   };
 

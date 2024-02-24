@@ -445,6 +445,7 @@ async fn perform_publish(
   mut publish_order_graph: PublishOrderGraph,
   mut prepared_package_by_name: HashMap<String, Rc<PreparedPublishPackage>>,
   auth_method: AuthMethod,
+  provenance: bool,
 ) -> Result<(), AnyError> {
   let client = http_client.client()?;
   let registry_api_url = jsr_api_url().to_string();
@@ -505,6 +506,7 @@ async fn perform_publish(
           &registry_api_url,
           &registry_url,
           &authorization,
+          provenance,
         )
         .await
         .with_context(|| format!("Failed to publish {}", display_name))?;
@@ -531,6 +533,7 @@ async fn publish_package(
   registry_api_url: &str,
   registry_url: &str,
   authorization: &str,
+  provenance: bool,
 ) -> Result<(), AnyError> {
   let client = http_client.client()?;
   println!(
@@ -636,6 +639,46 @@ async fn publish_package(
     package.package,
     package.version
   );
+
+  if provenance {
+    // Get the version manifest from JSR
+    let meta_url = jsr_url().join(&format!(
+      "@{}/{}/{}_meta.json",
+      package.scope, package.package, package.version
+    ))?;
+
+    let meta_bytes = client.get(meta_url).send().await?.bytes().await?;
+
+    // TODO: Verify manifest.
+
+    let subject = provenance::Subject {
+      name: format!("{}/{}", package.scope, package.package),
+      digest: provenance::SubjectDigest {
+        sha512: hex::encode(sha2::Sha512::digest(&meta_bytes)),
+      },
+    };
+    let transparency_log = provenance::generate_provenance(subject).await?;
+
+    println!("{}",
+      colors::green(format!(
+        "Provenance transparency log available at https://search.sigstore.dev/?logIndex={}",
+        transparency_log.rekor_log_index
+      ))
+     );
+
+    // Submit transparency log ID to JSR
+    let provenance_url = format!(
+      "{}scopes/{}/packages/{}/versions/{}/provenance",
+      registry_api_url, package.scope, package.package, package.version
+    );
+    client
+      .post(provenance_url)
+      .header(reqwest::header::AUTHORIZATION, authorization)
+      .json(&json!({ "rekorlogId": transparency_log.rekor_log_index }))
+      .send()
+      .await?;
+  }
+
   println!(
     "{}",
     colors::gray(format!(
@@ -808,13 +851,12 @@ pub async fn publish(
       Arc::new(ImportMap::new(Url::parse("file:///dev/null").unwrap()))
     });
 
+  let directory_path = cli_factory.cli_options().initial_cwd();
+
   let mapped_resolver = Arc::new(MappedSpecifierResolver::new(
     Some(import_map),
     cli_factory.package_json_deps_provider().clone(),
   ));
-
-  let directory_path = cli_factory.cli_options().initial_cwd();
-
   let cli_options = cli_factory.cli_options();
   let Some(config_file) = cli_options.maybe_config_file() else {
     bail!(
@@ -860,33 +902,9 @@ pub async fn publish(
     prepared_data.publish_order_graph,
     prepared_data.package_by_name,
     auth_method,
+    publish_flags.provenance,
   )
   .await?;
 
-  if publish_flags.provenance {
-    // Get the version manifest from JSR
-    let name = "deno";
-    let version = "1.0.0";
-    let meta_url =
-      jsr_url().join(&format!("{}/{}_meta.json", name, version))?;
-
-    let client = reqwest::Client::new();
-    let response = client.get(meta_url).send().await?;
-    let meta_bytes = response.bytes().await?;
-
-    // TODO: Verify manifest.
-
-    let subject = provenance::Subject {
-      name: name.to_string(),
-      digest: provenance::SubjectDigest {
-        sha512: hex::encode(sha2::Sha512::digest(&meta_bytes)),
-      },
-    };
-    let transparency_log = provenance::generate_provenance(subject).await?;
-
-    println!("Transparency log index: {}", transparency_log.rekor_log_index);
-  }
-
   Ok(())
 }
-
