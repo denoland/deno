@@ -358,9 +358,15 @@ struct CertificateChain {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct SignedCertificate {
+  chain: CertificateChain,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct SigningCertificateResponse {
-  signed_certificate_embedded_sct: Option<CertificateChain>,
-  signed_certificate_detached_sct: Option<CertificateChain>,
+  signed_certificate_embedded_sct: Option<SignedCertificate>,
+  signed_certificate_detached_sct: Option<SignedCertificate>,
 }
 
 impl FulcioSigner {
@@ -445,7 +451,7 @@ impl FulcioSigner {
       .signed_certificate_embedded_sct
       .or_else(|| body.signed_certificate_detached_sct)
       .ok_or_else(|| anyhow::anyhow!("No certificate chain returned"))?;
-    Ok(key.certificates)
+    Ok(key.chain.certificates)
   }
 }
 
