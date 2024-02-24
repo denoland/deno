@@ -26,6 +26,7 @@ use super::diagnostics::PublishDiagnosticsCollector;
 #[derive(Debug, Clone, PartialEq)]
 pub struct PublishableTarballFile {
   pub specifier: Url,
+  pub hash: String,
   pub size: usize,
 }
 
@@ -154,6 +155,7 @@ pub fn create_gzipped_tarball(
       )?;
       files.push(PublishableTarballFile {
         specifier: specifier.clone(),
+        hash: hex::encode(sha2::Sha256::digest(&content)),
         size: content.len(),
       });
       tar
