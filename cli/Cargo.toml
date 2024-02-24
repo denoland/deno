@@ -64,11 +64,11 @@ winres.workspace = true
 [dependencies]
 deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "proposal", "react", "sourcemap", "transforms", "typescript", "view", "visit"] }
 deno_cache_dir = { workspace = true }
-deno_config = "=0.10.0"
+deno_config = "=0.11.0"
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
-deno_doc = { version = "=0.110.1", features = ["html"] }
-deno_emit = "=0.38.1"
-deno_graph = { version = "=0.69.0", features = ["tokio_executor"] }
+deno_doc = { version = "=0.113.1", features = ["html"] }
+deno_emit = "=0.38.2"
+deno_graph = { version = "=0.69.4", features = ["tokio_executor"] }
 deno_lint = { version = "=0.57.1", features = ["docs"] }
 deno_lockfile.workspace = true
 deno_npm = "=0.17.0"
@@ -76,7 +76,7 @@ deno_runtime = { workspace = true, features = ["include_js_files_for_snapshottin
 deno_semver = "=0.5.4"
 deno_task_shell = "=0.14.3"
 deno_terminal.workspace = true
-eszip = "=0.64.1"
+eszip = "=0.64.2"
 napi_sym.workspace = true
 
 async-trait.workspace = true
@@ -107,7 +107,7 @@ fs3.workspace = true
 glob = "0.3.1"
 hex.workspace = true
 ignore = "0.4"
-import_map = { version = "=0.18.3", features = ["ext"] }
+import_map = { version = "=0.19.0", features = ["ext"] }
 indexmap.workspace = true
 jsonc-parser = { version = "=0.23.0", features = ["serde"] }
 lazy-regex.workspace = true

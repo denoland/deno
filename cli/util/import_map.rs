@@ -17,16 +17,6 @@ use deno_semver::npm::NpmPackageReqReference;
 
 use crate::resolver::MappedSpecifierResolver;
 
-pub fn import_map_deps(value: &serde_json::Value) -> HashSet<JsrDepPackageReq> {
-  let Some(obj) = value.as_object() else {
-    return Default::default();
-  };
-  let values = imports_values(obj.get("imports"))
-    .into_iter()
-    .chain(scope_values(obj.get("scopes")));
-  values_to_set(values)
-}
-
 pub fn deno_json_deps(
   config: &deno_config::ConfigFile,
 ) -> HashSet<JsrDepPackageReq> {
@@ -335,7 +325,7 @@ mod tests {
       }
     });
     let ImportMapWithDiagnostics { import_map, .. } =
-      import_map::parse_from_value(&deno_json_url, value).unwrap();
+      import_map::parse_from_value(deno_json_url, value).unwrap();
     let mapped_resolved = MappedSpecifierResolver::new(
       Some(Arc::new(import_map)),
       Arc::new(PackageJsonDepsProvider::new(None)),

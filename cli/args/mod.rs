@@ -6,7 +6,7 @@ mod import_map;
 mod lockfile;
 pub mod package_json;
 
-pub use self::import_map::resolve_import_map_from_specifier;
+pub use self::import_map::resolve_import_map;
 use self::package_json::PackageJsonDeps;
 use ::import_map::ImportMap;
 use deno_core::resolve_url_or_path;
@@ -34,11 +34,9 @@ pub use lockfile::LockfileError;
 pub use package_json::PackageJsonDepsProvider;
 
 use deno_ast::ModuleSpecifier;
-use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::normalize_path;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use deno_core::url::Url;
@@ -875,10 +873,11 @@ impl CliOptions {
     }
   }
 
-  /// Based on an optional command line import map path and an optional
-  /// configuration file, return a resolved module specifier to an import map
-  /// and a boolean indicating if unknown keys should not result in diagnostics.
-  pub fn resolve_import_map_specifier(
+  /// Resolve the specifier for a specified import map.
+  ///
+  /// This will NOT include the config file if it
+  /// happens to be an import map.
+  pub fn resolve_specified_import_map_specifier(
     &self,
   ) -> Result<Option<ModuleSpecifier>, AnyError> {
     match self.overrides.import_map_specifier.clone() {
@@ -896,94 +895,55 @@ impl CliOptions {
     file_fetcher: &FileFetcher,
   ) -> Result<Option<ImportMap>, AnyError> {
     if let Some(workspace_config) = self.maybe_workspace_config.as_ref() {
+      let root_config_file = self.maybe_config_file.as_ref().unwrap();
       let base_import_map_config = ::import_map::ext::ImportMapConfig {
-        base_url: self.maybe_config_file.as_ref().unwrap().specifier.clone(),
-        import_map_value: workspace_config.base_import_map_value.clone(),
+        base_url: root_config_file.specifier.clone(),
+        import_map_value: root_config_file.to_import_map_value_from_imports(),
       };
       let children_configs = workspace_config
         .members
         .iter()
-        .map(|member| {
-          let mut import_map_value = member.config_file.to_import_map_value();
-
-          let expanded_import_map_value = ::import_map::ext::expand_imports(
-            ::import_map::ext::ImportMapConfig {
-              base_url: member.config_file.specifier.clone(),
-              import_map_value: import_map_value.clone(),
-            },
-          );
-
-          import_map_value
-            .as_object_mut()
-            .unwrap()
-            .insert("imports".to_string(), expanded_import_map_value);
-          ::import_map::ext::ImportMapConfig {
-            base_url: member.config_file.specifier.clone(),
-            import_map_value,
-          }
+        .map(|member| ::import_map::ext::ImportMapConfig {
+          base_url: member.config_file.specifier.clone(),
+          import_map_value: member
+            .config_file
+            .to_import_map_value_from_imports(),
         })
         .collect();
 
-      let maybe_import_map = ::import_map::ext::create_synthetic_import_map(
-        base_import_map_config,
-        children_configs,
-      );
-      if let Some((_import_map_url, import_map)) = maybe_import_map {
-        log::debug!(
-          "Workspace config generated this import map {}",
-          serde_json::to_string_pretty(&import_map).unwrap()
+      let (import_map_url, import_map) =
+        ::import_map::ext::create_synthetic_import_map(
+          base_import_map_config,
+          children_configs,
         );
-        let maybe_import_map_result = import_map::import_map_from_value(
-          // TODO(bartlomieju): maybe should be stored on the workspace config?
-          &self.maybe_config_file.as_ref().unwrap().specifier,
-          import_map,
-        )
-        .map(Some);
+      log::debug!(
+        "Workspace config generated this import map {}",
+        serde_json::to_string_pretty(&import_map).unwrap()
+      );
+      let maybe_import_map_result =
+        import_map::import_map_from_value(import_map_url, import_map).map(Some);
 
-        return match maybe_import_map_result {
-          Ok(maybe_import_map) => {
-            if let Some(mut import_map) = maybe_import_map {
-              import_map.ext_expand_imports();
-              Ok(Some(import_map))
-            } else {
-              Ok(None)
-            }
-          }
-          Err(err) => Err(err),
-        };
-      }
+      return maybe_import_map_result;
     }
 
-    let import_map_specifier = match self.resolve_import_map_specifier()? {
-      Some(specifier) => specifier,
-      None => return Ok(None),
-    };
+    if self
+      .overrides
+      .import_map_specifier
+      .as_ref()
+      .map(|s| s.is_none())
+      == Some(true)
+    {
+      // overrode to not use an import map
+      return Ok(None);
+    }
 
-    let maybe_import_map_result = resolve_import_map_from_specifier(
-      &import_map_specifier,
+    let import_map_specifier = self.resolve_specified_import_map_specifier()?;
+    resolve_import_map(
+      import_map_specifier.as_ref(),
       self.maybe_config_file().as_ref(),
       file_fetcher,
     )
     .await
-    .with_context(|| {
-      format!("Unable to load '{import_map_specifier}' import map")
-    })
-    .map(Some);
-
-    match maybe_import_map_result {
-      Ok(maybe_import_map) => {
-        if let Some(mut import_map) = maybe_import_map {
-          let url = import_map.base_url().as_str();
-          if url.ends_with("deno.json") || url.ends_with("deno.jsonc") {
-            import_map.ext_expand_imports();
-          }
-          Ok(Some(import_map))
-        } else {
-          Ok(None)
-        }
-      }
-      Err(err) => Err(err),
-    }
   }
 
   pub fn node_ipc_fd(&self) -> Option<i64> {
@@ -1124,7 +1084,7 @@ impl CliOptions {
       self
         .maybe_config_file
         .as_ref()
-        .and_then(|c| c.node_modules_dir_flag())
+        .and_then(|c| c.json.node_modules_dir)
     })
   }
 
@@ -1613,7 +1573,7 @@ impl CliOptions {
       Vec::with_capacity(2)
     };
     if let Ok(Some(import_map_path)) = self
-      .resolve_import_map_specifier()
+      .resolve_specified_import_map_specifier()
       .map(|ms| ms.and_then(|ref s| s.to_file_path().ok()))
     {
       paths.push(import_map_path);
@@ -1638,9 +1598,9 @@ fn resolve_node_modules_folder(
 ) -> Result<Option<PathBuf>, AnyError> {
   let use_node_modules_dir = flags
     .node_modules_dir
-    .or_else(|| maybe_config_file.and_then(|c| c.node_modules_dir_flag()))
+    .or_else(|| maybe_config_file.and_then(|c| c.json.node_modules_dir))
     .or(flags.vendor)
-    .or_else(|| maybe_config_file.and_then(|c| c.vendor_dir_flag()));
+    .or_else(|| maybe_config_file.and_then(|c| c.json.vendor));
   let path = if use_node_modules_dir == Some(false) {
     return Ok(None);
   } else if let Some(state) = &*NPM_PROCESS_STATE {
@@ -1668,7 +1628,7 @@ fn resolve_vendor_folder(
 ) -> Option<PathBuf> {
   let use_vendor_dir = flags
     .vendor
-    .or_else(|| maybe_config_file.and_then(|c| c.vendor_dir_flag()))
+    .or_else(|| maybe_config_file.and_then(|c| c.json.vendor))
     .unwrap_or(false);
   // Unlike the node_modules directory, there is no need to canonicalize
   // this directory because it's just used as a cache and the resolved
@@ -1693,7 +1653,7 @@ fn resolve_import_map_specifier(
 ) -> Result<Option<ModuleSpecifier>, AnyError> {
   if let Some(import_map_path) = maybe_import_map_path {
     if let Some(config_file) = &maybe_config_file {
-      if config_file.to_import_map_path().is_some() {
+      if config_file.json.import_map.is_some() {
         log::warn!("{} the configuration file \"{}\" contains an entry for \"importMap\" that is being ignored.", colors::yellow("Warning"), config_file.specifier);
       }
     }
@@ -1702,53 +1662,16 @@ fn resolve_import_map_specifier(
         .with_context(|| {
           format!("Bad URL (\"{import_map_path}\") for import map.")
         })?;
-    return Ok(Some(specifier));
+    Ok(Some(specifier))
   } else if let Some(config_file) = &maybe_config_file {
-    // if the config file is an import map we prefer to use it, over `importMap`
-    // field
-    if config_file.is_an_import_map() {
-      if let Some(_import_map_path) = config_file.to_import_map_path() {
-        log::warn!("{} \"importMap\" setting is ignored when \"imports\" or \"scopes\" are specified in the config file.", colors::yellow("Warning"));
-      }
-
-      return Ok(Some(config_file.specifier.clone()));
+    // if the config file is an import map we prefer to use it, over `importMap` field
+    if config_file.is_an_import_map() && config_file.json.import_map.is_some() {
+      log::warn!("{} \"importMap\" setting is ignored when \"imports\" or \"scopes\" are specified in the config file.", colors::yellow("Warning"));
     }
-
-    // when the import map is specifier in a config file, it needs to be
-    // resolved relative to the config file, versus the CWD like with the flag
-    // and with config files, we support both local and remote config files,
-    // so we have treat them differently.
-    if let Some(import_map_path) = config_file.to_import_map_path() {
-      // if the import map is an absolute URL, use it as is
-      if let Ok(specifier) = deno_core::resolve_url(&import_map_path) {
-        return Ok(Some(specifier));
-      }
-      let specifier =
-          // with local config files, it might be common to specify an import
-          // map like `"importMap": "import-map.json"`, which is resolvable if
-          // the file is resolved like a file path, so we will coerce the config
-          // file into a file path if possible and join the import map path to
-          // the file path.
-          if let Ok(config_file_path) = config_file.specifier.to_file_path() {
-            let import_map_file_path = normalize_path(config_file_path
-              .parent()
-              .ok_or_else(|| {
-                anyhow!("Bad config file specifier: {}", config_file.specifier)
-              })?
-              .join(&import_map_path));
-            ModuleSpecifier::from_file_path(import_map_file_path).unwrap()
-          // otherwise if the config file is remote, we have no choice but to
-          // use "import resolution" with the config file as the base.
-          } else {
-            deno_core::resolve_import(&import_map_path, config_file.specifier.as_str())
-              .with_context(|| format!(
-                "Bad URL (\"{import_map_path}\") for import map."
-              ))?
-          };
-      return Ok(Some(specifier));
-    }
+    Ok(None)
+  } else {
+    Ok(None)
   }
-  Ok(None)
 }
 
 pub struct StorageKeyResolver(Option<Option<String>>);
@@ -1847,74 +1770,6 @@ mod test {
   use super::*;
   use pretty_assertions::assert_eq;
 
-  #[cfg(not(windows))]
-  #[test]
-  fn resolve_import_map_config_file() {
-    let config_text = r#"{
-      "importMap": "import_map.json"
-    }"#;
-    let config_specifier =
-      ModuleSpecifier::parse("file:///deno/deno.jsonc").unwrap();
-    let config_file = ConfigFile::new(config_text, config_specifier).unwrap();
-    let actual = resolve_import_map_specifier(
-      None,
-      Some(&config_file),
-      &PathBuf::from("/"),
-    );
-    assert!(actual.is_ok());
-    let actual = actual.unwrap();
-    assert_eq!(
-      actual,
-      Some(ModuleSpecifier::parse("file:///deno/import_map.json").unwrap(),)
-    );
-  }
-
-  #[test]
-  fn resolve_import_map_remote_config_file_local() {
-    let config_text = r#"{
-      "importMap": "https://example.com/import_map.json"
-    }"#;
-    let config_specifier =
-      ModuleSpecifier::parse("file:///deno/deno.jsonc").unwrap();
-    let config_file = ConfigFile::new(config_text, config_specifier).unwrap();
-    let actual = resolve_import_map_specifier(
-      None,
-      Some(&config_file),
-      &PathBuf::from("/"),
-    );
-    assert!(actual.is_ok());
-    let actual = actual.unwrap();
-    assert_eq!(
-      actual,
-      Some(
-        ModuleSpecifier::parse("https://example.com/import_map.json").unwrap()
-      )
-    );
-  }
-
-  #[test]
-  fn resolve_import_map_config_file_remote() {
-    let config_text = r#"{
-      "importMap": "./import_map.json"
-    }"#;
-    let config_specifier =
-      ModuleSpecifier::parse("https://example.com/deno.jsonc").unwrap();
-    let config_file = ConfigFile::new(config_text, config_specifier).unwrap();
-    let actual = resolve_import_map_specifier(
-      None,
-      Some(&config_file),
-      &PathBuf::from("/"),
-    );
-    assert!(actual.is_ok());
-    let actual = actual.unwrap();
-    assert_eq!(
-      actual,
-      Some(
-        ModuleSpecifier::parse("https://example.com/import_map.json").unwrap()
-      )
-    );
-  }
-
   #[test]
   fn resolve_import_map_flags_take_precedence() {
     let config_text = r#"{
@@ -1935,26 +1790,6 @@ mod test {
     assert!(actual.is_ok());
     let actual = actual.unwrap();
     assert_eq!(actual, Some(expected_specifier));
-  }
-
-  #[test]
-  fn resolve_import_map_embedded_take_precedence() {
-    let config_text = r#"{
-      "importMap": "import_map.json",
-      "imports": {},
-    }"#;
-    let config_specifier =
-      ModuleSpecifier::parse("file:///deno/deno.jsonc").unwrap();
-    let config_file =
-      ConfigFile::new(config_text, config_specifier.clone()).unwrap();
-    let actual = resolve_import_map_specifier(
-      None,
-      Some(&config_file),
-      &PathBuf::from("/"),
-    );
-    assert!(actual.is_ok());
-    let actual = actual.unwrap();
-    assert_eq!(actual, Some(config_specifier));
   }
 
   #[test]
@@ -2087,7 +1922,7 @@ mod test {
         "pages/[id].ts",
       ]
       .into_iter()
-      .map(|p| normalize_path(temp_dir_path.join(p)))
+      .map(|p| deno_core::normalize_path(temp_dir_path.join(p)))
       .collect::<Vec<_>>()
     );
   }
