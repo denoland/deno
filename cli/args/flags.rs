@@ -8573,6 +8573,26 @@ mod tests {
           token: Some("asdf".to_string()),
           dry_run: true,
           allow_slow_types: true,
+          provenance: false,
+        }),
+        type_check_mode: TypeCheckMode::Local,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn publish_provenance_args() {
+    let r =
+      flags_from_vec(svec!["deno", "publish", "--provenance", "--token=asdf",]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Publish(PublishFlags {
+          token: Some("asdf".to_string()),
+          dry_run: false,
+          allow_slow_types: false,
+          provenance: true,
         }),
         type_check_mode: TypeCheckMode::Local,
         ..Flags::default()
