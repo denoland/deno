@@ -252,7 +252,7 @@ class DOMPointReadOnly {
   static fromPoint(other = {}) {
     other = webidl.converters.DOMPointInit(
       other,
-      "Failed to call 'DOMPointReadOnly.fromPoint'",
+      "Failed to execute 'DOMPointReadOnly.fromPoint'",
       "Argument 1",
     );
     const point = webidl.createBranded(DOMPointReadOnly);
@@ -286,7 +286,7 @@ class DOMPointReadOnly {
   matrixTransform(matrix = {}) {
     webidl.assertBranded(this, DOMPointReadOnlyPrototype);
     const prefix =
-      "Failed to call 'DOMPointReadOnly.prototype.matrixTransform'";
+      "Failed to execute 'matrixTransform' on 'DOMPointReadOnly'";
     if (!ObjectPrototypeIsPrototypeOf(DOMMatrixReadOnlyPrototype, matrix)) {
       const _matrix = webidl.converters.DOMMatrixInit(
         matrix,
@@ -342,7 +342,7 @@ class DOMPoint extends DOMPointReadOnly {
   static fromPoint(other = {}) {
     other = webidl.converters.DOMPointInit(
       other,
-      "Failed to call 'DOMPoint.fromPoint'",
+      "Failed to execute 'DOMPoint.fromPoint'",
       "Argument 1",
     );
     const point = webidl.createBranded(DOMPoint);
@@ -430,7 +430,7 @@ class DOMRectReadOnly {
   static fromRect(other = {}) {
     other = webidl.converters.DOMRectInit(
       other,
-      "Failed to call 'DOMRectReadOnly.fromRect'",
+      "Failed to execute 'DOMRectReadOnly.fromRect'",
       "Argument 1",
     );
     const rect = webidl.createBranded(DOMRectReadOnly);
@@ -526,7 +526,7 @@ class DOMRect extends DOMRectReadOnly {
   static fromRect(other = {}) {
     other = webidl.converters.DOMRectInit(
       other,
-      "Failed to call 'DOMRect.fromRect'",
+      "Failed to execute 'DOMRect.fromRect'",
       "Argument 1",
     );
     const rect = webidl.createBranded(DOMRect);
@@ -623,7 +623,7 @@ class DOMQuad {
   static fromRect(other = {}) {
     other = webidl.converters.DOMRectInit(
       other,
-      "Failed to call 'DOMQuad.fromRect'",
+      "Failed to execute 'DOMQuad.fromRect'",
       "Argument 1",
     );
     const { x, y, width, height } = other;
@@ -638,7 +638,7 @@ class DOMQuad {
   static fromQuad(other = {}) {
     other = webidl.converters.DOMQuadInit(
       other,
-      "Failed to call 'DOMQuad.fromQuad'",
+      "Failed to execute 'DOMQuad.fromQuad'",
       "Argument 1",
     );
     const quad = webidl.createBranded(DOMQuad);
@@ -803,7 +803,7 @@ class DOMMatrixReadOnly {
   }
 
   static fromMatrix(other = {}) {
-    const prefix = "Failed to call 'DOMMatrixReadOnly.fromMatrix'";
+    const prefix = "Failed to execute 'DOMMatrixReadOnly.fromMatrix'";
     const matrix = webidl.createBranded(DOMMatrixReadOnly);
     matrix[_writable] = false;
     // fast path for DOMMatrix or DOMMatrixReadOnly
@@ -818,7 +818,7 @@ class DOMMatrixReadOnly {
   }
 
   static fromFloat32Array(float32) {
-    const prefix = "Failed to call 'DOMMatrixReadOnly.fromFloat32Array'";
+    const prefix = "Failed to execute 'DOMMatrixReadOnly.fromFloat32Array'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     float32 = webidl.converters.Float32Array(float32, prefix, "Argument 1");
     const matrix = webidl.createBranded(DOMMatrixReadOnly);
@@ -828,7 +828,7 @@ class DOMMatrixReadOnly {
   }
 
   static fromFloat64Array(float64) {
-    const prefix = "Failed to call 'DOMMatrixReadOnly.fromFloat64Array'";
+    const prefix = "Failed to execute 'DOMMatrixReadOnly.fromFloat64Array'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     float64 = webidl.converters.Float64Array(float64, prefix, "Argument 1");
     const matrix = webidl.createBranded(DOMMatrixReadOnly);
@@ -1125,7 +1125,7 @@ class DOMMatrixReadOnly {
 
   multiply(other = {}) {
     webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
-    const prefix = "Failed to call 'DOMMatrixReadOnly.prototype.multiply'";
+    const prefix = "Failed to execute 'multiply' on 'DOMMatrixReadOnly'";
     if (!ObjectPrototypeIsPrototypeOf(DOMMatrixReadOnlyPrototype, other)) {
       const _other = webidl.converters.DOMMatrixInit(
         other,
@@ -1183,7 +1183,7 @@ class DOMMatrixReadOnly {
     webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
     point = webidl.converters.DOMPointInit(
       point,
-      "Failed to call 'DOMMatrixReadOnly.prototype.transformPoint'",
+      "Failed to execute 'transformPoint' on 'DOMMatrixReadOnly'",
       "Argument 1",
     );
     const result = webidl.createBranded(DOMPoint);
@@ -1286,7 +1286,7 @@ class DOMMatrix extends DOMMatrixReadOnly {
   [_writable] = true;
 
   static fromMatrix(other = {}) {
-    const prefix = "Failed to call 'DOMMatrix.fromMatrix'";
+    const prefix = "Failed to execute 'DOMMatrix.fromMatrix'";
     const matrix = webidl.createBranded(DOMMatrix);
     matrix[_writable] = true;
     // fast path for DOMMatrix or DOMMatrixReadOnly
@@ -1301,7 +1301,7 @@ class DOMMatrix extends DOMMatrixReadOnly {
   }
 
   static fromFloat32Array(float32) {
-    const prefix = "Failed to call 'DOMMatrix.fromFloat32Array'";
+    const prefix = "Failed to execute 'DOMMatrix.fromFloat32Array'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     float32 = webidl.converters.Float32Array(float32, prefix, "Argument 1");
     const matrix = webidl.createBranded(DOMMatrix);
@@ -1311,7 +1311,7 @@ class DOMMatrix extends DOMMatrixReadOnly {
   }
 
   static fromFloat64Array(float64) {
-    const prefix = "Failed to call 'DOMMatrix.fromFloat64Array'";
+    const prefix = "Failed to execute 'DOMMatrix.fromFloat64Array'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     float64 = webidl.converters.Float64Array(float64, prefix, "Argument 1");
     const matrix = webidl.createBranded(DOMMatrix);
@@ -1552,7 +1552,7 @@ class DOMMatrix extends DOMMatrixReadOnly {
   multiplySelf(other = {}) {
     webidl.assertBranded(this, DOMMatrixPrototype);
     assertWritable(this);
-    const prefix = "Failed to call 'DOMMatrix.prototype.multiplySelf'";
+    const prefix = "Failed to execute 'multiplySelf' on 'DOMMatrix'";
     if (!ObjectPrototypeIsPrototypeOf(DOMMatrixReadOnlyPrototype, other)) {
       const _other = webidl.converters.DOMMatrixInit(
         other,
@@ -1575,7 +1575,7 @@ class DOMMatrix extends DOMMatrixReadOnly {
   preMultiplySelf(other = {}) {
     webidl.assertBranded(this, DOMMatrixPrototype);
     assertWritable(this);
-    const prefix = "Failed to call 'DOMMatrix.prototype.premultiplySelf'";
+    const prefix = "Failed to execute 'premultiplySelf' on 'DOMMatrix'";
     if (!ObjectPrototypeIsPrototypeOf(DOMMatrixReadOnlyPrototype, other)) {
       const _other = webidl.converters.DOMMatrixInit(
         other,
@@ -2014,7 +2014,7 @@ function init(transformListParser, enableWindowFeatures) {
         const raw = this[_raw];
         if (!TypedArrayPrototypeEvery(raw, (value) => NumberIsFinite(value))) {
           throw new DOMException(
-            "Failed to execute 'DOMMatrixReadOnly.prototype.toString': Cannot be serialized with NaN or Infinity values",
+            "Failed to execute 'toString' on 'DOMMatrixReadOnly': Cannot be serialized with NaN or Infinity values",
             "InvalidStateError",
           );
         }
@@ -2042,7 +2042,7 @@ function init(transformListParser, enableWindowFeatures) {
     ObjectDefineProperty(DOMMatrixPrototype, "setMatrixValue", {
       value: function setMatrixValue(transformList) {
         webidl.assertBranded(this, DOMMatrixPrototype);
-        const prefix = "Failed to call 'DOMMatrix.prototype.setMatrixValue'";
+        const prefix = "Failed to execute 'setMatrixValue' on 'DOMMatrix'";
         webidl.requiredArguments(arguments.length, 1, prefix);
         transformList = webidl.converters.DOMString(
           transformList,
