@@ -21,7 +21,27 @@ import * as globalInterfaces from "ext:deno_web/04_global_interfaces.js";
 import * as webStorage from "ext:deno_webstorage/01_webstorage.js";
 import * as prompt from "ext:runtime/41_prompt.js";
 import { loadWebGPU } from "ext:deno_webgpu/00_init.js";
-const loadGeometry = core.createLazyLoader("ext:deno_geometry/01_geometry.js");
+import { createGeometryLoader } from "ext:deno_geometry/00_init.js";
+
+const loadGeometry = createGeometryLoader((transformList, prefix) => {
+  if (transformList === "") {
+    return {
+      // deno-fmt-ignore
+      matrix: new Float64Array([
+        1, 0, 0, 0,
+        0, 1, 0, 0,
+        0, 0, 1, 0,
+        0, 0, 0, 1,
+      ]),
+      is2D: true,
+    };
+  }
+
+  // TODO(petamoriken): Add CSS parser
+  throw new TypeError(
+    `${prefix}: CSS <transform-list> parser is not implemented`,
+  );
+}, true);
 
 class Navigator {
   constructor() {
@@ -106,34 +126,6 @@ ObjectDefineProperties(Navigator.prototype, {
 });
 const NavigatorPrototype = Navigator.prototype;
 
-let geometry;
-
-function initGeometry() {
-  if (geometry === undefined) {
-    geometry = loadGeometry();
-    geometry.enableWindowFeatures((transformList, prefix) => {
-      if (transformList === "") {
-        return {
-          // deno-fmt-ignore
-          matrix: new Float64Array([
-            1, 0, 0, 0,
-            0, 1, 0, 0,
-            0, 0, 1, 0,
-            0, 0, 0, 1,
-          ]),
-          is2D: true,
-        };
-      }
-      // TODO(petamoriken): Add CSS parser
-      throw new TypeError(
-        `${prefix}: CSS <transform-list> parser is not implemented`,
-      );
-    });
-  }
-
-  return geometry;
-}
-
 const mainRuntimeGlobalProperties = {
   Location: location.locationConstructorDescriptor,
   location: location.locationDescriptor,
@@ -150,31 +142,31 @@ const mainRuntimeGlobalProperties = {
   Storage: core.propNonEnumerable(webStorage.Storage),
   DOMMatrix: core.propNonEnumerableLazyLoaded(
     (geometry) => geometry.DOMMatrix,
-    initGeometry,
+    loadGeometry,
   ),
   DOMMatrixReadOnly: core.propNonEnumerableLazyLoaded(
     (geometry) => geometry.DOMMatrixReadOnly,
-    initGeometry,
+    loadGeometry,
   ),
   DOMPoint: core.propNonEnumerableLazyLoaded(
     (geometry) => geometry.DOMPoint,
-    initGeometry,
+    loadGeometry,
   ),
   DOMPointReadOnly: core.propNonEnumerableLazyLoaded(
     (geometry) => geometry.DOMPointReadOnly,
-    initGeometry,
+    loadGeometry,
   ),
   DOMQuad: core.propNonEnumerableLazyLoaded(
     (geometry) => geometry.DOMQuad,
-    initGeometry,
+    loadGeometry,
   ),
   DOMRect: core.propNonEnumerableLazyLoaded(
     (geometry) => geometry.DOMRect,
-    initGeometry,
+    loadGeometry,
   ),
   DOMRectReadOnly: core.propNonEnumerableLazyLoaded(
     (geometry) => geometry.DOMRectReadOnly,
-    initGeometry,
+    loadGeometry,
   ),
 };
 

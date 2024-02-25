@@ -796,15 +796,9 @@ class DOMMatrixReadOnly {
         prefix,
         "Argument 1",
       );
-      if (parseTransformList === null) {
-        throw new TypeError(
-          `${prefix}: Cannot be constructed with string on Workers`,
-        );
-      } else {
-        const { matrix, is2D } = parseTransformList(init);
-        this[_raw] = matrix;
-        this[_is2D] = is2D;
-      }
+      const { matrix, is2D } = parseTransformList(init, prefix);
+      this[_raw] = matrix;
+      this[_is2D] = is2D;
     }
   }
 
@@ -2001,66 +1995,69 @@ function isIdentityMatrix(matrix) {
 
 /**
  * CSS <transform-list> parser
- * @type {((transformList: string, prefix: string) => { matrix: Float64Array, is2D: boolean }) | null}
+ * @type {((transformList: string, prefix: string) => { matrix: Float64Array, is2D: boolean })}
  */
-let parseTransformList = null;
+let parseTransformList;
 
 /**
- * @param {(transformList: string, prefix: string) => { matrix: Float64Array, is2D: boolean }} parser
+ * @param {(transformList: string, prefix: string) => { matrix: Float64Array, is2D: boolean }} transformListParser
+ * @param {boolean} enableWindowFeatures
  */
-function enableWindowFeatures(parser) {
-  parseTransformList = parser;
+function init(transformListParser, enableWindowFeatures) {
+  parseTransformList = transformListParser;
 
-  // https://drafts.fxtf.org/geometry/#dommatrixreadonly-stringification-behavior
-  ObjectDefineProperty(DOMMatrixReadOnlyPrototype, "toString", {
-    value: function toString() {
-      webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
-      const raw = this[_raw];
-      if (!TypedArrayPrototypeEvery(raw, (value) => NumberIsFinite(value))) {
-        throw new DOMException(
-          "Failed to execute 'DOMMatrixReadOnly.prototype.toString': Cannot be serialized with NaN or Infinity values",
-          "InvalidStateError",
+  if (enableWindowFeatures) {
+    // https://drafts.fxtf.org/geometry/#dommatrixreadonly-stringification-behavior
+    ObjectDefineProperty(DOMMatrixReadOnlyPrototype, "toString", {
+      value: function toString() {
+        webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
+        const raw = this[_raw];
+        if (!TypedArrayPrototypeEvery(raw, (value) => NumberIsFinite(value))) {
+          throw new DOMException(
+            "Failed to execute 'DOMMatrixReadOnly.prototype.toString': Cannot be serialized with NaN or Infinity values",
+            "InvalidStateError",
+          );
+        }
+        if (this[_is2D]) {
+          return `matrix(${
+            ArrayPrototypeJoin([
+              raw[_a],
+              raw[_b],
+              raw[_c],
+              raw[_d],
+              raw[_e],
+              raw[_f],
+            ], ", ")
+          })`;
+        } else {
+          return `matrix3d(${TypedArrayPrototypeJoin(raw, ", ")})`;
+        }
+      },
+      writable: true,
+      enumerable: true,
+      configurable: true,
+    });
+
+    // https://drafts.fxtf.org/geometry/#dom-dommatrix-setmatrixvalue
+    ObjectDefineProperty(DOMMatrixPrototype, "setMatrixValue", {
+      value: function setMatrixValue(transformList) {
+        webidl.assertBranded(this, DOMMatrixPrototype);
+        const prefix = "Failed to call 'DOMMatrix.prototype.setMatrixValue'";
+        webidl.requiredArguments(arguments.length, 1, prefix);
+        transformList = webidl.converters.DOMString(
+          transformList,
+          prefix,
+          "Argument 1",
         );
-      }
-      if (this[_is2D]) {
-        return `matrix(${
-          ArrayPrototypeJoin([
-            raw[_a],
-            raw[_b],
-            raw[_c],
-            raw[_d],
-            raw[_e],
-            raw[_f],
-          ], ", ")
-        })`;
-      } else {
-        return `matrix3d(${TypedArrayPrototypeJoin(raw, ", ")})`;
-      }
-    },
-    writable: true,
-    enumerable: true,
-    configurable: true,
-  });
-
-  // https://drafts.fxtf.org/geometry/#dom-dommatrix-setmatrixvalue
-  ObjectDefineProperty(DOMMatrixPrototype, "setMatrixValue", {
-    value: function setMatrixValue(transformList) {
-      webidl.assertBranded(this, DOMMatrixPrototype);
-      const prefix = "Failed to call 'DOMMatrix.prototype.setMatrixValue'";
-      webidl.requiredArguments(arguments.length, 1, prefix);
-      transformList = webidl.converters.DOMString(
-        transformList,
-        prefix,
-        "Argument 1",
-      );
-      const { matrix, is2D } = parser(transformList);
-      this[_raw] = matrix;
-      this[_is2D] = is2D;
-    },
-    writable: true,
-    enumerable: true,
-    configurable: true,
-  });
+        const { matrix, is2D } = parseTransformList(transformList, prefix);
+        this[_raw] = matrix;
+        this[_is2D] = is2D;
+      },
+      writable: true,
+      enumerable: true,
+      configurable: true,
+    });
+  }
 }
 
 export {
@@ -2078,5 +2075,5 @@ export {
   DOMRectPrototype,
   DOMRectReadOnly,
   DOMRectReadOnlyPrototype,
-  enableWindowFeatures,
+  init,
 };

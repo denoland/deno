@@ -10,6 +10,7 @@ const {
   ObjectDefineProperties,
   ObjectPrototypeIsPrototypeOf,
   SymbolFor,
+  TypeError,
 } = primordials;
 
 import * as location from "ext:deno_web/12_location.js";
@@ -17,7 +18,13 @@ import * as console from "ext:deno_console/01_console.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import * as globalInterfaces from "ext:deno_web/04_global_interfaces.js";
 import { loadWebGPU } from "ext:deno_webgpu/00_init.js";
-const loadGeometry = core.createLazyLoader("ext:deno_geometry/01_geometry.js");
+import { createGeometryLoader } from "ext:deno_geometry/00_init.js";
+
+const loadGeometry = createGeometryLoader((_transformList, prefix) => {
+  throw new TypeError(
+    `${prefix}: Cannot parse CSS <transform-list> on Workers`,
+  );
+}, false);
 
 function memoizeLazy(f) {
   let v_ = null;

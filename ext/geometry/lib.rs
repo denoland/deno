@@ -34,6 +34,7 @@ deno_core::extension!(
     op_geometry_invert_2d_self,
     op_geometry_premultiply_point_self,
   ],
+  esm = ["00_init.js"],
   lazy_loaded_esm = ["01_geometry.js"],
 );
 
