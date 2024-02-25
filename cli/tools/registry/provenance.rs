@@ -10,6 +10,7 @@ use deno_core::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
+use once_cell::sync::Lazy;
 use p256::elliptic_curve;
 use p256::pkcs8::AssociatedOid;
 use reqwest::Client;
@@ -307,7 +308,10 @@ pub async fn attest(
   })
 }
 
-const DEFAULT_FULCIO_URL: &str = "https://fulcio.sigstore.dev";
+static DEFAULT_FULCIO_URL: Lazy<String> = Lazy::new(|| {
+  env::var("FULCIO_URL")
+    .unwrap_or_else(|_| "https://fulcio.sigstore.dev".to_string())
+});
 
 struct FulcioSigner {
   // The ephemeral key pair used to sign.
@@ -430,7 +434,7 @@ impl FulcioSigner {
     public_key: String,
     challenge: ring::signature::Signature,
   ) -> Result<Vec<String>, AnyError> {
-    let url = format!("{}/api/v2/signingCert", DEFAULT_FULCIO_URL);
+    let url = format!("{}/api/v2/signingCert", *DEFAULT_FULCIO_URL);
     let request_body = CreateSigningCertificateRequest {
       credentials: Credentials {
         oidc_identity_token: token.to_string(),
@@ -465,9 +469,6 @@ struct JwtSubject<'a> {
 
 fn extract_jwt_subject(token: &str) -> Result<String, AnyError> {
   let parts: Vec<&str> = token.split('.').collect();
-  if parts.len() != 3 {
-    bail!("Invalid JWT token");
-  }
 
   let payload = parts[1];
   let payload = STANDARD_NO_PAD.decode(payload)?;
@@ -502,7 +503,10 @@ async fn gha_request_token(aud: &str) -> Result<String, AnyError> {
   Ok(res.value)
 }
 
-const DEFAULT_REKOR_URL: &str = "https://rekor.sigstore.dev";
+static DEFAULT_REKOR_URL: Lazy<String> = Lazy::new(|| {
+  env::var("REKOR_URL")
+    .unwrap_or_else(|_| "https://rekor.sigstore.dev".to_string())
+});
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -619,7 +623,7 @@ async fn testify(
   };
 
   let client = Client::new();
-  let url = format!("{}/api/v1/log/entries", DEFAULT_REKOR_URL);
+  let url = format!("{}/api/v1/log/entries", *DEFAULT_REKOR_URL);
   let res = client
     .post(&url)
     .json(&proposed_intoto_entry)
@@ -628,4 +632,44 @@ async fn testify(
   let body: RekorEntry = res.json().await?;
 
   Ok(body)
+}
+
+#[cfg(test)]
+mod tests {
+  use super::ProvenanceAttestation;
+  use super::Subject;
+  use super::SubjectDigest;
+  use std::env;
+
+  #[test]
+  fn slsa_github_actions() {
+    // Set environment variable
+    if env::var("GITHUB_ACTIONS").is_err() {
+      env::set_var("CI", "true");
+      env::set_var("GITHUB_ACTIONS", "true");
+      env::set_var("ACTIONS_ID_TOKEN_REQUEST_URL", "https://example.com");
+      env::set_var("ACTIONS_ID_TOKEN_REQUEST_TOKEN", "dummy");
+      env::set_var("GITHUB_REPOSITORY", "littledivy/deno_sdl2");
+      env::set_var("GITHUB_SERVER_URL", "https://github.com");
+      env::set_var("GITHUB_REF", "refs/tags/sdl2@0.0.1");
+      env::set_var("GITHUB_SHA", "lol");
+      env::set_var("GITHUB_RUN_ID", "1");
+      env::set_var("GITHUB_RUN_ATTEMPT", "1");
+      env::set_var("RUNNER_ENVIRONMENT", "github-hosted");
+      env::set_var(
+        "GITHUB_WORKFLOW_REF",
+        "littledivy/deno_sdl2@refs/tags/sdl2@0.0.1",
+      );
+    }
+
+    let subject = Subject {
+      name: "jsr:@divy/sdl2@0.0.1".to_string(),
+      digest: SubjectDigest {
+        sha256: "yourmom".to_string(),
+      },
+    };
+    let slsa = ProvenanceAttestation::new_github_actions(subject);
+    assert_eq!(slsa.subject.name, "jsr:@divy/sdl2@0.0.1");
+    assert_eq!(slsa.subject.digest.sha256, "yourmom");
+  }
 }

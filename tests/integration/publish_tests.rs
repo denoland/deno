@@ -4,6 +4,7 @@ use deno_core::serde_json::json;
 use test_util::assert_contains;
 use test_util::assert_not_contains;
 use test_util::env_vars_for_jsr_npm_tests;
+use test_util::env_vars_for_jsr_provenance_tests;
 use test_util::env_vars_for_jsr_tests;
 use test_util::env_vars_for_npm_tests;
 use test_util::itest;
@@ -161,6 +162,14 @@ itest!(successful {
   output: "publish/successful.out",
   cwd: Some("publish/successful"),
   envs: env_vars_for_jsr_tests(),
+  http_server: true,
+});
+
+itest!(provenance {
+  args: "publish --provenance",
+  output: "publish/successful_provenance.out",
+  cwd: Some("publish/successful"),
+  envs: env_vars_for_jsr_provenance_tests(),
   http_server: true,
 });
 
