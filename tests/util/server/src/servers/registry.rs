@@ -57,7 +57,6 @@ async fn provenance_mock_server_handler(
 ) -> Result<Response<UnsyncBoxBody<Bytes, Infallible>>, anyhow::Error> {
   let path = req.uri().path();
 
-  println!("{}", path);
   // OIDC request
   if path.starts_with("/gha_oidc") {
     let jwt_claim = json!({

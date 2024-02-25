@@ -20,6 +20,7 @@ use deno_runtime::deno_fetch::reqwest;
 use deno_terminal::colors;
 use import_map::ImportMap;
 use lsp_types::Url;
+use serde::Deserialize;
 use serde::Serialize;
 use sha2::Digest;
 
@@ -650,36 +651,7 @@ async fn publish_package(
     let meta_bytes = client.get(meta_url).send().await?.bytes().await?;
 
     if std::env::var("DISABLE_JSR_MANIFEST_VERIFICATION_FOR_TESTING").is_err() {
-      use serde::Deserialize;
-      #[derive(Deserialize)]
-      struct ManifestEntry {
-        checksum: String,
-      }
-
-      #[derive(Deserialize)]
-      struct VersionManifest {
-        manifest: std::collections::HashMap<String, ManifestEntry>,
-      }
-
-      let manifest = serde_json::from_slice::<VersionManifest>(&meta_bytes)?;
-      for (path, entry) in manifest.manifest {
-        // Verify each path with the files in the tarball.
-        let file = package
-          .tarball
-          .files
-          .iter()
-          .find(|f| f.path_str == path.as_str());
-        if let Some(file) = file {
-          if file.hash != entry.checksum {
-            bail!(
-              "Checksum mismatch for {}: expected {}, got {}",
-              path,
-              entry.checksum,
-              file.hash
-            );
-          }
-        }
-      }
+      verify_version_manifest(&meta_bytes, &package)?;
     }
 
     let subject = provenance::Subject {
@@ -942,5 +914,41 @@ pub async fn publish(
   )
   .await?;
 
+  Ok(())
+}
+
+#[derive(Deserialize)]
+struct ManifestEntry {
+  checksum: String,
+}
+
+#[derive(Deserialize)]
+struct VersionManifest {
+  manifest: HashMap<String, ManifestEntry>,
+}
+
+fn verify_version_manifest(
+  meta_bytes: &[u8],
+  package: &PreparedPublishPackage,
+) -> Result<(), AnyError> {
+  let manifest = serde_json::from_slice::<VersionManifest>(&meta_bytes)?;
+  for (path, entry) in manifest.manifest {
+    // Verify each path with the files in the tarball.
+    let file = package
+      .tarball
+      .files
+      .iter()
+      .find(|f| f.path_str == path.as_str());
+    if let Some(file) = file {
+      if file.hash != entry.checksum {
+        bail!(
+          "Checksum mismatch for {}: expected {}, got {}",
+          path,
+          entry.checksum,
+          file.hash
+        );
+      }
+    }
+  }
   Ok(())
 }
