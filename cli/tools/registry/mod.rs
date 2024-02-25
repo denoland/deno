@@ -931,7 +931,7 @@ fn verify_version_manifest(
   meta_bytes: &[u8],
   package: &PreparedPublishPackage,
 ) -> Result<(), AnyError> {
-  let manifest = serde_json::from_slice::<VersionManifest>(&meta_bytes)?;
+  let manifest = serde_json::from_slice::<VersionManifest>(meta_bytes)?;
   for (path, entry) in manifest.manifest {
     // Verify each path with the files in the tarball.
     let file = package
