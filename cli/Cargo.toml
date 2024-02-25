@@ -104,8 +104,6 @@ fancy-regex = "=0.10.0"
 # If you disable the default __vendored_zlib_ng feature above, you _must_ be able to link against `-lz`.
 flate2.workspace = true
 fs3.workspace = true
-p256.workspace = true
-spki = { version = "0.7", features = ["pem"] }
 glob = "0.3.1"
 hex.workspace = true
 ignore = "0.4"
@@ -122,6 +120,7 @@ notify.workspace = true
 once_cell.workspace = true
 open = "5.0.1"
 os_pipe.workspace = true
+p256.workspace = true
 percent-encoding.workspace = true
 phf.workspace = true
 pin-project.workspace = true
@@ -136,6 +135,7 @@ serde.workspace = true
 serde_repr.workspace = true
 sha2.workspace = true
 shell-escape = "=0.1.5"
+spki = { version = "0.7", features = ["pem"] }
 tar.workspace = true
 tempfile.workspace = true
 text-size = "=1.1.0"

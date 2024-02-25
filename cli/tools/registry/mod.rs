@@ -667,7 +667,7 @@ async fn publish_package(
         .tarball
         .files
         .iter()
-        .find(|f| f.specifier.as_str() == path.as_str());
+        .find(|f| f.path_str == path.as_str());
       if let Some(file) = file {
         if file.hash != entry.checksum {
           bail!(
