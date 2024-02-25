@@ -3,8 +3,9 @@
 use super::api::OidcTokenResponse;
 use super::auth::gha_oidc_token;
 use super::auth::is_gha;
+use base64::engine::general_purpose::STANDARD_NO_PAD;
 use base64::prelude::BASE64_STANDARD;
-use base64::{engine::general_purpose::STANDARD_NO_PAD, Engine as _};
+use base64::Engine as _;
 use deno_core::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
