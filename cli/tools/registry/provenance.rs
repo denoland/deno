@@ -316,7 +316,7 @@ struct FulcioSigner {
   client: Client,
 }
 
-static ALGORITHM: &'static ring::signature::EcdsaSigningAlgorithm =
+static ALGORITHM: &ring::signature::EcdsaSigningAlgorithm =
   &ring::signature::ECDSA_P256_SHA256_ASN1_SIGNING;
 
 struct KeyMaterial {
@@ -450,7 +450,7 @@ impl FulcioSigner {
 
     let key = body
       .signed_certificate_embedded_sct
-      .or_else(|| body.signed_certificate_detached_sct)
+      .or(body.signed_certificate_detached_sct)
       .ok_or_else(|| anyhow::anyhow!("No certificate chain returned"))?;
     Ok(key.chain.certificates)
   }
