@@ -285,8 +285,7 @@ class DOMPointReadOnly {
 
   matrixTransform(matrix = {}) {
     webidl.assertBranded(this, DOMPointReadOnlyPrototype);
-    const prefix =
-      "Failed to execute 'matrixTransform' on 'DOMPointReadOnly'";
+    const prefix = "Failed to execute 'matrixTransform' on 'DOMPointReadOnly'";
     if (!ObjectPrototypeIsPrototypeOf(DOMMatrixReadOnlyPrototype, matrix)) {
       const _matrix = webidl.converters.DOMMatrixInit(
         matrix,
