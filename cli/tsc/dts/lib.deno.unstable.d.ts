@@ -895,9 +895,9 @@ declare namespace Deno {
     caCerts?: string[];
     /** A HTTP proxy to use for new connections. */
     proxy?: Proxy;
-    /** Server private key in PEM format. */
-    cert?: string;
     /** Cert chain in PEM format. */
+    cert?: string;
+    /** Server private key in PEM format. */
     key?: string;
     /** Sets the maximum numer of idle connections per host allowed in the pool. */
     poolMaxIdlePerHost?: number;

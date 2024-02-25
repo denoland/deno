@@ -536,11 +536,10 @@ pub async fn run(
       is_npm_main: main_module.scheme() == "npm",
       skip_op_registration: true,
       location: metadata.location,
-      maybe_binary_npm_command_name: NpmPackageReqReference::from_specifier(
-        main_module,
-      )
-      .ok()
-      .map(|req_ref| npm_pkg_req_ref_to_binary_command(&req_ref)),
+      argv0: NpmPackageReqReference::from_specifier(main_module)
+        .ok()
+        .map(|req_ref| npm_pkg_req_ref_to_binary_command(&req_ref))
+        .or(std::env::args().next()),
       origin_data_folder_path: None,
       seed: metadata.seed,
       unsafely_ignore_certificate_errors: metadata
