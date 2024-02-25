@@ -719,7 +719,7 @@ class DOMQuad {
 webidl.configureInterface(DOMQuad);
 const DOMQuadPrototype = DOMQuad.prototype;
 
-/**
+/*
  * NOTE: column-major order
  *
  * For a 2D 3x2 matrix, the index of properties in
@@ -728,14 +728,14 @@ const DOMQuadPrototype = DOMQuad.prototype;
  * | 0 0 1 0 | is | _ _ _  _ |
  * | 0 0 0 1 |    | _ _ _  _ |
  */
-const _a = 0;
-const _b = 1;
-const _c = 4;
-const _d = 5;
-const _e = 12;
-const _f = 13;
+const INDEX_A = 0;
+const INDEX_B = 1;
+const INDEX_C = 4;
+const INDEX_D = 5;
+const INDEX_E = 12;
+const INDEX_F = 13;
 
-/**
+/*
  * NOTE: column-major order
  *
  * The index of properties in
@@ -744,22 +744,22 @@ const _f = 13;
  * | m13 m23 m33 m43 | is | 2 6 10 14 |
  * | m14 m24 m34 m44 |    | 3 7 11 15 |
  */
-const _m11 = 0;
-const _m12 = 1;
-const _m13 = 2;
-const _m14 = 3;
-const _m21 = 4;
-const _m22 = 5;
-const _m23 = 6;
-const _m24 = 7;
-const _m31 = 8;
-const _m32 = 9;
-const _m33 = 10;
-const _m34 = 11;
-const _m41 = 12;
-const _m42 = 13;
-const _m43 = 14;
-const _m44 = 15;
+const INDEX_M11 = 0;
+const INDEX_M12 = 1;
+const INDEX_M13 = 2;
+const INDEX_M14 = 3;
+const INDEX_M21 = 4;
+const INDEX_M22 = 5;
+const INDEX_M23 = 6;
+const INDEX_M24 = 7;
+const INDEX_M31 = 8;
+const INDEX_M32 = 9;
+const INDEX_M33 = 10;
+const INDEX_M34 = 11;
+const INDEX_M41 = 12;
+const INDEX_M42 = 13;
+const INDEX_M43 = 14;
+const INDEX_M44 = 15;
 
 const _is2D = Symbol("[[is2D]]");
 
@@ -839,91 +839,91 @@ class DOMMatrixReadOnly {
 
   get a() {
     webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
-    return this[_raw][_a];
+    return this[_raw][INDEX_A];
   }
   get b() {
     webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
-    return this[_raw][_b];
+    return this[_raw][INDEX_B];
   }
   get c() {
     webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
-    return this[_raw][_c];
+    return this[_raw][INDEX_C];
   }
   get d() {
     webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
-    return this[_raw][_d];
+    return this[_raw][INDEX_D];
   }
   get e() {
     webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
-    return this[_raw][_e];
+    return this[_raw][INDEX_E];
   }
   get f() {
     webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
-    return this[_raw][_f];
+    return this[_raw][INDEX_F];
   }
   get m11() {
     webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
-    return this[_raw][_m11];
+    return this[_raw][INDEX_M11];
   }
   get m12() {
     webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
-    return this[_raw][_m12];
+    return this[_raw][INDEX_M12];
   }
   get m13() {
     webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
-    return this[_raw][_m13];
+    return this[_raw][INDEX_M13];
   }
   get m14() {
     webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
-    return this[_raw][_m14];
+    return this[_raw][INDEX_M14];
   }
   get m21() {
     webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
-    return this[_raw][_m21];
+    return this[_raw][INDEX_M21];
   }
   get m22() {
     webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
-    return this[_raw][_m22];
+    return this[_raw][INDEX_M22];
   }
   get m23() {
     webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
-    return this[_raw][_m23];
+    return this[_raw][INDEX_M23];
   }
   get m24() {
     webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
-    return this[_raw][_m24];
+    return this[_raw][INDEX_M24];
   }
   get m31() {
     webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
-    return this[_raw][_m31];
+    return this[_raw][INDEX_M31];
   }
   get m32() {
     webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
-    return this[_raw][_m32];
+    return this[_raw][INDEX_M32];
   }
   get m33() {
     webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
-    return this[_raw][_m33];
+    return this[_raw][INDEX_M33];
   }
   get m34() {
     webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
-    return this[_raw][_m34];
+    return this[_raw][INDEX_M34];
   }
   get m41() {
     webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
-    return this[_raw][_m41];
+    return this[_raw][INDEX_M41];
   }
   get m42() {
     webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
-    return this[_raw][_m42];
+    return this[_raw][INDEX_M42];
   }
   get m43() {
     webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
-    return this[_raw][_m43];
+    return this[_raw][INDEX_M43];
   }
   get m44() {
     webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
-    return this[_raw][_m44];
+    return this[_raw][INDEX_M44];
   }
   get is2D() {
     webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
@@ -1212,28 +1212,28 @@ class DOMMatrixReadOnly {
     webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
     const raw = this[_raw];
     return {
-      a: raw[_a],
-      b: raw[_b],
-      c: raw[_c],
-      d: raw[_d],
-      e: raw[_e],
-      f: raw[_f],
-      m11: raw[_m11],
-      m12: raw[_m12],
-      m13: raw[_m13],
-      m14: raw[_m14],
-      m21: raw[_m21],
-      m22: raw[_m22],
-      m23: raw[_m23],
-      m24: raw[_m24],
-      m31: raw[_m31],
-      m32: raw[_m32],
-      m33: raw[_m33],
-      m34: raw[_m34],
-      m41: raw[_m41],
-      m42: raw[_m42],
-      m43: raw[_m43],
-      m44: raw[_m44],
+      a: raw[INDEX_A],
+      b: raw[INDEX_B],
+      c: raw[INDEX_C],
+      d: raw[INDEX_D],
+      e: raw[INDEX_E],
+      f: raw[INDEX_F],
+      m11: raw[INDEX_M11],
+      m12: raw[INDEX_M12],
+      m13: raw[INDEX_M13],
+      m14: raw[INDEX_M14],
+      m21: raw[INDEX_M21],
+      m22: raw[INDEX_M22],
+      m23: raw[INDEX_M23],
+      m24: raw[INDEX_M24],
+      m31: raw[INDEX_M31],
+      m32: raw[INDEX_M32],
+      m33: raw[INDEX_M33],
+      m34: raw[INDEX_M34],
+      m41: raw[INDEX_M41],
+      m42: raw[INDEX_M42],
+      m43: raw[INDEX_M43],
+      m44: raw[INDEX_M44],
       is2D: this[_is2D],
       isIdentity: isIdentityMatrix(this),
     };
@@ -1322,79 +1322,79 @@ class DOMMatrix extends DOMMatrixReadOnly {
 
   get a() {
     webidl.assertBranded(this, DOMMatrixPrototype);
-    return this[_raw][_a];
+    return this[_raw][INDEX_A];
   }
   set a(value) {
     webidl.assertBranded(this, DOMMatrixPrototype);
     assertWritable(this);
-    this[_raw][_a] = webidl.converters["unrestricted double"](value);
+    this[_raw][INDEX_A] = webidl.converters["unrestricted double"](value);
   }
   get b() {
     webidl.assertBranded(this, DOMMatrixPrototype);
-    return this[_raw][_b];
+    return this[_raw][INDEX_B];
   }
   set b(value) {
     webidl.assertBranded(this, DOMMatrixPrototype);
     assertWritable(this);
-    this[_raw][_b] = webidl.converters["unrestricted double"](value);
+    this[_raw][INDEX_B] = webidl.converters["unrestricted double"](value);
   }
   get c() {
     webidl.assertBranded(this, DOMMatrixPrototype);
-    return this[_raw][_c];
+    return this[_raw][INDEX_C];
   }
   set c(value) {
     webidl.assertBranded(this, DOMMatrixPrototype);
     assertWritable(this);
-    this[_raw][_c] = webidl.converters["unrestricted double"](value);
+    this[_raw][INDEX_C] = webidl.converters["unrestricted double"](value);
   }
   get d() {
     webidl.assertBranded(this, DOMMatrixPrototype);
-    return this[_raw][_d];
+    return this[_raw][INDEX_D];
   }
   set d(value) {
     webidl.assertBranded(this, DOMMatrixPrototype);
     assertWritable(this);
-    this[_raw][_d] = webidl.converters["unrestricted double"](value);
+    this[_raw][INDEX_D] = webidl.converters["unrestricted double"](value);
   }
   get e() {
     webidl.assertBranded(this, DOMMatrixPrototype);
-    return this[_raw][_e];
+    return this[_raw][INDEX_E];
   }
   set e(value) {
     webidl.assertBranded(this, DOMMatrixPrototype);
     assertWritable(this);
-    this[_raw][_e] = webidl.converters["unrestricted double"](value);
+    this[_raw][INDEX_E] = webidl.converters["unrestricted double"](value);
   }
   get f() {
     webidl.assertBranded(this, DOMMatrixPrototype);
-    return this[_raw][_f];
+    return this[_raw][INDEX_F];
   }
   set f(value) {
     webidl.assertBranded(this, DOMMatrixPrototype);
     assertWritable(this);
-    this[_raw][_f] = webidl.converters["unrestricted double"](value);
+    this[_raw][INDEX_F] = webidl.converters["unrestricted double"](value);
   }
   get m11() {
     webidl.assertBranded(this, DOMMatrixPrototype);
-    return this[_raw][_m11];
+    return this[_raw][INDEX_M11];
   }
   set m11(value) {
     webidl.assertBranded(this, DOMMatrixPrototype);
     assertWritable(this);
-    this[_raw][_m11] = webidl.converters["unrestricted double"](value);
+    this[_raw][INDEX_M11] = webidl.converters["unrestricted double"](value);
   }
   get m12() {
     webidl.assertBranded(this, DOMMatrixPrototype);
-    return this[_raw][_m12];
+    return this[_raw][INDEX_M12];
   }
   set m12(value) {
     webidl.assertBranded(this, DOMMatrixPrototype);
     assertWritable(this);
-    this[_raw][_m12] = webidl.converters["unrestricted double"](value);
+    this[_raw][INDEX_M12] = webidl.converters["unrestricted double"](value);
   }
   get m13() {
     webidl.assertBranded(this, DOMMatrixPrototype);
-    return this[_raw][_m13];
+    return this[_raw][INDEX_M13];
   }
   set m13(value) {
     webidl.assertBranded(this, DOMMatrixPrototype);
@@ -1402,11 +1402,11 @@ class DOMMatrix extends DOMMatrixReadOnly {
     if (value !== 0) {
       this[_is2D] = false;
     }
-    this[_raw][_m13] = webidl.converters["unrestricted double"](value);
+    this[_raw][INDEX_M13] = webidl.converters["unrestricted double"](value);
   }
   get m14() {
     webidl.assertBranded(this, DOMMatrixPrototype);
-    return this[_raw][_m14];
+    return this[_raw][INDEX_M14];
   }
   set m14(value) {
     webidl.assertBranded(this, DOMMatrixPrototype);
@@ -1414,29 +1414,29 @@ class DOMMatrix extends DOMMatrixReadOnly {
     if (value !== 0) {
       this[_is2D] = false;
     }
-    this[_raw][_m14] = webidl.converters["unrestricted double"](value);
+    this[_raw][INDEX_M14] = webidl.converters["unrestricted double"](value);
   }
   get m21() {
     webidl.assertBranded(this, DOMMatrixPrototype);
-    return this[_raw][_m21];
+    return this[_raw][INDEX_M21];
   }
   set m21(value) {
     webidl.assertBranded(this, DOMMatrixPrototype);
     assertWritable(this);
-    this[_raw][_m21] = webidl.converters["unrestricted double"](value);
+    this[_raw][INDEX_M21] = webidl.converters["unrestricted double"](value);
   }
   get m22() {
     webidl.assertBranded(this, DOMMatrixPrototype);
-    return this[_raw][_m22];
+    return this[_raw][INDEX_M22];
   }
   set m22(value) {
     webidl.assertBranded(this, DOMMatrixPrototype);
     assertWritable(this);
-    this[_raw][_m22] = webidl.converters["unrestricted double"](value);
+    this[_raw][INDEX_M22] = webidl.converters["unrestricted double"](value);
   }
   get m23() {
     webidl.assertBranded(this, DOMMatrixPrototype);
-    return this[_raw][_m23];
+    return this[_raw][INDEX_M23];
   }
   set m23(value) {
     webidl.assertBranded(this, DOMMatrixPrototype);
@@ -1444,11 +1444,11 @@ class DOMMatrix extends DOMMatrixReadOnly {
     if (value !== 0) {
       this[_is2D] = false;
     }
-    this[_raw][_m23] = webidl.converters["unrestricted double"](value);
+    this[_raw][INDEX_M23] = webidl.converters["unrestricted double"](value);
   }
   get m24() {
     webidl.assertBranded(this, DOMMatrixPrototype);
-    return this[_raw][_m24];
+    return this[_raw][INDEX_M24];
   }
   set m24(value) {
     webidl.assertBranded(this, DOMMatrixPrototype);
@@ -1456,11 +1456,11 @@ class DOMMatrix extends DOMMatrixReadOnly {
     if (value !== 0) {
       this[_is2D] = false;
     }
-    this[_raw][_m24] = webidl.converters["unrestricted double"](value);
+    this[_raw][INDEX_M24] = webidl.converters["unrestricted double"](value);
   }
   get m31() {
     webidl.assertBranded(this, DOMMatrixPrototype);
-    return this[_raw][_m31];
+    return this[_raw][INDEX_M31];
   }
   set m31(value) {
     webidl.assertBranded(this, DOMMatrixPrototype);
@@ -1468,11 +1468,11 @@ class DOMMatrix extends DOMMatrixReadOnly {
     if (value !== 0) {
       this[_is2D] = false;
     }
-    this[_raw][_m31] = webidl.converters["unrestricted double"](value);
+    this[_raw][INDEX_M31] = webidl.converters["unrestricted double"](value);
   }
   get m32() {
     webidl.assertBranded(this, DOMMatrixPrototype);
-    return this[_raw][_m32];
+    return this[_raw][INDEX_M32];
   }
   set m32(value) {
     webidl.assertBranded(this, DOMMatrixPrototype);
@@ -1480,11 +1480,11 @@ class DOMMatrix extends DOMMatrixReadOnly {
     if (value !== 0) {
       this[_is2D] = false;
     }
-    this[_raw][_m32] = webidl.converters["unrestricted double"](value);
+    this[_raw][INDEX_M32] = webidl.converters["unrestricted double"](value);
   }
   get m33() {
     webidl.assertBranded(this, DOMMatrixPrototype);
-    return this[_raw][_m33];
+    return this[_raw][INDEX_M33];
   }
   set m33(value) {
     webidl.assertBranded(this, DOMMatrixPrototype);
@@ -1492,11 +1492,11 @@ class DOMMatrix extends DOMMatrixReadOnly {
     if (value !== 1) {
       this[_is2D] = false;
     }
-    this[_raw][_m33] = webidl.converters["unrestricted double"](value);
+    this[_raw][INDEX_M33] = webidl.converters["unrestricted double"](value);
   }
   get m34() {
     webidl.assertBranded(this, DOMMatrixPrototype);
-    return this[_raw][_m34];
+    return this[_raw][INDEX_M34];
   }
   set m34(value) {
     webidl.assertBranded(this, DOMMatrixPrototype);
@@ -1504,29 +1504,29 @@ class DOMMatrix extends DOMMatrixReadOnly {
     if (value !== 0) {
       this[_is2D] = false;
     }
-    this[_raw][_m34] = webidl.converters["unrestricted double"](value);
+    this[_raw][INDEX_M34] = webidl.converters["unrestricted double"](value);
   }
   get m41() {
     webidl.assertBranded(this, DOMMatrixPrototype);
-    return this[_raw][_m41];
+    return this[_raw][INDEX_M41];
   }
   set m41(value) {
     webidl.assertBranded(this, DOMMatrixPrototype);
     assertWritable(this);
-    this[_raw][_m41] = webidl.converters["unrestricted double"](value);
+    this[_raw][INDEX_M41] = webidl.converters["unrestricted double"](value);
   }
   get m42() {
     webidl.assertBranded(this, DOMMatrixPrototype);
-    return this[_raw][_m42];
+    return this[_raw][INDEX_M42];
   }
   set m42(value) {
     webidl.assertBranded(this, DOMMatrixPrototype);
     assertWritable(this);
-    this[_raw][_m42] = webidl.converters["unrestricted double"](value);
+    this[_raw][INDEX_M42] = webidl.converters["unrestricted double"](value);
   }
   get m43() {
     webidl.assertBranded(this, DOMMatrixPrototype);
-    return this[_raw][_m43];
+    return this[_raw][INDEX_M43];
   }
   set m43(value) {
     webidl.assertBranded(this, DOMMatrixPrototype);
@@ -1534,11 +1534,11 @@ class DOMMatrix extends DOMMatrixReadOnly {
     if (value !== 0) {
       this[_is2D] = false;
     }
-    this[_raw][_m43] = webidl.converters["unrestricted double"](value);
+    this[_raw][INDEX_M43] = webidl.converters["unrestricted double"](value);
   }
   get m44() {
     webidl.assertBranded(this, DOMMatrixPrototype);
-    return this[_raw][_m44];
+    return this[_raw][INDEX_M44];
   }
   set m44(value) {
     webidl.assertBranded(this, DOMMatrixPrototype);
@@ -1546,7 +1546,7 @@ class DOMMatrix extends DOMMatrixReadOnly {
     if (value !== 1) {
       this[_is2D] = false;
     }
-    this[_raw][_m44] = webidl.converters["unrestricted double"](value);
+    this[_raw][INDEX_M44] = webidl.converters["unrestricted double"](value);
   }
 
   multiplySelf(other = {}) {
@@ -1974,22 +1974,22 @@ function initMatrixFromMatrix(target, matrix) {
 function isIdentityMatrix(matrix) {
   const raw = matrix[_raw];
   return (
-    raw[_m11] === 1 &&
-    raw[_m12] === 0 &&
-    raw[_m13] === 0 &&
-    raw[_m14] === 0 &&
-    raw[_m21] === 0 &&
-    raw[_m22] === 1 &&
-    raw[_m23] === 0 &&
-    raw[_m24] === 0 &&
-    raw[_m31] === 0 &&
-    raw[_m32] === 0 &&
-    raw[_m33] === 1 &&
-    raw[_m34] === 0 &&
-    raw[_m41] === 0 &&
-    raw[_m42] === 0 &&
-    raw[_m43] === 0 &&
-    raw[_m44] === 1
+    raw[INDEX_M11] === 1 &&
+    raw[INDEX_M12] === 0 &&
+    raw[INDEX_M13] === 0 &&
+    raw[INDEX_M14] === 0 &&
+    raw[INDEX_M21] === 0 &&
+    raw[INDEX_M22] === 1 &&
+    raw[INDEX_M23] === 0 &&
+    raw[INDEX_M24] === 0 &&
+    raw[INDEX_M31] === 0 &&
+    raw[INDEX_M32] === 0 &&
+    raw[INDEX_M33] === 1 &&
+    raw[INDEX_M34] === 0 &&
+    raw[INDEX_M41] === 0 &&
+    raw[INDEX_M42] === 0 &&
+    raw[INDEX_M43] === 0 &&
+    raw[INDEX_M44] === 1
   );
 }
 
@@ -2021,12 +2021,12 @@ function init(transformListParser, enableWindowFeatures) {
         if (this[_is2D]) {
           return `matrix(${
             ArrayPrototypeJoin([
-              raw[_a],
-              raw[_b],
-              raw[_c],
-              raw[_d],
-              raw[_e],
-              raw[_f],
+              raw[INDEX_A],
+              raw[INDEX_B],
+              raw[INDEX_C],
+              raw[INDEX_D],
+              raw[INDEX_E],
+              raw[INDEX_F],
             ], ", ")
           })`;
         } else {
