@@ -548,6 +548,10 @@ impl TsServer {
       .and_then(|mut changes| {
         for changes in &mut changes {
           changes.normalize(&self.specifier_map)?;
+          for text_chenages in &mut changes.text_changes {
+            text_chenages.new_text =
+              to_percent_decoded_str(&text_chenages.new_text);
+          }
         }
         Ok(changes)
       })
@@ -5468,7 +5472,7 @@ mod tests {
       .get_edits_for_file_rename(
         snapshot,
         resolve_url("file:///b.ts").unwrap(),
-        resolve_url("file:///c.ts").unwrap(),
+        resolve_url("file:///🦕.ts").unwrap(),
         FormatCodeSettings::default(),
         UserPreferences::default(),
       )
@@ -5483,7 +5487,7 @@ mod tests {
             start: 8,
             length: 6,
           },
-          new_text: "./c.ts".to_string(),
+          new_text: "./🦕.ts".to_string(),
         }],
         is_new_file: None,
       }]
