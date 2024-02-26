@@ -79,12 +79,12 @@ const loadGeometry = createGeometryLoader((transformList, prefix) => {
           0, 0, 1, 0,
           e, f, 0, 1,
         ]),
-        is2D: true,
+        is2D,
       };
     } else {
       return {
         matrix: new Float64Array(seq),
-        is2D: false,
+        is2D,
       };
     }
   }
