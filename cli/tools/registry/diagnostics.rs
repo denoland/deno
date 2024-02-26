@@ -258,8 +258,32 @@ impl Diagnostic for PublishDiagnostic {
           description: Some("the specifier".into()),
         },
       }),
-      PublishDiagnostic::GlobalTypeAugmentation { .. } => None,
-      PublishDiagnostic::CommonJs { .. } => None,
+      PublishDiagnostic::GlobalTypeAugmentation {
+        range, text_info, ..
+      } => Some(DiagnosticSnippet {
+        source: Cow::Borrowed(text_info),
+        highlight: DiagnosticSnippetHighlight {
+          style: DiagnosticSnippetHighlightStyle::Error,
+          range: DiagnosticSourceRange {
+            start: DiagnosticSourcePos::SourcePos(range.start),
+            end: DiagnosticSourcePos::SourcePos(range.end),
+          },
+          description: None,
+        },
+      }),
+      PublishDiagnostic::CommonJs {
+        range, text_info, ..
+      } => Some(DiagnosticSnippet {
+        source: Cow::Borrowed(text_info),
+        highlight: DiagnosticSnippetHighlight {
+          style: DiagnosticSnippetHighlightStyle::Error,
+          range: DiagnosticSourceRange {
+            start: DiagnosticSourcePos::SourcePos(range.start),
+            end: DiagnosticSourcePos::SourcePos(range.end),
+          },
+          description: None,
+        },
+      }),
     }
   }
 

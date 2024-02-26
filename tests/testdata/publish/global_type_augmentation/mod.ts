@@ -1,7 +1,3 @@
-export module "./mod" {
-  export interface A {
-    a: string;
-  }
-}
+import { bar } from "./bar.ts";
 
-export const asd = "asd";
+export const asd = "asd" + bar;
