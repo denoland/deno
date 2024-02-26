@@ -6150,12 +6150,6 @@
         ]
       }
     },
-    "content-encoding": {
-      "bad-gzip-body.any.html": true,
-      "bad-gzip-body.any.worker.html": true,
-      "gzip-body.any.html": true,
-      "gzip-body.any.worker.html": true
-    },
     "content-length": {
       "api-and-duplicate-headers.any.html": false,
       "api-and-duplicate-headers.any.worker.html": false,
