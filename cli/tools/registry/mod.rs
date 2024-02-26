@@ -84,6 +84,7 @@ impl PreparedPublishPackage {
 static SUGGESTED_ENTRYPOINTS: [&str; 4] =
   ["mod.ts", "mod.js", "index.ts", "index.js"];
 
+#[allow(clippy::too_many_arguments)]
 async fn prepare_publish(
   package_name: &str,
   deno_json: &ConfigFile,

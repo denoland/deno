@@ -15,8 +15,6 @@ use deno_runtime::deno_node::is_builtin_node_module;
 use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
-use deno_semver::package::PackageReq;
-use deno_semver::package::PackageReqReference;
 
 use crate::resolver::MappedSpecifierResolver;
 use crate::resolver::SloppyImportsResolver;
@@ -129,26 +127,27 @@ impl<'a> SpecifierUnfurler<'a> {
         .parse(specifier)
         .ok()?,
     };
-    let resolved = if let Ok(specifier) =
-      NpmPackageReqReference::from_specifier(&resolved)
-    {
-      if let Some(scope_name) = specifier.req().name.strip_prefix("@jsr/") {
-        let (scope, name) = scope_name.split_once("__")?;
-        let new_specifier = JsrPackageReqReference::new(PackageReqReference {
-          req: PackageReq {
-            name: format!("@{scope}/{name}"),
-            version_req: specifier.req().version_req.clone(),
-          },
-          sub_path: specifier.sub_path().map(ToOwned::to_owned),
-        })
-        .to_string();
-        ModuleSpecifier::parse(&new_specifier).unwrap()
-      } else {
-        resolved
-      }
-    } else {
-      resolved
-    };
+    // TODO(lucacasonato): this requires integration in deno_graph first
+    // let resolved = if let Ok(specifier) =
+    //   NpmPackageReqReference::from_specifier(&resolved)
+    // {
+    //   if let Some(scope_name) = specifier.req().name.strip_prefix("@jsr/") {
+    //     let (scope, name) = scope_name.split_once("__")?;
+    //     let new_specifier = JsrPackageReqReference::new(PackageReqReference {
+    //       req: PackageReq {
+    //         name: format!("@{scope}/{name}"),
+    //         version_req: specifier.req().version_req.clone(),
+    //       },
+    //       sub_path: specifier.sub_path().map(ToOwned::to_owned),
+    //     })
+    //     .to_string();
+    //     ModuleSpecifier::parse(&new_specifier).unwrap()
+    //   } else {
+    //     resolved
+    //   }
+    // } else {
+    //   resolved
+    // };
     let resolved =
       if let Some(sloppy_imports_resolver) = self.sloppy_imports_resolver {
         sloppy_imports_resolver
@@ -431,10 +430,11 @@ import baz from "./baz";
 import b from "./b.js";
 import b2 from "./b";
 import url from "url";
-import "npm:@jsr/std__fs@1/file";
-import "npm:@jsr/std__fs@1";
-import "npm:@jsr/std__fs";
-import "@std/fs";
+// TODO: unfurl these to jsr
+// import "npm:@jsr/std__fs@1/file";
+// import "npm:@jsr/std__fs@1";
+// import "npm:@jsr/std__fs";
+// import "@std/fs";
 
 const test1 = await import("lib/foo.ts");
 const test2 = await import(`lib/foo.ts`);
@@ -476,10 +476,11 @@ import baz from "./baz/index.js";
 import b from "./b.ts";
 import b2 from "./b.ts";
 import url from "node:url";
-import "jsr:@std/fs@1/file";
-import "jsr:@std/fs@1";
-import "jsr:@std/fs";
-import "jsr:@std/fs@1";
+// TODO: unfurl these to jsr
+// import "npm:@jsr/std__fs@1/file";
+// import "npm:@jsr/std__fs@1";
+// import "npm:@jsr/std__fs";
+// import "@std/fs";
 
 const test1 = await import("./lib/foo.ts");
 const test2 = await import(`./lib/foo.ts`);
