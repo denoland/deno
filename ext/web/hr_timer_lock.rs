@@ -53,6 +53,7 @@ mod windows {
 }
 
 #[cfg(target_os = "windows")]
+#[allow(dead_code)]
 pub(crate) fn hr_timer_lock() -> windows::HrTimerLock {
   windows::inc_ref();
   windows::HrTimerLock {
@@ -62,6 +63,7 @@ pub(crate) fn hr_timer_lock() -> windows::HrTimerLock {
 
 /// No-op on other platforms.
 #[cfg(not(target_os = "windows"))]
+#[allow(dead_code)]
 pub(crate) fn hr_timer_lock() -> (std::marker::PhantomData<()>,) {
   Default::default()
 }
