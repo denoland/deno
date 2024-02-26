@@ -119,7 +119,7 @@ mod tests {
     for _ in 0..50 {
       handles.push(std::thread::spawn(|| {
         let _pipe = create_named_pipe().unwrap();
-        std::thread::sleep(Duration::from_millis(100));
+        std::thread::sleep(std::time::Duration::from_millis(100));
       }));
     }
     for handle in handles.drain(..) {
