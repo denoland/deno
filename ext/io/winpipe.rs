@@ -97,6 +97,8 @@ mod tests {
   use std::io::Read;
   use std::io::Write;
   use std::os::windows::io::FromRawHandle;
+  use std::sync::Arc;
+  use std::sync::Barrier;
 
   #[test]
   fn make_named_pipe() {
@@ -116,10 +118,14 @@ mod tests {
   #[test]
   fn make_many_named_pipes() {
     let mut handles = vec![];
+    let barrier = Arc::new(Barrier::new(50));
     for _ in 0..50 {
+      let barrier = barrier.clone();
       handles.push(std::thread::spawn(|| {
-        let _pipe = create_named_pipe().unwrap();
+        barrier.wait();
+        let pipe = create_named_pipe().unwrap();
         std::thread::sleep(std::time::Duration::from_millis(100));
+        drop(pipe);
       }));
     }
     for handle in handles.drain(..) {
