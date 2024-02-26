@@ -156,11 +156,12 @@ pub fn relative_specifier(
     text.push('/');
   }
 
-  Some(if text.starts_with("../") || text.starts_with("./") {
+  let text = if text.starts_with("../") || text.starts_with("./") {
     text
   } else {
     format!("./{text}")
-  })
+  };
+  Some(to_percent_decoded_str(&text))
 }
 
 /// This function checks if input path has trailing slash or not. If input path

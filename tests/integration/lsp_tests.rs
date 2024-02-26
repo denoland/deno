@@ -6613,7 +6613,7 @@ fn lsp_completions_auto_import() {
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
-      "uri": "file:///a/b.ts",
+      "uri": "file:///a/🦕.ts",
       "languageId": "typescript",
       "version": 1,
       "text": "export const foo = \"foo\";\n",
@@ -6644,7 +6644,7 @@ fn lsp_completions_auto_import() {
   let req = json!({
     "label": "foo",
     "labelDetails": {
-      "description": "./b.ts",
+      "description": "./🦕.ts",
     },
     "kind": 6,
     "sortText": "￿16_0",
@@ -6659,12 +6659,16 @@ fn lsp_completions_auto_import() {
         "specifier": "file:///a/file.ts",
         "position": 12,
         "name": "foo",
-        "source": "./b.ts",
+        "source": "./%F0%9F%A6%95.ts",
+         "specifierRewrite": [
+           "./%F0%9F%A6%95.ts",
+           "./🦕.ts",
+         ],
         "data": {
           "exportName": "foo",
           "exportMapKey": "",
-          "moduleSpecifier": "./b.ts",
-          "fileName": "file:///a/b.ts"
+          "moduleSpecifier": "./%F0%9F%A6%95.ts",
+          "fileName": "file:///a/%F0%9F%A6%95.ts"
         },
         "useCodeSnippet": false
       }
@@ -6678,7 +6682,7 @@ fn lsp_completions_auto_import() {
     json!({
       "label": "foo",
       "labelDetails": {
-        "description": "./b.ts",
+        "description": "./🦕.ts",
       },
       "kind": 6,
       "detail": "const foo: \"foo\"",
@@ -6693,7 +6697,7 @@ fn lsp_completions_auto_import() {
             "start": { "line": 0, "character": 0 },
             "end": { "line": 0, "character": 0 }
           },
-          "newText": "import { foo } from \"./b.ts\";\n\n"
+          "newText": "import { foo } from \"./🦕.ts\";\n\n"
         }
       ]
     })
