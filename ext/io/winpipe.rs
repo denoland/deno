@@ -19,7 +19,6 @@ use winapi::um::winbase::FILE_FLAG_OVERLAPPED;
 use winapi::um::winbase::PIPE_ACCESS_DUPLEX;
 use winapi::um::winbase::PIPE_READMODE_BYTE;
 use winapi::um::winbase::PIPE_TYPE_BYTE;
-use winapi::um::winnt::FILE_ATTRIBUTE_NORMAL;
 use winapi::um::winnt::GENERIC_READ;
 use winapi::um::winnt::GENERIC_WRITE;
 
