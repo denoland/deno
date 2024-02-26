@@ -3699,7 +3699,10 @@ fn test_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   let trace_leaks =
     matches.get_flag("trace-ops") || matches.get_flag("trace-leaks");
   if trace_leaks && matches.get_flag("trace-ops") {
-    // See note below about the log crate
+    // We can't change this to use the log crate because its not configured
+    // yet at this point since the flags haven't been parsed. This flag is
+    // deprecated though so it's not worth changing the code to use the log
+    // crate here and this is only done for testing anyway.
     eprintln!(
       "⚠️ {}",
       crate::colors::yellow("The `--trace-ops` flag is deprecated and will be removed in Deno 2.0.\nUse the `--trace-leaks` flag instead."),
