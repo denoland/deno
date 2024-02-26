@@ -3,6 +3,8 @@ use rand::thread_rng;
 use rand::RngCore;
 use std::io;
 use std::os::windows::io::RawHandle;
+use std::sync::atomic::AtomicU32;
+use std::sync::atomic::Ordering;
 use winapi::shared::minwindef::DWORD;
 use winapi::um::fileapi::CreateFileA;
 use winapi::um::fileapi::OPEN_EXISTING;
@@ -28,10 +30,12 @@ use winapi::um::winnt::GENERIC_WRITE;
 /// well as offering a complex NTAPI solution if we decide to try to make these pipes truely
 /// anonymous: https://stackoverflow.com/questions/60645/overlapped-i-o-on-anonymous-pipe
 pub fn create_named_pipe() -> io::Result<(RawHandle, RawHandle)> {
+  static NEXT_ID: AtomicU32 = AtomicU32::new();
   let pipe_name = format!(
-    r#"\\.\pipe\deno_pipe_{:x}_{:x}\0"#,
+    r#"\\.\pipe\deno_pipe_{:x}.{:x}.{:x}\0"#,
+    thread_rng().next_u64(),
     std::process::id(),
-    thread_rng().next_u64()
+    NEXT_ID.fetch_add(1, Ordering::SeqCst),
   );
 
   // Create security attributes to make the pipe handles non-inheritable
