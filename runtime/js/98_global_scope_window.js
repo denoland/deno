@@ -17,7 +17,6 @@ const {
   SafeRegExp,
   StringPrototypeMatch,
   StringPrototypeSplit,
-  StringPrototypeTrim,
   SymbolFor,
   TypeError,
 } = primordials;
@@ -58,7 +57,7 @@ const loadGeometry = createGeometryLoader((transformList, prefix) => {
     /** @type {number[]} */
     const seq = ArrayPrototypeMap(
       StringPrototypeSplit(matrixMatch[2], ","),
-      (str) => Number(StringPrototypeTrim(str)),
+      (str) => Number(str),
     );
     if (
       is2D && seq.length !== 6 ||
