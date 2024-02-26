@@ -30,9 +30,10 @@ const {
   ObjectPrototypeIsPrototypeOf,
   Symbol,
   SymbolFor,
+  SymbolIterator,
+  TypeError,
   TypedArrayPrototypeEvery,
   TypedArrayPrototypeJoin,
-  TypeError,
 } = primordials;
 
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
@@ -787,10 +788,9 @@ class DOMMatrixReadOnly {
         0, 0, 0, 1,
       ]);
       this[_is2D] = true;
-    } else if (ObjectPrototypeIsPrototypeOf(DOMMatrixReadOnlyPrototype, init)) {
-      // NOTE: not in the spec, but requested by wpt
-      initMatrixFromMatrix(this, init);
-    } else if (webidl.type(init) === "Object") {
+    } else if (
+      webidl.type(init) === "Object" && init[SymbolIterator] !== undefined
+    ) {
       init = webidl.converters["sequence<unrestricted double>"](
         init,
         prefix,
