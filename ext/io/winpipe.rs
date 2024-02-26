@@ -93,11 +93,11 @@ fn create_named_pipe_inner() -> io::Result<(RawHandle, RawHandle)> {
     let client_handle = unsafe {
       CreateFileA(
         pipe_name.as_ptr() as *const i8,
-        GENERIC_READ | GENERIC_WRITE | FILE_FLAG_OVERLAPPED,
+        GENERIC_READ | GENERIC_WRITE,
         0,
         &mut security_attributes,
         OPEN_EXISTING,
-        FILE_ATTRIBUTE_NORMAL,
+        FILE_FLAG_OVERLAPPED,
         std::ptr::null_mut(),
       )
     };
