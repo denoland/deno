@@ -121,7 +121,7 @@ mod tests {
     let barrier = Arc::new(Barrier::new(50));
     for _ in 0..50 {
       let barrier = barrier.clone();
-      handles.push(std::thread::spawn(|| {
+      handles.push(std::thread::spawn(move || {
         barrier.wait();
         let pipe = create_named_pipe().unwrap();
         std::thread::sleep(std::time::Duration::from_millis(100));
