@@ -3,12 +3,17 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 
+use deno_ast::ParsedSource;
+use deno_ast::SourceRangedForSpanned;
 use deno_ast::SourceTextInfo;
+use deno_core::error::AnyError;
 use deno_graph::ModuleEntryRef;
 use deno_graph::ModuleGraph;
 use deno_graph::ResolutionResolved;
 use deno_graph::WalkOptions;
 use lsp_types::Url;
+
+use crate::cache::LazyGraphSourceParser;
 
 use super::diagnostics::PublishDiagnostic;
 use super::diagnostics::PublishDiagnosticsCollector;
@@ -84,4 +89,93 @@ pub fn collect_invalid_external_imports(
       }
     }
   }
+}
+
+fn check_for_banned_syntax_single_module(
+  parsed_source: &ParsedSource,
+  diagnostics_collector: &PublishDiagnosticsCollector,
+) {
+  use deno_ast::swc::ast;
+
+  for i in parsed_source.module().body.iter() {
+    match i {
+      ast::ModuleItem::ModuleDecl(n) => match n {
+        ast::ModuleDecl::TsNamespaceExport(n) => {
+          diagnostics_collector.push(
+            PublishDiagnostic::GlobalTypeAugmentation {
+              specifier: parsed_source.specifier().to_owned(),
+              range: n.range(),
+              text_info: parsed_source.text_info().clone(),
+            },
+          );
+        }
+        ast::ModuleDecl::TsExportAssignment(n) => {
+          diagnostics_collector.push(
+            PublishDiagnostic::GlobalTypeAugmentation {
+              specifier: parsed_source.specifier().to_owned(),
+              range: n.range(),
+              text_info: parsed_source.text_info().clone(),
+            },
+          );
+        }
+        ast::ModuleDecl::TsImportEquals(n) => match n.module_ref {
+          ast::TsModuleRef::TsExternalModuleRef(_) => {
+            diagnostics_collector.push(PublishDiagnostic::CommonJs {
+              specifier: parsed_source.specifier().to_owned(),
+              range: n.range(),
+              text_info: parsed_source.text_info().clone(),
+            });
+          }
+          _ => {
+            continue;
+          }
+        },
+        _ => continue,
+      },
+      ast::ModuleItem::Stmt(n) => match n {
+        ast::Stmt::Decl(ast::Decl::TsModule(n)) => {
+          if n.global {
+            diagnostics_collector.push(
+              PublishDiagnostic::GlobalTypeAugmentation {
+                specifier: parsed_source.specifier().to_owned(),
+                range: n.range(),
+                text_info: parsed_source.text_info().clone(),
+              },
+            );
+          }
+          match &n.id {
+            ast::TsModuleName::Str(n) => {
+              diagnostics_collector.push(
+                PublishDiagnostic::GlobalTypeAugmentation {
+                  specifier: parsed_source.specifier().to_owned(),
+                  range: n.range(),
+                  text_info: parsed_source.text_info().clone(),
+                },
+              );
+            }
+            _ => continue,
+          }
+        }
+        _ => continue,
+      },
+    }
+  }
+}
+
+pub fn check_for_banned_syntax(
+  graph: &ModuleGraph,
+  lazy_graph_source_parser: &LazyGraphSourceParser,
+  diagnostics_collector: &PublishDiagnosticsCollector,
+) -> Result<(), AnyError> {
+  for module in graph.modules() {
+    if let Some(parsed_source) =
+      lazy_graph_source_parser.get_or_parse_source(module.specifier())?
+    {
+      check_for_banned_syntax_single_module(
+        &parsed_source,
+        diagnostics_collector,
+      );
+    }
+  }
+  Ok(())
 }

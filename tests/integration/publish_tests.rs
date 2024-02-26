@@ -369,3 +369,12 @@ fn publish_context_builder() -> TestContextBuilder {
     .envs(env_vars_for_jsr_tests())
     .use_temp_cwd()
 }
+
+itest!(global_type_augmentation {
+  args: "publish --token 'sadfasdf'",
+  output: "publish/global_type_augmentation/mod.out",
+  cwd: Some("publish/global_type_augmentation"),
+  envs: env_vars_for_jsr_tests(),
+  exit_code: 0,
+  http_server: true,
+});

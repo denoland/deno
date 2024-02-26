@@ -682,6 +682,13 @@ async fn prepare_packages_for_publishing(
   let publish_order_graph =
     publish_order::build_publish_order_graph(&graph, &members)?;
 
+  let lazy_graph_source_parser =
+    LazyGraphSourceParser::new(source_cache, &graph);
+  self::graph::check_for_banned_syntax(
+    &graph,
+    &lazy_graph_source_parser,
+    diagnostics_collector,
+  )?;
   let results = members
     .into_iter()
     .map(|member| {

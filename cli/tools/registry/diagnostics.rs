@@ -14,6 +14,7 @@ use deno_ast::diagnostics::DiagnosticSnippetHighlightStyle;
 use deno_ast::diagnostics::DiagnosticSourcePos;
 use deno_ast::diagnostics::DiagnosticSourceRange;
 use deno_ast::swc::common::util::take::Take;
+use deno_ast::SourceRange;
 use deno_ast::SourceTextInfo;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
@@ -92,6 +93,16 @@ pub enum PublishDiagnostic {
     text_info: SourceTextInfo,
     referrer: deno_graph::Range,
   },
+  GlobalTypeAugmentation {
+    specifier: Url,
+    range: SourceRange,
+    text_info: SourceTextInfo,
+  },
+  CommonJs {
+    specifier: Url,
+    range: SourceRange,
+    text_info: SourceTextInfo,
+  },
 }
 
 impl Diagnostic for PublishDiagnostic {
@@ -107,6 +118,8 @@ impl Diagnostic for PublishDiagnostic {
       DuplicatePath { .. } => DiagnosticLevel::Error,
       UnsupportedFileType { .. } => DiagnosticLevel::Warning,
       InvalidExternalImport { .. } => DiagnosticLevel::Error,
+      GlobalTypeAugmentation { .. } => DiagnosticLevel::Error,
+      CommonJs { .. } => DiagnosticLevel::Error,
     }
   }
 
@@ -119,6 +132,10 @@ impl Diagnostic for PublishDiagnostic {
       DuplicatePath { .. } => Cow::Borrowed("case-insensitive-duplicate-path"),
       UnsupportedFileType { .. } => Cow::Borrowed("unsupported-file-type"),
       InvalidExternalImport { .. } => Cow::Borrowed("invalid-external-import"),
+      GlobalTypeAugmentation { .. } => {
+        Cow::Borrowed("global-type-augmentation")
+      }
+      CommonJs { .. } => Cow::Borrowed("common-js"),
     }
   }
 
@@ -135,6 +152,8 @@ impl Diagnostic for PublishDiagnostic {
         Cow::Owned(format!("unsupported file type '{kind}'"))
       }
       InvalidExternalImport { kind, .. } => Cow::Owned(format!("invalid import to a {kind} specifier")),
+      GlobalTypeAugmentation { .. } => Cow::Borrowed("modifying global types is not allowed"),
+      CommonJs { .. } => Cow::Borrowed("CommonJS is not allowed"),
     }
   }
 
@@ -173,6 +192,24 @@ impl Diagnostic for PublishDiagnostic {
           line: referrer.start.line,
           column: referrer.start.character,
         },
+      },
+      GlobalTypeAugmentation {
+        specifier,
+        range,
+        text_info,
+      } => DiagnosticLocation::ModulePosition {
+        specifier: Cow::Borrowed(specifier),
+        source_pos: DiagnosticSourcePos::SourcePos(range.start),
+        text_info: Cow::Borrowed(text_info),
+      },
+      CommonJs {
+        specifier,
+        range,
+        text_info,
+      } => DiagnosticLocation::ModulePosition {
+        specifier: Cow::Borrowed(specifier),
+        source_pos: DiagnosticSourcePos::SourcePos(range.start),
+        text_info: Cow::Borrowed(text_info),
       },
     }
   }
@@ -221,6 +258,8 @@ impl Diagnostic for PublishDiagnostic {
           description: Some("the specifier".into()),
         },
       }),
+      PublishDiagnostic::GlobalTypeAugmentation { .. } => None,
+      PublishDiagnostic::CommonJs { .. } => None,
     }
   }
 
@@ -237,7 +276,9 @@ impl Diagnostic for PublishDiagnostic {
       PublishDiagnostic::UnsupportedFileType { .. } => Some(
         Cow::Borrowed("remove the file, or add it to 'publish.exclude' in the config file"),
       ),
-      PublishDiagnostic::InvalidExternalImport { .. } => Some(Cow::Borrowed("replace this import with one from jsr or npm, or vendor the dependency into your package"))
+      PublishDiagnostic::InvalidExternalImport { .. } => Some(Cow::Borrowed("replace this import with one from jsr or npm, or vendor the dependency into your package")),
+      PublishDiagnostic::GlobalTypeAugmentation { .. } => None,
+      PublishDiagnostic::CommonJs { .. } => None,
     }
   }
 
@@ -272,6 +313,8 @@ impl Diagnostic for PublishDiagnostic {
         Cow::Borrowed("this specifier is not allowed to be imported on jsr"),
         Cow::Borrowed("jsr only supports importing `jsr:`, `npm:`, and `data:` specifiers"),
       ]),
+      PublishDiagnostic::GlobalTypeAugmentation { .. } => Cow::Borrowed(&[]),
+      PublishDiagnostic::CommonJs { .. } => Cow::Borrowed(&[]),
     }
   }
 
@@ -292,6 +335,12 @@ impl Diagnostic for PublishDiagnostic {
       }
       PublishDiagnostic::InvalidExternalImport { .. } => {
         Some(Cow::Borrowed("https://jsr.io/go/invalid-external-import"))
+      }
+      PublishDiagnostic::GlobalTypeAugmentation { .. } => {
+        Some(Cow::Borrowed("https://jsr.io/go/global-type-augmentation"))
+      }
+      PublishDiagnostic::CommonJs { .. } => {
+        Some(Cow::Borrowed("https://jsr.io/go/common-js"))
       }
     }
   }
