@@ -950,5 +950,104 @@ fn verify_version_manifest(
       }
     }
   }
+
   Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+  use super::tar::PublishableTarball;
+  use super::tar::PublishableTarballFile;
+  use super::verify_version_manifest;
+
+  #[test]
+  fn test_verify_version_manifest() {
+    let meta = r#"{
+      "manifest": {
+        "mod.ts": {
+          "checksum": "abc123"
+        }
+      }
+    }"#;
+
+    let meta_bytes = meta.as_bytes();
+    let package = super::PreparedPublishPackage {
+      scope: "test".to_string(),
+      package: "test".to_string(),
+      version: "1.0.0".to_string(),
+      tarball: PublishableTarball {
+        bytes: vec![].into(),
+        hash: "abc123".to_string(),
+        files: vec![PublishableTarballFile {
+          specifier: "file://mod.ts".try_into().unwrap(),
+          path_str: "mod.ts".to_string(),
+          hash: "abc123".to_string(),
+          size: 0,
+        }],
+      },
+      config: "deno.json".to_string(),
+    };
+
+    assert!(verify_version_manifest(meta_bytes, &package).is_ok());
+  }
+
+  #[test]
+  fn test_verify_version_manifest_missing() {
+    let meta = r#"{
+      "manifest": {
+        "mod.ts": {},
+      }
+    }"#;
+
+    let meta_bytes = meta.as_bytes();
+    let package = super::PreparedPublishPackage {
+      scope: "test".to_string(),
+      package: "test".to_string(),
+      version: "1.0.0".to_string(),
+      tarball: PublishableTarball {
+        bytes: vec![].into(),
+        hash: "abc123".to_string(),
+        files: vec![PublishableTarballFile {
+          specifier: "file://mod.ts".try_into().unwrap(),
+          path_str: "mod.ts".to_string(),
+          hash: "abc123".to_string(),
+          size: 0,
+        }],
+      },
+      config: "deno.json".to_string(),
+    };
+
+    assert!(verify_version_manifest(meta_bytes, &package).is_err());
+  }
+
+  #[test]
+  fn test_verify_version_manifest_invalid_hash() {
+    let meta = r#"{
+      "manifest": {
+        "mod.ts": {
+          "checksum": "lol123"
+        }
+      }
+    }"#;
+
+    let meta_bytes = meta.as_bytes();
+    let package = super::PreparedPublishPackage {
+      scope: "test".to_string(),
+      package: "test".to_string(),
+      version: "1.0.0".to_string(),
+      tarball: PublishableTarball {
+        bytes: vec![].into(),
+        hash: "abc123".to_string(),
+        files: vec![PublishableTarballFile {
+          specifier: "file://mod.ts".try_into().unwrap(),
+          path_str: "mod.ts".to_string(),
+          hash: "abc123".to_string(),
+          size: 0,
+        }],
+      },
+      config: "deno.json".to_string(),
+    };
+
+    assert!(verify_version_manifest(meta_bytes, &package).is_err());
+  }
 }
