@@ -15,6 +15,8 @@ use deno_runtime::deno_node::is_builtin_node_module;
 use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
+use deno_semver::package::PackageReq;
+use deno_semver::package::PackageReqReference;
 
 use crate::resolver::MappedSpecifierResolver;
 use crate::resolver::SloppyImportsResolver;
@@ -126,6 +128,26 @@ impl<'a> SpecifierUnfurler<'a> {
         .base_url(Some(referrer))
         .parse(specifier)
         .ok()?,
+    };
+    let resolved = if let Ok(specifier) =
+      NpmPackageReqReference::from_specifier(&resolved)
+    {
+      if let Some(scope_name) = specifier.req().name.strip_prefix("@jsr/") {
+        let (scope, name) = scope_name.split_once("__")?;
+        let new_specifier = JsrPackageReqReference::new(PackageReqReference {
+          req: PackageReq {
+            name: format!("@{scope}/{name}"),
+            version_req: specifier.req().version_req.clone(),
+          },
+          sub_path: specifier.sub_path().map(ToOwned::to_owned),
+        })
+        .to_string();
+        ModuleSpecifier::parse(&new_specifier).unwrap()
+      } else {
+        resolved
+      }
+    } else {
+      resolved
     };
     let resolved =
       if let Some(sloppy_imports_resolver) = self.sloppy_imports_resolver {
@@ -335,6 +357,7 @@ fn to_range(
 mod tests {
   use std::sync::Arc;
 
+  use crate::args::package_json::get_local_package_json_version_reqs;
   use crate::args::PackageJsonDepsProvider;
 
   use super::*;
@@ -343,8 +366,11 @@ mod tests {
   use deno_core::serde_json::json;
   use deno_core::url::Url;
   use deno_runtime::deno_fs::RealFs;
+  use deno_runtime::deno_node::PackageJson;
   use import_map::ImportMapWithDiagnostics;
+  use indexmap::IndexMap;
   use pretty_assertions::assert_eq;
+  use test_util::testdata_path;
 
   fn parse_ast(specifier: &Url, source_code: &str) -> ParsedSource {
     let media_type = MediaType::from_specifier(specifier);
@@ -361,22 +387,38 @@ mod tests {
 
   #[test]
   fn test_unfurling() {
+    let cwd = testdata_path().join("unfurl").to_path_buf();
+
     let deno_json_url =
-      ModuleSpecifier::parse("file:///dev/deno.json").unwrap();
+      ModuleSpecifier::from_file_path(cwd.join("deno.json")).unwrap();
     let value = json!({
       "imports": {
         "express": "npm:express@5",
         "lib/": "./lib/",
-        "fizz": "./fizz/mod.ts"
+        "fizz": "./fizz/mod.ts",
+        "@std/fs": "npm:@jsr/std__fs@1",
       }
     });
     let ImportMapWithDiagnostics { import_map, .. } =
       import_map::parse_from_value(deno_json_url, value).unwrap();
-    let mapped_resolved = MappedSpecifierResolver::new(
+    let mut package_json = PackageJson::empty(cwd.join("package.json"));
+    package_json.dependencies =
+      Some(IndexMap::from([("chalk".to_string(), "5".to_string())]));
+    let mapped_resolver = MappedSpecifierResolver::new(
       Some(Arc::new(import_map)),
-      Arc::new(PackageJsonDepsProvider::new(None)),
+      Arc::new(PackageJsonDepsProvider::new(Some(
+        get_local_package_json_version_reqs(&package_json),
+      ))),
     );
-    let unfurler = SpecifierUnfurler::new(&mapped_resolved, None, false);
+
+    let fs = Arc::new(RealFs);
+    let sloppy_imports_resolver = SloppyImportsResolver::new(fs);
+
+    let unfurler = SpecifierUnfurler::new(
+      &mapped_resolver,
+      Some(&sloppy_imports_resolver),
+      true,
+    );
 
     // Unfurling TS file should apply changes.
     {
@@ -384,6 +426,15 @@ mod tests {
 import foo from "lib/foo.ts";
 import bar from "lib/bar.ts";
 import fizz from "fizz";
+import chalk from "chalk";
+import baz from "./baz";
+import b from "./b.js";
+import b2 from "./b";
+import url from "url";
+import "npm:@jsr/std__fs@1/file";
+import "npm:@jsr/std__fs@1";
+import "npm:@jsr/std__fs";
+import "@std/fs";
 
 const test1 = await import("lib/foo.ts");
 const test2 = await import(`lib/foo.ts`);
@@ -393,7 +444,8 @@ const test4 = await import(`./lib/${expr}`);
 const test5 = await import(`lib${expr}`);
 const test6 = await import(`${expr}`);
 "#;
-      let specifier = ModuleSpecifier::parse("file:///dev/mod.ts").unwrap();
+      let specifier =
+        ModuleSpecifier::from_file_path(cwd.join("mod.ts")).unwrap();
       let source = parse_ast(&specifier, source_code);
       let mut d = Vec::new();
       let mut reporter = |diagnostic| d.push(diagnostic);
@@ -419,6 +471,15 @@ const test6 = await import(`${expr}`);
 import foo from "./lib/foo.ts";
 import bar from "./lib/bar.ts";
 import fizz from "./fizz/mod.ts";
+import chalk from "npm:chalk@5";
+import baz from "./baz/index.js";
+import b from "./b.ts";
+import b2 from "./b.ts";
+import url from "node:url";
+import "jsr:@std/fs@1/file";
+import "jsr:@std/fs@1";
+import "jsr:@std/fs";
+import "jsr:@std/fs@1";
 
 const test1 = await import("./lib/foo.ts");
 const test2 = await import(`./lib/foo.ts`);
