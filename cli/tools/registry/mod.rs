@@ -15,6 +15,7 @@ use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
+use deno_core::serde_json::Value;
 use deno_core::unsync::JoinSet;
 use deno_runtime::deno_fetch::reqwest;
 use deno_terminal::colors;
@@ -72,6 +73,7 @@ struct PreparedPublishPackage {
   version: String,
   tarball: PublishableTarball,
   config: String,
+  exports: HashMap<String, String>,
 }
 
 impl PreparedPublishPackage {
@@ -153,6 +155,18 @@ async fn prepare_publish(
     package: name_no_scope.to_string(),
     version: version.to_string(),
     tarball,
+    exports: match &deno_json.json.exports {
+      Some(Value::Object(exports)) => exports
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v.as_str().unwrap().to_string()))
+        .collect(),
+      Some(Value::String(exports)) => {
+        let mut map = HashMap::new();
+        map.insert(".".to_string(), exports.to_string());
+        map
+      }
+      _ => HashMap::new(),
+    },
     // the config file is always at the root of a publishing dir,
     // so getting the file name is always correct
     config: config_path
@@ -925,6 +939,7 @@ struct ManifestEntry {
 #[derive(Deserialize)]
 struct VersionManifest {
   manifest: HashMap<String, ManifestEntry>,
+  exports: HashMap<String, String>,
 }
 
 fn verify_version_manifest(
@@ -939,6 +954,7 @@ fn verify_version_manifest(
       .files
       .iter()
       .find(|f| f.path_str == path.as_str());
+
     if let Some(file) = file {
       if file.hash != entry.checksum {
         bail!(
@@ -948,6 +964,25 @@ fn verify_version_manifest(
           file.hash
         );
       }
+    } else {
+      bail!("File {} not found in the tarball", path);
+    }
+  }
+
+  for (specifier, expected) in &manifest.exports {
+    let actual = package.exports.get(specifier).ok_or_else(|| {
+      deno_core::anyhow::anyhow!(
+        "Export {} not found in the package",
+        specifier
+      )
+    })?;
+    if actual != expected {
+      bail!(
+        "Export {} mismatch: expected {}, got {}",
+        specifier,
+        expected,
+        actual
+      );
     }
   }
 
@@ -959,6 +994,7 @@ mod tests {
   use super::tar::PublishableTarball;
   use super::tar::PublishableTarballFile;
   use super::verify_version_manifest;
+  use std::collections::HashMap;
 
   #[test]
   fn test_verify_version_manifest() {
@@ -967,7 +1003,8 @@ mod tests {
         "mod.ts": {
           "checksum": "abc123"
         }
-      }
+      },
+      "exports": {}
     }"#;
 
     let meta_bytes = meta.as_bytes();
@@ -986,6 +1023,7 @@ mod tests {
         }],
       },
       config: "deno.json".to_string(),
+      exports: HashMap::new(),
     };
 
     assert!(verify_version_manifest(meta_bytes, &package).is_ok());
@@ -996,7 +1034,8 @@ mod tests {
     let meta = r#"{
       "manifest": {
         "mod.ts": {},
-      }
+      },
+      "exports": {}
     }"#;
 
     let meta_bytes = meta.as_bytes();
@@ -1015,6 +1054,7 @@ mod tests {
         }],
       },
       config: "deno.json".to_string(),
+      exports: HashMap::new(),
     };
 
     assert!(verify_version_manifest(meta_bytes, &package).is_err());
@@ -1026,7 +1066,8 @@ mod tests {
       "manifest": {
         "mod.ts": {
           "checksum": "lol123"
-        }
+        },
+        "exports": {}
       }
     }"#;
 
@@ -1046,6 +1087,7 @@ mod tests {
         }],
       },
       config: "deno.json".to_string(),
+      exports: HashMap::new(),
     };
 
     assert!(verify_version_manifest(meta_bytes, &package).is_err());
