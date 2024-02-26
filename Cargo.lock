@@ -1071,7 +1071,7 @@ dependencies = [
  "glob",
  "hex",
  "ignore",
- "import_map 0.18.3",
+ "import_map",
  "indexmap",
  "jsonc-parser",
  "junction",
@@ -1230,8 +1230,6 @@ dependencies = [
 [[package]]
 name = "deno_config"
 version = "0.11.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bc52f2cedd7f47b50fb67191f9cb1c5633b47017fb7da5b586278763110879e5"
 dependencies = [
  "anyhow",
  "glob",
@@ -1352,7 +1350,7 @@ dependencies = [
  "futures",
  "handlebars",
  "html-escape",
- "import_map 0.18.3",
+ "import_map",
  "indexmap",
  "lazy_static",
  "regex",
@@ -1373,7 +1371,7 @@ dependencies = [
  "deno_graph",
  "escape8259",
  "futures",
- "import_map 0.18.3",
+ "import_map",
  "parking_lot 0.11.2",
  "url",
 ]
@@ -1446,7 +1444,7 @@ dependencies = [
  "deno_unsync 0.3.2",
  "encoding_rs",
  "futures",
- "import_map 0.18.3",
+ "import_map",
  "indexmap",
  "log",
  "monch",
@@ -3382,20 +3380,6 @@ dependencies = [
  "num-rational",
  "num-traits",
  "png",
-]
-
-[[package]]
-name = "import_map"
-version = "0.19.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "696717335b077e26921a60be7b7bdc15d1246074f1ac79d9e8560792535f7d07"
-dependencies = [
- "indexmap",
- "log",
- "percent-encoding",
- "serde",
- "serde_json",
- "url",
 ]
 
 [[package]]

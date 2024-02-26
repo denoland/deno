@@ -227,7 +227,7 @@ itest!(config_flag {
 itest!(jsr_jsonc {
   args: "publish --token 'sadfasdf'",
   cwd: Some("publish/jsr_jsonc"),
-  output: "publish/successful.out",
+  output: "publish/jsr_jsonc/mod.out",
   envs: env_vars_for_jsr_tests(),
   http_server: true,
 });

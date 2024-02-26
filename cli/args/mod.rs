@@ -769,7 +769,7 @@ impl CliOptions {
       &flags.config_flag,
       flags.config_path_args(&initial_cwd),
       &initial_cwd,
-      additiona_config_file_names,
+      additional_config_file_names,
     )?;
 
     let mut maybe_package_json = None;
