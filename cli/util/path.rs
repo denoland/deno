@@ -279,6 +279,24 @@ pub fn matches_pattern_or_exact_path(
   false
 }
 
+/// For decoding percent-encodeing string
+/// could be used for module specifier string literal of local modules,
+/// or local file path to display `non-ASCII` characters correctly
+/// # Examples
+/// ```
+/// use crate::util::path::to_percent_decoded_str;
+///
+/// let str = to_percent_decoded_str("file:///Users/path/to/%F0%9F%A6%95.ts");
+/// assert_eq!(str, "file:///Users/path/to/🦕.ts");
+/// ```
+pub fn to_percent_decoded_str(s: &str) -> String {
+  match percent_encoding::percent_decode_str(s).decode_utf8() {
+    Ok(s) => s.to_string(),
+    // when failed to decode, return the original string
+    Err(_) => s.to_string(),
+  }
+}
+
 #[cfg(test)]
 mod test {
   use super::*;
@@ -495,5 +513,11 @@ mod test {
       path_with_stem_suffix(&PathBuf::from("/test.d.cts"), "_2"),
       PathBuf::from("/test_2.d.cts")
     );
+  }
+
+  #[test]
+  fn test_to_percent_decoded_str() {
+    let str = to_percent_decoded_str("%F0%9F%A6%95");
+    assert_eq!(str, "🦕");
   }
 }
