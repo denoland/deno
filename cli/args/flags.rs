@@ -721,10 +721,6 @@ impl Flags {
           Err(_) => Some(vec![]),
         }
       }
-      Publish(..) => Some(vec![
-        current_dir.join("jsr.json"),
-        current_dir.join("jsr.jsonc"),
-      ]),
       _ => Some(vec![]),
     }
   }

@@ -795,7 +795,7 @@ pub async fn publish(
   flags: Flags,
   publish_flags: PublishFlags,
 ) -> Result<(), AnyError> {
-  let cli_factory = CliFactory::from_flags(flags.clone()).await?;
+  let cli_factory = CliFactory::from_flags(flags).await?;
 
   let auth_method = get_auth_method(publish_flags.token)?;
 
