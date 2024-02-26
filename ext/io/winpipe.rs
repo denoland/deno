@@ -31,6 +31,16 @@ use winapi::um::winnt::GENERIC_WRITE;
 /// well as offering a complex NTAPI solution if we decide to try to make these pipes truely
 /// anonymous: https://stackoverflow.com/questions/60645/overlapped-i-o-on-anonymous-pipe
 pub fn create_named_pipe() -> io::Result<(RawHandle, RawHandle)> {
+  // Silently retry
+  for _ in 0..10 {
+    if let Ok(res) = create_named_pipe_inner() {
+      return Ok(res);
+    }
+  }
+  create_named_pipe_inner()
+}
+
+fn create_named_pipe_inner() -> io::Result<(RawHandle, RawHandle)> {
   static NEXT_ID: AtomicU32 = AtomicU32::new(0);
   let pipe_name = format!(
     r#"\\.\pipe\deno_pipe_{:x}.{:x}.{:x}\0"#,
