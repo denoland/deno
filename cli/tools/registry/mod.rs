@@ -8,6 +8,7 @@ use std::sync::Arc;
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
 use deno_config::ConfigFile;
+use deno_config::ConfigFlag;
 use deno_config::WorkspaceMemberConfig;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
@@ -795,7 +796,7 @@ pub async fn publish(
   flags: Flags,
   publish_flags: PublishFlags,
 ) -> Result<(), AnyError> {
-  let cli_factory = CliFactory::from_flags(flags).await?;
+  let cli_factory = CliFactory::from_flags(flags.clone()).await?;
 
   let auth_method = get_auth_method(publish_flags.token)?;
 
@@ -816,10 +817,6 @@ pub async fn publish(
 
   let cli_options = cli_factory.cli_options();
   let Some(config_file) = cli_options.maybe_config_file() else {
-    // Check if there's `jsr.json` or `jsr.jsonc` file.
-    if !directory_path.join("jsr.json").exists()
-      && !directory_path.join("jsr.jsonc").exists()
-    {}
     bail!(
       "Couldn't find a deno.json, deno.jsonc, jsr.json or jsr.jsonc configuration file in {}.",
       directory_path.display()
