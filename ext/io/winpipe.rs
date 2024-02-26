@@ -117,7 +117,7 @@ mod tests {
   fn make_many_named_pipes() {
     let mut handles = vec![];
     for _ in 0..50 {
-      handles.push(std::thread::spawn(|| create_named_pipe.unwrap()));
+      handles.push(std::thread::spawn(|| create_named_pipe().unwrap()));
     }
     for handle in handles.drain(..) {
       handle.join().unwrap();
