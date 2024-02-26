@@ -48,7 +48,6 @@ use crate::tools::run::hmr::HmrRunner;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::util::import_map::deno_json_deps;
-use crate::util::import_map::import_map_deps;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 use crate::worker::CliMainWorkerFactory;
@@ -343,8 +342,8 @@ impl CliFactory {
           Some(workspace_config) => deno_lockfile::WorkspaceConfig {
             root: WorkspaceMemberConfig {
               package_json_deps,
-              dependencies: import_map_deps(
-                &workspace_config.base_import_map_value,
+              dependencies: deno_json_deps(
+                self.options.maybe_config_file().as_ref().unwrap(),
               )
               .into_iter()
               .map(|req| req.to_string())
@@ -855,9 +854,10 @@ impl CliFactory {
       location: self.options.location_flag().clone(),
       // if the user ran a binary command, we'll need to set process.argv[0]
       // to be the name of the binary command instead of deno
-      maybe_binary_npm_command_name: self
+      argv0: self
         .options
-        .take_binary_npm_command_name(),
+        .take_binary_npm_command_name()
+        .or(std::env::args().next()),
       origin_data_folder_path: Some(self.deno_dir()?.origin_data_folder_path()),
       seed: self.options.seed(),
       unsafely_ignore_certificate_errors: self

@@ -12,8 +12,8 @@ use crate::lsp::client::TestingNotification;
 use crate::lsp::config;
 use crate::lsp::logging::lsp_log;
 use crate::tools::test;
+use crate::tools::test::create_test_event_channel;
 use crate::tools::test::FailFastTracker;
-use crate::tools::test::TestEventSender;
 
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
@@ -35,7 +35,6 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
-use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use tower_lsp::lsp_types as lsp;
 
@@ -246,8 +245,7 @@ impl TestRun {
       unreachable!("Should always be Test subcommand.");
     };
 
-    let (sender, mut receiver) = mpsc::unbounded_channel::<test::TestEvent>();
-    let sender = TestEventSender::new(sender);
+    let (test_event_sender_factory, mut receiver) = create_test_event_channel();
     let fail_fast_tracker = FailFastTracker::new(fail_fast);
 
     let mut queue = self.queue.iter().collect::<Vec<&ModuleSpecifier>>();
@@ -263,7 +261,7 @@ impl TestRun {
       let specifier = specifier.clone();
       let worker_factory = worker_factory.clone();
       let permissions = permissions.clone();
-      let mut sender = sender.clone();
+      let worker_sender = test_event_sender_factory.worker();
       let fail_fast_tracker = fail_fast_tracker.clone();
       let lsp_filter = self.filters.get(&specifier);
       let filter = test::TestFilter {
@@ -284,15 +282,16 @@ impl TestRun {
         if fail_fast_tracker.should_stop() {
           return Ok(());
         }
-        let origin = specifier.to_string();
-        let file_result = if token.is_cancelled() {
+        if token.is_cancelled() {
           Ok(())
         } else {
+          // All JsErrors are handled by test_specifier and piped into the test
+          // channel.
           create_and_run_current_thread(test::test_specifier(
             worker_factory,
             permissions,
             specifier,
-            sender.clone(),
+            worker_sender,
             fail_fast_tracker,
             test::TestSpecifierOptions {
               filter,
@@ -300,18 +299,7 @@ impl TestRun {
               trace_ops: false,
             },
           ))
-        };
-        if let Err(error) = file_result {
-          if error.is::<JsError>() {
-            sender.send(test::TestEvent::UncaughtError(
-              origin,
-              Box::new(error.downcast::<JsError>().unwrap()),
-            ))?;
-          } else {
-            return Err(error);
-          }
         }
-        Ok(())
       })
     });
 
@@ -333,7 +321,7 @@ impl TestRun {
         let mut tests_with_result = HashSet::new();
         let mut used_only = false;
 
-        while let Some(event) = receiver.recv().await {
+        while let Some((_, event)) = receiver.recv().await {
           match event {
             test::TestEvent::Register(description) => {
               reporter.report_register(&description);
@@ -352,7 +340,7 @@ impl TestRun {
             test::TestEvent::Wait(id) => {
               reporter.report_wait(tests.read().get(&id).unwrap());
             }
-            test::TestEvent::Output(output) => {
+            test::TestEvent::Output(_, output) => {
               reporter.report_output(&output);
             }
             test::TestEvent::Result(id, result, elapsed) => {
