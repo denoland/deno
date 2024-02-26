@@ -8604,6 +8604,7 @@ mod tests {
     );
   }
 
+  #[test]
   fn add_subcommand() {
     let r = flags_from_vec(svec!["deno", "add"]);
     r.unwrap_err();
