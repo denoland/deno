@@ -123,9 +123,13 @@ mod tests {
       let barrier = barrier.clone();
       handles.push(std::thread::spawn(move || {
         barrier.wait();
-        let pipe = create_named_pipe().unwrap();
+        let (server, client) = create_named_pipe().unwrap();
+        // SAFETY: For testing
+        let mut server = unsafe { File::from_raw_handle(server) };
+        // SAFETY: For testing
+        let mut client = unsafe { File::from_raw_handle(client) };
         std::thread::sleep(std::time::Duration::from_millis(100));
-        drop(pipe);
+        drop((server, client));
       }));
     }
     for handle in handles.drain(..) {
