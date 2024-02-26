@@ -237,6 +237,7 @@ const _brand = webidl.brand;
 
 class DOMPointReadOnly {
   [_writable] = false;
+  /** @type {Float64Array} */
   [_raw];
 
   constructor(x = 0, y = 0, z = 0, w = 1) {
@@ -414,6 +415,7 @@ const DOMPointPrototype = DOMPoint.prototype;
 
 class DOMRectReadOnly {
   [_writable] = false;
+  /** @type {Float64Array} */
   [_raw];
 
   constructor(x = 0, y = 0, width = 0, height = 0) {
@@ -606,9 +608,13 @@ const _p3 = Symbol("[[p3]]");
 const _p4 = Symbol("[[p4]]");
 
 class DOMQuad {
+  /** @type {DOMPoint} */
   [_p1];
+  /** @type {DOMPoint} */
   [_p2];
+  /** @type {DOMPoint} */
   [_p3];
+  /** @type {DOMPoint} */
   [_p4];
 
   constructor(p1 = {}, p2 = {}, p3 = {}, p4 = {}) {
@@ -764,7 +770,9 @@ const _is2D = Symbol("[[is2D]]");
 
 class DOMMatrixReadOnly {
   [_writable] = false;
+  /** @type {Float64Array} */
   [_raw];
+  /** @type {boolean} */
   [_is2D];
 
   constructor(init = undefined) {
@@ -1802,6 +1810,10 @@ class DOMMatrix extends DOMMatrixReadOnly {
 webidl.configureInterface(DOMMatrix);
 const DOMMatrixPrototype = DOMMatrix.prototype;
 
+/**
+ * TODO(petamoriken): Support this by updating WebIDL's brand features
+ * @param {DOMRect | DOMPoint | DOMMatrix} self
+ */
 function assertWritable(self) {
   if (self[_writable] !== true) {
     throw new TypeError("Illegal invocation");
