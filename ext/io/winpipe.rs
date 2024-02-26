@@ -102,13 +102,16 @@ fn create_named_pipe_inner() -> io::Result<(RawHandle, RawHandle)> {
       )
     };
 
-    // There is a very rare case where the pipe is not ready to open. If we get `ERROR_NOT_FOUND`,
-    // we spin and try again in 1ms.
+    // There is a very rare case where the pipe is not ready to open. If we get `ERROR_PATH_NOT_FOUND`,
+    // we spin and try again in 1-10ms.
     if client_handle == INVALID_HANDLE_VALUE {
       // SAFETY: Getting last error for diagnostics
       let error = unsafe { GetLastError() };
-      if error == winapi::shared::winerror::ERROR_NOT_FOUND {
+      if error == winapi::shared::winerror::ERROR_FILE_NOT_FOUND
+        || error == winapi::shared::winerror::ERROR_PATH_NOT_FOUND
+      {
         // Exponential backoff, but don't sleep longer than 10ms
+        eprintln!("*** Unexpected client pipe not found failure: {:x}", error);
         std::thread::sleep(Duration::from_millis(10.min(2_u64.pow(i) + 1)));
         continue;
       }
@@ -158,7 +161,7 @@ mod tests {
   #[test]
   fn make_many_named_pipes_serial() {
     let mut handles = vec![];
-    for _ in 0..50 {
+    for _ in 0..100 {
       let (server, client) = create_named_pipe().unwrap();
       // SAFETY: For testing
       let server = unsafe { File::from_raw_handle(server) };
