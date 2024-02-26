@@ -89,7 +89,7 @@ use super::tsc::TsServer;
 use super::urls;
 use crate::args::get_root_cert_store;
 use crate::args::package_json;
-use crate::args::resolve_import_map_from_specifier;
+use crate::args::resolve_import_map;
 use crate::args::CaData;
 use crate::args::CacheSetting;
 use crate::args::CliOptions;
@@ -250,8 +250,6 @@ pub struct Inner {
   maybe_global_cache_path: Option<PathBuf>,
   /// An optional import map which is used to resolve modules.
   maybe_import_map: Option<Arc<ImportMap>>,
-  /// The URL for the import map which is used to determine relative imports.
-  maybe_import_map_uri: Option<Url>,
   /// An optional package.json configuration file.
   maybe_package_json: Option<PackageJson>,
   /// Configuration for formatter which has been taken from specified config file.
@@ -539,7 +537,6 @@ impl Inner {
       initial_cwd: initial_cwd.clone(),
       maybe_global_cache_path: None,
       maybe_import_map: None,
-      maybe_import_map_uri: None,
       maybe_package_json: None,
       fmt_options: FmtOptions::new_with_base(initial_cwd.clone()),
       task_queue: Default::default(),
@@ -894,18 +891,18 @@ impl Inner {
     let mark = self.performance.mark("lsp.update_import_map");
 
     let maybe_import_map_url = self.resolve_import_map_specifier()?;
-    if let Some(import_map_url) = maybe_import_map_url {
-      if import_map_url.scheme() != "data" {
-        lsp_log!("  Resolved import map: \"{}\"", import_map_url);
+    let maybe_import_map = self
+      .fetch_import_map(
+        maybe_import_map_url.as_ref(),
+        CacheSetting::RespectHeaders,
+      )
+      .await?;
+    if let Some(import_map) = maybe_import_map {
+      if import_map.base_url().scheme() != "data" {
+        lsp_log!("  Resolved import map: \"{}\"", import_map.base_url());
       }
-
-      let import_map = self
-        .fetch_import_map(&import_map_url, CacheSetting::RespectHeaders)
-        .await?;
-      self.maybe_import_map_uri = Some(import_map_url);
       self.maybe_import_map = Some(Arc::new(import_map));
     } else {
-      self.maybe_import_map_uri = None;
       self.maybe_import_map = None;
     }
     self.performance.measure(mark);
@@ -914,22 +911,15 @@ impl Inner {
 
   async fn fetch_import_map(
     &self,
-    import_map_url: &ModuleSpecifier,
+    import_map_url: Option<&ModuleSpecifier>,
     cache_setting: CacheSetting,
-  ) -> Result<ImportMap, AnyError> {
-    resolve_import_map_from_specifier(
+  ) -> Result<Option<ImportMap>, AnyError> {
+    resolve_import_map(
       import_map_url,
       self.config.maybe_config_file(),
       &self.create_file_fetcher(cache_setting),
     )
     .await
-    .map_err(|err| {
-      anyhow!(
-        "Failed to load the import map at: {}. {:#}",
-        import_map_url,
-        err
-      )
-    })
   }
 
   fn create_file_fetcher(&self, cache_setting: CacheSetting) -> FileFetcher {
@@ -948,76 +938,40 @@ impl Inner {
   fn resolve_import_map_specifier(
     &self,
   ) -> Result<Option<ModuleSpecifier>, AnyError> {
-    Ok(
-      if let Some(import_map_str) = self
-        .config
-        .workspace_settings()
-        .import_map
-        .clone()
-        .and_then(|s| if s.is_empty() { None } else { Some(s) })
-      {
-        lsp_log!(
-          "Setting import map from workspace settings: \"{}\"",
-          import_map_str
-        );
-        if let Some(config_file) = self.config.maybe_config_file() {
-          if let Some(import_map_path) = config_file.to_import_map_path() {
-            lsp_log!("Warning: Import map \"{}\" configured in \"{}\" being ignored due to an import map being explicitly configured in workspace settings.", import_map_path, config_file.specifier);
-          }
-        }
-        if let Ok(url) = Url::parse(&import_map_str) {
-          Some(url)
-        } else if let Some(root_uri) = self.config.root_uri() {
-          let root_path = specifier_to_file_path(root_uri)?;
-          let import_map_path = root_path.join(&import_map_str);
-          let import_map_url =
-            Url::from_file_path(import_map_path).map_err(|_| {
-              anyhow!("Bad file path for import map: {}", import_map_str)
-            })?;
-          Some(import_map_url)
-        } else {
-          return Err(anyhow!(
-            "The path to the import map (\"{}\") is not resolvable.",
-            import_map_str
-          ));
-        }
-      } else if let Some(config_file) = self.config.maybe_config_file() {
-        if config_file.is_an_import_map() {
-          lsp_log!(
-            "Setting import map defined in configuration file: \"{}\"",
-            config_file.specifier
-          );
-          let import_map_url = config_file.specifier.clone();
-          Some(import_map_url)
-        } else if let Some(import_map_path) = config_file.to_import_map_path() {
-          lsp_log!(
-            "Setting import map from configuration file: \"{}\"",
-            import_map_path
-          );
-          let specifier = if let Ok(config_file_path) =
-            config_file.specifier.to_file_path()
-          {
-            let import_map_file_path = config_file_path
-              .parent()
-              .ok_or_else(|| {
-                anyhow!("Bad config file specifier: {}", config_file.specifier)
-              })?
-              .join(&import_map_path);
-            ModuleSpecifier::from_file_path(import_map_file_path).unwrap()
-          } else {
-            deno_core::resolve_import(
-              &import_map_path,
-              config_file.specifier.as_str(),
-            )?
-          };
-          Some(specifier)
-        } else {
-          None
-        }
-      } else {
-        None
-      },
-    )
+    let Some(import_map_str) = self
+      .config
+      .workspace_settings()
+      .import_map
+      .clone()
+      .and_then(|s| if s.is_empty() { None } else { Some(s) })
+    else {
+      return Ok(None);
+    };
+    lsp_log!(
+      "Setting import map from workspace settings: \"{}\"",
+      import_map_str
+    );
+    if let Some(config_file) = self.config.maybe_config_file() {
+      if let Some(import_map_path) = &config_file.json.import_map {
+        lsp_log!("Warning: Import map \"{}\" configured in \"{}\" being ignored due to an import map being explicitly configured in workspace settings.", import_map_path, config_file.specifier);
+      }
+    }
+    if let Ok(url) = Url::parse(&import_map_str) {
+      Ok(Some(url))
+    } else if let Some(root_uri) = self.config.root_uri() {
+      let root_path = specifier_to_file_path(root_uri)?;
+      let import_map_path = root_path.join(&import_map_str);
+      let import_map_url =
+        Url::from_file_path(import_map_path).map_err(|_| {
+          anyhow!("Bad file path for import map: {}", import_map_str)
+        })?;
+      Ok(Some(import_map_url))
+    } else {
+      Err(anyhow!(
+        "The path to the import map (\"{}\") is not resolvable.",
+        import_map_str
+      ))
+    }
   }
 
   pub fn update_debug_flag(&self) {
@@ -1671,9 +1625,9 @@ impl Inner {
     // if the current import map, or config file has changed, we need to
     // reload the import map
     let import_map_changed = self
-      .maybe_import_map_uri
+      .maybe_import_map
       .as_ref()
-      .map(|uri| changes.contains(uri))
+      .map(|import_map| changes.contains(import_map.base_url()))
       .unwrap_or(false);
     if touched || import_map_changed {
       if let Err(err) = self.update_import_map().await {
@@ -3696,7 +3650,9 @@ impl Inner {
       self.config.maybe_lockfile().cloned(),
       self.maybe_package_json.clone(),
     )?;
-    cli_options.set_import_map_specifier(self.maybe_import_map_uri.clone());
+    cli_options.set_import_map_specifier(
+      self.maybe_import_map.as_ref().map(|m| m.base_url().clone()),
+    );
 
     let open_docs = self.documents.documents(DocumentsFilter::OpenDiagnosable);
     Ok(Some(PrepareCacheResult {
