@@ -36,6 +36,7 @@ use crate::cache::ParsedSourceCache;
 use crate::factory::CliFactory;
 use crate::graph_util::ModuleGraphCreator;
 use crate::http_util::HttpClient;
+use crate::resolver::MappedSpecifierResolver;
 use crate::tools::check::CheckOptions;
 use crate::tools::lint::no_slow_types;
 use crate::tools::registry::diagnostics::PublishDiagnostic;
@@ -87,7 +88,7 @@ async fn prepare_publish(
   deno_json: &ConfigFile,
   source_cache: Arc<ParsedSourceCache>,
   graph: Arc<deno_graph::ModuleGraph>,
-  import_map: Arc<ImportMap>,
+  mapped_resolver: Arc<MappedSpecifierResolver>,
   diagnostics_collector: &PublishDiagnosticsCollector,
 ) -> Result<Rc<PreparedPublishPackage>, AnyError> {
   let config_path = deno_json.specifier.to_file_path().unwrap();
@@ -133,7 +134,7 @@ async fn prepare_publish(
 
   let diagnostics_collector = diagnostics_collector.clone();
   let tarball = deno_core::unsync::spawn_blocking(move || {
-    let unfurler = ImportMapUnfurler::new(&import_map);
+    let unfurler = ImportMapUnfurler::new(&mapped_resolver);
     tar::create_gzipped_tarball(
       &dir_path,
       LazyGraphSourceParser::new(&source_cache, &graph),
@@ -656,7 +657,7 @@ async fn prepare_packages_for_publishing(
   allow_slow_types: bool,
   diagnostics_collector: &PublishDiagnosticsCollector,
   deno_json: ConfigFile,
-  import_map: Arc<ImportMap>,
+  mapped_resolver: Arc<MappedSpecifierResolver>,
 ) -> Result<PreparePackagesData, AnyError> {
   let members = deno_json.to_workspace_members()?;
   let module_graph_creator = cli_factory.module_graph_creator().await?.as_ref();
@@ -686,7 +687,7 @@ async fn prepare_packages_for_publishing(
   let results = members
     .into_iter()
     .map(|member| {
-      let import_map = import_map.clone();
+      let mapped_resolver = mapped_resolver.clone();
       let graph = graph.clone();
       async move {
         let package = prepare_publish(
@@ -694,7 +695,7 @@ async fn prepare_packages_for_publishing(
           &member.config_file,
           source_cache.clone(),
           graph,
-          import_map,
+          mapped_resolver,
           diagnostics_collector,
         )
         .await
@@ -808,6 +809,11 @@ pub async fn publish(
       Arc::new(ImportMap::new(Url::parse("file:///dev/null").unwrap()))
     });
 
+  let mapped_resolver = Arc::new(MappedSpecifierResolver::new(
+    Some(import_map),
+    cli_factory.package_json_deps_provider().clone(),
+  ));
+
   let directory_path = cli_factory.cli_options().initial_cwd();
 
   let cli_options = cli_factory.cli_options();
@@ -825,7 +831,7 @@ pub async fn publish(
     publish_flags.allow_slow_types,
     &diagnostics_collector,
     config_file.clone(),
-    import_map,
+    mapped_resolver,
   )
   .await?;
 
