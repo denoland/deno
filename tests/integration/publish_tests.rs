@@ -363,6 +363,31 @@ fn includes_directories() {
   assert_not_contains!(output, "ignored.ts");
 }
 
+#[test]
+fn includes_dotenv() {
+  let context = publish_context_builder().build();
+  let temp_dir = context.temp_dir().path();
+  temp_dir.join("deno.json").write_json(&json!({
+    "name": "@foo/bar",
+    "version": "1.0.0",
+    "exports": "./main.ts",
+  }));
+
+  temp_dir.join("main.ts").write("");
+  temp_dir.join(".env").write("FOO=BAR");
+
+  let output = context
+    .new_command()
+    .arg("publish")
+    .arg("--token")
+    .arg("sadfasdf")
+    .run();
+  output.assert_exit_code(0);
+  let output = output.combined_output();
+  assert_contains!(output, "main.ts");
+  assert_not_contains!(output, ".env");
+}
+
 fn publish_context_builder() -> TestContextBuilder {
   TestContextBuilder::new()
     .use_http_server()
