@@ -6,6 +6,7 @@ use std::os::windows::io::RawHandle;
 use std::sync::atomic::AtomicU32;
 use std::sync::atomic::Ordering;
 use winapi::shared::minwindef::DWORD;
+use winapi::um::errhandlingapi::GetLastError;
 use winapi::um::fileapi::CreateFileA;
 use winapi::um::fileapi::OPEN_EXISTING;
 use winapi::um::handleapi::CloseHandle;
@@ -30,7 +31,7 @@ use winapi::um::winnt::GENERIC_WRITE;
 /// well as offering a complex NTAPI solution if we decide to try to make these pipes truely
 /// anonymous: https://stackoverflow.com/questions/60645/overlapped-i-o-on-anonymous-pipe
 pub fn create_named_pipe() -> io::Result<(RawHandle, RawHandle)> {
-  static NEXT_ID: AtomicU32 = AtomicU32::new();
+  static NEXT_ID: AtomicU32 = AtomicU32::new(0);
   let pipe_name = format!(
     r#"\\.\pipe\deno_pipe_{:x}.{:x}.{:x}\0"#,
     thread_rng().next_u64(),
@@ -66,6 +67,9 @@ pub fn create_named_pipe() -> io::Result<(RawHandle, RawHandle)> {
   };
 
   if server_handle == INVALID_HANDLE_VALUE {
+    // This should not happen, so we would like to get some better diagnostics here.
+    // SAFETY: Printing last error for diagnostics
+    unsafe { eprintln!("*** Unexpected server pipe failure: {:x}", GetLastError()); }
     return Err(io::Error::last_os_error());
   }
 
@@ -83,6 +87,9 @@ pub fn create_named_pipe() -> io::Result<(RawHandle, RawHandle)> {
   };
 
   if client_handle == INVALID_HANDLE_VALUE {
+    // This should not happen, so we would like to get some better diagnostics here.
+    // SAFETY: Printing last error for diagnostics
+    unsafe { eprintln!("*** Unexpected client pipe failure: {:x}", GetLastError()); }
     let err = io::Error::last_os_error();
     // SAFETY: Close the handles if we failed
     unsafe {
