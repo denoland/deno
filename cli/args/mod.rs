@@ -333,7 +333,7 @@ pub struct TestOptions {
   pub filter: Option<String>,
   pub shuffle: Option<u64>,
   pub concurrent_jobs: NonZeroUsize,
-  pub trace_ops: bool,
+  pub trace_leaks: bool,
   pub reporter: TestReporterConfig,
   pub junit_path: Option<String>,
 }
@@ -361,7 +361,7 @@ impl TestOptions {
       filter: test_flags.filter,
       no_run: test_flags.no_run,
       shuffle: test_flags.shuffle,
-      trace_ops: test_flags.trace_ops,
+      trace_leaks: test_flags.trace_leaks,
       reporter: test_flags.reporter,
       junit_path: test_flags.junit_path,
     })

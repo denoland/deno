@@ -106,7 +106,7 @@ fn format_sanitizer_accum(
   }
 
   let mut output = vec![];
-  let mut needs_trace_ops = false;
+  let mut needs_trace_leaks = false;
   for ((item_type, item_name, trace), count) in accum.into_iter() {
     if item_type == RuntimeActivityType::Resource {
       let (name, action1, action2) = pretty_resource_name(&item_name);
@@ -142,7 +142,7 @@ fn format_sanitizer_accum(
       value += &if let Some(trace) = trace {
         format!(" The operation {tense} started here:\n{trace}")
       } else {
-        needs_trace_ops = true;
+        needs_trace_leaks = true;
         String::new()
       };
       output.push(value);
@@ -156,8 +156,8 @@ fn format_sanitizer_accum(
       );
     }
   }
-  if needs_trace_ops {
-    (output, vec!["To get more details where ops were leaked, run again with --trace-ops flag.".to_owned()])
+  if needs_trace_leaks {
+    (output, vec!["To get more details where leaks occurred, run again with the --trace-leaks flag.".to_owned()])
   } else {
     (output, vec![])
   }
@@ -356,5 +356,5 @@ mod tests {
   // https://github.com/denoland/deno/issues/13938
   leak_format_test!(op_unknown, true, [RuntimeActivity::AsyncOp(0, "op_unknown", None)], 
     " - An async call to op_unknown was started in this test, but never completed.\n\
-    To get more details where ops were leaked, run again with --trace-ops flag.\n");
+    To get more details where leaks occurred, run again with the --trace-leaks flag.\n");
 }
