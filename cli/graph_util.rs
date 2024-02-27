@@ -30,6 +30,7 @@ use deno_core::parking_lot::Mutex;
 use deno_core::parking_lot::RwLock;
 use deno_core::ModuleSpecifier;
 use deno_graph::source::Loader;
+use deno_graph::source::ResolutionMode;
 use deno_graph::source::ResolveError;
 use deno_graph::GraphKind;
 use deno_graph::Module;
@@ -694,8 +695,12 @@ pub fn enhanced_module_error_message(
 ) -> String {
   let additional_message = match error {
     ModuleError::Missing(specifier, _) => {
-      SloppyImportsResolver::resolve_with_fs(fs, specifier)
-        .as_suggestion_message()
+      SloppyImportsResolver::resolve_with_fs(
+        fs,
+        specifier,
+        ResolutionMode::Execution,
+      )
+      .as_suggestion_message()
     }
     _ => None,
   };
