@@ -943,13 +943,16 @@ class DOMMatrixReadOnly {
 
   translate(tx = 0, ty = 0, tz = 0) {
     webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
+    tx = webidl.converters["unrestricted double"](tx);
+    ty = webidl.converters["unrestricted double"](ty);
+    tz = webidl.converters["unrestricted double"](tz);
     const matrix = webidl.createBranded(DOMMatrix);
     matrix[_writable] = true;
     matrix[_raw] = new Float64Array(this[_raw]);
     op_geometry_translate_self(
-      webidl.converters["unrestricted double"](tx),
-      webidl.converters["unrestricted double"](ty),
-      webidl.converters["unrestricted double"](tz),
+      tx,
+      ty,
+      tz,
       matrix[_raw],
     );
     matrix[_is2D] = this[_is2D] && tz === 0;
@@ -965,6 +968,9 @@ class DOMMatrixReadOnly {
     originZ = 0,
   ) {
     webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
+    scaleX = webidl.converters["unrestricted double"](scaleX);
+    scaleY = webidl.converters["unrestricted double"](scaleY);
+    scaleZ = webidl.converters["unrestricted double"](scaleZ);
     originX = webidl.converters["unrestricted double"](originX);
     originY = webidl.converters["unrestricted double"](originY);
     originZ = webidl.converters["unrestricted double"](originZ);
@@ -973,16 +979,16 @@ class DOMMatrixReadOnly {
     matrix[_raw] = new Float64Array(this[_raw]);
     if (originX === 0 && originY === 0 && originZ === 0) {
       op_geometry_scale_self(
-        webidl.converters["unrestricted double"](scaleX),
-        webidl.converters["unrestricted double"](scaleY),
-        webidl.converters["unrestricted double"](scaleZ),
+        scaleX,
+        scaleY,
+        scaleZ,
         matrix[_raw],
       );
     } else {
       op_geometry_scale_with_origin_self(
-        webidl.converters["unrestricted double"](scaleX),
-        webidl.converters["unrestricted double"](scaleY),
-        webidl.converters["unrestricted double"](scaleZ),
+        scaleX,
+        scaleY,
+        scaleZ,
         originX,
         originY,
         originZ,
@@ -995,12 +1001,14 @@ class DOMMatrixReadOnly {
 
   scaleNonUniform(scaleX = 1, scaleY = 1) {
     webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
+    scaleX = webidl.converters["unrestricted double"](scaleX);
+    scaleY = webidl.converters["unrestricted double"](scaleY);
     const matrix = webidl.createBranded(DOMMatrix);
     matrix[_writable] = true;
     matrix[_raw] = new Float64Array(this[_raw]);
     op_geometry_scale_self(
-      webidl.converters["unrestricted double"](scaleX),
-      webidl.converters["unrestricted double"](scaleY),
+      scaleX,
+      scaleY,
       1,
       matrix[_raw],
     );
@@ -1069,12 +1077,14 @@ class DOMMatrixReadOnly {
 
   rotateFromVector(x = 0, y = 0) {
     webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
+    x = webidl.converters["unrestricted double"](x);
+    y = webidl.converters["unrestricted double"](y);
     const matrix = webidl.createBranded(DOMMatrix);
     matrix[_writable] = true;
     matrix[_raw] = new Float64Array(this[_raw]);
     op_geometry_rotate_from_vector_self(
-      webidl.converters["unrestricted double"](x),
-      webidl.converters["unrestricted double"](y),
+      x,
+      y,
       matrix[_raw],
     );
     matrix[_is2D] = this[_is2D];
@@ -1086,6 +1096,7 @@ class DOMMatrixReadOnly {
     x = webidl.converters["unrestricted double"](x);
     y = webidl.converters["unrestricted double"](y);
     z = webidl.converters["unrestricted double"](z);
+    angle = webidl.converters["unrestricted double"](angle);
     const matrix = webidl.createBranded(DOMMatrix);
     matrix[_writable] = true;
     matrix[_raw] = new Float64Array(this[_raw]);
@@ -1094,7 +1105,7 @@ class DOMMatrixReadOnly {
         x,
         y,
         z,
-        webidl.converters["unrestricted double"](angle),
+        angle,
         matrix[_raw],
       );
     }
@@ -1104,11 +1115,12 @@ class DOMMatrixReadOnly {
 
   skewX(sx = 0) {
     webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
+    sx = webidl.converters["unrestricted double"](sx);
     const matrix = webidl.createBranded(DOMMatrix);
     matrix[_writable] = true;
     matrix[_raw] = new Float64Array(this[_raw]);
     op_geometry_skew_self(
-      webidl.converters["unrestricted double"](sx),
+      sx,
       0,
       matrix[_raw],
     );
@@ -1118,12 +1130,13 @@ class DOMMatrixReadOnly {
 
   skewY(sy = 0) {
     webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
+    sy = webidl.converters["unrestricted double"](sy);
     const matrix = webidl.createBranded(DOMMatrix);
     matrix[_writable] = true;
     matrix[_raw] = new Float64Array(this[_raw]);
     op_geometry_skew_self(
       0,
-      webidl.converters["unrestricted double"](sy),
+      sy,
       matrix[_raw],
     );
     matrix[_is2D] = this[_is2D];
@@ -1605,10 +1618,13 @@ class DOMMatrix extends DOMMatrixReadOnly {
   translateSelf(tx = 0, ty = 0, tz = 0) {
     webidl.assertBranded(this, DOMMatrixPrototype);
     assertWritable(this);
+    tx = webidl.converters["unrestricted double"](tx);
+    ty = webidl.converters["unrestricted double"](ty);
+    tz = webidl.converters["unrestricted double"](tz);
     op_geometry_translate_self(
-      webidl.converters["unrestricted double"](tx),
-      webidl.converters["unrestricted double"](ty),
-      webidl.converters["unrestricted double"](tz),
+      tx,
+      ty,
+      tz,
       this[_raw],
     );
     this[_is2D] &&= tz === 0;
@@ -1625,21 +1641,24 @@ class DOMMatrix extends DOMMatrixReadOnly {
   ) {
     webidl.assertBranded(this, DOMMatrixPrototype);
     assertWritable(this);
+    scaleX = webidl.converters["unrestricted double"](scaleX);
+    scaleY = webidl.converters["unrestricted double"](scaleY);
+    scaleZ = webidl.converters["unrestricted double"](scaleZ);
     originX = webidl.converters["unrestricted double"](originX);
     originY = webidl.converters["unrestricted double"](originY);
     originZ = webidl.converters["unrestricted double"](originZ);
     if (originX === 0 && originY === 0 && originZ === 0) {
       op_geometry_scale_self(
-        webidl.converters["unrestricted double"](scaleX),
-        webidl.converters["unrestricted double"](scaleY),
-        webidl.converters["unrestricted double"](scaleZ),
+        scaleX,
+        scaleY,
+        scaleZ,
         this[_raw],
       );
     } else {
       op_geometry_scale_with_origin_self(
-        webidl.converters["unrestricted double"](scaleX),
-        webidl.converters["unrestricted double"](scaleY),
-        webidl.converters["unrestricted double"](scaleZ),
+        scaleX,
+        scaleY,
+        scaleZ,
         originX,
         originY,
         originZ,
@@ -1708,9 +1727,11 @@ class DOMMatrix extends DOMMatrixReadOnly {
   rotateFromVectorSelf(x = 0, y = 0) {
     webidl.assertBranded(this, DOMMatrixPrototype);
     assertWritable(this);
+    x = webidl.converters["unrestricted double"](x);
+    y = webidl.converters["unrestricted double"](y);
     op_geometry_rotate_from_vector_self(
-      webidl.converters["unrestricted double"](x),
-      webidl.converters["unrestricted double"](y),
+      x,
+      y,
       this[_raw],
     );
     return this;
@@ -1722,12 +1743,13 @@ class DOMMatrix extends DOMMatrixReadOnly {
     x = webidl.converters["unrestricted double"](x);
     y = webidl.converters["unrestricted double"](y);
     z = webidl.converters["unrestricted double"](z);
+    angle = webidl.converters["unrestricted double"](angle);
     if (x !== 0 || y !== 0 || z !== 0) {
       op_geometry_rotate_axis_angle_self(
         x,
         y,
         z,
-        webidl.converters["unrestricted double"](angle),
+        angle,
         this[_raw],
       );
     }
@@ -1738,8 +1760,9 @@ class DOMMatrix extends DOMMatrixReadOnly {
   skewXSelf(sx = 0) {
     webidl.assertBranded(this, DOMMatrixPrototype);
     assertWritable(this);
+    sx = webidl.converters["unrestricted double"](sx);
     op_geometry_skew_self(
-      webidl.converters["unrestricted double"](sx),
+      sx,
       0,
       this[_raw],
     );
@@ -1749,9 +1772,10 @@ class DOMMatrix extends DOMMatrixReadOnly {
   skewYSelf(sy = 0) {
     webidl.assertBranded(this, DOMMatrixPrototype);
     assertWritable(this);
+    sy = webidl.converters["unrestricted double"](sy);
     op_geometry_skew_self(
       0,
-      webidl.converters["unrestricted double"](sy),
+      sy,
       this[_raw],
     );
     return this;
