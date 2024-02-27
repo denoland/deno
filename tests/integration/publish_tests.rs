@@ -224,6 +224,22 @@ itest!(config_flag {
   http_server: true,
 });
 
+itest!(bare_node_builtins {
+  args: "publish --token 'sadfasdf' --dry-run --unstable-bare-node-builtins",
+  output: "publish/bare_node_builtins.out",
+  cwd: Some("publish/bare_node_builtins"),
+  envs: env_vars_for_jsr_npm_tests(),
+  http_server: true,
+});
+
+itest!(sloppy_imports {
+  args: "publish --token 'sadfasdf' --dry-run --unstable-sloppy-imports",
+  output: "publish/sloppy_imports.out",
+  cwd: Some("publish/sloppy_imports"),
+  envs: env_vars_for_jsr_tests(),
+  http_server: true,
+});
+
 itest!(jsr_jsonc {
   args: "publish --token 'sadfasdf'",
   cwd: Some("publish/jsr_jsonc"),

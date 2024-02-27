@@ -32,7 +32,6 @@ use deno_core::OpMetricsSummaryTracker;
 use deno_core::PollEventLoopOptions;
 use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
-use deno_core::Snapshot;
 use deno_core::SourceMapGetter;
 use deno_cron::local::LocalCronHandler;
 use deno_fs::FileSystem;
@@ -128,7 +127,7 @@ pub struct WorkerOptions {
   pub extensions: Vec<Extension>,
 
   /// V8 snapshot that should be loaded on startup.
-  pub startup_snapshot: Option<Snapshot>,
+  pub startup_snapshot: Option<&'static [u8]>,
 
   /// Should op registration be skipped?
   pub skip_op_registration: bool,
