@@ -302,6 +302,7 @@ pub struct PublishFlags {
   pub token: Option<String>,
   pub dry_run: bool,
   pub allow_slow_types: bool,
+  pub allow_dirty: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -2395,6 +2396,12 @@ fn publish_subcommand() -> Command {
           .help("Allow publishing with slow types")
           .action(ArgAction::SetTrue),
       )
+      .arg(
+        Arg::new("allow-dirty")
+        .long("allow-dirty")
+        .help("Allow publishing if git repository has uncommited changed")
+        .action(ArgAction::SetTrue),
+      )
       .arg(check_arg(/* type checks by default */ true))
       .arg(no_check_arg())
     })
@@ -3835,6 +3842,7 @@ fn publish_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     token: matches.remove_one("token"),
     dry_run: matches.get_flag("dry-run"),
     allow_slow_types: matches.get_flag("allow-slow-types"),
+    allow_dirty: matches.get_flag("allow-dirty"),
   });
 }
 
@@ -8556,6 +8564,7 @@ mod tests {
       "publish",
       "--dry-run",
       "--allow-slow-types",
+      "--allow-dirty",
       "--token=asdf",
     ]);
     assert_eq!(
@@ -8565,6 +8574,7 @@ mod tests {
           token: Some("asdf".to_string()),
           dry_run: true,
           allow_slow_types: true,
+          allow_dirty: true,
         }),
         type_check_mode: TypeCheckMode::Local,
         ..Flags::default()

@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 use std::io::IsTerminal;
+use std::path::Path;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -22,6 +23,7 @@ use import_map::ImportMap;
 use lsp_types::Url;
 use serde::Serialize;
 use sha2::Digest;
+use tokio::process::Command;
 
 use crate::args::jsr_api_url;
 use crate::args::jsr_url;
@@ -873,6 +875,17 @@ pub async fn publish(
     return Ok(());
   }
 
+  if check_if_git_repo_dirty(cli_options.initial_cwd()).await {
+    // TODO(bartlomieju): should this error?
+    if !publish_flags.allow_dirty {
+      log::warn!(
+        "{} Aborting due to uncomitted changes",
+        colors::yellow("Warning")
+      );
+      return Ok(());
+    }
+  }
+
   perform_publish(
     cli_factory.http_client(),
     prepared_data.publish_order_graph,
@@ -880,4 +893,28 @@ pub async fn publish(
     auth_method,
   )
   .await
+}
+
+async fn check_if_git_repo_dirty(cwd: &Path) -> bool {
+  // Check if git exists
+  let git_exists = Command::new("git")
+    .arg("--version")
+    .status()
+    .await
+    .map_or(false, |status| status.success());
+
+  if !git_exists {
+    return false; // Git is not installed
+  }
+
+  // Check if there are uncommitted changes
+  let output = Command::new("git")
+    .current_dir(cwd)
+    .args(&["status", "--porcelain"])
+    .output()
+    .await
+    .expect("Failed to execute command");
+
+  let output_str = String::from_utf8_lossy(&output.stdout);
+  !output_str.trim().is_empty()
 }
