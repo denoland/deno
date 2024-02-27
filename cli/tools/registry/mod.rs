@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 use std::io::IsTerminal;
 use std::path::Path;
+use std::process::Stdio;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -876,13 +877,8 @@ pub async fn publish(
   }
 
   if check_if_git_repo_dirty(cli_options.initial_cwd()).await {
-    // TODO(bartlomieju): should this error?
     if !publish_flags.allow_dirty {
-      log::warn!(
-        "{} Aborting due to uncomitted changes",
-        colors::yellow("Warning")
-      );
-      return Ok(());
+      bail!("Aborting due to uncomitted changes",);
     }
   }
 
@@ -899,6 +895,8 @@ async fn check_if_git_repo_dirty(cwd: &Path) -> bool {
   // Check if git exists
   let git_exists = Command::new("git")
     .arg("--version")
+    .stderr(Stdio::null())
+    .stdout(Stdio::null())
     .status()
     .await
     .map_or(false, |status| status.success());
