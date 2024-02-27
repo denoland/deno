@@ -20,7 +20,7 @@ use deno_core::error::AnyError;
 use deno_graph::FastCheckDiagnostic;
 use lsp_types::Url;
 
-use crate::util::import_map::ImportMapUnfurlDiagnostic;
+use super::unfurl::SpecifierUnfurlerDiagnostic;
 
 #[derive(Clone, Default)]
 pub struct PublishDiagnosticsCollector {
@@ -74,7 +74,7 @@ impl PublishDiagnosticsCollector {
 
 pub enum PublishDiagnostic {
   FastCheck(FastCheckDiagnostic),
-  ImportMapUnfurl(ImportMapUnfurlDiagnostic),
+  SpecifierUnfurl(SpecifierUnfurlerDiagnostic),
   InvalidPath {
     path: PathBuf,
     message: String,
@@ -102,7 +102,7 @@ impl Diagnostic for PublishDiagnostic {
         ..
       }) => DiagnosticLevel::Warning,
       FastCheck(_) => DiagnosticLevel::Error,
-      ImportMapUnfurl(_) => DiagnosticLevel::Warning,
+      SpecifierUnfurl(_) => DiagnosticLevel::Warning,
       InvalidPath { .. } => DiagnosticLevel::Error,
       DuplicatePath { .. } => DiagnosticLevel::Error,
       UnsupportedFileType { .. } => DiagnosticLevel::Warning,
@@ -114,7 +114,7 @@ impl Diagnostic for PublishDiagnostic {
     use PublishDiagnostic::*;
     match &self {
       FastCheck(diagnostic) => diagnostic.code(),
-      ImportMapUnfurl(diagnostic) => Cow::Borrowed(diagnostic.code()),
+      SpecifierUnfurl(diagnostic) => Cow::Borrowed(diagnostic.code()),
       InvalidPath { .. } => Cow::Borrowed("invalid-path"),
       DuplicatePath { .. } => Cow::Borrowed("case-insensitive-duplicate-path"),
       UnsupportedFileType { .. } => Cow::Borrowed("unsupported-file-type"),
@@ -126,7 +126,7 @@ impl Diagnostic for PublishDiagnostic {
     use PublishDiagnostic::*;
     match &self {
       FastCheck(diagnostic) => diagnostic.message(),
-      ImportMapUnfurl(diagnostic) => Cow::Borrowed(diagnostic.message()),
+      SpecifierUnfurl(diagnostic) => Cow::Borrowed(diagnostic.message()),
       InvalidPath { message, .. } => Cow::Borrowed(message.as_str()),
       DuplicatePath { .. } => {
         Cow::Borrowed("package path is a case insensitive duplicate of another path in the package")
@@ -142,8 +142,8 @@ impl Diagnostic for PublishDiagnostic {
     use PublishDiagnostic::*;
     match &self {
       FastCheck(diagnostic) => diagnostic.location(),
-      ImportMapUnfurl(diagnostic) => match diagnostic {
-        ImportMapUnfurlDiagnostic::UnanalyzableDynamicImport {
+      SpecifierUnfurl(diagnostic) => match diagnostic {
+        SpecifierUnfurlerDiagnostic::UnanalyzableDynamicImport {
           specifier,
           text_info,
           range,
@@ -180,8 +180,8 @@ impl Diagnostic for PublishDiagnostic {
   fn snippet(&self) -> Option<DiagnosticSnippet<'_>> {
     match &self {
       PublishDiagnostic::FastCheck(diagnostic) => diagnostic.snippet(),
-      PublishDiagnostic::ImportMapUnfurl(diagnostic) => match diagnostic {
-        ImportMapUnfurlDiagnostic::UnanalyzableDynamicImport {
+      PublishDiagnostic::SpecifierUnfurl(diagnostic) => match diagnostic {
+        SpecifierUnfurlerDiagnostic::UnanalyzableDynamicImport {
           text_info,
           range,
           ..
@@ -227,7 +227,7 @@ impl Diagnostic for PublishDiagnostic {
   fn hint(&self) -> Option<Cow<'_, str>> {
     match &self {
       PublishDiagnostic::FastCheck(diagnostic) => diagnostic.hint(),
-      PublishDiagnostic::ImportMapUnfurl(_) => None,
+      PublishDiagnostic::SpecifierUnfurl(_) => None,
       PublishDiagnostic::InvalidPath { .. } => Some(
         Cow::Borrowed("rename or remove the file, or add it to 'publish.exclude' in the config file"),
       ),
@@ -250,11 +250,11 @@ impl Diagnostic for PublishDiagnostic {
       PublishDiagnostic::FastCheck(diagnostic) => {
         diagnostic.info()
       }
-      PublishDiagnostic::ImportMapUnfurl(diagnostic) => match diagnostic {
-        ImportMapUnfurlDiagnostic::UnanalyzableDynamicImport { .. } => Cow::Borrowed(&[
-          Cow::Borrowed("after publishing this package, imports from the local import map do not work"),
+      PublishDiagnostic::SpecifierUnfurl(diagnostic) => match diagnostic {
+        SpecifierUnfurlerDiagnostic::UnanalyzableDynamicImport { .. } => Cow::Borrowed(&[
+          Cow::Borrowed("after publishing this package, imports from the local import map / package.json do not work"),
           Cow::Borrowed("dynamic imports that can not be analyzed at publish time will not be rewritten automatically"),
-          Cow::Borrowed("make sure the dynamic import is resolvable at runtime without an import map")
+          Cow::Borrowed("make sure the dynamic import is resolvable at runtime without an import map / package.json")
         ]),
       },
       PublishDiagnostic::InvalidPath { .. } => Cow::Borrowed(&[
@@ -278,8 +278,8 @@ impl Diagnostic for PublishDiagnostic {
   fn docs_url(&self) -> Option<Cow<'_, str>> {
     match &self {
       PublishDiagnostic::FastCheck(diagnostic) => diagnostic.docs_url(),
-      PublishDiagnostic::ImportMapUnfurl(diagnostic) => match diagnostic {
-        ImportMapUnfurlDiagnostic::UnanalyzableDynamicImport { .. } => None,
+      PublishDiagnostic::SpecifierUnfurl(diagnostic) => match diagnostic {
+        SpecifierUnfurlerDiagnostic::UnanalyzableDynamicImport { .. } => None,
       },
       PublishDiagnostic::InvalidPath { .. } => {
         Some(Cow::Borrowed("https://jsr.io/go/invalid-path"))

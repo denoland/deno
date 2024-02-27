@@ -11,11 +11,13 @@ use deno_graph::DefaultModuleAnalyzer;
 use deno_graph::DependencyDescriptor;
 use deno_graph::DynamicTemplatePart;
 use deno_graph::TypeScriptReference;
+use deno_runtime::deno_node::is_builtin_node_module;
 use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 
 use crate::resolver::MappedSpecifierResolver;
+use crate::resolver::SloppyImportsResolver;
 
 pub fn deno_json_deps(
   config: &deno_config::ConfigFile,
@@ -61,7 +63,7 @@ fn values_to_set<'a>(
 }
 
 #[derive(Debug, Clone)]
-pub enum ImportMapUnfurlDiagnostic {
+pub enum SpecifierUnfurlerDiagnostic {
   UnanalyzableDynamicImport {
     specifier: ModuleSpecifier,
     text_info: SourceTextInfo,
@@ -69,7 +71,7 @@ pub enum ImportMapUnfurlDiagnostic {
   },
 }
 
-impl ImportMapUnfurlDiagnostic {
+impl SpecifierUnfurlerDiagnostic {
   pub fn code(&self) -> &'static str {
     match self {
       Self::UnanalyzableDynamicImport { .. } => "unanalyzable-dynamic-import",
@@ -85,20 +87,153 @@ impl ImportMapUnfurlDiagnostic {
   }
 }
 
-pub struct ImportMapUnfurler<'a> {
-  import_map: &'a MappedSpecifierResolver,
+pub struct SpecifierUnfurler<'a> {
+  mapped_resolver: &'a MappedSpecifierResolver,
+  sloppy_imports_resolver: Option<&'a SloppyImportsResolver>,
+  bare_node_builtins: bool,
 }
 
-impl<'a> ImportMapUnfurler<'a> {
-  pub fn new(import_map: &'a MappedSpecifierResolver) -> Self {
-    Self { import_map }
+impl<'a> SpecifierUnfurler<'a> {
+  pub fn new(
+    mapped_resolver: &'a MappedSpecifierResolver,
+    sloppy_imports_resolver: Option<&'a SloppyImportsResolver>,
+    bare_node_builtins: bool,
+  ) -> Self {
+    Self {
+      mapped_resolver,
+      sloppy_imports_resolver,
+      bare_node_builtins,
+    }
+  }
+
+  fn unfurl_specifier(
+    &self,
+    referrer: &ModuleSpecifier,
+    specifier: &str,
+  ) -> Option<String> {
+    let resolved =
+      if let Ok(resolved) = self.mapped_resolver.resolve(specifier, referrer) {
+        resolved.into_specifier()
+      } else {
+        None
+      };
+    let resolved = match resolved {
+      Some(resolved) => resolved,
+      None if self.bare_node_builtins && is_builtin_node_module(specifier) => {
+        format!("node:{specifier}").parse().unwrap()
+      }
+      None => ModuleSpecifier::options()
+        .base_url(Some(referrer))
+        .parse(specifier)
+        .ok()?,
+    };
+    // TODO(lucacasonato): this requires integration in deno_graph first
+    // let resolved = if let Ok(specifier) =
+    //   NpmPackageReqReference::from_specifier(&resolved)
+    // {
+    //   if let Some(scope_name) = specifier.req().name.strip_prefix("@jsr/") {
+    //     let (scope, name) = scope_name.split_once("__")?;
+    //     let new_specifier = JsrPackageReqReference::new(PackageReqReference {
+    //       req: PackageReq {
+    //         name: format!("@{scope}/{name}"),
+    //         version_req: specifier.req().version_req.clone(),
+    //       },
+    //       sub_path: specifier.sub_path().map(ToOwned::to_owned),
+    //     })
+    //     .to_string();
+    //     ModuleSpecifier::parse(&new_specifier).unwrap()
+    //   } else {
+    //     resolved
+    //   }
+    // } else {
+    //   resolved
+    // };
+    let resolved =
+      if let Some(sloppy_imports_resolver) = self.sloppy_imports_resolver {
+        sloppy_imports_resolver
+          .resolve(&resolved)
+          .as_specifier()
+          .clone()
+      } else {
+        resolved
+      };
+    relative_url(&resolved, referrer, specifier)
+  }
+
+  /// Attempts to unfurl the dynamic dependency returning `true` on success
+  /// or `false` when the import was not analyzable.
+  fn try_unfurl_dynamic_dep(
+    &self,
+    module_url: &lsp_types::Url,
+    parsed_source: &ParsedSource,
+    dep: &deno_graph::DynamicDependencyDescriptor,
+    text_changes: &mut Vec<deno_ast::TextChange>,
+  ) -> bool {
+    match &dep.argument {
+      deno_graph::DynamicArgument::String(specifier) => {
+        let range = to_range(parsed_source, &dep.argument_range);
+        let maybe_relative_index =
+          parsed_source.text_info().text_str()[range.start..].find(specifier);
+        let Some(relative_index) = maybe_relative_index else {
+          return false;
+        };
+        let unfurled = self.unfurl_specifier(module_url, specifier);
+        let Some(unfurled) = unfurled else {
+          return false;
+        };
+        let start = range.start + relative_index;
+        text_changes.push(deno_ast::TextChange {
+          range: start..start + specifier.len(),
+          new_text: unfurled,
+        });
+        true
+      }
+      deno_graph::DynamicArgument::Template(parts) => match parts.first() {
+        Some(DynamicTemplatePart::String { value: specifier }) => {
+          // relative doesn't need to be modified
+          let is_relative =
+            specifier.starts_with("./") || specifier.starts_with("../");
+          if is_relative {
+            return true;
+          }
+          if !specifier.ends_with('/') {
+            return false;
+          }
+          let unfurled = self.unfurl_specifier(module_url, specifier);
+          let Some(unfurled) = unfurled else {
+            return false;
+          };
+          let range = to_range(parsed_source, &dep.argument_range);
+          let maybe_relative_index =
+            parsed_source.text_info().text_str()[range.start..].find(specifier);
+          let Some(relative_index) = maybe_relative_index else {
+            return false;
+          };
+          let start = range.start + relative_index;
+          text_changes.push(deno_ast::TextChange {
+            range: start..start + specifier.len(),
+            new_text: unfurled,
+          });
+          true
+        }
+        Some(DynamicTemplatePart::Expr) => {
+          false // failed analyzing
+        }
+        None => {
+          true // ignore
+        }
+      },
+      deno_graph::DynamicArgument::Expr => {
+        false // failed analyzing
+      }
+    }
   }
 
   pub fn unfurl(
     &self,
     url: &ModuleSpecifier,
     parsed_source: &ParsedSource,
-    diagnostic_reporter: &mut dyn FnMut(ImportMapUnfurlDiagnostic),
+    diagnostic_reporter: &mut dyn FnMut(SpecifierUnfurlerDiagnostic),
   ) -> String {
     let mut text_changes = Vec::new();
     let module_info = DefaultModuleAnalyzer::module_info(parsed_source);
@@ -106,14 +241,11 @@ impl<'a> ImportMapUnfurler<'a> {
       |specifier: &str,
        range: &deno_graph::PositionRange,
        text_changes: &mut Vec<deno_ast::TextChange>| {
-        let resolved = self.import_map.resolve(specifier, url);
-        if let Ok(resolved) = resolved {
-          if let Some(resolved) = resolved.into_specifier() {
-            text_changes.push(deno_ast::TextChange {
-              range: to_range(parsed_source, range),
-              new_text: make_relative_to(url, &resolved),
-            });
-          }
+        if let Some(unfurled) = self.unfurl_specifier(url, specifier) {
+          text_changes.push(deno_ast::TextChange {
+            range: to_range(parsed_source, range),
+            new_text: unfurled,
+          });
         }
       };
     for dep in &module_info.dependencies {
@@ -126,8 +258,7 @@ impl<'a> ImportMapUnfurler<'a> {
           );
         }
         DependencyDescriptor::Dynamic(dep) => {
-          let success = try_unfurl_dynamic_dep(
-            self.import_map,
+          let success = self.try_unfurl_dynamic_dep(
             url,
             parsed_source,
             dep,
@@ -144,7 +275,7 @@ impl<'a> ImportMapUnfurler<'a> {
               .line_start(dep.argument_range.end.line)
               + dep.argument_range.end.character;
             diagnostic_reporter(
-              ImportMapUnfurlDiagnostic::UnanalyzableDynamicImport {
+              SpecifierUnfurlerDiagnostic::UnanalyzableDynamicImport {
                 specifier: url.to_owned(),
                 range: SourceRange::new(start_pos, end_pos),
                 text_info: parsed_source.text_info().clone(),
@@ -188,85 +319,20 @@ impl<'a> ImportMapUnfurler<'a> {
   }
 }
 
-fn make_relative_to(from: &ModuleSpecifier, to: &ModuleSpecifier) -> String {
-  if to.scheme() == "file" {
-    format!("./{}", from.make_relative(to).unwrap())
+fn relative_url(
+  resolved: &ModuleSpecifier,
+  referrer: &ModuleSpecifier,
+  specifier: &str,
+) -> Option<String> {
+  let new_specifier = if resolved.scheme() == "file" {
+    format!("./{}", referrer.make_relative(resolved).unwrap())
   } else {
-    to.to_string()
+    resolved.to_string()
+  };
+  if new_specifier == specifier {
+    return None;
   }
-}
-
-/// Attempts to unfurl the dynamic dependency returning `true` on success
-/// or `false` when the import was not analyzable.
-fn try_unfurl_dynamic_dep(
-  mapped_resolver: &MappedSpecifierResolver,
-  module_url: &lsp_types::Url,
-  parsed_source: &ParsedSource,
-  dep: &deno_graph::DynamicDependencyDescriptor,
-  text_changes: &mut Vec<deno_ast::TextChange>,
-) -> bool {
-  match &dep.argument {
-    deno_graph::DynamicArgument::String(value) => {
-      let range = to_range(parsed_source, &dep.argument_range);
-      let maybe_relative_index =
-        parsed_source.text_info().text_str()[range.start..].find(value);
-      let Some(relative_index) = maybe_relative_index else {
-        return false;
-      };
-      let resolved = mapped_resolver.resolve(value, module_url);
-      let Ok(resolved) = resolved else {
-        return false;
-      };
-      let Some(resolved) = resolved.into_specifier() else {
-        return false;
-      };
-      let start = range.start + relative_index;
-      text_changes.push(deno_ast::TextChange {
-        range: start..start + value.len(),
-        new_text: make_relative_to(module_url, &resolved),
-      });
-      true
-    }
-    deno_graph::DynamicArgument::Template(parts) => match parts.first() {
-      Some(DynamicTemplatePart::String { value }) => {
-        // relative doesn't need to be modified
-        let is_relative = value.starts_with("./") || value.starts_with("../");
-        if is_relative {
-          return true;
-        }
-        if !value.ends_with('/') {
-          return false;
-        }
-        let Ok(resolved) = mapped_resolver.resolve(value, module_url) else {
-          return false;
-        };
-        let Some(resolved) = resolved.into_specifier() else {
-          return false;
-        };
-        let range = to_range(parsed_source, &dep.argument_range);
-        let maybe_relative_index =
-          parsed_source.text_info().text_str()[range.start..].find(value);
-        let Some(relative_index) = maybe_relative_index else {
-          return false;
-        };
-        let start = range.start + relative_index;
-        text_changes.push(deno_ast::TextChange {
-          range: start..start + value.len(),
-          new_text: make_relative_to(module_url, &resolved),
-        });
-        true
-      }
-      Some(DynamicTemplatePart::Expr) => {
-        false // failed analyzing
-      }
-      None => {
-        true // ignore
-      }
-    },
-    deno_graph::DynamicArgument::Expr => {
-      false // failed analyzing
-    }
-  }
+  Some(new_specifier)
 }
 
 fn to_range(
@@ -290,6 +356,7 @@ fn to_range(
 mod tests {
   use std::sync::Arc;
 
+  use crate::args::package_json::get_local_package_json_version_reqs;
   use crate::args::PackageJsonDepsProvider;
 
   use super::*;
@@ -297,8 +364,12 @@ mod tests {
   use deno_ast::ModuleSpecifier;
   use deno_core::serde_json::json;
   use deno_core::url::Url;
+  use deno_runtime::deno_fs::RealFs;
+  use deno_runtime::deno_node::PackageJson;
   use import_map::ImportMapWithDiagnostics;
+  use indexmap::IndexMap;
   use pretty_assertions::assert_eq;
+  use test_util::testdata_path;
 
   fn parse_ast(specifier: &Url, source_code: &str) -> ParsedSource {
     let media_type = MediaType::from_specifier(specifier);
@@ -315,22 +386,38 @@ mod tests {
 
   #[test]
   fn test_unfurling() {
+    let cwd = testdata_path().join("unfurl").to_path_buf();
+
     let deno_json_url =
-      ModuleSpecifier::parse("file:///dev/deno.json").unwrap();
+      ModuleSpecifier::from_file_path(cwd.join("deno.json")).unwrap();
     let value = json!({
       "imports": {
         "express": "npm:express@5",
         "lib/": "./lib/",
-        "fizz": "./fizz/mod.ts"
+        "fizz": "./fizz/mod.ts",
+        "@std/fs": "npm:@jsr/std__fs@1",
       }
     });
     let ImportMapWithDiagnostics { import_map, .. } =
       import_map::parse_from_value(deno_json_url, value).unwrap();
-    let mapped_resolved = MappedSpecifierResolver::new(
+    let mut package_json = PackageJson::empty(cwd.join("package.json"));
+    package_json.dependencies =
+      Some(IndexMap::from([("chalk".to_string(), "5".to_string())]));
+    let mapped_resolver = MappedSpecifierResolver::new(
       Some(Arc::new(import_map)),
-      Arc::new(PackageJsonDepsProvider::new(None)),
+      Arc::new(PackageJsonDepsProvider::new(Some(
+        get_local_package_json_version_reqs(&package_json),
+      ))),
     );
-    let unfurler = ImportMapUnfurler::new(&mapped_resolved);
+
+    let fs = Arc::new(RealFs);
+    let sloppy_imports_resolver = SloppyImportsResolver::new(fs);
+
+    let unfurler = SpecifierUnfurler::new(
+      &mapped_resolver,
+      Some(&sloppy_imports_resolver),
+      true,
+    );
 
     // Unfurling TS file should apply changes.
     {
@@ -338,6 +425,16 @@ mod tests {
 import foo from "lib/foo.ts";
 import bar from "lib/bar.ts";
 import fizz from "fizz";
+import chalk from "chalk";
+import baz from "./baz";
+import b from "./b.js";
+import b2 from "./b";
+import url from "url";
+// TODO: unfurl these to jsr
+// import "npm:@jsr/std__fs@1/file";
+// import "npm:@jsr/std__fs@1";
+// import "npm:@jsr/std__fs";
+// import "@std/fs";
 
 const test1 = await import("lib/foo.ts");
 const test2 = await import(`lib/foo.ts`);
@@ -347,7 +444,8 @@ const test4 = await import(`./lib/${expr}`);
 const test5 = await import(`lib${expr}`);
 const test6 = await import(`${expr}`);
 "#;
-      let specifier = ModuleSpecifier::parse("file:///dev/mod.ts").unwrap();
+      let specifier =
+        ModuleSpecifier::from_file_path(cwd.join("mod.ts")).unwrap();
       let source = parse_ast(&specifier, source_code);
       let mut d = Vec::new();
       let mut reporter = |diagnostic| d.push(diagnostic);
@@ -356,7 +454,7 @@ const test6 = await import(`${expr}`);
       assert!(
         matches!(
           d[0],
-          ImportMapUnfurlDiagnostic::UnanalyzableDynamicImport { .. }
+          SpecifierUnfurlerDiagnostic::UnanalyzableDynamicImport { .. }
         ),
         "{:?}",
         d[0]
@@ -364,7 +462,7 @@ const test6 = await import(`${expr}`);
       assert!(
         matches!(
           d[1],
-          ImportMapUnfurlDiagnostic::UnanalyzableDynamicImport { .. }
+          SpecifierUnfurlerDiagnostic::UnanalyzableDynamicImport { .. }
         ),
         "{:?}",
         d[1]
@@ -373,6 +471,16 @@ const test6 = await import(`${expr}`);
 import foo from "./lib/foo.ts";
 import bar from "./lib/bar.ts";
 import fizz from "./fizz/mod.ts";
+import chalk from "npm:chalk@5";
+import baz from "./baz/index.js";
+import b from "./b.ts";
+import b2 from "./b.ts";
+import url from "node:url";
+// TODO: unfurl these to jsr
+// import "npm:@jsr/std__fs@1/file";
+// import "npm:@jsr/std__fs@1";
+// import "npm:@jsr/std__fs";
+// import "@std/fs";
 
 const test1 = await import("./lib/foo.ts");
 const test2 = await import(`./lib/foo.ts`);
