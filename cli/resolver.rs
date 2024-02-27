@@ -650,7 +650,7 @@ fn sloppy_imports_resolve(
   mode: ResolutionMode,
 ) -> ModuleSpecifier {
   let resolution = resolver.resolve(&specifier, mode);
-  if matches!(mode, ResolutionMode::Types) {
+  if mode.is_types() {
     // don't bother warning for types resolution because
     // we already probably warned during execution resolution
     match resolution {
@@ -991,11 +991,9 @@ impl SloppyImportsResolver {
     };
     let mut is_dir_resolution = false;
     let mut is_no_ext_resolution = false;
-    // todo(https://github.com/denoland/deno_graph/pull/406): use mode.is_types() instead
-    let is_types_resolution = matches!(mode, ResolutionMode::Types);
     let probe_paths = match (stat_sync)(&path) {
       Some(SloppyImportsFsEntry::File) => {
-        if is_types_resolution {
+        if mode.is_types() {
           let media_type = MediaType::from_specifier(specifier);
           // attempt to resolve the .d.ts file before the .js file
           let probe_media_type_types = match media_type {
@@ -1021,7 +1019,7 @@ impl SloppyImportsResolver {
       Some(SloppyImportsFsEntry::Dir) => {
         is_dir_resolution = true;
         // try to resolve at the index file
-        if is_types_resolution {
+        if mode.is_types() {
           vec![
             path.join("index.ts"),
             path.join("index.mts"),
@@ -1047,7 +1045,7 @@ impl SloppyImportsResolver {
         let media_type = MediaType::from_specifier(specifier);
         let probe_media_type_types = match media_type {
           MediaType::JavaScript => {
-            if is_types_resolution {
+            if mode.is_types() {
               vec![MediaType::TypeScript, MediaType::Tsx, MediaType::Dts]
             } else {
               vec![MediaType::TypeScript, MediaType::Tsx]
@@ -1055,14 +1053,14 @@ impl SloppyImportsResolver {
           }
           MediaType::Jsx => vec![MediaType::Tsx],
           MediaType::Mjs => {
-            if is_types_resolution {
+            if mode.is_types() {
               vec![MediaType::Mts, MediaType::Dmts, MediaType::Dts]
             } else {
               vec![MediaType::Mts]
             }
           }
           MediaType::Cjs => {
-            if is_types_resolution {
+            if mode.is_types() {
               vec![MediaType::Cts, MediaType::Dcts, MediaType::Dts]
             } else {
               vec![MediaType::Cts]
@@ -1083,7 +1081,7 @@ impl SloppyImportsResolver {
           }
           MediaType::Unknown => {
             is_no_ext_resolution = true;
-            if is_types_resolution {
+            if mode.is_types() {
               vec![
                 MediaType::TypeScript,
                 MediaType::Tsx,
