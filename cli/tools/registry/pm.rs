@@ -8,6 +8,7 @@ use deno_config::FmtOptionsConfig;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
+use deno_core::futures::StreamExt;
 use deno_core::serde_json;
 use deno_runtime::deno_fetch::reqwest;
 use jsonc_parser::ast::ObjectProp;
@@ -22,8 +23,8 @@ use crate::factory::CliFactory;
 async fn find_packages_latest_version(
   client: &reqwest::Client,
   registry_api_url: &str,
-  package_name: &str,
-) -> Result<Option<String>, AnyError> {
+  package_name: String,
+) -> Result<(String, Option<String>), AnyError> {
   let Some(name_no_at) = package_name.strip_prefix('@') else {
     bail!("Invalid package name, use '@<scope_name>/<package_name> format");
   };
@@ -34,10 +35,10 @@ async fn find_packages_latest_version(
   let response =
     api::get_package(client, registry_api_url, scope, name_no_scope).await?;
   if response.status() == 404 {
-    return Ok(None);
+    return Ok((package_name, None));
   }
   let package = api::parse_response::<api::Package>(response).await?;
-  Ok(package.latest_version)
+  Ok((package_name, package.latest_version))
 }
 
 pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
@@ -61,19 +62,30 @@ pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
   let client = http_client.client()?;
   let registry_api_url = jsr_api_url().to_string();
 
-  let mut packages_to_version = vec![];
-  // TODO: parallelize
-  for package in add_flags.packages {
-    let last_version =
-      find_packages_latest_version(client, &registry_api_url, &package).await?;
-    if let Some(last_version) = last_version {
-      packages_to_version.push((package, last_version));
+  let mut packages_to_version = Vec::with_capacity(add_flags.packages.len());
+
+  let package_futures = add_flags
+    .packages
+    .into_iter()
+    .map(|package_name| {
+      find_packages_latest_version(client, &registry_api_url, package_name)
+        .boxed_local()
+    })
+    .collect::<Vec<_>>();
+
+  let stream_of_futures = deno_core::futures::stream::iter(package_futures);
+  let mut buffered = stream_of_futures.buffer_unordered(10);
+
+  while let Some(latest_version_result) = buffered.next().await {
+    let (package_name, maybe_last_version) = latest_version_result?;
+    if let Some(last_version) = maybe_last_version {
+      packages_to_version.push((package_name, last_version));
     } else {
       eprintln!(
         "{}",
         crate::colors::yellow(format!(
           "{} has no published version, skipping...",
-          package
+          package_name
         )),
       );
     }
