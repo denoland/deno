@@ -6,11 +6,13 @@ use std::path::PathBuf;
 use deno_ast::TextChange;
 use deno_config::FmtOptionsConfig;
 use deno_core::anyhow::bail;
+use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::serde_json;
 use deno_runtime::deno_fetch::reqwest;
+use deno_semver::jsr::JsrPackageReqReference;
 use jsonc_parser::ast::ObjectProp;
 use jsonc_parser::ast::Value;
 
@@ -46,10 +48,10 @@ pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
   let cli_options = cli_factory.cli_options();
 
   let Some(config_file) = cli_options.maybe_config_file() else {
-    eprintln!(
-      "{}",
-      crate::colors::green("Created deno.json configuration file")
-    );
+    tokio::fs::write(cli_options.initial_cwd().join("deno.json"), "{}")
+      .await
+      .context("Failed to create deno.json file")?;
+    eprintln!("Created deno.json configuration file.");
     return add(flags, add_flags).boxed_local().await;
   };
 
@@ -63,6 +65,19 @@ pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
   let registry_api_url = jsr_api_url().to_string();
 
   let mut packages_to_version = Vec::with_capacity(add_flags.packages.len());
+
+  // TODO(bartlomieju): parse as PackageReq - if there's `npm:` prefix, try on npm,
+  // otherwise query JSR. Need to do semver as well - @luca/flag@^0.14 should use to
+  // highest possible `0.14.x` version.
+  // for package_name in add_flags.packages.iter() {
+  //   if package_name.starts_with("npm:") {
+  //     eprintln!("TODO: trying to add npm specifier, not handled yet");
+  //   } else {
+  //     let ref_ =
+  //       JsrPackageReqReference::from_str(&format!("jsr:{}", package_name));
+  //     eprintln!("ref_ {:?}", ref_);
+  //   }
+  // }
 
   let package_futures = add_flags
     .packages
@@ -81,13 +96,7 @@ pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
     if let Some(last_version) = maybe_last_version {
       packages_to_version.push((package_name, last_version));
     } else {
-      eprintln!(
-        "{}",
-        crate::colors::yellow(format!(
-          "{} has no published version, skipping...",
-          package_name
-        )),
-      );
+      bail!("{} was not found.", crate::colors::red(package_name));
     }
   }
 
@@ -116,8 +125,9 @@ pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
 
   for (package, version) in packages_to_version {
     eprintln!(
-      "{}",
-      crate::colors::green(format!("Added {} - {}", package, version))
+      "Add {} - {}",
+      crate::colors::green(format!("{}", package)),
+      version
     );
     existing_imports.insert(package, version);
   }
@@ -150,7 +160,8 @@ fn generate_imports(packages_to_version: Vec<(String, String)>) -> String {
   let mut contents = vec![];
   let len = packages_to_version.len();
   for (index, (package, version)) in packages_to_version.iter().enumerate() {
-    contents.push(format!("\"{}\": \"jsr:{}@{}\"", package, package, version));
+    // TODO(bartlomieju): fix it, once we start support specifying version on the cli
+    contents.push(format!("\"{}\": \"jsr:{}@^{}\"", package, package, version));
     if index != len - 1 {
       contents.push(",".to_string());
     }
