@@ -876,10 +876,10 @@ pub async fn publish(
     return Ok(());
   }
 
-  if check_if_git_repo_dirty(cli_options.initial_cwd()).await {
-    if !publish_flags.allow_dirty {
-      bail!("Aborting due to uncomitted changes",);
-    }
+  if !publish_flags.allow_dirty
+    && check_if_git_repo_dirty(cli_options.initial_cwd()).await
+  {
+    bail!("Aborting due to uncomitted changes",);
   }
 
   perform_publish(
@@ -908,7 +908,7 @@ async fn check_if_git_repo_dirty(cwd: &Path) -> bool {
   // Check if there are uncommitted changes
   let output = Command::new("git")
     .current_dir(cwd)
-    .args(&["status", "--porcelain"])
+    .args(["status", "--porcelain"])
     .output()
     .await
     .expect("Failed to execute command");
