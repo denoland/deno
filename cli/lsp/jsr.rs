@@ -1,21 +1,29 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::jsr_api_url;
 use crate::args::jsr_url;
+use crate::file_fetcher::FileFetcher;
 use dashmap::DashMap;
 use deno_cache_dir::HttpCache;
+use deno_core::anyhow::anyhow;
+use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use deno_core::ModuleSpecifier;
 use deno_graph::packages::JsrPackageInfo;
 use deno_graph::packages::JsrPackageVersionInfo;
 use deno_lockfile::Lockfile;
+use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
+use deno_semver::Version;
+use serde::Deserialize;
 use std::borrow::Cow;
 use std::sync::Arc;
 
 use super::cache::LSP_DISALLOW_GLOBAL_TO_LOCAL_COPY;
+use super::search::PackageSearchApi;
 
 #[derive(Debug)]
 pub struct JsrResolver {
@@ -202,4 +210,90 @@ fn normalize_export_name(sub_path: Option<&str>) -> Cow<str> {
       sub_path
     }
   }
+}
+
+#[derive(Debug, Clone)]
+pub struct CliJsrSearchApi {
+  file_fetcher: FileFetcher,
+  search_cache: Arc<DashMap<String, Arc<Vec<String>>>>,
+  versions_cache: Arc<DashMap<String, Arc<Vec<Version>>>>,
+}
+
+impl CliJsrSearchApi {
+  pub fn new(file_fetcher: FileFetcher) -> Self {
+    Self {
+      file_fetcher,
+      search_cache: Default::default(),
+      versions_cache: Default::default(),
+    }
+  }
+}
+
+#[async_trait::async_trait]
+impl PackageSearchApi for CliJsrSearchApi {
+  async fn search(&self, query: &str) -> Result<Arc<Vec<String>>, AnyError> {
+    if let Some(names) = self.search_cache.get(query) {
+      return Ok(names.clone());
+    }
+    let mut search_url = jsr_api_url().clone();
+    search_url
+      .path_segments_mut()
+      .map_err(|_| anyhow!("Custom jsr URL cannot be a base."))?
+      .pop_if_empty()
+      .push("packages");
+    search_url.query_pairs_mut().append_pair("query", query);
+    let file = self
+      .file_fetcher
+      .fetch(&search_url, PermissionsContainer::allow_all())
+      .await?
+      .into_text_decoded()?;
+    let names = Arc::new(parse_jsr_search_response(&file.source)?);
+    self.search_cache.insert(query.to_string(), names.clone());
+    Ok(names)
+  }
+
+  async fn versions(&self, name: &str) -> Result<Arc<Vec<Version>>, AnyError> {
+    if let Some(versions) = self.versions_cache.get(name) {
+      return Ok(versions.clone());
+    }
+    let mut meta_url = jsr_url().clone();
+    meta_url
+      .path_segments_mut()
+      .map_err(|_| anyhow!("Custom jsr URL cannot be a base."))?
+      .pop_if_empty()
+      .push(name)
+      .push("meta.json");
+    let file = self
+      .file_fetcher
+      .fetch(&meta_url, PermissionsContainer::allow_all())
+      .await?;
+    let info = serde_json::from_slice::<JsrPackageInfo>(&file.source)?;
+    let mut versions = info.versions.into_keys().collect::<Vec<_>>();
+    versions.sort();
+    versions.reverse();
+    let versions = Arc::new(versions);
+    self
+      .versions_cache
+      .insert(name.to_string(), versions.clone());
+    Ok(versions)
+  }
+}
+
+fn parse_jsr_search_response(source: &str) -> Result<Vec<String>, AnyError> {
+  #[derive(Debug, Deserialize)]
+  struct Item {
+    scope: String,
+    name: String,
+  }
+  #[derive(Debug, Deserialize)]
+  struct Response {
+    items: Vec<Item>,
+  }
+  let items = serde_json::from_str::<Response>(source)?.items;
+  Ok(
+    items
+      .into_iter()
+      .map(|i| format!("@{}/{}", i.scope, i.name))
+      .collect(),
+  )
 }

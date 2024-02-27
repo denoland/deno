@@ -69,6 +69,7 @@ use super::documents::Documents;
 use super::documents::DocumentsFilter;
 use super::documents::LanguageId;
 use super::documents::UpdateDocumentConfigOptions;
+use super::jsr::CliJsrSearchApi;
 use super::logging::lsp_log;
 use super::logging::lsp_warn;
 use super::lsp_custom;
@@ -239,6 +240,7 @@ pub struct Inner {
   /// on disk or "open" within the client.
   pub documents: Documents,
   initial_cwd: PathBuf,
+  jsr_search_api: CliJsrSearchApi,
   http_client: Arc<HttpClient>,
   task_queue: LanguageServerTaskQueue,
   /// Handles module registries, which allow discovery of modules
@@ -499,8 +501,10 @@ impl Inner {
       module_registries_location.clone(),
       http_client.clone(),
     );
+    let jsr_search_api =
+      CliJsrSearchApi::new(module_registries.file_fetcher.clone());
     let npm_search_api =
-      CliNpmSearchApi::new(module_registries.file_fetcher.clone(), None);
+      CliNpmSearchApi::new(module_registries.file_fetcher.clone());
     let location = dir.deps_folder_path();
     let deps_http_cache = Arc::new(GlobalHttpCache::new(
       location,
@@ -535,6 +539,7 @@ impl Inner {
       documents,
       http_client,
       initial_cwd: initial_cwd.clone(),
+      jsr_search_api,
       maybe_global_cache_path: None,
       maybe_import_map: None,
       maybe_package_json: None,
@@ -832,8 +837,10 @@ impl Inner {
       module_registries_location.clone(),
       self.http_client.clone(),
     );
+    self.jsr_search_api =
+      CliJsrSearchApi::new(self.module_registries.file_fetcher.clone());
     self.npm.search_api =
-      CliNpmSearchApi::new(self.module_registries.file_fetcher.clone(), None);
+      CliNpmSearchApi::new(self.module_registries.file_fetcher.clone());
     self.module_registries_location = module_registries_location;
     // update the cache path
     let global_cache = Arc::new(GlobalHttpCache::new(
@@ -2477,6 +2484,7 @@ impl Inner {
         &self.config.snapshot(),
         &self.client,
         &self.module_registries,
+        &self.jsr_search_api,
         &self.npm.search_api,
         &self.documents,
         self.maybe_import_map.clone(),
