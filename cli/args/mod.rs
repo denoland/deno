@@ -759,10 +759,17 @@ impl CliOptions {
   pub fn from_flags(flags: Flags) -> Result<Self, AnyError> {
     let initial_cwd =
       std::env::current_dir().with_context(|| "Failed getting cwd.")?;
+    let additional_config_file_names =
+      if matches!(flags.subcommand, DenoSubcommand::Publish(..)) {
+        Some(vec!["jsr.json", "jsr.jsonc"])
+      } else {
+        None
+      };
     let maybe_config_file = ConfigFile::discover(
       &flags.config_flag,
       flags.config_path_args(&initial_cwd),
       &initial_cwd,
+      additional_config_file_names,
     )?;
 
     let mut maybe_package_json = None;
