@@ -15,6 +15,7 @@ mod ts {
   use deno_runtime::deno_node::SUPPORTED_BUILTIN_NODE_MODULES;
   use serde::Serialize;
   use std::collections::HashMap;
+  use std::io::Write;
   use std::path::Path;
   use std::path::PathBuf;
 
@@ -266,10 +267,6 @@ mod ts {
     )
     .unwrap();
 
-    let snapshot_to_file = SnapshotFileSerializer::new(
-      std::fs::File::create(snapshot_path).unwrap(),
-    );
-
     let output = create_snapshot(
       CreateSnapshotOptions {
         cargo_manifest_dir: env!("CARGO_MANIFEST_DIR"),
@@ -279,33 +276,30 @@ mod ts {
           build_libs,
           path_dts,
         )],
-        // NOTE(bartlomieju): Compressing the TSC snapshot in debug build took
-        // ~45s on M1 MacBook Pro; without compression it took ~1s.
-        // Thus we're not not using compressed snapshot, trading off
-        // a lot of build time for some startup time in debug build.
-        #[cfg(debug_assertions)]
-        serializer: Box::new(snapshot_to_file),
-
-        #[cfg(not(debug_assertions))]
-        serializer: Box::new(SnapshotBulkCompressingSerializer::new(
-          snapshot_to_file,
-          |snapshot| {
-            eprintln!("Compressing TSC snapshot...");
-            let mut vec = Vec::with_capacity(snapshot.len());
-            vec.extend((snapshot.len() as u32).to_le_bytes());
-            vec.extend_from_slice(
-              &zstd::bulk::compress(&snapshot, 22)
-                .expect("snapshot compression failed"),
-            );
-            Ok(vec)
-          },
-        )),
         with_runtime_cb: None,
         skip_op_registration: false,
       },
       None,
     )
     .unwrap();
+
+    // NOTE(bartlomieju): Compressing the TSC snapshot in debug build took
+    // ~45s on M1 MacBook Pro; without compression it took ~1s.
+    // Thus we're not not using compressed snapshot, trading off
+    // a lot of build time for some startup time in debug build.
+    let mut file = std::fs::File::create(snapshot_path).unwrap();
+    if cfg!(debug_assertions) {
+      file.write_all(&output.output).unwrap();
+    } else {
+      let mut vec = Vec::with_capacity(output.output.len());
+      vec.extend((output.output.len() as u32).to_le_bytes());
+      vec.extend_from_slice(
+        &zstd::bulk::compress(&output.output, 22)
+          .expect("snapshot compression failed"),
+      );
+      file.write_all(&vec).unwrap();
+    }
+
     for path in output.files_loaded_during_snapshot {
       println!("cargo:rerun-if-changed={}", path.display());
     }
