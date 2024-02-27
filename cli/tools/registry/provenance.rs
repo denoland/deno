@@ -60,7 +60,7 @@ struct Envelope {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct SignatureBundle {
+pub struct SignatureBundle {
   #[serde(rename = "$case")]
   case: &'static str,
   dsse_envelope: Envelope,
@@ -249,13 +249,50 @@ const GITHUB_BUILDER_ID_PREFIX: &str = "https://github.com/actions/runner";
 const GITHUB_BUILD_TYPE: &str =
   "https://slsa-framework.github.io/github-actions-buildtypes/workflow/v1";
 
-pub struct TransparencyLog {
-  pub rekor_log_index: u64,
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct X509Certificate {
+  pub raw_bytes: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct X509CertificateChain {
+  pub certificates: [X509Certificate; 1],
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VerificationMaterialContent {
+  #[serde(rename = "$case")]
+  pub case: &'static str,
+  pub x509_certificate_chain: X509CertificateChain,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TlogEntry {
+  pub log_index: u64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VerificationMaterial {
+  pub content: VerificationMaterialContent,
+  pub tlog_entries: [TlogEntry; 1],
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProvenanceBundle {
+  pub media_type: &'static str,
+  pub content: SignatureBundle,
+  pub verification_material: VerificationMaterial,
 }
 
 pub async fn generate_provenance(
   subject: Subject,
-) -> Result<TransparencyLog, AnyError> {
+) -> Result<ProvenanceBundle, AnyError> {
   if !is_gha() {
     bail!("Automatic provenance is only available in GitHub Actions");
   }
@@ -269,43 +306,56 @@ pub async fn generate_provenance(
   let slsa = ProvenanceAttestation::new_github_actions(subject);
 
   let attestation = serde_json::to_string(&slsa)?;
-  let transparency_log = attest(&attestation, INTOTO_PAYLOAD_TYPE).await?;
+  let bundle = attest(&attestation, INTOTO_PAYLOAD_TYPE).await?;
 
-  Ok(transparency_log)
+  Ok(bundle)
 }
 
 pub async fn attest(
   data: &str,
   type_: &str,
-) -> Result<TransparencyLog, AnyError> {
+) -> Result<ProvenanceBundle, AnyError> {
   // DSSE Pre-Auth Encoding (PAE) payload
   let pae = pre_auth_encoding(type_, data);
 
   let signer = FulcioSigner::new()?;
   let (signature, key_material) = signer.sign(&pae).await?;
 
-  let transparency_logs = testify(
-    &SignatureBundle {
-      case: "dsseSignature",
-      dsse_envelope: Envelope {
-        payload_type: type_.to_string(),
-        payload: BASE64_STANDARD.encode(data),
-        signatures: vec![Signature {
-          keyid: "",
-          sig: BASE64_STANDARD.encode(signature.as_ref()),
-        }],
-      },
+  let content = SignatureBundle {
+    case: "dsseSignature",
+    dsse_envelope: Envelope {
+      payload_type: type_.to_string(),
+      payload: BASE64_STANDARD.encode(data),
+      signatures: vec![Signature {
+        keyid: "",
+        sig: BASE64_STANDARD.encode(signature.as_ref()),
+      }],
     },
-    &key_material.certificate,
-  )
-  .await?;
+  };
+  let transparency_logs = testify(&content, &key_material.certificate).await?;
 
   // First log entry is the one we're interested in
   let (_, log_entry) = transparency_logs.iter().next().unwrap();
 
-  Ok(TransparencyLog {
-    rekor_log_index: log_entry.log_index,
-  })
+  let bundle = ProvenanceBundle {
+    media_type: "application/vnd.in-toto+json",
+    content,
+    verification_material: VerificationMaterial {
+      content: VerificationMaterialContent {
+        case: "x509CertificateChain",
+        x509_certificate_chain: X509CertificateChain {
+          certificates: [X509Certificate {
+            raw_bytes: key_material.certificate,
+          }],
+        },
+      },
+      tlog_entries: [TlogEntry {
+        log_index: log_entry.log_index,
+      }],
+    },
+  };
+
+  Ok(bundle)
 }
 
 static DEFAULT_FULCIO_URL: Lazy<String> = Lazy::new(|| {

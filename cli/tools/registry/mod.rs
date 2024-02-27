@@ -677,16 +677,17 @@ async fn publish_package(
         sha256: hex::encode(sha2::Sha256::digest(&meta_bytes)),
       },
     };
-    let transparency_log = provenance::generate_provenance(subject).await?;
+    let bundle = provenance::generate_provenance(subject).await?;
 
+    let tlog_entry = &bundle.verification_material.tlog_entries[0];
     println!("{}",
       colors::green(format!(
         "Provenance transparency log available at https://search.sigstore.dev/?logIndex={}",
-        transparency_log.rekor_log_index
+        tlog_entry.log_index
       ))
      );
 
-    // Submit transparency log ID to JSR
+    // Submit bundle to JSR
     let provenance_url = format!(
       "{}scopes/{}/packages/{}/versions/{}/provenance",
       registry_api_url, package.scope, package.package, package.version
@@ -694,9 +695,7 @@ async fn publish_package(
     client
       .post(provenance_url)
       .header(reqwest::header::AUTHORIZATION, authorization)
-      .json(
-        &json!({ "rekorLogId": transparency_log.rekor_log_index.to_string() }),
-      )
+      .json(&json!({ "bundle": bundle }))
       .send()
       .await?;
   }
