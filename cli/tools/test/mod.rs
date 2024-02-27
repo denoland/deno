@@ -518,7 +518,7 @@ async fn test_specifier_inner(
   if options.trace_ops {
     worker.execute_script_static(
       located_script_name!(),
-      "Deno[Deno.internal].core.setOpCallTracingEnabled(true);",
+      "Deno[Deno.internal].core.setLeakTracingEnabled(true);",
     )?;
   }
 
@@ -740,7 +740,7 @@ fn preprocess_timer_activity(activities: &mut Vec<RuntimeActivity>) {
 
   // First, search for any timer resources which will indicate that we have an interval leak
   activities.retain(|activity| {
-    if let RuntimeActivity::Resource(_, name) = activity {
+    if let RuntimeActivity::Resource(.., name) = activity {
       if name == "timer" {
         timer_resource_leaked = true;
         return false;
@@ -753,7 +753,7 @@ fn preprocess_timer_activity(activities: &mut Vec<RuntimeActivity>) {
   // them.
   if !timer_resource_leaked {
     activities.retain(|activity| {
-      if let RuntimeActivity::AsyncOp(_, op, _) = activity {
+      if let RuntimeActivity::AsyncOp(.., op) = activity {
         *op != "op_sleep_interval"
       } else {
         true
@@ -775,7 +775,7 @@ async fn wait_for_activity_to_stabilize(
   let mut diff = RuntimeActivityStats::diff(&before, &after);
   preprocess_timer_activity(&mut diff.appeared);
   preprocess_timer_activity(&mut diff.disappeared);
-  if diff.appeared.is_empty() && diff.disappeared.is_empty() {
+  if diff.is_empty() {
     // No activity, so we return early
     return Ok(None);
   }
@@ -792,7 +792,7 @@ async fn wait_for_activity_to_stabilize(
     diff = RuntimeActivityStats::diff(&before, &after);
     preprocess_timer_activity(&mut diff.appeared);
     preprocess_timer_activity(&mut diff.disappeared);
-    if diff.appeared.is_empty() && diff.disappeared.is_empty() {
+    if diff.is_empty() {
       return Ok(None);
     }
   }
@@ -814,11 +814,7 @@ async fn wait_for_activity_to_stabilize(
       .retain(|activity| !matches!(activity, RuntimeActivity::Resource(..)));
   }
 
-  Ok(if diff.appeared.is_empty() && diff.disappeared.is_empty() {
-    None
-  } else {
-    Some(diff)
-  })
+  Ok(if diff.is_empty() { None } else { Some(diff) })
 }
 
 fn extract_files_from_regex_blocks(
