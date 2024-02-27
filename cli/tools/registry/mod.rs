@@ -35,13 +35,13 @@ use crate::factory::CliFactory;
 use crate::graph_util::ModuleGraphCreator;
 use crate::http_util::HttpClient;
 use crate::resolver::MappedSpecifierResolver;
+use crate::resolver::SloppyImportsResolver;
 use crate::tools::check::CheckOptions;
 use crate::tools::lint::no_slow_types;
 use crate::tools::registry::diagnostics::PublishDiagnostic;
 use crate::tools::registry::diagnostics::PublishDiagnosticsCollector;
 use crate::tools::registry::graph::collect_invalid_external_imports;
 use crate::util::display::human_size;
-use crate::util::import_map::ImportMapUnfurler;
 
 mod api;
 mod auth;
@@ -50,10 +50,13 @@ mod graph;
 mod paths;
 mod publish_order;
 mod tar;
+mod unfurl;
 
 use auth::get_auth_method;
 use auth::AuthMethod;
 use publish_order::PublishOrderGraph;
+pub use unfurl::deno_json_deps;
+use unfurl::SpecifierUnfurler;
 
 use super::check::TypeChecker;
 
@@ -81,12 +84,15 @@ impl PreparedPublishPackage {
 static SUGGESTED_ENTRYPOINTS: [&str; 4] =
   ["mod.ts", "mod.js", "index.ts", "index.js"];
 
+#[allow(clippy::too_many_arguments)]
 async fn prepare_publish(
   package_name: &str,
   deno_json: &ConfigFile,
   source_cache: Arc<ParsedSourceCache>,
   graph: Arc<deno_graph::ModuleGraph>,
   mapped_resolver: Arc<MappedSpecifierResolver>,
+  sloppy_imports_resolver: Option<SloppyImportsResolver>,
+  bare_node_builtins: bool,
   diagnostics_collector: &PublishDiagnosticsCollector,
 ) -> Result<Rc<PreparedPublishPackage>, AnyError> {
   let config_path = deno_json.specifier.to_file_path().unwrap();
@@ -132,7 +138,11 @@ async fn prepare_publish(
 
   let diagnostics_collector = diagnostics_collector.clone();
   let tarball = deno_core::unsync::spawn_blocking(move || {
-    let unfurler = ImportMapUnfurler::new(&mapped_resolver);
+    let unfurler = SpecifierUnfurler::new(
+      &mapped_resolver,
+      sloppy_imports_resolver.as_ref(),
+      bare_node_builtins,
+    );
     tar::create_gzipped_tarball(
       &dir_path,
       LazyGraphSourceParser::new(&source_cache, &graph),
@@ -661,7 +671,9 @@ async fn prepare_packages_for_publishing(
   let module_graph_creator = cli_factory.module_graph_creator().await?.as_ref();
   let source_cache = cli_factory.parsed_source_cache();
   let type_checker = cli_factory.type_checker().await?;
+  let fs = cli_factory.fs();
   let cli_options = cli_factory.cli_options();
+  let bare_node_builtins = cli_options.unstable_bare_node_builtins();
 
   if members.len() > 1 {
     println!("Publishing a workspace...");
@@ -686,6 +698,11 @@ async fn prepare_packages_for_publishing(
     .into_iter()
     .map(|member| {
       let mapped_resolver = mapped_resolver.clone();
+      let sloppy_imports_resolver = if cli_options.unstable_sloppy_imports() {
+        Some(SloppyImportsResolver::new(fs.clone()))
+      } else {
+        None
+      };
       let graph = graph.clone();
       async move {
         let package = prepare_publish(
@@ -694,6 +711,8 @@ async fn prepare_packages_for_publishing(
           source_cache.clone(),
           graph,
           mapped_resolver,
+          sloppy_imports_resolver,
+          bare_node_builtins,
           diagnostics_collector,
         )
         .await
