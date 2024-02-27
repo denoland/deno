@@ -501,7 +501,7 @@ Warning Sloppy module resolution (hint: update .mjs extension to .mts)
     at file:///[WILDCARD]/main.ts:3:20
 Warning Sloppy module resolution (hint: add .ts extension)
     at file:///[WILDCARD]/main.ts:11:21
-Warning Sloppy module resolution (hint: add .ts extension)
+Warning Sloppy module resolution (hint: add .js extension)
     at file:///[WILDCARD]/main.ts:12:21
 Warning Sloppy module resolution (hint: add .mts extension)
     at file:///[WILDCARD]/main.ts:13:21

@@ -960,10 +960,9 @@ impl SloppyImportsResolver {
       let old_path_str = path.to_string_lossy();
       match media_type {
         MediaType::Unknown => Some(old_path_str),
-        _ => match old_path_str.strip_suffix(media_type.as_ts_extension()) {
-          Some(s) => Some(Cow::Owned(s.to_string())),
-          None => None,
-        },
+        _ => old_path_str
+          .strip_suffix(media_type.as_ts_extension())
+          .map(|s| Cow::Owned(s.to_string())),
       }
     }
 
