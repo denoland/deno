@@ -946,6 +946,15 @@ fn verify_version_manifest(
   package: &PreparedPublishPackage,
 ) -> Result<(), AnyError> {
   let manifest = serde_json::from_slice::<VersionManifest>(meta_bytes)?;
+  // Check that nothing was removed from the manifest.
+  if manifest.manifest.len() != package.tarball.files.len() {
+    bail!(
+      "Mismatch in the number of files in the manifest: expected {}, got {}",
+      package.tarball.files.len(),
+      manifest.manifest.len()
+    );
+  }
+
   for (path, entry) in manifest.manifest {
     // Verify each path with the files in the tarball.
     let file = package
