@@ -650,15 +650,18 @@ fn sloppy_imports_resolve(
   mode: ResolutionMode,
 ) -> ModuleSpecifier {
   let resolution = resolver.resolve(&specifier, mode);
-  let to_media_type = MediaType::from_specifier(resolution.as_specifier());
-  if to_media_type.is_declaration() {
-    // don't warn for .d.ts resolution as there's not
-    // much people can do in this scenario
-    return resolution.into_specifier().into_owned();
+  if matches!(mode, ResolutionMode::Types) {
+    // don't bother warning for types resolution because
+    // we already probably warned during execution resolution
+    match resolution {
+      SloppyImportsResolution::None(_) => return specifier, // avoid a clone
+      _ => return resolution.into_specifier().into_owned(),
+    }
   }
 
   let hint_message = match &resolution {
-    SloppyImportsResolution::JsToTs(_) => {
+    SloppyImportsResolution::JsToTs(to_specifier) => {
+      let to_media_type = MediaType::from_specifier(to_specifier);
       let from_media_type = MediaType::from_specifier(&specifier);
       format!(
         "update {} extension to {}",
@@ -666,7 +669,8 @@ fn sloppy_imports_resolve(
         to_media_type.as_ts_extension()
       )
     }
-    SloppyImportsResolution::NoExtension(_) => {
+    SloppyImportsResolution::NoExtension(to_specifier) => {
+      let to_media_type = MediaType::from_specifier(to_specifier);
       format!("add {} extension", to_media_type.as_ts_extension())
     }
     SloppyImportsResolution::Directory(to_specifier) => {
