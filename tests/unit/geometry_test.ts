@@ -787,7 +787,7 @@ Deno.test(function matrixPreMultiplySelfWithSelf() {
   );
 });
 
-Deno.test(function matrixflipX() {
+Deno.test(function matrixFlipX() {
   // deno-fmt-ignore
   const init = {
     m11:  1, m21:  2, m31:  3, m41:  4,
@@ -813,7 +813,7 @@ Deno.test(function matrixflipX() {
   );
 });
 
-Deno.test(function matrixflipX() {
+Deno.test(function matrixFlipY() {
   // deno-fmt-ignore
   const init = {
     m11:  1, m21:  2, m31:  3, m41:  4,
