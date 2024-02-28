@@ -296,7 +296,7 @@ impl TestRun {
             test::TestSpecifierOptions {
               filter,
               shuffle: None,
-              trace_ops: false,
+              trace_leaks: false,
             },
           ))
         }
@@ -441,7 +441,7 @@ impl TestRun {
         .iter()
         .map(|s| s.as_str()),
     );
-    args.push("--trace-ops");
+    args.push("--trace-leaks");
     if self.workspace_settings.unstable && !args.contains(&"--unstable") {
       args.push("--unstable");
     }

@@ -275,7 +275,7 @@ pub struct TestFlags {
   pub filter: Option<String>,
   pub shuffle: Option<u64>,
   pub concurrent_jobs: Option<NonZeroUsize>,
-  pub trace_ops: bool,
+  pub trace_leaks: bool,
   pub watch: Option<WatchFlags>,
   pub reporter: TestReporterConfig,
   pub junit_path: Option<String>,
@@ -2155,7 +2155,14 @@ Directory arguments are expanded to all contained files matching the glob
     .arg(
       Arg::new("trace-ops")
         .long("trace-ops")
-        .help("Enable tracing of async ops. Useful when debugging leaking ops in test, but impacts test execution time.")
+        .help("Deprecated alias for --trace-leaks.")
+        .hide(true)
+        .action(ArgAction::SetTrue),
+    )
+    .arg(
+      Arg::new("trace-leaks")
+        .long("trace-leaks")
+        .help("Enable tracing of leaks. Useful when debugging leaking ops in test, but impacts test execution time.")
         .action(ArgAction::SetTrue),
     )
     .arg(
@@ -3704,7 +3711,18 @@ fn test_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   };
 
   let no_run = matches.get_flag("no-run");
-  let trace_ops = matches.get_flag("trace-ops");
+  let trace_leaks =
+    matches.get_flag("trace-ops") || matches.get_flag("trace-leaks");
+  if trace_leaks && matches.get_flag("trace-ops") {
+    // We can't change this to use the log crate because its not configured
+    // yet at this point since the flags haven't been parsed. This flag is
+    // deprecated though so it's not worth changing the code to use the log
+    // crate here and this is only done for testing anyway.
+    eprintln!(
+      "⚠️ {}",
+      crate::colors::yellow("The `--trace-ops` flag is deprecated and will be removed in Deno 2.0.\nUse the `--trace-leaks` flag instead."),
+    );
+  }
   let doc = matches.get_flag("doc");
   let allow_none = matches.get_flag("allow-none");
   let filter = matches.remove_one::<String>("filter");
@@ -3792,7 +3810,7 @@ fn test_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     shuffle,
     allow_none,
     concurrent_jobs,
-    trace_ops,
+    trace_leaks,
     watch: watch_arg_parse(matches),
     reporter,
     junit_path,
@@ -7098,7 +7116,7 @@ mod tests {
   #[test]
   fn test_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "test", "--unstable", "--no-npm", "--no-remote", "--trace-ops", "--no-run", "--filter", "- foo", "--coverage=cov", "--location", "https:foo", "--allow-net", "--allow-none", "dir1/", "dir2/", "--", "arg1", "arg2"]);
+    let r = flags_from_vec(svec!["deno", "test", "--unstable", "--no-npm", "--no-remote", "--trace-leaks", "--no-run", "--filter", "- foo", "--coverage=cov", "--location", "https:foo", "--allow-net", "--allow-none", "dir1/", "dir2/", "--", "arg1", "arg2"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -7114,7 +7132,7 @@ mod tests {
           },
           shuffle: None,
           concurrent_jobs: None,
-          trace_ops: true,
+          trace_leaks: true,
           coverage_dir: Some("cov".to_string()),
           watch: Default::default(),
           reporter: Default::default(),
@@ -7196,7 +7214,7 @@ mod tests {
             ignore: vec![],
           },
           concurrent_jobs: Some(NonZeroUsize::new(4).unwrap()),
-          trace_ops: false,
+          trace_leaks: false,
           coverage_dir: None,
           watch: Default::default(),
           junit_path: None,
@@ -7229,7 +7247,7 @@ mod tests {
             ignore: vec![],
           },
           concurrent_jobs: None,
-          trace_ops: false,
+          trace_leaks: false,
           coverage_dir: None,
           watch: Default::default(),
           reporter: Default::default(),
@@ -7267,7 +7285,7 @@ mod tests {
             ignore: vec![],
           },
           concurrent_jobs: None,
-          trace_ops: false,
+          trace_leaks: false,
           coverage_dir: None,
           watch: Default::default(),
           reporter: Default::default(),
@@ -7384,7 +7402,7 @@ mod tests {
             ignore: vec![],
           },
           concurrent_jobs: None,
-          trace_ops: false,
+          trace_leaks: false,
           coverage_dir: None,
           watch: Default::default(),
           reporter: Default::default(),
@@ -7415,7 +7433,7 @@ mod tests {
             ignore: vec![],
           },
           concurrent_jobs: None,
-          trace_ops: false,
+          trace_leaks: false,
           coverage_dir: None,
           watch: Some(Default::default()),
           reporter: Default::default(),
@@ -7445,7 +7463,7 @@ mod tests {
             ignore: vec![],
           },
           concurrent_jobs: None,
-          trace_ops: false,
+          trace_leaks: false,
           coverage_dir: None,
           watch: Some(Default::default()),
           reporter: Default::default(),
@@ -7477,7 +7495,7 @@ mod tests {
             ignore: vec![],
           },
           concurrent_jobs: None,
-          trace_ops: false,
+          trace_leaks: false,
           coverage_dir: None,
           watch: Some(WatchFlags {
             hmr: false,
