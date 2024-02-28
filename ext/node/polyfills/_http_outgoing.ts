@@ -820,9 +820,9 @@ Object.defineProperty(OutgoingMessage.prototype, "_headerNames", {
   ),
 });
 
-export const validateHeaderName = hideStackFrames((name) => {
+export const validateHeaderName = hideStackFrames((name, label) => {
   if (typeof name !== "string" || !name || !checkIsHttpToken(name)) {
-    throw new ERR_INVALID_HTTP_TOKEN("Header name", name);
+    throw new ERR_INVALID_HTTP_TOKEN(label || "Header name", name);
   }
 });
 
