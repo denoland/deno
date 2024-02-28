@@ -1025,6 +1025,34 @@ fn verify_version_manifest(
   Ok(())
 }
 
+async fn check_if_git_repo_dirty(cwd: &Path) -> bool {
+  let bin_name = if cfg!(windows) { "git.exe" } else { "git" };
+
+  // Check if git exists
+  let git_exists = Command::new(bin_name)
+    .arg("--version")
+    .stderr(Stdio::null())
+    .stdout(Stdio::null())
+    .status()
+    .await
+    .map_or(false, |status| status.success());
+
+  if !git_exists {
+    return false; // Git is not installed
+  }
+
+  // Check if there are uncommitted changes
+  let output = Command::new(bin_name)
+    .current_dir(cwd)
+    .args(["status", "--porcelain"])
+    .output()
+    .await
+    .expect("Failed to execute command");
+
+  let output_str = String::from_utf8_lossy(&output.stdout);
+  !output_str.trim().is_empty()
+}
+
 #[cfg(test)]
 mod tests {
   use super::tar::PublishableTarball;
@@ -1128,32 +1156,4 @@ mod tests {
 
     assert!(verify_version_manifest(meta_bytes, &package).is_err());
   }
-}
-
-async fn check_if_git_repo_dirty(cwd: &Path) -> bool {
-  let bin_name = if cfg!(windows) { "git.exe" } else { "git" };
-
-  // Check if git exists
-  let git_exists = Command::new(bin_name)
-    .arg("--version")
-    .stderr(Stdio::null())
-    .stdout(Stdio::null())
-    .status()
-    .await
-    .map_or(false, |status| status.success());
-
-  if !git_exists {
-    return false; // Git is not installed
-  }
-
-  // Check if there are uncommitted changes
-  let output = Command::new(bin_name)
-    .current_dir(cwd)
-    .args(["status", "--porcelain"])
-    .output()
-    .await
-    .expect("Failed to execute command");
-
-  let output_str = String::from_utf8_lossy(&output.stdout);
-  !output_str.trim().is_empty()
 }
