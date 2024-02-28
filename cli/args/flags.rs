@@ -2154,6 +2154,7 @@ Directory arguments are expanded to all contained files matching the glob
       Arg::new("trace-ops")
         .long("trace-ops")
         .help("Deprecated alias for --trace-leaks.")
+        .hide(true)
         .action(ArgAction::SetTrue),
     )
     .arg(
