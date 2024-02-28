@@ -13,6 +13,7 @@ use deno_core::futures::StreamExt;
 use deno_core::serde_json;
 use deno_runtime::deno_fetch::reqwest;
 use deno_semver::jsr::JsrPackageReqReference;
+use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
 use jsonc_parser::ast::ObjectProp;
 use jsonc_parser::ast::Value;
@@ -39,7 +40,8 @@ async fn jsr_find_package_and_select_version(
   registry_api_url: &str,
   req: &PackageReq,
 ) -> Result<PackageAndVersion, AnyError> {
-  // TODO(bartlomieju): don't ignore
+  // TODO(bartlomieju): Need to do semver as well - @luca/flag@^0.14 should use to
+  // highest possible `0.14.x` version.
   let _version_req = &req.version_req;
 
   let jsr_prefixed_name = format!("jsr:{}", req.name);
@@ -57,7 +59,7 @@ async fn jsr_find_package_and_select_version(
     Ok(PackageAndVersion::Selected(SelectedPackage {
       import_name: req.name.to_string(),
       package_name: jsr_prefixed_name,
-      // TODO(bartlomieju): fix it, it should always be caret
+      // TODO(bartlomieju): fix it, it should not always be caret
       version: format!("^{}", latest_version),
     }))
   } else {
@@ -79,13 +81,15 @@ async fn find_package_and_select_version_for_req(
       )
       .await
     }
+    AddPackageReq::Npm(_pkg_req) => {
+      bail!("Adding npm: packages is currently not supported");
+    }
   }
 }
 
 enum AddPackageReq {
   Jsr(JsrPackageReqReference),
-  // TODO(bartlomieju):
-  // Npm()
+  Npm(NpmPackageReqReference),
 }
 
 pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
@@ -112,21 +116,25 @@ pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
   let mut selected_packages = Vec::with_capacity(add_flags.packages.len());
   let mut package_reqs = Vec::with_capacity(add_flags.packages.len());
 
-  // TODO(bartlomieju): parse as PackageReq - if there's `npm:` prefix, try on npm,
-  // otherwise query JSR. Need to do semver as well - @luca/flag@^0.14 should use to
-  // highest possible `0.14.x` version.
   for package_name in add_flags.packages.iter() {
-    if package_name.starts_with("npm:") {
-      eprintln!("Adding npm packages is currently not supported");
-      continue;
-    }
-
-    let pkg_req =
-      JsrPackageReqReference::from_str(&format!("jsr:{}", package_name))
+    let req = if package_name.starts_with("npm:") {
+      let pkg_req = NpmPackageReqReference::from_str(&package_name)
         .with_context(|| {
           format!("Failed to parse package required: {}", package_name)
         })?;
-    package_reqs.push(AddPackageReq::Jsr(pkg_req));
+      AddPackageReq::Npm(pkg_req)
+    } else {
+      let pkg_req = JsrPackageReqReference::from_str(&format!(
+        "jsr:{}",
+        package_name.strip_prefix("jsr:").unwrap_or(package_name)
+      ))
+      .with_context(|| {
+        format!("Failed to parse package required: {}", package_name)
+      })?;
+      AddPackageReq::Jsr(pkg_req)
+    };
+
+    package_reqs.push(req);
   }
 
   let package_futures = package_reqs
