@@ -302,6 +302,7 @@ pub struct PublishFlags {
   pub token: Option<String>,
   pub dry_run: bool,
   pub allow_slow_types: bool,
+  pub allow_dirty: bool,
   pub provenance: bool,
 }
 
@@ -2397,9 +2398,14 @@ fn publish_subcommand() -> Command {
           .action(ArgAction::SetTrue),
       )
       .arg(
+        Arg::new("allow-dirty")
+        .long("allow-dirty")
+        .help("Allow publishing if the repository has uncommited changed")
+        .action(ArgAction::SetTrue),
+      ).arg(
         Arg::new("provenance")
           .long("provenance")
-          .help("From CI/CD system, publicly links the package to where it was built and published from.")
+          .help("From CI/CD system, publicly links the package to where it was built and published from")
           .action(ArgAction::SetTrue)
       )
       .arg(check_arg(/* type checks by default */ true))
@@ -3842,6 +3848,7 @@ fn publish_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     token: matches.remove_one("token"),
     dry_run: matches.get_flag("dry-run"),
     allow_slow_types: matches.get_flag("allow-slow-types"),
+    allow_dirty: matches.get_flag("allow-dirty"),
     provenance: matches.get_flag("provenance"),
   });
 }
@@ -8564,6 +8571,7 @@ mod tests {
       "publish",
       "--dry-run",
       "--allow-slow-types",
+      "--allow-dirty",
       "--token=asdf",
     ]);
     assert_eq!(
@@ -8573,6 +8581,7 @@ mod tests {
           token: Some("asdf".to_string()),
           dry_run: true,
           allow_slow_types: true,
+          allow_dirty: true,
           provenance: false,
         }),
         type_check_mode: TypeCheckMode::Local,
@@ -8591,6 +8600,7 @@ mod tests {
         subcommand: DenoSubcommand::Publish(PublishFlags {
           token: Some("asdf".to_string()),
           dry_run: false,
+          allow_dirty: false,
           allow_slow_types: false,
           provenance: true,
         }),
