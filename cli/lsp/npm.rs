@@ -6,6 +6,7 @@ use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_npm::registry::NpmPackageInfo;
 use deno_runtime::permissions::PermissionsContainer;
+use deno_semver::package::PackageNv;
 use deno_semver::Version;
 use serde::Deserialize;
 use std::sync::Arc;
@@ -80,6 +81,13 @@ impl PackageSearchApi for CliNpmSearchApi {
       .versions_cache
       .insert(name.to_string(), versions.clone());
     Ok(versions)
+  }
+
+  async fn exports(
+    &self,
+    _nv: &PackageNv,
+  ) -> Result<Arc<Vec<String>>, AnyError> {
+    Ok(Default::default())
   }
 }
 

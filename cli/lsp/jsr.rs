@@ -66,6 +66,10 @@ impl JsrResolver {
     }
   }
 
+  pub fn resolve_req(&self, req: &PackageReq) -> Option<PackageNv> {
+    self.nv_by_req.get(req).as_deref().cloned().flatten()
+  }
+
   pub fn jsr_to_registry_url(
     &self,
     specifier: &ModuleSpecifier,
@@ -177,39 +181,7 @@ fn read_cached_package_version_info(
       LSP_DISALLOW_GLOBAL_TO_LOCAL_COPY,
     )
     .ok()??;
-  // This is a roundabout way of deserializing `JsrPackageVersionInfo`,
-  // because we only want the `exports` field and `module_graph` is large.
-  let mut info =
-    serde_json::from_slice::<serde_json::Value>(&meta_bytes).ok()?;
-  Some(JsrPackageVersionInfo {
-    manifest: Default::default(), // not used by the LSP (only caching checks this in deno_graph)
-    exports: info.as_object_mut()?.remove("exports")?,
-    module_graph: None,
-  })
-}
-
-// TODO(nayeemrmn): This is duplicated from a private function in deno_graph
-// 0.65.1. Make it public or cleanup otherwise.
-fn normalize_export_name(sub_path: Option<&str>) -> Cow<str> {
-  let Some(sub_path) = sub_path else {
-    return Cow::Borrowed(".");
-  };
-  if sub_path.is_empty() || matches!(sub_path, "/" | ".") {
-    Cow::Borrowed(".")
-  } else {
-    let sub_path = if sub_path.starts_with('/') {
-      Cow::Owned(format!(".{}", sub_path))
-    } else if !sub_path.starts_with("./") {
-      Cow::Owned(format!("./{}", sub_path))
-    } else {
-      Cow::Borrowed(sub_path)
-    };
-    if let Some(prefix) = sub_path.strip_suffix('/') {
-      Cow::Owned(prefix.to_string())
-    } else {
-      sub_path
-    }
-  }
+  partial_jsr_package_version_info_from_slice(&meta_bytes).ok()
 }
 
 #[derive(Debug, Clone)]
@@ -217,6 +189,7 @@ pub struct CliJsrSearchApi {
   file_fetcher: FileFetcher,
   search_cache: Arc<DashMap<String, Arc<Vec<String>>>>,
   versions_cache: Arc<DashMap<String, Arc<Vec<Version>>>>,
+  exports_cache: Arc<DashMap<PackageNv, Arc<Vec<String>>>>,
 }
 
 impl CliJsrSearchApi {
@@ -225,6 +198,7 @@ impl CliJsrSearchApi {
       file_fetcher,
       search_cache: Default::default(),
       versions_cache: Default::default(),
+      exports_cache: Default::default(),
     }
   }
 }
@@ -277,15 +251,87 @@ impl PackageSearchApi for CliJsrSearchApi {
       .insert(name.to_string(), versions.clone());
     Ok(versions)
   }
+
+  async fn exports(
+    &self,
+    nv: &PackageNv,
+  ) -> Result<Arc<Vec<String>>, AnyError> {
+    if let Some(exports) = self.exports_cache.get(nv) {
+      return Ok(exports.clone());
+    }
+    let mut meta_url = jsr_url().clone();
+    meta_url
+      .path_segments_mut()
+      .map_err(|_| anyhow!("Custom jsr URL cannot be a base."))?
+      .pop_if_empty()
+      .push(&nv.name)
+      .push(&format!("{}_meta.json", &nv.version));
+    let file = self
+      .file_fetcher
+      .fetch(&meta_url, PermissionsContainer::allow_all())
+      .await?;
+    let info = partial_jsr_package_version_info_from_slice(&file.source)?;
+    let mut exports = info
+      .exports()
+      .map(|(n, _)| n.to_string())
+      .collect::<Vec<_>>();
+    exports.sort();
+    let exports = Arc::new(exports);
+    self.exports_cache.insert(nv.clone(), exports.clone());
+    Ok(exports)
+  }
+}
+
+// TODO(nayeemrmn): This is duplicated from a private function in deno_graph
+// 0.65.1. Make it public or cleanup otherwise.
+fn normalize_export_name(sub_path: Option<&str>) -> Cow<str> {
+  let Some(sub_path) = sub_path else {
+    return Cow::Borrowed(".");
+  };
+  if sub_path.is_empty() || matches!(sub_path, "/" | ".") {
+    Cow::Borrowed(".")
+  } else {
+    let sub_path = if sub_path.starts_with('/') {
+      Cow::Owned(format!(".{}", sub_path))
+    } else if !sub_path.starts_with("./") {
+      Cow::Owned(format!("./{}", sub_path))
+    } else {
+      Cow::Borrowed(sub_path)
+    };
+    if let Some(prefix) = sub_path.strip_suffix('/') {
+      Cow::Owned(prefix.to_string())
+    } else {
+      sub_path
+    }
+  }
+}
+
+/// This is a roundabout way of deserializing `JsrPackageVersionInfo`,
+/// because we only want the `exports` field and `module_graph` is large.
+fn partial_jsr_package_version_info_from_slice(
+  slice: &[u8],
+) -> serde_json::Result<JsrPackageVersionInfo> {
+  let mut info = serde_json::from_slice::<serde_json::Value>(slice)?;
+  Ok(JsrPackageVersionInfo {
+    manifest: Default::default(), // not used by the LSP (only caching checks this in deno_graph)
+    exports: info
+      .as_object_mut()
+      .and_then(|o| o.remove("exports"))
+      .unwrap_or_default(),
+    module_graph: None,
+  })
 }
 
 fn parse_jsr_search_response(source: &str) -> Result<Vec<String>, AnyError> {
   #[derive(Debug, Deserialize)]
+  #[serde(rename_all = "camelCase")]
   struct Item {
     scope: String,
     name: String,
+    version_count: usize,
   }
   #[derive(Debug, Deserialize)]
+  #[serde(rename_all = "camelCase")]
   struct Response {
     items: Vec<Item>,
   }
@@ -293,6 +339,7 @@ fn parse_jsr_search_response(source: &str) -> Result<Vec<String>, AnyError> {
   Ok(
     items
       .into_iter()
+      .filter(|i| i.version_count > 0)
       .map(|i| format!("@{}/{}", i.scope, i.name))
       .collect(),
   )

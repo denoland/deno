@@ -6,6 +6,7 @@ use super::config::WorkspaceSettings;
 use super::documents::Documents;
 use super::documents::DocumentsFilter;
 use super::jsr::CliJsrSearchApi;
+use super::jsr::JsrResolver;
 use super::lsp_custom;
 use super::npm::CliNpmSearchApi;
 use super::registries::ModuleRegistry;
@@ -26,6 +27,8 @@ use deno_core::serde::Serialize;
 use deno_core::serde_json::json;
 use deno_core::url::Position;
 use deno_core::ModuleSpecifier;
+use deno_semver::jsr::JsrPackageReqReference;
+use deno_semver::package::PackageNv;
 use import_map::ImportMap;
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -173,8 +176,14 @@ pub async fn get_import_completions(
       items: get_local_completions(specifier, &text, &range)?,
     }))
   } else if text.starts_with("jsr:") {
-    let items =
-      get_jsr_completions(specifier, &text, &range, jsr_search_api).await?;
+    let items = get_jsr_completions(
+      specifier,
+      &text,
+      &range,
+      jsr_search_api,
+      documents.get_jsr_resolver(),
+    )
+    .await?;
     Some(lsp::CompletionResponse::List(lsp::CompletionList {
       is_incomplete: !items.is_empty(),
       items,
@@ -509,12 +518,62 @@ async fn get_jsr_completions(
   specifier: &str,
   range: &lsp::Range,
   jsr_search_api: &impl PackageSearchApi,
+  jsr_resolver: &JsrResolver,
 ) -> Option<Vec<lsp::CompletionItem>> {
-  // First try to match `jsr:some-package@<version-to-complete>`.
+  // First try to match `jsr:some-package@some-version/<export-to-complete>`.
+  if let Ok(req_ref) = JsrPackageReqReference::from_str(specifier) {
+    let sub_path = req_ref.sub_path();
+    if sub_path.is_some() || specifier.ends_with('/') {
+      let export_prefix = sub_path.unwrap_or("");
+      let req = req_ref.req();
+      let nv = jsr_resolver.resolve_req(req);
+      let nv = nv.or_else(|| PackageNv::from_str(&req.to_string()).ok())?;
+      let exports = jsr_search_api.exports(&nv).await.ok()?;
+      let items = exports
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, export)| {
+          if export == "." {
+            return None;
+          }
+          let export = export.strip_prefix("./").unwrap_or(export.as_str());
+          if !export.starts_with(export_prefix) {
+            return None;
+          }
+          let specifier = format!("jsr:{}/{}", req_ref.req(), export);
+          let command = Some(lsp::Command {
+            title: "".to_string(),
+            command: "deno.cache".to_string(),
+            arguments: Some(vec![json!([&specifier]), json!(referrer)]),
+          });
+          let text_edit = Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
+            range: *range,
+            new_text: specifier.clone(),
+          }));
+          Some(lsp::CompletionItem {
+            label: specifier,
+            kind: Some(lsp::CompletionItemKind::FILE),
+            detail: Some("(jsr)".to_string()),
+            sort_text: Some(format!("{:0>10}", idx + 1)),
+            text_edit,
+            command,
+            commit_characters: Some(
+              IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect(),
+            ),
+            ..Default::default()
+          })
+        })
+        .collect();
+      return Some(items);
+    }
+  }
+
+  // Then try to match `jsr:some-package@<version-to-complete>`.
   let bare_specifier = specifier.strip_prefix("jsr:")?;
   if let Some(v_index) = parse_bare_specifier_version_index(bare_specifier) {
     let package_name = &bare_specifier[..v_index];
     let v_prefix = &bare_specifier[(v_index + 1)..];
+
     let versions = jsr_search_api.versions(package_name).await.ok()?;
     let items = versions
       .iter()
@@ -720,6 +779,7 @@ mod tests {
   use super::*;
   use crate::cache::GlobalHttpCache;
   use crate::cache::HttpCache;
+  use crate::cache::RealDenoCacheEnv;
   use crate::lsp::documents::Documents;
   use crate::lsp::documents::LanguageId;
   use crate::lsp::search::tests::TestPackageSearchApi;
@@ -927,11 +987,19 @@ mod tests {
 
   #[tokio::test]
   async fn test_get_jsr_completions() {
+    let temp_dir = TempDir::default();
+    let jsr_resolver = JsrResolver::from_cache_and_lockfile(
+      Arc::new(GlobalHttpCache::new(
+        temp_dir.path().to_path_buf(),
+        RealDenoCacheEnv,
+      )),
+      None,
+    );
     let jsr_search_api = TestPackageSearchApi::default()
-      .with_package_version("@std/archive", "1.0.0")
-      .with_package_version("@std/assert", "1.0.0")
-      .with_package_version("@std/async", "1.0.0")
-      .with_package_version("@std/bytes", "1.0.0");
+      .with_package_version("@std/archive", "1.0.0", &[])
+      .with_package_version("@std/assert", "1.0.0", &[])
+      .with_package_version("@std/async", "1.0.0", &[])
+      .with_package_version("@std/bytes", "1.0.0", &[]);
     let range = lsp::Range {
       start: lsp::Position {
         line: 0,
@@ -943,10 +1011,15 @@ mod tests {
       },
     };
     let referrer = ModuleSpecifier::parse("file:///referrer.ts").unwrap();
-    let actual =
-      get_jsr_completions(&referrer, "jsr:as", &range, &jsr_search_api)
-        .await
-        .unwrap();
+    let actual = get_jsr_completions(
+      &referrer,
+      "jsr:as",
+      &range,
+      &jsr_search_api,
+      &jsr_resolver,
+    )
+    .await
+    .unwrap();
     assert_eq!(
       actual,
       vec![
@@ -994,10 +1067,18 @@ mod tests {
 
   #[tokio::test]
   async fn test_get_jsr_completions_for_versions() {
+    let temp_dir = TempDir::default();
+    let jsr_resolver = JsrResolver::from_cache_and_lockfile(
+      Arc::new(GlobalHttpCache::new(
+        temp_dir.path().to_path_buf(),
+        RealDenoCacheEnv,
+      )),
+      None,
+    );
     let jsr_search_api = TestPackageSearchApi::default()
-      .with_package_version("@std/assert", "0.3.0")
-      .with_package_version("@std/assert", "0.4.0")
-      .with_package_version("@std/assert", "0.5.0");
+      .with_package_version("@std/assert", "0.3.0", &[])
+      .with_package_version("@std/assert", "0.4.0", &[])
+      .with_package_version("@std/assert", "0.5.0", &[]);
     let range = lsp::Range {
       start: lsp::Position {
         line: 0,
@@ -1014,6 +1095,7 @@ mod tests {
       "jsr:@std/assert@",
       &range,
       &jsr_search_api,
+      &jsr_resolver,
     )
     .await
     .unwrap();
@@ -1091,12 +1173,98 @@ mod tests {
   }
 
   #[tokio::test]
+  async fn test_get_jsr_completions_for_exports() {
+    let temp_dir = TempDir::default();
+    let jsr_resolver = JsrResolver::from_cache_and_lockfile(
+      Arc::new(GlobalHttpCache::new(
+        temp_dir.path().to_path_buf(),
+        RealDenoCacheEnv,
+      )),
+      None,
+    );
+    let jsr_search_api = TestPackageSearchApi::default().with_package_version(
+      "@std/path",
+      "0.1.0",
+      &[".", "./basename", "./common", "./constants", "./dirname"],
+    );
+    let range = lsp::Range {
+      start: lsp::Position {
+        line: 0,
+        character: 23,
+      },
+      end: lsp::Position {
+        line: 0,
+        character: 45,
+      },
+    };
+    let referrer = ModuleSpecifier::parse("file:///referrer.ts").unwrap();
+    let actual = get_jsr_completions(
+      &referrer,
+      "jsr:@std/path@0.1.0/co",
+      &range,
+      &jsr_search_api,
+      &jsr_resolver,
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+      actual,
+      vec![
+        lsp::CompletionItem {
+          label: "jsr:@std/path@0.1.0/common".to_string(),
+          kind: Some(lsp::CompletionItemKind::FILE),
+          detail: Some("(jsr)".to_string()),
+          sort_text: Some("0000000003".to_string()),
+          text_edit: Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
+            range,
+            new_text: "jsr:@std/path@0.1.0/common".to_string(),
+          })),
+          command: Some(lsp::Command {
+            title: "".to_string(),
+            command: "deno.cache".to_string(),
+            arguments: Some(vec![
+              json!(["jsr:@std/path@0.1.0/common"]),
+              json!(&referrer)
+            ])
+          }),
+          commit_characters: Some(
+            IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect()
+          ),
+          ..Default::default()
+        },
+        lsp::CompletionItem {
+          label: "jsr:@std/path@0.1.0/constants".to_string(),
+          kind: Some(lsp::CompletionItemKind::FILE),
+          detail: Some("(jsr)".to_string()),
+          sort_text: Some("0000000004".to_string()),
+          text_edit: Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
+            range,
+            new_text: "jsr:@std/path@0.1.0/constants".to_string(),
+          })),
+          command: Some(lsp::Command {
+            title: "".to_string(),
+            command: "deno.cache".to_string(),
+            arguments: Some(vec![
+              json!(["jsr:@std/path@0.1.0/constants"]),
+              json!(&referrer)
+            ])
+          }),
+          commit_characters: Some(
+            IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect()
+          ),
+          ..Default::default()
+        },
+      ]
+    );
+  }
+
+  #[tokio::test]
   async fn test_get_npm_completions() {
     let npm_search_api = TestPackageSearchApi::default()
-      .with_package_version("puppeteer", "1.0.0")
-      .with_package_version("puppeteer-core", "1.0.0")
-      .with_package_version("puppeteer-extra-plugin", "1.0.0")
-      .with_package_version("puppeteer-extra-plugin-stealth", "1.0.0");
+      .with_package_version("puppeteer", "1.0.0", &[])
+      .with_package_version("puppeteer-core", "1.0.0", &[])
+      .with_package_version("puppeteer-extra-plugin", "1.0.0", &[])
+      .with_package_version("puppeteer-extra-plugin-stealth", "1.0.0", &[]);
     let range = lsp::Range {
       start: lsp::Position {
         line: 0,
@@ -1207,10 +1375,10 @@ mod tests {
   #[tokio::test]
   async fn test_get_npm_completions_for_versions() {
     let npm_search_api = TestPackageSearchApi::default()
-      .with_package_version("puppeteer", "20.9.0")
-      .with_package_version("puppeteer", "21.0.0")
-      .with_package_version("puppeteer", "21.0.1")
-      .with_package_version("puppeteer", "21.0.2");
+      .with_package_version("puppeteer", "20.9.0", &[])
+      .with_package_version("puppeteer", "21.0.0", &[])
+      .with_package_version("puppeteer", "21.0.1", &[])
+      .with_package_version("puppeteer", "21.0.2", &[]);
     let range = lsp::Range {
       start: lsp::Position {
         line: 0,
