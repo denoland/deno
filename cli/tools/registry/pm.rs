@@ -232,6 +232,8 @@ pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
 
   tokio::fs::write(&config_file_path, new_text).await.unwrap();
 
+  // TODO(bartlomieju): we should now cache the imports from the config file.
+
   Ok(())
 }
 
