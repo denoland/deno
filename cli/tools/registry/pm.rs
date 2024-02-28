@@ -125,7 +125,7 @@ pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
 
   for package_name in add_flags.packages.iter() {
     let req = if package_name.starts_with("npm:") {
-      let pkg_req = NpmPackageReqReference::from_str(&package_name)
+      let pkg_req = NpmPackageReqReference::from_str(package_name)
         .with_context(|| {
           format!("Failed to parse package required: {}", package_name)
         })?;
@@ -198,7 +198,7 @@ pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
   for selected_package in selected_packages {
     eprintln!(
       "Add {} - {}@{}",
-      crate::colors::green(format!("{}", selected_package.import_name)),
+      crate::colors::green(&selected_package.import_name),
       selected_package.package_name,
       selected_package.version
     );
