@@ -1101,24 +1101,28 @@ impl Documents {
     &self,
     specifier: &'a ModuleSpecifier,
   ) -> SloppyImportsResolution<'a> {
-    SloppyImportsResolver::resolve_with_stat_sync(specifier, |path| {
-      if let Ok(specifier) = ModuleSpecifier::from_file_path(path) {
-        if self.open_docs.contains_key(&specifier)
-          || self.cache.contains(&specifier)
-        {
-          return Some(SloppyImportsFsEntry::File);
+    SloppyImportsResolver::resolve_with_stat_sync(
+      specifier,
+      ResolutionMode::Types,
+      |path| {
+        if let Ok(specifier) = ModuleSpecifier::from_file_path(path) {
+          if self.open_docs.contains_key(&specifier)
+            || self.cache.contains(&specifier)
+          {
+            return Some(SloppyImportsFsEntry::File);
+          }
         }
-      }
-      path.metadata().ok().and_then(|m| {
-        if m.is_file() {
-          Some(SloppyImportsFsEntry::File)
-        } else if m.is_dir() {
-          Some(SloppyImportsFsEntry::Dir)
-        } else {
-          None
-        }
-      })
-    })
+        path.metadata().ok().and_then(|m| {
+          if m.is_file() {
+            Some(SloppyImportsFsEntry::File)
+          } else if m.is_dir() {
+            Some(SloppyImportsFsEntry::Dir)
+          } else {
+            None
+          }
+        })
+      },
+    )
   }
 
   /// Return `true` if the specifier can be resolved to a document.
@@ -1800,22 +1804,26 @@ impl<'a> OpenDocumentsGraphLoader<'a> {
     &self,
     specifier: &'b ModuleSpecifier,
   ) -> SloppyImportsResolution<'b> {
-    SloppyImportsResolver::resolve_with_stat_sync(specifier, |path| {
-      if let Ok(specifier) = ModuleSpecifier::from_file_path(path) {
-        if self.open_docs.contains_key(&specifier) {
-          return Some(SloppyImportsFsEntry::File);
+    SloppyImportsResolver::resolve_with_stat_sync(
+      specifier,
+      ResolutionMode::Types,
+      |path| {
+        if let Ok(specifier) = ModuleSpecifier::from_file_path(path) {
+          if self.open_docs.contains_key(&specifier) {
+            return Some(SloppyImportsFsEntry::File);
+          }
         }
-      }
-      path.metadata().ok().and_then(|m| {
-        if m.is_file() {
-          Some(SloppyImportsFsEntry::File)
-        } else if m.is_dir() {
-          Some(SloppyImportsFsEntry::Dir)
-        } else {
-          None
-        }
-      })
-    })
+        path.metadata().ok().and_then(|m| {
+          if m.is_file() {
+            Some(SloppyImportsFsEntry::File)
+          } else if m.is_dir() {
+            Some(SloppyImportsFsEntry::Dir)
+          } else {
+            None
+          }
+        })
+      },
+    )
   }
 }
 
