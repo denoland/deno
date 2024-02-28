@@ -1131,8 +1131,10 @@ mod tests {
 }
 
 async fn check_if_git_repo_dirty(cwd: &Path) -> bool {
+  let bin_name = if cfg!(windows) { "git.exe" } else { "git" };
+
   // Check if git exists
-  let git_exists = Command::new("git")
+  let git_exists = Command::new(bin_name)
     .arg("--version")
     .stderr(Stdio::null())
     .stdout(Stdio::null())
@@ -1145,7 +1147,7 @@ async fn check_if_git_repo_dirty(cwd: &Path) -> bool {
   }
 
   // Check if there are uncommitted changes
-  let output = Command::new("git")
+  let output = Command::new(bin_name)
     .current_dir(cwd)
     .args(["status", "--porcelain"])
     .output()
