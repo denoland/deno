@@ -89,7 +89,7 @@ pub enum WorkerControlEvent {
 }
 
 use deno_core::serde::Serializer;
-use deno_fetch::reqwest::dns::Resolve;
+use deno_fetch::DnsResolver;
 
 impl Serialize for WorkerControlEvent {
   fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -356,7 +356,7 @@ pub struct WebWorkerOptions {
   pub cache_storage_dir: Option<std::path::PathBuf>,
   pub stdio: Stdio,
   pub feature_checker: Arc<FeatureChecker>,
-  pub dns_resolver: Option<Arc<dyn Resolve>>,
+  pub dns_resolver: Option<DnsResolver>,
 }
 
 impl WebWorker {

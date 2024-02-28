@@ -34,7 +34,6 @@ use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::SourceMapGetter;
 use deno_cron::local::LocalCronHandler;
-use deno_fetch::reqwest::dns::Resolve;
 use deno_fs::FileSystem;
 use deno_http::DefaultHttpPropertyExtractor;
 use deno_io::Stdio;
@@ -42,6 +41,7 @@ use deno_kv::dynamic::MultiBackendDbHandler;
 use deno_tls::RootCertStoreProvider;
 use deno_web::BlobStore;
 use log::debug;
+use deno_fetch::DnsResolver;
 
 use crate::inspector_server::InspectorServer;
 use crate::ops;
@@ -191,7 +191,7 @@ pub struct WorkerOptions {
   pub feature_checker: Arc<FeatureChecker>,
 
   /// Custom DNS resolver to use with the `fetch` API.
-  pub dns_resolver: Option<Arc<dyn Resolve>>,
+  pub dns_resolver: Option<DnsResolver>,
 }
 
 impl Default for WorkerOptions {

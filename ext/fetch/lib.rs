@@ -4,6 +4,7 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::cmp::min;
 use std::convert::From;
+use std::fmt::{Debug, Formatter};
 use std::path::Path;
 use std::path::PathBuf;
 use std::pin::Pin;
@@ -72,6 +73,27 @@ pub use fs_fetch_handler::FsFetchHandler;
 mod fs_fetch_handler;
 
 #[derive(Clone)]
+pub struct DnsResolver(Arc<dyn Resolve>);
+
+impl DnsResolver {
+  pub fn new(inner: Arc<dyn Resolve>) -> Self {
+    Self(inner)
+  }
+}
+
+impl From<DnsResolver> for Arc<dyn Resolve> {
+  fn from(value: DnsResolver) -> Self {
+    value.0
+  }
+}
+
+impl Debug for DnsResolver {
+  fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    write!(f, "DnsResolver")
+  }
+}
+
+#[derive(Clone)]
 pub struct Options {
   pub user_agent: String,
   pub root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
@@ -81,7 +103,7 @@ pub struct Options {
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub client_cert_chain_and_key: Option<(String, String)>,
   pub file_fetch_handler: Rc<dyn FetchHandler>,
-  pub dns_resolver: Option<Arc<dyn Resolve>>,
+  pub dns_resolver: Option<DnsResolver>,
 }
 
 impl Options {
@@ -200,7 +222,6 @@ pub fn get_or_create_client_from_state(
     let options = state.borrow::<Options>();
     let client = create_http_client(
       &options.user_agent,
-      options.dns_resolver.clone(),
       CreateHttpClientOptions {
         root_cert_store: options.root_cert_store()?,
         ca_certs: vec![],
@@ -213,6 +234,7 @@ pub fn get_or_create_client_from_state(
         pool_idle_timeout: None,
         http1: true,
         http2: true,
+        dns_resolver: options.dns_resolver.clone(),
       },
     )?;
     state.put::<reqwest::Client>(client.clone());
@@ -856,7 +878,6 @@ where
 
   let client = create_http_client(
     &options.user_agent,
-    options.dns_resolver.clone(),
     CreateHttpClientOptions {
       root_cert_store: options.root_cert_store()?,
       ca_certs,
@@ -878,6 +899,7 @@ where
       ),
       http1: args.http1,
       http2: args.http2,
+      dns_resolver: options.dns_resolver.clone(),
     },
   )?;
 
@@ -898,6 +920,7 @@ pub struct CreateHttpClientOptions {
   pub pool_idle_timeout: Option<Option<u64>>,
   pub http1: bool,
   pub http2: bool,
+  pub dns_resolver: Option<DnsResolver>,
 }
 
 impl Default for CreateHttpClientOptions {
@@ -912,6 +935,7 @@ impl Default for CreateHttpClientOptions {
       pool_idle_timeout: None,
       http1: true,
       http2: true,
+      dns_resolver: None,
     }
   }
 }
@@ -920,7 +944,6 @@ impl Default for CreateHttpClientOptions {
 /// proxies and doesn't follow redirects.
 pub fn create_http_client(
   user_agent: &str,
-  dns_resolver: Option<Arc<dyn Resolve>>,
   options: CreateHttpClientOptions,
 ) -> Result<Client, AnyError> {
   let mut tls_config = deno_tls::create_client_config(
@@ -975,8 +998,8 @@ pub fn create_http_client(
     }
   }
 
-  if let Some(dns_resolver) = dns_resolver {
-    builder = builder.dns_resolver(Arc::new(ResolverWrapper(dns_resolver)));
+  if let Some(dns_resolver) = options.dns_resolver {
+    builder = builder.dns_resolver(Arc::new(ResolverWrapper(dns_resolver.clone().into())));
   }
 
   builder.build().map_err(|e| e.into())

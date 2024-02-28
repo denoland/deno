@@ -690,7 +690,7 @@ mod tests {
   use deno_core::error::get_custom_error_class;
   use deno_core::resolve_url;
   use deno_core::url::Url;
-  use deno_runtime::deno_fetch::{create_http_client, DnsName};
+  use deno_runtime::deno_fetch::{create_http_client, DnsName, DnsResolver};
   use deno_runtime::deno_fetch::reqwest::dns::Resolve;
   use deno_runtime::deno_fetch::reqwest::dns::Resolving;
   use deno_runtime::deno_fetch::CreateHttpClientOptions;
@@ -700,7 +700,7 @@ mod tests {
   use std::collections::hash_map::RandomState;
   use std::collections::HashSet;
   use std::fs::read;
-  use std::net::SocketAddr;
+  use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
   use test_util::TempDir;
 
   fn setup(
@@ -1529,7 +1529,6 @@ mod tests {
     HttpClient::from_client(
       create_http_client(
         "test_client",
-        None,
         CreateHttpClientOptions::default(),
       )
       .unwrap(),
@@ -1540,8 +1539,10 @@ mod tests {
     HttpClient::from_client(
       create_http_client(
         "test_client",
-        Some(Arc::new(TestResolver)),
-        CreateHttpClientOptions::default(),
+        CreateHttpClientOptions {
+          dns_resolver: Some(DnsResolver::new(Arc::new(TestResolver))),
+          ..Default::default()
+        },
       )
       .unwrap(),
     )
@@ -1710,8 +1711,8 @@ mod tests {
       &self,
       _name: DnsName,
     ) -> Resolving {
-      let iter: Box<dyn Iterator<Item = SocketAddr> + Send> = Box::new(
-        vec!["127.0.0.1:0".parse::<SocketAddr>().unwrap()].into_iter(),
+      let iter: Box<dyn Iterator<Item=SocketAddr> + Send> = Box::new(
+        vec![SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0).into()].into_iter(),
       );
       Box::pin(async move { Ok(iter) })
     }
@@ -1777,7 +1778,6 @@ mod tests {
     let client = HttpClient::from_client(
       create_http_client(
         version::get_user_agent(),
-        None,
         CreateHttpClientOptions {
           ca_certs: vec![read(
             test_util::testdata_path().join("tls/RootCA.pem"),
@@ -1832,7 +1832,6 @@ mod tests {
       let client = HttpClient::from_client(
         create_http_client(
           version::get_user_agent(),
-          None,
           CreateHttpClientOptions::default(),
         )
         .unwrap(),
@@ -1894,7 +1893,6 @@ mod tests {
     let client = HttpClient::from_client(
       create_http_client(
         version::get_user_agent(),
-        None,
         CreateHttpClientOptions {
           root_cert_store: Some(root_cert_store),
           ..Default::default()
@@ -1946,7 +1944,6 @@ mod tests {
     let client = HttpClient::from_client(
       create_http_client(
         version::get_user_agent(),
-        None,
         CreateHttpClientOptions {
           ca_certs: vec![read(
             test_util::testdata_path()
@@ -1990,7 +1987,6 @@ mod tests {
     let client = HttpClient::from_client(
       create_http_client(
         version::get_user_agent(),
-        None,
         CreateHttpClientOptions {
           ca_certs: vec![read(
             test_util::testdata_path()
@@ -2051,7 +2047,6 @@ mod tests {
     let client = HttpClient::from_client(
       create_http_client(
         version::get_user_agent(),
-        None,
         CreateHttpClientOptions {
           ca_certs: vec![read(
             test_util::testdata_path()

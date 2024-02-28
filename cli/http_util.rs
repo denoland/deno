@@ -11,9 +11,8 @@ use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures::StreamExt;
 use deno_core::url::Url;
-use deno_runtime::deno_fetch::create_http_client;
+use deno_runtime::deno_fetch::{create_http_client, DnsResolver};
 use deno_runtime::deno_fetch::reqwest;
-use deno_runtime::deno_fetch::reqwest::dns::Resolve;
 use deno_runtime::deno_fetch::reqwest::header::LOCATION;
 use deno_runtime::deno_fetch::reqwest::Response;
 use deno_runtime::deno_fetch::CreateHttpClientOptions;
@@ -224,7 +223,7 @@ pub struct HttpClient {
   options: CreateHttpClientOptions,
   root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
   cell: once_cell::sync::OnceCell<reqwest::Client>,
-  dns_resolver: Option<Arc<dyn Resolve>>,
+  dns_resolver: Option<DnsResolver>,
 }
 
 impl std::fmt::Debug for HttpClient {
@@ -250,7 +249,7 @@ impl HttpClient {
   pub fn with_dns_resolver(
     root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
     unsafely_ignore_certificate_errors: Option<Vec<String>>,
-    dns_resolver: Option<Arc<dyn Resolve>>,
+    dns_resolver: Option<DnsResolver>,
   ) -> Self {
     Self {
       options: CreateHttpClientOptions {
@@ -279,12 +278,12 @@ impl HttpClient {
     self.cell.get_or_try_init(|| {
       create_http_client(
         get_user_agent(),
-        self.dns_resolver.clone(),
         CreateHttpClientOptions {
           root_cert_store: match &self.root_cert_store_provider {
             Some(provider) => Some(provider.get_or_try_init()?.clone()),
             None => None,
           },
+          dns_resolver: self.dns_resolver.clone(),
           ..self.options.clone()
         },
       )
