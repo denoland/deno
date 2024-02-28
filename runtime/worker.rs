@@ -34,6 +34,7 @@ use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::SourceMapGetter;
 use deno_cron::local::LocalCronHandler;
+use deno_fetch::DnsResolver;
 use deno_fs::FileSystem;
 use deno_http::DefaultHttpPropertyExtractor;
 use deno_io::Stdio;
@@ -41,7 +42,6 @@ use deno_kv::dynamic::MultiBackendDbHandler;
 use deno_tls::RootCertStoreProvider;
 use deno_web::BlobStore;
 use log::debug;
-use deno_fetch::DnsResolver;
 
 use crate::inspector_server::InspectorServer;
 use crate::ops;

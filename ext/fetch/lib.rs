@@ -4,7 +4,8 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::cmp::min;
 use std::convert::From;
-use std::fmt::{Debug, Formatter};
+use std::fmt::Debug;
+use std::fmt::Formatter;
 use std::path::Path;
 use std::path::PathBuf;
 use std::pin::Pin;
@@ -18,46 +19,46 @@ use bytes::Bytes;
 pub use data_url;
 use data_url::DataUrl;
 use deno_core::anyhow::Error;
+use deno_core::error::type_error;
+use deno_core::error::AnyError;
+use deno_core::futures::stream::Peekable;
+use deno_core::futures::Future;
+use deno_core::futures::FutureExt;
+use deno_core::futures::Stream;
+use deno_core::futures::StreamExt;
+use deno_core::op2;
+use deno_core::unsync::spawn;
+use deno_core::url::Url;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::BufView;
 use deno_core::ByteString;
-use deno_core::Canceled;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
-use deno_core::error::AnyError;
-use deno_core::error::type_error;
-use deno_core::futures::Future;
-use deno_core::futures::FutureExt;
-use deno_core::futures::Stream;
-use deno_core::futures::stream::Peekable;
-use deno_core::futures::StreamExt;
+use deno_core::Canceled;
 use deno_core::JsBuffer;
-use deno_core::op2;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
-use deno_core::unsync::spawn;
-use deno_core::url::Url;
 use http_v02::header::CONTENT_LENGTH;
 use http_v02::Uri;
 pub use hyper_v014::client::connect::dns::Name as DnsName;
 pub use reqwest;
-use reqwest::Body;
-use reqwest::Client;
 use reqwest::dns::Resolve;
 use reqwest::dns::Resolving;
-use reqwest::header::ACCEPT_ENCODING;
 use reqwest::header::HeaderMap;
 use reqwest::header::HeaderName;
 use reqwest::header::HeaderValue;
+use reqwest::header::ACCEPT_ENCODING;
 use reqwest::header::HOST;
 use reqwest::header::RANGE;
 use reqwest::header::USER_AGENT;
-use reqwest::Method;
 use reqwest::redirect::Policy;
+use reqwest::Body;
+use reqwest::Client;
+use reqwest::Method;
 use reqwest::RequestBuilder;
 use reqwest::Response;
 use serde::Deserialize;
@@ -65,9 +66,9 @@ use serde::Serialize;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 
+use deno_tls::rustls::RootCertStore;
 use deno_tls::Proxy;
 use deno_tls::RootCertStoreProvider;
-use deno_tls::rustls::RootCertStore;
 pub use fs_fetch_handler::FsFetchHandler;
 
 mod fs_fetch_handler;
@@ -999,7 +1000,8 @@ pub fn create_http_client(
   }
 
   if let Some(dns_resolver) = options.dns_resolver {
-    builder = builder.dns_resolver(Arc::new(ResolverWrapper(dns_resolver.clone().into())));
+    builder = builder
+      .dns_resolver(Arc::new(ResolverWrapper(dns_resolver.clone().into())));
   }
 
   builder.build().map_err(|e| e.into())

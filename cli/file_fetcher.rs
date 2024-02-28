@@ -690,17 +690,21 @@ mod tests {
   use deno_core::error::get_custom_error_class;
   use deno_core::resolve_url;
   use deno_core::url::Url;
-  use deno_runtime::deno_fetch::{create_http_client, DnsName, DnsResolver};
+  use deno_runtime::deno_fetch::create_http_client;
   use deno_runtime::deno_fetch::reqwest::dns::Resolve;
   use deno_runtime::deno_fetch::reqwest::dns::Resolving;
   use deno_runtime::deno_fetch::CreateHttpClientOptions;
+  use deno_runtime::deno_fetch::DnsName;
+  use deno_runtime::deno_fetch::DnsResolver;
   use deno_runtime::deno_tls::rustls::RootCertStore;
   use deno_runtime::deno_web::Blob;
   use deno_runtime::deno_web::InMemoryBlobPart;
   use std::collections::hash_map::RandomState;
   use std::collections::HashSet;
   use std::fs::read;
-  use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
+  use std::net::Ipv4Addr;
+  use std::net::SocketAddr;
+  use std::net::SocketAddrV4;
   use test_util::TempDir;
 
   fn setup(
@@ -1527,11 +1531,8 @@ mod tests {
 
   fn create_test_client() -> HttpClient {
     HttpClient::from_client(
-      create_http_client(
-        "test_client",
-        CreateHttpClientOptions::default(),
-      )
-      .unwrap(),
+      create_http_client("test_client", CreateHttpClientOptions::default())
+        .unwrap(),
     )
   }
 
@@ -1707,11 +1708,8 @@ mod tests {
   struct TestResolver;
 
   impl Resolve for TestResolver {
-    fn resolve(
-      &self,
-      _name: DnsName,
-    ) -> Resolving {
-      let iter: Box<dyn Iterator<Item=SocketAddr> + Send> = Box::new(
+    fn resolve(&self, _name: DnsName) -> Resolving {
+      let iter: Box<dyn Iterator<Item = SocketAddr> + Send> = Box::new(
         vec![SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0).into()].into_iter(),
       );
       Box::pin(async move { Ok(iter) })
