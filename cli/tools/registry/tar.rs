@@ -44,6 +44,7 @@ pub fn create_gzipped_tarball(
   diagnostics_collector: &PublishDiagnosticsCollector,
   unfurler: &SpecifierUnfurler,
   file_patterns: Option<FilePatterns>,
+  maybe_jsx_config_pragmas: Option<String>,
 ) -> Result<PublishableTarball, AnyError> {
   let mut tar = TarGzArchive::new();
   let mut files = vec![];
@@ -153,6 +154,7 @@ pub fn create_gzipped_tarball(
         unfurler,
         source_parser,
         diagnostics_collector,
+        maybe_jsx_config_pragmas.clone(),
       )?;
       files.push(PublishableTarballFile {
         path_str: path_str.clone(),
@@ -200,13 +202,15 @@ fn resolve_content_maybe_unfurling(
   unfurler: &SpecifierUnfurler,
   source_parser: LazyGraphSourceParser,
   diagnostics_collector: &PublishDiagnosticsCollector,
+  maybe_jsx_config_pragmas: Option<String>,
 ) -> Result<Vec<u8>, AnyError> {
+  let media_type = MediaType::from_specifier(specifier);
+
   let parsed_source = match source_parser.get_or_parse_source(specifier)? {
     Some(parsed_source) => parsed_source,
     None => {
       let data = std::fs::read(path)
         .with_context(|| format!("Unable to read file '{}'", path.display()))?;
-      let media_type = MediaType::from_specifier(specifier);
 
       match media_type {
         MediaType::JavaScript
@@ -248,7 +252,15 @@ fn resolve_content_maybe_unfurling(
   let mut reporter = |diagnostic| {
     diagnostics_collector.push(PublishDiagnostic::SpecifierUnfurl(diagnostic));
   };
-  let content = unfurler.unfurl(specifier, &parsed_source, &mut reporter);
+  let mut content = unfurler.unfurl(specifier, &parsed_source, &mut reporter);
+
+  if matches!(media_type, MediaType::Jsx | MediaType::Tsx) {
+    // Emit JSX configuration pragamas to the top of the file.
+    if let Some(jsx_config_pragmas) = maybe_jsx_config_pragmas {
+      content = format!("{}{}", jsx_config_pragmas, content);
+    }
+  }
+
   Ok(content.into_bytes())
 }
 
