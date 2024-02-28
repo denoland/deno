@@ -381,6 +381,7 @@ pub struct LintOptions {
   pub rules: LintRulesConfig,
   pub files: FilePatterns,
   pub reporter_kind: LintReporterKind,
+  pub fix: bool,
 }
 
 impl LintOptions {
@@ -389,6 +390,7 @@ impl LintOptions {
       rules: Default::default(),
       files: FilePatterns::new_with_base(base),
       reporter_kind: Default::default(),
+      fix: false,
     }
   }
 
@@ -397,6 +399,7 @@ impl LintOptions {
     maybe_lint_flags: Option<LintFlags>,
     initial_cwd: &Path,
   ) -> Result<Self, AnyError> {
+    let fix = maybe_lint_flags.as_ref().map(|f| f.fix).unwrap_or(false);
     let mut maybe_reporter_kind =
       maybe_lint_flags.as_ref().and_then(|lint_flags| {
         if lint_flags.json {
@@ -454,6 +457,7 @@ impl LintOptions {
         maybe_rules_include,
         maybe_rules_exclude,
       ),
+      fix,
     })
   }
 }

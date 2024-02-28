@@ -214,9 +214,10 @@ async fn lint_files(
 
   futures.push({
     let has_error = has_error.clone();
-    let lint_rules = lint_rules.rules.clone();
+    let linter = create_linter(lint_rules.rules);
     let reporter_lock = reporter_lock.clone();
     let incremental_cache = incremental_cache.clone();
+    let fix = lint_options.fix;
     deno_core::unsync::spawn(async move {
       run_parallelized(paths, {
         move |file_path| {
@@ -227,12 +228,15 @@ async fn lint_files(
             return Ok(());
           }
 
-          let r = lint_file(&file_path, file_text, lint_rules);
+          let r = lint_file(&file_path, file_text, &linter, fix);
           if let Ok((file_diagnostics, file_source)) = &r {
             if file_diagnostics.is_empty() {
               // update the incremental cache if there were no diagnostics
-              incremental_cache
-                .update_file(&file_path, file_source.text_info().text_str())
+              incremental_cache.update_file(
+                &file_path,
+                // ensure the returned text is used here as it may have been modified via --fix
+                file_source.text_info().text_str(),
+              )
             }
           }
 
@@ -322,18 +326,41 @@ pub fn create_linter(rules: Vec<&'static dyn LintRule>) -> Linter {
 fn lint_file(
   file_path: &Path,
   source_code: String,
-  lint_rules: Vec<&'static dyn LintRule>,
+  linter: &Linter,
+  fix: bool,
 ) -> Result<(Vec<LintDiagnostic>, ParsedSource), AnyError> {
   let specifier = specifier_from_file_path(file_path)?;
   let media_type = MediaType::from_specifier(&specifier);
 
-  let linter = create_linter(lint_rules);
-
   let (source, file_diagnostics) = linter.lint_file(LintFileOptions {
     specifier,
     media_type,
-    source_code: source_code.clone(),
+    source_code,
   })?;
+
+  if fix && !file_diagnostics.is_empty() {
+    let file_start = source.text_info().range().start;
+    let quick_fixes = file_diagnostics
+      .iter()
+      .flat_map(|d| d.quick_fixes.iter())
+      .flat_map(|fix| fix.changes.iter())
+      // todo(dsherret): need to handle overlapping text changes
+      .map(|change| deno_ast::TextChange {
+        range: change.range.as_byte_range(file_start),
+        new_text: change.new_text.clone(),
+      })
+      .collect::<Vec<_>>();
+    if !quick_fixes.is_empty() {
+      let new_text = deno_ast::apply_text_changes(
+        &source.text_info().text_str(),
+        quick_fixes,
+      );
+      fs::write(&file_path, &new_text)?;
+      return lint_file(
+        &file_path, new_text, linter, /* do not fix again */ false,
+      );
+    }
+  }
 
   Ok((file_diagnostics, source))
 }
@@ -491,17 +518,26 @@ struct LintError {
 
 struct PrettyLintReporter {
   lint_count: u32,
+  fixable_diagnostics: u32,
 }
 
 impl PrettyLintReporter {
   fn new() -> PrettyLintReporter {
-    PrettyLintReporter { lint_count: 0 }
+    PrettyLintReporter {
+      lint_count: 0,
+      fixable_diagnostics: 0,
+    }
   }
 }
 
 impl LintReporter for PrettyLintReporter {
   fn visit_diagnostic(&mut self, d: LintOrCliDiagnostic) {
     self.lint_count += 1;
+    if let LintOrCliDiagnostic::Lint(d) = d {
+      if !d.quick_fixes.is_empty() {
+        self.fixable_diagnostics += 1;
+      }
+    }
 
     eprintln!("{}", d.display());
   }
@@ -512,9 +548,17 @@ impl LintReporter for PrettyLintReporter {
   }
 
   fn close(&mut self, check_count: usize) {
+    let fixable_suffix = if self.fixable_diagnostics > 0 {
+      colors::gray(format!(" ({} fixable via --fix)", self.fixable_diagnostics))
+        .to_string()
+    } else {
+      "".to_string()
+    };
     match self.lint_count {
-      1 => info!("Found 1 problem"),
-      n if n > 1 => info!("Found {} problems", self.lint_count),
+      1 => info!("Found 1 problem{}", fixable_suffix),
+      n if n > 1 => {
+        info!("Found {} problems{}", self.lint_count, fixable_suffix)
+      }
       _ => (),
     }
 

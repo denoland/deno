@@ -194,6 +194,7 @@ pub struct UninstallFlags {
 pub struct LintFlags {
   pub files: FileFlags,
   pub rules: bool,
+  pub fix: bool,
   pub maybe_rules_tags: Option<Vec<String>>,
   pub maybe_rules_include: Option<Vec<String>>,
   pub maybe_rules_exclude: Option<Vec<String>>,
@@ -1963,6 +1964,12 @@ Ignore linting a file by adding an ignore comment at the top of the file:
     .defer(|cmd| {
       cmd
         .arg(
+          Arg::new("fix")
+            .long("fix")
+            .help("Fix any linting errors for rules that support it")
+            .action(ArgAction::SetTrue),
+        )
+        .arg(
           Arg::new("rules")
             .long("rules")
             .help("List available rules")
@@ -3574,6 +3581,7 @@ fn lint_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     Some(f) => f.collect(),
     None => vec![],
   };
+  let fix = matches.get_flag("fix");
   let rules = matches.get_flag("rules");
   let maybe_rules_tags = matches
     .remove_many::<String>("rules-tags")
@@ -3594,6 +3602,7 @@ fn lint_parse(flags: &mut Flags, matches: &mut ArgMatches) {
       include: files,
       ignore,
     },
+    fix,
     rules,
     maybe_rules_tags,
     maybe_rules_include,
@@ -4944,6 +4953,7 @@ mod tests {
             include: vec!["script_1.ts".to_string(), "script_2.ts".to_string(),],
             ignore: vec![],
           },
+          fix: false,
           rules: false,
           maybe_rules_tags: None,
           maybe_rules_include: None,
@@ -4971,6 +4981,7 @@ mod tests {
             include: vec!["script_1.ts".to_string(), "script_2.ts".to_string()],
             ignore: vec![],
           },
+          fix: false,
           rules: false,
           maybe_rules_tags: None,
           maybe_rules_include: None,
@@ -4999,6 +5010,7 @@ mod tests {
             include: vec!["script_1.ts".to_string(), "script_2.ts".to_string()],
             ignore: vec![],
           },
+          fix: false,
           rules: false,
           maybe_rules_tags: None,
           maybe_rules_include: None,
@@ -5014,8 +5026,12 @@ mod tests {
       }
     );
 
-    let r =
-      flags_from_vec(svec!["deno", "lint", "--ignore=script_1.ts,script_2.ts"]);
+    let r = flags_from_vec(svec![
+      "deno",
+      "lint",
+      "--fix",
+      "--ignore=script_1.ts,script_2.ts"
+    ]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -5024,6 +5040,7 @@ mod tests {
             include: vec![],
             ignore: vec!["script_1.ts".to_string(), "script_2.ts".to_string()],
           },
+          fix: true,
           rules: false,
           maybe_rules_tags: None,
           maybe_rules_include: None,
@@ -5045,6 +5062,7 @@ mod tests {
             include: vec![],
             ignore: vec![],
           },
+          fix: false,
           rules: true,
           maybe_rules_tags: None,
           maybe_rules_include: None,
@@ -5071,6 +5089,7 @@ mod tests {
             include: vec![],
             ignore: vec![],
           },
+          fix: false,
           rules: true,
           maybe_rules_tags: Some(svec!["recommended"]),
           maybe_rules_include: None,
@@ -5098,6 +5117,7 @@ mod tests {
             include: vec![],
             ignore: vec![],
           },
+          fix: false,
           rules: false,
           maybe_rules_tags: Some(svec![""]),
           maybe_rules_include: Some(svec!["ban-untagged-todo", "no-undef"]),
@@ -5119,6 +5139,7 @@ mod tests {
             include: vec!["script_1.ts".to_string()],
             ignore: vec![],
           },
+          fix: false,
           rules: false,
           maybe_rules_tags: None,
           maybe_rules_include: None,
@@ -5147,6 +5168,7 @@ mod tests {
             include: vec!["script_1.ts".to_string()],
             ignore: vec![],
           },
+          fix: false,
           rules: false,
           maybe_rules_tags: None,
           maybe_rules_include: None,
@@ -5176,6 +5198,7 @@ mod tests {
             include: vec!["script_1.ts".to_string()],
             ignore: vec![],
           },
+          fix: false,
           rules: false,
           maybe_rules_tags: None,
           maybe_rules_include: None,
