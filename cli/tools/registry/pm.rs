@@ -13,6 +13,7 @@ use deno_core::futures::StreamExt;
 use deno_core::serde_json;
 use deno_runtime::deno_fetch::reqwest;
 use deno_semver::jsr::JsrPackageReqReference;
+use deno_semver::package::PackageReq;
 use jsonc_parser::ast::ObjectProp;
 use jsonc_parser::ast::Value;
 
@@ -22,25 +23,69 @@ use crate::args::AddFlags;
 use crate::args::Flags;
 use crate::factory::CliFactory;
 
-async fn find_packages_latest_version(
+struct SelectedPackage {
+  import_name: String,
+  package_name: String,
+  version: String,
+}
+
+enum PackageAndVersion {
+  NotFound(String),
+  Selected(SelectedPackage),
+}
+
+async fn jsr_find_package_and_select_version(
   client: &reqwest::Client,
   registry_api_url: &str,
-  package_name: String,
-) -> Result<(String, Option<String>), AnyError> {
-  let Some(name_no_at) = package_name.strip_prefix('@') else {
-    bail!("Invalid package name, use '@<scope_name>/<package_name> format");
-  };
-  let Some((scope, name_no_scope)) = name_no_at.split_once('/') else {
-    bail!("Invalid package name, use '@<scope_name>/<package_name> format");
-  };
+  req: &PackageReq,
+) -> Result<PackageAndVersion, AnyError> {
+  // TODO(bartlomieju): don't ignore
+  let _version_req = &req.version_req;
+
+  let jsr_prefixed_name = format!("jsr:{}", req.name);
+  let name_no_at = req.name.strip_prefix('@').unwrap();
+  let (scope, name_no_scope) = name_no_at.split_once('/').unwrap();
 
   let response =
     api::get_package(client, registry_api_url, scope, name_no_scope).await?;
   if response.status() == 404 {
-    return Ok((package_name, None));
+    return Ok(PackageAndVersion::NotFound(jsr_prefixed_name));
   }
   let package = api::parse_response::<api::Package>(response).await?;
-  Ok((package_name, package.latest_version))
+
+  if let Some(latest_version) = package.latest_version {
+    Ok(PackageAndVersion::Selected(SelectedPackage {
+      import_name: req.name.to_string(),
+      package_name: jsr_prefixed_name,
+      // TODO(bartlomieju): fix it, it should always be caret
+      version: format!("^{}", latest_version),
+    }))
+  } else {
+    Ok(PackageAndVersion::NotFound(jsr_prefixed_name))
+  }
+}
+
+async fn find_package_and_select_version_for_req(
+  client: &reqwest::Client,
+  registry_api_url: &str,
+  add_package_req: AddPackageReq,
+) -> Result<PackageAndVersion, AnyError> {
+  match add_package_req {
+    AddPackageReq::Jsr(pkg_ref) => {
+      jsr_find_package_and_select_version(
+        client,
+        registry_api_url,
+        pkg_ref.req(),
+      )
+      .await
+    }
+  }
+}
+
+enum AddPackageReq {
+  Jsr(JsrPackageReqReference),
+  // TODO(bartlomieju):
+  // Npm()
 }
 
 pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
@@ -64,39 +109,51 @@ pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
   let client = http_client.client()?;
   let registry_api_url = jsr_api_url().to_string();
 
-  let mut packages_to_version = Vec::with_capacity(add_flags.packages.len());
+  let mut selected_packages = Vec::with_capacity(add_flags.packages.len());
+  let mut package_reqs = Vec::with_capacity(add_flags.packages.len());
 
   // TODO(bartlomieju): parse as PackageReq - if there's `npm:` prefix, try on npm,
   // otherwise query JSR. Need to do semver as well - @luca/flag@^0.14 should use to
   // highest possible `0.14.x` version.
-  // for package_name in add_flags.packages.iter() {
-  //   if package_name.starts_with("npm:") {
-  //     eprintln!("TODO: trying to add npm specifier, not handled yet");
-  //   } else {
-  //     let ref_ =
-  //       JsrPackageReqReference::from_str(&format!("jsr:{}", package_name));
-  //     eprintln!("ref_ {:?}", ref_);
-  //   }
-  // }
+  for package_name in add_flags.packages.iter() {
+    if package_name.starts_with("npm:") {
+      eprintln!("Adding npm packages is currently not supported");
+      continue;
+    }
 
-  let package_futures = add_flags
-    .packages
+    let pkg_req =
+      JsrPackageReqReference::from_str(&format!("jsr:{}", package_name))
+        .with_context(|| {
+          format!("Failed to parse package required: {}", package_name)
+        })?;
+    package_reqs.push(AddPackageReq::Jsr(pkg_req));
+  }
+
+  let package_futures = package_reqs
     .into_iter()
-    .map(|package_name| {
-      find_packages_latest_version(client, &registry_api_url, package_name)
-        .boxed_local()
+    .map(|package_req| {
+      find_package_and_select_version_for_req(
+        client,
+        &registry_api_url,
+        package_req,
+      )
+      .boxed_local()
     })
     .collect::<Vec<_>>();
 
   let stream_of_futures = deno_core::futures::stream::iter(package_futures);
   let mut buffered = stream_of_futures.buffer_unordered(10);
 
-  while let Some(latest_version_result) = buffered.next().await {
-    let (package_name, maybe_last_version) = latest_version_result?;
-    if let Some(last_version) = maybe_last_version {
-      packages_to_version.push((package_name, last_version));
-    } else {
-      bail!("{} was not found.", crate::colors::red(package_name));
+  while let Some(package_and_version_result) = buffered.next().await {
+    let package_and_version = package_and_version_result?;
+
+    match package_and_version {
+      PackageAndVersion::NotFound(package_name) => {
+        bail!("{} was not found.", crate::colors::red(package_name));
+      }
+      PackageAndVersion::Selected(selected) => {
+        selected_packages.push(selected);
+      }
     }
   }
 
@@ -123,13 +180,20 @@ pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
       HashMap::default()
     };
 
-  for (package, version) in packages_to_version {
+  for selected_package in selected_packages {
     eprintln!(
-      "Add {} - {}",
-      crate::colors::green(format!("{}", package)),
-      version
+      "Add {} - {}@{}",
+      crate::colors::green(format!("{}", selected_package.import_name)),
+      selected_package.package_name,
+      selected_package.version
     );
-    existing_imports.insert(package, version);
+    existing_imports.insert(
+      selected_package.import_name,
+      format!(
+        "{}@{}",
+        selected_package.package_name, selected_package.version
+      ),
+    );
   }
   let mut import_list: Vec<(String, String)> =
     existing_imports.into_iter().collect();
@@ -161,7 +225,7 @@ fn generate_imports(packages_to_version: Vec<(String, String)>) -> String {
   let len = packages_to_version.len();
   for (index, (package, version)) in packages_to_version.iter().enumerate() {
     // TODO(bartlomieju): fix it, once we start support specifying version on the cli
-    contents.push(format!("\"{}\": \"jsr:{}@^{}\"", package, package, version));
+    contents.push(format!("\"{}\": \"{}\"", package, version));
     if index != len - 1 {
       contents.push(",".to_string());
     }
