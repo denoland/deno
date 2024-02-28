@@ -8,6 +8,7 @@ pub struct PrettyTestReporter {
   parallel: bool,
   echo_output: bool,
   in_new_line: bool,
+  phase: &'static str,
   filter: bool,
   repl: bool,
   scope_test_id: Option<usize>,
@@ -32,6 +33,7 @@ impl PrettyTestReporter {
       parallel,
       echo_output,
       in_new_line: true,
+      phase: "",
       filter,
       repl,
       scope_test_id: None,
@@ -151,7 +153,7 @@ impl PrettyTestReporter {
       writeln!(
         &mut self.writer,
         "{}",
-        colors::gray("----- output end -----")
+        colors::gray(format!("----- {}output end -----", self.phase))
       )
       .unwrap();
       self.in_new_line = true;
@@ -204,17 +206,17 @@ impl TestReporter for PrettyTestReporter {
       if !self.in_new_line {
         writeln!(&mut self.writer).unwrap();
       }
-      let phase = if !self.started_tests {
-        "pre-test output"
+      self.phase = if !self.started_tests {
+        "pre-test "
       } else if self.ended_tests {
-        "post-test output"
+        "post-test "
       } else {
-        "output"
+        ""
       };
       writeln!(
         &mut self.writer,
         "{}",
-        colors::gray(format!("------- {phase} -------"))
+        colors::gray(format!("------- {}output -------", self.phase))
       )
       .unwrap();
       self.in_new_line = true;
