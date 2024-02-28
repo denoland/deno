@@ -55,7 +55,7 @@ use import_map::parse_from_json;
 use std::rc::Rc;
 use std::sync::Arc;
 
-mod binary;
+pub mod binary;
 mod file_system;
 mod virtual_fs;
 
@@ -280,7 +280,7 @@ impl ModuleLoaderFactory for StandaloneModuleLoaderFactory {
 
   fn create_source_map_getter(
     &self,
-  ) -> Option<Box<dyn deno_core::SourceMapGetter>> {
+  ) -> Option<Rc<dyn deno_core::SourceMapGetter>> {
     None
   }
 }
@@ -520,7 +520,6 @@ pub async fn run(
     None,
     None,
     None,
-    None,
     feature_checker,
     CliMainWorkerOptions {
       argv: metadata.argv,
@@ -537,19 +536,21 @@ pub async fn run(
       is_npm_main: main_module.scheme() == "npm",
       skip_op_registration: true,
       location: metadata.location,
-      maybe_binary_npm_command_name: NpmPackageReqReference::from_specifier(
-        main_module,
-      )
-      .ok()
-      .map(|req_ref| npm_pkg_req_ref_to_binary_command(&req_ref)),
+      argv0: NpmPackageReqReference::from_specifier(main_module)
+        .ok()
+        .map(|req_ref| npm_pkg_req_ref_to_binary_command(&req_ref))
+        .or(std::env::args().next()),
       origin_data_folder_path: None,
       seed: metadata.seed,
       unsafely_ignore_certificate_errors: metadata
         .unsafely_ignore_certificate_errors,
       unstable: metadata.unstable_config.legacy_flag_enabled,
       maybe_root_package_json_deps: package_json_deps_provider.deps().cloned(),
+      create_hmr_runner: None,
+      create_coverage_collector: None,
     },
     None,
+    false,
     // TODO(bartlomieju): temporarily disabled
     // metadata.disable_deprecated_api_warning,
     true,

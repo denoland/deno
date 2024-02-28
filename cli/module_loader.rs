@@ -3,14 +3,11 @@
 use crate::args::CliOptions;
 use crate::args::DenoSubcommand;
 use crate::args::TsTypeLib;
-use crate::cache::ModuleInfoCache;
 use crate::cache::ParsedSourceCache;
 use crate::emit::Emitter;
 use crate::graph_util::graph_lock_or_exit;
 use crate::graph_util::graph_valid_with_cli_options;
-use crate::graph_util::workspace_config_to_workspace_members;
-use crate::graph_util::DenoGraphFsAdapter;
-use crate::graph_util::FileWatcherReporter;
+use crate::graph_util::CreateGraphOptions;
 use crate::graph_util::ModuleGraphBuilder;
 use crate::graph_util::ModuleGraphContainer;
 use crate::node;
@@ -52,10 +49,10 @@ use deno_graph::JsonModule;
 use deno_graph::Module;
 use deno_graph::Resolution;
 use deno_lockfile::Lockfile;
-use deno_runtime::colors;
 use deno_runtime::deno_fs;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
+use deno_terminal::colors;
 use std::borrow::Cow;
 use std::collections::HashSet;
 use std::pin::Pin;
@@ -68,12 +65,8 @@ pub struct ModuleLoadPreparer {
   fs: Arc<dyn deno_fs::FileSystem>,
   graph_container: Arc<ModuleGraphContainer>,
   lockfile: Option<Arc<Mutex<Lockfile>>>,
-  maybe_file_watcher_reporter: Option<FileWatcherReporter>,
   module_graph_builder: Arc<ModuleGraphBuilder>,
-  module_info_cache: Arc<ModuleInfoCache>,
-  parsed_source_cache: Arc<ParsedSourceCache>,
   progress_bar: ProgressBar,
-  resolver: Arc<CliGraphResolver>,
   type_checker: Arc<TypeChecker>,
 }
 
@@ -84,12 +77,8 @@ impl ModuleLoadPreparer {
     fs: Arc<dyn deno_fs::FileSystem>,
     graph_container: Arc<ModuleGraphContainer>,
     lockfile: Option<Arc<Mutex<Lockfile>>>,
-    maybe_file_watcher_reporter: Option<FileWatcherReporter>,
     module_graph_builder: Arc<ModuleGraphBuilder>,
-    module_info_cache: Arc<ModuleInfoCache>,
-    parsed_source_cache: Arc<ParsedSourceCache>,
     progress_bar: ProgressBar,
-    resolver: Arc<CliGraphResolver>,
     type_checker: Arc<TypeChecker>,
   ) -> Self {
     Self {
@@ -97,12 +86,8 @@ impl ModuleLoadPreparer {
       fs,
       graph_container,
       lockfile,
-      maybe_file_watcher_reporter,
       module_graph_builder,
-      module_info_cache,
-      parsed_source_cache,
       progress_bar,
-      resolver,
       type_checker,
     }
   }
@@ -123,23 +108,6 @@ impl ModuleLoadPreparer {
     let _pb_clear_guard = self.progress_bar.clear_guard();
 
     let mut cache = self.module_graph_builder.create_fetch_cacher(permissions);
-    let maybe_imports = self.options.to_maybe_imports()?;
-    let maybe_workspace_config = self.options.maybe_workspace_config();
-    let workspace_members = if let Some(wc) = maybe_workspace_config {
-      workspace_config_to_workspace_members(wc)?
-    } else {
-      vec![]
-    };
-    let graph_resolver = self.resolver.as_graph_resolver();
-    let graph_npm_resolver = self.resolver.as_graph_npm_resolver();
-    let maybe_file_watcher_reporter = self
-      .maybe_file_watcher_reporter
-      .as_ref()
-      .map(|r| r.as_reporter());
-
-    let parser = self.parsed_source_cache.as_capturing_parser();
-    let analyzer = self.module_info_cache.as_module_analyzer(&parser);
-
     log::debug!("Creating module graph.");
     let mut graph_update_permit =
       self.graph_container.acquire_update_permit().await;
@@ -154,19 +122,11 @@ impl ModuleLoadPreparer {
       .module_graph_builder
       .build_graph_with_npm_resolution(
         graph,
-        roots.clone(),
-        &mut cache,
-        deno_graph::BuildOptions {
+        CreateGraphOptions {
           is_dynamic,
-          imports: maybe_imports,
-          file_system: Some(&DenoGraphFsAdapter(self.fs.as_ref())),
-          resolver: Some(graph_resolver),
-          npm_resolver: Some(graph_npm_resolver),
-          module_parser: Some(&parser),
-          module_analyzer: Some(&analyzer),
-          reporter: maybe_file_watcher_reporter,
-          workspace_fast_check: false,
-          workspace_members,
+          graph_kind: graph.graph_kind(),
+          roots: roots.clone(),
+          loader: Some(&mut cache),
         },
       )
       .await?;
@@ -196,16 +156,18 @@ impl ModuleLoadPreparer {
     if self.options.type_check_mode().is_true()
       && !self.graph_container.is_type_checked(&roots, lib)
     {
-      let graph = Arc::new(graph.segment(&roots));
+      let graph = graph.segment(&roots);
       self
         .type_checker
         .check(
           graph,
           check::CheckOptions {
+            build_fast_check_graph: true,
             lib,
             log_ignored_options: false,
             reload: self.options.reload_flag()
               && !roots.iter().all(|r| reload_exclusions.contains(r)),
+            type_check_mode: self.options.type_check_mode(),
           },
         )
         .await?;
@@ -443,8 +405,8 @@ impl ModuleLoaderFactory for CliModuleLoaderFactory {
     )
   }
 
-  fn create_source_map_getter(&self) -> Option<Box<dyn SourceMapGetter>> {
-    Some(Box::new(CliSourceMapGetter {
+  fn create_source_map_getter(&self) -> Option<Rc<dyn SourceMapGetter>> {
+    Some(Rc::new(CliSourceMapGetter {
       shared: self.shared.clone(),
     }))
   }

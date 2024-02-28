@@ -84,7 +84,7 @@ pub fn maybe_transpile_source(
   let code = source.load()?;
 
   let parsed = deno_ast::parse_module(ParseParams {
-    specifier: source.specifier.to_string(),
+    specifier: deno_core::url::Url::parse(source.specifier).unwrap(),
     text_info: SourceTextInfo::from_string(code.as_str().to_owned()),
     media_type,
     capture_tokens: false,

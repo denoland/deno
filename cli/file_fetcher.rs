@@ -24,6 +24,7 @@ use deno_core::futures::future::FutureExt;
 use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
+use deno_graph::source::LoaderChecksum;
 use deno_runtime::deno_fetch::reqwest::header::HeaderValue;
 use deno_runtime::deno_fetch::reqwest::header::ACCEPT;
 use deno_runtime::deno_fetch::reqwest::header::AUTHORIZATION;
@@ -100,20 +101,16 @@ impl File {
   }
 }
 
-/// Simple struct implementing in-process caching to prevent multiple
-/// fs reads/net fetches for same file.
 #[derive(Debug, Clone, Default)]
-struct FileCache(Arc<Mutex<HashMap<ModuleSpecifier, File>>>);
+struct MemoryFiles(Arc<Mutex<HashMap<ModuleSpecifier, File>>>);
 
-impl FileCache {
+impl MemoryFiles {
   pub fn get(&self, specifier: &ModuleSpecifier) -> Option<File> {
-    let cache = self.0.lock();
-    cache.get(specifier).cloned()
+    self.0.lock().get(specifier).cloned()
   }
 
   pub fn insert(&self, specifier: ModuleSpecifier, file: File) -> Option<File> {
-    let mut cache = self.0.lock();
-    cache.insert(specifier, file)
+    self.0.lock().insert(specifier, file)
   }
 }
 
@@ -150,6 +147,7 @@ pub struct FetchOptions<'a> {
   pub permissions: PermissionsContainer,
   pub maybe_accept: Option<&'a str>,
   pub maybe_cache_setting: Option<&'a CacheSetting>,
+  pub maybe_checksum: Option<LoaderChecksum>,
 }
 
 /// A structure for resolving, fetching and caching source files.
@@ -157,7 +155,7 @@ pub struct FetchOptions<'a> {
 pub struct FileFetcher {
   auth_tokens: AuthTokens,
   allow_remote: bool,
-  cache: FileCache,
+  memory_files: MemoryFiles,
   cache_setting: CacheSetting,
   http_cache: Arc<dyn HttpCache>,
   http_client: Arc<HttpClient>,
@@ -178,7 +176,7 @@ impl FileFetcher {
     Self {
       auth_tokens: AuthTokens::new(env::var("DENO_AUTH_TOKENS").ok()),
       allow_remote,
-      cache: Default::default(),
+      memory_files: Default::default(),
       cache_setting,
       http_cache,
       http_client,
@@ -203,6 +201,7 @@ impl FileFetcher {
   pub fn fetch_cached(
     &self,
     specifier: &ModuleSpecifier,
+    maybe_checksum: Option<LoaderChecksum>,
     redirect_limit: i64,
   ) -> Result<Option<File>, AnyError> {
     debug!("FileFetcher::fetch_cached - specifier: {}", specifier);
@@ -211,16 +210,22 @@ impl FileFetcher {
     }
 
     let cache_key = self.http_cache.cache_item_key(specifier)?; // compute this once
-    let Some(metadata) = self.http_cache.read_metadata(&cache_key)? else {
+    let Some(headers) = self.http_cache.read_headers(&cache_key)? else {
       return Ok(None);
     };
-    let headers = metadata.headers;
     if let Some(redirect_to) = headers.get("location") {
       let redirect =
         deno_core::resolve_import(redirect_to, specifier.as_str())?;
-      return self.fetch_cached(&redirect, redirect_limit - 1);
+      return self.fetch_cached(&redirect, maybe_checksum, redirect_limit - 1);
     }
-    let Some(bytes) = self.http_cache.read_file_bytes(&cache_key)? else {
+    let Some(bytes) = self.http_cache.read_file_bytes(
+      &cache_key,
+      maybe_checksum
+        .as_ref()
+        .map(|c| deno_cache_dir::Checksum::new(c.as_str())),
+      deno_cache_dir::GlobalToLocalCopy::Allow,
+    )?
+    else {
       return Ok(None);
     };
 
@@ -286,6 +291,7 @@ impl FileFetcher {
     redirect_limit: i64,
     maybe_accept: Option<String>,
     cache_setting: &CacheSetting,
+    maybe_checksum: Option<LoaderChecksum>,
   ) -> Pin<Box<dyn Future<Output = Result<File, AnyError>> + Send>> {
     debug!("FileFetcher::fetch_remote() - specifier: {}", specifier);
     if redirect_limit < 0 {
@@ -298,7 +304,8 @@ impl FileFetcher {
     }
 
     if self.should_use_cache(specifier, cache_setting) {
-      match self.fetch_cached(specifier, redirect_limit) {
+      match self.fetch_cached(specifier, maybe_checksum.clone(), redirect_limit)
+      {
         Ok(Some(file)) => {
           return futures::future::ok(file).boxed();
         }
@@ -335,8 +342,8 @@ impl FileFetcher {
       .http_cache
       .cache_item_key(specifier)
       .ok()
-      .and_then(|key| self.http_cache.read_metadata(&key).ok().flatten())
-      .and_then(|metadata| metadata.headers.get("etag").cloned());
+      .and_then(|key| self.http_cache.read_headers(&key).ok().flatten())
+      .and_then(|headers| headers.get("etag").cloned());
     let maybe_auth_token = self.auth_tokens.get(specifier);
     let specifier = specifier.clone();
     let client = self.http_client.clone();
@@ -380,7 +387,9 @@ impl FileFetcher {
         .await?
         {
           FetchOnceResult::NotModified => {
-            let file = file_fetcher.fetch_cached(&specifier, 10)?.unwrap();
+            let file = file_fetcher
+              .fetch_cached(&specifier, maybe_checksum, 10)?
+              .unwrap();
             Ok(file)
           }
           FetchOnceResult::Redirect(redirect_url, headers) => {
@@ -392,6 +401,7 @@ impl FileFetcher {
                 redirect_limit - 1,
                 maybe_accept,
                 &cache_setting,
+                maybe_checksum,
               )
               .await
           }
@@ -399,6 +409,9 @@ impl FileFetcher {
             file_fetcher
               .http_cache
               .set(&specifier, headers.clone(), &bytes)?;
+            if let Some(checksum) = &maybe_checksum {
+              checksum.check_source(&bytes)?;
+            }
             Ok(File {
               specifier,
               maybe_headers: Some(headers),
@@ -442,15 +455,16 @@ impl FileFetcher {
         let Ok(cache_key) = self.http_cache.cache_item_key(specifier) else {
           return false;
         };
-        let Ok(Some(metadata)) = self.http_cache.read_metadata(&cache_key)
+        let Ok(Some(headers)) = self.http_cache.read_headers(&cache_key) else {
+          return false;
+        };
+        let Ok(Some(download_time)) =
+          self.http_cache.read_download_time(&cache_key)
         else {
           return false;
         };
-        let cache_semantics = CacheSemantics::new(
-          metadata.headers,
-          metadata.time,
-          SystemTime::now(),
-        );
+        let cache_semantics =
+          CacheSemantics::new(headers, download_time, SystemTime::now());
         cache_semantics.should_use()
       }
       CacheSetting::ReloadSome(list) => {
@@ -486,6 +500,7 @@ impl FileFetcher {
         permissions,
         maybe_accept: None,
         maybe_cache_setting: None,
+        maybe_checksum: None,
       })
       .await
   }
@@ -498,7 +513,7 @@ impl FileFetcher {
     debug!("FileFetcher::fetch() - specifier: {}", specifier);
     let scheme = get_validated_scheme(specifier)?;
     options.permissions.check_specifier(specifier)?;
-    if let Some(file) = self.cache.get(specifier) {
+    if let Some(file) = self.memory_files.get(specifier) {
       Ok(file)
     } else if scheme == "file" {
       // we do not in memory cache files, as this would prevent files on the
@@ -514,19 +529,16 @@ impl FileFetcher {
         format!("A remote specifier was requested: \"{specifier}\", but --no-remote is specified."),
       ))
     } else {
-      let result = self
+      self
         .fetch_remote(
           specifier,
           options.permissions,
           10,
           options.maybe_accept.map(String::from),
           options.maybe_cache_setting.unwrap_or(&self.cache_setting),
+          options.maybe_checksum,
         )
-        .await;
-      if let Ok(file) = &result {
-        self.cache.insert(specifier.clone(), file.clone());
-      }
-      result
+        .await
     }
   }
 
@@ -534,7 +546,7 @@ impl FileFetcher {
   /// been cached in memory it will be returned, otherwise for local files will
   /// be read from disk.
   pub fn get_source(&self, specifier: &ModuleSpecifier) -> Option<File> {
-    let maybe_file = self.cache.get(specifier);
+    let maybe_file = self.memory_files.get(specifier);
     if maybe_file.is_none() {
       let is_local = specifier.scheme() == "file";
       if is_local {
@@ -548,9 +560,9 @@ impl FileFetcher {
     }
   }
 
-  /// Insert a temporary module into the in memory cache for the file fetcher.
-  pub fn insert_cached(&self, file: File) -> Option<File> {
-    self.cache.insert(file.specifier.clone(), file)
+  /// Insert a temporary module for the file fetcher.
+  pub fn insert_memory_files(&self, file: File) -> Option<File> {
+    self.memory_files.insert(file.specifier.clone(), file)
   }
 }
 
@@ -678,7 +690,7 @@ mod tests {
   use deno_core::error::get_custom_error_class;
   use deno_core::resolve_url;
   use deno_core::url::Url;
-  use deno_runtime::deno_fetch::create_http_client;
+  use deno_runtime::deno_fetch::{create_http_client, DnsName};
   use deno_runtime::deno_fetch::reqwest::dns::Resolve;
   use deno_runtime::deno_fetch::reqwest::dns::Resolving;
   use deno_runtime::deno_fetch::CreateHttpClientOptions;
@@ -739,6 +751,7 @@ mod tests {
         1,
         None,
         &file_fetcher.cache_setting,
+        None,
       )
       .await;
     let cache_key = file_fetcher.http_cache.cache_item_key(specifier).unwrap();
@@ -746,10 +759,9 @@ mod tests {
       result.unwrap(),
       file_fetcher
         .http_cache
-        .read_metadata(&cache_key)
+        .read_headers(&cache_key)
         .unwrap()
-        .unwrap()
-        .headers,
+        .unwrap(),
     )
   }
 
@@ -829,7 +841,7 @@ mod tests {
         "application/javascript".to_string(),
       )])),
     };
-    file_fetcher.insert_cached(file.clone());
+    file_fetcher.insert_memory_files(file.clone());
 
     let result = file_fetcher
       .fetch(&specifier, PermissionsContainer::allow_all())
@@ -837,30 +849,6 @@ mod tests {
     assert!(result.is_ok());
     let result_file = result.unwrap();
     assert_eq!(result_file, file);
-  }
-
-  #[tokio::test]
-  async fn test_get_source() {
-    let _http_server_guard = test_util::http_server();
-    let (file_fetcher, _) = setup(CacheSetting::Use, None);
-    let specifier =
-      resolve_url("http://localhost:4548/subdir/redirects/redirect1.js")
-        .unwrap();
-
-    let result = file_fetcher
-      .fetch(&specifier, PermissionsContainer::allow_all())
-      .await;
-    assert!(result.is_ok());
-
-    let maybe_file = file_fetcher.get_source(&specifier);
-    assert!(maybe_file.is_some());
-    let file = maybe_file.unwrap().into_text_decoded().unwrap();
-    assert_eq!(file.source.as_ref(), "export const redirect = 1;\n");
-    assert_eq!(
-      file.specifier,
-      resolve_url("http://localhost:4545/subdir/redirects/redirect1.js")
-        .unwrap()
-    );
   }
 
   #[tokio::test]
@@ -934,18 +922,11 @@ mod tests {
 
     let cache_item_key =
       file_fetcher.http_cache.cache_item_key(&specifier).unwrap();
-    let mut metadata = file_fetcher
-      .http_cache
-      .read_metadata(&cache_item_key)
-      .unwrap()
-      .unwrap();
-    metadata.headers = HashMap::new();
-    metadata
-      .headers
-      .insert("content-type".to_string(), "text/javascript".to_string());
+    let mut headers = HashMap::new();
+    headers.insert("content-type".to_string(), "text/javascript".to_string());
     file_fetcher
       .http_cache
-      .set(&specifier, metadata.headers.clone(), file.source.as_bytes())
+      .set(&specifier, headers.clone(), file.source.as_bytes())
       .unwrap();
 
     let result = file_fetcher_01
@@ -961,20 +942,17 @@ mod tests {
     // the value above.
     assert_eq!(file.media_type, MediaType::JavaScript);
 
-    let headers = file_fetcher_02
+    let headers2 = file_fetcher_02
       .http_cache
-      .read_metadata(&cache_item_key)
+      .read_headers(&cache_item_key)
       .unwrap()
-      .unwrap()
-      .headers;
-    assert_eq!(headers.get("content-type").unwrap(), "text/javascript");
-    metadata.headers = HashMap::new();
-    metadata
-      .headers
-      .insert("content-type".to_string(), "application/json".to_string());
+      .unwrap();
+    assert_eq!(headers2.get("content-type").unwrap(), "text/javascript");
+    headers = HashMap::new();
+    headers.insert("content-type".to_string(), "application/json".to_string());
     file_fetcher_02
       .http_cache
-      .set(&specifier, metadata.headers.clone(), file.source.as_bytes())
+      .set(&specifier, headers.clone(), file.source.as_bytes())
       .unwrap();
 
     let result = file_fetcher_02
@@ -1048,7 +1026,12 @@ mod tests {
           .unwrap(),
         file_fetcher
           .http_cache
-          .read_metadata(&cache_key)
+          .read_headers(&cache_key)
+          .unwrap()
+          .unwrap(),
+        file_fetcher
+          .http_cache
+          .read_download_time(&cache_key)
           .unwrap()
           .unwrap(),
       )
@@ -1080,7 +1063,12 @@ mod tests {
           .unwrap(),
         file_fetcher
           .http_cache
-          .read_metadata(&cache_key)
+          .read_headers(&cache_key)
+          .unwrap()
+          .unwrap(),
+        file_fetcher
+          .http_cache
+          .read_download_time(&cache_key)
           .unwrap()
           .unwrap(),
       )
@@ -1217,7 +1205,12 @@ mod tests {
           .unwrap(),
         file_fetcher
           .http_cache
-          .read_metadata(&cache_key)
+          .read_headers(&cache_key)
+          .unwrap()
+          .unwrap(),
+        file_fetcher
+          .http_cache
+          .read_download_time(&cache_key)
           .unwrap()
           .unwrap(),
       )
@@ -1251,7 +1244,12 @@ mod tests {
           .unwrap(),
         file_fetcher
           .http_cache
-          .read_metadata(&cache_key)
+          .read_headers(&cache_key)
+          .unwrap()
+          .unwrap(),
+        file_fetcher
+          .http_cache
+          .read_download_time(&cache_key)
           .unwrap()
           .unwrap(),
       )
@@ -1275,6 +1273,7 @@ mod tests {
         2,
         None,
         &file_fetcher.cache_setting,
+        None,
       )
       .await;
     assert!(result.is_ok());
@@ -1286,14 +1285,15 @@ mod tests {
         1,
         None,
         &file_fetcher.cache_setting,
+        None,
       )
       .await;
     assert!(result.is_err());
 
-    let result = file_fetcher.fetch_cached(&specifier, 2);
+    let result = file_fetcher.fetch_cached(&specifier, None, 2);
     assert!(result.is_ok());
 
-    let result = file_fetcher.fetch_cached(&specifier, 1);
+    let result = file_fetcher.fetch_cached(&specifier, None, 1);
     assert!(result.is_err());
   }
 
@@ -1708,7 +1708,7 @@ mod tests {
   impl Resolve for TestResolver {
     fn resolve(
       &self,
-      _name: hyper_v014::client::connect::dns::Name,
+      _name: DnsName,
     ) -> Resolving {
       let iter: Box<dyn Iterator<Item = SocketAddr> + Send> = Box::new(
         vec!["127.0.0.1:0".parse::<SocketAddr>().unwrap()].into_iter(),
@@ -2166,7 +2166,11 @@ mod tests {
     let cache_key = file_fetcher.http_cache.cache_item_key(url).unwrap();
     let bytes = file_fetcher
       .http_cache
-      .read_file_bytes(&cache_key)
+      .read_file_bytes(
+        &cache_key,
+        None,
+        deno_cache_dir::GlobalToLocalCopy::Allow,
+      )
       .unwrap()
       .unwrap();
     String::from_utf8(bytes).unwrap()
@@ -2180,10 +2184,9 @@ mod tests {
     let cache_key = file_fetcher.http_cache.cache_item_key(url).unwrap();
     file_fetcher
       .http_cache
-      .read_metadata(&cache_key)
+      .read_headers(&cache_key)
       .unwrap()
       .unwrap()
-      .headers
       .remove("location")
   }
 }

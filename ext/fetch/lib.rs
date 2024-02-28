@@ -1,7 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-mod fs_fetch_handler;
-
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::cmp::min;
@@ -15,50 +13,50 @@ use std::task::Context;
 use std::task::Poll;
 
 use bytes::Bytes;
+// Re-export reqwest and data_url
+pub use data_url;
+use data_url::DataUrl;
 use deno_core::anyhow::Error;
-use deno_core::error::type_error;
-use deno_core::error::AnyError;
-use deno_core::futures::stream::Peekable;
-use deno_core::futures::Future;
-use deno_core::futures::FutureExt;
-use deno_core::futures::Stream;
-use deno_core::futures::StreamExt;
-use deno_core::op2;
-use deno_core::unsync::spawn;
-use deno_core::url::Url;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::BufView;
 use deno_core::ByteString;
+use deno_core::Canceled;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
-use deno_core::Canceled;
+use deno_core::error::AnyError;
+use deno_core::error::type_error;
+use deno_core::futures::Future;
+use deno_core::futures::FutureExt;
+use deno_core::futures::Stream;
+use deno_core::futures::stream::Peekable;
+use deno_core::futures::StreamExt;
 use deno_core::JsBuffer;
+use deno_core::op2;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
-use deno_tls::rustls::RootCertStore;
-use deno_tls::Proxy;
-use deno_tls::RootCertStoreProvider;
-
-use data_url::DataUrl;
+use deno_core::unsync::spawn;
+use deno_core::url::Url;
 use http_v02::header::CONTENT_LENGTH;
 use http_v02::Uri;
+pub use hyper_v014::client::connect::dns::Name as DnsName;
+pub use reqwest;
+use reqwest::Body;
+use reqwest::Client;
 use reqwest::dns::Resolve;
 use reqwest::dns::Resolving;
+use reqwest::header::ACCEPT_ENCODING;
 use reqwest::header::HeaderMap;
 use reqwest::header::HeaderName;
 use reqwest::header::HeaderValue;
-use reqwest::header::ACCEPT_ENCODING;
 use reqwest::header::HOST;
 use reqwest::header::RANGE;
 use reqwest::header::USER_AGENT;
-use reqwest::redirect::Policy;
-use reqwest::Body;
-use reqwest::Client;
 use reqwest::Method;
+use reqwest::redirect::Policy;
 use reqwest::RequestBuilder;
 use reqwest::Response;
 use serde::Deserialize;
@@ -66,11 +64,12 @@ use serde::Serialize;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 
-// Re-export reqwest and data_url
-pub use data_url;
-pub use reqwest;
-
+use deno_tls::Proxy;
+use deno_tls::RootCertStoreProvider;
+use deno_tls::rustls::RootCertStore;
 pub use fs_fetch_handler::FsFetchHandler;
+
+mod fs_fetch_handler;
 
 #[derive(Clone)]
 pub struct Options {
@@ -184,6 +183,7 @@ pub trait FetchPermissions {
 pub fn get_declaration() -> PathBuf {
   PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_fetch.d.ts")
 }
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FetchReturn {
@@ -235,6 +235,7 @@ impl ResourceToBodyAdapter {
 
 // SAFETY: we only use this on a single-threaded executor
 unsafe impl Send for ResourceToBodyAdapter {}
+
 // SAFETY: we only use this on a single-threaded executor
 unsafe impl Sync for ResourceToBodyAdapter {}
 
@@ -686,6 +687,7 @@ impl Default for FetchResponseReader {
     Self::BodyReader(stream.peekable())
   }
 }
+
 #[derive(Debug)]
 pub struct FetchResponseResource {
   pub response_reader: AsyncRefCell<FetchResponseReader>,
@@ -799,8 +801,8 @@ impl HttpClientResource {
 pub struct CreateHttpClientArgs {
   ca_certs: Vec<String>,
   proxy: Option<Proxy>,
-  cert_chain: Option<String>,
-  private_key: Option<String>,
+  cert: Option<String>,
+  key: Option<String>,
   pool_max_idle_per_host: Option<usize>,
   pool_idle_timeout: Option<serde_json::Value>,
   #[serde(default = "default_true")]
@@ -831,12 +833,12 @@ where
   }
 
   let client_cert_chain_and_key = {
-    if args.cert_chain.is_some() || args.private_key.is_some() {
+    if args.cert.is_some() || args.key.is_some() {
       let cert_chain = args
-        .cert_chain
+        .cert
         .ok_or_else(|| type_error("No certificate chain provided"))?;
       let private_key = args
-        .private_key
+        .key
         .ok_or_else(|| type_error("No private key provided"))?;
 
       Some((cert_chain, private_key))
@@ -969,7 +971,7 @@ pub fn create_http_client(
     (false, true) => builder = builder.http2_prior_knowledge(),
     (true, true) => {}
     (false, false) => {
-      return Err(type_error("Either `http1` or `http2` needs to be true"))
+      return Err(type_error("Either `http1` or `http2` needs to be true"));
     }
   }
 

@@ -301,7 +301,9 @@ pub struct VendorFlags {
 pub struct PublishFlags {
   pub token: Option<String>,
   pub dry_run: bool,
-  pub no_zap: bool,
+  pub allow_slow_types: bool,
+  pub allow_dirty: bool,
+  pub provenance: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -756,12 +758,12 @@ impl Flags {
           .ok()
       }
       Task(_) | Check(_) | Coverage(_) | Cache(_) | Info(_) | Eval(_)
-      | Test(_) | Bench(_) | Repl(_) | Compile(_) => {
+      | Test(_) | Bench(_) | Repl(_) | Compile(_) | Publish(_) => {
         std::env::current_dir().ok()
       }
       Bundle(_) | Completions(_) | Doc(_) | Fmt(_) | Init(_) | Install(_)
       | Uninstall(_) | Jupyter(_) | Lsp | Lint(_) | Types | Upgrade(_)
-      | Vendor(_) | Publish(_) => None,
+      | Vendor(_) => None,
     }
   }
 
@@ -1312,6 +1314,7 @@ supported in canary.
           .help("Target OS architecture")
           .value_parser([
             "x86_64-unknown-linux-gnu",
+            "aarch64-unknown-linux-gnu",
             "x86_64-pc-windows-msvc",
             "x86_64-apple-darwin",
             "aarch64-apple-darwin",
@@ -1784,8 +1787,9 @@ TypeScript compiler cache: Subdirectory containing TS compiler output.",
       .arg(no_config_arg())
       .arg(no_remote_arg())
       .arg(no_npm_arg())
-      .arg(no_lock_arg())
       .arg(lock_arg())
+      .arg(lock_write_arg())
+      .arg(no_lock_arg())
       .arg(config_arg())
       .arg(import_map_arg())
       .arg(node_modules_dir_arg())
@@ -2379,6 +2383,8 @@ fn publish_subcommand() -> Command {
           .long("token")
           .help("The API token to use when publishing. If unset, interactive authentication is be used")
       )
+      .arg(config_arg())
+      .arg(no_config_arg())
       .arg(
         Arg::new("dry-run")
           .long("dry-run")
@@ -2386,11 +2392,24 @@ fn publish_subcommand() -> Command {
           .action(ArgAction::SetTrue),
       )
       .arg(
-        Arg::new("no-zap")
-          .long("no-zap")
-          .help("Skip Zap compatibility validation")
+        Arg::new("allow-slow-types")
+          .long("allow-slow-types")
+          .help("Allow publishing with slow types")
           .action(ArgAction::SetTrue),
       )
+      .arg(
+        Arg::new("allow-dirty")
+        .long("allow-dirty")
+        .help("Allow publishing if the repository has uncommited changed")
+        .action(ArgAction::SetTrue),
+      ).arg(
+        Arg::new("provenance")
+          .long("provenance")
+          .help("From CI/CD system, publicly links the package to where it was built and published from")
+          .action(ArgAction::SetTrue)
+      )
+      .arg(check_arg(/* type checks by default */ true))
+      .arg(no_check_arg())
     })
 }
 
@@ -3504,8 +3523,7 @@ fn info_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   location_arg_parse(flags, matches);
   ca_file_arg_parse(flags, matches);
   node_modules_and_vendor_dir_arg_parse(flags, matches);
-  lock_arg_parse(flags, matches);
-  no_lock_arg_parse(flags, matches);
+  lock_args_parse(flags, matches);
   no_remote_arg_parse(flags, matches);
   no_npm_arg_parse(flags, matches);
   let json = matches.get_flag("json");
@@ -3821,10 +3839,17 @@ fn vendor_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 }
 
 fn publish_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  flags.type_check_mode = TypeCheckMode::Local; // local by default
+  no_check_arg_parse(flags, matches);
+  check_arg_parse(flags, matches);
+  config_args_parse(flags, matches);
+
   flags.subcommand = DenoSubcommand::Publish(PublishFlags {
     token: matches.remove_one("token"),
     dry_run: matches.get_flag("dry-run"),
-    no_zap: matches.get_flag("no-zap"),
+    allow_slow_types: matches.get_flag("allow-slow-types"),
+    allow_dirty: matches.get_flag("allow-dirty"),
+    provenance: matches.get_flag("provenance"),
   });
 }
 
@@ -8537,5 +8562,51 @@ mod tests {
     r.unwrap_err();
     let r = flags_from_vec(svec!["deno", "jupyter", "--install", "--kernel",]);
     r.unwrap_err();
+  }
+
+  #[test]
+  fn publish_args() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "publish",
+      "--dry-run",
+      "--allow-slow-types",
+      "--allow-dirty",
+      "--token=asdf",
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Publish(PublishFlags {
+          token: Some("asdf".to_string()),
+          dry_run: true,
+          allow_slow_types: true,
+          allow_dirty: true,
+          provenance: false,
+        }),
+        type_check_mode: TypeCheckMode::Local,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn publish_provenance_args() {
+    let r =
+      flags_from_vec(svec!["deno", "publish", "--provenance", "--token=asdf",]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Publish(PublishFlags {
+          token: Some("asdf".to_string()),
+          dry_run: false,
+          allow_dirty: false,
+          allow_slow_types: false,
+          provenance: true,
+        }),
+        type_check_mode: TypeCheckMode::Local,
+        ..Flags::default()
+      }
+    );
   }
 }

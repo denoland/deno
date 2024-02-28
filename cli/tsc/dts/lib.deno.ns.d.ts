@@ -2196,7 +2196,7 @@ declare namespace Deno {
    * console.log(await Deno.readTextFile("my_file.txt")); // H
    * ```
    *
-   * @category I/O
+   * @category File System
    */
   export function fsync(rid: number): Promise<void>;
 
@@ -2215,7 +2215,7 @@ declare namespace Deno {
    * console.log(Deno.readTextFileSync("my_file.txt")); // H
    * ```
    *
-   * @category I/O
+   * @category File System
    */
   export function fsyncSync(rid: number): void;
 
@@ -2231,7 +2231,7 @@ declare namespace Deno {
    * console.log(await Deno.readTextFile("my_file.txt")); // Hello World
    * ```
    *
-   * @category I/O
+   * @category File System
    */
   export function fdatasync(rid: number): Promise<void>;
 
@@ -2249,7 +2249,7 @@ declare namespace Deno {
    * console.log(Deno.readTextFileSync("my_file.txt")); // Hello World
    * ```
    *
-   * @category I/O
+   * @category File System
    */
   export function fdatasyncSync(rid: number): void;
 
@@ -2666,6 +2666,31 @@ declare namespace Deno {
      * @category File System
      */
     utimeSync(atime: number | Date, mtime: number | Date): void;
+    /** **UNSTABLE**: New API, yet to be vetted.
+     *
+     * Checks if the file resource is a TTY (terminal).
+     *
+     * ```ts
+     * // This example is system and context specific
+     * using file = await Deno.open("/dev/tty6");
+     * file.isTerminal(); // true
+     * ```
+     */
+    isTerminal(): boolean;
+    /** **UNSTABLE**: New API, yet to be vetted.
+     *
+     * Set TTY to be under raw mode or not. In raw mode, characters are read and
+     * returned as is, without being processed. All special processing of
+     * characters by the terminal is disabled, including echoing input
+     * characters. Reading from a TTY device in raw mode is faster than reading
+     * from a TTY device in canonical mode.
+     *
+     * ```ts
+     * using file = await Deno.open("/dev/tty6");
+     * file.setRaw(true, { cbreak: true });
+     * ```
+     */
+    setRaw(mode: boolean, options?: SetRawOptions): void;
     /** **UNSTABLE**: New API, yet to be vetted.
      *
      * Acquire an advisory file-system lock for the file.
@@ -4936,7 +4961,8 @@ declare namespace Deno {
       | "osRelease"
       | "osUptime"
       | "uid"
-      | "gid";
+      | "gid"
+      | "cpus";
   }
 
   /** The permission descriptor for the `allow-ffi` and `deny-ffi` permissions, which controls
@@ -5716,7 +5742,8 @@ declare namespace Deno {
      * `pong` within the timeout specified, the connection is deemed
      * unhealthy and is closed. The `close` and `error` event will be emitted.
      *
-     * The default is 120 seconds. Set to `0` to disable timeouts. */
+     * The unit is seconds, with a default of 120.
+     * Set to `0` to disable timeouts. */
     idleTimeout?: number;
   }
 
@@ -6269,6 +6296,7 @@ declare namespace Deno {
     handler: ServeHandler;
   }
 
+  /** @category HTTP Server */
   export interface ServeUnixOptions {
     /** The unix domain socket path to listen on. */
     path: string;
