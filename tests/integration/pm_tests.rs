@@ -18,17 +18,17 @@ fn add_basic() {
   let temp_dir = context.temp_dir().path();
   temp_dir.join("deno.json").write_json(&starting_deno_json);
 
-  let output = context.new_command().args("add @david/which").run();
+  let output = context.new_command().args("add @denotest/add").run();
   output.assert_exit_code(0);
   let output = output.combined_output();
-  assert_contains!(output, "Add @david/which");
+  assert_contains!(output, "Add @denotest/add");
   let deno_json_content = temp_dir.join("deno.json").read_json_value();
   let expected_deno_json = json!({
     "name": "@foo/bar",
     "version": "1.0.0",
     "exports": "./mod.ts",
     "imports": {
-      "@david/which": "jsr:@david/which@^0.3.0"
+      "@denotest/add": "jsr:@denotest/add@^1.0.0"
     }
   });
   assert_eq!(deno_json_content, expected_deno_json);
@@ -39,14 +39,14 @@ fn add_basic_no_deno_json() {
   let context = pm_context_builder().build();
   let temp_dir = context.temp_dir().path();
 
-  let output = context.new_command().args("add @david/which").run();
+  let output = context.new_command().args("add @denotest/add").run();
   output.assert_exit_code(0);
   let output = output.combined_output();
-  assert_contains!(output, "Add @david/which");
+  assert_contains!(output, "Add @denotest/add");
   let deno_json_content = temp_dir.join("deno.json").read_json_value();
   let expected_deno_json = json!({
     "imports": {
-      "@david/which": "jsr:@david/which@^0.3.0"
+      "@denotest/add": "jsr:@denotest/add@^1.0.0"
     }
   });
   assert_eq!(deno_json_content, expected_deno_json);
@@ -65,19 +65,19 @@ fn add_multiple() {
 
   let output = context
     .new_command()
-    .args("add @david/which @luca/flag")
+    .args("add @denotest/add @denotest/subset-type-graph")
     .run();
   output.assert_exit_code(0);
   let output = output.combined_output();
-  assert_contains!(output, "Add @david/which");
+  assert_contains!(output, "Add @denotest/add");
   let deno_json_content = temp_dir.join("deno.json").read_json_value();
   let expected_deno_json = json!({
     "name": "@foo/bar",
     "version": "1.0.0",
     "exports": "./mod.ts",
     "imports": {
-      "@david/which": "jsr:@david/which@^0.3.0",
-      "@luca/flag": "jsr:@luca/flag@^1.0.1"
+      "@denotest/add": "jsr:@denotest/add@^1.0.0",
+      "@denotest/subset-type-graph": "jsr:@denotest/subset-type-graph@^0.1.0"
     }
   });
   assert_eq!(deno_json_content, expected_deno_json);
@@ -89,7 +89,7 @@ fn add_not_supported_npm() {
 
   let output = context
     .new_command()
-    .args("add @david/which npm:express")
+    .args("add @denotest/add npm:express")
     .run();
   output.assert_exit_code(1);
   let output = output.combined_output();
@@ -100,10 +100,10 @@ fn add_not_supported_npm() {
 fn add_not_supported_version_constraint() {
   let context = pm_context_builder().build();
 
-  let output = context.new_command().args("add @david/which@1").run();
+  let output = context.new_command().args("add @denotest/add@1").run();
   output.assert_exit_code(1);
   let output = output.combined_output();
-  assert_contains!(output, "error: Specifying version constraints is currently not supported. Package: jsr:@david/which@1");
+  assert_contains!(output, "error: Specifying version constraints is currently not supported. Package: jsr:@denotest/add@1");
 }
 
 fn pm_context_builder() -> TestContextBuilder {

@@ -120,26 +120,26 @@ async fn registry_server_handler(
     let res = Response::new(UnsyncBoxBody::new(Full::from(body)));
     return Ok(res);
   } else if path.starts_with("/api/scopes/") {
-    let json_data = if path == "/api/scopes/david/packages/which" {
+    let json_data = if path == "/api/scopes/denotest/packages/add" {
       json!({
-        "scope": "david",
-        "name": "which",
+        "scope": "denotest",
+        "name": "add",
         "description": "",
         "updatedAt": "2024-02-21T00:08:54.436607Z",
         "createdAt": "2024-02-21T00:08:33.492751Z",
         "versionCount": 1,
         "score": 5,
-        "latestVersion": "0.3.0",
+        "latestVersion": "1.0.0",
       })
-    } else if path == "/api/scopes/luca/packages/flag" {
+    } else if path == "/api/scopes/denotest/packages/subset-type-graph" {
       json!({
-        "scope": "luca",
-        "name": "flag",
+        "scope": "denotest",
+        "name": "substep-type-graph",
         "description": "I like flags!",
         "updatedAt": "2024-02-08T00:18:46.212494Z",
         "createdAt": "2023-12-14T23:05:13.518606Z",
         "versionCount": 2,
-        "latestVersion": "1.0.1",
+        "latestVersion": "0.1.0",
       })
     } else if path == "/api/scopes/not/packages/exists" {
       let mut resp =
