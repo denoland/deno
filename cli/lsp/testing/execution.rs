@@ -324,8 +324,11 @@ impl TestRun {
         while let Some((_, event)) = receiver.recv().await {
           match event {
             test::TestEvent::Register(description) => {
-              reporter.report_register(&description);
-              tests.write().insert(description.id, description);
+              for (_, description) in description.into_iter() {
+                reporter.report_register(description);
+                // TODO(mmastrac): we shouldn't need to clone here - we can re-use the descriptions
+                tests.write().insert(description.id, description.clone());
+              }
             }
             test::TestEvent::Plan(plan) => {
               summary.total += plan.total;
