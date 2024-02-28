@@ -40,11 +40,15 @@ async fn jsr_find_package_and_select_version(
   registry_api_url: &str,
   req: &PackageReq,
 ) -> Result<PackageAndVersion, AnyError> {
+  let jsr_prefixed_name = format!("jsr:{}", req.name);
+
   // TODO(bartlomieju): Need to do semver as well - @luca/flag@^0.14 should use to
   // highest possible `0.14.x` version.
-  let _version_req = &req.version_req;
+  let version_req = req.version_req.version_text();
+  if version_req != "*" {
+    bail!("Specifying version constraints is currently not supported. Package: {}@{}", jsr_prefixed_name, version_req);
+  }
 
-  let jsr_prefixed_name = format!("jsr:{}", req.name);
   let name_no_at = req.name.strip_prefix('@').unwrap();
   let (scope, name_no_scope) = name_no_at.split_once('/').unwrap();
 
@@ -81,8 +85,11 @@ async fn find_package_and_select_version_for_req(
       )
       .await
     }
-    AddPackageReq::Npm(_pkg_req) => {
-      bail!("Adding npm: packages is currently not supported");
+    AddPackageReq::Npm(pkg_req) => {
+      bail!(
+        "Adding npm: packages is currently not supported. Package: npm:{}",
+        pkg_req.req().name
+      );
     }
   }
 }
