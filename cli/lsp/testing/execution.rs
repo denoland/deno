@@ -397,6 +397,9 @@ impl TestRun {
                 );
               }
             }
+            test::TestEvent::Completed => {
+              reporter.report_completed();
+            }
             test::TestEvent::ForceEndReport => {}
             test::TestEvent::Sigint => {}
           }
@@ -740,6 +743,10 @@ impl LspTestReporter {
         })
       }
     }
+  }
+
+  fn report_completed(&mut self) {
+    // there is nothing to do on report_completed
   }
 
   fn report_summary(
