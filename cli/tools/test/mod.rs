@@ -440,7 +440,7 @@ struct TestSpecifiersOptions {
 pub struct TestSpecifierOptions {
   pub shuffle: Option<u64>,
   pub filter: TestFilter,
-  pub trace_ops: bool,
+  pub trace_leaks: bool,
 }
 
 impl TestSummary {
@@ -559,7 +559,7 @@ async fn test_specifier_inner(
 
   let mut coverage_collector = worker.maybe_setup_coverage_collector().await?;
 
-  if options.trace_ops {
+  if options.trace_leaks {
     worker.execute_script_static(
       located_script_name!(),
       "Deno[Deno.internal].core.setLeakTracingEnabled(true);",
@@ -1503,7 +1503,7 @@ pub async fn run_tests(
       specifier: TestSpecifierOptions {
         filter: TestFilter::from_flag(&test_options.filter),
         shuffle: test_options.shuffle,
-        trace_ops: test_options.trace_ops,
+        trace_leaks: test_options.trace_leaks,
       },
     },
   )
@@ -1647,7 +1647,7 @@ pub async fn run_tests_with_watch(
             specifier: TestSpecifierOptions {
               filter: TestFilter::from_flag(&test_options.filter),
               shuffle: test_options.shuffle,
-              trace_ops: test_options.trace_ops,
+              trace_leaks: test_options.trace_leaks,
             },
           },
         )
