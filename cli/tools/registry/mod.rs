@@ -2,6 +2,8 @@
 
 use std::collections::HashMap;
 use std::io::IsTerminal;
+use std::path::Path;
+use std::process::Stdio;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -15,13 +17,16 @@ use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
+use deno_core::serde_json::Value;
 use deno_core::unsync::JoinSet;
 use deno_runtime::deno_fetch::reqwest;
 use deno_terminal::colors;
 use import_map::ImportMap;
 use lsp_types::Url;
+use serde::Deserialize;
 use serde::Serialize;
 use sha2::Digest;
+use tokio::process::Command;
 
 use crate::args::jsr_api_url;
 use crate::args::jsr_url;
@@ -49,6 +54,7 @@ mod diagnostics;
 mod graph;
 mod paths;
 mod pm;
+mod provenance;
 mod publish_order;
 mod tar;
 mod unfurl;
@@ -75,6 +81,7 @@ struct PreparedPublishPackage {
   version: String,
   tarball: PublishableTarball,
   config: String,
+  exports: HashMap<String, String>,
 }
 
 impl PreparedPublishPackage {
@@ -163,6 +170,18 @@ async fn prepare_publish(
     package: name_no_scope.to_string(),
     version: version.to_string(),
     tarball,
+    exports: match &deno_json.json.exports {
+      Some(Value::Object(exports)) => exports
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v.as_str().unwrap().to_string()))
+        .collect(),
+      Some(Value::String(exports)) => {
+        let mut map = HashMap::new();
+        map.insert(".".to_string(), exports.to_string());
+        map
+      }
+      _ => HashMap::new(),
+    },
     // the config file is always at the root of a publishing dir,
     // so getting the file name is always correct
     config: config_path
@@ -456,6 +475,7 @@ async fn perform_publish(
   mut publish_order_graph: PublishOrderGraph,
   mut prepared_package_by_name: HashMap<String, Rc<PreparedPublishPackage>>,
   auth_method: AuthMethod,
+  provenance: bool,
 ) -> Result<(), AnyError> {
   let client = http_client.client()?;
   let registry_api_url = jsr_api_url().to_string();
@@ -516,6 +536,7 @@ async fn perform_publish(
           &registry_api_url,
           &registry_url,
           &authorization,
+          provenance,
         )
         .await
         .with_context(|| format!("Failed to publish {}", display_name))?;
@@ -542,6 +563,7 @@ async fn publish_package(
   registry_api_url: &str,
   registry_url: &str,
   authorization: &str,
+  provenance: bool,
 ) -> Result<(), AnyError> {
   let client = http_client.client()?;
   println!(
@@ -647,6 +669,52 @@ async fn publish_package(
     package.package,
     package.version
   );
+
+  if provenance {
+    // Get the version manifest from JSR
+    let meta_url = jsr_url().join(&format!(
+      "@{}/{}/{}_meta.json",
+      package.scope, package.package, package.version
+    ))?;
+
+    let meta_bytes = client.get(meta_url).send().await?.bytes().await?;
+
+    if std::env::var("DISABLE_JSR_MANIFEST_VERIFICATION_FOR_TESTING").is_err() {
+      verify_version_manifest(&meta_bytes, &package)?;
+    }
+
+    let subject = provenance::Subject {
+      name: format!(
+        "pkg:jsr/@{}/{}@{}",
+        package.scope, package.package, package.version
+      ),
+      digest: provenance::SubjectDigest {
+        sha256: hex::encode(sha2::Sha256::digest(&meta_bytes)),
+      },
+    };
+    let bundle = provenance::generate_provenance(subject).await?;
+
+    let tlog_entry = &bundle.verification_material.tlog_entries[0];
+    println!("{}",
+      colors::green(format!(
+        "Provenance transparency log available at https://search.sigstore.dev/?logIndex={}",
+        tlog_entry.log_index
+      ))
+     );
+
+    // Submit bundle to JSR
+    let provenance_url = format!(
+      "{}scopes/{}/packages/{}/versions/{}/provenance",
+      registry_api_url, package.scope, package.package, package.version
+    );
+    client
+      .post(provenance_url)
+      .header(reqwest::header::AUTHORIZATION, authorization)
+      .json(&json!({ "bundle": bundle }))
+      .send()
+      .await?;
+  }
+
   println!(
     "{}",
     colors::gray(format!(
@@ -828,13 +896,12 @@ pub async fn publish(
       Arc::new(ImportMap::new(Url::parse("file:///dev/null").unwrap()))
     });
 
+  let directory_path = cli_factory.cli_options().initial_cwd();
+
   let mapped_resolver = Arc::new(MappedSpecifierResolver::new(
     Some(import_map),
     cli_factory.package_json_deps_provider().clone(),
   ));
-
-  let directory_path = cli_factory.cli_options().initial_cwd();
-
   let cli_options = cli_factory.cli_options();
   let Some(config_file) = cli_options.maybe_config_file() else {
     bail!(
@@ -875,11 +942,220 @@ pub async fn publish(
     return Ok(());
   }
 
+  if !publish_flags.allow_dirty
+    && check_if_git_repo_dirty(cli_options.initial_cwd()).await
+  {
+    bail!("Aborting due to uncomitted changes",);
+  }
+
   perform_publish(
     cli_factory.http_client(),
     prepared_data.publish_order_graph,
     prepared_data.package_by_name,
     auth_method,
+    publish_flags.provenance,
   )
-  .await
+  .await?;
+
+  Ok(())
+}
+
+#[derive(Deserialize)]
+struct ManifestEntry {
+  checksum: String,
+}
+
+#[derive(Deserialize)]
+struct VersionManifest {
+  manifest: HashMap<String, ManifestEntry>,
+  exports: HashMap<String, String>,
+}
+
+fn verify_version_manifest(
+  meta_bytes: &[u8],
+  package: &PreparedPublishPackage,
+) -> Result<(), AnyError> {
+  let manifest = serde_json::from_slice::<VersionManifest>(meta_bytes)?;
+  // Check that nothing was removed from the manifest.
+  if manifest.manifest.len() != package.tarball.files.len() {
+    bail!(
+      "Mismatch in the number of files in the manifest: expected {}, got {}",
+      package.tarball.files.len(),
+      manifest.manifest.len()
+    );
+  }
+
+  for (path, entry) in manifest.manifest {
+    // Verify each path with the files in the tarball.
+    let file = package
+      .tarball
+      .files
+      .iter()
+      .find(|f| f.path_str == path.as_str());
+
+    if let Some(file) = file {
+      if file.hash != entry.checksum {
+        bail!(
+          "Checksum mismatch for {}: expected {}, got {}",
+          path,
+          entry.checksum,
+          file.hash
+        );
+      }
+    } else {
+      bail!("File {} not found in the tarball", path);
+    }
+  }
+
+  for (specifier, expected) in &manifest.exports {
+    let actual = package.exports.get(specifier).ok_or_else(|| {
+      deno_core::anyhow::anyhow!(
+        "Export {} not found in the package",
+        specifier
+      )
+    })?;
+    if actual != expected {
+      bail!(
+        "Export {} mismatch: expected {}, got {}",
+        specifier,
+        expected,
+        actual
+      );
+    }
+  }
+
+  Ok(())
+}
+
+async fn check_if_git_repo_dirty(cwd: &Path) -> bool {
+  let bin_name = if cfg!(windows) { "git.exe" } else { "git" };
+
+  // Check if git exists
+  let git_exists = Command::new(bin_name)
+    .arg("--version")
+    .stderr(Stdio::null())
+    .stdout(Stdio::null())
+    .status()
+    .await
+    .map_or(false, |status| status.success());
+
+  if !git_exists {
+    return false; // Git is not installed
+  }
+
+  // Check if there are uncommitted changes
+  let output = Command::new(bin_name)
+    .current_dir(cwd)
+    .args(["status", "--porcelain"])
+    .output()
+    .await
+    .expect("Failed to execute command");
+
+  let output_str = String::from_utf8_lossy(&output.stdout);
+  !output_str.trim().is_empty()
+}
+
+#[cfg(test)]
+mod tests {
+  use super::tar::PublishableTarball;
+  use super::tar::PublishableTarballFile;
+  use super::verify_version_manifest;
+  use std::collections::HashMap;
+
+  #[test]
+  fn test_verify_version_manifest() {
+    let meta = r#"{
+      "manifest": {
+        "mod.ts": {
+          "checksum": "abc123"
+        }
+      },
+      "exports": {}
+    }"#;
+
+    let meta_bytes = meta.as_bytes();
+    let package = super::PreparedPublishPackage {
+      scope: "test".to_string(),
+      package: "test".to_string(),
+      version: "1.0.0".to_string(),
+      tarball: PublishableTarball {
+        bytes: vec![].into(),
+        hash: "abc123".to_string(),
+        files: vec![PublishableTarballFile {
+          specifier: "file://mod.ts".try_into().unwrap(),
+          path_str: "mod.ts".to_string(),
+          hash: "abc123".to_string(),
+          size: 0,
+        }],
+      },
+      config: "deno.json".to_string(),
+      exports: HashMap::new(),
+    };
+
+    assert!(verify_version_manifest(meta_bytes, &package).is_ok());
+  }
+
+  #[test]
+  fn test_verify_version_manifest_missing() {
+    let meta = r#"{
+      "manifest": {
+        "mod.ts": {},
+      },
+      "exports": {}
+    }"#;
+
+    let meta_bytes = meta.as_bytes();
+    let package = super::PreparedPublishPackage {
+      scope: "test".to_string(),
+      package: "test".to_string(),
+      version: "1.0.0".to_string(),
+      tarball: PublishableTarball {
+        bytes: vec![].into(),
+        hash: "abc123".to_string(),
+        files: vec![PublishableTarballFile {
+          specifier: "file://mod.ts".try_into().unwrap(),
+          path_str: "mod.ts".to_string(),
+          hash: "abc123".to_string(),
+          size: 0,
+        }],
+      },
+      config: "deno.json".to_string(),
+      exports: HashMap::new(),
+    };
+
+    assert!(verify_version_manifest(meta_bytes, &package).is_err());
+  }
+
+  #[test]
+  fn test_verify_version_manifest_invalid_hash() {
+    let meta = r#"{
+      "manifest": {
+        "mod.ts": {
+          "checksum": "lol123"
+        },
+        "exports": {}
+      }
+    }"#;
+
+    let meta_bytes = meta.as_bytes();
+    let package = super::PreparedPublishPackage {
+      scope: "test".to_string(),
+      package: "test".to_string(),
+      version: "1.0.0".to_string(),
+      tarball: PublishableTarball {
+        bytes: vec![].into(),
+        hash: "abc123".to_string(),
+        files: vec![PublishableTarballFile {
+          specifier: "file://mod.ts".try_into().unwrap(),
+          path_str: "mod.ts".to_string(),
+          hash: "abc123".to_string(),
+          size: 0,
+        }],
+      },
+      config: "deno.json".to_string(),
+      exports: HashMap::new(),
+    };
+
+    assert!(verify_version_manifest(meta_bytes, &package).is_err());
+  }
 }

@@ -5,6 +5,8 @@ use crate::testdata_path;
 use super::run_server;
 use super::ServerKind;
 use super::ServerOptions;
+use base64::engine::general_purpose::STANDARD_NO_PAD;
+use base64::Engine as _;
 use bytes::Bytes;
 use http_body_util::combinators::UnsyncBoxBody;
 use http_body_util::Empty;
@@ -34,6 +36,77 @@ pub async fn registry_server(port: u16) {
     registry_server_handler,
   )
   .await
+}
+
+pub async fn provenance_mock_server(port: u16) {
+  let addr = SocketAddr::from(([127, 0, 0, 1], port));
+
+  run_server(
+    ServerOptions {
+      addr,
+      error_msg: "Provenance mock server error",
+      kind: ServerKind::Auto,
+    },
+    provenance_mock_server_handler,
+  )
+  .await
+}
+
+async fn provenance_mock_server_handler(
+  req: Request<Incoming>,
+) -> Result<Response<UnsyncBoxBody<Bytes, Infallible>>, anyhow::Error> {
+  let path = req.uri().path();
+
+  // OIDC request
+  if path.starts_with("/gha_oidc") {
+    let jwt_claim = json!({
+      "sub": "divy",
+      "email": "divy@deno.com",
+      "iss": "https://github.com",
+    });
+    let token = format!(
+      "AAA.{}.",
+      STANDARD_NO_PAD.encode(serde_json::to_string(&jwt_claim).unwrap())
+    );
+    let body = serde_json::to_string_pretty(&json!({
+      "value": token,
+    }));
+    let res = Response::new(UnsyncBoxBody::new(Full::from(body.unwrap())));
+    return Ok(res);
+  }
+
+  // Fulcio
+  if path.starts_with("/api/v2/signingCert") {
+    let body = serde_json::to_string_pretty(&json!({
+      "signedCertificateEmbeddedSct": {
+        "chain": {
+          "certificates": [
+            "fake_certificate"
+          ]
+        }
+      }
+    }));
+    let res = Response::new(UnsyncBoxBody::new(Full::from(body.unwrap())));
+    return Ok(res);
+  }
+
+  // Rekor
+  if path.starts_with("/api/v1/log/entries") {
+    let body = serde_json::to_string_pretty(&json!({
+      "transparency_log_1": {
+        "logID": "test_log_id",
+        "logIndex": 42069,
+      }
+    }));
+    let res = Response::new(UnsyncBoxBody::new(Full::from(body.unwrap())));
+    return Ok(res);
+  }
+
+  let empty_body = UnsyncBoxBody::new(Empty::new());
+  let res = Response::builder()
+    .status(StatusCode::NOT_FOUND)
+    .body(empty_body)?;
+  Ok(res)
 }
 
 async fn registry_server_handler(
