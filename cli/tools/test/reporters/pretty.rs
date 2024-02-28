@@ -14,6 +14,7 @@ pub struct PrettyTestReporter {
   cwd: Url,
   did_have_user_output: bool,
   started_tests: bool,
+  ended_tests: bool,
   child_results_buffer:
     HashMap<usize, IndexMap<usize, (TestStepDescription, TestStepResult, u64)>>,
   summary: TestSummary,
@@ -37,6 +38,7 @@ impl PrettyTestReporter {
       cwd: Url::from_directory_path(std::env::current_dir().unwrap()).unwrap(),
       did_have_user_output: false,
       started_tests: false,
+      ended_tests: false,
       child_results_buffer: Default::default(),
       summary: TestSummary::new(),
       writer: Box::new(std::io::stdout()),
@@ -161,6 +163,7 @@ impl PrettyTestReporter {
 impl TestReporter for PrettyTestReporter {
   fn report_register(&mut self, _description: &TestDescription) {}
   fn report_plan(&mut self, plan: &TestPlan) {
+    self.write_output_end();
     self.summary.total += plan.total;
     self.summary.filtered_out += plan.filtered_out;
     if self.repl {
@@ -196,15 +199,22 @@ impl TestReporter for PrettyTestReporter {
       return;
     }
 
-    if !self.did_have_user_output && self.started_tests {
+    if !self.did_have_user_output {
       self.did_have_user_output = true;
       if !self.in_new_line {
         writeln!(&mut self.writer).unwrap();
       }
+      let phase = if !self.started_tests {
+        "pre-test output"
+      } else if self.ended_tests {
+        "post-test output"
+      } else {
+        "output"
+      };
       writeln!(
         &mut self.writer,
         "{}",
-        colors::gray("------- output -------")
+        colors::gray(format!("------- {phase} -------"))
       )
       .unwrap();
       self.in_new_line = true;
@@ -369,6 +379,7 @@ impl TestReporter for PrettyTestReporter {
     _tests: &IndexMap<usize, TestDescription>,
     _test_steps: &IndexMap<usize, TestStepDescription>,
   ) {
+    self.write_output_end();
     common::report_summary(&mut self.writer, &self.cwd, &self.summary, elapsed);
     if !self.repl {
       writeln!(&mut self.writer).unwrap();
@@ -390,6 +401,11 @@ impl TestReporter for PrettyTestReporter {
       test_steps,
     );
     self.in_new_line = true;
+  }
+
+  fn report_completed(&mut self) {
+    self.write_output_end();
+    self.ended_tests = true;
   }
 
   fn flush_report(

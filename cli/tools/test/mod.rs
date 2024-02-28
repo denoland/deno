@@ -391,8 +391,14 @@ pub enum TestEvent {
   StepRegister(TestStepDescription),
   StepWait(usize),
   StepResult(usize, TestStepResult, u64),
-  ForceEndReport,
+  /// Indicates that this worker has completed.
+  Completed,
+  /// Indicates that the user has cancelled the test run with Ctrl+C and
+  /// the run should be aborted.
   Sigint,
+  /// Used by the REPL to force a report to end without closing the worker
+  /// or receiver.
+  ForceEndReport,
 }
 
 impl TestEvent {
@@ -401,11 +407,13 @@ impl TestEvent {
   pub fn requires_stdio_sync(&self) -> bool {
     matches!(
       self,
-      TestEvent::Result(..)
+      TestEvent::Plan(..)
+        | TestEvent::Result(..)
         | TestEvent::StepWait(..)
         | TestEvent::StepResult(..)
         | TestEvent::UncaughtError(..)
         | TestEvent::ForceEndReport
+        | TestEvent::Completed
     )
   }
 }
@@ -641,24 +649,64 @@ pub async fn run_tests_for_worker(
   };
   let tests: Arc<TestDescriptions> = tests.into();
   sender.send(TestEvent::Register(tests.clone()))?;
+  let res = run_tests_for_worker_inner(
+    worker,
+    specifier,
+    tests,
+    test_functions,
+    &mut sender,
+    options,
+    fail_fast_tracker,
+  )
+  .await;
+  _ = sender.send(TestEvent::Completed);
+  res
+}
+
+async fn run_tests_for_worker_inner(
+  worker: &mut MainWorker,
+  specifier: &ModuleSpecifier,
+  tests: Arc<TestDescriptions>,
+  test_functions: Vec<v8::Global<v8::Function>>,
+  sender: &mut TestEventSender,
+  options: &TestSpecifierOptions,
+  fail_fast_tracker: &FailFastTracker,
+) -> Result<(), AnyError> {
   let unfiltered = tests.len();
-  let tests = tests
-    .into_iter()
-    .filter(|(_, d)| options.filter.includes(&d.name))
-    .collect::<Vec<_>>();
-  let (only, no_only): (Vec<_>, Vec<_>) =
-    tests.into_iter().partition(|(_, d)| d.only);
-  let used_only = !only.is_empty();
-  let mut tests = if used_only { only } else { no_only };
-  if let Some(seed) = options.shuffle {
-    tests.shuffle(&mut SmallRng::seed_from_u64(seed));
+
+  // Build the test plan in a single pass
+  let mut tests_to_run = Vec::with_capacity(tests.len());
+  let mut used_only = false;
+  for ((_, d), f) in tests.tests.iter().zip(test_functions) {
+    if !options.filter.includes(&d.name) {
+      continue;
+    }
+
+    // If we've seen an "only: true" test, the remaining tests must be "only: true" to be added
+    if used_only && !d.only {
+      continue;
+    }
+
+    // If this is the first "only: true" test we've seen, clear the other tests since they were
+    // only: false.
+    if d.only && !used_only {
+      used_only = true;
+      tests_to_run.clear();
+    }
+    tests_to_run.push((d, f));
   }
+
+  if let Some(seed) = options.shuffle {
+    tests_to_run.shuffle(&mut SmallRng::seed_from_u64(seed));
+  }
+
   sender.send(TestEvent::Plan(TestPlan {
     origin: specifier.to_string(),
-    total: tests.len(),
-    filtered_out: unfiltered - tests.len(),
+    total: tests_to_run.len(),
+    filtered_out: unfiltered - tests_to_run.len(),
     used_only,
   }))?;
+
   let mut had_uncaught_error = false;
   let stats = worker.js_runtime.runtime_activity_stats_factory();
   let ops = worker.js_runtime.op_names();
@@ -683,7 +731,7 @@ pub async fn run_tests_for_worker(
   filter = filter.omit_op(op_id_host_recv_ctrl as _);
   filter = filter.omit_op(op_id_host_recv_message as _);
 
-  for ((_, desc), function) in tests.into_iter().zip(test_functions) {
+  for (desc, function) in tests_to_run.into_iter() {
     if fail_fast_tracker.should_stop() {
       break;
     }
@@ -1253,6 +1301,9 @@ pub async fn report_tests(
       }
       TestEvent::ForceEndReport => {
         break;
+      }
+      TestEvent::Completed => {
+        reporter.report_completed();
       }
       TestEvent::Sigint => {
         let elapsed = start_time
