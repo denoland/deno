@@ -64,6 +64,50 @@ pub fn env_vars_for_jsr_tests() -> Vec<(String, String)> {
   ]
 }
 
+pub fn env_vars_for_jsr_provenance_tests() -> Vec<(String, String)> {
+  let mut envs = env_vars_for_jsr_tests();
+  envs.extend(vec![
+    ("REKOR_URL".to_string(), rekor_url()),
+    ("FULCIO_URL".to_string(), fulcio_url()),
+    (
+      "DISABLE_JSR_MANIFEST_VERIFICATION_FOR_TESTING".to_string(),
+      "true".to_string(),
+    ),
+  ]);
+  // set GHA variable for attestation.
+  envs.extend([
+    ("CI".to_string(), "true".to_string()),
+    ("GITHUB_ACTIONS".to_string(), "true".to_string()),
+    ("ACTIONS_ID_TOKEN_REQUEST_URL".to_string(), gha_token_url()),
+    (
+      "ACTIONS_ID_TOKEN_REQUEST_TOKEN".to_string(),
+      "dummy".to_string(),
+    ),
+    (
+      "GITHUB_REPOSITORY".to_string(),
+      "littledivy/deno_sdl2".to_string(),
+    ),
+    (
+      "GITHUB_SERVER_URL".to_string(),
+      "https://github.com".to_string(),
+    ),
+    ("GITHUB_REF".to_string(), "refs/tags/sdl2@0.0.1".to_string()),
+    ("GITHUB_SHA".to_string(), "lol".to_string()),
+    ("GITHUB_RUN_ID".to_string(), "1".to_string()),
+    ("GITHUB_RUN_ATTEMPT".to_string(), "1".to_string()),
+    (
+      "RUNNER_ENVIRONMENT".to_string(),
+      "github-hosted".to_string(),
+    ),
+    (
+      "GITHUB_WORKFLOW_REF".to_string(),
+      "littledivy/deno_sdl2@refs/tags/sdl2@0.0.1".to_string(),
+    ),
+  ]);
+
+  envs
+}
+
 pub fn env_vars_for_jsr_npm_tests() -> Vec<(String, String)> {
   vec![
     ("NPM_CONFIG_REGISTRY".to_string(), npm_registry_url()),
@@ -123,6 +167,18 @@ pub fn npm_registry_unset_url() -> String {
 
 pub fn jsr_registry_url() -> String {
   "http://127.0.0.1:4250/".to_string()
+}
+
+pub fn rekor_url() -> String {
+  "http://127.0.0.1:4251".to_string()
+}
+
+pub fn fulcio_url() -> String {
+  "http://127.0.0.1:4251".to_string()
+}
+
+pub fn gha_token_url() -> String {
+  "http://127.0.0.1:4251/gha_oidc?test=true".to_string()
 }
 
 pub fn jsr_registry_unset_url() -> String {
