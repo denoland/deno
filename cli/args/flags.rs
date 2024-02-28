@@ -1129,6 +1129,7 @@ fn add_subcommand() -> Command {
       cmd.arg(
         Arg::new("packages")
           .help("List of packages to add")
+          .required(true)
           .num_args(1..)
           .action(ArgAction::Append),
       )
