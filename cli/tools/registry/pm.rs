@@ -11,15 +11,12 @@ use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::serde_json;
-use deno_runtime::deno_fetch::reqwest;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
 use jsonc_parser::ast::ObjectProp;
 use jsonc_parser::ast::Value;
 
-use super::api;
-use crate::args::jsr_api_url;
 use crate::args::AddFlags;
 use crate::args::CacheSetting;
 use crate::args::Flags;
@@ -46,8 +43,6 @@ pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
   let config_file_path = config_file.specifier.to_file_path().unwrap();
 
   let http_client = cli_factory.http_client();
-  let client = http_client.client()?;
-  let registry_api_url = jsr_api_url().to_string();
 
   let mut selected_packages = Vec::with_capacity(add_flags.packages.len());
   let mut package_reqs = Vec::with_capacity(add_flags.packages.len());
@@ -82,15 +77,13 @@ pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
     Default::default(),
     None,
   );
-  deps_file_fetcher.set_download_log_level(log::Level::Info);
+  deps_file_fetcher.set_download_log_level(log::Level::Trace);
   let jsr_search_api = CliJsrSearchApi::new(deps_file_fetcher);
 
   let package_futures = package_reqs
     .into_iter()
     .map(|package_req| {
       find_package_and_select_version_for_req(
-        client,
-        &registry_api_url,
         jsr_search_api.clone(),
         package_req,
       )
@@ -193,8 +186,6 @@ enum PackageAndVersion {
 }
 
 async fn jsr_find_package_and_select_version(
-  client: &reqwest::Client,
-  registry_api_url: &str,
   jsr_search_api: CliJsrSearchApi,
   req: &PackageReq,
 ) -> Result<PackageAndVersion, AnyError> {
@@ -207,48 +198,29 @@ async fn jsr_find_package_and_select_version(
     bail!("Specifying version constraints is currently not supported. Package: {}@{}", jsr_prefixed_name, version_req);
   }
 
-  let versions = jsr_search_api.versions(&req.name).await?;
-  for version in versions.iter() {
-    eprintln!("version {} {:?}", req.name, version.to_string());
-  }
-
-  let name_no_at = req.name.strip_prefix('@').unwrap();
-  let (scope, name_no_scope) = name_no_at.split_once('/').unwrap();
-
-  let response =
-    api::get_package(client, registry_api_url, scope, name_no_scope).await?;
-  if response.status() == 404 {
+  let Ok(versions) = jsr_search_api.versions(&req.name).await else {
     return Ok(PackageAndVersion::NotFound(jsr_prefixed_name));
-  }
-  let package = api::parse_response::<api::Package>(response).await?;
+  };
 
-  if let Some(latest_version) = package.latest_version {
-    Ok(PackageAndVersion::Selected(SelectedPackage {
-      import_name: req.name.to_string(),
-      package_name: jsr_prefixed_name,
-      // TODO(bartlomieju): fix it, it should not always be caret
-      version_req: format!("^{}", latest_version),
-    }))
-  } else {
-    Ok(PackageAndVersion::NotFound(jsr_prefixed_name))
-  }
+  let Some(latest_version) = versions.first() else {
+    return Ok(PackageAndVersion::NotFound(jsr_prefixed_name));
+  };
+
+  Ok(PackageAndVersion::Selected(SelectedPackage {
+    import_name: req.name.to_string(),
+    package_name: jsr_prefixed_name,
+    // TODO(bartlomieju): fix it, it should not always be caret
+    version_req: format!("^{}", latest_version.to_string()),
+  }))
 }
 
 async fn find_package_and_select_version_for_req(
-  client: &reqwest::Client,
-  registry_api_url: &str,
   jsr_search_api: CliJsrSearchApi,
   add_package_req: AddPackageReq,
 ) -> Result<PackageAndVersion, AnyError> {
   match add_package_req {
     AddPackageReq::Jsr(pkg_ref) => {
-      jsr_find_package_and_select_version(
-        client,
-        registry_api_url,
-        jsr_search_api,
-        pkg_ref.req(),
-      )
-      .await
+      jsr_find_package_and_select_version(jsr_search_api, pkg_ref.req()).await
     }
     AddPackageReq::Npm(pkg_req) => {
       bail!(
