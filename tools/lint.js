@@ -1,5 +1,5 @@
-#!/usr/bin/env -S deno run --unstable --allow-write --allow-read --allow-run --allow-net
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+#!/usr/bin/env -S deno run --allow-write --allow-read --allow-run --allow-net
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import { buildMode, getPrebuilt, getSources, join, ROOT_PATH } from "./util.js";
 import { checkCopyright } from "./copyright_checker.js";
 
@@ -21,7 +21,7 @@ if (rs) {
   promises.push(clippy());
 }
 
-if (!js && !rs) {
+if (js && rs) {
   promises.push(checkCopyright());
 }
 
@@ -41,25 +41,25 @@ async function dlint() {
     "*.js",
     "*.ts",
     ":!:.github/mtime_cache/action.js",
-    ":!:cli/tests/testdata/swc_syntax_error.ts",
-    ":!:cli/tests/testdata/error_008_checkjs.js",
+    ":!:tests/testdata/swc_syntax_error.ts",
+    ":!:tests/testdata/error_008_checkjs.js",
     ":!:cli/bench/testdata/npm/*",
     ":!:cli/bench/testdata/express-router.js",
     ":!:cli/bench/testdata/react-dom.js",
     ":!:cli/compilers/wasm_wrap.js",
     ":!:cli/tsc/dts/**",
-    ":!:cli/tests/testdata/encoding/**",
-    ":!:cli/tests/testdata/error_syntax.js",
-    ":!:cli/tests/testdata/file_extensions/ts_with_js_extension.js",
-    ":!:cli/tests/testdata/fmt/**",
-    ":!:cli/tests/testdata/npm/**",
-    ":!:cli/tests/testdata/lint/**",
-    ":!:cli/tests/testdata/run/**",
-    ":!:cli/tests/testdata/tsc/**",
-    ":!:cli/tests/testdata/test/glob/**",
+    ":!:tests/testdata/encoding/**",
+    ":!:tests/testdata/error_syntax.js",
+    ":!:tests/testdata/file_extensions/ts_with_js_extension.js",
+    ":!:tests/testdata/fmt/**",
+    ":!:tests/testdata/npm/**",
+    ":!:tests/testdata/lint/**",
+    ":!:tests/testdata/run/**",
+    ":!:tests/testdata/tsc/**",
+    ":!:tests/testdata/test/glob/**",
     ":!:cli/tsc/*typescript.js",
     ":!:cli/tsc/compiler.d.ts",
-    ":!:test_util/wpt/**",
+    ":!:tests/wpt/suite/**",
   ]);
 
   if (!sourceFiles.length) {
@@ -96,13 +96,11 @@ async function dlintPreferPrimordials() {
   const execPath = await getPrebuilt("dlint");
   const sourceFiles = await getSources(ROOT_PATH, [
     "runtime/**/*.js",
+    "runtime/**/*.ts",
     "ext/**/*.js",
+    "ext/**/*.ts",
+    ":!:ext/**/*.d.ts",
     "ext/node/polyfills/*.mjs",
-    "ext/node/polyfills/*.ts",
-    ":!:ext/node/polyfills/*.d.ts",
-    "core/*.js",
-    ":!:core/*_test.js",
-    ":!:core/examples/**",
   ]);
 
   if (!sourceFiles.length) {

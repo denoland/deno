@@ -17,10 +17,9 @@ and limitations under the License.
 /// <reference no-default-lib="true"/>
 
 declare namespace Intl {
-
     interface DateTimeFormatPartTypesRegistry {
-        fractionalSecond: any
-     }
+        fractionalSecond: any;
+    }
 
     interface DateTimeFormatOptions {
         formatMatcher?: "basic" | "best fit" | "best fit" | undefined;
@@ -31,7 +30,7 @@ declare namespace Intl {
     }
 
     interface DateTimeRangeFormatPart extends DateTimeFormatPart {
-        source: "startRange" | "endRange" | "shared"
+        source: "startRange" | "endRange" | "shared";
     }
 
     interface DateTimeFormat {
@@ -114,7 +113,7 @@ declare namespace Intl {
          *
          * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/ListFormat/formatToParts).
          */
-        formatToParts(list: Iterable<string>): { type: "element" | "literal", value: string; }[];
+        formatToParts(list: Iterable<string>): { type: "element" | "literal"; value: string; }[];
 
         /**
          * Returns a new object with properties reflecting the locale and style
@@ -144,7 +143,7 @@ declare namespace Intl {
          *
          * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/ListFormat).
          */
-        new(locales?: BCP47LanguageTag | BCP47LanguageTag[], options?: ListFormatOptions): ListFormat;
+        new (locales?: BCP47LanguageTag | BCP47LanguageTag[], options?: ListFormatOptions): ListFormat;
 
         /**
          * Returns an array containing those of the provided locales that are

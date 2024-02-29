@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
@@ -6,12 +6,14 @@ use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use std::env::current_exe;
+use std::io::ErrorKind;
 use std::io::Write;
 use std::path::Path;
 use tempfile::TempDir;
 
 const DENO_ICON_32: &[u8] = include_bytes!("./resources/deno-logo-32x32.png");
 const DENO_ICON_64: &[u8] = include_bytes!("./resources/deno-logo-64x64.png");
+const DENO_ICON_SVG: &[u8] = include_bytes!("./resources/deno-logo-svg.svg");
 
 pub fn status() -> Result<(), AnyError> {
   let output = std::process::Command::new("jupyter")
@@ -31,7 +33,7 @@ pub fn status() -> Result<(), AnyError> {
     }
   }
 
-  println!("ℹ️ Deno kernel is not yet installed, run `deno jupyter --unstable --install` to set it up");
+  println!("ℹ️ Deno kernel is not yet installed, run `deno jupyter --install` to set it up");
   Ok(())
 }
 
@@ -54,15 +56,16 @@ pub fn install() -> Result<(), AnyError> {
   // https://jupyter-client.readthedocs.io/en/stable/kernels.html#kernel-specs
   // FIXME(bartlomieju): replace `current_exe` before landing?
   let json_data = json!({
-      "argv": [current_exe().unwrap().to_string_lossy(), "--unstable", "jupyter", "--kernel", "--conn", "{connection_file}"],
+      "argv": [current_exe().unwrap().to_string_lossy(), "jupyter", "--kernel", "--conn", "{connection_file}"],
       "display_name": "Deno",
       "language": "typescript",
   });
 
   let f = std::fs::File::create(kernel_json_path)?;
   serde_json::to_writer_pretty(f, &json_data)?;
-  install_icon(temp_dir.path(), "icon-32x32.png", DENO_ICON_32)?;
-  install_icon(temp_dir.path(), "icon-64x64.png", DENO_ICON_64)?;
+  install_icon(temp_dir.path(), "logo-32x32.png", DENO_ICON_32)?;
+  install_icon(temp_dir.path(), "logo-64x64.png", DENO_ICON_64)?;
+  install_icon(temp_dir.path(), "logo-svg.svg", DENO_ICON_SVG)?;
 
   let child_result = std::process::Command::new("jupyter")
     .args([
@@ -74,18 +77,33 @@ pub fn install() -> Result<(), AnyError> {
       &temp_dir.path().to_string_lossy(),
     ])
     .spawn();
+  let mut child = match child_result {
+    Ok(child) => child,
+    Err(err)
+      if matches!(
+        err.kind(),
+        ErrorKind::NotFound | ErrorKind::PermissionDenied
+      ) =>
+    {
+      return Err(err).context(concat!(
+        "Failed to spawn 'jupyter' command. Is JupyterLab installed ",
+        "(https://jupyter.org/install) and available on the PATH?"
+      ));
+    }
+    Err(err) => {
+      return Err(err).context("Failed to spawn 'jupyter' command.");
+    }
+  };
 
-  if let Ok(mut child) = child_result {
-    let wait_result = child.wait();
-    match wait_result {
-      Ok(status) => {
-        if !status.success() {
-          bail!("Failed to install kernelspec, try again.");
-        }
+  let wait_result = child.wait();
+  match wait_result {
+    Ok(status) => {
+      if !status.success() {
+        bail!("Failed to install kernelspec, try again.");
       }
-      Err(err) => {
-        bail!("Failed to install kernelspec: {}", err);
-      }
+    }
+    Err(err) => {
+      bail!("Failed to install kernelspec: {}", err);
     }
   }
 

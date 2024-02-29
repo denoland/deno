@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 mod interface;
 mod ops;
@@ -18,9 +18,7 @@ use crate::ops::*;
 
 use deno_core::error::AnyError;
 use deno_core::OpState;
-use std::cell::RefCell;
 use std::path::Path;
-use std::rc::Rc;
 
 pub trait FsPermissions {
   fn check_read(&mut self, path: &Path, api_name: &str)
@@ -66,31 +64,15 @@ pub trait FsPermissions {
   }
 }
 
-struct UnstableChecker {
-  pub unstable: bool,
-}
-
-impl UnstableChecker {
-  // NOTE(bartlomieju): keep in sync with `cli/program_state.rs`
-  pub fn check_unstable(&self, api_name: &str) {
-    if !self.unstable {
-      eprintln!(
-        "Unstable API '{api_name}'. The --unstable flag must be provided."
-      );
-      std::process::exit(70);
-    }
-  }
-}
+pub const UNSTABLE_FEATURE_NAME: &str = "fs";
 
 /// Helper for checking unstable features. Used for sync ops.
-pub(crate) fn check_unstable(state: &OpState, api_name: &str) {
-  state.borrow::<UnstableChecker>().check_unstable(api_name)
-}
-
-/// Helper for checking unstable features. Used for async ops.
-pub(crate) fn check_unstable2(state: &Rc<RefCell<OpState>>, api_name: &str) {
-  let state = state.borrow();
-  state.borrow::<UnstableChecker>().check_unstable(api_name)
+fn check_unstable(state: &OpState, api_name: &str) {
+  // TODO(bartlomieju): replace with `state.feature_checker.check_or_exit`
+  // once we phase out `check_or_exit_with_legacy_fallback`
+  state
+    .feature_checker
+    .check_or_exit_with_legacy_fallback(UNSTABLE_FEATURE_NAME, api_name);
 }
 
 deno_core::extension!(deno_fs,
@@ -148,10 +130,14 @@ deno_core::extension!(deno_fs,
     op_fs_seek_async,
     op_fs_fdatasync_sync,
     op_fs_fdatasync_async,
+    op_fs_fdatasync_sync_unstable,
+    op_fs_fdatasync_async_unstable,
     op_fs_fsync_sync,
     op_fs_fsync_async,
-    op_fs_fstat_sync,
-    op_fs_fstat_async,
+    op_fs_fsync_sync_unstable,
+    op_fs_fsync_async_unstable,
+    op_fs_file_stat_sync,
+    op_fs_file_stat_async,
     op_fs_flock_sync,
     op_fs_flock_async,
     op_fs_funlock_sync,
@@ -164,11 +150,9 @@ deno_core::extension!(deno_fs,
   ],
   esm = [ "30_fs.js" ],
   options = {
-    unstable: bool,
     fs: FileSystemRc,
   },
   state = |state, options| {
-    state.put(UnstableChecker { unstable: options.unstable });
     state.put(options.fs);
   },
 );

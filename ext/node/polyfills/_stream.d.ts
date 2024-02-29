@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // deno-lint-ignore-file no-explicit-any
 
 // Forked from https://github.com/DefinitelyTyped/DefinitelyTyped/blob/4f538975138678878fed5b2555c0672aa578ab7d/types/node/stream.d.ts

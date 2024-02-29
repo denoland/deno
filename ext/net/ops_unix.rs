@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::io::UnixStreamResource;
 use crate::NetPermissions;
@@ -114,7 +114,6 @@ where
   NP: NetPermissions + 'static,
 {
   let address_path = Path::new(&path);
-  super::check_unstable2(&state, "Deno.connect");
   {
     let mut state_ = state.borrow_mut();
     state_
@@ -194,15 +193,16 @@ where
 pub fn op_net_listen_unix<NP>(
   state: &mut OpState,
   #[string] path: String,
+  #[string] api_name: String,
 ) -> Result<(ResourceId, Option<String>), AnyError>
 where
   NP: NetPermissions + 'static,
 {
   let address_path = Path::new(&path);
-  super::check_unstable(state, "Deno.listen");
   let permissions = state.borrow_mut::<NP>();
-  permissions.check_read(address_path, "Deno.listen()")?;
-  permissions.check_write(address_path, "Deno.listen()")?;
+  let api_call_expr = format!("{}()", api_name);
+  permissions.check_read(address_path, &api_call_expr)?;
+  permissions.check_write(address_path, &api_call_expr)?;
   let listener = UnixListener::bind(address_path)?;
   let local_addr = listener.local_addr()?;
   let pathname = local_addr.as_pathname().map(pathstring).transpose()?;

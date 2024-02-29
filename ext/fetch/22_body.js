@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../webidl/internal.d.ts" />
@@ -11,7 +11,29 @@
 /// <reference path="./lib.deno_fetch.d.ts" />
 /// <reference lib="esnext" />
 
-const core = globalThis.Deno.core;
+import { core, primordials } from "ext:core/mod.js";
+const {
+  isAnyArrayBuffer,
+  isArrayBuffer,
+} = core;
+const {
+  ArrayBufferIsView,
+  ArrayPrototypeMap,
+  DataViewPrototypeGetBuffer,
+  DataViewPrototypeGetByteLength,
+  DataViewPrototypeGetByteOffset,
+  JSONParse,
+  ObjectDefineProperties,
+  ObjectPrototypeIsPrototypeOf,
+  TypedArrayPrototypeGetBuffer,
+  TypedArrayPrototypeGetByteLength,
+  TypedArrayPrototypeGetByteOffset,
+  TypedArrayPrototypeGetSymbolToStringTag,
+  TypedArrayPrototypeSlice,
+  TypeError,
+  Uint8Array,
+} = primordials;
+
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import {
   parseUrlEncoded,
@@ -36,27 +58,6 @@ import {
   readableStreamTee,
   readableStreamThrowIfErrored,
 } from "ext:deno_web/06_streams.js";
-const primordials = globalThis.__bootstrap.primordials;
-const {
-  ArrayBufferPrototype,
-  ArrayBufferIsView,
-  ArrayPrototypeMap,
-  DataViewPrototypeGetBuffer,
-  DataViewPrototypeGetByteLength,
-  DataViewPrototypeGetByteOffset,
-  JSONParse,
-  ObjectDefineProperties,
-  ObjectPrototypeIsPrototypeOf,
-  // TODO(lucacasonato): add SharedArrayBuffer to primordials
-  // SharedArrayBufferPrototype
-  TypedArrayPrototypeGetBuffer,
-  TypedArrayPrototypeGetByteLength,
-  TypedArrayPrototypeGetByteOffset,
-  TypedArrayPrototypeGetSymbolToStringTag,
-  TypedArrayPrototypeSlice,
-  TypeError,
-  Uint8Array,
-} = primordials;
 
 /**
  * @param {Uint8Array | string} chunk
@@ -413,7 +414,7 @@ function extractBody(object) {
       );
     }
     source = TypedArrayPrototypeSlice(object);
-  } else if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, object)) {
+  } else if (isArrayBuffer(object)) {
     source = TypedArrayPrototypeSlice(new Uint8Array(object));
   } else if (ObjectPrototypeIsPrototypeOf(FormDataPrototype, object)) {
     const res = formDataToBlob(object);
@@ -462,11 +463,7 @@ webidl.converters["BodyInit_DOMString"] = (V, prefix, context, opts) => {
     return webidl.converters["URLSearchParams"](V, prefix, context, opts);
   }
   if (typeof V === "object") {
-    if (
-      ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, V) ||
-      // deno-lint-ignore prefer-primordials
-      ObjectPrototypeIsPrototypeOf(SharedArrayBuffer.prototype, V)
-    ) {
+    if (isAnyArrayBuffer(V)) {
       return webidl.converters["ArrayBuffer"](V, prefix, context, opts);
     }
     if (ArrayBufferIsView(V)) {

@@ -1,7 +1,7 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use std::collections::HashMap;
 use std::collections::HashSet;
+use std::collections::VecDeque;
 use std::sync::Arc;
 
 use deno_ast::MediaType;
@@ -9,10 +9,8 @@ use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
-use deno_runtime::colors;
 use deno_runtime::deno_node::NodeResolver;
-use deno_semver::package::PackageNv;
-use deno_semver::package::PackageReq;
+use deno_terminal::colors;
 use once_cell::sync::Lazy;
 use regex::Regex;
 
@@ -24,13 +22,21 @@ use crate::args::TypeCheckMode;
 use crate::cache::Caches;
 use crate::cache::FastInsecureHasher;
 use crate::cache::TypeCheckCache;
+use crate::graph_util::BuildFastCheckGraphOptions;
+use crate::graph_util::ModuleGraphBuilder;
 use crate::npm::CliNpmResolver;
 use crate::tsc;
+use crate::tsc::Diagnostics;
 use crate::version;
 
 /// Options for performing a check of a module graph. Note that the decision to
 /// emit or not is determined by the `ts_config` settings.
 pub struct CheckOptions {
+  /// Whether to build the fast check type graph if necessary.
+  ///
+  /// Note: For perf reasons, the fast check type graph is only
+  /// built if type checking is necessary.
+  pub build_fast_check_graph: bool,
   /// Default type library to type check with.
   pub lib: TsTypeLib,
   /// Whether to log about any ignored compiler options.
@@ -38,11 +44,14 @@ pub struct CheckOptions {
   /// If true, valid `.tsbuildinfo` files will be ignored and type checking
   /// will always occur.
   pub reload: bool,
+  /// Mode to type check with.
+  pub type_check_mode: TypeCheckMode,
 }
 
 pub struct TypeChecker {
   caches: Arc<Caches>,
   cli_options: Arc<CliOptions>,
+  module_graph_builder: Arc<ModuleGraphBuilder>,
   node_resolver: Arc<NodeResolver>,
   npm_resolver: Arc<dyn CliNpmResolver>,
 }
@@ -51,12 +60,14 @@ impl TypeChecker {
   pub fn new(
     caches: Arc<Caches>,
     cli_options: Arc<CliOptions>,
+    module_graph_builder: Arc<ModuleGraphBuilder>,
     node_resolver: Arc<NodeResolver>,
     npm_resolver: Arc<dyn CliNpmResolver>,
   ) -> Self {
     Self {
       caches,
       cli_options,
+      module_graph_builder,
       node_resolver,
       npm_resolver,
     }
@@ -68,9 +79,31 @@ impl TypeChecker {
   /// before the function is called.
   pub async fn check(
     &self,
-    graph: Arc<ModuleGraph>,
+    graph: ModuleGraph,
     options: CheckOptions,
-  ) -> Result<(), AnyError> {
+  ) -> Result<Arc<ModuleGraph>, AnyError> {
+    let (graph, diagnostics) = self.check_diagnostics(graph, options).await?;
+    if diagnostics.is_empty() {
+      Ok(graph)
+    } else {
+      Err(diagnostics.into())
+    }
+  }
+
+  /// Type check the module graph returning its diagnostics.
+  ///
+  /// It is expected that it is determined if a check and/or emit is validated
+  /// before the function is called.
+  pub async fn check_diagnostics(
+    &self,
+    mut graph: ModuleGraph,
+    options: CheckOptions,
+  ) -> Result<(Arc<ModuleGraph>, Diagnostics), AnyError> {
+    debug_assert_ne!(options.type_check_mode, TypeCheckMode::None);
+    if graph.roots.is_empty() {
+      return Ok((graph.into(), Default::default()));
+    }
+
     // node built-in specifiers use the @types/node package to determine
     // types, so inject that now (the caller should do this after the lockfile
     // has been written)
@@ -90,24 +123,34 @@ impl TypeChecker {
       }
     }
 
+    let type_check_mode = options.type_check_mode;
     let ts_config = ts_config_result.ts_config;
-    let type_check_mode = self.cli_options.type_check_mode();
-    let debug = self.cli_options.log_level() == Some(log::Level::Debug);
-    let cache = TypeCheckCache::new(self.caches.type_checking_cache_db());
-    let check_js = ts_config.get_check_js();
-    let check_hash = match get_check_hash(
-      &graph,
-      self.npm_resolver.package_reqs(),
-      type_check_mode,
-      &ts_config,
-    ) {
-      CheckHashResult::NoFiles => return Ok(()),
-      CheckHashResult::Hash(hash) => hash,
+    let maybe_check_hash = match self.npm_resolver.check_state_hash() {
+      Some(npm_check_hash) => {
+        match get_check_hash(
+          &graph,
+          npm_check_hash,
+          type_check_mode,
+          &ts_config,
+        ) {
+          CheckHashResult::NoFiles => {
+            return Ok((graph.into(), Default::default()))
+          }
+          CheckHashResult::Hash(hash) => Some(hash),
+        }
+      }
+      None => None, // we can't determine a check hash
     };
 
     // do not type check if we know this is type checked
-    if !options.reload && cache.has_check_hash(check_hash) {
-      return Ok(());
+    let cache = TypeCheckCache::new(self.caches.type_checking_cache_db());
+    if !options.reload {
+      if let Some(check_hash) = maybe_check_hash {
+        if cache.has_check_hash(check_hash) {
+          log::debug!("Already type checked.");
+          return Ok((graph.into(), Default::default()));
+        }
+      }
     }
 
     for root in &graph.roots {
@@ -115,7 +158,7 @@ impl TypeChecker {
       log::info!("{} {}", colors::green("Check"), root_str);
     }
 
-    let root_names = get_tsc_roots(&graph, check_js);
+    let check_js = ts_config.get_check_js();
     // while there might be multiple roots, we can't "merge" the build info, so we
     // try to retrieve the build info for first root, which is the most common use
     // case.
@@ -132,9 +175,21 @@ impl TypeChecker {
       .write_str(version::deno())
       .finish();
 
+    // add fast check to the graph before getting the roots
+    if options.build_fast_check_graph {
+      self.module_graph_builder.build_fast_check_graph(
+        &mut graph,
+        BuildFastCheckGraphOptions {
+          workspace_fast_check: false,
+        },
+      )?;
+    }
+
+    let root_names = get_tsc_roots(&graph, check_js);
+    let graph = Arc::new(graph);
     let response = tsc::exec(tsc::Request {
       config: ts_config,
-      debug,
+      debug: self.cli_options.log_level() == Some(log::Level::Debug),
       graph: graph.clone(),
       hash_data,
       maybe_npm: Some(tsc::RequestNpmState {
@@ -146,7 +201,7 @@ impl TypeChecker {
       check_mode: type_check_mode,
     })?;
 
-    let diagnostics = if type_check_mode == TypeCheckMode::Local {
+    let mut diagnostics = if type_check_mode == TypeCheckMode::Local {
       response.diagnostics.filter(|d| {
         if let Some(file_name) = &d.file_name {
           if !file_name.starts_with("http") {
@@ -169,21 +224,21 @@ impl TypeChecker {
       response.diagnostics
     };
 
+    diagnostics.apply_fast_check_source_maps(&graph);
+
     if let Some(tsbuildinfo) = response.maybe_tsbuildinfo {
       cache.set_tsbuildinfo(&graph.roots[0], &tsbuildinfo);
     }
 
     if diagnostics.is_empty() {
-      cache.add_check_hash(check_hash);
+      if let Some(check_hash) = maybe_check_hash {
+        cache.add_check_hash(check_hash);
+      }
     }
 
     log::debug!("{}", response.stats);
 
-    if diagnostics.is_empty() {
-      Ok(())
-    } else {
-      Err(diagnostics.into())
-    }
+    Ok((graph, diagnostics))
   }
 }
 
@@ -196,7 +251,7 @@ enum CheckHashResult {
 /// be used to tell
 fn get_check_hash(
   graph: &ModuleGraph,
-  package_reqs: HashMap<PackageReq, PackageNv>,
+  package_reqs_hash: u64,
   type_check_mode: TypeCheckMode,
   ts_config: &TsConfig,
 ) -> CheckHashResult {
@@ -214,7 +269,7 @@ fn get_check_hash(
   // this iterator of modules is already deterministic, so no need to sort it
   for module in graph.modules() {
     match module {
-      Module::Esm(module) => {
+      Module::Js(module) => {
         let ts_check = has_ts_check(module.media_type, &module.source);
         if ts_check {
           has_file_to_type_check = true;
@@ -248,7 +303,13 @@ fn get_check_hash(
         }
 
         hasher.write_str(module.specifier.as_str());
-        hasher.write_str(&module.source);
+        hasher.write_str(
+          // the fast check module will only be set when publishing
+          module
+            .fast_check_module()
+            .map(|s| s.source.as_ref())
+            .unwrap_or(&module.source),
+        );
       }
       Module::Node(_) => {
         // the @types/node package will be in the resolved
@@ -270,15 +331,7 @@ fn get_check_hash(
     }
   }
 
-  // Check if any of the top level npm packages have changed. We could go
-  // further and check all the individual npm packages, but that's
-  // probably overkill.
-  let mut package_reqs = package_reqs.into_iter().collect::<Vec<_>>();
-  package_reqs.sort_by(|a, b| a.0.cmp(&b.0)); // determinism
-  for (pkg_req, pkg_nv) in package_reqs {
-    hasher.write_hashable(&pkg_req);
-    hasher.write_hashable(&pkg_nv);
-  }
+  hasher.write_hashable(package_reqs_hash);
 
   if !has_file || !check_js && !has_file_to_type_check {
     // no files to type check
@@ -303,7 +356,7 @@ fn get_tsc_roots(
     check_js: bool,
   ) -> Option<(ModuleSpecifier, MediaType)> {
     match module {
-      Module::Esm(module) => match module.media_type {
+      Module::Js(module) => match module.media_type {
         MediaType::TypeScript
         | MediaType::Tsx
         | MediaType::Mts
@@ -345,21 +398,18 @@ fn get_tsc_roots(
     ));
   }
 
-  let mut seen_roots =
-    HashSet::with_capacity(graph.imports.len() + graph.roots.len());
+  let mut seen =
+    HashSet::with_capacity(graph.imports.len() + graph.specifiers_count());
+  let mut pending = VecDeque::new();
 
   // put in the global types first so that they're resolved before anything else
   for import in graph.imports.values() {
     for dep in import.dependencies.values() {
       let specifier = dep.get_type().or_else(|| dep.get_code());
       if let Some(specifier) = &specifier {
-        if seen_roots.insert(*specifier) {
-          let maybe_entry = graph
-            .get(specifier)
-            .and_then(|m| maybe_get_check_entry(m, check_js));
-          if let Some(entry) = maybe_entry {
-            result.push(entry);
-          }
+        let specifier = graph.resolve(specifier);
+        if seen.insert(specifier.clone()) {
+          pending.push_back(specifier);
         }
       }
     }
@@ -367,23 +417,50 @@ fn get_tsc_roots(
 
   // then the roots
   for root in &graph.roots {
-    if let Some(module) = graph.get(root) {
-      if seen_roots.insert(root) {
-        if let Some(entry) = maybe_get_check_entry(module, check_js) {
-          result.push(entry);
+    let specifier = graph.resolve(root);
+    if seen.insert(specifier.clone()) {
+      pending.push_back(specifier);
+    }
+  }
+
+  // now walk the graph that only includes the fast check dependencies
+  while let Some(specifier) = pending.pop_front() {
+    let Some(module) = graph.get(&specifier) else {
+      continue;
+    };
+    if let Some(entry) = maybe_get_check_entry(module, check_js) {
+      result.push(entry);
+    }
+    if let Some(module) = module.js() {
+      let deps = module.dependencies_prefer_fast_check();
+      for dep in deps.values() {
+        // walk both the code and type dependencies
+        if let Some(specifier) = dep.get_code() {
+          let specifier = graph.resolve(specifier);
+          if seen.insert(specifier.clone()) {
+            pending.push_back(specifier);
+          }
+        }
+        if let Some(specifier) = dep.get_type() {
+          let specifier = graph.resolve(specifier);
+          if seen.insert(specifier.clone()) {
+            pending.push_back(specifier);
+          }
+        }
+      }
+
+      if let Some(dep) = module
+        .maybe_types_dependency
+        .as_ref()
+        .and_then(|d| d.dependency.ok())
+      {
+        let specifier = graph.resolve(&dep.specifier);
+        if seen.insert(specifier.clone()) {
+          pending.push_back(specifier);
         }
       }
     }
   }
-
-  // now the rest
-  result.extend(graph.modules().filter_map(|module| {
-    if seen_roots.contains(module.specifier()) {
-      None
-    } else {
-      maybe_get_check_entry(module, check_js)
-    }
-  }));
 
   result
 }

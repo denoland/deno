@@ -1,7 +1,7 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::callback::PtrSymbol;
-use crate::check_unstable2;
+use crate::check_unstable;
 use crate::dlfcn::DynamicLibraryResource;
 use crate::ir::*;
 use crate::symbol::NativeType;
@@ -285,7 +285,7 @@ pub fn op_ffi_call_ptr_nonblocking<FP>(
 where
   FP: FfiPermissions + 'static,
 {
-  check_unstable2(&state, "Deno.UnsafeFnPointer#call");
+  check_unstable(&state.borrow(), "Deno.UnsafeFnPointer#call");
   {
     let mut state = state.borrow_mut();
     let permissions = state.borrow_mut::<FP>();
@@ -368,7 +368,7 @@ pub fn op_ffi_call_nonblocking(
   })
 }
 
-#[op2]
+#[op2(reentrant)]
 #[serde]
 pub fn op_ffi_call_ptr<FP>(
   scope: &mut v8::HandleScope,
@@ -381,7 +381,7 @@ pub fn op_ffi_call_ptr<FP>(
 where
   FP: FfiPermissions + 'static,
 {
-  check_unstable2(&state, "Deno.UnsafeFnPointer#call");
+  check_unstable(&state.borrow(), "Deno.UnsafeFnPointer#call");
   {
     let mut state = state.borrow_mut();
     let permissions = state.borrow_mut::<FP>();

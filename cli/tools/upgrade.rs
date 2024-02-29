@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 //! This module provides feature to upgrade deno executable
 
@@ -7,16 +7,16 @@ use crate::args::UpgradeFlags;
 use crate::colors;
 use crate::factory::CliFactory;
 use crate::http_util::HttpClient;
+use crate::standalone::binary::unpack_into_dir;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 use crate::util::time;
 use crate::version;
 
+use async_trait::async_trait;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::futures::future::BoxFuture;
-use deno_core::futures::FutureExt;
 use deno_core::unsync::spawn;
 use deno_semver::Version;
 use once_cell::sync::Lazy;
@@ -31,10 +31,10 @@ use std::process::Command;
 use std::sync::Arc;
 use std::time::Duration;
 
-static ARCHIVE_NAME: Lazy<String> =
-  Lazy::new(|| format!("deno-{}.zip", env!("TARGET")));
-
 const RELEASE_URL: &str = "https://github.com/denoland/deno/releases";
+
+pub static ARCHIVE_NAME: Lazy<String> =
+  Lazy::new(|| format!("deno-{}.zip", env!("TARGET")));
 
 // How often query server for new version. In hours.
 const UPGRADE_CHECK_INTERVAL: i64 = 24;
@@ -43,9 +43,7 @@ const UPGRADE_CHECK_FETCH_DELAY: Duration = Duration::from_millis(500);
 
 /// Environment necessary for doing the update checker.
 /// An alternate trait implementation can be provided for testing purposes.
-trait UpdateCheckerEnvironment: Clone + Send + Sync {
-  fn latest_version(&self) -> BoxFuture<'static, Result<String, AnyError>>;
-  fn current_version(&self) -> Cow<str>;
+trait UpdateCheckerEnvironment: Clone {
   fn read_check_file(&self) -> String;
   fn write_check_file(&self, text: &str);
   fn current_time(&self) -> chrono::DateTime<chrono::Utc>;
@@ -53,15 +51,13 @@ trait UpdateCheckerEnvironment: Clone + Send + Sync {
 
 #[derive(Clone)]
 struct RealUpdateCheckerEnvironment {
-  http_client: Arc<HttpClient>,
   cache_file_path: PathBuf,
   current_time: chrono::DateTime<chrono::Utc>,
 }
 
 impl RealUpdateCheckerEnvironment {
-  pub fn new(http_client: Arc<HttpClient>, cache_file_path: PathBuf) -> Self {
+  pub fn new(cache_file_path: PathBuf) -> Self {
     Self {
-      http_client,
       cache_file_path,
       // cache the current time
       current_time: time::utc_now(),
@@ -70,22 +66,6 @@ impl RealUpdateCheckerEnvironment {
 }
 
 impl UpdateCheckerEnvironment for RealUpdateCheckerEnvironment {
-  fn latest_version(&self) -> BoxFuture<'static, Result<String, AnyError>> {
-    let http_client = self.http_client.clone();
-    async move {
-      if version::is_canary() {
-        get_latest_canary_version(&http_client).await
-      } else {
-        get_latest_release_version(&http_client).await
-      }
-    }
-    .boxed()
-  }
-
-  fn current_version(&self) -> Cow<str> {
-    Cow::Borrowed(version::release_version_or_canary_commit_hash())
-  }
-
   fn read_check_file(&self) -> String {
     std::fs::read_to_string(&self.cache_file_path).unwrap_or_default()
   }
@@ -99,15 +79,82 @@ impl UpdateCheckerEnvironment for RealUpdateCheckerEnvironment {
   }
 }
 
-struct UpdateChecker<TEnvironment: UpdateCheckerEnvironment> {
+#[derive(Debug, Copy, Clone)]
+enum UpgradeCheckKind {
+  Execution,
+  Lsp,
+}
+
+#[async_trait(?Send)]
+trait VersionProvider: Clone {
+  fn is_canary(&self) -> bool;
+  async fn latest_version(&self) -> Result<String, AnyError>;
+  fn current_version(&self) -> Cow<str>;
+
+  fn release_kind(&self) -> UpgradeReleaseKind {
+    if self.is_canary() {
+      UpgradeReleaseKind::Canary
+    } else {
+      UpgradeReleaseKind::Stable
+    }
+  }
+}
+
+#[derive(Clone)]
+struct RealVersionProvider {
+  http_client: Arc<HttpClient>,
+  check_kind: UpgradeCheckKind,
+}
+
+impl RealVersionProvider {
+  pub fn new(
+    http_client: Arc<HttpClient>,
+    check_kind: UpgradeCheckKind,
+  ) -> Self {
+    Self {
+      http_client,
+      check_kind,
+    }
+  }
+}
+
+#[async_trait(?Send)]
+impl VersionProvider for RealVersionProvider {
+  fn is_canary(&self) -> bool {
+    version::is_canary()
+  }
+
+  async fn latest_version(&self) -> Result<String, AnyError> {
+    get_latest_version(&self.http_client, self.release_kind(), self.check_kind)
+      .await
+  }
+
+  fn current_version(&self) -> Cow<str> {
+    Cow::Borrowed(version::release_version_or_canary_commit_hash())
+  }
+}
+
+struct UpdateChecker<
+  TEnvironment: UpdateCheckerEnvironment,
+  TVersionProvider: VersionProvider,
+> {
   env: TEnvironment,
+  version_provider: TVersionProvider,
   maybe_file: Option<CheckVersionFile>,
 }
 
-impl<TEnvironment: UpdateCheckerEnvironment> UpdateChecker<TEnvironment> {
-  pub fn new(env: TEnvironment) -> Self {
+impl<
+    TEnvironment: UpdateCheckerEnvironment,
+    TVersionProvider: VersionProvider,
+  > UpdateChecker<TEnvironment, TVersionProvider>
+{
+  pub fn new(env: TEnvironment, version_provider: TVersionProvider) -> Self {
     let maybe_file = CheckVersionFile::parse(env.read_check_file());
-    Self { env, maybe_file }
+    Self {
+      env,
+      version_provider,
+      maybe_file,
+    }
   }
 
   pub fn should_check_for_new_version(&self) -> bool {
@@ -131,14 +178,15 @@ impl<TEnvironment: UpdateCheckerEnvironment> UpdateChecker<TEnvironment> {
     // - We already check for a new version today
     // - The user have probably upgraded today
     // So we should not prompt and wait for tomorrow for the latest version to be updated again
-    if file.current_version != self.env.current_version() {
+    let current_version = self.version_provider.current_version();
+    if file.current_version != current_version {
       return None;
     }
-    if file.latest_version == self.env.current_version() {
+    if file.latest_version == current_version {
       return None;
     }
 
-    if let Ok(current) = Version::parse_standard(&self.env.current_version()) {
+    if let Ok(current) = Version::parse_standard(&current_version) {
       if let Ok(latest) = Version::parse_standard(&file.latest_version) {
         if current >= latest {
           return None;
@@ -186,26 +234,39 @@ fn print_release_notes(current_version: &str, new_version: &str) {
   }
 }
 
+pub fn upgrade_check_enabled() -> bool {
+  matches!(
+    env::var("DENO_NO_UPDATE_CHECK"),
+    Err(env::VarError::NotPresent)
+  )
+}
+
 pub fn check_for_upgrades(
   http_client: Arc<HttpClient>,
   cache_file_path: PathBuf,
 ) {
-  if env::var("DENO_NO_UPDATE_CHECK").is_ok() {
+  if !upgrade_check_enabled() {
     return;
   }
 
-  let env = RealUpdateCheckerEnvironment::new(http_client, cache_file_path);
-  let update_checker = UpdateChecker::new(env);
+  let env = RealUpdateCheckerEnvironment::new(cache_file_path);
+  let version_provider =
+    RealVersionProvider::new(http_client, UpgradeCheckKind::Execution);
+  let update_checker = UpdateChecker::new(env, version_provider);
 
   if update_checker.should_check_for_new_version() {
     let env = update_checker.env.clone();
+    let version_provider = update_checker.version_provider.clone();
     // do this asynchronously on a separate task
     spawn(async move {
       // Sleep for a small amount of time to not unnecessarily impact startup
       // time.
       tokio::time::sleep(UPGRADE_CHECK_FETCH_DELAY).await;
 
-      fetch_and_store_latest_version(&env).await;
+      fetch_and_store_latest_version(&env, &version_provider).await;
+
+      // text is used by the test suite
+      log::debug!("Finished upgrade checker.")
     });
   }
 
@@ -239,13 +300,60 @@ pub fn check_for_upgrades(
   }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LspVersionUpgradeInfo {
+  pub latest_version: String,
+  pub is_canary: bool,
+}
+
+pub async fn check_for_upgrades_for_lsp(
+  http_client: Arc<HttpClient>,
+) -> Result<Option<LspVersionUpgradeInfo>, AnyError> {
+  if !upgrade_check_enabled() {
+    return Ok(None);
+  }
+
+  let version_provider =
+    RealVersionProvider::new(http_client, UpgradeCheckKind::Lsp);
+  check_for_upgrades_for_lsp_with_provider(&version_provider).await
+}
+
+async fn check_for_upgrades_for_lsp_with_provider(
+  version_provider: &impl VersionProvider,
+) -> Result<Option<LspVersionUpgradeInfo>, AnyError> {
+  let latest_version = version_provider.latest_version().await?;
+  let current_version = version_provider.current_version();
+  if current_version == latest_version {
+    Ok(None) // nothing to upgrade
+  } else if version_provider.is_canary() {
+    Ok(Some(LspVersionUpgradeInfo {
+      latest_version,
+      is_canary: true,
+    }))
+  } else {
+    if let Ok(current) = Version::parse_standard(&current_version) {
+      if let Ok(latest) = Version::parse_standard(&latest_version) {
+        if current >= latest {
+          return Ok(None); // nothing to upgrade
+        }
+      }
+    }
+    Ok(Some(LspVersionUpgradeInfo {
+      latest_version,
+      is_canary: false,
+    }))
+  }
+}
+
 async fn fetch_and_store_latest_version<
   TEnvironment: UpdateCheckerEnvironment,
+  TVersionProvider: VersionProvider,
 >(
   env: &TEnvironment,
+  version_provider: &TVersionProvider,
 ) {
   // Fetch latest version or commit hash from server.
-  let latest_version = match env.latest_version().await {
+  let latest_version = match version_provider.latest_version().await {
     Ok(latest_version) => latest_version,
     Err(_) => return,
   };
@@ -257,7 +365,7 @@ async fn fetch_and_store_latest_version<
         .current_time()
         .sub(chrono::Duration::hours(UPGRADE_CHECK_INTERVAL + 1)),
       last_checked: env.current_time(),
-      current_version: env.current_version().to_string(),
+      current_version: version_provider.current_version().to_string(),
       latest_version,
     }
     .serialize(),
@@ -332,13 +440,17 @@ pub async fn upgrade(
       passed_version
     }
     None => {
-      let latest_version = if upgrade_flags.canary {
+      let release_kind = if upgrade_flags.canary {
         log::info!("Looking up latest canary version");
-        get_latest_canary_version(client).await?
+        UpgradeReleaseKind::Canary
       } else {
         log::info!("Looking up latest version");
-        get_latest_release_version(client).await?
+        UpgradeReleaseKind::Stable
       };
+
+      let latest_version =
+        get_latest_version(client, release_kind, UpgradeCheckKind::Execution)
+          .await?;
 
       let current_is_most_recent = if upgrade_flags.canary {
         let latest_hash = &latest_version;
@@ -372,10 +484,6 @@ pub async fn upgrade(
   };
 
   let download_url = if upgrade_flags.canary {
-    if env!("TARGET") == "aarch64-apple-darwin" {
-      bail!("Canary builds are not available for M1/M2");
-    }
-
     format!(
       "https://dl.deno.land/canary/{}/{}",
       install_version, *ARCHIVE_NAME
@@ -389,12 +497,18 @@ pub async fn upgrade(
 
   let archive_data = download_package(client, &download_url)
     .await
-    .with_context(|| format!("Failed downloading {download_url}"))?;
+    .with_context(|| format!("Failed downloading {download_url}. The version you requested may not have been built for the current architechture."))?;
 
   log::info!("Deno is upgrading to version {}", &install_version);
 
   let temp_dir = tempfile::TempDir::new()?;
-  let new_exe_path = unpack_into_dir(archive_data, cfg!(windows), &temp_dir)?;
+  let new_exe_path = unpack_into_dir(
+    "deno",
+    &ARCHIVE_NAME,
+    archive_data,
+    cfg!(windows),
+    &temp_dir,
+  )?;
   fs::set_permissions(&new_exe_path, permissions)?;
   check_exe(&new_exe_path)?;
 
@@ -444,24 +558,58 @@ pub async fn upgrade(
   Ok(())
 }
 
-async fn get_latest_release_version(
-  client: &HttpClient,
-) -> Result<String, AnyError> {
-  let text = client
-    .download_text("https://dl.deno.land/release-latest.txt")
-    .await?;
-  let version = text.trim().to_string();
-  Ok(version.replace('v', ""))
+#[derive(Debug, Clone, Copy)]
+enum UpgradeReleaseKind {
+  Stable,
+  Canary,
 }
 
-async fn get_latest_canary_version(
+async fn get_latest_version(
   client: &HttpClient,
+  release_kind: UpgradeReleaseKind,
+  check_kind: UpgradeCheckKind,
 ) -> Result<String, AnyError> {
-  let text = client
-    .download_text("https://dl.deno.land/canary-latest.txt")
-    .await?;
-  let version = text.trim().to_string();
-  Ok(version)
+  let url = get_url(release_kind, env!("TARGET"), check_kind);
+  let text = client.download_text(url).await?;
+  Ok(normalize_version_from_server(release_kind, &text))
+}
+
+fn normalize_version_from_server(
+  release_kind: UpgradeReleaseKind,
+  text: &str,
+) -> String {
+  let text = text.trim();
+  match release_kind {
+    UpgradeReleaseKind::Stable => text.trim_start_matches('v').to_string(),
+    UpgradeReleaseKind::Canary => text.to_string(),
+  }
+}
+
+fn get_url(
+  release_kind: UpgradeReleaseKind,
+  target_tuple: &str,
+  check_kind: UpgradeCheckKind,
+) -> String {
+  let file_name = match release_kind {
+    UpgradeReleaseKind::Stable => Cow::Borrowed("release-latest.txt"),
+    UpgradeReleaseKind::Canary => {
+      Cow::Owned(format!("canary-{target_tuple}-latest.txt"))
+    }
+  };
+  let query_param = match check_kind {
+    UpgradeCheckKind::Execution => "",
+    UpgradeCheckKind::Lsp => "?lsp",
+  };
+  format!("{}/{}{}", base_upgrade_url(), file_name, query_param)
+}
+
+fn base_upgrade_url() -> Cow<'static, str> {
+  // this is used by the test suite
+  if let Ok(url) = env::var("DENO_DONT_USE_INTERNAL_BASE_UPGRADE_URL") {
+    Cow::Owned(url)
+  } else {
+    Cow::Borrowed("https://dl.deno.land")
+  }
 }
 
 async fn download_package(
@@ -485,71 +633,6 @@ async fn download_package(
       std::process::exit(1)
     }
   }
-}
-
-pub fn unpack_into_dir(
-  archive_data: Vec<u8>,
-  is_windows: bool,
-  temp_dir: &tempfile::TempDir,
-) -> Result<PathBuf, AnyError> {
-  const EXE_NAME: &str = "deno";
-  let temp_dir_path = temp_dir.path();
-  let exe_ext = if is_windows { "exe" } else { "" };
-  let archive_path = temp_dir_path.join(EXE_NAME).with_extension("zip");
-  let exe_path = temp_dir_path.join(EXE_NAME).with_extension(exe_ext);
-  assert!(!exe_path.exists());
-
-  let archive_ext = Path::new(&*ARCHIVE_NAME)
-    .extension()
-    .and_then(|ext| ext.to_str())
-    .unwrap();
-  let unpack_status = match archive_ext {
-    "zip" if cfg!(windows) => {
-      fs::write(&archive_path, &archive_data)?;
-      Command::new("tar.exe")
-        .arg("xf")
-        .arg(&archive_path)
-        .arg("-C")
-        .arg(temp_dir_path)
-        .spawn()
-        .map_err(|err| {
-          if err.kind() == std::io::ErrorKind::NotFound {
-            std::io::Error::new(
-              std::io::ErrorKind::NotFound,
-              "`tar.exe` was not found in your PATH",
-            )
-          } else {
-            err
-          }
-        })?
-        .wait()?
-    }
-    "zip" => {
-      fs::write(&archive_path, &archive_data)?;
-      Command::new("unzip")
-        .current_dir(temp_dir_path)
-        .arg(&archive_path)
-        .spawn()
-        .map_err(|err| {
-          if err.kind() == std::io::ErrorKind::NotFound {
-            std::io::Error::new(
-              std::io::ErrorKind::NotFound,
-              "`unzip` was not found in your PATH, please install `unzip`",
-            )
-          } else {
-            err
-          }
-        })?
-        .wait()?
-    }
-    ext => bail!("Unsupported archive type: '{ext}'"),
-  };
-  if !unpack_status.success() {
-    bail!("Failed to unpack archive.");
-  }
-  assert!(exe_path.exists());
-  fs::remove_file(&archive_path)?;
-  Ok(exe_path)
 }
 
 fn replace_exe(from: &Path, to: &Path) -> Result<(), std::io::Error> {
@@ -635,9 +718,8 @@ impl CheckVersionFile {
 
 #[cfg(test)]
 mod test {
-  use std::sync::Arc;
-
-  use deno_core::parking_lot::Mutex;
+  use std::cell::RefCell;
+  use std::rc::Rc;
 
   use super::*;
 
@@ -692,10 +774,11 @@ mod test {
 
   #[derive(Clone)]
   struct TestUpdateCheckerEnvironment {
-    file_text: Arc<Mutex<String>>,
-    current_version: Arc<Mutex<String>>,
-    latest_version: Arc<Mutex<Result<String, String>>>,
-    time: Arc<Mutex<chrono::DateTime<chrono::Utc>>>,
+    file_text: Rc<RefCell<String>>,
+    is_canary: Rc<RefCell<bool>>,
+    current_version: Rc<RefCell<String>>,
+    latest_version: Rc<RefCell<Result<String, String>>>,
+    time: Rc<RefCell<chrono::DateTime<chrono::Utc>>>,
   }
 
   impl TestUpdateCheckerEnvironment {
@@ -703,53 +786,61 @@ mod test {
       Self {
         file_text: Default::default(),
         current_version: Default::default(),
-        latest_version: Arc::new(Mutex::new(Ok("".to_string()))),
-        time: Arc::new(Mutex::new(crate::util::time::utc_now())),
+        is_canary: Default::default(),
+        latest_version: Rc::new(RefCell::new(Ok("".to_string()))),
+        time: Rc::new(RefCell::new(crate::util::time::utc_now())),
       }
     }
 
     pub fn add_hours(&self, hours: i64) {
-      let mut time = self.time.lock();
+      let mut time = self.time.borrow_mut();
       *time = time
         .checked_add_signed(chrono::Duration::hours(hours))
         .unwrap();
     }
 
     pub fn set_file_text(&self, text: &str) {
-      *self.file_text.lock() = text.to_string();
+      *self.file_text.borrow_mut() = text.to_string();
     }
 
     pub fn set_current_version(&self, version: &str) {
-      *self.current_version.lock() = version.to_string();
+      *self.current_version.borrow_mut() = version.to_string();
     }
 
     pub fn set_latest_version(&self, version: &str) {
-      *self.latest_version.lock() = Ok(version.to_string());
+      *self.latest_version.borrow_mut() = Ok(version.to_string());
     }
 
     pub fn set_latest_version_err(&self, err: &str) {
-      *self.latest_version.lock() = Err(err.to_string());
+      *self.latest_version.borrow_mut() = Err(err.to_string());
+    }
+
+    pub fn set_is_canary(&self, is_canary: bool) {
+      *self.is_canary.borrow_mut() = is_canary;
+    }
+  }
+
+  #[async_trait(?Send)]
+  impl VersionProvider for TestUpdateCheckerEnvironment {
+    fn is_canary(&self) -> bool {
+      *self.is_canary.borrow()
+    }
+
+    async fn latest_version(&self) -> Result<String, AnyError> {
+      match self.latest_version.borrow().clone() {
+        Ok(result) => Ok(result),
+        Err(err) => bail!("{}", err),
+      }
+    }
+
+    fn current_version(&self) -> Cow<str> {
+      Cow::Owned(self.current_version.borrow().clone())
     }
   }
 
   impl UpdateCheckerEnvironment for TestUpdateCheckerEnvironment {
-    fn latest_version(&self) -> BoxFuture<'static, Result<String, AnyError>> {
-      let env = self.clone();
-      async move {
-        match env.latest_version.lock().clone() {
-          Ok(result) => Ok(result),
-          Err(err) => bail!("{}", err),
-        }
-      }
-      .boxed()
-    }
-
-    fn current_version(&self) -> Cow<str> {
-      Cow::Owned(self.current_version.lock().clone())
-    }
-
     fn read_check_file(&self) -> String {
-      self.file_text.lock().clone()
+      self.file_text.borrow().clone()
     }
 
     fn write_check_file(&self, text: &str) {
@@ -757,7 +848,7 @@ mod test {
     }
 
     fn current_time(&self) -> chrono::DateTime<chrono::Utc> {
-      *self.time.lock()
+      *self.time.borrow()
     }
   }
 
@@ -766,17 +857,17 @@ mod test {
     let env = TestUpdateCheckerEnvironment::new();
     env.set_current_version("1.0.0");
     env.set_latest_version("1.1.0");
-    let checker = UpdateChecker::new(env.clone());
+    let checker = UpdateChecker::new(env.clone(), env.clone());
 
     // no version, so we should check, but not prompt
     assert!(checker.should_check_for_new_version());
     assert_eq!(checker.should_prompt(), None);
 
     // store the latest version
-    fetch_and_store_latest_version(&env).await;
+    fetch_and_store_latest_version(&env, &env).await;
 
     // reload
-    let checker = UpdateChecker::new(env.clone());
+    let checker = UpdateChecker::new(env.clone(), env.clone());
 
     // should not check for latest version because we just did
     assert!(!checker.should_check_for_new_version());
@@ -794,16 +885,16 @@ mod test {
     assert!(checker.should_check_for_new_version());
     assert_eq!(checker.should_prompt(), Some("1.1.0".to_string()));
 
-    fetch_and_store_latest_version(&env).await;
+    fetch_and_store_latest_version(&env, &env).await;
 
     // reload and store that we prompted
-    let checker = UpdateChecker::new(env.clone());
+    let checker = UpdateChecker::new(env.clone(), env.clone());
     assert!(!checker.should_check_for_new_version());
     assert_eq!(checker.should_prompt(), Some("1.2.0".to_string()));
     checker.store_prompted();
 
     // reload and it should now say not to prompt
-    let checker = UpdateChecker::new(env.clone());
+    let checker = UpdateChecker::new(env.clone(), env.clone());
     assert!(!checker.should_check_for_new_version());
     assert_eq!(checker.should_prompt(), None);
 
@@ -823,7 +914,7 @@ mod test {
     env.set_latest_version("1.3.0");
 
     // this will silently fail
-    fetch_and_store_latest_version(&env).await;
+    fetch_and_store_latest_version(&env, &env).await;
     assert!(checker.should_check_for_new_version());
     assert_eq!(checker.should_prompt(), None);
   }
@@ -843,7 +934,7 @@ mod test {
     env.write_check_file(&file_content);
     env.set_current_version("1.27.0");
     env.set_latest_version("1.26.2");
-    let checker = UpdateChecker::new(env);
+    let checker = UpdateChecker::new(env.clone(), env);
 
     // since currently running version is newer than latest available (eg. CDN
     // propagation might be delated) we should not prompt
@@ -865,7 +956,161 @@ mod test {
     env.write_check_file(&file_content);
     // simulate an upgrade done to a canary version
     env.set_current_version("61fbfabe440f1cfffa7b8d17426ffdece4d430d0");
-    let checker = UpdateChecker::new(env);
+    let checker = UpdateChecker::new(env.clone(), env);
     assert_eq!(checker.should_prompt(), None);
+  }
+
+  #[test]
+  fn test_get_url() {
+    assert_eq!(
+      get_url(
+        UpgradeReleaseKind::Canary,
+        "aarch64-apple-darwin",
+        UpgradeCheckKind::Execution
+      ),
+      "https://dl.deno.land/canary-aarch64-apple-darwin-latest.txt"
+    );
+    assert_eq!(
+      get_url(
+        UpgradeReleaseKind::Canary,
+        "aarch64-apple-darwin",
+        UpgradeCheckKind::Lsp
+      ),
+      "https://dl.deno.land/canary-aarch64-apple-darwin-latest.txt?lsp"
+    );
+    assert_eq!(
+      get_url(
+        UpgradeReleaseKind::Canary,
+        "x86_64-pc-windows-msvc",
+        UpgradeCheckKind::Execution
+      ),
+      "https://dl.deno.land/canary-x86_64-pc-windows-msvc-latest.txt"
+    );
+    assert_eq!(
+      get_url(
+        UpgradeReleaseKind::Canary,
+        "x86_64-pc-windows-msvc",
+        UpgradeCheckKind::Lsp
+      ),
+      "https://dl.deno.land/canary-x86_64-pc-windows-msvc-latest.txt?lsp"
+    );
+    assert_eq!(
+      get_url(
+        UpgradeReleaseKind::Stable,
+        "aarch64-apple-darwin",
+        UpgradeCheckKind::Execution
+      ),
+      "https://dl.deno.land/release-latest.txt"
+    );
+    assert_eq!(
+      get_url(
+        UpgradeReleaseKind::Stable,
+        "aarch64-apple-darwin",
+        UpgradeCheckKind::Lsp
+      ),
+      "https://dl.deno.land/release-latest.txt?lsp"
+    );
+    assert_eq!(
+      get_url(
+        UpgradeReleaseKind::Stable,
+        "x86_64-pc-windows-msvc",
+        UpgradeCheckKind::Execution
+      ),
+      "https://dl.deno.land/release-latest.txt"
+    );
+    assert_eq!(
+      get_url(
+        UpgradeReleaseKind::Stable,
+        "x86_64-pc-windows-msvc",
+        UpgradeCheckKind::Lsp
+      ),
+      "https://dl.deno.land/release-latest.txt?lsp"
+    );
+  }
+
+  #[test]
+  fn test_normalize_version_server() {
+    // should strip v for stable
+    assert_eq!(
+      normalize_version_from_server(UpgradeReleaseKind::Stable, "v1.0.0"),
+      "1.0.0"
+    );
+    // should not replace v after start
+    assert_eq!(
+      normalize_version_from_server(
+        UpgradeReleaseKind::Stable,
+        "  v1.0.0-test-v\n\n  "
+      ),
+      "1.0.0-test-v"
+    );
+    // should not strip v for canary
+    assert_eq!(
+      normalize_version_from_server(
+        UpgradeReleaseKind::Canary,
+        "  v1452345asdf   \n\n   "
+      ),
+      "v1452345asdf"
+    );
+  }
+
+  #[tokio::test]
+  async fn test_upgrades_lsp() {
+    let env = TestUpdateCheckerEnvironment::new();
+    env.set_current_version("1.0.0");
+    env.set_latest_version("2.0.0");
+
+    // greater
+    {
+      let maybe_info = check_for_upgrades_for_lsp_with_provider(&env)
+        .await
+        .unwrap();
+      assert_eq!(
+        maybe_info,
+        Some(LspVersionUpgradeInfo {
+          latest_version: "2.0.0".to_string(),
+          is_canary: false,
+        })
+      );
+    }
+    // equal
+    {
+      env.set_latest_version("1.0.0");
+      let maybe_info = check_for_upgrades_for_lsp_with_provider(&env)
+        .await
+        .unwrap();
+      assert_eq!(maybe_info, None);
+    }
+    // less
+    {
+      env.set_latest_version("0.9.0");
+      let maybe_info = check_for_upgrades_for_lsp_with_provider(&env)
+        .await
+        .unwrap();
+      assert_eq!(maybe_info, None);
+    }
+    // canary equal
+    {
+      env.set_current_version("123");
+      env.set_latest_version("123");
+      env.set_is_canary(true);
+      let maybe_info = check_for_upgrades_for_lsp_with_provider(&env)
+        .await
+        .unwrap();
+      assert_eq!(maybe_info, None);
+    }
+    // canary different
+    {
+      env.set_latest_version("1234");
+      let maybe_info = check_for_upgrades_for_lsp_with_provider(&env)
+        .await
+        .unwrap();
+      assert_eq!(
+        maybe_info,
+        Some(LspVersionUpgradeInfo {
+          latest_version: "1234".to_string(),
+          is_canary: true,
+        })
+      );
+    }
   }
 }

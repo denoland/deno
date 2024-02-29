@@ -1,8 +1,12 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-const core = globalThis.Deno.core;
-const ops = core.ops;
-const primordials = globalThis.__bootstrap.primordials;
+import { core, primordials } from "ext:core/mod.js";
+import {
+  op_now,
+  op_sleep,
+  op_sleep_interval,
+  op_timer_handle,
+} from "ext:core/ops";
 const {
   ArrayPrototypePush,
   ArrayPrototypeShift,
@@ -16,20 +20,19 @@ const {
   PromisePrototypeThen,
   SafeArrayIterator,
   SafeMap,
-  SymbolFor,
   TypedArrayPrototypeGetBuffer,
   TypeError,
   indirectEval,
 } = primordials;
+
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { reportException } from "ext:deno_web/02_event.js";
 import { assert } from "ext:deno_web/00_infra.js";
-const { op_sleep, op_void_async_deferred } = core.ensureFastOps();
 
 const hrU8 = new Uint8Array(8);
 const hr = new Uint32Array(TypedArrayPrototypeGetBuffer(hrU8));
 function opNow() {
-  ops.op_now(hrU8);
+  op_now(hrU8);
   return (hr[0] * 1000 + hr[1] / 1e6);
 }
 
@@ -75,7 +78,7 @@ function handleTimerMacrotask() {
  * The keys in this map correspond to the key ID's in the spec's map of active
  * timers. The values are the timeout's cancel rid.
  *
- * @type {Map<number, { cancelRid: number, isRef: boolean, promiseId: number }>}
+ * @type {Map<number, { cancelRid: number, isRef: boolean, promise: Promise<void> }>}
  */
 const activeTimers = new SafeMap();
 
@@ -113,8 +116,8 @@ function initializeTimer(
     // TODO(@andreubotella): Deal with overflow.
     // https://github.com/whatwg/html/issues/7358
     id = nextId++;
-    const cancelRid = ops.op_timer_handle();
-    timerInfo = { cancelRid, isRef: true, promiseId: -1 };
+    const cancelRid = op_timer_handle();
+    timerInfo = { cancelRid, isRef: true, promise: null };
 
     // Step 4 in "run steps after a timeout".
     MapPrototypeSet(activeTimers, id, timerInfo);
@@ -190,6 +193,7 @@ function initializeTimer(
     task,
     timeout,
     timerInfo,
+    repeat,
   );
 
   return id;
@@ -216,23 +220,17 @@ const scheduledTimers = { head: null, tail: null };
  * @param { {action: () => void, nestingLevel: number}[] } task Will be run
  * after the timeout, if it hasn't been cancelled.
  * @param {number} millis
- * @param {{ cancelRid: number, isRef: boolean, promiseId: number }} timerInfo
+ * @param {{ cancelRid: number, isRef: boolean, promise: Promise<void> }} timerInfo
+ * @param {boolean} repeat
  */
-function runAfterTimeout(task, millis, timerInfo) {
+function runAfterTimeout(task, millis, timerInfo, repeat) {
   const cancelRid = timerInfo.cancelRid;
-  let sleepPromise;
-  // If this timeout is scheduled for 0ms it means we want it to run at the
-  // end of the event loop turn. There's no point in setting up a Tokio timer,
-  // since its lowest resolution is 1ms. Firing of a "void async" op is better
-  // in this case, because the timer will take closer to 0ms instead of >1ms.
-  if (millis === 0) {
-    sleepPromise = op_void_async_deferred();
-  } else {
-    sleepPromise = op_sleep(millis, cancelRid);
-  }
-  timerInfo.promiseId = sleepPromise[SymbolFor("Deno.core.internalPromiseId")];
+  const sleepPromise = repeat
+    ? op_sleep_interval(millis, cancelRid)
+    : op_sleep(millis, cancelRid);
+  timerInfo.promise = sleepPromise;
   if (!timerInfo.isRef) {
-    core.unrefOp(timerInfo.promiseId);
+    core.unrefOpPromise(timerInfo.promise);
   }
 
   /** @type {ScheduledTimer} */
@@ -376,7 +374,7 @@ function refTimer(id) {
     return;
   }
   timerInfo.isRef = true;
-  core.refOp(timerInfo.promiseId);
+  core.refOpPromise(timerInfo.promise);
 }
 
 function unrefTimer(id) {
@@ -385,12 +383,21 @@ function unrefTimer(id) {
     return;
   }
   timerInfo.isRef = false;
-  core.unrefOp(timerInfo.promiseId);
+  core.unrefOpPromise(timerInfo.promise);
+}
+
+// Defer to avoid starving the event loop. Not using queueMicrotask()
+// for that reason: it lets promises make forward progress but can
+// still starve other parts of the event loop.
+function defer(go) {
+  // If we pass a delay of zero to op_sleep, it returns at the next event spin
+  PromisePrototypeThen(op_sleep(0, 0), () => go());
 }
 
 export {
   clearInterval,
   clearTimeout,
+  defer,
   handleTimerMacrotask,
   opNow,
   refTimer,

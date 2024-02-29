@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../webidl/internal.d.ts" />
@@ -9,7 +9,22 @@
 /// <reference path="./lib.deno_fetch.d.ts" />
 /// <reference lib="esnext" />
 
+import { core, primordials } from "ext:core/mod.js";
+const {
+  ArrayPrototypeMap,
+  ArrayPrototypeSlice,
+  ArrayPrototypeSplice,
+  ObjectKeys,
+  ObjectPrototypeIsPrototypeOf,
+  RegExpPrototypeExec,
+  StringPrototypeStartsWith,
+  Symbol,
+  SymbolFor,
+  TypeError,
+} = primordials;
+
 import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { assert } from "ext:deno_web/00_infra.js";
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 import {
   byteUpperCase,
@@ -29,19 +44,8 @@ import {
 } from "ext:deno_fetch/20_headers.js";
 import { HttpClientPrototype } from "ext:deno_fetch/22_http_client.js";
 import * as abortSignal from "ext:deno_web/03_abort_signal.js";
-const primordials = globalThis.__bootstrap.primordials;
-const {
-  ArrayPrototypeMap,
-  ArrayPrototypeSlice,
-  ArrayPrototypeSplice,
-  ObjectKeys,
-  ObjectPrototypeIsPrototypeOf,
-  RegExpPrototypeExec,
-  StringPrototypeStartsWith,
-  Symbol,
-  SymbolFor,
-  TypeError,
-} = primordials;
+
+const { internalRidSymbol } = core;
 
 const _request = Symbol("request");
 const _headers = Symbol("headers");
@@ -353,24 +357,22 @@ class Request {
           "Argument 2",
         );
       }
-      request.clientRid = init.client?.rid ?? null;
+      request.clientRid = init.client?.[internalRidSymbol] ?? null;
     }
-
-    // 27.
-    this[_request] = request;
 
     // 28.
-    this[_signal] = abortSignal.newSignal();
+    this[_request] = request;
 
     // 29.
-    if (signal !== null) {
-      abortSignal.follow(this[_signal], signal);
-    }
+    const signals = signal !== null ? [signal] : [];
 
     // 30.
+    this[_signal] = abortSignal.createDependentAbortSignal(signals, prefix);
+
+    // 31.
     this[_headers] = headersFromHeaderList(request.headerList, "request");
 
-    // 32.
+    // 33.
     if (init.headers || ObjectKeys(init).length > 0) {
       const headerList = headerListFromHeaders(this[_headers]);
       const headers = init.headers ?? ArrayPrototypeSlice(
@@ -384,13 +386,13 @@ class Request {
       fillHeaders(this[_headers], headers);
     }
 
-    // 33.
+    // 34.
     let inputBody = null;
     if (ObjectPrototypeIsPrototypeOf(RequestPrototype, input)) {
       inputBody = input[_body];
     }
 
-    // 34.
+    // 35.
     if (
       (request.method === "GET" || request.method === "HEAD") &&
       ((init.body !== undefined && init.body !== null) ||
@@ -399,10 +401,10 @@ class Request {
       throw new TypeError("Request with GET/HEAD method cannot have body.");
     }
 
-    // 35.
+    // 36.
     let initBody = null;
 
-    // 36.
+    // 37.
     if (init.body !== undefined && init.body !== null) {
       const res = extractBody(init.body);
       initBody = res.body;
@@ -411,13 +413,13 @@ class Request {
       }
     }
 
-    // 37.
+    // 38.
     const inputOrInitBody = initBody ?? inputBody;
 
-    // 39.
+    // 40.
     let finalBody = inputOrInitBody;
 
-    // 40.
+    // 41.
     if (initBody === null && inputBody !== null) {
       if (input[_body] && input[_body].unusable()) {
         throw new TypeError("Input request's body is unusable.");
@@ -425,7 +427,7 @@ class Request {
       finalBody = inputBody.createProxy();
     }
 
-    // 41.
+    // 42.
     request.body = finalBody;
   }
 
@@ -464,40 +466,45 @@ class Request {
   }
 
   clone() {
+    const prefix = "Failed to call 'Request.clone'";
     webidl.assertBranded(this, RequestPrototype);
     if (this[_body] && this[_body].unusable()) {
       throw new TypeError("Body is unusable.");
     }
-    const newReq = cloneInnerRequest(this[_request]);
-    const newSignal = abortSignal.newSignal();
+    const clonedReq = cloneInnerRequest(this[_request]);
 
-    if (this[_signal]) {
-      abortSignal.follow(newSignal, this[_signal]);
-    }
+    assert(this[_signal] !== null);
+    const clonedSignal = abortSignal.createDependentAbortSignal(
+      [this[_signal]],
+      prefix,
+    );
 
     return fromInnerRequest(
-      newReq,
-      newSignal,
+      clonedReq,
+      clonedSignal,
       guardFromHeaders(this[_headers]),
     );
   }
 
-  [SymbolFor("Deno.customInspect")](inspect) {
-    return inspect(createFilteredInspectProxy({
-      object: this,
-      evaluate: ObjectPrototypeIsPrototypeOf(RequestPrototype, this),
-      keys: [
-        "bodyUsed",
-        "headers",
-        "method",
-        "redirect",
-        "url",
-      ],
-    }));
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(RequestPrototype, this),
+        keys: [
+          "bodyUsed",
+          "headers",
+          "method",
+          "redirect",
+          "url",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
 
-webidl.configurePrototype(Request);
+webidl.configureInterface(Request);
 const RequestPrototype = Request.prototype;
 mixinBody(RequestPrototype, _body, _mimeType);
 

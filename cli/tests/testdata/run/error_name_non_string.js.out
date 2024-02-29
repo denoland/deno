@@ -1,4 +1,0 @@
-error: Uncaught Error
-throw new ErrorNameNonString();
-      ^
-    at file:///[WILDCARD]/error_name_non_string.js:[WILDCARD]

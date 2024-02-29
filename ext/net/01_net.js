@@ -1,7 +1,50 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-const core = globalThis.Deno.core;
-const { BadResourcePrototype, InterruptedPrototype, ops } = core;
+import { core, internals, primordials } from "ext:core/mod.js";
+const {
+  BadResourcePrototype,
+  InterruptedPrototype,
+  internalRidSymbol,
+  createCancelHandle,
+} = core;
+import {
+  op_dns_resolve,
+  op_net_accept_tcp,
+  op_net_accept_unix,
+  op_net_connect_tcp,
+  op_net_connect_unix,
+  op_net_join_multi_v4_udp,
+  op_net_join_multi_v6_udp,
+  op_net_leave_multi_v4_udp,
+  op_net_leave_multi_v6_udp,
+  op_net_listen_tcp,
+  op_net_listen_unix,
+  op_net_recv_udp,
+  op_net_recv_unixpacket,
+  op_net_send_udp,
+  op_net_send_unixpacket,
+  op_net_set_multi_loopback_udp,
+  op_net_set_multi_ttl_udp,
+  op_set_keepalive,
+  op_set_nodelay,
+} from "ext:core/ops";
+const {
+  Error,
+  Number,
+  ObjectPrototypeIsPrototypeOf,
+  ObjectDefineProperty,
+  PromiseResolve,
+  SafeSet,
+  SetPrototypeAdd,
+  SetPrototypeDelete,
+  SetPrototypeForEach,
+  SymbolAsyncIterator,
+  Symbol,
+  TypeError,
+  TypedArrayPrototypeSubarray,
+  Uint8Array,
+} = primordials;
+
 import {
   readableStreamForRidUnrefable,
   readableStreamForRidUnrefableRef,
@@ -9,23 +52,7 @@ import {
   writableStreamForRid,
 } from "ext:deno_web/06_streams.js";
 import * as abortSignal from "ext:deno_web/03_abort_signal.js";
-const primordials = globalThis.__bootstrap.primordials;
-const {
-  ArrayPrototypeFilter,
-  ArrayPrototypeForEach,
-  ArrayPrototypePush,
-  Error,
-  Number,
-  ObjectPrototypeIsPrototypeOf,
-  PromiseResolve,
-  SymbolAsyncIterator,
-  SymbolFor,
-  TypeError,
-  TypedArrayPrototypeSubarray,
-  Uint8Array,
-} = primordials;
-
-const promiseIdSymbol = SymbolFor("Deno.core.internalPromiseId");
+import { SymbolDispose } from "ext:deno_web/00_infra.js";
 
 async function write(rid, data) {
   return await core.write(rid, data);
@@ -40,13 +67,13 @@ async function resolveDns(query, recordType, options) {
   let abortHandler;
   if (options?.signal) {
     options.signal.throwIfAborted();
-    cancelRid = ops.op_cancel_handle();
+    cancelRid = createCancelHandle();
     abortHandler = () => core.tryClose(cancelRid);
     options.signal[abortSignal.add](abortHandler);
   }
 
   try {
-    return await core.opAsync("op_dns_resolve", {
+    return await op_dns_resolve({
       cancelRid,
       query,
       recordType,
@@ -67,18 +94,27 @@ class Conn {
   #remoteAddr = null;
   #localAddr = null;
   #unref = false;
-  #pendingReadPromiseIds = [];
+  #pendingReadPromises = new SafeSet();
 
   #readable;
   #writable;
 
   constructor(rid, remoteAddr, localAddr) {
+    ObjectDefineProperty(this, internalRidSymbol, {
+      enumerable: false,
+      value: rid,
+    });
     this.#rid = rid;
     this.#remoteAddr = remoteAddr;
     this.#localAddr = localAddr;
   }
 
   get rid() {
+    internals.warnOnDeprecatedApi(
+      "Deno.Conn.rid",
+      new Error().stack,
+      "Use `Deno.Conn` instance methods instead.",
+    );
     return this.#rid;
   }
 
@@ -91,42 +127,38 @@ class Conn {
   }
 
   write(p) {
-    return write(this.rid, p);
+    return write(this.#rid, p);
   }
 
   async read(buffer) {
     if (buffer.length === 0) {
       return 0;
     }
-    const promise = core.read(this.rid, buffer);
-    const promiseId = promise[promiseIdSymbol];
-    if (this.#unref) core.unrefOp(promiseId);
-    ArrayPrototypePush(this.#pendingReadPromiseIds, promiseId);
+    const promise = core.read(this.#rid, buffer);
+    if (this.#unref) core.unrefOpPromise(promise);
+    SetPrototypeAdd(this.#pendingReadPromises, promise);
     let nread;
     try {
       nread = await promise;
     } catch (e) {
       throw e;
     } finally {
-      this.#pendingReadPromiseIds = ArrayPrototypeFilter(
-        this.#pendingReadPromiseIds,
-        (id) => id !== promiseId,
-      );
+      SetPrototypeDelete(this.#pendingReadPromises, promise);
     }
     return nread === 0 ? null : nread;
   }
 
   close() {
-    core.close(this.rid);
+    core.close(this.#rid);
   }
 
   closeWrite() {
-    return shutdown(this.rid);
+    return shutdown(this.#rid);
   }
 
   get readable() {
     if (this.#readable === undefined) {
-      this.#readable = readableStreamForRidUnrefable(this.rid);
+      this.#readable = readableStreamForRidUnrefable(this.#rid);
       if (this.#unref) {
         readableStreamForRidUnrefableUnref(this.#readable);
       }
@@ -136,7 +168,7 @@ class Conn {
 
   get writable() {
     if (this.#writable === undefined) {
-      this.#writable = writableStreamForRid(this.rid);
+      this.#writable = writableStreamForRid(this.#rid);
     }
     return this.#writable;
   }
@@ -146,7 +178,11 @@ class Conn {
     if (this.#readable) {
       readableStreamForRidUnrefableRef(this.#readable);
     }
-    ArrayPrototypeForEach(this.#pendingReadPromiseIds, (id) => core.refOp(id));
+
+    SetPrototypeForEach(
+      this.#pendingReadPromises,
+      (promise) => core.refOpPromise(promise),
+    );
   }
 
   unref() {
@@ -154,37 +190,90 @@ class Conn {
     if (this.#readable) {
       readableStreamForRidUnrefableUnref(this.#readable);
     }
-    ArrayPrototypeForEach(
-      this.#pendingReadPromiseIds,
-      (id) => core.unrefOp(id),
+    SetPrototypeForEach(
+      this.#pendingReadPromises,
+      (promise) => core.unrefOpPromise(promise),
     );
+  }
+
+  [SymbolDispose]() {
+    core.tryClose(this.#rid);
   }
 }
 
 class TcpConn extends Conn {
+  #rid = 0;
+
+  constructor(rid, remoteAddr, localAddr) {
+    super(rid, remoteAddr, localAddr);
+    ObjectDefineProperty(this, internalRidSymbol, {
+      enumerable: false,
+      value: rid,
+    });
+    this.#rid = rid;
+  }
+
+  get rid() {
+    internals.warnOnDeprecatedApi(
+      "Deno.TcpConn.rid",
+      new Error().stack,
+      "Use `Deno.TcpConn` instance methods instead.",
+    );
+    return this.#rid;
+  }
+
   setNoDelay(noDelay = true) {
-    return ops.op_set_nodelay(this.rid, noDelay);
+    return op_set_nodelay(this.#rid, noDelay);
   }
 
   setKeepAlive(keepAlive = true) {
-    return ops.op_set_keepalive(this.rid, keepAlive);
+    return op_set_keepalive(this.#rid, keepAlive);
   }
 }
 
-class UnixConn extends Conn {}
+class UnixConn extends Conn {
+  #rid = 0;
+
+  constructor(rid, remoteAddr, localAddr) {
+    super(rid, remoteAddr, localAddr);
+    ObjectDefineProperty(this, internalRidSymbol, {
+      enumerable: false,
+      value: rid,
+    });
+    this.#rid = rid;
+  }
+
+  get rid() {
+    internals.warnOnDeprecatedApi(
+      "Deno.UnixConn.rid",
+      new Error().stack,
+      "Use `Deno.UnixConn` instance methods instead.",
+    );
+    return this.#rid;
+  }
+}
 
 class Listener {
   #rid = 0;
   #addr = null;
   #unref = false;
-  #promiseId = null;
+  #promise = null;
 
   constructor(rid, addr) {
+    ObjectDefineProperty(this, internalRidSymbol, {
+      enumerable: false,
+      value: rid,
+    });
     this.#rid = rid;
     this.#addr = addr;
   }
 
   get rid() {
+    internals.warnOnDeprecatedApi(
+      "Deno.Listener.rid",
+      new Error().stack,
+      "Use `Deno.Listener` instance methods instead.",
+    );
     return this.#rid;
   }
 
@@ -196,18 +285,18 @@ class Listener {
     let promise;
     switch (this.addr.transport) {
       case "tcp":
-        promise = core.opAsync("op_net_accept_tcp", this.rid);
+        promise = op_net_accept_tcp(this.#rid);
         break;
       case "unix":
-        promise = core.opAsync("op_net_accept_unix", this.rid);
+        promise = op_net_accept_unix(this.#rid);
         break;
       default:
         throw new Error(`Unsupported transport: ${this.addr.transport}`);
     }
-    this.#promiseId = promise[promiseIdSymbol];
-    if (this.#unref) core.unrefOp(this.#promiseId);
+    this.#promise = promise;
+    if (this.#unref) core.unrefOpPromise(promise);
     const { 0: rid, 1: localAddr, 2: remoteAddr } = await promise;
-    this.#promiseId = null;
+    this.#promise = null;
     if (this.addr.transport == "tcp") {
       localAddr.transport = "tcp";
       remoteAddr.transport = "tcp";
@@ -245,7 +334,11 @@ class Listener {
   }
 
   close() {
-    core.close(this.rid);
+    core.close(this.#rid);
+  }
+
+  [SymbolDispose]() {
+    core.tryClose(this.#rid);
   }
 
   [SymbolAsyncIterator]() {
@@ -254,15 +347,15 @@ class Listener {
 
   ref() {
     this.#unref = false;
-    if (typeof this.#promiseId === "number") {
-      core.refOp(this.#promiseId);
+    if (this.#promise !== null) {
+      core.refOpPromise(this.#promise);
     }
   }
 
   unref() {
     this.#unref = true;
-    if (typeof this.#promiseId === "number") {
-      core.unrefOp(this.#promiseId);
+    if (this.#promise !== null) {
+      core.unrefOpPromise(this.#promise);
     }
   }
 }
@@ -270,6 +363,8 @@ class Listener {
 class Datagram {
   #rid = 0;
   #addr = null;
+  #unref = false;
+  #promise = null;
 
   constructor(rid, addr, bufSize = 1024) {
     this.#rid = rid;
@@ -277,66 +372,55 @@ class Datagram {
     this.bufSize = bufSize;
   }
 
-  get rid() {
-    return this.#rid;
-  }
-
   get addr() {
     return this.#addr;
   }
 
   async joinMulticastV4(addr, multiInterface) {
-    await core.opAsync(
-      "op_net_join_multi_v4_udp",
-      this.rid,
+    await op_net_join_multi_v4_udp(
+      this.#rid,
       addr,
       multiInterface,
     );
 
     return {
       leave: () =>
-        core.opAsync(
-          "op_net_leave_multi_v4_udp",
-          this.rid,
+        op_net_leave_multi_v4_udp(
+          this.#rid,
           addr,
           multiInterface,
         ),
       setLoopback: (loopback) =>
-        core.opAsync(
-          "op_net_set_multi_loopback_udp",
-          this.rid,
+        op_net_set_multi_loopback_udp(
+          this.#rid,
           true,
           loopback,
         ),
       setTTL: (ttl) =>
-        core.opAsync(
-          "op_net_set_multi_ttl_udp",
-          this.rid,
+        op_net_set_multi_ttl_udp(
+          this.#rid,
           ttl,
         ),
     };
   }
 
   async joinMulticastV6(addr, multiInterface) {
-    await core.opAsync(
-      "op_net_join_multi_v6_udp",
-      this.rid,
+    await op_net_join_multi_v6_udp(
+      this.#rid,
       addr,
       multiInterface,
     );
 
     return {
       leave: () =>
-        core.opAsync(
-          "op_net_leave_multi_v6_udp",
-          this.rid,
+        op_net_leave_multi_v6_udp(
+          this.#rid,
           addr,
           multiInterface,
         ),
       setLoopback: (loopback) =>
-        core.opAsync(
-          "op_net_set_multi_loopback_udp",
-          this.rid,
+        op_net_set_multi_loopback_udp(
+          this.#rid,
           false,
           loopback,
         ),
@@ -349,19 +433,19 @@ class Datagram {
     let remoteAddr;
     switch (this.addr.transport) {
       case "udp": {
-        ({ 0: nread, 1: remoteAddr } = await core.opAsync(
-          "op_net_recv_udp",
-          this.rid,
+        this.#promise = op_net_recv_udp(
+          this.#rid,
           buf,
-        ));
+        );
+        if (this.#unref) core.unrefOpPromise(this.#promise);
+        ({ 0: nread, 1: remoteAddr } = await this.#promise);
         remoteAddr.transport = "udp";
         break;
       }
       case "unixpacket": {
         let path;
-        ({ 0: nread, 1: path } = await core.opAsync(
-          "op_net_recv_unixpacket",
-          this.rid,
+        ({ 0: nread, 1: path } = await op_net_recv_unixpacket(
+          this.#rid,
           buf,
         ));
         remoteAddr = { transport: "unixpacket", path };
@@ -377,16 +461,14 @@ class Datagram {
   async send(p, opts) {
     switch (this.addr.transport) {
       case "udp":
-        return await core.opAsync(
-          "op_net_send_udp",
-          this.rid,
+        return await op_net_send_udp(
+          this.#rid,
           { hostname: opts.hostname ?? "127.0.0.1", port: opts.port },
           p,
         );
       case "unixpacket":
-        return await core.opAsync(
-          "op_net_send_unixpacket",
-          this.rid,
+        return await op_net_send_unixpacket(
+          this.#rid,
           opts.path,
           p,
         );
@@ -396,7 +478,21 @@ class Datagram {
   }
 
   close() {
-    core.close(this.rid);
+    core.close(this.#rid);
+  }
+
+  ref() {
+    this.#unref = false;
+    if (this.#promise !== null) {
+      core.refOpPromise(this.#promise);
+    }
+  }
+
+  unref() {
+    this.#unref = true;
+    if (this.#promise !== null) {
+      core.unrefOpPromise(this.#promise);
+    }
   }
 
   async *[SymbolAsyncIterator]() {
@@ -416,10 +512,12 @@ class Datagram {
   }
 }
 
+const listenOptionApiName = Symbol("listenOptionApiName");
+
 function listen(args) {
   switch (args.transport ?? "tcp") {
     case "tcp": {
-      const { 0: rid, 1: addr } = ops.op_net_listen_tcp({
+      const { 0: rid, 1: addr } = op_net_listen_tcp({
         hostname: args.hostname ?? "0.0.0.0",
         port: Number(args.port),
       }, args.reusePort);
@@ -427,7 +525,10 @@ function listen(args) {
       return new Listener(rid, addr);
     }
     case "unix": {
-      const { 0: rid, 1: path } = ops.op_net_listen_unix(args.path);
+      const { 0: rid, 1: path } = op_net_listen_unix(
+        args.path,
+        args[listenOptionApiName] ?? "Deno.listen",
+      );
       const addr = {
         transport: "unix",
         path,
@@ -471,8 +572,7 @@ function createListenDatagram(udpOpFn, unixOpFn) {
 async function connect(args) {
   switch (args.transport ?? "tcp") {
     case "tcp": {
-      const { 0: rid, 1: localAddr, 2: remoteAddr } = await core.opAsync(
-        "op_net_connect_tcp",
+      const { 0: rid, 1: localAddr, 2: remoteAddr } = await op_net_connect_tcp(
         {
           hostname: args.hostname ?? "127.0.0.1",
           port: args.port,
@@ -483,8 +583,7 @@ async function connect(args) {
       return new TcpConn(rid, remoteAddr, localAddr);
     }
     case "unix": {
-      const { 0: rid, 1: localAddr, 2: remoteAddr } = await core.opAsync(
-        "op_net_connect_unix",
+      const { 0: rid, 1: localAddr, 2: remoteAddr } = await op_net_connect_unix(
         args.path,
       );
       return new UnixConn(
@@ -502,9 +601,9 @@ export {
   Conn,
   connect,
   createListenDatagram,
-  Datagram,
   listen,
   Listener,
+  listenOptionApiName,
   resolveDns,
   shutdown,
   TcpConn,

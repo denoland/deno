@@ -1,5 +1,5 @@
 #!/usr/bin/env -S deno run --unstable --allow-write --allow-read --allow-net --allow-env --allow-run
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // This script is used to run WPT tests for Deno.
 
@@ -32,9 +32,15 @@ import {
   updateManifest,
   wptreport,
 } from "./wpt/utils.ts";
-import { pooledMap } from "../test_util/std/async/pool.ts";
-import { blue, bold, green, red, yellow } from "../test_util/std/fmt/colors.ts";
-import { writeAll, writeAllSync } from "../test_util/std/streams/write_all.ts";
+import { pooledMap } from "../tests/util/std/async/pool.ts";
+import {
+  blue,
+  bold,
+  green,
+  red,
+  yellow,
+} from "../tests/util/std/fmt/colors.ts";
+import { writeAll, writeAllSync } from "../tests/util/std/streams/write_all.ts";
 import { saveExpectation } from "./wpt/utils.ts";
 
 class TestFilter {
@@ -143,7 +149,7 @@ async function setup() {
       if (Deno.build.os == "windows") {
         console.log("To do this run the following command in PowerShell:");
         console.log("");
-        console.log("    cd test_util/wpt/");
+        console.log("    cd tests/wpt/suite/");
         console.log(
           "    python.exe wpt make-hosts-file | Out-File $env:SystemRoot\\System32\\drivers\\etc\\hosts -Encoding ascii -Append",
         );
@@ -151,7 +157,7 @@ async function setup() {
       } else {
         console.log("To do this run the following command in your shell:");
         console.log("");
-        console.log("    cd test_util/wpt/");
+        console.log("    cd tests/wpt/suite/");
         console.log(
           "    python3 ./wpt make-hosts-file | sudo tee -a /etc/hosts",
         );
@@ -329,7 +335,10 @@ function assertAllExpectationsHaveTests(
     for (const [key, expectation] of Object.entries(parentExpectation)) {
       const path = `${parent}/${key}`;
       if (!filter.matches(path)) continue;
-      if (typeof expectation == "boolean" || Array.isArray(expectation)) {
+      if (
+        (typeof expectation == "boolean" || Array.isArray(expectation)) &&
+        key !== "ignore"
+      ) {
         if (!tests.has(path)) {
           missingTests.push(path);
         }
@@ -708,14 +717,15 @@ function discoverTestsToRun(
             1,
           ) as ManifestTestVariation[]
         ) {
-          if (!path) continue;
-          const url = new URL(path, "http://web-platform.test:8000");
-          if (
-            !url.pathname.endsWith(".any.html") &&
-            !url.pathname.endsWith(".window.html") &&
-            !url.pathname.endsWith(".worker.html") &&
-            !url.pathname.endsWith(".worker-module.html")
-          ) {
+          // Test keys ending with ".html" include their own html boilerplate.
+          // Test keys ending with ".js" will have the necessary boilerplate generated and
+          // the manifest path will contain the full path to the generated html test file.
+          // See: https://web-platform-tests.org/writing-tests/testharness.html
+          if (!key.endsWith(".html") && !key.endsWith(".js")) continue;
+
+          const testHtmlPath = path ?? `${prefix}/${key}`;
+          const url = new URL(testHtmlPath, "http://web-platform.test:8000");
+          if (!url.pathname.endsWith(".html")) {
             continue;
           }
           // These tests require an HTTP2 compatible server.

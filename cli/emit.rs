@@ -1,11 +1,11 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::cache::EmitCache;
 use crate::cache::FastInsecureHasher;
 use crate::cache::ParsedSourceCache;
 
 use deno_core::error::AnyError;
-use deno_core::ModuleCode;
+use deno_core::ModuleCodeString;
 use deno_core::ModuleSpecifier;
 use deno_graph::MediaType;
 use deno_graph::Module;
@@ -40,7 +40,7 @@ impl Emitter {
     graph: &ModuleGraph,
   ) -> Result<(), AnyError> {
     for module in graph.modules() {
-      if let Module::Esm(module) = module {
+      if let Module::Js(module) = module {
         let is_emittable = matches!(
           module.media_type,
           MediaType::TypeScript
@@ -76,7 +76,7 @@ impl Emitter {
     specifier: &ModuleSpecifier,
     media_type: MediaType,
     source: &Arc<str>,
-  ) -> Result<ModuleCode, AnyError> {
+  ) -> Result<ModuleCodeString, AnyError> {
     let source_hash = self.get_source_hash(source);
 
     if let Some(emit_code) =
@@ -99,6 +99,26 @@ impl Emitter {
       );
       Ok(transpiled_source.text.into())
     }
+  }
+
+  /// Expects a file URL, panics otherwise.
+  pub async fn load_and_emit_for_hmr(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Result<String, AnyError> {
+    let media_type = MediaType::from_specifier(specifier);
+    let source_code = tokio::fs::read_to_string(
+      ModuleSpecifier::to_file_path(specifier).unwrap(),
+    )
+    .await?;
+    let source_arc: Arc<str> = source_code.into();
+    let parsed_source = self
+      .parsed_source_cache
+      .get_or_parse_module(specifier, source_arc, media_type)?;
+    let mut options = self.emit_options.clone();
+    options.inline_source_map = false;
+    let transpiled_source = parsed_source.transpile(&options)?;
+    Ok(transpiled_source.text)
   }
 
   /// A hashing function that takes the source code and uses the global emit

@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 //! This module provides file formatting utilities using
 //! [`dprint-plugin-typescript`](https://github.com/dprint/dprint-plugin-typescript).
@@ -8,7 +8,6 @@
 //! the same functions as ops available in JS runtime.
 
 use crate::args::CliOptions;
-use crate::args::FilesConfig;
 use crate::args::Flags;
 use crate::args::FmtFlags;
 use crate::args::FmtOptions;
@@ -18,10 +17,11 @@ use crate::colors;
 use crate::factory::CliFactory;
 use crate::util::diff::diff;
 use crate::util::file_watcher;
+use crate::util::fs::canonicalize_path;
 use crate::util::fs::FileCollector;
 use crate::util::path::get_extension;
-use crate::util::text_encoding;
 use deno_ast::ParsedSource;
+use deno_config::glob::FilePatterns;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
@@ -64,37 +64,42 @@ pub async fn format(flags: Flags, fmt_flags: FmtFlags) -> Result<(), AnyError> {
   if let Some(watch_flags) = &fmt_flags.watch {
     file_watcher::watch_func(
       flags,
-      file_watcher::PrintConfig {
-        job_name: "Fmt".to_string(),
-        clear_screen: !watch_flags.no_clear_screen,
-      },
-      move |flags, sender, changed_paths| {
+      file_watcher::PrintConfig::new("Fmt", !watch_flags.no_clear_screen),
+      move |flags, watcher_communicator, changed_paths| {
         let fmt_flags = fmt_flags.clone();
         Ok(async move {
           let factory = CliFactory::from_flags(flags).await?;
           let cli_options = factory.cli_options();
           let fmt_options = cli_options.resolve_fmt_options(fmt_flags)?;
           let files =
-            collect_fmt_files(&fmt_options.files).and_then(|files| {
+            collect_fmt_files(fmt_options.files.clone()).and_then(|files| {
               if files.is_empty() {
                 Err(generic_error("No target files found."))
               } else {
                 Ok(files)
               }
             })?;
-          _ = sender.send(files.clone());
+          let _ = watcher_communicator.watch_paths(files.clone());
           let refmt_files = if let Some(paths) = changed_paths {
             if fmt_options.check {
               // check all files on any changed (https://github.com/denoland/deno/issues/12446)
               files
                 .iter()
-                .any(|path| paths.contains(path))
+                .any(|path| {
+                  canonicalize_path(path)
+                    .map(|path| paths.contains(&path))
+                    .unwrap_or(false)
+                })
                 .then_some(files)
                 .unwrap_or_else(|| [].to_vec())
             } else {
               files
                 .into_iter()
-                .filter(|path| paths.contains(path))
+                .filter(|path| {
+                  canonicalize_path(path)
+                    .map(|path| paths.contains(&path))
+                    .unwrap_or(false)
+                })
                 .collect::<Vec<_>>()
             }
           } else {
@@ -111,13 +116,14 @@ pub async fn format(flags: Flags, fmt_flags: FmtFlags) -> Result<(), AnyError> {
     let factory = CliFactory::from_flags(flags).await?;
     let cli_options = factory.cli_options();
     let fmt_options = cli_options.resolve_fmt_options(fmt_flags)?;
-    let files = collect_fmt_files(&fmt_options.files).and_then(|files| {
-      if files.is_empty() {
-        Err(generic_error("No target files found."))
-      } else {
-        Ok(files)
-      }
-    })?;
+    let files =
+      collect_fmt_files(fmt_options.files.clone()).and_then(|files| {
+        if files.is_empty() {
+          Err(generic_error("No target files found."))
+        } else {
+          Ok(files)
+        }
+      })?;
     format_files(factory, fmt_options, files).await?;
   }
 
@@ -147,13 +153,12 @@ async fn format_files(
   Ok(())
 }
 
-fn collect_fmt_files(files: &FilesConfig) -> Result<Vec<PathBuf>, AnyError> {
-  FileCollector::new(is_supported_ext_fmt)
+fn collect_fmt_files(files: FilePatterns) -> Result<Vec<PathBuf>, AnyError> {
+  FileCollector::new(|path, _| is_supported_ext_fmt(path))
     .ignore_git_folder()
     .ignore_node_modules()
     .ignore_vendor_folder()
-    .add_ignore_paths(&files.exclude)
-    .collect_files(files.include.as_deref())
+    .collect_file_patterns(files)
 }
 
 /// Formats markdown (using <https://github.com/dprint/dprint-plugin-markdown>) and its code blocks
@@ -191,13 +196,13 @@ fn format_markdown(
           rest => rest,
         };
 
+        let fake_filename =
+          PathBuf::from(format!("deno_fmt_stdin.{extension}"));
         if matches!(extension, "json" | "jsonc") {
           let mut json_config = get_resolved_json_config(fmt_options);
           json_config.line_width = line_width;
-          dprint_plugin_json::format_text(text, &json_config)
+          dprint_plugin_json::format_text(&fake_filename, text, &json_config)
         } else {
-          let fake_filename =
-            PathBuf::from(format!("deno_fmt_stdin.{extension}"));
           let mut codeblock_config =
             get_resolved_typescript_config(fmt_options);
           codeblock_config.line_width = line_width;
@@ -218,30 +223,37 @@ fn format_markdown(
 /// of configuration builder of <https://github.com/dprint/dprint-plugin-json>.
 /// See <https://github.com/dprint/dprint-plugin-json/blob/cfa1052dbfa0b54eb3d814318034cdc514c813d7/src/configuration/builder.rs#L87> for configuration.
 pub fn format_json(
+  file_path: &Path,
   file_text: &str,
   fmt_options: &FmtOptionsConfig,
 ) -> Result<Option<String>, AnyError> {
   let config = get_resolved_json_config(fmt_options);
-  dprint_plugin_json::format_text(file_text, &config)
+  dprint_plugin_json::format_text(file_path, file_text, &config)
 }
 
-/// Formats a single TS, TSX, JS, JSX, JSONC, JSON, or MD file.
+/// Formats a single TS, TSX, JS, JSX, JSONC, JSON, MD, or IPYNB file.
 pub fn format_file(
   file_path: &Path,
   file_text: &str,
   fmt_options: &FmtOptionsConfig,
 ) -> Result<Option<String>, AnyError> {
   let ext = get_extension(file_path).unwrap_or_default();
-  if matches!(
-    ext.as_str(),
-    "md" | "mkd" | "mkdn" | "mdwn" | "mdown" | "markdown"
-  ) {
-    format_markdown(file_text, fmt_options)
-  } else if matches!(ext.as_str(), "json" | "jsonc") {
-    format_json(file_text, fmt_options)
-  } else {
-    let config = get_resolved_typescript_config(fmt_options);
-    dprint_plugin_typescript::format_text(file_path, file_text, &config)
+
+  match ext.as_str() {
+    "md" | "mkd" | "mkdn" | "mdwn" | "mdown" | "markdown" => {
+      format_markdown(file_text, fmt_options)
+    }
+    "json" | "jsonc" => format_json(file_path, file_text, fmt_options),
+    "ipynb" => dprint_plugin_jupyter::format_text(
+      file_text,
+      |file_path: &Path, file_text: String| {
+        format_file(file_path, &file_text, fmt_options)
+      },
+    ),
+    _ => {
+      let config = get_resolved_typescript_config(fmt_options);
+      dprint_plugin_typescript::format_text(file_path, file_text, &config)
+    }
   }
 }
 
@@ -519,7 +531,7 @@ fn get_resolved_typescript_config(
   if let Some(single_quote) = options.single_quote {
     if single_quote {
       builder.quote_style(
-        dprint_plugin_typescript::configuration::QuoteStyle::AlwaysSingle,
+        dprint_plugin_typescript::configuration::QuoteStyle::PreferSingle,
       );
     }
   }
@@ -594,28 +606,24 @@ struct FileContents {
 fn read_file_contents(file_path: &Path) -> Result<FileContents, AnyError> {
   let file_bytes = fs::read(file_path)
     .with_context(|| format!("Error reading {}", file_path.display()))?;
-  let charset = text_encoding::detect_charset(&file_bytes);
-  let file_text = text_encoding::convert_to_utf8(&file_bytes, charset)
-    .map_err(|_| {
+  let had_bom = file_bytes.starts_with(&[0xEF, 0xBB, 0xBF]);
+  // will have the BOM stripped
+  let text = deno_graph::source::decode_owned_file_source(file_bytes)
+    .with_context(|| {
       anyhow!("{} is not a valid UTF-8 file", file_path.display())
     })?;
-  let had_bom = file_text.starts_with(text_encoding::BOM_CHAR);
-  let text = if had_bom {
-    text_encoding::strip_bom(&file_text).to_string()
-  } else {
-    file_text.to_string()
-  };
 
   Ok(FileContents { text, had_bom })
 }
 
 fn write_file_contents(
   file_path: &Path,
-  file_contents: FileContents,
+  mut file_contents: FileContents,
 ) -> Result<(), AnyError> {
   let file_text = if file_contents.had_bom {
     // add back the BOM
-    format!("{}{}", text_encoding::BOM_CHAR, file_contents.text)
+    file_contents.text.insert(0, '\u{FEFF}');
+    file_contents.text
   } else {
     file_contents.text
   };
@@ -669,7 +677,7 @@ where
 /// This function is similar to is_supported_ext but adds additional extensions
 /// supported by `deno fmt`.
 fn is_supported_ext_fmt(path: &Path) -> bool {
-  if let Some(ext) = get_extension(path) {
+  get_extension(path).is_some_and(|ext| {
     matches!(
       ext.as_str(),
       "ts"
@@ -688,10 +696,9 @@ fn is_supported_ext_fmt(path: &Path) -> bool {
         | "mdwn"
         | "mdown"
         | "markdown"
+        | "ipynb"
     )
-  } else {
-    false
-  }
+  })
 }
 
 #[cfg(test)]
@@ -723,6 +730,7 @@ mod test {
     assert!(is_supported_ext_fmt(Path::new("foo.JSONC")));
     assert!(is_supported_ext_fmt(Path::new("foo.json")));
     assert!(is_supported_ext_fmt(Path::new("foo.JsON")));
+    assert!(is_supported_ext_fmt(Path::new("foo.ipynb")));
   }
 
   #[test]
@@ -787,5 +795,24 @@ mod test {
     .unwrap();
 
     assert_eq!(result, Some("11".to_string()));
+  }
+
+  #[test]
+  fn test_single_quote_true_prefers_single_quote() {
+    let file_text = format_file(
+      &PathBuf::from("test.ts"),
+      "console.log(\"there's\");\nconsole.log('hi');\nconsole.log(\"bye\")\n",
+      &FmtOptionsConfig {
+        single_quote: Some(true),
+        ..Default::default()
+      },
+    )
+    .unwrap()
+    .unwrap();
+    assert_eq!(
+      file_text,
+      // should use double quotes for the string with a single quote
+      "console.log(\"there's\");\nconsole.log('hi');\nconsole.log('bye');\n",
+    );
   }
 }

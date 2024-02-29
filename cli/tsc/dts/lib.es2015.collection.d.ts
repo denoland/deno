@@ -17,7 +17,6 @@ and limitations under the License.
 /// <reference no-default-lib="true"/>
 
 interface Map<K, V> {
-
     clear(): void;
     /**
      * @returns true if an element in the Map existed and has been removed, or false if the element does not exist.
@@ -47,7 +46,7 @@ interface Map<K, V> {
 }
 
 interface MapConstructor {
-    new(): Map<any, any>;
+    new (): Map<any, any>;
     new <K, V>(entries?: readonly (readonly [K, V])[] | null): Map<K, V>;
     readonly prototype: Map<any, any>;
 }

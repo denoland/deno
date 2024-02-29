@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
@@ -29,8 +29,24 @@ import {
 import { Buffer } from "node:buffer";
 import { KeyFormat, KeyType } from "ext:deno_node/internal/crypto/types.ts";
 
-const { core } = globalThis.__bootstrap;
-const { ops } = core;
+import {
+  op_node_dh_generate,
+  op_node_dh_generate_async,
+  op_node_dh_generate_group,
+  op_node_dh_generate_group_async,
+  op_node_dsa_generate,
+  op_node_dsa_generate_async,
+  op_node_ec_generate,
+  op_node_ec_generate_async,
+  op_node_ed25519_generate,
+  op_node_ed25519_generate_async,
+  op_node_generate_rsa,
+  op_node_generate_rsa_async,
+  op_node_generate_secret,
+  op_node_generate_secret_async,
+  op_node_x25519_generate,
+  op_node_x25519_generate_async,
+} from "ext:core/ops";
 
 function validateGenerateKey(
   type: "hmac" | "aes",
@@ -65,7 +81,7 @@ export function generateKeySync(
   const { length } = options;
 
   const key = new Uint8Array(Math.floor(length / 8));
-  ops.op_node_generate_secret(key);
+  op_node_generate_secret(key);
 
   return new SecretKeyObject(setOwnedKey(key));
 }
@@ -81,7 +97,7 @@ export function generateKey(
   validateFunction(callback, "callback");
   const { length } = options;
 
-  core.opAsync("op_node_generate_secret_async", Math.floor(length / 8)).then(
+  op_node_generate_secret_async(Math.floor(length / 8)).then(
     (key) => {
       callback(null, new SecretKeyObject(setOwnedKey(key)));
     },
@@ -794,13 +810,12 @@ function createJob(mode, type, options) {
 
       if (type === "rsa") {
         if (mode === kSync) {
-          return ops.op_node_generate_rsa(
+          return op_node_generate_rsa(
             modulusLength,
             publicExponent,
           );
         } else {
-          return core.opAsync(
-            "op_node_generate_rsa_async",
+          return op_node_generate_rsa_async(
             modulusLength,
             publicExponent,
           );
@@ -850,13 +865,12 @@ function createJob(mode, type, options) {
       }
 
       if (mode === kSync) {
-        return ops.op_node_generate_rsa(
+        return op_node_generate_rsa(
           modulusLength,
           publicExponent,
         );
       } else {
-        return core.opAsync(
-          "op_node_generate_rsa_async",
+        return op_node_generate_rsa_async(
           modulusLength,
           publicExponent,
         );
@@ -875,10 +889,9 @@ function createJob(mode, type, options) {
       }
 
       if (mode === kSync) {
-        return ops.op_node_dsa_generate(modulusLength, divisorLength);
+        return op_node_dsa_generate(modulusLength, divisorLength);
       }
-      return core.opAsync(
-        "op_node_dsa_generate_async",
+      return op_node_dsa_generate_async(
         modulusLength,
         divisorLength,
       );
@@ -898,22 +911,22 @@ function createJob(mode, type, options) {
       }
 
       if (mode === kSync) {
-        return ops.op_node_ec_generate(namedCurve);
+        return op_node_ec_generate(namedCurve);
       } else {
-        return core.opAsync("op_node_ec_generate_async", namedCurve);
+        return op_node_ec_generate_async(namedCurve);
       }
     }
     case "ed25519": {
       if (mode === kSync) {
-        return ops.op_node_ed25519_generate();
+        return op_node_ed25519_generate();
       }
-      return core.opAsync("op_node_ed25519_generate_async");
+      return op_node_ed25519_generate_async();
     }
     case "x25519": {
       if (mode === kSync) {
-        return ops.op_node_x25519_generate();
+        return op_node_x25519_generate();
       }
-      return core.opAsync("op_node_x25519_generate_async");
+      return op_node_x25519_generate_async();
     }
     case "ed448":
     case "x448": {
@@ -937,9 +950,9 @@ function createJob(mode, type, options) {
         validateString(group, "options.group");
 
         if (mode === kSync) {
-          return ops.op_node_dh_generate_group(group);
+          return op_node_dh_generate_group(group);
         } else {
-          return core.opAsync("op_node_dh_generate_group_async", group);
+          return op_node_dh_generate_group_async(group);
         }
       }
 
@@ -964,10 +977,9 @@ function createJob(mode, type, options) {
       const g = generator == null ? 2 : generator;
 
       if (mode === kSync) {
-        return ops.op_node_dh_generate(prime, primeLength ?? 0, g);
+        return op_node_dh_generate(prime, primeLength ?? 0, g);
       } else {
-        return core.opAsync(
-          "op_node_dh_generate_async",
+        return op_node_dh_generate_async(
           prime,
           primeLength ?? 0,
           g,

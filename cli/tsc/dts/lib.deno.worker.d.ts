@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 /// <reference no-default-lib="true" />
 /// <reference lib="deno.ns" />
@@ -62,6 +62,7 @@ declare var WorkerGlobalScope: {
 
 /** @category Web APIs */
 declare interface WorkerNavigator {
+  readonly gpu: GPU;
   readonly hardwareConcurrency: number;
   readonly userAgent: string;
   readonly language: string;

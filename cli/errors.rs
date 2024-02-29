@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 //! There are many types of errors in Deno:
 //! - AnyError: a generic wrapper that can encapsulate any type of error.
@@ -9,18 +9,20 @@
 //!   Diagnostics are compile-time type errors, whereas JsErrors are runtime
 //!   exceptions.
 
-use deno_ast::Diagnostic;
+use deno_ast::ParseDiagnostic;
 use deno_core::error::AnyError;
+use deno_graph::source::ResolveError;
 use deno_graph::ModuleError;
 use deno_graph::ModuleGraphError;
 use deno_graph::ResolutionError;
 use import_map::ImportMapError;
+use std::fmt::Write;
 
 fn get_import_map_error_class(_: &ImportMapError) -> &'static str {
   "URIError"
 }
 
-fn get_diagnostic_class(_: &Diagnostic) -> &'static str {
+fn get_diagnostic_class(_: &ParseDiagnostic) -> &'static str {
   "SyntaxError"
 }
 
@@ -34,17 +36,26 @@ fn get_module_graph_error_class(err: &ModuleGraphError) -> &'static str {
       | ModuleError::UnsupportedImportAttributeType { .. } => "TypeError",
       ModuleError::Missing(_, _)
       | ModuleError::MissingDynamic(_, _)
+      | ModuleError::MissingWorkspaceMemberExports { .. }
+      | ModuleError::UnknownExport { .. }
       | ModuleError::UnknownPackage { .. }
       | ModuleError::UnknownPackageReq { .. } => "NotFound",
     },
-    ModuleGraphError::ResolutionError(err) => get_resolution_error_class(err),
+    ModuleGraphError::ResolutionError(err)
+    | ModuleGraphError::TypesResolutionError(err) => {
+      get_resolution_error_class(err)
+    }
   }
 }
 
 fn get_resolution_error_class(err: &ResolutionError) -> &'static str {
   match err {
     ResolutionError::ResolverError { error, .. } => {
-      get_error_class_name(error.as_ref())
+      use ResolveError::*;
+      match error.as_ref() {
+        Specifier(_) => "TypeError",
+        Other(e) => get_error_class_name(e),
+      }
     }
     _ => "TypeError",
   }
@@ -56,7 +67,10 @@ pub fn get_error_class_name(e: &AnyError) -> &'static str {
       e.downcast_ref::<ImportMapError>()
         .map(get_import_map_error_class)
     })
-    .or_else(|| e.downcast_ref::<Diagnostic>().map(get_diagnostic_class))
+    .or_else(|| {
+      e.downcast_ref::<ParseDiagnostic>()
+        .map(get_diagnostic_class)
+    })
     .or_else(|| {
       e.downcast_ref::<ModuleGraphError>()
         .map(get_module_graph_error_class)
@@ -70,7 +84,10 @@ pub fn get_error_class_name(e: &AnyError) -> &'static str {
         log::warn!(
           "Error '{}' contains boxed error of unknown type:{}",
           e,
-          e.chain().map(|e| format!("\n  {e:?}")).collect::<String>()
+          e.chain().fold(String::new(), |mut output, e| {
+            let _ = write!(output, "\n  {e:?}");
+            output
+          })
         );
       }
       "Error"

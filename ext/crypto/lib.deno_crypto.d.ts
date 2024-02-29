@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // deno-lint-ignore-file no-var
 
@@ -390,7 +390,7 @@ declare interface Crypto {
   >(
     array: T,
   ): T;
-  randomUUID(): string;
+  randomUUID(): `${string}-${string}-${string}-${string}-${string}`;
 }
 
 /** @category Web Crypto API */

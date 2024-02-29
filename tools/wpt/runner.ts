@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import { delay, join, ROOT_PATH, TextLineStream, toFileUrl } from "../util.js";
 import { assert, denoBinary, ManifestTestOptions, runPy } from "./utils.ts";
 import { DOMParser } from "https://deno.land/x/deno_dom@v0.1.3-alpha2/deno-dom-wasm.ts";
@@ -11,7 +11,7 @@ export async function runWithTestUtil<T>(
     "wpt",
     "serve",
     "--config",
-    "../../tools/wpt/config.json",
+    "../../../tools/wpt/config.json",
   ], {
     stdout: verbose ? "inherit" : "piped",
     stderr: verbose ? "inherit" : "piped",
@@ -31,7 +31,11 @@ export async function runWithTestUtil<T>(
     }
     const passedTime = performance.now() - start;
     if (passedTime > 15000) {
-      proc.kill("SIGINT");
+      try {
+        proc.kill("SIGINT");
+      } catch {
+        // Might have already died
+      }
       await proc.status;
       throw new Error("Timed out while trying to start wpt test util.");
     }
@@ -43,7 +47,11 @@ export async function runWithTestUtil<T>(
     return await f();
   } finally {
     if (verbose) console.log("Killing wpt test util.");
-    proc.kill("SIGINT");
+    try {
+      proc.kill("SIGINT");
+    } catch {
+      // Might have already died
+    }
     await proc.status;
   }
 }
@@ -100,7 +108,9 @@ export async function runSingleTest(
     const args = [
       "run",
       "-A",
-      "--unstable",
+      "--unstable-broadcast-channel",
+      "--unstable-webgpu",
+      "--unstable-net",
       "--v8-flags=--expose-gc",
     ];
 
@@ -186,7 +196,10 @@ async function generateBundle(location: URL): Promise<string> {
   if (title) {
     const url = new URL(`#${inlineScriptCount}`, location);
     inlineScriptCount++;
-    scriptContents.push([url.href, `globalThis.META_TITLE="${title}"`]);
+    scriptContents.push([
+      url.href,
+      `globalThis.META_TITLE=${JSON.stringify(title)}`,
+    ]);
   }
   for (const script of scripts) {
     const src = script.getAttribute("src");

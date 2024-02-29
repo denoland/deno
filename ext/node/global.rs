@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::mem::MaybeUninit;
 use std::rc::Rc;
@@ -432,9 +432,14 @@ pub fn enumerator<'s>(
   };
   let inner = v8::Local::new(scope, inner);
 
-  let Some(array) =
-    inner.get_property_names(scope, GetPropertyNamesArgs::default())
-  else {
+  let Some(array) = inner.get_property_names(
+    scope,
+    GetPropertyNamesArgs {
+      mode: v8::KeyCollectionMode::OwnOnly,
+      property_filter: v8::PropertyFilter::ALL_PROPERTIES,
+      ..Default::default()
+    },
+  ) else {
     return;
   };
 

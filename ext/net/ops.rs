@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::io::TcpStreamResource;
 use crate::resolve_addr::resolve_addr;
@@ -378,7 +378,7 @@ where
   #[cfg(not(windows))]
   socket.set_reuse_address(true)?;
   if reuse_port {
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     socket.set_reuse_port(true)?;
   }
   let socket_addr = socket2::SockAddr::from(addr);
@@ -429,7 +429,11 @@ where
     // are different from the BSDs: it _shares_ the port rather than steal it
     // from the current listener. While useful, it's not something we can
     // emulate on other platforms so we don't enable it.
-    #[cfg(any(target_os = "windows", target_os = "linux"))]
+    #[cfg(any(
+      target_os = "windows",
+      target_os = "android",
+      target_os = "linux"
+    ))]
     socket_tmp.set_reuse_address(true)?;
     #[cfg(all(unix, not(target_os = "linux")))]
     socket_tmp.set_reuse_port(true)?;
@@ -771,7 +775,6 @@ fn rdata_to_return_record(
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::UnstableChecker;
   use deno_core::futures::FutureExt;
   use deno_core::JsRuntime;
   use deno_core::RuntimeOptions;
@@ -1039,12 +1042,15 @@ mod tests {
       test_ext,
       state = |state| {
         state.put(TestPermission {});
-        state.put(UnstableChecker { unstable: true });
       }
     );
 
+    let mut feature_checker = deno_core::FeatureChecker::default();
+    feature_checker.enable_legacy_unstable();
+
     let mut runtime = JsRuntime::new(RuntimeOptions {
       extensions: vec![test_ext::init_ops()],
+      feature_checker: Some(Arc::new(feature_checker)),
       ..Default::default()
     });
 

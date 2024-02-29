@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
@@ -209,7 +209,7 @@ pub fn op_require_is_deno_dir_package(
   #[string] path: String,
 ) -> bool {
   let resolver = state.borrow::<NpmResolverRc>();
-  resolver.in_npm_package_at_path(&PathBuf::from(path))
+  resolver.in_npm_package_at_file_path(&PathBuf::from(path))
 }
 
 #[op2]
@@ -389,7 +389,7 @@ where
   let node_resolver = state.borrow::<Rc<NodeResolver>>();
   let permissions = state.borrow::<P>();
   let pkg = node_resolver
-    .get_package_scope_config(
+    .get_closest_package_json(
       &Url::from_file_path(parent_path.unwrap()).unwrap(),
       permissions,
     )
@@ -423,7 +423,7 @@ where
     node_resolver
       .package_exports_resolve(
         &pkg.path,
-        expansion,
+        &expansion,
         exports,
         &referrer,
         NodeModuleKind::Cjs,
@@ -431,7 +431,13 @@ where
         NodeResolutionMode::Execution,
         permissions,
       )
-      .map(|r| Some(r.to_string_lossy().to_string()))
+      .map(|r| {
+        Some(if r.scheme() == "file" {
+          r.to_file_path().unwrap().to_string_lossy().to_string()
+        } else {
+          r.to_string()
+        })
+      })
   } else {
     Ok(None)
   }
@@ -484,7 +490,7 @@ where
   let permissions = state.borrow::<P>();
 
   let pkg_path = if npm_resolver
-    .in_npm_package_at_path(&PathBuf::from(&modules_path))
+    .in_npm_package_at_file_path(&PathBuf::from(&modules_path))
     && !uses_local_node_modules_dir
   {
     modules_path
@@ -507,7 +513,7 @@ where
     node_resolver
       .package_exports_resolve(
         &pkg.path,
-        format!(".{expansion}"),
+        &format!(".{expansion}"),
         exports,
         &referrer,
         NodeModuleKind::Cjs,
@@ -515,7 +521,13 @@ where
         NodeResolutionMode::Execution,
         permissions,
       )
-      .map(|r| Some(r.to_string_lossy().to_string()))
+      .map(|r| {
+        Some(if r.scheme() == "file" {
+          r.to_file_path().unwrap().to_string_lossy().to_string()
+        } else {
+          r.to_string()
+        })
+      })
   } else {
     Ok(None)
   }
@@ -588,7 +600,7 @@ where
         NodeResolutionMode::Execution,
         permissions,
       )
-      .map(|r| Some(Url::from_file_path(r).unwrap().to_string()))
+      .map(|r| Some(r.to_string()))
   } else {
     Ok(None)
   }

@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::ops::TestingFeaturesEnabled;
 use crate::permissions::create_child_permissions;
@@ -25,6 +25,8 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
+
+pub const UNSTABLE_FEATURE_NAME: &str = "worker-options";
 
 pub struct CreateWebWorkerArgs {
   pub name: String,
@@ -140,7 +142,11 @@ fn op_create_worker(
   }
 
   if args.permissions.is_some() {
-    super::check_unstable(state, "Worker.deno.permissions");
+    super::check_unstable(
+      state,
+      UNSTABLE_FEATURE_NAME,
+      "Worker.deno.permissions",
+    );
   }
   let parent_permissions = state.borrow_mut::<PermissionsContainer>();
   let worker_permissions = if let Some(child_permissions_arg) = args.permissions

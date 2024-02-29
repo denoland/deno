@@ -1,26 +1,9 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
 import { notImplemented, warnNotImplemented } from "ext:deno_node/_utils.ts";
-
-export function deferred() {
-  let methods;
-  const promise = new Promise((resolve, reject) => {
-    methods = {
-      async resolve(value) {
-        await value;
-        resolve(value);
-      },
-      // deno-lint-ignore no-explicit-any
-      reject(reason?: any) {
-        reject(reason);
-      },
-    };
-  });
-  return Object.assign(promise, methods);
-}
 
 export function run() {
   notImplemented("test.run");
@@ -73,8 +56,14 @@ class NodeTestContext {
     const prepared = prepareOptions(name, options, fn, {});
     return this.#denoContext.step({
       name: prepared.name,
-      fn: prepared.fn,
+      fn: async (denoTestContext) => {
+        const newNodeTextContext = new NodeTestContext(denoTestContext);
+        await prepared.fn(newNodeTextContext);
+      },
       ignore: prepared.options.todo || prepared.options.skip,
+      sanitizeExit: false,
+      sanitizeOps: false,
+      sanitizeResources: false,
     }).then(() => undefined);
   }
 
@@ -124,13 +113,13 @@ function prepareOptions(name, options, fn, overrides) {
   return { fn, options: finalOptions, name };
 }
 
-function wrapTestFn(fn, promise) {
+function wrapTestFn(fn, resolve) {
   return async function (t) {
     const nodeTestContext = new NodeTestContext(t);
     try {
       await fn(nodeTestContext);
     } finally {
-      promise.resolve(undefined);
+      resolve();
     }
   };
 }
@@ -138,13 +127,16 @@ function wrapTestFn(fn, promise) {
 function prepareDenoTest(name, options, fn, overrides) {
   const prepared = prepareOptions(name, options, fn, overrides);
 
-  const promise = deferred();
+  const { promise, resolve } = Promise.withResolvers();
 
   const denoTestOptions = {
     name: prepared.name,
-    fn: wrapTestFn(prepared.fn, promise),
+    fn: wrapTestFn(prepared.fn, resolve),
     only: prepared.options.only,
     ignore: prepared.options.todo || prepared.options.skip,
+    sanitizeExit: false,
+    sanitizeOps: false,
+    sanitizeResources: false,
   };
   Deno.test(denoTestOptions);
   return promise;

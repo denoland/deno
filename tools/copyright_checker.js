@@ -1,7 +1,9 @@
-#!/usr/bin/env -S deno run --unstable --allow-read=. --allow-run=git
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+#!/usr/bin/env -S deno run --allow-read=. --allow-run=git
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import { getSources, ROOT_PATH } from "./util.js";
+
+const copyrightYear = 2024;
 
 const buffer = new Uint8Array(1024);
 const textDecoder = new TextDecoder();
@@ -22,15 +24,15 @@ export async function checkCopyright() {
     "*.js",
     "*.ts",
     ":!:.github/mtime_cache/action.js",
-    ":!:cli/tests/testdata/**",
+    ":!:tests/testdata/**",
     ":!:cli/bench/testdata/**",
     ":!:cli/tsc/dts/**",
     ":!:cli/tsc/*typescript.js",
     ":!:cli/tsc/compiler.d.ts",
-    ":!:test_util/wpt/**",
+    ":!:tests/wpt/suite/**",
     ":!:cli/tools/init/templates/**",
-    ":!:cli/tests/unit_node/testdata/**",
-    ":!:cli/tests/node_compat/test/**",
+    ":!:tests/unit_node/testdata/**",
+    ":!:tests/node_compat/test/**",
     ":!:cli/tools/bench/mitata.rs",
 
     // rust
@@ -49,7 +51,7 @@ export async function checkCopyright() {
   const ACCEPTABLE_LINES =
     /^(\/\/ deno-lint-.*|\/\/ Copyright.*|\/\/ Ported.*|\s*|#!\/.*)\n/;
   const COPYRIGHT_LINE =
-    "Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.";
+    `Copyright 2018-${copyrightYear} the Deno authors. All rights reserved. MIT license.`;
   const TOML_COPYRIGHT_LINE = "# " + COPYRIGHT_LINE;
   const C_STYLE_COPYRIGHT_LINE = "// " + COPYRIGHT_LINE;
 
@@ -85,6 +87,14 @@ export async function checkCopyright() {
         );
       }
     }
+  }
+
+  // check the main license file
+  const licenseText = Deno.readTextFileSync(ROOT_PATH + "/LICENSE.md");
+  if (
+    !licenseText.includes(`Copyright 2018-${copyrightYear} the Deno authors`)
+  ) {
+    errors.push(`LICENSE.md has old copyright year`);
   }
 
   if (errors.length > 0) {

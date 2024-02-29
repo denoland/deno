@@ -1,13 +1,16 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
+import { op_node_create_private_key } from "ext:core/ops";
+
 import {
   kHandle,
   kKeyObject,
 } from "ext:deno_node/internal/crypto/constants.ts";
+import { isStringOrBuffer } from "ext:deno_node/internal/crypto/cipher.ts";
 import {
   ERR_CRYPTO_INVALID_KEY_OBJECT_TYPE,
   ERR_INVALID_ARG_TYPE,
@@ -16,7 +19,6 @@ import {
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import type {
   KeyFormat,
-  KeyType,
   PrivateKeyInput,
   PublicKeyInput,
 } from "ext:deno_node/internal/crypto/types.ts";
@@ -168,18 +170,6 @@ export class KeyObject {
     return this[kKeyType];
   }
 
-  get asymmetricKeyDetails(): AsymmetricKeyDetails | undefined {
-    notImplemented("crypto.KeyObject.prototype.asymmetricKeyDetails");
-
-    return undefined;
-  }
-
-  get asymmetricKeyType(): KeyType | undefined {
-    notImplemented("crypto.KeyObject.prototype.asymmetricKeyType");
-
-    return undefined;
-  }
-
   get symmetricKeySize(): number | undefined {
     notImplemented("crypto.KeyObject.prototype.symmetricKeySize");
 
@@ -219,10 +209,33 @@ export interface JsonWebKeyInput {
   format: "jwk";
 }
 
+export function prepareAsymmetricKey(key) {
+  if (isStringOrBuffer(key)) {
+    return { format: "pem", data: getArrayBufferOrView(key, "key") };
+  } else if (typeof key == "object") {
+    const { key: data, encoding, format, type } = key;
+    if (!isStringOrBuffer(data)) {
+      throw new TypeError("Invalid key type");
+    }
+
+    return {
+      data: getArrayBufferOrView(data, "key", encoding),
+      format: format ?? "pem",
+      encoding,
+      type,
+    };
+  }
+
+  throw new TypeError("Invalid key type");
+}
+
 export function createPrivateKey(
-  _key: PrivateKeyInput | string | Buffer | JsonWebKeyInput,
-): KeyObject {
-  notImplemented("crypto.createPrivateKey");
+  key: PrivateKeyInput | string | Buffer | JsonWebKeyInput,
+): PrivateKeyObject {
+  const { data, format, type } = prepareAsymmetricKey(key);
+  const details = op_node_create_private_key(data, format, type);
+  const handle = setOwnedKey(copyBuffer(data));
+  return new PrivateKeyObject(handle, details);
 }
 
 export function createPublicKey(
@@ -313,6 +326,35 @@ export class SecretKeyObject extends KeyObject {
       }
     }
     return key.slice();
+  }
+}
+
+const kAsymmetricKeyType = Symbol("kAsymmetricKeyType");
+const kAsymmetricKeyDetails = Symbol("kAsymmetricKeyDetails");
+
+class AsymmetricKeyObject extends KeyObject {
+  constructor(type: KeyObjectType, handle: unknown, details: unknown) {
+    super(type, handle);
+    this[kAsymmetricKeyType] = details.type;
+    this[kAsymmetricKeyDetails] = { ...details };
+  }
+
+  get asymmetricKeyType() {
+    return this[kAsymmetricKeyType];
+  }
+
+  get asymmetricKeyDetails() {
+    return this[kAsymmetricKeyDetails];
+  }
+}
+
+class PrivateKeyObject extends AsymmetricKeyObject {
+  constructor(handle: unknown, details: unknown) {
+    super("private", handle, details);
+  }
+
+  export(_options: unknown) {
+    notImplemented("crypto.PrivateKeyObject.prototype.export");
   }
 }
 

@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use super::logging::lsp_log;
 use crate::args::ConfigFile;
@@ -6,6 +6,9 @@ use crate::lsp::logging::lsp_warn;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::util::path::specifier_to_file_path;
 use deno_ast::MediaType;
+use deno_config::glob::PathOrPattern;
+use deno_config::glob::PathOrPatternSet;
+use deno_config::FmtOptionsConfig;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde::de::DeserializeOwned;
 use deno_core::serde::Deserialize;
@@ -69,21 +72,6 @@ impl Default for CodeLensSettings {
       references_all_functions: false,
       test: true,
     }
-  }
-}
-
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct CodeLensSpecifierSettings {
-  /// Flag for providing test code lens on `Deno.test` statements.  There is
-  /// also the `test_args` setting, but this is not used by the server.
-  #[serde(default = "is_true")]
-  pub test: bool,
-}
-
-impl Default for CodeLensSpecifierSettings {
-  fn default() -> Self {
-    Self { test: true }
   }
 }
 
@@ -276,25 +264,6 @@ impl Default for ImportCompletionSettings {
   }
 }
 
-/// Deno language server specific settings that can be applied uniquely to a
-/// specifier.
-#[derive(Debug, Default, Clone, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct SpecifierSettings {
-  /// A flag that indicates if Deno is enabled for this specifier or not.
-  pub enable: Option<bool>,
-  /// A list of paths, using the workspace folder as a base that should be Deno
-  /// disabled.
-  #[serde(default)]
-  pub disable_paths: Vec<String>,
-  /// A list of paths, using the workspace folder as a base that should be Deno
-  /// enabled.
-  pub enable_paths: Option<Vec<String>>,
-  /// Code lens specific settings for the resource.
-  #[serde(default)]
-  pub code_lens: CodeLensSpecifierSettings,
-}
-
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct TestingSettings {
@@ -356,6 +325,29 @@ impl Default for JsxAttributeCompletionStyle {
   }
 }
 
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum QuoteStyle {
+  Auto,
+  Double,
+  Single,
+}
+
+impl Default for QuoteStyle {
+  fn default() -> Self {
+    Self::Auto
+  }
+}
+
+impl From<&FmtOptionsConfig> for QuoteStyle {
+  fn from(config: &FmtOptionsConfig) -> Self {
+    match config.single_quote {
+      Some(true) => QuoteStyle::Single,
+      _ => QuoteStyle::Double,
+    }
+  }
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct LanguagePreferences {
@@ -367,6 +359,8 @@ pub struct LanguagePreferences {
   pub auto_import_file_exclude_patterns: Vec<String>,
   #[serde(default = "is_true")]
   pub use_aliases_for_renames: bool,
+  #[serde(default)]
+  pub quote_style: QuoteStyle,
 }
 
 impl Default for LanguagePreferences {
@@ -376,6 +370,7 @@ impl Default for LanguagePreferences {
       jsx_attribute_completion_style: Default::default(),
       auto_import_file_exclude_patterns: vec![],
       use_aliases_for_renames: true,
+      quote_style: Default::default(),
     }
   }
 }
@@ -412,6 +407,30 @@ pub struct LanguageWorkspaceSettings {
   pub suggest: CompletionSettings,
   #[serde(default)]
   pub update_imports_on_file_move: UpdateImportsOnFileMoveOptions,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+#[serde(untagged)]
+pub enum InspectSetting {
+  Bool(bool),
+  String(String),
+}
+
+impl Default for InspectSetting {
+  fn default() -> Self {
+    InspectSetting::Bool(false)
+  }
+}
+
+impl InspectSetting {
+  pub fn to_address(&self) -> Option<String> {
+    match self {
+      InspectSetting::Bool(false) => None,
+      InspectSetting::Bool(true) => Some("127.0.0.1:9222".to_string()),
+      InspectSetting::String(s) => Some(s.clone()),
+    }
+  }
 }
 
 /// Deno language server specific settings that are applied to a workspace.
@@ -461,6 +480,13 @@ pub struct WorkspaceSettings {
   #[serde(default)]
   pub internal_debug: bool,
 
+  #[serde(default)]
+  pub internal_inspect: InspectSetting,
+
+  /// Write logs to a file in a project-local directory.
+  #[serde(default)]
+  pub log_file: bool,
+
   /// A flag that indicates if linting is enabled for the workspace.
   #[serde(default = "default_to_true")]
   pub lint: bool,
@@ -509,6 +535,8 @@ impl Default for WorkspaceSettings {
       import_map: None,
       code_lens: Default::default(),
       internal_debug: false,
+      internal_inspect: Default::default(),
+      log_file: false,
       lint: true,
       document_preload_limit: default_document_preload_limit(),
       suggest: Default::default(),
@@ -685,56 +713,6 @@ impl WorkspaceSettings {
       .unwrap_or_default();
     Self::from_raw_settings(deno, javascript, typescript)
   }
-
-  /// Determine if any code lenses are enabled at all.  This allows short
-  /// circuiting when there are no code lenses enabled.
-  pub fn enabled_code_lens(&self) -> bool {
-    self.code_lens.implementations || self.code_lens.references
-  }
-
-  // TODO(nayeemrmn): Factor in out-of-band media type here.
-  pub fn language_settings_for_specifier(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Option<&LanguageWorkspaceSettings> {
-    if specifier.scheme() == "deno-notebook-cell" {
-      return Some(&self.typescript);
-    }
-    match MediaType::from_specifier(specifier) {
-      MediaType::JavaScript
-      | MediaType::Jsx
-      | MediaType::Mjs
-      | MediaType::Cjs => Some(&self.javascript),
-      MediaType::TypeScript
-      | MediaType::Mts
-      | MediaType::Cts
-      | MediaType::Dts
-      | MediaType::Dmts
-      | MediaType::Dcts
-      | MediaType::Tsx => Some(&self.typescript),
-      MediaType::Json
-      | MediaType::Wasm
-      | MediaType::TsBuildInfo
-      | MediaType::SourceMap
-      | MediaType::Unknown => None,
-    }
-  }
-
-  /// Determine if any inlay hints are enabled. This allows short circuiting
-  /// when there are no inlay hints enabled.
-  pub fn enabled_inlay_hints(&self, specifier: &ModuleSpecifier) -> bool {
-    let Some(settings) = self.language_settings_for_specifier(specifier) else {
-      return false;
-    };
-    !matches!(
-      settings.inlay_hints.parameter_names.enabled,
-      InlayHintsParamNamesEnabled::None
-    ) || settings.inlay_hints.parameter_types.enabled
-      || settings.inlay_hints.variable_types.enabled
-      || settings.inlay_hints.property_declaration_types.enabled
-      || settings.inlay_hints.function_like_return_types.enabled
-      || settings.inlay_hints.enum_member_values.enabled
-  }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -746,6 +724,13 @@ pub struct ConfigSnapshot {
 }
 
 impl ConfigSnapshot {
+  pub fn workspace_settings_for_specifier(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> &WorkspaceSettings {
+    self.settings.get_for_specifier(specifier).0
+  }
+
   /// Determine if the provided specifier is enabled or not.
   pub fn specifier_enabled(&self, specifier: &ModuleSpecifier) -> bool {
     specifier_enabled(
@@ -767,17 +752,65 @@ impl ConfigSnapshot {
         }
       }
     }
-    if !self.specifier_enabled(specifier) {
-      return false;
-    }
-    true
+    self.specifier_enabled(specifier)
   }
 }
 
 #[derive(Debug, Default, Clone)]
 pub struct Settings {
-  pub specifiers: BTreeMap<ModuleSpecifier, SpecifierSettings>,
-  pub workspace: WorkspaceSettings,
+  pub unscoped: WorkspaceSettings,
+  pub by_workspace_folder: Option<BTreeMap<ModuleSpecifier, WorkspaceSettings>>,
+}
+
+impl Settings {
+  pub fn get_unscoped(&self) -> &WorkspaceSettings {
+    &self.unscoped
+  }
+
+  pub fn get_for_specifier(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> (&WorkspaceSettings, Option<&ModuleSpecifier>) {
+    let Ok(path) = specifier_to_file_path(specifier) else {
+      return (&self.unscoped, None);
+    };
+    if let Some(by_workspace_folder) = &self.by_workspace_folder {
+      for (folder_uri, settings) in by_workspace_folder.iter().rev() {
+        let Ok(folder_path) = specifier_to_file_path(folder_uri) else {
+          continue;
+        };
+        if path.starts_with(folder_path) {
+          return (settings, Some(folder_uri));
+        }
+      }
+    }
+    (&self.unscoped, None)
+  }
+
+  pub fn set_unscoped(&mut self, mut settings: WorkspaceSettings) {
+    // See https://github.com/denoland/vscode_deno/issues/908.
+    if settings.enable_paths == Some(vec![]) {
+      settings.enable_paths = None;
+    }
+    self.unscoped = settings;
+  }
+
+  pub fn set_for_workspace_folders(
+    &mut self,
+    mut by_workspace_folder: Option<
+      BTreeMap<ModuleSpecifier, WorkspaceSettings>,
+    >,
+  ) {
+    if let Some(by_workspace_folder) = &mut by_workspace_folder {
+      for settings in by_workspace_folder.values_mut() {
+        // See https://github.com/denoland/vscode_deno/issues/908.
+        if settings.enable_paths == Some(vec![]) {
+          settings.enable_paths = None;
+        }
+      }
+    }
+    self.by_workspace_folder = by_workspace_folder;
+  }
 }
 
 #[derive(Debug)]
@@ -811,7 +844,7 @@ impl Config {
   pub fn new() -> Self {
     Self {
       client_capabilities: ClientCapabilities::default(),
-      /// Root provided by the initialization parameters.
+      // Root provided by the initialization parameters.
       settings: Default::default(),
       workspace_folders: vec![],
       maybe_config_file_info: None,
@@ -833,8 +866,72 @@ impl Config {
     config
   }
 
+  pub fn set_workspace_settings(
+    &mut self,
+    unscoped: WorkspaceSettings,
+    by_workspace_folder: Option<BTreeMap<ModuleSpecifier, WorkspaceSettings>>,
+  ) {
+    self.settings.set_unscoped(unscoped);
+    self.settings.set_for_workspace_folders(by_workspace_folder);
+  }
+
+  pub fn workspace_settings(&self) -> &WorkspaceSettings {
+    self.settings.get_unscoped()
+  }
+
+  pub fn workspace_settings_for_specifier(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> &WorkspaceSettings {
+    self.settings.get_for_specifier(specifier).0
+  }
+
+  pub fn language_settings_for_specifier(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<&LanguageWorkspaceSettings> {
+    let workspace_settings = self.workspace_settings_for_specifier(specifier);
+    match MediaType::from_specifier(specifier) {
+      MediaType::JavaScript
+      | MediaType::Jsx
+      | MediaType::Mjs
+      | MediaType::Cjs => Some(&workspace_settings.javascript),
+      MediaType::TypeScript
+      | MediaType::Mts
+      | MediaType::Cts
+      | MediaType::Dts
+      | MediaType::Dmts
+      | MediaType::Dcts
+      | MediaType::Tsx => Some(&workspace_settings.typescript),
+      MediaType::Json
+      | MediaType::Wasm
+      | MediaType::TsBuildInfo
+      | MediaType::SourceMap
+      | MediaType::Unknown => None,
+    }
+  }
+
+  /// Determine if any inlay hints are enabled. This allows short circuiting
+  /// when there are no inlay hints enabled.
+  pub fn enabled_inlay_hints_for_specifier(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> bool {
+    let Some(settings) = self.language_settings_for_specifier(specifier) else {
+      return false;
+    };
+    !matches!(
+      settings.inlay_hints.parameter_names.enabled,
+      InlayHintsParamNamesEnabled::None
+    ) || settings.inlay_hints.parameter_types.enabled
+      || settings.inlay_hints.variable_types.enabled
+      || settings.inlay_hints.property_declaration_types.enabled
+      || settings.inlay_hints.function_like_return_types.enabled
+      || settings.inlay_hints.enum_member_values.enabled
+  }
+
   pub fn root_uri(&self) -> Option<&Url> {
-    self.workspace_folders.get(0).map(|p| &p.0)
+    self.workspace_folders.first().map(|p| &p.0)
   }
 
   pub fn maybe_node_modules_dir_path(&self) -> Option<&PathBuf> {
@@ -922,20 +1019,6 @@ impl Config {
     });
   }
 
-  pub fn workspace_settings(&self) -> &WorkspaceSettings {
-    &self.settings.workspace
-  }
-
-  /// Set the workspace settings directly, which occurs during initialization
-  /// and when the client does not support workspace configuration requests
-  pub fn set_workspace_settings(&mut self, settings: WorkspaceSettings) {
-    self.settings.workspace = settings;
-    // See https://github.com/denoland/vscode_deno/issues/908.
-    if self.settings.workspace.enable_paths == Some(vec![]) {
-      self.settings.workspace.enable_paths = None;
-    }
-  }
-
   pub fn snapshot(&self) -> Arc<ConfigSnapshot> {
     Arc::new(ConfigSnapshot {
       client_capabilities: self.client_capabilities.clone(),
@@ -943,10 +1026,6 @@ impl Config {
       settings: self.settings.clone(),
       workspace_folders: self.workspace_folders.clone(),
     })
-  }
-
-  pub fn has_specifier_settings(&self, specifier: &ModuleSpecifier) -> bool {
-    self.settings.specifiers.contains_key(specifier)
   }
 
   pub fn specifier_enabled(&self, specifier: &ModuleSpecifier) -> bool {
@@ -975,77 +1054,66 @@ impl Config {
     true
   }
 
-  pub fn get_enabled_paths(&self) -> Vec<PathBuf> {
+  pub fn get_enabled_paths(&self) -> PathOrPatternSet {
     let mut paths = vec![];
     for (workspace_uri, _) in &self.workspace_folders {
       let Ok(workspace_path) = specifier_to_file_path(workspace_uri) else {
         lsp_log!("Unable to convert uri \"{}\" to path.", workspace_uri);
         continue;
       };
-      let specifier_settings = self.settings.specifiers.get(workspace_uri);
-      let enable_paths = specifier_settings
-        .and_then(|s| s.enable_paths.as_ref())
-        .or(self.settings.workspace.enable_paths.as_ref());
-      if let Some(enable_paths) = enable_paths {
+      let settings = self.workspace_settings_for_specifier(workspace_uri);
+      if let Some(enable_paths) = &settings.enable_paths {
         for path in enable_paths {
-          paths.push(workspace_path.join(path));
+          match PathOrPattern::from_relative(&workspace_path, path) {
+            Ok(path_or_pattern) => paths.push(path_or_pattern),
+            Err(err) => {
+              lsp_log!("Invalid enable path '{}': {:#}", path, err);
+            }
+          }
         }
       } else {
-        paths.push(workspace_path);
+        paths.push(PathOrPattern::Path(workspace_path));
       }
     }
     paths.sort();
     paths.dedup();
-    paths
+    PathOrPatternSet::new(paths)
   }
 
-  pub fn get_disabled_paths(&self) -> Vec<PathBuf> {
-    let mut paths = vec![];
+  pub fn get_disabled_paths(&self) -> PathOrPatternSet {
+    let mut path_or_patterns = vec![];
     if let Some(cf) = self.maybe_config_file() {
       if let Some(files) = cf.to_files_config().ok().flatten() {
-        for path in files.exclude {
-          paths.push(path);
+        for path in files.exclude.into_path_or_patterns() {
+          path_or_patterns.push(path);
         }
       }
     }
-    let root_enable = self
-      .settings
-      .workspace
-      .enable
-      .unwrap_or(self.has_config_file());
     for (workspace_uri, _) in &self.workspace_folders {
       let Ok(workspace_path) = specifier_to_file_path(workspace_uri) else {
         lsp_log!("Unable to convert uri \"{}\" to path.", workspace_uri);
         continue;
       };
-      let specifier_settings = self.settings.specifiers.get(workspace_uri);
-      let enable = specifier_settings
-        .and_then(|s| s.enable)
-        .unwrap_or(root_enable);
-      if enable {
-        let disable_paths = specifier_settings
-          .map(|s| &s.disable_paths)
-          .unwrap_or(&self.settings.workspace.disable_paths);
-        for path in disable_paths {
-          paths.push(workspace_path.join(path));
+      let settings = self.workspace_settings_for_specifier(workspace_uri);
+      if settings.enable.unwrap_or_else(|| self.has_config_file()) {
+        for path in &settings.disable_paths {
+          path_or_patterns.push(PathOrPattern::Path(workspace_path.join(path)));
         }
       } else {
-        paths.push(workspace_path);
+        path_or_patterns.push(PathOrPattern::Path(workspace_path));
       }
     }
-    paths.sort();
-    paths.dedup();
-    paths
+    path_or_patterns.sort();
+    path_or_patterns.dedup();
+    PathOrPatternSet::new(path_or_patterns)
   }
 
-  pub fn specifier_code_lens_test(&self, specifier: &ModuleSpecifier) -> bool {
-    let value = self
-      .settings
-      .specifiers
-      .get(specifier)
-      .map(|settings| settings.code_lens.test)
-      .unwrap_or_else(|| self.settings.workspace.code_lens.test);
-    value
+  pub fn log_file(&self) -> bool {
+    self.settings.unscoped.log_file
+  }
+
+  pub fn internal_inspect(&self) -> &InspectSetting {
+    &self.settings.unscoped.internal_inspect
   }
 
   pub fn update_capabilities(
@@ -1100,37 +1168,13 @@ impl Config {
         };
     }
   }
-
-  pub fn get_specifiers(&self) -> Vec<ModuleSpecifier> {
-    self.settings.specifiers.keys().cloned().collect()
-  }
-
-  pub fn set_specifier_settings(
-    &mut self,
-    specifier: ModuleSpecifier,
-    mut settings: SpecifierSettings,
-  ) -> bool {
-    // See https://github.com/denoland/vscode_deno/issues/908.
-    if settings.enable_paths == Some(vec![]) {
-      settings.enable_paths = None;
-    }
-
-    if let Some(existing) = self.settings.specifiers.get(&specifier) {
-      if *existing == settings {
-        return false;
-      }
-    }
-
-    self.settings.specifiers.insert(specifier, settings);
-    true
-  }
 }
 
 fn specifier_enabled(
   specifier: &Url,
   config_file: Option<&ConfigFile>,
   settings: &Settings,
-  workspace_folders: &Vec<(Url, lsp::WorkspaceFolder)>,
+  workspace_folders: &[(Url, lsp::WorkspaceFolder)],
 ) -> bool {
   if let Some(cf) = config_file {
     if let Some(files) = cf.to_files_config().ok().flatten() {
@@ -1139,55 +1183,42 @@ fn specifier_enabled(
       }
     }
   }
-
-  let root_enable = settings.workspace.enable.unwrap_or(config_file.is_some());
-  if let Some(settings) = settings.specifiers.get(specifier) {
-    // TODO(nayeemrmn): We don't know from where to resolve path lists in this
-    // case. If they're detected, instead defer to workspace scopes.
-    if settings.enable_paths.is_none() && settings.disable_paths.is_empty() {
-      return settings.enable.unwrap_or(root_enable);
-    }
-  }
   let Ok(path) = specifier_to_file_path(specifier) else {
     // Non-file URLs are not disabled by these settings.
     return true;
   };
-  for (workspace_uri, _) in workspace_folders {
-    let Ok(workspace_path) = specifier_to_file_path(workspace_uri) else {
-      lsp_log!("Unable to convert uri \"{}\" to path.", workspace_uri);
-      continue;
-    };
-    if path.starts_with(&workspace_path) {
-      let specifier_settings = settings.specifiers.get(workspace_uri);
-      let disable_paths = specifier_settings
-        .map(|s| &s.disable_paths)
-        .unwrap_or(&settings.workspace.disable_paths);
-      let resolved_disable_paths = disable_paths
+  let (settings, mut folder_uri) = settings.get_for_specifier(specifier);
+  folder_uri = folder_uri.or_else(|| workspace_folders.first().map(|f| &f.0));
+  let mut disable_paths = vec![];
+  let mut enable_paths = None;
+  if let Some(folder_uri) = folder_uri {
+    if let Ok(folder_path) = specifier_to_file_path(folder_uri) {
+      disable_paths = settings
+        .disable_paths
         .iter()
-        .map(|p| workspace_path.join(p))
+        .map(|p| folder_path.join(p))
         .collect::<Vec<_>>();
-      let enable_paths = specifier_settings
-        .and_then(|s| s.enable_paths.as_ref())
-        .or(settings.workspace.enable_paths.as_ref());
-      if let Some(enable_paths) = enable_paths {
-        for enable_path in enable_paths {
-          let enable_path = workspace_path.join(enable_path);
-          if path.starts_with(&enable_path)
-            && !resolved_disable_paths.iter().any(|p| path.starts_with(p))
-          {
-            return true;
-          }
-        }
-        return false;
-      } else {
-        return specifier_settings
-          .and_then(|s| s.enable)
-          .unwrap_or(root_enable)
-          && !resolved_disable_paths.iter().any(|p| path.starts_with(p));
-      }
+      enable_paths = settings.enable_paths.as_ref().map(|enable_paths| {
+        enable_paths
+          .iter()
+          .map(|p| folder_path.join(p))
+          .collect::<Vec<_>>()
+      });
     }
   }
-  root_enable
+  if let Some(enable_paths) = &enable_paths {
+    for enable_path in enable_paths {
+      if path.starts_with(enable_path)
+        && !disable_paths.iter().any(|p| path.starts_with(p))
+      {
+        return true;
+      }
+    }
+    false
+  } else {
+    settings.enable.unwrap_or_else(|| config_file.is_some())
+      && !disable_paths.iter().any(|p| path.starts_with(p))
+  }
 }
 
 fn resolve_lockfile_from_config(config_file: &ConfigFile) -> Option<Lockfile> {
@@ -1207,12 +1238,12 @@ fn resolve_node_modules_dir(config_file: &ConfigFile) -> Option<PathBuf> {
   // `nodeModulesDir: true` setting in the deno.json file. This is to
   // reduce the chance of modifying someone's node_modules directory
   // without them having asked us to do so.
-  let explicitly_disabled = config_file.node_modules_dir_flag() == Some(false);
+  let explicitly_disabled = config_file.json.node_modules_dir == Some(false);
   if explicitly_disabled {
     return None;
   }
-  let enabled = config_file.node_modules_dir_flag() == Some(true)
-    || config_file.vendor_dir_flag() == Some(true);
+  let enabled = config_file.json.node_modules_dir == Some(true)
+    || config_file.json.vendor == Some(true);
   if !enabled {
     return None;
   }
@@ -1258,6 +1289,7 @@ mod tests {
         "enable": true
       }))
       .unwrap(),
+      None,
     );
     assert!(config.specifier_enabled(&specifier));
   }
@@ -1273,6 +1305,7 @@ mod tests {
         "enable": true
       }))
       .unwrap(),
+      None,
     );
     let config_snapshot = config.snapshot();
     assert!(config_snapshot.specifier_enabled(&specifier));
@@ -1288,7 +1321,7 @@ mod tests {
     assert!(!config.specifier_enabled(&specifier_b));
     let workspace_settings =
       serde_json::from_str(r#"{ "enablePaths": ["worker"] }"#).unwrap();
-    config.set_workspace_settings(workspace_settings);
+    config.set_workspace_settings(workspace_settings, None);
     assert!(config.specifier_enabled(&specifier_a));
     assert!(!config.specifier_enabled(&specifier_b));
     let config_snapshot = config.snapshot();
@@ -1300,10 +1333,10 @@ mod tests {
   fn test_config_specifier_disabled_path() {
     let root_uri = resolve_url("file:///root/").unwrap();
     let mut config = Config::new_with_root(root_uri.clone());
-    config.settings.workspace.enable = Some(true);
-    config.settings.workspace.enable_paths =
+    config.settings.unscoped.enable = Some(true);
+    config.settings.unscoped.enable_paths =
       Some(vec!["mod1.ts".to_string(), "mod2.ts".to_string()]);
-    config.settings.workspace.disable_paths = vec!["mod2.ts".to_string()];
+    config.settings.unscoped.disable_paths = vec!["mod2.ts".to_string()];
 
     assert!(config.specifier_enabled(&root_uri.join("mod1.ts").unwrap()));
     assert!(!config.specifier_enabled(&root_uri.join("mod2.ts").unwrap()));
@@ -1313,7 +1346,8 @@ mod tests {
   #[test]
   fn test_set_workspace_settings_defaults() {
     let mut config = Config::new();
-    config.set_workspace_settings(serde_json::from_value(json!({})).unwrap());
+    config
+      .set_workspace_settings(serde_json::from_value(json!({})).unwrap(), None);
     assert_eq!(
       config.workspace_settings().clone(),
       WorkspaceSettings {
@@ -1332,6 +1366,8 @@ mod tests {
           test: true,
         },
         internal_debug: false,
+        internal_inspect: InspectSetting::Bool(false),
+        log_file: false,
         lint: true,
         document_preload_limit: 1_000,
         suggest: DenoCompletionSettings {
@@ -1372,6 +1408,7 @@ mod tests {
             jsx_attribute_completion_style: JsxAttributeCompletionStyle::Auto,
             auto_import_file_exclude_patterns: vec![],
             use_aliases_for_renames: true,
+            quote_style: QuoteStyle::Auto,
           },
           suggest: CompletionSettings {
             complete_function_calls: false,
@@ -1416,6 +1453,7 @@ mod tests {
             jsx_attribute_completion_style: JsxAttributeCompletionStyle::Auto,
             auto_import_file_exclude_patterns: vec![],
             use_aliases_for_renames: true,
+            quote_style: QuoteStyle::Auto,
           },
           suggest: CompletionSettings {
             complete_function_calls: false,
@@ -1443,6 +1481,7 @@ mod tests {
     let mut config = Config::new();
     config.set_workspace_settings(
       serde_json::from_value(json!({ "cache": "" })).unwrap(),
+      None,
     );
     assert_eq!(
       config.workspace_settings().clone(),
@@ -1455,6 +1494,7 @@ mod tests {
     let mut config = Config::new();
     config.set_workspace_settings(
       serde_json::from_value(json!({ "import_map": "" })).unwrap(),
+      None,
     );
     assert_eq!(
       config.workspace_settings().clone(),
@@ -1467,6 +1507,7 @@ mod tests {
     let mut config = Config::new();
     config.set_workspace_settings(
       serde_json::from_value(json!({ "tls_certificate": "" })).unwrap(),
+      None,
     );
     assert_eq!(
       config.workspace_settings().clone(),
@@ -1479,6 +1520,7 @@ mod tests {
     let mut config = Config::new();
     config.set_workspace_settings(
       serde_json::from_value(json!({ "config": "" })).unwrap(),
+      None,
     );
     assert_eq!(
       config.workspace_settings().clone(),
@@ -1512,41 +1554,50 @@ mod tests {
         },
       ),
     ];
-    config.set_specifier_settings(
-      Url::parse("file:///root1/").unwrap(),
-      SpecifierSettings {
-        enable_paths: Some(vec![
-          "sub_dir".to_string(),
-          "sub_dir/other".to_string(),
-          "test.ts".to_string(),
-        ]),
-        ..Default::default()
-      },
-    );
-    config.set_specifier_settings(
-      Url::parse("file:///root2/").unwrap(),
-      SpecifierSettings {
-        enable_paths: Some(vec!["other.ts".to_string()]),
-        ..Default::default()
-      },
-    );
-    config.set_specifier_settings(
-      Url::parse("file:///root3/").unwrap(),
-      SpecifierSettings {
-        enable: Some(true),
-        ..Default::default()
-      },
+    config.set_workspace_settings(
+      Default::default(),
+      Some(
+        vec![
+          (
+            Url::parse("file:///root1/").unwrap(),
+            WorkspaceSettings {
+              enable_paths: Some(vec![
+                "sub_dir".to_string(),
+                "sub_dir/other".to_string(),
+                "test.ts".to_string(),
+              ]),
+              ..Default::default()
+            },
+          ),
+          (
+            Url::parse("file:///root2/").unwrap(),
+            WorkspaceSettings {
+              enable_paths: Some(vec!["other.ts".to_string()]),
+              ..Default::default()
+            },
+          ),
+          (
+            Url::parse("file:///root3/").unwrap(),
+            WorkspaceSettings {
+              enable: Some(true),
+              ..Default::default()
+            },
+          ),
+        ]
+        .into_iter()
+        .collect(),
+      ),
     );
 
     assert_eq!(
       config.get_enabled_paths(),
-      vec![
-        PathBuf::from("/root1/sub_dir"),
-        PathBuf::from("/root1/sub_dir/other"),
-        PathBuf::from("/root1/test.ts"),
-        PathBuf::from("/root2/other.ts"),
-        PathBuf::from("/root3/"),
-      ]
+      PathOrPatternSet::new(vec![
+        PathOrPattern::Path(PathBuf::from("/root1/sub_dir")),
+        PathOrPattern::Path(PathBuf::from("/root1/sub_dir/other")),
+        PathOrPattern::Path(PathBuf::from("/root1/test.ts")),
+        PathOrPattern::Path(PathBuf::from("/root2/other.ts")),
+        PathOrPattern::Path(PathBuf::from("/root3/")),
+      ])
     );
   }
 
@@ -1554,7 +1605,7 @@ mod tests {
   fn config_enable_via_config_file_detection() {
     let root_uri = resolve_url("file:///root/").unwrap();
     let mut config = Config::new_with_root(root_uri.clone());
-    config.settings.workspace.enable = None;
+    config.settings.unscoped.enable = None;
     assert!(!config.specifier_enabled(&root_uri));
 
     config.set_config_file(
@@ -1568,7 +1619,7 @@ mod tests {
   fn config_specifier_enabled_matches_by_path_component() {
     let root_uri = resolve_url("file:///root/").unwrap();
     let mut config = Config::new_with_root(root_uri.clone());
-    config.settings.workspace.enable_paths = Some(vec!["mo".to_string()]);
+    config.settings.unscoped.enable_paths = Some(vec!["mo".to_string()]);
     assert!(!config.specifier_enabled(&root_uri.join("mod.ts").unwrap()));
   }
 
@@ -1576,11 +1627,11 @@ mod tests {
   fn config_specifier_enabled_for_test() {
     let root_uri = resolve_url("file:///root/").unwrap();
     let mut config = Config::new_with_root(root_uri.clone());
-    config.settings.workspace.enable = Some(true);
+    config.settings.unscoped.enable = Some(true);
 
-    config.settings.workspace.enable_paths =
+    config.settings.unscoped.enable_paths =
       Some(vec!["mod1.ts".to_string(), "mod2.ts".to_string()]);
-    config.settings.workspace.disable_paths = vec!["mod2.ts".to_string()];
+    config.settings.unscoped.disable_paths = vec!["mod2.ts".to_string()];
     assert!(
       config.specifier_enabled_for_test(&root_uri.join("mod1.ts").unwrap())
     );
@@ -1590,7 +1641,7 @@ mod tests {
     assert!(
       !config.specifier_enabled_for_test(&root_uri.join("mod3.ts").unwrap())
     );
-    config.settings.workspace.enable_paths = None;
+    config.settings.unscoped.enable_paths = None;
 
     config.set_config_file(
       ConfigFile::new(
@@ -1659,7 +1710,7 @@ mod tests {
   fn config_snapshot_specifier_enabled_for_test() {
     let root_uri = resolve_url("file:///root/").unwrap();
     let mut config = Config::new_with_root(root_uri.clone());
-    config.settings.workspace.enable = Some(true);
+    config.settings.unscoped.enable = Some(true);
     config.set_config_file(
       ConfigFile::new(
         &json!({

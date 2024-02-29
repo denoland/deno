@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use super::collectors::TestCollector;
 use super::definitions::TestModule;
@@ -87,7 +87,7 @@ impl TestServer {
           match update_rx.recv().await {
             None => break,
             Some(snapshot) => {
-              let mark = performance.mark("testing_update", None::<()>);
+              let mark = performance.mark("lsp.testing_update");
               let mut tests = tests.lock();
               // we create a list of test modules we currently are tracking
               // eliminating any we go over when iterating over the document

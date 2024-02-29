@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../webidl/internal.d.ts" />
@@ -8,6 +8,25 @@
 /// <reference path="../web/06_streams_types.d.ts" />
 /// <reference path="./lib.deno_fetch.d.ts" />
 /// <reference lib="esnext" />
+
+import { primordials } from "ext:core/mod.js";
+const {
+  ArrayIsArray,
+  ArrayPrototypePush,
+  ArrayPrototypeSort,
+  ArrayPrototypeJoin,
+  ArrayPrototypeSplice,
+  ObjectFromEntries,
+  ObjectHasOwn,
+  ObjectPrototypeIsPrototypeOf,
+  RegExpPrototypeTest,
+  Symbol,
+  SymbolFor,
+  SymbolIterator,
+  StringPrototypeReplaceAll,
+  StringPrototypeCharCodeAt,
+  TypeError,
+} = primordials;
 
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import {
@@ -19,22 +38,6 @@ import {
   HTTP_TOKEN_CODE_POINT_RE,
   httpTrim,
 } from "ext:deno_web/00_infra.js";
-const primordials = globalThis.__bootstrap.primordials;
-const {
-  ArrayIsArray,
-  ArrayPrototypePush,
-  ArrayPrototypeSort,
-  ArrayPrototypeJoin,
-  ArrayPrototypeSplice,
-  ObjectHasOwn,
-  RegExpPrototypeTest,
-  Symbol,
-  SymbolFor,
-  SymbolIterator,
-  StringPrototypeReplaceAll,
-  StringPrototypeCharCodeAt,
-  TypeError,
-} = primordials;
 
 const _headerList = Symbol("header list");
 const _iterableHeaders = Symbol("iterable headers");
@@ -441,19 +444,20 @@ class Headers {
     }
   }
 
-  [SymbolFor("Deno.privateCustomInspect")](inspect) {
-    const headers = {};
-    // deno-lint-ignore prefer-primordials
-    for (const header of this) {
-      headers[header[0]] = header[1];
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    if (ObjectPrototypeIsPrototypeOf(HeadersPrototype, this)) {
+      return `${this.constructor.name} ${
+        inspect(ObjectFromEntries(this), inspectOptions)
+      }`;
+    } else {
+      return `${this.constructor.name} ${inspect({}, inspectOptions)}`;
     }
-    return `Headers ${inspect(headers)}`;
   }
 }
 
 webidl.mixinPairIterable("Headers", Headers, _iterableHeaders, 0, 1);
 
-webidl.configurePrototype(Headers);
+webidl.configureInterface(Headers);
 const HeadersPrototype = Headers.prototype;
 
 webidl.converters["HeadersInit"] = (V, prefix, context, opts) => {

@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::CompileFlags;
 use crate::args::Flags;
@@ -11,7 +11,7 @@ use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_graph::GraphKind;
-use deno_runtime::colors;
+use deno_terminal::colors;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -24,8 +24,8 @@ pub async fn compile(
 ) -> Result<(), AnyError> {
   let factory = CliFactory::from_flags(flags).await?;
   let cli_options = factory.cli_options();
-  let module_graph_builder = factory.module_graph_builder().await?;
-  let parsed_source_cache = factory.parsed_source_cache()?;
+  let module_graph_creator = factory.module_graph_creator().await?;
+  let parsed_source_cache = factory.parsed_source_cache();
   let binary_writer = factory.create_compile_binary_writer().await?;
   let module_specifier = cli_options.resolve_main_module()?;
   let module_roots = {
@@ -37,6 +37,18 @@ pub async fn compile(
     vec
   };
 
+  // this is not supported, so show a warning about it, but don't error in order
+  // to allow someone to still run `deno compile` when this is in a deno.json
+  if cli_options.unstable_sloppy_imports() {
+    log::warn!(
+      concat!(
+        "{} Sloppy imports are not supported in deno compile. ",
+        "The compiled executable may encouter runtime errors.",
+      ),
+      crate::colors::yellow("Warning"),
+    );
+  }
+
   let output_path = resolve_compile_executable_output_path(
     &compile_flags,
     cli_options.initial_cwd(),
@@ -44,7 +56,7 @@ pub async fn compile(
   .await?;
 
   let graph = Arc::try_unwrap(
-    module_graph_builder
+    module_graph_creator
       .create_graph_and_maybe_check(module_roots.clone())
       .await?,
   )
@@ -53,15 +65,19 @@ pub async fn compile(
     // In this case, the previous graph creation did type checking, which will
     // create a module graph with types information in it. We don't want to
     // store that in the eszip so create a code only module graph from scratch.
-    module_graph_builder
+    module_graph_creator
       .create_graph(GraphKind::CodeOnly, module_roots)
       .await?
   } else {
     graph
   };
 
+  let ts_config_for_emit =
+    cli_options.resolve_ts_config_for_emit(deno_config::TsConfigType::Emit)?;
+  let emit_options =
+    crate::args::ts_config_to_emit_options(ts_config_for_emit.ts_config);
   let parser = parsed_source_cache.as_capturing_parser();
-  let eszip = eszip::EszipV2::from_graph(graph, &parser, Default::default())?;
+  let eszip = eszip::EszipV2::from_graph(graph, &parser, emit_options)?;
 
   log::info!(
     "{} {} to {}",
@@ -71,8 +87,9 @@ pub async fn compile(
   );
   validate_output_path(&output_path)?;
 
-  let mut file = std::fs::File::create(&output_path)?;
-  binary_writer
+  let mut file = std::fs::File::create(&output_path)
+    .with_context(|| format!("Opening file '{}'", output_path.display()))?;
+  let write_result = binary_writer
     .write_bin(
       &mut file,
       eszip,
@@ -81,8 +98,13 @@ pub async fn compile(
       cli_options,
     )
     .await
-    .with_context(|| format!("Writing {}", output_path.display()))?;
+    .with_context(|| format!("Writing {}", output_path.display()));
   drop(file);
+  if let Err(err) = write_result {
+    // errored, so attempt to remove the output path
+    let _ = std::fs::remove_file(output_path);
+    return Err(err);
+  }
 
   // set it as executable
   #[cfg(unix)]
