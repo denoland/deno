@@ -668,7 +668,7 @@ async fn publish_package(
   );
 
   let enable_provenance = std::env::var("DISABLE_JSR_PROVENANCE").is_err()
-    || (auth::is_gha() && auth::gha_oidc_token().is_some() && !no_provenance);
+    && (auth::is_gha() && auth::gha_oidc_token().is_some() && !no_provenance);
 
   // Enable provenance by default on Github actions with OIDC token
   if enable_provenance {
