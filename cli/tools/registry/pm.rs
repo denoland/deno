@@ -25,6 +25,8 @@ use crate::args::CacheSetting;
 use crate::args::Flags;
 use crate::factory::CliFactory;
 use crate::file_fetcher::FileFetcher;
+use crate::lsp::jsr::CliJsrSearchApi;
+use crate::lsp::search::PackageSearchApi;
 
 pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
   let cli_factory = CliFactory::from_flags(flags.clone()).await?;
@@ -89,6 +91,7 @@ pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
       find_package_and_select_version_for_req(
         client,
         &registry_api_url,
+        jsr_search_api.clone(),
         package_req,
       )
       .boxed_local()
@@ -192,6 +195,7 @@ enum PackageAndVersion {
 async fn jsr_find_package_and_select_version(
   client: &reqwest::Client,
   registry_api_url: &str,
+  jsr_search_api: CliJsrSearchApi,
   req: &PackageReq,
 ) -> Result<PackageAndVersion, AnyError> {
   let jsr_prefixed_name = format!("jsr:{}", req.name);
@@ -201,6 +205,11 @@ async fn jsr_find_package_and_select_version(
   let version_req = req.version_req.version_text();
   if version_req != "*" {
     bail!("Specifying version constraints is currently not supported. Package: {}@{}", jsr_prefixed_name, version_req);
+  }
+
+  let versions = jsr_search_api.versions(&req.name).await?;
+  for version in versions.iter() {
+    eprintln!("version {} {:?}", req.name, version.to_string());
   }
 
   let name_no_at = req.name.strip_prefix('@').unwrap();
@@ -228,6 +237,7 @@ async fn jsr_find_package_and_select_version(
 async fn find_package_and_select_version_for_req(
   client: &reqwest::Client,
   registry_api_url: &str,
+  jsr_search_api: CliJsrSearchApi,
   add_package_req: AddPackageReq,
 ) -> Result<PackageAndVersion, AnyError> {
   match add_package_req {
@@ -235,6 +245,7 @@ async fn find_package_and_select_version_for_req(
       jsr_find_package_and_select_version(
         client,
         registry_api_url,
+        jsr_search_api,
         pkg_ref.req(),
       )
       .await
