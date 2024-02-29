@@ -4244,6 +4244,11 @@ declare namespace Temporal {
   };
 }
 
+interface Date {
+  /** @category Temporal */
+  toTemporalInstant(): Temporal.Instant;
+}
+
 /** @category Intl */
 declare namespace Intl {
   /** @category Intl */
