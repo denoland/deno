@@ -21,8 +21,10 @@ use jsonc_parser::ast::Value;
 use super::api;
 use crate::args::jsr_api_url;
 use crate::args::AddFlags;
+use crate::args::CacheSetting;
 use crate::args::Flags;
 use crate::factory::CliFactory;
+use crate::file_fetcher::FileFetcher;
 
 pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
   let cli_factory = CliFactory::from_flags(flags.clone()).await?;
@@ -68,6 +70,18 @@ pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
 
     package_reqs.push(req);
   }
+
+  let deps_http_cache = cli_factory.global_http_cache()?;
+  let mut deps_file_fetcher = FileFetcher::new(
+    deps_http_cache.clone(),
+    CacheSetting::ReloadAll,
+    true,
+    http_client.clone(),
+    Default::default(),
+    None,
+  );
+  deps_file_fetcher.set_download_log_level(log::Level::Info);
+  let jsr_search_api = CliJsrSearchApi::new(deps_file_fetcher);
 
   let package_futures = package_reqs
     .into_iter()
