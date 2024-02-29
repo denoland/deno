@@ -22,16 +22,15 @@ fn add_basic() {
   output.assert_exit_code(0);
   let output = output.combined_output();
   assert_contains!(output, "Add @denotest/add");
-  let deno_json_content = temp_dir.join("deno.json").read_json_value();
-  let expected_deno_json = json!({
-    "name": "@foo/bar",
-    "version": "1.0.0",
-    "exports": "./mod.ts",
-    "imports": {
-      "@denotest/add": "jsr:@denotest/add@^1.0.0"
-    }
-  });
-  assert_eq!(deno_json_content, expected_deno_json);
+  let deno_json_content =
+    temp_dir.join("deno.json").assert_matches_json(json!({
+      "name": "@foo/bar",
+      "version": "1.0.0",
+      "exports": "./mod.ts",
+      "imports": {
+        "@denotest/add": "jsr:@denotest/add@^1.0.0"
+      }
+    }));
 }
 
 #[test]
@@ -43,13 +42,12 @@ fn add_basic_no_deno_json() {
   output.assert_exit_code(0);
   let output = output.combined_output();
   assert_contains!(output, "Add @denotest/add");
-  let deno_json_content = temp_dir.join("deno.json").read_json_value();
-  let expected_deno_json = json!({
-    "imports": {
-      "@denotest/add": "jsr:@denotest/add@^1.0.0"
-    }
-  });
-  assert_eq!(deno_json_content, expected_deno_json);
+  let deno_json_content =
+    temp_dir.join("deno.json").assert_matches_json(json!({
+      "imports": {
+        "@denotest/add": "jsr:@denotest/add@^1.0.0"
+      }
+    }));
 }
 
 #[test]
@@ -70,17 +68,16 @@ fn add_multiple() {
   output.assert_exit_code(0);
   let output = output.combined_output();
   assert_contains!(output, "Add @denotest/add");
-  let deno_json_content = temp_dir.join("deno.json").read_json_value();
-  let expected_deno_json = json!({
-    "name": "@foo/bar",
-    "version": "1.0.0",
-    "exports": "./mod.ts",
-    "imports": {
-      "@denotest/add": "jsr:@denotest/add@^1.0.0",
-      "@denotest/subset-type-graph": "jsr:@denotest/subset-type-graph@^0.1.0"
-    }
-  });
-  assert_eq!(deno_json_content, expected_deno_json);
+  let deno_json_content =
+    temp_dir.join("deno.json").assert_matches_json(json!({
+      "name": "@foo/bar",
+      "version": "1.0.0",
+      "exports": "./mod.ts",
+      "imports": {
+        "@denotest/add": "jsr:@denotest/add@^1.0.0",
+        "@denotest/subset-type-graph": "jsr:@denotest/subset-type-graph@^0.1.0"
+      }
+    }));
 }
 
 #[test]
