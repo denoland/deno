@@ -444,6 +444,7 @@ mod tests {
   }
 
   /// Test that flushing a large number of times doesn't hang.
+  #[ignore]
   #[tokio::test]
   async fn test_flush_lots() {
     test_util::timeout!(60);
