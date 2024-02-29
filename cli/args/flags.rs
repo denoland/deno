@@ -1120,9 +1120,13 @@ fn add_subcommand() -> Command {
   Command::new("add")
     .about("Add dependencies")
     .long_about(
-      "Add dependencies to your configuration file.
+      "Add dependencies to the configuration file.
 
-  deno add @david/which
+  deno add @std/path
+
+You can add multiple dependencies at once:
+
+  deno add @std/path @std/assert
 ",
     )
     .defer(|cmd| {
