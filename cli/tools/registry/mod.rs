@@ -1039,7 +1039,7 @@ fn generate_jsx_config_pragmas(
     pragmas.push(format!("/** @jsxImportSource {} */", jsx_import_source));
   }
 
-  Ok(Some(pragmas.join("\n")))
+  Ok(Some(pragmas.join("")))
 }
 
 #[cfg(test)]
