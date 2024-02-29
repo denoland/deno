@@ -307,7 +307,7 @@ pub struct PublishFlags {
   pub token: Option<String>,
   pub dry_run: bool,
   pub allow_slow_types: bool,
-  pub provenance: bool,
+  pub no_provenance: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -2436,9 +2436,9 @@ fn publish_subcommand() -> Command {
           .action(ArgAction::SetTrue),
       )
       .arg(
-        Arg::new("provenance")
-          .long("provenance")
-          .help("From CI/CD system, publicly links the package to where it was built and published from.")
+        Arg::new("no-provenance")
+          .long("no-provenance")
+          .help("Disable provenance attestation. Enabled by default on Github actions, publicly links the package to where it was built and published from.")
           .action(ArgAction::SetTrue)
       )
       .arg(check_arg(/* type checks by default */ true))
@@ -3897,7 +3897,7 @@ fn publish_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     token: matches.remove_one("token"),
     dry_run: matches.get_flag("dry-run"),
     allow_slow_types: matches.get_flag("allow-slow-types"),
-    provenance: matches.get_flag("provenance"),
+    no_provenance: matches.get_flag("no-provenance"),
   });
 }
 
@@ -8617,6 +8617,7 @@ mod tests {
     let r = flags_from_vec(svec![
       "deno",
       "publish",
+      "--no-provenance",
       "--dry-run",
       "--allow-slow-types",
       "--token=asdf",
@@ -8628,26 +8629,7 @@ mod tests {
           token: Some("asdf".to_string()),
           dry_run: true,
           allow_slow_types: true,
-          provenance: false,
-        }),
-        type_check_mode: TypeCheckMode::Local,
-        ..Flags::default()
-      }
-    );
-  }
-
-  #[test]
-  fn publish_provenance_args() {
-    let r =
-      flags_from_vec(svec!["deno", "publish", "--provenance", "--token=asdf",]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Publish(PublishFlags {
-          token: Some("asdf".to_string()),
-          dry_run: false,
-          allow_slow_types: false,
-          provenance: true,
+          no_provenance: true,
         }),
         type_check_mode: TypeCheckMode::Local,
         ..Flags::default()

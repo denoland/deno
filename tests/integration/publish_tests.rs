@@ -166,7 +166,7 @@ itest!(successful {
 });
 
 itest!(provenance {
-  args: "publish --provenance",
+  args: "publish",
   output: "publish/successful_provenance.out",
   cwd: Some("publish/successful"),
   envs: env_vars_for_jsr_provenance_tests(),
@@ -254,6 +254,14 @@ itest!(jsr_jsonc {
   cwd: Some("publish/jsr_jsonc"),
   output: "publish/jsr_jsonc/mod.out",
   envs: env_vars_for_jsr_tests(),
+  http_server: true,
+});
+
+itest!(unsupported_jsx_tsx {
+  args: "publish --token 'sadfasdf'",
+  cwd: Some("publish/unsupported_jsx_tsx"),
+  output: "publish/unsupported_jsx_tsx/mod.out",
+  envs: env_vars_for_jsr_npm_tests(),
   http_server: true,
 });
 
@@ -414,6 +422,7 @@ fn includes_dotenv() {
     .arg("publish")
     .arg("--token")
     .arg("sadfasdf")
+    .arg("--dry-run")
     .run();
   output.assert_exit_code(0);
   let output = output.combined_output();
