@@ -120,40 +120,12 @@ async fn registry_server_handler(
     let res = Response::new(UnsyncBoxBody::new(Full::from(body)));
     return Ok(res);
   } else if path.starts_with("/api/scopes/") {
-    let json_data = if path == "/api/scopes/denotest/packages/add" {
-      json!({
-        "scope": "denotest",
-        "name": "add",
-        "description": "",
-        "updatedAt": "2024-02-21T00:08:54.436607Z",
-        "createdAt": "2024-02-21T00:08:33.492751Z",
-        "versionCount": 1,
-        "score": 5,
-        "latestVersion": "1.0.0",
-      })
-    } else if path == "/api/scopes/denotest/packages/subset-type-graph" {
-      json!({
-        "scope": "denotest",
-        "name": "substep-type-graph",
-        "description": "I like flags!",
-        "updatedAt": "2024-02-08T00:18:46.212494Z",
-        "createdAt": "2023-12-14T23:05:13.518606Z",
-        "versionCount": 2,
-        "latestVersion": "0.1.0",
-      })
-    } else if path == "/api/scopes/not/packages/exists" {
-      let mut resp =
-        Response::new(UnsyncBoxBody::new(Full::from(Bytes::new())));
-      *resp.status_mut() = StatusCode::NOT_FOUND;
-      return Ok(resp);
-    } else {
-      json!({
-        "id": "sdfwqer-sffg-qwerasdf",
-        "status": "success",
-        "error": null
-      })
-    };
-    let body = serde_json::to_string_pretty(&json_data).unwrap();
+    let body = serde_json::to_string_pretty(&json!({
+      "id": "sdfwqer-sffg-qwerasdf",
+      "status": "success",
+      "error": null
+    }))
+    .unwrap();
     let res = Response::new(UnsyncBoxBody::new(Full::from(body)));
     return Ok(res);
   } else if path.starts_with("/api/publish_status/") {
