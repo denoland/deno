@@ -14,6 +14,8 @@ use deno_ast::diagnostics::DiagnosticSnippetHighlightStyle;
 use deno_ast::diagnostics::DiagnosticSourcePos;
 use deno_ast::diagnostics::DiagnosticSourceRange;
 use deno_ast::swc::common::util::take::Take;
+use deno_ast::SourcePos;
+use deno_ast::SourceRanged;
 use deno_ast::SourceTextInfo;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
@@ -31,7 +33,10 @@ impl PublishDiagnosticsCollector {
   pub fn print_and_error(&self) -> Result<(), AnyError> {
     let mut errors = 0;
     let mut has_slow_types_errors = false;
-    let diagnostics = self.diagnostics.lock().unwrap().take();
+    let mut diagnostics = self.diagnostics.lock().unwrap().take();
+
+    diagnostics.sort_by_cached_key(|d| d.sorting_key());
+
     for diagnostic in diagnostics {
       eprint!("{}", diagnostic.display());
       if matches!(diagnostic.level(), DiagnosticLevel::Error) {
@@ -95,6 +100,35 @@ pub enum PublishDiagnostic {
   UnsupportedJsxTsx {
     specifier: Url,
   },
+}
+
+impl PublishDiagnostic {
+  fn sorting_key(&self) -> (String, String, Option<SourcePos>) {
+    let loc = self.location();
+
+    let (specifier, source_pos) = match loc {
+      DiagnosticLocation::Module { specifier } => (specifier.to_string(), None),
+      DiagnosticLocation::Path { path } => (path.display().to_string(), None),
+      DiagnosticLocation::ModulePosition {
+        specifier,
+        source_pos,
+        text_info,
+      } => (
+        specifier.to_string(),
+        Some(match source_pos {
+          DiagnosticSourcePos::SourcePos(s) => s,
+          DiagnosticSourcePos::ByteIndex(index) => {
+            text_info.range().start() + index
+          }
+          DiagnosticSourcePos::LineAndCol { line, column } => {
+            text_info.line_start(line) + column
+          }
+        }),
+      ),
+    };
+
+    (self.code().to_string(), specifier, source_pos)
+  }
 }
 
 impl Diagnostic for PublishDiagnostic {
