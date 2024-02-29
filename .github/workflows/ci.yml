@@ -13,6 +13,8 @@ on:
       - reopened
       - synchronize
       - ready_for_review
+permissions:
+  contents: write
 concurrency:
   group: '${{ github.workflow }}-${{ !contains(github.event.pull_request.labels.*.name, ''ci-test-flaky'') && github.head_ref || github.run_id }}'
   cancel-in-progress: true
