@@ -694,8 +694,8 @@ mod tests {
   use deno_runtime::deno_fetch::reqwest::dns::Resolve;
   use deno_runtime::deno_fetch::reqwest::dns::Resolving;
   use deno_runtime::deno_fetch::CreateHttpClientOptions;
-  use deno_runtime::deno_fetch::DnsName;
   use deno_runtime::deno_fetch::DnsResolver;
+  use deno_runtime::deno_fetch::Name;
   use deno_runtime::deno_tls::rustls::RootCertStore;
   use deno_runtime::deno_web::Blob;
   use deno_runtime::deno_web::InMemoryBlobPart;
@@ -1708,7 +1708,7 @@ mod tests {
   struct TestResolver;
 
   impl Resolve for TestResolver {
-    fn resolve(&self, _name: DnsName) -> Resolving {
+    fn resolve(&self, _name: Name) -> Resolving {
       let iter: Box<dyn Iterator<Item = SocketAddr> + Send> = Box::new(
         vec![SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0).into()].into_iter(),
       );

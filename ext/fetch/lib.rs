@@ -44,7 +44,7 @@ use deno_core::Resource;
 use deno_core::ResourceId;
 use http_v02::header::CONTENT_LENGTH;
 use http_v02::Uri;
-pub use hyper_v014::client::connect::dns::Name as DnsName;
+pub use hyper_v014::client::connect::dns::Name;
 pub use reqwest;
 use reqwest::dns::Resolve;
 use reqwest::dns::Resolving;
@@ -73,6 +73,7 @@ pub use fs_fetch_handler::FsFetchHandler;
 
 mod fs_fetch_handler;
 
+
 #[derive(Clone)]
 pub struct DnsResolver(Arc<dyn Resolve>);
 
@@ -82,15 +83,9 @@ impl DnsResolver {
   }
 }
 
-impl From<DnsResolver> for Arc<dyn Resolve> {
-  fn from(value: DnsResolver) -> Self {
-    value.0
-  }
-}
-
 impl Debug for DnsResolver {
   fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-    write!(f, "DnsResolver")
+    write!(f, "Custom DnsResolver")
   }
 }
 
@@ -1001,7 +996,7 @@ pub fn create_http_client(
 
   if let Some(dns_resolver) = options.dns_resolver {
     builder = builder
-      .dns_resolver(Arc::new(ResolverWrapper(dns_resolver.clone().into())));
+      .dns_resolver(Arc::new(ResolverWrapper(dns_resolver.0.clone())));
   }
 
   builder.build().map_err(|e| e.into())
@@ -1018,7 +1013,7 @@ pub fn op_utf8_to_byte_string(
 struct ResolverWrapper(Arc<dyn Resolve>);
 
 impl Resolve for ResolverWrapper {
-  fn resolve(&self, name: hyper_v014::client::connect::dns::Name) -> Resolving {
+  fn resolve(&self, name: Name) -> Resolving {
     self.0.resolve(name)
   }
 }
