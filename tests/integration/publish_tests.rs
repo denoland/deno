@@ -257,6 +257,14 @@ itest!(jsr_jsonc {
   http_server: true,
 });
 
+itest!(unsupported_jsx_tsx {
+  args: "publish --token 'sadfasdf'",
+  cwd: Some("publish/unsupported_jsx_tsx"),
+  output: "publish/unsupported_jsx_tsx/mod.out",
+  envs: env_vars_for_jsr_npm_tests(),
+  http_server: true,
+});
+
 #[test]
 fn ignores_gitignore() {
   let context = publish_context_builder().build();
