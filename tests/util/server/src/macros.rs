@@ -30,7 +30,9 @@ macro_rules! timeout {
       let timeout = *timeout.get(0).unwrap_or(&300);
       ::std::thread::spawn(move || {
         if rx.recv_timeout(::std::time::Duration::from_secs(timeout)) == Err(::std::sync::mpsc::RecvTimeoutError::Timeout) {
+          use std::io::Write;
           eprintln!("Test {function} timed out after {timeout} seconds, aborting");
+          _ = std::io::stderr().flush();
           ::std::process::exit(1);
         }
       });

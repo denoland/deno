@@ -18,14 +18,16 @@ use tar::Header;
 
 use crate::cache::LazyGraphSourceParser;
 use crate::tools::registry::paths::PackagePath;
-use crate::util::import_map::ImportMapUnfurler;
 
 use super::diagnostics::PublishDiagnostic;
 use super::diagnostics::PublishDiagnosticsCollector;
+use super::unfurl::SpecifierUnfurler;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PublishableTarballFile {
+  pub path_str: String,
   pub specifier: Url,
+  pub hash: String,
   pub size: usize,
 }
 
@@ -40,7 +42,7 @@ pub fn create_gzipped_tarball(
   dir: &Path,
   source_parser: LazyGraphSourceParser,
   diagnostics_collector: &PublishDiagnosticsCollector,
-  unfurler: &ImportMapUnfurler,
+  unfurler: &SpecifierUnfurler,
   file_patterns: Option<FilePatterns>,
 ) -> Result<PublishableTarball, AnyError> {
   let mut tar = TarGzArchive::new();
@@ -153,7 +155,10 @@ pub fn create_gzipped_tarball(
         diagnostics_collector,
       )?;
       files.push(PublishableTarballFile {
+        path_str: path_str.clone(),
         specifier: specifier.clone(),
+        // This hash string matches the checksum computed by registry
+        hash: format!("sha256-{:x}", sha2::Sha256::digest(&content)),
         size: content.len(),
       });
       tar
@@ -192,7 +197,7 @@ pub fn create_gzipped_tarball(
 fn resolve_content_maybe_unfurling(
   path: &Path,
   specifier: &Url,
-  unfurler: &ImportMapUnfurler,
+  unfurler: &SpecifierUnfurler,
   source_parser: LazyGraphSourceParser,
   diagnostics_collector: &PublishDiagnosticsCollector,
 ) -> Result<Vec<u8>, AnyError> {
@@ -241,7 +246,7 @@ fn resolve_content_maybe_unfurling(
 
   log::debug!("Unfurling {}", specifier);
   let mut reporter = |diagnostic| {
-    diagnostics_collector.push(PublishDiagnostic::ImportMapUnfurl(diagnostic));
+    diagnostics_collector.push(PublishDiagnostic::SpecifierUnfurl(diagnostic));
   };
   let content = unfurler.unfurl(specifier, &parsed_source, &mut reporter);
   Ok(content.into_bytes())

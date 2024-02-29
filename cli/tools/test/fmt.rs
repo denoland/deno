@@ -2,6 +2,7 @@
 
 use deno_core::stats::RuntimeActivity;
 use deno_core::stats::RuntimeActivityDiff;
+use deno_core::stats::RuntimeActivityTrace;
 use deno_core::stats::RuntimeActivityType;
 use phf::phf_map;
 use std::borrow::Cow;
@@ -106,7 +107,7 @@ fn format_sanitizer_accum(
   }
 
   let mut output = vec![];
-  let mut needs_trace_ops = false;
+  let mut needs_trace_leaks = false;
   for ((item_type, item_name, trace), count) in accum.into_iter() {
     if item_type == RuntimeActivityType::Resource {
       let (name, action1, action2) = pretty_resource_name(&item_name);
@@ -142,7 +143,7 @@ fn format_sanitizer_accum(
       value += &if let Some(trace) = trace {
         format!(" The operation {tense} started here:\n{trace}")
       } else {
-        needs_trace_ops = true;
+        needs_trace_leaks = true;
         String::new()
       };
       output.push(value);
@@ -156,8 +157,8 @@ fn format_sanitizer_accum(
       );
     }
   }
-  if needs_trace_ops {
-    (output, vec!["To get more details where ops were leaked, run again with --trace-ops flag.".to_owned()])
+  if needs_trace_leaks {
+    (output, vec!["To get more details where leaks occurred, run again with the --trace-leaks flag.".to_owned()])
   } else {
     (output, vec![])
   }
@@ -165,16 +166,19 @@ fn format_sanitizer_accum(
 
 fn format_sanitizer_accum_item(
   activity: RuntimeActivity,
-) -> (RuntimeActivityType, Cow<'static, str>, Option<String>) {
+) -> (
+  RuntimeActivityType,
+  Cow<'static, str>,
+  Option<RuntimeActivityTrace>,
+) {
   let activity_type = activity.activity();
   match activity {
-    // TODO(mmastrac): OpCallTrace needs to be Eq
-    RuntimeActivity::AsyncOp(_, name, trace) => {
-      (activity_type, name.into(), trace.map(|x| x.to_string()))
+    RuntimeActivity::AsyncOp(_, trace, name) => {
+      (activity_type, name.into(), trace)
     }
-    RuntimeActivity::Interval(_) => (activity_type, "".into(), None),
-    RuntimeActivity::Resource(_, name) => (activity_type, name.into(), None),
-    RuntimeActivity::Timer(_) => (activity_type, "".into(), None),
+    RuntimeActivity::Interval(..) => (activity_type, "".into(), None),
+    RuntimeActivity::Resource(.., name) => (activity_type, name.into(), None),
+    RuntimeActivity::Timer(..) => (activity_type, "".into(), None),
   }
 }
 
@@ -354,7 +358,7 @@ mod tests {
 
   // https://github.com/denoland/deno/issues/13729
   // https://github.com/denoland/deno/issues/13938
-  leak_format_test!(op_unknown, true, [RuntimeActivity::AsyncOp(0, "op_unknown", None)], 
+  leak_format_test!(op_unknown, true, [RuntimeActivity::AsyncOp(0, None, "op_unknown")], 
     " - An async call to op_unknown was started in this test, but never completed.\n\
-    To get more details where ops were leaked, run again with --trace-ops flag.\n");
+    To get more details where leaks occurred, run again with the --trace-leaks flag.\n");
 }
