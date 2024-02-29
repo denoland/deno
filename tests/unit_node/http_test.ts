@@ -955,3 +955,42 @@ Deno.test("[node/http] IncomingMessage override", () => {
     url: "https://1.1.1.1",
   });
 });
+
+Deno.test("[node/http] ServerResponse assignSocket and detachSocket", () => {
+  const req = new http.IncomingMessage(new net.Socket());
+  const res = new http.ServerResponse(req);
+  let writtenData: string | Uint8Array | undefined = undefined;
+  let writtenEncoding: string | Uint8Array | undefined = undefined;
+  const socket = {
+    _writableState: {},
+    writable: true,
+    on: Function.prototype,
+    removeListener: Function.prototype,
+    destroy: Function.prototype,
+    cork: Function.prototype,
+    uncork: Function.prototype,
+    write: (
+      data: string | Uint8Array,
+      encoding: string,
+      _cb?: (err?: Error) => void,
+    ) => {
+      writtenData = data;
+      writtenEncoding = encoding;
+    },
+  };
+  // @ts-ignore it's a socket mock
+  res.assignSocket(socket);
+
+  res.write("Hello World!", "utf8");
+  assertEquals(writtenData, Buffer.from("Hello World!"));
+  assertEquals(writtenEncoding, "buffer");
+
+  writtenData = undefined;
+  writtenEncoding = undefined;
+
+  // @ts-ignore it's a socket mock
+  res.detachSocket(socket);
+  res.write("Hello World!", "utf8");
+  assertEquals(writtenData, undefined);
+  assertEquals(writtenEncoding, undefined);
+});

@@ -55,6 +55,7 @@ import {
   ERR_INVALID_HTTP_TOKEN,
   ERR_INVALID_PROTOCOL,
   ERR_UNESCAPED_CHARACTERS,
+  ERR_HTTP_SOCKET_ASSIGNED,
 } from "ext:deno_node/internal/errors.ts";
 import { getTimerDuration } from "ext:deno_node/internal/timers.mjs";
 import { serve, upgradeHttpRaw } from "ext:deno_http/00_serve.js";
@@ -1340,6 +1341,7 @@ export class ServerResponse extends NodeWritable {
   headersSent = false;
   #firstChunk: Chunk | null = null;
   #resolve: (value: Response | PromiseLike<Response>) => void;
+  #socketOverride: any | null = undefined;
 
   static #enqueue(controller: ReadableStreamDefaultController, chunk: Chunk) {
     if (typeof chunk === "string") {
@@ -1369,7 +1371,11 @@ export class ServerResponse extends NodeWritable {
       autoDestroy: true,
       defaultEncoding: "utf-8",
       emitClose: true,
-      write: (chunk, _encoding, cb) => {
+      write: (chunk, encoding, cb) => {
+        if (this.#socketOverride && this.#socketOverride.writable) {
+          this.#socketOverride.write(chunk, encoding);
+          return cb();
+        }
         if (!this.headersSent) {
           if (this.#firstChunk === null) {
             this.#firstChunk = chunk;
@@ -1483,6 +1489,20 @@ export class ServerResponse extends NodeWritable {
   _implicitHeader() {
     this.writeHead(this.statusCode);
   }
+
+  assignSocket(socket) {
+    if (socket._httpMessage) {
+      throw new ERR_HTTP_SOCKET_ASSIGNED();
+    }
+    socket._httpMessage = this;
+    this.#socketOverride = socket;
+  }
+
+  detachSocket(socket) {
+    assert(socket._httpMessage === this);
+    socket._httpMessage = null;
+    this.#socketOverride = null;
+  };
 }
 
 // TODO(@AaronO): optimize
