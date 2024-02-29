@@ -3,6 +3,7 @@
 import EventEmitter from "node:events";
 import http, { type RequestOptions } from "node:http";
 import https from "node:https";
+import net from "node:net";
 import { assert, assertEquals, fail } from "@std/assert/mod.ts";
 import { assertSpyCalls, spy } from "@std/testing/mock.ts";
 
@@ -937,4 +938,20 @@ Deno.test("[node/http] ServerResponse getHeader", async () => {
   });
 
   await promise;
+});
+
+Deno.test("[node/http] IncomingMessage override", () => {
+  const req = new http.IncomingMessage(new net.Socket());
+  // https://github.com/dougmoscrop/serverless-http/blob/3aaa6d0fe241109a8752efb011c242d249f32368/lib/request.js#L20-L30
+  Object.assign(req, {
+    ip: "1.1.1.1",
+    complete: true,
+    httpVersion: "1.1",
+    httpVersionMajor: "1",
+    httpVersionMinor: "1",
+    method: "GET",
+    headers: {},
+    body: "",
+    url: "https://1.1.1.1",
+  });
 });

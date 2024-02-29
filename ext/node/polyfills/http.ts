@@ -1534,6 +1534,10 @@ export class IncomingMessageForServer extends NodeReadable {
     return "1.1";
   }
 
+  set httpVersion(val) {
+    assert(val === "1.1");
+  }
+
   get headers() {
     if (!this.#headers) {
       this.#headers = {};
@@ -1544,6 +1548,10 @@ export class IncomingMessageForServer extends NodeReadable {
       }
     }
     return this.#headers;
+  }
+
+  set headers(val) {
+    this.#headers = val;
   }
 
   get upgrade(): boolean {
