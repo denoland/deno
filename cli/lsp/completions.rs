@@ -181,7 +181,7 @@ pub async fn get_import_completions(
       &text,
       &range,
       jsr_search_api,
-      documents.get_jsr_resolver(),
+      jsr_search_api.get_resolver(),
     )
     .await?;
     Some(lsp::CompletionResponse::List(lsp::CompletionList {
@@ -526,7 +526,7 @@ async fn get_jsr_completions(
     if sub_path.is_some() || specifier.ends_with('/') {
       let export_prefix = sub_path.unwrap_or("");
       let req = req_ref.req();
-      let nv = jsr_resolver.resolve_req(req);
+      let nv = jsr_resolver.req_to_nv(req);
       let nv = nv.or_else(|| PackageNv::from_str(&req.to_string()).ok())?;
       let exports = jsr_search_api.exports(&nv).await.ok()?;
       let items = exports
@@ -544,7 +544,11 @@ async fn get_jsr_completions(
           let command = Some(lsp::Command {
             title: "".to_string(),
             command: "deno.cache".to_string(),
-            arguments: Some(vec![json!([&specifier]), json!(referrer)]),
+            arguments: Some(vec![
+              json!([&specifier]),
+              json!(referrer),
+              json!({ "forceGlobalCache": true }),
+            ]),
           });
           let text_edit = Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
             range: *range,
@@ -587,7 +591,11 @@ async fn get_jsr_completions(
         let command = Some(lsp::Command {
           title: "".to_string(),
           command: "deno.cache".to_string(),
-          arguments: Some(vec![json!([&specifier]), json!(referrer)]),
+          arguments: Some(vec![
+            json!([&specifier]),
+            json!(referrer),
+            json!({ "forceGlobalCache": true }),
+          ]),
         });
         let text_edit = Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
           range: *range,
@@ -620,7 +628,11 @@ async fn get_jsr_completions(
       let command = Some(lsp::Command {
         title: "".to_string(),
         command: "deno.cache".to_string(),
-        arguments: Some(vec![json!([&specifier]), json!(referrer)]),
+        arguments: Some(vec![
+          json!([&specifier]),
+          json!(referrer),
+          json!({ "forceGlobalCache": true }),
+        ]),
       });
       let text_edit = Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
         range: *range,
@@ -668,7 +680,11 @@ async fn get_npm_completions(
         let command = Some(lsp::Command {
           title: "".to_string(),
           command: "deno.cache".to_string(),
-          arguments: Some(vec![json!([&specifier]), json!(referrer)]),
+          arguments: Some(vec![
+            json!([&specifier]),
+            json!(referrer),
+            json!({ "forceGlobalCache": true }),
+          ]),
         });
         let text_edit = Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
           range: *range,
@@ -701,7 +717,11 @@ async fn get_npm_completions(
       let command = Some(lsp::Command {
         title: "".to_string(),
         command: "deno.cache".to_string(),
-        arguments: Some(vec![json!([&specifier]), json!(referrer)]),
+        arguments: Some(vec![
+          json!([&specifier]),
+          json!(referrer),
+          json!({ "forceGlobalCache": true }),
+        ]),
       });
       let text_edit = Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
         range: *range,
@@ -1035,7 +1055,11 @@ mod tests {
           command: Some(lsp::Command {
             title: "".to_string(),
             command: "deno.cache".to_string(),
-            arguments: Some(vec![json!(["jsr:@std/assert"]), json!(&referrer)])
+            arguments: Some(vec![
+              json!(["jsr:@std/assert"]),
+              json!(&referrer),
+              json!({ "forceGlobalCache": true })
+            ])
           }),
           commit_characters: Some(
             IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect()
@@ -1054,7 +1078,11 @@ mod tests {
           command: Some(lsp::Command {
             title: "".to_string(),
             command: "deno.cache".to_string(),
-            arguments: Some(vec![json!(["jsr:@std/async"]), json!(&referrer)])
+            arguments: Some(vec![
+              json!(["jsr:@std/async"]),
+              json!(&referrer),
+              json!({ "forceGlobalCache": true })
+            ])
           }),
           commit_characters: Some(
             IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect()
@@ -1116,7 +1144,8 @@ mod tests {
             command: "deno.cache".to_string(),
             arguments: Some(vec![
               json!(["jsr:@std/assert@0.5.0"]),
-              json!(&referrer)
+              json!(&referrer),
+              json!({ "forceGlobalCache": true }),
             ])
           }),
           commit_characters: Some(
@@ -1138,7 +1167,8 @@ mod tests {
             command: "deno.cache".to_string(),
             arguments: Some(vec![
               json!(["jsr:@std/assert@0.4.0"]),
-              json!(&referrer)
+              json!(&referrer),
+              json!({ "forceGlobalCache": true }),
             ])
           }),
           commit_characters: Some(
@@ -1160,7 +1190,8 @@ mod tests {
             command: "deno.cache".to_string(),
             arguments: Some(vec![
               json!(["jsr:@std/assert@0.3.0"]),
-              json!(&referrer)
+              json!(&referrer),
+              json!({ "forceGlobalCache": true }),
             ])
           }),
           commit_characters: Some(
@@ -1224,7 +1255,8 @@ mod tests {
             command: "deno.cache".to_string(),
             arguments: Some(vec![
               json!(["jsr:@std/path@0.1.0/common"]),
-              json!(&referrer)
+              json!(&referrer),
+              json!({ "forceGlobalCache": true }),
             ])
           }),
           commit_characters: Some(
@@ -1246,7 +1278,8 @@ mod tests {
             command: "deno.cache".to_string(),
             arguments: Some(vec![
               json!(["jsr:@std/path@0.1.0/constants"]),
-              json!(&referrer)
+              json!(&referrer),
+              json!({ "forceGlobalCache": true }),
             ])
           }),
           commit_characters: Some(
@@ -1295,7 +1328,11 @@ mod tests {
           command: Some(lsp::Command {
             title: "".to_string(),
             command: "deno.cache".to_string(),
-            arguments: Some(vec![json!(["npm:puppeteer"]), json!(&referrer)])
+            arguments: Some(vec![
+              json!(["npm:puppeteer"]),
+              json!(&referrer),
+              json!({ "forceGlobalCache": true }),
+            ])
           }),
           commit_characters: Some(
             IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect()
@@ -1316,7 +1353,8 @@ mod tests {
             command: "deno.cache".to_string(),
             arguments: Some(vec![
               json!(["npm:puppeteer-core"]),
-              json!(&referrer)
+              json!(&referrer),
+              json!({ "forceGlobalCache": true }),
             ])
           }),
           commit_characters: Some(
@@ -1338,7 +1376,8 @@ mod tests {
             command: "deno.cache".to_string(),
             arguments: Some(vec![
               json!(["npm:puppeteer-extra-plugin"]),
-              json!(&referrer)
+              json!(&referrer),
+              json!({ "forceGlobalCache": true }),
             ])
           }),
           commit_characters: Some(
@@ -1360,7 +1399,8 @@ mod tests {
             command: "deno.cache".to_string(),
             arguments: Some(vec![
               json!(["npm:puppeteer-extra-plugin-stealth"]),
-              json!(&referrer)
+              json!(&referrer),
+              json!({ "forceGlobalCache": true }),
             ])
           }),
           commit_characters: Some(
@@ -1411,7 +1451,8 @@ mod tests {
             command: "deno.cache".to_string(),
             arguments: Some(vec![
               json!(["npm:puppeteer@21.0.2"]),
-              json!(&referrer)
+              json!(&referrer),
+              json!({ "forceGlobalCache": true }),
             ])
           }),
           commit_characters: Some(
@@ -1433,7 +1474,8 @@ mod tests {
             command: "deno.cache".to_string(),
             arguments: Some(vec![
               json!(["npm:puppeteer@21.0.1"]),
-              json!(&referrer)
+              json!(&referrer),
+              json!({ "forceGlobalCache": true }),
             ])
           }),
           commit_characters: Some(
@@ -1455,7 +1497,8 @@ mod tests {
             command: "deno.cache".to_string(),
             arguments: Some(vec![
               json!(["npm:puppeteer@21.0.0"]),
-              json!(&referrer)
+              json!(&referrer),
+              json!({ "forceGlobalCache": true }),
             ])
           }),
           commit_characters: Some(
@@ -1477,7 +1520,8 @@ mod tests {
             command: "deno.cache".to_string(),
             arguments: Some(vec![
               json!(["npm:puppeteer@20.9.0"]),
-              json!(&referrer)
+              json!(&referrer),
+              json!({ "forceGlobalCache": true }),
             ])
           }),
           commit_characters: Some(

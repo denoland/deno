@@ -693,6 +693,7 @@ impl CliOptions {
     maybe_config_file: Option<ConfigFile>,
     maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
     maybe_package_json: Option<PackageJson>,
+    force_global_cache: bool,
   ) -> Result<Self, AnyError> {
     if let Some(insecure_allowlist) =
       flags.unsafely_ignore_certificate_errors.as_ref()
@@ -708,6 +709,7 @@ impl CliOptions {
       eprintln!("{}", colors::yellow(msg));
     }
 
+    let maybe_lockfile = maybe_lockfile.filter(|_| !force_global_cache);
     let maybe_node_modules_folder = resolve_node_modules_folder(
       &initial_cwd,
       &flags,
@@ -715,8 +717,11 @@ impl CliOptions {
       maybe_package_json.as_ref(),
     )
     .with_context(|| "Resolving node_modules folder.")?;
-    let maybe_vendor_folder =
-      resolve_vendor_folder(&initial_cwd, &flags, maybe_config_file.as_ref());
+    let maybe_vendor_folder = if force_global_cache {
+      None
+    } else {
+      resolve_vendor_folder(&initial_cwd, &flags, maybe_config_file.as_ref())
+    };
     let maybe_workspace_config =
       if let Some(config_file) = maybe_config_file.as_ref() {
         config_file.to_workspace_config()?
@@ -802,6 +807,7 @@ impl CliOptions {
       maybe_config_file,
       maybe_lock_file.map(|l| Arc::new(Mutex::new(l))),
       maybe_package_json,
+      false,
     )
   }
 

@@ -186,6 +186,10 @@ impl FileFetcher {
     }
   }
 
+  pub fn http_cache(&self) -> &Arc<dyn HttpCache> {
+    &self.http_cache
+  }
+
   pub fn cache_setting(&self) -> &CacheSetting {
     &self.cache_setting
   }

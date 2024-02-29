@@ -66,17 +66,8 @@ impl JsrResolver {
     }
   }
 
-  pub fn resolve_req(&self, req: &PackageReq) -> Option<PackageNv> {
-    self.nv_by_req.get(req).as_deref().cloned().flatten()
-  }
-
-  pub fn jsr_to_registry_url(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Option<ModuleSpecifier> {
-    let req_ref = JsrPackageReqReference::from_str(specifier.as_str()).ok()?;
-    let req = req_ref.req().clone();
-    let maybe_nv = self.nv_by_req.entry(req.clone()).or_insert_with(|| {
+  pub fn req_to_nv(&self, req: &PackageReq) -> Option<PackageNv> {
+    let nv = self.nv_by_req.entry(req.clone()).or_insert_with(|| {
       let name = req.name.clone();
       let maybe_package_info = self
         .info_by_name
@@ -84,9 +75,11 @@ impl JsrResolver {
         .or_insert_with(|| read_cached_package_info(&name, &self.cache));
       let package_info = maybe_package_info.as_ref()?;
       // Find the first matching version of the package which is cached.
-      let version = package_info
-        .versions
-        .keys()
+      let mut versions = package_info.versions.keys().collect::<Vec<_>>();
+      versions.sort();
+      let version = versions
+        .into_iter()
+        .rev()
         .find(|v| {
           if req.version_req.tag().is_some() || !req.version_req.matches(v) {
             return false;
@@ -106,6 +99,16 @@ impl JsrResolver {
         .cloned()?;
       Some(PackageNv { name, version })
     });
+    nv.value().clone()
+  }
+
+  pub fn jsr_to_registry_url(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<ModuleSpecifier> {
+    let req_ref = JsrPackageReqReference::from_str(specifier.as_str()).ok()?;
+    let req = req_ref.req().clone();
+    let maybe_nv = self.req_to_nv(&req);
     let nv = maybe_nv.as_ref()?;
     let maybe_info = self
       .info_by_nv
@@ -187,6 +190,9 @@ fn read_cached_package_version_info(
 #[derive(Debug, Clone)]
 pub struct CliJsrSearchApi {
   file_fetcher: FileFetcher,
+  /// We only store this here so the completion system has access to a resolver
+  /// that always uses the global cache.
+  resolver: Arc<JsrResolver>,
   search_cache: Arc<DashMap<String, Arc<Vec<String>>>>,
   versions_cache: Arc<DashMap<String, Arc<Vec<Version>>>>,
   exports_cache: Arc<DashMap<PackageNv, Arc<Vec<String>>>>,
@@ -194,12 +200,21 @@ pub struct CliJsrSearchApi {
 
 impl CliJsrSearchApi {
   pub fn new(file_fetcher: FileFetcher) -> Self {
+    let resolver = Arc::new(JsrResolver::from_cache_and_lockfile(
+      file_fetcher.http_cache().clone(),
+      None,
+    ));
     Self {
       file_fetcher,
+      resolver,
       search_cache: Default::default(),
       versions_cache: Default::default(),
       exports_cache: Default::default(),
     }
+  }
+
+  pub fn get_resolver(&self) -> &Arc<JsrResolver> {
+    &self.resolver
   }
 }
 
