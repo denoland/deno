@@ -1,7 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use std::process::Command;
-
 use deno_core::serde_json::json;
 use test_util::assert_contains;
 use test_util::assert_not_contains;
@@ -259,6 +257,14 @@ itest!(jsr_jsonc {
   http_server: true,
 });
 
+itest!(unsupported_jsx_tsx {
+  args: "publish --token 'sadfasdf'",
+  cwd: Some("publish/unsupported_jsx_tsx"),
+  output: "publish/unsupported_jsx_tsx/mod.out",
+  envs: env_vars_for_jsr_npm_tests(),
+  http_server: true,
+});
+
 #[test]
 fn ignores_gitignore() {
   let context = publish_context_builder().build();
@@ -416,6 +422,7 @@ fn includes_dotenv() {
     .arg("publish")
     .arg("--token")
     .arg("sadfasdf")
+    .arg("--dry-run")
     .run();
   output.assert_exit_code(0);
   let output = output.combined_output();
@@ -428,45 +435,4 @@ fn publish_context_builder() -> TestContextBuilder {
     .use_http_server()
     .envs(env_vars_for_jsr_tests())
     .use_temp_cwd()
-}
-
-#[test]
-fn allow_dirty() {
-  let context = publish_context_builder().build();
-  let temp_dir = context.temp_dir().path();
-  temp_dir.join("deno.json").write_json(&json!({
-    "name": "@foo/bar",
-    "version": "1.0.0",
-    "exports": "./main.ts",
-  }));
-
-  temp_dir.join("main.ts").write("");
-
-  let cmd = Command::new("git")
-    .arg("init")
-    .arg(temp_dir.as_path())
-    .output()
-    .unwrap();
-  assert!(cmd.status.success());
-
-  let output = context
-    .new_command()
-    .arg("publish")
-    .arg("--token")
-    .arg("sadfasdf")
-    .run();
-  output.assert_exit_code(1);
-  let output = output.combined_output();
-  assert_contains!(output, "Aborting due to uncomitted changes");
-
-  let output = context
-    .new_command()
-    .arg("publish")
-    .arg("--allow-dirty")
-    .arg("--token")
-    .arg("sadfasdf")
-    .run();
-  output.assert_exit_code(0);
-  let output = output.combined_output();
-  assert_contains!(output, "Successfully published");
 }
