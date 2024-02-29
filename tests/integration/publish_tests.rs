@@ -166,7 +166,7 @@ itest!(successful {
 });
 
 itest!(provenance {
-  args: "publish --provenance",
+  args: "publish",
   output: "publish/successful_provenance.out",
   cwd: Some("publish/successful"),
   envs: env_vars_for_jsr_provenance_tests(),

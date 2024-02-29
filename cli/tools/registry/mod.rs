@@ -470,7 +470,7 @@ async fn perform_publish(
   mut publish_order_graph: PublishOrderGraph,
   mut prepared_package_by_name: HashMap<String, Rc<PreparedPublishPackage>>,
   auth_method: AuthMethod,
-  provenance: bool,
+  no_provenance: bool,
 ) -> Result<(), AnyError> {
   let client = http_client.client()?;
   let registry_api_url = jsr_api_url().to_string();
@@ -531,7 +531,7 @@ async fn perform_publish(
           &registry_api_url,
           &registry_url,
           &authorization,
-          provenance,
+          no_provenance,
         )
         .await
         .with_context(|| format!("Failed to publish {}", display_name))?;
@@ -558,7 +558,7 @@ async fn publish_package(
   registry_api_url: &str,
   registry_url: &str,
   authorization: &str,
-  provenance: bool,
+  no_provenance: bool,
 ) -> Result<(), AnyError> {
   let client = http_client.client()?;
   println!(
@@ -665,8 +665,12 @@ async fn publish_package(
     package.version
   );
 
-  if provenance {
-    // Get the version manifest from JSR
+  let enable_provenance = std::env::var("DISABLE_JSR_PROVENANCE").is_err()
+    || (auth::is_gha() && auth::gha_oidc_token().is_some() && !no_provenance);
+
+  // Enable provenance by default on Github actions with OIDC token
+  if enable_provenance {
+    // Get the version manifest from the registry
     let meta_url = jsr_url().join(&format!(
       "@{}/{}/{}_meta.json",
       package.scope, package.package, package.version
@@ -942,7 +946,7 @@ pub async fn publish(
     prepared_data.publish_order_graph,
     prepared_data.package_by_name,
     auth_method,
-    publish_flags.provenance,
+    publish_flags.no_provenance,
   )
   .await?;
 
