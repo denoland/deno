@@ -10,6 +10,7 @@ use deno_ast::SourceRange;
 use deno_ast::SourceTextInfo;
 use deno_config::glob::FilePatterns;
 use deno_core::anyhow::bail;
+use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
@@ -228,8 +229,8 @@ async fn lint_files(
             return Ok(());
           }
 
-          let r = lint_file(&file_path, file_text, &linter, fix);
-          if let Ok((file_diagnostics, file_source)) = &r {
+          let r = lint_file(&linter, &file_path, file_text, fix);
+          if let Ok((file_source, file_diagnostics)) = &r {
             if file_diagnostics.is_empty() {
               // update the incremental cache if there were no diagnostics
               incremental_cache.update_file(
@@ -324,46 +325,117 @@ pub fn create_linter(rules: Vec<&'static dyn LintRule>) -> Linter {
 }
 
 fn lint_file(
+  linter: &Linter,
   file_path: &Path,
   source_code: String,
-  linter: &Linter,
   fix: bool,
-) -> Result<(Vec<LintDiagnostic>, ParsedSource), AnyError> {
+) -> Result<(ParsedSource, Vec<LintDiagnostic>), AnyError> {
   let specifier = specifier_from_file_path(file_path)?;
   let media_type = MediaType::from_specifier(&specifier);
 
-  let (source, file_diagnostics) = linter.lint_file(LintFileOptions {
-    specifier,
+  if fix {
+    lint_file_and_fix(linter, &specifier, media_type, source_code, file_path)
+  } else {
+    linter
+      .lint_file(LintFileOptions {
+        specifier,
+        media_type,
+        source_code,
+      })
+      .map_err(AnyError::from)
+  }
+}
+
+fn lint_file_and_fix(
+  linter: &Linter,
+  specifier: &ModuleSpecifier,
+  media_type: MediaType,
+  source_code: String,
+  file_path: &Path,
+) -> Result<(ParsedSource, Vec<LintDiagnostic>), deno_core::anyhow::Error> {
+  // initial lint
+  let (source, diagnostics) = linter.lint_file(LintFileOptions {
+    specifier: specifier.clone(),
     media_type,
     source_code,
   })?;
+  // try to apply fixes and re-lint
+  let Some((source, diagnostics)) = apply_lint_fixes_and_relint(
+    specifier,
+    media_type,
+    linter,
+    source.text_info(),
+    &diagnostics,
+  )?
+  else {
+    return Ok((source, diagnostics)); // no fixes, so exit
+  };
 
-  if fix && !file_diagnostics.is_empty() {
-    let file_start = source.text_info().range().start;
-    let quick_fixes = file_diagnostics
-      .iter()
-      // prefer the first quick fix
-      .filter_map(|d| d.quick_fixes.next())
-      .flat_map(|fix| fix.changes.iter())
-      // todo(dsherret): need to handle overlapping text changes
-      .map(|change| deno_ast::TextChange {
-        range: change.range.as_byte_range(file_start),
-        new_text: change.new_text.clone(),
-      })
-      .collect::<Vec<_>>();
-    if !quick_fixes.is_empty() {
-      let new_text = deno_ast::apply_text_changes(
-        &source.text_info().text_str(),
-        quick_fixes,
-      );
-      fs::write(&file_path, &new_text)?;
-      return lint_file(
-        &file_path, new_text, linter, /* do not fix again */ false,
-      );
-    }
+  // try applying fixes once again just in case new ones
+  // appeared after the first round of fixes
+  let (source, diagnostics) = apply_lint_fixes_and_relint(
+    specifier,
+    media_type,
+    linter,
+    source.text_info(),
+    &diagnostics,
+  )?
+  .unwrap_or((source, diagnostics));
+
+  // everything looks good and the file still parses, so write it out
+  fs::write(&file_path, source.text_info().text_str())
+    .context("Failed writing fix to file.")?;
+  Ok((source, diagnostics))
+}
+
+fn apply_lint_fixes_and_relint(
+  specifier: &ModuleSpecifier,
+  media_type: MediaType,
+  linter: &Linter,
+  text_info: &SourceTextInfo,
+  diagnostics: &[LintDiagnostic],
+) -> Result<Option<(ParsedSource, Vec<LintDiagnostic>)>, AnyError> {
+  let Some(new_text) = apply_lint_fixes(&text_info, diagnostics) else {
+    return Ok(None);
+  };
+  linter
+    .lint_file(LintFileOptions {
+      specifier: specifier.clone(),
+      source_code: new_text,
+      media_type,
+    })
+    .map(Some)
+    .context(
+      "An applied lint fix caused a syntax error. Please report this bug.",
+    )
+}
+
+fn apply_lint_fixes(
+  text_info: &SourceTextInfo,
+  diagnostics: &[LintDiagnostic],
+) -> Option<String> {
+  if diagnostics.is_empty() {
+    return None;
   }
 
-  Ok((file_diagnostics, source))
+  let file_start = text_info.range().start;
+  let quick_fixes = diagnostics
+    .iter()
+    // use the first quick fix
+    .filter_map(|d| d.fixes.iter().next())
+    .flat_map(|fix| fix.changes.iter())
+    // todo(dsherret): need to handle overlapping text changes
+    .map(|change| deno_ast::TextChange {
+      range: change.range.as_byte_range(file_start),
+      new_text: change.new_text.to_string(),
+    })
+    .collect::<Vec<_>>();
+  if quick_fixes.is_empty() {
+    return None;
+  }
+  let new_text =
+    deno_ast::apply_text_changes(&text_info.text_str(), quick_fixes);
+  Some(new_text)
 }
 
 /// Lint stdin and write result to stdout.
@@ -372,7 +444,7 @@ fn lint_file(
 fn lint_stdin(
   file_path: &Path,
   lint_rules: Vec<&'static dyn LintRule>,
-) -> Result<(Vec<LintDiagnostic>, ParsedSource), AnyError> {
+) -> Result<(ParsedSource, Vec<LintDiagnostic>), AnyError> {
   let mut source_code = String::new();
   if stdin().read_to_string(&mut source_code).is_err() {
     return Err(generic_error("Failed to read from stdin"));
@@ -380,24 +452,24 @@ fn lint_stdin(
 
   let linter = create_linter(lint_rules);
 
-  let (source, file_diagnostics) = linter.lint_file(LintFileOptions {
-    specifier: specifier_from_file_path(file_path)?,
-    source_code: source_code.clone(),
-    media_type: MediaType::TypeScript,
-  })?;
-
-  Ok((file_diagnostics, source))
+  linter
+    .lint_file(LintFileOptions {
+      specifier: specifier_from_file_path(file_path)?,
+      source_code: source_code.clone(),
+      media_type: MediaType::TypeScript,
+    })
+    .map_err(AnyError::from)
 }
 
 fn handle_lint_result(
   file_path: &str,
-  result: Result<(Vec<LintDiagnostic>, ParsedSource), AnyError>,
+  result: Result<(ParsedSource, Vec<LintDiagnostic>), AnyError>,
   reporter_lock: Arc<Mutex<Box<dyn LintReporter + Send>>>,
 ) -> bool {
   let mut reporter = reporter_lock.lock();
 
   match result {
-    Ok((mut file_diagnostics, _source)) => {
+    Ok((_source, mut file_diagnostics)) => {
       file_diagnostics.sort_by(|a, b| match a.specifier.cmp(&b.specifier) {
         std::cmp::Ordering::Equal => a.range.start.cmp(&b.range.start),
         file_order => file_order,
@@ -535,7 +607,7 @@ impl LintReporter for PrettyLintReporter {
   fn visit_diagnostic(&mut self, d: LintOrCliDiagnostic) {
     self.lint_count += 1;
     if let LintOrCliDiagnostic::Lint(d) = d {
-      if !d.quick_fixes.is_empty() {
+      if !d.fixes.is_empty() {
         self.fixable_diagnostics += 1;
       }
     }

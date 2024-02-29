@@ -185,16 +185,16 @@ pub fn get_lint_references(
           code: d.code,
           hint: d.hint,
           quick_fixes: d
-            .quick_fixes
+            .fixes
             .into_iter()
             .map(|f| DataQuickFix {
-              description: f.description,
+              description: f.description.to_string(),
               changes: f
                 .changes
                 .into_iter()
                 .map(|change| DataQuickFixChange {
                   range: as_lsp_range(change.range, &d.text_info),
-                  new_text: change.new_text,
+                  new_text: change.new_text.to_string(),
                 })
                 .collect(),
             })
