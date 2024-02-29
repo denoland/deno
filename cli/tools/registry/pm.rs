@@ -29,7 +29,7 @@ pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
   let cli_options = cli_factory.cli_options();
 
   let Some(config_file) = cli_options.maybe_config_file() else {
-    tokio::fs::write(cli_options.initial_cwd().join("deno.json"), "{}")
+    tokio::fs::write(cli_options.initial_cwd().join("deno.json"), "{}\n")
       .await
       .context("Failed to create deno.json file")?;
     log::info!("Created deno.json configuration file.");
@@ -125,13 +125,13 @@ pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
       "Add {} - {}@{}",
       crate::colors::green(&selected_package.import_name),
       selected_package.package_name,
-      selected_package.version
+      selected_package.version_req
     );
     existing_imports.insert(
       selected_package.import_name,
       format!(
         "{}@{}",
-        selected_package.package_name, selected_package.version
+        selected_package.package_name, selected_package.version_req
       ),
     );
   }
@@ -155,7 +155,9 @@ pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
     fmt_config_options,
   );
 
-  tokio::fs::write(&config_file_path, new_text).await.unwrap();
+  tokio::fs::write(&config_file_path, new_text)
+    .await
+    .context("Failed to update configuration file")?;
 
   // TODO(bartlomieju): we should now cache the imports from the config file.
 
@@ -165,7 +167,7 @@ pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
 struct SelectedPackage {
   import_name: String,
   package_name: String,
-  version: String,
+  version_req: String,
 }
 
 enum PackageAndVersion {
@@ -202,7 +204,7 @@ async fn jsr_find_package_and_select_version(
       import_name: req.name.to_string(),
       package_name: jsr_prefixed_name,
       // TODO(bartlomieju): fix it, it should not always be caret
-      version: format!("^{}", latest_version),
+      version_req: format!("^{}", latest_version),
     }))
   } else {
     Ok(PackageAndVersion::NotFound(jsr_prefixed_name))
