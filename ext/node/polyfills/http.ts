@@ -1341,7 +1341,8 @@ export class ServerResponse extends NodeWritable {
   headersSent = false;
   #firstChunk: Chunk | null = null;
   #resolve: (value: Response | PromiseLike<Response>) => void;
-  #socketOverride: any | null = undefined;
+  // deno-lint-ignore no-explicit-any
+  #socketOverride: any | null = null;
 
   static #enqueue(controller: ReadableStreamDefaultController, chunk: Chunk) {
     if (typeof chunk === "string") {
