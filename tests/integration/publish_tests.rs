@@ -422,6 +422,7 @@ fn includes_dotenv() {
     .arg("publish")
     .arg("--token")
     .arg("sadfasdf")
+    .arg("--dry-run")
     .run();
   output.assert_exit_code(0);
   let output = output.combined_output();
