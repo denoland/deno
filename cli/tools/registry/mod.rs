@@ -50,6 +50,7 @@ mod auth;
 mod diagnostics;
 mod graph;
 mod paths;
+mod pm;
 mod provenance;
 mod publish_order;
 mod tar;
@@ -57,6 +58,7 @@ mod unfurl;
 
 use auth::get_auth_method;
 use auth::AuthMethod;
+pub use pm::add;
 use publish_order::PublishOrderGraph;
 pub use unfurl::deno_json_deps;
 use unfurl::SpecifierUnfurler;

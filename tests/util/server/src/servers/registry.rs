@@ -142,7 +142,12 @@ async fn registry_server_handler(
   // serve the registry package files
   let mut file_path =
     testdata_path().to_path_buf().join("jsr").join("registry");
-  file_path.push(&req.uri().path()[1..].replace("%2f", "/"));
+  file_path.push(
+    &req.uri().path()[1..]
+      .replace("%2f", "/")
+      .replace("%2F", "/"),
+  );
+
   if let Ok(body) = tokio::fs::read(&file_path).await {
     let body = if let Some(version) = file_path
       .file_name()
