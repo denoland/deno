@@ -14,6 +14,8 @@ use deno_ast::diagnostics::DiagnosticSnippetHighlightStyle;
 use deno_ast::diagnostics::DiagnosticSourcePos;
 use deno_ast::diagnostics::DiagnosticSourceRange;
 use deno_ast::swc::common::util::take::Take;
+use deno_ast::SourcePos;
+use deno_ast::SourceRanged;
 use deno_ast::SourceTextInfo;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
@@ -31,7 +33,10 @@ impl PublishDiagnosticsCollector {
   pub fn print_and_error(&self) -> Result<(), AnyError> {
     let mut errors = 0;
     let mut has_slow_types_errors = false;
-    let diagnostics = self.diagnostics.lock().unwrap().take();
+    let mut diagnostics = self.diagnostics.lock().unwrap().take();
+
+    diagnostics.sort_by_cached_key(|d| d.sorting_key());
+
     for diagnostic in diagnostics {
       eprint!("{}", diagnostic.display());
       if matches!(diagnostic.level(), DiagnosticLevel::Error) {
@@ -92,6 +97,38 @@ pub enum PublishDiagnostic {
     text_info: SourceTextInfo,
     referrer: deno_graph::Range,
   },
+  UnsupportedJsxTsx {
+    specifier: Url,
+  },
+}
+
+impl PublishDiagnostic {
+  fn sorting_key(&self) -> (String, String, Option<SourcePos>) {
+    let loc = self.location();
+
+    let (specifier, source_pos) = match loc {
+      DiagnosticLocation::Module { specifier } => (specifier.to_string(), None),
+      DiagnosticLocation::Path { path } => (path.display().to_string(), None),
+      DiagnosticLocation::ModulePosition {
+        specifier,
+        source_pos,
+        text_info,
+      } => (
+        specifier.to_string(),
+        Some(match source_pos {
+          DiagnosticSourcePos::SourcePos(s) => s,
+          DiagnosticSourcePos::ByteIndex(index) => {
+            text_info.range().start() + index
+          }
+          DiagnosticSourcePos::LineAndCol { line, column } => {
+            text_info.line_start(line) + column
+          }
+        }),
+      ),
+    };
+
+    (self.code().to_string(), specifier, source_pos)
+  }
 }
 
 impl Diagnostic for PublishDiagnostic {
@@ -107,6 +144,7 @@ impl Diagnostic for PublishDiagnostic {
       DuplicatePath { .. } => DiagnosticLevel::Error,
       UnsupportedFileType { .. } => DiagnosticLevel::Warning,
       InvalidExternalImport { .. } => DiagnosticLevel::Error,
+      UnsupportedJsxTsx { .. } => DiagnosticLevel::Warning,
     }
   }
 
@@ -119,6 +157,7 @@ impl Diagnostic for PublishDiagnostic {
       DuplicatePath { .. } => Cow::Borrowed("case-insensitive-duplicate-path"),
       UnsupportedFileType { .. } => Cow::Borrowed("unsupported-file-type"),
       InvalidExternalImport { .. } => Cow::Borrowed("invalid-external-import"),
+      UnsupportedJsxTsx { .. } => Cow::Borrowed("unsupported-jsx-tsx"),
     }
   }
 
@@ -135,6 +174,7 @@ impl Diagnostic for PublishDiagnostic {
         Cow::Owned(format!("unsupported file type '{kind}'"))
       }
       InvalidExternalImport { kind, .. } => Cow::Owned(format!("invalid import to a {kind} specifier")),
+      UnsupportedJsxTsx { .. } => Cow::Borrowed("JSX and TSX files are currently not supported"),
     }
   }
 
@@ -173,6 +213,9 @@ impl Diagnostic for PublishDiagnostic {
           line: referrer.start.line,
           column: referrer.start.character,
         },
+      },
+      UnsupportedJsxTsx { specifier } => DiagnosticLocation::Module {
+        specifier: Cow::Borrowed(specifier),
       },
     }
   }
@@ -221,6 +264,7 @@ impl Diagnostic for PublishDiagnostic {
           description: Some("the specifier".into()),
         },
       }),
+      PublishDiagnostic::UnsupportedJsxTsx { .. } => None,
     }
   }
 
@@ -237,7 +281,8 @@ impl Diagnostic for PublishDiagnostic {
       PublishDiagnostic::UnsupportedFileType { .. } => Some(
         Cow::Borrowed("remove the file, or add it to 'publish.exclude' in the config file"),
       ),
-      PublishDiagnostic::InvalidExternalImport { .. } => Some(Cow::Borrowed("replace this import with one from jsr or npm, or vendor the dependency into your package"))
+      PublishDiagnostic::InvalidExternalImport { .. } => Some(Cow::Borrowed("replace this import with one from jsr or npm, or vendor the dependency into your package")),
+      PublishDiagnostic::UnsupportedJsxTsx { .. } => None,
     }
   }
 
@@ -272,6 +317,9 @@ impl Diagnostic for PublishDiagnostic {
         Cow::Borrowed("this specifier is not allowed to be imported on jsr"),
         Cow::Borrowed("jsr only supports importing `jsr:`, `npm:`, and `data:` specifiers"),
       ]),
+      PublishDiagnostic::UnsupportedJsxTsx { .. } => Cow::Owned(vec![
+        Cow::Borrowed("follow https://github.com/jsr-io/jsr/issues/24 for updates"),
+      ])
     }
   }
 
@@ -293,6 +341,7 @@ impl Diagnostic for PublishDiagnostic {
       PublishDiagnostic::InvalidExternalImport { .. } => {
         Some(Cow::Borrowed("https://jsr.io/go/invalid-external-import"))
       }
+      PublishDiagnostic::UnsupportedJsxTsx { .. } => None,
     }
   }
 }

@@ -154,6 +154,14 @@ pub fn create_gzipped_tarball(
         source_parser,
         diagnostics_collector,
       )?;
+
+      let media_type = MediaType::from_specifier(&specifier);
+      if matches!(media_type, MediaType::Jsx | MediaType::Tsx) {
+        diagnostics_collector.push(PublishDiagnostic::UnsupportedJsxTsx {
+          specifier: specifier.clone(),
+        });
+      }
+
       files.push(PublishableTarballFile {
         path_str: path_str.clone(),
         specifier: specifier.clone(),
