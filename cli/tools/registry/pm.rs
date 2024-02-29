@@ -32,7 +32,7 @@ pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
     tokio::fs::write(cli_options.initial_cwd().join("deno.json"), "{}")
       .await
       .context("Failed to create deno.json file")?;
-    eprintln!("Created deno.json configuration file.");
+    log::info!("Created deno.json configuration file.");
     return add(flags, add_flags).boxed_local().await;
   };
 
@@ -121,7 +121,7 @@ pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
     };
 
   for selected_package in selected_packages {
-    eprintln!(
+    log::info!(
       "Add {} - {}@{}",
       crate::colors::green(&selected_package.import_name),
       selected_package.package_name,
