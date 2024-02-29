@@ -342,7 +342,8 @@ fn lint_file(
     let file_start = source.text_info().range().start;
     let quick_fixes = file_diagnostics
       .iter()
-      .flat_map(|d| d.quick_fixes.iter())
+      // prefer the first quick fix
+      .filter_map(|d| d.quick_fixes.next())
       .flat_map(|fix| fix.changes.iter())
       // todo(dsherret): need to handle overlapping text changes
       .map(|change| deno_ast::TextChange {
