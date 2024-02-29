@@ -51,11 +51,11 @@ import { notImplemented, warnNotImplemented } from "ext:deno_node/_utils.ts";
 import {
   connResetException,
   ERR_HTTP_HEADERS_SENT,
+  ERR_HTTP_SOCKET_ASSIGNED,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_HTTP_TOKEN,
   ERR_INVALID_PROTOCOL,
   ERR_UNESCAPED_CHARACTERS,
-  ERR_HTTP_SOCKET_ASSIGNED,
 } from "ext:deno_node/internal/errors.ts";
 import { getTimerDuration } from "ext:deno_node/internal/timers.mjs";
 import { serve, upgradeHttpRaw } from "ext:deno_http/00_serve.js";
@@ -1502,7 +1502,7 @@ export class ServerResponse extends NodeWritable {
     assert(socket._httpMessage === this);
     socket._httpMessage = null;
     this.#socketOverride = null;
-  };
+  }
 }
 
 // TODO(@AaronO): optimize

@@ -2545,7 +2545,10 @@ export class ERR_OS_NO_HOMEDIR extends NodeSystemError {
 
 export class ERR_HTTP_SOCKET_ASSIGNED extends NodeError {
   constructor() {
-    super("ERR_HTTP_SOCKET_ASSIGNED", `ServerResponse has an already assigned socket`);
+    super(
+      "ERR_HTTP_SOCKET_ASSIGNED",
+      `ServerResponse has an already assigned socket`,
+    );
   }
 }
 
