@@ -8,18 +8,16 @@ https://github.com/denoland/deno_install
 
 ### 1.41.1 / 2024.02.29
 
-- Revert "fix(publish): error if there are uncommitted changes (#22613)"
-  (#22625)
-- feat(lsp): jsr specifier completions (#22612)
-- feat(publish): discover jsr.json and jsr.jsonc files (#22587)
-- feat(publish): enable package provenance by default on github actions (#22635)
-- feat(publish): provenance attestation (#22573)
-- feat(publish): respect .gitignore during `deno publish` (#22514)
-- feat(publish): support sloppy imports and bare node built-ins (#22588)
 - feat(unstable): `deno add` subcommand (#22520)
-- feat: infer dependencies from package.json (#22563)
-- fix(cli): ensure that pre- and post-test output is flushed at the appropriate
-  times (#22611)
+- feat(unstable/lsp): jsr specifier completions (#22612)
+- feat(unstable/publish): discover jsr.json and jsr.jsonc files (#22587)
+- feat(unstable/publish): enable package provenance by default on github actions
+  (#22635)
+- feat(unstable/publish): infer dependencies from package.json (#22563)
+- feat(unstable/publish): provenance attestation (#22573)
+- feat(unstable/publish): respect .gitignore during `deno publish` (#22514)
+- feat(unstable/publish): support sloppy imports and bare node built-ins
+  (#22588)
 - fix(compile): add aarch64 linux to `CliOptions::npm_system_info` (#22567)
 - fix(compile): allow to compile for ARM linux (#22542)
 - fix(ext/crypto): align the return type of `crypto.randomUUID` to
@@ -30,16 +28,17 @@ https://github.com/denoland/deno_install
 - fix(io): create_named_pipe parallelism (#22597)
 - fix(jsr): do not allow importing a non-JSR url via unanalyzable dynamic import
   from JSR (#22623)
+- fix(jsr): relative dynamic imports in jsr packages (#22624)
 - fix(lsp): import map expansion (#22553)
 - fix(publish): disable provenance if not in GHA (#22638)
-- fix(publish): error if there are uncommitted changes (#22613)
 - fix(publish): make the already published message look like a warning (#22620)
 - fix(publish): print a warning when .jsx or .tsx is imported (#22631)
 - fix(publish): reduce warnings about dynamic imports (#22636)
+- fix(test): ensure that pre- and post-test output is flushed at the appropriate
+  times (#22611)
 - fix(unstable): add `Date#toTemporalInstant` type (#22637)
 - fix(unstable): sloppy imports should resolve .d.ts files during types
   resolution (#22602)
-- fix: relative dynamic imports in jsr packages (#22624)
 - perf(cli): reduce overhead in test registration (#22552)
 - perf(fmt): reduce memory usage and improve performance (#22570)
 
