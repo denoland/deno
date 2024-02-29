@@ -24,81 +24,6 @@ use crate::args::AddFlags;
 use crate::args::Flags;
 use crate::factory::CliFactory;
 
-struct SelectedPackage {
-  import_name: String,
-  package_name: String,
-  version: String,
-}
-
-enum PackageAndVersion {
-  NotFound(String),
-  Selected(SelectedPackage),
-}
-
-async fn jsr_find_package_and_select_version(
-  client: &reqwest::Client,
-  registry_api_url: &str,
-  req: &PackageReq,
-) -> Result<PackageAndVersion, AnyError> {
-  let jsr_prefixed_name = format!("jsr:{}", req.name);
-
-  // TODO(bartlomieju): Need to do semver as well - @luca/flag@^0.14 should use to
-  // highest possible `0.14.x` version.
-  let version_req = req.version_req.version_text();
-  if version_req != "*" {
-    bail!("Specifying version constraints is currently not supported. Package: {}@{}", jsr_prefixed_name, version_req);
-  }
-
-  let name_no_at = req.name.strip_prefix('@').unwrap();
-  let (scope, name_no_scope) = name_no_at.split_once('/').unwrap();
-
-  let response =
-    api::get_package(client, registry_api_url, scope, name_no_scope).await?;
-  if response.status() == 404 {
-    return Ok(PackageAndVersion::NotFound(jsr_prefixed_name));
-  }
-  let package = api::parse_response::<api::Package>(response).await?;
-
-  if let Some(latest_version) = package.latest_version {
-    Ok(PackageAndVersion::Selected(SelectedPackage {
-      import_name: req.name.to_string(),
-      package_name: jsr_prefixed_name,
-      // TODO(bartlomieju): fix it, it should not always be caret
-      version: format!("^{}", latest_version),
-    }))
-  } else {
-    Ok(PackageAndVersion::NotFound(jsr_prefixed_name))
-  }
-}
-
-async fn find_package_and_select_version_for_req(
-  client: &reqwest::Client,
-  registry_api_url: &str,
-  add_package_req: AddPackageReq,
-) -> Result<PackageAndVersion, AnyError> {
-  match add_package_req {
-    AddPackageReq::Jsr(pkg_ref) => {
-      jsr_find_package_and_select_version(
-        client,
-        registry_api_url,
-        pkg_ref.req(),
-      )
-      .await
-    }
-    AddPackageReq::Npm(pkg_req) => {
-      bail!(
-        "Adding npm: packages is currently not supported. Package: npm:{}",
-        pkg_req.req().name
-      );
-    }
-  }
-}
-
-enum AddPackageReq {
-  Jsr(JsrPackageReqReference),
-  Npm(NpmPackageReqReference),
-}
-
 pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
   let cli_factory = CliFactory::from_flags(flags.clone()).await?;
   let cli_options = cli_factory.cli_options();
@@ -235,6 +160,81 @@ pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
   // TODO(bartlomieju): we should now cache the imports from the config file.
 
   Ok(())
+}
+
+struct SelectedPackage {
+  import_name: String,
+  package_name: String,
+  version: String,
+}
+
+enum PackageAndVersion {
+  NotFound(String),
+  Selected(SelectedPackage),
+}
+
+async fn jsr_find_package_and_select_version(
+  client: &reqwest::Client,
+  registry_api_url: &str,
+  req: &PackageReq,
+) -> Result<PackageAndVersion, AnyError> {
+  let jsr_prefixed_name = format!("jsr:{}", req.name);
+
+  // TODO(bartlomieju): Need to do semver as well - @luca/flag@^0.14 should use to
+  // highest possible `0.14.x` version.
+  let version_req = req.version_req.version_text();
+  if version_req != "*" {
+    bail!("Specifying version constraints is currently not supported. Package: {}@{}", jsr_prefixed_name, version_req);
+  }
+
+  let name_no_at = req.name.strip_prefix('@').unwrap();
+  let (scope, name_no_scope) = name_no_at.split_once('/').unwrap();
+
+  let response =
+    api::get_package(client, registry_api_url, scope, name_no_scope).await?;
+  if response.status() == 404 {
+    return Ok(PackageAndVersion::NotFound(jsr_prefixed_name));
+  }
+  let package = api::parse_response::<api::Package>(response).await?;
+
+  if let Some(latest_version) = package.latest_version {
+    Ok(PackageAndVersion::Selected(SelectedPackage {
+      import_name: req.name.to_string(),
+      package_name: jsr_prefixed_name,
+      // TODO(bartlomieju): fix it, it should not always be caret
+      version: format!("^{}", latest_version),
+    }))
+  } else {
+    Ok(PackageAndVersion::NotFound(jsr_prefixed_name))
+  }
+}
+
+async fn find_package_and_select_version_for_req(
+  client: &reqwest::Client,
+  registry_api_url: &str,
+  add_package_req: AddPackageReq,
+) -> Result<PackageAndVersion, AnyError> {
+  match add_package_req {
+    AddPackageReq::Jsr(pkg_ref) => {
+      jsr_find_package_and_select_version(
+        client,
+        registry_api_url,
+        pkg_ref.req(),
+      )
+      .await
+    }
+    AddPackageReq::Npm(pkg_req) => {
+      bail!(
+        "Adding npm: packages is currently not supported. Package: npm:{}",
+        pkg_req.req().name
+      );
+    }
+  }
+}
+
+enum AddPackageReq {
+  Jsr(JsrPackageReqReference),
+  Npm(NpmPackageReqReference),
 }
 
 fn generate_imports(packages_to_version: Vec<(String, String)>) -> String {
