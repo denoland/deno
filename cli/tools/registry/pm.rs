@@ -210,7 +210,7 @@ async fn jsr_find_package_and_select_version(
     import_name: req.name.to_string(),
     package_name: jsr_prefixed_name,
     // TODO(bartlomieju): fix it, it should not always be caret
-    version_req: format!("^{}", latest_version.to_string()),
+    version_req: format!("^{}", latest_version),
   }))
 }
 
