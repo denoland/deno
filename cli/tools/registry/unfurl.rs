@@ -159,7 +159,7 @@ impl<'a> SpecifierUnfurler<'a> {
       };
     let relative_resolved = relative_url(&resolved, referrer);
     if relative_resolved == specifier {
-      None
+      None // nothing to unfurl
     } else {
       Some(relative_resolved)
     }
@@ -489,6 +489,7 @@ const test2 = await import(`./lib/foo.ts`);
 const test3 = await import(`./lib/${expr}`);
 const test4 = await import(`./lib/${expr}`);
 const test5 = await import("./lib/something.ts");
+const test6 = await import(`./lib/something.ts`);
 // will warn
 const warn1 = await import(`lib${expr}`);
 const warn2 = await import(`${expr}`);
