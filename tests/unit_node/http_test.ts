@@ -994,3 +994,12 @@ Deno.test("[node/http] ServerResponse assignSocket and detachSocket", () => {
   assertEquals(writtenData, undefined);
   assertEquals(writtenEncoding, undefined);
 });
+
+Deno.test("[node/http] ServerResponse getHeaders", () => {
+  const req = new http.IncomingMessage(new net.Socket());
+  const res = new http.ServerResponse(req);
+  res.setHeader("foo", "bar");
+  res.setHeader("bar", "baz");
+  assertEquals(res.getHeaderNames(), ["bar", "foo"]);
+  assertEquals(res.getHeaders(), { "bar": "baz", "foo": "bar" });
+});

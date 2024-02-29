@@ -1425,6 +1425,9 @@ export class ServerResponse extends NodeWritable {
   getHeaderNames() {
     return Array.from(this.#headers.keys());
   }
+  getHeaders() {
+    return Object.fromEntries(this.#headers.entries());
+  }
   hasHeader(name: string) {
     return this.#headers.has(name);
   }

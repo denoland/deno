@@ -414,7 +414,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: 'deno-${{ matrix.os }}-${{ matrix.arch }}-${{ github.event.number }}'
-          path: target/release/deno
+          path: |
+            target/release/deno
+            target/release/denort
       - name: Pre-release (linux)
         if: |-
           !(matrix.skip) && (matrix.os == 'linux' &&
