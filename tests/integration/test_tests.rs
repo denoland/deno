@@ -231,7 +231,7 @@ itest!(ops_sanitizer_timeout_failure {
 
 itest!(ops_sanitizer_multiple_timeout_tests {
   args:
-    "test --trace-ops test/sanitizer/ops_sanitizer_multiple_timeout_tests.ts",
+    "test --trace-leaks test/sanitizer/ops_sanitizer_multiple_timeout_tests.ts",
   exit_code: 1,
   output: "test/sanitizer/ops_sanitizer_multiple_timeout_tests.out",
 });
@@ -243,13 +243,13 @@ itest!(ops_sanitizer_multiple_timeout_tests_no_trace {
 });
 
 itest!(sanitizer_trace_ops_catch_error {
-  args: "test -A --trace-ops test/sanitizer/trace_ops_caught_error/main.ts",
+  args: "test -A --trace-leaks test/sanitizer/trace_ops_caught_error/main.ts",
   exit_code: 0,
   output: "test/sanitizer/trace_ops_caught_error/main.out",
 });
 
 itest!(ops_sanitizer_closed_inside_started_before {
-  args: "test --trace-ops test/sanitizer/ops_sanitizer_closed_inside_started_before.ts",
+  args: "test --trace-leaks test/sanitizer/ops_sanitizer_closed_inside_started_before.ts",
   exit_code: 1,
   output: "test/sanitizer/ops_sanitizer_closed_inside_started_before.out",
 });

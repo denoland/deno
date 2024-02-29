@@ -2,8 +2,6 @@
 
 use std::collections::HashMap;
 use std::io::IsTerminal;
-use std::path::Path;
-use std::process::Stdio;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -26,7 +24,6 @@ use lsp_types::Url;
 use serde::Deserialize;
 use serde::Serialize;
 use sha2::Digest;
-use tokio::process::Command;
 
 use crate::args::jsr_api_url;
 use crate::args::jsr_url;
@@ -602,7 +599,7 @@ async fn publish_package(
       if task.status == "success" {
         println!(
           "{} @{}/{}@{}",
-          colors::green("Skipping, already published"),
+          colors::yellow("Warning: Skipping, already published"),
           package.scope,
           package.package,
           package.version
@@ -942,12 +939,6 @@ pub async fn publish(
     return Ok(());
   }
 
-  if !publish_flags.allow_dirty
-    && check_if_git_repo_dirty(cli_options.initial_cwd()).await
-  {
-    bail!("Aborting due to uncomitted changes",);
-  }
-
   perform_publish(
     cli_factory.http_client(),
     prepared_data.publish_order_graph,
@@ -1025,34 +1016,6 @@ fn verify_version_manifest(
   }
 
   Ok(())
-}
-
-async fn check_if_git_repo_dirty(cwd: &Path) -> bool {
-  let bin_name = if cfg!(windows) { "git.exe" } else { "git" };
-
-  // Check if git exists
-  let git_exists = Command::new(bin_name)
-    .arg("--version")
-    .stderr(Stdio::null())
-    .stdout(Stdio::null())
-    .status()
-    .await
-    .map_or(false, |status| status.success());
-
-  if !git_exists {
-    return false; // Git is not installed
-  }
-
-  // Check if there are uncommitted changes
-  let output = Command::new(bin_name)
-    .current_dir(cwd)
-    .args(["status", "--porcelain"])
-    .output()
-    .await
-    .expect("Failed to execute command");
-
-  let output_str = String::from_utf8_lossy(&output.stdout);
-  !output_str.trim().is_empty()
 }
 
 #[cfg(test)]

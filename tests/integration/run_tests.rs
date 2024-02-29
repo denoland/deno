@@ -4560,15 +4560,14 @@ async fn websocket_server_multi_field_connection_header() {
   assert!(child.wait().unwrap().success());
 }
 
-// TODO(bartlomieju): this should use `deno run`, not `deno test`; but the
-// test hangs then. https://github.com/denoland/deno/issues/14283
 #[tokio::test]
 async fn websocket_server_idletimeout() {
+  test_util::timeout!(60);
   let script =
     util::testdata_path().join("run/websocket_server_idletimeout.ts");
   let root_ca = util::testdata_path().join("tls/RootCA.pem");
   let mut child = util::deno_cmd()
-    .arg("test")
+    .arg("run")
     .arg("--unstable")
     .arg("--allow-net")
     .arg("--cert")
@@ -4579,11 +4578,13 @@ async fn websocket_server_idletimeout() {
     .unwrap();
 
   let stdout = child.stdout.as_mut().unwrap();
-  let mut buffer = [0; 5];
-  let read = stdout.read(&mut buffer).unwrap();
-  assert_eq!(read, 5);
-  let msg = std::str::from_utf8(&buffer).unwrap();
-  assert_eq!(msg, "READY");
+  let mut buf: Vec<u8> = vec![];
+  while !String::from_utf8(buf.clone()).unwrap().contains("READY") {
+    let mut buffer = [0; 64];
+    let read = stdout.read(&mut buffer).unwrap();
+    buf.extend_from_slice(&buffer[0..read]);
+    eprintln!("buf = {buf:?}");
+  }
 
   let stream = tokio::net::TcpStream::connect("localhost:4509")
     .await
@@ -4604,8 +4605,7 @@ async fn websocket_server_idletimeout() {
     fastwebsockets::handshake::client(&SpawnExecutor, req, stream)
       .await
       .unwrap();
-
-  assert!(child.wait().unwrap().success());
+  assert_eq!(child.wait().unwrap().code(), Some(123));
 }
 
 itest!(auto_discover_lockfile {

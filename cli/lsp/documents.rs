@@ -3,7 +3,7 @@
 use super::cache::calculate_fs_version;
 use super::cache::calculate_fs_version_at_path;
 use super::cache::LSP_DISALLOW_GLOBAL_TO_LOCAL_COPY;
-use super::jsr_resolver::JsrResolver;
+use super::jsr::JsrResolver;
 use super::language_server::StateNpmSnapshot;
 use super::text::LineIndex;
 use super::tsc;

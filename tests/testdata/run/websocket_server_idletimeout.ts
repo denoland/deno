@@ -11,10 +11,12 @@ const { response, socket } = Deno.upgradeWebSocket(request, {
   idleTimeout: 1,
 });
 socket.onerror = (e) => {
+  console.log(e);
   assertEquals((e as ErrorEvent).message, "No response from ping frame.");
   errorDeferred.resolve();
 };
 socket.onclose = (e) => {
+  console.log(e);
   assertEquals(e.reason, "No response from ping frame.");
   closeDeferred.resolve();
 };
@@ -22,4 +24,6 @@ await respondWith(response);
 
 await errorDeferred.promise;
 await closeDeferred.promise;
-listener.close();
+
+// TODO(mmastrac): this doesn't exit on its own. Why?
+Deno.exit(123);
