@@ -30,7 +30,6 @@ use crate::args::jsr_url;
 use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::PublishFlags;
-use crate::args::TypeCheckMode;
 use crate::cache::LazyGraphSourceParser;
 use crate::cache::ParsedSourceCache;
 use crate::factory::CliFactory;
@@ -860,8 +859,7 @@ async fn build_and_check_graph_for_publish(
             lib: cli_options.ts_type_lib_window(),
             log_ignored_options: false,
             reload: cli_options.reload_flag(),
-            // force type checking this
-            type_check_mode: TypeCheckMode::Local,
+            type_check_mode: cli_options.type_check_mode(),
           },
         )
         .await?;
