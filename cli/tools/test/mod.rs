@@ -391,7 +391,7 @@ pub enum TestEvent {
   StepRegister(TestStepDescription),
   StepWait(usize),
   StepResult(usize, TestStepResult, u64),
-  /// Indicates that this worker has completed.
+  /// Indicates that this worker has completed running tests.
   Completed,
   /// Indicates that the user has cancelled the test run with Ctrl+C and
   /// the run should be aborted.
@@ -513,7 +513,7 @@ pub async fn test_specifier(
     worker_factory,
     permissions,
     specifier.clone(),
-    &worker_sender.sender,
+    &mut worker_sender.sender,
     StdioPipe::file(worker_sender.stdout),
     StdioPipe::file(worker_sender.stderr),
     fail_fast_tracker,
@@ -543,7 +543,7 @@ async fn test_specifier_inner(
   worker_factory: Arc<CliMainWorkerFactory>,
   permissions: Permissions,
   specifier: ModuleSpecifier,
-  sender: &TestEventSender,
+  sender: &mut TestEventSender,
   stdout: StdioPipe,
   stderr: StdioPipe,
   fail_fast_tracker: FailFastTracker,
@@ -591,6 +591,9 @@ async fn test_specifier_inner(
   // event loop to continue beyond what's needed to await results.
   worker.dispatch_beforeunload_event(located_script_name!())?;
   worker.dispatch_unload_event(located_script_name!())?;
+
+  // Ensure all output has been flushed
+  _ = sender.flush();
 
   // Ensure the worker has settled so we can catch any remaining unhandled rejections. We don't
   // want to wait forever here.
