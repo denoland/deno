@@ -49,6 +49,38 @@ fn add_basic_no_deno_json() {
 }
 
 #[test]
+fn add_version_contraint() {
+  let context = pm_context_builder().build();
+  let temp_dir = context.temp_dir().path();
+
+  let output = context.new_command().args("add @denotest/add@1").run();
+  output.assert_exit_code(0);
+  let output = output.combined_output();
+  assert_contains!(output, "Add @denotest/add");
+  temp_dir.join("deno.json").assert_matches_json(json!({
+    "imports": {
+      "@denotest/add": "jsr:@denotest/add@^1.0.0"
+    }
+  }));
+}
+
+#[test]
+fn add_tilde() {
+  let context = pm_context_builder().build();
+  let temp_dir = context.temp_dir().path();
+
+  let output = context.new_command().args("add @denotest/add@~1").run();
+  output.assert_exit_code(0);
+  let output = output.combined_output();
+  assert_contains!(output, "Add @denotest/add");
+  temp_dir.join("deno.json").assert_matches_json(json!({
+    "imports": {
+      "@denotest/add": "jsr:@denotest/add@~1.0.0"
+    }
+  }));
+}
+
+#[test]
 fn add_multiple() {
   let starting_deno_json = json!({
     "name": "@foo/bar",
@@ -88,16 +120,6 @@ fn add_not_supported_npm() {
   output.assert_exit_code(1);
   let output = output.combined_output();
   assert_contains!(output, "error: Adding npm: packages is currently not supported. Package: npm:express");
-}
-
-#[test]
-fn add_not_supported_version_constraint() {
-  let context = pm_context_builder().build();
-
-  let output = context.new_command().args("add @denotest/add@1").run();
-  output.assert_exit_code(1);
-  let output = output.combined_output();
-  assert_contains!(output, "error: Specifying version constraints is currently not supported. Package: jsr:@denotest/add@1");
 }
 
 fn pm_context_builder() -> TestContextBuilder {

@@ -25,18 +25,19 @@ use std::sync::Arc;
 use super::cache::LSP_DISALLOW_GLOBAL_TO_LOCAL_COPY;
 use super::search::PackageSearchApi;
 
+/// Keep in sync with `JsrFetchResolver`!
 #[derive(Debug)]
-pub struct JsrResolver {
+pub struct JsrCacheResolver {
   nv_by_req: DashMap<PackageReq, Option<PackageNv>>,
   /// The `module_graph` field of the version infos should be forcibly absent.
   /// It can be large and we don't want to store it.
-  info_by_nv: DashMap<PackageNv, Option<JsrPackageVersionInfo>>,
-  info_by_name: DashMap<String, Option<JsrPackageInfo>>,
+  info_by_nv: DashMap<PackageNv, Option<Arc<JsrPackageVersionInfo>>>,
+  info_by_name: DashMap<String, Option<Arc<JsrPackageInfo>>>,
   cache: Arc<dyn HttpCache>,
 }
 
-impl JsrResolver {
-  pub fn from_cache_and_lockfile(
+impl JsrCacheResolver {
+  pub fn new(
     cache: Arc<dyn HttpCache>,
     lockfile: Option<Arc<Mutex<Lockfile>>>,
   ) -> Self {
@@ -67,13 +68,12 @@ impl JsrResolver {
   }
 
   pub fn req_to_nv(&self, req: &PackageReq) -> Option<PackageNv> {
-    let nv = self.nv_by_req.entry(req.clone()).or_insert_with(|| {
+    if let Some(nv) = self.nv_by_req.get(req) {
+      return nv.value().clone();
+    }
+    let maybe_get_nv = || {
       let name = req.name.clone();
-      let maybe_package_info = self
-        .info_by_name
-        .entry(name.clone())
-        .or_insert_with(|| read_cached_package_info(&name, &self.cache));
-      let package_info = maybe_package_info.as_ref()?;
+      let package_info = self.package_info(&name)?;
       // Find the first matching version of the package which is cached.
       let mut versions = package_info.versions.keys().collect::<Vec<_>>();
       versions.sort();
@@ -88,18 +88,14 @@ impl JsrResolver {
             name: name.clone(),
             version: (*v).clone(),
           };
-          self
-            .info_by_nv
-            .entry(nv.clone())
-            .or_insert_with(|| {
-              read_cached_package_version_info(&nv, &self.cache)
-            })
-            .is_some()
+          self.package_version_info(&nv).is_some()
         })
         .cloned()?;
       Some(PackageNv { name, version })
-    });
-    nv.value().clone()
+    };
+    let nv = maybe_get_nv();
+    self.nv_by_req.insert(req.clone(), nv.clone());
+    nv
   }
 
   pub fn jsr_to_registry_url(
@@ -110,11 +106,7 @@ impl JsrResolver {
     let req = req_ref.req().clone();
     let maybe_nv = self.req_to_nv(&req);
     let nv = maybe_nv.as_ref()?;
-    let maybe_info = self
-      .info_by_nv
-      .entry(nv.clone())
-      .or_insert_with(|| read_cached_package_version_info(nv, &self.cache));
-    let info = maybe_info.as_ref()?;
+    let info = self.package_version_info(nv)?;
     let path = info.export(&normalize_export_name(req_ref.sub_path()))?;
     jsr_url()
       .join(&format!("{}/{}/{}", &nv.name, &nv.version, &path))
@@ -126,11 +118,7 @@ impl JsrResolver {
     nv: &PackageNv,
     path: &str,
   ) -> Option<String> {
-    let maybe_info = self
-      .info_by_nv
-      .entry(nv.clone())
-      .or_insert_with(|| read_cached_package_version_info(nv, &self.cache));
-    let info = maybe_info.as_ref()?;
+    let info = self.package_version_info(nv)?;
     let path = path.strip_prefix("./").unwrap_or(path);
     for (export, path_) in info.exports() {
       if path_.strip_prefix("./").unwrap_or(path_) == path {
@@ -151,40 +139,138 @@ impl JsrResolver {
     }
     None
   }
+
+  pub fn package_info(&self, name: &str) -> Option<Arc<JsrPackageInfo>> {
+    if let Some(info) = self.info_by_name.get(name) {
+      return info.value().clone();
+    }
+    let read_cached_package_info = || {
+      let meta_url = jsr_url().join(&format!("{}/meta.json", name)).ok()?;
+      let meta_bytes = read_cached_url(&meta_url, &self.cache)?;
+      serde_json::from_slice::<JsrPackageInfo>(&meta_bytes).ok()
+    };
+    let info = read_cached_package_info().map(Arc::new);
+    self.info_by_name.insert(name.to_string(), info.clone());
+    info
+  }
+
+  pub fn package_version_info(
+    &self,
+    nv: &PackageNv,
+  ) -> Option<Arc<JsrPackageVersionInfo>> {
+    if let Some(info) = self.info_by_nv.get(nv) {
+      return info.value().clone();
+    }
+    let read_cached_package_version_info = || {
+      let meta_url = jsr_url()
+        .join(&format!("{}/{}_meta.json", &nv.name, &nv.version))
+        .ok()?;
+      let meta_bytes = read_cached_url(&meta_url, &self.cache)?;
+      partial_jsr_package_version_info_from_slice(&meta_bytes).ok()
+    };
+    let info = read_cached_package_version_info().map(Arc::new);
+    self.info_by_nv.insert(nv.clone(), info.clone());
+    info
+  }
 }
 
-fn read_cached_package_info(
-  name: &str,
+fn read_cached_url(
+  url: &ModuleSpecifier,
   cache: &Arc<dyn HttpCache>,
-) -> Option<JsrPackageInfo> {
-  let meta_url = jsr_url().join(&format!("{}/meta.json", name)).ok()?;
-  let meta_cache_item_key = cache.cache_item_key(&meta_url).ok()?;
-  let meta_bytes = cache
+) -> Option<Vec<u8>> {
+  cache
     .read_file_bytes(
-      &meta_cache_item_key,
+      &cache.cache_item_key(url).ok()?,
       None,
       LSP_DISALLOW_GLOBAL_TO_LOCAL_COPY,
     )
-    .ok()??;
-  serde_json::from_slice::<JsrPackageInfo>(&meta_bytes).ok()
+    .ok()?
 }
 
-fn read_cached_package_version_info(
-  nv: &PackageNv,
-  cache: &Arc<dyn HttpCache>,
-) -> Option<JsrPackageVersionInfo> {
-  let meta_url = jsr_url()
-    .join(&format!("{}/{}_meta.json", &nv.name, &nv.version))
-    .ok()?;
-  let meta_cache_item_key = cache.cache_item_key(&meta_url).ok()?;
-  let meta_bytes = cache
-    .read_file_bytes(
-      &meta_cache_item_key,
-      None,
-      LSP_DISALLOW_GLOBAL_TO_LOCAL_COPY,
-    )
-    .ok()??;
-  partial_jsr_package_version_info_from_slice(&meta_bytes).ok()
+/// This is similar to a subset of `JsrCacheResolver` which fetches rather than
+/// just reads the cache. Keep in sync!
+#[derive(Debug)]
+pub struct JsrFetchResolver {
+  nv_by_req: DashMap<PackageReq, Option<PackageNv>>,
+  /// The `module_graph` field of the version infos should be forcibly absent.
+  /// It can be large and we don't want to store it.
+  info_by_nv: DashMap<PackageNv, Option<Arc<JsrPackageVersionInfo>>>,
+  info_by_name: DashMap<String, Option<Arc<JsrPackageInfo>>>,
+  file_fetcher: FileFetcher,
+}
+
+impl JsrFetchResolver {
+  pub fn new(file_fetcher: FileFetcher) -> Self {
+    Self {
+      nv_by_req: Default::default(),
+      info_by_nv: Default::default(),
+      info_by_name: Default::default(),
+      file_fetcher,
+    }
+  }
+
+  pub async fn req_to_nv(&self, req: &PackageReq) -> Option<PackageNv> {
+    if let Some(nv) = self.nv_by_req.get(req) {
+      return nv.value().clone();
+    }
+    let maybe_get_nv = || async {
+      let name = req.name.clone();
+      let package_info = self.package_info(&name).await?;
+      // Find the first matching version of the package which is cached.
+      let mut versions = package_info.versions.keys().collect::<Vec<_>>();
+      versions.sort();
+      let version = versions
+        .into_iter()
+        .rev()
+        .find(|v| req.version_req.tag().is_none() && req.version_req.matches(v))
+        .cloned()?;
+      Some(PackageNv { name, version })
+    };
+    let nv = maybe_get_nv().await;
+    self.nv_by_req.insert(req.clone(), nv.clone());
+    nv
+  }
+
+  pub async fn package_info(&self, name: &str) -> Option<Arc<JsrPackageInfo>> {
+    if let Some(info) = self.info_by_name.get(name) {
+      return info.value().clone();
+    }
+    let read_cached_package_info = || async {
+      let meta_url = jsr_url().join(&format!("{}/meta.json", name)).ok()?;
+      let file = self
+        .file_fetcher
+        .fetch(&meta_url, PermissionsContainer::allow_all())
+        .await
+        .ok()?;
+      serde_json::from_slice::<JsrPackageInfo>(&file.source).ok()
+    };
+    let info = read_cached_package_info().await.map(Arc::new);
+    self.info_by_name.insert(name.to_string(), info.clone());
+    info
+  }
+
+  pub async fn package_version_info(
+    &self,
+    nv: &PackageNv,
+  ) -> Option<Arc<JsrPackageVersionInfo>> {
+    if let Some(info) = self.info_by_nv.get(nv) {
+      return info.value().clone();
+    }
+    let read_cached_package_version_info = || async {
+      let meta_url = jsr_url()
+        .join(&format!("{}/{}_meta.json", &nv.name, &nv.version))
+        .ok()?;
+      let file = self
+        .file_fetcher
+        .fetch(&meta_url, PermissionsContainer::allow_all())
+        .await
+        .ok()?;
+      partial_jsr_package_version_info_from_slice(&file.source).ok()
+    };
+    let info = read_cached_package_version_info().await.map(Arc::new);
+    self.info_by_nv.insert(nv.clone(), info.clone());
+    info
+  }
 }
 
 #[derive(Debug, Clone)]
@@ -192,7 +278,7 @@ pub struct CliJsrSearchApi {
   file_fetcher: FileFetcher,
   /// We only store this here so the completion system has access to a resolver
   /// that always uses the global cache.
-  resolver: Arc<JsrResolver>,
+  resolver: Arc<JsrFetchResolver>,
   search_cache: Arc<DashMap<String, Arc<Vec<String>>>>,
   versions_cache: Arc<DashMap<String, Arc<Vec<Version>>>>,
   exports_cache: Arc<DashMap<PackageNv, Arc<Vec<String>>>>,
@@ -200,10 +286,7 @@ pub struct CliJsrSearchApi {
 
 impl CliJsrSearchApi {
   pub fn new(file_fetcher: FileFetcher) -> Self {
-    let resolver = Arc::new(JsrResolver::from_cache_and_lockfile(
-      file_fetcher.http_cache().clone(),
-      None,
-    ));
+    let resolver = Arc::new(JsrFetchResolver::new(file_fetcher.clone()));
     Self {
       file_fetcher,
       resolver,
@@ -213,7 +296,7 @@ impl CliJsrSearchApi {
     }
   }
 
-  pub fn get_resolver(&self) -> &Arc<JsrResolver> {
+  pub fn get_resolver(&self) -> &Arc<JsrFetchResolver> {
     &self.resolver
   }
 }
@@ -245,19 +328,12 @@ impl PackageSearchApi for CliJsrSearchApi {
     if let Some(versions) = self.versions_cache.get(name) {
       return Ok(versions.clone());
     }
-    let mut meta_url = jsr_url().clone();
-    meta_url
-      .path_segments_mut()
-      .map_err(|_| anyhow!("Custom jsr URL cannot be a base."))?
-      .pop_if_empty()
-      .push(name)
-      .push("meta.json");
-    let file = self
-      .file_fetcher
-      .fetch(&meta_url, PermissionsContainer::allow_all())
-      .await?;
-    let info = serde_json::from_slice::<JsrPackageInfo>(&file.source)?;
-    let mut versions = info.versions.into_keys().collect::<Vec<_>>();
+    let info = self
+      .resolver
+      .package_info(name)
+      .await
+      .ok_or_else(|| anyhow!("JSR package info not found: {}", name))?;
+    let mut versions = info.versions.keys().cloned().collect::<Vec<_>>();
     versions.sort();
     versions.reverse();
     let versions = Arc::new(versions);
@@ -274,18 +350,11 @@ impl PackageSearchApi for CliJsrSearchApi {
     if let Some(exports) = self.exports_cache.get(nv) {
       return Ok(exports.clone());
     }
-    let mut meta_url = jsr_url().clone();
-    meta_url
-      .path_segments_mut()
-      .map_err(|_| anyhow!("Custom jsr URL cannot be a base."))?
-      .pop_if_empty()
-      .push(&nv.name)
-      .push(&format!("{}_meta.json", &nv.version));
-    let file = self
-      .file_fetcher
-      .fetch(&meta_url, PermissionsContainer::allow_all())
-      .await?;
-    let info = partial_jsr_package_version_info_from_slice(&file.source)?;
+    let info = self
+      .resolver
+      .package_version_info(nv)
+      .await
+      .ok_or_else(|| anyhow!("JSR package version info not found: {}", nv))?;
     let mut exports = info
       .exports()
       .map(|(n, _)| n.to_string())
