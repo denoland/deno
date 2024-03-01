@@ -280,50 +280,59 @@ function postMessage(message, transferOrOptions = {}) {
 let isClosing = false;
 let globalDispatchEvent;
 
-async function pollForMessages() {
-  if (!globalDispatchEvent) {
-    globalDispatchEvent = FunctionPrototypeBind(
-      globalThis.dispatchEvent,
-      globalThis,
-    );
-  }
-  while (!isClosing) {
-    const data = await op_worker_recv_message();
-    if (data === null) break;
-    const v = messagePort.deserializeJsMessageData(data);
-    const message = v[0];
-    const transferables = v[1];
+function createPollForMessages(workerName) {
+  return async function pollForMessages() {
+    if (!globalDispatchEvent) {
+      globalDispatchEvent = FunctionPrototypeBind(
+        globalThis.dispatchEvent,
+        globalThis,
+      );
+    }
+    while (!isClosing) {
+      const op = op_worker_recv_message();
+      // In a Node.js worker, unref() the op promise to prevent it from
+      // keeping the event loop alive. This avoids the need to explicitly
+      // call self.close() or worker.terminate().
+      if (workerName === "$DENO_STD_NODE_WORKER_THREAD") {
+        core.unrefOpPromise(op);
+      }
+      const data = await op;
+      if (data === null) break;
+      const v = messagePort.deserializeJsMessageData(data);
+      const message = v[0];
+      const transferables = v[1];
 
-    const msgEvent = new event.MessageEvent("message", {
-      cancelable: false,
-      data: message,
-      ports: ArrayPrototypeFilter(
-        transferables,
-        (t) =>
-          ObjectPrototypeIsPrototypeOf(messagePort.MessagePortPrototype, t),
-      ),
-    });
-    event.setIsTrusted(msgEvent, true);
-
-    try {
-      globalDispatchEvent(msgEvent);
-    } catch (e) {
-      const errorEvent = new event.ErrorEvent("error", {
-        cancelable: true,
-        message: e.message,
-        lineno: e.lineNumber ? e.lineNumber + 1 : undefined,
-        colno: e.columnNumber ? e.columnNumber + 1 : undefined,
-        filename: e.fileName,
-        error: e,
+      const msgEvent = new event.MessageEvent("message", {
+        cancelable: false,
+        data: message,
+        ports: ArrayPrototypeFilter(
+          transferables,
+          (t) =>
+            ObjectPrototypeIsPrototypeOf(messagePort.MessagePortPrototype, t),
+        ),
       });
+      event.setIsTrusted(msgEvent, true);
 
-      event.setIsTrusted(errorEvent, true);
-      globalDispatchEvent(errorEvent);
-      if (!errorEvent.defaultPrevented) {
-        throw e;
+      try {
+        globalDispatchEvent(msgEvent);
+      } catch (e) {
+        const errorEvent = new event.ErrorEvent("error", {
+          cancelable: true,
+          message: e.message,
+          lineno: e.lineNumber ? e.lineNumber + 1 : undefined,
+          colno: e.columnNumber ? e.columnNumber + 1 : undefined,
+          filename: e.fileName,
+          error: e,
+        });
+
+        event.setIsTrusted(errorEvent, true);
+        globalDispatchEvent(errorEvent);
+        if (!errorEvent.defaultPrevented) {
+          throw e;
+        }
       }
     }
-  }
+  };
 }
 
 let loadedMainWorkerScript = false;
@@ -858,7 +867,7 @@ function bootstrapWorkerRuntime(
 
   location.setLocationHref(location_);
 
-  globalThis.pollForMessages = pollForMessages;
+  globalThis.pollForMessages = createPollForMessages(name);
 
   // TODO(bartlomieju): deprecate --unstable
   if (unstableFlag) {

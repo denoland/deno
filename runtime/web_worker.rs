@@ -757,6 +757,10 @@ impl WebWorker {
           return Poll::Ready(Err(e));
         }
 
+        if self.name == "$DENO_STD_NODE_WORKER_THREAD" {
+          return Poll::Ready(Ok(()));
+        }
+
         // TODO(mmastrac): we don't want to test this w/classic workers because
         // WPT triggers a failure here. This is only exposed via --enable-testing-features-do-not-use.
         if self.worker_type == WebWorkerType::Module {
