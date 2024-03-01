@@ -64,7 +64,10 @@ Deno.test("brotli compression", async () => {
     stream2.on("close", () => promise.resolve());
   });
 
-  await Promise.all([promise.promise, new Promise(r => stream.on("close", r))]);
+  await Promise.all([
+    promise.promise,
+    new Promise((r) => stream.on("close", r)),
+  ]);
 
   const content = Deno.readTextFileSync("lorem_ipsum.txt");
   assert(content.startsWith("Lorem ipsum dolor sit amet"));
