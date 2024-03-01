@@ -271,6 +271,6 @@ fn test_lint_fix() {
     .new_command()
     .args("lint --fix --rules-tags=recommended,jsr")
     .run()
-    .assert_matches_text("Checked 1 file");
+    .assert_matches_text("Checked 1 file\n");
   a_ts.assert_matches_text("import type { Type } from './test.ts';\nexport type MyType = Type;\nconsole.log(globalThis.value);\nglobalThis.fetch;\n");
 }

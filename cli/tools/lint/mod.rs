@@ -383,7 +383,7 @@ fn lint_file_and_fix(
   .unwrap_or((source, diagnostics));
 
   // everything looks good and the file still parses, so write it out
-  fs::write(&file_path, source.text_info().text_str())
+  fs::write(file_path, source.text_info().text_str())
     .context("Failed writing fix to file.")?;
   Ok((source, diagnostics))
 }
@@ -395,7 +395,7 @@ fn apply_lint_fixes_and_relint(
   text_info: &SourceTextInfo,
   diagnostics: &[LintDiagnostic],
 ) -> Result<Option<(ParsedSource, Vec<LintDiagnostic>)>, AnyError> {
-  let Some(new_text) = apply_lint_fixes(&text_info, diagnostics) else {
+  let Some(new_text) = apply_lint_fixes(text_info, diagnostics) else {
     return Ok(None);
   };
   linter
@@ -419,12 +419,11 @@ fn apply_lint_fixes(
   }
 
   let file_start = text_info.range().start;
-  let quick_fixes = diagnostics
+  let mut quick_fixes = diagnostics
     .iter()
     // use the first quick fix
-    .filter_map(|d| d.fixes.iter().next())
+    .filter_map(|d| d.fixes.first())
     .flat_map(|fix| fix.changes.iter())
-    // todo(dsherret): need to handle overlapping text changes
     .map(|change| deno_ast::TextChange {
       range: change.range.as_byte_range(file_start),
       new_text: change.new_text.to_string(),
@@ -433,8 +432,19 @@ fn apply_lint_fixes(
   if quick_fixes.is_empty() {
     return None;
   }
+  // remove any overlapping text changes, we'll circle
+  // back for another pass to fix the remaining
+  quick_fixes.sort_by_key(|change| change.range.start);
+  for i in (1..quick_fixes.len()).rev() {
+    let cur = &quick_fixes[i];
+    let previous = &quick_fixes[i - 1];
+    let is_overlapping = cur.range.start < previous.range.end;
+    if is_overlapping {
+      quick_fixes.remove(i);
+    }
+  }
   let new_text =
-    deno_ast::apply_text_changes(&text_info.text_str(), quick_fixes);
+    deno_ast::apply_text_changes(text_info.text_str(), quick_fixes);
   Some(new_text)
 }
 

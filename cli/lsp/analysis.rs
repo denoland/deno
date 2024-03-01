@@ -727,7 +727,7 @@ impl CodeActionCollection {
             .into_iter()
             .map(|change| lsp::TextEdit {
               new_text: change.new_text.clone(),
-              range: change.range.clone(),
+              range: change.range,
             })
             .collect(),
         );
