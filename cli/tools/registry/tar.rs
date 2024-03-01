@@ -25,7 +25,9 @@ use super::unfurl::SpecifierUnfurler;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PublishableTarballFile {
+  pub path_str: String,
   pub specifier: Url,
+  pub hash: String,
   pub size: usize,
 }
 
@@ -152,8 +154,19 @@ pub fn create_gzipped_tarball(
         source_parser,
         diagnostics_collector,
       )?;
+
+      let media_type = MediaType::from_specifier(&specifier);
+      if matches!(media_type, MediaType::Jsx | MediaType::Tsx) {
+        diagnostics_collector.push(PublishDiagnostic::UnsupportedJsxTsx {
+          specifier: specifier.clone(),
+        });
+      }
+
       files.push(PublishableTarballFile {
+        path_str: path_str.clone(),
         specifier: specifier.clone(),
+        // This hash string matches the checksum computed by registry
+        hash: format!("sha256-{:x}", sha2::Sha256::digest(&content)),
         size: content.len(),
       });
       tar

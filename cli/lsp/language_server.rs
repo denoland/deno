@@ -23,6 +23,7 @@ use deno_runtime::deno_tls::RootCertStoreProvider;
 use import_map::ImportMap;
 use indexmap::IndexSet;
 use log::error;
+use serde::Deserialize;
 use serde_json::from_value;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
@@ -69,6 +70,7 @@ use super::documents::Documents;
 use super::documents::DocumentsFilter;
 use super::documents::LanguageId;
 use super::documents::UpdateDocumentConfigOptions;
+use super::jsr::CliJsrSearchApi;
 use super::logging::lsp_log;
 use super::logging::lsp_warn;
 use super::lsp_custom;
@@ -239,6 +241,7 @@ pub struct Inner {
   /// on disk or "open" within the client.
   pub documents: Documents,
   initial_cwd: PathBuf,
+  jsr_search_api: CliJsrSearchApi,
   http_client: Arc<HttpClient>,
   task_queue: LanguageServerTaskQueue,
   /// Handles module registries, which allow discovery of modules
@@ -280,10 +283,11 @@ impl LanguageServer {
 
   /// Similar to `deno cache` on the command line, where modules will be cached
   /// in the Deno cache, including any of their dependencies.
-  pub async fn cache_request(
+  pub async fn cache(
     &self,
     specifiers: Vec<ModuleSpecifier>,
     referrer: ModuleSpecifier,
+    force_global_cache: bool,
   ) -> LspResult<Option<Value>> {
     async fn create_graph_for_caching(
       cli_options: CliOptions,
@@ -333,7 +337,7 @@ impl LanguageServer {
     // do as much as possible in a read, then do a write outside
     let maybe_prepare_cache_result = {
       let inner = self.0.read().await; // ensure dropped
-      match inner.prepare_cache(specifiers, referrer) {
+      match inner.prepare_cache(specifiers, referrer, force_global_cache) {
         Ok(maybe_cache_result) => maybe_cache_result,
         Err(err) => {
           self
@@ -499,13 +503,23 @@ impl Inner {
       module_registries_location.clone(),
       http_client.clone(),
     );
-    let npm_search_api =
-      CliNpmSearchApi::new(module_registries.file_fetcher.clone(), None);
     let location = dir.deps_folder_path();
     let deps_http_cache = Arc::new(GlobalHttpCache::new(
       location,
       crate::cache::RealDenoCacheEnv,
     ));
+    let mut deps_file_fetcher = FileFetcher::new(
+      deps_http_cache.clone(),
+      CacheSetting::RespectHeaders,
+      true,
+      http_client.clone(),
+      Default::default(),
+      None,
+    );
+    deps_file_fetcher.set_download_log_level(super::logging::lsp_log_level());
+    let jsr_search_api = CliJsrSearchApi::new(deps_file_fetcher);
+    let npm_search_api =
+      CliNpmSearchApi::new(module_registries.file_fetcher.clone());
     let documents = Documents::new(deps_http_cache.clone());
     let cache_metadata = cache::CacheMetadata::new(deps_http_cache.clone());
     let performance = Arc::new(Performance::default());
@@ -535,6 +549,7 @@ impl Inner {
       documents,
       http_client,
       initial_cwd: initial_cwd.clone(),
+      jsr_search_api,
       maybe_global_cache_path: None,
       maybe_import_map: None,
       maybe_package_json: None,
@@ -832,14 +847,24 @@ impl Inner {
       module_registries_location.clone(),
       self.http_client.clone(),
     );
-    self.npm.search_api =
-      CliNpmSearchApi::new(self.module_registries.file_fetcher.clone(), None);
     self.module_registries_location = module_registries_location;
     // update the cache path
     let global_cache = Arc::new(GlobalHttpCache::new(
       dir.deps_folder_path(),
       crate::cache::RealDenoCacheEnv,
     ));
+    let mut deps_file_fetcher = FileFetcher::new(
+      global_cache.clone(),
+      CacheSetting::RespectHeaders,
+      true,
+      self.http_client.clone(),
+      Default::default(),
+      None,
+    );
+    deps_file_fetcher.set_download_log_level(super::logging::lsp_log_level());
+    self.jsr_search_api = CliJsrSearchApi::new(deps_file_fetcher);
+    self.npm.search_api =
+      CliNpmSearchApi::new(self.module_registries.file_fetcher.clone());
     let maybe_local_cache =
       self.config.maybe_vendor_dir_path().map(|local_path| {
         Arc::new(LocalLspHttpCache::new(local_path, global_cache.clone()))
@@ -1040,7 +1065,7 @@ impl Inner {
                 self.task_queue.queue_task(Box::new(|ls: LanguageServer| {
                   spawn(async move {
                     if let Err(err) =
-                      ls.cache_request(specifiers, referrer).await
+                      ls.cache(specifiers, referrer, false).await
                     {
                       lsp_warn!("{}", err);
                     }
@@ -2477,6 +2502,7 @@ impl Inner {
         &self.config.snapshot(),
         &self.client,
         &self.module_registries,
+        &self.jsr_search_api,
         &self.npm.search_api,
         &self.documents,
         self.maybe_import_map.clone(),
@@ -3166,14 +3192,20 @@ impl tower_lsp::LanguageServer for LanguageServer {
     params: ExecuteCommandParams,
   ) -> LspResult<Option<Value>> {
     if params.command == "deno.cache" {
-      let mut arguments = params.arguments.into_iter();
-      let specifiers = serde_json::to_value(arguments.next()).unwrap();
-      let specifiers: Vec<Url> = serde_json::from_value(specifiers)
-        .map_err(|err| LspError::invalid_params(err.to_string()))?;
-      let referrer = serde_json::to_value(arguments.next()).unwrap();
-      let referrer: Url = serde_json::from_value(referrer)
-        .map_err(|err| LspError::invalid_params(err.to_string()))?;
-      self.cache_request(specifiers, referrer).await
+      #[derive(Default, Deserialize)]
+      #[serde(rename_all = "camelCase")]
+      struct Options {
+        #[serde(default)]
+        force_global_cache: bool,
+      }
+      #[derive(Deserialize)]
+      struct Arguments(Vec<Url>, Url, #[serde(default)] Options);
+      let Arguments(specifiers, referrer, options) =
+        serde_json::from_value(json!(params.arguments))
+          .map_err(|err| LspError::invalid_params(err.to_string()))?;
+      self
+        .cache(specifiers, referrer, options.force_global_cache)
+        .await
     } else if params.command == "deno.reloadImportRegistries" {
       self.0.write().await.reload_import_registries().await
     } else {
@@ -3374,7 +3406,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
       }
       specifier
     };
-    if let Err(err) = self.cache_request(vec![], specifier.clone()).await {
+    if let Err(err) = self.cache(vec![], specifier.clone(), false).await {
       lsp_warn!("Failed to cache \"{}\" on save: {}", &specifier, err);
     }
   }
@@ -3621,6 +3653,7 @@ impl Inner {
     &self,
     specifiers: Vec<ModuleSpecifier>,
     referrer: ModuleSpecifier,
+    force_global_cache: bool,
   ) -> Result<Option<PrepareCacheResult>, AnyError> {
     let mark = self
       .performance
@@ -3650,6 +3683,7 @@ impl Inner {
       self.config.maybe_config_file().cloned(),
       self.config.maybe_lockfile().cloned(),
       self.maybe_package_json.clone(),
+      force_global_cache,
     )?;
     cli_options.set_import_map_specifier(
       self.maybe_import_map.as_ref().map(|m| m.base_url().clone()),

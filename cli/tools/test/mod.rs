@@ -175,6 +175,51 @@ pub struct TestLocation {
   pub column_number: u32,
 }
 
+#[derive(Default)]
+pub(crate) struct TestContainer(
+  TestDescriptions,
+  Vec<v8::Global<v8::Function>>,
+);
+
+impl TestContainer {
+  pub fn register(
+    &mut self,
+    description: TestDescription,
+    function: v8::Global<v8::Function>,
+  ) {
+    self.0.tests.insert(description.id, description);
+    self.1.push(function)
+  }
+
+  pub fn is_empty(&self) -> bool {
+    self.1.is_empty()
+  }
+}
+
+#[derive(Default, Debug)]
+pub struct TestDescriptions {
+  tests: IndexMap<usize, TestDescription>,
+}
+
+impl TestDescriptions {
+  pub fn len(&self) -> usize {
+    self.tests.len()
+  }
+
+  pub fn is_empty(&self) -> bool {
+    self.tests.is_empty()
+  }
+}
+
+impl<'a> IntoIterator for &'a TestDescriptions {
+  type Item = <&'a IndexMap<usize, TestDescription> as IntoIterator>::Item;
+  type IntoIter =
+    <&'a IndexMap<usize, TestDescription> as IntoIterator>::IntoIter;
+  fn into_iter(self) -> Self::IntoIter {
+    (&self.tests).into_iter()
+  }
+}
+
 #[derive(Debug, Clone, PartialEq, Deserialize, Eq, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct TestDescription {
@@ -335,10 +380,9 @@ pub enum TestStdioStream {
   Stderr,
 }
 
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug)]
 pub enum TestEvent {
-  Register(TestDescription),
+  Register(Arc<TestDescriptions>),
   Plan(TestPlan),
   Wait(usize),
   Output(TestStdioStream, Vec<u8>),
@@ -347,8 +391,14 @@ pub enum TestEvent {
   StepRegister(TestStepDescription),
   StepWait(usize),
   StepResult(usize, TestStepResult, u64),
-  ForceEndReport,
+  /// Indicates that this worker has completed.
+  Completed,
+  /// Indicates that the user has cancelled the test run with Ctrl+C and
+  /// the run should be aborted.
   Sigint,
+  /// Used by the REPL to force a report to end without closing the worker
+  /// or receiver.
+  ForceEndReport,
 }
 
 impl TestEvent {
@@ -357,11 +407,13 @@ impl TestEvent {
   pub fn requires_stdio_sync(&self) -> bool {
     matches!(
       self,
-      TestEvent::Result(..)
+      TestEvent::Plan(..)
+        | TestEvent::Result(..)
         | TestEvent::StepWait(..)
         | TestEvent::StepResult(..)
         | TestEvent::UncaughtError(..)
         | TestEvent::ForceEndReport
+        | TestEvent::Completed
     )
   }
 }
@@ -396,7 +448,7 @@ struct TestSpecifiersOptions {
 pub struct TestSpecifierOptions {
   pub shuffle: Option<u64>,
   pub filter: TestFilter,
-  pub trace_ops: bool,
+  pub trace_leaks: bool,
 }
 
 impl TestSummary {
@@ -515,7 +567,7 @@ async fn test_specifier_inner(
 
   let mut coverage_collector = worker.maybe_setup_coverage_collector().await?;
 
-  if options.trace_ops {
+  if options.trace_leaks {
     worker.execute_script_static(
       located_script_name!(),
       "Deno[Deno.internal].core.setLeakTracingEnabled(true);",
@@ -559,7 +611,7 @@ async fn test_specifier_inner(
 pub fn worker_has_tests(worker: &mut MainWorker) -> bool {
   let state_rc = worker.js_runtime.op_state();
   let state = state_rc.borrow();
-  !state.borrow::<ops::testing::TestContainer>().0.is_empty()
+  !state.borrow::<TestContainer>().is_empty()
 }
 
 /// Yields to tokio to allow async work to process, and then polls
@@ -587,32 +639,74 @@ pub async fn run_tests_for_worker(
   options: &TestSpecifierOptions,
   fail_fast_tracker: &FailFastTracker,
 ) -> Result<(), AnyError> {
-  let (tests, mut sender) = {
+  let (TestContainer(tests, test_functions), mut sender) = {
     let state_rc = worker.js_runtime.op_state();
     let mut state = state_rc.borrow_mut();
     (
-      std::mem::take(&mut state.borrow_mut::<ops::testing::TestContainer>().0),
+      std::mem::take(&mut *state.borrow_mut::<TestContainer>()),
       state.borrow::<TestEventSender>().clone(),
     )
   };
+  let tests: Arc<TestDescriptions> = tests.into();
+  sender.send(TestEvent::Register(tests.clone()))?;
+  let res = run_tests_for_worker_inner(
+    worker,
+    specifier,
+    tests,
+    test_functions,
+    &mut sender,
+    options,
+    fail_fast_tracker,
+  )
+  .await;
+  _ = sender.send(TestEvent::Completed);
+  res
+}
+
+async fn run_tests_for_worker_inner(
+  worker: &mut MainWorker,
+  specifier: &ModuleSpecifier,
+  tests: Arc<TestDescriptions>,
+  test_functions: Vec<v8::Global<v8::Function>>,
+  sender: &mut TestEventSender,
+  options: &TestSpecifierOptions,
+  fail_fast_tracker: &FailFastTracker,
+) -> Result<(), AnyError> {
   let unfiltered = tests.len();
-  let tests = tests
-    .into_iter()
-    .filter(|(d, _)| options.filter.includes(&d.name))
-    .collect::<Vec<_>>();
-  let (only, no_only): (Vec<_>, Vec<_>) =
-    tests.into_iter().partition(|(d, _)| d.only);
-  let used_only = !only.is_empty();
-  let mut tests = if used_only { only } else { no_only };
-  if let Some(seed) = options.shuffle {
-    tests.shuffle(&mut SmallRng::seed_from_u64(seed));
+
+  // Build the test plan in a single pass
+  let mut tests_to_run = Vec::with_capacity(tests.len());
+  let mut used_only = false;
+  for ((_, d), f) in tests.tests.iter().zip(test_functions) {
+    if !options.filter.includes(&d.name) {
+      continue;
+    }
+
+    // If we've seen an "only: true" test, the remaining tests must be "only: true" to be added
+    if used_only && !d.only {
+      continue;
+    }
+
+    // If this is the first "only: true" test we've seen, clear the other tests since they were
+    // only: false.
+    if d.only && !used_only {
+      used_only = true;
+      tests_to_run.clear();
+    }
+    tests_to_run.push((d, f));
   }
+
+  if let Some(seed) = options.shuffle {
+    tests_to_run.shuffle(&mut SmallRng::seed_from_u64(seed));
+  }
+
   sender.send(TestEvent::Plan(TestPlan {
     origin: specifier.to_string(),
-    total: tests.len(),
-    filtered_out: unfiltered - tests.len(),
+    total: tests_to_run.len(),
+    filtered_out: unfiltered - tests_to_run.len(),
     used_only,
   }))?;
+
   let mut had_uncaught_error = false;
   let stats = worker.js_runtime.runtime_activity_stats_factory();
   let ops = worker.js_runtime.op_names();
@@ -637,7 +731,7 @@ pub async fn run_tests_for_worker(
   filter = filter.omit_op(op_id_host_recv_ctrl as _);
   filter = filter.omit_op(op_id_host_recv_message as _);
 
-  for (desc, function) in tests {
+  for (desc, function) in tests_to_run.into_iter() {
     if fail_fast_tracker.should_stop() {
       break;
     }
@@ -1146,8 +1240,11 @@ pub async fn report_tests(
   while let Some((_, event)) = receiver.recv().await {
     match event {
       TestEvent::Register(description) => {
-        reporter.report_register(&description);
-        tests.insert(description.id, description);
+        for (_, description) in description.into_iter() {
+          reporter.report_register(description);
+          // TODO(mmastrac): We shouldn't need to clone here -- we can reuse the descriptions everywhere
+          tests.insert(description.id, description.clone());
+        }
       }
       TestEvent::Plan(plan) => {
         if !had_plan {
@@ -1204,6 +1301,9 @@ pub async fn report_tests(
       }
       TestEvent::ForceEndReport => {
         break;
+      }
+      TestEvent::Completed => {
+        reporter.report_completed();
       }
       TestEvent::Sigint => {
         let elapsed = start_time
@@ -1454,7 +1554,7 @@ pub async fn run_tests(
       specifier: TestSpecifierOptions {
         filter: TestFilter::from_flag(&test_options.filter),
         shuffle: test_options.shuffle,
-        trace_ops: test_options.trace_ops,
+        trace_leaks: test_options.trace_leaks,
       },
     },
   )
@@ -1598,7 +1698,7 @@ pub async fn run_tests_with_watch(
             specifier: TestSpecifierOptions {
               filter: TestFilter::from_flag(&test_options.filter),
               shuffle: test_options.shuffle,
-              trace_ops: test_options.trace_ops,
+              trace_leaks: test_options.trace_leaks,
             },
           },
         )

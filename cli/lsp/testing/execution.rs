@@ -296,7 +296,7 @@ impl TestRun {
             test::TestSpecifierOptions {
               filter,
               shuffle: None,
-              trace_ops: false,
+              trace_leaks: false,
             },
           ))
         }
@@ -324,8 +324,11 @@ impl TestRun {
         while let Some((_, event)) = receiver.recv().await {
           match event {
             test::TestEvent::Register(description) => {
-              reporter.report_register(&description);
-              tests.write().insert(description.id, description);
+              for (_, description) in description.into_iter() {
+                reporter.report_register(description);
+                // TODO(mmastrac): we shouldn't need to clone here - we can re-use the descriptions
+                tests.write().insert(description.id, description.clone());
+              }
             }
             test::TestEvent::Plan(plan) => {
               summary.total += plan.total;
@@ -394,6 +397,9 @@ impl TestRun {
                 );
               }
             }
+            test::TestEvent::Completed => {
+              reporter.report_completed();
+            }
             test::TestEvent::ForceEndReport => {}
             test::TestEvent::Sigint => {}
           }
@@ -438,7 +444,7 @@ impl TestRun {
         .iter()
         .map(|s| s.as_str()),
     );
-    args.push("--trace-ops");
+    args.push("--trace-leaks");
     if self.workspace_settings.unstable && !args.contains(&"--unstable") {
       args.push("--unstable");
     }
@@ -737,6 +743,10 @@ impl LspTestReporter {
         })
       }
     }
+  }
+
+  fn report_completed(&mut self) {
+    // there is nothing to do on report_completed
   }
 
   fn report_summary(
