@@ -12,6 +12,7 @@ mod file_fetcher;
 mod graph_util;
 mod http_util;
 mod js;
+mod jsr;
 mod lsp;
 mod module_loader;
 mod napi;

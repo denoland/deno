@@ -6,13 +6,13 @@ use super::config::WorkspaceSettings;
 use super::documents::Documents;
 use super::documents::DocumentsFilter;
 use super::jsr::CliJsrSearchApi;
-use super::jsr::JsrFetchResolver;
 use super::lsp_custom;
 use super::npm::CliNpmSearchApi;
 use super::registries::ModuleRegistry;
 use super::search::PackageSearchApi;
 use super::tsc;
 
+use crate::jsr::JsrFetchResolver;
 use crate::util::path::is_importable_ext;
 use crate::util::path::relative_specifier;
 use crate::util::path::specifier_to_file_path;

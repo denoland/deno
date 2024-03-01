@@ -22,7 +22,7 @@ use crate::args::CacheSetting;
 use crate::args::Flags;
 use crate::factory::CliFactory;
 use crate::file_fetcher::FileFetcher;
-use crate::lsp::jsr::JsrFetchResolver;
+use crate::jsr::JsrFetchResolver;
 
 pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
   let cli_factory = CliFactory::from_flags(flags.clone()).await?;
