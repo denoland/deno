@@ -252,3 +252,25 @@ itest!(no_slow_types_workspace {
   cwd: Some("lint/no_slow_types_workspace"),
   exit_code: 1,
 });
+
+#[test]
+fn test_lint_fix() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir().path();
+  let a_ts = temp_dir.join("a.ts");
+  a_ts.write("import { Type } from './test.ts';\nexport type MyType = Type;\nconsole.log(window.value);\nwindow.fetch;\n");
+  context
+    .new_command()
+    .args("lint --rules-tags=recommended,jsr")
+    .run()
+    .assert_matches_text(
+      "[WILDCARD]Found 4 problems (4 fixable via --fix)\nChecked 1 file\n",
+    )
+    .assert_exit_code(1);
+  context
+    .new_command()
+    .args("lint --fix --rules-tags=recommended,jsr")
+    .run()
+    .assert_matches_text("Checked 1 file");
+  a_ts.assert_matches_text("import type { Type } from './test.ts';\nexport type MyType = Type;\nconsole.log(globalThis.value);\nglobalThis.fetch;\n");
+}
