@@ -6,6 +6,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
+use deno_core::ascii_str_include;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
@@ -392,7 +393,7 @@ impl CliMainWorker {
     Ok(Some(coverage_collector))
   }
 
-  pub fn execute_script_static(
+  pub fn execute_script(
     &mut self,
     name: &'static str,
     source_code: &'static str,
@@ -400,7 +401,7 @@ impl CliMainWorker {
     self
       .worker
       .js_runtime
-      .execute_script_static(name, source_code)
+      .execute_script(name, source_code)
   }
 }
 
@@ -658,7 +659,7 @@ impl CliMainWorkerFactory {
         ($($file:literal),*) => {
           $(worker.js_runtime.lazy_load_es_module_from_code(
             concat!("ext:cli/", $file),
-            deno_core::FastString::StaticAscii(include_str!(concat!("js/", $file))),
+            ascii_str_include!(concat!("js/", $file)),
           )?;)*
         }
       }

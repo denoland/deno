@@ -568,7 +568,7 @@ async fn test_specifier_inner(
   let mut coverage_collector = worker.maybe_setup_coverage_collector().await?;
 
   if options.trace_leaks {
-    worker.execute_script_static(
+    worker.execute_script(
       located_script_name!(),
       "Deno[Deno.internal].core.setLeakTracingEnabled(true);",
     )?;

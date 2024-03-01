@@ -101,7 +101,7 @@ pub async fn kernel(
     )
     .await?;
   worker.setup_repl().await?;
-  worker.execute_script_static(
+  worker.execute_script(
     located_script_name!(),
     "Deno[Deno.internal].enableJupyter();",
   )?;

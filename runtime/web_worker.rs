@@ -666,7 +666,7 @@ impl WebWorker {
   ) -> Result<ModuleId, AnyError> {
     self
       .js_runtime
-      .load_main_module(module_specifier, None)
+      .load_main_module_from(module_specifier)
       .await
   }
 
@@ -677,7 +677,7 @@ impl WebWorker {
   ) -> Result<ModuleId, AnyError> {
     self
       .js_runtime
-      .load_side_module(module_specifier, None)
+      .load_side_module_from(module_specifier)
       .await
   }
 
