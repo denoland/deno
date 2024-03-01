@@ -55,13 +55,12 @@ Deno.test("brotli compression", async () => {
 
   const stream = input.pipe(compress).pipe(output);
 
-  let stream2;
   stream.on("finish", () => {
     const decompress = createBrotliDecompress();
     const input2 = createReadStream("lorem_ipsum.txt.br");
     const output2 = createWriteStream("lorem_ipsum.txt");
 
-    stream2 = input2.pipe(decompress).pipe(output2);
+    const stream2 = input2.pipe(decompress).pipe(output2);
     stream2.on("close", () => promise.resolve());
   });
 
