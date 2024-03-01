@@ -2785,15 +2785,6 @@ declare namespace Deno {
    * @category I/O
    */
   export const stdin: Reader & ReaderSync & Closer & {
-    /**
-     * The resource ID assigned to `stdin`. This can be used with the discreet
-     * I/O functions in the `Deno` namespace.
-     *
-     * @deprecated This will be removed in Deno 2.0. See the
-     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-     * for migration instructions.
-     */
-    readonly rid: number;
     /** A readable stream interface to `stdin`. */
     readonly readable: ReadableStream<Uint8Array>;
     /**
@@ -2833,15 +2824,6 @@ declare namespace Deno {
    * @category I/O
    */
   export const stdout: Writer & WriterSync & Closer & {
-    /**
-     * The resource ID assigned to `stdout`. This can be used with the discreet
-     * I/O functions in the `Deno` namespace.
-     *
-     * @deprecated This will be removed in Deno 2.0. See the
-     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-     * for migration instructions.
-     */
-    readonly rid: number;
     /** A writable stream interface to `stdout`. */
     readonly writable: WritableStream<Uint8Array>;
     /**
@@ -2867,15 +2849,6 @@ declare namespace Deno {
    * @category I/O
    */
   export const stderr: Writer & WriterSync & Closer & {
-    /**
-     * The resource ID assigned to `stderr`. This can be used with the discreet
-     * I/O functions in the `Deno` namespace.
-     *
-     * @deprecated This will be removed in Deno 2.0. See the
-     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-     * for migration instructions.
-     */
-    readonly rid: number;
     /** A writable stream interface to `stderr`. */
     readonly writable: WritableStream<Uint8Array>;
     /**

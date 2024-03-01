@@ -12,12 +12,6 @@ import { copy } from "@std/streams/copy.ts";
 
 // Note tests for Deno.FsFile.setRaw is in integration tests.
 
-Deno.test(function filesStdioFileDescriptors() {
-  assertEquals(Deno.stdin.rid, 0);
-  assertEquals(Deno.stdout.rid, 1);
-  assertEquals(Deno.stderr.rid, 2);
-});
-
 Deno.test({ permissions: { read: true } }, async function filesCopyToStdout() {
   const filename = "tests/testdata/assets/fixture.json";
   using file = await Deno.open(filename);

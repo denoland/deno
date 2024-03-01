@@ -364,7 +364,7 @@ Deno.test({
 Deno.test({
   name: "process.stdin",
   fn() {
-    assertEquals(process.stdin.fd, Deno.stdin.rid);
+    assertEquals(process.stdin.fd, 0);
     assertEquals(process.stdin.isTTY, Deno.stdin.isTerminal());
   },
 });
@@ -543,7 +543,7 @@ Deno.test({
 Deno.test({
   name: "process.stdout",
   fn() {
-    assertEquals(process.stdout.fd, Deno.stdout.rid);
+    assertEquals(process.stdout.fd, 1);
     const isTTY = Deno.stdout.isTerminal();
     assertEquals(process.stdout.isTTY, isTTY);
     const consoleSize = isTTY ? Deno.consoleSize() : undefined;
@@ -571,7 +571,7 @@ Deno.test({
 Deno.test({
   name: "process.stderr",
   fn() {
-    assertEquals(process.stderr.fd, Deno.stderr.rid);
+    assertEquals(process.stderr.fd, 2);
     const isTTY = Deno.stderr.isTerminal();
     assertEquals(process.stderr.isTTY, isTTY);
     const consoleSize = isTTY ? Deno.consoleSize() : undefined;

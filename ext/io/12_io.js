@@ -188,15 +188,6 @@ class Stdin {
   constructor() {
   }
 
-  get rid() {
-    internals.warnOnDeprecatedApi(
-      "Deno.stdin.rid",
-      new Error().stack,
-      "Use `Deno.stdin` instance methods instead.",
-    );
-    return this.#rid;
-  }
-
   read(p) {
     return read(this.#rid, p);
   }
@@ -233,15 +224,6 @@ class Stdout {
   constructor() {
   }
 
-  get rid() {
-    internals.warnOnDeprecatedApi(
-      "Deno.stdout.rid",
-      new Error().stack,
-      "Use `Deno.stdout` instance methods instead.",
-    );
-    return this.#rid;
-  }
-
   write(p) {
     return write(this.#rid, p);
   }
@@ -271,15 +253,6 @@ class Stderr {
   #writable;
 
   constructor() {
-  }
-
-  get rid() {
-    internals.warnOnDeprecatedApi(
-      "Deno.stderr.rid",
-      new Error().stack,
-      "Use `Deno.stderr` instance methods instead.",
-    );
-    return this.#rid;
   }
 
   write(p) {
