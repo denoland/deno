@@ -119,8 +119,6 @@ const denoNs = {
   exit: os.exit,
   execPath: os.execPath,
   Buffer: buffer.Buffer,
-  readAll: buffer.readAll,
-  readAllSync: buffer.readAllSync,
   writeAll: buffer.writeAll,
   writeAllSync: buffer.writeAllSync,
   copy: io.copy,

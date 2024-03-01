@@ -352,28 +352,6 @@ Deno.test(async function bufferTestGrow() {
   }
 });
 
-Deno.test(async function testReadAll() {
-  init();
-  assert(testBytes);
-  const reader = new Deno.Buffer(testBytes.buffer as ArrayBuffer);
-  const actualBytes = await Deno.readAll(reader);
-  assertEquals(testBytes.byteLength, actualBytes.byteLength);
-  for (let i = 0; i < testBytes.length; ++i) {
-    assertEquals(testBytes[i], actualBytes[i]);
-  }
-});
-
-Deno.test(function testReadAllSync() {
-  init();
-  assert(testBytes);
-  const reader = new Deno.Buffer(testBytes.buffer as ArrayBuffer);
-  const actualBytes = Deno.readAllSync(reader);
-  assertEquals(testBytes.byteLength, actualBytes.byteLength);
-  for (let i = 0; i < testBytes.length; ++i) {
-    assertEquals(testBytes[i], actualBytes[i]);
-  }
-});
-
 Deno.test(async function testWriteAll() {
   init();
   assert(testBytes);

@@ -3053,30 +3053,6 @@ declare namespace Deno {
   }
 
   /**
-   * Read Reader `r` until EOF (`null`) and resolve to the content as
-   * Uint8Array`.
-   *
-   * @deprecated This will be removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   *
-   * @category I/O
-   */
-  export function readAll(r: Reader): Promise<Uint8Array>;
-
-  /**
-   * Synchronously reads Reader `r` until EOF (`null`) and returns the content
-   * as `Uint8Array`.
-   *
-   * @deprecated This will be removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   *
-   * @category I/O
-   */
-  export function readAllSync(r: ReaderSync): Uint8Array;
-
-  /**
    * Write all the content of the array buffer (`arr`) to the writer (`w`).
    *
    * @deprecated This will be removed in Deno 2.0. See the
