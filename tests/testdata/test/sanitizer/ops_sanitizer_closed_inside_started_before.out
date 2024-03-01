@@ -6,7 +6,7 @@ test 1 ... FAILED [WILDCARD]
 
 test 1 => [WILDCARD]/ops_sanitizer_closed_inside_started_before.ts:[WILDCARD]
 error: Leaks detected:
-  - An async operation to sleep for a duration was started before the test, but completed during the test. Async operations should not complete in a test if they were not started in that test. This is often caused by not cancelling a `setTimeout` or `setInterval` call. The operation was started here:
+  - A timer was started before the test, but completed during the test. Intervals and timers should not complete in a test if they were not started in that test. This is often caused by not calling `clearTimeout`. The operation was started here:
     at [WILDCARD]
     at [WILDCARD]/ops_sanitizer_closed_inside_started_before.ts:[WILDCARD]
 
