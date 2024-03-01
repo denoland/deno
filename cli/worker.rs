@@ -327,14 +327,14 @@ impl CliMainWorker {
   pub async fn execute_main_module_possibly_with_npm(
     &mut self,
   ) -> Result<(), AnyError> {
-    let id = self.worker.preload_main_module(&self.main_module).await?;
+    let id = self.worker.preload_main_es_module(&self.main_module).await?;
     self.evaluate_module_possibly_with_npm(id).await
   }
 
   pub async fn execute_side_module_possibly_with_npm(
     &mut self,
   ) -> Result<(), AnyError> {
-    let id = self.worker.preload_side_module(&self.main_module).await?;
+    let id = self.worker.preload_side_es_module(&self.main_module).await?;
     self.evaluate_module_possibly_with_npm(id).await
   }
 
@@ -657,7 +657,7 @@ impl CliMainWorkerFactory {
     if self.shared.subcommand.needs_test() {
       macro_rules! test_file {
         ($($file:literal),*) => {
-          $(worker.js_runtime.lazy_load_es_module_from_code(
+          $(worker.js_runtime.lazy_load_es_module_with_code(
             concat!("ext:cli/", $file),
             ascii_str_include!(concat!("js/", $file)),
           )?;)*

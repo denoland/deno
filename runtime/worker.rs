@@ -575,24 +575,24 @@ impl MainWorker {
   }
 
   /// Loads and instantiates specified JavaScript module as "main" module.
-  pub async fn preload_main_module(
+  pub async fn preload_main_es_module(
     &mut self,
     module_specifier: &ModuleSpecifier,
   ) -> Result<ModuleId, AnyError> {
     self
       .js_runtime
-      .load_main_module_from(module_specifier)
+      .load_main_es_module(module_specifier)
       .await
   }
 
   /// Loads and instantiates specified JavaScript module as "side" module.
-  pub async fn preload_side_module(
+  pub async fn preload_side_es_module(
     &mut self,
     module_specifier: &ModuleSpecifier,
   ) -> Result<ModuleId, AnyError> {
     self
       .js_runtime
-      .load_side_module_from(module_specifier)
+      .load_side_es_module(module_specifier)
       .await
   }
 
@@ -645,7 +645,7 @@ impl MainWorker {
     &mut self,
     module_specifier: &ModuleSpecifier,
   ) -> Result<(), AnyError> {
-    let id = self.preload_side_module(module_specifier).await?;
+    let id = self.preload_side_es_module(module_specifier).await?;
     self.evaluate_module(id).await
   }
 
@@ -656,7 +656,7 @@ impl MainWorker {
     &mut self,
     module_specifier: &ModuleSpecifier,
   ) -> Result<(), AnyError> {
-    let id = self.preload_main_module(module_specifier).await?;
+    let id = self.preload_main_es_module(module_specifier).await?;
     self.evaluate_module(id).await
   }
 

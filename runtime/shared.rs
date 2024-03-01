@@ -4,6 +4,7 @@
 use deno_ast::MediaType;
 use deno_ast::ParseParams;
 use deno_ast::SourceTextInfo;
+use deno_core::ascii_str_include;
 use deno_core::error::AnyError;
 use deno_core::extension;
 use deno_core::Extension;
@@ -56,7 +57,7 @@ extension!(runtime,
   customizer = |ext: &mut Extension| {
     #[cfg(not(feature = "exclude_runtime_main_js"))]
     {
-      ext.esm_files.to_mut().push(ExtensionFileSource::new("ext:runtime_main/js/99_main.js", include_str!("./js/99_main.js")));
+      ext.esm_files.to_mut().push(ExtensionFileSource::new("ext:runtime_main/js/99_main.js", ascii_str_include!("./js/99_main.js")));
       ext.esm_entry_point = Some("ext:runtime_main/js/99_main.js");
     }
   }
