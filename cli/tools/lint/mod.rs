@@ -359,32 +359,50 @@ fn lint_file_and_fix(
     media_type,
     source_code,
   })?;
-  // try to apply fixes and re-lint
-  let Some((source, diagnostics)) = apply_lint_fixes_and_relint(
-    specifier,
-    media_type,
-    linter,
-    source.text_info(),
-    &diagnostics,
-  )?
-  else {
-    return Ok((source, diagnostics)); // no fixes, so exit
-  };
 
-  // try applying fixes once again just in case new ones
-  // appeared after the first round of fixes
-  let (source, diagnostics) = apply_lint_fixes_and_relint(
-    specifier,
-    media_type,
-    linter,
-    source.text_info(),
-    &diagnostics,
-  )?
-  .unwrap_or((source, diagnostics));
+  // Try applying fixes repeatedly until the file has none left or
+  // a maximum number of iterations is reached. This is necessary
+  // because lint fixes may overlap and so we can't always apply
+  // them in one pass.
+  let mut source = source;
+  let mut diagnostics = diagnostics;
+  let mut fix_iterations = 0;
+  loop {
+    let change = apply_lint_fixes_and_relint(
+      specifier,
+      media_type,
+      linter,
+      source.text_info(),
+      &diagnostics,
+    )?;
+    match change {
+      Some(change) => {
+        source = change.0;
+        diagnostics = change.1;
+      }
+      None => {
+        break;
+      }
+    }
+    fix_iterations += 1;
+    if fix_iterations > 5 {
+      log::warn!(
+        concat!(
+          "Reached maximum number of fix iterations for '{}'. There's ",
+          "probably a bug in Deno. Please fix this file manually.",
+        ),
+        specifier,
+      );
+      break;
+    }
+  }
 
-  // everything looks good and the file still parses, so write it out
-  fs::write(file_path, source.text_info().text_str())
-    .context("Failed writing fix to file.")?;
+  if fix_iterations > 0 {
+    // everything looks good and the file still parses, so write it out
+    fs::write(file_path, source.text_info().text_str())
+      .context("Failed writing fix to file.")?;
+  }
+
   Ok((source, diagnostics))
 }
 
