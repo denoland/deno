@@ -259,7 +259,9 @@ impl TsServer {
           return None;
         }
       };
-      Some(Arc::new(InspectorServer::new(addr, "deno-lsp-tsc")))
+      // TODO(bartlomieju): remove this unwrap
+      let server = InspectorServer::new(addr, "deno-lsp-tsc").unwrap();
+      Some(Arc::new(server))
     });
     *self.inspector_server.lock() = maybe_inspector_server.clone();
     // TODO(bartlomieju): why is the join_handle ignored here? Should we store it

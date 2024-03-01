@@ -1147,8 +1147,10 @@ impl CliOptions {
       .inspect
       .or(self.flags.inspect_brk)
       .or(self.flags.inspect_wait);
-    maybe_inspect_host
-      .map(|host| InspectorServer::new(host, version::get_user_agent()))
+    maybe_inspect_host.map(|host| {
+      // TODO(bartlomieju): remove this unwrap
+      InspectorServer::new(host, version::get_user_agent()).unwrap()
+    })
   }
 
   pub fn maybe_lockfile(&self) -> Option<Arc<Mutex<Lockfile>>> {
