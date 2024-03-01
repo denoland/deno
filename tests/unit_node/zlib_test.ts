@@ -44,7 +44,7 @@ Deno.test("gzip compression sync", { sanitizeResources: false }, () => {
 });
 
 Deno.test("brotli compression", async () => {
-  const { promise, resolve } = Promise.withResolvers<void>();
+  const promise = Promise.withResolvers<void>();
   const compress = createBrotliCompress();
   const filePath = relative(
     Deno.cwd(),
@@ -55,19 +55,18 @@ Deno.test("brotli compression", async () => {
 
   const stream = input.pipe(compress).pipe(output);
 
+  let stream2;
   stream.on("finish", () => {
     const decompress = createBrotliDecompress();
     const input2 = createReadStream("lorem_ipsum.txt.br");
     const output2 = createWriteStream("lorem_ipsum.txt");
 
-    const stream2 = input2.pipe(decompress).pipe(output2);
-
-    stream2.on("finish", () => {
-      resolve();
-    });
+    stream2 = input2.pipe(decompress).pipe(output2);
+    stream2.on("close", () => promise.resolve());
   });
 
-  await promise;
+  await Promise.all([promise.promise, new Promise(r => stream.on("close", r))]);
+
   const content = Deno.readTextFileSync("lorem_ipsum.txt");
   assert(content.startsWith("Lorem ipsum dolor sit amet"));
   try {
