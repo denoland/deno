@@ -265,6 +265,12 @@ itest!(resource_sanitizer {
   output: "test/sanitizer/resource_sanitizer.out",
 });
 
+itest!(ops_sanitizer_tcp {
+  args: "test --allow-net --trace-leaks test/sanitizer/ops_sanitizer_tcp.ts",
+  exit_code: 1,
+  output: "test/sanitizer/ops_sanitizer_tcp.out",
+});
+
 itest!(exit_sanitizer {
   args: "test test/sanitizer/exit_sanitizer.ts",
   output: "test/sanitizer/exit_sanitizer.out",
