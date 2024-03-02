@@ -1323,11 +1323,21 @@ fn diagnose_resolution(
         // If the module was redirected, we want to issue an informational
         // diagnostic that indicates this. This then allows us to issue a code
         // action to replace the specifier with the final redirected one.
-        if specifier.scheme() != "jsr" && doc_specifier != specifier {
-          diagnostics.push(DenoDiagnostic::Redirect {
-            from: specifier.clone(),
-            to: doc_specifier.clone(),
-          });
+        if specifier.scheme() != "jsr"
+          && doc_specifier != specifier
+          && !doc.media_type().is_declaration()
+        {
+          let is_in_node_modules_folder = snapshot
+            .npm
+            .as_ref()
+            .map(|npm| npm.node_resolver.in_npm_package(doc_specifier))
+            .unwrap_or(false);
+          if !is_in_node_modules_folder {
+            diagnostics.push(DenoDiagnostic::Redirect {
+              from: specifier.clone(),
+              to: doc_specifier.clone(),
+            });
+          }
         }
         if doc.media_type() == MediaType::Json {
           match maybe_assert_type {
