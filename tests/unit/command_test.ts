@@ -65,7 +65,7 @@ Deno.test(
         if (new TextDecoder().decode(buffer) !== "hello") {
           throw new Error('Expected \\'hello\\'')
         }
-        `
+        `,
       ],
       stdin: "piped",
       stdout: "null",
@@ -226,7 +226,7 @@ Deno.test(
         if (new TextDecoder().decode(buffer) !== "hello") {
           throw new Error('Expected \\'hello\\'')
         }
-        `
+        `,
       ],
       stdin: "piped",
       stdout: "null",
