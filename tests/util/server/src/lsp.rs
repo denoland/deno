@@ -799,7 +799,7 @@ impl LspClient {
     result.as_u64().unwrap() as usize
   }
 
-  /// Reads the latest diagnostics. It's assumed that
+  /// Reads the latest diagnostics.
   pub fn read_diagnostics(&mut self) -> CollectedDiagnostics {
     // wait for three (deno, lint, and typescript diagnostics) batch
     // notification messages for that index

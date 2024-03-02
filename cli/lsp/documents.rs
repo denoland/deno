@@ -3,7 +3,6 @@
 use super::cache::calculate_fs_version;
 use super::cache::calculate_fs_version_at_path;
 use super::cache::LSP_DISALLOW_GLOBAL_TO_LOCAL_COPY;
-use super::jsr_resolver::JsrResolver;
 use super::language_server::StateNpmSnapshot;
 use super::text::LineIndex;
 use super::tsc;
@@ -15,6 +14,7 @@ use crate::args::ConfigFile;
 use crate::args::JsxImportSourceConfig;
 use crate::cache::FastInsecureHasher;
 use crate::cache::HttpCache;
+use crate::jsr::JsrCacheResolver;
 use crate::lsp::logging::lsp_warn;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliGraphResolver;
@@ -51,7 +51,6 @@ use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
 use indexmap::IndexMap;
-use lsp::Url;
 use once_cell::sync::Lazy;
 use package_json::PackageJsonDepsProvider;
 use std::borrow::Cow;
@@ -894,7 +893,7 @@ pub struct Documents {
   /// A resolver that takes into account currently loaded import map and JSX
   /// settings.
   resolver: Arc<CliGraphResolver>,
-  jsr_resolver: Arc<JsrResolver>,
+  jsr_resolver: Arc<JsrCacheResolver>,
   /// The npm package requirements found in npm specifiers.
   npm_specifier_reqs: Arc<Vec<PackageReq>>,
   /// Gets if any document had a node: specifier such that a @types/node package
@@ -929,10 +928,7 @@ impl Documents {
         bare_node_builtins_enabled: false,
         sloppy_imports_resolver: None,
       })),
-      jsr_resolver: Arc::new(JsrResolver::from_cache_and_lockfile(
-        cache.clone(),
-        None,
-      )),
+      jsr_resolver: Arc::new(JsrCacheResolver::new(cache.clone(), None)),
       npm_specifier_reqs: Default::default(),
       has_injected_types_node_package: false,
       redirect_resolver: Arc::new(RedirectResolver::new(cache)),
@@ -1102,24 +1098,28 @@ impl Documents {
     &self,
     specifier: &'a ModuleSpecifier,
   ) -> SloppyImportsResolution<'a> {
-    SloppyImportsResolver::resolve_with_stat_sync(specifier, |path| {
-      if let Ok(specifier) = ModuleSpecifier::from_file_path(path) {
-        if self.open_docs.contains_key(&specifier)
-          || self.cache.contains(&specifier)
-        {
-          return Some(SloppyImportsFsEntry::File);
+    SloppyImportsResolver::resolve_with_stat_sync(
+      specifier,
+      ResolutionMode::Types,
+      |path| {
+        if let Ok(specifier) = ModuleSpecifier::from_file_path(path) {
+          if self.open_docs.contains_key(&specifier)
+            || self.cache.contains(&specifier)
+          {
+            return Some(SloppyImportsFsEntry::File);
+          }
         }
-      }
-      path.metadata().ok().and_then(|m| {
-        if m.is_file() {
-          Some(SloppyImportsFsEntry::File)
-        } else if m.is_dir() {
-          Some(SloppyImportsFsEntry::Dir)
-        } else {
-          None
-        }
-      })
-    })
+        path.metadata().ok().and_then(|m| {
+          if m.is_file() {
+            Some(SloppyImportsFsEntry::File)
+          } else if m.is_dir() {
+            Some(SloppyImportsFsEntry::Dir)
+          } else {
+            None
+          }
+        })
+      },
+    )
   }
 
   /// Return `true` if the specifier can be resolved to a document.
@@ -1333,14 +1333,16 @@ impl Documents {
     Ok(())
   }
 
+  pub fn get_jsr_resolver(&self) -> &Arc<JsrCacheResolver> {
+    &self.jsr_resolver
+  }
+
   pub fn refresh_jsr_resolver(
     &mut self,
     lockfile: Option<Arc<Mutex<Lockfile>>>,
   ) {
-    self.jsr_resolver = Arc::new(JsrResolver::from_cache_and_lockfile(
-      self.cache.clone(),
-      lockfile,
-    ));
+    self.jsr_resolver =
+      Arc::new(JsrCacheResolver::new(self.cache.clone(), lockfile));
   }
 
   pub fn update_config(&mut self, options: UpdateDocumentConfigOptions) {
@@ -1417,7 +1419,7 @@ impl Documents {
       options.document_preload_limit,
       options.maybe_import_map.as_deref(),
       maybe_jsx_config.as_ref(),
-      options.maybe_config_file.and_then(|c| c.vendor_dir_flag()),
+      options.maybe_config_file.and_then(|c| c.json.vendor),
       maybe_package_json_deps.as_ref(),
       options.maybe_config_file.map(|c| &c.json.unstable),
     );
@@ -1445,7 +1447,7 @@ impl Documents {
       // specifier for free.
       sloppy_imports_resolver: None,
     }));
-    self.jsr_resolver = Arc::new(JsrResolver::from_cache_and_lockfile(
+    self.jsr_resolver = Arc::new(JsrCacheResolver::new(
       self.cache.clone(),
       options.maybe_lockfile,
     ));
@@ -1797,30 +1799,30 @@ impl<'a> OpenDocumentsGraphLoader<'a> {
     &self,
     specifier: &'b ModuleSpecifier,
   ) -> SloppyImportsResolution<'b> {
-    SloppyImportsResolver::resolve_with_stat_sync(specifier, |path| {
-      if let Ok(specifier) = ModuleSpecifier::from_file_path(path) {
-        if self.open_docs.contains_key(&specifier) {
-          return Some(SloppyImportsFsEntry::File);
+    SloppyImportsResolver::resolve_with_stat_sync(
+      specifier,
+      ResolutionMode::Types,
+      |path| {
+        if let Ok(specifier) = ModuleSpecifier::from_file_path(path) {
+          if self.open_docs.contains_key(&specifier) {
+            return Some(SloppyImportsFsEntry::File);
+          }
         }
-      }
-      path.metadata().ok().and_then(|m| {
-        if m.is_file() {
-          Some(SloppyImportsFsEntry::File)
-        } else if m.is_dir() {
-          Some(SloppyImportsFsEntry::Dir)
-        } else {
-          None
-        }
-      })
-    })
+        path.metadata().ok().and_then(|m| {
+          if m.is_file() {
+            Some(SloppyImportsFsEntry::File)
+          } else if m.is_dir() {
+            Some(SloppyImportsFsEntry::Dir)
+          } else {
+            None
+          }
+        })
+      },
+    )
   }
 }
 
 impl<'a> deno_graph::source::Loader for OpenDocumentsGraphLoader<'a> {
-  fn registry_url(&self) -> &Url {
-    self.inner_loader.registry_url()
-  }
-
   fn load(
     &mut self,
     specifier: &ModuleSpecifier,

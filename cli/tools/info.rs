@@ -40,6 +40,7 @@ pub async fn info(flags: Flags, info_flags: InfoFlags) -> Result<(), AnyError> {
   let cli_options = factory.cli_options();
   if let Some(specifier) = info_flags.file {
     let module_graph_builder = factory.module_graph_builder().await?;
+    let module_graph_creator = factory.module_graph_creator().await?;
     let npm_resolver = factory.npm_resolver().await?;
     let maybe_lockfile = factory.maybe_lockfile();
     let maybe_imports_map = factory.maybe_import_map().await?;
@@ -63,7 +64,7 @@ pub async fn info(flags: Flags, info_flags: InfoFlags) -> Result<(), AnyError> {
 
     let mut loader = module_graph_builder.create_graph_loader();
     loader.enable_loading_cache_info(); // for displaying the cache information
-    let graph = module_graph_builder
+    let graph = module_graph_creator
       .create_graph_with_loader(GraphKind::All, vec![specifier], &mut loader)
       .await?;
 

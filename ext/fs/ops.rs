@@ -8,6 +8,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 
+use deno_core::anyhow::bail;
 use deno_core::error::custom_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
@@ -880,7 +881,8 @@ pub fn op_fs_make_temp_dir_sync<P>(
 where
   P: FsPermissions + 'static,
 {
-  let (dir, fs) = make_temp_check_sync::<P>(state, dir)?;
+  let (dir, fs) =
+    make_temp_check_sync::<P>(state, dir, "Deno.makeTempDirSync()")?;
 
   let mut rng = thread_rng();
 
@@ -914,7 +916,7 @@ pub async fn op_fs_make_temp_dir_async<P>(
 where
   P: FsPermissions + 'static,
 {
-  let (dir, fs) = make_temp_check_async::<P>(state, dir)?;
+  let (dir, fs) = make_temp_check_async::<P>(state, dir, "Deno.makeTempDir()")?;
 
   let mut rng = thread_rng();
 
@@ -948,7 +950,8 @@ pub fn op_fs_make_temp_file_sync<P>(
 where
   P: FsPermissions + 'static,
 {
-  let (dir, fs) = make_temp_check_sync::<P>(state, dir)?;
+  let (dir, fs) =
+    make_temp_check_sync::<P>(state, dir, "Deno.makeTempFileSync()")?;
 
   let open_opts = OpenOptions {
     write: true,
@@ -989,7 +992,8 @@ pub async fn op_fs_make_temp_file_async<P>(
 where
   P: FsPermissions + 'static,
 {
-  let (dir, fs) = make_temp_check_async::<P>(state, dir)?;
+  let (dir, fs) =
+    make_temp_check_async::<P>(state, dir, "Deno.makeTempFile()")?;
 
   let open_opts = OpenOptions {
     write: true,
@@ -1021,6 +1025,7 @@ where
 fn make_temp_check_sync<P>(
   state: &mut OpState,
   dir: Option<String>,
+  api_name: &str,
 ) -> Result<(PathBuf, FileSystemRc), AnyError>
 where
   P: FsPermissions + 'static,
@@ -1029,18 +1034,14 @@ where
   let dir = match dir {
     Some(dir) => {
       let dir = PathBuf::from(dir);
-      state
-        .borrow_mut::<P>()
-        .check_write(&dir, "Deno.makeTempFile()")?;
+      state.borrow_mut::<P>().check_write(&dir, api_name)?;
       dir
     }
     None => {
       let dir = fs.tmp_dir().context("tmpdir")?;
-      state.borrow_mut::<P>().check_write_blind(
-        &dir,
-        "TMP",
-        "Deno.makeTempFile()",
-      )?;
+      state
+        .borrow_mut::<P>()
+        .check_write_blind(&dir, "TMP", api_name)?;
       dir
     }
   };
@@ -1050,6 +1051,7 @@ where
 fn make_temp_check_async<P>(
   state: Rc<RefCell<OpState>>,
   dir: Option<String>,
+  api_name: &str,
 ) -> Result<(PathBuf, FileSystemRc), AnyError>
 where
   P: FsPermissions + 'static,
@@ -1059,22 +1061,55 @@ where
   let dir = match dir {
     Some(dir) => {
       let dir = PathBuf::from(dir);
-      state
-        .borrow_mut::<P>()
-        .check_write(&dir, "Deno.makeTempFile()")?;
+      state.borrow_mut::<P>().check_write(&dir, api_name)?;
       dir
     }
     None => {
       let dir = fs.tmp_dir().context("tmpdir")?;
-      state.borrow_mut::<P>().check_write_blind(
-        &dir,
-        "TMP",
-        "Deno.makeTempFile()",
-      )?;
+      state
+        .borrow_mut::<P>()
+        .check_write_blind(&dir, "TMP", api_name)?;
       dir
     }
   };
   Ok((dir, fs))
+}
+
+/// Identify illegal filename characters before attempting to use them in a filesystem
+/// operation. We're a bit stricter with tempfile and tempdir names than with regular
+/// files.
+fn validate_temporary_filename_component(
+  component: &str,
+  #[allow(unused_variables)] suffix: bool,
+) -> Result<(), AnyError> {
+  // Ban ASCII and Unicode control characters: these will often fail
+  if let Some(c) = component.matches(|c: char| c.is_control()).next() {
+    bail!("Invalid control character in prefix or suffix: {:?}", c);
+  }
+  // Windows has the most restrictive filenames. As temp files aren't normal files, we just
+  // use this set of banned characters for all platforms because wildcard-like files can also
+  // be problematic in unix-like shells.
+
+  // The list of banned characters in Windows:
+  // https://learn.microsoft.com/en-us/windows/win32/fileio/naming-a-file#naming-conventions
+
+  // You might ask why <, >, and " are included in the Windows list? It's because they are
+  // special wildcard implemented in the filesystem driver!
+  // https://learn.microsoft.com/en-ca/archive/blogs/jeremykuhne/wildcards-in-windows
+  if let Some(c) = component
+    .matches(|c: char| "<>:\"/\\|?*".contains(c))
+    .next()
+  {
+    bail!("Invalid character in prefix or suffix: {:?}", c);
+  }
+
+  // This check is only for Windows
+  #[cfg(windows)]
+  if suffix && component.ends_with(|c: char| ". ".contains(c)) {
+    bail!("Invalid trailing character in suffix");
+  }
+
+  Ok(())
 }
 
 fn tmp_name(
@@ -1084,12 +1119,18 @@ fn tmp_name(
   suffix: Option<&str>,
 ) -> Result<PathBuf, AnyError> {
   let prefix = prefix.unwrap_or("");
+  validate_temporary_filename_component(prefix, false)?;
   let suffix = suffix.unwrap_or("");
+  validate_temporary_filename_component(suffix, true)?;
 
-  let mut path = dir.join("_");
-
-  let unique = rng.gen::<u32>();
-  path.set_file_name(format!("{prefix}{unique:08x}{suffix}"));
+  // If we use a 32-bit number, we only need ~70k temp files before we have a 50%
+  // chance of collision. By bumping this up to 64-bits, we require ~5 billion
+  // before hitting a 50% chance. We also base32-encode this value so the entire
+  // thing is 1) case insensitive and 2) slightly shorter than the equivalent hex
+  // value.
+  let unique = rng.gen::<u64>();
+  base32::encode(base32::Alphabet::Crockford, &unique.to_le_bytes());
+  let path = dir.join(format!("{prefix}{unique:08x}{suffix}"));
 
   Ok(path)
 }

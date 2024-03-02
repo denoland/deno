@@ -178,13 +178,13 @@ async fn lint_files(
       let members = config_file.to_workspace_members()?;
       let has_error = has_error.clone();
       let reporter_lock = reporter_lock.clone();
-      let module_graph_builder = factory.module_graph_builder().await?.clone();
+      let module_graph_creator = factory.module_graph_creator().await?.clone();
       let path_urls = paths
         .iter()
         .filter_map(|p| ModuleSpecifier::from_file_path(p).ok())
         .collect::<HashSet<_>>();
       futures.push(deno_core::unsync::spawn(async move {
-        let graph = module_graph_builder.create_publish_graph(&members).await?;
+        let graph = module_graph_creator.create_publish_graph(&members).await?;
         // todo(dsherret): this isn't exactly correct as linting isn't properly
         // setup to handle workspaces. Iterating over the workspace members
         // should be done at a higher level because it also needs to take into

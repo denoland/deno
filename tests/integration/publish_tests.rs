@@ -3,6 +3,8 @@
 use deno_core::serde_json::json;
 use test_util::assert_contains;
 use test_util::assert_not_contains;
+use test_util::env_vars_for_jsr_npm_tests;
+use test_util::env_vars_for_jsr_provenance_tests;
 use test_util::env_vars_for_jsr_tests;
 use test_util::env_vars_for_npm_tests;
 use test_util::itest;
@@ -147,9 +149,34 @@ itest!(javascript_decl_file {
   exit_code: 0,
 });
 
+itest!(package_json {
+  args: "publish --token 'sadfasdf'",
+  output: "publish/package_json.out",
+  cwd: Some("publish/package_json"),
+  envs: env_vars_for_jsr_npm_tests(),
+  http_server: true,
+});
+
 itest!(successful {
   args: "publish --token 'sadfasdf'",
   output: "publish/successful.out",
+  cwd: Some("publish/successful"),
+  envs: env_vars_for_jsr_tests(),
+  http_server: true,
+});
+
+itest!(provenance {
+  args: "publish",
+  output: "publish/successful_provenance.out",
+  cwd: Some("publish/successful"),
+  envs: env_vars_for_jsr_provenance_tests(),
+  http_server: true,
+});
+
+itest!(no_check {
+  args: "publish --token 'sadfasdf' --no-check",
+  // still type checks the slow types output though
+  output: "publish/successful_no_check.out",
   cwd: Some("publish/successful"),
   envs: env_vars_for_jsr_tests(),
   http_server: true,
@@ -206,6 +233,75 @@ itest!(config_flag {
   http_server: true,
 });
 
+itest!(bare_node_builtins {
+  args: "publish --token 'sadfasdf' --dry-run --unstable-bare-node-builtins",
+  output: "publish/bare_node_builtins.out",
+  cwd: Some("publish/bare_node_builtins"),
+  envs: env_vars_for_jsr_npm_tests(),
+  http_server: true,
+});
+
+itest!(sloppy_imports {
+  args: "publish --token 'sadfasdf' --dry-run --unstable-sloppy-imports",
+  output: "publish/sloppy_imports.out",
+  cwd: Some("publish/sloppy_imports"),
+  envs: env_vars_for_jsr_tests(),
+  http_server: true,
+});
+
+itest!(jsr_jsonc {
+  args: "publish --token 'sadfasdf'",
+  cwd: Some("publish/jsr_jsonc"),
+  output: "publish/jsr_jsonc/mod.out",
+  envs: env_vars_for_jsr_tests(),
+  http_server: true,
+});
+
+itest!(unsupported_jsx_tsx {
+  args: "publish --token 'sadfasdf'",
+  cwd: Some("publish/unsupported_jsx_tsx"),
+  output: "publish/unsupported_jsx_tsx/mod.out",
+  envs: env_vars_for_jsr_npm_tests(),
+  http_server: true,
+});
+
+#[test]
+fn ignores_gitignore() {
+  let context = publish_context_builder().build();
+  let temp_dir = context.temp_dir().path();
+  temp_dir.join("deno.json").write_json(&json!({
+    "name": "@foo/bar",
+    "version": "1.0.0",
+    "exports": "./main.ts"
+  }));
+
+  temp_dir.join("main.ts").write("import './sub_dir/b.ts';");
+
+  let gitignore = temp_dir.join(".gitignore");
+  gitignore.write("ignored.ts\nsub_dir/ignored.wasm");
+
+  let sub_dir = temp_dir.join("sub_dir");
+  sub_dir.create_dir_all();
+  sub_dir.join("ignored.wasm").write("");
+  sub_dir.join("b.ts").write("export default {}");
+
+  temp_dir.join("ignored.ts").write("");
+
+  let output = context
+    .new_command()
+    .arg("publish")
+    .arg("--dry-run")
+    .arg("--token")
+    .arg("sadfasdf")
+    .run();
+  output.assert_exit_code(0);
+  let output = output.combined_output();
+  assert_contains!(output, "b.ts");
+  assert_contains!(output, "main.ts");
+  assert_not_contains!(output, "ignored.ts");
+  assert_not_contains!(output, "ignored.wasm");
+}
+
 #[test]
 fn ignores_directories() {
   let context = publish_context_builder().build();
@@ -252,6 +348,35 @@ fn ignores_directories() {
 }
 
 #[test]
+fn includes_directories_with_gitignore() {
+  let context = publish_context_builder().build();
+  let temp_dir = context.temp_dir().path();
+  temp_dir.join("deno.json").write_json(&json!({
+    "name": "@foo/bar",
+    "version": "1.0.0",
+    "exports": "./main.ts",
+    "publish": {
+      "include": [ "deno.json", "main.ts" ]
+    }
+  }));
+
+  temp_dir.join(".gitignore").write("main.ts");
+  temp_dir.join("main.ts").write("");
+  temp_dir.join("ignored.ts").write("");
+
+  let output = context
+    .new_command()
+    .arg("publish")
+    .arg("--token")
+    .arg("sadfasdf")
+    .run();
+  output.assert_exit_code(0);
+  let output = output.combined_output();
+  assert_contains!(output, "main.ts");
+  assert_not_contains!(output, "ignored.ts");
+}
+
+#[test]
 fn includes_directories() {
   let context = publish_context_builder().build();
   let temp_dir = context.temp_dir().path();
@@ -270,7 +395,6 @@ fn includes_directories() {
   let output = context
     .new_command()
     .arg("publish")
-    .arg("--log-level=debug")
     .arg("--token")
     .arg("sadfasdf")
     .run();
@@ -278,6 +402,32 @@ fn includes_directories() {
   let output = output.combined_output();
   assert_contains!(output, "main.ts");
   assert_not_contains!(output, "ignored.ts");
+}
+
+#[test]
+fn includes_dotenv() {
+  let context = publish_context_builder().build();
+  let temp_dir = context.temp_dir().path();
+  temp_dir.join("deno.json").write_json(&json!({
+    "name": "@foo/bar",
+    "version": "1.0.0",
+    "exports": "./main.ts",
+  }));
+
+  temp_dir.join("main.ts").write("");
+  temp_dir.join(".env").write("FOO=BAR");
+
+  let output = context
+    .new_command()
+    .arg("publish")
+    .arg("--token")
+    .arg("sadfasdf")
+    .arg("--dry-run")
+    .run();
+  output.assert_exit_code(0);
+  let output = output.combined_output();
+  assert_contains!(output, "main.ts");
+  assert_not_contains!(output, ".env");
 }
 
 fn publish_context_builder() -> TestContextBuilder {
