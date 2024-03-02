@@ -26,8 +26,8 @@ use std::str::FromStr;
 use std::string::ToString;
 use std::sync::Arc;
 use which::which;
+use deno_terminal::colors;
 
-pub mod colors;
 pub mod prompter;
 use prompter::permission_prompt;
 use prompter::PromptResponse;

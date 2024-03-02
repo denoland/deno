@@ -1237,3 +1237,31 @@ declare var DecompressionStream: {
 declare function reportError(
   error: any,
 ): void;
+
+/** @category Web APIs */
+declare type PredefinedColorSpace = "srgb" | "display-p3";
+
+/** @category Web APIs */
+declare interface ImageDataSettings {
+  readonly colorSpace?: PredefinedColorSpace;
+}
+
+/** @category Web APIs */
+declare interface ImageData {
+  readonly colorSpace: PredefinedColorSpace;
+  readonly data: Uint8ClampedArray;
+  readonly height: number;
+  readonly width: number;
+}
+
+/** @category Web APIs */
+declare var ImageData: {
+  prototype: ImageData;
+  new (sw: number, sh: number, settings?: ImageDataSettings): ImageData;
+  new (
+    data: Uint8ClampedArray,
+    sw: number,
+    sh?: number,
+    settings?: ImageDataSettings,
+  ): ImageData;
+};

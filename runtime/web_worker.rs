@@ -1,5 +1,4 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-use crate::colors;
 use crate::inspector_server::InspectorServer;
 use crate::ops;
 use crate::permissions::PermissionsContainer;
@@ -38,13 +37,13 @@ use deno_core::OpMetricsSummaryTracker;
 use deno_core::PollEventLoopOptions;
 use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
-use deno_core::Snapshot;
 use deno_core::SourceMapGetter;
 use deno_cron::local::LocalCronHandler;
 use deno_fs::FileSystem;
 use deno_http::DefaultHttpPropertyExtractor;
 use deno_io::Stdio;
 use deno_kv::dynamic::MultiBackendDbHandler;
+use deno_terminal::colors;
 use deno_tls::RootCertStoreProvider;
 use deno_web::create_entangled_message_port;
 use deno_web::BlobStore;
@@ -336,7 +335,7 @@ pub struct WebWorker {
 pub struct WebWorkerOptions {
   pub bootstrap: BootstrapOptions,
   pub extensions: Vec<Extension>,
-  pub startup_snapshot: Option<Snapshot>,
+  pub startup_snapshot: Option<&'static [u8]>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
   pub seed: Option<u64>,
@@ -345,7 +344,7 @@ pub struct WebWorkerOptions {
   pub npm_resolver: Option<Arc<dyn deno_node::NpmResolver>>,
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
   pub format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
-  pub source_map_getter: Option<Box<dyn SourceMapGetter>>,
+  pub source_map_getter: Option<Rc<dyn SourceMapGetter>>,
   pub worker_type: WebWorkerType,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
   pub get_error_class_fn: Option<GetErrorClassFn>,

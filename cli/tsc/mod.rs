@@ -26,7 +26,6 @@ use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::RuntimeOptions;
-use deno_core::Snapshot;
 use deno_graph::GraphKind;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
@@ -140,8 +139,8 @@ fn get_asset_texts_from_new_runtime() -> Result<Vec<AssetText>, AnyError> {
   Ok(serde_v8::from_v8::<Vec<AssetText>>(scope, local)?)
 }
 
-pub fn compiler_snapshot() -> Snapshot {
-  Snapshot::Static(&COMPILER_SNAPSHOT)
+pub fn compiler_snapshot() -> &'static [u8] {
+  &COMPILER_SNAPSHOT
 }
 
 macro_rules! inc {
@@ -904,8 +903,7 @@ mod tests {
     fn load(
       &mut self,
       specifier: &ModuleSpecifier,
-      _is_dynamic: bool,
-      _cache_setting: deno_graph::source::CacheSetting,
+      _options: deno_graph::source::LoadOptions,
     ) -> deno_graph::source::LoadFuture {
       let specifier_text = specifier
         .to_string()
@@ -1002,8 +1000,8 @@ mod tests {
   // be used again after the snapshot is taken. We should figure out a mechanism
   // to allow removing some of the ops before taking a snapshot.
   #[ignore]
-  #[test]
-  fn test_compiler_snapshot() {
+  #[tokio::test]
+  async fn test_compiler_snapshot() {
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       startup_snapshot: Some(compiler_snapshot()),
       ..Default::default()
@@ -1028,8 +1026,8 @@ mod tests {
     assert_eq!(actual, "11905938177474799758");
   }
 
-  #[test]
-  fn test_hash_url() {
+  #[tokio::test]
+  async fn test_hash_url() {
     let specifier = deno_core::resolve_url(
       "data:application/javascript,console.log(\"Hello%20Deno\");",
     )

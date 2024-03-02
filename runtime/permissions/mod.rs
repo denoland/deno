@@ -1,10 +1,9 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::AnyError;
-use deno_core::url;
-use deno_core::url::Url;
 use std::path::Path;
 
+use deno_core::error::AnyError;
+use deno_core::url::Url;
 pub use deno_permissions::create_child_permissions;
 pub use deno_permissions::parse_sys_kind;
 pub use deno_permissions::set_prompt_callbacks;
@@ -15,6 +14,7 @@ pub use deno_permissions::PermissionsOptions;
 // NOTE: Temporary permissions container to satisfy traits. We are migrating to the deno_permissions
 // crate.
 #[derive(Debug, Clone)]
+
 pub struct PermissionsContainer(pub deno_permissions::PermissionsContainer);
 
 impl PermissionsContainer {
@@ -114,7 +114,7 @@ impl deno_websocket::WebSocketPermissions for PermissionsContainer {
   #[inline(always)]
   fn check_net_url(
     &mut self,
-    url: &url::Url,
+    url: &Url,
     api_name: &str,
   ) -> Result<(), AnyError> {
     self.0.check_net_url(url, api_name)
@@ -210,7 +210,7 @@ impl deno_kv::remote::RemoteDbHandlerPermissions for PermissionsContainer {
   #[inline(always)]
   fn check_net_url(
     &mut self,
-    url: &url::Url,
+    url: &Url,
     api_name: &str,
   ) -> Result<(), AnyError> {
     self.0.check_net_url(url, api_name)

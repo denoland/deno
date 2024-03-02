@@ -436,15 +436,7 @@ export function execFile(
     shell: false,
     ...options,
   };
-  if (!Number.isInteger(execOptions.timeout) || execOptions.timeout < 0) {
-    // In Node source, the first argument to error constructor is "timeout" instead of "options.timeout".
-    // timeout is indeed a member of options object.
-    throw new ERR_OUT_OF_RANGE(
-      "timeout",
-      "an unsigned integer",
-      execOptions.timeout,
-    );
-  }
+  validateTimeout(execOptions.timeout);
   if (execOptions.maxBuffer < 0) {
     throw new ERR_OUT_OF_RANGE(
       "options.maxBuffer",
