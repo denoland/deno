@@ -349,6 +349,7 @@ fn lsp_import_map_embedded_in_config_file() {
   temp_dir.write(
     "deno.embedded_import_map.jsonc",
     r#"{
+  // some comment
   "imports": {
     "/~/": "./lib/"
   }
@@ -651,6 +652,51 @@ fn lsp_import_map_config_file_auto_discovered_symlink() {
   }));
   assert_eq!(client.read_diagnostics().all().len(), 0);
 
+  client.shutdown();
+}
+
+#[test]
+fn lsp_deno_json_imports_comments_cache() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.jsonc",
+    r#"{
+      // comment
+      "imports": {
+        "print_hello": "http://localhost:4545/import_maps/print_hello.ts",
+      },
+    }"#,
+  );
+  temp_dir.write(
+    "file.ts",
+    r#"
+      import { printHello } from "print_hello";
+      printHello();
+    "#,
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.write_request(
+    "workspace/executeCommand",
+    json!({
+      "command": "deno.cache",
+      "arguments": [[], temp_dir.uri().join("file.ts").unwrap()],
+    }),
+  );
+
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": temp_dir.read_to_string("file.ts"),
+    }
+  }));
+  assert_eq!(diagnostics.all(), vec![]);
   client.shutdown();
 }
 
