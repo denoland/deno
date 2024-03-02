@@ -3685,6 +3685,8 @@ impl Inner {
       self.maybe_package_json.clone(),
       force_global_cache,
     )?;
+    // don't use the specifier in self.maybe_import_map because it's not
+    // necessarily an import map specifier (could be a deno.json)
     if let Some(import_map) = self.resolve_import_map_specifier()? {
       cli_options.set_import_map_specifier(Some(import_map));
     }
