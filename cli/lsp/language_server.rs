@@ -974,7 +974,7 @@ impl Inner {
       return Ok(None);
     };
     lsp_log!(
-      "Setting import map from workspace settings: \"{}\"",
+      "Using import map from workspace settings: \"{}\"",
       import_map_str
     );
     if let Some(config_file) = self.config.maybe_config_file() {
@@ -3685,9 +3685,11 @@ impl Inner {
       self.maybe_package_json.clone(),
       force_global_cache,
     )?;
-    cli_options.set_import_map_specifier(
-      self.maybe_import_map.as_ref().map(|m| m.base_url().clone()),
-    );
+    // don't use the specifier in self.maybe_import_map because it's not
+    // necessarily an import map specifier (could be a deno.json)
+    if let Some(import_map) = self.resolve_import_map_specifier()? {
+      cli_options.set_import_map_specifier(Some(import_map));
+    }
 
     let open_docs = self.documents.documents(DocumentsFilter::OpenDiagnosable);
     Ok(Some(PrepareCacheResult {
