@@ -4,6 +4,8 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
+import { op_node_sign, op_node_verify } from "ext:core/ops";
+
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import {
   validateFunction,
@@ -27,9 +29,6 @@ import { createHash, Hash } from "ext:deno_node/internal/crypto/hash.ts";
 import { KeyFormat, KeyType } from "ext:deno_node/internal/crypto/types.ts";
 import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
 import { ERR_CRYPTO_SIGN_KEY_REQUIRED } from "ext:deno_node/internal/errors.ts";
-
-const { core } = globalThis.__bootstrap;
-const { ops } = core;
 
 export type DSAEncoding = "der" | "ieee-p1363";
 
@@ -81,7 +80,7 @@ export class SignImpl extends Writable {
     encoding?: BinaryToTextEncoding,
   ): Buffer | string {
     const { data, format, type } = prepareAsymmetricKey(privateKey);
-    const ret = Buffer.from(ops.op_node_sign(
+    const ret = Buffer.from(op_node_sign(
       this.hash.digest(),
       this.#digestType,
       data!,
@@ -157,7 +156,7 @@ export class VerifyImpl extends Writable {
         "crypto.Verify.prototype.verify with non BinaryLike input",
       );
     }
-    return ops.op_node_verify(
+    return op_node_verify(
       this.hash.digest(),
       this.#digestType,
       keyData!,

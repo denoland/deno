@@ -562,7 +562,7 @@ fn send_binary(state: &mut OpState, rid: ResourceId, data: &[u8]) {
   });
 }
 
-#[op2(fast)]
+#[op2]
 pub fn op_ws_send_binary(
   state: &mut OpState,
   #[smi] rid: ResourceId,
@@ -657,21 +657,6 @@ pub fn op_ws_get_buffered_amount(
     .unwrap()
     .buffered
     .get() as u32
-}
-
-#[op2(async)]
-pub async fn op_ws_send_pong(
-  state: Rc<RefCell<OpState>>,
-  #[smi] rid: ResourceId,
-) -> Result<(), AnyError> {
-  let resource = state
-    .borrow_mut()
-    .resource_table
-    .get::<ServerWebSocket>(rid)?;
-  let lock = resource.reserve_lock();
-  resource
-    .write_frame(lock, Frame::pong(EMPTY_PAYLOAD.into()))
-    .await
 }
 
 #[op2(async)]
@@ -843,10 +828,9 @@ deno_core::extension!(deno_websocket,
     op_ws_send_binary_async,
     op_ws_send_text_async,
     op_ws_send_ping,
-    op_ws_send_pong,
     op_ws_get_buffered_amount,
   ],
-  esm = [ "00_ops.js", "01_websocket.js", "02_websocketstream.js" ],
+  esm = [ "01_websocket.js", "02_websocketstream.js" ],
   options = {
     user_agent: String,
     root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,

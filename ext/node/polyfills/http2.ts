@@ -5,6 +5,18 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { core } from "ext:core/mod.js";
+import {
+  op_http2_client_get_response,
+  op_http2_client_get_response_body_chunk,
+  op_http2_client_get_response_trailers,
+  op_http2_client_request,
+  op_http2_client_reset_stream,
+  op_http2_client_send_data,
+  op_http2_client_send_trailers,
+  op_http2_connect,
+  op_http2_poll_client_connection,
+} from "ext:core/ops";
+
 import { notImplemented, warnNotImplemented } from "ext:deno_node/_utils.ts";
 import { EventEmitter } from "node:events";
 import { Buffer } from "node:buffer";
@@ -42,18 +54,6 @@ import {
   ERR_SOCKET_CLOSED,
 } from "ext:deno_node/internal/errors.ts";
 import { _checkIsHttpToken } from "ext:deno_node/_http_common.ts";
-
-const {
-  op_http2_connect,
-  op_http2_client_get_response,
-  op_http2_client_get_response_body_chunk,
-  op_http2_client_get_response_trailers,
-  op_http2_client_request,
-  op_http2_client_reset_stream,
-  op_http2_client_send_data,
-  op_http2_client_send_trailers,
-  op_http2_poll_client_connection,
-} = core.ensureFastOps();
 
 const kSession = Symbol("session");
 const kAlpnProtocol = Symbol("alpnProtocol");
@@ -210,11 +210,12 @@ export class Http2Session extends EventEmitter {
   }
 
   goaway(
-    _code: number,
-    _lastStreamID: number,
-    _opaqueData: Buffer | TypedArray | DataView,
+    code?: number,
+    lastStreamID?: number,
+    opaqueData?: Buffer | TypedArray | DataView,
   ) {
-    warnNotImplemented("Http2Session.goaway");
+    // TODO(satyarohith): create goaway op and pass the args
+    debugHttp2(">>> goaway - ignored args", code, lastStreamID, opaqueData);
     if (this[kDenoConnRid]) {
       core.tryClose(this[kDenoConnRid]);
     }
@@ -316,7 +317,7 @@ function closeSession(session: Http2Session, code?: number, error?: Error) {
     session[kDenoConnRid],
     session[kDenoClientRid],
   );
-  console.table(Deno.resources());
+  console.table(Deno[Deno.internal].core.resources());
   if (session[kDenoConnRid]) {
     core.tryClose(session[kDenoConnRid]);
   }

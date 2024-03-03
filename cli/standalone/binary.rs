@@ -2,12 +2,14 @@
 
 use std::collections::BTreeMap;
 use std::env::current_exe;
+use std::fs;
 use std::io::Read;
 use std::io::Seek;
 use std::io::SeekFrom;
 use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
+use std::process::Command;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
@@ -18,7 +20,6 @@ use deno_core::futures::AsyncReadExt;
 use deno_core::futures::AsyncSeekExt;
 use deno_core::serde_json;
 use deno_core::url::Url;
-use deno_npm::registry::PackageDepNpmSchemeValueParseError;
 use deno_npm::NpmSystemInfo;
 use deno_runtime::permissions::PermissionsOptions;
 use deno_semver::package::PackageReq;
@@ -33,6 +34,7 @@ use crate::args::CaData;
 use crate::args::CliOptions;
 use crate::args::CompileFlags;
 use crate::args::PackageJsonDepsProvider;
+use crate::args::UnstableConfig;
 use crate::cache::DenoDir;
 use crate::file_fetcher::FileFetcher;
 use crate::http_util::HttpClient;
@@ -50,7 +52,6 @@ const MAGIC_TRAILER: &[u8; 8] = b"d3n0l4nd";
 
 #[derive(Serialize, Deserialize)]
 enum SerializablePackageJsonDepValueParseError {
-  SchemeValue(String),
   Specifier(String),
   Unsupported { scheme: String },
 }
@@ -58,9 +59,6 @@ enum SerializablePackageJsonDepValueParseError {
 impl SerializablePackageJsonDepValueParseError {
   pub fn from_err(err: PackageJsonDepValueParseError) -> Self {
     match err {
-      PackageJsonDepValueParseError::SchemeValue(err) => {
-        Self::SchemeValue(err.value)
-      }
       PackageJsonDepValueParseError::Specifier(err) => {
         Self::Specifier(err.source.to_string())
       }
@@ -72,11 +70,6 @@ impl SerializablePackageJsonDepValueParseError {
 
   pub fn into_err(self) -> PackageJsonDepValueParseError {
     match self {
-      SerializablePackageJsonDepValueParseError::SchemeValue(value) => {
-        PackageJsonDepValueParseError::SchemeValue(
-          PackageDepNpmSchemeValueParseError { value },
-        )
-      }
       SerializablePackageJsonDepValueParseError::Specifier(source) => {
         PackageJsonDepValueParseError::Specifier(
           VersionReqSpecifierParseError {
@@ -137,8 +130,6 @@ pub enum NodeModules {
 #[derive(Deserialize, Serialize)]
 pub struct Metadata {
   pub argv: Vec<String>,
-  pub unstable: bool,
-  pub unstable_features: Vec<String>,
   pub seed: Option<u64>,
   pub permissions: PermissionsOptions,
   pub location: Option<Url>,
@@ -150,6 +141,8 @@ pub struct Metadata {
   pub maybe_import_map: Option<(Url, String)>,
   pub entrypoint: ModuleSpecifier,
   pub node_modules: Option<NodeModules>,
+  pub disable_deprecated_api_warning: bool,
+  pub unstable_config: UnstableConfig,
 }
 
 pub fn load_npm_vfs(root_dir_path: PathBuf) -> Result<FileBackedVfs, AnyError> {
@@ -346,6 +339,71 @@ fn u64_from_bytes(arr: &[u8]) -> Result<u64, AnyError> {
   Ok(u64::from_be_bytes(*fixed_arr))
 }
 
+pub fn unpack_into_dir(
+  exe_name: &str,
+  archive_name: &str,
+  archive_data: Vec<u8>,
+  is_windows: bool,
+  temp_dir: &tempfile::TempDir,
+) -> Result<PathBuf, AnyError> {
+  let temp_dir_path = temp_dir.path();
+  let exe_ext = if is_windows { "exe" } else { "" };
+  let archive_path = temp_dir_path.join(exe_name).with_extension("zip");
+  let exe_path = temp_dir_path.join(exe_name).with_extension(exe_ext);
+  assert!(!exe_path.exists());
+
+  let archive_ext = Path::new(archive_name)
+    .extension()
+    .and_then(|ext| ext.to_str())
+    .unwrap();
+  let unpack_status = match archive_ext {
+    "zip" if cfg!(windows) => {
+      fs::write(&archive_path, &archive_data)?;
+      Command::new("tar.exe")
+        .arg("xf")
+        .arg(&archive_path)
+        .arg("-C")
+        .arg(temp_dir_path)
+        .spawn()
+        .map_err(|err| {
+          if err.kind() == std::io::ErrorKind::NotFound {
+            std::io::Error::new(
+              std::io::ErrorKind::NotFound,
+              "`tar.exe` was not found in your PATH",
+            )
+          } else {
+            err
+          }
+        })?
+        .wait()?
+    }
+    "zip" => {
+      fs::write(&archive_path, &archive_data)?;
+      Command::new("unzip")
+        .current_dir(temp_dir_path)
+        .arg(&archive_path)
+        .spawn()
+        .map_err(|err| {
+          if err.kind() == std::io::ErrorKind::NotFound {
+            std::io::Error::new(
+              std::io::ErrorKind::NotFound,
+              "`unzip` was not found in your PATH, please install `unzip`",
+            )
+          } else {
+            err
+          }
+        })?
+        .wait()?
+    }
+    ext => bail!("Unsupported archive type: '{ext}'"),
+  };
+  if !unpack_status.success() {
+    bail!("Failed to unpack archive.");
+  }
+  assert!(exe_path.exists());
+  fs::remove_file(&archive_path)?;
+  Ok(exe_path)
+}
 pub struct DenoCompileBinaryWriter<'a> {
   file_fetcher: &'a FileFetcher,
   client: &'a HttpClient,
@@ -413,13 +471,16 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     &self,
     compile_flags: &CompileFlags,
   ) -> Result<Vec<u8>, AnyError> {
-    if compile_flags.target.is_none() {
-      let path = std::env::current_exe()?;
+    // Used for testing.
+    //
+    // Phase 2 of the 'min sized' deno compile RFC talks
+    // about adding this as a flag.
+    if let Some(path) = std::env::var_os("DENORT_BIN") {
       return Ok(std::fs::read(path)?);
     }
 
     let target = compile_flags.resolve_target();
-    let binary_name = format!("deno-{target}.zip");
+    let binary_name = format!("denort-{target}.zip");
 
     let binary_path_suffix = if crate::version::is_canary() {
       format!("canary/{}/{}", crate::version::GIT_COMMIT_HASH, binary_name)
@@ -438,7 +499,9 @@ impl<'a> DenoCompileBinaryWriter<'a> {
 
     let archive_data = std::fs::read(binary_path)?;
     let temp_dir = tempfile::TempDir::new()?;
-    let base_binary_path = crate::tools::upgrade::unpack_into_dir(
+    let base_binary_path = unpack_into_dir(
+      "denort",
+      &binary_name,
       archive_data,
       target.contains("windows"),
       &temp_dir,
@@ -542,8 +605,6 @@ impl<'a> DenoCompileBinaryWriter<'a> {
 
     let metadata = Metadata {
       argv: compile_flags.args.clone(),
-      unstable: cli_options.unstable(),
-      unstable_features: cli_options.unstable_features(),
       seed: cli_options.seed(),
       location: cli_options.location_flag().clone(),
       permissions: cli_options.permissions_options(),
@@ -557,6 +618,15 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       entrypoint: entrypoint.clone(),
       maybe_import_map,
       node_modules,
+      disable_deprecated_api_warning: cli_options
+        .disable_deprecated_api_warning,
+      unstable_config: UnstableConfig {
+        legacy_flag_enabled: cli_options.legacy_unstable_flag(),
+        bare_node_builtins: cli_options.unstable_bare_node_builtins(),
+        byonm: cli_options.unstable_byonm(),
+        sloppy_imports: cli_options.unstable_sloppy_imports(),
+        features: cli_options.unstable_features(),
+      },
     };
 
     write_binary_bytes(

@@ -378,7 +378,7 @@ where
   #[cfg(not(windows))]
   socket.set_reuse_address(true)?;
   if reuse_port {
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     socket.set_reuse_port(true)?;
   }
   let socket_addr = socket2::SockAddr::from(addr);
@@ -429,7 +429,11 @@ where
     // are different from the BSDs: it _shares_ the port rather than steal it
     // from the current listener. While useful, it's not something we can
     // emulate on other platforms so we don't enable it.
-    #[cfg(any(target_os = "windows", target_os = "linux"))]
+    #[cfg(any(
+      target_os = "windows",
+      target_os = "android",
+      target_os = "linux"
+    ))]
     socket_tmp.set_reuse_address(true)?;
     #[cfg(all(unix, not(target_os = "linux")))]
     socket_tmp.set_reuse_port(true)?;

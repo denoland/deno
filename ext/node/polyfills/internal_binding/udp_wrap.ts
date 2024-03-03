@@ -23,8 +23,11 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { core } from "ext:core/mod.js";
-const ops = core.ops;
+import {
+  op_node_unstable_net_listen_udp,
+  op_node_unstable_net_listen_unixpacket,
+} from "ext:core/ops";
+
 import {
   AsyncWrap,
   providerType,
@@ -41,8 +44,8 @@ import * as net from "ext:deno_net/01_net.js";
 import { isLinux, isWindows } from "ext:deno_node/_util/os.ts";
 
 const DenoListenDatagram = net.createListenDatagram(
-  ops.op_node_unstable_net_listen_udp,
-  ops.op_node_unstable_net_listen_unixpacket,
+  op_node_unstable_net_listen_udp,
+  op_node_unstable_net_listen_unixpacket,
 );
 
 type MessageType = string | Uint8Array | Buffer | DataView;

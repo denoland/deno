@@ -53,6 +53,8 @@ pub struct PublishingTask {
 pub struct ApiError {
   pub code: String,
   pub message: String,
+  #[serde(flatten)]
+  pub data: serde_json::Value,
   #[serde(skip)]
   pub x_deno_ray: Option<String>,
 }
@@ -97,6 +99,7 @@ pub async fn parse_response<T: DeserializeOwned>(
           code: "unknown".to_string(),
           message: format!("{}: {}", status, text),
           x_deno_ray,
+          data: serde_json::json!({}),
         };
         return Err(err);
       }
@@ -107,6 +110,7 @@ pub async fn parse_response<T: DeserializeOwned>(
     code: "unknown".to_string(),
     message: format!("Failed to parse response: {}, response: '{}'", err, text),
     x_deno_ray,
+    data: serde_json::json!({}),
   })
 }
 

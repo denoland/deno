@@ -3,10 +3,9 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file no-explicit-any prefer-primordials
 
+import { core } from "ext:core/mod.js";
 import { notImplemented } from "ext:deno_node/_utils.ts";
-
-const { core } = globalThis.__bootstrap;
-const ops = core.ops;
+import { op_vm_run_in_new_context } from "ext:core/ops";
 
 export class Script {
   code: string;
@@ -32,7 +31,7 @@ export class Script {
         "Script.runInNewContext options are currently not supported",
       );
     }
-    return ops.op_vm_run_in_new_context(this.code, contextObject);
+    return op_vm_run_in_new_context(this.code, contextObject);
   }
 
   createCachedData() {
@@ -64,7 +63,7 @@ export function runInNewContext(
   if (options) {
     console.warn("vm.runInNewContext options are currently not supported");
   }
-  return ops.op_vm_run_in_new_context(code, contextObject);
+  return op_vm_run_in_new_context(code, contextObject);
 }
 
 export function runInThisContext(

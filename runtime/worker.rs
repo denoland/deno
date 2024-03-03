@@ -1,4 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicI32;
@@ -22,7 +23,7 @@ use deno_core::FsModuleLoader;
 use deno_core::GetErrorClassFn;
 use deno_core::JsRuntime;
 use deno_core::LocalInspectorSession;
-use deno_core::ModuleCode;
+use deno_core::ModuleCodeString;
 use deno_core::ModuleId;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
@@ -31,7 +32,6 @@ use deno_core::OpMetricsSummaryTracker;
 use deno_core::PollEventLoopOptions;
 use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
-use deno_core::Snapshot;
 use deno_core::SourceMapGetter;
 use deno_cron::local::LocalCronHandler;
 use deno_fs::FileSystem;
@@ -60,6 +60,32 @@ pub fn import_meta_resolve_callback(
     &referrer,
     deno_core::ResolutionKind::DynamicImport,
   )
+}
+
+// TODO(bartlomieju): temporary measurement until we start supporting more
+// module types
+pub fn validate_import_attributes_callback(
+  scope: &mut v8::HandleScope,
+  attributes: &HashMap<String, String>,
+) {
+  for (key, value) in attributes {
+    let msg = if key != "type" {
+      Some(format!("\"{key}\" attribute is not supported."))
+    } else if value != "json" {
+      Some(format!("\"{value}\" is not a valid module type."))
+    } else {
+      None
+    };
+
+    let Some(msg) = msg else {
+      continue;
+    };
+
+    let message = v8::String::new(scope, &msg).unwrap();
+    let exception = v8::Exception::type_error(scope, message);
+    scope.throw_exception(exception);
+    return;
+  }
 }
 
 #[derive(Clone, Default)]
@@ -101,7 +127,7 @@ pub struct WorkerOptions {
   pub extensions: Vec<Extension>,
 
   /// V8 snapshot that should be loaded on startup.
-  pub startup_snapshot: Option<Snapshot>,
+  pub startup_snapshot: Option<&'static [u8]>,
 
   /// Should op registration be skipped?
   pub skip_op_registration: bool,
@@ -126,7 +152,7 @@ pub struct WorkerOptions {
   pub format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
 
   /// Source map reference for errors.
-  pub source_map_getter: Option<Box<dyn SourceMapGetter>>,
+  pub source_map_getter: Option<Rc<dyn SourceMapGetter>>,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
   // If true, the worker will wait for inspector session and break on first
   // statement of user code. Takes higher precedence than
@@ -308,7 +334,7 @@ impl MainWorker {
     });
 
     // NOTE(bartlomieju): ordering is important here, keep it in sync with
-    // `runtime/build.rs`, `runtime/web_worker.rs` and `runtime/snapshot.rs`!
+    // `runtime/web_worker.rs` and `runtime/snapshot.rs`!
     let mut extensions = vec![
       // Web APIs
       deno_webidl::deno_webidl::init_ops_and_esm(),
@@ -319,6 +345,7 @@ impl MainWorker {
         options.bootstrap.location.clone(),
       ),
       deno_webgpu::deno_webgpu::init_ops_and_esm(),
+      deno_canvas::deno_canvas::init_ops_and_esm(),
       deno_fetch::deno_fetch::init_ops_and_esm::<PermissionsContainer>(
         deno_fetch::Options {
           user_agent: options.bootstrap.user_agent.clone(),
@@ -390,31 +417,35 @@ impl MainWorker {
       ops::signal::deno_signal::init_ops_and_esm(),
       ops::tty::deno_tty::init_ops_and_esm(),
       ops::http::deno_http_runtime::init_ops_and_esm(),
-      ops::bootstrap::deno_bootstrap::init_ops_and_esm({
-        #[cfg(feature = "__runtime_js_sources")]
-        {
-          Some(Default::default())
-        }
-        #[cfg(not(feature = "__runtime_js_sources"))]
-        {
+      ops::bootstrap::deno_bootstrap::init_ops_and_esm(
+        if options.startup_snapshot.is_some() {
           None
-        }
-      }),
+        } else {
+          Some(Default::default())
+        },
+      ),
       deno_permissions_worker::init_ops_and_esm(
         permissions,
         enable_testing_features,
       ),
       runtime::init_ops_and_esm(),
+      // NOTE(bartlomieju): this is done, just so that ops from this extension
+      // are available and importing them in `99_main.js` doesn't cause an
+      // error because they're not defined. Trying to use these ops in non-worker
+      // context will cause a panic.
+      ops::web_worker::deno_web_worker::init_ops_and_esm().disable(),
     ];
 
+    #[cfg(__runtime_js_sources)]
+    assert!(cfg!(not(feature = "only_snapshotted_js_sources")), "'__runtime_js_sources' is incompatible with 'only_snapshotted_js_sources'.");
+
     for extension in &mut extensions {
-      #[cfg(not(feature = "__runtime_js_sources"))]
-      {
+      if options.startup_snapshot.is_some() {
         extension.js_files = std::borrow::Cow::Borrowed(&[]);
         extension.esm_files = std::borrow::Cow::Borrowed(&[]);
         extension.esm_entry_point = None;
       }
-      #[cfg(feature = "__runtime_js_sources")]
+      #[cfg(not(feature = "only_snapshotted_js_sources"))]
       {
         use crate::shared::maybe_transpile_source;
         for source in extension.esm_files.to_mut() {
@@ -428,8 +459,8 @@ impl MainWorker {
 
     extensions.extend(std::mem::take(&mut options.extensions));
 
-    #[cfg(all(feature = "include_js_files_for_snapshotting", feature = "dont_create_runtime_snapshot", not(feature = "__runtime_js_sources")))]
-    options.startup_snapshot.as_ref().expect("Sources are not embedded, snapshotting was disabled and a user snapshot was not provided.");
+    #[cfg(feature = "only_snapshotted_js_sources")]
+    options.startup_snapshot.as_ref().expect("A user snapshot was not provided, even though 'only_snapshotted_js_sources' is used.");
 
     let has_notified_of_inspector_disconnect = AtomicBool::new(false);
     let wait_for_inspector_disconnect_callback = Box::new(move || {
@@ -442,9 +473,7 @@ impl MainWorker {
 
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(options.module_loader.clone()),
-      startup_snapshot: options
-        .startup_snapshot
-        .or_else(crate::js::deno_isolate_init),
+      startup_snapshot: options.startup_snapshot,
       create_params: options.create_params,
       source_map_getter: options.source_map_getter,
       skip_op_registration: options.skip_op_registration,
@@ -461,6 +490,9 @@ impl MainWorker {
       ),
       import_meta_resolve_callback: Some(Box::new(
         import_meta_resolve_callback,
+      )),
+      validate_import_attributes_cb: Some(Box::new(
+        validate_import_attributes_callback,
       )),
       ..Default::default()
     });
@@ -537,7 +569,7 @@ impl MainWorker {
   pub fn execute_script(
     &mut self,
     script_name: &'static str,
-    source_code: ModuleCode,
+    source_code: ModuleCodeString,
   ) -> Result<v8::Global<v8::Value>, AnyError> {
     self.js_runtime.execute_script(script_name, source_code)
   }

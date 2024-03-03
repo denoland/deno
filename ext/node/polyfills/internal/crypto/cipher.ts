@@ -4,6 +4,24 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
+import { core } from "ext:core/mod.js";
+const {
+  encode,
+} = core;
+import {
+  op_node_cipheriv_encrypt,
+  op_node_cipheriv_final,
+  op_node_cipheriv_set_aad,
+  op_node_create_cipheriv,
+  op_node_create_decipheriv,
+  op_node_decipheriv_decrypt,
+  op_node_decipheriv_final,
+  op_node_decipheriv_set_aad,
+  op_node_private_decrypt,
+  op_node_private_encrypt,
+  op_node_public_encrypt,
+} from "ext:core/ops";
+
 import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
 import {
   validateInt32,
@@ -34,8 +52,6 @@ export function isStringOrBuffer(val) {
     isAnyArrayBuffer(val) ||
     Buffer.isBuffer(val);
 }
-
-const { ops, encode } = globalThis.__bootstrap.core;
 
 const NO_TAG = new Uint8Array();
 
@@ -168,7 +184,7 @@ export class Cipheriv extends Transform implements Cipher {
       ...options,
     });
     this.#cache = new BlockModeCache(false);
-    this.#context = ops.op_node_create_cipheriv(cipher, toU8(key), toU8(iv));
+    this.#context = op_node_create_cipheriv(cipher, toU8(key), toU8(iv));
     this.#needsBlockCache =
       !(cipher == "aes-128-gcm" || cipher == "aes-256-gcm");
     if (this.#context == 0) {
@@ -178,7 +194,7 @@ export class Cipheriv extends Transform implements Cipher {
 
   final(encoding: string = getDefaultEncoding()): Buffer | string {
     const buf = new Buffer(16);
-    const maybeTag = ops.op_node_cipheriv_final(
+    const maybeTag = op_node_cipheriv_final(
       this.#context,
       this.#cache.cache,
       buf,
@@ -200,7 +216,7 @@ export class Cipheriv extends Transform implements Cipher {
       plaintextLength: number;
     },
   ): this {
-    ops.op_node_cipheriv_set_aad(this.#context, buffer);
+    op_node_cipheriv_set_aad(this.#context, buffer);
     return this;
   }
 
@@ -223,7 +239,7 @@ export class Cipheriv extends Transform implements Cipher {
     let output;
     if (!this.#needsBlockCache) {
       output = Buffer.allocUnsafe(buf.length);
-      ops.op_node_cipheriv_encrypt(this.#context, buf, output);
+      op_node_cipheriv_encrypt(this.#context, buf, output);
       return outputEncoding === "buffer"
         ? output
         : output.toString(outputEncoding);
@@ -236,7 +252,7 @@ export class Cipheriv extends Transform implements Cipher {
       output = Buffer.alloc(0);
     } else {
       output = Buffer.allocUnsafe(input.length);
-      ops.op_node_cipheriv_encrypt(this.#context, input, output);
+      op_node_cipheriv_encrypt(this.#context, input, output);
     }
     return outputEncoding === "buffer"
       ? output
@@ -311,7 +327,7 @@ export class Decipheriv extends Transform implements Cipher {
       ...options,
     });
     this.#cache = new BlockModeCache(true);
-    this.#context = ops.op_node_create_decipheriv(cipher, toU8(key), toU8(iv));
+    this.#context = op_node_create_decipheriv(cipher, toU8(key), toU8(iv));
     this.#needsBlockCache =
       !(cipher == "aes-128-gcm" || cipher == "aes-256-gcm");
     if (this.#context == 0) {
@@ -321,7 +337,7 @@ export class Decipheriv extends Transform implements Cipher {
 
   final(encoding: string = getDefaultEncoding()): Buffer | string {
     let buf = new Buffer(16);
-    ops.op_node_decipheriv_final(
+    op_node_decipheriv_final(
       this.#context,
       this.#cache.cache,
       buf,
@@ -342,7 +358,7 @@ export class Decipheriv extends Transform implements Cipher {
       plaintextLength: number;
     },
   ): this {
-    ops.op_node_decipheriv_set_aad(this.#context, buffer);
+    op_node_decipheriv_set_aad(this.#context, buffer);
     return this;
   }
 
@@ -369,7 +385,7 @@ export class Decipheriv extends Transform implements Cipher {
     let output;
     if (!this.#needsBlockCache) {
       output = Buffer.allocUnsafe(buf.length);
-      ops.op_node_decipheriv_decrypt(this.#context, buf, output);
+      op_node_decipheriv_decrypt(this.#context, buf, output);
       return outputEncoding === "buffer"
         ? output
         : output.toString(outputEncoding);
@@ -381,7 +397,7 @@ export class Decipheriv extends Transform implements Cipher {
       output = Buffer.alloc(0);
     } else {
       output = new Buffer(input.length);
-      ops.op_node_decipheriv_decrypt(this.#context, input, output);
+      op_node_decipheriv_decrypt(this.#context, input, output);
     }
     return outputEncoding === "buffer"
       ? output
@@ -432,7 +448,7 @@ export function privateEncrypt(
   const padding = privateKey.padding || 1;
 
   buffer = getArrayBufferOrView(buffer, "buffer");
-  return ops.op_node_private_encrypt(data, buffer, padding);
+  return op_node_private_encrypt(data, buffer, padding);
 }
 
 export function privateDecrypt(
@@ -443,7 +459,7 @@ export function privateDecrypt(
   const padding = privateKey.padding || 1;
 
   buffer = getArrayBufferOrView(buffer, "buffer");
-  return ops.op_node_private_decrypt(data, buffer, padding);
+  return op_node_private_decrypt(data, buffer, padding);
 }
 
 export function publicEncrypt(
@@ -454,7 +470,7 @@ export function publicEncrypt(
   const padding = publicKey.padding || 1;
 
   buffer = getArrayBufferOrView(buffer, "buffer");
-  return ops.op_node_public_encrypt(data, buffer, padding);
+  return op_node_public_encrypt(data, buffer, padding);
 }
 
 export function prepareKey(key) {

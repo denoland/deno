@@ -5,6 +5,9 @@ use crate::args::JupyterFlags;
 use crate::ops;
 use crate::tools::jupyter::server::StdioMsg;
 use crate::tools::repl;
+use crate::tools::test::create_single_test_event_channel;
+use crate::tools::test::reporters::PrettyTestReporter;
+use crate::tools::test::TestEventWorkerSender;
 use crate::util::logger;
 use crate::CliFactory;
 use deno_core::anyhow::Context;
@@ -17,13 +20,9 @@ use deno_runtime::deno_io::Stdio;
 use deno_runtime::deno_io::StdioPipe;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
+use deno_terminal::colors;
 use tokio::sync::mpsc;
-use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::mpsc::UnboundedSender;
-
-use super::test::reporters::PrettyTestReporter;
-use super::test::TestEvent;
-use super::test::TestEventSender;
 
 mod install;
 pub(crate) mod jupyter_msg;
@@ -33,12 +32,10 @@ pub async fn kernel(
   flags: Flags,
   jupyter_flags: JupyterFlags,
 ) -> Result<(), AnyError> {
-  if !flags.unstable {
-    eprintln!(
-      "Unstable subcommand 'deno jupyter'. The --unstable flag must be provided."
-    );
-    std::process::exit(70);
-  }
+  log::info!(
+    "{} \"deno jupyter\" is unstable and might change in the future.",
+    colors::yellow("Warning"),
+  );
 
   if !jupyter_flags.install && !jupyter_flags.kernel {
     install::status()?;
@@ -80,11 +77,13 @@ pub async fn kernel(
         connection_filepath
       )
     })?;
-  let (test_event_sender, test_event_receiver) =
-    unbounded_channel::<TestEvent>();
-  let test_event_sender = TestEventSender::new(test_event_sender);
-  let stdout = StdioPipe::File(test_event_sender.stdout());
-  let stderr = StdioPipe::File(test_event_sender.stderr());
+  let (worker, test_event_receiver) = create_single_test_event_channel();
+  let TestEventWorkerSender {
+    sender: test_event_sender,
+    stdout,
+    stderr,
+  } = worker;
+
   let mut worker = worker_factory
     .create_custom_worker(
       main_module.clone(),
@@ -95,9 +94,9 @@ pub async fn kernel(
       ],
       // FIXME(nayeemrmn): Test output capturing currently doesn't work.
       Stdio {
-        stdin: StdioPipe::Inherit,
-        stdout,
-        stderr,
+        stdin: StdioPipe::inherit(),
+        stdout: StdioPipe::file(stdout),
+        stderr: StdioPipe::file(stderr),
       },
     )
     .await?;

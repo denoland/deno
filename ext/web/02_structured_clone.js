@@ -7,7 +7,9 @@
 /// <reference path="../web/lib.deno_web.d.ts" />
 
 import { core, primordials } from "ext:core/mod.js";
-import { DOMException } from "ext:deno_web/01_dom_exception.js";
+const {
+  isArrayBuffer,
+} = core;
 const {
   ArrayBuffer,
   ArrayBufferPrototypeGetByteLength,
@@ -37,9 +39,8 @@ const {
   Float32Array,
   Float64Array,
 } = primordials;
-const {
-  isArrayBuffer,
-} = core;
+
+import { DOMException } from "ext:deno_web/01_dom_exception.js";
 
 const objectCloneMemo = new SafeWeakMap();
 

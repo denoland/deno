@@ -8,31 +8,25 @@
 
 import { core, internals, primordials } from "ext:core/mod.js";
 const {
+  isAnyArrayBuffer,
+  isArrayBuffer,
+  isSharedArrayBuffer,
+  isTypedArray,
+} = core;
+import {
   op_arraybuffer_was_detached,
-  op_transfer_arraybuffer,
+  // TODO(mmastrac): use readAll
+  op_read_all,
   op_readable_stream_resource_allocate,
   op_readable_stream_resource_allocate_sized,
-  op_readable_stream_resource_get_sink,
-  op_readable_stream_resource_write_error,
-  op_readable_stream_resource_write_buf,
-  op_readable_stream_resource_write_sync,
-  op_readable_stream_resource_close,
   op_readable_stream_resource_await_close,
-} = core.ensureFastOps();
-// TODO(mmastrac): use readAll
-const {
-  op_read_all,
-} = core.ensureFastOps(true);
-
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { structuredClone } from "ext:deno_web/02_structured_clone.js";
-import {
-  AbortSignalPrototype,
-  add,
-  newSignal,
-  remove,
-  signalAbort,
-} from "ext:deno_web/03_abort_signal.js";
+  op_readable_stream_resource_close,
+  op_readable_stream_resource_get_sink,
+  op_readable_stream_resource_write_buf,
+  op_readable_stream_resource_write_error,
+  op_readable_stream_resource_write_sync,
+  op_transfer_arraybuffer,
+} from "ext:core/ops";
 const {
   ArrayBuffer,
   ArrayBufferIsView,
@@ -95,12 +89,17 @@ const {
   WeakMapPrototypeSet,
   queueMicrotask,
 } = primordials;
-const {
-  isAnyArrayBuffer,
-  isArrayBuffer,
-  isSharedArrayBuffer,
-  isTypedArray,
-} = core;
+
+import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { structuredClone } from "ext:deno_web/02_structured_clone.js";
+import {
+  AbortSignalPrototype,
+  add,
+  newSignal,
+  remove,
+  signalAbort,
+} from "ext:deno_web/03_abort_signal.js";
+
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 import { assert, AssertionError } from "ext:deno_web/00_infra.js";
 

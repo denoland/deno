@@ -5,6 +5,8 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
+import { core } from "ext:core/mod.js";
+
 import { TextDecoder, TextEncoder } from "ext:deno_web/08_text_encoding.js";
 import { codes } from "ext:deno_node/internal/error_codes.ts";
 import { encodings } from "ext:deno_node/internal_binding/string_decoder.ts";
@@ -34,8 +36,6 @@ import {
 } from "ext:deno_web/00_infra.js";
 import { atob, btoa } from "ext:deno_web/05_base64.js";
 import { Blob } from "ext:deno_web/09_file.js";
-
-const { core } = globalThis.__bootstrap;
 
 export { atob, Blob, btoa };
 

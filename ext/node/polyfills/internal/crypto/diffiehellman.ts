@@ -4,6 +4,15 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
+import {
+  op_node_dh_compute_secret,
+  op_node_dh_generate2,
+  op_node_ecdh_compute_public_key,
+  op_node_ecdh_compute_secret,
+  op_node_ecdh_generate_keys,
+  op_node_gen_prime,
+} from "ext:core/ops";
+
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import {
   isAnyArrayBuffer,
@@ -32,8 +41,6 @@ import type {
 } from "ext:deno_node/internal/crypto/types.ts";
 import { KeyObject } from "ext:deno_node/internal/crypto/keys.ts";
 import type { BufferEncoding } from "ext:deno_node/_global.d.ts";
-
-const { ops } = Deno.core;
 
 const DH_GENERATOR = 2;
 
@@ -92,7 +99,7 @@ export class DiffieHellman {
       }
 
       this.#prime = Buffer.from(
-        ops.op_node_gen_prime(this.#primeLength).buffer,
+        op_node_gen_prime(this.#primeLength).buffer,
       );
     }
 
@@ -173,7 +180,7 @@ export class DiffieHellman {
       buf = Buffer.from(otherPublicKey.buffer);
     }
 
-    const sharedSecret = ops.op_node_dh_compute_secret(
+    const sharedSecret = op_node_dh_compute_secret(
       this.#prime,
       this.#privateKey,
       buf,
@@ -190,7 +197,7 @@ export class DiffieHellman {
   generateKeys(encoding: BinaryToTextEncoding): string;
   generateKeys(_encoding?: BinaryToTextEncoding): Buffer | string {
     const generator = this.#checkGenerator();
-    const [privateKey, publicKey] = ops.op_node_dh_generate2(
+    const [privateKey, publicKey] = op_node_dh_generate2(
       this.#prime,
       this.#primeLength ?? 0,
       generator,
@@ -1215,7 +1222,7 @@ export class ECDH {
   ): Buffer | string {
     const secretBuf = Buffer.alloc(this.#curve.sharedSecretSize);
 
-    ops.op_node_ecdh_compute_secret(
+    op_node_ecdh_compute_secret(
       this.#curve.name,
       this.#privbuf,
       otherPublicKey,
@@ -1231,7 +1238,7 @@ export class ECDH {
     encoding?: BinaryToTextEncoding,
     _format?: ECDHKeyFormat,
   ): Buffer | string {
-    ops.op_node_ecdh_generate_keys(
+    op_node_ecdh_generate_keys(
       this.#curve.name,
       this.#pubbuf,
       this.#privbuf,
@@ -1273,7 +1280,7 @@ export class ECDH {
     this.#privbuf = privateKey;
     this.#pubbuf = Buffer.alloc(this.#curve.publicKeySize);
 
-    ops.op_node_ecdh_compute_public_key(
+    op_node_ecdh_compute_public_key(
       this.#curve.name,
       this.#privbuf,
       this.#pubbuf,

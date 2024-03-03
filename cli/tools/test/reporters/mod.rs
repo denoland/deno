@@ -49,6 +49,7 @@ pub trait TestReporter {
     tests: &IndexMap<usize, TestDescription>,
     test_steps: &IndexMap<usize, TestStepDescription>,
   );
+  fn report_completed(&mut self);
   fn flush_report(
     &mut self,
     elapsed: &Duration,

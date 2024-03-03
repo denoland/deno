@@ -14,6 +14,7 @@ const {
   SymbolFor,
   TypeError,
 } = primordials;
+
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { structuredClone } from "ext:deno_web/02_structured_clone.js";
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";

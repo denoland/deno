@@ -35,6 +35,7 @@ use deno_core::unsync::spawn;
 use deno_core::unsync::spawn_blocking;
 use deno_core::unsync::JoinHandle;
 use deno_core::ModuleSpecifier;
+use deno_graph::source::ResolutionMode;
 use deno_graph::Resolution;
 use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
@@ -42,6 +43,7 @@ use deno_lint::rules::LintRule;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node;
 use deno_runtime::tokio_util::create_basic_runtime;
+use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
 use log::error;
@@ -328,6 +330,8 @@ impl DiagnosticsState {
     for diagnostic in diagnostics {
       if diagnostic.code
         == Some(lsp::NumberOrString::String("no-cache".to_string()))
+        || diagnostic.code
+          == Some(lsp::NumberOrString::String("no-cache-jsr".to_string()))
         || diagnostic.code
           == Some(lsp::NumberOrString::String("no-cache-npm".to_string()))
       {
@@ -793,7 +797,11 @@ fn generate_lint_diagnostics(
   let documents = snapshot
     .documents
     .documents(DocumentsFilter::OpenDiagnosable);
-  let lint_rules = get_configured_rules(lint_options.rules.clone());
+  let lint_rules = get_configured_rules(
+    lint_options.rules.clone(),
+    config.config_file.as_ref(),
+  )
+  .rules;
   let mut diagnostics_vec = Vec::new();
   for document in documents {
     let settings =
@@ -968,6 +976,8 @@ pub enum DenoDiagnostic {
   NoAttributeType,
   /// A remote module was not found in the cache.
   NoCache(ModuleSpecifier),
+  /// A remote jsr package reference was not found in the cache.
+  NoCacheJsr(PackageReq, ModuleSpecifier),
   /// A remote npm package reference was not found in the cache.
   NoCacheNpm(PackageReq, ModuleSpecifier),
   /// A local module was not found on the local file system.
@@ -994,6 +1004,7 @@ impl DenoDiagnostic {
       Self::InvalidAttributeType(_) => "invalid-attribute-type",
       Self::NoAttributeType => "no-attribute-type",
       Self::NoCache(_) => "no-cache",
+      Self::NoCacheJsr(_, _) => "no-cache-jsr",
       Self::NoCacheNpm(_, _) => "no-cache-npm",
       Self::NoLocal(_) => "no-local",
       Self::Redirect { .. } => "redirect",
@@ -1072,7 +1083,7 @@ impl DenoDiagnostic {
           }),
           ..Default::default()
         },
-        "no-cache" | "no-cache-npm" => {
+        "no-cache" | "no-cache-jsr" | "no-cache-npm" => {
           let data = diagnostic
             .data
             .clone()
@@ -1188,6 +1199,7 @@ impl DenoDiagnostic {
       match code.as_str() {
         "import-map-remap"
         | "no-cache"
+        | "no-cache-jsr"
         | "no-cache-npm"
         | "no-attribute-type"
         | "redirect"
@@ -1226,9 +1238,10 @@ impl DenoDiagnostic {
       Self::InvalidAttributeType(assert_type) => (lsp::DiagnosticSeverity::ERROR, format!("The module is a JSON module and expected an attribute type of \"json\". Instead got \"{assert_type}\"."), None),
       Self::NoAttributeType => (lsp::DiagnosticSeverity::ERROR, "The module is a JSON module and not being imported with an import attribute. Consider adding `with { type: \"json\" }` to the import statement.".to_string(), None),
       Self::NoCache(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Uncached or missing remote URL: {specifier}"), Some(json!({ "specifier": specifier }))),
+      Self::NoCacheJsr(pkg_req, specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Uncached or missing jsr package: {}", pkg_req), Some(json!({ "specifier": specifier }))),
       Self::NoCacheNpm(pkg_req, specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Uncached or missing npm package: {}", pkg_req), Some(json!({ "specifier": specifier }))),
       Self::NoLocal(specifier) => {
-        let sloppy_resolution = SloppyImportsResolver::resolve_with_fs(&deno_fs::RealFs, specifier);
+        let sloppy_resolution = SloppyImportsResolver::resolve_with_fs(&deno_fs::RealFs, specifier, ResolutionMode::Execution);
         let data = sloppy_resolution.as_lsp_quick_fix_message().map(|message| {
           json!({
             "specifier": specifier,
@@ -1310,7 +1323,7 @@ fn diagnose_resolution(
         // If the module was redirected, we want to issue an informational
         // diagnostic that indicates this. This then allows us to issue a code
         // action to replace the specifier with the final redirected one.
-        if doc_specifier != specifier {
+        if specifier.scheme() != "jsr" && doc_specifier != specifier {
           diagnostics.push(DenoDiagnostic::Redirect {
             from: specifier.clone(),
             to: doc_specifier.clone(),
@@ -1332,6 +1345,11 @@ fn diagnose_resolution(
             None => diagnostics.push(DenoDiagnostic::NoAttributeType),
           }
         }
+      } else if let Ok(pkg_ref) =
+        JsrPackageReqReference::from_specifier(specifier)
+      {
+        let req = pkg_ref.into_inner().req;
+        diagnostics.push(DenoDiagnostic::NoCacheJsr(req, specifier.clone()));
       } else if let Ok(pkg_ref) =
         NpmPackageReqReference::from_specifier(specifier)
       {
@@ -1540,6 +1558,7 @@ mod tests {
   use crate::lsp::documents::Documents;
   use crate::lsp::documents::LanguageId;
   use crate::lsp::language_server::StateSnapshot;
+  use deno_config::glob::FilePatterns;
   use pretty_assertions::assert_eq;
   use std::path::Path;
   use std::path::PathBuf;
@@ -1640,6 +1659,11 @@ let c: number = "a";
       Arc::new(GlobalHttpCache::new(cache_location, RealDenoCacheEnv));
     let ts_server = TsServer::new(Default::default(), cache);
     ts_server.start(None);
+    let lint_options = LintOptions {
+      rules: Default::default(),
+      files: FilePatterns::new_with_base(temp_dir.path().to_path_buf()),
+      reporter_kind: Default::default(),
+    };
 
     // test enabled
     {
@@ -1647,7 +1671,7 @@ let c: number = "a";
       let diagnostics = generate_lint_diagnostics(
         &snapshot,
         &enabled_config,
-        &Default::default(),
+        &lint_options,
         Default::default(),
       );
       assert_eq!(get_diagnostics_for_single(diagnostics).len(), 6);
@@ -1679,7 +1703,7 @@ let c: number = "a";
       let diagnostics = generate_lint_diagnostics(
         &snapshot,
         &disabled_config,
-        &Default::default(),
+        &lint_options,
         Default::default(),
       );
       assert_eq!(get_diagnostics_for_single(diagnostics).len(), 0);

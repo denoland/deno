@@ -137,6 +137,7 @@ const {
 
 const promises = {
   access: accessPromise,
+  constants,
   copyFile: copyFilePromise,
   cp: cpPromise,
   open: openPromise,

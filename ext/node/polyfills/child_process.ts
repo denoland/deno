@@ -6,6 +6,13 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
+import { internals } from "ext:core/mod.js";
+import {
+  op_bootstrap_unstable_args,
+  op_node_child_ipc_pipe,
+  op_npm_process_state,
+} from "ext:core/ops";
+
 import {
   ChildProcess,
   ChildProcessOptions,
@@ -47,9 +54,6 @@ import {
   convertToValidSignal,
   kEmptyObject,
 } from "ext:deno_node/internal/util.mjs";
-
-const { core } = globalThis.__bootstrap;
-const ops = core.ops;
 
 const MAX_BUFFER = 1024 * 1024;
 
@@ -125,7 +129,7 @@ export function fork(
   }
   args = [
     "run",
-    "--unstable", // TODO(kt3k): Remove when npm: is stable
+    ...op_bootstrap_unstable_args(),
     "--node-modules-dir",
     "-A",
     ...stringifiedV8Flags,
@@ -151,8 +155,7 @@ export function fork(
   options.shell = false;
 
   Object.assign(options.env ??= {}, {
-    DENO_DONT_USE_INTERNAL_NODE_COMPAT_STATE: core.ops
-      .op_npm_process_state(),
+    DENO_DONT_USE_INTERNAL_NODE_COMPAT_STATE: op_npm_process_state(),
   });
 
   return spawn(options.execPath, args, options);
@@ -433,15 +436,7 @@ export function execFile(
     shell: false,
     ...options,
   };
-  if (!Number.isInteger(execOptions.timeout) || execOptions.timeout < 0) {
-    // In Node source, the first argument to error constructor is "timeout" instead of "options.timeout".
-    // timeout is indeed a member of options object.
-    throw new ERR_OUT_OF_RANGE(
-      "timeout",
-      "an unsigned integer",
-      execOptions.timeout,
-    );
-  }
+  validateTimeout(execOptions.timeout);
   if (execOptions.maxBuffer < 0) {
     throw new ERR_OUT_OF_RANGE(
       "options.maxBuffer",
@@ -824,13 +819,12 @@ export function execFileSync(
 }
 
 function setupChildProcessIpcChannel() {
-  const fd = ops.op_node_child_ipc_pipe();
+  const fd = op_node_child_ipc_pipe();
   if (typeof fd != "number" || fd < 0) return;
   setupChannel(process, fd);
 }
 
-globalThis.__bootstrap.internals.__setupChildProcessIpcChannel =
-  setupChildProcessIpcChannel;
+internals.__setupChildProcessIpcChannel = setupChildProcessIpcChannel;
 
 export default {
   fork,
