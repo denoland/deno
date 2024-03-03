@@ -22,7 +22,6 @@ use deno_core::error::AnyError;
 pub use deno_core::normalize_path;
 use deno_core::unsync::spawn_blocking;
 use deno_core::ModuleSpecifier;
-use deno_runtime::deno_crypto::rand;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::PathClean;
 

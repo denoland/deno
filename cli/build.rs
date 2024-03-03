@@ -81,6 +81,7 @@ mod ts {
     let path_dts = state.borrow::<PathBuf>();
     let re_asset = lazy_regex::regex!(r"asset:/{3}lib\.(\S+)\.d\.ts");
     let build_specifier = "asset:///bootstrap.ts";
+    let nop_specifier = "noop.ts";
 
     // we need a basic file to send to tsc to warm it up.
     if load_specifier == build_specifier {
@@ -92,6 +93,13 @@ mod ts {
       })
       // specifiers come across as `asset:///lib.{lib_name}.d.ts` and we need to
       // parse out just the name so we can lookup the asset.
+    } else if load_specifier == nop_specifier {
+      Ok(LoadResponse {
+        data: "".to_string(),
+        version: "1".to_string(),
+        // this corresponds to `ts.ScriptKind.TypeScript`
+        script_kind: 3,
+      })
     } else if let Some(caps) = re_asset.captures(load_specifier) {
       if let Some(lib) = caps.get(1).map(|m| m.as_str()) {
         // if it comes from an op crate, we were supplied with the path to the
@@ -154,7 +162,7 @@ mod ts {
     op_crate_libs.insert("deno.websocket", deno_websocket::get_declaration());
     op_crate_libs.insert("deno.webstorage", deno_webstorage::get_declaration());
     op_crate_libs.insert("deno.canvas", deno_canvas::get_declaration());
-    op_crate_libs.insert("deno.crypto", deno_crypto::get_declaration());
+    op_crate_libs.insert("deno.crypto", deno_crypto_get_declaration());
     op_crate_libs.insert(
       "deno.broadcast_channel",
       deno_broadcast_channel::get_declaration(),
@@ -477,10 +485,15 @@ fn main() {
   }
 }
 
-fn deno_webgpu_get_declaration() -> PathBuf {
+fn dts_dir() -> PathBuf {
   let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-  manifest_dir
-    .join("tsc")
-    .join("dts")
-    .join("lib.deno_webgpu.d.ts")
+  manifest_dir.join("tsc").join("dts")
+}
+
+fn deno_webgpu_get_declaration() -> PathBuf {
+  dts_dir().join("lib.deno_webgpu.d.ts")
+}
+
+fn deno_crypto_get_declaration() -> PathBuf {
+  dts_dir().join("lib.deno_crypto.d.ts")
 }

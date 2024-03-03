@@ -427,9 +427,11 @@ struct SigningCertificateResponse {
 impl FulcioSigner {
   pub fn new() -> Result<Self, AnyError> {
     let rng = SystemRandom::new();
-    let document = EcdsaKeyPair::generate_pkcs8(ALGORITHM, &rng)?;
+    let document = EcdsaKeyPair::generate_pkcs8(ALGORITHM, &rng)
+      .map_err(|_| anyhow::anyhow!("Invalid key"))?;
     let ephemeral_signer =
-      EcdsaKeyPair::from_pkcs8(ALGORITHM, document.as_ref(), &rng)?;
+      EcdsaKeyPair::from_pkcs8(ALGORITHM, document.as_ref(), &rng)
+        .map_err(|_| anyhow::anyhow!("Invalid key"))?;
 
     Ok(Self {
       ephemeral_signer,
@@ -448,8 +450,10 @@ impl FulcioSigner {
     let subject = extract_jwt_subject(&token)?;
 
     // Sign the subject to create a challenge
-    let challenge =
-      self.ephemeral_signer.sign(&self.rng, subject.as_bytes())?;
+    let challenge = self
+      .ephemeral_signer
+      .sign(&self.rng, subject.as_bytes())
+      .map_err(|_| anyhow::anyhow!("Signing failed"))?;
 
     let subject_public_key = self.ephemeral_signer.public_key().as_ref();
     let algorithm = spki::AlgorithmIdentifier {
@@ -467,7 +471,10 @@ impl FulcioSigner {
       .create_signing_certificate(&token, pem, challenge)
       .await?;
 
-    let signature = self.ephemeral_signer.sign(&self.rng, data)?;
+    let signature = self
+      .ephemeral_signer
+      .sign(&self.rng, data)
+      .map_err(|_| anyhow::anyhow!("Signing failed"))?;
 
     Ok((
       signature,
