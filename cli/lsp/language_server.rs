@@ -11,8 +11,10 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::unsync::spawn;
+use deno_core::url;
 use deno_core::ModuleSpecifier;
 use deno_graph::GraphKind;
+use deno_graph::Resolution;
 use deno_lockfile::Lockfile;
 use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_fs;
@@ -20,6 +22,7 @@ use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::RootCertStoreProvider;
+use deno_semver::jsr::JsrPackageReqReference;
 use import_map::ImportMap;
 use indexmap::IndexSet;
 use log::error;
@@ -62,7 +65,6 @@ use super::diagnostics::DiagnosticDataSpecifier;
 use super::diagnostics::DiagnosticServerUpdateMessage;
 use super::diagnostics::DiagnosticsServer;
 use super::diagnostics::DiagnosticsState;
-use super::documents::to_hover_text;
 use super::documents::to_lsp_range;
 use super::documents::AssetOrDocument;
 use super::documents::Document;
@@ -1866,32 +1868,32 @@ impl Inner {
       let value = match (dep.maybe_code.is_none(), dep.maybe_type.is_none(), &dep_maybe_types_dependency) {
         (false, false, None) => format!(
           "**Resolved Dependency**\n\n**Code**: {}\n\n**Types**: {}\n",
-          to_hover_text(&dep.maybe_code),
-          to_hover_text(&dep.maybe_type)
+          self.resolution_to_hover_text(&dep.maybe_code),
+          self.resolution_to_hover_text(&dep.maybe_type),
         ),
         (false, false, Some(types_dep)) if !types_dep.is_none() => format!(
           "**Resolved Dependency**\n\n**Code**: {}\n**Types**: {}\n**Import Types**: {}\n",
-          to_hover_text(&dep.maybe_code),
-          to_hover_text(&dep.maybe_type),
-          to_hover_text(types_dep)
+          self.resolution_to_hover_text(&dep.maybe_code),
+          self.resolution_to_hover_text(&dep.maybe_type),
+          self.resolution_to_hover_text(types_dep),
         ),
         (false, false, Some(_)) => format!(
           "**Resolved Dependency**\n\n**Code**: {}\n\n**Types**: {}\n",
-          to_hover_text(&dep.maybe_code),
-          to_hover_text(&dep.maybe_type)
+          self.resolution_to_hover_text(&dep.maybe_code),
+          self.resolution_to_hover_text(&dep.maybe_type),
         ),
         (false, true, Some(types_dep)) if !types_dep.is_none() => format!(
           "**Resolved Dependency**\n\n**Code**: {}\n\n**Types**: {}\n",
-          to_hover_text(&dep.maybe_code),
-          to_hover_text(types_dep)
+          self.resolution_to_hover_text(&dep.maybe_code),
+          self.resolution_to_hover_text(types_dep),
         ),
         (false, true, _) => format!(
           "**Resolved Dependency**\n\n**Code**: {}\n",
-          to_hover_text(&dep.maybe_code)
+          self.resolution_to_hover_text(&dep.maybe_code),
         ),
         (true, false, _) => format!(
           "**Resolved Dependency**\n\n**Types**: {}\n",
-          to_hover_text(&dep.maybe_type)
+          self.resolution_to_hover_text(&dep.maybe_type),
         ),
         (true, true, _) => unreachable!("{}", json!(params)),
       };
@@ -1920,6 +1922,40 @@ impl Inner {
     };
     self.performance.measure(mark);
     Ok(hover)
+  }
+
+  fn resolution_to_hover_text(&self, resolution: &Resolution) -> String {
+    match resolution {
+      Resolution::Ok(resolved) => {
+        let specifier = &resolved.specifier;
+        match specifier.scheme() {
+          "data" => "_(a data url)_".to_string(),
+          "blob" => "_(a blob url)_".to_string(),
+          _ => {
+            let mut result = format!(
+              "{}&#8203;{}",
+              &specifier[..url::Position::AfterScheme],
+              &specifier[url::Position::AfterScheme..],
+            )
+            .replace('@', "&#8203;@");
+            if let Ok(jsr_req_ref) =
+              JsrPackageReqReference::from_specifier(specifier)
+            {
+              if let Some(url) = self
+                .documents
+                .get_jsr_resolver()
+                .jsr_to_registry_url(&jsr_req_ref)
+              {
+                result = format!("{result} (<{url}>)");
+              }
+            }
+            result
+          }
+        }
+      }
+      Resolution::Err(_) => "_[errored]_".to_string(),
+      Resolution::None => "_[missing]_".to_string(),
+    }
   }
 
   async fn code_action(
