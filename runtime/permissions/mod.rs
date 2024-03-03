@@ -1271,6 +1271,7 @@ impl PermissionsContainer {
     Self(Arc::new(Mutex::new(perms)))
   }
 
+  // todo(dsherret): return a static reference here to avoid allocations
   pub fn allow_all() -> Self {
     Self::new(Permissions::allow_all())
   }

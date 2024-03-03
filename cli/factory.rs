@@ -483,14 +483,12 @@ impl CliFactory {
       .get_or_try_init_async(
         async {
           Ok(Arc::new(CliGraphResolver::new(CliGraphResolverOptions {
-            fs: self.fs().clone(),
-            cjs_resolutions: Some(self.cjs_resolutions().clone()),
             sloppy_imports_resolver: if self.options.unstable_sloppy_imports() {
               Some(SloppyImportsResolver::new(self.fs().clone()))
             } else {
               None
             },
-            node_resolver: Some(self.node_resolver().await?.clone()),
+            node_resolver: Some(self.cli_node_resolver().await?.clone()),
             npm_resolver: if self.options.no_npm() {
               None
             } else {
@@ -714,7 +712,8 @@ impl CliFactory {
       .cli_node_resolver
       .get_or_try_init_async(async {
         Ok(Arc::new(CliNodeResolver::new(
-          self.cjs_resolutions().clone(),
+          Some(self.cjs_resolutions().clone()),
+          self.fs().clone(),
           self.node_resolver().await?.clone(),
           self.npm_resolver().await?.clone(),
         )))

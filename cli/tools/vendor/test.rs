@@ -295,10 +295,8 @@ fn build_resolver(
   original_import_map: Option<ImportMap>,
 ) -> CliGraphResolver {
   CliGraphResolver::new(CliGraphResolverOptions {
-    fs: Arc::new(RealFs),
     node_resolver: None,
     npm_resolver: None,
-    cjs_resolutions: None,
     sloppy_imports_resolver: None,
     package_json_deps_provider: Default::default(),
     maybe_jsx_import_source_config,
