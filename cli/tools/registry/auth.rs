@@ -43,7 +43,12 @@ fn get_gh_oidc_env_vars() -> Option<Result<(String, String), AnyError>> {
 
 pub fn get_auth_method(
   maybe_token: Option<String>,
+  dry_run: bool,
 ) -> Result<AuthMethod, AnyError> {
+  if dry_run {
+    return Ok(AuthMethod::Interactive);
+  }
+
   if let Some(token) = maybe_token {
     return Ok(AuthMethod::Token(token));
   }
