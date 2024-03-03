@@ -463,6 +463,7 @@ impl WebWorker {
       deno_fs::deno_fs::init_ops_and_esm::<PermissionsContainer>(
         options.fs.clone(),
       ),
+      #[cfg(feature = "node")]
       deno_node::deno_node::init_ops_and_esm::<PermissionsContainer>(
         options.npm_resolver,
         options.fs,
