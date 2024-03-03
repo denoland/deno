@@ -118,7 +118,7 @@ fn bundle_circular() {
     .arg(&bundle_path)
     .output()
     .unwrap();
-  // check the output of the the bundle program.
+  // check the output of the bundle program.
   assert_ends_with!(
     std::str::from_utf8(&output.stdout).unwrap().trim(),
     "f2\nf1",
@@ -150,7 +150,7 @@ fn bundle_single_module() {
     .arg(&bundle)
     .output()
     .unwrap();
-  // check the output of the the bundle program.
+  // check the output of the bundle program.
   assert_ends_with!(
     std::str::from_utf8(&output.stdout).unwrap().trim(),
     "Hello world!",
