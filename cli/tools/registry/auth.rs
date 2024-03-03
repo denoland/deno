@@ -46,6 +46,7 @@ pub fn get_auth_method(
   dry_run: bool,
 ) -> Result<AuthMethod, AnyError> {
   if dry_run {
+    // We don't authenticate in dry-run mode.
     return Ok(AuthMethod::Interactive);
   }
 
