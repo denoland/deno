@@ -58,10 +58,11 @@ pub struct BootstrapOptions {
   pub user_agent: String,
   pub inspect: bool,
   pub has_node_modules_dir: bool,
-  pub maybe_binary_npm_command_name: Option<String>,
+  pub argv0: Option<String>,
   pub node_ipc_fd: Option<i64>,
   pub disable_deprecated_api_warning: bool,
   pub verbose_deprecated_api_warning: bool,
+  pub future: bool,
 }
 
 impl Default for BootstrapOptions {
@@ -88,10 +89,11 @@ impl Default for BootstrapOptions {
       inspect: Default::default(),
       args: Default::default(),
       has_node_modules_dir: Default::default(),
-      maybe_binary_npm_command_name: None,
+      argv0: None,
       node_ipc_fd: None,
       disable_deprecated_api_warning: false,
       verbose_deprecated_api_warning: false,
+      future: false,
     }
   }
 }
@@ -119,11 +121,13 @@ struct BootstrapV8<'a>(
   bool,
   // has_node_modules_dir
   bool,
-  // maybe_binary_npm_command_name
+  // argv0
   Option<&'a str>,
   // disable_deprecated_api_warning,
   bool,
   // verbose_deprecated_api_warning
+  bool,
+  // future
   bool,
 );
 
@@ -143,9 +147,10 @@ impl BootstrapOptions {
       self.inspect,
       self.enable_testing_features,
       self.has_node_modules_dir,
-      self.maybe_binary_npm_command_name.as_deref(),
+      self.argv0.as_deref(),
       self.disable_deprecated_api_warning,
       self.verbose_deprecated_api_warning,
+      self.future,
     );
 
     bootstrap.serialize(ser).unwrap()

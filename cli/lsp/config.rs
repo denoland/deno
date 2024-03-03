@@ -1238,12 +1238,12 @@ fn resolve_node_modules_dir(config_file: &ConfigFile) -> Option<PathBuf> {
   // `nodeModulesDir: true` setting in the deno.json file. This is to
   // reduce the chance of modifying someone's node_modules directory
   // without them having asked us to do so.
-  let explicitly_disabled = config_file.node_modules_dir_flag() == Some(false);
+  let explicitly_disabled = config_file.json.node_modules_dir == Some(false);
   if explicitly_disabled {
     return None;
   }
-  let enabled = config_file.node_modules_dir_flag() == Some(true)
-    || config_file.vendor_dir_flag() == Some(true);
+  let enabled = config_file.json.node_modules_dir == Some(true)
+    || config_file.json.vendor == Some(true);
   if !enabled {
     return None;
   }

@@ -11,12 +11,24 @@ use std::io::StderrLock;
 use std::io::StdinLock;
 use std::io::Write as IoWrite;
 
-/// Helper function to strip ansi codes and ASCII control characters.
-fn strip_ansi_codes_and_ascii_control(s: &str) -> std::borrow::Cow<str> {
-  console_static_text::ansi::strip_ansi_codes(s)
-    .chars()
-    .filter(|c| !c.is_ascii_control())
-    .collect()
+/// Helper function to make control characters visible so users can see the underlying filename.
+fn escape_control_characters(s: &str) -> std::borrow::Cow<str> {
+  if !s.contains(|c: char| c.is_ascii_control() || c.is_control()) {
+    return std::borrow::Cow::Borrowed(s);
+  }
+  let mut output = String::with_capacity(s.len() * 2);
+  for c in s.chars() {
+    match c {
+      c if c.is_ascii_control() => output.push_str(
+        &colors::white_bold_on_red(c.escape_debug().to_string()).to_string(),
+      ),
+      c if c.is_control() => output.push_str(
+        &colors::white_bold_on_red(c.escape_debug().to_string()).to_string(),
+      ),
+      c => output.push(c),
+    }
+  }
+  output.into()
 }
 
 pub const PERMISSION_EMOJI: &str = "⚠️";
@@ -249,9 +261,9 @@ impl PermissionPrompter for TtyPrompter {
       return PromptResponse::Deny; // don't grant permission if this fails
     }
 
-    let message = strip_ansi_codes_and_ascii_control(message);
-    let name = strip_ansi_codes_and_ascii_control(name);
-    let api_name = api_name.map(strip_ansi_codes_and_ascii_control);
+    let message = escape_control_characters(message);
+    let name = escape_control_characters(name);
+    let api_name = api_name.map(escape_control_characters);
 
     // print to stderr so that if stdout is piped this is still displayed.
     let opts: String = if is_unary {

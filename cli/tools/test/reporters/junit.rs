@@ -158,6 +158,11 @@ impl TestReporter for JunitTestReporter {
     }
   }
 
+  fn report_completed(&mut self) {
+    // TODO(mmastrac): This reporter does not handle stdout/stderr yet, and when we do, we may need to redirect
+    // pre-and-post-test output somewhere.
+  }
+
   fn flush_report(
     &mut self,
     elapsed: &Duration,

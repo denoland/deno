@@ -7,6 +7,7 @@ use std::fmt::Write;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
+use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
@@ -39,6 +40,7 @@ pub async fn info(flags: Flags, info_flags: InfoFlags) -> Result<(), AnyError> {
   let cli_options = factory.cli_options();
   if let Some(specifier) = info_flags.file {
     let module_graph_builder = factory.module_graph_builder().await?;
+    let module_graph_creator = factory.module_graph_creator().await?;
     let npm_resolver = factory.npm_resolver().await?;
     let maybe_lockfile = factory.maybe_lockfile();
     let maybe_imports_map = factory.maybe_import_map().await?;
@@ -62,12 +64,17 @@ pub async fn info(flags: Flags, info_flags: InfoFlags) -> Result<(), AnyError> {
 
     let mut loader = module_graph_builder.create_graph_loader();
     loader.enable_loading_cache_info(); // for displaying the cache information
-    let graph = module_graph_builder
+    let graph = module_graph_creator
       .create_graph_with_loader(GraphKind::All, vec![specifier], &mut loader)
       .await?;
 
-    if let Some(lockfile) = maybe_lockfile {
-      graph_lock_or_exit(&graph, &mut lockfile.lock());
+    // If there is a lockfile...
+    if let Some(lockfile) = &maybe_lockfile {
+      let mut lockfile = lockfile.lock();
+      // validate the integrity of all the modules
+      graph_lock_or_exit(&graph, &mut lockfile);
+      // update it with anything new
+      lockfile.write().context("Failed writing lockfile.")?;
     }
 
     if info_flags.json {
@@ -284,7 +291,7 @@ fn print_tree_node<TWrite: Write>(
   fn print_children<TWrite: Write>(
     writer: &mut TWrite,
     prefix: &str,
-    children: &Vec<TreeNode>,
+    children: &[TreeNode],
   ) -> fmt::Result {
     const SIBLING_CONNECTOR: char = '├';
     const LAST_SIBLING_CONNECTOR: char = '└';

@@ -6,10 +6,11 @@ use crate::shared::maybe_transpile_source;
 use crate::shared::runtime;
 use deno_cache::SqliteBackedCache;
 use deno_core::error::AnyError;
-use deno_core::snapshot_util::*;
+use deno_core::snapshot::*;
 use deno_core::v8;
 use deno_core::Extension;
 use deno_http::DefaultHttpPropertyExtractor;
+use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -265,21 +266,26 @@ pub fn create_runtime_snapshot(
     }
   }
 
-  let output = create_snapshot(CreateSnapshotOptions {
-    cargo_manifest_dir: env!("CARGO_MANIFEST_DIR"),
-    snapshot_path,
-    startup_snapshot: None,
-    extensions,
-    compression_cb: None,
-    with_runtime_cb: Some(Box::new(|rt| {
-      let isolate = rt.v8_isolate();
-      let scope = &mut v8::HandleScope::new(isolate);
+  let output = create_snapshot(
+    CreateSnapshotOptions {
+      cargo_manifest_dir: env!("CARGO_MANIFEST_DIR"),
+      startup_snapshot: None,
+      extensions,
+      with_runtime_cb: Some(Box::new(|rt| {
+        let isolate = rt.v8_isolate();
+        let scope = &mut v8::HandleScope::new(isolate);
 
-      let ctx = v8::Context::new(scope);
-      assert_eq!(scope.add_context(ctx), deno_node::VM_CONTEXT_INDEX);
-    })),
-    skip_op_registration: false,
-  });
+        let ctx = v8::Context::new(scope);
+        assert_eq!(scope.add_context(ctx), deno_node::VM_CONTEXT_INDEX);
+      })),
+      skip_op_registration: false,
+    },
+    None,
+  )
+  .unwrap();
+  let mut snapshot = std::fs::File::create(snapshot_path).unwrap();
+  snapshot.write_all(&output.output).unwrap();
+
   for path in output.files_loaded_during_snapshot {
     println!("cargo:rerun-if-changed={}", path.display());
   }

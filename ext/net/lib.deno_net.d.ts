@@ -348,10 +348,26 @@ declare namespace Deno {
      * TLS handshake.
      */
     alpnProtocols?: string[];
-    /** PEM formatted client certificate chain. */
+    /**
+     * PEM formatted client certificate chain.
+     *
+     * @deprecated This will be removed in Deno 2.0. See the
+     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+     * for migration instructions.
+     */
     certChain?: string;
-    /** PEM formatted (RSA or PKCS8) private key of client certificate.  */
+    /**
+     * PEM formatted (RSA or PKCS8) private key of client certificate.
+     *
+     * @deprecated This will be removed in Deno 2.0. See the
+     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+     * for migration instructions.
+     */
     privateKey?: string;
+    /** Server private key in PEM format. */
+    key?: string;
+    /** Cert chain in PEM format. */
+    cert?: string;
   }
 
   /** Establishes a secure connection over TLS (transport layer security) using

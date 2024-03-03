@@ -32,9 +32,15 @@ import {
   updateManifest,
   wptreport,
 } from "./wpt/utils.ts";
-import { pooledMap } from "../test_util/std/async/pool.ts";
-import { blue, bold, green, red, yellow } from "../test_util/std/fmt/colors.ts";
-import { writeAll, writeAllSync } from "../test_util/std/streams/write_all.ts";
+import { pooledMap } from "../tests/util/std/async/pool.ts";
+import {
+  blue,
+  bold,
+  green,
+  red,
+  yellow,
+} from "../tests/util/std/fmt/colors.ts";
+import { writeAll, writeAllSync } from "../tests/util/std/streams/write_all.ts";
 import { saveExpectation } from "./wpt/utils.ts";
 
 class TestFilter {
@@ -143,7 +149,7 @@ async function setup() {
       if (Deno.build.os == "windows") {
         console.log("To do this run the following command in PowerShell:");
         console.log("");
-        console.log("    cd test_util/wpt/");
+        console.log("    cd tests/wpt/suite/");
         console.log(
           "    python.exe wpt make-hosts-file | Out-File $env:SystemRoot\\System32\\drivers\\etc\\hosts -Encoding ascii -Append",
         );
@@ -151,7 +157,7 @@ async function setup() {
       } else {
         console.log("To do this run the following command in your shell:");
         console.log("");
-        console.log("    cd test_util/wpt/");
+        console.log("    cd tests/wpt/suite/");
         console.log(
           "    python3 ./wpt make-hosts-file | sudo tee -a /etc/hosts",
         );
