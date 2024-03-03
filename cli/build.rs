@@ -81,7 +81,6 @@ mod ts {
     let path_dts = state.borrow::<PathBuf>();
     let re_asset = lazy_regex::regex!(r"asset:/{3}lib\.(\S+)\.d\.ts");
     let build_specifier = "asset:///bootstrap.ts";
-    let nop_specifier = "noop.ts";
 
     // we need a basic file to send to tsc to warm it up.
     if load_specifier == build_specifier {
@@ -93,13 +92,6 @@ mod ts {
       })
       // specifiers come across as `asset:///lib.{lib_name}.d.ts` and we need to
       // parse out just the name so we can lookup the asset.
-    } else if load_specifier == nop_specifier {
-      Ok(LoadResponse {
-        data: "".to_string(),
-        version: "1".to_string(),
-        // this corresponds to `ts.ScriptKind.TypeScript`
-        script_kind: 3,
-      })
     } else if let Some(caps) = re_asset.captures(load_specifier) {
       if let Some(lib) = caps.get(1).map(|m| m.as_str()) {
         // if it comes from an op crate, we were supplied with the path to the
