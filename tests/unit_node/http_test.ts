@@ -3,6 +3,7 @@
 import EventEmitter from "node:events";
 import http, { type RequestOptions } from "node:http";
 import https from "node:https";
+import net from "node:net";
 import { assert, assertEquals, fail } from "@std/assert/mod.ts";
 import { assertSpyCalls, spy } from "@std/testing/mock.ts";
 
@@ -937,4 +938,68 @@ Deno.test("[node/http] ServerResponse getHeader", async () => {
   });
 
   await promise;
+});
+
+Deno.test("[node/http] IncomingMessage override", () => {
+  const req = new http.IncomingMessage(new net.Socket());
+  // https://github.com/dougmoscrop/serverless-http/blob/3aaa6d0fe241109a8752efb011c242d249f32368/lib/request.js#L20-L30
+  Object.assign(req, {
+    ip: "1.1.1.1",
+    complete: true,
+    httpVersion: "1.1",
+    httpVersionMajor: "1",
+    httpVersionMinor: "1",
+    method: "GET",
+    headers: {},
+    body: "",
+    url: "https://1.1.1.1",
+  });
+});
+
+Deno.test("[node/http] ServerResponse assignSocket and detachSocket", () => {
+  const req = new http.IncomingMessage(new net.Socket());
+  const res = new http.ServerResponse(req);
+  let writtenData: string | Uint8Array | undefined = undefined;
+  let writtenEncoding: string | Uint8Array | undefined = undefined;
+  const socket = {
+    _writableState: {},
+    writable: true,
+    on: Function.prototype,
+    removeListener: Function.prototype,
+    destroy: Function.prototype,
+    cork: Function.prototype,
+    uncork: Function.prototype,
+    write: (
+      data: string | Uint8Array,
+      encoding: string,
+      _cb?: (err?: Error) => void,
+    ) => {
+      writtenData = data;
+      writtenEncoding = encoding;
+    },
+  };
+  // @ts-ignore it's a socket mock
+  res.assignSocket(socket);
+
+  res.write("Hello World!", "utf8");
+  assertEquals(writtenData, Buffer.from("Hello World!"));
+  assertEquals(writtenEncoding, "buffer");
+
+  writtenData = undefined;
+  writtenEncoding = undefined;
+
+  // @ts-ignore it's a socket mock
+  res.detachSocket(socket);
+  res.write("Hello World!", "utf8");
+  assertEquals(writtenData, undefined);
+  assertEquals(writtenEncoding, undefined);
+});
+
+Deno.test("[node/http] ServerResponse getHeaders", () => {
+  const req = new http.IncomingMessage(new net.Socket());
+  const res = new http.ServerResponse(req);
+  res.setHeader("foo", "bar");
+  res.setHeader("bar", "baz");
+  assertEquals(res.getHeaderNames(), ["bar", "foo"]);
+  assertEquals(res.getHeaders(), { "bar": "baz", "foo": "bar" });
 });

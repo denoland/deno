@@ -10,6 +10,7 @@ use deno_core::snapshot::*;
 use deno_core::v8;
 use deno_core::Extension;
 use deno_http::DefaultHttpPropertyExtractor;
+use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -270,9 +271,6 @@ pub fn create_runtime_snapshot(
       cargo_manifest_dir: env!("CARGO_MANIFEST_DIR"),
       startup_snapshot: None,
       extensions,
-      serializer: Box::new(SnapshotFileSerializer::new(
-        std::fs::File::create(snapshot_path).unwrap(),
-      )),
       with_runtime_cb: Some(Box::new(|rt| {
         let isolate = rt.v8_isolate();
         let scope = &mut v8::HandleScope::new(isolate);
@@ -285,6 +283,9 @@ pub fn create_runtime_snapshot(
     None,
   )
   .unwrap();
+  let mut snapshot = std::fs::File::create(snapshot_path).unwrap();
+  snapshot.write_all(&output.output).unwrap();
+
   for path in output.files_loaded_during_snapshot {
     println!("cargo:rerun-if-changed={}", path.display());
   }
