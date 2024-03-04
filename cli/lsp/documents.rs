@@ -35,7 +35,6 @@ use deno_core::error::AnyError;
 use deno_core::futures::future;
 use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
-use deno_core::url;
 use deno_core::ModuleSpecifier;
 use deno_graph::source::ResolutionMode;
 use deno_graph::GraphImport;
@@ -48,6 +47,7 @@ use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::permissions::PermissionsContainer;
+use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
 use indexmap::IndexMap;
@@ -643,26 +643,6 @@ impl Document {
   }
 }
 
-pub fn to_hover_text(result: &Resolution) -> String {
-  match result {
-    Resolution::Ok(resolved) => {
-      let specifier = &resolved.specifier;
-      match specifier.scheme() {
-        "data" => "_(a data url)_".to_string(),
-        "blob" => "_(a blob url)_".to_string(),
-        _ => format!(
-          "{}&#8203;{}",
-          &specifier[..url::Position::AfterScheme],
-          &specifier[url::Position::AfterScheme..],
-        )
-        .replace('@', "&#8203;@"),
-      }
-    }
-    Resolution::Err(_) => "_[errored]_".to_string(),
-    Resolution::None => "_[missing]_".to_string(),
-  }
-}
-
 pub fn to_lsp_range(range: &deno_graph::Range) -> lsp::Range {
   lsp::Range {
     start: lsp::Position {
@@ -1086,9 +1066,12 @@ impl Documents {
           .into_owned(),
       )
     } else {
-      let specifier = match self.jsr_resolver.jsr_to_registry_url(specifier) {
-        Some(url) => Cow::Owned(url),
-        None => Cow::Borrowed(specifier),
+      let specifier = if let Ok(jsr_req_ref) =
+        JsrPackageReqReference::from_specifier(specifier)
+      {
+        Cow::Owned(self.jsr_resolver.jsr_to_registry_url(&jsr_req_ref)?)
+      } else {
+        Cow::Borrowed(specifier)
       };
       self.redirect_resolver.resolve(&specifier)
     }
