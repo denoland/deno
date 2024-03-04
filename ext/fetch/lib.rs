@@ -73,7 +73,6 @@ pub use fs_fetch_handler::FsFetchHandler;
 
 mod fs_fetch_handler;
 
-
 #[derive(Clone)]
 pub struct DnsResolver(Arc<dyn Resolve>);
 
@@ -995,8 +994,8 @@ pub fn create_http_client(
   }
 
   if let Some(dns_resolver) = options.dns_resolver {
-    builder = builder
-      .dns_resolver(Arc::new(ResolverWrapper(dns_resolver.0.clone())));
+    builder =
+      builder.dns_resolver(Arc::new(ResolverWrapper(dns_resolver.0.clone())));
   }
 
   builder.build().map_err(|e| e.into())
