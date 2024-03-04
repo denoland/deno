@@ -1345,9 +1345,7 @@ fn diagnose_resolution(
           diagnostics.push(DenoDiagnostic::DenoWarn(message));
         }
       }
-      eprintln!("Searching for: {}", specifier);
       if let Some(doc) = snapshot.documents.get(specifier) {
-        eprintln!("Found: {}", doc.specifier());
         if let Some(diagnostic) = check_redirect_diagnostic(specifier, &doc) {
           diagnostics.push(diagnostic);
         }
