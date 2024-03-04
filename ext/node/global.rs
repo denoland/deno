@@ -243,13 +243,16 @@ fn is_managed_key(
   scope: &mut v8::HandleScope,
   key: v8::Local<v8::Name>,
 ) -> bool {
+  eprintln!("is_managed_key");
   let Ok(str): Result<v8::Local<v8::String>, _> = key.try_into() else {
+    eprintln!("is_managed_key return false1");
     return false;
   };
   let len = str.length();
 
   #[allow(clippy::manual_range_contains)]
   if len < SHORTEST_MANAGED_GLOBAL || len > LONGEST_MANAGED_GLOBAL {
+    eprintln!("is_managed_key return false2");
     return false;
   }
   let buf = &mut [0u16; LONGEST_MANAGED_GLOBAL];
@@ -260,7 +263,9 @@ fn is_managed_key(
     v8::WriteOptions::NO_NULL_TERMINATION,
   );
   assert_eq!(written, len);
-  MANAGED_GLOBALS.binary_search(&&buf[..len]).is_ok()
+  let r = MANAGED_GLOBALS.binary_search(&&buf[..len]).is_ok();
+  eprintln!("is_managed_key return {}", r);
+  r
 }
 
 fn current_mode(scope: &mut v8::HandleScope) -> Mode {
