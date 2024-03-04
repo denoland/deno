@@ -115,10 +115,10 @@ impl ModuleLoader for EmbeddedModuleLoader {
       NodeResolutionMode::Execution,
       permissions,
     ) {
-      match result? {
-        Some(res) => return Ok(res.into_url()),
-        None => return Err(generic_error("not found")),
-      }
+      return match result? {
+        Some(res) => Ok(res.into_url()),
+        None => Err(generic_error("not found")),
+      };
     }
 
     let maybe_mapped = self

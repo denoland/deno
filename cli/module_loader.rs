@@ -517,10 +517,10 @@ impl CliModuleLoader {
       NodeResolutionMode::Execution,
       permissions,
     ) {
-      match result? {
-        Some(res) => return Ok(res.into_url()),
-        None => return Err(generic_error("not found")),
-      }
+      return match result? {
+        Some(res) => Ok(res.into_url()),
+        None => Err(generic_error("not found")),
+      };
     }
 
     let graph = self.shared.graph_container.graph();
