@@ -664,10 +664,7 @@ impl WebWorker {
     &mut self,
     module_specifier: &ModuleSpecifier,
   ) -> Result<ModuleId, AnyError> {
-    self
-      .js_runtime
-      .load_main_module(module_specifier, None)
-      .await
+    self.js_runtime.load_main_es_module(module_specifier).await
   }
 
   /// Loads and instantiates specified JavaScript module as "side" module.
@@ -675,10 +672,7 @@ impl WebWorker {
     &mut self,
     module_specifier: &ModuleSpecifier,
   ) -> Result<ModuleId, AnyError> {
-    self
-      .js_runtime
-      .load_side_module(module_specifier, None)
-      .await
+    self.js_runtime.load_side_es_module(module_specifier).await
   }
 
   /// Loads, instantiates and executes specified JavaScript module.
