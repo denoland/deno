@@ -1305,6 +1305,44 @@ fn diagnose_resolution(
   is_dynamic: bool,
   maybe_assert_type: Option<&str>,
 ) -> Vec<DenoDiagnostic> {
+  fn check_redirect_diagnostic(
+    snapshot: &language_server::StateSnapshot,
+    specifier: &ModuleSpecifier,
+    doc: &Document,
+  ) -> Option<DenoDiagnostic> {
+    let doc_specifier = doc.specifier();
+    // If the module was redirected, we want to issue an informational
+    // diagnostic that indicates this. This then allows us to issue a code
+    // action to replace the specifier with the final redirected one.
+    if specifier.scheme() == "jsr" || doc_specifier == specifier {
+      return None;
+    }
+    // don't bother warning about sloppy import redirects from .js to .d.ts
+    // because explaining how to fix this via a diagnostic involves using
+    // @deno-types and that's a bit complicated to explain
+    // todo: waiting on https://github.com/denoland/deno/pull/22682 first
+    // let is_sloppy_import_dts_redirect = doc_specifier.scheme() == "file"
+    //   && doc.media_type().is_declaration()
+    //   && !MediaType::from_specifier(specifier).is_declaration();
+    // if is_sloppy_import_dts_redirect {
+    //   return None;
+    // }
+    // don't error about redirects inside npm packages
+    // let is_in_node_modules_folder = snapshot
+    //   .npm
+    //   .as_ref()
+    //   .map(|npm| npm.node_resolver.in_npm_package(doc_specifier))
+    //   .unwrap_or(false);
+    // if is_in_node_modules_folder {
+    //   return None;
+    // }
+
+    Some(DenoDiagnostic::Redirect {
+      from: specifier.clone(),
+      to: doc_specifier.clone(),
+    })
+  }
+
   let mut diagnostics = vec![];
   match resolution {
     Resolution::Ok(resolved) => {
@@ -1319,25 +1357,10 @@ fn diagnose_resolution(
         }
       }
       if let Some(doc) = snapshot.documents.get(specifier) {
-        let doc_specifier = doc.specifier();
-        // If the module was redirected, we want to issue an informational
-        // diagnostic that indicates this. This then allows us to issue a code
-        // action to replace the specifier with the final redirected one.
-        if specifier.scheme() != "jsr"
-          && doc_specifier != specifier
-          && !doc.media_type().is_declaration()
+        if let Some(diagnostic) =
+          check_redirect_diagnostic(snapshot, specifier, &doc)
         {
-          let is_in_node_modules_folder = snapshot
-            .npm
-            .as_ref()
-            .map(|npm| npm.node_resolver.in_npm_package(doc_specifier))
-            .unwrap_or(false);
-          if !is_in_node_modules_folder {
-            diagnostics.push(DenoDiagnostic::Redirect {
-              from: specifier.clone(),
-              to: doc_specifier.clone(),
-            });
-          }
+          diagnostics.push(diagnostic);
         }
         if doc.media_type() == MediaType::Json {
           match maybe_assert_type {

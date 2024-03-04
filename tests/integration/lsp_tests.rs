@@ -8319,6 +8319,40 @@ fn lsp_diagnostics_warn_redirect() {
 }
 
 #[test]
+fn lsp_diagnostics_not_warn_redirect_in_npm_package() {
+  let context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  context
+    .temp_dir()
+    .write("deno.json", r#"{ "unstable": ["byonm"] }"#);
+  context.temp_dir().write(
+    "package.json",
+    r#"{ "dependencies": { "@denotest/file-dts-dmts-dcts": "*" } }"#,
+  );
+  context.run_npm("install");
+
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open(
+    json!({
+      "textDocument": {
+        "uri": context.temp_dir().path().join("file.ts").uri_file(),
+        "languageId": "typescript",
+        "version": 1,
+        "text": concat!(
+          "import * as a from \"./node_modules/@denotest/file-dts-dmts-dcts/main.mjs\";\n",
+          "import * as b from \"@denotest/file-dts-dmts-dcts/mjs\";\n",
+          "console.log(a)\n",
+          "console.log(b)\n",
+        )
+      },
+    }),
+  );
+  let diagnostics = diagnostics.all();
+  assert!(diagnostics.is_empty(), "{:?}", diagnostics);
+  client.shutdown();
+}
+
+#[test]
 fn lsp_redirect_quick_fix() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -11236,12 +11270,38 @@ fn lsp_sloppy_imports_warn() {
       "text": "export class B {}",
     },
   }));
+  client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.join("c.js").uri_file(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "export class C {}",
+    },
+  }));
+  client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.join("c.d.ts").uri_file(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "export class C {}",
+    },
+  }));
   let diagnostics = client.did_open(json!({
     "textDocument": {
       "uri": temp_dir.join("file.ts").uri_file(),
       "languageId": "typescript",
       "version": 1,
-      "text": "import * as a from './a';\nimport * as b from './b.js';\nconsole.log(a)\nconsole.log(b);\n",
+      "text": concat!(
+        "import * as a from './a';\n",
+        "import * as b from './b.js';\n",
+        // this one's types resolve to a .d.ts file and we don't
+        // bother warning about it because it's a bit complicated
+        // to explain to use @deno-types in a diagnostic
+        "import * as c from './c.js';\n",
+        "console.log(a)\n",
+        "console.log(b);\n",
+        "console.log(c);\n",
+      ),
     },
   }));
   assert_eq!(
