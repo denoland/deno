@@ -773,7 +773,7 @@ Deno.test(async function execFileWithUndefinedTimeout() {
 });
 
 Deno.test(async function spawnCommandNotFoundErrno() {
-  const { promise, resolve, reject } = Promise.withResolvers<void>();
+  const { promise, resolve } = Promise.withResolvers<void>();
   const cp = CP.spawn("no-such-command");
   cp.on("error", (err) => {
     // @ts-ignore: errno missing from typings
