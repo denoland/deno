@@ -771,3 +771,14 @@ Deno.test(async function execFileWithUndefinedTimeout() {
   );
   await promise;
 });
+
+Deno.test(async function spawnCommandNotFoundErrno() {
+  const { promise, resolve, reject } = Promise.withResolvers<void>();
+  const cp = CP.spawn("no-such-command");
+  cp.on("error", (err) => {
+    // @ts-ignore: errno missing from typings
+    assertEquals(err.errno, -2);
+    resolve();
+  });
+  await promise;
+});
