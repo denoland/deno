@@ -166,7 +166,7 @@ pub fn graph_valid(
   }
 }
 
-/// Checks the lockfile against the graph and and exits on errors.
+/// Checks the lockfile against the graph and exits on errors.
 pub fn graph_lock_or_exit(graph: &ModuleGraph, lockfile: &mut Lockfile) {
   for module in graph.modules() {
     let source = match module {
