@@ -275,6 +275,9 @@ export class ChildProcess extends EventEmitter {
         });
       })();
     } catch (err) {
+      if (err instanceof Deno.errors.NotFound) {
+        err = _createSpawnSyncError("ENOENT", command, args);
+      }
       this.#_handleError(err);
     }
   }
