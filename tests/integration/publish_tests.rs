@@ -63,6 +63,15 @@ itest!(invalid_import {
   http_server: true,
 });
 
+itest!(invalid_import_esm_sh_suggestion {
+  args: "publish --token 'sadfasdf' --dry-run",
+  output: "publish/invalid_import_esm_sh_suggestion.out",
+  cwd: Some("publish/invalid_import_esm_sh_suggestion"),
+  envs: env_vars_for_npm_tests(),
+  exit_code: 1,
+  http_server: true,
+});
+
 #[test]
 fn publish_non_exported_files_using_import_map() {
   let context = publish_context_builder().build();
