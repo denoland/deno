@@ -276,6 +276,7 @@ mod ts {
           build_libs,
           path_dts,
         )],
+        extension_transpiler: None,
         with_runtime_cb: None,
         skip_op_registration: false,
       },

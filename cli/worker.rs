@@ -655,7 +655,7 @@ impl CliMainWorkerFactory {
         ($($file:literal),*) => {
           $(worker.js_runtime.lazy_load_es_module_with_code(
             concat!("ext:cli/", $file),
-            deno_core::ModuleCodeString::from(include_str!(concat!("js/", $file)).to_string()),
+            deno_core::ascii_str_include!(concat!("js/", $file)),
           )?;)*
         }
       }
