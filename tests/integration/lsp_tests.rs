@@ -11318,12 +11318,38 @@ fn lsp_sloppy_imports_warn() {
       "text": "export class B {}",
     },
   }));
+  client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.join("c.js").uri_file(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "export class C {}",
+    },
+  }));
+  client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.join("c.d.ts").uri_file(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "export class C {}",
+    },
+  }));
   let diagnostics = client.did_open(json!({
     "textDocument": {
       "uri": temp_dir.join("file.ts").uri_file(),
       "languageId": "typescript",
       "version": 1,
-      "text": "import * as a from './a';\nimport * as b from './b.js';\nconsole.log(a)\nconsole.log(b);\n",
+      "text": concat!(
+        "import * as a from './a';\n",
+        "import * as b from './b.js';\n",
+        // this one's types resolve to a .d.ts file and we don't
+        // bother warning about it because it's a bit complicated
+        // to explain to use @deno-types in a diagnostic
+        "import * as c from './c.js';\n",
+        "console.log(a)\n",
+        "console.log(b);\n",
+        "console.log(c);\n",
+      ),
     },
   }));
   assert_eq!(
