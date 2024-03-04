@@ -776,8 +776,9 @@ Deno.test(async function spawnCommandNotFoundErrno() {
   const { promise, resolve } = Promise.withResolvers<void>();
   const cp = CP.spawn("no-such-command");
   cp.on("error", (err) => {
+    const errno = Deno.build.os === "windows" ? -4058 : -2;
     // @ts-ignore: errno missing from typings
-    assertEquals(err.errno, -2);
+    assertEquals(err.errno, errno);
     resolve();
   });
   await promise;
