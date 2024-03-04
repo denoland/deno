@@ -8660,6 +8660,39 @@ fn lsp_ts_diagnostics_refresh_on_lsp_version_reset() {
 }
 
 #[test]
+fn lsp_diagnostics_none_for_resolving_types() {
+  let context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  context
+    .temp_dir()
+    .write("deno.json", r#"{ "unstable": ["byonm"] }"#);
+  context.temp_dir().write(
+    "package.json",
+    r#"{ "dependencies": { "@denotest/monaco-editor": "*" } }"#,
+  );
+  context.run_npm("install");
+
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  // The types for this package will succeed, but the code will fail
+  // because the package is only made for bundling and not meant to
+  // run in Deno or Node.
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": context.temp_dir().path().join("file.ts").uri_file(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": concat!(
+        "import * as a from \"@denotest/monaco-editor\";\n",
+        "console.log(new a.Editor())\n",
+      )
+    },
+  }));
+  let diagnostics = diagnostics.all();
+  assert!(diagnostics.is_empty(), "{:?}", diagnostics);
+  client.shutdown();
+}
+
+#[test]
 fn lsp_jupyter_diagnostics() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
