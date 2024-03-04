@@ -201,14 +201,12 @@ impl CliNodeResolver {
     specifier: &ModuleSpecifier,
   ) -> Result<(), AnyError> {
     if let Some(cjs_resolutions) = &self.cjs_resolutions {
-      if specifier.scheme() == "file" {
-        if self.in_npm_package(&specifier) {
-          let resolution = self
-            .node_resolver
-            .url_to_node_resolution(specifier.clone())?;
-          if let NodeResolution::CommonJs(specifier) = resolution {
-            cjs_resolutions.insert(specifier);
-          }
+      if specifier.scheme() == "file" && self.in_npm_package(specifier) {
+        let resolution = self
+          .node_resolver
+          .url_to_node_resolution(specifier.clone())?;
+        if let NodeResolution::CommonJs(specifier) = resolution {
+          cjs_resolutions.insert(specifier);
         }
       }
     }
