@@ -238,8 +238,8 @@ Deno.test(async function callbackTakesLongerThanInterval() {
       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 300);
       timeEndOfFirstCallback = Date.now();
     } else {
-      // Second callback
-      assert(Date.now() - 100 >= timeEndOfFirstCallback);
+      // Second callback should be nearly instantaneous
+      assert(Date.now() - timeEndOfFirstCallback < 10);
       clearInterval(interval);
       resolve();
     }

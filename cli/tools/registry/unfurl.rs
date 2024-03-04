@@ -157,7 +157,12 @@ impl<'a> SpecifierUnfurler<'a> {
       } else {
         resolved
       };
-    relative_url(&resolved, referrer, specifier)
+    let relative_resolved = relative_url(&resolved, referrer);
+    if relative_resolved == specifier {
+      None // nothing to unfurl
+    } else {
+      Some(relative_resolved)
+    }
   }
 
   /// Attempts to unfurl the dynamic dependency returning `true` on success
@@ -172,20 +177,20 @@ impl<'a> SpecifierUnfurler<'a> {
     match &dep.argument {
       deno_graph::DynamicArgument::String(specifier) => {
         let range = to_range(parsed_source, &dep.argument_range);
-        let maybe_relative_index =
-          parsed_source.text_info().text_str()[range.start..].find(specifier);
+        let maybe_relative_index = parsed_source.text_info().text_str()
+          [range.start..range.end]
+          .find(specifier);
         let Some(relative_index) = maybe_relative_index else {
-          return false;
+          return true; // always say it's analyzable for a string
         };
         let unfurled = self.unfurl_specifier(module_url, specifier);
-        let Some(unfurled) = unfurled else {
-          return false;
-        };
-        let start = range.start + relative_index;
-        text_changes.push(deno_ast::TextChange {
-          range: start..start + specifier.len(),
-          new_text: unfurled,
-        });
+        if let Some(unfurled) = unfurled {
+          let start = range.start + relative_index;
+          text_changes.push(deno_ast::TextChange {
+            range: start..start + specifier.len(),
+            new_text: unfurled,
+          });
+        }
         true
       }
       deno_graph::DynamicArgument::Template(parts) => match parts.first() {
@@ -201,7 +206,7 @@ impl<'a> SpecifierUnfurler<'a> {
           }
           let unfurled = self.unfurl_specifier(module_url, specifier);
           let Some(unfurled) = unfurled else {
-            return false;
+            return true; // nothing to unfurl
           };
           let range = to_range(parsed_source, &dep.argument_range);
           let maybe_relative_index =
@@ -322,17 +327,12 @@ impl<'a> SpecifierUnfurler<'a> {
 fn relative_url(
   resolved: &ModuleSpecifier,
   referrer: &ModuleSpecifier,
-  specifier: &str,
-) -> Option<String> {
-  let new_specifier = if resolved.scheme() == "file" {
+) -> String {
+  if resolved.scheme() == "file" {
     format!("./{}", referrer.make_relative(resolved).unwrap())
   } else {
     resolved.to_string()
-  };
-  if new_specifier == specifier {
-    return None;
   }
-  Some(new_specifier)
 }
 
 fn to_range(
@@ -440,9 +440,11 @@ const test1 = await import("lib/foo.ts");
 const test2 = await import(`lib/foo.ts`);
 const test3 = await import(`lib/${expr}`);
 const test4 = await import(`./lib/${expr}`);
+const test5 = await import("./lib/something.ts");
+const test6 = await import(`./lib/something.ts`);
 // will warn
-const test5 = await import(`lib${expr}`);
-const test6 = await import(`${expr}`);
+const warn1 = await import(`lib${expr}`);
+const warn2 = await import(`${expr}`);
 "#;
       let specifier =
         ModuleSpecifier::from_file_path(cwd.join("mod.ts")).unwrap();
@@ -486,9 +488,11 @@ const test1 = await import("./lib/foo.ts");
 const test2 = await import(`./lib/foo.ts`);
 const test3 = await import(`./lib/${expr}`);
 const test4 = await import(`./lib/${expr}`);
+const test5 = await import("./lib/something.ts");
+const test6 = await import(`./lib/something.ts`);
 // will warn
-const test5 = await import(`lib${expr}`);
-const test6 = await import(`${expr}`);
+const warn1 = await import(`lib${expr}`);
+const warn2 = await import(`${expr}`);
 "#;
       assert_eq!(unfurled_source, expected_source);
     }

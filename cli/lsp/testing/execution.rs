@@ -296,7 +296,7 @@ impl TestRun {
             test::TestSpecifierOptions {
               filter,
               shuffle: None,
-              trace_ops: false,
+              trace_leaks: false,
             },
           ))
         }
@@ -397,6 +397,9 @@ impl TestRun {
                 );
               }
             }
+            test::TestEvent::Completed => {
+              reporter.report_completed();
+            }
             test::TestEvent::ForceEndReport => {}
             test::TestEvent::Sigint => {}
           }
@@ -441,7 +444,7 @@ impl TestRun {
         .iter()
         .map(|s| s.as_str()),
     );
-    args.push("--trace-ops");
+    args.push("--trace-leaks");
     if self.workspace_settings.unstable && !args.contains(&"--unstable") {
       args.push("--unstable");
     }
@@ -740,6 +743,10 @@ impl LspTestReporter {
         })
       }
     }
+  }
+
+  fn report_completed(&mut self) {
+    // there is nothing to do on report_completed
   }
 
   fn report_summary(

@@ -2,8 +2,6 @@
 
 use std::collections::HashMap;
 use std::io::IsTerminal;
-use std::path::Path;
-use std::process::Stdio;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -26,14 +24,12 @@ use lsp_types::Url;
 use serde::Deserialize;
 use serde::Serialize;
 use sha2::Digest;
-use tokio::process::Command;
 
 use crate::args::jsr_api_url;
 use crate::args::jsr_url;
 use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::PublishFlags;
-use crate::args::TypeCheckMode;
 use crate::cache::LazyGraphSourceParser;
 use crate::cache::ParsedSourceCache;
 use crate::factory::CliFactory;
@@ -53,6 +49,7 @@ mod auth;
 mod diagnostics;
 mod graph;
 mod paths;
+mod pm;
 mod provenance;
 mod publish_order;
 mod tar;
@@ -60,6 +57,7 @@ mod unfurl;
 
 use auth::get_auth_method;
 use auth::AuthMethod;
+pub use pm::add;
 use publish_order::PublishOrderGraph;
 pub use unfurl::deno_json_deps;
 use unfurl::SpecifierUnfurler;
@@ -600,7 +598,7 @@ async fn publish_package(
       if task.status == "success" {
         println!(
           "{} @{}/{}@{}",
-          colors::green("Skipping, already published"),
+          colors::yellow("Warning: Skipping, already published"),
           package.scope,
           package.package,
           package.version
@@ -668,8 +666,12 @@ async fn publish_package(
     package.version
   );
 
-  if provenance {
-    // Get the version manifest from JSR
+  let enable_provenance = std::env::var("DISABLE_JSR_PROVENANCE").is_err()
+    && (auth::is_gha() && auth::gha_oidc_token().is_some() && provenance);
+
+  // Enable provenance by default on Github actions with OIDC token
+  if enable_provenance {
+    // Get the version manifest from the registry
     let meta_url = jsr_url().join(&format!(
       "@{}/{}/{}_meta.json",
       package.scope, package.package, package.version
@@ -857,8 +859,7 @@ async fn build_and_check_graph_for_publish(
             lib: cli_options.ts_type_lib_window(),
             log_ignored_options: false,
             reload: cli_options.reload_flag(),
-            // force type checking this
-            type_check_mode: TypeCheckMode::Local,
+            type_check_mode: cli_options.type_check_mode(),
           },
         )
         .await?;
@@ -940,18 +941,12 @@ pub async fn publish(
     return Ok(());
   }
 
-  if !publish_flags.allow_dirty
-    && check_if_git_repo_dirty(cli_options.initial_cwd()).await
-  {
-    bail!("Aborting due to uncomitted changes",);
-  }
-
   perform_publish(
     cli_factory.http_client(),
     prepared_data.publish_order_graph,
     prepared_data.package_by_name,
     auth_method,
-    publish_flags.provenance,
+    !publish_flags.no_provenance,
   )
   .await?;
 
@@ -1023,34 +1018,6 @@ fn verify_version_manifest(
   }
 
   Ok(())
-}
-
-async fn check_if_git_repo_dirty(cwd: &Path) -> bool {
-  let bin_name = if cfg!(windows) { "git.exe" } else { "git" };
-
-  // Check if git exists
-  let git_exists = Command::new(bin_name)
-    .arg("--version")
-    .stderr(Stdio::null())
-    .stdout(Stdio::null())
-    .status()
-    .await
-    .map_or(false, |status| status.success());
-
-  if !git_exists {
-    return false; // Git is not installed
-  }
-
-  // Check if there are uncommitted changes
-  let output = Command::new(bin_name)
-    .current_dir(cwd)
-    .args(["status", "--porcelain"])
-    .output()
-    .await
-    .expect("Failed to execute command");
-
-  let output_str = String::from_utf8_lossy(&output.stdout);
-  !output_str.trim().is_empty()
 }
 
 #[cfg(test)]
