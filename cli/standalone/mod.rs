@@ -152,8 +152,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
     self
       .shared
       .node_resolver
-      .store_if_specifier_cjs(&specifier)?;
-    Ok(specifier)
+      .handle_if_in_node_modules(specifier)
   }
 
   fn load(

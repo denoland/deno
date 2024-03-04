@@ -190,21 +190,35 @@ impl CliNodeResolver {
     )
   }
 
-  pub fn store_if_specifier_cjs(
+  pub fn handle_if_in_node_modules(
     &self,
-    specifier: &ModuleSpecifier,
-  ) -> Result<(), AnyError> {
-    if let Some(cjs_resolutions) = &self.cjs_resolutions {
-      if specifier.scheme() == "file" && self.in_npm_package(specifier) {
-        let resolution = self
-          .node_resolver
-          .url_to_node_resolution(specifier.clone())?;
-        if let NodeResolution::CommonJs(specifier) = resolution {
-          cjs_resolutions.insert(specifier);
+    specifier: ModuleSpecifier,
+  ) -> Result<ModuleSpecifier, AnyError> {
+    // skip canonicalizing if we definitely know it's necessary
+    if specifier.scheme() == "file"
+      && specifier.path().contains("/node_modules/")
+    {
+      // Specifiers in the node_modules directory are canonicalized
+      // so canoncalize then check if it's in the node_modules directory.
+      // If so, check if we need to store this specifier as being a CJS
+      // resolution.
+      let specifier =
+        crate::node::resolve_specifier_into_node_modules(&specifier);
+      if self.in_npm_package(&specifier) {
+        if let Some(cjs_resolutions) = &self.cjs_resolutions {
+          let resolution =
+            self.node_resolver.url_to_node_resolution(specifier)?;
+          if let NodeResolution::CommonJs(specifier) = &resolution {
+            cjs_resolutions.insert(specifier.clone());
+          }
+          return Ok(resolution.into_url());
+        } else {
+          return Ok(specifier);
         }
       }
     }
-    Ok(())
+
+    Ok(specifier)
   }
 
   fn handle_node_resolve_result(
@@ -660,12 +674,12 @@ impl Resolver for CliGraphResolver {
     }
 
     let specifier = result?;
-
-    if let Some(node_resolver) = &self.node_resolver {
-      node_resolver.store_if_specifier_cjs(&specifier)?;
+    match &self.node_resolver {
+      Some(node_resolver) => node_resolver
+        .handle_if_in_node_modules(specifier)
+        .map_err(|e| e.into()),
+      None => Ok(specifier),
     }
-
-    Ok(specifier)
   }
 }
 
