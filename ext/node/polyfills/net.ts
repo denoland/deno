@@ -106,9 +106,10 @@ import type { BufferEncoding } from "ext:deno_node/_global.d.ts";
 import type { Abortable } from "ext:deno_node/_events.d.ts";
 import { channel } from "node:diagnostics_channel";
 
-let debug = debuglog("net", (fn) => {
-  debug = fn;
-});
+// let debug = debuglog("net", (fn) => {
+//   debug = fn;
+// });
+let debug = console.log;
 
 const kLastWriteQueueSize = Symbol("lastWriteQueueSize");
 const kSetNoDelay = Symbol("kSetNoDelay");

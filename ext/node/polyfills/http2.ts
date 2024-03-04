@@ -4,7 +4,7 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { core } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 import {
   op_http2_client_get_response,
   op_http2_client_get_response_body_chunk,
@@ -18,6 +18,7 @@ import {
 } from "ext:core/ops";
 
 import { notImplemented, warnNotImplemented } from "ext:deno_node/_utils.ts";
+import { Readable } from "node:stream";
 import { EventEmitter } from "node:events";
 import { Buffer } from "node:buffer";
 import { connect as netConnect, Server, Socket, TCP } from "node:net";
@@ -44,16 +45,24 @@ import {
   ERR_HTTP2_INVALID_PSEUDOHEADER,
   ERR_HTTP2_INVALID_SESSION,
   ERR_HTTP2_INVALID_STREAM,
+  ERR_HTTP2_NO_SOCKET_MANIPULATION,
   ERR_HTTP2_SESSION_ERROR,
   ERR_HTTP2_STREAM_CANCEL,
   ERR_HTTP2_STREAM_ERROR,
+  ERR_HTTP2_TOO_MANY_CUSTOM_SETTINGS,
   ERR_HTTP2_TRAILERS_ALREADY_SENT,
   ERR_HTTP2_TRAILERS_NOT_READY,
   ERR_HTTP2_UNSUPPORTED_PROTOCOL,
+  ERR_INVALID_ARG_VALUE,
   ERR_INVALID_HTTP_TOKEN,
   ERR_SOCKET_CLOSED,
 } from "ext:deno_node/internal/errors.ts";
 import { _checkIsHttpToken } from "ext:deno_node/_http_common.ts";
+const {
+  StringPrototypeTrim,
+  FunctionPrototypeBind,
+  ReflectGetPrototypeOf,
+} = primordials;
 
 const kSession = Symbol("session");
 const kAlpnProtocol = Symbol("alpnProtocol");
@@ -85,6 +94,9 @@ const STREAM_FLAGS_HEAD_REQUEST = 0x8;
 const STREAM_FLAGS_ABORTED = 0x10;
 const STREAM_FLAGS_HAS_TRAILERS = 0x20;
 
+// Maximum number of allowed additional settings
+const MAX_ADDITIONAL_SETTINGS = 10;
+
 const SESSION_FLAGS_PENDING = 0x0;
 const SESSION_FLAGS_READY = 0x1;
 const SESSION_FLAGS_CLOSED = 0x2;
@@ -93,7 +105,7 @@ const SESSION_FLAGS_DESTROYED = 0x4;
 const ENCODER = new TextEncoder();
 type Http2Headers = Record<string, string | string[]>;
 
-const debugHttp2Enabled = false;
+const debugHttp2Enabled = true;
 function debugHttp2(...args) {
   if (debugHttp2Enabled) {
     console.log(...args);
@@ -331,6 +343,9 @@ function closeSession(session: Http2Session, code?: number, error?: Error) {
 export class ServerHttp2Session extends Http2Session {
   constructor() {
     super(constants.NGHTTP2_SESSION_SERVER, {});
+    this.on("stream", (stream, headers) => {
+      console.log(stream, headers);
+    });
   }
 
   altsvc(
@@ -1308,6 +1323,12 @@ export class ServerHttp2Stream extends Http2Stream {
     headers: Http2Headers,
     options: Record<string, unknown>,
   ) {
+    debugHttp2(
+      "ServerHttp2Stream.respond() headers:",
+      headers,
+      "options:",
+      options,
+    );
     this.#headersSent = true;
     const response: ResponseInit = {};
     if (headers) {
@@ -1344,6 +1365,111 @@ export class ServerHttp2Stream extends Http2Stream {
   }
 }
 
+const kOptions = Symbol("options");
+
+function setupCompat(ev) {
+  if (ev === "request") {
+    this.removeListener("newListener", setupCompat);
+    this.on(
+      "stream",
+      FunctionPrototypeBind(
+        onServerStream,
+        this,
+        this[kOptions].Http2ServerRequest,
+        this[kOptions].Http2ServerResponse,
+      ),
+    );
+  }
+}
+
+function onServerStream(
+  ServerRequest,
+  ServerResponse,
+  stream,
+  headers,
+  flags,
+  rawHeaders,
+) {
+  console.log("handling on stream event");
+  const server = this;
+  const request = new ServerRequest(stream, headers, undefined, rawHeaders);
+  const response = new ServerResponse(stream);
+
+  // Check for the CONNECT method
+  const method = headers[constants.HTTP2_HEADER_METHOD];
+  if (method === "CONNECT") {
+    if (!server.emit("connect", request, response)) {
+      response.statusCode = constants.HTTP_STATUS_METHOD_NOT_ALLOWED;
+      response.end();
+    }
+    return;
+  }
+
+  // Check for Expectations
+  if (headers.expect !== undefined) {
+    if (headers.expect === "100-continue") {
+      if (server.listenerCount("checkContinue")) {
+        server.emit("checkContinue", request, response);
+      } else {
+        response.writeContinue();
+        server.emit("request", request, response);
+      }
+    } else if (server.listenerCount("checkExpectation")) {
+      server.emit("checkExpectation", request, response);
+    } else {
+      response.statusCode = constants.HTTP_STATUS_EXPECTATION_FAILED;
+      response.end();
+    }
+    return;
+  }
+
+  server.emit("request", request, response);
+}
+
+function initializeOptions(options) {
+  // assertIsObject(options, 'options');
+  options = { ...options };
+  // assertIsObject(options.settings, 'options.settings');
+  options.settings = { ...options.settings };
+
+  // assertIsArray(options.remoteCustomSettings, 'options.remoteCustomSettings');
+  if (options.remoteCustomSettings) {
+    options.remoteCustomSettings = [...options.remoteCustomSettings];
+    if (options.remoteCustomSettings.length > MAX_ADDITIONAL_SETTINGS) {
+      throw new ERR_HTTP2_TOO_MANY_CUSTOM_SETTINGS();
+    }
+  }
+
+  // if (options.maxSessionInvalidFrames !== undefined)
+  // validateUint32(options.maxSessionInvalidFrames, 'maxSessionInvalidFrames');
+
+  // if (options.maxSessionRejectedStreams !== undefined) {
+  //   validateUint32(
+  //     options.maxSessionRejectedStreams,
+  //     'maxSessionRejectedStreams',
+  //   );
+  // }
+
+  if (options.unknownProtocolTimeout !== undefined) {
+    // validateUint32(options.unknownProtocolTimeout, 'unknownProtocolTimeout');
+  } else {
+    // TODO(danbev): is this a good default value?
+    options.unknownProtocolTimeout = 10000;
+  }
+
+  // Used only with allowHTTP1
+  // options.Http1IncomingMessage = options.Http1IncomingMessage ||
+  //   http.IncomingMessage;
+  // options.Http1ServerResponse = options.Http1ServerResponse ||
+  //   http.ServerResponse;
+
+  options.Http2ServerRequest = options.Http2ServerRequest ||
+    Http2ServerRequest;
+  options.Http2ServerResponse = options.Http2ServerResponse ||
+    Http2ServerResponse;
+  return options;
+}
+
 export class Http2Server extends Server {
   #options: Record<string, unknown> = {};
   #abortController;
@@ -1354,11 +1480,16 @@ export class Http2Server extends Server {
     options: Record<string, unknown>,
     requestListener: () => unknown,
   ) {
+    options = initializeOptions(options);
     super(options);
+    this[kOptions] = options;
     this.#abortController = new AbortController();
+    this.on("newListener", setupCompat);
+
     this.on(
       "connection",
       (conn: Deno.Conn) => {
+        console.log("got connection: ", conn);
         try {
           const session = new ServerHttp2Session();
           this.emit("session", session);
@@ -1366,7 +1497,9 @@ export class Http2Server extends Server {
             conn,
             this.#abortController.signal,
             async (req: Request) => {
+              console.log("got request", req);
               try {
+                console.log("inside try block");
                 const controllerDeferred = Promise.withResolvers<
                   ReadableStreamDefaultController<Uint8Array>
                 >();
@@ -1375,12 +1508,14 @@ export class Http2Server extends Server {
                     controllerDeferred.resolve(controller);
                   },
                 });
+                console.log("before headers");
                 const headers: Http2Headers = {};
                 for (const [name, value] of req.headers) {
                   headers[name] = value;
                 }
                 headers[constants.HTTP2_HEADER_PATH] =
                   new URL(req.url).pathname;
+                console.log("headers: ", headers);
                 const stream = new ServerHttp2Stream(
                   session,
                   Promise.resolve(headers),
@@ -1388,9 +1523,13 @@ export class Http2Server extends Server {
                   req.body,
                   body,
                 );
+                console.log("stream created successfully");
                 session.emit("stream", stream, headers);
                 this.emit("stream", stream, headers);
-                return await stream._deferred.promise;
+                console.log("stream emitted");
+                let res = await stream._deferred.promise;
+                console.log("res: ", res);
+                return res;
               } catch (e) {
                 console.log(">>> Error in serveHttpOnConnection", e);
               }
@@ -1405,10 +1544,6 @@ export class Http2Server extends Server {
           console.log(">>> Error in Http2Server", e);
         }
       },
-    );
-    this.on(
-      "newListener",
-      (event) => console.log(`Event in newListener: ${event}`),
     );
     this.#options = options;
     if (typeof requestListener === "function") {
@@ -1907,88 +2042,400 @@ export function getUnpackedSettings(
 
 export const sensitiveHeaders = Symbol("nodejs.http2.sensitiveHeaders");
 
-export class Http2ServerRequest {
-  constructor() {
+const kBeginSend = Symbol("begin-send");
+const kStream = Symbol("stream");
+const kResponse = Symbol("response");
+const kHeaders = Symbol("headers");
+const kRawHeaders = Symbol("rawHeaders");
+const kSocket = Symbol("socket");
+const kTrailers = Symbol("trailers");
+const kRawTrailers = Symbol("rawTrailers");
+const kSetHeader = Symbol("setHeader");
+const kAppendHeader = Symbol("appendHeader");
+const kAborted = Symbol("aborted");
+const kProxySocket = Symbol("proxySocket");
+const kRequest = Symbol("request");
+
+let statusMessageWarned = false;
+let statusConnectionHeaderWarned = false;
+
+const proxySocketHandler = {
+  has(stream, prop) {
+    const ref = stream.session !== undefined ? stream.session[kSocket] : stream;
+    return (prop in stream) || (prop in ref);
+  },
+
+  get(stream, prop) {
+    switch (prop) {
+      case "on":
+      case "once":
+      case "end":
+      case "emit":
+      case "destroy":
+        return FunctionPrototypeBind(stream[prop], stream);
+      case "writable":
+      case "destroyed":
+        return stream[prop];
+      case "readable": {
+        if (stream.destroyed) {
+          return false;
+        }
+        const request = stream[kRequest];
+        return request ? request.readable : stream.readable;
+      }
+      case "setTimeout": {
+        const session = stream.session;
+        if (session !== undefined) {
+          return FunctionPrototypeBind(session.setTimeout, session);
+        }
+        return FunctionPrototypeBind(stream.setTimeout, stream);
+      }
+      case "write":
+      case "read":
+      case "pause":
+      case "resume":
+        throw new ERR_HTTP2_NO_SOCKET_MANIPULATION();
+      default: {
+        const ref = stream.session !== undefined
+          ? stream.session[kSocket]
+          : stream;
+        const value = ref[prop];
+        return typeof value === "function"
+          ? FunctionPrototypeBind(value, ref)
+          : value;
+      }
+    }
+  },
+  getPrototypeOf(stream) {
+    if (stream.session !== undefined) {
+      return ReflectGetPrototypeOf(stream.session[kSocket]);
+    }
+    return ReflectGetPrototypeOf(stream);
+  },
+  set(stream, prop, value) {
+    switch (prop) {
+      case "writable":
+      case "readable":
+      case "destroyed":
+      case "on":
+      case "once":
+      case "end":
+      case "emit":
+      case "destroy":
+        stream[prop] = value;
+        return true;
+      case "setTimeout": {
+        const session = stream.session;
+        if (session !== undefined) {
+          session.setTimeout = value;
+        } else {
+          stream.setTimeout = value;
+        }
+        return true;
+      }
+      case "write":
+      case "read":
+      case "pause":
+      case "resume":
+        throw new ERR_HTTP2_NO_SOCKET_MANIPULATION();
+      default: {
+        const ref = stream.session !== undefined
+          ? stream.session[kSocket]
+          : stream;
+        ref[prop] = value;
+        return true;
+      }
+    }
+  },
+};
+
+function onStreamCloseRequest() {
+  const req = this[kRequest];
+
+  if (req === undefined) {
+    return;
   }
 
-  get aborted(): boolean {
-    notImplemented("Http2ServerRequest.aborted");
-    return false;
+  const state = req[kState];
+  state.closed = true;
+
+  req.push(null);
+  // If the user didn't interact with incoming data and didn't pipe it,
+  // dump it for compatibility with http1
+  if (!state.didRead && !req._readableState.resumeScheduled) {
+    req.resume();
   }
 
-  get authority(): string {
-    notImplemented("Http2ServerRequest.authority");
-    return "";
+  this[kProxySocket] = null;
+  this[kRequest] = undefined;
+
+  req.emit("close");
+}
+
+function onStreamTimeout(kind) {
+  return function onStreamTimeout() {
+    const obj = this[kind];
+    obj.emit("timeout");
+  };
+}
+
+class Http2ServerRequest extends Readable {
+  readableEnded = false;
+
+  constructor(stream, headers, options, rawHeaders) {
+    super({ autoDestroy: false, ...options });
+    this[kState] = {
+      closed: false,
+      didRead: false,
+    };
+    // Headers in HTTP/1 are not initialized using Object.create(null) which,
+    // although preferable, would simply break too much code. Ergo header
+    // initialization using Object.create(null) in HTTP/2 is intentional.
+    this[kHeaders] = headers;
+    this[kRawHeaders] = rawHeaders;
+    this[kTrailers] = {};
+    this[kRawTrailers] = [];
+    this[kStream] = stream;
+    this[kAborted] = false;
+    stream[kProxySocket] = null;
+    stream[kRequest] = this;
+
+    // Pause the stream..
+    stream.on("trailers", onStreamTrailers);
+    stream.on("end", onStreamEnd);
+    stream.on("error", onStreamError);
+    stream.on("aborted", onStreamAbortedRequest);
+    stream.on("close", onStreamCloseRequest);
+    stream.on("timeout", onStreamTimeout(kRequest));
+    this.on("pause", onRequestPause);
+    this.on("resume", onRequestResume);
   }
 
-  get complete(): boolean {
-    notImplemented("Http2ServerRequest.complete");
-    return false;
+  get aborted() {
+    return this[kAborted];
   }
 
-  get connection(): Socket /*| TlsSocket*/ {
-    notImplemented("Http2ServerRequest.connection");
-    return {};
+  get complete() {
+    return this[kAborted] ||
+      this.readableEnded ||
+      this[kState].closed ||
+      this[kStream].destroyed;
   }
 
-  destroy(_error: Error) {
-    notImplemented("Http2ServerRequest.destroy");
+  get stream() {
+    return this[kStream];
   }
 
-  get headers(): Record<string, unknown> {
-    notImplemented("Http2ServerRequest.headers");
-    return {};
+  get headers() {
+    return this[kHeaders];
   }
 
-  get httpVersion(): string {
-    notImplemented("Http2ServerRequest.httpVersion");
-    return "";
+  get rawHeaders() {
+    return this[kRawHeaders];
   }
 
-  get method(): string {
-    notImplemented("Http2ServerRequest.method");
-    return "";
+  get trailers() {
+    return this[kTrailers];
   }
 
-  get rawHeaders(): string[] {
-    notImplemented("Http2ServerRequest.rawHeaders");
-    return [];
+  get rawTrailers() {
+    return this[kRawTrailers];
   }
 
-  get rawTrailers(): string[] {
-    notImplemented("Http2ServerRequest.rawTrailers");
-    return [];
+  get httpVersionMajor() {
+    return 2;
   }
 
-  get scheme(): string {
-    notImplemented("Http2ServerRequest.scheme");
-    return "";
+  get httpVersionMinor() {
+    return 0;
   }
 
-  setTimeout(msecs: number, callback?: () => unknown) {
-    this.stream.setTimeout(callback, msecs);
+  get httpVersion() {
+    return "2.0";
   }
 
-  get socket(): Socket /*| TlsSocket*/ {
-    notImplemented("Http2ServerRequest.socket");
-    return {};
+  get socket() {
+    const stream = this[kStream];
+    const proxySocket = stream[kProxySocket];
+    if (proxySocket === null) {
+      return stream[kProxySocket] = new Proxy(stream, proxySocketHandler);
+    }
+    return proxySocket;
   }
 
-  get stream(): Http2Stream {
-    notImplemented("Http2ServerRequest.stream");
-    return new Http2Stream();
+  get connection() {
+    return this.socket;
   }
 
-  get trailers(): Record<string, unknown> {
-    notImplemented("Http2ServerRequest.trailers");
-    return {};
+  // _read(nread) {
+  //   const state = this[kState];
+  //   assert(!state.closed);
+  //   if (!state.didRead) {
+  //     state.didRead = true;
+  //     this[kStream].on("data", onStreamData);
+  //   } else {
+  //     process.nextTick(resumeStream, this[kStream]);
+  //   }
+  // }
+
+  get method() {
+    return this[kHeaders][constants.HTTP2_HEADER_METHOD];
   }
 
-  get url(): string {
-    notImplemented("Http2ServerRequest.url");
-    return "";
+  set method(method) {
+    // validateString(method, "method");
+    if (StringPrototypeTrim(method) === "") {
+      throw new ERR_INVALID_ARG_VALUE("method", method);
+    }
+
+    this[kHeaders][constants.HTTP2_HEADER_METHOD] = method;
+  }
+
+  get authority() {
+    return getAuthority(this[kHeaders]);
+  }
+
+  get scheme() {
+    return this[kHeaders][constants.HTTP2_HEADER_SCHEME];
+  }
+
+  get url() {
+    return this[kHeaders][constants.HTTP2_HEADER_PATH];
+  }
+
+  set url(url) {
+    this[kHeaders][constants.HTTP2_HEADER_PATH] = url;
+  }
+
+  setTimeout(msecs, callback) {
+    if (!this[kState].closed) {
+      this[kStream].setTimeout(msecs, callback);
+    }
+    return this;
   }
 }
+
+function onStreamEnd() {
+  // Cause the request stream to end as well.
+  const request = this[kRequest];
+  if (request !== undefined) {
+    this[kRequest].push(null);
+  }
+}
+
+function onStreamError(error) {
+  // This is purposefully left blank
+  //
+  // errors in compatibility mode are
+  // not forwarded to the request
+  // and response objects.
+}
+
+function onRequestPause() {
+  this[kStream].pause();
+}
+
+function onRequestResume() {
+  this[kStream].resume();
+}
+
+function onStreamDrain() {
+  const response = this[kResponse];
+  if (response !== undefined) {
+    response.emit("drain");
+  }
+}
+
+function onStreamAbortedRequest() {
+  const request = this[kRequest];
+  if (request !== undefined && request[kState].closed === false) {
+    request[kAborted] = true;
+    request.emit("aborted");
+  }
+}
+
+// export class Http2ServerRequest extends Readable {
+//   constructor() {
+//   }
+
+//   get aborted(): boolean {
+//     notImplemented("Http2ServerRequest.aborted");
+//     return false;
+//   }
+
+//   get authority(): string {
+//     notImplemented("Http2ServerRequest.authority");
+//     return "";
+//   }
+
+//   get complete(): boolean {
+//     notImplemented("Http2ServerRequest.complete");
+//     return false;
+//   }
+
+//   get connection(): Socket /*| TlsSocket*/ {
+//     notImplemented("Http2ServerRequest.connection");
+//     return {};
+//   }
+
+//   destroy(_error: Error) {
+//     notImplemented("Http2ServerRequest.destroy");
+//   }
+
+//   get headers(): Record<string, unknown> {
+//     notImplemented("Http2ServerRequest.headers");
+//     return {};
+//   }
+
+//   get httpVersion(): string {
+//     notImplemented("Http2ServerRequest.httpVersion");
+//     return "";
+//   }
+
+//   get method(): string {
+//     notImplemented("Http2ServerRequest.method");
+//     return "";
+//   }
+
+//   get rawHeaders(): string[] {
+//     notImplemented("Http2ServerRequest.rawHeaders");
+//     return [];
+//   }
+
+//   get rawTrailers(): string[] {
+//     notImplemented("Http2ServerRequest.rawTrailers");
+//     return [];
+//   }
+
+//   get scheme(): string {
+//     notImplemented("Http2ServerRequest.scheme");
+//     return "";
+//   }
+
+//   setTimeout(msecs: number, callback?: () => unknown) {
+//     this.stream.setTimeout(callback, msecs);
+//   }
+
+//   get socket(): Socket /*| TlsSocket*/ {
+//     notImplemented("Http2ServerRequest.socket");
+//     return {};
+//   }
+
+//   get stream(): Http2Stream {
+//     notImplemented("Http2ServerRequest.stream");
+//     return new Http2Stream();
+//   }
+
+//   get trailers(): Record<string, unknown> {
+//     notImplemented("Http2ServerRequest.trailers");
+//     return {};
+//   }
+
+//   get url(): string {
+//     notImplemented("Http2ServerRequest.url");
+//     return "";
+//   }
+// }
 
 export class Http2ServerResponse {
   constructor() {
