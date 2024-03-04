@@ -30,6 +30,7 @@ use deno_core::parking_lot::Mutex;
 use deno_core::parking_lot::RwLock;
 use deno_core::ModuleSpecifier;
 use deno_graph::source::Loader;
+use deno_graph::source::ResolutionMode;
 use deno_graph::source::ResolveError;
 use deno_graph::GraphKind;
 use deno_graph::Module;
@@ -165,7 +166,7 @@ pub fn graph_valid(
   }
 }
 
-/// Checks the lockfile against the graph and and exits on errors.
+/// Checks the lockfile against the graph and exits on errors.
 pub fn graph_lock_or_exit(graph: &ModuleGraph, lockfile: &mut Lockfile) {
   for module in graph.modules() {
     let source = match module {
@@ -694,8 +695,12 @@ pub fn enhanced_module_error_message(
 ) -> String {
   let additional_message = match error {
     ModuleError::Missing(specifier, _) => {
-      SloppyImportsResolver::resolve_with_fs(fs, specifier)
-        .as_suggestion_message()
+      SloppyImportsResolver::resolve_with_fs(
+        fs,
+        specifier,
+        ResolutionMode::Execution,
+      )
+      .as_suggestion_message()
     }
     _ => None,
   };

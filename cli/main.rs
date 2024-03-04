@@ -12,6 +12,7 @@ mod file_fetcher;
 mod graph_util;
 mod http_util;
 mod js;
+mod jsr;
 mod lsp;
 mod module_loader;
 mod napi;
@@ -88,6 +89,9 @@ fn spawn_subcommand<F: Future<Output = T> + 'static, T: SubcommandOutput>(
 
 async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
   let handle = match flags.subcommand.clone() {
+    DenoSubcommand::Add(add_flags) => spawn_subcommand(async {
+      tools::registry::add(flags, add_flags).await
+    }),
     DenoSubcommand::Bench(bench_flags) => spawn_subcommand(async {
       if bench_flags.watch.is_some() {
         tools::bench::run_benchmarks_with_watch(flags, bench_flags).await
@@ -315,7 +319,7 @@ pub fn main() {
   let args: Vec<String> = env::args().collect();
 
   // NOTE(lucacasonato): due to new PKU feature introduced in V8 11.6 we need to
-  // initalize the V8 platform on a parent thread of all threads that will spawn
+  // initialize the V8 platform on a parent thread of all threads that will spawn
   // V8 isolates.
 
   let future = async move {

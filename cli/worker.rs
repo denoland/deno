@@ -115,7 +115,7 @@ pub struct CliMainWorkerOptions {
   pub is_inspecting: bool,
   pub is_npm_main: bool,
   pub location: Option<Url>,
-  pub maybe_binary_npm_command_name: Option<String>,
+  pub argv0: Option<String>,
   pub origin_data_folder_path: Option<PathBuf>,
   pub seed: Option<u64>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
@@ -608,10 +608,7 @@ impl CliMainWorkerFactory {
         user_agent: version::get_user_agent().to_string(),
         inspect: shared.options.is_inspecting,
         has_node_modules_dir: shared.options.has_node_modules_dir,
-        maybe_binary_npm_command_name: shared
-          .options
-          .maybe_binary_npm_command_name
-          .clone(),
+        argv0: shared.options.argv0.clone(),
         node_ipc_fd: shared.node_ipc,
         disable_deprecated_api_warning: shared.disable_deprecated_api_warning,
         verbose_deprecated_api_warning: shared.verbose_deprecated_api_warning,
@@ -815,10 +812,7 @@ fn create_web_worker_callback(
         user_agent: version::get_user_agent().to_string(),
         inspect: shared.options.is_inspecting,
         has_node_modules_dir: shared.options.has_node_modules_dir,
-        maybe_binary_npm_command_name: shared
-          .options
-          .maybe_binary_npm_command_name
-          .clone(),
+        argv0: shared.options.argv0.clone(),
         node_ipc_fd: None,
         disable_deprecated_api_warning: shared.disable_deprecated_api_warning,
         verbose_deprecated_api_warning: shared.verbose_deprecated_api_warning,
