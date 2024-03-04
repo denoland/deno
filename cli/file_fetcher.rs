@@ -1719,7 +1719,7 @@ mod tests {
   #[tokio::test]
   async fn test_custom_dns_resolver() {
     let _http_server_guard = test_util::http_server();
-    // Relies on external http server. See target/debug/test_server
+    // Resolves to the test server address on localhost
     let url = Url::parse("http://google.com:4545/echo_accept").unwrap();
     let client = create_test_client_with_dns_resolver();
     let result = fetch_once(
