@@ -61,7 +61,7 @@ Deno.test(
         "eval",
         `
         const buffer = new Uint8Array(5);
-        Deno.stdin.read(buffer);
+        await Deno.stdin.read(buffer);
         if (new TextDecoder().decode(buffer) !== "hello") {
           throw new Error('Expected \\'hello\\'')
         }
@@ -222,7 +222,7 @@ Deno.test(
         "eval",
         `
         const buffer = new Uint8Array(5);
-        Deno.stdin.read(buffer);
+        await Deno.stdin.read(buffer);
         if (new TextDecoder().decode(buffer) !== "hello") {
           throw new Error('Expected \\'hello\\'')
         }
