@@ -90,7 +90,6 @@ const {
   StringPrototypeStartsWith,
   SymbolAsyncIterator,
   SymbolIterator,
-  SymbolFor,
   Uint32Array,
 } = primordials;
 
@@ -622,7 +621,7 @@ function openSync(
     options,
   );
 
-  return new FsFile(rid, SymbolFor("Deno.internal.FsFile"));
+  return new FsFile(rid);
 }
 
 async function open(
@@ -635,7 +634,7 @@ async function open(
     options,
   );
 
-  return new FsFile(rid, SymbolFor("Deno.internal.FsFile"));
+  return new FsFile(rid);
 }
 
 function createSync(path) {
@@ -982,6 +981,7 @@ export {
   File,
   flock,
   flockSync,
+  FsFile,
   fstat,
   fstatSync,
   fsync,

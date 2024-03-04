@@ -40,7 +40,7 @@ export function futimes(
   mtime = getValidTime(mtime, "mtime");
 
   // TODO(@littledivy): Treat `fd` as real file descriptor.
-  new FsFile(fd, Symbol.for("Deno.internal.FsFile")).utime(atime, mtime).then(
+  new FsFile(fd).utime(atime, mtime).then(
     () => callback(null),
     callback,
   );
@@ -55,5 +55,5 @@ export function futimesSync(
   mtime = getValidTime(mtime, "mtime");
 
   // TODO(@littledivy): Treat `fd` as real file descriptor.
-  new FsFile(fd, Symbol.for("Deno.internal.FsFile")).utimeSync(atime, mtime);
+  new FsFile(fd).utimeSync(atime, mtime);
 }
