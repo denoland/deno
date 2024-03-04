@@ -92,9 +92,8 @@ impl JsrCacheResolver {
 
   pub fn jsr_to_registry_url(
     &self,
-    specifier: &ModuleSpecifier,
+    req_ref: &JsrPackageReqReference,
   ) -> Option<ModuleSpecifier> {
-    let req_ref = JsrPackageReqReference::from_str(specifier.as_str()).ok()?;
     let req = req_ref.req().clone();
     let maybe_nv = self.req_to_nv(&req);
     let nv = maybe_nv.as_ref()?;
