@@ -35,6 +35,7 @@ use deno_core::unsync::spawn;
 use deno_core::unsync::spawn_blocking;
 use deno_core::unsync::JoinHandle;
 use deno_core::ModuleSpecifier;
+use deno_graph::source::ResolutionMode;
 use deno_graph::Resolution;
 use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
@@ -1240,7 +1241,7 @@ impl DenoDiagnostic {
       Self::NoCacheJsr(pkg_req, specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Uncached or missing jsr package: {}", pkg_req), Some(json!({ "specifier": specifier }))),
       Self::NoCacheNpm(pkg_req, specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Uncached or missing npm package: {}", pkg_req), Some(json!({ "specifier": specifier }))),
       Self::NoLocal(specifier) => {
-        let sloppy_resolution = SloppyImportsResolver::resolve_with_fs(&deno_fs::RealFs, specifier);
+        let sloppy_resolution = SloppyImportsResolver::resolve_with_fs(&deno_fs::RealFs, specifier, ResolutionMode::Execution);
         let data = sloppy_resolution.as_lsp_quick_fix_message().map(|message| {
           json!({
             "specifier": specifier,
@@ -1455,12 +1456,28 @@ fn diagnose_dependency(
     .iter()
     .map(|i| documents::to_lsp_range(&i.range))
     .collect();
+  // TODO(nayeemrmn): This is a crude way of detecting `@deno-types` which has
+  // a different specifier and therefore needs a separate call to
+  // `diagnose_resolution()`. It would be much cleaner if that were modelled as
+  // a separate dependency: https://github.com/denoland/deno_graph/issues/247.
+  let is_types_deno_types = !dependency.maybe_type.is_none()
+    && !dependency
+      .imports
+      .iter()
+      .any(|i| dependency.maybe_type.includes(&i.range.start).is_some());
 
   diagnostics.extend(
     diagnose_resolution(
       snapshot,
       dependency_key,
-      if dependency.maybe_code.is_none() {
+      if dependency.maybe_code.is_none()
+        // If not @deno-types, diagnose the types if the code errored because
+        // it's likely resolving into the node_modules folder, which might be
+        // erroring correctly due to resolution only being for bundlers. Let this
+        // fail at runtime if necesarry, but don't bother erroring in the editor
+        || !is_types_deno_types && matches!(dependency.maybe_type, Resolution::Ok(_))
+          && matches!(dependency.maybe_code, Resolution::Err(_))
+      {
         &dependency.maybe_type
       } else {
         &dependency.maybe_code
@@ -1475,16 +1492,8 @@ fn diagnose_dependency(
         .map(|range| diag.to_lsp_diagnostic(range))
     }),
   );
-  // TODO(nayeemrmn): This is a crude way of detecting `@deno-types` which has
-  // a different specifier and therefore needs a separate call to
-  // `diagnose_resolution()`. It would be much cleaner if that were modelled as
-  // a separate dependency: https://github.com/denoland/deno_graph/issues/247.
-  if !dependency.maybe_type.is_none()
-    && !dependency
-      .imports
-      .iter()
-      .any(|i| dependency.maybe_type.includes(&i.range.start).is_some())
-  {
+
+  if is_types_deno_types {
     let range = match &dependency.maybe_type {
       Resolution::Ok(resolved) => documents::to_lsp_range(&resolved.range),
       Resolution::Err(error) => documents::to_lsp_range(error.range()),

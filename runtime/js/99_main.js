@@ -457,7 +457,6 @@ function runtimeStart(
   tsVersion,
   target,
 ) {
-  core.setMacrotaskCallback(timers.handleTimerMacrotask);
   core.setWasmStreamingCallback(fetch.handleWasmStreaming);
   core.setReportExceptionCallback(event.reportException);
   op_set_format_exception_callback(formatException);
@@ -578,6 +577,7 @@ const NOT_IMPORTED_OPS = [
   "op_restore_test_permissions",
   "op_register_test_step",
   "op_register_test",
+  "op_test_get_origin",
   "op_pledge_test_permissions",
 
   // TODO(bartlomieju): used in various integration tests - figure out a way

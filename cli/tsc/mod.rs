@@ -26,7 +26,6 @@ use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::RuntimeOptions;
-use deno_core::Snapshot;
 use deno_graph::GraphKind;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
@@ -140,8 +139,8 @@ fn get_asset_texts_from_new_runtime() -> Result<Vec<AssetText>, AnyError> {
   Ok(serde_v8::from_v8::<Vec<AssetText>>(scope, local)?)
 }
 
-pub fn compiler_snapshot() -> Snapshot {
-  Snapshot::Static(&COMPILER_SNAPSHOT)
+pub fn compiler_snapshot() -> &'static [u8] {
+  &COMPILER_SNAPSHOT
 }
 
 macro_rules! inc {

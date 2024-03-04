@@ -1,5 +1,5 @@
-import { Foo as Foo1 } from "jsr:@denotest/subset_type_graph@0.1.0";
-import { Foo as Foo2 } from "jsr:@denotest/subset_type_graph_invalid@0.1.0";
+import { Foo as Foo1 } from "jsr:@denotest/subset-type-graph@0.1.0";
+import { Foo as Foo2 } from "jsr:@denotest/subset-type-graph-invalid@0.1.0";
 
 // these will both raise type checking errors
 const error1: string = new Foo1().method();

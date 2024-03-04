@@ -8,6 +8,7 @@ use test_util::itest;
 use url::Url;
 use util::assert_contains;
 use util::assert_not_contains;
+use util::env_vars_for_jsr_npm_tests;
 use util::env_vars_for_jsr_tests;
 use util::TestContextBuilder;
 
@@ -58,6 +59,22 @@ itest!(deps_info {
   output: "jsr/deps/main_info.out",
   envs: env_vars_for_jsr_tests(),
   http_server: true,
+});
+
+itest!(import_https_url_analyzable {
+  args: "run -A jsr/import_https_url/analyzable.ts",
+  output: "jsr/import_https_url/analyzable.out",
+  envs: env_vars_for_jsr_tests(),
+  http_server: true,
+  exit_code: 1,
+});
+
+itest!(import_https_url_unanalyzable {
+  args: "run -A jsr/import_https_url/unanalyzable.ts",
+  output: "jsr/import_https_url/unanalyzable.out",
+  envs: env_vars_for_jsr_tests(),
+  http_server: true,
+  exit_code: 1,
 });
 
 itest!(subset_type_graph {
@@ -461,3 +478,19 @@ fn set_lockfile_pkg_integrity(
     .unwrap()
     .integrity = integrity.to_string();
 }
+
+itest!(jsx_with_no_pragmas {
+  args: "run jsr/jsx_with_no_pragmas/main.ts",
+  output: "jsr/jsx_with_no_pragmas/main.out",
+  envs: env_vars_for_jsr_npm_tests(),
+  http_server: true,
+  exit_code: 1,
+});
+
+itest!(jsx_with_pragmas {
+  args: "run jsr/jsx_with_pragmas/main.ts",
+  output: "jsr/jsx_with_pragmas/main.out",
+  envs: env_vars_for_jsr_npm_tests(),
+  http_server: true,
+  exit_code: 0,
+});

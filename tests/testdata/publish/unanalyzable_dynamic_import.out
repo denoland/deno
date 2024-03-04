@@ -7,9 +7,9 @@ warning[unanalyzable-dynamic-import]: unable to analyze dynamic import
 2 | await import("asd " + asd);
   |              ^^^^^^^^^^^^ the unanalyzable dynamic import
 
-  info: after publishing this package, imports from the local import map do not work
+  info: after publishing this package, imports from the local import map / package.json do not work
   info: dynamic imports that can not be analyzed at publish time will not be rewritten automatically
-  info: make sure the dynamic import is resolvable at runtime without an import map
+  info: make sure the dynamic import is resolvable at runtime without an import map / package.json
 
 Publishing @foo/bar@1.0.0 ...
 Successfully published @foo/bar@1.0.0

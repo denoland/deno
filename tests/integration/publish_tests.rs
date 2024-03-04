@@ -4,6 +4,7 @@ use deno_core::serde_json::json;
 use test_util::assert_contains;
 use test_util::assert_not_contains;
 use test_util::env_vars_for_jsr_npm_tests;
+use test_util::env_vars_for_jsr_provenance_tests;
 use test_util::env_vars_for_jsr_tests;
 use test_util::env_vars_for_npm_tests;
 use test_util::itest;
@@ -57,6 +58,15 @@ itest!(invalid_import {
   args: "publish --token 'sadfasdf' --dry-run",
   output: "publish/invalid_import.out",
   cwd: Some("publish/invalid_import"),
+  envs: env_vars_for_npm_tests(),
+  exit_code: 1,
+  http_server: true,
+});
+
+itest!(invalid_import_esm_sh_suggestion {
+  args: "publish --token 'sadfasdf' --dry-run",
+  output: "publish/invalid_import_esm_sh_suggestion.out",
+  cwd: Some("publish/invalid_import_esm_sh_suggestion"),
   envs: env_vars_for_npm_tests(),
   exit_code: 1,
   http_server: true,
@@ -164,6 +174,14 @@ itest!(successful {
   http_server: true,
 });
 
+itest!(provenance {
+  args: "publish",
+  output: "publish/successful_provenance.out",
+  cwd: Some("publish/successful"),
+  envs: env_vars_for_jsr_provenance_tests(),
+  http_server: true,
+});
+
 itest!(no_check {
   args: "publish --token 'sadfasdf' --no-check",
   // still type checks the slow types output though
@@ -221,6 +239,38 @@ itest!(config_flag {
   output: "publish/successful.out",
   cwd: Some("publish"),
   envs: env_vars_for_jsr_tests(),
+  http_server: true,
+});
+
+itest!(bare_node_builtins {
+  args: "publish --token 'sadfasdf' --dry-run --unstable-bare-node-builtins",
+  output: "publish/bare_node_builtins.out",
+  cwd: Some("publish/bare_node_builtins"),
+  envs: env_vars_for_jsr_npm_tests(),
+  http_server: true,
+});
+
+itest!(sloppy_imports {
+  args: "publish --token 'sadfasdf' --dry-run --unstable-sloppy-imports",
+  output: "publish/sloppy_imports.out",
+  cwd: Some("publish/sloppy_imports"),
+  envs: env_vars_for_jsr_tests(),
+  http_server: true,
+});
+
+itest!(jsr_jsonc {
+  args: "publish --token 'sadfasdf'",
+  cwd: Some("publish/jsr_jsonc"),
+  output: "publish/jsr_jsonc/mod.out",
+  envs: env_vars_for_jsr_tests(),
+  http_server: true,
+});
+
+itest!(unsupported_jsx_tsx {
+  args: "publish --token 'sadfasdf'",
+  cwd: Some("publish/unsupported_jsx_tsx"),
+  output: "publish/unsupported_jsx_tsx/mod.out",
+  envs: env_vars_for_jsr_npm_tests(),
   http_server: true,
 });
 
@@ -381,6 +431,7 @@ fn includes_dotenv() {
     .arg("publish")
     .arg("--token")
     .arg("sadfasdf")
+    .arg("--dry-run")
     .run();
   output.assert_exit_code(0);
   let output = output.combined_output();
