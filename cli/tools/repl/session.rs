@@ -14,6 +14,7 @@ use crate::tools::test::reporters::TestReporter;
 use crate::tools::test::run_tests_for_worker;
 use crate::tools::test::worker_has_tests;
 use crate::tools::test::TestEvent;
+use crate::tools::test::TestEventReceiver;
 use crate::tools::test::TestEventSender;
 
 use deno_ast::diagnostics::Diagnostic;
@@ -183,7 +184,7 @@ pub struct ReplSession {
   test_reporter_factory: Box<dyn Fn() -> Box<dyn TestReporter>>,
   test_event_sender: TestEventSender,
   /// This is only optional because it's temporarily taken when evaluating.
-  test_event_receiver: Option<tokio::sync::mpsc::UnboundedReceiver<TestEvent>>,
+  test_event_receiver: Option<TestEventReceiver>,
   jsx: ReplJsxState,
   experimental_decorators: bool,
 }
@@ -196,7 +197,7 @@ impl ReplSession {
     mut worker: MainWorker,
     main_module: ModuleSpecifier,
     test_event_sender: TestEventSender,
-    test_event_receiver: tokio::sync::mpsc::UnboundedReceiver<TestEvent>,
+    test_event_receiver: TestEventReceiver,
   ) -> Result<Self, AnyError> {
     let language_server = ReplLanguageServer::new_initialized().await?;
     let mut session = worker.create_inspector_session().await;

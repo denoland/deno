@@ -2,6 +2,7 @@
 
 use deno_core::stats::RuntimeActivity;
 use deno_core::stats::RuntimeActivityDiff;
+use deno_core::stats::RuntimeActivityTrace;
 use deno_core::stats::RuntimeActivityType;
 use phf::phf_map;
 use std::borrow::Cow;
@@ -106,7 +107,7 @@ fn format_sanitizer_accum(
   }
 
   let mut output = vec![];
-  let mut needs_trace_ops = false;
+  let mut needs_trace_leaks = false;
   for ((item_type, item_name, trace), count) in accum.into_iter() {
     if item_type == RuntimeActivityType::Resource {
       let (name, action1, action2) = pretty_resource_name(&item_name);
@@ -142,22 +143,54 @@ fn format_sanitizer_accum(
       value += &if let Some(trace) = trace {
         format!(" The operation {tense} started here:\n{trace}")
       } else {
-        needs_trace_ops = true;
+        needs_trace_leaks = true;
+        String::new()
+      };
+      output.push(value);
+    } else if item_type == RuntimeActivityType::Timer {
+      let (count_str, plural, tense) = if count == 1 {
+        (Cow::Borrowed("A"), "", "was")
+      } else {
+        (Cow::Owned(count.to_string()), "s", "were")
+      };
+      let phrase = if appeared {
+        "started in this test, but never completed"
+      } else {
+        "started before the test, but completed during the test. Intervals and timers should not complete in a test if they were not started in that test"
+      };
+      let mut value = format!("{count_str} timer{plural} {tense} {phrase}. This is often caused by not calling `clearTimeout`.");
+      value += &if let Some(trace) = trace {
+        format!(" The operation {tense} started here:\n{trace}")
+      } else {
+        needs_trace_leaks = true;
+        String::new()
+      };
+      output.push(value);
+    } else if item_type == RuntimeActivityType::Interval {
+      let (count_str, plural, tense) = if count == 1 {
+        (Cow::Borrowed("An"), "", "was")
+      } else {
+        (Cow::Owned(count.to_string()), "s", "were")
+      };
+      let phrase = if appeared {
+        "started in this test, but never completed"
+      } else {
+        "started before the test, but completed during the test. Intervals and timers should not complete in a test if they were not started in that test"
+      };
+      let mut value = format!("{count_str} interval{plural} {tense} {phrase}. This is often caused by not calling `clearInterval`.");
+      value += &if let Some(trace) = trace {
+        format!(" The operation {tense} started here:\n{trace}")
+      } else {
+        needs_trace_leaks = true;
         String::new()
       };
       output.push(value);
     } else {
-      // TODO(mmastrac): this will be done in a later PR
-      unimplemented!(
-        "Unhandled diff: {appeared} {} {:?} {}",
-        count,
-        item_type,
-        item_name
-      );
+      unreachable!()
     }
   }
-  if needs_trace_ops {
-    (output, vec!["To get more details where ops were leaked, run again with --trace-ops flag.".to_owned()])
+  if needs_trace_leaks {
+    (output, vec!["To get more details where leaks occurred, run again with the --trace-leaks flag.".to_owned()])
   } else {
     (output, vec![])
   }
@@ -165,16 +198,19 @@ fn format_sanitizer_accum(
 
 fn format_sanitizer_accum_item(
   activity: RuntimeActivity,
-) -> (RuntimeActivityType, Cow<'static, str>, Option<String>) {
+) -> (
+  RuntimeActivityType,
+  Cow<'static, str>,
+  Option<RuntimeActivityTrace>,
+) {
   let activity_type = activity.activity();
   match activity {
-    // TODO(mmastrac): OpCallTrace needs to be Eq
-    RuntimeActivity::AsyncOp(_, name, trace) => {
-      (activity_type, name.into(), trace.map(|x| x.to_string()))
+    RuntimeActivity::AsyncOp(_, trace, name) => {
+      (activity_type, name.into(), trace)
     }
-    RuntimeActivity::Interval(_) => (activity_type, "".into(), None),
-    RuntimeActivity::Resource(_, name) => (activity_type, name.into(), None),
-    RuntimeActivity::Timer(_) => (activity_type, "".into(), None),
+    RuntimeActivity::Resource(_, _, name) => (activity_type, name.into(), None),
+    RuntimeActivity::Interval(_, trace) => (activity_type, "".into(), trace),
+    RuntimeActivity::Timer(_, trace) => (activity_type, "".into(), trace),
   }
 }
 
@@ -306,8 +342,6 @@ pub const OP_DETAILS: phf::Map<&'static str, [&'static str; 2]> = phf_map! {
   "op_run_status" => ["get the status of a subprocess", "awaiting the result of a `Deno.Process#status` call"],
   "op_seek_async" => ["seek in a file", "awaiting the result of a `Deno.File#seek` call"],
   "op_signal_poll" => ["get the next signal", "un-registering a OS signal handler"],
-  "op_sleep_interval" => ["sleep for a duration", "cancelling a `setTimeout` or `setInterval` call"],
-  "op_sleep" => ["sleep for a duration", "cancelling a `setTimeout` or `setInterval` call"],
   "op_stat_async" => ["get file metadata", "awaiting the result of a `Deno.stat` call"],
   "op_symlink_async" => ["create a symlink", "awaiting the result of a `Deno.symlink` call"],
   "op_net_accept_tls" => ["accept a TLS stream", "closing a `Deno.TlsListener`"],
@@ -354,7 +388,7 @@ mod tests {
 
   // https://github.com/denoland/deno/issues/13729
   // https://github.com/denoland/deno/issues/13938
-  leak_format_test!(op_unknown, true, [RuntimeActivity::AsyncOp(0, "op_unknown", None)], 
+  leak_format_test!(op_unknown, true, [RuntimeActivity::AsyncOp(0, None, "op_unknown")], 
     " - An async call to op_unknown was started in this test, but never completed.\n\
-    To get more details where ops were leaked, run again with --trace-ops flag.\n");
+    To get more details where leaks occurred, run again with the --trace-leaks flag.\n");
 }

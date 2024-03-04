@@ -457,7 +457,6 @@ function runtimeStart(
   tsVersion,
   target,
 ) {
-  core.setMacrotaskCallback(timers.handleTimerMacrotask);
   core.setWasmStreamingCallback(fetch.handleWasmStreaming);
   core.setReportExceptionCallback(event.reportException);
   op_set_format_exception_callback(formatException);
@@ -578,6 +577,7 @@ const NOT_IMPORTED_OPS = [
   "op_restore_test_permissions",
   "op_register_test_step",
   "op_register_test",
+  "op_test_get_origin",
   "op_pledge_test_permissions",
 
   // TODO(bartlomieju): used in various integration tests - figure out a way
@@ -644,7 +644,7 @@ function bootstrapMainRuntime(runtimeOptions) {
     2: unstableFeatures,
     3: inspectFlag,
     5: hasNodeModulesDir,
-    6: maybeBinaryNpmCommandName,
+    6: argv0,
     7: shouldDisableDeprecatedApiWarning,
     8: shouldUseVerboseDeprecatedApiWarning,
     9: future,
@@ -768,7 +768,7 @@ function bootstrapMainRuntime(runtimeOptions) {
   ObjectDefineProperty(globalThis, "Deno", core.propReadOnly(finalDenoNs));
 
   if (nodeBootstrap) {
-    nodeBootstrap(hasNodeModulesDir, maybeBinaryNpmCommandName);
+    nodeBootstrap(hasNodeModulesDir, argv0);
   }
 
   if (future) {
@@ -793,7 +793,7 @@ function bootstrapWorkerRuntime(
     2: unstableFeatures,
     4: enableTestingFeaturesFlag,
     5: hasNodeModulesDir,
-    6: maybeBinaryNpmCommandName,
+    6: argv0,
     7: shouldDisableDeprecatedApiWarning,
     8: shouldUseVerboseDeprecatedApiWarning,
   } = runtimeOptions;
@@ -897,7 +897,7 @@ function bootstrapWorkerRuntime(
   ObjectDefineProperty(globalThis, "Deno", core.propReadOnly(finalDenoNs));
 
   if (nodeBootstrap) {
-    nodeBootstrap(hasNodeModulesDir, maybeBinaryNpmCommandName);
+    nodeBootstrap(hasNodeModulesDir, argv0);
   }
 }
 
