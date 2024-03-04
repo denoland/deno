@@ -662,19 +662,12 @@ class FsFile {
   #readable;
   #writable;
 
-  constructor(rid, symbol) {
+  constructor(rid) {
     ObjectDefineProperty(this, internalRidSymbol, {
       enumerable: false,
       value: rid,
     });
     this.#rid = rid;
-    if (!symbol || symbol !== SymbolFor("Deno.internal.FsFile")) {
-      internals.warnOnDeprecatedApi(
-        "new Deno.FsFile()",
-        new Error().stack,
-        "Use `Deno.open` or `Deno.openSync` instead.",
-      );
-    }
   }
 
   get rid() {
@@ -989,7 +982,6 @@ export {
   File,
   flock,
   flockSync,
-  FsFile,
   fstat,
   fstatSync,
   fsync,
