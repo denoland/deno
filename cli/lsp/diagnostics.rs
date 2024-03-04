@@ -1306,7 +1306,6 @@ fn diagnose_resolution(
   maybe_assert_type: Option<&str>,
 ) -> Vec<DenoDiagnostic> {
   fn check_redirect_diagnostic(
-    snapshot: &language_server::StateSnapshot,
     specifier: &ModuleSpecifier,
     doc: &Document,
   ) -> Option<DenoDiagnostic> {
@@ -1320,22 +1319,12 @@ fn diagnose_resolution(
     // don't bother warning about sloppy import redirects from .js to .d.ts
     // because explaining how to fix this via a diagnostic involves using
     // @deno-types and that's a bit complicated to explain
-    // todo: waiting on https://github.com/denoland/deno/pull/22682 first
-    // let is_sloppy_import_dts_redirect = doc_specifier.scheme() == "file"
-    //   && doc.media_type().is_declaration()
-    //   && !MediaType::from_specifier(specifier).is_declaration();
-    // if is_sloppy_import_dts_redirect {
-    //   return None;
-    // }
-    // don't error about redirects inside npm packages
-    // let is_in_node_modules_folder = snapshot
-    //   .npm
-    //   .as_ref()
-    //   .map(|npm| npm.node_resolver.in_npm_package(doc_specifier))
-    //   .unwrap_or(false);
-    // if is_in_node_modules_folder {
-    //   return None;
-    // }
+    let is_sloppy_import_dts_redirect = doc_specifier.scheme() == "file"
+      && doc.media_type().is_declaration()
+      && !MediaType::from_specifier(specifier).is_declaration();
+    if is_sloppy_import_dts_redirect {
+      return None;
+    }
 
     Some(DenoDiagnostic::Redirect {
       from: specifier.clone(),
@@ -1356,10 +1345,10 @@ fn diagnose_resolution(
           diagnostics.push(DenoDiagnostic::DenoWarn(message));
         }
       }
+      eprintln!("Searching for: {}", specifier);
       if let Some(doc) = snapshot.documents.get(specifier) {
-        if let Some(diagnostic) =
-          check_redirect_diagnostic(snapshot, specifier, &doc)
-        {
+        eprintln!("Found: {}", doc.specifier());
+        if let Some(diagnostic) = check_redirect_diagnostic(specifier, &doc) {
           diagnostics.push(diagnostic);
         }
         if doc.media_type() == MediaType::Json {

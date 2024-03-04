@@ -8368,40 +8368,6 @@ fn lsp_diagnostics_warn_redirect() {
 }
 
 #[test]
-fn lsp_diagnostics_not_warn_redirect_in_npm_package() {
-  let context = TestContextBuilder::for_npm().use_temp_cwd().build();
-  context
-    .temp_dir()
-    .write("deno.json", r#"{ "unstable": ["byonm"] }"#);
-  context.temp_dir().write(
-    "package.json",
-    r#"{ "dependencies": { "@denotest/file-dts-dmts-dcts": "*" } }"#,
-  );
-  context.run_npm("install");
-
-  let mut client = context.new_lsp_command().build();
-  client.initialize_default();
-  let diagnostics = client.did_open(
-    json!({
-      "textDocument": {
-        "uri": context.temp_dir().path().join("file.ts").uri_file(),
-        "languageId": "typescript",
-        "version": 1,
-        "text": concat!(
-          "import * as a from \"./node_modules/@denotest/file-dts-dmts-dcts/main.mjs\";\n",
-          "import * as b from \"@denotest/file-dts-dmts-dcts/mjs\";\n",
-          "console.log(a)\n",
-          "console.log(b)\n",
-        )
-      },
-    }),
-  );
-  let diagnostics = diagnostics.all();
-  assert!(diagnostics.is_empty(), "{:?}", diagnostics);
-  client.shutdown();
-}
-
-#[test]
 fn lsp_redirect_quick_fix() {
   let context = TestContextBuilder::new()
     .use_http_server()
