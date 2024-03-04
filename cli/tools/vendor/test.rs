@@ -20,7 +20,6 @@ use deno_graph::source::Loader;
 use deno_graph::DefaultModuleAnalyzer;
 use deno_graph::GraphKind;
 use deno_graph::ModuleGraph;
-use deno_runtime::deno_fs::RealFs;
 use import_map::ImportMap;
 
 use crate::args::JsxImportSourceConfig;
