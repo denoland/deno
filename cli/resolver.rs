@@ -125,16 +125,12 @@ impl CliNodeResolver {
     mode: NodeResolutionMode,
     permissions: &PermissionsContainer,
   ) -> Result<Option<NodeResolution>, AnyError> {
-    self
-      .handle_node_resolve_result(self.node_resolver.resolve(
-        specifier,
-        referrer,
-        mode,
-        permissions,
-      ))
-      .with_context(|| {
-        format!("Could not resolve '{specifier}' from '{referrer}'.")
-      })
+    self.handle_node_resolve_result(self.node_resolver.resolve(
+      specifier,
+      referrer,
+      mode,
+      permissions,
+    ))
   }
 
   pub fn resolve_req_reference(
@@ -147,15 +143,13 @@ impl CliNodeResolver {
     let package_folder = self
       .npm_resolver
       .resolve_pkg_folder_from_deno_module_req(req_ref.req(), referrer)?;
-    let maybe_resolution = self
-      .resolve_package_sub_path_from_deno_module(
-        &package_folder,
-        req_ref.sub_path(),
-        referrer,
-        mode,
-        permissions,
-      )
-      .with_context(|| format!("Could not resolve '{}'.", req_ref))?;
+    let maybe_resolution = self.resolve_package_sub_path_from_deno_module(
+      &package_folder,
+      req_ref.sub_path(),
+      referrer,
+      mode,
+      permissions,
+    )?;
     match maybe_resolution {
       Some(resolution) => Ok(resolution),
       None => {
