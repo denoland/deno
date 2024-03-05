@@ -29,7 +29,7 @@ mod tests {
       ..Default::default()
     });
     js_runtime
-      .execute_script_static(
+      .execute_script(
         "<anon>",
         r#"
       if (!(bootstrap.mainRuntime && bootstrap.workerRuntime)) {
