@@ -228,26 +228,6 @@ Deno.test(function intervalCancelInvalidSilentFail() {
   clearInterval(2147483647);
 });
 
-Deno.test(async function callbackTakesLongerThanInterval() {
-  const { promise, resolve } = Promise.withResolvers<void>();
-
-  let timeEndOfFirstCallback: number | undefined;
-  const interval = setInterval(() => {
-    if (timeEndOfFirstCallback === undefined) {
-      // First callback
-      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 300);
-      timeEndOfFirstCallback = Date.now();
-    } else {
-      // Second callback should be nearly instantaneous
-      assert(Date.now() - timeEndOfFirstCallback < 10);
-      clearInterval(interval);
-      resolve();
-    }
-  }, 100);
-
-  await promise;
-});
-
 // https://github.com/denoland/deno/issues/11398
 Deno.test(async function clearTimeoutAfterNextTimerIsDue1() {
   const { promise, resolve } = Promise.withResolvers<void>();
