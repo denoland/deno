@@ -244,7 +244,9 @@ Deno.test(async function callbackTakesLongerThanInterval() {
       }
     }
     last = now;
-    while (performance.now() - now < 300) {}
+    while (performance.now() - now < 300) {
+      /* hot loop */
+    }
   }, 100);
   await promise;
   const total = output.reduce((t, n) => t + n, 0) / output.length;
