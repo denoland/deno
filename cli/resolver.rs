@@ -194,7 +194,7 @@ impl CliNodeResolver {
     &self,
     specifier: ModuleSpecifier,
   ) -> Result<ModuleSpecifier, AnyError> {
-    // skip canonicalizing if we definitely know it's necessary
+    // skip canonicalizing if we definitely know it's unnecessary
     if specifier.scheme() == "file"
       && specifier.path().contains("/node_modules/")
     {
