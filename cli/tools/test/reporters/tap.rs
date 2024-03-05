@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::serde_json::json;
 use deno_core::serde_json::{self};
@@ -235,6 +235,8 @@ impl TestReporter for TapTestReporter {
       test_steps,
     );
   }
+
+  fn report_completed(&mut self) {}
 
   fn flush_report(
     &mut self,

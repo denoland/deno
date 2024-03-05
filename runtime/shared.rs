@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Utilities shared between `build.rs` and the rest of the crate.
 
 use deno_ast::MediaType;
@@ -7,8 +7,9 @@ use deno_ast::SourceTextInfo;
 use deno_core::error::AnyError;
 use deno_core::extension;
 use deno_core::Extension;
-use deno_core::ExtensionFileSource;
-use deno_core::ExtensionFileSourceCode;
+use deno_core::ModuleCodeString;
+use deno_core::ModuleName;
+use deno_core::SourceMapData;
 use std::path::Path;
 
 extension!(runtime,
@@ -49,47 +50,45 @@ extension!(runtime,
     "40_tty.js",
     "41_prompt.js",
     "90_deno_ns.js",
-    "98_global_scope.js"
+    "98_global_scope_shared.js",
+    "98_global_scope_window.js",
+    "98_global_scope_worker.js"
   ],
   customizer = |ext: &mut Extension| {
     #[cfg(not(feature = "exclude_runtime_main_js"))]
     {
-      ext.esm_files.to_mut().push(ExtensionFileSource {
-        specifier: "ext:runtime_main/js/99_main.js",
-        code: ExtensionFileSourceCode::IncludedInBinary(
-          include_str!("./js/99_main.js"),
-        ),
-      });
+      use deno_core::ascii_str_include;
+      use deno_core::ExtensionFileSource;
+      ext.esm_files.to_mut().push(ExtensionFileSource::new("ext:runtime_main/js/99_main.js", ascii_str_include!("./js/99_main.js")));
       ext.esm_entry_point = Some("ext:runtime_main/js/99_main.js");
     }
   }
 );
 
-#[allow(dead_code)]
 pub fn maybe_transpile_source(
-  source: &mut ExtensionFileSource,
-) -> Result<(), AnyError> {
+  name: ModuleName,
+  source: ModuleCodeString,
+) -> Result<(ModuleCodeString, Option<SourceMapData>), AnyError> {
   // Always transpile `node:` built-in modules, since they might be TypeScript.
-  let media_type = if source.specifier.starts_with("node:") {
+  let media_type = if name.starts_with("node:") {
     MediaType::TypeScript
   } else {
-    MediaType::from_path(Path::new(&source.specifier))
+    MediaType::from_path(Path::new(&name))
   };
 
   match media_type {
     MediaType::TypeScript => {}
-    MediaType::JavaScript => return Ok(()),
-    MediaType::Mjs => return Ok(()),
+    MediaType::JavaScript => return Ok((source, None)),
+    MediaType::Mjs => return Ok((source, None)),
     _ => panic!(
       "Unsupported media type for snapshotting {media_type:?} for file {}",
-      source.specifier
+      name
     ),
   }
-  let code = source.load()?;
 
   let parsed = deno_ast::parse_module(ParseParams {
-    specifier: source.specifier.to_string(),
-    text_info: SourceTextInfo::from_string(code.as_str().to_owned()),
+    specifier: deno_core::url::Url::parse(&name).unwrap(),
+    text_info: SourceTextInfo::from_string(source.as_str().to_owned()),
     media_type,
     capture_tokens: false,
     scope_analysis: false,
@@ -101,7 +100,5 @@ pub fn maybe_transpile_source(
     ..Default::default()
   })?;
 
-  source.code =
-    ExtensionFileSourceCode::Computed(transpiled_source.text.into());
-  Ok(())
+  Ok((transpiled_source.text.into(), None))
 }

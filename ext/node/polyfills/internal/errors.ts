@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Copyright Node.js contributors. All rights reserved. MIT License.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
@@ -2472,6 +2472,36 @@ export class ERR_PACKAGE_PATH_NOT_EXPORTED extends NodeError {
   }
 }
 
+export class ERR_PARSE_ARGS_INVALID_OPTION_VALUE extends NodeTypeError {
+  constructor(x: string) {
+    super("ERR_PARSE_ARGS_INVALID_OPTION_VALUE", x);
+  }
+}
+
+export class ERR_PARSE_ARGS_UNEXPECTED_POSITIONAL extends NodeTypeError {
+  constructor(x: string) {
+    super(
+      "ERR_PARSE_ARGS_UNEXPECTED_POSITIONAL",
+      `Unexpected argument '${x}'. This ` +
+        `command does not take positional arguments`,
+    );
+  }
+}
+
+export class ERR_PARSE_ARGS_UNKNOWN_OPTION extends NodeTypeError {
+  constructor(option, allowPositionals) {
+    const suggestDashDash = allowPositionals
+      ? ". To specify a positional " +
+        "argument starting with a '-', place it at the end of the command after " +
+        `'--', as in '-- ${JSONStringify(option)}`
+      : "";
+    super(
+      "ERR_PARSE_ARGS_UNKNOWN_OPTION",
+      `Unknown option '${option}'${suggestDashDash}`,
+    );
+  }
+}
+
 export class ERR_INTERNAL_ASSERTION extends NodeError {
   constructor(message?: string) {
     const suffix = "This is caused by either a bug in Node.js " +
@@ -2510,6 +2540,15 @@ export class ERR_OS_NO_HOMEDIR extends NodeSystemError {
       errno: isWindows ? osConstants.errno.ENOENT : osConstants.errno.ENOTDIR,
     };
     super(code, ctx, "Path is not a directory");
+  }
+}
+
+export class ERR_HTTP_SOCKET_ASSIGNED extends NodeError {
+  constructor() {
+    super(
+      "ERR_HTTP_SOCKET_ASSIGNED",
+      `ServerResponse has an already assigned socket`,
+    );
   }
 }
 

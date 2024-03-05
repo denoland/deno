@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 use crate::request_properties::HttpConnectionProperties;
 use crate::response_body::ResponseBytesInner;
 use crate::response_body::ResponseStreamResult;
@@ -8,15 +8,16 @@ use deno_core::BufView;
 use deno_core::OpState;
 use deno_core::ResourceId;
 use http::request::Parts;
-use http::HeaderMap;
-use hyper1::body::Body;
-use hyper1::body::Frame;
-use hyper1::body::Incoming;
-use hyper1::body::SizeHint;
-use hyper1::upgrade::OnUpgrade;
+use hyper::body::Body;
+use hyper::body::Frame;
+use hyper::body::Incoming;
+use hyper::body::SizeHint;
+use hyper::header::HeaderMap;
+use hyper::upgrade::OnUpgrade;
 
 use scopeguard::guard;
 use scopeguard::ScopeGuard;
+use std::cell::Cell;
 use std::cell::Ref;
 use std::cell::RefCell;
 use std::cell::RefMut;
@@ -28,15 +29,37 @@ use std::task::Context;
 use std::task::Poll;
 use std::task::Waker;
 
-pub type Request = hyper1::Request<Incoming>;
-pub type Response = hyper1::Response<HttpRecordResponse>;
+pub type Request = hyper::Request<Incoming>;
+pub type Response = hyper::Response<HttpRecordResponse>;
+
+#[cfg(feature = "__http_tracing")]
+pub static RECORD_COUNT: std::sync::atomic::AtomicUsize =
+  std::sync::atomic::AtomicUsize::new(0);
+
+macro_rules! http_general_trace {
+  ($($args:expr),*) => {
+    #[cfg(feature = "__http_tracing")]
+    {
+      let count = $crate::service::RECORD_COUNT
+        .load(std::sync::atomic::Ordering::SeqCst);
+
+      println!(
+        "HTTP [+{count}]: {}",
+        format!($($args),*),
+      );
+    }
+  };
+}
 
 macro_rules! http_trace {
   ($record:expr $(, $args:expr)*) => {
     #[cfg(feature = "__http_tracing")]
     {
+      let count = $crate::service::RECORD_COUNT
+        .load(std::sync::atomic::Ordering::SeqCst);
+
       println!(
-        "HTTP id={:p} strong={}: {}",
+        "HTTP [+{count}] id={:p} strong={}: {}",
         $record,
         std::rc::Rc::strong_count(&$record),
         format!($($args),*),
@@ -45,44 +68,83 @@ macro_rules! http_trace {
   };
 }
 
+pub(crate) use http_general_trace;
 pub(crate) use http_trace;
 
-struct HttpServerStateInner {
+pub(crate) struct HttpServerStateInner {
   pool: Vec<(Rc<HttpRecord>, HeaderMap)>,
-  drain_waker: Option<Waker>,
 }
 
-pub struct HttpServerState(RefCell<HttpServerStateInner>);
+/// A signalling version of `Rc` that allows one to poll for when all other references
+/// to the `Rc` have been dropped.
+#[repr(transparent)]
+pub(crate) struct SignallingRc<T>(Rc<(T, Cell<Option<Waker>>)>);
 
-impl HttpServerState {
-  pub fn new() -> Rc<Self> {
-    Rc::new(Self(RefCell::new(HttpServerStateInner {
-      pool: Vec::new(),
-      drain_waker: None,
-    })))
+impl<T> SignallingRc<T> {
+  #[inline]
+  pub fn new(t: T) -> Self {
+    Self(Rc::new((t, Default::default())))
   }
 
-  pub fn drain<'a>(self: &'a Rc<Self>) -> impl Future<Output = ()> + 'a {
-    struct HttpServerStateDrain<'a>(&'a Rc<HttpServerState>);
+  #[inline]
+  pub fn strong_count(&self) -> usize {
+    Rc::strong_count(&self.0)
+  }
 
-    impl<'a> Future for HttpServerStateDrain<'a> {
-      type Output = ();
+  /// Resolves when this is the only remaining reference.
+  #[inline]
+  pub fn poll_complete(&self, cx: &mut Context<'_>) -> Poll<()> {
+    if Rc::strong_count(&self.0) == 1 {
+      Poll::Ready(())
+    } else {
+      self.0 .1.set(Some(cx.waker().clone()));
+      Poll::Pending
+    }
+  }
+}
 
-      fn poll(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-      ) -> Poll<Self::Output> {
-        let server_state = self.0;
-        http_trace!(server_state, "HttpServerState::drain poll");
-        if Rc::strong_count(server_state) <= 1 {
-          return Poll::Ready(());
-        }
-        server_state.0.borrow_mut().drain_waker = Some(cx.waker().clone());
-        Poll::Pending
+impl<T> Clone for SignallingRc<T> {
+  #[inline]
+  fn clone(&self) -> Self {
+    Self(self.0.clone())
+  }
+}
+
+impl<T> Drop for SignallingRc<T> {
+  #[inline]
+  fn drop(&mut self) {
+    // Trigger the waker iff the refcount is about to become 1.
+    if Rc::strong_count(&self.0) == 2 {
+      if let Some(waker) = self.0 .1.take() {
+        waker.wake();
       }
     }
+  }
+}
 
-    HttpServerStateDrain(self)
+impl<T> std::ops::Deref for SignallingRc<T> {
+  type Target = T;
+  #[inline]
+  fn deref(&self) -> &Self::Target {
+    &self.0 .0
+  }
+}
+
+pub(crate) struct HttpServerState(RefCell<HttpServerStateInner>);
+
+impl HttpServerState {
+  pub fn new() -> SignallingRc<Self> {
+    SignallingRc::new(Self(RefCell::new(HttpServerStateInner {
+      pool: Vec::new(),
+    })))
+  }
+}
+
+impl std::ops::Deref for HttpServerState {
+  type Target = RefCell<HttpServerStateInner>;
+
+  fn deref(&self) -> &Self::Target {
+    &self.0
   }
 }
 
@@ -114,12 +176,12 @@ impl Drop for HttpRequestBodyAutocloser {
   }
 }
 
-pub async fn handle_request(
+pub(crate) async fn handle_request(
   request: Request,
   request_info: HttpConnectionProperties,
-  server_state: Rc<HttpServerState>, // Keep server alive for duration of this future.
+  server_state: SignallingRc<HttpServerState>, // Keep server alive for duration of this future.
   tx: tokio::sync::mpsc::Sender<Rc<HttpRecord>>,
-) -> Result<Response, hyper::Error> {
+) -> Result<Response, hyper_v014::Error> {
   // If the underlying TCP connection is closed, this future will be dropped
   // and execution could stop at any await point.
   // The HttpRecord must live until JavaScript is done processing so is wrapped
@@ -145,7 +207,7 @@ pub async fn handle_request(
 }
 
 struct HttpRecordInner {
-  server_state: Rc<HttpServerState>,
+  server_state: SignallingRc<HttpServerState>,
   request_info: HttpConnectionProperties,
   request_parts: http::request::Parts,
   request_body: Option<RequestBodyState>,
@@ -164,17 +226,13 @@ struct HttpRecordInner {
 pub struct HttpRecord(RefCell<Option<HttpRecordInner>>);
 
 #[cfg(feature = "__http_tracing")]
-pub static RECORD_COUNT: std::sync::atomic::AtomicUsize =
-  std::sync::atomic::AtomicUsize::new(0);
-
-#[cfg(feature = "__http_tracing")]
 impl Drop for HttpRecord {
   fn drop(&mut self) {
-    let count = RECORD_COUNT
+    RECORD_COUNT
       .fetch_sub(1, std::sync::atomic::Ordering::SeqCst)
       .checked_sub(1)
       .expect("Count went below zero");
-    println!("HTTP count={count}: HttpRecord::drop");
+    http_general_trace!("HttpRecord::drop");
   }
 }
 
@@ -182,13 +240,13 @@ impl HttpRecord {
   fn new(
     request: Request,
     request_info: HttpConnectionProperties,
-    server_state: Rc<HttpServerState>,
+    server_state: SignallingRc<HttpServerState>,
   ) -> Rc<Self> {
     let (request_parts, request_body) = request.into_parts();
     let request_body = Some(request_body.into());
     let (mut response_parts, _) = http::Response::new(()).into_parts();
     let record =
-      if let Some((record, headers)) = server_state.0.borrow_mut().pool.pop() {
+      if let Some((record, headers)) = server_state.borrow_mut().pool.pop() {
         response_parts.headers = headers;
         http_trace!(record, "HttpRecord::reuse");
         record
@@ -262,23 +320,13 @@ impl HttpRecord {
       ..
     } = self.0.borrow_mut().take().unwrap();
 
-    let mut server_state_mut = server_state.0.borrow_mut();
-    let inflight = Rc::strong_count(&server_state);
+    let inflight = server_state.strong_count();
     http_trace!(self, "HttpRecord::recycle inflight={}", inflight);
-
-    // Server is shutting down so wake the drain future.
-    if let Some(waker) = server_state_mut.drain_waker.take() {
-      drop(server_state_mut);
-      drop(server_state);
-      http_trace!(self, "HttpRecord::recycle wake");
-      waker.wake();
-      return;
-    }
 
     // Keep a buffer of allocations on hand to be reused by incoming requests.
     // Estimated target size is 16 + 1/8 the number of inflight requests.
     let target = 16 + (inflight >> 3);
-    let pool = &mut server_state_mut.pool;
+    let pool = &mut server_state.borrow_mut().pool;
     if target > pool.len() {
       headers.clear();
       pool.push((self, headers));
@@ -398,7 +446,7 @@ impl HttpRecord {
   fn into_response(self: Rc<Self>) -> Response {
     let parts = self.self_mut().response_parts.take().unwrap();
     let body = HttpRecordResponse(ManuallyDrop::new(self));
-    http::Response::from_parts(parts, body)
+    Response::from_parts(parts, body)
   }
 
   /// Get a reference to the connection properties.
@@ -542,22 +590,22 @@ impl Drop for HttpRecordResponse {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::hyper_util_tokioio::TokioIo;
   use crate::response_body::Compression;
   use crate::response_body::ResponseBytesInner;
   use bytes::Buf;
   use deno_net::raw::NetworkStreamType;
-  use hyper1::body::Body;
-  use hyper1::service::service_fn;
-  use hyper1::service::HttpService;
+  use hyper::body::Body;
+  use hyper::service::service_fn;
+  use hyper::service::HttpService;
+  use hyper_util::rt::TokioIo;
   use std::error::Error as StdError;
 
   /// Execute client request on service and concurrently map the response.
   async fn serve_request<B, S, T, F>(
     req: http::Request<B>,
     service: S,
-    map_response: impl FnOnce(hyper1::Response<Incoming>) -> F,
-  ) -> hyper1::Result<T>
+    map_response: impl FnOnce(hyper::Response<Incoming>) -> F,
+  ) -> hyper::Result<T>
   where
     B: Body + Send + 'static, // Send bound due to DuplexStream
     B::Data: Send,
@@ -566,10 +614,10 @@ mod tests {
     S::Error: Into<Box<dyn StdError + Send + Sync>>,
     S::ResBody: 'static,
     <S::ResBody as Body>::Error: Into<Box<dyn StdError + Send + Sync>>,
-    F: std::future::Future<Output = hyper1::Result<T>>,
+    F: std::future::Future<Output = hyper::Result<T>>,
   {
-    use hyper1::client::conn::http1::handshake;
-    use hyper1::server::conn::http1::Builder;
+    use hyper::client::conn::http1::handshake;
+    use hyper::server::conn::http1::Builder;
     let (stream_client, stream_server) = tokio::io::duplex(16 * 1024);
     let conn_server =
       Builder::new().serve_connection(TokioIo::new(stream_server), service);
@@ -598,7 +646,7 @@ mod tests {
       local_port: None,
       stream_type: NetworkStreamType::Tcp,
     };
-    let svc = service_fn(move |req: hyper1::Request<Incoming>| {
+    let svc = service_fn(move |req: hyper::Request<Incoming>| {
       handle_request(
         req,
         request_info.clone(),
@@ -634,7 +682,7 @@ mod tests {
         .await
       },
     )?;
-    assert_eq!(Rc::strong_count(&server_state_check), 1);
+    assert_eq!(server_state_check.strong_count(), 1);
     Ok(())
   }
 }

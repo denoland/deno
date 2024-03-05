@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::cdp;
 use crate::emit::Emitter;
@@ -8,23 +8,14 @@ use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures::StreamExt;
 use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
 use deno_core::serde_json::{self};
 use deno_core::url::Url;
 use deno_core::LocalInspectorSession;
-use deno_runtime::colors;
-use serde::Deserialize;
+use deno_terminal::colors;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::select;
-
-// TODO(bartlomieju): the same thing is used in the REPL. Deduplicate.
-#[derive(Debug, Deserialize)]
-pub struct RpcNotification {
-  pub method: String,
-  pub params: Value,
-}
 
 fn explain(status: &cdp::Status) -> &'static str {
   match status {
@@ -70,105 +61,22 @@ pub struct HmrRunner {
   emitter: Arc<Emitter>,
 }
 
-impl HmrRunner {
-  pub fn new(
-    emitter: Arc<Emitter>,
-    session: LocalInspectorSession,
-    watcher_communicator: Arc<WatcherCommunicator>,
-  ) -> Self {
-    Self {
-      session,
-      emitter,
-      watcher_communicator,
-      script_ids: HashMap::new(),
-    }
-  }
-
+#[async_trait::async_trait(?Send)]
+impl crate::worker::HmrRunner for HmrRunner {
   // TODO(bartlomieju): this code is duplicated in `cli/tools/coverage/mod.rs`
-  pub async fn start(&mut self) -> Result<(), AnyError> {
+  async fn start(&mut self) -> Result<(), AnyError> {
     self.enable_debugger().await
   }
 
   // TODO(bartlomieju): this code is duplicated in `cli/tools/coverage/mod.rs`
-  pub async fn stop(&mut self) -> Result<(), AnyError> {
+  async fn stop(&mut self) -> Result<(), AnyError> {
     self
       .watcher_communicator
       .change_restart_mode(WatcherRestartMode::Automatic);
     self.disable_debugger().await
   }
 
-  // TODO(bartlomieju): this code is duplicated in `cli/tools/coverage/mod.rs`
-  async fn enable_debugger(&mut self) -> Result<(), AnyError> {
-    self
-      .session
-      .post_message::<()>("Debugger.enable", None)
-      .await?;
-    self
-      .session
-      .post_message::<()>("Runtime.enable", None)
-      .await?;
-    Ok(())
-  }
-
-  // TODO(bartlomieju): this code is duplicated in `cli/tools/coverage/mod.rs`
-  async fn disable_debugger(&mut self) -> Result<(), AnyError> {
-    self
-      .session
-      .post_message::<()>("Debugger.disable", None)
-      .await?;
-    self
-      .session
-      .post_message::<()>("Runtime.disable", None)
-      .await?;
-    Ok(())
-  }
-
-  async fn set_script_source(
-    &mut self,
-    script_id: &str,
-    source: &str,
-  ) -> Result<cdp::SetScriptSourceResponse, AnyError> {
-    let result = self
-      .session
-      .post_message(
-        "Debugger.setScriptSource",
-        Some(json!({
-          "scriptId": script_id,
-          "scriptSource": source,
-          "allowTopFrameEditing": true,
-        })),
-      )
-      .await?;
-
-    Ok(serde_json::from_value::<cdp::SetScriptSourceResponse>(
-      result,
-    )?)
-  }
-
-  async fn dispatch_hmr_event(
-    &mut self,
-    script_id: &str,
-  ) -> Result<(), AnyError> {
-    let expr = format!(
-      "dispatchEvent(new CustomEvent(\"hmr\", {{ detail: {{ path: \"{}\" }} }}));",
-      script_id
-    );
-
-    let _result = self
-      .session
-      .post_message(
-        "Runtime.evaluate",
-        Some(json!({
-          "expression": expr,
-          "contextId": Some(1),
-        })),
-      )
-      .await?;
-
-    Ok(())
-  }
-
-  pub async fn run(&mut self) -> Result<(), AnyError> {
+  async fn run(&mut self) -> Result<(), AnyError> {
     self
       .watcher_communicator
       .change_restart_mode(WatcherRestartMode::Manual);
@@ -177,15 +85,11 @@ impl HmrRunner {
       select! {
         biased;
         Some(notification) = session_rx.next() => {
-          let notification = serde_json::from_value::<RpcNotification>(notification)?;
-          // TODO(bartlomieju): this is not great... and the code is duplicated with the REPL.
+          let notification = serde_json::from_value::<cdp::Notification>(notification)?;
           if notification.method == "Runtime.exceptionThrown" {
-            let params = notification.params;
-            let exception_details = params.get("exceptionDetails").unwrap().as_object().unwrap();
-            let text = exception_details.get("text").unwrap().as_str().unwrap();
-            let exception = exception_details.get("exception").unwrap().as_object().unwrap();
-            let description = exception.get("description").and_then(|d| d.as_str()).unwrap_or("undefined");
-            break Err(generic_error(format!("{text} {description}")));
+            let exception_thrown = serde_json::from_value::<cdp::ExceptionThrown>(notification.params)?;
+            let (message, description) = exception_thrown.exception_details.get_message_and_description();
+            break Err(generic_error(format!("{} {}", message, description)));
           } else if notification.method == "Debugger.scriptParsed" {
             let params = serde_json::from_value::<cdp::ScriptParsed>(notification.params)?;
             if params.url.starts_with("file://") {
@@ -263,5 +167,91 @@ impl HmrRunner {
         _ = self.session.receive_from_v8_session() => {}
       }
     }
+  }
+}
+
+impl HmrRunner {
+  pub fn new(
+    emitter: Arc<Emitter>,
+    session: LocalInspectorSession,
+    watcher_communicator: Arc<WatcherCommunicator>,
+  ) -> Self {
+    Self {
+      session,
+      emitter,
+      watcher_communicator,
+      script_ids: HashMap::new(),
+    }
+  }
+
+  // TODO(bartlomieju): this code is duplicated in `cli/tools/coverage/mod.rs`
+  async fn enable_debugger(&mut self) -> Result<(), AnyError> {
+    self
+      .session
+      .post_message::<()>("Debugger.enable", None)
+      .await?;
+    self
+      .session
+      .post_message::<()>("Runtime.enable", None)
+      .await?;
+    Ok(())
+  }
+
+  // TODO(bartlomieju): this code is duplicated in `cli/tools/coverage/mod.rs`
+  async fn disable_debugger(&mut self) -> Result<(), AnyError> {
+    self
+      .session
+      .post_message::<()>("Debugger.disable", None)
+      .await?;
+    self
+      .session
+      .post_message::<()>("Runtime.disable", None)
+      .await?;
+    Ok(())
+  }
+
+  async fn set_script_source(
+    &mut self,
+    script_id: &str,
+    source: &str,
+  ) -> Result<cdp::SetScriptSourceResponse, AnyError> {
+    let result = self
+      .session
+      .post_message(
+        "Debugger.setScriptSource",
+        Some(json!({
+          "scriptId": script_id,
+          "scriptSource": source,
+          "allowTopFrameEditing": true,
+        })),
+      )
+      .await?;
+
+    Ok(serde_json::from_value::<cdp::SetScriptSourceResponse>(
+      result,
+    )?)
+  }
+
+  async fn dispatch_hmr_event(
+    &mut self,
+    script_id: &str,
+  ) -> Result<(), AnyError> {
+    let expr = format!(
+      "dispatchEvent(new CustomEvent(\"hmr\", {{ detail: {{ path: \"{}\" }} }}));",
+      script_id
+    );
+
+    let _result = self
+      .session
+      .post_message(
+        "Runtime.evaluate",
+        Some(json!({
+          "expression": expr,
+          "contextId": Some(1),
+        })),
+      )
+      .await?;
+
+    Ok(())
   }
 }

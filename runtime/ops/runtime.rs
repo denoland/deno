@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::permissions::PermissionsContainer;
 use deno_core::error::AnyError;
@@ -32,7 +32,7 @@ fn op_main_module(state: &mut OpState) -> Result<String, AnyError> {
 /// This is an op instead of being done at initialization time because
 /// it's expensive to retrieve the ppid on Windows.
 #[op2(fast)]
-#[bigint]
+#[number]
 pub fn op_ppid() -> i64 {
   #[cfg(windows)]
   {

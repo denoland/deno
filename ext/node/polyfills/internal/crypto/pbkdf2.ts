@@ -1,13 +1,12 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
+import { op_node_pbkdf2, op_node_pbkdf2_async } from "ext:core/ops";
+
 import { Buffer } from "node:buffer";
 import { HASH_DATA } from "ext:deno_node/internal/crypto/types.ts";
-
-const { core } = globalThis.__bootstrap;
-const { ops } = core;
 
 export const MAX_ALLOC = Math.pow(2, 30) - 1;
 
@@ -50,7 +49,7 @@ export function pbkdf2Sync(
   }
 
   const DK = new Uint8Array(keylen);
-  if (!ops.op_node_pbkdf2(password, salt, iterations, digest, DK)) {
+  if (!op_node_pbkdf2(password, salt, iterations, digest, DK)) {
     throw new Error("Invalid digest");
   }
 
@@ -77,8 +76,7 @@ export function pbkdf2(
     throw new TypeError("Bad key length");
   }
 
-  core.opAsync(
-    "op_node_pbkdf2_async",
+  op_node_pbkdf2_async(
     password,
     salt,
     iterations,

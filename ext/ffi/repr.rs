@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::check_unstable;
 use crate::FfiPermissions;
@@ -44,7 +44,7 @@ where
   Ok(a == b)
 }
 
-#[op2(fast)]
+#[op2]
 pub fn op_ffi_ptr_of<FP>(
   state: &mut OpState,
   #[anybuffer] buf: *const u8,
@@ -172,7 +172,7 @@ where
   Ok(array_buffer)
 }
 
-#[op2(fast)]
+#[op2]
 pub fn op_ffi_buf_copy_into<FP>(
   state: &mut OpState,
   src: *mut c_void,

@@ -1,7 +1,6 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 use crate::compressible::is_content_compressible;
 use crate::extract_network_stream;
-use crate::hyper_util_tokioio::TokioIo;
 use crate::network_buffered_stream::NetworkStreamPrefixCheck;
 use crate::request_body::HttpRequestBody;
 use crate::request_properties::HttpConnectionProperties;
@@ -10,15 +9,18 @@ use crate::request_properties::HttpPropertyExtractor;
 use crate::response_body::Compression;
 use crate::response_body::ResponseBytesInner;
 use crate::service::handle_request;
+use crate::service::http_general_trace;
 use crate::service::http_trace;
 use crate::service::HttpRecord;
 use crate::service::HttpRecordResponse;
 use crate::service::HttpRequestBodyAutocloser;
 use crate::service::HttpServerState;
+use crate::service::SignallingRc;
 use crate::websocket_upgrade::WebSocketUpgrade;
 use crate::LocalExecutor;
 use cache_control::CacheControl;
 use deno_core::error::AnyError;
+use deno_core::futures::future::poll_fn;
 use deno_core::futures::TryFutureExt;
 use deno_core::op2;
 use deno_core::serde_v8::from_v8;
@@ -41,23 +43,23 @@ use deno_core::ResourceId;
 use deno_net::ops_tls::TlsStream;
 use deno_net::raw::NetworkStream;
 use deno_websocket::ws_create_server_stream;
-use fly_accept_encoding::Encoding;
-use http::header::ACCEPT_ENCODING;
-use http::header::CACHE_CONTROL;
-use http::header::CONTENT_ENCODING;
-use http::header::CONTENT_LENGTH;
-use http::header::CONTENT_RANGE;
-use http::header::CONTENT_TYPE;
-use http::HeaderMap;
-use hyper1::body::Incoming;
-use hyper1::header::COOKIE;
-use hyper1::http::HeaderName;
-use hyper1::http::HeaderValue;
-use hyper1::server::conn::http1;
-use hyper1::server::conn::http2;
-use hyper1::service::service_fn;
-use hyper1::service::HttpService;
-use hyper1::StatusCode;
+use hyper::body::Incoming;
+use hyper::header::HeaderMap;
+use hyper::header::ACCEPT_ENCODING;
+use hyper::header::CACHE_CONTROL;
+use hyper::header::CONTENT_ENCODING;
+use hyper::header::CONTENT_LENGTH;
+use hyper::header::CONTENT_RANGE;
+use hyper::header::CONTENT_TYPE;
+use hyper::header::COOKIE;
+use hyper::http::HeaderName;
+use hyper::http::HeaderValue;
+use hyper::server::conn::http1;
+use hyper::server::conn::http2;
+use hyper::service::service_fn;
+use hyper::service::HttpService;
+use hyper::StatusCode;
+use hyper_util::rt::TokioIo;
 use once_cell::sync::Lazy;
 use smallvec::SmallVec;
 use std::borrow::Cow;
@@ -69,10 +71,13 @@ use std::pin::Pin;
 use std::ptr::null;
 use std::rc::Rc;
 
+use super::fly_accept_encoding;
+use fly_accept_encoding::Encoding;
+
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 
-type Request = hyper1::Request<Incoming>;
+type Request = hyper::Request<Incoming>;
 
 static USE_WRITEV: Lazy<bool> = Lazy::new(|| {
   let enable = std::env::var("DENO_USE_WRITEV").ok();
@@ -84,6 +89,11 @@ static USE_WRITEV: Lazy<bool> = Lazy::new(|| {
   false
 });
 
+// NOTE(bartlomieju): currently we don't have any unstable HTTP features,
+// but let's keep this const here, because:
+//   a) we still need to support `--unstable-http` flag to not break user's CLI;
+//   b) we might add more unstable features in the future.
+#[allow(dead_code)]
 pub const UNSTABLE_FEATURE_NAME: &str = "http";
 
 /// All HTTP/2 connections start with this byte string.
@@ -279,7 +289,7 @@ pub fn op_http_set_promise_complete(external: *const c_void, status: u16) {
 
 fn set_promise_complete(http: Rc<HttpRecord>, status: u16) {
   // The Javascript code should never provide a status that is invalid here (see 23_response.js), so we
-  // will quitely ignore invalid values.
+  // will quietly ignore invalid values.
   if let Ok(code) = StatusCode::from_u16(status) {
     http.response_parts().status = code;
   }
@@ -548,24 +558,25 @@ fn is_request_compressible(
     return Compression::None;
   };
 
-  match accept_encoding.to_str().unwrap() {
+  match accept_encoding.to_str() {
     // Firefox and Chrome send this -- no need to parse
-    "gzip, deflate, br" => return Compression::Brotli,
-    "gzip" => return Compression::GZip,
-    "br" => return Compression::Brotli,
+    Ok("gzip, deflate, br") => return Compression::Brotli,
+    Ok("gzip") => return Compression::GZip,
+    Ok("br") => return Compression::Brotli,
     _ => (),
   }
 
   // Fall back to the expensive parser
-  let accepted = fly_accept_encoding::encodings_iter(headers).filter(|r| {
-    matches!(
-      r,
-      Ok((
-        Some(Encoding::Identity | Encoding::Gzip | Encoding::Brotli),
-        _
-      ))
-    )
-  });
+  let accepted =
+    fly_accept_encoding::encodings_iter_http_1(headers).filter(|r| {
+      matches!(
+        r,
+        Ok((
+          Some(Encoding::Identity | Encoding::Gzip | Encoding::Brotli),
+          _
+        ))
+      )
+    });
   match fly_accept_encoding::preferred(accepted) {
     Ok(Some(fly_accept_encoding::Encoding::Gzip)) => Compression::GZip,
     Ok(Some(fly_accept_encoding::Encoding::Brotli)) => Compression::Brotli,
@@ -675,7 +686,7 @@ fn set_response(
     http.set_response_body(response_fn(compression));
 
     // The Javascript code should never provide a status that is invalid here (see 23_response.js), so we
-    // will quitely ignore invalid values.
+    // will quietly ignore invalid values.
     if let Ok(code) = StatusCode::from_u16(status) {
       http.response_parts().status = code;
     }
@@ -758,7 +769,7 @@ pub fn op_http_set_response_body_text(
   }
 }
 
-#[op2(fast)]
+#[op2]
 pub fn op_http_set_response_body_bytes(
   external: *const c_void,
   #[buffer] buffer: JsBuffer,
@@ -780,7 +791,7 @@ fn serve_http11_unconditional(
   io: impl HttpServeStream,
   svc: impl HttpService<Incoming, ResBody = HttpRecordResponse> + 'static,
   cancel: Rc<CancelHandle>,
-) -> impl Future<Output = Result<(), hyper1::Error>> + 'static {
+) -> impl Future<Output = Result<(), hyper::Error>> + 'static {
   let conn = http1::Builder::new()
     .keep_alive(true)
     .writev(*USE_WRITEV)
@@ -802,7 +813,7 @@ fn serve_http2_unconditional(
   io: impl HttpServeStream,
   svc: impl HttpService<Incoming, ResBody = HttpRecordResponse> + 'static,
   cancel: Rc<CancelHandle>,
-) -> impl Future<Output = Result<(), hyper1::Error>> + 'static {
+) -> impl Future<Output = Result<(), hyper::Error>> + 'static {
   let conn =
     http2::Builder::new(LocalExecutor).serve_connection(TokioIo::new(io), svc);
   async {
@@ -924,7 +935,7 @@ where
 struct HttpLifetime {
   connection_cancel_handle: Rc<CancelHandle>,
   listen_cancel_handle: Rc<CancelHandle>,
-  server_state: Rc<HttpServerState>,
+  server_state: SignallingRc<HttpServerState>,
 }
 
 struct HttpJoinHandle {
@@ -932,7 +943,7 @@ struct HttpJoinHandle {
   connection_cancel_handle: Rc<CancelHandle>,
   listen_cancel_handle: Rc<CancelHandle>,
   rx: AsyncRefCell<tokio::sync::mpsc::Receiver<Rc<HttpRecord>>>,
-  server_state: Rc<HttpServerState>,
+  server_state: SignallingRc<HttpServerState>,
 }
 
 impl HttpJoinHandle {
@@ -1179,26 +1190,20 @@ pub async fn op_http_close(
     .take::<HttpJoinHandle>(rid)?;
 
   if graceful {
-    // TODO(bartlomieju): replace with `state.feature_checker.check_or_exit`
-    // once we phase out `check_or_exit_with_legacy_fallback`
-    state
-      .borrow()
-      .feature_checker
-      .check_or_exit_with_legacy_fallback(
-        UNSTABLE_FEATURE_NAME,
-        "Deno.Server.shutdown",
-      );
-
+    http_general_trace!("graceful shutdown");
     // In a graceful shutdown, we close the listener and allow all the remaining connections to drain
     join_handle.listen_cancel_handle().cancel();
-    join_handle.server_state.drain().await;
+    poll_fn(|cx| join_handle.server_state.poll_complete(cx)).await;
   } else {
+    http_general_trace!("forceful shutdown");
     // In a forceful shutdown, we close everything
     join_handle.listen_cancel_handle().cancel();
     join_handle.connection_cancel_handle().cancel();
     // Give streaming responses a tick to close
     tokio::task::yield_now().await;
   }
+
+  http_general_trace!("awaiting shutdown");
 
   let mut join_handle = RcRef::map(&join_handle, |this| &this.join_handle)
     .borrow_mut()

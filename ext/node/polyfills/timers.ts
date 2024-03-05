@@ -1,9 +1,9 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-const primordials = globalThis.__bootstrap.primordials;
+import { primordials } from "ext:core/mod.js";
 const {
   MapPrototypeGet,
   MapPrototypeDelete,
@@ -21,7 +21,7 @@ import * as timers from "ext:deno_web/02_timers.js";
 
 const clearTimeout_ = timers.clearTimeout;
 const clearInterval_ = timers.clearInterval;
-const setTimeoutUnclamped = timers.setTimeoutUnclamped;
+const setImmediate_ = timers.setImmediate;
 
 export function setTimeout(
   callback: (...args: unknown[]) => void,
@@ -76,7 +76,7 @@ export function setImmediate(
   cb: (...args: unknown[]) => void,
   ...args: unknown[]
 ): Timeout {
-  return setTimeoutUnclamped(cb, 0, ...args);
+  return setImmediate_(cb, ...args);
 }
 export const clearImmediate = clearTimeout;
 

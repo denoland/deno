@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../../core/lib.deno_core.d.ts" />
@@ -6,12 +6,12 @@
 /// <reference path="../web/internal.d.ts" />
 /// <reference path="../web/lib.deno_web.d.ts" />
 
-const core = globalThis.Deno.core;
-import DOMException from "ext:deno_web/01_dom_exception.js";
-const primordials = globalThis.__bootstrap.primordials;
+import { core, primordials } from "ext:core/mod.js";
+const {
+  isArrayBuffer,
+} = core;
 const {
   ArrayBuffer,
-  ArrayBufferPrototype,
   ArrayBufferPrototypeGetByteLength,
   ArrayBufferPrototypeSlice,
   ArrayBufferIsView,
@@ -40,6 +40,8 @@ const {
   Float64Array,
 } = primordials;
 
+import { DOMException } from "ext:deno_web/01_dom_exception.js";
+
 const objectCloneMemo = new SafeWeakMap();
 
 function cloneArrayBuffer(
@@ -62,7 +64,7 @@ function cloneArrayBuffer(
 function structuredClone(value) {
   // Performance optimization for buffers, otherwise
   // `serialize/deserialize` will allocate new buffer.
-  if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, value)) {
+  if (isArrayBuffer(value)) {
     const cloned = cloneArrayBuffer(
       value,
       0,

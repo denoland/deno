@@ -1,11 +1,8 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::cache::LocalLspHttpCache;
-use crate::file_fetcher::map_content_type;
 
-use data_url::DataUrl;
 use deno_ast::MediaType;
-use deno_core::error::uri_error;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::url::Position;
@@ -191,11 +188,8 @@ impl LspUrlMap {
         let specifier_str = if specifier.scheme() == "asset" {
           format!("deno:/asset{}", specifier.path())
         } else if specifier.scheme() == "data" {
-          let data_url = DataUrl::process(specifier.as_str())
-            .map_err(|e| uri_error(format!("{e:?}")))?;
-          let mime = data_url.mime_type();
-          let (media_type, _) =
-            map_content_type(specifier, Some(&format!("{mime}")));
+          let data_url = deno_graph::source::RawDataUrl::parse(specifier)?;
+          let media_type = data_url.media_type();
           let extension = if media_type == MediaType::Unknown {
             ""
           } else {
@@ -247,6 +241,8 @@ impl LspUrlMap {
           LspUrlKind::File => Url::from_file_path(path).unwrap(),
         });
       }
+    } else if let Some(s) = file_like_to_file_specifier(url) {
+      specifier = Some(s);
     } else if let Some(s) = from_deno_url(url) {
       specifier = Some(s);
     }
@@ -254,6 +250,30 @@ impl LspUrlMap {
     inner.put(specifier.clone(), LspClientUrl(url.clone()));
     specifier
   }
+}
+
+/// Convert a e.g. `deno-notebook-cell:` specifier to a `file:` specifier.
+/// ```rust
+/// assert_eq!(
+///   file_like_to_file_specifier(
+///     &Url::parse("deno-notebook-cell:/path/to/file.ipynb#abc").unwrap(),
+///   ),
+///   Some(Url::parse("file:///path/to/file.ipynb.ts?scheme=deno-notebook-cell#abc").unwrap()),
+/// );
+fn file_like_to_file_specifier(specifier: &Url) -> Option<Url> {
+  if matches!(specifier.scheme(), "untitled" | "deno-notebook-cell") {
+    if let Ok(mut s) = ModuleSpecifier::parse(&format!(
+      "file://{}",
+      &specifier.as_str()[deno_core::url::quirks::internal_components(specifier)
+        .host_end as usize..],
+    )) {
+      s.query_pairs_mut()
+        .append_pair("scheme", specifier.scheme());
+      s.set_path(&format!("{}.ts", s.path()));
+      return Some(s);
+    }
+  }
+  None
 }
 
 #[cfg(test)]
@@ -388,5 +408,29 @@ mod tests {
     let fixture = resolve_url("deno:/status.md").unwrap();
     let actual = map.normalize_url(&fixture, LspUrlKind::File);
     assert_eq!(actual, fixture);
+  }
+
+  #[test]
+  fn test_file_like_to_file_specifier() {
+    assert_eq!(
+      file_like_to_file_specifier(
+        &Url::parse("deno-notebook-cell:/path/to/file.ipynb#abc").unwrap(),
+      ),
+      Some(
+        Url::parse(
+          "file:///path/to/file.ipynb.ts?scheme=deno-notebook-cell#abc"
+        )
+        .unwrap()
+      ),
+    );
+    assert_eq!(
+      file_like_to_file_specifier(
+        &Url::parse("untitled:/path/to/file.ipynb#123").unwrap(),
+      ),
+      Some(
+        Url::parse("file:///path/to/file.ipynb.ts?scheme=untitled#123")
+          .unwrap()
+      ),
+    );
   }
 }

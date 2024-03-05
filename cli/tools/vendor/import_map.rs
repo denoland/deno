@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use deno_ast::LineAndColumnIndex;
 use deno_ast::ModuleSpecifier;
@@ -216,7 +216,11 @@ pub fn build_import_map(
     if let Some(specifier_text) = jsx_import_source.maybe_specifier_text() {
       if let Ok(resolved_url) = resolver.resolve(
         &specifier_text,
-        &jsx_import_source.base_url,
+        &deno_graph::Range {
+          specifier: jsx_import_source.base_url.clone(),
+          start: deno_graph::Position::zeroed(),
+          end: deno_graph::Position::zeroed(),
+        },
         ResolutionMode::Execution,
       ) {
         builder.imports.add(specifier_text, &resolved_url);
@@ -236,7 +240,7 @@ fn visit_modules(
 ) -> Result<(), AnyError> {
   for module in modules {
     let module = match module {
-      Module::Esm(module) => module,
+      Module::Js(module) => module,
       // skip visiting Json modules as they are leaves
       Module::Json(_)
       | Module::Npm(_)
@@ -245,9 +249,8 @@ fn visit_modules(
     };
 
     let parsed_source =
-      parsed_source_cache.get_parsed_source_from_esm_module(module)?;
+      parsed_source_cache.get_parsed_source_from_js_module(module)?;
     let text_info = parsed_source.text_info().clone();
-    let source_text = &module.source;
 
     for dep in module.dependencies.values() {
       visit_resolution(
@@ -257,7 +260,7 @@ fn visit_modules(
         &module.specifier,
         mappings,
         &text_info,
-        source_text,
+        &module.source,
       );
       visit_resolution(
         &dep.maybe_type,
@@ -266,7 +269,7 @@ fn visit_modules(
         &module.specifier,
         mappings,
         &text_info,
-        source_text,
+        &module.source,
       );
     }
 
@@ -278,7 +281,7 @@ fn visit_modules(
         &module.specifier,
         mappings,
         &text_info,
-        source_text,
+        &module.source,
       );
     }
   }

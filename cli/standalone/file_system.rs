@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::path::Path;
 use std::path::PathBuf;
@@ -173,6 +173,17 @@ impl FileSystem for DenoCompileFileSystem {
     } else {
       RealFs.copy_file_async(oldpath, newpath).await
     }
+  }
+
+  fn cp_sync(&self, from: &Path, to: &Path) -> FsResult<()> {
+    self.error_if_in_vfs(to)?;
+
+    RealFs.cp_sync(from, to)
+  }
+  async fn cp_async(&self, from: PathBuf, to: PathBuf) -> FsResult<()> {
+    self.error_if_in_vfs(&to)?;
+
+    RealFs.cp_async(from, to).await
   }
 
   fn stat_sync(&self, path: &Path) -> FsResult<FsStat> {

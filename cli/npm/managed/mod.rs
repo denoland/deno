@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::path::Path;
 use std::path::PathBuf;
@@ -225,13 +225,21 @@ async fn snapshot_from_lockfile(
   lockfile: Arc<Mutex<Lockfile>>,
   api: &dyn NpmRegistryApi,
 ) -> Result<ValidSerializedNpmResolutionSnapshot, AnyError> {
-  let incomplete_snapshot = {
+  let (incomplete_snapshot, skip_integrity_check) = {
     let lock = lockfile.lock();
-    deno_npm::resolution::incomplete_snapshot_from_lockfile(&lock)?
+    (
+      deno_npm::resolution::incomplete_snapshot_from_lockfile(&lock)?,
+      lock.overwrite,
+    )
   };
-  let snapshot =
-    deno_npm::resolution::snapshot_from_lockfile(incomplete_snapshot, api)
-      .await?;
+  let snapshot = deno_npm::resolution::snapshot_from_lockfile(
+    deno_npm::resolution::SnapshotFromLockfileParams {
+      incomplete_snapshot,
+      api,
+      skip_integrity_check,
+    },
+  )
+  .await?;
   Ok(snapshot)
 }
 
@@ -288,12 +296,8 @@ impl ManagedCliNpmResolver {
     pkg_id: &NpmPackageId,
   ) -> Result<PathBuf, AnyError> {
     let path = self.fs_resolver.package_folder(pkg_id)?;
-    let path = canonicalize_path_maybe_not_exists_with_fs(&path, |path| {
-      self
-        .fs
-        .realpath_sync(path)
-        .map_err(|err| err.into_io_error())
-    })?;
+    let path =
+      canonicalize_path_maybe_not_exists_with_fs(&path, self.fs.as_ref())?;
     log::debug!(
       "Resolved package folder of {} to {}",
       pkg_id.as_serialized(),
@@ -560,7 +564,7 @@ impl CliNpmResolver for ManagedCliNpmResolver {
         &self.progress_bar,
         self.api.base_url().clone(),
         npm_resolution,
-        self.root_node_modules_path(),
+        self.root_node_modules_path().map(ToOwned::to_owned),
         self.npm_system_info.clone(),
       ),
       self.global_npm_cache.clone(),
@@ -575,7 +579,7 @@ impl CliNpmResolver for ManagedCliNpmResolver {
     InnerCliNpmResolverRef::Managed(self)
   }
 
-  fn root_node_modules_path(&self) -> Option<PathBuf> {
+  fn root_node_modules_path(&self) -> Option<&PathBuf> {
     self.fs_resolver.node_modules_path()
   }
 

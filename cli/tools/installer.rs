@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::resolve_no_prompt;
 use crate::args::CaData;
@@ -152,14 +152,21 @@ pub async fn infer_name_from_url(url: &Url) -> Option<String> {
     return None;
   }
 
-  let path = PathBuf::from(url.path());
-  let mut stem = match path.file_stem() {
-    Some(stem) => stem.to_string_lossy().to_string(),
-    None => return None,
+  let percent_decode = percent_encoding::percent_decode(url.path().as_bytes());
+  #[cfg(unix)]
+  let path = {
+    use std::os::unix::prelude::OsStringExt;
+    PathBuf::from(std::ffi::OsString::from_vec(
+      percent_decode.collect::<Vec<u8>>(),
+    ))
   };
-  if stem == "main" || stem == "mod" || stem == "index" || stem == "cli" {
+  #[cfg(windows)]
+  let path = PathBuf::from(percent_decode.decode_utf8_lossy().as_ref());
+
+  let mut stem = path.file_stem()?.to_string_lossy();
+  if matches!(stem.as_ref(), "main" | "mod" | "index" | "cli") {
     if let Some(parent_name) = path.parent().and_then(|p| p.file_name()) {
-      stem = parent_name.to_string_lossy().to_string();
+      stem = parent_name.to_string_lossy();
     }
   }
 
@@ -168,12 +175,12 @@ pub async fn infer_name_from_url(url: &Url) -> Option<String> {
   // a version number.
   match stem.find('@') {
     Some(at_index) if at_index > 0 => {
-      stem = stem.split_at(at_index).0.to_string();
+      stem = stem.split_at(at_index).0.to_string().into();
     }
     _ => {}
   }
 
-  Some(stem)
+  Some(stem.to_string())
 }
 
 pub fn uninstall(name: String, root: Option<String>) -> Result<(), AnyError> {
@@ -371,8 +378,12 @@ async fn resolve_shim_data(
     TypeCheckMode::Local => executable_args.push("--check".to_string()),
   }
 
-  if flags.unstable {
+  if flags.unstable_config.legacy_flag_enabled {
     executable_args.push("--unstable".to_string());
+  }
+
+  for feature in &flags.unstable_config.features {
+    executable_args.push(format!("--unstable-{}", feature));
   }
 
   if flags.no_remote {
@@ -492,6 +503,7 @@ fn is_in_path(dir: &Path) -> bool {
 mod tests {
   use super::*;
 
+  use crate::args::UnstableConfig;
   use crate::util::fs::canonicalize_path;
   use deno_config::ConfigFlag;
   use std::process::Command;
@@ -523,6 +535,13 @@ mod tests {
     );
     assert_eq!(
       infer_name_from_url(
+        &Url::parse("https://example.com/ab%20c/mod.ts").unwrap()
+      )
+      .await,
+      Some("ab c".to_string())
+    );
+    assert_eq!(
+      infer_name_from_url(
         &Url::parse("https://example.com/abc/index.ts").unwrap()
       )
       .await,
@@ -551,6 +570,10 @@ mod tests {
     assert_eq!(
       infer_name_from_url(&Url::parse("file:///abc/main.ts").unwrap()).await,
       Some("abc".to_string())
+    );
+    assert_eq!(
+      infer_name_from_url(&Url::parse("file:///ab%20c/main.ts").unwrap()).await,
+      Some("ab c".to_string())
     );
     assert_eq!(
       infer_name_from_url(&Url::parse("file:///main.ts").unwrap()).await,
@@ -629,7 +652,10 @@ mod tests {
 
     create_install_shim(
       Flags {
-        unstable: true,
+        unstable_config: UnstableConfig {
+          legacy_flag_enabled: true,
+          ..Default::default()
+        },
         ..Flags::default()
       },
       InstallFlags {
@@ -681,6 +707,73 @@ mod tests {
     assert_eq!(
       shim_data.args,
       vec!["run", "--no-config", "http://localhost:4545/echo_server.ts",]
+    );
+  }
+
+  #[tokio::test]
+  async fn install_unstable_legacy() {
+    let shim_data = resolve_shim_data(
+      &Flags {
+        unstable_config: UnstableConfig {
+          legacy_flag_enabled: true,
+          ..Default::default()
+        },
+        ..Default::default()
+      },
+      &InstallFlags {
+        module_url: "http://localhost:4545/echo_server.ts".to_string(),
+        args: vec![],
+        name: None,
+        root: Some(env::temp_dir().to_string_lossy().to_string()),
+        force: false,
+      },
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(shim_data.name, "echo_server");
+    assert_eq!(
+      shim_data.args,
+      vec![
+        "run",
+        "--unstable",
+        "--no-config",
+        "http://localhost:4545/echo_server.ts",
+      ]
+    );
+  }
+
+  #[tokio::test]
+  async fn install_unstable_features() {
+    let shim_data = resolve_shim_data(
+      &Flags {
+        unstable_config: UnstableConfig {
+          features: vec!["kv".to_string(), "cron".to_string()],
+          ..Default::default()
+        },
+        ..Default::default()
+      },
+      &InstallFlags {
+        module_url: "http://localhost:4545/echo_server.ts".to_string(),
+        args: vec![],
+        name: None,
+        root: Some(env::temp_dir().to_string_lossy().to_string()),
+        force: false,
+      },
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(shim_data.name, "echo_server");
+    assert_eq!(
+      shim_data.args,
+      vec![
+        "run",
+        "--unstable-kv",
+        "--unstable-cron",
+        "--no-config",
+        "http://localhost:4545/echo_server.ts",
+      ]
     );
   }
 

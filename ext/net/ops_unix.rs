@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::io::UnixStreamResource;
 use crate::NetPermissions;
@@ -114,7 +114,6 @@ where
   NP: NetPermissions + 'static,
 {
   let address_path = Path::new(&path);
-  super::check_unstable(&state.borrow(), "Deno.connect");
   {
     let mut state_ = state.borrow_mut();
     state_
@@ -200,7 +199,6 @@ where
   NP: NetPermissions + 'static,
 {
   let address_path = Path::new(&path);
-  super::check_unstable(state, &api_name);
   let permissions = state.borrow_mut::<NP>();
   let api_call_expr = format!("{}()", api_name);
   permissions.check_read(address_path, &api_call_expr)?;

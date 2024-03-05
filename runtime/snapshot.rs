@@ -1,15 +1,19 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::ops;
+use crate::ops::bootstrap::SnapshotOptions;
 use crate::shared::maybe_transpile_source;
 use crate::shared::runtime;
 use deno_cache::SqliteBackedCache;
 use deno_core::error::AnyError;
-use deno_core::snapshot_util::*;
+use deno_core::snapshot::*;
+use deno_core::v8;
 use deno_core::Extension;
 use deno_http::DefaultHttpPropertyExtractor;
+use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::sync::Arc;
 
 #[derive(Clone)]
@@ -75,7 +79,18 @@ impl deno_node::NodePermissions for Permissions {
   ) -> Result<(), deno_core::error::AnyError> {
     unreachable!("snapshotting!")
   }
-  fn check_read(&self, _p: &Path) -> Result<(), deno_core::error::AnyError> {
+  fn check_read_with_api_name(
+    &self,
+    _p: &Path,
+    _api_name: Option<&str>,
+  ) -> Result<(), deno_core::error::AnyError> {
+    unreachable!("snapshotting!")
+  }
+  fn check_write_with_api_name(
+    &self,
+    _p: &Path,
+    _api_name: Option<&str>,
+  ) -> Result<(), deno_core::error::AnyError> {
     unreachable!("snapshotting!")
   }
   fn check_sys(
@@ -183,11 +198,14 @@ impl deno_kv::sqlite::SqliteDbHandlerPermissions for Permissions {
   }
 }
 
-pub fn create_runtime_snapshot(snapshot_path: PathBuf) {
+pub fn create_runtime_snapshot(
+  snapshot_path: PathBuf,
+  snapshot_options: SnapshotOptions,
+) {
   // NOTE(bartlomieju): ordering is important here, keep it in sync with
-  // `runtime/worker.rs`, `runtime/web_worker.rs` and `cli/build.rs`!
+  // `runtime/worker.rs`, `runtime/web_worker.rs` and `runtime/snapshot.rs`!
   let fs = std::sync::Arc::new(deno_fs::RealFs);
-  let mut extensions: Vec<Extension> = vec![
+  let extensions: Vec<Extension> = vec![
     deno_webidl::deno_webidl::init_ops_and_esm(),
     deno_console::deno_console::init_ops_and_esm(),
     deno_url::deno_url::init_ops_and_esm(),
@@ -195,6 +213,8 @@ pub fn create_runtime_snapshot(snapshot_path: PathBuf) {
       Default::default(),
       Default::default(),
     ),
+    deno_webgpu::deno_webgpu::init_ops_and_esm(),
+    deno_canvas::deno_canvas::init_ops_and_esm(),
     deno_fetch::deno_fetch::init_ops_and_esm::<Permissions>(Default::default()),
     deno_cache::deno_cache::init_ops_and_esm::<SqliteBackedCache>(None),
     deno_websocket::deno_websocket::init_ops_and_esm::<Permissions>(
@@ -234,27 +254,33 @@ pub fn create_runtime_snapshot(snapshot_path: PathBuf) {
     ops::signal::deno_signal::init_ops(),
     ops::tty::deno_tty::init_ops(),
     ops::http::deno_http_runtime::init_ops(),
-    ops::bootstrap::deno_bootstrap::init_ops(None),
+    ops::bootstrap::deno_bootstrap::init_ops(Some(snapshot_options)),
+    ops::web_worker::deno_web_worker::init_ops(),
   ];
 
-  for extension in &mut extensions {
-    for source in extension.esm_files.to_mut() {
-      maybe_transpile_source(source).unwrap();
-    }
-    for source in extension.js_files.to_mut() {
-      maybe_transpile_source(source).unwrap();
-    }
-  }
+  let output = create_snapshot(
+    CreateSnapshotOptions {
+      cargo_manifest_dir: env!("CARGO_MANIFEST_DIR"),
+      startup_snapshot: None,
+      extensions,
+      extension_transpiler: Some(Rc::new(|specifier, source| {
+        maybe_transpile_source(specifier, source)
+      })),
+      with_runtime_cb: Some(Box::new(|rt| {
+        let isolate = rt.v8_isolate();
+        let scope = &mut v8::HandleScope::new(isolate);
 
-  let output = create_snapshot(CreateSnapshotOptions {
-    cargo_manifest_dir: env!("CARGO_MANIFEST_DIR"),
-    snapshot_path,
-    startup_snapshot: None,
-    extensions,
-    compression_cb: None,
-    with_runtime_cb: None,
-    skip_op_registration: false,
-  });
+        let ctx = v8::Context::new(scope);
+        assert_eq!(scope.add_context(ctx), deno_node::VM_CONTEXT_INDEX);
+      })),
+      skip_op_registration: false,
+    },
+    None,
+  )
+  .unwrap();
+  let mut snapshot = std::fs::File::create(snapshot_path).unwrap();
+  snapshot.write_all(&output.output).unwrap();
+
   for path in output.files_loaded_during_snapshot {
     println!("cargo:rerun-if-changed={}", path.display());
   }

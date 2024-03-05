@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 use deno_core::error::AnyError;
 use deno_core::OpState;
 use deno_core::ResourceId;
@@ -8,9 +8,9 @@ use deno_net::raw::NetworkStream;
 use deno_net::raw::NetworkStreamAddress;
 use deno_net::raw::NetworkStreamListener;
 use deno_net::raw::NetworkStreamType;
+use hyper::header::HOST;
 use hyper::HeaderMap;
 use hyper::Uri;
-use hyper1::header::HOST;
 use std::borrow::Cow;
 use std::net::Ipv4Addr;
 use std::net::SocketAddr;

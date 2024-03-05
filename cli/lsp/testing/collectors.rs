@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::lsp::analysis::source_range_to_lsp_range;
 
@@ -23,7 +23,7 @@ fn visit_arrow(
   test_module: &mut TestModule,
 ) {
   if let Some((maybe_test_context, maybe_step_var)) =
-    parse_test_context_param(arrow_expr.params.get(0))
+    parse_test_context_param(arrow_expr.params.first())
   {
     let mut collector = TestStepCollector::new(
       maybe_test_context,
@@ -44,7 +44,7 @@ fn visit_fn(
   test_module: &mut TestModule,
 ) {
   if let Some((maybe_test_context, maybe_step_var)) =
-    parse_test_context_param(function.params.get(0).map(|p| &p.pat))
+    parse_test_context_param(function.params.first().map(|p| &p.pat))
   {
     let mut collector = TestStepCollector::new(
       maybe_test_context,
@@ -136,7 +136,7 @@ fn visit_call_expr(
   text_info: &SourceTextInfo,
   test_module: &mut TestModule,
 ) {
-  if let Some(expr) = node.args.get(0).map(|es| es.expr.as_ref()) {
+  if let Some(expr) = node.args.first().map(|es| es.expr.as_ref()) {
     match expr {
       ast::Expr::Object(obj_lit) => {
         let mut maybe_name = None;
@@ -644,7 +644,7 @@ pub mod tests {
     let specifier = resolve_url("file:///a/example.ts").unwrap();
 
     let parsed_module = deno_ast::parse_module(deno_ast::ParseParams {
-      specifier: specifier.to_string(),
+      specifier: specifier.clone(),
       text_info: deno_ast::SourceTextInfo::new(source.into()),
       media_type: deno_ast::MediaType::TypeScript,
       capture_tokens: true,

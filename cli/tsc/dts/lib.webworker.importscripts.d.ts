@@ -16,7 +16,6 @@ and limitations under the License.
 
 /// <reference no-default-lib="true"/>
 
-
 /////////////////////////////
 /// WorkerGlobalScope APIs
 /////////////////////////////

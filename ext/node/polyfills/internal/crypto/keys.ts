@@ -1,8 +1,10 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
+
+import { op_node_create_private_key } from "ext:core/ops";
 
 import {
   kHandle,
@@ -38,9 +40,6 @@ import {
 import {
   forgivingBase64UrlEncode as encodeToBase64Url,
 } from "ext:deno_web/00_infra.js";
-
-const { core } = globalThis.__bootstrap;
-const { ops } = core;
 
 export const getArrayBufferOrView = hideStackFrames(
   (
@@ -210,7 +209,7 @@ export interface JsonWebKeyInput {
   format: "jwk";
 }
 
-function prepareAsymmetricKey(key) {
+export function prepareAsymmetricKey(key) {
   if (isStringOrBuffer(key)) {
     return { format: "pem", data: getArrayBufferOrView(key, "key") };
   } else if (typeof key == "object") {
@@ -234,7 +233,7 @@ export function createPrivateKey(
   key: PrivateKeyInput | string | Buffer | JsonWebKeyInput,
 ): PrivateKeyObject {
   const { data, format, type } = prepareAsymmetricKey(key);
-  const details = ops.op_node_create_private_key(data, format, type);
+  const details = op_node_create_private_key(data, format, type);
   const handle = setOwnedKey(copyBuffer(data));
   return new PrivateKeyObject(handle, details);
 }

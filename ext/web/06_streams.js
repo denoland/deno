@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../webidl/internal.d.ts" />
@@ -6,33 +6,30 @@
 /// <reference path="./lib.deno_web.d.ts" />
 /// <reference lib="esnext" />
 
-const core = globalThis.Deno.core;
-const internals = globalThis.__bootstrap.internals;
+import { core, internals, primordials } from "ext:core/mod.js";
 const {
-  op_arraybuffer_was_detached,
-  op_transfer_arraybuffer,
-  op_readable_stream_resource_allocate,
-  op_readable_stream_resource_get_sink,
-  op_readable_stream_resource_write_error,
-  op_readable_stream_resource_write_buf,
-  op_readable_stream_resource_write_sync,
-  op_readable_stream_resource_close,
-  op_readable_stream_resource_await_close,
-} = core.ensureFastOps();
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { structuredClone } from "ext:deno_web/02_structured_clone.js";
+  isAnyArrayBuffer,
+  isArrayBuffer,
+  isSharedArrayBuffer,
+  isTypedArray,
+} = core;
 import {
-  AbortSignalPrototype,
-  add,
-  newSignal,
-  remove,
-  signalAbort,
-} from "ext:deno_web/03_abort_signal.js";
-const primordials = globalThis.__bootstrap.primordials;
+  op_arraybuffer_was_detached,
+  // TODO(mmastrac): use readAll
+  op_read_all,
+  op_readable_stream_resource_allocate,
+  op_readable_stream_resource_allocate_sized,
+  op_readable_stream_resource_await_close,
+  op_readable_stream_resource_close,
+  op_readable_stream_resource_get_sink,
+  op_readable_stream_resource_write_buf,
+  op_readable_stream_resource_write_error,
+  op_readable_stream_resource_write_sync,
+  op_transfer_arraybuffer,
+} from "ext:core/ops";
 const {
   ArrayBuffer,
   ArrayBufferIsView,
-  ArrayBufferPrototype,
   ArrayBufferPrototypeGetByteLength,
   ArrayBufferPrototypeSlice,
   ArrayPrototypeMap,
@@ -79,6 +76,7 @@ const {
   TypedArrayPrototypeGetBuffer,
   TypedArrayPrototypeGetByteLength,
   TypedArrayPrototypeGetByteOffset,
+  TypedArrayPrototypeGetLength,
   TypedArrayPrototypeGetSymbolToStringTag,
   TypedArrayPrototypeSet,
   TypedArrayPrototypeSlice,
@@ -91,6 +89,17 @@ const {
   WeakMapPrototypeSet,
   queueMicrotask,
 } = primordials;
+
+import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { structuredClone } from "ext:deno_web/02_structured_clone.js";
+import {
+  AbortSignalPrototype,
+  add,
+  newSignal,
+  remove,
+  signalAbort,
+} from "ext:deno_web/03_abort_signal.js";
+
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 import { assert, AssertionError } from "ext:deno_web/00_infra.js";
 
@@ -267,8 +276,7 @@ class Queue {
  * @returns {boolean}
  */
 function isDetachedBuffer(O) {
-  // deno-lint-ignore prefer-primordials
-  if (ObjectPrototypeIsPrototypeOf(SharedArrayBuffer.prototype, O)) {
+  if (isSharedArrayBuffer(O)) {
     return false;
   }
   return ArrayBufferPrototypeGetByteLength(O) === 0 &&
@@ -281,11 +289,7 @@ function isDetachedBuffer(O) {
  */
 function canTransferArrayBuffer(O) {
   assert(typeof O === "object");
-  assert(
-    ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, O) ||
-      // deno-lint-ignore prefer-primordials
-      ObjectPrototypeIsPrototypeOf(SharedArrayBuffer.prototype, O),
-  );
+  assert(isAnyArrayBuffer(O));
   if (isDetachedBuffer(O)) {
     return false;
   }
@@ -306,8 +310,7 @@ function transferArrayBuffer(O) {
  * @returns {number}
  */
 function getArrayBufferByteLength(O) {
-  // deno-lint-ignore prefer-primordials
-  if (ObjectPrototypeIsPrototypeOf(SharedArrayBuffer.prototype, O)) {
+  if (isSharedArrayBuffer(O)) {
     // TODO(petamoriken): use primordials
     // deno-lint-ignore prefer-primordials
     return O.byteLength;
@@ -323,8 +326,7 @@ function getArrayBufferByteLength(O) {
 function cloneAsUint8Array(O) {
   assert(typeof O === "object");
   assert(ArrayBufferIsView(O));
-  if (TypedArrayPrototypeGetSymbolToStringTag(O) !== undefined) {
-    // TypedArray
+  if (isTypedArray(O)) {
     return TypedArrayPrototypeSlice(
       new Uint8Array(
         TypedArrayPrototypeGetBuffer(/** @type {Uint8Array} */ (O)),
@@ -333,7 +335,6 @@ function cloneAsUint8Array(O) {
       ),
     );
   } else {
-    // DataView
     return TypedArrayPrototypeSlice(
       new Uint8Array(
         DataViewPrototypeGetBuffer(/** @type {DataView} */ (O)),
@@ -862,13 +863,16 @@ function readableStreamReadFn(reader, sink) {
  * read operations, and those read operations will be fed by the output of the
  * ReadableStream source.
  * @param {ReadableStream<Uint8Array>} stream
+ * @param {number | undefined} length
  * @returns {number}
  */
-function resourceForReadableStream(stream) {
+function resourceForReadableStream(stream, length) {
   const reader = acquireReadableStreamDefaultReader(stream);
 
   // Allocate the resource
-  const rid = op_readable_stream_resource_allocate();
+  const rid = typeof length == "number"
+    ? op_readable_stream_resource_allocate_sized(length)
+    : op_readable_stream_resource_allocate();
 
   // Close the Reader we get from the ReadableStream when the resource is closed, ignoring any errors
   PromisePrototypeCatch(
@@ -1062,7 +1066,7 @@ async function readableStreamCollectIntoUint8Array(stream) {
     // fast path, read whole body in a single op call
     try {
       readableStreamDisturb(stream);
-      const promise = core.opAsync("op_read_all", resourceBacking.rid);
+      const promise = op_read_all(resourceBacking.rid);
       if (readableStreamIsUnrefable(stream)) {
         stream[promiseSymbol] = promise;
         if (stream[_isUnref]) core.unrefOpPromise(promise);
@@ -1303,7 +1307,9 @@ function readableByteStreamControllerClose(controller) {
   }
   if (controller[_pendingPullIntos].length !== 0) {
     const firstPendingPullInto = controller[_pendingPullIntos][0];
-    if (firstPendingPullInto.bytesFilled > 0) {
+    if (
+      firstPendingPullInto.bytesFilled % firstPendingPullInto.elementSize !== 0
+    ) {
       const e = new TypeError(
         "Insufficient bytes to fill elements in the given buffer",
       );
@@ -1330,21 +1336,21 @@ function readableByteStreamControllerEnqueue(controller, chunk) {
   }
 
   let buffer, byteLength, byteOffset;
-  if (TypedArrayPrototypeGetSymbolToStringTag(chunk) === undefined) {
-    buffer = DataViewPrototypeGetBuffer(/** @type {DataView} */ (chunk));
-    byteLength = DataViewPrototypeGetByteLength(
-      /** @type {DataView} */ (chunk),
-    );
-    byteOffset = DataViewPrototypeGetByteOffset(
-      /** @type {DataView} */ (chunk),
-    );
-  } else {
+  if (isTypedArray(chunk)) {
     buffer = TypedArrayPrototypeGetBuffer(/** @type {Uint8Array}} */ (chunk));
     byteLength = TypedArrayPrototypeGetByteLength(
       /** @type {Uint8Array} */ (chunk),
     );
     byteOffset = TypedArrayPrototypeGetByteOffset(
       /** @type {Uint8Array} */ (chunk),
+    );
+  } else {
+    buffer = DataViewPrototypeGetBuffer(/** @type {DataView} */ (chunk));
+    byteLength = DataViewPrototypeGetByteLength(
+      /** @type {DataView} */ (chunk),
+    );
+    byteOffset = DataViewPrototypeGetByteOffset(
+      /** @type {DataView} */ (chunk),
     );
   }
 
@@ -1451,7 +1457,7 @@ function readableByteStreamControllerEnqueueClonedChunkToQueue(
 ) {
   let cloneResult;
   try {
-    if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, buffer)) {
+    if (isArrayBuffer(buffer)) {
       cloneResult = ArrayBufferPrototypeSlice(
         buffer,
         byteOffset,
@@ -1847,10 +1853,11 @@ function readableStreamDefaultcontrollerShouldCallPull(controller) {
 /**
  * @param {ReadableStreamBYOBReader} reader
  * @param {ArrayBufferView} view
+ * @param {number} min
  * @param {ReadIntoRequest} readIntoRequest
  * @returns {void}
  */
-function readableStreamBYOBReaderRead(reader, view, readIntoRequest) {
+function readableStreamBYOBReaderRead(reader, view, min, readIntoRequest) {
   const stream = reader[_stream];
   assert(stream);
   stream[_disturbed] = true;
@@ -1860,6 +1867,7 @@ function readableStreamBYOBReaderRead(reader, view, readIntoRequest) {
     readableByteStreamControllerPullInto(
       stream[_controller],
       view,
+      min,
       readIntoRequest,
     );
   }
@@ -1935,12 +1943,14 @@ function readableByteStreamControllerProcessReadRequestsUsingQueue(
 /**
  * @param {ReadableByteStreamController} controller
  * @param {ArrayBufferView} view
+ * @param {number} min
  * @param {ReadIntoRequest} readIntoRequest
  * @returns {void}
  */
 function readableByteStreamControllerPullInto(
   controller,
   view,
+  min,
   readIntoRequest,
 ) {
   const stream = controller[_stream];
@@ -2010,6 +2020,10 @@ function readableByteStreamControllerPullInto(
     );
   }
 
+  const minimumFill = min * elementSize;
+  assert(minimumFill >= 0 && minimumFill <= byteLength);
+  assert(minimumFill % elementSize === 0);
+
   try {
     buffer = transferArrayBuffer(buffer);
   } catch (e) {
@@ -2024,6 +2038,7 @@ function readableByteStreamControllerPullInto(
     byteOffset,
     byteLength,
     bytesFilled: 0,
+    minimumFill,
     elementSize,
     viewConstructor: ctor,
     readerType: "byob",
@@ -2139,7 +2154,7 @@ function readableByteStreamControllerRespondInReadableState(
     );
     return;
   }
-  if (pullIntoDescriptor.bytesFilled < pullIntoDescriptor.elementSize) {
+  if (pullIntoDescriptor.bytesFilled < pullIntoDescriptor.minimumFill) {
     return;
   }
   readableByteStreamControllerShiftPendingPullInto(controller);
@@ -2219,7 +2234,7 @@ function readableByteStreamControllerRespondInClosedState(
   controller,
   firstDescriptor,
 ) {
-  assert(firstDescriptor.bytesFilled === 0);
+  assert(firstDescriptor.bytesFilled % firstDescriptor.elementSize === 0);
   if (firstDescriptor.readerType === "none") {
     readableByteStreamControllerShiftPendingPullInto(controller);
   }
@@ -2249,7 +2264,9 @@ function readableByteStreamControllerCommitPullIntoDescriptor(
   assert(pullIntoDescriptor.readerType !== "none");
   let done = false;
   if (stream[_state] === "closed") {
-    assert(pullIntoDescriptor.bytesFilled === 0);
+    assert(
+      pullIntoDescriptor.bytesFilled % pullIntoDescriptor.elementSize === 0,
+    );
     done = true;
   }
   const filledView = readableByteStreamControllerConvertPullIntoDescriptor(
@@ -2271,11 +2288,7 @@ function readableByteStreamControllerRespondWithNewView(controller, view) {
   assert(controller[_pendingPullIntos].length !== 0);
 
   let buffer, byteLength, byteOffset;
-  if (TypedArrayPrototypeGetSymbolToStringTag(view) === undefined) {
-    buffer = DataViewPrototypeGetBuffer(/** @type {DataView} */ (view));
-    byteLength = DataViewPrototypeGetByteLength(/** @type {DataView} */ (view));
-    byteOffset = DataViewPrototypeGetByteOffset(/** @type {DataView} */ (view));
-  } else {
+  if (isTypedArray(view)) {
     buffer = TypedArrayPrototypeGetBuffer(/** @type {Uint8Array}} */ (view));
     byteLength = TypedArrayPrototypeGetByteLength(
       /** @type {Uint8Array} */ (view),
@@ -2283,7 +2296,12 @@ function readableByteStreamControllerRespondWithNewView(controller, view) {
     byteOffset = TypedArrayPrototypeGetByteOffset(
       /** @type {Uint8Array} */ (view),
     );
+  } else {
+    buffer = DataViewPrototypeGetBuffer(/** @type {DataView} */ (view));
+    byteLength = DataViewPrototypeGetByteLength(/** @type {DataView} */ (view));
+    byteOffset = DataViewPrototypeGetByteOffset(/** @type {DataView} */ (view));
   }
+
   assert(!isDetachedBuffer(buffer));
   const firstDescriptor = controller[_pendingPullIntos][0];
   const state = controller[_stream][_state];
@@ -2340,19 +2358,18 @@ function readableByteStreamControllerFillPullIntoDescriptorFromQueue(
   controller,
   pullIntoDescriptor,
 ) {
-  const elementSize = pullIntoDescriptor.elementSize;
-  const currentAlignedBytes = pullIntoDescriptor.bytesFilled -
-    (pullIntoDescriptor.bytesFilled % elementSize);
   const maxBytesToCopy = MathMin(
     controller[_queueTotalSize],
     // deno-lint-ignore prefer-primordials
     pullIntoDescriptor.byteLength - pullIntoDescriptor.bytesFilled,
   );
   const maxBytesFilled = pullIntoDescriptor.bytesFilled + maxBytesToCopy;
-  const maxAlignedBytes = maxBytesFilled - (maxBytesFilled % elementSize);
   let totalBytesToCopyRemaining = maxBytesToCopy;
   let ready = false;
-  if (maxAlignedBytes > currentAlignedBytes) {
+  assert(pullIntoDescriptor.bytesFilled < pullIntoDescriptor.minimumFill);
+  const maxAlignedBytes = maxBytesFilled -
+    (maxBytesFilled % pullIntoDescriptor.elementSize);
+  if (maxAlignedBytes >= pullIntoDescriptor.minimumFill) {
     totalBytesToCopyRemaining = maxAlignedBytes -
       pullIntoDescriptor.bytesFilled;
     ready = true;
@@ -2402,7 +2419,7 @@ function readableByteStreamControllerFillPullIntoDescriptorFromQueue(
   if (!ready) {
     assert(controller[_queueTotalSize] === 0);
     assert(pullIntoDescriptor.bytesFilled > 0);
-    assert(pullIntoDescriptor.bytesFilled < pullIntoDescriptor.elementSize);
+    assert(pullIntoDescriptor.bytesFilled < pullIntoDescriptor.minimumFill);
   }
   return ready;
 }
@@ -3344,13 +3361,13 @@ function readableByteStreamTee(stream) {
         }
         if (chunk !== undefined) {
           let byteLength;
-          if (TypedArrayPrototypeGetSymbolToStringTag(chunk) === undefined) {
-            byteLength = DataViewPrototypeGetByteLength(
-              /** @type {DataView} */ (chunk),
-            );
-          } else {
+          if (isTypedArray(chunk)) {
             byteLength = TypedArrayPrototypeGetByteLength(
               /** @type {Uint8Array} */ (chunk),
+            );
+          } else {
+            byteLength = DataViewPrototypeGetByteLength(
+              /** @type {DataView} */ (chunk),
             );
           }
           assert(byteLength === 0);
@@ -3375,7 +3392,7 @@ function readableByteStreamTee(stream) {
         reading = false;
       },
     };
-    readableStreamBYOBReaderRead(reader, view, readIntoRequest);
+    readableStreamBYOBReaderRead(reader, view, 1, readIntoRequest);
   }
 
   function pull1Algorithm() {
@@ -5543,27 +5560,33 @@ class ReadableStreamBYOBReader {
 
   /**
    * @param {ArrayBufferView} view
+   * @param {ReadableStreamBYOBReaderReadOptions} options
    *  @returns {Promise<ReadableStreamBYOBReadResult>}
    */
-  read(view) {
+  read(view, options = {}) {
     try {
       webidl.assertBranded(this, ReadableStreamBYOBReaderPrototype);
       const prefix = "Failed to execute 'read' on 'ReadableStreamBYOBReader'";
       view = webidl.converters.ArrayBufferView(view, prefix, "Argument 1");
+      options = webidl.converters.ReadableStreamBYOBReaderReadOptions(
+        options,
+        prefix,
+        "Argument 2",
+      );
     } catch (err) {
       return PromiseReject(err);
     }
 
     let buffer, byteLength;
-    if (TypedArrayPrototypeGetSymbolToStringTag(view) === undefined) {
-      buffer = DataViewPrototypeGetBuffer(/** @type {DataView} */ (view));
-      byteLength = DataViewPrototypeGetByteLength(
-        /** @type {DataView} */ (view),
-      );
-    } else {
+    if (isTypedArray(view)) {
       buffer = TypedArrayPrototypeGetBuffer(/** @type {Uint8Array} */ (view));
       byteLength = TypedArrayPrototypeGetByteLength(
         /** @type {Uint8Array} */ (view),
+      );
+    } else {
+      buffer = DataViewPrototypeGetBuffer(/** @type {DataView} */ (view));
+      byteLength = DataViewPrototypeGetByteLength(
+        /** @type {DataView} */ (view),
       );
     }
     if (byteLength === 0) {
@@ -5582,6 +5605,23 @@ class ReadableStreamBYOBReader {
       return PromiseReject(
         new TypeError("view's buffer must have non-zero byteLength"),
       );
+    }
+
+    if (options.min === 0) {
+      return PromiseReject(new TypeError("options.min must be non-zero"));
+    }
+    if (isTypedArray(view)) {
+      if (options.min > TypedArrayPrototypeGetLength(view)) {
+        return PromiseReject(
+          new RangeError("options.min must be smaller or equal to view's size"),
+        );
+      }
+    } else {
+      if (options.min > DataViewPrototypeGetByteLength(view)) {
+        return PromiseReject(
+          new RangeError("options.min must be smaller or equal to view's size"),
+        );
+      }
     }
 
     if (this[_stream] === undefined) {
@@ -5603,7 +5643,7 @@ class ReadableStreamBYOBReader {
         promise.reject(e);
       },
     };
-    readableStreamBYOBReaderRead(this, view, readIntoRequest);
+    readableStreamBYOBReaderRead(this, view, options.min, readIntoRequest);
     return promise.promise;
   }
 
@@ -5702,12 +5742,12 @@ class ReadableStreamBYOBRequest {
     }
 
     let buffer, byteLength;
-    if (TypedArrayPrototypeGetSymbolToStringTag(this[_view]) === undefined) {
-      buffer = DataViewPrototypeGetBuffer(this[_view]);
-      byteLength = DataViewPrototypeGetByteLength(this[_view]);
-    } else {
+    if (isTypedArray(this[_view])) {
       buffer = TypedArrayPrototypeGetBuffer(this[_view]);
       byteLength = TypedArrayPrototypeGetByteLength(this[_view]);
+    } else {
+      buffer = DataViewPrototypeGetBuffer(this[_view]);
+      byteLength = DataViewPrototypeGetByteLength(this[_view]);
     }
     if (isDetachedBuffer(buffer)) {
       throw new TypeError(
@@ -5731,10 +5771,10 @@ class ReadableStreamBYOBRequest {
     }
 
     let buffer;
-    if (TypedArrayPrototypeGetSymbolToStringTag(view) === undefined) {
-      buffer = DataViewPrototypeGetBuffer(view);
-    } else {
+    if (isTypedArray(view)) {
       buffer = TypedArrayPrototypeGetBuffer(view);
+    } else {
+      buffer = DataViewPrototypeGetBuffer(view);
     }
     if (isDetachedBuffer(buffer)) {
       throw new TypeError(
@@ -5821,15 +5861,15 @@ class ReadableByteStreamController {
     const arg1 = "Argument 1";
     chunk = webidl.converters.ArrayBufferView(chunk, prefix, arg1);
     let buffer, byteLength;
-    if (TypedArrayPrototypeGetSymbolToStringTag(chunk) === undefined) {
-      buffer = DataViewPrototypeGetBuffer(/** @type {DataView} */ (chunk));
-      byteLength = DataViewPrototypeGetByteLength(
-        /** @type {DataView} */ (chunk),
-      );
-    } else {
+    if (isTypedArray(chunk)) {
       buffer = TypedArrayPrototypeGetBuffer(/** @type {Uint8Array} */ (chunk));
       byteLength = TypedArrayPrototypeGetByteLength(
         /** @type {Uint8Array} */ (chunk),
+      );
+    } else {
+      buffer = DataViewPrototypeGetBuffer(/** @type {DataView} */ (chunk));
+      byteLength = DataViewPrototypeGetByteLength(
+        /** @type {DataView} */ (chunk),
       );
     }
     if (byteLength === 0) {
@@ -5929,6 +5969,7 @@ class ReadableByteStreamController {
         byteLength: autoAllocateChunkSize,
         bytesFilled: 0,
         elementSize: 1,
+        minimumFill: 1,
         viewConstructor: Uint8Array,
         readerType: "default",
       };
@@ -6799,6 +6840,17 @@ webidl.converters.ReadableStreamGetReaderOptions = webidl
     converter: webidl.converters.ReadableStreamReaderMode,
   }]);
 
+webidl.converters.ReadableStreamBYOBReaderReadOptions = webidl
+  .createDictionaryConverter("ReadableStreamBYOBReaderReadOptions", [{
+    key: "min",
+    converter: (V, prefix, context, opts) =>
+      webidl.converters["unsigned long long"](V, prefix, context, {
+        ...opts,
+        enforceRange: true,
+      }),
+    defaultValue: 1,
+  }]);
+
 webidl.converters.ReadableWritablePair = webidl
   .createDictionaryConverter("ReadableWritablePair", [
     {
@@ -6845,6 +6897,7 @@ export {
   errorReadableStream,
   getReadableStreamResourceBacking,
   getWritableStreamResourceBacking,
+  isDetachedBuffer,
   isReadableStreamDisturbed,
   ReadableByteStreamController,
   ReadableStream,

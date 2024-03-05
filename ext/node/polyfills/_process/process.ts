@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
@@ -7,7 +7,8 @@
 // The following are all the process APIs that don't depend on the stream module
 // They have to be split this way to prevent a circular dependency
 
-const core = globalThis.Deno.core;
+import { core } from "ext:core/mod.js";
+
 import { nextTick as _nextTick } from "ext:deno_node/_next_tick.ts";
 import { _exiting } from "ext:deno_node/_process/exiting.ts";
 import * as fs from "ext:deno_fs/30_fs.js";
@@ -35,17 +36,10 @@ export const nextTick = _nextTick;
 /** Wrapper of Deno.env.get, which doesn't throw type error when
  * the env name has "=" or "\0" in it. */
 function denoEnvGet(name: string) {
-  const perm =
-    Deno.permissions.querySync?.({ name: "env", variable: name }).state ??
-      "granted"; // for Deno Deploy
-  // Returns undefined if the env permission is unavailable
-  if (perm !== "granted") {
-    return undefined;
-  }
   try {
     return Deno.env.get(name);
   } catch (e) {
-    if (e instanceof TypeError) {
+    if (e instanceof TypeError || e instanceof Deno.errors.PermissionDenied) {
       return undefined;
     }
     throw e;

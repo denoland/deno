@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use once_cell::sync::OnceCell;
 
@@ -96,6 +96,12 @@ impl DenoDir {
   pub fn dep_analysis_db_file_path(&self) -> PathBuf {
     // bump this version name to invalidate the entire cache
     self.root.join("dep_analysis_cache_v1")
+  }
+
+  /// Path for the cache used for fast check.
+  pub fn fast_check_cache_db_file_path(&self) -> PathBuf {
+    // bump this version name to invalidate the entire cache
+    self.root.join("fast_check_cache_v1")
   }
 
   /// Path for caching node analysis.

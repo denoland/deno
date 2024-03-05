@@ -1,10 +1,10 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::path::PathBuf;
 
 use deno_core::error::AnyError;
 use deno_graph::Module;
-use deno_runtime::colors;
+use deno_terminal::colors;
 
 use crate::args::BundleFlags;
 use crate::args::CliOptions;
@@ -21,11 +21,8 @@ pub async fn bundle(
   bundle_flags: BundleFlags,
 ) -> Result<(), AnyError> {
   log::info!(
-    "{} \"deno bundle\" is deprecated and will be removed in the future.",
-    colors::yellow("Warning"),
-  );
-  log::info!(
-    "Use alternative bundlers like \"deno_emit\", \"esbuild\" or \"rollup\" instead."
+    "{}",
+    colors::yellow("⚠️ Warning: `deno bundle` is deprecated and will be removed in Deno 2.0.\nUse an alternative bundler like \"deno_emit\", \"esbuild\" or \"rollup\" instead."),
   );
 
   if let Some(watch_flags) = &bundle_flags.watch {
@@ -65,10 +62,10 @@ async fn bundle_action(
   let cli_options = factory.cli_options();
   let module_specifier = cli_options.resolve_main_module()?;
   log::debug!(">>>>> bundle START");
-  let module_graph_builder = factory.module_graph_builder().await?;
+  let module_graph_creator = factory.module_graph_creator().await?;
   let cli_options = factory.cli_options();
 
-  let graph = module_graph_builder
+  let graph = module_graph_creator
     .create_graph_and_maybe_check(vec![module_specifier.clone()])
     .await?;
 
@@ -76,7 +73,7 @@ async fn bundle_action(
     .specifiers()
     .filter_map(|(_, r)| {
       r.ok().and_then(|module| match module {
-        Module::Esm(m) => m.specifier.to_file_path().ok(),
+        Module::Js(m) => m.specifier.to_file_path().ok(),
         Module::Json(m) => m.specifier.to_file_path().ok(),
         // nothing to watch
         Module::Node(_) | Module::Npm(_) | Module::External(_) => None,
@@ -85,7 +82,7 @@ async fn bundle_action(
     .collect();
 
   if let Ok(Some(import_map_path)) = cli_options
-    .resolve_import_map_specifier()
+    .resolve_specified_import_map_specifier()
     .map(|ms| ms.and_then(|ref s| s.to_file_path().ok()))
   {
     paths_to_watch.push(import_map_path);
@@ -99,9 +96,10 @@ async fn bundle_action(
   let out_file = &bundle_flags.out_file;
 
   if let Some(out_file) = out_file {
+    let out_file = cli_options.initial_cwd().join(out_file);
     let output_bytes = bundle_output.code.as_bytes();
     let output_len = output_bytes.len();
-    util::fs::write_file(out_file, output_bytes, 0o644)?;
+    util::fs::write_file(&out_file, output_bytes, 0o644)?;
     log::info!(
       "{} {:?} ({})",
       colors::green("Emit"),

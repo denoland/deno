@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 mod args;
 mod auth_tokens;
@@ -12,6 +12,7 @@ mod file_fetcher;
 mod graph_util;
 mod http_util;
 mod js;
+mod jsr;
 mod lsp;
 mod module_loader;
 mod napi;
@@ -33,14 +34,17 @@ use crate::util::display;
 use crate::util::v8::get_v8_flags_from_env;
 use crate::util::v8::init_v8_flags;
 
+pub use deno_runtime::UNSTABLE_GRANULAR_FLAGS;
+
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::futures::FutureExt;
 use deno_core::unsync::JoinHandle;
-use deno_runtime::colors;
+use deno_npm::resolution::SnapshotFromLockfileError;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::tokio_util::create_and_run_current_thread_with_maybe_metrics;
+use deno_terminal::colors;
 use factory::CliFactory;
 use std::env;
 use std::env::current_exe;
@@ -85,6 +89,9 @@ fn spawn_subcommand<F: Future<Output = T> + 'static, T: SubcommandOutput>(
 
 async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
   let handle = match flags.subcommand.clone() {
+    DenoSubcommand::Add(add_flags) => spawn_subcommand(async {
+      tools::registry::add(flags, add_flags).await
+    }),
     DenoSubcommand::Bench(bench_flags) => spawn_subcommand(async {
       if bench_flags.watch.is_some() {
         tools::bench::run_benchmarks_with_watch(flags, bench_flags).await
@@ -195,14 +202,24 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
       })
     }
     DenoSubcommand::Types => spawn_subcommand(async move {
-      let types = tsc::get_types_declaration_file_text(flags.unstable);
+      let types = tsc::get_types_declaration_file_text();
       display::write_to_stdout_ignore_sigpipe(types.as_bytes())
     }),
+    #[cfg(feature = "upgrade")]
     DenoSubcommand::Upgrade(upgrade_flags) => spawn_subcommand(async {
       tools::upgrade::upgrade(flags, upgrade_flags).await
     }),
+    #[cfg(not(feature = "upgrade"))]
+    DenoSubcommand::Upgrade(_) => exit_with_message(
+      "This deno was built without the \"upgrade\" feature. Please upgrade using the installation method originally used to install Deno.",
+      1,
+    ),
     DenoSubcommand::Vendor(vendor_flags) => spawn_subcommand(async {
       tools::vendor::vendor(flags, vendor_flags).await
+    }),
+    // TODO:
+    DenoSubcommand::Publish(publish_flags) => spawn_subcommand(async {
+      tools::registry::publish(flags, publish_flags).await
     }),
   };
 
@@ -233,6 +250,15 @@ fn setup_panic_hook() {
   }));
 }
 
+fn exit_with_message(message: &str, code: i32) -> ! {
+  eprintln!(
+    "{}: {}",
+    colors::red_bold("error"),
+    message.trim_start_matches("error: ")
+  );
+  std::process::exit(code);
+}
+
 fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
   match result {
     Ok(value) => value,
@@ -242,82 +268,39 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
 
       if let Some(e) = error.downcast_ref::<JsError>() {
         error_string = format_js_error(e);
-      } else if let Some(e) = error.downcast_ref::<args::LockfileError>() {
+      } else if let Some(args::LockfileError::IntegrityCheckFailed(e)) =
+        error.downcast_ref::<args::LockfileError>()
+      {
+        error_string = e.to_string();
+        error_code = 10;
+      } else if let Some(SnapshotFromLockfileError::IntegrityCheckFailed(e)) =
+        error.downcast_ref::<SnapshotFromLockfileError>()
+      {
         error_string = e.to_string();
         error_code = 10;
       }
 
-      eprintln!(
-        "{}: {}",
-        colors::red_bold("error"),
-        error_string.trim_start_matches("error: ")
-      );
-      std::process::exit(error_code);
+      exit_with_message(&error_string, error_code);
     }
   }
 }
 
-// NOTE(bartlomieju): keep IDs in sync with `runtime/90_deno_ns.js`.
-pub(crate) static UNSTABLE_GRANULAR_FLAGS: &[(
-  // flag name
-  &str,
-  // help text
-  &str,
-  // id to enable it in runtime/99_main.js
-  i32,
-)] = &[
-  (
-    deno_runtime::deno_broadcast_channel::UNSTABLE_FEATURE_NAME,
-    "Enable unstable `BroadcastChannel` API",
-    1,
-  ),
-  (
-    deno_runtime::deno_ffi::UNSTABLE_FEATURE_NAME,
-    "Enable unstable FFI APIs",
-    2,
-  ),
-  (
-    deno_runtime::deno_fs::UNSTABLE_FEATURE_NAME,
-    "Enable unstable file system APIs",
-    3,
-  ),
-  (
-    deno_runtime::deno_kv::UNSTABLE_FEATURE_NAME,
-    "Enable unstable Key-Value store APIs",
-    4,
-  ),
-  (
-    deno_runtime::deno_net::UNSTABLE_FEATURE_NAME,
-    "Enable unstable net APIs",
-    5,
-  ),
-  (
-    deno_runtime::ops::http::UNSTABLE_FEATURE_NAME,
-    "Enable unstable HTTP APIs",
-    6,
-  ),
-  (
-    deno_runtime::ops::worker_host::UNSTABLE_FEATURE_NAME,
-    "Enable unstable Web Worker APIs",
-    7,
-  ),
-  (
-    deno_runtime::deno_cron::UNSTABLE_FEATURE_NAME,
-    "Enable unstable Deno.cron API",
-    8,
-  ),
-];
-
-pub(crate) fn unstable_exit_cb(_feature: &str, api_name: &str) {
-  // TODO(bartlomieju): change to "The `--unstable-{feature}` flag must be provided.".
-  eprintln!("Unstable API '{api_name}'. The --unstable flag must be provided.");
+pub(crate) fn unstable_exit_cb(feature: &str, api_name: &str) {
+  eprintln!(
+    "Unstable API '{api_name}'. The `--unstable-{}` flag must be provided.",
+    feature
+  );
   std::process::exit(70);
 }
 
-#[allow(dead_code)]
-pub(crate) fn unstable_warn_cb(feature: &str) {
+// TODO(bartlomieju): remove when `--unstable` flag is removed.
+pub(crate) fn unstable_warn_cb(feature: &str, api_name: &str) {
   eprintln!(
-    "The `--unstable` flag is deprecated, use --unstable-{feature} instead."
+    "⚠️  {}",
+    colors::yellow(format!(
+      "The `{}` API was used with `--unstable` flag. The `--unstable` flag is deprecated and will be removed in Deno 2.0. Use granular `--unstable-{}` instead.\nLearn more at: https://docs.deno.com/runtime/manual/tools/unstable_flags",
+      api_name, feature
+    ))
   );
 }
 
@@ -336,7 +319,7 @@ pub fn main() {
   let args: Vec<String> = env::args().collect();
 
   // NOTE(lucacasonato): due to new PKU feature introduced in V8 11.6 we need to
-  // initalize the V8 platform on a parent thread of all threads that will spawn
+  // initialize the V8 platform on a parent thread of all threads that will spawn
   // V8 isolates.
 
   let future = async move {
@@ -364,11 +347,41 @@ pub fn main() {
       Err(err) => unwrap_or_exit(Err(AnyError::from(err))),
     };
 
+    // TODO(bartlomieju): remove when `--unstable` flag is removed.
+    if flags.unstable_config.legacy_flag_enabled {
+      if matches!(flags.subcommand, DenoSubcommand::Check(_)) {
+        eprintln!(
+          "⚠️  {}",
+          colors::yellow(
+            "The `--unstable` flag is not needed for `deno check` anymore."
+          )
+        );
+      } else {
+        eprintln!(
+          "⚠️  {}",
+          colors::yellow(
+            "The `--unstable` flag is deprecated and will be removed in Deno 2.0. Use granular `--unstable-*` flags instead.\nLearn more at: https://docs.deno.com/runtime/manual/tools/unstable_flags"
+          )
+        );
+      }
+    }
+
     let default_v8_flags = match flags.subcommand {
       // Using same default as VSCode:
       // https://github.com/microsoft/vscode/blob/48d4ba271686e8072fc6674137415bc80d936bc7/extensions/typescript-language-features/src/configuration/configuration.ts#L213-L214
       DenoSubcommand::Lsp => vec!["--max-old-space-size=3072".to_string()],
-      _ => vec![],
+      _ => {
+        if flags.unstable_config.legacy_flag_enabled
+          || flags
+            .unstable_config
+            .features
+            .contains(&"temporal".to_string())
+        {
+          vec!["--harmony-temporal".to_string()]
+        } else {
+          vec![]
+        }
+      }
     };
     init_v8_flags(&default_v8_flags, &flags.v8_flags, get_v8_flags_from_env());
     deno_core::JsRuntime::init_platform(None);

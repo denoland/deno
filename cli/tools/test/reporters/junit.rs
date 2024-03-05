@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::path::PathBuf;
 
@@ -156,6 +156,11 @@ impl TestReporter for JunitTestReporter {
         self.report_result(description, &TestResult::Cancelled, 0)
       }
     }
+  }
+
+  fn report_completed(&mut self) {
+    // TODO(mmastrac): This reporter does not handle stdout/stderr yet, and when we do, we may need to redirect
+    // pre-and-post-test output somewhere.
   }
 
   fn flush_report(

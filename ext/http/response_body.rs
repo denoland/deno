@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 use std::io::Write;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -14,9 +14,9 @@ use deno_core::AsyncResult;
 use deno_core::BufView;
 use deno_core::Resource;
 use flate2::write::GzEncoder;
-use http::HeaderMap;
-use hyper1::body::Frame;
-use hyper1::body::SizeHint;
+use hyper::body::Frame;
+use hyper::body::SizeHint;
+use hyper::header::HeaderMap;
 use pin_project::pin_project;
 
 /// Simplification for nested types we use for our streams. We provide a way to convert from

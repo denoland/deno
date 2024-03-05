@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 //! Code for global npm cache resolution.
 
@@ -75,7 +75,7 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
     self.cache.root_dir_url()
   }
 
-  fn node_modules_path(&self) -> Option<PathBuf> {
+  fn node_modules_path(&self) -> Option<&PathBuf> {
     None
   }
 

@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // deno-lint-ignore-file no-explicit-any no-var
 
@@ -624,11 +624,17 @@ declare type ReadableStreamBYOBReadResult<V extends ArrayBufferView> =
   | ReadableStreamBYOBReadValueResult<V>;
 
 /** @category Streams API */
+declare interface ReadableStreamBYOBReaderReadOptions {
+  min?: number;
+}
+
+/** @category Streams API */
 declare interface ReadableStreamBYOBReader {
   readonly closed: Promise<void>;
   cancel(reason?: any): Promise<void>;
   read<V extends ArrayBufferView>(
     view: V,
+    options?: ReadableStreamBYOBReaderReadOptions,
   ): Promise<ReadableStreamBYOBReadResult<V>>;
   releaseLock(): void;
 }
@@ -1231,3 +1237,31 @@ declare var DecompressionStream: {
 declare function reportError(
   error: any,
 ): void;
+
+/** @category Web APIs */
+declare type PredefinedColorSpace = "srgb" | "display-p3";
+
+/** @category Web APIs */
+declare interface ImageDataSettings {
+  readonly colorSpace?: PredefinedColorSpace;
+}
+
+/** @category Web APIs */
+declare interface ImageData {
+  readonly colorSpace: PredefinedColorSpace;
+  readonly data: Uint8ClampedArray;
+  readonly height: number;
+  readonly width: number;
+}
+
+/** @category Web APIs */
+declare var ImageData: {
+  prototype: ImageData;
+  new (sw: number, sh: number, settings?: ImageDataSettings): ImageData;
+  new (
+    data: Uint8ClampedArray,
+    sw: number,
+    sh?: number,
+    settings?: ImageDataSettings,
+  ): ImageData;
+};

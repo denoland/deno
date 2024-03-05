@@ -9,8 +9,9 @@ Deno's operating system bindings (ops).
 
 ## Stability
 
-This crate is built using battle-tested modules that were originally in `deno`
-crate, however the API of this crate is subject to rapid and breaking changes.
+This crate is built using battle-tested modules that were originally in the
+`deno` crate, however the API of this crate is subject to rapid and breaking
+changes.
 
 ## `MainWorker`
 
