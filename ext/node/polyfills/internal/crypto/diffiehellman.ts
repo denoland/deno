@@ -7,7 +7,7 @@
 import {
   op_node_dh_compute_secret,
   op_node_dh_generate2,
-  op_node_dh_stateless,
+  // op_node_dh_stateless,
   op_node_ecdh_compute_public_key,
   op_node_ecdh_compute_secret,
   op_node_ecdh_generate_keys,
@@ -1303,8 +1303,7 @@ const dhEnabledKeyTypes = new Set(["dh", "ec", "x448", "x25519"]);
 export function diffieHellman(options: {
   privateKey: KeyObject;
   publicKey: KeyObject;
-}): Buffer {
-  // @todo(iuioiua) This isn't calling the correct error class
+}) {
   validateObject(options, "options");
 
   const { privateKey, publicKey } = options;
@@ -1336,9 +1335,7 @@ export function diffieHellman(options: {
     );
   }
 
-  const secret = new Buffer();
-  op_node_dh_stateless(privateKey, publicKey, secret);
-  return secret;
+  notImplemented("crypto.diffieHellman");
 }
 
 export default {

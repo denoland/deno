@@ -13,7 +13,7 @@ if (!common.hasCrypto)
 const assert = require('assert');
 const crypto = require('crypto');
 
-/* assert.throws(() => crypto.diffieHellman(), {
+assert.throws(() => crypto.diffieHellman(), {
   name: 'TypeError',
   code: 'ERR_INVALID_ARG_TYPE',
   message: 'The "options" argument must be of type object. Received undefined'
@@ -31,7 +31,7 @@ assert.throws(() => crypto.diffieHellman([]), {
   message:
     'The "options" argument must be of type object. ' +
     'Received an instance of Array',
-}); */
+});
 
 function test({ publicKey: alicePublicKey, privateKey: alicePrivateKey },
               { publicKey: bobPublicKey, privateKey: bobPrivateKey },

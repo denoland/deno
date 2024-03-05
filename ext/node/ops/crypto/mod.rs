@@ -904,7 +904,7 @@ pub async fn op_node_dh_generate_async(
     .await?
 }
 
-#[op2]
+/* #[op2]
 #[serde]
 pub fn op_node_dh_stateless(
   #[buffer] private_key: &[u8],
@@ -918,7 +918,7 @@ pub fn op_node_dh_stateless(
   secret.copy_from_slice(shared_secret.raw_secret_bytes());
 
   Ok(())
-}
+} */
 
 #[op2(fast)]
 #[smi]
