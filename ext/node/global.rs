@@ -241,16 +241,13 @@ fn is_managed_key(
   scope: &mut v8::HandleScope,
   key: v8::Local<v8::Name>,
 ) -> bool {
-  eprintln!("is_managed_key");
   let Ok(str): Result<v8::Local<v8::String>, _> = key.try_into() else {
-    eprintln!("is_managed_key return false1");
     return false;
   };
   let len = str.length();
-  let s = str.to_rust_string_lossy(scope);
+
   #[allow(clippy::manual_range_contains)]
   if len < SHORTEST_MANAGED_GLOBAL || len > LONGEST_MANAGED_GLOBAL {
-    eprintln!("is_managed_key return false2 {} {}", s, len);
     return false;
   }
   let buf = &mut [0u16; LONGEST_MANAGED_GLOBAL];
@@ -261,9 +258,7 @@ fn is_managed_key(
     v8::WriteOptions::NO_NULL_TERMINATION,
   );
   assert_eq!(written, len);
-  let r = MANAGED_GLOBALS.binary_search(&&buf[..len]).is_ok();
-  eprintln!("is_managed_key return {} {}", s, r);
-  r
+  MANAGED_GLOBALS.binary_search(&&buf[..len]).is_ok()
 }
 
 fn current_mode(scope: &mut v8::HandleScope) -> Mode {
@@ -292,7 +287,6 @@ pub fn getter<'s>(
   args: v8::PropertyCallbackArguments<'s>,
   mut rv: v8::ReturnValue,
 ) {
-  eprintln!("getter");
   if !is_managed_key(scope, key) {
     return;
   };
@@ -329,7 +323,6 @@ pub fn setter<'s>(
   args: v8::PropertyCallbackArguments<'s>,
   mut rv: v8::ReturnValue,
 ) {
-  eprintln!("setter");
   if !is_managed_key(scope, key) {
     return;
   };
@@ -366,7 +359,6 @@ pub fn query<'s>(
   _args: v8::PropertyCallbackArguments<'s>,
   mut rv: v8::ReturnValue,
 ) {
-  eprintln!("query");
   if !is_managed_key(scope, key) {
     return;
   };
@@ -397,7 +389,6 @@ pub fn deleter<'s>(
   args: v8::PropertyCallbackArguments<'s>,
   mut rv: v8::ReturnValue,
 ) {
-  eprintln!("deleter");
   if !is_managed_key(scope, key) {
     return;
   };
@@ -460,7 +451,6 @@ pub fn definer<'s>(
   args: v8::PropertyCallbackArguments<'s>,
   mut rv: v8::ReturnValue,
 ) {
-  eprintln!("definer");
   if !is_managed_key(scope, key) {
     return;
   };
@@ -494,7 +484,6 @@ pub fn descriptor<'s>(
   _args: v8::PropertyCallbackArguments<'s>,
   mut rv: v8::ReturnValue,
 ) {
-  eprintln!("descriptor");
   if !is_managed_key(scope, key) {
     return;
   };
