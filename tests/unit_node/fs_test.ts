@@ -12,7 +12,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { constants as fsPromiseConstants, cp } from "node:fs/promises";
-import { pathToAbsoluteFileUrl } from "../unit/test_util.ts";
+import { pathToAbsoluteFileUrl } from "../util/test_util.ts";
 
 Deno.test(
   "[node/fs writeFileSync] write file without option",
