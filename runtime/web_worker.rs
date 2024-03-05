@@ -431,7 +431,7 @@ impl WebWorker {
         options.unsafely_ignore_certificate_errors.clone(),
       ),
       deno_webstorage::deno_webstorage::init_ops_and_esm(None).disable(),
-      #[cfg(feature = "webcrypto")]
+      #[cfg(feature = "ext-webcrypto")]
       deno_crypto::deno_crypto::init_ops_and_esm(options.seed),
       deno_broadcast_channel::deno_broadcast_channel::init_ops_and_esm(
         options.broadcast_channel.clone(),

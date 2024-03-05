@@ -222,7 +222,7 @@ pub fn create_runtime_snapshot(
       None,
     ),
     deno_webstorage::deno_webstorage::init_ops_and_esm(None),
-    #[cfg(feature = "webcrypto")]
+    #[cfg(feature = "ext-webcrypto")]
     deno_crypto::deno_crypto::init_ops_and_esm(None),
     deno_broadcast_channel::deno_broadcast_channel::init_ops_and_esm(
       deno_broadcast_channel::InMemoryBroadcastChannel::default(),

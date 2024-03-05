@@ -58,7 +58,7 @@ extension!(runtime,
       ext.esm_files.to_mut().push(ExtensionFileSource::new("ext:runtime_main/js/99_main.js", include_str!("./js/99_main.js")));
       ext.esm_entry_point = Some("ext:runtime_main/js/99_main.js");
     }
-    #[cfg(not(feature = "webcrypto"))]
+    #[cfg(not(feature = "ext-webcrypto"))]
     {
       ext.esm_files.to_mut().push(ExtensionFileSource::new("ext:deno_crypto/00_crypto.js", "const crypto = {}; export { crypto }"));
     }

@@ -6,7 +6,7 @@ pub use deno_canvas;
 pub use deno_console;
 pub use deno_core;
 pub use deno_cron;
-#[cfg(feature = "webcrypto")]
+#[cfg(feature = "ext-webcrypto")]
 pub use deno_crypto;
 pub use deno_fetch;
 pub use deno_ffi;

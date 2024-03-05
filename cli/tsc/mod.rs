@@ -94,7 +94,7 @@ pub fn get_types_declaration_file_text() -> String {
     "deno.websocket",
     "deno.webstorage",
     "deno.canvas",
-    #[cfg(feature = "webcrypto")]
+    #[cfg(feature = "ext-webcrypto")]
     "deno.crypto",
     "deno.broadcast_channel",
     "deno.net",
