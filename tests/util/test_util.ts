@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import * as colors from "@std/fmt/colors.ts";
+import { assert } from "@std/assert/mod.ts";
 export { colors };
 import { join, resolve } from "@std/path/mod.ts";
 export {

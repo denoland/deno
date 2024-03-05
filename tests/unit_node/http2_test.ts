@@ -3,7 +3,7 @@
 import * as http2 from "node:http2";
 import * as net from "node:net";
 import { assert, assertEquals } from "@std/assert/mod.ts";
-import { curlRequest } from "../util/test_util";
+import { curlRequest } from "../util/test_util.ts";
 
 for (const url of ["http://127.0.0.1:4246", "https://127.0.0.1:4247"]) {
   Deno.test(`[node/http2 client] ${url}`, {
@@ -168,7 +168,7 @@ Deno.test("[node/http2 client GET https://www.example.com]", async () => {
 });
 
 Deno.test("[node/http2.createServer()]", { sanitizeOps: false }, async () => {
-  const server = http2.createServer((req, res) => {
+  const server = http2.createServer((_req, res) => {
     res.setHeader("Content-Type", "text/html");
     res.setHeader("X-Foo", "bar");
     res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });

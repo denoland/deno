@@ -15,9 +15,11 @@ import {
   op_http2_client_send_trailers,
   op_http2_connect,
   op_http2_poll_client_connection,
+  op_http_set_response_trailers,
 } from "ext:core/ops";
 
 import { notImplemented, warnNotImplemented } from "ext:deno_node/_utils.ts";
+import { toInnerRequest } from "ext:deno_fetch/23_request.js";
 import { Readable } from "node:stream";
 import { EventEmitter } from "node:events";
 import { Buffer } from "node:buffer";
@@ -34,7 +36,7 @@ import {
 } from "ext:deno_node/internal/stream_base_commons.ts";
 import { FileHandle } from "node:fs/promises";
 import { kStreamBaseField } from "ext:deno_node/internal_binding/stream_wrap.ts";
-import { addTrailers, serveHttpOnConnection } from "ext:deno_http/00_serve.js";
+import { serveHttpOnConnection } from "ext:deno_http/00_serve.js";
 import { nextTick } from "ext:deno_node/_next_tick.ts";
 import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
 import { Duplex } from "node:stream";
@@ -117,7 +119,7 @@ const SESSION_FLAGS_DESTROYED = 0x4;
 const ENCODER = new TextEncoder();
 type Http2Headers = Record<string, string | string[]>;
 
-const debugHttp2Enabled = true;
+const debugHttp2Enabled = false;
 function debugHttp2(...args) {
   if (debugHttp2Enabled) {
     console.log(...args);
@@ -355,9 +357,6 @@ function closeSession(session: Http2Session, code?: number, error?: Error) {
 export class ServerHttp2Session extends Http2Session {
   constructor() {
     super(constants.NGHTTP2_SESSION_SERVER, {});
-    this.on("stream", (stream, headers) => {
-      console.log(stream, headers);
-    });
   }
 
   altsvc(
@@ -591,6 +590,8 @@ export class Http2Stream extends EventEmitter {
   #readerPromise: Promise<ReadableStream<Uint8Array>>;
   #closed: boolean;
   _response: Response;
+  // This is required to set the trailers on the response.
+  _request: Request;
 
   constructor(
     session: Http2Session,
@@ -725,10 +726,8 @@ export class Http2Stream extends EventEmitter {
   }
 
   sendTrailers(headers: Record<string, unknown>) {
-    console.log("sendTrailers(headers): ", headers);
-
-    // addTrailers(this._response, [["grpc-status", "0"], ["grpc-message", "OK"]]);
-    addTrailers(this._response, Object.entries(headers));
+    let request = toInnerRequest(this._request);
+    op_http_set_response_trailers(request.external, Object.entries(headers));
   }
 }
 
@@ -1300,10 +1299,13 @@ export class ServerHttp2Stream extends Http2Stream {
     controllerPromise: Promise<ReadableStreamDefaultController<Uint8Array>>,
     reader: ReadableStream<Uint8Array>,
     body: ReadableStream<Uint8Array>,
+    // This is required to set the trailers on the response.
+    req: Request,
   ) {
     super(session, headers, controllerPromise, Promise.resolve(reader));
     this._deferred = Promise.withResolvers<Response>();
     this.#body = body;
+    this._request = req;
   }
 
   additionalHeaders(_headers: Record<string, unknown>) {
@@ -1338,12 +1340,6 @@ export class ServerHttp2Stream extends Http2Stream {
     headers: Http2Headers,
     options: Record<string, unknown>,
   ) {
-    debugHttp2(
-      "ServerHttp2Stream.respond() headers:",
-      headers,
-      "options:",
-      options,
-    );
     this.#headersSent = true;
     const response: ResponseInit = {};
     if (headers) {
@@ -1405,7 +1401,6 @@ function onServerStream(
   flags,
   rawHeaders,
 ) {
-  console.log("handling on stream event");
   const server = this;
   const request = new ServerRequest(stream, headers, undefined, rawHeaders);
   const response = new ServerResponse(stream);
@@ -1504,7 +1499,6 @@ export class Http2Server extends Server {
     this.on(
       "connection",
       (conn: Deno.Conn) => {
-        console.log("got connection: ", conn);
         try {
           const session = new ServerHttp2Session();
           this.emit("session", session);
@@ -1512,9 +1506,7 @@ export class Http2Server extends Server {
             conn,
             this.#abortController.signal,
             async (req: Request) => {
-              console.log("got request", req);
               try {
-                console.log("inside try block");
                 const controllerDeferred = Promise.withResolvers<
                   ReadableStreamDefaultController<Uint8Array>
                 >();
@@ -1523,28 +1515,22 @@ export class Http2Server extends Server {
                     controllerDeferred.resolve(controller);
                   },
                 });
-                console.log("before headers");
                 const headers: Http2Headers = {};
                 for (const [name, value] of req.headers) {
                   headers[name] = value;
                 }
                 headers[constants.HTTP2_HEADER_PATH] =
                   new URL(req.url).pathname;
-                console.log("headers: ", headers);
                 const stream = new ServerHttp2Stream(
                   session,
                   Promise.resolve(headers),
                   controllerDeferred.promise,
                   req.body,
                   body,
+                  req,
                 );
-                console.log("stream created successfully");
-                session.emit("stream", stream, headers);
                 this.emit("stream", stream, headers);
-                console.log("stream emitted");
-                let res = await stream._deferred.promise;
-                console.log("res: ", res);
-                return res;
+                return await stream._deferred.promise;
               } catch (e) {
                 console.log(">>> Error in serveHttpOnConnection", e);
               }
@@ -1569,14 +1555,6 @@ export class Http2Server extends Server {
   // Prevent the TCP server from wrapping this in a socket, since we need it to serve HTTP
   _createSocket(clientHandle: TCP) {
     return clientHandle[kStreamBaseField];
-  }
-
-  close(callback?: () => unknown) {
-    if (callback) {
-      this.on("close", callback);
-    }
-    this.#abortController.abort();
-    super.close();
   }
 
   setTimeout(msecs: number, callback?: () => unknown) {
@@ -2066,6 +2044,7 @@ const kSocket = Symbol("socket");
 const kTrailers = Symbol("trailers");
 const kRawTrailers = Symbol("rawTrailers");
 const kSetHeader = Symbol("setHeader");
+const kServer = Symbol("server");
 const kAppendHeader = Symbol("appendHeader");
 const kAborted = Symbol("aborted");
 const kProxySocket = Symbol("proxySocket");
@@ -2366,89 +2345,6 @@ function onStreamAbortedRequest() {
   }
 }
 
-// export class Http2ServerRequest extends Readable {
-//   constructor() {
-//   }
-
-//   get aborted(): boolean {
-//     notImplemented("Http2ServerRequest.aborted");
-//     return false;
-//   }
-
-//   get authority(): string {
-//     notImplemented("Http2ServerRequest.authority");
-//     return "";
-//   }
-
-//   get complete(): boolean {
-//     notImplemented("Http2ServerRequest.complete");
-//     return false;
-//   }
-
-//   get connection(): Socket /*| TlsSocket*/ {
-//     notImplemented("Http2ServerRequest.connection");
-//     return {};
-//   }
-
-//   destroy(_error: Error) {
-//     notImplemented("Http2ServerRequest.destroy");
-//   }
-
-//   get headers(): Record<string, unknown> {
-//     notImplemented("Http2ServerRequest.headers");
-//     return {};
-//   }
-
-//   get httpVersion(): string {
-//     notImplemented("Http2ServerRequest.httpVersion");
-//     return "";
-//   }
-
-//   get method(): string {
-//     notImplemented("Http2ServerRequest.method");
-//     return "";
-//   }
-
-//   get rawHeaders(): string[] {
-//     notImplemented("Http2ServerRequest.rawHeaders");
-//     return [];
-//   }
-
-//   get rawTrailers(): string[] {
-//     notImplemented("Http2ServerRequest.rawTrailers");
-//     return [];
-//   }
-
-//   get scheme(): string {
-//     notImplemented("Http2ServerRequest.scheme");
-//     return "";
-//   }
-
-//   setTimeout(msecs: number, callback?: () => unknown) {
-//     this.stream.setTimeout(callback, msecs);
-//   }
-
-//   get socket(): Socket /*| TlsSocket*/ {
-//     notImplemented("Http2ServerRequest.socket");
-//     return {};
-//   }
-
-//   get stream(): Http2Stream {
-//     notImplemented("Http2ServerRequest.stream");
-//     return new Http2Stream();
-//   }
-
-//   get trailers(): Record<string, unknown> {
-//     notImplemented("Http2ServerRequest.trailers");
-//     return {};
-//   }
-
-//   get url(): string {
-//     notImplemented("Http2ServerRequest.url");
-//     return "";
-//   }
-// }
-
 function onStreamTrailersReady() {
   this.sendTrailers(this[kResponse][kTrailers]);
 }
@@ -2501,18 +2397,6 @@ function statusMessageWarn() {
 function isConnectionHeaderAllowed(name, value) {
   return name !== constants.HTTP2_HEADER_CONNECTION ||
     value === "trailers";
-}
-
-function connectionHeaderMessageWarn() {
-  if (statusConnectionHeaderWarned === false) {
-    emitWarning(
-      "The provided connection header is not valid, " +
-        "the value will be dropped from the header and " +
-        "will never be in use.",
-      "UnsupportedWarning",
-    );
-    statusConnectionHeaderWarned = true;
-  }
 }
 
 class Http2ServerResponse extends Stream {
@@ -2950,12 +2834,12 @@ class Http2ServerResponse extends Stream {
       nextTick(callback, new ERR_HTTP2_INVALID_STREAM());
       return;
     }
-    this[kStream].pushStream(headers, {}, (err, stream, headers, options) => {
+    this[kStream].pushStream(headers, {}, (err, stream, _headers, options) => {
       if (err) {
         callback(err);
         return;
       }
-      callback(null, new Http2ServerResponse(stream));
+      callback(null, new Http2ServerResponse(stream, options));
     });
   }
 
@@ -3015,136 +2899,6 @@ class Http2ServerResponse extends Stream {
     return true;
   }
 }
-
-// export class Http2ServerResponse {
-//   constructor() {
-//   }
-
-//   addTrailers(_headers: Record<string, unknown>) {
-//     notImplemented("Http2ServerResponse.addTrailers");
-//   }
-
-//   get connection(): Socket /*| TlsSocket*/ {
-//     notImplemented("Http2ServerResponse.connection");
-//     return {};
-//   }
-
-//   createPushResponse(
-//     _headers: Record<string, unknown>,
-//     _callback: () => unknown,
-//   ) {
-//     notImplemented("Http2ServerResponse.createPushResponse");
-//   }
-
-//   end(
-//     _data: string | Buffer | Uint8Array,
-//     _encoding: string,
-//     _callback: () => unknown,
-//   ) {
-//     notImplemented("Http2ServerResponse.end");
-//   }
-
-//   get finished(): boolean {
-//     notImplemented("Http2ServerResponse.finished");
-//     return false;
-//   }
-
-//   getHeader(_name: string): string {
-//     notImplemented("Http2ServerResponse.getHeader");
-//     return "";
-//   }
-
-//   getHeaderNames(): string[] {
-//     notImplemented("Http2ServerResponse.getHeaderNames");
-//     return [];
-//   }
-
-//   getHeaders(): Record<string, unknown> {
-//     notImplemented("Http2ServerResponse.getHeaders");
-//     return {};
-//   }
-
-//   hasHeader(_name: string) {
-//     notImplemented("Http2ServerResponse.hasHeader");
-//   }
-
-//   get headersSent(): boolean {
-//     notImplemented("Http2ServerResponse.headersSent");
-//     return false;
-//   }
-
-//   removeHeader(_name: string) {
-//     notImplemented("Http2ServerResponse.removeHeader");
-//   }
-
-//   get req(): Http2ServerRequest {
-//     notImplemented("Http2ServerResponse.req");
-//     return new Http2ServerRequest();
-//   }
-
-//   get sendDate(): boolean {
-//     notImplemented("Http2ServerResponse.sendDate");
-//     return false;
-//   }
-
-//   setHeader(_name: string, _value: string | string[]) {
-//     notImplemented("Http2ServerResponse.setHeader");
-//   }
-
-//   setTimeout(msecs: number, callback?: () => unknown) {
-//     this.stream.setTimeout(msecs, callback);
-//   }
-
-//   get socket(): Socket /*| TlsSocket*/ {
-//     notImplemented("Http2ServerResponse.socket");
-//     return {};
-//   }
-
-//   get statusCode(): number {
-//     notImplemented("Http2ServerResponse.statusCode");
-//     return 0;
-//   }
-
-//   get statusMessage(): string {
-//     notImplemented("Http2ServerResponse.statusMessage");
-//     return "";
-//   }
-
-//   get stream(): Http2Stream {
-//     notImplemented("Http2ServerResponse.stream");
-//     return new Http2Stream();
-//   }
-
-//   get writableEnded(): boolean {
-//     notImplemented("Http2ServerResponse.writableEnded");
-//     return false;
-//   }
-
-//   write(
-//     _chunk: string | Buffer | Uint8Array,
-//     _encoding: string,
-//     _callback: () => unknown,
-//   ) {
-//     notImplemented("Http2ServerResponse.write");
-//     return this.write;
-//   }
-
-//   writeContinue() {
-//     notImplemented("Http2ServerResponse.writeContinue");
-//   }
-
-//   writeEarlyHints(_hints: Record<string, unknown>) {
-//     notImplemented("Http2ServerResponse.writeEarlyHints");
-//   }
-
-//   writeHead(
-//     _statusCode: number,
-//     _statusMessage: string,
-//     _headers: Record<string, unknown>,
-//   ) {
-//     notImplemented("Http2ServerResponse.writeHead");
-//   }
-// }
 
 export default {
   createServer,
