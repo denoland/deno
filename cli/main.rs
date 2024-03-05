@@ -322,16 +322,18 @@ pub fn main() {
   // initialize the V8 platform on a parent thread of all threads that will spawn
   // V8 isolates.
 
+  let current_exe_path = current_exe().unwrap();
+  let standalone =
+    standalone::extract_standalone(&current_exe_path, args.clone());
   let future = async move {
-    let current_exe_path = current_exe()?;
-    let standalone_res =
-      match standalone::extract_standalone(&current_exe_path, args.clone())
-        .await
-      {
-        Ok(Some((metadata, eszip))) => standalone::run(eszip, metadata).await,
-        Ok(None) => Ok(()),
-        Err(err) => Err(err),
-      };
+    let standalone_res = match standalone {
+      Ok(Some(future)) => {
+        let (metadata, eszip) = future.await?;
+        standalone::run(eszip, metadata).await
+      }
+      Ok(None) => Ok(()),
+      Err(err) => Err(err),
+    };
     // TODO(bartlomieju): doesn't handle exit code set by the runtime properly
     unwrap_or_exit(standalone_res);
 
