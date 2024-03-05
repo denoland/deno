@@ -8,7 +8,7 @@ import {
   runWithTestUtil,
   TestCaseResult,
   TestResult,
-} from "./wpt/runner.ts";
+} from "./runner/runner.ts";
 import {
   assert,
   autoConfig,
@@ -31,17 +31,11 @@ import {
   runPy,
   updateManifest,
   wptreport,
-} from "./wpt/utils.ts";
-import { pooledMap } from "../tests/util/std/async/pool.ts";
-import {
-  blue,
-  bold,
-  green,
-  red,
-  yellow,
-} from "../tests/util/std/fmt/colors.ts";
-import { writeAll, writeAllSync } from "../tests/util/std/streams/write_all.ts";
-import { saveExpectation } from "./wpt/utils.ts";
+} from "./runner/utils.ts";
+import { pooledMap } from "../util/std/async/pool.ts";
+import { blue, bold, green, red, yellow } from "../util/std/fmt/colors.ts";
+import { writeAll, writeAllSync } from "../util/std/streams/write_all.ts";
+import { saveExpectation } from "./runner/utils.ts";
 
 class TestFilter {
   filter?: string[];
