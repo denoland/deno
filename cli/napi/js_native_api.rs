@@ -531,6 +531,52 @@ fn napi_create_external(
   napi_ok
 }
 
+#[repr(C)]
+struct NapiTypeTag {
+  lower: u64,
+  upper: u64,
+}
+
+static TYPE_TAG_KEY: v8::OneByteConst =
+  v8::String::create_external_onebyte_const(b"deno:napi:napi_type_tag");
+
+#[napi_sym::napi_sym]
+fn napi_type_tag_object(
+  env_ptr: *mut Env,
+  object: napi_value,
+  type_tag: *const NapiTypeTag,
+) -> napi_status {
+  check_env!(env_ptr);
+  let env = unsafe { &mut *env_ptr };
+
+  let Ok(object) =
+    v8::Local::<v8::Object>::try_from(napi_value_unchecked(object))
+  else {
+    return napi_object_expected;
+  };
+  check_arg!(env, type_tag);
+
+  let scope = &mut env.scope();
+  let name = v8::String::new_from_onebyte_const(scope, &TYPE_TAG_KEY).unwrap();
+  let key = v8::Private::for_api(scope, Some(name));
+  if object.has_private(scope, key).unwrap_or(false) {
+    return napi_generic_failure;
+  }
+
+  let type_tag = unsafe { &*type_tag };
+  let Some(tag) =
+    v8::BigInt::new_from_words(scope, false, &[type_tag.lower, type_tag.upper])
+  else {
+    return napi_generic_failure;
+  };
+
+  if !object.set_private(scope, key, tag.into()).unwrap() {
+    return napi_generic_failure;
+  }
+
+  napi_ok
+}
+
 pub type BackingStoreDeleterCallback = unsafe extern "C" fn(
   data: *mut c_void,
   byte_length: usize,

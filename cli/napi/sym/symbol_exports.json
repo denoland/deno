@@ -33,6 +33,7 @@
     "napi_is_exception_pending",
     "napi_acquire_threadsafe_function",
     "napi_create_external",
+    "napi_type_tag_object",
     "napi_get_threadsafe_function_context",
     "napi_get_null",
     "napi_create_string_utf16",

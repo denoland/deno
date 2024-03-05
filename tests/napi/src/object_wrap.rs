@@ -9,6 +9,27 @@ use std::os::raw::c_char;
 use std::os::raw::c_void;
 use std::ptr;
 
+// https://github.com/napi-rs/napi-rs/issues/1491
+// napi-rs sys (used for testing) doesn't support type tags.
+extern "C" {
+  fn napi_type_tag_object(
+    env: napi_env,
+    object: napi_value,
+    tag: *const NapiTypeTag,
+  ) -> napi_status;
+}
+#[repr(C)]
+pub struct NapiTypeTag {
+  pub low: u64,
+  pub high: u64,
+}
+
+// uuidgen | sed -r -e 's/-//g' -e 's/(.{16})(.*)/0x\1, 0x\2/'
+const NAPI_OBJECT_TYPE_TAG: NapiTypeTag = NapiTypeTag {
+  low: 0x1edf75a38336451d,
+  high: 0xa5ed9ce2e4c00c38,
+};
+
 pub struct NapiObject {
   counter: i32,
   _wrapper: napi_ref,
@@ -38,6 +59,10 @@ impl NapiObject {
         counter: value,
         _wrapper: wrapper,
       });
+
+      // Tag the object to indicate that it holds a point to a `NapiObject`.
+      assert_napi_ok!(napi_type_tag_object(env, this, &NAPI_OBJECT_TYPE_TAG));
+
       assert_napi_ok!(napi_wrap(
         env,
         this,
