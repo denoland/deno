@@ -762,7 +762,7 @@ async fn run_tests_for_worker_inner(
 
     // Poll event loop once, to allow all ops that are already resolved, but haven't
     // responded to settle.
-    // TODO(mmastrac): we should provide an API to poll the event loop until no futher
+    // TODO(mmastrac): we should provide an API to poll the event loop until no further
     // progress is made.
     poll_event_loop(worker).await?;
 
