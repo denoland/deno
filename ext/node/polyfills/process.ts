@@ -451,6 +451,10 @@ class Process extends EventEmitter {
 
   dlopen = dlopen;
 
+  foobar() {
+    throw new Error("boom!");
+  }
+
   /** https://nodejs.org/api/process.html#process_process_events */
   override on(event: "exit", listener: (code: number) => void): this;
   override on(
