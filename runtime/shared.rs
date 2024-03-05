@@ -12,12 +12,6 @@ use deno_core::ModuleName;
 use deno_core::SourceMapData;
 use std::path::Path;
 
-#[cfg(not(feature = "exclude_runtime_main_js"))]
-static MAIN_99_JS: deno_core::v8::OneByteConst =
-  deno_core::FastStaticString::create_external_onebyte_const(include_bytes!(
-    "./js/99_main.js"
-  ));
-
 extension!(runtime,
   deps = [
     deno_webidl,
