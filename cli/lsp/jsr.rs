@@ -18,8 +18,6 @@ use super::search::PackageSearchApi;
 #[derive(Debug, Clone)]
 pub struct CliJsrSearchApi {
   file_fetcher: FileFetcher,
-  /// We only store this here so the completion system has access to a resolver
-  /// that always uses the global cache.
   resolver: Arc<JsrFetchResolver>,
   search_cache: Arc<DashMap<String, Arc<Vec<String>>>>,
   versions_cache: Arc<DashMap<String, Arc<Vec<Version>>>>,
@@ -49,12 +47,7 @@ impl PackageSearchApi for CliJsrSearchApi {
     if let Some(names) = self.search_cache.get(query) {
       return Ok(names.clone());
     }
-    let mut search_url = jsr_api_url().clone();
-    search_url
-      .path_segments_mut()
-      .map_err(|_| anyhow!("Custom jsr URL cannot be a base."))?
-      .pop_if_empty()
-      .push("packages");
+    let mut search_url = jsr_api_url().join("packages")?;
     search_url.query_pairs_mut().append_pair("query", query);
     let file = self
       .file_fetcher
