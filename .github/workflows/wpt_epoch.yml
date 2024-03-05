@@ -68,10 +68,10 @@ jobs:
         run: |
           deno run --unstable --allow-write --allow-read --allow-net           \
             --allow-env --allow-run --lock=tools/deno.lock.json                \
-            ./tools/wpt.ts setup
+            ./tests/wpt/runner/runner.ts setup
           deno run --unstable --allow-write --allow-read --allow-net           \
             --allow-env --allow-run --lock=tools/deno.lock.json                \
-            ./tools/wpt.ts run                                                 \
+            ./tests/wpt/runner/runner.ts run                                                 \                                                \
             --binary=$(which deno) --quiet --release --no-ignore --json=wpt.json --wptreport=wptreport.json
 
       - name: Upload wpt results to wpt.fyi
