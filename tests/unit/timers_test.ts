@@ -228,6 +228,28 @@ Deno.test(function intervalCancelInvalidSilentFail() {
   clearInterval(2147483647);
 });
 
+Deno.test(async function callbackTakesLongerThanInterval() {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  const output: number[] = [];
+  let last = 0;
+  const id = setInterval(() => {
+    const now = performance.now();
+    if (last > 0) {
+      output.push(now - last);
+      if (output.length >= 10) {
+        resolve();
+        clearTimeout(id);
+      }
+    }
+    last = now;
+    while (performance.now() - now < 300) {}
+  }, 100);
+  await promise;
+  const total = output.reduce((t, n) => t + n, 0) / output.length;
+  console.log(output);
+  assert(total < 350 && total > 299, "Total was out of range: " + total);
+});
+
 // https://github.com/denoland/deno/issues/11398
 Deno.test(async function clearTimeoutAfterNextTimerIsDue1() {
   const { promise, resolve } = Promise.withResolvers<void>();
