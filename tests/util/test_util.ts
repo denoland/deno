@@ -109,7 +109,7 @@ export async function curlRequestWithStdErr(args: string[]) {
     stdout: "piped",
     stderr: "piped",
   }).output();
-  let decoder = new TextDecoder();
+  const decoder = new TextDecoder();
   assert(
     success,
     `Failed to cURL ${args}: stdout\n\n${

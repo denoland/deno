@@ -79,6 +79,7 @@ const {
 } = primordials;
 
 const kSession = Symbol("session");
+const kOptions = Symbol("options");
 const kAlpnProtocol = Symbol("alpnProtocol");
 const kAuthority = Symbol("authority");
 const kEncrypted = Symbol("encrypted");
@@ -726,7 +727,7 @@ export class Http2Stream extends EventEmitter {
   }
 
   sendTrailers(headers: Record<string, unknown>) {
-    let request = toInnerRequest(this._request);
+    const request = toInnerRequest(this._request);
     op_http_set_response_trailers(request.external, Object.entries(headers));
   }
 }
@@ -1376,8 +1377,6 @@ export class ServerHttp2Stream extends Http2Stream {
   }
 }
 
-const kOptions = Symbol("options");
-
 function setupCompat(ev) {
   if (ev === "request") {
     this.removeListener("newListener", setupCompat);
@@ -1398,17 +1397,16 @@ function onServerStream(
   ServerResponse,
   stream,
   headers,
-  flags,
+  _flags,
   rawHeaders,
 ) {
-  const server = this;
   const request = new ServerRequest(stream, headers, undefined, rawHeaders);
   const response = new ServerResponse(stream);
 
   // Check for the CONNECT method
   const method = headers[constants.HTTP2_HEADER_METHOD];
   if (method === "CONNECT") {
-    if (!server.emit("connect", request, response)) {
+    if (!this.emit("connect", request, response)) {
       response.statusCode = constants.HTTP_STATUS_METHOD_NOT_ALLOWED;
       response.end();
     }
@@ -1418,14 +1416,14 @@ function onServerStream(
   // Check for Expectations
   if (headers.expect !== undefined) {
     if (headers.expect === "100-continue") {
-      if (server.listenerCount("checkContinue")) {
-        server.emit("checkContinue", request, response);
+      if (this.listenerCount("checkContinue")) {
+        this.emit("checkContinue", request, response);
       } else {
         response.writeContinue();
-        server.emit("request", request, response);
+        this.emit("request", request, response);
       }
-    } else if (server.listenerCount("checkExpectation")) {
-      server.emit("checkExpectation", request, response);
+    } else if (this.listenerCount("checkExpectation")) {
+      this.emit("checkExpectation", request, response);
     } else {
       response.statusCode = constants.HTTP_STATUS_EXPECTATION_FAILED;
       response.end();
@@ -1433,7 +1431,7 @@ function onServerStream(
     return;
   }
 
-  server.emit("request", request, response);
+  this.emit("request", request, response);
 }
 
 function initializeOptions(options) {
@@ -2044,7 +2042,6 @@ const kSocket = Symbol("socket");
 const kTrailers = Symbol("trailers");
 const kRawTrailers = Symbol("rawTrailers");
 const kSetHeader = Symbol("setHeader");
-const kServer = Symbol("server");
 const kAppendHeader = Symbol("appendHeader");
 const kAborted = Symbol("aborted");
 const kProxySocket = Symbol("proxySocket");
@@ -2314,7 +2311,7 @@ function onStreamEnd() {
   }
 }
 
-function onStreamError(error) {
+function onStreamError(_error) {
   // This is purposefully left blank
   //
   // errors in compatibility mode are
@@ -2378,7 +2375,6 @@ function onStreamAbortedResponse() {
 }
 
 let statusMessageWarned = false;
-let statusConnectionHeaderWarned = false;
 
 // Defines and implements an API compatibility layer on top of the core
 // HTTP/2 implementation, intended to provide an interface that is as
@@ -2479,10 +2475,6 @@ class Http2ServerResponse extends Stream {
     this[kState].sendDate = Boolean(bool);
   }
 
-  get statusCode() {
-    return this[kState].statusCode;
-  }
-
   get writableCorked() {
     return this[kStream].writableCorked;
   }
@@ -2497,6 +2489,10 @@ class Http2ServerResponse extends Stream {
 
   get writableLength() {
     return this[kStream].writableLength;
+  }
+
+  get statusCode() {
+    return this[kState].statusCode;
   }
 
   set statusCode(code) {
@@ -2855,7 +2851,6 @@ class Http2ServerResponse extends Stream {
     this[kStream].respond(headers, options);
   }
 
-  // TODO doesn't support callbacks
   writeContinue() {
     const stream = this[kStream];
     if (stream.headersSent || this[kState].closed) {
