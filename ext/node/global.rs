@@ -249,10 +249,10 @@ fn is_managed_key(
     return false;
   };
   let len = str.length();
-
+  let s = str.to_rust_string_lossy(scope);
   #[allow(clippy::manual_range_contains)]
   if len < SHORTEST_MANAGED_GLOBAL || len > LONGEST_MANAGED_GLOBAL {
-    eprintln!("is_managed_key return false2");
+    eprintln!("is_managed_key return false2 {} {}", s, len);
     return false;
   }
   let buf = &mut [0u16; LONGEST_MANAGED_GLOBAL];
@@ -264,7 +264,7 @@ fn is_managed_key(
   );
   assert_eq!(written, len);
   let r = MANAGED_GLOBALS.binary_search(&&buf[..len]).is_ok();
-  eprintln!("is_managed_key return {}", r);
+  eprintln!("is_managed_key return {} {}", s, r);
   r
 }
 
@@ -294,6 +294,7 @@ pub fn getter<'s>(
   args: v8::PropertyCallbackArguments<'s>,
   mut rv: v8::ReturnValue,
 ) {
+  eprintln!("getter");
   if !is_managed_key(scope, key) {
     return;
   };
@@ -330,6 +331,7 @@ pub fn setter<'s>(
   args: v8::PropertyCallbackArguments<'s>,
   mut rv: v8::ReturnValue,
 ) {
+  eprintln!("setter");
   if !is_managed_key(scope, key) {
     return;
   };
@@ -366,6 +368,7 @@ pub fn query<'s>(
   _args: v8::PropertyCallbackArguments<'s>,
   mut rv: v8::ReturnValue,
 ) {
+  eprintln!("query");
   if !is_managed_key(scope, key) {
     return;
   };
@@ -396,6 +399,7 @@ pub fn deleter<'s>(
   args: v8::PropertyCallbackArguments<'s>,
   mut rv: v8::ReturnValue,
 ) {
+  eprintln!("deleter");
   if !is_managed_key(scope, key) {
     return;
   };
@@ -458,6 +462,7 @@ pub fn definer<'s>(
   args: v8::PropertyCallbackArguments<'s>,
   mut rv: v8::ReturnValue,
 ) {
+  eprintln!("definer");
   if !is_managed_key(scope, key) {
     return;
   };
@@ -491,6 +496,7 @@ pub fn descriptor<'s>(
   _args: v8::PropertyCallbackArguments<'s>,
   mut rv: v8::ReturnValue,
 ) {
+  eprintln!("descriptor");
   if !is_managed_key(scope, key) {
     return;
   };
