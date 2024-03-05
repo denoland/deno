@@ -228,6 +228,8 @@ Deno.test(function intervalCancelInvalidSilentFail() {
   clearInterval(2147483647);
 });
 
+// If a repeating timer is dispatched, the next interval that should first is based on
+// when the timer is dispatched, not when the timer handler completes.
 Deno.test(async function callbackTakesLongerThanInterval() {
   const { promise, resolve } = Promise.withResolvers<void>();
   const output: number[] = [];
