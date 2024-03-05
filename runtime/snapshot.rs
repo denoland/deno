@@ -10,8 +10,10 @@ use deno_core::snapshot::*;
 use deno_core::v8;
 use deno_core::Extension;
 use deno_http::DefaultHttpPropertyExtractor;
+use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::sync::Arc;
 
 #[derive(Clone)]
@@ -203,7 +205,7 @@ pub fn create_runtime_snapshot(
   // NOTE(bartlomieju): ordering is important here, keep it in sync with
   // `runtime/worker.rs`, `runtime/web_worker.rs` and `runtime/snapshot.rs`!
   let fs = std::sync::Arc::new(deno_fs::RealFs);
-  let mut extensions: Vec<Extension> = vec![
+  let extensions: Vec<Extension> = vec![
     deno_webidl::deno_webidl::init_ops_and_esm(),
     deno_console::deno_console::init_ops_and_esm(),
     deno_url::deno_url::init_ops_and_esm(),
@@ -256,23 +258,14 @@ pub fn create_runtime_snapshot(
     ops::web_worker::deno_web_worker::init_ops(),
   ];
 
-  for extension in &mut extensions {
-    for source in extension.esm_files.to_mut() {
-      maybe_transpile_source(source).unwrap();
-    }
-    for source in extension.js_files.to_mut() {
-      maybe_transpile_source(source).unwrap();
-    }
-  }
-
   let output = create_snapshot(
     CreateSnapshotOptions {
       cargo_manifest_dir: env!("CARGO_MANIFEST_DIR"),
       startup_snapshot: None,
       extensions,
-      serializer: Box::new(SnapshotFileSerializer::new(
-        std::fs::File::create(snapshot_path).unwrap(),
-      )),
+      extension_transpiler: Some(Rc::new(|specifier, source| {
+        maybe_transpile_source(specifier, source)
+      })),
       with_runtime_cb: Some(Box::new(|rt| {
         let isolate = rt.v8_isolate();
         let scope = &mut v8::HandleScope::new(isolate);
@@ -285,6 +278,9 @@ pub fn create_runtime_snapshot(
     None,
   )
   .unwrap();
+  let mut snapshot = std::fs::File::create(snapshot_path).unwrap();
+  snapshot.write_all(&output.output).unwrap();
+
   for path in output.files_loaded_during_snapshot {
     println!("cargo:rerun-if-changed={}", path.display());
   }

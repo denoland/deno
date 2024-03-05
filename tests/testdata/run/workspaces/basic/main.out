@@ -1,6 +1,7 @@
 [WILDCARD]Workspace config generated this import map {
   "imports": {
-    "chalk": "npm:chalk"
+    "chalk": "npm:chalk",
+    "chalk/": "npm:/chalk/"
   },
   "scopes": {
     "./foo/": {

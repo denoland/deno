@@ -2,7 +2,7 @@
 
 import * as http2 from "node:http2";
 import * as net from "node:net";
-import { assertEquals } from "@std/assert/mod.ts";
+import { assert, assertEquals } from "@std/assert/mod.ts";
 
 for (const url of ["http://127.0.0.1:4246", "https://127.0.0.1:4247"]) {
   Deno.test(`[node/http2 client] ${url}`, {
@@ -135,4 +135,33 @@ Deno.test("[node/http2 server]", { sanitizeOps: false }, async () => {
   await resp.text();
 
   await new Promise((resolve) => server.close(resolve));
+});
+
+Deno.test("[node/http2 client GET https://www.example.com]", async () => {
+  const clientSession = http2.connect("https://www.example.com");
+  const req = clientSession.request({
+    ":method": "GET",
+    ":path": "/",
+  });
+  let headers = {};
+  let status: number | undefined = 0;
+  let chunk = new Uint8Array();
+  const endPromise = Promise.withResolvers<void>();
+  req.on("response", (h) => {
+    status = h[":status"];
+    headers = h;
+  });
+  req.on("data", (c) => {
+    chunk = c;
+  });
+  req.on("end", () => {
+    clientSession.close();
+    req.close();
+    endPromise.resolve();
+  });
+  req.end();
+  await endPromise.promise;
+  assert(Object.keys(headers).length > 0);
+  assertEquals(status, 200);
+  assert(chunk.length > 0);
 });
