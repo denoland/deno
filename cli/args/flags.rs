@@ -17,6 +17,7 @@ use deno_runtime::permissions::parse_sys_kind;
 use log::debug;
 use log::Level;
 use std::env;
+use std::ffi::OsStr;
 use std::ffi::OsString;
 use std::net::SocketAddr;
 use std::num::NonZeroU32;
@@ -909,8 +910,49 @@ To evaluate code in the shell:
   )
 );
 
+macro_rules! env_args {
+  ($($arg:ident),*) => {
+    #[allow(non_snake_case)]
+    #[derive(Default)]
+    struct EnvVars {
+      $($arg: Option<String>),*
+    }
+
+    impl EnvVars {
+      pub fn read() -> Self {
+        Self {
+          $($arg: std::env::var(stringify!($arg)).ok()),*
+        }
+      }
+
+      pub fn is_empty(&self) -> bool {
+        $(self.$arg.is_none()) && *
+      }
+    }
+  }
+}
+
+env_args!(
+  DENO_JOBS,
+  DENO_UNSTABLE_BYONM,
+  DENO_UNSTABLE_BARE_NODE_BUILTINS,
+  DENO_UNSTABLE_SLOPPY_IMPORTS
+);
+
 /// Main entry point for parsing deno's command line flags.
 pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
+  let env_vars = EnvVars::read();
+  match fast_flags_from_vec(args, &env_vars) {
+    Ok(flags) => Ok(flags),
+    Err(args) => clap_flags_from_vec(args, &env_vars),
+  }
+}
+
+/// The comprehensive clap parser.
+fn clap_flags_from_vec(
+  args: Vec<OsString>,
+  env_vars: &EnvVars,
+) -> clap::error::Result<Flags> {
   let mut app = clap_root();
   let mut matches = app.try_get_matches_from_mut(&args)?;
 
@@ -931,6 +973,12 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
   flags.unstable_config.byonm = matches.get_flag("unstable-byonm");
   flags.unstable_config.sloppy_imports =
     matches.get_flag("unstable-sloppy-imports");
+
+  flags.unstable_config.sloppy_imports |=
+    env_vars.DENO_UNSTABLE_SLOPPY_IMPORTS.is_some();
+  flags.unstable_config.bare_node_builtins |=
+    env_vars.DENO_UNSTABLE_BARE_NODE_BUILTINS.is_some();
+  flags.unstable_config.byonm |= env_vars.DENO_UNSTABLE_BYONM.is_some();
 
   if matches.get_flag("quiet") {
     flags.log_level = Some(Level::Error);
@@ -965,7 +1013,7 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
       "repl" => repl_parse(&mut flags, &mut m),
       "run" => run_parse(&mut flags, &mut m, app)?,
       "task" => task_parse(&mut flags, &mut m),
-      "test" => test_parse(&mut flags, &mut m),
+      "test" => test_parse(&mut flags, &mut m, env_vars),
       "types" => types_parse(&mut flags, &mut m),
       "uninstall" => uninstall_parse(&mut flags, &mut m),
       "upgrade" => upgrade_parse(&mut flags, &mut m),
@@ -987,6 +1035,88 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
   Ok(flags)
 }
 
+/// The fast flag parser for the most common options.
+#[inline(always)]
+fn fast_flags_from_vec(
+  mut args: Vec<OsString>,
+  env_vars: &EnvVars,
+) -> Result<Flags, Vec<OsString>> {
+  // We don't parse environment variables in this path, just abort if we see any
+  // that impact parsing.
+  if !env_vars.is_empty() {
+    return Err(args);
+  }
+
+  let mut a = [
+    OsStr::new(""),
+    OsStr::new(""),
+    OsStr::new(""),
+    OsStr::new(""),
+  ];
+
+  // Fast path: "deno"
+  if args.len() < 2 {
+    let mut flags = Flags {
+      ..Default::default()
+    };
+    handle_repl_flags(
+      &mut flags,
+      ReplFlags {
+        is_default_command: true,
+        ..Default::default()
+      },
+    );
+    return Ok(flags);
+  }
+
+  a[1] = &args[1];
+
+  // Fast path: "deno run script.ext" or "deno run -A|--allow-all script.ext"
+  #[allow(clippy::collapsible_if)]
+  if a[1] == "run" {
+    if args.len() >= 3 {
+      a[2] = &args[2];
+      if args.len() == 3
+        && !a[2].is_empty()
+        && a[2].as_encoded_bytes()[0] != b'-'
+      {
+        let script = args.pop().unwrap().into_string().unwrap();
+        // Trade a small memory leak to avoid cleanup logic
+        std::mem::forget(args);
+        return Ok(Flags {
+          subcommand: DenoSubcommand::Run(RunFlags {
+            script,
+            ..Default::default()
+          }),
+          ..Default::default()
+        });
+      }
+      if args.len() == 4 {
+        a[3] = &args[3];
+        if (a[2] == "-A" || a[2] == "--allow-all")
+          && !a[3].is_empty()
+          && a[3].as_encoded_bytes()[0] != b'-'
+        {
+          let script = args.pop().unwrap().into_string().unwrap();
+          // Trade a small memory leak to avoid cleanup logic
+          std::mem::forget(args);
+          let mut flags = Flags {
+            subcommand: DenoSubcommand::Run(RunFlags {
+              script,
+              ..Default::default()
+            }),
+            ..Default::default()
+          };
+          flags.allow_all();
+          return Ok(flags);
+        }
+      }
+    }
+  }
+  Err(args)
+}
+
+#[inline(always)]
 fn handle_repl_flags(flags: &mut Flags, repl_flags: ReplFlags) {
   // If user runs just `deno` binary we enter REPL and allow all permissions.
   if repl_flags.is_default_command {
@@ -1041,8 +1171,7 @@ fn clap_root() -> Command {
     .arg(
       Arg::new("unstable-bare-node-builtins")
         .long("unstable-bare-node-builtins")
-        .help("Enable unstable bare node builtins feature")
-        .env("DENO_UNSTABLE_BARE_NODE_BUILTINS")
+        .help("Enable unstable bare node builtins feature (or set DENO_UNSTABLE_BARE_NODE_BUILTINS=true).")
         .value_parser(FalseyValueParser::new())
         .action(ArgAction::SetTrue)
         .global(true),
@@ -1050,8 +1179,7 @@ fn clap_root() -> Command {
     .arg(
       Arg::new("unstable-byonm")
         .long("unstable-byonm")
-        .help("Enable unstable 'bring your own node_modules' feature")
-        .env("DENO_UNSTABLE_BYONM")
+        .help("Enable unstable 'bring your own node_modules' feature (or set DENO_UNSTABLE_BYONM=true).")
         .value_parser(FalseyValueParser::new())
         .action(ArgAction::SetTrue)
         .global(true),
@@ -1060,9 +1188,8 @@ fn clap_root() -> Command {
       Arg::new("unstable-sloppy-imports")
         .long("unstable-sloppy-imports")
         .help(
-          "Enable unstable resolving of specifiers by extension probing, .js to .ts, and directory probing.",
+          "Enable unstable resolving of specifiers by extension probing, .js to .ts, and directory probing (or set DENO_UNSTABLE_SLOPPY_IMPORTS=true).",
         )
-        .env("DENO_UNSTABLE_SLOPPY_IMPORTS")
         .value_parser(FalseyValueParser::new())
         .action(ArgAction::SetTrue)
         .global(true),
@@ -3736,7 +3863,7 @@ fn task_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   flags.subcommand = DenoSubcommand::Task(task_flags);
 }
 
-fn test_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+fn test_parse(flags: &mut Flags, matches: &mut ArgMatches, env_vars: &EnvVars) {
   flags.type_check_mode = TypeCheckMode::Local;
   runtime_args_parse(flags, matches, true, true);
   // NOTE: `deno test` always uses `--no-prompt`, tests shouldn't ever do
@@ -3790,7 +3917,7 @@ fn test_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   }
 
   let concurrent_jobs = if matches.get_flag("parallel") {
-    if let Ok(value) = env::var("DENO_JOBS") {
+    if let Some(value) = &env_vars.DENO_JOBS {
       value.parse::<NonZeroUsize>().ok()
     } else {
       std::thread::available_parallelism().ok()
@@ -4296,6 +4423,41 @@ mod tests {
   /// Creates vector of strings, Vec<String>
   macro_rules! svec {
     ($($x:expr),* $(,)?) => (vec![$($x.to_string().into()),*]);
+  }
+
+  #[test]
+  fn fast_path() {
+    for args in [
+      svec!["deno"],
+      svec!["deno", "run", "script.js"],
+      svec!["deno", "run", "--allow-all", "script.ts"],
+      svec!["deno", "run", "-A", "script.ts"],
+    ] {
+      assert_eq!(
+        fast_flags_from_vec(args.clone(), &EnvVars::default()).unwrap(),
+        clap_flags_from_vec(args, &EnvVars::default()).unwrap()
+      );
+    }
+  }
+
+  #[test]
+  fn env_vars() {
+    // We can't safely set env vars here without affecting other tests, but we
+    // can at least confirm that given the current state of env vars, the results
+    // are OK.
+    let vars = EnvVars::read();
+    assert_eq!(
+      vars.DENO_UNSTABLE_BYONM,
+      std::env::var("DENO_UNSTABLE_BYONM").ok()
+    );
+
+    // DENO_UNSTABLE_BYONM
+    let mut vars = EnvVars::default();
+    let flags = clap_flags_from_vec(svec!["deno"], &vars).unwrap();
+    assert!(!flags.unstable_config.byonm);
+    vars.DENO_UNSTABLE_BYONM = Some("".into());
+    let flags = clap_flags_from_vec(svec!["deno"], &vars).unwrap();
+    assert!(flags.unstable_config.byonm);
   }
 
   #[test]
