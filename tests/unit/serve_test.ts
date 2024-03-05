@@ -11,7 +11,7 @@ import {
   execCode,
   fail,
   tmpUnixSocketPath,
-} from "./test_util.ts";
+} from "../util/test_util.ts";
 
 // Since these tests may run in parallel, ensure this port is unique to this file
 const servePort = 4502;

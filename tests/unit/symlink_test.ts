@@ -4,7 +4,7 @@ import {
   assertRejects,
   assertThrows,
   pathToAbsoluteFileUrl,
-} from "./test_util.ts";
+} from "../util/test_util.ts";
 
 Deno.test(
   { permissions: { read: true, write: true } },

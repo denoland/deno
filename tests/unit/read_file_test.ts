@@ -6,7 +6,7 @@ import {
   assertThrows,
   pathToAbsoluteFileUrl,
   unreachable,
-} from "./test_util.ts";
+} from "../util/test_util.ts";
 
 Deno.test({ permissions: { read: true } }, function readFileSyncSuccess() {
   const data = Deno.readFileSync("tests/testdata/assets/fixture.json");
