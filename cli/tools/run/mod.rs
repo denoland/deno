@@ -72,6 +72,10 @@ To grant permissions, set them before the script argument. For example:
     .await?;
 
   let exit_code = worker.run().await?;
+
+  // We don't need to drop the worker here since we're exiting the process
+  std::mem::forget(worker);
+
   Ok(exit_code)
 }
 
