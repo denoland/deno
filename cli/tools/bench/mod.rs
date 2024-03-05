@@ -20,6 +20,7 @@ use crate::version::get_user_agent;
 use crate::worker::CliMainWorkerFactory;
 
 use deno_config::glob::FilePatterns;
+use deno_config::glob::PathGlobMatch;
 use deno_config::glob::PathOrPattern;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -408,8 +409,10 @@ fn is_supported_bench_path(path: &Path, patterns: &FilePatterns) -> bool {
       .map(|p| {
         p.inner().iter().any(|p| match p {
           PathOrPattern::Path(p) => p == path,
-          PathOrPattern::RemoteUrl(_) => true,
-          PathOrPattern::Pattern(p) => p.matches_path(path),
+          PathOrPattern::RemoteUrl(_) => false,
+          PathOrPattern::Pattern(p) => {
+            p.matches_path(path) == PathGlobMatch::Matched
+          }
         })
       })
       .unwrap_or(false);

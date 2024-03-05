@@ -747,7 +747,10 @@ impl ConfigSnapshot {
   ) -> bool {
     if let Some(cf) = &self.config_file {
       if let Some(options) = cf.to_test_config().ok().flatten() {
-        if !options.files.matches_specifier(specifier) {
+        if !options
+          .files
+          .matches_specifier(specifier, deno_config::glob::PathKind::File)
+        {
           return false;
         }
       }
@@ -1043,7 +1046,10 @@ impl Config {
   ) -> bool {
     if let Some(cf) = self.maybe_config_file() {
       if let Some(options) = cf.to_test_config().ok().flatten() {
-        if !options.files.matches_specifier(specifier) {
+        if !options
+          .files
+          .matches_specifier(specifier, deno_config::glob::PathKind::File)
+        {
           return false;
         }
       }
@@ -1083,7 +1089,7 @@ impl Config {
   pub fn get_disabled_paths(&self) -> PathOrPatternSet {
     let mut path_or_patterns = vec![];
     if let Some(cf) = self.maybe_config_file() {
-      if let Some(files) = cf.to_files_config().ok().flatten() {
+      if let Some(files) = cf.to_files_config().ok() {
         for path in files.exclude.into_path_or_patterns() {
           path_or_patterns.push(path);
         }
@@ -1177,8 +1183,9 @@ fn specifier_enabled(
   workspace_folders: &[(Url, lsp::WorkspaceFolder)],
 ) -> bool {
   if let Some(cf) = config_file {
-    if let Some(files) = cf.to_files_config().ok().flatten() {
-      if !files.matches_specifier(specifier) {
+    if let Some(files) = cf.to_files_config().ok() {
+      if !files.matches_specifier(specifier, deno_config::glob::PathKind::File)
+      {
         return false;
       }
     }

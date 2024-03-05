@@ -1348,7 +1348,7 @@ impl Documents {
               Cow::Owned(p.to_string_lossy().to_string())
             }
             PathOrPattern::RemoteUrl(p) => Cow::Borrowed(p.as_str()),
-            PathOrPattern::Pattern(p) => Cow::Borrowed(p.as_str()),
+            PathOrPattern::Pattern(p) => p.as_str(),
           })
           .collect::<Vec<_>>();
         // ensure these are sorted so the hashing is deterministic
@@ -2075,8 +2075,13 @@ impl Iterator for PreloadDocumentFinder {
               if let Ok(entry) = entry {
                 let path = entry.path();
                 if let Ok(file_type) = entry.file_type() {
-                  if file_patterns.matches_path(&path) {
-                    if file_type.is_dir() && is_discoverable_dir(&path) {
+                  let is_dir = file_type.is_dir();
+                  let path_kind = match is_dir {
+                    true => deno_config::glob::PathKind::Directory,
+                    false => deno_config::glob::PathKind::File,
+                  };
+                  if file_patterns.matches_path(&path, path_kind) {
+                    if is_dir && is_discoverable_dir(&path) {
                       self.pending_entries.push_back(PendingEntry::Dir(
                         path.to_path_buf(),
                         file_patterns.clone(),

@@ -1,5 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::env::current_dir;
 use std::fmt::Write as FmtWrite;
@@ -9,6 +11,7 @@ use std::io::ErrorKind;
 use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
 use walkdir::WalkDir;
@@ -244,6 +247,77 @@ pub fn resolve_from_cwd(path: &Path) -> Result<PathBuf, AnyError> {
   Ok(normalize_path(resolved_path))
 }
 
+struct DirGitIgnores {
+  current: Option<Rc<ignore::gitignore::Gitignore>>,
+  parent: Option<Rc<DirGitIgnores>>,
+}
+
+impl DirGitIgnores {
+  pub fn is_ignored(&self, path: &Path, is_dir: bool) -> bool {
+    let mut is_ignored = false;
+    if let Some(parent) = &self.parent {
+      is_ignored = parent.is_ignored(path, is_dir);
+    }
+    if let Some(current) = &self.current {
+      match current.matched(path, is_dir) {
+        ignore::Match::None => {}
+        ignore::Match::Ignore(_) => {
+          is_ignored = true;
+        }
+        ignore::Match::Whitelist(_) => {
+          is_ignored = false;
+        }
+      }
+    }
+    is_ignored
+  }
+}
+
+struct GitIgnoreTree {
+  fs: Arc<dyn deno_runtime::deno_fs::FileSystem>,
+  // todo(THIS PR): I think refcell can be removed
+  ignores: RefCell<HashMap<PathBuf, Option<Rc<DirGitIgnores>>>>,
+}
+
+impl GitIgnoreTree {
+  pub fn get_resolved_git_ignore(
+    &self,
+    dir_path: &Path,
+  ) -> Option<Rc<DirGitIgnores>> {
+    let maybe_resolved = self.ignores.borrow().get(dir_path).cloned();
+    if let Some(resolved) = maybe_resolved {
+      resolved
+    } else {
+      // todo(THIS PR): stop searching when the root .git folder is found
+      let parent = dir_path
+        .parent()
+        .and_then(|parent| self.get_resolved_git_ignore(parent));
+      let current = self
+        .fs
+        .read_text_file_sync(&dir_path.join(".gitignore"))
+        .ok()
+        .and_then(|text| {
+          let mut builder = ignore::gitignore::GitignoreBuilder::new(dir_path);
+          for line in text.lines() {
+            builder.add_line(None, line).ok()?;
+          }
+          let gitignore = builder.build().ok()?;
+          Some(Rc::new(gitignore))
+        });
+      let resolved = if parent.is_none() && current.is_none() {
+        None
+      } else {
+        Some(Rc::new(DirGitIgnores { current, parent }))
+      };
+      self
+        .ignores
+        .borrow_mut()
+        .insert(dir_path.to_owned(), resolved.clone());
+      resolved
+    }
+  }
+}
+
 /// Collects file paths that satisfy the given predicate, by recursively walking `files`.
 /// If the walker visits a path that is listed in `ignore`, it skips descending into the directory.
 pub struct FileCollector<TFilter: Fn(&Path, &FilePatterns) -> bool> {
@@ -251,6 +325,7 @@ pub struct FileCollector<TFilter: Fn(&Path, &FilePatterns) -> bool> {
   ignore_git_folder: bool,
   ignore_node_modules: bool,
   ignore_vendor_folder: bool,
+  use_gitignore: bool,
 }
 
 impl<TFilter: Fn(&Path, &FilePatterns) -> bool> FileCollector<TFilter> {
@@ -260,6 +335,7 @@ impl<TFilter: Fn(&Path, &FilePatterns) -> bool> FileCollector<TFilter> {
       ignore_git_folder: false,
       ignore_node_modules: false,
       ignore_vendor_folder: false,
+      use_gitignore: false,
     }
   }
 
@@ -278,10 +354,53 @@ impl<TFilter: Fn(&Path, &FilePatterns) -> bool> FileCollector<TFilter> {
     self
   }
 
+  pub fn use_gitignore(mut self) -> Self {
+    self.use_gitignore = true;
+    self
+  }
+
   pub fn collect_file_patterns(
     &self,
     file_patterns: FilePatterns,
   ) -> Result<Vec<PathBuf>, AnyError> {
+    fn is_pattern_matched(
+      maybe_git_ignores: &Option<GitIgnoreTree>,
+      path: &PathBuf,
+      is_dir: bool,
+      file_patterns: &FilePatterns,
+    ) -> bool {
+      use deno_config::glob::FilePatternsMatch;
+
+      let path_kind = match is_dir {
+        true => deno_config::glob::PathKind::Directory,
+        false => deno_config::glob::PathKind::File,
+      };
+      match file_patterns.matches_path_detail(path, path_kind) {
+        FilePatternsMatch::Passed => {
+          // check gitignore
+          let is_gitignored = maybe_git_ignores
+            .as_ref()
+            .and_then(|git_ignores| {
+              git_ignores
+                .get_resolved_git_ignore(path)
+                .map(|resolved| resolved.is_ignored(path, is_dir))
+            })
+            .unwrap_or(false);
+          !is_gitignored
+        }
+        FilePatternsMatch::PassedOptedOutExclude => true,
+        FilePatternsMatch::Excluded => false,
+      }
+    }
+
+    let maybe_git_ignores = if self.use_gitignore {
+      Some(GitIgnoreTree {
+        fs: Arc::new(deno_runtime::deno_fs::RealFs),
+        ignores: RefCell::new(HashMap::new()),
+      })
+    } else {
+      None
+    };
     let mut target_files = Vec::new();
     let mut visited_paths = HashSet::new();
     let file_patterns_by_base = file_patterns.split_by_base();
@@ -300,14 +419,7 @@ impl<TFilter: Fn(&Path, &FilePatterns) -> bool> FileCollector<TFilter> {
         let file_type = e.file_type();
         let is_dir = file_type.is_dir();
         let c = e.path().to_path_buf();
-        if file_patterns.exclude.matches_path(&c)
-          || !is_dir
-            && !file_patterns
-              .include
-              .as_ref()
-              .map(|i| i.matches_path(&c))
-              .unwrap_or(true)
-        {
+        if !is_pattern_matched(&maybe_git_ignores, &c, is_dir, &file_patterns) {
           if is_dir {
             iterator.skip_current_dir();
           }

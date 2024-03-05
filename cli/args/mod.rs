@@ -1252,7 +1252,7 @@ impl CliOptions {
   pub fn resolve_config_excludes(&self) -> Result<PathOrPatternSet, AnyError> {
     let maybe_config_files = if let Some(config_file) = &self.maybe_config_file
     {
-      config_file.to_files_config()?
+      Some(config_file.to_files_config()?)
     } else {
       None
     };

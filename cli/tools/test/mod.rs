@@ -25,6 +25,7 @@ use deno_ast::swc::common::comments::CommentKind;
 use deno_ast::MediaType;
 use deno_ast::SourceRangedForSpanned;
 use deno_config::glob::FilePatterns;
+use deno_config::glob::PathGlobMatch;
 use deno_config::glob::PathOrPattern;
 use deno_core::anyhow;
 use deno_core::anyhow::bail;
@@ -1357,8 +1358,10 @@ fn is_supported_test_path_predicate(
       .map(|p| {
         p.inner().iter().any(|p| match p {
           PathOrPattern::Path(p) => p == path,
-          PathOrPattern::RemoteUrl(_) => true,
-          PathOrPattern::Pattern(p) => p.matches_path(path),
+          PathOrPattern::RemoteUrl(_) => false,
+          PathOrPattern::Pattern(p) => {
+            p.matches_path(path) == PathGlobMatch::Matched
+          }
         })
       })
       .unwrap_or(false);
