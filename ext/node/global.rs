@@ -113,10 +113,8 @@ pub fn global_template_middleware<'s>(
   _scope: &mut v8::HandleScope<'s, ()>,
   template: v8::Local<'s, v8::ObjectTemplate>,
 ) -> v8::Local<'s, v8::ObjectTemplate> {
-  let mut config = v8::NamedPropertyHandlerConfiguration::new().flags(
-    v8::PropertyHandlerFlags::NON_MASKING
-      | v8::PropertyHandlerFlags::HAS_NO_SIDE_EFFECT,
-  );
+  let mut config = v8::NamedPropertyHandlerConfiguration::new()
+    .flags(v8::PropertyHandlerFlags::HAS_NO_SIDE_EFFECT);
 
   config = GETTER_MAP_FN.with(|getter| config.getter_raw(*getter));
   config = SETTER_MAP_FN.with(|setter| config.setter_raw(*setter));
