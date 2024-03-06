@@ -72,7 +72,6 @@ import {
   op_fs_utime_sync,
   op_fs_write_file_async,
   op_fs_write_file_sync,
-  op_is_terminal,
   op_set_raw,
 } from "ext:core/ops";
 const {
@@ -769,7 +768,7 @@ class FsFile {
   }
 
   isTerminal() {
-    return op_is_terminal(this.#rid);
+    return core.isTerminal(this.#rid);
   }
 
   setRaw(mode, options = {}) {
