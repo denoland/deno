@@ -13,6 +13,8 @@ use deno_core::ResourceId;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
 
 #[cfg(unix)]
 use tokio::signal::unix::signal;
@@ -39,6 +41,7 @@ deno_core::extension!(
 /// The second element is the waker of polling future.
 struct SignalStreamResource {
   signal: AsyncRefCell<Signal>,
+  use_default_handler: Arc<AtomicBool>,
   cancel: CancelHandle,
 }
 
@@ -548,11 +551,19 @@ fn op_signal_bind(
       "Binding to signal '{sig}' is not allowed",
     )));
   }
+  let use_default_handler = Arc::new(AtomicBool::new(false));
   let resource = SignalStreamResource {
     signal: AsyncRefCell::new(signal(SignalKind::from_raw(signo))?),
     cancel: Default::default(),
+    use_default_handler: use_default_handler.clone(),
   };
   let rid = state.resource_table.add(resource);
+
+  // restore default signal handler when the signal is unbound
+  // this can error if the signal is not supported, if so let's just leave it as is
+  let _ =
+    signal_hook::flag::register_conditional_default(signo, use_default_handler);
+
   Ok(rid)
 }
 
@@ -606,6 +617,10 @@ pub fn op_signal_unbind(
   state: &mut OpState,
   #[smi] rid: ResourceId,
 ) -> Result<(), AnyError> {
-  state.resource_table.take_any(rid)?.close();
+  let resource = state.resource_table.take::<SignalStreamResource>(rid)?;
+  resource
+    .use_default_handler
+    .store(true, std::sync::atomic::Ordering::Release);
+  resource.close();
   Ok(())
 }
