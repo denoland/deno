@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use deno_ast::TextChange;
 use deno_config::FmtOptionsConfig;
@@ -13,7 +14,6 @@ use deno_core::futures::StreamExt;
 use deno_core::serde_json;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
-use deno_semver::package::PackageReq;
 use jsonc_parser::ast::ObjectProp;
 use jsonc_parser::ast::Value;
 
@@ -22,8 +22,7 @@ use crate::args::CacheSetting;
 use crate::args::Flags;
 use crate::factory::CliFactory;
 use crate::file_fetcher::FileFetcher;
-use crate::lsp::jsr::CliJsrSearchApi;
-use crate::lsp::search::PackageSearchApi;
+use crate::jsr::JsrFetchResolver;
 
 pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
   let cli_factory = CliFactory::from_flags(flags.clone()).await?;
@@ -78,16 +77,13 @@ pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
     None,
   );
   deps_file_fetcher.set_download_log_level(log::Level::Trace);
-  let jsr_search_api = CliJsrSearchApi::new(deps_file_fetcher);
+  let jsr_resolver = Arc::new(JsrFetchResolver::new(deps_file_fetcher));
 
   let package_futures = package_reqs
     .into_iter()
-    .map(|package_req| {
-      find_package_and_select_version_for_req(
-        jsr_search_api.clone(),
-        package_req,
-      )
-      .boxed_local()
+    .map(move |package_req| {
+      find_package_and_select_version_for_req(jsr_resolver.clone(), package_req)
+        .boxed_local()
     })
     .collect::<Vec<_>>();
 
@@ -185,42 +181,27 @@ enum PackageAndVersion {
   Selected(SelectedPackage),
 }
 
-async fn jsr_find_package_and_select_version(
-  jsr_search_api: CliJsrSearchApi,
-  req: &PackageReq,
-) -> Result<PackageAndVersion, AnyError> {
-  let jsr_prefixed_name = format!("jsr:{}", req.name);
-
-  // TODO(bartlomieju): Need to do semver as well - @luca/flag@^0.14 should use to
-  // highest possible `0.14.x` version.
-  let version_req = req.version_req.version_text();
-  if version_req != "*" {
-    bail!("Specifying version constraints is currently not supported. Package: {}@{}", jsr_prefixed_name, version_req);
-  }
-
-  let Ok(versions) = jsr_search_api.versions(&req.name).await else {
-    return Ok(PackageAndVersion::NotFound(jsr_prefixed_name));
-  };
-
-  let Some(latest_version) = versions.first() else {
-    return Ok(PackageAndVersion::NotFound(jsr_prefixed_name));
-  };
-
-  Ok(PackageAndVersion::Selected(SelectedPackage {
-    import_name: req.name.to_string(),
-    package_name: jsr_prefixed_name,
-    // TODO(bartlomieju): fix it, it should not always be caret
-    version_req: format!("^{}", latest_version),
-  }))
-}
-
 async fn find_package_and_select_version_for_req(
-  jsr_search_api: CliJsrSearchApi,
+  jsr_resolver: Arc<JsrFetchResolver>,
   add_package_req: AddPackageReq,
 ) -> Result<PackageAndVersion, AnyError> {
   match add_package_req {
     AddPackageReq::Jsr(pkg_ref) => {
-      jsr_find_package_and_select_version(jsr_search_api, pkg_ref.req()).await
+      let req = pkg_ref.req();
+      let jsr_prefixed_name = format!("jsr:{}", &req.name);
+      let Some(nv) = jsr_resolver.req_to_nv(req).await else {
+        return Ok(PackageAndVersion::NotFound(jsr_prefixed_name));
+      };
+      let range_symbol = if req.version_req.version_text().starts_with('~') {
+        '~'
+      } else {
+        '^'
+      };
+      Ok(PackageAndVersion::Selected(SelectedPackage {
+        import_name: req.name.to_string(),
+        package_name: jsr_prefixed_name,
+        version_req: format!("{}{}", range_symbol, &nv.version),
+      }))
     }
     AddPackageReq::Npm(pkg_req) => {
       bail!(
