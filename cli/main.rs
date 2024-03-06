@@ -34,7 +34,6 @@ use crate::util::display;
 use crate::util::v8::get_v8_flags_from_env;
 use crate::util::v8::init_v8_flags;
 
-use args::CliOptions;
 pub use deno_runtime::UNSTABLE_GRANULAR_FLAGS;
 
 use deno_core::anyhow::Context;
@@ -88,8 +87,7 @@ fn spawn_subcommand<F: Future<Output = T> + 'static, T: SubcommandOutput>(
   )
 }
 
-async fn run_subcommand(cli_options: CliOptions) -> Result<i32, AnyError> {
-  let flags = cli_options.flags().clone();
+async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
   let handle = match flags.subcommand.clone() {
     DenoSubcommand::Add(add_flags) => spawn_subcommand(async {
       tools::registry::add(flags, add_flags).await
@@ -351,8 +349,6 @@ pub fn main() {
       Err(err) => unwrap_or_exit(Err(AnyError::from(err))),
     };
 
-    let log_level = flags.log_level;
-
     // TODO(bartlomieju): remove when `--unstable` flag is removed.
     if flags.unstable_config.legacy_flag_enabled {
       if matches!(flags.subcommand, DenoSubcommand::Check(_)) {
@@ -372,32 +368,21 @@ pub fn main() {
       }
     }
 
-    let is_lsp = matches!(flags.subcommand, DenoSubcommand::Lsp);
-    let cli_options = CliOptions::from_flags(flags)?;
-
-    let default_v8_flags = if is_lsp {
+    let default_v8_flags = match flags.subcommand {
       // Using same default as VSCode:
       // https://github.com/microsoft/vscode/blob/48d4ba271686e8072fc6674137415bc80d936bc7/extensions/typescript-language-features/src/configuration/configuration.ts#L213-L214
-      vec!["--max-old-space-size=3072".to_string()]
-    } else if cli_options.legacy_unstable_flag()
-      || cli_options
-        .unstable_features()
-        .contains(&"temporal".to_string())
-    {
-      vec!["--harmony-temporal".to_string()]
-    } else {
-      vec![]
+      DenoSubcommand::Lsp => vec!["--max-old-space-size=3072".to_string()],
+      // Always enable Temporal API. We will remove it from global scope, if
+      // `--unstable`, `--unstable-temporal` flags are not specified, or it's
+      // not configured in deno.json.
+      _ => vec!["--harmony-temporal".to_string()],
     };
-    init_v8_flags(
-      &default_v8_flags,
-      cli_options.v8_flags(),
-      get_v8_flags_from_env(),
-    );
+    init_v8_flags(&default_v8_flags, &flags.v8_flags, get_v8_flags_from_env());
     deno_core::JsRuntime::init_platform(None);
 
-    util::logger::init(log_level);
+    util::logger::init(flags.log_level);
 
-    run_subcommand(cli_options).await
+    run_subcommand(flags).await
   };
 
   let exit_code =
