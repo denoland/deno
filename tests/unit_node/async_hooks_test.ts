@@ -77,3 +77,20 @@ Deno.test(async function nested() {
   assertEquals(await deferred.promise, { x: 1 });
   assertEquals(await deferred1.promise, null);
 });
+
+Deno.test(async function enterWith() {
+  const als = new AsyncLocalStorage();
+  const deferred = Promise.withResolvers();
+  const deferred1 = Promise.withResolvers();
+
+  als.run(null, () => {
+    als.run({ x: 1 }, () => {
+      als.enterWith({ x: 2 });
+      deferred.resolve(als.getStore());
+    });
+    deferred1.resolve(als.getStore());
+  });
+
+  assertEquals(await deferred.promise, { x: 2 });
+  assertEquals(await deferred1.promise, { x: 1 });
+});
