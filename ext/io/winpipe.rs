@@ -153,7 +153,8 @@ mod tests {
 
   #[test]
   fn specific_failing_pipe_name() {
-    let pipe_name = "\\\\.\\pipe\\deno_pipe_e30f45c9df61b1e4.1198.222\\0";
+    let pipe_name =
+      "\\\\.\\pipe\\deno_pipe_e30f45c9df61b1e4.1198.222\\0".to_owned();
 
     // Create security attributes to make the pipe handles non-inheritable
     let mut security_attributes = SECURITY_ATTRIBUTES {
@@ -211,7 +212,7 @@ mod tests {
   #[test]
   fn make_many_named_pipes_serial() {
     let mut handles = vec![];
-    for _ in 0..100 {
+    for _ in 0..1000 {
       let (server, client) = create_named_pipe().unwrap();
       // SAFETY: For testing
       let server = unsafe { File::from_raw_handle(server) };
@@ -229,16 +230,21 @@ mod tests {
       let barrier = barrier.clone();
       handles.push(std::thread::spawn(move || {
         barrier.wait();
-        let (server, client) = create_named_pipe().unwrap();
-        // SAFETY: For testing
-        let server = unsafe { File::from_raw_handle(server) };
-        // SAFETY: For testing
-        let client = unsafe { File::from_raw_handle(client) };
+        let mut handles = vec![];
+        // Create 1000 pipes in this thread
+        for _ in 0..1000 {
+          let (server, client) = create_named_pipe().unwrap();
+          // SAFETY: For testing
+          let server = unsafe { File::from_raw_handle(server) };
+          // SAFETY: For testing
+          let client = unsafe { File::from_raw_handle(client) };
+          handles.push((server, client))
+        }
         std::thread::sleep(std::time::Duration::from_millis(100));
-        drop((server, client));
+        drop(handles);
       }));
     }
-    for handle in handles.drain(..) {
+    for handle in handles {
       handle.join().unwrap();
     }
   }
