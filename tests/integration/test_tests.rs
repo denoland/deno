@@ -283,6 +283,12 @@ itest!(junit {
   output: "test/pass.junit.out",
 });
 
+itest!(junit_parallel {
+  args: "test --parallel --reporter junit test/parallel_output.ts",
+  output: "test/parallel_output.junit.out",
+  exit_code: 1,
+});
+
 #[test]
 fn junit_path() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
