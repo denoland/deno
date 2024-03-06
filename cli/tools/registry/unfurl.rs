@@ -1,66 +1,17 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use std::collections::HashSet;
-
 use deno_ast::ParsedSource;
 use deno_ast::SourceRange;
 use deno_ast::SourceTextInfo;
-use deno_core::serde_json;
 use deno_core::ModuleSpecifier;
 use deno_graph::DefaultModuleAnalyzer;
 use deno_graph::DependencyDescriptor;
 use deno_graph::DynamicTemplatePart;
 use deno_graph::TypeScriptReference;
 use deno_runtime::deno_node::is_builtin_node_module;
-use deno_semver::jsr::JsrDepPackageReq;
-use deno_semver::jsr::JsrPackageReqReference;
-use deno_semver::npm::NpmPackageReqReference;
 
 use crate::resolver::MappedSpecifierResolver;
 use crate::resolver::SloppyImportsResolver;
-
-pub fn deno_json_deps(
-  config: &deno_config::ConfigFile,
-) -> HashSet<JsrDepPackageReq> {
-  let values = imports_values(config.json.imports.as_ref())
-    .into_iter()
-    .chain(scope_values(config.json.scopes.as_ref()));
-  values_to_set(values)
-}
-
-fn imports_values(value: Option<&serde_json::Value>) -> Vec<&String> {
-  let Some(obj) = value.and_then(|v| v.as_object()) else {
-    return Vec::new();
-  };
-  let mut items = Vec::with_capacity(obj.len());
-  for value in obj.values() {
-    if let serde_json::Value::String(value) = value {
-      items.push(value);
-    }
-  }
-  items
-}
-
-fn scope_values(value: Option<&serde_json::Value>) -> Vec<&String> {
-  let Some(obj) = value.and_then(|v| v.as_object()) else {
-    return Vec::new();
-  };
-  obj.values().flat_map(|v| imports_values(Some(v))).collect()
-}
-
-fn values_to_set<'a>(
-  values: impl Iterator<Item = &'a String>,
-) -> HashSet<JsrDepPackageReq> {
-  let mut entries = HashSet::new();
-  for value in values {
-    if let Ok(req_ref) = JsrPackageReqReference::from_str(value) {
-      entries.insert(JsrDepPackageReq::jsr(req_ref.into_inner().req));
-    } else if let Ok(req_ref) = NpmPackageReqReference::from_str(value) {
-      entries.insert(JsrDepPackageReq::npm(req_ref.into_inner().req));
-    }
-  }
-  entries
-}
 
 #[derive(Debug, Clone)]
 pub enum SpecifierUnfurlerDiagnostic {
@@ -157,7 +108,12 @@ impl<'a> SpecifierUnfurler<'a> {
       } else {
         resolved
       };
-    relative_url(&resolved, referrer, specifier)
+    let relative_resolved = relative_url(&resolved, referrer);
+    if relative_resolved == specifier {
+      None // nothing to unfurl
+    } else {
+      Some(relative_resolved)
+    }
   }
 
   /// Attempts to unfurl the dynamic dependency returning `true` on success
@@ -172,20 +128,20 @@ impl<'a> SpecifierUnfurler<'a> {
     match &dep.argument {
       deno_graph::DynamicArgument::String(specifier) => {
         let range = to_range(parsed_source, &dep.argument_range);
-        let maybe_relative_index =
-          parsed_source.text_info().text_str()[range.start..].find(specifier);
+        let maybe_relative_index = parsed_source.text_info().text_str()
+          [range.start..range.end]
+          .find(specifier);
         let Some(relative_index) = maybe_relative_index else {
-          return false;
+          return true; // always say it's analyzable for a string
         };
         let unfurled = self.unfurl_specifier(module_url, specifier);
-        let Some(unfurled) = unfurled else {
-          return false;
-        };
-        let start = range.start + relative_index;
-        text_changes.push(deno_ast::TextChange {
-          range: start..start + specifier.len(),
-          new_text: unfurled,
-        });
+        if let Some(unfurled) = unfurled {
+          let start = range.start + relative_index;
+          text_changes.push(deno_ast::TextChange {
+            range: start..start + specifier.len(),
+            new_text: unfurled,
+          });
+        }
         true
       }
       deno_graph::DynamicArgument::Template(parts) => match parts.first() {
@@ -201,7 +157,7 @@ impl<'a> SpecifierUnfurler<'a> {
           }
           let unfurled = self.unfurl_specifier(module_url, specifier);
           let Some(unfurled) = unfurled else {
-            return false;
+            return true; // nothing to unfurl
           };
           let range = to_range(parsed_source, &dep.argument_range);
           let maybe_relative_index =
@@ -322,17 +278,12 @@ impl<'a> SpecifierUnfurler<'a> {
 fn relative_url(
   resolved: &ModuleSpecifier,
   referrer: &ModuleSpecifier,
-  specifier: &str,
-) -> Option<String> {
-  let new_specifier = if resolved.scheme() == "file" {
+) -> String {
+  if resolved.scheme() == "file" {
     format!("./{}", referrer.make_relative(resolved).unwrap())
   } else {
     resolved.to_string()
-  };
-  if new_specifier == specifier {
-    return None;
   }
-  Some(new_specifier)
 }
 
 fn to_range(
@@ -440,9 +391,11 @@ const test1 = await import("lib/foo.ts");
 const test2 = await import(`lib/foo.ts`);
 const test3 = await import(`lib/${expr}`);
 const test4 = await import(`./lib/${expr}`);
+const test5 = await import("./lib/something.ts");
+const test6 = await import(`./lib/something.ts`);
 // will warn
-const test5 = await import(`lib${expr}`);
-const test6 = await import(`${expr}`);
+const warn1 = await import(`lib${expr}`);
+const warn2 = await import(`${expr}`);
 "#;
       let specifier =
         ModuleSpecifier::from_file_path(cwd.join("mod.ts")).unwrap();
@@ -486,9 +439,11 @@ const test1 = await import("./lib/foo.ts");
 const test2 = await import(`./lib/foo.ts`);
 const test3 = await import(`./lib/${expr}`);
 const test4 = await import(`./lib/${expr}`);
+const test5 = await import("./lib/something.ts");
+const test6 = await import(`./lib/something.ts`);
 // will warn
-const test5 = await import(`lib${expr}`);
-const test6 = await import(`${expr}`);
+const warn1 = await import(`lib${expr}`);
+const warn2 = await import(`${expr}`);
 "#;
       assert_eq!(unfurled_source, expected_source);
     }

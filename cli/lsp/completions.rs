@@ -6,13 +6,13 @@ use super::config::WorkspaceSettings;
 use super::documents::Documents;
 use super::documents::DocumentsFilter;
 use super::jsr::CliJsrSearchApi;
-use super::jsr::JsrResolver;
 use super::lsp_custom;
 use super::npm::CliNpmSearchApi;
 use super::registries::ModuleRegistry;
 use super::search::PackageSearchApi;
 use super::tsc;
 
+use crate::jsr::JsrFetchResolver;
 use crate::util::path::is_importable_ext;
 use crate::util::path::relative_specifier;
 use crate::util::path::specifier_to_file_path;
@@ -181,7 +181,7 @@ pub async fn get_import_completions(
       &text,
       &range,
       jsr_search_api,
-      jsr_search_api.get_resolver(),
+      Some(jsr_search_api.get_resolver()),
     )
     .await?;
     Some(lsp::CompletionResponse::List(lsp::CompletionList {
@@ -518,7 +518,7 @@ async fn get_jsr_completions(
   specifier: &str,
   range: &lsp::Range,
   jsr_search_api: &impl PackageSearchApi,
-  jsr_resolver: &JsrResolver,
+  jsr_resolver: Option<&JsrFetchResolver>,
 ) -> Option<Vec<lsp::CompletionItem>> {
   // First try to match `jsr:some-package@some-version/<export-to-complete>`.
   if let Ok(req_ref) = JsrPackageReqReference::from_str(specifier) {
@@ -526,7 +526,10 @@ async fn get_jsr_completions(
     if sub_path.is_some() || specifier.ends_with('/') {
       let export_prefix = sub_path.unwrap_or("");
       let req = req_ref.req();
-      let nv = jsr_resolver.req_to_nv(req);
+      let nv = match jsr_resolver {
+        Some(jsr_resolver) => jsr_resolver.req_to_nv(req).await,
+        None => None,
+      };
       let nv = nv.or_else(|| PackageNv::from_str(&req.to_string()).ok())?;
       let exports = jsr_search_api.exports(&nv).await.ok()?;
       let items = exports
@@ -799,7 +802,6 @@ mod tests {
   use super::*;
   use crate::cache::GlobalHttpCache;
   use crate::cache::HttpCache;
-  use crate::cache::RealDenoCacheEnv;
   use crate::lsp::documents::Documents;
   use crate::lsp::documents::LanguageId;
   use crate::lsp::search::tests::TestPackageSearchApi;
@@ -1007,14 +1009,6 @@ mod tests {
 
   #[tokio::test]
   async fn test_get_jsr_completions() {
-    let temp_dir = TempDir::default();
-    let jsr_resolver = JsrResolver::from_cache_and_lockfile(
-      Arc::new(GlobalHttpCache::new(
-        temp_dir.path().to_path_buf(),
-        RealDenoCacheEnv,
-      )),
-      None,
-    );
     let jsr_search_api = TestPackageSearchApi::default()
       .with_package_version("@std/archive", "1.0.0", &[])
       .with_package_version("@std/assert", "1.0.0", &[])
@@ -1031,15 +1025,10 @@ mod tests {
       },
     };
     let referrer = ModuleSpecifier::parse("file:///referrer.ts").unwrap();
-    let actual = get_jsr_completions(
-      &referrer,
-      "jsr:as",
-      &range,
-      &jsr_search_api,
-      &jsr_resolver,
-    )
-    .await
-    .unwrap();
+    let actual =
+      get_jsr_completions(&referrer, "jsr:as", &range, &jsr_search_api, None)
+        .await
+        .unwrap();
     assert_eq!(
       actual,
       vec![
@@ -1095,14 +1084,6 @@ mod tests {
 
   #[tokio::test]
   async fn test_get_jsr_completions_for_versions() {
-    let temp_dir = TempDir::default();
-    let jsr_resolver = JsrResolver::from_cache_and_lockfile(
-      Arc::new(GlobalHttpCache::new(
-        temp_dir.path().to_path_buf(),
-        RealDenoCacheEnv,
-      )),
-      None,
-    );
     let jsr_search_api = TestPackageSearchApi::default()
       .with_package_version("@std/assert", "0.3.0", &[])
       .with_package_version("@std/assert", "0.4.0", &[])
@@ -1123,7 +1104,7 @@ mod tests {
       "jsr:@std/assert@",
       &range,
       &jsr_search_api,
-      &jsr_resolver,
+      None,
     )
     .await
     .unwrap();
@@ -1205,14 +1186,6 @@ mod tests {
 
   #[tokio::test]
   async fn test_get_jsr_completions_for_exports() {
-    let temp_dir = TempDir::default();
-    let jsr_resolver = JsrResolver::from_cache_and_lockfile(
-      Arc::new(GlobalHttpCache::new(
-        temp_dir.path().to_path_buf(),
-        RealDenoCacheEnv,
-      )),
-      None,
-    );
     let jsr_search_api = TestPackageSearchApi::default().with_package_version(
       "@std/path",
       "0.1.0",
@@ -1234,7 +1207,7 @@ mod tests {
       "jsr:@std/path@0.1.0/co",
       &range,
       &jsr_search_api,
-      &jsr_resolver,
+      None,
     )
     .await
     .unwrap();
