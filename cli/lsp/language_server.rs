@@ -11,8 +11,10 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::unsync::spawn;
+use deno_core::url;
 use deno_core::ModuleSpecifier;
 use deno_graph::GraphKind;
+use deno_graph::Resolution;
 use deno_lockfile::Lockfile;
 use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_fs;
@@ -20,6 +22,7 @@ use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::RootCertStoreProvider;
+use deno_semver::jsr::JsrPackageReqReference;
 use import_map::ImportMap;
 use indexmap::IndexSet;
 use log::error;
@@ -62,7 +65,6 @@ use super::diagnostics::DiagnosticDataSpecifier;
 use super::diagnostics::DiagnosticServerUpdateMessage;
 use super::diagnostics::DiagnosticsServer;
 use super::diagnostics::DiagnosticsState;
-use super::documents::to_hover_text;
 use super::documents::to_lsp_range;
 use super::documents::AssetOrDocument;
 use super::documents::Document;
@@ -119,6 +121,7 @@ use crate::npm::CliNpmResolverCreateOptions;
 use crate::npm::CliNpmResolverManagedCreateOptions;
 use crate::npm::CliNpmResolverManagedPackageJsonInstallerOption;
 use crate::npm::CliNpmResolverManagedSnapshotOption;
+use crate::resolver::CliNodeResolver;
 use crate::tools::fmt::format_file;
 use crate::tools::fmt::format_parsed_source;
 use crate::tools::upgrade::check_for_upgrades_for_lsp;
@@ -144,7 +147,7 @@ struct LspNpmServices {
   /// Npm's search api.
   search_api: CliNpmSearchApi,
   /// Node resolver.
-  node_resolver: Option<Arc<NodeResolver>>,
+  node_resolver: Option<Arc<CliNodeResolver>>,
   /// Resolver for npm packages.
   resolver: Option<Arc<dyn CliNpmResolver>>,
 }
@@ -169,7 +172,7 @@ pub struct LanguageServer(Arc<tokio::sync::RwLock<Inner>>, CancellationToken);
 
 #[derive(Clone, Debug)]
 pub struct StateNpmSnapshot {
-  pub node_resolver: Arc<NodeResolver>,
+  pub node_resolver: Arc<CliNodeResolver>,
   pub npm_resolver: Arc<dyn CliNpmResolver>,
 }
 
@@ -758,10 +761,18 @@ impl Inner {
       .map(|resolver| resolver.clone_snapshotted())
       .map(|resolver| {
         let fs = Arc::new(deno_fs::RealFs);
-        let node_resolver =
-          Arc::new(NodeResolver::new(fs, resolver.clone().into_npm_resolver()));
-        StateNpmSnapshot {
+        let node_resolver = Arc::new(NodeResolver::new(
+          fs.clone(),
+          resolver.clone().into_npm_resolver(),
+        ));
+        let cli_node_resolver = Arc::new(CliNodeResolver::new(
+          None,
+          fs,
           node_resolver,
+          resolver.clone(),
+        ));
+        StateNpmSnapshot {
+          node_resolver: cli_node_resolver,
           npm_resolver: resolver,
         }
       });
@@ -905,9 +916,15 @@ impl Inner {
       self.config.maybe_node_modules_dir_path().cloned(),
     )
     .await;
-    self.npm.node_resolver = Some(Arc::new(NodeResolver::new(
+    let node_resolver = Arc::new(NodeResolver::new(
       Arc::new(deno_fs::RealFs),
       npm_resolver.clone().into_npm_resolver(),
+    ));
+    self.npm.node_resolver = Some(Arc::new(CliNodeResolver::new(
+      None,
+      Arc::new(deno_fs::RealFs),
+      node_resolver,
+      npm_resolver.clone(),
     )));
     self.npm.resolver = Some(npm_resolver);
 
@@ -1866,32 +1883,32 @@ impl Inner {
       let value = match (dep.maybe_code.is_none(), dep.maybe_type.is_none(), &dep_maybe_types_dependency) {
         (false, false, None) => format!(
           "**Resolved Dependency**\n\n**Code**: {}\n\n**Types**: {}\n",
-          to_hover_text(&dep.maybe_code),
-          to_hover_text(&dep.maybe_type)
+          self.resolution_to_hover_text(&dep.maybe_code),
+          self.resolution_to_hover_text(&dep.maybe_type),
         ),
         (false, false, Some(types_dep)) if !types_dep.is_none() => format!(
           "**Resolved Dependency**\n\n**Code**: {}\n**Types**: {}\n**Import Types**: {}\n",
-          to_hover_text(&dep.maybe_code),
-          to_hover_text(&dep.maybe_type),
-          to_hover_text(types_dep)
+          self.resolution_to_hover_text(&dep.maybe_code),
+          self.resolution_to_hover_text(&dep.maybe_type),
+          self.resolution_to_hover_text(types_dep),
         ),
         (false, false, Some(_)) => format!(
           "**Resolved Dependency**\n\n**Code**: {}\n\n**Types**: {}\n",
-          to_hover_text(&dep.maybe_code),
-          to_hover_text(&dep.maybe_type)
+          self.resolution_to_hover_text(&dep.maybe_code),
+          self.resolution_to_hover_text(&dep.maybe_type),
         ),
         (false, true, Some(types_dep)) if !types_dep.is_none() => format!(
           "**Resolved Dependency**\n\n**Code**: {}\n\n**Types**: {}\n",
-          to_hover_text(&dep.maybe_code),
-          to_hover_text(types_dep)
+          self.resolution_to_hover_text(&dep.maybe_code),
+          self.resolution_to_hover_text(types_dep),
         ),
         (false, true, _) => format!(
           "**Resolved Dependency**\n\n**Code**: {}\n",
-          to_hover_text(&dep.maybe_code)
+          self.resolution_to_hover_text(&dep.maybe_code),
         ),
         (true, false, _) => format!(
           "**Resolved Dependency**\n\n**Types**: {}\n",
-          to_hover_text(&dep.maybe_type)
+          self.resolution_to_hover_text(&dep.maybe_type),
         ),
         (true, true, _) => unreachable!("{}", json!(params)),
       };
@@ -1920,6 +1937,40 @@ impl Inner {
     };
     self.performance.measure(mark);
     Ok(hover)
+  }
+
+  fn resolution_to_hover_text(&self, resolution: &Resolution) -> String {
+    match resolution {
+      Resolution::Ok(resolved) => {
+        let specifier = &resolved.specifier;
+        match specifier.scheme() {
+          "data" => "_(a data url)_".to_string(),
+          "blob" => "_(a blob url)_".to_string(),
+          _ => {
+            let mut result = format!(
+              "{}&#8203;{}",
+              &specifier[..url::Position::AfterScheme],
+              &specifier[url::Position::AfterScheme..],
+            )
+            .replace('@', "&#8203;@");
+            if let Ok(jsr_req_ref) =
+              JsrPackageReqReference::from_specifier(specifier)
+            {
+              if let Some(url) = self
+                .documents
+                .get_jsr_resolver()
+                .jsr_to_registry_url(&jsr_req_ref)
+              {
+                result = format!("{result} (<{url}>)");
+              }
+            }
+            result
+          }
+        }
+      }
+      Resolution::Err(_) => "_[errored]_".to_string(),
+      Resolution::None => "_[missing]_".to_string(),
+    }
   }
 
   async fn code_action(

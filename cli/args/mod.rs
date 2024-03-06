@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+pub mod deno_json;
 mod flags;
 mod flags_net;
 mod import_map;
