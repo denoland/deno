@@ -391,7 +391,7 @@ pub enum TestEvent {
   StepRegister(TestStepDescription),
   StepWait(usize),
   StepResult(usize, TestStepResult, u64),
-  /// Indicates that this worker has completed.
+  /// Indicates that this worker has completed running tests.
   Completed,
   /// Indicates that the user has cancelled the test run with Ctrl+C and
   /// the run should be aborted.
@@ -513,7 +513,7 @@ pub async fn test_specifier(
     worker_factory,
     permissions,
     specifier.clone(),
-    &worker_sender.sender,
+    &mut worker_sender.sender,
     StdioPipe::file(worker_sender.stdout),
     StdioPipe::file(worker_sender.stderr),
     fail_fast_tracker,
@@ -543,7 +543,7 @@ async fn test_specifier_inner(
   worker_factory: Arc<CliMainWorkerFactory>,
   permissions: Permissions,
   specifier: ModuleSpecifier,
-  sender: &TestEventSender,
+  sender: &mut TestEventSender,
   stdout: StdioPipe,
   stderr: StdioPipe,
   fail_fast_tracker: FailFastTracker,
@@ -591,6 +591,9 @@ async fn test_specifier_inner(
   // event loop to continue beyond what's needed to await results.
   worker.dispatch_beforeunload_event(located_script_name!())?;
   worker.dispatch_unload_event(located_script_name!())?;
+
+  // Ensure all output has been flushed
+  _ = sender.flush();
 
   // Ensure the worker has settled so we can catch any remaining unhandled rejections. We don't
   // want to wait forever here.
@@ -728,6 +731,7 @@ async fn run_tests_for_worker_inner(
   let mut filter = RuntimeActivityStatsFilter::default();
   filter = filter.with_resources();
   filter = filter.with_ops();
+  filter = filter.with_timers();
   filter = filter.omit_op(op_id_host_recv_ctrl as _);
   filter = filter.omit_op(op_id_host_recv_message as _);
 
@@ -758,7 +762,7 @@ async fn run_tests_for_worker_inner(
 
     // Poll event loop once, to allow all ops that are already resolved, but haven't
     // responded to settle.
-    // TODO(mmastrac): we should provide an API to poll the event loop until no futher
+    // TODO(mmastrac): we should provide an API to poll the event loop until no further
     // progress is made.
     poll_event_loop(worker).await?;
 
@@ -825,37 +829,6 @@ async fn run_tests_for_worker_inner(
   Ok(())
 }
 
-/// Removes timer resources and op_sleep_interval calls. When an interval is started before a test
-/// and resolves during a test, there's a false alarm.
-fn preprocess_timer_activity(activities: &mut Vec<RuntimeActivity>) {
-  // TODO(mmastrac): Once we get to the new timer implementation, all of this
-  // code can go away and be replaced by a proper timer sanitizer.
-  let mut timer_resource_leaked = false;
-
-  // First, search for any timer resources which will indicate that we have an interval leak
-  activities.retain(|activity| {
-    if let RuntimeActivity::Resource(.., name) = activity {
-      if name == "timer" {
-        timer_resource_leaked = true;
-        return false;
-      }
-    }
-    true
-  });
-
-  // If we've leaked a timer resource, we un-mute op_sleep_interval calls. Otherwise, we remove
-  // them.
-  if !timer_resource_leaked {
-    activities.retain(|activity| {
-      if let RuntimeActivity::AsyncOp(.., op) = activity {
-        *op != "op_sleep_interval"
-      } else {
-        true
-      }
-    })
-  }
-}
-
 async fn wait_for_activity_to_stabilize(
   worker: &mut MainWorker,
   stats: &RuntimeActivityStatsFactory,
@@ -867,8 +840,6 @@ async fn wait_for_activity_to_stabilize(
   // First, check to see if there's any diff at all. If not, just continue.
   let after = stats.clone().capture(filter);
   let mut diff = RuntimeActivityStats::diff(&before, &after);
-  preprocess_timer_activity(&mut diff.appeared);
-  preprocess_timer_activity(&mut diff.disappeared);
   if diff.is_empty() {
     // No activity, so we return early
     return Ok(None);
@@ -884,8 +855,6 @@ async fn wait_for_activity_to_stabilize(
 
     let after = stats.clone().capture(filter);
     diff = RuntimeActivityStats::diff(&before, &after);
-    preprocess_timer_activity(&mut diff.appeared);
-    preprocess_timer_activity(&mut diff.disappeared);
     if diff.is_empty() {
       return Ok(None);
     }
@@ -906,6 +875,23 @@ async fn wait_for_activity_to_stabilize(
     diff
       .disappeared
       .retain(|activity| !matches!(activity, RuntimeActivity::Resource(..)));
+  }
+
+  // Since we don't have an option to disable timer sanitization, we use sanitize_ops == false &&
+  // sanitize_resources == false to disable those.
+  if !sanitize_ops && !sanitize_resources {
+    diff.appeared.retain(|activity| {
+      !matches!(
+        activity,
+        RuntimeActivity::Timer(..) | RuntimeActivity::Interval(..)
+      )
+    });
+    diff.disappeared.retain(|activity| {
+      !matches!(
+        activity,
+        RuntimeActivity::Timer(..) | RuntimeActivity::Interval(..)
+      )
+    });
   }
 
   Ok(if diff.is_empty() { None } else { Some(diff) })
