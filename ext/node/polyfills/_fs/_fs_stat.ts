@@ -110,27 +110,27 @@ class StatsBase {
     this.blocks = blocks;
   }
 
-   isFile() {
-      return false;
-   }
-   isDirectory() {
-      return false;
-   }
-   isSymbolicLink() {
-      return false;
-   }
-   isBlockDevice() {
-      return false;
-   }
-   isFIFO() {
-      return false;
-   }
-   isCharacterDevice() {
-      return false;
-   }
-   isSocket() {
-      return false;
-   }
+  isFile() {
+    return false;
+  }
+  isDirectory() {
+    return false;
+  }
+  isSymbolicLink() {
+    return false;
+  }
+  isBlockDevice() {
+    return false;
+  }
+  isFIFO() {
+    return false;
+  }
+  isCharacterDevice() {
+    return false;
+  }
+  isSocket() {
+    return false;
+  }
 }
 
 // The Date constructor performs Math.floor() to the timestamp.
