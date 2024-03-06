@@ -13,7 +13,9 @@ use deno_core::ResourceId;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;
+#[cfg(unix)]
 use std::sync::atomic::AtomicBool;
+#[cfg(unix)]
 use std::sync::Arc;
 
 #[cfg(unix)]
