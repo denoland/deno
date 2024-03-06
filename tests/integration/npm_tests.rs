@@ -2611,10 +2611,7 @@ fn cjs_rexport_analysis_json() {
   let dir = test_context.temp_dir();
   dir.write("deno.json", r#"{ "unstable": [ "byonm" ] }"#);
 
-  dir.write(
-    "package.json",
-    r#"{ "name": "test", "packages": { "my-package": "1.0.0" } }"#,
-  );
+  dir.write("package.json", r#"{ "name": "test" }"#);
   dir.write(
     "main.js",
     "import data from 'my-package';\nconsole.log(data);\n",
@@ -2668,6 +2665,28 @@ fn cjs_rexport_analysis_json() {
 }
 ",
   );
+}
+
+#[test]
+fn cjs_export_analysis_import_cjs_directly_relative_import() {
+  let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let dir = test_context.temp_dir();
+  dir.write("deno.json", r#"{ "unstable": [ "byonm" ] }"#);
+
+  dir.write(
+    "package.json",
+    r#"{ "name": "test", "dependencies": { "@denotest/cjs-default-export": "1.0.0" } }"#,
+  );
+  // previously it wasn't doing cjs export analysis on this file
+  dir.write(
+    "main.ts",
+    "import { named } from './node_modules/@denotest/cjs-default-export/index.js';\nconsole.log(named());\n",
+  );
+
+  test_context.run_npm("install");
+
+  let output = test_context.new_command().args("run main.ts").run();
+  output.assert_matches_text("2\n");
 }
 
 itest!(imports_package_json {
