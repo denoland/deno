@@ -185,7 +185,11 @@ Deno.test({
   name: "process.on signal",
   ignore: Deno.build.os == "windows",
   async fn() {
-    const testTimeout = setTimeout(() => fail("Test timed out"), 10_000);
+    let wait = "";
+    const testTimeout = setTimeout(
+      () => fail("Test timed out waiting for " + wait),
+      10_000,
+    );
     try {
       const process = new Deno.Command(Deno.execPath(), {
         args: [
@@ -210,12 +214,14 @@ Deno.test({
           },
         }),
       );
+      wait = "ready";
       while (!output.includes("ready\n")) {
         await delay(10);
       }
       output = "";
-      for (const _ of Array(3)) {
+      for (const i of Array(3)) {
         process.kill("SIGINT");
+        wait = "foo " + i;
         while (!output.includes("foo\n")) {
           await delay(10);
         }
