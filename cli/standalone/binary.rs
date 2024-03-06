@@ -3,6 +3,7 @@
 use std::collections::BTreeMap;
 use std::env::current_exe;
 use std::fs;
+use std::future::Future;
 use std::io::Read;
 use std::io::Seek;
 use std::io::SeekFrom;
@@ -236,49 +237,54 @@ pub fn is_standalone_binary(exe_path: &Path) -> bool {
 /// binary by skipping over the trailer width at the end of the file,
 /// then checking for the magic trailer string `d3n0l4nd`. If found,
 /// the bundle is executed. If not, this function exits with `Ok(None)`.
-pub async fn extract_standalone(
+pub fn extract_standalone(
   exe_path: &Path,
   cli_args: Vec<String>,
-) -> Result<Option<(Metadata, eszip::EszipV2)>, AnyError> {
-  let file = std::fs::File::open(exe_path)?;
-
-  let mut bufreader =
-    deno_core::futures::io::BufReader::new(AllowStdIo::new(file));
-
-  let _trailer_pos = bufreader
-    .seek(SeekFrom::End(-(TRAILER_SIZE as i64)))
-    .await?;
+) -> Result<
+  Option<impl Future<Output = Result<(Metadata, eszip::EszipV2), AnyError>>>,
+  AnyError,
+> {
+  // We do the first part sync so it can complete quickly
+  let mut file = std::fs::File::open(exe_path)?;
+  file.seek(SeekFrom::End(-(TRAILER_SIZE as i64)))?;
   let mut trailer = [0; TRAILER_SIZE];
-  bufreader.read_exact(&mut trailer).await?;
+  file.read_exact(&mut trailer)?;
   let trailer = match Trailer::parse(&trailer)? {
     None => return Ok(None),
     Some(trailer) => trailer,
   };
 
-  bufreader.seek(SeekFrom::Start(trailer.eszip_pos)).await?;
+  file.seek(SeekFrom::Start(trailer.eszip_pos))?;
 
-  let (eszip, loader) = eszip::EszipV2::parse(bufreader)
-    .await
-    .context("Failed to parse eszip header")?;
+  // If we have an eszip, read it out
+  Ok(Some(async move {
+    let bufreader =
+      deno_core::futures::io::BufReader::new(AllowStdIo::new(file));
 
-  let mut bufreader = loader.await.context("Failed to parse eszip archive")?;
+    let (eszip, loader) = eszip::EszipV2::parse(bufreader)
+      .await
+      .context("Failed to parse eszip header")?;
 
-  bufreader
-    .seek(SeekFrom::Start(trailer.metadata_pos))
-    .await?;
+    let mut bufreader =
+      loader.await.context("Failed to parse eszip archive")?;
 
-  let mut metadata = String::new();
+    bufreader
+      .seek(SeekFrom::Start(trailer.metadata_pos))
+      .await?;
 
-  bufreader
-    .take(trailer.metadata_len())
-    .read_to_string(&mut metadata)
-    .await
-    .context("Failed to read metadata from the current executable")?;
+    let mut metadata = String::new();
 
-  let mut metadata: Metadata = serde_json::from_str(&metadata).unwrap();
-  metadata.argv.append(&mut cli_args[1..].to_vec());
+    bufreader
+      .take(trailer.metadata_len())
+      .read_to_string(&mut metadata)
+      .await
+      .context("Failed to read metadata from the current executable")?;
 
-  Ok(Some((metadata, eszip)))
+    let mut metadata: Metadata = serde_json::from_str(&metadata).unwrap();
+    metadata.argv.append(&mut cli_args[1..].to_vec());
+
+    Ok((metadata, eszip))
+  }))
 }
 
 const TRAILER_SIZE: usize = std::mem::size_of::<Trailer>() + 8; // 8 bytes for the magic trailer string
