@@ -102,7 +102,7 @@ Deno.test(
 Deno.test(
   "[node/fs statSync] instanceof fs.Stats",
   () => {
-    const stat = statSync("cli/tests/testdata/assets/fixture.json");
+    const stat = statSync("tests/testdata/assets/fixture.json");
     assert(stat);
     assert(stat instanceof Stats);
   },
