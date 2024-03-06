@@ -25,5 +25,5 @@ tokio.workspace = true
 os_pipe.workspace = true
 
 [target.'cfg(windows)'.dependencies]
-winapi = { workspace = true, features = ["winbase", "processenv", "errhandlingapi"] }
+winapi = { workspace = true, features = ["std", "winbase", "processenv", "errhandlingapi", "namedpipeapi"] }
 rand.workspace = true
