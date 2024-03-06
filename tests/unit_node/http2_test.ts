@@ -109,35 +109,6 @@ Deno.test(`[node/http2 client createConnection]`, {
   assertEquals(receivedData, "hello world\n");
 });
 
-// TODO(bartlomieju): reenable sanitizers
-Deno.test("[node/http2 server]", { sanitizeOps: false }, async () => {
-  const server = http2.createServer();
-  server.listen(0);
-  const port = (<net.AddressInfo> server.address()).port;
-  const sessionPromise = new Promise<http2.Http2Session>((resolve) =>
-    server.on("session", resolve)
-  );
-
-  const responsePromise = fetch(`http://localhost:${port}/path`, {
-    method: "POST",
-    body: "body",
-  });
-
-  const session = await sessionPromise;
-  const stream = await new Promise<http2.ServerHttp2Stream>((resolve) =>
-    session.on("stream", resolve)
-  );
-  await new Promise((resolve) => stream.on("headers", resolve));
-  await new Promise((resolve) => stream.on("data", resolve));
-  await new Promise((resolve) => stream.on("end", resolve));
-  stream.respond();
-  stream.end();
-  const resp = await responsePromise;
-  await resp.text();
-
-  await new Promise((resolve) => server.close(resolve));
-});
-
 Deno.test("[node/http2 client GET https://www.example.com]", async () => {
   const clientSession = http2.connect("https://www.example.com");
   const req = clientSession.request({
@@ -167,7 +138,7 @@ Deno.test("[node/http2 client GET https://www.example.com]", async () => {
   assert(chunk.length > 0);
 });
 
-Deno.test("[node/http2.createServer()]", { sanitizeOps: false }, async () => {
+Deno.test("[node/http2.createServer()]", async () => {
   const server = http2.createServer((_req, res) => {
     res.setHeader("Content-Type", "text/html");
     res.setHeader("X-Foo", "bar");
