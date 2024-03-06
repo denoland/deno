@@ -16,17 +16,17 @@ use crate::npm::NpmFetchResolver;
 
 use super::search::PackageSearchApi;
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct CliNpmSearchApi {
   file_fetcher: FileFetcher,
-  resolver: Arc<NpmFetchResolver>,
-  search_cache: Arc<DashMap<String, Arc<Vec<String>>>>,
-  versions_cache: Arc<DashMap<String, Arc<Vec<Version>>>>,
+  resolver: NpmFetchResolver,
+  search_cache: DashMap<String, Arc<Vec<String>>>,
+  versions_cache: DashMap<String, Arc<Vec<Version>>>,
 }
 
 impl CliNpmSearchApi {
   pub fn new(file_fetcher: FileFetcher) -> Self {
-    let resolver = Arc::new(NpmFetchResolver::new(file_fetcher.clone()));
+    let resolver = NpmFetchResolver::new(file_fetcher.clone());
     Self {
       file_fetcher,
       resolver,
@@ -64,7 +64,7 @@ impl PackageSearchApi for CliNpmSearchApi {
       .resolver
       .package_info(name)
       .await
-      .ok_or_else(|| anyhow!("NPM package info not found: {}", name))?;
+      .ok_or_else(|| anyhow!("npm package info not found: {}", name))?;
     let mut versions = info.versions.keys().cloned().collect::<Vec<_>>();
     versions.sort();
     versions.reverse();

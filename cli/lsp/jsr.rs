@@ -15,18 +15,18 @@ use std::sync::Arc;
 
 use super::search::PackageSearchApi;
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct CliJsrSearchApi {
   file_fetcher: FileFetcher,
-  resolver: Arc<JsrFetchResolver>,
-  search_cache: Arc<DashMap<String, Arc<Vec<String>>>>,
-  versions_cache: Arc<DashMap<String, Arc<Vec<Version>>>>,
-  exports_cache: Arc<DashMap<PackageNv, Arc<Vec<String>>>>,
+  resolver: JsrFetchResolver,
+  search_cache: DashMap<String, Arc<Vec<String>>>,
+  versions_cache: DashMap<String, Arc<Vec<Version>>>,
+  exports_cache: DashMap<PackageNv, Arc<Vec<String>>>,
 }
 
 impl CliJsrSearchApi {
   pub fn new(file_fetcher: FileFetcher) -> Self {
-    let resolver = Arc::new(JsrFetchResolver::new(file_fetcher.clone()));
+    let resolver = JsrFetchResolver::new(file_fetcher.clone());
     Self {
       file_fetcher,
       resolver,
@@ -36,7 +36,7 @@ impl CliJsrSearchApi {
     }
   }
 
-  pub fn get_resolver(&self) -> &Arc<JsrFetchResolver> {
+  pub fn get_resolver(&self) -> &JsrFetchResolver {
     &self.resolver
   }
 }
