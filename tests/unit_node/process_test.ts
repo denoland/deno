@@ -197,10 +197,10 @@ Deno.test({
           `
           import process from "node:process";
           setInterval(() => {}, 1000);
-          console.log("ready");
           process.on("SIGINT", () => {
             console.log("foo");
           });
+          console.log("ready");
           `,
         ],
         stdout: "piped",
@@ -219,7 +219,7 @@ Deno.test({
       while (!output.includes("ready\n")) {
         await delay(10);
       }
-      for (const i of Array(3)) {
+      for (let i = 0; i < 3; i++) {
         output = "";
         process.kill("SIGINT");
         wait = "foo " + i;
