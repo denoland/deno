@@ -215,10 +215,10 @@ mod tests {
     for _ in 0..1000 {
       let (server, client) = create_named_pipe().unwrap();
       // SAFETY: For testing
-      let server = unsafe { File::from_raw_handle(server) };
+      let mut server = unsafe { File::from_raw_handle(server) };
       server.write_all(&[0; 1024]).unwrap();
       // SAFETY: For testing
-      let client = unsafe { File::from_raw_handle(client) };
+      let mut client = unsafe { File::from_raw_handle(client) };
       client.write_all(&[0; 1024]).unwrap();
       handles.push((server, client))
     }
@@ -237,10 +237,10 @@ mod tests {
         for _ in 0..1000 {
           let (server, client) = create_named_pipe().unwrap();
           // SAFETY: For testing
-          let server = unsafe { File::from_raw_handle(server) };
+          let mut server = unsafe { File::from_raw_handle(server) };
           server.write_all(&[0; 1024]).unwrap();
           // SAFETY: For testing
-          let client = unsafe { File::from_raw_handle(client) };
+          let mut client = unsafe { File::from_raw_handle(client) };
           client.write_all(&[0; 1024]).unwrap();
           handles.push((server, client))
         }
