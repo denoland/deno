@@ -1172,6 +1172,8 @@ fn granular_unstable_features_config_file() {
     .new_command()
     .args_vec([
       "compile",
+      "--config",
+      &dir.path().join("deno.json").to_string(),
       "--output",
       &exe.to_string_lossy(),
       "./compile/unstable_features.ts",
