@@ -187,7 +187,8 @@ mod tests {
     if server_handle == INVALID_HANDLE_VALUE {
       panic!(
         "*** Unexpected server pipe failure '{pipe_name:?}': {:x}",
-        GetLastError()
+        // SAFETY: testing
+        unsafe { GetLastError() }
       );
     }
   }
