@@ -52,6 +52,7 @@ use deno_graph::Module;
 use deno_graph::Resolution;
 use deno_lockfile::Lockfile;
 use deno_runtime::deno_fs;
+use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_terminal::colors;
@@ -513,9 +514,13 @@ impl CliModuleLoader {
     if let Some(result) = self.shared.node_resolver.resolve_if_in_npm_package(
       specifier,
       referrer,
+      NodeResolutionMode::Execution,
       permissions,
     ) {
-      return result;
+      return match result? {
+        Some(res) => Ok(res.into_url()),
+        None => Err(generic_error("not found")),
+      };
     }
 
     let graph = self.shared.graph_container.graph();
@@ -538,18 +543,23 @@ impl CliModuleLoader {
               .as_managed()
               .unwrap() // byonm won't create a Module::Npm
               .resolve_pkg_folder_from_deno_module(module.nv_reference.nv())?;
-            self
+            let maybe_resolution = self
               .shared
               .node_resolver
-              .resolve_package_sub_path(
+              .resolve_package_sub_path_from_deno_module(
                 &package_folder,
                 module.nv_reference.sub_path(),
                 referrer,
+                NodeResolutionMode::Execution,
                 permissions,
               )
               .with_context(|| {
                 format!("Could not resolve '{}'.", module.nv_reference)
-              })?
+              })?;
+            match maybe_resolution {
+              Some(res) => res.into_url(),
+              None => return Err(generic_error("not found")),
+            }
           }
           Some(Module::Node(module)) => module.specifier.clone(),
           Some(Module::Js(module)) => module.specifier.clone(),
@@ -592,11 +602,16 @@ impl CliModuleLoader {
         if let Ok(reference) =
           NpmPackageReqReference::from_specifier(&specifier)
         {
-          return self.shared.node_resolver.resolve_req_reference(
-            &reference,
-            permissions,
-            referrer,
-          );
+          return self
+            .shared
+            .node_resolver
+            .resolve_req_reference(
+              &reference,
+              permissions,
+              referrer,
+              NodeResolutionMode::Execution,
+            )
+            .map(|res| res.into_url());
         }
       }
     }
