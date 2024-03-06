@@ -250,11 +250,45 @@ itest!(bare_node_builtins {
   http_server: true,
 });
 
+itest!(bare_node_builtins_with_env_var {
+  args: "publish --token 'sadfasdf' --dry-run --unstable-bare-node-builtins",
+  output: "publish/bare_node_builtins.out",
+  cwd: Some("publish/bare_node_builtins"),
+  envs: env_vars_for_jsr_npm_tests()
+    .into_iter()
+    .chain(
+      vec![(
+        "JSR_SLOPPY_IMPORTS_AND_NODE_BUILTINS".to_string(),
+        "1".to_string()
+      )]
+      .into_iter()
+    )
+    .collect(),
+  http_server: true,
+});
+
 itest!(sloppy_imports {
   args: "publish --token 'sadfasdf' --dry-run --unstable-sloppy-imports",
   output: "publish/sloppy_imports.out",
   cwd: Some("publish/sloppy_imports"),
   envs: env_vars_for_jsr_tests(),
+  http_server: true,
+});
+
+itest!(sloppy_imports_with_env_var {
+  args: "publish --token 'sadfasdf' --dry-run",
+  output: "publish/sloppy_imports.out",
+  cwd: Some("publish/sloppy_imports"),
+  envs: env_vars_for_jsr_tests()
+    .into_iter()
+    .chain(
+      vec![(
+        "JSR_SLOPPY_IMPORTS_AND_NODE_BUILTINS".to_string(),
+        "1".to_string()
+      )]
+      .into_iter()
+    )
+    .collect(),
   http_server: true,
 });
 
