@@ -9,6 +9,8 @@ import {
   mkdtempSync,
   promises,
   readFileSync,
+  Stats,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { constants as fsPromiseConstants, cp } from "node:fs/promises";
@@ -94,6 +96,15 @@ Deno.test(
   () => {
     assertEquals(constants, fsPromiseConstants);
     assertEquals(constants, promises.constants);
+  },
+);
+
+Deno.test(
+  "[node/fs statSync] instanceof fs.Stats",
+  () => {
+    const stat = statSync("tests/testdata/assets/fixture.json");
+    assert(stat);
+    assert(stat instanceof Stats);
   },
 );
 
