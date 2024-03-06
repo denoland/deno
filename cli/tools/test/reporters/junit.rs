@@ -178,20 +178,18 @@ impl TestReporter for JunitTestReporter {
             s.add_test_case(case.clone());
           })
           .or_insert_with(|| {
-            quick_junit::TestSuite::new(test.location.file_name.clone())
-              .add_test_case(case.clone())
-              .to_owned()
+            let mut suite =
+              quick_junit::TestSuite::new(test.location.file_name.clone());
+            suite.add_test_case(case.clone());
+            suite
           });
       }
     }
 
     let mut report = quick_junit::Report::new("deno test");
-    report.set_time(*elapsed).add_test_suites(
-      suites
-        .values()
-        .cloned()
-        .collect::<Vec<quick_junit::TestSuite>>(),
-    );
+    report
+      .set_time(*elapsed)
+      .add_test_suites(suites.into_values());
 
     if self.path == "-" {
       report
