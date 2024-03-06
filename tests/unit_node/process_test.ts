@@ -210,6 +210,7 @@ Deno.test({
       process.stdout.pipeThrough(new TextDecoderStream()).pipeTo(
         new WritableStream({
           write(chunk) {
+            console.log("chunk:", chunk);
             output += chunk;
           },
         }),
@@ -218,8 +219,8 @@ Deno.test({
       while (!output.includes("ready\n")) {
         await delay(10);
       }
-      output = "";
       for (const i of Array(3)) {
+        output = "";
         process.kill("SIGINT");
         wait = "foo " + i;
         while (!output.includes("foo\n")) {
@@ -261,6 +262,7 @@ Deno.test({
       process.stdout.pipeThrough(new TextDecoderStream()).pipeTo(
         new WritableStream({
           write(chunk) {
+            console.log("chunk:", chunk);
             output += chunk;
           },
         }),
