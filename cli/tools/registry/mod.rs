@@ -884,7 +884,8 @@ pub async fn publish(
 ) -> Result<(), AnyError> {
   let cli_factory = CliFactory::from_flags(flags).await?;
 
-  let auth_method = get_auth_method(publish_flags.token)?;
+  let auth_method =
+    get_auth_method(publish_flags.token, publish_flags.dry_run)?;
 
   let import_map = cli_factory
     .maybe_import_map()

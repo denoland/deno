@@ -121,6 +121,7 @@ use crate::npm::CliNpmResolverCreateOptions;
 use crate::npm::CliNpmResolverManagedCreateOptions;
 use crate::npm::CliNpmResolverManagedPackageJsonInstallerOption;
 use crate::npm::CliNpmResolverManagedSnapshotOption;
+use crate::resolver::CliNodeResolver;
 use crate::tools::fmt::format_file;
 use crate::tools::fmt::format_parsed_source;
 use crate::tools::upgrade::check_for_upgrades_for_lsp;
@@ -146,7 +147,7 @@ struct LspNpmServices {
   /// Npm's search api.
   search_api: CliNpmSearchApi,
   /// Node resolver.
-  node_resolver: Option<Arc<NodeResolver>>,
+  node_resolver: Option<Arc<CliNodeResolver>>,
   /// Resolver for npm packages.
   resolver: Option<Arc<dyn CliNpmResolver>>,
 }
@@ -171,7 +172,7 @@ pub struct LanguageServer(Arc<tokio::sync::RwLock<Inner>>, CancellationToken);
 
 #[derive(Clone, Debug)]
 pub struct StateNpmSnapshot {
-  pub node_resolver: Arc<NodeResolver>,
+  pub node_resolver: Arc<CliNodeResolver>,
   pub npm_resolver: Arc<dyn CliNpmResolver>,
 }
 
@@ -760,10 +761,18 @@ impl Inner {
       .map(|resolver| resolver.clone_snapshotted())
       .map(|resolver| {
         let fs = Arc::new(deno_fs::RealFs);
-        let node_resolver =
-          Arc::new(NodeResolver::new(fs, resolver.clone().into_npm_resolver()));
-        StateNpmSnapshot {
+        let node_resolver = Arc::new(NodeResolver::new(
+          fs.clone(),
+          resolver.clone().into_npm_resolver(),
+        ));
+        let cli_node_resolver = Arc::new(CliNodeResolver::new(
+          None,
+          fs,
           node_resolver,
+          resolver.clone(),
+        ));
+        StateNpmSnapshot {
+          node_resolver: cli_node_resolver,
           npm_resolver: resolver,
         }
       });
@@ -866,9 +875,8 @@ impl Inner {
       None,
     );
     deps_file_fetcher.set_download_log_level(super::logging::lsp_log_level());
-    self.jsr_search_api = CliJsrSearchApi::new(deps_file_fetcher);
-    self.npm.search_api =
-      CliNpmSearchApi::new(self.module_registries.file_fetcher.clone());
+    self.jsr_search_api = CliJsrSearchApi::new(deps_file_fetcher.clone());
+    self.npm.search_api = CliNpmSearchApi::new(deps_file_fetcher);
     let maybe_local_cache =
       self.config.maybe_vendor_dir_path().map(|local_path| {
         Arc::new(LocalLspHttpCache::new(local_path, global_cache.clone()))
@@ -907,9 +915,15 @@ impl Inner {
       self.config.maybe_node_modules_dir_path().cloned(),
     )
     .await;
-    self.npm.node_resolver = Some(Arc::new(NodeResolver::new(
+    let node_resolver = Arc::new(NodeResolver::new(
       Arc::new(deno_fs::RealFs),
       npm_resolver.clone().into_npm_resolver(),
+    ));
+    self.npm.node_resolver = Some(Arc::new(CliNodeResolver::new(
+      None,
+      Arc::new(deno_fs::RealFs),
+      node_resolver,
+      npm_resolver.clone(),
     )));
     self.npm.resolver = Some(npm_resolver);
 
@@ -1167,7 +1181,7 @@ async fn create_npm_resolver(
       // do not install while resolving in the lsp—leave that to the cache command
       package_json_installer:
         CliNpmResolverManagedPackageJsonInstallerOption::NoInstall,
-      npm_registry_url: crate::args::npm_registry_default_url().to_owned(),
+      npm_registry_url: crate::args::npm_registry_url().to_owned(),
       npm_system_info: NpmSystemInfo::default(),
     })
   })
