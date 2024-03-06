@@ -6,7 +6,7 @@ import {
   assertRejects,
   assertStringIncludes,
   assertThrows,
-} from "../util/test_util.ts";
+} from "./test_util.ts";
 
 Deno.test(
   { permissions: { write: true, run: true, read: true } },
