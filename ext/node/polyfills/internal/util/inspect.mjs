@@ -25,8 +25,8 @@
 
 import {
   validateObject,
-  validateString,
   validateOneOf,
+  validateString,
 } from "ext:deno_node/internal/validators.mjs";
 import { codes } from "ext:deno_node/internal/error_codes.ts";
 import {
