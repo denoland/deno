@@ -8637,12 +8637,8 @@ mod tests {
           token: Some("asdf".to_string()),
           dry_run: true,
           allow_slow_types: true,
-<<<<<<< HEAD
           allow_dirty: true,
-          provenance: false,
-=======
           no_provenance: true,
->>>>>>> main
         }),
         type_check_mode: TypeCheckMode::Local,
         ..Flags::default()
@@ -8659,14 +8655,6 @@ mod tests {
     assert_eq!(
       r.unwrap(),
       Flags {
-<<<<<<< HEAD
-        subcommand: DenoSubcommand::Publish(PublishFlags {
-          token: Some("asdf".to_string()),
-          dry_run: false,
-          allow_dirty: false,
-          allow_slow_types: false,
-          provenance: true,
-=======
         subcommand: DenoSubcommand::Add(AddFlags {
           packages: svec!["@david/which"],
         }),
@@ -8680,7 +8668,6 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Add(AddFlags {
           packages: svec!["@david/which", "@luca/hello"],
->>>>>>> main
         }),
         ..Flags::default()
       }
