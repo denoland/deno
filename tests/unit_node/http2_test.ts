@@ -3,7 +3,7 @@
 import * as http2 from "node:http2";
 import * as net from "node:net";
 import { assert, assertEquals } from "@std/assert/mod.ts";
-import { curlRequest } from "../util/test_util.ts";
+import { curlRequest } from "../unit/test_util.ts";
 
 for (const url of ["http://127.0.0.1:4246", "https://127.0.0.1:4247"]) {
   Deno.test(`[node/http2 client] ${url}`, {

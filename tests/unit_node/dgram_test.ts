@@ -1,7 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import { assertEquals } from "@std/assert/mod.ts";
-import { execCode } from "../util/test_util.ts";
+import { execCode } from "../unit/test_util.ts";
 import { createSocket } from "node:dgram";
 
 const listenPort = 4503;

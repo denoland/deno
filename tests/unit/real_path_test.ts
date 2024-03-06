@@ -6,7 +6,7 @@ import {
   assertRejects,
   assertThrows,
   pathToAbsoluteFileUrl,
-} from "../util/test_util.ts";
+} from "./test_util.ts";
 
 Deno.test({ permissions: { read: true } }, function realPathSyncSuccess() {
   const relative = "tests/testdata/assets/fixture.json";

@@ -10,7 +10,7 @@ import { assertSpyCalls, spy } from "@std/testing/mock.ts";
 import { gzip } from "node:zlib";
 import { Buffer } from "node:buffer";
 import { serve } from "@std/http/server.ts";
-import { execCode } from "../util/test_util.ts";
+import { execCode } from "../unit/test_util.ts";
 
 Deno.test("[node/http listen]", async () => {
   {
