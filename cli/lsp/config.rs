@@ -1083,7 +1083,7 @@ impl Config {
   pub fn get_disabled_paths(&self) -> PathOrPatternSet {
     let mut path_or_patterns = vec![];
     if let Some(cf) = self.maybe_config_file() {
-      if let Some(files) = cf.to_files_config().ok() {
+      if let Ok(files) = cf.to_files_config() {
         for path in files.exclude.into_path_or_patterns() {
           path_or_patterns.push(path);
         }
@@ -1177,7 +1177,7 @@ fn specifier_enabled(
   workspace_folders: &[(Url, lsp::WorkspaceFolder)],
 ) -> bool {
   if let Some(cf) = config_file {
-    if let Some(files) = cf.to_files_config().ok() {
+    if let Ok(files) = cf.to_files_config() {
       if !files.matches_specifier(specifier) {
         return false;
       }

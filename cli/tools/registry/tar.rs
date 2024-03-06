@@ -51,7 +51,7 @@ pub fn create_gzipped_tarball(
 
   let iter_paths = FileCollector::new(|e| {
     if !e.file_type.is_file() {
-      if let Some(specifier) = ModuleSpecifier::from_file_path(e.path).ok() {
+      if let Ok(specifier) = ModuleSpecifier::from_file_path(e.path) {
         diagnostics_collector.push(PublishDiagnostic::UnsupportedFileType {
           specifier,
           kind: if e.file_type.is_symlink() {

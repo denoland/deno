@@ -1,5 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+#![allow(clippy::disallowed_types)]
+
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::io::Error;
@@ -241,9 +243,7 @@ impl FileSystem for InMemoryFs {
           is_socket: false,
         }),
       },
-      None => {
-        return Err(FsError::Io(Error::new(ErrorKind::NotFound, "Not found")))
-      }
+      None => Err(FsError::Io(Error::new(ErrorKind::NotFound, "Not found"))),
     }
   }
   async fn stat_async(&self, path: PathBuf) -> FsResult<FsStat> {
