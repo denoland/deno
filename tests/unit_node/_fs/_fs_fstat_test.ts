@@ -3,6 +3,7 @@ import { fstat, fstatSync } from "node:fs";
 import { fail } from "@std/assert/mod.ts";
 import { assertStats, assertStatsBigInt } from "./_fs_stat_test.ts";
 import type { BigIntStats, Stats } from "node:fs";
+import { FsFile } from "ext:deno_fs/30_fs.js";
 
 Deno.test({
   name: "ASYNC: get a file Stats",
@@ -80,7 +81,7 @@ Deno.test({
       //
       assertStatsBigInt(
         fstatSync(file.rid, { bigint: true }),
-        Deno.fstatSync(file.rid),
+        new FsFile(file.rid, Symbol.for("Deno.internal.FsFile")).statSync(),
       );
       //main
     } finally {
