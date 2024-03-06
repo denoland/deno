@@ -361,8 +361,7 @@ pub fn collect_specifiers(
           if path.is_dir() {
             result.push(PathOrPattern::Path(path));
           } else if !files.exclude.matches_path(&path) {
-            let url = ModuleSpecifier::from_file_path(&path)
-              .map_err(|_| anyhow!("Invalid file path '{}'", path.display()))?;
+            let url = specifier_from_file_path(&path)?;
             prepared.push(url);
           }
         }
@@ -385,7 +384,7 @@ pub fn collect_specifiers(
     .collect_file_patterns(files)?;
   let mut collected_files_as_urls = collected_files
     .iter()
-    .map(|f| ModuleSpecifier::from_file_path(f).unwrap())
+    .map(|f| specifier_from_file_path(f).unwrap())
     .collect::<Vec<ModuleSpecifier>>();
 
   collected_files_as_urls.sort();
@@ -701,6 +700,13 @@ impl LaxSingleProcessFsFlag {
       }
     }
   }
+}
+
+pub fn specifier_from_file_path(
+  path: &Path,
+) -> Result<ModuleSpecifier, AnyError> {
+  ModuleSpecifier::from_file_path(path)
+    .map_err(|_| anyhow!("Invalid file path '{}'", path.display()))
 }
 
 #[cfg(test)]

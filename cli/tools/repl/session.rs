@@ -14,16 +14,18 @@ use crate::tools::test::reporters::TestReporter;
 use crate::tools::test::run_tests_for_worker;
 use crate::tools::test::worker_has_tests;
 use crate::tools::test::TestEvent;
+use crate::tools::test::TestEventReceiver;
 use crate::tools::test::TestEventSender;
 
+use deno_ast::diagnostics::Diagnostic;
 use deno_ast::swc::ast as swc_ast;
 use deno_ast::swc::common::comments::CommentKind;
 use deno_ast::swc::visit::noop_visit_type;
 use deno_ast::swc::visit::Visit;
 use deno_ast::swc::visit::VisitWith;
-use deno_ast::DiagnosticsError;
 use deno_ast::ImportsNotUsedAsValues;
 use deno_ast::ModuleSpecifier;
+use deno_ast::ParseDiagnosticsError;
 use deno_ast::ParsedSource;
 use deno_ast::SourcePos;
 use deno_ast::SourceRangedForSpanned;
@@ -182,7 +184,7 @@ pub struct ReplSession {
   test_reporter_factory: Box<dyn Fn() -> Box<dyn TestReporter>>,
   test_event_sender: TestEventSender,
   /// This is only optional because it's temporarily taken when evaluating.
-  test_event_receiver: Option<tokio::sync::mpsc::UnboundedReceiver<TestEvent>>,
+  test_event_receiver: Option<TestEventReceiver>,
   jsx: ReplJsxState,
   experimental_decorators: bool,
 }
@@ -195,7 +197,7 @@ impl ReplSession {
     mut worker: MainWorker,
     main_module: ModuleSpecifier,
     test_event_sender: TestEventSender,
-    test_event_receiver: tokio::sync::mpsc::UnboundedReceiver<TestEvent>,
+    test_event_receiver: TestEventReceiver,
   ) -> Result<Self, AnyError> {
     let language_server = ReplLanguageServer::new_initialized().await?;
     let mut session = worker.create_inspector_session().await;
@@ -324,7 +326,7 @@ impl ReplSession {
     &mut self,
     line: &str,
   ) -> EvaluationOutput {
-    fn format_diagnostic(diagnostic: &deno_ast::Diagnostic) -> String {
+    fn format_diagnostic(diagnostic: &deno_ast::ParseDiagnostic) -> String {
       let display_position = diagnostic.display_position();
       format!(
         "{}: {} at {}:{}",
@@ -377,11 +379,11 @@ impl ReplSession {
         }
         Err(err) => {
           // handle a parsing diagnostic
-          match err.downcast_ref::<deno_ast::Diagnostic>() {
+          match err.downcast_ref::<deno_ast::ParseDiagnostic>() {
             Some(diagnostic) => {
               Ok(EvaluationOutput::Error(format_diagnostic(diagnostic)))
             }
-            None => match err.downcast_ref::<DiagnosticsError>() {
+            None => match err.downcast_ref::<ParseDiagnosticsError>() {
               Some(diagnostics) => Ok(EvaluationOutput::Error(
                 diagnostics
                   .0
@@ -786,13 +788,13 @@ fn parse_source_as(
   media_type: deno_ast::MediaType,
 ) -> Result<deno_ast::ParsedSource, AnyError> {
   let specifier = if media_type == deno_ast::MediaType::Tsx {
-    "repl.tsx"
+    ModuleSpecifier::parse("file:///repl.tsx").unwrap()
   } else {
-    "repl.ts"
+    ModuleSpecifier::parse("file:///repl.ts").unwrap()
   };
 
   let parsed = deno_ast::parse_module(deno_ast::ParseParams {
-    specifier: specifier.to_string(),
+    specifier,
     text_info: deno_ast::SourceTextInfo::from_string(source),
     media_type,
     capture_tokens: true,

@@ -101,6 +101,12 @@ impl TestReporter for CompoundTestReporter {
     }
   }
 
+  fn report_completed(&mut self) {
+    for reporter in &mut self.test_reporters {
+      reporter.report_completed();
+    }
+  }
+
   fn flush_report(
     &mut self,
     elapsed: &Duration,

@@ -206,6 +206,8 @@ impl TestReporter for DotTestReporter {
     );
   }
 
+  fn report_completed(&mut self) {}
+
   fn flush_report(
     &mut self,
     _elapsed: &Duration,

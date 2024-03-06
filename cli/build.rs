@@ -3,7 +3,7 @@
 use std::env;
 use std::path::PathBuf;
 
-use deno_core::snapshot_util::*;
+use deno_core::snapshot::*;
 use deno_runtime::*;
 
 mod ts {
@@ -15,6 +15,7 @@ mod ts {
   use deno_runtime::deno_node::SUPPORTED_BUILTIN_NODE_MODULES;
   use serde::Serialize;
   use std::collections::HashMap;
+  use std::io::Write;
   use std::path::Path;
   use std::path::PathBuf;
 
@@ -266,33 +267,40 @@ mod ts {
     )
     .unwrap();
 
-    let output = create_snapshot(CreateSnapshotOptions {
-      cargo_manifest_dir: env!("CARGO_MANIFEST_DIR"),
-      snapshot_path,
-      startup_snapshot: None,
-      extensions: vec![deno_tsc::init_ops_and_esm(
-        op_crate_libs,
-        build_libs,
-        path_dts,
-      )],
-      // NOTE(bartlomieju): Compressing the TSC snapshot in debug build took
-      // ~45s on M1 MacBook Pro; without compression it took ~1s.
-      // Thus we're not not using compressed snapshot, trading off
-      // a lot of build time for some startup time in debug build.
-      #[cfg(debug_assertions)]
-      compression_cb: None,
+    let output = create_snapshot(
+      CreateSnapshotOptions {
+        cargo_manifest_dir: env!("CARGO_MANIFEST_DIR"),
+        startup_snapshot: None,
+        extensions: vec![deno_tsc::init_ops_and_esm(
+          op_crate_libs,
+          build_libs,
+          path_dts,
+        )],
+        extension_transpiler: None,
+        with_runtime_cb: None,
+        skip_op_registration: false,
+      },
+      None,
+    )
+    .unwrap();
 
-      #[cfg(not(debug_assertions))]
-      compression_cb: Some(Box::new(|vec, snapshot_slice| {
-        eprintln!("Compressing TSC snapshot...");
-        vec.extend_from_slice(
-          &zstd::bulk::compress(snapshot_slice, 22)
-            .expect("snapshot compression failed"),
-        );
-      })),
-      with_runtime_cb: None,
-      skip_op_registration: false,
-    });
+    // NOTE(bartlomieju): Compressing the TSC snapshot in debug build took
+    // ~45s on M1 MacBook Pro; without compression it took ~1s.
+    // Thus we're not not using compressed snapshot, trading off
+    // a lot of build time for some startup time in debug build.
+    let mut file = std::fs::File::create(snapshot_path).unwrap();
+    if cfg!(debug_assertions) {
+      file.write_all(&output.output).unwrap();
+    } else {
+      let mut vec = Vec::with_capacity(output.output.len());
+      vec.extend((output.output.len() as u32).to_le_bytes());
+      vec.extend_from_slice(
+        &zstd::bulk::compress(&output.output, 22)
+          .expect("snapshot compression failed"),
+      );
+      file.write_all(&vec).unwrap();
+    }
+
     for path in output.files_loaded_during_snapshot {
       println!("cargo:rerun-if-changed={}", path.display());
     }
@@ -376,7 +384,9 @@ fn main() {
   }
 
   let symbols_file_name = match env::consts::OS {
-    "android" => "generated_symbol_exports_list_linux.def".to_string(),
+    "android" | "freebsd" | "openbsd" => {
+      "generated_symbol_exports_list_linux.def".to_string()
+    }
     os => format!("generated_symbol_exports_list_{}.def", os),
   };
   let symbols_path = std::path::Path::new("napi")

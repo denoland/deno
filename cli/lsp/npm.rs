@@ -1,56 +1,45 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use std::collections::HashMap;
-use std::sync::Arc;
-
+use dashmap::DashMap;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
-use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
-use deno_core::url::Url;
 use deno_npm::registry::NpmPackageInfo;
 use deno_runtime::permissions::PermissionsContainer;
+use deno_semver::package::PackageNv;
+use deno_semver::Version;
 use serde::Deserialize;
+use std::sync::Arc;
 
 use crate::args::npm_registry_default_url;
 use crate::file_fetcher::FileFetcher;
 
-#[async_trait::async_trait]
-pub trait NpmSearchApi {
-  async fn search(&self, query: &str) -> Result<Arc<Vec<String>>, AnyError>;
-  async fn package_info(
-    &self,
-    name: &str,
-  ) -> Result<Arc<NpmPackageInfo>, AnyError>;
-}
+use super::search::PackageSearchApi;
 
 #[derive(Debug, Clone)]
 pub struct CliNpmSearchApi {
-  base_url: Url,
   file_fetcher: FileFetcher,
-  info_cache: Arc<Mutex<HashMap<String, Arc<NpmPackageInfo>>>>,
-  search_cache: Arc<Mutex<HashMap<String, Arc<Vec<String>>>>>,
+  search_cache: Arc<DashMap<String, Arc<Vec<String>>>>,
+  versions_cache: Arc<DashMap<String, Arc<Vec<Version>>>>,
 }
 
 impl CliNpmSearchApi {
-  pub fn new(file_fetcher: FileFetcher, custom_base_url: Option<Url>) -> Self {
+  pub fn new(file_fetcher: FileFetcher) -> Self {
     Self {
-      base_url: custom_base_url
-        .unwrap_or_else(|| npm_registry_default_url().clone()),
       file_fetcher,
-      info_cache: Default::default(),
       search_cache: Default::default(),
+      versions_cache: Default::default(),
     }
   }
 }
 
 #[async_trait::async_trait]
-impl NpmSearchApi for CliNpmSearchApi {
+impl PackageSearchApi for CliNpmSearchApi {
   async fn search(&self, query: &str) -> Result<Arc<Vec<String>>, AnyError> {
-    if let Some(names) = self.search_cache.lock().get(query) {
+    if let Some(names) = self.search_cache.get(query) {
       return Ok(names.clone());
     }
-    let mut search_url = self.base_url.clone();
+    let mut search_url = npm_registry_default_url().clone();
     search_url
       .path_segments_mut()
       .map_err(|_| anyhow!("Custom npm registry URL cannot be a base."))?
@@ -65,21 +54,15 @@ impl NpmSearchApi for CliNpmSearchApi {
       .await?
       .into_text_decoded()?;
     let names = Arc::new(parse_npm_search_response(&file.source)?);
-    self
-      .search_cache
-      .lock()
-      .insert(query.to_string(), names.clone());
+    self.search_cache.insert(query.to_string(), names.clone());
     Ok(names)
   }
 
-  async fn package_info(
-    &self,
-    name: &str,
-  ) -> Result<Arc<NpmPackageInfo>, AnyError> {
-    if let Some(info) = self.info_cache.lock().get(name) {
-      return Ok(info.clone());
+  async fn versions(&self, name: &str) -> Result<Arc<Vec<Version>>, AnyError> {
+    if let Some(versions) = self.versions_cache.get(name) {
+      return Ok(versions.clone());
     }
-    let mut info_url = self.base_url.clone();
+    let mut info_url = npm_registry_default_url().clone();
     info_url
       .path_segments_mut()
       .map_err(|_| anyhow!("Custom npm registry URL cannot be a base."))?
@@ -89,13 +72,22 @@ impl NpmSearchApi for CliNpmSearchApi {
       .file_fetcher
       .fetch(&info_url, PermissionsContainer::allow_all())
       .await?;
-    let info =
-      Arc::new(serde_json::from_slice::<NpmPackageInfo>(&file.source)?);
+    let info = serde_json::from_slice::<NpmPackageInfo>(&file.source)?;
+    let mut versions = info.versions.into_keys().collect::<Vec<_>>();
+    versions.sort();
+    versions.reverse();
+    let versions = Arc::new(versions);
     self
-      .info_cache
-      .lock()
-      .insert(name.to_string(), info.clone());
-    Ok(info)
+      .versions_cache
+      .insert(name.to_string(), versions.clone());
+    Ok(versions)
+  }
+
+  async fn exports(
+    &self,
+    _nv: &PackageNv,
+  ) -> Result<Arc<Vec<String>>, AnyError> {
+    Ok(Default::default())
   }
 }
 

@@ -19,10 +19,10 @@ import {
   op_fs_fdatasync_async_unstable,
   op_fs_fdatasync_sync,
   op_fs_fdatasync_sync_unstable,
+  op_fs_file_stat_async,
+  op_fs_file_stat_sync,
   op_fs_flock_async,
   op_fs_flock_sync,
-  op_fs_fstat_async,
-  op_fs_fstat_sync,
   op_fs_fsync_async,
   op_fs_fsync_async_unstable,
   op_fs_fsync_sync,
@@ -72,6 +72,8 @@ import {
   op_fs_utime_sync,
   op_fs_write_file_async,
   op_fs_write_file_sync,
+  op_is_terminal,
+  op_set_raw,
 } from "ext:core/ops";
 const {
   ArrayPrototypeFilter,
@@ -396,12 +398,12 @@ function parseFileInfo(response) {
 }
 
 function fstatSync(rid) {
-  op_fs_fstat_sync(rid, statBuf);
+  op_fs_file_stat_sync(rid, statBuf);
   return statStruct(statBuf);
 }
 
 async function fstat(rid) {
-  return parseFileInfo(await op_fs_fstat_async(rid));
+  return parseFileInfo(await op_fs_file_stat_async(rid));
 }
 
 async function lstat(path) {
@@ -764,6 +766,15 @@ class FsFile {
 
   utimeSync(atime, mtime) {
     futimeSync(this.#rid, atime, mtime);
+  }
+
+  isTerminal() {
+    return op_is_terminal(this.#rid);
+  }
+
+  setRaw(mode, options = {}) {
+    const cbreak = !!(options.cbreak ?? false);
+    op_set_raw(this.#rid, mode, cbreak);
   }
 
   lockSync(exclusive = false) {

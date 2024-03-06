@@ -511,7 +511,7 @@ pub async fn run_benchmarks_with_watch(
         }
 
         let graph_kind = cli_options.type_check_mode().as_graph_kind();
-        let module_graph_builder = factory.module_graph_builder().await?;
+        let module_graph_creator = factory.module_graph_creator().await?;
         let module_load_preparer = factory.module_load_preparer().await?;
 
         let bench_modules = collect_specifiers(
@@ -525,7 +525,7 @@ pub async fn run_benchmarks_with_watch(
         let permissions =
           Permissions::from_options(&cli_options.permissions_options())?;
 
-        let graph = module_graph_builder
+        let graph = module_graph_creator
           .create_graph(graph_kind, bench_modules.clone())
           .await?;
         graph_valid_with_cli_options(

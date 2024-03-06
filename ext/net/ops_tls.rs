@@ -145,8 +145,8 @@ impl Resource for TlsStreamResource {
 pub struct ConnectTlsArgs {
   cert_file: Option<String>,
   ca_certs: Vec<String>,
-  cert_chain: Option<String>,
-  private_key: Option<String>,
+  cert: Option<String>,
+  key: Option<String>,
   alpn_protocols: Option<Vec<String>>,
 }
 
@@ -297,24 +297,23 @@ where
   let local_addr = tcp_stream.local_addr()?;
   let remote_addr = tcp_stream.peer_addr()?;
 
-  let cert_chain_and_key =
-    if args.cert_chain.is_some() || args.private_key.is_some() {
-      let cert_chain = args
-        .cert_chain
-        .ok_or_else(|| type_error("No certificate chain provided"))?;
-      let private_key = args
-        .private_key
-        .ok_or_else(|| type_error("No private key provided"))?;
-      Some((cert_chain, private_key))
-    } else {
-      None
-    };
+  let cert_and_key = if args.cert.is_some() || args.key.is_some() {
+    let cert = args
+      .cert
+      .ok_or_else(|| type_error("No certificate chain provided"))?;
+    let key = args
+      .key
+      .ok_or_else(|| type_error("No private key provided"))?;
+    Some((cert, key))
+  } else {
+    None
+  };
 
   let mut tls_config = create_client_config(
     root_cert_store,
     ca_certs,
     unsafely_ignore_certificate_errors,
-    cert_chain_and_key,
+    cert_and_key,
     SocketUse::GeneralSsl,
   )?;
 

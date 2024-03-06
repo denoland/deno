@@ -794,8 +794,8 @@ impl HttpClientResource {
 pub struct CreateHttpClientArgs {
   ca_certs: Vec<String>,
   proxy: Option<Proxy>,
-  cert_chain: Option<String>,
-  private_key: Option<String>,
+  cert: Option<String>,
+  key: Option<String>,
   pool_max_idle_per_host: Option<usize>,
   pool_idle_timeout: Option<serde_json::Value>,
   #[serde(default = "default_true")]
@@ -826,12 +826,12 @@ where
   }
 
   let client_cert_chain_and_key = {
-    if args.cert_chain.is_some() || args.private_key.is_some() {
+    if args.cert.is_some() || args.key.is_some() {
       let cert_chain = args
-        .cert_chain
+        .cert
         .ok_or_else(|| type_error("No certificate chain provided"))?;
       let private_key = args
-        .private_key
+        .key
         .ok_or_else(|| type_error("No private key provided"))?;
 
       Some((cert_chain, private_key))

@@ -1,0 +1,52 @@
+{
+  "exports": {
+    ".": "./mod.ts"
+  },
+  "moduleGraph1": {
+    "/mod.ts": {
+      "dependencies": [{
+        "type": "static",
+        "kind": "import",
+        "range": [[0, 0], [0, 35]],
+        "specifier": "./foo.jsx",
+        "specifierRange": [[0, 22], [0, 33]]
+      }, {
+        "type": "static",
+        "kind": "import",
+        "range": [[1, 0], [1, 25]],
+        "specifier": "./foo.tsx",
+        "specifierRange": [[1, 22], [1, 33]]
+      }]
+    },
+    "/foo.jsx": {
+      "dependencies": [{
+        "type": "static",
+        "kind": "import",
+        "range": [[0, 0], [0, 60]],
+        "specifier": "npm:preact/jsx-runtime",
+        "specifierRange": [[0, 32], [0, 60]]
+      }, {
+        "type": "static",
+        "kind": "import",
+        "range": [[2, 0], [2, 60]],
+        "specifier": "npm:preact-render-to-string",
+        "specifierRange": [[2, 32], [2, 60]]
+      }]
+    },
+    "/foo.tsx": {
+      "dependencies": [{
+        "type": "static",
+        "kind": "import",
+        "range": [[0, 0], [0, 60]],
+        "specifier": "npm:preact/jsx-runtime",
+        "specifierRange": [[0, 32], [0, 60]]
+      }, {
+        "type": "static",
+        "kind": "import",
+        "range": [[2, 0], [2, 60]],
+        "specifier": "npm:preact-render-to-string",
+        "specifierRange": [[2, 32], [2, 60]]
+      }]
+    }
+  }
+}

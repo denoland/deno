@@ -61,6 +61,9 @@ class NodeTestContext {
         await prepared.fn(newNodeTextContext);
       },
       ignore: prepared.options.todo || prepared.options.skip,
+      sanitizeExit: false,
+      sanitizeOps: false,
+      sanitizeResources: false,
     }).then(() => undefined);
   }
 
@@ -131,6 +134,9 @@ function prepareDenoTest(name, options, fn, overrides) {
     fn: wrapTestFn(prepared.fn, resolve),
     only: prepared.options.only,
     ignore: prepared.options.todo || prepared.options.skip,
+    sanitizeExit: false,
+    sanitizeOps: false,
+    sanitizeResources: false,
   };
   Deno.test(denoTestOptions);
   return promise;

@@ -3,6 +3,7 @@
 pub use deno_native_certs;
 pub use rustls;
 pub use rustls_pemfile;
+pub use rustls_tokio_stream;
 pub use webpki;
 pub use webpki_roots;
 

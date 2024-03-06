@@ -132,8 +132,8 @@ verify on GitHub that everything looks correct.
   (https://github.com/denoland/deno/releases).
 
 - ⛔ Verify that:
-  - [ ] There are 9 assets on the release draft.
-  - [ ] There are 5 zip files for this version on
+  - [ ] There are 14 assets on the release draft.
+  - [ ] There are 10 zip files for this version on
         [dl.deno.land](https://console.cloud.google.com/storage/browser/dl.deno.land/release/v$VERSION).
 
 - [ ] Publish the release on Github
@@ -177,6 +177,13 @@ script generates the symbols based on the latest tags.
       https://github.com/denoland/deno_docker/actions/workflows/version_bump.yml
 - [ ] This will open a PR. Review and merge it.
 - [ ] Create a tag with the version number (_without_ `v` prefix).
+
+## Updating `deno-lambda`
+
+- [ ] Run the version bump workflow:
+      https://github.com/denoland/deno-lambda/actions/workflows/bump.yml
+- [ ] This will open a PR. Review and merge it.
+- [ ] Create a release with the version number (_without_ `v` prefix).
 
 ## All done!
 

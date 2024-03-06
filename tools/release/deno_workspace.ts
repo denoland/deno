@@ -35,7 +35,7 @@ export class DenoWorkspace {
   getCliDependencyCrates() {
     return this.getCliCrate()
       .descendantDependenciesInRepo()
-      .filter((c) => c.name !== "test_util");
+      .filter((c) => c.name !== "test_server");
   }
 
   getCliCrate() {

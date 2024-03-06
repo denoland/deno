@@ -41,9 +41,7 @@ jobs:
       - name: Install deno
         uses: denoland/setup-deno@v1
         with:
-          # use a recent version instead of the latest version in case
-          # the latest version ever has issues that breaks publishing
-          deno-version: v1.31.3
+          deno-version: v1.x
 
       - name: Run version bump
         run: |

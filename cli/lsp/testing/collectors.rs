@@ -644,7 +644,7 @@ pub mod tests {
     let specifier = resolve_url("file:///a/example.ts").unwrap();
 
     let parsed_module = deno_ast::parse_module(deno_ast::ParseParams {
-      specifier: specifier.to_string(),
+      specifier: specifier.clone(),
       text_info: deno_ast::SourceTextInfo::new(source.into()),
       media_type: deno_ast::MediaType::TypeScript,
       capture_tokens: true,

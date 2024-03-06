@@ -10,10 +10,13 @@
 /// <reference path="./lib.deno_fetch.d.ts" />
 /// <reference lib="esnext" />
 
-import { core } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 
 import { SymbolDispose } from "ext:deno_web/00_infra.js";
 import { op_fetch_custom_client } from "ext:core/ops";
+
+const { internalRidSymbol } = core;
+const { ObjectDefineProperty } = primordials;
 
 /**
  * @param {Deno.CreateHttpClientOptions} options
@@ -29,19 +32,25 @@ function createHttpClient(options) {
 }
 
 class HttpClient {
+  #rid;
+
   /**
    * @param {number} rid
    */
   constructor(rid) {
-    this.rid = rid;
+    ObjectDefineProperty(this, internalRidSymbol, {
+      enumerable: false,
+      value: rid,
+    });
+    this.#rid = rid;
   }
 
   close() {
-    core.close(this.rid);
+    core.close(this.#rid);
   }
 
   [SymbolDispose]() {
-    core.tryClose(this.rid);
+    core.tryClose(this.#rid);
   }
 }
 const HttpClientPrototype = HttpClient.prototype;

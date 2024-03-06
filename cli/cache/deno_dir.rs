@@ -98,6 +98,12 @@ impl DenoDir {
     self.root.join("dep_analysis_cache_v1")
   }
 
+  /// Path for the cache used for fast check.
+  pub fn fast_check_cache_db_file_path(&self) -> PathBuf {
+    // bump this version name to invalidate the entire cache
+    self.root.join("fast_check_cache_v1")
+  }
+
   /// Path for caching node analysis.
   pub fn node_analysis_db_file_path(&self) -> PathBuf {
     // bump this version name to invalidate the entire cache

@@ -86,9 +86,7 @@
           "description": "Specify a set of bundled library declaration files that describe the target runtime environment.",
           "type": "array",
           "uniqueItems": true,
-          "default": [
-            "deno.window"
-          ],
+          "default": ["deno.window"],
           "items": {
             "type": "string"
           },
@@ -308,11 +306,7 @@
         },
         "report": {
           "default": "pretty",
-          "enum": [
-            "pretty",
-            "json",
-            "compact"
-          ],
+          "enum": ["pretty", "json", "compact"],
           "description": "The default report format to use when linting"
         }
       }
@@ -377,11 +371,7 @@
         "proseWrap": {
           "description": "Define how prose should be wrapped in Markdown files.",
           "default": "always",
-          "enum": [
-            "always",
-            "never",
-            "preserve"
-          ]
+          "enum": ["always", "never", "preserve"]
         },
         "semiColons": {
           "description": "Whether to prefer using semicolons.",
@@ -414,11 +404,7 @@
             "proseWrap": {
               "description": "Define how prose should be wrapped in Markdown files.",
               "default": "always",
-              "enum": [
-                "always",
-                "never",
-                "preserve"
-              ]
+              "enum": ["always", "never", "preserve"]
             },
             "semiColons": {
               "description": "Whether to prefer using semicolons.",
@@ -557,6 +543,37 @@
       "items": {
         "type": "string"
       }
+    },
+    "name": {
+      "type": "string",
+      "description": "The name of this JSR package. Must be scoped",
+      "examples": ["@luca/flag"]
+    },
+    "version": {
+      "type": "string",
+      "description": "The version of this JSR package.",
+      "examples": ["0.1.0", "1.0.0"]
+    },
+    "exports": {
+      "oneOf": [
+        {
+          "type": "string",
+          "description": "The path to the main module of this JSR package.",
+          "examples": ["./mod.ts", "./index.js"],
+          "pattern": "^\\./.*$"
+        },
+        {
+          "type": "object",
+          "description": "A map of package exports to files in this JSR package.",
+          "patternProperties": {
+            "^\\.(/.*)?$": {
+              "type": "string",
+              "pattern": "^\\./.*$"
+            }
+          },
+          "examples": [{ ".": "./mod.ts" }]
+        }
+      ]
     }
   }
 }

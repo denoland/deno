@@ -236,6 +236,8 @@ impl TestReporter for TapTestReporter {
     );
   }
 
+  fn report_completed(&mut self) {}
+
   fn flush_report(
     &mut self,
     _elapsed: &Duration,

@@ -289,7 +289,7 @@ pub fn op_http_set_promise_complete(external: *const c_void, status: u16) {
 
 fn set_promise_complete(http: Rc<HttpRecord>, status: u16) {
   // The Javascript code should never provide a status that is invalid here (see 23_response.js), so we
-  // will quitely ignore invalid values.
+  // will quietly ignore invalid values.
   if let Ok(code) = StatusCode::from_u16(status) {
     http.response_parts().status = code;
   }
@@ -686,7 +686,7 @@ fn set_response(
     http.set_response_body(response_fn(compression));
 
     // The Javascript code should never provide a status that is invalid here (see 23_response.js), so we
-    // will quitely ignore invalid values.
+    // will quietly ignore invalid values.
     if let Ok(code) = StatusCode::from_u16(status) {
       http.response_parts().status = code;
     }

@@ -32,7 +32,7 @@ impl<'a> LazyGraphSourceParser<'a> {
   pub fn get_or_parse_source(
     &self,
     module_specifier: &ModuleSpecifier,
-  ) -> Result<Option<deno_ast::ParsedSource>, deno_ast::Diagnostic> {
+  ) -> Result<Option<deno_ast::ParsedSource>, deno_ast::ParseDiagnostic> {
     let Some(deno_graph::Module::Js(module)) = self.graph.get(module_specifier)
     else {
       return Ok(None);
@@ -53,7 +53,7 @@ impl ParsedSourceCache {
   pub fn get_parsed_source_from_js_module(
     &self,
     module: &deno_graph::JsModule,
-  ) -> Result<ParsedSource, deno_ast::Diagnostic> {
+  ) -> Result<ParsedSource, deno_ast::ParseDiagnostic> {
     self.get_or_parse_module(
       &module.specifier,
       module.source.clone(),
@@ -68,7 +68,7 @@ impl ParsedSourceCache {
     specifier: &deno_graph::ModuleSpecifier,
     source: Arc<str>,
     media_type: MediaType,
-  ) -> deno_core::anyhow::Result<ParsedSource, deno_ast::Diagnostic> {
+  ) -> deno_core::anyhow::Result<ParsedSource, deno_ast::ParseDiagnostic> {
     let parser = self.as_capturing_parser();
     // this will conditionally parse because it's using a CapturingModuleParser
     parser.parse_module(ParseOptions {

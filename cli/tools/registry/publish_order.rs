@@ -4,11 +4,11 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
 
+use deno_ast::ModuleSpecifier;
+use deno_config::WorkspaceMemberConfig;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_graph::ModuleGraph;
-
-use super::graph::MemberRoots;
 
 pub struct PublishOrderGraph {
   packages: HashMap<String, HashSet<String>>,
@@ -17,14 +17,6 @@ pub struct PublishOrderGraph {
 }
 
 impl PublishOrderGraph {
-  pub fn new_single(package_name: String) -> Self {
-    Self {
-      packages: HashMap::from([(package_name.clone(), HashSet::new())]),
-      in_degree: HashMap::from([(package_name.clone(), 0)]),
-      reverse_map: HashMap::from([(package_name, Vec::new())]),
-    }
-  }
-
   pub fn next(&mut self) -> Vec<String> {
     let mut package_names_with_depth = self
       .in_degree
@@ -122,22 +114,26 @@ impl PublishOrderGraph {
 
 pub fn build_publish_order_graph(
   graph: &ModuleGraph,
-  roots: &[MemberRoots],
+  roots: &[WorkspaceMemberConfig],
 ) -> Result<PublishOrderGraph, AnyError> {
-  let packages = build_pkg_deps(graph, roots);
+  let packages = build_pkg_deps(graph, roots)?;
   Ok(build_publish_order_graph_from_pkgs_deps(packages))
 }
 
 fn build_pkg_deps(
   graph: &deno_graph::ModuleGraph,
-  roots: &[MemberRoots],
-) -> HashMap<String, HashSet<String>> {
+  roots: &[WorkspaceMemberConfig],
+) -> Result<HashMap<String, HashSet<String>>, AnyError> {
   let mut members = HashMap::with_capacity(roots.len());
   let mut seen_modules = HashSet::with_capacity(graph.modules().count());
-  for root in roots {
+  let roots = roots
+    .iter()
+    .map(|r| (ModuleSpecifier::from_file_path(&r.dir_path).unwrap(), r))
+    .collect::<Vec<_>>();
+  for (root_dir_url, root) in &roots {
     let mut deps = HashSet::new();
     let mut pending = VecDeque::new();
-    pending.extend(root.exports.clone());
+    pending.extend(root.config_file.resolve_export_value_urls()?);
     while let Some(specifier) = pending.pop_front() {
       let Some(module) = graph.get(&specifier).and_then(|m| m.js()) else {
         continue;
@@ -163,23 +159,23 @@ fn build_pkg_deps(
         if specifier.scheme() != "file" {
           continue;
         }
-        if specifier.as_str().starts_with(root.dir_url.as_str()) {
+        if specifier.as_str().starts_with(root_dir_url.as_str()) {
           if seen_modules.insert(specifier.clone()) {
             pending.push_back(specifier.clone());
           }
         } else {
-          let found_root = roots
-            .iter()
-            .find(|root| specifier.as_str().starts_with(root.dir_url.as_str()));
+          let found_root = roots.iter().find(|(dir_url, _)| {
+            specifier.as_str().starts_with(dir_url.as_str())
+          });
           if let Some(root) = found_root {
-            deps.insert(root.name.clone());
+            deps.insert(root.1.package_name.clone());
           }
         }
       }
     }
-    members.insert(root.name.clone(), deps);
+    members.insert(root.package_name.clone(), deps);
   }
-  members
+  Ok(members)
 }
 
 fn build_publish_order_graph_from_pkgs_deps(

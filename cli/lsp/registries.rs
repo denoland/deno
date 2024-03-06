@@ -515,6 +515,7 @@ impl ModuleRegistry {
         permissions: PermissionsContainer::allow_all(),
         maybe_accept: Some("application/vnd.deno.reg.v2+json, application/vnd.deno.reg.v1+json;q=0.9, application/json;q=0.8"),
         maybe_cache_setting: None,
+        maybe_checksum: None,
       })
       .await;
     // if there is an error fetching, we will cache an empty file, so that

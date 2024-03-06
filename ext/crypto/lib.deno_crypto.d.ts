@@ -390,7 +390,7 @@ declare interface Crypto {
   >(
     array: T,
   ): T;
-  randomUUID(): string;
+  randomUUID(): `${string}-${string}-${string}-${string}-${string}`;
 }
 
 /** @category Web Crypto API */

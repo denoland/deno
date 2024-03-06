@@ -46,6 +46,8 @@ const {
   ERR_PARSE_ARGS_UNEXPECTED_POSITIONAL,
 } = codes;
 
+import process from "node:process";
+
 function getMainArgs() {
   // Work out where to slice process.argv for user supplied arguments.
 

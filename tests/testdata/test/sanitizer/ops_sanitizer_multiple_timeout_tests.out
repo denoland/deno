@@ -1,0 +1,45 @@
+Check [WILDCARD]/ops_sanitizer_multiple_timeout_tests.ts
+running 2 tests from [WILDCARD]/ops_sanitizer_multiple_timeout_tests.ts
+test 1 ... FAILED ([WILDCARD])
+test 2 ... FAILED ([WILDCARD])
+
+ ERRORS 
+
+test 1 => [WILDCARD]/ops_sanitizer_multiple_timeout_tests.ts:[WILDCARD]
+error: Leaks detected:
+  - A timer was started in this test, but never completed. This is often caused by not calling `clearTimeout`. The operation was started here:
+    at [WILDCARD]
+    at setTimeout ([WILDCARD])
+    at test ([WILDCARD]/ops_sanitizer_multiple_timeout_tests.ts:[WILDCARD])
+    at [WILDCARD]/ops_sanitizer_multiple_timeout_tests.ts:8:27
+    at [WILDCARD]
+  - A timer was started in this test, but never completed. This is often caused by not calling `clearTimeout`. The operation was started here:
+    at [WILDCARD]
+    at setTimeout ([WILDCARD])
+    at test ([WILDCARD]/ops_sanitizer_multiple_timeout_tests.ts:[WILDCARD])
+    at [WILDCARD]/ops_sanitizer_multiple_timeout_tests.ts:8:27
+    at [WILDCARD]
+
+test 2 => [WILDCARD]/ops_sanitizer_multiple_timeout_tests.ts:[WILDCARD]
+error: Leaks detected:
+  - A timer was started in this test, but never completed. This is often caused by not calling `clearTimeout`. The operation was started here:
+    at [WILDCARD]
+    at setTimeout ([WILDCARD])
+    at test ([WILDCARD]/ops_sanitizer_multiple_timeout_tests.ts:[WILDCARD])
+    at [WILDCARD]/ops_sanitizer_multiple_timeout_tests.ts:10:27
+    at [WILDCARD]
+  - A timer was started in this test, but never completed. This is often caused by not calling `clearTimeout`. The operation was started here:
+    at [WILDCARD]
+    at setTimeout ([WILDCARD])
+    at test ([WILDCARD]/ops_sanitizer_multiple_timeout_tests.ts:[WILDCARD])
+    at [WILDCARD]/ops_sanitizer_multiple_timeout_tests.ts:10:27
+    at [WILDCARD]
+
+ FAILURES 
+
+test 1 => [WILDCARD]/ops_sanitizer_multiple_timeout_tests.ts:[WILDCARD]
+test 2 => [WILDCARD]/ops_sanitizer_multiple_timeout_tests.ts:[WILDCARD]
+
+FAILED | 0 passed | 2 failed ([WILDCARD])
+
+error: Test failed

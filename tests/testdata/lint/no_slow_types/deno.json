@@ -1,0 +1,8 @@
+{
+  "name": "@pkg/pkg",
+  "version": "1.0.0",
+  "exports": {
+    "./a": "./a.ts",
+    "./b": "./b.ts"
+  }
+}

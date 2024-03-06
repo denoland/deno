@@ -17,14 +17,6 @@ const {
 
 import { Conn, Listener } from "ext:deno_net/01_net.js";
 
-function opStartTls(args) {
-  return op_tls_start(args);
-}
-
-function opTlsHandshake(rid) {
-  return op_tls_handshake(rid);
-}
-
 class TlsConn extends Conn {
   #rid = 0;
 
@@ -47,7 +39,7 @@ class TlsConn extends Conn {
   }
 
   handshake() {
-    return opTlsHandshake(this.#rid);
+    return op_tls_handshake(this.#rid);
   }
 }
 
@@ -59,21 +51,49 @@ async function connectTls({
   caCerts = [],
   certChain = undefined,
   privateKey = undefined,
+  cert = undefined,
+  key = undefined,
   alpnProtocols = undefined,
 }) {
   if (certFile !== undefined) {
     internals.warnOnDeprecatedApi(
       "Deno.ConnectTlsOptions.certFile",
       new Error().stack,
-      "Pass the cert file contents to the `Deno.ConnectTlsOptions.certChain` option instead.",
+      "Pass the cert file contents to the `Deno.ConnectTlsOptions.cert` option instead.",
+    );
+  }
+  if (certChain !== undefined) {
+    internals.warnOnDeprecatedApi(
+      "Deno.ConnectTlsOptions.certChain",
+      new Error().stack,
+      "Use the `Deno.ConnectTlsOptions.cert` option instead.",
+    );
+  }
+  if (privateKey !== undefined) {
+    internals.warnOnDeprecatedApi(
+      "Deno.ConnectTlsOptions.privateKey",
+      new Error().stack,
+      "Use the `Deno.ConnectTlsOptions.key` option instead.",
     );
   }
   if (transport !== "tcp") {
     throw new TypeError(`Unsupported transport: '${transport}'`);
   }
+  if (certChain !== undefined && cert !== undefined) {
+    throw new TypeError(
+      "Cannot specify both `certChain` and `cert`",
+    );
+  }
+  if (privateKey !== undefined && key !== undefined) {
+    throw new TypeError(
+      "Cannot specify both `privateKey` and `key`",
+    );
+  }
+  cert ??= certChain;
+  key ??= privateKey;
   const { 0: rid, 1: localAddr, 2: remoteAddr } = await op_net_connect_tls(
     { hostname, port },
-    { certFile, caCerts, certChain, privateKey, alpnProtocols },
+    { certFile, caCerts, cert, key, alpnProtocols },
   );
   localAddr.transport = "tcp";
   remoteAddr.transport = "tcp";
@@ -150,15 +170,13 @@ async function startTls(
   conn,
   {
     hostname = "127.0.0.1",
-    certFile = undefined,
     caCerts = [],
     alpnProtocols = undefined,
   } = {},
 ) {
-  const { 0: rid, 1: localAddr, 2: remoteAddr } = await opStartTls({
+  const { 0: rid, 1: localAddr, 2: remoteAddr } = await op_tls_start({
     rid: conn[internalRidSymbol],
     hostname,
-    certFile,
     caCerts,
     alpnProtocols,
   });

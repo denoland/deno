@@ -51,12 +51,12 @@ pub async fn vendor(
   let entry_points =
     resolve_entry_points(&vendor_flags, cli_options.initial_cwd())?;
   let jsx_import_source = cli_options.to_maybe_jsx_import_source_config()?;
-  let module_graph_builder = factory.module_graph_builder().await?.clone();
+  let module_graph_creator = factory.module_graph_creator().await?.clone();
   let output = build::build(build::BuildInput {
     entry_points,
     build_graph: move |entry_points| {
       async move {
-        module_graph_builder
+        module_graph_creator
           .create_graph(GraphKind::All, entry_points)
           .await
       }
@@ -173,9 +173,24 @@ fn validate_options(
   options: &mut CliOptions,
   output_dir: &Path,
 ) -> Result<(), AnyError> {
+  let import_map_specifier = options
+    .resolve_specified_import_map_specifier()?
+    .or_else(|| {
+      let config_file = options.maybe_config_file().as_ref()?;
+      config_file
+        .to_import_map_specifier()
+        .ok()
+        .flatten()
+        .or_else(|| {
+          if config_file.is_an_import_map() {
+            Some(config_file.specifier.clone())
+          } else {
+            None
+          }
+        })
+    });
   // check the import map
-  if let Some(import_map_path) = options
-    .resolve_import_map_specifier()?
+  if let Some(import_map_path) = import_map_specifier
     .and_then(|p| specifier_to_file_path(&p).ok())
     .and_then(|p| canonicalize_path(&p).ok())
   {
