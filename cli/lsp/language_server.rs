@@ -875,9 +875,8 @@ impl Inner {
       None,
     );
     deps_file_fetcher.set_download_log_level(super::logging::lsp_log_level());
-    self.jsr_search_api = CliJsrSearchApi::new(deps_file_fetcher);
-    self.npm.search_api =
-      CliNpmSearchApi::new(self.module_registries.file_fetcher.clone());
+    self.jsr_search_api = CliJsrSearchApi::new(deps_file_fetcher.clone());
+    self.npm.search_api = CliNpmSearchApi::new(deps_file_fetcher);
     let maybe_local_cache =
       self.config.maybe_vendor_dir_path().map(|local_path| {
         Arc::new(LocalLspHttpCache::new(local_path, global_cache.clone()))
@@ -1182,7 +1181,7 @@ async fn create_npm_resolver(
       // do not install while resolving in the lsp—leave that to the cache command
       package_json_installer:
         CliNpmResolverManagedPackageJsonInstallerOption::NoInstall,
-      npm_registry_url: crate::args::npm_registry_default_url().to_owned(),
+      npm_registry_url: crate::args::npm_registry_url().to_owned(),
       npm_system_info: NpmSystemInfo::default(),
     })
   })
