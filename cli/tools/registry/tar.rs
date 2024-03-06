@@ -2,6 +2,7 @@
 
 use bytes::Bytes;
 use deno_ast::MediaType;
+use deno_ast::ModuleSpecifier;
 use deno_config::glob::FilePatterns;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
@@ -48,8 +49,21 @@ pub fn create_gzipped_tarball(
   let mut tar = TarGzArchive::new();
   let mut files = vec![];
 
-  let iter_paths = FileCollector::new(|path, _| {
-    path.file_name().map(|s| s != ".DS_Store").unwrap_or(true)
+  let iter_paths = FileCollector::new(|e| {
+    if !e.file_type.is_file() {
+      if let Some(specifier) = ModuleSpecifier::from_file_path(e.path).ok() {
+        diagnostics_collector.push(PublishDiagnostic::UnsupportedFileType {
+          specifier,
+          kind: if e.file_type.is_symlink() {
+            "symlink".to_owned()
+          } else {
+            format!("{:?}", e.file_type)
+          },
+        });
+      }
+      return false;
+    }
+    e.path.file_name().map(|s| s != ".DS_Store").unwrap_or(true)
   })
   .ignore_git_folder()
   .ignore_node_modules()

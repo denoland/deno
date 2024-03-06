@@ -400,11 +400,8 @@ fn collect_coverages(
     )
     .context("Invalid ignore pattern.")?,
   };
-  let file_paths = FileCollector::new(|file_path, _| {
-    file_path
-      .extension()
-      .map(|ext| ext == "json")
-      .unwrap_or(false)
+  let file_paths = FileCollector::new(|e| {
+    e.path.extension().map(|ext| ext == "json").unwrap_or(false)
   })
   .ignore_git_folder()
   .ignore_node_modules()

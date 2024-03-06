@@ -845,10 +845,7 @@ fn generate_document_lint_diagnostics(
   if !config.specifier_enabled(document.specifier()) {
     return Vec::new();
   }
-  if !lint_options
-    .files
-    .matches_specifier(document.specifier(), deno_config::glob::PathKind::File)
-  {
+  if !lint_options.files.matches_specifier(document.specifier()) {
     return Vec::new();
   }
   match document.maybe_parsed_source() {

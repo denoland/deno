@@ -414,7 +414,7 @@ fn includes_directories() {
 }
 
 #[test]
-fn includes_dotenv() {
+fn not_includes_gitignored_dotenv() {
   let context = publish_context_builder().build();
   let temp_dir = context.temp_dir().path();
   temp_dir.join("deno.json").write_json(&json!({
@@ -425,6 +425,7 @@ fn includes_dotenv() {
 
   temp_dir.join("main.ts").write("");
   temp_dir.join(".env").write("FOO=BAR");
+  temp_dir.join(".gitignore").write(".env");
 
   let output = context
     .new_command()

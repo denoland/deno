@@ -1785,11 +1785,7 @@ impl Inner {
       .url_map
       .normalize_url(&params.text_document.uri, LspUrlKind::File);
     // skip formatting any files ignored by the config file
-    if !self
-      .fmt_options
-      .files
-      .matches_specifier(&specifier, deno_config::glob::PathKind::File)
-    {
+    if !self.fmt_options.files.matches_specifier(&specifier) {
       return Ok(None);
     }
     let document = match self.documents.get(&specifier) {

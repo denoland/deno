@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::env::current_dir;
 use std::fmt::Write as FmtWrite;
+use std::fs::FileType;
 use std::fs::OpenOptions;
 use std::io::Error;
 use std::io::ErrorKind;
@@ -318,9 +319,16 @@ impl GitIgnoreTree {
   }
 }
 
+#[derive(Debug, Clone)]
+pub struct WalkEntry<'a> {
+  pub path: &'a Path,
+  pub file_type: &'a FileType,
+  pub patterns: &'a FilePatterns,
+}
+
 /// Collects file paths that satisfy the given predicate, by recursively walking `files`.
 /// If the walker visits a path that is listed in `ignore`, it skips descending into the directory.
-pub struct FileCollector<TFilter: Fn(&Path, &FilePatterns) -> bool> {
+pub struct FileCollector<TFilter: Fn(WalkEntry) -> bool> {
   file_filter: TFilter,
   ignore_git_folder: bool,
   ignore_node_modules: bool,
@@ -328,7 +336,7 @@ pub struct FileCollector<TFilter: Fn(&Path, &FilePatterns) -> bool> {
   use_gitignore: bool,
 }
 
-impl<TFilter: Fn(&Path, &FilePatterns) -> bool> FileCollector<TFilter> {
+impl<TFilter: Fn(WalkEntry) -> bool> FileCollector<TFilter> {
   pub fn new(file_filter: TFilter) -> Self {
     Self {
       file_filter,
@@ -442,8 +450,11 @@ impl<TFilter: Fn(&Path, &FilePatterns) -> bool> FileCollector<TFilter> {
           if should_ignore_dir {
             iterator.skip_current_dir();
           }
-        } else if (self.file_filter)(&c, &file_patterns)
-          && visited_paths.insert(c.clone())
+        } else if (self.file_filter)(WalkEntry {
+          path: &c,
+          file_type: &file_type,
+          patterns: &file_patterns,
+        }) && visited_paths.insert(c.clone())
         {
           target_files.push(c);
         }
@@ -458,7 +469,7 @@ impl<TFilter: Fn(&Path, &FilePatterns) -> bool> FileCollector<TFilter> {
 /// Note: This ignores all .git and node_modules folders.
 pub fn collect_specifiers(
   mut files: FilePatterns,
-  predicate: impl Fn(&Path, &FilePatterns) -> bool,
+  predicate: impl Fn(WalkEntry) -> bool,
 ) -> Result<Vec<ModuleSpecifier>, AnyError> {
   let mut prepared = vec![];
 
@@ -931,9 +942,9 @@ mod tests {
         ignore_dir_path.to_path_buf(),
       )]),
     };
-    let file_collector = FileCollector::new(|path, _| {
+    let file_collector = FileCollector::new(|e| {
       // exclude dotfiles
-      path
+      e.path
         .file_name()
         .and_then(|f| f.to_str())
         .map(|f| !f.starts_with('.'))
@@ -1055,9 +1066,9 @@ mod tests {
     let ignore_dir_files = ["g.d.ts", ".gitignore"];
     create_files(&ignore_dir_path, &ignore_dir_files);
 
-    let predicate = |path: &Path, _: &FilePatterns| {
+    let predicate = |e: WalkEntry| {
       // exclude dotfiles
-      path
+      e.path
         .file_name()
         .and_then(|f| f.to_str())
         .map(|f| !f.starts_with('.'))

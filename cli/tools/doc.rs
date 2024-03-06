@@ -102,7 +102,7 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
           )?),
           exclude: Default::default(),
         },
-        |_, _| true,
+        |_| true,
       )?;
       let graph = module_graph_creator
         .create_graph(GraphKind::TypesOnly, module_specifiers.clone())
