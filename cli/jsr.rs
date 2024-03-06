@@ -226,7 +226,7 @@ impl JsrFetchResolver {
     if let Some(info) = self.info_by_name.get(name) {
       return info.value().clone();
     }
-    let read_cached_package_info = || async {
+    let fetch_package_info = || async {
       let meta_url = jsr_url().join(&format!("{}/meta.json", name)).ok()?;
       let file = self
         .file_fetcher
@@ -235,7 +235,7 @@ impl JsrFetchResolver {
         .ok()?;
       serde_json::from_slice::<JsrPackageInfo>(&file.source).ok()
     };
-    let info = read_cached_package_info().await.map(Arc::new);
+    let info = fetch_package_info().await.map(Arc::new);
     self.info_by_name.insert(name.to_string(), info.clone());
     info
   }
@@ -247,7 +247,7 @@ impl JsrFetchResolver {
     if let Some(info) = self.info_by_nv.get(nv) {
       return info.value().clone();
     }
-    let read_cached_package_version_info = || async {
+    let fetch_package_version_info = || async {
       let meta_url = jsr_url()
         .join(&format!("{}/{}_meta.json", &nv.name, &nv.version))
         .ok()?;
@@ -258,7 +258,7 @@ impl JsrFetchResolver {
         .ok()?;
       partial_jsr_package_version_info_from_slice(&file.source).ok()
     };
-    let info = read_cached_package_version_info().await.map(Arc::new);
+    let info = fetch_package_version_info().await.map(Arc::new);
     self.info_by_nv.insert(nv.clone(), info.clone());
     info
   }

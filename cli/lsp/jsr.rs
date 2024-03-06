@@ -15,20 +15,18 @@ use std::sync::Arc;
 
 use super::search::PackageSearchApi;
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct CliJsrSearchApi {
   file_fetcher: FileFetcher,
-  /// We only store this here so the completion system has access to a resolver
-  /// that always uses the global cache.
-  resolver: Arc<JsrFetchResolver>,
-  search_cache: Arc<DashMap<String, Arc<Vec<String>>>>,
-  versions_cache: Arc<DashMap<String, Arc<Vec<Version>>>>,
-  exports_cache: Arc<DashMap<PackageNv, Arc<Vec<String>>>>,
+  resolver: JsrFetchResolver,
+  search_cache: DashMap<String, Arc<Vec<String>>>,
+  versions_cache: DashMap<String, Arc<Vec<Version>>>,
+  exports_cache: DashMap<PackageNv, Arc<Vec<String>>>,
 }
 
 impl CliJsrSearchApi {
   pub fn new(file_fetcher: FileFetcher) -> Self {
-    let resolver = Arc::new(JsrFetchResolver::new(file_fetcher.clone()));
+    let resolver = JsrFetchResolver::new(file_fetcher.clone());
     Self {
       file_fetcher,
       resolver,
@@ -38,7 +36,7 @@ impl CliJsrSearchApi {
     }
   }
 
-  pub fn get_resolver(&self) -> &Arc<JsrFetchResolver> {
+  pub fn get_resolver(&self) -> &JsrFetchResolver {
     &self.resolver
   }
 }
@@ -49,12 +47,7 @@ impl PackageSearchApi for CliJsrSearchApi {
     if let Some(names) = self.search_cache.get(query) {
       return Ok(names.clone());
     }
-    let mut search_url = jsr_api_url().clone();
-    search_url
-      .path_segments_mut()
-      .map_err(|_| anyhow!("Custom jsr URL cannot be a base."))?
-      .pop_if_empty()
-      .push("packages");
+    let mut search_url = jsr_api_url().join("packages")?;
     search_url.query_pairs_mut().append_pair("query", query);
     let file = self
       .file_fetcher
