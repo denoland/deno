@@ -97,7 +97,7 @@ pub fn maybe_transpile_source(
   let transpiled_source = parsed.transpile(&deno_ast::EmitOptions {
     imports_not_used_as_values: deno_ast::ImportsNotUsedAsValues::Remove,
     inline_source_map: false,
-    source_map: true,
+    source_map: cfg!(debug_assertions),
     ..Default::default()
   })?;
 
