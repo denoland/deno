@@ -944,7 +944,10 @@ pub async fn publish(
     return Ok(());
   }
 
-  if !publish_flags.allow_dirty
+  if std::env::var("DENO_TESTING_DISABLE_GIT_CHECK")
+    .ok()
+    .is_none()
+    && !publish_flags.allow_dirty
     && check_if_git_repo_dirty(cli_options.initial_cwd()).await
   {
     bail!("Aborting due to uncomitted changes",);

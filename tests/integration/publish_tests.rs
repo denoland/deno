@@ -8,6 +8,7 @@ use test_util::assert_not_contains;
 use test_util::env_vars_for_jsr_npm_tests;
 use test_util::env_vars_for_jsr_provenance_tests;
 use test_util::env_vars_for_jsr_tests;
+use test_util::env_vars_for_jsr_tests_with_git_check;
 use test_util::env_vars_for_npm_tests;
 use test_util::itest;
 use test_util::TestContextBuilder;
@@ -16,6 +17,7 @@ itest!(no_token {
   args: "publish",
   cwd: Some("publish/missing_deno_json"),
   output: "publish/no_token.out",
+  envs: env_vars_for_jsr_tests(),
   exit_code: 1,
 });
 
@@ -23,6 +25,7 @@ itest!(missing_deno_json {
   args: "publish --token 'sadfasdf'",
   output: "publish/missing_deno_json.out",
   cwd: Some("publish/missing_deno_json"),
+  envs: env_vars_for_jsr_tests(),
   exit_code: 1,
 });
 
@@ -30,6 +33,7 @@ itest!(has_slow_types {
   args: "publish --token 'sadfasdf'",
   output: "publish/has_slow_types.out",
   cwd: Some("publish/has_slow_types"),
+  envs: env_vars_for_jsr_tests(),
   exit_code: 1,
 });
 
@@ -46,6 +50,7 @@ itest!(invalid_path {
   args: "publish --token 'sadfasdf'",
   output: "publish/invalid_path.out",
   cwd: Some("publish/invalid_path"),
+  envs: env_vars_for_jsr_tests(),
   exit_code: 1,
 });
 
@@ -53,6 +58,7 @@ itest!(symlink {
   args: "publish --token 'sadfasdf' --dry-run",
   output: "publish/symlink.out",
   cwd: Some("publish/symlink"),
+  envs: env_vars_for_jsr_tests(),
   exit_code: 0,
 });
 
@@ -60,7 +66,7 @@ itest!(invalid_import {
   args: "publish --token 'sadfasdf' --dry-run",
   output: "publish/invalid_import.out",
   cwd: Some("publish/invalid_import"),
-  envs: env_vars_for_npm_tests(),
+  envs: env_vars_for_jsr_npm_tests(),
   exit_code: 1,
   http_server: true,
 });
@@ -69,7 +75,7 @@ itest!(invalid_import_esm_sh_suggestion {
   args: "publish --token 'sadfasdf' --dry-run",
   output: "publish/invalid_import_esm_sh_suggestion.out",
   cwd: Some("publish/invalid_import_esm_sh_suggestion"),
-  envs: env_vars_for_npm_tests(),
+  envs: env_vars_for_jsr_npm_tests(),
   exit_code: 1,
   http_server: true,
 });
@@ -448,9 +454,16 @@ fn publish_context_builder() -> TestContextBuilder {
     .use_temp_cwd()
 }
 
+fn publish_context_builder_with_git_checks() -> TestContextBuilder {
+  TestContextBuilder::new()
+    .use_http_server()
+    .envs(env_vars_for_jsr_tests_with_git_check())
+    .use_temp_cwd()
+}
+
 #[test]
 fn allow_dirty() {
-  let context = publish_context_builder().build();
+  let context = publish_context_builder_with_git_checks().build();
   let temp_dir = context.temp_dir().path();
   temp_dir.join("deno.json").write_json(&json!({
     "name": "@foo/bar",
@@ -481,6 +494,31 @@ fn allow_dirty() {
     .new_command()
     .arg("publish")
     .arg("--allow-dirty")
+    .arg("--token")
+    .arg("sadfasdf")
+    .run();
+  output.assert_exit_code(0);
+  let output = output.combined_output();
+  assert_contains!(output, "Successfully published");
+}
+
+#[test]
+fn allow_dirty_not_in_repo() {
+  let context = publish_context_builder_with_git_checks().build();
+  let temp_dir = context.temp_dir().path();
+  temp_dir.join("deno.json").write_json(&json!({
+    "name": "@foo/bar",
+    "version": "1.0.0",
+    "exports": "./main.ts",
+  }));
+
+  temp_dir.join("main.ts").write("");
+  // At this point there are untracked files, but we're not in Git repo,
+  // so we should be able to publish successfully.
+
+  let output = context
+    .new_command()
+    .arg("publish")
     .arg("--token")
     .arg("sadfasdf")
     .run();
