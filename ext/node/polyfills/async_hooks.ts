@@ -308,6 +308,14 @@ export class AsyncLocalStorage {
     const currentFrame = AsyncContextFrame.current();
     return currentFrame.get(this.#key);
   }
+
+  enterWith(store: unknown) {
+    const frame = AsyncContextFrame.create(
+      null,
+      new StorageEntry(this.#key, store),
+    );
+    Scope.enter(frame);
+  }
 }
 
 export function executionAsyncId() {
