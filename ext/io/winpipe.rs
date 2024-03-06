@@ -8,12 +8,12 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 use winapi::shared::minwindef::DWORD;
 use winapi::um::errhandlingapi::GetLastError;
-use winapi::um::fileapi::CreateFileA;
+use winapi::um::fileapi::CreateFileW;
 use winapi::um::fileapi::OPEN_EXISTING;
 use winapi::um::handleapi::CloseHandle;
 use winapi::um::handleapi::INVALID_HANDLE_VALUE;
 use winapi::um::minwinbase::SECURITY_ATTRIBUTES;
-use winapi::um::winbase::CreateNamedPipeA;
+use winapi::um::winbase::CreateNamedPipeW;
 use winapi::um::winbase::FILE_FLAG_FIRST_PIPE_INSTANCE;
 use winapi::um::winbase::FILE_FLAG_OVERLAPPED;
 use winapi::um::winbase::PIPE_ACCESS_DUPLEX;
@@ -43,24 +43,21 @@ pub fn create_named_pipe() -> io::Result<(RawHandle, RawHandle)> {
 fn create_named_pipe_inner() -> io::Result<(RawHandle, RawHandle)> {
   static NEXT_ID: AtomicU32 = AtomicU32::new(0);
   // Create an extremely-likely-unique pipe name from randomness, identity and a serial counter.
-  let pipe_name = format!(
-    r#"\\.\pipe\deno_pipe_{:x}.{:x}.{:x}\0"#,
+  let pipe_name_utf8 = format!(
+    r#"\\.\pipe\deno_pipe_{:x}.{:x}.{:x}"#,
     thread_rng().next_u64(),
     std::process::id(),
     NEXT_ID.fetch_add(1, Ordering::SeqCst),
   );
 
-  // Create security attributes to make the pipe handles non-inheritable
-  let mut security_attributes = SECURITY_ATTRIBUTES {
-    nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as DWORD,
-    lpSecurityDescriptor: std::ptr::null_mut(),
-    bInheritHandle: 0,
-  };
+  let mut pipe_name =
+    Vec::from_iter(std::ffi::OsStr::new(&pipe_name_utf8).encode_wide());
+  pipe_name.push(0);
 
   // SAFETY: Create the pipe server with non-inheritable handle
   let server_handle = unsafe {
-    CreateNamedPipeA(
-      pipe_name.as_ptr() as *const i8,
+    CreateNamedPipeW(
+      pipe_name.as_ptr(),
       PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED | FILE_FLAG_FIRST_PIPE_INSTANCE,
       // Read and write bytes, not messages
       PIPE_TYPE_BYTE | PIPE_READMODE_BYTE,
@@ -73,19 +70,27 @@ fn create_named_pipe_inner() -> io::Result<(RawHandle, RawHandle)> {
       // Each instance of a named pipe must specify the same value. A value of zero will result in a default time-out of
       // 50 milliseconds."
       0,
-      &mut security_attributes,
+      // Uninheritable handle by default.
+      std::ptr::null_mut(),
     )
   };
 
   if server_handle == INVALID_HANDLE_VALUE {
     // This should not happen, so we would like to get some better diagnostics here.
     // SAFETY: Printing last error for diagnostics
-    unsafe {
-      eprintln!(
-        "*** Unexpected server pipe failure '{pipe_name:?}': {:x}",
-        GetLastError()
-      );
+    let error = unsafe { GetLastError() };
+    eprintln!(
+      "*** Unexpected server pipe failure '{pipe_name_utf8:?}': {:x}",
+      error
+    );
+    // There is a very rare case where the pipe cannot be opened. Spin for 1ms before we
+    // return.
+    if error == winapi::shared::winerror::ERROR_FILE_NOT_FOUND
+      || error == winapi::shared::winerror::ERROR_PATH_NOT_FOUND
+    {
+      std::thread::sleep(Duration::from_millis(1));
     }
+
     return Err(io::Error::last_os_error());
   }
 
@@ -93,11 +98,12 @@ fn create_named_pipe_inner() -> io::Result<(RawHandle, RawHandle)> {
   for i in 0..10 {
     // SAFETY: Create the pipe client with non-inheritable handle
     let client_handle = unsafe {
-      CreateFileA(
-        pipe_name.as_ptr() as *const i8,
+      CreateFileW(
+        pipe_name.as_ptr(),
         GENERIC_READ | GENERIC_WRITE,
         0,
-        &mut security_attributes,
+        // Uninheritable handle by default.
+        std::ptr::null_mut(),
         OPEN_EXISTING,
         FILE_FLAG_OVERLAPPED,
         std::ptr::null_mut(),
@@ -114,7 +120,7 @@ fn create_named_pipe_inner() -> io::Result<(RawHandle, RawHandle)> {
       {
         // Exponential backoff, but don't sleep longer than 10ms
         eprintln!(
-          "*** Unexpected client pipe not found failure '{pipe_name:?}': {:x}",
+          "*** Unexpected client pipe not found failure '{pipe_name_utf8:?}': {:x}",
           error
         );
         std::thread::sleep(Duration::from_millis(10.min(2_u64.pow(i) + 1)));
@@ -123,7 +129,7 @@ fn create_named_pipe_inner() -> io::Result<(RawHandle, RawHandle)> {
 
       // This should not happen, so we would like to get some better diagnostics here.
       eprintln!(
-        "*** Unexpected client pipe failure '{pipe_name:?}': {:x}",
+        "*** Unexpected client pipe failure '{pipe_name_utf8:?}': {:x}",
         error
       );
       let err = io::Error::last_os_error();
