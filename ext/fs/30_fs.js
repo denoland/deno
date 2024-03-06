@@ -433,14 +433,6 @@ function coerceLen(len) {
   return len;
 }
 
-function ftruncateSync(rid, len) {
-  op_fs_ftruncate_sync(rid, coerceLen(len));
-}
-
-async function ftruncate(rid, len) {
-  await op_fs_ftruncate_async(rid, coerceLen(len));
-}
-
 function truncateSync(path, len) {
   op_fs_truncate_sync(path, coerceLen(len));
 }
@@ -694,12 +686,12 @@ class FsFile {
     return writeSync(this.#rid, p);
   }
 
-  truncate(len) {
-    return ftruncate(this.#rid, len);
+  async truncate(len) {
+    await op_fs_ftruncate_async(this.#rid, coerceLen(len));
   }
 
   truncateSync(len) {
-    return ftruncateSync(this.#rid, len);
+    op_fs_ftruncate_sync(this.#rid, coerceLen(len));
   }
 
   read(p) {
@@ -994,8 +986,6 @@ export {
   fstatSync,
   fsync,
   fsyncSync,
-  ftruncate,
-  ftruncateSync,
   funlock,
   funlockSync,
   futime,
