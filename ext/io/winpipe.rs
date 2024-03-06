@@ -152,6 +152,40 @@ mod tests {
   use std::sync::Barrier;
 
   #[test]
+  fn specific_failing_pipe_name() {
+    let pipe_name = "\\\\.\\pipe\\deno_pipe_e30f45c9df61b1e4.1198.222\\0";
+
+    // Create security attributes to make the pipe handles non-inheritable
+    let mut security_attributes = SECURITY_ATTRIBUTES {
+      nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as DWORD,
+      lpSecurityDescriptor: std::ptr::null_mut(),
+      bInheritHandle: 0,
+    };
+
+    // SAFETY: Create the pipe server with non-inheritable handle
+    let server_handle = unsafe {
+      CreateNamedPipeA(
+        pipe_name.as_ptr() as *const i8,
+        PIPE_ACCESS_DUPLEX
+          | FILE_FLAG_OVERLAPPED
+          | FILE_FLAG_FIRST_PIPE_INSTANCE,
+        // Read and write bytes, not messages
+        PIPE_TYPE_BYTE | PIPE_READMODE_BYTE,
+        // The maximum number of instances that can be created for this pipe.
+        1,
+        // 4kB buffer sizes
+        4096,
+        4096,
+        // "The default time-out value, in milliseconds, if the WaitNamedPipe function specifies NMPWAIT_USE_DEFAULT_WAIT.
+        // Each instance of a named pipe must specify the same value. A value of zero will result in a default time-out of
+        // 50 milliseconds."
+        0,
+        &mut security_attributes,
+      )
+    };
+  }
+
+  #[test]
   fn make_named_pipe() {
     let (server, client) = create_named_pipe().unwrap();
     // SAFETY: For testing
