@@ -3,7 +3,6 @@
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
-use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures::future;
 use deno_core::futures::future::LocalBoxFuture;
@@ -22,10 +21,12 @@ use deno_runtime::deno_fs;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::is_builtin_node_module;
 use deno_runtime::deno_node::parse_npm_pkg_name;
+use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolution;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_node::NpmResolver as DenoNodeNpmResolver;
+use deno_runtime::deno_node::PackageJson;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
@@ -63,20 +64,26 @@ pub struct ModuleCodeStringSource {
   pub media_type: MediaType,
 }
 
+#[derive(Debug)]
 pub struct CliNodeResolver {
-  cjs_resolutions: Arc<CjsResolutionStore>,
+  // not used in the LSP
+  cjs_resolutions: Option<Arc<CjsResolutionStore>>,
+  fs: Arc<dyn deno_fs::FileSystem>,
   node_resolver: Arc<NodeResolver>,
+  // todo(dsherret): remove this pub(crate)
   pub(crate) npm_resolver: Arc<dyn CliNpmResolver>,
 }
 
 impl CliNodeResolver {
   pub fn new(
-    cjs_resolutions: Arc<CjsResolutionStore>,
+    cjs_resolutions: Option<Arc<CjsResolutionStore>>,
+    fs: Arc<dyn deno_fs::FileSystem>,
     node_resolver: Arc<NodeResolver>,
     npm_resolver: Arc<dyn CliNpmResolver>,
   ) -> Self {
     Self {
       cjs_resolutions,
+      fs,
       node_resolver,
       npm_resolver,
     }
@@ -86,29 +93,44 @@ impl CliNodeResolver {
     self.npm_resolver.in_npm_package(referrer)
   }
 
+  pub fn get_closest_package_json(
+    &self,
+    referrer: &ModuleSpecifier,
+    permissions: &dyn NodePermissions,
+  ) -> Result<Option<PackageJson>, AnyError> {
+    self
+      .node_resolver
+      .get_closest_package_json(referrer, permissions)
+  }
+
   pub fn resolve_if_in_npm_package(
     &self,
     specifier: &str,
     referrer: &ModuleSpecifier,
+    mode: NodeResolutionMode,
     permissions: &PermissionsContainer,
-  ) -> Option<Result<ModuleSpecifier, AnyError>> {
+  ) -> Option<Result<Option<NodeResolution>, AnyError>> {
     if self.in_npm_package(referrer) {
       // we're in an npm package, so use node resolution
-      Some(
-        self
-          .handle_node_resolve_result(self.node_resolver.resolve(
-            specifier,
-            referrer,
-            NodeResolutionMode::Execution,
-            permissions,
-          ))
-          .with_context(|| {
-            format!("Could not resolve '{specifier}' from '{referrer}'.")
-          }),
-      )
+      Some(self.resolve(specifier, referrer, mode, permissions))
     } else {
       None
     }
+  }
+
+  pub fn resolve(
+    &self,
+    specifier: &str,
+    referrer: &ModuleSpecifier,
+    mode: NodeResolutionMode,
+    permissions: &PermissionsContainer,
+  ) -> Result<Option<NodeResolution>, AnyError> {
+    self.handle_node_resolve_result(self.node_resolver.resolve(
+      specifier,
+      referrer,
+      mode,
+      permissions,
+    ))
   }
 
   pub fn resolve_req_reference(
@@ -116,51 +138,105 @@ impl CliNodeResolver {
     req_ref: &NpmPackageReqReference,
     permissions: &PermissionsContainer,
     referrer: &ModuleSpecifier,
-  ) -> Result<ModuleSpecifier, AnyError> {
+    mode: NodeResolutionMode,
+  ) -> Result<NodeResolution, AnyError> {
     let package_folder = self
       .npm_resolver
       .resolve_pkg_folder_from_deno_module_req(req_ref.req(), referrer)?;
-    self
-      .resolve_package_sub_path(
-        &package_folder,
-        req_ref.sub_path(),
-        referrer,
-        permissions,
-      )
-      .with_context(|| format!("Could not resolve '{}'.", req_ref))
+    let maybe_resolution = self.resolve_package_sub_path_from_deno_module(
+      &package_folder,
+      req_ref.sub_path(),
+      referrer,
+      mode,
+      permissions,
+    )?;
+    match maybe_resolution {
+      Some(resolution) => Ok(resolution),
+      None => {
+        if self.npm_resolver.as_byonm().is_some() {
+          let package_json_path = package_folder.join("package.json");
+          if !self.fs.exists_sync(&package_json_path) {
+            return Err(anyhow!(
+              "Could not find '{}'. Deno expects the node_modules/ directory to be up to date. Did you forget to run `npm install`?",
+              package_json_path.display()
+            ));
+          }
+        }
+        Err(anyhow!(
+          "Failed resolving package subpath for '{}' in '{}'.",
+          req_ref,
+          package_folder.display()
+        ))
+      }
+    }
   }
 
-  pub fn resolve_package_sub_path(
+  pub fn resolve_package_sub_path_from_deno_module(
     &self,
     package_folder: &Path,
     sub_path: Option<&str>,
     referrer: &ModuleSpecifier,
+    mode: NodeResolutionMode,
     permissions: &PermissionsContainer,
-  ) -> Result<ModuleSpecifier, AnyError> {
+  ) -> Result<Option<NodeResolution>, AnyError> {
     self.handle_node_resolve_result(
       self.node_resolver.resolve_package_subpath_from_deno_module(
         package_folder,
         sub_path,
         referrer,
-        NodeResolutionMode::Execution,
+        mode,
         permissions,
       ),
     )
   }
 
+  pub fn handle_if_in_node_modules(
+    &self,
+    specifier: ModuleSpecifier,
+  ) -> Result<ModuleSpecifier, AnyError> {
+    // skip canonicalizing if we definitely know it's unnecessary
+    if specifier.scheme() == "file"
+      && specifier.path().contains("/node_modules/")
+    {
+      // Specifiers in the node_modules directory are canonicalized
+      // so canoncalize then check if it's in the node_modules directory.
+      // If so, check if we need to store this specifier as being a CJS
+      // resolution.
+      let specifier =
+        crate::node::resolve_specifier_into_node_modules(&specifier);
+      if self.in_npm_package(&specifier) {
+        if let Some(cjs_resolutions) = &self.cjs_resolutions {
+          let resolution =
+            self.node_resolver.url_to_node_resolution(specifier)?;
+          if let NodeResolution::CommonJs(specifier) = &resolution {
+            cjs_resolutions.insert(specifier.clone());
+          }
+          return Ok(resolution.into_url());
+        } else {
+          return Ok(specifier);
+        }
+      }
+    }
+
+    Ok(specifier)
+  }
+
   fn handle_node_resolve_result(
     &self,
     result: Result<Option<NodeResolution>, AnyError>,
-  ) -> Result<ModuleSpecifier, AnyError> {
-    let response = match result? {
-      Some(response) => response,
-      None => return Err(generic_error("not found")),
-    };
-    if let NodeResolution::CommonJs(specifier) = &response {
-      // remember that this was a common js resolution
-      self.cjs_resolutions.insert(specifier.clone());
+  ) -> Result<Option<NodeResolution>, AnyError> {
+    match result? {
+      Some(response) => {
+        if let NodeResolution::CommonJs(specifier) = &response {
+          // remember that this was a common js resolution
+          if let Some(cjs_resolutions) = &self.cjs_resolutions {
+            cjs_resolutions.insert(specifier.clone());
+          }
+        }
+        Ok(Some(response))
+      }
+      None => Ok(None),
     }
-    Ok(response.into_url())
   }
 }
 
@@ -359,24 +435,20 @@ impl MappedSpecifierResolver {
 /// import map, JSX settings.
 #[derive(Debug)]
 pub struct CliGraphResolver {
-  fs: Arc<dyn FileSystem>,
   sloppy_imports_resolver: Option<SloppyImportsResolver>,
   mapped_specifier_resolver: MappedSpecifierResolver,
   maybe_default_jsx_import_source: Option<String>,
   maybe_jsx_import_source_module: Option<String>,
   maybe_vendor_specifier: Option<ModuleSpecifier>,
-  cjs_resolutions: Option<Arc<CjsResolutionStore>>,
-  node_resolver: Option<Arc<NodeResolver>>,
+  node_resolver: Option<Arc<CliNodeResolver>>,
   npm_resolver: Option<Arc<dyn CliNpmResolver>>,
   found_package_json_dep_flag: Arc<AtomicFlag>,
   bare_node_builtins_enabled: bool,
 }
 
 pub struct CliGraphResolverOptions<'a> {
-  pub fs: Arc<dyn FileSystem>,
-  pub cjs_resolutions: Option<Arc<CjsResolutionStore>>,
   pub sloppy_imports_resolver: Option<SloppyImportsResolver>,
-  pub node_resolver: Option<Arc<NodeResolver>>,
+  pub node_resolver: Option<Arc<CliNodeResolver>>,
   pub npm_resolver: Option<Arc<dyn CliNpmResolver>>,
   pub package_json_deps_provider: Arc<PackageJsonDepsProvider>,
   pub maybe_jsx_import_source_config: Option<JsxImportSourceConfig>,
@@ -393,8 +465,6 @@ impl CliGraphResolver {
       .map(|n| n.as_byonm().is_some())
       .unwrap_or(false);
     Self {
-      fs: options.fs,
-      cjs_resolutions: options.cjs_resolutions,
       sloppy_imports_resolver: options.sloppy_imports_resolver,
       mapped_specifier_resolver: MappedSpecifierResolver::new(
         options.maybe_import_map,
@@ -496,7 +566,7 @@ impl Resolver for CliGraphResolver {
     }
 
     let referrer = &referrer_range.specifier;
-    let result = self
+    let result: Result<_, ResolveError> = self
       .mapped_specifier_resolver
       .resolve(specifier, referrer)
       .map_err(|err| err.into())
@@ -549,46 +619,16 @@ impl Resolver for CliGraphResolver {
           if let Ok(npm_req_ref) =
             NpmPackageReqReference::from_specifier(specifier)
           {
-            let package_folder = resolver
-              .resolve_pkg_folder_from_deno_module_req(
-                npm_req_ref.req(),
-                referrer,
-              )?;
             let node_resolver = self.node_resolver.as_ref().unwrap();
-            let package_json_path = package_folder.join("package.json");
-            if !self.fs.exists_sync(&package_json_path) {
-              return Err(ResolveError::Other(anyhow!(
-                "Could not find '{}'. Deno expects the node_modules/ directory to be up to date. Did you forget to run `npm install`?",
-                package_json_path.display()
-              )));
-            }
-            let maybe_resolution = node_resolver
-              .resolve_package_subpath_from_deno_module(
-                &package_folder,
-                npm_req_ref.sub_path(),
+            return node_resolver
+              .resolve_req_reference(
+                &npm_req_ref,
+                &PermissionsContainer::allow_all(),
                 referrer,
                 to_node_mode(mode),
-                &PermissionsContainer::allow_all(),
-              )?;
-            match maybe_resolution {
-              Some(resolution) => {
-                if let Some(cjs_resolutions) = &self.cjs_resolutions {
-                  if let NodeResolution::CommonJs(specifier) = &resolution {
-                    // remember that this was a common js resolution
-                    cjs_resolutions.insert(specifier.clone());
-                  }
-                }
-
-                return Ok(resolution.into_url());
-              }
-              None => {
-                return Err(ResolveError::Other(anyhow!(
-                  "Failed resolving package subpath for '{}' in '{}'.",
-                  npm_req_ref,
-                  package_folder.display()
-                )));
-              }
-            }
+              )
+              .map(|res| res.into_url())
+              .map_err(|err| err.into());
           }
         }
         Err(_) => {
@@ -601,14 +641,8 @@ impl Resolver for CliGraphResolver {
                 &PermissionsContainer::allow_all(),
               );
               match node_result {
-                Ok(Some(resolution)) => {
-                  if let Some(cjs_resolutions) = &self.cjs_resolutions {
-                    if let NodeResolution::CommonJs(specifier) = &resolution {
-                      // remember that this was a common js resolution
-                      cjs_resolutions.insert(specifier.clone());
-                    }
-                  }
-                  return Ok(resolution.into_url());
+                Ok(Some(res)) => {
+                  return Ok(res.into_url());
                 }
                 Ok(None) => {
                   self
@@ -639,7 +673,13 @@ impl Resolver for CliGraphResolver {
       }
     }
 
-    result
+    let specifier = result?;
+    match &self.node_resolver {
+      Some(node_resolver) => node_resolver
+        .handle_if_in_node_modules(specifier)
+        .map_err(|e| e.into()),
+      None => Ok(specifier),
+    }
   }
 }
 
