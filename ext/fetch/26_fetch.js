@@ -13,13 +13,10 @@
 import { core, primordials } from "ext:core/mod.js";
 import {
   op_fetch,
+  op_fetch_send,
   op_wasm_streaming_feed,
   op_wasm_streaming_set_url,
 } from "ext:core/ops";
-// TODO(bartlomieju): this ops is also used in `ext/node/polyfills/http.ts`.
-const {
-  op_fetch_send,
-} = core.ensureFastOps(true);
 const {
   ArrayPrototypePush,
   ArrayPrototypeSplice,

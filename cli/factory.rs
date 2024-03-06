@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::deno_json::deno_json_deps;
 use crate::args::CliOptions;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
@@ -22,6 +23,7 @@ use crate::file_fetcher::FileFetcher;
 use crate::graph_util::FileWatcherReporter;
 use crate::graph_util::ModuleGraphBuilder;
 use crate::graph_util::ModuleGraphContainer;
+use crate::graph_util::ModuleGraphCreator;
 use crate::http_util::HttpClient;
 use crate::module_loader::CliModuleLoaderFactory;
 use crate::module_loader::ModuleLoadPreparer;
@@ -42,16 +44,18 @@ use crate::resolver::NpmModuleLoader;
 use crate::resolver::SloppyImportsResolver;
 use crate::standalone::DenoCompileBinaryWriter;
 use crate::tools::check::TypeChecker;
+use crate::tools::coverage::CoverageCollector;
+use crate::tools::run::hmr::HmrRunner;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
-use crate::util::import_map::deno_json_deps;
-use crate::util::import_map::import_map_deps;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 use crate::worker::CliMainWorkerFactory;
 use crate::worker::CliMainWorkerOptions;
+use std::path::PathBuf;
 
 use deno_core::error::AnyError;
+use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
 use deno_core::FeatureChecker;
 
@@ -63,7 +67,6 @@ use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::inspector_server::InspectorServer;
-use deno_semver::package::PackageNv;
 use import_map::ImportMap;
 use log::warn;
 use std::future::Future;
@@ -114,6 +117,7 @@ impl<T> Default for Deferred<T> {
 }
 
 impl<T> Deferred<T> {
+  #[inline(always)]
   pub fn get_or_try_init(
     &self,
     create: impl FnOnce() -> Result<T, AnyError>,
@@ -121,12 +125,16 @@ impl<T> Deferred<T> {
     self.0.get_or_try_init(create)
   }
 
+  #[inline(always)]
   pub fn get_or_init(&self, create: impl FnOnce() -> T) -> &T {
     self.0.get_or_init(create)
   }
 
   pub async fn get_or_try_init_async(
     &self,
+    // some futures passed here are boxed because it was discovered
+    // that they were called a lot, causing other futures to get
+    // really big causing stack overflows on Windows
     create: impl Future<Output = Result<T, AnyError>>,
   ) -> Result<&T, AnyError> {
     if self.0.get().is_none() {
@@ -162,6 +170,7 @@ struct CliFactoryServices {
   resolver: Deferred<Arc<CliGraphResolver>>,
   maybe_file_watcher_reporter: Deferred<Option<FileWatcherReporter>>,
   module_graph_builder: Deferred<Arc<ModuleGraphBuilder>>,
+  module_graph_creator: Deferred<Arc<ModuleGraphCreator>>,
   module_load_preparer: Deferred<Arc<ModuleLoadPreparer>>,
   node_code_translator: Deferred<Arc<CliNodeCodeTranslator>>,
   node_resolver: Deferred<Arc<NodeResolver>>,
@@ -210,14 +219,16 @@ impl CliFactory {
       let caches = Arc::new(Caches::new(self.deno_dir_provider().clone()));
       // Warm up the caches we know we'll likely need based on the CLI mode
       match self.options.sub_command() {
-        DenoSubcommand::Run(_) => {
+        DenoSubcommand::Run(_)
+        | DenoSubcommand::Bench(_)
+        | DenoSubcommand::Test(_)
+        | DenoSubcommand::Check(_) => {
           _ = caches.dep_analysis_db();
           _ = caches.node_analysis_db();
-        }
-        DenoSubcommand::Check(_) => {
-          _ = caches.dep_analysis_db();
-          _ = caches.node_analysis_db();
-          _ = caches.type_checking_cache_db();
+          if self.options.type_check_mode().is_true() {
+            _ = caches.fast_check_db();
+            _ = caches.type_checking_cache_db();
+          }
         }
         _ => {}
       }
@@ -293,23 +304,46 @@ impl CliFactory {
   }
 
   pub fn maybe_lockfile(&self) -> &Option<Arc<Mutex<Lockfile>>> {
+    fn check_no_npm(lockfile: &Mutex<Lockfile>, options: &CliOptions) -> bool {
+      if options.no_npm() {
+        return true;
+      }
+      // Deno doesn't yet understand npm workspaces and the package.json resolution
+      // may be in a different folder than the deno.json/lockfile. So for now, ignore
+      // any package.jsons that are in different folders
+      options
+        .maybe_package_json()
+        .as_ref()
+        .map(|package_json| {
+          package_json.path.parent() != lockfile.lock().filename.parent()
+        })
+        .unwrap_or(false)
+    }
+
     self.services.lockfile.get_or_init(|| {
       let maybe_lockfile = self.options.maybe_lockfile();
 
       // initialize the lockfile with the workspace's configuration
       if let Some(lockfile) = &maybe_lockfile {
-        let package_json_deps = self
-          .package_json_deps_provider()
-          .reqs()
-          .map(|reqs| reqs.into_iter().map(|s| format!("npm:{}", s)).collect())
+        let no_npm = check_no_npm(lockfile, &self.options);
+        let package_json_deps = (!no_npm)
+          .then(|| {
+            self
+              .package_json_deps_provider()
+              .reqs()
+              .map(|reqs| {
+                reqs.into_iter().map(|s| format!("npm:{}", s)).collect()
+              })
+              .unwrap_or_default()
+          })
           .unwrap_or_default();
         let mut lockfile = lockfile.lock();
         let config = match self.options.maybe_workspace_config() {
           Some(workspace_config) => deno_lockfile::WorkspaceConfig {
             root: WorkspaceMemberConfig {
               package_json_deps,
-              dependencies: import_map_deps(
-                &workspace_config.base_import_map_value,
+              dependencies: deno_json_deps(
+                self.options.maybe_config_file().as_ref().unwrap(),
               )
               .into_iter()
               .map(|req| req.to_string())
@@ -352,19 +386,9 @@ impl CliFactory {
         };
         lockfile.set_workspace_config(
           deno_lockfile::SetWorkspaceConfigOptions {
-            no_npm: self.options.no_npm(),
+            no_npm,
             no_config: self.options.no_config(),
             config,
-            nv_to_jsr_url: |nv| {
-              let nv = PackageNv::from_str(nv).ok()?;
-              Some(
-                deno_graph::source::recommended_registry_package_url(
-                  crate::args::deno_registry_url(),
-                  &nv,
-                )
-                .to_string(),
-              )
-            },
           },
         );
       }
@@ -422,7 +446,7 @@ impl CliFactory {
             npm_registry_url: crate::args::npm_registry_default_url().to_owned(),
           })
         }).await
-      })
+      }.boxed_local())
       .await
   }
 
@@ -456,32 +480,35 @@ impl CliFactory {
     self
       .services
       .resolver
-      .get_or_try_init_async(async {
-        Ok(Arc::new(CliGraphResolver::new(CliGraphResolverOptions {
-          fs: self.fs().clone(),
-          cjs_resolutions: Some(self.cjs_resolutions().clone()),
-          sloppy_imports_resolver: if self.options.unstable_sloppy_imports() {
-            Some(SloppyImportsResolver::new(self.fs().clone()))
-          } else {
-            None
-          },
-          node_resolver: Some(self.node_resolver().await?.clone()),
-          npm_resolver: if self.options.no_npm() {
-            None
-          } else {
-            Some(self.npm_resolver().await?.clone())
-          },
-          package_json_deps_provider: self.package_json_deps_provider().clone(),
-          maybe_jsx_import_source_config: self
-            .options
-            .to_maybe_jsx_import_source_config()?,
-          maybe_import_map: self.maybe_import_map().await?.clone(),
-          maybe_vendor_dir: self.options.vendor_dir_path(),
-          bare_node_builtins_enabled: self
-            .options
-            .unstable_bare_node_builtins(),
-        })))
-      })
+      .get_or_try_init_async(
+        async {
+          Ok(Arc::new(CliGraphResolver::new(CliGraphResolverOptions {
+            sloppy_imports_resolver: if self.options.unstable_sloppy_imports() {
+              Some(SloppyImportsResolver::new(self.fs().clone()))
+            } else {
+              None
+            },
+            node_resolver: Some(self.cli_node_resolver().await?.clone()),
+            npm_resolver: if self.options.no_npm() {
+              None
+            } else {
+              Some(self.npm_resolver().await?.clone())
+            },
+            package_json_deps_provider: self
+              .package_json_deps_provider()
+              .clone(),
+            maybe_jsx_import_source_config: self
+              .options
+              .to_maybe_jsx_import_source_config()?,
+            maybe_import_map: self.maybe_import_map().await?.clone(),
+            maybe_vendor_dir: self.options.vendor_dir_path(),
+            bare_node_builtins_enabled: self
+              .options
+              .unstable_bare_node_builtins(),
+          })))
+        }
+        .boxed_local(),
+      )
       .await
   }
 
@@ -539,12 +566,15 @@ impl CliFactory {
     self
       .services
       .node_resolver
-      .get_or_try_init_async(async {
-        Ok(Arc::new(NodeResolver::new(
-          self.fs().clone(),
-          self.npm_resolver().await?.clone().into_npm_resolver(),
-        )))
-      })
+      .get_or_try_init_async(
+        async {
+          Ok(Arc::new(NodeResolver::new(
+            self.fs().clone(),
+            self.npm_resolver().await?.clone().into_npm_resolver(),
+          )))
+        }
+        .boxed_local(),
+      )
       .await
   }
 
@@ -579,6 +609,7 @@ impl CliFactory {
         Ok(Arc::new(TypeChecker::new(
           self.caches()?.clone(),
           self.options.clone(),
+          self.module_graph_builder().await?.clone(),
           self.node_resolver().await?.clone(),
           self.npm_resolver().await?.clone(),
         )))
@@ -595,6 +626,7 @@ impl CliFactory {
       .get_or_try_init_async(async {
         Ok(Arc::new(ModuleGraphBuilder::new(
           self.options.clone(),
+          self.caches()?.clone(),
           self.fs().clone(),
           self.resolver().await?.clone(),
           self.npm_resolver().await?.clone(),
@@ -605,6 +637,24 @@ impl CliFactory {
           self.emit_cache()?.clone(),
           self.file_fetcher()?.clone(),
           self.global_http_cache()?.clone(),
+        )))
+      })
+      .await
+  }
+
+  pub async fn module_graph_creator(
+    &self,
+  ) -> Result<&Arc<ModuleGraphCreator>, AnyError> {
+    self
+      .services
+      .module_graph_creator
+      .get_or_try_init_async(async {
+        Ok(Arc::new(ModuleGraphCreator::new(
+          self.options.clone(),
+          self.fs().clone(),
+          self.npm_resolver().await?.clone(),
+          self.module_graph_builder().await?.clone(),
+          self.maybe_lockfile().clone(),
           self.type_checker().await?.clone(),
         )))
       })
@@ -642,12 +692,8 @@ impl CliFactory {
           self.fs().clone(),
           self.graph_container().clone(),
           self.maybe_lockfile().clone(),
-          self.maybe_file_watcher_reporter().clone(),
           self.module_graph_builder().await?.clone(),
-          self.module_info_cache()?.clone(),
-          self.parsed_source_cache().clone(),
           self.text_only_progress_bar().clone(),
-          self.resolver().await?.clone(),
           self.type_checker().await?.clone(),
         )))
       })
@@ -666,7 +712,8 @@ impl CliFactory {
       .cli_node_resolver
       .get_or_try_init_async(async {
         Ok(Arc::new(CliNodeResolver::new(
-          self.cjs_resolutions().clone(),
+          Some(self.cjs_resolutions().clone()),
+          self.fs().clone(),
           self.node_resolver().await?.clone(),
           self.npm_resolver().await?.clone(),
         )))
@@ -743,14 +790,16 @@ impl CliFactory {
       )),
       self.root_cert_store_provider().clone(),
       self.fs().clone(),
-      Some(self.emitter()?.clone()),
       maybe_file_watcher_communicator,
       self.maybe_inspector_server().clone(),
       self.maybe_lockfile().clone(),
       self.feature_checker().clone(),
       self.create_cli_main_worker_options()?,
       self.options.node_ipc_fd(),
-      self.options.disable_deprecated_api_warning,
+      self.options.enable_future_features(),
+      // TODO(bartlomieju): temporarily disabled
+      // self.options.disable_deprecated_api_warning,
+      true,
       self.options.verbose_deprecated_api_warning,
     ))
   }
@@ -758,6 +807,32 @@ impl CliFactory {
   fn create_cli_main_worker_options(
     &self,
   ) -> Result<CliMainWorkerOptions, AnyError> {
+    let create_hmr_runner = if self.options.has_hmr() {
+      let watcher_communicator = self.watcher_communicator.clone().unwrap();
+      let emitter = self.emitter()?.clone();
+      let fn_: crate::worker::CreateHmrRunnerCb = Box::new(move |session| {
+        Box::new(HmrRunner::new(
+          emitter.clone(),
+          session,
+          watcher_communicator.clone(),
+        ))
+      });
+      Some(fn_)
+    } else {
+      None
+    };
+    let create_coverage_collector =
+      if let Some(coverage_dir) = self.options.coverage_dir() {
+        let coverage_dir = PathBuf::from(coverage_dir);
+        let fn_: crate::worker::CreateCoverageCollectorCb =
+          Box::new(move |session| {
+            Box::new(CoverageCollector::new(coverage_dir.clone(), session))
+          });
+        Some(fn_)
+      } else {
+        None
+      };
+
     Ok(CliMainWorkerOptions {
       argv: self.options.argv().clone(),
       // This optimization is only available for "run" subcommand
@@ -778,9 +853,10 @@ impl CliFactory {
       location: self.options.location_flag().clone(),
       // if the user ran a binary command, we'll need to set process.argv[0]
       // to be the name of the binary command instead of deno
-      maybe_binary_npm_command_name: self
+      argv0: self
         .options
-        .take_binary_npm_command_name(),
+        .take_binary_npm_command_name()
+        .or(std::env::args().next()),
       origin_data_folder_path: Some(self.deno_dir()?.origin_data_folder_path()),
       seed: self.options.seed(),
       unsafely_ignore_certificate_errors: self
@@ -789,6 +865,8 @@ impl CliFactory {
         .clone(),
       unstable: self.options.legacy_unstable_flag(),
       maybe_root_package_json_deps: self.options.maybe_package_json_deps(),
+      create_hmr_runner,
+      create_coverage_collector,
     })
   }
 }

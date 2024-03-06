@@ -8,7 +8,7 @@ import { core } from "ext:core/mod.js";
 const {
   encode,
 } = core;
-const {
+import {
   op_node_cipheriv_encrypt,
   op_node_cipheriv_final,
   op_node_cipheriv_set_aad,
@@ -20,7 +20,7 @@ const {
   op_node_private_decrypt,
   op_node_private_encrypt,
   op_node_public_encrypt,
-} = core.ensureFastOps();
+} from "ext:core/ops";
 
 import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
 import {

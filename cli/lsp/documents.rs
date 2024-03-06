@@ -2,6 +2,7 @@
 
 use super::cache::calculate_fs_version;
 use super::cache::calculate_fs_version_at_path;
+use super::cache::LSP_DISALLOW_GLOBAL_TO_LOCAL_COPY;
 use super::language_server::StateNpmSnapshot;
 use super::text::LineIndex;
 use super::tsc;
@@ -13,18 +14,16 @@ use crate::args::ConfigFile;
 use crate::args::JsxImportSourceConfig;
 use crate::cache::FastInsecureHasher;
 use crate::cache::HttpCache;
-use crate::file_fetcher::get_source_from_bytes;
-use crate::file_fetcher::get_source_from_data_url;
-use crate::file_fetcher::map_content_type;
+use crate::jsr::JsrCacheResolver;
 use crate::lsp::logging::lsp_warn;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliGraphResolver;
 use crate::resolver::CliGraphResolverOptions;
+use crate::resolver::CliNodeResolver;
 use crate::resolver::SloppyImportsFsEntry;
 use crate::resolver::SloppyImportsResolution;
 use crate::resolver::SloppyImportsResolver;
 use crate::util::path::specifier_to_file_path;
-use crate::util::text_encoding;
 
 use deno_ast::MediaType;
 use deno_ast::ParsedSource;
@@ -37,22 +36,20 @@ use deno_core::error::AnyError;
 use deno_core::futures::future;
 use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
-use deno_core::url;
 use deno_core::ModuleSpecifier;
 use deno_graph::source::ResolutionMode;
 use deno_graph::GraphImport;
 use deno_graph::Resolution;
-use deno_runtime::deno_fs::RealFs;
+use deno_lockfile::Lockfile;
 use deno_runtime::deno_node;
 use deno_runtime::deno_node::NodeResolution;
 use deno_runtime::deno_node::NodeResolutionMode;
-use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::permissions::PermissionsContainer;
+use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
 use indexmap::IndexMap;
-use lsp::Url;
 use once_cell::sync::Lazy;
 use package_json::PackageJsonDepsProvider;
 use std::borrow::Cow;
@@ -250,7 +247,7 @@ impl AssetOrDocument {
 
   pub fn maybe_parsed_source(
     &self,
-  ) -> Option<Result<deno_ast::ParsedSource, deno_ast::Diagnostic>> {
+  ) -> Option<Result<deno_ast::ParsedSource, deno_ast::ParseDiagnostic>> {
     self.document().and_then(|d| d.maybe_parsed_source())
   }
 
@@ -278,7 +275,7 @@ impl DocumentDependencies {
     }
   }
 
-  pub fn from_module(module: &deno_graph::EsmModule) -> Self {
+  pub fn from_module(module: &deno_graph::JsModule) -> Self {
     Self {
       deps: module.dependencies.clone(),
       maybe_types_dependency: module.maybe_types_dependency.clone(),
@@ -286,8 +283,8 @@ impl DocumentDependencies {
   }
 }
 
-type ModuleResult = Result<deno_graph::EsmModule, deno_graph::ModuleGraphError>;
-type ParsedSourceResult = Result<ParsedSource, deno_ast::Diagnostic>;
+type ModuleResult = Result<deno_graph::JsModule, deno_graph::ModuleGraphError>;
+type ParsedSourceResult = Result<ParsedSource, deno_ast::ParseDiagnostic>;
 
 #[derive(Debug)]
 struct DocumentInner {
@@ -593,13 +590,13 @@ impl Document {
     self.0.maybe_lsp_version
   }
 
-  fn maybe_esm_module(&self) -> Option<&ModuleResult> {
+  fn maybe_js_module(&self) -> Option<&ModuleResult> {
     self.0.maybe_module.as_ref()
   }
 
   pub fn maybe_parsed_source(
     &self,
-  ) -> Option<Result<deno_ast::ParsedSource, deno_ast::Diagnostic>> {
+  ) -> Option<Result<deno_ast::ParsedSource, deno_ast::ParseDiagnostic>> {
     self.0.maybe_parsed_source.clone()
   }
 
@@ -632,7 +629,7 @@ impl Document {
     &self,
     position: &lsp::Position,
   ) -> Option<(String, deno_graph::Dependency, deno_graph::Range)> {
-    let module = self.maybe_esm_module()?.as_ref().ok()?;
+    let module = self.maybe_js_module()?.as_ref().ok()?;
     let position = deno_graph::Position {
       line: position.line as usize,
       character: position.character as usize,
@@ -642,26 +639,6 @@ impl Document {
         .includes(&position)
         .map(|r| (s.clone(), dep.clone(), r.clone()))
     })
-  }
-}
-
-pub fn to_hover_text(result: &Resolution) -> String {
-  match result {
-    Resolution::Ok(resolved) => {
-      let specifier = &resolved.specifier;
-      match specifier.scheme() {
-        "data" => "_(a data url)_".to_string(),
-        "blob" => "_(a blob url)_".to_string(),
-        _ => format!(
-          "{}&#8203;{}",
-          &specifier[..url::Position::AfterScheme],
-          &specifier[url::Position::AfterScheme..],
-        )
-        .replace('@', "&#8203;@"),
-      }
-    }
-    Resolution::Err(_) => "_[errored]_".to_string(),
-    Resolution::None => "_[missing]_".to_string(),
   }
 }
 
@@ -738,12 +715,7 @@ impl RedirectResolver {
   ) -> Option<ModuleSpecifier> {
     if redirect_limit > 0 {
       let cache_key = self.cache.cache_item_key(specifier).ok()?;
-      let headers = self
-        .cache
-        .read_metadata(&cache_key)
-        .ok()
-        .flatten()
-        .map(|m| m.headers)?;
+      let headers = self.cache.read_headers(&cache_key).ok().flatten()?;
       if let Some(location) = headers.get("location") {
         let redirect =
           deno_core::resolve_import(location, specifier.as_str()).ok()?;
@@ -798,9 +770,8 @@ impl FileSystemDocuments {
       let path = specifier_to_file_path(specifier).ok()?;
       let fs_version = calculate_fs_version_at_path(&path)?;
       let bytes = fs::read(path).ok()?;
-      let maybe_charset =
-        Some(text_encoding::detect_charset(&bytes).to_string());
-      let content = get_source_from_bytes(bytes, maybe_charset).ok()?;
+      let content =
+        deno_graph::source::decode_owned_source(specifier, bytes, None).ok()?;
       Document::new(
         specifier.clone(),
         fs_version,
@@ -810,7 +781,10 @@ impl FileSystemDocuments {
         npm_resolver,
       )
     } else if specifier.scheme() == "data" {
-      let (source, _) = get_source_from_data_url(specifier).ok()?;
+      let source = deno_graph::source::RawDataUrl::parse(specifier)
+        .ok()?
+        .decode()
+        .ok()?;
       Document::new(
         specifier.clone(),
         "1".to_string(),
@@ -822,12 +796,22 @@ impl FileSystemDocuments {
     } else {
       let fs_version = calculate_fs_version(cache, specifier)?;
       let cache_key = cache.cache_item_key(specifier).ok()?;
-      let bytes = cache.read_file_bytes(&cache_key).ok()??;
-      let specifier_metadata = cache.read_metadata(&cache_key).ok()??;
-      let maybe_content_type = specifier_metadata.headers.get("content-type");
-      let (_, maybe_charset) = map_content_type(specifier, maybe_content_type);
-      let maybe_headers = Some(specifier_metadata.headers);
-      let content = get_source_from_bytes(bytes, maybe_charset).ok()?;
+      let bytes = cache
+        .read_file_bytes(&cache_key, None, LSP_DISALLOW_GLOBAL_TO_LOCAL_COPY)
+        .ok()??;
+      let specifier_headers = cache.read_headers(&cache_key).ok()??;
+      let (_, maybe_charset) =
+        deno_graph::source::resolve_media_type_and_charset_from_headers(
+          specifier,
+          Some(&specifier_headers),
+        );
+      let content = deno_graph::source::decode_owned_source(
+        specifier,
+        bytes,
+        maybe_charset,
+      )
+      .ok()?;
+      let maybe_headers = Some(specifier_headers);
       Document::new(
         specifier.clone(),
         fs_version,
@@ -849,7 +833,8 @@ pub struct UpdateDocumentConfigOptions<'a> {
   pub maybe_import_map: Option<Arc<import_map::ImportMap>>,
   pub maybe_config_file: Option<&'a ConfigFile>,
   pub maybe_package_json: Option<&'a PackageJson>,
-  pub node_resolver: Option<Arc<NodeResolver>>,
+  pub maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
+  pub node_resolver: Option<Arc<CliNodeResolver>>,
   pub npm_resolver: Option<Arc<dyn CliNpmResolver>>,
 }
 
@@ -887,6 +872,7 @@ pub struct Documents {
   /// A resolver that takes into account currently loaded import map and JSX
   /// settings.
   resolver: Arc<CliGraphResolver>,
+  jsr_resolver: Arc<JsrCacheResolver>,
   /// The npm package requirements found in npm specifiers.
   npm_specifier_reqs: Arc<Vec<PackageReq>>,
   /// Gets if any document had a node: specifier such that a @types/node package
@@ -910,10 +896,8 @@ impl Documents {
       resolver_config_hash: 0,
       imports: Default::default(),
       resolver: Arc::new(CliGraphResolver::new(CliGraphResolverOptions {
-        fs: Arc::new(RealFs),
         node_resolver: None,
         npm_resolver: None,
-        cjs_resolutions: None,
         package_json_deps_provider: Arc::new(PackageJsonDepsProvider::default()),
         maybe_jsx_import_source_config: None,
         maybe_import_map: None,
@@ -921,6 +905,7 @@ impl Documents {
         bare_node_builtins_enabled: false,
         sloppy_imports_resolver: None,
       })),
+      jsr_resolver: Arc::new(JsrCacheResolver::new(cache.clone(), None)),
       npm_specifier_reqs: Default::default(),
       has_injected_types_node_package: false,
       redirect_resolver: Arc::new(RedirectResolver::new(cache)),
@@ -1078,7 +1063,14 @@ impl Documents {
           .into_owned(),
       )
     } else {
-      self.redirect_resolver.resolve(specifier)
+      let specifier = if let Ok(jsr_req_ref) =
+        JsrPackageReqReference::from_specifier(specifier)
+      {
+        Cow::Owned(self.jsr_resolver.jsr_to_registry_url(&jsr_req_ref)?)
+      } else {
+        Cow::Borrowed(specifier)
+      };
+      self.redirect_resolver.resolve(&specifier)
     }
   }
 
@@ -1086,24 +1078,28 @@ impl Documents {
     &self,
     specifier: &'a ModuleSpecifier,
   ) -> SloppyImportsResolution<'a> {
-    SloppyImportsResolver::resolve_with_stat_sync(specifier, |path| {
-      if let Ok(specifier) = ModuleSpecifier::from_file_path(path) {
-        if self.open_docs.contains_key(&specifier)
-          || self.cache.contains(&specifier)
-        {
-          return Some(SloppyImportsFsEntry::File);
+    SloppyImportsResolver::resolve_with_stat_sync(
+      specifier,
+      ResolutionMode::Types,
+      |path| {
+        if let Ok(specifier) = ModuleSpecifier::from_file_path(path) {
+          if self.open_docs.contains_key(&specifier)
+            || self.cache.contains(&specifier)
+          {
+            return Some(SloppyImportsFsEntry::File);
+          }
         }
-      }
-      path.metadata().ok().and_then(|m| {
-        if m.is_file() {
-          Some(SloppyImportsFsEntry::File)
-        } else if m.is_dir() {
-          Some(SloppyImportsFsEntry::Dir)
-        } else {
-          None
-        }
-      })
-    })
+        path.metadata().ok().and_then(|m| {
+          if m.is_file() {
+            Some(SloppyImportsFsEntry::File)
+          } else if m.is_dir() {
+            Some(SloppyImportsFsEntry::Dir)
+          } else {
+            None
+          }
+        })
+      },
+    )
   }
 
   /// Return `true` if the specifier can be resolved to a document.
@@ -1274,7 +1270,7 @@ impl Documents {
         NpmPackageReqReference::from_str(&specifier)
       {
         results.push(node_resolve_npm_req_ref(
-          npm_req_ref,
+          &npm_req_ref,
           maybe_npm,
           referrer,
         ));
@@ -1315,6 +1311,18 @@ impl Documents {
       }
     }
     Ok(())
+  }
+
+  pub fn get_jsr_resolver(&self) -> &Arc<JsrCacheResolver> {
+    &self.jsr_resolver
+  }
+
+  pub fn refresh_jsr_resolver(
+    &mut self,
+    lockfile: Option<Arc<Mutex<Lockfile>>>,
+  ) {
+    self.jsr_resolver =
+      Arc::new(JsrCacheResolver::new(self.cache.clone(), lockfile));
   }
 
   pub fn update_config(&mut self, options: UpdateDocumentConfigOptions) {
@@ -1391,18 +1399,15 @@ impl Documents {
       options.document_preload_limit,
       options.maybe_import_map.as_deref(),
       maybe_jsx_config.as_ref(),
-      options.maybe_config_file.and_then(|c| c.vendor_dir_flag()),
+      options.maybe_config_file.and_then(|c| c.json.vendor),
       maybe_package_json_deps.as_ref(),
       options.maybe_config_file.map(|c| &c.json.unstable),
     );
     let deps_provider =
       Arc::new(PackageJsonDepsProvider::new(maybe_package_json_deps));
-    let fs = Arc::new(RealFs);
     self.resolver = Arc::new(CliGraphResolver::new(CliGraphResolverOptions {
-      fs: fs.clone(),
       node_resolver: options.node_resolver,
       npm_resolver: options.npm_resolver,
-      cjs_resolutions: None, // only used for runtime
       package_json_deps_provider: deps_provider,
       maybe_jsx_import_source_config: maybe_jsx_config,
       maybe_import_map: options.maybe_import_map,
@@ -1419,6 +1424,10 @@ impl Documents {
       // specifier for free.
       sloppy_imports_resolver: None,
     }));
+    self.jsr_resolver = Arc::new(JsrCacheResolver::new(
+      self.cache.clone(),
+      options.maybe_lockfile,
+    ));
     self.redirect_resolver =
       Arc::new(RedirectResolver::new(self.cache.clone()));
     self.imports = Arc::new(
@@ -1678,10 +1687,10 @@ impl Documents {
     }
 
     if let Ok(npm_ref) = NpmPackageReqReference::from_specifier(specifier) {
-      return node_resolve_npm_req_ref(npm_ref, maybe_npm, referrer);
+      return node_resolve_npm_req_ref(&npm_ref, maybe_npm, referrer);
     }
     let doc = self.get(specifier)?;
-    let maybe_module = doc.maybe_esm_module().and_then(|r| r.as_ref().ok());
+    let maybe_module = doc.maybe_js_module().and_then(|r| r.as_ref().ok());
     let maybe_types_dependency = maybe_module
       .and_then(|m| m.maybe_types_dependency.as_ref().map(|d| &d.dependency));
     if let Some(specifier) =
@@ -1709,29 +1718,21 @@ impl Documents {
 }
 
 fn node_resolve_npm_req_ref(
-  npm_req_ref: NpmPackageReqReference,
+  npm_req_ref: &NpmPackageReqReference,
   maybe_npm: Option<&StateNpmSnapshot>,
   referrer: &ModuleSpecifier,
 ) -> Option<(ModuleSpecifier, MediaType)> {
   maybe_npm.map(|npm| {
     NodeResolution::into_specifier_and_media_type(
       npm
-        .npm_resolver
-        .resolve_pkg_folder_from_deno_module_req(npm_req_ref.req(), referrer)
-        .ok()
-        .and_then(|package_folder| {
-          npm
-            .node_resolver
-            .resolve_package_subpath_from_deno_module(
-              &package_folder,
-              npm_req_ref.sub_path(),
-              referrer,
-              NodeResolutionMode::Types,
-              &PermissionsContainer::allow_all(),
-            )
-            .ok()
-            .flatten()
-        }),
+        .node_resolver
+        .resolve_req_reference(
+          npm_req_ref,
+          &PermissionsContainer::allow_all(),
+          referrer,
+          NodeResolutionMode::Types,
+        )
+        .ok(),
     )
   })
 }
@@ -1752,7 +1753,7 @@ impl<'a> OpenDocumentsGraphLoader<'a> {
       if let Some(doc) = self.open_docs.get(specifier) {
         return Some(
           future::ready(Ok(Some(deno_graph::source::LoadResponse::Module {
-            content: doc.content(),
+            content: Arc::from(doc.content()),
             specifier: doc.specifier().clone(),
             maybe_headers: None,
           })))
@@ -1767,35 +1768,34 @@ impl<'a> OpenDocumentsGraphLoader<'a> {
     &self,
     specifier: &'b ModuleSpecifier,
   ) -> SloppyImportsResolution<'b> {
-    SloppyImportsResolver::resolve_with_stat_sync(specifier, |path| {
-      if let Ok(specifier) = ModuleSpecifier::from_file_path(path) {
-        if self.open_docs.contains_key(&specifier) {
-          return Some(SloppyImportsFsEntry::File);
+    SloppyImportsResolver::resolve_with_stat_sync(
+      specifier,
+      ResolutionMode::Types,
+      |path| {
+        if let Ok(specifier) = ModuleSpecifier::from_file_path(path) {
+          if self.open_docs.contains_key(&specifier) {
+            return Some(SloppyImportsFsEntry::File);
+          }
         }
-      }
-      path.metadata().ok().and_then(|m| {
-        if m.is_file() {
-          Some(SloppyImportsFsEntry::File)
-        } else if m.is_dir() {
-          Some(SloppyImportsFsEntry::Dir)
-        } else {
-          None
-        }
-      })
-    })
+        path.metadata().ok().and_then(|m| {
+          if m.is_file() {
+            Some(SloppyImportsFsEntry::File)
+          } else if m.is_dir() {
+            Some(SloppyImportsFsEntry::Dir)
+          } else {
+            None
+          }
+        })
+      },
+    )
   }
 }
 
 impl<'a> deno_graph::source::Loader for OpenDocumentsGraphLoader<'a> {
-  fn registry_url(&self) -> &Url {
-    self.inner_loader.registry_url()
-  }
-
   fn load(
     &mut self,
     specifier: &ModuleSpecifier,
-    is_dynamic: bool,
-    cache_setting: deno_graph::source::CacheSetting,
+    options: deno_graph::source::LoadOptions,
   ) -> deno_graph::source::LoadFuture {
     let specifier = if self.unstable_sloppy_imports {
       self
@@ -1807,16 +1807,14 @@ impl<'a> deno_graph::source::Loader for OpenDocumentsGraphLoader<'a> {
 
     match self.load_from_docs(&specifier) {
       Some(fut) => fut,
-      None => self
-        .inner_loader
-        .load(&specifier, is_dynamic, cache_setting),
+      None => self.inner_loader.load(&specifier, options),
     }
   }
 
   fn cache_module_info(
     &mut self,
     specifier: &deno_ast::ModuleSpecifier,
-    source: &str,
+    source: &Arc<[u8]>,
     module_info: &deno_graph::ModuleInfo,
   ) {
     self
@@ -1849,7 +1847,7 @@ fn parse_source(
   maybe_headers: Option<&HashMap<String, String>>,
 ) -> ParsedSourceResult {
   deno_ast::parse_module(deno_ast::ParseParams {
-    specifier: specifier.to_string(),
+    specifier: specifier.clone(),
     text_info,
     media_type: MediaType::from_specifier_and_headers(specifier, maybe_headers),
     capture_tokens: true,
@@ -2246,6 +2244,7 @@ console.log(b, "hello deno");
         maybe_import_map: Some(Arc::new(import_map)),
         maybe_config_file: None,
         maybe_package_json: None,
+        maybe_lockfile: None,
         node_resolver: None,
         npm_resolver: None,
       });
@@ -2289,6 +2288,7 @@ console.log(b, "hello deno");
         maybe_import_map: Some(Arc::new(import_map)),
         maybe_config_file: None,
         maybe_package_json: None,
+        maybe_lockfile: None,
         node_resolver: None,
         npm_resolver: None,
       });

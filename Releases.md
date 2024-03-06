@@ -6,6 +6,130 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.41.1 / 2024.02.29
+
+- feat(unstable): `deno add` subcommand (#22520)
+- feat(unstable/lsp): jsr specifier completions (#22612)
+- feat(unstable/publish): discover jsr.json and jsr.jsonc files (#22587)
+- feat(unstable/publish): enable package provenance by default on github actions
+  (#22635)
+- feat(unstable/publish): infer dependencies from package.json (#22563)
+- feat(unstable/publish): provenance attestation (#22573)
+- feat(unstable/publish): respect .gitignore during `deno publish` (#22514)
+- feat(unstable/publish): support sloppy imports and bare node built-ins
+  (#22588)
+- fix(compile): add aarch64 linux to `CliOptions::npm_system_info` (#22567)
+- fix(compile): allow to compile for ARM linux (#22542)
+- fix(ext/crypto): align the return type of `crypto.randomUUID` to
+  `cli/tsc/dts/lib.dom.d.ts` (#22465)
+- fix(ext/node) add node http methods (#22630)
+- fix(ext/node): init arch, pid, platform at startup (#22561)
+- fix(ext/node): set correct process.argv0 (#22555)
+- fix(io): create_named_pipe parallelism (#22597)
+- fix(jsr): do not allow importing a non-JSR url via unanalyzable dynamic import
+  from JSR (#22623)
+- fix(jsr): relative dynamic imports in jsr packages (#22624)
+- fix(lsp): import map expansion (#22553)
+- fix(publish): disable provenance if not in GHA (#22638)
+- fix(publish): make the already published message look like a warning (#22620)
+- fix(publish): print a warning when .jsx or .tsx is imported (#22631)
+- fix(publish): reduce warnings about dynamic imports (#22636)
+- fix(test): ensure that pre- and post-test output is flushed at the appropriate
+  times (#22611)
+- fix(unstable): add `Date#toTemporalInstant` type (#22637)
+- fix(unstable): sloppy imports should resolve .d.ts files during types
+  resolution (#22602)
+- perf(cli): reduce overhead in test registration (#22552)
+- perf(fmt): reduce memory usage and improve performance (#22570)
+
+### 1.41.0 / 2024.02.22
+
+- BREAKING(net/unstable): remove `Deno.DatagramConn.rid` (#22475)
+- BREAKING(unstable): remove `Deno.HttpClient.rid` (#22075)
+- BREAKING: add `Deno.CreateHttpClientOptions.{cert,key}` (#22280)
+- feat(fs): `Deno.FsFile.{isTerminal,setRaw}()` (#22234)
+- feat(lsp): auto-import completions for jsr specifiers (#22462)
+- feat(publish): type check on publish (#22506)
+- feat(unstable): single checksum per JSR package in the lockfile (#22421)
+- feat(unstable/lint): no-slow-types for JSR packages (#22430)
+- feat: `Deno.ConnectTlsOptions.{cert,key}` (#22274)
+- fix(compile): respect compiler options for emit (#22521)
+- fix(ext/fs): make errors in tempfile creation clearer (#22498)
+- fix(ext/node): pass alpnProtocols to Deno.startTls (#22512)
+- fix(ext/node): permission prompt for missing `process.env` permissions
+  (#22487)
+- fix(fmt): remove debug output when formatting dynamic imports (#22433)
+- fix(lsp): add schema for JSR related config options (#22497)
+- fix(node/test): disable Deno test sanitizers (#22480)
+- fix(publish): better no-slow-types type discovery (#22517)
+- fix(publish): ignore .DS_Store while publishing (#22478)
+- fix(publish): print files that will be published (#22495)
+- fix: util.parseArgs() missing node:process import (#22405)
+- fix: write lockfile in `deno info` (#22272)
+- perf(jsr): fast check cache and lazy fast check graph (#22485)
+- perf: linter lsp memory leak fix and deno_graph executor (#22519)
+- perf: strip `denort` on unix (#22426)
+
+### 1.40.5 / 2024.02.15
+
+- feat(lsp): jsr support first pass (#22382)
+- feat(lsp): jsr support with cache probing (#22418)
+- feat(publish): allow passing config flag (#22416)
+- feat(unstable): define config in publish url (#22406)
+- perf: denort binary for `deno compile` (#22205)
+- fix(console): support NO_COLOR and colors option in all scenarios (#21910)
+- fix(ext/node): export process.umask (#22348)
+- fix(ext/web): Prevent (De-)CompressionStream resource leak on stream
+  cancellation (#21199)
+- fix(lsp): complete npm specifier versions correctly (#22332)
+- fix: cache bust jsr deps on constraint failure (#22372)
+- fix: handle non-file scopes in synthetic import map (#22361)
+- fix: lockfile was sometimes getting corrupt when changing config deps (#22359)
+- fix: upgrade to deno_ast 0.33 (#22341)
+
+### 1.40.4 / 2024.02.08
+
+- feat(unstable): `Deno.FsFile.lock[Sync]()` and `Deno.FsFile.unlock[Sync]()`
+  (#22235)
+- feat: ARM64 builds (#22298)
+- fix(cli): Add IP address support to DENO_AUTH_TOKEN (#22297)
+- fix(ext/node): Ensure os.cpus() works on arm64 linux (#22302)
+- fix(ext/node): fix timeout param validation in cp.execFile (#22262)
+- fix(jupyter): ensure op is available (#22240)
+- fix(lint): point to migration docs in deprecated APIs rule (#22338)
+- fix(lsp): disable no-cache diagnostics for jsr specifiers (#22284)
+- fix(node): add `cp` to fs/promises (#22263)
+- fix(node): handle brotli compression end chunk sizes (#22322)
+- fix(os): total and free memory in bytes (#22247)
+- fix(publish): 'explit' typo (#22296)
+- fix(publish): handle diagnostic outside graph (#22310)
+- fix(publish): lazily parse sources (#22301)
+- fix(publish): use lighter crate for opening browser (#22224)
+- fix(test/regression): handle CLI arg directory using `../` in path (#22244)
+- fix(unstable): validate kv list selector (#22265)
+- fix: Fix segmentation fault in tests on CPUs with PKU support (#22152)
+- fix: Support Symbol.metadata (#22282)
+- fix: enable "--allow-sys=cpus" for "deno run" (#22260)
+- perf: remove duplicate `env::current_dir` call in package.json search (#22255)
+
+### 1.40.3 / 2024.02.01
+
+- Revert "refactor(cli): use new sanitizer for resources (#22125)" (#22153)
+- feat(unstable): implement `navigator.gpu.getPreferredCanvasFormat()` (#22149)
+- fix(ext/node): add `aes256` algorithm support (#22198)
+- fix(ext/node): limit OpState borrow in op_napi_open (#22151)
+- fix(fs): copyFile NUL path on macOS (#22216)
+- fix(install): forward granular --unstable-* flags (#22164)
+- fix(lockfile): only consider package.json beside lockfile in workspace
+  property (#22179)
+- fix(lsp): don't normalize urls in cache command params (#22182)
+- fix(node): `util.callbackify` (#22200)
+- fix(node): add `ppid` getter for `node:process` (#22167)
+- fix(publish): add node specifiers (#22213)
+- fix(publish): rename --no-fast-check to --no-zap (#22214)
+- fix(runtime): return number from `op_ppid` instead of bigint (#22169)
+- fix: canary for arm64 macos (#22187)
+
 ### 1.40.2 / 2024.01.26
 
 - feat(lsp): complete parameters as tab stops and placeholders (#22126)

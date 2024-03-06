@@ -20,7 +20,6 @@ use deno_graph::source::Loader;
 use deno_graph::DefaultModuleAnalyzer;
 use deno_graph::GraphKind;
 use deno_graph::ModuleGraph;
-use deno_runtime::deno_fs::RealFs;
 use import_map::ImportMap;
 
 use crate::args::JsxImportSourceConfig;
@@ -115,14 +114,13 @@ impl Loader for TestLoader {
   fn load(
     &mut self,
     specifier: &ModuleSpecifier,
-    _is_dynamic: bool,
-    _cache_setting: deno_graph::source::CacheSetting,
+    _options: deno_graph::source::LoadOptions,
   ) -> LoadFuture {
     let specifier = self.redirects.get(specifier).unwrap_or(specifier);
     let result = self.files.get(specifier).map(|result| match result {
       Ok(result) => Ok(LoadResponse::Module {
         specifier: specifier.clone(),
-        content: result.0.clone().into(),
+        content: result.0.clone().into_bytes().into(),
         maybe_headers: result.1.clone(),
       }),
       Err(err) => Err(err),
@@ -160,15 +158,15 @@ impl VendorEnvironment for TestVendorEnvironment {
     Ok(())
   }
 
-  fn write_file(&self, file_path: &Path, text: &str) -> Result<(), AnyError> {
+  fn write_file(&self, file_path: &Path, text: &[u8]) -> Result<(), AnyError> {
     let parent = file_path.parent().unwrap();
     if !self.directories.borrow().contains(parent) {
       bail!("Directory not found: {}", parent.display());
     }
-    self
-      .files
-      .borrow_mut()
-      .insert(file_path.to_path_buf(), text.to_string());
+    self.files.borrow_mut().insert(
+      file_path.to_path_buf(),
+      String::from_utf8(text.to_vec()).unwrap(),
+    );
     Ok(())
   }
 
@@ -296,10 +294,8 @@ fn build_resolver(
   original_import_map: Option<ImportMap>,
 ) -> CliGraphResolver {
   CliGraphResolver::new(CliGraphResolverOptions {
-    fs: Arc::new(RealFs),
     node_resolver: None,
     npm_resolver: None,
-    cjs_resolutions: None,
     sloppy_imports_resolver: None,
     package_json_deps_provider: Default::default(),
     maybe_jsx_import_source_config,

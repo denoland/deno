@@ -1,5 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::sync::Arc;
+
 use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::ReplFlags;
@@ -14,7 +16,6 @@ use deno_core::unsync::spawn_blocking;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
 use rustyline::error::ReadlineError;
-use tokio::sync::mpsc::unbounded_channel;
 
 mod channel;
 mod editor;
@@ -30,8 +31,7 @@ pub use session::EvaluationOutput;
 pub use session::ReplSession;
 pub use session::REPL_INTERNALS_NAME;
 
-use super::test::TestEvent;
-use super::test::TestEventSender;
+use super::test::create_single_test_event_channel;
 
 struct Repl {
   session: ReplSession,
@@ -140,7 +140,7 @@ async fn read_eval_file(
   cli_options: &CliOptions,
   file_fetcher: &FileFetcher,
   eval_file: &str,
-) -> Result<String, AnyError> {
+) -> Result<Arc<str>, AnyError> {
   let specifier =
     deno_core::resolve_url_or_path(eval_file, cli_options.initial_cwd())?;
 
@@ -148,7 +148,7 @@ async fn read_eval_file(
     .fetch(&specifier, PermissionsContainer::allow_all())
     .await?;
 
-  Ok((*file.source).to_string())
+  Ok(file.into_text_decoded()?.source)
 }
 
 pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
@@ -166,9 +166,8 @@ pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
     .deno_dir()
     .ok()
     .and_then(|dir| dir.repl_history_file_path());
-  let (test_event_sender, test_event_receiver) =
-    unbounded_channel::<TestEvent>();
-  let test_event_sender = TestEventSender::new(test_event_sender);
+  let (worker, test_event_receiver) = create_single_test_event_channel();
+  let test_event_sender = worker.sender;
   let mut worker = worker_factory
     .create_custom_worker(
       main_module.clone(),

@@ -15,6 +15,8 @@ const {
 } = core;
 import {
   op_arraybuffer_was_detached,
+  // TODO(mmastrac): use readAll
+  op_read_all,
   op_readable_stream_resource_allocate,
   op_readable_stream_resource_allocate_sized,
   op_readable_stream_resource_await_close,
@@ -25,10 +27,6 @@ import {
   op_readable_stream_resource_write_sync,
   op_transfer_arraybuffer,
 } from "ext:core/ops";
-const {
-  // TODO(mmastrac): use readAll
-  op_read_all,
-} = core.ensureFastOps(true);
 const {
   ArrayBuffer,
   ArrayBufferIsView,

@@ -35,6 +35,7 @@ use deno_core::unsync::spawn;
 use deno_core::unsync::spawn_blocking;
 use deno_core::unsync::JoinHandle;
 use deno_core::ModuleSpecifier;
+use deno_graph::source::ResolutionMode;
 use deno_graph::Resolution;
 use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
@@ -42,6 +43,7 @@ use deno_lint::rules::LintRule;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node;
 use deno_runtime::tokio_util::create_basic_runtime;
+use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
 use log::error;
@@ -328,6 +330,8 @@ impl DiagnosticsState {
     for diagnostic in diagnostics {
       if diagnostic.code
         == Some(lsp::NumberOrString::String("no-cache".to_string()))
+        || diagnostic.code
+          == Some(lsp::NumberOrString::String("no-cache-jsr".to_string()))
         || diagnostic.code
           == Some(lsp::NumberOrString::String("no-cache-npm".to_string()))
       {
@@ -793,7 +797,11 @@ fn generate_lint_diagnostics(
   let documents = snapshot
     .documents
     .documents(DocumentsFilter::OpenDiagnosable);
-  let lint_rules = get_configured_rules(lint_options.rules.clone());
+  let lint_rules = get_configured_rules(
+    lint_options.rules.clone(),
+    config.config_file.as_ref(),
+  )
+  .rules;
   let mut diagnostics_vec = Vec::new();
   for document in documents {
     let settings =
@@ -968,6 +976,8 @@ pub enum DenoDiagnostic {
   NoAttributeType,
   /// A remote module was not found in the cache.
   NoCache(ModuleSpecifier),
+  /// A remote jsr package reference was not found in the cache.
+  NoCacheJsr(PackageReq, ModuleSpecifier),
   /// A remote npm package reference was not found in the cache.
   NoCacheNpm(PackageReq, ModuleSpecifier),
   /// A local module was not found on the local file system.
@@ -994,6 +1004,7 @@ impl DenoDiagnostic {
       Self::InvalidAttributeType(_) => "invalid-attribute-type",
       Self::NoAttributeType => "no-attribute-type",
       Self::NoCache(_) => "no-cache",
+      Self::NoCacheJsr(_, _) => "no-cache-jsr",
       Self::NoCacheNpm(_, _) => "no-cache-npm",
       Self::NoLocal(_) => "no-local",
       Self::Redirect { .. } => "redirect",
@@ -1072,7 +1083,7 @@ impl DenoDiagnostic {
           }),
           ..Default::default()
         },
-        "no-cache" | "no-cache-npm" => {
+        "no-cache" | "no-cache-jsr" | "no-cache-npm" => {
           let data = diagnostic
             .data
             .clone()
@@ -1188,6 +1199,7 @@ impl DenoDiagnostic {
       match code.as_str() {
         "import-map-remap"
         | "no-cache"
+        | "no-cache-jsr"
         | "no-cache-npm"
         | "no-attribute-type"
         | "redirect"
@@ -1226,9 +1238,10 @@ impl DenoDiagnostic {
       Self::InvalidAttributeType(assert_type) => (lsp::DiagnosticSeverity::ERROR, format!("The module is a JSON module and expected an attribute type of \"json\". Instead got \"{assert_type}\"."), None),
       Self::NoAttributeType => (lsp::DiagnosticSeverity::ERROR, "The module is a JSON module and not being imported with an import attribute. Consider adding `with { type: \"json\" }` to the import statement.".to_string(), None),
       Self::NoCache(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Uncached or missing remote URL: {specifier}"), Some(json!({ "specifier": specifier }))),
+      Self::NoCacheJsr(pkg_req, specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Uncached or missing jsr package: {}", pkg_req), Some(json!({ "specifier": specifier }))),
       Self::NoCacheNpm(pkg_req, specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Uncached or missing npm package: {}", pkg_req), Some(json!({ "specifier": specifier }))),
       Self::NoLocal(specifier) => {
-        let sloppy_resolution = SloppyImportsResolver::resolve_with_fs(&deno_fs::RealFs, specifier);
+        let sloppy_resolution = SloppyImportsResolver::resolve_with_fs(&deno_fs::RealFs, specifier, ResolutionMode::Execution);
         let data = sloppy_resolution.as_lsp_quick_fix_message().map(|message| {
           json!({
             "specifier": specifier,
@@ -1292,6 +1305,33 @@ fn diagnose_resolution(
   is_dynamic: bool,
   maybe_assert_type: Option<&str>,
 ) -> Vec<DenoDiagnostic> {
+  fn check_redirect_diagnostic(
+    specifier: &ModuleSpecifier,
+    doc: &Document,
+  ) -> Option<DenoDiagnostic> {
+    let doc_specifier = doc.specifier();
+    // If the module was redirected, we want to issue an informational
+    // diagnostic that indicates this. This then allows us to issue a code
+    // action to replace the specifier with the final redirected one.
+    if specifier.scheme() == "jsr" || doc_specifier == specifier {
+      return None;
+    }
+    // don't bother warning about sloppy import redirects from .js to .d.ts
+    // because explaining how to fix this via a diagnostic involves using
+    // @deno-types and that's a bit complicated to explain
+    let is_sloppy_import_dts_redirect = doc_specifier.scheme() == "file"
+      && doc.media_type().is_declaration()
+      && !MediaType::from_specifier(specifier).is_declaration();
+    if is_sloppy_import_dts_redirect {
+      return None;
+    }
+
+    Some(DenoDiagnostic::Redirect {
+      from: specifier.clone(),
+      to: doc_specifier.clone(),
+    })
+  }
+
   let mut diagnostics = vec![];
   match resolution {
     Resolution::Ok(resolved) => {
@@ -1306,15 +1346,8 @@ fn diagnose_resolution(
         }
       }
       if let Some(doc) = snapshot.documents.get(specifier) {
-        let doc_specifier = doc.specifier();
-        // If the module was redirected, we want to issue an informational
-        // diagnostic that indicates this. This then allows us to issue a code
-        // action to replace the specifier with the final redirected one.
-        if doc_specifier != specifier {
-          diagnostics.push(DenoDiagnostic::Redirect {
-            from: specifier.clone(),
-            to: doc_specifier.clone(),
-          });
+        if let Some(diagnostic) = check_redirect_diagnostic(specifier, &doc) {
+          diagnostics.push(diagnostic);
         }
         if doc.media_type() == MediaType::Json {
           match maybe_assert_type {
@@ -1332,6 +1365,11 @@ fn diagnose_resolution(
             None => diagnostics.push(DenoDiagnostic::NoAttributeType),
           }
         }
+      } else if let Ok(pkg_ref) =
+        JsrPackageReqReference::from_specifier(specifier)
+      {
+        let req = pkg_ref.into_inner().req;
+        diagnostics.push(DenoDiagnostic::NoCacheJsr(req, specifier.clone()));
       } else if let Ok(pkg_ref) =
         NpmPackageReqReference::from_specifier(specifier)
       {
@@ -1438,12 +1476,28 @@ fn diagnose_dependency(
     .iter()
     .map(|i| documents::to_lsp_range(&i.range))
     .collect();
+  // TODO(nayeemrmn): This is a crude way of detecting `@deno-types` which has
+  // a different specifier and therefore needs a separate call to
+  // `diagnose_resolution()`. It would be much cleaner if that were modelled as
+  // a separate dependency: https://github.com/denoland/deno_graph/issues/247.
+  let is_types_deno_types = !dependency.maybe_type.is_none()
+    && !dependency
+      .imports
+      .iter()
+      .any(|i| dependency.maybe_type.includes(&i.range.start).is_some());
 
   diagnostics.extend(
     diagnose_resolution(
       snapshot,
       dependency_key,
-      if dependency.maybe_code.is_none() {
+      if dependency.maybe_code.is_none()
+        // If not @deno-types, diagnose the types if the code errored because
+        // it's likely resolving into the node_modules folder, which might be
+        // erroring correctly due to resolution only being for bundlers. Let this
+        // fail at runtime if necesarry, but don't bother erroring in the editor
+        || !is_types_deno_types && matches!(dependency.maybe_type, Resolution::Ok(_))
+          && matches!(dependency.maybe_code, Resolution::Err(_))
+      {
         &dependency.maybe_type
       } else {
         &dependency.maybe_code
@@ -1458,16 +1512,8 @@ fn diagnose_dependency(
         .map(|range| diag.to_lsp_diagnostic(range))
     }),
   );
-  // TODO(nayeemrmn): This is a crude way of detecting `@deno-types` which has
-  // a different specifier and therefore needs a separate call to
-  // `diagnose_resolution()`. It would be much cleaner if that were modelled as
-  // a separate dependency: https://github.com/denoland/deno_graph/issues/247.
-  if !dependency.maybe_type.is_none()
-    && !dependency
-      .imports
-      .iter()
-      .any(|i| dependency.maybe_type.includes(&i.range.start).is_some())
-  {
+
+  if is_types_deno_types {
     let range = match &dependency.maybe_type {
       Resolution::Ok(resolved) => documents::to_lsp_range(&resolved.range),
       Resolution::Err(error) => documents::to_lsp_range(error.range()),

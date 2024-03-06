@@ -4,10 +4,7 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { core } from "ext:core/mod.js";
-const {
-  op_node_create_private_key,
-} = core.ensureFastOps();
+import { op_node_create_private_key } from "ext:core/ops";
 
 import {
   kHandle,

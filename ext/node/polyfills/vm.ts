@@ -5,9 +5,7 @@
 
 import { core } from "ext:core/mod.js";
 import { notImplemented } from "ext:deno_node/_utils.ts";
-const {
-  op_vm_run_in_new_context,
-} = core.ensureFastOps();
+import { op_vm_run_in_new_context } from "ext:core/ops";
 
 export class Script {
   code: string;

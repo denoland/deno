@@ -5,6 +5,7 @@ const {
   BadResourcePrototype,
   InterruptedPrototype,
   internalRidSymbol,
+  createCancelHandle,
 } = core;
 import {
   op_dns_resolve,
@@ -27,9 +28,6 @@ import {
   op_set_keepalive,
   op_set_nodelay,
 } from "ext:core/ops";
-const {
-  op_cancel_handle,
-} = core.ensureFastOps(true);
 const {
   Error,
   Number,
@@ -69,7 +67,7 @@ async function resolveDns(query, recordType, options) {
   let abortHandler;
   if (options?.signal) {
     options.signal.throwIfAborted();
-    cancelRid = op_cancel_handle();
+    cancelRid = createCancelHandle();
     abortHandler = () => core.tryClose(cancelRid);
     options.signal[abortSignal.add](abortHandler);
   }
@@ -374,17 +372,13 @@ class Datagram {
     this.bufSize = bufSize;
   }
 
-  get rid() {
-    return this.#rid;
-  }
-
   get addr() {
     return this.#addr;
   }
 
   async joinMulticastV4(addr, multiInterface) {
     await op_net_join_multi_v4_udp(
-      this.rid,
+      this.#rid,
       addr,
       multiInterface,
     );
@@ -392,19 +386,19 @@ class Datagram {
     return {
       leave: () =>
         op_net_leave_multi_v4_udp(
-          this.rid,
+          this.#rid,
           addr,
           multiInterface,
         ),
       setLoopback: (loopback) =>
         op_net_set_multi_loopback_udp(
-          this.rid,
+          this.#rid,
           true,
           loopback,
         ),
       setTTL: (ttl) =>
         op_net_set_multi_ttl_udp(
-          this.rid,
+          this.#rid,
           ttl,
         ),
     };
@@ -412,7 +406,7 @@ class Datagram {
 
   async joinMulticastV6(addr, multiInterface) {
     await op_net_join_multi_v6_udp(
-      this.rid,
+      this.#rid,
       addr,
       multiInterface,
     );
@@ -420,13 +414,13 @@ class Datagram {
     return {
       leave: () =>
         op_net_leave_multi_v6_udp(
-          this.rid,
+          this.#rid,
           addr,
           multiInterface,
         ),
       setLoopback: (loopback) =>
         op_net_set_multi_loopback_udp(
-          this.rid,
+          this.#rid,
           false,
           loopback,
         ),
@@ -440,7 +434,7 @@ class Datagram {
     switch (this.addr.transport) {
       case "udp": {
         this.#promise = op_net_recv_udp(
-          this.rid,
+          this.#rid,
           buf,
         );
         if (this.#unref) core.unrefOpPromise(this.#promise);
@@ -451,7 +445,7 @@ class Datagram {
       case "unixpacket": {
         let path;
         ({ 0: nread, 1: path } = await op_net_recv_unixpacket(
-          this.rid,
+          this.#rid,
           buf,
         ));
         remoteAddr = { transport: "unixpacket", path };
@@ -468,13 +462,13 @@ class Datagram {
     switch (this.addr.transport) {
       case "udp":
         return await op_net_send_udp(
-          this.rid,
+          this.#rid,
           { hostname: opts.hostname ?? "127.0.0.1", port: opts.port },
           p,
         );
       case "unixpacket":
         return await op_net_send_unixpacket(
-          this.rid,
+          this.#rid,
           opts.path,
           p,
         );
@@ -484,7 +478,7 @@ class Datagram {
   }
 
   close() {
-    core.close(this.rid);
+    core.close(this.#rid);
   }
 
   ref() {
@@ -607,7 +601,6 @@ export {
   Conn,
   connect,
   createListenDatagram,
-  Datagram,
   listen,
   Listener,
   listenOptionApiName,

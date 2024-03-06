@@ -12,6 +12,6 @@ trim_trailing_whitespace = true
 insert_final_newline = unset
 trim_trailing_whitespace = unset
 
-[cli/tests/node_compat/test/**]
+[tests/node_compat/test/**]
 insert_final_newline = unset
 trim_trailing_whitespace = unset

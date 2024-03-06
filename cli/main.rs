@@ -5,7 +5,6 @@ mod auth_tokens;
 mod cache;
 mod cdp;
 mod deno_std;
-mod diagnostics;
 mod emit;
 mod errors;
 mod factory;
@@ -13,6 +12,7 @@ mod file_fetcher;
 mod graph_util;
 mod http_util;
 mod js;
+mod jsr;
 mod lsp;
 mod module_loader;
 mod napi;
@@ -43,9 +43,9 @@ use deno_core::error::JsError;
 use deno_core::futures::FutureExt;
 use deno_core::unsync::JoinHandle;
 use deno_npm::resolution::SnapshotFromLockfileError;
-use deno_runtime::colors;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::tokio_util::create_and_run_current_thread_with_maybe_metrics;
+use deno_terminal::colors;
 use factory::CliFactory;
 use std::env;
 use std::env::current_exe;
@@ -91,6 +91,9 @@ fn spawn_subcommand<F: Future<Output = T> + 'static, T: SubcommandOutput>(
 async fn run_subcommand(cli_options: CliOptions) -> Result<i32, AnyError> {
   let flags = cli_options.flags().clone();
   let handle = match flags.subcommand.clone() {
+    DenoSubcommand::Add(add_flags) => spawn_subcommand(async {
+      tools::registry::add(flags, add_flags).await
+    }),
     DenoSubcommand::Bench(bench_flags) => spawn_subcommand(async {
       if bench_flags.watch.is_some() {
         tools::bench::run_benchmarks_with_watch(flags, bench_flags).await
@@ -318,19 +321,21 @@ pub fn main() {
   let args: Vec<String> = env::args().collect();
 
   // NOTE(lucacasonato): due to new PKU feature introduced in V8 11.6 we need to
-  // initalize the V8 platform on a parent thread of all threads that will spawn
+  // initialize the V8 platform on a parent thread of all threads that will spawn
   // V8 isolates.
 
+  let current_exe_path = current_exe().unwrap();
+  let standalone =
+    standalone::extract_standalone(&current_exe_path, args.clone());
   let future = async move {
-    let current_exe_path = current_exe()?;
-    let standalone_res =
-      match standalone::extract_standalone(&current_exe_path, args.clone())
-        .await
-      {
-        Ok(Some((metadata, eszip))) => standalone::run(eszip, metadata).await,
-        Ok(None) => Ok(()),
-        Err(err) => Err(err),
-      };
+    let standalone_res = match standalone {
+      Ok(Some(future)) => {
+        let (metadata, eszip) = future.await?;
+        standalone::run(eszip, metadata).await
+      }
+      Ok(None) => Ok(()),
+      Err(err) => Err(err),
+    };
     // TODO(bartlomieju): doesn't handle exit code set by the runtime properly
     unwrap_or_exit(standalone_res);
 

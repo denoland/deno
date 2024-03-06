@@ -2,10 +2,7 @@
 
 import { primordials } from "ext:core/mod.js";
 import { op_bootstrap_log_level } from "ext:core/ops";
-const {
-  Promise,
-  SafeArrayIterator,
-} = primordials;
+const { SafeArrayIterator } = primordials;
 
 // WARNING: Keep this in sync with Rust (search for LogLevel)
 const LogLevel = {
@@ -36,52 +33,4 @@ function log(...args) {
   }
 }
 
-function createResolvable() {
-  let resolve;
-  let reject;
-  const promise = new Promise((res, rej) => {
-    resolve = res;
-    reject = rej;
-  });
-  promise.resolve = resolve;
-  promise.reject = reject;
-  return promise;
-}
-
-function writable(value) {
-  return {
-    value,
-    writable: true,
-    enumerable: true,
-    configurable: true,
-  };
-}
-
-function nonEnumerable(value) {
-  return {
-    value,
-    writable: true,
-    enumerable: false,
-    configurable: true,
-  };
-}
-
-function readOnly(value) {
-  return {
-    value,
-    enumerable: true,
-    writable: false,
-    configurable: true,
-  };
-}
-
-function getterOnly(getter) {
-  return {
-    get: getter,
-    set() {},
-    enumerable: true,
-    configurable: true,
-  };
-}
-
-export { createResolvable, getterOnly, log, nonEnumerable, readOnly, writable };
+export { log };

@@ -5,10 +5,7 @@
 // Thank you! We love Go! <3
 
 import { core, internals, primordials } from "ext:core/mod.js";
-const {
-  op_stdin_set_raw,
-  op_is_terminal,
-} = core.ensureFastOps(true);
+import { op_is_terminal, op_set_raw } from "ext:core/ops";
 const {
   Uint8Array,
   ArrayPrototypePush,
@@ -221,7 +218,7 @@ class Stdin {
 
   setRaw(mode, options = {}) {
     const cbreak = !!(options.cbreak ?? false);
-    op_stdin_set_raw(mode, cbreak);
+    op_set_raw(this.#rid, mode, cbreak);
   }
 
   isTerminal() {

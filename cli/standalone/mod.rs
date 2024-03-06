@@ -9,7 +9,6 @@ use crate::args::StorageKeyResolver;
 use crate::cache::Caches;
 use crate::cache::DenoDirProvider;
 use crate::cache::NodeAnalysisCache;
-use crate::file_fetcher::get_source_from_data_url;
 use crate::http_util::HttpClient;
 use crate::node::CliCjsCodeAnalyzer;
 use crate::npm::create_cli_npm_resolver;
@@ -45,6 +44,7 @@ use deno_core::RequestedModuleType;
 use deno_core::ResolutionKind;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::analyze::NodeCodeTranslator;
+use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::RootCertStoreProvider;
@@ -56,7 +56,7 @@ use import_map::parse_from_json;
 use std::rc::Rc;
 use std::sync::Arc;
 
-mod binary;
+pub mod binary;
 mod file_system;
 mod virtual_fs;
 
@@ -112,9 +112,13 @@ impl ModuleLoader for EmbeddedModuleLoader {
     if let Some(result) = self.shared.node_resolver.resolve_if_in_npm_package(
       specifier,
       &referrer,
+      NodeResolutionMode::Execution,
       permissions,
     ) {
-      return result;
+      return match result? {
+        Some(res) => Ok(res.into_url()),
+        None => Err(generic_error("not found")),
+      };
     }
 
     let maybe_mapped = self
@@ -129,18 +133,26 @@ impl ModuleLoader for EmbeddedModuleLoader {
       .map(|r| r.as_str())
       .unwrap_or(specifier);
     if let Ok(reference) = NpmPackageReqReference::from_str(specifier_text) {
-      return self.shared.node_resolver.resolve_req_reference(
-        &reference,
-        permissions,
-        &referrer,
-      );
+      return self
+        .shared
+        .node_resolver
+        .resolve_req_reference(
+          &reference,
+          permissions,
+          &referrer,
+          NodeResolutionMode::Execution,
+        )
+        .map(|res| res.into_url());
     }
 
-    match maybe_mapped {
-      Some(resolved) => Ok(resolved),
-      None => deno_core::resolve_import(specifier, referrer.as_str())
-        .map_err(|err| err.into()),
-    }
+    let specifier = match maybe_mapped {
+      Some(resolved) => resolved,
+      None => deno_core::resolve_import(specifier, referrer.as_str())?,
+    };
+    self
+      .shared
+      .node_resolver
+      .handle_if_in_node_modules(specifier)
   }
 
   fn load(
@@ -150,12 +162,22 @@ impl ModuleLoader for EmbeddedModuleLoader {
     is_dynamic: bool,
     _requested_module_type: RequestedModuleType,
   ) -> deno_core::ModuleLoadResponse {
-    let is_data_uri = get_source_from_data_url(original_specifier).ok();
-    if let Some((source, _)) = is_data_uri {
+    if original_specifier.scheme() == "data" {
+      let data_url_text =
+        match deno_graph::source::RawDataUrl::parse(original_specifier)
+          .and_then(|url| url.decode().map_err(|err| err.into()))
+        {
+          Ok(response) => response,
+          Err(err) => {
+            return deno_core::ModuleLoadResponse::Sync(Err(type_error(
+              format!("{:#}", err),
+            )));
+          }
+        };
       return deno_core::ModuleLoadResponse::Sync(Ok(
         deno_core::ModuleSource::new(
           deno_core::ModuleType::JavaScript,
-          ModuleSourceCode::String(source.into()),
+          ModuleSourceCode::String(data_url_text.into()),
           original_specifier,
         ),
       ));
@@ -271,7 +293,7 @@ impl ModuleLoaderFactory for StandaloneModuleLoaderFactory {
 
   fn create_source_map_getter(
     &self,
-  ) -> Option<Box<dyn deno_core::SourceMapGetter>> {
+  ) -> Option<Rc<dyn deno_core::SourceMapGetter>> {
     None
   }
 }
@@ -443,7 +465,8 @@ pub async fn run(
     Arc::new(parse_from_json(&base, &source).unwrap().import_map)
   });
   let cli_node_resolver = Arc::new(CliNodeResolver::new(
-    cjs_resolutions.clone(),
+    Some(cjs_resolutions.clone()),
+    fs.clone(),
     node_resolver.clone(),
     npm_resolver.clone(),
   ));
@@ -511,7 +534,6 @@ pub async fn run(
     None,
     None,
     None,
-    None,
     feature_checker,
     CliMainWorkerOptions {
       argv: metadata.argv,
@@ -528,20 +550,24 @@ pub async fn run(
       is_npm_main: main_module.scheme() == "npm",
       skip_op_registration: true,
       location: metadata.location,
-      maybe_binary_npm_command_name: NpmPackageReqReference::from_specifier(
-        main_module,
-      )
-      .ok()
-      .map(|req_ref| npm_pkg_req_ref_to_binary_command(&req_ref)),
+      argv0: NpmPackageReqReference::from_specifier(main_module)
+        .ok()
+        .map(|req_ref| npm_pkg_req_ref_to_binary_command(&req_ref))
+        .or(std::env::args().next()),
       origin_data_folder_path: None,
       seed: metadata.seed,
       unsafely_ignore_certificate_errors: metadata
         .unsafely_ignore_certificate_errors,
       unstable: metadata.unstable_config.legacy_flag_enabled,
       maybe_root_package_json_deps: package_json_deps_provider.deps().cloned(),
+      create_hmr_runner: None,
+      create_coverage_collector: None,
     },
     None,
-    metadata.disable_deprecated_api_warning,
+    false,
+    // TODO(bartlomieju): temporarily disabled
+    // metadata.disable_deprecated_api_warning,
+    true,
     false,
   );
 
