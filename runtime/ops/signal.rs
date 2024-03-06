@@ -618,9 +618,14 @@ pub fn op_signal_unbind(
   #[smi] rid: ResourceId,
 ) -> Result<(), AnyError> {
   let resource = state.resource_table.take::<SignalStreamResource>(rid)?;
-  resource
-    .use_default_handler
-    .store(true, std::sync::atomic::Ordering::Release);
+
+  #[cfg(unix)]
+  {
+    resource
+      .use_default_handler
+      .store(true, std::sync::atomic::Ordering::Release);
+  }
+
   resource.close();
   Ok(())
 }
