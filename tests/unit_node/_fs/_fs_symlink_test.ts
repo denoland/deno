@@ -110,7 +110,7 @@ Deno.test({
   name: "SYNC: symlink junction",
   fn() {
     const dir: string = Deno.makeTempDirSync();
-    const linkedDir: string = dir + ".link";
+    const linkedDir: string = dir + "-junction";
 
     try {
       symlinkSync(dir, linkedDir, "junction");
