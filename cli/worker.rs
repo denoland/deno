@@ -841,6 +841,7 @@ fn create_web_worker_callback(
       stdio: stdio.clone(),
       cache_storage_dir,
       feature_checker,
+      close_on_idle: args.close_on_idle,
     };
 
     WebWorker::bootstrap_from_options(

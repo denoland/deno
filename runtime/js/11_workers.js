@@ -72,6 +72,8 @@ function hostRecvMessage(id) {
   return op_host_recv_message(id);
 }
 
+const closeOnIdle = SymbolFor("Deno.WorkerCloneOnIdle");
+
 class Worker extends EventTarget {
   #id = 0;
   #name = "";
@@ -122,6 +124,7 @@ class Worker extends EventTarget {
       deno?.permissions,
       name,
       workerType,
+      options[closeOnIdle] || false,
     );
     this.#id = id;
     this.#pollControl();
