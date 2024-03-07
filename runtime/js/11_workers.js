@@ -14,6 +14,7 @@ const {
   ObjectPrototypeIsPrototypeOf,
   String,
   StringPrototypeStartsWith,
+  Symbol,
   SymbolFor,
   SymbolIterator,
   SymbolToStringTag,
@@ -72,7 +73,7 @@ function hostRecvMessage(id) {
   return op_host_recv_message(id);
 }
 
-const privateWorkerRef = SymbolFor("Deno.privateWorkerRef");
+const privateWorkerRef = Symbol();
 
 function refWorker(worker) {
   worker[privateWorkerRef](true);
