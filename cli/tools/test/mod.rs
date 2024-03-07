@@ -268,37 +268,46 @@ pub enum TestFailure {
   HasSanitizersAndOverlaps(IndexSet<String>), // Long names of overlapped tests
 }
 
-impl ToString for TestFailure {
-  fn to_string(&self) -> String {
+impl std::fmt::Display for TestFailure {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     match self {
-      TestFailure::JsError(js_error) => format_test_error(js_error),
-      TestFailure::FailedSteps(1) => "1 test step failed.".to_string(),
-      TestFailure::FailedSteps(n) => format!("{} test steps failed.", n),
-      TestFailure::IncompleteSteps => "Completed while steps were still running. Ensure all steps are awaited with `await t.step(...)`.".to_string(),
-      TestFailure::Incomplete => "Didn't complete before parent. Await step with `await t.step(...)`.".to_string(),
+      TestFailure::JsError(js_error) => {
+        write!(f, "{}", format_js_error(js_error))
+      }
+      TestFailure::FailedSteps(1) => write!(f, "1 test step failed"),
+      TestFailure::FailedSteps(n) => write!(f, "{n} test steps failed"),
+      TestFailure::IncompleteSteps => {
+        write!(f, "Completed while steps were still running. Ensure all steps are awaited with `await t.step(...)`.")
+      }
+      TestFailure::Incomplete => {
+        write!(
+          f,
+          "Didn't complete before parent. Await step with `await t.step(...)`."
+        )
+      }
       TestFailure::Leaked(details, trailer_notes) => {
-        let mut string = "Leaks detected:".to_string();
+        write!(f, "Leaks detected:")?;
         for detail in details {
-          string.push_str(&format!("\n  - {detail}"));
+          write!(f, "\n  - {}", detail)?;
         }
         for trailer in trailer_notes {
-          string.push_str(&format!("\n{trailer}"));
+          write!(f, "\n{}", trailer)?;
         }
-        string
+        Ok(())
       }
       TestFailure::OverlapsWithSanitizers(long_names) => {
-        let mut string = "Started test step while another test step with sanitizers was running:".to_string();
+        write!(f, "Started test step while another test step with sanitizers was running:")?;
         for long_name in long_names {
-          string.push_str(&format!("\n  * {}", long_name));
+          write!(f, "\n  * {}", long_name)?;
         }
-        string
+        Ok(())
       }
       TestFailure::HasSanitizersAndOverlaps(long_names) => {
-        let mut string = "Started test step with sanitizers while another test step was running:".to_string();
+        write!(f, "Started test step with sanitizers while another test step was running:")?;
         for long_name in long_names {
-          string.push_str(&format!("\n  * {}", long_name));
+          write!(f, "\n  * {}", long_name)?;
         }
-        string
+        Ok(())
       }
     }
   }
