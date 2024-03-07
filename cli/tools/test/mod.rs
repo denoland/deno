@@ -377,6 +377,12 @@ pub enum TestResult {
   Cancelled,
 }
 
+impl TestResult {
+  pub fn is_step_failure(&self) -> bool {
+    matches!(self, TestResult::Failed(TestFailure::FailedSteps(_)))
+  }
+}
+
 #[derive(Debug, Clone, Eq, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TestStepDescription {
@@ -397,6 +403,12 @@ pub enum TestStepResult {
   Ok,
   Ignored,
   Failed(TestFailure),
+}
+
+impl TestStepResult {
+  pub fn is_step_failure(&self) -> bool {
+    matches!(self, TestStepResult::Failed(TestFailure::FailedSteps(_)))
+  }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Deserialize)]

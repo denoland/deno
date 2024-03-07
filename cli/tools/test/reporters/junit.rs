@@ -106,6 +106,15 @@ impl TestReporter for JunitTestReporter {
     result: &TestResult,
     elapsed: u64,
   ) {
+    // If the result is a step failure, it means that some nested test case
+    // failed. In this case, the result of the nested test cases should be
+    // reported in another call to `report_step_result` method, so we skip
+    // reporting the current suite.
+    if result.is_step_failure() {
+      self.cases.remove(&description.id);
+      return;
+    }
+
     if let Some(case) = self.cases.get_mut(&description.id) {
       case.status = Self::convert_status(result);
       case.set_time(Duration::from_millis(elapsed));
@@ -148,6 +157,15 @@ impl TestReporter for JunitTestReporter {
     _tests: &IndexMap<usize, TestDescription>,
     _test_steps: &IndexMap<usize, TestStepDescription>,
   ) {
+    // If the result is a step failure, it means that some nested test case
+    // failed. In this case, the result of the nested test cases should be
+    // reported in another call to `report_step_result` method, so we skip
+    // reporting the current step.
+    if result.is_step_failure() {
+      self.cases.remove(&description.id);
+      return;
+    }
+
     if let Some(case) = self.cases.get_mut(&description.id) {
       case.status = Self::convert_step_status(&result);
       case.set_time(Duration::from_millis(elapsed));
