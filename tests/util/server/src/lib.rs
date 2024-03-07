@@ -57,12 +57,23 @@ pub fn env_vars_for_npm_tests() -> Vec<(String, String)> {
   ]
 }
 
-pub fn env_vars_for_jsr_tests() -> Vec<(String, String)> {
+pub fn env_vars_for_jsr_tests_with_git_check() -> Vec<(String, String)> {
   vec![
     ("JSR_URL".to_string(), jsr_registry_url()),
     ("DISABLE_JSR_PROVENANCE".to_string(), "true".to_string()),
     ("NO_COLOR".to_string(), "1".to_string()),
   ]
+}
+
+pub fn env_vars_for_jsr_tests() -> Vec<(String, String)> {
+  let mut vars = env_vars_for_jsr_tests_with_git_check();
+
+  vars.push((
+    "DENO_TESTING_DISABLE_GIT_CHECK".to_string(),
+    "1".to_string(),
+  ));
+
+  vars
 }
 
 pub fn env_vars_for_jsr_provenance_tests() -> Vec<(String, String)> {
@@ -114,6 +125,10 @@ pub fn env_vars_for_jsr_npm_tests() -> Vec<(String, String)> {
   vec![
     ("NPM_CONFIG_REGISTRY".to_string(), npm_registry_url()),
     ("JSR_URL".to_string(), jsr_registry_url()),
+    (
+      "DENO_TESTING_DISABLE_GIT_CHECK".to_string(),
+      "1".to_string(),
+    ),
     ("DISABLE_JSR_PROVENANCE".to_string(), "true".to_string()),
     ("NO_COLOR".to_string(), "1".to_string()),
   ]
