@@ -110,4 +110,6 @@ declare module "ext:deno_web/13_message_port.js" {
     data: Uint8Array;
     transferables: Transferable[];
   }
+  const MessageChannel: typeof MessageChannel;
+  const MessagePort: typeof MessagePort;
 }

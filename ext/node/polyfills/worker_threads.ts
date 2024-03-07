@@ -311,9 +311,22 @@ export function markAsUntransferable() {
 export function moveMessagePortToContext() {
   notImplemented("moveMessagePortToContext");
 }
-export function receiveMessageOnPort() {
-  notImplemented("receiveMessageOnPort");
+
+/**
+ * @param { MessagePort } port
+ * @returns {object | undefined}
+ */
+export function receiveMessageOnPort(port: MessagePort): object | undefined {
+  if (!(port instanceof MessagePort)) {
+    const err = new TypeError(
+      'The "port" argument must be a MessagePort instance',
+    );
+    err["code"] = "ERR_INVALID_ARG_TYPE";
+    throw err;
+  }
+  return port.receiveMessage();
 }
+
 export {
   _Worker as Worker,
   BroadcastChannel,

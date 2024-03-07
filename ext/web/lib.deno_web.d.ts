@@ -1060,6 +1060,11 @@ declare interface MessagePort extends EventTarget {
   postMessage(message: any, transfer: Transferable[]): void;
   postMessage(message: any, options?: StructuredSerializeOptions): void;
   /**
+   * Sync message access. Provided only for use in
+   * `node:worker_threads.receiveMessageOnPort`
+   */
+  receiveMessage(): object | undefined;
+  /**
    * Begins dispatching messages received on the port. This is implicitly called
    * when assigning a value to `this.onmessage`.
    */
