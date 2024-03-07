@@ -281,7 +281,7 @@ fn relative_url(
 ) -> String {
   if resolved.scheme() == "file" {
     let relative = referrer.make_relative(resolved).unwrap();
-    if relative == "" {
+    if relative.is_empty() {
       let last = resolved.path_segments().unwrap().last().unwrap();
       format!("./{last}")
     } else if relative.starts_with("../") {
