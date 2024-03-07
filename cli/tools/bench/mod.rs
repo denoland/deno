@@ -7,7 +7,6 @@ use crate::colors;
 use crate::display::write_json_to_stdout;
 use crate::factory::CliFactory;
 use crate::factory::CliFactoryBuilder;
-use crate::graph_util::graph_valid_with_cli_options;
 use crate::graph_util::has_graph_root_local_dependent_changed;
 use crate::module_loader::ModuleLoadPreparer;
 use crate::ops;
@@ -526,14 +525,10 @@ pub async fn run_benchmarks_with_watch(
           Permissions::from_options(&cli_options.permissions_options())?;
 
         let graph = module_graph_creator
-          .create_graph(graph_kind, bench_modules.clone())
+          .create_graph(graph_kind, bench_modules)
           .await?;
-        graph_valid_with_cli_options(
-          &graph,
-          factory.fs().as_ref(),
-          &bench_modules,
-          cli_options,
-        )?;
+        module_graph_creator.graph_valid(&graph)?;
+        let bench_modules = &graph.roots;
 
         let bench_modules_to_reload = if let Some(changed_paths) = changed_paths
         {
@@ -542,7 +537,7 @@ pub async fn run_benchmarks_with_watch(
           for bench_module_specifier in bench_modules {
             if has_graph_root_local_dependent_changed(
               &graph,
-              &bench_module_specifier,
+              bench_module_specifier,
               &changed_paths,
             ) {
               result.push(bench_module_specifier.clone());
@@ -556,7 +551,7 @@ pub async fn run_benchmarks_with_watch(
         let worker_factory =
           Arc::new(factory.create_cli_main_worker_factory().await?);
 
-        // todo(THIS PR): why are we collecting specifiers twice in a row?
+        // todo(dsherret): why are we collecting specifiers twice in a row?
         // Seems like a perf bug.
         let specifiers =
           collect_specifiers(bench_options.files, is_supported_bench_path)?
