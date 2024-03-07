@@ -4,6 +4,7 @@ use crate::args::jsr_url;
 use crate::args::CliOptions;
 use crate::args::Lockfile;
 use crate::args::TsTypeLib;
+use crate::args::DENO_DISABLE_PEDANTIC_NODE_WARNINGS;
 use crate::cache;
 use crate::cache::GlobalHttpCache;
 use crate::cache::ModuleInfoCache;
@@ -681,9 +682,11 @@ pub fn enhanced_resolution_error_message(error: &ResolutionError) -> String {
   let mut message = format!("{error}");
 
   if let Some(specifier) = get_resolution_error_bare_node_specifier(error) {
-    message.push_str(&format!(
+    if !*DENO_DISABLE_PEDANTIC_NODE_WARNINGS {
+      message.push_str(&format!(
         "\nIf you want to use a built-in Node module, add a \"node:\" prefix (ex. \"node:{specifier}\")."
       ));
+    }
   }
 
   message
