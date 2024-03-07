@@ -138,7 +138,10 @@ Deno.test("[node/http2 client GET https://www.example.com]", async () => {
   assert(chunk.length > 0);
 });
 
-Deno.test("[node/http2.createServer()]", async () => {
+Deno.test("[node/http2.createServer()]", {
+  // TODO(satyarohith): enable the test on windows.
+  ignore: Deno.build.os === "windows",
+}, async () => {
   const server = http2.createServer((_req, res) => {
     res.setHeader("Content-Type", "text/html");
     res.setHeader("X-Foo", "bar");
@@ -158,5 +161,6 @@ Deno.test("[node/http2.createServer()]", async () => {
   server.close();
   // Wait to avoid leaking the timer from here
   // https://github.com/denoland/deno/blob/749b6e45e58ac87188027f79fe403d130f86bd73/ext/node/polyfills/net.ts#L2396-L2402
+  // Issue: https://github.com/denoland/deno/issues/22764
   await new Promise<void>((resolve) => server.on("close", resolve));
 });
