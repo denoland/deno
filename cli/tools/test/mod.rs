@@ -314,6 +314,31 @@ impl std::fmt::Display for TestFailure {
 }
 
 impl TestFailure {
+  pub fn overview(&self) -> String {
+    match self {
+      TestFailure::JsError(js_error) => js_error.exception_message.clone(),
+      TestFailure::FailedSteps(1) => "1 test step failed".to_string(),
+      TestFailure::FailedSteps(n) => format!("{n} test steps failed"),
+      TestFailure::IncompleteSteps => {
+        "Completed while steps were still running".to_string()
+      }
+      TestFailure::Incomplete => "Didn't complete before parent".to_string(),
+      TestFailure::Leaked(_, _) => "Leaks detected".to_string(),
+      TestFailure::OverlapsWithSanitizers(_) => {
+        "Started test step while another test step with sanitizers was running"
+          .to_string()
+      }
+      TestFailure::HasSanitizersAndOverlaps(_) => {
+        "Started test step with sanitizers while another test step was running"
+          .to_string()
+      }
+    }
+  }
+
+  pub fn detail(&self) -> String {
+    self.to_string()
+  }
+
   fn format_label(&self) -> String {
     match self {
       TestFailure::Incomplete => colors::gray("INCOMPLETE").to_string(),
