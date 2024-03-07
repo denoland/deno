@@ -5,6 +5,7 @@ use crate::permissions::PermissionsContainer;
 use crate::shared::maybe_transpile_source;
 use crate::shared::runtime;
 use crate::tokio_util::create_and_run_current_thread;
+use crate::worker::create_op_metrics;
 use crate::worker::import_meta_resolve_callback;
 use crate::worker::validate_import_attributes_callback;
 use crate::worker::FormatJsErrorFn;
@@ -34,7 +35,6 @@ use deno_core::ModuleCodeString;
 use deno_core::ModuleId;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
-use deno_core::OpMetricsSummaryTracker;
 use deno_core::PollEventLoopOptions;
 use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
@@ -326,6 +326,7 @@ pub struct WebWorker {
   id: WorkerId,
   pub js_runtime: JsRuntime,
   pub name: String,
+  close_on_idle: bool,
   internal_handle: WebWorkerInternalHandle,
   pub worker_type: WebWorkerType,
   pub main_module: ModuleSpecifier,
@@ -356,6 +357,7 @@ pub struct WebWorkerOptions {
   pub cache_storage_dir: Option<std::path::PathBuf>,
   pub stdio: Stdio,
   pub feature_checker: Arc<FeatureChecker>,
+  pub strace_ops: Option<Vec<String>>,
   pub close_on_idle: bool,
 }
 
@@ -507,17 +509,23 @@ impl WebWorker {
     #[cfg(feature = "only_snapshotted_js_sources")]
     options.startup_snapshot.as_ref().expect("A user snapshot was not provided, even though 'only_snapshotted_js_sources' is used.");
 
-    // Hook up the summary metrics if the user or subcommand requested them
-    let (op_summary_metrics, op_metrics_factory_fn) =
-      if options.bootstrap.enable_op_summary_metrics {
-        let op_summary_metrics = Rc::new(OpMetricsSummaryTracker::default());
-        (
-          Some(op_summary_metrics.clone()),
-          Some(op_summary_metrics.op_metrics_factory_fn(|_| true)),
-        )
-      } else {
-        (None, None)
-      };
+    // Get our op metrics
+    let (op_summary_metrics, op_metrics_factory_fn) = create_op_metrics(
+      options.bootstrap.enable_op_summary_metrics,
+      options.strace_ops,
+    );
+
+    // // Hook up the summary metrics if the user or subcommand requested them
+    // let (op_summary_metrics, op_metrics_factory_fn) =
+    //   if options.bootstrap.enable_op_summary_metrics {
+    //     let op_summary_metrics = Rc::new(OpMetricsSummaryTracker::default());
+    //     (
+    //       Some(op_summary_metrics.clone()),
+    //       Some(op_summary_metrics.op_metrics_factory_fn(|_| true)),
+    //     )
+    //   } else {
+    //     (None, None)
+    //   };
 
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(options.module_loader.clone()),
@@ -602,6 +610,7 @@ impl WebWorker {
         main_module,
         poll_for_messages_fn: None,
         bootstrap_fn_global: Some(bootstrap_fn_global),
+        close_on_idle: options.close_on_idle,
       },
       external_handle,
     )
@@ -746,7 +755,7 @@ impl WebWorker {
           return Poll::Ready(Err(e));
         }
 
-        if self.name == "$DENO_STD_NODE_WORKER_THREAD" {
+        if self.close_on_idle {
           return Poll::Ready(Ok(()));
         }
 

@@ -45,6 +45,7 @@ function createWorker(
   permissions,
   name,
   workerType,
+  closeOnIdle
 ) {
   return op_create_worker({
     hasSourceCode,
@@ -53,6 +54,7 @@ function createWorker(
     sourceCode,
     specifier,
     workerType,
+    closeOnIdle
   });
 }
 
@@ -107,7 +109,7 @@ class Worker extends EventTarget {
       }
     }
 
-    this.#name = name;
+    this.#name = name || "";
     let hasSourceCode, sourceCode;
     if (workerType === "classic") {
       hasSourceCode = true;
@@ -122,7 +124,7 @@ class Worker extends EventTarget {
       hasSourceCode,
       sourceCode,
       deno?.permissions,
-      name,
+      this.#name,
       workerType,
       options[closeOnIdle] || false,
     );
@@ -282,4 +284,4 @@ webidl.converters["WorkerType"] = webidl.createEnumConverter("WorkerType", [
   "module",
 ]);
 
-export { Worker };
+export { Worker, closeOnIdle };
