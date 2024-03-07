@@ -75,14 +75,6 @@ fn main() {
   let future = async move {
     match standalone {
       Ok(Some(future)) => {
-        let unrecognized_v8_flags = deno_core::v8_set_flags(vec![
-          "UNUSED_BUT_NECESSARY_ARG0".to_string(),
-          "--harmony-temporal".to_string(),
-        ])
-        .into_iter()
-        .skip(1)
-        .collect::<Vec<_>>();
-        assert!(unrecognized_v8_flags.is_empty());
         let (metadata, eszip) = future.await?;
         standalone::run(eszip, metadata).await
       }
