@@ -1341,8 +1341,9 @@ impl Documents {
           .inner()
           .iter()
           .map(|p| match p {
-            PathOrPattern::Path(p) => {
-              Cow::Owned(p.to_string_lossy().to_string())
+            PathOrPattern::Path(p) => p.to_string_lossy(),
+            PathOrPattern::NegatedPath(p) => {
+              Cow::Owned(format!("!{}", p.to_string_lossy()))
             }
             PathOrPattern::RemoteUrl(p) => Cow::Borrowed(p.as_str()),
             PathOrPattern::Pattern(p) => p.as_str(),

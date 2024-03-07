@@ -17,11 +17,10 @@ use crate::util::file_watcher;
 use crate::util::fs::collect_specifiers;
 use crate::util::fs::WalkEntry;
 use crate::util::path::is_script_ext;
+use crate::util::path::matches_pattern_or_exact_path;
 use crate::version::get_user_agent;
 use crate::worker::CliMainWorkerFactory;
 
-use deno_config::glob::PathGlobMatch;
-use deno_config::glob::PathOrPattern;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
@@ -401,23 +400,11 @@ fn is_supported_bench_path(entry: WalkEntry) -> bool {
     false
   } else if has_supported_bench_path_name(entry.path) {
     true
-  } else {
+  } else if let Some(include) = &entry.patterns.include {
     // allow someone to explicitly specify a path
-    let matches_exact_path_or_pattern = entry
-      .patterns
-      .include
-      .as_ref()
-      .map(|p| {
-        p.inner().iter().any(|p| match p {
-          PathOrPattern::Path(p) => p == entry.path,
-          PathOrPattern::RemoteUrl(_) => false,
-          PathOrPattern::Pattern(p) => {
-            p.matches_path(entry.path) == PathGlobMatch::Matched
-          }
-        })
-      })
-      .unwrap_or(false);
-    matches_exact_path_or_pattern
+    matches_pattern_or_exact_path(include, entry.path)
+  } else {
+    false
   }
 }
 

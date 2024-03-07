@@ -419,6 +419,10 @@ pub fn collect_specifiers(
             prepared.push(url);
           }
         }
+        PathOrPattern::NegatedPath(path) => {
+          // add it back
+          result.push(PathOrPattern::NegatedPath(path));
+        }
         PathOrPattern::RemoteUrl(remote_url) => {
           prepared.push(remote_url);
         }
