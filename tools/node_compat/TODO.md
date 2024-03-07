@@ -3,7 +3,7 @@
 
 NOTE: This file should not be manually edited. Please edit `tests/node_compat/config.json` and run `deno task setup` in `tools/node_compat` dir instead.
 
-Total: 2999
+Total: 2998
 
 - [abort/test-abort-backtrace.js](https://github.com/nodejs/node/tree/v18.12.1/test/abort/test-abort-backtrace.js)
 - [abort/test-abort-fatal-error.js](https://github.com/nodejs/node/tree/v18.12.1/test/abort/test-abort-fatal-error.js)
@@ -2841,7 +2841,6 @@ Total: 2999
 - [pseudo-tty/test-trace-sigint-disabled.js](https://github.com/nodejs/node/tree/v18.12.1/test/pseudo-tty/test-trace-sigint-disabled.js)
 - [pseudo-tty/test-trace-sigint-on-idle.js](https://github.com/nodejs/node/tree/v18.12.1/test/pseudo-tty/test-trace-sigint-on-idle.js)
 - [pseudo-tty/test-trace-sigint.js](https://github.com/nodejs/node/tree/v18.12.1/test/pseudo-tty/test-trace-sigint.js)
-- [pseudo-tty/test-tty-color-support.js](https://github.com/nodejs/node/tree/v18.12.1/test/pseudo-tty/test-tty-color-support.js)
 - [pseudo-tty/test-tty-isatty.js](https://github.com/nodejs/node/tree/v18.12.1/test/pseudo-tty/test-tty-isatty.js)
 - [pseudo-tty/test-tty-stdin-call-end.js](https://github.com/nodejs/node/tree/v18.12.1/test/pseudo-tty/test-tty-stdin-call-end.js)
 - [pseudo-tty/test-tty-stdout-resize.js](https://github.com/nodejs/node/tree/v18.12.1/test/pseudo-tty/test-tty-stdout-resize.js)

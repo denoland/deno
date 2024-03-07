@@ -687,6 +687,7 @@
       "console_colors.js",
       "no_dropped_stdio.js",
       "no_interleaved_stdio.js",
+      "test-tty-color-support.js",
       "test-tty-color-support-warning-2.js",
       "test-tty-color-support-warning.js",
       "test-tty-stdin-end.js",

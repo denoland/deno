@@ -560,9 +560,7 @@ class Process extends EventEmitter {
   }
 
   /** https://nodejs.org/api/process.html#process_process_platform */
-  get platform() {
-    return platform;
-  }
+  platform = platform;
 
   override addListener(event: "exit", listener: (code: number) => void): this;
   override addListener(

@@ -354,6 +354,24 @@ function mustNotMutateObjectDeep(original) {
   return proxy;
 }
 
+function getTTYfd() {
+  // Do our best to grab a tty fd.
+  const tty = require('tty');
+  // Don't attempt fd 0 as it is not writable on Windows.
+  // Ref: ef2861961c3d9e9ed6972e1e84d969683b25cf95
+  const ttyFd = [1, 2, 4, 5].find(tty.isatty);
+  if (ttyFd === undefined) {
+    try {
+      return fs.openSync('/dev/tty');
+    } catch {
+      // There aren't any tty fd's available to use.
+      return -1;
+    }
+  }
+  return ttyFd;
+}
+
+
 // A helper function to simplify checking for ERR_INVALID_ARG_TYPE output.
 function invalidArgTypeHelper(input) {
   if (input == null) {
@@ -474,6 +492,7 @@ module.exports = {
   isOSX,
   isMainThread: true, // TODO(f3n67u): replace with `worker_thread.isMainThread` when `worker_thread` implemented
   skip,
+  getTTYfd,
   get hasIPv6() {
     const iFaces = require('os').networkInterfaces();
     const re = isWindows ? /Loopback Pseudo-Interface/ : /lo/;
