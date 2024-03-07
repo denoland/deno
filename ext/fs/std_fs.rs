@@ -874,28 +874,51 @@ fn symlink_junction(target: &Path, junction: &Path) -> io::Result<()> {
     );
 
     let mut data = [0u8; MAXIMUM_REPARSE_DATA_BUFFER_SIZE];
+    let data_ptr = data.as_mut_ptr();
+    let data_size = data_ptr.add(MAXIMUM_REPARSE_DATA_BUFFER_SIZE);
     let db = data.as_mut_ptr().cast::<REPARSE_MOUNTPOINT_DATA_BUFFER>();
+    // Zero the header to ensure it's fully initialized, including reserved parameters.
+    *db = mem::zeroed();
+    let reparse_target_slice = {
+      let buf_start = ptr::addr_of_mut!((*db).ReparseTarget).cast::<c::WCHAR>();
+      // Compute offset in bytes and then divide so that we round down
+      // rather than hit any UB (admittedly this arithmetic should work
+      // out so that this isn't necessary)
+      let buf_len_bytes =
+        usize::try_from(data_end.byte_offset_from(buf_start)).unwrap();
+      let buf_len_wchars = buf_len_bytes / core::mem::size_of::<c::WCHAR>();
+      std::slice::from_raw_parts_mut(buf_start, buf_len_wchars)
+    };
+
     let buf = &mut (*db).ReparseTarget as *mut WCHAR;
     let mut i = 0;
     // FIXME: this conversion is very hacky
-    let v = br"\??\";
-    let v = v.iter().map(|x| *x as u16);
-    for c in v.chain(target.as_os_str().encode_wide().skip(4)) {
-      *buf.offset(i) = c;
+    let iter = br"\??\"
+      .iter()
+      .map(|x| *x as u16)
+      .chain(target.as_os_str().encode_wide())
+      .chain(core::iter::once(0));
+    let mut i = 0;
+    for c in iter {
+      if i >= reparse_target_slice.len() {
+        return Err(io::Error::new(
+          io::ErrorKind::InvalidInput,
+          "The path is too long to create a junction",
+        ));
+      }
+      reparse_target_slice[i] = c;
       i += 1;
     }
-    *buf.offset(i) = 0;
-    i += 1;
-    (*db).ReparseTag = IO_REPARSE_TAG_MOUNT_POINT;
-    (*db).ReparseTargetMaximumLength = (i * 2) as WORD;
-    (*db).ReparseTargetLength = ((i - 1) * 2) as WORD;
-    (*db).ReparseDataLength = (*db).ReparseTargetLength as DWORD + 12;
+    (*db).ReparseTag = c::IO_REPARSE_TAG_MOUNT_POINT;
+    (*db).ReparseTargetMaximumLength = (i * 2) as c::WORD;
+    (*db).ReparseTargetLength = ((i - 1) * 2) as c::WORD;
+    (*db).ReparseDataLength = (*db).ReparseTargetLength as c::DWORD + 12;
 
     let mut ret = 0;
     let res = DeviceIoControl(
       h.cast(),
       FSCTL_SET_REPARSE_POINT,
-      data.as_mut_ptr().cast(),
+      data_ptr.cast(),
       (*db).ReparseDataLength + 8,
       ptr::null_mut(),
       0,
