@@ -332,7 +332,7 @@ async fn sync_resolution_with_fs(
           .with_context(|| format!("Creating '{}'", folder_path.display()))?;
         let cache_folder = cache
           .package_folder_for_name_and_version(&package.id.nv, &registry_url);
-        if fs::hard_link(&cache_folder, &package_path).is_err() {
+        if hard_link_dir_recursive(&cache_folder, &package_path).is_err() {
           // Fallback to copying the directory.
           //
           // Also handles EXDEV when when trying to hard link across volumes.
