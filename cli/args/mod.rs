@@ -101,12 +101,11 @@ pub fn npm_registry_url() -> &'static Url {
   &NPM_REGISTRY_DEFAULT_URL
 }
 
-pub static JSR_ALLOW_SLOPPY_IMPORTS_AND_NODE_BUILTINS: Lazy<bool> =
-  Lazy::new(|| {
-    std::env::var("JSR_ALLOW_SLOPPY_IMPORTS_AND_NODE_BUILTINS")
-      .ok()
-      .is_some()
-  });
+pub static DENO_DISABLE_PEDANTIC_NODE_WARNINGS: Lazy<bool> = Lazy::new(|| {
+  std::env::var("DENO_DISABLE_PEDANTIC_NODE_WARNINGS")
+    .ok()
+    .is_some()
+});
 
 pub fn jsr_url() -> &'static Url {
   static JSR_URL: Lazy<Url> = Lazy::new(|| {
@@ -1544,7 +1543,6 @@ impl CliOptions {
         .as_ref()
         .map(|c| c.has_unstable("bare-node-builtins"))
         .unwrap_or(false)
-      || *JSR_ALLOW_SLOPPY_IMPORTS_AND_NODE_BUILTINS
   }
 
   pub fn unstable_byonm(&self) -> bool {
@@ -1567,7 +1565,6 @@ impl CliOptions {
         .as_ref()
         .map(|c| c.has_unstable("sloppy-imports"))
         .unwrap_or(false)
-      || *JSR_ALLOW_SLOPPY_IMPORTS_AND_NODE_BUILTINS
   }
 
   pub fn unstable_features(&self) -> Vec<String> {

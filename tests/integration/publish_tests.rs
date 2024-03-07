@@ -250,15 +250,15 @@ itest!(bare_node_builtins {
   http_server: true,
 });
 
-itest!(silence_bare_node_builtins_warning {
-  args: "publish --token 'sadfasdf' --dry-run",
+itest!(bare_node_builtins_warning_no_warnings {
+  args: "publish --token 'sadfasdf' --dry-run  --unstable-bare-node-builtins",
   output: "publish/bare_node_builtins_no_warnings.out",
   cwd: Some("publish/bare_node_builtins"),
   envs: env_vars_for_jsr_npm_tests()
     .into_iter()
     .chain(
       vec![(
-        "JSR_ALLOW_SLOPPY_IMPORTS_AND_NODE_BUILTINS".to_string(),
+        "DENO_DISABLE_PEDANTIC_NODE_WARNINGS".to_string(),
         "1".to_string()
       )]
       .into_iter()
@@ -275,15 +275,15 @@ itest!(sloppy_imports {
   http_server: true,
 });
 
-itest!(silence_sloppy_imports_warnings {
-  args: "publish --token 'sadfasdf' --dry-run",
+itest!(sloppy_imports_no_warnings {
+  args: "publish --token 'sadfasdf' --dry-run  --unstable-sloppy-imports",
   output: "publish/sloppy_imports_no_warnings.out",
   cwd: Some("publish/sloppy_imports"),
   envs: env_vars_for_jsr_tests()
     .into_iter()
     .chain(
       vec![(
-        "JSR_ALLOW_SLOPPY_IMPORTS_AND_NODE_BUILTINS".to_string(),
+        "DENO_DISABLE_PEDANTIC_NODE_WARNINGS".to_string(),
         "1".to_string()
       )]
       .into_iter()
