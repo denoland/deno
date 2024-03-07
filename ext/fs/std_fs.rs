@@ -811,11 +811,100 @@ fn symlink(
       std::os::windows::fs::symlink_dir(oldpath, newpath)?;
     }
     FsFileType::Junction => {
-      std::os::windows::fs::symlink_junction(oldpath, newpath)?;
+      symlink_junction(oldpath, newpath)?;
     }
   };
 
   Ok(())
+}
+
+// Creating a directory junction on windows involves dealing with reparse
+// points and the DeviceIoControl function, and this code is a skeleton of
+// what can be found here:
+//
+// http://www.flexhex.com/docs/articles/hard-links.phtml
+#[cfg(windows)]
+#[allow(non_snake_case)]
+fn symlink_junction(target: &Path, junction: &Path) -> io::Result<()> {
+  use std::os::windows::ffi::OsStrExt;
+  use std::ptr;
+  use winapi::shared::minwindef::*;
+  use winapi::um::fileapi::*;
+  use winapi::um::ioapiset::*;
+  use winapi::um::winbase::*;
+  use winapi::um::winioctl::FSCTL_SET_REPARSE_POINT;
+  use winapi::um::winnt::*;
+
+  const MAXIMUM_REPARSE_DATA_BUFFER_SIZE: usize = 16 * 1024;
+
+  #[repr(C)]
+  #[allow(non_snake_case)]
+  struct REPARSE_MOUNTPOINT_DATA_BUFFER {
+    ReparseTag: DWORD,
+    ReparseDataLength: DWORD,
+    Reserved: WORD,
+    ReparseTargetLength: WORD,
+    ReparseTargetMaximumLength: WORD,
+    Reserved1: WORD,
+    ReparseTarget: WCHAR,
+  }
+
+  // We're using low-level APIs to create the junction, and these are more picky about paths.
+  // For example, forward slashes cannot be used as a path separator, so we should try to
+  // canonicalize the path first.
+  let target = fs::canonicalize(target)?;
+
+  fs::create_dir(junction)?;
+
+  let path = junction.as_os_str().encode_wide().collect::<Vec<_>>();
+
+  unsafe {
+    let h = CreateFileW(
+      path.as_ptr(),
+      GENERIC_WRITE,
+      FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+      ptr::null_mut(),
+      OPEN_EXISTING,
+      FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS,
+      ptr::null_mut(),
+    );
+
+    let mut data = [0u8; MAXIMUM_REPARSE_DATA_BUFFER_SIZE];
+    let db = data.as_mut_ptr().cast::<REPARSE_MOUNTPOINT_DATA_BUFFER>();
+    let buf = &mut (*db).ReparseTarget as *mut WCHAR;
+    let mut i = 0;
+    // FIXME: this conversion is very hacky
+    let v = br"\??\";
+    let v = v.iter().map(|x| *x as u16);
+    for c in v.chain(target.as_os_str().encode_wide().skip(4)) {
+      *buf.offset(i) = c;
+      i += 1;
+    }
+    *buf.offset(i) = 0;
+    i += 1;
+    (*db).ReparseTag = IO_REPARSE_TAG_MOUNT_POINT;
+    (*db).ReparseTargetMaximumLength = (i * 2) as WORD;
+    (*db).ReparseTargetLength = ((i - 1) * 2) as WORD;
+    (*db).ReparseDataLength = (*db).ReparseTargetLength as DWORD + 12;
+
+    let mut ret = 0;
+    let res = DeviceIoControl(
+      h.cast(),
+      FSCTL_SET_REPARSE_POINT,
+      data.as_mut_ptr().cast(),
+      (*db).ReparseDataLength + 8,
+      ptr::null_mut(),
+      0,
+      &mut ret,
+      ptr::null_mut(),
+    );
+
+    if res == 0 {
+      Err(io::Error::last_os_error())
+    } else {
+      Ok(())
+    }
+  }
 }
 
 fn truncate(path: &Path, len: u64) -> FsResult<()> {
