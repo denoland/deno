@@ -2,6 +2,9 @@
 
 use std::io::Write;
 
+use crate::args::DenoSubcommand;
+use crate::args::JSR_ALLOW_SLOPPY_IMPORTS_AND_NODE_BUILTINS;
+
 struct CliLogger(env_logger::Logger);
 
 impl CliLogger {
@@ -30,45 +33,59 @@ impl log::Log for CliLogger {
   }
 }
 
-pub fn init(maybe_level: Option<log::Level>) {
+pub fn init(maybe_level: Option<log::Level>, subcommand: &DenoSubcommand) {
   let log_level = maybe_level.unwrap_or(log::Level::Info);
-  let logger = env_logger::Builder::from_env(
+  let mut builder = env_logger::Builder::from_env(
     env_logger::Env::default()
       .default_filter_or(log_level.to_level_filter().to_string()),
-  )
-  // https://github.com/denoland/deno/issues/6641
-  .filter_module("rustyline", log::LevelFilter::Off)
-  // wgpu crates (gfx_backend), have a lot of useless INFO and WARN logs
-  .filter_module("wgpu", log::LevelFilter::Error)
-  .filter_module("gfx", log::LevelFilter::Error)
-  // used to make available the lsp_debug which is then filtered out at runtime
-  // in the cli logger
-  .filter_module("deno::lsp::performance", log::LevelFilter::Debug)
-  .filter_module("rustls", log::LevelFilter::Off)
-  .format(|buf, record| {
-    let mut target = record.target().to_string();
-    if let Some(line_no) = record.line() {
-      target.push(':');
-      target.push_str(&line_no.to_string());
-    }
-    if record.level() <= log::Level::Info
-      || (record.target() == "deno::lsp::performance"
-        && record.level() == log::Level::Debug)
-    {
-      // Print ERROR, WARN, INFO and lsp_debug logs as they are
-      writeln!(buf, "{}", record.args())
-    } else {
-      // Add prefix to DEBUG or TRACE logs
-      writeln!(
-        buf,
-        "{} RS - {} - {}",
-        record.level(),
-        target,
-        record.args()
-      )
-    }
-  })
-  .build();
+  );
+
+  builder
+    // https://github.com/denoland/deno/issues/6641
+    .filter_module("rustyline", log::LevelFilter::Off)
+    // wgpu crates (gfx_backend), have a lot of useless INFO and WARN logs
+    .filter_module("wgpu", log::LevelFilter::Error)
+    .filter_module("gfx", log::LevelFilter::Error)
+    // used to make available the lsp_debug which is then filtered out at runtime
+    // in the cli logger
+    .filter_module("deno::lsp::performance", log::LevelFilter::Debug)
+    .filter_module("rustls", log::LevelFilter::Off);
+
+  // If we're in `deno publish` and proper env var is passed we need to filter
+  // out messages from `deno_graph` and from ...
+  if matches!(subcommand, DenoSubcommand::Publish(..))
+    && *JSR_ALLOW_SLOPPY_IMPORTS_AND_NODE_BUILTINS
+  {
+    builder
+      .filter_module("deno_graph", log::LevelFilter::Off)
+      .filter_module("deno::resolver", log::LevelFilter::Off);
+  }
+
+  let logger = builder
+    .format(|buf, record| {
+      let mut target = record.target().to_string();
+      if let Some(line_no) = record.line() {
+        target.push(':');
+        target.push_str(&line_no.to_string());
+      }
+      if record.level() <= log::Level::Info
+        || (record.target() == "deno::lsp::performance"
+          && record.level() == log::Level::Debug)
+      {
+        // Print ERROR, WARN, INFO and lsp_debug logs as they are
+        writeln!(buf, "{}", record.args())
+      } else {
+        // Add prefix to DEBUG or TRACE logs
+        writeln!(
+          buf,
+          "{} RS - {} - {}",
+          record.level(),
+          target,
+          record.args()
+        )
+      }
+    })
+    .build();
 
   let cli_logger = CliLogger::new(logger);
   let max_level = cli_logger.filter();

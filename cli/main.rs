@@ -388,7 +388,7 @@ pub fn main() {
     init_v8_flags(&default_v8_flags, &flags.v8_flags, get_v8_flags_from_env());
     deno_core::JsRuntime::init_platform(None);
 
-    util::logger::init(flags.log_level);
+    util::logger::init(flags.log_level, &flags.subcommand);
 
     run_subcommand(flags).await
   };

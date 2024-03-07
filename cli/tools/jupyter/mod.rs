@@ -51,7 +51,7 @@ pub async fn kernel(
 
   // This env var might be set by notebook
   if std::env::var("DEBUG").is_ok() {
-    logger::init(Some(log::Level::Debug));
+    logger::init(Some(log::Level::Debug), &flags.subcommand);
   }
 
   let factory = CliFactory::from_flags(flags).await?;
