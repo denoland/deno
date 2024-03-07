@@ -307,6 +307,7 @@ pub struct PublishFlags {
   pub token: Option<String>,
   pub dry_run: bool,
   pub allow_slow_types: bool,
+  pub allow_dirty: bool,
   pub no_provenance: bool,
 }
 
@@ -2436,6 +2437,11 @@ fn publish_subcommand() -> Command {
           .action(ArgAction::SetTrue),
       )
       .arg(
+        Arg::new("allow-dirty")
+        .long("allow-dirty")
+        .help("Allow publishing if the repository has uncommited changed")
+        .action(ArgAction::SetTrue),
+      ).arg(
         Arg::new("no-provenance")
           .long("no-provenance")
           .help("Disable provenance attestation. Enabled by default on Github actions, publicly links the package to where it was built and published from.")
@@ -3897,6 +3903,7 @@ fn publish_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     token: matches.remove_one("token"),
     dry_run: matches.get_flag("dry-run"),
     allow_slow_types: matches.get_flag("allow-slow-types"),
+    allow_dirty: matches.get_flag("allow-dirty"),
     no_provenance: matches.get_flag("no-provenance"),
   });
 }
@@ -8620,6 +8627,7 @@ mod tests {
       "--no-provenance",
       "--dry-run",
       "--allow-slow-types",
+      "--allow-dirty",
       "--token=asdf",
     ]);
     assert_eq!(
@@ -8629,6 +8637,7 @@ mod tests {
           token: Some("asdf".to_string()),
           dry_run: true,
           allow_slow_types: true,
+          allow_dirty: true,
           no_provenance: true,
         }),
         type_check_mode: TypeCheckMode::Local,
