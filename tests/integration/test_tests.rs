@@ -283,9 +283,9 @@ itest!(junit {
   output: "test/pass.junit.out",
 });
 
-itest!(junit_parallel {
-  args: "test --parallel --reporter junit test/parallel_output.ts",
-  output: "test/parallel_output.junit.out",
+itest!(junit_nested {
+  args: "test --reporter junit test/nested.ts",
+  output: "test/nested.junit.out",
   exit_code: 1,
 });
 
