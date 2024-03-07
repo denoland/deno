@@ -347,15 +347,15 @@ impl<TFilter: Fn(WalkEntry) -> bool> FileCollector<TFilter> {
         };
         let file_type = e.file_type();
         let is_dir = file_type.is_dir();
-        let c = e.path().to_path_buf();
+        let path = e.path().to_path_buf();
         let maybe_gitignore =
           maybe_git_ignores.as_mut().and_then(|git_ignores| {
-            let dir_path = if is_dir { &c } else { c.parent()? };
+            let dir_path = if is_dir { &path } else { path.parent()? };
             git_ignores.get_resolved_git_ignore(dir_path)
           });
         if !is_pattern_matched(
           maybe_gitignore.as_deref(),
-          &c,
+          &path,
           is_dir,
           &file_patterns,
         ) {
@@ -363,7 +363,7 @@ impl<TFilter: Fn(WalkEntry) -> bool> FileCollector<TFilter> {
             iterator.skip_current_dir();
           }
         } else if is_dir {
-          let should_ignore_dir = c
+          let should_ignore_dir = path
             .file_name()
             .map(|dir_name| {
               let dir_name = dir_name.to_string_lossy().to_lowercase();
@@ -374,20 +374,20 @@ impl<TFilter: Fn(WalkEntry) -> bool> FileCollector<TFilter> {
                 _ => false,
               };
               // allow the user to opt out of ignoring by explicitly specifying the dir
-              file != c && is_ignored_file
+              file != path && is_ignored_file
             })
             .unwrap_or(false)
-            || !visited_paths.insert(c.clone());
+            || !visited_paths.insert(path.clone());
           if should_ignore_dir {
             iterator.skip_current_dir();
           }
         } else if (self.file_filter)(WalkEntry {
-          path: &c,
+          path: &path,
           file_type: &file_type,
           patterns: &file_patterns,
-        }) && visited_paths.insert(c.clone())
+        }) && visited_paths.insert(path.clone())
         {
-          target_files.push(c);
+          target_files.push(path);
         }
       }
     }

@@ -1095,14 +1095,13 @@ impl Config {
         continue;
       };
       let settings = self.workspace_settings_for_specifier(workspace_uri);
-      let is_enabled = settings.enable.unwrap_or_else(|| {
-        self.has_config_file()
-          || settings
-            .enable_paths
-            .as_ref()
-            .map(|p| !p.is_empty())
-            .unwrap_or(false)
-      });
+      let is_enabled = settings
+        .enable_paths
+        .as_ref()
+        .map(|p| !p.is_empty())
+        .unwrap_or_else(|| {
+          settings.enable.unwrap_or_else(|| self.has_config_file())
+        });
       if is_enabled {
         for path in &settings.disable_paths {
           path_or_patterns.push(PathOrPattern::Path(workspace_path.join(path)));

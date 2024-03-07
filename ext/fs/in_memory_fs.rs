@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+// Allow using Arc for this module.
 #![allow(clippy::disallowed_types)]
 
 use std::collections::hash_map::Entry;
