@@ -30,9 +30,9 @@ impl JunitTestReporter {
       TestResult::Ignored => quick_junit::TestCaseStatus::skipped(),
       TestResult::Failed(failure) => quick_junit::TestCaseStatus::NonSuccess {
         kind: quick_junit::NonSuccessKind::Failure,
-        message: Some(failure.to_string()),
+        message: Some(failure.overview()),
         ty: None,
-        description: None,
+        description: Some(failure.detail()),
         reruns: vec![],
       },
       TestResult::Cancelled => quick_junit::TestCaseStatus::NonSuccess {
@@ -42,6 +42,24 @@ impl JunitTestReporter {
         description: None,
         reruns: vec![],
       },
+    }
+  }
+
+  fn convert_step_status(
+    status: &TestStepResult,
+  ) -> quick_junit::TestCaseStatus {
+    match status {
+      TestStepResult::Ok => quick_junit::TestCaseStatus::success(),
+      TestStepResult::Ignored => quick_junit::TestCaseStatus::skipped(),
+      TestStepResult::Failed(failure) => {
+        quick_junit::TestCaseStatus::NonSuccess {
+          kind: quick_junit::NonSuccessKind::Failure,
+          message: Some(failure.overview()),
+          ty: None,
+          description: Some(failure.detail()),
+          reruns: vec![],
+        }
+      }
     }
   }
 }
@@ -99,6 +117,27 @@ impl TestReporter for JunitTestReporter {
 
   fn report_step_register(&mut self, description: &TestStepDescription) {
     self.test_name_tree.add_node(description.clone().into());
+    let test_case_name =
+      self.test_name_tree.construct_full_test_name(description.id);
+
+    let mut case = quick_junit::TestCase::new(
+      test_case_name,
+      quick_junit::TestCaseStatus::skipped(),
+    );
+    let file_name = description.location.file_name.clone();
+    let file_name = file_name.strip_prefix("file://").unwrap_or(&file_name);
+    case
+      .extra
+      .insert(String::from("filename"), String::from(file_name));
+    case.extra.insert(
+      String::from("line"),
+      description.location.line_number.to_string(),
+    );
+    case.extra.insert(
+      String::from("col"),
+      description.location.column_number.to_string(),
+    );
+    self.cases.insert(description.id, case);
   }
 
   fn report_step_wait(&mut self, _description: &TestStepDescription) {}
@@ -107,43 +146,13 @@ impl TestReporter for JunitTestReporter {
     &mut self,
     description: &TestStepDescription,
     result: &TestStepResult,
-    _elapsed: u64,
+    elapsed: u64,
     _tests: &IndexMap<usize, TestDescription>,
-    test_steps: &IndexMap<usize, TestStepDescription>,
+    _test_steps: &IndexMap<usize, TestStepDescription>,
   ) {
-    let status = match result {
-      TestStepResult::Ok => "passed",
-      TestStepResult::Ignored => "skipped",
-      TestStepResult::Failed(_) => "failure",
-    };
-
-    let root_id: usize;
-    let mut name = String::new();
-    {
-      let mut ancestors = vec![];
-      let mut current_desc = description;
-      loop {
-        if let Some(d) = test_steps.get(&current_desc.parent_id) {
-          ancestors.push(&d.name);
-          current_desc = d;
-        } else {
-          root_id = current_desc.parent_id;
-          break;
-        }
-      }
-      ancestors.reverse();
-      for n in ancestors {
-        name.push_str(n);
-        name.push_str(" ... ");
-      }
-      name.push_str(&description.name);
-    }
-
-    if let Some(case) = self.cases.get_mut(&root_id) {
-      case.add_property(quick_junit::Property::new(
-        format!("step[{}]", status),
-        name,
-      ));
+    if let Some(case) = self.cases.get_mut(&description.id) {
+      case.status = Self::convert_step_status(&result);
+      case.set_time(Duration::from_millis(elapsed));
     }
   }
 
@@ -177,23 +186,28 @@ impl TestReporter for JunitTestReporter {
     &mut self,
     elapsed: &Duration,
     tests: &IndexMap<usize, TestDescription>,
-    _test_steps: &IndexMap<usize, TestStepDescription>,
+    test_steps: &IndexMap<usize, TestStepDescription>,
   ) -> anyhow::Result<()> {
     let mut suites: IndexMap<String, quick_junit::TestSuite> = IndexMap::new();
     for (id, case) in &self.cases {
-      if let Some(test) = tests.get(id) {
-        suites
-          .entry(test.location.file_name.clone())
-          .and_modify(|s| {
-            s.add_test_case(case.clone());
-          })
-          .or_insert_with(|| {
-            let mut suite =
-              quick_junit::TestSuite::new(test.location.file_name.clone());
-            suite.add_test_case(case.clone());
-            suite
-          });
-      }
+      let filename = match (tests.get(id), test_steps.get(id)) {
+        (Some(test), _) => test.location.file_name.clone(),
+        (_, Some(step)) => step.location.file_name.clone(),
+        (None, None) => {
+          unreachable!("Unknown test ID '{id}' provided");
+        }
+      };
+
+      suites
+        .entry(filename.clone())
+        .and_modify(|s| {
+          s.add_test_case(case.clone());
+        })
+        .or_insert_with(|| {
+          let mut suite = quick_junit::TestSuite::new(filename);
+          suite.add_test_case(case.clone());
+          suite
+        });
     }
 
     let mut report = quick_junit::Report::new("deno test");
