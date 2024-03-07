@@ -2461,6 +2461,69 @@ fn lsp_hover_deps_preserved_when_invalid_parse() {
   client.shutdown();
 }
 
+// Regression test for https://github.com/denoland/vscode_deno/issues/1068.
+#[test]
+fn lsp_rename_synbol_file_scheme_edits_only() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"
+        import { SEPARATOR } from "http://localhost:4545/subdir/exports.ts";
+        console.log(SEPARATOR);
+      "#,
+    },
+  }));
+  let res = client.write_request(
+    "textDocument/rename",
+    json!({
+      "textDocument": {
+        "uri": temp_dir.uri().join("file.ts").unwrap(),
+      },
+      "position": { "line": 1, "character": 17 },
+      "newName": "PATH_SEPARATOR",
+    }),
+  );
+  assert_eq!(
+    res,
+    json!({
+      "documentChanges": [
+        {
+          "textDocument": {
+            "uri": temp_dir.uri().join("file.ts").unwrap(),
+            "version": 1,
+          },
+          "edits": [
+            {
+              "range": {
+                "start": { "line": 1, "character": 17 },
+                "end": { "line": 1, "character": 26 },
+              },
+              "newText": "PATH_SEPARATOR",
+            },
+            {
+              "range": {
+                "start": { "line": 2, "character": 20 },
+                "end": { "line": 2, "character": 29 },
+              },
+              "newText": "PATH_SEPARATOR",
+            },
+          ],
+        }
+      ],
+    })
+  );
+  client.shutdown();
+}
+
 #[test]
 fn lsp_hover_typescript_types() {
   let context = TestContextBuilder::new()

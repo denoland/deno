@@ -280,7 +280,15 @@ fn relative_url(
   referrer: &ModuleSpecifier,
 ) -> String {
   if resolved.scheme() == "file" {
-    format!("./{}", referrer.make_relative(resolved).unwrap())
+    let relative = referrer.make_relative(resolved).unwrap();
+    if relative.is_empty() {
+      let last = resolved.path_segments().unwrap().last().unwrap();
+      format!("./{last}")
+    } else if relative.starts_with("../") {
+      relative
+    } else {
+      format!("./{relative}")
+    }
   } else {
     resolved.to_string()
   }
@@ -380,6 +388,7 @@ import chalk from "chalk";
 import baz from "./baz";
 import b from "./b.js";
 import b2 from "./b";
+import "./mod.ts";
 import url from "url";
 // TODO: unfurl these to jsr
 // import "npm:@jsr/std__fs@1/file";
@@ -428,6 +437,7 @@ import chalk from "npm:chalk@5";
 import baz from "./baz/index.js";
 import b from "./b.ts";
 import b2 from "./b.ts";
+import "./mod.ts";
 import url from "node:url";
 // TODO: unfurl these to jsr
 // import "npm:@jsr/std__fs@1/file";
