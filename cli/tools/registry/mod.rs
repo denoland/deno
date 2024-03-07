@@ -812,8 +812,10 @@ async fn build_and_check_graph_for_publish(
   diagnostics_collector: &PublishDiagnosticsCollector,
   packages: &[WorkspaceMemberConfig],
 ) -> Result<Arc<deno_graph::ModuleGraph>, deno_core::anyhow::Error> {
-  let graph = module_graph_creator.create_publish_graph(packages).await?;
-  graph.valid()?;
+  let build_fast_check_graph = !allow_slow_types;
+  let graph = module_graph_creator
+    .create_and_validate_publish_graph(packages, build_fast_check_graph)
+    .await?;
 
   // todo(dsherret): move to lint rule
   collect_invalid_external_imports(&graph, diagnostics_collector);

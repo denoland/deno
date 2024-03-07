@@ -10,7 +10,6 @@ use crate::factory::CliFactory;
 use crate::factory::CliFactoryBuilder;
 use crate::file_fetcher::File;
 use crate::file_fetcher::FileFetcher;
-use crate::graph_util::graph_valid_with_cli_options;
 use crate::graph_util::has_graph_root_local_dependent_changed;
 use crate::module_loader::ModuleLoadPreparer;
 use crate::ops;
@@ -1612,14 +1611,10 @@ pub async fn run_tests_with_watch(
         let permissions =
           Permissions::from_options(&cli_options.permissions_options())?;
         let graph = module_graph_creator
-          .create_graph(graph_kind, test_modules.clone())
+          .create_graph(graph_kind, test_modules)
           .await?;
-        graph_valid_with_cli_options(
-          &graph,
-          factory.fs().as_ref(),
-          &test_modules,
-          &cli_options,
-        )?;
+        module_graph_creator.graph_valid(&graph)?;
+        let test_modules = &graph.roots;
 
         let test_modules_to_reload = if let Some(changed_paths) = changed_paths
         {
@@ -1628,7 +1623,7 @@ pub async fn run_tests_with_watch(
           for test_module_specifier in test_modules {
             if has_graph_root_local_dependent_changed(
               &graph,
-              &test_module_specifier,
+              test_module_specifier,
               &changed_paths,
             ) {
               result.push(test_module_specifier.clone());
