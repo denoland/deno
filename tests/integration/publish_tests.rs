@@ -443,6 +443,35 @@ fn includes_directories_with_gitignore_when_unexcluded() {
 }
 
 #[test]
+fn includes_unexcluded_sub_dir() {
+  let context = publish_context_builder().build();
+  let temp_dir = context.temp_dir().path();
+  temp_dir.join("deno.json").write_json(&json!({
+    "name": "@foo/bar",
+    "version": "1.0.0",
+    "exports": "./included1.ts",
+    "publish": {
+      "exclude": [
+        "ignored",
+        "!ignored/unexcluded",
+      ]
+    }
+  }));
+
+  temp_dir.join("included1.ts").write("");
+  temp_dir.join("ignored/unexcluded").create_dir_all();
+  temp_dir.join("ignored/ignored.ts").write("");
+  temp_dir.join("ignored/unexcluded/included2.ts").write("");
+
+  let output = context.new_command().arg("publish").arg("--dry-run").run();
+  output.assert_exit_code(0);
+  let output = output.combined_output();
+  assert_contains!(output, "included1.ts");
+  assert_contains!(output, "included2.ts");
+  assert_not_contains!(output, "ignored.ts");
+}
+
+#[test]
 fn includes_directories() {
   let context = publish_context_builder().build();
   let temp_dir = context.temp_dir().path();
