@@ -229,7 +229,12 @@ impl TestNameTree {
     self.0.insert(node.id, node);
   }
 
-  fn construct_full_test_name(&self, id: usize) -> Option<String> {
+  /// Constructs the full test name by traversing the tree from the specified
+  /// node as a child to its parent nodes.
+  /// If the provided ID is not found in the tree, or the tree is broken (e.g.
+  /// a child node refers to a parent node that doesn't exist), this method
+  /// just panics.
+  fn construct_full_test_name(&self, id: usize) -> String {
     let mut current_id = Some(id);
     let mut name_pieces = VecDeque::new();
 
@@ -241,8 +246,8 @@ impl TestNameTree {
       let Some(node) = self.0.get(&id) else {
         // The ID specified as a parent node by the child node should exist in
         // the tree, but it doesn't. In this case we give up constructing the
-        // full test name, returning None.
-        return None;
+        // full test name.
+        unreachable!("Unregistered test ID '{id}' provided");
       };
 
       name_pieces.push_front(node.test_name.as_str());
@@ -250,11 +255,11 @@ impl TestNameTree {
     }
 
     if name_pieces.is_empty() {
-      return None;
+      unreachable!("Unregistered test ID '{id}' provided");
     }
 
     let v: Vec<_> = name_pieces.into();
-    Some(v.join(" > "))
+    v.join(" > ")
   }
 }
 
@@ -290,13 +295,6 @@ mod tests {
   use super::*;
 
   #[test]
-  fn construct_full_test_name_no_node() {
-    let mut tree = TestNameTree::new();
-
-    assert!(tree.construct_full_test_name(0).is_none());
-  }
-
-  #[test]
   fn construct_full_test_name_one_node() {
     let mut tree = TestNameTree::new();
     tree.add_node(TestNameTreeNode {
@@ -305,8 +303,7 @@ mod tests {
       test_name: "root".to_string(),
     });
 
-    assert_eq!(tree.construct_full_test_name(0), Some("root".to_string()));
-    assert!(tree.construct_full_test_name(1).is_none());
+    assert_eq!(tree.construct_full_test_name(0), "root".to_string());
   }
 
   #[test]
@@ -323,12 +320,8 @@ mod tests {
       test_name: "child".to_string(),
     });
 
-    assert_eq!(tree.construct_full_test_name(0), Some("root".to_string()));
-    assert_eq!(
-      tree.construct_full_test_name(1),
-      Some("root > child".to_string()),
-    );
-    assert!(tree.construct_full_test_name(2).is_none());
+    assert_eq!(tree.construct_full_test_name(0), "root".to_string());
+    assert_eq!(tree.construct_full_test_name(1), "root > child".to_string());
   }
 
   #[test]
@@ -350,16 +343,12 @@ mod tests {
       test_name: "grandchild".to_string(),
     });
 
-    assert_eq!(tree.construct_full_test_name(0), Some("root".to_string()));
-    assert_eq!(
-      tree.construct_full_test_name(1),
-      Some("root > child".to_string()),
-    );
+    assert_eq!(tree.construct_full_test_name(0), "root".to_string());
+    assert_eq!(tree.construct_full_test_name(1), "root > child".to_string());
     assert_eq!(
       tree.construct_full_test_name(2),
-      Some("root > child > grandchild".to_string()),
+      "root > child > grandchild".to_string()
     );
-    assert!(tree.construct_full_test_name(3).is_none());
   }
 
   #[test]
@@ -396,23 +385,22 @@ mod tests {
       test_name: "grandchild 2".to_string(),
     });
 
-    assert_eq!(tree.construct_full_test_name(0), Some("root".to_string()));
+    assert_eq!(tree.construct_full_test_name(0), "root".to_string());
     assert_eq!(
       tree.construct_full_test_name(1),
-      Some("root > child 1".to_string()),
+      "root > child 1".to_string(),
     );
     assert_eq!(
       tree.construct_full_test_name(2),
-      Some("root > child 2".to_string()),
+      "root > child 2".to_string(),
     );
     assert_eq!(
       tree.construct_full_test_name(3),
-      Some("root > child 1 > grandchild 1".to_string()),
+      "root > child 1 > grandchild 1".to_string(),
     );
     assert_eq!(
       tree.construct_full_test_name(4),
-      Some("root > child 1 > grandchild 2".to_string()),
+      "root > child 1 > grandchild 2".to_string(),
     );
-    assert!(tree.construct_full_test_name(5).is_none());
   }
 }
