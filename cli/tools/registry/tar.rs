@@ -157,16 +157,6 @@ pub fn create_gzipped_tarball(
       .with_context(|| {
         format!("Unable to add file to tarball '{}'", path.display())
       })?;
-
-    // todo: handle surfacing this
-    // diagnostics_collector.push(PublishDiagnostic::UnsupportedFileType {
-    //   specifier,
-    //   kind: if file_type.is_symlink() {
-    //     "symlink".to_owned()
-    //   } else {
-    //     format!("{file_type:?}")
-    //   },
-    // });
   }
 
   let v = tar.finish().context("Unable to finish tarball")?;
