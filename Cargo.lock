@@ -1064,12 +1064,12 @@ dependencies = [
  "env_logger",
  "eszip",
  "fancy-regex",
+ "faster-hex",
  "flate2",
  "fs3",
  "fwdansi",
  "glibc_version",
  "glob",
- "hex",
  "ignore",
  "import_map",
  "indexmap",
@@ -1534,7 +1534,7 @@ dependencies = [
  "denokv_proto",
  "denokv_remote",
  "denokv_sqlite",
- "hex",
+ "faster-hex",
  "log",
  "num-bigint",
  "prost",
@@ -1650,8 +1650,8 @@ dependencies = [
  "ecb",
  "elliptic-curve",
  "errno 0.2.8",
+ "faster-hex",
  "h2 0.3.22",
- "hex",
  "hkdf",
  "http 0.2.11",
  "idna 0.3.0",
@@ -2506,6 +2506,15 @@ checksum = "0678ab2d46fa5195aaf59ad034c083d351377d4af57f3e073c074d0da3e3c766"
 dependencies = [
  "bit-set",
  "regex",
+]
+
+[[package]]
+name = "faster-hex"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a2a2b11eda1d40935b26cf18f6833c526845ae8c41e58d09af6adeb6f0269183"
+dependencies = [
+ "serde",
 ]
 
 [[package]]
@@ -7276,7 +7285,7 @@ dependencies = [
  "codespan-reporting",
  "log",
  "naga",
- "parking_lot 0.11.2",
+ "parking_lot 0.12.1",
  "profiling",
  "raw-window-handle",
  "ron",
@@ -7317,7 +7326,7 @@ dependencies = [
  "naga",
  "objc",
  "once_cell",
- "parking_lot 0.11.2",
+ "parking_lot 0.12.1",
  "profiling",
  "range-alloc",
  "raw-window-handle",
