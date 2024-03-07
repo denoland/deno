@@ -810,6 +810,9 @@ fn symlink(
     FsFileType::Directory => {
       std::os::windows::fs::symlink_dir(oldpath, newpath)?;
     }
+    FsFileType::Junction => {
+      std::os::windows::fs::symlink_junction(oldpath, newpath)?;
+    }
   };
 
   Ok(())
