@@ -688,7 +688,7 @@ async fn publish_package(
         package.scope, package.package, package.version
       ),
       digest: provenance::SubjectDigest {
-        sha256: hex::encode(sha2::Sha256::digest(&meta_bytes)),
+        sha256: faster_hex::hex_string(&sha2::Sha256::digest(&meta_bytes)),
       },
     };
     let bundle = provenance::generate_provenance(subject).await?;

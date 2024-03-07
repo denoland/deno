@@ -163,7 +163,7 @@ pub fn op_node_hash_digest_hex(
   let context = Rc::try_unwrap(context)
     .map_err(|_| type_error("Hash context is already in use"))?;
   let digest = context.digest()?;
-  Ok(hex::encode(digest))
+  Ok(faster_hex::hex_string(&digest))
 }
 
 #[op2(fast)]

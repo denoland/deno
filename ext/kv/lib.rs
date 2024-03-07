@@ -12,6 +12,7 @@ use std::num::NonZeroU32;
 use std::rc::Rc;
 use std::time::Duration;
 
+use anyhow::bail;
 use base64::prelude::BASE64_URL_SAFE;
 use base64::Engine;
 use chrono::DateTime;
@@ -234,7 +235,7 @@ impl TryFrom<KvEntry> for ToV8KvEntry {
         .map(key_part_to_v8)
         .collect(),
       value: entry.value.into(),
-      versionstamp: hex::encode(entry.versionstamp).into(),
+      versionstamp: faster_hex::hex_string(&entry.versionstamp).into(),
     })
   }
 }
@@ -511,7 +512,10 @@ fn check_from_v8(value: V8KvCheck) -> Result<Check, AnyError> {
   let versionstamp = match value.1 {
     Some(data) => {
       let mut out = [0u8; 10];
-      hex::decode_to_slice(data, &mut out)
+      if data.len() != out.len() * 2 {
+        bail!(type_error("invalid versionstamp"));
+      }
+      faster_hex::hex_decode(&data, &mut out)
         .map_err(|_| type_error("invalid versionstamp"))?;
       Some(out)
     }
@@ -856,7 +860,7 @@ where
 
   let result = db.atomic_write(atomic_write).await?;
 
-  Ok(result.map(|res| hex::encode(res.versionstamp)))
+  Ok(result.map(|res| faster_hex::hex_string(&res.versionstamp)))
 }
 
 // (prefix, start, end)
