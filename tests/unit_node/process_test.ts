@@ -237,6 +237,7 @@ Deno.test({
 
 Deno.test({
   name: "process.off signal",
+  ignore: Deno.build.os == "windows",
   async fn() {
     const testTimeout = setTimeout(() => fail("Test timed out"), 10_000);
     try {
