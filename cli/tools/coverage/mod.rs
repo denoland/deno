@@ -388,13 +388,13 @@ fn collect_coverages(
           initial_cwd.to_path_buf(),
         )])
       } else {
-        PathOrPatternSet::from_relative_path_or_patterns(
+        PathOrPatternSet::from_include_relative_path_or_patterns(
           initial_cwd,
           &files.include,
         )?
       }
     }),
-    exclude: PathOrPatternSet::from_relative_path_or_patterns(
+    exclude: PathOrPatternSet::from_exclude_relative_path_or_patterns(
       initial_cwd,
       &files.ignore,
     )

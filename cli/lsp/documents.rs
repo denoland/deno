@@ -2360,7 +2360,7 @@ console.log(b, "hello deno");
       file_patterns: FilePatterns {
         base: temp_dir.path().to_path_buf(),
         include: Some(
-          PathOrPatternSet::from_relative_path_or_patterns(
+          PathOrPatternSet::from_include_relative_path_or_patterns(
             temp_dir.path().as_path(),
             &[
               "root1".to_string(),
@@ -2421,7 +2421,7 @@ console.log(b, "hello deno");
       file_patterns: FilePatterns {
         base: temp_dir.path().to_path_buf(),
         include: Default::default(),
-        exclude: PathOrPatternSet::from_relative_path_or_patterns(
+        exclude: PathOrPatternSet::from_exclude_relative_path_or_patterns(
           temp_dir.path().as_path(),
           &[
             "root1".to_string(),

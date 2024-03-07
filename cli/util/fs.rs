@@ -1014,7 +1014,7 @@ mod tests {
       FilePatterns {
         base: root_dir_path.to_path_buf(),
         include: Some(
-          PathOrPatternSet::from_relative_path_or_patterns(
+          PathOrPatternSet::from_include_relative_path_or_patterns(
             root_dir_path.as_path(),
             &[
               "http://localhost:8080".to_string(),
