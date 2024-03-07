@@ -12,6 +12,7 @@ import { notImplemented } from "ext:deno_node/_utils.ts";
 import { EventEmitter, once } from "node:events";
 import { BroadcastChannel } from "ext:deno_broadcast_channel/01_broadcast_channel.js";
 import { MessageChannel, MessagePort } from "ext:deno_web/13_message_port.js";
+import { refWorker, unrefWorker } from "ext:runtime/11_workers.js";
 
 let environmentData = new Map();
 let threads = 0;
@@ -168,6 +169,14 @@ class _Worker extends EventEmitter {
   terminate() {
     this[kHandle].terminate();
     this.emit("exit", 0);
+  }
+
+  ref() {
+    refWorker(this[kHandle]);
+  }
+
+  unref() {
+    unrefWorker(this[kHandle]);
   }
 
   readonly getHeapSnapshot = () =>

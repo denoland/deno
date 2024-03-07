@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 import {
   op_create_worker,
   op_host_post_message,
@@ -72,9 +72,22 @@ function hostRecvMessage(id) {
   return op_host_recv_message(id);
 }
 
+const privateWorkerRef = SymbolFor("Deno.privateWorkerRef");
+
+function refWorker(worker) {
+  worker[privateWorkerRef](true);
+}
+
+function unrefWorker(worker) {
+  worker[privateWorkerRef](false);
+}
+
 class Worker extends EventTarget {
   #id = 0;
   #name = "";
+  #refCount = 1;
+  #messagePromise = undefined;
+  #controlPromise = undefined;
 
   // "RUNNING" | "CLOSED" | "TERMINATED"
   // "TERMINATED" means that any controls or messages received will be
@@ -128,6 +141,30 @@ class Worker extends EventTarget {
     this.#pollMessages();
   }
 
+  [privateWorkerRef](ref) {
+    if (ref) {
+      this.#refCount++;
+    } else {
+      this.#refCount--;
+    }
+
+    if (!ref && this.#refCount == 0) {
+      if (this.#controlPromise) {
+        core.unrefOpPromise(this.#controlPromise);
+      }
+      if (this.#messagePromise) {
+        core.unrefOpPromise(this.#messagePromise);
+      }
+    } else if (ref && this.#refCount == 1) {
+      if (this.#controlPromise) {
+        core.refOpPromise(this.#controlPromise);
+      }
+      if (this.#messagePromise) {
+        core.refOpPromise(this.#messagePromise);
+      }
+    }
+  }
+
   #handleError(e) {
     const event = new ErrorEvent("error", {
       cancelable: true,
@@ -151,7 +188,11 @@ class Worker extends EventTarget {
 
   #pollControl = async () => {
     while (this.#status === "RUNNING") {
-      const { 0: type, 1: data } = await hostRecvCtrl(this.#id);
+      this.#controlPromise = hostRecvCtrl(this.#id);
+      if (this.#refCount < 1) {
+        core.unrefOpPromise(this.#controlPromise);
+      }
+      const { 0: type, 1: data } = await this.#controlPromise;
 
       // If terminate was called then we ignore all messages
       if (this.#status === "TERMINATED") {
@@ -182,7 +223,11 @@ class Worker extends EventTarget {
 
   #pollMessages = async () => {
     while (this.#status !== "TERMINATED") {
-      const data = await hostRecvMessage(this.#id);
+      this.#messagePromise = hostRecvMessage(this.#id);
+      if (this.#refCount < 1) {
+        core.unrefOpPromise(this.#messagePromise);
+      }
+      const data = await this.#messagePromise;
       if (this.#status === "TERMINATED" || data === null) {
         return;
       }
@@ -279,4 +324,4 @@ webidl.converters["WorkerType"] = webidl.createEnumConverter("WorkerType", [
   "module",
 ]);
 
-export { Worker };
+export { refWorker, unrefWorker, Worker };
