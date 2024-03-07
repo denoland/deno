@@ -651,7 +651,6 @@ impl CliFactory {
       .get_or_try_init_async(async {
         Ok(Arc::new(ModuleGraphCreator::new(
           self.options.clone(),
-          self.fs().clone(),
           self.npm_resolver().await?.clone(),
           self.module_graph_builder().await?.clone(),
           self.maybe_lockfile().clone(),
@@ -689,7 +688,6 @@ impl CliFactory {
       .get_or_try_init_async(async {
         Ok(Arc::new(ModuleLoadPreparer::new(
           self.options.clone(),
-          self.fs().clone(),
           self.graph_container().clone(),
           self.maybe_lockfile().clone(),
           self.module_graph_builder().await?.clone(),

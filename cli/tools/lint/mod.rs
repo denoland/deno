@@ -184,7 +184,9 @@ async fn lint_files(
         .filter_map(|p| ModuleSpecifier::from_file_path(p).ok())
         .collect::<HashSet<_>>();
       futures.push(deno_core::unsync::spawn(async move {
-        let graph = module_graph_creator.create_publish_graph(&members).await?;
+        let graph = module_graph_creator
+          .create_and_validate_publish_graph(&members, true)
+          .await?;
         // todo(dsherret): this isn't exactly correct as linting isn't properly
         // setup to handle workspaces. Iterating over the workspace members
         // should be done at a higher level because it also needs to take into
