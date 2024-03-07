@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+pub mod deno_json;
 mod flags;
 mod flags_net;
 mod import_map;
@@ -74,7 +75,7 @@ use deno_config::FmtConfig;
 use deno_config::LintConfig;
 use deno_config::TestConfig;
 
-pub fn npm_registry_default_url() -> &'static Url {
+pub fn npm_registry_url() -> &'static Url {
   static NPM_REGISTRY_DEFAULT_URL: Lazy<Url> = Lazy::new(|| {
     let env_var_name = "NPM_CONFIG_REGISTRY";
     if let Ok(registry_url) = std::env::var(env_var_name) {
@@ -99,6 +100,12 @@ pub fn npm_registry_default_url() -> &'static Url {
 
   &NPM_REGISTRY_DEFAULT_URL
 }
+
+pub static DENO_DISABLE_PEDANTIC_NODE_WARNINGS: Lazy<bool> = Lazy::new(|| {
+  std::env::var("DENO_DISABLE_PEDANTIC_NODE_WARNINGS")
+    .ok()
+    .is_some()
+});
 
 pub fn jsr_url() -> &'static Url {
   static JSR_URL: Lazy<Url> = Lazy::new(|| {

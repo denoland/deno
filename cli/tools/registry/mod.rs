@@ -30,7 +30,6 @@ use crate::args::jsr_url;
 use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::PublishFlags;
-use crate::args::TypeCheckMode;
 use crate::cache::LazyGraphSourceParser;
 use crate::cache::ParsedSourceCache;
 use crate::factory::CliFactory;
@@ -60,7 +59,6 @@ use auth::get_auth_method;
 use auth::AuthMethod;
 pub use pm::add;
 use publish_order::PublishOrderGraph;
-pub use unfurl::deno_json_deps;
 use unfurl::SpecifierUnfurler;
 
 use super::check::TypeChecker;
@@ -860,8 +858,7 @@ async fn build_and_check_graph_for_publish(
             lib: cli_options.ts_type_lib_window(),
             log_ignored_options: false,
             reload: cli_options.reload_flag(),
-            // force type checking this
-            type_check_mode: TypeCheckMode::Local,
+            type_check_mode: cli_options.type_check_mode(),
           },
         )
         .await?;
@@ -887,7 +884,8 @@ pub async fn publish(
 ) -> Result<(), AnyError> {
   let cli_factory = CliFactory::from_flags(flags).await?;
 
-  let auth_method = get_auth_method(publish_flags.token)?;
+  let auth_method =
+    get_auth_method(publish_flags.token, publish_flags.dry_run)?;
 
   let import_map = cli_factory
     .maybe_import_map()

@@ -63,6 +63,15 @@ itest!(invalid_import {
   http_server: true,
 });
 
+itest!(invalid_import_esm_sh_suggestion {
+  args: "publish --token 'sadfasdf' --dry-run",
+  output: "publish/invalid_import_esm_sh_suggestion.out",
+  cwd: Some("publish/invalid_import_esm_sh_suggestion"),
+  envs: env_vars_for_npm_tests(),
+  exit_code: 1,
+  http_server: true,
+});
+
 #[test]
 fn publish_non_exported_files_using_import_map() {
   let context = publish_context_builder().build();
@@ -241,11 +250,45 @@ itest!(bare_node_builtins {
   http_server: true,
 });
 
+itest!(bare_node_builtins_warning_no_warnings {
+  args: "publish --token 'sadfasdf' --dry-run  --unstable-bare-node-builtins",
+  output: "publish/bare_node_builtins_no_warnings.out",
+  cwd: Some("publish/bare_node_builtins"),
+  envs: env_vars_for_jsr_npm_tests()
+    .into_iter()
+    .chain(
+      vec![(
+        "DENO_DISABLE_PEDANTIC_NODE_WARNINGS".to_string(),
+        "1".to_string()
+      )]
+      .into_iter()
+    )
+    .collect(),
+  http_server: true,
+});
+
 itest!(sloppy_imports {
   args: "publish --token 'sadfasdf' --dry-run --unstable-sloppy-imports",
   output: "publish/sloppy_imports.out",
   cwd: Some("publish/sloppy_imports"),
   envs: env_vars_for_jsr_tests(),
+  http_server: true,
+});
+
+itest!(sloppy_imports_no_warnings {
+  args: "publish --token 'sadfasdf' --dry-run  --unstable-sloppy-imports",
+  output: "publish/sloppy_imports_no_warnings.out",
+  cwd: Some("publish/sloppy_imports"),
+  envs: env_vars_for_jsr_tests()
+    .into_iter()
+    .chain(
+      vec![(
+        "DENO_DISABLE_PEDANTIC_NODE_WARNINGS".to_string(),
+        "1".to_string()
+      )]
+      .into_iter()
+    )
+    .collect(),
   http_server: true,
 });
 
