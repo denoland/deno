@@ -823,6 +823,9 @@ fn symlink(
 // what can be found here:
 //
 // http://www.flexhex.com/docs/articles/hard-links.phtml
+//
+// Copied from rust std library:
+// https://github.com/rust-lang/rust/blob/d03b986db1f4146b58078c9dde5b0fa6d808f031/library/std/src/sys/pal/windows/fs.rs#L1450
 #[cfg(windows)]
 #[allow(non_snake_case)]
 fn symlink_junction(target: &Path, junction: &Path) -> io::Result<()> {
@@ -858,6 +861,7 @@ fn symlink_junction(target: &Path, junction: &Path) -> io::Result<()> {
 
   let path = junction.as_os_str().encode_wide().collect::<Vec<_>>();
 
+  // SAFETY: `path` is a valid null-terminated string.
   unsafe {
     let h = CreateFileW(
       path.as_ptr(),
