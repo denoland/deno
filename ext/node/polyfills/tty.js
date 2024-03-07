@@ -1,5 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+// deno-lint-ignore-file prefer-primordials
+
 import { core, primordials } from "ext:core/mod.js";
 const {
   Error,
