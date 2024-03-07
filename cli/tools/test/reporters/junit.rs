@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::collections::VecDeque;
 use std::path::PathBuf;
 
 use super::*;
@@ -8,6 +9,10 @@ pub struct JunitTestReporter {
   path: String,
   // Stores TestCases (i.e. Tests) by the Test ID
   cases: IndexMap<usize, quick_junit::TestCase>,
+  // Stores nodes representing test cases in such a way that can be traversed
+  // from child to parent to build the full test name that reflects the test
+  // hierarchy.
+  test_name_tree: TestNameTree,
 }
 
 impl JunitTestReporter {
@@ -15,6 +20,7 @@ impl JunitTestReporter {
     Self {
       path,
       cases: IndexMap::new(),
+      test_name_tree: TestNameTree::new(),
     }
   }
 
@@ -60,6 +66,8 @@ impl TestReporter for JunitTestReporter {
       description.location.column_number.to_string(),
     );
     self.cases.insert(description.id, case);
+
+    self.test_name_tree.add_node(description.clone().into());
   }
 
   fn report_plan(&mut self, _plan: &TestPlan) {}
@@ -89,7 +97,9 @@ impl TestReporter for JunitTestReporter {
 
   fn report_uncaught_error(&mut self, _origin: &str, _error: Box<JsError>) {}
 
-  fn report_step_register(&mut self, _description: &TestStepDescription) {}
+  fn report_step_register(&mut self, description: &TestStepDescription) {
+    self.test_name_tree.add_node(description.clone().into());
+  }
 
   fn report_step_wait(&mut self, _description: &TestStepDescription) {}
 
@@ -204,5 +214,205 @@ impl TestReporter for JunitTestReporter {
     }
 
     Ok(())
+  }
+}
+
+#[derive(Debug, Default)]
+struct TestNameTree(IndexMap<usize, TestNameTreeNode>);
+
+impl TestNameTree {
+  fn new() -> Self {
+    Self(IndexMap::new())
+  }
+
+  fn add_node(&mut self, node: TestNameTreeNode) {
+    self.0.insert(node.id, node);
+  }
+
+  fn construct_full_test_name(&self, id: usize) -> Option<String> {
+    let mut current_id = Some(id);
+    let mut name_pieces = VecDeque::new();
+
+    loop {
+      let Some(id) = current_id else {
+        break;
+      };
+
+      let Some(node) = self.0.get(&id) else {
+        // The ID specified as a parent node by the child node should exist in
+        // the tree, but it doesn't. In this case we give up constructing the
+        // full test name, returning None.
+        return None;
+      };
+
+      name_pieces.push_front(node.test_name.as_str());
+      current_id = node.parent_id;
+    }
+
+    if name_pieces.is_empty() {
+      return None;
+    }
+
+    let v: Vec<_> = name_pieces.into();
+    Some(v.join(" > "))
+  }
+}
+
+#[derive(Debug)]
+struct TestNameTreeNode {
+  id: usize,
+  parent_id: Option<usize>,
+  test_name: String,
+}
+
+impl From<TestDescription> for TestNameTreeNode {
+  fn from(description: TestDescription) -> Self {
+    Self {
+      id: description.id,
+      parent_id: None,
+      test_name: description.name,
+    }
+  }
+}
+
+impl From<TestStepDescription> for TestNameTreeNode {
+  fn from(description: TestStepDescription) -> Self {
+    Self {
+      id: description.id,
+      parent_id: Some(description.parent_id),
+      test_name: description.name,
+    }
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn construct_full_test_name_no_node() {
+    let mut tree = TestNameTree::new();
+
+    assert!(tree.construct_full_test_name(0).is_none());
+  }
+
+  #[test]
+  fn construct_full_test_name_one_node() {
+    let mut tree = TestNameTree::new();
+    tree.add_node(TestNameTreeNode {
+      id: 0,
+      parent_id: None,
+      test_name: "root".to_string(),
+    });
+
+    assert_eq!(tree.construct_full_test_name(0), Some("root".to_string()));
+    assert!(tree.construct_full_test_name(1).is_none());
+  }
+
+  #[test]
+  fn construct_full_test_name_two_level_hierarchy() {
+    let mut tree = TestNameTree::new();
+    tree.add_node(TestNameTreeNode {
+      id: 0,
+      parent_id: None,
+      test_name: "root".to_string(),
+    });
+    tree.add_node(TestNameTreeNode {
+      id: 1,
+      parent_id: Some(0),
+      test_name: "child".to_string(),
+    });
+
+    assert_eq!(tree.construct_full_test_name(0), Some("root".to_string()));
+    assert_eq!(
+      tree.construct_full_test_name(1),
+      Some("root > child".to_string()),
+    );
+    assert!(tree.construct_full_test_name(2).is_none());
+  }
+
+  #[test]
+  fn construct_full_test_name_three_level_hierarchy() {
+    let mut tree = TestNameTree::new();
+    tree.add_node(TestNameTreeNode {
+      id: 0,
+      parent_id: None,
+      test_name: "root".to_string(),
+    });
+    tree.add_node(TestNameTreeNode {
+      id: 1,
+      parent_id: Some(0),
+      test_name: "child".to_string(),
+    });
+    tree.add_node(TestNameTreeNode {
+      id: 2,
+      parent_id: Some(1),
+      test_name: "grandchild".to_string(),
+    });
+
+    assert_eq!(tree.construct_full_test_name(0), Some("root".to_string()));
+    assert_eq!(
+      tree.construct_full_test_name(1),
+      Some("root > child".to_string()),
+    );
+    assert_eq!(
+      tree.construct_full_test_name(2),
+      Some("root > child > grandchild".to_string()),
+    );
+    assert!(tree.construct_full_test_name(3).is_none());
+  }
+
+  #[test]
+  fn construct_full_test_name_one_root_two_chains() {
+    //     0
+    //    / \
+    //   1  2
+    //  / \
+    // 3  4
+    let mut tree = TestNameTree::new();
+    tree.add_node(TestNameTreeNode {
+      id: 0,
+      parent_id: None,
+      test_name: "root".to_string(),
+    });
+    tree.add_node(TestNameTreeNode {
+      id: 1,
+      parent_id: Some(0),
+      test_name: "child 1".to_string(),
+    });
+    tree.add_node(TestNameTreeNode {
+      id: 2,
+      parent_id: Some(0),
+      test_name: "child 2".to_string(),
+    });
+    tree.add_node(TestNameTreeNode {
+      id: 3,
+      parent_id: Some(1),
+      test_name: "grandchild 1".to_string(),
+    });
+    tree.add_node(TestNameTreeNode {
+      id: 4,
+      parent_id: Some(1),
+      test_name: "grandchild 2".to_string(),
+    });
+
+    assert_eq!(tree.construct_full_test_name(0), Some("root".to_string()));
+    assert_eq!(
+      tree.construct_full_test_name(1),
+      Some("root > child 1".to_string()),
+    );
+    assert_eq!(
+      tree.construct_full_test_name(2),
+      Some("root > child 2".to_string()),
+    );
+    assert_eq!(
+      tree.construct_full_test_name(3),
+      Some("root > child 1 > grandchild 1".to_string()),
+    );
+    assert_eq!(
+      tree.construct_full_test_name(4),
+      Some("root > child 1 > grandchild 2".to_string()),
+    );
+    assert!(tree.construct_full_test_name(5).is_none());
   }
 }
