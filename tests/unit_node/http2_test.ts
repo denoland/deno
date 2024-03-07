@@ -158,5 +158,5 @@ Deno.test("[node/http2.createServer()]", async () => {
   server.close();
   // Wait to avoid leaking the timer from here
   // https://github.com/denoland/deno/blob/749b6e45e58ac87188027f79fe403d130f86bd73/ext/node/polyfills/net.ts#L2396-L2402
-  await new Promise((resolve) => setTimeout(resolve, 20));
+  await new Promise<void>((resolve) => server.on("close", resolve));
 });
