@@ -10,7 +10,6 @@ use crate::factory::CliFactory;
 use crate::factory::CliFactoryBuilder;
 use crate::file_fetcher::File;
 use crate::file_fetcher::FileFetcher;
-use crate::graph_util::graph_valid_with_cli_options;
 use crate::graph_util::has_graph_root_local_dependent_changed;
 use crate::module_loader::ModuleLoadPreparer;
 use crate::ops;
@@ -1193,8 +1192,18 @@ async fn test_specifiers(
     })
   });
 
+  // TODO(mmastrac): Temporarily limit concurrency in windows testing to avoid named pipe issue:
+  // *** Unexpected server pipe failure '"\\\\.\\pipe\\deno_pipe_e30f45c9df61b1e4.1198.222\\0"': 3
+  // This is likely because we're hitting some sort of invisible resource limit
+  // This limit is both in cli/lsp/testing/execution.rs and cli/tools/test/mod.rs
+  let concurrent = if cfg!(windows) {
+    std::cmp::min(concurrent_jobs.get(), 4)
+  } else {
+    concurrent_jobs.get()
+  };
+
   let join_stream = stream::iter(join_handles)
-    .buffer_unordered(concurrent_jobs.get())
+    .buffer_unordered(concurrent)
     .collect::<Vec<Result<Result<(), AnyError>, tokio::task::JoinError>>>();
 
   let handler = spawn(async move { report_tests(receiver, reporter).await.0 });
@@ -1601,14 +1610,10 @@ pub async fn run_tests_with_watch(
         let permissions =
           Permissions::from_options(&cli_options.permissions_options())?;
         let graph = module_graph_creator
-          .create_graph(graph_kind, test_modules.clone())
+          .create_graph(graph_kind, test_modules)
           .await?;
-        graph_valid_with_cli_options(
-          &graph,
-          factory.fs().as_ref(),
-          &test_modules,
-          &cli_options,
-        )?;
+        module_graph_creator.graph_valid(&graph)?;
+        let test_modules = &graph.roots;
 
         let test_modules_to_reload = if let Some(changed_paths) = changed_paths
         {
@@ -1617,7 +1622,7 @@ pub async fn run_tests_with_watch(
           for test_module_specifier in test_modules {
             if has_graph_root_local_dependent_changed(
               &graph,
-              &test_module_specifier,
+              test_module_specifier,
               &changed_paths,
             ) {
               result.push(test_module_specifier.clone());

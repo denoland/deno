@@ -275,6 +275,15 @@ itest!(sloppy_imports {
   http_server: true,
 });
 
+itest!(sloppy_imports_not_enabled {
+  args: "publish --token 'sadfasdf' --dry-run",
+  output: "publish/sloppy_imports_not_enabled.out",
+  cwd: Some("publish/sloppy_imports"),
+  envs: env_vars_for_jsr_tests(),
+  http_server: true,
+  exit_code: 1,
+});
+
 itest!(sloppy_imports_no_warnings {
   args: "publish --token 'sadfasdf' --dry-run  --unstable-sloppy-imports",
   output: "publish/sloppy_imports_no_warnings.out",
