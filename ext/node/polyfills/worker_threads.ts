@@ -4,18 +4,43 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { core, internals } from "ext:core/mod.js";
-import { op_require_read_closest_package_json } from "ext:core/ops";
-
-import { isAbsolute, resolve } from "node:path";
+import { core, internals, primordials } from "ext:core/mod.js";
+import {
+  op_create_worker,
+  op_host_post_message,
+  op_host_recv_ctrl,
+  op_host_recv_message,
+  op_host_terminate_worker,
+  op_require_read_closest_package_json,
+} from "ext:core/ops";
+import { BroadcastChannel } from "ext:deno_broadcast_channel/01_broadcast_channel.js";
+import {
+  ErrorEvent,
+  MessageEvent,
+  setIsTrusted,
+} from "ext:deno_web/02_event.js";
+import {
+  deserializeJsMessageData,
+  MessageChannel,
+  MessagePort,
+  MessagePortPrototype,
+  serializeJsMessageData,
+} from "ext:deno_web/13_message_port.js";
+import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { log } from "ext:runtime/06_util.js";
+import { serializePermissions } from "ext:runtime/10_permissions.js";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import { EventEmitter, once } from "node:events";
-import { BroadcastChannel } from "ext:deno_broadcast_channel/01_broadcast_channel.js";
-import { MessageChannel, MessagePort } from "ext:deno_web/13_message_port.js";
-import { refWorker, unrefWorker } from "ext:runtime/11_workers.js";
+import { isAbsolute, resolve } from "node:path";
 
-let environmentData = new Map();
-let threads = 0;
+const {
+  ArrayPrototypeFilter,
+  Error,
+  ObjectPrototypeIsPrototypeOf,
+  Symbol,
+  SymbolFor,
+  SymbolIterator,
+} = primordials;
 
 export interface WorkerOptions {
   // only for typings
@@ -36,6 +61,7 @@ export interface WorkerOptions {
   eval?: boolean;
   transferList?: Transferable[];
   workerData?: unknown;
+  name?: string;
 }
 
 const WHITESPACE_ENCODINGS: Record<string, string> = {
@@ -99,11 +125,27 @@ function toFileUrl(path: string): URL {
     : toFileUrlPosix(path);
 }
 
-const kHandle = Symbol("kHandle");
+let threads = 0;
+const privateWorkerRef = Symbol("privateWorkerRef");
 const PRIVATE_WORKER_THREAD_NAME = "$DENO_STD_NODE_WORKER_THREAD";
-class _Worker extends EventEmitter {
-  readonly threadId: number;
-  readonly resourceLimits: Required<
+class NodeWorker extends EventEmitter {
+  #id = 0;
+  // TODO(satyarohith): remove after https://github.com/denoland/deno/pull/22785 lands
+  #name = PRIVATE_WORKER_THREAD_NAME;
+  #refCount = 1;
+  #messagePromise = undefined;
+  #controlPromise = undefined;
+  // "RUNNING" | "CLOSED" | "TERMINATED"
+  // "TERMINATED" means that any controls or messages received will be
+  // discarded. "CLOSED" means that we have received a control
+  // indicating that the worker is no longer running, but there might
+  // still be messages left to receive.
+  #status = "RUNNING";
+
+  // https://nodejs.org/api/worker_threads.html#workerthreadid
+  threadId = this.#id;
+  // https://nodejs.org/api/worker_threads.html#workerresourcelimits
+  resourceLimits: Required<
     NonNullable<WorkerOptions["resourceLimits"]>
   > = {
     maxYoungGenerationSizeMb: -1,
@@ -111,9 +153,8 @@ class _Worker extends EventEmitter {
     codeRangeSizeMb: -1,
     stackSizeMb: 4,
   };
-  private readonly [kHandle]: Worker;
-
-  postMessage: Worker["postMessage"];
+  // https://nodejs.org/api/worker_threads.html#workershare_env
+  SHARE_ENV = SymbolFor("worker_threads.SHARE_ENV");
 
   constructor(specifier: URL | string, options?: WorkerOptions) {
     super();
@@ -138,45 +179,159 @@ class _Worker extends EventEmitter {
         specifier = toFileUrl(specifier as string);
       }
     }
-    const handle = this[kHandle] = new Worker(
-      specifier,
+
+    const id = op_create_worker(
       {
-        name: PRIVATE_WORKER_THREAD_NAME,
-        type: "module",
-      } as globalThis.WorkerOptions, // bypass unstable type error
+        specifier: specifier.toString(),
+        hasSourceCode: false,
+        sourceCode: "",
+        permissions: null,
+        name: this.#name,
+        workerType: "module",
+      },
     );
-    handle.addEventListener(
-      "error",
-      (event) => this.emit("error", event.error || event.message),
-    );
-    handle.addEventListener(
-      "messageerror",
-      (event) => this.emit("messageerror", event.data),
-    );
-    handle.addEventListener(
-      "message",
-      (event) => this.emit("message", event.data),
-    );
-    handle.postMessage({
+    this.#id = id;
+    this.#pollControl();
+    this.#pollMessages();
+
+    this.postMessage({
       environmentData,
       threadId: (this.threadId = ++threads),
       workerData: options?.workerData,
     }, options?.transferList || []);
-    this.postMessage = handle.postMessage.bind(handle);
+    // https://nodejs.org/api/worker_threads.html#event-online
     this.emit("online");
   }
 
+  [privateWorkerRef](ref) {
+    if (ref) {
+      this.#refCount++;
+    } else {
+      this.#refCount--;
+    }
+
+    if (!ref && this.#refCount == 0) {
+      if (this.#controlPromise) {
+        core.unrefOpPromise(this.#controlPromise);
+      }
+      if (this.#messagePromise) {
+        core.unrefOpPromise(this.#messagePromise);
+      }
+    } else if (ref && this.#refCount == 1) {
+      if (this.#controlPromise) {
+        core.refOpPromise(this.#controlPromise);
+      }
+      if (this.#messagePromise) {
+        core.refOpPromise(this.#messagePromise);
+      }
+    }
+  }
+
+  #handleError(err) {
+    this.emit("error", err);
+  }
+
+  #pollControl = async () => {
+    while (this.#status === "RUNNING") {
+      this.#controlPromise = op_host_recv_ctrl(this.#id);
+      if (this.#refCount < 1) {
+        core.unrefOpPromise(this.#controlPromise);
+      }
+      const { 0: type, 1: data } = await this.#controlPromise;
+
+      // If terminate was called then we ignore all messages
+      if (this.#status === "TERMINATED") {
+        return;
+      }
+
+      switch (type) {
+        case 1: { // TerminalError
+          this.#status = "CLOSED";
+        } /* falls through */
+        case 2: { // Error
+          this.#handleError(data);
+          break;
+        }
+        case 3: { // Close
+          log(`Host got "close" message from worker: ${this.#name}`);
+          this.#status = "CLOSED";
+          return;
+        }
+        default: {
+          throw new Error(`Unknown worker event: "${type}"`);
+        }
+      }
+    }
+  };
+
+  #pollMessages = async () => {
+    while (this.#status !== "TERMINATED") {
+      this.#messagePromise = op_host_recv_message(this.#id);
+      if (this.#refCount < 1) {
+        core.unrefOpPromise(this.#messagePromise);
+      }
+      const data = await this.#messagePromise;
+      if (this.#status === "TERMINATED" || data === null) {
+        return;
+      }
+      let message, transferables;
+      try {
+        const v = deserializeJsMessageData(data);
+        message = v[0];
+        transferables = v[1];
+      } catch (err) {
+        this.emit("messageerror", err);
+        return;
+      }
+      this.emit("message", message);
+    }
+  };
+
+  postMessage(message, transferOrOptions = {}) {
+    const prefix = "Failed to execute 'postMessage' on 'MessagePort'";
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    message = webidl.converters.any(message);
+    let options;
+    if (
+      webidl.type(transferOrOptions) === "Object" &&
+      transferOrOptions !== undefined &&
+      transferOrOptions[SymbolIterator] !== undefined
+    ) {
+      const transfer = webidl.converters["sequence<object>"](
+        transferOrOptions,
+        prefix,
+        "Argument 2",
+      );
+      options = { transfer };
+    } else {
+      options = webidl.converters.StructuredSerializeOptions(
+        transferOrOptions,
+        prefix,
+        "Argument 2",
+      );
+    }
+    const { transfer } = options;
+    const data = serializeJsMessageData(message, transfer);
+    if (this.#status === "RUNNING") {
+      op_host_post_message(this.#id, data);
+    }
+  }
+
+  // https://nodejs.org/api/worker_threads.html#workerterminate
   terminate() {
-    this[kHandle].terminate();
-    this.emit("exit", 0);
+    if (this.#status !== "TERMINATED") {
+      this.#status = "TERMINATED";
+      op_host_terminate_worker(this.#id);
+    }
+    this.emit("exit", 1);
   }
 
   ref() {
-    refWorker(this[kHandle]);
+    this[privateWorkerRef](true);
   }
 
   unref() {
-    unrefWorker(this[kHandle]);
+    this[privateWorkerRef](false);
   }
 
   readonly getHeapSnapshot = () =>
@@ -190,6 +345,7 @@ export let resourceLimits;
 
 let threadId = 0;
 let workerData: unknown = null;
+let environmentData = new Map();
 
 // Like https://github.com/nodejs/node/blob/48655e17e1d84ba5021d7a94b4b88823f7c9c6cf/lib/internal/event_target.js#L611
 interface NodeEventTarget extends
@@ -324,10 +480,10 @@ export function receiveMessageOnPort() {
   notImplemented("receiveMessageOnPort");
 }
 export {
-  _Worker as Worker,
   BroadcastChannel,
   MessageChannel,
   MessagePort,
+  NodeWorker as Worker,
   parentPort,
   threadId,
   workerData,
@@ -340,7 +496,7 @@ const defaultExport = {
   MessagePort,
   MessageChannel,
   BroadcastChannel,
-  Worker: _Worker,
+  Worker: NodeWorker,
   getEnvironmentData,
   setEnvironmentData,
   SHARE_ENV,
