@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use super::*;
 
 pub struct JunitTestReporter {
-  path: String,
+  output_path: String,
   // Stores TestCases (i.e. Tests) by the Test ID
   cases: IndexMap<usize, quick_junit::TestCase>,
   // Stores nodes representing test cases in such a way that can be traversed
@@ -16,9 +16,9 @@ pub struct JunitTestReporter {
 }
 
 impl JunitTestReporter {
-  pub fn new(path: String) -> Self {
+  pub fn new(output_path: String) -> Self {
     Self {
-      path,
+      output_path,
       cases: IndexMap::new(),
       test_name_tree: TestNameTree::new(),
     }
@@ -231,15 +231,16 @@ impl TestReporter for JunitTestReporter {
       .set_time(*elapsed)
       .add_test_suites(suites.into_values());
 
-    if self.path == "-" {
+    if self.output_path == "-" {
       report
         .serialize(std::io::stdout())
         .with_context(|| "Failed to write JUnit report to stdout")?;
     } else {
-      let file = crate::util::fs::create_file(&PathBuf::from(&self.path))
-        .context("Failed to open JUnit report file.")?;
+      let file =
+        crate::util::fs::create_file(&PathBuf::from(&self.output_path))
+          .context("Failed to open JUnit report file.")?;
       report.serialize(file).with_context(|| {
-        format!("Failed to write JUnit report to {}", self.path)
+        format!("Failed to write JUnit report to {}", self.output_path)
       })?;
     }
 
