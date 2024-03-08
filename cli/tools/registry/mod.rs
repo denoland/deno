@@ -952,7 +952,7 @@ pub async fn publish(
     && !publish_flags.allow_dirty
     && check_if_git_repo_dirty(cli_options.initial_cwd()).await
   {
-    bail!("Aborting due to uncomitted changes",);
+    bail!("Aborting due to uncommitted changes. Check in source code or run with --allow-dirty");
   }
 
   perform_publish(
