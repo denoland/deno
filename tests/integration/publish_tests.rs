@@ -360,6 +360,7 @@ fn ignores_gitignore() {
   assert_contains!(output, "main.ts");
   assert_not_contains!(output, "ignored.ts");
   assert_not_contains!(output, "ignored.wasm");
+  assert_not_contains!(output, ".gitignore");
 }
 
 #[test]
