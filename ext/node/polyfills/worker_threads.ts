@@ -33,6 +33,7 @@ const {
   StringPrototypeMatch,
   StringPrototypeReplaceAll,
   StringPrototypeToString,
+  StringPrototypeTrim,
   SafeWeakMap,
   SafeRegExp,
   SafeMap,
@@ -55,7 +56,6 @@ export interface WorkerOptions {
     codeRangeSizeMb?: number;
     stackSizeMb?: number;
   };
-
   // deno-lint-ignore prefer-primordials
   eval?: boolean;
   transferList?: Transferable[];
@@ -133,11 +133,9 @@ function toFileUrl(path: string): URL {
 
 let threads = 0;
 const privateWorkerRef = Symbol("privateWorkerRef");
-const PRIVATE_WORKER_THREAD_NAME = "$DENO_STD_NODE_WORKER_THREAD";
 class NodeWorker extends EventEmitter {
   #id = 0;
-  // TODO(satyarohith): remove after https://github.com/denoland/deno/pull/22785 lands
-  #name = PRIVATE_WORKER_THREAD_NAME;
+  #name = "";
   #refCount = 1;
   #messagePromise = undefined;
   #controlPromise = undefined;
@@ -187,6 +185,13 @@ class NodeWorker extends EventEmitter {
       }
     }
 
+    // TODO(bartlomieu): this doesn't match the Node.js behavior, it should be
+    // `[worker {threadId}] {name}` or empty string.
+    let name = StringPrototypeTrim(options?.name ?? "");
+    if (options?.eval) {
+      name = "[worker eval]";
+    }
+    this.#name = name;
     const id = op_create_worker(
       {
         // deno-lint-ignore prefer-primordials
@@ -378,10 +383,8 @@ type ParentPort = typeof self & NodeEventTarget;
 // deno-lint-ignore no-explicit-any
 let parentPort: ParentPort = null as any;
 
-internals.__initWorkerThreads = () => {
-  isMainThread =
-    // deno-lint-ignore no-explicit-any
-    (globalThis as any).name !== PRIVATE_WORKER_THREAD_NAME;
+internals.__initWorkerThreads = (runningOnMainThread: boolean) => {
+  isMainThread = runningOnMainThread;
 
   defaultExport.isMainThread = isMainThread;
   // fake resourceLimits
@@ -394,8 +397,6 @@ internals.__initWorkerThreads = () => {
   defaultExport.resourceLimits = resourceLimits;
 
   if (!isMainThread) {
-    // deno-lint-ignore no-explicit-any
-    delete (globalThis as any).name;
     const listeners = new SafeWeakMap<
       // deno-lint-ignore no-explicit-any
       (...args: any[]) => void,
@@ -411,12 +412,16 @@ internals.__initWorkerThreads = () => {
         "message",
       ),
       (result) => {
+        // TODO(bartlomieju): just so we don't error out here. It's still racy,
+        // but should be addressed by https://github.com/denoland/deno/issues/22783
+        // shortly.
+        const data = result[0].data ?? {};
         // TODO(kt3k): The below values are set asynchronously
         // using the first message from the parent.
         // This should be done synchronously.
-        threadId = result[0].data.threadId;
-        workerData = result[0].data.workerData;
-        environmentData = result[0].data.environmentData;
+        threadId = data.threadId;
+        workerData = data.workerData;
+        environmentData = data.environmentData;
 
         defaultExport.threadId = threadId;
         defaultExport.workerData = workerData;
