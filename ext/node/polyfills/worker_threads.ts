@@ -223,8 +223,6 @@ internals.__initWorkerThreads = (runningOnMainThread: boolean) => {
 
   if (!isMainThread) {
     // deno-lint-ignore no-explicit-any
-    delete (globalThis as any).name;
-    // deno-lint-ignore no-explicit-any
     const listeners = new WeakMap<(...args: any[]) => void, (ev: any) => any>();
 
     parentPort = self as ParentPort;
