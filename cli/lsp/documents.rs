@@ -1341,11 +1341,12 @@ impl Documents {
           .inner()
           .iter()
           .map(|p| match p {
-            PathOrPattern::Path(p) => {
-              Cow::Owned(p.to_string_lossy().to_string())
+            PathOrPattern::Path(p) => p.to_string_lossy(),
+            PathOrPattern::NegatedPath(p) => {
+              Cow::Owned(format!("!{}", p.to_string_lossy()))
             }
             PathOrPattern::RemoteUrl(p) => Cow::Borrowed(p.as_str()),
-            PathOrPattern::Pattern(p) => Cow::Borrowed(p.as_str()),
+            PathOrPattern::Pattern(p) => p.as_str(),
           })
           .collect::<Vec<_>>();
         // ensure these are sorted so the hashing is deterministic
@@ -2061,8 +2062,13 @@ impl Iterator for PreloadDocumentFinder {
               if let Ok(entry) = entry {
                 let path = entry.path();
                 if let Ok(file_type) = entry.file_type() {
-                  if file_patterns.matches_path(&path) {
-                    if file_type.is_dir() && is_discoverable_dir(&path) {
+                  let is_dir = file_type.is_dir();
+                  let path_kind = match is_dir {
+                    true => deno_config::glob::PathKind::Directory,
+                    false => deno_config::glob::PathKind::File,
+                  };
+                  if file_patterns.matches_path(&path, path_kind) {
+                    if is_dir && is_discoverable_dir(&path) {
                       self.pending_entries.push_back(PendingEntry::Dir(
                         path.to_path_buf(),
                         file_patterns.clone(),
@@ -2354,7 +2360,7 @@ console.log(b, "hello deno");
       file_patterns: FilePatterns {
         base: temp_dir.path().to_path_buf(),
         include: Some(
-          PathOrPatternSet::from_relative_path_or_patterns(
+          PathOrPatternSet::from_include_relative_path_or_patterns(
             temp_dir.path().as_path(),
             &[
               "root1".to_string(),
@@ -2415,7 +2421,7 @@ console.log(b, "hello deno");
       file_patterns: FilePatterns {
         base: temp_dir.path().to_path_buf(),
         include: Default::default(),
-        exclude: PathOrPatternSet::from_relative_path_or_patterns(
+        exclude: PathOrPatternSet::from_exclude_relative_path_or_patterns(
           temp_dir.path().as_path(),
           &[
             "root1".to_string(),

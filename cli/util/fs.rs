@@ -3,6 +3,7 @@
 use std::collections::HashSet;
 use std::env::current_dir;
 use std::fmt::Write as FmtWrite;
+use std::fs::FileType;
 use std::fs::OpenOptions;
 use std::io::Error;
 use std::io::ErrorKind;
@@ -26,6 +27,8 @@ use deno_runtime::deno_crypto::rand;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::PathClean;
 
+use crate::util::gitignore::DirGitIgnores;
+use crate::util::gitignore::GitIgnoreTree;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 use crate::util::progress_bar::ProgressMessagePrompt;
@@ -244,22 +247,31 @@ pub fn resolve_from_cwd(path: &Path) -> Result<PathBuf, AnyError> {
   Ok(normalize_path(resolved_path))
 }
 
+#[derive(Debug, Clone)]
+pub struct WalkEntry<'a> {
+  pub path: &'a Path,
+  pub file_type: &'a FileType,
+  pub patterns: &'a FilePatterns,
+}
+
 /// Collects file paths that satisfy the given predicate, by recursively walking `files`.
 /// If the walker visits a path that is listed in `ignore`, it skips descending into the directory.
-pub struct FileCollector<TFilter: Fn(&Path, &FilePatterns) -> bool> {
+pub struct FileCollector<TFilter: Fn(WalkEntry) -> bool> {
   file_filter: TFilter,
   ignore_git_folder: bool,
   ignore_node_modules: bool,
   ignore_vendor_folder: bool,
+  use_gitignore: bool,
 }
 
-impl<TFilter: Fn(&Path, &FilePatterns) -> bool> FileCollector<TFilter> {
+impl<TFilter: Fn(WalkEntry) -> bool> FileCollector<TFilter> {
   pub fn new(file_filter: TFilter) -> Self {
     Self {
       file_filter,
       ignore_git_folder: false,
       ignore_node_modules: false,
       ignore_vendor_folder: false,
+      use_gitignore: false,
     }
   }
 
@@ -278,10 +290,46 @@ impl<TFilter: Fn(&Path, &FilePatterns) -> bool> FileCollector<TFilter> {
     self
   }
 
+  pub fn use_gitignore(mut self) -> Self {
+    self.use_gitignore = true;
+    self
+  }
+
   pub fn collect_file_patterns(
     &self,
     file_patterns: FilePatterns,
   ) -> Result<Vec<PathBuf>, AnyError> {
+    fn is_pattern_matched(
+      maybe_git_ignore: Option<&DirGitIgnores>,
+      path: &Path,
+      is_dir: bool,
+      file_patterns: &FilePatterns,
+    ) -> bool {
+      use deno_config::glob::FilePatternsMatch;
+
+      let path_kind = match is_dir {
+        true => deno_config::glob::PathKind::Directory,
+        false => deno_config::glob::PathKind::File,
+      };
+      match file_patterns.matches_path_detail(path, path_kind) {
+        FilePatternsMatch::Passed => {
+          // check gitignore
+          let is_gitignored = maybe_git_ignore
+            .as_ref()
+            .map(|git_ignore| git_ignore.is_ignored(path, is_dir))
+            .unwrap_or(false);
+          !is_gitignored
+        }
+        FilePatternsMatch::PassedOptedOutExclude => true,
+        FilePatternsMatch::Excluded => false,
+      }
+    }
+
+    let mut maybe_git_ignores = if self.use_gitignore {
+      Some(GitIgnoreTree::new(Arc::new(deno_runtime::deno_fs::RealFs)))
+    } else {
+      None
+    };
     let mut target_files = Vec::new();
     let mut visited_paths = HashSet::new();
     let file_patterns_by_base = file_patterns.split_by_base();
@@ -299,20 +347,23 @@ impl<TFilter: Fn(&Path, &FilePatterns) -> bool> FileCollector<TFilter> {
         };
         let file_type = e.file_type();
         let is_dir = file_type.is_dir();
-        let c = e.path().to_path_buf();
-        if file_patterns.exclude.matches_path(&c)
-          || !is_dir
-            && !file_patterns
-              .include
-              .as_ref()
-              .map(|i| i.matches_path(&c))
-              .unwrap_or(true)
-        {
+        let path = e.path().to_path_buf();
+        let maybe_gitignore =
+          maybe_git_ignores.as_mut().and_then(|git_ignores| {
+            let dir_path = if is_dir { &path } else { path.parent()? };
+            git_ignores.get_resolved_git_ignore(dir_path)
+          });
+        if !is_pattern_matched(
+          maybe_gitignore.as_deref(),
+          &path,
+          is_dir,
+          &file_patterns,
+        ) {
           if is_dir {
             iterator.skip_current_dir();
           }
         } else if is_dir {
-          let should_ignore_dir = c
+          let should_ignore_dir = path
             .file_name()
             .map(|dir_name| {
               let dir_name = dir_name.to_string_lossy().to_lowercase();
@@ -323,17 +374,20 @@ impl<TFilter: Fn(&Path, &FilePatterns) -> bool> FileCollector<TFilter> {
                 _ => false,
               };
               // allow the user to opt out of ignoring by explicitly specifying the dir
-              file != c && is_ignored_file
+              file != path && is_ignored_file
             })
             .unwrap_or(false)
-            || !visited_paths.insert(c.clone());
+            || !visited_paths.insert(path.clone());
           if should_ignore_dir {
             iterator.skip_current_dir();
           }
-        } else if (self.file_filter)(&c, &file_patterns)
-          && visited_paths.insert(c.clone())
+        } else if (self.file_filter)(WalkEntry {
+          path: &path,
+          file_type: &file_type,
+          patterns: &file_patterns,
+        }) && visited_paths.insert(path.clone())
         {
-          target_files.push(c);
+          target_files.push(path);
         }
       }
     }
@@ -346,7 +400,7 @@ impl<TFilter: Fn(&Path, &FilePatterns) -> bool> FileCollector<TFilter> {
 /// Note: This ignores all .git and node_modules folders.
 pub fn collect_specifiers(
   mut files: FilePatterns,
-  predicate: impl Fn(&Path, &FilePatterns) -> bool,
+  predicate: impl Fn(WalkEntry) -> bool,
 ) -> Result<Vec<ModuleSpecifier>, AnyError> {
   let mut prepared = vec![];
 
@@ -364,6 +418,10 @@ pub fn collect_specifiers(
             let url = specifier_from_file_path(&path)?;
             prepared.push(url);
           }
+        }
+        PathOrPattern::NegatedPath(path) => {
+          // add it back
+          result.push(PathOrPattern::NegatedPath(path));
         }
         PathOrPattern::RemoteUrl(remote_url) => {
           prepared.push(remote_url);
@@ -819,9 +877,9 @@ mod tests {
         ignore_dir_path.to_path_buf(),
       )]),
     };
-    let file_collector = FileCollector::new(|path, _| {
+    let file_collector = FileCollector::new(|e| {
       // exclude dotfiles
-      path
+      e.path
         .file_name()
         .and_then(|f| f.to_str())
         .map(|f| !f.starts_with('.'))
@@ -943,9 +1001,9 @@ mod tests {
     let ignore_dir_files = ["g.d.ts", ".gitignore"];
     create_files(&ignore_dir_path, &ignore_dir_files);
 
-    let predicate = |path: &Path, _: &FilePatterns| {
+    let predicate = |e: WalkEntry| {
       // exclude dotfiles
-      path
+      e.path
         .file_name()
         .and_then(|f| f.to_str())
         .map(|f| !f.starts_with('.'))
@@ -956,7 +1014,7 @@ mod tests {
       FilePatterns {
         base: root_dir_path.to_path_buf(),
         include: Some(
-          PathOrPatternSet::from_relative_path_or_patterns(
+          PathOrPatternSet::from_include_relative_path_or_patterns(
             root_dir_path.as_path(),
             &[
               "http://localhost:8080".to_string(),
