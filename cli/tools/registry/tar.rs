@@ -63,7 +63,10 @@ pub fn create_gzipped_tarball(
       }
       return false;
     }
-    e.path.file_name().map(|s| s != ".DS_Store").unwrap_or(true)
+    e.path
+      .file_name()
+      .map(|s| s != ".DS_Store" && s != ".gitignore")
+      .unwrap_or(true)
   })
   .ignore_git_folder()
   .ignore_node_modules()
