@@ -1652,11 +1652,9 @@ fn lsp_workspace_disable_enable_paths() {
               .unwrap()
             },
             name: "project".to_string(),
-          }])
-          .set_deno_enable(false);
+          }]);
       },
       json!({ "deno": {
-        "enable": false,
         "disablePaths": ["./worker/node.ts"],
         "enablePaths": ["./worker"],
       } }),

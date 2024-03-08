@@ -360,6 +360,7 @@ fn ignores_gitignore() {
   assert_contains!(output, "main.ts");
   assert_not_contains!(output, "ignored.ts");
   assert_not_contains!(output, "ignored.wasm");
+  assert_not_contains!(output, ".gitignore");
 }
 
 #[test]
@@ -408,7 +409,7 @@ fn ignores_directories() {
 }
 
 #[test]
-fn includes_directories_with_gitignore() {
+fn not_include_gitignored_file_unless_exact_match_in_include() {
   let context = publish_context_builder().build();
   let temp_dir = context.temp_dir().path();
   temp_dir.join("deno.json").write_json(&json!({
@@ -416,23 +417,98 @@ fn includes_directories_with_gitignore() {
     "version": "1.0.0",
     "exports": "./main.ts",
     "publish": {
-      "include": [ "deno.json", "main.ts" ]
+      // won't match ignored.ts because it needs to be
+      // unexcluded via a negated glob in exclude
+      "include": [
+        "deno.json",
+        "*.ts",
+        "exact_include.ts",
+        "sub"
+      ]
     }
   }));
 
-  temp_dir.join(".gitignore").write("main.ts");
+  temp_dir
+    .join(".gitignore")
+    .write("ignored.ts\nexact_include.ts\nsub/\nsub/ignored\n/sub_ignored\n");
   temp_dir.join("main.ts").write("");
   temp_dir.join("ignored.ts").write("");
+  temp_dir.join("exact_include.ts").write("");
+  let sub_dir = temp_dir.join("sub");
+  sub_dir.create_dir_all();
+  sub_dir.join("sub_included.ts").write("");
+  sub_dir.join("ignored.ts").write(""); // this one is gitignored
+  sub_dir.join("ignored").create_dir_all();
+  sub_dir.join("ignored").join("ignored_also.ts").write("");
+  let sub_ignored_dir = temp_dir.join("sub_ignored");
+  sub_ignored_dir.create_dir_all();
+  sub_ignored_dir.join("sub_ignored.ts").write("");
 
-  let output = context
-    .new_command()
-    .arg("publish")
-    .arg("--token")
-    .arg("sadfasdf")
-    .run();
+  let output = context.new_command().arg("publish").arg("--dry-run").run();
   output.assert_exit_code(0);
   let output = output.combined_output();
   assert_contains!(output, "main.ts");
+  // will match this exact match
+  assert_contains!(output, "exact_include.ts");
+  // will include this because the sub directory is included
+  assert_contains!(output, "sub_included.ts");
+  // it's gitignored
+  assert_not_contains!(output, "ignored.ts");
+  assert_not_contains!(output, "ignored_also.ts");
+  assert_not_contains!(output, "sub_ignored.ts");
+}
+
+#[test]
+fn includes_directories_with_gitignore_when_unexcluded() {
+  let context = publish_context_builder().build();
+  let temp_dir = context.temp_dir().path();
+  temp_dir.join("deno.json").write_json(&json!({
+    "name": "@foo/bar",
+    "version": "1.0.0",
+    "exports": "./main.ts",
+    "publish": {
+      "include": [ "deno.json", "*.ts" ],
+      "exclude": [ "!ignored.ts" ]
+    }
+  }));
+
+  temp_dir.join(".gitignore").write("ignored.ts");
+  temp_dir.join("main.ts").write("");
+  temp_dir.join("ignored.ts").write("");
+
+  let output = context.new_command().arg("publish").arg("--dry-run").run();
+  output.assert_exit_code(0);
+  let output = output.combined_output();
+  assert_contains!(output, "main.ts");
+  assert_contains!(output, "ignored.ts");
+}
+
+#[test]
+fn includes_unexcluded_sub_dir() {
+  let context = publish_context_builder().build();
+  let temp_dir = context.temp_dir().path();
+  temp_dir.join("deno.json").write_json(&json!({
+    "name": "@foo/bar",
+    "version": "1.0.0",
+    "exports": "./included1.ts",
+    "publish": {
+      "exclude": [
+        "ignored",
+        "!ignored/unexcluded",
+      ]
+    }
+  }));
+
+  temp_dir.join("included1.ts").write("");
+  temp_dir.join("ignored/unexcluded").create_dir_all();
+  temp_dir.join("ignored/ignored.ts").write("");
+  temp_dir.join("ignored/unexcluded/included2.ts").write("");
+
+  let output = context.new_command().arg("publish").arg("--dry-run").run();
+  output.assert_exit_code(0);
+  let output = output.combined_output();
+  assert_contains!(output, "included1.ts");
+  assert_contains!(output, "included2.ts");
   assert_not_contains!(output, "ignored.ts");
 }
 
@@ -465,7 +541,7 @@ fn includes_directories() {
 }
 
 #[test]
-fn includes_dotenv() {
+fn not_includes_gitignored_dotenv() {
   let context = publish_context_builder().build();
   let temp_dir = context.temp_dir().path();
   temp_dir.join("deno.json").write_json(&json!({
@@ -476,14 +552,9 @@ fn includes_dotenv() {
 
   temp_dir.join("main.ts").write("");
   temp_dir.join(".env").write("FOO=BAR");
+  temp_dir.join(".gitignore").write(".env");
 
-  let output = context
-    .new_command()
-    .arg("publish")
-    .arg("--token")
-    .arg("sadfasdf")
-    .arg("--dry-run")
-    .run();
+  let output = context.new_command().arg("publish").arg("--dry-run").run();
   output.assert_exit_code(0);
   let output = output.combined_output();
   assert_contains!(output, "main.ts");

@@ -1,6 +1,8 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::serde_json::json;
 use test_util::assert_contains;
+use test_util::assert_not_contains;
 use test_util::itest;
 use test_util::TestContextBuilder;
 
@@ -252,3 +254,26 @@ itest!(no_slow_types_workspace {
   cwd: Some("lint/no_slow_types_workspace"),
   exit_code: 1,
 });
+
+#[test]
+fn opt_out_top_level_exclude_via_lint_unexclude() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir().path();
+  temp_dir.join("deno.json").write_json(&json!({
+    "lint": {
+      "exclude": [ "!excluded.ts" ]
+    },
+    "exclude": [ "excluded.ts", "actually_excluded.ts" ]
+  }));
+
+  temp_dir.join("main.ts").write("const a = 1;");
+  temp_dir.join("excluded.ts").write("const a = 2;");
+  temp_dir.join("actually_excluded.ts").write("const a = 2;");
+
+  let output = context.new_command().arg("lint").run();
+  output.assert_exit_code(1);
+  let output = output.combined_output();
+  assert_contains!(output, "main.ts");
+  assert_contains!(output, "excluded.ts");
+  assert_not_contains!(output, "actually_excluded.ts");
+}
