@@ -143,7 +143,7 @@ class _Worker extends EventEmitter {
     const handle = this[kHandle] = new Worker(
       specifier,
       {
-        name: (options?.name ?? "").trim(),
+        name,
         type: "module",
       } as globalThis.WorkerOptions, // bypass unstable type error
     );
