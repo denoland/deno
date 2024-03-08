@@ -2552,6 +2552,22 @@ console.log(getValue());
 }
 
 #[test]
+fn check_css_package_json_exports() {
+  let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let dir = test_context.temp_dir();
+  dir.write(
+    "main.ts",
+    r#"import "npm:@denotest/css-export/dist/index.css";"#,
+  );
+  test_context
+    .new_command()
+    .args("check main.ts")
+    .run()
+    .assert_matches_text("Download [WILDCARD]css-export\nDownload [WILDCARD]css-export/1.0.0.tgz\nCheck [WILDCARD]/main.ts\n")
+    .assert_exit_code(0);
+}
+
+#[test]
 fn cjs_export_analysis_require_re_export() {
   let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
   let dir = test_context.temp_dir();
