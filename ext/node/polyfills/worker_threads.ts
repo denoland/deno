@@ -33,6 +33,7 @@ const {
   StringPrototypeMatch,
   StringPrototypeReplaceAll,
   StringPrototypeToString,
+  StringPrototypeTrim,
   SafeWeakMap,
   SafeRegExp,
   SafeMap,
@@ -55,6 +56,7 @@ export interface WorkerOptions {
     codeRangeSizeMb?: number;
     stackSizeMb?: number;
   };
+  // deno-lint-ignore prefer-primordials
   eval?: boolean;
   transferList?: Transferable[];
   workerData?: unknown;
@@ -186,7 +188,7 @@ class NodeWorker extends EventEmitter {
 
     // TODO(bartlomieu): this doesn't match the Node.js behavior, it should be
     // `[worker {threadId}] {name}` or empty string.
-    let name = (options?.name ?? "").trim();
+    let name = StringPrototypeTrim(options?.name ?? "");
     if (options?.eval) {
       name = "[worker eval]";
     }
