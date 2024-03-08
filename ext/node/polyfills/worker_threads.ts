@@ -234,12 +234,16 @@ internals.__initWorkerThreads = (runningOnMainThread: boolean) => {
       parentPort,
       "message",
     ).then((result) => {
+      // TODO(bartlomieju): just so we don't error out here. It's still racy,
+      // but should be addressed by https://github.com/denoland/deno/issues/22783
+      // shortly.
+      const data = result[0].data ?? {};
       // TODO(kt3k): The below values are set asynchronously
       // using the first message from the parent.
       // This should be done synchronously.
-      threadId = result[0].data.threadId;
-      workerData = result[0].data.workerData;
-      environmentData = result[0].data.environmentData;
+      threadId = data.threadId;
+      workerData = data.workerData;
+      environmentData = data.environmentData;
 
       defaultExport.threadId = threadId;
       defaultExport.workerData = workerData;
