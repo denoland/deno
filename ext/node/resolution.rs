@@ -518,6 +518,10 @@ impl NodeResolver {
         return Some(path);
       }
     }
+    // allow resolving .css files for types resolution
+    if lowercase_path.ends_with(".css") {
+      return Some(path);
+    }
     None
   }
 
