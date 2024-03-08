@@ -78,8 +78,7 @@ use deno_config::TestConfig;
 
 pub fn npm_registry_url() -> &'static Url {
   static NPM_REGISTRY_DEFAULT_URL: Lazy<Url> = Lazy::new(|| {
-    let env_var_name = "NPM_CONFIG_REGISTRY";
-    if let Ok(registry_url) = std::env::var(env_var_name) {
+    if let Some(registry_url) = *self::env::NPM_CONFIG_REGISTRY {
       // ensure there is a trailing slash for the directory
       let registry_url = format!("{}/", registry_url.trim_end_matches('/'));
       match Url::parse(&registry_url) {

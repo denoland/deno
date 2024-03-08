@@ -28,8 +28,21 @@ pub static DENO_DIR: Lazy<Option<String>> =
 pub static DENO_INSTALL_ROOT: Lazy<Option<String>> =
   Lazy::new(|| std::env::var("DENO_INSTALL_ROOT").ok());
 
-pub static DENO_REPL_HISTORY: Lazy<OsString> =
+pub static DENO_REPL_HISTORY: Lazy<Option<OsString>> =
   Lazy::new(|| std::env::var_os("DENO_REPL_HISTORY"));
+
+pub static DENO_JOBS: Lazy<Option<String>> =
+  Lazy::new(|| std::env::var("DENO_JOBS").ok());
+
+// TODO(bartlomieju): move to `ext/webgpu` or refactor to pass it explicitly
+pub static DENO_WEBGPU_TRACE: Lazy<Option<String>> =
+  Lazy::new(|| std::env::var("DENO_WEBGPU_TRACE").ok());
+
+pub static DENO_V8_FLAGS: Lazy<Option<String>> =
+  Lazy::new(|| std::env::var("DENO_V8_FLAGS").ok());
+
+pub static NPM_CONFIG_REGISTRY: Lazy<Option<String>> =
+  Lazy::new(|| std::env::var("NPM_CONFIG_REGISTRY").ok());
 
 //   <g>DENO_NO_PACKAGE_JSON</> Disables auto-resolution of package.json
 
@@ -39,21 +52,11 @@ pub static DENO_REPL_HISTORY: Lazy<OsString> =
 //     <g>DENO_NO_UPDATE_CHECK</> Set to disable checking if a newer Deno version is
 //                          available
 
-//     <g>DENO_V8_FLAGS</>        Set V8 command line options
-
-//     <g>DENO_WEBGPU_TRACE</>    Directory to use for wgpu traces
-
-//     <g>DENO_JOBS</>            Number of parallel workers used for the --parallel
-//                          flag with the test subcommand. Defaults to number
-//                          of available CPUs.
-
 //     <g>HTTP_PROXY</>           Proxy address for HTTP requests
 //                          (module downloads, fetch)
 
 //     <g>HTTPS_PROXY</>          Proxy address for HTTPS requests
 //                          (module downloads, fetch)
-
-//     <g>NPM_CONFIG_REGISTRY</>  URL to use for the npm registry.
 
 //     <g>NO_COLOR</>             Set to disable color
 
