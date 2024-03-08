@@ -326,7 +326,30 @@ impl<TFilter: Fn(WalkEntry) -> bool> FileCollector<TFilter> {
     }
 
     let mut maybe_git_ignores = if self.use_gitignore {
-      Some(GitIgnoreTree::new(Arc::new(deno_runtime::deno_fs::RealFs)))
+      // Override explicitly specified include paths in the
+      // .gitignore file. This does not apply to globs because
+      // that is way too complicated to reason about.
+      let include_paths = file_patterns
+        .include
+        .as_ref()
+        .map(|include| {
+          include
+            .inner()
+            .iter()
+            .filter_map(|path_or_pattern| {
+              if let PathOrPattern::Path(p) = path_or_pattern {
+                Some(p.clone())
+              } else {
+                None
+              }
+            })
+            .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+      Some(GitIgnoreTree::new(
+        Arc::new(deno_runtime::deno_fs::RealFs),
+        include_paths,
+      ))
     } else {
       None
     };
