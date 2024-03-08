@@ -38,13 +38,19 @@ impl DirGitIgnores {
 pub struct GitIgnoreTree {
   fs: Arc<dyn deno_runtime::deno_fs::FileSystem>,
   ignores: HashMap<PathBuf, Option<Rc<DirGitIgnores>>>,
+  include_paths: Vec<PathBuf>,
 }
 
 impl GitIgnoreTree {
-  pub fn new(fs: Arc<dyn deno_runtime::deno_fs::FileSystem>) -> Self {
+  pub fn new(
+    fs: Arc<dyn deno_runtime::deno_fs::FileSystem>,
+    // paths that should override what's in the gitignore
+    include_paths: Vec<PathBuf>,
+  ) -> Self {
     Self {
       fs,
       ignores: Default::default(),
+      include_paths,
     }
   }
 
@@ -94,6 +100,16 @@ impl GitIgnoreTree {
         for line in text.lines() {
           builder.add_line(None, line).ok()?;
         }
+        // override the gitignore contents to include these paths
+        for path in &self.include_paths {
+          if let Ok(suffix) = path.strip_prefix(dir_path) {
+            let suffix = suffix.to_string_lossy().replace('\\', "/");
+            let _ignore = builder.add_line(None, &format!("!/{}", suffix));
+            if !suffix.ends_with('/') {
+              let _ignore = builder.add_line(None, &format!("!/{}/", suffix));
+            }
+          }
+        }
         let gitignore = builder.build().ok()?;
         Some(Rc::new(gitignore))
       });
@@ -122,7 +138,7 @@ mod test {
         "!file.txt\nignore.txt".into(),
       ),
     ]);
-    let mut ignore_tree = GitIgnoreTree::new(Arc::new(fs));
+    let mut ignore_tree = GitIgnoreTree::new(Arc::new(fs), Vec::new());
     let mut run_test = |path: &str, expected: bool| {
       let path = PathBuf::from(path);
       let gitignore = ignore_tree
