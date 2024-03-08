@@ -326,6 +326,9 @@ impl<TFilter: Fn(WalkEntry) -> bool> FileCollector<TFilter> {
     }
 
     let mut maybe_git_ignores = if self.use_gitignore {
+      // Override explicitly specified include paths in the
+      // .gitignore file. This does not apply to globs because
+      // that is way too complicated to reason about.
       let include_paths = file_patterns
         .include
         .as_ref()

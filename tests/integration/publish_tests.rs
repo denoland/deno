@@ -430,7 +430,7 @@ fn not_include_gitignored_file_unless_exact_match_in_include() {
 
   temp_dir
     .join(".gitignore")
-    .write("ignored.ts\nexact_include.ts\nsub/\n/sub_ignored\n");
+    .write("ignored.ts\nexact_include.ts\nsub/\nsub/ignored\n/sub_ignored\n");
   temp_dir.join("main.ts").write("");
   temp_dir.join("ignored.ts").write("");
   temp_dir.join("exact_include.ts").write("");
@@ -438,6 +438,8 @@ fn not_include_gitignored_file_unless_exact_match_in_include() {
   sub_dir.create_dir_all();
   sub_dir.join("sub_included.ts").write("");
   sub_dir.join("ignored.ts").write(""); // this one is gitignored
+  sub_dir.join("ignored").create_dir_all();
+  sub_dir.join("ignored").join("ignored_also.ts").write("");
   let sub_ignored_dir = temp_dir.join("sub_ignored");
   sub_ignored_dir.create_dir_all();
   sub_ignored_dir.join("sub_ignored.ts").write("");
@@ -452,6 +454,7 @@ fn not_include_gitignored_file_unless_exact_match_in_include() {
   assert_contains!(output, "sub_included.ts");
   // it's gitignored
   assert_not_contains!(output, "ignored.ts");
+  assert_not_contains!(output, "ignored_also.ts");
   assert_not_contains!(output, "sub_ignored.ts");
 }
 
