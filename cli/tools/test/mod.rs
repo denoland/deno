@@ -15,16 +15,17 @@ use crate::module_loader::ModuleLoadPreparer;
 use crate::ops;
 use crate::util::file_watcher;
 use crate::util::fs::collect_specifiers;
+use crate::util::fs::WalkEntry;
 use crate::util::path::get_extension;
 use crate::util::path::is_script_ext;
 use crate::util::path::mapped_specifier_for_tsc;
+use crate::util::path::matches_pattern_or_exact_path;
 use crate::worker::CliMainWorkerFactory;
 
 use deno_ast::swc::common::comments::CommentKind;
 use deno_ast::MediaType;
 use deno_ast::SourceRangedForSpanned;
 use deno_config::glob::FilePatterns;
-use deno_config::glob::PathOrPattern;
 use deno_core::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context as _;
@@ -1350,28 +1351,16 @@ pub async fn report_tests(
   (Ok(()), receiver)
 }
 
-fn is_supported_test_path_predicate(
-  path: &Path,
-  patterns: &FilePatterns,
-) -> bool {
-  if !is_script_ext(path) {
+fn is_supported_test_path_predicate(entry: WalkEntry) -> bool {
+  if !is_script_ext(entry.path) {
     false
-  } else if has_supported_test_path_name(path) {
+  } else if has_supported_test_path_name(entry.path) {
     true
-  } else {
+  } else if let Some(include) = &entry.patterns.include {
     // allow someone to explicitly specify a path
-    let matches_exact_path_or_pattern = patterns
-      .include
-      .as_ref()
-      .map(|p| {
-        p.inner().iter().any(|p| match p {
-          PathOrPattern::Path(p) => p == path,
-          PathOrPattern::RemoteUrl(_) => true,
-          PathOrPattern::Pattern(p) => p.matches_path(path),
-        })
-      })
-      .unwrap_or(false);
-    matches_exact_path_or_pattern
+    matches_pattern_or_exact_path(include, entry.path)
+  } else {
+    false
   }
 }
 
@@ -1432,7 +1421,7 @@ fn collect_specifiers_with_test_mode(
     collect_specifiers(files.clone(), is_supported_test_path_predicate)?;
 
   if *include_inline {
-    return collect_specifiers(files, |p, _| is_supported_test_ext(p)).map(
+    return collect_specifiers(files, |e| is_supported_test_ext(e.path)).map(
       |specifiers| {
         specifiers
           .into_iter()
@@ -1608,8 +1597,8 @@ pub async fn run_tests_with_watch(
         let module_graph_creator = factory.module_graph_creator().await?;
         let file_fetcher = factory.file_fetcher()?;
         let test_modules = if test_options.doc {
-          collect_specifiers(test_options.files.clone(), |p, _| {
-            is_supported_test_ext(p)
+          collect_specifiers(test_options.files.clone(), |e| {
+            is_supported_test_ext(e.path)
           })
         } else {
           collect_specifiers(
