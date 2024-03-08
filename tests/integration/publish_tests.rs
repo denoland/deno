@@ -459,6 +459,34 @@ fn not_include_gitignored_file_unless_exact_match_in_include() {
 }
 
 #[test]
+fn gitignore_everything_exlcuded_override() {
+  let context = publish_context_builder().build();
+  let temp_dir = context.temp_dir().path();
+
+  temp_dir.join(".gitignore").write("*\n");
+  temp_dir.join("deno.json").write_json(&json!({
+    "name": "@foo/bar",
+    "version": "1.0.0",
+    "exports": "./root_main.ts",
+    "publish": {
+      // should opt out of .gitignore even though everything
+      // is .gitignored
+      "exclude": ["!**"]
+    }
+  }));
+
+  temp_dir.join("root_main.ts").write("");
+  let sub_dir = temp_dir.join("sub");
+  sub_dir.create_dir_all();
+  sub_dir.join("sub_main.ts").write("");
+  let output = context.new_command().arg("publish").arg("--dry-run").run();
+  output.assert_exit_code(0);
+  let output = output.combined_output();
+  assert_contains!(output, "root_main.ts");
+  assert_contains!(output, "sub_main.ts");
+}
+
+#[test]
 fn includes_directories_with_gitignore_when_unexcluded() {
   let context = publish_context_builder().build();
   let temp_dir = context.temp_dir().path();
