@@ -31,7 +31,7 @@ export interface WorkerOptions {
     codeRangeSizeMb?: number;
     stackSizeMb?: number;
   };
-
+  name?: string;
   eval?: boolean;
   transferList?: Transferable[];
   workerData?: unknown;
@@ -99,7 +99,6 @@ function toFileUrl(path: string): URL {
 }
 
 const kHandle = Symbol("kHandle");
-const PRIVATE_WORKER_THREAD_NAME = "$DENO_STD_NODE_WORKER_THREAD";
 class _Worker extends EventEmitter {
   readonly threadId: number;
   readonly resourceLimits: Required<
@@ -137,10 +136,14 @@ class _Worker extends EventEmitter {
         specifier = toFileUrl(specifier as string);
       }
     }
+
+    // TODO(bartlomieu): this doesn't match the Node.js behavior, it should be
+    // `[worker {threadId}] {name}` or empty string.
+    const name = (options?.name ?? "").trim();
     const handle = this[kHandle] = new Worker(
       specifier,
       {
-        name: PRIVATE_WORKER_THREAD_NAME,
+        name: (options?.name ?? "").trim(),
         type: "module",
       } as globalThis.WorkerOptions, // bypass unstable type error
     );
@@ -205,10 +208,8 @@ type ParentPort = typeof self & NodeEventTarget;
 // deno-lint-ignore no-explicit-any
 let parentPort: ParentPort = null as any;
 
-internals.__initWorkerThreads = () => {
-  isMainThread =
-    // deno-lint-ignore no-explicit-any
-    (globalThis as any).name !== PRIVATE_WORKER_THREAD_NAME;
+internals.__initWorkerThreads = (runningOnMainThread: boolean) => {
+  isMainThread = runningOnMainThread;
 
   defaultExport.isMainThread = isMainThread;
   // fake resourceLimits

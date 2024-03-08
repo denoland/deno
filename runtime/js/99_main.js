@@ -774,7 +774,7 @@ function bootstrapMainRuntime(runtimeOptions) {
   ObjectDefineProperty(globalThis, "Deno", core.propReadOnly(finalDenoNs));
 
   if (nodeBootstrap) {
-    nodeBootstrap(hasNodeModulesDir, argv0);
+    nodeBootstrap(hasNodeModulesDir, argv0, /* runningOnMainThread */ true);
   }
 
   if (future) {
@@ -909,7 +909,7 @@ function bootstrapWorkerRuntime(
   ObjectDefineProperty(globalThis, "Deno", core.propReadOnly(finalDenoNs));
 
   if (nodeBootstrap) {
-    nodeBootstrap(hasNodeModulesDir, argv0);
+    nodeBootstrap(hasNodeModulesDir, argv0, /* runningOnMainThread */ false);
   }
 }
 
