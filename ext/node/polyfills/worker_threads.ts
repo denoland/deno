@@ -133,7 +133,6 @@ function toFileUrl(path: string): URL {
 
 let threads = 0;
 const privateWorkerRef = Symbol("privateWorkerRef");
-const PRIVATE_WORKER_THREAD_NAME = "$DENO_STD_NODE_WORKER_THREAD";
 class NodeWorker extends EventEmitter {
   #id = 0;
   #name = "";
