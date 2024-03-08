@@ -417,20 +417,26 @@ fn not_include_gitignored_file_even_if_matched_in_include() {
     "version": "1.0.0",
     "exports": "./main.ts",
     "publish": {
-      // won't match ignored because it needs to be
+      // won't match ignored.ts because it needs to be
       // unexcluded via a negated glob in exclude
-      "include": [ "deno.json", "*.ts" ]
+      "include": [
+        "deno.json", "*.ts", "exact_include.ts" ]
     }
   }));
 
-  temp_dir.join(".gitignore").write("ignored.ts");
+  temp_dir
+    .join(".gitignore")
+    .write("ignored.ts\nexact_include.ts");
   temp_dir.join("main.ts").write("");
   temp_dir.join("ignored.ts").write("");
+  temp_dir.join("exact_include.ts").write("");
 
   let output = context.new_command().arg("publish").arg("--dry-run").run();
   output.assert_exit_code(0);
   let output = output.combined_output();
   assert_contains!(output, "main.ts");
+  // will match this exact match
+  assert_contains!(output, "exact_include.ts");
   // it's gitignored
   assert_not_contains!(output, "ignored.ts");
 }
