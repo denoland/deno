@@ -699,7 +699,11 @@ pub fn wildcard_match_detailed(
           // search from the end of the file
           current_text.rfind(search_text)
         } else if was_last_wildline {
-          find_last_text_on_line(search_text, current_text)
+          if is_last {
+            find_last_text_on_line(search_text, current_text)
+          } else {
+            find_first_text_on_line(search_text, current_text)
+          }
         } else {
           current_text.find(search_text)
         };
@@ -974,6 +978,19 @@ fn parse_wildcard_pattern_text(
     }
     .parse()
   })(text)
+}
+
+fn find_first_text_on_line(
+  search_text: &str,
+  current_text: &str,
+) -> Option<usize> {
+  let end_search_pos = current_text.find('\n').unwrap_or(current_text.len());
+  let found_pos = current_text.find(search_text)?;
+  if found_pos <= end_search_pos {
+    Some(found_pos)
+  } else {
+    None
+  }
 }
 
 fn find_last_text_on_line(
@@ -1393,6 +1410,7 @@ grault",
 
     // wildline
     assert!(wildcard_match("foo[WILDLINE]baz", "foobarbaz"));
+    assert!(wildcard_match("foo[WILDLINE]bar", "foobarbar"));
     assert!(!wildcard_match("foo[WILDLINE]baz", "fooba\nrbaz"));
     assert!(wildcard_match("foo[WILDLINE]", "foobar"));
 
@@ -1435,6 +1453,17 @@ grault",
     let size = parse_max_mem(TEXT);
 
     assert_eq!(size, Some(120380 * 1024));
+  }
+
+  #[test]
+  fn test_find_first_text_on_line() {
+    let text = "foo\nbar\nbaz";
+    assert_eq!(find_first_text_on_line("foo", text), Some(0));
+    assert_eq!(find_first_text_on_line("oo", text), Some(1));
+    assert_eq!(find_first_text_on_line("o", text), Some(1));
+    assert_eq!(find_first_text_on_line("o\nbar", text), Some(2));
+    assert_eq!(find_first_text_on_line("f", text), Some(0));
+    assert_eq!(find_first_text_on_line("bar", text), None);
   }
 
   #[test]
