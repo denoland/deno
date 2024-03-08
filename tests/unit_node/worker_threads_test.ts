@@ -1,6 +1,11 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { assert, assertEquals, assertObjectMatch } from "@std/assert/mod.ts";
+import {
+  assert,
+  assertEquals,
+  assertObjectMatch,
+  fail,
+} from "@std/assert/mod.ts";
 import { fromFileUrl, relative } from "@std/path/mod.ts";
 import * as workerThreads from "node:worker_threads";
 import { EventEmitter, once } from "node:events";
@@ -196,5 +201,20 @@ Deno.test({
     worker.postMessage("Hello, how are you my thread?");
     assertEquals((await once(worker, "message"))[0], "I'm fine!");
     worker.terminate();
+  },
+});
+
+Deno.test({
+  name: "[worker_threads] unref",
+  async fn() {
+    const timeout = setTimeout(() => fail("Test timed out"), 60_000);
+    const child = new Deno.Command(Deno.execPath(), {
+      args: [
+        "eval",
+        "import { Worker } from 'node:worker_threads'; new Worker('setTimeout(() => {}, 1_000_000)', {eval:true}).unref();",
+      ],
+    }).spawn();
+    await child.status;
+    clearTimeout(timeout);
   },
 });
