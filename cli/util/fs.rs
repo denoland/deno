@@ -373,8 +373,11 @@ impl<TFilter: Fn(WalkEntry) -> bool> FileCollector<TFilter> {
         let path = e.path().to_path_buf();
         let maybe_gitignore =
           maybe_git_ignores.as_mut().and_then(|git_ignores| {
-            let dir_path = if is_dir { &path } else { path.parent()? };
-            git_ignores.get_resolved_git_ignore(dir_path)
+            if is_dir {
+              git_ignores.get_resolved_git_ignore_for_dir(&path)
+            } else {
+              git_ignores.get_resolved_git_ignore_for_file(&path)
+            }
           });
         if !is_pattern_matched(
           maybe_gitignore.as_deref(),
