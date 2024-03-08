@@ -73,13 +73,10 @@ impl TestReporter for JunitTestReporter {
       description.name.clone(),
       quick_junit::TestCaseStatus::skipped(),
     );
-    case.extra.insert(
-      String::from("filename"),
-      to_relative_path_or_remote_url(
-        &self.cwd,
-        &description.location.file_name,
-      ),
-    );
+    case.classname = Some(to_relative_path_or_remote_url(
+      &self.cwd,
+      &description.location.file_name,
+    ));
     case.extra.insert(
       String::from("line"),
       description.location.line_number.to_string(),
@@ -138,13 +135,10 @@ impl TestReporter for JunitTestReporter {
       test_case_name,
       quick_junit::TestCaseStatus::skipped(),
     );
-    case.extra.insert(
-      String::from("filename"),
-      to_relative_path_or_remote_url(
-        &self.cwd,
-        &description.location.file_name,
-      ),
-    );
+    case.classname = Some(to_relative_path_or_remote_url(
+      &self.cwd,
+      &description.location.file_name,
+    ));
     case.extra.insert(
       String::from("line"),
       description.location.line_number.to_string(),
