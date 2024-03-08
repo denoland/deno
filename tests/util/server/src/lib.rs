@@ -686,11 +686,11 @@ pub fn wildcard_match_detailed(
       WildcardPatternPart::Wildnum(times) => {
         if current_text.len() < *times {
           output_lines
-            .push(format!("==== HAD MISSING WILDNUM({}) ====", times));
+            .push(format!("==== HAD MISSING WILDCHARS({}) ====", times));
           output_lines.push(colors::red(annotate_whitespace(current_text)));
           return WildcardMatchResult::Fail(output_lines.join("\n"));
         }
-        output_lines.push(format!("<WILDNUM({}) />", times));
+        output_lines.push(format!("<WILDCHARS({}) />", times));
         current_text = &current_text[*times..];
       }
       WildcardPatternPart::Text(search_text) => {
@@ -913,7 +913,7 @@ fn parse_wildcard_pattern_text(
       }
 
       fn parse_wild_num(input: &str) -> ParseResult<usize> {
-        let (input, _) = tag("[WILDNUM(")(input)?;
+        let (input, _) = tag("[WILDCHARS(")(input)?;
         let (input, times) = parse_num(input)?;
         let (input, _) = tag(")]")(input)?;
         ParseResult::Ok((input, times))
@@ -1415,11 +1415,11 @@ grault",
     assert!(wildcard_match("foo[WILDLINE]", "foobar"));
 
     // wildnum
-    assert!(wildcard_match("foo[WILDNUM(3)]baz", "foobarbaz"));
-    assert!(!wildcard_match("foo[WILDNUM(4)]baz", "foobarbaz"));
-    assert!(!wildcard_match("foo[WILDNUM(2)]baz", "foobarbaz"));
-    assert!(!wildcard_match("foo[WILDNUM(1)]baz", "foobarbaz"));
-    assert!(!wildcard_match("foo[WILDNUM(20)]baz", "foobarbaz"));
+    assert!(wildcard_match("foo[WILDCHARS(3)]baz", "foobarbaz"));
+    assert!(!wildcard_match("foo[WILDCHARS(4)]baz", "foobarbaz"));
+    assert!(!wildcard_match("foo[WILDCHARS(2)]baz", "foobarbaz"));
+    assert!(!wildcard_match("foo[WILDCHARS(1)]baz", "foobarbaz"));
+    assert!(!wildcard_match("foo[WILDCHARS(20)]baz", "foobarbaz"));
   }
 
   #[test]
