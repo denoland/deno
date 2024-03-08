@@ -24,6 +24,7 @@ use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::serde_json::json;
 use deno_core::v8;
+use deno_core::v8::ValueDeserializerHelper;
 use deno_core::CancelHandle;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::Extension;
@@ -331,6 +332,8 @@ pub struct WebWorker {
   pub main_module: ModuleSpecifier,
   poll_for_messages_fn: Option<v8::Global<v8::Value>>,
   bootstrap_fn_global: Option<v8::Global<v8::Function>>,
+  // Consumed when `bootstrap_fn` is called
+  maybe_worker_data: Option<Vec<u8>>,
 }
 
 pub struct WebWorkerOptions {
@@ -356,6 +359,7 @@ pub struct WebWorkerOptions {
   pub cache_storage_dir: Option<std::path::PathBuf>,
   pub stdio: Stdio,
   pub feature_checker: Arc<FeatureChecker>,
+  pub maybe_worker_data: Option<Vec<u8>>,
 }
 
 impl WebWorker {
@@ -601,6 +605,7 @@ impl WebWorker {
         main_module,
         poll_for_messages_fn: None,
         bootstrap_fn_global: Some(bootstrap_fn_global),
+        maybe_worker_data: options.maybe_worker_data,
       },
       external_handle,
     )
@@ -616,6 +621,17 @@ impl WebWorker {
       let bootstrap_fn = self.bootstrap_fn_global.take().unwrap();
       let bootstrap_fn = v8::Local::new(scope, bootstrap_fn);
       let undefined = v8::undefined(scope);
+      let mut worker_data: v8::Local<v8::Value> = v8::undefined(scope).into();
+      if let Some(buf) = self.maybe_worker_data.take() {
+        let len = buf.len();
+        let store = v8::ArrayBuffer::new_backing_store_from_boxed_slice(
+          buf.into_boxed_slice(),
+        );
+        let ab =
+          v8::ArrayBuffer::with_backing_store(scope, &store.make_shared());
+        let v8_buf = v8::Uint8Array::new(scope, ab, 0, len).unwrap();
+        worker_data = v8_buf.into();
+      }
       let name_str: v8::Local<v8::Value> =
         v8::String::new(scope, &self.name).unwrap().into();
       let id_str: v8::Local<v8::Value> =
@@ -623,7 +639,11 @@ impl WebWorker {
           .unwrap()
           .into();
       bootstrap_fn
-        .call(scope, undefined.into(), &[args, name_str, id_str])
+        .call(
+          scope,
+          undefined.into(),
+          &[args, name_str, id_str, worker_data],
+        )
         .unwrap();
     }
     // TODO(bartlomieju): this could be done using V8 API, without calling `execute_script`.

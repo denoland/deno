@@ -15,8 +15,10 @@ use crate::worker::FormatJsErrorFn;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::serde::Deserialize;
+use deno_core::v8;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
+use deno_core::JsBuffer;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_web::JsMessageData;
@@ -35,6 +37,7 @@ pub struct CreateWebWorkerArgs {
   pub permissions: PermissionsContainer,
   pub main_module: ModuleSpecifier,
   pub worker_type: WebWorkerType,
+  pub maybe_worker_data: Option<Vec<u8>>,
 }
 
 pub type CreateWebWorkerCb = dyn Fn(CreateWebWorkerArgs) -> (WebWorker, SendableWebWorkerHandle)
@@ -121,6 +124,7 @@ pub struct CreateWorkerArgs {
 fn op_create_worker(
   state: &mut OpState,
   #[serde] args: CreateWorkerArgs,
+  #[buffer] maybe_worker_data: Option<JsBuffer>,
 ) -> Result<WorkerId, AnyError> {
   let specifier = args.specifier.clone();
   let maybe_source_code = if args.has_source_code {
@@ -174,6 +178,7 @@ fn op_create_worker(
   // Setup new thread
   let thread_builder = std::thread::Builder::new().name(format!("{worker_id}"));
 
+  let maybe_worker_data = maybe_worker_data.map(|buf| buf.to_vec());
   // Spawn it
   thread_builder.spawn(move || {
     // Any error inside this block is terminal:
@@ -189,6 +194,7 @@ fn op_create_worker(
         permissions: worker_permissions,
         main_module: module_specifier.clone(),
         worker_type,
+        maybe_worker_data,
       });
 
     // Send thread safe handle from newly created worker to host thread

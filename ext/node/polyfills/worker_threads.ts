@@ -192,6 +192,12 @@ class NodeWorker extends EventEmitter {
       name = "[worker eval]";
     }
     this.#name = name;
+
+    const maybeWorkerData = options?.workerData;
+    const serializedWorkerData = maybeWorkerData
+      ? core.serialize(maybeWorkerData)
+      : undefined;
+
     const id = op_create_worker(
       {
         // deno-lint-ignore prefer-primordials
@@ -210,7 +216,6 @@ class NodeWorker extends EventEmitter {
     this.postMessage({
       environmentData,
       threadId: (this.threadId = ++threads),
-      workerData: options?.workerData,
     }, options?.transferList || []);
     // https://nodejs.org/api/worker_threads.html#event-online
     this.emit("online");
@@ -383,7 +388,10 @@ type ParentPort = typeof self & NodeEventTarget;
 // deno-lint-ignore no-explicit-any
 let parentPort: ParentPort = null as any;
 
-internals.__initWorkerThreads = (runningOnMainThread: boolean) => {
+internals.__initWorkerThreads = (
+  runningOnMainThread: boolean,
+  maybeWorkerData,
+) => {
   isMainThread = runningOnMainThread;
 
   defaultExport.isMainThread = isMainThread;
@@ -405,6 +413,8 @@ internals.__initWorkerThreads = (runningOnMainThread: boolean) => {
     >();
 
     parentPort = self as ParentPort;
+    workerData = maybeWorkerData;
+    defaultExport.workerData = workerData;
 
     const initPromise = PromisePrototypeThen(
       once(
@@ -420,11 +430,9 @@ internals.__initWorkerThreads = (runningOnMainThread: boolean) => {
         // using the first message from the parent.
         // This should be done synchronously.
         threadId = data.threadId;
-        workerData = data.workerData;
         environmentData = data.environmentData;
 
         defaultExport.threadId = threadId;
-        defaultExport.workerData = workerData;
       },
     );
 
