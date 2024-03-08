@@ -1258,7 +1258,7 @@ impl CliOptions {
   pub fn resolve_config_excludes(&self) -> Result<PathOrPatternSet, AnyError> {
     let maybe_config_files = if let Some(config_file) = &self.maybe_config_file
     {
-      config_file.to_files_config()?
+      Some(config_file.to_files_config()?)
     } else {
       None
     };
@@ -1750,14 +1750,14 @@ fn resolve_files(
   if let Some(file_flags) = maybe_file_flags {
     if !file_flags.include.is_empty() {
       maybe_files_config.include =
-        Some(PathOrPatternSet::from_relative_path_or_patterns(
+        Some(PathOrPatternSet::from_include_relative_path_or_patterns(
           initial_cwd,
           &file_flags.include,
         )?);
     }
     if !file_flags.ignore.is_empty() {
       maybe_files_config.exclude =
-        PathOrPatternSet::from_relative_path_or_patterns(
+        PathOrPatternSet::from_exclude_relative_path_or_patterns(
           initial_cwd,
           &file_flags.ignore,
         )?;
@@ -1886,7 +1886,7 @@ mod test {
     temp_dir.write("pages/[id].ts", "");
 
     let temp_dir_path = temp_dir.path().as_path();
-    let error = PathOrPatternSet::from_relative_path_or_patterns(
+    let error = PathOrPatternSet::from_include_relative_path_or_patterns(
       temp_dir_path,
       &["data/**********.ts".to_string()],
     )
@@ -1897,7 +1897,7 @@ mod test {
       Some(FilePatterns {
         base: temp_dir_path.to_path_buf(),
         include: Some(
-          PathOrPatternSet::from_relative_path_or_patterns(
+          PathOrPatternSet::from_include_relative_path_or_patterns(
             temp_dir_path,
             &[
               "data/test1.?s".to_string(),
@@ -1908,7 +1908,7 @@ mod test {
           )
           .unwrap(),
         ),
-        exclude: PathOrPatternSet::from_relative_path_or_patterns(
+        exclude: PathOrPatternSet::from_exclude_relative_path_or_patterns(
           temp_dir_path,
           &["nested/**/*bazz.ts".to_string()],
         )
@@ -1919,7 +1919,7 @@ mod test {
     )
     .unwrap();
 
-    let mut files = FileCollector::new(|_, _| true)
+    let mut files = FileCollector::new(|_| true)
       .ignore_git_folder()
       .ignore_node_modules()
       .ignore_vendor_folder()
