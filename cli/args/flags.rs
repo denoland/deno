@@ -2439,7 +2439,7 @@ fn publish_subcommand() -> Command {
       .arg(
         Arg::new("allow-dirty")
         .long("allow-dirty")
-        .help("Allow publishing if the repository has uncommited changed")
+        .help("Allow publishing if the repository has uncommitted changed")
         .action(ArgAction::SetTrue),
       ).arg(
         Arg::new("no-provenance")
