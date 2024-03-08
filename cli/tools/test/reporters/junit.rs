@@ -3,9 +3,11 @@
 use std::collections::VecDeque;
 use std::path::PathBuf;
 
+use super::fmt::to_relative_path_or_remote_url;
 use super::*;
 
 pub struct JunitTestReporter {
+  cwd: Url,
   output_path: String,
   // Stores TestCases (i.e. Tests) by the Test ID
   cases: IndexMap<usize, quick_junit::TestCase>,
@@ -18,6 +20,7 @@ pub struct JunitTestReporter {
 impl JunitTestReporter {
   pub fn new(output_path: String) -> Self {
     Self {
+      cwd: Url::from_directory_path(std::env::current_dir().unwrap()).unwrap(),
       output_path,
       cases: IndexMap::new(),
       test_name_tree: TestNameTree::new(),
@@ -70,10 +73,13 @@ impl TestReporter for JunitTestReporter {
       description.name.clone(),
       quick_junit::TestCaseStatus::skipped(),
     );
-    let file_name = description.location.file_name.clone();
-    case
-      .extra
-      .insert(String::from("filename"), String::from(file_name));
+    case.extra.insert(
+      String::from("filename"),
+      to_relative_path_or_remote_url(
+        &self.cwd,
+        &description.location.file_name,
+      ),
+    );
     case.extra.insert(
       String::from("line"),
       description.location.line_number.to_string(),
@@ -132,10 +138,13 @@ impl TestReporter for JunitTestReporter {
       test_case_name,
       quick_junit::TestCaseStatus::skipped(),
     );
-    let file_name = description.location.file_name.clone();
-    case
-      .extra
-      .insert(String::from("filename"), String::from(file_name));
+    case.extra.insert(
+      String::from("filename"),
+      to_relative_path_or_remote_url(
+        &self.cwd,
+        &description.location.file_name,
+      ),
+    );
     case.extra.insert(
       String::from("line"),
       description.location.line_number.to_string(),
@@ -206,13 +215,15 @@ impl TestReporter for JunitTestReporter {
   ) -> anyhow::Result<()> {
     let mut suites: IndexMap<String, quick_junit::TestSuite> = IndexMap::new();
     for (id, case) in &self.cases {
-      let filename = match (tests.get(id), test_steps.get(id)) {
-        (Some(test), _) => test.location.file_name.clone(),
-        (_, Some(step)) => step.location.file_name.clone(),
+      let abs_filename = match (tests.get(id), test_steps.get(id)) {
+        (Some(test), _) => &test.location.file_name,
+        (_, Some(step)) => &step.location.file_name,
         (None, None) => {
           unreachable!("Unknown test ID '{id}' provided");
         }
       };
+
+      let filename = to_relative_path_or_remote_url(&self.cwd, abs_filename);
 
       suites
         .entry(filename.clone())
