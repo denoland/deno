@@ -547,7 +547,7 @@
     "name": {
       "type": "string",
       "description": "The name of this JSR package. Must be scoped",
-      "examples": ["@luca/flag"]
+      "examples": ["@scope/name"]
     },
     "version": {
       "type": "string",
