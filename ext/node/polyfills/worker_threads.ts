@@ -1,9 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
 import { core, internals, primordials } from "ext:core/mod.js";
 import {
   op_create_worker,
@@ -31,6 +28,16 @@ const {
   Symbol,
   SymbolFor,
   SymbolIterator,
+  StringPrototypeEndsWith,
+  StringPrototypeReplace,
+  StringPrototypeMatch,
+  StringPrototypeReplaceAll,
+  StringPrototypeToString,
+  SafeWeakMap,
+  SafeRegExp,
+  SafeMap,
+  TypeError,
+  PromisePrototypeThen,
 } = primordials;
 
 export interface WorkerOptions {
@@ -49,6 +56,7 @@ export interface WorkerOptions {
     stackSizeMb?: number;
   };
 
+  // deno-lint-ignore prefer-primordials
   eval?: boolean;
   transferList?: Transferable[];
   workerData?: unknown;
@@ -65,7 +73,7 @@ const WHITESPACE_ENCODINGS: Record<string, string> = {
 };
 
 function encodeWhitespace(string: string): string {
-  return string.replaceAll(/[\s]/g, (c) => {
+  return StringPrototypeReplaceAll(string, new SafeRegExp(/[\s]/g), (c) => {
     return WHITESPACE_ENCODINGS[c] ?? c;
   });
 }
@@ -76,7 +84,11 @@ function toFileUrlPosix(path: string): URL {
   }
   const url = new URL("file:///");
   url.pathname = encodeWhitespace(
-    path.replace(/%/g, "%25").replace(/\\/g, "%5C"),
+    StringPrototypeReplace(
+      StringPrototypeReplace(path, new SafeRegExp(/%/g), "%25"),
+      new SafeRegExp(/\\/g),
+      "%5C",
+    ),
   );
   return url;
 }
@@ -85,11 +97,14 @@ function toFileUrlWin32(path: string): URL {
   if (!isAbsolute(path)) {
     throw new TypeError("Must be an absolute path.");
   }
-  const [, hostname, pathname] = path.match(
-    /^(?:[/\\]{2}([^/\\]+)(?=[/\\](?:[^/\\]|$)))?(.*)/,
-  )!;
+  const { 0: _, 1: hostname, 2: pathname } = StringPrototypeMatch(
+    path,
+    new SafeRegExp(/^(?:[/\\]{2}([^/\\]+)(?=[/\\](?:[^/\\]|$)))?(.*)/),
+  );
   const url = new URL("file:///");
-  url.pathname = encodeWhitespace(pathname.replace(/%/g, "%25"));
+  url.pathname = encodeWhitespace(
+    StringPrototypeReplace(pathname, new SafeRegExp(/%/g), "%25"),
+  );
   if (hostname != null && hostname != "localhost") {
     url.hostname = hostname;
     if (!url.hostname) {
@@ -144,8 +159,6 @@ class NodeWorker extends EventEmitter {
     codeRangeSizeMb: -1,
     stackSizeMb: 4,
   };
-  // https://nodejs.org/api/worker_threads.html#workershare_env
-  SHARE_ENV = SymbolFor("worker_threads.SHARE_ENV");
 
   constructor(specifier: URL | string, options?: WorkerOptions) {
     super();
@@ -160,8 +173,11 @@ class NodeWorker extends EventEmitter {
         // empty catch block when package json might not be present
       }
       if (
-        !(specifier.toString().endsWith(".mjs") ||
-          (pkg && pkg.exists && pkg.typ == "module"))
+        !(StringPrototypeEndsWith(
+          StringPrototypeToString(specifier),
+          ".mjs",
+        )) ||
+        (pkg && pkg.exists && pkg.typ == "module")
       ) {
         const cwdFileUrl = toFileUrl(Deno.cwd());
         specifier =
@@ -173,6 +189,7 @@ class NodeWorker extends EventEmitter {
 
     const id = op_create_worker(
       {
+        // deno-lint-ignore prefer-primordials
         specifier: specifier.toString(),
         hasSourceCode: false,
         sourceCode: "",
@@ -336,7 +353,7 @@ export let resourceLimits;
 
 let threadId = 0;
 let workerData: unknown = null;
-let environmentData = new Map();
+let environmentData = new SafeMap();
 
 // Like https://github.com/nodejs/node/blob/48655e17e1d84ba5021d7a94b4b88823f7c9c6cf/lib/internal/event_target.js#L611
 interface NodeEventTarget extends
@@ -379,25 +396,32 @@ internals.__initWorkerThreads = () => {
   if (!isMainThread) {
     // deno-lint-ignore no-explicit-any
     delete (globalThis as any).name;
-    // deno-lint-ignore no-explicit-any
-    const listeners = new WeakMap<(...args: any[]) => void, (ev: any) => any>();
+    const listeners = new SafeWeakMap<
+      // deno-lint-ignore no-explicit-any
+      (...args: any[]) => void,
+      // deno-lint-ignore no-explicit-any
+      (ev: any) => any
+    >();
 
     parentPort = self as ParentPort;
 
-    const initPromise = once(
-      parentPort,
-      "message",
-    ).then((result) => {
-      // TODO(kt3k): The below values are set asynchronously
-      // using the first message from the parent.
-      // This should be done synchronously.
-      threadId = result[0].data.threadId;
-      workerData = result[0].data.workerData;
-      environmentData = result[0].data.environmentData;
+    const initPromise = PromisePrototypeThen(
+      once(
+        parentPort,
+        "message",
+      ),
+      (result) => {
+        // TODO(kt3k): The below values are set asynchronously
+        // using the first message from the parent.
+        // This should be done synchronously.
+        threadId = result[0].data.threadId;
+        workerData = result[0].data.workerData;
+        environmentData = result[0].data.environmentData;
 
-      defaultExport.threadId = threadId;
-      defaultExport.workerData = workerData;
-    });
+        defaultExport.threadId = threadId;
+        defaultExport.workerData = workerData;
+      },
+    );
 
     parentPort.off = parentPort.removeListener = function (
       this: ParentPort,
@@ -413,7 +437,7 @@ internals.__initWorkerThreads = () => {
       name,
       listener,
     ) {
-      initPromise.then(() => {
+      PromisePrototypeThen(initPromise, () => {
         // deno-lint-ignore no-explicit-any
         const _listener = (ev: any) => listener(ev.data);
         listeners.set(listener, _listener);
@@ -423,7 +447,7 @@ internals.__initWorkerThreads = () => {
     };
 
     parentPort.once = function (this: ParentPort, name, listener) {
-      initPromise.then(() => {
+      PromisePrototypeThen(initPromise, () => {
         // deno-lint-ignore no-explicit-any
         const _listener = (ev: any) => listener(ev.data);
         listeners.set(listener, _listener);
@@ -460,7 +484,7 @@ export function setEnvironmentData(key: unknown, value?: unknown) {
   }
 }
 
-export const SHARE_ENV = Symbol.for("nodejs.worker_threads.SHARE_ENV");
+export const SHARE_ENV = SymbolFor("nodejs.worker_threads.SHARE_ENV");
 export function markAsUntransferable() {
   notImplemented("markAsUntransferable");
 }
