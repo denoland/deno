@@ -139,7 +139,10 @@ class _Worker extends EventEmitter {
 
     // TODO(bartlomieu): this doesn't match the Node.js behavior, it should be
     // `[worker {threadId}] {name}` or empty string.
-    const name = (options?.name ?? "").trim();
+    let name = (options?.name ?? "").trim();
+    if (options?.eval) {
+      name = "[worker eval]";
+    }
     const handle = this[kHandle] = new Worker(
       specifier,
       {
