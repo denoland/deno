@@ -15,28 +15,19 @@ import {
 } from "ext:core/ops";
 import { BroadcastChannel } from "ext:deno_broadcast_channel/01_broadcast_channel.js";
 import {
-  ErrorEvent,
-  MessageEvent,
-  setIsTrusted,
-} from "ext:deno_web/02_event.js";
-import {
   deserializeJsMessageData,
   MessageChannel,
   MessagePort,
-  MessagePortPrototype,
   serializeJsMessageData,
 } from "ext:deno_web/13_message_port.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { log } from "ext:runtime/06_util.js";
-import { serializePermissions } from "ext:runtime/10_permissions.js";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import { EventEmitter, once } from "node:events";
 import { isAbsolute, resolve } from "node:path";
 
 const {
-  ArrayPrototypeFilter,
   Error,
-  ObjectPrototypeIsPrototypeOf,
   Symbol,
   SymbolFor,
   SymbolIterator,
@@ -274,11 +265,11 @@ class NodeWorker extends EventEmitter {
       if (this.#status === "TERMINATED" || data === null) {
         return;
       }
-      let message, transferables;
+      let message, _transferables;
       try {
         const v = deserializeJsMessageData(data);
         message = v[0];
-        transferables = v[1];
+        _transferables = v[1];
       } catch (err) {
         this.emit("messageerror", err);
         return;
