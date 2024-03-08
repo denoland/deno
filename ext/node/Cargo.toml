@@ -77,4 +77,5 @@ x509-parser = "0.15.0"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys.workspace = true
+junction.workspace = true
 winapi = { workspace = true, features = ["consoleapi"] }
