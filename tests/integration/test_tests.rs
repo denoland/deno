@@ -284,8 +284,8 @@ itest!(junit {
 });
 
 itest!(junit_nested {
-  args: "test --reporter junit test/nested.ts",
-  output: "test/nested.junit.out",
+  args: "test --reporter junit test/nested_failures.ts",
+  output: "test/nested_failures.junit.out",
   exit_code: 1,
 });
 
