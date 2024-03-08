@@ -8,7 +8,7 @@ https://github.com/denoland/deno_install
 
 ### 1.41.2 / 2024.03.08
 
-- feat(ext/node): ref/unref on workers (#22778)
+- fix(ext/node): ref/unref on workers (#22778)
 - feat(lsp): include registry url in jsr import hover text (#22676)
 - feat(node/util): styleText (#22758)
 - feat(publish): add `npm:` suggestion for esm.sh specifiers (#22343)
@@ -52,7 +52,7 @@ https://github.com/denoland/deno_install
 - perf(cli): faster standalone executable determination (#22717)
 - perf(cli): use faster_hex (#22761)
 - perf(cli): use new deno_core timers (#22569)
-- perf: hard link npm cache (#22773)
+- perf(cli): hard link npm cache (#22773)
 
 ### 1.41.1 / 2024.02.29
 
