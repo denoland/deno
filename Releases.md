@@ -6,6 +6,54 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.41.2 / 2024.03.08
+
+- fix(ext/node): ref/unref on workers (#22778)
+- feat(lsp): include registry url in jsr import hover text (#22676)
+- feat(node/util): styleText (#22758)
+- feat(publish): add `npm:` suggestion for esm.sh specifiers (#22343)
+- feat(unstable/pm): support npm packages in 'deno add' (#22715)
+- feat(unstable/pm): support version contraints in 'deno add' (#22646)
+- fix(cli): force flush output after test unloads (#22660)
+- fix(cli): improve logging on failed named pipe (#22726)
+- fix(cli): limit test parallelism on Windows to avoid pipe error (#22776)
+- fix(cli): remove possible deadlock in test channel (#22662)
+- fix(ext/node): add default methods to fs.StatsBase (#22750)
+- fix(ext/node): http2.createServer (#22708)
+- fix(ext/node): strip `--enable-source-maps` from argv (#22743)
+- fix(lsp): do not warn about local file "redirects" from .js to .d.ts files
+  (#22670)
+- fix(lsp): don't apply renames to remote modules (#22765)
+- fix(lsp): ignore code errors when type passes for non-`@deno-types` reolution
+  (#22682)
+- fix(lsp): output more information on error (#22665)
+- fix(lsp): regression - caching in lsp broken when config with imports has
+  comments (#22666)
+- fix(node): errno property when command missing (#22691)
+- fix(node): implement ALS enterWith (#22740)
+- fix(node): improve cjs tracking (#22673)
+- fix(node): stat/statSync returns instance of fs.Stats (#22294)
+- fix(publish): do not include .gitignore (#22789)
+- fix(publish): include explicitly specified .gitignored files and directories
+  (#22790)
+- fix(publish): make include and exclude work (#22720)
+- fix(publish): permissionless dry-run in GHA (#22679)
+- fix(publish): properly display graph validation errors (#22775)
+- fix(publish): reland error if there are uncommitted changes (#22613) (#22632)
+- fix(publish): silence warnings for sloppy imports and node builtins with env
+  var (#22760)
+- fix(tools/publish): correctly handle importing from self in unfurling (#22774)
+- fix(unstable/publish): repect `--no-check` in no-slow-types (#22653)
+- fix: Provide source map for internal extension code (#22716)
+- fix: don't include source maps in release mode (#22751)
+- fix: point to correct WPT runner file (#22753)
+- fix: respect unstable "temporal" configuration in config file (#22134)
+- fix: update node process version to latest node LTS (#22709)
+- perf(cli): faster standalone executable determination (#22717)
+- perf(cli): use faster_hex (#22761)
+- perf(cli): use new deno_core timers (#22569)
+- perf(cli): hard link npm cache (#22773)
+
 ### 1.41.1 / 2024.02.29
 
 - feat(unstable): `deno add` subcommand (#22520)
