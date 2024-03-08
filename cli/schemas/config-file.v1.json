@@ -563,12 +563,11 @@
     "name": {
       "type": "string",
       "description": "The name of this JSR package. Must be scoped",
-      "examples": ["@luca/flag"]
+      "pattern": "^@[a-z0-9-]+/[a-z0-9-]+$"
     },
     "version": {
       "type": "string",
-      "description": "The version of this JSR package.",
-      "examples": ["0.1.0", "1.0.0"]
+      "description": "The version of this JSR package."
     },
     "exports": {
       "oneOf": [
