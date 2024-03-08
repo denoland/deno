@@ -318,27 +318,6 @@ impl<TFilter: Fn(WalkEntry) -> bool> FileCollector<TFilter> {
             .as_ref()
             .map(|git_ignore| git_ignore.is_ignored(path, is_dir))
             .unwrap_or(false);
-          if is_gitignored && !is_dir {
-            // For .gitignore with `deno publish`, check for and still
-            // include any exact file matches, but not for non-gitignored
-            // because the include paths might be CLI args that a user would
-            // want excluded.
-            // todo(dsherret): ideally we could implement a way to also do
-            // this for directories, but make sure to still make gitignored
-            // descendants still be ignored unless the user opts-out of it.
-            // For directories, it's not as simple as doing a check here because
-            // a sub directory might be explicitly ignored. Most likely it could
-            // be achieved by appending the included paths to the gitignore
-            if let Some(include) = &file_patterns.include {
-              for path_or_pattern in include.inner().iter().rev() {
-                if let PathOrPattern::Path(p) = path_or_pattern {
-                  if path == p {
-                    return true;
-                  }
-                }
-              }
-            }
-          }
           !is_gitignored
         }
         FilePatternsMatch::PassedOptedOutExclude => true,
@@ -347,7 +326,27 @@ impl<TFilter: Fn(WalkEntry) -> bool> FileCollector<TFilter> {
     }
 
     let mut maybe_git_ignores = if self.use_gitignore {
-      Some(GitIgnoreTree::new(Arc::new(deno_runtime::deno_fs::RealFs)))
+      let include_paths = file_patterns
+        .include
+        .as_ref()
+        .map(|include| {
+          include
+            .inner()
+            .iter()
+            .filter_map(|path_or_pattern| {
+              if let PathOrPattern::Path(p) = path_or_pattern {
+                Some(p.clone())
+              } else {
+                None
+              }
+            })
+            .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+      Some(GitIgnoreTree::new(
+        Arc::new(deno_runtime::deno_fs::RealFs),
+        include_paths,
+      ))
     } else {
       None
     };
