@@ -548,9 +548,9 @@ impl TsServer {
       .and_then(|mut changes| {
         for changes in &mut changes {
           changes.normalize(&self.specifier_map)?;
-          for text_chenages in &mut changes.text_changes {
-            text_chenages.new_text =
-              to_percent_decoded_str(&text_chenages.new_text);
+          for text_changes in &mut changes.text_changes {
+            text_changes.new_text =
+              to_percent_decoded_str(&text_changes.new_text);
           }
         }
         Ok(changes)
