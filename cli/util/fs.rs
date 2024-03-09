@@ -396,27 +396,10 @@ impl<TFilter: Fn(WalkEntry) -> bool> FileCollector<TFilter> {
             iterator.skip_current_dir();
           }
         } else if is_dir {
-          let should_ignore_dir = path
-            .file_name()
-            .map(|dir_name| {
-              let dir_name = dir_name.to_string_lossy().to_lowercase();
-              let is_ignored_file = match dir_name.as_str() {
-                "node_modules" => self.ignore_node_modules,
-                "vendor" => self.ignore_vendor_folder,
-                ".git" => self.ignore_git_folder,
-                _ => false,
-              };
-              // allow the user to opt out of ignoring by explicitly specifying the dir
-              file != path && is_ignored_file
-            })
-            .unwrap_or(false)
-            || !visited_paths.insert(path.clone())
-            || self
-              .vendor_folder
-              .as_ref()
-              .map(|vendor_folder| path.starts_with(vendor_folder))
-              .unwrap_or(false);
-          if should_ignore_dir {
+          // allow the user to opt out of ignoring by explicitly specifying the dir
+          let opt_out_ignore = file == path;
+          let should_ignore_dir = !opt_out_ignore && self.is_ignored_dir(&path);
+          if should_ignore_dir || !visited_paths.insert(path.clone()) {
             iterator.skip_current_dir();
           }
         } else if (self.file_filter)(WalkEntry {
@@ -430,6 +413,31 @@ impl<TFilter: Fn(WalkEntry) -> bool> FileCollector<TFilter> {
       }
     }
     Ok(target_files)
+  }
+
+  fn is_ignored_dir(&self, path: &Path) -> bool {
+    path
+      .file_name()
+      .map(|dir_name| {
+        let dir_name = dir_name.to_string_lossy().to_lowercase();
+        let is_ignored_file = match dir_name.as_str() {
+          "node_modules" => self.ignore_node_modules,
+          "vendor" => self.ignore_vendor_folder,
+          ".git" => self.ignore_git_folder,
+          _ => false,
+        };
+        is_ignored_file
+      })
+      .unwrap_or(false)
+      || self.is_vendor_folder(path)
+  }
+
+  fn is_vendor_folder(&self, path: &Path) -> bool {
+    self
+      .vendor_folder
+      .as_ref()
+      .map(|vendor_folder| path == *vendor_folder)
+      .unwrap_or(false)
   }
 }
 
