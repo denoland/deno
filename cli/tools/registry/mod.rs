@@ -97,9 +97,9 @@ async fn prepare_publish(
   deno_json: &ConfigFile,
   source_cache: Arc<ParsedSourceCache>,
   graph: Arc<deno_graph::ModuleGraph>,
+  cli_options: Arc<CliOptions>,
   mapped_resolver: Arc<MappedSpecifierResolver>,
   sloppy_imports_resolver: Option<SloppyImportsResolver>,
-  bare_node_builtins: bool,
   diagnostics_collector: &PublishDiagnosticsCollector,
 ) -> Result<Rc<PreparedPublishPackage>, AnyError> {
   let config_path = deno_json.specifier.to_file_path().unwrap();
@@ -145,6 +145,7 @@ async fn prepare_publish(
 
   let diagnostics_collector = diagnostics_collector.clone();
   let tarball = deno_core::unsync::spawn_blocking(move || {
+    let bare_node_builtins = cli_options.unstable_bare_node_builtins();
     let unfurler = SpecifierUnfurler::new(
       &mapped_resolver,
       sloppy_imports_resolver.as_ref(),
@@ -152,6 +153,7 @@ async fn prepare_publish(
     );
     tar::create_gzipped_tarball(
       &dir_path,
+      &cli_options,
       LazyGraphSourceParser::new(&source_cache, &graph),
       &diagnostics_collector,
       &unfurler,
@@ -745,7 +747,6 @@ async fn prepare_packages_for_publishing(
   let type_checker = cli_factory.type_checker().await?;
   let fs = cli_factory.fs();
   let cli_options = cli_factory.cli_options();
-  let bare_node_builtins = cli_options.unstable_bare_node_builtins();
 
   if members.len() > 1 {
     println!("Publishing a workspace...");
@@ -776,15 +777,16 @@ async fn prepare_packages_for_publishing(
         None
       };
       let graph = graph.clone();
+      let cli_options = cli_options.clone();
       async move {
         let package = prepare_publish(
           &member.package_name,
           &member.config_file,
           source_cache.clone(),
           graph,
+          cli_options,
           mapped_resolver,
           sloppy_imports_resolver,
-          bare_node_builtins,
           diagnostics_collector,
         )
         .await

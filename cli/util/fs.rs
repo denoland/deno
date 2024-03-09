@@ -261,6 +261,7 @@ pub struct FileCollector<TFilter: Fn(WalkEntry) -> bool> {
   ignore_git_folder: bool,
   ignore_node_modules: bool,
   ignore_vendor_folder: bool,
+  vendor_folder: Option<PathBuf>,
   use_gitignore: bool,
 }
 
@@ -271,6 +272,7 @@ impl<TFilter: Fn(WalkEntry) -> bool> FileCollector<TFilter> {
       ignore_git_folder: false,
       ignore_node_modules: false,
       ignore_vendor_folder: false,
+      vendor_folder: None,
       use_gitignore: false,
     }
   }
@@ -282,6 +284,11 @@ impl<TFilter: Fn(WalkEntry) -> bool> FileCollector<TFilter> {
 
   pub fn ignore_vendor_folder(mut self) -> Self {
     self.ignore_vendor_folder = true;
+    self
+  }
+
+  pub fn set_vendor_folder(mut self, vendor_folder: Option<PathBuf>) -> Self {
+    self.vendor_folder = vendor_folder;
     self
   }
 
@@ -403,7 +410,12 @@ impl<TFilter: Fn(WalkEntry) -> bool> FileCollector<TFilter> {
               file != path && is_ignored_file
             })
             .unwrap_or(false)
-            || !visited_paths.insert(path.clone());
+            || !visited_paths.insert(path.clone())
+            || self
+              .vendor_folder
+              .as_ref()
+              .map(|vendor_folder| path.starts_with(vendor_folder))
+              .unwrap_or(false);
           if should_ignore_dir {
             iterator.skip_current_dir();
           }

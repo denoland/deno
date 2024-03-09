@@ -14,6 +14,7 @@ use std::io::Write;
 use std::path::Path;
 use tar::Header;
 
+use crate::args::CliOptions;
 use crate::cache::LazyGraphSourceParser;
 use crate::tools::registry::paths::PackagePath;
 use crate::util::fs::FileCollector;
@@ -39,6 +40,7 @@ pub struct PublishableTarball {
 
 pub fn create_gzipped_tarball(
   dir: &Path,
+  cli_options: &CliOptions,
   source_parser: LazyGraphSourceParser,
   diagnostics_collector: &PublishDiagnosticsCollector,
   unfurler: &SpecifierUnfurler,
@@ -70,7 +72,7 @@ pub fn create_gzipped_tarball(
   })
   .ignore_git_folder()
   .ignore_node_modules()
-  .ignore_vendor_folder()
+  .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
   .use_gitignore()
   .collect_file_patterns(file_patterns)?;
 
