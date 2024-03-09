@@ -245,6 +245,9 @@ impl PreparedModuleLoader {
     maybe_referrer: Option<&ModuleSpecifier>,
   ) -> Result<ModuleCodeStringSource, AnyError> {
     if specifier.scheme() == "node" {
+      #[cfg(feature = "ext-node")]
+      bail!("Node built-in modules are not supported in this context.");
+      #[cfg(not(feature = "ext-node"))]
       unreachable!(); // Node built-in modules should be handled internally.
     }
 

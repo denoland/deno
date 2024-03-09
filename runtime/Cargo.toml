@@ -10,7 +10,7 @@ repository.workspace = true
 description = "Provides the deno runtime library"
 
 [features]
-default = ["node"]
+default = ["ext-node"]
 # "fake" feature that allows to generate docs on docs.rs
 docsrs = []
 # A feature that allows excluding `./js/99_main.js` from the exported extension.
@@ -29,7 +29,7 @@ __runtime_js_sources = ["include_js_files_for_snapshotting"]
 # assertion that a snapshot is provided.
 only_snapshotted_js_sources = ["include_js_files_for_snapshotting"]
 # Feature flags for large extensions
-node = []
+ext-node = []
 
 [lib]
 name = "deno_runtime"
