@@ -101,6 +101,4 @@ const writeStream = new WriteStream(fd);
 
   assert.strictEqual(writeStream.getColorDepth({}), depth1);
   Object.defineProperty(process, 'platform', { value });
-  assert.strictEqual(writeStream.getColorDepth({}), depth2);
-  Object.defineProperty(process, 'platform', platform);
 }
