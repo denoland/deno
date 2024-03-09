@@ -1,5 +1,5 @@
 Download http://localhost:4545/npm/registry/@types/node
-Download http://localhost:4545/npm/registry/@types/node/node-18.8.2.tgz
+Download http://localhost:4545/npm/registry/@types/node/node-18.16.19.tgz
 Check file:///[WILDCARD]/publish/bare_node_builtins/mod.ts
 Checking for slow types in the public API...
 Check file:///[WILDCARD]/publish/bare_node_builtins/mod.ts
