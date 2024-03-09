@@ -97,17 +97,16 @@ where
 {
   let fs = state.borrow::<FileSystemRc>();
   // Guarantee that "from" is absolute.
-  let from = if from.starts_with("file:///") {
-    Url::parse(&from)?.to_file_path().unwrap()
+  let from_url = if from.starts_with("file:///") {
+    Url::parse(&from)?
   } else {
     deno_core::resolve_path(
       &from,
       &(fs.cwd().map_err(AnyError::from)).context("Unable to get CWD")?,
     )
     .unwrap()
-    .to_file_path()
-    .unwrap()
   };
+  let from = url_to_file_path(&from_url)?;
 
   ensure_read_permission::<P>(state, &from)?;
 
@@ -420,24 +419,21 @@ where
 
   let referrer = deno_core::url::Url::from_file_path(&pkg.path).unwrap();
   if let Some(exports) = &pkg.exports {
-    node_resolver
-      .package_exports_resolve(
-        &pkg.path,
-        &expansion,
-        exports,
-        &referrer,
-        NodeModuleKind::Cjs,
-        resolution::REQUIRE_CONDITIONS,
-        NodeResolutionMode::Execution,
-        permissions,
-      )
-      .map(|r| {
-        Some(if r.scheme() == "file" {
-          r.to_file_path().unwrap().to_string_lossy().to_string()
-        } else {
-          r.to_string()
-        })
-      })
+    let r = node_resolver.package_exports_resolve(
+      &pkg.path,
+      &expansion,
+      exports,
+      &referrer,
+      NodeModuleKind::Cjs,
+      resolution::REQUIRE_CONDITIONS,
+      NodeResolutionMode::Execution,
+      permissions,
+    )?;
+    Ok(Some(if r.scheme() == "file" {
+      url_to_file_path_string(&r)?
+    } else {
+      r.to_string()
+    }))
   } else {
     Ok(None)
   }
@@ -510,24 +506,21 @@ where
 
   if let Some(exports) = &pkg.exports {
     let referrer = Url::from_file_path(parent_path).unwrap();
-    node_resolver
-      .package_exports_resolve(
-        &pkg.path,
-        &format!(".{expansion}"),
-        exports,
-        &referrer,
-        NodeModuleKind::Cjs,
-        resolution::REQUIRE_CONDITIONS,
-        NodeResolutionMode::Execution,
-        permissions,
-      )
-      .map(|r| {
-        Some(if r.scheme() == "file" {
-          r.to_file_path().unwrap().to_string_lossy().to_string()
-        } else {
-          r.to_string()
-        })
-      })
+    let r = node_resolver.package_exports_resolve(
+      &pkg.path,
+      &format!(".{expansion}"),
+      exports,
+      &referrer,
+      NodeModuleKind::Cjs,
+      resolution::REQUIRE_CONDITIONS,
+      NodeResolutionMode::Execution,
+      permissions,
+    )?;
+    Ok(Some(if r.scheme() == "file" {
+      url_to_file_path_string(&r)?
+    } else {
+      r.to_string()
+    }))
   } else {
     Ok(None)
   }
@@ -575,32 +568,35 @@ where
 #[string]
 pub fn op_require_package_imports_resolve<P>(
   state: &mut OpState,
-  #[string] parent_filename: String,
+  #[string] referrer_filename: String,
   #[string] request: String,
 ) -> Result<Option<String>, AnyError>
 where
   P: NodePermissions + 'static,
 {
-  let parent_path = PathBuf::from(&parent_filename);
-  ensure_read_permission::<P>(state, &parent_path)?;
+  let referrer_path = PathBuf::from(&referrer_filename);
+  ensure_read_permission::<P>(state, &referrer_path)?;
   let node_resolver = state.borrow::<Rc<NodeResolver>>();
   let permissions = state.borrow::<P>();
-  let pkg = node_resolver
-    .load_package_json(permissions, parent_path.join("package.json"))?;
+  let Some(pkg) = node_resolver
+    .get_closest_package_json_from_path(&referrer_path, permissions)?
+  else {
+    return Ok(None);
+  };
 
   if pkg.imports.is_some() {
-    let referrer =
-      deno_core::url::Url::from_file_path(&parent_filename).unwrap();
-    node_resolver
-      .package_imports_resolve(
-        &request,
-        &referrer,
-        NodeModuleKind::Cjs,
-        resolution::REQUIRE_CONDITIONS,
-        NodeResolutionMode::Execution,
-        permissions,
-      )
-      .map(|r| Some(r.to_string()))
+    let referrer_url =
+      deno_core::url::Url::from_file_path(&referrer_filename).unwrap();
+    let url = node_resolver.package_imports_resolve(
+      &request,
+      &referrer_url,
+      NodeModuleKind::Cjs,
+      Some(&pkg),
+      resolution::REQUIRE_CONDITIONS,
+      NodeResolutionMode::Execution,
+      permissions,
+    )?;
+    Ok(Some(url_to_file_path_string(&url)?))
   } else {
     Ok(None)
   }
@@ -612,4 +608,18 @@ pub fn op_require_break_on_next_statement(state: &mut OpState) {
   inspector
     .borrow_mut()
     .wait_for_session_and_break_on_next_statement()
+}
+
+fn url_to_file_path_string(url: &Url) -> Result<String, AnyError> {
+  let file_path = url_to_file_path(url)?;
+  Ok(file_path.to_string_lossy().to_string())
+}
+
+fn url_to_file_path(url: &Url) -> Result<PathBuf, AnyError> {
+  match url.to_file_path() {
+    Ok(file_path) => Ok(file_path),
+    Err(()) => {
+      deno_core::anyhow::bail!("failed to convert '{}' to file path", url)
+    }
+  }
 }

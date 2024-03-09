@@ -239,10 +239,12 @@ impl NodeResolver {
         Some(resolved_specifier)
       }
     } else if specifier.starts_with('#') {
+      let pkg_config = self.get_closest_package_json(referrer, permissions)?;
       Some(self.package_imports_resolve(
         specifier,
         referrer,
         NodeModuleKind::Esm,
+        pkg_config.as_ref(),
         conditions,
         mode,
         permissions,
@@ -525,11 +527,13 @@ impl NodeResolver {
     None
   }
 
+  #[allow(clippy::too_many_arguments)]
   pub(super) fn package_imports_resolve(
     &self,
     name: &str,
     referrer: &ModuleSpecifier,
     referrer_kind: NodeModuleKind,
+    referrer_pkg_json: Option<&PackageJson>,
     conditions: &[&str],
     mode: NodeResolutionMode,
     permissions: &dyn NodePermissions,
@@ -544,12 +548,10 @@ impl NodeResolver {
     }
 
     let mut package_json_path = None;
-    if let Some(package_config) =
-      self.get_closest_package_json(referrer, permissions)?
-    {
-      if package_config.exists {
-        package_json_path = Some(package_config.path.clone());
-        if let Some(imports) = &package_config.imports {
+    if let Some(pkg_json) = &referrer_pkg_json {
+      if pkg_json.exists {
+        package_json_path = Some(pkg_json.path.clone());
+        if let Some(imports) = &pkg_json.imports {
           if imports.contains_key(name) && !name.contains('*') {
             let target = imports.get(name).unwrap();
             let maybe_resolved = self.resolve_package_target(
@@ -1121,7 +1123,19 @@ impl NodeResolver {
     url: &ModuleSpecifier,
     permissions: &dyn NodePermissions,
   ) -> Result<Option<PackageJson>, AnyError> {
-    let Some(package_json_path) = self.get_closest_package_json_path(url)?
+    let Ok(file_path) = url.to_file_path() else {
+      return Ok(None);
+    };
+    self.get_closest_package_json_from_path(&file_path, permissions)
+  }
+
+  pub fn get_closest_package_json_from_path(
+    &self,
+    file_path: &Path,
+    permissions: &dyn NodePermissions,
+  ) -> Result<Option<PackageJson>, AnyError> {
+    let Some(package_json_path) =
+      self.get_closest_package_json_path(file_path)?
     else {
       return Ok(None);
     };
@@ -1132,11 +1146,8 @@ impl NodeResolver {
 
   fn get_closest_package_json_path(
     &self,
-    url: &ModuleSpecifier,
+    file_path: &Path,
   ) -> Result<Option<PathBuf>, AnyError> {
-    let Ok(file_path) = url.to_file_path() else {
-      return Ok(None);
-    };
     let current_dir = deno_core::strip_unc_prefix(
       self.fs.realpath_sync(file_path.parent().unwrap())?,
     );
