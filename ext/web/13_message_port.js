@@ -11,7 +11,6 @@ import {
   op_message_port_create_entangled,
   op_message_port_post_message,
   op_message_port_recv_message,
-  op_message_port_recv_message_sync,
 } from "ext:core/ops";
 const {
   ArrayBufferPrototypeGetByteLength,
@@ -84,6 +83,7 @@ webidl.configureInterface(MessageChannel);
 const MessageChannelPrototype = MessageChannel.prototype;
 
 const _id = Symbol("id");
+const MessagePortIdSymbol = _id;
 const _enabled = Symbol("enabled");
 
 /**
@@ -144,17 +144,6 @@ class MessagePort extends EventTarget {
     const data = serializeJsMessageData(message, transfer);
     if (this[_id] === null) return;
     op_message_port_post_message(this[_id], data);
-  }
-
-  /**
-   * This method is only provided for `receiveMessageOnPort`
-   * in `node:worker_threads`
-   * @returns {object | undefined}
-   */
-  receiveMessage() {
-    const data = op_message_port_recv_message_sync(this[_id]);
-    if (data === null) return undefined;
-    return { message: deserializeJsMessageData(data)[0] };
   }
 
   start() {
@@ -392,6 +381,7 @@ export {
   deserializeJsMessageData,
   MessageChannel,
   MessagePort,
+  MessagePortIdSymbol,
   MessagePortPrototype,
   serializeJsMessageData,
   structuredClone,

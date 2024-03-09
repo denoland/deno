@@ -11,7 +11,13 @@ import { isAbsolute, resolve } from "node:path";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import { EventEmitter, once } from "node:events";
 import { BroadcastChannel } from "ext:deno_broadcast_channel/01_broadcast_channel.js";
-import { MessageChannel, MessagePort } from "ext:deno_web/13_message_port.js";
+import { op_message_port_recv_message_sync } from "ext:core/ops";
+import {
+  deserializeJsMessageData,
+  MessageChannel,
+  MessagePort,
+  MessagePortIdSymbol,
+} from "ext:deno_web/13_message_port.js";
 
 let environmentData = new Map();
 let threads = 0;
@@ -324,7 +330,9 @@ export function receiveMessageOnPort(port: MessagePort): object | undefined {
     err["code"] = "ERR_INVALID_ARG_TYPE";
     throw err;
   }
-  return port.receiveMessage();
+  const data = op_message_port_recv_message_sync(port[MessagePortIdSymbol]);
+  if (data === null) return undefined;
+  return { message: deserializeJsMessageData(data)[0] };
 }
 
 export {

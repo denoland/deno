@@ -112,4 +112,8 @@ declare module "ext:deno_web/13_message_port.js" {
   }
   const MessageChannel: typeof MessageChannel;
   const MessagePort: typeof MessagePort;
+  const MessagePortIdSymbol: typeof MessagePortIdSymbol;
+  function deserializeJsMessageData(
+    messageData: messagePort.MessageData,
+  ): [object, object[]];
 }
