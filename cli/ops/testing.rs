@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use crate::tools::test::TestContainer;
 use crate::tools::test::TestDescription;
 use crate::tools::test::TestEvent;
 use crate::tools::test::TestEventSender;
@@ -23,17 +24,13 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use uuid::Uuid;
 
-#[derive(Default)]
-pub(crate) struct TestContainer(
-  pub Vec<(TestDescription, v8::Global<v8::Function>)>,
-);
-
 deno_core::extension!(deno_test,
   ops = [
     op_pledge_test_permissions,
     op_restore_test_permissions,
     op_register_test,
     op_register_test_step,
+    op_test_get_origin,
     op_test_event_step_wait,
     op_test_event_step_result_ok,
     op_test_event_step_result_ignored,
@@ -106,7 +103,6 @@ static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
 
 #[allow(clippy::too_many_arguments)]
 #[op2]
-#[string]
 fn op_register_test(
   state: &mut OpState,
   #[global] function: v8::Global<v8::Function>,
@@ -119,7 +115,7 @@ fn op_register_test(
   #[smi] line_number: u32,
   #[smi] column_number: u32,
   #[buffer] ret_buf: &mut [u8],
-) -> Result<String, AnyError> {
+) -> Result<(), AnyError> {
   if ret_buf.len() != 4 {
     return Err(type_error(format!(
       "Invalid ret_buf length: {}",
@@ -142,14 +138,16 @@ fn op_register_test(
       column_number,
     },
   };
-  state
-    .borrow_mut::<TestContainer>()
-    .0
-    .push((description.clone(), function));
-  let sender = state.borrow_mut::<TestEventSender>();
-  sender.send(TestEvent::Register(description)).ok();
+  let container = state.borrow_mut::<TestContainer>();
+  container.register(description, function);
   ret_buf.copy_from_slice(&(id as u32).to_le_bytes());
-  Ok(origin)
+  Ok(())
+}
+
+#[op2]
+#[string]
+fn op_test_get_origin(state: &mut OpState) -> String {
+  state.borrow::<ModuleSpecifier>().to_string()
 }
 
 #[op2(fast)]

@@ -64,6 +64,8 @@ pub enum FsFileType {
   File,
   #[serde(rename = "dir")]
   Directory,
+  #[serde(rename = "junction")]
+  Junction,
 }
 
 #[derive(Serialize)]

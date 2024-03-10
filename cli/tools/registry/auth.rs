@@ -17,6 +17,14 @@ pub struct OidcConfig {
   pub token: String,
 }
 
+pub(crate) fn is_gha() -> bool {
+  std::env::var("GITHUB_ACTIONS").unwrap_or_default() == "true"
+}
+
+pub(crate) fn gha_oidc_token() -> Option<String> {
+  std::env::var("ACTIONS_ID_TOKEN_REQUEST_TOKEN").ok()
+}
+
 fn get_gh_oidc_env_vars() -> Option<Result<(String, String), AnyError>> {
   if std::env::var("GITHUB_ACTIONS").unwrap_or_default() == "true" {
     let url = std::env::var("ACTIONS_ID_TOKEN_REQUEST_URL");
@@ -35,7 +43,13 @@ fn get_gh_oidc_env_vars() -> Option<Result<(String, String), AnyError>> {
 
 pub fn get_auth_method(
   maybe_token: Option<String>,
+  dry_run: bool,
 ) -> Result<AuthMethod, AnyError> {
+  if dry_run {
+    // We don't authenticate in dry-run mode.
+    return Ok(AuthMethod::Interactive);
+  }
+
   if let Some(token) = maybe_token {
     return Ok(AuthMethod::Token(token));
   }

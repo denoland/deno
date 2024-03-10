@@ -96,13 +96,15 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
       let module_specifiers = collect_specifiers(
         FilePatterns {
           base: cli_options.initial_cwd().to_path_buf(),
-          include: Some(PathOrPatternSet::from_relative_path_or_patterns(
-            cli_options.initial_cwd(),
-            source_files,
-          )?),
+          include: Some(
+            PathOrPatternSet::from_include_relative_path_or_patterns(
+              cli_options.initial_cwd(),
+              source_files,
+            )?,
+          ),
           exclude: Default::default(),
         },
-        |_, _| true,
+        |_| true,
       )?;
       let graph = module_graph_creator
         .create_graph(GraphKind::TypesOnly, module_specifiers.clone())

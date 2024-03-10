@@ -245,6 +245,13 @@ impl TestRun {
       unreachable!("Should always be Test subcommand.");
     };
 
+    // TODO(mmastrac): Temporarily limit concurrency in windows testing to avoid named pipe issue:
+    // *** Unexpected server pipe failure '"\\\\.\\pipe\\deno_pipe_e30f45c9df61b1e4.1198.222\\0"': 3
+    // This is likely because we're hitting some sort of invisible resource limit
+    // This limit is both in cli/lsp/testing/execution.rs and cli/tools/test/mod.rs
+    #[cfg(windows)]
+    let concurrent_jobs = std::cmp::min(concurrent_jobs, 4);
+
     let (test_event_sender_factory, mut receiver) = create_test_event_channel();
     let fail_fast_tracker = FailFastTracker::new(fail_fast);
 
@@ -296,7 +303,7 @@ impl TestRun {
             test::TestSpecifierOptions {
               filter,
               shuffle: None,
-              trace_ops: false,
+              trace_leaks: false,
             },
           ))
         }
@@ -324,8 +331,11 @@ impl TestRun {
         while let Some((_, event)) = receiver.recv().await {
           match event {
             test::TestEvent::Register(description) => {
-              reporter.report_register(&description);
-              tests.write().insert(description.id, description);
+              for (_, description) in description.into_iter() {
+                reporter.report_register(description);
+                // TODO(mmastrac): we shouldn't need to clone here - we can re-use the descriptions
+                tests.write().insert(description.id, description.clone());
+              }
             }
             test::TestEvent::Plan(plan) => {
               summary.total += plan.total;
@@ -394,6 +404,9 @@ impl TestRun {
                 );
               }
             }
+            test::TestEvent::Completed => {
+              reporter.report_completed();
+            }
             test::TestEvent::ForceEndReport => {}
             test::TestEvent::Sigint => {}
           }
@@ -438,7 +451,7 @@ impl TestRun {
         .iter()
         .map(|s| s.as_str()),
     );
-    args.push("--trace-ops");
+    args.push("--trace-leaks");
     if self.workspace_settings.unstable && !args.contains(&"--unstable") {
       args.push("--unstable");
     }
@@ -737,6 +750,10 @@ impl LspTestReporter {
         })
       }
     }
+  }
+
+  fn report_completed(&mut self) {
+    // there is nothing to do on report_completed
   }
 
   fn report_summary(

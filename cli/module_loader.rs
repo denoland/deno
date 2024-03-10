@@ -1,12 +1,12 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::jsr_url;
 use crate::args::CliOptions;
 use crate::args::DenoSubcommand;
 use crate::args::TsTypeLib;
 use crate::cache::ParsedSourceCache;
 use crate::emit::Emitter;
 use crate::graph_util::graph_lock_or_exit;
-use crate::graph_util::graph_valid_with_cli_options;
 use crate::graph_util::CreateGraphOptions;
 use crate::graph_util::ModuleGraphBuilder;
 use crate::graph_util::ModuleGraphContainer;
@@ -24,6 +24,7 @@ use crate::worker::ModuleLoaderFactory;
 
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
+use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::custom_error;
 use deno_core::error::generic_error;
@@ -49,7 +50,7 @@ use deno_graph::JsonModule;
 use deno_graph::Module;
 use deno_graph::Resolution;
 use deno_lockfile::Lockfile;
-use deno_runtime::deno_fs;
+use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_terminal::colors;
@@ -62,7 +63,6 @@ use std::sync::Arc;
 
 pub struct ModuleLoadPreparer {
   options: Arc<CliOptions>,
-  fs: Arc<dyn deno_fs::FileSystem>,
   graph_container: Arc<ModuleGraphContainer>,
   lockfile: Option<Arc<Mutex<Lockfile>>>,
   module_graph_builder: Arc<ModuleGraphBuilder>,
@@ -74,7 +74,6 @@ impl ModuleLoadPreparer {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
     options: Arc<CliOptions>,
-    fs: Arc<dyn deno_fs::FileSystem>,
     graph_container: Arc<ModuleGraphContainer>,
     lockfile: Option<Arc<Mutex<Lockfile>>>,
     module_graph_builder: Arc<ModuleGraphBuilder>,
@@ -83,7 +82,6 @@ impl ModuleLoadPreparer {
   ) -> Self {
     Self {
       options,
-      fs,
       graph_container,
       lockfile,
       module_graph_builder,
@@ -131,12 +129,7 @@ impl ModuleLoadPreparer {
       )
       .await?;
 
-    graph_valid_with_cli_options(
-      graph,
-      self.fs.as_ref(),
-      &roots,
-      &self.options,
-    )?;
+    self.module_graph_builder.graph_roots_valid(graph, &roots)?;
 
     // If there is a lockfile...
     if let Some(lockfile) = &self.lockfile {
@@ -478,13 +471,28 @@ impl CliModuleLoader {
       &code_source.found_url,
     ))
   }
-}
 
-impl ModuleLoader for CliModuleLoader {
-  fn resolve(
+  fn resolve_referrer(
+    &self,
+    referrer: &str,
+  ) -> Result<ModuleSpecifier, AnyError> {
+    // TODO(bartlomieju): ideally we shouldn't need to call `current_dir()` on each
+    // call - maybe it should be caller's responsibility to pass it as an arg?
+    let cwd = std::env::current_dir().context("Unable to get CWD")?;
+    if referrer.is_empty() && self.shared.is_repl {
+      // FIXME(bartlomieju): this is a hacky way to provide compatibility with REPL
+      // and `Deno.core.evalContext` API. Ideally we should always have a referrer filled
+      // but sadly that's not the case due to missing APIs in V8.
+      deno_core::resolve_path("./$deno$repl.ts", &cwd).map_err(|e| e.into())
+    } else {
+      deno_core::resolve_url_or_path(referrer, &cwd).map_err(|e| e.into())
+    }
+  }
+
+  fn inner_resolve(
     &self,
     specifier: &str,
-    referrer: &str,
+    referrer: &ModuleSpecifier,
     kind: ResolutionKind,
   ) -> Result<ModuleSpecifier, AnyError> {
     let permissions = if matches!(kind, ResolutionKind::DynamicImport) {
@@ -493,83 +501,74 @@ impl ModuleLoader for CliModuleLoader {
       &self.root_permissions
     };
 
-    // TODO(bartlomieju): ideally we shouldn't need to call `current_dir()` on each
-    // call - maybe it should be caller's responsibility to pass it as an arg?
-    let cwd = std::env::current_dir().context("Unable to get CWD")?;
-    let referrer_result = deno_core::resolve_url_or_path(referrer, &cwd);
-
-    if let Ok(referrer) = referrer_result.as_ref() {
-      if let Some(result) = self.shared.node_resolver.resolve_if_in_npm_package(
-        specifier,
-        referrer,
-        permissions,
-      ) {
-        return result;
-      }
-
-      let graph = self.shared.graph_container.graph();
-      let maybe_resolved = match graph.get(referrer) {
-        Some(Module::Js(module)) => {
-          module.dependencies.get(specifier).map(|d| &d.maybe_code)
-        }
-        _ => None,
+    if let Some(result) = self.shared.node_resolver.resolve_if_in_npm_package(
+      specifier,
+      referrer,
+      NodeResolutionMode::Execution,
+      permissions,
+    ) {
+      return match result? {
+        Some(res) => Ok(res.into_url()),
+        None => Err(generic_error("not found")),
       };
-
-      match maybe_resolved {
-        Some(Resolution::Ok(resolved)) => {
-          let specifier = &resolved.specifier;
-
-          return match graph.get(specifier) {
-            Some(Module::Npm(module)) => {
-              let package_folder = self
-                .shared
-                .node_resolver
-                .npm_resolver
-                .as_managed()
-                .unwrap() // byonm won't create a Module::Npm
-                .resolve_pkg_folder_from_deno_module(
-                  module.nv_reference.nv(),
-                )?;
-              self
-                .shared
-                .node_resolver
-                .resolve_package_sub_path(
-                  &package_folder,
-                  module.nv_reference.sub_path(),
-                  referrer,
-                  permissions,
-                )
-                .with_context(|| {
-                  format!("Could not resolve '{}'.", module.nv_reference)
-                })
-            }
-            Some(Module::Node(module)) => Ok(module.specifier.clone()),
-            Some(Module::Js(module)) => Ok(module.specifier.clone()),
-            Some(Module::Json(module)) => Ok(module.specifier.clone()),
-            Some(Module::External(module)) => {
-              Ok(node::resolve_specifier_into_node_modules(&module.specifier))
-            }
-            None => Ok(specifier.clone()),
-          };
-        }
-        Some(Resolution::Err(err)) => {
-          return Err(custom_error(
-            "TypeError",
-            format!("{}\n", err.to_string_with_range()),
-          ))
-        }
-        Some(Resolution::None) | None => {}
-      }
     }
 
-    // FIXME(bartlomieju): this is a hacky way to provide compatibility with REPL
-    // and `Deno.core.evalContext` API. Ideally we should always have a referrer filled
-    // but sadly that's not the case due to missing APIs in V8.
-    let referrer = if referrer.is_empty() && self.shared.is_repl {
-      deno_core::resolve_path("./$deno$repl.ts", &cwd)?
-    } else {
-      referrer_result?
+    let graph = self.shared.graph_container.graph();
+    let maybe_resolved = match graph.get(referrer) {
+      Some(Module::Js(module)) => {
+        module.dependencies.get(specifier).map(|d| &d.maybe_code)
+      }
+      _ => None,
     };
+
+    match maybe_resolved {
+      Some(Resolution::Ok(resolved)) => {
+        let specifier = &resolved.specifier;
+        let specifier = match graph.get(specifier) {
+          Some(Module::Npm(module)) => {
+            let package_folder = self
+              .shared
+              .node_resolver
+              .npm_resolver
+              .as_managed()
+              .unwrap() // byonm won't create a Module::Npm
+              .resolve_pkg_folder_from_deno_module(module.nv_reference.nv())?;
+            let maybe_resolution = self
+              .shared
+              .node_resolver
+              .resolve_package_sub_path_from_deno_module(
+                &package_folder,
+                module.nv_reference.sub_path(),
+                referrer,
+                NodeResolutionMode::Execution,
+                permissions,
+              )
+              .with_context(|| {
+                format!("Could not resolve '{}'.", module.nv_reference)
+              })?;
+            match maybe_resolution {
+              Some(res) => res.into_url(),
+              None => return Err(generic_error("not found")),
+            }
+          }
+          Some(Module::Node(module)) => module.specifier.clone(),
+          Some(Module::Js(module)) => module.specifier.clone(),
+          Some(Module::Json(module)) => module.specifier.clone(),
+          Some(Module::External(module)) => {
+            node::resolve_specifier_into_node_modules(&module.specifier)
+          }
+          None => specifier.clone(),
+        };
+        return Ok(specifier);
+      }
+      Some(Resolution::Err(err)) => {
+        return Err(custom_error(
+          "TypeError",
+          format!("{}\n", err.to_string_with_range()),
+        ))
+      }
+      Some(Resolution::None) | None => {}
+    }
 
     // FIXME(bartlomieju): this is another hack way to provide NPM specifier
     // support in REPL. This should be fixed.
@@ -593,16 +592,48 @@ impl ModuleLoader for CliModuleLoader {
         if let Ok(reference) =
           NpmPackageReqReference::from_specifier(&specifier)
         {
-          return self.shared.node_resolver.resolve_req_reference(
-            &reference,
-            permissions,
-            &referrer,
-          );
+          return self
+            .shared
+            .node_resolver
+            .resolve_req_reference(
+              &reference,
+              permissions,
+              referrer,
+              NodeResolutionMode::Execution,
+            )
+            .map(|res| res.into_url());
         }
       }
     }
 
     resolution.map_err(|err| err.into())
+  }
+}
+
+impl ModuleLoader for CliModuleLoader {
+  fn resolve(
+    &self,
+    specifier: &str,
+    referrer: &str,
+    kind: ResolutionKind,
+  ) -> Result<ModuleSpecifier, AnyError> {
+    fn ensure_not_jsr_non_jsr_remote_import(
+      specifier: &ModuleSpecifier,
+      referrer: &ModuleSpecifier,
+    ) -> Result<(), AnyError> {
+      if referrer.as_str().starts_with(jsr_url().as_str())
+        && !specifier.as_str().starts_with(jsr_url().as_str())
+        && matches!(specifier.scheme(), "http" | "https")
+      {
+        bail!("Importing {} blocked. JSR packages cannot import non-JSR remote modules for security reasons.", specifier);
+      }
+      Ok(())
+    }
+
+    let referrer = self.resolve_referrer(referrer)?;
+    let specifier = self.inner_resolve(specifier, &referrer, kind)?;
+    ensure_not_jsr_non_jsr_remote_import(&specifier, &referrer)?;
+    Ok(specifier)
   }
 
   fn load(
