@@ -83,7 +83,7 @@ const illegalConstructorKey = Symbol("illegalConstructorKey");
 
 class AbortSignal extends EventTarget {
   static any(signals) {
-    const prefix = "Failed to call 'AbortSignal.any'";
+    const prefix = "Failed to execute 'AbortSignal.any'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     return createDependentAbortSignal(signals, prefix);
   }
@@ -98,7 +98,7 @@ class AbortSignal extends EventTarget {
   }
 
   static timeout(millis) {
-    const prefix = "Failed to call 'AbortSignal.timeout'";
+    const prefix = "Failed to execute 'AbortSignal.timeout'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     millis = webidl.converters["unsigned long long"](
       millis,

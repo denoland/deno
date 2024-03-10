@@ -388,23 +388,20 @@ fn collect_coverages(
           initial_cwd.to_path_buf(),
         )])
       } else {
-        PathOrPatternSet::from_relative_path_or_patterns(
+        PathOrPatternSet::from_include_relative_path_or_patterns(
           initial_cwd,
           &files.include,
         )?
       }
     }),
-    exclude: PathOrPatternSet::from_relative_path_or_patterns(
+    exclude: PathOrPatternSet::from_exclude_relative_path_or_patterns(
       initial_cwd,
       &files.ignore,
     )
     .context("Invalid ignore pattern.")?,
   };
-  let file_paths = FileCollector::new(|file_path, _| {
-    file_path
-      .extension()
-      .map(|ext| ext == "json")
-      .unwrap_or(false)
+  let file_paths = FileCollector::new(|e| {
+    e.path.extension().map(|ext| ext == "json").unwrap_or(false)
   })
   .ignore_git_folder()
   .ignore_node_modules()

@@ -477,6 +477,13 @@ itest!(run_existing_npm_package_with_subpath {
   copy_temp_dir: Some("npm/run_existing_npm_package_with_subpath/"),
 });
 
+itest!(cjs_pkg_imports {
+  args: "run -A npm/cjs_pkg_imports/main.ts",
+  output: "npm/cjs_pkg_imports/main.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+});
+
 #[test]
 fn parallel_downloading() {
   let (out, _err) = util::run_and_collect_output_with_args(
@@ -2549,6 +2556,22 @@ console.log(getValue());
   output.assert_matches_text("7\n");
   let output = test_context.new_command().args("check main.ts").run();
   output.assert_matches_text("Check file:///[WILDCARD]/main.ts\n");
+}
+
+#[test]
+fn check_css_package_json_exports() {
+  let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let dir = test_context.temp_dir();
+  dir.write(
+    "main.ts",
+    r#"import "npm:@denotest/css-export/dist/index.css";"#,
+  );
+  test_context
+    .new_command()
+    .args("check main.ts")
+    .run()
+    .assert_matches_text("Download [WILDCARD]css-export\nDownload [WILDCARD]css-export/1.0.0.tgz\nCheck [WILDCARD]/main.ts\n")
+    .assert_exit_code(0);
 }
 
 #[test]

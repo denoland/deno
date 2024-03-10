@@ -4,29 +4,32 @@ use dashmap::DashMap;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
-use deno_npm::registry::NpmPackageInfo;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::package::PackageNv;
 use deno_semver::Version;
 use serde::Deserialize;
 use std::sync::Arc;
 
-use crate::args::npm_registry_default_url;
+use crate::args::npm_registry_url;
 use crate::file_fetcher::FileFetcher;
+use crate::npm::NpmFetchResolver;
 
 use super::search::PackageSearchApi;
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct CliNpmSearchApi {
   file_fetcher: FileFetcher,
-  search_cache: Arc<DashMap<String, Arc<Vec<String>>>>,
-  versions_cache: Arc<DashMap<String, Arc<Vec<Version>>>>,
+  resolver: NpmFetchResolver,
+  search_cache: DashMap<String, Arc<Vec<String>>>,
+  versions_cache: DashMap<String, Arc<Vec<Version>>>,
 }
 
 impl CliNpmSearchApi {
   pub fn new(file_fetcher: FileFetcher) -> Self {
+    let resolver = NpmFetchResolver::new(file_fetcher.clone());
     Self {
       file_fetcher,
+      resolver,
       search_cache: Default::default(),
       versions_cache: Default::default(),
     }
@@ -39,12 +42,7 @@ impl PackageSearchApi for CliNpmSearchApi {
     if let Some(names) = self.search_cache.get(query) {
       return Ok(names.clone());
     }
-    let mut search_url = npm_registry_default_url().clone();
-    search_url
-      .path_segments_mut()
-      .map_err(|_| anyhow!("Custom npm registry URL cannot be a base."))?
-      .pop_if_empty()
-      .extend("-/v1/search".split('/'));
+    let mut search_url = npm_registry_url().join("-/v1/search")?;
     search_url
       .query_pairs_mut()
       .append_pair("text", &format!("{} boost-exact:false", query));
@@ -62,18 +60,12 @@ impl PackageSearchApi for CliNpmSearchApi {
     if let Some(versions) = self.versions_cache.get(name) {
       return Ok(versions.clone());
     }
-    let mut info_url = npm_registry_default_url().clone();
-    info_url
-      .path_segments_mut()
-      .map_err(|_| anyhow!("Custom npm registry URL cannot be a base."))?
-      .pop_if_empty()
-      .push(name);
-    let file = self
-      .file_fetcher
-      .fetch(&info_url, PermissionsContainer::allow_all())
-      .await?;
-    let info = serde_json::from_slice::<NpmPackageInfo>(&file.source)?;
-    let mut versions = info.versions.into_keys().collect::<Vec<_>>();
+    let info = self
+      .resolver
+      .package_info(name)
+      .await
+      .ok_or_else(|| anyhow!("npm package info not found: {}", name))?;
+    let mut versions = info.versions.keys().cloned().collect::<Vec<_>>();
     versions.sort();
     versions.reverse();
     let versions = Arc::new(versions);

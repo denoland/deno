@@ -2,6 +2,8 @@
 
 use std::collections::HashMap;
 use std::io::IsTerminal;
+use std::path::Path;
+use std::process::Stdio;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -24,6 +26,7 @@ use lsp_types::Url;
 use serde::Deserialize;
 use serde::Serialize;
 use sha2::Digest;
+use tokio::process::Command;
 
 use crate::args::jsr_api_url;
 use crate::args::jsr_url;
@@ -94,9 +97,9 @@ async fn prepare_publish(
   deno_json: &ConfigFile,
   source_cache: Arc<ParsedSourceCache>,
   graph: Arc<deno_graph::ModuleGraph>,
+  cli_options: Arc<CliOptions>,
   mapped_resolver: Arc<MappedSpecifierResolver>,
   sloppy_imports_resolver: Option<SloppyImportsResolver>,
-  bare_node_builtins: bool,
   diagnostics_collector: &PublishDiagnosticsCollector,
 ) -> Result<Rc<PreparedPublishPackage>, AnyError> {
   let config_path = deno_json.specifier.to_file_path().unwrap();
@@ -142,6 +145,7 @@ async fn prepare_publish(
 
   let diagnostics_collector = diagnostics_collector.clone();
   let tarball = deno_core::unsync::spawn_blocking(move || {
+    let bare_node_builtins = cli_options.unstable_bare_node_builtins();
     let unfurler = SpecifierUnfurler::new(
       &mapped_resolver,
       sloppy_imports_resolver.as_ref(),
@@ -149,6 +153,7 @@ async fn prepare_publish(
     );
     tar::create_gzipped_tarball(
       &dir_path,
+      &cli_options,
       LazyGraphSourceParser::new(&source_cache, &graph),
       &diagnostics_collector,
       &unfurler,
@@ -688,7 +693,7 @@ async fn publish_package(
         package.scope, package.package, package.version
       ),
       digest: provenance::SubjectDigest {
-        sha256: hex::encode(sha2::Sha256::digest(&meta_bytes)),
+        sha256: faster_hex::hex_string(&sha2::Sha256::digest(&meta_bytes)),
       },
     };
     let bundle = provenance::generate_provenance(subject).await?;
@@ -742,7 +747,6 @@ async fn prepare_packages_for_publishing(
   let type_checker = cli_factory.type_checker().await?;
   let fs = cli_factory.fs();
   let cli_options = cli_factory.cli_options();
-  let bare_node_builtins = cli_options.unstable_bare_node_builtins();
 
   if members.len() > 1 {
     println!("Publishing a workspace...");
@@ -773,15 +777,16 @@ async fn prepare_packages_for_publishing(
         None
       };
       let graph = graph.clone();
+      let cli_options = cli_options.clone();
       async move {
         let package = prepare_publish(
           &member.package_name,
           &member.config_file,
           source_cache.clone(),
           graph,
+          cli_options,
           mapped_resolver,
           sloppy_imports_resolver,
-          bare_node_builtins,
           diagnostics_collector,
         )
         .await
@@ -812,8 +817,10 @@ async fn build_and_check_graph_for_publish(
   diagnostics_collector: &PublishDiagnosticsCollector,
   packages: &[WorkspaceMemberConfig],
 ) -> Result<Arc<deno_graph::ModuleGraph>, deno_core::anyhow::Error> {
-  let graph = module_graph_creator.create_publish_graph(packages).await?;
-  graph.valid()?;
+  let build_fast_check_graph = !allow_slow_types;
+  let graph = module_graph_creator
+    .create_and_validate_publish_graph(packages, build_fast_check_graph)
+    .await?;
 
   // todo(dsherret): move to lint rule
   collect_invalid_external_imports(&graph, diagnostics_collector);
@@ -884,7 +891,8 @@ pub async fn publish(
 ) -> Result<(), AnyError> {
   let cli_factory = CliFactory::from_flags(flags).await?;
 
-  let auth_method = get_auth_method(publish_flags.token)?;
+  let auth_method =
+    get_auth_method(publish_flags.token, publish_flags.dry_run)?;
 
   let import_map = cli_factory
     .maybe_import_map()
@@ -938,6 +946,15 @@ pub async fn publish(
     }
     log::warn!("{} Aborting due to --dry-run", colors::yellow("Warning"));
     return Ok(());
+  }
+
+  if std::env::var("DENO_TESTING_DISABLE_GIT_CHECK")
+    .ok()
+    .is_none()
+    && !publish_flags.allow_dirty
+    && check_if_git_repo_dirty(cli_options.initial_cwd()).await
+  {
+    bail!("Aborting due to uncommitted changes. Check in source code or run with --allow-dirty");
   }
 
   perform_publish(
@@ -1017,6 +1034,34 @@ fn verify_version_manifest(
   }
 
   Ok(())
+}
+
+async fn check_if_git_repo_dirty(cwd: &Path) -> bool {
+  let bin_name = if cfg!(windows) { "git.exe" } else { "git" };
+
+  // Check if git exists
+  let git_exists = Command::new(bin_name)
+    .arg("--version")
+    .stderr(Stdio::null())
+    .stdout(Stdio::null())
+    .status()
+    .await
+    .map_or(false, |status| status.success());
+
+  if !git_exists {
+    return false; // Git is not installed
+  }
+
+  // Check if there are uncommitted changes
+  let output = Command::new(bin_name)
+    .current_dir(cwd)
+    .args(["status", "--porcelain"])
+    .output()
+    .await
+    .expect("Failed to execute command");
+
+  let output_str = String::from_utf8_lossy(&output.stdout);
+  !output_str.trim().is_empty()
 }
 
 #[cfg(test)]

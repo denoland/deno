@@ -1507,7 +1507,7 @@ function checkThis(thisArg) {
 // https://html.spec.whatwg.org/#dom-reporterror
 function reportError(error) {
   checkThis(this);
-  const prefix = "Failed to call 'reportError'";
+  const prefix = "Failed to execute 'reportError'";
   webidl.requiredArguments(arguments.length, 1, prefix);
   reportException(error);
 }
