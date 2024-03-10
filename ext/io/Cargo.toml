@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_io"
-version = "0.45.0"
+version = "0.51.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -21,5 +21,9 @@ fs3.workspace = true
 once_cell.workspace = true
 tokio.workspace = true
 
+[target.'cfg(not(windows))'.dependencies]
+os_pipe.workspace = true
+
 [target.'cfg(windows)'.dependencies]
-winapi = { workspace = true, features = ["winbase", "processenv"] }
+winapi = { workspace = true, features = ["winbase", "processenv", "errhandlingapi"] }
+rand.workspace = true

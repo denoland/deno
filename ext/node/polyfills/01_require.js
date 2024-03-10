@@ -1181,6 +1181,25 @@ function createRequire(filenameOrUrl) {
   return createRequireFromPath(filename);
 }
 
+function isBuiltin(moduleName) {
+  if (typeof moduleName !== "string") {
+    return false;
+  }
+
+  if (StringPrototypeStartsWith(moduleName, "node:")) {
+    moduleName = StringPrototypeSlice(moduleName, 5);
+  } else if (moduleName === "test") {
+    // test is only a builtin if it has the "node:" scheme
+    // see https://github.com/nodejs/node/blob/73025c4dec042e344eeea7912ed39f7b7c4a3991/test/parallel/test-module-isBuiltin.js#L14
+    return false;
+  }
+
+  return moduleName in nativeModuleExports &&
+    !StringPrototypeStartsWith(moduleName, "internal/");
+}
+
+Module.isBuiltin = isBuiltin;
+
 Module.createRequire = createRequire;
 
 Module._initPaths = function () {
@@ -1249,7 +1268,7 @@ internals.requireImpl = {
   nativeModuleExports,
 };
 
-export { builtinModules, createRequire, Module };
+export { builtinModules, createRequire, isBuiltin, Module };
 export const _cache = Module._cache;
 export const _extensions = Module._extensions;
 export const _findPath = Module._findPath;

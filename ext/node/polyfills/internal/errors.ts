@@ -2248,6 +2248,16 @@ export class ERR_FALSY_VALUE_REJECTION extends NodeError {
     this.reason = reason;
   }
 }
+
+export class ERR_HTTP2_TOO_MANY_CUSTOM_SETTINGS extends NodeError {
+  constructor() {
+    super(
+      "ERR_HTTP2_TOO_MANY_CUSTOM_SETTINGS",
+      "Number of custom settings exceeds MAX_ADDITIONAL_SETTINGS",
+    );
+  }
+}
+
 export class ERR_HTTP2_INVALID_SETTING_VALUE extends NodeRangeError {
   actual: unknown;
   min?: number;
@@ -2540,6 +2550,15 @@ export class ERR_OS_NO_HOMEDIR extends NodeSystemError {
       errno: isWindows ? osConstants.errno.ENOENT : osConstants.errno.ENOTDIR,
     };
     super(code, ctx, "Path is not a directory");
+  }
+}
+
+export class ERR_HTTP_SOCKET_ASSIGNED extends NodeError {
+  constructor() {
+    super(
+      "ERR_HTTP_SOCKET_ASSIGNED",
+      `ServerResponse has an already assigned socket`,
+    );
   }
 }
 

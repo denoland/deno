@@ -32,7 +32,6 @@ use deno_core::OpMetricsSummaryTracker;
 use deno_core::PollEventLoopOptions;
 use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
-use deno_core::Snapshot;
 use deno_core::SourceMapGetter;
 use deno_cron::local::LocalCronHandler;
 use deno_fs::FileSystem;
@@ -46,6 +45,7 @@ use log::debug;
 use crate::inspector_server::InspectorServer;
 use crate::ops;
 use crate::permissions::PermissionsContainer;
+use crate::shared::maybe_transpile_source;
 use crate::shared::runtime;
 use crate::BootstrapOptions;
 
@@ -128,7 +128,7 @@ pub struct WorkerOptions {
   pub extensions: Vec<Extension>,
 
   /// V8 snapshot that should be loaded on startup.
-  pub startup_snapshot: Option<Snapshot>,
+  pub startup_snapshot: Option<&'static [u8]>,
 
   /// Should op registration be skipped?
   pub skip_op_registration: bool,
@@ -153,7 +153,7 @@ pub struct WorkerOptions {
   pub format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
 
   /// Source map reference for errors.
-  pub source_map_getter: Option<Box<dyn SourceMapGetter>>,
+  pub source_map_getter: Option<Rc<dyn SourceMapGetter>>,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
   // If true, the worker will wait for inspector session and break on first
   // statement of user code. Takes higher precedence than
@@ -430,6 +430,11 @@ impl MainWorker {
         enable_testing_features,
       ),
       runtime::init_ops_and_esm(),
+      // NOTE(bartlomieju): this is done, just so that ops from this extension
+      // are available and importing them in `99_main.js` doesn't cause an
+      // error because they're not defined. Trying to use these ops in non-worker
+      // context will cause a panic.
+      ops::web_worker::deno_web_worker::init_ops_and_esm().disable(),
     ];
 
     #[cfg(__runtime_js_sources)]
@@ -440,16 +445,6 @@ impl MainWorker {
         extension.js_files = std::borrow::Cow::Borrowed(&[]);
         extension.esm_files = std::borrow::Cow::Borrowed(&[]);
         extension.esm_entry_point = None;
-      }
-      #[cfg(not(feature = "only_snapshotted_js_sources"))]
-      {
-        use crate::shared::maybe_transpile_source;
-        for source in extension.esm_files.to_mut() {
-          maybe_transpile_source(source).unwrap();
-        }
-        for source in extension.js_files.to_mut() {
-          maybe_transpile_source(source).unwrap();
-        }
       }
     }
 
@@ -477,6 +472,9 @@ impl MainWorker {
       shared_array_buffer_store: options.shared_array_buffer_store.clone(),
       compiled_wasm_module_store: options.compiled_wasm_module_store.clone(),
       extensions,
+      extension_transpiler: Some(Rc::new(|specifier, source| {
+        maybe_transpile_source(specifier, source)
+      })),
       inspector: options.maybe_inspector_server.is_some(),
       is_main: true,
       feature_checker: Some(options.feature_checker.clone()),
@@ -575,10 +573,7 @@ impl MainWorker {
     &mut self,
     module_specifier: &ModuleSpecifier,
   ) -> Result<ModuleId, AnyError> {
-    self
-      .js_runtime
-      .load_main_module(module_specifier, None)
-      .await
+    self.js_runtime.load_main_es_module(module_specifier).await
   }
 
   /// Loads and instantiates specified JavaScript module as "side" module.
@@ -586,10 +581,7 @@ impl MainWorker {
     &mut self,
     module_specifier: &ModuleSpecifier,
   ) -> Result<ModuleId, AnyError> {
-    self
-      .js_runtime
-      .load_side_module(module_specifier, None)
-      .await
+    self.js_runtime.load_side_es_module(module_specifier).await
   }
 
   /// Executes specified JavaScript module.

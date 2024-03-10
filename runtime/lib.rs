@@ -24,7 +24,6 @@ pub use deno_webidl;
 pub use deno_websocket;
 pub use deno_webstorage;
 
-pub mod colors;
 pub mod errors;
 pub mod fmt_errors;
 pub mod fs_util;
@@ -88,12 +87,7 @@ pub static UNSTABLE_GRANULAR_FLAGS: &[(
     "Enable unstable net APIs",
     7,
   ),
-  (
-    "temporal",
-    "Enable unstable Temporal API",
-    // Not used in JS
-    8,
-  ),
+  ("temporal", "Enable unstable Temporal API", 8),
   (
     "unsafe-proto",
     "Enable unsafe __proto__ support. This is a security risk.",

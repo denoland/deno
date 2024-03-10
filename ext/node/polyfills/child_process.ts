@@ -120,9 +120,13 @@ export function fork(
       if (flag.startsWith("--max-old-space-size")) {
         execArgv.splice(index, 1);
         v8Flags.push(flag);
+      } else if (flag.startsWith("--enable-source-maps")) {
+        // https://github.com/denoland/deno/issues/21750
+        execArgv.splice(index, 1);
       }
     }
   }
+
   const stringifiedV8Flags: string[] = [];
   if (v8Flags.length > 0) {
     stringifiedV8Flags.push("--v8-flags=" + v8Flags.join(","));
@@ -436,15 +440,7 @@ export function execFile(
     shell: false,
     ...options,
   };
-  if (!Number.isInteger(execOptions.timeout) || execOptions.timeout < 0) {
-    // In Node source, the first argument to error constructor is "timeout" instead of "options.timeout".
-    // timeout is indeed a member of options object.
-    throw new ERR_OUT_OF_RANGE(
-      "timeout",
-      "an unsigned integer",
-      execOptions.timeout,
-    );
-  }
+  validateTimeout(execOptions.timeout);
   if (execOptions.maxBuffer < 0) {
     throw new ERR_OUT_OF_RANGE(
       "options.maxBuffer",
