@@ -7,7 +7,6 @@ use crate::args::TsTypeLib;
 use crate::cache::ParsedSourceCache;
 use crate::emit::Emitter;
 use crate::graph_util::graph_lock_or_exit;
-use crate::graph_util::graph_valid_with_cli_options;
 use crate::graph_util::CreateGraphOptions;
 use crate::graph_util::ModuleGraphBuilder;
 use crate::graph_util::ModuleGraphContainer;
@@ -51,7 +50,6 @@ use deno_graph::JsonModule;
 use deno_graph::Module;
 use deno_graph::Resolution;
 use deno_lockfile::Lockfile;
-use deno_runtime::deno_fs;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
@@ -65,7 +63,6 @@ use std::sync::Arc;
 
 pub struct ModuleLoadPreparer {
   options: Arc<CliOptions>,
-  fs: Arc<dyn deno_fs::FileSystem>,
   graph_container: Arc<ModuleGraphContainer>,
   lockfile: Option<Arc<Mutex<Lockfile>>>,
   module_graph_builder: Arc<ModuleGraphBuilder>,
@@ -77,7 +74,6 @@ impl ModuleLoadPreparer {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
     options: Arc<CliOptions>,
-    fs: Arc<dyn deno_fs::FileSystem>,
     graph_container: Arc<ModuleGraphContainer>,
     lockfile: Option<Arc<Mutex<Lockfile>>>,
     module_graph_builder: Arc<ModuleGraphBuilder>,
@@ -86,7 +82,6 @@ impl ModuleLoadPreparer {
   ) -> Self {
     Self {
       options,
-      fs,
       graph_container,
       lockfile,
       module_graph_builder,
@@ -134,12 +129,7 @@ impl ModuleLoadPreparer {
       )
       .await?;
 
-    graph_valid_with_cli_options(
-      graph,
-      self.fs.as_ref(),
-      &roots,
-      &self.options,
-    )?;
+    self.module_graph_builder.graph_roots_valid(graph, &roots)?;
 
     // If there is a lockfile...
     if let Some(lockfile) = &self.lockfile {

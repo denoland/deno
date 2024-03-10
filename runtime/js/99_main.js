@@ -763,12 +763,18 @@ function bootstrapMainRuntime(runtimeOptions) {
     delete Object.prototype.__proto__;
   }
 
+  if (!ArrayPrototypeIncludes(unstableFeatures, unstableIds.temporal)) {
+    // Removes the `Temporal` API.
+    delete globalThis.Temporal;
+    delete globalThis.Date.prototype.toTemporalInstant;
+  }
+
   // Setup `Deno` global - we're actually overriding already existing global
   // `Deno` with `Deno` namespace from "./deno.ts".
   ObjectDefineProperty(globalThis, "Deno", core.propReadOnly(finalDenoNs));
 
   if (nodeBootstrap) {
-    nodeBootstrap(hasNodeModulesDir, argv0);
+    nodeBootstrap(hasNodeModulesDir, argv0, /* runningOnMainThread */ true);
   }
 
   if (future) {
@@ -875,6 +881,12 @@ function bootstrapWorkerRuntime(
     delete Object.prototype.__proto__;
   }
 
+  if (!ArrayPrototypeIncludes(unstableFeatures, unstableIds.temporal)) {
+    // Removes the `Temporal` API.
+    delete globalThis.Temporal;
+    delete globalThis.Date.prototype.toTemporalInstant;
+  }
+
   ObjectDefineProperties(finalDenoNs, {
     pid: core.propGetterOnly(opPid),
     noColor: core.propGetterOnly(() => op_bootstrap_no_color()),
@@ -897,7 +909,7 @@ function bootstrapWorkerRuntime(
   ObjectDefineProperty(globalThis, "Deno", core.propReadOnly(finalDenoNs));
 
   if (nodeBootstrap) {
-    nodeBootstrap(hasNodeModulesDir, argv0);
+    nodeBootstrap(hasNodeModulesDir, argv0, /* runningOnMainThread */ false);
   }
 }
 

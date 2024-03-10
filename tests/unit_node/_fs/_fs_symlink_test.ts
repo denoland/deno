@@ -105,3 +105,20 @@ Deno.test({
     }
   },
 });
+
+Deno.test({
+  name: "SYNC: symlink junction",
+  fn() {
+    const dir: string = Deno.makeTempDirSync();
+    const linkedDir: string = dir + "-junction";
+
+    try {
+      symlinkSync(dir, linkedDir, "junction");
+      const stat = Deno.lstatSync(linkedDir);
+      assert(stat.isSymlink);
+    } finally {
+      Deno.removeSync(dir);
+      Deno.removeSync(linkedDir);
+    }
+  },
+});

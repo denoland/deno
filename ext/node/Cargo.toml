@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_node"
-version = "0.77.0"
+version = "0.78.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -32,8 +32,8 @@ dsa = "0.6.1"
 ecb.workspace = true
 elliptic-curve.workspace = true
 errno = "0.2.8"
+faster-hex.workspace = true
 h2 = { version = "0.3.17", features = ["unstable"] }
-hex.workspace = true
 hkdf.workspace = true
 http_v02.workspace = true
 idna = "0.3.0"

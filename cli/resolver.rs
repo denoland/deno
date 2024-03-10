@@ -41,6 +41,7 @@ use std::sync::Arc;
 use crate::args::package_json::PackageJsonDeps;
 use crate::args::JsxImportSourceConfig;
 use crate::args::PackageJsonDepsProvider;
+use crate::args::DENO_DISABLE_PEDANTIC_NODE_WARNINGS;
 use crate::colors;
 use crate::node::CliNodeCodeTranslator;
 use crate::npm::ByonmCliNpmResolver;
@@ -725,17 +726,20 @@ fn sloppy_imports_resolve(
   };
   // show a warning when this happens in order to drive
   // the user towards correcting these specifiers
-  log::warn!(
-    "{} Sloppy module resolution {}\n    at {}",
-    crate::colors::yellow("Warning"),
-    crate::colors::gray(format!("(hint: {})", hint_message)).to_string(),
-    if referrer_range.end == deno_graph::Position::zeroed() {
-      // not worth showing the range in this case
-      crate::colors::cyan(referrer_range.specifier.as_str()).to_string()
-    } else {
-      format_range_with_colors(referrer_range)
-    },
-  );
+  if !*DENO_DISABLE_PEDANTIC_NODE_WARNINGS {
+    log::warn!(
+      "{} Sloppy module resolution {}\n    at {}",
+      crate::colors::yellow("Warning"),
+      crate::colors::gray(format!("(hint: {})", hint_message)).to_string(),
+      if referrer_range.end == deno_graph::Position::zeroed() {
+        // not worth showing the range in this case
+        crate::colors::cyan(referrer_range.specifier.as_str()).to_string()
+      } else {
+        format_range_with_colors(referrer_range)
+      },
+    );
+  }
+
   resolution.into_specifier().into_owned()
 }
 
@@ -788,7 +792,9 @@ impl NpmResolver for CliGraphResolver {
     } = range;
     let line = start.line + 1;
     let column = start.character + 1;
-    log::warn!("Warning: Resolving \"{module_name}\" as \"node:{module_name}\" at {specifier}:{line}:{column}. If you want to use a built-in Node module, add a \"node:\" prefix.")
+    if !*DENO_DISABLE_PEDANTIC_NODE_WARNINGS {
+      log::warn!("Warning: Resolving \"{module_name}\" as \"node:{module_name}\" at {specifier}:{line}:{column}. If you want to use a built-in Node module, add a \"node:\" prefix.")
+    }
   }
 
   fn load_and_cache_npm_package_info(
@@ -1009,15 +1015,19 @@ impl SloppyImportsResolver {
     fn media_types_to_paths(
       path_no_ext: &str,
       probe_media_type_types: Vec<MediaType>,
-    ) -> Vec<PathBuf> {
+      reason: SloppyImportsResolutionReason,
+    ) -> Vec<(PathBuf, SloppyImportsResolutionReason)> {
       probe_media_type_types
         .into_iter()
         .map(|media_type| {
-          PathBuf::from(format!(
-            "{}{}",
-            path_no_ext,
-            media_type.as_ts_extension()
-          ))
+          (
+            PathBuf::from(format!(
+              "{}{}",
+              path_no_ext,
+              media_type.as_ts_extension()
+            )),
+            reason,
+          )
         })
         .collect::<Vec<_>>()
     }
@@ -1029,138 +1039,205 @@ impl SloppyImportsResolver {
     let Ok(path) = specifier_to_file_path(specifier) else {
       return SloppyImportsResolution::None(specifier);
     };
-    let mut is_dir_resolution = false;
-    let mut is_no_ext_resolution = false;
-    let probe_paths = match (stat_sync)(&path) {
-      Some(SloppyImportsFsEntry::File) => {
-        if mode.is_types() {
-          let media_type = MediaType::from_specifier(specifier);
-          // attempt to resolve the .d.ts file before the .js file
-          let probe_media_type_types = match media_type {
-            MediaType::JavaScript => {
-              vec![MediaType::Dts, MediaType::JavaScript]
-            }
-            MediaType::Mjs => {
-              vec![MediaType::Dmts, MediaType::Dts, MediaType::Mjs]
-            }
-            MediaType::Cjs => {
-              vec![MediaType::Dcts, MediaType::Dts, MediaType::Cjs]
-            }
-            _ => return SloppyImportsResolution::None(specifier),
-          };
-          let Some(path_no_ext) = path_without_ext(&path, media_type) else {
-            return SloppyImportsResolution::None(specifier);
-          };
-          media_types_to_paths(&path_no_ext, probe_media_type_types)
-        } else {
-          return SloppyImportsResolution::None(specifier);
-        }
-      }
-      Some(SloppyImportsFsEntry::Dir) => {
-        is_dir_resolution = true;
-        // try to resolve at the index file
-        if mode.is_types() {
-          vec![
-            path.join("index.ts"),
-            path.join("index.mts"),
-            path.join("index.d.ts"),
-            path.join("index.d.mts"),
-            path.join("index.js"),
-            path.join("index.mjs"),
-            path.join("index.tsx"),
-            path.join("index.jsx"),
-          ]
-        } else {
-          vec![
-            path.join("index.ts"),
-            path.join("index.mts"),
-            path.join("index.tsx"),
-            path.join("index.js"),
-            path.join("index.mjs"),
-            path.join("index.jsx"),
-          ]
-        }
-      }
-      None => {
-        let media_type = MediaType::from_specifier(specifier);
-        let probe_media_type_types = match media_type {
-          MediaType::JavaScript => {
-            if mode.is_types() {
-              vec![MediaType::TypeScript, MediaType::Tsx, MediaType::Dts]
-            } else {
-              vec![MediaType::TypeScript, MediaType::Tsx]
-            }
-          }
-          MediaType::Jsx => vec![MediaType::Tsx],
-          MediaType::Mjs => {
-            if mode.is_types() {
-              vec![MediaType::Mts, MediaType::Dmts, MediaType::Dts]
-            } else {
-              vec![MediaType::Mts]
-            }
-          }
-          MediaType::Cjs => {
-            if mode.is_types() {
-              vec![MediaType::Cts, MediaType::Dcts, MediaType::Dts]
-            } else {
-              vec![MediaType::Cts]
-            }
-          }
-          MediaType::TypeScript
-          | MediaType::Mts
-          | MediaType::Cts
-          | MediaType::Dts
-          | MediaType::Dmts
-          | MediaType::Dcts
-          | MediaType::Tsx
-          | MediaType::Json
-          | MediaType::Wasm
-          | MediaType::TsBuildInfo
-          | MediaType::SourceMap => {
-            return SloppyImportsResolution::None(specifier)
-          }
-          MediaType::Unknown => {
-            is_no_ext_resolution = true;
-            if mode.is_types() {
-              vec![
-                MediaType::TypeScript,
-                MediaType::Tsx,
-                MediaType::Mts,
-                MediaType::Dts,
-                MediaType::Dmts,
-                MediaType::Dcts,
-                MediaType::JavaScript,
-                MediaType::Jsx,
-                MediaType::Mjs,
-              ]
-            } else {
-              vec![
-                MediaType::TypeScript,
-                MediaType::JavaScript,
-                MediaType::Tsx,
-                MediaType::Jsx,
-                MediaType::Mts,
-                MediaType::Mjs,
-              ]
-            }
-          }
-        };
-        let Some(path_no_ext) = path_without_ext(&path, media_type) else {
-          return SloppyImportsResolution::None(specifier);
-        };
-        media_types_to_paths(&path_no_ext, probe_media_type_types)
-      }
-    };
 
-    for probe_path in probe_paths {
+    #[derive(Clone, Copy)]
+    enum SloppyImportsResolutionReason {
+      JsToTs,
+      NoExtension,
+      Directory,
+    }
+
+    let probe_paths: Vec<(PathBuf, SloppyImportsResolutionReason)> =
+      match (stat_sync)(&path) {
+        Some(SloppyImportsFsEntry::File) => {
+          if mode.is_types() {
+            let media_type = MediaType::from_specifier(specifier);
+            // attempt to resolve the .d.ts file before the .js file
+            let probe_media_type_types = match media_type {
+              MediaType::JavaScript => {
+                vec![(MediaType::Dts), MediaType::JavaScript]
+              }
+              MediaType::Mjs => {
+                vec![MediaType::Dmts, MediaType::Dts, MediaType::Mjs]
+              }
+              MediaType::Cjs => {
+                vec![MediaType::Dcts, MediaType::Dts, MediaType::Cjs]
+              }
+              _ => return SloppyImportsResolution::None(specifier),
+            };
+            let Some(path_no_ext) = path_without_ext(&path, media_type) else {
+              return SloppyImportsResolution::None(specifier);
+            };
+            media_types_to_paths(
+              &path_no_ext,
+              probe_media_type_types,
+              SloppyImportsResolutionReason::JsToTs,
+            )
+          } else {
+            return SloppyImportsResolution::None(specifier);
+          }
+        }
+        entry @ None | entry @ Some(SloppyImportsFsEntry::Dir) => {
+          let media_type = MediaType::from_specifier(specifier);
+          let probe_media_type_types = match media_type {
+            MediaType::JavaScript => (
+              if mode.is_types() {
+                vec![MediaType::TypeScript, MediaType::Tsx, MediaType::Dts]
+              } else {
+                vec![MediaType::TypeScript, MediaType::Tsx]
+              },
+              SloppyImportsResolutionReason::JsToTs,
+            ),
+            MediaType::Jsx => {
+              (vec![MediaType::Tsx], SloppyImportsResolutionReason::JsToTs)
+            }
+            MediaType::Mjs => (
+              if mode.is_types() {
+                vec![MediaType::Mts, MediaType::Dmts, MediaType::Dts]
+              } else {
+                vec![MediaType::Mts]
+              },
+              SloppyImportsResolutionReason::JsToTs,
+            ),
+            MediaType::Cjs => (
+              if mode.is_types() {
+                vec![MediaType::Cts, MediaType::Dcts, MediaType::Dts]
+              } else {
+                vec![MediaType::Cts]
+              },
+              SloppyImportsResolutionReason::JsToTs,
+            ),
+            MediaType::TypeScript
+            | MediaType::Mts
+            | MediaType::Cts
+            | MediaType::Dts
+            | MediaType::Dmts
+            | MediaType::Dcts
+            | MediaType::Tsx
+            | MediaType::Json
+            | MediaType::Wasm
+            | MediaType::TsBuildInfo
+            | MediaType::SourceMap => {
+              return SloppyImportsResolution::None(specifier)
+            }
+            MediaType::Unknown => (
+              if mode.is_types() {
+                vec![
+                  MediaType::TypeScript,
+                  MediaType::Tsx,
+                  MediaType::Mts,
+                  MediaType::Dts,
+                  MediaType::Dmts,
+                  MediaType::Dcts,
+                  MediaType::JavaScript,
+                  MediaType::Jsx,
+                  MediaType::Mjs,
+                ]
+              } else {
+                vec![
+                  MediaType::TypeScript,
+                  MediaType::JavaScript,
+                  MediaType::Tsx,
+                  MediaType::Jsx,
+                  MediaType::Mts,
+                  MediaType::Mjs,
+                ]
+              },
+              SloppyImportsResolutionReason::NoExtension,
+            ),
+          };
+          let mut probe_paths = match path_without_ext(&path, media_type) {
+            Some(path_no_ext) => media_types_to_paths(
+              &path_no_ext,
+              probe_media_type_types.0,
+              probe_media_type_types.1,
+            ),
+            None => vec![],
+          };
+
+          if matches!(entry, Some(SloppyImportsFsEntry::Dir)) {
+            // try to resolve at the index file
+            if mode.is_types() {
+              probe_paths.push((
+                path.join("index.ts"),
+                SloppyImportsResolutionReason::Directory,
+              ));
+
+              probe_paths.push((
+                path.join("index.mts"),
+                SloppyImportsResolutionReason::Directory,
+              ));
+              probe_paths.push((
+                path.join("index.d.ts"),
+                SloppyImportsResolutionReason::Directory,
+              ));
+              probe_paths.push((
+                path.join("index.d.mts"),
+                SloppyImportsResolutionReason::Directory,
+              ));
+              probe_paths.push((
+                path.join("index.js"),
+                SloppyImportsResolutionReason::Directory,
+              ));
+              probe_paths.push((
+                path.join("index.mjs"),
+                SloppyImportsResolutionReason::Directory,
+              ));
+              probe_paths.push((
+                path.join("index.tsx"),
+                SloppyImportsResolutionReason::Directory,
+              ));
+              probe_paths.push((
+                path.join("index.jsx"),
+                SloppyImportsResolutionReason::Directory,
+              ));
+            } else {
+              probe_paths.push((
+                path.join("index.ts"),
+                SloppyImportsResolutionReason::Directory,
+              ));
+              probe_paths.push((
+                path.join("index.mts"),
+                SloppyImportsResolutionReason::Directory,
+              ));
+              probe_paths.push((
+                path.join("index.tsx"),
+                SloppyImportsResolutionReason::Directory,
+              ));
+              probe_paths.push((
+                path.join("index.js"),
+                SloppyImportsResolutionReason::Directory,
+              ));
+              probe_paths.push((
+                path.join("index.mjs"),
+                SloppyImportsResolutionReason::Directory,
+              ));
+              probe_paths.push((
+                path.join("index.jsx"),
+                SloppyImportsResolutionReason::Directory,
+              ));
+            }
+          }
+          if probe_paths.is_empty() {
+            return SloppyImportsResolution::None(specifier);
+          }
+          probe_paths
+        }
+      };
+
+    for (probe_path, reason) in probe_paths {
       if (stat_sync)(&probe_path) == Some(SloppyImportsFsEntry::File) {
         if let Ok(specifier) = ModuleSpecifier::from_file_path(probe_path) {
-          if is_dir_resolution {
-            return SloppyImportsResolution::Directory(specifier);
-          } else if is_no_ext_resolution {
-            return SloppyImportsResolution::NoExtension(specifier);
-          } else {
-            return SloppyImportsResolution::JsToTs(specifier);
+          match reason {
+            SloppyImportsResolutionReason::JsToTs => {
+              return SloppyImportsResolution::JsToTs(specifier)
+            }
+            SloppyImportsResolutionReason::NoExtension => {
+              return SloppyImportsResolution::NoExtension(specifier)
+            }
+            SloppyImportsResolutionReason::Directory => {
+              return SloppyImportsResolution::Directory(specifier)
+            }
           }
         }
       }
@@ -1331,6 +1408,20 @@ mod test {
       assert_eq!(
         resolve(&routes_dir.uri_file()),
         SloppyImportsResolution::Directory(index_file.uri_file()),
+      );
+    }
+
+    // both a directory and a file with specifier is present
+    {
+      let api_dir = temp_dir.join("api");
+      api_dir.create_dir_all();
+      let bar_file = api_dir.join("bar.ts");
+      bar_file.write("");
+      let api_file = temp_dir.join("api.ts");
+      api_file.write("");
+      assert_eq!(
+        resolve(&api_dir.uri_file()),
+        SloppyImportsResolution::NoExtension(api_file.uri_file()),
       );
     }
   }
