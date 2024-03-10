@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../webidl/internal.d.ts" />
@@ -10,7 +10,7 @@
 /// <reference path="./lib.deno_fetch.d.ts" />
 /// <reference lib="esnext" />
 
-const core = globalThis.Deno.core;
+import { core, primordials } from "ext:core/mod.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 import {
@@ -30,7 +30,6 @@ import {
   headerListFromHeaders,
   headersFromHeaderList,
 } from "ext:deno_fetch/20_headers.js";
-const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayPrototypeMap,
   ArrayPrototypePush,
@@ -257,7 +256,7 @@ class Response {
    * @returns {Response}
    */
   static redirect(url, status = 302) {
-    const prefix = "Failed to call 'Response.redirect'";
+    const prefix = "Failed to execute 'Response.redirect'";
     url = webidl.converters["USVString"](url, prefix, "Argument 1");
     status = webidl.converters["unsigned short"](status, prefix, "Argument 2");
 
@@ -284,7 +283,7 @@ class Response {
    * @returns {Response}
    */
   static json(data = undefined, init = {}) {
-    const prefix = "Failed to call 'Response.json'";
+    const prefix = "Failed to execute 'Response.json'";
     data = webidl.converters.any(data);
     init = webidl.converters["ResponseInit_fast"](init, prefix, "Argument 2");
 
@@ -408,25 +407,28 @@ class Response {
     return second;
   }
 
-  [SymbolFor("Deno.customInspect")](inspect) {
-    return inspect(createFilteredInspectProxy({
-      object: this,
-      evaluate: ObjectPrototypeIsPrototypeOf(ResponsePrototype, this),
-      keys: [
-        "body",
-        "bodyUsed",
-        "headers",
-        "ok",
-        "redirected",
-        "status",
-        "statusText",
-        "url",
-      ],
-    }));
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(ResponsePrototype, this),
+        keys: [
+          "body",
+          "bodyUsed",
+          "headers",
+          "ok",
+          "redirected",
+          "status",
+          "statusText",
+          "url",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
 
-webidl.configurePrototype(Response);
+webidl.configureInterface(Response);
 ObjectDefineProperties(Response, {
   json: { enumerable: true },
   redirect: { enumerable: true },

@@ -1,4 +1,7 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
+#![deny(clippy::print_stderr)]
+#![deny(clippy::print_stdout)]
 
 use std::collections::HashSet;
 use std::path::Path;
@@ -14,9 +17,12 @@ use deno_core::v8;
 use deno_core::v8::ExternalReference;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
+use deno_core::OpState;
 use deno_fs::sync::MaybeSend;
 use deno_fs::sync::MaybeSync;
 use once_cell::sync::Lazy;
+
+extern crate libz_sys as zlib;
 
 pub mod analyze;
 pub mod errors;
@@ -27,11 +33,15 @@ mod path;
 mod polyfill;
 mod resolution;
 
+pub use ops::ipc::ChildPipeFd;
+pub use ops::ipc::IpcJsonStreamResource;
+pub use ops::v8::VM_CONTEXT_INDEX;
 pub use package_json::PackageJson;
 pub use path::PathClean;
 pub use polyfill::is_builtin_node_module;
 pub use polyfill::SUPPORTED_BUILTIN_NODE_MODULES;
 pub use polyfill::SUPPORTED_BUILTIN_NODE_MODULES_WITH_PREFIX;
+pub use resolution::parse_npm_pkg_name;
 pub use resolution::NodeModuleKind;
 pub use resolution::NodeResolution;
 pub use resolution::NodeResolutionMode;
@@ -46,8 +56,21 @@ pub trait NodePermissions {
     url: &Url,
     api_name: &str,
   ) -> Result<(), AnyError>;
-  fn check_read(&self, path: &Path) -> Result<(), AnyError>;
+  #[inline(always)]
+  fn check_read(&self, path: &Path) -> Result<(), AnyError> {
+    self.check_read_with_api_name(path, None)
+  }
+  fn check_read_with_api_name(
+    &self,
+    path: &Path,
+    api_name: Option<&str>,
+  ) -> Result<(), AnyError>;
   fn check_sys(&self, kind: &str, api_name: &str) -> Result<(), AnyError>;
+  fn check_write_with_api_name(
+    &self,
+    path: &Path,
+    api_name: Option<&str>,
+  ) -> Result<(), AnyError>;
 }
 
 pub(crate) struct AllowAllNodePermissions;
@@ -60,7 +83,18 @@ impl NodePermissions for AllowAllNodePermissions {
   ) -> Result<(), AnyError> {
     Ok(())
   }
-  fn check_read(&self, _path: &Path) -> Result<(), AnyError> {
+  fn check_read_with_api_name(
+    &self,
+    _path: &Path,
+    _api_name: Option<&str>,
+  ) -> Result<(), AnyError> {
+    Ok(())
+  }
+  fn check_write_with_api_name(
+    &self,
+    _path: &Path,
+    _api_name: Option<&str>,
+  ) -> Result<(), AnyError> {
     Ok(())
   }
   fn check_sys(&self, _kind: &str, _api_name: &str) -> Result<(), AnyError> {
@@ -72,6 +106,16 @@ impl NodePermissions for AllowAllNodePermissions {
 pub type NpmResolverRc = deno_fs::sync::MaybeArc<dyn NpmResolver>;
 
 pub trait NpmResolver: std::fmt::Debug + MaybeSend + MaybeSync {
+  /// Gets a string containing the serialized npm state of the process.
+  ///
+  /// This will be set on the `DENO_DONT_USE_INTERNAL_NODE_COMPAT_STATE` environment
+  /// variable when doing a `child_process.fork`. The implementor can then check this environment
+  /// variable on startup to repopulate the internal npm state.
+  fn get_npm_process_state(&self) -> String {
+    // This method is only used in the CLI.
+    String::new()
+  }
+
   /// Resolves an npm package folder path from an npm package referrer.
   fn resolve_package_folder_from_package(
     &self,
@@ -80,15 +124,18 @@ pub trait NpmResolver: std::fmt::Debug + MaybeSend + MaybeSync {
     mode: NodeResolutionMode,
   ) -> Result<PathBuf, AnyError>;
 
-  /// Resolves the npm package folder path from the specified path.
-  fn resolve_package_folder_from_path(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Result<Option<PathBuf>, AnyError>;
-
   fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool;
 
-  fn in_npm_package_at_path(&self, path: &Path) -> bool {
+  fn in_npm_package_at_dir_path(&self, path: &Path) -> bool {
+    let specifier =
+      match ModuleSpecifier::from_directory_path(path.to_path_buf().clean()) {
+        Ok(p) => p,
+        Err(_) => return false,
+      };
+    self.in_npm_package(&specifier)
+  }
+
+  fn in_npm_package_at_file_path(&self, path: &Path) -> bool {
     let specifier =
       match ModuleSpecifier::from_file_path(path.to_path_buf().clean()) {
         Ok(p) => p,
@@ -120,17 +167,19 @@ fn op_node_build_os() -> String {
 }
 
 #[op2(fast)]
-fn op_is_any_arraybuffer(value: &v8::Value) -> bool {
-  value.is_array_buffer() || value.is_shared_array_buffer()
-}
-
-#[op2(fast)]
 fn op_node_is_promise_rejected(value: v8::Local<v8::Value>) -> bool {
   let Ok(promise) = v8::Local::<v8::Promise>::try_from(value) else {
     return false;
   };
 
   promise.state() == v8::PromiseState::Rejected
+}
+
+#[op2]
+#[string]
+fn op_npm_process_state(state: &mut OpState) -> Result<String, AnyError> {
+  let npm_resolver = state.borrow_mut::<NpmResolverRc>();
+  Ok(npm_resolver.get_npm_process_state())
 }
 
 deno_core::extension!(deno_node,
@@ -203,9 +252,13 @@ deno_core::extension!(deno_node,
     ops::crypto::x509::op_node_x509_get_valid_to,
     ops::crypto::x509::op_node_x509_get_serial_number,
     ops::crypto::x509::op_node_x509_key_usage,
+    ops::fs::op_node_fs_exists_sync<P>,
+    ops::fs::op_node_cp_sync<P>,
+    ops::fs::op_node_cp<P>,
     ops::winerror::op_node_sys_to_uv_error,
     ops::v8::op_v8_cached_data_version_tag,
     ops::v8::op_v8_get_heap_statistics,
+    ops::v8::op_vm_run_in_new_context,
     ops::idna::op_node_idna_domain_to_ascii,
     ops::idna::op_node_idna_domain_to_unicode,
     ops::idna::op_node_idna_punycode_decode,
@@ -244,9 +297,12 @@ deno_core::extension!(deno_node,
     ops::os::op_node_os_get_priority<P>,
     ops::os::op_node_os_set_priority<P>,
     ops::os::op_node_os_username<P>,
+    ops::os::op_geteuid<P>,
+    ops::os::op_cpus<P>,
+    ops::os::op_process_abort,
     op_node_build_os,
-    op_is_any_arraybuffer,
     op_node_is_promise_rejected,
+    op_npm_process_state,
     ops::require::op_require_init_paths,
     ops::require::op_require_node_module_paths<P>,
     ops::require::op_require_proxy_path,
@@ -269,6 +325,11 @@ deno_core::extension!(deno_node,
     ops::require::op_require_read_package_scope<P>,
     ops::require::op_require_package_imports_resolve<P>,
     ops::require::op_require_break_on_next_statement,
+    ops::util::op_node_guess_handle_type,
+    ops::crypto::op_node_create_private_key,
+    ops::ipc::op_node_child_ipc_pipe,
+    ops::ipc::op_node_ipc_write,
+    ops::ipc::op_node_ipc_read,
   ],
   esm_entry_point = "ext:deno_node/02_init.js",
   esm = [
@@ -285,6 +346,7 @@ deno_core::extension!(deno_node,
     "_fs/_fs_common.ts",
     "_fs/_fs_constants.ts",
     "_fs/_fs_copy.ts",
+    "_fs/_fs_cp.js",
     "_fs/_fs_dir.ts",
     "_fs/_fs_dirent.ts",
     "_fs/_fs_exists.ts",
@@ -327,7 +389,7 @@ deno_core::extension!(deno_node,
     "_stream.mjs",
     "_tls_common.ts",
     "_tls_wrap.ts",
-    "_util/_util_callbackify.ts",
+    "_util/_util_callbackify.js",
     "_util/asserts.ts",
     "_util/async.ts",
     "_util/os.ts",
@@ -408,6 +470,7 @@ deno_core::extension!(deno_node,
     "internal/options.ts",
     "internal/primordials.mjs",
     "internal/process/per_thread.mjs",
+    "internal/process/report.ts",
     "internal/querystring.ts",
     "internal/readline/callbacks.mjs",
     "internal/readline/emitKeypressEvents.mjs",
@@ -435,6 +498,8 @@ deno_core::extension!(deno_node,
     "internal/util/comparisons.ts",
     "internal/util/debuglog.ts",
     "internal/util/inspect.mjs",
+    "internal/util/parse_args/parse_args.js",
+    "internal/util/parse_args/utils.js",
     "internal/util/types.ts",
     "internal/validators.mjs",
     "path/_constants.ts",
@@ -447,56 +512,56 @@ deno_core::extension!(deno_node,
     "path/separator.ts",
     "readline/promises.ts",
     "wasi.ts",
-    "assert.ts" with_specifier "node:assert",
-    "assert/strict.ts" with_specifier "node:assert/strict",
-    "async_hooks.ts" with_specifier "node:async_hooks",
-    "buffer.ts" with_specifier "node:buffer",
-    "child_process.ts" with_specifier "node:child_process",
-    "cluster.ts" with_specifier "node:cluster",
-    "console.ts" with_specifier "node:console",
-    "constants.ts" with_specifier "node:constants",
-    "crypto.ts" with_specifier "node:crypto",
-    "dgram.ts" with_specifier "node:dgram",
-    "diagnostics_channel.ts" with_specifier "node:diagnostics_channel",
-    "dns.ts" with_specifier "node:dns",
-    "dns/promises.ts" with_specifier "node:dns/promises",
-    "domain.ts" with_specifier "node:domain",
-    "events.ts" with_specifier "node:events",
-    "fs.ts" with_specifier "node:fs",
-    "fs/promises.ts" with_specifier "node:fs/promises",
-    "http.ts" with_specifier "node:http",
-    "http2.ts" with_specifier "node:http2",
-    "https.ts" with_specifier "node:https",
-    "01_require.js" with_specifier "node:module",
-    "net.ts" with_specifier "node:net",
-    "os.ts" with_specifier "node:os",
-    "path.ts" with_specifier "node:path",
-    "path/posix.ts" with_specifier "node:path/posix",
-    "path/win32.ts" with_specifier "node:path/win32",
-    "perf_hooks.ts" with_specifier "node:perf_hooks",
-    "process.ts" with_specifier "node:process",
-    "punycode.ts" with_specifier "node:punycode",
-    "querystring.ts" with_specifier "node:querystring",
-    "readline.ts" with_specifier "node:readline",
-    "repl.ts" with_specifier "node:repl",
-    "stream.ts" with_specifier "node:stream",
-    "stream/consumers.mjs" with_specifier "node:stream/consumers",
-    "stream/promises.mjs" with_specifier "node:stream/promises",
-    "stream/web.ts" with_specifier "node:stream/web",
-    "string_decoder.ts" with_specifier "node:string_decoder",
-    "sys.ts" with_specifier "node:sys",
-    "testing.ts" with_specifier "node:test",
-    "timers.ts" with_specifier "node:timers",
-    "timers/promises.ts" with_specifier "node:timers/promises",
-    "tls.ts" with_specifier "node:tls",
-    "tty.ts" with_specifier "node:tty",
-    "url.ts" with_specifier "node:url",
-    "util.ts" with_specifier "node:util",
-    "util/types.ts" with_specifier "node:util/types",
-    "v8.ts" with_specifier "node:v8",
-    "vm.ts" with_specifier "node:vm",
-    "worker_threads.ts" with_specifier "node:worker_threads",
-    "zlib.ts" with_specifier "node:zlib",
+    "node:assert" = "assert.ts",
+    "node:assert/strict" = "assert/strict.ts",
+    "node:async_hooks" = "async_hooks.ts",
+    "node:buffer" = "buffer.ts",
+    "node:child_process" = "child_process.ts",
+    "node:cluster" = "cluster.ts",
+    "node:console" = "console.ts",
+    "node:constants" = "constants.ts",
+    "node:crypto" = "crypto.ts",
+    "node:dgram" = "dgram.ts",
+    "node:diagnostics_channel" = "diagnostics_channel.ts",
+    "node:dns" = "dns.ts",
+    "node:dns/promises" = "dns/promises.ts",
+    "node:domain" = "domain.ts",
+    "node:events" = "events.ts",
+    "node:fs" = "fs.ts",
+    "node:fs/promises" = "fs/promises.ts",
+    "node:http" = "http.ts",
+    "node:http2" = "http2.ts",
+    "node:https" = "https.ts",
+    "node:module" = "01_require.js",
+    "node:net" = "net.ts",
+    "node:os" = "os.ts",
+    "node:path" = "path.ts",
+    "node:path/posix" = "path/posix.ts",
+    "node:path/win32" = "path/win32.ts",
+    "node:perf_hooks" = "perf_hooks.ts",
+    "node:process" = "process.ts",
+    "node:punycode" = "punycode.ts",
+    "node:querystring" = "querystring.js",
+    "node:readline" = "readline.ts",
+    "node:repl" = "repl.ts",
+    "node:stream" = "stream.ts",
+    "node:stream/consumers" = "stream/consumers.mjs",
+    "node:stream/promises" = "stream/promises.mjs",
+    "node:stream/web" = "stream/web.ts",
+    "node:string_decoder" = "string_decoder.ts",
+    "node:sys" = "sys.ts",
+    "node:test" = "testing.ts",
+    "node:timers" = "timers.ts",
+    "node:timers/promises" = "timers/promises.ts",
+    "node:tls" = "tls.ts",
+    "node:tty" = "tty.js",
+    "node:url" = "url.ts",
+    "node:util" = "util.ts",
+    "node:util/types" = "util/types.ts",
+    "node:v8" = "v8.ts",
+    "node:vm" = "vm.ts",
+    "node:worker_threads" = "worker_threads.ts",
+    "node:zlib" = "zlib.ts",
   ],
   options = {
     maybe_npm_resolver: Option<NpmResolverRc>,
@@ -574,8 +639,7 @@ pub fn load_cjs_module(
     main = main,
     module = escape_for_single_quote_string(module),
     inspect_brk = inspect_brk,
-  )
-  .into();
+  );
 
   js_runtime.execute_script(located_script_name!(), source_code)?;
   Ok(())

@@ -1,4 +1,6 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
+use std::path::PathBuf;
 
 use super::*;
 
@@ -156,6 +158,11 @@ impl TestReporter for JunitTestReporter {
     }
   }
 
+  fn report_completed(&mut self) {
+    // TODO(mmastrac): This reporter does not handle stdout/stderr yet, and when we do, we may need to redirect
+    // pre-and-post-test output somewhere.
+  }
+
   fn flush_report(
     &mut self,
     elapsed: &Duration,
@@ -191,10 +198,8 @@ impl TestReporter for JunitTestReporter {
         .serialize(std::io::stdout())
         .with_context(|| "Failed to write JUnit report to stdout")?;
     } else {
-      let file =
-        std::fs::File::create(self.path.clone()).with_context(|| {
-          format!("Failed to open JUnit report file {}", self.path)
-        })?;
+      let file = crate::util::fs::create_file(&PathBuf::from(&self.path))
+        .context("Failed to open JUnit report file.")?;
       report.serialize(file).with_context(|| {
         format!("Failed to write JUnit report to {}", self.path)
       })?;

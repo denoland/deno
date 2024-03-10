@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::marker::PhantomData;
 
@@ -6,8 +6,8 @@ use bytes::Bytes;
 use bytes::BytesMut;
 use deno_core::error::AnyError;
 use httparse::Status;
-use hyper::http::HeaderName;
-use hyper::http::HeaderValue;
+use hyper::header::HeaderName;
+use hyper::header::HeaderValue;
 use hyper::Response;
 use memmem::Searcher;
 use memmem::TwoWaySearcher;
@@ -152,7 +152,7 @@ impl<T: Default> WebSocketUpgrade<T> {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use hyper::Body;
+  use hyper_v014::Body;
 
   type ExpectedResponseAndHead = Option<(Response<Body>, &'static [u8])>;
 

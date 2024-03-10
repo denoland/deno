@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 pub mod io;
 pub mod ops;
@@ -9,12 +9,15 @@ pub mod raw;
 pub mod resolve_addr;
 
 use deno_core::error::AnyError;
+use deno_core::op2;
 use deno_core::OpState;
 use deno_tls::rustls::RootCertStore;
 use deno_tls::RootCertStoreProvider;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
+
+pub const UNSTABLE_FEATURE_NAME: &str = "net";
 
 pub trait NetPermissions {
   fn check_net<T: AsRef<str>>(
@@ -29,9 +32,11 @@ pub trait NetPermissions {
 
 /// Helper for checking unstable features. Used for sync ops.
 fn check_unstable(state: &OpState, api_name: &str) {
+  // TODO(bartlomieju): replace with `state.feature_checker.check_or_exit`
+  // once we phase out `check_or_exit_with_legacy_fallback`
   state
     .feature_checker
-    .check_legacy_unstable_or_exit(api_name);
+    .check_or_exit_with_legacy_fallback(UNSTABLE_FEATURE_NAME, api_name);
 }
 
 pub fn get_declaration() -> PathBuf {
@@ -92,6 +97,14 @@ deno_core::extension!(deno_net,
     #[cfg(unix)] ops_unix::op_node_unstable_net_listen_unixpacket<P>,
     #[cfg(unix)] ops_unix::op_net_recv_unixpacket,
     #[cfg(unix)] ops_unix::op_net_send_unixpacket<P>,
+
+    #[cfg(not(unix))] op_net_accept_unix,
+    #[cfg(not(unix))] op_net_connect_unix,
+    #[cfg(not(unix))] op_net_listen_unix,
+    #[cfg(not(unix))] op_net_listen_unixpacket,
+    #[cfg(not(unix))] op_node_unstable_net_listen_unixpacket,
+    #[cfg(not(unix))] op_net_recv_unixpacket,
+    #[cfg(not(unix))] op_net_send_unixpacket,
   ],
   esm = [ "01_net.js", "02_tls.js" ],
   options = {
@@ -107,3 +120,20 @@ deno_core::extension!(deno_net,
     ));
   },
 );
+
+macro_rules! stub_op {
+  ($name:ident) => {
+    #[op2(fast)]
+    fn $name() {
+      panic!("Unsupported on non-unix platforms")
+    }
+  };
+}
+
+stub_op!(op_net_accept_unix);
+stub_op!(op_net_connect_unix);
+stub_op!(op_net_listen_unix);
+stub_op!(op_net_listen_unixpacket);
+stub_op!(op_node_unstable_net_listen_unixpacket);
+stub_op!(op_net_recv_unixpacket);
+stub_op!(op_net_send_unixpacket);

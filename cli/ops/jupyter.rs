@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -55,7 +55,7 @@ pub async fn op_jupyter_broadcast(
       .new_message(&message_type)
       .with_content(content)
       .with_metadata(metadata)
-      .with_buffers(buffers.into_iter().map(|b| b.into()).collect())
+      .with_buffers(buffers.into_iter().map(|b| b.to_vec().into()).collect())
       .send(&mut *iopub_socket.lock().await)
       .await?;
   }

@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use super::diagnostics::DenoDiagnostic;
 use super::diagnostics::DiagnosticSource;
@@ -6,8 +6,11 @@ use super::documents::Documents;
 use super::language_server;
 use super::tsc;
 
+use crate::args::jsr_url;
 use crate::npm::CliNpmResolver;
+use crate::resolver::CliNodeResolver;
 use crate::tools::lint::create_linter;
+use crate::util::path::specifier_to_file_path;
 
 use deno_ast::SourceRange;
 use deno_ast::SourceRangedForSpanned;
@@ -19,16 +22,25 @@ use deno_core::serde::Deserialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
+use deno_lint::diagnostic::LintDiagnostic;
 use deno_lint::rules::LintRule;
 use deno_runtime::deno_node::NpmResolver;
-use deno_runtime::deno_node::PackageJson;
 use deno_runtime::deno_node::PathClean;
+use deno_runtime::permissions::PermissionsContainer;
+use deno_semver::jsr::JsrPackageNvReference;
+use deno_semver::jsr::JsrPackageReqReference;
+use deno_semver::npm::NpmPackageReqReference;
+use deno_semver::package::PackageNv;
+use deno_semver::package::PackageNvReference;
 use deno_semver::package::PackageReq;
+use deno_semver::package::PackageReqReference;
+use deno_semver::Version;
 use import_map::ImportMap;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::cmp::Ordering;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::path::Path;
 use tower_lsp::lsp_types as lsp;
 use tower_lsp::lsp_types::Position;
@@ -114,15 +126,21 @@ impl Reference {
   }
 }
 
-fn as_lsp_range(range: &deno_lint::diagnostic::Range) -> Range {
+fn as_lsp_range(diagnostic: &LintDiagnostic) -> Range {
+  let start_lc = diagnostic
+    .text_info
+    .line_and_column_index(diagnostic.range.start);
+  let end_lc = diagnostic
+    .text_info
+    .line_and_column_index(diagnostic.range.end);
   Range {
     start: Position {
-      line: range.start.line_index as u32,
-      character: range.start.column_index as u32,
+      line: start_lc.line_index as u32,
+      character: start_lc.column_index as u32,
     },
     end: Position {
-      line: range.end.line_index as u32,
-      character: range.end.column_index as u32,
+      line: end_lc.line_index as u32,
+      character: end_lc.column_index as u32,
     },
   }
 }
@@ -131,19 +149,19 @@ pub fn get_lint_references(
   parsed_source: &deno_ast::ParsedSource,
   lint_rules: Vec<&'static dyn LintRule>,
 ) -> Result<Vec<Reference>, AnyError> {
-  let linter = create_linter(parsed_source.media_type(), lint_rules);
+  let linter = create_linter(lint_rules);
   let lint_diagnostics = linter.lint_with_ast(parsed_source);
 
   Ok(
     lint_diagnostics
       .into_iter()
       .map(|d| Reference {
+        range: as_lsp_range(&d),
         category: Category::Lint {
           message: d.message,
           code: d.code,
           hint: d.hint,
         },
-        range: as_lsp_range(&d.range),
       })
       .collect(),
   )
@@ -161,6 +179,7 @@ fn code_as_string(code: &Option<lsp::NumberOrString>) -> String {
 pub struct TsResponseImportMapper<'a> {
   documents: &'a Documents,
   maybe_import_map: Option<&'a ImportMap>,
+  node_resolver: Option<&'a CliNodeResolver>,
   npm_resolver: Option<&'a dyn CliNpmResolver>,
 }
 
@@ -168,11 +187,13 @@ impl<'a> TsResponseImportMapper<'a> {
   pub fn new(
     documents: &'a Documents,
     maybe_import_map: Option<&'a ImportMap>,
+    node_resolver: Option<&'a CliNodeResolver>,
     npm_resolver: Option<&'a dyn CliNpmResolver>,
   ) -> Self {
     Self {
       documents,
       maybe_import_map,
+      node_resolver,
       npm_resolver,
     }
   }
@@ -194,6 +215,57 @@ impl<'a> TsResponseImportMapper<'a> {
       }
     }
 
+    if let Some(jsr_path) = specifier.as_str().strip_prefix(jsr_url().as_str())
+    {
+      let mut segments = jsr_path.split('/');
+      let name = if jsr_path.starts_with('@') {
+        format!("{}/{}", segments.next()?, segments.next()?)
+      } else {
+        segments.next()?.to_string()
+      };
+      let version = Version::parse_standard(segments.next()?).ok()?;
+      let nv = PackageNv { name, version };
+      let path = segments.collect::<Vec<_>>().join("/");
+      let jsr_resolver = self.documents.get_jsr_resolver();
+      let export = jsr_resolver.lookup_export_for_path(&nv, &path)?;
+      let sub_path = (export != ".").then_some(export);
+      let mut req = None;
+      req = req.or_else(|| {
+        let import_map = self.maybe_import_map?;
+        for entry in import_map.entries_for_referrer(referrer) {
+          let Some(value) = entry.raw_value else {
+            continue;
+          };
+          let Ok(req_ref) = JsrPackageReqReference::from_str(value) else {
+            continue;
+          };
+          let req = req_ref.req();
+          if req.name == nv.name
+            && req.version_req.tag().is_none()
+            && req.version_req.matches(&nv.version)
+          {
+            return Some(req.clone());
+          }
+        }
+        None
+      });
+      req = req.or_else(|| jsr_resolver.lookup_req_for_nv(&nv));
+      let spec_str = if let Some(req) = req {
+        let req_ref = PackageReqReference { req, sub_path };
+        JsrPackageReqReference::new(req_ref).to_string()
+      } else {
+        let nv_ref = PackageNvReference { nv, sub_path };
+        JsrPackageNvReference::new(nv_ref).to_string()
+      };
+      let specifier = ModuleSpecifier::parse(&spec_str).ok()?;
+      if let Some(import_map) = self.maybe_import_map {
+        if let Some(result) = import_map.lookup(&specifier, referrer) {
+          return Some(result);
+        }
+      }
+      return Some(spec_str);
+    }
+
     if let Some(npm_resolver) =
       self.npm_resolver.as_ref().and_then(|r| r.as_managed())
     {
@@ -206,19 +278,30 @@ impl<'a> TsResponseImportMapper<'a> {
           if !pkg_reqs.is_empty() {
             let sub_path = self.resolve_package_path(specifier);
             if let Some(import_map) = self.maybe_import_map {
-              for pkg_req in &pkg_reqs {
-                let paths = vec![
-                  concat_npm_specifier("npm:", pkg_req, sub_path.as_deref()),
-                  concat_npm_specifier("npm:/", pkg_req, sub_path.as_deref()),
-                ];
-                for path in paths {
-                  if let Some(mapped_path) = ModuleSpecifier::parse(&path)
-                    .ok()
-                    .and_then(|s| import_map.lookup(&s, referrer))
+              let pkg_reqs = pkg_reqs.iter().collect::<HashSet<_>>();
+              let mut matches = Vec::new();
+              for entry in import_map.entries_for_referrer(referrer) {
+                if let Some(value) = entry.raw_value {
+                  if let Ok(package_ref) =
+                    NpmPackageReqReference::from_str(value)
                   {
-                    return Some(mapped_path);
+                    if pkg_reqs.contains(package_ref.req()) {
+                      let sub_path = sub_path.as_deref().unwrap_or("");
+                      let value_sub_path = package_ref.sub_path().unwrap_or("");
+                      if let Some(key_sub_path) =
+                        sub_path.strip_prefix(value_sub_path)
+                      {
+                        matches
+                          .push(format!("{}{}", entry.raw_key, key_sub_path));
+                      }
+                    }
                   }
                 }
+              }
+              // select the shortest match
+              matches.sort_by_key(|a| a.len());
+              if let Some(matched) = matches.first() {
+                return Some(matched.to_string());
               }
             }
 
@@ -249,29 +332,41 @@ impl<'a> TsResponseImportMapper<'a> {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<String> {
-    let specifier_path = specifier.to_file_path().ok()?;
-    let root_folder = self
-      .npm_resolver
-      .as_ref()
-      .and_then(|r| r.resolve_pkg_folder_from_specifier(specifier).ok())
+    let node_resolver = self.node_resolver?;
+    let package_json = node_resolver
+      .get_closest_package_json(specifier, &PermissionsContainer::allow_all())
+      .ok()
       .flatten()?;
-    let package_json_path = root_folder.join("package.json");
-    let package_json_text = std::fs::read_to_string(&package_json_path).ok()?;
-    let package_json =
-      PackageJson::load_from_string(package_json_path, package_json_text)
-        .ok()?;
+    let root_folder = package_json.path.parent()?;
 
+    let specifier_path = specifier_to_file_path(specifier).ok()?;
     let mut search_paths = vec![specifier_path.clone()];
     // TypeScript will provide a .js extension for quick fixes, so do
     // a search for the .d.ts file instead
     if specifier_path.extension().and_then(|e| e.to_str()) == Some("js") {
       search_paths.insert(0, specifier_path.with_extension("d.ts"));
+    } else if let Some(file_name) =
+      specifier_path.file_name().and_then(|f| f.to_str())
+    {
+      // In some other cases, typescript will provide the .d.ts extension, but the
+      // export might not have a .d.ts defined. In that case, look for the corresponding
+      // JavaScript file after not being able to find the .d.ts file.
+      if let Some(file_stem) = file_name.strip_suffix(".d.ts") {
+        search_paths
+          .push(specifier_path.with_file_name(format!("{}.js", file_stem)));
+      } else if let Some(file_stem) = file_name.strip_suffix(".d.cts") {
+        search_paths
+          .push(specifier_path.with_file_name(format!("{}.cjs", file_stem)));
+      } else if let Some(file_stem) = file_name.strip_suffix(".d.mts") {
+        search_paths
+          .push(specifier_path.with_file_name(format!("{}.mjs", file_stem)));
+      }
     }
 
     for search_path in search_paths {
       if let Some(exports) = &package_json.exports {
         if let Some(result) = try_reverse_map_package_json_exports(
-          &root_folder,
+          root_folder,
           &search_path,
           exports,
         ) {
@@ -422,11 +517,11 @@ fn fix_ts_import_action(
   if action.fix_name == "import" {
     let change = action
       .changes
-      .get(0)
+      .first()
       .ok_or_else(|| anyhow!("Unexpected action changes."))?;
     let text_change = change
       .text_changes
-      .get(0)
+      .first()
       .ok_or_else(|| anyhow!("Missing text change."))?;
     if let Some(captures) = IMPORT_SPECIFIER_RE.captures(&text_change.new_text)
     {
@@ -1028,36 +1123,6 @@ mod tests {
       let actual = input.to_diagnostic();
       assert_eq!(&actual, expected);
     }
-  }
-
-  #[test]
-  fn test_as_lsp_range() {
-    let fixture = deno_lint::diagnostic::Range {
-      start: deno_lint::diagnostic::Position {
-        line_index: 0,
-        column_index: 2,
-        byte_index: 23,
-      },
-      end: deno_lint::diagnostic::Position {
-        line_index: 1,
-        column_index: 0,
-        byte_index: 33,
-      },
-    };
-    let actual = as_lsp_range(&fixture);
-    assert_eq!(
-      actual,
-      lsp::Range {
-        start: lsp::Position {
-          line: 0,
-          character: 2,
-        },
-        end: lsp::Position {
-          line: 1,
-          character: 0,
-        },
-      }
-    );
   }
 
   #[test]

@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::callback::PtrSymbol;
 use crate::check_unstable;
@@ -368,7 +368,7 @@ pub fn op_ffi_call_nonblocking(
   })
 }
 
-#[op2]
+#[op2(reentrant)]
 #[serde]
 pub fn op_ffi_call_ptr<FP>(
   scope: &mut v8::HandleScope,

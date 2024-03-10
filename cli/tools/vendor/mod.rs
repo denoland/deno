@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::path::Path;
 use std::path::PathBuf;
@@ -51,18 +51,18 @@ pub async fn vendor(
   let entry_points =
     resolve_entry_points(&vendor_flags, cli_options.initial_cwd())?;
   let jsx_import_source = cli_options.to_maybe_jsx_import_source_config()?;
-  let module_graph_builder = factory.module_graph_builder().await?.clone();
+  let module_graph_creator = factory.module_graph_creator().await?.clone();
   let output = build::build(build::BuildInput {
     entry_points,
     build_graph: move |entry_points| {
       async move {
-        module_graph_builder
+        module_graph_creator
           .create_graph(GraphKind::All, entry_points)
           .await
       }
       .boxed_local()
     },
-    parsed_source_cache: factory.parsed_source_cache()?,
+    parsed_source_cache: factory.parsed_source_cache(),
     output_dir: &output_dir,
     maybe_original_import_map: factory.maybe_import_map().await?.as_deref(),
     maybe_lockfile: factory.maybe_lockfile().clone(),
@@ -173,9 +173,24 @@ fn validate_options(
   options: &mut CliOptions,
   output_dir: &Path,
 ) -> Result<(), AnyError> {
+  let import_map_specifier = options
+    .resolve_specified_import_map_specifier()?
+    .or_else(|| {
+      let config_file = options.maybe_config_file().as_ref()?;
+      config_file
+        .to_import_map_specifier()
+        .ok()
+        .flatten()
+        .or_else(|| {
+          if config_file.is_an_import_map() {
+            Some(config_file.specifier.clone())
+          } else {
+            None
+          }
+        })
+    });
   // check the import map
-  if let Some(import_map_path) = options
-    .resolve_import_map_specifier()?
+  if let Some(import_map_path) = import_map_specifier
     .and_then(|p| specifier_to_file_path(&p).ok())
     .and_then(|p| canonicalize_path(&p).ok())
   {
@@ -227,14 +242,15 @@ fn maybe_update_config_file(
     return ModifiedResult::default();
   }
 
-  let fmt_config = config_file
+  let fmt_config_options = config_file
     .to_fmt_config()
     .ok()
-    .unwrap_or_default()
+    .flatten()
+    .map(|config| config.options)
     .unwrap_or_default();
   let result = update_config_file(
     config_file,
-    &fmt_config.options,
+    &fmt_config_options,
     if try_add_import_map {
       Some(
         ModuleSpecifier::from_file_path(output_dir.join("import_map.json"))
@@ -355,7 +371,7 @@ fn update_config_text(
 
   let new_text = deno_ast::apply_text_changes(text, text_changes);
   modified_result.new_text = if should_format {
-    format_json(&new_text, fmt_options)
+    format_json(&PathBuf::from("deno.json"), &new_text, fmt_options)
       .ok()
       .map(|formatted_text| formatted_text.unwrap_or(new_text))
   } else {

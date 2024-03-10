@@ -1,19 +1,19 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 /// <reference path="../../core/internal.d.ts" />
 
-const core = globalThis.Deno.core;
-const ops = core.ops;
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { Deferred, writableStreamClose } from "ext:deno_web/06_streams.js";
-import DOMException from "ext:deno_web/01_dom_exception.js";
-import { add, remove } from "ext:deno_web/03_abort_signal.js";
+import { core, primordials } from "ext:core/mod.js";
 import {
-  fillHeaders,
-  headerListFromHeaders,
-  headersFromHeaderList,
-} from "ext:deno_fetch/20_headers.js";
-const primordials = globalThis.__bootstrap.primordials;
+  op_ws_check_permission_and_cancel_handle,
+  op_ws_close,
+  op_ws_create,
+  op_ws_get_buffer,
+  op_ws_get_buffer_as_string,
+  op_ws_get_error,
+  op_ws_next_event,
+  op_ws_send_binary_async,
+  op_ws_send_text_async,
+} from "ext:core/ops";
 const {
   ArrayPrototypeJoin,
   ArrayPrototypeMap,
@@ -30,18 +30,19 @@ const {
   SymbolFor,
   TypeError,
   TypedArrayPrototypeGetByteLength,
-  Uint8ArrayPrototype,
+  TypedArrayPrototypeGetSymbolToStringTag,
 } = primordials;
-const {
-  op_ws_send_text_async,
-  op_ws_send_binary_async,
-  op_ws_next_event,
-  op_ws_get_buffer,
-  op_ws_get_buffer_as_string,
-  op_ws_get_error,
-  op_ws_create,
-  op_ws_close,
-} = core.ensureFastOps();
+
+import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
+import { Deferred, writableStreamClose } from "ext:deno_web/06_streams.js";
+import { DOMException } from "ext:deno_web/01_dom_exception.js";
+import { add, remove } from "ext:deno_web/03_abort_signal.js";
+import {
+  fillHeaders,
+  headerListFromHeaders,
+  headersFromHeaderList,
+} from "ext:deno_fetch/20_headers.js";
 
 webidl.converters.WebSocketStreamOptions = webidl.createDictionaryConverter(
   "WebSocketStreamOptions",
@@ -82,7 +83,7 @@ const CLOSE_RESPONSE_TIMEOUT = 5000;
 
 const _rid = Symbol("[[rid]]");
 const _url = Symbol("[[url]]");
-const _connection = Symbol("[[connection]]");
+const _opened = Symbol("[[opened]]");
 const _closed = Symbol("[[closed]]");
 const _earlyClose = Symbol("[[earlyClose]]");
 const _closeSent = Symbol("[[closeSent]]");
@@ -146,7 +147,7 @@ class WebSocketStream {
       fillHeaders(headers, options.headers);
     }
 
-    const cancelRid = ops.op_ws_check_permission_and_cancel_handle(
+    const cancelRid = op_ws_check_permission_and_cancel_handle(
       "WebSocketStream.abort()",
       this[_url],
       true,
@@ -155,7 +156,7 @@ class WebSocketStream {
     if (options.signal?.aborted) {
       core.close(cancelRid);
       const err = options.signal.reason;
-      this[_connection].reject(err);
+      this[_opened].reject(err);
       this[_closed].reject(err);
     } else {
       const abort = () => {
@@ -192,7 +193,7 @@ class WebSocketStream {
                       "Closed while connecting",
                       "NetworkError",
                     );
-                    this[_connection].reject(err);
+                    this[_opened].reject(err);
                     this[_closed].reject(err);
                   },
                 );
@@ -202,7 +203,7 @@ class WebSocketStream {
                   "Closed while connecting",
                   "NetworkError",
                 );
-                this[_connection].reject(err);
+                this[_opened].reject(err);
                 this[_closed].reject(err);
               },
             );
@@ -214,7 +215,8 @@ class WebSocketStream {
                 if (typeof chunk === "string") {
                   await op_ws_send_text_async(this[_rid], chunk);
                 } else if (
-                  ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, chunk)
+                  TypedArrayPrototypeGetSymbolToStringTag(chunk) ===
+                    "Uint8Array"
                 ) {
                   await op_ws_send_binary_async(this[_rid], chunk);
                 } else {
@@ -334,7 +336,7 @@ class WebSocketStream {
               },
             });
 
-            this[_connection].resolve({
+            this[_opened].resolve({
               readable,
               writable,
               extensions: create.extensions ?? "",
@@ -349,17 +351,17 @@ class WebSocketStream {
           } else {
             core.tryClose(cancelRid);
           }
-          this[_connection].reject(err);
+          this[_opened].reject(err);
           this[_closed].reject(err);
         },
       );
     }
   }
 
-  [_connection] = new Deferred();
-  get connection() {
+  [_opened] = new Deferred();
+  get opened() {
     webidl.assertBranded(this, WebSocketStreamPrototype);
-    return this[_connection].promise;
+    return this[_opened].promise;
   }
 
   [_earlyClose] = false;
@@ -405,7 +407,7 @@ class WebSocketStream {
       code = 1000;
     }
 
-    if (this[_connection].state === "pending") {
+    if (this[_opened].state === "pending") {
       this[_earlyClose] = true;
     } else if (this[_closed].state === "pending") {
       PromisePrototypeThen(
@@ -423,12 +425,19 @@ class WebSocketStream {
     }
   }
 
-  [SymbolFor("Deno.customInspect")](inspect) {
-    return `${this.constructor.name} ${
-      inspect({
-        url: this.url,
-      })
-    }`;
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(WebSocketStreamPrototype, this),
+        keys: [
+          "closed",
+          "opened",
+          "url",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
 

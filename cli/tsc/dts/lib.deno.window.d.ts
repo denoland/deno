@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 /// <reference no-default-lib="true" />
 /// <reference lib="deno.ns" />
@@ -11,6 +11,7 @@
 declare interface WindowEventMap {
   "error": ErrorEvent;
   "unhandledrejection": PromiseRejectionEvent;
+  "rejectionhandled": PromiseRejectionEvent;
 }
 
 /** @category Web APIs */
@@ -22,6 +23,9 @@ declare interface Window extends EventTarget {
   onbeforeunload: ((this: Window, ev: Event) => any) | null;
   onunload: ((this: Window, ev: Event) => any) | null;
   onunhandledrejection:
+    | ((this: Window, ev: PromiseRejectionEvent) => any)
+    | null;
+  onrejectionhandled:
     | ((this: Window, ev: PromiseRejectionEvent) => any)
     | null;
   close: () => void;
@@ -37,6 +41,7 @@ declare interface Window extends EventTarget {
   localStorage: Storage;
   sessionStorage: Storage;
   caches: CacheStorage;
+  name: string;
 
   addEventListener<K extends keyof WindowEventMap>(
     type: K,
@@ -101,6 +106,7 @@ declare var caches: CacheStorage;
 
 /** @category Web APIs */
 declare interface Navigator {
+  readonly gpu: GPU;
   readonly hardwareConcurrency: number;
   readonly userAgent: string;
   readonly language: string;
@@ -292,3 +298,6 @@ declare var Location: {
 // The types there must first be split into window, worker and global types.
 /** @category Web APIs */
 declare var location: Location;
+
+/** @category Web APIs */
+declare var name: string;

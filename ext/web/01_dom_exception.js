@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../../core/internal.d.ts" />
@@ -7,7 +7,7 @@
 /// <reference path="../web/internal.d.ts" />
 /// <reference path="../web/lib.deno_web.d.ts" />
 
-const primordials = globalThis.__bootstrap.primordials;
+import { primordials } from "ext:core/mod.js";
 const {
   ArrayPrototypeSlice,
   Error,
@@ -20,6 +20,7 @@ const {
   Symbol,
   SymbolFor,
 } = primordials;
+
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 
@@ -131,19 +132,22 @@ class DOMException {
     return this[_code];
   }
 
-  [SymbolFor("Deno.customInspect")](inspect) {
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
     if (ObjectPrototypeIsPrototypeOf(DOMExceptionPrototype, this)) {
-      return `DOMException: ${this[_message]}`;
+      return this[_error].stack;
     } else {
-      return inspect(createFilteredInspectProxy({
-        object: this,
-        evaluate: false,
-        keys: [
-          "message",
-          "name",
-          "code",
-        ],
-      }));
+      return inspect(
+        createFilteredInspectProxy({
+          object: this,
+          evaluate: false,
+          keys: [
+            "message",
+            "name",
+            "code",
+          ],
+        }),
+        inspectOptions,
+      );
     }
   }
 }
@@ -170,7 +174,7 @@ ObjectDefineProperty(DOMException.prototype, "__callSiteEvals", {
 
 ObjectSetPrototypeOf(DOMException.prototype, ErrorPrototype);
 
-webidl.configurePrototype(DOMException);
+webidl.configureInterface(DOMException);
 const DOMExceptionPrototype = DOMException.prototype;
 
 const entries = ObjectEntries({
@@ -207,4 +211,4 @@ for (let i = 0; i < entries.length; ++i) {
   ObjectDefineProperty(DOMException.prototype, key, desc);
 }
 
-export default DOMException;
+export { DOMException, DOMExceptionPrototype };

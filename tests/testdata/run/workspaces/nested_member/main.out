@@ -1,0 +1,1 @@
+error: Workspace member 'foo/bar' is nested within other workspace member 'foo'

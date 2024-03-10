@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::path::Path;
 use std::path::PathBuf;
@@ -27,6 +27,7 @@ use deno_semver::package::PackageReq;
 
 use crate::args::Lockfile;
 use crate::args::NpmProcessState;
+use crate::args::NpmProcessStateKind;
 use crate::args::PackageJsonDepsProvider;
 use crate::cache::FastInsecureHasher;
 use crate::util::fs::canonicalize_path_maybe_not_exists_with_fs;
@@ -224,13 +225,21 @@ async fn snapshot_from_lockfile(
   lockfile: Arc<Mutex<Lockfile>>,
   api: &dyn NpmRegistryApi,
 ) -> Result<ValidSerializedNpmResolutionSnapshot, AnyError> {
-  let incomplete_snapshot = {
+  let (incomplete_snapshot, skip_integrity_check) = {
     let lock = lockfile.lock();
-    deno_npm::resolution::incomplete_snapshot_from_lockfile(&lock)?
+    (
+      deno_npm::resolution::incomplete_snapshot_from_lockfile(&lock)?,
+      lock.overwrite,
+    )
   };
-  let snapshot =
-    deno_npm::resolution::snapshot_from_lockfile(incomplete_snapshot, api)
-      .await?;
+  let snapshot = deno_npm::resolution::snapshot_from_lockfile(
+    deno_npm::resolution::SnapshotFromLockfileParams {
+      incomplete_snapshot,
+      api,
+      skip_integrity_check,
+    },
+  )
+  .await?;
   Ok(snapshot)
 }
 
@@ -287,12 +296,8 @@ impl ManagedCliNpmResolver {
     pkg_id: &NpmPackageId,
   ) -> Result<PathBuf, AnyError> {
     let path = self.fs_resolver.package_folder(pkg_id)?;
-    let path = canonicalize_path_maybe_not_exists_with_fs(&path, |path| {
-      self
-        .fs
-        .realpath_sync(path)
-        .map_err(|err| err.into_io_error())
-    })?;
+    let path =
+      canonicalize_path_maybe_not_exists_with_fs(&path, self.fs.as_ref())?;
     log::debug!(
       "Resolved package folder of {} to {}",
       pkg_id.as_serialized(),
@@ -491,6 +496,23 @@ impl ManagedCliNpmResolver {
 }
 
 impl NpmResolver for ManagedCliNpmResolver {
+  /// Gets the state of npm for the process.
+  fn get_npm_process_state(&self) -> String {
+    serde_json::to_string(&NpmProcessState {
+      kind: NpmProcessStateKind::Snapshot(
+        self
+          .resolution
+          .serialized_valid_snapshot()
+          .into_serialized(),
+      ),
+      local_node_modules_path: self
+        .fs_resolver
+        .node_modules_path()
+        .map(|p| p.to_string_lossy().to_string()),
+    })
+    .unwrap()
+  }
+
   fn resolve_package_folder_from_package(
     &self,
     name: &str,
@@ -502,13 +524,6 @@ impl NpmResolver for ManagedCliNpmResolver {
       .resolve_package_folder_from_package(name, referrer, mode)?;
     log::debug!("Resolved {} from {} to {}", name, referrer, path.display());
     Ok(path)
-  }
-
-  fn resolve_package_folder_from_path(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Result<Option<PathBuf>, AnyError> {
-    self.resolve_pkg_folder_from_specifier(specifier)
   }
 
   fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool {
@@ -549,7 +564,7 @@ impl CliNpmResolver for ManagedCliNpmResolver {
         &self.progress_bar,
         self.api.base_url().clone(),
         npm_resolution,
-        self.root_node_modules_path(),
+        self.root_node_modules_path().map(ToOwned::to_owned),
         self.npm_system_info.clone(),
       ),
       self.global_npm_cache.clone(),
@@ -564,29 +579,8 @@ impl CliNpmResolver for ManagedCliNpmResolver {
     InnerCliNpmResolverRef::Managed(self)
   }
 
-  fn root_node_modules_path(&self) -> Option<PathBuf> {
+  fn root_node_modules_path(&self) -> Option<&PathBuf> {
     self.fs_resolver.node_modules_path()
-  }
-
-  /// Resolve the root folder of the package the provided specifier is in.
-  ///
-  /// This will error when the provided specifier is not in an npm package.
-  fn resolve_pkg_folder_from_specifier(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Result<Option<PathBuf>, AnyError> {
-    let Some(path) = self
-      .fs_resolver
-      .resolve_package_folder_from_specifier(specifier)?
-    else {
-      return Ok(None);
-    };
-    log::debug!(
-      "Resolved package folder of {} to {}",
-      specifier,
-      path.display()
-    );
-    Ok(Some(path))
   }
 
   fn resolve_pkg_folder_from_deno_module_req(
@@ -596,21 +590,6 @@ impl CliNpmResolver for ManagedCliNpmResolver {
   ) -> Result<PathBuf, AnyError> {
     let pkg_id = self.resolve_pkg_id_from_pkg_req(req)?;
     self.resolve_pkg_folder_from_pkg_id(&pkg_id)
-  }
-
-  /// Gets the state of npm for the process.
-  fn get_npm_process_state(&self) -> String {
-    serde_json::to_string(&NpmProcessState {
-      snapshot: self
-        .resolution
-        .serialized_valid_snapshot()
-        .into_serialized(),
-      local_node_modules_path: self
-        .fs_resolver
-        .node_modules_path()
-        .map(|p| p.to_string_lossy().to_string()),
-    })
-    .unwrap()
   }
 
   fn check_state_hash(&self) -> Option<u64> {

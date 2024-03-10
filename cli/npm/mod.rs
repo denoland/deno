@@ -1,5 +1,6 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+mod byonm;
 mod cache_dir;
 mod common;
 mod managed;
@@ -7,11 +8,21 @@ mod managed;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use dashmap::DashMap;
 use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
+use deno_core::serde_json;
+use deno_npm::registry::NpmPackageInfo;
 use deno_runtime::deno_node::NpmResolver;
+use deno_runtime::permissions::PermissionsContainer;
+use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 
+use crate::args::npm_registry_url;
+use crate::file_fetcher::FileFetcher;
+
+pub use self::byonm::ByonmCliNpmResolver;
+pub use self::byonm::CliNpmResolverByonmCreateOptions;
 pub use self::cache_dir::NpmCacheDir;
 pub use self::managed::CliNpmResolverManagedCreateOptions;
 pub use self::managed::CliNpmResolverManagedPackageJsonInstallerOption;
@@ -20,9 +31,7 @@ pub use self::managed::ManagedCliNpmResolver;
 
 pub enum CliNpmResolverCreateOptions {
   Managed(CliNpmResolverManagedCreateOptions),
-  // todo(dsherret): implement this
-  #[allow(dead_code)]
-  Byonm,
+  Byonm(CliNpmResolverByonmCreateOptions),
 }
 
 pub async fn create_cli_npm_resolver_for_lsp(
@@ -33,7 +42,7 @@ pub async fn create_cli_npm_resolver_for_lsp(
     Managed(options) => {
       managed::create_managed_npm_resolver_for_lsp(options).await
     }
-    Byonm => todo!(),
+    Byonm(options) => byonm::create_byonm_npm_resolver(options),
   }
 }
 
@@ -43,7 +52,7 @@ pub async fn create_cli_npm_resolver(
   use CliNpmResolverCreateOptions::*;
   match options {
     Managed(options) => managed::create_managed_npm_resolver(options).await,
-    Byonm => todo!(),
+    Byonm(options) => Ok(byonm::create_byonm_npm_resolver(options)),
   }
 }
 
@@ -74,13 +83,7 @@ pub trait CliNpmResolver: NpmResolver {
     }
   }
 
-  fn root_node_modules_path(&self) -> Option<PathBuf>;
-
-  /// Resolve the root folder of the package the provided specifier is in.
-  fn resolve_pkg_folder_from_specifier(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Result<Option<PathBuf>, AnyError>;
+  fn root_node_modules_path(&self) -> Option<&PathBuf>;
 
   fn resolve_pkg_folder_from_deno_module_req(
     &self,
@@ -88,13 +91,64 @@ pub trait CliNpmResolver: NpmResolver {
     referrer: &ModuleSpecifier,
   ) -> Result<PathBuf, AnyError>;
 
-  /// Gets the state of npm for the process.
-  fn get_npm_process_state(&self) -> String;
-
   /// Returns a hash returning the state of the npm resolver
   /// or `None` if the state currently can't be determined.
   fn check_state_hash(&self) -> Option<u64>;
 }
 
-// todo(#18967): implement this
-pub struct ByonmCliNpmResolver;
+#[derive(Debug)]
+pub struct NpmFetchResolver {
+  nv_by_req: DashMap<PackageReq, Option<PackageNv>>,
+  info_by_name: DashMap<String, Option<Arc<NpmPackageInfo>>>,
+  file_fetcher: FileFetcher,
+}
+
+impl NpmFetchResolver {
+  pub fn new(file_fetcher: FileFetcher) -> Self {
+    Self {
+      nv_by_req: Default::default(),
+      info_by_name: Default::default(),
+      file_fetcher,
+    }
+  }
+
+  pub async fn req_to_nv(&self, req: &PackageReq) -> Option<PackageNv> {
+    if let Some(nv) = self.nv_by_req.get(req) {
+      return nv.value().clone();
+    }
+    let maybe_get_nv = || async {
+      let name = req.name.clone();
+      let package_info = self.package_info(&name).await?;
+      // Find the first matching version of the package which is cached.
+      let mut versions = package_info.versions.keys().collect::<Vec<_>>();
+      versions.sort();
+      let version = versions
+        .into_iter()
+        .rev()
+        .find(|v| req.version_req.tag().is_none() && req.version_req.matches(v))
+        .cloned()?;
+      Some(PackageNv { name, version })
+    };
+    let nv = maybe_get_nv().await;
+    self.nv_by_req.insert(req.clone(), nv.clone());
+    nv
+  }
+
+  pub async fn package_info(&self, name: &str) -> Option<Arc<NpmPackageInfo>> {
+    if let Some(info) = self.info_by_name.get(name) {
+      return info.value().clone();
+    }
+    let fetch_package_info = || async {
+      let info_url = npm_registry_url().join(name).ok()?;
+      let file = self
+        .file_fetcher
+        .fetch(&info_url, PermissionsContainer::allow_all())
+        .await
+        .ok()?;
+      serde_json::from_slice::<NpmPackageInfo>(&file.source).ok()
+    };
+    let info = fetch_package_info().await.map(Arc::new);
+    self.info_by_name.insert(name.to_string(), info.clone());
+    info
+  }
+}

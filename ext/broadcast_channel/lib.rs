@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 mod in_memory_broadcast_channel;
 
@@ -16,6 +16,8 @@ use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
+
+pub const UNSTABLE_FEATURE_NAME: &str = "broadcast-channel";
 
 #[async_trait]
 pub trait BroadcastChannel: Clone {
@@ -48,9 +50,12 @@ pub fn op_broadcast_subscribe<BC>(
 where
   BC: BroadcastChannel + 'static,
 {
-  state
-    .feature_checker
-    .check_legacy_unstable_or_exit("BroadcastChannel");
+  // TODO(bartlomieju): replace with `state.feature_checker.check_or_exit`
+  // once we phase out `check_or_exit_with_legacy_fallback`
+  state.feature_checker.check_or_exit_with_legacy_fallback(
+    UNSTABLE_FEATURE_NAME,
+    "BroadcastChannel",
+  );
   let bc = state.borrow::<BC>();
   let resource = bc.subscribe()?;
   Ok(state.resource_table.add(resource))

@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::borrow::Cow;
 
@@ -67,7 +67,7 @@ impl CliCjsCodeAnalyzer {
     }
 
     let parsed_source = deno_ast::parse_script(deno_ast::ParseParams {
-      specifier: specifier.to_string(),
+      specifier: specifier.clone(),
       text_info: deno_ast::SourceTextInfo::new(source.into()),
       media_type,
       capture_tokens: true,

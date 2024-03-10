@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Copyright Node.js contributors. All rights reserved. MIT License.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
@@ -2248,6 +2248,16 @@ export class ERR_FALSY_VALUE_REJECTION extends NodeError {
     this.reason = reason;
   }
 }
+
+export class ERR_HTTP2_TOO_MANY_CUSTOM_SETTINGS extends NodeError {
+  constructor() {
+    super(
+      "ERR_HTTP2_TOO_MANY_CUSTOM_SETTINGS",
+      "Number of custom settings exceeds MAX_ADDITIONAL_SETTINGS",
+    );
+  }
+}
+
 export class ERR_HTTP2_INVALID_SETTING_VALUE extends NodeRangeError {
   actual: unknown;
   min?: number;
@@ -2421,7 +2431,7 @@ export class ERR_INVALID_PACKAGE_TARGET extends NodeError {
     if (key === ".") {
       assert(isImport === false);
       msg = `Invalid "exports" main target ${JSON.stringify(target)} defined ` +
-        `in the package config ${pkgPath}package.json${
+        `in the package config ${displayJoin(pkgPath, "package.json")}${
           base ? ` imported from ${base}` : ""
         }${relError ? '; targets must start with "./"' : ""}`;
     } else {
@@ -2429,9 +2439,11 @@ export class ERR_INVALID_PACKAGE_TARGET extends NodeError {
         JSON.stringify(
           target,
         )
-      } defined for '${key}' in the package config ${pkgPath}package.json${
-        base ? ` imported from ${base}` : ""
-      }${relError ? '; targets must start with "./"' : ""}`;
+      } defined for '${key}' in the package config ${
+        displayJoin(pkgPath, "package.json")
+      }${base ? ` imported from ${base}` : ""}${
+        relError ? '; targets must start with "./"' : ""
+      }`;
     }
     super("ERR_INVALID_PACKAGE_TARGET", msg);
   }
@@ -2444,7 +2456,9 @@ export class ERR_PACKAGE_IMPORT_NOT_DEFINED extends NodeTypeError {
     base: string,
   ) {
     const msg = `Package import specifier "${specifier}" is not defined${
-      packagePath ? ` in package ${packagePath}package.json` : ""
+      packagePath
+        ? ` in package ${displayJoin(packagePath, "package.json")}`
+        : ""
     } imported from ${base}`;
 
     super("ERR_PACKAGE_IMPORT_NOT_DEFINED", msg);
@@ -2455,17 +2469,46 @@ export class ERR_PACKAGE_PATH_NOT_EXPORTED extends NodeError {
   constructor(subpath: string, pkgPath: string, basePath?: string) {
     let msg: string;
     if (subpath === ".") {
-      msg = `No "exports" main defined in ${pkgPath}package.json${
-        basePath ? ` imported from ${basePath}` : ""
-      }`;
+      msg = `No "exports" main defined in ${
+        displayJoin(pkgPath, "package.json")
+      }${basePath ? ` imported from ${basePath}` : ""}`;
     } else {
-      msg =
-        `Package subpath '${subpath}' is not defined by "exports" in ${pkgPath}package.json${
-          basePath ? ` imported from ${basePath}` : ""
-        }`;
+      msg = `Package subpath '${subpath}' is not defined by "exports" in ${
+        displayJoin(pkgPath, "package.json")
+      }${basePath ? ` imported from ${basePath}` : ""}`;
     }
 
     super("ERR_PACKAGE_PATH_NOT_EXPORTED", msg);
+  }
+}
+
+export class ERR_PARSE_ARGS_INVALID_OPTION_VALUE extends NodeTypeError {
+  constructor(x: string) {
+    super("ERR_PARSE_ARGS_INVALID_OPTION_VALUE", x);
+  }
+}
+
+export class ERR_PARSE_ARGS_UNEXPECTED_POSITIONAL extends NodeTypeError {
+  constructor(x: string) {
+    super(
+      "ERR_PARSE_ARGS_UNEXPECTED_POSITIONAL",
+      `Unexpected argument '${x}'. This ` +
+        `command does not take positional arguments`,
+    );
+  }
+}
+
+export class ERR_PARSE_ARGS_UNKNOWN_OPTION extends NodeTypeError {
+  constructor(option, allowPositionals) {
+    const suggestDashDash = allowPositionals
+      ? ". To specify a positional " +
+        "argument starting with a '-', place it at the end of the command after " +
+        `'--', as in '-- ${JSONStringify(option)}`
+      : "";
+    super(
+      "ERR_PARSE_ARGS_UNKNOWN_OPTION",
+      `Unknown option '${option}'${suggestDashDash}`,
+    );
   }
 }
 
@@ -2507,6 +2550,15 @@ export class ERR_OS_NO_HOMEDIR extends NodeSystemError {
       errno: isWindows ? osConstants.errno.ENOENT : osConstants.errno.ENOTDIR,
     };
     super(code, ctx, "Path is not a directory");
+  }
+}
+
+export class ERR_HTTP_SOCKET_ASSIGNED extends NodeError {
+  constructor() {
+    super(
+      "ERR_HTTP_SOCKET_ASSIGNED",
+      `ServerResponse has an already assigned socket`,
+    );
   }
 }
 
@@ -2619,6 +2671,12 @@ function determineSpecificType(value: any) {
   if (inspected.length > 28) inspected = `${inspected.slice(0, 25)}...`;
 
   return `type ${typeof value} (${inspected})`;
+}
+
+// Non-robust path join
+function displayJoin(dir: string, fileName: string) {
+  const sep = dir.includes("\\") ? "\\" : "/";
+  return dir.endsWith(sep) ? dir + fileName : dir + sep + fileName;
 }
 
 export { codes, genericNodeError, hideStackFrames };

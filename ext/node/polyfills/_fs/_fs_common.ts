@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
@@ -108,7 +108,7 @@ export function checkEncoding(encoding: Encodings | null): Encodings | null {
 export function getOpenOptions(
   flag: string | number | undefined,
 ): Deno.OpenOptions {
-  if (!flag) {
+  if (flag === undefined) {
     return { create: true, append: true };
   }
 

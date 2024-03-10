@@ -1,10 +1,12 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+mod in_memory_fs;
 mod interface;
 mod ops;
 mod std_fs;
 pub mod sync;
 
+pub use crate::in_memory_fs::InMemoryFs;
 pub use crate::interface::FileSystem;
 pub use crate::interface::FileSystemRc;
 pub use crate::interface::FsDirEntry;
@@ -64,11 +66,15 @@ pub trait FsPermissions {
   }
 }
 
+pub const UNSTABLE_FEATURE_NAME: &str = "fs";
+
 /// Helper for checking unstable features. Used for sync ops.
 fn check_unstable(state: &OpState, api_name: &str) {
+  // TODO(bartlomieju): replace with `state.feature_checker.check_or_exit`
+  // once we phase out `check_or_exit_with_legacy_fallback`
   state
     .feature_checker
-    .check_legacy_unstable_or_exit(api_name);
+    .check_or_exit_with_legacy_fallback(UNSTABLE_FEATURE_NAME, api_name);
 }
 
 deno_core::extension!(deno_fs,
@@ -126,10 +132,14 @@ deno_core::extension!(deno_fs,
     op_fs_seek_async,
     op_fs_fdatasync_sync,
     op_fs_fdatasync_async,
+    op_fs_fdatasync_sync_unstable,
+    op_fs_fdatasync_async_unstable,
     op_fs_fsync_sync,
     op_fs_fsync_async,
-    op_fs_fstat_sync,
-    op_fs_fstat_async,
+    op_fs_fsync_sync_unstable,
+    op_fs_fsync_async_unstable,
+    op_fs_file_stat_sync,
+    op_fs_file_stat_async,
     op_fs_flock_sync,
     op_fs_flock_async,
     op_fs_funlock_sync,

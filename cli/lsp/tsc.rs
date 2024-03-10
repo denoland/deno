@@ -1,9 +1,8 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use super::analysis::CodeActionData;
 use super::code_lens;
 use super::config;
-use super::documents::cell_to_file_specifier;
 use super::documents::AssetOrDocument;
 use super::documents::DocumentsFilter;
 use super::language_server;
@@ -21,6 +20,7 @@ use super::urls::LspClientUrl;
 use super::urls::LspUrlMap;
 use super::urls::INVALID_SPECIFIER;
 
+use crate::args::jsr_url;
 use crate::args::FmtOptionsConfig;
 use crate::args::TsConfig;
 use crate::cache::HttpCache;
@@ -37,6 +37,7 @@ use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
+use deno_core::futures::FutureExt;
 use deno_core::located_script_name;
 use deno_core::op2;
 use deno_core::parking_lot::Mutex;
@@ -47,10 +48,14 @@ use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::serde_v8;
+use deno_core::v8;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
+use deno_core::PollEventLoopOptions;
 use deno_core::RuntimeOptions;
+use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::tokio_util::create_basic_runtime;
 use lazy_regex::lazy_regex;
 use log::error;
@@ -62,13 +67,16 @@ use serde_repr::Serialize_repr;
 use std::cmp;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::net::SocketAddr;
 use std::ops::Range;
 use std::path::Path;
+use std::rc::Rc;
 use std::sync::Arc;
 use std::thread;
 use text_size::TextRange;
 use text_size::TextSize;
 use tokio::sync::mpsc;
+use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
 use tower_lsp::jsonrpc::Error as LspError;
@@ -99,24 +107,90 @@ type Request = (
   CancellationToken,
 );
 
-/// Relevant subset of https://github.com/denoland/deno/blob/80331d1fe5b85b829ac009fdc201c128b3427e11/cli/tsc/dts/typescript.d.ts#L6658.
+#[derive(Debug, Clone, Copy, Serialize_repr)]
+#[repr(u8)]
+pub enum IndentStyle {
+  #[allow(dead_code)]
+  None = 0,
+  Block = 1,
+  #[allow(dead_code)]
+  Smart = 2,
+}
+
+/// Relevant subset of https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6658.
 #[derive(Clone, Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FormatCodeSettings {
-  convert_tabs_to_spaces: Option<bool>,
+  base_indent_size: Option<u8>,
   indent_size: Option<u8>,
+  tab_size: Option<u8>,
+  new_line_character: Option<String>,
+  convert_tabs_to_spaces: Option<bool>,
+  indent_style: Option<IndentStyle>,
+  trim_trailing_whitespace: Option<bool>,
+  insert_space_after_comma_delimiter: Option<bool>,
+  insert_space_after_semicolon_in_for_statements: Option<bool>,
+  insert_space_before_and_after_binary_operators: Option<bool>,
+  insert_space_after_constructor: Option<bool>,
+  insert_space_after_keywords_in_control_flow_statements: Option<bool>,
+  insert_space_after_function_keyword_for_anonymous_functions: Option<bool>,
+  insert_space_after_opening_and_before_closing_nonempty_parenthesis:
+    Option<bool>,
+  insert_space_after_opening_and_before_closing_nonempty_brackets: Option<bool>,
+  insert_space_after_opening_and_before_closing_nonempty_braces: Option<bool>,
+  insert_space_after_opening_and_before_closing_template_string_braces:
+    Option<bool>,
+  insert_space_after_opening_and_before_closing_jsx_expression_braces:
+    Option<bool>,
+  insert_space_after_type_assertion: Option<bool>,
+  insert_space_before_function_parenthesis: Option<bool>,
+  place_open_brace_on_new_line_for_functions: Option<bool>,
+  place_open_brace_on_new_line_for_control_blocks: Option<bool>,
+  insert_space_before_type_annotation: Option<bool>,
+  indent_multi_line_object_literal_beginning_on_blank_line: Option<bool>,
   semicolons: Option<SemicolonPreference>,
+  indent_switch_case: Option<bool>,
 }
 
 impl From<&FmtOptionsConfig> for FormatCodeSettings {
   fn from(config: &FmtOptionsConfig) -> Self {
     FormatCodeSettings {
-      convert_tabs_to_spaces: Some(!config.use_tabs.unwrap_or(false)),
+      base_indent_size: Some(0),
       indent_size: Some(config.indent_width.unwrap_or(2)),
+      tab_size: Some(config.indent_width.unwrap_or(2)),
+      new_line_character: Some("\n".to_string()),
+      convert_tabs_to_spaces: Some(!config.use_tabs.unwrap_or(false)),
+      indent_style: Some(IndentStyle::Block),
+      trim_trailing_whitespace: Some(false),
+      insert_space_after_comma_delimiter: Some(true),
+      insert_space_after_semicolon_in_for_statements: Some(true),
+      insert_space_before_and_after_binary_operators: Some(true),
+      insert_space_after_constructor: Some(false),
+      insert_space_after_keywords_in_control_flow_statements: Some(true),
+      insert_space_after_function_keyword_for_anonymous_functions: Some(true),
+      insert_space_after_opening_and_before_closing_nonempty_parenthesis: Some(
+        false,
+      ),
+      insert_space_after_opening_and_before_closing_nonempty_brackets: Some(
+        false,
+      ),
+      insert_space_after_opening_and_before_closing_nonempty_braces: Some(true),
+      insert_space_after_opening_and_before_closing_template_string_braces:
+        Some(false),
+      insert_space_after_opening_and_before_closing_jsx_expression_braces: Some(
+        false,
+      ),
+      insert_space_after_type_assertion: Some(false),
+      insert_space_before_function_parenthesis: Some(false),
+      place_open_brace_on_new_line_for_functions: Some(false),
+      place_open_brace_on_new_line_for_control_blocks: Some(false),
+      insert_space_before_type_annotation: Some(false),
+      indent_multi_line_object_literal_beginning_on_blank_line: Some(false),
       semicolons: match config.semi_colons {
         Some(false) => Some(SemicolonPreference::Remove),
         _ => Some(SemicolonPreference::Insert),
       },
+      indent_switch_case: Some(true),
     }
   }
 }
@@ -141,41 +215,68 @@ fn normalize_diagnostic(
   Ok(())
 }
 
-#[derive(Clone, Debug)]
 pub struct TsServer {
+  performance: Arc<Performance>,
+  cache: Arc<dyn HttpCache>,
   sender: mpsc::UnboundedSender<Request>,
+  receiver: Mutex<Option<mpsc::UnboundedReceiver<Request>>>,
   specifier_map: Arc<TscSpecifierMap>,
+  inspector_server: Mutex<Option<Arc<InspectorServer>>>,
+}
+
+impl std::fmt::Debug for TsServer {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.debug_struct("TsServer")
+      .field("performance", &self.performance)
+      .field("cache", &self.cache)
+      .field("sender", &self.sender)
+      .field("receiver", &self.receiver)
+      .field("specifier_map", &self.specifier_map)
+      .field("inspector_server", &self.inspector_server.lock().is_some())
+      .finish()
+  }
 }
 
 impl TsServer {
   pub fn new(performance: Arc<Performance>, cache: Arc<dyn HttpCache>) -> Self {
-    let specifier_map = Arc::new(TscSpecifierMap::new());
-    let specifier_map_ = specifier_map.clone();
-    let (tx, mut rx) = mpsc::unbounded_channel::<Request>();
-    let _join_handle = thread::spawn(move || {
-      let mut ts_runtime = js_runtime(performance, cache, specifier_map_);
-
-      let runtime = create_basic_runtime();
-      runtime.block_on(async {
-        let mut started = false;
-        while let Some((req, state_snapshot, tx, token)) = rx.recv().await {
-          if !started {
-            // TODO(@kitsonk) need to reflect the debug state of the lsp here
-            start(&mut ts_runtime, false).unwrap();
-            started = true;
-          }
-          let value = request(&mut ts_runtime, state_snapshot, req, token);
-          if tx.send(value).is_err() {
-            lsp_warn!("Unable to send result to client.");
-          }
-        }
-      })
-    });
-
+    let (tx, request_rx) = mpsc::unbounded_channel::<Request>();
     Self {
+      performance,
+      cache,
       sender: tx,
-      specifier_map,
+      receiver: Mutex::new(Some(request_rx)),
+      specifier_map: Arc::new(TscSpecifierMap::new()),
+      inspector_server: Mutex::new(None),
     }
+  }
+
+  pub fn start(&self, inspector_server_addr: Option<String>) {
+    let maybe_inspector_server = inspector_server_addr.and_then(|addr| {
+      let addr: SocketAddr = match addr.parse() {
+        Ok(addr) => addr,
+        Err(err) => {
+          lsp_warn!("Invalid inspector server address \"{}\": {}", &addr, err);
+          return None;
+        }
+      };
+      Some(Arc::new(InspectorServer::new(addr, "deno-lsp-tsc")))
+    });
+    *self.inspector_server.lock() = maybe_inspector_server.clone();
+    // TODO(bartlomieju): why is the join_handle ignored here? Should we store it
+    // on the `TsServer` struct.
+    let receiver = self.receiver.lock().take().unwrap();
+    let performance = self.performance.clone();
+    let cache = self.cache.clone();
+    let specifier_map = self.specifier_map.clone();
+    let _join_handle = thread::spawn(move || {
+      run_tsc_thread(
+        receiver,
+        performance.clone(),
+        cache.clone(),
+        specifier_map.clone(),
+        maybe_inspector_server,
+      )
+    });
   }
 
   pub async fn get_diagnostics(
@@ -191,9 +292,9 @@ impl TsServer {
         .map(|s| self.specifier_map.denormalize(&s))
         .collect::<Vec<String>>(),]),
     };
-    let diagnostics_map_ = self.request_with_cancellation::<HashMap<String, Vec<crate::tsc::Diagnostic>>>(snapshot, req, token).await?;
-    let mut diagnostics_map = HashMap::new();
-    for (mut specifier, mut diagnostics) in diagnostics_map_ {
+    let raw_diagnostics = self.request_with_cancellation::<HashMap<String, Vec<crate::tsc::Diagnostic>>>(snapshot, req, token).await?;
+    let mut diagnostics_map = HashMap::with_capacity(raw_diagnostics.len());
+    for (mut specifier, mut diagnostics) in raw_diagnostics {
       specifier = self.specifier_map.normalize(&specifier)?.to_string();
       for diagnostic in &mut diagnostics {
         normalize_diagnostic(diagnostic, &self.specifier_map)?;
@@ -294,9 +395,6 @@ impl TsServer {
     format_code_settings: FormatCodeSettings,
     preferences: UserPreferences,
   ) -> Vec<CodeFixAction> {
-    let mut format_code_settings = json!(format_code_settings);
-    let format_object = format_code_settings.as_object_mut().unwrap();
-    format_object.insert("indentStyle".to_string(), json!(1));
     let req = TscRequest {
       method: "getCodeFixesAtPosition",
       // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6257
@@ -363,9 +461,6 @@ impl TsServer {
     format_code_settings: FormatCodeSettings,
     preferences: UserPreferences,
   ) -> Result<CombinedCodeActions, LspError> {
-    let mut format_code_settings = json!(format_code_settings);
-    let format_object = format_code_settings.as_object_mut().unwrap();
-    format_object.insert("indentStyle".to_string(), json!(1));
     let req = TscRequest {
       method: "getCombinedCodeFix",
       // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6258
@@ -403,15 +498,6 @@ impl TsServer {
     action_name: String,
     preferences: Option<UserPreferences>,
   ) -> Result<RefactorEditInfo, LspError> {
-    let mut format_code_settings = json!(format_code_settings);
-    let format_object = format_code_settings.as_object_mut().unwrap();
-    format_object.insert("indentStyle".to_string(), json!(2));
-    format_object.insert(
-      "insertSpaceBeforeAndAfterBinaryOperators".to_string(),
-      json!(true),
-    );
-    format_object
-      .insert("insertSpaceAfterCommaDelimiter".to_string(), json!(true));
     let req = TscRequest {
       method: "getEditsForRefactor",
       // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6275
@@ -896,9 +982,12 @@ impl TsServer {
   where
     R: de::DeserializeOwned,
   {
-    self
+    let mark = self.performance.mark(format!("tsc.request.{}", req.method));
+    let r = self
       .request_with_cancellation(snapshot, req, Default::default())
-      .await
+      .await;
+    self.performance.measure(mark);
+    r
   }
 
   async fn request_with_cancellation<R>(
@@ -910,11 +999,24 @@ impl TsServer {
   where
     R: de::DeserializeOwned,
   {
+    // When an LSP request is cancelled by the client, the future this is being
+    // executed under and any local variables here will be dropped at the next
+    // await point. To pass on that cancellation to the TS thread, we make this
+    // wrapper which cancels the request's token on drop.
+    struct DroppableToken(CancellationToken);
+    impl Drop for DroppableToken {
+      fn drop(&mut self) {
+        self.0.cancel();
+      }
+    }
+    let token = token.child_token();
+    let droppable_token = DroppableToken(token.clone());
     let (tx, rx) = oneshot::channel::<Result<Value, AnyError>>();
     if self.sender.send((req, snapshot, tx, token)).is_err() {
       return Err(anyhow!("failed to send request to tsc thread"));
     }
     let value = rx.await??;
+    drop(droppable_token);
     Ok(serde_json::from_value::<R>(value)?)
   }
 }
@@ -2013,8 +2115,13 @@ impl RenameLocations {
       LspClientUrl,
       lsp::TextDocumentEdit,
     > = HashMap::new();
+    let mut includes_non_files = false;
     for location in self.locations.iter() {
       let specifier = resolve_url(&location.document_span.file_name)?;
+      if specifier.scheme() != "file" {
+        includes_non_files = true;
+        continue;
+      }
       let uri = language_server.url_map.normalize_specifier(&specifier)?;
       let asset_or_doc = language_server.get_asset_or_document(&specifier)?;
 
@@ -2042,6 +2149,10 @@ impl RenameLocations {
           .to_range(asset_or_doc.line_index()),
         new_text: new_name.to_string(),
       }));
+    }
+
+    if includes_non_files {
+      language_server.client.show_message(lsp::MessageType::WARNING, "The renamed symbol had references in non-file schemed modules. These have not been modified.");
     }
 
     Ok(lsp::WorkspaceEdit {
@@ -2956,7 +3067,11 @@ fn get_parameters_from_parts(parts: &[SymbolDisplayPart]) -> Vec<String> {
           matches!(parts.get(idx + 1), Some(next) if next.text == "?");
         // Skip `this` and optional parameters.
         if !is_optional && part.text != "this" {
-          parameters.push(part.text.clone());
+          parameters.push(format!(
+            "${{{}:{}}}",
+            parameters.len() + 1,
+            &part.text
+          ));
         }
       }
     } else if part.kind == "punctuation" {
@@ -3041,13 +3156,32 @@ impl CompletionEntryDetails {
     } else {
       None
     };
+    let mut text_edit = original_item.text_edit.clone();
+    if let Some(specifier_rewrite) = &data.specifier_rewrite {
+      if let Some(text_edit) = &mut text_edit {
+        match text_edit {
+          lsp::CompletionTextEdit::Edit(text_edit) => {
+            text_edit.new_text = text_edit
+              .new_text
+              .replace(&specifier_rewrite.0, &specifier_rewrite.1);
+          }
+          lsp::CompletionTextEdit::InsertAndReplace(insert_replace_edit) => {
+            insert_replace_edit.new_text = insert_replace_edit
+              .new_text
+              .replace(&specifier_rewrite.0, &specifier_rewrite.1);
+          }
+        }
+      }
+    }
     let (command, additional_text_edits) = parse_code_actions(
       self.code_actions.as_ref(),
       data,
       specifier,
       language_server,
     )?;
+    let mut insert_text_format = original_item.insert_text_format;
     let insert_text = if data.use_code_snippet {
+      insert_text_format = Some(lsp::InsertTextFormat::SNIPPET);
       Some(format!(
         "{}({})",
         original_item
@@ -3065,8 +3199,10 @@ impl CompletionEntryDetails {
       detail,
       documentation,
       command,
+      text_edit,
       additional_text_edits,
       insert_text,
+      insert_text_format,
       // NOTE(bartlomieju): it's not entirely clear to me why we need to do that,
       // but when `completionItem/resolve` is called, we get a list of commit chars
       // even though we might have returned an empty list in `completion` request.
@@ -3102,7 +3238,7 @@ impl CompletionInfo {
     let items = self
       .entries
       .iter()
-      .map(|entry| {
+      .flat_map(|entry| {
         entry.as_completion_item(
           line_index.clone(),
           self,
@@ -3279,7 +3415,7 @@ impl CompletionEntry {
     specifier: &ModuleSpecifier,
     position: u32,
     language_server: &language_server::Inner,
-  ) -> lsp::CompletionItem {
+  ) -> Option<lsp::CompletionItem> {
     let mut label = self.name.clone();
     let mut label_details: Option<lsp::CompletionItemLabelDetails> = None;
     let mut kind: Option<lsp::CompletionItemKind> =
@@ -3355,6 +3491,8 @@ impl CompletionEntry {
                 specifier_rewrite =
                   Some((import_data.module_specifier, new_module_specifier));
               }
+            } else if source.starts_with(jsr_url().as_str()) {
+              return None;
             }
           }
         }
@@ -3394,7 +3532,7 @@ impl CompletionEntry {
       use_code_snippet,
     };
 
-    lsp::CompletionItem {
+    Some(lsp::CompletionItem {
       label,
       label_details,
       kind,
@@ -3409,7 +3547,7 @@ impl CompletionEntry {
       commit_characters,
       data: Some(json!({ "tsc": tsc })),
       ..Default::default()
-    }
+    })
   }
 }
 
@@ -3665,14 +3803,7 @@ impl TscSpecifierMap {
       return specifier.to_string();
     }
     let mut specifier = original.to_string();
-    let media_type = if original.scheme() == "deno-notebook-cell" {
-      if let Some(s) = cell_to_file_specifier(original) {
-        specifier = s.to_string();
-      }
-      MediaType::TypeScript
-    } else {
-      MediaType::from_specifier(original)
-    };
+    let media_type = MediaType::from_specifier(original);
     // If the URL-inferred media type doesn't correspond to tsc's path-inferred
     // media type, force it to be the same by appending an extension.
     if MediaType::from_path(Path::new(specifier.as_str())) != media_type {
@@ -3710,6 +3841,8 @@ impl TscSpecifierMap {
   }
 }
 
+// TODO(bartlomieju): we have similar struct in `cli/tsc/mod.rs` - maybe at least change
+// the name of the struct to avoid confusion?
 struct State {
   last_id: usize,
   performance: Arc<Performance>,
@@ -3767,12 +3900,6 @@ impl State {
   }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct SpecifierArgs {
-  specifier: String,
-}
-
 #[op2(fast)]
 fn op_is_cancelled(state: &mut OpState) -> bool {
   let state = state.borrow_mut::<State>();
@@ -3782,7 +3909,8 @@ fn op_is_cancelled(state: &mut OpState) -> bool {
 #[op2(fast)]
 fn op_is_node_file(state: &mut OpState, #[string] path: String) -> bool {
   let state = state.borrow::<State>();
-  match ModuleSpecifier::parse(&path) {
+  let mark = state.performance.mark("tsc.op.op_is_node_file");
+  let r = match ModuleSpecifier::parse(&path) {
     Ok(specifier) => state
       .state_snapshot
       .npm
@@ -3790,7 +3918,9 @@ fn op_is_node_file(state: &mut OpState, #[string] path: String) -> bool {
       .map(|n| n.npm_resolver.in_npm_package(&specifier))
       .unwrap_or(false),
     Err(_) => false,
-  }
+  };
+  state.performance.measure(mark);
+  r
 }
 
 #[derive(Debug, Serialize)]
@@ -3802,64 +3932,74 @@ struct LoadResponse {
 }
 
 #[op2]
-#[serde]
-fn op_load(
+fn op_load<'s>(
+  scope: &'s mut v8::HandleScope,
   state: &mut OpState,
-  #[serde] args: SpecifierArgs,
-) -> Result<Option<LoadResponse>, AnyError> {
+  #[string] specifier: &str,
+) -> Result<v8::Local<'s, v8::Value>, AnyError> {
   let state = state.borrow_mut::<State>();
-  let mark = state.performance.mark("op_load", Some(&args));
-  let specifier = state.specifier_map.normalize(args.specifier)?;
-  let asset_or_document = state.get_asset_or_document(&specifier);
+  let mark = state
+    .performance
+    .mark_with_args("tsc.op.op_load", specifier);
+  let specifier = state.specifier_map.normalize(specifier)?;
+  let maybe_load_response =
+    if specifier.as_str() == "internal:///missing_dependency.d.ts" {
+      None
+    } else {
+      let asset_or_document = state.get_asset_or_document(&specifier);
+      asset_or_document.map(|doc| LoadResponse {
+        data: doc.text(),
+        script_kind: crate::tsc::as_ts_script_kind(doc.media_type()),
+        version: state.script_version(&specifier),
+      })
+    };
+
+  let serialized = serde_v8::to_v8(scope, maybe_load_response)?;
+
   state.performance.measure(mark);
-  Ok(asset_or_document.map(|doc| LoadResponse {
-    data: doc.text(),
-    script_kind: crate::tsc::as_ts_script_kind(doc.media_type()),
-    version: state.script_version(&specifier),
-  }))
+  Ok(serialized)
 }
 
 #[op2]
-#[serde]
-fn op_resolve(
+fn op_resolve<'s>(
+  scope: &'s mut v8::HandleScope,
   state: &mut OpState,
   #[serde] args: ResolveArgs,
-) -> Result<Vec<Option<(String, String)>>, AnyError> {
+) -> Result<v8::Local<'s, v8::Value>, AnyError> {
   let state = state.borrow_mut::<State>();
-  let mark = state.performance.mark("op_resolve", Some(&args));
+  let mark = state.performance.mark_with_args("tsc.op.op_resolve", &args);
   let referrer = state.specifier_map.normalize(&args.base)?;
-  let result = match state.get_asset_or_document(&referrer) {
+  let specifiers = match state.get_asset_or_document(&referrer) {
     Some(referrer_doc) => {
       let resolved = state.state_snapshot.documents.resolve(
         args.specifiers,
         &referrer_doc,
         state.state_snapshot.npm.as_ref(),
       );
-      Ok(
-        resolved
-          .into_iter()
-          .map(|o| {
-            o.map(|(s, mt)| {
-              (
-                state.specifier_map.denormalize(&s),
-                mt.as_ts_extension().to_string(),
-              )
-            })
+      resolved
+        .into_iter()
+        .map(|o| {
+          o.map(|(s, mt)| {
+            (
+              state.specifier_map.denormalize(&s),
+              mt.as_ts_extension().to_string(),
+            )
           })
-          .collect(),
-      )
+        })
+        .collect()
     }
     None => {
       lsp_warn!(
         "Error resolving. Referring specifier \"{}\" was not found.",
         args.base
       );
-      Ok(vec![None; args.specifiers.len()])
+      vec![None; args.specifiers.len()]
     }
   };
 
+  let response = serde_v8::to_v8(scope, specifiers)?;
   state.performance.measure(mark);
-  result
+  Ok(response)
 }
 
 #[op2]
@@ -3872,6 +4012,7 @@ fn op_respond(state: &mut OpState, #[serde] args: Response) {
 #[serde]
 fn op_script_names(state: &mut OpState) -> Vec<String> {
   let state = state.borrow_mut::<State>();
+  let mark = state.performance.mark("tsc.op.op_script_names");
   let documents = &state.state_snapshot.documents;
   let all_docs = documents.documents(DocumentsFilter::AllDiagnosable);
   let mut seen = HashSet::new();
@@ -3901,7 +4042,7 @@ fn op_script_names(state: &mut OpState) -> Vec<String> {
     );
     for specifier in specifiers {
       if seen.insert(specifier.as_str()) {
-        if let Some(specifier) = documents.resolve_redirected(specifier) {
+        if let Some(specifier) = documents.resolve_specifier(specifier) {
           // only include dependencies we know to exist otherwise typescript will error
           if documents.exists(&specifier) {
             result.push(specifier.to_string());
@@ -3911,47 +4052,109 @@ fn op_script_names(state: &mut OpState) -> Vec<String> {
     }
   }
 
-  result
+  let r = result
     .into_iter()
     .map(|s| match ModuleSpecifier::parse(&s) {
       Ok(s) => state.specifier_map.denormalize(&s),
       Err(_) => s,
     })
-    .collect()
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ScriptVersionArgs {
-  specifier: String,
+    .collect();
+  state.performance.measure(mark);
+  r
 }
 
 #[op2]
 #[string]
 fn op_script_version(
   state: &mut OpState,
-  #[serde] args: ScriptVersionArgs,
+  #[string] specifier: &str,
 ) -> Result<Option<String>, AnyError> {
   let state = state.borrow_mut::<State>();
-  // this op is very "noisy" and measuring its performance is not useful, so we
-  // don't measure it uniquely anymore.
-  let specifier = state.specifier_map.normalize(args.specifier)?;
-  Ok(state.script_version(&specifier))
+  let mark = state.performance.mark("tsc.op.op_script_version");
+  let specifier = state.specifier_map.normalize(specifier)?;
+  let r = state.script_version(&specifier);
+  state.performance.measure(mark);
+  Ok(r)
 }
 
-/// Create and setup a JsRuntime based on a snapshot. It is expected that the
-/// supplied snapshot is an isolate that contains the TypeScript language
-/// server.
-fn js_runtime(
+#[op2]
+#[string]
+fn op_project_version(state: &mut OpState) -> String {
+  let state = state.borrow_mut::<State>();
+  let mark = state.performance.mark("tsc.op.op_project_version");
+  let r = state.state_snapshot.documents.project_version();
+  state.performance.measure(mark);
+  r
+}
+
+fn run_tsc_thread(
+  mut request_rx: UnboundedReceiver<Request>,
   performance: Arc<Performance>,
   cache: Arc<dyn HttpCache>,
   specifier_map: Arc<TscSpecifierMap>,
-) -> JsRuntime {
-  JsRuntime::new(RuntimeOptions {
+  maybe_inspector_server: Option<Arc<InspectorServer>>,
+) {
+  let has_inspector_server = maybe_inspector_server.is_some();
+  // Create and setup a JsRuntime based on a snapshot. It is expected that the
+  // supplied snapshot is an isolate that contains the TypeScript language
+  // server.
+  let mut tsc_runtime = JsRuntime::new(RuntimeOptions {
     extensions: vec![deno_tsc::init_ops(performance, cache, specifier_map)],
     startup_snapshot: Some(tsc::compiler_snapshot()),
+    inspector: maybe_inspector_server.is_some(),
     ..Default::default()
-  })
+  });
+
+  if let Some(server) = maybe_inspector_server {
+    server.register_inspector(
+      "ext:deno_tsc/99_main_compiler.js".to_string(),
+      &mut tsc_runtime,
+      false,
+    );
+  }
+
+  let tsc_future = async {
+    start_tsc(&mut tsc_runtime, false).unwrap();
+    let (request_signal_tx, mut request_signal_rx) = mpsc::unbounded_channel::<()>();
+    let tsc_runtime = Rc::new(tokio::sync::Mutex::new(tsc_runtime));
+    let tsc_runtime_ = tsc_runtime.clone();
+    let event_loop_fut = async {
+      loop {
+        if has_inspector_server {
+          tsc_runtime_.lock().await.run_event_loop(PollEventLoopOptions {
+            wait_for_inspector: false,
+            pump_v8_message_loop: true,
+          }).await.ok();
+        }
+        request_signal_rx.recv_many(&mut vec![], 1000).await;
+      }
+    };
+    tokio::pin!(event_loop_fut);
+    loop {
+      tokio::select! {
+        biased;
+        (maybe_request, mut tsc_runtime) = async { (request_rx.recv().await, tsc_runtime.lock().await) } => {
+          if let Some((req, state_snapshot, tx, token)) = maybe_request {
+            let value = request(&mut tsc_runtime, state_snapshot, req, token.clone());
+            request_signal_tx.send(()).unwrap();
+            let was_sent = tx.send(value).is_ok();
+            // Don't print the send error if the token is cancelled, it's expected
+            // to fail in that case and this commonly occurs.
+            if !was_sent && !token.is_cancelled() {
+              lsp_warn!("Unable to send result to client.");
+            }
+          } else {
+            break;
+          }
+        },
+        _ = &mut event_loop_fut => {}
+      }
+    }
+  }
+  .boxed_local();
+
+  let runtime = create_basic_runtime();
+  runtime.block_on(tsc_future)
 }
 
 deno_core::extension!(deno_tsc,
@@ -3963,6 +4166,7 @@ deno_core::extension!(deno_tsc,
     op_respond,
     op_script_names,
     op_script_version,
+    op_project_version,
   ],
   options = {
     performance: Arc<Performance>,
@@ -3987,11 +4191,11 @@ deno_core::extension!(deno_tsc,
 
 /// Instruct a language server runtime to start the language server and provide
 /// it with a minimal bootstrap configuration.
-fn start(runtime: &mut JsRuntime, debug: bool) -> Result<(), AnyError> {
+fn start_tsc(runtime: &mut JsRuntime, debug: bool) -> Result<(), AnyError> {
   let init_config = json!({ "debug": debug });
   let init_src = format!("globalThis.serverInit({init_config});");
 
-  runtime.execute_script(located_script_name!(), init_src.into())?;
+  runtime.execute_script(located_script_name!(), init_src)?;
   Ok(())
 }
 
@@ -4016,23 +4220,7 @@ impl From<lsp::CompletionTriggerKind> for CompletionTriggerKind {
   }
 }
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "kebab-case")]
-#[allow(dead_code)]
-pub enum QuotePreference {
-  Auto,
-  Double,
-  Single,
-}
-
-impl From<&FmtOptionsConfig> for QuotePreference {
-  fn from(config: &FmtOptionsConfig) -> Self {
-    match config.single_quote {
-      Some(true) => QuotePreference::Single,
-      _ => QuotePreference::Double,
-    }
-  }
-}
+pub type QuotePreference = config::QuoteStyle;
 
 pub type ImportModuleSpecifierPreference = config::ImportModuleSpecifier;
 
@@ -4172,9 +4360,8 @@ impl UserPreferences {
       use_label_details_in_completion_entries: Some(true),
       ..Default::default()
     };
-    let Some(language_settings) = config
-      .workspace_settings()
-      .language_settings_for_specifier(specifier)
+    let Some(language_settings) =
+      config.language_settings_for_specifier(specifier)
     else {
       return base_preferences;
     };
@@ -4262,6 +4449,12 @@ impl UserPreferences {
       provide_prefix_and_suffix_text_for_rename: Some(
         language_settings.preferences.use_aliases_for_renames,
       ),
+      // Only use workspace settings for quote style if there's no `deno.json`.
+      quote_preference: if config.has_config_file() {
+        base_preferences.quote_preference
+      } else {
+        Some(language_settings.preferences.quote_style)
+      },
       ..base_preferences
     }
   }
@@ -4355,6 +4548,9 @@ fn request(
   request: TscRequest,
   token: CancellationToken,
 ) -> Result<Value, AnyError> {
+  if token.is_cancelled() {
+    return Err(anyhow!("Operation was cancelled."));
+  }
   let (performance, id) = {
     let op_state = runtime.op_state();
     let mut op_state = op_state.borrow_mut();
@@ -4365,8 +4561,10 @@ fn request(
     let id = state.last_id;
     (state.performance.clone(), id)
   };
-  let mark =
-    performance.mark("request", Some((request.method, request.args.clone())));
+  let mark = performance.mark_with_args(
+    format!("tsc.host.{}", request.method),
+    request.args.clone(),
+  );
   assert!(
     request.args.is_array(),
     "Internal error: expected args to be array"
@@ -4375,15 +4573,14 @@ fn request(
     "globalThis.serverRequest({id}, \"{}\", {});",
     request.method, &request.args
   );
-  runtime.execute_script(located_script_name!(), request_src.into())?;
+  runtime.execute_script(located_script_name!(), request_src)?;
 
   let op_state = runtime.op_state();
   let mut op_state = op_state.borrow_mut();
   let state = op_state.borrow_mut::<State>();
 
   performance.measure(mark);
-  if let Some(response) = state.response.clone() {
-    state.response = None;
+  if let Some(response) = state.response.take() {
     Ok(response.data)
   } else {
     Err(custom_error(
@@ -4449,6 +4646,7 @@ mod tests {
     let snapshot = Arc::new(mock_state_snapshot(sources, &location));
     let performance = Arc::new(Performance::default());
     let ts_server = TsServer::new(performance, cache.clone());
+    ts_server.start(None);
     let ts_config = TsConfig::new(config);
     assert!(ts_server
       .configure(snapshot.clone(), ts_config,)
@@ -4914,6 +5112,14 @@ mod tests {
         b"export const b = \"b\";\n\nexport const a = \"b\";\n",
       )
       .unwrap();
+    let snapshot = {
+      let mut documents = snapshot.documents.clone();
+      documents.increment_project_version();
+      Arc::new(StateSnapshot {
+        documents,
+        ..snapshot.as_ref().clone()
+      })
+    };
     let specifier = resolve_url("file:///a.ts").unwrap();
     let diagnostics = ts_server
       .get_diagnostics(snapshot.clone(), vec![specifier], Default::default())
@@ -5263,7 +5469,7 @@ mod tests {
       .variable_types
       .suppress_when_type_matches_name = true;
     let mut config = config::Config::new();
-    config.set_workspace_settings(settings);
+    config.set_workspace_settings(settings, None);
     let user_preferences = UserPreferences::from_config_for_specifier(
       &config,
       &Default::default(),

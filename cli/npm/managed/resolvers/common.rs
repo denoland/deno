@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::HashMap;
 use std::io::ErrorKind;
@@ -29,7 +29,7 @@ pub trait NpmPackageFsResolver: Send + Sync {
   fn root_dir_url(&self) -> &Url;
 
   /// The local node_modules folder if it is applicable to the implementation.
-  fn node_modules_path(&self) -> Option<PathBuf>;
+  fn node_modules_path(&self) -> Option<&PathBuf>;
 
   fn package_folder(
     &self,

@@ -1,0 +1,17 @@
+Error: Error with errors prop.
+    at [WILDCARD]/error_with_errors_prop.js:1:15
+
+Error: Error with errors prop.
+    at [WILDCARD]/error_with_errors_prop.js:1:15 {
+  errors: [
+    Error: Error message 1.
+    at [WILDCARD]/error_with_errors_prop.js:3:3,
+    Error: Error message 2.
+    at [WILDCARD]/error_with_errors_prop.js:4:3
+  ]
+}
+
+error: Uncaught (in promise) Error: Error with errors prop.
+const error = new Error("Error with errors prop.");
+              ^
+    at [WILDCARD]/error_with_errors_prop.js:1:15

@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::HashSet;
 use std::collections::VecDeque;
@@ -11,6 +11,7 @@ use once_cell::sync::Lazy;
 
 use deno_core::error::AnyError;
 
+use crate::path::to_file_specifier;
 use crate::resolution::NodeResolverRc;
 use crate::NodeModuleKind;
 use crate::NodePermissions;
@@ -106,7 +107,7 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
       handled_reexports.insert(reexport.to_string());
 
       // First, resolve the reexport specifier
-      let resolved_reexport = self.resolve(
+      let reexport_specifier = self.resolve(
         &reexport,
         &referrer,
         // FIXME(bartlomieju): check if these conditions are okay, probably
@@ -117,8 +118,6 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
       )?;
 
       // Second, resolve its exports and re-exports
-      let reexport_specifier =
-        ModuleSpecifier::from_file_path(&resolved_reexport).unwrap();
       let analysis = self
         .cjs_code_analyzer
         .analyze_cjs(&reexport_specifier, None)
@@ -177,7 +176,7 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
     conditions: &[&str],
     mode: NodeResolutionMode,
     permissions: &dyn NodePermissions,
-  ) -> Result<PathBuf, AnyError> {
+  ) -> Result<ModuleSpecifier, AnyError> {
     if specifier.starts_with('/') {
       todo!();
     }
@@ -186,14 +185,14 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
     if specifier.starts_with("./") || specifier.starts_with("../") {
       if let Some(parent) = referrer_path.parent() {
         return self
-          .file_extension_probe(parent.join(specifier), &referrer_path);
+          .file_extension_probe(parent.join(specifier), &referrer_path)
+          .map(|p| to_file_specifier(&p));
       } else {
         todo!();
       }
     }
 
     // We've got a bare specifier or maybe bare_specifier/blah.js"
-
     let (package_specifier, package_subpath) =
       parse_specifier(specifier).unwrap();
 
@@ -205,18 +204,17 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
     )?;
 
     let package_json_path = module_dir.join("package.json");
-    if self.fs.exists_sync(&package_json_path) {
-      let package_json = PackageJson::load(
-        &*self.fs,
-        &*self.npm_resolver,
-        permissions,
-        package_json_path.clone(),
-      )?;
-
+    let package_json = PackageJson::load(
+      &*self.fs,
+      &*self.npm_resolver,
+      permissions,
+      package_json_path.clone(),
+    )?;
+    if package_json.exists {
       if let Some(exports) = &package_json.exports {
         return self.node_resolver.package_exports_resolve(
           &package_json_path,
-          package_subpath,
+          &package_subpath,
           exports,
           referrer,
           NodeModuleKind::Esm,
@@ -232,27 +230,47 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
         if self.fs.is_dir_sync(&d) {
           // subdir might have a package.json that specifies the entrypoint
           let package_json_path = d.join("package.json");
-          if self.fs.exists_sync(&package_json_path) {
-            let package_json = PackageJson::load(
-              &*self.fs,
-              &*self.npm_resolver,
-              permissions,
-              package_json_path,
-            )?;
+          let package_json = PackageJson::load(
+            &*self.fs,
+            &*self.npm_resolver,
+            permissions,
+            package_json_path,
+          )?;
+          if package_json.exists {
             if let Some(main) = package_json.main(NodeModuleKind::Cjs) {
-              return Ok(d.join(main).clean());
+              return Ok(to_file_specifier(&d.join(main).clean()));
             }
           }
 
-          return Ok(d.join("index.js").clean());
+          return Ok(to_file_specifier(&d.join("index.js").clean()));
         }
-        return self.file_extension_probe(d, &referrer_path);
+        return self
+          .file_extension_probe(d, &referrer_path)
+          .map(|p| to_file_specifier(&p));
       } else if let Some(main) = package_json.main(NodeModuleKind::Cjs) {
-        return Ok(module_dir.join(main).clean());
+        return Ok(to_file_specifier(&module_dir.join(main).clean()));
       } else {
-        return Ok(module_dir.join("index.js").clean());
+        return Ok(to_file_specifier(&module_dir.join("index.js").clean()));
       }
     }
+
+    // as a fallback, attempt to resolve it via the ancestor directories
+    let mut last = referrer_path.as_path();
+    while let Some(parent) = last.parent() {
+      if !self.npm_resolver.in_npm_package_at_dir_path(parent) {
+        break;
+      }
+      let path = if parent.ends_with("node_modules") {
+        parent.join(specifier)
+      } else {
+        parent.join("node_modules").join(specifier)
+      };
+      if let Ok(path) = self.file_extension_probe(path, &referrer_path) {
+        return Ok(to_file_specifier(&path));
+      }
+      last = parent;
+    }
+
     Err(not_found(specifier, &referrer_path))
   }
 
@@ -274,10 +292,19 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
         return Ok(p);
       }
     } else if let Some(file_name) = p.file_name() {
-      let p_js =
-        p.with_file_name(format!("{}.js", file_name.to_str().unwrap()));
-      if self.fs.is_file_sync(&p_js) {
-        return Ok(p_js);
+      {
+        let p_js =
+          p.with_file_name(format!("{}.js", file_name.to_str().unwrap()));
+        if self.fs.is_file_sync(&p_js) {
+          return Ok(p_js);
+        }
+      }
+      {
+        let p_json =
+          p.with_file_name(format!("{}.json", file_name.to_str().unwrap()));
+        if self.fs.is_file_sync(&p_json) {
+          return Ok(p_json);
+        }
       }
     }
     Err(not_found(&p.to_string_lossy(), referrer))
@@ -326,6 +353,7 @@ static RESERVED_WORDS: Lazy<HashSet<&str>> = Lazy::new(|| {
     "interface",
     "let",
     "long",
+    "mod",
     "native",
     "new",
     "null",
@@ -364,6 +392,16 @@ fn add_export(
 ) {
   fn is_valid_var_decl(name: &str) -> bool {
     // it's ok to be super strict here
+    if name.is_empty() {
+      return false;
+    }
+
+    if let Some(first) = name.chars().next() {
+      if !first.is_ascii_alphabetic() && first != '_' && first != '$' {
+        return false;
+      }
+    }
+
     name
       .chars()
       .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$')
@@ -451,7 +489,7 @@ mod tests {
     let mut temp_var_count = 0;
     let mut source = vec![];
 
-    let exports = vec!["static", "server", "app", "dashed-export"];
+    let exports = vec!["static", "server", "app", "dashed-export", "3d"];
     for export in exports {
       add_export(&mut source, export, "init", &mut temp_var_count);
     }
@@ -464,6 +502,8 @@ mod tests {
         "export const app = init;".to_string(),
         "const __deno_export_2__ = init;".to_string(),
         "export { __deno_export_2__ as \"dashed-export\" };".to_string(),
+        "const __deno_export_3__ = init;".to_string(),
+        "export { __deno_export_3__ as \"3d\" };".to_string(),
       ]
     )
   }
