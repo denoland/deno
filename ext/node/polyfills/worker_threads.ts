@@ -15,6 +15,7 @@ import {
   MessageChannel,
   MessagePort,
   MessagePortIdSymbol,
+  MessagePortPrototype,
   serializeJsMessageData,
 } from "ext:deno_web/13_message_port.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
@@ -25,6 +26,7 @@ import { BroadcastChannel } from "ext:deno_broadcast_channel/01_broadcast_channe
 import { op_message_port_recv_message_sync } from "ext:core/ops";
 import { isAbsolute, resolve } from "node:path";
 
+const { ObjectPrototypeIsPrototypeOf } = primordials;
 const {
   Error,
   Symbol,
@@ -504,7 +506,7 @@ export function moveMessagePortToContext() {
  * @returns {object | undefined}
  */
 export function receiveMessageOnPort(port: MessagePort): object | undefined {
-  if (!(port instanceof MessagePort)) {
+  if (!(ObjectPrototypeIsPrototypeOf(MessagePortPrototype, port))) {
     const err = new TypeError(
       'The "port" argument must be a MessagePort instance',
     );
