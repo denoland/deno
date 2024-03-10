@@ -2,6 +2,8 @@
 
 use std::collections::HashMap;
 use std::io::IsTerminal;
+use std::path::Path;
+use std::process::Stdio;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -24,13 +26,13 @@ use lsp_types::Url;
 use serde::Deserialize;
 use serde::Serialize;
 use sha2::Digest;
+use tokio::process::Command;
 
 use crate::args::jsr_api_url;
 use crate::args::jsr_url;
 use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::PublishFlags;
-use crate::args::TypeCheckMode;
 use crate::cache::LazyGraphSourceParser;
 use crate::cache::ParsedSourceCache;
 use crate::factory::CliFactory;
@@ -50,6 +52,7 @@ mod auth;
 mod diagnostics;
 mod graph;
 mod paths;
+mod pm;
 mod provenance;
 mod publish_order;
 mod tar;
@@ -57,8 +60,8 @@ mod unfurl;
 
 use auth::get_auth_method;
 use auth::AuthMethod;
+pub use pm::add;
 use publish_order::PublishOrderGraph;
-pub use unfurl::deno_json_deps;
 use unfurl::SpecifierUnfurler;
 
 use super::check::TypeChecker;
@@ -94,9 +97,9 @@ async fn prepare_publish(
   deno_json: &ConfigFile,
   source_cache: Arc<ParsedSourceCache>,
   graph: Arc<deno_graph::ModuleGraph>,
+  cli_options: Arc<CliOptions>,
   mapped_resolver: Arc<MappedSpecifierResolver>,
   sloppy_imports_resolver: Option<SloppyImportsResolver>,
-  bare_node_builtins: bool,
   diagnostics_collector: &PublishDiagnosticsCollector,
 ) -> Result<Rc<PreparedPublishPackage>, AnyError> {
   let config_path = deno_json.specifier.to_file_path().unwrap();
@@ -142,6 +145,7 @@ async fn prepare_publish(
 
   let diagnostics_collector = diagnostics_collector.clone();
   let tarball = deno_core::unsync::spawn_blocking(move || {
+    let bare_node_builtins = cli_options.unstable_bare_node_builtins();
     let unfurler = SpecifierUnfurler::new(
       &mapped_resolver,
       sloppy_imports_resolver.as_ref(),
@@ -149,6 +153,7 @@ async fn prepare_publish(
     );
     tar::create_gzipped_tarball(
       &dir_path,
+      &cli_options,
       LazyGraphSourceParser::new(&source_cache, &graph),
       &diagnostics_collector,
       &unfurler,
@@ -470,7 +475,7 @@ async fn perform_publish(
   mut publish_order_graph: PublishOrderGraph,
   mut prepared_package_by_name: HashMap<String, Rc<PreparedPublishPackage>>,
   auth_method: AuthMethod,
-  no_provenance: bool,
+  provenance: bool,
 ) -> Result<(), AnyError> {
   let client = http_client.client()?;
   let registry_api_url = jsr_api_url().to_string();
@@ -531,7 +536,7 @@ async fn perform_publish(
           &registry_api_url,
           &registry_url,
           &authorization,
-          no_provenance,
+          provenance,
         )
         .await
         .with_context(|| format!("Failed to publish {}", display_name))?;
@@ -558,7 +563,7 @@ async fn publish_package(
   registry_api_url: &str,
   registry_url: &str,
   authorization: &str,
-  no_provenance: bool,
+  provenance: bool,
 ) -> Result<(), AnyError> {
   let client = http_client.client()?;
   println!(
@@ -666,7 +671,7 @@ async fn publish_package(
   );
 
   let enable_provenance = std::env::var("DISABLE_JSR_PROVENANCE").is_err()
-    || (auth::is_gha() && auth::gha_oidc_token().is_some() && !no_provenance);
+    && (auth::is_gha() && auth::gha_oidc_token().is_some() && provenance);
 
   // Enable provenance by default on Github actions with OIDC token
   if enable_provenance {
@@ -688,7 +693,7 @@ async fn publish_package(
         package.scope, package.package, package.version
       ),
       digest: provenance::SubjectDigest {
-        sha256: hex::encode(sha2::Sha256::digest(&meta_bytes)),
+        sha256: faster_hex::hex_string(&sha2::Sha256::digest(&meta_bytes)),
       },
     };
     let bundle = provenance::generate_provenance(subject).await?;
@@ -742,7 +747,6 @@ async fn prepare_packages_for_publishing(
   let type_checker = cli_factory.type_checker().await?;
   let fs = cli_factory.fs();
   let cli_options = cli_factory.cli_options();
-  let bare_node_builtins = cli_options.unstable_bare_node_builtins();
 
   if members.len() > 1 {
     println!("Publishing a workspace...");
@@ -773,15 +777,16 @@ async fn prepare_packages_for_publishing(
         None
       };
       let graph = graph.clone();
+      let cli_options = cli_options.clone();
       async move {
         let package = prepare_publish(
           &member.package_name,
           &member.config_file,
           source_cache.clone(),
           graph,
+          cli_options,
           mapped_resolver,
           sloppy_imports_resolver,
-          bare_node_builtins,
           diagnostics_collector,
         )
         .await
@@ -812,8 +817,10 @@ async fn build_and_check_graph_for_publish(
   diagnostics_collector: &PublishDiagnosticsCollector,
   packages: &[WorkspaceMemberConfig],
 ) -> Result<Arc<deno_graph::ModuleGraph>, deno_core::anyhow::Error> {
-  let graph = module_graph_creator.create_publish_graph(packages).await?;
-  graph.valid()?;
+  let build_fast_check_graph = !allow_slow_types;
+  let graph = module_graph_creator
+    .create_and_validate_publish_graph(packages, build_fast_check_graph)
+    .await?;
 
   // todo(dsherret): move to lint rule
   collect_invalid_external_imports(&graph, diagnostics_collector);
@@ -858,8 +865,7 @@ async fn build_and_check_graph_for_publish(
             lib: cli_options.ts_type_lib_window(),
             log_ignored_options: false,
             reload: cli_options.reload_flag(),
-            // force type checking this
-            type_check_mode: TypeCheckMode::Local,
+            type_check_mode: cli_options.type_check_mode(),
           },
         )
         .await?;
@@ -885,7 +891,8 @@ pub async fn publish(
 ) -> Result<(), AnyError> {
   let cli_factory = CliFactory::from_flags(flags).await?;
 
-  let auth_method = get_auth_method(publish_flags.token)?;
+  let auth_method =
+    get_auth_method(publish_flags.token, publish_flags.dry_run)?;
 
   let import_map = cli_factory
     .maybe_import_map()
@@ -941,12 +948,21 @@ pub async fn publish(
     return Ok(());
   }
 
+  if std::env::var("DENO_TESTING_DISABLE_GIT_CHECK")
+    .ok()
+    .is_none()
+    && !publish_flags.allow_dirty
+    && check_if_git_repo_dirty(cli_options.initial_cwd()).await
+  {
+    bail!("Aborting due to uncommitted changes. Check in source code or run with --allow-dirty");
+  }
+
   perform_publish(
     cli_factory.http_client(),
     prepared_data.publish_order_graph,
     prepared_data.package_by_name,
     auth_method,
-    publish_flags.no_provenance,
+    !publish_flags.no_provenance,
   )
   .await?;
 
@@ -1018,6 +1034,34 @@ fn verify_version_manifest(
   }
 
   Ok(())
+}
+
+async fn check_if_git_repo_dirty(cwd: &Path) -> bool {
+  let bin_name = if cfg!(windows) { "git.exe" } else { "git" };
+
+  // Check if git exists
+  let git_exists = Command::new(bin_name)
+    .arg("--version")
+    .stderr(Stdio::null())
+    .stdout(Stdio::null())
+    .status()
+    .await
+    .map_or(false, |status| status.success());
+
+  if !git_exists {
+    return false; // Git is not installed
+  }
+
+  // Check if there are uncommitted changes
+  let output = Command::new(bin_name)
+    .current_dir(cwd)
+    .args(["status", "--porcelain"])
+    .output()
+    .await
+    .expect("Failed to execute command");
+
+  let output_str = String::from_utf8_lossy(&output.stdout);
+  !output_str.trim().is_empty()
 }
 
 #[cfg(test)]

@@ -1,5 +1,8 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+#![deny(clippy::print_stderr)]
+#![deny(clippy::print_stdout)]
+
 use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
@@ -636,8 +639,7 @@ pub fn load_cjs_module(
     main = main,
     module = escape_for_single_quote_string(module),
     inspect_brk = inspect_brk,
-  )
-  .into();
+  );
 
   js_runtime.execute_script(located_script_name!(), source_code)?;
   Ok(())

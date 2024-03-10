@@ -477,6 +477,13 @@ itest!(run_existing_npm_package_with_subpath {
   copy_temp_dir: Some("npm/run_existing_npm_package_with_subpath/"),
 });
 
+itest!(cjs_pkg_imports {
+  args: "run -A npm/cjs_pkg_imports/main.ts",
+  output: "npm/cjs_pkg_imports/main.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+});
+
 #[test]
 fn parallel_downloading() {
   let (out, _err) = util::run_and_collect_output_with_args(
@@ -2552,6 +2559,22 @@ console.log(getValue());
 }
 
 #[test]
+fn check_css_package_json_exports() {
+  let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let dir = test_context.temp_dir();
+  dir.write(
+    "main.ts",
+    r#"import "npm:@denotest/css-export/dist/index.css";"#,
+  );
+  test_context
+    .new_command()
+    .args("check main.ts")
+    .run()
+    .assert_matches_text("Download [WILDCARD]css-export\nDownload [WILDCARD]css-export/1.0.0.tgz\nCheck [WILDCARD]/main.ts\n")
+    .assert_exit_code(0);
+}
+
+#[test]
 fn cjs_export_analysis_require_re_export() {
   let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
   let dir = test_context.temp_dir();
@@ -2611,10 +2634,7 @@ fn cjs_rexport_analysis_json() {
   let dir = test_context.temp_dir();
   dir.write("deno.json", r#"{ "unstable": [ "byonm" ] }"#);
 
-  dir.write(
-    "package.json",
-    r#"{ "name": "test", "packages": { "my-package": "1.0.0" } }"#,
-  );
+  dir.write("package.json", r#"{ "name": "test" }"#);
   dir.write(
     "main.js",
     "import data from 'my-package';\nconsole.log(data);\n",
@@ -2668,6 +2688,28 @@ fn cjs_rexport_analysis_json() {
 }
 ",
   );
+}
+
+#[test]
+fn cjs_export_analysis_import_cjs_directly_relative_import() {
+  let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let dir = test_context.temp_dir();
+  dir.write("deno.json", r#"{ "unstable": [ "byonm" ] }"#);
+
+  dir.write(
+    "package.json",
+    r#"{ "name": "test", "dependencies": { "@denotest/cjs-default-export": "1.0.0" } }"#,
+  );
+  // previously it wasn't doing cjs export analysis on this file
+  dir.write(
+    "main.ts",
+    "import { named } from './node_modules/@denotest/cjs-default-export/index.js';\nconsole.log(named());\n",
+  );
+
+  test_context.run_npm("install");
+
+  let output = test_context.new_command().args("run main.ts").run();
+  output.assert_matches_text("2\n");
 }
 
 itest!(imports_package_json {

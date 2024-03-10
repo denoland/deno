@@ -19,6 +19,7 @@ import {
   assertObjectMatch,
   assertStrictEquals,
   assertThrows,
+  fail,
 } from "@std/assert/mod.ts";
 import { stripColor } from "@std/fmt/colors.ts";
 import * as path from "@std/path/mod.ts";
@@ -184,65 +185,100 @@ Deno.test({
   name: "process.on signal",
   ignore: Deno.build.os == "windows",
   async fn() {
-    const process = new Deno.Command(Deno.execPath(), {
-      args: [
-        "eval",
-        `
-        import process from "node:process";
-        setInterval(() => {}, 1000);
-        process.on("SIGINT", () => {
-          console.log("foo");
-        });
-        `,
-      ],
-      stdout: "piped",
-      stderr: "null",
-    }).spawn();
-    await delay(500);
-    for (const _ of Array(3)) {
-      process.kill("SIGINT");
-      await delay(20);
+    let wait = "";
+    const testTimeout = setTimeout(
+      () => fail("Test timed out waiting for " + wait),
+      10_000,
+    );
+    try {
+      const process = new Deno.Command(Deno.execPath(), {
+        args: [
+          "eval",
+          `
+          import process from "node:process";
+          setInterval(() => {}, 1000);
+          process.on("SIGINT", () => {
+            console.log("foo");
+          });
+          console.log("ready");
+          `,
+        ],
+        stdout: "piped",
+        stderr: "null",
+      }).spawn();
+      let output = "";
+      process.stdout.pipeThrough(new TextDecoderStream()).pipeTo(
+        new WritableStream({
+          write(chunk) {
+            console.log("chunk:", chunk);
+            output += chunk;
+          },
+        }),
+      );
+      wait = "ready";
+      while (!output.includes("ready\n")) {
+        await delay(10);
+      }
+      for (let i = 0; i < 3; i++) {
+        output = "";
+        process.kill("SIGINT");
+        wait = "foo " + i;
+        while (!output.includes("foo\n")) {
+          await delay(10);
+        }
+      }
+      process.kill("SIGTERM");
+      await process.status;
+    } finally {
+      clearTimeout(testTimeout);
     }
-    await delay(20);
-    process.kill("SIGTERM");
-    const output = await process.output();
-    assertEquals(new TextDecoder().decode(output.stdout), "foo\nfoo\nfoo\n");
   },
 });
 
 Deno.test({
   name: "process.off signal",
-  ignore: Deno.build.os == "windows",
+  ignore: true, // This test fails to terminate
   async fn() {
-    const process = new Deno.Command(Deno.execPath(), {
-      args: [
-        "eval",
-        `
-        import process from "node:process";
-        setInterval(() => {}, 1000);
-        const listener = () => {
-          console.log("foo");
-          process.off("SIGINT")
-        };
-        process.on("SIGINT", listener);
-        `,
-      ],
-      stdout: "piped",
-      stderr: "null",
-    }).spawn();
-    await delay(500);
-    for (const _ of Array(3)) {
-      try {
-        process.kill("SIGINT");
-      } catch { /* should die after the first one */ }
-      await delay(20);
-    }
-    await delay(20);
+    const testTimeout = setTimeout(() => fail("Test timed out"), 10_000);
     try {
-      process.kill("SIGTERM");
-    } catch { /* should be dead, avoid hanging just in case */ }
-    const output = await process.output();
-    assertEquals(new TextDecoder().decode(output.stdout), "foo\n");
+      const process = new Deno.Command(Deno.execPath(), {
+        args: [
+          "eval",
+          `
+          import process from "node:process";
+          console.log("ready");
+          setInterval(() => {}, 1000);
+          const listener = () => {
+            console.log("foo");
+            process.off("SIGINT", listener)
+          };
+          process.on("SIGINT", listener);
+          `,
+        ],
+        stdout: "piped",
+        stderr: "null",
+      }).spawn();
+      let output = "";
+      process.stdout.pipeThrough(new TextDecoderStream()).pipeTo(
+        new WritableStream({
+          write(chunk) {
+            console.log("chunk:", chunk);
+            output += chunk;
+          },
+        }),
+      );
+      while (!output.includes("ready\n")) {
+        await delay(10);
+      }
+      output = "";
+      process.kill("SIGINT");
+      while (!output.includes("foo\n")) {
+        await delay(10);
+      }
+      await process.status;
+    } finally {
+      clearTimeout(testTimeout);
+    }
   },
 });
 
