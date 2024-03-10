@@ -1652,7 +1652,7 @@ dependencies = [
  "elliptic-curve",
  "errno 0.2.8",
  "faster-hex",
- "h2 0.3.22",
+ "h2 0.3.24",
  "hkdf",
  "http 0.2.11",
  "idna 0.3.0",
@@ -1927,7 +1927,7 @@ dependencies = [
  "deno_net",
  "deno_tls",
  "fastwebsockets",
- "h2 0.4.0",
+ "h2 0.4.2",
  "http 1.0.0",
  "http-body-util",
  "hyper 1.1.0",
@@ -2986,9 +2986,9 @@ dependencies = [
 
 [[package]]
 name = "h2"
-version = "0.3.22"
+version = "0.3.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4d6250322ef6e60f93f9a2162799302cd6f68f79f6e5d85c8c16f14d1d958178"
+checksum = "bb2c4422095b67ee78da96fbb51a4cc413b3b25883c7717ff7ca1ab31022c9c9"
 dependencies = [
  "bytes",
  "fnv",
@@ -3005,9 +3005,9 @@ dependencies = [
 
 [[package]]
 name = "h2"
-version = "0.4.0"
+version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e1d308f63daf4181410c242d34c11f928dcb3aa105852019e043c9d1f4e4368a"
+checksum = "31d030e59af851932b72ceebadf4a2b5986dba4c3b99dd2493f8273a0f151943"
 dependencies = [
  "bytes",
  "fnv",
@@ -3257,7 +3257,7 @@ dependencies = [
  "futures-channel",
  "futures-core",
  "futures-util",
- "h2 0.3.22",
+ "h2 0.3.24",
  "http 0.2.11",
  "http-body 0.4.5",
  "httparse",
@@ -3280,7 +3280,7 @@ dependencies = [
  "bytes",
  "futures-channel",
  "futures-util",
- "h2 0.4.0",
+ "h2 0.4.2",
  "http 1.0.0",
  "http-body 1.0.0",
  "httparse",
@@ -5127,7 +5127,7 @@ dependencies = [
  "encoding_rs",
  "futures-core",
  "futures-util",
- "h2 0.3.22",
+ "h2 0.3.24",
  "http 0.2.11",
  "http-body 0.4.5",
  "hyper 0.14.27",
@@ -6484,7 +6484,7 @@ dependencies = [
  "flate2",
  "futures",
  "glob",
- "h2 0.4.0",
+ "h2 0.4.2",
  "http 1.0.0",
  "http-body-util",
  "hyper 1.1.0",
@@ -7180,6 +7180,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9c8d87e72b64a3b4db28d11ce29237c246188f4f51057d65a7eab63b7987e423"
 
 [[package]]
+name = "wasite"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b8dad83b4f25e74f184f64c43b150b91efe7647395b42289f38e50566d82855b"
+
+[[package]]
 name = "wasm-bindgen"
 version = "0.2.89"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7286,7 +7292,7 @@ dependencies = [
  "codespan-reporting",
  "log",
  "naga",
- "parking_lot 0.12.1",
+ "parking_lot 0.11.2",
  "profiling",
  "raw-window-handle",
  "ron",
@@ -7327,7 +7333,7 @@ dependencies = [
  "naga",
  "objc",
  "once_cell",
- "parking_lot 0.12.1",
+ "parking_lot 0.11.2",
  "profiling",
  "range-alloc",
  "raw-window-handle",
@@ -7379,11 +7385,12 @@ dependencies = [
 
 [[package]]
 name = "whoami"
-version = "1.4.1"
+version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "22fc3756b8a9133049b26c7f61ab35416c130e8c09b660f5b3958b446f52cc50"
+checksum = "0fec781d48b41f8163426ed18e8fc2864c12937df9ce54c88ede7bd47270893e"
 dependencies = [
- "wasm-bindgen",
+ "redox_syscall 0.4.1",
+ "wasite",
  "web-sys",
 ]
 

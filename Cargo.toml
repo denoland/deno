@@ -110,7 +110,7 @@ flate2 = { version = "1.0.26", default-features = false }
 fs3 = "0.5.0"
 futures = "0.3.21"
 glob = "0.3.1"
-h2 = "0.4"
+h2 = "0.4.2"
 http = "1.0"
 http-body-util = "0.1"
 http_v02 = { package = "http", version = "0.2.9" }
