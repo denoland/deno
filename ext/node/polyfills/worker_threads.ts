@@ -8,6 +8,7 @@ import {
   op_host_recv_ctrl,
   op_host_recv_message,
   op_host_terminate_worker,
+  op_message_port_recv_message_sync,
   op_require_read_closest_package_json,
 } from "ext:core/ops";
 import {
@@ -23,7 +24,6 @@ import { log } from "ext:runtime/06_util.js";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import { EventEmitter, once } from "node:events";
 import { BroadcastChannel } from "ext:deno_broadcast_channel/01_broadcast_channel.js";
-import { op_message_port_recv_message_sync } from "ext:core/ops";
 import { isAbsolute, resolve } from "node:path";
 
 const { ObjectPrototypeIsPrototypeOf } = primordials;
@@ -175,17 +175,17 @@ class NodeWorker extends EventEmitter {
         // empty catch block when package json might not be present
       }
       if (
-        !(StringPrototypeEndsWith(
+        (StringPrototypeEndsWith(
           StringPrototypeToString(specifier),
           ".mjs",
         )) ||
         (pkg && pkg.exists && pkg.typ == "module")
       ) {
+        specifier = toFileUrl(specifier as string);
+      } else {
         const cwdFileUrl = toFileUrl(Deno.cwd());
         specifier =
           `data:text/javascript,(async function() {const { createRequire } = await import("node:module");const require = createRequire("${cwdFileUrl}");require("${specifier}");})();`;
-      } else {
-        specifier = toFileUrl(specifier as string);
       }
     }
 
