@@ -192,9 +192,9 @@ pub struct SignArg {
   named_curve: Option<CryptoNamedCurve>,
 }
 
-#[op2(async)]
+#[op2]
 #[serde]
-pub async fn op_crypto_sign_key(
+pub fn op_crypto_sign_key(
   #[serde] args: SignArg,
   #[buffer] zero_copy: JsBuffer,
 ) -> Result<ToJsBuffer, AnyError> {
@@ -309,8 +309,8 @@ pub struct VerifyArg {
   named_curve: Option<CryptoNamedCurve>,
 }
 
-#[op2(async)]
-pub async fn op_crypto_verify_key(
+#[op2]
+pub fn op_crypto_verify_key(
   #[serde] args: VerifyArg,
   #[buffer] zero_copy: JsBuffer,
 ) -> Result<bool, AnyError> {
@@ -431,9 +431,9 @@ pub struct DeriveKeyArg {
   info: Option<JsBuffer>,
 }
 
-#[op2(async)]
+#[op2]
 #[serde]
-pub async fn op_crypto_derive_bits(
+pub fn op_crypto_derive_bits(
   #[serde] args: DeriveKeyArg,
   #[buffer] zero_copy: Option<JsBuffer>,
 ) -> Result<ToJsBuffer, AnyError> {

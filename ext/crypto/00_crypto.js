@@ -781,6 +781,7 @@ class SubtleCrypto {
    * @param {BufferSource} data
    * @returns {Promise<any>}
    */
+  // deno-lint-ignore require-await
   async sign(algorithm, key, data) {
     webidl.assertBranded(this, SubtleCryptoPrototype);
     const prefix = "Failed to execute 'sign' on 'SubtleCrypto'";
@@ -830,7 +831,7 @@ class SubtleCrypto {
 
         // 2.
         const hashAlgorithm = key[_algorithm].hash.name;
-        const signature = await op_crypto_sign_key({
+        const signature = op_crypto_sign_key({
           key: keyData,
           algorithm: "RSASSA-PKCS1-v1_5",
           hash: hashAlgorithm,
@@ -849,7 +850,7 @@ class SubtleCrypto {
 
         // 2.
         const hashAlgorithm = key[_algorithm].hash.name;
-        const signature = await op_crypto_sign_key({
+        const signature = op_crypto_sign_key({
           key: keyData,
           algorithm: "RSA-PSS",
           hash: hashAlgorithm,
@@ -886,7 +887,7 @@ class SubtleCrypto {
           );
         }
 
-        const signature = await op_crypto_sign_key({
+        const signature = op_crypto_sign_key({
           key: keyData,
           algorithm: "ECDSA",
           hash: hashAlgorithm,
@@ -898,7 +899,7 @@ class SubtleCrypto {
       case "HMAC": {
         const hashAlgorithm = key[_algorithm].hash.name;
 
-        const signature = await op_crypto_sign_key({
+        const signature = op_crypto_sign_key({
           key: keyData,
           algorithm: "HMAC",
           hash: hashAlgorithm,
@@ -1131,6 +1132,7 @@ class SubtleCrypto {
    * @param {number | null} length
    * @returns {Promise<ArrayBuffer>}
    */
+  // deno-lint-ignore require-await
   async deriveBits(algorithm, baseKey, length) {
     webidl.assertBranded(this, SubtleCryptoPrototype);
     const prefix = "Failed to execute 'deriveBits' on 'SubtleCrypto'";
@@ -1148,7 +1150,7 @@ class SubtleCrypto {
     // 2.
     const normalizedAlgorithm = normalizeAlgorithm(algorithm, "deriveBits");
     // 4-6.
-    const result = await deriveBits(normalizedAlgorithm, baseKey, length);
+    const result = deriveBits(normalizedAlgorithm, baseKey, length);
     // 7.
     if (normalizedAlgorithm.name !== baseKey[_algorithm].name) {
       throw new DOMException("Invalid algorithm name", "InvalidAccessError");
@@ -1239,7 +1241,7 @@ class SubtleCrypto {
     const length = getKeyLength(normalizedDerivedKeyAlgorithmLength);
 
     // 14.
-    const secret = await deriveBits(
+    const secret = deriveBits(
       normalizedAlgorithm,
       baseKey,
       length,
@@ -1272,6 +1274,7 @@ class SubtleCrypto {
    * @param {BufferSource} data
    * @returns {Promise<boolean>}
    */
+  // deno-lint-ignore require-await
   async verify(algorithm, key, signature, data) {
     webidl.assertBranded(this, SubtleCryptoPrototype);
     const prefix = "Failed to execute 'verify' on 'SubtleCrypto'";
@@ -1320,7 +1323,7 @@ class SubtleCrypto {
         }
 
         const hashAlgorithm = key[_algorithm].hash.name;
-        return await op_crypto_verify_key({
+        return op_crypto_verify_key({
           key: keyData,
           algorithm: "RSASSA-PKCS1-v1_5",
           hash: hashAlgorithm,
@@ -1336,7 +1339,7 @@ class SubtleCrypto {
         }
 
         const hashAlgorithm = key[_algorithm].hash.name;
-        return await op_crypto_verify_key({
+        return op_crypto_verify_key({
           key: keyData,
           algorithm: "RSA-PSS",
           hash: hashAlgorithm,
@@ -1346,7 +1349,7 @@ class SubtleCrypto {
       }
       case "HMAC": {
         const hash = key[_algorithm].hash.name;
-        return await op_crypto_verify_key({
+        return op_crypto_verify_key({
           key: keyData,
           algorithm: "HMAC",
           hash,
@@ -1375,7 +1378,7 @@ class SubtleCrypto {
         }
 
         // 3-8.
-        return await op_crypto_verify_key({
+        return op_crypto_verify_key({
           key: keyData,
           algorithm: "ECDSA",
           hash,
@@ -4364,7 +4367,7 @@ async function generateKeyAES(normalizedAlgorithm, extractable, usages) {
   return key;
 }
 
-async function deriveBits(normalizedAlgorithm, baseKey, length) {
+function deriveBits(normalizedAlgorithm, baseKey, length) {
   switch (normalizedAlgorithm.name) {
     case "PBKDF2": {
       // 1.
@@ -4384,7 +4387,7 @@ async function deriveBits(normalizedAlgorithm, baseKey, length) {
 
       normalizedAlgorithm.salt = copyBuffer(normalizedAlgorithm.salt);
 
-      const buf = await op_crypto_derive_bits({
+      const buf = op_crypto_derive_bits({
         key: keyData,
         algorithm: "PBKDF2",
         hash: normalizedAlgorithm.hash.name,
@@ -4433,7 +4436,7 @@ async function deriveBits(normalizedAlgorithm, baseKey, length) {
         const publicKeyhandle = publicKey[_handle];
         const publicKeyData = WeakMapPrototypeGet(KEY_STORE, publicKeyhandle);
 
-        const buf = await op_crypto_derive_bits({
+        const buf = op_crypto_derive_bits({
           key: baseKeyData,
           publicKey: publicKeyData,
           algorithm: "ECDH",
@@ -4470,7 +4473,7 @@ async function deriveBits(normalizedAlgorithm, baseKey, length) {
 
       normalizedAlgorithm.info = copyBuffer(normalizedAlgorithm.info);
 
-      const buf = await op_crypto_derive_bits({
+      const buf = op_crypto_derive_bits({
         key: keyDerivationKey,
         algorithm: "HKDF",
         hash: normalizedAlgorithm.hash.name,
