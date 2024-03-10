@@ -81,7 +81,10 @@ fn create_named_pipe_inner() -> io::Result<(RawHandle, RawHandle)> {
     // This should not happen, so we would like to get some better diagnostics here.
     // SAFETY: Printing last error for diagnostics
     unsafe {
-      eprintln!("*** Unexpected server pipe failure: {:x}", GetLastError());
+      eprintln!(
+        "*** Unexpected server pipe failure '{pipe_name:?}': {:x}",
+        GetLastError()
+      );
     }
     return Err(io::Error::last_os_error());
   }
@@ -110,13 +113,19 @@ fn create_named_pipe_inner() -> io::Result<(RawHandle, RawHandle)> {
         || error == winapi::shared::winerror::ERROR_PATH_NOT_FOUND
       {
         // Exponential backoff, but don't sleep longer than 10ms
-        eprintln!("*** Unexpected client pipe not found failure: {:x}", error);
+        eprintln!(
+          "*** Unexpected client pipe not found failure '{pipe_name:?}': {:x}",
+          error
+        );
         std::thread::sleep(Duration::from_millis(10.min(2_u64.pow(i) + 1)));
         continue;
       }
 
       // This should not happen, so we would like to get some better diagnostics here.
-      eprintln!("*** Unexpected client pipe failure: {:x}", error);
+      eprintln!(
+        "*** Unexpected client pipe failure '{pipe_name:?}': {:x}",
+        error
+      );
       let err = io::Error::last_os_error();
       // SAFETY: Close the handles if we failed
       unsafe {

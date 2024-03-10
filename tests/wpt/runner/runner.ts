@@ -1,5 +1,11 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-import { delay, join, ROOT_PATH, TextLineStream, toFileUrl } from "../util.js";
+import {
+  delay,
+  join,
+  ROOT_PATH,
+  TextLineStream,
+  toFileUrl,
+} from "../../../tools/util.js";
 import { assert, denoBinary, ManifestTestOptions, runPy } from "./utils.ts";
 import { DOMParser } from "https://deno.land/x/deno_dom@v0.1.3-alpha2/deno-dom-wasm.ts";
 
@@ -11,7 +17,7 @@ export async function runWithTestUtil<T>(
     "wpt",
     "serve",
     "--config",
-    "../../../tools/wpt/config.json",
+    "../../../tests/wpt/runner/config.json",
   ], {
     stdout: verbose ? "inherit" : "piped",
     stderr: verbose ? "inherit" : "piped",
@@ -123,7 +129,7 @@ export async function runSingleTest(
       "--location",
       url.toString(),
       "--cert",
-      join(ROOT_PATH, `./tools/wpt/certs/cacert.pem`),
+      join(ROOT_PATH, `./tests/wpt/runner/certs/cacert.pem`),
       tempFile,
       "[]",
     );
@@ -205,7 +211,7 @@ async function generateBundle(location: URL): Promise<string> {
     const src = script.getAttribute("src");
     if (src === "/resources/testharnessreport.js") {
       const url = toFileUrl(
-        join(ROOT_PATH, "./tools/wpt/testharnessreport.js"),
+        join(ROOT_PATH, "./tests/wpt/runner/testharnessreport.js"),
       );
       const contents = await Deno.readTextFile(url);
       scriptContents.push([url.href, contents]);

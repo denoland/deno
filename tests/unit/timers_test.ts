@@ -228,24 +228,30 @@ Deno.test(function intervalCancelInvalidSilentFail() {
   clearInterval(2147483647);
 });
 
+// If a repeating timer is dispatched, the next interval that should first is based on
+// when the timer is dispatched, not when the timer handler completes.
 Deno.test(async function callbackTakesLongerThanInterval() {
   const { promise, resolve } = Promise.withResolvers<void>();
-
-  let timeEndOfFirstCallback: number | undefined;
-  const interval = setInterval(() => {
-    if (timeEndOfFirstCallback === undefined) {
-      // First callback
-      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 300);
-      timeEndOfFirstCallback = Date.now();
-    } else {
-      // Second callback should be nearly instantaneous
-      assert(Date.now() - timeEndOfFirstCallback < 10);
-      clearInterval(interval);
-      resolve();
+  const output: number[] = [];
+  let last = 0;
+  const id = setInterval(() => {
+    const now = performance.now();
+    if (last > 0) {
+      output.push(now - last);
+      if (output.length >= 10) {
+        resolve();
+        clearTimeout(id);
+      }
+    }
+    last = now;
+    while (performance.now() - now < 300) {
+      /* hot loop */
     }
   }, 100);
-
   await promise;
+  const total = output.reduce((t, n) => t + n, 0) / output.length;
+  console.log(output);
+  assert(total < 350 && total > 299, "Total was out of range: " + total);
 });
 
 // https://github.com/denoland/deno/issues/11398
