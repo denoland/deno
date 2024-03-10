@@ -365,6 +365,7 @@
       // TODO(lev): ClientRequest.socket is not polyfilled so this test keeps
       //            failing
       //"test-http-client-set-timeout.js",
+      "test-http-header-validators.js",
       "test-http-localaddress.js",
       // TODO(bartlomieju): temporarily disabled while we iterate on the HTTP client
       // "test-http-outgoing-buffer.js",

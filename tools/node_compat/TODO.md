@@ -3,7 +3,7 @@
 
 NOTE: This file should not be manually edited. Please edit `tests/node_compat/config.json` and run `deno task setup` in `tools/node_compat` dir instead.
 
-Total: 2999
+Total: 2998
 
 - [abort/test-abort-backtrace.js](https://github.com/nodejs/node/tree/v18.12.1/test/abort/test-abort-backtrace.js)
 - [abort/test-abort-fatal-error.js](https://github.com/nodejs/node/tree/v18.12.1/test/abort/test-abort-fatal-error.js)
@@ -1052,7 +1052,6 @@ Total: 2999
 - [parallel/test-http-header-overflow.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-header-overflow.js)
 - [parallel/test-http-header-owstext.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-header-owstext.js)
 - [parallel/test-http-header-read.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-header-read.js)
-- [parallel/test-http-header-validators.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-header-validators.js)
 - [parallel/test-http-hex-write.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-hex-write.js)
 - [parallel/test-http-highwatermark.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-highwatermark.js)
 - [parallel/test-http-host-header-ipv6-fail.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-host-header-ipv6-fail.js)
