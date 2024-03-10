@@ -589,6 +589,46 @@ fn not_includes_gitignored_dotenv() {
   assert_not_contains!(output, ".env");
 }
 
+#[test]
+fn not_includes_vendor_dir_only_when_vendor_true() {
+  let context = publish_context_builder().build();
+  let temp_dir = context.temp_dir().path();
+  temp_dir.join("deno.json").write_json(&json!({
+    "name": "@foo/bar",
+    "version": "1.0.0",
+    "exports": "./main.ts",
+  }));
+
+  temp_dir.join("main.ts").write("");
+  let vendor_folder = temp_dir.join("vendor");
+  vendor_folder.create_dir_all();
+  vendor_folder.join("vendor.ts").write("");
+
+  let publish_cmd = context.new_command().args("publish --dry-run");
+  {
+    let output = publish_cmd.run();
+    output.assert_exit_code(0);
+    let output = output.combined_output();
+    assert_contains!(output, "main.ts");
+    assert_contains!(output, "vendor.ts");
+  }
+
+  // with vendor
+  {
+    temp_dir.join("deno.json").write_json(&json!({
+      "name": "@foo/bar",
+      "version": "1.0.0",
+      "exports": "./main.ts",
+      "vendor": true,
+    }));
+    let output = publish_cmd.run();
+    output.assert_exit_code(0);
+    let output = output.combined_output();
+    assert_contains!(output, "main.ts");
+    assert_not_contains!(output, "vendor.ts");
+  }
+}
+
 fn publish_context_builder() -> TestContextBuilder {
   TestContextBuilder::new()
     .use_http_server()
