@@ -8,21 +8,25 @@ import {
   op_host_recv_ctrl,
   op_host_recv_message,
   op_host_terminate_worker,
+  op_message_port_recv_message_sync,
   op_require_read_closest_package_json,
 } from "ext:core/ops";
-import { BroadcastChannel } from "ext:deno_broadcast_channel/01_broadcast_channel.js";
 import {
   deserializeJsMessageData,
   MessageChannel,
   MessagePort,
+  MessagePortIdSymbol,
+  MessagePortPrototype,
   serializeJsMessageData,
 } from "ext:deno_web/13_message_port.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { log } from "ext:runtime/06_util.js";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import { EventEmitter, once } from "node:events";
+import { BroadcastChannel } from "ext:deno_broadcast_channel/01_broadcast_channel.js";
 import { isAbsolute, resolve } from "node:path";
 
+const { ObjectPrototypeIsPrototypeOf } = primordials;
 const {
   Error,
   Symbol,
@@ -496,9 +500,24 @@ export function markAsUntransferable() {
 export function moveMessagePortToContext() {
   notImplemented("moveMessagePortToContext");
 }
-export function receiveMessageOnPort() {
-  notImplemented("receiveMessageOnPort");
+
+/**
+ * @param { MessagePort } port
+ * @returns {object | undefined}
+ */
+export function receiveMessageOnPort(port: MessagePort): object | undefined {
+  if (!(ObjectPrototypeIsPrototypeOf(MessagePortPrototype, port))) {
+    const err = new TypeError(
+      'The "port" argument must be a MessagePort instance',
+    );
+    err["code"] = "ERR_INVALID_ARG_TYPE";
+    throw err;
+  }
+  const data = op_message_port_recv_message_sync(port[MessagePortIdSymbol]);
+  if (data === null) return undefined;
+  return { message: deserializeJsMessageData(data)[0] };
 }
+
 export {
   BroadcastChannel,
   MessageChannel,

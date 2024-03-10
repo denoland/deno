@@ -2710,7 +2710,6 @@ Total: 2998
 - [parallel/test-worker-message-port-message-port-transferring.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-worker-message-port-message-port-transferring.js)
 - [parallel/test-worker-message-port-move.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-worker-message-port-move.js)
 - [parallel/test-worker-message-port-multiple-sharedarraybuffers.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-worker-message-port-multiple-sharedarraybuffers.js)
-- [parallel/test-worker-message-port-receive-message.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-worker-message-port-receive-message.js)
 - [parallel/test-worker-message-port-terminate-transfer-list.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-worker-message-port-terminate-transfer-list.js)
 - [parallel/test-worker-message-port-transfer-closed.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-worker-message-port-transfer-closed.js)
 - [parallel/test-worker-message-port-transfer-duplicate.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-worker-message-port-transfer-duplicate.js)

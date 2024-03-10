@@ -104,6 +104,8 @@
       "test-util.js",
       "test-webcrypto-sign-verify.js",
       "test-whatwg-url-properties.js",
+      // needs replace ".on" => ".addEventListener" in L29
+      "test-worker-message-port-receive-message.js",
       "test-zlib-convenience-methods.js",
       "test-zlib-empty-buffer.js",
       "test-zlib-invalid-input.js",
@@ -665,6 +667,7 @@
       "test-whatwg-url-custom-tostringtag.js",
       "test-whatwg-url-override-hostname.js",
       "test-whatwg-url-properties.js",
+      "test-worker-message-port-receive-message.js",
       "test-zlib-close-after-error.js",
       "test-zlib-close-after-write.js",
       "test-zlib-convenience-methods.js",
