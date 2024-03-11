@@ -3,7 +3,7 @@
 
 NOTE: This file should not be manually edited. Please edit `tests/node_compat/config.json` and run `deno task setup` in `tools/node_compat` dir instead.
 
-Total: 2997
+Total: 2996
 
 - [abort/test-abort-backtrace.js](https://github.com/nodejs/node/tree/v18.12.1/test/abort/test-abort-backtrace.js)
 - [abort/test-abort-fatal-error.js](https://github.com/nodejs/node/tree/v18.12.1/test/abort/test-abort-fatal-error.js)
@@ -1937,7 +1937,6 @@ Total: 2997
 - [parallel/test-promises-unhandled-rejections.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-promises-unhandled-rejections.js)
 - [parallel/test-promises-unhandled-symbol-rejections.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-promises-unhandled-symbol-rejections.js)
 - [parallel/test-promises-warning-on-unhandled-rejection.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-promises-warning-on-unhandled-rejection.js)
-- [parallel/test-punycode.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-punycode.js)
 - [parallel/test-queue-microtask-uncaught-asynchooks.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-queue-microtask-uncaught-asynchooks.js)
 - [parallel/test-queue-microtask.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-queue-microtask.js)
 - [parallel/test-readable-from-iterator-closing.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-readable-from-iterator-closing.js)
