@@ -175,17 +175,17 @@ class NodeWorker extends EventEmitter {
         // empty catch block when package json might not be present
       }
       if (
-        !(StringPrototypeEndsWith(
+        (StringPrototypeEndsWith(
           StringPrototypeToString(specifier),
           ".mjs",
         )) ||
         (pkg && pkg.exists && pkg.typ == "module")
       ) {
+        specifier = toFileUrl(specifier as string);
+      } else {
         const cwdFileUrl = toFileUrl(Deno.cwd());
         specifier =
           `data:text/javascript,(async function() {const { createRequire } = await import("node:module");const require = createRequire("${cwdFileUrl}");require("${specifier}");})();`;
-      } else {
-        specifier = toFileUrl(specifier as string);
       }
     }
 
