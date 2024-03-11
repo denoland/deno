@@ -274,8 +274,8 @@ impl std::fmt::Display for TestFailure {
       TestFailure::JsError(js_error) => {
         write!(f, "{}", format_test_error(js_error))
       }
-      TestFailure::FailedSteps(1) => write!(f, "1 test step failed"),
-      TestFailure::FailedSteps(n) => write!(f, "{n} test steps failed"),
+      TestFailure::FailedSteps(1) => write!(f, "1 test step failed."),
+      TestFailure::FailedSteps(n) => write!(f, "{n} test steps failed."),
       TestFailure::IncompleteSteps => {
         write!(f, "Completed while steps were still running. Ensure all steps are awaited with `await t.step(...)`.")
       }

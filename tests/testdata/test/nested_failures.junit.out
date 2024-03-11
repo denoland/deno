@@ -3,10 +3,10 @@ Check file:///[WILDCARD]/test/nested_failures.ts
 <testsuites name="deno test" tests="11" failures="6" errors="0" time="[WILDCARD]">
     <testsuite name="./test/nested_failures.ts" tests="11" disabled="0" errors="0" failures="6">
         <testcase name="parent 1" classname="./test/nested_failures.ts" time="[WILDCARD]" line="1" col="6">
-            <failure message="1 test step failed">1 test step failed</failure>
+            <failure message="1 test step failed">1 test step failed.</failure>
         </testcase>
         <testcase name="parent 2" classname="./test/nested_failures.ts" time="[WILDCARD]" line="8" col="6">
-            <failure message="2 test steps failed">2 test steps failed</failure>
+            <failure message="2 test steps failed">2 test steps failed.</failure>
         </testcase>
         <testcase name="parent 3" classname="./test/nested_failures.ts" time="[WILDCARD]" line="20" col="6">
         </testcase>
@@ -20,7 +20,7 @@ Check file:///[WILDCARD]/test/nested_failures.ts
     [WILDCARD]</failure>
         </testcase>
         <testcase name="parent 2 &gt; child 1" classname="./test/nested_failures.ts" time="[WILDCARD]" line="9" col="11">
-            <failure message="1 test step failed">1 test step failed</failure>
+            <failure message="1 test step failed">1 test step failed.</failure>
         </testcase>
         <testcase name="parent 2 &gt; child 1 &gt; grandchild 1" classname="[WILDCARD]/test/nested_failures.ts" time="[WILDCARD]" line="10" col="13">
         </testcase>
