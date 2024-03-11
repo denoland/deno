@@ -786,7 +786,7 @@ function bootstrapWorkerRuntime(
   runtimeOptions,
   name,
   internalName,
-  maybeWorkerData,
+  maybeWorkerMetadata,
 ) {
   if (hasBootstrapped) {
     throw new Error("Worker runtime already bootstrapped");
@@ -909,17 +909,16 @@ function bootstrapWorkerRuntime(
   // existing global `Deno` with `Deno` namespace from "./deno.ts".
   ObjectDefineProperty(globalThis, "Deno", core.propReadOnly(finalDenoNs));
 
-  let workerData = undefined;
-  if (maybeWorkerData) {
-    workerData = core.deserialize(maybeWorkerData);
-  }
+  const workerMetadata = maybeWorkerMetadata
+    ? messagePort.deserializeJsMessageData(maybeWorkerMetadata)
+    : undefined;
 
   if (nodeBootstrap) {
     nodeBootstrap(
       hasNodeModulesDir,
       argv0,
       /* runningOnMainThread */ false,
-      workerData,
+      workerMetadata,
     );
   }
 }

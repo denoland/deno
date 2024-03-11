@@ -24,7 +24,6 @@ use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::serde_json::json;
 use deno_core::v8;
-use deno_core::v8::ValueDeserializerHelper;
 use deno_core::CancelHandle;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::Extension;
@@ -49,6 +48,7 @@ use deno_terminal::colors;
 use deno_tls::RootCertStoreProvider;
 use deno_web::create_entangled_message_port;
 use deno_web::BlobStore;
+use deno_web::JsMessageData;
 use deno_web::MessagePort;
 use log::debug;
 use std::cell::RefCell;
@@ -333,7 +333,7 @@ pub struct WebWorker {
   poll_for_messages_fn: Option<v8::Global<v8::Value>>,
   bootstrap_fn_global: Option<v8::Global<v8::Function>>,
   // Consumed when `bootstrap_fn` is called
-  maybe_worker_data: Option<Vec<u8>>,
+  maybe_worker_metadata: Option<JsMessageData>,
 }
 
 pub struct WebWorkerOptions {
@@ -359,7 +359,7 @@ pub struct WebWorkerOptions {
   pub cache_storage_dir: Option<std::path::PathBuf>,
   pub stdio: Stdio,
   pub feature_checker: Arc<FeatureChecker>,
-  pub maybe_worker_data: Option<Vec<u8>>,
+  pub maybe_worker_metadata: Option<JsMessageData>,
 }
 
 impl WebWorker {
@@ -605,7 +605,7 @@ impl WebWorker {
         main_module,
         poll_for_messages_fn: None,
         bootstrap_fn_global: Some(bootstrap_fn_global),
-        maybe_worker_data: options.maybe_worker_data,
+        maybe_worker_metadata: options.maybe_worker_metadata,
       },
       external_handle,
     )
@@ -622,15 +622,8 @@ impl WebWorker {
       let bootstrap_fn = v8::Local::new(scope, bootstrap_fn);
       let undefined = v8::undefined(scope);
       let mut worker_data: v8::Local<v8::Value> = v8::undefined(scope).into();
-      if let Some(buf) = self.maybe_worker_data.take() {
-        let len = buf.len();
-        let store = v8::ArrayBuffer::new_backing_store_from_boxed_slice(
-          buf.into_boxed_slice(),
-        );
-        let ab =
-          v8::ArrayBuffer::with_backing_store(scope, &store.make_shared());
-        let v8_buf = v8::Uint8Array::new(scope, ab, 0, len).unwrap();
-        worker_data = v8_buf.into();
+      if let Some(data) = self.maybe_worker_metadata.take() {
+        worker_data = deno_core::serde_v8::to_v8(scope, data).unwrap();
       }
       let name_str: v8::Local<v8::Value> =
         v8::String::new(scope, &self.name).unwrap().into();
