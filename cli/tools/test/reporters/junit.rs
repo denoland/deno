@@ -152,7 +152,7 @@ impl TestReporter for JunitTestReporter {
     _test_steps: &IndexMap<usize, TestStepDescription>,
   ) {
     if let Some(case) = self.cases.get_mut(&description.id) {
-      case.status = Self::convert_step_status(&result);
+      case.status = Self::convert_step_status(result);
       case.set_time(Duration::from_millis(elapsed));
     }
   }
