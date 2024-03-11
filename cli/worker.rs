@@ -841,6 +841,7 @@ fn create_web_worker_callback(
       stdio: stdio.clone(),
       cache_storage_dir,
       feature_checker,
+      maybe_worker_metadata: args.maybe_worker_metadata,
     };
 
     WebWorker::bootstrap_from_options(
