@@ -704,7 +704,7 @@ fn permission_request_long() {
     .args_vec(["run", "--quiet", "run/permission_request_long.ts"])
     .with_pty(|mut console| {
       console.expect(concat!(
-        "❌ Permission prompt length (100017 bytes) was larger than the configured maximum length (10240 bytes): denying request.\r\n",
+        "was larger than the configured maximum length (10240 bytes): denying request.\r\n",
         "❌ WARNING: This may indicate that code is trying to bypass or hide permission check requests.\r\n",
         "❌ Run again with --allow-read to bypass this check if this is really what you want to do.\r\n",
       ));
@@ -4309,7 +4309,10 @@ fn fsfile_set_raw_should_not_panic_on_no_tty() {
     .unwrap();
   assert!(!output.status.success());
   let stderr = std::str::from_utf8(&output.stderr).unwrap().trim();
-  assert!(stderr.contains("BadResource"));
+  assert!(
+    stderr.contains("BadResource"),
+    "stderr did not contain BadResource: {stderr}"
+  );
 }
 
 #[test]
@@ -4674,7 +4677,7 @@ fn stdio_streams_are_locked_in_permission_prompt() {
       console.write_line(r#"new Worker(URL.createObjectURL(new Blob(["setInterval(() => console.log('**malicious**'), 10)"])), { type: "module" });"#);
       // The worker is now spamming
       console.expect(malicious_output);
-      console.write_line(r#"Deno.readTextFileSync('Cargo.toml');"#);
+      console.write_line(r#"Deno.readTextFileSync('../Cargo.toml');"#);
       // We will get a permission prompt
       console.expect("Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions) > ");
       // The worker is blocked, so nothing else should get written here
@@ -4690,7 +4693,7 @@ fn stdio_streams_are_locked_in_permission_prompt() {
       console.human_delay();
       console.write_line_raw("y");
       // We ensure that nothing gets written here between the permission prompt and this text, despire the delay
-      console.expect_raw_next(format!("y{newline}\x1b[4A\x1b[0J✅ Granted read access to \"Cargo.toml\"."));
+      console.expect_raw_next(format!("y{newline}\x1b[4A\x1b[0J✅ Granted read access to \""));
 
       // Back to spamming!
       console.expect(malicious_output);

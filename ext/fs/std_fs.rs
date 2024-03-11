@@ -2,26 +2,28 @@
 
 #![allow(clippy::disallowed_methods)]
 
+use std::env::current_dir;
 use std::fs;
 use std::io;
+use std::io::Read;
 use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 
+use deno_core::normalize_path;
 use deno_core::unsync::spawn_blocking;
 use deno_io::fs::File;
+use deno_io::fs::FsError;
 use deno_io::fs::FsResult;
 use deno_io::fs::FsStat;
 use deno_io::StdFileResourceInner;
 
+use crate::interface::AccessCheckCb;
 use crate::interface::FsDirEntry;
 use crate::interface::FsFileType;
 use crate::FileSystem;
 use crate::OpenOptions;
-
-#[cfg(not(unix))]
-use deno_io::fs::FsError;
 
 #[derive(Debug, Clone)]
 pub struct RealFs;
@@ -80,18 +82,18 @@ impl FileSystem for RealFs {
     &self,
     path: &Path,
     options: OpenOptions,
+    access_check: Option<AccessCheckCb>,
   ) -> FsResult<Rc<dyn File>> {
-    let opts = open_options(options);
-    let std_file = opts.open(path)?;
+    let std_file = open_with_access_check(options, path, access_check)?;
     Ok(Rc::new(StdFileResourceInner::file(std_file)))
   }
-  async fn open_async(
-    &self,
+  async fn open_async<'a>(
+    &'a self,
     path: PathBuf,
     options: OpenOptions,
+    access_check: Option<AccessCheckCb<'a>>,
   ) -> FsResult<Rc<dyn File>> {
-    let opts = open_options(options);
-    let std_file = spawn_blocking(move || opts.open(path)).await??;
+    let std_file = open_with_access_check(options, &path, access_check)?;
     Ok(Rc::new(StdFileResourceInner::file(std_file)))
   }
 
@@ -276,10 +278,10 @@ impl FileSystem for RealFs {
     &self,
     path: &Path,
     options: OpenOptions,
+    access_check: Option<AccessCheckCb>,
     data: &[u8],
   ) -> FsResult<()> {
-    let opts = open_options(options);
-    let mut file = opts.open(path)?;
+    let mut file = open_with_access_check(options, path, access_check)?;
     #[cfg(unix)]
     if let Some(mode) = options.mode {
       use std::os::unix::fs::PermissionsExt;
@@ -289,15 +291,15 @@ impl FileSystem for RealFs {
     Ok(())
   }
 
-  async fn write_file_async(
-    &self,
+  async fn write_file_async<'a>(
+    &'a self,
     path: PathBuf,
     options: OpenOptions,
+    access_check: Option<AccessCheckCb<'a>>,
     data: Vec<u8>,
   ) -> FsResult<()> {
+    let mut file = open_with_access_check(options, &path, access_check)?;
     spawn_blocking(move || {
-      let opts = open_options(options);
-      let mut file = opts.open(path)?;
       #[cfg(unix)]
       if let Some(mode) = options.mode {
         use std::os::unix::fs::PermissionsExt;
@@ -309,13 +311,43 @@ impl FileSystem for RealFs {
     .await?
   }
 
-  fn read_file_sync(&self, path: &Path) -> FsResult<Vec<u8>> {
-    fs::read(path).map_err(Into::into)
+  fn read_file_sync(
+    &self,
+    path: &Path,
+    access_check: Option<AccessCheckCb>,
+  ) -> FsResult<Vec<u8>> {
+    let mut file = open_with_access_check(
+      OpenOptions {
+        read: true,
+        ..Default::default()
+      },
+      path,
+      access_check,
+    )?;
+    let mut buf = Vec::new();
+    file.read_to_end(&mut buf)?;
+    Ok(buf)
   }
-  async fn read_file_async(&self, path: PathBuf) -> FsResult<Vec<u8>> {
-    spawn_blocking(move || fs::read(path))
-      .await?
-      .map_err(Into::into)
+  async fn read_file_async<'a>(
+    &'a self,
+    path: PathBuf,
+    access_check: Option<AccessCheckCb<'a>>,
+  ) -> FsResult<Vec<u8>> {
+    let mut file = open_with_access_check(
+      OpenOptions {
+        read: true,
+        ..Default::default()
+      },
+      &path,
+      access_check,
+    )?;
+    spawn_blocking(move || {
+      let mut buf = Vec::new();
+      file.read_to_end(&mut buf)?;
+      Ok::<_, FsError>(buf)
+    })
+    .await?
+    .map_err(Into::into)
   }
 }
 
@@ -410,7 +442,6 @@ fn copy_file(from: &Path, to: &Path) -> FsResult<()> {
     use libc::stat;
     use libc::unlink;
     use std::ffi::CString;
-    use std::io::Read;
     use std::os::unix::fs::OpenOptionsExt;
     use std::os::unix::fs::PermissionsExt;
 
@@ -844,4 +875,61 @@ fn open_options(options: OpenOptions) -> fs::OpenOptions {
   open_options.append(options.append);
   open_options.create_new(options.create_new);
   open_options
+}
+
+#[inline(always)]
+fn open_with_access_check(
+  options: OpenOptions,
+  path: &Path,
+  access_check: Option<AccessCheckCb>,
+) -> FsResult<std::fs::File> {
+  if let Some(access_check) = access_check {
+    let path = if path.is_absolute() {
+      normalize_path(path)
+    } else {
+      let cwd = current_dir()?;
+      normalize_path(cwd.join(path))
+    };
+    (*access_check)(false, &path, &options)?;
+    // On Linux, /proc may contain magic links that we don't want to resolve
+    let needs_canonicalization =
+      !cfg!(target_os = "linux") || path.starts_with("/proc");
+    let path = if needs_canonicalization {
+      match path.canonicalize() {
+        Ok(path) => path,
+        Err(_) => {
+          if let (Some(parent), Some(filename)) =
+            (path.parent(), path.file_name())
+          {
+            parent.canonicalize()?.join(filename)
+          } else {
+            return Err(std::io::ErrorKind::NotFound.into());
+          }
+        }
+      }
+    } else {
+      path
+    };
+
+    (*access_check)(true, &path, &options)?;
+
+    // For windows
+    #[allow(unused_mut)]
+    let mut opts: fs::OpenOptions = open_options(options);
+    #[cfg(unix)]
+    {
+      // Don't follow symlinks on open -- we must always pass fully-resolved files
+      // with the exception of /proc/ which is too special, and /dev/std* which might point to
+      // proc.
+      use std::os::unix::fs::OpenOptionsExt;
+      if needs_canonicalization {
+        opts.custom_flags(libc::O_NOFOLLOW);
+      }
+    }
+
+    Ok(opts.open(&path)?)
+  } else {
+    let opts = open_options(options);
+    Ok(opts.open(path)?)
+  }
 }
