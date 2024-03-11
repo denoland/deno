@@ -7,22 +7,33 @@ import {
   op_node_idna_punycode_encode,
 } from "ext:core/ops";
 
+import { deprecate } from "node:util";
+
 import { ucs2 } from "ext:deno_node/internal/idna.ts";
 
+function punyDeprecated(fn: any) {
+  return deprecate(
+    fn,
+    "The `punycode` module is deprecated. Please use a userland " +
+      "alternative instead.",
+    "DEP0040",
+  );
+}
+
 function toASCII(domain) {
-  return op_node_idna_domain_to_ascii(domain);
+  return punyDeprecated(op_node_idna_domain_to_ascii)(domain);
 }
 
 function toUnicode(domain) {
-  return op_node_idna_domain_to_unicode(domain);
+  return punyDeprecated(op_node_idna_domain_to_unicode)(domain);
 }
 
 function decode(domain) {
-  return op_node_idna_punycode_decode(domain);
+  return punyDeprecated(op_node_idna_punycode_decode)(domain);
 }
 
 function encode(domain) {
-  return op_node_idna_punycode_encode(domain);
+  return punyDeprecated(op_node_idna_punycode_encode)(domain);
 }
 
 export { decode, encode, toASCII, toUnicode, ucs2 };
