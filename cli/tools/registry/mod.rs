@@ -837,7 +837,9 @@ async fn build_and_check_graph_for_publish(
       colors::yellow("Warning"),
     );
     Ok(Arc::new(graph))
-  } else if std::env::var("DENO_INTERNAL_FAST_CHECK_OVERWRITE").is_ok() {
+  } else if std::env::var("DENO_INTERNAL_FAST_CHECK_OVERWRITE").as_deref()
+    == Ok("1")
+  {
     if check_if_git_repo_dirty(cli_options.initial_cwd()).await {
       bail!("When using DENO_INTERNAL_FAST_CHECK_OVERWRITE, the git repo must be in a clean state.");
     }
