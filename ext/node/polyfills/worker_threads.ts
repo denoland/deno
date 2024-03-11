@@ -413,10 +413,12 @@ internals.__initWorkerThreads = (
     >();
 
     parentPort = self as ParentPort;
-    const { 0: metadata, 1: _ } = maybeWorkerMetadata;
-    workerData = metadata.workerData;
-    environmentData = metadata.environmentData;
-    threadId = metadata.threadId;
+    if (typeof maybeWorkerMetadata !== "undefined") {
+      const { 0: metadata, 1: _ } = maybeWorkerMetadata;
+      workerData = metadata.workerData;
+      environmentData = metadata.environmentData;
+      threadId = metadata.threadId;
+    }
     defaultExport.workerData = workerData;
     defaultExport.parentPort = parentPort;
     defaultExport.threadId = threadId;
