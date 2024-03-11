@@ -6,6 +6,7 @@ use std::rc::Rc;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
+use deno_core::error::custom_error;
 use deno_core::error::not_supported;
 use deno_core::error::resource_unavailable;
 use deno_core::error::AnyError;
@@ -21,6 +22,7 @@ pub enum FsError {
   Io(io::Error),
   FileBusy,
   NotSupported,
+  PermissionDenied(&'static str),
 }
 
 impl FsError {
@@ -29,6 +31,7 @@ impl FsError {
       Self::Io(err) => err.kind(),
       Self::FileBusy => io::ErrorKind::Other,
       Self::NotSupported => io::ErrorKind::Other,
+      Self::PermissionDenied(_) => io::ErrorKind::PermissionDenied,
     }
   }
 
@@ -37,6 +40,9 @@ impl FsError {
       FsError::Io(err) => err,
       FsError::FileBusy => io::Error::new(self.kind(), "file busy"),
       FsError::NotSupported => io::Error::new(self.kind(), "not supported"),
+      FsError::PermissionDenied(err) => {
+        io::Error::new(self.kind(), format!("requires {err} access"))
+      }
     }
   }
 }
@@ -47,12 +53,21 @@ impl From<io::Error> for FsError {
   }
 }
 
+impl From<io::ErrorKind> for FsError {
+  fn from(err: io::ErrorKind) -> Self {
+    Self::Io(err.into())
+  }
+}
+
 impl From<FsError> for AnyError {
   fn from(err: FsError) -> Self {
     match err {
       FsError::Io(err) => AnyError::from(err),
       FsError::FileBusy => resource_unavailable(),
       FsError::NotSupported => not_supported(),
+      FsError::PermissionDenied(err) => {
+        custom_error("PermissionDenied", format!("permission denied: {err}"))
+      }
     }
   }
 }
