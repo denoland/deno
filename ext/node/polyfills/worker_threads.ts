@@ -409,6 +409,7 @@ internals.__initWorkerThreads = (runningOnMainThread: boolean) => {
     >();
 
     parentPort = self as ParentPort;
+    defaultExport.parentPort = parentPort;
 
     const initPromise = PromisePrototypeThen(
       once(
