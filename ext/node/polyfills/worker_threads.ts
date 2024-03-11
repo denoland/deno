@@ -175,10 +175,14 @@ class NodeWorker extends EventEmitter {
         // empty catch block when package json might not be present
       }
       if (
-        (StringPrototypeEndsWith(
-          StringPrototypeToString(specifier),
-          ".mjs",
-        )) ||
+        (!(StringPrototypeEndsWith(
+            StringPrototypeToString(specifier),
+            ".cjs",
+          ))) &&
+          (StringPrototypeEndsWith(
+            StringPrototypeToString(specifier),
+            ".mjs",
+          )) ||
         (pkg && pkg.exists && pkg.typ == "module")
       ) {
         specifier = toFileUrl(specifier as string);
