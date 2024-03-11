@@ -110,7 +110,7 @@ flate2 = { version = "1.0.26", default-features = false }
 fs3 = "0.5.0"
 futures = "0.3.21"
 glob = "0.3.1"
-h2 = "0.4"
+h2 = "0.4.2"
 http = "1.0"
 http-body-util = "0.1"
 http_v02 = { package = "http", version = "0.2.9" }
@@ -194,6 +194,7 @@ nix = "=0.26.2"
 
 # windows deps
 fwdansi = "=1.1.0"
+junction = "=0.2.0"
 winapi = "=0.3.9"
 windows-sys = { version = "0.48.0", features = ["Win32_Media"] }
 winres = "=0.1.12"

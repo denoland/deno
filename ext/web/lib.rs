@@ -46,6 +46,7 @@ pub use crate::message_port::create_entangled_message_port;
 use crate::message_port::op_message_port_create_entangled;
 use crate::message_port::op_message_port_post_message;
 use crate::message_port::op_message_port_recv_message;
+use crate::message_port::op_message_port_recv_message_sync;
 pub use crate::message_port::JsMessageData;
 pub use crate::message_port::MessagePort;
 
@@ -78,6 +79,7 @@ deno_core::extension!(deno_web,
     op_message_port_create_entangled,
     op_message_port_post_message,
     op_message_port_recv_message,
+    op_message_port_recv_message_sync,
     compression::op_compression_new,
     compression::op_compression_write,
     compression::op_compression_finish,
