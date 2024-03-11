@@ -11,6 +11,7 @@ import { deprecate } from "node:util";
 
 import { ucs2 } from "ext:deno_node/internal/idna.ts";
 
+// deno-lint-ignore no-explicit-any
 function punyDeprecated(fn: any) {
   return deprecate(
     fn,
