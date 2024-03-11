@@ -477,6 +477,13 @@ itest!(run_existing_npm_package_with_subpath {
   copy_temp_dir: Some("npm/run_existing_npm_package_with_subpath/"),
 });
 
+itest!(cjs_pkg_imports {
+  args: "run -A npm/cjs_pkg_imports/main.ts",
+  output: "npm/cjs_pkg_imports/main.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+});
+
 #[test]
 fn parallel_downloading() {
   let (out, _err) = util::run_and_collect_output_with_args(
