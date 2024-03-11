@@ -13,7 +13,7 @@ Check file:///[WILDCARD]/test/nested_failures.ts
         <testcase name="parent 1 &gt; child 1" classname="./test/nested_failures.ts" time="[WILDCARD]" line="2" col="11">
         </testcase>
         <testcase name="parent 1 &gt; child 2" classname="./test/nested_failures.ts" time="[WILDCARD]" line="3" col="11">
-            <failure message="Uncaught Error: Fail.">Uncaught Error: Fail.
+            <failure message="Uncaught Error: Fail.">Error: Fail.
     throw new Error(&quot;Fail.&quot;);
           ^
     at file:///[WILDCARD]/test/nested_failures.ts:4:11
@@ -25,14 +25,14 @@ Check file:///[WILDCARD]/test/nested_failures.ts
         <testcase name="parent 2 &gt; child 1 &gt; grandchild 1" classname="[WILDCARD]/test/nested_failures.ts" time="[WILDCARD]" line="10" col="13">
         </testcase>
         <testcase name="parent 2 &gt; child 1 &gt; grandchild 2" classname="[WILDCARD]/test/nested_failures.ts" time="[WILDCARD]" line="11" col="13">
-            <failure message="Uncaught Error: Fail.">Uncaught Error: Fail.
+            <failure message="Uncaught Error: Fail.">Error: Fail.
       throw new Error(&quot;Fail.&quot;);
             ^
     at file:///[WILDCARD]/test/nested_failures.ts:12:13
     [WILDCARD]</failure>
         </testcase>
         <testcase name="parent 2 &gt; child 2" classname="./test/nested_failures.ts" time="[WILDCARD]" line="15" col="11">
-            <failure message="Uncaught Error: Fail.">Uncaught Error: Fail.
+            <failure message="Uncaught Error: Fail.">Error: Fail.
     throw new Error(&quot;Fail.&quot;);
           ^
     at file:///[WILDCARD]/test/nested_failures.ts:16:11

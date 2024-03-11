@@ -272,7 +272,7 @@ impl std::fmt::Display for TestFailure {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     match self {
       TestFailure::JsError(js_error) => {
-        write!(f, "{}", format_js_error(js_error))
+        write!(f, "{}", format_test_error(js_error))
       }
       TestFailure::FailedSteps(1) => write!(f, "1 test step failed"),
       TestFailure::FailedSteps(n) => write!(f, "{n} test steps failed"),
