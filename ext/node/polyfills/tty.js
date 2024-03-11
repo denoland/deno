@@ -1,10 +1,12 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const {
   Error,
 } = primordials;
-import { op_is_terminal } from "ext:core/ops";
+const {
+  isTerminal,
+} = core;
 
 import { ERR_INVALID_FD } from "ext:deno_node/internal/errors.ts";
 import { LibuvStreamWrap } from "ext:deno_node/internal_binding/stream_wrap.ts";
@@ -23,7 +25,7 @@ function isatty(fd) {
      * correspond to `fd` 0, 1, 2 (stdin, stdout, stderr). This may change in
      * the future.
      */
-    return op_is_terminal(fd);
+    return isTerminal(fd);
   } catch (_) {
     return false;
   }

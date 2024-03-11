@@ -755,6 +755,33 @@ Deno.test(async function forkIpcKillDoesNotHang() {
   await p.promise;
 });
 
+Deno.test(async function stripForkEnableSourceMaps() {
+  const testdataDir = path.join(
+    path.dirname(path.fromFileUrl(import.meta.url)),
+    "testdata",
+  );
+  const script = path.join(
+    testdataDir,
+    "node_modules",
+    "foo",
+    "check_argv.js",
+  );
+  const p = Promise.withResolvers<void>();
+  const cp = CP.fork(script, [], {
+    cwd: testdataDir,
+    stdio: "pipe",
+    execArgv: ["--enable-source-maps"],
+  });
+  let output = "";
+  cp.on("close", () => p.resolve());
+  cp.stdout?.on("data", (data) => {
+    output += data;
+    cp.kill();
+  });
+  await p.promise;
+  assertEquals(output, "2\n");
+});
+
 Deno.test(async function execFileWithUndefinedTimeout() {
   const { promise, resolve, reject } = Promise.withResolvers<void>();
   CP.execFile(

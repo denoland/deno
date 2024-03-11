@@ -83,6 +83,7 @@ webidl.configureInterface(MessageChannel);
 const MessageChannelPrototype = MessageChannel.prototype;
 
 const _id = Symbol("id");
+const MessagePortIdSymbol = _id;
 const _enabled = Symbol("enabled");
 
 /**
@@ -380,6 +381,7 @@ export {
   deserializeJsMessageData,
   MessageChannel,
   MessagePort,
+  MessagePortIdSymbol,
   MessagePortPrototype,
   serializeJsMessageData,
   structuredClone,

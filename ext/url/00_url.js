@@ -395,7 +395,7 @@ class URL {
    * @param {string} [base]
    */
   static canParse(url, base = undefined) {
-    const prefix = "Failed to call 'URL.canParse'";
+    const prefix = "Failed to execute 'URL.canParse'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     url = webidl.converters.DOMString(url, prefix, "Argument 1");
     if (base !== undefined) {
