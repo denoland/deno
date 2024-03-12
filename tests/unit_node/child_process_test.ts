@@ -786,7 +786,7 @@ Deno.test(async function execFileWithUndefinedTimeout() {
   const { promise, resolve, reject } = Promise.withResolvers<void>();
   CP.execFile(
     "git",
-    ["-v"],
+    ["--version"],
     { timeout: undefined, encoding: "utf8" },
     (err) => {
       if (err) {

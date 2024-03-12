@@ -38,6 +38,7 @@ import {
   OutgoingMessage,
   parseUniqueHeadersOption,
   validateHeaderName,
+  validateHeaderValue,
 } from "ext:deno_node/_http_outgoing.ts";
 import { ok as assert } from "node:assert";
 import { kOutHeaders } from "ext:deno_node/internal/http.ts";
@@ -1824,6 +1825,8 @@ export {
   METHODS,
   OutgoingMessage,
   STATUS_CODES,
+  validateHeaderName,
+  validateHeaderValue,
 };
 export default {
   Agent,
@@ -1840,4 +1843,6 @@ export default {
   ServerResponse,
   request,
   get,
+  validateHeaderName,
+  validateHeaderValue,
 };

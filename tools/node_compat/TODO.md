@@ -3,8 +3,6 @@
 
 NOTE: This file should not be manually edited. Please edit `tests/node_compat/config.json` and run `deno task setup` in `tools/node_compat` dir instead.
 
-Total: 2999
-
 - [abort/test-abort-backtrace.js](https://github.com/nodejs/node/tree/v18.12.1/test/abort/test-abort-backtrace.js)
 - [abort/test-abort-fatal-error.js](https://github.com/nodejs/node/tree/v18.12.1/test/abort/test-abort-fatal-error.js)
 - [abort/test-abort-uncaught-exception.js](https://github.com/nodejs/node/tree/v18.12.1/test/abort/test-abort-uncaught-exception.js)
@@ -1052,7 +1050,6 @@ Total: 2999
 - [parallel/test-http-header-overflow.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-header-overflow.js)
 - [parallel/test-http-header-owstext.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-header-owstext.js)
 - [parallel/test-http-header-read.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-header-read.js)
-- [parallel/test-http-header-validators.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-header-validators.js)
 - [parallel/test-http-hex-write.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-hex-write.js)
 - [parallel/test-http-highwatermark.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-highwatermark.js)
 - [parallel/test-http-host-header-ipv6-fail.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-host-header-ipv6-fail.js)
@@ -1938,7 +1935,6 @@ Total: 2999
 - [parallel/test-promises-unhandled-rejections.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-promises-unhandled-rejections.js)
 - [parallel/test-promises-unhandled-symbol-rejections.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-promises-unhandled-symbol-rejections.js)
 - [parallel/test-promises-warning-on-unhandled-rejection.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-promises-warning-on-unhandled-rejection.js)
-- [parallel/test-punycode.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-punycode.js)
 - [parallel/test-queue-microtask-uncaught-asynchooks.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-queue-microtask-uncaught-asynchooks.js)
 - [parallel/test-queue-microtask.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-queue-microtask.js)
 - [parallel/test-readable-from-iterator-closing.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-readable-from-iterator-closing.js)
@@ -2711,7 +2707,6 @@ Total: 2999
 - [parallel/test-worker-message-port-message-port-transferring.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-worker-message-port-message-port-transferring.js)
 - [parallel/test-worker-message-port-move.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-worker-message-port-move.js)
 - [parallel/test-worker-message-port-multiple-sharedarraybuffers.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-worker-message-port-multiple-sharedarraybuffers.js)
-- [parallel/test-worker-message-port-receive-message.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-worker-message-port-receive-message.js)
 - [parallel/test-worker-message-port-terminate-transfer-list.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-worker-message-port-terminate-transfer-list.js)
 - [parallel/test-worker-message-port-transfer-closed.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-worker-message-port-transfer-closed.js)
 - [parallel/test-worker-message-port-transfer-duplicate.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-worker-message-port-transfer-duplicate.js)

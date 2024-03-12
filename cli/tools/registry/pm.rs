@@ -26,7 +26,7 @@ use crate::jsr::JsrFetchResolver;
 use crate::npm::NpmFetchResolver;
 
 pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
-  let cli_factory = CliFactory::from_flags(flags.clone()).await?;
+  let cli_factory = CliFactory::from_flags(flags.clone())?;
   let cli_options = cli_factory.cli_options();
 
   let Some(config_file) = cli_options.maybe_config_file() else {

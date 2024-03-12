@@ -8,21 +8,25 @@ import {
   op_host_recv_ctrl,
   op_host_recv_message,
   op_host_terminate_worker,
+  op_message_port_recv_message_sync,
   op_require_read_closest_package_json,
 } from "ext:core/ops";
-import { BroadcastChannel } from "ext:deno_broadcast_channel/01_broadcast_channel.js";
 import {
   deserializeJsMessageData,
   MessageChannel,
   MessagePort,
+  MessagePortIdSymbol,
+  MessagePortPrototype,
   serializeJsMessageData,
 } from "ext:deno_web/13_message_port.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { log } from "ext:runtime/06_util.js";
 import { notImplemented } from "ext:deno_node/_utils.ts";
-import { EventEmitter, once } from "node:events";
+import { EventEmitter } from "node:events";
+import { BroadcastChannel } from "ext:deno_broadcast_channel/01_broadcast_channel.js";
 import { isAbsolute, resolve } from "node:path";
 
+const { ObjectPrototypeIsPrototypeOf } = primordials;
 const {
   Error,
   Symbol,
@@ -38,7 +42,6 @@ const {
   SafeRegExp,
   SafeMap,
   TypeError,
-  PromisePrototypeThen,
 } = primordials;
 
 export interface WorkerOptions {
@@ -192,6 +195,13 @@ class NodeWorker extends EventEmitter {
       name = "[worker eval]";
     }
     this.#name = name;
+    this.threadId = ++threads;
+
+    const serializedWorkerMetadata = serializeJsMessageData({
+      workerData: options?.workerData,
+      environmentData: environmentData,
+      threadId: this.threadId,
+    }, options?.transferList ?? []);
     const id = op_create_worker(
       {
         // deno-lint-ignore prefer-primordials
@@ -202,16 +212,11 @@ class NodeWorker extends EventEmitter {
         name: this.#name,
         workerType: "module",
       },
+      serializedWorkerMetadata,
     );
     this.#id = id;
     this.#pollControl();
     this.#pollMessages();
-
-    this.postMessage({
-      environmentData,
-      threadId: (this.threadId = ++threads),
-      workerData: options?.workerData,
-    }, options?.transferList || []);
     // https://nodejs.org/api/worker_threads.html#event-online
     this.emit("online");
   }
@@ -383,7 +388,10 @@ type ParentPort = typeof self & NodeEventTarget;
 // deno-lint-ignore no-explicit-any
 let parentPort: ParentPort = null as any;
 
-internals.__initWorkerThreads = (runningOnMainThread: boolean) => {
+internals.__initWorkerThreads = (
+  runningOnMainThread: boolean,
+  maybeWorkerMetadata,
+) => {
   isMainThread = runningOnMainThread;
 
   defaultExport.isMainThread = isMainThread;
@@ -405,28 +413,15 @@ internals.__initWorkerThreads = (runningOnMainThread: boolean) => {
     >();
 
     parentPort = self as ParentPort;
-
-    const initPromise = PromisePrototypeThen(
-      once(
-        parentPort,
-        "message",
-      ),
-      (result) => {
-        // TODO(bartlomieju): just so we don't error out here. It's still racy,
-        // but should be addressed by https://github.com/denoland/deno/issues/22783
-        // shortly.
-        const data = result[0].data ?? {};
-        // TODO(kt3k): The below values are set asynchronously
-        // using the first message from the parent.
-        // This should be done synchronously.
-        threadId = data.threadId;
-        workerData = data.workerData;
-        environmentData = data.environmentData;
-
-        defaultExport.threadId = threadId;
-        defaultExport.workerData = workerData;
-      },
-    );
+    if (typeof maybeWorkerMetadata !== "undefined") {
+      const { 0: metadata, 1: _ } = maybeWorkerMetadata;
+      workerData = metadata.workerData;
+      environmentData = metadata.environmentData;
+      threadId = metadata.threadId;
+    }
+    defaultExport.workerData = workerData;
+    defaultExport.parentPort = parentPort;
+    defaultExport.threadId = threadId;
 
     parentPort.off = parentPort.removeListener = function (
       this: ParentPort,
@@ -442,22 +437,18 @@ internals.__initWorkerThreads = (runningOnMainThread: boolean) => {
       name,
       listener,
     ) {
-      PromisePrototypeThen(initPromise, () => {
-        // deno-lint-ignore no-explicit-any
-        const _listener = (ev: any) => listener(ev.data);
-        listeners.set(listener, _listener);
-        this.addEventListener(name, _listener);
-      });
+      // deno-lint-ignore no-explicit-any
+      const _listener = (ev: any) => listener(ev.data);
+      listeners.set(listener, _listener);
+      this.addEventListener(name, _listener);
       return this;
     };
 
     parentPort.once = function (this: ParentPort, name, listener) {
-      PromisePrototypeThen(initPromise, () => {
-        // deno-lint-ignore no-explicit-any
-        const _listener = (ev: any) => listener(ev.data);
-        listeners.set(listener, _listener);
-        this.addEventListener(name, _listener);
-      });
+      // deno-lint-ignore no-explicit-any
+      const _listener = (ev: any) => listener(ev.data);
+      listeners.set(listener, _listener);
+      this.addEventListener(name, _listener);
       return this;
     };
 
@@ -496,9 +487,24 @@ export function markAsUntransferable() {
 export function moveMessagePortToContext() {
   notImplemented("moveMessagePortToContext");
 }
-export function receiveMessageOnPort() {
-  notImplemented("receiveMessageOnPort");
+
+/**
+ * @param { MessagePort } port
+ * @returns {object | undefined}
+ */
+export function receiveMessageOnPort(port: MessagePort): object | undefined {
+  if (!(ObjectPrototypeIsPrototypeOf(MessagePortPrototype, port))) {
+    const err = new TypeError(
+      'The "port" argument must be a MessagePort instance',
+    );
+    err["code"] = "ERR_INVALID_ARG_TYPE";
+    throw err;
+  }
+  const data = op_message_port_recv_message_sync(port[MessagePortIdSymbol]);
+  if (data === null) return undefined;
+  return { message: deserializeJsMessageData(data)[0] };
 }
+
 export {
   BroadcastChannel,
   MessageChannel,

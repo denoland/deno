@@ -172,10 +172,20 @@ Deno.test(
     }
 
     // Sends SIGUSR1 (irrelevant signal) 3 times.
+    // By default SIGUSR1 terminates, so set it to a no-op for this test.
+    let count = 0;
+    const irrelevant = () => {
+      count++;
+    };
+    Deno.addSignalListener("SIGUSR1", irrelevant);
     for (const _ of Array(3)) {
       await delay(20);
       Deno.kill(Deno.pid, "SIGUSR1");
     }
+    while (count < 3) {
+      await delay(20);
+    }
+    Deno.removeSignalListener("SIGUSR1", irrelevant);
 
     // No change
     assertEquals(c, "010101000");

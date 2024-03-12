@@ -70,7 +70,10 @@ import {
   CHAR_ZERO_WIDTH_NOBREAK_SPACE,
 } from "ext:deno_node/path/_constants.ts";
 import * as path from "node:path";
-import { toASCII, toUnicode } from "node:punycode";
+import {
+  domainToASCII as idnaToASCII,
+  domainToUnicode as idnaToUnicode,
+} from "ext:deno_node/internal/idna.ts";
 import { isWindows, osType } from "ext:deno_node/_util/os.ts";
 import { encodeStr, hexTable } from "ext:deno_node/internal/querystring.ts";
 import querystring from "node:querystring";
@@ -813,7 +816,7 @@ export class Url {
 
           // Use lenient mode (`true`) to try to support even non-compliant
           // URLs.
-          this.hostname = toASCII(this.hostname);
+          this.hostname = idnaToASCII(this.hostname);
 
           // Prevent two potential routes of hostname spoofing.
           // 1. If this.hostname is empty, it must have become empty due to toASCII
@@ -1251,7 +1254,7 @@ export function resolveObject(source: string | Url, relative: string) {
  * @see https://www.rfc-editor.org/rfc/rfc3490#section-4
  */
 export function domainToASCII(domain: string) {
-  return toASCII(domain);
+  return idnaToASCII(domain);
 }
 
 /**
@@ -1261,7 +1264,7 @@ export function domainToASCII(domain: string) {
  * @see https://www.rfc-editor.org/rfc/rfc3490#section-4
  */
 export function domainToUnicode(domain: string) {
-  return toUnicode(domain);
+  return idnaToUnicode(domain);
 }
 
 /**
@@ -1396,7 +1399,7 @@ export function pathToFileURL(filepath: string): URL {
       );
     }
 
-    outURL.hostname = domainToASCII(hostname);
+    outURL.hostname = idnaToASCII(hostname);
     outURL.pathname = encodePathChars(paths.slice(3).join("/"));
   } else {
     let resolved = path.resolve(filepath);
