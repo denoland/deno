@@ -1,10 +1,11 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::fs_util::resolve_from_cwd;
+use deno_core::anyhow::Context;
 use deno_core::error::custom_error;
 use deno_core::error::type_error;
 use deno_core::error::uri_error;
 use deno_core::error::AnyError;
+use deno_core::normalize_path;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde::de;
 use deno_core::serde::Deserialize;
@@ -15,7 +16,6 @@ use deno_core::url;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_terminal::colors;
-use log;
 use once_cell::sync::Lazy;
 use std::borrow::Cow;
 use std::collections::HashSet;
@@ -28,13 +28,25 @@ use std::string::ToString;
 use std::sync::Arc;
 use which::which;
 
-mod prompter;
+pub mod prompter;
 use prompter::permission_prompt;
 use prompter::PromptResponse;
 use prompter::PERMISSION_EMOJI;
 
 pub use prompter::set_prompt_callbacks;
 pub use prompter::PromptCallback;
+
+#[inline]
+fn resolve_from_cwd(path: &Path) -> Result<PathBuf, AnyError> {
+  if path.is_absolute() {
+    Ok(normalize_path(path))
+  } else {
+    #[allow(clippy::disallowed_methods)]
+    let cwd = std::env::current_dir()
+      .context("Failed to get current working directory")?;
+    Ok(normalize_path(cwd.join(path)))
+  }
+}
 
 static DEBUG_LOG_ENABLED: Lazy<bool> =
   Lazy::new(|| log::log_enabled!(log::Level::Debug));
@@ -1271,6 +1283,11 @@ impl PermissionsContainer {
     Self(Arc::new(Mutex::new(perms)))
   }
 
+  #[inline(always)]
+  pub fn allow_hrtime(&mut self) -> bool {
+    self.0.lock().hrtime.check().is_ok()
+  }
+
   pub fn allow_all() -> Self {
     Self::new(Permissions::allow_all())
   }
@@ -1290,6 +1307,15 @@ impl PermissionsContainer {
     api_name: &str,
   ) -> Result<(), AnyError> {
     self.0.lock().read.check(path, Some(api_name))
+  }
+
+  #[inline(always)]
+  pub fn check_read_with_api_name(
+    &self,
+    path: &Path,
+    api_name: Option<&str>,
+  ) -> Result<(), AnyError> {
+    self.0.lock().read.check(path, api_name)
   }
 
   #[inline(always)]
@@ -1317,6 +1343,15 @@ impl PermissionsContainer {
   }
 
   #[inline(always)]
+  pub fn check_write_with_api_name(
+    &self,
+    path: &Path,
+    api_name: Option<&str>,
+  ) -> Result<(), AnyError> {
+    self.0.lock().write.check(path, api_name)
+  }
+
+  #[inline(always)]
   pub fn check_write_all(&mut self, api_name: &str) -> Result<(), AnyError> {
     self.0.lock().write.check_all(Some(api_name))
   }
@@ -1329,6 +1364,15 @@ impl PermissionsContainer {
     api_name: &str,
   ) -> Result<(), AnyError> {
     self.0.lock().write.check_blind(path, display, api_name)
+  }
+
+  #[inline(always)]
+  pub fn check_write_partial(
+    &mut self,
+    path: &Path,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    self.0.lock().write.check_partial(path, Some(api_name))
   }
 
   #[inline(always)]
@@ -1346,11 +1390,7 @@ impl PermissionsContainer {
   }
 
   #[inline(always)]
-  pub fn check_sys(
-    &mut self,
-    kind: &str,
-    api_name: &str,
-  ) -> Result<(), AnyError> {
+  pub fn check_sys(&self, kind: &str, api_name: &str) -> Result<(), AnyError> {
     self.0.lock().sys.check(kind, Some(api_name))
   }
 
@@ -1363,11 +1403,9 @@ impl PermissionsContainer {
   pub fn check_env_all(&mut self) -> Result<(), AnyError> {
     self.0.lock().env.check_all()
   }
-}
 
-impl deno_node::NodePermissions for PermissionsContainer {
   #[inline(always)]
-  fn check_net_url(
+  pub fn check_net_url(
     &mut self,
     url: &Url,
     api_name: &str,
@@ -1376,31 +1414,7 @@ impl deno_node::NodePermissions for PermissionsContainer {
   }
 
   #[inline(always)]
-  fn check_read_with_api_name(
-    &self,
-    path: &Path,
-    api_name: Option<&str>,
-  ) -> Result<(), AnyError> {
-    self.0.lock().read.check(path, api_name)
-  }
-
-  #[inline(always)]
-  fn check_write_with_api_name(
-    &self,
-    path: &Path,
-    api_name: Option<&str>,
-  ) -> Result<(), AnyError> {
-    self.0.lock().write.check(path, api_name)
-  }
-
-  fn check_sys(&self, kind: &str, api_name: &str) -> Result<(), AnyError> {
-    self.0.lock().sys.check(kind, Some(api_name))
-  }
-}
-
-impl deno_net::NetPermissions for PermissionsContainer {
-  #[inline(always)]
-  fn check_net<T: AsRef<str>>(
+  pub fn check_net<T: AsRef<str>>(
     &mut self,
     host: &(T, Option<u16>),
     api_name: &str,
@@ -1409,155 +1423,16 @@ impl deno_net::NetPermissions for PermissionsContainer {
   }
 
   #[inline(always)]
-  fn check_read(
-    &mut self,
-    path: &Path,
-    api_name: &str,
-  ) -> Result<(), AnyError> {
-    self.0.lock().read.check(path, Some(api_name))
-  }
-
-  #[inline(always)]
-  fn check_write(
-    &mut self,
-    path: &Path,
-    api_name: &str,
-  ) -> Result<(), AnyError> {
-    self.0.lock().write.check(path, Some(api_name))
-  }
-}
-
-impl deno_fetch::FetchPermissions for PermissionsContainer {
-  #[inline(always)]
-  fn check_net_url(
-    &mut self,
-    url: &url::Url,
-    api_name: &str,
-  ) -> Result<(), AnyError> {
-    self.0.lock().net.check_url(url, Some(api_name))
-  }
-
-  #[inline(always)]
-  fn check_read(
-    &mut self,
-    path: &Path,
-    api_name: &str,
-  ) -> Result<(), AnyError> {
-    self.0.lock().read.check(path, Some(api_name))
-  }
-}
-
-impl deno_web::TimersPermission for PermissionsContainer {
-  #[inline(always)]
-  fn allow_hrtime(&mut self) -> bool {
-    self.0.lock().hrtime.check().is_ok()
-  }
-}
-
-impl deno_websocket::WebSocketPermissions for PermissionsContainer {
-  #[inline(always)]
-  fn check_net_url(
-    &mut self,
-    url: &url::Url,
-    api_name: &str,
-  ) -> Result<(), AnyError> {
-    self.0.lock().net.check_url(url, Some(api_name))
-  }
-}
-
-impl deno_fs::FsPermissions for PermissionsContainer {
-  fn check_read(
-    &mut self,
-    path: &Path,
-    api_name: &str,
-  ) -> Result<(), AnyError> {
-    self.0.lock().read.check(path, Some(api_name))
-  }
-
-  fn check_read_blind(
-    &mut self,
-    path: &Path,
-    display: &str,
-    api_name: &str,
-  ) -> Result<(), AnyError> {
-    self.0.lock().read.check_blind(path, display, api_name)
-  }
-
-  fn check_write(
-    &mut self,
-    path: &Path,
-    api_name: &str,
-  ) -> Result<(), AnyError> {
-    self.0.lock().write.check(path, Some(api_name))
-  }
-
-  fn check_write_partial(
-    &mut self,
-    path: &Path,
-    api_name: &str,
-  ) -> Result<(), AnyError> {
-    self.0.lock().write.check_partial(path, Some(api_name))
-  }
-
-  fn check_write_blind(
-    &mut self,
-    p: &Path,
-    display: &str,
-    api_name: &str,
-  ) -> Result<(), AnyError> {
-    self.0.lock().write.check_blind(p, display, api_name)
-  }
-
-  fn check_read_all(&mut self, api_name: &str) -> Result<(), AnyError> {
-    self.0.lock().read.check_all(Some(api_name))
-  }
-
-  fn check_write_all(&mut self, api_name: &str) -> Result<(), AnyError> {
-    self.0.lock().write.check_all(Some(api_name))
-  }
-}
-
-// NOTE(bartlomieju): for now, NAPI uses `--allow-ffi` flag, but that might
-// change in the future.
-impl deno_napi::NapiPermissions for PermissionsContainer {
-  #[inline(always)]
-  fn check(&mut self, path: Option<&Path>) -> Result<(), AnyError> {
+  pub fn check_ffi(&mut self, path: Option<&Path>) -> Result<(), AnyError> {
     self.0.lock().ffi.check(path.unwrap(), None)
   }
-}
-
-impl deno_ffi::FfiPermissions for PermissionsContainer {
-  #[inline(always)]
-  fn check_partial(&mut self, path: Option<&Path>) -> Result<(), AnyError> {
-    self.0.lock().ffi.check_partial(path)
-  }
-}
-
-impl deno_kv::sqlite::SqliteDbHandlerPermissions for PermissionsContainer {
-  #[inline(always)]
-  fn check_read(&mut self, p: &Path, api_name: &str) -> Result<(), AnyError> {
-    self.0.lock().read.check(p, Some(api_name))
-  }
 
   #[inline(always)]
-  fn check_write(&mut self, p: &Path, api_name: &str) -> Result<(), AnyError> {
-    self.0.lock().write.check(p, Some(api_name))
-  }
-}
-
-impl deno_kv::remote::RemoteDbHandlerPermissions for PermissionsContainer {
-  #[inline(always)]
-  fn check_env(&mut self, var: &str) -> Result<(), AnyError> {
-    self.0.lock().env.check(var)
-  }
-
-  #[inline(always)]
-  fn check_net_url(
+  pub fn check_ffi_partial(
     &mut self,
-    url: &url::Url,
-    api_name: &str,
+    path: Option<&Path>,
   ) -> Result<(), AnyError> {
-    self.0.lock().net.check_url(url, Some(api_name))
+    self.0.lock().ffi.check_partial(path)
   }
 }
 
