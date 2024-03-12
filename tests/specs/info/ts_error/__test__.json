@@ -1,4 +1,4 @@
 {
-  "args": "info 031_info_ts_error.ts",
-  "output": "031_info_ts_error.out"
+  "args": "info info_ts_error.ts",
+  "output": "info_ts_error.out"
 }
