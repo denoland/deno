@@ -35,15 +35,6 @@ declare namespace Deno {
     /** Return the address of the `Listener`. */
     readonly addr: Addr;
 
-    /**
-     * Return the rid of the `Listener`.
-     *
-     * @deprecated This will be removed in Deno 2.0. See the
-     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-     * for migration instructions.
-     */
-    readonly rid: number;
-
     [Symbol.asyncIterator](): AsyncIterableIterator<T>;
 
     /**
@@ -70,14 +61,6 @@ declare namespace Deno {
     readonly localAddr: Addr;
     /** The remote address of the connection. */
     readonly remoteAddr: Addr;
-    /**
-     * The resource ID of the connection.
-     *
-     * @deprecated This will be removed in Deno 2.0. See the
-     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-     * for migration instructions.
-     */
-    readonly rid: number;
     /** Shuts down (`shutdown(2)`) the write side of the connection. Most
      * callers should just use `close()`. */
     closeWrite(): Promise<void>;
@@ -110,14 +93,6 @@ declare namespace Deno {
      * not happened yet. Calling this method is optional; the TLS handshake
      * will be completed automatically as soon as data is sent or received. */
     handshake(): Promise<TlsHandshakeInfo>;
-    /**
-     * The resource ID of the connection.
-     *
-     * @deprecated This will be removed in Deno 2.0. See the
-     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-     * for migration instructions.
-     */
-    readonly rid: number;
   }
 
   /** @category Network */
@@ -275,14 +250,6 @@ declare namespace Deno {
     setNoDelay(noDelay?: boolean): void;
     /** Enable/disable keep-alive functionality. */
     setKeepAlive(keepAlive?: boolean): void;
-    /**
-     * The resource ID of the connection.
-     *
-     * @deprecated This will be removed in Deno 2.0. See the
-     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-     * for migration instructions.
-     */
-    readonly rid: number;
   }
 
   /** @category Network */
@@ -292,16 +259,8 @@ declare namespace Deno {
   }
 
   /** @category Network */
-  export interface UnixConn extends Conn {
-    /**
-     * The resource ID of the connection.
-     *
-     * @deprecated This will be removed in Deno 2.0. See the
-     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-     * for migration instructions.
-     */
-    readonly rid: number;
-  }
+  // deno-lint-ignore no-empty-interface
+  export interface UnixConn extends Conn {}
 
   /** Connects to the hostname (default is "127.0.0.1") and port on the named
    * transport (default is "tcp"), and resolves to the connection (`Conn`).
