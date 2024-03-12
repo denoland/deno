@@ -2,6 +2,7 @@
 
 import { statfs, statfsSync, StatsFsBase } from "node:fs";
 import { assertEquals } from "@std/assert/mod.ts";
+import * as path from "@std/path/mod.ts";
 
 function assertStatFs(statFs: StatsFsBase<unknown>, { bigint = false } = {}) {
   assertEquals(statFs.constructor.name, "StatFs");
@@ -20,11 +21,13 @@ function assertStatFs(statFs: StatsFsBase<unknown>, { bigint = false } = {}) {
   }
 }
 
+const filePath = path.fromFileUrl(import.meta.url);
+
 Deno.test({
   name: "fs.statfs()",
   async fn() {
     await new Promise<StatsFsBase<unknown>>((resolve, reject) => {
-      statfs("/", (err, statFs) => {
+      statfs(filePath, (err, statFs) => {
         if (err) reject(err);
         resolve(statFs);
       });
@@ -36,7 +39,7 @@ Deno.test({
   name: "fs.statfs() bigint",
   async fn() {
     await new Promise<StatsFsBase<unknown>>((resolve, reject) => {
-      statfs("/", { bigint: true }, (err, statFs) => {
+      statfs(filePath, { bigint: true }, (err, statFs) => {
         if (err) reject(err);
         resolve(statFs);
       });
@@ -47,7 +50,7 @@ Deno.test({
 Deno.test({
   name: "fs.statfsSync()",
   fn() {
-    const statFs = statfsSync("/");
+    const statFs = statfsSync(filePath);
     assertStatFs(statFs);
   },
 });
@@ -55,7 +58,7 @@ Deno.test({
 Deno.test({
   name: "fs.statfsSync() bigint",
   fn() {
-    const statFs = statfsSync("/", { bigint: true });
+    const statFs = statfsSync(filePath, { bigint: true });
     assertStatFs(statFs, { bigint: true });
   },
 });
