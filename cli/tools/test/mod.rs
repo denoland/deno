@@ -80,7 +80,6 @@ use std::sync::Arc;
 use std::task::Poll;
 use std::time::Duration;
 use std::time::Instant;
-use std::time::SystemTime;
 use tokio::signal;
 
 mod channel;
@@ -769,7 +768,7 @@ async fn run_tests_for_worker_inner(
     // We always capture stats, regardless of sanitization state
     let before = stats.clone().capture(&filter);
 
-    let earlier = SystemTime::now();
+    let earlier = Instant::now();
     let call = worker.js_runtime.call(&function);
     let result = match worker
       .js_runtime
@@ -807,7 +806,7 @@ async fn run_tests_for_worker_inner(
       let (formatted, trailer_notes) = format_sanitizer_diff(diff);
       if !formatted.is_empty() {
         let failure = TestFailure::Leaked(formatted, trailer_notes);
-        let elapsed = SystemTime::now().duration_since(earlier)?.as_millis();
+        let elapsed = earlier.elapsed().as_millis();
         sender.send(TestEvent::Result(
           desc.id,
           TestResult::Failed(failure),
@@ -823,7 +822,7 @@ async fn run_tests_for_worker_inner(
     if matches!(result, TestResult::Failed(_)) {
       fail_fast_tracker.add_failure();
     }
-    let elapsed = SystemTime::now().duration_since(earlier)?.as_millis();
+    let elapsed = earlier.elapsed().as_millis();
     sender.send(TestEvent::Result(desc.id, result, elapsed as u64))?;
   }
   Ok(())

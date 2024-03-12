@@ -77,6 +77,7 @@ util::unit_test_factory!(
     path_test,
     perf_hooks_test,
     process_test,
+    punycode_test,
     querystring_test,
     readline_test,
     repl_test,

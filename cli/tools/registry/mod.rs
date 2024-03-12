@@ -837,6 +837,27 @@ async fn build_and_check_graph_for_publish(
       colors::yellow("Warning"),
     );
     Ok(Arc::new(graph))
+  } else if std::env::var("DENO_INTERNAL_FAST_CHECK_OVERWRITE").is_ok() {
+    if check_if_git_repo_dirty(cli_options.initial_cwd()).await {
+      bail!("When using DENO_INTERNAL_FAST_CHECK_OVERWRITE, the git repo must be in a clean state.");
+    }
+
+    for module in graph.modules() {
+      if module.specifier().scheme() != "file" {
+        continue;
+      }
+      let Some(js) = module.js() else {
+        continue;
+      };
+      if let Some(module) = js.fast_check_module() {
+        std::fs::write(
+          js.specifier.to_file_path().unwrap(),
+          module.source.as_ref(),
+        )?;
+      }
+    }
+
+    bail!("Exiting due to DENO_INTERNAL_FAST_CHECK_OVERWRITE")
   } else {
     log::info!("Checking for slow types in the public API...");
     let mut any_pkg_had_diagnostics = false;
