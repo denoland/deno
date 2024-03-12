@@ -35,9 +35,10 @@ pub async fn bundle(
       move |flags, watcher_communicator, _changed_paths| {
         let bundle_flags = bundle_flags.clone();
         Ok(async move {
-          let factory = CliFactoryBuilder::new()
-            .build_from_flags_for_watcher(flags, watcher_communicator.clone())
-            .await?;
+          let factory = CliFactoryBuilder::new().build_from_flags_for_watcher(
+            flags,
+            watcher_communicator.clone(),
+          )?;
           let cli_options = factory.cli_options();
           let _ = watcher_communicator.watch_paths(cli_options.watch_paths());
           bundle_action(factory, &bundle_flags).await?;
@@ -48,7 +49,7 @@ pub async fn bundle(
     )
     .await?;
   } else {
-    let factory = CliFactory::from_flags(flags).await?;
+    let factory = CliFactory::from_flags(flags)?;
     bundle_action(factory, &bundle_flags).await?;
   }
 
