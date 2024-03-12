@@ -121,8 +121,6 @@ const denoNs = {
   Buffer: buffer.Buffer,
   readAll: buffer.readAll,
   readAllSync: buffer.readAllSync,
-  writeAll: buffer.writeAll,
-  writeAllSync: buffer.writeAllSync,
   copy: io.copy,
   iter: io.iter,
   iterSync: io.iterSync,
