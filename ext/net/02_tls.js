@@ -134,9 +134,7 @@ class TlsListener extends Listener {
 function listenTls({
   port,
   cert,
-  certFile,
   key,
-  keyFile,
   hostname = "0.0.0.0",
   transport = "tcp",
   alpnProtocols = undefined,
@@ -145,23 +143,9 @@ function listenTls({
   if (transport !== "tcp") {
     throw new TypeError(`Unsupported transport: '${transport}'`);
   }
-  if (keyFile !== undefined) {
-    internals.warnOnDeprecatedApi(
-      "Deno.ListenTlsOptions.keyFile",
-      new Error().stack,
-      "Pass the key file contents to the `Deno.ListenTlsOptions.key` option instead.",
-    );
-  }
-  if (certFile !== undefined) {
-    internals.warnOnDeprecatedApi(
-      "Deno.ListenTlsOptions.certFile",
-      new Error().stack,
-      "Pass the cert file contents to the `Deno.ListenTlsOptions.cert` option instead.",
-    );
-  }
   const { 0: rid, 1: localAddr } = op_net_listen_tls(
     { hostname, port: Number(port) },
-    { cert, certFile, key, keyFile, alpnProtocols, reusePort },
+    { cert, key, alpnProtocols, reusePort },
   );
   return new TlsListener(rid, localAddr);
 }

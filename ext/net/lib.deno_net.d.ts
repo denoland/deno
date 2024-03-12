@@ -190,23 +190,6 @@ declare namespace Deno {
     key?: string;
     /** Cert chain in PEM format */
     cert?: string;
-    /** Path to a file containing a PEM formatted CA certificate. Requires
-     * `--allow-read`.
-     *
-     * @tags allow-read
-     * @deprecated This will be removed in Deno 2.0. See the
-     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-     * for migration instructions.
-     */
-    certFile?: string;
-    /** Server private key file. Requires `--allow-read`.
-     *
-     * @tags allow-read
-     * @deprecated This will be removed in Deno 2.0. See the
-     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-     * for migration instructions.
-     */
-    keyFile?: string;
 
     transport?: "tcp";
 

@@ -26,8 +26,6 @@ use deno_core::ResourceId;
 use deno_tls::create_client_config;
 use deno_tls::load_certs;
 use deno_tls::load_private_keys;
-use deno_tls::rustls::Certificate;
-use deno_tls::rustls::PrivateKey;
 use deno_tls::rustls::ServerConfig;
 use deno_tls::rustls::ServerName;
 use deno_tls::SocketUse;
@@ -341,19 +339,6 @@ where
   Ok((rid, IpAddr::from(local_addr), IpAddr::from(remote_addr)))
 }
 
-fn load_certs_from_file(path: &str) -> Result<Vec<Certificate>, AnyError> {
-  let cert_file = File::open(path)?;
-  let reader = &mut BufReader::new(cert_file);
-  load_certs(reader)
-}
-
-fn load_private_keys_from_file(
-  path: &str,
-) -> Result<Vec<PrivateKey>, AnyError> {
-  let key_bytes = std::fs::read(path)?;
-  load_private_keys(&key_bytes)
-}
-
 pub struct TlsListenerResource {
   pub(crate) tcp_listener: AsyncRefCell<TcpListener>,
   pub(crate) tls_config: Arc<ServerConfig>,
@@ -374,11 +359,7 @@ impl Resource for TlsListenerResource {
 #[serde(rename_all = "camelCase")]
 pub struct ListenTlsArgs {
   cert: Option<String>,
-  // TODO(kt3k): Remove this option at v2.0.
-  cert_file: Option<String>,
   key: Option<String>,
-  // TODO(kt3k): Remove this option at v2.0.
-  key_file: Option<String>,
   alpn_protocols: Option<Vec<String>>,
   reuse_port: bool,
 }
@@ -397,39 +378,16 @@ where
     super::check_unstable(state, "Deno.listenTls({ reusePort: true })");
   }
 
-  let cert_file = args.cert_file.as_deref();
-  let key_file = args.key_file.as_deref();
-  let cert = args.cert.as_deref();
-  let key = args.key.as_deref();
+  let cert: Option<&str> = args.cert.as_deref();
+  let key: Option<&str> = args.key.as_deref();
 
-  {
-    let permissions = state.borrow_mut::<NP>();
-    permissions
-      .check_net(&(&addr.hostname, Some(addr.port)), "Deno.listenTls()")?;
-    if let Some(path) = cert_file {
-      permissions.check_read(Path::new(path), "Deno.listenTls()")?;
-    }
-    if let Some(path) = key_file {
-      permissions.check_read(Path::new(path), "Deno.listenTls()")?;
-    }
-  }
-
-  let cert_chain = if cert_file.is_some() && cert.is_some() {
-    return Err(generic_error("Both cert and certFile is specified. You can specify either one of them."));
-  } else if let Some(path) = cert_file {
-    load_certs_from_file(path)?
-  } else if let Some(cert) = cert {
+  let cert_chain = if let Some(cert) = cert {
     load_certs(&mut BufReader::new(cert.as_bytes()))?
   } else {
     return Err(generic_error("`cert` is not specified."));
   };
-  let key_der = if key_file.is_some() && key.is_some() {
-    return Err(generic_error(
-      "Both key and keyFile is specified. You can specify either one of them.",
-    ));
-  } else if let Some(path) = key_file {
-    load_private_keys_from_file(path)?.remove(0)
-  } else if let Some(key) = key {
+
+  let key_der = if let Some(key) = key {
     load_private_keys(key.as_bytes())?.remove(0)
   } else {
     return Err(generic_error("`key` is not specified."));
