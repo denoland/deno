@@ -1,0 +1,5 @@
+{
+  "base": "npm",
+  "args": "run --allow-read main.js",
+  "output": "main.out"
+}

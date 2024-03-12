@@ -59,7 +59,12 @@ fn run_test(test: &Test) {
   let metadata = &test.metadata;
   let mut builder = TestContextBuilder::new();
   let cwd = &test.cwd;
-  builder = builder.cwd(cwd.to_string_lossy());
+
+  if test.metadata.temp_dir {
+    builder = builder.use_temp_cwd();
+  } else {
+    builder = builder.cwd(cwd.to_string_lossy());
+  }
 
   if let Some(base) = &metadata.base {
     match base.as_str() {
@@ -70,8 +75,8 @@ fn run_test(test: &Test) {
     }
   }
 
-  if test.metadata.temp_dir {
-    builder = builder.use_temp_cwd();
+  if metadata.http_server {
+    builder = builder.use_http_server();
   }
 
   let context = builder.build();
@@ -141,6 +146,9 @@ struct MultiTestMetaData {
   /// The base environment to use for the test.
   #[serde(default)]
   pub base: Option<String>,
+  /// Whether to use an http server.
+  #[serde(default)]
+  pub http_server: bool,
   pub steps: Vec<StepMetaData>,
 }
 
@@ -151,6 +159,8 @@ struct SingleTestMetaData {
   pub base: Option<String>,
   #[serde(default)]
   pub temp_dir: bool,
+  #[serde(default)]
+  pub http_server: bool,
   #[serde(flatten)]
   pub step: StepMetaData,
 }
@@ -161,6 +171,7 @@ impl SingleTestMetaData {
       only: self.step.only,
       base: self.base,
       temp_dir: self.temp_dir,
+      http_server: self.http_server,
       steps: vec![self.step],
     }
   }

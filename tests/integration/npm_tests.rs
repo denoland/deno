@@ -106,14 +106,6 @@ itest!(compare_globals {
   http_server: true,
 });
 
-// todo: THIS
-itest!(conditional_exports {
-  args: "run --allow-read npm/conditional_exports/main.js",
-  output: "npm/conditional_exports/main.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
-
 itest!(dual_cjs_esm {
   args: "run -A --quiet npm/dual_cjs_esm/main.ts",
   output: "npm/dual_cjs_esm/main.out",

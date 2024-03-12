@@ -90,12 +90,6 @@ itest!(json_file {
   exit_code: 0,
 });
 
-itest!(import_map_info {
-  args:
-    "info --quiet --import-map=import_maps/import_map.json import_maps/test.ts",
-  output: "info/065_import_map_info.out",
-});
-
 itest!(info_json_deps_order {
   args: "info --json info/076_info_json_deps_order.ts",
   output: "info/076_info_json_deps_order.out",

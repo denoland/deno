@@ -125,12 +125,14 @@ impl PathRef {
     fs::read(self).with_context(|| format!("Could not read file: {}", self))
   }
 
+  #[track_caller]
   pub fn read_json<TValue: DeserializeOwned>(&self) -> TValue {
     serde_json::from_str(&self.read_to_string())
       .with_context(|| format!("Failed deserializing: {}", self))
       .unwrap()
   }
 
+  #[track_caller]
   pub fn read_json_value(&self) -> serde_json::Value {
     serde_json::from_str(&self.read_to_string())
       .with_context(|| format!("Failed deserializing: {}", self))
