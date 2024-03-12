@@ -74,7 +74,7 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
       move |flags, watcher_communicator, changed_paths| {
         let lint_flags = lint_flags.clone();
         Ok(async move {
-          let factory = CliFactory::from_flags(flags).await?;
+          let factory = CliFactory::from_flags(flags)?;
           let cli_options = factory.cli_options();
           let lint_options = cli_options.resolve_lint_options(lint_flags)?;
           let files = collect_lint_files(lint_options.files.clone()).and_then(
@@ -110,7 +110,7 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
     )
     .await?;
   } else {
-    let factory = CliFactory::from_flags(flags).await?;
+    let factory = CliFactory::from_flags(flags)?;
     let cli_options = factory.cli_options();
     let is_stdin = lint_flags.is_stdin();
     let lint_options = cli_options.resolve_lint_options(lint_flags)?;

@@ -415,7 +415,7 @@ pub fn collect_test(
 }
 
 /// Return tsc navigation tree code lenses.
-pub async fn collect_tsc(
+pub fn collect_tsc(
   specifier: &ModuleSpecifier,
   code_lens_settings: &CodeLensSettings,
   line_index: Arc<LineIndex>,
