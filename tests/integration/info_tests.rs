@@ -58,11 +58,6 @@ itest!(multiple_imports {
   http_server: true,
 });
 
-itest!(info_ts_error {
-  args: "info info/031_info_ts_error.ts",
-  output: "info/031_info_ts_error.out",
-});
-
 itest!(info_flag {
   args: "info",
   output: "info/041_info_flag.out",

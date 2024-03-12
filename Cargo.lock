@@ -644,6 +644,7 @@ dependencies = [
  "deno_core",
  "deno_fetch",
  "deno_lockfile",
+ "deno_terminal",
  "deno_tls",
  "fastwebsockets",
  "flaky_test",
