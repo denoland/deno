@@ -9,10 +9,11 @@ const {
 } = core;
 
 import { ERR_INVALID_FD } from "ext:deno_node/internal/errors.ts";
-import { LibuvStreamWrap } from "ext:deno_node/internal_binding/stream_wrap.ts";
+import { LibuvStreamWrap, kStreamBaseField } from "ext:deno_node/internal_binding/stream_wrap.ts";
 import { providerType } from "ext:deno_node/internal_binding/async_wrap.ts";
 import { Socket } from "node:net";
 import { setReadStream } from "ext:deno_node/_process/streams.mjs";
+import { REF, UNREF } from "ext:deno_io/12_io.js";
 
 // Returns true when the given numeric fd is associated with a TTY and false otherwise.
 function isatty(fd) {
@@ -34,6 +35,15 @@ function isatty(fd) {
 class TTY extends LibuvStreamWrap {
   constructor(handle) {
     super(providerType.TTYWRAP, handle);
+  }
+
+  ref() {
+    this[kStreamBaseField][REF]();
+
+  }
+
+  unref() {
+    this[kStreamBaseField][UNREF]();
   }
 }
 
