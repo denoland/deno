@@ -1729,6 +1729,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "deno_permissions"
+version = "0.1.0"
+dependencies = [
+ "console_static_text",
+ "deno_core",
+ "deno_terminal",
+ "libc",
+ "log",
+ "once_cell",
+ "serde",
+ "termcolor",
+ "which 4.4.2",
+ "winapi",
+]
+
+[[package]]
 name = "deno_runtime"
 version = "0.149.0"
 dependencies = [
@@ -1750,6 +1766,7 @@ dependencies = [
  "deno_napi",
  "deno_net",
  "deno_node",
+ "deno_permissions",
  "deno_terminal",
  "deno_tls",
  "deno_url",
