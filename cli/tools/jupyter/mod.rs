@@ -54,7 +54,7 @@ pub async fn kernel(
     logger::init(Some(log::Level::Debug));
   }
 
-  let factory = CliFactory::from_flags(flags).await?;
+  let factory = CliFactory::from_flags(flags)?;
   let cli_options = factory.cli_options();
   let main_module =
     resolve_url_or_path("./$deno$jupyter.ts", cli_options.initial_cwd())
