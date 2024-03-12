@@ -3,6 +3,7 @@
 import * as http2 from "node:http2";
 import * as net from "node:net";
 import { assert, assertEquals } from "@std/assert/mod.ts";
+import { curlRequest } from "../unit/test_util.ts";
 
 for (const url of ["http://127.0.0.1:4246", "https://127.0.0.1:4247"]) {
   Deno.test(`[node/http2 client] ${url}`, {
@@ -108,35 +109,6 @@ Deno.test(`[node/http2 client createConnection]`, {
   assertEquals(receivedData, "hello world\n");
 });
 
-// TODO(bartlomieju): reenable sanitizers
-Deno.test("[node/http2 server]", { sanitizeOps: false }, async () => {
-  const server = http2.createServer();
-  server.listen(0);
-  const port = (<net.AddressInfo> server.address()).port;
-  const sessionPromise = new Promise<http2.Http2Session>((resolve) =>
-    server.on("session", resolve)
-  );
-
-  const responsePromise = fetch(`http://localhost:${port}/path`, {
-    method: "POST",
-    body: "body",
-  });
-
-  const session = await sessionPromise;
-  const stream = await new Promise<http2.ServerHttp2Stream>((resolve) =>
-    session.on("stream", resolve)
-  );
-  await new Promise((resolve) => stream.on("headers", resolve));
-  await new Promise((resolve) => stream.on("data", resolve));
-  await new Promise((resolve) => stream.on("end", resolve));
-  stream.respond();
-  stream.end();
-  const resp = await responsePromise;
-  await resp.text();
-
-  await new Promise((resolve) => server.close(resolve));
-});
-
 Deno.test("[node/http2 client GET https://www.example.com]", async () => {
   const clientSession = http2.connect("https://www.example.com");
   const req = clientSession.request({
@@ -164,4 +136,31 @@ Deno.test("[node/http2 client GET https://www.example.com]", async () => {
   assert(Object.keys(headers).length > 0);
   assertEquals(status, 200);
   assert(chunk.length > 0);
+});
+
+Deno.test("[node/http2.createServer()]", {
+  // TODO(satyarohith): enable the test on windows.
+  ignore: Deno.build.os === "windows",
+}, async () => {
+  const server = http2.createServer((_req, res) => {
+    res.setHeader("Content-Type", "text/html");
+    res.setHeader("X-Foo", "bar");
+    res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });
+    res.write("Hello, World!");
+    res.end();
+  });
+  server.listen(0);
+  const port = (<net.AddressInfo> server.address()).port;
+  const endpoint = `http://localhost:${port}`;
+
+  const response = await curlRequest([
+    endpoint,
+    "--http2-prior-knowledge",
+  ]);
+  assertEquals(response, "Hello, World!");
+  server.close();
+  // Wait to avoid leaking the timer from here
+  // https://github.com/denoland/deno/blob/749b6e45e58ac87188027f79fe403d130f86bd73/ext/node/polyfills/net.ts#L2396-L2402
+  // Issue: https://github.com/denoland/deno/issues/22764
+  await new Promise<void>((resolve) => server.on("close", resolve));
 });

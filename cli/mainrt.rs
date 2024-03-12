@@ -69,11 +69,16 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
 
 fn main() {
   let args: Vec<String> = env::args().collect();
+  let current_exe_path = current_exe().unwrap();
+  let standalone =
+    standalone::extract_standalone(&current_exe_path, args.clone());
   let future = async move {
-    let current_exe_path = current_exe().unwrap();
-    match standalone::extract_standalone(&current_exe_path, args).await {
-      Ok(Some((metadata, eszip))) => standalone::run(eszip, metadata).await,
-      Ok(None) => Err(generic_error("No archive found.")),
+    match standalone {
+      Ok(Some(future)) => {
+        let (metadata, eszip) = future.await?;
+        standalone::run(eszip, metadata).await
+      }
+      Ok(None) => Ok(()),
       Err(err) => Err(err),
     }
   };

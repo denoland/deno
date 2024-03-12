@@ -622,12 +622,12 @@ async fn testify(
   // Rekor "intoto" entry for the given DSSE envelope and signature.
   //
   // Calculate the value for the payloadHash field into the Rekor entry
-  let payload_hash = hex::encode(sha2::Sha256::digest(
+  let payload_hash = faster_hex::hex_string(&sha2::Sha256::digest(
     content.dsse_envelope.payload.as_bytes(),
   ));
 
   // Calculate the value for the hash field into the Rekor entry
-  let envelope_hash = hex::encode({
+  let envelope_hash = faster_hex::hex_string(&{
     let dsse = DsseEnvelope {
       payload: content.dsse_envelope.payload.clone(),
       payload_type: content.dsse_envelope.payload_type.clone(),
