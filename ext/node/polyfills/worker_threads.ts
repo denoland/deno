@@ -211,6 +211,7 @@ class NodeWorker extends EventEmitter {
         permissions: null,
         name: this.#name,
         workerType: "module",
+        closeOnIdle: true,
       },
       serializedWorkerMetadata,
     );
