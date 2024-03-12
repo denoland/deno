@@ -200,7 +200,7 @@ impl ReplSession {
     test_event_receiver: TestEventReceiver,
   ) -> Result<Self, AnyError> {
     let language_server = ReplLanguageServer::new_initialized().await?;
-    let mut session = worker.create_inspector_session().await;
+    let mut session = worker.create_inspector_session();
 
     worker
       .js_runtime

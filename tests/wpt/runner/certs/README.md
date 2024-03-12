@@ -23,8 +23,8 @@ index 87a8cc9cc7..bbf500d8ca 100644
 4. Run:
 
 ```
-cp tests/wpt/suite/tools/certs/cacert.key tools/wpt/certs/cacert.key
-cp tests/wpt/suite/tools/certs/cacert.pem tools/wpt/certs/cacert.pem
-cp tests/wpt/suite/tools/certs/web-platform.test.key tools/wpt/certs/web-platform.test.key
-cp tests/wpt/suite/tools/certs/web-platform.test.pem tools/wpt/certs/web-platform.test.pem
+cp tests/wpt/suite/tools/certs/cacert.key tests/wpt/runner/certs/cacert.key
+cp tests/wpt/suite/tools/certs/cacert.pem tests/wpt/runner/certs/cacert.pem
+cp tests/wpt/suite/tools/certs/web-platform.test.key tests/wpt/runner/certs/web-platform.test.key
+cp tests/wpt/suite/tools/certs/web-platform.test.pem tests/wpt/runner/certs/web-platform.test.pem
 ```

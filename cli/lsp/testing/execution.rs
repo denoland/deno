@@ -213,7 +213,7 @@ impl TestRun {
     let args = self.get_args();
     lsp_log!("Executing test run with arguments: {}", args.join(" "));
     let flags = flags_from_vec(args.into_iter().map(String::from).collect())?;
-    let factory = CliFactory::from_flags(flags).await?;
+    let factory = CliFactory::from_flags(flags)?;
     // Various test files should not share the same permissions in terms of
     // `PermissionsContainer` - otherwise granting/revoking permissions in one
     // file would have impact on other files, which is undesirable.
@@ -244,6 +244,13 @@ impl TestRun {
     } else {
       unreachable!("Should always be Test subcommand.");
     };
+
+    // TODO(mmastrac): Temporarily limit concurrency in windows testing to avoid named pipe issue:
+    // *** Unexpected server pipe failure '"\\\\.\\pipe\\deno_pipe_e30f45c9df61b1e4.1198.222\\0"': 3
+    // This is likely because we're hitting some sort of invisible resource limit
+    // This limit is both in cli/lsp/testing/execution.rs and cli/tools/test/mod.rs
+    #[cfg(windows)]
+    let concurrent_jobs = std::cmp::min(concurrent_jobs, 4);
 
     let (test_event_sender_factory, mut receiver) = create_test_event_channel();
     let fail_fast_tracker = FailFastTracker::new(fail_fast);

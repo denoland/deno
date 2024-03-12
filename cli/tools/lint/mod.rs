@@ -74,7 +74,7 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
       move |flags, watcher_communicator, changed_paths| {
         let lint_flags = lint_flags.clone();
         Ok(async move {
-          let factory = CliFactory::from_flags(flags).await?;
+          let factory = CliFactory::from_flags(flags)?;
           let cli_options = factory.cli_options();
           let lint_options = cli_options.resolve_lint_options(lint_flags)?;
           let files = collect_lint_files(lint_options.files.clone()).and_then(
@@ -110,7 +110,7 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
     )
     .await?;
   } else {
-    let factory = CliFactory::from_flags(flags).await?;
+    let factory = CliFactory::from_flags(flags)?;
     let cli_options = factory.cli_options();
     let is_stdin = lint_flags.is_stdin();
     let lint_options = cli_options.resolve_lint_options(lint_flags)?;
@@ -184,7 +184,9 @@ async fn lint_files(
         .filter_map(|p| ModuleSpecifier::from_file_path(p).ok())
         .collect::<HashSet<_>>();
       futures.push(deno_core::unsync::spawn(async move {
-        let graph = module_graph_creator.create_publish_graph(&members).await?;
+        let graph = module_graph_creator
+          .create_and_validate_publish_graph(&members, true)
+          .await?;
         // todo(dsherret): this isn't exactly correct as linting isn't properly
         // setup to handle workspaces. Iterating over the workspace members
         // should be done at a higher level because it also needs to take into
@@ -261,7 +263,7 @@ async fn lint_files(
 }
 
 fn collect_lint_files(files: FilePatterns) -> Result<Vec<PathBuf>, AnyError> {
-  FileCollector::new(|path, _| is_script_ext(path))
+  FileCollector::new(|e| is_script_ext(e.path))
     .ignore_git_folder()
     .ignore_node_modules()
     .ignore_vendor_folder()

@@ -376,7 +376,7 @@ pub async fn upgrade(
   flags: Flags,
   upgrade_flags: UpgradeFlags,
 ) -> Result<(), AnyError> {
-  let factory = CliFactory::from_flags(flags).await?;
+  let factory = CliFactory::from_flags(flags)?;
   let client = factory.http_client();
   let current_exe_path = std::env::current_exe()?;
   let output_exe_path =
@@ -497,7 +497,7 @@ pub async fn upgrade(
 
   let archive_data = download_package(client, &download_url)
     .await
-    .with_context(|| format!("Failed downloading {download_url}. The version you requested may not have been built for the current architechture."))?;
+    .with_context(|| format!("Failed downloading {download_url}. The version you requested may not have been built for the current architecture."))?;
 
   log::info!("Deno is upgrading to version {}", &install_version);
 

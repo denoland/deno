@@ -32,7 +32,7 @@ pub async fn execute_script(
   flags: Flags,
   task_flags: TaskFlags,
 ) -> Result<i32, AnyError> {
-  let factory = CliFactory::from_flags(flags).await?;
+  let factory = CliFactory::from_flags(flags)?;
   let cli_options = factory.cli_options();
   let tasks_config = cli_options.resolve_tasks_config()?;
   let maybe_package_json = cli_options.maybe_package_json();

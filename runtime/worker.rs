@@ -45,6 +45,7 @@ use log::debug;
 use crate::inspector_server::InspectorServer;
 use crate::ops;
 use crate::permissions::PermissionsContainer;
+use crate::shared::maybe_transpile_source;
 use crate::shared::runtime;
 use crate::BootstrapOptions;
 
@@ -446,16 +447,6 @@ impl MainWorker {
         extension.esm_files = std::borrow::Cow::Borrowed(&[]);
         extension.esm_entry_point = None;
       }
-      #[cfg(not(feature = "only_snapshotted_js_sources"))]
-      {
-        use crate::shared::maybe_transpile_source;
-        for source in extension.esm_files.to_mut() {
-          maybe_transpile_source(source).unwrap();
-        }
-        for source in extension.js_files.to_mut() {
-          maybe_transpile_source(source).unwrap();
-        }
-      }
     }
 
     extensions.extend(std::mem::take(&mut options.extensions));
@@ -482,6 +473,9 @@ impl MainWorker {
       shared_array_buffer_store: options.shared_array_buffer_store.clone(),
       compiled_wasm_module_store: options.compiled_wasm_module_store.clone(),
       extensions,
+      extension_transpiler: Some(Rc::new(|specifier, source| {
+        maybe_transpile_source(specifier, source)
+      })),
       inspector: options.maybe_inspector_server.is_some(),
       is_main: true,
       feature_checker: Some(options.feature_checker.clone()),
@@ -580,10 +574,7 @@ impl MainWorker {
     &mut self,
     module_specifier: &ModuleSpecifier,
   ) -> Result<ModuleId, AnyError> {
-    self
-      .js_runtime
-      .load_main_module(module_specifier, None)
-      .await
+    self.js_runtime.load_main_es_module(module_specifier).await
   }
 
   /// Loads and instantiates specified JavaScript module as "side" module.
@@ -591,10 +582,7 @@ impl MainWorker {
     &mut self,
     module_specifier: &ModuleSpecifier,
   ) -> Result<ModuleId, AnyError> {
-    self
-      .js_runtime
-      .load_side_module(module_specifier, None)
-      .await
+    self.js_runtime.load_side_es_module(module_specifier).await
   }
 
   /// Executes specified JavaScript module.
@@ -675,7 +663,7 @@ impl MainWorker {
 
   /// Create new inspector session. This function panics if Worker
   /// was not configured to create inspector.
-  pub async fn create_inspector_session(&mut self) -> LocalInspectorSession {
+  pub fn create_inspector_session(&mut self) -> LocalInspectorSession {
     self.js_runtime.maybe_init_inspector();
     self.js_runtime.inspector().borrow().create_local_session()
   }

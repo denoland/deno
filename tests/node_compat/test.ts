@@ -24,7 +24,7 @@ import {
 } from "./common.ts";
 
 // If the test case is invoked like
-// deno test -A cli/tests/node_compat/test.ts -- <test-names>
+// deno test -A tests/node_compat/test.ts -- <test-names>
 // Use the <test-names> as filters
 const filters = Deno.args;
 const hasFilters = filters.length > 0;
@@ -108,7 +108,7 @@ async function runTest(t: Deno.TestContext, path: string): Promise<void> {
         }
         const stderrOutput = decoder.decode(stderr);
         const repeatCmd = magenta(
-          `./target/debug/deno test -A cli/tests/node_compat/test.ts -- ${path}`,
+          `./target/debug/deno test -A tests/node_compat/test.ts -- ${path}`,
         );
         const msg = `"${magenta(path)}" failed:
 

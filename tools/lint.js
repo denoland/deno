@@ -156,6 +156,8 @@ async function clippy() {
       "--",
       "-D",
       "warnings",
+      "--deny",
+      "clippy::unused_async",
     ],
     stdout: "inherit",
     stderr: "inherit",
