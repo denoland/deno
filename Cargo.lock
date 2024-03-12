@@ -1438,9 +1438,9 @@ dependencies = [
 
 [[package]]
 name = "deno_graph"
-version = "0.69.6"
+version = "0.69.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a9d04f8bc8d8a40369e8549d15f6b315ffe025d0048fcd3c541f90647471f670"
+checksum = "83db0d70113af5ef5775c3d8fb9c17ab471ca69acb400d56b5de0dc1c8f6ede7"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -7320,7 +7320,7 @@ dependencies = [
  "codespan-reporting",
  "log",
  "naga",
- "parking_lot 0.11.2",
+ "parking_lot 0.12.1",
  "profiling",
  "raw-window-handle",
  "ron",
@@ -7361,7 +7361,7 @@ dependencies = [
  "naga",
  "objc",
  "once_cell",
- "parking_lot 0.11.2",
+ "parking_lot 0.12.1",
  "profiling",
  "range-alloc",
  "raw-window-handle",
