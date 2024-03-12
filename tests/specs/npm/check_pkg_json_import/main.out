@@ -1,0 +1,13 @@
+Download http://localhost:4545/npm/registry/@denotest/types-pkg-json-import
+Download http://localhost:4545/npm/registry/@denotest/types-pkg-json-import/1.0.0.tgz
+Check file:///[WILDLINE]/main.ts
+error: TS2345 [ERROR]: Argument of type '{}' is not assignable to parameter of type 'Foo'.
+  Property 'foo' is missing in type '{}' but required in type 'Foo'.
+    unwrap(foo);
+           ~~~
+    at file:///[WILDLINE]/main.ts:15:12
+
+    'foo' is declared here.
+      foo: string;
+      ~~~
+        at file:///[WILDLINE]/main.ts:5:3
