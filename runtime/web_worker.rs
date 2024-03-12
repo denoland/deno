@@ -48,6 +48,7 @@ use deno_terminal::colors;
 use deno_tls::RootCertStoreProvider;
 use deno_web::create_entangled_message_port;
 use deno_web::BlobStore;
+use deno_web::JsMessageData;
 use deno_web::MessagePort;
 use log::debug;
 use std::cell::RefCell;
@@ -331,6 +332,8 @@ pub struct WebWorker {
   pub main_module: ModuleSpecifier,
   poll_for_messages_fn: Option<v8::Global<v8::Value>>,
   bootstrap_fn_global: Option<v8::Global<v8::Function>>,
+  // Consumed when `bootstrap_fn` is called
+  maybe_worker_metadata: Option<JsMessageData>,
 }
 
 pub struct WebWorkerOptions {
@@ -356,6 +359,7 @@ pub struct WebWorkerOptions {
   pub cache_storage_dir: Option<std::path::PathBuf>,
   pub stdio: Stdio,
   pub feature_checker: Arc<FeatureChecker>,
+  pub maybe_worker_metadata: Option<JsMessageData>,
 }
 
 impl WebWorker {
@@ -601,6 +605,7 @@ impl WebWorker {
         main_module,
         poll_for_messages_fn: None,
         bootstrap_fn_global: Some(bootstrap_fn_global),
+        maybe_worker_metadata: options.maybe_worker_metadata,
       },
       external_handle,
     )
@@ -616,6 +621,10 @@ impl WebWorker {
       let bootstrap_fn = self.bootstrap_fn_global.take().unwrap();
       let bootstrap_fn = v8::Local::new(scope, bootstrap_fn);
       let undefined = v8::undefined(scope);
+      let mut worker_data: v8::Local<v8::Value> = v8::undefined(scope).into();
+      if let Some(data) = self.maybe_worker_metadata.take() {
+        worker_data = deno_core::serde_v8::to_v8(scope, data).unwrap();
+      }
       let name_str: v8::Local<v8::Value> =
         v8::String::new(scope, &self.name).unwrap().into();
       let id_str: v8::Local<v8::Value> =
@@ -623,7 +632,11 @@ impl WebWorker {
           .unwrap()
           .into();
       bootstrap_fn
-        .call(scope, undefined.into(), &[args, name_str, id_str])
+        .call(
+          scope,
+          undefined.into(),
+          &[args, name_str, id_str, worker_data],
+        )
         .unwrap();
     }
     // TODO(bartlomieju): this could be done using V8 API, without calling `execute_script`.
