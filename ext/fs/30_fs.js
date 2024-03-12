@@ -765,7 +765,7 @@ class FsFile {
     const { 0: atimeSec, 1: atimeNsec } = toUnixTimeFromEpoch(atime);
     const { 0: mtimeSec, 1: mtimeNsec } = toUnixTimeFromEpoch(mtime);
     await op_fs_file_utime_async(
-      rid,
+      this.#rid,
       atimeSec,
       atimeNsec,
       mtimeSec,
