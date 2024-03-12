@@ -99,8 +99,7 @@ impl TypeChecker {
     mut graph: ModuleGraph,
     options: CheckOptions,
   ) -> Result<(Arc<ModuleGraph>, Diagnostics), AnyError> {
-    debug_assert_ne!(options.type_check_mode, TypeCheckMode::None);
-    if graph.roots.is_empty() {
+    if !options.type_check_mode.is_true() || graph.roots.is_empty() {
       return Ok((graph.into(), Default::default()));
     }
 

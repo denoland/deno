@@ -196,7 +196,9 @@ impl Loader for FetchCacher {
   ) -> LoadFuture {
     use deno_graph::source::CacheSetting as LoaderCacheSetting;
 
-    if specifier.path().contains("/node_modules/") {
+    if specifier.scheme() == "file"
+      && specifier.path().contains("/node_modules/")
+    {
       // The specifier might be in a completely different symlinked tree than
       // what the node_modules url is in (ex. `/my-project-1/node_modules`
       // symlinked to `/my-project-2/node_modules`), so first we checked if the path

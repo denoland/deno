@@ -12,6 +12,7 @@ import { notImplemented } from "ext:deno_node/_utils.ts";
 import { EventEmitter, once } from "node:events";
 import { BroadcastChannel } from "ext:deno_broadcast_channel/01_broadcast_channel.js";
 import { MessageChannel, MessagePort } from "ext:deno_web/13_message_port.js";
+import { closeOnIdle } from "ext:runtime/11_workers.js";
 
 let environmentData = new Map();
 let threads = 0;
@@ -99,7 +100,6 @@ function toFileUrl(path: string): URL {
 }
 
 const kHandle = Symbol("kHandle");
-const PRIVATE_WORKER_THREAD_NAME = "$DENO_STD_NODE_WORKER_THREAD";
 class _Worker extends EventEmitter {
   readonly threadId: number;
   readonly resourceLimits: Required<
@@ -140,8 +140,9 @@ class _Worker extends EventEmitter {
     const handle = this[kHandle] = new Worker(
       specifier,
       {
-        name: PRIVATE_WORKER_THREAD_NAME,
+        name: `$$node-${options?.eval ? "[worker eval]" : options?.name}`,
         type: "module",
+        [closeOnIdle]: true,
       } as globalThis.WorkerOptions, // bypass unstable type error
     );
     handle.addEventListener(
@@ -206,9 +207,10 @@ type ParentPort = typeof self & NodeEventTarget;
 let parentPort: ParentPort = null as any;
 
 internals.__initWorkerThreads = () => {
+  // TODO(mmastrac): pass this flag through
   isMainThread =
     // deno-lint-ignore no-explicit-any
-    (globalThis as any).name !== PRIVATE_WORKER_THREAD_NAME;
+    !(globalThis as any).name?.startsWith("$$node-");
 
   defaultExport.isMainThread = isMainThread;
   // fake resourceLimits

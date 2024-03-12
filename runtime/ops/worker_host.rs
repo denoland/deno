@@ -35,6 +35,7 @@ pub struct CreateWebWorkerArgs {
   pub permissions: PermissionsContainer,
   pub main_module: ModuleSpecifier,
   pub worker_type: WebWorkerType,
+  pub close_on_idle: bool,
 }
 
 pub type CreateWebWorkerCb = dyn Fn(CreateWebWorkerArgs) -> (WebWorker, SendableWebWorkerHandle)
@@ -113,6 +114,7 @@ pub struct CreateWorkerArgs {
   source_code: String,
   specifier: String,
   worker_type: WebWorkerType,
+  close_on_idle: bool,
 }
 
 /// Create worker as the host
@@ -189,6 +191,7 @@ fn op_create_worker(
         permissions: worker_permissions,
         main_module: module_specifier.clone(),
         worker_type,
+        close_on_idle: args.close_on_idle,
       });
 
     // Send thread safe handle from newly created worker to host thread

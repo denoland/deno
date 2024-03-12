@@ -45,6 +45,7 @@ function createWorker(
   permissions,
   name,
   workerType,
+  closeOnIdle,
 ) {
   return op_create_worker({
     hasSourceCode,
@@ -53,6 +54,7 @@ function createWorker(
     sourceCode,
     specifier,
     workerType,
+    closeOnIdle,
   });
 }
 
@@ -71,6 +73,8 @@ function hostRecvCtrl(id) {
 function hostRecvMessage(id) {
   return op_host_recv_message(id);
 }
+
+const closeOnIdle = SymbolFor("Deno.WorkerCloneOnIdle");
 
 class Worker extends EventTarget {
   #id = 0;
@@ -105,7 +109,7 @@ class Worker extends EventTarget {
       }
     }
 
-    this.#name = name;
+    this.#name = name || "";
     let hasSourceCode, sourceCode;
     if (workerType === "classic") {
       hasSourceCode = true;
@@ -120,8 +124,9 @@ class Worker extends EventTarget {
       hasSourceCode,
       sourceCode,
       deno?.permissions,
-      name,
+      this.#name,
       workerType,
+      options[closeOnIdle] || false,
     );
     this.#id = id;
     this.#pollControl();
@@ -279,4 +284,4 @@ webidl.converters["WorkerType"] = webidl.createEnumConverter("WorkerType", [
   "module",
 ]);
 
-export { Worker };
+export { closeOnIdle, Worker };

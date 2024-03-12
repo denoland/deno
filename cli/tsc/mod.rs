@@ -848,7 +848,7 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
     "rootNames": root_names,
     "localOnly": request.check_mode == TypeCheckMode::Local,
   });
-  let exec_source = format!("globalThis.exec({request_value})").into();
+  let exec_source = format!("globalThis.exec({request_value})");
 
   let mut runtime = JsRuntime::new(RuntimeOptions {
     startup_snapshot: Some(compiler_snapshot()),
@@ -1007,7 +1007,7 @@ mod tests {
       ..Default::default()
     });
     js_runtime
-      .execute_script_static(
+      .execute_script(
         "<anon>",
         r#"
       if (!(globalThis.exec)) {

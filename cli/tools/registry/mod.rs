@@ -2,6 +2,8 @@
 
 use std::collections::HashMap;
 use std::io::IsTerminal;
+use std::path::Path;
+use std::process::Stdio;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -24,13 +26,13 @@ use lsp_types::Url;
 use serde::Deserialize;
 use serde::Serialize;
 use sha2::Digest;
+use tokio::process::Command;
 
 use crate::args::jsr_api_url;
 use crate::args::jsr_url;
 use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::PublishFlags;
-use crate::args::TypeCheckMode;
 use crate::cache::LazyGraphSourceParser;
 use crate::cache::ParsedSourceCache;
 use crate::factory::CliFactory;
@@ -60,7 +62,6 @@ use auth::get_auth_method;
 use auth::AuthMethod;
 pub use pm::add;
 use publish_order::PublishOrderGraph;
-pub use unfurl::deno_json_deps;
 use unfurl::SpecifierUnfurler;
 
 use super::check::TypeChecker;
@@ -690,7 +691,7 @@ async fn publish_package(
         package.scope, package.package, package.version
       ),
       digest: provenance::SubjectDigest {
-        sha256: hex::encode(sha2::Sha256::digest(&meta_bytes)),
+        sha256: faster_hex::hex_string(&sha2::Sha256::digest(&meta_bytes)),
       },
     };
     let bundle = provenance::generate_provenance(subject).await?;
@@ -814,8 +815,10 @@ async fn build_and_check_graph_for_publish(
   diagnostics_collector: &PublishDiagnosticsCollector,
   packages: &[WorkspaceMemberConfig],
 ) -> Result<Arc<deno_graph::ModuleGraph>, deno_core::anyhow::Error> {
-  let graph = module_graph_creator.create_publish_graph(packages).await?;
-  graph.valid()?;
+  let build_fast_check_graph = !allow_slow_types;
+  let graph = module_graph_creator
+    .create_and_validate_publish_graph(packages, build_fast_check_graph)
+    .await?;
 
   // todo(dsherret): move to lint rule
   collect_invalid_external_imports(&graph, diagnostics_collector);
@@ -860,8 +863,7 @@ async fn build_and_check_graph_for_publish(
             lib: cli_options.ts_type_lib_window(),
             log_ignored_options: false,
             reload: cli_options.reload_flag(),
-            // force type checking this
-            type_check_mode: TypeCheckMode::Local,
+            type_check_mode: cli_options.type_check_mode(),
           },
         )
         .await?;
@@ -887,7 +889,8 @@ pub async fn publish(
 ) -> Result<(), AnyError> {
   let cli_factory = CliFactory::from_flags(flags).await?;
 
-  let auth_method = get_auth_method(publish_flags.token)?;
+  let auth_method =
+    get_auth_method(publish_flags.token, publish_flags.dry_run)?;
 
   let import_map = cli_factory
     .maybe_import_map()
@@ -941,6 +944,15 @@ pub async fn publish(
     }
     log::warn!("{} Aborting due to --dry-run", colors::yellow("Warning"));
     return Ok(());
+  }
+
+  if std::env::var("DENO_TESTING_DISABLE_GIT_CHECK")
+    .ok()
+    .is_none()
+    && !publish_flags.allow_dirty
+    && check_if_git_repo_dirty(cli_options.initial_cwd()).await
+  {
+    bail!("Aborting due to uncomitted changes",);
   }
 
   perform_publish(
@@ -1020,6 +1032,34 @@ fn verify_version_manifest(
   }
 
   Ok(())
+}
+
+async fn check_if_git_repo_dirty(cwd: &Path) -> bool {
+  let bin_name = if cfg!(windows) { "git.exe" } else { "git" };
+
+  // Check if git exists
+  let git_exists = Command::new(bin_name)
+    .arg("--version")
+    .stderr(Stdio::null())
+    .stdout(Stdio::null())
+    .status()
+    .await
+    .map_or(false, |status| status.success());
+
+  if !git_exists {
+    return false; // Git is not installed
+  }
+
+  // Check if there are uncommitted changes
+  let output = Command::new(bin_name)
+    .current_dir(cwd)
+    .args(["status", "--porcelain"])
+    .output()
+    .await
+    .expect("Failed to execute command");
+
+  let output_str = String::from_utf8_lossy(&output.stdout);
+  !output_str.trim().is_empty()
 }
 
 #[cfg(test)]

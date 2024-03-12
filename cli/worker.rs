@@ -397,10 +397,7 @@ impl CliMainWorker {
     name: &'static str,
     source_code: &'static str,
   ) -> Result<v8::Global<v8::Value>, AnyError> {
-    self
-      .worker
-      .js_runtime
-      .execute_script_static(name, source_code)
+    self.worker.js_runtime.execute_script(name, source_code)
   }
 }
 
@@ -613,6 +610,7 @@ impl CliMainWorkerFactory {
         disable_deprecated_api_warning: shared.disable_deprecated_api_warning,
         verbose_deprecated_api_warning: shared.verbose_deprecated_api_warning,
         future: shared.enable_future_features,
+        close_on_idle: true,
       },
       extensions: custom_extensions,
       startup_snapshot: crate::js::deno_isolate_init(),
@@ -656,9 +654,9 @@ impl CliMainWorkerFactory {
     if self.shared.subcommand.needs_test() {
       macro_rules! test_file {
         ($($file:literal),*) => {
-          $(worker.js_runtime.lazy_load_es_module_from_code(
+          $(worker.js_runtime.lazy_load_es_module_with_code(
             concat!("ext:cli/", $file),
-            deno_core::FastString::StaticAscii(include_str!(concat!("js/", $file))),
+            deno_core::ascii_str_include!(concat!("js/", $file)),
           )?;)*
         }
       }
@@ -817,6 +815,7 @@ fn create_web_worker_callback(
         disable_deprecated_api_warning: shared.disable_deprecated_api_warning,
         verbose_deprecated_api_warning: shared.verbose_deprecated_api_warning,
         future: false,
+        close_on_idle: args.close_on_idle,
       },
       extensions: vec![],
       startup_snapshot: crate::js::deno_isolate_init(),
@@ -844,6 +843,8 @@ fn create_web_worker_callback(
       stdio: stdio.clone(),
       cache_storage_dir,
       feature_checker,
+      strace_ops: shared.options.strace_ops.clone(),
+      close_on_idle: args.close_on_idle,
     };
 
     WebWorker::bootstrap_from_options(
