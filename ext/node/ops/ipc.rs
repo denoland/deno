@@ -437,6 +437,7 @@ mod impl_ {
       (client, server)
     }
 
+    #[allow(clippy::print_stdout)]
     #[tokio::test]
     async fn bench_ipc() -> Result<(), Box<dyn std::error::Error>> {
       // A simple round trip benchmark for quick dev feedback.

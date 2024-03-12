@@ -61,7 +61,7 @@ fn verify_tarball_integrity(
       let mut hash_ctx = Context::new(&ring::digest::SHA1_FOR_LEGACY_USE_ONLY);
       hash_ctx.update(data);
       let digest = hash_ctx.finish();
-      let tarball_checksum = hex::encode(digest.as_ref());
+      let tarball_checksum = faster_hex::hex_string(digest.as_ref());
       (tarball_checksum, hex)
     }
     NpmPackageVersionDistInfoIntegrity::UnknownIntegrity(integrity) => {

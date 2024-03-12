@@ -87,12 +87,7 @@ pub static UNSTABLE_GRANULAR_FLAGS: &[(
     "Enable unstable net APIs",
     7,
   ),
-  (
-    "temporal",
-    "Enable unstable Temporal API",
-    // Not used in JS
-    8,
-  ),
+  ("temporal", "Enable unstable Temporal API", 8),
   (
     "unsafe-proto",
     "Enable unsafe __proto__ support. This is a security risk.",

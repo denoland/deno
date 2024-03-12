@@ -23,6 +23,7 @@ use crate::args::Flags;
 use crate::factory::CliFactory;
 use crate::file_fetcher::FileFetcher;
 use crate::jsr::JsrFetchResolver;
+use crate::npm::NpmFetchResolver;
 
 pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
   let cli_factory = CliFactory::from_flags(flags.clone()).await?;
@@ -77,13 +78,18 @@ pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
     None,
   );
   deps_file_fetcher.set_download_log_level(log::Level::Trace);
-  let jsr_resolver = Arc::new(JsrFetchResolver::new(deps_file_fetcher));
+  let jsr_resolver = Arc::new(JsrFetchResolver::new(deps_file_fetcher.clone()));
+  let npm_resolver = Arc::new(NpmFetchResolver::new(deps_file_fetcher));
 
   let package_futures = package_reqs
     .into_iter()
     .map(move |package_req| {
-      find_package_and_select_version_for_req(jsr_resolver.clone(), package_req)
-        .boxed_local()
+      find_package_and_select_version_for_req(
+        jsr_resolver.clone(),
+        npm_resolver.clone(),
+        package_req,
+      )
+      .boxed_local()
     })
     .collect::<Vec<_>>();
 
@@ -183,6 +189,7 @@ enum PackageAndVersion {
 
 async fn find_package_and_select_version_for_req(
   jsr_resolver: Arc<JsrFetchResolver>,
+  npm_resolver: Arc<NpmFetchResolver>,
   add_package_req: AddPackageReq,
 ) -> Result<PackageAndVersion, AnyError> {
   match add_package_req {
@@ -203,11 +210,22 @@ async fn find_package_and_select_version_for_req(
         version_req: format!("{}{}", range_symbol, &nv.version),
       }))
     }
-    AddPackageReq::Npm(pkg_req) => {
-      bail!(
-        "Adding npm: packages is currently not supported. Package: npm:{}",
-        pkg_req.req().name
-      );
+    AddPackageReq::Npm(pkg_ref) => {
+      let req = pkg_ref.req();
+      let npm_prefixed_name = format!("npm:{}", &req.name);
+      let Some(nv) = npm_resolver.req_to_nv(req).await else {
+        return Ok(PackageAndVersion::NotFound(npm_prefixed_name));
+      };
+      let range_symbol = if req.version_req.version_text().starts_with('~') {
+        '~'
+      } else {
+        '^'
+      };
+      Ok(PackageAndVersion::Selected(SelectedPackage {
+        import_name: req.name.to_string(),
+        package_name: npm_prefixed_name,
+        version_req: format!("{}{}", range_symbol, &nv.version),
+      }))
     }
   }
 }

@@ -10,22 +10,22 @@ use crate::factory::CliFactory;
 use crate::factory::CliFactoryBuilder;
 use crate::file_fetcher::File;
 use crate::file_fetcher::FileFetcher;
-use crate::graph_util::graph_valid_with_cli_options;
 use crate::graph_util::has_graph_root_local_dependent_changed;
 use crate::module_loader::ModuleLoadPreparer;
 use crate::ops;
 use crate::util::file_watcher;
 use crate::util::fs::collect_specifiers;
+use crate::util::fs::WalkEntry;
 use crate::util::path::get_extension;
 use crate::util::path::is_script_ext;
 use crate::util::path::mapped_specifier_for_tsc;
+use crate::util::path::matches_pattern_or_exact_path;
 use crate::worker::CliMainWorkerFactory;
 
 use deno_ast::swc::common::comments::CommentKind;
 use deno_ast::MediaType;
 use deno_ast::SourceRangedForSpanned;
 use deno_config::glob::FilePatterns;
-use deno_config::glob::PathOrPattern;
 use deno_core::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context as _;
@@ -80,7 +80,6 @@ use std::sync::Arc;
 use std::task::Poll;
 use std::time::Duration;
 use std::time::Instant;
-use std::time::SystemTime;
 use tokio::signal;
 
 mod channel;
@@ -769,7 +768,7 @@ async fn run_tests_for_worker_inner(
     // We always capture stats, regardless of sanitization state
     let before = stats.clone().capture(&filter);
 
-    let earlier = SystemTime::now();
+    let earlier = Instant::now();
     let call = worker.js_runtime.call(&function);
     let result = match worker
       .js_runtime
@@ -807,7 +806,7 @@ async fn run_tests_for_worker_inner(
       let (formatted, trailer_notes) = format_sanitizer_diff(diff);
       if !formatted.is_empty() {
         let failure = TestFailure::Leaked(formatted, trailer_notes);
-        let elapsed = SystemTime::now().duration_since(earlier)?.as_millis();
+        let elapsed = earlier.elapsed().as_millis();
         sender.send(TestEvent::Result(
           desc.id,
           TestResult::Failed(failure),
@@ -823,7 +822,7 @@ async fn run_tests_for_worker_inner(
     if matches!(result, TestResult::Failed(_)) {
       fail_fast_tracker.add_failure();
     }
-    let elapsed = SystemTime::now().duration_since(earlier)?.as_millis();
+    let elapsed = earlier.elapsed().as_millis();
     sender.send(TestEvent::Result(desc.id, result, elapsed as u64))?;
   }
   Ok(())
@@ -1192,8 +1191,18 @@ async fn test_specifiers(
     })
   });
 
+  // TODO(mmastrac): Temporarily limit concurrency in windows testing to avoid named pipe issue:
+  // *** Unexpected server pipe failure '"\\\\.\\pipe\\deno_pipe_e30f45c9df61b1e4.1198.222\\0"': 3
+  // This is likely because we're hitting some sort of invisible resource limit
+  // This limit is both in cli/lsp/testing/execution.rs and cli/tools/test/mod.rs
+  let concurrent = if cfg!(windows) {
+    std::cmp::min(concurrent_jobs.get(), 4)
+  } else {
+    concurrent_jobs.get()
+  };
+
   let join_stream = stream::iter(join_handles)
-    .buffer_unordered(concurrent_jobs.get())
+    .buffer_unordered(concurrent)
     .collect::<Vec<Result<Result<(), AnyError>, tokio::task::JoinError>>>();
 
   let handler = spawn(async move { report_tests(receiver, reporter).await.0 });
@@ -1341,28 +1350,16 @@ pub async fn report_tests(
   (Ok(()), receiver)
 }
 
-fn is_supported_test_path_predicate(
-  path: &Path,
-  patterns: &FilePatterns,
-) -> bool {
-  if !is_script_ext(path) {
+fn is_supported_test_path_predicate(entry: WalkEntry) -> bool {
+  if !is_script_ext(entry.path) {
     false
-  } else if has_supported_test_path_name(path) {
+  } else if has_supported_test_path_name(entry.path) {
     true
-  } else {
+  } else if let Some(include) = &entry.patterns.include {
     // allow someone to explicitly specify a path
-    let matches_exact_path_or_pattern = patterns
-      .include
-      .as_ref()
-      .map(|p| {
-        p.inner().iter().any(|p| match p {
-          PathOrPattern::Path(p) => p == path,
-          PathOrPattern::RemoteUrl(_) => true,
-          PathOrPattern::Pattern(p) => p.matches_path(path),
-        })
-      })
-      .unwrap_or(false);
-    matches_exact_path_or_pattern
+    matches_pattern_or_exact_path(include, entry.path)
+  } else {
+    false
   }
 }
 
@@ -1423,7 +1420,7 @@ fn collect_specifiers_with_test_mode(
     collect_specifiers(files.clone(), is_supported_test_path_predicate)?;
 
   if *include_inline {
-    return collect_specifiers(files, |p, _| is_supported_test_ext(p)).map(
+    return collect_specifiers(files, |e| is_supported_test_ext(e.path)).map(
       |specifiers| {
         specifiers
           .into_iter()
@@ -1599,8 +1596,8 @@ pub async fn run_tests_with_watch(
         let module_graph_creator = factory.module_graph_creator().await?;
         let file_fetcher = factory.file_fetcher()?;
         let test_modules = if test_options.doc {
-          collect_specifiers(test_options.files.clone(), |p, _| {
-            is_supported_test_ext(p)
+          collect_specifiers(test_options.files.clone(), |e| {
+            is_supported_test_ext(e.path)
           })
         } else {
           collect_specifiers(
@@ -1612,14 +1609,10 @@ pub async fn run_tests_with_watch(
         let permissions =
           Permissions::from_options(&cli_options.permissions_options())?;
         let graph = module_graph_creator
-          .create_graph(graph_kind, test_modules.clone())
+          .create_graph(graph_kind, test_modules)
           .await?;
-        graph_valid_with_cli_options(
-          &graph,
-          factory.fs().as_ref(),
-          &test_modules,
-          &cli_options,
-        )?;
+        module_graph_creator.graph_valid(&graph)?;
+        let test_modules = &graph.roots;
 
         let test_modules_to_reload = if let Some(changed_paths) = changed_paths
         {
@@ -1628,7 +1621,7 @@ pub async fn run_tests_with_watch(
           for test_module_specifier in test_modules {
             if has_graph_root_local_dependent_changed(
               &graph,
-              &test_module_specifier,
+              test_module_specifier,
               &changed_paths,
             ) {
               result.push(test_module_specifier.clone());
