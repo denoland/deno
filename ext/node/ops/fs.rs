@@ -186,16 +186,17 @@ where
     use windows_sys::Win32::Storage::FileSystem::GetDiskFreeSpaceW;
 
     let _ = bigint;
+    #[allow(
+      clippy::disallowed_methods,
+      reason = "Using a vfs here doesn't make sense, it won't align with the windows API call below."
+    )]
     let path = Path::new("Cargo.toml").canonicalize().unwrap();
     let root = path
       .ancestors()
       .last()
       .ok_or(anyhow!("Path has no root."))
       .unwrap();
-    let root = OsStr::new(root)
-      .encode_wide()
-      .into_iter()
-      .collect::<Vec<_>>();
+    let root = OsStr::new(root).encode_wide().collect::<Vec<_>>();
     let mut sectors_per_cluster = 0;
     let mut bytes_per_sector = 0;
     let mut available_clusters = 0;
