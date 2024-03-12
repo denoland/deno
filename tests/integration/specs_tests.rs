@@ -1,3 +1,5 @@
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
 use std::collections::HashSet;
 
 use deno_terminal::colors;
@@ -12,21 +14,21 @@ fn test_specs() {
   let total_tests = categories.iter().map(|c| c.tests.len()).sum::<usize>();
   let mut failures = Vec::new();
   for category in &categories {
-    eprintln!("");
+    eprintln!();
     eprintln!(
       "     {} {} tests...",
       colors::green("Running"),
       category.name
     );
     for test in &category.tests {
-      eprintln!("");
+      eprintln!();
       eprintln!("==== {} {} ====", colors::bold("Starting"), test.name);
       let result = std::panic::catch_unwind(|| run_test(test));
       let success = result.is_ok();
       if !success {
         failures.push(format!("{}::{}", category.name, test.name));
       }
-      eprintln!("");
+      eprintln!();
       eprintln!(
         "==== {} {} ====",
         if success {
@@ -39,13 +41,13 @@ fn test_specs() {
     }
   }
 
-  eprintln!("");
+  eprintln!();
   if !failures.is_empty() {
     eprintln!("spec failures:");
     for failure in &failures {
       eprintln!("  {}", failure);
     }
-    eprintln!("");
+    eprintln!();
     panic!("{} failed of {}", failures.len(), total_tests);
   }
   eprintln!("{} tests passed", total_tests);
@@ -228,8 +230,9 @@ impl TestCategory {
         .filter(|test| test.metadata.only)
         .map(|test| {
           let mut test = test.clone();
-          test.metadata.steps =
-            test.metadata.steps.into_iter().filter(|t| t.only).collect();
+          if test.metadata.steps.iter().any(|t| t.only) {
+            test.metadata.steps.retain(|t| t.only);
+          }
           test
         })
         .collect(),
