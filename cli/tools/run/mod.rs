@@ -39,7 +39,7 @@ To grant permissions, set them before the script argument. For example:
 
   // TODO(bartlomieju): actually I think it will also fail if there's an import
   // map specified and bare specifier is used on the command line
-  let factory = CliFactory::from_flags(flags).await?;
+  let factory = CliFactory::from_flags(flags)?;
   let deno_dir = factory.deno_dir()?;
   let http_client = factory.http_client();
   let cli_options = factory.cli_options();
@@ -76,7 +76,7 @@ To grant permissions, set them before the script argument. For example:
 }
 
 pub async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
-  let factory = CliFactory::from_flags(flags).await?;
+  let factory = CliFactory::from_flags(flags)?;
   let cli_options = factory.cli_options();
   let main_module = cli_options.resolve_main_module()?;
 
@@ -121,8 +121,7 @@ async fn run_with_watch(
     move |flags, watcher_communicator, _changed_paths| {
       Ok(async move {
         let factory = CliFactoryBuilder::new()
-          .build_from_flags_for_watcher(flags, watcher_communicator.clone())
-          .await?;
+          .build_from_flags_for_watcher(flags, watcher_communicator.clone())?;
         let cli_options = factory.cli_options();
         let main_module = cli_options.resolve_main_module()?;
 
@@ -158,7 +157,7 @@ pub async fn eval_command(
   flags: Flags,
   eval_flags: EvalFlags,
 ) -> Result<i32, AnyError> {
-  let factory = CliFactory::from_flags(flags).await?;
+  let factory = CliFactory::from_flags(flags)?;
   let cli_options = factory.cli_options();
   let file_fetcher = factory.file_fetcher()?;
   let main_module = cli_options.resolve_main_module()?;

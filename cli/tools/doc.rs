@@ -17,7 +17,6 @@ use deno_config::glob::PathOrPatternSet;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::futures::FutureExt;
 use deno_doc as doc;
 use deno_graph::GraphKind;
 use deno_graph::ModuleAnalyzer;
@@ -73,7 +72,7 @@ async fn generate_doc_nodes_for_builtin_types(
 }
 
 pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
-  let factory = CliFactory::from_flags(flags).await?;
+  let factory = CliFactory::from_flags(flags)?;
   let cli_options = factory.cli_options();
   let module_info_cache = factory.module_info_cache()?;
   let parsed_source_cache = factory.parsed_source_cache();
@@ -156,8 +155,6 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
     };
 
     generate_docs_directory(&doc_nodes_by_url, html_options, deno_ns)
-      .boxed_local()
-      .await
   } else {
     let modules_len = doc_nodes_by_url.len();
     let doc_nodes =
@@ -224,7 +221,7 @@ impl deno_doc::html::HrefResolver for DocResolver {
   }
 }
 
-async fn generate_docs_directory(
+fn generate_docs_directory(
   doc_nodes_by_url: &IndexMap<ModuleSpecifier, Vec<doc::DocNode>>,
   html_options: &DocHtmlFlag,
   deno_ns: std::collections::HashSet<Vec<String>>,

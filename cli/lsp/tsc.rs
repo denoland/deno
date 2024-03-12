@@ -2106,7 +2106,7 @@ pub struct RenameLocations {
 }
 
 impl RenameLocations {
-  pub async fn into_workspace_edit(
+  pub fn into_workspace_edit(
     self,
     new_name: &str,
     language_server: &language_server::Inner,
@@ -2226,7 +2226,7 @@ impl DefinitionInfoAndBoundSpan {
     Ok(())
   }
 
-  pub async fn to_definition(
+  pub fn to_definition(
     &self,
     line_index: Arc<LineIndex>,
     language_server: &language_server::Inner,
@@ -2609,7 +2609,7 @@ impl RefactorEditInfo {
     Ok(())
   }
 
-  pub async fn to_workspace_edit(
+  pub fn to_workspace_edit(
     &self,
     language_server: &language_server::Inner,
   ) -> LspResult<Option<lsp::WorkspaceEdit>> {

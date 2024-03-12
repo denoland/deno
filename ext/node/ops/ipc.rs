@@ -408,6 +408,7 @@ mod impl_ {
     use deno_core::RcRef;
     use std::rc::Rc;
 
+    #[allow(clippy::unused_async)]
     #[cfg(unix)]
     pub async fn pair() -> (Rc<IpcJsonStreamResource>, tokio::net::UnixStream) {
       let (a, b) = tokio::net::UnixStream::pair().unwrap();
