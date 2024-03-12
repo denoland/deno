@@ -1,7 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import { statfs, statfsSync, StatsFsBase } from "node:fs";
-import { assertEquals } from "jsr:@std/assert";
+import { assertEquals } from "@std/assert/mod.ts";
 
 function assertStatFs(statFs: StatsFsBase<unknown>, { bigint = false } = {}) {
   assertEquals(statFs.constructor.name, "StatFs");
