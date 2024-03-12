@@ -122,14 +122,18 @@ where
     let mut cpath = path.as_bytes().to_vec();
     cpath.push(0);
     if bigint {
-      // SAFETY: Integer fields only.
-      let mut result: libc::statfs64 = unsafe { std::mem::zeroed() };
       #[cfg(not(target_os = "macos"))]
       // SAFETY: Normal statfs usage.
-      let code = unsafe { libc::statfs64(cpath.as_ptr() as _, &mut result) };
+      let (code, result) = unsafe {
+        let mut result: libc::statfs64 = std::mem::zeroed();
+        (libc::statfs64(cpath.as_ptr() as _, &mut result), result)
+      };
       #[cfg(target_os = "macos")]
       // SAFETY: Normal statfs usage.
-      let code = unsafe { libc::statfs(cpath.as_ptr() as _, &mut result) };
+      let (code, result) = unsafe {
+        let mut result: libc::statfs = std::mem::zeroed();
+        (libc::statfs(cpath.as_ptr() as _, &mut result), result)
+      };
       if code == -1 {
         return Err(
           std::io::Error::new(
@@ -149,10 +153,11 @@ where
         ffree: result.f_ffree.to_string(),
       })
     } else {
-      // SAFETY: Integer fields only.
-      let mut result: libc::statfs = unsafe { std::mem::zeroed() };
       // SAFETY: Normal statfs usage.
-      let code = unsafe { libc::statfs(cpath.as_ptr() as _, &mut result) };
+      let (code, result) = unsafe {
+        let mut result: libc::statfs = std::mem::zeroed();
+        (libc::statfs(cpath.as_ptr() as _, &mut result), result)
+      };
       if code == -1 {
         return Err(
           std::io::Error::new(
