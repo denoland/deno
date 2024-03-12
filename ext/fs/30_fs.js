@@ -21,6 +21,8 @@ import {
   op_fs_fdatasync_sync_unstable,
   op_fs_file_stat_async,
   op_fs_file_stat_sync,
+  op_fs_file_utime_async,
+  op_fs_file_utime_sync,
   op_fs_flock_async,
   op_fs_flock_sync,
   op_fs_fsync_async,
@@ -760,11 +762,21 @@ class FsFile {
   }
 
   async utime(atime, mtime) {
-    await futime(this.#rid, atime, mtime);
+    const { 0: atimeSec, 1: atimeNsec } = toUnixTimeFromEpoch(atime);
+    const { 0: mtimeSec, 1: mtimeNsec } = toUnixTimeFromEpoch(mtime);
+    await op_fs_file_utime_async(
+      rid,
+      atimeSec,
+      atimeNsec,
+      mtimeSec,
+      mtimeNsec,
+    );
   }
 
   utimeSync(atime, mtime) {
-    futimeSync(this.#rid, atime, mtime);
+    const { 0: atimeSec, 1: atimeNsec } = toUnixTimeFromEpoch(atime);
+    const { 0: mtimeSec, 1: mtimeNsec } = toUnixTimeFromEpoch(mtime);
+    op_fs_file_utime_sync(this.#rid, atimeSec, atimeNsec, mtimeSec, mtimeNsec);
   }
 
   isTerminal() {

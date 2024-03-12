@@ -1557,6 +1557,22 @@ pub async fn op_fs_ftruncate_async(
 }
 
 #[op2(fast)]
+pub fn op_fs_file_utime_sync(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+  #[number] atime_secs: i64,
+  #[smi] atime_nanos: u32,
+  #[number] mtime_secs: i64,
+  #[smi] mtime_nanos: u32,
+) -> Result<(), AnyError> {
+  let file = FileResource::get_file(state, rid)?;
+  file.utime_sync(atime_secs, atime_nanos, mtime_secs, mtime_nanos)?;
+  Ok(())
+}
+
+// This is identical to `op_fs_file_utime_sync()` but is exported as a separate
+// op so that it can be used in `Deno.futimeSync()` until it's removed.
+#[op2(fast)]
 pub fn op_fs_futime_sync(
   state: &mut OpState,
   #[smi] rid: ResourceId,
@@ -1567,6 +1583,22 @@ pub fn op_fs_futime_sync(
 ) -> Result<(), AnyError> {
   let file = FileResource::get_file(state, rid)?;
   file.utime_sync(atime_secs, atime_nanos, mtime_secs, mtime_nanos)?;
+  Ok(())
+}
+
+#[op2(async)]
+pub async fn op_fs_file_utime_async(
+  state: Rc<RefCell<OpState>>,
+  #[smi] rid: ResourceId,
+  #[number] atime_secs: i64,
+  #[smi] atime_nanos: u32,
+  #[number] mtime_secs: i64,
+  #[smi] mtime_nanos: u32,
+) -> Result<(), AnyError> {
+  let file = FileResource::get_file(&state.borrow(), rid)?;
+  file
+    .utime_async(atime_secs, atime_nanos, mtime_secs, mtime_nanos)
+    .await?;
   Ok(())
 }
 
