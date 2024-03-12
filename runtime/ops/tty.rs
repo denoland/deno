@@ -50,12 +50,7 @@ use winapi::um::wincon;
 
 deno_core::extension!(
   deno_tty,
-  ops = [
-    op_set_raw,
-    op_is_terminal,
-    op_console_size,
-    op_read_line_prompt
-  ],
+  ops = [op_set_raw, op_console_size, op_read_line_prompt],
   state = |state| {
     #[cfg(unix)]
     state.put(TtyModeStore::default());
@@ -207,12 +202,6 @@ fn op_set_raw(
 
     Ok(())
   }
-}
-
-#[op2(fast)]
-fn op_is_terminal(state: &mut OpState, rid: u32) -> Result<bool, AnyError> {
-  let handle = state.resource_table.get_handle(rid)?;
-  Ok(handle.is_terminal())
 }
 
 #[op2(fast)]

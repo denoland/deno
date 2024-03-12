@@ -163,7 +163,7 @@ function createImageBitmap(
   sh = undefined,
   options = undefined,
 ) {
-  const prefix = "Failed to call 'createImageBitmap'";
+  const prefix = "Failed to execute 'createImageBitmap'";
 
   // Overload: createImageBitmap(image [, options ])
   if (arguments.length < 3) {

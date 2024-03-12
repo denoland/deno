@@ -505,7 +505,6 @@ pub async fn op_http2_client_get_response_body_chunk(
         return Ok((Some(data.to_vec()), false));
       }
       DataOrTrailers::Trailers(trailers) => {
-        println!("{trailers:?}");
         if let Some(trailers_tx) = RcRef::map(&resource, |r| &r.trailers_tx)
           .borrow_mut()
           .await

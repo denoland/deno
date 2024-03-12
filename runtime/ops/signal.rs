@@ -12,7 +12,13 @@ use deno_core::ResourceId;
 
 use std::borrow::Cow;
 use std::cell::RefCell;
+#[cfg(unix)]
+use std::collections::BTreeMap;
 use std::rc::Rc;
+#[cfg(unix)]
+use std::sync::atomic::AtomicBool;
+#[cfg(unix)]
+use std::sync::Arc;
 
 #[cfg(unix)]
 use tokio::signal::unix::signal;
@@ -32,13 +38,52 @@ use tokio::signal::windows::CtrlC;
 deno_core::extension!(
   deno_signal,
   ops = [op_signal_bind, op_signal_unbind, op_signal_poll],
+  state = |state| {
+    #[cfg(unix)]
+    {
+      state.put(SignalState::default());
+    }
+  }
 );
+
+#[cfg(unix)]
+#[derive(Default)]
+struct SignalState {
+  enable_default_handlers: BTreeMap<libc::c_int, Arc<AtomicBool>>,
+}
+
+#[cfg(unix)]
+impl SignalState {
+  /// Disable the default signal handler for the given signal.
+  ///
+  /// Returns the shared flag to enable the default handler later, and whether a default handler already existed.
+  fn disable_default_handler(
+    &mut self,
+    signo: libc::c_int,
+  ) -> (Arc<AtomicBool>, bool) {
+    use std::collections::btree_map::Entry;
+
+    match self.enable_default_handlers.entry(signo) {
+      Entry::Occupied(entry) => {
+        let enable = entry.get();
+        enable.store(false, std::sync::atomic::Ordering::Release);
+        (enable.clone(), true)
+      }
+      Entry::Vacant(entry) => {
+        let enable = Arc::new(AtomicBool::new(false));
+        entry.insert(enable.clone());
+        (enable, false)
+      }
+    }
+  }
+}
 
 #[cfg(unix)]
 /// The resource for signal stream.
 /// The second element is the waker of polling future.
 struct SignalStreamResource {
   signal: AsyncRefCell<Signal>,
+  enable_default_handler: Arc<AtomicBool>,
   cancel: CancelHandle,
 }
 
@@ -548,11 +593,29 @@ fn op_signal_bind(
       "Binding to signal '{sig}' is not allowed",
     )));
   }
+
+  let signal = AsyncRefCell::new(signal(SignalKind::from_raw(signo))?);
+
+  let (enable_default_handler, has_default_handler) = state
+    .borrow_mut::<SignalState>()
+    .disable_default_handler(signo);
+
   let resource = SignalStreamResource {
-    signal: AsyncRefCell::new(signal(SignalKind::from_raw(signo))?),
+    signal,
     cancel: Default::default(),
+    enable_default_handler: enable_default_handler.clone(),
   };
   let rid = state.resource_table.add(resource);
+
+  if !has_default_handler {
+    // restore default signal handler when the signal is unbound
+    // this can error if the signal is not supported, if so let's just leave it as is
+    let _ = signal_hook::flag::register_conditional_default(
+      signo,
+      enable_default_handler,
+    );
+  }
+
   Ok(rid)
 }
 
@@ -606,6 +669,15 @@ pub fn op_signal_unbind(
   state: &mut OpState,
   #[smi] rid: ResourceId,
 ) -> Result<(), AnyError> {
-  state.resource_table.take_any(rid)?.close();
+  let resource = state.resource_table.take::<SignalStreamResource>(rid)?;
+
+  #[cfg(unix)]
+  {
+    resource
+      .enable_default_handler
+      .store(true, std::sync::atomic::Ordering::Release);
+  }
+
+  resource.close();
   Ok(())
 }

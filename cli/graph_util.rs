@@ -4,6 +4,7 @@ use crate::args::jsr_url;
 use crate::args::CliOptions;
 use crate::args::Lockfile;
 use crate::args::TsTypeLib;
+use crate::args::DENO_DISABLE_PEDANTIC_NODE_WARNINGS;
 use crate::cache;
 use crate::cache::GlobalHttpCache;
 use crate::cache::ModuleInfoCache;
@@ -55,27 +56,6 @@ pub struct GraphValidOptions {
   pub check_js: bool,
   pub follow_type_only: bool,
   pub is_vendoring: bool,
-}
-
-/// Check if `roots` and their deps are available. Returns `Ok(())` if
-/// so. Returns `Err(_)` if there is a known module graph or resolution
-/// error statically reachable from `roots` and not a dynamic import.
-pub fn graph_valid_with_cli_options(
-  graph: &ModuleGraph,
-  fs: &dyn FileSystem,
-  roots: &[ModuleSpecifier],
-  options: &CliOptions,
-) -> Result<(), AnyError> {
-  graph_valid(
-    graph,
-    fs,
-    roots,
-    GraphValidOptions {
-      is_vendoring: false,
-      follow_type_only: options.type_check_mode().is_true(),
-      check_js: options.check_js(),
-    },
-  )
 }
 
 /// Check if `roots` and their deps are available. Returns `Ok(())` if
@@ -213,7 +193,6 @@ pub struct CreateGraphOptions<'a> {
 
 pub struct ModuleGraphCreator {
   options: Arc<CliOptions>,
-  fs: Arc<dyn FileSystem>,
   npm_resolver: Arc<dyn CliNpmResolver>,
   module_graph_builder: Arc<ModuleGraphBuilder>,
   lockfile: Option<Arc<Mutex<Lockfile>>>,
@@ -223,7 +202,6 @@ pub struct ModuleGraphCreator {
 impl ModuleGraphCreator {
   pub fn new(
     options: Arc<CliOptions>,
-    fs: Arc<dyn FileSystem>,
     npm_resolver: Arc<dyn CliNpmResolver>,
     module_graph_builder: Arc<ModuleGraphBuilder>,
     lockfile: Option<Arc<Mutex<Lockfile>>>,
@@ -231,7 +209,6 @@ impl ModuleGraphCreator {
   ) -> Self {
     Self {
       options,
-      fs,
       npm_resolver,
       lockfile,
       module_graph_builder,
@@ -266,9 +243,10 @@ impl ModuleGraphCreator {
       .await
   }
 
-  pub async fn create_publish_graph(
+  pub async fn create_and_validate_publish_graph(
     &self,
     packages: &[WorkspaceMemberConfig],
+    build_fast_check_graph: bool,
   ) -> Result<ModuleGraph, AnyError> {
     let mut roots = Vec::new();
     for package in packages {
@@ -282,15 +260,18 @@ impl ModuleGraphCreator {
         loader: None,
       })
       .await?;
+    self.graph_valid(&graph)?;
     if self.options.type_check_mode().is_true() {
       self.type_check_graph(graph.clone()).await?;
     }
-    self.module_graph_builder.build_fast_check_graph(
-      &mut graph,
-      BuildFastCheckGraphOptions {
-        workspace_fast_check: true,
-      },
-    )?;
+    if build_fast_check_graph {
+      self.module_graph_builder.build_fast_check_graph(
+        &mut graph,
+        BuildFastCheckGraphOptions {
+          workspace_fast_check: true,
+        },
+      )?;
+    }
     Ok(graph)
   }
 
@@ -329,12 +310,7 @@ impl ModuleGraphCreator {
       })
       .await?;
 
-    graph_valid_with_cli_options(
-      &graph,
-      self.fs.as_ref(),
-      &graph.roots,
-      &self.options,
-    )?;
+    self.graph_valid(&graph)?;
     if let Some(lockfile) = &self.lockfile {
       graph_lock_or_exit(&graph, &mut lockfile.lock());
     }
@@ -346,6 +322,10 @@ impl ModuleGraphCreator {
     } else {
       Ok(Arc::new(graph))
     }
+  }
+
+  pub fn graph_valid(&self, graph: &ModuleGraph) -> Result<(), AnyError> {
+    self.module_graph_builder.graph_valid(graph)
   }
 
   async fn type_check_graph(
@@ -657,6 +637,30 @@ impl ModuleGraphBuilder {
       permissions,
     )
   }
+
+  /// Check if `roots` and their deps are available. Returns `Ok(())` if
+  /// so. Returns `Err(_)` if there is a known module graph or resolution
+  /// error statically reachable from `roots` and not a dynamic import.
+  pub fn graph_valid(&self, graph: &ModuleGraph) -> Result<(), AnyError> {
+    self.graph_roots_valid(graph, &graph.roots)
+  }
+
+  pub fn graph_roots_valid(
+    &self,
+    graph: &ModuleGraph,
+    roots: &[ModuleSpecifier],
+  ) -> Result<(), AnyError> {
+    graph_valid(
+      graph,
+      self.fs.as_ref(),
+      roots,
+      GraphValidOptions {
+        is_vendoring: false,
+        follow_type_only: self.options.type_check_mode().is_true(),
+        check_js: self.options.check_js(),
+      },
+    )
+  }
 }
 
 pub fn error_for_any_npm_specifier(
@@ -681,9 +685,11 @@ pub fn enhanced_resolution_error_message(error: &ResolutionError) -> String {
   let mut message = format!("{error}");
 
   if let Some(specifier) = get_resolution_error_bare_node_specifier(error) {
-    message.push_str(&format!(
+    if !*DENO_DISABLE_PEDANTIC_NODE_WARNINGS {
+      message.push_str(&format!(
         "\nIf you want to use a built-in Node module, add a \"node:\" prefix (ex. \"node:{specifier}\")."
       ));
+    }
   }
 
   message
@@ -694,7 +700,8 @@ pub fn enhanced_module_error_message(
   error: &ModuleError,
 ) -> String {
   let additional_message = match error {
-    ModuleError::Missing(specifier, _) => {
+    ModuleError::LoadingErr(specifier, _, _) // ex. "Is a directory" error
+    | ModuleError::Missing(specifier, _) => {
       SloppyImportsResolver::resolve_with_fs(
         fs,
         specifier,
