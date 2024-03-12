@@ -314,13 +314,15 @@ pub fn op_brotli_decompress_stream_end(
   unsafe {
     let mut available_out = output.len();
     let mut next_out = output.as_mut_ptr();
+    let mut available_in = 0;
+    let mut next_in = [];
     let mut total_out = 0;
 
     if matches!(
       CBrotliDecoderDecompressStream(
         ctx.inst,
-        &mut 0,
-        std::ptr::null_mut(),
+        &mut available_in,
+        next_in.as_mut_ptr(),
         &mut available_out,
         &mut next_out,
         &mut total_out,
