@@ -3,7 +3,6 @@
 use crate::args::jsr_url;
 use crate::args::CliOptions;
 use crate::args::Lockfile;
-use crate::args::TsTypeLib;
 use crate::args::DENO_DISABLE_PEDANTIC_NODE_WARNINGS;
 use crate::cache;
 use crate::cache::GlobalHttpCache;
@@ -46,7 +45,6 @@ use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use import_map::ImportMapError;
-use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -757,7 +755,6 @@ fn get_resolution_error_bare_specifier(
 #[derive(Debug)]
 struct GraphData {
   graph: Arc<ModuleGraph>,
-  checked_libs: HashMap<TsTypeLib, HashSet<ModuleSpecifier>>,
 }
 
 /// Holds the `ModuleGraph` and what parts of it are type checked.
@@ -775,7 +772,6 @@ impl ModuleGraphContainer {
       update_queue: Default::default(),
       graph_data: Arc::new(RwLock::new(GraphData {
         graph: Arc::new(ModuleGraph::new(graph_kind)),
-        checked_libs: Default::default(),
       })),
     }
   }
@@ -794,46 +790,6 @@ impl ModuleGraphContainer {
 
   pub fn graph(&self) -> Arc<ModuleGraph> {
     self.graph_data.read().graph.clone()
-  }
-
-  /// Mark `roots` and all of their dependencies as type checked under `lib`.
-  /// Assumes that all of those modules are known.
-  pub fn set_type_checked(&self, roots: &[ModuleSpecifier], lib: TsTypeLib) {
-    // It's ok to analyze and update this while the module graph itself is
-    // being updated in a permit because the module graph update is always
-    // additive and this will be a subset of the original graph
-    let graph = self.graph();
-    let entries = graph.walk(
-      roots,
-      deno_graph::WalkOptions {
-        check_js: true,
-        follow_dynamic: true,
-        follow_type_only: true,
-      },
-    );
-
-    // now update
-    let mut data = self.graph_data.write();
-    let checked_lib_set = data.checked_libs.entry(lib).or_default();
-    for (specifier, _) in entries {
-      checked_lib_set.insert(specifier.clone());
-    }
-  }
-
-  /// Check if `roots` are all marked as type checked under `lib`.
-  pub fn is_type_checked(
-    &self,
-    roots: &[ModuleSpecifier],
-    lib: TsTypeLib,
-  ) -> bool {
-    let data = self.graph_data.read();
-    match data.checked_libs.get(&lib) {
-      Some(checked_lib_set) => roots.iter().all(|r| {
-        let found = data.graph.resolve(r);
-        checked_lib_set.contains(&found)
-      }),
-      None => false,
-    }
   }
 }
 
