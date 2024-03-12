@@ -1935,7 +1935,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-promises-unhandled-rejections.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-promises-unhandled-rejections.js)
 - [parallel/test-promises-unhandled-symbol-rejections.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-promises-unhandled-symbol-rejections.js)
 - [parallel/test-promises-warning-on-unhandled-rejection.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-promises-warning-on-unhandled-rejection.js)
-- [parallel/test-punycode.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-punycode.js)
 - [parallel/test-queue-microtask-uncaught-asynchooks.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-queue-microtask-uncaught-asynchooks.js)
 - [parallel/test-queue-microtask.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-queue-microtask.js)
 - [parallel/test-readable-from-iterator-closing.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-readable-from-iterator-closing.js)
