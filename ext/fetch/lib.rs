@@ -6,6 +6,7 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::cmp::min;
 use std::convert::From;
+use std::path::Path;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -106,12 +107,13 @@ impl Default for Options {
 
 deno_core::extension!(deno_fetch,
   deps = [ deno_webidl, deno_web, deno_url, deno_console ],
+  parameters = [FP: FetchPermissions],
   ops = [
-    op_fetch,
+    op_fetch<FP>,
     op_fetch_send,
     op_fetch_response_upgrade,
     op_utf8_to_byte_string,
-    op_fetch_custom_client,
+    op_fetch_custom_client<FP>,
   ],
   esm = [
     "20_headers.js",
@@ -257,10 +259,19 @@ impl Drop for ResourceToBodyAdapter {
   }
 }
 
+pub trait FetchPermissions {
+  fn check_net_url(
+    &mut self,
+    _url: &Url,
+    api_name: &str,
+  ) -> Result<(), AnyError>;
+  fn check_read(&mut self, _p: &Path, api_name: &str) -> Result<(), AnyError>;
+}
+
 #[op2]
 #[serde]
 #[allow(clippy::too_many_arguments)]
-pub fn op_fetch(
+pub fn op_fetch<FP>(
   state: &mut OpState,
   #[serde] method: ByteString,
   #[string] url: String,
@@ -269,7 +280,10 @@ pub fn op_fetch(
   has_body: bool,
   #[buffer] data: Option<JsBuffer>,
   #[smi] resource: Option<ResourceId>,
-) -> Result<FetchReturn, AnyError> {
+) -> Result<FetchReturn, AnyError>
+where
+  FP: FetchPermissions + 'static,
+{
   let (client, allow_host) = if let Some(rid) = client_rid {
     let r = state.resource_table.get::<HttpClientResource>(rid)?;
     (r.client.clone(), r.allow_host)
@@ -287,8 +301,7 @@ pub fn op_fetch(
       let path = url.to_file_path().map_err(|_| {
         type_error("NetworkError when attempting to fetch resource.")
       })?;
-      let permissions =
-        state.borrow_mut::<deno_permissions::PermissionsContainer>();
+      let permissions = state.borrow_mut::<FP>();
       permissions.check_read(&path, "fetch()")?;
 
       if method != Method::GET {
@@ -310,8 +323,7 @@ pub fn op_fetch(
       (request_rid, maybe_cancel_handle_rid)
     }
     "http" | "https" => {
-      let permissions =
-        state.borrow_mut::<deno_permissions::PermissionsContainer>();
+      let permissions = state.borrow_mut::<FP>();
       permissions.check_net_url(&url, "fetch()")?;
 
       // Make sure that we have a valid URI early, as reqwest's `RequestBuilder::send`
@@ -800,13 +812,15 @@ fn default_true() -> bool {
 
 #[op2]
 #[smi]
-pub fn op_fetch_custom_client(
+pub fn op_fetch_custom_client<FP>(
   state: &mut OpState,
   #[serde] args: CreateHttpClientArgs,
-) -> Result<ResourceId, AnyError> {
+) -> Result<ResourceId, AnyError>
+where
+  FP: FetchPermissions + 'static,
+{
   if let Some(proxy) = args.proxy.clone() {
-    let permissions =
-      state.borrow_mut::<deno_permissions::PermissionsContainer>();
+    let permissions = state.borrow_mut::<FP>();
     let url = Url::parse(&proxy.url)?;
     permissions.check_net_url(&url, "Deno.createHttpClient()")?;
   }

@@ -1388,7 +1388,6 @@ dependencies = [
  "bytes",
  "data-url",
  "deno_core",
- "deno_permissions",
  "deno_tls",
  "dyn-clone",
  "http 0.2.11",

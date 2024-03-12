@@ -35,6 +35,24 @@ impl deno_web::TimersPermission for Permissions {
   }
 }
 
+impl deno_fetch::FetchPermissions for Permissions {
+  fn check_net_url(
+    &mut self,
+    _url: &deno_core::url::Url,
+    _api_name: &str,
+  ) -> Result<(), deno_core::error::AnyError> {
+    unreachable!("snapshotting!")
+  }
+
+  fn check_read(
+    &mut self,
+    _p: &Path,
+    _api_name: &str,
+  ) -> Result<(), deno_core::error::AnyError> {
+    unreachable!("snapshotting!")
+  }
+}
+
 impl deno_ffi::FfiPermissions for Permissions {
   fn check_partial(
     &mut self,
@@ -197,7 +215,7 @@ pub fn create_runtime_snapshot(
     ),
     deno_webgpu::deno_webgpu::init_ops_and_esm(),
     deno_canvas::deno_canvas::init_ops_and_esm(),
-    deno_fetch::deno_fetch::init_ops_and_esm(Default::default()),
+    deno_fetch::deno_fetch::init_ops_and_esm::<Permissions>(Default::default()),
     deno_cache::deno_cache::init_ops_and_esm::<SqliteBackedCache>(None),
     deno_websocket::deno_websocket::init_ops_and_esm::<Permissions>(
       "".to_owned(),

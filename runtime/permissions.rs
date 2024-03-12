@@ -74,6 +74,26 @@ impl deno_node::NodePermissions for PermissionsContainer {
   }
 }
 
+impl deno_fetch::FetchPermissions for PermissionsContainer {
+  #[inline(always)]
+  fn check_net_url(
+    &mut self,
+    url: &Url,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    self.0.check_net_url(url, api_name)
+  }
+
+  #[inline(always)]
+  fn check_read(
+    &mut self,
+    path: &Path,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    self.0.check_read(path, api_name)
+  }
+}
+
 impl deno_net::NetPermissions for PermissionsContainer {
   #[inline(always)]
   fn check_net<T: AsRef<str>>(
