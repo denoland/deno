@@ -1265,7 +1265,7 @@ Deno.test(
     const connectPromise = Deno.connectTls({
       hostname,
       port,
-      cert: await Deno.readTextFile("tests/testdata/tls/RootCA.crt"),
+      caCerts: [await Deno.readTextFile("tests/testdata/tls/RootCA.crt")],
     });
     const [conn1, conn2] = await Promise.all([acceptPromise, connectPromise]);
     listener.close();

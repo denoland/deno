@@ -257,6 +257,13 @@ where
     .try_borrow::<UnsafelyIgnoreCertificateErrors>()
     .and_then(|it| it.0.clone());
 
+  {
+    let mut s = state.borrow_mut();
+    let permissions = s.borrow_mut::<NP>();
+    permissions
+      .check_net(&(&addr.hostname, Some(addr.port)), "Deno.connectTls()")?;
+  }
+
   let ca_certs = args
     .ca_certs
     .into_iter()
