@@ -81,17 +81,15 @@ where
 }
 
 #[derive(Debug, Serialize)]
-/// The fields are stored as strings because they could be bigint / u64, and
-/// precision may be lost if they are parsed to numbers by serde_v8.
 pub struct StatFs {
   #[serde(rename = "type")]
-  pub typ: String,
-  pub bsize: String,
-  pub blocks: String,
-  pub bfree: String,
-  pub bavail: String,
-  pub files: String,
-  pub ffree: String,
+  pub typ: u64,
+  pub bsize: u64,
+  pub blocks: u64,
+  pub bfree: u64,
+  pub bavail: u64,
+  pub files: u64,
+  pub ffree: u64,
 }
 
 #[op2]
@@ -123,58 +121,46 @@ where
     cpath.push(0);
     if bigint {
       #[cfg(not(target_os = "macos"))]
-      // SAFETY: Normal statfs usage.
+      // SAFETY: `cpath` is NUL-terminated and result is pointer to valid statfs memory.
       let (code, result) = unsafe {
         let mut result: libc::statfs64 = std::mem::zeroed();
         (libc::statfs64(cpath.as_ptr() as _, &mut result), result)
       };
       #[cfg(target_os = "macos")]
-      // SAFETY: Normal statfs usage.
+      // SAFETY: `cpath` is NUL-terminated and result is pointer to valid statfs memory.
       let (code, result) = unsafe {
         let mut result: libc::statfs = std::mem::zeroed();
         (libc::statfs(cpath.as_ptr() as _, &mut result), result)
       };
       if code == -1 {
-        return Err(
-          std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            "No such file or directory",
-          )
-          .into(),
-        );
+        return Err(std::io::Error::last_os_error().into());
       }
       Ok(StatFs {
-        typ: result.f_type.to_string(),
-        bsize: result.f_bsize.to_string(),
-        blocks: result.f_blocks.to_string(),
-        bfree: result.f_bfree.to_string(),
-        bavail: result.f_bavail.to_string(),
-        files: result.f_files.to_string(),
-        ffree: result.f_ffree.to_string(),
+        typ: result.f_type as _,
+        bsize: result.f_bsize as _,
+        blocks: result.f_blocks as _,
+        bfree: result.f_bfree as _,
+        bavail: result.f_bavail as _,
+        files: result.f_files as _,
+        ffree: result.f_ffree as _,
       })
     } else {
-      // SAFETY: Normal statfs usage.
+      // SAFETY: `cpath` is NUL-terminated and result is pointer to valid statfs memory.
       let (code, result) = unsafe {
         let mut result: libc::statfs = std::mem::zeroed();
         (libc::statfs(cpath.as_ptr() as _, &mut result), result)
       };
       if code == -1 {
-        return Err(
-          std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            "No such file or directory",
-          )
-          .into(),
-        );
+        return Err(std::io::Error::last_os_error().into());
       }
       Ok(StatFs {
-        typ: result.f_type.to_string(),
-        bsize: result.f_bsize.to_string(),
-        blocks: result.f_blocks.to_string(),
-        bfree: result.f_bfree.to_string(),
-        bavail: result.f_bavail.to_string(),
-        files: result.f_files.to_string(),
-        ffree: result.f_ffree.to_string(),
+        typ: result.f_type as _,
+        bsize: result.f_bsize as _,
+        blocks: result.f_blocks as _,
+        bfree: result.f_bfree as _,
+        bavail: result.f_bavail as _,
+        files: result.f_files as _,
+        ffree: result.f_ffree as _,
       })
     }
   }
@@ -186,10 +172,9 @@ where
     use windows_sys::Win32::Storage::FileSystem::GetDiskFreeSpaceW;
 
     let _ = bigint;
-    #[allow(
-      clippy::disallowed_methods,
-      reason = "Using a vfs here doesn't make sense, it won't align with the windows API call below."
-    )]
+    // Using a vfs here doesn't make sense, it won't align with the windows API
+    // call below.
+    #[allow(clippy::disallowed_methods)]
     let path = Path::new("Cargo.toml").canonicalize().unwrap();
     let root = path
       .ancestors()
@@ -212,18 +197,16 @@ where
       )
     };
     if code == 0 {
-      // Canonicalize would have failed if the file didn't exist, so we don't
-      // know what went wrong in this case. Give a generic error message.
-      return Err(anyhow!("GetDiskFreeSpaceW() returned a zero status."));
+      return Err(std::io::Error::last_os_error().into());
     }
     Ok(StatFs {
-      typ: "0".to_string(),
-      bsize: (bytes_per_sector * sectors_per_cluster).to_string(),
-      blocks: total_clusters.to_string(),
-      bfree: available_clusters.to_string(),
-      bavail: available_clusters.to_string(),
-      files: "0".to_string(),
-      ffree: "0".to_string(),
+      typ: 0,
+      bsize: (bytes_per_sector * sectors_per_cluster) as _,
+      blocks: total_clusters as _,
+      bfree: available_clusters as _,
+      bavail: available_clusters as _,
+      files: 0,
+      ffree: 0,
     })
   }
   #[cfg(not(any(unix, windows)))]
