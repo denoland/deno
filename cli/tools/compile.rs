@@ -22,7 +22,7 @@ pub async fn compile(
   flags: Flags,
   compile_flags: CompileFlags,
 ) -> Result<(), AnyError> {
-  let factory = CliFactory::from_flags(flags).await?;
+  let factory = CliFactory::from_flags(flags)?;
   let cli_options = factory.cli_options();
   let module_graph_creator = factory.module_graph_creator().await?;
   let parsed_source_cache = factory.parsed_source_cache();

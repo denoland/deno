@@ -355,7 +355,7 @@ impl CliMainWorker {
       return Ok(None);
     };
 
-    let session = self.worker.create_inspector_session().await;
+    let session = self.worker.create_inspector_session();
 
     let mut hmr_runner = setup_hmr_runner(session);
 
@@ -379,7 +379,7 @@ impl CliMainWorker {
       return Ok(None);
     };
 
-    let session = self.worker.create_inspector_session().await;
+    let session = self.worker.create_inspector_session();
     let mut coverage_collector = create_coverage_collector(session);
     self
       .worker

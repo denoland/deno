@@ -83,20 +83,17 @@ impl CliFactoryBuilder {
     }
   }
 
-  pub async fn build_from_flags(
-    self,
-    flags: Flags,
-  ) -> Result<CliFactory, AnyError> {
+  pub fn build_from_flags(self, flags: Flags) -> Result<CliFactory, AnyError> {
     Ok(self.build_from_cli_options(Arc::new(CliOptions::from_flags(flags)?)))
   }
 
-  pub async fn build_from_flags_for_watcher(
+  pub fn build_from_flags_for_watcher(
     mut self,
     flags: Flags,
     watcher_communicator: Arc<WatcherCommunicator>,
   ) -> Result<CliFactory, AnyError> {
     self.watcher_communicator = Some(watcher_communicator);
-    self.build_from_flags(flags).await
+    self.build_from_flags(flags)
   }
 
   pub fn build_from_cli_options(self, options: Arc<CliOptions>) -> CliFactory {
@@ -190,8 +187,8 @@ pub struct CliFactory {
 }
 
 impl CliFactory {
-  pub async fn from_flags(flags: Flags) -> Result<Self, AnyError> {
-    CliFactoryBuilder::new().build_from_flags(flags).await
+  pub fn from_flags(flags: Flags) -> Result<Self, AnyError> {
+    CliFactoryBuilder::new().build_from_flags(flags)
   }
 
   pub fn from_cli_options(options: Arc<CliOptions>) -> Self {
