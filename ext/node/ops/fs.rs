@@ -115,8 +115,6 @@ where
   }
   #[cfg(unix)]
   {
-    use libc::statfs;
-    use libc::statfs64;
     use std::ffi::OsStr;
     use std::os::unix::ffi::OsStrExt;
 
@@ -125,9 +123,13 @@ where
     cpath.push(0);
     if bigint {
       // SAFETY: Integer fields only.
-      let mut result: statfs = unsafe { std::mem::zeroed() };
+      let mut result: libc::statfs64 = unsafe { std::mem::zeroed() };
+      #[cfg(not(target_os = "macos"))]
       // SAFETY: Normal statfs usage.
-      let code = unsafe { statfs(cpath.as_ptr() as _, &mut result) };
+      let code = unsafe { libc::statfs64(cpath.as_ptr() as _, &mut result) };
+      #[cfg(target_os = "macos")]
+      // SAFETY: Normal statfs usage.
+      let code = unsafe { libc::statfs(cpath.as_ptr() as _, &mut result) };
       if code == -1 {
         return Err(
           std::io::Error::new(
@@ -148,9 +150,9 @@ where
       })
     } else {
       // SAFETY: Integer fields only.
-      let mut result: statfs64 = unsafe { std::mem::zeroed() };
+      let mut result: libc::statfs = unsafe { std::mem::zeroed() };
       // SAFETY: Normal statfs usage.
-      let code = unsafe { statfs64(cpath.as_ptr() as _, &mut result) };
+      let code = unsafe { libc::statfs(cpath.as_ptr() as _, &mut result) };
       if code == -1 {
         return Err(
           std::io::Error::new(
