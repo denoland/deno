@@ -218,3 +218,23 @@ Deno.test({
     clearTimeout(timeout);
   },
 });
+
+Deno.test({
+  name: "[worker_threads] SharedArrayBuffer",
+  async fn() {
+    const sab = new SharedArrayBuffer(Uint8Array.BYTES_PER_ELEMENT);
+    const uint = new Uint8Array(sab);
+    const worker = new workerThreads.Worker(
+      new URL("./testdata/worker_threads2.mjs", import.meta.url),
+      {
+        workerData: { sharedArrayBuffer: sab },
+      },
+    );
+    worker.postMessage("Hello");
+    if ((await once(worker, "message"))[0] != "Hello") throw new Error();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    worker.terminate();
+    if (uint[0] != 1) throw new Error();
+  },
+  sanitizeResources: false,
+});

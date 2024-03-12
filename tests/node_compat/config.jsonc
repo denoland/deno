@@ -456,6 +456,7 @@
       "test-process-uptime.js",
       "test-promise-unhandled-silent.js",
       "test-promise-unhandled-throw-handler.js",
+      "test-punycode.js",
       "test-querystring-escape.js",
       "test-querystring-maxKeys-non-finite.js",
       "test-querystring-multichar-separator.js",
