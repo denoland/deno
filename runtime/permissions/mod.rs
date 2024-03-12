@@ -2985,15 +2985,21 @@ mod tests {
 
   #[test]
   fn test_check_partial_denied() {
-    let mut perms = Permissions::allow_all();
-    perms
-      .read
-      .flag_denied_list
-      .insert(ReadDescriptor(PathBuf::from("/foo/bar")));
-    perms
-      .write
-      .flag_denied_list
-      .insert(WriteDescriptor(PathBuf::from("/foo/bar")));
+    let mut perms = Permissions {
+      read: Permissions::new_read(
+        &Some(vec![]),
+        &Some(vec![PathBuf::from("/foo/bar")]),
+        false,
+      )
+      .unwrap(),
+      write: Permissions::new_write(
+        &Some(vec![]),
+        &Some(vec![PathBuf::from("/foo/bar")]),
+        false,
+      )
+      .unwrap(),
+      ..Default::default()
+    };
 
     perms.read.check_partial(Path::new("/foo"), None).unwrap();
     assert!(perms.read.check(Path::new("/foo"), None).is_err());
