@@ -752,27 +752,20 @@ fn get_resolution_error_bare_specifier(
   }
 }
 
-#[derive(Debug)]
-struct GraphData {
-  graph: Arc<ModuleGraph>,
-}
-
 /// Holds the `ModuleGraph` and what parts of it are type checked.
 pub struct ModuleGraphContainer {
   // Allow only one request to update the graph data at a time,
   // but allow other requests to read from it at any time even
   // while another request is updating the data.
   update_queue: Arc<TaskQueue>,
-  graph_data: Arc<RwLock<GraphData>>,
+  inner: Arc<RwLock<Arc<ModuleGraph>>>,
 }
 
 impl ModuleGraphContainer {
   pub fn new(graph_kind: GraphKind) -> Self {
     Self {
       update_queue: Default::default(),
-      graph_data: Arc::new(RwLock::new(GraphData {
-        graph: Arc::new(ModuleGraph::new(graph_kind)),
-      })),
+      inner: Arc::new(RwLock::new(Arc::new(ModuleGraph::new(graph_kind)))),
     }
   }
 
@@ -783,13 +776,13 @@ impl ModuleGraphContainer {
     let permit = self.update_queue.acquire().await;
     ModuleGraphUpdatePermit {
       permit,
-      graph_data: self.graph_data.clone(),
-      graph: (*self.graph_data.read().graph).clone(),
+      inner: self.inner.clone(),
+      graph: (**self.inner.read()).clone(),
     }
   }
 
   pub fn graph(&self) -> Arc<ModuleGraph> {
-    self.graph_data.read().graph.clone()
+    self.inner.read().clone()
   }
 }
 
@@ -829,7 +822,7 @@ pub fn has_graph_root_local_dependent_changed(
 /// new graph in the ModuleGraphContainer.
 pub struct ModuleGraphUpdatePermit<'a> {
   permit: TaskQueuePermit<'a>,
-  graph_data: Arc<RwLock<GraphData>>,
+  inner: Arc<RwLock<Arc<ModuleGraph>>>,
   graph: ModuleGraph,
 }
 
@@ -843,7 +836,7 @@ impl<'a> ModuleGraphUpdatePermit<'a> {
   /// and returns an Arc to the new module graph.
   pub fn commit(self) -> Arc<ModuleGraph> {
     let graph = Arc::new(self.graph);
-    self.graph_data.write().graph = graph.clone();
+    *self.inner.write() = graph.clone();
     drop(self.permit); // explicit drop for clarity
     graph
   }

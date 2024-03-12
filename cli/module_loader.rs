@@ -145,7 +145,7 @@ impl ModuleLoadPreparer {
       self
         .type_checker
         .check(
-          (&*graph).clone(),
+          (*graph).clone(),
           check::CheckOptions {
             build_fast_check_graph: true,
             lib,
