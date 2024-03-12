@@ -674,21 +674,43 @@ pub fn wildcard_match_detailed(
   let parts = parse_wildcard_pattern_text(&pattern).unwrap();
 
   let mut was_last_wildcard = false;
+  let mut was_last_wildline = false;
   for (i, part) in parts.iter().enumerate() {
     match part {
       WildcardPatternPart::Wildcard => {
         output_lines.push("<WILDCARD />".to_string());
+      }
+      WildcardPatternPart::Wildline => {
+        output_lines.push("<WILDLINE />".to_string());
+      }
+      WildcardPatternPart::Wildnum(times) => {
+        if current_text.len() < *times {
+          output_lines
+            .push(format!("==== HAD MISSING WILDCHARS({}) ====", times));
+          output_lines.push(colors::red(annotate_whitespace(current_text)));
+          return WildcardMatchResult::Fail(output_lines.join("\n"));
+        }
+        output_lines.push(format!("<WILDCHARS({}) />", times));
+        current_text = &current_text[*times..];
       }
       WildcardPatternPart::Text(search_text) => {
         let is_last = i + 1 == parts.len();
         let search_index = if is_last && was_last_wildcard {
           // search from the end of the file
           current_text.rfind(search_text)
+        } else if was_last_wildline {
+          if is_last {
+            find_last_text_on_line(search_text, current_text)
+          } else {
+            find_first_text_on_line(search_text, current_text)
+          }
         } else {
           current_text.find(search_text)
         };
         match search_index {
-          Some(found_index) if was_last_wildcard || found_index == 0 => {
+          Some(found_index)
+            if was_last_wildcard || was_last_wildline || found_index == 0 =>
+          {
             output_lines.push(format!(
               "<FOUND>{}</FOUND>",
               colors::gray(annotate_whitespace(search_text))
@@ -707,11 +729,12 @@ pub fn wildcard_match_detailed(
             return WildcardMatchResult::Fail(output_lines.join("\n"));
           }
           None => {
+            let was_wildcard_or_line = was_last_wildcard || was_last_wildline;
             let mut max_found_index = 0;
             for (index, _) in search_text.char_indices() {
               let sub_string = &search_text[..index];
               if let Some(found_index) = current_text.find(sub_string) {
-                if was_last_wildcard || found_index == 0 {
+                if was_wildcard_or_line || found_index == 0 {
                   max_found_index = index;
                 } else {
                   break;
@@ -720,7 +743,7 @@ pub fn wildcard_match_detailed(
                 break;
               }
             }
-            if !was_last_wildcard && max_found_index > 0 {
+            if !was_wildcard_or_line && max_found_index > 0 {
               output_lines.push(format!(
                 "<FOUND>{}</FOUND>",
                 colors::gray(annotate_whitespace(
@@ -731,13 +754,13 @@ pub fn wildcard_match_detailed(
             output_lines
               .push("==== COULD NOT FIND SEARCH TEXT ====".to_string());
             output_lines.push(colors::green(annotate_whitespace(
-              if was_last_wildcard {
+              if was_wildcard_or_line {
                 search_text
               } else {
                 &search_text[max_found_index..]
               },
             )));
-            if was_last_wildcard && max_found_index > 0 {
+            if was_wildcard_or_line && max_found_index > 0 {
               output_lines.push(format!(
                 "==== MAX FOUND ====\n{}",
                 colors::red(annotate_whitespace(
@@ -766,6 +789,7 @@ pub fn wildcard_match_detailed(
       }
       WildcardPatternPart::UnorderedLines(expected_lines) => {
         assert!(!was_last_wildcard, "unsupported");
+        assert!(!was_last_wildline, "unsupported");
         let mut actual_lines = Vec::with_capacity(expected_lines.len());
         for _ in 0..expected_lines.len() {
           match current_text.find('\n') {
@@ -823,9 +847,10 @@ pub fn wildcard_match_detailed(
       }
     }
     was_last_wildcard = matches!(part, WildcardPatternPart::Wildcard);
+    was_last_wildline = matches!(part, WildcardPatternPart::Wildline);
   }
 
-  if was_last_wildcard || current_text.is_empty() {
+  if was_last_wildcard || was_last_wildline || current_text.is_empty() {
     WildcardMatchResult::Success
   } else {
     output_lines.push("==== HAD TEXT AT END OF FILE ====".to_string());
@@ -837,6 +862,8 @@ pub fn wildcard_match_detailed(
 #[derive(Debug)]
 enum WildcardPatternPart<'a> {
   Wildcard,
+  Wildline,
+  Wildnum(usize),
   Text(&'a str),
   UnorderedLines(Vec<&'a str>),
 }
@@ -860,6 +887,8 @@ fn parse_wildcard_pattern_text(
 
   enum InnerPart<'a> {
     Wildcard,
+    Wildline,
+    Wildnum(usize),
     UnorderedLines(Vec<&'a str>),
     Char,
   }
@@ -872,9 +901,29 @@ fn parse_wildcard_pattern_text(
 
   impl<'a> Parser<'a> {
     fn parse(mut self) -> ParseResult<'a, Vec<WildcardPatternPart<'a>>> {
+      fn parse_num(input: &str) -> ParseResult<usize> {
+        let num_char_count =
+          input.chars().take_while(|c| c.is_ascii_digit()).count();
+        if num_char_count == 0 {
+          return ParseError::backtrace();
+        }
+        let (char_text, input) = input.split_at(num_char_count);
+        let value = str::parse::<usize>(char_text).unwrap();
+        Ok((input, value))
+      }
+
+      fn parse_wild_num(input: &str) -> ParseResult<usize> {
+        let (input, _) = tag("[WILDCHARS(")(input)?;
+        let (input, times) = parse_num(input)?;
+        let (input, _) = tag(")]")(input)?;
+        ParseResult::Ok((input, times))
+      }
+
       while !self.current_input.is_empty() {
-        let (next_input, inner_part) = or3(
+        let (next_input, inner_part) = or5(
           map(tag("[WILDCARD]"), |_| InnerPart::Wildcard),
+          map(tag("[WILDLINE]"), |_| InnerPart::Wildline),
+          map(parse_wild_num, InnerPart::Wildnum),
           map(parse_unordered_lines, |lines| {
             InnerPart::UnorderedLines(lines)
           }),
@@ -884,6 +933,14 @@ fn parse_wildcard_pattern_text(
           InnerPart::Wildcard => {
             self.queue_previous_text(next_input);
             self.parts.push(WildcardPatternPart::Wildcard);
+          }
+          InnerPart::Wildline => {
+            self.queue_previous_text(next_input);
+            self.parts.push(WildcardPatternPart::Wildline);
+          }
+          InnerPart::Wildnum(times) => {
+            self.queue_previous_text(next_input);
+            self.parts.push(WildcardPatternPart::Wildnum(times));
           }
           InnerPart::UnorderedLines(expected_lines) => {
             self.queue_previous_text(next_input);
@@ -921,6 +978,38 @@ fn parse_wildcard_pattern_text(
     }
     .parse()
   })(text)
+}
+
+fn find_first_text_on_line(
+  search_text: &str,
+  current_text: &str,
+) -> Option<usize> {
+  let end_search_pos = current_text.find('\n').unwrap_or(current_text.len());
+  let found_pos = current_text.find(search_text)?;
+  if found_pos <= end_search_pos {
+    Some(found_pos)
+  } else {
+    None
+  }
+}
+
+fn find_last_text_on_line(
+  search_text: &str,
+  current_text: &str,
+) -> Option<usize> {
+  let end_search_pos = current_text.find('\n').unwrap_or(current_text.len());
+  let mut best_match = None;
+  let mut search_pos = 0;
+  while let Some(new_pos) = current_text[search_pos..].find(search_text) {
+    search_pos += new_pos;
+    if search_pos <= end_search_pos {
+      best_match = Some(search_pos);
+    } else {
+      break;
+    }
+    search_pos += 1;
+  }
+  best_match
 }
 
 pub fn with_pty(deno_args: &[&str], action: impl FnMut(Pty)) {
@@ -1318,6 +1407,19 @@ grault",
       multiline_pattern,
       &multi_line_builder("garply", None),
     ));
+
+    // wildline
+    assert!(wildcard_match("foo[WILDLINE]baz", "foobarbaz"));
+    assert!(wildcard_match("foo[WILDLINE]bar", "foobarbar"));
+    assert!(!wildcard_match("foo[WILDLINE]baz", "fooba\nrbaz"));
+    assert!(wildcard_match("foo[WILDLINE]", "foobar"));
+
+    // wildnum
+    assert!(wildcard_match("foo[WILDCHARS(3)]baz", "foobarbaz"));
+    assert!(!wildcard_match("foo[WILDCHARS(4)]baz", "foobarbaz"));
+    assert!(!wildcard_match("foo[WILDCHARS(2)]baz", "foobarbaz"));
+    assert!(!wildcard_match("foo[WILDCHARS(1)]baz", "foobarbaz"));
+    assert!(!wildcard_match("foo[WILDCHARS(20)]baz", "foobarbaz"));
   }
 
   #[test]
@@ -1351,5 +1453,27 @@ grault",
     let size = parse_max_mem(TEXT);
 
     assert_eq!(size, Some(120380 * 1024));
+  }
+
+  #[test]
+  fn test_find_first_text_on_line() {
+    let text = "foo\nbar\nbaz";
+    assert_eq!(find_first_text_on_line("foo", text), Some(0));
+    assert_eq!(find_first_text_on_line("oo", text), Some(1));
+    assert_eq!(find_first_text_on_line("o", text), Some(1));
+    assert_eq!(find_first_text_on_line("o\nbar", text), Some(2));
+    assert_eq!(find_first_text_on_line("f", text), Some(0));
+    assert_eq!(find_first_text_on_line("bar", text), None);
+  }
+
+  #[test]
+  fn test_find_last_text_on_line() {
+    let text = "foo\nbar\nbaz";
+    assert_eq!(find_last_text_on_line("foo", text), Some(0));
+    assert_eq!(find_last_text_on_line("oo", text), Some(1));
+    assert_eq!(find_last_text_on_line("o", text), Some(2));
+    assert_eq!(find_last_text_on_line("o\nbar", text), Some(2));
+    assert_eq!(find_last_text_on_line("f", text), Some(0));
+    assert_eq!(find_last_text_on_line("bar", text), None);
   }
 }

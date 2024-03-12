@@ -68,7 +68,7 @@ pub async fn format(flags: Flags, fmt_flags: FmtFlags) -> Result<(), AnyError> {
       move |flags, watcher_communicator, changed_paths| {
         let fmt_flags = fmt_flags.clone();
         Ok(async move {
-          let factory = CliFactory::from_flags(flags).await?;
+          let factory = CliFactory::from_flags(flags)?;
           let cli_options = factory.cli_options();
           let fmt_options = cli_options.resolve_fmt_options(fmt_flags)?;
           let files =
@@ -113,7 +113,7 @@ pub async fn format(flags: Flags, fmt_flags: FmtFlags) -> Result<(), AnyError> {
     )
     .await?;
   } else {
-    let factory = CliFactory::from_flags(flags).await?;
+    let factory = CliFactory::from_flags(flags)?;
     let cli_options = factory.cli_options();
     let fmt_options = cli_options.resolve_fmt_options(fmt_flags)?;
     let files =
@@ -154,7 +154,7 @@ async fn format_files(
 }
 
 fn collect_fmt_files(files: FilePatterns) -> Result<Vec<PathBuf>, AnyError> {
-  FileCollector::new(|path, _| is_supported_ext_fmt(path))
+  FileCollector::new(|e| is_supported_ext_fmt(e.path))
     .ignore_git_folder()
     .ignore_node_modules()
     .ignore_vendor_folder()

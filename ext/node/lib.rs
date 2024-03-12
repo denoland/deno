@@ -1,5 +1,8 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+#![deny(clippy::print_stderr)]
+#![deny(clippy::print_stdout)]
+
 use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
@@ -258,6 +261,8 @@ deno_core::extension!(deno_node,
     ops::v8::op_vm_run_in_new_context,
     ops::idna::op_node_idna_domain_to_ascii,
     ops::idna::op_node_idna_domain_to_unicode,
+    ops::idna::op_node_idna_punycode_to_ascii,
+    ops::idna::op_node_idna_punycode_to_unicode,
     ops::idna::op_node_idna_punycode_decode,
     ops::idna::op_node_idna_punycode_encode,
     ops::zlib::op_zlib_new,

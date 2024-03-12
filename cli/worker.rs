@@ -355,7 +355,7 @@ impl CliMainWorker {
       return Ok(None);
     };
 
-    let session = self.worker.create_inspector_session().await;
+    let session = self.worker.create_inspector_session();
 
     let mut hmr_runner = setup_hmr_runner(session);
 
@@ -379,7 +379,7 @@ impl CliMainWorker {
       return Ok(None);
     };
 
-    let session = self.worker.create_inspector_session().await;
+    let session = self.worker.create_inspector_session();
     let mut coverage_collector = create_coverage_collector(session);
     self
       .worker
@@ -845,6 +845,7 @@ fn create_web_worker_callback(
       feature_checker,
       strace_ops: shared.options.strace_ops.clone(),
       close_on_idle: args.close_on_idle,
+      maybe_worker_metadata: args.maybe_worker_metadata,
     };
 
     WebWorker::bootstrap_from_options(

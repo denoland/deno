@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "1.41.1"
+version = "1.41.2"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -64,7 +64,7 @@ winres.workspace = true
 [dependencies]
 deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "proposal", "react", "sourcemap", "transforms", "typescript", "view", "visit"] }
 deno_cache_dir = { workspace = true }
-deno_config = "=0.12.0"
+deno_config = "=0.14.1"
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
 deno_doc = { version = "=0.113.1", features = ["html"] }
 deno_emit = "=0.38.2"
@@ -154,7 +154,7 @@ zstd.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 fwdansi.workspace = true
-junction = "=0.2.0"
+junction.workspace = true
 winapi = { workspace = true, features = ["knownfolders", "mswsock", "objbase", "shlobj", "tlhelp32", "winbase", "winerror", "winsock2"] }
 
 [target.'cfg(unix)'.dependencies]
