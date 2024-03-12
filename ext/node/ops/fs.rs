@@ -9,6 +9,7 @@ use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::OpState;
 use deno_fs::FileSystemRc;
+use serde::Serialize;
 
 use crate::NodePermissions;
 
@@ -77,4 +78,150 @@ where
 
   fs.cp_async(path, new_path).await?;
   Ok(())
+}
+
+#[derive(Debug, Serialize)]
+/// The fields are stored as strings because they could be bigint / u64, and
+/// precision may be lost if they are parsed to numbers by serde_v8.
+pub struct StatFs {
+  #[serde(rename = "type")]
+  pub typ: String,
+  pub bsize: String,
+  pub blocks: String,
+  pub bfree: String,
+  pub bavail: String,
+  pub files: String,
+  pub ffree: String,
+}
+
+#[op2]
+#[serde]
+pub fn op_node_statfs<P>(
+  state: Rc<RefCell<OpState>>,
+  #[string] path: String,
+  bigint: bool,
+) -> Result<StatFs, AnyError>
+where
+  P: NodePermissions + 'static,
+{
+  {
+    let mut state = state.borrow_mut();
+    state
+      .borrow_mut::<P>()
+      .check_read_with_api_name(Path::new(&path), Some("node:fs.statfs"))?;
+    state
+      .borrow_mut::<P>()
+      .check_sys("statfs", "node:fs.statfs")?;
+  }
+  #[cfg(unix)]
+  {
+    use libc::statfs;
+    use libc::statfs64;
+    use std::ffi::OsStr;
+    use std::os::unix::ffi::OsStrExt;
+
+    let path = OsStr::new(&path);
+    let mut cpath = path.as_bytes().to_vec();
+    cpath.push(0);
+    if bigint {
+      // SAFETY: Integer fields only.
+      let mut result: statfs = unsafe { std::mem::zeroed() };
+      // SAFETY: Normal statfs usage.
+      let code = unsafe { statfs(cpath.as_ptr() as _, &mut result) };
+      if code == -1 {
+        return Err(
+          std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "No such file or directory",
+          )
+          .into(),
+        );
+      }
+      Ok(StatFs {
+        typ: result.f_type.to_string(),
+        bsize: result.f_bsize.to_string(),
+        blocks: result.f_blocks.to_string(),
+        bfree: result.f_bfree.to_string(),
+        bavail: result.f_bavail.to_string(),
+        files: result.f_files.to_string(),
+        ffree: result.f_ffree.to_string(),
+      })
+    } else {
+      // SAFETY: Integer fields only.
+      let mut result: statfs64 = unsafe { std::mem::zeroed() };
+      // SAFETY: Normal statfs usage.
+      let code = unsafe { statfs64(cpath.as_ptr() as _, &mut result) };
+      if code == -1 {
+        return Err(
+          std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "No such file or directory",
+          )
+          .into(),
+        );
+      }
+      Ok(StatFs {
+        typ: result.f_type.to_string(),
+        bsize: result.f_bsize.to_string(),
+        blocks: result.f_blocks.to_string(),
+        bfree: result.f_bfree.to_string(),
+        bavail: result.f_bavail.to_string(),
+        files: result.f_files.to_string(),
+        ffree: result.f_ffree.to_string(),
+      })
+    }
+  }
+  #[cfg(windows)]
+  {
+    use deno_core::anyhow::anyhow;
+    use std::ffi::OsStr;
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::Storage::FileSystem::GetDiskFreeSpaceW;
+
+    let _ = bigint;
+    let path = Path::new("Cargo.toml").canonicalize().unwrap();
+    let root = path
+      .ancestors()
+      .last()
+      .ok_or(anyhow!("Path has no root."))
+      .unwrap();
+    let root = OsStr::new(root)
+      .encode_wide()
+      .into_iter()
+      .collect::<Vec<_>>();
+    let mut sectors_per_cluster = 0;
+    let mut bytes_per_sector = 0;
+    let mut available_clusters = 0;
+    let mut total_clusters = 0;
+    // SAFETY: Normal GetDiskFreeSpaceW usage.
+    let code = unsafe {
+      GetDiskFreeSpaceW(
+        root.as_ptr(),
+        &mut sectors_per_cluster,
+        &mut bytes_per_sector,
+        &mut available_clusters,
+        &mut total_clusters,
+      )
+    };
+    if code == 0 {
+      // Canonicalize would have failed if the file didn't exist, so we don't
+      // know what went wrong in this case. Give a generic error message.
+      return Err(anyhow!("GetDiskFreeSpaceW() returned a zero status."));
+    }
+    Ok(StatFs {
+      typ: "0".to_string(),
+      bsize: (bytes_per_sector * sectors_per_cluster).to_string(),
+      blocks: total_clusters.to_string(),
+      bfree: available_clusters.to_string(),
+      bavail: available_clusters.to_string(),
+      files: "0".to_string(),
+      ffree: "0".to_string(),
+    })
+  }
+  #[cfg(not(any(unix, windows)))]
+  {
+    let _ = path;
+    let _ = bigint;
+    Err(anyhow!("Unsupported platform."))
+  }
 }
