@@ -312,7 +312,7 @@ impl<T: Descriptor + Hash> UnaryPermission<T> {
     get_display_name: impl Fn() -> Option<String>,
   ) -> Result<(), AnyError> {
     let (result, prompted, is_allow_all) = self
-      .query_desc(desc, AllowPartial::from(assert_non_partial))
+      .query_desc(desc, AllowPartial::from(!assert_non_partial))
       .check2(
         T::flag_name(),
         api_name,
@@ -2856,6 +2856,31 @@ mod tests {
     assert!(perms.env.check("hOmE").is_ok());
 
     assert_eq!(perms.env.revoke(Some("HomE")), PermissionState::Prompt);
+  }
+
+  #[test]
+  fn test_check_partial_denied() {
+    let mut perms = Permissions {
+      read: Permissions::new_read(
+        &Some(vec![]),
+        &Some(vec![PathBuf::from("/foo/bar")]),
+        false,
+      )
+      .unwrap(),
+      write: Permissions::new_write(
+        &Some(vec![]),
+        &Some(vec![PathBuf::from("/foo/bar")]),
+        false,
+      )
+      .unwrap(),
+      ..Default::default()
+    };
+
+    perms.read.check_partial(Path::new("/foo"), None).unwrap();
+    assert!(perms.read.check(Path::new("/foo"), None).is_err());
+
+    perms.write.check_partial(Path::new("/foo"), None).unwrap();
+    assert!(perms.write.check(Path::new("/foo"), None).is_err());
   }
 
   #[test]
