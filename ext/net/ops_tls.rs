@@ -31,7 +31,6 @@ use deno_tls::rustls::PrivateKey;
 use deno_tls::rustls::ServerConfig;
 use deno_tls::rustls::ServerName;
 use deno_tls::SocketUse;
-use io::Read;
 use rustls_tokio_stream::TlsStreamRead;
 use rustls_tokio_stream::TlsStreamWrite;
 use serde::Deserialize;
@@ -43,7 +42,6 @@ use std::cell::RefCell;
 use std::convert::From;
 use std::convert::TryFrom;
 use std::fs::File;
-use std::io;
 use std::io::BufReader;
 use std::io::ErrorKind;
 use std::num::NonZeroUsize;
@@ -143,7 +141,6 @@ impl Resource for TlsStreamResource {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConnectTlsArgs {
-  cert_file: Option<String>,
   ca_certs: Vec<String>,
   cert: Option<String>,
   key: Option<String>,
@@ -255,33 +252,16 @@ pub async fn op_net_connect_tls<NP>(
 where
   NP: NetPermissions + 'static,
 {
-  let cert_file = args.cert_file.as_deref();
   let unsafely_ignore_certificate_errors = state
     .borrow()
     .try_borrow::<UnsafelyIgnoreCertificateErrors>()
     .and_then(|it| it.0.clone());
 
-  {
-    let mut s = state.borrow_mut();
-    let permissions = s.borrow_mut::<NP>();
-    permissions
-      .check_net(&(&addr.hostname, Some(addr.port)), "Deno.connectTls()")?;
-    if let Some(path) = cert_file {
-      permissions.check_read(Path::new(path), "Deno.connectTls()")?;
-    }
-  }
-
-  let mut ca_certs = args
+  let ca_certs = args
     .ca_certs
     .into_iter()
     .map(|s| s.into_bytes())
     .collect::<Vec<_>>();
-
-  if let Some(path) = cert_file {
-    let mut buf = Vec::new();
-    File::open(path)?.read_to_end(&mut buf)?;
-    ca_certs.push(buf);
-  };
 
   let root_cert_store = state
     .borrow()

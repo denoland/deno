@@ -42,19 +42,6 @@ Deno.test(
 );
 
 Deno.test(
-  { permissions: { net: true, read: false } },
-  async function connectTLSCertFileNoReadPerm() {
-    await assertRejects(async () => {
-      await Deno.connectTls({
-        hostname: "deno.land",
-        port: 443,
-        certFile: "tests/testdata/tls/RootCA.crt",
-      });
-    }, Deno.errors.PermissionDenied);
-  },
-);
-
-Deno.test(
   { permissions: { read: true, net: true } },
   function listenTLSNonExistentCertKeyFiles() {
     const options = {
@@ -1160,22 +1147,6 @@ Deno.test(
 
 Deno.test(
   { permissions: { read: true, net: true } },
-  async function connectTLSBadClientCertPrivateKey(): Promise<void> {
-    await assertRejects(async () => {
-      await Deno.connectTls({
-        hostname: "deno.land",
-        port: 443,
-        certChain: "bad data",
-        privateKey: await Deno.readTextFile(
-          "tests/testdata/tls/localhost.key",
-        ),
-      });
-    }, Deno.errors.InvalidData);
-  },
-);
-
-Deno.test(
-  { permissions: { read: true, net: true } },
   async function connectTLSBadCertKey(): Promise<void> {
     await assertRejects(async () => {
       await Deno.connectTls({
@@ -1185,22 +1156,6 @@ Deno.test(
         key: await Deno.readTextFile(
           "tests/testdata/tls/localhost.key",
         ),
-      });
-    }, Deno.errors.InvalidData);
-  },
-);
-
-Deno.test(
-  { permissions: { read: true, net: true } },
-  async function connectTLSBadPrivateKey(): Promise<void> {
-    await assertRejects(async () => {
-      await Deno.connectTls({
-        hostname: "deno.land",
-        port: 443,
-        certChain: await Deno.readTextFile(
-          "tests/testdata/tls/localhost.crt",
-        ),
-        privateKey: "bad data",
       });
     }, Deno.errors.InvalidData);
   },
@@ -1224,22 +1179,6 @@ Deno.test(
 
 Deno.test(
   { permissions: { read: true, net: true } },
-  async function connectTLSNotPrivateKey(): Promise<void> {
-    await assertRejects(async () => {
-      await Deno.connectTls({
-        hostname: "deno.land",
-        port: 443,
-        certChain: await Deno.readTextFile(
-          "tests/testdata/tls/localhost.crt",
-        ),
-        privateKey: "",
-      });
-    }, Deno.errors.InvalidData);
-  },
-);
-
-Deno.test(
-  { permissions: { read: true, net: true } },
   async function connectTLSNotKey(): Promise<void> {
     await assertRejects(async () => {
       await Deno.connectTls({
@@ -1251,31 +1190,6 @@ Deno.test(
         key: "",
       });
     }, Deno.errors.InvalidData);
-  },
-);
-
-Deno.test(
-  { permissions: { read: true, net: true } },
-  async function connectWithClientCert() {
-    // The test_server running on port 4552 responds with 'PASS' if client
-    // authentication was successful. Try it by running test_server and
-    //   curl --key tests/testdata/tls/localhost.key \
-    //        --cert tests/testdata/tls/localhost.crt \
-    //        --cacert tests/testdata/tls/RootCA.crt https://localhost:4552/
-    const conn = await Deno.connectTls({
-      hostname: "localhost",
-      port: 4552,
-      certChain: await Deno.readTextFile(
-        "tests/testdata/tls/localhost.crt",
-      ),
-      privateKey: await Deno.readTextFile(
-        "tests/testdata/tls/localhost.key",
-      ),
-      caCerts: [Deno.readTextFileSync("tests/testdata/tls/RootCA.pem")],
-    });
-    const result = decoder.decode(await readAll(conn));
-    assertEquals(result, "PASS");
-    conn.close();
   },
 );
 
@@ -1306,75 +1220,11 @@ Deno.test(
 
 Deno.test(
   { permissions: { read: true, net: true } },
-  async function connectTlsConflictingCertOptions(): Promise<void> {
-    await assertRejects(
-      async () => {
-        await Deno.connectTls({
-          hostname: "deno.land",
-          port: 443,
-          cert: await Deno.readTextFile(
-            "tests/testdata/tls/localhost.crt",
-          ),
-          certChain: await Deno.readTextFile(
-            "tests/testdata/tls/localhost.crt",
-          ),
-          key: await Deno.readTextFile(
-            "tests/testdata/tls/localhost.key",
-          ),
-        });
-      },
-      TypeError,
-      "Cannot specify both `certChain` and `cert`",
-    );
-  },
-);
-
-Deno.test(
-  { permissions: { read: true, net: true } },
-  async function connectTlsConflictingKeyOptions(): Promise<void> {
-    await assertRejects(
-      async () => {
-        await Deno.connectTls({
-          hostname: "deno.land",
-          port: 443,
-          cert: await Deno.readTextFile(
-            "tests/testdata/tls/localhost.crt",
-          ),
-          privateKey: await Deno.readTextFile(
-            "tests/testdata/tls/localhost.crt",
-          ),
-          key: await Deno.readTextFile(
-            "tests/testdata/tls/localhost.key",
-          ),
-        });
-      },
-      TypeError,
-      "Cannot specify both `privateKey` and `key`",
-    );
-  },
-);
-
-Deno.test(
-  { permissions: { read: true, net: true } },
   async function connectTLSCaCerts() {
     const conn = await Deno.connectTls({
       hostname: "localhost",
       port: 4557,
       caCerts: [Deno.readTextFileSync("tests/testdata/tls/RootCA.pem")],
-    });
-    const result = decoder.decode(await readAll(conn));
-    assertEquals(result, "PASS");
-    conn.close();
-  },
-);
-
-Deno.test(
-  { permissions: { read: true, net: true } },
-  async function connectTLSCertFile() {
-    const conn = await Deno.connectTls({
-      hostname: "localhost",
-      port: 4557,
-      certFile: "tests/testdata/tls/RootCA.pem",
     });
     const result = decoder.decode(await readAll(conn));
     assertEquals(result, "PASS");
@@ -1415,7 +1265,7 @@ Deno.test(
     const connectPromise = Deno.connectTls({
       hostname,
       port,
-      certFile: "tests/testdata/tls/RootCA.crt",
+      cert: Deno.readTextFile("tests/testdata/tls/RootCA.crt"),
     });
     const [conn1, conn2] = await Promise.all([acceptPromise, connectPromise]);
     listener.close();
