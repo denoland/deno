@@ -145,6 +145,10 @@ impl ModuleLoadPreparer {
       self
         .type_checker
         .check(
+          // todo(perf): since this is only done the first time the graph is
+          // created, we could avoid the clone of the graph here by providing
+          // the actual graph on the first run and then getting the Arc<ModuleGraph>
+          // back from the return value.
           (*graph).clone(),
           check::CheckOptions {
             build_fast_check_graph: true,
