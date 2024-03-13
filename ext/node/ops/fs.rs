@@ -180,7 +180,8 @@ where
       .ancestors()
       .last()
       .ok_or(anyhow!("Path has no root."))?;
-    let root = OsStr::new(root).encode_wide().collect::<Vec<_>>();
+    let mut root = OsStr::new(root).encode_wide().collect::<Vec<_>>();
+    root.push(0);
     let mut sectors_per_cluster = 0;
     let mut bytes_per_sector = 0;
     let mut available_clusters = 0;
