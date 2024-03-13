@@ -188,6 +188,7 @@ where
     let mut total_clusters = 0;
     let mut code = 0;
     let mut retries = 0;
+    // We retry here because libuv does: https://github.com/libuv/libuv/blob/fa6745b4f26470dae5ee4fcbb1ee082f780277e0/src/win/fs.c#L2705
     while code == 0 && retries < 2 {
       // SAFETY: Normal GetDiskFreeSpaceW usage.
       code = unsafe {
