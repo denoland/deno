@@ -1,5 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::io::Write;
+
 use crate::colors;
 
 #[macro_export]
@@ -54,6 +56,15 @@ macro_rules! assert_not_contains {
 
 #[track_caller]
 pub fn assert_wildcard_match(actual: &str, expected: &str) {
+  assert_wildcard_match_with_logger(actual, expected, &mut std::io::stderr())
+}
+
+#[track_caller]
+pub fn assert_wildcard_match_with_logger(
+  actual: &str,
+  expected: &str,
+  logger: &mut dyn Write,
+) {
   if !expected.contains("[WILD") && !expected.contains("[UNORDERED_START]") {
     pretty_assertions::assert_eq!(actual, expected);
   } else {
@@ -62,30 +73,36 @@ pub fn assert_wildcard_match(actual: &str, expected: &str) {
         // ignore
       }
       crate::WildcardMatchResult::Fail(debug_output) => {
-        println!(
+        writeln!(
+          logger,
           "{}{}{}",
           colors::bold("-- "),
           colors::bold_red("OUTPUT"),
           colors::bold(" START --"),
-        );
-        println!("{}", actual);
-        println!("{}", colors::bold("-- OUTPUT END --"));
-        println!(
+        )
+        .unwrap();
+        writeln!(logger, "{}", actual).unwrap();
+        writeln!(logger, "{}", colors::bold("-- OUTPUT END --")).unwrap();
+        writeln!(
+          logger,
           "{}{}{}",
           colors::bold("-- "),
           colors::bold_green("EXPECTED"),
           colors::bold(" START --"),
-        );
-        println!("{}", expected);
-        println!("{}", colors::bold("-- EXPECTED END --"));
-        println!(
+        )
+        .unwrap();
+        writeln!(logger, "{}", expected).unwrap();
+        writeln!(logger, "{}", colors::bold("-- EXPECTED END --")).unwrap();
+        writeln!(
+          logger,
           "{}{}{}",
           colors::bold("-- "),
           colors::bold_blue("DEBUG"),
           colors::bold(" START --"),
-        );
-        println!("{debug_output}");
-        println!("{}", colors::bold("-- DEBUG END --"));
+        )
+        .unwrap();
+        writeln!(logger, "{debug_output}").unwrap();
+        writeln!(logger, "{}", colors::bold("-- DEBUG END --")).unwrap();
         panic!("pattern match failed");
       }
     }
