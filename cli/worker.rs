@@ -867,7 +867,8 @@ mod tests {
   fn create_test_worker() -> MainWorker {
     let main_module =
       resolve_path("./hello.js", &std::env::current_dir().unwrap()).unwrap();
-    let permissions = PermissionsContainer::new(Permissions::default());
+    let permissions =
+      PermissionsContainer::new(Permissions::none_without_prompt());
 
     let options = WorkerOptions {
       startup_snapshot: crate::js::deno_isolate_init(),
