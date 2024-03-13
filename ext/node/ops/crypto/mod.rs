@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2016-2024 the Deno authors. All rights reserved. MIT license.
 use deno_core::error::generic_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
@@ -1215,7 +1215,11 @@ pub enum AsymmetricKeyDetails {
   },
   #[serde(rename = "ec")]
   #[serde(rename_all = "camelCase")]
-  Ec { named_curve: String },
+  Ec {
+    named_curve: String,
+  },
+  #[serde(rename = "dh")]
+  Dh,
 }
 
 // https://oidref.com/
@@ -1275,6 +1279,8 @@ static MGF1_SHA1_MASK_ALGORITHM: Lazy<
 
 pub const RSA_ENCRYPTION_OID: const_oid::ObjectIdentifier =
   const_oid::ObjectIdentifier::new_unwrap("1.2.840.113549.1.1.1");
+pub const DH_KEY_AGREEMENT_OID: const_oid::ObjectIdentifier =
+  const_oid::ObjectIdentifier::new_unwrap("1.2.840.113549.1.3.1");
 pub const RSASSA_PSS_OID: const_oid::ObjectIdentifier =
   const_oid::ObjectIdentifier::new_unwrap("1.2.840.113549.1.1.10");
 pub const EC_OID: const_oid::ObjectIdentifier =
@@ -1409,6 +1415,7 @@ pub fn op_node_create_private_key(
         .into(),
       })
     }
+    DH_KEY_AGREEMENT_OID => Ok(AsymmetricKeyDetails::Dh),
     RSASSA_PSS_OID => {
       let params = PssPrivateKeyParameters::try_from(
         pk_info

@@ -229,6 +229,24 @@ Deno.test("createPrivateKey rsa", function () {
   assertEquals(key.asymmetricKeyDetails?.publicExponent, 65537n);
 });
 
+Deno.test("createPrivateKey dh", function () {
+  // 1.2.840.113549.1.3.1
+  const pem = "-----BEGIN PRIVATE KEY-----\n" +
+    "MIIBoQIBADCB1QYJKoZIhvcNAQMBMIHHAoHBAP//////////yQ/aoiFowjTExmKL\n" +
+    "gNwc0SkCTgiKZ8x0Agu+pjsTmyJRSgh5jjQE3e+VGbPNOkMbMCsKbfJfFDdP4TVt\n" +
+    "bVHCReSFtXZiXn7G9ExC6aY37WsL/1y29Aa37e44a/taiZ+lrp8kEXxLH+ZJKGZR\n" +
+    "7ORbPcIAfLihY78FmNpINhxV05ppFj+o/STPX4NlXSPco62WHGLzViCFUrue1SkH\n" +
+    "cJaWbWcMNU5KvJgE8XRsCMojcyf//////////wIBAgSBwwKBwHxnT7Zw2Ehh1vyw\n" +
+    "eolzQFHQzyuT0y+3BF+FxK2Ox7VPguTp57wQfGHbORJ2cwCdLx2mFM7gk4tZ6COS\n" +
+    "E3Vta85a/PuhKXNLRdP79JgLnNtVtKXB+ePDS5C2GgXH1RHvqEdJh7JYnMy7Zj4P\n" +
+    "GagGtIy3dV5f4FA0B/2C97jQ1pO16ah8gSLQRKsNpTCw2rqsZusE0rK6RaYAef7H\n" +
+    "y/0tmLIsHxLIn+WK9CANqMbCWoP4I178BQaqhiOBkNyNZ0ndqA==\n" +
+    "-----END PRIVATE KEY-----";
+  const key = createPrivateKey(pem);
+  assertEquals(key.type, "private");
+  assertEquals(key.asymmetricKeyType, "dh");
+});
+
 // openssl ecparam -name secp256r1 -genkey -noout -out a.pem
 // openssl pkcs8 -topk8 -nocrypt -in a.pem -out b.pem
 const ecPrivateKey = Deno.readTextFileSync(
