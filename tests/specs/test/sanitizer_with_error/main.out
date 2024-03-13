@@ -13,6 +13,6 @@ error: Error: Throws
 
 throws => ./main.js:1:6
 
-FAILED | 0 passed | 1 failed (5ms)
+FAILED | 0 passed | 1 failed ([WILDCARD])
 
 error: Test failed
