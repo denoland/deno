@@ -376,7 +376,7 @@ pub async fn upgrade(
   flags: Flags,
   upgrade_flags: UpgradeFlags,
 ) -> Result<(), AnyError> {
-  let factory = CliFactory::from_flags(flags).await?;
+  let factory = CliFactory::from_flags(flags)?;
   let client = factory.http_client();
   let current_exe_path = std::env::current_exe()?;
   let output_exe_path =

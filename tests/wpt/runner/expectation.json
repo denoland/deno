@@ -6904,7 +6904,6 @@
         "the-iframe-element": {
           "cross-origin-to-whom-part-2.window.html": false,
           "cross-origin-to-whom.window.html": false,
-          "sandbox-top-navigation-child-special-cases.tentative.sub.window.html": false,
           "sandbox-top-navigation-child.tentative.sub.window.html": false,
           "sandbox-top-navigation-escalate-privileges.tentative.sub.window.html": false,
           "sandbox-top-navigation-grandchild.tentative.sub.window.html": false

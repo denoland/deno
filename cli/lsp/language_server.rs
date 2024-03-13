@@ -786,7 +786,7 @@ impl Inner {
     })
   }
 
-  pub async fn update_cache(&mut self) -> Result<(), AnyError> {
+  pub fn update_cache(&mut self) -> Result<(), AnyError> {
     let mark = self.performance.mark("lsp.update_cache");
     self.performance.measure(mark);
     let maybe_cache = &self.config.workspace_settings().cache;
@@ -816,23 +816,17 @@ impl Inner {
       None
     };
     if self.maybe_global_cache_path != maybe_global_cache_path {
-      self
-        .set_new_global_cache_path(maybe_global_cache_path)
-        .await?;
+      self.set_new_global_cache_path(maybe_global_cache_path)?;
     }
     Ok(())
   }
 
-  async fn recreate_http_client_and_dependents(
-    &mut self,
-  ) -> Result<(), AnyError> {
-    self
-      .set_new_global_cache_path(self.maybe_global_cache_path.clone())
-      .await
+  fn recreate_http_client_and_dependents(&mut self) -> Result<(), AnyError> {
+    self.set_new_global_cache_path(self.maybe_global_cache_path.clone())
   }
 
   /// Recreates the http client and all dependent structs.
-  async fn set_new_global_cache_path(
+  fn set_new_global_cache_path(
     &mut self,
     new_cache_path: Option<PathBuf>,
   ) -> Result<(), AnyError> {
@@ -1025,21 +1019,21 @@ impl Inner {
 
   async fn update_registries(&mut self) -> Result<(), AnyError> {
     let mark = self.performance.mark("lsp.update_registries");
-    self.recreate_http_client_and_dependents().await?;
+    self.recreate_http_client_and_dependents()?;
     let workspace_settings = self.config.workspace_settings();
     for (registry, enabled) in workspace_settings.suggest.imports.hosts.iter() {
       if *enabled {
         lsp_log!("Enabling import suggestions for: {}", registry);
         self.module_registries.enable(registry).await?;
       } else {
-        self.module_registries.disable(registry).await?;
+        self.module_registries.disable(registry)?;
       }
     }
     self.performance.measure(mark);
     Ok(())
   }
 
-  async fn update_config_file(&mut self) -> Result<(), AnyError> {
+  fn update_config_file(&mut self) -> Result<(), AnyError> {
     self.config.clear_config_file();
     self.fmt_options = FmtOptions::new_with_base(self.initial_cwd.clone());
     self.lint_options = LintOptions::new_with_base(self.initial_cwd.clone());
@@ -1064,7 +1058,7 @@ impl Inner {
       self.config.set_config_file(config_file);
       self.lint_options = lint_options;
       self.fmt_options = fmt_options;
-      self.recreate_http_client_and_dependents().await?;
+      self.recreate_http_client_and_dependents()?;
       if let Some(config_file) = self.config.maybe_config_file() {
         if let Ok((compiler_options, _)) = config_file.to_compiler_options() {
           if let Some(compiler_options_obj) = compiler_options.as_object() {
@@ -1278,11 +1272,11 @@ impl Inner {
 
     self.update_debug_flag();
     // Check to see if we need to change the cache path
-    if let Err(err) = self.update_cache().await {
+    if let Err(err) = self.update_cache() {
       lsp_warn!("Error updating cache: {:#}", err);
       self.client.show_message(MessageType::WARNING, err);
     }
-    if let Err(err) = self.update_config_file().await {
+    if let Err(err) = self.update_config_file() {
       lsp_warn!("Error updating config file: {:#}", err);
       self.client.show_message(MessageType::WARNING, err);
     }
@@ -1349,11 +1343,11 @@ impl Inner {
     self.refresh_npm_specifiers().await;
   }
 
-  async fn shutdown(&self) -> LspResult<()> {
+  fn shutdown(&self) -> LspResult<()> {
     Ok(())
   }
 
-  async fn did_open(
+  fn did_open(
     &mut self,
     specifier: &ModuleSpecifier,
     params: DidOpenTextDocumentParams,
@@ -1475,7 +1469,7 @@ impl Inner {
     };
 
     self.update_debug_flag();
-    if let Err(err) = self.update_cache().await {
+    if let Err(err) = self.update_cache() {
       lsp_warn!("Error updating cache: {:#}", err);
       self.client.show_message(MessageType::WARNING, err);
     }
@@ -1483,7 +1477,7 @@ impl Inner {
       lsp_warn!("Error updating registries: {:#}", err);
       self.client.show_message(MessageType::WARNING, err);
     }
-    if let Err(err) = self.update_config_file().await {
+    if let Err(err) = self.update_config_file() {
       lsp_warn!("Error updating config file: {:#}", err);
       self.client.show_message(MessageType::WARNING, err);
     }
@@ -1601,7 +1595,7 @@ impl Inner {
         files_to_check.insert(url.clone());
       }
       // Update config.
-      if let Err(err) = self.update_config_file().await {
+      if let Err(err) = self.update_config_file() {
         lsp_warn!("Error updating config file: {:#}", err);
         self.client.show_message(MessageType::WARNING, err);
       }
@@ -2246,7 +2240,7 @@ impl Inner {
           )),
         )
         .await?;
-      code_action.edit = refactor_edit_info.to_workspace_edit(self).await?;
+      code_action.edit = refactor_edit_info.to_workspace_edit(self)?;
       code_action
     } else {
       // The code action doesn't need to be resolved
@@ -2314,7 +2308,6 @@ impl Inner {
           line_index,
           &navigation_tree,
         )
-        .await
         .map_err(|err| {
           error!(
             "Error getting ts code lenses for \"{:#}\": {:#}",
@@ -2483,7 +2476,7 @@ impl Inner {
       .await?;
 
     if let Some(definition) = maybe_definition {
-      let results = definition.to_definition(line_index, self).await;
+      let results = definition.to_definition(line_index, self);
       self.performance.measure(mark);
       Ok(results)
     } else {
@@ -2978,7 +2971,6 @@ impl Inner {
       let rename_locations = tsc::RenameLocations { locations };
       let workspace_edits = rename_locations
         .into_workspace_edit(&params.new_name, self)
-        .await
         .map_err(|err| {
           error!("Failed to get workspace edits: {:#}", err);
           LspError::internal_error()
@@ -3426,7 +3418,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
 
   async fn shutdown(&self) -> LspResult<()> {
     self.1.cancel();
-    self.0.write().await.shutdown().await
+    self.0.write().await.shutdown()
   }
 
   async fn did_open(&self, params: DidOpenTextDocumentParams) {
@@ -3441,7 +3433,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     let specifier = inner
       .url_map
       .normalize_url(&params.text_document.uri, LspUrlKind::File);
-    let document = inner.did_open(&specifier, params).await;
+    let document = inner.did_open(&specifier, params);
     if document.is_diagnosable() {
       inner.refresh_npm_specifiers().await;
       let specifiers = inner.documents.dependents(&specifier);

@@ -80,7 +80,6 @@ use std::sync::Arc;
 use std::task::Poll;
 use std::time::Duration;
 use std::time::Instant;
-use std::time::SystemTime;
 use tokio::signal;
 
 mod channel;
@@ -769,7 +768,7 @@ async fn run_tests_for_worker_inner(
     // We always capture stats, regardless of sanitization state
     let before = stats.clone().capture(&filter);
 
-    let earlier = SystemTime::now();
+    let earlier = Instant::now();
     let call = worker.js_runtime.call(&function);
     let result = match worker
       .js_runtime
@@ -807,7 +806,7 @@ async fn run_tests_for_worker_inner(
       let (formatted, trailer_notes) = format_sanitizer_diff(diff);
       if !formatted.is_empty() {
         let failure = TestFailure::Leaked(formatted, trailer_notes);
-        let elapsed = SystemTime::now().duration_since(earlier)?.as_millis();
+        let elapsed = earlier.elapsed().as_millis();
         sender.send(TestEvent::Result(
           desc.id,
           TestResult::Failed(failure),
@@ -823,7 +822,7 @@ async fn run_tests_for_worker_inner(
     if matches!(result, TestResult::Failed(_)) {
       fail_fast_tracker.add_failure();
     }
-    let elapsed = SystemTime::now().duration_since(earlier)?.as_millis();
+    let elapsed = earlier.elapsed().as_millis();
     sender.send(TestEvent::Result(desc.id, result, elapsed as u64))?;
   }
   Ok(())
@@ -1480,7 +1479,7 @@ pub async fn run_tests(
   flags: Flags,
   test_flags: TestFlags,
 ) -> Result<(), AnyError> {
-  let factory = CliFactory::from_flags(flags).await?;
+  let factory = CliFactory::from_flags(flags)?;
   let cli_options = factory.cli_options();
   let test_options = cli_options.resolve_test_options(test_flags)?;
   let file_fetcher = factory.file_fetcher()?;
@@ -1578,8 +1577,7 @@ pub async fn run_tests_with_watch(
       let test_flags = test_flags.clone();
       Ok(async move {
         let factory = CliFactoryBuilder::new()
-          .build_from_flags_for_watcher(flags, watcher_communicator.clone())
-          .await?;
+          .build_from_flags_for_watcher(flags, watcher_communicator.clone())?;
         let cli_options = factory.cli_options();
         let test_options = cli_options.resolve_test_options(test_flags)?;
 
