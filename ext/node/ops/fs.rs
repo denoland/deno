@@ -180,21 +180,28 @@ where
       .ancestors()
       .last()
       .ok_or(anyhow!("Path has no root."))?;
-    let root = OsStr::new(root).encode_wide().collect::<Vec<_>>();
+    let mut root = OsStr::new(root).encode_wide().collect::<Vec<_>>();
+    root.push(0);
     let mut sectors_per_cluster = 0;
     let mut bytes_per_sector = 0;
     let mut available_clusters = 0;
     let mut total_clusters = 0;
-    // SAFETY: Normal GetDiskFreeSpaceW usage.
-    let code = unsafe {
-      GetDiskFreeSpaceW(
-        root.as_ptr(),
-        &mut sectors_per_cluster,
-        &mut bytes_per_sector,
-        &mut available_clusters,
-        &mut total_clusters,
-      )
-    };
+    let mut code = 0;
+    let mut retries = 0;
+    // We retry here because libuv does: https://github.com/libuv/libuv/blob/fa6745b4f26470dae5ee4fcbb1ee082f780277e0/src/win/fs.c#L2705
+    while code == 0 && retries < 2 {
+      // SAFETY: Normal GetDiskFreeSpaceW usage.
+      code = unsafe {
+        GetDiskFreeSpaceW(
+          root.as_ptr(),
+          &mut sectors_per_cluster,
+          &mut bytes_per_sector,
+          &mut available_clusters,
+          &mut total_clusters,
+        )
+      };
+      retries += 1;
+    }
     if code == 0 {
       return Err(std::io::Error::last_os_error().into());
     }
