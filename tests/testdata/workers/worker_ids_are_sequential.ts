@@ -7,7 +7,7 @@ import {
 
 console.log("threadId", threadId);
 
-if (isMainThread) { // true
+if (isMainThread) {
   const worker = new Worker(new URL(import.meta.url));
   worker.on("message", (msg) => console.log("from worker:", msg));
   worker.on("error", () => {
