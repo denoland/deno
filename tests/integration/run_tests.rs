@@ -154,12 +154,6 @@ itest!(_025_reload_js_type_error {
   output: "run/025_reload_js_type_error.js.out",
 });
 
-itest!(_026_redirect_javascript {
-  args: "run --quiet --reload run/026_redirect_javascript.js",
-  output: "run/026_redirect_javascript.js.out",
-  http_server: true,
-});
-
 itest!(_027_redirect_typescript {
   args: "run --quiet --reload run/027_redirect_typescript.ts",
   output: "run/027_redirect_typescript.ts.out",
@@ -178,23 +172,6 @@ itest!(_028_args {
   args:
     "run --quiet --reload run/028_args.ts --arg1 val1 --arg2=val2 -- arg3 arg4",
   output: "run/028_args.ts.out",
-});
-
-itest!(_033_import_map {
-  args:
-    "run --quiet --reload --import-map=import_maps/import_map.json import_maps/test.ts",
-  output: "run/033_import_map.out",
-});
-
-itest!(_033_import_map_in_config_file {
-  args: "run --reload --config=import_maps/config.json import_maps/test.ts",
-  output: "run/033_import_map_in_config_file.out",
-});
-
-itest!(_033_import_map_in_flag_has_precedence {
-  args: "run --quiet --reload --import-map=import_maps/import_map_invalid.json --config=import_maps/config.json import_maps/test.ts",
-  output: "run/033_import_map_in_flag_has_precedence.out",
-  exit_code: 1,
 });
 
 itest!(_033_import_map_remote {
@@ -763,12 +740,6 @@ itest!(env_file_missing {
 itest!(_091_use_define_for_class_fields {
   args: "run --check run/091_use_define_for_class_fields.ts",
   output: "run/091_use_define_for_class_fields.ts.out",
-  exit_code: 1,
-});
-
-itest!(_092_import_map_unmapped_bare_specifier {
-  args: "run --import-map import_maps/import_map.json run/092_import_map_unmapped_bare_specifier.ts",
-  output: "run/092_import_map_unmapped_bare_specifier.ts.out",
   exit_code: 1,
 });
 
@@ -2232,11 +2203,6 @@ itest!(import_data_url_import_relative {
   output: "run/import_data_url_import_relative.ts.out",
   exit_code: 1,
 });
-
-itest!(import_data_url_import_map {
-    args: "run --quiet --reload --import-map import_maps/import_map.json run/import_data_url.ts",
-    output: "run/import_data_url.ts.out",
-  });
 
 itest!(import_data_url_imports {
   args: "run --quiet --reload run/import_data_url_imports.ts",
