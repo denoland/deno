@@ -68,6 +68,7 @@ pub struct ModuleLoadPreparer {
   module_graph_builder: Arc<ModuleGraphBuilder>,
   progress_bar: ProgressBar,
   type_checker: Arc<TypeChecker>,
+  pub main_module: Arc<Mutex<Option<String>>>,
 }
 
 impl ModuleLoadPreparer {
@@ -87,6 +88,7 @@ impl ModuleLoadPreparer {
       module_graph_builder,
       progress_bar,
       type_checker,
+      main_module: Arc::new(Mutex::new(None)),
     }
   }
 
@@ -101,11 +103,15 @@ impl ModuleLoadPreparer {
     is_dynamic: bool,
     lib: TsTypeLib,
     permissions: PermissionsContainer,
+    main_module: Option<String>,
   ) -> Result<(), AnyError> {
     log::debug!("Preparing module load.");
     let _pb_clear_guard = self.progress_bar.clear_guard();
 
     let mut cache = self.module_graph_builder.create_fetch_cacher(permissions);
+    if let Some(main_module) = main_module {
+      *cache.is_serve.lock().unwrap() = Some(main_module);
+    }
     log::debug!("Creating module graph.");
     let mut graph_update_permit =
       self.graph_container.acquire_update_permit().await;
@@ -192,6 +198,7 @@ impl ModuleLoadPreparer {
         false,
         lib,
         PermissionsContainer::allow_all(),
+        None,
       )
       .await
   }
@@ -369,6 +376,7 @@ impl CliModuleLoaderFactory {
       root_permissions,
       dynamic_permissions,
       shared: self.shared.clone(),
+      main_module: Arc::new(Mutex::new(None)),
     })
   }
 }
@@ -384,6 +392,21 @@ impl ModuleLoaderFactory for CliModuleLoaderFactory {
       root_permissions,
       dynamic_permissions,
     )
+  }
+
+  fn create_for_main2(
+    &self,
+    root_permissions: PermissionsContainer,
+    dynamic_permissions: PermissionsContainer,
+    main_module: String,
+  ) -> Rc<dyn ModuleLoader> {
+    Rc::new(CliModuleLoader {
+      lib: TsTypeLib::DenoWindow,
+      root_permissions,
+      dynamic_permissions,
+      shared: self.shared.clone(),
+      main_module: Arc::new(Mutex::new(Some(main_module))),
+    })
   }
 
   fn create_for_worker(
@@ -415,6 +438,7 @@ struct CliModuleLoader {
   /// "root permissions" for Web Worker.
   dynamic_permissions: PermissionsContainer,
   shared: Arc<SharedCliModuleLoaderState>,
+  pub main_module: Arc<Mutex<Option<String>>>,
 }
 
 impl CliModuleLoader {
@@ -425,6 +449,16 @@ impl CliModuleLoader {
     is_dynamic: bool,
     requested_module_type: RequestedModuleType,
   ) -> Result<ModuleSource, AnyError> {
+    if specifier.as_str().ends_with("$deno$serve.ts") {
+      return Ok(ModuleSource::new(
+        ModuleType::JavaScript,
+        deno_core::ModuleSourceCode::String(
+          self.main_module.lock().as_ref().unwrap().to_string().into(),
+        ),
+        specifier,
+      ));
+    }
+
     let permissions = if is_dynamic {
       &self.dynamic_permissions
     } else {
@@ -675,10 +709,17 @@ impl ModuleLoader for CliModuleLoader {
       self.root_permissions.clone()
     };
     let lib = self.lib;
-
+    let main_module =
+      Some(self.main_module.lock().as_ref().unwrap().to_string());
     async move {
       module_load_preparer
-        .prepare_module_load(vec![specifier], is_dynamic, lib, root_permissions)
+        .prepare_module_load(
+          vec![specifier],
+          is_dynamic,
+          lib,
+          root_permissions,
+          main_module,
+        )
         .await
     }
     .boxed_local()

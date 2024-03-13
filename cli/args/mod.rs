@@ -999,6 +999,10 @@ impl CliOptions {
         resolve_url_or_path("./$deno$repl.ts", self.initial_cwd())
           .map_err(AnyError::from)
       }
+      DenoSubcommand::Serve(_) => {
+        resolve_url_or_path("./$deno$serve.ts", self.initial_cwd())
+          .map_err(AnyError::from)
+      }
       DenoSubcommand::Run(run_flags) => {
         if run_flags.is_stdin() {
           std::env::current_dir()

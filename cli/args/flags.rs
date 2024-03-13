@@ -312,6 +312,13 @@ pub struct PublishFlags {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ServeFlags {
+  pub entrypoint: String,
+  pub host: String,
+  pub port: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DenoSubcommand {
   Add(AddFlags),
   Bench(BenchFlags),
@@ -339,6 +346,8 @@ pub enum DenoSubcommand {
   Upgrade(UpgradeFlags),
   Vendor(VendorFlags),
   Publish(PublishFlags),
+
+  Serve(ServeFlags),
 }
 
 impl DenoSubcommand {
@@ -769,7 +778,7 @@ impl Flags {
       }
       Add(_) | Bundle(_) | Completions(_) | Doc(_) | Fmt(_) | Init(_)
       | Install(_) | Uninstall(_) | Jupyter(_) | Lsp | Lint(_) | Types
-      | Upgrade(_) | Vendor(_) => None,
+      | Upgrade(_) | Vendor(_) | Serve(_) => None,
     }
   }
 
@@ -956,6 +965,7 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::error::Result<Flags> {
       "upgrade" => upgrade_parse(&mut flags, &mut m),
       "vendor" => vendor_parse(&mut flags, &mut m),
       "publish" => publish_parse(&mut flags, &mut m),
+      "serve" => serve_parse(&mut flags, &mut m),
       _ => unreachable!(),
     }
   } else {
@@ -1105,6 +1115,7 @@ fn clap_root() -> Command {
         .subcommand(lsp_subcommand())
         .subcommand(lint_subcommand())
         .subcommand(publish_subcommand())
+        .subcommand(serve_subcommand())
         .subcommand(repl_subcommand())
         .subcommand(task_subcommand())
         .subcommand(test_subcommand())
@@ -2291,6 +2302,24 @@ Directory arguments are expanded to all contained files matching the glob
     )
     .arg(env_file_arg())
   )
+}
+
+fn serve_subcommand() -> Command {
+  Command::new("serve")
+    .about("Run a server")
+    .long_about("")
+    .defer(|cmd| {
+      runtime_args(cmd, true, true)
+        .arg(check_arg(true))
+        .arg(Arg::new("host").long("host").require_equals(true))
+        .arg(Arg::new("port").long("port").require_equals(true))
+        .arg(
+          Arg::new("entrypoint")
+            .help("List of file names to run")
+            .value_hint(ValueHint::AnyPath),
+        )
+        .arg(env_file_arg())
+    })
 }
 
 fn types_subcommand() -> Command {
@@ -3905,6 +3934,31 @@ fn publish_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     allow_slow_types: matches.get_flag("allow-slow-types"),
     allow_dirty: matches.get_flag("allow-dirty"),
     no_provenance: matches.get_flag("no-provenance"),
+  });
+}
+
+fn serve_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  runtime_args_parse(flags, matches, true, true);
+  flags.allow_all = true;
+  flags.allow_read = Some(vec![]);
+  flags.allow_env = Some(vec![]);
+  flags.allow_net = Some(vec![]);
+  flags.allow_run = Some(vec![]);
+  flags.allow_write = Some(vec![]);
+  flags.allow_sys = Some(vec![]);
+  flags.allow_ffi = Some(vec![]);
+  flags.allow_hrtime = true;
+  let entrypoint = matches.remove_one("entrypoint").unwrap();
+  let host = matches
+    .remove_one("host")
+    .unwrap_or_else(|| "127.0.0.1".to_string());
+  let port = matches
+    .remove_one("port")
+    .unwrap_or_else(|| "8000".to_string());
+  flags.subcommand = DenoSubcommand::Serve(ServeFlags {
+    entrypoint,
+    host,
+    port,
   });
 }
 

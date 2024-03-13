@@ -3,12 +3,14 @@
 use std::io::Read;
 
 use deno_core::error::AnyError;
+use deno_core::resolve_url_or_path;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
 
 use crate::args::EvalFlags;
 use crate::args::Flags;
 use crate::args::RunFlags;
+use crate::args::ServeFlags;
 use crate::args::WatchFlagsWithPaths;
 use crate::factory::CliFactory;
 use crate::factory::CliFactoryBuilder;
@@ -17,6 +19,60 @@ use crate::util;
 use crate::util::file_watcher::WatcherRestartMode;
 
 pub mod hmr;
+
+pub async fn serve(
+  flags: Flags,
+  serve_flags: ServeFlags,
+) -> Result<i32, AnyError> {
+  // TODO(bartlomieju): actually I think it will also fail if there's an import
+  // map specified and bare specifier is used on the command line
+  let factory = CliFactory::from_flags(flags).await?;
+  let _deno_dir = factory.deno_dir()?;
+  let _http_client = factory.http_client();
+  let cli_options = factory.cli_options();
+
+  let main_module = cli_options.resolve_main_module()?;
+
+  let serve_handler =
+    resolve_url_or_path(&serve_flags.entrypoint, cli_options.initial_cwd())
+      .map_err(AnyError::from)?;
+
+  maybe_npm_install(&factory).await?;
+
+  let permissions = PermissionsContainer::new(Permissions::from_options(
+    &cli_options.permissions_options(),
+  )?);
+  let worker_factory = factory.create_cli_main_worker_factory().await?;
+
+  let serve_code = format!(
+    r#"import * as handler from "{}";
+
+  if (typeof handler.default.fetch !== "function") {{
+    throw new Error("Handler must export a fetch function");
+  }}
+  const serveHandler = handler.default.fetch;
+  
+  Deno.serve({{
+    hostname: "{}",
+    port: {},
+  }}, (req) => {{
+    return serveHandler(req);
+  }});
+  "#,
+    serve_handler, serve_flags.host, serve_flags.port
+  );
+
+  let mut worker = worker_factory
+    .create_main_worker_for_serve(
+      main_module,
+      permissions,
+      serve_handler,
+      serve_code,
+    )
+    .await?;
+  let exit_code = worker.run().await?;
+  Ok(exit_code)
+}
 
 pub async fn run_script(
   flags: Flags,

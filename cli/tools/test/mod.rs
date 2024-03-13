@@ -1116,6 +1116,7 @@ pub async fn check_specifiers(
         false,
         lib,
         PermissionsContainer::new(Permissions::allow_all()),
+        None,
       )
       .await?;
   }
@@ -1137,6 +1138,7 @@ pub async fn check_specifiers(
       false,
       lib,
       PermissionsContainer::allow_all(),
+      None,
     )
     .await?;
 
