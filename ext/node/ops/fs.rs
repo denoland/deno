@@ -186,24 +186,16 @@ where
     let mut bytes_per_sector = 0;
     let mut available_clusters = 0;
     let mut total_clusters = 0;
-    let mut code = 0;
-    let mut retries = 0;
-    while code == 0 && retries < 10 {
-      if retries > 0 {
-        std::thread::sleep(std::time::Duration::from_millis(1));
-      }
-      // SAFETY: Normal GetDiskFreeSpaceW usage.
-      code = unsafe {
-        GetDiskFreeSpaceW(
-          root.as_ptr(),
-          &mut sectors_per_cluster,
-          &mut bytes_per_sector,
-          &mut available_clusters,
-          &mut total_clusters,
-        )
-      };
-      retries += 1;
-    }
+    // SAFETY: Normal GetDiskFreeSpaceW usage.
+    let code = unsafe {
+      GetDiskFreeSpaceW(
+        root.as_ptr(),
+        &mut sectors_per_cluster,
+        &mut bytes_per_sector,
+        &mut available_clusters,
+        &mut total_clusters,
+      )
+    };
     if code == 0 {
       return Err(std::io::Error::last_os_error().into());
     }
