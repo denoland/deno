@@ -1,10 +1,13 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { statfs, statfsSync, StatsFsBase } from "node:fs";
-import { assertEquals } from "@std/assert/mod.ts";
-import * as path from "@std/path/mod.ts";
+import * as fs from "node:fs";
+import { assertEquals, assertRejects } from "jsr:@std/assert";
+import * as path from "jsr:@std/path";
 
-function assertStatFs(statFs: StatsFsBase<unknown>, { bigint = false } = {}) {
+function assertStatFs(
+  statFs: fs.StatsFsBase<unknown>,
+  { bigint = false } = {},
+) {
   assertEquals(statFs.constructor.name, "StatFs");
   const expectedType = bigint ? "bigint" : "number";
   assertEquals(typeof statFs.type, expectedType);
@@ -26,8 +29,8 @@ const filePath = path.fromFileUrl(import.meta.url);
 Deno.test({
   name: "fs.statfs()",
   async fn() {
-    await new Promise<StatsFsBase<unknown>>((resolve, reject) => {
-      statfs(filePath, (err, statFs) => {
+    await new Promise<fs.StatsFsBase<unknown>>((resolve, reject) => {
+      fs.statfs(filePath, (err, statFs) => {
         if (err) reject(err);
         resolve(statFs);
       });
@@ -38,8 +41,8 @@ Deno.test({
 Deno.test({
   name: "fs.statfs() bigint",
   async fn() {
-    await new Promise<StatsFsBase<unknown>>((resolve, reject) => {
-      statfs(filePath, { bigint: true }, (err, statFs) => {
+    await new Promise<fs.StatsFsBase<unknown>>((resolve, reject) => {
+      fs.statfs(filePath, { bigint: true }, (err, statFs) => {
         if (err) reject(err);
         resolve(statFs);
       });
@@ -50,7 +53,7 @@ Deno.test({
 Deno.test({
   name: "fs.statfsSync()",
   fn() {
-    const statFs = statfsSync(filePath);
+    const statFs = fs.statfsSync(filePath);
     assertStatFs(statFs);
   },
 });
@@ -58,7 +61,17 @@ Deno.test({
 Deno.test({
   name: "fs.statfsSync() bigint",
   fn() {
-    const statFs = statfsSync(filePath, { bigint: true });
+    const statFs = fs.statfsSync(filePath, { bigint: true });
     assertStatFs(statFs, { bigint: true });
+  },
+});
+
+Deno.test({
+  name: "fs.statfs() non-existent path",
+  async fn() {
+    const nonExistentPath = path.join(filePath, "../non-existent");
+    await assertRejects(async () => {
+      await fs.promises.statfs(nonExistentPath);
+    }, "NotFound");
   },
 });
