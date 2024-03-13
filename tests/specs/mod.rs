@@ -94,7 +94,7 @@ fn run_test(test: &Test) {
   }
 
   for step in &metadata.steps {
-    if step.clean {
+    if step.clean_deno_dir {
       context.deno_dir().path().remove_dir_all();
     }
 
@@ -164,7 +164,7 @@ impl SingleTestMetaData {
 struct StepMetaData {
   /// Whether to clean the deno_dir before running the step.
   #[serde(default)]
-  pub clean: bool,
+  pub clean_deno_dir: bool,
   pub args: VecOrString,
   pub output: String,
   #[serde(default)]

@@ -10,11 +10,11 @@
     "args": "run --reload --config=config.json test.ts",
     "output": "config.out"
   }, {
-    "clean": true,
+    "cleanDenoDir": true,
     "args": "cache --quiet --reload --import-map=import_map.json test.ts",
     "output": "cache.out"
   }, {
-    "clean": true,
+    "cleanDenoDir": true,
     "args": "info --quiet --import-map=import_map.json test.ts",
     "output": "info.out"
   }, {

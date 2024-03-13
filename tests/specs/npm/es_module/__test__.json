@@ -4,11 +4,11 @@
     "args": "run --allow-read --allow-env main.js",
     "output": "main.out"
   }, {
-    "clean": true,
+    "cleanDenoDir": true,
     "args": "test --allow-read --allow-env test.js",
     "output": "test.out"
   }, {
-    "clean": true,
+    "cleanDenoDir": true,
     "args": [
       "eval",
       "import chalk from 'npm:chalk@5'; console.log(chalk.green('chalk esm loads'));"
