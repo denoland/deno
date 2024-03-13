@@ -44,6 +44,7 @@ util::unit_test_factory!(
     _fs_rm_test = _fs / _fs_rm_test,
     _fs_rmdir_test = _fs / _fs_rmdir_test,
     _fs_stat_test = _fs / _fs_stat_test,
+    _fs_statfs_test = _fs / _fs_statfs_test,
     _fs_symlink_test = _fs / _fs_symlink_test,
     _fs_truncate_test = _fs / _fs_truncate_test,
     _fs_unlink_test = _fs / _fs_unlink_test,

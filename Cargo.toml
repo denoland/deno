@@ -163,6 +163,7 @@ signature = "2.1"
 slab = "0.4"
 smallvec = "1.8"
 socket2 = { version = "0.5.3", features = ["all"] }
+spki = "0.7.2"
 tar = "=0.4.40"
 tempfile = "3.4.0"
 termcolor = "1.1.3"
@@ -198,7 +199,7 @@ nix = "=0.26.2"
 fwdansi = "=1.1.0"
 junction = "=0.2.0"
 winapi = "=0.3.9"
-windows-sys = { version = "0.48.0", features = ["Win32_Media"] }
+windows-sys = { version = "0.48.0", features = ["Win32_Foundation", "Win32_Media", "Win32_Storage_FileSystem"] }
 winres = "=0.1.12"
 
 # NB: the `bench` and `release` profiles must remain EXACTLY the same.
