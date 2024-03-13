@@ -1687,6 +1687,7 @@ dependencies = [
  "sha2",
  "signature",
  "simd-json",
+ "spki",
  "tokio",
  "typenum",
  "url",
