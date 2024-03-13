@@ -199,23 +199,23 @@ impl Loader for FetchCacher {
   ) -> LoadFuture {
     use deno_graph::source::CacheSetting as LoaderCacheSetting;
 
-    if specifier.as_str().ends_with("$deno$serve.ts") {
-      let content = self
-        .is_serve
-        .lock()
-        .unwrap()
-        .as_ref()
-        .unwrap()
-        .as_bytes()
-        .to_vec();
-      return Box::pin(deno_core::futures::future::ready(Ok(Some(
-        LoadResponse::Module {
-          specifier: specifier.to_owned(),
-          maybe_headers: None,
-          content: content.into(),
-        },
-      ))));
-    }
+    // if specifier.as_str().ends_with("$deno$serve.ts") {
+    //   let content = self
+    //     .is_serve
+    //     .lock()
+    //     .unwrap()
+    //     .as_ref()
+    //     .unwrap()
+    //     .as_bytes()
+    //     .to_vec();
+    //   return Box::pin(deno_core::futures::future::ready(Ok(Some(
+    //     LoadResponse::Module {
+    //       specifier: specifier.to_owned(),
+    //       maybe_headers: None,
+    //       content: content.into(),
+    //     },
+    //   ))));
+    // }
 
     if specifier.scheme() == "file"
       && specifier.path().contains("/node_modules/")

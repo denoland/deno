@@ -449,15 +449,15 @@ impl CliModuleLoader {
     is_dynamic: bool,
     requested_module_type: RequestedModuleType,
   ) -> Result<ModuleSource, AnyError> {
-    if specifier.as_str().ends_with("$deno$serve.ts") {
-      return Ok(ModuleSource::new(
-        ModuleType::JavaScript,
-        deno_core::ModuleSourceCode::String(
-          self.main_module.lock().as_ref().unwrap().to_string().into(),
-        ),
-        specifier,
-      ));
-    }
+    // if specifier.as_str().ends_with("$deno$serve.ts") {
+    //   return Ok(ModuleSource::new(
+    //     ModuleType::JavaScript,
+    //     deno_core::ModuleSourceCode::String(
+    //       self.main_module.lock().as_ref().unwrap().to_string().into(),
+    //     ),
+    //     specifier,
+    //   ));
+    // }
 
     let permissions = if is_dynamic {
       &self.dynamic_permissions
@@ -709,8 +709,8 @@ impl ModuleLoader for CliModuleLoader {
       self.root_permissions.clone()
     };
     let lib = self.lib;
-    let main_module =
-      Some(self.main_module.lock().as_ref().unwrap().to_string());
+    // let main_module =
+    //   Some(self.main_module.lock().as_ref().unwrap().to_string());
     async move {
       module_load_preparer
         .prepare_module_load(
@@ -718,7 +718,7 @@ impl ModuleLoader for CliModuleLoader {
           is_dynamic,
           lib,
           root_permissions,
-          main_module,
+          None,
         )
         .await
     }

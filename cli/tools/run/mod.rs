@@ -62,13 +62,14 @@ pub async fn serve(
     serve_handler, serve_flags.host, serve_flags.port
   );
 
+  factory.file_fetcher().unwrap().insert_memory_files(File {
+    specifier: main_module.clone(),
+    maybe_headers: None,
+    source: serve_code.as_bytes().into(),
+  });
+
   let mut worker = worker_factory
-    .create_main_worker_for_serve(
-      main_module,
-      permissions,
-      serve_handler,
-      serve_code,
-    )
+    .create_main_worker(main_module, permissions)
     .await?;
   let exit_code = worker.run().await?;
   Ok(exit_code)
