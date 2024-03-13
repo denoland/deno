@@ -168,15 +168,6 @@ impl FetchHandler for DefaultFileFetchHandler {
   }
 }
 
-pub trait FetchPermissions {
-  fn check_net_url(
-    &mut self,
-    _url: &Url,
-    api_name: &str,
-  ) -> Result<(), AnyError>;
-  fn check_read(&mut self, _p: &Path, api_name: &str) -> Result<(), AnyError>;
-}
-
 pub fn get_declaration() -> PathBuf {
   PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_fetch.d.ts")
 }
@@ -266,6 +257,15 @@ impl Drop for ResourceToBodyAdapter {
   fn drop(&mut self) {
     self.0.clone().close()
   }
+}
+
+pub trait FetchPermissions {
+  fn check_net_url(
+    &mut self,
+    _url: &Url,
+    api_name: &str,
+  ) -> Result<(), AnyError>;
+  fn check_read(&mut self, _p: &Path, api_name: &str) -> Result<(), AnyError>;
 }
 
 #[op2]
