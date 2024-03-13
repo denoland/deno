@@ -4,7 +4,10 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { op_node_create_private_key } from "ext:core/ops";
+import {
+  op_node_create_private_key,
+  op_node_create_public_key,
+} from "ext:core/ops";
 
 import {
   kHandle,
@@ -242,7 +245,7 @@ export function createPublicKey(
   key: PublicKeyInput | string | Buffer | JsonWebKeyInput,
 ): PublicKeyObject {
   const { data, format, type } = prepareAsymmetricKey(key);
-  const details = op_node_create_private_key(data, format, type);
+  const details = op_node_create_public_key(data, format, type);
   const handle = setOwnedKey(copyBuffer(data));
   return new PublicKeyObject(handle, details);
 }

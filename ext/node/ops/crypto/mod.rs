@@ -1463,8 +1463,14 @@ fn parse_public_key(
   type_: &str,
 ) -> Result<pkcs8::Document, AnyError> {
   match format {
-    "pem" => pkcs8::Document::from_pkcs1_pem(std::str::from_utf8(key).unwrap())
-      .map_err(|_| type_error("Invalid PKCS1 public key")),
+    "pem" => {
+      let (label, doc) =
+        pkcs8::Document::from_pem(std::str::from_utf8(key).unwrap())?;
+      if label != "PUBLIC KEY" {
+        return Err(type_error("Invalid PEM label"));
+      }
+      Ok(doc)
+    }
     "der" => {
       match type_ {
         "pkcs1" => pkcs8::Document::from_pkcs1_der(key)

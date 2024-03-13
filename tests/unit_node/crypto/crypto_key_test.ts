@@ -2,7 +2,9 @@
 
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import {
+  createHmac,
   createPrivateKey,
+  createPublicKey,
   createSecretKey,
   generateKeyPair,
   generateKeyPairSync,
@@ -12,10 +14,6 @@ import {
 import { promisify } from "node:util";
 import { Buffer } from "node:buffer";
 import { assertEquals, assertThrows } from "@std/assert/mod.ts";
-import { createHmac } from "node:crypto";
-import {
-  createPublicKey,
-} from "../../../ext/node/polyfills/internal/crypto/keys.ts";
 
 const RUN_SLOW_TESTS = Deno.env.get("SLOW_TESTS") === "1";
 
