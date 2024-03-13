@@ -1,3 +1,0 @@
-myFunction = () => {
-  return __filename;
-};

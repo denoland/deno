@@ -136,30 +136,54 @@ Deno.test({
 
 Deno.test({
   name: "[worker_threads] worker thread with type module",
-  fn() {
-    const worker = new workerThreads.Worker(
-      new URL("./testdata/worker_module/index.js", import.meta.url),
-    );
+  async fn() {
+    function p() {
+      return new Promise<workerThreads.Worker>((resolve, reject) => {
+        const worker = new workerThreads.Worker(
+          new URL("./testdata/worker_module/index.js", import.meta.url),
+        );
+        worker.on("error", (e) => reject(e.message));
+        worker.on("message", () => resolve(worker));
+        worker.on("online", () => resolve(worker));
+      });
+    }
+    const worker = await p();
     worker.terminate();
   },
 });
 
 Deno.test({
   name: "[worker_threads] worker thread in nested module",
-  fn() {
-    const worker = new workerThreads.Worker(
-      new URL("./testdata/worker_module/nested/index.js", import.meta.url),
-    );
+  async fn() {
+    function p() {
+      return new Promise<workerThreads.Worker>((resolve, reject) => {
+        const worker = new workerThreads.Worker(
+          new URL("./testdata/worker_module/nested/index.js", import.meta.url),
+        );
+        worker.on("error", (e) => reject(e.message));
+        worker.on("message", () => resolve(worker));
+        worker.on("online", () => resolve(worker));
+      });
+    }
+    const worker = await p();
     worker.terminate();
   },
 });
 
 Deno.test({
   name: "[worker_threads] .cjs worker file within module",
-  fn() {
-    const worker = new workerThreads.Worker(
-      new URL("./testdata/worker_module/cjs-file.cjs", import.meta.url),
-    );
+  async fn() {
+    function p() {
+      return new Promise<workerThreads.Worker>((resolve, reject) => {
+        const worker = new workerThreads.Worker(
+          new URL("./testdata/worker_module/cjs-file.cjs", import.meta.url),
+        );
+        worker.on("error", (e) => reject(e.message));
+        worker.on("message", () => resolve(worker));
+        worker.on("online", () => resolve(worker));
+      });
+    }
+    const worker = await p();
     worker.terminate();
   },
 });
