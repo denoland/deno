@@ -240,7 +240,8 @@ struct TestNameTree(IndexMap<usize, TestNameTreeNode>);
 
 impl TestNameTree {
   fn new() -> Self {
-    Self(IndexMap::new())
+    // Pre-allocate some space to avoid excessive reallocations.
+    Self(IndexMap::with_capacity(256))
   }
 
   fn add_node(&mut self, node: TestNameTreeNode) {
