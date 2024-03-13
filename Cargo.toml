@@ -121,6 +121,7 @@ hyper = { version = "=1.1.0", features = ["full"] }
 hyper-util = { version = "=0.1.2", features = ["tokio", "server", "server-auto"] }
 hyper_v014 = { package = "hyper", version = "0.14.26", features = ["runtime", "http1"] }
 indexmap = { version = "2", features = ["serde"] }
+jsonc-parser = { version = "=0.23.0", features = ["serde"] }
 lazy-regex = "3"
 libc = "0.2.126"
 libz-sys = { version = "1.1", default-features = false }
