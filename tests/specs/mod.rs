@@ -222,7 +222,11 @@ fn collect_tests() -> Vec<TestCategory> {
   let mut result = Vec::new();
   for entry in specs_dir.read_dir() {
     let entry = entry.unwrap();
-    if !entry.file_type().unwrap().is_dir() {
+    let file_type = entry
+      .file_type()
+      .context(entry.path().to_string_lossy().to_string())
+      .unwrap();
+    if !file_type.is_dir() {
       continue;
     }
 
@@ -234,7 +238,11 @@ fn collect_tests() -> Vec<TestCategory> {
     let category_path = PathRef::new(entry.path());
     for entry in category_path.read_dir() {
       let entry = entry.unwrap();
-      if !entry.file_type().unwrap().is_dir() {
+      let file_type = entry
+        .file_type()
+        .context(entry.path().to_string_lossy().to_string())
+        .unwrap();
+      if !file_type.is_dir() {
         continue;
       }
 
