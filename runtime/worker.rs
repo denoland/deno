@@ -227,7 +227,7 @@ impl Default for WorkerOptions {
   }
 }
 
-fn create_op_metrics(
+pub fn create_op_metrics(
   enable_op_summary_metrics: bool,
   strace_ops: Option<Vec<String>>,
 ) -> (

@@ -211,6 +211,7 @@ class NodeWorker extends EventEmitter {
         permissions: null,
         name: this.#name,
         workerType: "module",
+        closeOnIdle: true,
       },
       serializedWorkerMetadata,
     );
@@ -413,7 +414,7 @@ internals.__initWorkerThreads = (
     >();
 
     parentPort = self as ParentPort;
-    if (typeof maybeWorkerMetadata !== "undefined") {
+    if (maybeWorkerMetadata) {
       const { 0: metadata, 1: _ } = maybeWorkerMetadata;
       workerData = metadata.workerData;
       environmentData = metadata.environmentData;
