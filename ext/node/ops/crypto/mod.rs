@@ -20,6 +20,7 @@ use rand::distributions::Uniform;
 use rand::thread_rng;
 use rand::Rng;
 use rsa::pkcs1::DecodeRsaPrivateKey;
+use rsa::pkcs1::DecodeRsaPublicKey;
 use rsa::pkcs8;
 use rsa::pkcs8::der::asn1;
 use rsa::pkcs8::der::Decode;
@@ -1434,6 +1435,113 @@ pub fn op_node_create_private_key(
         public_exponent: BigInt::from_bytes_be(
           num_bigint::Sign::Plus,
           private_key.public_exponent.as_bytes(),
+        )
+        .into(),
+        hash_algorithm: hash_algorithm.to_string(),
+        salt_length: params.salt_length,
+      })
+    }
+    EC_OID => {
+      let named_curve = pk_info
+        .algorithm
+        .parameters_oid()
+        .map_err(|_| type_error("malformed parameters"))?;
+      let named_curve = match named_curve {
+        ID_SECP256R1_OID => "p256",
+        ID_SECP384R1_OID => "p384",
+        ID_SECP521R1_OID => "p521",
+        _ => return Err(type_error("Unsupported named curve")),
+      };
+
+      Ok(AsymmetricKeyDetails::Ec {
+        named_curve: named_curve.to_string(),
+      })
+    }
+    _ => Err(type_error("Unsupported algorithm")),
+  }
+}
+
+fn parse_public_key(
+  key: &[u8],
+  format: &str,
+  type_: &str,
+) -> Result<pkcs8::Document, AnyError> {
+  match format {
+    "pem" => {
+      let (label, doc) =
+        pkcs8::Document::from_pem(std::str::from_utf8(key).unwrap())?;
+      if label != "PUBLIC KEY" {
+        return Err(type_error("Invalid PEM label"));
+      }
+      Ok(doc)
+    }
+    "der" => {
+      match type_ {
+        "pkcs1" => pkcs8::Document::from_pkcs1_der(key)
+          .map_err(|_| type_error("Invalid PKCS1 public key")),
+        // TODO(@iuioiua): spki type
+        _ => Err(type_error(format!("Unsupported key type: {}", type_))),
+      }
+    }
+    _ => Err(type_error(format!("Unsupported key format: {}", format))),
+  }
+}
+
+#[op2]
+#[serde]
+pub fn op_node_create_public_key(
+  #[buffer] key: &[u8],
+  #[string] format: &str,
+  #[string] type_: &str,
+) -> Result<AsymmetricKeyDetails, AnyError> {
+  let doc = parse_public_key(key, format, type_)?;
+  let pk_info = spki::SubjectPublicKeyInfoRef::try_from(doc.as_bytes())?;
+
+  let alg = pk_info.algorithm.oid;
+
+  match alg {
+    RSA_ENCRYPTION_OID => {
+      let public_key = rsa::pkcs1::RsaPublicKey::from_der(
+        pk_info.subject_public_key.raw_bytes(),
+      )?;
+      let modulus_length = public_key.modulus.as_bytes().len() * 8;
+
+      Ok(AsymmetricKeyDetails::Rsa {
+        modulus_length,
+        public_exponent: BigInt::from_bytes_be(
+          num_bigint::Sign::Plus,
+          public_key.public_exponent.as_bytes(),
+        )
+        .into(),
+      })
+    }
+    RSASSA_PSS_OID => {
+      let params = PssPrivateKeyParameters::try_from(
+        pk_info
+          .algorithm
+          .parameters
+          .ok_or_else(|| type_error("Malformed parameters".to_string()))?,
+      )
+      .map_err(|_| type_error("Malformed parameters".to_string()))?;
+
+      let hash_alg = params.hash_algorithm;
+      let hash_algorithm = match hash_alg.oid {
+        ID_SHA1_OID => "sha1",
+        ID_SHA256_OID => "sha256",
+        ID_SHA384_OID => "sha384",
+        ID_SHA512_OID => "sha512",
+        _ => return Err(type_error("Unsupported hash algorithm")),
+      };
+
+      let public_key = rsa::pkcs1::RsaPublicKey::from_der(
+        pk_info.subject_public_key.raw_bytes(),
+      )?;
+      let modulus_length = public_key.modulus.as_bytes().len() * 8;
+      Ok(AsymmetricKeyDetails::RsaPss {
+        modulus_length,
+        public_exponent: BigInt::from_bytes_be(
+          num_bigint::Sign::Plus,
+          public_key.public_exponent.as_bytes(),
         )
         .into(),
         hash_algorithm: hash_algorithm.to_string(),
