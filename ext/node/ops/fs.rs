@@ -175,12 +175,11 @@ where
     // Using a vfs here doesn't make sense, it won't align with the windows API
     // call below.
     #[allow(clippy::disallowed_methods)]
-    let path = Path::new(&path).canonicalize().unwrap();
+    let path = Path::new(&path).canonicalize()?;
     let root = path
       .ancestors()
       .last()
-      .ok_or(anyhow!("Path has no root."))
-      .unwrap();
+      .ok_or(anyhow!("Path has no root."))?;
     let root = OsStr::new(root).encode_wide().collect::<Vec<_>>();
     let mut sectors_per_cluster = 0;
     let mut bytes_per_sector = 0;
