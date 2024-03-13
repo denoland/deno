@@ -315,6 +315,9 @@ impl MainWorker {
         enable_testing_features: bool,
       },
       state = |state, options| {
+        // Save the permissions container and the wrapper.
+        state.put::<deno_permissions::PermissionsContainer>(options.permissions.0.clone());
+        // This is temporary until we migrate all exts/ to the deno_permissions crate.
         state.put::<PermissionsContainer>(options.permissions);
         state.put(ops::TestingFeaturesEnabled(options.enable_testing_features));
       },
@@ -494,6 +497,17 @@ impl MainWorker {
     if let Some(op_summary_metrics) = op_summary_metrics {
       js_runtime.op_state().borrow_mut().put(op_summary_metrics);
     }
+    extern "C" fn message_handler(
+      _msg: v8::Local<v8::Message>,
+      _exception: v8::Local<v8::Value>,
+    ) {
+      // TODO(@littledivy): Propogate message to users.
+    }
+
+    // Register message listener
+    js_runtime
+      .v8_isolate()
+      .add_message_listener(message_handler);
 
     if let Some(server) = options.maybe_inspector_server.clone() {
       server.register_inspector(

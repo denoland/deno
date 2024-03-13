@@ -397,6 +397,7 @@ impl WebWorker {
         enable_testing_features: bool,
       },
       state = |state, options| {
+        state.put::<deno_permissions::PermissionsContainer>(options.permissions.0.clone());
         state.put::<PermissionsContainer>(options.permissions);
         state.put(ops::TestingFeaturesEnabled(options.enable_testing_features));
       },
