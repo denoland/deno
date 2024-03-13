@@ -28,6 +28,8 @@ const filePath = path.fromFileUrl(import.meta.url);
 
 Deno.test({
   name: "fs.statfs()",
+  // https://github.com/denoland/deno/issues/22897
+  ignore: Deno.build.os == "windows",
   async fn() {
     await new Promise<fs.StatsFsBase<unknown>>((resolve, reject) => {
       fs.statfs(filePath, (err, statFs) => {
@@ -40,6 +42,8 @@ Deno.test({
 
 Deno.test({
   name: "fs.statfs() bigint",
+  // https://github.com/denoland/deno/issues/22897
+  ignore: Deno.build.os == "windows",
   async fn() {
     await new Promise<fs.StatsFsBase<unknown>>((resolve, reject) => {
       fs.statfs(filePath, { bigint: true }, (err, statFs) => {
@@ -52,6 +56,8 @@ Deno.test({
 
 Deno.test({
   name: "fs.statfsSync()",
+  // https://github.com/denoland/deno/issues/22897
+  ignore: Deno.build.os == "windows",
   fn() {
     const statFs = fs.statfsSync(filePath);
     assertStatFs(statFs);
@@ -60,6 +66,8 @@ Deno.test({
 
 Deno.test({
   name: "fs.statfsSync() bigint",
+  // https://github.com/denoland/deno/issues/22897
+  ignore: Deno.build.os == "windows",
   fn() {
     const statFs = fs.statfsSync(filePath, { bigint: true });
     assertStatFs(statFs, { bigint: true });
@@ -68,6 +76,8 @@ Deno.test({
 
 Deno.test({
   name: "fs.statfs() non-existent path",
+  // https://github.com/denoland/deno/issues/22897
+  ignore: Deno.build.os == "windows",
   async fn() {
     const nonExistentPath = path.join(filePath, "../non-existent");
     await assertRejects(async () => {
