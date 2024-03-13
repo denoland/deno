@@ -21,6 +21,12 @@ path = "integration/mod.rs"
 required-features = ["run"]
 
 [[test]]
+name = "specs"
+path = "specs/mod.rs"
+required-features = ["run"]
+harness = false
+
+[[test]]
 name = "node_compat_tests"
 path = "node_compat/test_runner.rs"
 required-features = ["run"]

@@ -61,8 +61,6 @@ mod repl;
 mod run;
 #[path = "shared_library_tests.rs"]
 mod shared_library_tests;
-#[path = "specs_tests.rs"]
-mod specs;
 #[path = "task_tests.rs"]
 mod task;
 #[path = "test_tests.rs"]

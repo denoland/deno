@@ -8,16 +8,16 @@ use test_util::tests_path;
 use test_util::PathRef;
 use test_util::TestContextBuilder;
 
-#[test]
-fn test_specs() {
-  let categories = filter(collect_tests());
+pub fn main() {
+  let maybe_filter = parse_cli_arg_filter();
+  let categories = filter(collect_tests(), maybe_filter.as_deref());
   let total_tests = categories.iter().map(|c| c.tests.len()).sum::<usize>();
   let mut failures = Vec::new();
   for category in &categories {
     eprintln!();
     eprintln!(
       "     {} {} tests...",
-      colors::green("Running"),
+      colors::bold(colors::green("Running")),
       category.name
     );
     for test in &category.tests {
@@ -51,10 +51,13 @@ fn test_specs() {
     panic!("{} failed of {}", failures.len(), total_tests);
   }
   eprintln!("{} tests passed", total_tests);
+}
 
-  if total_tests == 0 {
-    panic!("no tests found");
-  }
+fn parse_cli_arg_filter() -> Option<String> {
+  let args: Vec<String> = std::env::args().collect();
+  let maybe_filter =
+    args.get(1).filter(|s| !s.starts_with("-") && !s.is_empty());
+  maybe_filter.cloned()
 }
 
 fn run_test(test: &Test) {
@@ -126,10 +129,7 @@ enum TestMetaData {
 impl TestMetaData {
   pub fn into_multi(self) -> MultiTestMetaData {
     match self {
-      TestMetaData::Multi(mut m) => {
-        m.only = m.only || m.steps.iter().any(|t| t.only);
-        m
-      }
+      TestMetaData::Multi(m) => m,
       TestMetaData::Single(s) => s.into_multi(),
     }
   }
@@ -138,8 +138,6 @@ impl TestMetaData {
 #[derive(Clone, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 struct MultiTestMetaData {
-  #[serde(default)]
-  pub only: bool,
   /// Whether to copy all the non-assertion files in the current
   /// test directory to a temporary directory before running the
   /// steps.
@@ -170,7 +168,6 @@ struct SingleTestMetaData {
 impl SingleTestMetaData {
   pub fn into_multi(self) -> MultiTestMetaData {
     MultiTestMetaData {
-      only: self.step.only,
       base: self.base,
       temp_dir: self.temp_dir,
       http_server: self.http_server,
@@ -182,8 +179,6 @@ impl SingleTestMetaData {
 #[derive(Clone, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 struct StepMetaData {
-  #[serde(default)]
-  pub only: bool,
   /// Whether to clean the deno_dir before running the step.
   #[serde(default)]
   pub clean: bool,
@@ -220,39 +215,26 @@ struct TestCategory {
   pub tests: Vec<Test>,
 }
 
-impl TestCategory {
-  pub fn with_only(&self) -> Self {
-    TestCategory {
-      name: self.name.clone(),
-      tests: self
-        .tests
-        .iter()
-        .filter(|test| test.metadata.only)
-        .map(|test| {
-          let mut test = test.clone();
-          if test.metadata.steps.iter().any(|t| t.only) {
-            test.metadata.steps.retain(|t| t.only);
-          }
-          test
-        })
-        .collect(),
-    }
+fn filter(
+  categories: Vec<TestCategory>,
+  maybe_filter: Option<&str>,
+) -> Vec<TestCategory> {
+  if categories.iter().all(|c| c.tests.is_empty()) {
+    panic!("no tests found");
   }
-}
-
-fn filter(categories: Vec<TestCategory>) -> Vec<TestCategory> {
-  let only_categories = categories
-    .iter()
-    .map(|c| c.with_only())
-    .filter(|c| !c.tests.is_empty())
-    .collect::<Vec<_>>();
-  if !only_categories.is_empty() {
-    if std::env::var("CI").is_ok() {
-      panic!("A test had `\"only\": true` set. Please remove this before committing.");
-    }
-    only_categories
-  } else {
-    categories
+  match maybe_filter {
+    Some(filter) => categories
+      .into_iter()
+      .map(|mut c| {
+        c.tests = c
+          .tests
+          .into_iter()
+          .filter(|t| format!("specs::{}::{}", c.name, t.name).contains(filter))
+          .collect();
+        c
+      })
+      .collect(),
+    None => categories,
   }
 }
 
