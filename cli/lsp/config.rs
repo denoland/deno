@@ -786,31 +786,6 @@ impl Settings {
     }
     (&self.unscoped, None)
   }
-
-  pub fn set_unscoped(&mut self, mut settings: WorkspaceSettings) {
-    // See https://github.com/denoland/vscode_deno/issues/908.
-    if settings.enable_paths == Some(vec![]) {
-      settings.enable_paths = None;
-    }
-    self.unscoped = settings;
-  }
-
-  pub fn set_for_workspace_folders(
-    &mut self,
-    mut by_workspace_folder: Option<
-      BTreeMap<ModuleSpecifier, WorkspaceSettings>,
-    >,
-  ) {
-    if let Some(by_workspace_folder) = &mut by_workspace_folder {
-      for settings in by_workspace_folder.values_mut() {
-        // See https://github.com/denoland/vscode_deno/issues/908.
-        if settings.enable_paths == Some(vec![]) {
-          settings.enable_paths = None;
-        }
-      }
-    }
-    self.by_workspace_folder = by_workspace_folder;
-  }
 }
 
 #[derive(Debug)]
@@ -871,8 +846,10 @@ impl Config {
     unscoped: WorkspaceSettings,
     by_workspace_folder: Option<BTreeMap<ModuleSpecifier, WorkspaceSettings>>,
   ) {
-    self.settings.set_unscoped(unscoped);
-    self.settings.set_for_workspace_folders(by_workspace_folder);
+    self.settings = Settings {
+      unscoped,
+      by_workspace_folder,
+    };
   }
 
   pub fn workspace_settings(&self) -> &WorkspaceSettings {
