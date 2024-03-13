@@ -468,6 +468,7 @@ pub struct TestSummary {
 
 #[derive(Debug, Clone)]
 struct TestSpecifiersOptions {
+  cwd: Url,
   concurrent_jobs: NonZeroUsize,
   fail_fast: Option<NonZeroUsize>,
   log_level: Option<log::Level>,
@@ -509,23 +510,30 @@ impl TestSummary {
 fn get_test_reporter(options: &TestSpecifiersOptions) -> Box<dyn TestReporter> {
   let parallel = options.concurrent_jobs.get() > 1;
   let reporter: Box<dyn TestReporter> = match &options.reporter {
-    TestReporterConfig::Dot => Box::new(DotTestReporter::new()),
+    TestReporterConfig::Dot => {
+      Box::new(DotTestReporter::new(options.cwd.clone()))
+    }
     TestReporterConfig::Pretty => Box::new(PrettyTestReporter::new(
       parallel,
       options.log_level != Some(Level::Error),
       options.filter,
       false,
+      options.cwd.clone(),
     )),
     TestReporterConfig::Junit => {
-      Box::new(JunitTestReporter::new("-".to_string()))
+      Box::new(JunitTestReporter::new(options.cwd.clone(), "-".to_string()))
     }
     TestReporterConfig::Tap => Box::new(TapTestReporter::new(
+      options.cwd.clone(),
       options.concurrent_jobs > NonZeroUsize::new(1).unwrap(),
     )),
   };
 
   if let Some(junit_path) = &options.junit_path {
-    let junit = Box::new(JunitTestReporter::new(junit_path.to_string()));
+    let junit = Box::new(JunitTestReporter::new(
+      options.cwd.clone(),
+      junit_path.to_string(),
+    ));
     return Box::new(CompoundTestReporter::new(vec![reporter, junit]));
   }
 
@@ -1562,6 +1570,14 @@ pub async fn run_tests(
       })
       .collect(),
     TestSpecifiersOptions {
+      cwd: Url::from_directory_path(cli_options.initial_cwd()).map_err(
+        |_| {
+          generic_error(format!(
+            "Unable to construct URL from the path of cwd: {}",
+            cli_options.initial_cwd().to_string_lossy(),
+          ))
+        },
+      )?,
       concurrent_jobs: test_options.concurrent_jobs,
       fail_fast: test_options.fail_fast,
       log_level,
@@ -1701,6 +1717,14 @@ pub async fn run_tests_with_watch(
             })
             .collect(),
           TestSpecifiersOptions {
+            cwd: Url::from_directory_path(cli_options.initial_cwd()).map_err(
+              |_| {
+                generic_error(format!(
+                  "Unable to construct URL from the path of cwd: {}",
+                  cli_options.initial_cwd().to_string_lossy(),
+                ))
+              },
+            )?,
             concurrent_jobs: test_options.concurrent_jobs,
             fail_fast: test_options.fail_fast,
             log_level,

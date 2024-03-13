@@ -18,9 +18,9 @@ pub struct JunitTestReporter {
 }
 
 impl JunitTestReporter {
-  pub fn new(output_path: String) -> Self {
+  pub fn new(cwd: Url, output_path: String) -> Self {
     Self {
-      cwd: Url::from_directory_path(std::env::current_dir().unwrap()).unwrap(),
+      cwd,
       output_path,
       cases: IndexMap::new(),
       test_name_tree: TestNameTree::new(),
