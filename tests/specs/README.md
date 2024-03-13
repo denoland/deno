@@ -68,6 +68,17 @@ Or another example that runs multiple steps:
     but this may not be desirable for tests such as ones that create a
     node_modules directory.
 
+### Step properties
+
+When writing a single step, these may be at the top level rather than nested in
+a "steps" array.
+
+- `args` - A string (that will be spilt on whitespace into an args array) or an
+  array of arguments.
+- `output` - Path to use to assert the output.
+- `clean` (boolean) - Whether to empty the deno_dir before running the step.
+- `exitCode` (number) - Expected exit code.
+
 ## `.out` files
 
 `.out` files are used to assert the output when running a test or test step.

@@ -139,6 +139,17 @@ impl PathRef {
       .unwrap()
   }
 
+  #[track_caller]
+  pub fn read_jsonc_value(&self) -> serde_json::Value {
+    jsonc_parser::parse_to_serde_value(
+      &self.read_to_string(),
+      &Default::default(),
+    )
+    .with_context(|| format!("Failed to parse {}", self))
+    .unwrap()
+    .expect("Found no value.")
+  }
+
   pub fn rename(&self, to: impl AsRef<Path>) {
     fs::rename(self, self.join(to)).unwrap();
   }

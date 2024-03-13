@@ -2,6 +2,8 @@
 
 use std::collections::HashSet;
 
+use deno_core::anyhow::Context;
+use deno_core::serde_json;
 use deno_terminal::colors;
 use serde::Deserialize;
 use test_util::tests_path;
@@ -14,12 +16,14 @@ pub fn main() {
   let total_tests = categories.iter().map(|c| c.tests.len()).sum::<usize>();
   let mut failures = Vec::new();
   let _http_guard = test_util::http_server();
+  // todo(dsherret): the output should be changed to be terse
+  // when it passes, but verbose on failure
   for category in &categories {
     eprintln!();
     eprintln!("     {} {}", colors::green_bold("Running"), category.name);
     for test in &category.tests {
       eprintln!();
-      eprintln!("==== {} {} ====", colors::bold("Starting"), test.name);
+      eprintln!("==== Starting {} ====", test.name);
       let result = std::panic::catch_unwind(|| run_test(test));
       let success = result.is_ok();
       if !success {
@@ -52,7 +56,7 @@ pub fn main() {
 fn parse_cli_arg_filter() -> Option<String> {
   let args: Vec<String> = std::env::args().collect();
   let maybe_filter =
-    args.get(1).filter(|s| !s.starts_with("-") && !s.is_empty());
+    args.get(1).filter(|s| !s.starts_with('-') && !s.is_empty());
   maybe_filter.cloned()
 }
 
@@ -98,7 +102,7 @@ fn run_test(test: &Test) {
     if !test_output_path.to_string_lossy().ends_with(".out") {
       panic!(
         "Use the .out extension for output files (invalid: {})",
-        test_output_path.display()
+        test_output_path
       );
     }
     let expected_output = test_output_path.read_to_string();
@@ -118,22 +122,6 @@ fn run_test(test: &Test) {
 enum VecOrString {
   Vec(Vec<String>),
   String(String),
-}
-
-#[derive(Clone, Deserialize)]
-#[serde(deny_unknown_fields, untagged)]
-enum TestMetaData {
-  Multi(MultiTestMetaData),
-  Single(SingleTestMetaData),
-}
-
-impl TestMetaData {
-  pub fn into_multi(self) -> MultiTestMetaData {
-    match self {
-      TestMetaData::Multi(m) => m,
-      TestMetaData::Single(s) => s.into_multi(),
-    }
-  }
 }
 
 #[derive(Clone, Deserialize)]
@@ -157,8 +145,6 @@ struct SingleTestMetaData {
   pub base: Option<String>,
   #[serde(default)]
   pub temp_dir: bool,
-  #[serde(default)]
-  pub http_server: bool,
   #[serde(flatten)]
   pub step: StepMetaData,
 }
@@ -223,11 +209,7 @@ fn filter(
     Some(filter) => categories
       .into_iter()
       .map(|mut c| {
-        c.tests = c
-          .tests
-          .into_iter()
-          .filter(|t| t.name.contains(filter))
-          .collect();
+        c.tests.retain(|t| t.name.contains(filter));
         c
       })
       .collect(),
@@ -258,7 +240,21 @@ fn collect_tests() -> Vec<TestCategory> {
 
       let test_dir = PathRef::new(entry.path());
       let metadata_path = test_dir.join("__test__.json");
-      let metadata = metadata_path.read_json::<TestMetaData>();
+      let metadata_value = metadata_path.read_jsonc_value();
+      // checking for "steps" leads to a more targeted error message
+      // instead of when deserializing an untagged enum
+      let metadata = if metadata_value
+        .as_object()
+        .and_then(|o| o.get("steps"))
+        .is_some()
+      {
+        serde_json::from_value::<MultiTestMetaData>(metadata_value)
+      } else {
+        serde_json::from_value::<SingleTestMetaData>(metadata_value)
+          .map(|s| s.into_multi())
+      }
+      .with_context(|| format!("Failed to parse {}", metadata_path))
+      .unwrap();
       category.tests.push(Test {
         name: format!(
           "{}::{}",
@@ -266,7 +262,7 @@ fn collect_tests() -> Vec<TestCategory> {
           entry.file_name().to_string_lossy()
         ),
         cwd: test_dir,
-        metadata: metadata.into_multi(),
+        metadata,
       });
     }
     result.push(category);
