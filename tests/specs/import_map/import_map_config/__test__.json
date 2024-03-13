@@ -1,5 +1,4 @@
 {
-  "httpServer": true,
   "steps": [{
     "args": "run --quiet --reload --import-map=import_map.json test.ts",
     "output": "run.out"

@@ -13,28 +13,24 @@ pub fn main() {
   let categories = filter(collect_tests(), maybe_filter.as_deref());
   let total_tests = categories.iter().map(|c| c.tests.len()).sum::<usize>();
   let mut failures = Vec::new();
+  let _http_guard = test_util::http_server();
   for category in &categories {
     eprintln!();
-    eprintln!(
-      "     {} {} tests...",
-      colors::bold(colors::green("Running")),
-      category.name
-    );
+    eprintln!("     {} {}", colors::green_bold("Running"), category.name);
     for test in &category.tests {
       eprintln!();
       eprintln!("==== {} {} ====", colors::bold("Starting"), test.name);
       let result = std::panic::catch_unwind(|| run_test(test));
       let success = result.is_ok();
       if !success {
-        failures.push(format!("{}::{}", category.name, test.name));
+        failures.push(&test.name);
       }
-      eprintln!();
       eprintln!(
         "==== {} {} ====",
         if success {
-          colors::green("Finished")
+          "Finished".to_string()
         } else {
-          colors::red("^^FAILED^^")
+          colors::red("^^FAILED^^").to_string()
         },
         test.name
       );
@@ -74,14 +70,13 @@ fn run_test(test: &Test) {
   if let Some(base) = &metadata.base {
     match base.as_str() {
       "npm" => {
-        builder = builder.add_npm_env_vars().use_http_server();
+        builder = builder.add_npm_env_vars();
+      }
+      "jsr" => {
+        builder = builder.add_jsr_env_vars();
       }
       _ => panic!("Unknown test base: {}", base),
     }
-  }
-
-  if metadata.http_server {
-    builder = builder.use_http_server();
   }
 
   let context = builder.build();
@@ -100,6 +95,12 @@ fn run_test(test: &Test) {
     }
 
     let test_output_path = cwd.join(&step.output);
+    if !test_output_path.to_string_lossy().ends_with(".out") {
+      panic!(
+        "Use the .out extension for output files (invalid: {})",
+        test_output_path.display()
+      );
+    }
     let expected_output = test_output_path.read_to_string();
     let command = context.new_command();
     let command = match &step.args {
@@ -146,9 +147,6 @@ struct MultiTestMetaData {
   /// The base environment to use for the test.
   #[serde(default)]
   pub base: Option<String>,
-  /// Whether to use an http server.
-  #[serde(default)]
-  pub http_server: bool,
   pub steps: Vec<StepMetaData>,
 }
 
@@ -170,7 +168,6 @@ impl SingleTestMetaData {
     MultiTestMetaData {
       base: self.base,
       temp_dir: self.temp_dir,
-      http_server: self.http_server,
       steps: vec![self.step],
     }
   }
@@ -229,7 +226,7 @@ fn filter(
         c.tests = c
           .tests
           .into_iter()
-          .filter(|t| format!("specs::{}::{}", c.name, t.name).contains(filter))
+          .filter(|t| t.name.contains(filter))
           .collect();
         c
       })
@@ -248,7 +245,7 @@ fn collect_tests() -> Vec<TestCategory> {
     }
 
     let mut category = TestCategory {
-      name: entry.file_name().to_string_lossy().to_string(),
+      name: format!("specs::{}", entry.file_name().to_string_lossy()),
       tests: Vec::new(),
     };
 
@@ -263,7 +260,11 @@ fn collect_tests() -> Vec<TestCategory> {
       let metadata_path = test_dir.join("__test__.json");
       let metadata = metadata_path.read_json::<TestMetaData>();
       category.tests.push(Test {
-        name: entry.file_name().to_string_lossy().to_string(),
+        name: format!(
+          "{}::{}",
+          category.name,
+          entry.file_name().to_string_lossy()
+        ),
         cwd: test_dir,
         metadata: metadata.into_multi(),
       });

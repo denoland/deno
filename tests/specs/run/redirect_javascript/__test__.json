@@ -1,5 +1,4 @@
 {
-  "httpServer": true,
   "args": "run --quiet --reload main.js",
   "output": "main.out"
 }
