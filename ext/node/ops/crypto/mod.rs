@@ -707,7 +707,7 @@ fn ec_generate(
   use ring::signature::KeyPair;
 
   let curve = match named_curve {
-    "P-256" => &ring::signature::ECDSA_P256_SHA256_FIXED_SIGNING,
+    "P-256" | "prime256v1" => &ring::signature::ECDSA_P256_SHA256_FIXED_SIGNING,
     "P-384" => &ring::signature::ECDSA_P384_SHA384_FIXED_SIGNING,
     _ => return Err(type_error("Unsupported named curve")),
   };
