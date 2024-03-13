@@ -55,31 +55,38 @@ use std::cell::RefCell;
 use std::fmt;
 use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
+use std::sync::atomic::AtomicU32;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
+
+static WORKER_ID_COUNTER: AtomicU32 = AtomicU32::new(1);
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct WorkerId(u32);
+impl WorkerId {
+  pub fn new() -> WorkerId {
+    let id = WORKER_ID_COUNTER.fetch_add(1, Ordering::SeqCst);
+    WorkerId(id)
+  }
+}
+impl fmt::Display for WorkerId {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    write!(f, "worker-{}", self.0)
+  }
+}
+impl Default for WorkerId {
+  fn default() -> Self {
+    Self::new()
+  }
+}
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum WebWorkerType {
   Classic,
   Module,
-}
-
-#[derive(
-  Debug, Default, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize,
-)]
-pub struct WorkerId(u32);
-impl fmt::Display for WorkerId {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    write!(f, "worker-{}", self.0)
-  }
-}
-impl WorkerId {
-  pub fn next(&self) -> Option<WorkerId> {
-    self.0.checked_add(1).map(WorkerId)
-  }
 }
 
 /// Events that are sent to host from child
@@ -630,11 +637,13 @@ impl WebWorker {
         v8::String::new(scope, &format!("{}", self.id))
           .unwrap()
           .into();
+      let id: v8::Local<v8::Value> =
+        v8::Integer::new(scope, self.id.0 as i32).into();
       bootstrap_fn
         .call(
           scope,
           undefined.into(),
-          &[args, name_str, id_str, worker_data],
+          &[args, name_str, id_str, id, worker_data],
         )
         .unwrap();
     }
