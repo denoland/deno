@@ -95,7 +95,6 @@ deno_core::extension!(
   },
   state = |state, options| {
     state.put::<WorkersTable>(WorkersTable::default());
-    state.put::<WorkerId>(WorkerId::default());
 
     let create_web_worker_cb_holder =
       CreateWebWorkerCbHolder(options.create_web_worker_cb);
@@ -163,10 +162,9 @@ fn op_create_worker(
     parent_permissions.clone()
   };
   let parent_permissions = parent_permissions.clone();
-  let worker_id = state.take::<WorkerId>();
   let create_web_worker_cb = state.borrow::<CreateWebWorkerCbHolder>().clone();
   let format_js_error_fn = state.borrow::<FormatJsErrorFnHolder>().clone();
-  state.put::<WorkerId>(worker_id.next().unwrap());
+  let worker_id = WorkerId::new();
 
   let module_specifier = deno_core::resolve_url(&specifier)?;
   let worker_name = args_name.unwrap_or_default();

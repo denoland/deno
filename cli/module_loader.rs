@@ -55,7 +55,6 @@ use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_terminal::colors;
 use std::borrow::Cow;
-use std::collections::HashSet;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::str;
@@ -110,11 +109,7 @@ impl ModuleLoadPreparer {
     let mut graph_update_permit =
       self.graph_container.acquire_update_permit().await;
     let graph = graph_update_permit.graph_mut();
-
-    // Determine any modules that have already been emitted this session and
-    // should be skipped.
-    let reload_exclusions: HashSet<ModuleSpecifier> =
-      graph.specifiers().map(|(s, _)| s.clone()).collect();
+    let has_type_checked = !graph.roots.is_empty();
 
     self
       .module_graph_builder
@@ -146,25 +141,24 @@ impl ModuleLoadPreparer {
     drop(_pb_clear_guard);
 
     // type check if necessary
-    if self.options.type_check_mode().is_true()
-      && !self.graph_container.is_type_checked(&roots, lib)
-    {
-      let graph = graph.segment(&roots);
+    if self.options.type_check_mode().is_true() && !has_type_checked {
       self
         .type_checker
         .check(
-          graph,
+          // todo(perf): since this is only done the first time the graph is
+          // created, we could avoid the clone of the graph here by providing
+          // the actual graph on the first run and then getting the Arc<ModuleGraph>
+          // back from the return value.
+          (*graph).clone(),
           check::CheckOptions {
             build_fast_check_graph: true,
             lib,
             log_ignored_options: false,
-            reload: self.options.reload_flag()
-              && !roots.iter().all(|r| reload_exclusions.contains(r)),
+            reload: self.options.reload_flag(),
             type_check_mode: self.options.type_check_mode(),
           },
         )
         .await?;
-      self.graph_container.set_type_checked(&roots, lib);
     }
 
     log::debug!("Prepared module load.");
