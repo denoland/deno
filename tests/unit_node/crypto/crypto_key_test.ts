@@ -106,7 +106,16 @@ for (const type of ["rsa", "rsa-pss", "dsa"]) {
   }
 }
 
-for (const namedCurve of ["P-384", "P-256"]) {
+for (
+  const namedCurve of [
+    "P-384",
+    "prime384v1",
+    "secp384r1",
+    "P-256",
+    "prime256v1",
+    "secp256r1",
+  ]
+) {
   Deno.test({
     name: `generate ec key ${namedCurve}`,
     fn() {
