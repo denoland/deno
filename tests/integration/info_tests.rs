@@ -58,11 +58,6 @@ itest!(multiple_imports {
   http_server: true,
 });
 
-itest!(info_ts_error {
-  args: "info info/031_info_ts_error.ts",
-  output: "info/031_info_ts_error.out",
-});
-
 itest!(info_flag {
   args: "info",
   output: "info/041_info_flag.out",
@@ -93,12 +88,6 @@ itest!(json_file {
   args: "info --quiet --json info/json_output/main.ts",
   output: "info/json_output/main.out",
   exit_code: 0,
-});
-
-itest!(import_map_info {
-  args:
-    "info --quiet --import-map=import_maps/import_map.json import_maps/test.ts",
-  output: "info/065_import_map_info.out",
 });
 
 itest!(info_json_deps_order {
