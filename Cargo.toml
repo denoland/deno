@@ -28,6 +28,7 @@ members = [
   "ext/websocket",
   "ext/webstorage",
   "runtime",
+  "runtime/permissions",
   "tests",
   "tests/ffi",
   "tests/napi",
@@ -48,6 +49,7 @@ deno_core = { version = "0.269.0", features = ["lazy_eval_snapshot"] }
 deno_bench_util = { version = "0.135.0", path = "./bench_util" }
 deno_lockfile = "0.19.0"
 deno_media_type = { version = "0.1.1", features = ["module_specifier"] }
+deno_permissions = { version = "0.1.0", path = "./runtime/permissions" }
 deno_runtime = { version = "0.149.0", path = "./runtime" }
 deno_terminal = "0.1.1"
 napi_sym = { version = "0.71.0", path = "./cli/napi/sym" }
