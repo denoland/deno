@@ -1215,9 +1215,7 @@ pub enum AsymmetricKeyDetails {
   },
   #[serde(rename = "ec")]
   #[serde(rename_all = "camelCase")]
-  Ec {
-    named_curve: String,
-  },
+  Ec { named_curve: String },
   #[serde(rename = "dh")]
   Dh,
 }
