@@ -6,6 +6,9 @@ use std::path::PathBuf;
 
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
+use deno_config::glob::PathGlobMatch;
+use deno_config::glob::PathOrPattern;
+use deno_config::glob::PathOrPatternSet;
 use deno_core::error::uri_error;
 use deno_core::error::AnyError;
 
@@ -242,6 +245,38 @@ pub fn root_url_to_safe_local_dirname(root: &ModuleSpecifier) -> PathBuf {
   }
 
   result
+}
+
+/// Slightly different behaviour than the default matching
+/// where an exact path needs to be matched to be opted-in
+/// rather than just a partial directory match.
+///
+/// This is used by the test and bench filtering.
+pub fn matches_pattern_or_exact_path(
+  path_or_pattern_set: &PathOrPatternSet,
+  path: &Path,
+) -> bool {
+  for p in path_or_pattern_set.inner().iter().rev() {
+    match p {
+      PathOrPattern::Path(p) => {
+        if p == path {
+          return true;
+        }
+      }
+      PathOrPattern::NegatedPath(p) => {
+        if path.starts_with(p) {
+          return false;
+        }
+      }
+      PathOrPattern::RemoteUrl(_) => {}
+      PathOrPattern::Pattern(p) => match p.matches_path(path) {
+        PathGlobMatch::Matched => return true,
+        PathGlobMatch::MatchedNegated => return false,
+        PathGlobMatch::NotMatched => {}
+      },
+    }
+  }
+  false
 }
 
 #[cfg(test)]

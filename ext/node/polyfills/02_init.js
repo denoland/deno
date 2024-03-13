@@ -13,6 +13,8 @@ let initialized = false;
 function initialize(
   usesLocalNodeModulesDir,
   argv0,
+  runningOnMainThread,
+  maybeWorkerMetadata,
 ) {
   if (initialized) {
     throw Error("Node runtime already initialized");
@@ -37,7 +39,7 @@ function initialize(
   // FIXME(bartlomieju): not nice to depend on `Deno` namespace here
   // but it's the only way to get `args` and `version` and this point.
   internals.__bootstrapNodeProcess(argv0, Deno.args, Deno.version);
-  internals.__initWorkerThreads();
+  internals.__initWorkerThreads(runningOnMainThread, maybeWorkerMetadata);
   internals.__setupChildProcessIpcChannel();
   // `Deno[Deno.internal].requireImpl` will be unreachable after this line.
   delete internals.requireImpl;

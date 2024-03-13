@@ -4,6 +4,7 @@ use crate::args::jsr_url;
 use crate::args::CliOptions;
 use crate::args::Lockfile;
 use crate::args::TsTypeLib;
+use crate::args::DENO_DISABLE_PEDANTIC_NODE_WARNINGS;
 use crate::cache;
 use crate::cache::GlobalHttpCache;
 use crate::cache::ModuleInfoCache;
@@ -22,16 +23,15 @@ use crate::util::path::specifier_to_file_path;
 use crate::util::sync::TaskQueue;
 use crate::util::sync::TaskQueuePermit;
 
-use deno_config::ConfigFile;
 use deno_config::WorkspaceMemberConfig;
 use deno_core::anyhow::bail;
-use deno_core::anyhow::Context;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::parking_lot::RwLock;
 use deno_core::ModuleSpecifier;
 use deno_graph::source::Loader;
+use deno_graph::source::ResolutionMode;
 use deno_graph::source::ResolveError;
 use deno_graph::GraphKind;
 use deno_graph::Module;
@@ -56,27 +56,6 @@ pub struct GraphValidOptions {
   pub check_js: bool,
   pub follow_type_only: bool,
   pub is_vendoring: bool,
-}
-
-/// Check if `roots` and their deps are available. Returns `Ok(())` if
-/// so. Returns `Err(_)` if there is a known module graph or resolution
-/// error statically reachable from `roots` and not a dynamic import.
-pub fn graph_valid_with_cli_options(
-  graph: &ModuleGraph,
-  fs: &dyn FileSystem,
-  roots: &[ModuleSpecifier],
-  options: &CliOptions,
-) -> Result<(), AnyError> {
-  graph_valid(
-    graph,
-    fs,
-    roots,
-    GraphValidOptions {
-      is_vendoring: false,
-      follow_type_only: options.type_check_mode().is_true(),
-      check_js: options.check_js(),
-    },
-  )
 }
 
 /// Check if `roots` and their deps are available. Returns `Ok(())` if
@@ -167,7 +146,7 @@ pub fn graph_valid(
   }
 }
 
-/// Checks the lockfile against the graph and and exits on errors.
+/// Checks the lockfile against the graph and exits on errors.
 pub fn graph_lock_or_exit(graph: &ModuleGraph, lockfile: &mut Lockfile) {
   for module in graph.modules() {
     let source = match module {
@@ -208,56 +187,31 @@ pub struct CreateGraphOptions<'a> {
   pub graph_kind: GraphKind,
   pub roots: Vec<ModuleSpecifier>,
   pub is_dynamic: bool,
-  /// Whether to do fast check on workspace members. This is mostly only
-  /// useful when publishing.
-  pub workspace_fast_check: bool,
   /// Specify `None` to use the default CLI loader.
   pub loader: Option<&'a mut dyn Loader>,
 }
 
-pub struct ModuleGraphBuilder {
+pub struct ModuleGraphCreator {
   options: Arc<CliOptions>,
-  fs: Arc<dyn FileSystem>,
-  resolver: Arc<CliGraphResolver>,
   npm_resolver: Arc<dyn CliNpmResolver>,
-  module_info_cache: Arc<ModuleInfoCache>,
-  parsed_source_cache: Arc<ParsedSourceCache>,
+  module_graph_builder: Arc<ModuleGraphBuilder>,
   lockfile: Option<Arc<Mutex<Lockfile>>>,
-  maybe_file_watcher_reporter: Option<FileWatcherReporter>,
-  emit_cache: cache::EmitCache,
-  file_fetcher: Arc<FileFetcher>,
-  global_http_cache: Arc<GlobalHttpCache>,
   type_checker: Arc<TypeChecker>,
 }
 
-impl ModuleGraphBuilder {
-  #[allow(clippy::too_many_arguments)]
+impl ModuleGraphCreator {
   pub fn new(
     options: Arc<CliOptions>,
-    fs: Arc<dyn FileSystem>,
-    resolver: Arc<CliGraphResolver>,
     npm_resolver: Arc<dyn CliNpmResolver>,
-    module_info_cache: Arc<ModuleInfoCache>,
-    parsed_source_cache: Arc<ParsedSourceCache>,
+    module_graph_builder: Arc<ModuleGraphBuilder>,
     lockfile: Option<Arc<Mutex<Lockfile>>>,
-    maybe_file_watcher_reporter: Option<FileWatcherReporter>,
-    emit_cache: cache::EmitCache,
-    file_fetcher: Arc<FileFetcher>,
-    global_http_cache: Arc<GlobalHttpCache>,
     type_checker: Arc<TypeChecker>,
   ) -> Self {
     Self {
       options,
-      fs,
-      resolver,
       npm_resolver,
-      module_info_cache,
-      parsed_source_cache,
       lockfile,
-      maybe_file_watcher_reporter,
-      emit_cache,
-      file_fetcher,
-      global_http_cache,
+      module_graph_builder,
       type_checker,
     }
   }
@@ -267,7 +221,7 @@ impl ModuleGraphBuilder {
     graph_kind: GraphKind,
     roots: Vec<ModuleSpecifier>,
   ) -> Result<deno_graph::ModuleGraph, AnyError> {
-    let mut cache = self.create_graph_loader();
+    let mut cache = self.module_graph_builder.create_graph_loader();
     self
       .create_graph_with_loader(graph_kind, roots, &mut cache)
       .await
@@ -285,28 +239,40 @@ impl ModuleGraphBuilder {
         graph_kind,
         roots,
         loader: Some(loader),
-        workspace_fast_check: false,
       })
       .await
   }
 
-  pub async fn create_publish_graph(
+  pub async fn create_and_validate_publish_graph(
     &self,
     packages: &[WorkspaceMemberConfig],
+    build_fast_check_graph: bool,
   ) -> Result<ModuleGraph, AnyError> {
     let mut roots = Vec::new();
     for package in packages {
       roots.extend(package.config_file.resolve_export_value_urls()?);
     }
-    self
+    let mut graph = self
       .create_graph_with_options(CreateGraphOptions {
         is_dynamic: false,
         graph_kind: deno_graph::GraphKind::All,
         roots,
-        workspace_fast_check: true,
         loader: None,
       })
-      .await
+      .await?;
+    self.graph_valid(&graph)?;
+    if self.options.type_check_mode().is_true() {
+      self.type_check_graph(graph.clone()).await?;
+    }
+    if build_fast_check_graph {
+      self.module_graph_builder.build_fast_check_graph(
+        &mut graph,
+        BuildFastCheckGraphOptions {
+          workspace_fast_check: true,
+        },
+      )?;
+    }
+    Ok(graph)
   }
 
   pub async fn create_graph_with_options(
@@ -316,6 +282,7 @@ impl ModuleGraphBuilder {
     let mut graph = ModuleGraph::new(options.graph_kind);
 
     self
+      .module_graph_builder
       .build_graph_with_npm_resolution(&mut graph, options)
       .await?;
 
@@ -340,59 +307,97 @@ impl ModuleGraphBuilder {
         graph_kind,
         roots,
         loader: None,
-        workspace_fast_check: false,
       })
       .await?;
 
-    let graph = Arc::new(graph);
-    graph_valid_with_cli_options(
-      &graph,
-      self.fs.as_ref(),
-      &graph.roots,
-      &self.options,
-    )?;
+    self.graph_valid(&graph)?;
     if let Some(lockfile) = &self.lockfile {
       graph_lock_or_exit(&graph, &mut lockfile.lock());
     }
 
     if self.options.type_check_mode().is_true() {
-      self
-        .type_checker
-        .check(
-          graph.clone(),
-          check::CheckOptions {
-            lib: self.options.ts_type_lib_window(),
-            log_ignored_options: true,
-            reload: self.options.reload_flag(),
-          },
-        )
-        .await?;
+      // provide the graph to the type checker, then get it back after it's done
+      let graph = self.type_check_graph(graph).await?;
+      Ok(graph)
+    } else {
+      Ok(Arc::new(graph))
     }
-
-    Ok(graph)
   }
 
-  fn get_deno_graph_workspace_members(
+  pub fn graph_valid(&self, graph: &ModuleGraph) -> Result<(), AnyError> {
+    self.module_graph_builder.graph_valid(graph)
+  }
+
+  async fn type_check_graph(
     &self,
-  ) -> Result<Vec<deno_graph::WorkspaceMember>, AnyError> {
-    let maybe_workspace_config = self.options.maybe_workspace_config();
-    if let Some(wc) = maybe_workspace_config {
-      workspace_config_to_workspace_members(wc)
-    } else {
-      Ok(
-        self
-          .options
-          .maybe_config_file()
-          .as_ref()
-          .and_then(|c| match config_to_workspace_member(c) {
-            Ok(m) => Some(vec![m]),
-            Err(e) => {
-              log::debug!("Deno config was not a package: {:#}", e);
-              None
-            }
-          })
-          .unwrap_or_default(),
+    graph: ModuleGraph,
+  ) -> Result<Arc<ModuleGraph>, AnyError> {
+    self
+      .type_checker
+      .check(
+        graph,
+        check::CheckOptions {
+          build_fast_check_graph: true,
+          lib: self.options.ts_type_lib_window(),
+          log_ignored_options: true,
+          reload: self.options.reload_flag(),
+          type_check_mode: self.options.type_check_mode(),
+        },
       )
+      .await
+  }
+}
+
+pub struct BuildFastCheckGraphOptions {
+  /// Whether to do fast check on workspace members. This
+  /// is mostly only useful when publishing.
+  pub workspace_fast_check: bool,
+}
+
+pub struct ModuleGraphBuilder {
+  options: Arc<CliOptions>,
+  caches: Arc<cache::Caches>,
+  fs: Arc<dyn FileSystem>,
+  resolver: Arc<CliGraphResolver>,
+  npm_resolver: Arc<dyn CliNpmResolver>,
+  module_info_cache: Arc<ModuleInfoCache>,
+  parsed_source_cache: Arc<ParsedSourceCache>,
+  lockfile: Option<Arc<Mutex<Lockfile>>>,
+  maybe_file_watcher_reporter: Option<FileWatcherReporter>,
+  emit_cache: cache::EmitCache,
+  file_fetcher: Arc<FileFetcher>,
+  global_http_cache: Arc<GlobalHttpCache>,
+}
+
+impl ModuleGraphBuilder {
+  #[allow(clippy::too_many_arguments)]
+  pub fn new(
+    options: Arc<CliOptions>,
+    caches: Arc<cache::Caches>,
+    fs: Arc<dyn FileSystem>,
+    resolver: Arc<CliGraphResolver>,
+    npm_resolver: Arc<dyn CliNpmResolver>,
+    module_info_cache: Arc<ModuleInfoCache>,
+    parsed_source_cache: Arc<ParsedSourceCache>,
+    lockfile: Option<Arc<Mutex<Lockfile>>>,
+    maybe_file_watcher_reporter: Option<FileWatcherReporter>,
+    emit_cache: cache::EmitCache,
+    file_fetcher: Arc<FileFetcher>,
+    global_http_cache: Arc<GlobalHttpCache>,
+  ) -> Self {
+    Self {
+      options,
+      caches,
+      fs,
+      resolver,
+      npm_resolver,
+      module_info_cache,
+      parsed_source_cache,
+      lockfile,
+      maybe_file_watcher_reporter,
+      emit_cache,
+      file_fetcher,
+      global_http_cache,
     }
   }
 
@@ -422,13 +427,15 @@ impl ModuleGraphBuilder {
       Some(loader) => MutLoaderRef::Borrowed(loader),
       None => MutLoaderRef::Owned(self.create_graph_loader()),
     };
-    let cli_resolver = self.resolver.clone();
+    let cli_resolver = &self.resolver;
     let graph_resolver = cli_resolver.as_graph_resolver();
     let graph_npm_resolver = cli_resolver.as_graph_npm_resolver();
     let maybe_file_watcher_reporter = self
       .maybe_file_watcher_reporter
       .as_ref()
       .map(|r| r.as_reporter());
+    let workspace_members =
+      self.options.resolve_deno_graph_workspace_members()?;
     self
       .build_graph_with_npm_resolution_and_build_options(
         graph,
@@ -436,6 +443,8 @@ impl ModuleGraphBuilder {
         loader.as_mut_loader(),
         deno_graph::BuildOptions {
           is_dynamic: options.is_dynamic,
+          jsr_url_provider: Some(&CliJsrUrlProvider),
+          executor: Default::default(),
           imports: maybe_imports,
           resolver: Some(graph_resolver),
           file_system: Some(&DenoGraphFsAdapter(self.fs.as_ref())),
@@ -443,8 +452,7 @@ impl ModuleGraphBuilder {
           module_analyzer: Some(&analyzer),
           module_parser: Some(&parser),
           reporter: maybe_file_watcher_reporter,
-          workspace_fast_check: options.workspace_fast_check,
-          workspace_members: self.get_deno_graph_workspace_members()?,
+          workspace_members: &workspace_members,
         },
       )
       .await
@@ -567,6 +575,49 @@ impl ModuleGraphBuilder {
     Ok(())
   }
 
+  pub fn build_fast_check_graph(
+    &self,
+    graph: &mut ModuleGraph,
+    options: BuildFastCheckGraphOptions,
+  ) -> Result<(), AnyError> {
+    if !graph.graph_kind().include_types() {
+      return Ok(());
+    }
+
+    log::debug!("Building fast check graph");
+    let fast_check_cache = if !options.workspace_fast_check {
+      Some(cache::FastCheckCache::new(self.caches.fast_check_db()))
+    } else {
+      None
+    };
+    let parser = self.parsed_source_cache.as_capturing_parser();
+    let cli_resolver = &self.resolver;
+    let graph_resolver = cli_resolver.as_graph_resolver();
+    let graph_npm_resolver = cli_resolver.as_graph_npm_resolver();
+    let workspace_members = if options.workspace_fast_check {
+      Some(self.options.resolve_deno_graph_workspace_members()?)
+    } else {
+      None
+    };
+
+    graph.build_fast_check_type_graph(
+      deno_graph::BuildFastCheckTypeGraphOptions {
+        jsr_url_provider: Some(&CliJsrUrlProvider),
+        fast_check_cache: fast_check_cache.as_ref().map(|c| c as _),
+        fast_check_dts: false,
+        module_parser: Some(&parser),
+        resolver: Some(graph_resolver),
+        npm_resolver: Some(graph_npm_resolver),
+        workspace_fast_check: if let Some(members) = &workspace_members {
+          deno_graph::WorkspaceFastCheckOption::Enabled(members)
+        } else {
+          deno_graph::WorkspaceFastCheckOption::Disabled
+        },
+      },
+    );
+    Ok(())
+  }
+
   /// Creates the default loader used for creating a graph.
   pub fn create_graph_loader(&self) -> cache::FetchCacher {
     self.create_fetch_cacher(PermissionsContainer::allow_all())
@@ -584,6 +635,30 @@ impl ModuleGraphBuilder {
       self.npm_resolver.clone(),
       self.module_info_cache.clone(),
       permissions,
+    )
+  }
+
+  /// Check if `roots` and their deps are available. Returns `Ok(())` if
+  /// so. Returns `Err(_)` if there is a known module graph or resolution
+  /// error statically reachable from `roots` and not a dynamic import.
+  pub fn graph_valid(&self, graph: &ModuleGraph) -> Result<(), AnyError> {
+    self.graph_roots_valid(graph, &graph.roots)
+  }
+
+  pub fn graph_roots_valid(
+    &self,
+    graph: &ModuleGraph,
+    roots: &[ModuleSpecifier],
+  ) -> Result<(), AnyError> {
+    graph_valid(
+      graph,
+      self.fs.as_ref(),
+      roots,
+      GraphValidOptions {
+        is_vendoring: false,
+        follow_type_only: self.options.type_check_mode().is_true(),
+        check_js: self.options.check_js(),
+      },
     )
   }
 }
@@ -610,9 +685,11 @@ pub fn enhanced_resolution_error_message(error: &ResolutionError) -> String {
   let mut message = format!("{error}");
 
   if let Some(specifier) = get_resolution_error_bare_node_specifier(error) {
-    message.push_str(&format!(
+    if !*DENO_DISABLE_PEDANTIC_NODE_WARNINGS {
+      message.push_str(&format!(
         "\nIf you want to use a built-in Node module, add a \"node:\" prefix (ex. \"node:{specifier}\")."
       ));
+    }
   }
 
   message
@@ -623,9 +700,14 @@ pub fn enhanced_module_error_message(
   error: &ModuleError,
 ) -> String {
   let additional_message = match error {
-    ModuleError::Missing(specifier, _) => {
-      SloppyImportsResolver::resolve_with_fs(fs, specifier)
-        .as_suggestion_message()
+    ModuleError::LoadingErr(specifier, _, _) // ex. "Is a directory" error
+    | ModuleError::Missing(specifier, _) => {
+      SloppyImportsResolver::resolve_with_fs(
+        fs,
+        specifier,
+        ResolutionMode::Execution,
+      )
+      .as_suggestion_message()
     }
     _ => None,
   };
@@ -851,44 +933,6 @@ impl deno_graph::source::Reporter for FileWatcherReporter {
   }
 }
 
-fn workspace_config_to_workspace_members(
-  workspace_config: &deno_config::WorkspaceConfig,
-) -> Result<Vec<deno_graph::WorkspaceMember>, AnyError> {
-  workspace_config
-    .members
-    .iter()
-    .map(|member| {
-      config_to_workspace_member(&member.config_file).with_context(|| {
-        format!(
-          "Failed to resolve configuration for '{}' workspace member at '{}'",
-          member.member_name,
-          member.config_file.specifier.as_str()
-        )
-      })
-    })
-    .collect()
-}
-
-fn config_to_workspace_member(
-  config: &ConfigFile,
-) -> Result<deno_graph::WorkspaceMember, AnyError> {
-  let nv = deno_semver::package::PackageNv {
-    name: match &config.json.name {
-      Some(name) => name.clone(),
-      None => bail!("Missing 'name' field in config file."),
-    },
-    version: match &config.json.version {
-      Some(name) => deno_semver::Version::parse_standard(name)?,
-      None => bail!("Missing 'version' field in config file."),
-    },
-  };
-  Ok(deno_graph::WorkspaceMember {
-    base: config.specifier.join("./").unwrap(),
-    nv,
-    exports: config.to_exports_config()?.into_map(),
-  })
-}
-
 pub struct DenoGraphFsAdapter<'a>(
   pub &'a dyn deno_runtime::deno_fs::FileSystem,
 );
@@ -961,6 +1005,15 @@ pub fn format_range_with_colors(range: &deno_graph::Range) -> String {
     colors::yellow(&(range.start.line + 1).to_string()),
     colors::yellow(&(range.start.character + 1).to_string())
   )
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+struct CliJsrUrlProvider;
+
+impl deno_graph::source::JsrUrlProvider for CliJsrUrlProvider {
+  fn url(&self) -> &'static ModuleSpecifier {
+    jsr_url()
+  }
 }
 
 #[cfg(test)]

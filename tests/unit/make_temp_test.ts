@@ -155,3 +155,25 @@ Deno.test(
     }
   },
 );
+
+Deno.test(
+  { permissions: { read: true, write: true } },
+  function makeTempInvalidCharacter() {
+    // Various control and ASCII characters that are disallowed on all platforms
+    for (const invalid of ["\0", "*", "\x9f"]) {
+      assertThrows(() => Deno.makeTempFileSync({ prefix: invalid }));
+      assertThrows(() => Deno.makeTempDirSync({ prefix: invalid }));
+      assertThrows(() => Deno.makeTempFileSync({ suffix: invalid }));
+      assertThrows(() => Deno.makeTempDirSync({ suffix: invalid }));
+    }
+
+    // On Windows, files can't end with space or period
+    if (Deno.build.os === "windows") {
+      assertThrows(() => Deno.makeTempFileSync({ suffix: "." }));
+      assertThrows(() => Deno.makeTempFileSync({ suffix: " " }));
+    } else {
+      Deno.makeTempFileSync({ suffix: "." });
+      Deno.makeTempFileSync({ suffix: " " });
+    }
+  },
+);

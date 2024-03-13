@@ -457,7 +457,6 @@ function runtimeStart(
   tsVersion,
   target,
 ) {
-  core.setMacrotaskCallback(timers.handleTimerMacrotask);
   core.setWasmStreamingCallback(fetch.handleWasmStreaming);
   core.setReportExceptionCallback(event.reportException);
   op_set_format_exception_callback(formatException);
@@ -578,6 +577,7 @@ const NOT_IMPORTED_OPS = [
   "op_restore_test_permissions",
   "op_register_test_step",
   "op_register_test",
+  "op_test_get_origin",
   "op_pledge_test_permissions",
 
   // TODO(bartlomieju): used in various integration tests - figure out a way
@@ -644,7 +644,7 @@ function bootstrapMainRuntime(runtimeOptions) {
     2: unstableFeatures,
     3: inspectFlag,
     5: hasNodeModulesDir,
-    6: maybeBinaryNpmCommandName,
+    6: argv0,
     7: shouldDisableDeprecatedApiWarning,
     8: shouldUseVerboseDeprecatedApiWarning,
     9: future,
@@ -763,12 +763,18 @@ function bootstrapMainRuntime(runtimeOptions) {
     delete Object.prototype.__proto__;
   }
 
+  if (!ArrayPrototypeIncludes(unstableFeatures, unstableIds.temporal)) {
+    // Removes the `Temporal` API.
+    delete globalThis.Temporal;
+    delete globalThis.Date.prototype.toTemporalInstant;
+  }
+
   // Setup `Deno` global - we're actually overriding already existing global
   // `Deno` with `Deno` namespace from "./deno.ts".
   ObjectDefineProperty(globalThis, "Deno", core.propReadOnly(finalDenoNs));
 
   if (nodeBootstrap) {
-    nodeBootstrap(hasNodeModulesDir, maybeBinaryNpmCommandName);
+    nodeBootstrap(hasNodeModulesDir, argv0, /* runningOnMainThread */ true);
   }
 
   if (future) {
@@ -780,6 +786,7 @@ function bootstrapWorkerRuntime(
   runtimeOptions,
   name,
   internalName,
+  maybeWorkerMetadata,
 ) {
   if (hasBootstrapped) {
     throw new Error("Worker runtime already bootstrapped");
@@ -793,7 +800,7 @@ function bootstrapWorkerRuntime(
     2: unstableFeatures,
     4: enableTestingFeaturesFlag,
     5: hasNodeModulesDir,
-    6: maybeBinaryNpmCommandName,
+    6: argv0,
     7: shouldDisableDeprecatedApiWarning,
     8: shouldUseVerboseDeprecatedApiWarning,
   } = runtimeOptions;
@@ -875,6 +882,12 @@ function bootstrapWorkerRuntime(
     delete Object.prototype.__proto__;
   }
 
+  if (!ArrayPrototypeIncludes(unstableFeatures, unstableIds.temporal)) {
+    // Removes the `Temporal` API.
+    delete globalThis.Temporal;
+    delete globalThis.Date.prototype.toTemporalInstant;
+  }
+
   ObjectDefineProperties(finalDenoNs, {
     pid: core.propGetterOnly(opPid),
     noColor: core.propGetterOnly(() => op_bootstrap_no_color()),
@@ -896,8 +909,17 @@ function bootstrapWorkerRuntime(
   // existing global `Deno` with `Deno` namespace from "./deno.ts".
   ObjectDefineProperty(globalThis, "Deno", core.propReadOnly(finalDenoNs));
 
+  const workerMetadata = maybeWorkerMetadata
+    ? messagePort.deserializeJsMessageData(maybeWorkerMetadata)
+    : undefined;
+
   if (nodeBootstrap) {
-    nodeBootstrap(hasNodeModulesDir, maybeBinaryNpmCommandName);
+    nodeBootstrap(
+      hasNodeModulesDir,
+      argv0,
+      /* runningOnMainThread */ false,
+      workerMetadata,
+    );
   }
 }
 

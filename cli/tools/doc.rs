@@ -17,12 +17,12 @@ use deno_config::glob::PathOrPatternSet;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::futures::FutureExt;
 use deno_doc as doc;
 use deno_graph::GraphKind;
 use deno_graph::ModuleAnalyzer;
 use deno_graph::ModuleParser;
 use deno_graph::ModuleSpecifier;
+use doc::html::ShortPath;
 use doc::DocDiagnostic;
 use indexmap::IndexMap;
 use std::collections::BTreeMap;
@@ -72,7 +72,7 @@ async fn generate_doc_nodes_for_builtin_types(
 }
 
 pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
-  let factory = CliFactory::from_flags(flags).await?;
+  let factory = CliFactory::from_flags(flags)?;
   let cli_options = factory.cli_options();
   let module_info_cache = factory.module_info_cache()?;
   let parsed_source_cache = factory.parsed_source_cache();
@@ -89,21 +89,23 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
       .await?
     }
     DocSourceFileFlag::Paths(ref source_files) => {
-      let module_graph_builder = factory.module_graph_builder().await?;
+      let module_graph_creator = factory.module_graph_creator().await?;
       let maybe_lockfile = factory.maybe_lockfile();
 
       let module_specifiers = collect_specifiers(
         FilePatterns {
           base: cli_options.initial_cwd().to_path_buf(),
-          include: Some(PathOrPatternSet::from_relative_path_or_patterns(
-            cli_options.initial_cwd(),
-            source_files,
-          )?),
+          include: Some(
+            PathOrPatternSet::from_include_relative_path_or_patterns(
+              cli_options.initial_cwd(),
+              source_files,
+            )?,
+          ),
           exclude: Default::default(),
         },
-        |_, _| true,
+        |_| true,
       )?;
-      let graph = module_graph_builder
+      let graph = module_graph_creator
         .create_graph(GraphKind::TypesOnly, module_specifiers.clone())
         .await?;
 
@@ -153,8 +155,6 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
     };
 
     generate_docs_directory(&doc_nodes_by_url, html_options, deno_ns)
-      .boxed_local()
-      .await
   } else {
     let modules_len = doc_nodes_by_url.len();
     let doc_nodes =
@@ -211,9 +211,9 @@ impl deno_doc::html::HrefResolver for DocResolver {
   fn resolve_usage(
     &self,
     _current_specifier: &ModuleSpecifier,
-    current_file: Option<&str>,
+    current_file: Option<&ShortPath>,
   ) -> Option<String> {
-    current_file.map(|f| f.to_string())
+    current_file.map(|f| f.as_str().to_string())
   }
 
   fn resolve_source(&self, location: &deno_doc::Location) -> Option<String> {
@@ -221,7 +221,7 @@ impl deno_doc::html::HrefResolver for DocResolver {
   }
 }
 
-async fn generate_docs_directory(
+fn generate_docs_directory(
   doc_nodes_by_url: &IndexMap<ModuleSpecifier, Vec<doc::DocNode>>,
   html_options: &DocHtmlFlag,
   deno_ns: std::collections::HashSet<Vec<String>>,

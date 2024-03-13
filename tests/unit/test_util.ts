@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import * as colors from "@std/fmt/colors.ts";
+import { assert } from "@std/assert/mod.ts";
 export { colors };
 import { join, resolve } from "@std/path/mod.ts";
 export {
@@ -84,4 +85,36 @@ export function execCode2(code: string) {
 export function tmpUnixSocketPath(): string {
   const folder = Deno.makeTempDirSync();
   return join(folder, "socket");
+}
+
+export async function curlRequest(args: string[]) {
+  const { success, stdout, stderr } = await new Deno.Command("curl", {
+    args,
+    stdout: "piped",
+    stderr: "piped",
+  }).output();
+  const decoder = new TextDecoder();
+  assert(
+    success,
+    `Failed to cURL ${args}: stdout\n\n${
+      decoder.decode(stdout)
+    }\n\nstderr:\n\n${decoder.decode(stderr)}`,
+  );
+  return decoder.decode(stdout);
+}
+
+export async function curlRequestWithStdErr(args: string[]) {
+  const { success, stdout, stderr } = await new Deno.Command("curl", {
+    args,
+    stdout: "piped",
+    stderr: "piped",
+  }).output();
+  const decoder = new TextDecoder();
+  assert(
+    success,
+    `Failed to cURL ${args}: stdout\n\n${
+      decoder.decode(stdout)
+    }\n\nstderr:\n\n${decoder.decode(stderr)}`,
+  );
+  return [decoder.decode(stdout), decoder.decode(stderr)];
 }

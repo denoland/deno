@@ -35,6 +35,7 @@ pub struct CreateWebWorkerArgs {
   pub permissions: PermissionsContainer,
   pub main_module: ModuleSpecifier,
   pub worker_type: WebWorkerType,
+  pub maybe_worker_metadata: Option<JsMessageData>,
 }
 
 pub type CreateWebWorkerCb = dyn Fn(CreateWebWorkerArgs) -> (WebWorker, SendableWebWorkerHandle)
@@ -121,6 +122,7 @@ pub struct CreateWorkerArgs {
 fn op_create_worker(
   state: &mut OpState,
   #[serde] args: CreateWorkerArgs,
+  #[serde] maybe_worker_metadata: Option<JsMessageData>,
 ) -> Result<WorkerId, AnyError> {
   let specifier = args.specifier.clone();
   let maybe_source_code = if args.has_source_code {
@@ -151,7 +153,7 @@ fn op_create_worker(
   let parent_permissions = state.borrow_mut::<PermissionsContainer>();
   let worker_permissions = if let Some(child_permissions_arg) = args.permissions
   {
-    let mut parent_permissions = parent_permissions.0.lock();
+    let mut parent_permissions = parent_permissions.0 .0.lock();
     let perms =
       create_child_permissions(&mut parent_permissions, child_permissions_arg)?;
     PermissionsContainer::new(perms)
@@ -189,6 +191,7 @@ fn op_create_worker(
         permissions: worker_permissions,
         main_module: module_specifier.clone(),
         worker_type,
+        maybe_worker_metadata,
       });
 
     // Send thread safe handle from newly created worker to host thread

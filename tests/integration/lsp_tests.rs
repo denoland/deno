@@ -349,6 +349,7 @@ fn lsp_import_map_embedded_in_config_file() {
   temp_dir.write(
     "deno.embedded_import_map.jsonc",
     r#"{
+  // some comment
   "imports": {
     "/~/": "./lib/"
   }
@@ -651,6 +652,51 @@ fn lsp_import_map_config_file_auto_discovered_symlink() {
   }));
   assert_eq!(client.read_diagnostics().all().len(), 0);
 
+  client.shutdown();
+}
+
+#[test]
+fn lsp_deno_json_imports_comments_cache() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.jsonc",
+    r#"{
+      // comment
+      "imports": {
+        "print_hello": "http://localhost:4545/import_maps/print_hello.ts",
+      },
+    }"#,
+  );
+  temp_dir.write(
+    "file.ts",
+    r#"
+      import { printHello } from "print_hello";
+      printHello();
+    "#,
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.write_request(
+    "workspace/executeCommand",
+    json!({
+      "command": "deno.cache",
+      "arguments": [[], temp_dir.uri().join("file.ts").unwrap()],
+    }),
+  );
+
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": temp_dir.read_to_string("file.ts"),
+    }
+  }));
+  assert_eq!(diagnostics.all(), vec![]);
   client.shutdown();
 }
 
@@ -1606,11 +1652,9 @@ fn lsp_workspace_disable_enable_paths() {
               .unwrap()
             },
             name: "project".to_string(),
-          }])
-          .set_deno_enable(false);
+          }]);
       },
       json!({ "deno": {
-        "enable": false,
         "disablePaths": ["./worker/node.ts"],
         "enablePaths": ["./worker"],
       } }),
@@ -2415,6 +2459,69 @@ fn lsp_hover_deps_preserved_when_invalid_parse() {
   client.shutdown();
 }
 
+// Regression test for https://github.com/denoland/vscode_deno/issues/1068.
+#[test]
+fn lsp_rename_synbol_file_scheme_edits_only() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"
+        import { SEPARATOR } from "http://localhost:4545/subdir/exports.ts";
+        console.log(SEPARATOR);
+      "#,
+    },
+  }));
+  let res = client.write_request(
+    "textDocument/rename",
+    json!({
+      "textDocument": {
+        "uri": temp_dir.uri().join("file.ts").unwrap(),
+      },
+      "position": { "line": 1, "character": 17 },
+      "newName": "PATH_SEPARATOR",
+    }),
+  );
+  assert_eq!(
+    res,
+    json!({
+      "documentChanges": [
+        {
+          "textDocument": {
+            "uri": temp_dir.uri().join("file.ts").unwrap(),
+            "version": 1,
+          },
+          "edits": [
+            {
+              "range": {
+                "start": { "line": 1, "character": 17 },
+                "end": { "line": 1, "character": 26 },
+              },
+              "newText": "PATH_SEPARATOR",
+            },
+            {
+              "range": {
+                "start": { "line": 2, "character": 20 },
+                "end": { "line": 2, "character": 29 },
+              },
+              "newText": "PATH_SEPARATOR",
+            },
+          ],
+        }
+      ],
+    })
+  );
+  client.shutdown();
+}
+
 #[test]
 fn lsp_hover_typescript_types() {
   let context = TestContextBuilder::new()
@@ -2464,6 +2571,55 @@ fn lsp_hover_typescript_types() {
         "end": { "line": 0, "character": 62 }
       }
     })
+  );
+  client.shutdown();
+}
+
+#[test]
+fn lsp_hover_jsr() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import \"jsr:@denotest/add@1.0.0\";\n",
+    }
+  }));
+  client.write_request(
+    "workspace/executeCommand",
+    json!({
+      "command": "deno.cache",
+      "arguments": [[], temp_dir.uri().join("file.ts").unwrap()],
+    }),
+  );
+  let res = client.write_request(
+    "textDocument/hover",
+    json!({
+      "textDocument": {
+        "uri": temp_dir.uri().join("file.ts").unwrap(),
+      },
+      "position": { "line": 0, "character": 7 },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!({
+      "contents": {
+        "kind": "markdown",
+        "value": "**Resolved Dependency**\n\n**Code**: jsr&#8203;:&#8203;@denotest/add&#8203;@1.0.0 (<http://127.0.0.1:4250/@denotest/add/1.0.0/mod.ts>)\n",
+      },
+      "range": {
+        "start": { "line": 0, "character": 7 },
+        "end": { "line": 0, "character": 32 },
+      },
+    }),
   );
   client.shutdown();
 }
@@ -4828,6 +4984,154 @@ fn lsp_jsr_lockfile() {
   );
   let diagnostics = client.read_diagnostics();
   assert_eq!(json!(diagnostics.all()), json!([]));
+  client.shutdown();
+}
+
+#[test]
+fn lsp_jsr_auto_import_completion() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "main.ts",
+    r#"
+      import "jsr:@denotest/add@1";
+    "#,
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.write_request(
+    "workspace/executeCommand",
+    json!({
+      "command": "deno.cache",
+      "arguments": [
+        [],
+        temp_dir.uri().join("main.ts").unwrap(),
+      ],
+    }),
+  );
+  client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"add"#,
+    }
+  }));
+  let list = client.get_completion_list(
+    temp_dir.uri().join("file.ts").unwrap(),
+    (0, 3),
+    json!({ "triggerKind": 1 }),
+  );
+  assert!(!list.is_incomplete);
+  assert_eq!(list.items.len(), 261);
+  let item = list.items.iter().find(|i| i.label == "add").unwrap();
+  assert_eq!(&item.label, "add");
+  assert_eq!(
+    json!(&item.label_details),
+    json!({ "description": "jsr:@denotest/add@1" })
+  );
+
+  let res = client.write_request("completionItem/resolve", json!(item));
+  assert_eq!(
+    res,
+    json!({
+      "label": "add",
+      "labelDetails": { "description": "jsr:@denotest/add@1" },
+      "kind": 3,
+      "detail": "function add(a: number, b: number): number",
+      "documentation": { "kind": "markdown", "value": "" },
+      "sortText": "\u{ffff}16_1",
+      "additionalTextEdits": [
+        {
+          "range": {
+            "start": { "line": 0, "character": 0 },
+            "end": { "line": 0, "character": 0 },
+          },
+          "newText": "import { add } from \"jsr:@denotest/add@1\";\n\n",
+        },
+      ],
+    })
+  );
+  client.shutdown();
+}
+
+#[test]
+fn lsp_jsr_auto_import_completion_import_map() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "imports": {
+        "add": "jsr:@denotest/add@^1.0",
+      },
+    })
+    .to_string(),
+  );
+  temp_dir.write(
+    "main.ts",
+    r#"
+      import "jsr:@denotest/add@1";
+    "#,
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.write_request(
+    "workspace/executeCommand",
+    json!({
+      "command": "deno.cache",
+      "arguments": [
+        [],
+        temp_dir.uri().join("main.ts").unwrap(),
+      ],
+    }),
+  );
+  client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"add"#,
+    }
+  }));
+  let list = client.get_completion_list(
+    temp_dir.uri().join("file.ts").unwrap(),
+    (0, 3),
+    json!({ "triggerKind": 1 }),
+  );
+  assert!(!list.is_incomplete);
+  assert_eq!(list.items.len(), 261);
+  let item = list.items.iter().find(|i| i.label == "add").unwrap();
+  assert_eq!(&item.label, "add");
+  assert_eq!(json!(&item.label_details), json!({ "description": "add" }));
+
+  let res = client.write_request("completionItem/resolve", json!(item));
+  assert_eq!(
+    res,
+    json!({
+      "label": "add",
+      "labelDetails": { "description": "add" },
+      "kind": 3,
+      "detail": "function add(a: number, b: number): number",
+      "documentation": { "kind": "markdown", "value": "" },
+      "sortText": "\u{ffff}16_0",
+      "additionalTextEdits": [
+        {
+          "range": {
+            "start": { "line": 0, "character": 0 },
+            "end": { "line": 0, "character": 0 },
+          },
+          "newText": "import { add } from \"add\";\n\n",
+        },
+      ],
+    })
+  );
   client.shutdown();
 }
 
@@ -8417,6 +8721,39 @@ fn lsp_ts_diagnostics_refresh_on_lsp_version_reset() {
 }
 
 #[test]
+fn lsp_diagnostics_none_for_resolving_types() {
+  let context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  context
+    .temp_dir()
+    .write("deno.json", r#"{ "unstable": ["byonm"] }"#);
+  context.temp_dir().write(
+    "package.json",
+    r#"{ "dependencies": { "@denotest/monaco-editor": "*" } }"#,
+  );
+  context.run_npm("install");
+
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  // The types for this package will succeed, but the code will fail
+  // because the package is only made for bundling and not meant to
+  // run in Deno or Node.
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": context.temp_dir().path().join("file.ts").uri_file(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": concat!(
+        "import * as a from \"@denotest/monaco-editor\";\n",
+        "console.log(new a.Editor())\n",
+      )
+    },
+  }));
+  let diagnostics = diagnostics.all();
+  assert!(diagnostics.is_empty(), "{:?}", diagnostics);
+  client.shutdown();
+}
+
+#[test]
 fn lsp_jupyter_diagnostics() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -10666,6 +11003,10 @@ fn lsp_vendor_dir() {
 
   assert!(!temp_dir.path().join("vendor").exists());
 
+  // read the diagnostic update after caching
+  let diagnostics = client.read_diagnostics();
+  assert_eq!(diagnostics.all().len(), 0);
+
   temp_dir.write(
     temp_dir.path().join("deno.json"),
     "{ \"vendor\": true, \"lock\": false }\n",
@@ -11038,12 +11379,38 @@ fn lsp_sloppy_imports_warn() {
       "text": "export class B {}",
     },
   }));
+  client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.join("c.js").uri_file(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "export class C {}",
+    },
+  }));
+  client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.join("c.d.ts").uri_file(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "export class C {}",
+    },
+  }));
   let diagnostics = client.did_open(json!({
     "textDocument": {
       "uri": temp_dir.join("file.ts").uri_file(),
       "languageId": "typescript",
       "version": 1,
-      "text": "import * as a from './a';\nimport * as b from './b.js';\nconsole.log(a)\nconsole.log(b);\n",
+      "text": concat!(
+        "import * as a from './a';\n",
+        "import * as b from './b.js';\n",
+        // this one's types resolve to a .d.ts file and we don't
+        // bother warning about it because it's a bit complicated
+        // to explain to use @deno-types in a diagnostic
+        "import * as c from './c.js';\n",
+        "console.log(a)\n",
+        "console.log(b);\n",
+        "console.log(c);\n",
+      ),
     },
   }));
   assert_eq!(

@@ -8,6 +8,8 @@ import {
   assertEquals,
   assertStringIncludes,
   assertThrows,
+  curlRequest,
+  curlRequestWithStdErr,
   execCode,
   fail,
   tmpUnixSocketPath,
@@ -3792,32 +3794,6 @@ Deno.test(
     await server.finished;
   },
 );
-
-async function curlRequest(args: string[]) {
-  const { success, stdout, stderr } = await new Deno.Command("curl", {
-    args,
-    stdout: "piped",
-    stderr: "piped",
-  }).output();
-  assert(
-    success,
-    `Failed to cURL ${args}: stdout\n\n${stdout}\n\nstderr:\n\n${stderr}`,
-  );
-  return new TextDecoder().decode(stdout);
-}
-
-async function curlRequestWithStdErr(args: string[]) {
-  const { success, stdout, stderr } = await new Deno.Command("curl", {
-    args,
-    stdout: "piped",
-    stderr: "piped",
-  }).output();
-  assert(
-    success,
-    `Failed to cURL ${args}: stdout\n\n${stdout}\n\nstderr:\n\n${stderr}`,
-  );
-  return [new TextDecoder().decode(stdout), new TextDecoder().decode(stderr)];
-}
 
 Deno.test("Deno.HttpServer is not thenable", async () => {
   // deno-lint-ignore require-await

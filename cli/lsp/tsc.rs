@@ -20,6 +20,7 @@ use super::urls::LspClientUrl;
 use super::urls::LspUrlMap;
 use super::urls::INVALID_SPECIFIER;
 
+use crate::args::jsr_url;
 use crate::args::FmtOptionsConfig;
 use crate::args::TsConfig;
 use crate::cache::HttpCache;
@@ -2105,7 +2106,7 @@ pub struct RenameLocations {
 }
 
 impl RenameLocations {
-  pub async fn into_workspace_edit(
+  pub fn into_workspace_edit(
     self,
     new_name: &str,
     language_server: &language_server::Inner,
@@ -2114,8 +2115,13 @@ impl RenameLocations {
       LspClientUrl,
       lsp::TextDocumentEdit,
     > = HashMap::new();
+    let mut includes_non_files = false;
     for location in self.locations.iter() {
       let specifier = resolve_url(&location.document_span.file_name)?;
+      if specifier.scheme() != "file" {
+        includes_non_files = true;
+        continue;
+      }
       let uri = language_server.url_map.normalize_specifier(&specifier)?;
       let asset_or_doc = language_server.get_asset_or_document(&specifier)?;
 
@@ -2143,6 +2149,10 @@ impl RenameLocations {
           .to_range(asset_or_doc.line_index()),
         new_text: new_name.to_string(),
       }));
+    }
+
+    if includes_non_files {
+      language_server.client.show_message(lsp::MessageType::WARNING, "The renamed symbol had references in non-file schemed modules. These have not been modified.");
     }
 
     Ok(lsp::WorkspaceEdit {
@@ -2216,7 +2226,7 @@ impl DefinitionInfoAndBoundSpan {
     Ok(())
   }
 
-  pub async fn to_definition(
+  pub fn to_definition(
     &self,
     line_index: Arc<LineIndex>,
     language_server: &language_server::Inner,
@@ -2599,7 +2609,7 @@ impl RefactorEditInfo {
     Ok(())
   }
 
-  pub async fn to_workspace_edit(
+  pub fn to_workspace_edit(
     &self,
     language_server: &language_server::Inner,
   ) -> LspResult<Option<lsp::WorkspaceEdit>> {
@@ -3228,7 +3238,7 @@ impl CompletionInfo {
     let items = self
       .entries
       .iter()
-      .map(|entry| {
+      .flat_map(|entry| {
         entry.as_completion_item(
           line_index.clone(),
           self,
@@ -3405,7 +3415,7 @@ impl CompletionEntry {
     specifier: &ModuleSpecifier,
     position: u32,
     language_server: &language_server::Inner,
-  ) -> lsp::CompletionItem {
+  ) -> Option<lsp::CompletionItem> {
     let mut label = self.name.clone();
     let mut label_details: Option<lsp::CompletionItemLabelDetails> = None;
     let mut kind: Option<lsp::CompletionItemKind> =
@@ -3481,6 +3491,8 @@ impl CompletionEntry {
                 specifier_rewrite =
                   Some((import_data.module_specifier, new_module_specifier));
               }
+            } else if source.starts_with(jsr_url().as_str()) {
+              return None;
             }
           }
         }
@@ -3520,7 +3532,7 @@ impl CompletionEntry {
       use_code_snippet,
     };
 
-    lsp::CompletionItem {
+    Some(lsp::CompletionItem {
       label,
       label_details,
       kind,
@@ -3535,7 +3547,7 @@ impl CompletionEntry {
       commit_characters,
       data: Some(json!({ "tsc": tsc })),
       ..Default::default()
-    }
+    })
   }
 }
 
@@ -4183,7 +4195,7 @@ fn start_tsc(runtime: &mut JsRuntime, debug: bool) -> Result<(), AnyError> {
   let init_config = json!({ "debug": debug });
   let init_src = format!("globalThis.serverInit({init_config});");
 
-  runtime.execute_script(located_script_name!(), init_src.into())?;
+  runtime.execute_script(located_script_name!(), init_src)?;
   Ok(())
 }
 
@@ -4561,7 +4573,7 @@ fn request(
     "globalThis.serverRequest({id}, \"{}\", {});",
     request.method, &request.args
   );
-  runtime.execute_script(located_script_name!(), request_src.into())?;
+  runtime.execute_script(located_script_name!(), request_src)?;
 
   let op_state = runtime.op_state();
   let mut op_state = op_state.borrow_mut();

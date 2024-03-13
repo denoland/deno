@@ -2,6 +2,7 @@
 use crate::inspector_server::InspectorServer;
 use crate::ops;
 use crate::permissions::PermissionsContainer;
+use crate::shared::maybe_transpile_source;
 use crate::shared::runtime;
 use crate::tokio_util::create_and_run_current_thread;
 use crate::worker::import_meta_resolve_callback;
@@ -37,7 +38,6 @@ use deno_core::OpMetricsSummaryTracker;
 use deno_core::PollEventLoopOptions;
 use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
-use deno_core::Snapshot;
 use deno_core::SourceMapGetter;
 use deno_cron::local::LocalCronHandler;
 use deno_fs::FileSystem;
@@ -48,6 +48,7 @@ use deno_terminal::colors;
 use deno_tls::RootCertStoreProvider;
 use deno_web::create_entangled_message_port;
 use deno_web::BlobStore;
+use deno_web::JsMessageData;
 use deno_web::MessagePort;
 use log::debug;
 use std::cell::RefCell;
@@ -331,12 +332,14 @@ pub struct WebWorker {
   pub main_module: ModuleSpecifier,
   poll_for_messages_fn: Option<v8::Global<v8::Value>>,
   bootstrap_fn_global: Option<v8::Global<v8::Function>>,
+  // Consumed when `bootstrap_fn` is called
+  maybe_worker_metadata: Option<JsMessageData>,
 }
 
 pub struct WebWorkerOptions {
   pub bootstrap: BootstrapOptions,
   pub extensions: Vec<Extension>,
-  pub startup_snapshot: Option<Snapshot>,
+  pub startup_snapshot: Option<&'static [u8]>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
   pub seed: Option<u64>,
@@ -356,6 +359,7 @@ pub struct WebWorkerOptions {
   pub cache_storage_dir: Option<std::path::PathBuf>,
   pub stdio: Stdio,
   pub feature_checker: Arc<FeatureChecker>,
+  pub maybe_worker_metadata: Option<JsMessageData>,
 }
 
 impl WebWorker {
@@ -386,6 +390,7 @@ impl WebWorker {
         enable_testing_features: bool,
       },
       state = |state, options| {
+        state.put::<deno_permissions::PermissionsContainer>(options.permissions.0.clone());
         state.put::<PermissionsContainer>(options.permissions);
         state.put(ops::TestingFeaturesEnabled(options.enable_testing_features));
       },
@@ -499,16 +504,6 @@ impl WebWorker {
         extension.esm_files = std::borrow::Cow::Borrowed(&[]);
         extension.esm_entry_point = None;
       }
-      #[cfg(not(feature = "only_snapshotted_js_sources"))]
-      {
-        use crate::shared::maybe_transpile_source;
-        for source in extension.esm_files.to_mut() {
-          maybe_transpile_source(source).unwrap();
-        }
-        for source in extension.js_files.to_mut() {
-          maybe_transpile_source(source).unwrap();
-        }
-      }
     }
 
     extensions.extend(std::mem::take(&mut options.extensions));
@@ -536,6 +531,9 @@ impl WebWorker {
       shared_array_buffer_store: options.shared_array_buffer_store.clone(),
       compiled_wasm_module_store: options.compiled_wasm_module_store.clone(),
       extensions,
+      extension_transpiler: Some(Rc::new(|specifier, source| {
+        maybe_transpile_source(specifier, source)
+      })),
       inspector: options.maybe_inspector_server.is_some(),
       feature_checker: Some(options.feature_checker.clone()),
       op_metrics_factory_fn,
@@ -608,6 +606,7 @@ impl WebWorker {
         main_module,
         poll_for_messages_fn: None,
         bootstrap_fn_global: Some(bootstrap_fn_global),
+        maybe_worker_metadata: options.maybe_worker_metadata,
       },
       external_handle,
     )
@@ -623,6 +622,10 @@ impl WebWorker {
       let bootstrap_fn = self.bootstrap_fn_global.take().unwrap();
       let bootstrap_fn = v8::Local::new(scope, bootstrap_fn);
       let undefined = v8::undefined(scope);
+      let mut worker_data: v8::Local<v8::Value> = v8::undefined(scope).into();
+      if let Some(data) = self.maybe_worker_metadata.take() {
+        worker_data = deno_core::serde_v8::to_v8(scope, data).unwrap();
+      }
       let name_str: v8::Local<v8::Value> =
         v8::String::new(scope, &self.name).unwrap().into();
       let id_str: v8::Local<v8::Value> =
@@ -630,7 +633,11 @@ impl WebWorker {
           .unwrap()
           .into();
       bootstrap_fn
-        .call(scope, undefined.into(), &[args, name_str, id_str])
+        .call(
+          scope,
+          undefined.into(),
+          &[args, name_str, id_str, worker_data],
+        )
         .unwrap();
     }
     // TODO(bartlomieju): this could be done using V8 API, without calling `execute_script`.
@@ -665,10 +672,7 @@ impl WebWorker {
     &mut self,
     module_specifier: &ModuleSpecifier,
   ) -> Result<ModuleId, AnyError> {
-    self
-      .js_runtime
-      .load_main_module(module_specifier, None)
-      .await
+    self.js_runtime.load_main_es_module(module_specifier).await
   }
 
   /// Loads and instantiates specified JavaScript module as "side" module.
@@ -676,10 +680,7 @@ impl WebWorker {
     &mut self,
     module_specifier: &ModuleSpecifier,
   ) -> Result<ModuleId, AnyError> {
-    self
-      .js_runtime
-      .load_side_module(module_specifier, None)
-      .await
+    self.js_runtime.load_side_es_module(module_specifier).await
   }
 
   /// Loads, instantiates and executes specified JavaScript module.
