@@ -20,6 +20,7 @@ use once_cell::sync::Lazy;
 use std::borrow::Cow;
 use std::collections::HashSet;
 use std::fmt;
+use std::fmt::Debug;
 use std::hash::Hash;
 use std::path::Path;
 use std::path::PathBuf;
@@ -35,6 +36,16 @@ use prompter::PERMISSION_EMOJI;
 
 pub use prompter::set_prompt_callbacks;
 pub use prompter::PromptCallback;
+
+/// Fast exit from permission check routines if this permission
+/// is in the "fully-granted" state.
+macro_rules! skip_check_if_is_permission_fully_granted {
+  ($this:ident) => {
+    if $this.is_allow_all() {
+      return Ok(());
+    }
+  };
+}
 
 #[inline]
 fn resolve_from_cwd(path: &Path) -> Result<PathBuf, AnyError> {
@@ -238,6 +249,31 @@ impl UnitPermission {
     }
     result
   }
+
+  fn create_child_permissions(
+    &mut self,
+    flag: ChildUnitPermissionArg,
+  ) -> Result<Self, AnyError> {
+    let mut perm = self.clone();
+    match flag {
+      ChildUnitPermissionArg::Inherit => {
+        // copy
+      }
+      ChildUnitPermissionArg::Granted => {
+        if self.check().is_err() {
+          return Err(escalation_error());
+        }
+        perm.state = PermissionState::Granted;
+      }
+      ChildUnitPermissionArg::NotGranted => {
+        perm.state = PermissionState::Prompt;
+      }
+    }
+    if self.state == PermissionState::Denied {
+      perm.state = PermissionState::Denied;
+    }
+    Ok(perm)
+  }
 }
 
 /// A normalized environment variable name. On Windows this will
@@ -265,9 +301,20 @@ impl AsRef<str> for EnvVarName {
   }
 }
 
-pub trait Descriptor: Eq + Clone {
-  type Arg;
+pub trait Descriptor: Eq + Clone + Hash {
+  type Arg: From<String>;
+
+  /// Parse this descriptor from a list of Self::Arg, which may have been converted from
+  /// command-line strings.
   fn parse(list: &Option<Vec<Self::Arg>>) -> Result<HashSet<Self>, AnyError>;
+
+  /// Generic check function to check this descriptor against a `UnaryPermission`.
+  fn check_in_permission(
+    &self,
+    perm: &mut UnaryPermission<Self>,
+    api_name: Option<&str>,
+  ) -> Result<(), AnyError>;
+
   fn flag_name() -> &'static str;
   fn name(&self) -> Cow<str>;
   // By default, specifies no-stronger-than relationship.
@@ -282,13 +329,13 @@ pub trait Descriptor: Eq + Clone {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct UnaryPermission<T: Descriptor + Hash> {
-  pub granted_global: bool,
-  pub granted_list: HashSet<T>,
-  pub flag_denied_global: bool,
-  pub flag_denied_list: HashSet<T>,
-  pub prompt_denied_global: bool,
-  pub prompt_denied_list: HashSet<T>,
-  pub prompt: bool,
+  granted_global: bool,
+  granted_list: HashSet<T>,
+  flag_denied_global: bool,
+  flag_denied_list: HashSet<T>,
+  prompt_denied_global: bool,
+  prompt_denied_list: HashSet<T>,
+  prompt: bool,
 }
 
 impl<T: Descriptor + Hash> Default for UnaryPermission<T> {
@@ -313,6 +360,20 @@ impl<T: Descriptor + Hash> UnaryPermission<T> {
     }
   }
 
+  pub fn is_allow_all(&self) -> bool {
+    self.granted_global
+      && self.flag_denied_list.is_empty()
+      && self.prompt_denied_list.is_empty()
+  }
+
+  pub fn check_all_api(
+    &mut self,
+    api_name: Option<&str>,
+  ) -> Result<(), AnyError> {
+    skip_check_if_is_permission_fully_granted!(self);
+    self.check_desc(&None, false, api_name, || None)
+  }
+
   fn check_desc(
     &mut self,
     desc: &Option<T>,
@@ -320,6 +381,7 @@ impl<T: Descriptor + Hash> UnaryPermission<T> {
     api_name: Option<&str>,
     get_display_name: impl Fn() -> Option<String>,
   ) -> Result<(), AnyError> {
+    skip_check_if_is_permission_fully_granted!(self);
     let (result, prompted, is_allow_all) = self
       .query_desc(desc, AllowPartial::from(!assert_non_partial))
       .check2(
@@ -517,6 +579,45 @@ impl<T: Descriptor + Hash> UnaryPermission<T> {
       None => *list_global = true,
     }
   }
+
+  fn create_child_permissions(
+    &mut self,
+    flag: ChildUnaryPermissionArg,
+  ) -> Result<UnaryPermission<T>, AnyError> {
+    let mut perms = Self::default();
+
+    match flag {
+      ChildUnaryPermissionArg::Inherit => {
+        perms = self.clone();
+      }
+      ChildUnaryPermissionArg::Granted => {
+        if self.check_all_api(None).is_err() {
+          return Err(escalation_error());
+        }
+        perms.granted_global = true;
+      }
+      ChildUnaryPermissionArg::NotGranted => {}
+      ChildUnaryPermissionArg::GrantedList(granted_list) => {
+        let granted: Vec<T::Arg> =
+          granted_list.into_iter().map(From::from).collect();
+        perms.granted_list = T::parse(&Some(granted))?;
+        if !perms
+          .granted_list
+          .iter()
+          .all(|desc| desc.check_in_permission(self, None).is_ok())
+        {
+          return Err(escalation_error());
+        }
+      }
+    }
+    perms.flag_denied_global = self.flag_denied_global;
+    perms.flag_denied_list = self.flag_denied_list.clone();
+    perms.prompt_denied_global = self.prompt_denied_global;
+    perms.prompt_denied_list = self.prompt_denied_list.clone();
+    perms.prompt = self.prompt;
+
+    Ok(perms)
+  }
 }
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
@@ -524,6 +625,14 @@ pub struct ReadDescriptor(pub PathBuf);
 
 impl Descriptor for ReadDescriptor {
   type Arg = PathBuf;
+
+  fn check_in_permission(
+    &self,
+    perm: &mut UnaryPermission<Self>,
+    api_name: Option<&str>,
+  ) -> Result<(), AnyError> {
+    UnaryPermission::<Self>::check(perm, &self.0, api_name)
+  }
 
   fn parse(args: &Option<Vec<Self::Arg>>) -> Result<HashSet<Self>, AnyError> {
     parse_path_list(args, ReadDescriptor)
@@ -547,6 +656,14 @@ pub struct WriteDescriptor(pub PathBuf);
 
 impl Descriptor for WriteDescriptor {
   type Arg = PathBuf;
+
+  fn check_in_permission(
+    &self,
+    perm: &mut UnaryPermission<Self>,
+    api_name: Option<&str>,
+  ) -> Result<(), AnyError> {
+    UnaryPermission::<Self>::check(perm, &self.0, api_name)
+  }
 
   fn parse(args: &Option<Vec<Self::Arg>>) -> Result<HashSet<Self>, AnyError> {
     parse_path_list(args, WriteDescriptor)
@@ -576,6 +693,14 @@ impl NetDescriptor {
 
 impl Descriptor for NetDescriptor {
   type Arg = String;
+
+  fn check_in_permission(
+    &self,
+    perm: &mut UnaryPermission<Self>,
+    api_name: Option<&str>,
+  ) -> Result<(), AnyError> {
+    UnaryPermission::<Self>::check(perm, &(self.0.as_str(), self.1), api_name)
+  }
 
   fn parse(args: &Option<Vec<Self::Arg>>) -> Result<HashSet<Self>, AnyError> {
     parse_net_list(args)
@@ -632,6 +757,14 @@ impl EnvDescriptor {
 impl Descriptor for EnvDescriptor {
   type Arg = String;
 
+  fn check_in_permission(
+    &self,
+    perm: &mut UnaryPermission<Self>,
+    api_name: Option<&str>,
+  ) -> Result<(), AnyError> {
+    UnaryPermission::<Self>::check(perm, &self.0.inner, api_name)
+  }
+
   fn parse(list: &Option<Vec<Self::Arg>>) -> Result<HashSet<Self>, AnyError> {
     parse_env_list(list)
   }
@@ -663,6 +796,14 @@ pub enum RunDescriptor {
 
 impl Descriptor for RunDescriptor {
   type Arg = String;
+
+  fn check_in_permission(
+    &self,
+    perm: &mut UnaryPermission<Self>,
+    api_name: Option<&str>,
+  ) -> Result<(), AnyError> {
+    UnaryPermission::<Self>::check(perm, &self.to_string(), api_name)
+  }
 
   fn parse(args: &Option<Vec<Self::Arg>>) -> Result<HashSet<Self>, AnyError> {
     parse_run_list(args)
@@ -723,11 +864,28 @@ impl ToString for RunDescriptor {
   }
 }
 
+impl AsRef<Path> for RunDescriptor {
+  fn as_ref(&self) -> &Path {
+    match self {
+      RunDescriptor::Name(s) => s.as_ref(),
+      RunDescriptor::Path(s) => s.as_ref(),
+    }
+  }
+}
+
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct SysDescriptor(pub String);
 
 impl Descriptor for SysDescriptor {
   type Arg = String;
+
+  fn check_in_permission(
+    &self,
+    perm: &mut UnaryPermission<Self>,
+    api_name: Option<&str>,
+  ) -> Result<(), AnyError> {
+    UnaryPermission::<Self>::check(perm, &self.0, api_name)
+  }
 
   fn parse(list: &Option<Vec<Self::Arg>>) -> Result<HashSet<Self>, AnyError> {
     parse_sys_list(list)
@@ -755,6 +913,14 @@ pub struct FfiDescriptor(pub PathBuf);
 
 impl Descriptor for FfiDescriptor {
   type Arg = PathBuf;
+
+  fn check_in_permission(
+    &self,
+    perm: &mut UnaryPermission<Self>,
+    api_name: Option<&str>,
+  ) -> Result<(), AnyError> {
+    UnaryPermission::<Self>::check(perm, &self.0, api_name)
+  }
 
   fn parse(list: &Option<Vec<Self::Arg>>) -> Result<HashSet<Self>, AnyError> {
     parse_path_list(list, FfiDescriptor)
@@ -798,6 +964,7 @@ impl UnaryPermission<ReadDescriptor> {
     path: &Path,
     api_name: Option<&str>,
   ) -> Result<(), AnyError> {
+    skip_check_if_is_permission_fully_granted!(self);
     self.check_desc(
       &Some(ReadDescriptor(resolve_from_cwd(path)?)),
       true,
@@ -812,6 +979,7 @@ impl UnaryPermission<ReadDescriptor> {
     path: &Path,
     api_name: Option<&str>,
   ) -> Result<(), AnyError> {
+    skip_check_if_is_permission_fully_granted!(self);
     let desc = ReadDescriptor(resolve_from_cwd(path)?);
     self.check_desc(&Some(desc), false, api_name, || {
       Some(format!("\"{}\"", path.display()))
@@ -826,6 +994,7 @@ impl UnaryPermission<ReadDescriptor> {
     display: &str,
     api_name: &str,
   ) -> Result<(), AnyError> {
+    skip_check_if_is_permission_fully_granted!(self);
     let desc = ReadDescriptor(resolve_from_cwd(path)?);
     self.check_desc(&Some(desc), false, Some(api_name), || {
       Some(format!("<{display}>"))
@@ -833,6 +1002,7 @@ impl UnaryPermission<ReadDescriptor> {
   }
 
   pub fn check_all(&mut self, api_name: Option<&str>) -> Result<(), AnyError> {
+    skip_check_if_is_permission_fully_granted!(self);
     self.check_desc(&None, false, api_name, || None)
   }
 }
@@ -862,6 +1032,7 @@ impl UnaryPermission<WriteDescriptor> {
     path: &Path,
     api_name: Option<&str>,
   ) -> Result<(), AnyError> {
+    skip_check_if_is_permission_fully_granted!(self);
     self.check_desc(
       &Some(WriteDescriptor(resolve_from_cwd(path)?)),
       true,
@@ -876,6 +1047,7 @@ impl UnaryPermission<WriteDescriptor> {
     path: &Path,
     api_name: Option<&str>,
   ) -> Result<(), AnyError> {
+    skip_check_if_is_permission_fully_granted!(self);
     self.check_desc(
       &Some(WriteDescriptor(resolve_from_cwd(path)?)),
       false,
@@ -892,6 +1064,7 @@ impl UnaryPermission<WriteDescriptor> {
     display: &str,
     api_name: &str,
   ) -> Result<(), AnyError> {
+    skip_check_if_is_permission_fully_granted!(self);
     let desc = WriteDescriptor(resolve_from_cwd(path)?);
     self.check_desc(&Some(desc), false, Some(api_name), || {
       Some(format!("<{display}>"))
@@ -899,6 +1072,7 @@ impl UnaryPermission<WriteDescriptor> {
   }
 
   pub fn check_all(&mut self, api_name: Option<&str>) -> Result<(), AnyError> {
+    skip_check_if_is_permission_fully_granted!(self);
     self.check_desc(&None, false, api_name, || None)
   }
 }
@@ -933,6 +1107,7 @@ impl UnaryPermission<NetDescriptor> {
     host: &(T, Option<u16>),
     api_name: Option<&str>,
   ) -> Result<(), AnyError> {
+    skip_check_if_is_permission_fully_granted!(self);
     self.check_desc(&Some(NetDescriptor::new(&host)), false, api_name, || None)
   }
 
@@ -941,6 +1116,7 @@ impl UnaryPermission<NetDescriptor> {
     url: &url::Url,
     api_name: Option<&str>,
   ) -> Result<(), AnyError> {
+    skip_check_if_is_permission_fully_granted!(self);
     let hostname = url
       .host_str()
       .ok_or_else(|| uri_error("Missing host"))?
@@ -956,6 +1132,7 @@ impl UnaryPermission<NetDescriptor> {
   }
 
   pub fn check_all(&mut self) -> Result<(), AnyError> {
+    skip_check_if_is_permission_fully_granted!(self);
     self.check_desc(&None, false, None, || None)
   }
 }
@@ -976,11 +1153,17 @@ impl UnaryPermission<EnvDescriptor> {
     self.revoke_desc(&env.map(EnvDescriptor::new))
   }
 
-  pub fn check(&mut self, env: &str) -> Result<(), AnyError> {
-    self.check_desc(&Some(EnvDescriptor::new(env)), false, None, || None)
+  pub fn check(
+    &mut self,
+    env: &str,
+    api_name: Option<&str>,
+  ) -> Result<(), AnyError> {
+    skip_check_if_is_permission_fully_granted!(self);
+    self.check_desc(&Some(EnvDescriptor::new(env)), false, api_name, || None)
   }
 
   pub fn check_all(&mut self) -> Result<(), AnyError> {
+    skip_check_if_is_permission_fully_granted!(self);
     self.check_desc(&None, false, None, || None)
   }
 }
@@ -1006,6 +1189,7 @@ impl UnaryPermission<SysDescriptor> {
     kind: &str,
     api_name: Option<&str>,
   ) -> Result<(), AnyError> {
+    skip_check_if_is_permission_fully_granted!(self);
     self.check_desc(
       &Some(SysDescriptor(kind.to_string())),
       false,
@@ -1015,6 +1199,7 @@ impl UnaryPermission<SysDescriptor> {
   }
 
   pub fn check_all(&mut self) -> Result<(), AnyError> {
+    skip_check_if_is_permission_fully_granted!(self);
     self.check_desc(&None, false, None, || None)
   }
 }
@@ -1042,6 +1227,7 @@ impl UnaryPermission<RunDescriptor> {
     cmd: &str,
     api_name: Option<&str>,
   ) -> Result<(), AnyError> {
+    skip_check_if_is_permission_fully_granted!(self);
     self.check_desc(
       &Some(RunDescriptor::from(cmd.to_string())),
       false,
@@ -1051,6 +1237,7 @@ impl UnaryPermission<RunDescriptor> {
   }
 
   pub fn check_all(&mut self, api_name: Option<&str>) -> Result<(), AnyError> {
+    skip_check_if_is_permission_fully_granted!(self);
     self.check_desc(&None, false, api_name, || None)
   }
 }
@@ -1079,6 +1266,7 @@ impl UnaryPermission<FfiDescriptor> {
     path: &Path,
     api_name: Option<&str>,
   ) -> Result<(), AnyError> {
+    skip_check_if_is_permission_fully_granted!(self);
     self.check_desc(
       &Some(FfiDescriptor(resolve_from_cwd(path)?)),
       true,
@@ -1088,6 +1276,7 @@ impl UnaryPermission<FfiDescriptor> {
   }
 
   pub fn check_partial(&mut self, path: Option<&Path>) -> Result<(), AnyError> {
+    skip_check_if_is_permission_fully_granted!(self);
     let desc = match path {
       Some(path) => Some(FfiDescriptor(resolve_from_cwd(path)?)),
       None => None,
@@ -1098,6 +1287,7 @@ impl UnaryPermission<FfiDescriptor> {
   }
 
   pub fn check_all(&mut self) -> Result<(), AnyError> {
+    skip_check_if_is_permission_fully_granted!(self);
     self.check_desc(&None, false, Some("all"), || None)
   }
 }
@@ -1111,22 +1301,8 @@ pub struct Permissions {
   pub sys: UnaryPermission<SysDescriptor>,
   pub run: UnaryPermission<RunDescriptor>,
   pub ffi: UnaryPermission<FfiDescriptor>,
+  pub all: UnitPermission,
   pub hrtime: UnitPermission,
-}
-
-impl Default for Permissions {
-  fn default() -> Self {
-    Self {
-      read: Permissions::new_unary(&None, &None, false).unwrap(),
-      write: Permissions::new_unary(&None, &None, false).unwrap(),
-      net: Permissions::new_unary(&None, &None, false).unwrap(),
-      env: Permissions::new_unary(&None, &None, false).unwrap(),
-      sys: Permissions::new_unary(&None, &None, false).unwrap(),
-      run: Permissions::new_unary(&None, &None, false).unwrap(),
-      ffi: Permissions::new_unary(&None, &None, false).unwrap(),
-      hrtime: Permissions::new_hrtime(false, false),
-    }
-  }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Default, Serialize, Deserialize)]
@@ -1183,6 +1359,16 @@ impl Permissions {
     )
   }
 
+  pub const fn new_all(allow_state: bool) -> UnitPermission {
+    unit_permission_from_flag_bools(
+      allow_state,
+      false,
+      "all",
+      "all",
+      false, // never prompt for all
+    )
+  }
+
   pub fn from_options(opts: &PermissionsOptions) -> Result<Self, AnyError> {
     Ok(Self {
       read: Permissions::new_unary(
@@ -1220,10 +1406,12 @@ impl Permissions {
         &opts.deny_ffi,
         opts.prompt,
       )?,
+      all: Permissions::new_all(opts.allow_all),
       hrtime: Permissions::new_hrtime(opts.allow_hrtime, opts.deny_hrtime),
     })
   }
 
+  /// Create a set of permissions that explicitly allow everything.
   pub fn allow_all() -> Self {
     Self {
       read: UnaryPermission::allow_all(),
@@ -1233,7 +1421,32 @@ impl Permissions {
       sys: UnaryPermission::allow_all(),
       run: UnaryPermission::allow_all(),
       ffi: UnaryPermission::allow_all(),
+      all: Permissions::new_all(true),
       hrtime: Permissions::new_hrtime(true, false),
+    }
+  }
+
+  /// Create a set of permissions that enable nothing, but will allow prompting.
+  pub fn none_with_prompt() -> Self {
+    Self::none(true)
+  }
+
+  /// Create a set of permissions that enable nothing, and will not allow prompting.
+  pub fn none_without_prompt() -> Self {
+    Self::none(false)
+  }
+
+  fn none(prompt: bool) -> Self {
+    Self {
+      read: Permissions::new_unary(&None, &None, prompt).unwrap(),
+      write: Permissions::new_unary(&None, &None, prompt).unwrap(),
+      net: Permissions::new_unary(&None, &None, prompt).unwrap(),
+      env: Permissions::new_unary(&None, &None, prompt).unwrap(),
+      sys: Permissions::new_unary(&None, &None, prompt).unwrap(),
+      run: Permissions::new_unary(&None, &None, prompt).unwrap(),
+      ffi: Permissions::new_unary(&None, &None, prompt).unwrap(),
+      all: Permissions::new_all(false),
+      hrtime: Permissions::new_hrtime(false, false),
     }
   }
 
@@ -1384,7 +1597,7 @@ impl PermissionsContainer {
 
   #[inline(always)]
   pub fn check_env(&mut self, var: &str) -> Result<(), AnyError> {
-    self.0.lock().env.check(var)
+    self.0.lock().env.check(var, None)
   }
 
   #[inline(always)]
@@ -1798,237 +2011,35 @@ pub fn create_child_permissions(
   main_perms: &mut Permissions,
   child_permissions_arg: ChildPermissionsArg,
 ) -> Result<Permissions, AnyError> {
-  let mut worker_perms = Permissions::default();
-  match child_permissions_arg.env {
-    ChildUnaryPermissionArg::Inherit => {
-      worker_perms.env = main_perms.env.clone();
-    }
-    ChildUnaryPermissionArg::Granted => {
-      if main_perms.env.check_all().is_err() {
-        return Err(escalation_error());
-      }
-      worker_perms.env.granted_global = true;
-    }
-    ChildUnaryPermissionArg::NotGranted => {}
-    ChildUnaryPermissionArg::GrantedList(granted_list) => {
-      worker_perms.env.granted_list = parse_env_list(&Some(granted_list))?;
-      if !worker_perms
-        .env
-        .granted_list
-        .iter()
-        .all(|desc| main_perms.env.check(desc.as_ref()).is_ok())
-      {
-        return Err(escalation_error());
-      }
-    }
-  }
-  worker_perms.env.flag_denied_global = main_perms.env.flag_denied_global;
-  worker_perms.env.flag_denied_list = main_perms.env.flag_denied_list.clone();
-  worker_perms.env.prompt_denied_global = main_perms.env.prompt_denied_global;
-  worker_perms.env.prompt_denied_list =
-    main_perms.env.prompt_denied_list.clone();
-  worker_perms.env.prompt = main_perms.env.prompt;
-  match child_permissions_arg.sys {
-    ChildUnaryPermissionArg::Inherit => {
-      worker_perms.sys = main_perms.sys.clone();
-    }
-    ChildUnaryPermissionArg::Granted => {
-      if main_perms.sys.check_all().is_err() {
-        return Err(escalation_error());
-      }
-      worker_perms.sys.granted_global = true;
-    }
-    ChildUnaryPermissionArg::NotGranted => {}
-    ChildUnaryPermissionArg::GrantedList(granted_list) => {
-      worker_perms.sys.granted_list = parse_sys_list(&Some(granted_list))?;
-      if !worker_perms
-        .sys
-        .granted_list
-        .iter()
-        .all(|desc| main_perms.sys.check(&desc.0, None).is_ok())
-      {
-        return Err(escalation_error());
-      }
-    }
-  }
-  worker_perms.sys.flag_denied_global = main_perms.sys.flag_denied_global;
-  worker_perms.sys.flag_denied_list = main_perms.sys.flag_denied_list.clone();
-  worker_perms.sys.prompt_denied_global = main_perms.sys.prompt_denied_global;
-  worker_perms.sys.prompt_denied_list =
-    main_perms.sys.prompt_denied_list.clone();
-  worker_perms.sys.prompt = main_perms.sys.prompt;
-  match child_permissions_arg.hrtime {
-    ChildUnitPermissionArg::Inherit => {
-      worker_perms.hrtime = main_perms.hrtime.clone();
-    }
-    ChildUnitPermissionArg::Granted => {
-      if main_perms.hrtime.check().is_err() {
-        return Err(escalation_error());
-      }
-      worker_perms.hrtime.state = PermissionState::Granted;
-    }
-    ChildUnitPermissionArg::NotGranted => {}
-  }
-  if main_perms.hrtime.state == PermissionState::Denied {
-    worker_perms.hrtime.state = PermissionState::Denied;
-  }
-  worker_perms.hrtime.prompt = main_perms.hrtime.prompt;
-  match child_permissions_arg.net {
-    ChildUnaryPermissionArg::Inherit => {
-      worker_perms.net = main_perms.net.clone();
-    }
-    ChildUnaryPermissionArg::Granted => {
-      if main_perms.net.check_all().is_err() {
-        return Err(escalation_error());
-      }
-      worker_perms.net.granted_global = true;
-    }
-    ChildUnaryPermissionArg::NotGranted => {}
-    ChildUnaryPermissionArg::GrantedList(granted_list) => {
-      worker_perms.net.granted_list = parse_net_list(&Some(granted_list))?;
-      if !worker_perms
-        .net
-        .granted_list
-        .iter()
-        .all(|desc| main_perms.net.check(&(&desc.0, desc.1), None).is_ok())
-      {
-        return Err(escalation_error());
-      }
-    }
-  }
-  worker_perms.net.flag_denied_global = main_perms.net.flag_denied_global;
-  worker_perms.net.flag_denied_list = main_perms.net.flag_denied_list.clone();
-  worker_perms.net.prompt_denied_global = main_perms.net.prompt_denied_global;
-  worker_perms.net.prompt_denied_list =
-    main_perms.net.prompt_denied_list.clone();
-  worker_perms.net.prompt = main_perms.net.prompt;
-  match child_permissions_arg.ffi {
-    ChildUnaryPermissionArg::Inherit => {
-      worker_perms.ffi = main_perms.ffi.clone();
-    }
-    ChildUnaryPermissionArg::Granted => {
-      if main_perms.ffi.check_all().is_err() {
-        return Err(escalation_error());
-      }
-      worker_perms.ffi.granted_global = true;
-    }
-    ChildUnaryPermissionArg::NotGranted => {}
-    ChildUnaryPermissionArg::GrantedList(granted_list) => {
-      worker_perms.ffi.granted_list = parse_path_list(
-        &Some(granted_list.iter().map(PathBuf::from).collect()),
-        FfiDescriptor,
-      )?;
-      if !worker_perms
-        .ffi
-        .granted_list
-        .iter()
-        .all(|desc| main_perms.ffi.check(&desc.0, None).is_ok())
-      {
-        return Err(escalation_error());
-      }
-    }
-  }
-  worker_perms.ffi.flag_denied_global = main_perms.env.flag_denied_global;
-  worker_perms.ffi.flag_denied_list = main_perms.ffi.flag_denied_list.clone();
-  worker_perms.ffi.prompt_denied_global = main_perms.ffi.prompt_denied_global;
-  worker_perms.ffi.prompt_denied_list =
-    main_perms.ffi.prompt_denied_list.clone();
-  worker_perms.ffi.prompt = main_perms.ffi.prompt;
-  match child_permissions_arg.read {
-    ChildUnaryPermissionArg::Inherit => {
-      worker_perms.read = main_perms.read.clone();
-    }
-    ChildUnaryPermissionArg::Granted => {
-      if main_perms.read.check_all(None).is_err() {
-        return Err(escalation_error());
-      }
-      worker_perms.read.granted_global = true;
-    }
-    ChildUnaryPermissionArg::NotGranted => {}
-    ChildUnaryPermissionArg::GrantedList(granted_list) => {
-      worker_perms.read.granted_list = parse_path_list(
-        &Some(granted_list.iter().map(PathBuf::from).collect()),
-        ReadDescriptor,
-      )?;
-      if !worker_perms
-        .read
-        .granted_list
-        .iter()
-        .all(|desc| main_perms.read.check(&desc.0, None).is_ok())
-      {
-        return Err(escalation_error());
-      }
-    }
-  }
-  worker_perms.read.flag_denied_global = main_perms.read.flag_denied_global;
-  worker_perms.read.flag_denied_list = main_perms.read.flag_denied_list.clone();
-  worker_perms.read.prompt_denied_global = main_perms.read.prompt_denied_global;
-  worker_perms.read.prompt_denied_list =
-    main_perms.read.prompt_denied_list.clone();
-  worker_perms.read.prompt = main_perms.read.prompt;
-  match child_permissions_arg.run {
-    ChildUnaryPermissionArg::Inherit => {
-      worker_perms.run = main_perms.run.clone();
-    }
-    ChildUnaryPermissionArg::Granted => {
-      if main_perms.run.check_all(None).is_err() {
-        return Err(escalation_error());
-      }
-      worker_perms.run.granted_global = true;
-    }
-    ChildUnaryPermissionArg::NotGranted => {}
-    ChildUnaryPermissionArg::GrantedList(granted_list) => {
-      worker_perms.run.granted_list = parse_run_list(&Some(granted_list))?;
-      if !worker_perms
-        .run
-        .granted_list
-        .iter()
-        .all(|desc| main_perms.run.check(&desc.to_string(), None).is_ok())
-      {
-        return Err(escalation_error());
-      }
-    }
-  }
-  worker_perms.run.flag_denied_global = main_perms.run.flag_denied_global;
-  worker_perms.run.flag_denied_list = main_perms.run.flag_denied_list.clone();
-  worker_perms.run.prompt_denied_global = main_perms.run.prompt_denied_global;
-  worker_perms.run.prompt_denied_list =
-    main_perms.run.prompt_denied_list.clone();
-  worker_perms.run.prompt = main_perms.run.prompt;
-  match child_permissions_arg.write {
-    ChildUnaryPermissionArg::Inherit => {
-      worker_perms.write = main_perms.write.clone();
-    }
-    ChildUnaryPermissionArg::Granted => {
-      if main_perms.write.check_all(None).is_err() {
-        return Err(escalation_error());
-      }
-      worker_perms.write.granted_global = true;
-    }
-    ChildUnaryPermissionArg::NotGranted => {}
-    ChildUnaryPermissionArg::GrantedList(granted_list) => {
-      worker_perms.write.granted_list = parse_path_list(
-        &Some(granted_list.iter().map(PathBuf::from).collect()),
-        WriteDescriptor,
-      )?;
-      if !worker_perms
-        .write
-        .granted_list
-        .iter()
-        .all(|desc| main_perms.write.check(&desc.0, None).is_ok())
-      {
-        return Err(escalation_error());
-      }
-    }
-  }
-  worker_perms.write.flag_denied_global = main_perms.write.flag_denied_global;
-  worker_perms.write.flag_denied_list =
-    main_perms.write.flag_denied_list.clone();
-  worker_perms.write.prompt_denied_global =
-    main_perms.write.prompt_denied_global;
-  worker_perms.write.prompt_denied_list =
-    main_perms.write.prompt_denied_list.clone();
-  worker_perms.write.prompt = main_perms.write.prompt;
+  let mut worker_perms = Permissions::none_without_prompt();
+  worker_perms.read = main_perms
+    .read
+    .create_child_permissions(child_permissions_arg.read)?;
+  worker_perms.write = main_perms
+    .write
+    .create_child_permissions(child_permissions_arg.write)?;
+  worker_perms.net = main_perms
+    .net
+    .create_child_permissions(child_permissions_arg.net)?;
+  worker_perms.env = main_perms
+    .env
+    .create_child_permissions(child_permissions_arg.env)?;
+  worker_perms.sys = main_perms
+    .sys
+    .create_child_permissions(child_permissions_arg.sys)?;
+  worker_perms.run = main_perms
+    .run
+    .create_child_permissions(child_permissions_arg.run)?;
+  worker_perms.ffi = main_perms
+    .ffi
+    .create_child_permissions(child_permissions_arg.ffi)?;
+  worker_perms.hrtime = main_perms
+    .hrtime
+    .create_child_permissions(child_permissions_arg.hrtime)?;
+  worker_perms.all = main_perms
+    .all
+    .create_child_permissions(ChildUnitPermissionArg::Inherit)?;
+
   Ok(worker_perms)
 }
 
@@ -2436,6 +2447,7 @@ mod tests {
       sys: Permissions::new_unary(&Some(svec!["hostname"]), &None, false)
         .unwrap(),
       run: Permissions::new_unary(&Some(svec!["deno"]), &None, false).unwrap(),
+      all: Permissions::new_all(false),
       hrtime: Permissions::new_hrtime(false, false),
     };
     let perms3 = Permissions {
@@ -2463,6 +2475,7 @@ mod tests {
       sys: Permissions::new_unary(&None, &Some(svec!["hostname"]), false)
         .unwrap(),
       run: Permissions::new_unary(&None, &Some(svec!["deno"]), false).unwrap(),
+      all: Permissions::new_all(false),
       hrtime: Permissions::new_hrtime(false, true),
     };
     let perms4 = Permissions {
@@ -2500,6 +2513,7 @@ mod tests {
       .unwrap(),
       run: Permissions::new_unary(&Some(vec![]), &Some(svec!["deno"]), false)
         .unwrap(),
+      all: Permissions::new_all(false),
       hrtime: Permissions::new_hrtime(true, true),
     };
     #[rustfmt::skip]
@@ -2586,7 +2600,7 @@ mod tests {
   #[test]
   fn test_request() {
     set_prompter(Box::new(TestPrompter));
-    let mut perms: Permissions = Default::default();
+    let mut perms: Permissions = Permissions::none_without_prompt();
     #[rustfmt::skip]
     {
       let prompt_value = PERMISSION_PROMPT_STUB_VALUE_SETTER.lock();
@@ -2663,6 +2677,7 @@ mod tests {
       sys: Permissions::new_unary(&Some(svec!["hostname"]), &None, false)
         .unwrap(),
       run: Permissions::new_unary(&Some(svec!["deno"]), &None, false).unwrap(),
+      all: Permissions::new_all(false),
       hrtime: Permissions::new_hrtime(false, true),
     };
     #[rustfmt::skip]
@@ -2689,17 +2704,7 @@ mod tests {
   #[test]
   fn test_check() {
     set_prompter(Box::new(TestPrompter));
-    let mut perms = Permissions {
-      read: Permissions::new_unary(&None, &None, true).unwrap(),
-      write: Permissions::new_unary(&None, &None, true).unwrap(),
-      net: Permissions::new_unary(&None, &None, true).unwrap(),
-      env: Permissions::new_unary(&None, &None, true).unwrap(),
-      sys: Permissions::new_unary(&None, &None, true).unwrap(),
-      run: Permissions::new_unary(&None, &None, true).unwrap(),
-      ffi: Permissions::new_unary(&None, &None, true).unwrap(),
-      hrtime: Permissions::new_hrtime(false, false),
-    };
-
+    let mut perms = Permissions::none_with_prompt();
     let prompt_value = PERMISSION_PROMPT_STUB_VALUE_SETTER.lock();
 
     prompt_value.set(true);
@@ -2736,16 +2741,16 @@ mod tests {
     assert!(perms.run.check("ls", None).is_err());
 
     prompt_value.set(true);
-    assert!(perms.env.check("HOME").is_ok());
+    assert!(perms.env.check("HOME", None).is_ok());
     prompt_value.set(false);
-    assert!(perms.env.check("HOME").is_ok());
-    assert!(perms.env.check("PATH").is_err());
+    assert!(perms.env.check("HOME", None).is_ok());
+    assert!(perms.env.check("PATH", None).is_err());
 
     prompt_value.set(true);
-    assert!(perms.env.check("hostname").is_ok());
+    assert!(perms.env.check("hostname", None).is_ok());
     prompt_value.set(false);
-    assert!(perms.env.check("hostname").is_ok());
-    assert!(perms.env.check("osRelease").is_err());
+    assert!(perms.env.check("hostname", None).is_ok());
+    assert!(perms.env.check("osRelease", None).is_err());
 
     assert!(perms.hrtime.check().is_err());
   }
@@ -2753,16 +2758,7 @@ mod tests {
   #[test]
   fn test_check_fail() {
     set_prompter(Box::new(TestPrompter));
-    let mut perms = Permissions {
-      read: Permissions::new_unary(&None, &None, true).unwrap(),
-      write: Permissions::new_unary(&None, &None, true).unwrap(),
-      net: Permissions::new_unary(&None, &None, true).unwrap(),
-      env: Permissions::new_unary(&None, &None, true).unwrap(),
-      sys: Permissions::new_unary(&None, &None, true).unwrap(),
-      run: Permissions::new_unary(&None, &None, true).unwrap(),
-      ffi: Permissions::new_unary(&None, &None, true).unwrap(),
-      hrtime: Permissions::new_hrtime(false, false),
-    };
+    let mut perms = Permissions::none_with_prompt();
 
     let prompt_value = PERMISSION_PROMPT_STUB_VALUE_SETTER.lock();
 
@@ -2809,12 +2805,12 @@ mod tests {
     assert!(perms.run.check("ls", None).is_ok());
 
     prompt_value.set(false);
-    assert!(perms.env.check("HOME").is_err());
+    assert!(perms.env.check("HOME", None).is_err());
     prompt_value.set(true);
-    assert!(perms.env.check("HOME").is_err());
-    assert!(perms.env.check("PATH").is_ok());
+    assert!(perms.env.check("HOME", None).is_err());
+    assert!(perms.env.check("PATH", None).is_ok());
     prompt_value.set(false);
-    assert!(perms.env.check("PATH").is_ok());
+    assert!(perms.env.check("PATH", None).is_ok());
 
     prompt_value.set(false);
     assert!(perms.sys.check("hostname", None).is_err());
@@ -2842,10 +2838,10 @@ mod tests {
     };
 
     prompt_value.set(true);
-    assert!(perms.env.check("HOME").is_ok());
+    assert!(perms.env.check("HOME", None).is_ok());
     prompt_value.set(false);
-    assert!(perms.env.check("HOME").is_ok());
-    assert!(perms.env.check("hOmE").is_ok());
+    assert!(perms.env.check("HOME", None).is_ok());
+    assert!(perms.env.check("hOmE", None).is_ok());
 
     assert_eq!(perms.env.revoke(Some("HomE")), PermissionState::Prompt);
   }
@@ -2865,7 +2861,7 @@ mod tests {
         false,
       )
       .unwrap(),
-      ..Default::default()
+      ..Permissions::none_without_prompt()
     };
 
     perms.read.check_partial(Path::new("/foo"), None).unwrap();
@@ -3038,7 +3034,7 @@ mod tests {
       hrtime: Permissions::new_hrtime(true, false),
       net: Permissions::new_unary(&Some(svec!["foo", "bar"]), &None, false)
         .unwrap(),
-      ..Default::default()
+      ..Permissions::none_without_prompt()
     };
     assert_eq!(
       create_child_permissions(
@@ -3055,7 +3051,7 @@ mod tests {
       Permissions {
         env: Permissions::new_unary(&Some(vec![]), &None, false).unwrap(),
         net: Permissions::new_unary(&Some(svec!["foo"]), &None, false).unwrap(),
-        ..Default::default()
+        ..Permissions::none_without_prompt()
       }
     );
     assert!(create_child_permissions(
@@ -3104,6 +3100,13 @@ mod tests {
     )
     .unwrap();
     assert_eq!(main_perms, worker_perms);
+    assert_eq!(
+      main_perms.run.granted_list,
+      HashSet::from([
+        RunDescriptor::Name("bar".to_owned()),
+        RunDescriptor::Name("foo".to_owned())
+      ])
+    );
   }
 
   #[test]
@@ -3131,14 +3134,21 @@ mod tests {
   #[test]
   fn test_handle_empty_value() {
     set_prompter(Box::new(TestPrompter));
+
     assert!(Permissions::new_unary::<ReadDescriptor>(
-      &Some(vec![PathBuf::new()]),
+      &Some(vec![Default::default()]),
       &None,
       false
     )
     .is_err());
     assert!(Permissions::new_unary::<EnvDescriptor>(
-      &Some(vec![String::new()]),
+      &Some(vec![Default::default()]),
+      &None,
+      false
+    )
+    .is_err());
+    assert!(Permissions::new_unary::<NetDescriptor>(
+      &Some(vec![Default::default()]),
       &None,
       false
     )
