@@ -1,3 +1,3 @@
-const { myFunction } = require("./other_file.js");
+const { myFunction } = require("./other_file_cjs.js");
 
-myFunction().then(() => {});
+myFunction();
