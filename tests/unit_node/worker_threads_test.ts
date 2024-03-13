@@ -145,6 +145,26 @@ Deno.test({
 });
 
 Deno.test({
+  name: "[worker_threads] worker thread in nested module",
+  fn() {
+    const worker = new workerThreads.Worker(
+      new URL("./testdata/worker_module/nested/index.js", import.meta.url),
+    );
+    worker.terminate();
+  },
+});
+
+Deno.test({
+  name: "[worker_threads] .cjs worker file within module",
+  fn() {
+    const worker = new workerThreads.Worker(
+      new URL("./testdata/worker_module/cjs-file.cjs", import.meta.url),
+    );
+    worker.terminate();
+  },
+});
+
+Deno.test({
   name: "[worker_threads] inheritances",
   async fn() {
     const worker = new workerThreads.Worker(
