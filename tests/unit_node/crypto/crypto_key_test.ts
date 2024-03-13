@@ -2,7 +2,9 @@
 
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import {
+  createHmac,
   createPrivateKey,
+  createPublicKey,
   createSecretKey,
   generateKeyPair,
   generateKeyPairSync,
@@ -12,7 +14,6 @@ import {
 import { promisify } from "node:util";
 import { Buffer } from "node:buffer";
 import { assertEquals, assertThrows } from "@std/assert/mod.ts";
-import { createHmac } from "node:crypto";
 
 const RUN_SLOW_TESTS = Deno.env.get("SLOW_TESTS") === "1";
 
@@ -237,6 +238,31 @@ const ecPrivateKey = Deno.readTextFileSync(
 Deno.test("createPrivateKey ec", function () {
   const key = createPrivateKey(ecPrivateKey);
   assertEquals(key.type, "private");
+  assertEquals(key.asymmetricKeyType, "ec");
+  assertEquals(key.asymmetricKeyDetails?.namedCurve, "p256");
+});
+
+const rsaPublicKey = Deno.readTextFileSync(
+  new URL("../testdata/rsa_public.pem", import.meta.url),
+);
+
+Deno.test("createPublicKey() RSA", () => {
+  const key = createPublicKey(rsaPublicKey);
+  assertEquals(key.type, "public");
+  assertEquals(key.asymmetricKeyType, "rsa");
+  assertEquals(key.asymmetricKeyDetails?.modulusLength, 2048);
+  assertEquals(key.asymmetricKeyDetails?.publicExponent, 65537n);
+});
+
+// openssl ecparam -name prime256v1 -genkey -noout -out a.pem
+// openssl ec -in a.pem -pubout -out b.pem
+const ecPublicKey = Deno.readTextFileSync(
+  new URL("../testdata/ec_prime256v1_public.pem", import.meta.url),
+);
+
+Deno.test("createPublicKey() EC", function () {
+  const key = createPublicKey(ecPublicKey);
+  assertEquals(key.type, "public");
   assertEquals(key.asymmetricKeyType, "ec");
   assertEquals(key.asymmetricKeyDetails?.namedCurve, "p256");
 });
