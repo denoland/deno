@@ -1,0 +1,4 @@
+{
+  "args": "info info_ts_error.ts",
+  "output": "info_ts_error.out"
+}

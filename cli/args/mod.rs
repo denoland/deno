@@ -1469,6 +1469,7 @@ impl CliOptions {
 
   pub fn permissions_options(&self) -> PermissionsOptions {
     PermissionsOptions {
+      allow_all: self.flags.allow_all,
       allow_env: self.flags.allow_env.clone(),
       deny_env: self.flags.deny_env.clone(),
       allow_hrtime: self.flags.allow_hrtime,
