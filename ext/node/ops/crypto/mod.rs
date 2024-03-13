@@ -1485,14 +1485,15 @@ pub fn op_node_create_public_key(
   #[string] type_: &str,
 ) -> Result<AsymmetricKeyDetails, AnyError> {
   let doc = parse_public_key(key, format, type_)?;
-  let pk_info = pkcs8::SubjectPublicKeyInfo::try_from(doc.as_bytes())?;
+  let pk_info = spki::SubjectPublicKeyInfoRef::try_from(doc.as_bytes())?;
 
   let alg = pk_info.algorithm.oid;
 
   match alg {
     RSA_ENCRYPTION_OID => {
-      let public_key =
-        rsa::pkcs1::RsaPublicKey::from_der(pk_info.subject_public_key)?;
+      let public_key = rsa::pkcs1::RsaPublicKey::from_der(
+        pk_info.subject_public_key.raw_bytes(),
+      )?;
       let modulus_length = public_key.modulus.as_bytes().len() * 8;
 
       Ok(AsymmetricKeyDetails::Rsa {
@@ -1522,8 +1523,9 @@ pub fn op_node_create_public_key(
         _ => return Err(type_error("Unsupported hash algorithm")),
       };
 
-      let public_key =
-        rsa::pkcs1::RsaPublicKey::from_der(pk_info.subject_public_key)?;
+      let public_key = rsa::pkcs1::RsaPublicKey::from_der(
+        pk_info.subject_public_key.raw_bytes(),
+      )?;
       let modulus_length = public_key.modulus.as_bytes().len() * 8;
       Ok(AsymmetricKeyDetails::RsaPss {
         modulus_length,

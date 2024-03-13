@@ -68,6 +68,7 @@ sha-1 = "0.10.0"
 sha2.workspace = true
 signature.workspace = true
 simd-json = "0.13.4"
+spki.workspace = true
 tokio.workspace = true
 typenum = "1.15.0"
 url.workspace = true
