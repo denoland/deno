@@ -77,7 +77,7 @@ fn run_test(test: &Test) {
         builder = builder.add_npm_env_vars();
       }
       "jsr" => {
-        builder = builder.add_jsr_env_vars();
+        builder = builder.add_jsr_env_vars().add_npm_env_vars();
       }
       _ => panic!("Unknown test base: {}", base),
     }
