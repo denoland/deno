@@ -63,13 +63,6 @@ pub trait ModuleLoaderFactory: Send + Sync {
     dynamic_permissions: PermissionsContainer,
   ) -> Rc<dyn ModuleLoader>;
 
-  fn create_for_main2(
-    &self,
-    root_permissions: PermissionsContainer,
-    dynamic_permissions: PermissionsContainer,
-    code: String,
-  ) -> Rc<dyn ModuleLoader>;
-
   fn create_for_worker(
     &self,
     root_permissions: PermissionsContainer,
@@ -183,6 +176,7 @@ impl CliMainWorker {
     let mut maybe_hmr_runner = self.maybe_setup_hmr_runner().await?;
 
     log::debug!("main_module {}", self.main_module);
+
     if self.is_main_cjs {
       deno_node::load_cjs_module(
         &mut self.worker.js_runtime,
@@ -473,25 +467,6 @@ impl CliMainWorkerFactory {
       .await
   }
 
-  pub async fn create_main_worker_for_serve(
-    &self,
-    main_module: ModuleSpecifier,
-    permissions: PermissionsContainer,
-    serve_handler: ModuleSpecifier,
-    serve_code: String,
-  ) -> Result<CliMainWorker, AnyError> {
-    self
-      .create_custom_worker2(
-        main_module,
-        permissions,
-        vec![],
-        Default::default(),
-        Some(serve_handler),
-        Some(serve_code),
-      )
-      .await
-  }
-
   pub async fn create_custom_worker(
     &self,
     main_module: ModuleSpecifier,
@@ -575,218 +550,6 @@ impl CliMainWorkerFactory {
     let module_loader = shared
       .module_loader_factory
       .create_for_main(PermissionsContainer::allow_all(), permissions.clone());
-    let maybe_source_map_getter =
-      shared.module_loader_factory.create_source_map_getter();
-    let maybe_inspector_server = shared.maybe_inspector_server.clone();
-
-    let create_web_worker_cb =
-      create_web_worker_callback(shared.clone(), stdio.clone());
-
-    let maybe_storage_key = shared
-      .storage_key_resolver
-      .resolve_storage_key(&main_module);
-    let origin_storage_dir = maybe_storage_key.as_ref().map(|key| {
-      shared
-        .options
-        .origin_data_folder_path
-        .as_ref()
-        .unwrap() // must be set if storage key resolver returns a value
-        .join(checksum::gen(&[key.as_bytes()]))
-    });
-    let cache_storage_dir = maybe_storage_key.map(|key| {
-      // TODO(@satyarohith): storage quota management
-      // Note: we currently use temp_dir() to avoid managing storage size.
-      std::env::temp_dir()
-        .join("deno_cache")
-        .join(checksum::gen(&[key.as_bytes()]))
-    });
-
-    // TODO(bartlomieju): this is cruft, update FeatureChecker to spit out
-    // list of enabled features.
-    let feature_checker = shared.feature_checker.clone();
-    let mut unstable_features =
-      Vec::with_capacity(crate::UNSTABLE_GRANULAR_FLAGS.len());
-    for (feature_name, _, id) in crate::UNSTABLE_GRANULAR_FLAGS {
-      if feature_checker.check(feature_name) {
-        unstable_features.push(*id);
-      }
-    }
-
-    let options = WorkerOptions {
-      bootstrap: BootstrapOptions {
-        args: shared.options.argv.clone(),
-        cpu_count: std::thread::available_parallelism()
-          .map(|p| p.get())
-          .unwrap_or(1),
-        log_level: shared.options.log_level,
-        enable_op_summary_metrics: shared.options.enable_op_summary_metrics,
-        enable_testing_features: shared.options.enable_testing_features,
-        locale: deno_core::v8::icu::get_language_tag(),
-        location: shared.options.location.clone(),
-        no_color: !colors::use_color(),
-        is_tty: deno_terminal::is_stdout_tty(),
-        unstable: shared.options.unstable,
-        unstable_features,
-        user_agent: version::get_user_agent().to_string(),
-        inspect: shared.options.is_inspecting,
-        has_node_modules_dir: shared.options.has_node_modules_dir,
-        argv0: shared.options.argv0.clone(),
-        node_ipc_fd: shared.node_ipc,
-        disable_deprecated_api_warning: shared.disable_deprecated_api_warning,
-        verbose_deprecated_api_warning: shared.verbose_deprecated_api_warning,
-        future: shared.enable_future_features,
-      },
-      extensions: custom_extensions,
-      startup_snapshot: crate::js::deno_isolate_init(),
-      create_params: None,
-      unsafely_ignore_certificate_errors: shared
-        .options
-        .unsafely_ignore_certificate_errors
-        .clone(),
-      root_cert_store_provider: Some(shared.root_cert_store_provider.clone()),
-      seed: shared.options.seed,
-      source_map_getter: maybe_source_map_getter,
-      format_js_error_fn: Some(Arc::new(format_js_error)),
-      create_web_worker_cb,
-      maybe_inspector_server,
-      should_break_on_first_statement: shared.options.inspect_brk,
-      should_wait_for_inspector_session: shared.options.inspect_wait,
-      strace_ops: shared.options.strace_ops.clone(),
-      module_loader,
-      fs: shared.fs.clone(),
-      npm_resolver: Some(shared.npm_resolver.clone().into_npm_resolver()),
-      get_error_class_fn: Some(&errors::get_error_class_name),
-      cache_storage_dir,
-      origin_storage_dir,
-      blob_store: shared.blob_store.clone(),
-      broadcast_channel: shared.broadcast_channel.clone(),
-      shared_array_buffer_store: Some(shared.shared_array_buffer_store.clone()),
-      compiled_wasm_module_store: Some(
-        shared.compiled_wasm_module_store.clone(),
-      ),
-      stdio,
-      feature_checker,
-      skip_op_registration: shared.options.skip_op_registration,
-    };
-
-    let mut worker = MainWorker::bootstrap_from_options(
-      main_module.clone(),
-      permissions,
-      options,
-    );
-
-    if self.shared.subcommand.needs_test() {
-      macro_rules! test_file {
-        ($($file:literal),*) => {
-          $(worker.js_runtime.lazy_load_es_module_with_code(
-            concat!("ext:cli/", $file),
-            deno_core::ascii_str_include!(concat!("js/", $file)),
-          )?;)*
-        }
-      }
-      test_file!(
-        "40_test_common.js",
-        "40_test.js",
-        "40_bench.js",
-        "40_jupyter.js"
-      );
-    }
-
-    Ok(CliMainWorker {
-      main_module,
-      is_main_cjs,
-      worker,
-      shared: shared.clone(),
-    })
-  }
-
-  pub async fn create_custom_worker2(
-    &self,
-    main_module: ModuleSpecifier,
-    permissions: PermissionsContainer,
-    custom_extensions: Vec<Extension>,
-    stdio: deno_runtime::deno_io::Stdio,
-    _is_serve: Option<ModuleSpecifier>,
-    is_serve_code: Option<String>,
-  ) -> Result<CliMainWorker, AnyError> {
-    let shared = &self.shared;
-    let (main_module, is_main_cjs) = if let Ok(package_ref) =
-      NpmPackageReqReference::from_specifier(&main_module)
-    {
-      let package_ref = if package_ref.req().version_req.version_text() == "*" {
-        // When using the wildcard version, select the same version used in the
-        // package.json deps in order to prevent adding new dependency version
-        shared
-          .options
-          .maybe_root_package_json_deps
-          .as_ref()
-          .and_then(|deps| {
-            deps
-              .values()
-              .filter_map(|v| v.as_ref().ok())
-              .find(|dep| dep.name == package_ref.req().name)
-              .map(|dep| {
-                NpmPackageReqReference::new(PackageReqReference {
-                  req: dep.clone(),
-                  sub_path: package_ref.sub_path().map(|s| s.to_string()),
-                })
-              })
-          })
-          .unwrap_or(package_ref)
-      } else {
-        package_ref
-      };
-      if let Some(npm_resolver) = shared.npm_resolver.as_managed() {
-        npm_resolver
-          .add_package_reqs(&[package_ref.req().clone()])
-          .await?;
-      }
-
-      // use a fake referrer that can be used to discover the package.json if necessary
-      let referrer =
-        ModuleSpecifier::from_directory_path(self.shared.fs.cwd()?)
-          .unwrap()
-          .join("package.json")?;
-      let package_folder = shared
-        .npm_resolver
-        .resolve_pkg_folder_from_deno_module_req(
-          package_ref.req(),
-          &referrer,
-        )?;
-      let node_resolution = self.resolve_binary_entrypoint(
-        &package_folder,
-        package_ref.sub_path(),
-        &permissions,
-      )?;
-      let is_main_cjs = matches!(node_resolution, NodeResolution::CommonJs(_));
-
-      if let Some(lockfile) = &shared.maybe_lockfile {
-        // For npm binary commands, ensure that the lockfile gets updated
-        // so that we can re-use the npm resolution the next time it runs
-        // for better performance
-        lockfile
-          .lock()
-          .write()
-          .context("Failed writing lockfile.")?;
-      }
-
-      (node_resolution.into_url(), is_main_cjs)
-    } else if shared.options.is_npm_main
-      || shared.node_resolver.in_npm_package(&main_module)
-    {
-      let node_resolution =
-        shared.node_resolver.url_to_node_resolution(main_module)?;
-      let is_main_cjs = matches!(node_resolution, NodeResolution::CommonJs(_));
-      (node_resolution.into_url(), is_main_cjs)
-    } else {
-      (main_module, false)
-    };
-
-    let module_loader = shared.module_loader_factory.create_for_main2(
-      PermissionsContainer::allow_all(),
-      permissions.clone(),
-      is_serve_code.unwrap(),
-    );
     let maybe_source_map_getter =
       shared.module_loader_factory.create_source_map_getter();
     let maybe_inspector_server = shared.maybe_inspector_server.clone();

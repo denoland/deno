@@ -569,19 +569,6 @@ impl MainWorker {
   }
 
   /// Loads and instantiates specified JavaScript module as "main" module.
-  pub async fn preload_main_module_from_code(
-    &mut self,
-    module_specifier: &ModuleSpecifier,
-    code: String,
-  ) -> Result<ModuleId, AnyError> {
-    let mod_id = self
-      .js_runtime
-      .load_main_es_module_from_code(module_specifier, code)
-      .await?;
-    Ok(mod_id)
-  }
-
-  /// Loads and instantiates specified JavaScript module as "main" module.
   pub async fn preload_main_module(
     &mut self,
     module_specifier: &ModuleSpecifier,

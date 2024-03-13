@@ -158,7 +158,6 @@ async fn check_specifiers(
       false,
       lib,
       PermissionsContainer::allow_all(),
-      None,
     )
     .await?;
   Ok(())

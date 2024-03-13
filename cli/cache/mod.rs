@@ -20,7 +20,6 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::Mutex;
 use std::time::SystemTime;
 
 mod cache_db;
@@ -111,7 +110,6 @@ pub struct FetchCacher {
   module_info_cache: Arc<ModuleInfoCache>,
   permissions: PermissionsContainer,
   cache_info_enabled: bool,
-  pub is_serve: Arc<Mutex<Option<String>>>,
 }
 
 impl FetchCacher {
@@ -133,7 +131,6 @@ impl FetchCacher {
       module_info_cache,
       permissions,
       cache_info_enabled: false,
-      is_serve: Arc::new(Mutex::new(None)),
     }
   }
 
@@ -198,24 +195,6 @@ impl Loader for FetchCacher {
     options: deno_graph::source::LoadOptions,
   ) -> LoadFuture {
     use deno_graph::source::CacheSetting as LoaderCacheSetting;
-
-    // if specifier.as_str().ends_with("$deno$serve.ts") {
-    //   let content = self
-    //     .is_serve
-    //     .lock()
-    //     .unwrap()
-    //     .as_ref()
-    //     .unwrap()
-    //     .as_bytes()
-    //     .to_vec();
-    //   return Box::pin(deno_core::futures::future::ready(Ok(Some(
-    //     LoadResponse::Module {
-    //       specifier: specifier.to_owned(),
-    //       maybe_headers: None,
-    //       content: content.into(),
-    //     },
-    //   ))));
-    // }
 
     if specifier.scheme() == "file"
       && specifier.path().contains("/node_modules/")

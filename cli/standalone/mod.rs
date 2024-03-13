@@ -279,19 +279,6 @@ impl ModuleLoaderFactory for StandaloneModuleLoaderFactory {
     })
   }
 
-  fn create_for_main2(
-    &self,
-    root_permissions: PermissionsContainer,
-    dynamic_permissions: PermissionsContainer,
-    _code: String,
-  ) -> Rc<dyn ModuleLoader> {
-    Rc::new(EmbeddedModuleLoader {
-      shared: self.shared.clone(),
-      root_permissions,
-      dynamic_permissions,
-    })
-  }
-
   fn create_for_worker(
     &self,
     root_permissions: PermissionsContainer,
