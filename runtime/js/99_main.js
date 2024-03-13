@@ -794,6 +794,7 @@ function bootstrapWorkerRuntime(
   runtimeOptions,
   name,
   internalName,
+  workerId,
   maybeWorkerMetadata,
 ) {
   if (hasBootstrapped) {
@@ -929,6 +930,7 @@ function bootstrapWorkerRuntime(
       hasNodeModulesDir,
       argv0,
       /* runningOnMainThread */ false,
+      workerId,
       workerMetadata,
     );
   }
