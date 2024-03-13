@@ -520,18 +520,6 @@ impl WebWorker {
       options.strace_ops,
     );
 
-    // // Hook up the summary metrics if the user or subcommand requested them
-    // let (op_summary_metrics, op_metrics_factory_fn) =
-    //   if options.bootstrap.enable_op_summary_metrics {
-    //     let op_summary_metrics = Rc::new(OpMetricsSummaryTracker::default());
-    //     (
-    //       Some(op_summary_metrics.clone()),
-    //       Some(op_summary_metrics.op_metrics_factory_fn(|_| true)),
-    //     )
-    //   } else {
-    //     (None, None)
-    //   };
-
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(options.module_loader.clone()),
       startup_snapshot: options.startup_snapshot,

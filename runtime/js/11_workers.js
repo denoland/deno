@@ -75,7 +75,6 @@ function hostRecvMessage(id) {
   return op_host_recv_message(id);
 }
 
-const closeOnIdle = SymbolFor("Deno.WorkerCloneOnIdle");
 const privateWorkerRef = Symbol();
 
 class Worker extends EventTarget {
@@ -114,7 +113,7 @@ class Worker extends EventTarget {
       }
     }
 
-    this.#name = name || "";
+    this.#name = name;
     let hasSourceCode, sourceCode;
     if (workerType === "classic") {
       hasSourceCode = true;
@@ -131,7 +130,7 @@ class Worker extends EventTarget {
       deno?.permissions,
       this.#name,
       workerType,
-      options[closeOnIdle] || false,
+      false,
     );
     this.#id = id;
     this.#pollControl();
@@ -321,4 +320,4 @@ webidl.converters["WorkerType"] = webidl.createEnumConverter("WorkerType", [
   "module",
 ]);
 
-export { closeOnIdle, Worker };
+export { Worker };
