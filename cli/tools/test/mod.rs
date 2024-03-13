@@ -792,6 +792,19 @@ async fn run_tests_for_worker_inner(
       }
     };
 
+    // Check the result before we check for leaks
+    let result = {
+      let scope = &mut worker.js_runtime.handle_scope();
+      let result = v8::Local::new(scope, result);
+      serde_v8::from_v8::<TestResult>(scope, result)?
+    };
+    if matches!(result, TestResult::Failed(_)) {
+      fail_fast_tracker.add_failure();
+      let elapsed = earlier.elapsed().as_millis();
+      sender.send(TestEvent::Result(desc.id, result, elapsed as u64))?;
+      continue;
+    }
+
     // Await activity stabilization
     if let Some(diff) = wait_for_activity_to_stabilize(
       worker,
@@ -806,6 +819,7 @@ async fn run_tests_for_worker_inner(
       let (formatted, trailer_notes) = format_sanitizer_diff(diff);
       if !formatted.is_empty() {
         let failure = TestFailure::Leaked(formatted, trailer_notes);
+        fail_fast_tracker.add_failure();
         let elapsed = earlier.elapsed().as_millis();
         sender.send(TestEvent::Result(
           desc.id,
@@ -816,12 +830,6 @@ async fn run_tests_for_worker_inner(
       }
     }
 
-    let scope = &mut worker.js_runtime.handle_scope();
-    let result = v8::Local::new(scope, result);
-    let result = serde_v8::from_v8::<TestResult>(scope, result)?;
-    if matches!(result, TestResult::Failed(_)) {
-      fail_fast_tracker.add_failure();
-    }
     let elapsed = earlier.elapsed().as_millis();
     sender.send(TestEvent::Result(desc.id, result, elapsed as u64))?;
   }
