@@ -175,7 +175,7 @@ where
     // Using a vfs here doesn't make sense, it won't align with the windows API
     // call below.
     #[allow(clippy::disallowed_methods)]
-    let path = Path::new("Cargo.toml").canonicalize().unwrap();
+    let path = Path::new(&path).canonicalize().unwrap();
     let root = path
       .ancestors()
       .last()
