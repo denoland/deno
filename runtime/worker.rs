@@ -498,7 +498,7 @@ impl MainWorker {
       _msg: v8::Local<v8::Message>,
       _exception: v8::Local<v8::Value>,
     ) {
-      // ...
+      // TODO(@littledivy): Propogate message to users.
     }
 
     // Register message listener
