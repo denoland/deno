@@ -15,7 +15,6 @@ import { assertEquals, assertThrows } from "@std/assert/mod.ts";
 import { createHmac } from "node:crypto";
 import {
   createPublicKey,
-  createPublicKey,
 } from "../../../ext/node/polyfills/internal/crypto/keys.ts";
 
 const RUN_SLOW_TESTS = Deno.env.get("SLOW_TESTS") === "1";
