@@ -786,31 +786,6 @@ impl Settings {
     }
     (&self.unscoped, None)
   }
-
-  pub fn set_unscoped(&mut self, mut settings: WorkspaceSettings) {
-    // See https://github.com/denoland/vscode_deno/issues/908.
-    if settings.enable_paths == Some(vec![]) {
-      settings.enable_paths = None;
-    }
-    self.unscoped = settings;
-  }
-
-  pub fn set_for_workspace_folders(
-    &mut self,
-    mut by_workspace_folder: Option<
-      BTreeMap<ModuleSpecifier, WorkspaceSettings>,
-    >,
-  ) {
-    if let Some(by_workspace_folder) = &mut by_workspace_folder {
-      for settings in by_workspace_folder.values_mut() {
-        // See https://github.com/denoland/vscode_deno/issues/908.
-        if settings.enable_paths == Some(vec![]) {
-          settings.enable_paths = None;
-        }
-      }
-    }
-    self.by_workspace_folder = by_workspace_folder;
-  }
 }
 
 #[derive(Debug)]
@@ -871,8 +846,10 @@ impl Config {
     unscoped: WorkspaceSettings,
     by_workspace_folder: Option<BTreeMap<ModuleSpecifier, WorkspaceSettings>>,
   ) {
-    self.settings.set_unscoped(unscoped);
-    self.settings.set_for_workspace_folders(by_workspace_folder);
+    self.settings = Settings {
+      unscoped,
+      by_workspace_folder,
+    };
   }
 
   pub fn workspace_settings(&self) -> &WorkspaceSettings {
@@ -1083,7 +1060,7 @@ impl Config {
   pub fn get_disabled_paths(&self) -> PathOrPatternSet {
     let mut path_or_patterns = vec![];
     if let Some(cf) = self.maybe_config_file() {
-      if let Some(files) = cf.to_files_config().ok().flatten() {
+      if let Ok(files) = cf.to_files_config() {
         for path in files.exclude.into_path_or_patterns() {
           path_or_patterns.push(path);
         }
@@ -1095,7 +1072,14 @@ impl Config {
         continue;
       };
       let settings = self.workspace_settings_for_specifier(workspace_uri);
-      if settings.enable.unwrap_or_else(|| self.has_config_file()) {
+      let is_enabled = settings
+        .enable_paths
+        .as_ref()
+        .map(|p| !p.is_empty())
+        .unwrap_or_else(|| {
+          settings.enable.unwrap_or_else(|| self.has_config_file())
+        });
+      if is_enabled {
         for path in &settings.disable_paths {
           path_or_patterns.push(PathOrPattern::Path(workspace_path.join(path)));
         }
@@ -1177,7 +1161,7 @@ fn specifier_enabled(
   workspace_folders: &[(Url, lsp::WorkspaceFolder)],
 ) -> bool {
   if let Some(cf) = config_file {
-    if let Some(files) = cf.to_files_config().ok().flatten() {
+    if let Ok(files) = cf.to_files_config() {
       if !files.matches_specifier(specifier) {
         return false;
       }

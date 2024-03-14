@@ -166,6 +166,7 @@ function listenTls({
   return new TlsListener(rid, localAddr);
 }
 
+// deno-lint-ignore require-await
 async function startTls(
   conn,
   {
@@ -174,7 +175,7 @@ async function startTls(
     alpnProtocols = undefined,
   } = {},
 ) {
-  const { 0: rid, 1: localAddr, 2: remoteAddr } = await op_tls_start({
+  const { 0: rid, 1: localAddr, 2: remoteAddr } = op_tls_start({
     rid: conn[internalRidSymbol],
     hostname,
     caCerts,

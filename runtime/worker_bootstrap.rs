@@ -63,6 +63,7 @@ pub struct BootstrapOptions {
   pub disable_deprecated_api_warning: bool,
   pub verbose_deprecated_api_warning: bool,
   pub future: bool,
+  pub close_on_idle: bool,
 }
 
 impl Default for BootstrapOptions {
@@ -94,6 +95,7 @@ impl Default for BootstrapOptions {
       disable_deprecated_api_warning: false,
       verbose_deprecated_api_warning: false,
       future: false,
+      close_on_idle: false,
     }
   }
 }
@@ -129,6 +131,8 @@ struct BootstrapV8<'a>(
   bool,
   // future
   bool,
+  // close_on_idle
+  bool,
 );
 
 impl BootstrapOptions {
@@ -151,6 +155,7 @@ impl BootstrapOptions {
       self.disable_deprecated_api_warning,
       self.verbose_deprecated_api_warning,
       self.future,
+      self.close_on_idle,
     );
 
     bootstrap.serialize(ser).unwrap()

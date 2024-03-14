@@ -26,7 +26,7 @@
     "cli/tsc/dts/lib.dom*.d.ts",
     "cli/tsc/dts/lib.es*.d.ts",
     "cli/tsc/dts/typescript.d.ts",
-    "cli/tests/node_compat/test",
+    "tests/node_compat/test",
     "tests/testdata/file_extensions/ts_with_js_extension.js",
     "tests/testdata/fmt/badly_formatted.json",
     "tests/testdata/fmt/badly_formatted.md",

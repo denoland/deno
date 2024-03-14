@@ -1,5 +1,8 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+#![deny(clippy::print_stderr)]
+#![deny(clippy::print_stdout)]
+
 use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
@@ -253,12 +256,15 @@ deno_core::extension!(deno_node,
     ops::fs::op_node_fs_exists_sync<P>,
     ops::fs::op_node_cp_sync<P>,
     ops::fs::op_node_cp<P>,
+    ops::fs::op_node_statfs<P>,
     ops::winerror::op_node_sys_to_uv_error,
     ops::v8::op_v8_cached_data_version_tag,
     ops::v8::op_v8_get_heap_statistics,
     ops::v8::op_vm_run_in_new_context,
     ops::idna::op_node_idna_domain_to_ascii,
     ops::idna::op_node_idna_domain_to_unicode,
+    ops::idna::op_node_idna_punycode_to_ascii,
+    ops::idna::op_node_idna_punycode_to_unicode,
     ops::idna::op_node_idna_punycode_decode,
     ops::idna::op_node_idna_punycode_encode,
     ops::zlib::op_zlib_new,
@@ -325,6 +331,7 @@ deno_core::extension!(deno_node,
     ops::require::op_require_break_on_next_statement,
     ops::util::op_node_guess_handle_type,
     ops::crypto::op_node_create_private_key,
+    ops::crypto::op_node_create_public_key,
     ops::ipc::op_node_child_ipc_pipe,
     ops::ipc::op_node_ipc_write,
     ops::ipc::op_node_ipc_read,
@@ -368,6 +375,7 @@ deno_core::extension!(deno_node,
     "_fs/_fs_rm.ts",
     "_fs/_fs_rmdir.ts",
     "_fs/_fs_stat.ts",
+    "_fs/_fs_statfs.js",
     "_fs/_fs_symlink.ts",
     "_fs/_fs_truncate.ts",
     "_fs/_fs_unlink.ts",

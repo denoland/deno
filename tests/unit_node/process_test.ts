@@ -185,7 +185,11 @@ Deno.test({
   name: "process.on signal",
   ignore: Deno.build.os == "windows",
   async fn() {
-    const testTimeout = setTimeout(() => fail("Test timed out"), 10_000);
+    let wait = "";
+    const testTimeout = setTimeout(
+      () => fail("Test timed out waiting for " + wait),
+      10_000,
+    );
     try {
       const process = new Deno.Command(Deno.execPath(), {
         args: [
@@ -193,10 +197,10 @@ Deno.test({
           `
           import process from "node:process";
           setInterval(() => {}, 1000);
-          console.log("ready");
           process.on("SIGINT", () => {
             console.log("foo");
           });
+          console.log("ready");
           `,
         ],
         stdout: "piped",
@@ -206,16 +210,19 @@ Deno.test({
       process.stdout.pipeThrough(new TextDecoderStream()).pipeTo(
         new WritableStream({
           write(chunk) {
+            console.log("chunk:", chunk);
             output += chunk;
           },
         }),
       );
+      wait = "ready";
       while (!output.includes("ready\n")) {
         await delay(10);
       }
-      output = "";
-      for (const _ of Array(3)) {
+      for (let i = 0; i < 3; i++) {
+        output = "";
         process.kill("SIGINT");
+        wait = "foo " + i;
         while (!output.includes("foo\n")) {
           await delay(10);
         }
@@ -239,13 +246,13 @@ Deno.test({
           "eval",
           `
           import process from "node:process";
-          console.log("ready");
           setInterval(() => {}, 1000);
           const listener = () => {
+            process.off("SIGINT", listener);
             console.log("foo");
-            process.off("SIGINT")
           };
           process.on("SIGINT", listener);
+          console.log("ready");
           `,
         ],
         stdout: "piped",
@@ -255,6 +262,7 @@ Deno.test({
       process.stdout.pipeThrough(new TextDecoderStream()).pipeTo(
         new WritableStream({
           write(chunk) {
+            console.log("chunk:", chunk);
             output += chunk;
           },
         }),
@@ -267,6 +275,7 @@ Deno.test({
       while (!output.includes("foo\n")) {
         await delay(10);
       }
+      process.kill("SIGINT");
       await process.status;
     } finally {
       clearTimeout(testTimeout);

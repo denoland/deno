@@ -152,6 +152,7 @@ impl UnixStreamResource {
   fn write(self: Rc<Self>, _data: &[u8]) -> AsyncResult<usize> {
     unreachable!()
   }
+  #[allow(clippy::unused_async)]
   pub async fn shutdown(self: Rc<Self>) -> Result<(), AnyError> {
     unreachable!()
   }

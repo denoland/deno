@@ -17,26 +17,3 @@ pub fn deno_isolate_init() -> Option<&'static [u8]> {
     None
   }
 }
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-
-  #[test]
-  fn runtime_snapshot() {
-    let mut js_runtime = deno_core::JsRuntime::new(deno_core::RuntimeOptions {
-      startup_snapshot: deno_isolate_init(),
-      ..Default::default()
-    });
-    js_runtime
-      .execute_script(
-        "<anon>",
-        r#"
-      if (!(bootstrap.mainRuntime && bootstrap.workerRuntime)) {
-        throw Error("bad");
-      }
-    "#,
-      )
-      .unwrap();
-  }
-}

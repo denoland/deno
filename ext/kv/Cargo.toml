@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_kv"
-version = "0.48.0"
+version = "0.49.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -26,7 +26,7 @@ deno_unsync = "0.1.1"
 denokv_proto.workspace = true
 denokv_remote.workspace = true
 denokv_sqlite.workspace = true
-hex.workspace = true
+faster-hex.workspace = true
 log.workspace = true
 num-bigint.workspace = true
 prost.workspace = true

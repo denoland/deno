@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::deno_json::deno_json_deps;
 use crate::args::CliOptions;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
@@ -44,7 +45,6 @@ use crate::resolver::SloppyImportsResolver;
 use crate::standalone::DenoCompileBinaryWriter;
 use crate::tools::check::TypeChecker;
 use crate::tools::coverage::CoverageCollector;
-use crate::tools::registry::deno_json_deps;
 use crate::tools::run::hmr::HmrRunner;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
@@ -83,20 +83,17 @@ impl CliFactoryBuilder {
     }
   }
 
-  pub async fn build_from_flags(
-    self,
-    flags: Flags,
-  ) -> Result<CliFactory, AnyError> {
+  pub fn build_from_flags(self, flags: Flags) -> Result<CliFactory, AnyError> {
     Ok(self.build_from_cli_options(Arc::new(CliOptions::from_flags(flags)?)))
   }
 
-  pub async fn build_from_flags_for_watcher(
+  pub fn build_from_flags_for_watcher(
     mut self,
     flags: Flags,
     watcher_communicator: Arc<WatcherCommunicator>,
   ) -> Result<CliFactory, AnyError> {
     self.watcher_communicator = Some(watcher_communicator);
-    self.build_from_flags(flags).await
+    self.build_from_flags(flags)
   }
 
   pub fn build_from_cli_options(self, options: Arc<CliOptions>) -> CliFactory {
@@ -190,8 +187,8 @@ pub struct CliFactory {
 }
 
 impl CliFactory {
-  pub async fn from_flags(flags: Flags) -> Result<Self, AnyError> {
-    CliFactoryBuilder::new().build_from_flags(flags).await
+  pub fn from_flags(flags: Flags) -> Result<Self, AnyError> {
+    CliFactoryBuilder::new().build_from_flags(flags)
   }
 
   pub fn from_cli_options(options: Arc<CliOptions>) -> Self {
@@ -443,7 +440,7 @@ impl CliFactory {
                 self.package_json_deps_provider().clone(),
               ),
             npm_system_info: self.options.npm_system_info(),
-            npm_registry_url: crate::args::npm_registry_default_url().to_owned(),
+            npm_registry_url: crate::args::npm_registry_url().to_owned(),
           })
         }).await
       }.boxed_local())
@@ -483,14 +480,12 @@ impl CliFactory {
       .get_or_try_init_async(
         async {
           Ok(Arc::new(CliGraphResolver::new(CliGraphResolverOptions {
-            fs: self.fs().clone(),
-            cjs_resolutions: Some(self.cjs_resolutions().clone()),
             sloppy_imports_resolver: if self.options.unstable_sloppy_imports() {
               Some(SloppyImportsResolver::new(self.fs().clone()))
             } else {
               None
             },
-            node_resolver: Some(self.node_resolver().await?.clone()),
+            node_resolver: Some(self.cli_node_resolver().await?.clone()),
             npm_resolver: if self.options.no_npm() {
               None
             } else {
@@ -653,7 +648,6 @@ impl CliFactory {
       .get_or_try_init_async(async {
         Ok(Arc::new(ModuleGraphCreator::new(
           self.options.clone(),
-          self.fs().clone(),
           self.npm_resolver().await?.clone(),
           self.module_graph_builder().await?.clone(),
           self.maybe_lockfile().clone(),
@@ -691,7 +685,6 @@ impl CliFactory {
       .get_or_try_init_async(async {
         Ok(Arc::new(ModuleLoadPreparer::new(
           self.options.clone(),
-          self.fs().clone(),
           self.graph_container().clone(),
           self.maybe_lockfile().clone(),
           self.module_graph_builder().await?.clone(),
@@ -714,7 +707,8 @@ impl CliFactory {
       .cli_node_resolver
       .get_or_try_init_async(async {
         Ok(Arc::new(CliNodeResolver::new(
-          self.cjs_resolutions().clone(),
+          Some(self.cjs_resolutions().clone()),
+          self.fs().clone(),
           self.node_resolver().await?.clone(),
           self.npm_resolver().await?.clone(),
         )))

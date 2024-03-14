@@ -17,6 +17,7 @@ use deno_core::Resource;
 use deno_core::ResourceId;
 use serde::Deserialize;
 use serde::Serialize;
+use tokio::sync::mpsc::error::TryRecvError;
 use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::mpsc::UnboundedSender;
@@ -226,4 +227,23 @@ pub async fn op_message_port_recv_message(
   };
   let cancel = RcRef::map(resource.clone(), |r| &r.cancel);
   resource.port.recv(state).or_cancel(cancel).await?
+}
+
+#[op2]
+#[serde]
+pub fn op_message_port_recv_message_sync(
+  state: &mut OpState, // Rc<RefCell<OpState>>,
+  #[smi] rid: ResourceId,
+) -> Result<Option<JsMessageData>, AnyError> {
+  let resource = state.resource_table.get::<MessagePortResource>(rid)?;
+  let mut rx = resource.port.rx.borrow_mut();
+
+  match rx.try_recv() {
+    Ok((d, t)) => Ok(Some(JsMessageData {
+      data: d,
+      transferables: serialize_transferables(state, t),
+    })),
+    Err(TryRecvError::Empty) => Ok(None),
+    Err(TryRecvError::Disconnected) => Ok(None),
+  }
 }

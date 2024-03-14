@@ -214,7 +214,7 @@ impl LintFlags {
   }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub struct ReplFlags {
   pub eval_files: Option<Vec<String>>,
   pub eval: Option<String>,
@@ -307,6 +307,7 @@ pub struct PublishFlags {
   pub token: Option<String>,
   pub dry_run: bool,
   pub allow_slow_types: bool,
+  pub allow_dirty: bool,
   pub no_provenance: bool,
 }
 
@@ -812,6 +813,19 @@ impl Flags {
         || arg.starts_with("--allow-write")
         || arg.starts_with("--deny-write")
     })
+  }
+
+  #[inline(always)]
+  fn allow_all(&mut self) {
+    self.allow_all = true;
+    self.allow_read = Some(vec![]);
+    self.allow_env = Some(vec![]);
+    self.allow_net = Some(vec![]);
+    self.allow_run = Some(vec![]);
+    self.allow_write = Some(vec![]);
+    self.allow_sys = Some(vec![]);
+    self.allow_ffi = Some(vec![]);
+    self.allow_hrtime = true;
   }
 }
 
@@ -2436,6 +2450,11 @@ fn publish_subcommand() -> Command {
           .action(ArgAction::SetTrue),
       )
       .arg(
+        Arg::new("allow-dirty")
+        .long("allow-dirty")
+        .help("Allow publishing if the repository has uncommitted changed")
+        .action(ArgAction::SetTrue),
+      ).arg(
         Arg::new("no-provenance")
           .long("no-provenance")
           .help("Disable provenance attestation. Enabled by default on Github actions, publicly links the package to where it was built and published from.")
@@ -3482,14 +3501,7 @@ fn doc_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 
 fn eval_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   runtime_args_parse(flags, matches, false, true);
-  flags.allow_net = Some(vec![]);
-  flags.allow_env = Some(vec![]);
-  flags.allow_run = Some(vec![]);
-  flags.allow_read = Some(vec![]);
-  flags.allow_sys = Some(vec![]);
-  flags.allow_write = Some(vec![]);
-  flags.allow_ffi = Some(vec![]);
-  flags.allow_hrtime = true;
+  flags.allow_all();
 
   ext_arg_parse(flags, matches);
 
@@ -3897,6 +3909,7 @@ fn publish_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     token: matches.remove_one("token"),
     dry_run: matches.get_flag("dry-run"),
     allow_slow_types: matches.get_flag("allow-slow-types"),
+    allow_dirty: matches.get_flag("allow-dirty"),
     no_provenance: matches.get_flag("no-provenance"),
   });
 }
@@ -3998,15 +4011,7 @@ fn permission_args_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   }
 
   if matches.get_flag("allow-all") {
-    flags.allow_all = true;
-    flags.allow_read = Some(vec![]);
-    flags.allow_env = Some(vec![]);
-    flags.allow_net = Some(vec![]);
-    flags.allow_run = Some(vec![]);
-    flags.allow_write = Some(vec![]);
-    flags.allow_sys = Some(vec![]);
-    flags.allow_ffi = Some(vec![]);
-    flags.allow_hrtime = true;
+    flags.allow_all();
   }
 
   if matches.get_flag("no-prompt") {
@@ -5432,6 +5437,7 @@ mod tests {
           print: false,
           code: "'console.log(\"hello\")'".to_string(),
         }),
+        allow_all: true,
         allow_net: Some(vec![]),
         allow_env: Some(vec![]),
         allow_run: Some(vec![]),
@@ -5455,6 +5461,7 @@ mod tests {
           print: true,
           code: "1+2".to_string(),
         }),
+        allow_all: true,
         allow_net: Some(vec![]),
         allow_env: Some(vec![]),
         allow_run: Some(vec![]),
@@ -5479,6 +5486,7 @@ mod tests {
           print: false,
           code: "'console.log(\"hello\")'".to_string(),
         }),
+        allow_all: true,
         allow_net: Some(vec![]),
         allow_env: Some(vec![]),
         allow_run: Some(vec![]),
@@ -5517,6 +5525,7 @@ mod tests {
         v8_flags: svec!["--help", "--random-seed=1"],
         seed: Some(1),
         inspect: Some("127.0.0.1:9229".parse().unwrap()),
+        allow_all: true,
         allow_net: Some(vec![]),
         allow_env: Some(vec![]),
         allow_run: Some(vec![]),
@@ -5548,6 +5557,7 @@ mod tests {
           code: "console.log(Deno.args)".to_string(),
         }),
         argv: svec!["arg1", "arg2"],
+        allow_all: true,
         allow_net: Some(vec![]),
         allow_env: Some(vec![]),
         allow_run: Some(vec![]),
@@ -8620,6 +8630,7 @@ mod tests {
       "--no-provenance",
       "--dry-run",
       "--allow-slow-types",
+      "--allow-dirty",
       "--token=asdf",
     ]);
     assert_eq!(
@@ -8629,6 +8640,7 @@ mod tests {
           token: Some("asdf".to_string()),
           dry_run: true,
           allow_slow_types: true,
+          allow_dirty: true,
           no_provenance: true,
         }),
         type_check_mode: TypeCheckMode::Local,

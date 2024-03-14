@@ -19,6 +19,7 @@ use crate::lsp::logging::lsp_warn;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliGraphResolver;
 use crate::resolver::CliGraphResolverOptions;
+use crate::resolver::CliNodeResolver;
 use crate::resolver::SloppyImportsFsEntry;
 use crate::resolver::SloppyImportsResolution;
 use crate::resolver::SloppyImportsResolver;
@@ -40,11 +41,9 @@ use deno_graph::source::ResolutionMode;
 use deno_graph::GraphImport;
 use deno_graph::Resolution;
 use deno_lockfile::Lockfile;
-use deno_runtime::deno_fs::RealFs;
 use deno_runtime::deno_node;
 use deno_runtime::deno_node::NodeResolution;
 use deno_runtime::deno_node::NodeResolutionMode;
-use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::jsr::JsrPackageReqReference;
@@ -835,7 +834,7 @@ pub struct UpdateDocumentConfigOptions<'a> {
   pub maybe_config_file: Option<&'a ConfigFile>,
   pub maybe_package_json: Option<&'a PackageJson>,
   pub maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
-  pub node_resolver: Option<Arc<NodeResolver>>,
+  pub node_resolver: Option<Arc<CliNodeResolver>>,
   pub npm_resolver: Option<Arc<dyn CliNpmResolver>>,
 }
 
@@ -897,10 +896,8 @@ impl Documents {
       resolver_config_hash: 0,
       imports: Default::default(),
       resolver: Arc::new(CliGraphResolver::new(CliGraphResolverOptions {
-        fs: Arc::new(RealFs),
         node_resolver: None,
         npm_resolver: None,
-        cjs_resolutions: None,
         package_json_deps_provider: Arc::new(PackageJsonDepsProvider::default()),
         maybe_jsx_import_source_config: None,
         maybe_import_map: None,
@@ -1273,7 +1270,7 @@ impl Documents {
         NpmPackageReqReference::from_str(&specifier)
       {
         results.push(node_resolve_npm_req_ref(
-          npm_req_ref,
+          &npm_req_ref,
           maybe_npm,
           referrer,
         ));
@@ -1344,11 +1341,12 @@ impl Documents {
           .inner()
           .iter()
           .map(|p| match p {
-            PathOrPattern::Path(p) => {
-              Cow::Owned(p.to_string_lossy().to_string())
+            PathOrPattern::Path(p) => p.to_string_lossy(),
+            PathOrPattern::NegatedPath(p) => {
+              Cow::Owned(format!("!{}", p.to_string_lossy()))
             }
             PathOrPattern::RemoteUrl(p) => Cow::Borrowed(p.as_str()),
-            PathOrPattern::Pattern(p) => Cow::Borrowed(p.as_str()),
+            PathOrPattern::Pattern(p) => p.as_str(),
           })
           .collect::<Vec<_>>();
         // ensure these are sorted so the hashing is deterministic
@@ -1408,12 +1406,9 @@ impl Documents {
     );
     let deps_provider =
       Arc::new(PackageJsonDepsProvider::new(maybe_package_json_deps));
-    let fs = Arc::new(RealFs);
     self.resolver = Arc::new(CliGraphResolver::new(CliGraphResolverOptions {
-      fs: fs.clone(),
       node_resolver: options.node_resolver,
       npm_resolver: options.npm_resolver,
-      cjs_resolutions: None, // only used for runtime
       package_json_deps_provider: deps_provider,
       maybe_jsx_import_source_config: maybe_jsx_config,
       maybe_import_map: options.maybe_import_map,
@@ -1693,7 +1688,7 @@ impl Documents {
     }
 
     if let Ok(npm_ref) = NpmPackageReqReference::from_specifier(specifier) {
-      return node_resolve_npm_req_ref(npm_ref, maybe_npm, referrer);
+      return node_resolve_npm_req_ref(&npm_ref, maybe_npm, referrer);
     }
     let doc = self.get(specifier)?;
     let maybe_module = doc.maybe_js_module().and_then(|r| r.as_ref().ok());
@@ -1724,29 +1719,21 @@ impl Documents {
 }
 
 fn node_resolve_npm_req_ref(
-  npm_req_ref: NpmPackageReqReference,
+  npm_req_ref: &NpmPackageReqReference,
   maybe_npm: Option<&StateNpmSnapshot>,
   referrer: &ModuleSpecifier,
 ) -> Option<(ModuleSpecifier, MediaType)> {
   maybe_npm.map(|npm| {
     NodeResolution::into_specifier_and_media_type(
       npm
-        .npm_resolver
-        .resolve_pkg_folder_from_deno_module_req(npm_req_ref.req(), referrer)
-        .ok()
-        .and_then(|package_folder| {
-          npm
-            .node_resolver
-            .resolve_package_subpath_from_deno_module(
-              &package_folder,
-              npm_req_ref.sub_path(),
-              referrer,
-              NodeResolutionMode::Types,
-              &PermissionsContainer::allow_all(),
-            )
-            .ok()
-            .flatten()
-        }),
+        .node_resolver
+        .resolve_req_reference(
+          npm_req_ref,
+          &PermissionsContainer::allow_all(),
+          referrer,
+          NodeResolutionMode::Types,
+        )
+        .ok(),
     )
   })
 }
@@ -2075,8 +2062,13 @@ impl Iterator for PreloadDocumentFinder {
               if let Ok(entry) = entry {
                 let path = entry.path();
                 if let Ok(file_type) = entry.file_type() {
-                  if file_patterns.matches_path(&path) {
-                    if file_type.is_dir() && is_discoverable_dir(&path) {
+                  let is_dir = file_type.is_dir();
+                  let path_kind = match is_dir {
+                    true => deno_config::glob::PathKind::Directory,
+                    false => deno_config::glob::PathKind::File,
+                  };
+                  if file_patterns.matches_path(&path, path_kind) {
+                    if is_dir && is_discoverable_dir(&path) {
                       self.pending_entries.push_back(PendingEntry::Dir(
                         path.to_path_buf(),
                         file_patterns.clone(),
@@ -2368,7 +2360,7 @@ console.log(b, "hello deno");
       file_patterns: FilePatterns {
         base: temp_dir.path().to_path_buf(),
         include: Some(
-          PathOrPatternSet::from_relative_path_or_patterns(
+          PathOrPatternSet::from_include_relative_path_or_patterns(
             temp_dir.path().as_path(),
             &[
               "root1".to_string(),
@@ -2429,7 +2421,7 @@ console.log(b, "hello deno");
       file_patterns: FilePatterns {
         base: temp_dir.path().to_path_buf(),
         include: Default::default(),
-        exclude: PathOrPatternSet::from_relative_path_or_patterns(
+        exclude: PathOrPatternSet::from_exclude_relative_path_or_patterns(
           temp_dir.path().as_path(),
           &[
             "root1".to_string(),

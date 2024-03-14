@@ -1,0 +1,5 @@
+{
+  "args": "test --quiet --reload main.js",
+  "output": "main.out",
+  "exitCode": 1
+}
