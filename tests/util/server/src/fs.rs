@@ -147,7 +147,7 @@ impl PathRef {
     )
     .with_context(|| format!("Failed to parse {}", self))
     .unwrap()
-    .expect("Found no value.")
+    .unwrap_or_else(|| panic!("JSON file was empty for {}", self))
   }
 
   pub fn rename(&self, to: impl AsRef<Path>) {
