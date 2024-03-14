@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::collections::HashMap;
 use std::collections::HashSet;
 
 use deno_core::anyhow::Context;
@@ -98,15 +99,13 @@ fn run_test(test: &Test) {
       context.deno_dir().path().remove_dir_all();
     }
 
-    let test_output_path = cwd.join(&step.output);
-    if !test_output_path.to_string_lossy().ends_with(".out") {
-      panic!(
-        "Use the .out extension for output files (invalid: {})",
-        test_output_path
-      );
-    }
-    let expected_output = test_output_path.read_to_string();
-    let command = context.new_command();
+    let expected_output = if step.output.ends_with(".out") {
+      let test_output_path = cwd.join(&step.output);
+      test_output_path.read_to_string()
+    } else {
+      step.output.clone()
+    };
+    let command = context.new_command().envs(&step.envs);
     let command = match &step.args {
       VecOrString::Vec(args) => command.args_vec(args),
       VecOrString::String(text) => command.args(text),
@@ -166,6 +165,8 @@ struct StepMetaData {
   #[serde(default)]
   pub clean_deno_dir: bool,
   pub args: VecOrString,
+  #[serde(default)]
+  pub envs: HashMap<String, String>,
   pub output: String,
   #[serde(default)]
   pub exit_code: i32,
