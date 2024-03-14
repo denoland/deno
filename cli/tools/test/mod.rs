@@ -880,6 +880,10 @@ async fn run_tests_for_worker_inner(
   Ok(())
 }
 
+/// The sanitizer must ignore ops, resources and timers that were started at the top-level, but
+/// completed and restarted, replacing itself with the same "thing". For example, if you run a
+/// `Deno.serve` server at the top level and make fetch requests to it during the test, those ops
+/// should not count as completed during the test because they are immediately replaced.
 fn is_empty(
   top_level: &TopLevelSanitizerStats,
   diff: &RuntimeActivityDiff,
