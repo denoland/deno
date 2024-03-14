@@ -83,6 +83,89 @@ export function getCiphers(): string[] {
   return supportedCiphers;
 }
 
+export function getCipherInfo(
+  nameOrNid: string | number,
+  options?: { keyLength?: number; ivLength?: number },
+) {
+  if (typeof nameOrNid !== "string" && typeof nameOrNid !== "number") {
+    throw new ERR_INVALID_ARG_TYPE(
+      "nameOrNid",
+      ["string", "number"],
+      nameOrNid,
+    );
+  }
+
+  if (typeof nameOrNid === "number") {
+    validateInt32(nameOrNid, "nameOrNid");
+  }
+
+  let keyLength, ivLength;
+
+  if (options !== undefined) {
+    validateObject(options, "options");
+
+    ({ keyLength, ivLength } = options);
+
+    if (keyLength !== undefined) {
+      validateInt32(keyLength, "options.keyLength");
+    }
+
+    if (ivLength !== undefined) {
+      validateInt32(ivLength, "options.ivLength");
+    }
+  }
+
+  // This API is heavily based on OpenSSL's EVP_get_cipherbyname(3) and
+  // EVP_get_cipherbynid(3) functions.
+  //
+  // TODO(@littledivy): write proper cipher info utility in Rust
+  // in future refactors
+  const cipher = supportedCiphers.find((c) => c === nameOrNid);
+  if (cipher === undefined) {
+    return undefined;
+  }
+
+  const match = cipher.match(/^(aes)-(\d+)-(\w+)$/);
+  if (match) {
+    const [, name, keyLength, mode] = match;
+    return {
+      name: `${name}-${keyLength}-${mode}`,
+      keyLength: parseInt(keyLength) / 8,
+      mode,
+      ivLength: 16,
+    };
+  }
+
+  if (cipher === "aes128") {
+    return {
+      name: "aes-128-cbc",
+      keyLength: 16,
+      mode: "cbc",
+      ivLength: 16,
+    };
+  }
+
+  if (cipher === "aes192") {
+    return {
+      name: "aes-192-cbc",
+      keyLength: 24,
+      mode: "cbc",
+      ivLength: 16,
+    };
+  }
+
+  if (cipher === "aes256") {
+    return {
+      name: "aes-256-cbc",
+      keyLength: 32,
+      mode: "cbc",
+      ivLength: 16,
+    };
+  }
+
+  return undefined;
+}
+
 let defaultEncoding = "buffer";
 
 export function setDefaultEncoding(val: string) {
@@ -150,6 +233,7 @@ export default {
   getDefaultEncoding,
   setDefaultEncoding,
   getCiphers,
+  getCipherInfo,
   getCurves,
   secureHeapUsed,
   setEngine,

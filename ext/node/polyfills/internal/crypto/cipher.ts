@@ -22,11 +22,6 @@ import {
   op_node_public_encrypt,
 } from "ext:core/ops";
 
-import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
-import {
-  validateInt32,
-  validateObject,
-} from "ext:deno_node/internal/validators.mjs";
 import { Buffer } from "node:buffer";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import type { TransformOptions } from "ext:deno_node/_stream.d.ts";
@@ -405,41 +400,6 @@ export class Decipheriv extends Transform implements Cipher {
   }
 }
 
-export function getCipherInfo(
-  nameOrNid: string | number,
-  options?: { keyLength?: number; ivLength?: number },
-) {
-  if (typeof nameOrNid !== "string" && typeof nameOrNid !== "number") {
-    throw new ERR_INVALID_ARG_TYPE(
-      "nameOrNid",
-      ["string", "number"],
-      nameOrNid,
-    );
-  }
-
-  if (typeof nameOrNid === "number") {
-    validateInt32(nameOrNid, "nameOrNid");
-  }
-
-  let keyLength, ivLength;
-
-  if (options !== undefined) {
-    validateObject(options, "options");
-
-    ({ keyLength, ivLength } = options);
-
-    if (keyLength !== undefined) {
-      validateInt32(keyLength, "options.keyLength");
-    }
-
-    if (ivLength !== undefined) {
-      validateInt32(ivLength, "options.ivLength");
-    }
-  }
-
-  notImplemented("crypto.getCipherInfo");
-}
-
 export function privateEncrypt(
   privateKey: ArrayBufferView | string | KeyObject,
   buffer: ArrayBufferView | string | KeyObject,
@@ -503,5 +463,4 @@ export default {
   Cipheriv,
   Decipheriv,
   prepareKey,
-  getCipherInfo,
 };
