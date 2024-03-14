@@ -903,7 +903,7 @@ fn is_empty(
   // if an op, resource or timer is replaced and has a corresponding top-level op.
   let mut map = HashMap::new();
   for item in &diff.appeared {
-    let item = get_sanitizer_item_ref(&item);
+    let item = get_sanitizer_item_ref(item);
     let Some(n1) = top_level.map.get(&item) else {
       return false;
     };
@@ -917,7 +917,7 @@ fn is_empty(
   // We know that we replaced no more things than were created at the top-level. So now we just want
   // to make sure that whatever thing was created has a corresponding disappearance record.
   for item in &diff.disappeared {
-    let item = get_sanitizer_item_ref(&item);
+    let item = get_sanitizer_item_ref(item);
     // If more things of this type disappeared than appeared, return false
     let Some(n1) = map.get_mut(&item) else {
       return false;
@@ -929,7 +929,7 @@ fn is_empty(
   }
 
   // If everything is accounted for, we are empty
-  return map.is_empty();
+  map.is_empty()
 }
 
 async fn wait_for_activity_to_stabilize(
