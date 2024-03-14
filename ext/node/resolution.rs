@@ -203,8 +203,14 @@ impl NodeResolver {
         let path = url.to_file_path().unwrap();
         // todo(16370): the module kind is not correct here. I think we need
         // typescript to tell us if the referrer is esm or cjs
-        match self.path_to_declaration_path(path, NodeModuleKind::Esm) {
-          Some(path) => to_file_specifier(&path),
+        let maybe_decl_url = self.path_to_declaration_url(
+          path,
+          referrer,
+          NodeModuleKind::Esm,
+          permissions,
+        )?;
+        match maybe_decl_url {
+          Some(url) => url,
           None => return Ok(None),
         }
       }
@@ -231,10 +237,12 @@ impl NodeResolver {
         let file_path = to_file_path(&resolved_specifier);
         // todo(dsherret): the node module kind is not correct and we
         // should use the value provided by typescript instead
-        let declaration_path =
-          self.path_to_declaration_path(file_path, NodeModuleKind::Esm);
-        declaration_path
-          .map(|declaration_path| to_file_specifier(&declaration_path))
+        self.path_to_declaration_url(
+          file_path,
+          referrer,
+          NodeModuleKind::Esm,
+          permissions,
+        )?
       } else {
         Some(resolved_specifier)
       }
@@ -363,8 +371,13 @@ impl NodeResolver {
       NodeResolutionMode::Types => {
         if resolved_url.scheme() == "file" {
           let path = resolved_url.to_file_path().unwrap();
-          match self.path_to_declaration_path(path, node_module_kind) {
-            Some(path) => to_file_specifier(&path),
+          match self.path_to_declaration_url(
+            path,
+            referrer,
+            node_module_kind,
+            permissions,
+          )? {
+            Some(url) => url,
             None => return Ok(None),
           }
         } else {
@@ -448,11 +461,13 @@ impl NodeResolver {
   }
 
   /// Checks if the resolved file has a corresponding declaration file.
-  fn path_to_declaration_path(
+  fn path_to_declaration_url(
     &self,
     path: PathBuf,
+    referrer: &ModuleSpecifier,
     referrer_kind: NodeModuleKind,
-  ) -> Option<PathBuf> {
+    permissions: &dyn NodePermissions,
+  ) -> Result<Option<ModuleSpecifier>, AnyError> {
     fn probe_extensions(
       fs: &dyn deno_fs::FileSystem,
       path: &Path,
@@ -502,14 +517,34 @@ impl NodeResolver {
       || lowercase_path.ends_with(".d.cts")
       || lowercase_path.ends_with(".d.mts")
     {
-      return Some(path);
+      return Ok(Some(to_file_specifier(&path)));
     }
     if let Some(path) =
       probe_extensions(&*self.fs, &path, &lowercase_path, referrer_kind)
     {
-      return Some(path);
+      return Ok(Some(to_file_specifier(&path)));
     }
     if self.fs.is_dir_sync(&path) {
+      let package_json_path = path.join("package.json");
+      if let Ok(pkg_json) =
+        self.load_package_json(permissions, package_json_path)
+      {
+        let maybe_resolution = self.resolve_package_subpath(
+          &pkg_json,
+          /* sub path */ ".",
+          referrer,
+          referrer_kind,
+          match referrer_kind {
+            NodeModuleKind::Esm => DEFAULT_CONDITIONS,
+            NodeModuleKind::Cjs => REQUIRE_CONDITIONS,
+          },
+          NodeResolutionMode::Types,
+          permissions,
+        )?;
+        if let Some(resolution) = maybe_resolution {
+          return Ok(Some(resolution));
+        }
+      }
       let index_path = path.join("index.js");
       if let Some(path) = probe_extensions(
         &*self.fs,
@@ -517,14 +552,14 @@ impl NodeResolver {
         &index_path.to_string_lossy().to_lowercase(),
         referrer_kind,
       ) {
-        return Some(path);
+        return Ok(Some(to_file_specifier(&path)));
       }
     }
     // allow resolving .css files for types resolution
     if lowercase_path.ends_with(".css") {
-      return Some(path);
+      return Ok(Some(to_file_specifier(&path)));
     }
-    None
+    Ok(None)
   }
 
   #[allow(clippy::too_many_arguments)]
@@ -771,30 +806,30 @@ impl NodeResolver {
     permissions: &dyn NodePermissions,
   ) -> Result<Option<ModuleSpecifier>, AnyError> {
     if let Some(target) = target.as_str() {
-      return self
-        .resolve_package_target_string(
-          target,
-          subpath,
-          package_subpath,
-          package_json_path,
+      let url = self.resolve_package_target_string(
+        target,
+        subpath,
+        package_subpath,
+        package_json_path,
+        referrer,
+        referrer_kind,
+        pattern,
+        internal,
+        conditions,
+        mode,
+        permissions,
+      )?;
+      if mode.is_types() && url.scheme() == "file" {
+        let path = url.to_file_path().unwrap();
+        return self.path_to_declaration_url(
+          path,
           referrer,
           referrer_kind,
-          pattern,
-          internal,
-          conditions,
-          mode,
           permissions,
-        )
-        .map(|url| {
-          if mode.is_types() && url.scheme() == "file" {
-            let path = url.to_file_path().unwrap();
-            self
-              .path_to_declaration_path(path, referrer_kind)
-              .map(|path| to_file_specifier(&path))
-          } else {
-            Some(url)
-          }
-        });
+        );
+      } else {
+        return Ok(Some(url));
+      }
     } else if let Some(target_arr) = target.as_array() {
       if target_arr.is_empty() {
         return Ok(None);
@@ -1090,29 +1125,36 @@ impl NodeResolver {
         Ok(found) => return Ok(Some(found)),
         Err(exports_err) => {
           if mode.is_types() && package_subpath == "." {
-            if let Ok(Some(path)) =
-              self.legacy_main_resolve(package_json, referrer_kind, mode)
-            {
-              return Ok(Some(to_file_specifier(&path)));
-            } else {
-              return Ok(None);
-            }
+            return self.legacy_main_resolve(
+              package_json,
+              referrer,
+              referrer_kind,
+              mode,
+              permissions,
+            );
           }
           return Err(exports_err);
         }
       }
     }
     if package_subpath == "." {
-      return self
-        .legacy_main_resolve(package_json, referrer_kind, mode)
-        .map(|maybe_resolved| maybe_resolved.map(|p| to_file_specifier(&p)));
+      return self.legacy_main_resolve(
+        package_json,
+        referrer,
+        referrer_kind,
+        mode,
+        permissions,
+      );
     }
 
     let file_path = package_json.path.parent().unwrap().join(package_subpath);
     if mode.is_types() {
-      let maybe_declaration_path =
-        self.path_to_declaration_path(file_path, referrer_kind);
-      Ok(maybe_declaration_path.map(|p| to_file_specifier(&p)))
+      self.path_to_declaration_url(
+        file_path,
+        referrer,
+        referrer_kind,
+        permissions,
+      )
     } else {
       Ok(Some(to_file_specifier(&file_path)))
     }
@@ -1183,9 +1225,11 @@ impl NodeResolver {
   pub(super) fn legacy_main_resolve(
     &self,
     package_json: &PackageJson,
+    referrer: &ModuleSpecifier,
     referrer_kind: NodeModuleKind,
     mode: NodeResolutionMode,
-  ) -> Result<Option<PathBuf>, AnyError> {
+    permissions: &dyn NodePermissions,
+  ) -> Result<Option<ModuleSpecifier>, AnyError> {
     let maybe_main = if mode.is_types() {
       match package_json.types.as_ref() {
         Some(types) => Some(types),
@@ -1194,9 +1238,13 @@ impl NodeResolver {
           // a corresponding declaration file
           if let Some(main) = package_json.main(referrer_kind) {
             let main = package_json.path.parent().unwrap().join(main).clean();
-            if let Some(path) =
-              self.path_to_declaration_path(main, referrer_kind)
-            {
+            let maybe_decl_url = self.path_to_declaration_url(
+              main,
+              referrer,
+              referrer_kind,
+              permissions,
+            )?;
+            if let Some(path) = maybe_decl_url {
               return Ok(Some(path));
             }
           }
@@ -1210,7 +1258,7 @@ impl NodeResolver {
     if let Some(main) = maybe_main {
       let guess = package_json.path.parent().unwrap().join(main).clean();
       if self.fs.is_file_sync(&guess) {
-        return Ok(Some(guess));
+        return Ok(Some(to_file_specifier(&guess)));
       }
 
       // todo(dsherret): investigate exactly how node and typescript handles this
@@ -1240,7 +1288,7 @@ impl NodeResolver {
           .clean();
         if self.fs.is_file_sync(&guess) {
           // TODO(bartlomieju): emitLegacyIndexDeprecation()
-          return Ok(Some(guess));
+          return Ok(Some(to_file_specifier(&guess)));
         }
       }
     }
@@ -1263,7 +1311,7 @@ impl NodeResolver {
         .clean();
       if self.fs.is_file_sync(&guess) {
         // TODO(bartlomieju): emitLegacyIndexDeprecation()
-        return Ok(Some(guess));
+        return Ok(Some(to_file_specifier(&guess)));
       }
     }
 
