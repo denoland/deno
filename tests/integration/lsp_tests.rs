@@ -120,7 +120,7 @@ fn lsp_tsconfig_types_config_sub_dir() {
 }"#,
   );
   let a_dts = "// deno-lint-ignore-file no-var\ndeclare var a: string;";
-  temp_dir.write("a.d.ts", a_dts);
+  sub_dir.join("a.d.ts").write(a_dts);
   temp_dir.write("deno.json", "{}");
 
   let mut client = context.new_lsp_command().build();
