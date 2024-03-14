@@ -1,5 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+import { op_hello } from "ext:core/ops";
 function hello() {
-  console.log("Hello from extension!");
+  op_hello("world");
 }
+
 globalThis.Extension = { hello };
