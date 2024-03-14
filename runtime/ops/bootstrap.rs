@@ -42,7 +42,7 @@ pub struct SnapshotOptions {
 impl Default for SnapshotOptions {
   fn default() -> Self {
     Self {
-      deno_version: "git".to_owned(),
+      deno_version: "dev".to_owned(),
       ts_version: "n/a".to_owned(),
       v8_version: deno_core::v8_version(),
       target: std::env::consts::ARCH.to_owned(),
