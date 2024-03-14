@@ -6,6 +6,56 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.41.3 / 2024.03.14
+
+- fix(cli): occasional panics on progress bar (#22809)
+- fix(cli): show asserts before leaks (#22904)
+- fix(cli): unbreak extension example and fix __runtime_js_sources (#22906)
+- fix(cli): use Instant for test times (#22853)
+- fix(config): add unstable features as examples to config schema (#22814)
+- fix(config): remove pkg name example and add pattern to schema (#22813)
+- fix(ext/node): add more named curves in `crypto.generateKeyPair[Sync]()`
+  (#22882)
+- fix(ext/node) implement receiveMessageOnPort for node:worker_threads (#22766)
+- fix(ext/node): DH (`dhKeyAgreement`) support for `createPrivateKey` (#22891)
+- fix(ext/node): Add Immediate class to mirror NodeJS.Immediate (#22808)
+- fix(ext/node): Implement `isBuiltin` in `node:module` (#22817)
+- fix(ext/node): Match punycode module behavior to node (#22847)
+- fix(ext/node): Support private EC key signing (#22914)
+- fix(ext/node): allow automatic worker_thread termination (#22647)
+- fix(ext/node): crypto.getCipherInfo() (#22916)
+- fix(ext/node): flush brotli decompression stream (#22856)
+- fix(ext/node): initial `crypto.createPublicKey()` support (#22509)
+- fix(ext/node): make worker ids sequential (#22884)
+- fix(ext/node): make worker setup synchronous (#22815)
+- fix(ext/node): support `spki` format in createPublicKey (#22918)
+- fix(ext/node): support junction symlinks on Windows (#22762)
+- fix(ext/node): worker_threads.parentPort is updated on startup (#20794)
+- fix(ext/websocket): do not continue reading if socket rid closes (#21849)
+- fix(node): add nul byte to statfs path on windows (#22905)
+- fix(node): implement fs.statfs() (#22862)
+- fix(node): require of pkg json imports was broken (#22821)
+- fix(node): resolve .css files in npm packages when type checking (#22804)
+- fix(node): resolve types via package.json for directory import (#22878)
+- fix(node:http) Export `validateHeaderName` and `validateHeaderValue` functions
+  (#22616)
+- fix(publish): ability to un-exclude when .gitignore ignores everything
+  (#22805)
+- fix(publish): regression - publishing with vendor folder (#22830)
+- fix(publish): suggest using `--allow-dirty` on uncommitted changes (#22810)
+- fix(publish): typo in `--allow-dirty` help text (#22799)
+- fix(runtime): Restore default signal handler after user handlers are
+  unregistered (#22757)
+- fix(runtime): negate partial condition for deny flags (#22866)
+- fix(slow-types): improved exports tracing and infer type literals in as exprs
+  (#22849)
+- fix: fix crate vulnerabilities (#22825)
+- fix: stop type checking during runtime (#22854)
+- fix: support sloppy resolution to file where directory exists (#22800)
+- fix: typo in error from GPUBuffer.prototype.mapAsync (#22913)
+- perf(permissions): Fast exit from checks when permission is in "fully-granted"
+  state (#22894)
+
 ### 1.41.2 / 2024.03.08
 
 - fix(ext/node): ref/unref on workers (#22778)
