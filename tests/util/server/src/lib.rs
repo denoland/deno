@@ -723,7 +723,7 @@ pub fn wildcard_match_detailed(
             );
             output_lines.push(colors::gray(annotate_whitespace(search_text)));
             output_lines
-              .push("==== HAD UNKNOWN PRECEEDING TEXT ====".to_string());
+              .push("==== HAD UNKNOWN PRECEDING TEXT ====".to_string());
             output_lines
               .push(colors::red(annotate_whitespace(&current_text[..index])));
             return WildcardMatchResult::Fail(output_lines.join("\n"));
