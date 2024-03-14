@@ -284,3 +284,32 @@ Deno.test("createPublicKey() EC", function () {
   assertEquals(key.asymmetricKeyType, "ec");
   assertEquals(key.asymmetricKeyDetails?.namedCurve, "p256");
 });
+
+Deno.test("createPublicKey SPKI for DH", async function () {
+  const { publicKey, privateKey } = await crypto.subtle.generateKey(
+    {
+      name: "ECDH",
+      namedCurve: "P-384",
+    },
+    true,
+    ["deriveKey", "deriveBits"],
+  );
+
+  const exportedPublicKey = await crypto.subtle.exportKey("spki", publicKey);
+  const exportedPrivateKey = await crypto.subtle.exportKey("pkcs8", privateKey);
+
+  const pubKey = createPublicKey({
+    key: Buffer.from(exportedPublicKey),
+    format: "der",
+    type: "spki",
+  });
+
+  const privKey = createPrivateKey({
+    key: Buffer.from(exportedPrivateKey),
+    format: "der",
+    type: "pkcs8",
+  });
+
+  assertEquals(pubKey.asymmetricKeyType, "ec");
+  assertEquals(privKey.asymmetricKeyType, "ec");
+});

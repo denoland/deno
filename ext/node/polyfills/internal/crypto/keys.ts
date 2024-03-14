@@ -66,7 +66,7 @@ export const getArrayBufferOrView = hideStackFrames(
     | Uint16Array
     | Uint32Array => {
     if (isAnyArrayBuffer(buffer)) {
-      return buffer;
+      return new Uint8Array(buffer);
     }
     if (typeof buffer === "string") {
       if (encoding === "buffer") {
