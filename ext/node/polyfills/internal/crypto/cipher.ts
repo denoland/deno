@@ -22,11 +22,6 @@ import {
   op_node_public_encrypt,
 } from "ext:core/ops";
 
-import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
-import {
-  validateInt32,
-  validateObject,
-} from "ext:deno_node/internal/validators.mjs";
 import { Buffer } from "node:buffer";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import type { TransformOptions } from "ext:deno_node/_stream.d.ts";
