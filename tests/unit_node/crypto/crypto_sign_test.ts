@@ -136,5 +136,5 @@ MDECAQEEIIThPSZ00CNW1UD5Ju9mhplv6SSs3T5objYjlx11gHW9oAoGCCqGSM49
 AwEH
 -----END EC PRIVATE KEY-----`;
     createSign("SHA256").update("test").sign(pem, "base64");
-  }
-})
+  },
+});
