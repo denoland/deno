@@ -1480,14 +1480,11 @@ fn parse_public_key(
       }
       Ok(doc)
     }
-    "der" => {
-      match type_ {
-        "pkcs1" => pkcs8::Document::from_pkcs1_der(key)
-          .map_err(|_| type_error("Invalid PKCS1 public key")),
-        // TODO(@iuioiua): spki type
-        _ => Err(type_error(format!("Unsupported key type: {}", type_))),
-      }
-    }
+    "der" => match type_ {
+      "pkcs1" => pkcs8::Document::from_pkcs1_der(key)
+        .map_err(|_| type_error("Invalid PKCS1 public key")),
+      _ => Err(type_error(format!("Unsupported key type: {}", type_))),
+    },
     _ => Err(type_error(format!("Unsupported key format: {}", format))),
   }
 }
@@ -1499,8 +1496,14 @@ pub fn op_node_create_public_key(
   #[string] format: &str,
   #[string] type_: &str,
 ) -> Result<AsymmetricKeyDetails, AnyError> {
-  let doc = parse_public_key(key, format, type_)?;
-  let pk_info = spki::SubjectPublicKeyInfoRef::try_from(doc.as_bytes())?;
+  let mut doc = None;
+
+  let pk_info = if type_ != "spki" {
+    doc.replace(parse_public_key(key, format, type_)?);
+    spki::SubjectPublicKeyInfoRef::try_from(doc.as_ref().unwrap().as_bytes())?
+  } else {
+    spki::SubjectPublicKeyInfoRef::try_from(key)?
+  };
 
   let alg = pk_info.algorithm.oid;
 
