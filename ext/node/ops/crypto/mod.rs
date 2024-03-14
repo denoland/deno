@@ -373,20 +373,36 @@ pub fn op_node_sign(
 
   let oid;
   let pkey = match format {
-    "pem" => {
-      if label == "PRIVATE KEY" {
+    "pem" => match label {
+      "PRIVATE KEY" => {
         let pk_info = pkcs8::PrivateKeyInfo::try_from(doc.as_bytes())?;
         oid = pk_info.algorithm.oid;
         pk_info.private_key
-      } else if label == "RSA PRIVATE KEY" {
+      }
+      "RSA PRIVATE KEY" => {
         oid = RSA_ENCRYPTION_OID;
         doc.as_bytes()
-      } else {
-        return Err(type_error("Invalid PEM label"));
       }
-    }
+      "EC PRIVATE KEY" => {
+        let ec_pk = sec1::EcPrivateKey::from_der(doc.as_bytes())?;
+        match ec_pk.parameters {
+          Some(sec1::EcParameters::NamedCurve(o)) => {
+            oid = o;
+            ec_pk.private_key
+          }
+          // https://datatracker.ietf.org/doc/html/rfc5915#section-3
+          //
+          // Though the ASN.1 indicates that
+          // the parameters field is OPTIONAL, implementations that conform to
+          // this document MUST always include the parameters field.
+          _ => return Err(type_error("invalid ECPrivateKey params")),
+        }
+      }
+      _ => return Err(type_error("Invalid PEM label")),
+    },
     _ => return Err(type_error("Unsupported key format")),
   };
+
   match oid {
     RSA_ENCRYPTION_OID => {
       use rsa::pkcs1v15::SigningKey;
@@ -417,6 +433,25 @@ pub fn op_node_sign(
           }
         }
         .into(),
+      )
+    }
+    // signature structure encoding is DER by default for DSA and ECDSA.
+    //
+    // TODO(@littledivy): Validate public_key if present
+    ID_SECP256R1_OID => {
+      let key = p256::ecdsa::SigningKey::from_slice(pkey)?;
+      Ok(
+        key
+          .sign_prehash(digest)
+          .map(|sig: p256::ecdsa::Signature| sig.to_der().to_vec().into())?,
+      )
+    }
+    ID_SECP384R1_OID => {
+      let key = p384::ecdsa::SigningKey::from_slice(pkey)?;
+      Ok(
+        key
+          .sign_prehash(digest)
+          .map(|sig: p384::ecdsa::Signature| sig.to_der().to_vec().into())?,
       )
     }
     _ => Err(type_error("Unsupported signing key")),
@@ -704,30 +739,32 @@ pub async fn op_node_dsa_generate_async(
 fn ec_generate(
   named_curve: &str,
 ) -> Result<(ToJsBuffer, ToJsBuffer), AnyError> {
-  use ring::signature::EcdsaKeyPair;
-  use ring::signature::KeyPair;
+  use elliptic_curve::sec1::ToEncodedPoint;
 
-  let curve = match named_curve {
+  let mut rng = rand::thread_rng();
+  // TODO(@littledivy): Support public key point encoding.
+  // Default is uncompressed.
+  match named_curve {
     "P-256" | "prime256v1" | "secp256r1" => {
-      &ring::signature::ECDSA_P256_SHA256_FIXED_SIGNING
+      let key = p256::SecretKey::random(&mut rng);
+      let public_key = key.public_key();
+
+      Ok((
+        key.to_bytes().to_vec().into(),
+        public_key.to_encoded_point(false).as_ref().to_vec().into(),
+      ))
     }
     "P-384" | "prime384v1" | "secp384r1" => {
-      &ring::signature::ECDSA_P384_SHA384_FIXED_SIGNING
+      let key = p384::SecretKey::random(&mut rng);
+      let public_key = key.public_key();
+
+      Ok((
+        key.to_bytes().to_vec().into(),
+        public_key.to_encoded_point(false).as_ref().to_vec().into(),
+      ))
     }
-    _ => return Err(type_error("Unsupported named curve")),
-  };
-
-  let rng = ring::rand::SystemRandom::new();
-
-  let pkcs8 = EcdsaKeyPair::generate_pkcs8(curve, &rng)
-    .map_err(|_| type_error("Failed to generate EC key"))?;
-
-  let public_key = EcdsaKeyPair::from_pkcs8(curve, pkcs8.as_ref(), &rng)
-    .map_err(|_| type_error("Failed to generate EC key"))?
-    .public_key()
-    .as_ref()
-    .to_vec();
-  Ok((pkcs8.as_ref().to_vec().into(), public_key.into()))
+    _ => Err(type_error("Unsupported named curve")),
+  }
 }
 
 #[op2]
@@ -1363,11 +1400,8 @@ fn parse_private_key(
 ) -> Result<pkcs8::SecretDocument, AnyError> {
   match format {
     "pem" => {
-      let (label, doc) =
+      let (_, doc) =
         pkcs8::SecretDocument::from_pem(std::str::from_utf8(key).unwrap())?;
-      if label != "PRIVATE KEY" {
-        return Err(type_error("Invalid PEM label"));
-      }
       Ok(doc)
     }
     "der" => {
