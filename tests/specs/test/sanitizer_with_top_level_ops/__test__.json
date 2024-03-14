@@ -1,4 +1,4 @@
 {
-  "args": "test --quiet main.js",
-  "output": "main.out",
+  "args": "test --quiet --allow-net main.js",
+  "output": "main.out"
 }

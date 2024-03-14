@@ -15,15 +15,23 @@ const server = Deno.serve({
 const port = await promise;
 
 // A TCP listener loop
-const listener = Deno.listen({ port: 8080 });
-const conn1 = await Deno.connect({ port: 8080 });
+const listener = Deno.listen({ port: 0 });
+const conn1 = await Deno.connect({ port: listener.addr.port });
 const conn2 = await listener.accept();
+
+// We need to ensure that these ops are balanced at the top-level to avoid triggering
+// the sanitizer.
+(async () => {
+  // This will write without blocking for a bit but eventually will start writing async
+  // once the tokio coop kicks in or the buffers fill up.
+  while (true) {
+    await conn1.write(new Uint8Array(1024));
+  }
+})();
 
 (async () => {
   while (true) {
-    await conn1.write(new TextEncoder().encode("Hello World"));
-    await conn2.read(new Uint8Array(11));
-    await new Promise((r) => setTimeout(r, 1));
+    await conn2.read(new Uint8Array(10 * 1024));
   }
 })();
 
