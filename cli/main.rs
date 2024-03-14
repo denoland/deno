@@ -347,7 +347,7 @@ pub fn main() {
         if err.kind() == clap::error::ErrorKind::DisplayHelp
           || err.kind() == clap::error::ErrorKind::DisplayVersion =>
       {
-        err.print().unwrap();
+        err.print().unwrap_or_else(|_| std::process::exit(1));
         std::process::exit(0);
       }
       Err(err) => unwrap_or_exit(Err(AnyError::from(err))),
