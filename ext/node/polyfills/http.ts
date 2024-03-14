@@ -4,14 +4,11 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { core } from "ext:core/mod.js";
-const {
+import {
   op_fetch_response_upgrade,
-  op_node_http_request,
-} = core.ensureFastOps();
-// TODO(bartlomieju): this ops is also used in `ext/fetch/26_fetch.js`.
-const {
   op_fetch_send,
-} = core.ensureFastOps(true);
+  op_node_http_request,
+} from "ext:core/ops";
 
 import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
 import { setTimeout } from "ext:deno_web/02_timers.js";
@@ -41,6 +38,7 @@ import {
   OutgoingMessage,
   parseUniqueHeadersOption,
   validateHeaderName,
+  validateHeaderValue,
 } from "ext:deno_node/_http_outgoing.ts";
 import { ok as assert } from "node:assert";
 import { kOutHeaders } from "ext:deno_node/internal/http.ts";
@@ -54,6 +52,7 @@ import { notImplemented, warnNotImplemented } from "ext:deno_node/_utils.ts";
 import {
   connResetException,
   ERR_HTTP_HEADERS_SENT,
+  ERR_HTTP_SOCKET_ASSIGNED,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_HTTP_TOKEN,
   ERR_INVALID_PROTOCOL,
@@ -67,6 +66,8 @@ import { timerId } from "ext:deno_web/03_abort_signal.js";
 import { clearTimeout as webClearTimeout } from "ext:deno_web/02_timers.js";
 import { resourceForReadableStream } from "ext:deno_web/06_streams.js";
 import { TcpConn } from "ext:deno_net/01_net.js";
+
+const { internalRidSymbol } = core;
 
 enum STATUS_CODES {
   /** RFC 7231, 6.2.1 */
@@ -619,7 +620,7 @@ class ClientRequest extends OutgoingMessage {
       this.method,
       url,
       headers,
-      client.rid,
+      client[internalRidSymbol],
       this._bodyWriteRid,
     );
   }
@@ -805,7 +806,7 @@ class ClientRequest extends OutgoingMessage {
     }
     this.destroyed = true;
 
-    const rid = this._client?.rid;
+    const rid = this._client?.[internalRidSymbol];
     if (rid) {
       core.tryClose(rid);
     }
@@ -1341,6 +1342,8 @@ export class ServerResponse extends NodeWritable {
   headersSent = false;
   #firstChunk: Chunk | null = null;
   #resolve: (value: Response | PromiseLike<Response>) => void;
+  // deno-lint-ignore no-explicit-any
+  #socketOverride: any | null = null;
 
   static #enqueue(controller: ReadableStreamDefaultController, chunk: Chunk) {
     if (typeof chunk === "string") {
@@ -1370,7 +1373,11 @@ export class ServerResponse extends NodeWritable {
       autoDestroy: true,
       defaultEncoding: "utf-8",
       emitClose: true,
-      write: (chunk, _encoding, cb) => {
+      write: (chunk, encoding, cb) => {
+        if (this.#socketOverride && this.#socketOverride.writable) {
+          this.#socketOverride.write(chunk, encoding);
+          return cb();
+        }
         if (!this.headersSent) {
           if (this.#firstChunk === null) {
             this.#firstChunk = chunk;
@@ -1418,6 +1425,9 @@ export class ServerResponse extends NodeWritable {
   }
   getHeaderNames() {
     return Array.from(this.#headers.keys());
+  }
+  getHeaders() {
+    return Object.fromEntries(this.#headers.entries());
   }
   hasHeader(name: string) {
     return this.#headers.has(name);
@@ -1484,6 +1494,20 @@ export class ServerResponse extends NodeWritable {
   _implicitHeader() {
     this.writeHead(this.statusCode);
   }
+
+  assignSocket(socket) {
+    if (socket._httpMessage) {
+      throw new ERR_HTTP_SOCKET_ASSIGNED();
+    }
+    socket._httpMessage = this;
+    this.#socketOverride = socket;
+  }
+
+  detachSocket(socket) {
+    assert(socket._httpMessage === this);
+    socket._httpMessage = null;
+    this.#socketOverride = null;
+  }
 }
 
 // TODO(@AaronO): optimize
@@ -1535,6 +1559,10 @@ export class IncomingMessageForServer extends NodeReadable {
     return "1.1";
   }
 
+  set httpVersion(val) {
+    assert(val === "1.1");
+  }
+
   get headers() {
     if (!this.#headers) {
       this.#headers = {};
@@ -1545,6 +1573,10 @@ export class IncomingMessageForServer extends NodeReadable {
       }
     }
     return this.#headers;
+  }
+
+  set headers(val) {
+    this.#headers = val;
   }
 
   get upgrade(): boolean {
@@ -1575,7 +1607,7 @@ export class ServerImpl extends EventEmitter {
 
   #addr: Deno.NetAddr;
   #hasClosed = false;
-  #server: Deno.Server;
+  #server: Deno.HttpServer;
   #unref = false;
   #ac?: AbortController;
   #serveDeferred: ReturnType<typeof Promise.withResolvers<void>>;
@@ -1793,6 +1825,8 @@ export {
   METHODS,
   OutgoingMessage,
   STATUS_CODES,
+  validateHeaderName,
+  validateHeaderValue,
 };
 export default {
   Agent,
@@ -1809,4 +1843,6 @@ export default {
   ServerResponse,
   request,
   get,
+  validateHeaderName,
+  validateHeaderValue,
 };

@@ -1,11 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import { core, primordials } from "ext:core/mod.js";
-const {
-  op_signal_bind,
-  op_signal_poll,
-  op_signal_unbind,
-} = core.ensureFastOps();
+import { op_signal_bind, op_signal_poll, op_signal_unbind } from "ext:core/ops";
 const {
   SafeSet,
   SafeSetIterator,

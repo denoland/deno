@@ -1,4 +1,4 @@
-#!/usr/bin/env -S deno run --unstable --allow-read=. --allow-run=git
+#!/usr/bin/env -S deno run --allow-read=. --allow-run=git
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import { getSources, ROOT_PATH } from "./util.js";
@@ -24,15 +24,16 @@ export async function checkCopyright() {
     "*.js",
     "*.ts",
     ":!:.github/mtime_cache/action.js",
-    ":!:cli/tests/testdata/**",
+    ":!:tests/specs/**",
+    ":!:tests/testdata/**",
     ":!:cli/bench/testdata/**",
     ":!:cli/tsc/dts/**",
     ":!:cli/tsc/*typescript.js",
     ":!:cli/tsc/compiler.d.ts",
-    ":!:test_util/wpt/**",
+    ":!:tests/wpt/suite/**",
     ":!:cli/tools/init/templates/**",
-    ":!:cli/tests/unit_node/testdata/**",
-    ":!:cli/tests/node_compat/test/**",
+    ":!:tests/unit_node/testdata/**",
+    ":!:tests/node_compat/test/**",
     ":!:cli/tools/bench/mitata.rs",
 
     // rust

@@ -17,6 +17,7 @@ deno_core::extension!(
     op_bootstrap_log_level,
     op_bootstrap_no_color,
     op_bootstrap_is_tty,
+    op_bootstrap_unstable_args,
     op_snapshot_options,
   ],
   options = {
@@ -29,13 +30,24 @@ deno_core::extension!(
   },
 );
 
-#[derive(Serialize, Default)]
+#[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SnapshotOptions {
   pub deno_version: String,
   pub ts_version: String,
   pub v8_version: &'static str,
   pub target: String,
+}
+
+impl Default for SnapshotOptions {
+  fn default() -> Self {
+    Self {
+      deno_version: "dev".to_owned(),
+      ts_version: "n/a".to_owned(),
+      v8_version: deno_core::v8_version(),
+      target: std::env::consts::ARCH.to_owned(),
+    }
+  }
 }
 
 // Note: Called at snapshot time, op perf is not a concern.
@@ -67,6 +79,23 @@ pub fn op_bootstrap_numcpus(state: &mut OpState) -> u32 {
 #[string]
 pub fn op_bootstrap_user_agent(state: &mut OpState) -> String {
   state.borrow::<BootstrapOptions>().user_agent.clone()
+}
+
+#[op2]
+#[serde]
+pub fn op_bootstrap_unstable_args(state: &mut OpState) -> Vec<String> {
+  let options = state.borrow::<BootstrapOptions>();
+  if options.unstable {
+    return vec!["--unstable".to_string()];
+  }
+
+  let mut flags = Vec::new();
+  for (name, _, id) in crate::UNSTABLE_GRANULAR_FLAGS.iter() {
+    if options.unstable_features.contains(id) {
+      flags.push(format!("--unstable-{}", name));
+    }
+  }
+  flags
 }
 
 #[op2]

@@ -1,7 +1,8 @@
-#!/usr/bin/env -S deno run --unstable --allow-write --allow-read --allow-run --allow-net
+#!/usr/bin/env -S deno run --allow-write --allow-read --allow-run --allow-net
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import { buildMode, getPrebuilt, getSources, join, ROOT_PATH } from "./util.js";
 import { checkCopyright } from "./copyright_checker.js";
+import * as ciFile from "../.github/workflows/ci.generate.ts";
 
 const promises = [];
 
@@ -12,17 +13,18 @@ if (!js && !rs) {
   rs = true;
 }
 
-if (js) {
-  promises.push(dlint());
-  promises.push(dlintPreferPrimordials());
-}
-
 if (rs) {
   promises.push(clippy());
 }
 
-if (js && rs) {
-  promises.push(checkCopyright());
+if (js) {
+  promises.push(dlint());
+  promises.push(dlintPreferPrimordials());
+  promises.push(ensureCiYmlUpToDate());
+
+  if (rs) {
+    promises.push(checkCopyright());
+  }
 }
 
 const results = await Promise.allSettled(promises);
@@ -41,25 +43,27 @@ async function dlint() {
     "*.js",
     "*.ts",
     ":!:.github/mtime_cache/action.js",
-    ":!:cli/tests/testdata/swc_syntax_error.ts",
-    ":!:cli/tests/testdata/error_008_checkjs.js",
+    ":!:tests/testdata/swc_syntax_error.ts",
+    ":!:tests/testdata/error_008_checkjs.js",
     ":!:cli/bench/testdata/npm/*",
     ":!:cli/bench/testdata/express-router.js",
     ":!:cli/bench/testdata/react-dom.js",
     ":!:cli/compilers/wasm_wrap.js",
     ":!:cli/tsc/dts/**",
-    ":!:cli/tests/testdata/encoding/**",
-    ":!:cli/tests/testdata/error_syntax.js",
-    ":!:cli/tests/testdata/file_extensions/ts_with_js_extension.js",
-    ":!:cli/tests/testdata/fmt/**",
-    ":!:cli/tests/testdata/npm/**",
-    ":!:cli/tests/testdata/lint/**",
-    ":!:cli/tests/testdata/run/**",
-    ":!:cli/tests/testdata/tsc/**",
-    ":!:cli/tests/testdata/test/glob/**",
+    ":!:target/**",
+    ":!:tests/specs/**",
+    ":!:tests/testdata/encoding/**",
+    ":!:tests/testdata/error_syntax.js",
+    ":!:tests/testdata/file_extensions/ts_with_js_extension.js",
+    ":!:tests/testdata/fmt/**",
+    ":!:tests/testdata/npm/**",
+    ":!:tests/testdata/lint/**",
+    ":!:tests/testdata/run/**",
+    ":!:tests/testdata/tsc/**",
+    ":!:tests/testdata/test/glob/**",
     ":!:cli/tsc/*typescript.js",
     ":!:cli/tsc/compiler.d.ts",
-    ":!:test_util/wpt/**",
+    ":!:tests/wpt/suite/**",
   ]);
 
   if (!sourceFiles.length) {
@@ -154,6 +158,8 @@ async function clippy() {
       "--",
       "-D",
       "warnings",
+      "--deny",
+      "clippy::unused_async",
     ],
     stdout: "inherit",
     stderr: "inherit",
@@ -162,5 +168,15 @@ async function clippy() {
 
   if (code > 0) {
     throw new Error("clippy failed");
+  }
+}
+
+async function ensureCiYmlUpToDate() {
+  const expectedCiFileText = ciFile.generate();
+  const actualCiFileText = await Deno.readTextFile(ciFile.CI_YML_URL);
+  if (expectedCiFileText !== actualCiFileText) {
+    throw new Error(
+      "./.github/workflows/ci.yml is out of date. Run: ./.github/workflows/ci.generate.ts",
+    );
   }
 }

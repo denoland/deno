@@ -50,11 +50,11 @@ Update the generated symbol lists using the script:
 deno run --allow-write tools/napi/generate_symbols_lists.js
 ```
 
-Add a test in [`/test_napi`](../../test_napi/). You can also refer to Node.js
+Add a test in [`/tests/napi`](../../tests/napi/). You can also refer to Node.js
 test suite for Node-API.
 
 ```js
-// test_napi/boolean_test.js
+// tests/napi/boolean_test.js
 import { assertEquals, loadTestLibrary } from "./common.js";
 const lib = loadTestLibrary();
 Deno.test("napi get boolean", function () {
@@ -64,7 +64,7 @@ Deno.test("napi get boolean", function () {
 ```
 
 ```rust
-// test_napi/src/boolean.rs
+// tests/napi/src/boolean.rs
 
 use napi_sys::Status::napi_ok;
 use napi_sys::ValueType::napi_boolean;
@@ -96,7 +96,7 @@ pub fn init(env: napi_env, exports: napi_value) {
 ```
 
 ```diff
-// test_napi/src/lib.rs
+// tests/napi/src/lib.rs
 
 + mod boolean;
 
@@ -114,4 +114,4 @@ unsafe extern "C" fn napi_register_module_v1(
 }
 ```
 
-Run the test using `cargo test -p test_napi`.
+Run the test using `cargo test -p tests/napi`.

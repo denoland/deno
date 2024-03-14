@@ -11,17 +11,18 @@ use crate::factory::CliFactory;
 use crate::graph_util::graph_lock_or_exit;
 use crate::tsc::get_types_declaration_file_text;
 use crate::util::fs::collect_specifiers;
+use deno_ast::diagnostics::Diagnostic;
 use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPatternSet;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::futures::FutureExt;
 use deno_doc as doc;
 use deno_graph::GraphKind;
 use deno_graph::ModuleAnalyzer;
 use deno_graph::ModuleParser;
 use deno_graph::ModuleSpecifier;
+use doc::html::ShortPath;
 use doc::DocDiagnostic;
 use indexmap::IndexMap;
 use std::collections::BTreeMap;
@@ -71,7 +72,7 @@ async fn generate_doc_nodes_for_builtin_types(
 }
 
 pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
-  let factory = CliFactory::from_flags(flags).await?;
+  let factory = CliFactory::from_flags(flags)?;
   let cli_options = factory.cli_options();
   let module_info_cache = factory.module_info_cache()?;
   let parsed_source_cache = factory.parsed_source_cache();
@@ -88,21 +89,23 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
       .await?
     }
     DocSourceFileFlag::Paths(ref source_files) => {
-      let module_graph_builder = factory.module_graph_builder().await?;
+      let module_graph_creator = factory.module_graph_creator().await?;
       let maybe_lockfile = factory.maybe_lockfile();
 
       let module_specifiers = collect_specifiers(
         FilePatterns {
           base: cli_options.initial_cwd().to_path_buf(),
-          include: Some(PathOrPatternSet::from_relative_path_or_patterns(
-            cli_options.initial_cwd(),
-            source_files,
-          )?),
+          include: Some(
+            PathOrPatternSet::from_include_relative_path_or_patterns(
+              cli_options.initial_cwd(),
+              source_files,
+            )?,
+          ),
           exclude: Default::default(),
         },
-        |_, _| true,
+        |_| true,
       )?;
-      let graph = module_graph_builder
+      let graph = module_graph_creator
         .create_graph(GraphKind::TypesOnly, module_specifiers.clone())
         .await?;
 
@@ -146,17 +149,12 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
       .await?;
       let (_, deno_ns) = deno_ns.first().unwrap();
 
-      let deno_ns_symbols =
-        deno_doc::html::compute_namespaced_symbols(deno_ns, &[]);
-
-      Some(deno_ns_symbols)
+      deno_doc::html::compute_namespaced_symbols(deno_ns, &[])
     } else {
-      None
+      Default::default()
     };
 
     generate_docs_directory(&doc_nodes_by_url, html_options, deno_ns)
-      .boxed_local()
-      .await
   } else {
     let modules_len = doc_nodes_by_url.len();
     let doc_nodes =
@@ -178,15 +176,21 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
   }
 }
 
-struct DocResolver {}
+struct DocResolver {
+  deno_ns: std::collections::HashSet<Vec<String>>,
+}
 
 impl deno_doc::html::HrefResolver for DocResolver {
-  fn resolve_global_symbol(&self, symbol: &[String], _context: &str) -> String {
-    format!(
-      "https://deno.land/api@{}?s={}",
-      env!("CARGO_PKG_VERSION"),
-      symbol.join(".")
-    )
+  fn resolve_global_symbol(&self, symbol: &[String]) -> Option<String> {
+    if self.deno_ns.contains(symbol) {
+      Some(format!(
+        "https://deno.land/api@{}?s={}",
+        env!("CARGO_PKG_VERSION"),
+        symbol.join(".")
+      ))
+    } else {
+      None
+    }
   }
 
   fn resolve_import_href(
@@ -207,20 +211,20 @@ impl deno_doc::html::HrefResolver for DocResolver {
   fn resolve_usage(
     &self,
     _current_specifier: &ModuleSpecifier,
-    current_file: &str,
-  ) -> String {
-    current_file.to_string()
+    current_file: Option<&ShortPath>,
+  ) -> Option<String> {
+    current_file.map(|f| f.as_str().to_string())
   }
 
-  fn resolve_source(&self, location: &deno_doc::Location) -> String {
-    location.filename.clone()
+  fn resolve_source(&self, location: &deno_doc::Location) -> Option<String> {
+    Some(location.filename.clone())
   }
 }
 
-async fn generate_docs_directory(
+fn generate_docs_directory(
   doc_nodes_by_url: &IndexMap<ModuleSpecifier, Vec<doc::DocNode>>,
   html_options: &DocHtmlFlag,
-  deno_ns: Option<std::collections::HashSet<Vec<String>>>,
+  deno_ns: std::collections::HashSet<Vec<String>>,
 ) -> Result<(), AnyError> {
   let cwd = std::env::current_dir().context("Failed to get CWD")?;
   let output_dir_resolved = cwd.join(&html_options.output);
@@ -228,20 +232,11 @@ async fn generate_docs_directory(
   let options = deno_doc::html::GenerateOptions {
     package_name: Some(html_options.name.to_owned()),
     main_entrypoint: None,
-    global_symbols: deno_doc::html::NamespacedGlobalSymbols::new(
-      deno_ns
-        .map(|deno_ns| {
-          deno_ns
-            .into_iter()
-            .map(|symbol| (symbol, "deno".to_string()))
-            .collect()
-        })
-        .unwrap_or_default(),
-    ),
     rewrite_map: None,
     hide_module_doc_title: false,
-    href_resolver: Rc::new(DocResolver {}),
+    href_resolver: Rc::new(DocResolver { deno_ns }),
     sidebar_flatten_namespaces: false,
+    usage_composer: None,
   };
 
   let files = deno_doc::html::generate(options, doc_nodes_by_url)
@@ -316,18 +311,12 @@ fn check_diagnostics(diagnostics: &[DocDiagnostic]) -> Result<(), AnyError> {
       .push(diagnostic);
   }
 
-  for (filename, diagnostics_by_lc) in diagnostic_groups {
-    for (line, diagnostics_by_col) in diagnostics_by_lc {
-      for (col, diagnostics) in diagnostics_by_col {
+  for (_, diagnostics_by_lc) in diagnostic_groups {
+    for (_, diagnostics_by_col) in diagnostics_by_lc {
+      for (_, diagnostics) in diagnostics_by_col {
         for diagnostic in diagnostics {
-          log::warn!("{}", diagnostic.message());
+          log::error!("{}", diagnostic.display());
         }
-        log::warn!(
-          "    at {}:{}:{}\n",
-          colors::cyan(filename.as_str()),
-          colors::yellow(&line.to_string()),
-          colors::yellow(&(col + 1).to_string())
-        )
       }
     }
   }

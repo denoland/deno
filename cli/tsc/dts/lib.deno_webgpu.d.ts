@@ -78,6 +78,7 @@ declare class GPU {
   requestAdapter(
     options?: GPURequestAdapterOptions,
   ): Promise<GPUAdapter | null>;
+  getPreferredCanvasFormat(): GPUTextureFormat;
 }
 
 /** @category WebGPU */
@@ -1325,6 +1326,8 @@ declare interface GPUCanvasConfiguration {
   viewFormats?: GPUTextureFormat[];
   colorSpace?: "srgb" | "display-p3";
   alphaMode?: GPUCanvasAlphaMode;
+  width: number;
+  height: number;
 }
 /** @category WebGPU */
 declare interface GPUCanvasContext {

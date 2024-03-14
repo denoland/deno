@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use clap::builder::styling::AnsiColor;
 use clap::builder::FalseyValueParser;
 use clap::value_parser;
 use clap::Arg;
@@ -32,6 +33,11 @@ use super::flags_net;
 pub struct FileFlags {
   pub ignore: Vec<String>,
   pub include: Vec<String>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct AddFlags {
+  pub packages: Vec<String>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -208,7 +214,7 @@ impl LintFlags {
   }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub struct ReplFlags {
   pub eval_files: Option<Vec<String>>,
   pub eval: Option<String>,
@@ -274,7 +280,7 @@ pub struct TestFlags {
   pub filter: Option<String>,
   pub shuffle: Option<u64>,
   pub concurrent_jobs: Option<NonZeroUsize>,
-  pub trace_ops: bool,
+  pub trace_leaks: bool,
   pub watch: Option<WatchFlags>,
   pub reporter: TestReporterConfig,
   pub junit_path: Option<String>,
@@ -300,10 +306,14 @@ pub struct VendorFlags {
 pub struct PublishFlags {
   pub token: Option<String>,
   pub dry_run: bool,
+  pub allow_slow_types: bool,
+  pub allow_dirty: bool,
+  pub no_provenance: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DenoSubcommand {
+  Add(AddFlags),
   Bench(BenchFlags),
   Bundle(BundleFlags),
   Cache(CacheFlags),
@@ -742,7 +752,7 @@ impl Flags {
             .to_owned();
           Some(p)
         } else if module_specifier.scheme() == "npm" {
-          Some(std::env::current_dir().unwrap())
+          Some(current_dir.to_path_buf())
         } else {
           None
         }
@@ -754,12 +764,12 @@ impl Flags {
           .ok()
       }
       Task(_) | Check(_) | Coverage(_) | Cache(_) | Info(_) | Eval(_)
-      | Test(_) | Bench(_) | Repl(_) | Compile(_) => {
+      | Test(_) | Bench(_) | Repl(_) | Compile(_) | Publish(_) => {
         std::env::current_dir().ok()
       }
-      Bundle(_) | Completions(_) | Doc(_) | Fmt(_) | Init(_) | Install(_)
-      | Uninstall(_) | Jupyter(_) | Lsp | Lint(_) | Types | Upgrade(_)
-      | Vendor(_) | Publish(_) => None,
+      Add(_) | Bundle(_) | Completions(_) | Doc(_) | Fmt(_) | Init(_)
+      | Install(_) | Uninstall(_) | Jupyter(_) | Lsp | Lint(_) | Types
+      | Upgrade(_) | Vendor(_) => None,
     }
   }
 
@@ -804,63 +814,97 @@ impl Flags {
         || arg.starts_with("--deny-write")
     })
   }
+
+  #[inline(always)]
+  fn allow_all(&mut self) {
+    self.allow_all = true;
+    self.allow_read = Some(vec![]);
+    self.allow_env = Some(vec![]);
+    self.allow_net = Some(vec![]);
+    self.allow_run = Some(vec![]);
+    self.allow_write = Some(vec![]);
+    self.allow_sys = Some(vec![]);
+    self.allow_ffi = Some(vec![]);
+    self.allow_hrtime = true;
+  }
 }
 
-static ENV_VARIABLES_HELP: &str = r#"ENVIRONMENT VARIABLES:
-    DENO_AUTH_TOKENS     A semi-colon separated list of bearer tokens and
+static ENV_VARIABLES_HELP: &str = color_print::cstr!(
+  r#"<y>Environment variables:</>
+    <g>DENO_AUTH_TOKENS</>     A semi-colon separated list of bearer tokens and
                          hostnames to use when fetching remote modules from
                          private repositories
                          (e.g. "abcde12345@deno.land;54321edcba@github.com")
-    DENO_TLS_CA_STORE    Comma-separated list of order dependent certificate
+
+    <g>DENO_TLS_CA_STORE</>    Comma-separated list of order dependent certificate
                          stores. Possible values: "system", "mozilla".
                          Defaults to "mozilla".
-    DENO_CERT            Load certificate authority from PEM encoded file
-    DENO_DIR             Set the cache directory
-    DENO_INSTALL_ROOT    Set deno install's output directory
+
+    <g>DENO_CERT</>            Load certificate authority from PEM encoded file
+
+    <g>DENO_DIR</>             Set the cache directory
+
+    <g>DENO_INSTALL_ROOT</>    Set deno install's output directory
                          (defaults to $HOME/.deno/bin)
-    DENO_REPL_HISTORY    Set REPL history file path
+
+    <g>DENO_REPL_HISTORY</>    Set REPL history file path
                          History file is disabled when the value is empty
                          (defaults to $DENO_DIR/deno_history.txt)
-    DENO_NO_PACKAGE_JSON Disables auto-resolution of package.json
-    DENO_NO_PROMPT       Set to disable permission prompts on access
+
+    <g>DENO_NO_PACKAGE_JSON</> Disables auto-resolution of package.json
+
+    <g>DENO_NO_PROMPT</>       Set to disable permission prompts on access
                          (alternative to passing --no-prompt on invocation)
-    DENO_NO_UPDATE_CHECK Set to disable checking if a newer Deno version is
+
+    <g>DENO_NO_UPDATE_CHECK</> Set to disable checking if a newer Deno version is
                          available
-    DENO_V8_FLAGS        Set V8 command line options
-    DENO_WEBGPU_TRACE    Directory to use for wgpu traces
-    DENO_JOBS            Number of parallel workers used for the --parallel
+
+    <g>DENO_V8_FLAGS</>        Set V8 command line options
+
+    <g>DENO_WEBGPU_TRACE</>    Directory to use for wgpu traces
+
+    <g>DENO_JOBS</>            Number of parallel workers used for the --parallel
                          flag with the test subcommand. Defaults to number
                          of available CPUs.
-    HTTP_PROXY           Proxy address for HTTP requests
+
+    <g>HTTP_PROXY</>           Proxy address for HTTP requests
                          (module downloads, fetch)
-    HTTPS_PROXY          Proxy address for HTTPS requests
+
+    <g>HTTPS_PROXY</>          Proxy address for HTTPS requests
                          (module downloads, fetch)
-    NPM_CONFIG_REGISTRY  URL to use for the npm registry.
-    NO_COLOR             Set to disable color
-    NO_PROXY             Comma-separated list of hosts which do not use a proxy
-                         (module downloads, fetch)"#;
+
+    <g>NPM_CONFIG_REGISTRY</>  URL to use for the npm registry.
+
+    <g>NO_COLOR</>             Set to disable color
+
+    <g>NO_PROXY</>             Comma-separated list of hosts which do not use a proxy
+                         (module downloads, fetch)"#
+);
 
 static DENO_HELP: &str = concat!(
-  "A modern JavaScript and TypeScript runtime
+  color_print::cstr!("<g>A modern JavaScript and TypeScript runtime</>"),
+  "
 
 Docs: https://deno.land/manual@v",
   env!("CARGO_PKG_VERSION"),
-  "
+  color_print::cstr!(
+    "
 Modules: https://deno.land/std/ https://deno.land/x/
 Bugs: https://github.com/denoland/deno/issues
 
 To start the REPL:
 
-  deno
+  <g>deno</>
 
 To execute a script:
 
-  deno run https://examples.deno.land/hello-world.ts
+  <g>deno run https://examples.deno.land/hello-world.ts</>
 
 To evaluate code in the shell:
 
-  deno eval \"console.log(30933 + 404)\"
+  <g>deno eval \"console.log(30933 + 404)\"</>
 "
+  )
 );
 
 /// Main entry point for parsing deno's command line flags.
@@ -899,6 +943,7 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::error::Result<Flags> {
 
   if let Some((subcommand, mut m)) = matches.remove_subcommand() {
     match subcommand.as_str() {
+      "add" => add_parse(&mut flags, &mut m),
       "bench" => bench_parse(&mut flags, &mut m),
       "bundle" => bundle_parse(&mut flags, &mut m),
       "cache" => cache_parse(&mut flags, &mut m),
@@ -971,7 +1016,14 @@ fn clap_root() -> Command {
 
   let mut cmd = Command::new("deno")
     .bin_name("deno")
-    .color(ColorChoice::Never)
+    .styles(
+      clap::builder::Styles::styled()
+        .header(AnsiColor::Yellow.on_default())
+        .usage(AnsiColor::White.on_default())
+        .literal(AnsiColor::Green.on_default())
+        .placeholder(AnsiColor::Green.on_default())
+    )
+    .color(ColorChoice::Auto)
     .max_term_width(80)
     .version(crate::version::deno())
     .long_version(long_version)
@@ -1047,6 +1099,7 @@ fn clap_root() -> Command {
     .subcommand(run_subcommand())
     .defer(|cmd| {
       cmd
+        .subcommand(add_subcommand())
         .subcommand(bench_subcommand())
         .subcommand(bundle_subcommand())
         .subcommand(cache_subcommand())
@@ -1074,6 +1127,30 @@ fn clap_root() -> Command {
     })
     .long_about(DENO_HELP)
     .after_help(ENV_VARIABLES_HELP)
+}
+
+fn add_subcommand() -> Command {
+  Command::new("add")
+    .about("Add dependencies")
+    .long_about(
+      "Add dependencies to the configuration file.
+
+  deno add @std/path
+
+You can add multiple dependencies at once:
+
+  deno add @std/path @std/assert
+",
+    )
+    .defer(|cmd| {
+      cmd.arg(
+        Arg::new("packages")
+          .help("List of packages to add")
+          .required(true)
+          .num_args(1..)
+          .action(ArgAction::Append),
+      )
+    })
 }
 
 fn bench_subcommand() -> Command {
@@ -1140,7 +1217,10 @@ fn bundle_subcommand() -> Command {
   Command::new("bundle")
     .about("Bundle module and dependencies into single file")
     .long_about(
-      "Output a single JavaScript file with all dependencies.
+      "⚠️ Warning: `deno bundle` is deprecated and will be removed in Deno 2.0.
+Use an alternative bundler like \"deno_emit\", \"esbuild\" or \"rollup\" instead.
+
+Output a single JavaScript file with all dependencies.
 
   deno bundle https://deno.land/std/http/file_server.ts file_server.bundle.js
 
@@ -1278,6 +1358,7 @@ supported in canary.
           .help("Target OS architecture")
           .value_parser([
             "x86_64-unknown-linux-gnu",
+            "aarch64-unknown-linux-gnu",
             "x86_64-pc-windows-msvc",
             "x86_64-apple-darwin",
             "aarch64-apple-darwin",
@@ -1558,7 +1639,7 @@ This command has implicit access to all permissions (--allow-all).",
             .conflicts_with("ext")
             .long("ts")
             .short('T')
-            .help("deprecated: Treat eval input as TypeScript")
+            .help("deprecated: Use `--ext=ts` instead. The `--ts` and `-T` flags are deprecated and will be removed in Deno 2.0.")
             .action(ArgAction::SetTrue)
             .hide(true),
         )
@@ -1748,8 +1829,9 @@ TypeScript compiler cache: Subdirectory containing TS compiler output.",
       .arg(no_config_arg())
       .arg(no_remote_arg())
       .arg(no_npm_arg())
-      .arg(no_lock_arg())
       .arg(lock_arg())
+      .arg(lock_write_arg())
+      .arg(no_lock_arg())
       .arg(config_arg())
       .arg(import_map_arg())
       .arg(node_modules_dir_arg())
@@ -2114,7 +2196,14 @@ Directory arguments are expanded to all contained files matching the glob
     .arg(
       Arg::new("trace-ops")
         .long("trace-ops")
-        .help("Enable tracing of async ops. Useful when debugging leaking ops in test, but impacts test execution time.")
+        .help("Deprecated alias for --trace-leaks.")
+        .hide(true)
+        .action(ArgAction::SetTrue),
+    )
+    .arg(
+      Arg::new("trace-leaks")
+        .long("trace-leaks")
+        .help("Enable tracing of leaks. Useful when debugging leaking ops in test, but impacts test execution time.")
         .action(ArgAction::SetTrue),
     )
     .arg(
@@ -2177,7 +2266,7 @@ Directory arguments are expanded to all contained files matching the glob
       Arg::new("jobs")
         .short('j')
         .long("jobs")
-        .help("deprecated: Number of parallel workers, defaults to number of available CPUs when no value is provided. Defaults to 1 when the option is not present.")
+        .help("deprecated: The `--jobs` flag is deprecated and will be removed in Deno 2.0. Use the `--parallel` flag with possibly the `DENO_JOBS` environment variable instead.")
         .hide(true)
         .num_args(0..=1)
         .value_parser(value_parser!(NonZeroUsize)),
@@ -2340,12 +2429,33 @@ fn publish_subcommand() -> Command {
           .long("token")
           .help("The API token to use when publishing. If unset, interactive authentication is be used")
       )
+      .arg(config_arg())
+      .arg(no_config_arg())
       .arg(
         Arg::new("dry-run")
           .long("dry-run")
           .help("Prepare the package for publishing performing all checks and validations without uploading")
           .action(ArgAction::SetTrue),
       )
+      .arg(
+        Arg::new("allow-slow-types")
+          .long("allow-slow-types")
+          .help("Allow publishing with slow types")
+          .action(ArgAction::SetTrue),
+      )
+      .arg(
+        Arg::new("allow-dirty")
+        .long("allow-dirty")
+        .help("Allow publishing if the repository has uncommitted changed")
+        .action(ArgAction::SetTrue),
+      ).arg(
+        Arg::new("no-provenance")
+          .long("no-provenance")
+          .help("Disable provenance attestation. Enabled by default on Github actions, publicly links the package to where it was built and published from.")
+          .action(ArgAction::SetTrue)
+      )
+      .arg(check_arg(/* type checks by default */ true))
+      .arg(no_check_arg())
     })
 }
 
@@ -2715,15 +2825,6 @@ fn permission_args(app: Command) -> Command {
         .long("allow-all")
         .action(ArgAction::SetTrue)
         .help(ALLOW_ALL_HELP),
-    )
-    .arg(
-      Arg::new("prompt")
-        .long("prompt")
-        .action(ArgAction::SetTrue)
-        .hide(true)
-        .help(
-          "deprecated: Fallback to prompt if required permission wasn't passed",
-        ),
     )
     .arg(
       Arg::new("no-prompt")
@@ -3153,6 +3254,11 @@ fn unsafely_ignore_certificate_errors_arg() -> Arg {
     .value_parser(flags_net::validator)
 }
 
+fn add_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  let packages = matches.remove_many::<String>("packages").unwrap().collect();
+  flags.subcommand = DenoSubcommand::Add(AddFlags { packages });
+}
+
 fn bench_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   flags.type_check_mode = TypeCheckMode::Local;
 
@@ -3380,14 +3486,7 @@ fn doc_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 
 fn eval_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   runtime_args_parse(flags, matches, false, true);
-  flags.allow_net = Some(vec![]);
-  flags.allow_env = Some(vec![]);
-  flags.allow_run = Some(vec![]);
-  flags.allow_read = Some(vec![]);
-  flags.allow_sys = Some(vec![]);
-  flags.allow_write = Some(vec![]);
-  flags.allow_ffi = Some(vec![]);
-  flags.allow_hrtime = true;
+  flags.allow_all();
 
   ext_arg_parse(flags, matches);
 
@@ -3396,9 +3495,9 @@ fn eval_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 
   if as_typescript {
     eprintln!(
-      "{}",
+      "⚠️ {}",
       crate::colors::yellow(
-        "Warning: --ts/-T flag is deprecated. Use --ext=ts instead."
+        "Use `--ext=ts` instead. The `--ts` and `-T` flags are deprecated and will be removed in Deno 2.0."
       ),
     );
 
@@ -3459,8 +3558,7 @@ fn info_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   location_arg_parse(flags, matches);
   ca_file_arg_parse(flags, matches);
   node_modules_and_vendor_dir_arg_parse(flags, matches);
-  lock_arg_parse(flags, matches);
-  no_lock_arg_parse(flags, matches);
+  lock_args_parse(flags, matches);
   no_remote_arg_parse(flags, matches);
   no_npm_arg_parse(flags, matches);
   let json = matches.get_flag("json");
@@ -3641,7 +3739,18 @@ fn test_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   };
 
   let no_run = matches.get_flag("no-run");
-  let trace_ops = matches.get_flag("trace-ops");
+  let trace_leaks =
+    matches.get_flag("trace-ops") || matches.get_flag("trace-leaks");
+  if trace_leaks && matches.get_flag("trace-ops") {
+    // We can't change this to use the log crate because its not configured
+    // yet at this point since the flags haven't been parsed. This flag is
+    // deprecated though so it's not worth changing the code to use the log
+    // crate here and this is only done for testing anyway.
+    eprintln!(
+      "⚠️ {}",
+      crate::colors::yellow("The `--trace-ops` flag is deprecated and will be removed in Deno 2.0.\nUse the `--trace-leaks` flag instead."),
+    );
+  }
   let doc = matches.get_flag("doc");
   let allow_none = matches.get_flag("allow-none");
   let filter = matches.remove_one::<String>("filter");
@@ -3682,8 +3791,8 @@ fn test_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     // deprecated though so it's not worth changing the code to use the log
     // crate here and this is only done for testing anyway.
     eprintln!(
-      "{}",
-      crate::colors::yellow("Warning: --jobs flag is deprecated. Use the --parallel flag with possibly the 'DENO_JOBS' environment variable."),
+      "⚠️ {}",
+      crate::colors::yellow("The `--jobs` flag is deprecated and will be removed in Deno 2.0.\nUse the `--parallel` flag with possibly the `DENO_JOBS` environment variable instead.\nLearn more at: https://docs.deno.com/runtime/manual/basics/env_variables"),
     );
     if let Some(value) = matches.remove_one::<NonZeroUsize>("jobs") {
       Some(value)
@@ -3729,7 +3838,7 @@ fn test_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     shuffle,
     allow_none,
     concurrent_jobs,
-    trace_ops,
+    trace_leaks,
     watch: watch_arg_parse(matches),
     reporter,
     junit_path,
@@ -3776,9 +3885,17 @@ fn vendor_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 }
 
 fn publish_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  flags.type_check_mode = TypeCheckMode::Local; // local by default
+  no_check_arg_parse(flags, matches);
+  check_arg_parse(flags, matches);
+  config_args_parse(flags, matches);
+
   flags.subcommand = DenoSubcommand::Publish(PublishFlags {
     token: matches.remove_one("token"),
     dry_run: matches.get_flag("dry-run"),
+    allow_slow_types: matches.get_flag("allow-slow-types"),
+    allow_dirty: matches.get_flag("allow-dirty"),
+    no_provenance: matches.get_flag("no-provenance"),
   });
 }
 
@@ -3879,15 +3996,7 @@ fn permission_args_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   }
 
   if matches.get_flag("allow-all") {
-    flags.allow_all = true;
-    flags.allow_read = Some(vec![]);
-    flags.allow_env = Some(vec![]);
-    flags.allow_net = Some(vec![]);
-    flags.allow_run = Some(vec![]);
-    flags.allow_write = Some(vec![]);
-    flags.allow_sys = Some(vec![]);
-    flags.allow_ffi = Some(vec![]);
-    flags.allow_hrtime = true;
+    flags.allow_all();
   }
 
   if matches.get_flag("no-prompt") {
@@ -5331,6 +5440,7 @@ mod tests {
           print: false,
           code: "'console.log(\"hello\")'".to_string(),
         }),
+        allow_all: true,
         allow_net: Some(vec![]),
         allow_env: Some(vec![]),
         allow_run: Some(vec![]),
@@ -5354,6 +5464,7 @@ mod tests {
           print: true,
           code: "1+2".to_string(),
         }),
+        allow_all: true,
         allow_net: Some(vec![]),
         allow_env: Some(vec![]),
         allow_run: Some(vec![]),
@@ -5378,6 +5489,7 @@ mod tests {
           print: false,
           code: "'console.log(\"hello\")'".to_string(),
         }),
+        allow_all: true,
         allow_net: Some(vec![]),
         allow_env: Some(vec![]),
         allow_run: Some(vec![]),
@@ -5416,6 +5528,7 @@ mod tests {
         v8_flags: svec!["--help", "--random-seed=1"],
         seed: Some(1),
         inspect: Some("127.0.0.1:9229".parse().unwrap()),
+        allow_all: true,
         allow_net: Some(vec![]),
         allow_env: Some(vec![]),
         allow_run: Some(vec![]),
@@ -5447,6 +5560,7 @@ mod tests {
           code: "console.log(Deno.args)".to_string(),
         }),
         argv: svec!["arg1", "arg2"],
+        allow_all: true,
         allow_net: Some(vec![]),
         allow_env: Some(vec![]),
         allow_run: Some(vec![]),
@@ -7045,7 +7159,7 @@ mod tests {
   #[test]
   fn test_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "test", "--unstable", "--no-npm", "--no-remote", "--trace-ops", "--no-run", "--filter", "- foo", "--coverage=cov", "--location", "https:foo", "--allow-net", "--allow-none", "dir1/", "dir2/", "--", "arg1", "arg2"]);
+    let r = flags_from_vec(svec!["deno", "test", "--unstable", "--no-npm", "--no-remote", "--trace-leaks", "--no-run", "--filter", "- foo", "--coverage=cov", "--location", "https:foo", "--allow-net", "--allow-none", "dir1/", "dir2/", "--", "arg1", "arg2"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -7061,7 +7175,7 @@ mod tests {
           },
           shuffle: None,
           concurrent_jobs: None,
-          trace_ops: true,
+          trace_leaks: true,
           coverage_dir: Some("cov".to_string()),
           watch: Default::default(),
           reporter: Default::default(),
@@ -7143,7 +7257,7 @@ mod tests {
             ignore: vec![],
           },
           concurrent_jobs: Some(NonZeroUsize::new(4).unwrap()),
-          trace_ops: false,
+          trace_leaks: false,
           coverage_dir: None,
           watch: Default::default(),
           junit_path: None,
@@ -7176,7 +7290,7 @@ mod tests {
             ignore: vec![],
           },
           concurrent_jobs: None,
-          trace_ops: false,
+          trace_leaks: false,
           coverage_dir: None,
           watch: Default::default(),
           reporter: Default::default(),
@@ -7214,7 +7328,7 @@ mod tests {
             ignore: vec![],
           },
           concurrent_jobs: None,
-          trace_ops: false,
+          trace_leaks: false,
           coverage_dir: None,
           watch: Default::default(),
           reporter: Default::default(),
@@ -7331,7 +7445,7 @@ mod tests {
             ignore: vec![],
           },
           concurrent_jobs: None,
-          trace_ops: false,
+          trace_leaks: false,
           coverage_dir: None,
           watch: Default::default(),
           reporter: Default::default(),
@@ -7362,7 +7476,7 @@ mod tests {
             ignore: vec![],
           },
           concurrent_jobs: None,
-          trace_ops: false,
+          trace_leaks: false,
           coverage_dir: None,
           watch: Some(Default::default()),
           reporter: Default::default(),
@@ -7392,7 +7506,7 @@ mod tests {
             ignore: vec![],
           },
           concurrent_jobs: None,
-          trace_ops: false,
+          trace_leaks: false,
           coverage_dir: None,
           watch: Some(Default::default()),
           reporter: Default::default(),
@@ -7424,7 +7538,7 @@ mod tests {
             ignore: vec![],
           },
           concurrent_jobs: None,
-          trace_ops: false,
+          trace_leaks: false,
           coverage_dir: None,
           watch: Some(WatchFlags {
             hmr: false,
@@ -8509,5 +8623,60 @@ mod tests {
     r.unwrap_err();
     let r = flags_from_vec(svec!["deno", "jupyter", "--install", "--kernel",]);
     r.unwrap_err();
+  }
+
+  #[test]
+  fn publish_args() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "publish",
+      "--no-provenance",
+      "--dry-run",
+      "--allow-slow-types",
+      "--allow-dirty",
+      "--token=asdf",
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Publish(PublishFlags {
+          token: Some("asdf".to_string()),
+          dry_run: true,
+          allow_slow_types: true,
+          allow_dirty: true,
+          no_provenance: true,
+        }),
+        type_check_mode: TypeCheckMode::Local,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn add_subcommand() {
+    let r = flags_from_vec(svec!["deno", "add"]);
+    r.unwrap_err();
+
+    let r = flags_from_vec(svec!["deno", "add", "@david/which"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Add(AddFlags {
+          packages: svec!["@david/which"],
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "add", "@david/which", "@luca/hello"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Add(AddFlags {
+          packages: svec!["@david/which", "@luca/hello"],
+        }),
+        ..Flags::default()
+      }
+    );
   }
 }
