@@ -80,7 +80,55 @@ fn lsp_tsconfig_types() {
 
   let mut client = context.new_lsp_command().build();
   client.initialize(|builder| {
-    builder.set_config("types.tsconfig.json");
+    builder
+      .set_config("types.tsconfig.json")
+      // avoid finding the declaration file via the document preload
+      .set_preload_limit(0);
+  });
+
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": Url::from_file_path(temp_dir.path().join("test.ts")).unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "console.log(a);\n"
+    }
+  }));
+
+  assert_eq!(diagnostics.all().len(), 0);
+
+  client.shutdown();
+}
+
+#[test]
+fn lsp_tsconfig_types_config_sub_dir() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+
+  let sub_dir = temp_dir.path().join("sub_dir");
+  sub_dir.create_dir_all();
+  sub_dir.join("types.tsconfig.json").write(
+    r#"{
+  "compilerOptions": {
+    "types": ["./a.d.ts"]
+  },
+  "lint": {
+    "rules": {
+      "tags": []
+    }
+  }
+}"#,
+  );
+  let a_dts = "// deno-lint-ignore-file no-var\ndeclare var a: string;";
+  temp_dir.write("a.d.ts", a_dts);
+  temp_dir.write("deno.json", "{}");
+
+  let mut client = context.new_lsp_command().build();
+  client.initialize(|builder| {
+    builder
+      .set_config("sub_dir/types.tsconfig.json")
+      // avoid finding the declaration file via the document preload
+      .set_preload_limit(0);
   });
 
   let diagnostics = client.did_open(json!({
