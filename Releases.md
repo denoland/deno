@@ -8,15 +8,14 @@ https://github.com/denoland/deno_install
 
 ### 1.41.3 / 2024.03.14
 
-- feat(ext/node): add more named curves in `crypto.generateKeyPair[Sync]()`
-  (#22882)
-- feat(node): implement fs.statfs() (#22862)
 - fix(cli): occasional panics on progress bar (#22809)
 - fix(cli): show asserts before leaks (#22904)
 - fix(cli): unbreak extension example and fix __runtime_js_sources (#22906)
 - fix(cli): use Instant for test times (#22853)
 - fix(config): add unstable features as examples to config schema (#22814)
 - fix(config): remove pkg name example and add pattern to schema (#22813)
+- fix(ext/node): add more named curves in `crypto.generateKeyPair[Sync]()`
+  (#22882)
 - fix(ext/node) implement receiveMessageOnPort for node:worker_threads (#22766)
 - fix(ext/node): DH (`dhKeyAgreement`) support for `createPrivateKey` (#22891)
 - fix(ext/node): Add Immediate class to mirror NodeJS.Immediate (#22808)
@@ -34,6 +33,7 @@ https://github.com/denoland/deno_install
 - fix(ext/node): worker_threads.parentPort is updated on startup (#20794)
 - fix(ext/websocket): do not continue reading if socket rid closes (#21849)
 - fix(node): add nul byte to statfs path on windows (#22905)
+- fix(node): implement fs.statfs() (#22862)
 - fix(node): require of pkg json imports was broken (#22821)
 - fix(node): resolve .css files in npm packages when type checking (#22804)
 - fix(node): resolve types via package.json for directory import (#22878)
