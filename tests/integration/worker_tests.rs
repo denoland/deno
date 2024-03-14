@@ -111,3 +111,16 @@ itest!(worker_doest_stall_event_loop {
   output: "workers/worker_doest_stall_event_loop.ts.out",
   exit_code: 0,
 });
+
+itest!(worker_ids_are_sequential {
+  args: "run --quiet -A workers/worker_ids_are_sequential.ts",
+  output: "workers/worker_ids_are_sequential.ts.out",
+  exit_code: 0,
+});
+
+// Test for https://github.com/denoland/deno/issues/22629
+itest!(node_worker_auto_exits {
+  args: "run --quiet --allow-read workers/node_worker_auto_exits.mjs",
+  output: "workers/node_worker_auto_exits.mjs.out",
+  exit_code: 0,
+});

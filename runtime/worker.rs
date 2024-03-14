@@ -227,7 +227,7 @@ impl Default for WorkerOptions {
   }
 }
 
-fn create_op_metrics(
+pub fn create_op_metrics(
   enable_op_summary_metrics: bool,
   strace_ops: Option<Vec<String>>,
 ) -> (
@@ -497,6 +497,17 @@ impl MainWorker {
     if let Some(op_summary_metrics) = op_summary_metrics {
       js_runtime.op_state().borrow_mut().put(op_summary_metrics);
     }
+    extern "C" fn message_handler(
+      _msg: v8::Local<v8::Message>,
+      _exception: v8::Local<v8::Value>,
+    ) {
+      // TODO(@littledivy): Propogate message to users.
+    }
+
+    // Register message listener
+    js_runtime
+      .v8_isolate()
+      .add_message_listener(message_handler);
 
     if let Some(server) = options.maybe_inspector_server.clone() {
       server.register_inspector(

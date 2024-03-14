@@ -50,6 +50,8 @@ async function dlint() {
     ":!:cli/bench/testdata/react-dom.js",
     ":!:cli/compilers/wasm_wrap.js",
     ":!:cli/tsc/dts/**",
+    ":!:target/**",
+    ":!:tests/specs/**",
     ":!:tests/testdata/encoding/**",
     ":!:tests/testdata/error_syntax.js",
     ":!:tests/testdata/file_extensions/ts_with_js_extension.js",

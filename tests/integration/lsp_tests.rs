@@ -215,7 +215,7 @@ fn lsp_import_map_remote() {
   temp_dir.write(
     "deno.json",
     json!({
-      "importMap": "http://localhost:4545/import_maps/import_map.json",
+      "importMap": "http://localhost:4545/import_maps/import_map_remote.json",
     })
     .to_string(),
   );
@@ -228,7 +228,9 @@ fn lsp_import_map_remote() {
   );
   let mut client = context.new_lsp_command().build();
   client.initialize(|builder| {
-    builder.set_import_map("http://localhost:4545/import_maps/import_map.json");
+    builder.set_import_map(
+      "http://localhost:4545/import_maps/import_map_remote.json",
+    );
   });
   client.write_request(
     "workspace/executeCommand",

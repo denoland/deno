@@ -13,30 +13,6 @@ use util::TestContextBuilder;
 
 // NOTE: See how to make test npm packages at ./testdata/npm/README.md
 
-itest!(es_module {
-  args: "run --allow-read --allow-env npm/esm/main.js",
-  output: "npm/esm/main.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
-
-itest!(es_module_eval {
-  args_vec: vec![
-    "eval",
-    "import chalk from 'npm:chalk@5'; console.log(chalk.green('chalk esm loads'));",
-  ],
-  output: "npm/esm/main.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
-
-itest!(es_module_deno_test {
-  args: "test --allow-read --allow-env npm/esm/test.js",
-  output: "npm/esm/test.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
-
 itest!(esm_import_cjs_default {
   args: "run --allow-read --allow-env --quiet --check=all npm/esm_import_cjs_default/main.ts",
   output: "npm/esm_import_cjs_default/main.out",
@@ -128,22 +104,6 @@ itest!(compare_globals {
   output: "npm/compare_globals/main.out",
   envs: env_vars_for_npm_tests(),
   http_server: true,
-});
-
-itest!(conditional_exports {
-  args: "run --allow-read npm/conditional_exports/main.js",
-  output: "npm/conditional_exports/main.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
-
-itest!(conditional_exports_node_modules_dir {
-  args:
-    "run --allow-read --node-modules-dir $TESTDATA/npm/conditional_exports/main.js",
-  output: "npm/conditional_exports/main_node_modules.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-  temp_cwd: true,
 });
 
 itest!(dual_cjs_esm {
@@ -1010,14 +970,6 @@ fn ensure_registry_files_local() {
     }
   }
 }
-
-itest!(bundle_errors {
-  args: "bundle --quiet npm/esm/main.js",
-  output_str: Some("error: npm specifiers have not yet been implemented for this subcommand (https://github.com/denoland/deno/issues/15960). Found: npm:/chalk@5.0.1\n"),
-  exit_code: 1,
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
 
 itest!(info_chalk_display {
   args: "info --quiet npm/cjs_with_deps/main.js",

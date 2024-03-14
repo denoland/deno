@@ -46,6 +46,7 @@ function createWorker(
   permissions,
   name,
   workerType,
+  closeOnIdle,
 ) {
   return op_create_worker({
     hasSourceCode,
@@ -54,6 +55,7 @@ function createWorker(
     sourceCode,
     specifier,
     workerType,
+    closeOnIdle,
   });
 }
 
@@ -74,14 +76,6 @@ function hostRecvMessage(id) {
 }
 
 const privateWorkerRef = Symbol();
-
-function refWorker(worker) {
-  worker[privateWorkerRef](true);
-}
-
-function unrefWorker(worker) {
-  worker[privateWorkerRef](false);
-}
 
 class Worker extends EventTarget {
   #id = 0;
@@ -134,8 +128,9 @@ class Worker extends EventTarget {
       hasSourceCode,
       sourceCode,
       deno?.permissions,
-      name,
+      this.#name,
       workerType,
+      false,
     );
     this.#id = id;
     this.#pollControl();
@@ -325,4 +320,4 @@ webidl.converters["WorkerType"] = webidl.createEnumConverter("WorkerType", [
   "module",
 ]);
 
-export { refWorker, unrefWorker, Worker };
+export { Worker };

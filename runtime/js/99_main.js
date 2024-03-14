@@ -279,6 +279,7 @@ function postMessage(message, transferOrOptions = {}) {
 
 let isClosing = false;
 let globalDispatchEvent;
+let closeOnIdle;
 
 async function pollForMessages() {
   if (!globalDispatchEvent) {
@@ -288,7 +289,14 @@ async function pollForMessages() {
     );
   }
   while (!isClosing) {
-    const data = await op_worker_recv_message();
+    const op = op_worker_recv_message();
+    // In a Node.js worker, unref() the op promise to prevent it from
+    // keeping the event loop alive. This avoids the need to explicitly
+    // call self.close() or worker.terminate().
+    if (closeOnIdle) {
+      core.unrefOpPromise(op);
+    }
+    const data = await op;
     if (data === null) break;
     const v = messagePort.deserializeJsMessageData(data);
     const message = v[0];
@@ -786,6 +794,7 @@ function bootstrapWorkerRuntime(
   runtimeOptions,
   name,
   internalName,
+  workerId,
   maybeWorkerMetadata,
 ) {
   if (hasBootstrapped) {
@@ -803,6 +812,8 @@ function bootstrapWorkerRuntime(
     6: argv0,
     7: shouldDisableDeprecatedApiWarning,
     8: shouldUseVerboseDeprecatedApiWarning,
+    9: _future,
+    10: closeOnIdle_,
   } = runtimeOptions;
 
   deprecatedApiWarningDisabled = shouldDisableDeprecatedApiWarning;
@@ -864,6 +875,7 @@ function bootstrapWorkerRuntime(
 
   location.setLocationHref(location_);
 
+  closeOnIdle = closeOnIdle_;
   globalThis.pollForMessages = pollForMessages;
 
   // TODO(bartlomieju): deprecate --unstable
@@ -918,6 +930,7 @@ function bootstrapWorkerRuntime(
       hasNodeModulesDir,
       argv0,
       /* runningOnMainThread */ false,
+      workerId,
       workerMetadata,
     );
   }
