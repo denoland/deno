@@ -1577,6 +1577,15 @@ impl CliOptions {
         .unwrap_or(false)
   }
 
+  pub fn unstable_node_detect_module(&self) -> bool {
+    self.flags.unstable_config.node_detect_module
+      || self
+        .maybe_config_file()
+        .as_ref()
+        .map(|c| c.has_unstable("node-detect-module"))
+        .unwrap_or(false)
+  }
+
   pub fn unstable_sloppy_imports(&self) -> bool {
     self.flags.unstable_config.sloppy_imports
       || self
