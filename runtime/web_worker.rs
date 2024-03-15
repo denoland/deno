@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 use crate::inspector_server::InspectorServer;
 use crate::ops;
+use crate::ops::worker_host::WorkersTable;
 use crate::permissions::PermissionsContainer;
 use crate::shared::maybe_transpile_source;
 use crate::shared::runtime;
@@ -334,6 +335,7 @@ pub struct WebWorker {
   pub js_runtime: JsRuntime,
   pub name: String,
   close_on_idle: bool,
+  has_executed_main_module: bool,
   internal_handle: WebWorkerInternalHandle,
   pub worker_type: WebWorkerType,
   pub main_module: ModuleSpecifier,
@@ -612,6 +614,7 @@ impl WebWorker {
         has_message_event_listener_fn: None,
         bootstrap_fn_global: Some(bootstrap_fn_global),
         close_on_idle: options.close_on_idle,
+        has_executed_main_module: false,
         maybe_worker_metadata: options.maybe_worker_metadata,
       },
       external_handle,
@@ -741,6 +744,7 @@ impl WebWorker {
 
       maybe_result = &mut receiver => {
         debug!("received worker module evaluate {:#?}", maybe_result);
+        self.has_executed_main_module = true;
         maybe_result
       }
 
@@ -793,7 +797,16 @@ impl WebWorker {
         }
       }
       Poll::Pending => {
-        if self.close_on_idle && !self.has_message_event_listener() {
+        // This is special code path for workers created from `node:worker_threads`
+        // module that have different semantics than Web workers.
+        // We want the worker thread to terminate automatically if we've done executing
+        // Top-Level await, there are no child workers spawned by that workers
+        // and there's no "message" event listener.
+        if self.close_on_idle
+          && self.has_executed_main_module
+          && !self.has_child_workers()
+          && !self.has_message_event_listener()
+        {
           Poll::Ready(Ok(()))
         } else {
           Poll::Pending
@@ -835,6 +848,15 @@ impl WebWorker {
       Some(result) => result.is_true(),
       None => false,
     }
+  }
+
+  fn has_child_workers(&mut self) -> bool {
+    !self
+      .js_runtime
+      .op_state()
+      .borrow()
+      .borrow::<WorkersTable>()
+      .is_empty()
   }
 }
 
