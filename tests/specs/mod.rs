@@ -24,6 +24,10 @@ pub fn main() {
   // todo(dsherret): the output should be changed to be terse
   // when it passes, but verbose on failure
   for category in &categories {
+    if category.tests.is_empty() {
+      continue; // skip output when all the tests have been filtered out
+    }
+
     eprintln!();
     eprintln!("     {} {}", colors::green_bold("Running"), category.name);
     eprintln!();
