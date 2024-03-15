@@ -420,9 +420,8 @@ pub enum CaData {
 )]
 pub struct UnstableConfig {
   pub legacy_flag_enabled: bool, // --unstable
-  pub bare_node_builtins: bool,
+  pub bare_node_builtins: bool,  // --unstable-bare-node-builts
   pub byonm: bool,
-  pub node_detect_module: bool,
   pub sloppy_imports: bool,
   pub features: Vec<String>, // --unstabe-kv --unstable-cron
 }
@@ -928,8 +927,6 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::error::Result<Flags> {
   flags.unstable_config.bare_node_builtins =
     matches.get_flag("unstable-bare-node-builtins");
   flags.unstable_config.byonm = matches.get_flag("unstable-byonm");
-  flags.unstable_config.node_detect_module =
-    matches.get_flag("unstable-node-detect-module");
   flags.unstable_config.sloppy_imports =
     matches.get_flag("unstable-sloppy-imports");
 
@@ -1053,15 +1050,6 @@ fn clap_root() -> Command {
         .long("unstable-byonm")
         .help("Enable unstable 'bring your own node_modules' feature")
         .env("DENO_UNSTABLE_BYONM")
-        .value_parser(FalseyValueParser::new())
-        .action(ArgAction::SetTrue)
-        .global(true),
-    )
-    .arg(
-      Arg::new("unstable-node-detect-module")
-        .long("unstable-node-detect-module")
-        .help("Enable detection of improperly defined ES modules in a node_modules folder")
-        .env("DENO_UNSTABLE_NODE_DETECT_MODULE")
         .value_parser(FalseyValueParser::new())
         .action(ArgAction::SetTrue)
         .global(true),
