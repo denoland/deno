@@ -437,8 +437,13 @@ internals.__initWorkerThreads = (
       name,
       listener,
     ) {
+      console.log("parentPort.on", name, listener);
       // deno-lint-ignore no-explicit-any
-      const _listener = (ev: any) => listener(ev.data);
+      const _listener = (ev: any) => {
+        console.log("parentPort listener called", name);
+        console.table(Deno.resources());
+        listener(ev.data);
+      };
       listeners.set(listener, _listener);
       this.addEventListener(name, _listener);
       return this;

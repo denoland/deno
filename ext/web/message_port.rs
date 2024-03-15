@@ -207,9 +207,17 @@ pub fn op_message_port_post_message(
     }
   }
 
-  let resource = state.resource_table.get::<MessagePortResource>(rid)?;
-
-  resource.port.send(state, data)
+  eprintln!("before get in op_message_port_message");
+  let resource = state.resource_table.get::<MessagePortResource>(rid);
+  if let Err(err) = resource.as_ref() {
+    eprintln!("after get  in op_message_port_message {:#?}", err);
+  }
+  let resource = resource?;
+  eprintln!("after get  in op_message_port_message");
+  eprintln!("before send  in op_message_port_message");
+  let r = resource.port.send(state, data);
+  eprintln!("after send  in op_message_port_message");
+  r
 }
 
 #[op2(async)]
