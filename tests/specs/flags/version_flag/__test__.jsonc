@@ -1,0 +1,9 @@
+{
+  "steps": [{
+    "args": "-V",
+    "output": "[WILDCARD]"
+  }, {
+    "args": "--version",
+    "output": "[WILDCARD]"
+  }]
+}
