@@ -238,3 +238,46 @@ Deno.test({
   },
   sanitizeResources: false,
 });
+
+Deno.test({
+  name: "[worker_threads] Worker workerData",
+  async fn() {
+    const { port1: mainPort, port2: workerPort } = new workerThreads
+      .MessageChannel();
+    const deferred = Promise.withResolvers<void>();
+    const worker = new workerThreads.Worker(
+      `
+      import {
+        isMainThread,
+        MessageChannel,
+        parentPort,
+        receiveMessageOnPort,
+        Worker,
+        workerData,
+      } from "node:worker_threads";
+      parentPort.on("message", (msg) => {
+        console.log("message from main", msg);
+        parentPort.postMessage("Hello from worker on parentPort!");
+        workerData.workerPort.postMessage("Hello from worker on workerPort!");
+      });
+      `,
+      {
+        eval: true,
+        workerData: { workerPort },
+        transferList: [workerPort],
+      },
+    );
+
+    worker.on("message", (data) => {
+      assertEquals(data, "Hello from worker on parentPort!");
+      const msg = workerThreads.receiveMessageOnPort(mainPort)!.message;
+      assertEquals(msg, "Hello from worker on workerPort!");
+      deferred.resolve();
+    });
+
+    worker.postMessage("Hello from parent");
+    await deferred.promise;
+    await worker.terminate();
+    mainPort.close();
+  },
+});

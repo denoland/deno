@@ -114,7 +114,6 @@ class MessagePort extends EventTarget {
    * @param {object[] | StructuredSerializeOptions} transferOrOptions
    */
   postMessage(message, transferOrOptions = {}) {
-    console.log("before MessagePort.postMessage", (new Error()).stack);
     webidl.assertBranded(this, MessagePortPrototype);
     const prefix = "Failed to execute 'postMessage' on 'MessagePort'";
     webidl.requiredArguments(arguments.length, 1, prefix);
@@ -144,9 +143,7 @@ class MessagePort extends EventTarget {
     }
     const data = serializeJsMessageData(message, transfer);
     if (this[_id] === null) return;
-    console.log("before MessagePort.postMessage op", this[_id]);
     op_message_port_post_message(this[_id], data);
-    console.log("after MessagePort.postMessage op");
   }
 
   start() {
