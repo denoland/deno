@@ -721,39 +721,17 @@ impl WebWorker {
   /// Loads, instantiates and executes specified JavaScript module.
   ///
   /// This module will have "import.meta.main" equal to true.
-  pub async fn execute_main_module(
-    &mut self,
-    id: ModuleId,
-  ) -> Result<(), AnyError> {
-    let mut receiver = self.js_runtime.mod_evaluate(id);
-    let poll_options = PollEventLoopOptions::default();
-
-    tokio::select! {
-      biased;
-
-      maybe_result = &mut receiver => {
-        debug!("received worker module evaluate {:#?}", maybe_result);
-        maybe_result
-      }
-
-      event_loop_result = self.run_event_loop(poll_options) => {
-        if self.internal_handle.is_terminated() {
-           return Ok(());
-        }
-        event_loop_result?;
-        receiver.await
-      }
-    }
-  }
-
-  pub fn execute_main_module2(
+  ///
+  /// The returned future must be run concurrently with the event loop
+  /// after starting to poll for messages. Use `wait_for_main_module_evaluation`.
+  fn evaluate_main_module(
     &mut self,
     id: ModuleId,
   ) -> Pin<Box<dyn Future<Output = Result<(), AnyError>>>> {
     self.js_runtime.mod_evaluate(id).boxed_local()
   }
 
-  pub async fn execute_main_module3(
+  async fn wait_for_main_module_evaluation(
     &mut self,
     mut receiver: Pin<Box<dyn Future<Output = Result<(), AnyError>>>>,
   ) -> Result<(), AnyError> {
@@ -885,9 +863,9 @@ pub fn run_web_worker(
       // script instead of module
       match worker.preload_main_module(&specifier).await {
         Ok(id) => {
-          let fut = worker.execute_main_module2(id);
+          let fut = worker.evaluate_main_module(id);
           worker.start_polling_for_messages();
-          worker.execute_main_module3(fut).await
+          worker.wait_for_main_module_evaluation(fut).await
         }
         Err(e) => Err(e),
       }
