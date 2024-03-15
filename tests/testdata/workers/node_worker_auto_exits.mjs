@@ -11,7 +11,7 @@ if (isMainThread) {
 
   setTimeout(() => {
     w.postMessage("Hello! I am from the main thread.");
-  }, 1000);
+  }, 500);
 } else {
   console.log("Inside Worker!");
   console.log(isMainThread); // Prints 'false'.

@@ -20,7 +20,6 @@ use deno_core::futures::channel::mpsc;
 use deno_core::futures::future::poll_fn;
 use deno_core::futures::stream::StreamExt;
 use deno_core::futures::task::AtomicWaker;
-use deno_core::futures::FutureExt;
 use deno_core::located_script_name;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
@@ -54,8 +53,6 @@ use deno_web::MessagePort;
 use log::debug;
 use std::cell::RefCell;
 use std::fmt;
-use std::future::Future;
-use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicU32;
@@ -342,6 +339,7 @@ pub struct WebWorker {
   pub worker_type: WebWorkerType,
   pub main_module: ModuleSpecifier,
   poll_for_messages_fn: Option<v8::Global<v8::Value>>,
+  has_message_event_listener_fn: Option<v8::Global<v8::Value>>,
   bootstrap_fn_global: Option<v8::Global<v8::Function>>,
   // Consumed when `bootstrap_fn` is called
   maybe_worker_metadata: Option<JsMessageData>,
@@ -612,6 +610,7 @@ impl WebWorker {
         worker_type: options.worker_type,
         main_module,
         poll_for_messages_fn: None,
+        has_message_event_listener_fn: None,
         bootstrap_fn_global: Some(bootstrap_fn_global),
         close_on_idle: options.close_on_idle,
         maybe_worker_metadata: options.maybe_worker_metadata,
@@ -665,6 +664,21 @@ impl WebWorker {
       .execute_script(located_script_name!(), script)
       .expect("Failed to execute worker bootstrap script");
     self.poll_for_messages_fn = Some(poll_for_messages_fn);
+    // TODO(bartlomieju): this could be done using V8 API, without calling `execute_script`.
+    // Save a reference to function that will start polling for messages
+    // from a worker host; it will be called after the user code is loaded.
+    let script = ascii_str!(
+      r#"
+    const hasMessageEventListener = globalThis.hasMessageEventListener;
+    delete globalThis.hasMessageEventListener;
+    hasMessageEventListener
+    "#
+    );
+    let has_message_event_listener_fn = self
+      .js_runtime
+      .execute_script(located_script_name!(), script)
+      .expect("Failed to execute worker bootstrap script");
+    self.has_message_event_listener_fn = Some(has_message_event_listener_fn);
   }
 
   /// See [JsRuntime::execute_script](deno_core::JsRuntime::execute_script)
@@ -721,20 +735,11 @@ impl WebWorker {
   /// Loads, instantiates and executes specified JavaScript module.
   ///
   /// This module will have "import.meta.main" equal to true.
-  ///
-  /// The returned future must be run concurrently with the event loop
-  /// after starting to poll for messages. Use `wait_for_main_module_evaluation`.
-  fn evaluate_main_module(
+  pub async fn execute_main_module(
     &mut self,
     id: ModuleId,
-  ) -> Pin<Box<dyn Future<Output = Result<(), AnyError>>>> {
-    self.js_runtime.mod_evaluate(id).boxed_local()
-  }
-
-  async fn wait_for_main_module_evaluation(
-    &mut self,
-    mut receiver: Pin<Box<dyn Future<Output = Result<(), AnyError>>>>,
   ) -> Result<(), AnyError> {
+    let mut receiver = self.js_runtime.mod_evaluate(id);
     let poll_options = PollEventLoopOptions::default();
 
     tokio::select! {
@@ -793,7 +798,13 @@ impl WebWorker {
           Poll::Ready(Ok(()))
         }
       }
-      Poll::Pending => Poll::Pending,
+      Poll::Pending => {
+        if self.close_on_idle && !self.has_message_event_listener() {
+          Poll::Ready(Ok(()))
+        } else {
+          Poll::Pending
+        }
+      }
     }
   }
 
@@ -814,6 +825,22 @@ impl WebWorker {
     let undefined = v8::undefined(scope);
     // This call may return `None` if worker is terminated.
     fn_.call(scope, undefined.into(), &[]);
+  }
+
+  fn has_message_event_listener(&mut self) -> bool {
+    let has_message_event_listener_fn =
+      self.has_message_event_listener_fn.as_ref().unwrap();
+    let scope = &mut self.js_runtime.handle_scope();
+    let has_message_event_listener =
+      v8::Local::<v8::Value>::new(scope, has_message_event_listener_fn);
+    let fn_ =
+      v8::Local::<v8::Function>::try_from(has_message_event_listener).unwrap();
+    let undefined = v8::undefined(scope);
+    // This call may return `None` if worker is terminated.
+    match fn_.call(scope, undefined.into(), &[]) {
+      Some(result) => result.is_true(),
+      None => false,
+    }
   }
 }
 
@@ -863,9 +890,8 @@ pub fn run_web_worker(
       // script instead of module
       match worker.preload_main_module(&specifier).await {
         Ok(id) => {
-          let fut = worker.evaluate_main_module(id);
           worker.start_polling_for_messages();
-          worker.wait_for_main_module_evaluation(fut).await
+          worker.execute_main_module(id).await
         }
         Err(e) => Err(e),
       }
