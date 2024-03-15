@@ -282,7 +282,15 @@ fn collect_tests() -> Vec<TestCategory> {
       }
 
       let test_dir = PathRef::new(entry.path());
-      let metadata_path = test_dir.join("__test__.json");
+      let metadata_path = test_dir.join("__test__.jsonc");
+      if !metadata_path.is_file() {
+        let json_path = test_dir.join("__test__.json");
+        if json_path.is_file() {
+          // automatically rename to jsonc
+          json_path.rename(&metadata_path);
+        }
+      }
+
       let metadata_value = metadata_path.read_jsonc_value();
       // checking for "steps" leads to a more targeted error message
       // instead of when deserializing an untagged enum
