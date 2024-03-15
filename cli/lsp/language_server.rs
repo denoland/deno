@@ -1433,7 +1433,7 @@ impl Inner {
       let document_preload_limit =
         self.config.workspace_settings().document_preload_limit;
       if document_preload_limit == 0 {
-        lsp_log!("Skipped document preload.");
+        log::debug!("Skipped document preload.");
       } else {
         lsp_warn!(
           concat!(
