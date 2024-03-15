@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-import { Stats, unwatchFile, watch, watchFile } from "node:fs";
-import { assert, assertEquals } from "@std/assert/mod.ts";
+import { unwatchFile, watch, watchFile } from "node:fs";
+import { assertEquals } from "@std/assert/mod.ts";
 
 function wait(time: number) {
   return new Promise((resolve) => {
@@ -30,7 +30,7 @@ Deno.test({
   name: "watching a file with options",
   async fn() {
     const file = Deno.makeTempFileSync();
-    const watcher = watchFile(
+    watchFile(
       file,
       () => {},
     );
