@@ -547,6 +547,23 @@ where
   )
 }
 
+#[op2(fast)]
+pub fn op_require_is_esm<P>(
+  state: &mut OpState,
+  #[string] specifier: String,
+) -> Result<bool, AnyError>
+where
+  P: NodePermissions + 'static,
+{
+  let node_resolver = state.borrow::<Rc<NodeResolver>>();
+  let url = Url::from_file_path(&specifier).map_err(|e| generic_error(format!("URL creation: {:#?}", e)))?;
+  match node_resolver.url_to_node_resolution(url)? {
+    resolution::NodeResolution::Esm(_) => Ok(true),
+    resolution::NodeResolution::CommonJs(_) => Ok(false),
+    _ => Err(generic_error("Neither ESM nor CJS")),
+  }
+}
+
 #[op2]
 #[serde]
 pub fn op_require_read_package_scope<P>(

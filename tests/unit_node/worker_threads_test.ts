@@ -238,7 +238,7 @@ Deno.test({
 Deno.test({
   name: "[worker_threads] Worker with relative path",
   async fn() {
-    const worker = new workerThreads.Worker(relative(
+    const worker = new workerThreads.Worker("./" + relative(
       Deno.cwd(),
       fromFileUrl(new URL("./testdata/worker_threads.mjs", import.meta.url)),
     ));

@@ -9,7 +9,7 @@ import {
   op_host_recv_message,
   op_host_terminate_worker,
   op_message_port_recv_message_sync,
-  op_require_read_closest_package_json,
+  op_require_is_esm,
 } from "ext:core/ops";
 import {
   deserializeJsMessageData,
@@ -32,11 +32,10 @@ const {
   Symbol,
   SymbolFor,
   SymbolIterator,
-  StringPrototypeEndsWith,
   StringPrototypeReplace,
   StringPrototypeMatch,
   StringPrototypeReplaceAll,
-  StringPrototypeToString,
+  StringPrototypeStartsWith,
   StringPrototypeTrim,
   SafeWeakMap,
   SafeRegExp,
@@ -166,31 +165,27 @@ class NodeWorker extends EventEmitter {
     super();
     if (options?.eval === true) {
       specifier = `data:text/javascript,${specifier}`;
-    } else if (typeof specifier === "string") {
+    } else if (
+      typeof specifier === "object" && !["file:","data:"].includes(specifier.protocol)
+    ) {
+      throw new TypeError("node:worker_threads support only 'file:' and 'data:' URLs");
+    } else if (
+      typeof specifier === "string" && !StringPrototypeStartsWith(specifier, "data:")
+    ) {
       specifier = resolve(specifier);
-      let pkg;
-      try {
-        pkg = op_require_read_closest_package_json(specifier);
-      } catch (_) {
-        // empty catch block when package json might not be present
-      }
-      if (
-        (!(StringPrototypeEndsWith(
-            StringPrototypeToString(specifier),
-            ".cjs",
-          ))) &&
-          (StringPrototypeEndsWith(
-            StringPrototypeToString(specifier),
-            ".mjs",
-          )) ||
-        (pkg && pkg.exists && pkg.typ == "module")
-      ) {
-        specifier = toFileUrl(specifier as string);
+      if (op_require_is_esm(specifier)) {
+        specifier = toFileUrl(specifier);
       } else {
         const cwdFileUrl = toFileUrl(Deno.cwd());
         specifier =
           `data:text/javascript,(async function() {const { createRequire } = await import("node:module");const require = createRequire("${cwdFileUrl}");require("${specifier}");})();`;
       }
+    } else if (
+      (specifier.protocol === "file:") && !op_require_is_esm(specifier.pathname)
+    ) {
+      const cwdFileUrl = toFileUrl(Deno.cwd());
+      specifier =
+        `data:text/javascript,(async function() {const { createRequire } = await import("node:module");const require = createRequire("${cwdFileUrl}");require("${specifier.pathname}");})();`;
     }
 
     // TODO(bartlomieu): this doesn't match the Node.js behavior, it should be
