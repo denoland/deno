@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 use crate::inspector_server::InspectorServer;
 use crate::ops;
+use crate::ops::worker_host::WorkersTable;
 use crate::permissions::PermissionsContainer;
 use crate::shared::maybe_transpile_source;
 use crate::shared::runtime;
@@ -13,7 +14,6 @@ use crate::BootstrapOptions;
 use deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_cache::CreateCache;
 use deno_cache::SqliteBackedCache;
-use deno_core::ascii_str;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::futures::channel::mpsc;
@@ -335,10 +335,12 @@ pub struct WebWorker {
   pub js_runtime: JsRuntime,
   pub name: String,
   close_on_idle: bool,
+  has_executed_main_module: bool,
   internal_handle: WebWorkerInternalHandle,
   pub worker_type: WebWorkerType,
   pub main_module: ModuleSpecifier,
   poll_for_messages_fn: Option<v8::Global<v8::Value>>,
+  has_message_event_listener_fn: Option<v8::Global<v8::Value>>,
   bootstrap_fn_global: Option<v8::Global<v8::Function>>,
   // Consumed when `bootstrap_fn` is called
   maybe_worker_metadata: Option<JsMessageData>,
@@ -609,8 +611,10 @@ impl WebWorker {
         worker_type: options.worker_type,
         main_module,
         poll_for_messages_fn: None,
+        has_message_event_listener_fn: None,
         bootstrap_fn_global: Some(bootstrap_fn_global),
         close_on_idle: options.close_on_idle,
+        has_executed_main_module: false,
         maybe_worker_metadata: options.maybe_worker_metadata,
       },
       external_handle,
@@ -646,22 +650,32 @@ impl WebWorker {
           &[args, name_str, id_str, id, worker_data],
         )
         .unwrap();
+
+      let context = scope.get_current_context();
+      let global = context.global(scope);
+      let poll_for_messages_str =
+        v8::String::new_external_onebyte_static(scope, b"pollForMessages")
+          .unwrap();
+      let poll_for_messages_fn = global
+        .get(scope, poll_for_messages_str.into())
+        .expect("get globalThis.pollForMessages");
+      global.delete(scope, poll_for_messages_str.into());
+      self.poll_for_messages_fn =
+        Some(v8::Global::new(scope, poll_for_messages_fn));
+
+      let has_message_event_listener_str =
+        v8::String::new_external_onebyte_static(
+          scope,
+          b"hasMessageEventListener",
+        )
+        .unwrap();
+      let has_message_event_listener_fn = global
+        .get(scope, has_message_event_listener_str.into())
+        .expect("get globalThis.hasMessageEventListener");
+      global.delete(scope, has_message_event_listener_str.into());
+      self.has_message_event_listener_fn =
+        Some(v8::Global::new(scope, has_message_event_listener_fn));
     }
-    // TODO(bartlomieju): this could be done using V8 API, without calling `execute_script`.
-    // Save a reference to function that will start polling for messages
-    // from a worker host; it will be called after the user code is loaded.
-    let script = ascii_str!(
-      r#"
-    const pollForMessages = globalThis.pollForMessages;
-    delete globalThis.pollForMessages;
-    pollForMessages
-    "#
-    );
-    let poll_for_messages_fn = self
-      .js_runtime
-      .execute_script(located_script_name!(), script)
-      .expect("Failed to execute worker bootstrap script");
-    self.poll_for_messages_fn = Some(poll_for_messages_fn);
   }
 
   /// See [JsRuntime::execute_script](deno_core::JsRuntime::execute_script)
@@ -730,6 +744,7 @@ impl WebWorker {
 
       maybe_result = &mut receiver => {
         debug!("received worker module evaluate {:#?}", maybe_result);
+        self.has_executed_main_module = true;
         maybe_result
       }
 
@@ -781,7 +796,22 @@ impl WebWorker {
           Poll::Ready(Ok(()))
         }
       }
-      Poll::Pending => Poll::Pending,
+      Poll::Pending => {
+        // This is special code path for workers created from `node:worker_threads`
+        // module that have different semantics than Web workers.
+        // We want the worker thread to terminate automatically if we've done executing
+        // Top-Level await, there are no child workers spawned by that workers
+        // and there's no "message" event listener.
+        if self.close_on_idle
+          && self.has_executed_main_module
+          && !self.has_child_workers()
+          && !self.has_message_event_listener()
+        {
+          Poll::Ready(Ok(()))
+        } else {
+          Poll::Pending
+        }
+      }
     }
   }
 
@@ -802,6 +832,31 @@ impl WebWorker {
     let undefined = v8::undefined(scope);
     // This call may return `None` if worker is terminated.
     fn_.call(scope, undefined.into(), &[]);
+  }
+
+  fn has_message_event_listener(&mut self) -> bool {
+    let has_message_event_listener_fn =
+      self.has_message_event_listener_fn.as_ref().unwrap();
+    let scope = &mut self.js_runtime.handle_scope();
+    let has_message_event_listener =
+      v8::Local::<v8::Value>::new(scope, has_message_event_listener_fn);
+    let fn_ =
+      v8::Local::<v8::Function>::try_from(has_message_event_listener).unwrap();
+    let undefined = v8::undefined(scope);
+    // This call may return `None` if worker is terminated.
+    match fn_.call(scope, undefined.into(), &[]) {
+      Some(result) => result.is_true(),
+      None => false,
+    }
+  }
+
+  fn has_child_workers(&mut self) -> bool {
+    !self
+      .js_runtime
+      .op_state()
+      .borrow()
+      .borrow::<WorkersTable>()
+      .is_empty()
   }
 }
 
