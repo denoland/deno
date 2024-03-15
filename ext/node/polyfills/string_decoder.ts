@@ -105,8 +105,8 @@ function decode(this: StringDecoder, buf: Buffer) {
   let bufIdx = 0;
   let bufEnd = buf.length;
 
-  let prepend: string = "";
-  let rest: string = "";
+  let prepend = "";
+  let rest = "";
 
   if (
     enc === Encoding.Utf8 || enc === Encoding.Utf16 || enc === Encoding.Base64
