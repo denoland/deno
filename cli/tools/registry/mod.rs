@@ -9,6 +9,8 @@ use std::sync::Arc;
 
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
+use deno_ast::ModuleSpecifier;
+use deno_config::glob::FilePatterns;
 use deno_config::ConfigFile;
 use deno_config::WorkspaceMemberConfig;
 use deno_core::anyhow::bail;
@@ -151,6 +153,14 @@ async fn prepare_publish(
       sloppy_imports_resolver.as_ref(),
       bare_node_builtins,
     );
+    let root_specifier =
+      ModuleSpecifier::from_directory_path(&dir_path).unwrap();
+    collect_excluded_module_diagnostics(
+      &root_specifier,
+      &graph,
+      file_patterns.as_ref(),
+      &diagnostics_collector,
+    );
     tar::create_gzipped_tarball(
       &dir_path,
       &cli_options,
@@ -190,6 +200,28 @@ async fn prepare_publish(
       .to_string_lossy()
       .to_string(),
   }))
+}
+
+fn collect_excluded_module_diagnostics(
+  root: &ModuleSpecifier,
+  graph: &deno_graph::ModuleGraph,
+  file_patterns: Option<&FilePatterns>,
+  diagnostics_collector: &PublishDiagnosticsCollector,
+) {
+  let Some(file_patterns) = file_patterns else {
+    return;
+  };
+  let specifiers = graph
+    .specifiers()
+    .map(|(s, _)| s)
+    .filter(|s| s.as_str().starts_with(root.as_str()));
+  for specifier in specifiers {
+    if !file_patterns.matches_specifier(specifier) {
+      diagnostics_collector.push(PublishDiagnostic::ExcludedModule {
+        specifier: specifier.clone(),
+      });
+    }
+  }
 }
 
 #[derive(Serialize)]
