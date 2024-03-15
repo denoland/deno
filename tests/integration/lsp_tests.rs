@@ -88,7 +88,7 @@ fn lsp_tsconfig_types() {
 
   let diagnostics = client.did_open(json!({
     "textDocument": {
-      "uri": Url::from_file_path(temp_dir.path().join("test.ts")).unwrap(),
+      "uri": temp_dir.uri().join("test.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "console.log(a);\n"
@@ -133,7 +133,7 @@ fn lsp_tsconfig_types_config_sub_dir() {
 
   let diagnostics = client.did_open(json!({
     "textDocument": {
-      "uri": Url::from_file_path(temp_dir.path().join("test.ts")).unwrap(),
+      "uri": temp_dir.uri().join("test.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "console.log(a);\n"
@@ -212,7 +212,7 @@ fn lsp_import_map() {
     builder.set_import_map("import-map.json");
   });
 
-  let uri = Url::from_file_path(temp_dir.path().join("a.ts")).unwrap();
+  let uri = temp_dir.uri().join("a.ts").unwrap();
 
   let diagnostics = client.did_open(json!({
     "textDocument": {
@@ -10849,7 +10849,7 @@ fn lsp_data_urls_with_jsx_compiler_option() {
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
 
-  let uri = Url::from_file_path(temp_dir.path().join("main.ts")).unwrap();
+  let uri = temp_dir.uri().join("main.ts").unwrap();
 
   let diagnostics = client.did_open(json!({
     "textDocument": {
@@ -11731,7 +11731,7 @@ fn decorators_tc39() {
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
 
-  let uri = Url::from_file_path(temp_dir.path().join("main.ts")).unwrap();
+  let uri = temp_dir.uri().join("main.ts").unwrap();
 
   let diagnostics = client
     .did_open(json!({
@@ -11782,7 +11782,7 @@ fn decorators_ts() {
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
 
-  let uri = Url::from_file_path(temp_dir.path().join("main.ts")).unwrap();
+  let uri = temp_dir.uri().join("main.ts").unwrap();
 
   let diagnostics = client
     .did_open(json!({
