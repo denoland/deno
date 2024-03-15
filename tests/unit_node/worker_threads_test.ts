@@ -240,7 +240,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "[worker_threads] Worker workerData",
+  name: "[worker_threads] Worker workerData with MessagePort",
   async fn() {
     const { port1: mainPort, port2: workerPort } = new workerThreads
       .MessageChannel();
