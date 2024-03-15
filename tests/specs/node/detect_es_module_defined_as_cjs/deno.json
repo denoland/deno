@@ -1,6 +1,5 @@
 {
   "unstable": [
-    "byonm",
-    "node-module-detection"
+    "byonm"
   ]
 }
