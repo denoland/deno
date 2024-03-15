@@ -272,6 +272,7 @@ Deno.test({
       assertEquals(data, "Hello from worker on parentPort!");
       // TODO(bartlomieju): it would be better to use `mainPort.on("message")`,
       // but we currently don't support it.
+      // https://github.com/denoland/deno/issues/22951
       // Wait a bit so the message can arrive.
       setTimeout(() => {
         const msg = workerThreads.receiveMessageOnPort(mainPort)!.message;
