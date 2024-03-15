@@ -270,11 +270,14 @@ Deno.test({
 
     worker.on("message", (data) => {
       assertEquals(data, "Hello from worker on parentPort!");
-      // TODO(bartlomieju): this seems wrong, we might need a wrapper `MessageChannel` just for node compat?
-      mainPort.on("message", (msg) => {
+      // TODO(bartlomieju): it would be better to use `mainPort.on("message")`,
+      // but we currently don't support it.
+      // Wait a bit so the message can arrive.
+      setTimeout(() => {
+        const msg = workerThreads.receiveMessageOnPort(mainPort)!.message;
         assertEquals(msg, "Hello from worker on workerPort!");
         deferred.resolve();
-      });
+      }, 500);
     });
 
     worker.postMessage("Hello from parent");
