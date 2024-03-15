@@ -293,7 +293,7 @@ async function pollForMessages() {
     // In a Node.js worker, unref() the op promise to prevent it from
     // keeping the event loop alive. This avoids the need to explicitly
     // call self.close() or worker.terminate().
-    if (closeOnIdle) {
+    if (closeOnIdle && event.listenerCount(globalThis, "message") === 0) {
       core.unrefOpPromise(op);
     }
     const data = await op;

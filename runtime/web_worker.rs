@@ -20,6 +20,7 @@ use deno_core::futures::channel::mpsc;
 use deno_core::futures::future::poll_fn;
 use deno_core::futures::stream::StreamExt;
 use deno_core::futures::task::AtomicWaker;
+use deno_core::futures::FutureExt;
 use deno_core::located_script_name;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
@@ -53,6 +54,8 @@ use deno_web::MessagePort;
 use log::debug;
 use std::cell::RefCell;
 use std::fmt;
+use std::future::Future;
+use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicU32;
@@ -743,6 +746,37 @@ impl WebWorker {
     }
   }
 
+  pub fn execute_main_module2(
+    &mut self,
+    id: ModuleId,
+  ) -> Pin<Box<dyn Future<Output = Result<(), AnyError>>>> {
+    self.js_runtime.mod_evaluate(id).boxed_local()
+  }
+
+  pub async fn execute_main_module3(
+    &mut self,
+    mut receiver: Pin<Box<dyn Future<Output = Result<(), AnyError>>>>,
+  ) -> Result<(), AnyError> {
+    let poll_options = PollEventLoopOptions::default();
+
+    tokio::select! {
+      biased;
+
+      maybe_result = &mut receiver => {
+        debug!("received worker module evaluate {:#?}", maybe_result);
+        maybe_result
+      }
+
+      event_loop_result = self.run_event_loop(poll_options) => {
+        if self.internal_handle.is_terminated() {
+           return Ok(());
+        }
+        event_loop_result?;
+        receiver.await
+      }
+    }
+  }
+
   fn poll_event_loop(
     &mut self,
     cx: &mut Context,
@@ -851,8 +885,9 @@ pub fn run_web_worker(
       // script instead of module
       match worker.preload_main_module(&specifier).await {
         Ok(id) => {
+          let fut = worker.execute_main_module2(id);
           worker.start_polling_for_messages();
-          worker.execute_main_module(id).await
+          worker.execute_main_module3(fut).await
         }
         Err(e) => Err(e),
       }
