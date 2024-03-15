@@ -900,17 +900,21 @@ impl Config {
   }
 
   #[cfg(test)]
-  pub fn new_with_root(root_uri: Url) -> Self {
+  pub fn new_with_roots(root_uris: impl IntoIterator<Item = Url>) -> Self {
     let mut config = Self::new();
-    let name = root_uri.path_segments().and_then(|s| s.last());
-    let name = name.unwrap_or_default().to_string();
-    config.set_workspace_folders(vec![(
-      root_uri.clone(),
-      lsp::WorkspaceFolder {
-        uri: root_uri,
-        name,
-      },
-    )]);
+    let mut folders = vec![];
+    for root_uri in root_uris {
+      let name = root_uri.path_segments().and_then(|s| s.last());
+      let name = name.unwrap_or_default().to_string();
+      folders.push((
+        root_uri.clone(),
+        lsp::WorkspaceFolder {
+          uri: root_uri,
+          name,
+        },
+      ));
+    }
+    config.set_workspace_folders(folders);
     config
   }
 
@@ -1242,7 +1246,7 @@ mod tests {
   #[test]
   fn test_config_specifier_enabled() {
     let root_uri = resolve_url("file:///").unwrap();
-    let mut config = Config::new_with_root(root_uri);
+    let mut config = Config::new_with_roots(vec![root_uri]);
     let specifier = resolve_url("file:///a.ts").unwrap();
     assert!(!config.specifier_enabled(&specifier));
     config.set_workspace_settings(
@@ -1258,7 +1262,7 @@ mod tests {
   #[test]
   fn test_config_snapshot_specifier_enabled() {
     let root_uri = resolve_url("file:///").unwrap();
-    let mut config = Config::new_with_root(root_uri);
+    let mut config = Config::new_with_roots(vec![root_uri]);
     let specifier = resolve_url("file:///a.ts").unwrap();
     assert!(!config.specifier_enabled(&specifier));
     config.set_workspace_settings(
@@ -1275,7 +1279,7 @@ mod tests {
   #[test]
   fn test_config_specifier_enabled_path() {
     let root_uri = resolve_url("file:///project/").unwrap();
-    let mut config = Config::new_with_root(root_uri);
+    let mut config = Config::new_with_roots(vec![root_uri]);
     let specifier_a = resolve_url("file:///project/worker/a.ts").unwrap();
     let specifier_b = resolve_url("file:///project/other/b.ts").unwrap();
     assert!(!config.specifier_enabled(&specifier_a));
@@ -1293,7 +1297,7 @@ mod tests {
   #[test]
   fn test_config_specifier_disabled_path() {
     let root_uri = resolve_url("file:///root/").unwrap();
-    let mut config = Config::new_with_root(root_uri.clone());
+    let mut config = Config::new_with_roots(vec![root_uri.clone()]);
     config.settings.unscoped.enable = Some(true);
     config.settings.unscoped.enable_paths =
       Some(vec!["mod1.ts".to_string(), "mod2.ts".to_string()]);
@@ -1494,7 +1498,7 @@ mod tests {
   #[test]
   fn config_enable_via_config_file_detection() {
     let root_uri = resolve_url("file:///root/").unwrap();
-    let mut config = Config::new_with_root(root_uri.clone());
+    let mut config = Config::new_with_roots(vec![root_uri.clone()]);
     config.settings.unscoped.enable = None;
     assert!(!config.specifier_enabled(&root_uri));
 
@@ -1508,7 +1512,7 @@ mod tests {
   #[test]
   fn config_specifier_enabled_matches_by_path_component() {
     let root_uri = resolve_url("file:///root/").unwrap();
-    let mut config = Config::new_with_root(root_uri.clone());
+    let mut config = Config::new_with_roots(vec![root_uri.clone()]);
     config.settings.unscoped.enable_paths = Some(vec!["mo".to_string()]);
     assert!(!config.specifier_enabled(&root_uri.join("mod.ts").unwrap()));
   }
@@ -1516,7 +1520,7 @@ mod tests {
   #[test]
   fn config_specifier_enabled_for_test() {
     let root_uri = resolve_url("file:///root/").unwrap();
-    let mut config = Config::new_with_root(root_uri.clone());
+    let mut config = Config::new_with_roots(vec![root_uri.clone()]);
     config.settings.unscoped.enable = Some(true);
 
     config.settings.unscoped.enable_paths =
@@ -1599,7 +1603,7 @@ mod tests {
   #[test]
   fn config_snapshot_specifier_enabled_for_test() {
     let root_uri = resolve_url("file:///root/").unwrap();
-    let mut config = Config::new_with_root(root_uri.clone());
+    let mut config = Config::new_with_roots(vec![root_uri.clone()]);
     config.settings.unscoped.enable = Some(true);
     config.set_config_file(
       ConfigFile::new(

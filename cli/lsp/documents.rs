@@ -1862,9 +1862,11 @@ console.log(b, "hello deno");
     let file3_specifier = ModuleSpecifier::from_file_path(&file3_path).unwrap();
     fs::write(&file3_path, "").unwrap();
 
-    let mut config = Config::new_with_root(
-      ModuleSpecifier::from_directory_path(&documents_path).unwrap(),
-    );
+    let mut config =
+      Config::new_with_roots(vec![ModuleSpecifier::from_directory_path(
+        &documents_path,
+      )
+      .unwrap()]);
     let workspace_settings =
       serde_json::from_str(r#"{ "enable": true }"#).unwrap();
     config.set_workspace_settings(workspace_settings, vec![]);

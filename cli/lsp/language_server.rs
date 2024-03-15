@@ -1320,59 +1320,41 @@ impl Inner {
     })
   }
 
-  fn refresh_workspace_files(&mut self) {
-    let enable_settings_hash = self.config.settings.enable_settings_hash();
-    if self.workspace_files_hash == enable_settings_hash {
-      return;
-    }
-    self.workspace_files.clear();
+  fn walk_workspace(config: &Config) -> (BTreeSet<ModuleSpecifier>, bool) {
+    let mut workspace_files = Default::default();
     let document_preload_limit =
-      self.config.workspace_settings().document_preload_limit;
+      config.workspace_settings().document_preload_limit;
     let mut pending = VecDeque::new();
     let mut entry_count = 0;
-    if document_preload_limit > 0 {
-      let mut roots = self
-        .config
-        .workspace_folders
-        .iter()
-        .filter_map(|p| specifier_to_file_path(&p.0).ok())
-        .collect::<Vec<_>>();
-      roots.sort();
-      for i in 0..roots.len() {
-        if i == 0 || roots[i].starts_with(&roots[i - 1]) {
-          if let Ok(read_dir) = std::fs::read_dir(&roots[i]) {
-            pending.push_back((roots[i].clone(), read_dir));
-          }
+    let mut roots = config
+      .workspace_folders
+      .iter()
+      .filter_map(|p| specifier_to_file_path(&p.0).ok())
+      .collect::<Vec<_>>();
+    roots.sort();
+    for i in 0..roots.len() {
+      if i == 0 || !roots[i].starts_with(&roots[i - 1]) {
+        if let Ok(read_dir) = std::fs::read_dir(&roots[i]) {
+          pending.push_back((roots[i].clone(), read_dir));
         }
       }
-    } else {
-      log::debug!("Skipping document preload.");
     }
-    'outer: while let Some((parent_path, read_dir)) = pending.pop_front() {
+    while let Some((parent_path, read_dir)) = pending.pop_front() {
       for entry in read_dir {
         let Ok(entry) = entry else {
           continue;
         };
-        entry_count += 1;
         if entry_count >= document_preload_limit {
-          lsp_warn!(
-            concat!(
-              "Hit the language server document preload limit of {} file system entries. ",
-              "You may want to use the \"deno.enablePaths\" configuration setting to only have Deno ",
-              "partially enable a workspace or increase the limit via \"deno.documentPreloadLimit\". ",
-              "In cases where Deno ends up using too much memory, you may want to lower the limit."
-            ),
-            document_preload_limit,
-          );
-          break 'outer;
+          return (workspace_files, true);
         }
+        entry_count += 1;
         let path = parent_path.join(entry.path());
         let Ok(specifier) = ModuleSpecifier::from_file_path(&path) else {
           continue;
         };
         // TODO(nayeemrmn): Don't walk folders that are `None` here and aren't
         // in a `deno.json` scope.
-        if self.config.settings.specifier_enabled(&specifier) == Some(false) {
+        if config.settings.specifier_enabled(&specifier) == Some(false) {
           continue;
         }
         let Ok(file_type) = entry.file_type() else {
@@ -1434,10 +1416,37 @@ impl Inner {
               }
             }
           }
-          self.workspace_files.insert(specifier);
+          workspace_files.insert(specifier);
         }
       }
     }
+    (workspace_files, false)
+  }
+
+  fn refresh_workspace_files(&mut self) {
+    let enable_settings_hash = self.config.settings.enable_settings_hash();
+    if self.workspace_files_hash == enable_settings_hash {
+      return;
+    }
+    let (workspace_files, hit_limit) = Self::walk_workspace(&self.config);
+    if hit_limit {
+      let document_preload_limit =
+        self.config.workspace_settings().document_preload_limit;
+      if document_preload_limit == 0 {
+        lsp_log!("Skipped document preload.");
+      } else {
+        lsp_warn!(
+          concat!(
+            "Hit the language server document preload limit of {} file system entries. ",
+            "You may want to use the \"deno.enablePaths\" configuration setting to only have Deno ",
+            "partially enable a workspace or increase the limit via \"deno.documentPreloadLimit\". ",
+            "In cases where Deno ends up using too much memory, you may want to lower the limit."
+          ),
+          document_preload_limit,
+        );
+      }
+    }
+    self.workspace_files = workspace_files;
     self.workspace_files_hash = enable_settings_hash;
   }
 
@@ -4087,5 +4096,114 @@ impl Inner {
     };
     self.performance.measure(mark);
     Ok(contents)
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use pretty_assertions::assert_eq;
+  use test_util::TempDir;
+
+  #[test]
+  fn test_walk_workspace() {
+    let temp_dir = TempDir::new();
+    temp_dir.create_dir_all("root1/node_modules/");
+    temp_dir.write("root1/node_modules/mod.ts", ""); // no, node_modules
+
+    temp_dir.create_dir_all("root1/sub_dir");
+    temp_dir.create_dir_all("root1/target");
+    temp_dir.create_dir_all("root1/node_modules");
+    temp_dir.create_dir_all("root1/.git");
+    temp_dir.create_dir_all("root1/file.ts"); // no, directory
+    temp_dir.write("root1/mod0.ts", ""); // yes
+    temp_dir.write("root1/mod1.js", ""); // yes
+    temp_dir.write("root1/mod2.tsx", ""); // yes
+    temp_dir.write("root1/mod3.d.ts", ""); // yes
+    temp_dir.write("root1/mod4.jsx", ""); // yes
+    temp_dir.write("root1/mod5.mjs", ""); // yes
+    temp_dir.write("root1/mod6.mts", ""); // yes
+    temp_dir.write("root1/mod7.d.mts", ""); // yes
+    temp_dir.write("root1/mod8.json", ""); // yes
+    temp_dir.write("root1/mod9.jsonc", ""); // yes
+    temp_dir.write("root1/other.txt", ""); // no, text file
+    temp_dir.write("root1/other.wasm", ""); // no, don't load wasm
+    temp_dir.write("root1/Cargo.toml", ""); // no
+    temp_dir.write("root1/sub_dir/mod.ts", ""); // yes
+    temp_dir.write("root1/sub_dir/data.min.ts", ""); // no, minified file
+    temp_dir.write("root1/.git/main.ts", ""); // no, .git folder
+    temp_dir.write("root1/node_modules/main.ts", ""); // no, because it's in a node_modules folder
+    temp_dir.write("root1/target/main.ts", ""); // no, because there is a Cargo.toml in the root directory
+
+    temp_dir.create_dir_all("root2/folder");
+    temp_dir.create_dir_all("root2/sub_folder");
+    temp_dir.write("root2/file1.ts", ""); // yes, enabled
+    temp_dir.write("root2/file2.ts", ""); // no, not enabled
+    temp_dir.write("root2/folder/main.ts", ""); // yes, enabled
+    temp_dir.write("root2/folder/other.ts", ""); // no, disabled
+    temp_dir.write("root2/sub_folder/a.js", ""); // no, not enabled
+    temp_dir.write("root2/sub_folder/b.ts", ""); // no, not enabled
+    temp_dir.write("root2/sub_folder/c.js", ""); // no, not enabled
+
+    temp_dir.create_dir_all("root3/");
+    temp_dir.write("root3/mod.ts", ""); // no, not enabled
+
+    let mut config = Config::new_with_roots(vec![
+      temp_dir.uri().join("root1/").unwrap(),
+      temp_dir.uri().join("root2/").unwrap(),
+      temp_dir.uri().join("root3/").unwrap(),
+    ]);
+    config.set_workspace_settings(
+      Default::default(),
+      vec![
+        (
+          temp_dir.uri().join("root1/").unwrap(),
+          WorkspaceSettings {
+            enable: Some(true),
+            ..Default::default()
+          },
+        ),
+        (
+          temp_dir.uri().join("root2/").unwrap(),
+          WorkspaceSettings {
+            enable: Some(true),
+            enable_paths: Some(vec![
+              "file1.ts".to_string(),
+              "folder".to_string(),
+            ]),
+            disable_paths: vec!["folder/other.ts".to_string()],
+            ..Default::default()
+          },
+        ),
+        (
+          temp_dir.uri().join("root3/").unwrap(),
+          WorkspaceSettings {
+            enable: Some(false),
+            ..Default::default()
+          },
+        ),
+      ],
+    );
+
+    let (workspace_files, hit_limit) = Inner::walk_workspace(&config);
+    assert!(!hit_limit);
+    assert_eq!(
+      json!(workspace_files),
+      json!([
+        temp_dir.uri().join("root1/mod0.ts").unwrap(),
+        temp_dir.uri().join("root1/mod1.js").unwrap(),
+        temp_dir.uri().join("root1/mod2.tsx").unwrap(),
+        temp_dir.uri().join("root1/mod3.d.ts").unwrap(),
+        temp_dir.uri().join("root1/mod4.jsx").unwrap(),
+        temp_dir.uri().join("root1/mod5.mjs").unwrap(),
+        temp_dir.uri().join("root1/mod6.mts").unwrap(),
+        temp_dir.uri().join("root1/mod7.d.mts").unwrap(),
+        temp_dir.uri().join("root1/mod8.json").unwrap(),
+        temp_dir.uri().join("root1/mod9.jsonc").unwrap(),
+        temp_dir.uri().join("root1/sub_dir/mod.ts").unwrap(),
+        temp_dir.uri().join("root2/file1.ts").unwrap(),
+        temp_dir.uri().join("root2/folder/main.ts").unwrap(),
+      ])
+    );
   }
 }
