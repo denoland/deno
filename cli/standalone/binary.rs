@@ -630,6 +630,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         legacy_flag_enabled: cli_options.legacy_unstable_flag(),
         bare_node_builtins: cli_options.unstable_bare_node_builtins(),
         byonm: cli_options.unstable_byonm(),
+        node_detect_module: cli_options.unstable_node_detect_module(),
         sloppy_imports: cli_options.unstable_sloppy_imports(),
         features: cli_options.unstable_features(),
       },

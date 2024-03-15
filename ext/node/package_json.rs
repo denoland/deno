@@ -93,10 +93,6 @@ impl PackageJson {
       ),
     };
 
-    if source.trim().is_empty() {
-      return Ok(PackageJson::empty(path));
-    }
-
     let package_json = Self::load_from_string(path, source)?;
     CACHE.with(|cache| {
       cache
@@ -110,6 +106,10 @@ impl PackageJson {
     path: PathBuf,
     source: String,
   ) -> Result<PackageJson, AnyError> {
+    if source.trim().is_empty() {
+      return Ok(PackageJson::empty(path));
+    }
+
     let package_json: Value = serde_json::from_str(&source).map_err(|err| {
       anyhow::anyhow!(
         "malformed package.json: {}\n    at {}",
