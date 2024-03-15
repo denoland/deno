@@ -143,6 +143,7 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
         })?;
       let analysis = match analysis {
         CjsAnalysis::Esm(_) => {
+          // todo(dsherret): support this once supporting requiring ES modules
           return Err(anyhow::anyhow!(
             "Cannot require ES module '{}' from '{}'",
             reexport_specifier,
