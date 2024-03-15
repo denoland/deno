@@ -13,7 +13,6 @@ use crate::BootstrapOptions;
 use deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_cache::CreateCache;
 use deno_cache::SqliteBackedCache;
-use deno_core::ascii_str;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::futures::channel::mpsc;
@@ -648,37 +647,32 @@ impl WebWorker {
           &[args, name_str, id_str, id, worker_data],
         )
         .unwrap();
+
+      let context = scope.get_current_context();
+      let global = context.global(scope);
+      let poll_for_messages_str =
+        v8::String::new_external_onebyte_static(scope, b"pollForMessages")
+          .unwrap();
+      let poll_for_messages_fn = global
+        .get(scope, poll_for_messages_str.into())
+        .expect("get globalThis.pollForMessages");
+      global.delete(scope, poll_for_messages_str.into());
+      self.poll_for_messages_fn =
+        Some(v8::Global::new(scope, poll_for_messages_fn));
+
+      let has_message_event_listener_str =
+        v8::String::new_external_onebyte_static(
+          scope,
+          b"hasMessageEventListener",
+        )
+        .unwrap();
+      let has_message_event_listener_fn = global
+        .get(scope, has_message_event_listener_str.into())
+        .expect("get globalThis.hasMessageEventListener");
+      global.delete(scope, has_message_event_listener_str.into());
+      self.has_message_event_listener_fn =
+        Some(v8::Global::new(scope, has_message_event_listener_fn));
     }
-    // TODO(bartlomieju): this could be done using V8 API, without calling `execute_script`.
-    // Save a reference to function that will start polling for messages
-    // from a worker host; it will be called after the user code is loaded.
-    let script = ascii_str!(
-      r#"
-    const pollForMessages = globalThis.pollForMessages;
-    delete globalThis.pollForMessages;
-    pollForMessages
-    "#
-    );
-    let poll_for_messages_fn = self
-      .js_runtime
-      .execute_script(located_script_name!(), script)
-      .expect("Failed to execute worker bootstrap script");
-    self.poll_for_messages_fn = Some(poll_for_messages_fn);
-    // TODO(bartlomieju): this could be done using V8 API, without calling `execute_script`.
-    // Save a reference to function that will start polling for messages
-    // from a worker host; it will be called after the user code is loaded.
-    let script = ascii_str!(
-      r#"
-    const hasMessageEventListener = globalThis.hasMessageEventListener;
-    delete globalThis.hasMessageEventListener;
-    hasMessageEventListener
-    "#
-    );
-    let has_message_event_listener_fn = self
-      .js_runtime
-      .execute_script(located_script_name!(), script)
-      .expect("Failed to execute worker bootstrap script");
-    self.has_message_event_listener_fn = Some(has_message_event_listener_fn);
   }
 
   /// See [JsRuntime::execute_script](deno_core::JsRuntime::execute_script)
