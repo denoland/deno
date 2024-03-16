@@ -27,6 +27,7 @@ use deno_core::serde_json::json;
 use deno_core::v8;
 use deno_core::CancelHandle;
 use deno_core::CompiledWasmModuleStore;
+use deno_core::DetachedBuffer;
 use deno_core::Extension;
 use deno_core::FeatureChecker;
 use deno_core::GetErrorClassFn;
@@ -47,9 +48,11 @@ use deno_kv::dynamic::MultiBackendDbHandler;
 use deno_terminal::colors;
 use deno_tls::RootCertStoreProvider;
 use deno_web::create_entangled_message_port;
+use deno_web::serialize_transferables;
 use deno_web::BlobStore;
 use deno_web::JsMessageData;
 use deno_web::MessagePort;
+use deno_web::Transferable;
 use log::debug;
 use std::cell::RefCell;
 use std::fmt;
@@ -60,6 +63,11 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
+
+pub struct WorkerMetadata {
+  pub buffer: DetachedBuffer,
+  pub transferables: Vec<Transferable>,
+}
 
 static WORKER_ID_COUNTER: AtomicU32 = AtomicU32::new(1);
 
@@ -343,7 +351,7 @@ pub struct WebWorker {
   has_message_event_listener_fn: Option<v8::Global<v8::Value>>,
   bootstrap_fn_global: Option<v8::Global<v8::Function>>,
   // Consumed when `bootstrap_fn` is called
-  maybe_worker_metadata: Option<JsMessageData>,
+  maybe_worker_metadata: Option<WorkerMetadata>,
 }
 
 pub struct WebWorkerOptions {
@@ -371,7 +379,7 @@ pub struct WebWorkerOptions {
   pub feature_checker: Arc<FeatureChecker>,
   pub strace_ops: Option<Vec<String>>,
   pub close_on_idle: bool,
-  pub maybe_worker_metadata: Option<JsMessageData>,
+  pub maybe_worker_metadata: Option<WorkerMetadata>,
 }
 
 impl WebWorker {
@@ -622,7 +630,8 @@ impl WebWorker {
   }
 
   pub fn bootstrap(&mut self, options: &BootstrapOptions) {
-    self.js_runtime.op_state().borrow_mut().put(options.clone());
+    let op_state = self.js_runtime.op_state();
+    op_state.borrow_mut().put(options.clone());
     // Instead of using name for log we use `worker-${id}` because
     // WebWorkers can have empty string as name.
     {
@@ -633,7 +642,16 @@ impl WebWorker {
       let undefined = v8::undefined(scope);
       let mut worker_data: v8::Local<v8::Value> = v8::undefined(scope).into();
       if let Some(data) = self.maybe_worker_metadata.take() {
-        worker_data = deno_core::serde_v8::to_v8(scope, data).unwrap();
+        let js_transferables = serialize_transferables(
+          &mut op_state.borrow_mut(),
+          data.transferables,
+        );
+        let js_message_data = JsMessageData {
+          data: data.buffer,
+          transferables: js_transferables,
+        };
+        worker_data =
+          deno_core::serde_v8::to_v8(scope, js_message_data).unwrap();
       }
       let name_str: v8::Local<v8::Value> =
         v8::String::new(scope, &self.name).unwrap().into();
