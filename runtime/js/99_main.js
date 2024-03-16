@@ -766,9 +766,8 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
     ObjectDefineProperty(globalThis, "Deno", core.propReadOnly(finalDenoNs));
 
     if (nodeBootstrap) {
-      nodeBootstrap(hasNodeModulesDir, argv0);
+      nodeBootstrap(hasNodeModulesDir, argv0, /* runningOnMainThread */ true);
     }
-
     if (future) {
       delete globalThis.window;
     }
@@ -799,6 +798,7 @@ function bootstrapWorkerRuntime(
       6: argv0,
       7: shouldDisableDeprecatedApiWarning,
       8: shouldUseVerboseDeprecatedApiWarning,
+      9: _future,
     } = runtimeOptions;
 
     deprecatedApiWarningDisabled = shouldDisableDeprecatedApiWarning;
@@ -854,6 +854,7 @@ function bootstrapWorkerRuntime(
     location.setLocationHref(location_);
 
     globalThis.pollForMessages = pollForMessages;
+    globalThis.hasMessageEventListener = hasMessageEventListener;
 
     // TODO(bartlomieju): deprecate --unstable
     if (unstableFlag) {
@@ -878,8 +879,18 @@ function bootstrapWorkerRuntime(
     // `Deno` with `Deno` namespace from "./deno.ts".
     ObjectDefineProperty(globalThis, "Deno", core.propReadOnly(finalDenoNs));
 
+    const workerMetadata = maybeWorkerMetadata
+      ? messagePort.deserializeJsMessageData(maybeWorkerMetadata)
+      : undefined;
+
     if (nodeBootstrap) {
-      nodeBootstrap(hasNodeModulesDir, argv0);
+      nodeBootstrap(
+        hasNodeModulesDir,
+        argv0,
+        /* runningOnMainThread */ false,
+        workerId,
+        workerMetadata,
+      );
     }
   } else {
     // Warmup
