@@ -765,8 +765,8 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       // Removes the `Temporal` API.
       delete globalThis.Temporal;
       delete globalThis.Date.prototype.toTemporalInstant;
-    }  
-  
+    }
+
     // Setup `Deno` global - we're actually overriding already existing global
     // `Deno` with `Deno` namespace from "./deno.ts".
     ObjectDefineProperty(globalThis, "Deno", core.propReadOnly(finalDenoNs));
@@ -929,5 +929,12 @@ removeImportedOps();
 
 // Run the warmup path through node and runtime/worker bootstrap functions
 bootstrapMainRuntime(undefined, true);
-bootstrapWorkerRuntime(undefined, undefined, undefined, undefined, undefined, true);
+bootstrapWorkerRuntime(
+  undefined,
+  undefined,
+  undefined,
+  undefined,
+  undefined,
+  true,
+);
 nodeBootstrap(undefined, undefined, undefined, undefined, undefined, true);
