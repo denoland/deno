@@ -343,14 +343,21 @@ pub fn main() {
 
     let flags = match flags_from_vec(args) {
       Ok(flags) => flags,
-      Err(err @ clap::Error { .. })
-        if err.kind() == clap::error::ErrorKind::DisplayHelp
-          || err.kind() == clap::error::ErrorKind::DisplayVersion =>
-      {
-        err.print().unwrap_or_else(|_| std::process::exit(1));
-        std::process::exit(0);
-      }
-      Err(err) => unwrap_or_exit(Err(AnyError::from(err))),
+      Err(err) => match err.kind() {
+        clap::error::ErrorKind::DisplayHelp
+        | clap::error::ErrorKind::DisplayVersion => {
+          err.print().unwrap();
+          std::process::exit(0);
+        }
+        _ => {
+          let error_string = err.to_string();
+          if error_string.contains("BrokenPipe") {
+            std::process::exit(0);
+          } else {
+            return Err(AnyError::from(err));
+          }
+        }
+      },
     };
 
     // TODO(bartlomieju): remove when `--unstable` flag is removed.
