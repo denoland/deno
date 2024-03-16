@@ -485,6 +485,9 @@ pub async fn cover_files(
     coverage_flags.exclude,
     npm_resolver.as_ref(),
   );
+  if script_coverages.is_empty() {
+    return Err(generic_error("No covered files included in the report"));
+  }
 
   let proc_coverages: Vec<_> = script_coverages
     .into_iter()
