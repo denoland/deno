@@ -1,0 +1,5 @@
+{
+  "args": "coverage does_not_exit.js",
+  "output": "does_not_exist.out",
+  "exitCode": 1
+}

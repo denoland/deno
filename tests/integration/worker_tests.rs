@@ -119,6 +119,7 @@ itest!(worker_ids_are_sequential {
 });
 
 // Test for https://github.com/denoland/deno/issues/22629
+// Test for https://github.com/denoland/deno/issues/22934
 itest!(node_worker_auto_exits {
   args: "run --quiet --allow-read workers/node_worker_auto_exits.mjs",
   output: "workers/node_worker_auto_exits.mjs.out",
