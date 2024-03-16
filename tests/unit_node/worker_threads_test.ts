@@ -238,10 +238,12 @@ Deno.test({
 Deno.test({
   name: "[worker_threads] Worker with relative path",
   async fn() {
-    const worker = new workerThreads.Worker("./" + relative(
-      Deno.cwd(),
-      fromFileUrl(new URL("./testdata/worker_threads.mjs", import.meta.url)),
-    ));
+    const worker = new workerThreads.Worker(
+      "./" + relative(
+        Deno.cwd(),
+        fromFileUrl(new URL("./testdata/worker_threads.mjs", import.meta.url)),
+      ),
+    );
     worker.postMessage("Hello, how are you my thread?");
     assertEquals((await once(worker, "message"))[0], "I'm fine!");
     worker.terminate();
