@@ -929,5 +929,5 @@ removeImportedOps();
 
 // Run the warmup path through node and runtime/worker bootstrap functions
 bootstrapMainRuntime(undefined, true);
-bootstrapWorkerRuntime(undefined, undefined, undefined, true);
-nodeBootstrap(undefined, undefined, true);
+bootstrapWorkerRuntime(undefined, undefined, undefined, undefined, undefined, true);
+nodeBootstrap(undefined, undefined, undefined, undefined, undefined, true);
