@@ -462,7 +462,7 @@ pub async fn cover_files(
     return Err(generic_error("No matching coverage profiles found"));
   }
 
-  let factory = CliFactory::from_flags(flags).await?;
+  let factory = CliFactory::from_flags(flags)?;
   let npm_resolver = factory.npm_resolver().await?;
   let file_fetcher = factory.file_fetcher()?;
   let cli_options = factory.cli_options();
@@ -485,6 +485,9 @@ pub async fn cover_files(
     coverage_flags.exclude,
     npm_resolver.as_ref(),
   );
+  if script_coverages.is_empty() {
+    return Err(generic_error("No covered files included in the report"));
+  }
 
   let proc_coverages: Vec<_> = script_coverages
     .into_iter()

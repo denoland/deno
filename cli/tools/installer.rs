@@ -242,8 +242,7 @@ pub async fn install_command(
   install_flags: InstallFlags,
 ) -> Result<(), AnyError> {
   // ensure the module is cached
-  CliFactory::from_flags(flags.clone())
-    .await?
+  CliFactory::from_flags(flags.clone())?
     .module_load_preparer()
     .await?
     .load_and_type_check_files(&[install_flags.module_url.clone()])
@@ -456,7 +455,7 @@ async fn resolve_shim_data(
       extra_files.push((
         copy_path,
         fs::read_to_string(lock_path)
-          .with_context(|| format!("error reading {}", lock_path.display()))?,
+          .with_context(|| format!("error reading {}", lock_path))?,
       ));
     } else {
       // Provide an empty lockfile so that this overwrites any existing lockfile

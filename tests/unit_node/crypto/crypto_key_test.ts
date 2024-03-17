@@ -2,7 +2,9 @@
 
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import {
+  createHmac,
   createPrivateKey,
+  createPublicKey,
   createSecretKey,
   generateKeyPair,
   generateKeyPairSync,
@@ -12,7 +14,6 @@ import {
 import { promisify } from "node:util";
 import { Buffer } from "node:buffer";
 import { assertEquals, assertThrows } from "@std/assert/mod.ts";
-import { createHmac } from "node:crypto";
 
 const RUN_SLOW_TESTS = Deno.env.get("SLOW_TESTS") === "1";
 
@@ -106,7 +107,16 @@ for (const type of ["rsa", "rsa-pss", "dsa"]) {
   }
 }
 
-for (const namedCurve of ["P-384", "P-256"]) {
+for (
+  const namedCurve of [
+    "P-384",
+    "prime384v1",
+    "secp384r1",
+    "P-256",
+    "prime256v1",
+    "secp256r1",
+  ]
+) {
   Deno.test({
     name: `generate ec key ${namedCurve}`,
     fn() {
@@ -219,6 +229,24 @@ Deno.test("createPrivateKey rsa", function () {
   assertEquals(key.asymmetricKeyDetails?.publicExponent, 65537n);
 });
 
+Deno.test("createPrivateKey dh", function () {
+  // 1.2.840.113549.1.3.1
+  const pem = "-----BEGIN PRIVATE KEY-----\n" +
+    "MIIBoQIBADCB1QYJKoZIhvcNAQMBMIHHAoHBAP//////////yQ/aoiFowjTExmKL\n" +
+    "gNwc0SkCTgiKZ8x0Agu+pjsTmyJRSgh5jjQE3e+VGbPNOkMbMCsKbfJfFDdP4TVt\n" +
+    "bVHCReSFtXZiXn7G9ExC6aY37WsL/1y29Aa37e44a/taiZ+lrp8kEXxLH+ZJKGZR\n" +
+    "7ORbPcIAfLihY78FmNpINhxV05ppFj+o/STPX4NlXSPco62WHGLzViCFUrue1SkH\n" +
+    "cJaWbWcMNU5KvJgE8XRsCMojcyf//////////wIBAgSBwwKBwHxnT7Zw2Ehh1vyw\n" +
+    "eolzQFHQzyuT0y+3BF+FxK2Ox7VPguTp57wQfGHbORJ2cwCdLx2mFM7gk4tZ6COS\n" +
+    "E3Vta85a/PuhKXNLRdP79JgLnNtVtKXB+ePDS5C2GgXH1RHvqEdJh7JYnMy7Zj4P\n" +
+    "GagGtIy3dV5f4FA0B/2C97jQ1pO16ah8gSLQRKsNpTCw2rqsZusE0rK6RaYAef7H\n" +
+    "y/0tmLIsHxLIn+WK9CANqMbCWoP4I178BQaqhiOBkNyNZ0ndqA==\n" +
+    "-----END PRIVATE KEY-----";
+  const key = createPrivateKey(pem);
+  assertEquals(key.type, "private");
+  assertEquals(key.asymmetricKeyType, "dh");
+});
+
 // openssl ecparam -name secp256r1 -genkey -noout -out a.pem
 // openssl pkcs8 -topk8 -nocrypt -in a.pem -out b.pem
 const ecPrivateKey = Deno.readTextFileSync(
@@ -230,4 +258,58 @@ Deno.test("createPrivateKey ec", function () {
   assertEquals(key.type, "private");
   assertEquals(key.asymmetricKeyType, "ec");
   assertEquals(key.asymmetricKeyDetails?.namedCurve, "p256");
+});
+
+const rsaPublicKey = Deno.readTextFileSync(
+  new URL("../testdata/rsa_public.pem", import.meta.url),
+);
+
+Deno.test("createPublicKey() RSA", () => {
+  const key = createPublicKey(rsaPublicKey);
+  assertEquals(key.type, "public");
+  assertEquals(key.asymmetricKeyType, "rsa");
+  assertEquals(key.asymmetricKeyDetails?.modulusLength, 2048);
+  assertEquals(key.asymmetricKeyDetails?.publicExponent, 65537n);
+});
+
+// openssl ecparam -name prime256v1 -genkey -noout -out a.pem
+// openssl ec -in a.pem -pubout -out b.pem
+const ecPublicKey = Deno.readTextFileSync(
+  new URL("../testdata/ec_prime256v1_public.pem", import.meta.url),
+);
+
+Deno.test("createPublicKey() EC", function () {
+  const key = createPublicKey(ecPublicKey);
+  assertEquals(key.type, "public");
+  assertEquals(key.asymmetricKeyType, "ec");
+  assertEquals(key.asymmetricKeyDetails?.namedCurve, "p256");
+});
+
+Deno.test("createPublicKey SPKI for DH", async function () {
+  const { publicKey, privateKey } = await crypto.subtle.generateKey(
+    {
+      name: "ECDH",
+      namedCurve: "P-384",
+    },
+    true,
+    ["deriveKey", "deriveBits"],
+  );
+
+  const exportedPublicKey = await crypto.subtle.exportKey("spki", publicKey);
+  const exportedPrivateKey = await crypto.subtle.exportKey("pkcs8", privateKey);
+
+  const pubKey = createPublicKey({
+    key: Buffer.from(exportedPublicKey),
+    format: "der",
+    type: "spki",
+  });
+
+  const privKey = createPrivateKey({
+    key: Buffer.from(exportedPrivateKey),
+    format: "der",
+    type: "pkcs8",
+  });
+
+  assertEquals(pubKey.asymmetricKeyType, "ec");
+  assertEquals(privKey.asymmetricKeyType, "ec");
 });

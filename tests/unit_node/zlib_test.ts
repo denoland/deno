@@ -171,3 +171,13 @@ Deno.test("brotli large chunk size", async () => {
   );
   assertEquals(output.length, input.length);
 });
+
+Deno.test("brotli decompress flush restore size", async () => {
+  const input = new Uint8Array(1000000);
+  const output = await buffer(
+    Readable.from([input])
+      .pipe(createBrotliCompress())
+      .pipe(createBrotliDecompress()),
+  );
+  assertEquals(output.length, input.length);
+});

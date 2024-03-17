@@ -30,13 +30,24 @@ deno_core::extension!(
   },
 );
 
-#[derive(Serialize, Default)]
+#[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SnapshotOptions {
   pub deno_version: String,
   pub ts_version: String,
   pub v8_version: &'static str,
   pub target: String,
+}
+
+impl Default for SnapshotOptions {
+  fn default() -> Self {
+    Self {
+      deno_version: "dev".to_owned(),
+      ts_version: "n/a".to_owned(),
+      v8_version: deno_core::v8_version(),
+      target: std::env::consts::ARCH.to_owned(),
+    }
+  }
 }
 
 // Note: Called at snapshot time, op perf is not a concern.

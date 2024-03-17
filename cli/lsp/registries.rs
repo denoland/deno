@@ -488,7 +488,7 @@ impl ModuleRegistry {
   }
 
   /// Disable a registry, removing its configuration, if any, from memory.
-  pub async fn disable(&mut self, origin: &str) -> Result<(), AnyError> {
+  pub fn disable(&mut self, origin: &str) -> Result<(), AnyError> {
     let origin = base_url(&Url::parse(origin)?);
     self.origins.remove(&origin);
     Ok(())

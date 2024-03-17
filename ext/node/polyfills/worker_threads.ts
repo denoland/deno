@@ -22,7 +22,7 @@ import {
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { log } from "ext:runtime/06_util.js";
 import { notImplemented } from "ext:deno_node/_utils.ts";
-import { EventEmitter, once } from "node:events";
+import { EventEmitter } from "node:events";
 import { BroadcastChannel } from "ext:deno_broadcast_channel/01_broadcast_channel.js";
 
 const { ObjectPrototypeIsPrototypeOf } = primordials;
@@ -35,7 +35,6 @@ const {
   SafeWeakMap,
   SafeMap,
   TypeError,
-  PromisePrototypeThen,
 } = primordials;
 
 export interface WorkerOptions {
@@ -60,7 +59,6 @@ export interface WorkerOptions {
   name?: string;
 }
 
-let threads = 0;
 const privateWorkerRef = Symbol("privateWorkerRef");
 class NodeWorker extends EventEmitter {
   #id = 0;
@@ -113,6 +111,11 @@ class NodeWorker extends EventEmitter {
       name = "[worker eval]";
     }
     this.#name = name;
+
+    const serializedWorkerMetadata = serializeJsMessageData({
+      workerData: options?.workerData,
+      environmentData: environmentData,
+    }, options?.transferList ?? []);
     const id = op_create_worker(
       {
         // deno-lint-ignore prefer-primordials
@@ -122,17 +125,14 @@ class NodeWorker extends EventEmitter {
         permissions: null,
         name: this.#name,
         workerType: "module",
+        closeOnIdle: true,
       },
+      serializedWorkerMetadata,
     );
     this.#id = id;
+    this.threadId = id;
     this.#pollControl();
     this.#pollMessages();
-
-    this.postMessage({
-      environmentData,
-      threadId: (this.threadId = ++threads),
-      workerData: options?.workerData,
-    }, options?.transferList || []);
     // https://nodejs.org/api/worker_threads.html#event-online
     this.emit("online");
   }
@@ -304,7 +304,11 @@ type ParentPort = typeof self & NodeEventTarget;
 // deno-lint-ignore no-explicit-any
 let parentPort: ParentPort = null as any;
 
-internals.__initWorkerThreads = (runningOnMainThread: boolean) => {
+internals.__initWorkerThreads = (
+  runningOnMainThread: boolean,
+  workerId,
+  maybeWorkerMetadata,
+) => {
   isMainThread = runningOnMainThread;
 
   defaultExport.isMainThread = isMainThread;
@@ -326,28 +330,15 @@ internals.__initWorkerThreads = (runningOnMainThread: boolean) => {
     >();
 
     parentPort = self as ParentPort;
-
-    const initPromise = PromisePrototypeThen(
-      once(
-        parentPort,
-        "message",
-      ),
-      (result) => {
-        // TODO(bartlomieju): just so we don't error out here. It's still racy,
-        // but should be addressed by https://github.com/denoland/deno/issues/22783
-        // shortly.
-        const data = result[0].data ?? {};
-        // TODO(kt3k): The below values are set asynchronously
-        // using the first message from the parent.
-        // This should be done synchronously.
-        threadId = data.threadId;
-        workerData = data.workerData;
-        environmentData = data.environmentData;
-
-        defaultExport.threadId = threadId;
-        defaultExport.workerData = workerData;
-      },
-    );
+    threadId = workerId;
+    if (maybeWorkerMetadata) {
+      const { 0: metadata, 1: _ } = maybeWorkerMetadata;
+      workerData = metadata.workerData;
+      environmentData = metadata.environmentData;
+    }
+    defaultExport.workerData = workerData;
+    defaultExport.parentPort = parentPort;
+    defaultExport.threadId = threadId;
 
     parentPort.off = parentPort.removeListener = function (
       this: ParentPort,
@@ -363,22 +354,18 @@ internals.__initWorkerThreads = (runningOnMainThread: boolean) => {
       name,
       listener,
     ) {
-      PromisePrototypeThen(initPromise, () => {
-        // deno-lint-ignore no-explicit-any
-        const _listener = (ev: any) => listener(ev.data);
-        listeners.set(listener, _listener);
-        this.addEventListener(name, _listener);
-      });
+      // deno-lint-ignore no-explicit-any
+      const _listener = (ev: any) => listener(ev.data);
+      listeners.set(listener, _listener);
+      this.addEventListener(name, _listener);
       return this;
     };
 
     parentPort.once = function (this: ParentPort, name, listener) {
-      PromisePrototypeThen(initPromise, () => {
-        // deno-lint-ignore no-explicit-any
-        const _listener = (ev: any) => listener(ev.data);
-        listeners.set(listener, _listener);
-        this.addEventListener(name, _listener);
-      });
+      // deno-lint-ignore no-explicit-any
+      const _listener = (ev: any) => listener(ev.data);
+      listeners.set(listener, _listener);
+      this.addEventListener(name, _listener);
       return this;
     };
 

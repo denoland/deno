@@ -32,7 +32,7 @@ fn create_file(
   }
 }
 
-pub async fn init_project(init_flags: InitFlags) -> Result<(), AnyError> {
+pub fn init_project(init_flags: InitFlags) -> Result<(), AnyError> {
   let cwd =
     std::env::current_dir().context("Can't read current working directory.")?;
   let dir = if let Some(dir) = &init_flags.dir {

@@ -20,6 +20,7 @@ use rand::distributions::Uniform;
 use rand::thread_rng;
 use rand::Rng;
 use rsa::pkcs1::DecodeRsaPrivateKey;
+use rsa::pkcs1::DecodeRsaPublicKey;
 use rsa::pkcs8;
 use rsa::pkcs8::der::asn1;
 use rsa::pkcs8::der::Decode;
@@ -372,20 +373,36 @@ pub fn op_node_sign(
 
   let oid;
   let pkey = match format {
-    "pem" => {
-      if label == "PRIVATE KEY" {
+    "pem" => match label {
+      "PRIVATE KEY" => {
         let pk_info = pkcs8::PrivateKeyInfo::try_from(doc.as_bytes())?;
         oid = pk_info.algorithm.oid;
         pk_info.private_key
-      } else if label == "RSA PRIVATE KEY" {
+      }
+      "RSA PRIVATE KEY" => {
         oid = RSA_ENCRYPTION_OID;
         doc.as_bytes()
-      } else {
-        return Err(type_error("Invalid PEM label"));
       }
-    }
+      "EC PRIVATE KEY" => {
+        let ec_pk = sec1::EcPrivateKey::from_der(doc.as_bytes())?;
+        match ec_pk.parameters {
+          Some(sec1::EcParameters::NamedCurve(o)) => {
+            oid = o;
+            ec_pk.private_key
+          }
+          // https://datatracker.ietf.org/doc/html/rfc5915#section-3
+          //
+          // Though the ASN.1 indicates that
+          // the parameters field is OPTIONAL, implementations that conform to
+          // this document MUST always include the parameters field.
+          _ => return Err(type_error("invalid ECPrivateKey params")),
+        }
+      }
+      _ => return Err(type_error("Invalid PEM label")),
+    },
     _ => return Err(type_error("Unsupported key format")),
   };
+
   match oid {
     RSA_ENCRYPTION_OID => {
       use rsa::pkcs1v15::SigningKey;
@@ -416,6 +433,25 @@ pub fn op_node_sign(
           }
         }
         .into(),
+      )
+    }
+    // signature structure encoding is DER by default for DSA and ECDSA.
+    //
+    // TODO(@littledivy): Validate public_key if present
+    ID_SECP256R1_OID => {
+      let key = p256::ecdsa::SigningKey::from_slice(pkey)?;
+      Ok(
+        key
+          .sign_prehash(digest)
+          .map(|sig: p256::ecdsa::Signature| sig.to_der().to_vec().into())?,
+      )
+    }
+    ID_SECP384R1_OID => {
+      let key = p384::ecdsa::SigningKey::from_slice(pkey)?;
+      Ok(
+        key
+          .sign_prehash(digest)
+          .map(|sig: p384::ecdsa::Signature| sig.to_der().to_vec().into())?,
       )
     }
     _ => Err(type_error("Unsupported signing key")),
@@ -703,26 +739,32 @@ pub async fn op_node_dsa_generate_async(
 fn ec_generate(
   named_curve: &str,
 ) -> Result<(ToJsBuffer, ToJsBuffer), AnyError> {
-  use ring::signature::EcdsaKeyPair;
-  use ring::signature::KeyPair;
+  use elliptic_curve::sec1::ToEncodedPoint;
 
-  let curve = match named_curve {
-    "P-256" => &ring::signature::ECDSA_P256_SHA256_FIXED_SIGNING,
-    "P-384" => &ring::signature::ECDSA_P384_SHA384_FIXED_SIGNING,
-    _ => return Err(type_error("Unsupported named curve")),
-  };
+  let mut rng = rand::thread_rng();
+  // TODO(@littledivy): Support public key point encoding.
+  // Default is uncompressed.
+  match named_curve {
+    "P-256" | "prime256v1" | "secp256r1" => {
+      let key = p256::SecretKey::random(&mut rng);
+      let public_key = key.public_key();
 
-  let rng = ring::rand::SystemRandom::new();
+      Ok((
+        key.to_bytes().to_vec().into(),
+        public_key.to_encoded_point(false).as_ref().to_vec().into(),
+      ))
+    }
+    "P-384" | "prime384v1" | "secp384r1" => {
+      let key = p384::SecretKey::random(&mut rng);
+      let public_key = key.public_key();
 
-  let pkcs8 = EcdsaKeyPair::generate_pkcs8(curve, &rng)
-    .map_err(|_| type_error("Failed to generate EC key"))?;
-
-  let public_key = EcdsaKeyPair::from_pkcs8(curve, pkcs8.as_ref(), &rng)
-    .map_err(|_| type_error("Failed to generate EC key"))?
-    .public_key()
-    .as_ref()
-    .to_vec();
-  Ok((pkcs8.as_ref().to_vec().into(), public_key.into()))
+      Ok((
+        key.to_bytes().to_vec().into(),
+        public_key.to_encoded_point(false).as_ref().to_vec().into(),
+      ))
+    }
+    _ => Err(type_error("Unsupported named curve")),
+  }
 }
 
 #[op2]
@@ -1211,6 +1253,8 @@ pub enum AsymmetricKeyDetails {
   #[serde(rename = "ec")]
   #[serde(rename_all = "camelCase")]
   Ec { named_curve: String },
+  #[serde(rename = "dh")]
+  Dh,
 }
 
 // https://oidref.com/
@@ -1270,6 +1314,8 @@ static MGF1_SHA1_MASK_ALGORITHM: Lazy<
 
 pub const RSA_ENCRYPTION_OID: const_oid::ObjectIdentifier =
   const_oid::ObjectIdentifier::new_unwrap("1.2.840.113549.1.1.1");
+pub const DH_KEY_AGREEMENT_OID: const_oid::ObjectIdentifier =
+  const_oid::ObjectIdentifier::new_unwrap("1.2.840.113549.1.3.1");
 pub const RSASSA_PSS_OID: const_oid::ObjectIdentifier =
   const_oid::ObjectIdentifier::new_unwrap("1.2.840.113549.1.1.10");
 pub const EC_OID: const_oid::ObjectIdentifier =
@@ -1354,11 +1400,8 @@ fn parse_private_key(
 ) -> Result<pkcs8::SecretDocument, AnyError> {
   match format {
     "pem" => {
-      let (label, doc) =
+      let (_, doc) =
         pkcs8::SecretDocument::from_pem(std::str::from_utf8(key).unwrap())?;
-      if label != "PRIVATE KEY" {
-        return Err(type_error("Invalid PEM label"));
-      }
       Ok(doc)
     }
     "der" => {
@@ -1404,6 +1447,7 @@ pub fn op_node_create_private_key(
         .into(),
       })
     }
+    DH_KEY_AGREEMENT_OID => Ok(AsymmetricKeyDetails::Dh),
     RSASSA_PSS_OID => {
       let params = PssPrivateKeyParameters::try_from(
         pk_info
@@ -1430,6 +1474,116 @@ pub fn op_node_create_private_key(
         public_exponent: BigInt::from_bytes_be(
           num_bigint::Sign::Plus,
           private_key.public_exponent.as_bytes(),
+        )
+        .into(),
+        hash_algorithm: hash_algorithm.to_string(),
+        salt_length: params.salt_length,
+      })
+    }
+    EC_OID => {
+      let named_curve = pk_info
+        .algorithm
+        .parameters_oid()
+        .map_err(|_| type_error("malformed parameters"))?;
+      let named_curve = match named_curve {
+        ID_SECP256R1_OID => "p256",
+        ID_SECP384R1_OID => "p384",
+        ID_SECP521R1_OID => "p521",
+        _ => return Err(type_error("Unsupported named curve")),
+      };
+
+      Ok(AsymmetricKeyDetails::Ec {
+        named_curve: named_curve.to_string(),
+      })
+    }
+    _ => Err(type_error("Unsupported algorithm")),
+  }
+}
+
+fn parse_public_key(
+  key: &[u8],
+  format: &str,
+  type_: &str,
+) -> Result<pkcs8::Document, AnyError> {
+  match format {
+    "pem" => {
+      let (label, doc) =
+        pkcs8::Document::from_pem(std::str::from_utf8(key).unwrap())?;
+      if label != "PUBLIC KEY" {
+        return Err(type_error("Invalid PEM label"));
+      }
+      Ok(doc)
+    }
+    "der" => match type_ {
+      "pkcs1" => pkcs8::Document::from_pkcs1_der(key)
+        .map_err(|_| type_error("Invalid PKCS1 public key")),
+      _ => Err(type_error(format!("Unsupported key type: {}", type_))),
+    },
+    _ => Err(type_error(format!("Unsupported key format: {}", format))),
+  }
+}
+
+#[op2]
+#[serde]
+pub fn op_node_create_public_key(
+  #[buffer] key: &[u8],
+  #[string] format: &str,
+  #[string] type_: &str,
+) -> Result<AsymmetricKeyDetails, AnyError> {
+  let mut doc = None;
+
+  let pk_info = if type_ != "spki" {
+    doc.replace(parse_public_key(key, format, type_)?);
+    spki::SubjectPublicKeyInfoRef::try_from(doc.as_ref().unwrap().as_bytes())?
+  } else {
+    spki::SubjectPublicKeyInfoRef::try_from(key)?
+  };
+
+  let alg = pk_info.algorithm.oid;
+
+  match alg {
+    RSA_ENCRYPTION_OID => {
+      let public_key = rsa::pkcs1::RsaPublicKey::from_der(
+        pk_info.subject_public_key.raw_bytes(),
+      )?;
+      let modulus_length = public_key.modulus.as_bytes().len() * 8;
+
+      Ok(AsymmetricKeyDetails::Rsa {
+        modulus_length,
+        public_exponent: BigInt::from_bytes_be(
+          num_bigint::Sign::Plus,
+          public_key.public_exponent.as_bytes(),
+        )
+        .into(),
+      })
+    }
+    RSASSA_PSS_OID => {
+      let params = PssPrivateKeyParameters::try_from(
+        pk_info
+          .algorithm
+          .parameters
+          .ok_or_else(|| type_error("Malformed parameters".to_string()))?,
+      )
+      .map_err(|_| type_error("Malformed parameters".to_string()))?;
+
+      let hash_alg = params.hash_algorithm;
+      let hash_algorithm = match hash_alg.oid {
+        ID_SHA1_OID => "sha1",
+        ID_SHA256_OID => "sha256",
+        ID_SHA384_OID => "sha384",
+        ID_SHA512_OID => "sha512",
+        _ => return Err(type_error("Unsupported hash algorithm")),
+      };
+
+      let public_key = rsa::pkcs1::RsaPublicKey::from_der(
+        pk_info.subject_public_key.raw_bytes(),
+      )?;
+      let modulus_length = public_key.modulus.as_bytes().len() * 8;
+      Ok(AsymmetricKeyDetails::RsaPss {
+        modulus_length,
+        public_exponent: BigInt::from_bytes_be(
+          num_bigint::Sign::Plus,
+          public_key.public_exponent.as_bytes(),
         )
         .into(),
         hash_algorithm: hash_algorithm.to_string(),
