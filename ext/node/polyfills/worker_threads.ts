@@ -9,7 +9,7 @@ import {
   op_host_recv_message,
   op_host_terminate_worker,
   op_message_port_recv_message_sync,
-  op_require_is_esm,
+  op_worker_threads_filename,
 } from "ext:core/ops";
 import {
   deserializeJsMessageData,
@@ -90,39 +90,21 @@ class NodeWorker extends EventEmitter {
   constructor(specifier: URL | string, options?: WorkerOptions) {
     super();
 
+    if (
+      specifier === "object" &&
+      !(specifier.protocol === "data:" || specifier.protocol === "file:")
+    ) {
+      throw new TypeError(
+        "node:worker_threads support only 'file:' and 'data:' URLs",
+      );
+    }
     if (options?.eval) {
       specifier = `data:text/javascript,${specifier}`;
-    } else {
+    } else if (!(specifier === "object" && specifier.protocol === "data:")) {
       // deno-lint-ignore prefer-primordials
-      specifier = op_require_is_esm(specifier.toString());
+      specifier = specifier.toString();
+      specifier = op_worker_threads_filename(specifier);
     }
-
-    /*
-    if (options?.eval === true) {
-      specifier = `data:text/javascript,${specifier}`;
-    } else if (
-      typeof specifier === "object" && !["file:","data:"].includes(specifier.protocol)
-    ) {
-      throw new TypeError("node:worker_threads support only 'file:' and 'data:' URLs");
-    } else if (
-      typeof specifier === "string" && !StringPrototypeStartsWith(specifier, "data:")
-    ) {
-      specifier = resolve(specifier);
-      if (op_require_is_esm(specifier)) {
-        specifier = toFileUrl(specifier);
-      } else {
-        const cwdFileUrl = toFileUrl(Deno.cwd());
-        specifier =
-          `data:text/javascript,(async function() {const { createRequire } = await import("node:module");const require = createRequire("${cwdFileUrl}");require("${specifier}");})();`;
-      }
-    } else if (
-      (specifier.protocol === "file:") && !op_require_is_esm(specifier.pathname)
-    ) {
-      const cwdFileUrl = toFileUrl(Deno.cwd());
-      specifier =
-        `data:text/javascript,(async function() {const { createRequire } = await import("node:module");const require = createRequire("${cwdFileUrl}");require("${specifier.pathname}");})();`;
-    }
-    */
 
     // TODO(bartlomieu): this doesn't match the Node.js behavior, it should be
     // `[worker {threadId}] {name}` or empty string.

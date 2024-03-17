@@ -4,9 +4,10 @@ import {
   assert,
   assertEquals,
   assertObjectMatch,
+  assertThrows,
   fail,
 } from "@std/assert/mod.ts";
-import { fromFileUrl, relative } from "@std/path/mod.ts";
+import { fromFileUrl, relative, sep } from "@std/path/mod.ts";
 import * as workerThreads from "node:worker_threads";
 import { EventEmitter, once } from "node:events";
 
@@ -144,7 +145,6 @@ Deno.test({
         );
         worker.on("error", (e) => reject(e.message));
         worker.on("message", () => resolve(worker));
-        worker.on("online", () => resolve(worker));
       });
     }
     const worker = await p();
@@ -162,7 +162,6 @@ Deno.test({
         );
         worker.on("error", (e) => reject(e.message));
         worker.on("message", () => resolve(worker));
-        worker.on("online", () => resolve(worker));
       });
     }
     const worker = await p();
@@ -180,11 +179,62 @@ Deno.test({
         );
         worker.on("error", (e) => reject(e.message));
         worker.on("message", () => resolve(worker));
-        worker.on("online", () => resolve(worker));
       });
     }
     const worker = await p();
     worker.terminate();
+  },
+});
+
+Deno.test({
+  name: "[worker_threads] relativ path string",
+  async fn() {
+    function p() {
+      return new Promise<workerThreads.Worker>((resolve, reject) => {
+        const worker = new workerThreads.Worker(
+          "./tests/unit_node/testdata/worker_module/cjs-file.cjs",
+        );
+        worker.on("error", (e) => reject(e.message));
+        worker.on("message", () => resolve(worker));
+      });
+    }
+    const worker = await p();
+    worker.terminate();
+  },
+});
+
+Deno.test({
+  name: "[worker_threads] throws on relativ path without leading dot",
+  fn() {
+    assertThrows(
+      () => {
+        new workerThreads.Worker(
+          "tests/unit_node/testdata/worker_module/cjs-file.cjs",
+        );
+      },
+    );
+  },
+});
+
+Deno.test({
+  name: "[worker_threads] throws on unsupported URL protcol",
+  fn() {
+    assertThrows(
+      () => {
+        new workerThreads.Worker(new URL("https://example.com"));
+      },
+    );
+  },
+});
+
+Deno.test({
+  name: "[worker_threads] throws on non-existend file",
+  fn() {
+    assertThrows(
+      () => {
+        new workerThreads.Worker(new URL("file://very/unlikely"));
+      },
+    );
   },
 });
 
@@ -239,7 +289,7 @@ Deno.test({
   name: "[worker_threads] Worker with relative path",
   async fn() {
     const worker = new workerThreads.Worker(
-      "./" + relative(
+      `.${sep}` + relative(
         Deno.cwd(),
         fromFileUrl(new URL("./testdata/worker_threads.mjs", import.meta.url)),
       ),

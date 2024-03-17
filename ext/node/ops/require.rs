@@ -548,42 +548,6 @@ where
 }
 
 #[op2]
-#[string]
-pub fn op_require_is_esm<P>(
-  state: &mut OpState,
-  #[string] specifier: String,
-) -> Result<String, AnyError>
-where
-  P: NodePermissions + 'static,
-{
-  if specifier.starts_with("data:") {
-    return Ok(specifier);
-  }
-  let url: Url = if specifier.starts_with("file:") {
-    Url::parse(&specifier)?
-  } else {
-    let path = PathBuf::from(specifier);
-    ensure_read_permission::<P>(state, &path)?;
-    let fs = state.borrow::<FileSystemRc>();
-    let canonicalized_path = deno_core::strip_unc_prefix(fs.realpath_sync(&path)?);
-    Url::from_file_path(canonicalized_path)
-      .map_err(|e| generic_error(format!("URL from Path-String: {:#?}", e)))?
-  };
-  let node_resolver = state.borrow::<Rc<NodeResolver>>();
-  match node_resolver.url_to_node_resolution(url)? {
-    resolution::NodeResolution::Esm(u) => Ok(u.to_string()),
-    resolution::NodeResolution::CommonJs(u) => Ok(format!(
-      "data:text/javascript,(async function() {{\
-        const {{ createRequire }} = await import(\"node:module\");\
-        const require = createRequire(\"{u}\");require(\"{u}\");}})();",
-        //Url::from_directory_path(std::env::current_dir()?)
-        //.map_err(|e| generic_error(format!("CWD URL creation: {:#?}", e)))?
-    )),
-    _ => Err(generic_error("Neither ESM nor CJS")),
-  }
-}
-
-#[op2]
 #[serde]
 pub fn op_require_read_package_scope<P>(
   state: &mut OpState,
