@@ -238,3 +238,52 @@ Deno.test({
   },
   sanitizeResources: false,
 });
+
+Deno.test({
+  name: "[worker_threads] Worker workerData with MessagePort",
+  async fn() {
+    const { port1: mainPort, port2: workerPort } = new workerThreads
+      .MessageChannel();
+    const deferred = Promise.withResolvers<void>();
+    const worker = new workerThreads.Worker(
+      `
+      import {
+        isMainThread,
+        MessageChannel,
+        parentPort,
+        receiveMessageOnPort,
+        Worker,
+        workerData,
+      } from "node:worker_threads";
+      parentPort.on("message", (msg) => {
+        console.log("message from main", msg);
+        parentPort.postMessage("Hello from worker on parentPort!");
+        workerData.workerPort.postMessage("Hello from worker on workerPort!");
+      });
+      `,
+      {
+        eval: true,
+        workerData: { workerPort },
+        transferList: [workerPort],
+      },
+    );
+
+    worker.on("message", (data) => {
+      assertEquals(data, "Hello from worker on parentPort!");
+      // TODO(bartlomieju): it would be better to use `mainPort.on("message")`,
+      // but we currently don't support it.
+      // https://github.com/denoland/deno/issues/22951
+      // Wait a bit so the message can arrive.
+      setTimeout(() => {
+        const msg = workerThreads.receiveMessageOnPort(mainPort)!.message;
+        assertEquals(msg, "Hello from worker on workerPort!");
+        deferred.resolve();
+      }, 500);
+    });
+
+    worker.postMessage("Hello from parent");
+    await deferred.promise;
+    await worker.terminate();
+    mainPort.close();
+  },
+});

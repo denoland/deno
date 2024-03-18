@@ -227,7 +227,7 @@ impl Default for WorkerOptions {
   }
 }
 
-fn create_op_metrics(
+pub fn create_op_metrics(
   enable_op_summary_metrics: bool,
   strace_ops: Option<Vec<String>>,
 ) -> (
@@ -316,7 +316,7 @@ impl MainWorker {
       },
       state = |state, options| {
         // Save the permissions container and the wrapper.
-        state.put(options.permissions.0.clone());
+        state.put::<deno_permissions::PermissionsContainer>(options.permissions.0.clone());
         // This is temporary until we migrate all exts/ to the deno_permissions crate.
         state.put::<PermissionsContainer>(options.permissions);
         state.put(ops::TestingFeaturesEnabled(options.enable_testing_features));
@@ -497,6 +497,17 @@ impl MainWorker {
     if let Some(op_summary_metrics) = op_summary_metrics {
       js_runtime.op_state().borrow_mut().put(op_summary_metrics);
     }
+    extern "C" fn message_handler(
+      _msg: v8::Local<v8::Message>,
+      _exception: v8::Local<v8::Value>,
+    ) {
+      // TODO(@littledivy): Propogate message to users.
+    }
+
+    // Register message listener
+    js_runtime
+      .v8_isolate()
+      .add_message_listener(message_handler);
 
     if let Some(server) = options.maybe_inspector_server.clone() {
       server.register_inspector(
@@ -555,11 +566,16 @@ impl MainWorker {
     }
 
     let scope = &mut self.js_runtime.handle_scope();
+    let scope = &mut v8::TryCatch::new(scope);
     let args = options.as_v8(scope);
     let bootstrap_fn = self.bootstrap_fn_global.take().unwrap();
     let bootstrap_fn = v8::Local::new(scope, bootstrap_fn);
     let undefined = v8::undefined(scope);
-    bootstrap_fn.call(scope, undefined.into(), &[args]).unwrap();
+    bootstrap_fn.call(scope, undefined.into(), &[args]);
+    if let Some(exception) = scope.exception() {
+      let error = JsError::from_v8_exception(scope, exception);
+      panic!("Bootstrap exception: {error}");
+    }
   }
 
   /// See [JsRuntime::execute_script](deno_core::JsRuntime::execute_script)

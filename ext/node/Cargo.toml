@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_node"
-version = "0.78.0"
+version = "0.79.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -63,11 +63,13 @@ ring.workspace = true
 ripemd = "0.1.3"
 rsa.workspace = true
 scrypt = "0.11.0"
+sec1 = "0.7"
 serde = "1.0.149"
 sha-1 = "0.10.0"
 sha2.workspace = true
 signature.workspace = true
 simd-json = "0.13.4"
+spki.workspace = true
 tokio.workspace = true
 typenum = "1.15.0"
 url.workspace = true
