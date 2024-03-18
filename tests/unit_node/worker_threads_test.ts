@@ -145,6 +145,16 @@ Deno.test({
 });
 
 Deno.test({
+  name: "[worker_threads] worker thread with type module and .mjs",
+  fn() {
+    const worker = new workerThreads.Worker(
+      new URL("./testdata/worker_module/index.mjs", import.meta.url),
+    );
+    worker.terminate();
+  },
+});
+
+Deno.test({
   name: "[worker_threads] inheritances",
   async fn() {
     const worker = new workerThreads.Worker(
