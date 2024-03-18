@@ -25,6 +25,7 @@ export type EllipticCurve = {
   ephemeral: boolean;
   privateKeySize: number;
   publicKeySize: number;
+  publicKeySizeCompressed: number;
   sharedSecretSize: number;
 };
 
@@ -33,30 +34,35 @@ export const ellipticCurves: Array<EllipticCurve> = [
     name: "secp256k1",
     privateKeySize: 32,
     publicKeySize: 65,
+    publicKeySizeCompressed: 33,
     sharedSecretSize: 32,
   }, // Weierstrass-class EC used by Bitcoin
   {
     name: "prime256v1",
     privateKeySize: 32,
     publicKeySize: 65,
+    publicKeySizeCompressed: 33,
     sharedSecretSize: 32,
   }, // NIST P-256 EC
   {
     name: "secp256r1",
     privateKeySize: 32,
     publicKeySize: 65,
+    publicKeySizeCompressed: 33,
     sharedSecretSize: 32,
   }, // NIST P-256 EC (same as above)
   {
     name: "secp384r1",
     privateKeySize: 48,
     publicKeySize: 97,
+    publicKeySizeCompressed: 49,
     sharedSecretSize: 48,
   }, // NIST P-384 EC
   {
     name: "secp224r1",
     privateKeySize: 28,
     publicKeySize: 57,
+    publicKeySizeCompressed: 29,
     sharedSecretSize: 28,
   }, // NIST P-224 EC
 ];

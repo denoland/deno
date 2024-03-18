@@ -2,6 +2,7 @@
 
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import {
+  createECDH,
   createHmac,
   createPrivateKey,
   createPublicKey,
@@ -312,4 +313,13 @@ Deno.test("createPublicKey SPKI for DH", async function () {
 
   assertEquals(pubKey.asymmetricKeyType, "ec");
   assertEquals(privKey.asymmetricKeyType, "ec");
+});
+
+Deno.test("ECDH generateKeys compressed", function () {
+  const ecdh = createECDH("secp256k1");
+  const publicKey = ecdh.generateKeys("binary", "compressed");
+  assertEquals(publicKey.length, 33);
+
+  const uncompressedKey = ecdh.generateKeys("binary");
+  assertEquals(uncompressedKey.length, 65);
 });
