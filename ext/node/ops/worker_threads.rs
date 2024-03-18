@@ -79,9 +79,11 @@ fn wrap_cjs(url: Url) -> Result<String, AnyError> {
     .to_file_path()
     .map_err(|e| generic_error(format!("URL to Path-String: {:#?}", e)))?
     .to_string_lossy()
-    .to_string();
+    .to_string()
+    .replace(std::path::MAIN_SEPARATOR, "/");
+
   Ok(format!(
-    "data:text/javascript,import {{ createRequire }} from \"node:module\";\
+    "data:text/javascript,import {{ createRequire }} from \"node:module\"; \
     const require = createRequire(\"file:///\"); require(\"{url_str}\");"
   ))
 }
