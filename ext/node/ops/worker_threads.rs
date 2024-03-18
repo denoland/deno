@@ -83,9 +83,8 @@ fn wrap_cjs(state: &mut OpState, url: Url) -> Result<String, AnyError> {
     None => url.path().into(),
   };
   Ok(format!(
-    "data:text/javascript,(async function() {{\
-      const {{ createRequire }} = await import(\"node:module\");\
-      const require = createRequire(\"{}\");require(\"{}\");}})();",
+    "data:text/javascript,import {{ createRequire }} from \"node:module\";\
+    const require = createRequire(\"{}\"); require(\"{}\");",
     cwd_url,
     rel_path.to_string_lossy()
   ))

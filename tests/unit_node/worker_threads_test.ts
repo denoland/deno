@@ -147,8 +147,7 @@ Deno.test({
         worker.on("message", () => resolve(worker));
       });
     }
-    const worker = await p();
-    worker.terminate();
+    await p();
   },
 });
 
@@ -164,8 +163,7 @@ Deno.test({
         worker.on("message", () => resolve(worker));
       });
     }
-    const worker = await p();
-    worker.terminate();
+    await p();
   },
 });
 
@@ -181,8 +179,7 @@ Deno.test({
         worker.on("message", () => resolve(worker));
       });
     }
-    const worker = await p();
-    worker.terminate();
+    await p();
   },
 });
 
@@ -192,14 +189,13 @@ Deno.test({
     function p() {
       return new Promise<workerThreads.Worker>((resolve, reject) => {
         const worker = new workerThreads.Worker(
-          "./tests/unit_node/testdata/worker_module/cjs-file.cjs",
+          "./tests/unit_node/testdata/worker_module/index.js",
         );
         worker.on("error", (e) => reject(e.message));
         worker.on("message", () => resolve(worker));
       });
     }
-    const worker = await p();
-    worker.terminate();
+    await p();
   },
 });
 
@@ -209,7 +205,7 @@ Deno.test({
     assertThrows(
       () => {
         new workerThreads.Worker(
-          "tests/unit_node/testdata/worker_module/cjs-file.cjs",
+          "tests/unit_node/testdata/worker_module/index.js",
         );
       },
     );
@@ -352,7 +348,7 @@ Deno.test({
         workerData,
       } from "node:worker_threads";
       parentPort.on("message", (msg) => {
-        console.log("message from main", msg);
+        /* console.log("message from main", msg); */
         parentPort.postMessage("Hello from worker on parentPort!");
         workerData.workerPort.postMessage("Hello from worker on workerPort!");
       });
