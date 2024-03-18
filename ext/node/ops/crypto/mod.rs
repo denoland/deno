@@ -10,6 +10,7 @@ use deno_core::OpState;
 use deno_core::ResourceId;
 use deno_core::StringOrBuffer;
 use deno_core::ToJsBuffer;
+use elliptic_curve::sec1::ToEncodedPoint;
 use hkdf::Hkdf;
 use num_bigint::BigInt;
 use num_bigint_dig::BigUint;
@@ -739,8 +740,6 @@ pub async fn op_node_dsa_generate_async(
 fn ec_generate(
   named_curve: &str,
 ) -> Result<(ToJsBuffer, ToJsBuffer), AnyError> {
-  use elliptic_curve::sec1::ToEncodedPoint;
-
   let mut rng = rand::thread_rng();
   // TODO(@littledivy): Support public key point encoding.
   // Default is uncompressed.
@@ -1054,14 +1053,16 @@ pub fn op_node_ecdh_generate_keys(
   #[string] curve: &str,
   #[buffer] pubbuf: &mut [u8],
   #[buffer] privbuf: &mut [u8],
+  #[string] format: &str,
 ) -> Result<ResourceId, AnyError> {
   let mut rng = rand::thread_rng();
+  let compress = format == "compressed";
   match curve {
     "secp256k1" => {
       let privkey =
         elliptic_curve::SecretKey::<k256::Secp256k1>::random(&mut rng);
       let pubkey = privkey.public_key();
-      pubbuf.copy_from_slice(pubkey.to_sec1_bytes().as_ref());
+      pubbuf.copy_from_slice(pubkey.to_encoded_point(compress).as_ref());
       privbuf.copy_from_slice(privkey.to_nonzero_scalar().to_bytes().as_ref());
 
       Ok(0)
@@ -1069,21 +1070,21 @@ pub fn op_node_ecdh_generate_keys(
     "prime256v1" | "secp256r1" => {
       let privkey = elliptic_curve::SecretKey::<NistP256>::random(&mut rng);
       let pubkey = privkey.public_key();
-      pubbuf.copy_from_slice(pubkey.to_sec1_bytes().as_ref());
+      pubbuf.copy_from_slice(pubkey.to_encoded_point(compress).as_ref());
       privbuf.copy_from_slice(privkey.to_nonzero_scalar().to_bytes().as_ref());
       Ok(0)
     }
     "secp384r1" => {
       let privkey = elliptic_curve::SecretKey::<NistP384>::random(&mut rng);
       let pubkey = privkey.public_key();
-      pubbuf.copy_from_slice(pubkey.to_sec1_bytes().as_ref());
+      pubbuf.copy_from_slice(pubkey.to_encoded_point(compress).as_ref());
       privbuf.copy_from_slice(privkey.to_nonzero_scalar().to_bytes().as_ref());
       Ok(0)
     }
     "secp224r1" => {
       let privkey = elliptic_curve::SecretKey::<NistP224>::random(&mut rng);
       let pubkey = privkey.public_key();
-      pubbuf.copy_from_slice(pubkey.to_sec1_bytes().as_ref());
+      pubbuf.copy_from_slice(pubkey.to_encoded_point(compress).as_ref());
       privbuf.copy_from_slice(privkey.to_nonzero_scalar().to_bytes().as_ref());
       Ok(0)
     }
