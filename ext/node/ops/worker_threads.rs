@@ -60,7 +60,7 @@ where
   ensure_read_permission::<P>(state, url_path)?;
   let fs = state.borrow::<FileSystemRc>();
   if !fs.exists_sync(url_path) {
-    return Err(generic_error("File not found"));
+    return Err(generic_error(format!("File not found [{:?}]", url_path)));
   }
   let node_resolver = state.borrow::<Rc<NodeResolver>>();
   match node_resolver.url_to_node_resolution(url)? {
