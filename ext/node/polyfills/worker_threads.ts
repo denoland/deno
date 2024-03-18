@@ -177,7 +177,7 @@ class NodeWorker extends EventEmitter {
           StringPrototypeToString(specifier),
           ".mjs",
         )) ||
-        (pkg && pkg.exists && pkg.typ == "module")
+        (pkg && pkg.exists && pkg.typ !== "module")
       ) {
         const cwdFileUrl = toFileUrl(Deno.cwd());
         specifier =
