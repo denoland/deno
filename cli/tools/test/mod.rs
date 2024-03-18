@@ -43,6 +43,7 @@ use deno_core::stats::RuntimeActivityDiff;
 use deno_core::stats::RuntimeActivityStats;
 use deno_core::stats::RuntimeActivityStatsFactory;
 use deno_core::stats::RuntimeActivityStatsFilter;
+use deno_core::stats::RuntimeActivityType;
 use deno_core::unsync::spawn;
 use deno_core::unsync::spawn_blocking;
 use deno_core::url::Url;
@@ -64,6 +65,7 @@ use rand::seq::SliceRandom;
 use rand::SeedableRng;
 use regex::Regex;
 use serde::Deserialize;
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
@@ -102,6 +104,35 @@ use reporters::TestReporter;
 
 /// How many times we're allowed to spin the event loop before considering something a leak.
 const MAX_SANITIZER_LOOP_SPINS: usize = 16;
+
+#[derive(Default)]
+struct TopLevelSanitizerStats {
+  map: HashMap<(RuntimeActivityType, Cow<'static, str>), usize>,
+}
+
+fn get_sanitizer_item(
+  activity: RuntimeActivity,
+) -> (RuntimeActivityType, Cow<'static, str>) {
+  let activity_type = activity.activity();
+  match activity {
+    RuntimeActivity::AsyncOp(_, _, name) => (activity_type, name.into()),
+    RuntimeActivity::Resource(_, _, name) => (activity_type, name.into()),
+    RuntimeActivity::Interval(_, _) => (activity_type, "".into()),
+    RuntimeActivity::Timer(_, _) => (activity_type, "".into()),
+  }
+}
+
+fn get_sanitizer_item_ref(
+  activity: &RuntimeActivity,
+) -> (RuntimeActivityType, Cow<str>) {
+  let activity_type = activity.activity();
+  match activity {
+    RuntimeActivity::AsyncOp(_, _, name) => (activity_type, (*name).into()),
+    RuntimeActivity::Resource(_, _, name) => (activity_type, name.into()),
+    RuntimeActivity::Interval(_, _) => (activity_type, "".into()),
+    RuntimeActivity::Timer(_, _) => (activity_type, "".into()),
+  }
+}
 
 /// The test mode is used to determine how a specifier is to be tested.
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -734,6 +765,18 @@ async fn run_tests_for_worker_inner(
   filter = filter.omit_op(op_id_host_recv_ctrl as _);
   filter = filter.omit_op(op_id_host_recv_message as _);
 
+  // Count the top-level stats so we can filter them out if they complete and restart within
+  // a test.
+  let top_level_stats = stats.clone().capture(&filter);
+  let mut top_level = TopLevelSanitizerStats::default();
+  for activity in top_level_stats.dump().active {
+    top_level
+      .map
+      .entry(get_sanitizer_item(activity))
+      .and_modify(|n| *n += 1)
+      .or_insert(1);
+  }
+
   for (desc, function) in tests_to_run.into_iter() {
     if fail_fast_tracker.should_stop() {
       break;
@@ -810,6 +853,7 @@ async fn run_tests_for_worker_inner(
       worker,
       &stats,
       &filter,
+      &top_level,
       before,
       desc.sanitize_ops,
       desc.sanitize_resources,
@@ -836,10 +880,67 @@ async fn run_tests_for_worker_inner(
   Ok(())
 }
 
+/// The sanitizer must ignore ops, resources and timers that were started at the top-level, but
+/// completed and restarted, replacing themselves with the same "thing". For example, if you run a
+/// `Deno.serve` server at the top level and make fetch requests to it during the test, those ops
+/// should not count as completed during the test because they are immediately replaced.
+fn is_empty(
+  top_level: &TopLevelSanitizerStats,
+  diff: &RuntimeActivityDiff,
+) -> bool {
+  // If the diff is empty, return empty
+  if diff.is_empty() {
+    return true;
+  }
+
+  // If the # of appeared != # of disappeared, we can exit fast with not empty
+  if diff.appeared.len() != diff.disappeared.len() {
+    return false;
+  }
+
+  // If there are no top-level ops and !diff.is_empty(), we can exit fast with not empty
+  if top_level.map.is_empty() {
+    return false;
+  }
+
+  // Otherwise we need to calculate replacement for top-level stats. Sanitizers will not fire
+  // if an op, resource or timer is replaced and has a corresponding top-level op.
+  let mut map = HashMap::new();
+  for item in &diff.appeared {
+    let item = get_sanitizer_item_ref(item);
+    let Some(n1) = top_level.map.get(&item) else {
+      return false;
+    };
+    let n2 = map.entry(item).and_modify(|n| *n += 1).or_insert(1);
+    // If more ops appeared than were created at the top-level, return false
+    if *n2 > *n1 {
+      return false;
+    }
+  }
+
+  // We know that we replaced no more things than were created at the top-level. So now we just want
+  // to make sure that whatever thing was created has a corresponding disappearance record.
+  for item in &diff.disappeared {
+    let item = get_sanitizer_item_ref(item);
+    // If more things of this type disappeared than appeared, return false
+    let Some(n1) = map.get_mut(&item) else {
+      return false;
+    };
+    *n1 -= 1;
+    if *n1 == 0 {
+      map.remove(&item);
+    }
+  }
+
+  // If everything is accounted for, we are empty
+  map.is_empty()
+}
+
 async fn wait_for_activity_to_stabilize(
   worker: &mut MainWorker,
   stats: &RuntimeActivityStatsFactory,
   filter: &RuntimeActivityStatsFilter,
+  top_level: &TopLevelSanitizerStats,
   before: RuntimeActivityStats,
   sanitize_ops: bool,
   sanitize_resources: bool,
@@ -847,7 +948,7 @@ async fn wait_for_activity_to_stabilize(
   // First, check to see if there's any diff at all. If not, just continue.
   let after = stats.clone().capture(filter);
   let mut diff = RuntimeActivityStats::diff(&before, &after);
-  if diff.is_empty() {
+  if is_empty(top_level, &diff) {
     // No activity, so we return early
     return Ok(None);
   }
@@ -862,7 +963,7 @@ async fn wait_for_activity_to_stabilize(
 
     let after = stats.clone().capture(filter);
     diff = RuntimeActivityStats::diff(&before, &after);
-    if diff.is_empty() {
+    if is_empty(top_level, &diff) {
       return Ok(None);
     }
   }
@@ -901,7 +1002,11 @@ async fn wait_for_activity_to_stabilize(
     });
   }
 
-  Ok(if diff.is_empty() { None } else { Some(diff) })
+  Ok(if is_empty(top_level, &diff) {
+    None
+  } else {
+    Some(diff)
+  })
 }
 
 fn extract_files_from_regex_blocks(

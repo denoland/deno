@@ -2,6 +2,7 @@
 
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import {
+  createECDH,
   createHmac,
   createPrivateKey,
   createPublicKey,
@@ -229,6 +230,24 @@ Deno.test("createPrivateKey rsa", function () {
   assertEquals(key.asymmetricKeyDetails?.publicExponent, 65537n);
 });
 
+Deno.test("createPrivateKey dh", function () {
+  // 1.2.840.113549.1.3.1
+  const pem = "-----BEGIN PRIVATE KEY-----\n" +
+    "MIIBoQIBADCB1QYJKoZIhvcNAQMBMIHHAoHBAP//////////yQ/aoiFowjTExmKL\n" +
+    "gNwc0SkCTgiKZ8x0Agu+pjsTmyJRSgh5jjQE3e+VGbPNOkMbMCsKbfJfFDdP4TVt\n" +
+    "bVHCReSFtXZiXn7G9ExC6aY37WsL/1y29Aa37e44a/taiZ+lrp8kEXxLH+ZJKGZR\n" +
+    "7ORbPcIAfLihY78FmNpINhxV05ppFj+o/STPX4NlXSPco62WHGLzViCFUrue1SkH\n" +
+    "cJaWbWcMNU5KvJgE8XRsCMojcyf//////////wIBAgSBwwKBwHxnT7Zw2Ehh1vyw\n" +
+    "eolzQFHQzyuT0y+3BF+FxK2Ox7VPguTp57wQfGHbORJ2cwCdLx2mFM7gk4tZ6COS\n" +
+    "E3Vta85a/PuhKXNLRdP79JgLnNtVtKXB+ePDS5C2GgXH1RHvqEdJh7JYnMy7Zj4P\n" +
+    "GagGtIy3dV5f4FA0B/2C97jQ1pO16ah8gSLQRKsNpTCw2rqsZusE0rK6RaYAef7H\n" +
+    "y/0tmLIsHxLIn+WK9CANqMbCWoP4I178BQaqhiOBkNyNZ0ndqA==\n" +
+    "-----END PRIVATE KEY-----";
+  const key = createPrivateKey(pem);
+  assertEquals(key.type, "private");
+  assertEquals(key.asymmetricKeyType, "dh");
+});
+
 // openssl ecparam -name secp256r1 -genkey -noout -out a.pem
 // openssl pkcs8 -topk8 -nocrypt -in a.pem -out b.pem
 const ecPrivateKey = Deno.readTextFileSync(
@@ -265,4 +284,42 @@ Deno.test("createPublicKey() EC", function () {
   assertEquals(key.type, "public");
   assertEquals(key.asymmetricKeyType, "ec");
   assertEquals(key.asymmetricKeyDetails?.namedCurve, "p256");
+});
+
+Deno.test("createPublicKey SPKI for DH", async function () {
+  const { publicKey, privateKey } = await crypto.subtle.generateKey(
+    {
+      name: "ECDH",
+      namedCurve: "P-384",
+    },
+    true,
+    ["deriveKey", "deriveBits"],
+  );
+
+  const exportedPublicKey = await crypto.subtle.exportKey("spki", publicKey);
+  const exportedPrivateKey = await crypto.subtle.exportKey("pkcs8", privateKey);
+
+  const pubKey = createPublicKey({
+    key: Buffer.from(exportedPublicKey),
+    format: "der",
+    type: "spki",
+  });
+
+  const privKey = createPrivateKey({
+    key: Buffer.from(exportedPrivateKey),
+    format: "der",
+    type: "pkcs8",
+  });
+
+  assertEquals(pubKey.asymmetricKeyType, "ec");
+  assertEquals(privKey.asymmetricKeyType, "ec");
+});
+
+Deno.test("ECDH generateKeys compressed", function () {
+  const ecdh = createECDH("secp256k1");
+  const publicKey = ecdh.generateKeys("binary", "compressed");
+  assertEquals(publicKey.length, 33);
+
+  const uncompressedKey = ecdh.generateKeys("binary");
+  assertEquals(uncompressedKey.length, 65);
 });

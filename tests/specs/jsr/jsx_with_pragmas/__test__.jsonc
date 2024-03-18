@@ -1,0 +1,5 @@
+{
+  "base": "jsr",
+  "args": "run main.ts",
+  "output": "main.out"
+}
