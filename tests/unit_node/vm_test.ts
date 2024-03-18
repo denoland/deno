@@ -1,5 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-import { isContext, runInNewContext } from "node:vm";
+import { createContext, isContext, runInNewContext } from "node:vm";
 import { assertEquals, assertThrows } from "@std/assert/mod.ts";
 
 Deno.test({
@@ -63,4 +63,9 @@ Deno.test({
     const sandbox = runInNewContext("{}");
     assertEquals(isContext(sandbox), false);
   },
+});
+
+Deno.test(function v8CreateContext() {
+  const context = { globalVar: 1 };
+  const contextified = createContext(context);
 });

@@ -79,12 +79,11 @@ pub fn op_vm_run_in_new_context<'a>(
   })
 }
 
-
 #[op2]
 pub fn op_vm_create_context<'a>(
   scope: &mut v8::HandleScope<'a>,
   sandbox_obj: v8::Local<v8::Value>,
-
+  allow_code_generation: bool,
 ) -> Result<v8::Local<'a, v8::Value>, AnyError> {
   let ctx_obj = if sandbox_obj.is_undefined() || sandbox_obj.is_null() {
     v8::Object::new(scope)
@@ -94,12 +93,18 @@ pub fn op_vm_create_context<'a>(
 
   let ctx = make_context(scope);
 
+  // TODO(@littledivy): rusty_v8 api required.
+  //
+  // const NODE_CONTEXT_INDEX: usize = 37;
+  // ctx.set_embedder_data(NODE_CONTEXT_INDEX, ctx_obj.into());
+  // ctx.allow_code_generation(allow_code_generation);
+
   let scope = &mut v8::ContextScope::new(scope, ctx);
+  let global_obj = ctx.global(scope);
 
-  scope.
+  // TODO(@littledivy): create constructor name is not present.
+  let contextify_wrapper_template = v8::ObjectTemplate::new(scope);
+  let wrapper = contextify_wrapper_template.new_instance(scope).unwrap();
 
-let global_obj = ctx.global(scope);
-
-
-  Ok(ctx.into())
+  Ok(wrapper.into())
 }

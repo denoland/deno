@@ -5,7 +5,7 @@
 
 import { core } from "ext:core/mod.js";
 import { notImplemented } from "ext:deno_node/_utils.ts";
-import { op_vm_run_in_new_context } from "ext:core/ops";
+import { op_vm_run_in_new_context, op_vm_create_context } from "ext:core/ops";
 
 export class Script {
   code: string;
@@ -39,8 +39,8 @@ export class Script {
   }
 }
 
-export function createContext(_contextObject: any, _options: any) {
-  notImplemented("createContext");
+export function createContext(contextObject: any, _options: any) {
+  return op_vm_create_context(contextObject, true);
 }
 
 export function createScript(code: string, options: any) {
