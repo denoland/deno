@@ -78,3 +78,28 @@ pub fn op_vm_run_in_new_context<'a>(
     }
   })
 }
+
+
+#[op2]
+pub fn op_vm_create_context<'a>(
+  scope: &mut v8::HandleScope<'a>,
+  sandbox_obj: v8::Local<v8::Value>,
+
+) -> Result<v8::Local<'a, v8::Value>, AnyError> {
+  let ctx_obj = if sandbox_obj.is_undefined() || sandbox_obj.is_null() {
+    v8::Object::new(scope)
+  } else {
+    sandbox_obj.try_into()?
+  };
+
+  let ctx = make_context(scope);
+
+  let scope = &mut v8::ContextScope::new(scope, ctx);
+
+  scope.
+
+let global_obj = ctx.global(scope);
+
+
+  Ok(ctx.into())
+}
