@@ -56,10 +56,12 @@ where
     Url::from_file_path(canonicalized_path)
       .map_err(|e| generic_error(format!("URL from Path-String: {:#?}", e)))?
   };
-  let url_path = Path::new(url.path());
-  ensure_read_permission::<P>(state, url_path)?;
+  let url_path = url
+    .to_file_path()
+    .map_err(|e| generic_error(format!("URL to Path-String: {:#?}", e)))?;
+  ensure_read_permission::<P>(state, &url_path)?;
   let fs = state.borrow::<FileSystemRc>();
-  if !fs.exists_sync(url_path) {
+  if !fs.exists_sync(&url_path) {
     return Err(generic_error(format!("File not found [{:?}]", url_path)));
   }
   let node_resolver = state.borrow::<Rc<NodeResolver>>();
@@ -78,7 +80,12 @@ fn wrap_cjs(state: &mut OpState, url: Url) -> Result<String, AnyError> {
   let cwd = fs.cwd()?;
   let cwd_url = Url::from_directory_path(&cwd)
     .map_err(|e| generic_error(format!("Create CWD Url: {:#?}", e)))?;
-  let rel_path = match diff_paths(url.path(), &cwd) {
+  let rel_path = match diff_paths(
+    url
+      .to_file_path()
+      .map_err(|e| generic_error(format!("URL to Path-String: {:#?}", e)))?,
+    &cwd,
+  ) {
     Some(p) => Path::new(".").join(p),
     None => url.path().into(),
   };

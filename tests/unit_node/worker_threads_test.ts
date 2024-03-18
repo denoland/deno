@@ -180,6 +180,7 @@ Deno.test({
       });
     }
     await p();
+    "/home/mash/Projects/deno/tests/unit_node/tests/unit_node/testdata/worker_module/βάρβαροι.js";
   },
 });
 
@@ -190,6 +191,41 @@ Deno.test({
       return new Promise<workerThreads.Worker>((resolve, reject) => {
         const worker = new workerThreads.Worker(
           "./tests/unit_node/testdata/worker_module/index.js",
+        );
+        worker.on("error", (e) => reject(e.message));
+        worker.on("message", () => resolve(worker));
+      });
+    }
+    await p();
+  },
+});
+
+Deno.test({
+  name: "[worker_threads] utf-8 path string",
+  async fn() {
+    function p() {
+      return new Promise<workerThreads.Worker>((resolve, reject) => {
+        const worker = new workerThreads.Worker(
+          "./tests/unit_node/testdata/worker_module/βάρβαροι.js",
+        );
+        worker.on("error", (e) => reject(e.message));
+        worker.on("message", () => resolve(worker));
+      });
+    }
+    await p();
+  },
+});
+
+Deno.test({
+  name: "[worker_threads] utf-8 path URL",
+  async fn() {
+    function p() {
+      return new Promise<workerThreads.Worker>((resolve, reject) => {
+        const worker = new workerThreads.Worker(
+          new URL(
+            "./testdata/worker_module/βάρβαροι.js",
+            import.meta.url,
+          ),
         );
         worker.on("error", (e) => reject(e.message));
         worker.on("message", () => resolve(worker));
