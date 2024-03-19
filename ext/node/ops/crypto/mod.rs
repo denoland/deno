@@ -1607,6 +1607,7 @@ pub fn op_node_create_public_key(
         named_curve: named_curve.to_string(),
       })
     }
+    DH_KEY_AGREEMENT_OID => Ok(AsymmetricKeyDetails::Dh),
     _ => Err(type_error("Unsupported algorithm")),
   }
 }
