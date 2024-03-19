@@ -13,10 +13,12 @@ import { stat, Stats } from "ext:deno_node/_fs/_fs_stat.ts";
 import { Buffer } from "node:buffer";
 import { delay } from "ext:deno_node/_util/async.ts";
 
+import { core } from "ext:core/mod.js";
+
 const statPromisified = promisify(stat);
-const statAsync = async (filename: string): Promise<Stats | null> => {
+const statAsync = (filename: string): Promise<Stats | null> => {
   try {
-    return await statPromisified(filename);
+    return statPromisified(filename);
   } catch {
     return emptyStats;
   }
@@ -146,7 +148,7 @@ export function watch(
       }
       throw e;
     }
-  });
+  }, () => iterator);
 
   if (listener) {
     fsWatcher.on("change", listener.bind({ _handle: fsWatcher }));
@@ -252,6 +254,7 @@ class StatWatcher extends EventEmitter {
   #bigint: boolean;
   #refCount = 0;
   #abortController = new AbortController();
+
   constructor(bigint: boolean) {
     super();
     this.#bigint = bigint;
@@ -306,19 +309,22 @@ class StatWatcher extends EventEmitter {
     this.emit("stop");
   }
   ref() {
-    notImplemented("FSWatcher.ref() is not implemented");
+    notImplemented("StatWatcher.ref() is not implemented");
   }
   unref() {
-    notImplemented("FSWatcher.unref() is not implemented");
+    notImplemented("StatWatcher.unref() is not implemented");
   }
 }
 
 class FSWatcher extends EventEmitter {
   #closer: () => void;
   #closed = false;
-  constructor(closer: () => void) {
+  #watcher: () => Deno.FsWatcher;
+
+  constructor(closer: () => void, getter: () => Deno.FsWatcher) {
     super();
     this.#closer = closer;
+    this.#watcher = getter;
   }
   close() {
     if (this.#closed) {
@@ -329,10 +335,10 @@ class FSWatcher extends EventEmitter {
     this.#closer();
   }
   ref() {
-    notImplemented("FSWatcher.ref() is not implemented");
+    this.#watcher().ref();
   }
   unref() {
-    notImplemented("FSWatcher.unref() is not implemented");
+    this.#watcher().unref();
   }
 }
 
