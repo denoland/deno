@@ -964,7 +964,7 @@ pub async fn publish(
   {
     if publish_flags.dry_run {
       log::warn!(
-        "{} Aborting due to --dry-run uncommitted changes",
+        "{} Aborting due to --dry-run and uncommitted changes. Check in source code or run with --allow-dirty",
         colors::yellow("Warning")
       );
       return Ok(());
