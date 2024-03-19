@@ -169,7 +169,6 @@ Deno.test({
 
 Deno.test({
   name: "[node/worker_threads] .cjs worker file within module",
-  // ignore: Deno.build.os === "windows",
   async fn() {
     function p() {
       return new Promise<workerThreads.Worker>((resolve, reject) => {
@@ -181,7 +180,6 @@ Deno.test({
       });
     }
     await p();
-    "/home/mash/Projects/deno/tests/unit_node/tests/unit_node/testdata/worker_module/βάρβαροι.js";
   },
 });
 
@@ -272,7 +270,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "[worker_threads] inheritances",
+  name: "[node/worker_threads] inheritances",
   async fn() {
     const worker = new workerThreads.Worker(
       `
@@ -295,7 +293,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "[worker_threads] Worker workerData",
+  name: "[node/worker_threads] Worker workerData",
   async fn() {
     const worker = new workerThreads.Worker(
       new URL("./testdata/worker_threads.mjs", import.meta.url),
