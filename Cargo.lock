@@ -1674,6 +1674,7 @@ dependencies = [
  "p256",
  "p384",
  "path-clean",
+ "pathdiff",
  "pbkdf2",
  "pin-project-lite",
  "rand",

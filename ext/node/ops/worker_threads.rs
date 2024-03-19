@@ -6,6 +6,7 @@ use deno_core::op2;
 use deno_core::url::Url;
 use deno_core::OpState;
 use deno_fs::FileSystemRc;
+use pathdiff::diff_paths;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -66,7 +67,7 @@ where
   let node_resolver = state.borrow::<Rc<NodeResolver>>();
   match node_resolver.url_to_node_resolution(url)? {
     resolution::NodeResolution::Esm(u) => Ok(u.to_string()),
-    resolution::NodeResolution::CommonJs(u) => wrap_cjs(u),
+    resolution::NodeResolution::CommonJs(u) => wrap_cjs(state, u),
     _ => Err(generic_error("Neither ESM nor CJS")),
   }
 }
@@ -74,15 +75,26 @@ where
 ///
 /// Wrap a CJS file-URL and the required setup in a stringified `data:`-URL
 ///
-fn wrap_cjs(url: Url) -> Result<String, AnyError> {
-  let url_str = url
-    .to_file_path()
-    .map_err(|e| generic_error(format!("URL to Path-String: {:#?}", e)))?
-    .to_string_lossy()
-    .to_string()
-    .replace(std::path::MAIN_SEPARATOR, "/");
+fn wrap_cjs(state: &mut OpState, url: Url) -> Result<String, AnyError> {
+  let fs = state.borrow::<FileSystemRc>();
+  let cwd = fs.cwd()?;
+  let cwd_url = Url::from_directory_path(&cwd)
+    .map_err(|e| generic_error(format!("Create CWD Url: {:#?}", e)))?;
+  let rel_path = match diff_paths(
+    url
+      .to_file_path()
+      .map_err(|e| generic_error(format!("URL to Path-String: {:#?}", e)))?,
+    &cwd,
+  ) {
+    Some(p) => Path::new(".").join(p),
+    None => url.path().into(),
+  };
   Ok(format!(
-    "data:text/javascript,import {{ createRequire }} from \"node:module\"; \
-    const require = createRequire(\"file:///\"); require(\"{url_str}\");"
+    "data:text/javascript,import {{ createRequire }} from \"node:module\";\
+    const require = createRequire(\"{}\"); require(\"{}\");",
+    cwd_url,
+    rel_path
+      .to_string_lossy()
+      .replace(std::path::MAIN_SEPARATOR, "/")
   ))
 }
