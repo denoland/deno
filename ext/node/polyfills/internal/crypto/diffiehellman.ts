@@ -1340,7 +1340,7 @@ export function diffieHellman(options: {
       `${privateType} and ${publicType}`,
     );
   }
-
+  
   notImplemented("crypto.diffieHellman");
 }
 
