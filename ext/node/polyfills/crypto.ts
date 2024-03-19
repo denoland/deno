@@ -86,7 +86,6 @@ import {
 import {
   Cipheriv,
   Decipheriv,
-  getCipherInfo,
   privateDecrypt,
   privateEncrypt,
   publicDecrypt,
@@ -149,6 +148,7 @@ import type {
   X509CheckOptions,
 } from "ext:deno_node/internal/crypto/x509.ts";
 import {
+  getCipherInfo,
   getCiphers,
   getCurves,
   secureHeapUsed,

@@ -211,7 +211,7 @@ export function watchFile(
     statWatchers.set(watchPath, stat);
   }
 
-  stat.addListener("change", listener!);
+  stat.addListener("change", handler);
   return stat;
 }
 
