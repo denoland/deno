@@ -14,9 +14,9 @@ import { Buffer } from "node:buffer";
 import { delay } from "ext:deno_node/_util/async.ts";
 
 const statPromisified = promisify(stat);
-const statAsync = (filename: string): Promise<Stats | null> => {
+const statAsync = async (filename: string): Promise<Stats | null> => {
   try {
-    return statPromisified(filename);
+    return await statPromisified(filename);
   } catch {
     return emptyStats;
   }
