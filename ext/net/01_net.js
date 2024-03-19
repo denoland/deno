@@ -360,7 +360,7 @@ class Listener {
   }
 }
 
-class Datagram {
+class DatagramConn {
   #rid = 0;
   #addr = null;
   #unref = false;
@@ -553,7 +553,7 @@ function createListenDatagram(udpOpFn, unixOpFn) {
           args.loopback ?? false,
         );
         addr.transport = "udp";
-        return new Datagram(rid, addr);
+        return new DatagramConn(rid, addr);
       }
       case "unixpacket": {
         const { 0: rid, 1: path } = unixOpFn(args.path);
@@ -561,7 +561,7 @@ function createListenDatagram(udpOpFn, unixOpFn) {
           transport: "unixpacket",
           path,
         };
-        return new Datagram(rid, addr);
+        return new DatagramConn(rid, addr);
       }
       default:
         throw new TypeError(`Unsupported transport: '${transport}'`);
