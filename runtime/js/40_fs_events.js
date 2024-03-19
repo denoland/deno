@@ -23,15 +23,6 @@ class FsWatcher {
     this.#rid = op_fs_events_open({ recursive, paths });
   }
 
-  get rid() {
-    internals.warnOnDeprecatedApi(
-      "Deno.FsWatcher.rid",
-      new Error().stack,
-      "Use `Deno.FsWatcher` instance methods instead.",
-    );
-    return this.#rid;
-  }
-
   async next() {
     try {
       const value = await op_fs_events_poll(this.#rid);
