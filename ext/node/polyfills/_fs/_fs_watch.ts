@@ -13,8 +13,6 @@ import { stat, Stats } from "ext:deno_node/_fs/_fs_stat.ts";
 import { Buffer } from "node:buffer";
 import { delay } from "ext:deno_node/_util/async.ts";
 
-import { core } from "ext:core/mod.js";
-
 const statPromisified = promisify(stat);
 const statAsync = (filename: string): Promise<Stats | null> => {
   try {
