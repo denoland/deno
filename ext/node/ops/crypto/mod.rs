@@ -909,22 +909,6 @@ pub async fn op_node_dh_generate_async(
     .await?
 }
 
-/* #[op2]
-#[serde]
-pub fn op_node_dh_stateless(
-  #[buffer] private_key: &[u8],
-  #[buffer] public_key: &[u8],
-  #[buffer] secret: &mut [u8],
-) -> Result<(), AnyError> {
-  let pubkey: BigUint = BigUint::from_bytes_be(public_key);
-  let privkey: BigUint = BigUint::from_bytes_be(private_key);
-
-  let shared_secret = elliptic_curve::ecdh::diffie_hellman(privkey, pubkey);
-  secret.copy_from_slice(shared_secret.raw_secret_bytes());
-
-  Ok(())
-} */
-
 #[op2(fast)]
 #[smi]
 pub fn op_node_random_int(
