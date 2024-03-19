@@ -981,7 +981,14 @@ class EventTarget {
     if (callback !== null && listeners[type]) {
       listeners[type] = ArrayPrototypeFilter(
         listeners[type],
-        (listener) => listener.callback !== callback,
+        (listener) =>
+          !(
+            ((typeof listener.options === "boolean" &&
+              listener.options === options.capture) ||
+              (typeof listener.options === "object" &&
+                listener.options.capture === options.capture)) &&
+            listener.callback === callback
+          )
       );
     } else if (callback === null || !listeners[type]) {
       return;
