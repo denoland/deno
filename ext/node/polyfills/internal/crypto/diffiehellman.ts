@@ -1236,12 +1236,18 @@ export class ECDH {
   generateKeys(encoding: BinaryToTextEncoding, format?: ECDHKeyFormat): string;
   generateKeys(
     encoding?: BinaryToTextEncoding,
-    _format?: ECDHKeyFormat,
+    format: ECDHKeyFormat = "uncompressed",
   ): Buffer | string {
+    this.#pubbuf = Buffer.alloc(
+      format.trim() == "compressed"
+        ? this.#curve.publicKeySizeCompressed
+        : this.#curve.publicKeySize,
+    );
     op_node_ecdh_generate_keys(
       this.#curve.name,
       this.#pubbuf,
       this.#privbuf,
+      format,
     );
 
     if (encoding !== undefined) {

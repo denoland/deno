@@ -379,8 +379,11 @@ pub async fn upgrade(
   let factory = CliFactory::from_flags(flags)?;
   let client = factory.http_client();
   let current_exe_path = std::env::current_exe()?;
+  let full_path_output_flag = upgrade_flags
+    .output
+    .map(|output| factory.cli_options().initial_cwd().join(output));
   let output_exe_path =
-    upgrade_flags.output.as_ref().unwrap_or(&current_exe_path);
+    full_path_output_flag.as_ref().unwrap_or(&current_exe_path);
 
   let permissions = if let Ok(metadata) = fs::metadata(output_exe_path) {
     let permissions = metadata.permissions();
@@ -430,7 +433,7 @@ pub async fn upgrade(
       };
 
       if !upgrade_flags.force
-        && upgrade_flags.output.is_none()
+        && full_path_output_flag.is_none()
         && current_is_passed
       {
         log::info!("Version {} is already installed", crate::version::deno());
@@ -464,7 +467,7 @@ pub async fn upgrade(
       };
 
       if !upgrade_flags.force
-        && upgrade_flags.output.is_none()
+        && full_path_output_flag.is_none()
         && current_is_most_recent
       {
         log::info!(
@@ -520,7 +523,7 @@ pub async fn upgrade(
     }
   } else {
     let output_exe_path =
-      upgrade_flags.output.as_ref().unwrap_or(&current_exe_path);
+      full_path_output_flag.as_ref().unwrap_or(&current_exe_path);
     let output_result = if *output_exe_path == current_exe_path {
       replace_exe(&new_exe_path, output_exe_path)
     } else {

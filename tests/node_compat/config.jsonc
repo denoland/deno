@@ -614,6 +614,7 @@
       "test-stream3-cork-uncork.js",
       "test-stream3-pause-then-read.js",
       "test-streams-highwatermark.js",
+      "test-string-decoder.js",
       "test-timers-api-refs.js",
       "test-timers-args.js",
       "test-timers-clear-null-does-not-throw-error.js",

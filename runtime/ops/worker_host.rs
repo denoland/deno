@@ -11,6 +11,7 @@ use crate::web_worker::WebWorkerHandle;
 use crate::web_worker::WebWorkerType;
 use crate::web_worker::WorkerControlEvent;
 use crate::web_worker::WorkerId;
+use crate::web_worker::WorkerMetadata;
 use crate::worker::FormatJsErrorFn;
 use deno_core::error::AnyError;
 use deno_core::op2;
@@ -19,6 +20,7 @@ use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
+use deno_web::deserialize_js_transferables;
 use deno_web::JsMessageData;
 use log::debug;
 use std::cell::RefCell;
@@ -36,7 +38,7 @@ pub struct CreateWebWorkerArgs {
   pub main_module: ModuleSpecifier,
   pub worker_type: WebWorkerType,
   pub close_on_idle: bool,
-  pub maybe_worker_metadata: Option<JsMessageData>,
+  pub maybe_worker_metadata: Option<WorkerMetadata>,
 }
 
 pub type CreateWebWorkerCb = dyn Fn(CreateWebWorkerArgs) -> (WebWorker, SendableWebWorkerHandle)
@@ -175,7 +177,16 @@ fn op_create_worker(
 
   // Setup new thread
   let thread_builder = std::thread::Builder::new().name(format!("{worker_id}"));
-
+  let maybe_worker_metadata = if let Some(data) = maybe_worker_metadata {
+    let transferables =
+      deserialize_js_transferables(state, data.transferables)?;
+    Some(WorkerMetadata {
+      buffer: data.data,
+      transferables,
+    })
+  } else {
+    None
+  };
   // Spawn it
   thread_builder.spawn(move || {
     // Any error inside this block is terminal:

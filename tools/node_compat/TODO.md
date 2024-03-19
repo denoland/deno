@@ -2184,7 +2184,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-stream3-pipeline-async-iterator.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-stream3-pipeline-async-iterator.js)
 - [parallel/test-string-decoder-end.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-string-decoder-end.js)
 - [parallel/test-string-decoder-fuzz.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-string-decoder-fuzz.js)
-- [parallel/test-string-decoder.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-string-decoder.js)
 - [parallel/test-stringbytes-external.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-stringbytes-external.js)
 - [parallel/test-structuredClone-global.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-structuredClone-global.js)
 - [parallel/test-sync-fileread.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-sync-fileread.js)
