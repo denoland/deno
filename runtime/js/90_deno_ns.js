@@ -81,22 +81,6 @@ const denoNs = {
   lstat: fs.lstat,
   truncateSync: fs.truncateSync,
   truncate: fs.truncate,
-  ftruncateSync(rid, len) {
-    internals.warnOnDeprecatedApi(
-      "Deno.ftruncateSync()",
-      new Error().stack,
-      "Use `Deno.FsFile.truncateSync()` instead.",
-    );
-    return fs.ftruncateSync(rid, len);
-  },
-  ftruncate(rid, len) {
-    internals.warnOnDeprecatedApi(
-      "Deno.ftruncate()",
-      new Error().stack,
-      "Use `Deno.FsFile.truncate()` instead.",
-    );
-    return fs.ftruncate(rid, len);
-  },
   async futime(rid, atime, mtime) {
     internals.warnOnDeprecatedApi(
       "Deno.futime()",
