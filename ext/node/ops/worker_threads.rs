@@ -81,7 +81,6 @@ fn wrap_cjs(url: Url) -> Result<String, AnyError> {
     .to_string_lossy()
     .to_string()
     .replace(std::path::MAIN_SEPARATOR, "/");
-
   Ok(format!(
     "data:text/javascript,import {{ createRequire }} from \"node:module\"; \
     const require = createRequire(\"file:///\"); require(\"{url_str}\");"

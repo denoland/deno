@@ -169,7 +169,7 @@ Deno.test({
 
 Deno.test({
   name: "[node/worker_threads] .cjs worker file within module",
-  ignore: Deno.build.os === "windows",
+  // ignore: Deno.build.os === "windows",
   async fn() {
     function p() {
       return new Promise<workerThreads.Worker>((resolve, reject) => {

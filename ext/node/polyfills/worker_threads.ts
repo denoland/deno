@@ -89,7 +89,7 @@ class NodeWorker extends EventEmitter {
     super();
 
     if (
-      specifier === "object" &&
+      typeof specifier === "object" &&
       !(specifier.protocol === "data:" || specifier.protocol === "file:")
     ) {
       throw new TypeError(
@@ -98,7 +98,9 @@ class NodeWorker extends EventEmitter {
     }
     if (options?.eval) {
       specifier = `data:text/javascript,${specifier}`;
-    } else if (!(specifier === "object" && specifier.protocol === "data:")) {
+    } else if (
+      !(typeof specifier === "object" && specifier.protocol === "data:")
+    ) {
       // deno-lint-ignore prefer-primordials
       specifier = specifier.toString();
       specifier = op_worker_threads_filename(specifier);
