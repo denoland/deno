@@ -668,7 +668,16 @@ pub fn wildcard_match_detailed(
   // Normalize line endings
   let original_text = text.replace("\r\n", "\n");
   let mut current_text = original_text.as_str();
-  let pattern = pattern.replace("\r\n", "\n");
+  // normalize line endings and strip comments
+  let pattern = pattern
+    .split('\n')
+    .map(|line| line.trim_end_matches('\r'))
+    .filter(|l| {
+      let is_comment = l.starts_with("[#") && l.ends_with(']');
+      !is_comment
+    })
+    .collect::<Vec<_>>()
+    .join("\n");
   let mut output_lines = Vec::new();
 
   let parts = parse_wildcard_pattern_text(&pattern).unwrap();
@@ -723,7 +732,7 @@ pub fn wildcard_match_detailed(
             );
             output_lines.push(colors::gray(annotate_whitespace(search_text)));
             output_lines
-              .push("==== HAD UNKNOWN PRECEEDING TEXT ====".to_string());
+              .push("==== HAD UNKNOWN PRECEDING TEXT ====".to_string());
             output_lines
               .push(colors::red(annotate_whitespace(&current_text[..index])));
             return WildcardMatchResult::Fail(output_lines.join("\n"));

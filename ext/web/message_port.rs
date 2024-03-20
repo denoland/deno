@@ -22,7 +22,7 @@ use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::mpsc::UnboundedSender;
 
-enum Transferable {
+pub enum Transferable {
   MessagePort(MessagePort),
   ArrayBuffer(u32),
 }
@@ -140,7 +140,7 @@ pub enum JsTransferable {
   ArrayBuffer(u32),
 }
 
-fn deserialize_js_transferables(
+pub fn deserialize_js_transferables(
   state: &mut OpState,
   js_transferables: Vec<JsTransferable>,
 ) -> Result<Vec<Transferable>, AnyError> {
@@ -165,7 +165,7 @@ fn deserialize_js_transferables(
   Ok(transferables)
 }
 
-fn serialize_transferables(
+pub fn serialize_transferables(
   state: &mut OpState,
   transferables: Vec<Transferable>,
 ) -> Vec<JsTransferable> {
@@ -189,8 +189,8 @@ fn serialize_transferables(
 
 #[derive(Deserialize, Serialize)]
 pub struct JsMessageData {
-  data: DetachedBuffer,
-  transferables: Vec<JsTransferable>,
+  pub data: DetachedBuffer,
+  pub transferables: Vec<JsTransferable>,
 }
 
 #[op2]
@@ -208,7 +208,6 @@ pub fn op_message_port_post_message(
   }
 
   let resource = state.resource_table.get::<MessagePortResource>(rid)?;
-
   resource.port.send(state, data)
 }
 

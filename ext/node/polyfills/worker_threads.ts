@@ -134,7 +134,6 @@ function toFileUrl(path: string): URL {
     : toFileUrlPosix(path);
 }
 
-let threads = 0;
 const privateWorkerRef = Symbol("privateWorkerRef");
 class NodeWorker extends EventEmitter {
   #id = 0;
@@ -195,12 +194,10 @@ class NodeWorker extends EventEmitter {
       name = "[worker eval]";
     }
     this.#name = name;
-    this.threadId = ++threads;
 
     const serializedWorkerMetadata = serializeJsMessageData({
       workerData: options?.workerData,
       environmentData: environmentData,
-      threadId: this.threadId,
     }, options?.transferList ?? []);
     const id = op_create_worker(
       {
@@ -211,10 +208,12 @@ class NodeWorker extends EventEmitter {
         permissions: null,
         name: this.#name,
         workerType: "module",
+        closeOnIdle: true,
       },
       serializedWorkerMetadata,
     );
     this.#id = id;
+    this.threadId = id;
     this.#pollControl();
     this.#pollMessages();
     // https://nodejs.org/api/worker_threads.html#event-online
@@ -390,6 +389,7 @@ let parentPort: ParentPort = null as any;
 
 internals.__initWorkerThreads = (
   runningOnMainThread: boolean,
+  workerId,
   maybeWorkerMetadata,
 ) => {
   isMainThread = runningOnMainThread;
@@ -413,11 +413,11 @@ internals.__initWorkerThreads = (
     >();
 
     parentPort = self as ParentPort;
-    if (typeof maybeWorkerMetadata !== "undefined") {
+    threadId = workerId;
+    if (maybeWorkerMetadata) {
       const { 0: metadata, 1: _ } = maybeWorkerMetadata;
       workerData = metadata.workerData;
       environmentData = metadata.environmentData;
-      threadId = metadata.threadId;
     }
     defaultExport.workerData = workerData;
     defaultExport.parentPort = parentPort;

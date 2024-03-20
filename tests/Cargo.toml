@@ -21,6 +21,12 @@ path = "integration/mod.rs"
 required-features = ["run"]
 
 [[test]]
+name = "specs"
+path = "specs/mod.rs"
+required-features = ["run"]
+harness = false
+
+[[test]]
 name = "node_compat_tests"
 path = "node_compat/test_runner.rs"
 required-features = ["run"]
@@ -33,6 +39,7 @@ deno_cache_dir = { workspace = true }
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting", "unsafe_use_unprotected_platform"] }
 deno_fetch.workspace = true
 deno_lockfile.workspace = true
+deno_terminal.workspace = true
 deno_tls.workspace = true
 fastwebsockets = { workspace = true, features = ["upgrade", "unstable-split"] }
 flaky_test = "=0.1.0"
