@@ -479,5 +479,4 @@ const defaultExport = {
   isMainThread,
 };
 
-
 export default defaultExport;
