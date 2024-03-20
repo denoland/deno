@@ -2141,7 +2141,7 @@ declare namespace Deno {
    *   "hello.txt",
    *   { read: true, write: true, truncate: true, create: true },
    * );
-   * Deno.writeSync(file.rid, new TextEncoder().encode("Hello world"));
+   * file.writeSync(new TextEncoder().encode("Hello world"));
    *
    * // advance cursor 6 bytes
    * const cursorPosition = Deno.seekSync(file.rid, 6, Deno.SeekMode.Start);
@@ -2159,7 +2159,7 @@ declare namespace Deno {
    *   "hello.txt",
    *   { read: true, write: true, truncate: true, create: true },
    * );
-   * Deno.writeSync(file.rid, new TextEncoder().encode("Hello world"));
+   * file.writeSync(new TextEncoder().encode("Hello world"));
    *
    * // Seek 6 bytes from the start of the file
    * console.log(Deno.seekSync(file.rid, 6, Deno.SeekMode.Start)); // "6"
@@ -2209,7 +2209,7 @@ declare namespace Deno {
    *   "my_file.txt",
    *   { read: true, write: true, create: true },
    * );
-   * Deno.writeSync(file.rid, new TextEncoder().encode("Hello World"));
+   * file.writeSync(new TextEncoder().encode("Hello World"));
    * file.truncateSync(1);
    * Deno.fsyncSync(file.rid);
    * console.log(Deno.readTextFileSync("my_file.txt")); // H
@@ -2244,7 +2244,7 @@ declare namespace Deno {
    *   "my_file.txt",
    *   { read: true, write: true, create: true },
    * );
-   * Deno.writeSync(file.rid, new TextEncoder().encode("Hello World"));
+   * file.writeSync(new TextEncoder().encode("Hello World"));
    * Deno.fdatasyncSync(file.rid);
    * console.log(Deno.readTextFileSync("my_file.txt")); // Hello World
    * ```
@@ -5471,7 +5471,7 @@ declare namespace Deno {
    *  "my_file.txt",
    *  { read: true, write: true, create: true }
    * );
-   * Deno.writeSync(file.rid, new TextEncoder().encode("Hello World"));
+   * file.writeSync(new TextEncoder().encode("Hello World"));
    * Deno.ftruncateSync(file.rid, 7);
    * Deno.seekSync(file.rid, 0, Deno.SeekMode.Start);
    * const data = new Uint8Array(32);
