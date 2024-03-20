@@ -55,6 +55,7 @@ pub async fn serve(
   Deno.serve({{
     hostname: "{}",
     port: {},
+    reusePort: true,
   }}, (req) => {{
     return serveHandler(req);
   }});

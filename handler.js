@@ -1,6 +1,6 @@
 export default {
   async fetch(request) {
-    console.log("Got request", request.url);
-    return new Response("Hello from `deno serve`!");
+    // console.log("Got request", request.url);
+    return new Response("Hello world!");
   },
 };

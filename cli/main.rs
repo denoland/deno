@@ -221,8 +221,23 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
     DenoSubcommand::Publish(publish_flags) => spawn_subcommand(async {
       tools::registry::publish(flags, publish_flags).await
     }),
-    DenoSubcommand::Serve(serve_flags) => spawn_subcommand(async {
-      tools::run::serve(flags, serve_flags).await
+    DenoSubcommand::Serve(serve_flags) => spawn_subcommand(async move {
+      let mut thread_handles = Vec::with_capacity(8);
+
+      for _i in 0..8 {
+        let flags_ = flags.clone();
+        let serve_flags_ = serve_flags.clone();
+        let handle = std::thread::spawn(move || {
+          let future = tools::run::serve(flags_, serve_flags_).boxed_local();
+          create_and_run_current_thread_with_maybe_metrics(future)
+        });
+        thread_handles.push(handle);
+      }
+
+      let handle = thread_handles.pop().unwrap();
+      let _ = handle.join().unwrap().unwrap();
+
+      Ok(0)
     }),
   };
 
