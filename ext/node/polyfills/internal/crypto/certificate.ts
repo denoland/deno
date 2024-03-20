@@ -4,19 +4,32 @@
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import { Buffer } from "node:buffer";
 import { BinaryLike } from "ext:deno_node/internal/crypto/types.ts";
+import {
+  op_node_export_challenge,
+  op_node_export_public_key,
+  op_node_verify_spkac,
+} from "ext:core/ops";
 
 export class Certificate {
   static Certificate = Certificate;
-  static exportChallenge(_spkac: BinaryLike, _encoding?: string): Buffer {
-    notImplemented("crypto.Certificate.exportChallenge");
+  static exportChallenge(spkac: BinaryLike, encoding?: string): Buffer {
+    const buffer = Buffer.from(spkac, encoding);
+
+    const result = op_node_export_challenge(new Uint8Array(buffer.buffer));
+    return Buffer.from(result);
   }
 
-  static exportPublicKey(_spkac: BinaryLike, _encoding?: string): Buffer {
-    notImplemented("crypto.Certificate.exportPublicKey");
+  static exportPublicKey(spkac: BinaryLike, encoding?: string): Buffer {
+    const buffer = Buffer.from(spkac, encoding);
+
+    const result = op_node_export_public_key(new Uint8Array(buffer.buffer));
+    return Buffer.from(result);
   }
 
-  static verifySpkac(_spkac: BinaryLike, _encoding?: string): boolean {
-    notImplemented("crypto.Certificate.verifySpkac");
+  static verifySpkac(spkac: BinaryLike, encoding?: string): boolean {
+    const buffer = Buffer.from(spkac, encoding);
+
+    return op_node_verify_spkac(new Uint8Array(buffer.buffer));
   }
 }
 
