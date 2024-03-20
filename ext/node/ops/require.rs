@@ -195,7 +195,9 @@ pub fn op_require_resolve_deno_dir(
   resolver
     .resolve_package_folder_from_package(
       &request,
-      &ModuleSpecifier::from_file_path(parent_filename).unwrap(),
+      &ModuleSpecifier::from_file_path(&parent_filename).unwrap_or_else(|_| {
+        panic!("Url::from_file_path: [{:?}]", parent_filename)
+      }),
       NodeResolutionMode::Execution,
     )
     .ok()
