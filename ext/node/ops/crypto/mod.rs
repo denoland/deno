@@ -43,11 +43,11 @@ use rsa::Pkcs1v15Encrypt;
 use rsa::RsaPrivateKey;
 use rsa::RsaPublicKey;
 
+pub mod certificate;
 mod cipher;
 mod dh;
 mod digest;
 mod primes;
-pub mod certificate;
 pub mod x509;
 
 #[op2(fast)]

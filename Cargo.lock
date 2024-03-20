@@ -1636,6 +1636,7 @@ version = "0.79.0"
 dependencies = [
  "aead-gcm-stream",
  "aes",
+ "base64",
  "brotli",
  "bytes",
  "cbc",
@@ -1647,6 +1648,7 @@ dependencies = [
  "deno_media_type",
  "deno_net",
  "deno_whoami",
+ "der",
  "digest",
  "dsa",
  "ecb",
@@ -2051,6 +2053,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fffa369a668c8af7dbf8b5e56c9f744fbd399949ed171606040001947de40b1c"
 dependencies = [
  "const-oid",
+ "der_derive",
  "pem-rfc7468",
  "zeroize",
 ]
@@ -2067,6 +2070,17 @@ dependencies = [
  "num-bigint",
  "num-traits",
  "rusticata-macros",
+]
+
+[[package]]
+name = "der_derive"
+version = "0.7.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5fe87ce4529967e0ba1dcf8450bab64d97dfd5010a6256187ffe2e43e6f0e049"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.48",
 ]
 
 [[package]]
