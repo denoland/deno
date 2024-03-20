@@ -32,6 +32,7 @@ import {
   AbortError,
   // kEnhanceStackBeforeInspector,
   ERR_INVALID_ARG_TYPE,
+  ERR_INVALID_THIS,
   ERR_OUT_OF_RANGE,
   ERR_UNHANDLED_ERROR,
 } from "ext:deno_node/internal/errors.ts";
@@ -1104,8 +1105,8 @@ export class EventEmitterAsyncResource extends EventEmitter {
       throw new ERR_INVALID_THIS("EventEmitterAsyncResource");
     }
     const { asyncResource } = this;
-    ArrayPrototypeUnshift(args, super.emit, this, event);
-    return ReflectApply(asyncResource.runInAsyncScope, asyncResource, args);
+    args.unshift(super.emit, this, event);
+    return asyncResource.runInAsyncScope.apply(asyncResource, args);
   }
 
   /**
