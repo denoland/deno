@@ -117,8 +117,8 @@ Timeout.prototype[Symbol.toPrimitive] = function () {
 };
 
 // Immediate constructor function.
-export function Immediate(callback, args) {
-  this._immediateId = setImmediate_(callback, args);
+export function Immediate(callback, ...args) {
+  this._immediateId = setImmediate_(callback, ...args);
 }
 
 // Make sure the linked list only shows the minimal necessary information.

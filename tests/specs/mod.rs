@@ -1,8 +1,14 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::collections::HashSet;
+use std::panic::AssertUnwindSafe;
+use std::rc::Rc;
+use std::sync::Arc;
 
 use deno_core::anyhow::Context;
+use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use deno_terminal::colors;
 use serde::Deserialize;
@@ -19,24 +25,42 @@ pub fn main() {
   // todo(dsherret): the output should be changed to be terse
   // when it passes, but verbose on failure
   for category in &categories {
+    if category.tests.is_empty() {
+      continue; // skip output when all the tests have been filtered out
+    }
+
     eprintln!();
     eprintln!("     {} {}", colors::green_bold("Running"), category.name);
+    eprintln!();
     for test in &category.tests {
-      eprintln!();
-      eprintln!("==== Starting {} ====", test.name);
-      let result = std::panic::catch_unwind(|| run_test(test));
+      eprint!("test {} ... ", test.name);
+      let diagnostic_logger = Rc::new(RefCell::new(Vec::<u8>::new()));
+      let panic_message = Arc::new(Mutex::new(Vec::<u8>::new()));
+      std::panic::set_hook({
+        let panic_message = panic_message.clone();
+        Box::new(move |info| {
+          panic_message
+            .lock()
+            .extend(format!("{}", info).into_bytes());
+        })
+      });
+      let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
+        run_test(test, diagnostic_logger.clone())
+      }));
       let success = result.is_ok();
       if !success {
-        failures.push(&test.name);
+        let mut output = diagnostic_logger.borrow().clone();
+        output.push(b'\n');
+        output.extend(panic_message.lock().iter());
+        failures.push((test, output));
       }
       eprintln!(
-        "==== {} {} ====",
+        "{}",
         if success {
-          "Finished".to_string()
+          colors::green("ok")
         } else {
-          colors::red("^^FAILED^^").to_string()
+          colors::red("fail")
         },
-        test.name
       );
     }
   }
@@ -44,13 +68,18 @@ pub fn main() {
   eprintln!();
   if !failures.is_empty() {
     eprintln!("spec failures:");
-    for failure in &failures {
-      eprintln!("  {}", failure);
-    }
     eprintln!();
+    for (failure, output) in &failures {
+      eprintln!("---- {} ----", failure.name);
+      eprintln!("{}", String::from_utf8_lossy(output));
+      eprintln!("Test file: {}", failure.manifest_file());
+      eprintln!();
+    }
     panic!("{} failed of {}", failures.len(), total_tests);
+  } else {
+    eprintln!("{} tests passed", total_tests);
   }
-  eprintln!("{} tests passed", total_tests);
+  eprintln!();
 }
 
 fn parse_cli_arg_filter() -> Option<String> {
@@ -60,9 +89,10 @@ fn parse_cli_arg_filter() -> Option<String> {
   maybe_filter.cloned()
 }
 
-fn run_test(test: &Test) {
+fn run_test(test: &Test, diagnostic_logger: Rc<RefCell<Vec<u8>>>) {
   let metadata = &test.metadata;
   let mut builder = TestContextBuilder::new();
+  builder = builder.logging_capture(diagnostic_logger);
   let cwd = &test.cwd;
 
   if test.metadata.temp_dir {
@@ -77,7 +107,7 @@ fn run_test(test: &Test) {
         builder = builder.add_npm_env_vars();
       }
       "jsr" => {
-        builder = builder.add_jsr_env_vars();
+        builder = builder.add_jsr_env_vars().add_npm_env_vars();
       }
       _ => panic!("Unknown test base: {}", base),
     }
@@ -98,15 +128,13 @@ fn run_test(test: &Test) {
       context.deno_dir().path().remove_dir_all();
     }
 
-    let test_output_path = cwd.join(&step.output);
-    if !test_output_path.to_string_lossy().ends_with(".out") {
-      panic!(
-        "Use the .out extension for output files (invalid: {})",
-        test_output_path
-      );
-    }
-    let expected_output = test_output_path.read_to_string();
-    let command = context.new_command();
+    let expected_output = if step.output.ends_with(".out") {
+      let test_output_path = cwd.join(&step.output);
+      test_output_path.read_to_string()
+    } else {
+      step.output.clone()
+    };
+    let command = context.new_command().envs(&step.envs);
     let command = match &step.args {
       VecOrString::Vec(args) => command.args_vec(args),
       VecOrString::String(text) => command.args(text),
@@ -166,6 +194,8 @@ struct StepMetaData {
   #[serde(default)]
   pub clean_deno_dir: bool,
   pub args: VecOrString,
+  #[serde(default)]
+  pub envs: HashMap<String, String>,
   pub output: String,
   #[serde(default)]
   pub exit_code: i32,
@@ -179,9 +209,15 @@ struct Test {
 }
 
 impl Test {
+  pub fn manifest_file(&self) -> PathRef {
+    self.cwd.join("__test__.json")
+  }
+}
+
+impl Test {
   pub fn resolve_test_and_assertion_files(&self) -> HashSet<PathRef> {
     let mut result = HashSet::with_capacity(self.metadata.steps.len() + 1);
-    result.insert(self.cwd.join("__test__.json"));
+    result.insert(self.manifest_file());
     result.extend(
       self
         .metadata
@@ -247,7 +283,7 @@ fn collect_tests() -> Vec<TestCategory> {
       }
 
       let test_dir = PathRef::new(entry.path());
-      let metadata_path = test_dir.join("__test__.json");
+      let metadata_path = test_dir.join("__test__.jsonc");
       let metadata_value = metadata_path.read_jsonc_value();
       // checking for "steps" leads to a more targeted error message
       // instead of when deserializing an untagged enum

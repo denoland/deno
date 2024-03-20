@@ -564,6 +564,12 @@ class Process extends EventEmitter {
     return platform;
   }
 
+  // https://nodejs.org/api/process.html#processsetsourcemapsenabledval
+  setSourceMapsEnabled(_val: boolean) {
+    // This is a no-op in Deno. Source maps are always enabled.
+    // TODO(@satyarohith): support disabling source maps if needed.
+  }
+
   override addListener(event: "exit", listener: (code: number) => void): this;
   override addListener(
     event: typeof notImplementedEvents[number],

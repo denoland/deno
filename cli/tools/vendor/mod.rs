@@ -40,7 +40,7 @@ pub async fn vendor(
 ) -> Result<(), AnyError> {
   let mut cli_options = CliOptions::from_flags(flags)?;
   let raw_output_dir = match &vendor_flags.output_path {
-    Some(output_path) => output_path.to_owned(),
+    Some(output_path) => PathBuf::from(output_path).to_owned(),
     None => PathBuf::from("vendor/"),
   };
   let output_dir = resolve_from_cwd(&raw_output_dir)?;

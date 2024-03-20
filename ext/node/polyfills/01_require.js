@@ -491,31 +491,6 @@ Module.globalPaths = modulePaths;
 
 const CHAR_FORWARD_SLASH = 47;
 const TRAILING_SLASH_REGEX = /(?:^|\/)\.?\.$/;
-const encodedSepRegEx = /%2F|%2C/i;
-
-function finalizeEsmResolution(
-  resolved,
-  parentPath,
-  pkgPath,
-) {
-  if (RegExpPrototypeTest(encodedSepRegEx, resolved)) {
-    throw new ERR_INVALID_MODULE_SPECIFIER(
-      resolved,
-      'must not include encoded "/" or "\\" characters',
-      parentPath,
-    );
-  }
-  // const filename = fileURLToPath(resolved);
-  const filename = resolved;
-  const actual = tryFile(filename, false);
-  if (actual) {
-    return actual;
-  }
-  throw new ERR_MODULE_NOT_FOUND(
-    filename,
-    path.resolve(pkgPath, "package.json"),
-  );
-}
 
 // This only applies to requests of a specific form:
 // 1. name/.*

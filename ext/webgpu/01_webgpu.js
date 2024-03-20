@@ -2040,7 +2040,7 @@ class GPUBuffer {
     device.pushErrorPromise(promise);
     const err = await promise;
     if (err) {
-      throw new DOMException("validation error occured", "OperationError");
+      throw new DOMException("validation error occurred", "OperationError");
     }
     this[_state] = "mapped";
     this[_mappingRange] = [offset, offset + rangeSize];

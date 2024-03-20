@@ -90,3 +90,4 @@ Within the file, you can use the following for matching:
 - `[WILDCHARS(5)]` - match any of the next 5 characters
 - `[UNORDERED_START]` followed by many lines then `[UNORDERED_END]` will match
   the lines in any order (useful for non-deterministic output)
+- `[# example]` - line comments start with `[#` and end with `]`

@@ -280,6 +280,10 @@ function postMessage(message, transferOrOptions = {}) {
 let isClosing = false;
 let globalDispatchEvent;
 
+function hasMessageEventListener() {
+  return event.listenerCount(globalThis, "message") > 0;
+}
+
 async function pollForMessages() {
   if (!globalDispatchEvent) {
     globalDispatchEvent = FunctionPrototypeBind(
@@ -786,6 +790,7 @@ function bootstrapWorkerRuntime(
   runtimeOptions,
   name,
   internalName,
+  workerId,
   maybeWorkerMetadata,
 ) {
   if (hasBootstrapped) {
@@ -803,6 +808,7 @@ function bootstrapWorkerRuntime(
     6: argv0,
     7: shouldDisableDeprecatedApiWarning,
     8: shouldUseVerboseDeprecatedApiWarning,
+    9: _future,
   } = runtimeOptions;
 
   deprecatedApiWarningDisabled = shouldDisableDeprecatedApiWarning;
@@ -865,6 +871,7 @@ function bootstrapWorkerRuntime(
   location.setLocationHref(location_);
 
   globalThis.pollForMessages = pollForMessages;
+  globalThis.hasMessageEventListener = hasMessageEventListener;
 
   // TODO(bartlomieju): deprecate --unstable
   if (unstableFlag) {
@@ -918,6 +925,7 @@ function bootstrapWorkerRuntime(
       hasNodeModulesDir,
       argv0,
       /* runningOnMainThread */ false,
+      workerId,
       workerMetadata,
     );
   }
