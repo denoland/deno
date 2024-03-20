@@ -370,7 +370,6 @@ function importScripts(...urls) {
 
 const opArgs = memoizeLazy(() => op_bootstrap_args());
 const opPid = memoizeLazy(() => op_bootstrap_pid());
-const opPpid = memoizeLazy(() => op_ppid());
 setNoColorFn(() => op_bootstrap_no_color() || !op_bootstrap_is_tty());
 
 function formatException(error) {
@@ -716,7 +715,7 @@ function bootstrapMainRuntime(runtimeOptions) {
 
   ObjectDefineProperties(finalDenoNs, {
     pid: core.propGetterOnly(opPid),
-    ppid: core.propGetterOnly(opPpid),
+    ppid: core.propGetterOnly(() => op_ppid()),
     noColor: core.propGetterOnly(() => op_bootstrap_no_color()),
     args: core.propGetterOnly(opArgs),
     mainModule: core.propGetterOnly(() => op_main_module()),
