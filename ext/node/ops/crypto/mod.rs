@@ -1047,6 +1047,75 @@ pub async fn op_node_scrypt_async(
   .await?
 }
 
+#[op2]
+#[buffer]
+pub fn op_node_ecdh_encode_pubkey(
+  #[string] curve: &str,
+  #[buffer] pubkey: &[u8],
+  compress: bool,
+) -> Result<Vec<u8>, AnyError> {
+  use elliptic_curve::sec1::FromEncodedPoint;
+
+  match curve {
+    "secp256k1" => {
+      let pubkey =
+        elliptic_curve::PublicKey::<k256::Secp256k1>::from_encoded_point(
+          &elliptic_curve::sec1::EncodedPoint::<k256::Secp256k1>::from_bytes(
+            pubkey,
+          )?,
+        );
+      // CtOption does not expose its variants.
+      if pubkey.is_none().into() {
+        return Err(type_error("Invalid public key"));
+      }
+
+      let pubkey = pubkey.unwrap();
+
+      Ok(pubkey.to_encoded_point(compress).as_ref().to_vec())
+    }
+    "prime256v1" | "secp256r1" => {
+      let pubkey = elliptic_curve::PublicKey::<NistP256>::from_encoded_point(
+        &elliptic_curve::sec1::EncodedPoint::<NistP256>::from_bytes(pubkey)?,
+      );
+      // CtOption does not expose its variants.
+      if pubkey.is_none().into() {
+        return Err(type_error("Invalid public key"));
+      }
+
+      let pubkey = pubkey.unwrap();
+
+      Ok(pubkey.to_encoded_point(compress).as_ref().to_vec())
+    }
+    "secp384r1" => {
+      let pubkey = elliptic_curve::PublicKey::<NistP384>::from_encoded_point(
+        &elliptic_curve::sec1::EncodedPoint::<NistP384>::from_bytes(pubkey)?,
+      );
+      // CtOption does not expose its variants.
+      if pubkey.is_none().into() {
+        return Err(type_error("Invalid public key"));
+      }
+
+      let pubkey = pubkey.unwrap();
+
+      Ok(pubkey.to_encoded_point(compress).as_ref().to_vec())
+    }
+    "secp224r1" => {
+      let pubkey = elliptic_curve::PublicKey::<NistP224>::from_encoded_point(
+        &elliptic_curve::sec1::EncodedPoint::<NistP224>::from_bytes(pubkey)?,
+      );
+      // CtOption does not expose its variants.
+      if pubkey.is_none().into() {
+        return Err(type_error("Invalid public key"));
+      }
+
+      let pubkey = pubkey.unwrap();
+
+      Ok(pubkey.to_encoded_point(compress).as_ref().to_vec())
+    }
+    &_ => Err(type_error("Unsupported curve")),
+  }
+}
+
 #[op2(fast)]
 pub fn op_node_ecdh_generate_keys(
   #[string] curve: &str,
