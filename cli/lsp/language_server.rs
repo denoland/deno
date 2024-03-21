@@ -2,7 +2,6 @@
 
 use base64::Engine;
 use deno_ast::MediaType;
-use deno_config::glob::FilePatterns;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
@@ -28,9 +27,10 @@ use indexmap::IndexSet;
 use log::error;
 use serde::Deserialize;
 use serde_json::from_value;
-use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::collections::VecDeque;
 use std::env;
 use std::fmt::Write as _;
 use std::path::Path;
@@ -274,6 +274,10 @@ pub struct Inner {
   pub ts_server: Arc<TsServer>,
   /// A map of specifiers and URLs used to translate over the LSP.
   pub url_map: urls::LspUrlMap,
+  workspace_files: BTreeSet<ModuleSpecifier>,
+  /// Set to `self.config.settings.enable_settings_hash()` after
+  /// refreshing `self.workspace_files`.
+  workspace_files_hash: u64,
 }
 
 impl LanguageServer {
@@ -486,14 +490,12 @@ impl LanguageServer {
         }
         let mut configs = configs.into_iter();
         let unscoped = configs.next().unwrap();
-        let mut by_workspace_folder = BTreeMap::new();
+        let mut folder_settings = Vec::with_capacity(folders.len());
         for (folder_uri, _) in &folders {
-          by_workspace_folder
-            .insert(folder_uri.clone(), configs.next().unwrap());
+          folder_settings.push((folder_uri.clone(), configs.next().unwrap()));
         }
         let mut ls = self.0.write().await;
-        ls.config
-          .set_workspace_settings(unscoped, Some(by_workspace_folder));
+        ls.config.set_workspace_settings(unscoped, folder_settings);
       }
     }
   }
@@ -574,6 +576,8 @@ impl Inner {
       ts_fixable_diagnostics: Default::default(),
       ts_server,
       url_map: Default::default(),
+      workspace_files: Default::default(),
+      workspace_files_hash: 0,
     }
   }
 
@@ -1226,11 +1230,12 @@ impl Inner {
       if let Some(options) = params.initialization_options {
         self.config.set_workspace_settings(
           WorkspaceSettings::from_initialization_options(options),
-          None,
+          vec![],
         );
       }
+      let mut workspace_folders = vec![];
       if let Some(folders) = params.workspace_folders {
-        self.config.workspace_folders = folders
+        workspace_folders = folders
           .into_iter()
           .map(|folder| {
             (
@@ -1243,15 +1248,10 @@ impl Inner {
       // rootUri is deprecated by the LSP spec. If it's specified, merge it into
       // workspace_folders.
       if let Some(root_uri) = params.root_uri {
-        if !self
-          .config
-          .workspace_folders
-          .iter()
-          .any(|(_, f)| f.uri == root_uri)
-        {
+        if !workspace_folders.iter().any(|(_, f)| f.uri == root_uri) {
           let name = root_uri.path_segments().and_then(|s| s.last());
           let name = name.unwrap_or_default().to_string();
-          self.config.workspace_folders.insert(
+          workspace_folders.insert(
             0,
             (
               self.url_map.normalize_url(&root_uri, LspUrlKind::Folder),
@@ -1263,6 +1263,7 @@ impl Inner {
           );
         }
       }
+      self.config.set_workspace_folders(workspace_folders);
       self.config.update_capabilities(&params.capabilities);
     }
 
@@ -1319,23 +1320,144 @@ impl Inner {
     })
   }
 
+  fn walk_workspace(config: &Config) -> (BTreeSet<ModuleSpecifier>, bool) {
+    let mut workspace_files = Default::default();
+    let document_preload_limit =
+      config.workspace_settings().document_preload_limit;
+    let mut pending = VecDeque::new();
+    let mut entry_count = 0;
+    let mut roots = config
+      .workspace_folders
+      .iter()
+      .filter_map(|p| specifier_to_file_path(&p.0).ok())
+      .collect::<Vec<_>>();
+    roots.sort();
+    for i in 0..roots.len() {
+      if i == 0 || !roots[i].starts_with(&roots[i - 1]) {
+        if let Ok(read_dir) = std::fs::read_dir(&roots[i]) {
+          pending.push_back((roots[i].clone(), read_dir));
+        }
+      }
+    }
+    while let Some((parent_path, read_dir)) = pending.pop_front() {
+      for entry in read_dir {
+        let Ok(entry) = entry else {
+          continue;
+        };
+        if entry_count >= document_preload_limit {
+          return (workspace_files, true);
+        }
+        entry_count += 1;
+        let path = parent_path.join(entry.path());
+        let Ok(specifier) = ModuleSpecifier::from_file_path(&path) else {
+          continue;
+        };
+        // TODO(nayeemrmn): Don't walk folders that are `None` here and aren't
+        // in a `deno.json` scope.
+        if config.settings.specifier_enabled(&specifier) == Some(false) {
+          continue;
+        }
+        let Ok(file_type) = entry.file_type() else {
+          continue;
+        };
+        let Some(file_name) = path.file_name() else {
+          continue;
+        };
+        if file_type.is_dir() {
+          let dir_name = file_name.to_string_lossy().to_lowercase();
+          // We ignore these directories by default because there is a
+          // high likelihood they aren't relevant. Someone can opt-into
+          // them by specifying one of them as an enabled path.
+          if matches!(dir_name.as_str(), "node_modules" | ".git") {
+            continue;
+          }
+          // ignore cargo target directories for anyone using Deno with Rust
+          if dir_name == "target"
+            && path
+              .parent()
+              .map(|p| p.join("Cargo.toml").exists())
+              .unwrap_or(false)
+          {
+            continue;
+          }
+          if let Ok(read_dir) = std::fs::read_dir(&path) {
+            pending.push_back((path, read_dir));
+          }
+        } else if file_type.is_file()
+          || file_type.is_symlink()
+            && std::fs::metadata(&path)
+              .ok()
+              .map(|m| m.is_file())
+              .unwrap_or(false)
+        {
+          if file_name.to_string_lossy().contains(".min.") {
+            continue;
+          }
+          let media_type = MediaType::from_specifier(&specifier);
+          match media_type {
+            MediaType::JavaScript
+            | MediaType::Jsx
+            | MediaType::Mjs
+            | MediaType::Cjs
+            | MediaType::TypeScript
+            | MediaType::Mts
+            | MediaType::Cts
+            | MediaType::Dts
+            | MediaType::Dmts
+            | MediaType::Dcts
+            | MediaType::Json
+            | MediaType::Tsx => {}
+            MediaType::Wasm
+            | MediaType::SourceMap
+            | MediaType::TsBuildInfo
+            | MediaType::Unknown => {
+              if path.extension().and_then(|s| s.to_str()) != Some("jsonc") {
+                continue;
+              }
+            }
+          }
+          workspace_files.insert(specifier);
+        }
+      }
+    }
+    (workspace_files, false)
+  }
+
+  fn refresh_workspace_files(&mut self) {
+    let enable_settings_hash = self.config.settings.enable_settings_hash();
+    if self.workspace_files_hash == enable_settings_hash {
+      return;
+    }
+    let (workspace_files, hit_limit) = Self::walk_workspace(&self.config);
+    if hit_limit {
+      let document_preload_limit =
+        self.config.workspace_settings().document_preload_limit;
+      if document_preload_limit == 0 {
+        log::debug!("Skipped document preload.");
+      } else {
+        lsp_warn!(
+          concat!(
+            "Hit the language server document preload limit of {} file system entries. ",
+            "You may want to use the \"deno.enablePaths\" configuration setting to only have Deno ",
+            "partially enable a workspace or increase the limit via \"deno.documentPreloadLimit\". ",
+            "In cases where Deno ends up using too much memory, you may want to lower the limit."
+          ),
+          document_preload_limit,
+        );
+      }
+    }
+    self.workspace_files = workspace_files;
+    self.workspace_files_hash = enable_settings_hash;
+  }
+
   async fn refresh_documents_config(&mut self) {
     self.documents.update_config(UpdateDocumentConfigOptions {
-      file_patterns: FilePatterns {
-        base: self.initial_cwd.clone(),
-        include: Some(self.config.get_enabled_paths()),
-        exclude: self.config.get_disabled_paths(),
-      },
-      document_preload_limit: self
-        .config
-        .workspace_settings()
-        .document_preload_limit,
+      config: &self.config,
       maybe_import_map: self.maybe_import_map.clone(),
-      maybe_config_file: self.config.maybe_config_file(),
       maybe_package_json: self.maybe_package_json.as_ref(),
-      maybe_lockfile: self.config.maybe_lockfile().cloned(),
       node_resolver: self.npm.node_resolver.clone(),
       npm_resolver: self.npm.resolver.clone(),
+      workspace_files: &self.workspace_files,
     });
 
     // refresh the npm specifiers because it might have discovered
@@ -1464,7 +1586,7 @@ impl Inner {
         WorkspaceSettings::from_raw_settings(deno, javascript, typescript)
       });
       if let Some(settings) = config {
-        self.config.set_workspace_settings(settings, None);
+        self.config.set_workspace_settings(settings, vec![]);
       }
     };
 
@@ -1495,6 +1617,7 @@ impl Inner {
     }
 
     self.recreate_npm_services_if_necessary().await;
+    self.refresh_workspace_files();
     self.refresh_documents_config().await;
 
     self.diagnostics_server.invalidate_all();
@@ -1693,6 +1816,7 @@ impl Inner {
 
     if touched {
       self.recreate_npm_services_if_necessary().await;
+      self.refresh_workspace_files();
       self.refresh_documents_config().await;
       self.diagnostics_server.invalidate_all();
       self.ts_server.restart(self.snapshot()).await;
@@ -1725,8 +1849,7 @@ impl Inner {
       }
       workspace_folders.push((specifier.clone(), folder.clone()));
     }
-
-    self.config.workspace_folders = workspace_folders;
+    self.config.set_workspace_folders(workspace_folders);
   }
 
   async fn document_symbol(
@@ -3385,6 +3508,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
         lsp_warn!("Error updating tsconfig: {:#}", err);
         ls.client.show_message(MessageType::WARNING, err);
       }
+      ls.refresh_workspace_files();
       ls.refresh_documents_config().await;
       ls.diagnostics_server.invalidate_all();
       ls.send_diagnostics_update();
@@ -3518,6 +3642,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     self.refresh_configuration().await;
     {
       let mut ls = self.0.write().await;
+      ls.refresh_workspace_files();
       ls.refresh_documents_config().await;
       ls.diagnostics_server.invalidate_all();
       ls.send_diagnostics_update();
@@ -3971,5 +4096,114 @@ impl Inner {
     };
     self.performance.measure(mark);
     Ok(contents)
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use pretty_assertions::assert_eq;
+  use test_util::TempDir;
+
+  #[test]
+  fn test_walk_workspace() {
+    let temp_dir = TempDir::new();
+    temp_dir.create_dir_all("root1/node_modules/");
+    temp_dir.write("root1/node_modules/mod.ts", ""); // no, node_modules
+
+    temp_dir.create_dir_all("root1/sub_dir");
+    temp_dir.create_dir_all("root1/target");
+    temp_dir.create_dir_all("root1/node_modules");
+    temp_dir.create_dir_all("root1/.git");
+    temp_dir.create_dir_all("root1/file.ts"); // no, directory
+    temp_dir.write("root1/mod0.ts", ""); // yes
+    temp_dir.write("root1/mod1.js", ""); // yes
+    temp_dir.write("root1/mod2.tsx", ""); // yes
+    temp_dir.write("root1/mod3.d.ts", ""); // yes
+    temp_dir.write("root1/mod4.jsx", ""); // yes
+    temp_dir.write("root1/mod5.mjs", ""); // yes
+    temp_dir.write("root1/mod6.mts", ""); // yes
+    temp_dir.write("root1/mod7.d.mts", ""); // yes
+    temp_dir.write("root1/mod8.json", ""); // yes
+    temp_dir.write("root1/mod9.jsonc", ""); // yes
+    temp_dir.write("root1/other.txt", ""); // no, text file
+    temp_dir.write("root1/other.wasm", ""); // no, don't load wasm
+    temp_dir.write("root1/Cargo.toml", ""); // no
+    temp_dir.write("root1/sub_dir/mod.ts", ""); // yes
+    temp_dir.write("root1/sub_dir/data.min.ts", ""); // no, minified file
+    temp_dir.write("root1/.git/main.ts", ""); // no, .git folder
+    temp_dir.write("root1/node_modules/main.ts", ""); // no, because it's in a node_modules folder
+    temp_dir.write("root1/target/main.ts", ""); // no, because there is a Cargo.toml in the root directory
+
+    temp_dir.create_dir_all("root2/folder");
+    temp_dir.create_dir_all("root2/sub_folder");
+    temp_dir.write("root2/file1.ts", ""); // yes, enabled
+    temp_dir.write("root2/file2.ts", ""); // no, not enabled
+    temp_dir.write("root2/folder/main.ts", ""); // yes, enabled
+    temp_dir.write("root2/folder/other.ts", ""); // no, disabled
+    temp_dir.write("root2/sub_folder/a.js", ""); // no, not enabled
+    temp_dir.write("root2/sub_folder/b.ts", ""); // no, not enabled
+    temp_dir.write("root2/sub_folder/c.js", ""); // no, not enabled
+
+    temp_dir.create_dir_all("root3/");
+    temp_dir.write("root3/mod.ts", ""); // no, not enabled
+
+    let mut config = Config::new_with_roots(vec![
+      temp_dir.uri().join("root1/").unwrap(),
+      temp_dir.uri().join("root2/").unwrap(),
+      temp_dir.uri().join("root3/").unwrap(),
+    ]);
+    config.set_workspace_settings(
+      Default::default(),
+      vec![
+        (
+          temp_dir.uri().join("root1/").unwrap(),
+          WorkspaceSettings {
+            enable: Some(true),
+            ..Default::default()
+          },
+        ),
+        (
+          temp_dir.uri().join("root2/").unwrap(),
+          WorkspaceSettings {
+            enable: Some(true),
+            enable_paths: Some(vec![
+              "file1.ts".to_string(),
+              "folder".to_string(),
+            ]),
+            disable_paths: vec!["folder/other.ts".to_string()],
+            ..Default::default()
+          },
+        ),
+        (
+          temp_dir.uri().join("root3/").unwrap(),
+          WorkspaceSettings {
+            enable: Some(false),
+            ..Default::default()
+          },
+        ),
+      ],
+    );
+
+    let (workspace_files, hit_limit) = Inner::walk_workspace(&config);
+    assert!(!hit_limit);
+    assert_eq!(
+      json!(workspace_files),
+      json!([
+        temp_dir.uri().join("root1/mod0.ts").unwrap(),
+        temp_dir.uri().join("root1/mod1.js").unwrap(),
+        temp_dir.uri().join("root1/mod2.tsx").unwrap(),
+        temp_dir.uri().join("root1/mod3.d.ts").unwrap(),
+        temp_dir.uri().join("root1/mod4.jsx").unwrap(),
+        temp_dir.uri().join("root1/mod5.mjs").unwrap(),
+        temp_dir.uri().join("root1/mod6.mts").unwrap(),
+        temp_dir.uri().join("root1/mod7.d.mts").unwrap(),
+        temp_dir.uri().join("root1/mod8.json").unwrap(),
+        temp_dir.uri().join("root1/mod9.jsonc").unwrap(),
+        temp_dir.uri().join("root1/sub_dir/mod.ts").unwrap(),
+        temp_dir.uri().join("root2/file1.ts").unwrap(),
+        temp_dir.uri().join("root2/folder/main.ts").unwrap(),
+      ])
+    );
   }
 }

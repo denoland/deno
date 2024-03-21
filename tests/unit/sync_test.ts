@@ -11,7 +11,7 @@ Deno.test(
       create: true,
     });
     const data = new Uint8Array(64);
-    Deno.writeSync(file.rid, data);
+    file.writeSync(data);
     Deno.fdatasyncSync(file.rid);
     Deno.removeSync(filename);
   },

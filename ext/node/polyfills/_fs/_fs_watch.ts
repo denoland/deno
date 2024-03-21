@@ -146,7 +146,7 @@ export function watch(
       }
       throw e;
     }
-  });
+  }, () => iterator);
 
   if (listener) {
     fsWatcher.on("change", listener.bind({ _handle: fsWatcher }));
@@ -211,7 +211,7 @@ export function watchFile(
     statWatchers.set(watchPath, stat);
   }
 
-  stat.addListener("change", listener!);
+  stat.addListener("change", handler);
   return stat;
 }
 
@@ -252,6 +252,7 @@ class StatWatcher extends EventEmitter {
   #bigint: boolean;
   #refCount = 0;
   #abortController = new AbortController();
+
   constructor(bigint: boolean) {
     super();
     this.#bigint = bigint;
@@ -306,19 +307,22 @@ class StatWatcher extends EventEmitter {
     this.emit("stop");
   }
   ref() {
-    notImplemented("FSWatcher.ref() is not implemented");
+    notImplemented("StatWatcher.ref() is not implemented");
   }
   unref() {
-    notImplemented("FSWatcher.unref() is not implemented");
+    notImplemented("StatWatcher.unref() is not implemented");
   }
 }
 
 class FSWatcher extends EventEmitter {
   #closer: () => void;
   #closed = false;
-  constructor(closer: () => void) {
+  #watcher: () => Deno.FsWatcher;
+
+  constructor(closer: () => void, getter: () => Deno.FsWatcher) {
     super();
     this.#closer = closer;
+    this.#watcher = getter;
   }
   close() {
     if (this.#closed) {
@@ -329,10 +333,10 @@ class FSWatcher extends EventEmitter {
     this.#closer();
   }
   ref() {
-    notImplemented("FSWatcher.ref() is not implemented");
+    this.#watcher().ref();
   }
   unref() {
-    notImplemented("FSWatcher.unref() is not implemented");
+    this.#watcher().unref();
   }
 }
 

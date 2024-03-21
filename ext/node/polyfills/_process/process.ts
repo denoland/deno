@@ -19,6 +19,8 @@ export function arch(): string {
     return "x64";
   } else if (core.build.arch == "aarch64") {
     return "arm64";
+  } else if (core.build.arch == "riscv64gc") {
+    return "riscv64";
   } else {
     throw Error("unreachable");
   }
