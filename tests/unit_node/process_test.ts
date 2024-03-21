@@ -1058,3 +1058,13 @@ Deno.test({
     });
   },
 });
+
+Deno.test({
+  name: "process.setSourceMapsEnabled",
+  fn() {
+    // @ts-ignore: setSourceMapsEnabled is not available in the types yet.
+    process.setSourceMapsEnabled(false); // noop
+    // @ts-ignore: setSourceMapsEnabled is not available in the types yet.
+    process.setSourceMapsEnabled(true); // noop
+  },
+});

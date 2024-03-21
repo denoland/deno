@@ -17,6 +17,7 @@ import { SymbolDispose } from "ext:deno_web/00_infra.js";
 
 class FsWatcher {
   #rid = 0;
+  #promise;
 
   constructor(paths, options) {
     const { recursive } = options;
@@ -32,9 +33,18 @@ class FsWatcher {
     return this.#rid;
   }
 
+  unref() {
+    core.unrefOpPromise(this.#promise);
+  }
+
+  ref() {
+    core.refOpPromise(this.#promise);
+  }
+
   async next() {
     try {
-      const value = await op_fs_events_poll(this.#rid);
+      this.#promise = op_fs_events_poll(this.#rid);
+      const value = await this.#promise;
       return value ? { value, done: false } : { value: undefined, done: true };
     } catch (error) {
       if (ObjectPrototypeIsPrototypeOf(BadResourcePrototype, error)) {

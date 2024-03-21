@@ -2,6 +2,7 @@
 
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import {
+  createECDH,
   createHmac,
   createPrivateKey,
   createPublicKey,
@@ -247,6 +248,24 @@ Deno.test("createPrivateKey dh", function () {
   assertEquals(key.asymmetricKeyType, "dh");
 });
 
+Deno.test("createPublicKey dh", function () {
+  // 1.2.840.113549.1.3.1
+  const pem = "-----BEGIN PUBLIC KEY-----\n" +
+    "MIIBnzCB1QYJKoZIhvcNAQMBMIHHAoHBAP//////////yQ/aoiFowjTExmKLgNwc\n" +
+    "0SkCTgiKZ8x0Agu+pjsTmyJRSgh5jjQE3e+VGbPNOkMbMCsKbfJfFDdP4TVtbVHC\n" +
+    "ReSFtXZiXn7G9ExC6aY37WsL/1y29Aa37e44a/taiZ+lrp8kEXxLH+ZJKGZR7ORb\n" +
+    "PcIAfLihY78FmNpINhxV05ppFj+o/STPX4NlXSPco62WHGLzViCFUrue1SkHcJaW\n" +
+    "bWcMNU5KvJgE8XRsCMojcyf//////////wIBAgOBxAACgcBR7+iL5qx7aOb9K+aZ\n" +
+    "y2oLt7ST33sDKT+nxpag6cWDDWzPBKFDCJ8fr0v7yW453px8N4qi4R7SYYxFBaYN\n" +
+    "Y3JvgDg1ct2JC9sxSuUOLqSFn3hpmAjW7cS0kExIVGfdLlYtIqbhhuo45cTEbVIM\n" +
+    "rDEz8mjIlnvbWpKB9+uYmbjfVoc3leFvUBqfG2In2m23Md1swsPxr3n7g68H66JX\n" +
+    "iBJKZLQMqNdbY14G9rdKmhhTJrQjC+i7Q/wI8JPhOFzHIGA=\n" +
+    "-----END PUBLIC KEY-----";
+  const key = createPublicKey(pem);
+  assertEquals(key.type, "public");
+  assertEquals(key.asymmetricKeyType, "dh");
+});
+
 // openssl ecparam -name secp256r1 -genkey -noout -out a.pem
 // openssl pkcs8 -topk8 -nocrypt -in a.pem -out b.pem
 const ecPrivateKey = Deno.readTextFileSync(
@@ -312,4 +331,13 @@ Deno.test("createPublicKey SPKI for DH", async function () {
 
   assertEquals(pubKey.asymmetricKeyType, "ec");
   assertEquals(privKey.asymmetricKeyType, "ec");
+});
+
+Deno.test("ECDH generateKeys compressed", function () {
+  const ecdh = createECDH("secp256k1");
+  const publicKey = ecdh.generateKeys("binary", "compressed");
+  assertEquals(publicKey.length, 33);
+
+  const uncompressedKey = ecdh.generateKeys("binary");
+  assertEquals(uncompressedKey.length, 65);
 });
