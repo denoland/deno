@@ -37,9 +37,9 @@ const NODE_IGNORED_TEST_DIRS = [
   "wpt",
 ];
 
-const VENDORED_NODE_TEST = new URL("node/test/", import.meta.url);
+const VENDORED_NODE_TEST = new URL("./suite/test/", import.meta.url);
 const NODE_COMPAT_TEST_DEST_URL = new URL(
-  "../../tests/node_compat/test/",
+  "../test/",
   import.meta.url,
 );
 
