@@ -1090,7 +1090,7 @@ pub fn op_node_ecdh_generate_keys(
 
       Ok(())
     }
-    &_ => Err(type_error("Unsupported curve")),
+    &_ => Err(type_error(format!("Unsupported curve: {}", curve))),
   }
 }
 
