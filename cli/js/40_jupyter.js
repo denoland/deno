@@ -337,9 +337,7 @@ async function formatInner(obj, raw) {
 internals.jupyter = { formatInner };
 
 function enableJupyter() {
-  const {
-    op_jupyter_broadcast,
-  } = core.ensureFastOps();
+  const { op_jupyter_broadcast } = core.ops;
 
   async function broadcast(
     msgType,
