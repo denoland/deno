@@ -37,7 +37,9 @@ pub fn resolve_specifier_into_node_modules(
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CliCjsAnalysis {
+  /// The module was found to be an ES module.
   Esm,
+  /// The module was CJS.
   Cjs {
     exports: Vec<String>,
     reexports: Vec<String>,
