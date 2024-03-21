@@ -486,6 +486,7 @@ pub struct Flags {
   pub unstable_config: UnstableConfig,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub v8_flags: Vec<String>,
+  pub no_code_cache: bool,
 }
 
 fn join_paths(allowlist: &[String], d: &str) -> String {
@@ -932,6 +933,8 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
   flags.unstable_config.sloppy_imports =
     matches.get_flag("unstable-sloppy-imports");
 
+  flags.no_code_cache = matches.get_flag("no-code-cache");
+
   if matches.get_flag("quiet") {
     flags.log_level = Some(Level::Error);
   } else if let Some(log_level) = matches.get_one::<String>("log-level") {
@@ -1066,6 +1069,13 @@ fn clap_root() -> Command {
         .value_parser(FalseyValueParser::new())
         .action(ArgAction::SetTrue)
         .global(true),
+    )
+    .arg(
+      Arg::new("no-code-cache")
+          .long("no-code-cache")
+          .help("Disable V8 code cache feature")
+          .action(ArgAction::SetTrue)
+          .global(true),
     );
 
   for (flag_name, help, _) in crate::UNSTABLE_GRANULAR_FLAGS {

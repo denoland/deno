@@ -572,6 +572,8 @@ pub async fn run(
     // metadata.disable_deprecated_api_warning,
     true,
     false,
+    // Code cache is not supported for standalone binary yet.
+    None,
   );
 
   v8_set_flags(construct_v8_flags(&[], &metadata.v8_flags, vec![]));

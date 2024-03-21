@@ -4,6 +4,7 @@ use crate::args::jsr_url;
 use crate::args::CliOptions;
 use crate::args::DenoSubcommand;
 use crate::args::TsTypeLib;
+use crate::cache::CodeCache;
 use crate::cache::ParsedSourceCache;
 use crate::emit::Emitter;
 use crate::graph_util::graph_lock_or_exit;
@@ -30,10 +31,12 @@ use deno_core::error::custom_error;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures::future::FutureExt;
+use deno_core::futures::future::LocalBoxFuture;
 use deno_core::futures::Future;
 use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url;
 use deno_core::resolve_url_or_path;
+use deno_core::unsync::spawn_blocking;
 use deno_core::ModuleCodeString;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSource;
@@ -50,11 +53,14 @@ use deno_graph::JsonModule;
 use deno_graph::Module;
 use deno_graph::Resolution;
 use deno_lockfile::Lockfile;
+use deno_runtime::code_cache;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_terminal::colors;
 use std::borrow::Cow;
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::str;
@@ -311,6 +317,7 @@ struct SharedCliModuleLoaderState {
   resolver: Arc<CliGraphResolver>,
   node_resolver: Arc<CliNodeResolver>,
   npm_module_loader: NpmModuleLoader,
+  code_cache: Option<Arc<CodeCache>>,
 }
 
 pub struct CliModuleLoaderFactory {
@@ -328,6 +335,7 @@ impl CliModuleLoaderFactory {
     resolver: Arc<CliGraphResolver>,
     node_resolver: Arc<CliNodeResolver>,
     npm_module_loader: NpmModuleLoader,
+    code_cache: Option<Arc<CodeCache>>,
   ) -> Self {
     Self {
       shared: Arc::new(SharedCliModuleLoaderState {
@@ -348,6 +356,7 @@ impl CliModuleLoaderFactory {
         resolver,
         node_resolver,
         npm_module_loader,
+        code_cache,
       }),
     }
   }
@@ -363,6 +372,7 @@ impl CliModuleLoaderFactory {
       root_permissions,
       dynamic_permissions,
       shared: self.shared.clone(),
+      pending_code_cache_futs: Rc::new(RefCell::new(HashMap::new())),
     })
   }
 }
@@ -399,6 +409,9 @@ impl ModuleLoaderFactory for CliModuleLoaderFactory {
   }
 }
 
+type PendingCodeCacheFuture =
+  LocalBoxFuture<'static, Option<Cow<'static, [u8]>>>;
+
 struct CliModuleLoader {
   lib: TsTypeLib,
   /// The initial set of permissions used to resolve the static imports in the
@@ -409,16 +422,17 @@ struct CliModuleLoader {
   /// "root permissions" for Web Worker.
   dynamic_permissions: PermissionsContainer,
   shared: Arc<SharedCliModuleLoaderState>,
+  pending_code_cache_futs: Rc<RefCell<HashMap<String, PendingCodeCacheFuture>>>,
 }
 
 impl CliModuleLoader {
-  fn load_sync(
+  fn load(
     &self,
     specifier: &ModuleSpecifier,
     maybe_referrer: Option<&ModuleSpecifier>,
     is_dynamic: bool,
     requested_module_type: RequestedModuleType,
-  ) -> Result<ModuleSource, AnyError> {
+  ) -> Result<deno_core::ModuleLoadResponse, AnyError> {
     let permissions = if is_dynamic {
       &self.dynamic_permissions
     } else {
@@ -458,13 +472,57 @@ impl CliModuleLoader {
       return Err(generic_error("Attempted to load JSON module without specifying \"type\": \"json\" attribute in the import statement."));
     }
 
-    Ok(ModuleSource::new_with_redirect(
-      module_type,
-      ModuleSourceCode::String(code),
-      specifier,
-      &code_source.found_url,
-      None,
-    ))
+    // Check if there is code cache available for this module.
+    let pending_code_cache_fut = if module_type == ModuleType::JavaScript {
+      self
+        .pending_code_cache_futs
+        .borrow_mut()
+        .remove(specifier.as_str())
+        .or_else(|| {
+          self.shared.code_cache.as_ref().cloned().map(|cache| {
+            let specifier = specifier.clone();
+            spawn_blocking(move || {
+              cache
+                .get_sync(
+                  specifier.as_str(),
+                  code_cache::CodeCacheType::EsModule,
+                )
+                .map(Cow::from)
+            })
+            .map(|r| r.ok().flatten())
+            .boxed_local()
+          })
+        })
+    } else {
+      None
+    };
+
+    if let Some(fut) = pending_code_cache_fut {
+      let specifier = specifier.clone();
+      Ok(deno_core::ModuleLoadResponse::Async(
+        async move {
+          let code_cache = fut.await;
+          Ok(ModuleSource::new_with_redirect(
+            module_type,
+            ModuleSourceCode::String(code),
+            &specifier,
+            &code_source.found_url,
+            code_cache,
+          ))
+        }
+        .boxed_local(),
+      ))
+    } else {
+      Ok(deno_core::ModuleLoadResponse::Sync(Ok(
+        ModuleSource::new_with_redirect(
+          module_type,
+          ModuleSourceCode::String(code),
+          specifier,
+          &code_source.found_url,
+          None,
+        ),
+      )))
+    }
   }
 
   fn resolve_referrer(
@@ -638,15 +696,15 @@ impl ModuleLoader for CliModuleLoader {
     is_dynamic: bool,
     requested_module_type: RequestedModuleType,
   ) -> deno_core::ModuleLoadResponse {
-    // NOTE: this block is async only because of `deno_core` interface
-    // requirements; module was already loaded when constructing module graph
-    // during call to `prepare_load` so we can load it synchronously.
-    deno_core::ModuleLoadResponse::Sync(self.load_sync(
+    match self.load(
       specifier,
       maybe_referrer,
       is_dynamic,
       requested_module_type,
-    ))
+    ) {
+      Ok(res) => res,
+      Err(err) => deno_core::ModuleLoadResponse::Sync(Err(err)),
+    }
   }
 
   fn prepare_load(
@@ -671,12 +729,57 @@ impl ModuleLoader for CliModuleLoader {
     };
     let lib = self.lib;
 
+    // Try to preload code cache for this module.
+    if let Some(cache) = self.shared.code_cache.as_ref().cloned() {
+      let specifier_clone = specifier.clone();
+      let pending_code_cache_fut = spawn_blocking(move || {
+        cache
+          .get_sync(
+            specifier_clone.as_str(),
+            code_cache::CodeCacheType::EsModule,
+          )
+          .map(Cow::from)
+      })
+      .map(|r| r.ok().flatten())
+      .boxed_local();
+      self
+        .pending_code_cache_futs
+        .borrow_mut()
+        .insert(specifier.to_string(), pending_code_cache_fut);
+    }
+
     async move {
       module_load_preparer
         .prepare_module_load(vec![specifier], is_dynamic, lib, root_permissions)
         .await
     }
     .boxed_local()
+  }
+
+  fn code_cache_ready(
+    &self,
+    specifier: &ModuleSpecifier,
+    code_cache: &[u8],
+  ) -> Pin<Box<dyn Future<Output = ()>>> {
+    self
+      .shared
+      .code_cache
+      .as_ref()
+      .cloned()
+      .map(|cache| {
+        let specifier = specifier.clone();
+        let code_cache = code_cache.to_vec();
+        spawn_blocking(move || {
+          cache.set_sync(
+            specifier.as_str(),
+            code_cache::CodeCacheType::EsModule,
+            &code_cache,
+          );
+        })
+        .map(|_| {})
+        .boxed_local()
+      })
+      .unwrap_or_else(|| async {}.boxed_local())
   }
 }
 

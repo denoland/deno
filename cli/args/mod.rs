@@ -1608,6 +1608,10 @@ impl CliOptions {
     &self.flags.v8_flags
   }
 
+  pub fn no_code_cache(&self) -> bool {
+    self.flags.no_code_cache
+  }
+
   pub fn watch_paths(&self) -> Vec<PathBuf> {
     let mut full_paths = Vec::new();
     if let DenoSubcommand::Run(RunFlags {
