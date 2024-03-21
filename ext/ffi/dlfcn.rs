@@ -103,6 +103,7 @@ struct ForeignStatic {
 #[derive(Debug)]
 enum ForeignSymbol {
   ForeignFunction(ForeignFunction),
+  #[allow(dead_code)]
   ForeignStatic(ForeignStatic),
 }
 
