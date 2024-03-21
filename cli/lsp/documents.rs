@@ -3,19 +3,15 @@
 use super::cache::calculate_fs_version;
 use super::cache::calculate_fs_version_at_path;
 use super::cache::LSP_DISALLOW_GLOBAL_TO_LOCAL_COPY;
+use super::config::Config;
 use super::language_server::StateNpmSnapshot;
 use super::text::LineIndex;
 use super::tsc;
 use super::tsc::AssetDocument;
 
 use crate::args::package_json;
-use crate::args::package_json::PackageJsonDeps;
-use crate::args::ConfigFile;
-use crate::args::JsxImportSourceConfig;
-use crate::cache::FastInsecureHasher;
 use crate::cache::HttpCache;
 use crate::jsr::JsrCacheResolver;
-use crate::lsp::logging::lsp_warn;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliGraphResolver;
 use crate::resolver::CliGraphResolverOptions;
@@ -28,9 +24,6 @@ use crate::util::path::specifier_to_file_path;
 use deno_ast::MediaType;
 use deno_ast::ParsedSource;
 use deno_ast::SourceTextInfo;
-use deno_config::glob::FilePatterns;
-use deno_config::glob::PathOrPattern;
-use deno_config::glob::PathOrPatternSet;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::futures::future;
@@ -53,15 +46,12 @@ use indexmap::IndexMap;
 use once_cell::sync::Lazy;
 use package_json::PackageJsonDepsProvider;
 use std::borrow::Cow;
+use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::fs;
-use std::fs::ReadDir;
 use std::ops::Range;
-use std::path::Path;
-use std::path::PathBuf;
-use std::rc::Rc;
 use std::str::FromStr;
 use std::sync::Arc;
 use tower_lsp::lsp_types as lsp;
@@ -828,14 +818,12 @@ impl FileSystemDocuments {
 }
 
 pub struct UpdateDocumentConfigOptions<'a> {
-  pub file_patterns: FilePatterns,
-  pub document_preload_limit: usize,
+  pub config: &'a Config,
   pub maybe_import_map: Option<Arc<import_map::ImportMap>>,
-  pub maybe_config_file: Option<&'a ConfigFile>,
   pub maybe_package_json: Option<&'a PackageJson>,
-  pub maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
   pub node_resolver: Option<Arc<CliNodeResolver>>,
   pub npm_resolver: Option<Arc<dyn CliNpmResolver>>,
+  pub workspace_files: &'a BTreeSet<ModuleSpecifier>,
 }
 
 /// Specify the documents to include on a `documents.documents(...)` call.
@@ -863,9 +851,6 @@ pub struct Documents {
   open_docs: HashMap<ModuleSpecifier, Document>,
   /// Documents stored on the file system.
   file_system_docs: Arc<Mutex<FileSystemDocuments>>,
-  /// Hash of the config used for resolution. When the hash changes we update
-  /// dependencies.
-  resolver_config_hash: u64,
   /// Any imports to the context supplied by configuration files. This is like
   /// the imports into the a module graph in CLI.
   imports: Arc<IndexMap<ModuleSpecifier, GraphImport>>,
@@ -893,7 +878,6 @@ impl Documents {
       dependents_map: Default::default(),
       open_docs: HashMap::default(),
       file_system_docs: Default::default(),
-      resolver_config_hash: 0,
       imports: Default::default(),
       resolver: Arc::new(CliGraphResolver::new(CliGraphResolverOptions {
         node_resolver: None,
@@ -1326,84 +1310,13 @@ impl Documents {
   }
 
   pub fn update_config(&mut self, options: UpdateDocumentConfigOptions) {
-    #[allow(clippy::too_many_arguments)]
-    fn calculate_resolver_config_hash(
-      file_patterns: &FilePatterns,
-      document_preload_limit: usize,
-      maybe_import_map: Option<&import_map::ImportMap>,
-      maybe_jsx_config: Option<&JsxImportSourceConfig>,
-      maybe_vendor_dir: Option<bool>,
-      maybe_package_json_deps: Option<&PackageJsonDeps>,
-      maybe_unstable_flags: Option<&Vec<String>>,
-    ) -> u64 {
-      fn get_pattern_set_vec(set: &PathOrPatternSet) -> Vec<Cow<'_, str>> {
-        let mut paths = set
-          .inner()
-          .iter()
-          .map(|p| match p {
-            PathOrPattern::Path(p) => p.to_string_lossy(),
-            PathOrPattern::NegatedPath(p) => {
-              Cow::Owned(format!("!{}", p.to_string_lossy()))
-            }
-            PathOrPattern::RemoteUrl(p) => Cow::Borrowed(p.as_str()),
-            PathOrPattern::Pattern(p) => p.as_str(),
-          })
-          .collect::<Vec<_>>();
-        // ensure these are sorted so the hashing is deterministic
-        paths.sort_unstable();
-        paths
-      }
-
-      let mut hasher = FastInsecureHasher::default();
-      hasher.write_hashable(document_preload_limit);
-      hasher.write_hashable(
-        &file_patterns.include.as_ref().map(get_pattern_set_vec),
-      );
-      hasher.write_hashable(&get_pattern_set_vec(&file_patterns.exclude));
-      if let Some(import_map) = maybe_import_map {
-        hasher.write_str(&import_map.to_json());
-        hasher.write_str(import_map.base_url().as_str());
-      }
-      hasher.write_hashable(maybe_vendor_dir);
-      hasher.write_hashable(maybe_jsx_config);
-      hasher.write_hashable(maybe_unstable_flags);
-      if let Some(package_json_deps) = &maybe_package_json_deps {
-        // We need to ensure the hashing is deterministic so explicitly type
-        // this in order to catch if the type of package_json_deps ever changes
-        // from a deterministic IndexMap to something else.
-        let package_json_deps: &IndexMap<_, _> = *package_json_deps;
-        for (key, value) in package_json_deps {
-          hasher.write_hashable(key);
-          match value {
-            Ok(value) => {
-              hasher.write_hashable(value);
-            }
-            Err(err) => {
-              hasher.write_str(&err.to_string());
-            }
-          }
-        }
-      }
-
-      hasher.finish()
-    }
-
+    let maybe_config_file = options.config.maybe_config_file();
     let maybe_package_json_deps =
       options.maybe_package_json.map(|package_json| {
         package_json::get_local_package_json_version_reqs(package_json)
       });
-    let maybe_jsx_config = options
-      .maybe_config_file
+    let maybe_jsx_config = maybe_config_file
       .and_then(|cf| cf.to_maybe_jsx_import_source_config().ok().flatten());
-    let new_resolver_config_hash = calculate_resolver_config_hash(
-      &options.file_patterns,
-      options.document_preload_limit,
-      options.maybe_import_map.as_deref(),
-      maybe_jsx_config.as_ref(),
-      options.maybe_config_file.and_then(|c| c.json.vendor),
-      maybe_package_json_deps.as_ref(),
-      options.maybe_config_file.map(|c| &c.json.unstable),
-    );
     let deps_provider =
       Arc::new(PackageJsonDepsProvider::new(maybe_package_json_deps));
     self.resolver = Arc::new(CliGraphResolver::new(CliGraphResolverOptions {
@@ -1412,12 +1325,10 @@ impl Documents {
       package_json_deps_provider: deps_provider,
       maybe_jsx_import_source_config: maybe_jsx_config,
       maybe_import_map: options.maybe_import_map,
-      maybe_vendor_dir: options
-        .maybe_config_file
+      maybe_vendor_dir: maybe_config_file
         .and_then(|c| c.vendor_dir_path())
         .as_ref(),
-      bare_node_builtins_enabled: options
-        .maybe_config_file
+      bare_node_builtins_enabled: maybe_config_file
         .map(|config| config.has_unstable("bare-node-builtins"))
         .unwrap_or(false),
       // Don't set this for the LSP because instead we'll use the OpenDocumentsLoader
@@ -1427,13 +1338,15 @@ impl Documents {
     }));
     self.jsr_resolver = Arc::new(JsrCacheResolver::new(
       self.cache.clone(),
-      options.maybe_lockfile,
+      options.config.maybe_lockfile().cloned(),
     ));
     self.redirect_resolver =
       Arc::new(RedirectResolver::new(self.cache.clone()));
+    let resolver = self.resolver.as_graph_resolver();
+    let npm_resolver = self.resolver.as_graph_npm_resolver();
     self.imports = Arc::new(
       if let Some(Ok(imports)) =
-        options.maybe_config_file.map(|cf| cf.to_maybe_imports())
+        maybe_config_file.map(|cf| cf.to_maybe_imports())
       {
         imports
           .into_iter()
@@ -1441,8 +1354,8 @@ impl Documents {
             let graph_import = GraphImport::new(
               &referrer,
               imports,
-              Some(self.get_resolver()),
-              Some(self.get_npm_resolver()),
+              Some(resolver),
+              Some(npm_resolver),
             );
             (referrer, graph_import)
           })
@@ -1451,121 +1364,56 @@ impl Documents {
         IndexMap::new()
       },
     );
-    self.unstable_sloppy_imports = options
-      .maybe_config_file
+    self.unstable_sloppy_imports = maybe_config_file
       .map(|c| c.has_unstable("sloppy-imports"))
       .unwrap_or(false);
-
-    // only refresh the dependencies if the underlying configuration has changed
-    if self.resolver_config_hash != new_resolver_config_hash {
-      self.refresh_dependencies(
-        options.file_patterns,
-        options.document_preload_limit,
-      );
-      self.resolver_config_hash = new_resolver_config_hash;
-
-      self.increment_project_version();
-      self.dirty = true;
-      self.calculate_dependents_if_dirty();
-    }
-  }
-
-  fn refresh_dependencies(
-    &mut self,
-    file_patterns: FilePatterns,
-    document_preload_limit: usize,
-  ) {
-    let resolver = self.resolver.as_graph_resolver();
-    let npm_resolver = self.resolver.as_graph_npm_resolver();
-    for doc in self.open_docs.values_mut() {
-      if let Some(new_doc) = doc.maybe_with_new_resolver(resolver, npm_resolver)
-      {
-        *doc = new_doc;
+    {
+      let mut fs_docs = self.file_system_docs.lock();
+      // Clean up non-existent documents.
+      fs_docs.docs.retain(|specifier, _| {
+        let Ok(path) = specifier_to_file_path(specifier) else {
+          // Remove non-file schemed docs (deps). They may not be dependencies
+          // anymore after updating resolvers.
+          return false;
+        };
+        if !options.config.specifier_enabled(specifier) {
+          return false;
+        }
+        path.is_file()
+      });
+      let mut open_docs = std::mem::take(&mut self.open_docs);
+      for docs in [&mut open_docs, &mut fs_docs.docs] {
+        for doc in docs.values_mut() {
+          if !options.config.specifier_enabled(doc.specifier()) {
+            continue;
+          }
+          if let Some(new_doc) =
+            doc.maybe_with_new_resolver(resolver, npm_resolver)
+          {
+            *doc = new_doc;
+          }
+        }
       }
-    }
-
-    // update the file system documents
-    let mut fs_docs = self.file_system_docs.lock();
-    if document_preload_limit > 0 {
-      let mut not_found_docs =
-        fs_docs.docs.keys().cloned().collect::<HashSet<_>>();
-      let open_docs = &mut self.open_docs;
-
-      log::debug!("Preloading documents from enabled urls...");
-      let mut finder =
-        PreloadDocumentFinder::new(PreloadDocumentFinderOptions {
-          file_patterns,
-          limit: document_preload_limit,
-        });
-      for specifier in finder.by_ref() {
-        // mark this document as having been found
-        not_found_docs.remove(&specifier);
-
-        if !open_docs.contains_key(&specifier)
-          && !fs_docs.docs.contains_key(&specifier)
+      self.open_docs = open_docs;
+      for specifier in options.workspace_files {
+        if !options.config.specifier_enabled(specifier) {
+          continue;
+        }
+        if !self.open_docs.contains_key(specifier)
+          && !fs_docs.docs.contains_key(specifier)
         {
           fs_docs.refresh_document(
             &self.cache,
             resolver,
-            &specifier,
+            specifier,
             npm_resolver,
           );
-        } else {
-          // update the existing entry to have the new resolver
-          if let Some(doc) = fs_docs.docs.get_mut(&specifier) {
-            if let Some(new_doc) =
-              doc.maybe_with_new_resolver(resolver, npm_resolver)
-            {
-              *doc = new_doc;
-            }
-          }
         }
       }
-
-      if finder.hit_limit() {
-        lsp_warn!(
-            concat!(
-              "Hit the language server document preload limit of {} file system entries. ",
-              "You may want to use the \"deno.enablePaths\" configuration setting to only have Deno ",
-              "partially enable a workspace or increase the limit via \"deno.documentPreloadLimit\". ",
-              "In cases where Deno ends up using too much memory, you may want to lower the limit."
-            ),
-            document_preload_limit,
-          );
-
-        // since we hit the limit, just update everything to use the new resolver
-        for uri in not_found_docs {
-          if let Some(doc) = fs_docs.docs.get_mut(&uri) {
-            if let Some(new_doc) =
-              doc.maybe_with_new_resolver(resolver, npm_resolver)
-            {
-              *doc = new_doc;
-            }
-          }
-        }
-      } else {
-        // clean up and remove any documents that weren't found
-        for uri in not_found_docs {
-          fs_docs.docs.remove(&uri);
-        }
-      }
-    } else {
-      // This log statement is used in the tests to ensure preloading doesn't
-      // happen, which is not useful in the repl and could be very expensive
-      // if the repl is launched from a directory with a lot of descendants.
-      log::debug!("Skipping document preload.");
-
-      // just update to use the new resolver
-      for doc in fs_docs.docs.values_mut() {
-        if let Some(new_doc) =
-          doc.maybe_with_new_resolver(resolver, npm_resolver)
-        {
-          *doc = new_doc;
-        }
-      }
+      fs_docs.dirty = true;
     }
-
-    fs_docs.dirty = true;
+    self.dirty = true;
+    self.calculate_dependents_if_dirty();
   }
 
   /// Iterate through the documents, building a map where the key is a unique
@@ -1884,230 +1732,13 @@ fn analyze_module(
   }
 }
 
-#[derive(Debug)]
-enum PendingEntry {
-  /// File specified as a root url.
-  SpecifiedRootFile(PathBuf),
-  /// Directory that is queued to read.
-  Dir(PathBuf, Rc<FilePatterns>),
-  /// The current directory being read.
-  ReadDir(Box<ReadDir>, Rc<FilePatterns>),
-}
-
-struct PreloadDocumentFinderOptions {
-  file_patterns: FilePatterns,
-  limit: usize,
-}
-
-/// Iterator that finds documents that can be preloaded into
-/// the LSP on startup.
-struct PreloadDocumentFinder {
-  limit: usize,
-  entry_count: usize,
-  pending_entries: VecDeque<PendingEntry>,
-  root_dir_entries: Vec<PendingEntry>,
-  visited_paths: HashSet<PathBuf>,
-}
-
-impl PreloadDocumentFinder {
-  pub fn new(options: PreloadDocumentFinderOptions) -> Self {
-    fn is_allowed_root_dir(dir_path: &Path) -> bool {
-      if dir_path.parent().is_none() {
-        // never search the root directory of a drive
-        return false;
-      }
-      true
-    }
-
-    let mut finder = PreloadDocumentFinder {
-      limit: options.limit,
-      entry_count: 0,
-      pending_entries: Default::default(),
-      root_dir_entries: Default::default(),
-      visited_paths: Default::default(),
-    };
-
-    let file_patterns_by_base = options.file_patterns.split_by_base();
-
-    // initialize the finder with the initial paths
-    for file_patterns in file_patterns_by_base {
-      let path = &file_patterns.base;
-      if path.is_dir() {
-        if is_allowed_root_dir(path) {
-          finder
-            .root_dir_entries
-            .push(PendingEntry::Dir(path.clone(), Rc::new(file_patterns)));
-        }
-      } else {
-        finder
-          .pending_entries
-          .push_back(PendingEntry::SpecifiedRootFile(path.clone()));
-      }
-    }
-    finder
-  }
-
-  pub fn hit_limit(&self) -> bool {
-    self.entry_count >= self.limit
-  }
-
-  fn get_valid_specifier(path: &Path) -> Option<ModuleSpecifier> {
-    fn is_allowed_media_type(media_type: MediaType) -> bool {
-      match media_type {
-        MediaType::JavaScript
-        | MediaType::Jsx
-        | MediaType::Mjs
-        | MediaType::Cjs
-        | MediaType::TypeScript
-        | MediaType::Mts
-        | MediaType::Cts
-        | MediaType::Dts
-        | MediaType::Dmts
-        | MediaType::Dcts
-        | MediaType::Tsx => true,
-        MediaType::Json // ignore because json never depends on other files
-        | MediaType::Wasm
-        | MediaType::SourceMap
-        | MediaType::TsBuildInfo
-        | MediaType::Unknown => false,
-      }
-    }
-
-    let media_type = MediaType::from_path(path);
-    if is_allowed_media_type(media_type) {
-      if let Ok(specifier) = ModuleSpecifier::from_file_path(path) {
-        return Some(specifier);
-      }
-    }
-    None
-  }
-}
-
-impl Iterator for PreloadDocumentFinder {
-  type Item = ModuleSpecifier;
-
-  fn next(&mut self) -> Option<Self::Item> {
-    fn is_discoverable_dir(dir_path: &Path) -> bool {
-      if let Some(dir_name) = dir_path.file_name() {
-        let dir_name = dir_name.to_string_lossy().to_lowercase();
-        // We ignore these directories by default because there is a
-        // high likelihood they aren't relevant. Someone can opt-into
-        // them by specifying one of them as an enabled path.
-        if matches!(dir_name.as_str(), "node_modules" | ".git") {
-          return false;
-        }
-
-        // ignore cargo target directories for anyone using Deno with Rust
-        if dir_name == "target"
-          && dir_path
-            .parent()
-            .map(|p| p.join("Cargo.toml").exists())
-            .unwrap_or(false)
-        {
-          return false;
-        }
-
-        true
-      } else {
-        false
-      }
-    }
-
-    fn is_discoverable_file(file_path: &Path) -> bool {
-      // Don't auto-discover minified files as they are likely to be very large
-      // and likely not to have dependencies on code outside them that would
-      // be useful in the LSP
-      if let Some(file_name) = file_path.file_name() {
-        let file_name = file_name.to_string_lossy().to_lowercase();
-        !file_name.as_str().contains(".min.")
-      } else {
-        false
-      }
-    }
-
-    // This first drains all the pending entries then adds the root dir entries
-    // one at a time to the pending entries before draining them. This is because
-    // we're traversing based on directory depth, so we want to search deeper
-    // directories first
-    while !self.pending_entries.is_empty() || !self.root_dir_entries.is_empty()
-    {
-      while let Some(entry) = self.pending_entries.pop_front() {
-        match entry {
-          PendingEntry::SpecifiedRootFile(file) => {
-            // since it was a file that was specified as a root url, only
-            // verify that it's valid
-            if let Some(specifier) = Self::get_valid_specifier(&file) {
-              return Some(specifier);
-            }
-          }
-          PendingEntry::Dir(dir_path, file_patterns) => {
-            if self.visited_paths.insert(dir_path.clone()) {
-              if let Ok(read_dir) = fs::read_dir(&dir_path) {
-                self.pending_entries.push_back(PendingEntry::ReadDir(
-                  Box::new(read_dir),
-                  file_patterns,
-                ));
-              }
-            }
-          }
-          PendingEntry::ReadDir(mut entries, file_patterns) => {
-            while let Some(entry) = entries.next() {
-              self.entry_count += 1;
-
-              if self.hit_limit() {
-                self.pending_entries.clear(); // stop searching
-                return None;
-              }
-
-              if let Ok(entry) = entry {
-                let path = entry.path();
-                if let Ok(file_type) = entry.file_type() {
-                  let is_dir = file_type.is_dir();
-                  let path_kind = match is_dir {
-                    true => deno_config::glob::PathKind::Directory,
-                    false => deno_config::glob::PathKind::File,
-                  };
-                  if file_patterns.matches_path(&path, path_kind) {
-                    if is_dir && is_discoverable_dir(&path) {
-                      self.pending_entries.push_back(PendingEntry::Dir(
-                        path.to_path_buf(),
-                        file_patterns.clone(),
-                      ));
-                    } else if file_type.is_file() && is_discoverable_file(&path)
-                    {
-                      if let Some(specifier) = Self::get_valid_specifier(&path)
-                      {
-                        // restore the next entries for next time
-                        self.pending_entries.push_front(PendingEntry::ReadDir(
-                          entries,
-                          file_patterns.clone(),
-                        ));
-                        return Some(specifier);
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-
-      if let Some(entry) = self.root_dir_entries.pop() {
-        self.pending_entries.push_back(entry);
-      }
-    }
-
-    None
-  }
-}
-
 #[cfg(test)]
 mod tests {
   use crate::cache::GlobalHttpCache;
   use crate::cache::RealDenoCacheEnv;
 
   use super::*;
+  use deno_core::serde_json;
   use import_map::ImportMap;
   use pretty_assertions::assert_eq;
   use test_util::PathRef;
@@ -2231,6 +1862,20 @@ console.log(b, "hello deno");
     let file3_specifier = ModuleSpecifier::from_file_path(&file3_path).unwrap();
     fs::write(&file3_path, "").unwrap();
 
+    let mut config =
+      Config::new_with_roots(vec![ModuleSpecifier::from_directory_path(
+        &documents_path,
+      )
+      .unwrap()]);
+    let workspace_settings =
+      serde_json::from_str(r#"{ "enable": true }"#).unwrap();
+    config.set_workspace_settings(workspace_settings, vec![]);
+    let workspace_files =
+      [&file1_specifier, &file2_specifier, &file3_specifier]
+        .into_iter()
+        .cloned()
+        .collect::<BTreeSet<_>>();
+
     // set the initial import map and point to file 2
     {
       let mut import_map = ImportMap::new(
@@ -2243,16 +1888,12 @@ console.log(b, "hello deno");
         .unwrap();
 
       documents.update_config(UpdateDocumentConfigOptions {
-        file_patterns: FilePatterns::new_with_base(
-          documents_path.to_path_buf(),
-        ),
-        document_preload_limit: 1_000,
+        config: &config,
         maybe_import_map: Some(Arc::new(import_map)),
-        maybe_config_file: None,
         maybe_package_json: None,
-        maybe_lockfile: None,
         node_resolver: None,
         npm_resolver: None,
+        workspace_files: &workspace_files,
       });
 
       // open the document
@@ -2287,16 +1928,12 @@ console.log(b, "hello deno");
         .unwrap();
 
       documents.update_config(UpdateDocumentConfigOptions {
-        file_patterns: FilePatterns::new_with_base(
-          documents_path.to_path_buf(),
-        ),
-        document_preload_limit: 1_000,
+        config: &config,
         maybe_import_map: Some(Arc::new(import_map)),
-        maybe_config_file: None,
         maybe_package_json: None,
-        maybe_lockfile: None,
         node_resolver: None,
         npm_resolver: None,
+        workspace_files: &workspace_files,
       });
 
       // check the document's dependencies
@@ -2311,165 +1948,6 @@ console.log(b, "hello deno");
           .map(ToOwned::to_owned),
         Some(file3_specifier),
       );
-    }
-  }
-
-  #[test]
-  pub fn test_pre_load_document_finder() {
-    let temp_dir = TempDir::new();
-    temp_dir.create_dir_all("root1/node_modules/");
-    temp_dir.write("root1/node_modules/mod.ts", ""); // no, node_modules
-
-    temp_dir.create_dir_all("root1/sub_dir");
-    temp_dir.create_dir_all("root1/target");
-    temp_dir.create_dir_all("root1/node_modules");
-    temp_dir.create_dir_all("root1/.git");
-    temp_dir.create_dir_all("root1/file.ts"); // no, directory
-    temp_dir.write("root1/mod1.ts", ""); // yes
-    temp_dir.write("root1/mod2.js", ""); // yes
-    temp_dir.write("root1/mod3.tsx", ""); // yes
-    temp_dir.write("root1/mod4.d.ts", ""); // yes
-    temp_dir.write("root1/mod5.jsx", ""); // yes
-    temp_dir.write("root1/mod6.mjs", ""); // yes
-    temp_dir.write("root1/mod7.mts", ""); // yes
-    temp_dir.write("root1/mod8.d.mts", ""); // yes
-    temp_dir.write("root1/other.json", ""); // no, json
-    temp_dir.write("root1/other.txt", ""); // no, text file
-    temp_dir.write("root1/other.wasm", ""); // no, don't load wasm
-    temp_dir.write("root1/Cargo.toml", ""); // no
-    temp_dir.write("root1/sub_dir/mod.ts", ""); // yes
-    temp_dir.write("root1/sub_dir/data.min.ts", ""); // no, minified file
-    temp_dir.write("root1/.git/main.ts", ""); // no, .git folder
-    temp_dir.write("root1/node_modules/main.ts", ""); // no, because it's in a node_modules folder
-    temp_dir.write("root1/target/main.ts", ""); // no, because there is a Cargo.toml in the root directory
-
-    temp_dir.create_dir_all("root2/folder");
-    temp_dir.create_dir_all("root2/sub_folder");
-    temp_dir.write("root2/file1.ts", ""); // yes, provided
-    temp_dir.write("root2/file2.ts", ""); // no, not provided
-    temp_dir.write("root2/main.min.ts", ""); // yes, provided
-    temp_dir.write("root2/folder/main.ts", ""); // yes, provided
-    temp_dir.write("root2/sub_folder/a.js", ""); // no, not provided
-    temp_dir.write("root2/sub_folder/b.ts", ""); // no, not provided
-    temp_dir.write("root2/sub_folder/c.js", ""); // no, not provided
-
-    temp_dir.create_dir_all("root3/");
-    temp_dir.write("root3/mod.ts", ""); // no, not provided
-
-    let mut urls = PreloadDocumentFinder::new(PreloadDocumentFinderOptions {
-      file_patterns: FilePatterns {
-        base: temp_dir.path().to_path_buf(),
-        include: Some(
-          PathOrPatternSet::from_include_relative_path_or_patterns(
-            temp_dir.path().as_path(),
-            &[
-              "root1".to_string(),
-              "root2/file1.ts".to_string(),
-              "root2/main.min.ts".to_string(),
-              "root2/folder".to_string(),
-            ],
-          )
-          .unwrap(),
-        ),
-        exclude: Default::default(),
-      },
-      limit: 1_000,
-    })
-    .collect::<Vec<_>>();
-
-    // Ideally we would test for order here, which should be BFS, but
-    // different file systems have different directory iteration
-    // so we sort the results
-    urls.sort();
-
-    assert_eq!(
-      urls,
-      vec![
-        temp_dir.uri().join("root1/mod1.ts").unwrap(),
-        temp_dir.uri().join("root1/mod2.js").unwrap(),
-        temp_dir.uri().join("root1/mod3.tsx").unwrap(),
-        temp_dir.uri().join("root1/mod4.d.ts").unwrap(),
-        temp_dir.uri().join("root1/mod5.jsx").unwrap(),
-        temp_dir.uri().join("root1/mod6.mjs").unwrap(),
-        temp_dir.uri().join("root1/mod7.mts").unwrap(),
-        temp_dir.uri().join("root1/mod8.d.mts").unwrap(),
-        temp_dir.uri().join("root1/sub_dir/mod.ts").unwrap(),
-        temp_dir.uri().join("root2/file1.ts").unwrap(),
-        temp_dir.uri().join("root2/folder/main.ts").unwrap(),
-        temp_dir.uri().join("root2/main.min.ts").unwrap(),
-      ]
-    );
-
-    // now try iterating with a low limit
-    let urls = PreloadDocumentFinder::new(PreloadDocumentFinderOptions {
-      file_patterns: FilePatterns {
-        base: temp_dir.path().to_path_buf(),
-        include: Default::default(),
-        exclude: Default::default(),
-      },
-      limit: 10, // entries and not results
-    })
-    .collect::<Vec<_>>();
-
-    // since different file system have different iteration
-    // order, the number here may vary, so just assert it's below
-    // a certain amount
-    assert!(urls.len() < 5, "Actual length: {}", urls.len());
-
-    // now try with certain directories and files disabled
-    let mut urls = PreloadDocumentFinder::new(PreloadDocumentFinderOptions {
-      file_patterns: FilePatterns {
-        base: temp_dir.path().to_path_buf(),
-        include: Default::default(),
-        exclude: PathOrPatternSet::from_exclude_relative_path_or_patterns(
-          temp_dir.path().as_path(),
-          &[
-            "root1".to_string(),
-            "root2/file1.ts".to_string(),
-            "**/*.js".to_string(), // ignore js files
-          ],
-        )
-        .unwrap(),
-      },
-      limit: 1_000,
-    })
-    .collect::<Vec<_>>();
-    urls.sort();
-    assert_eq!(
-      urls,
-      vec![
-        temp_dir.uri().join("root2/file2.ts").unwrap(),
-        temp_dir.uri().join("root2/folder/main.ts").unwrap(),
-        temp_dir.uri().join("root2/sub_folder/b.ts").unwrap(), // won't have the javascript files
-        temp_dir.uri().join("root3/mod.ts").unwrap(),
-      ]
-    );
-  }
-
-  #[test]
-  pub fn test_pre_load_document_finder_disallowed_dirs() {
-    if cfg!(windows) {
-      let paths = PreloadDocumentFinder::new(PreloadDocumentFinderOptions {
-        file_patterns: FilePatterns {
-          base: PathBuf::from("C:\\"),
-          include: Default::default(),
-          exclude: Default::default(),
-        },
-        limit: 1_000,
-      })
-      .collect::<Vec<_>>();
-      assert_eq!(paths, vec![]);
-    } else {
-      let paths = PreloadDocumentFinder::new(PreloadDocumentFinderOptions {
-        file_patterns: FilePatterns {
-          base: PathBuf::from("/"),
-          include: Default::default(),
-          exclude: Default::default(),
-        },
-        limit: 1_000,
-      })
-      .collect::<Vec<_>>();
-      assert_eq!(paths, vec![]);
     }
   }
 }
