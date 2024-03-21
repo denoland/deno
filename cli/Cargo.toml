@@ -160,6 +160,12 @@ winapi = { workspace = true, features = ["knownfolders", "mswsock", "objbase", "
 [target.'cfg(unix)'.dependencies]
 nix.workspace = true
 
+# On *nix systems we allow ipc transport
+[target.'cfg(unix)'.dependencies.zeromq]
+version = "=0.3.4"
+default-features = false
+features = ["ipc-transport", "tcp-transport", "tokio-runtime"]
+
 [dev-dependencies]
 deno_bench_util.workspace = true
 pretty_assertions.workspace = true
