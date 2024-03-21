@@ -341,3 +341,16 @@ Deno.test("ECDH generateKeys compressed", function () {
   const uncompressedKey = ecdh.generateKeys("binary");
   assertEquals(uncompressedKey.length, 65);
 });
+
+Deno.test("ECDH getPublicKey compressed", function () {
+  const ecdh = createECDH("secp256k1");
+  for (const format of ["compressed", "uncompressed"] as const) {
+    ecdh.generateKeys("binary", format);
+
+    const compressedKey = ecdh.getPublicKey("binary", "compressed");
+    assertEquals(compressedKey.length, 33);
+
+    const uncompressedKey = ecdh.getPublicKey("binary");
+    assertEquals(uncompressedKey.length, 65);
+  }
+});

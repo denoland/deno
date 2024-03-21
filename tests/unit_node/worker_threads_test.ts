@@ -4,9 +4,10 @@ import {
   assert,
   assertEquals,
   assertObjectMatch,
+  assertThrows,
   fail,
 } from "@std/assert/mod.ts";
-import { fromFileUrl, relative } from "@std/path/mod.ts";
+import { fromFileUrl, relative, sep } from "@std/path/mod.ts";
 import * as workerThreads from "node:worker_threads";
 import { EventEmitter, once } from "node:events";
 
@@ -20,42 +21,42 @@ Deno.test("[node/worker_threads] MessageChannel are MessagePort are exported", (
 });
 
 Deno.test({
-  name: "[worker_threads] isMainThread",
+  name: "[node/worker_threads] isMainThread",
   fn() {
     assertEquals(workerThreads.isMainThread, true);
   },
 });
 
 Deno.test({
-  name: "[worker_threads] threadId",
+  name: "[node/worker_threads] threadId",
   fn() {
     assertEquals(workerThreads.threadId, 0);
   },
 });
 
 Deno.test({
-  name: "[worker_threads] resourceLimits",
+  name: "[node/worker_threads] resourceLimits",
   fn() {
     assertObjectMatch(workerThreads.resourceLimits, {});
   },
 });
 
 Deno.test({
-  name: "[worker_threads] parentPort",
+  name: "[node/worker_threads] parentPort",
   fn() {
     assertEquals(workerThreads.parentPort, null);
   },
 });
 
 Deno.test({
-  name: "[worker_threads] workerData",
+  name: "[node/worker_threads] workerData",
   fn() {
     assertEquals(workerThreads.workerData, null);
   },
 });
 
 Deno.test({
-  name: "[worker_threads] setEnvironmentData / getEnvironmentData",
+  name: "[node/worker_threads] setEnvironmentData / getEnvironmentData",
   fn() {
     workerThreads.setEnvironmentData("test", "test");
     assertEquals(workerThreads.getEnvironmentData("test"), "test");
@@ -63,7 +64,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "[worker_threads] Worker threadId",
+  name: "[node/worker_threads] Worker threadId",
   async fn() {
     const worker = new workerThreads.Worker(
       new URL("./testdata/worker_threads.mjs", import.meta.url),
@@ -85,7 +86,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "[worker_threads] Worker basics",
+  name: "[node/worker_threads] Worker basics",
   async fn() {
     workerThreads.setEnvironmentData("test", "test");
     workerThreads.setEnvironmentData(1, {
@@ -118,7 +119,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "[worker_threads] Worker eval",
+  name: "[node/worker_threads] Worker eval",
   async fn() {
     const worker = new workerThreads.Worker(
       `
@@ -135,17 +136,141 @@ Deno.test({
 });
 
 Deno.test({
-  name: "[worker_threads] worker thread with type module",
-  fn() {
-    const worker = new workerThreads.Worker(
-      new URL("./testdata/worker_module/index.js", import.meta.url),
-    );
-    worker.terminate();
+  name: "[node/worker_threads] worker thread with type module",
+  async fn() {
+    function p() {
+      return new Promise<workerThreads.Worker>((resolve, reject) => {
+        const worker = new workerThreads.Worker(
+          new URL("./testdata/worker_module/index.js", import.meta.url),
+        );
+        worker.on("error", (e) => reject(e.message));
+        worker.on("message", () => resolve(worker));
+      });
+    }
+    await p();
   },
 });
 
 Deno.test({
-  name: "[worker_threads] inheritances",
+  name: "[node/worker_threads] worker thread in nested module",
+  async fn() {
+    function p() {
+      return new Promise<workerThreads.Worker>((resolve, reject) => {
+        const worker = new workerThreads.Worker(
+          new URL("./testdata/worker_module/nested/index.js", import.meta.url),
+        );
+        worker.on("error", (e) => reject(e.message));
+        worker.on("message", () => resolve(worker));
+      });
+    }
+    await p();
+  },
+});
+
+Deno.test({
+  name: "[node/worker_threads] .cjs worker file within module",
+  async fn() {
+    function p() {
+      return new Promise<workerThreads.Worker>((resolve, reject) => {
+        const worker = new workerThreads.Worker(
+          new URL("./testdata/worker_module/cjs-file.cjs", import.meta.url),
+        );
+        worker.on("error", (e) => reject(e.message));
+        worker.on("message", () => resolve(worker));
+      });
+    }
+    await p();
+  },
+});
+
+Deno.test({
+  name: "[node/worker_threads] relativ path string",
+  async fn() {
+    function p() {
+      return new Promise<workerThreads.Worker>((resolve, reject) => {
+        const worker = new workerThreads.Worker(
+          "./tests/unit_node/testdata/worker_module/index.js",
+        );
+        worker.on("error", (e) => reject(e.message));
+        worker.on("message", () => resolve(worker));
+      });
+    }
+    await p();
+  },
+});
+
+Deno.test({
+  name: "[node/worker_threads] utf-8 path string",
+  async fn() {
+    function p() {
+      return new Promise<workerThreads.Worker>((resolve, reject) => {
+        const worker = new workerThreads.Worker(
+          "./tests/unit_node/testdata/worker_module/βάρβαροι.js",
+        );
+        worker.on("error", (e) => reject(e.message));
+        worker.on("message", () => resolve(worker));
+      });
+    }
+    await p();
+  },
+});
+
+Deno.test({
+  name: "[node/worker_threads] utf-8 path URL",
+  async fn() {
+    function p() {
+      return new Promise<workerThreads.Worker>((resolve, reject) => {
+        const worker = new workerThreads.Worker(
+          new URL(
+            "./testdata/worker_module/βάρβαροι.js",
+            import.meta.url,
+          ),
+        );
+        worker.on("error", (e) => reject(e.message));
+        worker.on("message", () => resolve(worker));
+      });
+    }
+    await p();
+  },
+});
+
+Deno.test({
+  name: "[node/worker_threads] throws on relativ path without leading dot",
+  fn() {
+    assertThrows(
+      () => {
+        new workerThreads.Worker(
+          "tests/unit_node/testdata/worker_module/index.js",
+        );
+      },
+    );
+  },
+});
+
+Deno.test({
+  name: "[node/worker_threads] throws on unsupported URL protcol",
+  fn() {
+    assertThrows(
+      () => {
+        new workerThreads.Worker(new URL("https://example.com"));
+      },
+    );
+  },
+});
+
+Deno.test({
+  name: "[node/worker_threads] throws on non-existend file",
+  fn() {
+    assertThrows(
+      () => {
+        new workerThreads.Worker(new URL("file://very/unlikely"));
+      },
+    );
+  },
+});
+
+Deno.test({
+  name: "[node/worker_threads] inheritances",
   async fn() {
     const worker = new workerThreads.Worker(
       `
@@ -168,7 +293,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "[worker_threads] Worker workerData",
+  name: "[node/worker_threads] Worker workerData",
   async fn() {
     const worker = new workerThreads.Worker(
       new URL("./testdata/worker_threads.mjs", import.meta.url),
@@ -192,12 +317,14 @@ Deno.test({
 });
 
 Deno.test({
-  name: "[worker_threads] Worker with relative path",
+  name: "[node/worker_threads] Worker with relative path",
   async fn() {
-    const worker = new workerThreads.Worker(relative(
-      Deno.cwd(),
-      fromFileUrl(new URL("./testdata/worker_threads.mjs", import.meta.url)),
-    ));
+    const worker = new workerThreads.Worker(
+      `.${sep}` + relative(
+        Deno.cwd(),
+        fromFileUrl(new URL("./testdata/worker_threads.mjs", import.meta.url)),
+      ),
+    );
     worker.postMessage("Hello, how are you my thread?");
     assertEquals((await once(worker, "message"))[0], "I'm fine!");
     worker.terminate();
@@ -205,7 +332,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "[worker_threads] unref",
+  name: "[node/worker_threads] unref",
   async fn() {
     const timeout = setTimeout(() => fail("Test timed out"), 60_000);
     const child = new Deno.Command(Deno.execPath(), {
@@ -220,7 +347,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "[worker_threads] SharedArrayBuffer",
+  name: "[node/worker_threads] SharedArrayBuffer",
   async fn() {
     const sab = new SharedArrayBuffer(Uint8Array.BYTES_PER_ELEMENT);
     const uint = new Uint8Array(sab);
@@ -240,7 +367,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "[worker_threads] Worker workerData with MessagePort",
+  name: "[node/worker_threads] Worker workerData with MessagePort",
   async fn() {
     const { port1: mainPort, port2: workerPort } = new workerThreads
       .MessageChannel();
@@ -256,7 +383,7 @@ Deno.test({
         workerData,
       } from "node:worker_threads";
       parentPort.on("message", (msg) => {
-        console.log("message from main", msg);
+        /* console.log("message from main", msg); */
         parentPort.postMessage("Hello from worker on parentPort!");
         workerData.workerPort.postMessage("Hello from worker on workerPort!");
       });

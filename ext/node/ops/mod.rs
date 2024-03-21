@@ -11,4 +11,5 @@ pub mod require;
 pub mod util;
 pub mod v8;
 pub mod winerror;
+pub mod worker_threads;
 pub mod zlib;
