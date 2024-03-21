@@ -1691,6 +1691,7 @@ let c: number = "a";
       rules: Default::default(),
       files: FilePatterns::new_with_base(temp_dir.path().to_path_buf()),
       reporter_kind: Default::default(),
+      fix: false,
     };
 
     // test enabled

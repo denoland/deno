@@ -1,10 +1,4 @@
-import { copy } from "../../tests/util/std/streams/copy.ts";
-async function main() {
-  for (let i = 1; i < Deno.args.length; i++) {
-    const filename = Deno.args[i];
-    const file = await Deno.open(filename);
-    await copy(file, Deno.stdout);
-  }
-}
+const filename = Deno.args[0];
+using file = await Deno.open(filename);
 
-main();
+await file.readable.pipeTo(Deno.stdout.writable);

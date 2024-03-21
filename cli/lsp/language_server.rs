@@ -2195,7 +2195,7 @@ impl Inner {
               })?
           }
           Some("deno-lint") => code_actions
-            .add_deno_lint_ignore_action(
+            .add_deno_lint_actions(
               &specifier,
               diagnostic,
               asset_or_doc.document().map(|d| d.text_info()),
