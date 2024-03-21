@@ -696,6 +696,7 @@ impl LaxSingleProcessFsFlag {
       .read(true)
       .write(true)
       .create(true)
+      .truncate(true)
       .open(&file_path);
 
     match open_result {
