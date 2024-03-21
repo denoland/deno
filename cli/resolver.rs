@@ -334,7 +334,7 @@ impl NpmModuleLoader {
       // translate cjs to esm if it's cjs and inject node globals
       self.node_code_translator.translate_cjs_to_esm(
         specifier,
-        Some(code.as_str()),
+        Some(code),
         permissions,
       )?
     } else {
