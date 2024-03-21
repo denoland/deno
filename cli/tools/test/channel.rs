@@ -5,16 +5,21 @@ use super::TestStdioStream;
 use deno_core::futures::future::poll_fn;
 use deno_core::parking_lot;
 use deno_core::parking_lot::lock_api::RawMutex;
+use deno_core::parking_lot::lock_api::RawMutexTimed;
 use deno_runtime::deno_io::pipe;
 use deno_runtime::deno_io::AsyncPipeRead;
 use deno_runtime::deno_io::PipeRead;
 use deno_runtime::deno_io::PipeWrite;
 use std::fmt::Display;
+use std::future::Future;
 use std::io::Write;
 use std::pin::Pin;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::task::ready;
+use std::task::Poll;
+use std::time::Duration;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncReadExt;
 use tokio::io::ReadBuf;
@@ -143,17 +148,23 @@ impl TestStream {
     self.read_opt.is_some()
   }
 
+  /// Cancellation-safe.
+  #[inline]
+  fn pipe(&mut self) -> impl Future<Output = ()> + '_ {
+    poll_fn(|cx| self.poll_pipe(cx))
+  }
+
   /// Attempt to read from a given stream, pushing all of the data in it into the given
   /// [`UnboundedSender`] before returning.
-  async fn pipe(&mut self) {
+  fn poll_pipe(&mut self, cx: &mut std::task::Context) -> Poll<()> {
     let mut buffer = [0_u8; BUFFER_SIZE];
     let mut buf = ReadBuf::new(&mut buffer);
     let res = {
-      // No more stream, so just return.
+      // No more stream, we shouldn't hit this case.
       let Some(stream) = &mut self.read_opt else {
-        return;
+        unreachable!();
       };
-      poll_fn(|cx| Pin::new(&mut *stream).poll_read(cx, &mut buf)).await
+      ready!(Pin::new(&mut *stream).poll_read(cx, &mut buf))
     };
     match res {
       Ok(_) => {
@@ -173,6 +184,7 @@ impl TestStream {
         self.read_opt.take();
       }
     }
+    Poll::Ready(())
   }
 
   /// Read and "block" until the sync markers have been read.
@@ -249,11 +261,21 @@ impl TestEventSenderFactory {
         let mut test_stderr =
           TestStream::new(id, TestStdioStream::Stderr, stderr_reader, sender)?;
 
+        // This ensures that the stdout and stderr streams in the select! loop below cannot starve each
+        // other.
+        let mut alternate_stream_priority = false;
+
         // This function will be woken whenever a stream or the receiver is ready
         loop {
+          alternate_stream_priority = !alternate_stream_priority;
+          let (a, b) = if alternate_stream_priority {
+            (&mut test_stdout, &mut test_stderr)
+          } else {
+            (&mut test_stderr, &mut test_stdout)
+          };
+
           tokio::select! {
-            _ = test_stdout.pipe(), if test_stdout.is_alive() => {},
-            _ = test_stderr.pipe(), if test_stdout.is_alive() => {},
+            biased; // We actually want to poll the channel first
             recv = sync_receiver.recv() => {
               match recv {
                 // If the channel closed, we assume that all important data from the streams was synced,
@@ -273,6 +295,10 @@ impl TestEventSenderFactory {
                 }
               }
             }
+            // Poll stdout first if `alternate_stream_priority` is true, otherwise poll stderr first.
+            // This is necessary because of the `biased` flag above to avoid starvation.
+            _ = a.pipe(), if a.is_alive() => {},
+            _ = b.pipe(), if b.is_alive() => {},
           }
         }
 
@@ -377,13 +403,20 @@ impl TestEventSender {
     let mutex = parking_lot::RawMutex::INIT;
     mutex.lock();
     self.sync_sender.send(SendMutex(&mutex as _))?;
-    mutex.lock();
+    if !mutex.try_lock_for(Duration::from_secs(30)) {
+      panic!(
+        "Test flush deadlock, sender closed = {}",
+        self.sync_sender.is_closed()
+      );
+    }
     Ok(())
   }
 }
 
 #[cfg(test)]
 mod tests {
+  use crate::tools::test::TestResult;
+
   use super::*;
   use deno_core::unsync::spawn;
   use deno_core::unsync::spawn_blocking;
@@ -444,7 +477,7 @@ mod tests {
   /// Test that flushing a large number of times doesn't hang.
   #[tokio::test]
   async fn test_flush_lots() {
-    test_util::timeout!(60);
+    test_util::timeout!(240);
     let (mut worker, mut receiver) = create_single_test_event_channel();
     let recv_handle = spawn(async move {
       let mut queue = vec![];
@@ -464,6 +497,75 @@ mod tests {
     send_handle.await.unwrap();
     let messages = recv_handle.await.unwrap();
     assert_eq!(messages.len(), 100000);
+  }
+
+  /// Test that large numbers of interleaved steps are routed properly.
+  #[tokio::test]
+  async fn test_interleave() {
+    test_util::timeout!(60);
+    const MESSAGE_COUNT: usize = 10_000;
+    let (mut worker, mut receiver) = create_single_test_event_channel();
+    let recv_handle = spawn(async move {
+      let mut i = 0;
+      while let Some((_, message)) = receiver.recv().await {
+        if i % 2 == 0 {
+          let expected_text = format!("{:08x}", i / 2).into_bytes();
+          let TestEvent::Output(TestStdioStream::Stderr, text) = message else {
+            panic!("Incorrect message: {message:?}");
+          };
+          assert_eq!(text, expected_text);
+        } else {
+          let TestEvent::Result(index, TestResult::Ok, 0) = message else {
+            panic!("Incorrect message: {message:?}");
+          };
+          assert_eq!(index, i / 2);
+        }
+        i += 1;
+      }
+      eprintln!("Receiver closed");
+      i
+    });
+    let send_handle: deno_core::unsync::JoinHandle<()> =
+      spawn_blocking(move || {
+        for i in 0..MESSAGE_COUNT {
+          worker
+            .stderr
+            .write_all(format!("{i:08x}").as_str().as_bytes())
+            .unwrap();
+          worker
+            .sender
+            .send(TestEvent::Result(i, TestResult::Ok, 0))
+            .unwrap();
+        }
+        eprintln!("Sent all messages");
+      });
+    send_handle.await.unwrap();
+    let messages = recv_handle.await.unwrap();
+    assert_eq!(messages, MESSAGE_COUNT * 2);
+  }
+
+  #[tokio::test]
+  async fn test_sender_shutdown_before_receive() {
+    test_util::timeout!(60);
+    for _ in 0..10 {
+      let (mut worker, mut receiver) = create_single_test_event_channel();
+      worker.stderr.write_all(b"hello").unwrap();
+      worker
+        .sender
+        .send(TestEvent::Result(0, TestResult::Ok, 0))
+        .unwrap();
+      drop(worker);
+      let (_, message) = receiver.recv().await.unwrap();
+      let TestEvent::Output(TestStdioStream::Stderr, text) = message else {
+        panic!("Incorrect message: {message:?}");
+      };
+      assert_eq!(text.as_slice(), b"hello");
+      let (_, message) = receiver.recv().await.unwrap();
+      let TestEvent::Result(..) = message else {
+        panic!("Incorrect message: {message:?}");
+      };
+      assert!(receiver.recv().await.is_none());
+    }
   }
 
   /// Ensure nothing panics if we're racing the runtime shutdown.

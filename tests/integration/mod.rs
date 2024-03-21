@@ -38,8 +38,6 @@ mod install;
 mod js_unit_tests;
 #[path = "jsr_tests.rs"]
 mod jsr;
-#[path = "jupyter_tests.rs"]
-mod jupyter;
 #[path = "lint_tests.rs"]
 mod lint;
 #[path = "lsp_tests.rs"]
@@ -50,6 +48,8 @@ mod node_compat_tests;
 mod node_unit_tests;
 #[path = "npm_tests.rs"]
 mod npm;
+#[path = "pm_tests.rs"]
+mod pm;
 #[path = "publish_tests.rs"]
 mod publish;
 

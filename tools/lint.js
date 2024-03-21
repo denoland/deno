@@ -2,6 +2,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import { buildMode, getPrebuilt, getSources, join, ROOT_PATH } from "./util.js";
 import { checkCopyright } from "./copyright_checker.js";
+import * as ciFile from "../.github/workflows/ci.generate.ts";
 
 const promises = [];
 
@@ -12,17 +13,18 @@ if (!js && !rs) {
   rs = true;
 }
 
-if (js) {
-  promises.push(dlint());
-  promises.push(dlintPreferPrimordials());
-}
-
 if (rs) {
   promises.push(clippy());
 }
 
-if (js && rs) {
-  promises.push(checkCopyright());
+if (js) {
+  promises.push(dlint());
+  promises.push(dlintPreferPrimordials());
+  promises.push(ensureCiYmlUpToDate());
+
+  if (rs) {
+    promises.push(checkCopyright());
+  }
 }
 
 const results = await Promise.allSettled(promises);
@@ -48,6 +50,8 @@ async function dlint() {
     ":!:cli/bench/testdata/react-dom.js",
     ":!:cli/compilers/wasm_wrap.js",
     ":!:cli/tsc/dts/**",
+    ":!:target/**",
+    ":!:tests/specs/**",
     ":!:tests/testdata/encoding/**",
     ":!:tests/testdata/error_syntax.js",
     ":!:tests/testdata/file_extensions/ts_with_js_extension.js",
@@ -154,6 +158,8 @@ async function clippy() {
       "--",
       "-D",
       "warnings",
+      "--deny",
+      "clippy::unused_async",
     ],
     stdout: "inherit",
     stderr: "inherit",
@@ -162,5 +168,15 @@ async function clippy() {
 
   if (code > 0) {
     throw new Error("clippy failed");
+  }
+}
+
+async function ensureCiYmlUpToDate() {
+  const expectedCiFileText = ciFile.generate();
+  const actualCiFileText = await Deno.readTextFile(ciFile.CI_YML_URL);
+  if (expectedCiFileText !== actualCiFileText) {
+    throw new Error(
+      "./.github/workflows/ci.yml is out of date. Run: ./.github/workflows/ci.generate.ts",
+    );
   }
 }

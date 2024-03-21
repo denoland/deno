@@ -78,8 +78,6 @@ async function updateToDo() {
 
 NOTE: This file should not be manually edited. Please edit \`tests/node_compat/config.json\` and run \`deno task setup\` in \`tools/node_compat\` dir instead.
 
-Total: ${missingTests.length}
-
 `));
   for (const test of missingTests) {
     await file.write(

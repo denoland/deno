@@ -8,6 +8,7 @@ use super::tsc;
 
 use crate::args::jsr_url;
 use crate::npm::CliNpmResolver;
+use crate::resolver::CliNodeResolver;
 use crate::tools::lint::create_linter;
 use crate::util::path::specifier_to_file_path;
 
@@ -24,7 +25,6 @@ use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
 use deno_lint::diagnostic::LintDiagnostic;
 use deno_lint::rules::LintRule;
-use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_node::NpmResolver;
 use deno_runtime::deno_node::PathClean;
 use deno_runtime::permissions::PermissionsContainer;
@@ -217,7 +217,7 @@ fn code_as_string(code: &Option<lsp::NumberOrString>) -> String {
 pub struct TsResponseImportMapper<'a> {
   documents: &'a Documents,
   maybe_import_map: Option<&'a ImportMap>,
-  node_resolver: Option<&'a NodeResolver>,
+  node_resolver: Option<&'a CliNodeResolver>,
   npm_resolver: Option<&'a dyn CliNpmResolver>,
 }
 
@@ -225,7 +225,7 @@ impl<'a> TsResponseImportMapper<'a> {
   pub fn new(
     documents: &'a Documents,
     maybe_import_map: Option<&'a ImportMap>,
-    node_resolver: Option<&'a NodeResolver>,
+    node_resolver: Option<&'a CliNodeResolver>,
     npm_resolver: Option<&'a dyn CliNpmResolver>,
   ) -> Self {
     Self {

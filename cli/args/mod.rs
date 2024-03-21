@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+pub mod deno_json;
 mod flags;
 mod flags_net;
 mod import_map;
@@ -74,7 +75,7 @@ use deno_config::FmtConfig;
 use deno_config::LintConfig;
 use deno_config::TestConfig;
 
-pub fn npm_registry_default_url() -> &'static Url {
+pub fn npm_registry_url() -> &'static Url {
   static NPM_REGISTRY_DEFAULT_URL: Lazy<Url> = Lazy::new(|| {
     let env_var_name = "NPM_CONFIG_REGISTRY";
     if let Ok(registry_url) = std::env::var(env_var_name) {
@@ -99,6 +100,15 @@ pub fn npm_registry_default_url() -> &'static Url {
 
   &NPM_REGISTRY_DEFAULT_URL
 }
+
+pub static DENO_DISABLE_PEDANTIC_NODE_WARNINGS: Lazy<bool> = Lazy::new(|| {
+  std::env::var("DENO_DISABLE_PEDANTIC_NODE_WARNINGS")
+    .ok()
+    .is_some()
+});
+
+static DENO_FUTURE: Lazy<bool> =
+  Lazy::new(|| std::env::var("DENO_FUTURE").ok().is_some());
 
 pub fn jsr_url() -> &'static Url {
   static JSR_URL: Lazy<Url> = Lazy::new(|| {
@@ -333,7 +343,7 @@ pub struct TestOptions {
   pub filter: Option<String>,
   pub shuffle: Option<u64>,
   pub concurrent_jobs: NonZeroUsize,
-  pub trace_ops: bool,
+  pub trace_leaks: bool,
   pub reporter: TestReporterConfig,
   pub junit_path: Option<String>,
 }
@@ -361,7 +371,7 @@ impl TestOptions {
       filter: test_flags.filter,
       no_run: test_flags.no_run,
       shuffle: test_flags.shuffle,
-      trace_ops: test_flags.trace_ops,
+      trace_leaks: test_flags.trace_leaks,
       reporter: test_flags.reporter,
       junit_path: test_flags.junit_path,
     })
@@ -697,6 +707,7 @@ impl CliOptions {
     maybe_config_file: Option<ConfigFile>,
     maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
     maybe_package_json: Option<PackageJson>,
+    force_global_cache: bool,
   ) -> Result<Self, AnyError> {
     if let Some(insecure_allowlist) =
       flags.unsafely_ignore_certificate_errors.as_ref()
@@ -712,6 +723,7 @@ impl CliOptions {
       eprintln!("{}", colors::yellow(msg));
     }
 
+    let maybe_lockfile = maybe_lockfile.filter(|_| !force_global_cache);
     let maybe_node_modules_folder = resolve_node_modules_folder(
       &initial_cwd,
       &flags,
@@ -719,8 +731,11 @@ impl CliOptions {
       maybe_package_json.as_ref(),
     )
     .with_context(|| "Resolving node_modules folder.")?;
-    let maybe_vendor_folder =
-      resolve_vendor_folder(&initial_cwd, &flags, maybe_config_file.as_ref());
+    let maybe_vendor_folder = if force_global_cache {
+      None
+    } else {
+      resolve_vendor_folder(&initial_cwd, &flags, maybe_config_file.as_ref())
+    };
     let maybe_workspace_config =
       if let Some(config_file) = maybe_config_file.as_ref() {
         config_file.to_workspace_config()?
@@ -806,6 +821,7 @@ impl CliOptions {
       maybe_config_file,
       maybe_lock_file.map(|l| Arc::new(Mutex::new(l))),
       maybe_package_json,
+      false,
     )
   }
 
@@ -969,7 +985,7 @@ impl CliOptions {
   }
 
   pub fn enable_future_features(&self) -> bool {
-    std::env::var("DENO_FUTURE").is_ok()
+    *DENO_FUTURE
   }
 
   pub fn resolve_main_module(&self) -> Result<ModuleSpecifier, AnyError> {
@@ -1249,7 +1265,7 @@ impl CliOptions {
   pub fn resolve_config_excludes(&self) -> Result<PathOrPatternSet, AnyError> {
     let maybe_config_files = if let Some(config_file) = &self.maybe_config_file
     {
-      config_file.to_files_config()?
+      Some(config_file.to_files_config()?)
     } else {
       None
     };
@@ -1460,22 +1476,41 @@ impl CliOptions {
 
   pub fn permissions_options(&self) -> PermissionsOptions {
     PermissionsOptions {
+      allow_all: self.flags.allow_all,
       allow_env: self.flags.allow_env.clone(),
       deny_env: self.flags.deny_env.clone(),
       allow_hrtime: self.flags.allow_hrtime,
       deny_hrtime: self.flags.deny_hrtime,
       allow_net: self.flags.allow_net.clone(),
       deny_net: self.flags.deny_net.clone(),
-      allow_ffi: self.flags.allow_ffi.clone(),
-      deny_ffi: self.flags.deny_ffi.clone(),
-      allow_read: self.flags.allow_read.clone(),
-      deny_read: self.flags.deny_read.clone(),
+      allow_ffi: convert_option_str_to_path_buf(
+        &self.flags.allow_ffi,
+        self.initial_cwd(),
+      ),
+      deny_ffi: convert_option_str_to_path_buf(
+        &self.flags.deny_ffi,
+        self.initial_cwd(),
+      ),
+      allow_read: convert_option_str_to_path_buf(
+        &self.flags.allow_read,
+        self.initial_cwd(),
+      ),
+      deny_read: convert_option_str_to_path_buf(
+        &self.flags.deny_read,
+        self.initial_cwd(),
+      ),
       allow_run: self.flags.allow_run.clone(),
       deny_run: self.flags.deny_run.clone(),
       allow_sys: self.flags.allow_sys.clone(),
       deny_sys: self.flags.deny_sys.clone(),
-      allow_write: self.flags.allow_write.clone(),
-      deny_write: self.flags.deny_write.clone(),
+      allow_write: convert_option_str_to_path_buf(
+        &self.flags.allow_write,
+        self.initial_cwd(),
+      ),
+      deny_write: convert_option_str_to_path_buf(
+        &self.flags.deny_write,
+        self.initial_cwd(),
+      ),
       prompt: !self.no_prompt(),
     }
   }
@@ -1574,29 +1609,29 @@ impl CliOptions {
   }
 
   pub fn watch_paths(&self) -> Vec<PathBuf> {
-    let mut paths = if let DenoSubcommand::Run(RunFlags {
+    let mut full_paths = Vec::new();
+    if let DenoSubcommand::Run(RunFlags {
       watch: Some(WatchFlagsWithPaths { paths, .. }),
       ..
     }) = &self.flags.subcommand
     {
-      paths.clone()
-    } else {
-      Vec::with_capacity(2)
-    };
+      full_paths.extend(paths.iter().map(|path| self.initial_cwd.join(path)));
+    }
+
     if let Ok(Some(import_map_path)) = self
       .resolve_specified_import_map_specifier()
       .map(|ms| ms.and_then(|ref s| s.to_file_path().ok()))
     {
-      paths.push(import_map_path);
+      full_paths.push(import_map_path);
     }
     if let Some(specifier) = self.maybe_config_file_specifier() {
       if specifier.scheme() == "file" {
         if let Ok(path) = specifier.to_file_path() {
-          paths.push(path);
+          full_paths.push(path);
         }
       }
     }
-    paths
+    full_paths
   }
 }
 
@@ -1741,14 +1776,14 @@ fn resolve_files(
   if let Some(file_flags) = maybe_file_flags {
     if !file_flags.include.is_empty() {
       maybe_files_config.include =
-        Some(PathOrPatternSet::from_relative_path_or_patterns(
+        Some(PathOrPatternSet::from_include_relative_path_or_patterns(
           initial_cwd,
           &file_flags.include,
         )?);
     }
     if !file_flags.ignore.is_empty() {
       maybe_files_config.exclude =
-        PathOrPatternSet::from_relative_path_or_patterns(
+        PathOrPatternSet::from_exclude_relative_path_or_patterns(
           initial_cwd,
           &file_flags.ignore,
         )?;
@@ -1772,6 +1807,20 @@ pub fn npm_pkg_req_ref_to_binary_command(
 ) -> String {
   let binary_name = req_ref.sub_path().unwrap_or(req_ref.req().name.as_str());
   binary_name.to_string()
+}
+
+fn convert_option_str_to_path_buf(
+  flag: &Option<Vec<String>>,
+  initial_cwd: &Path,
+) -> Option<Vec<PathBuf>> {
+  if let Some(allow_ffi_paths) = &flag {
+    let mut full_paths = Vec::new();
+    full_paths
+      .extend(allow_ffi_paths.iter().map(|path| initial_cwd.join(path)));
+    Some(full_paths)
+  } else {
+    None
+  }
 }
 
 #[cfg(test)]
@@ -1877,7 +1926,7 @@ mod test {
     temp_dir.write("pages/[id].ts", "");
 
     let temp_dir_path = temp_dir.path().as_path();
-    let error = PathOrPatternSet::from_relative_path_or_patterns(
+    let error = PathOrPatternSet::from_include_relative_path_or_patterns(
       temp_dir_path,
       &["data/**********.ts".to_string()],
     )
@@ -1888,7 +1937,7 @@ mod test {
       Some(FilePatterns {
         base: temp_dir_path.to_path_buf(),
         include: Some(
-          PathOrPatternSet::from_relative_path_or_patterns(
+          PathOrPatternSet::from_include_relative_path_or_patterns(
             temp_dir_path,
             &[
               "data/test1.?s".to_string(),
@@ -1899,7 +1948,7 @@ mod test {
           )
           .unwrap(),
         ),
-        exclude: PathOrPatternSet::from_relative_path_or_patterns(
+        exclude: PathOrPatternSet::from_exclude_relative_path_or_patterns(
           temp_dir_path,
           &["nested/**/*bazz.ts".to_string()],
         )
@@ -1910,7 +1959,7 @@ mod test {
     )
     .unwrap();
 
-    let mut files = FileCollector::new(|_, _| true)
+    let mut files = FileCollector::new(|_| true)
       .ignore_git_folder()
       .ignore_node_modules()
       .ignore_vendor_folder()

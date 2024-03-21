@@ -44,7 +44,7 @@ Deno.test("gzip compression sync", { sanitizeResources: false }, () => {
 });
 
 Deno.test("brotli compression", async () => {
-  const { promise, resolve } = Promise.withResolvers<void>();
+  const promise = Promise.withResolvers<void>();
   const compress = createBrotliCompress();
   const filePath = relative(
     Deno.cwd(),
@@ -61,13 +61,14 @@ Deno.test("brotli compression", async () => {
     const output2 = createWriteStream("lorem_ipsum.txt");
 
     const stream2 = input2.pipe(decompress).pipe(output2);
-
-    stream2.on("finish", () => {
-      resolve();
-    });
+    stream2.on("close", () => promise.resolve());
   });
 
-  await promise;
+  await Promise.all([
+    promise.promise,
+    new Promise((r) => stream.on("close", r)),
+  ]);
+
   const content = Deno.readTextFileSync("lorem_ipsum.txt");
   assert(content.startsWith("Lorem ipsum dolor sit amet"));
   try {
@@ -163,6 +164,16 @@ Deno.test("brotli large chunk size", async () => {
   for (let i = 0; i < input.length; i++) {
     input[i] = Math.random() * 256;
   }
+  const output = await buffer(
+    Readable.from([input])
+      .pipe(createBrotliCompress())
+      .pipe(createBrotliDecompress()),
+  );
+  assertEquals(output.length, input.length);
+});
+
+Deno.test("brotli decompress flush restore size", async () => {
+  const input = new Uint8Array(1000000);
   const output = await buffer(
     Readable.from([input])
       .pipe(createBrotliCompress())

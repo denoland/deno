@@ -3,7 +3,6 @@
 use deno_core::serde_json;
 use std::fs;
 use test_util as util;
-use test_util::itest;
 use test_util::TempDir;
 use util::assert_starts_with;
 use util::env_vars_for_npm_tests;
@@ -631,9 +630,3 @@ File         | Branch % | Line % |
 ",
   );
 }
-
-itest!(no_files_found {
-  args: "coverage doesnt_exist.js",
-  exit_code: 1,
-  output: "coverage/doesnt_exist.out",
-});

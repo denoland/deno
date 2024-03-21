@@ -5,13 +5,16 @@
 
 import { denoErrorToNodeError } from "ext:deno_node/internal/errors.ts";
 import { promisify } from "ext:deno_node/internal/util.mjs";
+import { primordials } from "ext:core/mod.js";
+
+const { ObjectCreate, ObjectAssign } = primordials;
 
 export type statOptions = {
   bigint: boolean;
   throwIfNoEntry?: boolean;
 };
 
-export type Stats = {
+interface IStats {
   /** ID of the device containing the file.
    *
    * _Linux/Mac OS only._ */
@@ -80,9 +83,106 @@ export type Stats = {
   isFile: () => boolean;
   isSocket: () => boolean;
   isSymbolicLink: () => boolean;
-};
+}
 
-export type BigIntStats = {
+class StatsBase {
+  constructor(
+    dev,
+    mode,
+    nlink,
+    uid,
+    gid,
+    rdev,
+    blksize,
+    ino,
+    size,
+    blocks,
+  ) {
+    this.dev = dev;
+    this.mode = mode;
+    this.nlink = nlink;
+    this.uid = uid;
+    this.gid = gid;
+    this.rdev = rdev;
+    this.blksize = blksize;
+    this.ino = ino;
+    this.size = size;
+    this.blocks = blocks;
+  }
+
+  isFile() {
+    return false;
+  }
+  isDirectory() {
+    return false;
+  }
+  isSymbolicLink() {
+    return false;
+  }
+  isBlockDevice() {
+    return false;
+  }
+  isFIFO() {
+    return false;
+  }
+  isCharacterDevice() {
+    return false;
+  }
+  isSocket() {
+    return false;
+  }
+}
+
+// The Date constructor performs Math.floor() to the timestamp.
+// https://www.ecma-international.org/ecma-262/#sec-timeclip
+// Since there may be a precision loss when the timestamp is
+// converted to a floating point number, we manually round
+// the timestamp here before passing it to Date().
+function dateFromMs(ms) {
+  return new Date(Number(ms) + 0.5);
+}
+
+export class Stats extends StatsBase {
+  constructor(
+    dev,
+    mode,
+    nlink,
+    uid,
+    gid,
+    rdev,
+    blksize,
+    ino,
+    size,
+    blocks,
+    atimeMs,
+    mtimeMs,
+    ctimeMs,
+    birthtimeMs,
+  ) {
+    super(
+      dev,
+      mode,
+      nlink,
+      uid,
+      gid,
+      rdev,
+      blksize,
+      ino,
+      size,
+      blocks,
+    );
+    this.atimeMs = atimeMs;
+    this.mtimeMs = mtimeMs;
+    this.ctimeMs = ctimeMs;
+    this.birthtimeMs = birthtimeMs;
+    this.atime = dateFromMs(atimeMs);
+    this.mtime = dateFromMs(mtimeMs);
+    this.ctime = dateFromMs(ctimeMs);
+    this.birthtime = dateFromMs(birthtimeMs);
+  }
+}
+
+export interface IBigIntStats {
   /** ID of the device containing the file.
    *
    * _Linux/Mac OS only._ */
@@ -159,10 +259,13 @@ export type BigIntStats = {
   isFile: () => boolean;
   isSocket: () => boolean;
   isSymbolicLink: () => boolean;
-};
+}
+
+export class BigIntStats {}
 
 export function convertFileInfoToStats(origin: Deno.FileInfo): Stats {
-  return {
+  const stats = ObjectCreate(Stats.prototype);
+  ObjectAssign(stats, {
     dev: origin.dev,
     ino: origin.ino,
     mode: origin.mode,
@@ -189,7 +292,9 @@ export function convertFileInfoToStats(origin: Deno.FileInfo): Stats {
     isSocket: () => false,
     ctime: origin.mtime,
     ctimeMs: origin.mtime?.getTime() || null,
-  };
+  });
+
+  return stats;
 }
 
 function toBigInt(number?: number | null) {
@@ -200,7 +305,8 @@ function toBigInt(number?: number | null) {
 export function convertFileInfoToBigIntStats(
   origin: Deno.FileInfo,
 ): BigIntStats {
-  return {
+  const stats = ObjectCreate(BigIntStats.prototype);
+  ObjectAssign(stats, {
     dev: toBigInt(origin.dev),
     ino: toBigInt(origin.ino),
     mode: toBigInt(origin.mode),
@@ -233,7 +339,8 @@ export function convertFileInfoToBigIntStats(
     ctime: origin.mtime,
     ctimeMs: origin.mtime ? BigInt(origin.mtime.getTime()) : null,
     ctimeNs: origin.mtime ? BigInt(origin.mtime.getTime()) * 1000000n : null,
-  };
+  });
+  return stats;
 }
 
 // shortcut for Convert File Info to Stats or BigIntStats
