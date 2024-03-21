@@ -279,7 +279,10 @@ function postMessage(message, transferOrOptions = {}) {
 
 let isClosing = false;
 let globalDispatchEvent;
-let closeOnIdle;
+
+function hasMessageEventListener() {
+  return event.listenerCount(globalThis, "message") > 0;
+}
 
 async function pollForMessages() {
   if (!globalDispatchEvent) {
@@ -289,14 +292,7 @@ async function pollForMessages() {
     );
   }
   while (!isClosing) {
-    const op = op_worker_recv_message();
-    // In a Node.js worker, unref() the op promise to prevent it from
-    // keeping the event loop alive. This avoids the need to explicitly
-    // call self.close() or worker.terminate().
-    if (closeOnIdle) {
-      core.unrefOpPromise(op);
-    }
-    const data = await op;
+    const data = await op_worker_recv_message();
     if (data === null) break;
     const v = messagePort.deserializeJsMessageData(data);
     const message = v[0];
@@ -374,7 +370,6 @@ function importScripts(...urls) {
 
 const opArgs = memoizeLazy(() => op_bootstrap_args());
 const opPid = memoizeLazy(() => op_bootstrap_pid());
-const opPpid = memoizeLazy(() => op_ppid());
 setNoColorFn(() => op_bootstrap_no_color() || !op_bootstrap_is_tty());
 
 function formatException(error) {
@@ -720,7 +715,9 @@ function bootstrapMainRuntime(runtimeOptions) {
 
   ObjectDefineProperties(finalDenoNs, {
     pid: core.propGetterOnly(opPid),
-    ppid: core.propGetterOnly(opPpid),
+    // `ppid` should not be memoized.
+    // https://github.com/denoland/deno/issues/23004
+    ppid: core.propGetterOnly(() => op_ppid()),
     noColor: core.propGetterOnly(() => op_bootstrap_no_color()),
     args: core.propGetterOnly(opArgs),
     mainModule: core.propGetterOnly(() => op_main_module()),
@@ -813,7 +810,6 @@ function bootstrapWorkerRuntime(
     7: shouldDisableDeprecatedApiWarning,
     8: shouldUseVerboseDeprecatedApiWarning,
     9: _future,
-    10: closeOnIdle_,
   } = runtimeOptions;
 
   deprecatedApiWarningDisabled = shouldDisableDeprecatedApiWarning;
@@ -875,8 +871,8 @@ function bootstrapWorkerRuntime(
 
   location.setLocationHref(location_);
 
-  closeOnIdle = closeOnIdle_;
   globalThis.pollForMessages = pollForMessages;
+  globalThis.hasMessageEventListener = hasMessageEventListener;
 
   // TODO(bartlomieju): deprecate --unstable
   if (unstableFlag) {
