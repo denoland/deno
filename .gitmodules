@@ -7,5 +7,5 @@
 	url = https://github.com/web-platform-tests/wpt.git
 
 [submodule "tools/node_compat/node"]
-	path = tools/node_compat/node
+	path = tests/node_compat/runner/suite
 	url = https://github.com/denoland/node_test.git
