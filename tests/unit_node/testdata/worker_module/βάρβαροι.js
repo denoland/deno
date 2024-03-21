@@ -6,3 +6,4 @@ export async function myFunction() {
     }, 100)
   );
 }
+await myFunction();

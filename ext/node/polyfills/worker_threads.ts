@@ -9,7 +9,7 @@ import {
   op_host_recv_message,
   op_host_terminate_worker,
   op_message_port_recv_message_sync,
-  op_require_read_closest_package_json,
+  op_worker_threads_filename,
 } from "ext:core/ops";
 import {
   deserializeJsMessageData,
@@ -24,7 +24,6 @@ import { log } from "ext:runtime/06_util.js";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import { EventEmitter } from "node:events";
 import { BroadcastChannel } from "ext:deno_broadcast_channel/01_broadcast_channel.js";
-import { isAbsolute, resolve } from "node:path";
 
 const { ObjectPrototypeIsPrototypeOf } = primordials;
 const {
@@ -32,14 +31,8 @@ const {
   Symbol,
   SymbolFor,
   SymbolIterator,
-  StringPrototypeEndsWith,
-  StringPrototypeReplace,
-  StringPrototypeMatch,
-  StringPrototypeReplaceAll,
-  StringPrototypeToString,
   StringPrototypeTrim,
   SafeWeakMap,
-  SafeRegExp,
   SafeMap,
   TypeError,
 } = primordials;
@@ -64,74 +57,6 @@ export interface WorkerOptions {
   transferList?: Transferable[];
   workerData?: unknown;
   name?: string;
-}
-
-const WHITESPACE_ENCODINGS: Record<string, string> = {
-  "\u0009": "%09",
-  "\u000A": "%0A",
-  "\u000B": "%0B",
-  "\u000C": "%0C",
-  "\u000D": "%0D",
-  "\u0020": "%20",
-};
-
-function encodeWhitespace(string: string): string {
-  return StringPrototypeReplaceAll(string, new SafeRegExp(/[\s]/g), (c) => {
-    return WHITESPACE_ENCODINGS[c] ?? c;
-  });
-}
-
-function toFileUrlPosix(path: string): URL {
-  if (!isAbsolute(path)) {
-    throw new TypeError("Must be an absolute path.");
-  }
-  const url = new URL("file:///");
-  url.pathname = encodeWhitespace(
-    StringPrototypeReplace(
-      StringPrototypeReplace(path, new SafeRegExp(/%/g), "%25"),
-      new SafeRegExp(/\\/g),
-      "%5C",
-    ),
-  );
-  return url;
-}
-
-function toFileUrlWin32(path: string): URL {
-  if (!isAbsolute(path)) {
-    throw new TypeError("Must be an absolute path.");
-  }
-  const { 0: _, 1: hostname, 2: pathname } = StringPrototypeMatch(
-    path,
-    new SafeRegExp(/^(?:[/\\]{2}([^/\\]+)(?=[/\\](?:[^/\\]|$)))?(.*)/),
-  );
-  const url = new URL("file:///");
-  url.pathname = encodeWhitespace(
-    StringPrototypeReplace(pathname, new SafeRegExp(/%/g), "%25"),
-  );
-  if (hostname != null && hostname != "localhost") {
-    url.hostname = hostname;
-    if (!url.hostname) {
-      throw new TypeError("Invalid hostname.");
-    }
-  }
-  return url;
-}
-
-/**
- * Converts a path string to a file URL.
- *
- * ```ts
- *      toFileUrl("/home/foo"); // new URL("file:///home/foo")
- *      toFileUrl("\\home\\foo"); // new URL("file:///home/foo")
- *      toFileUrl("C:\\Users\\foo"); // new URL("file:///C:/Users/foo")
- *      toFileUrl("\\\\127.0.0.1\\home\\foo"); // new URL("file://127.0.0.1/home/foo")
- * ```
- * @param path to convert to file URL
- */
-function toFileUrl(path: string): URL {
-  return core.build.os == "windows"
-    ? toFileUrlWin32(path)
-    : toFileUrlPosix(path);
 }
 
 const privateWorkerRef = Symbol("privateWorkerRef");
@@ -162,29 +87,23 @@ class NodeWorker extends EventEmitter {
 
   constructor(specifier: URL | string, options?: WorkerOptions) {
     super();
-    if (options?.eval === true) {
+
+    if (
+      typeof specifier === "object" &&
+      !(specifier.protocol === "data:" || specifier.protocol === "file:")
+    ) {
+      throw new TypeError(
+        "node:worker_threads support only 'file:' and 'data:' URLs",
+      );
+    }
+    if (options?.eval) {
       specifier = `data:text/javascript,${specifier}`;
-    } else if (typeof specifier === "string") {
-      specifier = resolve(specifier);
-      let pkg;
-      try {
-        pkg = op_require_read_closest_package_json(specifier);
-      } catch (_) {
-        // empty catch block when package json might not be present
-      }
-      if (
-        !(StringPrototypeEndsWith(
-          StringPrototypeToString(specifier),
-          ".mjs",
-        )) ||
-        (pkg && pkg.exists && pkg.typ == "module")
-      ) {
-        const cwdFileUrl = toFileUrl(Deno.cwd());
-        specifier =
-          `data:text/javascript,(async function() {const { createRequire } = await import("node:module");const require = createRequire("${cwdFileUrl}");require("${specifier}");})();`;
-      } else {
-        specifier = toFileUrl(specifier as string);
-      }
+    } else if (
+      !(typeof specifier === "object" && specifier.protocol === "data:")
+    ) {
+      // deno-lint-ignore prefer-primordials
+      specifier = specifier.toString();
+      specifier = op_worker_threads_filename(specifier);
     }
 
     // TODO(bartlomieu): this doesn't match the Node.js behavior, it should be

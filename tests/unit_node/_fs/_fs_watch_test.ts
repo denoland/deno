@@ -38,3 +38,17 @@ Deno.test({
     unwatchFile(file);
   },
 });
+
+Deno.test({
+  name: "watch.unref() should work",
+  sanitizeOps: false,
+  sanitizeResources: false,
+  async fn() {
+    const file = Deno.makeTempFileSync();
+    const watcher = watch(file, () => {});
+    // Wait for the watcher to be initialized
+    await wait(10);
+    // @ts-ignore node types are outdated in deno.
+    watcher.unref();
+  },
+});
