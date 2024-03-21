@@ -107,6 +107,9 @@ pub static DENO_DISABLE_PEDANTIC_NODE_WARNINGS: Lazy<bool> = Lazy::new(|| {
     .is_some()
 });
 
+static DENO_FUTURE: Lazy<bool> =
+  Lazy::new(|| std::env::var("DENO_FUTURE").ok().is_some());
+
 pub fn jsr_url() -> &'static Url {
   static JSR_URL: Lazy<Url> = Lazy::new(|| {
     let env_var_name = "JSR_URL";
@@ -978,7 +981,7 @@ impl CliOptions {
   }
 
   pub fn enable_future_features(&self) -> bool {
-    std::env::var("DENO_FUTURE").is_ok()
+    *DENO_FUTURE
   }
 
   pub fn resolve_main_module(&self) -> Result<ModuleSpecifier, AnyError> {
