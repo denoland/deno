@@ -951,8 +951,8 @@ pub fn op_node_dh_stateless(
   #[buffer] private_key: &[u8],
   #[buffer] public_key: &[u8],
 ) -> Result<ToJsBuffer, AnyError> {
-  let secret_key = p256::SecretKey::from_pkcs8_der(private_key)?;
-  let public_key = p256::PublicKey::from_sec1_bytes(public_key)?;
+  let secret_key = elliptic_curve::SecretKey::from_pkcs1_der(private_key)?;
+  let public_key = elliptic_curve::PublicKey::from_sec1_bytes(public_key)?;
 
   let shared_secret = elliptic_curve::ecdh::diffie_hellman(
     secret_key.to_nonzero_scalar(),

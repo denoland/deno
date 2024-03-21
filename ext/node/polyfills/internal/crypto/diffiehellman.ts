@@ -7,7 +7,7 @@
 import {
   op_node_dh_compute_secret,
   op_node_dh_generate2,
-  // op_node_dh_stateless,
+  op_node_dh_stateless,
   op_node_ecdh_compute_public_key,
   op_node_ecdh_compute_secret,
   op_node_ecdh_generate_keys,
@@ -44,7 +44,10 @@ import type {
   BinaryToTextEncoding,
   ECDHKeyFormat,
 } from "ext:deno_node/internal/crypto/types.ts";
-import { KeyObject } from "ext:deno_node/internal/crypto/keys.ts";
+import {
+  getKeyMaterial,
+  KeyObject,
+} from "ext:deno_node/internal/crypto/keys.ts";
 import type { BufferEncoding } from "ext:deno_node/_global.d.ts";
 
 const DH_GENERATOR = 2;
@@ -1340,8 +1343,11 @@ export function diffieHellman(options: {
       `${privateType} and ${publicType}`,
     );
   }
-  
-  notImplemented("crypto.diffieHellman");
+
+  return op_node_dh_stateless(
+    getKeyMaterial(privateKey),
+    getKeyMaterial(publicKey),
+  );
 }
 
 export default {
