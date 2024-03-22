@@ -630,7 +630,9 @@ const finalDenoNs = {
 
 ObjectDefineProperties(finalDenoNs, {
   pid: core.propGetterOnly(opPid),
-  ppid: core.propGetterOnly(opPpid),
+  // `ppid` should not be memoized.
+  // https://github.com/denoland/deno/issues/23004
+  ppid: core.propGetterOnly(() => op_ppid()),
   noColor: core.propGetterOnly(() => op_bootstrap_no_color()),
   args: core.propGetterOnly(opArgs),
   mainModule: core.propGetterOnly(() => op_main_module()),
