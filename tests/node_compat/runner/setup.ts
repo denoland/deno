@@ -114,7 +114,7 @@ async function copyTests() {
     // suite is the directory name after test/. For example, if the file is
     // "node_compat/node/test/fixtures/policy/main.mjs"
     // then suite is "fixtures/policy"
-    const suite = fragments.slice(fragments.indexOf("node_compat") + 3, -1)
+    const suite = fragments.slice(fragments.indexOf("node_compat") + 4, -1)
       .join("/");
     if (!hasEntry(entry.name, suite)) {
       continue;
