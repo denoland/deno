@@ -17,6 +17,7 @@ use deno_runtime::permissions::parse_sys_kind;
 use log::debug;
 use log::Level;
 use std::env;
+use std::ffi::OsString;
 use std::net::SocketAddr;
 use std::num::NonZeroU32;
 use std::num::NonZeroU8;
@@ -909,7 +910,7 @@ To evaluate code in the shell:
 );
 
 /// Main entry point for parsing deno's command line flags.
-pub fn flags_from_vec(args: Vec<String>) -> clap::error::Result<Flags> {
+pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
   let mut app = clap_root();
   let mut matches = app.try_get_matches_from_mut(&args)?;
 
@@ -4294,7 +4295,7 @@ mod tests {
 
   /// Creates vector of strings, Vec<String>
   macro_rules! svec {
-    ($($x:expr),* $(,)?) => (vec![$($x.to_string()),*]);
+    ($($x:expr),* $(,)?) => (vec![$($x.to_string().into()),*]);
   }
 
   #[test]
