@@ -291,7 +291,7 @@ fn make_sync_fn<'s>(
               let result =
                 // SAFETY: Same return type declared to libffi; trust user to have it right beyond that.
                 unsafe { result.to_v8(scope, symbol.result_type.clone()) };
-              rv.set(result.v8_value);
+              rv.set(result);
             }
           }
         }
