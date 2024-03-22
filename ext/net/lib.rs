@@ -7,9 +7,9 @@ pub mod ops_tls;
 pub mod ops_unix;
 pub mod raw;
 pub mod resolve_addr;
+mod tcp;
 
 use deno_core::error::AnyError;
-use deno_core::op2;
 use deno_core::OpState;
 use deno_tls::rustls::RootCertStore;
 use deno_tls::RootCertStoreProvider;
@@ -93,21 +93,13 @@ deno_core::extension!(deno_net,
     ops_tls::op_net_accept_tls,
     ops_tls::op_tls_handshake,
 
-    #[cfg(unix)] ops_unix::op_net_accept_unix,
-    #[cfg(unix)] ops_unix::op_net_connect_unix<P>,
-    #[cfg(unix)] ops_unix::op_net_listen_unix<P>,
-    #[cfg(unix)] ops_unix::op_net_listen_unixpacket<P>,
-    #[cfg(unix)] ops_unix::op_node_unstable_net_listen_unixpacket<P>,
-    #[cfg(unix)] ops_unix::op_net_recv_unixpacket,
-    #[cfg(unix)] ops_unix::op_net_send_unixpacket<P>,
-
-    #[cfg(not(unix))] op_net_accept_unix,
-    #[cfg(not(unix))] op_net_connect_unix,
-    #[cfg(not(unix))] op_net_listen_unix,
-    #[cfg(not(unix))] op_net_listen_unixpacket,
-    #[cfg(not(unix))] op_node_unstable_net_listen_unixpacket,
-    #[cfg(not(unix))] op_net_recv_unixpacket,
-    #[cfg(not(unix))] op_net_send_unixpacket,
+    ops_unix::op_net_accept_unix,
+    ops_unix::op_net_connect_unix<P>,
+    ops_unix::op_net_listen_unix<P>,
+    ops_unix::op_net_listen_unixpacket<P>,
+    ops_unix::op_node_unstable_net_listen_unixpacket<P>,
+    ops_unix::op_net_recv_unixpacket,
+    ops_unix::op_net_send_unixpacket<P>,
   ],
   esm = [ "01_net.js", "02_tls.js" ],
   options = {
@@ -124,19 +116,32 @@ deno_core::extension!(deno_net,
   },
 );
 
-macro_rules! stub_op {
-  ($name:ident) => {
-    #[op2(fast)]
-    fn $name() {
-      panic!("Unsupported on non-unix platforms")
-    }
-  };
-}
+/// Stub ops for non-unix platforms.
+#[cfg(not(unix))]
+mod ops_unix {
+  use crate::NetPermissions;
+  use deno_core::op2;
 
-stub_op!(op_net_accept_unix);
-stub_op!(op_net_connect_unix);
-stub_op!(op_net_listen_unix);
-stub_op!(op_net_listen_unixpacket);
-stub_op!(op_node_unstable_net_listen_unixpacket);
-stub_op!(op_net_recv_unixpacket);
-stub_op!(op_net_send_unixpacket);
+  macro_rules! stub_op {
+    ($name:ident) => {
+      #[op2(fast)]
+      pub fn $name() {
+        panic!("Unsupported on non-unix platforms")
+      }
+    };
+    ($name:ident<P>) => {
+      #[op2(fast)]
+      pub fn $name<P: NetPermissions>() {
+        panic!("Unsupported on non-unix platforms")
+      }
+    };
+  }
+
+  stub_op!(op_net_accept_unix);
+  stub_op!(op_net_connect_unix<P>);
+  stub_op!(op_net_listen_unix<P>);
+  stub_op!(op_net_listen_unixpacket<P>);
+  stub_op!(op_node_unstable_net_listen_unixpacket<P>);
+  stub_op!(op_net_recv_unixpacket);
+  stub_op!(op_net_send_unixpacket<P>);
+}
