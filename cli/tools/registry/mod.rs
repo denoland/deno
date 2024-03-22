@@ -962,15 +962,7 @@ pub async fn publish(
     && !publish_flags.allow_dirty
     && check_if_git_repo_dirty(cli_options.initial_cwd()).await
   {
-    if publish_flags.dry_run {
-      log::warn!(
-        "{} Aborting due to --dry-run and uncommitted changes. Check in source code or run with --allow-dirty",
-        colors::yellow("Warning")
-      );
-      return Ok(());
-    } else {
-      bail!("Aborting due to uncommitted changes. Check in source code or run with --allow-dirty");
-    }
+    bail!("Aborting due to uncommitted changes. Check in source code or run with --allow-dirty");
   }
 
   if publish_flags.dry_run {

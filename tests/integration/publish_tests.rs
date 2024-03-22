@@ -735,7 +735,7 @@ fn allow_dirty_dry_run() {
     .arg("--token")
     .arg("sadfasdf")
     .run();
-  output.assert_exit_code(0);
+  output.assert_exit_code(1);
   let output = output.combined_output();
-  assert_contains!(output, "Aborting due to --dry-run and uncommitted changes. Check in source code or run with --allow-dirty");
+  assert_contains!(output, "Aborting due to uncommitted changes. Check in source code or run with --allow-dirty");
 }
