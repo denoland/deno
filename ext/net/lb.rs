@@ -3,8 +3,6 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::ops::Deref;
 use std::ops::DerefMut;
-use std::os::fd::FromRawFd;
-use std::os::fd::IntoRawFd;
 use std::pin::Pin;
 use std::sync::Arc;
 use tokio::io::AsyncRead;
@@ -20,7 +18,10 @@ struct Connections {
 
 pub struct TcpConnection {
   /// The pristine FD that we'll clone for each LB listener
-  fd: std::os::fd::OwnedFd,
+  #[cfg(unix)]
+  sock: std::os::fd::OwnedFd,
+  #[cfg(not(unix))]
+  sock: std::os::windows::io::OwnedSocket,
   key: SocketAddr,
   socket_addr: SocketAddr,
 }
@@ -32,18 +33,18 @@ impl TcpConnection {
     let addr = listener.local_addr()?;
     let socket = socket2::Socket::from(listener);
     socket.set_nonblocking(true)?;
-    // SAFETY: we can't go directly to OwnedFd here
-    let fd = unsafe { std::os::fd::OwnedFd::from_raw_fd(socket.into_raw_fd()) };
+
+    let sock = socket.into();
 
     Ok(Self {
-      fd,
+      sock,
       key,
       socket_addr: addr,
     })
   }
 
   fn listener(&self) -> std::io::Result<tokio::net::TcpListener> {
-    let listener = std::net::TcpListener::from(self.fd.try_clone()?);
+    let listener = std::net::TcpListener::from(self.sock.try_clone()?);
     let listener = tokio::net::TcpListener::from_std(listener)?;
     Ok(listener)
   }
