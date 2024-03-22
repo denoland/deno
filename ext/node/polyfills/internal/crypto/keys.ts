@@ -234,7 +234,6 @@ export function prepareAsymmetricKey(key) {
     };
   }
 
-  console.log(key);
   throw new TypeError("Invalid key type");
 }
 
