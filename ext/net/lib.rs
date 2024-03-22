@@ -125,13 +125,19 @@ mod ops_unix {
         panic!("Unsupported on non-unix platforms")
       }
     };
+    ($name:ident<P>) => {
+      #[op2(fast)]
+      pub fn $name<P: Default>() {
+        panic!("Unsupported on non-unix platforms")
+      }
+    };
   }
 
   stub_op!(op_net_accept_unix);
-  stub_op!(op_net_connect_unix);
-  stub_op!(op_net_listen_unix);
-  stub_op!(op_net_listen_unixpacket);
-  stub_op!(op_node_unstable_net_listen_unixpacket);
+  stub_op!(op_net_connect_unix<P>);
+  stub_op!(op_net_listen_unix<P>);
+  stub_op!(op_net_listen_unixpacket<P>);
+  stub_op!(op_node_unstable_net_listen_unixpacket<P>);
   stub_op!(op_net_recv_unixpacket);
-  stub_op!(op_net_send_unixpacket);
+  stub_op!(op_net_send_unixpacket<P>);
 }
