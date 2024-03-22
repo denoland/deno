@@ -123,12 +123,15 @@ impl TcpLbListener {
 
   #[cfg(not(windows))]
   fn set_reuse_port(&self, flag: bool) -> std::io::Result<()> {
+    // Windows does not directly support `SO_REUSEPORT`
     socket2::SockRef::from(&self.listener.as_ref().unwrap())
       .set_reuse_port(flag)
   }
 
   #[cfg(windows)]
-  fn set_reuse_port(&self, _flag: bool) -> std::io::Result<()> {}
+  fn set_reuse_port(&self, _flag: bool) -> std::io::Result<()> {
+    Ok(())
+  }
 
   pub async fn accept(
     &self,
