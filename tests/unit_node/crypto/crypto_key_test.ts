@@ -8,7 +8,6 @@ import {
   createPublicKey,
   createSecretKey,
   createSign,
-  createVerify,
   generateKeyPair,
   generateKeyPairSync,
   KeyObject,
