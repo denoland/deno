@@ -40,6 +40,28 @@ impl TcpConnection {
 }
 
 /// A TCP socket listener that will allow for round-robin load-balancing in-process.
+///
+/// On Linux, or when we don't have `SO_REUSEPORT` set, we just bind the port directly. On other platforms,
+/// we emulate `SO_REUSEPORT` by cloning the socket and having each clone race to accept every connection.
+///
+/// ## Why not `SO_REUSEPORT`?
+///
+/// The `SO_REUSEPORT` socket option allows multiple sockets on the same host to bind to the same port. This is
+/// particularly useful for load balancing or implementing high availability in server applications.
+///
+/// On Linux, `SO_REUSEPORT` was introduced in kernel version 3.9. It allows multiple sockets to bind to the
+/// same port, and the kernel will load balance incoming connections among those sockets. Each socket can accept
+/// connections independently. This is useful for scenarios where you want to distribute incoming connections
+/// among multiple processes or threads.
+///
+/// On macOS (which is based on BSD), the behaviour of `SO_REUSEPORT` is slightly different. When `SO_REUSEPORT` is set,
+/// multiple sockets can still bind to the same port, but the kernel does not perform load balancing as it does on Linux.
+/// Instead, it follows a "last bind wins" strategy. This means that the most recently bound socket will receive
+/// incoming connections exclusively, while the previously bound sockets will not receive any connections.
+/// This behaviour is less useful for load balancing compared to Linux, but it can still be valuable in certain scenarios.
+///
+/// In summary, while both Linux and macOS support the `SO_REUSEPORT` socket option, their behaviour differs: Linux performs
+/// load balancing among the sockets, whereas macOS follows a "last bind wins" strategy.
 pub struct TcpLbListener {
   listener: Option<tokio::net::TcpListener>,
   conn: Option<Arc<TcpConnection>>,
@@ -54,6 +76,11 @@ impl TcpLbListener {
   ) -> std::io::Result<Self> {
     if cfg!(not(target_os = "linux")) && reuse_port {
       Self::bind_load_balanced(socket_addr)
+    } else if reuse_port {
+      let this = Self::bind_direct(socket_addr)?;
+      socket2::SockRef::from(&this.listener.as_ref().unwrap())
+        .set_reuse_port(true)?;
+      Ok(this)
     } else {
       Self::bind_direct(socket_addr)
     }
@@ -92,11 +119,6 @@ impl TcpLbListener {
   pub fn set_reuse_address(&self, flag: bool) -> std::io::Result<()> {
     socket2::SockRef::from(&self.listener.as_ref().unwrap())
       .set_reuse_address(flag)
-  }
-
-  pub fn set_reuse_port(&self, flag: bool) -> std::io::Result<()> {
-    socket2::SockRef::from(&self.listener.as_ref().unwrap())
-      .set_reuse_port(flag)
   }
 
   pub async fn accept(
