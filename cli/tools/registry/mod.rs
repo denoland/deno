@@ -988,6 +988,15 @@ pub async fn publish(
     bail!("No packages to publish");
   }
 
+  if std::env::var("DENO_TESTING_DISABLE_GIT_CHECK")
+    .ok()
+    .is_none()
+    && !publish_flags.allow_dirty
+    && check_if_git_repo_dirty(cli_options.initial_cwd()).await
+  {
+    bail!("Aborting due to uncommitted changes. Check in source code or run with --allow-dirty");
+  }
+
   if publish_flags.dry_run {
     for (_, package) in prepared_data.package_by_name {
       log::info!(
@@ -1001,15 +1010,6 @@ pub async fn publish(
     }
     log::warn!("{} Aborting due to --dry-run", colors::yellow("Warning"));
     return Ok(());
-  }
-
-  if std::env::var("DENO_TESTING_DISABLE_GIT_CHECK")
-    .ok()
-    .is_none()
-    && !publish_flags.allow_dirty
-    && check_if_git_repo_dirty(cli_options.initial_cwd()).await
-  {
-    bail!("Aborting due to uncommitted changes. Check in source code or run with --allow-dirty");
   }
 
   perform_publish(
