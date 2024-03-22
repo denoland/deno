@@ -164,6 +164,10 @@ import { crypto as webcrypto } from "ext:deno_crypto/00_crypto.js";
 
 const fipsForced = getOptionValue("--force-fips");
 
+function getRandomValues(typedArray) {
+  return webcrypto.getRandomValues(typedArray);
+}
+
 function createCipheriv(
   algorithm: CipherCCMTypes,
   key: CipherKey,
@@ -332,6 +336,7 @@ export default {
   diffieHellman,
   DiffieHellmanGroup,
   ECDH,
+  getRandomValues,
   generateKey,
   generateKeyPair,
   generateKeyPairSync,
@@ -480,6 +485,7 @@ export {
   getDiffieHellman,
   getFips,
   getHashes,
+  getRandomValues,
   Hash,
   hkdf,
   hkdfSync,
