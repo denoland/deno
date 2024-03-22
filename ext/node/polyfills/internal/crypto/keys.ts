@@ -217,6 +217,7 @@ export function prepareAsymmetricKey(key) {
     return { format: "pem", data: getArrayBufferOrView(key, "key") };
   } else if (isKeyObject(key)) {
     return {
+      // Assumes that assymetric keys are stored as PEM.
       format: "pem",
       data: getKeyMaterial(key),
     };
