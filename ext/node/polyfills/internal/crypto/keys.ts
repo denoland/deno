@@ -215,6 +215,11 @@ export interface JsonWebKeyInput {
 export function prepareAsymmetricKey(key) {
   if (isStringOrBuffer(key)) {
     return { format: "pem", data: getArrayBufferOrView(key, "key") };
+  } else if (isKeyObject(key)) {
+    return {
+      format: "pem",
+      data: getKeyMaterial(key),
+    };
   } else if (typeof key == "object") {
     const { key: data, encoding, format, type } = key;
     if (!isStringOrBuffer(data)) {
@@ -229,6 +234,7 @@ export function prepareAsymmetricKey(key) {
     };
   }
 
+  console.log(key);
   throw new TypeError("Invalid key type");
 }
 
