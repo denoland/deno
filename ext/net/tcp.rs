@@ -3,6 +3,10 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
+use socket2::Domain;
+use socket2::Protocol;
+use socket2::Type;
+
 static CONNS: std::sync::OnceLock<std::sync::Mutex<Connections>> =
   std::sync::OnceLock::new();
 
@@ -80,15 +84,29 @@ impl TcpLbListener {
     if cfg!(not(target_os = "linux")) && reuse_port {
       Self::bind_load_balanced(socket_addr)
     } else {
-      let this = Self::bind_direct(socket_addr)?;
-      this.set_reuse_port(true)?;
-      Ok(this)
+      Self::bind_direct(socket_addr, reuse_port)
     }
   }
 
   /// Bind directly to the port.
-  fn bind_direct(socket_addr: SocketAddr) -> std::io::Result<Self> {
-    let listener = std::net::TcpListener::bind(socket_addr)?;
+  fn bind_direct(
+    socket_addr: SocketAddr,
+    reuse_port: bool,
+  ) -> std::io::Result<Self> {
+    let socket = if socket_addr.is_ipv4() {
+      socket2::Socket::new(Domain::IPV4, Type::STREAM, Some(Protocol::TCP))?
+    } else {
+      socket2::Socket::new(Domain::IPV6, Type::STREAM, Some(Protocol::TCP))?
+    };
+    if reuse_port {
+      #[cfg(target_os = "linux")]
+      socket.set_reuse_port(true)?;
+    } else {
+      unreachable!()
+    }
+    socket.listen(128)?;
+
+    let listener = socket.into();
     let socket = socket2::SockRef::from(&listener);
     socket.set_nonblocking(true)?;
     Ok(Self {
@@ -119,18 +137,6 @@ impl TcpLbListener {
   pub fn set_reuse_address(&self, flag: bool) -> std::io::Result<()> {
     socket2::SockRef::from(&self.listener.as_ref().unwrap())
       .set_reuse_address(flag)
-  }
-
-  #[cfg(not(windows))]
-  fn set_reuse_port(&self, flag: bool) -> std::io::Result<()> {
-    // Windows does not directly support `SO_REUSEPORT`
-    socket2::SockRef::from(&self.listener.as_ref().unwrap())
-      .set_reuse_port(flag)
-  }
-
-  #[cfg(windows)]
-  fn set_reuse_port(&self, _flag: bool) -> std::io::Result<()> {
-    Ok(())
   }
 
   pub async fn accept(
