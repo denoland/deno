@@ -296,6 +296,13 @@ network_stream!(
     TcpStreamResource
   ],
   [
+    TcpLb,
+    crate::lb::TcpLbStream,
+    crate::lb::TcpLbListener,
+    std::net::SocketAddr,
+    TcpStreamResource
+  ],
+  [
     Tls,
     crate::ops_tls::TlsStream,
     crate::ops_tls::TlsListener,
