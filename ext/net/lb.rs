@@ -97,6 +97,8 @@ impl Drop for TcpLbListener {
   }
 }
 
+/// Wraps a Tokio `TcpStream`. This is necessary because we require a
+/// 1:1 mapping between the raw network types and their stream types.
 #[pin_project]
 pub struct TcpLbStream(#[pin] tokio::net::TcpStream);
 
