@@ -3,6 +3,7 @@
 use crate::io::TcpStreamResource;
 use crate::ops::IpAddr;
 use crate::ops::TlsHandshakeInfo;
+use crate::raw::NetworkListenerResource;
 use crate::resolve_addr::resolve_addr;
 use crate::resolve_addr::resolve_addr_sync;
 use crate::DefaultTlsOptions;
@@ -46,6 +47,7 @@ use std::fs::File;
 use std::io;
 use std::io::BufReader;
 use std::io::ErrorKind;
+use std::net::SocketAddr;
 use std::num::NonZeroUsize;
 use std::path::Path;
 use std::rc::Rc;
@@ -59,6 +61,23 @@ pub use rustls_tokio_stream::TlsStream;
 
 pub(crate) const TLS_BUFFER_SIZE: Option<NonZeroUsize> =
   NonZeroUsize::new(65536);
+
+pub struct TlsListener {
+  pub(crate) tcp_listener: TcpListener,
+  pub(crate) tls_config: Arc<ServerConfig>,
+}
+
+impl TlsListener {
+  pub async fn accept(&self) -> std::io::Result<(TlsStream, SocketAddr)> {
+    let (tcp, addr) = self.tcp_listener.accept().await?;
+    let tls =
+      TlsStream::new_server_side(tcp, self.tls_config.clone(), TLS_BUFFER_SIZE);
+    Ok((tls, addr))
+  }
+  pub fn local_addr(&self) -> std::io::Result<SocketAddr> {
+    self.tcp_listener.local_addr()
+  }
+}
 
 #[derive(Debug)]
 pub struct TlsStreamResource {
@@ -354,22 +373,6 @@ fn load_private_keys_from_file(
   load_private_keys(&key_bytes)
 }
 
-pub struct TlsListenerResource {
-  pub(crate) tcp_listener: AsyncRefCell<TcpListener>,
-  pub(crate) tls_config: Arc<ServerConfig>,
-  cancel_handle: CancelHandle,
-}
-
-impl Resource for TlsListenerResource {
-  fn name(&self) -> Cow<str> {
-    "tlsListener".into()
-  }
-
-  fn close(self: Rc<Self>) {
-    self.cancel_handle.cancel();
-  }
-}
-
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ListenTlsArgs {
@@ -474,11 +477,10 @@ where
   let tcp_listener = TcpListener::from_std(std_listener)?;
   let local_addr = tcp_listener.local_addr()?;
 
-  let tls_listener_resource = TlsListenerResource {
-    tcp_listener: AsyncRefCell::new(tcp_listener),
-    tls_config: Arc::new(tls_config),
-    cancel_handle: Default::default(),
-  };
+  let tls_listener_resource = NetworkListenerResource::new(TlsListener {
+    tcp_listener,
+    tls_config: tls_config.into(),
+  });
 
   let rid = state.resource_table.add(tls_listener_resource);
 
@@ -494,16 +496,16 @@ pub async fn op_net_accept_tls(
   let resource = state
     .borrow()
     .resource_table
-    .get::<TlsListenerResource>(rid)
+    .get::<NetworkListenerResource<TlsListener>>(rid)
     .map_err(|_| bad_resource("Listener has been closed"))?;
 
-  let cancel_handle = RcRef::map(&resource, |r| &r.cancel_handle);
-  let tcp_listener = RcRef::map(&resource, |r| &r.tcp_listener)
+  let cancel_handle = RcRef::map(&resource, |r| &r.cancel);
+  let listener = RcRef::map(&resource, |r| &r.listener)
     .try_borrow_mut()
     .ok_or_else(|| custom_error("Busy", "Another accept task is ongoing"))?;
 
-  let (tcp_stream, remote_addr) =
-    match tcp_listener.accept().try_or_cancel(&cancel_handle).await {
+  let (tls_stream, remote_addr) =
+    match listener.accept().try_or_cancel(&cancel_handle).await {
       Ok(tuple) => tuple,
       Err(err) if err.kind() == ErrorKind::Interrupted => {
         // FIXME(bartlomieju): compatibility with current JS implementation.
@@ -512,14 +514,7 @@ pub async fn op_net_accept_tls(
       Err(err) => return Err(err.into()),
     };
 
-  let local_addr = tcp_stream.local_addr()?;
-
-  let tls_stream = TlsStream::new_server_side(
-    tcp_stream,
-    resource.tls_config.clone(),
-    TLS_BUFFER_SIZE,
-  );
-
+  let local_addr = tls_stream.local_addr()?;
   let rid = {
     let mut state_ = state.borrow_mut();
     state_

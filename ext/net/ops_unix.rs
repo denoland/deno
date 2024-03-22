@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::io::UnixStreamResource;
+use crate::raw::NetworkListenerResource;
 use crate::NetPermissions;
 use deno_core::error::bad_resource;
 use deno_core::error::custom_error;
@@ -30,21 +31,6 @@ pub fn into_string(s: std::ffi::OsString) -> Result<String, AnyError> {
     let message = format!("File name or path {s:?} is not valid UTF-8");
     custom_error("InvalidData", message)
   })
-}
-
-pub(crate) struct UnixListenerResource {
-  pub listener: AsyncRefCell<UnixListener>,
-  cancel: CancelHandle,
-}
-
-impl Resource for UnixListenerResource {
-  fn name(&self) -> Cow<str> {
-    "unixListener".into()
-  }
-
-  fn close(self: Rc<Self>) {
-    self.cancel.cancel();
-  }
 }
 
 pub struct UnixDatagramResource {
@@ -81,7 +67,7 @@ pub async fn op_net_accept_unix(
   let resource = state
     .borrow()
     .resource_table
-    .get::<UnixListenerResource>(rid)
+    .get::<NetworkListenerResource<UnixListener>>(rid)
     .map_err(|_| bad_resource("Listener has been closed"))?;
   let listener = RcRef::map(&resource, |r| &r.listener)
     .try_borrow_mut()
@@ -206,10 +192,7 @@ where
   let listener = UnixListener::bind(address_path)?;
   let local_addr = listener.local_addr()?;
   let pathname = local_addr.as_pathname().map(pathstring).transpose()?;
-  let listener_resource = UnixListenerResource {
-    listener: AsyncRefCell::new(listener),
-    cancel: Default::default(),
-  };
+  let listener_resource = NetworkListenerResource::new(listener);
   let rid = state.resource_table.add(listener_resource);
   Ok((rid, pathname))
 }

@@ -119,7 +119,11 @@ impl HttpPropertyExtractor for DefaultHttpPropertyExtractor {
   async fn accept_connection_from_listener(
     listener: &NetworkStreamListener,
   ) -> Result<NetworkStream, AnyError> {
-    listener.accept().await.map_err(Into::into)
+    listener
+      .accept()
+      .await
+      .map_err(Into::into)
+      .map(|(stm, _)| stm)
   }
 
   fn listen_properties_from_listener(
@@ -252,7 +256,7 @@ fn req_host_from_addr(
 
 fn req_scheme_from_stream_type(stream_type: NetworkStreamType) -> &'static str {
   match stream_type {
-    NetworkStreamType::Tcp => "http://",
+    NetworkStreamType::Tcp | NetworkStreamType::TcpLb => "http://",
     NetworkStreamType::Tls => "https://",
     #[cfg(unix)]
     NetworkStreamType::Unix => "http+unix://",
@@ -274,7 +278,7 @@ fn req_host<'a>(
   // It is rare that an authority will be passed, but if it does, it takes priority
   if let Some(auth) = uri.authority() {
     match addr_type {
-      NetworkStreamType::Tcp => {
+      NetworkStreamType::Tcp | NetworkStreamType::TcpLb => {
         if port == 80 {
           return Some(Cow::Borrowed(auth.host()));
         }
