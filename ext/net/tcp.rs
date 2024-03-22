@@ -60,6 +60,9 @@ impl TcpConnection {
 /// incoming connections exclusively, while the previously bound sockets will not receive any connections.
 /// This behaviour is less useful for load balancing compared to Linux, but it can still be valuable in certain scenarios.
 ///
+/// The behaviour of Windows differs from its counterparts on Linux and macOS. Windows does not directly support `SO_REUSEPORT`.
+/// Instead, alternative methods such as port sharing/stealing via `SO_REUSEADDR` are commonly used for similar purposes.
+///
 /// In summary, while both Linux and macOS support the `SO_REUSEPORT` socket option, their behaviour differs: Linux performs
 /// load balancing among the sockets, whereas macOS follows a "last bind wins" strategy.
 pub struct TcpLbListener {
@@ -76,13 +79,10 @@ impl TcpLbListener {
   ) -> std::io::Result<Self> {
     if cfg!(not(target_os = "linux")) && reuse_port {
       Self::bind_load_balanced(socket_addr)
-    } else if reuse_port {
-      let this = Self::bind_direct(socket_addr)?;
-      socket2::SockRef::from(&this.listener.as_ref().unwrap())
-        .set_reuse_port(true)?;
-      Ok(this)
     } else {
-      Self::bind_direct(socket_addr)
+      let this = Self::bind_direct(socket_addr)?;
+      this.set_reuse_port(true)?;
+      Ok(this)
     }
   }
 
@@ -120,6 +120,15 @@ impl TcpLbListener {
     socket2::SockRef::from(&self.listener.as_ref().unwrap())
       .set_reuse_address(flag)
   }
+
+  #[cfg(not(windows))]
+  fn set_reuse_port(&self, flag: bool) -> std::io::Result<()> {
+    socket2::SockRef::from(&self.listener.as_ref().unwrap())
+      .set_reuse_port(flag)
+  }
+
+  #[cfg(windows)]
+  fn set_reuse_port(&self, _flag: bool) -> std::io::Result<()> {}
 
   pub async fn accept(
     &self,
