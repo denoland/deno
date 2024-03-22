@@ -301,7 +301,7 @@ network_stream!(
     crate::ops_tls::TlsListener,
     std::net::SocketAddr,
     TlsStreamResource
-  ],
+  ]
 );
 
 pub enum NetworkStreamAddress {
