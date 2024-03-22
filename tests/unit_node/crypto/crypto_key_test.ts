@@ -359,7 +359,7 @@ Deno.test("ECDH getPublicKey compressed", function () {
 
 // https://github.com/denoland/deno/issues/20938
 Deno.test("rsa jwt signer", function () {
-  let token = `-----BEGIN PRIVATE KEY-----
+  const token = `-----BEGIN PRIVATE KEY-----
 MIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQCVoKHiWLQKlnCG
 oR4d8g+OSGXoJ3yY+BFubB+1TSaCvWGLkqHjYAA0UCgOoaazE2YnXhVlO4tLDLn/
 5R6PJrsxksnup+AWnEbur+CuaeQqizGTQXA0nUrsza/QJxb05GSMW9kupzI5BXBi
