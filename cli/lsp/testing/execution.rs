@@ -212,7 +212,7 @@ impl TestRun {
   ) -> Result<(), AnyError> {
     let args = self.get_args();
     lsp_log!("Executing test run with arguments: {}", args.join(" "));
-    let flags = flags_from_vec(args.into_iter().map(String::from).collect())?;
+    let flags = flags_from_vec(args.into_iter().map(From::from).collect())?;
     let factory = CliFactory::from_flags(flags)?;
     // Various test files should not share the same permissions in terms of
     // `PermissionsContainer` - otherwise granting/revoking permissions in one
