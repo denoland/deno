@@ -1189,7 +1189,6 @@ Deno.test(
 );
 
 Deno.test({
-  ignore: Deno.build.os !== "linux",
   permissions: { net: true },
 }, async function netTcpListenReusePort() {
   const port = 4003;
@@ -1204,6 +1203,7 @@ Deno.test({
       p1 = listener1.accept().then((conn) => {
         conn.close();
         listener1Recv = true;
+        listener1.close();
         p1 = undefined;
       }).catch(() => {});
     }
@@ -1211,6 +1211,7 @@ Deno.test({
       p2 = listener2.accept().then((conn) => {
         conn.close();
         listener2Recv = true;
+        listener2.close();
         p2 = undefined;
       }).catch(() => {});
     }
@@ -1218,19 +1219,6 @@ Deno.test({
     conn.close();
     await Promise.race([p1, p2]);
   }
-  listener1.close();
-  listener2.close();
-});
-
-Deno.test({
-  ignore: Deno.build.os === "linux",
-  permissions: { net: true },
-}, function netTcpListenReusePortDoesNothing() {
-  const listener1 = Deno.listen({ port: 4003, reusePort: true });
-  assertThrows(() => {
-    Deno.listen({ port: 4003, reusePort: true });
-  }, Deno.errors.AddrInUse);
-  listener1.close();
 });
 
 Deno.test({

@@ -1,84 +1,109 @@
 use pin_project::pin_project;
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::net::TcpListener;
 use std::ops::Deref;
 use std::ops::DerefMut;
-use std::os::fd::AsRawFd;
 use std::os::fd::FromRawFd;
 use std::os::fd::IntoRawFd;
 use std::pin::Pin;
 use std::sync::Arc;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncWrite;
-use tokio::sync::Mutex;
 
 static CONNS: std::sync::OnceLock<std::sync::Mutex<Connections>> =
   std::sync::OnceLock::new();
 
 #[derive(Default)]
 struct Connections {
-  tcp: HashMap<SocketAddr, (TcpConnection, SocketAddr)>,
+  tcp: HashMap<SocketAddr, Arc<TcpConnection>>,
 }
 
 pub struct TcpConnection {
-  streams: i32,
+  /// The pristine FD that we'll clone for each LB listener
+  fd: std::os::fd::OwnedFd,
+  key: SocketAddr,
+  socket_addr: SocketAddr,
 }
 
 impl TcpConnection {
-  pub fn start(addr: SocketAddr) -> std::io::Result<(Self, SocketAddr)> {
-    let listener = std::net::TcpListener::bind(addr)?;
+  /// Boot a load-balanced TCP connection
+  pub fn start(key: SocketAddr) -> std::io::Result<Self> {
+    let listener = std::net::TcpListener::bind(key)?;
     let addr = listener.local_addr()?;
     let socket = socket2::Socket::from(listener);
     socket.set_nonblocking(true)?;
-    let fd = socket.into_raw_fd();
+    // SAFETY: we can't go directly to OwnedFd here
+    let fd = unsafe { std::os::fd::OwnedFd::from_raw_fd(socket.into_raw_fd()) };
 
-    Ok((Self { streams: fd }, addr))
+    Ok(Self {
+      fd,
+      key,
+      socket_addr: addr,
+    })
+  }
+
+  fn listener(&self) -> std::io::Result<tokio::net::TcpListener> {
+    let listener = std::net::TcpListener::from(self.fd.try_clone()?);
+    let listener = tokio::net::TcpListener::from_std(listener)?;
+    Ok(listener)
   }
 }
 
 pub struct TcpLbListener {
-  listener: tokio::net::TcpListener,
-  socket_addr: SocketAddr,
+  listener: Option<tokio::net::TcpListener>,
+  conn: Option<Arc<TcpConnection>>,
 }
 
 impl TcpLbListener {
   pub(crate) fn bind(socket_addr: SocketAddr) -> std::io::Result<Self> {
-    let tcp = &mut CONNS.get_or_init(|| {
-      Default::default()
-    }).lock().unwrap().tcp;
-    if let Some(tcp) = tcp.get(&socket_addr) {
-      let listener = unsafe { std::net::TcpListener::from_raw_fd(tcp.0.streams) };
-      let listener = tokio::net::TcpListener::from_std(listener)?;
-  
-      return Ok(Self { listener, socket_addr: tcp.1 });
+    let tcp = &mut CONNS.get_or_init(Default::default).lock().unwrap().tcp;
+    if let Some(conn) = tcp.get(&socket_addr) {
+      let listener = Some(conn.listener()?);
+      return Ok(Self {
+        listener,
+        conn: Some(conn.clone()),
+      });
     }
-    let (conn, addr) = TcpConnection::start(socket_addr)?;
-    // let conn = Arc::new(Mutex::new(conn));
-    let listener = unsafe { std::net::TcpListener::from_raw_fd(conn.streams) };
-    let listener = tokio::net::TcpListener::from_std(listener)?;
-    tcp.insert(socket_addr, (conn, socket_addr));
-    return Ok(Self { listener, socket_addr: addr });
-  } 
+    let conn = Arc::new(TcpConnection::start(socket_addr)?);
+    let listener = Some(conn.listener()?);
+    tcp.insert(socket_addr, conn.clone());
+    Ok(Self {
+      listener,
+      conn: Some(conn),
+    })
+  }
 
   pub async fn accept(&self) -> std::io::Result<(TcpLbStream, SocketAddr)> {
-    let (tcp, addr) = self.listener.accept().await?;
-    // let Some(res) = self.listener.lock().await.streams.recv().await else {
-    //   return Err(std::io::ErrorKind::NotConnected.into());
-    // };
-
-    // let (tcp, addr) = res?;
-    // let tcp = tokio::net::TcpStream::from_std(tcp)?;
+    let (tcp, addr) = self.listener.as_ref().unwrap().accept().await?;
     Ok((TcpLbStream(tcp), addr))
   }
+
   pub fn local_addr(&self) -> std::io::Result<SocketAddr> {
-    Ok(self.socket_addr)
+    Ok(self.conn.as_ref().unwrap().socket_addr)
   }
-  
+}
+
+impl Drop for TcpLbListener {
+  fn drop(&mut self) {
+    let mut tcp = CONNS.get().unwrap().lock().unwrap();
+    let conn = self.conn.take().unwrap();
+    if Arc::strong_count(&conn) == 2 {
+      tcp.tcp.remove(&conn.key);
+      // Close the connection
+      debug_assert_eq!(Arc::strong_count(&conn), 1);
+      drop(conn);
+    }
+  }
 }
 
 #[pin_project]
 pub struct TcpLbStream(#[pin] tokio::net::TcpStream);
+
+impl TcpLbStream {
+  pub fn into_inner(self) -> tokio::net::TcpStream {
+    self.0
+  }
+}
 
 impl Deref for TcpLbStream {
   type Target = tokio::net::TcpStream;

@@ -24,11 +24,14 @@ Deno.test({ permissions: { net: true } }, async function resourcesNet() {
 
   const res = Deno.resources();
   assertEquals(
-    Object.values(res).filter((r): boolean => r === "tcpListener").length,
+    Object.values(res).filter((r): boolean =>
+      r.toLowerCase().includes("tcp") && r.toLowerCase().includes("listener")
+    ).length,
     1,
   );
   const tcpStreams = Object.values(res).filter(
-    (r): boolean => r === "tcpStream",
+    (r): boolean =>
+      r.toLowerCase().includes("tcp") && r.toLowerCase().includes("stream"),
   );
   assert(tcpStreams.length >= 2);
 

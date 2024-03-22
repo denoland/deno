@@ -60,7 +60,7 @@ impl<T: NetworkStreamListenerTrait + 'static> NetworkListenerResource<T> {
     Self {
       listener: AsyncRefCell::new(t),
       data: Default::default(),
-      cancel: Default::default()
+      cancel: Default::default(),
     }
   }
 
@@ -113,9 +113,9 @@ macro_rules! network_stream {
         }
       }
 
-      impl Into<NetworkStreamListener> for $listener {
-        fn into(self: $listener) -> NetworkStreamListener {
-          NetworkStreamListener::$i(self)
+      impl From<$listener> for NetworkStreamListener {
+        fn from(value: $listener) -> Self {
+          Self::$i(value)
         }
       }
 
@@ -130,9 +130,9 @@ macro_rules! network_stream {
         }
       }
 
-      impl Into<NetworkStream> for $stream {
-        fn into(self: Self) -> NetworkStream {
-          NetworkStream::$i(self)
+      impl From<$stream> for NetworkStream {
+        fn from(value: $stream) -> Self {
+          Self::$i(value)
         }
       }
     )*

@@ -87,19 +87,38 @@ pub async fn op_net_accept_tcp(
   let resource = state
     .borrow()
     .resource_table
-    .get::<NetworkListenerResource<TcpListener>>(rid)
-    .map_err(|_| bad_resource("Listener has been closed"))?;
-  let listener = RcRef::map(&resource, |r| &r.listener)
-    .try_borrow_mut()
-    .ok_or_else(|| custom_error("Busy", "Another accept task is ongoing"))?;
-  let cancel = RcRef::map(resource, |r| &r.cancel);
-  let (tcp_stream, _socket_addr) = listener
-    .accept()
-    .try_or_cancel(cancel)
-    .await
-    .map_err(accept_err)?;
-  let local_addr = tcp_stream.local_addr()?;
-  let remote_addr = tcp_stream.peer_addr()?;
+    .get::<NetworkListenerResource<TcpListener>>(rid);
+  let (tcp_stream, local_addr, remote_addr) = if let Ok(resource) = resource {
+    let listener = RcRef::map(&resource, |r| &r.listener)
+      .try_borrow_mut()
+      .ok_or_else(|| custom_error("Busy", "Another accept task is ongoing"))?;
+    let cancel = RcRef::map(resource, |r| &r.cancel);
+    let (tcp_stream, _socket_addr) = listener
+      .accept()
+      .try_or_cancel(cancel)
+      .await
+      .map_err(accept_err)?;
+    let local_addr = tcp_stream.local_addr()?;
+    let remote_addr = tcp_stream.peer_addr()?;
+    (tcp_stream, local_addr, remote_addr)
+  } else {
+    let resource = state
+      .borrow()
+      .resource_table
+      .get::<NetworkListenerResource<TcpLbListener>>(rid)?;
+    let listener = RcRef::map(&resource, |r| &r.listener)
+      .try_borrow_mut()
+      .ok_or_else(|| custom_error("Busy", "Another accept task is ongoing"))?;
+    let cancel = RcRef::map(resource, |r| &r.cancel);
+    let (tcp_stream, _socket_addr) = listener
+      .accept()
+      .try_or_cancel(cancel)
+      .await
+      .map_err(accept_err)?;
+    let local_addr = tcp_stream.local_addr()?;
+    let remote_addr = tcp_stream.peer_addr()?;
+    (tcp_stream.into_inner(), local_addr, remote_addr)
+  };
 
   let mut state = state.borrow_mut();
   let rid = state
