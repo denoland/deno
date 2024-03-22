@@ -256,7 +256,7 @@ fn req_host_from_addr(
 
 fn req_scheme_from_stream_type(stream_type: NetworkStreamType) -> &'static str {
   match stream_type {
-    NetworkStreamType::Tcp | NetworkStreamType::TcpLb => "http://",
+    NetworkStreamType::Tcp => "http://",
     NetworkStreamType::Tls => "https://",
     #[cfg(unix)]
     NetworkStreamType::Unix => "http+unix://",
@@ -278,7 +278,7 @@ fn req_host<'a>(
   // It is rare that an authority will be passed, but if it does, it takes priority
   if let Some(auth) = uri.authority() {
     match addr_type {
-      NetworkStreamType::Tcp | NetworkStreamType::TcpLb => {
+      NetworkStreamType::Tcp => {
         if port == 80 {
           return Some(Cow::Borrowed(auth.host()));
         }

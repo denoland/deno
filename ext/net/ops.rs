@@ -1,10 +1,10 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::io::TcpStreamResource;
-use crate::lb::TcpLbListener;
 use crate::raw::NetworkListenerResource;
 use crate::resolve_addr::resolve_addr;
 use crate::resolve_addr::resolve_addr_sync;
+use crate::tcp::TcpLbListener;
 use crate::NetPermissions;
 use deno_core::error::bad_resource;
 use deno_core::error::custom_error;
@@ -35,7 +35,6 @@ use std::net::Ipv6Addr;
 use std::net::SocketAddr;
 use std::rc::Rc;
 use std::str::FromStr;
-use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 use tokio::net::UdpSocket;
 use trust_dns_proto::rr::rdata::caa::Value;
@@ -87,38 +86,18 @@ pub async fn op_net_accept_tcp(
   let resource = state
     .borrow()
     .resource_table
-    .get::<NetworkListenerResource<TcpListener>>(rid);
-  let (tcp_stream, local_addr, remote_addr) = if let Ok(resource) = resource {
-    let listener = RcRef::map(&resource, |r| &r.listener)
-      .try_borrow_mut()
-      .ok_or_else(|| custom_error("Busy", "Another accept task is ongoing"))?;
-    let cancel = RcRef::map(resource, |r| &r.cancel);
-    let (tcp_stream, _socket_addr) = listener
-      .accept()
-      .try_or_cancel(cancel)
-      .await
-      .map_err(accept_err)?;
-    let local_addr = tcp_stream.local_addr()?;
-    let remote_addr = tcp_stream.peer_addr()?;
-    (tcp_stream, local_addr, remote_addr)
-  } else {
-    let resource = state
-      .borrow()
-      .resource_table
-      .get::<NetworkListenerResource<TcpLbListener>>(rid)?;
-    let listener = RcRef::map(&resource, |r| &r.listener)
-      .try_borrow_mut()
-      .ok_or_else(|| custom_error("Busy", "Another accept task is ongoing"))?;
-    let cancel = RcRef::map(resource, |r| &r.cancel);
-    let (tcp_stream, _socket_addr) = listener
-      .accept()
-      .try_or_cancel(cancel)
-      .await
-      .map_err(accept_err)?;
-    let local_addr = tcp_stream.local_addr()?;
-    let remote_addr = tcp_stream.peer_addr()?;
-    (tcp_stream.into_inner(), local_addr, remote_addr)
-  };
+    .get::<NetworkListenerResource<TcpLbListener>>(rid)?;
+  let listener = RcRef::map(&resource, |r| &r.listener)
+    .try_borrow_mut()
+    .ok_or_else(|| custom_error("Busy", "Another accept task is ongoing"))?;
+  let cancel = RcRef::map(resource, |r| &r.cancel);
+  let (tcp_stream, _socket_addr) = listener
+    .accept()
+    .try_or_cancel(cancel)
+    .await
+    .map_err(accept_err)?;
+  let local_addr = tcp_stream.local_addr()?;
+  let remote_addr = tcp_stream.peer_addr()?;
 
   let mut state = state.borrow_mut();
   let rid = state
@@ -375,40 +354,13 @@ where
   let addr = resolve_addr_sync(&addr.hostname, addr.port)?
     .next()
     .ok_or_else(|| generic_error("No resolved address found"))?;
-  let domain = if addr.is_ipv4() {
-    Domain::IPV4
-  } else {
-    Domain::IPV6
-  };
-  let (rid, local_addr) = if cfg!(target_os = "macos") && reuse_port {
-    let listener = TcpLbListener::bind(addr)?;
-    let local_addr = listener.local_addr()?;
-    let listener_resource = NetworkListenerResource::new(listener);
-    let rid = state.resource_table.add(listener_resource);
-    (rid, local_addr)
-  } else {
-    let socket_addr = socket2::SockAddr::from(addr);
-    let socket = Socket::new(domain, Type::STREAM, None)?;
-    #[cfg(not(windows))]
-    socket.set_reuse_address(true)?;
-    if reuse_port {
-      #[cfg(any(
-        target_os = "android",
-        target_os = "linux",
-        target_os = "macos"
-      ))]
-      socket.set_reuse_port(true)?;
-    }
-    socket.bind(&socket_addr)?;
-    socket.listen(128)?;
-    socket.set_nonblocking(true)?;
-    let std_listener: std::net::TcpListener = socket.into();
-    let listener = TcpListener::from_std(std_listener)?;
-    let local_addr = listener.local_addr()?;
-    let listener_resource = NetworkListenerResource::new(listener);
-    let rid = state.resource_table.add(listener_resource);
-    (rid, local_addr)
-  };
+
+  let listener = TcpLbListener::bind(addr, reuse_port)?;
+  #[cfg(not(windows))]
+  listener.set_reuse_address(true)?;
+  let local_addr = listener.local_addr()?;
+  let listener_resource = NetworkListenerResource::new(listener);
+  let rid = state.resource_table.add(listener_resource);
 
   Ok((rid, IpAddr::from(local_addr)))
 }
@@ -797,6 +749,7 @@ mod tests {
   use socket2::SockRef;
   use std::net::Ipv4Addr;
   use std::net::Ipv6Addr;
+  use std::net::ToSocketAddrs;
   use std::path::Path;
   use std::sync::Arc;
   use std::sync::Mutex;
@@ -1046,7 +999,8 @@ mod tests {
   ) {
     let sockets = Arc::new(Mutex::new(vec![]));
     let clone_addr = addr.clone();
-    let listener = TcpListener::bind(addr).await.unwrap();
+    let addr = addr.to_socket_addrs().unwrap().next().unwrap();
+    let listener = TcpLbListener::bind(addr, false).unwrap();
     let accept_fut = listener.accept().boxed_local();
     let store_fut = async move {
       let socket = accept_fut.await.unwrap();

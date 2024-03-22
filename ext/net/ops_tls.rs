@@ -6,6 +6,7 @@ use crate::ops::TlsHandshakeInfo;
 use crate::raw::NetworkListenerResource;
 use crate::resolve_addr::resolve_addr;
 use crate::resolve_addr::resolve_addr_sync;
+use crate::tcp::TcpLbListener;
 use crate::DefaultTlsOptions;
 use crate::NetPermissions;
 use crate::UnsafelyIgnoreCertificateErrors;
@@ -36,9 +37,6 @@ use io::Read;
 use rustls_tokio_stream::TlsStreamRead;
 use rustls_tokio_stream::TlsStreamWrite;
 use serde::Deserialize;
-use socket2::Domain;
-use socket2::Socket;
-use socket2::Type;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::convert::From;
@@ -54,7 +52,6 @@ use std::rc::Rc;
 use std::sync::Arc;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
-use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 
 pub use rustls_tokio_stream::TlsStream;
@@ -63,7 +60,7 @@ pub(crate) const TLS_BUFFER_SIZE: Option<NonZeroUsize> =
   NonZeroUsize::new(65536);
 
 pub struct TlsListener {
-  pub(crate) tcp_listener: TcpListener,
+  pub(crate) tcp_listener: TcpLbListener,
   pub(crate) tls_config: Arc<ServerConfig>,
 }
 
@@ -457,24 +454,10 @@ where
   let bind_addr = resolve_addr_sync(&addr.hostname, addr.port)?
     .next()
     .ok_or_else(|| generic_error("No resolved address found"))?;
-  let domain = if bind_addr.is_ipv4() {
-    Domain::IPV4
-  } else {
-    Domain::IPV6
-  };
-  let socket = Socket::new(domain, Type::STREAM, None)?;
+
+  let tcp_listener = TcpLbListener::bind(bind_addr, args.reuse_port)?;
   #[cfg(not(windows))]
-  socket.set_reuse_address(true)?;
-  if args.reuse_port {
-    #[cfg(any(target_os = "android", target_os = "linux"))]
-    socket.set_reuse_port(true)?;
-  }
-  let socket_addr = socket2::SockAddr::from(bind_addr);
-  socket.bind(&socket_addr)?;
-  socket.listen(128)?;
-  socket.set_nonblocking(true)?;
-  let std_listener: std::net::TcpListener = socket.into();
-  let tcp_listener = TcpListener::from_std(std_listener)?;
+  tcp_listener.set_reuse_address(true)?;
   let local_addr = tcp_listener.local_addr()?;
 
   let tls_listener_resource = NetworkListenerResource::new(TlsListener {

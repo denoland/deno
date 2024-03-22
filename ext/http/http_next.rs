@@ -921,9 +921,6 @@ where
     NetworkStream::Tcp(conn) => {
       serve_http(conn, connection_properties, lifetime, tx)
     }
-    NetworkStream::TcpLb(conn) => {
-      serve_http(conn, connection_properties, lifetime, tx)
-    }
     NetworkStream::Tls(conn) => {
       serve_https(conn, connection_properties, lifetime, tx)
     }

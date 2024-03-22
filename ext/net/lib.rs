@@ -1,13 +1,13 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 pub mod io;
-mod lb;
 pub mod ops;
 pub mod ops_tls;
 #[cfg(unix)]
 pub mod ops_unix;
 pub mod raw;
 pub mod resolve_addr;
+mod tcp;
 
 use deno_core::error::AnyError;
 use deno_core::OpState;

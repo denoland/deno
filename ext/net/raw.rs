@@ -258,14 +258,7 @@ network_stream!(
   [
     Tcp,
     tokio::net::TcpStream,
-    tokio::net::TcpListener,
-    std::net::SocketAddr,
-    TcpStreamResource
-  ],
-  [
-    TcpLb,
-    crate::lb::TcpLbStream,
-    crate::lb::TcpLbListener,
+    crate::tcp::TcpLbListener,
     std::net::SocketAddr,
     TcpStreamResource
   ],
@@ -290,14 +283,7 @@ network_stream!(
   [
     Tcp,
     tokio::net::TcpStream,
-    tokio::net::TcpListener,
-    std::net::SocketAddr,
-    TcpStreamResource
-  ],
-  [
-    TcpLb,
-    crate::lb::TcpLbStream,
-    crate::lb::TcpLbListener,
+    crate::tcp::TcpLbListener,
     std::net::SocketAddr,
     TcpStreamResource
   ],
