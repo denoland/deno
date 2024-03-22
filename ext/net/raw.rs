@@ -1,6 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 use crate::io::TcpStreamResource;
-use crate::io::UnixStreamResource;
 use crate::ops_tls::TlsStreamResource;
 use deno_core::error::bad_resource;
 use deno_core::error::bad_resource_id;
@@ -282,7 +281,7 @@ network_stream!(
     tokio::net::UnixStream,
     tokio::net::UnixListener,
     tokio::net::unix::SocketAddr,
-    UnixStreamResource
+    crate::io::UnixStreamResource
   ]
 );
 
@@ -323,6 +322,7 @@ impl From<std::net::SocketAddr> for NetworkStreamAddress {
   }
 }
 
+#[cfg(unix)]
 impl From<tokio::net::unix::SocketAddr> for NetworkStreamAddress {
   fn from(value: tokio::net::unix::SocketAddr) -> Self {
     NetworkStreamAddress::Unix(value)

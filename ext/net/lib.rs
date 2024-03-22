@@ -121,7 +121,7 @@ mod ops_unix {
   macro_rules! stub_op {
     ($name:ident) => {
       #[op2(fast)]
-      fn $name() {
+      pub fn $name() {
         panic!("Unsupported on non-unix platforms")
       }
     };
