@@ -162,6 +162,7 @@ import type {
 } from "ext:deno_node/_stream.d.ts";
 import { crypto as webcrypto } from "ext:deno_crypto/00_crypto.js";
 
+const subtle = webcrypto.subtle;
 const fipsForced = getOptionValue("--force-fips");
 
 function createCipheriv(
@@ -372,6 +373,7 @@ export default {
   Verify,
   verify,
   webcrypto,
+  subtle,
   X509Certificate,
 };
 
@@ -505,6 +507,7 @@ export {
   setFips,
   Sign,
   sign,
+  subtle,
   timingSafeEqual,
   Verify,
   verify,
