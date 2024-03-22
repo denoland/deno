@@ -134,8 +134,7 @@ pub fn op_ffi_load<'scope, FP>(
   scope: &mut v8::HandleScope<'scope>,
   state: &mut OpState,
   #[serde] args: FfiLoadArgs,
-  out_array: v8::Local<'scope, v8::Array>,
-) -> Result<(), AnyError>
+) -> Result<v8::Local<'scope, v8::Value>, AnyError>
 where
   FP: FfiPermissions + 'static,
 {
@@ -220,11 +219,12 @@ where
     }
   }
 
+  let out = v8::Array::new(scope, 2);
   let rid = state.resource_table.add(resource);
   let rid_v8 = v8::Integer::new_from_unsigned(scope, rid);
-  out_array.set_index(scope, 0, rid_v8.into());
-  out_array.set_index(scope, 1, obj.into());
-  Ok(())
+  out.set_index(scope, 0, rid_v8.into());
+  out.set_index(scope, 1, obj.into());
+  Ok(out.into())
 }
 
 // Create a JavaScript function for synchronous FFI call to
