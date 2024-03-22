@@ -49,10 +49,10 @@ impl TcpConnection {
 /// The `SO_REUSEPORT` socket option allows multiple sockets on the same host to bind to the same port. This is
 /// particularly useful for load balancing or implementing high availability in server applications.
 ///
-/// On Linux, `SO_REUSEPORT` was introduced in kernel version 3.9. It allows multiple sockets to bind to the
-/// same port, and the kernel will load balance incoming connections among those sockets. Each socket can accept
-/// connections independently. This is useful for scenarios where you want to distribute incoming connections
-/// among multiple processes or threads.
+/// On Linux, `SO_REUSEPORT` allows multiple sockets to bind to the same port, and the kernel will load
+/// balance incoming connections among those sockets. Each socket can accept connections independently.
+/// This is useful for scenarios where you want to distribute incoming connections among multiple processes
+/// or threads.
 ///
 /// On macOS (which is based on BSD), the behaviour of `SO_REUSEPORT` is slightly different. When `SO_REUSEPORT` is set,
 /// multiple sockets can still bind to the same port, but the kernel does not perform load balancing as it does on Linux.
