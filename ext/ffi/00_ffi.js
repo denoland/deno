@@ -38,6 +38,7 @@ import {
   op_ffi_unsafe_callback_ref,
 } from "ext:core/ops";
 const {
+  Array,
   ArrayBufferIsView,
   ArrayBufferPrototypeGetByteLength,
   ArrayPrototypeMap,
@@ -478,7 +479,9 @@ class DynamicLibrary {
   symbols = {};
 
   constructor(path, symbols) {
-    ({ 0: this.#rid, 1: this.symbols } = op_ffi_load({ path, symbols }));
+    const outArray = new Array(2);
+    op_ffi_load({ path, symbols }, outArray);
+    ({ 0: this.#rid, 1: this.symbols } = outArray);
     for (const symbol in symbols) {
       if (!ObjectHasOwn(symbols, symbol)) {
         continue;

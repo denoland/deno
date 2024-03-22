@@ -9,11 +9,9 @@ use crate::FfiPermissions;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::op2;
-use deno_core::serde_v8;
 use deno_core::v8;
 use deno_core::OpState;
 use deno_core::Resource;
-use deno_core::ResourceId;
 use dlopen2::raw::Library;
 use serde::Deserialize;
 use serde_value::ValueDeserializer;
@@ -132,12 +130,12 @@ pub struct FfiLoadArgs {
 }
 
 #[op2]
-#[serde]
 pub fn op_ffi_load<'scope, FP>(
   scope: &mut v8::HandleScope<'scope>,
   state: &mut OpState,
   #[serde] args: FfiLoadArgs,
-) -> Result<(ResourceId, serde_v8::Value<'scope>), AnyError>
+  out_array: v8::Local<'scope, v8::Array>,
+) -> Result<(), AnyError>
 where
   FP: FfiPermissions + 'static,
 {
@@ -223,12 +221,10 @@ where
   }
 
   let rid = state.resource_table.add(resource);
-  Ok((
-    rid,
-    serde_v8::Value {
-      v8_value: obj.into(),
-    },
-  ))
+  let rid_v8 = v8::Integer::new_from_unsigned(scope, rid);
+  out_array.set_index(scope, 0, rid_v8.into());
+  out_array.set_index(scope, 1, obj.into());
+  Ok(())
 }
 
 // Create a JavaScript function for synchronous FFI call to
