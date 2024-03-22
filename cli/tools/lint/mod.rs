@@ -857,6 +857,12 @@ pub struct ConfiguredRules {
   pub no_slow_types: bool,
 }
 
+impl Default for ConfiguredRules {
+  fn default() -> Self {
+    get_configured_rules(Default::default(), None)
+  }
+}
+
 impl ConfiguredRules {
   fn incremental_cache_state(&self) -> Vec<&str> {
     // use a hash of the rule names in order to bust the cache
