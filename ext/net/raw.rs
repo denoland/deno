@@ -360,7 +360,8 @@ pub fn take_network_stream_resource(
   }
 
   #[cfg(unix)]
-  if let Ok(resource_rc) = resource_table.take::<crate::io::UnixStreamResource>(stream_rid)
+  if let Ok(resource_rc) =
+    resource_table.take::<crate::io::UnixStreamResource>(stream_rid)
   {
     // This UNIX socket might be used somewhere else.
     let resource = Rc::try_unwrap(resource_rc)
