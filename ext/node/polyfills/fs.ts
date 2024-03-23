@@ -69,7 +69,17 @@ import {
 } from "ext:deno_node/_fs/_fs_rename.ts";
 import { rmdir, rmdirPromise, rmdirSync } from "ext:deno_node/_fs/_fs_rmdir.ts";
 import { rm, rmPromise, rmSync } from "ext:deno_node/_fs/_fs_rm.ts";
-import { stat, statPromise, statSync } from "ext:deno_node/_fs/_fs_stat.ts";
+import {
+  stat,
+  statPromise,
+  Stats,
+  statSync,
+} from "ext:deno_node/_fs/_fs_stat.ts";
+import {
+  statfs,
+  statfsPromise,
+  statfsSync,
+} from "ext:deno_node/_fs/_fs_statfs.js";
 import {
   symlink,
   symlinkPromise,
@@ -105,7 +115,6 @@ import {
   writeFilePromise,
   writeFileSync,
 } from "ext:deno_node/_fs/_fs_writeFile.ts";
-import { Stats } from "ext:deno_node/internal/fs/utils.mjs";
 // @deno-types="./internal/fs/streams.d.ts"
 import {
   createReadStream,
@@ -137,6 +146,7 @@ const {
 
 const promises = {
   access: accessPromise,
+  constants,
   copyFile: copyFilePromise,
   cp: cpPromise,
   open: openPromise,
@@ -151,6 +161,7 @@ const promises = {
   symlink: symlinkPromise,
   lstat: lstatPromise,
   stat: statPromise,
+  statfs: statfsPromise,
   link: linkPromise,
   unlink: unlinkPromise,
   chmod: chmodPromise,
@@ -248,6 +259,8 @@ export default {
   stat,
   Stats,
   statSync,
+  statfs,
+  statfsSync,
   symlink,
   symlinkSync,
   truncate,
@@ -349,6 +362,8 @@ export {
   rmdirSync,
   rmSync,
   stat,
+  statfs,
+  statfsSync,
   Stats,
   statSync,
   symlink,

@@ -20,7 +20,6 @@ use crate::util::file_watcher;
 use crate::util::fs::canonicalize_path;
 use crate::util::fs::FileCollector;
 use crate::util::path::get_extension;
-use crate::util::text_encoding;
 use deno_ast::ParsedSource;
 use deno_config::glob::FilePatterns;
 use deno_core::anyhow::anyhow;
@@ -69,7 +68,7 @@ pub async fn format(flags: Flags, fmt_flags: FmtFlags) -> Result<(), AnyError> {
       move |flags, watcher_communicator, changed_paths| {
         let fmt_flags = fmt_flags.clone();
         Ok(async move {
-          let factory = CliFactory::from_flags(flags).await?;
+          let factory = CliFactory::from_flags(flags)?;
           let cli_options = factory.cli_options();
           let fmt_options = cli_options.resolve_fmt_options(fmt_flags)?;
           let files =
@@ -114,7 +113,7 @@ pub async fn format(flags: Flags, fmt_flags: FmtFlags) -> Result<(), AnyError> {
     )
     .await?;
   } else {
-    let factory = CliFactory::from_flags(flags).await?;
+    let factory = CliFactory::from_flags(flags)?;
     let cli_options = factory.cli_options();
     let fmt_options = cli_options.resolve_fmt_options(fmt_flags)?;
     let files =
@@ -155,7 +154,7 @@ async fn format_files(
 }
 
 fn collect_fmt_files(files: FilePatterns) -> Result<Vec<PathBuf>, AnyError> {
-  FileCollector::new(|path, _| is_supported_ext_fmt(path))
+  FileCollector::new(|e| is_supported_ext_fmt(e.path))
     .ignore_git_folder()
     .ignore_node_modules()
     .ignore_vendor_folder()
@@ -607,28 +606,24 @@ struct FileContents {
 fn read_file_contents(file_path: &Path) -> Result<FileContents, AnyError> {
   let file_bytes = fs::read(file_path)
     .with_context(|| format!("Error reading {}", file_path.display()))?;
-  let charset = text_encoding::detect_charset(&file_bytes);
-  let file_text = text_encoding::convert_to_utf8(&file_bytes, charset)
-    .map_err(|_| {
+  let had_bom = file_bytes.starts_with(&[0xEF, 0xBB, 0xBF]);
+  // will have the BOM stripped
+  let text = deno_graph::source::decode_owned_file_source(file_bytes)
+    .with_context(|| {
       anyhow!("{} is not a valid UTF-8 file", file_path.display())
     })?;
-  let had_bom = file_text.starts_with(text_encoding::BOM_CHAR);
-  let text = if had_bom {
-    text_encoding::strip_bom(&file_text).to_string()
-  } else {
-    file_text.to_string()
-  };
 
   Ok(FileContents { text, had_bom })
 }
 
 fn write_file_contents(
   file_path: &Path,
-  file_contents: FileContents,
+  mut file_contents: FileContents,
 ) -> Result<(), AnyError> {
   let file_text = if file_contents.had_bom {
     // add back the BOM
-    format!("{}{}", text_encoding::BOM_CHAR, file_contents.text)
+    file_contents.text.insert(0, '\u{FEFF}');
+    file_contents.text
   } else {
     file_contents.text
   };

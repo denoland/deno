@@ -1,17 +1,17 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import { primordials } from "ext:core/mod.js";
+import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { DOMException } from "./01_dom_exception.js";
+import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 const {
   ObjectPrototypeIsPrototypeOf,
+  Symbol,
   SymbolFor,
   TypedArrayPrototypeGetLength,
   TypedArrayPrototypeGetSymbolToStringTag,
   Uint8ClampedArray,
 } = primordials;
-
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { DOMException } from "ext:deno_web/01_dom_exception.js";
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 
 webidl.converters["PredefinedColorSpace"] = webidl.createEnumConverter(
   "PredefinedColorSpace",
@@ -28,13 +28,16 @@ webidl.converters["ImageDataSettings"] = webidl.createDictionaryConverter(
   ],
 );
 
+const _data = Symbol("[[data]]");
+const _width = Symbol("[[width]]");
+const _height = Symbol("[[height]]");
 class ImageData {
   /** @type {number} */
-  #width;
+  [_width];
   /** @type {height} */
-  #height;
+  [_height];
   /** @type {Uint8Array} */
-  #data;
+  [_data];
   /** @type {'srgb' | 'display-p3'} */
   #colorSpace;
 
@@ -125,14 +128,14 @@ class ImageData {
       }
 
       if (webidl.type(sourceHeight) === "Undefined") {
-        this.#height = dataLength / 4 / sourceWidth;
+        this[_height] = dataLength / 4 / sourceWidth;
       } else {
-        this.#height = sourceHeight;
+        this[_height] = sourceHeight;
       }
 
       this.#colorSpace = settings.colorSpace ?? "srgb";
-      this.#width = sourceWidth;
-      this.#data = data;
+      this[_width] = sourceWidth;
+      this[_data] = data;
       return;
     }
 
@@ -169,24 +172,24 @@ class ImageData {
     }
 
     this.#colorSpace = settings.colorSpace ?? "srgb";
-    this.#width = sourceWidth;
-    this.#height = sourceHeight;
-    this.#data = new Uint8ClampedArray(sourceWidth * sourceHeight * 4);
+    this[_width] = sourceWidth;
+    this[_height] = sourceHeight;
+    this[_data] = new Uint8ClampedArray(sourceWidth * sourceHeight * 4);
   }
 
   get width() {
     webidl.assertBranded(this, ImageDataPrototype);
-    return this.#width;
+    return this[_width];
   }
 
   get height() {
     webidl.assertBranded(this, ImageDataPrototype);
-    return this.#height;
+    return this[_height];
   }
 
   get data() {
     webidl.assertBranded(this, ImageDataPrototype);
-    return this.#data;
+    return this[_data];
   }
 
   get colorSpace() {
@@ -213,4 +216,4 @@ class ImageData {
 
 const ImageDataPrototype = ImageData.prototype;
 
-export { ImageData };
+export { _data, _height, _width, ImageData, ImageDataPrototype };

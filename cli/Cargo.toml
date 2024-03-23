@@ -2,11 +2,10 @@
 
 [package]
 name = "deno"
-version = "1.39.4"
+version = "1.41.3"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
-exclude = ["tests/testdata/npm/registry/*"]
 license.workspace = true
 repository.workspace = true
 description = "Provides the deno executable"
@@ -15,6 +14,16 @@ description = "Provides the deno executable"
 name = "deno"
 path = "main.rs"
 doc = false
+
+[[bin]]
+name = "denort"
+path = "mainrt.rs"
+doc = false
+
+[[test]]
+name = "integration"
+path = "integration_tests_runner.rs"
+harness = false
 
 [[bench]]
 name = "deno_bench"
@@ -39,7 +48,7 @@ __runtime_js_sources = ["deno_runtime/__runtime_js_sources"]
 __vendored_zlib_ng = ["flate2/zlib-ng-compat", "libz-sys/zlib-ng"]
 
 [build-dependencies]
-deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting"] }
+deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting", "only_snapshotted_js_sources"] }
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
 lazy-regex.workspace = true
 serde.workspace = true
@@ -53,26 +62,25 @@ winapi.workspace = true
 winres.workspace = true
 
 [dependencies]
-deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "dep_graph", "module_specifier", "proposal", "react", "sourcemap", "transforms", "typescript", "view", "visit"] }
-deno_cache_dir = "=0.6.1"
-deno_config = "=0.7.1"
+deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "proposal", "react", "sourcemap", "transforms", "typescript", "view", "visit"] }
+deno_cache_dir = { workspace = true }
+deno_config = "=0.14.1"
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
-deno_doc = { version = "=0.89.1", features = ["html"] }
-deno_emit = "=0.33.0"
-deno_graph = "=0.63.3"
-deno_lint = { version = "=0.53.0", features = ["docs"] }
+deno_doc = { version = "=0.113.1", features = ["html"] }
+deno_emit = "=0.38.2"
+deno_graph = { version = "=0.69.9", features = ["tokio_executor"] }
+deno_lint = { version = "=0.58.0", features = ["docs"] }
 deno_lockfile.workspace = true
-deno_npm = "=0.15.3"
+deno_npm = "=0.17.0"
 deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting"] }
-# todo(dsherret): investigate https://github.com/denoland/deno_semver/commit/98f9174baef199809295077b3b68c9fa58defb9b causing
-# lsp_completions_auto_import_and_quick_fix_with_import_map to fail when bumping this version
-deno_semver = "=0.5.1"
-deno_task_shell = "=0.14.0"
-eszip = "=0.57.0"
+deno_semver = "=0.5.4"
+deno_task_shell = "=0.15.0"
+deno_terminal.workspace = true
+eszip = "=0.64.2"
 napi_sym.workspace = true
 
 async-trait.workspace = true
-base32 = "=0.4.0"
+base32.workspace = true
 base64.workspace = true
 bincode = "=1.3.3"
 bytes.workspace = true
@@ -81,27 +89,27 @@ chrono.workspace = true
 clap = { version = "=4.4.17", features = ["env", "string"] }
 clap_complete = "=4.4.7"
 clap_complete_fig = "=4.4.2"
+color-print = "0.3.5"
 console_static_text.workspace = true
 dashmap = "5.5.3"
 data-encoding.workspace = true
-data-url.workspace = true
 dissimilar = "=1.0.4"
 dotenvy = "0.15.7"
-dprint-plugin-json = "=0.19.1"
-dprint-plugin-jupyter = "=0.1.2"
-dprint-plugin-markdown = "=0.16.3"
-dprint-plugin-typescript = "=0.88.8"
-encoding_rs.workspace = true
+dprint-plugin-json = "=0.19.2"
+dprint-plugin-jupyter = "=0.1.3"
+dprint-plugin-markdown = "=0.16.4"
+dprint-plugin-typescript = "=0.89.3"
 env_logger = "=0.10.0"
 fancy-regex = "=0.10.0"
+faster-hex.workspace = true
 # If you disable the default __vendored_zlib_ng feature above, you _must_ be able to link against `-lz`.
 flate2.workspace = true
 fs3.workspace = true
 glob = "0.3.1"
-hex.workspace = true
-import_map = { version = "=0.18.1", features = ["ext"] }
+ignore = "0.4"
+import_map = { version = "=0.19.0", features = ["ext"] }
 indexmap.workspace = true
-jsonc-parser = { version = "=0.23.0", features = ["serde"] }
+jsonc-parser.workspace = true
 lazy-regex.workspace = true
 libc.workspace = true
 libz-sys.workspace = true
@@ -110,12 +118,16 @@ lsp-types.workspace = true
 monch.workspace = true
 notify.workspace = true
 once_cell.workspace = true
+open = "5.0.1"
 os_pipe.workspace = true
+p256.workspace = true
 percent-encoding.workspace = true
+phf.workspace = true
 pin-project.workspace = true
 quick-junit = "^0.3.5"
 rand = { workspace = true, features = ["small_rng"] }
 regex.workspace = true
+reqwest.workspace = true
 ring.workspace = true
 rustyline.workspace = true
 rustyline-derive = "=0.7.0"
@@ -123,6 +135,7 @@ serde.workspace = true
 serde_repr.workspace = true
 sha2.workspace = true
 shell-escape = "=0.1.5"
+spki = { version = "0.7", features = ["pem"] }
 tar.workspace = true
 tempfile.workspace = true
 text-size = "=1.1.0"
@@ -133,6 +146,7 @@ tokio-util.workspace = true
 tower-lsp.workspace = true
 twox-hash = "=1.6.3"
 typed-arena = "=2.0.1"
+unicode-width = "0.1"
 uuid = { workspace = true, features = ["serde"] }
 walkdir = "=2.3.2"
 zeromq = { version = "=0.3.4", default-features = false, features = ["tcp-transport", "tokio-runtime"] }
@@ -140,7 +154,7 @@ zstd.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 fwdansi.workspace = true
-junction = "=0.2.0"
+junction.workspace = true
 winapi = { workspace = true, features = ["knownfolders", "mswsock", "objbase", "shlobj", "tlhelp32", "winbase", "winerror", "winsock2"] }
 
 [target.'cfg(unix)'.dependencies]
@@ -148,18 +162,8 @@ nix.workspace = true
 
 [dev-dependencies]
 deno_bench_util.workspace = true
-fastwebsockets = { workspace = true, features = ["upgrade", "unstable-split"] }
-flaky_test = "=0.1.0"
-http.workspace = true
-http-body-util.workspace = true
-hyper.workspace = true
-hyper-util.workspace = true
-once_cell.workspace = true
-os_pipe.workspace = true
 pretty_assertions.workspace = true
 test_util.workspace = true
-trust-dns-client = "=0.22.0"
-trust-dns-server = "=0.22.1"
 
 [package.metadata.winres]
 # This section defines the metadata that appears in the deno.exe PE header.

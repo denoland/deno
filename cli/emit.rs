@@ -40,7 +40,7 @@ impl Emitter {
     graph: &ModuleGraph,
   ) -> Result<(), AnyError> {
     for module in graph.modules() {
-      if let Module::Esm(module) = module {
+      if let Module::Js(module) = module {
         let is_emittable = matches!(
           module.media_type,
           MediaType::TypeScript

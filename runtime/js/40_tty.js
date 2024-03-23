@@ -1,12 +1,12 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-import { core, primordials } from "ext:core/mod.js";
-const {
-  op_console_size,
-  op_isatty,
-} = core.ensureFastOps();
+import { core, internals, primordials } from "ext:core/mod.js";
+import { op_console_size } from "ext:core/ops";
 const {
   Uint32Array,
 } = primordials;
+const {
+  isTerminal,
+} = core;
 
 const size = new Uint32Array(2);
 
@@ -16,7 +16,12 @@ function consoleSize() {
 }
 
 function isatty(rid) {
-  return op_isatty(rid);
+  internals.warnOnDeprecatedApi(
+    "Deno.isatty()",
+    new Error().stack,
+    "Use `Deno.stdin.isTerminal()`, `Deno.stdout.isTerminal()`, `Deno.stderr.isTerminal()` or `Deno.FsFile.isTerminal()` instead.",
+  );
+  return isTerminal(rid);
 }
 
 export { consoleSize, isatty };

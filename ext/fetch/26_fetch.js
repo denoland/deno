@@ -11,12 +11,12 @@
 /// <reference lib="esnext" />
 
 import { core, primordials } from "ext:core/mod.js";
-const {
+import {
   op_fetch,
   op_fetch_send,
   op_wasm_streaming_feed,
   op_wasm_streaming_set_url,
-} = core.ensureFastOps();
+} from "ext:core/ops";
 const {
   ArrayPrototypePush,
   ArrayPrototypeSplice,
@@ -313,7 +313,7 @@ function fetch(input, init = {}) {
   let opPromise = undefined;
   // 1.
   const result = new Promise((resolve, reject) => {
-    const prefix = "Failed to call 'fetch'";
+    const prefix = "Failed to execute 'fetch'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     // 2.
     const requestObject = new Request(input, init);
@@ -425,7 +425,7 @@ function handleWasmStreaming(source, rid) {
   try {
     const res = webidl.converters["Response"](
       source,
-      "Failed to call 'WebAssembly.compileStreaming'",
+      "Failed to execute 'WebAssembly.compileStreaming'",
       "Argument 1",
     );
 

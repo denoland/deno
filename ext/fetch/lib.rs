@@ -168,15 +168,6 @@ impl FetchHandler for DefaultFileFetchHandler {
   }
 }
 
-pub trait FetchPermissions {
-  fn check_net_url(
-    &mut self,
-    _url: &Url,
-    api_name: &str,
-  ) -> Result<(), AnyError>;
-  fn check_read(&mut self, _p: &Path, api_name: &str) -> Result<(), AnyError>;
-}
-
 pub fn get_declaration() -> PathBuf {
   PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_fetch.d.ts")
 }
@@ -266,6 +257,15 @@ impl Drop for ResourceToBodyAdapter {
   fn drop(&mut self) {
     self.0.clone().close()
   }
+}
+
+pub trait FetchPermissions {
+  fn check_net_url(
+    &mut self,
+    _url: &Url,
+    api_name: &str,
+  ) -> Result<(), AnyError>;
+  fn check_read(&mut self, _p: &Path, api_name: &str) -> Result<(), AnyError>;
 }
 
 #[op2]
@@ -794,8 +794,8 @@ impl HttpClientResource {
 pub struct CreateHttpClientArgs {
   ca_certs: Vec<String>,
   proxy: Option<Proxy>,
-  cert_chain: Option<String>,
-  private_key: Option<String>,
+  cert: Option<String>,
+  key: Option<String>,
   pool_max_idle_per_host: Option<usize>,
   pool_idle_timeout: Option<serde_json::Value>,
   #[serde(default = "default_true")]
@@ -826,12 +826,12 @@ where
   }
 
   let client_cert_chain_and_key = {
-    if args.cert_chain.is_some() || args.private_key.is_some() {
+    if args.cert.is_some() || args.key.is_some() {
       let cert_chain = args
-        .cert_chain
+        .cert
         .ok_or_else(|| type_error("No certificate chain provided"))?;
       let private_key = args
-        .private_key
+        .key
         .ok_or_else(|| type_error("No private key provided"))?;
 
       Some((cert_chain, private_key))

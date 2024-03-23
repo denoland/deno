@@ -12,8 +12,8 @@ use crate::lsp::client::TestingNotification;
 use crate::lsp::config;
 use crate::lsp::logging::lsp_log;
 use crate::tools::test;
+use crate::tools::test::create_test_event_channel;
 use crate::tools::test::FailFastTracker;
-use crate::tools::test::TestEventSender;
 
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
@@ -35,7 +35,6 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
-use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use tower_lsp::lsp_types as lsp;
 
@@ -213,8 +212,8 @@ impl TestRun {
   ) -> Result<(), AnyError> {
     let args = self.get_args();
     lsp_log!("Executing test run with arguments: {}", args.join(" "));
-    let flags = flags_from_vec(args.into_iter().map(String::from).collect())?;
-    let factory = CliFactory::from_flags(flags).await?;
+    let flags = flags_from_vec(args.into_iter().map(From::from).collect())?;
+    let factory = CliFactory::from_flags(flags)?;
     // Various test files should not share the same permissions in terms of
     // `PermissionsContainer` - otherwise granting/revoking permissions in one
     // file would have impact on other files, which is undesirable.
@@ -246,8 +245,14 @@ impl TestRun {
       unreachable!("Should always be Test subcommand.");
     };
 
-    let (sender, mut receiver) = mpsc::unbounded_channel::<test::TestEvent>();
-    let sender = TestEventSender::new(sender);
+    // TODO(mmastrac): Temporarily limit concurrency in windows testing to avoid named pipe issue:
+    // *** Unexpected server pipe failure '"\\\\.\\pipe\\deno_pipe_e30f45c9df61b1e4.1198.222\\0"': 3
+    // This is likely because we're hitting some sort of invisible resource limit
+    // This limit is both in cli/lsp/testing/execution.rs and cli/tools/test/mod.rs
+    #[cfg(windows)]
+    let concurrent_jobs = std::cmp::min(concurrent_jobs, 4);
+
+    let (test_event_sender_factory, mut receiver) = create_test_event_channel();
     let fail_fast_tracker = FailFastTracker::new(fail_fast);
 
     let mut queue = self.queue.iter().collect::<Vec<&ModuleSpecifier>>();
@@ -263,7 +268,7 @@ impl TestRun {
       let specifier = specifier.clone();
       let worker_factory = worker_factory.clone();
       let permissions = permissions.clone();
-      let mut sender = sender.clone();
+      let worker_sender = test_event_sender_factory.worker();
       let fail_fast_tracker = fail_fast_tracker.clone();
       let lsp_filter = self.filters.get(&specifier);
       let filter = test::TestFilter {
@@ -284,34 +289,24 @@ impl TestRun {
         if fail_fast_tracker.should_stop() {
           return Ok(());
         }
-        let origin = specifier.to_string();
-        let file_result = if token.is_cancelled() {
+        if token.is_cancelled() {
           Ok(())
         } else {
+          // All JsErrors are handled by test_specifier and piped into the test
+          // channel.
           create_and_run_current_thread(test::test_specifier(
             worker_factory,
             permissions,
             specifier,
-            sender.clone(),
+            worker_sender,
             fail_fast_tracker,
             test::TestSpecifierOptions {
               filter,
               shuffle: None,
-              trace_ops: false,
+              trace_leaks: false,
             },
           ))
-        };
-        if let Err(error) = file_result {
-          if error.is::<JsError>() {
-            sender.send(test::TestEvent::UncaughtError(
-              origin,
-              Box::new(error.downcast::<JsError>().unwrap()),
-            ))?;
-          } else {
-            return Err(error);
-          }
         }
-        Ok(())
       })
     });
 
@@ -333,11 +328,14 @@ impl TestRun {
         let mut tests_with_result = HashSet::new();
         let mut used_only = false;
 
-        while let Some(event) = receiver.recv().await {
+        while let Some((_, event)) = receiver.recv().await {
           match event {
             test::TestEvent::Register(description) => {
-              reporter.report_register(&description);
-              tests.write().insert(description.id, description);
+              for (_, description) in description.into_iter() {
+                reporter.report_register(description);
+                // TODO(mmastrac): we shouldn't need to clone here - we can re-use the descriptions
+                tests.write().insert(description.id, description.clone());
+              }
             }
             test::TestEvent::Plan(plan) => {
               summary.total += plan.total;
@@ -352,7 +350,7 @@ impl TestRun {
             test::TestEvent::Wait(id) => {
               reporter.report_wait(tests.read().get(&id).unwrap());
             }
-            test::TestEvent::Output(output) => {
+            test::TestEvent::Output(_, output) => {
               reporter.report_output(&output);
             }
             test::TestEvent::Result(id, result, elapsed) => {
@@ -363,7 +361,9 @@ impl TestRun {
                   test::TestResult::Ignored => summary.ignored += 1,
                   test::TestResult::Failed(error) => {
                     summary.failed += 1;
-                    summary.failures.push((description.clone(), error.clone()));
+                    summary
+                      .failures
+                      .push(((&description).into(), error.clone()));
                   }
                   test::TestResult::Cancelled => {
                     summary.failed += 1;
@@ -403,6 +403,9 @@ impl TestRun {
                   duration,
                 );
               }
+            }
+            test::TestEvent::Completed => {
+              reporter.report_completed();
             }
             test::TestEvent::ForceEndReport => {}
             test::TestEvent::Sigint => {}
@@ -448,7 +451,7 @@ impl TestRun {
         .iter()
         .map(|s| s.as_str()),
     );
-    args.push("--trace-ops");
+    args.push("--trace-leaks");
     if self.workspace_settings.unstable && !args.contains(&"--unstable") {
       args.push("--unstable");
     }
@@ -747,6 +750,10 @@ impl LspTestReporter {
         })
       }
     }
+  }
+
+  fn report_completed(&mut self) {
+    // there is nothing to do on report_completed
   }
 
   fn report_summary(

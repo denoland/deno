@@ -1,10 +1,12 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { core, primordials } from "ext:core/mod.js";
+import { core, internals, primordials } from "ext:core/mod.js";
 const {
   isDate,
+  internalRidSymbol,
+  createCancelHandle,
 } = core;
-const {
+import {
   op_fs_chdir,
   op_fs_chmod_async,
   op_fs_chmod_sync,
@@ -14,13 +16,17 @@ const {
   op_fs_copy_file_sync,
   op_fs_cwd,
   op_fs_fdatasync_async,
+  op_fs_fdatasync_async_unstable,
   op_fs_fdatasync_sync,
+  op_fs_fdatasync_sync_unstable,
+  op_fs_file_stat_async,
+  op_fs_file_stat_sync,
   op_fs_flock_async,
   op_fs_flock_sync,
-  op_fs_fstat_async,
-  op_fs_fstat_sync,
   op_fs_fsync_async,
+  op_fs_fsync_async_unstable,
   op_fs_fsync_sync,
+  op_fs_fsync_sync_unstable,
   op_fs_ftruncate_async,
   op_fs_ftruncate_sync,
   op_fs_funlock_async,
@@ -66,10 +72,8 @@ const {
   op_fs_utime_sync,
   op_fs_write_file_async,
   op_fs_write_file_sync,
-} = core.ensureFastOps();
-const {
-  op_cancel_handle,
-} = core.ensureFastOps(true);
+  op_set_raw,
+} from "ext:core/ops";
 const {
   ArrayPrototypeFilter,
   Date,
@@ -78,12 +82,14 @@ const {
   Function,
   MathTrunc,
   ObjectEntries,
+  ObjectDefineProperty,
   ObjectPrototypeIsPrototypeOf,
   ObjectValues,
   StringPrototypeSlice,
   StringPrototypeStartsWith,
   SymbolAsyncIterator,
   SymbolIterator,
+  SymbolFor,
   Uint32Array,
 } = primordials;
 
@@ -391,12 +397,12 @@ function parseFileInfo(response) {
 }
 
 function fstatSync(rid) {
-  op_fs_fstat_sync(rid, statBuf);
+  op_fs_file_stat_sync(rid, statBuf);
   return statStruct(statBuf);
 }
 
 async function fstat(rid) {
-  return parseFileInfo(await op_fs_fstat_async(rid));
+  return parseFileInfo(await op_fs_file_stat_async(rid));
 }
 
 async function lstat(path) {
@@ -615,7 +621,7 @@ function openSync(
     options,
   );
 
-  return new FsFile(rid);
+  return new FsFile(rid, SymbolFor("Deno.internal.FsFile"));
 }
 
 async function open(
@@ -628,7 +634,7 @@ async function open(
     options,
   );
 
-  return new FsFile(rid);
+  return new FsFile(rid, SymbolFor("Deno.internal.FsFile"));
 }
 
 function createSync(path) {
@@ -655,74 +661,139 @@ class FsFile {
   #readable;
   #writable;
 
-  constructor(rid) {
+  constructor(rid, symbol) {
+    ObjectDefineProperty(this, internalRidSymbol, {
+      enumerable: false,
+      value: rid,
+    });
     this.#rid = rid;
+    if (!symbol || symbol !== SymbolFor("Deno.internal.FsFile")) {
+      internals.warnOnDeprecatedApi(
+        "new Deno.FsFile()",
+        new Error().stack,
+        "Use `Deno.open` or `Deno.openSync` instead.",
+      );
+    }
   }
 
   get rid() {
+    internals.warnOnDeprecatedApi(
+      "Deno.FsFile.rid",
+      new Error().stack,
+      "Use `Deno.FsFile` methods directly instead.",
+    );
     return this.#rid;
   }
 
   write(p) {
-    return write(this.rid, p);
+    return write(this.#rid, p);
   }
 
   writeSync(p) {
-    return writeSync(this.rid, p);
+    return writeSync(this.#rid, p);
   }
 
   truncate(len) {
-    return ftruncate(this.rid, len);
+    return ftruncate(this.#rid, len);
   }
 
   truncateSync(len) {
-    return ftruncateSync(this.rid, len);
+    return ftruncateSync(this.#rid, len);
   }
 
   read(p) {
-    return read(this.rid, p);
+    return read(this.#rid, p);
   }
 
   readSync(p) {
-    return readSync(this.rid, p);
+    return readSync(this.#rid, p);
   }
 
   seek(offset, whence) {
-    return seek(this.rid, offset, whence);
+    return seek(this.#rid, offset, whence);
   }
 
   seekSync(offset, whence) {
-    return seekSync(this.rid, offset, whence);
+    return seekSync(this.#rid, offset, whence);
   }
 
   stat() {
-    return fstat(this.rid);
+    return fstat(this.#rid);
   }
 
   statSync() {
-    return fstatSync(this.rid);
+    return fstatSync(this.#rid);
+  }
+
+  async syncData() {
+    await op_fs_fdatasync_async_unstable(this.#rid);
+  }
+
+  syncDataSync() {
+    op_fs_fdatasync_sync_unstable(this.#rid);
   }
 
   close() {
-    core.close(this.rid);
+    core.close(this.#rid);
   }
 
   get readable() {
     if (this.#readable === undefined) {
-      this.#readable = readableStreamForRid(this.rid);
+      this.#readable = readableStreamForRid(this.#rid);
     }
     return this.#readable;
   }
 
   get writable() {
     if (this.#writable === undefined) {
-      this.#writable = writableStreamForRid(this.rid);
+      this.#writable = writableStreamForRid(this.#rid);
     }
     return this.#writable;
   }
 
+  async sync() {
+    await op_fs_fsync_async_unstable(this.#rid);
+  }
+
+  syncSync() {
+    op_fs_fsync_sync_unstable(this.#rid);
+  }
+
+  async utime(atime, mtime) {
+    await futime(this.#rid, atime, mtime);
+  }
+
+  utimeSync(atime, mtime) {
+    futimeSync(this.#rid, atime, mtime);
+  }
+
+  isTerminal() {
+    return core.isTerminal(this.#rid);
+  }
+
+  setRaw(mode, options = {}) {
+    const cbreak = !!(options.cbreak ?? false);
+    op_set_raw(this.#rid, mode, cbreak);
+  }
+
+  lockSync(exclusive = false) {
+    op_fs_flock_sync(this.#rid, exclusive);
+  }
+
+  async lock(exclusive = false) {
+    await op_fs_flock_async(this.#rid, exclusive);
+  }
+
+  unlockSync() {
+    op_fs_funlock_sync(this.#rid);
+  }
+
+  async unlock() {
+    await op_fs_funlock_async(this.#rid);
+  }
+
   [SymbolDispose]() {
-    core.tryClose(this.rid);
+    core.tryClose(this.#rid);
   }
 }
 
@@ -762,7 +833,7 @@ async function readFile(path, options) {
   let abortHandler;
   if (options?.signal) {
     options.signal.throwIfAborted();
-    cancelRid = op_cancel_handle();
+    cancelRid = createCancelHandle();
     abortHandler = () => core.tryClose(cancelRid);
     options.signal[abortSignal.add](abortHandler);
   }
@@ -792,7 +863,7 @@ async function readTextFile(path, options) {
   let abortHandler;
   if (options?.signal) {
     options.signal.throwIfAborted();
-    cancelRid = op_cancel_handle();
+    cancelRid = createCancelHandle();
     abortHandler = () => core.tryClose(cancelRid);
     options.signal[abortSignal.add](abortHandler);
   }
@@ -838,7 +909,7 @@ async function writeFile(
   let abortHandler;
   if (options.signal) {
     options.signal.throwIfAborted();
-    cancelRid = op_cancel_handle();
+    cancelRid = createCancelHandle();
     abortHandler = () => core.tryClose(cancelRid);
     options.signal[abortSignal.add](abortHandler);
   }

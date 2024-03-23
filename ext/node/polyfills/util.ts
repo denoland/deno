@@ -28,7 +28,7 @@ const {
 } = primordials;
 
 import { promisify } from "ext:deno_node/internal/util.mjs";
-import { callbackify } from "ext:deno_node/_util/_util_callbackify.ts";
+import { callbackify } from "ext:deno_node/_util/_util_callbackify.js";
 import { debuglog } from "ext:deno_node/internal/util/debuglog.ts";
 import {
   format,

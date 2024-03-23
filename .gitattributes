@@ -2,11 +2,11 @@
 * text=auto eol=lf
 *.png -text
 
-/cli/tests/testdata/encoding/* -text
+/tests/testdata/encoding/* -text
 
 # Tell git which symlinks point to files, and which ones point to directories.
 # This is relevant for Windows only, and requires git >= 2.19.2 to work.
-/cli/tests/testdata/symlink_to_subdir symlink=dir
+/tests/testdata/symlink_to_subdir symlink=dir
 
 # Tell github these are vendored files.
 # Doesn't include them in the language statistics.
@@ -14,4 +14,4 @@
 /cli/dts/* linguist-vendored
 
 # Keep Windows line endings in cross-platform doc check test file
-/cli/tests/testdata/test/markdown_windows.md eol=crlf
+/tests/testdata/test/markdown_windows.md eol=crlf

@@ -6,21 +6,23 @@
 /// <reference path="../web/lib.deno_web.d.ts" />
 /// <reference path="./lib.deno_webgpu.d.ts" />
 
-import { core, primordials } from "ext:core/mod.js";
-const {
+import { primordials } from "ext:core/mod.js";
+import {
   op_webgpu_surface_configure,
+  op_webgpu_surface_create,
   op_webgpu_surface_get_current_texture,
   op_webgpu_surface_present,
-} = core.ensureFastOps();
+} from "ext:core/ops";
 const {
   ObjectPrototypeIsPrototypeOf,
   Symbol,
   SymbolFor,
+  TypeError,
 } = primordials;
 
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
-import { loadWebGPU, webgpu } from "ext:deno_webgpu/00_init.js";
+import { loadWebGPU } from "ext:deno_webgpu/00_init.js";
 
 const _surfaceRid = Symbol("[[surfaceRid]]");
 const _configuration = Symbol("[[configuration]]");
@@ -53,7 +55,7 @@ class GPUCanvasContext {
       context: "Argument 1",
     });
 
-    const { _device, assertDevice } = webgpu;
+    const { _device, assertDevice } = loadWebGPU();
     this[_device] = configuration.device[_device];
     this[_configuration] = configuration;
     const device = assertDevice(this, {
@@ -76,7 +78,7 @@ class GPUCanvasContext {
   }
 
   unconfigure() {
-    const { _device } = webgpu;
+    const { _device } = loadWebGPU();
 
     webidl.assertBranded(this, GPUCanvasContextPrototype);
 
@@ -92,7 +94,7 @@ class GPUCanvasContext {
     if (this[_configuration] === null) {
       throw new DOMException("context is not configured.", "InvalidStateError");
     }
-    const { createGPUTexture, assertDevice } = webgpu;
+    const { createGPUTexture, assertDevice } = loadWebGPU();
 
     const device = assertDevice(this, { prefix, context: "this" });
 
@@ -128,7 +130,7 @@ class GPUCanvasContext {
 
   // Required to present the texture; browser don't need this.
   [_present]() {
-    const { assertDevice } = webgpu;
+    const { assertDevice } = loadWebGPU();
 
     webidl.assertBranded(this, GPUCanvasContextPrototype);
     const prefix = "Failed to execute 'present' on 'GPUCanvasContext'";
@@ -158,16 +160,34 @@ const GPUCanvasContextPrototype = GPUCanvasContext.prototype;
 
 function createCanvasContext(options) {
   // lazy load webgpu if needed
-  loadWebGPU();
-
   const canvasContext = webidl.createBranded(GPUCanvasContext);
   canvasContext[_surfaceRid] = options.surfaceRid;
   canvasContext[_canvas] = options.canvas;
   return canvasContext;
 }
 
-function presentGPUCanvasContext(ctx) {
-  ctx[_present]();
+// External webgpu surfaces
+
+// TODO(@littledivy): This will extend `OffscreenCanvas` when we add it.
+class UnsafeWindowSurface {
+  #ctx;
+  #surfaceRid;
+
+  constructor(system, win, display) {
+    this.#surfaceRid = op_webgpu_surface_create(system, win, display);
+  }
+
+  getContext(context) {
+    if (context !== "webgpu") {
+      throw new TypeError("Only 'webgpu' context is supported.");
+    }
+    this.#ctx = createCanvasContext({ surfaceRid: this.#surfaceRid });
+    return this.#ctx;
+  }
+
+  present() {
+    this.#ctx[_present]();
+  }
 }
 
-export { createCanvasContext, GPUCanvasContext, presentGPUCanvasContext };
+export { GPUCanvasContext, UnsafeWindowSurface };

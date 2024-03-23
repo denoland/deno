@@ -6,7 +6,7 @@ const {
   isDataView,
   isTypedArray,
 } = core;
-const {
+import {
   op_ffi_buf_copy_into,
   op_ffi_call_nonblocking,
   op_ffi_call_ptr,
@@ -36,7 +36,7 @@ const {
   op_ffi_unsafe_callback_close,
   op_ffi_unsafe_callback_create,
   op_ffi_unsafe_callback_ref,
-} = core.ensureFastOps(true);
+} from "ext:core/ops";
 const {
   ArrayBufferIsView,
   ArrayBufferPrototypeGetByteLength,

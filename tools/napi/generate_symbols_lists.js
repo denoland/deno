@@ -1,4 +1,4 @@
-#!/usr/bin/env -S deno run --unstable --allow-read --allow-write
+#!/usr/bin/env -S deno run --allow-read --allow-write
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import exports from "../../cli/napi/sym/symbol_exports.json" assert {
@@ -7,8 +7,6 @@ import exports from "../../cli/napi/sym/symbol_exports.json" assert {
 
 const symbolExportLists = {
   linux: `{ ${exports.symbols.map((s) => `"${s}"`).join("; ")}; };`,
-  openbsd: `{ ${exports.symbols.map((s) => `"${s}"`).join("; ")}; };`,
-  freebsd: `{ ${exports.symbols.map((s) => `"${s}"`).join("; ")}; };`,
   windows: `LIBRARY\nEXPORTS\n${
     exports.symbols
       .map((symbol) => "  " + symbol)

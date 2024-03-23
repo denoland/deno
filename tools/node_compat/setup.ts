@@ -1,16 +1,16 @@
 #!/usr/bin/env -S deno run --allow-read=. --allow-write=. --allow-run=git
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-/** This copies the test files according to the config file `cli/tests/node_compat/config.jsonc` */
+/** This copies the test files according to the config file `tests/node_compat/config.jsonc` */
 
-import { walk } from "../../test_util/std/fs/walk.ts";
-import { sep } from "../../test_util/std/path/mod.ts";
-import { ensureFile } from "../../test_util/std/fs/ensure_file.ts";
-import { writeAll } from "../../test_util/std/streams/write_all.ts";
-import { withoutAll } from "../../test_util/std/collections/without_all.ts";
-import { relative } from "../../test_util/std/path/posix.ts";
+import { walk } from "@std/fs/walk.ts";
+import { sep } from "@std/path/mod.ts";
+import { ensureFile } from "@std/fs/ensure_file.ts";
+import { writeAll } from "@std/streams/write_all.ts";
+import { withoutAll } from "@std/collections/without_all.ts";
+import { relative } from "@std/path/posix.ts";
 
-import { config, ignoreList } from "../../cli/tests/node_compat/common.ts";
+import { config, ignoreList } from "../../tests/node_compat/common.ts";
 
 const encoder = new TextEncoder();
 
@@ -39,7 +39,7 @@ const NODE_IGNORED_TEST_DIRS = [
 
 const VENDORED_NODE_TEST = new URL("node/test/", import.meta.url);
 const NODE_COMPAT_TEST_DEST_URL = new URL(
-  "../../cli/tests/node_compat/test/",
+  "../../tests/node_compat/test/",
   import.meta.url,
 );
 
@@ -65,7 +65,7 @@ function getDenoTests() {
 }
 
 async function updateToDo() {
-  const file = await Deno.open(new URL("./TODO.md", import.meta.url), {
+  using file = await Deno.open(new URL("./TODO.md", import.meta.url), {
     write: true,
     create: true,
     truncate: true,
@@ -76,9 +76,7 @@ async function updateToDo() {
   await file.write(encoder.encode(`<!-- deno-fmt-ignore-file -->
 # Remaining Node Tests
 
-NOTE: This file should not be manually edited. Please edit \`cli/tests/node_compat/config.json\` and run \`deno task setup\` in \`tools/node_compat\` dir instead.
-
-Total: ${missingTests.length}
+NOTE: This file should not be manually edited. Please edit \`tests/node_compat/config.json\` and run \`deno task setup\` in \`tools/node_compat\` dir instead.
 
 `));
   for (const test of missingTests) {
@@ -88,7 +86,6 @@ Total: ${missingTests.length}
       ),
     );
   }
-  file.close();
 }
 
 async function clearTests() {

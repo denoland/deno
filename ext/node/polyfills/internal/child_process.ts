@@ -7,10 +7,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { core, internals } from "ext:core/mod.js";
-const {
-  op_node_ipc_read,
-  op_node_ipc_write,
-} = core.ensureFastOps();
+import { op_node_ipc_read, op_node_ipc_write } from "ext:core/ops";
 import {
   ArrayIsArray,
   ArrayPrototypeFilter,
@@ -278,7 +275,11 @@ export class ChildProcess extends EventEmitter {
         });
       })();
     } catch (err) {
-      this.#_handleError(err);
+      let e = err;
+      if (e instanceof Deno.errors.NotFound) {
+        e = _createSpawnSyncError("ENOENT", command, args);
+      }
+      this.#_handleError(e);
     }
   }
 
@@ -303,7 +304,9 @@ export class ChildProcess extends EventEmitter {
     }
 
     /* Cancel any pending IPC I/O */
-    this.disconnect?.();
+    if (this.implementsDisconnect) {
+      this.disconnect?.();
+    }
 
     this.killed = true;
     this.signalCode = denoSignal;
@@ -1151,6 +1154,7 @@ export function setupChannel(target, ipc) {
       target.emit("disconnect");
     });
   };
+  target.implementsDisconnect = true;
 
   // Start reading messages from the channel.
   readLoop();

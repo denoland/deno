@@ -2,7 +2,6 @@
 
 use std::io::Read;
 
-use deno_ast::MediaType;
 use deno_core::error::AnyError;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
@@ -40,7 +39,7 @@ To grant permissions, set them before the script argument. For example:
 
   // TODO(bartlomieju): actually I think it will also fail if there's an import
   // map specified and bare specifier is used on the command line
-  let factory = CliFactory::from_flags(flags).await?;
+  let factory = CliFactory::from_flags(flags)?;
   let deno_dir = factory.deno_dir()?;
   let http_client = factory.http_client();
   let cli_options = factory.cli_options();
@@ -77,7 +76,7 @@ To grant permissions, set them before the script argument. For example:
 }
 
 pub async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
-  let factory = CliFactory::from_flags(flags).await?;
+  let factory = CliFactory::from_flags(flags)?;
   let cli_options = factory.cli_options();
   let main_module = cli_options.resolve_main_module()?;
 
@@ -90,17 +89,13 @@ pub async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
   )?);
   let mut source = Vec::new();
   std::io::stdin().read_to_end(&mut source)?;
-  // Create a dummy source file.
-  let source_file = File {
-    maybe_types: None,
-    media_type: MediaType::TypeScript,
-    source: String::from_utf8(source)?.into(),
+  // Save a fake file into file fetcher cache
+  // to allow module access by TS compiler
+  file_fetcher.insert_memory_files(File {
     specifier: main_module.clone(),
     maybe_headers: None,
-  };
-  // Save our fake file into file fetcher cache
-  // to allow module access by TS compiler
-  file_fetcher.insert_cached(source_file);
+    source: source.into(),
+  });
 
   let mut worker = worker_factory
     .create_main_worker(main_module, permissions)
@@ -126,8 +121,7 @@ async fn run_with_watch(
     move |flags, watcher_communicator, _changed_paths| {
       Ok(async move {
         let factory = CliFactoryBuilder::new()
-          .build_from_flags_for_watcher(flags, watcher_communicator.clone())
-          .await?;
+          .build_from_flags_for_watcher(flags, watcher_communicator.clone())?;
         let cli_options = factory.cli_options();
         let main_module = cli_options.resolve_main_module()?;
 
@@ -165,7 +159,7 @@ pub async fn eval_command(
   flags: Flags,
   eval_flags: EvalFlags,
 ) -> Result<i32, AnyError> {
-  let factory = CliFactory::from_flags(flags).await?;
+  let factory = CliFactory::from_flags(flags)?;
   let cli_options = factory.cli_options();
   let file_fetcher = factory.file_fetcher()?;
   let main_module = cli_options.resolve_main_module()?;
@@ -177,20 +171,15 @@ pub async fn eval_command(
     format!("console.log({})", eval_flags.code)
   } else {
     eval_flags.code
-  }
-  .into_bytes();
-
-  let file = File {
-    maybe_types: None,
-    media_type: MediaType::Unknown,
-    source: String::from_utf8(source_code)?.into(),
-    specifier: main_module.clone(),
-    maybe_headers: None,
   };
 
-  // Save our fake file into file fetcher cache
+  // Save a fake file into file fetcher cache
   // to allow module access by TS compiler.
-  file_fetcher.insert_cached(file);
+  file_fetcher.insert_memory_files(File {
+    specifier: main_module.clone(),
+    maybe_headers: None,
+    source: source_code.into_bytes().into(),
+  });
 
   let permissions = PermissionsContainer::new(Permissions::from_options(
     &cli_options.permissions_options(),

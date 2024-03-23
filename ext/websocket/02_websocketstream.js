@@ -13,7 +13,7 @@ import {
   op_ws_next_event,
   op_ws_send_binary_async,
   op_ws_send_text_async,
-} from "ext:deno_websocket/00_ops.js";
+} from "ext:core/ops";
 const {
   ArrayPrototypeJoin,
   ArrayPrototypeMap,

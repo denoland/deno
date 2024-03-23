@@ -11,18 +11,17 @@ Node.js compat testing in Deno repository.
   - This script sets up the Node.js compat tests.
 - `//tools/node_compat/versions/`
   - Node.js source tarballs and extracted test cases are stored here.
-- `//cli/tests/node_compat/config.jsonc`
+- `//tests/node_compat/config.jsonc`
   - This json file stores the settings about which Node.js compat test to run
     with Deno.
-- `//cli/tests/node_compat/test`
+- `//tests/node_compat/test`
   - The actual test cases are stored here.
 
 ## Steps to add new test cases from Node.js test cases
 
-1. Update `tests` property of `//cli/tests/node_compat/config.jsonc`. For
-   example, if you want to add `test/parallel/test-foo.js` from Node.js test
-   cases, then add `test-foo.js` entry in `tests.parallel` array property in
-   `config.jsonc`
+1. Update `tests` property of `//tests/node_compat/config.jsonc`. For example,
+   if you want to add `test/parallel/test-foo.js` from Node.js test cases, then
+   add `test-foo.js` entry in `tests.parallel` array property in `config.jsonc`
 1. Run `deno task setup` in `tools/node_compat` dir.
 
 The above command copies the updated items from Node.js tarball to the Deno
