@@ -399,7 +399,7 @@ impl TypeCheckMode {
     match self.is_true() {
       true => GraphKind::All,
       false => GraphKind::CodeOnly,
-}
+    }
   }
 }
 
