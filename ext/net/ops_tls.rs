@@ -456,8 +456,6 @@ where
     .ok_or_else(|| generic_error("No resolved address found"))?;
 
   let tcp_listener = TcpLbListener::bind(bind_addr, args.reuse_port)?;
-  #[cfg(not(windows))]
-  tcp_listener.set_reuse_address(true)?;
   let local_addr = tcp_listener.local_addr()?;
 
   let tls_listener_resource = NetworkListenerResource::new(TlsListener {

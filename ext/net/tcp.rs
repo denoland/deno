@@ -27,11 +27,8 @@ pub struct TcpConnection {
 impl TcpConnection {
   /// Boot a load-balanced TCP connection
   pub fn start(key: SocketAddr) -> std::io::Result<Self> {
-    let listener = std::net::TcpListener::bind(key)?;
-    let socket = socket2::Socket::from(listener);
-    socket.set_nonblocking(true)?;
-
-    let sock = socket.into();
+    let listener = bind_socket_and_listen(key, false)?;
+    let sock = listener.into();
 
     Ok(Self { sock, key })
   }
@@ -89,26 +86,11 @@ impl TcpLbListener {
   }
 
   /// Bind directly to the port.
-  #[allow(unused_variables)]
   fn bind_direct(
     socket_addr: SocketAddr,
     reuse_port: bool,
   ) -> std::io::Result<Self> {
-    let socket = if socket_addr.is_ipv4() {
-      socket2::Socket::new(Domain::IPV4, Type::STREAM, Some(Protocol::TCP))?
-    } else {
-      socket2::Socket::new(Domain::IPV6, Type::STREAM, Some(Protocol::TCP))?
-    };
-    #[cfg(target_os = "linux")]
-    if reuse_port {
-      socket.set_reuse_port(true)?;
-    }
-    socket.bind(&socket_addr.into())?;
-    socket.listen(128)?;
-
-    let listener = socket.into();
-    let socket = socket2::SockRef::from(&listener);
-    socket.set_nonblocking(true)?;
+    let listener = bind_socket_and_listen(socket_addr, reuse_port)?;
     Ok(Self {
       listener: Some(tokio::net::TcpListener::from_std(listener)?),
       conn: None,
@@ -132,11 +114,6 @@ impl TcpLbListener {
       listener,
       conn: Some(conn),
     })
-  }
-
-  pub fn set_reuse_address(&self, flag: bool) -> std::io::Result<()> {
-    socket2::SockRef::from(&self.listener.as_ref().unwrap())
-      .set_reuse_address(flag)
   }
 
   pub async fn accept(
@@ -164,4 +141,28 @@ impl Drop for TcpLbListener {
       }
     }
   }
+}
+
+/// Bind a socket to an address and listen with the low-level options we need.
+#[allow(unused_variables)]
+fn bind_socket_and_listen(
+  socket_addr: SocketAddr,
+  reuse_port: bool,
+) -> Result<std::net::TcpListener, std::io::Error> {
+  let socket = if socket_addr.is_ipv4() {
+    socket2::Socket::new(Domain::IPV4, Type::STREAM, Some(Protocol::TCP))?
+  } else {
+    socket2::Socket::new(Domain::IPV6, Type::STREAM, Some(Protocol::TCP))?
+  };
+  #[cfg(target_os = "linux")]
+  if reuse_port {
+    socket.set_reuse_port(true)?;
+  }
+  #[cfg(not(windows))]
+  socket.set_reuse_address(true)?;
+  socket.set_nonblocking(true)?;
+  socket.bind(&socket_addr.into())?;
+  socket.listen(128)?;
+  let listener = socket.into();
+  Ok(listener)
 }
