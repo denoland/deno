@@ -89,6 +89,7 @@ impl TcpLbListener {
   }
 
   /// Bind directly to the port.
+  #[allow(unused_variables)]
   fn bind_direct(
     socket_addr: SocketAddr,
     reuse_port: bool,
@@ -98,12 +99,11 @@ impl TcpLbListener {
     } else {
       socket2::Socket::new(Domain::IPV6, Type::STREAM, Some(Protocol::TCP))?
     };
+    #[cfg(target_os = "linux")]
     if reuse_port {
-      #[cfg(target_os = "linux")]
       socket.set_reuse_port(true)?;
-    } else {
-      unreachable!()
     }
+    socket.bind(&socket_addr.into())?;
     socket.listen(128)?;
 
     let listener = socket.into();
