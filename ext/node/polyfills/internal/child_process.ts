@@ -501,13 +501,20 @@ function normalizeStdioOption(
   ...Array<Stream | NodeStdio | number>,
 ] {
   if (Array.isArray(stdio)) {
-    // `[0, 1, 2]` & [null, null, null] is equivalent to `"inherit"`
+    // `[0, 1, 2]` is equivalent to `"inherit"`
     if (
       stdio.length === 3 &&
-      ((stdio[0] === 0 && stdio[1] === 1 && stdio[2] === 2) ||
-        stdio[0] === null || stdio[1] === null || stdio[2] === null)
+      (stdio[0] === 0 && stdio[1] === 1 && stdio[2] === 2)
     ) {
       return ["inherit", "inherit", "inherit"];
+    }
+
+    // `[null, null, null]` is equivalent to `"pipe"
+    if (
+      stdio.length === 3 &&
+        stdio[0] === null || stdio[1] === null || stdio[2] === null
+    ) {
+      return ["pipe", "pipe", "pipe"];
     }
 
     // At least 3 stdio must be created to match node
