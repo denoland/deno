@@ -1644,7 +1644,7 @@ impl CliOptions {
       ..
     }) = &self.flags.subcommand
     {
-      excluded_files.clone()
+      excluded_files.iter().map(|path| self.initial_cwd.join(path)).collect()
     } else {
       Vec::with_capacity(0)
     }

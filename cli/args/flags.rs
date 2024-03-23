@@ -254,7 +254,7 @@ pub struct WatchFlagsWithPaths {
   pub hmr: bool,
   pub paths: Vec<String>,
   pub no_clear_screen: bool,
-  pub excluded_paths: Vec<PathBuf>,
+  pub excluded_paths: Vec<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -399,7 +399,7 @@ impl TypeCheckMode {
     match self.is_true() {
       true => GraphKind::All,
       false => GraphKind::CodeOnly,
-    }
+}
   }
 }
 
@@ -3111,7 +3111,7 @@ fn watch_exclude_arg() -> Arg {
     .help("Exclude provided files from watch mode")
     .value_name("FILES")
     .num_args(0..)
-    .value_parser(value_parser!(PathBuf))
+    .value_parser(value_parser!(String))
     .use_value_delimiter(true)
     .require_equals(true)
     .value_hint(ValueHint::AnyPath)
@@ -4272,8 +4272,8 @@ fn watch_arg_parse_with_paths(
       hmr: false,
       no_clear_screen: matches.get_flag("no-clear-screen"),
       excluded_paths: matches
-        .remove_many::<PathBuf>("watch-exclude")
-        .map(|f| f.collect::<Vec<PathBuf>>())
+        .remove_many::<String>("watch-exclude")
+        .map(|f| f.collect::<Vec<String>>())
         .unwrap_or_default(),
     });
   }
@@ -4285,8 +4285,8 @@ fn watch_arg_parse_with_paths(
       hmr: true,
       no_clear_screen: matches.get_flag("no-clear-screen"),
       excluded_paths: matches
-        .remove_many::<PathBuf>("watch-exclude")
-        .map(|f| f.collect::<Vec<PathBuf>>())
+        .remove_many::<String>("watch-exclude")
+        .map(|f| f.collect::<Vec<String>>())
         .unwrap_or_default(),
     })
 }
@@ -4580,7 +4580,7 @@ mod tests {
             hmr: false,
             paths: vec![],
             no_clear_screen: false,
-            excluded_paths: vec![PathBuf::from("foo")],
+            excluded_paths: vec![String::from("foo")],
           }),
         }),
         ..Flags::default()
@@ -4602,9 +4602,9 @@ mod tests {
           script: "script.ts".to_string(),
           watch: Some(WatchFlagsWithPaths {
             hmr: false,
-            paths: vec![PathBuf::from("foo")],
+            paths: vec![String::from("foo")],
             no_clear_screen: false,
-            excluded_paths: vec![PathBuf::from("bar")],
+            excluded_paths: vec![String::from("bar")],
           }),
         }),
         ..Flags::default()
@@ -4629,7 +4629,7 @@ mod tests {
             hmr: false,
             paths: vec![],
             no_clear_screen: false,
-            excluded_paths: vec![PathBuf::from("foo"), PathBuf::from("bar")],
+            excluded_paths: vec![String::from("foo"), String::from("bar")],
           }),
         }),
         ..Flags::default()
@@ -4652,9 +4652,9 @@ mod tests {
           script: "script.ts".to_string(),
           watch: Some(WatchFlagsWithPaths {
             hmr: false,
-            paths: vec![PathBuf::from("foo"), PathBuf::from("bar")],
+            paths: vec![String::from("foo"), String::from("bar")],
             no_clear_screen: false,
-            excluded_paths: vec![PathBuf::from("baz"), PathBuf::from("qux"),],
+            excluded_paths: vec![String::from("baz"), String::from("qux"),],
           }),
         }),
         ..Flags::default()
