@@ -169,7 +169,7 @@ async function mainFetch(req, recursive, terminator) {
   try {
     resp = await opFetchSend(requestRid);
   } catch (err) {
-    if (terminator.aborted) return;
+    if (terminator.aborted) return abortedNetworkError();
     throw err;
   } finally {
     if (cancelHandleRid !== null) {
