@@ -916,22 +916,6 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
 
   let mut flags = Flags::default();
 
-  if matches.get_flag("unstable") {
-    flags.unstable_config.legacy_flag_enabled = true;
-  }
-
-  for (name, _, _) in crate::UNSTABLE_GRANULAR_FLAGS {
-    if matches.get_flag(&format!("unstable-{}", name)) {
-      flags.unstable_config.features.push(name.to_string());
-    }
-  }
-
-  flags.unstable_config.bare_node_builtins =
-    matches.get_flag("unstable-bare-node-builtins");
-  flags.unstable_config.byonm = matches.get_flag("unstable-byonm");
-  flags.unstable_config.sloppy_imports =
-    matches.get_flag("unstable-sloppy-imports");
-
   if matches.get_flag("quiet") {
     flags.log_level = Some(Level::Error);
   } else if let Some(log_level) = matches.get_one::<String>("log-level") {
@@ -1016,71 +1000,19 @@ fn clap_root() -> Command {
     crate::version::TYPESCRIPT
   );
 
-  let mut cmd = Command::new("deno")
+  Command::new("deno")
     .bin_name("deno")
     .styles(
       clap::builder::Styles::styled()
         .header(AnsiColor::Yellow.on_default())
         .usage(AnsiColor::White.on_default())
         .literal(AnsiColor::Green.on_default())
-        .placeholder(AnsiColor::Green.on_default())
+        .placeholder(AnsiColor::Green.on_default()),
     )
     .color(ColorChoice::Auto)
     .max_term_width(80)
     .version(crate::version::deno())
     .long_version(long_version)
-    // cause --unstable flags to display at the bottom of the help text
-    .next_display_order(1000)
-    .arg(
-      Arg::new("unstable")
-        .long("unstable")
-        .help("Enable unstable features and APIs")
-        .action(ArgAction::SetTrue)
-        .global(true),
-    )
-    .arg(
-      Arg::new("unstable-bare-node-builtins")
-        .long("unstable-bare-node-builtins")
-        .help("Enable unstable bare node builtins feature")
-        .env("DENO_UNSTABLE_BARE_NODE_BUILTINS")
-        .value_parser(FalseyValueParser::new())
-        .action(ArgAction::SetTrue)
-        .global(true),
-    )
-    .arg(
-      Arg::new("unstable-byonm")
-        .long("unstable-byonm")
-        .help("Enable unstable 'bring your own node_modules' feature")
-        .env("DENO_UNSTABLE_BYONM")
-        .value_parser(FalseyValueParser::new())
-        .action(ArgAction::SetTrue)
-        .global(true),
-    )
-    .arg(
-      Arg::new("unstable-sloppy-imports")
-        .long("unstable-sloppy-imports")
-        .help(
-          "Enable unstable resolving of specifiers by extension probing, .js to .ts, and directory probing.",
-        )
-        .env("DENO_UNSTABLE_SLOPPY_IMPORTS")
-        .value_parser(FalseyValueParser::new())
-        .action(ArgAction::SetTrue)
-        .global(true),
-    );
-
-  for (flag_name, help, _) in crate::UNSTABLE_GRANULAR_FLAGS {
-    cmd = cmd.arg(
-      Arg::new(format!("unstable-{}", flag_name))
-        .long(format!("unstable-{}", flag_name))
-        .help(help)
-        .action(ArgAction::SetTrue)
-        .global(true),
-    );
-  }
-
-  cmd
-    // reset the display order after the unstable flags
-    .next_display_order(0)
     .arg(
       Arg::new("log-level")
         .short('L')
@@ -2648,6 +2580,56 @@ static ALLOW_ALL_HELP: &str = concat!(
   "/basics/permissions\n"
 );
 
+fn unstable_args(app: Command) -> Command {
+  let mut app = app
+  // Make --unstable flags to display at the bottom of the help text
+  .next_display_order(1000)
+  .arg(
+    Arg::new("unstable")
+      .long("unstable")
+      .help("Enable unstable features and APIs")
+      .action(ArgAction::SetTrue)
+  )
+  .arg(
+    Arg::new("unstable-bare-node-builtins")
+      .long("unstable-bare-node-builtins")
+      .help("Enable unstable bare node builtins feature")
+      .env("DENO_UNSTABLE_BARE_NODE_BUILTINS")
+      .value_parser(FalseyValueParser::new())
+      .action(ArgAction::SetTrue)
+  )
+  .arg(
+    Arg::new("unstable-byonm")
+      .long("unstable-byonm")
+      .help("Enable unstable 'bring your own node_modules' feature")
+      .env("DENO_UNSTABLE_BYONM")
+      .value_parser(FalseyValueParser::new())
+      .action(ArgAction::SetTrue)
+  )
+  .arg(
+    Arg::new("unstable-sloppy-imports")
+      .long("unstable-sloppy-imports")
+      .help(
+        "Enable unstable resolving of specifiers by extension probing, .js to .ts, and directory probing.",
+      )
+      .env("DENO_UNSTABLE_SLOPPY_IMPORTS")
+      .value_parser(FalseyValueParser::new())
+      .action(ArgAction::SetTrue)
+  );
+
+  for (flag_name, help, _) in crate::UNSTABLE_GRANULAR_FLAGS {
+    app = app.arg(
+      Arg::new(format!("unstable-{}", flag_name))
+        .long(format!("unstable-{}", flag_name))
+        .help(help)
+        .action(ArgAction::SetTrue),
+    );
+  }
+
+  app // reset the display order after the unstable flags
+    .next_display_order(0)
+}
+
 fn permission_args(app: Command) -> Command {
   app
     .arg(
@@ -2848,6 +2830,7 @@ fn runtime_args(
   include_inspector: bool,
 ) -> Command {
   let app = compile_args(app);
+  let app = unstable_args(app);
   let app = if include_perms {
     permission_args(app)
   } else {
@@ -3929,6 +3912,25 @@ fn compile_args_without_check_parse(
   ca_file_arg_parse(flags, matches);
 }
 
+fn unstable_args_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  if matches.get_flag("unstable") {
+    flags.unstable_config.legacy_flag_enabled = true;
+  }
+
+  for (name, _, _) in crate::UNSTABLE_GRANULAR_FLAGS {
+    if matches.get_flag(&format!("unstable-{}", name)) {
+      flags.unstable_config.features.push(name.to_string());
+    }
+  }
+
+  // TODO(bartlomieju): these flags might actually be used in non-runtime subcommands
+  flags.unstable_config.bare_node_builtins =
+    matches.get_flag("unstable-bare-node-builtins");
+  flags.unstable_config.byonm = matches.get_flag("unstable-byonm");
+  flags.unstable_config.sloppy_imports =
+    matches.get_flag("unstable-sloppy-imports");
+}
+
 fn permission_args_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   unsafely_ignore_certificate_errors_parse(flags, matches);
   if let Some(read_wl) = matches.remove_many::<String>("allow-read") {
@@ -4032,6 +4034,7 @@ fn runtime_args_parse(
   include_perms: bool,
   include_inspector: bool,
 ) {
+  unstable_args_parse(flags, matches);
   compile_args_parse(flags, matches);
   cached_only_arg_parse(flags, matches);
   if include_perms {
@@ -4301,7 +4304,7 @@ mod tests {
   #[test]
   fn global_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "--unstable", "--log-level", "debug", "--quiet", "run", "script.ts"]);
+    let r = flags_from_vec(svec!["deno", "--log-level", "debug", "--quiet", "run", "script.ts"]);
 
     let flags = r.unwrap();
     assert_eq!(
@@ -4310,16 +4313,12 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags::new_default(
           "script.ts".to_string()
         )),
-        unstable_config: UnstableConfig {
-          legacy_flag_enabled: true,
-          ..Default::default()
-        },
         log_level: Some(Level::Error),
         ..Flags::default()
       }
     );
     #[rustfmt::skip]
-    let r2 = flags_from_vec(svec!["deno", "run", "--unstable", "--log-level", "debug", "--quiet", "script.ts"]);
+    let r2 = flags_from_vec(svec!["deno", "run", "--log-level", "debug", "--quiet", "script.ts"]);
     let flags2 = r2.unwrap();
     assert_eq!(flags2, flags);
   }
@@ -8334,8 +8333,7 @@ mod tests {
   #[test]
   fn task_with_global_flags() {
     // can fail if the custom parser in task_parse() starts at the wrong index
-    let r =
-      flags_from_vec(svec!["deno", "--quiet", "--unstable", "task", "build"]);
+    let r = flags_from_vec(svec!["deno", "--quiet", "task", "build"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -8343,10 +8341,6 @@ mod tests {
           cwd: None,
           task: Some("build".to_string()),
         }),
-        unstable_config: UnstableConfig {
-          legacy_flag_enabled: true,
-          ..Default::default()
-        },
         log_level: Some(log::Level::Error),
         ..Flags::default()
       }
