@@ -564,6 +564,7 @@ const NOT_IMPORTED_OPS = [
   "op_bench_now",
   "op_dispatch_bench_event",
   "op_register_bench",
+  "op_bench_get_origin",
 
   // Related to `Deno.jupyter` API
   "op_jupyter_broadcast",
