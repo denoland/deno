@@ -25,6 +25,7 @@ use deno_tls::create_client_config;
 use deno_tls::rustls::ClientConfig;
 use deno_tls::RootCertStoreProvider;
 use deno_tls::SocketUse;
+use fastwebsockets::WebSocketError;
 use http::header::CONNECTION;
 use http::header::UPGRADE;
 use http::HeaderName;
@@ -511,6 +512,7 @@ impl ServerWebSocket {
     if ws.is_closed() {
       return Ok(());
     }
+    eprintln!("writing frame...");
     ws.write_frame(frame)
       .await
       .map_err(|err| type_error(err.to_string()))?;
@@ -551,6 +553,7 @@ fn send_binary(state: &mut OpState, rid: ResourceId, data: &[u8]) {
   resource.buffered.set(resource.buffered.get() + len);
   let lock = resource.reserve_lock();
   deno_core::unsync::spawn(async move {
+    eprintln!("maybe writing frame?");
     if let Err(err) = resource
       .write_frame(lock, Frame::new(true, OpCode::Binary, None, data.into()))
       .await
@@ -591,6 +594,7 @@ pub fn op_ws_send_text(
   resource.buffered.set(resource.buffered.get() + len);
   let lock = resource.reserve_lock();
   deno_core::unsync::spawn(async move {
+    eprintln!("maybe writing frame 2?");
     if let Err(err) = resource
       .write_frame(
         lock,
@@ -618,6 +622,7 @@ pub async fn op_ws_send_binary_async(
     .get::<ServerWebSocket>(rid)?;
   let data = data.to_vec();
   let lock = resource.reserve_lock();
+  eprintln!("writing binary frame");
   resource
     .write_frame(lock, Frame::new(true, OpCode::Binary, None, data.into()))
     .await
@@ -635,6 +640,7 @@ pub async fn op_ws_send_text_async(
     .resource_table
     .get::<ServerWebSocket>(rid)?;
   let lock = resource.reserve_lock();
+  eprintln!("writing text frame");
   resource
     .write_frame(
       lock,
@@ -669,6 +675,7 @@ pub async fn op_ws_send_ping(
     .resource_table
     .get::<ServerWebSocket>(rid)?;
   let lock = resource.reserve_lock();
+  eprintln!("writing ping frame");
   resource
     .write_frame(
       lock,
@@ -694,6 +701,7 @@ pub async fn op_ws_close(
 
   resource.closed.set(true);
   let lock = resource.reserve_lock();
+  eprintln!("writing close frame!");
   resource.write_frame(lock, frame).await?;
   Ok(())
 }
@@ -753,9 +761,16 @@ pub async fn op_ws_next_event(
 
   let mut ws = RcRef::map(&resource, |r| &r.ws_read).borrow_mut().await;
   let writer = RcRef::map(&resource, |r| &r.ws_write);
-  let mut sender = move |frame| {
+  let mut sender = move |frame: Frame<'static>| {
     let writer = writer.clone();
-    async move { writer.borrow_mut().await.write_frame(frame).await }
+    async move {
+      let mut borrowed_writer = writer.borrow_mut().await;
+      if borrowed_writer.is_closed() {
+        Ok::<(), WebSocketError>(())
+      } else {
+        borrowed_writer.write_frame(frame).await
+      }
+    }
   };
   loop {
     let res = ws.read_frame(&mut sender).await;
