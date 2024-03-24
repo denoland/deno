@@ -810,3 +810,16 @@ Deno.test(async function spawnCommandNotFoundErrno() {
   });
   await promise;
 });
+
+// https://github.com/denoland/deno/issues/23045
+Deno.test(function spawnCommandNullStdioArray() {
+  const ret = spawnSync(
+    `"${Deno.execPath()}" eval "console.log('hello');console.error('world')"`,
+    {
+      stdio: [null, null, null],
+      shell: true,
+    },
+  );
+
+  assertEquals(ret.status, 0);
+});

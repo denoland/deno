@@ -215,6 +215,12 @@ export interface JsonWebKeyInput {
 export function prepareAsymmetricKey(key) {
   if (isStringOrBuffer(key)) {
     return { format: "pem", data: getArrayBufferOrView(key, "key") };
+  } else if (isKeyObject(key)) {
+    return {
+      // Assumes that assymetric keys are stored as PEM.
+      format: "pem",
+      data: getKeyMaterial(key),
+    };
   } else if (typeof key == "object") {
     const { key: data, encoding, format, type } = key;
     if (!isStringOrBuffer(data)) {
