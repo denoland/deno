@@ -31,6 +31,7 @@ _napi_cancel_async_work
 _napi_is_exception_pending
 _napi_acquire_threadsafe_function
 _napi_create_external
+_napi_type_tag_object
 _napi_get_threadsafe_function_context
 _napi_get_null
 _napi_create_string_utf16
