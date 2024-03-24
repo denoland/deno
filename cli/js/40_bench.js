@@ -47,6 +47,11 @@ function bench(
   optionsOrFn,
   maybeFn,
 ) {
+  // No-op if we're not running in `deno bench` subcommand.
+  if (typeof op_register_bench !== "function") {
+    return;
+  }
+
   if (!registeredWarmupBench) {
     registeredWarmupBench = true;
     const warmupBenchDesc = {
