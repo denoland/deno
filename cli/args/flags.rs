@@ -181,6 +181,7 @@ pub struct InstallFlags {
   pub name: Option<String>,
   pub root: Option<String>,
   pub force: bool,
+  pub global: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1852,12 +1853,12 @@ fn install_subcommand() -> Command {
     .long_about(
         "Installs a script as an executable in the installation root's bin directory.
 
-  deno install --allow-net --allow-read https://deno.land/std/http/file_server.ts
-  deno install https://examples.deno.land/color-logging.ts
+  deno install --global --allow-net --allow-read https://deno.land/std/http/file_server.ts
+  deno install -g https://examples.deno.land/color-logging.ts
 
 To change the executable name, use -n/--name:
 
-  deno install --allow-net --allow-read -n serve https://deno.land/std/http/file_server.ts
+  deno install -g --allow-net --allow-read -n serve https://deno.land/std/http/file_server.ts
 
 The executable name is inferred by default:
   - Attempt to take the file stem of the URL path. The above example would
@@ -1869,7 +1870,7 @@ The executable name is inferred by default:
 
 To change the installation root, use --root:
 
-  deno install --allow-net --allow-read --root /usr/local https://deno.land/std/http/file_server.ts
+  deno install -g --allow-net --allow-read --root /usr/local https://deno.land/std/http/file_server.ts
 
 The installation root is determined, in order of precedence:
   - --root option
@@ -1896,6 +1897,13 @@ These must be added to the path manually if required.")
           .short('f')
           .help("Forcefully overwrite existing installation")
           .action(ArgAction::SetTrue))
+      )
+      .arg(
+        Arg::new("global")
+          .long("global")
+          .short('g')
+          .help("Install a package or script as an executable available globall")
+          .action(ArgAction::SetTrue)
       )
       .arg(env_file_arg())
 }
@@ -3582,6 +3590,7 @@ fn install_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   let root = matches.remove_one::<String>("root");
 
   let force = matches.get_flag("force");
+  let global = matches.get_flag("global");
   let name = matches.remove_one::<String>("name");
   let mut cmd_values = matches.remove_many::<String>("cmd").unwrap();
 
@@ -3594,6 +3603,7 @@ fn install_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     args,
     root,
     force,
+    global,
   });
 }
 
@@ -6525,6 +6535,28 @@ mod tests {
           args: vec![],
           root: None,
           force: false,
+          global: false,
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "install",
+      "-g",
+      "https://deno.land/std/http/file_server.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Install(InstallFlags {
+          name: None,
+          module_url: "https://deno.land/std/http/file_server.ts".to_string(),
+          args: vec![],
+          root: None,
+          force: false,
+          global: true,
         }),
         ..Flags::default()
       }
@@ -6544,6 +6576,7 @@ mod tests {
           args: svec!["foo", "bar"],
           root: Some("/foo".to_string()),
           force: true,
+          global: false,
         }),
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,

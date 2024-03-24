@@ -17,7 +17,7 @@ fn install_basic() {
   // ensure a lockfile doesn't get created or updated locally
   temp_dir.write("deno.json", "{}");
 
-  context
+  let output = context
     .new_command()
     .args("install --check --name echo_test http://localhost:4545/echo.ts")
     .envs([
@@ -25,9 +25,14 @@ fn install_basic() {
       ("USERPROFILE", temp_dir_str.as_str()),
       ("DENO_INSTALL_ROOT", ""),
     ])
-    .run()
-    .skip_output_check()
-    .assert_exit_code(0);
+    .run();
+
+  output.assert_exit_code(0);
+  let output_text = output.combined_output();
+  assert_contains!(
+    output_text,
+    "`deno install` behavior will change in Deno 2. To preserve the current behavior use `-g` or `--global` flag."
+  );
 
   // no lockfile should be created locally
   assert!(!temp_dir.path().join("deno.lock").exists());

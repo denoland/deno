@@ -241,6 +241,9 @@ pub async fn install_command(
   flags: Flags,
   install_flags: InstallFlags,
 ) -> Result<(), AnyError> {
+  if !install_flags.global {
+    log::warn!("⚠️ `deno install` behavior will change in Deno 2. To preserve the current behavior use `-g` or `--global` flag.");
+  }
   // ensure the module is cached
   CliFactory::from_flags(flags.clone())?
     .module_load_preparer()
@@ -663,6 +666,7 @@ mod tests {
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
         force: false,
+        global: false,
       },
     )
     .await
@@ -697,6 +701,7 @@ mod tests {
         name: None,
         root: Some(env::temp_dir().to_string_lossy().to_string()),
         force: false,
+        global: false,
       },
     )
     .await
@@ -725,6 +730,7 @@ mod tests {
         name: None,
         root: Some(env::temp_dir().to_string_lossy().to_string()),
         force: false,
+        global: false,
       },
     )
     .await
@@ -758,6 +764,7 @@ mod tests {
         name: None,
         root: Some(env::temp_dir().to_string_lossy().to_string()),
         force: false,
+        global: false,
       },
     )
     .await
@@ -786,6 +793,7 @@ mod tests {
         name: None,
         root: Some(env::temp_dir().to_string_lossy().to_string()),
         force: false,
+        global: false,
       },
     )
     .await
@@ -810,6 +818,7 @@ mod tests {
         name: None,
         root: Some(env::temp_dir().to_string_lossy().to_string()),
         force: false,
+        global: false,
       },
     )
     .await
@@ -836,6 +845,7 @@ mod tests {
         name: Some("echo_test".to_string()),
         root: Some(env::temp_dir().to_string_lossy().to_string()),
         force: false,
+        global: false,
       },
     )
     .await
@@ -864,6 +874,7 @@ mod tests {
         name: Some("echo_test".to_string()),
         root: Some(env::temp_dir().to_string_lossy().to_string()),
         force: false,
+        global: false,
       },
     )
     .await
@@ -897,6 +908,7 @@ mod tests {
         name: Some("echo_test".to_string()),
         root: Some(env::temp_dir().to_string_lossy().to_string()),
         force: false,
+        global: false,
       },
     )
     .await
@@ -926,6 +938,7 @@ mod tests {
         name: Some("echo_test".to_string()),
         root: Some(env::temp_dir().to_string_lossy().to_string()),
         force: false,
+        global: false,
       },
     )
     .await
@@ -956,6 +969,7 @@ mod tests {
         name: None,
         root: Some(temp_dir.to_string_lossy().to_string()),
         force: false,
+        global: false,
       },
     )
     .await
@@ -990,6 +1004,7 @@ mod tests {
         name: None,
         root: Some(env::temp_dir().to_string_lossy().to_string()),
         force: false,
+        global: false,
       },
     )
     .await
@@ -1025,6 +1040,7 @@ mod tests {
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
         force: false,
+        global: false,
       },
     )
     .await
@@ -1054,6 +1070,7 @@ mod tests {
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
         force: false,
+        global: false,
       },
     )
     .await
@@ -1074,6 +1091,7 @@ mod tests {
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
         force: false,
+        global: false,
       },
     )
     .await;
@@ -1095,6 +1113,7 @@ mod tests {
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
         force: true,
+        global: false,
       },
     )
     .await;
@@ -1125,6 +1144,7 @@ mod tests {
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
         force: true,
+        global: false,
       },
     )
     .await;
@@ -1154,6 +1174,7 @@ mod tests {
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
         force: false,
+        global: false,
       },
     )
     .await
@@ -1194,6 +1215,7 @@ mod tests {
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
         force: false,
+        global: false,
       },
     )
     .await
@@ -1238,6 +1260,7 @@ mod tests {
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
         force: true,
+        global: false,
       },
     )
     .await;
@@ -1280,6 +1303,7 @@ mod tests {
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
         force: true,
+        global: false,
       },
     )
     .await;
