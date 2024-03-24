@@ -16,7 +16,7 @@ import * as io from "ext:deno_io/12_io.js";
 import { guessHandleType } from "ext:deno_node/internal_binding/util.ts";
 
 // https://github.com/nodejs/node/blob/00738314828074243c9a52a228ab4c68b04259ef/lib/internal/bootstrap/switches/is_main_thread.js#L41
-export function createWritableStdioStream(writer, name) {
+export function createWritableStdioStream(writer, name, warmup = false) {
   const stream = new Writable({
     emitClose: false,
     write(buf, enc, cb) {
@@ -73,7 +73,9 @@ export function createWritableStdioStream(writer, name) {
     },
   });
 
-  if (writer?.isTerminal()) {
+  // If we're warming up, create a stdout/stderr stream that assumes a terminal (the most likely case).
+  // If we're wrong at boot time, we'll recreate it.
+  if (warmup || writer?.isTerminal()) {
     // These belong on tty.WriteStream(), but the TTY streams currently have
     // following problems:
     // 1. Using them here introduces a circular dependency.
@@ -123,10 +125,11 @@ export function setReadStream(s) {
 /** https://nodejs.org/api/process.html#process_process_stdin */
 // https://github.com/nodejs/node/blob/v18.12.1/lib/internal/bootstrap/switches/is_main_thread.js#L189
 /** Create process.stdin */
-export const initStdin = () => {
+export const initStdin = (warmup = false) => {
   const fd = io.stdin ? io.STDIN_RID : undefined;
   let stdin;
-  const stdinType = _guessStdinType(fd);
+  // Warmup assumes a TTY for all stdio
+  const stdinType = warmup ? "TTY" : _guessStdinType(fd);
 
   switch (stdinType) {
     case "FILE": {
@@ -142,6 +145,11 @@ export const initStdin = () => {
       break;
     }
     case "TTY": {
+      // If it's a TTY, we know that the stdin we created during warmup is the correct one and
+      // just return null to re-use it.
+      if (!warmup) {
+        return null;
+      }
       stdin = new readStream(fd);
       break;
     }

@@ -19,6 +19,7 @@ use deno_core::anyhow::anyhow;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::serde::Deserialize;
+use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
@@ -78,6 +79,19 @@ static IMPORT_SPECIFIER_RE: Lazy<Regex> =
 
 const SUPPORTED_EXTENSIONS: &[&str] = &[".ts", ".tsx", ".js", ".jsx", ".mjs"];
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DataQuickFixChange {
+  pub range: Range,
+  pub new_text: String,
+}
+
+/// A quick fix that's stored in the diagnostic's data field.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DataQuickFix {
+  pub description: String,
+  pub changes: Vec<DataQuickFixChange>,
+}
+
 /// Category of self-generated diagnostic messages (those not coming from)
 /// TypeScript.
 #[derive(Debug, PartialEq, Eq)]
@@ -87,6 +101,7 @@ pub enum Category {
     message: String,
     code: String,
     hint: Option<String>,
+    quick_fixes: Vec<DataQuickFix>,
   },
 }
 
@@ -104,6 +119,7 @@ impl Reference {
         message,
         code,
         hint,
+        quick_fixes,
       } => lsp::Diagnostic {
         range: self.range,
         severity: Some(lsp::DiagnosticSeverity::WARNING),
@@ -120,19 +136,26 @@ impl Reference {
         },
         related_information: None,
         tags: None, // we should tag unused code
-        data: None,
+        data: if quick_fixes.is_empty() {
+          None
+        } else {
+          serde_json::to_value(quick_fixes).ok()
+        },
       },
     }
   }
 }
 
-fn as_lsp_range(diagnostic: &LintDiagnostic) -> Range {
-  let start_lc = diagnostic
-    .text_info
-    .line_and_column_index(diagnostic.range.start);
-  let end_lc = diagnostic
-    .text_info
-    .line_and_column_index(diagnostic.range.end);
+fn as_lsp_range_from_diagnostic(diagnostic: &LintDiagnostic) -> Range {
+  as_lsp_range(diagnostic.range, &diagnostic.text_info)
+}
+
+fn as_lsp_range(
+  source_range: SourceRange,
+  text_info: &SourceTextInfo,
+) -> Range {
+  let start_lc = text_info.line_and_column_index(source_range.start);
+  let end_lc = text_info.line_and_column_index(source_range.end);
   Range {
     start: Position {
       line: start_lc.line_index as u32,
@@ -156,11 +179,26 @@ pub fn get_lint_references(
     lint_diagnostics
       .into_iter()
       .map(|d| Reference {
-        range: as_lsp_range(&d),
+        range: as_lsp_range_from_diagnostic(&d),
         category: Category::Lint {
           message: d.message,
           code: d.code,
           hint: d.hint,
+          quick_fixes: d
+            .fixes
+            .into_iter()
+            .map(|f| DataQuickFix {
+              description: f.description.to_string(),
+              changes: f
+                .changes
+                .into_iter()
+                .map(|change| DataQuickFixChange {
+                  range: as_lsp_range(change.range, &d.text_info),
+                  new_text: change.new_text.to_string(),
+                })
+                .collect(),
+            })
+            .collect(),
         },
       })
       .collect(),
@@ -668,7 +706,57 @@ impl CodeActionCollection {
     Ok(())
   }
 
-  pub fn add_deno_lint_ignore_action(
+  pub fn add_deno_lint_actions(
+    &mut self,
+    specifier: &ModuleSpecifier,
+    diagnostic: &lsp::Diagnostic,
+    maybe_text_info: Option<SourceTextInfo>,
+    maybe_parsed_source: Option<deno_ast::ParsedSource>,
+  ) -> Result<(), AnyError> {
+    if let Some(data_quick_fixes) = diagnostic
+      .data
+      .as_ref()
+      .and_then(|d| serde_json::from_value::<Vec<DataQuickFix>>(d.clone()).ok())
+    {
+      for quick_fix in data_quick_fixes {
+        let mut changes = HashMap::new();
+        changes.insert(
+          specifier.clone(),
+          quick_fix
+            .changes
+            .into_iter()
+            .map(|change| lsp::TextEdit {
+              new_text: change.new_text.clone(),
+              range: change.range,
+            })
+            .collect(),
+        );
+        let code_action = lsp::CodeAction {
+          title: quick_fix.description.to_string(),
+          kind: Some(lsp::CodeActionKind::QUICKFIX),
+          diagnostics: Some(vec![diagnostic.clone()]),
+          command: None,
+          is_preferred: None,
+          disabled: None,
+          data: None,
+          edit: Some(lsp::WorkspaceEdit {
+            changes: Some(changes),
+            change_annotations: None,
+            document_changes: None,
+          }),
+        };
+        self.actions.push(CodeActionKind::DenoLint(code_action));
+      }
+    }
+    self.add_deno_lint_ignore_action(
+      specifier,
+      diagnostic,
+      maybe_text_info,
+      maybe_parsed_source,
+    )
+  }
+
+  fn add_deno_lint_ignore_action(
     &mut self,
     specifier: &ModuleSpecifier,
     diagnostic: &lsp::Diagnostic,
@@ -1087,6 +1175,7 @@ mod tests {
             message: "message1".to_string(),
             code: "code1".to_string(),
             hint: None,
+            quick_fixes: Vec::new(),
           },
           range,
         },
@@ -1105,6 +1194,7 @@ mod tests {
             message: "message2".to_string(),
             code: "code2".to_string(),
             hint: Some("hint2".to_string()),
+            quick_fixes: Vec::new(),
           },
           range,
         },

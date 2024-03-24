@@ -68,7 +68,7 @@ const notImplementedEvents = [
   "worker",
 ];
 
-export const argv: string[] = [];
+export const argv: string[] = ["", ""];
 let globalProcessExitCode: number | undefined = undefined;
 
 /** https://nodejs.org/api/process.html#process_process_exit_code */
@@ -868,69 +868,91 @@ function synchronizeListeners() {
   }
 }
 
+// Overwrites the 1st and 2nd items with getters.
+Object.defineProperty(argv, "0", { get: () => argv0 });
+Object.defineProperty(argv, "1", {
+  get: () => {
+    if (Deno.mainModule?.startsWith("file:")) {
+      return pathFromURL(new URL(Deno.mainModule));
+    } else {
+      return join(Deno.cwd(), "$deno$node.js");
+    }
+  },
+});
+
 // Should be called only once, in `runtime/js/99_main.js` when the runtime is
 // bootstrapped.
 internals.__bootstrapNodeProcess = function (
   argv0Val: string | undefined,
   args: string[],
   denoVersions: Record<string, string>,
+  warmup = false,
 ) {
-  // Overwrites the 1st item with getter.
-  if (typeof argv0Val === "string") {
-    argv0 = argv0Val;
-    Object.defineProperty(argv, "0", {
-      get: () => {
-        return argv0Val;
-      },
-    });
+  if (!warmup) {
+    argv0 = argv0Val || "";
+    // Manually concatenate these arrays to avoid triggering the getter
+    for (let i = 0; i < args.length; i++) {
+      argv[i + 2] = args[i];
+    }
+
+    for (const [key, value] of Object.entries(denoVersions)) {
+      versions[key] = value;
+    }
+
+    core.setNextTickCallback(processTicksAndRejections);
+    core.setMacrotaskCallback(runNextTicks);
+    enableNextTick();
+
+    // Replace stdin if it is not a terminal
+    const newStdin = initStdin();
+    if (newStdin) {
+      stdin = process.stdin = newStdin;
+    }
+
+    // Replace stdout/stderr if they are not terminals
+    if (!io.stdout.isTerminal()) {
+      /** https://nodejs.org/api/process.html#process_process_stdout */
+      stdout = process.stdout = createWritableStdioStream(
+        io.stdout,
+        "stdout",
+      );
+    }
+
+    if (!io.stderr.isTerminal()) {
+      /** https://nodejs.org/api/process.html#process_process_stderr */
+      stderr = process.stderr = createWritableStdioStream(
+        io.stderr,
+        "stderr",
+      );
+    }
+
+    process.setStartTime(Date.now());
+
+    arch = arch_();
+    platform = isWindows ? "win32" : Deno.build.os;
+    pid = Deno.pid;
+
+    // @ts-ignore Remove setStartTime and #startTime is not modifiable
+    delete process.setStartTime;
+    delete internals.__bootstrapNodeProcess;
   } else {
-    Object.defineProperty(argv, "0", { get: () => argv0 });
+    // Warmup, assuming stdin/stdout/stderr are all terminals
+    stdin = process.stdin = initStdin(true);
+
+    /** https://nodejs.org/api/process.html#process_process_stdout */
+    stdout = process.stdout = createWritableStdioStream(
+      io.stdout,
+      "stdout",
+      true,
+    );
+
+    /** https://nodejs.org/api/process.html#process_process_stderr */
+    stderr = process.stderr = createWritableStdioStream(
+      io.stderr,
+      "stderr",
+      true,
+    );
   }
-
-  // Overwrites the 2st item with getter.
-  Object.defineProperty(argv, "1", {
-    get: () => {
-      if (Deno.mainModule?.startsWith("file:")) {
-        return pathFromURL(new URL(Deno.mainModule));
-      } else {
-        return join(Deno.cwd(), "$deno$node.js");
-      }
-    },
-  });
-  for (let i = 0; i < args.length; i++) {
-    argv[i + 2] = args[i];
-  }
-
-  for (const [key, value] of Object.entries(denoVersions)) {
-    versions[key] = value;
-  }
-
-  core.setNextTickCallback(processTicksAndRejections);
-  core.setMacrotaskCallback(runNextTicks);
-  enableNextTick();
-
-  stdin = process.stdin = initStdin();
-  /** https://nodejs.org/api/process.html#process_process_stdout */
-  stdout = process.stdout = createWritableStdioStream(
-    io.stdout,
-    "stdout",
-  );
-
-  /** https://nodejs.org/api/process.html#process_process_stderr */
-  stderr = process.stderr = createWritableStdioStream(
-    io.stderr,
-    "stderr",
-  );
-
-  process.setStartTime(Date.now());
-
-  arch = arch_();
-  platform = isWindows ? "win32" : Deno.build.os;
-  pid = Deno.pid;
-
-  // @ts-ignore Remove setStartTime and #startTime is not modifiable
-  delete process.setStartTime;
-  delete internals.__bootstrapNodeProcess;
 };
 
 export default process;
