@@ -484,45 +484,61 @@ async fn jupyter_execute_request() -> Result<()> {
     }),
   );
 
-  let execution_busy = client.recv(IoPub).await?;
-  assert_eq!(execution_busy.header.msg_type, "status");
+  let mut msgs = Vec::new();
+
+  for _ in 0..4 {
+    let msg = client.recv(IoPub).await?;
+    msgs.push(msg);
+  }
+
+  // two status messages, one for busy on execution and
+  // one for idle after execution
+  let statuses = msgs
+    .iter()
+    .filter(|msg| msg.header.msg_type == "status")
+    .collect::<Vec<_>>();
+  assert_eq!(statuses.len(), 2);
+  let execution_busy = statuses[0];
   assert_eq!(execution_busy.parent_header, request.header.to_json());
   assert_eq_subset(
-    execution_busy.content,
+    execution_busy.content.clone(),
     json!({
       "execution_state": "busy",
     }),
   );
+  let execution_idle = statuses[1];
+  assert_eq!(execution_idle.parent_header, request.header.to_json());
+  assert_eq_subset(
+    execution_idle.content.clone(),
+    json!({
+      "execution_state": "idle",
+    }),
+  );
 
-  let execute_input = client.recv(IoPub).await?;
-  assert_eq!(execute_input.header.msg_type, "execute_input");
+  let execute_input = msgs
+    .iter()
+    .find(|msg| msg.header.msg_type == "execute_input")
+    .expect("execute_input not found");
   assert_eq!(execute_input.parent_header, request.header.to_json());
   assert_eq_subset(
-    execute_input.content,
+    execute_input.content.clone(),
     json!({
       "code": "console.log(\"asdf\")",
       "execution_count": 1,
     }),
   );
 
-  let execution_result = client.recv(IoPub).await?;
+  let execution_result = msgs
+    .iter()
+    .find(|msg| msg.header.msg_type == "stream")
+    .expect("stream not found");
   assert_eq!(execution_result.header.msg_type, "stream");
   assert_eq!(execution_result.parent_header, request.header.to_json());
   assert_eq_subset(
-    execution_result.content,
+    execution_result.content.clone(),
     json!({
       "name": "stdout",
       "text": "asdf\n", // the trailing newline is added by console.log
-    }),
-  );
-
-  let execution_status = client.recv(IoPub).await?;
-  assert_eq!(execution_status.header.msg_type, "status");
-  assert_eq!(execution_result.parent_header, request.header.to_json());
-  assert_eq_subset(
-    execution_status.content,
-    json!({
-      "execution_state": "idle",
     }),
   );
 
