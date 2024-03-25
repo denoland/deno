@@ -878,39 +878,44 @@ pub fn get_configured_rules(
   let implicit_no_slow_types = maybe_config_file
     .map(|c| c.is_package() || !c.json.workspaces.is_empty())
     .unwrap_or(false);
-  if rules.tags.is_none() && rules.include.is_none() && rules.exclude.is_none()
-  {
-    ConfiguredRules {
-      rules: rules::get_recommended_rules(),
-      no_slow_types: implicit_no_slow_types,
-    }
-  } else {
-    let no_slow_types = implicit_no_slow_types
-      && !rules
-        .exclude
-        .as_ref()
-        .map(|exclude| exclude.iter().any(|i| i == NO_SLOW_TYPES_NAME))
-        .unwrap_or(false);
-    let rules = rules::get_filtered_rules(
-      rules.tags.or_else(|| Some(vec!["recommended".to_string()])),
-      rules.exclude.map(|exclude| {
-        exclude
-          .into_iter()
-          .filter(|c| c != NO_SLOW_TYPES_NAME)
-          .collect()
-      }),
-      rules.include.map(|include| {
-        include
-          .into_iter()
-          .filter(|c| c != NO_SLOW_TYPES_NAME)
-          .collect()
-      }),
-    );
-    ConfiguredRules {
-      rules,
-      no_slow_types,
-    }
+  let no_slow_types = implicit_no_slow_types
+    && !rules
+      .exclude
+      .as_ref()
+      .map(|exclude| exclude.iter().any(|i| i == NO_SLOW_TYPES_NAME))
+      .unwrap_or(false);
+  let rules = rules::get_filtered_rules(
+    rules
+      .tags
+      .or_else(|| Some(get_default_tags(maybe_config_file))),
+    rules.exclude.map(|exclude| {
+      exclude
+        .into_iter()
+        .filter(|c| c != NO_SLOW_TYPES_NAME)
+        .collect()
+    }),
+    rules.include.map(|include| {
+      include
+        .into_iter()
+        .filter(|c| c != NO_SLOW_TYPES_NAME)
+        .collect()
+    }),
+  );
+  ConfiguredRules {
+    rules,
+    no_slow_types,
   }
+}
+
+fn get_default_tags(
+  maybe_config_file: Option<&deno_config::ConfigFile>,
+) -> Vec<String> {
+  let mut tags = Vec::with_capacity(2);
+  tags.push("recommended".to_string());
+  if maybe_config_file.map(|c| c.is_package()).unwrap_or(false) {
+    tags.push("jsr".to_string());
+  }
+  tags
 }
 
 #[cfg(test)]
