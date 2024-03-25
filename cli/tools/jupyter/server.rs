@@ -396,6 +396,7 @@ impl JupyterServer {
         .with_content(json!({
             "status": "ok",
             "execution_count": self.execution_count,
+            // FIXME: also include user_expressions
         }))
         .send(connection)
         .await?;

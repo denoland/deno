@@ -25,8 +25,10 @@ use zeromq::ZmqMessage;
 // for the `utc_now` function
 include!("../../cli/util/time.rs");
 
+/// Jupyter connection file format
 #[derive(Serialize)]
 struct ConnectionSpec {
+  // key used for HMAC signature, if empty, hmac is not used
   key: String,
   signature_scheme: String,
   transport: String,
@@ -71,7 +73,7 @@ const DELIMITER: &[u8] = b"<IDS|MSG>";
 
 #[derive(Debug, Clone)]
 struct JupyterMsg {
-  routing_prefix: Vec<Uuid>,
+  routing_prefix: Vec<String>,
   signature: String,
   header: MsgHeader,
   parent_header: Value,
@@ -83,7 +85,7 @@ struct JupyterMsg {
 impl Default for JupyterMsg {
   fn default() -> Self {
     Self {
-      routing_prefix: vec![Uuid::new_v4()],
+      routing_prefix: vec![Uuid::new_v4().to_string()],
       signature: "".into(),
       header: MsgHeader::default(),
       parent_header: json!({}),
@@ -159,7 +161,7 @@ impl JupyterMsg {
     let delimiter = parts.iter().position(|part| part == DELIMITER).unwrap();
     let routing_prefix = parts[..delimiter]
       .iter()
-      .map(|part| Uuid::from_bytes(part.as_ref().try_into().unwrap()))
+      .map(|part: &Bytes| String::from_utf8_lossy(part.as_ref()).to_string())
       .collect();
     let signature = String::from_utf8(parts[delimiter + 1].to_vec())
       .expect("Failed to parse signature");
@@ -205,10 +207,10 @@ struct JupyterClient {
 }
 
 #[derive(Debug, Clone, Copy)]
-#[allow(dead_code)]
 enum JupyterChannel {
   Control,
   Shell,
+  #[allow(dead_code)]
   Stdin,
   IoPub,
 }
@@ -267,17 +269,13 @@ impl JupyterClient {
     Ok(msg)
   }
 
-  fn new_msg(&self, msg_type: &str, content: Value) -> JupyterMsg {
-    JupyterMsg::new(self.session, msg_type, content)
-  }
-
   async fn send(
     &self,
     channel: JupyterChannel,
     msg_type: &str,
     content: Value,
   ) -> Result<JupyterMsg> {
-    let msg = self.new_msg(msg_type, content);
+    let msg = JupyterMsg::new(self.session, msg_type, content);
     self.send_msg(channel, msg).await
   }
 
@@ -342,33 +340,6 @@ async fn wait_or_kill(
   Ok(process.wait_with_output()?)
 }
 
-fn setup_server() -> (TestContext, ConnectionSpec, JupyterServerProcess) {
-  let context = TestContextBuilder::new().use_temp_cwd().build();
-  let conn = ConnectionSpec::default();
-  let conn_file = context.temp_dir().path().join("connection.json");
-  conn_file.write_json(&conn);
-  let process = context
-    .new_command()
-    // .piped_output()
-    .args_vec(vec![
-      "jupyter",
-      "--kernel",
-      "--conn",
-      conn_file.to_string().as_str(),
-    ])
-    .spawn()
-    .unwrap();
-  (context, conn, JupyterServerProcess(Some(process)))
-}
-
-async fn setup() -> (TestContext, JupyterClient, JupyterServerProcess) {
-  let (context, conn, process) = setup_server();
-  let client = JupyterClient::new(&conn).await;
-  client.io_subscribe("").await.unwrap();
-
-  (context, client, process)
-}
-
 // Wrapper around the Jupyter server process that
 // ensures the process is killed when dropped.
 struct JupyterServerProcess(Option<DenoChild>);
@@ -398,6 +369,36 @@ impl Drop for JupyterServerProcess {
   }
 }
 
+fn setup_server() -> (TestContext, ConnectionSpec, JupyterServerProcess) {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let conn = ConnectionSpec::default();
+  let conn_file = context.temp_dir().path().join("connection.json");
+  conn_file.write_json(&conn);
+  let process = context
+    .new_command()
+    .piped_output()
+    .args_vec(vec![
+      "jupyter",
+      "--kernel",
+      "--conn",
+      conn_file.to_string().as_str(),
+    ])
+    .spawn()
+    .unwrap();
+  (context, conn, JupyterServerProcess(Some(process)))
+}
+
+async fn setup() -> (TestContext, JupyterClient, JupyterServerProcess) {
+  let (context, conn, process) = setup_server();
+  let client = JupyterClient::new(&conn).await;
+  client.io_subscribe("").await.unwrap();
+
+  (context, client, process)
+}
+
+/// Asserts that the actual value is equal to the expected value, but
+/// only for the keys present in the expected value.
+/// In other words, `assert_eq_subset(json!({"a": 1, "b": 2}), json!({"a": 1}))` would pass.
 #[track_caller]
 fn assert_eq_subset(actual: Value, expected: Value) {
   match (actual, expected) {
