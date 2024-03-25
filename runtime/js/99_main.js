@@ -1,3 +1,4 @@
+// deno-lint-ignore-file no-deprecated-deno-api
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // Remove Intl.v8BreakIterator because it is a non-standard API.
