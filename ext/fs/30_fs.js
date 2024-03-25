@@ -35,6 +35,7 @@ import {
   op_fs_file_utime_sync,
   op_fs_flock_async,
   op_fs_flock_sync,
+  op_fs_fstat_async,
   op_fs_fstat_sync,
   op_fs_fsync_async,
   op_fs_fsync_sync,
@@ -734,7 +735,7 @@ class FsFile {
   }
 
   statSync() {
-    op_fs_file_stat_sync(rid, statBuf);
+    op_fs_file_stat_sync(this.#rid, statBuf);
     return statStruct(statBuf);
   }
 
@@ -776,7 +777,7 @@ class FsFile {
     const { 0: atimeSec, 1: atimeNsec } = toUnixTimeFromEpoch(atime);
     const { 0: mtimeSec, 1: mtimeNsec } = toUnixTimeFromEpoch(mtime);
     await op_fs_file_utime_async(
-      rid,
+      this.#rid,
       atimeSec,
       atimeNsec,
       mtimeSec,
@@ -787,7 +788,7 @@ class FsFile {
   utimeSync(atime, mtime) {
     const { 0: atimeSec, 1: atimeNsec } = toUnixTimeFromEpoch(atime);
     const { 0: mtimeSec, 1: mtimeNsec } = toUnixTimeFromEpoch(mtime);
-    op_fs_file_utime_sync(rid, atimeSec, atimeNsec, mtimeSec, mtimeNsec);
+    op_fs_file_utime_sync(this.#rid, atimeSec, atimeNsec, mtimeSec, mtimeNsec);
   }
 
   isTerminal() {

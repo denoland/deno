@@ -1531,6 +1531,17 @@ pub fn op_fs_file_stat_sync(
 
 #[op2(async)]
 #[serde]
+pub async fn op_fs_fstat_async(
+  state: Rc<RefCell<OpState>>,
+  #[smi] rid: ResourceId,
+) -> Result<SerializableStat, AnyError> {
+  let file = FileResource::get_file(&state.borrow(), rid)?;
+  let stat = file.stat_async().await?;
+  Ok(stat.into())
+}
+
+#[op2(async)]
+#[serde]
 pub async fn op_fs_file_stat_async(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
