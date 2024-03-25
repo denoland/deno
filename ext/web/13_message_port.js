@@ -87,6 +87,7 @@ const _id = Symbol("id");
 const MessagePortIdSymbol = _id;
 const _enabled = Symbol("enabled");
 const _nodeWorker = Symbol("nodeWorker");
+const _closeEventDispatched = Symbol("closeEventDispatched");
 
 /**
  * @param {number} id
@@ -125,6 +126,7 @@ class MessagePort extends EventTarget {
   /** @type {boolean} */
   [_enabled] = false;
   [_nodeWorker] = false;
+  [_closeEventDispatched] = false;
 
   constructor() {
     super();
@@ -182,11 +184,16 @@ class MessagePort extends EventTarget {
           );
         } catch (err) {
           if (ObjectPrototypeIsPrototypeOf(InterruptedPrototype, err)) break;
-          console.log("generating close event for ", [_id]);
           if (this[_nodeWorker]) this.dispatchEvent(new Event("close"));
           throw err;
         }
-        if (data === null) break;
+        if (data === null) {
+          if (this[_nodeWorker] && !this[_closeEventDispatched]) {
+            this.dispatchEvent(new Event("close"));
+            this[_closeEventDispatched] = true;
+          }
+          break;
+        }
         let message, transferables;
         try {
           const v = deserializeJsMessageData(data, this[_nodeWorker]);
@@ -218,8 +225,9 @@ class MessagePort extends EventTarget {
       core.close(this[_id]);
       this[_id] = null;
     }
-    if (this[_nodeWorker]) {
+    if (this[_nodeWorker] && !this[_closeEventDispatched]) {
       this.dispatchEvent(new Event("close"));
+      this[_closeEventDispatched] = true;
     }
   }
 
