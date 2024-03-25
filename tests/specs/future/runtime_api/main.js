@@ -11,7 +11,6 @@ console.log("Deno.flock is", Deno.flock);
 console.log("Deno.flockSync is", Deno.flockSync);
 console.log("Deno.funlock is", Deno.funlock);
 console.log("Deno.funlockSync is", Deno.funlockSync);
-console.log("Deno.isatty is", Deno.isatty);
 console.log("Deno.iter is", Deno.iter);
 console.log("Deno.iterSync is", Deno.iterSync);
 console.log("Deno.metrics is", Deno.metrics);

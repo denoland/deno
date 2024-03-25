@@ -12,7 +12,6 @@ Deno.flockSync is undefined
 Deno.funlock is undefined
 Deno.funlockSync is undefined
 Deno.isatty is undefined
-Deno.iter is undefined
 Deno.iterSync is undefined
 Deno.metrics is undefined
 Deno.readAll is undefined
