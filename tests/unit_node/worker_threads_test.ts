@@ -3,7 +3,6 @@
 import {
   assert,
   assertEquals,
-  assertNotEquals,
   assertObjectMatch,
   assertThrows,
   fail,
