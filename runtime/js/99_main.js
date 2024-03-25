@@ -839,9 +839,6 @@ function bootstrapWorkerRuntime(
       );
     }
     ObjectSetPrototypeOf(globalThis, DedicatedWorkerGlobalScope.prototype);
-    const workerMetadata = maybeWorkerMetadata
-      ? messagePort.deserializeJsMessageData(maybeWorkerMetadata, true)
-      : undefined;
 
     const consoleFromDeno = globalThis.console;
     core.wrapConsole(consoleFromDeno, core.v8Console);
@@ -898,7 +895,7 @@ function bootstrapWorkerRuntime(
     ObjectDefineProperty(globalThis, "Deno", core.propReadOnly(finalDenoNs));
 
     const workerMetadata = maybeWorkerMetadata
-      ? messagePort.deserializeJsMessageData(maybeWorkerMetadata)
+      ? messagePort.deserializeJsMessageData(maybeWorkerMetadata, true)
       : undefined;
 
     if (nodeBootstrap) {
