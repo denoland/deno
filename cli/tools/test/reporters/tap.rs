@@ -23,9 +23,9 @@ pub struct TapTestReporter {
 }
 
 impl TapTestReporter {
-  pub fn new(is_concurrent: bool) -> TapTestReporter {
+  pub fn new(cwd: Url, is_concurrent: bool) -> TapTestReporter {
     TapTestReporter {
-      cwd: Url::from_directory_path(std::env::current_dir().unwrap()).unwrap(),
+      cwd,
       is_concurrent,
       header: false,
       planned: 0,
