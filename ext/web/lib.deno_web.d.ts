@@ -1124,10 +1124,10 @@ declare var MessagePort: {
  *
  * @category DOM APIs
  */
-declare function structuredClone(
-  value: any,
+declare function structuredClone<T = any>(
+  value: T,
   options?: StructuredSerializeOptions,
-): any;
+): T;
 
 /**
  * An API for compressing a stream of data.
