@@ -839,6 +839,9 @@ function bootstrapWorkerRuntime(
       );
     }
     ObjectSetPrototypeOf(globalThis, DedicatedWorkerGlobalScope.prototype);
+    const workerMetadata = maybeWorkerMetadata
+      ? messagePort.deserializeJsMessageData(maybeWorkerMetadata, true)
+      : undefined;
 
     const consoleFromDeno = globalThis.console;
     core.wrapConsole(consoleFromDeno, core.v8Console);

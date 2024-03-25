@@ -429,26 +429,10 @@ class NodeMessageChannel {
   port2: MessagePort;
 
   constructor() {
-    let { port1, port2 } = new MessageChannel();
-    this.port1 = patchPort(port1);
-    this.port2 = patchPort(port2);
+    const { port1, port2 } = new MessageChannel(true);
+    this.port1 = port1;
+    this.port2 = port2;
   }
-}
-
-function patchPort(port: MessagePort) {
-  port.on = port.addListener = function (this: MessagePort, name, listener) {
-    // deno-lint-ignore no-explicit-any
-    const _listener = (ev: any) => listener(ev.data);
-    if (name == "message") {
-      port.onmessage = _listener;
-    } else if (name == "messageerror") {
-      port.onmessageerror = _listener;
-    } else {
-      throw new Error("Unsupported event: " + name);
-    }
-    return this;
-  };
-  return port;
 }
 
 export {
