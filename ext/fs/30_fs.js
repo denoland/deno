@@ -16,17 +16,28 @@ import {
   op_fs_copy_file_sync,
   op_fs_cwd,
   op_fs_fdatasync_async,
-  op_fs_fdatasync_async_unstable,
   op_fs_fdatasync_sync,
-  op_fs_fdatasync_sync_unstable,
+  op_fs_file_lock_async,
+  op_fs_file_lock_sync,
+  op_fs_file_seek_async,
+  op_fs_file_seek_sync,
   op_fs_file_stat_async,
   op_fs_file_stat_sync,
+  op_fs_file_sync_async_unstable,
+  op_fs_file_sync_data_async_unstable,
+  op_fs_file_sync_data_sync_unstable,
+  op_fs_file_sync_sync_unstable,
+  op_fs_file_truncate_async,
+  op_fs_file_truncate_sync,
+  op_fs_file_unlock_async,
+  op_fs_file_unlock_sync,
+  op_fs_file_utime_async,
+  op_fs_file_utime_sync,
   op_fs_flock_async,
   op_fs_flock_sync,
+  op_fs_fstat_sync,
   op_fs_fsync_async,
-  op_fs_fsync_async_unstable,
   op_fs_fsync_sync,
-  op_fs_fsync_sync_unstable,
   op_fs_ftruncate_async,
   op_fs_ftruncate_sync,
   op_fs_funlock_async,
@@ -230,16 +241,16 @@ function readLinkSync(path) {
   return op_fs_read_link_sync(pathFromURL(path));
 }
 
-function readLink(path) {
-  return op_fs_read_link_async(pathFromURL(path));
+async function readLink(path) {
+  return await op_fs_read_link_async(pathFromURL(path));
 }
 
 function realPathSync(path) {
   return op_fs_realpath_sync(pathFromURL(path));
 }
 
-function realPath(path) {
-  return op_fs_realpath_async(pathFromURL(path));
+async function realPath(path) {
+  return await op_fs_realpath_async(pathFromURL(path));
 }
 
 function removeSync(
@@ -397,12 +408,12 @@ function parseFileInfo(response) {
 }
 
 function fstatSync(rid) {
-  op_fs_file_stat_sync(rid, statBuf);
+  op_fs_fstat_sync(rid, statBuf);
   return statStruct(statBuf);
 }
 
 async function fstat(rid) {
-  return parseFileInfo(await op_fs_file_stat_async(rid));
+  return parseFileInfo(await op_fs_fstat_async(rid));
 }
 
 async function lstat(path) {
@@ -685,52 +696,54 @@ class FsFile {
     return this.#rid;
   }
 
-  write(p) {
-    return write(this.#rid, p);
+  async write(p) {
+    return await write(this.#rid, p);
   }
 
   writeSync(p) {
     return writeSync(this.#rid, p);
   }
 
-  truncate(len) {
-    return ftruncate(this.#rid, len);
+  async truncate(len) {
+    await op_fs_file_truncate_async(this.#rid, coerceLen(len));
   }
 
   truncateSync(len) {
-    return ftruncateSync(this.#rid, len);
+    op_fs_file_truncate_sync(this.#rid, coerceLen(len));
   }
 
-  read(p) {
-    return read(this.#rid, p);
+  async read(p) {
+    return await read(this.#rid, p);
   }
 
   readSync(p) {
     return readSync(this.#rid, p);
   }
 
-  seek(offset, whence) {
-    return seek(this.#rid, offset, whence);
+  async seek(offset, whence) {
+    return await op_fs_file_seek_async(this.#rid, offset, whence);
   }
 
   seekSync(offset, whence) {
-    return seekSync(this.#rid, offset, whence);
+    return op_fs_file_seek_sync(this.#rid, offset, whence);
   }
 
-  stat() {
-    return fstat(this.#rid);
+  async stat() {
+    const response = await op_fs_file_stat_async(this.#rid);
+    return parseFileInfo(response);
   }
 
   statSync() {
-    return fstatSync(this.#rid);
+    op_fs_file_stat_sync(rid, statBuf);
+    return statStruct(statBuf);
   }
 
   async syncData() {
-    await op_fs_fdatasync_async_unstable(this.#rid);
+    await op_fs_file_sync_data_async_unstable(this.#rid);
   }
 
   syncDataSync() {
-    op_fs_fdatasync_sync_unstable(this.#rid);
+    op_fs_file_sync_data_sync_unstable(this.#rid);
   }
 
   close() {
@@ -752,19 +765,29 @@ class FsFile {
   }
 
   async sync() {
-    await op_fs_fsync_async_unstable(this.#rid);
+    await op_fs_file_sync_async_unstable(this.#rid);
   }
 
   syncSync() {
-    op_fs_fsync_sync_unstable(this.#rid);
+    op_fs_file_sync_sync_unstable(this.#rid);
   }
 
   async utime(atime, mtime) {
-    await futime(this.#rid, atime, mtime);
+    const { 0: atimeSec, 1: atimeNsec } = toUnixTimeFromEpoch(atime);
+    const { 0: mtimeSec, 1: mtimeNsec } = toUnixTimeFromEpoch(mtime);
+    await op_fs_file_utime_async(
+      rid,
+      atimeSec,
+      atimeNsec,
+      mtimeSec,
+      mtimeNsec,
+    );
   }
 
   utimeSync(atime, mtime) {
-    futimeSync(this.#rid, atime, mtime);
+    const { 0: atimeSec, 1: atimeNsec } = toUnixTimeFromEpoch(atime);
+    const { 0: mtimeSec, 1: mtimeNsec } = toUnixTimeFromEpoch(mtime);
+    op_fs_file_utime_sync(rid, atimeSec, atimeNsec, mtimeSec, mtimeNsec);
   }
 
   isTerminal() {
@@ -777,19 +800,19 @@ class FsFile {
   }
 
   lockSync(exclusive = false) {
-    op_fs_flock_sync(this.#rid, exclusive);
+    op_fs_file_lock_sync(this.#rid, exclusive);
   }
 
   async lock(exclusive = false) {
-    await op_fs_flock_async(this.#rid, exclusive);
+    await op_fs_file_lock_async(this.#rid, exclusive);
   }
 
   unlockSync() {
-    op_fs_funlock_sync(this.#rid);
+    op_fs_file_unlock_sync(this.#rid);
   }
 
   async unlock() {
-    await op_fs_funlock_async(this.#rid);
+    await op_fs_file_unlock_async(this.#rid);
   }
 
   [SymbolDispose]() {

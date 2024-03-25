@@ -1366,9 +1366,37 @@ pub fn op_fs_seek_sync(
   Ok(cursor)
 }
 
+#[op2(fast)]
+#[number]
+pub fn op_fs_file_seek_sync(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+  #[number] offset: i64,
+  #[smi] whence: i32,
+) -> Result<u64, AnyError> {
+  let pos = to_seek_from(offset, whence)?;
+  let file = FileResource::get_file(state, rid)?;
+  let cursor = file.seek_sync(pos)?;
+  Ok(cursor)
+}
+
 #[op2(async)]
 #[number]
 pub async fn op_fs_seek_async(
+  state: Rc<RefCell<OpState>>,
+  #[smi] rid: ResourceId,
+  #[number] offset: i64,
+  #[smi] whence: i32,
+) -> Result<u64, AnyError> {
+  let pos = to_seek_from(offset, whence)?;
+  let file = FileResource::get_file(&state.borrow(), rid)?;
+  let cursor = file.seek_async(pos).await?;
+  Ok(cursor)
+}
+
+#[op2(async)]
+#[number]
+pub async fn op_fs_file_seek_async(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
   #[number] offset: i64,
@@ -1391,7 +1419,7 @@ pub fn op_fs_fdatasync_sync(
 }
 
 #[op2(fast)]
-pub fn op_fs_fdatasync_sync_unstable(
+pub fn op_fs_file_sync_data_sync_unstable(
   state: &mut OpState,
   #[smi] rid: ResourceId,
 ) -> Result<(), AnyError> {
@@ -1412,7 +1440,7 @@ pub async fn op_fs_fdatasync_async(
 }
 
 #[op2(async)]
-pub async fn op_fs_fdatasync_async_unstable(
+pub async fn op_fs_file_sync_data_async_unstable(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
 ) -> Result<(), AnyError> {
@@ -1433,7 +1461,7 @@ pub fn op_fs_fsync_sync(
 }
 
 #[op2(fast)]
-pub fn op_fs_fsync_sync_unstable(
+pub fn op_fs_file_sync_sync_unstable(
   state: &mut OpState,
   #[smi] rid: ResourceId,
 ) -> Result<(), AnyError> {
@@ -1454,13 +1482,37 @@ pub async fn op_fs_fsync_async(
 }
 
 #[op2(async)]
-pub async fn op_fs_fsync_async_unstable(
+pub async fn op_fs_file_sync_async_unstable(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
 ) -> Result<(), AnyError> {
   check_unstable(&state.borrow(), "Deno.FsFile.sync");
   let file = FileResource::get_file(&state.borrow(), rid)?;
   file.sync_async().await?;
+  Ok(())
+}
+
+#[op2(async)]
+pub async fn op_fs_file_sync_async(
+  state: Rc<RefCell<OpState>>,
+  #[smi] rid: ResourceId,
+) -> Result<(), AnyError> {
+  check_unstable(&state.borrow(), "Deno.FsFile.sync");
+  let file = FileResource::get_file(&state.borrow(), rid)?;
+  file.sync_async().await?;
+  Ok(())
+}
+
+#[op2(fast)]
+pub fn op_fs_fstat_sync(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+  #[buffer] stat_out_buf: &mut [u32],
+) -> Result<(), AnyError> {
+  let file = FileResource::get_file(state, rid)?;
+  let stat = file.stat_sync()?;
+  let serializable_stat = SerializableStat::from(stat);
+  serializable_stat.write(stat_out_buf);
   Ok(())
 }
 
@@ -1489,6 +1541,18 @@ pub async fn op_fs_file_stat_async(
 }
 
 #[op2(fast)]
+pub fn op_fs_file_lock_sync(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+  exclusive: bool,
+) -> Result<(), AnyError> {
+  check_unstable(state, "Deno.FsFile.lockSync");
+  let file = FileResource::get_file(state, rid)?;
+  file.lock_sync(exclusive)?;
+  Ok(())
+}
+
+#[op2(fast)]
 pub fn op_fs_flock_sync(
   state: &mut OpState,
   #[smi] rid: ResourceId,
@@ -1497,6 +1561,18 @@ pub fn op_fs_flock_sync(
   check_unstable(state, "Deno.flockSync");
   let file = FileResource::get_file(state, rid)?;
   file.lock_sync(exclusive)?;
+  Ok(())
+}
+
+#[op2(async)]
+pub async fn op_fs_file_lock_async(
+  state: Rc<RefCell<OpState>>,
+  #[smi] rid: ResourceId,
+  exclusive: bool,
+) -> Result<(), AnyError> {
+  check_unstable(&state.borrow(), "Deno.FsFile.lock");
+  let file = FileResource::get_file(&state.borrow(), rid)?;
+  file.lock_async(exclusive).await?;
   Ok(())
 }
 
@@ -1513,6 +1589,17 @@ pub async fn op_fs_flock_async(
 }
 
 #[op2(fast)]
+pub fn op_fs_file_unlock_sync(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+) -> Result<(), AnyError> {
+  check_unstable(state, "Deno.FsFile.unlockSync");
+  let file = FileResource::get_file(state, rid)?;
+  file.unlock_sync()?;
+  Ok(())
+}
+
+#[op2(fast)]
 pub fn op_fs_funlock_sync(
   state: &mut OpState,
   #[smi] rid: ResourceId,
@@ -1520,6 +1607,17 @@ pub fn op_fs_funlock_sync(
   check_unstable(state, "Deno.funlockSync");
   let file = FileResource::get_file(state, rid)?;
   file.unlock_sync()?;
+  Ok(())
+}
+
+#[op2(async)]
+pub async fn op_fs_file_unlock_async(
+  state: Rc<RefCell<OpState>>,
+  #[smi] rid: ResourceId,
+) -> Result<(), AnyError> {
+  check_unstable(&state.borrow(), "Deno.FsFile.unlock");
+  let file = FileResource::get_file(&state.borrow(), rid)?;
+  file.unlock_async().await?;
   Ok(())
 }
 
@@ -1545,8 +1643,30 @@ pub fn op_fs_ftruncate_sync(
   Ok(())
 }
 
+#[op2(fast)]
+pub fn op_fs_file_truncate_sync(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+  #[number] len: u64,
+) -> Result<(), AnyError> {
+  let file = FileResource::get_file(state, rid)?;
+  file.truncate_sync(len)?;
+  Ok(())
+}
+
 #[op2(async)]
 pub async fn op_fs_ftruncate_async(
+  state: Rc<RefCell<OpState>>,
+  #[smi] rid: ResourceId,
+  #[number] len: u64,
+) -> Result<(), AnyError> {
+  let file = FileResource::get_file(&state.borrow(), rid)?;
+  file.truncate_async(len).await?;
+  Ok(())
+}
+
+#[op2(async)]
+pub async fn op_fs_file_truncate_async(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
   #[number] len: u64,
@@ -1583,6 +1703,36 @@ pub async fn op_fs_futime_async(
   file
     .utime_async(atime_secs, atime_nanos, mtime_secs, mtime_nanos)
     .await?;
+  Ok(())
+}
+
+#[op2(async)]
+pub async fn op_fs_file_utime_async(
+  state: Rc<RefCell<OpState>>,
+  #[smi] rid: ResourceId,
+  #[number] atime_secs: i64,
+  #[smi] atime_nanos: u32,
+  #[number] mtime_secs: i64,
+  #[smi] mtime_nanos: u32,
+) -> Result<(), AnyError> {
+  let file = FileResource::get_file(&state.borrow(), rid)?;
+  file
+    .utime_async(atime_secs, atime_nanos, mtime_secs, mtime_nanos)
+    .await?;
+  Ok(())
+}
+
+#[op2(fast)]
+pub fn op_fs_file_utime_sync(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+  #[number] atime_secs: i64,
+  #[smi] atime_nanos: u32,
+  #[number] mtime_secs: i64,
+  #[smi] mtime_nanos: u32,
+) -> Result<(), AnyError> {
+  let file = FileResource::get_file(state, rid)?;
+  file.utime_sync(atime_secs, atime_nanos, mtime_secs, mtime_nanos)?;
   Ok(())
 }
 
