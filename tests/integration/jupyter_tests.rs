@@ -1,9 +1,11 @@
+use std::future::Future;
 use std::process::Output;
 use std::sync::Arc;
 use std::time::Duration;
 
 use bytes::Bytes;
 use test_util::DenoChild;
+use test_util::TestContext;
 use test_util::TestContextBuilder;
 
 use deno_core::parking_lot::Mutex;
@@ -12,12 +14,14 @@ use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use serde::Deserialize;
 use serde::Serialize;
-use tokio::sync::broadcast;
 use tokio::time::timeout;
 use uuid::Uuid;
 use zeromq::SocketRecv;
 use zeromq::SocketSend;
 use zeromq::ZmqMessage;
+
+// for the `utc_now` function
+include!("../../cli/util/time.rs");
 
 #[derive(Serialize)]
 struct ConnectionSpec {
@@ -39,6 +43,11 @@ impl ConnectionSpec {
   }
 }
 
+fn pick_unused_port() -> u16 {
+  let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+  listener.local_addr().unwrap().port()
+}
+
 impl Default for ConnectionSpec {
   fn default() -> Self {
     Self {
@@ -46,11 +55,11 @@ impl Default for ConnectionSpec {
       signature_scheme: "hmac-sha256".into(),
       transport: "tcp".into(),
       ip: "127.0.0.1".into(),
-      hb_port: 9000,
-      control_port: 9001,
-      shell_port: 9002,
-      stdin_port: 9003,
-      iopub_port: 9004,
+      hb_port: pick_unused_port(),
+      control_port: pick_unused_port(),
+      shell_port: pick_unused_port(),
+      stdin_port: pick_unused_port(),
+      iopub_port: pick_unused_port(),
       kernel_name: "deno".into(),
     }
   }
@@ -74,11 +83,7 @@ impl Default for JupyterMsg {
     Self {
       routing_prefix: vec![Uuid::new_v4()],
       signature: "".into(),
-      header: MsgHeader {
-        msg_type: "kernel_info_request".into(),
-        version: "5.2".into(),
-        ..Default::default()
-      },
+      header: MsgHeader::default(),
       parent_header: json!({}),
       metadata: json!({}),
       content: json!({}),
@@ -102,10 +107,10 @@ impl Default for MsgHeader {
     Self {
       msg_id: Uuid::new_v4(),
       session: Uuid::new_v4(),
-      date: "2021-09-01T00:00:00.000Z".into(),
+      date: utc_now().to_rfc3339(),
       username: "test".into(),
       msg_type: "kernel_info_request".into(),
-      version: "5.2".into(),
+      version: "5.3".into(),
     }
   }
 }
@@ -130,9 +135,10 @@ impl JupyterMsg {
     ZmqMessage::try_from(parts).unwrap()
   }
 
-  fn new(msg_type: impl AsRef<str>, content: Value) -> Self {
+  fn new(session: Uuid, msg_type: impl AsRef<str>, content: Value) -> Self {
     Self {
       header: MsgHeader {
+        session,
         msg_type: msg_type.as_ref().into(),
         ..Default::default()
       },
@@ -190,12 +196,23 @@ async fn bind_socket<S: zeromq::Socket>(spec: &ConnectionSpec, port: u16) -> S {
 #[derive(Clone)]
 struct JupyterClient {
   recv_timeout: Duration,
+  session: Uuid,
   heartbeat: Arc<Mutex<zeromq::ReqSocket>>,
   control: Arc<Mutex<zeromq::DealerSocket>>,
   shell: Arc<Mutex<zeromq::DealerSocket>>,
   io_pub: Arc<Mutex<zeromq::SubSocket>>,
   stdin: Arc<Mutex<zeromq::RouterSocket>>,
 }
+
+#[derive(Debug, Clone, Copy)]
+enum JupyterChannel {
+  Control,
+  Shell,
+  Stdin,
+  IoPub,
+}
+
+use JupyterChannel::*;
 
 impl JupyterClient {
   async fn new(spec: &ConnectionSpec) -> Self {
@@ -210,63 +227,57 @@ impl JupyterClient {
       connect_socket::<zeromq::SubSocket>(spec, spec.iopub_port),
       connect_socket::<zeromq::RouterSocket>(spec, spec.stdin_port),
     );
-    fn wrap<T>(t: T) -> Arc<Mutex<T>> {
-      Arc::new(Mutex::new(t))
-    }
 
     Self {
-      heartbeat: wrap(heartbeat),
-      control: wrap(control),
-      shell: wrap(shell),
-      io_pub: wrap(io_pub),
-      stdin: wrap(stdin),
+      session: Uuid::new_v4(),
+      heartbeat: Arc::new(Mutex::new(heartbeat)),
+      control: Arc::new(Mutex::new(control)),
+      shell: Arc::new(Mutex::new(shell)),
+      io_pub: Arc::new(Mutex::new(io_pub)),
+      stdin: Arc::new(Mutex::new(stdin)),
       recv_timeout: timeout,
     }
   }
 
-  async fn send_control(&self, msg_type: &str, content: Value) {
-    let msg = JupyterMsg::new(msg_type, content);
-    let raw = msg.to_raw();
-    println!("sending control {}", raw.len());
-    self.control.lock().send(msg.to_raw()).await.unwrap();
-  }
-
-  async fn recv_control(&self) -> JupyterMsg {
-    JupyterMsg::from_raw(self.control.lock().recv().await.unwrap())
-  }
-
-  async fn recv<S: SocketRecv>(&self, s: &mut S) -> JupyterMsg {
+  async fn recv_with_timeout<S: SocketRecv>(&self, s: &mut S) -> JupyterMsg {
     let msg = timeout(self.recv_timeout, s.recv()).await.unwrap().unwrap();
     JupyterMsg::from_raw(msg)
   }
 
-  async fn send_shell(&self, msg_type: &str, content: Value) {
-    let msg = JupyterMsg::new(msg_type, content);
-    self.shell.lock().send(msg.to_raw()).await.unwrap();
+  async fn send_msg(&self, channel: JupyterChannel, msg: JupyterMsg) {
+    let raw = msg.to_raw();
+    match channel {
+      Control => self.control.lock().send(raw).await.unwrap(),
+      Shell => self.shell.lock().send(raw).await.unwrap(),
+      Stdin => self.stdin.lock().send(raw).await.unwrap(),
+      IoPub => panic!("Cannot send over IOPub"),
+    }
   }
 
-  async fn recv_shell(&self) -> JupyterMsg {
-    self.recv(&mut *self.shell.lock()).await
+  async fn send(
+    &self,
+    channel: JupyterChannel,
+    msg_type: &str,
+    content: Value,
+  ) {
+    let msg = JupyterMsg::new(self.session, msg_type, content);
+    self.send_msg(channel, msg).await;
   }
 
-  async fn send_stdin(&self, msg_type: &str, content: Value) {
-    let msg = JupyterMsg::new(msg_type, content);
-    self.stdin.lock().send(msg.to_raw()).await.unwrap();
+  async fn recv(&self, channel: JupyterChannel) -> JupyterMsg {
+    match channel {
+      Control => self.recv_with_timeout(&mut *self.control.lock()).await,
+      Shell => self.recv_with_timeout(&mut *self.shell.lock()).await,
+      Stdin => self.recv_with_timeout(&mut *self.stdin.lock()).await,
+      IoPub => self.recv_with_timeout(&mut *self.io_pub.lock()).await,
+    }
   }
 
-  async fn recv_stdin(&self) -> JupyterMsg {
-    self.recv(&mut *self.stdin.lock()).await
-  }
-
-  async fn recv_io_pub(&self) -> JupyterMsg {
-    self.recv(&mut *self.io_pub.lock()).await
-  }
-
-  async fn send_heartbeat(&self) {
+  async fn send_heartbeat(&self, bytes: impl AsRef<[u8]>) {
     self
       .heartbeat
       .lock()
-      .send(ZmqMessage::from(b"ping".to_vec()))
+      .send(ZmqMessage::from(bytes.as_ref().to_vec()))
       .await
       .unwrap();
   }
@@ -293,45 +304,73 @@ async fn wait_or_kill(mut process: DenoChild, wait: Duration) -> Output {
   return process.wait_with_output().unwrap();
 }
 
-#[tokio::test]
-async fn jupyter_smoke_test() {
+async fn setup() -> (TestContext, JupyterClient, JupyterServerProcess) {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let conn = ConnectionSpec::default();
   let conn_file = context.temp_dir().path().join("connection.json");
   conn_file.write_json(&conn);
 
-  let mut process = context
+  let process = context
     .new_command()
+    .stderr_piped()
+    .stdout_piped()
     .args_vec(vec![
       "jupyter",
       "--kernel",
       "--conn",
       conn_file.to_string().as_str(),
     ])
-    .split_output()
     .spawn()
     .unwrap();
 
-  println!("Making client");
   let client = JupyterClient::new(&conn).await;
-  println!("Starting kernel info req");
 
-  client.send_control("kernel_info_request", json!({})).await;
-  println!("Waiting for kernel info reply");
-  let msg = client.recv_control().await;
+  (context, client, JupyterServerProcess(Some(process)))
+}
+
+struct JupyterServerProcess(Option<DenoChild>);
+
+impl JupyterServerProcess {
+  async fn wait_or_kill(mut self, wait: Duration) -> Output {
+    wait_or_kill(self.0.take().unwrap(), wait).await
+  }
+}
+
+impl Drop for JupyterServerProcess {
+  fn drop(&mut self) {
+    let Some(mut proc) = self.0.take() else {
+      return;
+    };
+    if let Some(_) = proc.try_wait().unwrap() {
+      return;
+    }
+    proc.kill().unwrap();
+  }
+}
+
+#[tokio::test]
+async fn jupyter_heartbeat_echoes() {
+  let (_ctx, client, _process) = setup().await;
+  client.send_heartbeat(b"ping").await;
+  let msg = client.recv_heartbeat().await;
+  assert_eq!(msg, Bytes::from_static(b"ping"));
+}
+
+#[tokio::test]
+async fn jupyter_smoke_test() {
+  let (_ctx, client, process) = setup().await;
+  client.send(Control, "kernel_info_request", json!({})).await;
+  let msg = client.recv(Control).await;
   assert_eq!(msg.header.msg_type, "kernel_info_reply");
   println!("Kernel info reply: {:#?}", msg.content);
 
   client
-    .send_control("shutdown_request", json!({"restart": false}))
+    .send(Control, "shutdown_request", json!({"restart": false}))
     .await;
 
   println!("Waiting for process to exit");
 
-  let _status = process.try_wait().unwrap();
-
-  // process.kill().unwrap();
-  let output = wait_or_kill(process, Duration::from_secs(5)).await;
+  let output = process.wait_or_kill(Duration::from_secs(10)).await;
   println!(
     "jupyter output: {}\n\t{}\n\t{}",
     output.status,
