@@ -779,6 +779,7 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
     }
     if (future) {
       delete globalThis.window;
+      delete Deno.readAll;
     }
   } else {
     // Warmup
