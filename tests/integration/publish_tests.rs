@@ -708,3 +708,34 @@ fn allow_dirty_not_in_repo() {
   let output = output.combined_output();
   assert_contains!(output, "Successfully published");
 }
+
+#[test]
+fn allow_dirty_dry_run() {
+  let context = publish_context_builder_with_git_checks().build();
+  let temp_dir = context.temp_dir().path();
+  temp_dir.join("deno.json").write_json(&json!({
+    "name": "@foo/bar",
+    "version": "1.0.0",
+    "exports": "./main.ts",
+  }));
+
+  temp_dir.join("main.ts").write("");
+
+  let cmd = Command::new("git")
+    .arg("init")
+    .arg(temp_dir.as_path())
+    .output()
+    .unwrap();
+  assert!(cmd.status.success());
+
+  let output = context
+    .new_command()
+    .arg("publish")
+    .arg("--dry-run")
+    .arg("--token")
+    .arg("sadfasdf")
+    .run();
+  output.assert_exit_code(1);
+  let output = output.combined_output();
+  assert_contains!(output, "Aborting due to uncommitted changes. Check in source code or run with --allow-dirty");
+}
