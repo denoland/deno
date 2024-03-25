@@ -665,6 +665,8 @@ dependencies = [
  "trust-dns-client",
  "trust-dns-server",
  "url",
+ "uuid",
+ "zeromq",
 ]
 
 [[package]]

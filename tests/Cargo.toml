@@ -59,6 +59,9 @@ tower-lsp.workspace = true
 trust-dns-client = "=0.22.0"
 trust-dns-server = "=0.22.1"
 url.workspace = true
+uuid = { workspace = true, features = ["serde"] }
+zeromq.workspace = true
+
 
 [target.'cfg(unix)'.dev-dependencies]
 nix.workspace = true
