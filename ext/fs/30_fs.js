@@ -711,11 +711,11 @@ class FsFile {
   }
 
   seek(offset, whence) {
-    return op_fs_seek_async(this.#rid, offset, whence);
+    return seek(this.#rid, offset, whence);
   }
 
   seekSync(offset, whence) {
-    return op_fs_seek_sync(this.#rid, offset, whence);
+    return seekSync(this.#rid, offset, whence);
   }
 
   stat() {
