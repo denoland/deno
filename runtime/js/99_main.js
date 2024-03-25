@@ -783,7 +783,6 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       delete Deno.Buffer;
       delete Deno.close;
       delete Deno.copy;
-      delete Deno.customInspect;
       delete Deno.File;
       delete Deno.fstat;
       delete Deno.fstatSync;
