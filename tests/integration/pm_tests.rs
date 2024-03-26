@@ -39,11 +39,14 @@ fn add_basic_no_deno_json() {
   output.assert_exit_code(0);
   let output = output.combined_output();
   assert_contains!(output, "Add @denotest/add");
-  temp_dir.join("deno.json").assert_matches_json(json!({
-    "imports": {
-      "@denotest/add": "jsr:@denotest/add@^1.0.0"
-    }
-  }));
+  // Don't use `assert_matches_json` to ensure the file is properly formatted.
+  let expected = r#"{
+  "imports": {
+    "@denotest/add": "jsr:@denotest/add@^1.0.0"
+  }
+}
+"#;
+  temp_dir.join("deno.json").assert_matches_text(expected);
 }
 
 #[test]
