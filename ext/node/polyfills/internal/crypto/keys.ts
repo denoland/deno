@@ -242,8 +242,8 @@ export function createPrivateKey(
   key: PrivateKeyInput | string | Buffer | JsonWebKeyInput,
 ): PrivateKeyObject {
   const { data, format, type } = prepareAsymmetricKey(key);
-  const details = op_node_create_private_key(data, format, type);
-  const handle = setOwnedKey(copyBuffer(data));
+  const { buffer, details } = op_node_create_private_key(data, format, type);
+  const handle = setOwnedKey(buffer);
   return new PrivateKeyObject(handle, details);
 }
 

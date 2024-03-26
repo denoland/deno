@@ -1353,6 +1353,7 @@ export function diffieHellman(options: {
   return op_node_dh_stateless(
     getKeyMaterial(privateKey),
     getKeyMaterial(publicKey),
+    privateType,
   );
 }
 

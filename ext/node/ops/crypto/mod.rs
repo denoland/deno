@@ -950,9 +950,10 @@ pub async fn op_node_dh_generate_async(
 pub fn op_node_dh_stateless(
   #[buffer] private_key: &[u8],
   #[buffer] public_key: &[u8],
+  #[string] algorithm: &str,
 ) -> Result<ToJsBuffer, AnyError> {
-  let secret_key = elliptic_curve::SecretKey::from_pkcs1_der(private_key)?;
-  let public_key = elliptic_curve::PublicKey::from_sec1_bytes(public_key)?;
+  // let secret_key = elliptic_curve::SecretKey::<NistP256>::from_pkcs1_der(private_key)?;
+  let public_key = elliptic_curve::PublicKey::<NistP256>::from_sec1_bytes(public_key)?;
 
   let shared_secret = elliptic_curve::ecdh::diffie_hellman(
     secret_key.to_nonzero_scalar(),
@@ -1513,7 +1514,7 @@ pub fn op_node_create_private_key(
   #[buffer] key: &[u8],
   #[string] format: &str,
   #[string] type_: &str,
-) -> Result<AsymmetricKeyDetails, AnyError> {
+) -> Result<(Vec<u8>, AsymmetricKeyDetails), AnyError> {
   use rsa::pkcs1::der::Decode;
 
   let doc = parse_private_key(key, format, type_)?;
@@ -1521,7 +1522,7 @@ pub fn op_node_create_private_key(
 
   let alg = pk_info.algorithm.oid;
 
-  match alg {
+  let details = match alg {
     RSA_ENCRYPTION_OID => {
       let private_key =
         rsa::pkcs1::RsaPrivateKey::from_der(pk_info.private_key)?;
@@ -1586,7 +1587,9 @@ pub fn op_node_create_private_key(
       })
     }
     _ => Err(type_error("Unsupported algorithm")),
-  }
+  };
+
+  Ok(buffer, details)
 }
 
 fn parse_public_key(
@@ -1695,7 +1698,11 @@ pub fn op_node_create_public_key(
         named_curve: named_curve.to_string(),
       })
     }
-    DH_KEY_AGREEMENT_OID => Ok(AsymmetricKeyDetails::Dh),
+    DH_KEY_AGREEMENT_OID => {
+      // Parse the PEM format
+      // 
+      Ok(AsymmetricKeyDetails::Dh),
+    }
     _ => Err(type_error("Unsupported algorithm")),
   }
 }
