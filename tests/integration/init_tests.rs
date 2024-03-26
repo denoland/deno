@@ -6,10 +6,7 @@ use util::TestContextBuilder;
 
 #[test]
 fn init_subcommand_without_dir() {
-  let context = TestContextBuilder::new()
-    .env("JSR_URL", "https://jsr.io")
-    .use_temp_cwd()
-    .build();
+  let context = TestContextBuilder::for_jsr().use_temp_cwd().build();
   let cwd = context.temp_dir().path();
 
   let output = context.new_command().args("init").split_output().run();
@@ -49,10 +46,7 @@ fn init_subcommand_without_dir() {
 
 #[test]
 fn init_subcommand_with_dir_arg() {
-  let context = TestContextBuilder::new()
-    .env("JSR_URL", "https://jsr.io")
-    .use_temp_cwd()
-    .build();
+  let context = TestContextBuilder::for_jsr().use_temp_cwd().build();
   let cwd = context.temp_dir().path();
 
   let output = context
@@ -98,10 +92,7 @@ fn init_subcommand_with_dir_arg() {
 
 #[test]
 fn init_subcommand_with_quiet_arg() {
-  let context = TestContextBuilder::new()
-    .env("JSR_URL", "https://jsr.io")
-    .use_temp_cwd()
-    .build();
+  let context = TestContextBuilder::for_jsr().use_temp_cwd().build();
   let cwd = context.temp_dir().path();
 
   let output = context
