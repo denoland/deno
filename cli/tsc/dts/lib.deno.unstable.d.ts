@@ -539,13 +539,13 @@ declare namespace Deno {
    *
    * @category FFI
    */
-  export class UnsafeFnPointer<Fn extends ForeignFunction> {
+  export class UnsafeFnPointer<const Fn extends ForeignFunction> {
     /** The pointer to the function. */
     pointer: PointerObject<Fn>;
     /** The definition of the function. */
     definition: Fn;
 
-    constructor(pointer: PointerObject<Fn>, definition: Fn);
+    constructor(pointer: PointerObject<NoInfer<Fn>>, definition: Fn);
     /** @deprecated Properly type {@linkcode pointer} using {@linkcode NativeTypedFunction} or {@linkcode UnsafeCallbackDefinition} types. */
     constructor(pointer: PointerObject, definition: Fn);
 
@@ -606,7 +606,8 @@ declare namespace Deno {
    * @category FFI
    */
   export class UnsafeCallback<
-    Definition extends UnsafeCallbackDefinition = UnsafeCallbackDefinition,
+    const Definition extends UnsafeCallbackDefinition =
+      UnsafeCallbackDefinition,
   > {
     constructor(
       definition: Definition,
@@ -747,7 +748,7 @@ declare namespace Deno {
    * @tags allow-ffi
    * @category FFI
    */
-  export function dlopen<S extends ForeignLibraryInterface>(
+  export function dlopen<const S extends ForeignLibraryInterface>(
     filename: string | URL,
     symbols: S,
   ): DynamicLibrary<S>;
