@@ -533,3 +533,31 @@ async fn jupyter_execute_request() -> Result<()> {
 
   Ok(())
 }
+
+#[tokio::test]
+async fn jupyter_store_history_false() -> Result<()> {
+  let (_ctx, client, _process) = setup().await;
+  client
+    .send(
+      Shell,
+      "execute_request",
+      json!({
+        "silent": false,
+        "store_history": false,
+        "code": "console.log(\"asdf\")"
+      }),
+    )
+    .await?;
+
+  let reply = client.recv(Shell).await?;
+  assert_eq!(reply.header.msg_type, "execute_reply");
+  assert_eq_subset(
+    reply.content,
+    json!({
+      "status": "ok",
+      "execution_count": 0,
+    }),
+  );
+
+  Ok(())
+}
