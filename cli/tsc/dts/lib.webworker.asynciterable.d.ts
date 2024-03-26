@@ -16,9 +16,13 @@ and limitations under the License.
 
 /// <reference no-default-lib="true"/>
 
-/// <reference lib="es2020" />
-/// <reference lib="dom" />
-/// <reference lib="webworker.importscripts" />
-/// <reference lib="scripthost" />
-/// <reference lib="dom.iterable" />
-/// <reference lib="dom.asynciterable" />
+/////////////////////////////
+/// Worker Async Iterable APIs
+/////////////////////////////
+
+interface FileSystemDirectoryHandle {
+    [Symbol.asyncIterator](): AsyncIterableIterator<[string, FileSystemHandle]>;
+    entries(): AsyncIterableIterator<[string, FileSystemHandle]>;
+    keys(): AsyncIterableIterator<string>;
+    values(): AsyncIterableIterator<FileSystemHandle>;
+}

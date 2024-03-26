@@ -16,9 +16,16 @@ and limitations under the License.
 
 /// <reference no-default-lib="true"/>
 
-/// <reference lib="es2020" />
-/// <reference lib="dom" />
-/// <reference lib="webworker.importscripts" />
-/// <reference lib="scripthost" />
-/// <reference lib="dom.iterable" />
-/// <reference lib="dom.asynciterable" />
+declare namespace Intl {
+    /**
+     * The `Intl.getCanonicalLocales()` method returns an array containing
+     * the canonical locale names. Duplicates will be omitted and elements
+     * will be validated as structurally valid language tags.
+     *
+     * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/getCanonicalLocales)
+     *
+     * @param locale A list of String values for which to get the canonical locale names
+     * @returns An array containing the canonical and validated locale names.
+     */
+    function getCanonicalLocales(locale?: string | readonly string[]): string[];
+}

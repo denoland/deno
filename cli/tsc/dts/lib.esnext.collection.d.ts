@@ -16,9 +16,14 @@ and limitations under the License.
 
 /// <reference no-default-lib="true"/>
 
-/// <reference lib="es2020" />
-/// <reference lib="dom" />
-/// <reference lib="webworker.importscripts" />
-/// <reference lib="scripthost" />
-/// <reference lib="dom.iterable" />
-/// <reference lib="dom.asynciterable" />
+interface MapConstructor {
+    /**
+     * Groups members of an iterable according to the return value of the passed callback.
+     * @param items An iterable.
+     * @param keySelector A callback which will be invoked for each item in items.
+     */
+    groupBy<K, T>(
+        items: Iterable<T>,
+        keySelector: (item: T, index: number) => K,
+    ): Map<K, T[]>;
+}
