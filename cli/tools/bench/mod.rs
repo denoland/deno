@@ -233,7 +233,7 @@ async fn bench_specifier_inner(
   let benchmarks = if used_only { only } else { no_only };
   let mut benchmarks = benchmarks
     .into_iter()
-    .filter(|(d, _)| filter.includes(&d.name) && !d.ignore)
+    .filter(|(d, _)| d.warmup || filter.includes(&d.name) && !d.ignore)
     .collect::<Vec<_>>();
   let mut groups = IndexSet::<Option<String>>::new();
   // make sure ungrouped benchmarks are placed above grouped
