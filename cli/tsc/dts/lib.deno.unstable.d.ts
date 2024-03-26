@@ -545,9 +545,9 @@ declare namespace Deno {
     /** The definition of the function. */
     definition: Fn;
 
-    constructor(pointer: PointerObject<Fn>, definition: Const<Fn>);
+    constructor(pointer: PointerObject<Fn>, definition: Fn);
     /** @deprecated Properly type {@linkcode pointer} using {@linkcode NativeTypedFunction} or {@linkcode UnsafeCallbackDefinition} types. */
-    constructor(pointer: PointerObject, definition: Const<Fn>);
+    constructor(pointer: PointerObject, definition: Fn);
 
     /** Call the foreign function. */
     call: FromForeignFunction<Fn>;
@@ -609,7 +609,7 @@ declare namespace Deno {
     Definition extends UnsafeCallbackDefinition = UnsafeCallbackDefinition,
   > {
     constructor(
-      definition: Const<Definition>,
+      definition: Definition,
       callback: UnsafeCallbackFunction<
         Definition["parameters"],
         Definition["result"]
@@ -636,7 +636,7 @@ declare namespace Deno {
     static threadSafe<
       Definition extends UnsafeCallbackDefinition = UnsafeCallbackDefinition,
     >(
-      definition: Const<Definition>,
+      definition: Definition,
       callback: UnsafeCallbackFunction<
         Definition["parameters"],
         Definition["result"]
@@ -701,20 +701,6 @@ declare namespace Deno {
     close(): void;
   }
 
-  /**
-   *  This magic code used to implement better type hints for {@linkcode Deno.dlopen}
-   *
-   *  @category FFI
-   */
-  type Cast<A, B> = A extends B ? A : B;
-  /** @category FFI */
-  type Const<T> = Cast<
-    T,
-    | (T extends string | number | bigint | boolean ? T : never)
-    | { [K in keyof T]: Const<T[K]> }
-    | []
-  >;
-
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * Opens an external dynamic library and registers symbols, making foreign
@@ -763,7 +749,7 @@ declare namespace Deno {
    */
   export function dlopen<S extends ForeignLibraryInterface>(
     filename: string | URL,
-    symbols: Const<S>,
+    symbols: S,
   ): DynamicLibrary<S>;
 
   /** **UNSTABLE**: New API, yet to be vetted.

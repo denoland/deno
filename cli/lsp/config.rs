@@ -1093,7 +1093,7 @@ pub fn default_ts_config() -> TsConfig {
     "isolatedModules": true,
     "jsx": "react",
     "lib": ["deno.ns", "deno.window", "deno.unstable"],
-    "module": "nodeNext",
+    "module": "esnext",
     "moduleDetection": "force",
     "noEmit": true,
     "resolveJsonModule": true,

@@ -1,0 +1,6 @@
+{
+  "base": "npm",
+  "args": "check main.ts",
+  "output": "main.out",
+  "exitCode": 1
+}
