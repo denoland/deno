@@ -2911,8 +2911,8 @@ mod tests {
   fn test_net_fully_qualified_domain_name() {
     let mut perms = Permissions {
       net: Permissions::new_unary(
-        &Some(vec!["allowed.domain".to_string()]),
-        &Some(vec!["denied.domain".to_string()]),
+        &Some(vec!["allowed.domain".to_string(), "1.1.1.1".to_string()]),
+        &Some(vec!["denied.domain".to_string(), "2.2.2.2".to_string()]),
         false,
       )
       .unwrap(),
@@ -2920,7 +2920,9 @@ mod tests {
     };
 
     perms.net.check(&("allowed.domain.", None), None).unwrap();
+    perms.net.check(&("1.1.1.1.", None), None).unwrap();
     assert!(perms.net.check(&("denied.domain.", None), None).is_err());
+    assert!(perms.net.check(&("2.2.2.2.", None), None).is_err());
   }
 
   #[test]
