@@ -2688,7 +2688,7 @@ fn lsp_hover_jsdoc_symbol_link() {
           "language": "typescript",
           "value": "function a(): void"
         },
-        "JSDoc [hello](file:///a/file.ts#L1,10) and [`b`](file:///a/file.ts#L5,7)"
+        "JSDoc [hello](file:///a/b.ts#L1,1) and [`b`](file:///a/file.ts#L5,7)"
       ],
       "range": {
         "start": { "line": 7, "character": 9 },
@@ -5050,7 +5050,7 @@ fn lsp_jsr_auto_import_completion() {
     json!({ "triggerKind": 1 }),
   );
   assert!(!list.is_incomplete);
-  assert_eq!(list.items.len(), 261);
+  assert_eq!(list.items.len(), 262);
   let item = list.items.iter().find(|i| i.label == "add").unwrap();
   assert_eq!(&item.label, "add");
   assert_eq!(
@@ -5130,7 +5130,7 @@ fn lsp_jsr_auto_import_completion_import_map() {
     json!({ "triggerKind": 1 }),
   );
   assert!(!list.is_incomplete);
-  assert_eq!(list.items.len(), 261);
+  assert_eq!(list.items.len(), 262);
   let item = list.items.iter().find(|i| i.label == "add").unwrap();
   assert_eq!(&item.label, "add");
   assert_eq!(json!(&item.label_details), json!({ "description": "add" }));
@@ -7648,7 +7648,18 @@ fn lsp_completions_npm() {
       ]
     }),
   );
-  client.read_diagnostics();
+  let diagnostics = client.read_diagnostics();
+  assert_eq!(
+    diagnostics
+      .all()
+      .iter()
+      .map(|d| d.message.as_str())
+      .collect::<Vec<_>>(),
+    vec![
+      "'chalk' is declared but its value is never read.",
+      "Identifier expected."
+    ]
+  );
 
   let list = client.get_completion_list(
     "file:///a/file.ts",
@@ -7659,9 +7670,14 @@ fn lsp_completions_npm() {
     }),
   );
   assert!(!list.is_incomplete);
-  assert_eq!(list.items.len(), 3);
-  assert!(list.items.iter().any(|i| i.label == "default"));
-  assert!(list.items.iter().any(|i| i.label == "MyClass"));
+  assert_eq!(
+    list
+      .items
+      .iter()
+      .map(|i| i.label.as_str())
+      .collect::<Vec<_>>(),
+    vec!["default", "MyClass", "named"]
+  );
 
   let res = client.write_request(
     "completionItem/resolve",
