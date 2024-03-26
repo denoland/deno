@@ -43,6 +43,7 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::Path;
+use std::sync::Arc;
 use tower_lsp::lsp_types as lsp;
 use tower_lsp::lsp_types::Position;
 use tower_lsp::lsp_types::Range;
@@ -216,7 +217,7 @@ fn code_as_string(code: &Option<lsp::NumberOrString>) -> String {
 /// Rewrites imports in quick fixes and code changes to be Deno specific.
 pub struct TsResponseImportMapper<'a> {
   documents: &'a Documents,
-  maybe_import_map: Option<&'a ImportMap>,
+  maybe_import_map: Option<Arc<ImportMap>>,
   node_resolver: Option<&'a CliNodeResolver>,
   npm_resolver: Option<&'a dyn CliNpmResolver>,
 }
@@ -224,7 +225,7 @@ pub struct TsResponseImportMapper<'a> {
 impl<'a> TsResponseImportMapper<'a> {
   pub fn new(
     documents: &'a Documents,
-    maybe_import_map: Option<&'a ImportMap>,
+    maybe_import_map: Option<Arc<ImportMap>>,
     node_resolver: Option<&'a CliNodeResolver>,
     npm_resolver: Option<&'a dyn CliNpmResolver>,
   ) -> Self {
@@ -269,7 +270,7 @@ impl<'a> TsResponseImportMapper<'a> {
       let sub_path = (export != ".").then_some(export);
       let mut req = None;
       req = req.or_else(|| {
-        let import_map = self.maybe_import_map?;
+        let import_map = self.maybe_import_map.as_ref()?;
         for entry in import_map.entries_for_referrer(referrer) {
           let Some(value) = entry.raw_value else {
             continue;
@@ -296,7 +297,7 @@ impl<'a> TsResponseImportMapper<'a> {
         JsrPackageNvReference::new(nv_ref).to_string()
       };
       let specifier = ModuleSpecifier::parse(&spec_str).ok()?;
-      if let Some(import_map) = self.maybe_import_map {
+      if let Some(import_map) = &self.maybe_import_map {
         if let Some(result) = import_map.lookup(&specifier, referrer) {
           return Some(result);
         }
@@ -315,7 +316,7 @@ impl<'a> TsResponseImportMapper<'a> {
           // check if any pkg reqs match what is found in an import map
           if !pkg_reqs.is_empty() {
             let sub_path = self.resolve_package_path(specifier);
-            if let Some(import_map) = self.maybe_import_map {
+            if let Some(import_map) = &self.maybe_import_map {
               let pkg_reqs = pkg_reqs.iter().collect::<HashSet<_>>();
               let mut matches = Vec::new();
               for entry in import_map.entries_for_referrer(referrer) {
@@ -357,7 +358,7 @@ impl<'a> TsResponseImportMapper<'a> {
     }
 
     // check if the import map has this specifier
-    if let Some(import_map) = self.maybe_import_map {
+    if let Some(import_map) = &self.maybe_import_map {
       if let Some(result) = import_map.lookup(specifier, referrer) {
         return Some(result);
       }
@@ -942,7 +943,7 @@ impl CodeActionCollection {
     let action = fix_ts_import_action(
       specifier,
       action,
-      &language_server.get_ts_response_import_mapper(),
+      &language_server.get_ts_response_import_mapper(specifier),
     )?;
     let edit = ts_changes_to_edit(&action.changes, language_server)?;
     let code_action = lsp::CodeAction {

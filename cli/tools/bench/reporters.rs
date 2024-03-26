@@ -99,7 +99,6 @@ impl BenchReporter for JsonReporter {
 pub struct ConsoleReporter {
   name: String,
   show_output: bool,
-  has_ungrouped: bool,
   group: Option<String>,
   baseline: bool,
   group_measurements: Vec<(BenchDescription, BenchStats)>,
@@ -114,7 +113,6 @@ impl ConsoleReporter {
       options: None,
       baseline: false,
       name: String::new(),
-      has_ungrouped: false,
       group_measurements: Vec::new(),
     }
   }
@@ -173,18 +171,11 @@ impl BenchReporter for ConsoleReporter {
     self.name = desc.name.clone();
 
     match &desc.group {
-      None => {
-        self.has_ungrouped = true;
-      }
+      None => {}
 
       Some(group) => {
         if self.group.is_none() || group != self.group.as_ref().unwrap() {
           self.report_group_summary();
-        }
-
-        if (self.group.is_none() && self.has_ungrouped)
-          || (self.group.is_some() && self.group_measurements.is_empty())
-        {
           println!("{} {}", colors::gray("group"), colors::green(group));
         }
 

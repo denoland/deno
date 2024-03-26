@@ -146,32 +146,6 @@ fn lsp_tsconfig_types_config_sub_dir() {
 }
 
 #[test]
-fn lsp_tsconfig_bad_config_path() {
-  let context = TestContextBuilder::new().use_temp_cwd().build();
-  let mut client = context.new_lsp_command().build();
-  client.initialize(|builder| {
-    builder
-      .set_config("bad_tsconfig.json")
-      .set_maybe_root_uri(None);
-  });
-  let (method, maybe_params) = client.read_notification();
-  assert_eq!(method, "window/showMessage");
-  assert_eq!(maybe_params, Some(lsp::ShowMessageParams {
-    typ: lsp::MessageType::WARNING,
-    message: "The path to the configuration file (\"bad_tsconfig.json\") is not resolvable.".to_string()
-  }));
-  let diagnostics = client.did_open(json!({
-    "textDocument": {
-      "uri": "file:///a/file.ts",
-      "languageId": "typescript",
-      "version": 1,
-      "text": "console.log(Deno.args);\n"
-    }
-  }));
-  assert_eq!(diagnostics.all().len(), 0);
-}
-
-#[test]
 fn lsp_triple_slash_types() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -223,7 +197,7 @@ fn lsp_import_map() {
     }
   }));
 
-  assert_eq!(diagnostics.all().len(), 0);
+  assert_eq!(json!(diagnostics.all()), json!([]));
 
   let res = client.write_request(
     "textDocument/hover",
@@ -497,7 +471,7 @@ fn lsp_import_map_embedded_in_config_file_after_initialize() {
     }]
   }));
 
-  assert_eq!(client.read_diagnostics().all().len(), 0);
+  assert_eq!(json!(client.read_diagnostics().all()), json!([]));
 
   let res = client.write_request(
     "textDocument/hover",
@@ -546,7 +520,7 @@ fn lsp_import_map_config_file_auto_discovered() {
     }]
   }));
   client.wait_until_stderr_line(|line| {
-    line.contains("Auto-resolved configuration file:")
+    line.contains("  Resolved Deno configuration file:")
   });
 
   let uri = temp_dir.uri().join("a.ts").unwrap();
@@ -607,7 +581,7 @@ fn lsp_import_map_config_file_auto_discovered() {
     }]
   }));
   client.wait_until_stderr_line(|line| {
-    line.contains("Auto-resolved configuration file:")
+    line.contains("  Resolved Deno configuration file:")
   });
   let res = client.write_request(
     "textDocument/hover",
@@ -675,7 +649,7 @@ fn lsp_import_map_config_file_auto_discovered_symlink() {
 
   // this will discover the deno.json in the root
   let search_line = format!(
-    "Auto-resolved configuration file: \"{}\"",
+    "  Resolved Deno configuration file: \"{}\"",
     temp_dir.uri().join("deno.json").unwrap().as_str()
   );
   client.wait_until_stderr_line(|line| line.contains(&search_line));
@@ -8946,10 +8920,7 @@ fn lsp_performance() {
       "lsp.update_diagnostics_deps",
       "lsp.update_diagnostics_lint",
       "lsp.update_diagnostics_ts",
-      "lsp.update_import_map",
       "lsp.update_registries",
-      "lsp.update_tsconfig",
-      "tsc.host.$configure",
       "tsc.host.$getAssets",
       "tsc.host.$getDiagnostics",
       "tsc.host.$getSupportedCodeFixes",
@@ -8959,7 +8930,7 @@ fn lsp_performance() {
       "tsc.op.op_project_version",
       "tsc.op.op_script_names",
       "tsc.op.op_script_version",
-      "tsc.request.$configure",
+      "tsc.op.op_ts_config",
       "tsc.request.$getAssets",
       "tsc.request.$getSupportedCodeFixes",
       "tsc.request.getQuickInfoAtPosition",
