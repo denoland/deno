@@ -43,5 +43,6 @@ where
   buf[1] = subsec_nanos;
 }
 
+#[allow(clippy::unused_async)]
 #[op2(async(lazy), fast)]
 pub async fn op_defer() {}

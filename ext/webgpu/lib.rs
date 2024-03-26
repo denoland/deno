@@ -381,9 +381,9 @@ pub struct GpuAdapterDevice {
   is_software: bool,
 }
 
-#[op2(async)]
+#[op2]
 #[serde]
-pub async fn op_webgpu_request_adapter(
+pub fn op_webgpu_request_adapter(
   state: Rc<RefCell<OpState>>,
   #[serde] power_preference: Option<wgpu_types::PowerPreference>,
   force_fallback_adapter: bool,
@@ -645,9 +645,9 @@ impl From<GpuRequiredFeatures> for wgpu_types::Features {
   }
 }
 
-#[op2(async)]
+#[op2]
 #[serde]
-pub async fn op_webgpu_request_device(
+pub fn op_webgpu_request_device(
   state: Rc<RefCell<OpState>>,
   #[smi] adapter_rid: ResourceId,
   #[string] label: String,
@@ -702,9 +702,9 @@ pub struct GPUAdapterInfo {
   description: String,
 }
 
-#[op2(async)]
+#[op2]
 #[serde]
-pub async fn op_webgpu_request_adapter_info(
+pub fn op_webgpu_request_adapter_info(
   state: Rc<RefCell<OpState>>,
   #[smi] adapter_rid: ResourceId,
 ) -> Result<GPUAdapterInfo, AnyError> {

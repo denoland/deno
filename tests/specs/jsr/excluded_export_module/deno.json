@@ -1,0 +1,12 @@
+{
+  "name": "@denotest/excluded-export-module",
+  "version": "0.1.0",
+  "exports": "./main.ts",
+  "publish": {
+    "exclude": [
+      "./excluded_file1.ts",
+      "./excluded_file2.ts",
+      "./not_imported_excluded_file.ts"
+    ]
+  }
+}

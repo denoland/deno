@@ -10,22 +10,22 @@ use crate::factory::CliFactory;
 use crate::factory::CliFactoryBuilder;
 use crate::file_fetcher::File;
 use crate::file_fetcher::FileFetcher;
-use crate::graph_util::graph_valid_with_cli_options;
 use crate::graph_util::has_graph_root_local_dependent_changed;
 use crate::module_loader::ModuleLoadPreparer;
 use crate::ops;
 use crate::util::file_watcher;
 use crate::util::fs::collect_specifiers;
+use crate::util::fs::WalkEntry;
 use crate::util::path::get_extension;
 use crate::util::path::is_script_ext;
 use crate::util::path::mapped_specifier_for_tsc;
+use crate::util::path::matches_pattern_or_exact_path;
 use crate::worker::CliMainWorkerFactory;
 
 use deno_ast::swc::common::comments::CommentKind;
 use deno_ast::MediaType;
 use deno_ast::SourceRangedForSpanned;
 use deno_config::glob::FilePatterns;
-use deno_config::glob::PathOrPattern;
 use deno_core::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context as _;
@@ -43,6 +43,7 @@ use deno_core::stats::RuntimeActivityDiff;
 use deno_core::stats::RuntimeActivityStats;
 use deno_core::stats::RuntimeActivityStatsFactory;
 use deno_core::stats::RuntimeActivityStatsFilter;
+use deno_core::stats::RuntimeActivityType;
 use deno_core::unsync::spawn;
 use deno_core::unsync::spawn_blocking;
 use deno_core::url::Url;
@@ -64,6 +65,7 @@ use rand::seq::SliceRandom;
 use rand::SeedableRng;
 use regex::Regex;
 use serde::Deserialize;
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
@@ -80,7 +82,6 @@ use std::sync::Arc;
 use std::task::Poll;
 use std::time::Duration;
 use std::time::Instant;
-use std::time::SystemTime;
 use tokio::signal;
 
 mod channel;
@@ -103,6 +104,35 @@ use reporters::TestReporter;
 
 /// How many times we're allowed to spin the event loop before considering something a leak.
 const MAX_SANITIZER_LOOP_SPINS: usize = 16;
+
+#[derive(Default)]
+struct TopLevelSanitizerStats {
+  map: HashMap<(RuntimeActivityType, Cow<'static, str>), usize>,
+}
+
+fn get_sanitizer_item(
+  activity: RuntimeActivity,
+) -> (RuntimeActivityType, Cow<'static, str>) {
+  let activity_type = activity.activity();
+  match activity {
+    RuntimeActivity::AsyncOp(_, _, name) => (activity_type, name.into()),
+    RuntimeActivity::Resource(_, _, name) => (activity_type, name.into()),
+    RuntimeActivity::Interval(_, _) => (activity_type, "".into()),
+    RuntimeActivity::Timer(_, _) => (activity_type, "".into()),
+  }
+}
+
+fn get_sanitizer_item_ref(
+  activity: &RuntimeActivity,
+) -> (RuntimeActivityType, Cow<str>) {
+  let activity_type = activity.activity();
+  match activity {
+    RuntimeActivity::AsyncOp(_, _, name) => (activity_type, (*name).into()),
+    RuntimeActivity::Resource(_, _, name) => (activity_type, name.into()),
+    RuntimeActivity::Interval(_, _) => (activity_type, "".into()),
+    RuntimeActivity::Timer(_, _) => (activity_type, "".into()),
+  }
+}
 
 /// The test mode is used to determine how a specifier is to be tested.
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -268,43 +298,77 @@ pub enum TestFailure {
   HasSanitizersAndOverlaps(IndexSet<String>), // Long names of overlapped tests
 }
 
-impl ToString for TestFailure {
-  fn to_string(&self) -> String {
+impl std::fmt::Display for TestFailure {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     match self {
-      TestFailure::JsError(js_error) => format_test_error(js_error),
-      TestFailure::FailedSteps(1) => "1 test step failed.".to_string(),
-      TestFailure::FailedSteps(n) => format!("{} test steps failed.", n),
-      TestFailure::IncompleteSteps => "Completed while steps were still running. Ensure all steps are awaited with `await t.step(...)`.".to_string(),
-      TestFailure::Incomplete => "Didn't complete before parent. Await step with `await t.step(...)`.".to_string(),
+      TestFailure::JsError(js_error) => {
+        write!(f, "{}", format_test_error(js_error))
+      }
+      TestFailure::FailedSteps(1) => write!(f, "1 test step failed."),
+      TestFailure::FailedSteps(n) => write!(f, "{n} test steps failed."),
+      TestFailure::IncompleteSteps => {
+        write!(f, "Completed while steps were still running. Ensure all steps are awaited with `await t.step(...)`.")
+      }
+      TestFailure::Incomplete => {
+        write!(
+          f,
+          "Didn't complete before parent. Await step with `await t.step(...)`."
+        )
+      }
       TestFailure::Leaked(details, trailer_notes) => {
-        let mut string = "Leaks detected:".to_string();
+        write!(f, "Leaks detected:")?;
         for detail in details {
-          string.push_str(&format!("\n  - {detail}"));
+          write!(f, "\n  - {}", detail)?;
         }
         for trailer in trailer_notes {
-          string.push_str(&format!("\n{trailer}"));
+          write!(f, "\n{}", trailer)?;
         }
-        string
+        Ok(())
       }
       TestFailure::OverlapsWithSanitizers(long_names) => {
-        let mut string = "Started test step while another test step with sanitizers was running:".to_string();
+        write!(f, "Started test step while another test step with sanitizers was running:")?;
         for long_name in long_names {
-          string.push_str(&format!("\n  * {}", long_name));
+          write!(f, "\n  * {}", long_name)?;
         }
-        string
+        Ok(())
       }
       TestFailure::HasSanitizersAndOverlaps(long_names) => {
-        let mut string = "Started test step with sanitizers while another test step was running:".to_string();
+        write!(f, "Started test step with sanitizers while another test step was running:")?;
         for long_name in long_names {
-          string.push_str(&format!("\n  * {}", long_name));
+          write!(f, "\n  * {}", long_name)?;
         }
-        string
+        Ok(())
       }
     }
   }
 }
 
 impl TestFailure {
+  pub fn overview(&self) -> String {
+    match self {
+      TestFailure::JsError(js_error) => js_error.exception_message.clone(),
+      TestFailure::FailedSteps(1) => "1 test step failed".to_string(),
+      TestFailure::FailedSteps(n) => format!("{n} test steps failed"),
+      TestFailure::IncompleteSteps => {
+        "Completed while steps were still running".to_string()
+      }
+      TestFailure::Incomplete => "Didn't complete before parent".to_string(),
+      TestFailure::Leaked(_, _) => "Leaks detected".to_string(),
+      TestFailure::OverlapsWithSanitizers(_) => {
+        "Started test step while another test step with sanitizers was running"
+          .to_string()
+      }
+      TestFailure::HasSanitizersAndOverlaps(_) => {
+        "Started test step with sanitizers while another test step was running"
+          .to_string()
+      }
+    }
+  }
+
+  pub fn detail(&self) -> String {
+    self.to_string()
+  }
+
   fn format_label(&self) -> String {
     match self {
       TestFailure::Incomplete => colors::gray("INCOMPLETE").to_string(),
@@ -435,6 +499,7 @@ pub struct TestSummary {
 
 #[derive(Debug, Clone)]
 struct TestSpecifiersOptions {
+  cwd: Url,
   concurrent_jobs: NonZeroUsize,
   fail_fast: Option<NonZeroUsize>,
   log_level: Option<log::Level>,
@@ -476,23 +541,30 @@ impl TestSummary {
 fn get_test_reporter(options: &TestSpecifiersOptions) -> Box<dyn TestReporter> {
   let parallel = options.concurrent_jobs.get() > 1;
   let reporter: Box<dyn TestReporter> = match &options.reporter {
-    TestReporterConfig::Dot => Box::new(DotTestReporter::new()),
+    TestReporterConfig::Dot => {
+      Box::new(DotTestReporter::new(options.cwd.clone()))
+    }
     TestReporterConfig::Pretty => Box::new(PrettyTestReporter::new(
       parallel,
       options.log_level != Some(Level::Error),
       options.filter,
       false,
+      options.cwd.clone(),
     )),
     TestReporterConfig::Junit => {
-      Box::new(JunitTestReporter::new("-".to_string()))
+      Box::new(JunitTestReporter::new(options.cwd.clone(), "-".to_string()))
     }
     TestReporterConfig::Tap => Box::new(TapTestReporter::new(
+      options.cwd.clone(),
       options.concurrent_jobs > NonZeroUsize::new(1).unwrap(),
     )),
   };
 
   if let Some(junit_path) = &options.junit_path {
-    let junit = Box::new(JunitTestReporter::new(junit_path.to_string()));
+    let junit = Box::new(JunitTestReporter::new(
+      options.cwd.clone(),
+      junit_path.to_string(),
+    ));
     return Box::new(CompoundTestReporter::new(vec![reporter, junit]));
   }
 
@@ -735,6 +807,18 @@ async fn run_tests_for_worker_inner(
   filter = filter.omit_op(op_id_host_recv_ctrl as _);
   filter = filter.omit_op(op_id_host_recv_message as _);
 
+  // Count the top-level stats so we can filter them out if they complete and restart within
+  // a test.
+  let top_level_stats = stats.clone().capture(&filter);
+  let mut top_level = TopLevelSanitizerStats::default();
+  for activity in top_level_stats.dump().active {
+    top_level
+      .map
+      .entry(get_sanitizer_item(activity))
+      .and_modify(|n| *n += 1)
+      .or_insert(1);
+  }
+
   for (desc, function) in tests_to_run.into_iter() {
     if fail_fast_tracker.should_stop() {
       break;
@@ -762,14 +846,14 @@ async fn run_tests_for_worker_inner(
 
     // Poll event loop once, to allow all ops that are already resolved, but haven't
     // responded to settle.
-    // TODO(mmastrac): we should provide an API to poll the event loop until no futher
+    // TODO(mmastrac): we should provide an API to poll the event loop until no further
     // progress is made.
     poll_event_loop(worker).await?;
 
     // We always capture stats, regardless of sanitization state
     let before = stats.clone().capture(&filter);
 
-    let earlier = SystemTime::now();
+    let earlier = Instant::now();
     let call = worker.js_runtime.call(&function);
     let result = match worker
       .js_runtime
@@ -793,11 +877,25 @@ async fn run_tests_for_worker_inner(
       }
     };
 
+    // Check the result before we check for leaks
+    let result = {
+      let scope = &mut worker.js_runtime.handle_scope();
+      let result = v8::Local::new(scope, result);
+      serde_v8::from_v8::<TestResult>(scope, result)?
+    };
+    if matches!(result, TestResult::Failed(_)) {
+      fail_fast_tracker.add_failure();
+      let elapsed = earlier.elapsed().as_millis();
+      sender.send(TestEvent::Result(desc.id, result, elapsed as u64))?;
+      continue;
+    }
+
     // Await activity stabilization
     if let Some(diff) = wait_for_activity_to_stabilize(
       worker,
       &stats,
       &filter,
+      &top_level,
       before,
       desc.sanitize_ops,
       desc.sanitize_resources,
@@ -807,7 +905,8 @@ async fn run_tests_for_worker_inner(
       let (formatted, trailer_notes) = format_sanitizer_diff(diff);
       if !formatted.is_empty() {
         let failure = TestFailure::Leaked(formatted, trailer_notes);
-        let elapsed = SystemTime::now().duration_since(earlier)?.as_millis();
+        fail_fast_tracker.add_failure();
+        let elapsed = earlier.elapsed().as_millis();
         sender.send(TestEvent::Result(
           desc.id,
           TestResult::Failed(failure),
@@ -817,22 +916,73 @@ async fn run_tests_for_worker_inner(
       }
     }
 
-    let scope = &mut worker.js_runtime.handle_scope();
-    let result = v8::Local::new(scope, result);
-    let result = serde_v8::from_v8::<TestResult>(scope, result)?;
-    if matches!(result, TestResult::Failed(_)) {
-      fail_fast_tracker.add_failure();
-    }
-    let elapsed = SystemTime::now().duration_since(earlier)?.as_millis();
+    let elapsed = earlier.elapsed().as_millis();
     sender.send(TestEvent::Result(desc.id, result, elapsed as u64))?;
   }
   Ok(())
+}
+
+/// The sanitizer must ignore ops, resources and timers that were started at the top-level, but
+/// completed and restarted, replacing themselves with the same "thing". For example, if you run a
+/// `Deno.serve` server at the top level and make fetch requests to it during the test, those ops
+/// should not count as completed during the test because they are immediately replaced.
+fn is_empty(
+  top_level: &TopLevelSanitizerStats,
+  diff: &RuntimeActivityDiff,
+) -> bool {
+  // If the diff is empty, return empty
+  if diff.is_empty() {
+    return true;
+  }
+
+  // If the # of appeared != # of disappeared, we can exit fast with not empty
+  if diff.appeared.len() != diff.disappeared.len() {
+    return false;
+  }
+
+  // If there are no top-level ops and !diff.is_empty(), we can exit fast with not empty
+  if top_level.map.is_empty() {
+    return false;
+  }
+
+  // Otherwise we need to calculate replacement for top-level stats. Sanitizers will not fire
+  // if an op, resource or timer is replaced and has a corresponding top-level op.
+  let mut map = HashMap::new();
+  for item in &diff.appeared {
+    let item = get_sanitizer_item_ref(item);
+    let Some(n1) = top_level.map.get(&item) else {
+      return false;
+    };
+    let n2 = map.entry(item).and_modify(|n| *n += 1).or_insert(1);
+    // If more ops appeared than were created at the top-level, return false
+    if *n2 > *n1 {
+      return false;
+    }
+  }
+
+  // We know that we replaced no more things than were created at the top-level. So now we just want
+  // to make sure that whatever thing was created has a corresponding disappearance record.
+  for item in &diff.disappeared {
+    let item = get_sanitizer_item_ref(item);
+    // If more things of this type disappeared than appeared, return false
+    let Some(n1) = map.get_mut(&item) else {
+      return false;
+    };
+    *n1 -= 1;
+    if *n1 == 0 {
+      map.remove(&item);
+    }
+  }
+
+  // If everything is accounted for, we are empty
+  map.is_empty()
 }
 
 async fn wait_for_activity_to_stabilize(
   worker: &mut MainWorker,
   stats: &RuntimeActivityStatsFactory,
   filter: &RuntimeActivityStatsFilter,
+  top_level: &TopLevelSanitizerStats,
   before: RuntimeActivityStats,
   sanitize_ops: bool,
   sanitize_resources: bool,
@@ -840,7 +990,7 @@ async fn wait_for_activity_to_stabilize(
   // First, check to see if there's any diff at all. If not, just continue.
   let after = stats.clone().capture(filter);
   let mut diff = RuntimeActivityStats::diff(&before, &after);
-  if diff.is_empty() {
+  if is_empty(top_level, &diff) {
     // No activity, so we return early
     return Ok(None);
   }
@@ -855,7 +1005,7 @@ async fn wait_for_activity_to_stabilize(
 
     let after = stats.clone().capture(filter);
     diff = RuntimeActivityStats::diff(&before, &after);
-    if diff.is_empty() {
+    if is_empty(top_level, &diff) {
       return Ok(None);
     }
   }
@@ -894,7 +1044,11 @@ async fn wait_for_activity_to_stabilize(
     });
   }
 
-  Ok(if diff.is_empty() { None } else { Some(diff) })
+  Ok(if is_empty(top_level, &diff) {
+    None
+  } else {
+    Some(diff)
+  })
 }
 
 fn extract_files_from_regex_blocks(
@@ -1192,8 +1346,18 @@ async fn test_specifiers(
     })
   });
 
+  // TODO(mmastrac): Temporarily limit concurrency in windows testing to avoid named pipe issue:
+  // *** Unexpected server pipe failure '"\\\\.\\pipe\\deno_pipe_e30f45c9df61b1e4.1198.222\\0"': 3
+  // This is likely because we're hitting some sort of invisible resource limit
+  // This limit is both in cli/lsp/testing/execution.rs and cli/tools/test/mod.rs
+  let concurrent = if cfg!(windows) {
+    std::cmp::min(concurrent_jobs.get(), 4)
+  } else {
+    concurrent_jobs.get()
+  };
+
   let join_stream = stream::iter(join_handles)
-    .buffer_unordered(concurrent_jobs.get())
+    .buffer_unordered(concurrent)
     .collect::<Vec<Result<Result<(), AnyError>, tokio::task::JoinError>>>();
 
   let handler = spawn(async move { report_tests(receiver, reporter).await.0 });
@@ -1341,28 +1505,16 @@ pub async fn report_tests(
   (Ok(()), receiver)
 }
 
-fn is_supported_test_path_predicate(
-  path: &Path,
-  patterns: &FilePatterns,
-) -> bool {
-  if !is_script_ext(path) {
+fn is_supported_test_path_predicate(entry: WalkEntry) -> bool {
+  if !is_script_ext(entry.path) {
     false
-  } else if has_supported_test_path_name(path) {
+  } else if has_supported_test_path_name(entry.path) {
     true
-  } else {
+  } else if let Some(include) = &entry.patterns.include {
     // allow someone to explicitly specify a path
-    let matches_exact_path_or_pattern = patterns
-      .include
-      .as_ref()
-      .map(|p| {
-        p.inner().iter().any(|p| match p {
-          PathOrPattern::Path(p) => p == path,
-          PathOrPattern::RemoteUrl(_) => true,
-          PathOrPattern::Pattern(p) => p.matches_path(path),
-        })
-      })
-      .unwrap_or(false);
-    matches_exact_path_or_pattern
+    matches_pattern_or_exact_path(include, entry.path)
+  } else {
+    false
   }
 }
 
@@ -1423,7 +1575,7 @@ fn collect_specifiers_with_test_mode(
     collect_specifiers(files.clone(), is_supported_test_path_predicate)?;
 
   if *include_inline {
-    return collect_specifiers(files, |p, _| is_supported_test_ext(p)).map(
+    return collect_specifiers(files, |e| is_supported_test_ext(e.path)).map(
       |specifiers| {
         specifiers
           .into_iter()
@@ -1482,7 +1634,7 @@ pub async fn run_tests(
   flags: Flags,
   test_flags: TestFlags,
 ) -> Result<(), AnyError> {
-  let factory = CliFactory::from_flags(flags).await?;
+  let factory = CliFactory::from_flags(flags)?;
   let cli_options = factory.cli_options();
   let test_options = cli_options.resolve_test_options(test_flags)?;
   let file_fetcher = factory.file_fetcher()?;
@@ -1531,6 +1683,14 @@ pub async fn run_tests(
       })
       .collect(),
     TestSpecifiersOptions {
+      cwd: Url::from_directory_path(cli_options.initial_cwd()).map_err(
+        |_| {
+          generic_error(format!(
+            "Unable to construct URL from the path of cwd: {}",
+            cli_options.initial_cwd().to_string_lossy(),
+          ))
+        },
+      )?,
       concurrent_jobs: test_options.concurrent_jobs,
       fail_fast: test_options.fail_fast,
       log_level,
@@ -1580,8 +1740,7 @@ pub async fn run_tests_with_watch(
       let test_flags = test_flags.clone();
       Ok(async move {
         let factory = CliFactoryBuilder::new()
-          .build_from_flags_for_watcher(flags, watcher_communicator.clone())
-          .await?;
+          .build_from_flags_for_watcher(flags, watcher_communicator.clone())?;
         let cli_options = factory.cli_options();
         let test_options = cli_options.resolve_test_options(test_flags)?;
 
@@ -1599,8 +1758,8 @@ pub async fn run_tests_with_watch(
         let module_graph_creator = factory.module_graph_creator().await?;
         let file_fetcher = factory.file_fetcher()?;
         let test_modules = if test_options.doc {
-          collect_specifiers(test_options.files.clone(), |p, _| {
-            is_supported_test_ext(p)
+          collect_specifiers(test_options.files.clone(), |e| {
+            is_supported_test_ext(e.path)
           })
         } else {
           collect_specifiers(
@@ -1612,14 +1771,10 @@ pub async fn run_tests_with_watch(
         let permissions =
           Permissions::from_options(&cli_options.permissions_options())?;
         let graph = module_graph_creator
-          .create_graph(graph_kind, test_modules.clone())
+          .create_graph(graph_kind, test_modules)
           .await?;
-        graph_valid_with_cli_options(
-          &graph,
-          factory.fs().as_ref(),
-          &test_modules,
-          &cli_options,
-        )?;
+        module_graph_creator.graph_valid(&graph)?;
+        let test_modules = &graph.roots;
 
         let test_modules_to_reload = if let Some(changed_paths) = changed_paths
         {
@@ -1628,7 +1783,7 @@ pub async fn run_tests_with_watch(
           for test_module_specifier in test_modules {
             if has_graph_root_local_dependent_changed(
               &graph,
-              &test_module_specifier,
+              test_module_specifier,
               &changed_paths,
             ) {
               result.push(test_module_specifier.clone());
@@ -1675,6 +1830,14 @@ pub async fn run_tests_with_watch(
             })
             .collect(),
           TestSpecifiersOptions {
+            cwd: Url::from_directory_path(cli_options.initial_cwd()).map_err(
+              |_| {
+                generic_error(format!(
+                  "Unable to construct URL from the path of cwd: {}",
+                  cli_options.initial_cwd().to_string_lossy(),
+                ))
+              },
+            )?,
             concurrent_jobs: test_options.concurrent_jobs,
             fail_fast: test_options.fail_fast,
             log_level,

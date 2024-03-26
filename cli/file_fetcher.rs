@@ -14,6 +14,7 @@ use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::UpdateGuard;
 
 use deno_ast::MediaType;
+use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::custom_error;
 use deno_core::error::generic_error;
@@ -372,6 +373,7 @@ impl FileFetcher {
     }
 
     async move {
+      let mut maybe_etag = maybe_etag;
       let mut retried = false;
       let result = loop {
         let result = match fetch_once(
@@ -388,9 +390,23 @@ impl FileFetcher {
         {
           FetchOnceResult::NotModified => {
             let file = file_fetcher
-              .fetch_cached(&specifier, maybe_checksum, 10)?
-              .unwrap();
-            Ok(file)
+              .fetch_cached(&specifier, maybe_checksum.clone(), 10)?;
+            match file {
+              Some(file) => Ok(file),
+              None => {
+                // Someone may have deleted the body from the cache since
+                // it's currently stored in a separate file from the headers,
+                // so delete the etag and try again
+                if maybe_etag.is_some() {
+                  debug!("Cache body not found. Trying again without etag.");
+                  maybe_etag = None;
+                  continue;
+                } else {
+                  // should never happen
+                  bail!("Your deno cache directory is in an unrecoverable state. Please delete it and try again.")
+                }
+              }
+            }
           }
           FetchOnceResult::Redirect(redirect_url, headers) => {
             file_fetcher.http_cache.set(&specifier, headers, &[])?;

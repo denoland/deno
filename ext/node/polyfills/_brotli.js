@@ -12,6 +12,7 @@ import {
   op_brotli_decompress,
   op_brotli_decompress_async,
   op_brotli_decompress_stream,
+  op_brotli_decompress_stream_end,
   op_create_brotli_compress,
   op_create_brotli_decompress,
 } from "ext:core/ops";
@@ -57,6 +58,11 @@ export class BrotliDecompress extends Transform {
         callback();
       },
       flush(callback) {
+        const output = new Uint8Array(1024);
+        let avail;
+        while ((avail = op_brotli_decompress_stream_end(context, output)) > 0) {
+          this.push(output.slice(0, avail));
+        }
         core.close(context);
         callback();
       },

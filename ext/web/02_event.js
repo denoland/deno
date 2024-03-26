@@ -35,7 +35,7 @@ const {
 } = primordials;
 
 import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { DOMException } from "ext:deno_web/01_dom_exception.js";
+import { DOMException } from "./01_dom_exception.js";
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 
 // This should be set via setGlobalThis this is required so that if even
@@ -1507,7 +1507,7 @@ function checkThis(thisArg) {
 // https://html.spec.whatwg.org/#dom-reporterror
 function reportError(error) {
   checkThis(this);
-  const prefix = "Failed to call 'reportError'";
+  const prefix = "Failed to execute 'reportError'";
   webidl.requiredArguments(arguments.length, 1, prefix);
   reportException(error);
 }

@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::serde_json::json;
 use deno_core::url::Url;
 use test_util as util;
 use test_util::itest;
@@ -280,6 +281,18 @@ itest!(exit_sanitizer {
 itest!(junit {
   args: "test --reporter junit test/pass.ts",
   output: "test/pass.junit.out",
+});
+
+itest!(junit_nested {
+  args: "test --reporter junit test/nested_failures.ts",
+  output: "test/nested_failures.junit.out",
+  exit_code: 1,
+});
+
+itest!(junit_multiple_test_files {
+  args: "test --reporter junit test/pass.ts test/fail.ts",
+  output: "test/junit_multiple_test_files.junit.out",
+  exit_code: 1,
 });
 
 #[test]
@@ -668,3 +681,32 @@ itest!(test_include_relative_pattern_dot_slash {
   output: "test/relative_pattern_dot_slash/output.out",
   cwd: Some("test/relative_pattern_dot_slash"),
 });
+
+#[test]
+fn opt_out_top_level_exclude_via_test_unexclude() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir().path();
+  temp_dir.join("deno.json").write_json(&json!({
+    "test": {
+      "exclude": [ "!excluded.test.ts" ]
+    },
+    "exclude": [ "excluded.test.ts", "actually_excluded.test.ts" ]
+  }));
+
+  temp_dir
+    .join("main.test.ts")
+    .write("Deno.test('test1', () => {});");
+  temp_dir
+    .join("excluded.test.ts")
+    .write("Deno.test('test2', () => {});");
+  temp_dir
+    .join("actually_excluded.test.ts")
+    .write("Deno.test('test3', () => {});");
+
+  let output = context.new_command().arg("test").run();
+  output.assert_exit_code(0);
+  let output = output.combined_output();
+  assert_contains!(output, "main.test.ts");
+  assert_contains!(output, "excluded.test.ts");
+  assert_not_contains!(output, "actually_excluded.test.ts");
+}

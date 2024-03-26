@@ -355,7 +355,7 @@ impl CliMainWorker {
       return Ok(None);
     };
 
-    let session = self.worker.create_inspector_session().await;
+    let session = self.worker.create_inspector_session();
 
     let mut hmr_runner = setup_hmr_runner(session);
 
@@ -379,7 +379,7 @@ impl CliMainWorker {
       return Ok(None);
     };
 
-    let session = self.worker.create_inspector_session().await;
+    let session = self.worker.create_inspector_session();
     let mut coverage_collector = create_coverage_collector(session);
     self
       .worker
@@ -397,10 +397,7 @@ impl CliMainWorker {
     name: &'static str,
     source_code: &'static str,
   ) -> Result<v8::Global<v8::Value>, AnyError> {
-    self
-      .worker
-      .js_runtime
-      .execute_script_static(name, source_code)
+    self.worker.js_runtime.execute_script(name, source_code)
   }
 }
 
@@ -657,9 +654,9 @@ impl CliMainWorkerFactory {
     if self.shared.subcommand.needs_test() {
       macro_rules! test_file {
         ($($file:literal),*) => {
-          $(worker.js_runtime.lazy_load_es_module_from_code(
+          $(worker.js_runtime.lazy_load_es_module_with_code(
             concat!("ext:cli/", $file),
-            deno_core::FastString::StaticAscii(include_str!(concat!("js/", $file))),
+            deno_core::ascii_str_include!(concat!("js/", $file)),
           )?;)*
         }
       }
@@ -846,6 +843,9 @@ fn create_web_worker_callback(
       cache_storage_dir,
       feature_checker,
       dns_resolver: None,
+      strace_ops: shared.options.strace_ops.clone(),
+      close_on_idle: args.close_on_idle,
+      maybe_worker_metadata: args.maybe_worker_metadata,
     };
 
     WebWorker::bootstrap_from_options(
@@ -867,7 +867,8 @@ mod tests {
   fn create_test_worker() -> MainWorker {
     let main_module =
       resolve_path("./hello.js", &std::env::current_dir().unwrap()).unwrap();
-    let permissions = PermissionsContainer::new(Permissions::default());
+    let permissions =
+      PermissionsContainer::new(Permissions::none_without_prompt());
 
     let options = WorkerOptions {
       startup_snapshot: crate::js::deno_isolate_init(),

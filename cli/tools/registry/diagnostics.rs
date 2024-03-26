@@ -100,6 +100,9 @@ pub enum PublishDiagnostic {
   UnsupportedJsxTsx {
     specifier: Url,
   },
+  ExcludedModule {
+    specifier: Url,
+  },
 }
 
 impl PublishDiagnostic {
@@ -145,6 +148,7 @@ impl Diagnostic for PublishDiagnostic {
       UnsupportedFileType { .. } => DiagnosticLevel::Warning,
       InvalidExternalImport { .. } => DiagnosticLevel::Error,
       UnsupportedJsxTsx { .. } => DiagnosticLevel::Warning,
+      ExcludedModule { .. } => DiagnosticLevel::Error,
     }
   }
 
@@ -158,6 +162,7 @@ impl Diagnostic for PublishDiagnostic {
       UnsupportedFileType { .. } => Cow::Borrowed("unsupported-file-type"),
       InvalidExternalImport { .. } => Cow::Borrowed("invalid-external-import"),
       UnsupportedJsxTsx { .. } => Cow::Borrowed("unsupported-jsx-tsx"),
+      ExcludedModule { .. } => Cow::Borrowed("excluded-module"),
     }
   }
 
@@ -175,6 +180,7 @@ impl Diagnostic for PublishDiagnostic {
       }
       InvalidExternalImport { kind, .. } => Cow::Owned(format!("invalid import to a {kind} specifier")),
       UnsupportedJsxTsx { .. } => Cow::Borrowed("JSX and TSX files are currently not supported"),
+      ExcludedModule { .. } => Cow::Borrowed("module in package's module graph was excluded from publishing"),
     }
   }
 
@@ -217,13 +223,17 @@ impl Diagnostic for PublishDiagnostic {
       UnsupportedJsxTsx { specifier } => DiagnosticLocation::Module {
         specifier: Cow::Borrowed(specifier),
       },
+      ExcludedModule { specifier } => DiagnosticLocation::Module {
+        specifier: Cow::Borrowed(specifier),
+      },
     }
   }
 
   fn snippet(&self) -> Option<DiagnosticSnippet<'_>> {
+    use PublishDiagnostic::*;
     match &self {
-      PublishDiagnostic::FastCheck(diagnostic) => diagnostic.snippet(),
-      PublishDiagnostic::SpecifierUnfurl(diagnostic) => match diagnostic {
+      FastCheck(diagnostic) => diagnostic.snippet(),
+      SpecifierUnfurl(diagnostic) => match diagnostic {
         SpecifierUnfurlerDiagnostic::UnanalyzableDynamicImport {
           text_info,
           range,
@@ -240,10 +250,10 @@ impl Diagnostic for PublishDiagnostic {
           },
         }),
       },
-      PublishDiagnostic::InvalidPath { .. } => None,
-      PublishDiagnostic::DuplicatePath { .. } => None,
-      PublishDiagnostic::UnsupportedFileType { .. } => None,
-      PublishDiagnostic::InvalidExternalImport {
+      InvalidPath { .. } => None,
+      DuplicatePath { .. } => None,
+      UnsupportedFileType { .. } => None,
+      InvalidExternalImport {
         referrer,
         text_info,
         ..
@@ -264,31 +274,37 @@ impl Diagnostic for PublishDiagnostic {
           description: Some("the specifier".into()),
         },
       }),
-      PublishDiagnostic::UnsupportedJsxTsx { .. } => None,
+      UnsupportedJsxTsx { .. } => None,
+      ExcludedModule { .. } => None,
     }
   }
 
   fn hint(&self) -> Option<Cow<'_, str>> {
+    use PublishDiagnostic::*;
     match &self {
-      PublishDiagnostic::FastCheck(diagnostic) => diagnostic.hint(),
-      PublishDiagnostic::SpecifierUnfurl(_) => None,
-      PublishDiagnostic::InvalidPath { .. } => Some(
+      FastCheck(diagnostic) => diagnostic.hint(),
+      SpecifierUnfurl(_) => None,
+      InvalidPath { .. } => Some(
         Cow::Borrowed("rename or remove the file, or add it to 'publish.exclude' in the config file"),
       ),
-      PublishDiagnostic::DuplicatePath { .. } => Some(
+      DuplicatePath { .. } => Some(
         Cow::Borrowed("rename or remove the file"),
       ),
-      PublishDiagnostic::UnsupportedFileType { .. } => Some(
+      UnsupportedFileType { .. } => Some(
         Cow::Borrowed("remove the file, or add it to 'publish.exclude' in the config file"),
       ),
-      PublishDiagnostic::InvalidExternalImport { .. } => Some(Cow::Borrowed("replace this import with one from jsr or npm, or vendor the dependency into your package")),
-      PublishDiagnostic::UnsupportedJsxTsx { .. } => None,
+      InvalidExternalImport { .. } => Some(Cow::Borrowed("replace this import with one from jsr or npm, or vendor the dependency into your package")),
+      UnsupportedJsxTsx { .. } => None,
+      ExcludedModule { .. } => Some(
+        Cow::Borrowed("remove the module from 'exclude' and/or 'publish.exclude' in the config file"),
+      ),
     }
   }
 
   fn snippet_fixed(&self) -> Option<DiagnosticSnippet<'_>> {
+    use PublishDiagnostic::*;
     match &self {
-      PublishDiagnostic::InvalidExternalImport { imported, .. } => {
+      InvalidExternalImport { imported, .. } => {
         match super::api::get_jsr_alternative(imported) {
           Some(replacement) => {
             let replacement = SourceTextInfo::new(replacement.into());
@@ -314,57 +330,65 @@ impl Diagnostic for PublishDiagnostic {
   }
 
   fn info(&self) -> Cow<'_, [Cow<'_, str>]> {
+    use PublishDiagnostic::*;
     match &self {
-      PublishDiagnostic::FastCheck(diagnostic) => {
+      FastCheck(diagnostic) => {
         diagnostic.info()
       }
-      PublishDiagnostic::SpecifierUnfurl(diagnostic) => match diagnostic {
+      SpecifierUnfurl(diagnostic) => match diagnostic {
         SpecifierUnfurlerDiagnostic::UnanalyzableDynamicImport { .. } => Cow::Borrowed(&[
           Cow::Borrowed("after publishing this package, imports from the local import map / package.json do not work"),
           Cow::Borrowed("dynamic imports that can not be analyzed at publish time will not be rewritten automatically"),
           Cow::Borrowed("make sure the dynamic import is resolvable at runtime without an import map / package.json")
         ]),
       },
-      PublishDiagnostic::InvalidPath { .. } => Cow::Borrowed(&[
+      InvalidPath { .. } => Cow::Borrowed(&[
         Cow::Borrowed("to portably support all platforms, including windows, the allowed characters in package paths are limited"),
       ]),
-      PublishDiagnostic::DuplicatePath { .. } => Cow::Borrowed(&[
+      DuplicatePath { .. } => Cow::Borrowed(&[
         Cow::Borrowed("to support case insensitive file systems, no two package paths may differ only by case"),
       ]),
-      PublishDiagnostic::UnsupportedFileType { .. } => Cow::Borrowed(&[
+      UnsupportedFileType { .. } => Cow::Borrowed(&[
         Cow::Borrowed("only files and directories are supported"),
         Cow::Borrowed("the file was ignored and will not be published")
       ]),
-      PublishDiagnostic::InvalidExternalImport { imported, .. } => Cow::Owned(vec![
+      InvalidExternalImport { imported, .. } => Cow::Owned(vec![
         Cow::Owned(format!("the import was resolved to '{}'", imported)),
         Cow::Borrowed("this specifier is not allowed to be imported on jsr"),
         Cow::Borrowed("jsr only supports importing `jsr:`, `npm:`, and `data:` specifiers"),
       ]),
-      PublishDiagnostic::UnsupportedJsxTsx { .. } => Cow::Owned(vec![
+      UnsupportedJsxTsx { .. } => Cow::Owned(vec![
         Cow::Borrowed("follow https://github.com/jsr-io/jsr/issues/24 for updates"),
+      ]),
+      ExcludedModule { .. } => Cow::Owned(vec![
+        Cow::Borrowed("excluded modules referenced via a package export will error at runtime due to not existing in the package"),
       ])
     }
   }
 
   fn docs_url(&self) -> Option<Cow<'_, str>> {
+    use PublishDiagnostic::*;
     match &self {
-      PublishDiagnostic::FastCheck(diagnostic) => diagnostic.docs_url(),
-      PublishDiagnostic::SpecifierUnfurl(diagnostic) => match diagnostic {
+      FastCheck(diagnostic) => diagnostic.docs_url(),
+      SpecifierUnfurl(diagnostic) => match diagnostic {
         SpecifierUnfurlerDiagnostic::UnanalyzableDynamicImport { .. } => None,
       },
-      PublishDiagnostic::InvalidPath { .. } => {
+      InvalidPath { .. } => {
         Some(Cow::Borrowed("https://jsr.io/go/invalid-path"))
       }
-      PublishDiagnostic::DuplicatePath { .. } => Some(Cow::Borrowed(
+      DuplicatePath { .. } => Some(Cow::Borrowed(
         "https://jsr.io/go/case-insensitive-duplicate-path",
       )),
-      PublishDiagnostic::UnsupportedFileType { .. } => {
+      UnsupportedFileType { .. } => {
         Some(Cow::Borrowed("https://jsr.io/go/unsupported-file-type"))
       }
-      PublishDiagnostic::InvalidExternalImport { .. } => {
+      InvalidExternalImport { .. } => {
         Some(Cow::Borrowed("https://jsr.io/go/invalid-external-import"))
       }
-      PublishDiagnostic::UnsupportedJsxTsx { .. } => None,
+      UnsupportedJsxTsx { .. } => None,
+      ExcludedModule { .. } => {
+        Some(Cow::Borrowed("https://jsr.io/go/excluded-module"))
+      }
     }
   }
 }

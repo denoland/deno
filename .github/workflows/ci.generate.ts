@@ -5,7 +5,7 @@ import * as yaml from "https://deno.land/std@0.173.0/encoding/yaml.ts";
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 77;
+const cacheVersion = 79;
 
 const ubuntuX86Runner = "ubuntu-22.04";
 const ubuntuX86XlRunner = "ubuntu-22.04-xl";
@@ -203,7 +203,7 @@ const installDenoStep = {
 
 const authenticateWithGoogleCloud = {
   name: "Authenticate with Google Cloud",
-  uses: "google-github-actions/auth@v1",
+  uses: "google-github-actions/auth@v2",
   with: {
     "project_id": "denoland",
     "credentials_json": "${{ secrets.GCP_SA_KEY }}",
@@ -510,7 +510,7 @@ const ci = {
             "(github.ref == 'refs/heads/main' ||",
             "startsWith(github.ref, 'refs/tags/'))",
           ].join("\n"),
-          uses: "google-github-actions/setup-gcloud@v1",
+          uses: "google-github-actions/setup-gcloud@v2",
           with: {
             project_id: "denoland",
           },
@@ -525,7 +525,7 @@ const ci = {
             "(github.ref == 'refs/heads/main' ||",
             "startsWith(github.ref, 'refs/tags/'))",
           ].join("\n"),
-          uses: "google-github-actions/setup-gcloud@v1",
+          uses: "google-github-actions/setup-gcloud@v2",
           env: {
             CLOUDSDK_PYTHON: "${{env.pythonLocation}}\\python.exe",
           },
@@ -850,11 +850,11 @@ const ci = {
             "deno run --allow-env --allow-net --allow-read --allow-run \\",
             "        --allow-write --unstable                         \\",
             "        --lock=tools/deno.lock.json                      \\",
-            "        ./tools/wpt.ts setup",
+            "        ./tests/wpt/wpt.ts setup",
             "deno run --allow-env --allow-net --allow-read --allow-run \\",
             "         --allow-write --unstable                         \\",
             "         --lock=tools/deno.lock.json              \\",
-            '         ./tools/wpt.ts run --quiet --binary="$DENO_BIN"',
+            '         ./tests/wpt/wpt.ts run --quiet --binary="$DENO_BIN"',
           ].join("\n"),
         },
         {
@@ -867,11 +867,11 @@ const ci = {
             "deno run --allow-env --allow-net --allow-read --allow-run \\",
             "         --allow-write --unstable                         \\",
             "         --lock=tools/deno.lock.json                      \\",
-            "         ./tools/wpt.ts setup",
+            "         ./tests/wpt/wpt.ts setup",
             "deno run --allow-env --allow-net --allow-read --allow-run \\",
             "         --allow-write --unstable                         \\",
             "         --lock=tools/deno.lock.json                      \\",
-            "         ./tools/wpt.ts run --quiet --release             \\",
+            "         ./tests/wpt/wpt.ts run --quiet --release             \\",
             '                            --binary="$DENO_BIN"          \\',
             "                            --json=wpt.json               \\",
             "                            --wptreport=wptreport.json",
@@ -1061,7 +1061,7 @@ const ci = {
         authenticateWithGoogleCloud,
         {
           name: "Setup gcloud",
-          uses: "google-github-actions/setup-gcloud@v1",
+          uses: "google-github-actions/setup-gcloud@v2",
           with: {
             project_id: "denoland",
           },

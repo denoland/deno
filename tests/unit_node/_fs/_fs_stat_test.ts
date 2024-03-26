@@ -129,3 +129,17 @@ Deno.test("[std/node/fs] stat callback isn't called twice if error is thrown", a
     },
   });
 });
+
+Deno.test({
+  name: "[std/node/fs] stat default methods",
+  fn() {
+    const stats = new Stats();
+    assertEquals(stats.isFile(), false);
+    assertEquals(stats.isDirectory(), false);
+    assertEquals(stats.isBlockDevice(), false);
+    assertEquals(stats.isCharacterDevice(), false);
+    assertEquals(stats.isSymbolicLink(), false);
+    assertEquals(stats.isFIFO(), false);
+    assertEquals(stats.isSocket(), false);
+  },
+});
