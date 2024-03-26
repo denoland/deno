@@ -181,9 +181,14 @@ const STDIN_RID = 0;
 const STDOUT_RID = 1;
 const STDERR_RID = 2;
 
+const REF = Symbol("REF");
+const UNREF = Symbol("UNREF");
+
 class Stdin {
   #rid = STDIN_RID;
+  #ref = true;
   #readable;
+  #opPromise;
 
   constructor() {
   }
@@ -197,8 +202,14 @@ class Stdin {
     return this.#rid;
   }
 
-  read(p) {
-    return read(this.#rid, p);
+  async read(p) {
+    if (p.length === 0) return 0;
+    this.#opPromise = core.read(this.#rid, p);
+    if (!this.#ref) {
+      core.unrefOpPromise(this.#opPromise);
+    }
+    const nread = await this.#opPromise;
+    return nread === 0 ? null : nread;
   }
 
   readSync(p) {
@@ -223,6 +234,20 @@ class Stdin {
 
   isTerminal() {
     return core.isTerminal(this.#rid);
+  }
+
+  [REF]() {
+    this.#ref = true;
+    if (this.#opPromise) {
+      core.refOpPromise(this.#opPromise);
+    }
+  }
+
+  [UNREF]() {
+    this.#ref = false;
+    if (this.#opPromise) {
+      core.unrefOpPromise(this.#opPromise);
+    }
   }
 }
 
@@ -318,6 +343,7 @@ export {
   readAll,
   readAllSync,
   readSync,
+  REF,
   SeekMode,
   Stderr,
   stderr,
@@ -327,6 +353,7 @@ export {
   Stdout,
   stdout,
   STDOUT_RID,
+  UNREF,
   write,
   writeSync,
 };
