@@ -638,6 +638,7 @@ name = "cli_tests"
 version = "0.0.0"
 dependencies = [
  "bytes",
+ "chrono",
  "deno_ast",
  "deno_bench_util",
  "deno_cache_dir",
@@ -665,6 +666,8 @@ dependencies = [
  "trust-dns-client",
  "trust-dns-server",
  "url",
+ "uuid",
+ "zeromq",
 ]
 
 [[package]]
