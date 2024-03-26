@@ -107,6 +107,9 @@ pub static DENO_DISABLE_PEDANTIC_NODE_WARNINGS: Lazy<bool> = Lazy::new(|| {
     .is_some()
 });
 
+static DENO_FUTURE: Lazy<bool> =
+  Lazy::new(|| std::env::var("DENO_FUTURE").ok().is_some());
+
 pub fn jsr_url() -> &'static Url {
   static JSR_URL: Lazy<Url> = Lazy::new(|| {
     let env_var_name = "JSR_URL";
@@ -388,6 +391,7 @@ pub struct LintOptions {
   pub rules: LintRulesConfig,
   pub files: FilePatterns,
   pub reporter_kind: LintReporterKind,
+  pub fix: bool,
 }
 
 impl LintOptions {
@@ -396,6 +400,7 @@ impl LintOptions {
       rules: Default::default(),
       files: FilePatterns::new_with_base(base),
       reporter_kind: Default::default(),
+      fix: false,
     }
   }
 
@@ -404,6 +409,7 @@ impl LintOptions {
     maybe_lint_flags: Option<LintFlags>,
     initial_cwd: &Path,
   ) -> Result<Self, AnyError> {
+    let fix = maybe_lint_flags.as_ref().map(|f| f.fix).unwrap_or(false);
     let mut maybe_reporter_kind =
       maybe_lint_flags.as_ref().and_then(|lint_flags| {
         if lint_flags.json {
@@ -461,6 +467,7 @@ impl LintOptions {
         maybe_rules_include,
         maybe_rules_exclude,
       ),
+      fix,
     })
   }
 }
@@ -978,7 +985,7 @@ impl CliOptions {
   }
 
   pub fn enable_future_features(&self) -> bool {
-    std::env::var("DENO_FUTURE").is_ok()
+    *DENO_FUTURE
   }
 
   pub fn resolve_main_module(&self) -> Result<ModuleSpecifier, AnyError> {

@@ -5469,7 +5469,7 @@ mod tests {
       .variable_types
       .suppress_when_type_matches_name = true;
     let mut config = config::Config::new();
-    config.set_workspace_settings(settings, None);
+    config.set_workspace_settings(settings, vec![]);
     let user_preferences = UserPreferences::from_config_for_specifier(
       &config,
       &Default::default(),

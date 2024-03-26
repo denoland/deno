@@ -203,7 +203,7 @@ const installDenoStep = {
 
 const authenticateWithGoogleCloud = {
   name: "Authenticate with Google Cloud",
-  uses: "google-github-actions/auth@v1",
+  uses: "google-github-actions/auth@v2",
   with: {
     "project_id": "denoland",
     "credentials_json": "${{ secrets.GCP_SA_KEY }}",
@@ -510,7 +510,7 @@ const ci = {
             "(github.ref == 'refs/heads/main' ||",
             "startsWith(github.ref, 'refs/tags/'))",
           ].join("\n"),
-          uses: "google-github-actions/setup-gcloud@v1",
+          uses: "google-github-actions/setup-gcloud@v2",
           with: {
             project_id: "denoland",
           },
@@ -525,7 +525,7 @@ const ci = {
             "(github.ref == 'refs/heads/main' ||",
             "startsWith(github.ref, 'refs/tags/'))",
           ].join("\n"),
-          uses: "google-github-actions/setup-gcloud@v1",
+          uses: "google-github-actions/setup-gcloud@v2",
           env: {
             CLOUDSDK_PYTHON: "${{env.pythonLocation}}\\python.exe",
           },
@@ -1061,7 +1061,7 @@ const ci = {
         authenticateWithGoogleCloud,
         {
           name: "Setup gcloud",
-          uses: "google-github-actions/setup-gcloud@v1",
+          uses: "google-github-actions/setup-gcloud@v2",
           with: {
             project_id: "denoland",
           },

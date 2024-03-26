@@ -10,6 +10,7 @@ import {
   op_node_dh_stateless,
   op_node_ecdh_compute_public_key,
   op_node_ecdh_compute_secret,
+  op_node_ecdh_encode_pubkey,
   op_node_ecdh_generate_keys,
   op_node_gen_prime,
 } from "ext:core/ops";
@@ -1247,7 +1248,7 @@ export class ECDH {
     format: ECDHKeyFormat = "uncompressed",
   ): Buffer | string {
     this.#pubbuf = Buffer.alloc(
-      format.trim() == "compressed"
+      format == "compressed"
         ? this.#curve.publicKeySizeCompressed
         : this.#curve.publicKeySize,
     );
@@ -1277,12 +1278,17 @@ export class ECDH {
   getPublicKey(encoding: BinaryToTextEncoding, format?: ECDHKeyFormat): string;
   getPublicKey(
     encoding?: BinaryToTextEncoding,
-    _format?: ECDHKeyFormat,
+    format: ECDHKeyFormat = "uncompressed",
   ): Buffer | string {
+    const pubbuf = Buffer.from(op_node_ecdh_encode_pubkey(
+      this.#curve.name,
+      this.#pubbuf,
+      format == "compressed",
+    ));
     if (encoding !== undefined) {
-      return this.#pubbuf.toString(encoding);
+      return pubbuf.toString(encoding);
     }
-    return this.#pubbuf;
+    return pubbuf;
   }
 
   setPrivateKey(privateKey: ArrayBufferView): void;

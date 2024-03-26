@@ -1064,14 +1064,82 @@ pub async fn op_node_scrypt_async(
   .await?
 }
 
+#[op2]
+#[buffer]
+pub fn op_node_ecdh_encode_pubkey(
+  #[string] curve: &str,
+  #[buffer] pubkey: &[u8],
+  compress: bool,
+) -> Result<Vec<u8>, AnyError> {
+  use elliptic_curve::sec1::FromEncodedPoint;
+
+  match curve {
+    "secp256k1" => {
+      let pubkey =
+        elliptic_curve::PublicKey::<k256::Secp256k1>::from_encoded_point(
+          &elliptic_curve::sec1::EncodedPoint::<k256::Secp256k1>::from_bytes(
+            pubkey,
+          )?,
+        );
+      // CtOption does not expose its variants.
+      if pubkey.is_none().into() {
+        return Err(type_error("Invalid public key"));
+      }
+
+      let pubkey = pubkey.unwrap();
+
+      Ok(pubkey.to_encoded_point(compress).as_ref().to_vec())
+    }
+    "prime256v1" | "secp256r1" => {
+      let pubkey = elliptic_curve::PublicKey::<NistP256>::from_encoded_point(
+        &elliptic_curve::sec1::EncodedPoint::<NistP256>::from_bytes(pubkey)?,
+      );
+      // CtOption does not expose its variants.
+      if pubkey.is_none().into() {
+        return Err(type_error("Invalid public key"));
+      }
+
+      let pubkey = pubkey.unwrap();
+
+      Ok(pubkey.to_encoded_point(compress).as_ref().to_vec())
+    }
+    "secp384r1" => {
+      let pubkey = elliptic_curve::PublicKey::<NistP384>::from_encoded_point(
+        &elliptic_curve::sec1::EncodedPoint::<NistP384>::from_bytes(pubkey)?,
+      );
+      // CtOption does not expose its variants.
+      if pubkey.is_none().into() {
+        return Err(type_error("Invalid public key"));
+      }
+
+      let pubkey = pubkey.unwrap();
+
+      Ok(pubkey.to_encoded_point(compress).as_ref().to_vec())
+    }
+    "secp224r1" => {
+      let pubkey = elliptic_curve::PublicKey::<NistP224>::from_encoded_point(
+        &elliptic_curve::sec1::EncodedPoint::<NistP224>::from_bytes(pubkey)?,
+      );
+      // CtOption does not expose its variants.
+      if pubkey.is_none().into() {
+        return Err(type_error("Invalid public key"));
+      }
+
+      let pubkey = pubkey.unwrap();
+
+      Ok(pubkey.to_encoded_point(compress).as_ref().to_vec())
+    }
+    &_ => Err(type_error("Unsupported curve")),
+  }
+}
+
 #[op2(fast)]
-#[smi]
 pub fn op_node_ecdh_generate_keys(
   #[string] curve: &str,
   #[buffer] pubbuf: &mut [u8],
   #[buffer] privbuf: &mut [u8],
   #[string] format: &str,
-) -> Result<ResourceId, AnyError> {
+) -> Result<(), AnyError> {
   let mut rng = rand::thread_rng();
   let compress = format == "compressed";
   match curve {
@@ -1082,30 +1150,33 @@ pub fn op_node_ecdh_generate_keys(
       pubbuf.copy_from_slice(pubkey.to_encoded_point(compress).as_ref());
       privbuf.copy_from_slice(privkey.to_nonzero_scalar().to_bytes().as_ref());
 
-      Ok(0)
+      Ok(())
     }
     "prime256v1" | "secp256r1" => {
       let privkey = elliptic_curve::SecretKey::<NistP256>::random(&mut rng);
       let pubkey = privkey.public_key();
       pubbuf.copy_from_slice(pubkey.to_encoded_point(compress).as_ref());
       privbuf.copy_from_slice(privkey.to_nonzero_scalar().to_bytes().as_ref());
-      Ok(0)
+
+      Ok(())
     }
     "secp384r1" => {
       let privkey = elliptic_curve::SecretKey::<NistP384>::random(&mut rng);
       let pubkey = privkey.public_key();
       pubbuf.copy_from_slice(pubkey.to_encoded_point(compress).as_ref());
       privbuf.copy_from_slice(privkey.to_nonzero_scalar().to_bytes().as_ref());
-      Ok(0)
+
+      Ok(())
     }
     "secp224r1" => {
       let privkey = elliptic_curve::SecretKey::<NistP224>::random(&mut rng);
       let pubkey = privkey.public_key();
       pubbuf.copy_from_slice(pubkey.to_encoded_point(compress).as_ref());
       privbuf.copy_from_slice(privkey.to_nonzero_scalar().to_bytes().as_ref());
-      Ok(0)
+
+      Ok(())
     }
-    &_ => todo!(),
+    &_ => Err(type_error(format!("Unsupported curve: {}", curve))),
   }
 }
 

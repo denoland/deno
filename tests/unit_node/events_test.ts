@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { EventEmitter } from "node:events";
+import events, { EventEmitter } from "node:events";
 
 EventEmitter.captureRejections = true;
 
@@ -24,4 +24,13 @@ Deno.test("regression #20441", async () => {
 
   ee.emit("foo");
   await promise;
+});
+
+Deno.test("eventemitter async resource", () => {
+  // @ts-ignore: @types/node is outdated
+  class Foo extends events.EventEmitterAsyncResource {}
+
+  const foo = new Foo();
+  // @ts-ignore: @types/node is outdated
+  foo.emit("bar");
 });

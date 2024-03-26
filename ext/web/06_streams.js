@@ -91,17 +91,17 @@ const {
 } = primordials;
 
 import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { structuredClone } from "ext:deno_web/02_structured_clone.js";
+import { structuredClone } from "./02_structured_clone.js";
 import {
   AbortSignalPrototype,
   add,
   newSignal,
   remove,
   signalAbort,
-} from "ext:deno_web/03_abort_signal.js";
+} from "./03_abort_signal.js";
 
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
-import { assert, AssertionError } from "ext:deno_web/00_infra.js";
+import { assert, AssertionError } from "./00_infra.js";
 
 /** @template T */
 class Deferred {
