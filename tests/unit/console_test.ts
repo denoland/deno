@@ -174,11 +174,11 @@ Deno.test(function consoleTestStringifyQuotes() {
 });
 
 Deno.test(function consoleTestStringifyLongStrings() {
-  const veryLongString = "a".repeat(200);
+  const veryLongString = "a".repeat(10_100);
   // If we stringify an object containing the long string, it gets abbreviated.
   let actual = stringify({ veryLongString });
   assert(actual.includes("..."));
-  assert(actual.length < 200);
+  assert(actual.length < 10_100);
   // However if we stringify the string itself, we get it exactly.
   actual = stringify(veryLongString);
   assertEquals(actual, veryLongString);

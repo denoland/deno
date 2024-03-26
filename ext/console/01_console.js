@@ -2316,7 +2316,7 @@ const denoInspectDefaultOptions = {
 
   // node only
   maxArrayLength: 100,
-  maxStringLength: 100, // deno: strAbbreviateSize: 100
+  maxStringLength: 10_000, // deno: strAbbreviateSize: 10_000
   customInspect: true,
 
   // deno only
