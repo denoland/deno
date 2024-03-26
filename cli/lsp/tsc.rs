@@ -5023,6 +5023,7 @@ mod tests {
     .unwrap();
     asset_names.sort();
 
+    // if this test fails, update build.rs
     expected_asset_names.sort();
     assert_eq!(asset_names, expected_asset_names);
 
