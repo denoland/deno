@@ -1,3 +1,4 @@
+// deno-lint-ignore-file
 export function assertEquals<T>(
   actual: T,
   expected: T,
