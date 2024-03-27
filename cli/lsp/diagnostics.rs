@@ -21,6 +21,7 @@ use crate::graph_util::enhanced_resolution_error_message;
 use crate::lsp::lsp_custom::DiagnosticBatchNotificationParams;
 use crate::resolver::SloppyImportsResolution;
 use crate::resolver::SloppyImportsResolver;
+use crate::util::path::to_percent_decoded_str;
 
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
@@ -1212,8 +1213,10 @@ impl DenoDiagnostic {
       specifier: &ModuleSpecifier,
       sloppy_resolution: SloppyImportsResolution,
     ) -> String {
-      let mut message =
-        format!("Unable to load a local module: {}\n", specifier);
+      let mut message = format!(
+        "Unable to load a local module: {}\n",
+        to_percent_decoded_str(specifier.as_ref())
+      );
       if let Some(additional_message) =
         sloppy_resolution.as_suggestion_message()
       {
@@ -1967,6 +1970,50 @@ let c: number = "a";
           "source": "deno",
           "message": "Relative import path \"bad.d.ts\" not prefixed with / or ./ or ../",
         },
+      ])
+    );
+  }
+
+  #[tokio::test]
+  async fn unable_to_load_a_local_module() {
+    let temp_dir = TempDir::new();
+    let (snapshot, _) = setup(
+      &temp_dir,
+      &[(
+        "file:///a.ts",
+        r#"
+        import { 東京 } from "./🦕.ts";
+        "#,
+        1,
+        LanguageId::TypeScript,
+      )],
+      None,
+    )
+    .await;
+    let config = mock_config();
+    let token = CancellationToken::new();
+    let actual = generate_deno_diagnostics(&snapshot, &config, token);
+    assert_eq!(actual.len(), 1);
+    let record = actual.first().unwrap();
+    assert_eq!(
+      json!(record.versioned.diagnostics),
+      json!([
+        {
+          "range": {
+            "start": {
+              "line": 1,
+              "character": 27
+            },
+            "end": {
+              "line": 1,
+              "character": 35
+            }
+          },
+          "severity": 1,
+          "code": "no-local",
+          "source": "deno",
+          "message": "Unable to load a local module: file:///🦕.ts\nPlease check the file path.",
+        }
       ])
     );
   }

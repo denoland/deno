@@ -122,6 +122,7 @@ use crate::tools::upgrade::upgrade_check_enabled;
 use crate::util::fs::remove_dir_all_if_exists;
 use crate::util::path::is_importable_ext;
 use crate::util::path::specifier_to_file_path;
+use crate::util::path::to_percent_decoded_str;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 
@@ -1738,16 +1739,21 @@ impl Inner {
     match resolution {
       Resolution::Ok(resolved) => {
         let specifier = &resolved.specifier;
+        let format = |scheme: &str, rest: &str| -> String {
+          format!("{}&#8203;{}", scheme, rest).replace('@', "&#8203;@")
+        };
         match specifier.scheme() {
           "data" => "_(a data url)_".to_string(),
           "blob" => "_(a blob url)_".to_string(),
+          "file" => format(
+            &specifier[..url::Position::AfterScheme],
+            &to_percent_decoded_str(&specifier[url::Position::AfterScheme..]),
+          ),
           _ => {
-            let mut result = format!(
-              "{}&#8203;{}",
+            let mut result = format(
               &specifier[..url::Position::AfterScheme],
               &specifier[url::Position::AfterScheme..],
-            )
-            .replace('@', "&#8203;@");
+            );
             if let Ok(jsr_req_ref) =
               JsrPackageReqReference::from_specifier(specifier)
             {

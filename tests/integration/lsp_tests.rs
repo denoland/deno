@@ -2266,7 +2266,7 @@ fn lsp_hover_dependency() {
         "uri": "file:///a/file.ts",
         "languageId": "typescript",
         "version": 1,
-        "text": "import * as a from \"http://127.0.0.1:4545/xTypeScriptTypes.js\";\n// @deno-types=\"http://127.0.0.1:4545/type_definitions/foo.d.ts\"\nimport * as b from \"http://127.0.0.1:4545/type_definitions/foo.js\";\nimport * as c from \"http://127.0.0.1:4545/subdir/type_reference.js\";\nimport * as d from \"http://127.0.0.1:4545/subdir/mod1.ts\";\nimport * as e from \"data:application/typescript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=\";\nimport * as f from \"./file_01.ts\";\nimport * as g from \"http://localhost:4545/x/a/mod.ts\";\n\nconsole.log(a, b, c, d, e, f, g);\n"
+        "text": "import * as a from \"http://127.0.0.1:4545/xTypeScriptTypes.js\";\n// @deno-types=\"http://127.0.0.1:4545/type_definitions/foo.d.ts\"\nimport * as b from \"http://127.0.0.1:4545/type_definitions/foo.js\";\nimport * as c from \"http://127.0.0.1:4545/subdir/type_reference.js\";\nimport * as d from \"http://127.0.0.1:4545/subdir/mod1.ts\";\nimport * as e from \"data:application/typescript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=\";\nimport * as f from \"./file_01.ts\";\nimport * as g from \"http://localhost:4545/x/a/mod.ts\";\nimport * as h from \"./mod🦕.ts\";\n\nconsole.log(a, b, c, d, e, f, g, h);\n"
       }
     }),
   );
@@ -2384,6 +2384,28 @@ fn lsp_hover_dependency() {
       "range": {
         "start": { "line": 6, "character": 19 },
         "end":{ "line": 6, "character": 33 }
+      }
+    })
+  );
+  let res = client.write_request(
+    "textDocument/hover",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+      },
+      "position": { "line": 8, "character": 28 }
+    }),
+  );
+  assert_eq!(
+    res,
+    json!({
+      "contents": {
+        "kind": "markdown",
+        "value": "**Resolved Dependency**\n\n**Code**: file&#8203;:///a/mod🦕.ts\n"
+      },
+      "range": {
+        "start": { "line": 8, "character": 19 },
+        "end":{ "line": 8, "character": 30 }
       }
     })
   );
@@ -6637,7 +6659,7 @@ fn lsp_completions_auto_import() {
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
-      "uri": "file:///a/b.ts",
+      "uri": "file:///a/🦕.ts",
       "languageId": "typescript",
       "version": 1,
       "text": "export const foo = \"foo\";\n",
@@ -6668,7 +6690,7 @@ fn lsp_completions_auto_import() {
   let req = json!({
     "label": "foo",
     "labelDetails": {
-      "description": "./b.ts",
+      "description": "./🦕.ts",
     },
     "kind": 6,
     "sortText": "￿16_0",
@@ -6683,12 +6705,16 @@ fn lsp_completions_auto_import() {
         "specifier": "file:///a/file.ts",
         "position": 12,
         "name": "foo",
-        "source": "./b.ts",
+        "source": "./%F0%9F%A6%95.ts",
+         "specifierRewrite": [
+           "./%F0%9F%A6%95.ts",
+           "./🦕.ts",
+         ],
         "data": {
           "exportName": "foo",
           "exportMapKey": "",
-          "moduleSpecifier": "./b.ts",
-          "fileName": "file:///a/b.ts"
+          "moduleSpecifier": "./%F0%9F%A6%95.ts",
+          "fileName": "file:///a/%F0%9F%A6%95.ts"
         },
         "useCodeSnippet": false
       }
@@ -6702,7 +6728,7 @@ fn lsp_completions_auto_import() {
     json!({
       "label": "foo",
       "labelDetails": {
-        "description": "./b.ts",
+        "description": "./🦕.ts",
       },
       "kind": 6,
       "detail": "const foo: \"foo\"",
@@ -6717,7 +6743,7 @@ fn lsp_completions_auto_import() {
             "start": { "line": 0, "character": 0 },
             "end": { "line": 0, "character": 0 }
           },
-          "newText": "import { foo } from \"./b.ts\";\n\n"
+          "newText": "import { foo } from \"./🦕.ts\";\n\n"
         }
       ]
     })
