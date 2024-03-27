@@ -9,7 +9,10 @@ use clap::ArgMatches;
 use clap::ColorChoice;
 use clap::Command;
 use clap::ValueHint;
+use deno_config::glob::PathOrPatternSet;
 use deno_config::ConfigFlag;
+use deno_core::anyhow::Context;
+use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_core::url::Url;
 use deno_graph::GraphKind;
@@ -249,6 +252,7 @@ impl RunFlags {
 pub struct WatchFlags {
   pub hmr: bool,
   pub no_clear_screen: bool,
+  pub exclude: Vec<String>,
 }
 
 #[derive(Clone, Default, Debug, Eq, PartialEq)]
@@ -256,6 +260,7 @@ pub struct WatchFlagsWithPaths {
   pub hmr: bool,
   pub paths: Vec<String>,
   pub no_clear_screen: bool,
+  pub exclude: Vec<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -831,6 +836,69 @@ impl Flags {
     self.allow_ffi = Some(vec![]);
     self.allow_hrtime = true;
   }
+
+  pub fn resolve_watch_exclude_set(
+    &self,
+  ) -> Result<PathOrPatternSet, AnyError> {
+    if let DenoSubcommand::Run(RunFlags {
+      watch:
+        Some(WatchFlagsWithPaths {
+          exclude: excluded_paths,
+          ..
+        }),
+      ..
+    })
+    | DenoSubcommand::Bundle(BundleFlags {
+      watch:
+        Some(WatchFlags {
+          exclude: excluded_paths,
+          ..
+        }),
+      ..
+    })
+    | DenoSubcommand::Bench(BenchFlags {
+      watch:
+        Some(WatchFlags {
+          exclude: excluded_paths,
+          ..
+        }),
+      ..
+    })
+    | DenoSubcommand::Test(TestFlags {
+      watch:
+        Some(WatchFlags {
+          exclude: excluded_paths,
+          ..
+        }),
+      ..
+    })
+    | DenoSubcommand::Lint(LintFlags {
+      watch:
+        Some(WatchFlags {
+          exclude: excluded_paths,
+          ..
+        }),
+      ..
+    })
+    | DenoSubcommand::Fmt(FmtFlags {
+      watch:
+        Some(WatchFlags {
+          exclude: excluded_paths,
+          ..
+        }),
+      ..
+    }) = &self.subcommand
+    {
+      let cwd = std::env::current_dir()?;
+      PathOrPatternSet::from_exclude_relative_path_or_patterns(
+        &cwd,
+        excluded_paths,
+      )
+      .context("Failed resolving watch exclude patterns.")
+    } else {
+      Ok(PathOrPatternSet::default())
+    }
+  }
 }
 
 static ENV_VARIABLES_HELP: &str = color_print::cstr!(
@@ -1211,6 +1279,7 @@ glob {*_,*.,}bench.{js,mjs,ts,mts,jsx,tsx}:
             .action(ArgAction::SetTrue),
         )
         .arg(watch_arg(false))
+        .arg(watch_exclude_arg())
         .arg(no_clear_screen_arg())
         .arg(script_arg().last(true))
         .arg(env_file_arg())
@@ -1243,6 +1312,7 @@ If no output file is given, the output is written to standard output:
         )
         .arg(Arg::new("out_file").value_hint(ValueHint::FilePath))
         .arg(watch_arg(false))
+        .arg(watch_exclude_arg())
         .arg(no_clear_screen_arg())
         .arg(executable_ext_arg())
     })
@@ -1726,6 +1796,7 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
             .value_hint(ValueHint::AnyPath),
         )
         .arg(watch_arg(false))
+        .arg(watch_exclude_arg())
         .arg(no_clear_screen_arg())
         .arg(
           Arg::new("use-tabs")
@@ -2095,6 +2166,7 @@ Ignore linting a file by adding an ignore comment at the top of the file:
             .value_hint(ValueHint::AnyPath),
         )
         .arg(watch_arg(false))
+        .arg(watch_exclude_arg())
         .arg(no_clear_screen_arg())
     })
 }
@@ -2126,6 +2198,7 @@ fn run_subcommand() -> Command {
   runtime_args(Command::new("run"), true, true)
     .arg(check_arg(false))
     .arg(watch_arg(true))
+    .arg(watch_exclude_arg())
     .arg(hmr_arg(true))
     .arg(no_clear_screen_arg())
     .arg(executable_ext_arg())
@@ -2308,6 +2381,7 @@ Directory arguments are expanded to all contained files matching the glob
         .conflicts_with("no-run")
         .conflicts_with("coverage"),
     )
+    .arg(watch_exclude_arg())
     .arg(no_clear_screen_arg())
     .arg(script_arg().last(true))
     .arg(
@@ -3118,6 +3192,18 @@ fn no_clear_screen_arg() -> Arg {
     .long("no-clear-screen")
     .action(ArgAction::SetTrue)
     .help("Do not clear terminal screen when under watch mode")
+}
+
+fn watch_exclude_arg() -> Arg {
+  Arg::new("watch-exclude")
+    .long("watch-exclude")
+    .help("Exclude provided files/patterns from watch mode")
+    .value_name("FILES")
+    .num_args(0..)
+    .value_parser(value_parser!(String))
+    .use_value_delimiter(true)
+    .require_equals(true)
+    .value_hint(ValueHint::AnyPath)
 }
 
 fn no_check_arg() -> Arg {
@@ -4263,6 +4349,10 @@ fn watch_arg_parse(matches: &mut ArgMatches) -> Option<WatchFlags> {
     Some(WatchFlags {
       hmr: false,
       no_clear_screen: matches.get_flag("no-clear-screen"),
+      exclude: matches
+        .remove_many::<String>("watch-exclude")
+        .map(|f| f.collect::<Vec<String>>())
+        .unwrap_or_default(),
     })
   } else {
     None
@@ -4277,6 +4367,10 @@ fn watch_arg_parse_with_paths(
       paths: paths.collect(),
       hmr: false,
       no_clear_screen: matches.get_flag("no-clear-screen"),
+      exclude: matches
+        .remove_many::<String>("watch-exclude")
+        .map(|f| f.collect::<Vec<String>>())
+        .unwrap_or_default(),
     });
   }
 
@@ -4286,6 +4380,10 @@ fn watch_arg_parse_with_paths(
       paths: paths.collect(),
       hmr: true,
       no_clear_screen: matches.get_flag("no-clear-screen"),
+      exclude: matches
+        .remove_many::<String>("watch-exclude")
+        .map(|f| f.collect::<Vec<String>>())
+        .unwrap_or_default(),
     })
 }
 
@@ -4424,6 +4522,7 @@ mod tests {
             hmr: false,
             paths: vec![],
             no_clear_screen: false,
+            exclude: vec![],
           }),
         }),
         ..Flags::default()
@@ -4447,6 +4546,7 @@ mod tests {
             hmr: false,
             paths: vec![],
             no_clear_screen: true,
+            exclude: vec![],
           }),
         }),
         ..Flags::default()
@@ -4470,6 +4570,7 @@ mod tests {
             hmr: true,
             paths: vec![],
             no_clear_screen: true,
+            exclude: vec![],
           }),
         }),
         ..Flags::default()
@@ -4493,6 +4594,7 @@ mod tests {
             hmr: true,
             paths: vec![String::from("foo.txt")],
             no_clear_screen: true,
+            exclude: vec![],
           }),
         }),
         ..Flags::default()
@@ -4518,6 +4620,7 @@ mod tests {
             hmr: false,
             paths: vec![String::from("file1"), String::from("file2")],
             no_clear_screen: false,
+            exclude: vec![],
           }),
         }),
         ..Flags::default()
@@ -4545,6 +4648,109 @@ mod tests {
             hmr: false,
             paths: vec![],
             no_clear_screen: true,
+            exclude: vec![],
+          }),
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn run_watch_with_excluded_paths() {
+    let r = flags_from_vec(svec!(
+      "deno",
+      "run",
+      "--watch",
+      "--watch-exclude=foo",
+      "script.ts"
+    ));
+
+    let flags = r.unwrap();
+    assert_eq!(
+      flags,
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.ts".to_string(),
+          watch: Some(WatchFlagsWithPaths {
+            hmr: false,
+            paths: vec![],
+            no_clear_screen: false,
+            exclude: vec![String::from("foo")],
+          }),
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!(
+      "deno",
+      "run",
+      "--watch=foo",
+      "--watch-exclude=bar",
+      "script.ts"
+    ));
+    let flags = r.unwrap();
+    assert_eq!(
+      flags,
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.ts".to_string(),
+          watch: Some(WatchFlagsWithPaths {
+            hmr: false,
+            paths: vec![String::from("foo")],
+            no_clear_screen: false,
+            exclude: vec![String::from("bar")],
+          }),
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--watch",
+      "--watch-exclude=foo,bar",
+      "script.ts"
+    ]);
+
+    let flags = r.unwrap();
+    assert_eq!(
+      flags,
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.ts".to_string(),
+          watch: Some(WatchFlagsWithPaths {
+            hmr: false,
+            paths: vec![],
+            no_clear_screen: false,
+            exclude: vec![String::from("foo"), String::from("bar")],
+          }),
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--watch=foo,bar",
+      "--watch-exclude=baz,qux",
+      "script.ts"
+    ]);
+
+    let flags = r.unwrap();
+    assert_eq!(
+      flags,
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.ts".to_string(),
+          watch: Some(WatchFlagsWithPaths {
+            hmr: false,
+            paths: vec![String::from("foo"), String::from("bar")],
+            no_clear_screen: false,
+            exclude: vec![String::from("baz"), String::from("qux"),],
           }),
         }),
         ..Flags::default()
@@ -4876,6 +5082,7 @@ mod tests {
           watch: Some(WatchFlags {
             hmr: false,
             no_clear_screen: true,
+            exclude: vec![],
           })
         }),
         ext: Some("ts".to_string()),
@@ -5112,6 +5319,7 @@ mod tests {
           watch: Some(WatchFlags {
             hmr: false,
             no_clear_screen: true,
+            exclude: vec![],
           })
         }),
         ..Flags::default()
@@ -6350,6 +6558,7 @@ mod tests {
           watch: Some(WatchFlags {
             hmr: false,
             no_clear_screen: true,
+            exclude: vec![],
           }),
         }),
         type_check_mode: TypeCheckMode::Local,
@@ -7624,6 +7833,7 @@ mod tests {
           watch: Some(WatchFlags {
             hmr: false,
             no_clear_screen: true,
+            exclude: vec![],
           }),
           reporter: Default::default(),
           junit_path: None,
