@@ -1741,6 +1741,7 @@ dependencies = [
  "console_static_text",
  "deno_core",
  "deno_terminal",
+ "fqdn",
  "libc",
  "log",
  "once_cell",
@@ -2693,6 +2694,12 @@ checksum = "e13624c2627564efccf4934284bdd98cbaa14e79b0b5a141218e507b3a823456"
 dependencies = [
  "percent-encoding",
 ]
+
+[[package]]
+name = "fqdn"
+version = "0.3.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1bf664d6b0598fea5600b85cddc79e60d4c1f262f42faf75c2d77dc2164c9a8b"
 
 [[package]]
 name = "from_variant"
