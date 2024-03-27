@@ -1988,7 +1988,8 @@ let c: number = "a";
         LanguageId::TypeScript,
       )],
       None,
-    );
+    )
+    .await;
     let config = mock_config();
     let token = CancellationToken::new();
     let actual = generate_deno_diagnostics(&snapshot, &config, token);
