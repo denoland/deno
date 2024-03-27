@@ -2,6 +2,7 @@
 
 use test_util as util;
 use test_util::assert_contains;
+use test_util::assert_not_contains;
 use util::TestContext;
 use util::TestContextBuilder;
 
