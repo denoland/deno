@@ -41,3 +41,10 @@ Deno.test(function intlListFormat() {
     { type: "element", value: "golang" },
   ]);
 });
+
+Deno.test(function setUnion() {
+  const a = new Set([1, 2, 3]);
+  const b = new Set([3, 4, 5]);
+  const union = a.union(b);
+  assertEquals(union, new Set([1, 2, 3, 4, 5]));
+});
