@@ -1645,25 +1645,6 @@ impl CliOptions {
     }
     full_paths
   }
-
-  pub fn excluded_paths(&self) -> Vec<PathBuf> {
-    if let DenoSubcommand::Run(RunFlags {
-      watch:
-        Some(WatchFlagsWithPaths {
-          excluded_paths: excluded_files,
-          ..
-        }),
-      ..
-    }) = &self.flags.subcommand
-    {
-      excluded_files
-        .iter()
-        .map(|path| self.initial_cwd.join(path))
-        .collect()
-    } else {
-      Vec::with_capacity(0)
-    }
-  }
 }
 
 /// Resolves the path to use for a local node_modules folder.

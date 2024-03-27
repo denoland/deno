@@ -1624,11 +1624,14 @@ async fn run_watch_with_excluded_paths() {
   file_to_watch
     .write("import { foo } from './file_to_exclude.js'; console.log(foo);");
 
+  let mjs_file_to_exclude = t.path().join("file_to_exclude.mjs");
+  mjs_file_to_exclude.write("export const foo = 0;");
+
   let mut child = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("run")
     .arg("--watch")
-    .arg("--watch-exclude=file_to_exclude.js")
+    .arg("--watch-exclude=file_to_exclude.js,*.mjs")
     .arg("-L")
     .arg("debug")
     .arg(&file_to_watch)
@@ -1643,6 +1646,7 @@ async fn run_watch_with_excluded_paths() {
 
   // Confirm that restarting doesn't occurs when a excluded file is updated
   file_to_exclude.write("export const foo = 42;");
+  mjs_file_to_exclude.write("export const foo = 42;");
 
   wait_contains("finished", &mut stderr_lines).await;
   check_alive_then_kill(child);
