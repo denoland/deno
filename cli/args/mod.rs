@@ -260,6 +260,12 @@ pub struct FmtOptions {
   pub files: FilePatterns,
 }
 
+impl Default for FmtOptions {
+  fn default() -> Self {
+    Self::new_with_base(PathBuf::from("/"))
+  }
+}
+
 impl FmtOptions {
   pub fn new_with_base(base: PathBuf) -> Self {
     Self {
@@ -392,6 +398,12 @@ pub struct LintOptions {
   pub files: FilePatterns,
   pub reporter_kind: LintReporterKind,
   pub fix: bool,
+}
+
+impl Default for LintOptions {
+  fn default() -> Self {
+    Self::new_with_base(PathBuf::from("/"))
+  }
 }
 
 impl LintOptions {

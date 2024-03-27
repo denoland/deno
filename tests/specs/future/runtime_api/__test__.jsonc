@@ -1,0 +1,7 @@
+{
+  "args": "run main.js",
+  "output": "main.out",
+  "envs": {
+    "DENO_FUTURE": "1"
+  }
+}

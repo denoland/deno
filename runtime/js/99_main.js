@@ -1,3 +1,4 @@
+// deno-lint-ignore-file no-deprecated-deno-api
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // Remove Intl.v8BreakIterator because it is a non-standard API.
@@ -564,6 +565,7 @@ const NOT_IMPORTED_OPS = [
   "op_bench_now",
   "op_dispatch_bench_event",
   "op_register_bench",
+  "op_bench_get_origin",
 
   // Related to `Deno.jupyter` API
   "op_jupyter_broadcast",
@@ -778,6 +780,32 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
     }
     if (future) {
       delete globalThis.window;
+      delete Deno.Buffer;
+      delete Deno.close;
+      delete Deno.copy;
+      delete Deno.File;
+      delete Deno.fstat;
+      delete Deno.fstatSync;
+      delete Deno.ftruncate;
+      delete Deno.ftruncateSync;
+      delete Deno.flock;
+      delete Deno.flockSync;
+      delete Deno.funlock;
+      delete Deno.funlockSync;
+      delete Deno.iter;
+      delete Deno.iterSync;
+      delete Deno.metrics;
+      delete Deno.readAll;
+      delete Deno.readAllSync;
+      delete Deno.read;
+      delete Deno.readSync;
+      delete Deno.seek;
+      delete Deno.seekSync;
+      delete Deno.shutdown;
+      delete Deno.writeAll;
+      delete Deno.writeAllSync;
+      delete Deno.write;
+      delete Deno.writeSync;
     }
   } else {
     // Warmup

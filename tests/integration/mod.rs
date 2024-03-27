@@ -38,6 +38,8 @@ mod install;
 mod js_unit_tests;
 #[path = "jsr_tests.rs"]
 mod jsr;
+#[path = "jupyter_tests.rs"]
+mod jupyter;
 #[path = "lint_tests.rs"]
 mod lint;
 #[path = "lsp_tests.rs"]
