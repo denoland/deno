@@ -413,7 +413,7 @@ fn add_paths_to_watcher(
   let mut watched_paths = Vec::new();
 
   for path in paths {
-    if paths_to_exclude.iter().any(|p| path.ends_with(p)) {
+    if paths_to_exclude.iter().any(|p| path == p) {
       continue;
     }
 
