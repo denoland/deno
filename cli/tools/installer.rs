@@ -249,7 +249,7 @@ pub async fn install_command(
   install_flags: InstallFlags,
 ) -> Result<(), AnyError> {
   if !install_flags.global {
-    log::warn!("⚠️ `deno install` behavior will change in Deno 2. To preserve the current behavior use `-g` or `--global` flag.");
+    log::warn!("⚠️ `deno install` behavior will change in Deno 2. To preserve the current behavior use the `-g` or `--global` flag.");
   }
   // ensure the module is cached
   CliFactory::from_flags(flags.clone())?
