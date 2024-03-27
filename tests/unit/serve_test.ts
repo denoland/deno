@@ -1515,6 +1515,41 @@ Deno.test(
 
 Deno.test(
   { permissions: { net: true } },
+  async function httpServerWebSocketHeader() {
+    const headers = new Headers({ name: "value" });
+    const wsClosed = Promise.withResolvers<void>();
+    const server = Deno.serve({
+      port: servePort,
+      handler: (req) => {
+        const { socket, response } = Deno.upgradeWebSocket(req, { headers });
+        socket.onclose = () => wsClosed.resolve();
+        return response;
+      },
+    });
+    const tcp = await Deno.connect({ port: servePort });
+    await tcp.writable.getWriter().write(
+      new TextEncoder().encode([
+        "GET / HTTP/1.1",
+        "connection: upgrade",
+        "upgrade: websocket",
+        "sec-websocket-key: SGVsbG8sIHdvcmxkIQ==",
+        "\n",
+      ].join("\n")),
+    );
+    let response = "";
+    for await (
+      const text of tcp.readable.pipeThrough(new TextDecoderStream())
+    ) {
+      if ((response += text).includes("\r\n\r\n")) break;
+    }
+    assert(response.includes("name: value"));
+    await wsClosed.promise;
+    await server.shutdown();
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
   async function httpVeryLargeRequest() {
     const deferred = Promise.withResolvers<void>();
     const listeningDeferred = Promise.withResolvers<void>();

@@ -457,6 +457,12 @@ function upgradeWebSocket(request, options = {}) {
     }
   }
 
+  if (options.headers) {
+    for (const h of options.headers) {
+      ArrayPrototypePush(r.headerList, [h[0], h[1]]);
+    }
+  }
+
   const socket = createWebSocketBranded(WebSocket);
   setEventTargetData(socket);
   socket[_server] = true;
