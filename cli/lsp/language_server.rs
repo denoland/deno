@@ -122,6 +122,7 @@ use crate::tools::upgrade::upgrade_check_enabled;
 use crate::util::fs::remove_dir_all_if_exists;
 use crate::util::path::is_importable_ext;
 use crate::util::path::specifier_to_file_path;
+use crate::util::path::to_percent_decoded_str;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 
@@ -503,23 +504,14 @@ impl Inner {
       module_registries_location.clone(),
       http_client.clone(),
     );
-    let location = dir.deps_folder_path();
-    let deps_http_cache = Arc::new(GlobalHttpCache::new(
-      location,
-      crate::cache::RealDenoCacheEnv,
-    ));
-    let mut deps_file_fetcher = FileFetcher::new(
-      deps_http_cache.clone(),
-      CacheSetting::RespectHeaders,
-      true,
-      http_client.clone(),
-      Default::default(),
-      None,
-    );
-    deps_file_fetcher.set_download_log_level(super::logging::lsp_log_level());
-    let jsr_search_api = CliJsrSearchApi::new(deps_file_fetcher);
+    let jsr_search_api =
+      CliJsrSearchApi::new(module_registries.file_fetcher.clone());
     let npm_search_api =
       CliNpmSearchApi::new(module_registries.file_fetcher.clone());
+    let deps_http_cache = Arc::new(GlobalHttpCache::new(
+      dir.deps_folder_path(),
+      crate::cache::RealDenoCacheEnv,
+    ));
     let documents = Documents::new(deps_http_cache.clone());
     let cache_metadata = cache::CacheMetadata::new(deps_http_cache.clone());
     let performance = Arc::new(Performance::default());
@@ -751,34 +743,26 @@ impl Inner {
     )?;
     let root_cert_store_provider =
       Arc::new(LspRootCertStoreProvider(root_cert_store));
-    let module_registries_location = dir.registries_folder_path();
     self.http_client = Arc::new(HttpClient::new(
       Some(root_cert_store_provider),
       workspace_settings
         .unsafely_ignore_certificate_errors
         .clone(),
     ));
+    self.module_registries_location = dir.registries_folder_path();
     self.module_registries = ModuleRegistry::new(
-      module_registries_location.clone(),
+      self.module_registries_location.clone(),
       self.http_client.clone(),
     );
-    self.module_registries_location = module_registries_location;
+    self.jsr_search_api =
+      CliJsrSearchApi::new(self.module_registries.file_fetcher.clone());
+    self.npm.search_api =
+      CliNpmSearchApi::new(self.module_registries.file_fetcher.clone());
     // update the cache path
     let global_cache = Arc::new(GlobalHttpCache::new(
       dir.deps_folder_path(),
       crate::cache::RealDenoCacheEnv,
     ));
-    let mut deps_file_fetcher = FileFetcher::new(
-      global_cache.clone(),
-      CacheSetting::RespectHeaders,
-      true,
-      self.http_client.clone(),
-      Default::default(),
-      None,
-    );
-    deps_file_fetcher.set_download_log_level(super::logging::lsp_log_level());
-    self.jsr_search_api = CliJsrSearchApi::new(deps_file_fetcher.clone());
-    self.npm.search_api = CliNpmSearchApi::new(deps_file_fetcher);
     let maybe_local_cache =
       self.config.tree.root_vendor_dir().map(|local_path| {
         Arc::new(LocalLspHttpCache::new(local_path, global_cache.clone()))
@@ -1738,16 +1722,21 @@ impl Inner {
     match resolution {
       Resolution::Ok(resolved) => {
         let specifier = &resolved.specifier;
+        let format = |scheme: &str, rest: &str| -> String {
+          format!("{}&#8203;{}", scheme, rest).replace('@', "&#8203;@")
+        };
         match specifier.scheme() {
           "data" => "_(a data url)_".to_string(),
           "blob" => "_(a blob url)_".to_string(),
+          "file" => format(
+            &specifier[..url::Position::AfterScheme],
+            &to_percent_decoded_str(&specifier[url::Position::AfterScheme..]),
+          ),
           _ => {
-            let mut result = format!(
-              "{}&#8203;{}",
+            let mut result = format(
               &specifier[..url::Position::AfterScheme],
               &specifier[url::Position::AfterScheme..],
-            )
-            .replace('@', "&#8203;@");
+            );
             if let Ok(jsr_req_ref) =
               JsrPackageReqReference::from_specifier(specifier)
             {

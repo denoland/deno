@@ -34,6 +34,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::LintFlags;
 use crate::args::LintOptions;
@@ -78,15 +79,15 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
           let factory = CliFactory::from_flags(flags)?;
           let cli_options = factory.cli_options();
           let lint_options = cli_options.resolve_lint_options(lint_flags)?;
-          let files = collect_lint_files(lint_options.files.clone()).and_then(
-            |files| {
-              if files.is_empty() {
-                Err(generic_error("No target files found."))
-              } else {
-                Ok(files)
-              }
-            },
-          )?;
+          let files =
+            collect_lint_files(cli_options, lint_options.files.clone())
+              .and_then(|files| {
+                if files.is_empty() {
+                  Err(generic_error("No target files found."))
+                } else {
+                  Ok(files)
+                }
+              })?;
           _ = watcher_communicator.watch_paths(files.clone());
 
           let lint_paths = if let Some(paths) = changed_paths {
@@ -133,8 +134,8 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
       reporter_lock.lock().close(1);
       success
     } else {
-      let target_files =
-        collect_lint_files(files.clone()).and_then(|files| {
+      let target_files = collect_lint_files(cli_options, files.clone())
+        .and_then(|files| {
           if files.is_empty() {
             Err(generic_error("No target files found."))
           } else {
@@ -267,11 +268,14 @@ async fn lint_files(
   Ok(!has_error.is_raised())
 }
 
-fn collect_lint_files(files: FilePatterns) -> Result<Vec<PathBuf>, AnyError> {
+fn collect_lint_files(
+  cli_options: &CliOptions,
+  files: FilePatterns,
+) -> Result<Vec<PathBuf>, AnyError> {
   FileCollector::new(|e| is_script_ext(e.path))
     .ignore_git_folder()
     .ignore_node_modules()
-    .ignore_vendor_folder()
+    .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
     .collect_file_patterns(files)
 }
 
