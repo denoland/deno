@@ -9,6 +9,10 @@ console.log("Deno.ftruncate is", Deno.ftruncate);
 console.log("Deno.ftruncateSync is", Deno.ftruncateSync);
 console.log("Deno.flock is", Deno.flock);
 console.log("Deno.flockSync is", Deno.flockSync);
+console.log(
+  "Deno.FsFile.prototype.rid is",
+  Deno.openSync(import.meta.filename).rid,
+);
 console.log("Deno.funlock is", Deno.funlock);
 console.log("Deno.funlockSync is", Deno.funlockSync);
 console.log("Deno.iter is", Deno.iter);
@@ -18,6 +22,7 @@ console.log("Deno.readAll is", Deno.readAll);
 console.log("Deno.readAllSync is", Deno.readAllSync);
 console.log("Deno.read is", Deno.read);
 console.log("Deno.readSync is", Deno.readSync);
+console.log("Deno.resources is", Deno.resources);
 console.log("Deno.seek is", Deno.seek);
 console.log("Deno.seekSync is", Deno.seekSync);
 console.log("Deno.shutdown is", Deno.shutdown);

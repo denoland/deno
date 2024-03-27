@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::CliOptions;
 use crate::args::CoverageFlags;
 use crate::args::FileFlags;
 use crate::args::Flags;
@@ -376,6 +377,7 @@ fn range_to_src_line_index(
 }
 
 fn collect_coverages(
+  cli_options: &CliOptions,
   files: FileFlags,
   initial_cwd: &Path,
 ) -> Result<Vec<cdp::ScriptCoverage>, AnyError> {
@@ -405,7 +407,7 @@ fn collect_coverages(
   })
   .ignore_git_folder()
   .ignore_node_modules()
-  .ignore_vendor_folder()
+  .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
   .collect_file_patterns(file_patterns)?;
 
   for file_path in file_paths {
@@ -474,8 +476,11 @@ pub async fn cover_files(
   let coverage_root = cli_options
     .initial_cwd()
     .join(&coverage_flags.files.include[0]);
-  let script_coverages =
-    collect_coverages(coverage_flags.files, cli_options.initial_cwd())?;
+  let script_coverages = collect_coverages(
+    cli_options,
+    coverage_flags.files,
+    cli_options.initial_cwd(),
+  )?;
   if script_coverages.is_empty() {
     return Err(generic_error("No coverage files found"));
   }

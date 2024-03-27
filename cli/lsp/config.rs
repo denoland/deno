@@ -1136,7 +1136,10 @@ impl ConfigData {
     file_fetcher: Option<&FileFetcher>,
   ) -> Self {
     if let Some(specifier) = config_file_specifier {
-      match ConfigFile::from_specifier(specifier.clone()) {
+      match ConfigFile::from_specifier(
+        specifier.clone(),
+        &deno_config::ParseOptions::default(),
+      ) {
         Ok(config_file) => {
           lsp_log!(
             "  Resolved Deno configuration file: \"{}\"",
@@ -1949,7 +1952,12 @@ mod tests {
     config
       .tree
       .inject_config_file(
-        ConfigFile::new("{}", root_uri.join("deno.json").unwrap()).unwrap(),
+        ConfigFile::new(
+          "{}",
+          root_uri.join("deno.json").unwrap(),
+          &deno_config::ParseOptions::default(),
+        )
+        .unwrap(),
       )
       .await;
     assert!(config.specifier_enabled(&root_uri));
@@ -1996,6 +2004,7 @@ mod tests {
           })
           .to_string(),
           root_uri.join("deno.json").unwrap(),
+          &deno_config::ParseOptions::default(),
         )
         .unwrap(),
       )
@@ -2021,6 +2030,7 @@ mod tests {
           })
           .to_string(),
           root_uri.join("deno.json").unwrap(),
+          &deno_config::ParseOptions::default(),
         )
         .unwrap(),
       )
@@ -2038,6 +2048,7 @@ mod tests {
           })
           .to_string(),
           root_uri.join("deno.json").unwrap(),
+          &deno_config::ParseOptions::default(),
         )
         .unwrap(),
       )
@@ -2067,6 +2078,7 @@ mod tests {
           })
           .to_string(),
           root_uri.join("deno.json").unwrap(),
+          &deno_config::ParseOptions::default(),
         )
         .unwrap(),
       )
