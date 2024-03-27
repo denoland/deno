@@ -66,7 +66,7 @@ deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "proposa
 deno_cache_dir = { workspace = true }
 deno_config = "=0.15.0"
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
-deno_doc = { version = "=0.113.1", features = ["html"] }
+deno_doc = { version = "=0.119.0", features = ["html"] }
 deno_emit = "=0.38.2"
 deno_graph = { version = "=0.69.9", features = ["tokio_executor"] }
 deno_lint = { version = "=0.58.0", features = ["docs"] }
