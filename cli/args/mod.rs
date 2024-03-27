@@ -1974,7 +1974,6 @@ mod test {
     let mut files = FileCollector::new(|_| true)
       .ignore_git_folder()
       .ignore_node_modules()
-      .ignore_vendor_folder()
       .collect_file_patterns(resolved_files)
       .unwrap();
 
