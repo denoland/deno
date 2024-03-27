@@ -195,6 +195,7 @@ pub struct JupyterFlags {
 pub struct UninstallFlags {
   pub name: String,
   pub root: Option<String>,
+  pub global: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1902,7 +1903,7 @@ These must be added to the path manually if required.")
         Arg::new("global")
           .long("global")
           .short('g')
-          .help("Install a package or script as an executable available globall")
+          .help("Install a package or script as an executable available global")
           .action(ArgAction::SetTrue)
       )
       .arg(env_file_arg())
@@ -1956,7 +1957,15 @@ The installation root is determined, in order of precedence:
         Arg::new("root")
           .long("root")
           .help("Installation root")
-          .value_hint(ValueHint::DirPath))
+          .value_hint(ValueHint::DirPath)
+      )
+      .arg(
+        Arg::new("global")
+          .long("global")
+          .short('g')
+          .help("Remove globally installed package or module")
+          .action(ArgAction::SetTrue)
+      )
 )
 }
 
@@ -3621,9 +3630,10 @@ fn jupyter_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 
 fn uninstall_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   let root = matches.remove_one::<String>("root");
-
+  let global = matches.get_flag("global");
   let name = matches.remove_one::<String>("name").unwrap();
-  flags.subcommand = DenoSubcommand::Uninstall(UninstallFlags { name, root });
+  flags.subcommand =
+    DenoSubcommand::Uninstall(UninstallFlags { name, root, global });
 }
 
 fn lsp_parse(flags: &mut Flags, _matches: &mut ArgMatches) {
@@ -6608,6 +6618,20 @@ mod tests {
         subcommand: DenoSubcommand::Uninstall(UninstallFlags {
           name: "file_server".to_string(),
           root: None,
+          global: false,
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "uninstall", "-g", "file_server"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Uninstall(UninstallFlags {
+          name: "file_server".to_string(),
+          root: None,
+          global: true,
         }),
         ..Flags::default()
       }
