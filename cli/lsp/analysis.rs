@@ -647,6 +647,10 @@ fn is_preferred(
         }
       }
       true
+    } else if let CodeActionKind::Deno(_) = i {
+      // This is to make sure 'Remove import' isn't preferred over 'Cache
+      // dependencies'.
+      return false;
     } else {
       true
     }
@@ -1031,18 +1035,18 @@ impl CodeActionCollection {
 
   /// Move out the code actions and return them as a `CodeActionResponse`.
   pub fn get_response(self) -> lsp::CodeActionResponse {
-    // Prefer TSC fixes first, then Deno fixes, then Deno lint fixes.
-    let (tsc, rest): (Vec<_>, Vec<_>) = self
+    // Prefer Deno fixes first, then TSC fixes, then Deno lint fixes.
+    let (deno, rest): (Vec<_>, Vec<_>) = self
       .actions
       .into_iter()
-      .partition(|a| matches!(a, CodeActionKind::Tsc(..)));
-    let (deno, deno_lint): (Vec<_>, Vec<_>) = rest
-      .into_iter()
       .partition(|a| matches!(a, CodeActionKind::Deno(_)));
-
-    tsc
+    let (tsc, deno_lint): (Vec<_>, Vec<_>) = rest
       .into_iter()
-      .chain(deno)
+      .partition(|a| matches!(a, CodeActionKind::Tsc(..)));
+
+    deno
+      .into_iter()
+      .chain(tsc)
       .chain(deno_lint)
       .map(|k| match k {
         CodeActionKind::Deno(c) => lsp::CodeActionOrCommand::CodeAction(c),
