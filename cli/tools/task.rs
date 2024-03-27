@@ -66,7 +66,7 @@ pub async fn execute_script(
       Some(path) => canonicalize_path(&PathBuf::from(path))?,
       None => config_file_path.parent().unwrap().to_owned(),
     };
-    let script = get_script_with_args(&script, cli_options);
+    let script = get_script_with_args(script, cli_options);
     output_task(task_name, &script);
     let seq_list = deno_task_shell::parser::parse(&script)
       .with_context(|| format!("Error parsing script '{task_name}'."))?;
