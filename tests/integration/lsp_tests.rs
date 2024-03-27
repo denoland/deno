@@ -146,32 +146,6 @@ fn lsp_tsconfig_types_config_sub_dir() {
 }
 
 #[test]
-fn lsp_tsconfig_bad_config_path() {
-  let context = TestContextBuilder::new().use_temp_cwd().build();
-  let mut client = context.new_lsp_command().build();
-  client.initialize(|builder| {
-    builder
-      .set_config("bad_tsconfig.json")
-      .set_maybe_root_uri(None);
-  });
-  let (method, maybe_params) = client.read_notification();
-  assert_eq!(method, "window/showMessage");
-  assert_eq!(maybe_params, Some(lsp::ShowMessageParams {
-    typ: lsp::MessageType::WARNING,
-    message: "The path to the configuration file (\"bad_tsconfig.json\") is not resolvable.".to_string()
-  }));
-  let diagnostics = client.did_open(json!({
-    "textDocument": {
-      "uri": "file:///a/file.ts",
-      "languageId": "typescript",
-      "version": 1,
-      "text": "console.log(Deno.args);\n"
-    }
-  }));
-  assert_eq!(diagnostics.all().len(), 0);
-}
-
-#[test]
 fn lsp_triple_slash_types() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -223,7 +197,7 @@ fn lsp_import_map() {
     }
   }));
 
-  assert_eq!(diagnostics.all().len(), 0);
+  assert_eq!(json!(diagnostics.all()), json!([]));
 
   let res = client.write_request(
     "textDocument/hover",
@@ -497,7 +471,7 @@ fn lsp_import_map_embedded_in_config_file_after_initialize() {
     }]
   }));
 
-  assert_eq!(client.read_diagnostics().all().len(), 0);
+  assert_eq!(json!(client.read_diagnostics().all()), json!([]));
 
   let res = client.write_request(
     "textDocument/hover",
@@ -546,7 +520,7 @@ fn lsp_import_map_config_file_auto_discovered() {
     }]
   }));
   client.wait_until_stderr_line(|line| {
-    line.contains("Auto-resolved configuration file:")
+    line.contains("  Resolved Deno configuration file:")
   });
 
   let uri = temp_dir.uri().join("a.ts").unwrap();
@@ -607,7 +581,7 @@ fn lsp_import_map_config_file_auto_discovered() {
     }]
   }));
   client.wait_until_stderr_line(|line| {
-    line.contains("Auto-resolved configuration file:")
+    line.contains("  Resolved Deno configuration file:")
   });
   let res = client.write_request(
     "textDocument/hover",
@@ -675,7 +649,7 @@ fn lsp_import_map_config_file_auto_discovered_symlink() {
 
   // this will discover the deno.json in the root
   let search_line = format!(
-    "Auto-resolved configuration file: \"{}\"",
+    "  Resolved Deno configuration file: \"{}\"",
     temp_dir.uri().join("deno.json").unwrap().as_str()
   );
   client.wait_until_stderr_line(|line| line.contains(&search_line));
@@ -2714,7 +2688,7 @@ fn lsp_hover_jsdoc_symbol_link() {
           "language": "typescript",
           "value": "function a(): void"
         },
-        "JSDoc [hello](file:///a/file.ts#L1,10) and [`b`](file:///a/file.ts#L5,7)"
+        "JSDoc [hello](file:///a/b.ts#L1,1) and [`b`](file:///a/file.ts#L5,7)"
       ],
       "range": {
         "start": { "line": 7, "character": 9 },
@@ -5076,7 +5050,7 @@ fn lsp_jsr_auto_import_completion() {
     json!({ "triggerKind": 1 }),
   );
   assert!(!list.is_incomplete);
-  assert_eq!(list.items.len(), 261);
+  assert_eq!(list.items.len(), 262);
   let item = list.items.iter().find(|i| i.label == "add").unwrap();
   assert_eq!(&item.label, "add");
   assert_eq!(
@@ -5156,7 +5130,7 @@ fn lsp_jsr_auto_import_completion_import_map() {
     json!({ "triggerKind": 1 }),
   );
   assert!(!list.is_incomplete);
-  assert_eq!(list.items.len(), 261);
+  assert_eq!(list.items.len(), 262);
   let item = list.items.iter().find(|i| i.label == "add").unwrap();
   assert_eq!(&item.label, "add");
   assert_eq!(json!(&item.label_details), json!({ "description": "add" }));
@@ -7674,7 +7648,18 @@ fn lsp_completions_npm() {
       ]
     }),
   );
-  client.read_diagnostics();
+  let diagnostics = client.read_diagnostics();
+  assert_eq!(
+    diagnostics
+      .all()
+      .iter()
+      .map(|d| d.message.as_str())
+      .collect::<Vec<_>>(),
+    vec![
+      "'chalk' is declared but its value is never read.",
+      "Identifier expected."
+    ]
+  );
 
   let list = client.get_completion_list(
     "file:///a/file.ts",
@@ -7685,9 +7670,14 @@ fn lsp_completions_npm() {
     }),
   );
   assert!(!list.is_incomplete);
-  assert_eq!(list.items.len(), 3);
-  assert!(list.items.iter().any(|i| i.label == "default"));
-  assert!(list.items.iter().any(|i| i.label == "MyClass"));
+  assert_eq!(
+    list
+      .items
+      .iter()
+      .map(|i| i.label.as_str())
+      .collect::<Vec<_>>(),
+    vec!["default", "MyClass", "named"]
+  );
 
   let res = client.write_request(
     "completionItem/resolve",
@@ -8946,10 +8936,7 @@ fn lsp_performance() {
       "lsp.update_diagnostics_deps",
       "lsp.update_diagnostics_lint",
       "lsp.update_diagnostics_ts",
-      "lsp.update_import_map",
       "lsp.update_registries",
-      "lsp.update_tsconfig",
-      "tsc.host.$configure",
       "tsc.host.$getAssets",
       "tsc.host.$getDiagnostics",
       "tsc.host.$getSupportedCodeFixes",
@@ -8959,7 +8946,7 @@ fn lsp_performance() {
       "tsc.op.op_project_version",
       "tsc.op.op_script_names",
       "tsc.op.op_script_version",
-      "tsc.request.$configure",
+      "tsc.op.op_ts_config",
       "tsc.request.$getAssets",
       "tsc.request.$getSupportedCodeFixes",
       "tsc.request.getQuickInfoAtPosition",

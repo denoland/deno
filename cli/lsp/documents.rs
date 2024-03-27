@@ -37,7 +37,6 @@ use deno_lockfile::Lockfile;
 use deno_runtime::deno_node;
 use deno_runtime::deno_node::NodeResolution;
 use deno_runtime::deno_node::NodeResolutionMode;
-use deno_runtime::deno_node::PackageJson;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
@@ -817,15 +816,6 @@ impl FileSystemDocuments {
   }
 }
 
-pub struct UpdateDocumentConfigOptions<'a> {
-  pub config: &'a Config,
-  pub maybe_import_map: Option<Arc<import_map::ImportMap>>,
-  pub maybe_package_json: Option<&'a PackageJson>,
-  pub node_resolver: Option<Arc<CliNodeResolver>>,
-  pub npm_resolver: Option<Arc<dyn CliNpmResolver>>,
-  pub workspace_files: &'a BTreeSet<ModuleSpecifier>,
-}
-
 /// Specify the documents to include on a `documents.documents(...)` call.
 #[derive(Debug, Clone, Copy)]
 pub enum DocumentsFilter {
@@ -1309,26 +1299,34 @@ impl Documents {
       Arc::new(JsrCacheResolver::new(self.cache.clone(), lockfile));
   }
 
-  pub fn update_config(&mut self, options: UpdateDocumentConfigOptions) {
-    let maybe_config_file = options.config.maybe_config_file();
-    let maybe_package_json_deps =
-      options.maybe_package_json.map(|package_json| {
-        package_json::get_local_package_json_version_reqs(package_json)
-      });
-    let maybe_jsx_config = maybe_config_file
-      .and_then(|cf| cf.to_maybe_jsx_import_source_config().ok().flatten());
-    let deps_provider =
-      Arc::new(PackageJsonDepsProvider::new(maybe_package_json_deps));
+  pub fn update_config(
+    &mut self,
+    config: &Config,
+    node_resolver: Option<Arc<CliNodeResolver>>,
+    npm_resolver: Option<Arc<dyn CliNpmResolver>>,
+    workspace_files: &BTreeSet<ModuleSpecifier>,
+  ) {
+    let config_data = config.tree.root_data();
+    let config_file =
+      config_data.as_ref().and_then(|d| d.config_file.as_deref());
     self.resolver = Arc::new(CliGraphResolver::new(CliGraphResolverOptions {
-      node_resolver: options.node_resolver,
-      npm_resolver: options.npm_resolver,
-      package_json_deps_provider: deps_provider,
-      maybe_jsx_import_source_config: maybe_jsx_config,
-      maybe_import_map: options.maybe_import_map,
-      maybe_vendor_dir: maybe_config_file
-        .and_then(|c| c.vendor_dir_path())
-        .as_ref(),
-      bare_node_builtins_enabled: maybe_config_file
+      node_resolver,
+      npm_resolver,
+      package_json_deps_provider: Arc::new(PackageJsonDepsProvider::new(
+        config_data
+          .as_ref()
+          .and_then(|d| d.package_json.as_ref())
+          .map(|package_json| {
+            package_json::get_local_package_json_version_reqs(package_json)
+          }),
+      )),
+      maybe_jsx_import_source_config: config_file
+        .and_then(|cf| cf.to_maybe_jsx_import_source_config().ok().flatten()),
+      maybe_import_map: config_data.as_ref().and_then(|d| d.import_map.clone()),
+      maybe_vendor_dir: config_data
+        .as_ref()
+        .and_then(|d| d.vendor_dir.as_ref()),
+      bare_node_builtins_enabled: config_file
         .map(|config| config.has_unstable("bare-node-builtins"))
         .unwrap_or(false),
       // Don't set this for the LSP because instead we'll use the OpenDocumentsLoader
@@ -1338,16 +1336,14 @@ impl Documents {
     }));
     self.jsr_resolver = Arc::new(JsrCacheResolver::new(
       self.cache.clone(),
-      options.config.maybe_lockfile().cloned(),
+      config.tree.root_lockfile(),
     ));
     self.redirect_resolver =
       Arc::new(RedirectResolver::new(self.cache.clone()));
     let resolver = self.resolver.as_graph_resolver();
     let npm_resolver = self.resolver.as_graph_npm_resolver();
     self.imports = Arc::new(
-      if let Some(Ok(imports)) =
-        maybe_config_file.map(|cf| cf.to_maybe_imports())
-      {
+      if let Some(Ok(imports)) = config_file.map(|cf| cf.to_maybe_imports()) {
         imports
           .into_iter()
           .map(|(referrer, imports)| {
@@ -1364,7 +1360,7 @@ impl Documents {
         IndexMap::new()
       },
     );
-    self.unstable_sloppy_imports = maybe_config_file
+    self.unstable_sloppy_imports = config_file
       .map(|c| c.has_unstable("sloppy-imports"))
       .unwrap_or(false);
     {
@@ -1376,7 +1372,7 @@ impl Documents {
           // anymore after updating resolvers.
           return false;
         };
-        if !options.config.specifier_enabled(specifier) {
+        if !config.specifier_enabled(specifier) {
           return false;
         }
         path.is_file()
@@ -1384,7 +1380,7 @@ impl Documents {
       let mut open_docs = std::mem::take(&mut self.open_docs);
       for docs in [&mut open_docs, &mut fs_docs.docs] {
         for doc in docs.values_mut() {
-          if !options.config.specifier_enabled(doc.specifier()) {
+          if !config.specifier_enabled(doc.specifier()) {
             continue;
           }
           if let Some(new_doc) =
@@ -1395,8 +1391,8 @@ impl Documents {
         }
       }
       self.open_docs = open_docs;
-      for specifier in options.workspace_files {
-        if !options.config.specifier_enabled(specifier) {
+      for specifier in workspace_files {
+        if !config.specifier_enabled(specifier) {
           continue;
         }
         if !self.open_docs.contains_key(specifier)
@@ -1738,8 +1734,9 @@ mod tests {
   use crate::cache::RealDenoCacheEnv;
 
   use super::*;
+  use deno_config::ConfigFile;
   use deno_core::serde_json;
-  use import_map::ImportMap;
+  use deno_core::serde_json::json;
   use pretty_assertions::assert_eq;
   use test_util::PathRef;
   use test_util::TempDir;
@@ -1842,8 +1839,8 @@ console.log(b, "hello deno");
     assert_eq!(documents.documents(DocumentsFilter::All).len(), 1);
   }
 
-  #[test]
-  fn test_documents_refresh_dependencies_config_change() {
+  #[tokio::test]
+  async fn test_documents_refresh_dependencies_config_change() {
     // it should never happen that a user of this API causes this to happen,
     // but we'll guard against it anyway
     let temp_dir = TempDir::new();
@@ -1878,23 +1875,23 @@ console.log(b, "hello deno");
 
     // set the initial import map and point to file 2
     {
-      let mut import_map = ImportMap::new(
-        ModuleSpecifier::from_file_path(documents_path.join("import_map.json"))
+      config
+        .tree
+        .inject_config_file(
+          ConfigFile::new(
+            &json!({
+              "imports": {
+                "test": "./file2.ts",
+              },
+            })
+            .to_string(),
+            config.root_uri().unwrap().join("deno.json").unwrap(),
+          )
           .unwrap(),
-      );
-      import_map
-        .imports_mut()
-        .append("test".to_string(), "./file2.ts".to_string())
-        .unwrap();
+        )
+        .await;
 
-      documents.update_config(UpdateDocumentConfigOptions {
-        config: &config,
-        maybe_import_map: Some(Arc::new(import_map)),
-        maybe_package_json: None,
-        node_resolver: None,
-        npm_resolver: None,
-        workspace_files: &workspace_files,
-      });
+      documents.update_config(&config, None, None, &workspace_files);
 
       // open the document
       let document = documents.open(
@@ -1918,23 +1915,23 @@ console.log(b, "hello deno");
 
     // now point at file 3
     {
-      let mut import_map = ImportMap::new(
-        ModuleSpecifier::from_file_path(documents_path.join("import_map.json"))
+      config
+        .tree
+        .inject_config_file(
+          ConfigFile::new(
+            &json!({
+              "imports": {
+                "test": "./file3.ts",
+              },
+            })
+            .to_string(),
+            config.root_uri().unwrap().join("deno.json").unwrap(),
+          )
           .unwrap(),
-      );
-      import_map
-        .imports_mut()
-        .append("test".to_string(), "./file3.ts".to_string())
-        .unwrap();
+        )
+        .await;
 
-      documents.update_config(UpdateDocumentConfigOptions {
-        config: &config,
-        maybe_import_map: Some(Arc::new(import_map)),
-        maybe_package_json: None,
-        node_resolver: None,
-        npm_resolver: None,
-        workspace_files: &workspace_files,
-      });
+      documents.update_config(&config, None, None, &workspace_files);
 
       // check the document's dependencies
       let document = documents.get(&file1_specifier).unwrap();

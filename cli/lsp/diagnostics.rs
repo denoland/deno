@@ -21,7 +21,6 @@ use crate::graph_util::enhanced_resolution_error_message;
 use crate::lsp::lsp_custom::DiagnosticBatchNotificationParams;
 use crate::resolver::SloppyImportsResolution;
 use crate::resolver::SloppyImportsResolver;
-use crate::tools::lint::get_configured_rules;
 
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
@@ -46,6 +45,7 @@ use deno_runtime::tokio_util::create_basic_runtime;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
+use import_map::ImportMap;
 use log::error;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -62,10 +62,10 @@ use tower_lsp::lsp_types as lsp;
 pub struct DiagnosticServerUpdateMessage {
   pub snapshot: Arc<StateSnapshot>,
   pub config: Arc<ConfigSnapshot>,
-  pub lint_options: LintOptions,
   pub url_map: LspUrlMap,
 }
 
+#[derive(Debug)]
 struct DiagnosticRecord {
   pub specifier: ModuleSpecifier,
   pub versioned: VersionedDiagnostics,
@@ -461,7 +461,6 @@ impl DiagnosticsServer {
                   DiagnosticServerUpdateMessage {
                     snapshot,
                     config,
-                    lint_options,
                     url_map,
                   },
                 batch_index,
@@ -612,14 +611,7 @@ impl DiagnosticsServer {
                   let mark = performance.mark("lsp.update_diagnostics_lint");
                   let diagnostics = spawn_blocking({
                     let token = token.clone();
-                    move || {
-                      generate_lint_diagnostics(
-                        &snapshot,
-                        &config,
-                        &lint_options,
-                        token,
-                      )
-                    }
+                    move || generate_lint_diagnostics(&snapshot, &config, token)
                   })
                   .await
                   .unwrap();
@@ -791,17 +783,12 @@ fn ts_json_to_diagnostics(
 fn generate_lint_diagnostics(
   snapshot: &language_server::StateSnapshot,
   config: &ConfigSnapshot,
-  lint_options: &LintOptions,
   token: CancellationToken,
 ) -> DiagnosticVec {
   let documents = snapshot
     .documents
     .documents(DocumentsFilter::OpenDiagnosable);
-  let lint_rules = get_configured_rules(
-    lint_options.rules.clone(),
-    config.config_file.as_ref(),
-  )
-  .rules;
+  let config_data_by_scope = config.tree.data_by_scope();
   let mut diagnostics_vec = Vec::new();
   for document in documents {
     let settings =
@@ -820,14 +807,20 @@ fn generate_lint_diagnostics(
       }
     }
     let version = document.maybe_lsp_version();
+    let (lint_options, lint_rules) = config
+      .tree
+      .scope_for_specifier(document.specifier())
+      .and_then(|s| config_data_by_scope.get(&s))
+      .map(|d| (d.lint_options.clone(), d.lint_rules.clone()))
+      .unwrap_or_default();
     diagnostics_vec.push(DiagnosticRecord {
       specifier: document.specifier().clone(),
       versioned: VersionedDiagnostics {
         version,
         diagnostics: generate_document_lint_diagnostics(
           config,
-          lint_options,
-          lint_rules.clone(),
+          &lint_options,
+          lint_rules.rules.clone(),
           &document,
         ),
       },
@@ -1304,6 +1297,7 @@ fn diagnose_resolution(
   resolution: &Resolution,
   is_dynamic: bool,
   maybe_assert_type: Option<&str>,
+  import_map: Option<&ImportMap>,
 ) -> Vec<DenoDiagnostic> {
   fn check_redirect_diagnostic(
     specifier: &ModuleSpecifier,
@@ -1392,7 +1386,7 @@ fn diagnose_resolution(
             .push(DenoDiagnostic::InvalidNodeSpecifier(specifier.clone()));
         } else if module_name == dependency_key {
           let mut is_mapped = false;
-          if let Some(import_map) = &snapshot.maybe_import_map {
+          if let Some(import_map) = import_map {
             if let Resolution::Ok(resolved) = &resolution {
               if import_map.resolve(module_name, &resolved.specifier).is_ok() {
                 is_mapped = true;
@@ -1455,7 +1449,8 @@ fn diagnose_dependency(
     }
   }
 
-  if let Some(import_map) = &snapshot.maybe_import_map {
+  let import_map = snapshot.config.tree.import_map_for_specifier(referrer);
+  if let Some(import_map) = &import_map {
     if let Resolution::Ok(resolved) = &dependency.maybe_code {
       if let Some(to) = import_map.lookup(&resolved.specifier, referrer) {
         if dependency_key != to {
@@ -1504,6 +1499,7 @@ fn diagnose_dependency(
       },
       dependency.is_dynamic,
       dependency.maybe_attribute_type.as_deref(),
+      import_map.as_deref(),
     )
     .iter()
     .flat_map(|diag| {
@@ -1526,6 +1522,7 @@ fn diagnose_dependency(
         &dependency.maybe_type,
         dependency.is_dynamic,
         dependency.maybe_attribute_type.as_deref(),
+        import_map.as_deref(),
       )
       .iter()
       .map(|diag| diag.to_lsp_diagnostic(&range)),
@@ -1580,20 +1577,21 @@ mod tests {
   use super::*;
   use crate::cache::GlobalHttpCache;
   use crate::cache::RealDenoCacheEnv;
+  use crate::lsp::config::Config;
   use crate::lsp::config::ConfigSnapshot;
   use crate::lsp::config::Settings;
   use crate::lsp::config::WorkspaceSettings;
   use crate::lsp::documents::Documents;
   use crate::lsp::documents::LanguageId;
   use crate::lsp::language_server::StateSnapshot;
-  use deno_config::glob::FilePatterns;
+  use deno_config::ConfigFile;
   use pretty_assertions::assert_eq;
   use std::path::Path;
   use std::path::PathBuf;
   use std::sync::Arc;
   use test_util::TempDir;
 
-  fn mock_state_snapshot(
+  async fn mock_state_snapshot(
     fixtures: &[(&str, &str, i32, LanguageId)],
     location: &Path,
     maybe_import_map: Option<(&str, &str)>,
@@ -1613,22 +1611,19 @@ mod tests {
         (*source).into(),
       );
     }
-    let maybe_import_map = maybe_import_map.map(|(base, json_string)| {
-      let base_url = ModuleSpecifier::parse(base).unwrap();
-      let result = import_map::parse_from_json(&base_url, json_string).unwrap();
-      if !result.diagnostics.is_empty() {
-        panic!("unexpected import map diagnostics");
-      }
-      Arc::new(result.import_map)
-    });
+    let config = Config::new_with_roots([resolve_url("file:///").unwrap()]);
+    if let Some((base_url, json_string)) = maybe_import_map {
+      let base_url = resolve_url(base_url).unwrap();
+      let config_file = ConfigFile::new(json_string, base_url).unwrap();
+      config.tree.inject_config_file(config_file).await;
+    }
     StateSnapshot {
       documents,
-      maybe_import_map,
       assets: Default::default(),
       cache_metadata: cache::CacheMetadata::new(Arc::new(
         GlobalHttpCache::new(location.to_path_buf(), RealDenoCacheEnv),
       )),
-      config: Default::default(),
+      config: config.snapshot(),
       npm: None,
     }
   }
@@ -1655,14 +1650,14 @@ mod tests {
     }
   }
 
-  fn setup(
+  async fn setup(
     temp_dir: &TempDir,
     sources: &[(&str, &str, i32, LanguageId)],
     maybe_import_map: Option<(&str, &str)>,
   ) -> (StateSnapshot, PathBuf) {
     let location = temp_dir.path().join("deps").to_path_buf();
     let state_snapshot =
-      mock_state_snapshot(sources, &location, maybe_import_map);
+      mock_state_snapshot(sources, &location, maybe_import_map).await;
     (state_snapshot, location)
   }
 
@@ -1681,18 +1676,14 @@ let c: number = "a";
         LanguageId::TypeScript,
       )],
       None,
-    );
+    )
+    .await;
     let snapshot = Arc::new(snapshot);
     let cache =
       Arc::new(GlobalHttpCache::new(cache_location, RealDenoCacheEnv));
-    let ts_server = TsServer::new(Default::default(), cache);
+    let ts_server =
+      TsServer::new(Default::default(), cache, Default::default());
     ts_server.start(None);
-    let lint_options = LintOptions {
-      rules: Default::default(),
-      files: FilePatterns::new_with_base(temp_dir.path().to_path_buf()),
-      reporter_kind: Default::default(),
-      fix: false,
-    };
 
     // test enabled
     {
@@ -1700,7 +1691,6 @@ let c: number = "a";
       let diagnostics = generate_lint_diagnostics(
         &snapshot,
         &enabled_config,
-        &lint_options,
         Default::default(),
       );
       assert_eq!(get_diagnostics_for_single(diagnostics).len(), 6);
@@ -1712,7 +1702,7 @@ let c: number = "a";
       )
       .await
       .unwrap();
-      assert_eq!(get_diagnostics_for_single(diagnostics).len(), 5);
+      assert_eq!(get_diagnostics_for_single(diagnostics).len(), 4);
       let diagnostics = generate_deno_diagnostics(
         &snapshot,
         &enabled_config,
@@ -1732,7 +1722,6 @@ let c: number = "a";
       let diagnostics = generate_lint_diagnostics(
         &snapshot,
         &disabled_config,
-        &lint_options,
         Default::default(),
       );
       assert_eq!(get_diagnostics_for_single(diagnostics).len(), 0);
@@ -1793,7 +1782,8 @@ let c: number = "a";
         }
       }"#,
       )),
-    );
+    )
+    .await;
     let config = mock_config();
     let token = CancellationToken::new();
     let actual = generate_deno_diagnostics(&snapshot, &config, token);
@@ -1919,7 +1909,8 @@ let c: number = "a";
         LanguageId::TypeScript,
       )],
       None,
-    );
+    )
+    .await;
     let config = mock_config();
     let token = CancellationToken::new();
     let actual = generate_deno_diagnostics(&snapshot, &config, token);
