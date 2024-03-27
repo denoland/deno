@@ -250,7 +250,7 @@ impl RunFlags {
 pub struct WatchFlags {
   pub hmr: bool,
   pub no_clear_screen: bool,
-  pub excluded_paths: Vec<String>,
+  pub exclude: Vec<String>,
 }
 
 #[derive(Clone, Default, Debug, Eq, PartialEq)]
@@ -258,7 +258,7 @@ pub struct WatchFlagsWithPaths {
   pub hmr: bool,
   pub paths: Vec<String>,
   pub no_clear_screen: bool,
-  pub excluded_paths: Vec<String>,
+  pub exclude: Vec<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -839,27 +839,51 @@ impl Flags {
     &self,
   ) -> Result<PathOrPatternSet, AnyError> {
     if let DenoSubcommand::Run(RunFlags {
-      watch: Some(WatchFlagsWithPaths { excluded_paths, .. }),
+      watch:
+        Some(WatchFlagsWithPaths {
+          exclude: excluded_paths,
+          ..
+        }),
       ..
     })
     | DenoSubcommand::Bundle(BundleFlags {
-      watch: Some(WatchFlags { excluded_paths, .. }),
+      watch:
+        Some(WatchFlags {
+          exclude: excluded_paths,
+          ..
+        }),
       ..
     })
     | DenoSubcommand::Bench(BenchFlags {
-      watch: Some(WatchFlags { excluded_paths, .. }),
+      watch:
+        Some(WatchFlags {
+          exclude: excluded_paths,
+          ..
+        }),
       ..
     })
     | DenoSubcommand::Test(TestFlags {
-      watch: Some(WatchFlags { excluded_paths, .. }),
+      watch:
+        Some(WatchFlags {
+          exclude: excluded_paths,
+          ..
+        }),
       ..
     })
     | DenoSubcommand::Lint(LintFlags {
-      watch: Some(WatchFlags { excluded_paths, .. }),
+      watch:
+        Some(WatchFlags {
+          exclude: excluded_paths,
+          ..
+        }),
       ..
     })
     | DenoSubcommand::Fmt(FmtFlags {
-      watch: Some(WatchFlags { excluded_paths, .. }),
+      watch:
+        Some(WatchFlags {
+          exclude: excluded_paths,
+          ..
+        }),
       ..
     }) = &self.subcommand
     {
@@ -4305,7 +4329,7 @@ fn watch_arg_parse(matches: &mut ArgMatches) -> Option<WatchFlags> {
     Some(WatchFlags {
       hmr: false,
       no_clear_screen: matches.get_flag("no-clear-screen"),
-      excluded_paths: matches
+      exclude: matches
         .remove_many::<String>("watch-exclude")
         .map(|f| f.collect::<Vec<String>>())
         .unwrap_or_default(),
@@ -4323,7 +4347,7 @@ fn watch_arg_parse_with_paths(
       paths: paths.collect(),
       hmr: false,
       no_clear_screen: matches.get_flag("no-clear-screen"),
-      excluded_paths: matches
+      exclude: matches
         .remove_many::<String>("watch-exclude")
         .map(|f| f.collect::<Vec<String>>())
         .unwrap_or_default(),
@@ -4336,7 +4360,7 @@ fn watch_arg_parse_with_paths(
       paths: paths.collect(),
       hmr: true,
       no_clear_screen: matches.get_flag("no-clear-screen"),
-      excluded_paths: matches
+      exclude: matches
         .remove_many::<String>("watch-exclude")
         .map(|f| f.collect::<Vec<String>>())
         .unwrap_or_default(),
@@ -4478,7 +4502,7 @@ mod tests {
             hmr: false,
             paths: vec![],
             no_clear_screen: false,
-            excluded_paths: vec![],
+            exclude: vec![],
           }),
         }),
         ..Flags::default()
@@ -4502,7 +4526,7 @@ mod tests {
             hmr: false,
             paths: vec![],
             no_clear_screen: true,
-            excluded_paths: vec![],
+            exclude: vec![],
           }),
         }),
         ..Flags::default()
@@ -4526,7 +4550,7 @@ mod tests {
             hmr: true,
             paths: vec![],
             no_clear_screen: true,
-            excluded_paths: vec![],
+            exclude: vec![],
           }),
         }),
         ..Flags::default()
@@ -4550,7 +4574,7 @@ mod tests {
             hmr: true,
             paths: vec![String::from("foo.txt")],
             no_clear_screen: true,
-            excluded_paths: vec![],
+            exclude: vec![],
           }),
         }),
         ..Flags::default()
@@ -4576,7 +4600,7 @@ mod tests {
             hmr: false,
             paths: vec![String::from("file1"), String::from("file2")],
             no_clear_screen: false,
-            excluded_paths: vec![],
+            exclude: vec![],
           }),
         }),
         ..Flags::default()
@@ -4604,7 +4628,7 @@ mod tests {
             hmr: false,
             paths: vec![],
             no_clear_screen: true,
-            excluded_paths: vec![],
+            exclude: vec![],
           }),
         }),
         ..Flags::default()
@@ -4632,7 +4656,7 @@ mod tests {
             hmr: false,
             paths: vec![],
             no_clear_screen: false,
-            excluded_paths: vec![String::from("foo")],
+            exclude: vec![String::from("foo")],
           }),
         }),
         ..Flags::default()
@@ -4656,7 +4680,7 @@ mod tests {
             hmr: false,
             paths: vec![String::from("foo")],
             no_clear_screen: false,
-            excluded_paths: vec![String::from("bar")],
+            exclude: vec![String::from("bar")],
           }),
         }),
         ..Flags::default()
@@ -4681,7 +4705,7 @@ mod tests {
             hmr: false,
             paths: vec![],
             no_clear_screen: false,
-            excluded_paths: vec![String::from("foo"), String::from("bar")],
+            exclude: vec![String::from("foo"), String::from("bar")],
           }),
         }),
         ..Flags::default()
@@ -4706,7 +4730,7 @@ mod tests {
             hmr: false,
             paths: vec![String::from("foo"), String::from("bar")],
             no_clear_screen: false,
-            excluded_paths: vec![String::from("baz"), String::from("qux"),],
+            exclude: vec![String::from("baz"), String::from("qux"),],
           }),
         }),
         ..Flags::default()
@@ -5038,7 +5062,7 @@ mod tests {
           watch: Some(WatchFlags {
             hmr: false,
             no_clear_screen: true,
-            excluded_paths: vec![],
+            exclude: vec![],
           })
         }),
         ext: Some("ts".to_string()),
@@ -5275,7 +5299,7 @@ mod tests {
           watch: Some(WatchFlags {
             hmr: false,
             no_clear_screen: true,
-            excluded_paths: vec![],
+            exclude: vec![],
           })
         }),
         ..Flags::default()
@@ -6514,7 +6538,7 @@ mod tests {
           watch: Some(WatchFlags {
             hmr: false,
             no_clear_screen: true,
-            excluded_paths: vec![],
+            exclude: vec![],
           }),
         }),
         type_check_mode: TypeCheckMode::Local,
@@ -7752,7 +7776,7 @@ mod tests {
           watch: Some(WatchFlags {
             hmr: false,
             no_clear_screen: true,
-            excluded_paths: vec![],
+            exclude: vec![],
           }),
           reporter: Default::default(),
           junit_path: None,
