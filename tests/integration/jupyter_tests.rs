@@ -191,7 +191,14 @@ async fn connect_socket<S: zeromq::Socket>(
 ) -> S {
   let addr = spec.endpoint(port);
   let mut socket = S::new();
-  socket.connect(&addr).await.unwrap();
+  for _ in 0..5 {
+    match socket.connect(&addr).await {
+      Ok(_) => break,
+      Err(e) => {
+        eprintln!("Failed to connect to {addr}: {e}");
+      }
+    }
+  }
   socket
 }
 
@@ -369,12 +376,12 @@ impl Drop for JupyterServerProcess {
   }
 }
 
-fn setup_server() -> (TestContext, ConnectionSpec, JupyterServerProcess) {
+async fn setup_server() -> (TestContext, ConnectionSpec, JupyterServerProcess) {
   let context = TestContextBuilder::new().use_temp_cwd().build();
-  let conn = ConnectionSpec::default();
+  let mut conn = ConnectionSpec::default();
   let conn_file = context.temp_dir().path().join("connection.json");
   conn_file.write_json(&conn);
-  let process = context
+  let mut process = context
     .new_command()
     .piped_output()
     .args_vec(vec![
@@ -385,11 +392,35 @@ fn setup_server() -> (TestContext, ConnectionSpec, JupyterServerProcess) {
     ])
     .spawn()
     .unwrap();
+  tokio::time::sleep(Duration::from_millis(2000)).await;
+
+  for _ in 0..5 {
+    if process.try_wait().unwrap().is_none() {
+      break;
+    } else {
+      conn = ConnectionSpec::default();
+      conn_file.write_json(&conn);
+      process = context
+        .new_command()
+        .piped_output()
+        .args_vec(vec![
+          "jupyter",
+          "--kernel",
+          "--conn",
+          conn_file.to_string().as_str(),
+        ])
+        .spawn()
+        .unwrap();
+    }
+  }
+  if process.try_wait().unwrap().is_some() {
+    panic!("Failed to start Jupyter server");
+  }
   (context, conn, JupyterServerProcess(Some(process)))
 }
 
 async fn setup() -> (TestContext, JupyterClient, JupyterServerProcess) {
-  let (context, conn, process) = setup_server();
+  let (context, conn, process) = setup_server().await;
   let client = JupyterClient::new(&conn).await;
   client.io_subscribe("").await.unwrap();
 
