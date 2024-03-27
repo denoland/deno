@@ -1944,6 +1944,76 @@ declare namespace Deno {
     readonly value: bigint;
   }
 
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * The object that is returned from a {@linkcode Deno.upgradeWebSocketStream}
+   * request.
+   *
+   * @category Web Sockets */
+  export interface WebSocketStreamUpgrade {
+    /** The response object that represents the HTTP response to the client,
+     * which should be used to the {@linkcode RequestEvent} `.respondWith()` for
+     * the upgrade to be successful. */
+    response: Response;
+    /** The {@linkcode WebSocketStream} interface to communicate to the client
+     * via a web socket stream. */
+    stream: WebSocketStream;
+  }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Upgrade an incoming HTTP request to a WebSocketStream.
+   *
+   * Given a {@linkcode Request}, returns a pair of {@linkcode WebSocketStream}
+   * and {@linkcode Response} instances. The original request must be responded
+   * to with the returned response for the websocket upgrade to be successful.
+   *
+   * ```ts
+   * const conn = Deno.listen({ port: 80 });
+   * const httpConn = Deno.serveHttp(await conn.accept());
+   * const e = await httpConn.nextRequest();
+   * if (e) {
+   *   const { stream, response } = Deno.upgradeWebSocketStream(e.request);
+   *   handle(stream);
+   *   e.respondWith(response);
+   * }
+   *
+   * async function handle(stream: WebSocketStream) {
+   *   const { writable, readable } = await stream.connection;
+   *
+   *   const writer = writable.getWriter();
+   *   await writer.write("Hello World!");
+   *
+   *   for await (const message of readable) {
+   *     console.log(message);
+   *   }
+   * }
+   * ```
+   *
+   * If the request body is disturbed (read from) before the upgrade is
+   * completed, upgrading fails.
+   *
+   * This operation does not yet consume the request or open the websocket. This
+   * only happens once the returned response has been passed to `respondWith()`.
+   *
+   * @category Web Sockets
+   */
+  export function upgradeWebSocketStream(
+    request: Request,
+    options?: UpgradeWebSocketOptions,
+  ): WebSocketStreamUpgrade;
+
+  /** An instance of the server created using `Deno.serve()` API.
+   *
+   * @category HTTP Server
+   */
+  export interface Server {
+    /** Gracefully close the server. No more new connections will be accepted,
+     * while pending requests will be allowed to finish.
+     */
+    shutdown(): Promise<void>;
+  }
+
   /**
    * A namespace containing runtime APIs available in Jupyter notebooks.
    *
