@@ -49,7 +49,13 @@ pub async fn execute_script(
     }
   };
 
-  if let Some(script) = tasks_config.get(task_name) {
+  if let Some(
+    deno_config::Task::Definition(script)
+    | deno_config::Task::Commented {
+      definition: script, ..
+    },
+  ) = tasks_config.get(task_name)
+  {
     let config_file_url = cli_options.maybe_config_file_specifier().unwrap();
     let config_file_path = if config_file_url.scheme() == "file" {
       config_file_url.to_file_path().unwrap()
@@ -222,18 +228,22 @@ fn collect_env_vars() -> HashMap<String, String> {
 
 fn print_available_tasks(
   // order can be important, so these use an index map
-  tasks_config: &IndexMap<String, String>,
+  tasks_config: &IndexMap<String, deno_config::Task>,
   package_json_scripts: &IndexMap<String, String>,
 ) {
   eprintln!("{}", colors::green("Available tasks:"));
 
   let mut had_task = false;
-  for (is_deno, (key, value)) in tasks_config.iter().map(|e| (true, e)).chain(
-    package_json_scripts
-      .iter()
-      .filter(|(key, _)| !tasks_config.contains_key(*key))
-      .map(|e| (false, e)),
-  ) {
+  for (is_deno, (key, task)) in tasks_config
+    .iter()
+    .map(|(k, t)| (true, (k, t.clone())))
+    .chain(
+      package_json_scripts
+        .iter()
+        .filter(|(key, _)| !tasks_config.contains_key(*key))
+        .map(|(k, v)| (false, (k, deno_config::Task::Definition(v.clone())))),
+    )
+  {
     eprintln!(
       "- {}{}",
       colors::cyan(key),
@@ -243,7 +253,17 @@ fn print_available_tasks(
         format!(" {}", colors::italic_gray("(package.json)"))
       }
     );
-    eprintln!("    {value}");
+    let definition = match &task {
+      deno_config::Task::Definition(definition) => definition,
+      deno_config::Task::Commented { definition, .. } => definition,
+    };
+    if let deno_config::Task::Commented { comments, .. } = &task {
+      let slash_slash = colors::italic_gray("//");
+      for comment in comments {
+        eprintln!("    {slash_slash} {}", colors::italic_gray(comment));
+      }
+    }
+    eprintln!("    {definition}");
     had_task = true;
   }
   if !had_task {

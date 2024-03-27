@@ -1617,7 +1617,12 @@ mod tests {
     let config = Config::new_with_roots([resolve_url("file:///").unwrap()]);
     if let Some((base_url, json_string)) = maybe_import_map {
       let base_url = resolve_url(base_url).unwrap();
-      let config_file = ConfigFile::new(json_string, base_url).unwrap();
+      let config_file = ConfigFile::new(
+        json_string,
+        base_url,
+        &deno_config::ParseOptions::default(),
+      )
+      .unwrap();
       config.tree.inject_config_file(config_file).await;
     }
     StateSnapshot {
