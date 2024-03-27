@@ -110,7 +110,7 @@ export class LibuvStreamWrap extends HandleWrap {
   [kStreamBaseField]?: Reader & Writer & Closer & Ref;
 
   reading!: boolean;
-  #reading = false;
+  #reading = true;
   destroyed = false;
   writeQueueSize = 0;
   bytesRead = 0;
@@ -132,8 +132,7 @@ export class LibuvStreamWrap extends HandleWrap {
    * @return An error status code.
    */
   readStart(): number {
-    if (!this.#reading) {
-      this.#reading = true;
+    if (this.#reading) {
       this.#read();
     }
 
