@@ -1567,30 +1567,38 @@ fn is_supported_test_ext(path: &Path) -> bool {
 /// - Specifiers matching the `is_supported_test_path` are marked as `TestMode::Executable`.
 /// - Specifiers matching both predicates are marked as `TestMode::Both`
 fn collect_specifiers_with_test_mode(
+  cli_options: &CliOptions,
   files: FilePatterns,
   include_inline: &bool,
 ) -> Result<Vec<(ModuleSpecifier, TestMode)>, AnyError> {
   // todo(dsherret): there's no need to collect twice as it's slow
-  let module_specifiers =
-    collect_specifiers(files.clone(), is_supported_test_path_predicate)?;
+  let vendor_folder = cli_options.vendor_dir_path();
+  let module_specifiers = collect_specifiers(
+    files.clone(),
+    vendor_folder.map(ToOwned::to_owned),
+    is_supported_test_path_predicate,
+  )?;
 
   if *include_inline {
-    return collect_specifiers(files, |e| is_supported_test_ext(e.path)).map(
-      |specifiers| {
-        specifiers
-          .into_iter()
-          .map(|specifier| {
-            let mode = if module_specifiers.contains(&specifier) {
-              TestMode::Both
-            } else {
-              TestMode::Documentation
-            };
+    return collect_specifiers(
+      files,
+      vendor_folder.map(ToOwned::to_owned),
+      |e| is_supported_test_ext(e.path),
+    )
+    .map(|specifiers| {
+      specifiers
+        .into_iter()
+        .map(|specifier| {
+          let mode = if module_specifiers.contains(&specifier) {
+            TestMode::Both
+          } else {
+            TestMode::Documentation
+          };
 
-            (specifier, mode)
-          })
-          .collect()
-      },
-    );
+          (specifier, mode)
+        })
+        .collect()
+    });
   }
 
   let specifiers_with_mode = module_specifiers
@@ -1610,11 +1618,13 @@ fn collect_specifiers_with_test_mode(
 /// cannot be run, and therefore need to be marked as `TestMode::Documentation`
 /// as well.
 async fn fetch_specifiers_with_test_mode(
+  cli_options: &CliOptions,
   file_fetcher: &FileFetcher,
   files: FilePatterns,
   doc: &bool,
 ) -> Result<Vec<(ModuleSpecifier, TestMode)>, AnyError> {
-  let mut specifiers_with_mode = collect_specifiers_with_test_mode(files, doc)?;
+  let mut specifiers_with_mode =
+    collect_specifiers_with_test_mode(cli_options, files, doc)?;
 
   for (specifier, mode) in &mut specifiers_with_mode {
     let file = file_fetcher
@@ -1647,6 +1657,7 @@ pub async fn run_tests(
   let log_level = cli_options.log_level();
 
   let specifiers_with_mode = fetch_specifiers_with_test_mode(
+    cli_options,
     file_fetcher,
     test_options.files.clone(),
     &test_options.doc,
@@ -1758,12 +1769,15 @@ pub async fn run_tests_with_watch(
         let module_graph_creator = factory.module_graph_creator().await?;
         let file_fetcher = factory.file_fetcher()?;
         let test_modules = if test_options.doc {
-          collect_specifiers(test_options.files.clone(), |e| {
-            is_supported_test_ext(e.path)
-          })
+          collect_specifiers(
+            test_options.files.clone(),
+            cli_options.vendor_dir_path().map(ToOwned::to_owned),
+            |e| is_supported_test_ext(e.path),
+          )
         } else {
           collect_specifiers(
             test_options.files.clone(),
+            cli_options.vendor_dir_path().map(ToOwned::to_owned),
             is_supported_test_path_predicate,
           )
         }?;
@@ -1798,6 +1812,7 @@ pub async fn run_tests_with_watch(
           Arc::new(factory.create_cli_main_worker_factory().await?);
         let module_load_preparer = factory.module_load_preparer().await?;
         let specifiers_with_mode = fetch_specifiers_with_test_mode(
+          &cli_options,
           file_fetcher,
           test_options.files.clone(),
           &test_options.doc,
