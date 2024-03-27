@@ -299,8 +299,10 @@ impl ShellCommand for NpmPackageBinCommand {
       },
     ];
     args.extend(context.args);
-    let executable_command =
-      deno_task_shell::ExecutableCommand::new("deno".to_string());
+    let executable_command = deno_task_shell::ExecutableCommand::new(
+      "deno".to_string(),
+      std::env::current_exe().unwrap(),
+    );
     executable_command.execute(ShellCommandContext { args, ..context })
   }
 }
@@ -324,8 +326,10 @@ impl ShellCommand for NodeModulesFileRunCommand {
       self.path.to_string_lossy().to_string(),
     ];
     args.extend(context.args);
-    let executable_command =
-      deno_task_shell::ExecutableCommand::new("deno".to_string());
+    let executable_command = deno_task_shell::ExecutableCommand::new(
+      "deno".to_string(),
+      std::env::current_exe().unwrap(),
+    );
     // set this environment variable so that the launched process knows the npm command name
     context
       .state
