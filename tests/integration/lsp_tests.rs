@@ -4698,17 +4698,17 @@ fn test_lsp_code_actions_ordering() {
   }
   let res = serde_json::to_value(actions).unwrap();
 
-  // Ensure ordering is "deno-ts" -> "deno" -> "deno-lint".
+  // Ensure ordering is "deno" -> "deno-ts" -> "deno-lint".
   assert_eq!(
     res,
     json!([
       {
-        "title": "Add async modifier to containing function",
-        "source": "deno-ts",
-      },
-      {
         "title": "Cache \"https://deno.land/x/a/mod.ts\" and its dependencies.",
         "source": "deno",
+      },
+      {
+        "title": "Add async modifier to containing function",
+        "source": "deno-ts",
       },
       {
         "title": "Disable prefer-const for this line",
