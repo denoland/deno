@@ -189,7 +189,7 @@ pub fn uninstall(uninstall_flags: UninstallFlags) -> Result<(), AnyError> {
   let root = uninstall_flags.root;
 
   if !uninstall_flags.global {
-    log::warn!("⚠️ `deno install` behavior will change in Deno 2. To preserve the current behavior use `-g` or `--global` flag.");
+    log::warn!("⚠️ `deno install` behavior will change in Deno 2. To preserve the current behavior use the `-g` or `--global` flag.");
   }
   let cwd = std::env::current_dir().context("Unable to get CWD")?;
   let root = if let Some(root) = root {
