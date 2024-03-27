@@ -233,7 +233,7 @@ async fn bench_specifier_inner(
   let benchmarks = if used_only { only } else { no_only };
   let mut benchmarks = benchmarks
     .into_iter()
-    .filter(|(d, _)| filter.includes(&d.name) && !d.ignore)
+    .filter(|(d, _)| d.warmup || filter.includes(&d.name) && !d.ignore)
     .collect::<Vec<_>>();
   let mut groups = IndexSet::<Option<String>>::new();
   // make sure ungrouped benchmarks are placed above grouped
@@ -487,8 +487,7 @@ pub async fn run_benchmarks_with_watch(
       let bench_flags = bench_flags.clone();
       Ok(async move {
         let factory = CliFactoryBuilder::new()
-          .build_from_flags_for_watcher(flags, watcher_communicator.clone())
-          .await?;
+          .build_from_flags_for_watcher(flags, watcher_communicator.clone())?;
         let cli_options = factory.cli_options();
         let bench_options = cli_options.resolve_bench_options(bench_flags)?;
 

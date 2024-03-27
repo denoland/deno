@@ -55,7 +55,7 @@ Deno.bench("b64_rt_short", { n: 1e6 }, () => {
   const dataChunk = new Uint8Array(100);
   const file = Deno.openSync("/dev/null", { write: true });
   Deno.bench("write_null", { n: 5e5 }, () => {
-    Deno.writeSync(file.rid, dataChunk);
+    file.writeSync(dataChunk);
   });
 }
 

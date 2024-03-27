@@ -107,6 +107,9 @@ pub static DENO_DISABLE_PEDANTIC_NODE_WARNINGS: Lazy<bool> = Lazy::new(|| {
     .is_some()
 });
 
+static DENO_FUTURE: Lazy<bool> =
+  Lazy::new(|| std::env::var("DENO_FUTURE").ok().is_some());
+
 pub fn jsr_url() -> &'static Url {
   static JSR_URL: Lazy<Url> = Lazy::new(|| {
     let env_var_name = "JSR_URL";
@@ -257,6 +260,12 @@ pub struct FmtOptions {
   pub files: FilePatterns,
 }
 
+impl Default for FmtOptions {
+  fn default() -> Self {
+    Self::new_with_base(PathBuf::from("/"))
+  }
+}
+
 impl FmtOptions {
   pub fn new_with_base(base: PathBuf) -> Self {
     Self {
@@ -388,6 +397,13 @@ pub struct LintOptions {
   pub rules: LintRulesConfig,
   pub files: FilePatterns,
   pub reporter_kind: LintReporterKind,
+  pub fix: bool,
+}
+
+impl Default for LintOptions {
+  fn default() -> Self {
+    Self::new_with_base(PathBuf::from("/"))
+  }
 }
 
 impl LintOptions {
@@ -396,6 +412,7 @@ impl LintOptions {
       rules: Default::default(),
       files: FilePatterns::new_with_base(base),
       reporter_kind: Default::default(),
+      fix: false,
     }
   }
 
@@ -404,6 +421,7 @@ impl LintOptions {
     maybe_lint_flags: Option<LintFlags>,
     initial_cwd: &Path,
   ) -> Result<Self, AnyError> {
+    let fix = maybe_lint_flags.as_ref().map(|f| f.fix).unwrap_or(false);
     let mut maybe_reporter_kind =
       maybe_lint_flags.as_ref().and_then(|lint_flags| {
         if lint_flags.json {
@@ -461,6 +479,7 @@ impl LintOptions {
         maybe_rules_include,
         maybe_rules_exclude,
       ),
+      fix,
     })
   }
 }
@@ -978,7 +997,7 @@ impl CliOptions {
   }
 
   pub fn enable_future_features(&self) -> bool {
-    std::env::var("DENO_FUTURE").is_ok()
+    *DENO_FUTURE
   }
 
   pub fn resolve_main_module(&self) -> Result<ModuleSpecifier, AnyError> {
@@ -1469,22 +1488,41 @@ impl CliOptions {
 
   pub fn permissions_options(&self) -> PermissionsOptions {
     PermissionsOptions {
+      allow_all: self.flags.allow_all,
       allow_env: self.flags.allow_env.clone(),
       deny_env: self.flags.deny_env.clone(),
       allow_hrtime: self.flags.allow_hrtime,
       deny_hrtime: self.flags.deny_hrtime,
       allow_net: self.flags.allow_net.clone(),
       deny_net: self.flags.deny_net.clone(),
-      allow_ffi: self.flags.allow_ffi.clone(),
-      deny_ffi: self.flags.deny_ffi.clone(),
-      allow_read: self.flags.allow_read.clone(),
-      deny_read: self.flags.deny_read.clone(),
+      allow_ffi: convert_option_str_to_path_buf(
+        &self.flags.allow_ffi,
+        self.initial_cwd(),
+      ),
+      deny_ffi: convert_option_str_to_path_buf(
+        &self.flags.deny_ffi,
+        self.initial_cwd(),
+      ),
+      allow_read: convert_option_str_to_path_buf(
+        &self.flags.allow_read,
+        self.initial_cwd(),
+      ),
+      deny_read: convert_option_str_to_path_buf(
+        &self.flags.deny_read,
+        self.initial_cwd(),
+      ),
       allow_run: self.flags.allow_run.clone(),
       deny_run: self.flags.deny_run.clone(),
       allow_sys: self.flags.allow_sys.clone(),
       deny_sys: self.flags.deny_sys.clone(),
-      allow_write: self.flags.allow_write.clone(),
-      deny_write: self.flags.deny_write.clone(),
+      allow_write: convert_option_str_to_path_buf(
+        &self.flags.allow_write,
+        self.initial_cwd(),
+      ),
+      deny_write: convert_option_str_to_path_buf(
+        &self.flags.deny_write,
+        self.initial_cwd(),
+      ),
       prompt: !self.no_prompt(),
     }
   }
@@ -1583,29 +1621,29 @@ impl CliOptions {
   }
 
   pub fn watch_paths(&self) -> Vec<PathBuf> {
-    let mut paths = if let DenoSubcommand::Run(RunFlags {
+    let mut full_paths = Vec::new();
+    if let DenoSubcommand::Run(RunFlags {
       watch: Some(WatchFlagsWithPaths { paths, .. }),
       ..
     }) = &self.flags.subcommand
     {
-      paths.clone()
-    } else {
-      Vec::with_capacity(2)
-    };
+      full_paths.extend(paths.iter().map(|path| self.initial_cwd.join(path)));
+    }
+
     if let Ok(Some(import_map_path)) = self
       .resolve_specified_import_map_specifier()
       .map(|ms| ms.and_then(|ref s| s.to_file_path().ok()))
     {
-      paths.push(import_map_path);
+      full_paths.push(import_map_path);
     }
     if let Some(specifier) = self.maybe_config_file_specifier() {
       if specifier.scheme() == "file" {
         if let Ok(path) = specifier.to_file_path() {
-          paths.push(path);
+          full_paths.push(path);
         }
       }
     }
-    paths
+    full_paths
   }
 }
 
@@ -1781,6 +1819,20 @@ pub fn npm_pkg_req_ref_to_binary_command(
 ) -> String {
   let binary_name = req_ref.sub_path().unwrap_or(req_ref.req().name.as_str());
   binary_name.to_string()
+}
+
+fn convert_option_str_to_path_buf(
+  flag: &Option<Vec<String>>,
+  initial_cwd: &Path,
+) -> Option<Vec<PathBuf>> {
+  if let Some(allow_ffi_paths) = &flag {
+    let mut full_paths = Vec::new();
+    full_paths
+      .extend(allow_ffi_paths.iter().map(|path| initial_cwd.join(path)));
+    Some(full_paths)
+  } else {
+    None
+  }
 }
 
 #[cfg(test)]

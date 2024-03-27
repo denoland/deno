@@ -109,7 +109,7 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
       tools::run::eval_command(flags, eval_flags).await
     }),
     DenoSubcommand::Cache(cache_flags) => spawn_subcommand(async move {
-      let factory = CliFactory::from_flags(flags).await?;
+      let factory = CliFactory::from_flags(flags)?;
       let module_load_preparer = factory.module_load_preparer().await?;
       let emitter = factory.emitter()?;
       let graph_container = factory.graph_container();
@@ -119,7 +119,7 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
       emitter.cache_module_emits(&graph_container.graph())
     }),
     DenoSubcommand::Check(check_flags) => spawn_subcommand(async move {
-      let factory = CliFactory::from_flags(flags).await?;
+      let factory = CliFactory::from_flags(flags)?;
       let module_load_preparer = factory.module_load_preparer().await?;
       module_load_preparer
         .load_and_type_check_files(&check_flags.files)
@@ -137,7 +137,11 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
       )
     }
     DenoSubcommand::Init(init_flags) => {
-      spawn_subcommand(async { tools::init::init_project(init_flags).await })
+      spawn_subcommand(async {
+        // make compiler happy since init_project is sync
+        tokio::task::yield_now().await;
+        tools::init::init_project(init_flags)
+      })
     }
     DenoSubcommand::Info(info_flags) => {
       spawn_subcommand(async { tools::info::info(flags, info_flags).await })
@@ -316,7 +320,7 @@ pub fn main() {
     Box::new(util::draw_thread::DrawThread::show),
   );
 
-  let args: Vec<String> = env::args().collect();
+  let args: Vec<_> = env::args_os().collect();
 
   // NOTE(lucacasonato): due to new PKU feature introduced in V8 11.6 we need to
   // initialize the V8 platform on a parent thread of all threads that will spawn

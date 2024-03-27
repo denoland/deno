@@ -459,6 +459,34 @@ fn not_include_gitignored_file_unless_exact_match_in_include() {
 }
 
 #[test]
+fn gitignore_everything_exlcuded_override() {
+  let context = publish_context_builder().build();
+  let temp_dir = context.temp_dir().path();
+
+  temp_dir.join(".gitignore").write("*\n");
+  temp_dir.join("deno.json").write_json(&json!({
+    "name": "@foo/bar",
+    "version": "1.0.0",
+    "exports": "./root_main.ts",
+    "publish": {
+      // should opt out of .gitignore even though everything
+      // is .gitignored
+      "exclude": ["!**"]
+    }
+  }));
+
+  temp_dir.join("root_main.ts").write("");
+  let sub_dir = temp_dir.join("sub");
+  sub_dir.create_dir_all();
+  sub_dir.join("sub_main.ts").write("");
+  let output = context.new_command().arg("publish").arg("--dry-run").run();
+  output.assert_exit_code(0);
+  let output = output.combined_output();
+  assert_contains!(output, "root_main.ts");
+  assert_contains!(output, "sub_main.ts");
+}
+
+#[test]
 fn includes_directories_with_gitignore_when_unexcluded() {
   let context = publish_context_builder().build();
   let temp_dir = context.temp_dir().path();
@@ -561,6 +589,46 @@ fn not_includes_gitignored_dotenv() {
   assert_not_contains!(output, ".env");
 }
 
+#[test]
+fn not_includes_vendor_dir_only_when_vendor_true() {
+  let context = publish_context_builder().build();
+  let temp_dir = context.temp_dir().path();
+  temp_dir.join("deno.json").write_json(&json!({
+    "name": "@foo/bar",
+    "version": "1.0.0",
+    "exports": "./main.ts",
+  }));
+
+  temp_dir.join("main.ts").write("");
+  let vendor_folder = temp_dir.join("vendor");
+  vendor_folder.create_dir_all();
+  vendor_folder.join("vendor.ts").write("");
+
+  let publish_cmd = context.new_command().args("publish --dry-run");
+  {
+    let output = publish_cmd.run();
+    output.assert_exit_code(0);
+    let output = output.combined_output();
+    assert_contains!(output, "main.ts");
+    assert_contains!(output, "vendor.ts");
+  }
+
+  // with vendor
+  {
+    temp_dir.join("deno.json").write_json(&json!({
+      "name": "@foo/bar",
+      "version": "1.0.0",
+      "exports": "./main.ts",
+      "vendor": true,
+    }));
+    let output = publish_cmd.run();
+    output.assert_exit_code(0);
+    let output = output.combined_output();
+    assert_contains!(output, "main.ts");
+    assert_not_contains!(output, "vendor.ts");
+  }
+}
+
 fn publish_context_builder() -> TestContextBuilder {
   TestContextBuilder::new()
     .use_http_server()
@@ -602,7 +670,7 @@ fn allow_dirty() {
     .run();
   output.assert_exit_code(1);
   let output = output.combined_output();
-  assert_contains!(output, "Aborting due to uncomitted changes");
+  assert_contains!(output, "Aborting due to uncommitted changes. Check in source code or run with --allow-dirty");
 
   let output = context
     .new_command()
@@ -639,4 +707,35 @@ fn allow_dirty_not_in_repo() {
   output.assert_exit_code(0);
   let output = output.combined_output();
   assert_contains!(output, "Successfully published");
+}
+
+#[test]
+fn allow_dirty_dry_run() {
+  let context = publish_context_builder_with_git_checks().build();
+  let temp_dir = context.temp_dir().path();
+  temp_dir.join("deno.json").write_json(&json!({
+    "name": "@foo/bar",
+    "version": "1.0.0",
+    "exports": "./main.ts",
+  }));
+
+  temp_dir.join("main.ts").write("");
+
+  let cmd = Command::new("git")
+    .arg("init")
+    .arg(temp_dir.as_path())
+    .output()
+    .unwrap();
+  assert!(cmd.status.success());
+
+  let output = context
+    .new_command()
+    .arg("publish")
+    .arg("--dry-run")
+    .arg("--token")
+    .arg("sadfasdf")
+    .run();
+  output.assert_exit_code(1);
+  let output = output.combined_output();
+  assert_contains!(output, "Aborting due to uncommitted changes. Check in source code or run with --allow-dirty");
 }

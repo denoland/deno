@@ -159,9 +159,9 @@ pub struct StartTlsArgs {
   alpn_protocols: Option<Vec<String>>,
 }
 
-#[op2(async)]
+#[op2]
 #[serde]
-pub async fn op_tls_start<NP>(
+pub fn op_tls_start<NP>(
   state: Rc<RefCell<OpState>>,
   #[serde] args: StartTlsArgs,
 ) -> Result<(ResourceId, IpAddr, IpAddr), AnyError>

@@ -19,6 +19,22 @@ use std::sync::Arc;
 #[derive(Clone)]
 struct Permissions;
 
+impl deno_websocket::WebSocketPermissions for Permissions {
+  fn check_net_url(
+    &mut self,
+    _url: &deno_core::url::Url,
+    _api_name: &str,
+  ) -> Result<(), deno_core::error::AnyError> {
+    unreachable!("snapshotting!")
+  }
+}
+
+impl deno_web::TimersPermission for Permissions {
+  fn allow_hrtime(&mut self) -> bool {
+    unreachable!("snapshotting!")
+  }
+}
+
 impl deno_fetch::FetchPermissions for Permissions {
   fn check_net_url(
     &mut self,
@@ -33,22 +49,6 @@ impl deno_fetch::FetchPermissions for Permissions {
     _p: &Path,
     _api_name: &str,
   ) -> Result<(), deno_core::error::AnyError> {
-    unreachable!("snapshotting!")
-  }
-}
-
-impl deno_websocket::WebSocketPermissions for Permissions {
-  fn check_net_url(
-    &mut self,
-    _url: &deno_core::url::Url,
-    _api_name: &str,
-  ) -> Result<(), deno_core::error::AnyError> {
-    unreachable!("snapshotting!")
-  }
-}
-
-impl deno_web::TimersPermission for Permissions {
-  fn allow_hrtime(&mut self) -> bool {
     unreachable!("snapshotting!")
   }
 }

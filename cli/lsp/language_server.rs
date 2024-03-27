@@ -2,7 +2,6 @@
 
 use base64::Engine;
 use deno_ast::MediaType;
-use deno_config::glob::FilePatterns;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
@@ -19,18 +18,17 @@ use deno_lockfile::Lockfile;
 use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::NodeResolver;
-use deno_runtime::deno_node::PackageJson;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_semver::jsr::JsrPackageReqReference;
-use import_map::ImportMap;
 use indexmap::IndexSet;
 use log::error;
 use serde::Deserialize;
 use serde_json::from_value;
-use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::collections::VecDeque;
 use std::env;
 use std::fmt::Write as _;
 use std::path::Path;
@@ -71,7 +69,6 @@ use super::documents::Document;
 use super::documents::Documents;
 use super::documents::DocumentsFilter;
 use super::documents::LanguageId;
-use super::documents::UpdateDocumentConfigOptions;
 use super::jsr::CliJsrSearchApi;
 use super::logging::lsp_log;
 use super::logging::lsp_warn;
@@ -92,16 +89,11 @@ use super::tsc::GetCompletionDetailsArgs;
 use super::tsc::TsServer;
 use super::urls;
 use crate::args::get_root_cert_store;
-use crate::args::package_json;
-use crate::args::resolve_import_map;
 use crate::args::CaData;
 use crate::args::CacheSetting;
 use crate::args::CliOptions;
 use crate::args::ConfigFile;
 use crate::args::Flags;
-use crate::args::FmtOptions;
-use crate::args::LintOptions;
-use crate::args::TsConfig;
 use crate::cache::DenoDir;
 use crate::cache::FastInsecureHasher;
 use crate::cache::GlobalHttpCache;
@@ -111,6 +103,7 @@ use crate::factory::CliFactory;
 use crate::file_fetcher::FileFetcher;
 use crate::graph_util;
 use crate::http_util::HttpClient;
+use crate::lsp::config::ConfigWatchedFileType;
 use crate::lsp::logging::init_log_file;
 use crate::lsp::tsc::file_text_changes_to_workspace_edit;
 use crate::lsp::urls::LspUrlKind;
@@ -158,10 +151,15 @@ struct LspNpmConfigHash(u64);
 
 impl LspNpmConfigHash {
   pub fn from_inner(inner: &Inner) -> Self {
+    let config_data = inner.config.tree.root_data();
+    let node_modules_dir = config_data
+      .as_ref()
+      .and_then(|d| d.node_modules_dir.as_ref());
+    let lockfile = config_data.as_ref().and_then(|d| d.lockfile.as_ref());
     let mut hasher = FastInsecureHasher::new();
-    hasher.write_hashable(inner.config.maybe_node_modules_dir_path());
+    hasher.write_hashable(node_modules_dir);
     hasher.write_hashable(&inner.maybe_global_cache_path);
-    if let Some(lockfile) = inner.config.maybe_lockfile() {
+    if let Some(lockfile) = lockfile {
       hasher.write_hashable(&*lockfile.lock());
     }
     Self(hasher.finish())
@@ -184,7 +182,6 @@ pub struct StateSnapshot {
   pub cache_metadata: cache::CacheMetadata,
   pub config: Arc<ConfigSnapshot>,
   pub documents: Documents,
-  pub maybe_import_map: Option<Arc<ImportMap>>,
   pub npm: Option<StateNpmSnapshot>,
 }
 
@@ -255,14 +252,6 @@ pub struct Inner {
   /// An optional path to the DENO_DIR which has been specified in the client
   /// options.
   maybe_global_cache_path: Option<PathBuf>,
-  /// An optional import map which is used to resolve modules.
-  maybe_import_map: Option<Arc<ImportMap>>,
-  /// An optional package.json configuration file.
-  maybe_package_json: Option<PackageJson>,
-  /// Configuration for formatter which has been taken from specified config file.
-  fmt_options: FmtOptions,
-  /// An optional configuration for linter which has been taken from specified config file.
-  lint_options: LintOptions,
   /// A lazily create "server" for handling test run requests.
   maybe_testing_server: Option<testing::TestServer>,
   /// Services used for dealing with npm related functionality.
@@ -275,6 +264,10 @@ pub struct Inner {
   pub ts_server: Arc<TsServer>,
   /// A map of specifiers and URLs used to translate over the LSP.
   pub url_map: urls::LspUrlMap,
+  workspace_files: BTreeSet<ModuleSpecifier>,
+  /// Set to `self.config.settings.enable_settings_hash()` after
+  /// refreshing `self.workspace_files`.
+  workspace_files_hash: u64,
 }
 
 impl LanguageServer {
@@ -341,7 +334,11 @@ impl LanguageServer {
     // do as much as possible in a read, then do a write outside
     let maybe_prepare_cache_result = {
       let inner = self.0.read().await; // ensure dropped
-      match inner.prepare_cache(specifiers, referrer, force_global_cache) {
+      match inner.prepare_cache(
+        specifiers,
+        referrer.clone(),
+        force_global_cache,
+      ) {
         Ok(maybe_cache_result) => maybe_cache_result,
         Err(err) => {
           lsp_warn!("Error preparing caching: {:#}", err);
@@ -373,7 +370,7 @@ impl LanguageServer {
       }
       {
         let mut inner = self.0.write().await;
-        let lockfile = inner.config.maybe_lockfile().cloned();
+        let lockfile = inner.config.tree.lockfile_for_specifier(&referrer);
         inner.documents.refresh_jsr_resolver(lockfile);
         inner.refresh_npm_specifiers().await;
       }
@@ -487,14 +484,12 @@ impl LanguageServer {
         }
         let mut configs = configs.into_iter();
         let unscoped = configs.next().unwrap();
-        let mut by_workspace_folder = BTreeMap::new();
+        let mut folder_settings = Vec::with_capacity(folders.len());
         for (folder_uri, _) in &folders {
-          by_workspace_folder
-            .insert(folder_uri.clone(), configs.next().unwrap());
+          folder_settings.push((folder_uri.clone(), configs.next().unwrap()));
         }
         let mut ls = self.0.write().await;
-        ls.config
-          .set_workspace_settings(unscoped, Some(by_workspace_folder));
+        ls.config.set_workspace_settings(unscoped, folder_settings);
       }
     }
   }
@@ -529,9 +524,12 @@ impl Inner {
     let documents = Documents::new(deps_http_cache.clone());
     let cache_metadata = cache::CacheMetadata::new(deps_http_cache.clone());
     let performance = Arc::new(Performance::default());
-    let ts_server =
-      Arc::new(TsServer::new(performance.clone(), deps_http_cache.clone()));
-    let config = Config::new();
+    let config = Config::default();
+    let ts_server = Arc::new(TsServer::new(
+      performance.clone(),
+      deps_http_cache.clone(),
+      config.tree.clone(),
+    ));
     let diagnostics_state = Arc::new(DiagnosticsState::default());
     let diagnostics_server = DiagnosticsServer::new(
       client.clone(),
@@ -557,11 +555,7 @@ impl Inner {
       initial_cwd: initial_cwd.clone(),
       jsr_search_api,
       maybe_global_cache_path: None,
-      maybe_import_map: None,
-      maybe_package_json: None,
-      fmt_options: FmtOptions::new_with_base(initial_cwd.clone()),
       task_queue: Default::default(),
-      lint_options: LintOptions::new_with_base(initial_cwd),
       maybe_testing_server: None,
       module_registries,
       module_registries_location,
@@ -575,6 +569,8 @@ impl Inner {
       ts_fixable_diagnostics: Default::default(),
       ts_server,
       url_map: Default::default(),
+      workspace_files: Default::default(),
+      workspace_files_hash: 0,
     }
   }
 
@@ -642,76 +638,6 @@ impl Inner {
     Ok(navigation_tree)
   }
 
-  fn get_config_file(&self) -> Result<Option<ConfigFile>, AnyError> {
-    let workspace_settings = self.config.workspace_settings();
-    let maybe_config = &workspace_settings.config;
-    if let Some(config_str) = maybe_config {
-      if !config_str.is_empty() {
-        lsp_log!("Setting Deno configuration from: \"{}\"", config_str);
-        let config_url = if let Ok(url) = Url::from_file_path(config_str) {
-          Ok(url)
-        } else if let Some(root_uri) = self.config.root_uri() {
-          root_uri.join(config_str).map_err(|_| {
-            anyhow!("Bad file path for configuration file: \"{}\"", config_str)
-          })
-        } else {
-          Err(anyhow!(
-            "The path to the configuration file (\"{}\") is not resolvable.",
-            config_str
-          ))
-        }?;
-        lsp_log!("  Resolved configuration file: \"{}\"", config_url);
-
-        let config_file = ConfigFile::from_specifier(config_url)?;
-        return Ok(Some(config_file));
-      }
-    }
-
-    // Auto-discover config
-
-    // It is possible that root_uri is not set, for example when having a single
-    // file open and not a workspace.  In those situations we can't
-    // automatically discover the configuration
-    if let Some(root_uri) = self.config.root_uri() {
-      let root_path = specifier_to_file_path(root_uri)?;
-      let mut checked = std::collections::HashSet::new();
-      let maybe_config =
-        ConfigFile::discover_from(&root_path, &mut checked, None)?;
-      Ok(maybe_config.map(|c| {
-        lsp_log!("  Auto-resolved configuration file: \"{}\"", c.specifier);
-        c
-      }))
-    } else {
-      Ok(None)
-    }
-  }
-
-  fn get_package_json(
-    &self,
-    maybe_config_file: Option<&ConfigFile>,
-  ) -> Result<Option<PackageJson>, AnyError> {
-    if crate::args::has_flag_env_var("DENO_NO_PACKAGE_JSON") {
-      return Ok(None);
-    }
-
-    // It is possible that root_uri is not set, for example when having a single
-    // file open and not a workspace.  In those situations we can't
-    // automatically discover the configuration
-    if let Some(root_uri) = self.config.root_uri() {
-      let root_path = specifier_to_file_path(root_uri)?;
-      let maybe_package_json = package_json::discover_from(
-        &root_path,
-        maybe_config_file.and_then(|f| f.specifier.to_file_path().ok()),
-      )?;
-      Ok(maybe_package_json.map(|c| {
-        lsp_log!("  Auto-resolved package.json: \"{}\"", c.specifier());
-        c
-      }))
-    } else {
-      Ok(None)
-    }
-  }
-
   fn is_diagnosable(&self, specifier: &ModuleSpecifier) -> bool {
     if specifier.scheme() == "asset" {
       matches!(
@@ -735,23 +661,6 @@ impl Inner {
         .map(|d| d.is_diagnosable())
         .unwrap_or(false)
     }
-  }
-
-  fn merge_user_tsconfig(
-    &self,
-    tsconfig: &mut TsConfig,
-  ) -> Result<(), AnyError> {
-    if let Some(config_file) = self.config.maybe_config_file() {
-      let (value, maybe_ignored_options) = config_file.to_compiler_options()?;
-      tsconfig.merge(&value);
-      if let Some(ignored_options) = maybe_ignored_options {
-        // TODO(@kitsonk) turn these into diagnostics that can be sent to the
-        // client
-        lsp_warn!("{}", ignored_options);
-      }
-    }
-
-    Ok(())
   }
 
   pub fn snapshot(&self) -> Arc<StateSnapshot> {
@@ -782,12 +691,11 @@ impl Inner {
       cache_metadata: self.cache_metadata.clone(),
       config: self.config.snapshot(),
       documents: self.documents.clone(),
-      maybe_import_map: self.maybe_import_map.clone(),
       npm: maybe_state_npm_snapshot,
     })
   }
 
-  pub async fn update_cache(&mut self) -> Result<(), AnyError> {
+  pub fn update_cache(&mut self) -> Result<(), AnyError> {
     let mark = self.performance.mark("lsp.update_cache");
     self.performance.measure(mark);
     let maybe_cache = &self.config.workspace_settings().cache;
@@ -817,23 +725,17 @@ impl Inner {
       None
     };
     if self.maybe_global_cache_path != maybe_global_cache_path {
-      self
-        .set_new_global_cache_path(maybe_global_cache_path)
-        .await?;
+      self.set_new_global_cache_path(maybe_global_cache_path)?;
     }
     Ok(())
   }
 
-  async fn recreate_http_client_and_dependents(
-    &mut self,
-  ) -> Result<(), AnyError> {
-    self
-      .set_new_global_cache_path(self.maybe_global_cache_path.clone())
-      .await
+  fn recreate_http_client_and_dependents(&mut self) -> Result<(), AnyError> {
+    self.set_new_global_cache_path(self.maybe_global_cache_path.clone())
   }
 
   /// Recreates the http client and all dependent structs.
-  async fn set_new_global_cache_path(
+  fn set_new_global_cache_path(
     &mut self,
     new_cache_path: Option<PathBuf>,
   ) -> Result<(), AnyError> {
@@ -879,7 +781,7 @@ impl Inner {
     self.jsr_search_api = CliJsrSearchApi::new(deps_file_fetcher.clone());
     self.npm.search_api = CliNpmSearchApi::new(deps_file_fetcher);
     let maybe_local_cache =
-      self.config.maybe_vendor_dir_path().map(|local_path| {
+      self.config.tree.root_vendor_dir().map(|local_path| {
         Arc::new(LocalLspHttpCache::new(local_path, global_cache.clone()))
       });
     let cache: Arc<dyn HttpCache> = maybe_local_cache
@@ -906,14 +808,16 @@ impl Inner {
     if config_hash == self.npm.config_hash {
       return; // no need to do anything
     }
-
+    let config_data = self.config.tree.root_data();
     let npm_resolver = create_npm_resolver(
       &deno_dir,
       &self.initial_cwd,
       &self.http_client,
-      self.config.maybe_config_file(),
-      self.config.maybe_lockfile(),
-      self.config.maybe_node_modules_dir_path().cloned(),
+      config_data.as_ref().and_then(|d| d.config_file.as_deref()),
+      config_data.as_ref().and_then(|d| d.lockfile.as_ref()),
+      config_data
+        .as_ref()
+        .and_then(|d| d.node_modules_dir.clone()),
     )
     .await;
     let node_resolver = Arc::new(NodeResolver::new(
@@ -932,41 +836,6 @@ impl Inner {
     self.npm.config_hash = config_hash;
   }
 
-  pub async fn update_import_map(&mut self) -> Result<(), AnyError> {
-    let mark = self.performance.mark("lsp.update_import_map");
-
-    let maybe_import_map_url = self.resolve_import_map_specifier()?;
-    let maybe_import_map = self
-      .fetch_import_map(
-        maybe_import_map_url.as_ref(),
-        CacheSetting::RespectHeaders,
-      )
-      .await?;
-    if let Some(import_map) = maybe_import_map {
-      if import_map.base_url().scheme() != "data" {
-        lsp_log!("  Resolved import map: \"{}\"", import_map.base_url());
-      }
-      self.maybe_import_map = Some(Arc::new(import_map));
-    } else {
-      self.maybe_import_map = None;
-    }
-    self.performance.measure(mark);
-    Ok(())
-  }
-
-  async fn fetch_import_map(
-    &self,
-    import_map_url: Option<&ModuleSpecifier>,
-    cache_setting: CacheSetting,
-  ) -> Result<Option<ImportMap>, AnyError> {
-    resolve_import_map(
-      import_map_url,
-      self.config.maybe_config_file(),
-      &self.create_file_fetcher(cache_setting),
-    )
-    .await
-  }
-
   fn create_file_fetcher(&self, cache_setting: CacheSetting) -> FileFetcher {
     let mut file_fetcher = FileFetcher::new(
       self.deps_http_cache.clone(),
@@ -982,10 +851,13 @@ impl Inner {
 
   fn resolve_import_map_specifier(
     &self,
+    referrer: &ModuleSpecifier,
   ) -> Result<Option<ModuleSpecifier>, AnyError> {
     let Some(import_map_str) = self
       .config
-      .workspace_settings()
+      .settings
+      .get_for_specifier(referrer)
+      .0
       .import_map
       .clone()
       .and_then(|s| if s.is_empty() { None } else { Some(s) })
@@ -996,7 +868,9 @@ impl Inner {
       "Using import map from workspace settings: \"{}\"",
       import_map_str
     );
-    if let Some(config_file) = self.config.maybe_config_file() {
+    if let Some(config_file) =
+      self.config.tree.config_file_for_specifier(referrer)
+    {
       if let Some(import_map_path) = &config_file.json.import_map {
         lsp_log!("Warning: Import map \"{}\" configured in \"{}\" being ignored due to an import map being explicitly configured in workspace settings.", import_map_path, config_file.specifier);
       }
@@ -1026,113 +900,16 @@ impl Inner {
 
   async fn update_registries(&mut self) -> Result<(), AnyError> {
     let mark = self.performance.mark("lsp.update_registries");
-    self.recreate_http_client_and_dependents().await?;
+    self.recreate_http_client_and_dependents()?;
     let workspace_settings = self.config.workspace_settings();
     for (registry, enabled) in workspace_settings.suggest.imports.hosts.iter() {
       if *enabled {
         lsp_log!("Enabling import suggestions for: {}", registry);
         self.module_registries.enable(registry).await?;
       } else {
-        self.module_registries.disable(registry).await?;
+        self.module_registries.disable(registry)?;
       }
     }
-    self.performance.measure(mark);
-    Ok(())
-  }
-
-  async fn update_config_file(&mut self) -> Result<(), AnyError> {
-    self.config.clear_config_file();
-    self.fmt_options = FmtOptions::new_with_base(self.initial_cwd.clone());
-    self.lint_options = LintOptions::new_with_base(self.initial_cwd.clone());
-    if let Some(config_file) = self.get_config_file()? {
-      let lint_options = config_file
-        .to_lint_config()
-        .and_then(|maybe_lint_config| {
-          LintOptions::resolve(maybe_lint_config, None, &self.initial_cwd)
-        })
-        .map_err(|err| {
-          anyhow!("Unable to update lint configuration: {:?}", err)
-        })?;
-      let fmt_options = config_file
-        .to_fmt_config()
-        .and_then(|maybe_fmt_config| {
-          FmtOptions::resolve(maybe_fmt_config, None, &self.initial_cwd)
-        })
-        .map_err(|err| {
-          anyhow!("Unable to update formatter configuration: {:?}", err)
-        })?;
-
-      self.config.set_config_file(config_file);
-      self.lint_options = lint_options;
-      self.fmt_options = fmt_options;
-      self.recreate_http_client_and_dependents().await?;
-      if let Some(config_file) = self.config.maybe_config_file() {
-        if let Ok((compiler_options, _)) = config_file.to_compiler_options() {
-          if let Some(compiler_options_obj) = compiler_options.as_object() {
-            if let Some(jsx_import_source) =
-              compiler_options_obj.get("jsxImportSource")
-            {
-              if let Some(jsx_import_source) = jsx_import_source.as_str() {
-                let specifiers = vec![Url::parse(&format!(
-                  "data:application/typescript;base64,{}",
-                  base64::engine::general_purpose::STANDARD.encode(format!(
-                    "import '{jsx_import_source}/jsx-runtime';"
-                  ))
-                ))
-                .unwrap()];
-                let referrer = config_file.specifier.clone();
-                self.task_queue.queue_task(Box::new(|ls: LanguageServer| {
-                  spawn(async move {
-                    if let Err(err) =
-                      ls.cache(specifiers, referrer, false).await
-                    {
-                      lsp_warn!("{:#}", err);
-                    }
-                  });
-                }));
-              }
-            }
-          }
-        }
-      }
-    }
-
-    Ok(())
-  }
-
-  /// Updates the package.json. Always ensure this is done after updating
-  /// the configuration file as the resolution of this depends on that.
-  fn update_package_json(&mut self) -> Result<(), AnyError> {
-    self.maybe_package_json = None;
-    self.maybe_package_json =
-      self.get_package_json(self.config.maybe_config_file())?;
-    Ok(())
-  }
-
-  async fn update_tsconfig(&mut self) -> Result<(), AnyError> {
-    let mark = self.performance.mark("lsp.update_tsconfig");
-    let mut tsconfig = TsConfig::new(json!({
-      "allowJs": true,
-      "esModuleInterop": true,
-      "experimentalDecorators": false,
-      "isolatedModules": true,
-      "jsx": "react",
-      "lib": ["deno.ns", "deno.window", "deno.unstable"],
-      "module": "esnext",
-      "moduleDetection": "force",
-      "noEmit": true,
-      "resolveJsonModule": true,
-      "strict": true,
-      "target": "esnext",
-      "useDefineForClassFields": true,
-      // TODO(@kitsonk) remove for Deno 1.15
-      "useUnknownInCatchVariables": false,
-    }));
-    if let Err(err) = self.merge_user_tsconfig(&mut tsconfig) {
-      lsp_warn!("Error merging tsconfig: {:#}", err);
-      self.client.show_message(MessageType::WARNING, err);
-    }
-    let _ok = self.ts_server.configure(self.snapshot(), tsconfig).await?;
     self.performance.measure(mark);
     Ok(())
   }
@@ -1233,11 +1010,12 @@ impl Inner {
       if let Some(options) = params.initialization_options {
         self.config.set_workspace_settings(
           WorkspaceSettings::from_initialization_options(options),
-          None,
+          vec![],
         );
       }
+      let mut workspace_folders = vec![];
       if let Some(folders) = params.workspace_folders {
-        self.config.workspace_folders = folders
+        workspace_folders = folders
           .into_iter()
           .map(|folder| {
             (
@@ -1250,15 +1028,10 @@ impl Inner {
       // rootUri is deprecated by the LSP spec. If it's specified, merge it into
       // workspace_folders.
       if let Some(root_uri) = params.root_uri {
-        if !self
-          .config
-          .workspace_folders
-          .iter()
-          .any(|(_, f)| f.uri == root_uri)
-        {
+        if !workspace_folders.iter().any(|(_, f)| f.uri == root_uri) {
           let name = root_uri.path_segments().and_then(|s| s.last());
           let name = name.unwrap_or_default().to_string();
-          self.config.workspace_folders.insert(
+          workspace_folders.insert(
             0,
             (
               self.url_map.normalize_url(&root_uri, LspUrlKind::Folder),
@@ -1270,6 +1043,7 @@ impl Inner {
           );
         }
       }
+      self.config.set_workspace_folders(workspace_folders);
       self.config.update_capabilities(&params.capabilities);
     }
 
@@ -1278,21 +1052,10 @@ impl Inner {
       .start(self.config.internal_inspect().to_address());
 
     self.update_debug_flag();
-    // Check to see if we need to change the cache path
-    if let Err(err) = self.update_cache().await {
+    self.refresh_workspace_files();
+    self.refresh_config_tree().await;
+    if let Err(err) = self.update_cache() {
       lsp_warn!("Error updating cache: {:#}", err);
-      self.client.show_message(MessageType::WARNING, err);
-    }
-    if let Err(err) = self.update_config_file().await {
-      lsp_warn!("Error updating config file: {:#}", err);
-      self.client.show_message(MessageType::WARNING, err);
-    }
-    if let Err(err) = self.update_package_json() {
-      lsp_warn!("Error updating package.json: {:#}", err);
-      self.client.show_message(MessageType::WARNING, err);
-    }
-    if let Err(err) = self.update_tsconfig().await {
-      lsp_warn!("Error updating tsconfig: {:#}", err);
       self.client.show_message(MessageType::WARNING, err);
     }
 
@@ -1304,11 +1067,6 @@ impl Inner {
       self.ts_fixable_diagnostics = fixable_diagnostics;
     }
 
-    // Check to see if we need to setup the import map
-    if let Err(err) = self.update_import_map().await {
-      lsp_warn!("Error updating import map: {:#}", err);
-      self.client.show_message(MessageType::WARNING, err);
-    }
     // Check to see if we need to setup any module registries
     if let Err(err) = self.update_registries().await {
       lsp_warn!("Error updating registries: {:#}", err);
@@ -1326,35 +1084,199 @@ impl Inner {
     })
   }
 
-  async fn refresh_documents_config(&mut self) {
-    self.documents.update_config(UpdateDocumentConfigOptions {
-      file_patterns: FilePatterns {
-        base: self.initial_cwd.clone(),
-        include: Some(self.config.get_enabled_paths()),
-        exclude: self.config.get_disabled_paths(),
-      },
-      document_preload_limit: self
+  fn walk_workspace(config: &Config) -> (BTreeSet<ModuleSpecifier>, bool) {
+    let mut workspace_files = Default::default();
+    let document_preload_limit =
+      config.workspace_settings().document_preload_limit;
+    let mut pending = VecDeque::new();
+    let mut entry_count = 0;
+    let mut roots = config
+      .workspace_folders
+      .iter()
+      .filter_map(|p| specifier_to_file_path(&p.0).ok())
+      .collect::<Vec<_>>();
+    roots.sort();
+    for i in 0..roots.len() {
+      if i == 0 || !roots[i].starts_with(&roots[i - 1]) {
+        if let Ok(read_dir) = std::fs::read_dir(&roots[i]) {
+          pending.push_back((roots[i].clone(), read_dir));
+        }
+      }
+    }
+    while let Some((parent_path, read_dir)) = pending.pop_front() {
+      for entry in read_dir {
+        let Ok(entry) = entry else {
+          continue;
+        };
+        if entry_count >= document_preload_limit {
+          return (workspace_files, true);
+        }
+        entry_count += 1;
+        let path = parent_path.join(entry.path());
+        let Ok(specifier) = ModuleSpecifier::from_file_path(&path) else {
+          continue;
+        };
+        // TODO(nayeemrmn): Don't walk folders that are `None` here and aren't
+        // in a `deno.json` scope.
+        if config.settings.specifier_enabled(&specifier) == Some(false) {
+          continue;
+        }
+        let Ok(file_type) = entry.file_type() else {
+          continue;
+        };
+        let Some(file_name) = path.file_name() else {
+          continue;
+        };
+        if file_type.is_dir() {
+          let dir_name = file_name.to_string_lossy().to_lowercase();
+          // We ignore these directories by default because there is a
+          // high likelihood they aren't relevant. Someone can opt-into
+          // them by specifying one of them as an enabled path.
+          if matches!(dir_name.as_str(), "node_modules" | ".git") {
+            continue;
+          }
+          // ignore cargo target directories for anyone using Deno with Rust
+          if dir_name == "target"
+            && path
+              .parent()
+              .map(|p| p.join("Cargo.toml").exists())
+              .unwrap_or(false)
+          {
+            continue;
+          }
+          if let Ok(read_dir) = std::fs::read_dir(&path) {
+            pending.push_back((path, read_dir));
+          }
+        } else if file_type.is_file()
+          || file_type.is_symlink()
+            && std::fs::metadata(&path)
+              .ok()
+              .map(|m| m.is_file())
+              .unwrap_or(false)
+        {
+          if file_name.to_string_lossy().contains(".min.") {
+            continue;
+          }
+          let media_type = MediaType::from_specifier(&specifier);
+          match media_type {
+            MediaType::JavaScript
+            | MediaType::Jsx
+            | MediaType::Mjs
+            | MediaType::Cjs
+            | MediaType::TypeScript
+            | MediaType::Mts
+            | MediaType::Cts
+            | MediaType::Dts
+            | MediaType::Dmts
+            | MediaType::Dcts
+            | MediaType::Json
+            | MediaType::Tsx => {}
+            MediaType::Wasm
+            | MediaType::SourceMap
+            | MediaType::TsBuildInfo
+            | MediaType::Unknown => {
+              if path.extension().and_then(|s| s.to_str()) != Some("jsonc") {
+                continue;
+              }
+            }
+          }
+          workspace_files.insert(specifier);
+        }
+      }
+    }
+    (workspace_files, false)
+  }
+
+  fn refresh_workspace_files(&mut self) {
+    let enable_settings_hash = self.config.settings.enable_settings_hash();
+    if self.workspace_files_hash == enable_settings_hash {
+      return;
+    }
+    let (workspace_files, hit_limit) = Self::walk_workspace(&self.config);
+    if hit_limit {
+      let document_preload_limit =
+        self.config.workspace_settings().document_preload_limit;
+      if document_preload_limit == 0 {
+        log::debug!("Skipped document preload.");
+      } else {
+        lsp_warn!(
+          concat!(
+            "Hit the language server document preload limit of {} file system entries. ",
+            "You may want to use the \"deno.enablePaths\" configuration setting to only have Deno ",
+            "partially enable a workspace or increase the limit via \"deno.documentPreloadLimit\". ",
+            "In cases where Deno ends up using too much memory, you may want to lower the limit."
+          ),
+          document_preload_limit,
+        );
+      }
+    }
+    self.workspace_files = workspace_files;
+    self.workspace_files_hash = enable_settings_hash;
+  }
+
+  async fn refresh_config_tree(&mut self) {
+    let file_fetcher = self.create_file_fetcher(CacheSetting::RespectHeaders);
+    if let Some(root_uri) = self.config.root_uri() {
+      self
         .config
-        .workspace_settings()
-        .document_preload_limit,
-      maybe_import_map: self.maybe_import_map.clone(),
-      maybe_config_file: self.config.maybe_config_file(),
-      maybe_package_json: self.maybe_package_json.as_ref(),
-      maybe_lockfile: self.config.maybe_lockfile().cloned(),
-      node_resolver: self.npm.node_resolver.clone(),
-      npm_resolver: self.npm.resolver.clone(),
-    });
+        .tree
+        .refresh(
+          &self.config.settings,
+          root_uri,
+          &self.workspace_files,
+          &file_fetcher,
+        )
+        .await;
+      for config_file in self.config.tree.config_files() {
+        if let Ok((compiler_options, _)) = config_file.to_compiler_options() {
+          if let Some(compiler_options_obj) = compiler_options.as_object() {
+            if let Some(jsx_import_source) =
+              compiler_options_obj.get("jsxImportSource")
+            {
+              if let Some(jsx_import_source) = jsx_import_source.as_str() {
+                let specifiers = vec![Url::parse(&format!(
+                  "data:application/typescript;base64,{}",
+                  base64::engine::general_purpose::STANDARD.encode(format!(
+                    "import '{jsx_import_source}/jsx-runtime';"
+                  ))
+                ))
+                .unwrap()];
+                let referrer = config_file.specifier.clone();
+                self.task_queue.queue_task(Box::new(|ls: LanguageServer| {
+                  spawn(async move {
+                    if let Err(err) =
+                      ls.cache(specifiers, referrer, false).await
+                    {
+                      lsp_warn!("{:#}", err);
+                    }
+                  });
+                }));
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  async fn refresh_documents_config(&mut self) {
+    self.documents.update_config(
+      &self.config,
+      self.npm.node_resolver.clone(),
+      self.npm.resolver.clone(),
+      &self.workspace_files,
+    );
 
     // refresh the npm specifiers because it might have discovered
     // a @types/node package and now's a good time to do that anyway
     self.refresh_npm_specifiers().await;
   }
 
-  async fn shutdown(&self) -> LspResult<()> {
+  fn shutdown(&self) -> LspResult<()> {
     Ok(())
   }
 
-  async fn did_open(
+  fn did_open(
     &mut self,
     specifier: &ModuleSpecifier,
     params: DidOpenTextDocumentParams,
@@ -1471,12 +1393,14 @@ impl Inner {
         WorkspaceSettings::from_raw_settings(deno, javascript, typescript)
       });
       if let Some(settings) = config {
-        self.config.set_workspace_settings(settings, None);
+        self.config.set_workspace_settings(settings, vec![]);
       }
     };
 
     self.update_debug_flag();
-    if let Err(err) = self.update_cache().await {
+    self.refresh_workspace_files();
+    self.refresh_config_tree().await;
+    if let Err(err) = self.update_cache() {
       lsp_warn!("Error updating cache: {:#}", err);
       self.client.show_message(MessageType::WARNING, err);
     }
@@ -1484,26 +1408,8 @@ impl Inner {
       lsp_warn!("Error updating registries: {:#}", err);
       self.client.show_message(MessageType::WARNING, err);
     }
-    if let Err(err) = self.update_config_file().await {
-      lsp_warn!("Error updating config file: {:#}", err);
-      self.client.show_message(MessageType::WARNING, err);
-    }
-    if let Err(err) = self.update_package_json() {
-      lsp_warn!("Error updating package.json: {:#}", err);
-      self.client.show_message(MessageType::WARNING, err);
-    }
-    if let Err(err) = self.update_import_map().await {
-      lsp_warn!("Error updating import map: {:#}", err);
-      self.client.show_message(MessageType::WARNING, err);
-    }
-    if let Err(err) = self.update_tsconfig().await {
-      lsp_warn!("Error updating tsconfig: {:#}", err);
-      self.client.show_message(MessageType::WARNING, err);
-    }
-
     self.recreate_npm_services_if_necessary().await;
     self.refresh_documents_config().await;
-
     self.diagnostics_server.invalidate_all();
     self.send_diagnostics_update();
     self.send_testing_update();
@@ -1513,192 +1419,72 @@ impl Inner {
     &mut self,
     params: DidChangeWatchedFilesParams,
   ) {
-    fn has_lockfile_content_changed(lockfile: &Lockfile) -> bool {
-      match Lockfile::new(lockfile.filename.clone(), false) {
-        Ok(new_lockfile) => {
-          // only update if the lockfile has changed
-          FastInsecureHasher::hash(lockfile)
-            != FastInsecureHasher::hash(new_lockfile)
-        }
-        Err(err) => {
-          lsp_warn!("Error loading lockfile: {:#}", err);
-          false
-        }
-      }
-    }
-
-    fn has_config_changed(config: &Config, changes: &IndexSet<Url>) -> bool {
-      // Check the canonicalized specifier here because file watcher
-      // changes will be for the canonicalized path in vscode, but also check the
-      // non-canonicalized specifier in order to please the tests and handle
-      // a client that might send that instead.
-      if config
-        .maybe_config_file_canonicalized_specifier()
-        .map(|s| changes.contains(s))
-        .unwrap_or(false)
-      {
-        return true;
-      }
-      match config.maybe_config_file() {
-        Some(file) => {
-          if changes.contains(&file.specifier) {
-            return true;
-          }
-        }
-        None => {
-          // check for auto-discovery
-          if changes.iter().any(|url| {
-            url.path().ends_with("/deno.json")
-              || url.path().ends_with("/deno.jsonc")
-          }) {
-            return true;
-          }
-        }
-      }
-
-      // if the lockfile has changed, reload the config as well
-      if let Some(lockfile) = config.maybe_lockfile() {
-        let lockfile_matches = config
-          .maybe_lockfile_canonicalized_specifier()
-          .map(|s| changes.contains(s))
-          .or_else(|| {
-            ModuleSpecifier::from_file_path(&lockfile.lock().filename)
-              .ok()
-              .map(|s| changes.contains(&s))
-          })
-          .unwrap_or(false);
-        lockfile_matches && has_lockfile_content_changed(&lockfile.lock())
-      } else {
-        // check for auto-discovery
-        changes.iter().any(|url| url.path().ends_with("/deno.lock"))
-      }
-    }
-
     let mark = self
       .performance
       .mark_with_args("lsp.did_change_watched_files", &params);
-    let mut touched = false;
-    let changes: IndexSet<Url> = params
+
+    let changes = params
       .changes
+      .into_iter()
+      .map(|e| (self.url_map.normalize_url(&e.uri, LspUrlKind::File), e))
+      .collect::<Vec<_>>();
+    if changes
       .iter()
-      .map(|f| self.url_map.normalize_url(&f.uri, LspUrlKind::File))
-      .collect();
-
-    let mut config_changes = IndexSet::with_capacity(changes.len());
-
-    // if the current deno.json has changed, we need to reload it
-    if has_config_changed(&self.config, &changes) {
-      // Check the 'current' config specifier from both before and after it's
-      // updated. Check canonicalized and uncanonicalized variants for each.
-      // If any are included in `changes`, send our custom notification for
-      // `deno.json` changes: `deno/didChangeDenoConfigurationNotification`.
-      let mut files_to_check = IndexSet::with_capacity(4);
-      // Collect previous config specifiers.
-      if let Some(url) = self.config.maybe_config_file().map(|c| &c.specifier) {
-        files_to_check.insert(url.clone());
-      }
-      if let Some(url) = self.config.maybe_config_file_canonicalized_specifier()
-      {
-        files_to_check.insert(url.clone());
-      }
-      // Update config.
-      if let Err(err) = self.update_config_file().await {
-        lsp_warn!("Error updating config file: {:#}", err);
-        self.client.show_message(MessageType::WARNING, err);
-      }
-      // Collect new config specifiers.
-      if let Some(url) = self.config.maybe_config_file().map(|c| &c.specifier) {
-        files_to_check.insert(url.clone());
-      }
-      if let Some(url) = self.config.maybe_config_file_canonicalized_specifier()
-      {
-        files_to_check.insert(url.clone());
-      }
-      if let Some(root_uri) = self.config.root_uri() {
-        config_changes.extend(
-          params
-            .changes
-            .iter()
-            .filter(|e| files_to_check.contains(&e.uri))
-            .map(|e| lsp_custom::DenoConfigurationChangeEvent {
-              scope_uri: root_uri.clone(),
-              file_uri: e.uri.clone(),
-              typ:
-                lsp_custom::DenoConfigurationChangeType::from_file_change_type(
-                  e.typ,
-                ),
-              configuration_type: lsp_custom::DenoConfigurationType::DenoJson,
-            }),
+      .any(|(s, _)| self.config.tree.is_watched_file(s))
+    {
+      let mut deno_config_changes = IndexSet::with_capacity(changes.len());
+      deno_config_changes.extend(changes.iter().filter_map(|(s, e)| {
+        self.config.tree.watched_file_type(s).and_then(|t| {
+          let configuration_type = match t.1 {
+            ConfigWatchedFileType::DenoJson => {
+              lsp_custom::DenoConfigurationType::DenoJson
+            }
+            ConfigWatchedFileType::PackageJson => {
+              lsp_custom::DenoConfigurationType::PackageJson
+            }
+            _ => return None,
+          };
+          Some(lsp_custom::DenoConfigurationChangeEvent {
+            scope_uri: t.0,
+            file_uri: e.uri.clone(),
+            typ: lsp_custom::DenoConfigurationChangeType::from_file_change_type(
+              e.typ,
+            ),
+            configuration_type,
+          })
+        })
+      }));
+      self.workspace_files_hash = 0;
+      self.refresh_workspace_files();
+      self.refresh_config_tree().await;
+      deno_config_changes.extend(changes.iter().filter_map(|(s, e)| {
+        self.config.tree.watched_file_type(s).and_then(|t| {
+          let configuration_type = match t.1 {
+            ConfigWatchedFileType::DenoJson => {
+              lsp_custom::DenoConfigurationType::DenoJson
+            }
+            ConfigWatchedFileType::PackageJson => {
+              lsp_custom::DenoConfigurationType::PackageJson
+            }
+            _ => return None,
+          };
+          Some(lsp_custom::DenoConfigurationChangeEvent {
+            scope_uri: t.0,
+            file_uri: e.uri.clone(),
+            typ: lsp_custom::DenoConfigurationChangeType::from_file_change_type(
+              e.typ,
+            ),
+            configuration_type,
+          })
+        })
+      }));
+      if !deno_config_changes.is_empty() {
+        self.client.send_did_change_deno_configuration_notification(
+          lsp_custom::DidChangeDenoConfigurationNotificationParams {
+            changes: deno_config_changes.into_iter().collect(),
+          },
         );
       }
-      if let Err(err) = self.update_tsconfig().await {
-        lsp_warn!("Error updating tsconfig: {:#}", err);
-        self.client.show_message(MessageType::WARNING, err);
-      }
-      touched = true;
-    }
-
-    let has_package_json_changed = changes
-      .iter()
-      .any(|e| e.as_str().ends_with("/package.json"));
-
-    if has_package_json_changed {
-      let mut files_to_check = IndexSet::with_capacity(2);
-      if let Some(package_json) = &self.maybe_package_json {
-        files_to_check.insert(package_json.specifier());
-      }
-      if let Err(err) = self.update_package_json() {
-        lsp_warn!("Error updating package.json: {:#}", err);
-        self.client.show_message(MessageType::WARNING, err);
-      }
-      if let Some(package_json) = &self.maybe_package_json {
-        files_to_check.insert(package_json.specifier());
-      }
-      if let Some(root_uri) = self.config.root_uri() {
-        config_changes.extend(
-          params
-            .changes
-            .iter()
-            .filter(|e| files_to_check.contains(&e.uri))
-            .map(|e| lsp_custom::DenoConfigurationChangeEvent {
-              scope_uri: root_uri.clone(),
-              file_uri: e.uri.clone(),
-              typ:
-                lsp_custom::DenoConfigurationChangeType::from_file_change_type(
-                  e.typ,
-                ),
-              configuration_type:
-                lsp_custom::DenoConfigurationType::PackageJson,
-            }),
-        );
-      }
-      touched = true;
-    }
-
-    if !config_changes.is_empty() {
-      self.client.send_did_change_deno_configuration_notification(
-        lsp_custom::DidChangeDenoConfigurationNotificationParams {
-          changes: config_changes.into_iter().collect(),
-        },
-      );
-    }
-
-    // if the current import map, or config file has changed, we need to
-    // reload the import map
-    let import_map_changed = self
-      .maybe_import_map
-      .as_ref()
-      .map(|import_map| changes.contains(import_map.base_url()))
-      .unwrap_or(false);
-    if touched || import_map_changed {
-      if let Err(err) = self.update_import_map().await {
-        lsp_warn!("Error updating import map: {:#}", err);
-        self.client.show_message(MessageType::WARNING, err);
-      }
-      touched = true;
-    }
-
-    if touched {
       self.recreate_npm_services_if_necessary().await;
       self.refresh_documents_config().await;
       self.diagnostics_server.invalidate_all();
@@ -1732,8 +1518,7 @@ impl Inner {
       }
       workspace_folders.push((specifier.clone(), folder.clone()));
     }
-
-    self.config.workspace_folders = workspace_folders;
+    self.config.set_workspace_folders(workspace_folders);
   }
 
   async fn document_symbol(
@@ -1786,7 +1571,13 @@ impl Inner {
       .url_map
       .normalize_url(&params.text_document.uri, LspUrlKind::File);
     // skip formatting any files ignored by the config file
-    if !self.fmt_options.files.matches_specifier(&specifier) {
+    if !self
+      .config
+      .tree
+      .fmt_options_for_specifier(&specifier)
+      .files
+      .matches_specifier(&specifier)
+    {
       return Ok(None);
     }
     let document = match self.documents.get(&specifier) {
@@ -1809,7 +1600,12 @@ impl Inner {
 
     // spawn a blocking task to allow doing other work while this is occurring
     let text_edits = deno_core::unsync::spawn_blocking({
-      let fmt_options = self.fmt_options.options.clone();
+      let fmt_options = self
+        .config
+        .tree
+        .fmt_options_for_specifier(&specifier)
+        .options
+        .clone();
       let document = document.clone();
       move || {
         let format_result = match document.maybe_parsed_source() {
@@ -2041,10 +1837,14 @@ impl Inner {
                 line_index.offset_tsc(diagnostic.range.start)?
                   ..line_index.offset_tsc(diagnostic.range.end)?,
                 codes,
-                (&self.fmt_options.options).into(),
+                (&self
+                  .config
+                  .tree
+                  .fmt_options_for_specifier(&specifier)
+                  .options)
+                  .into(),
                 tsc::UserPreferences::from_config_for_specifier(
                   &self.config,
-                  &self.fmt_options.options,
                   &specifier,
                 ),
               )
@@ -2084,7 +1884,7 @@ impl Inner {
               })?
           }
           Some("deno-lint") => code_actions
-            .add_deno_lint_ignore_action(
+            .add_deno_lint_actions(
               &specifier,
               diagnostic,
               asset_or_doc.document().map(|d| d.text_info()),
@@ -2135,7 +1935,6 @@ impl Inner {
           ..line_index.offset_tsc(params.range.end)?,
         Some(tsc::UserPreferences::from_config_for_specifier(
           &self.config,
-          &self.fmt_options.options,
           &specifier,
         )),
         only,
@@ -2194,10 +1993,14 @@ impl Inner {
         .get_combined_code_fix(
           self.snapshot(),
           &code_action_data,
-          (&self.fmt_options.options).into(),
+          (&self
+            .config
+            .tree
+            .fmt_options_for_specifier(&code_action_data.specifier)
+            .options)
+            .into(),
           tsc::UserPreferences::from_config_for_specifier(
             &self.config,
-            &self.fmt_options.options,
             &code_action_data.specifier,
           ),
         )
@@ -2211,7 +2014,7 @@ impl Inner {
         fix_ts_import_changes(
           &code_action_data.specifier,
           &combined_code_actions.changes,
-          &self.get_ts_response_import_mapper(),
+          &self.get_ts_response_import_mapper(&code_action_data.specifier),
         )
         .map_err(|err| {
           error!("Unable to remap changes: {:#}", err);
@@ -2240,19 +2043,23 @@ impl Inner {
         .get_edits_for_refactor(
           self.snapshot(),
           action_data.specifier.clone(),
-          (&self.fmt_options.options).into(),
+          (&self
+            .config
+            .tree
+            .fmt_options_for_specifier(&action_data.specifier)
+            .options)
+            .into(),
           line_index.offset_tsc(action_data.range.start)?
             ..line_index.offset_tsc(action_data.range.end)?,
           action_data.refactor_name,
           action_data.action_name,
           Some(tsc::UserPreferences::from_config_for_specifier(
             &self.config,
-            &self.fmt_options.options,
             &action_data.specifier,
           )),
         )
         .await?;
-      code_action.edit = refactor_edit_info.to_workspace_edit(self).await?;
+      code_action.edit = refactor_edit_info.to_workspace_edit(self)?;
       code_action
     } else {
       // The code action doesn't need to be resolved
@@ -2263,10 +2070,13 @@ impl Inner {
     Ok(result)
   }
 
-  pub fn get_ts_response_import_mapper(&self) -> TsResponseImportMapper {
+  pub fn get_ts_response_import_mapper(
+    &self,
+    referrer: &ModuleSpecifier,
+  ) -> TsResponseImportMapper {
     TsResponseImportMapper::new(
       &self.documents,
-      self.maybe_import_map.as_deref(),
+      self.config.tree.import_map_for_specifier(referrer),
       self.npm.node_resolver.as_deref(),
       self.npm.resolver.as_deref(),
     )
@@ -2320,7 +2130,6 @@ impl Inner {
           line_index,
           &navigation_tree,
         )
-        .await
         .map_err(|err| {
           error!(
             "Error getting ts code lenses for \"{:#}\": {:#}",
@@ -2489,7 +2298,7 @@ impl Inner {
       .await?;
 
     if let Some(definition) = maybe_definition {
-      let results = definition.to_definition(line_index, self).await;
+      let results = definition.to_definition(line_index, self);
       self.performance.measure(mark);
       Ok(results)
     } else {
@@ -2580,7 +2389,7 @@ impl Inner {
         &self.jsr_search_api,
         &self.npm.search_api,
         &self.documents,
-        self.maybe_import_map.clone(),
+        self.config.tree.import_map_for_specifier(&specifier),
       )
       .await;
     }
@@ -2606,13 +2415,17 @@ impl Inner {
           tsc::GetCompletionsAtPositionOptions {
             user_preferences: tsc::UserPreferences::from_config_for_specifier(
               &self.config,
-              &self.fmt_options.options,
               &specifier,
             ),
             trigger_character,
             trigger_kind,
           },
-          (&self.fmt_options.options).into(),
+          (&self
+            .config
+            .tree
+            .fmt_options_for_specifier(&specifier)
+            .options)
+            .into(),
         )
         .await;
 
@@ -2659,11 +2472,17 @@ impl Inner {
           .get_completion_details(
             self.snapshot(),
             GetCompletionDetailsArgs {
-              format_code_settings: Some((&self.fmt_options.options).into()),
+              format_code_settings: Some(
+                (&self
+                  .config
+                  .tree
+                  .fmt_options_for_specifier(specifier)
+                  .options)
+                  .into(),
+              ),
               preferences: Some(
                 tsc::UserPreferences::from_config_for_specifier(
                   &self.config,
-                  &self.fmt_options.options,
                   specifier,
                 ),
               ),
@@ -2984,7 +2803,6 @@ impl Inner {
       let rename_locations = tsc::RenameLocations { locations };
       let workspace_edits = rename_locations
         .into_workspace_edit(&params.new_name, self)
-        .await
         .map_err(|err| {
           error!("Failed to get workspace edits: {:#}", err);
           LspError::internal_error()
@@ -3180,6 +2998,12 @@ impl Inner {
       if options.enabled == UpdateImportsOnFileMoveEnabled::Never {
         continue;
       }
+      let format_code_settings = (&self
+        .config
+        .tree
+        .fmt_options_for_specifier(&old_specifier)
+        .options)
+        .into();
       changes.extend(
         self
           .ts_server
@@ -3190,7 +3014,7 @@ impl Inner {
               &resolve_url(&rename.new_uri).unwrap(),
               LspUrlKind::File,
             ),
-            (&self.fmt_options.options).into(),
+            format_code_settings,
             tsc::UserPreferences {
               allow_text_changes_in_new_files: Some(true),
               ..Default::default()
@@ -3241,7 +3065,6 @@ impl Inner {
     let snapshot = DiagnosticServerUpdateMessage {
       snapshot: self.snapshot(),
       config: self.config.snapshot(),
-      lint_options: self.lint_options.clone(),
       url_map: self.url_map.clone(),
     };
     if let Err(err) = self.diagnostics_server.update(snapshot) {
@@ -3350,31 +3173,31 @@ impl tower_lsp::LanguageServer for LanguageServer {
         ls.maybe_testing_server = Some(test_server);
       }
 
-      if let Some(root_uri) = ls.config.root_uri() {
-        let mut config_events = vec![];
-        if let Some(config_file) = ls.config.maybe_config_file() {
+      let mut config_events = vec![];
+      for (scope_uri, config_data) in ls.config.tree.data_by_scope() {
+        if let Some(config_file) = &config_data.config_file {
           config_events.push(lsp_custom::DenoConfigurationChangeEvent {
-            scope_uri: root_uri.clone(),
+            scope_uri: scope_uri.clone(),
             file_uri: config_file.specifier.clone(),
             typ: lsp_custom::DenoConfigurationChangeType::Added,
             configuration_type: lsp_custom::DenoConfigurationType::DenoJson,
           });
         }
-        if let Some(package_json) = &ls.maybe_package_json {
+        if let Some(package_json) = &config_data.package_json {
           config_events.push(lsp_custom::DenoConfigurationChangeEvent {
-            scope_uri: root_uri.clone(),
+            scope_uri: scope_uri.clone(),
             file_uri: package_json.specifier(),
             typ: lsp_custom::DenoConfigurationChangeType::Added,
             configuration_type: lsp_custom::DenoConfigurationType::PackageJson,
           });
         }
-        if !config_events.is_empty() {
-          ls.client.send_did_change_deno_configuration_notification(
-            lsp_custom::DidChangeDenoConfigurationNotificationParams {
-              changes: config_events,
-            },
-          );
-        }
+      }
+      if !config_events.is_empty() {
+        ls.client.send_did_change_deno_configuration_notification(
+          lsp_custom::DidChangeDenoConfigurationNotificationParams {
+            changes: config_events,
+          },
+        );
       }
 
       (ls.client.clone(), ls.http_client.clone())
@@ -3395,10 +3218,6 @@ impl tower_lsp::LanguageServer for LanguageServer {
     {
       let mut ls = self.0.write().await;
       init_log_file(ls.config.log_file());
-      if let Err(err) = ls.update_tsconfig().await {
-        lsp_warn!("Error updating tsconfig: {:#}", err);
-        ls.client.show_message(MessageType::WARNING, err);
-      }
       ls.refresh_documents_config().await;
       ls.diagnostics_server.invalidate_all();
       ls.send_diagnostics_update();
@@ -3432,7 +3251,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
 
   async fn shutdown(&self) -> LspResult<()> {
     self.1.cancel();
-    self.0.write().await.shutdown().await
+    self.0.write().await.shutdown()
   }
 
   async fn did_open(&self, params: DidOpenTextDocumentParams) {
@@ -3447,7 +3266,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     let specifier = inner
       .url_map
       .normalize_url(&params.text_document.uri, LspUrlKind::File);
-    let document = inner.did_open(&specifier, params).await;
+    let document = inner.did_open(&specifier, params);
     if document.is_diagnosable() {
       inner.refresh_npm_specifiers().await;
       let specifiers = inner.documents.dependents(&specifier);
@@ -3532,6 +3351,8 @@ impl tower_lsp::LanguageServer for LanguageServer {
     self.refresh_configuration().await;
     {
       let mut ls = self.0.write().await;
+      ls.refresh_workspace_files();
+      ls.refresh_config_tree().await;
       ls.refresh_documents_config().await;
       ls.diagnostics_server.invalidate_all();
       ls.send_diagnostics_update();
@@ -3734,10 +3555,11 @@ impl Inner {
     let mark = self
       .performance
       .mark_with_args("lsp.cache", (&specifiers, &referrer));
+    let config_data = self.config.tree.data_for_specifier(&referrer);
     let roots = if !specifiers.is_empty() {
       specifiers
     } else {
-      vec![referrer]
+      vec![referrer.clone()]
     };
     let workspace_settings = self.config.workspace_settings();
     let mut cli_options = CliOptions::new(
@@ -3749,21 +3571,28 @@ impl Inner {
           .unsafely_ignore_certificate_errors
           .clone(),
         node_modules_dir: Some(
-          self.config.maybe_node_modules_dir_path().is_some(),
+          config_data
+            .as_ref()
+            .and_then(|d| d.node_modules_dir.as_ref())
+            .is_some(),
         ),
         // bit of a hack to force the lsp to cache the @types/node package
         type_check_mode: crate::args::TypeCheckMode::Local,
         ..Default::default()
       },
       self.initial_cwd.clone(),
-      self.config.maybe_config_file().cloned(),
-      self.config.maybe_lockfile().cloned(),
-      self.maybe_package_json.clone(),
+      config_data
+        .as_ref()
+        .and_then(|d| d.config_file.as_deref().cloned()),
+      config_data.as_ref().and_then(|d| d.lockfile.clone()),
+      config_data
+        .as_ref()
+        .and_then(|d| d.package_json.as_deref().cloned()),
       force_global_cache,
     )?;
     // don't use the specifier in self.maybe_import_map because it's not
     // necessarily an import map specifier (could be a deno.json)
-    if let Some(import_map) = self.resolve_import_map_specifier()? {
+    if let Some(import_map) = self.resolve_import_map_specifier(&referrer)? {
       cli_options.set_import_map_specifier(Some(import_map));
     }
 
@@ -3796,7 +3625,7 @@ impl Inner {
 
   fn task_definitions(&self) -> LspResult<Vec<TaskDefinition>> {
     let mut result = vec![];
-    if let Some(config_file) = self.config.maybe_config_file() {
+    for config_file in self.config.tree.config_files() {
       if let Some(tasks) = json!(&config_file.json.tasks).as_object() {
         for (name, value) in tasks {
           let Some(command) = value.as_str() else {
@@ -3810,7 +3639,7 @@ impl Inner {
         }
       };
     }
-    if let Some(package_json) = &self.maybe_package_json {
+    for package_json in self.config.tree.package_jsons() {
       if let Some(scripts) = &package_json.scripts {
         for (name, command) in scripts {
           result.push(TaskDefinition {
@@ -3857,7 +3686,6 @@ impl Inner {
         text_span,
         tsc::UserPreferences::from_config_for_specifier(
           &self.config,
-          &self.fmt_options.options,
           &specifier,
         ),
       )
@@ -3985,5 +3813,114 @@ impl Inner {
     };
     self.performance.measure(mark);
     Ok(contents)
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use pretty_assertions::assert_eq;
+  use test_util::TempDir;
+
+  #[test]
+  fn test_walk_workspace() {
+    let temp_dir = TempDir::new();
+    temp_dir.create_dir_all("root1/node_modules/");
+    temp_dir.write("root1/node_modules/mod.ts", ""); // no, node_modules
+
+    temp_dir.create_dir_all("root1/sub_dir");
+    temp_dir.create_dir_all("root1/target");
+    temp_dir.create_dir_all("root1/node_modules");
+    temp_dir.create_dir_all("root1/.git");
+    temp_dir.create_dir_all("root1/file.ts"); // no, directory
+    temp_dir.write("root1/mod0.ts", ""); // yes
+    temp_dir.write("root1/mod1.js", ""); // yes
+    temp_dir.write("root1/mod2.tsx", ""); // yes
+    temp_dir.write("root1/mod3.d.ts", ""); // yes
+    temp_dir.write("root1/mod4.jsx", ""); // yes
+    temp_dir.write("root1/mod5.mjs", ""); // yes
+    temp_dir.write("root1/mod6.mts", ""); // yes
+    temp_dir.write("root1/mod7.d.mts", ""); // yes
+    temp_dir.write("root1/mod8.json", ""); // yes
+    temp_dir.write("root1/mod9.jsonc", ""); // yes
+    temp_dir.write("root1/other.txt", ""); // no, text file
+    temp_dir.write("root1/other.wasm", ""); // no, don't load wasm
+    temp_dir.write("root1/Cargo.toml", ""); // no
+    temp_dir.write("root1/sub_dir/mod.ts", ""); // yes
+    temp_dir.write("root1/sub_dir/data.min.ts", ""); // no, minified file
+    temp_dir.write("root1/.git/main.ts", ""); // no, .git folder
+    temp_dir.write("root1/node_modules/main.ts", ""); // no, because it's in a node_modules folder
+    temp_dir.write("root1/target/main.ts", ""); // no, because there is a Cargo.toml in the root directory
+
+    temp_dir.create_dir_all("root2/folder");
+    temp_dir.create_dir_all("root2/sub_folder");
+    temp_dir.write("root2/file1.ts", ""); // yes, enabled
+    temp_dir.write("root2/file2.ts", ""); // no, not enabled
+    temp_dir.write("root2/folder/main.ts", ""); // yes, enabled
+    temp_dir.write("root2/folder/other.ts", ""); // no, disabled
+    temp_dir.write("root2/sub_folder/a.js", ""); // no, not enabled
+    temp_dir.write("root2/sub_folder/b.ts", ""); // no, not enabled
+    temp_dir.write("root2/sub_folder/c.js", ""); // no, not enabled
+
+    temp_dir.create_dir_all("root3/");
+    temp_dir.write("root3/mod.ts", ""); // no, not enabled
+
+    let mut config = Config::new_with_roots(vec![
+      temp_dir.uri().join("root1/").unwrap(),
+      temp_dir.uri().join("root2/").unwrap(),
+      temp_dir.uri().join("root3/").unwrap(),
+    ]);
+    config.set_workspace_settings(
+      Default::default(),
+      vec![
+        (
+          temp_dir.uri().join("root1/").unwrap(),
+          WorkspaceSettings {
+            enable: Some(true),
+            ..Default::default()
+          },
+        ),
+        (
+          temp_dir.uri().join("root2/").unwrap(),
+          WorkspaceSettings {
+            enable: Some(true),
+            enable_paths: Some(vec![
+              "file1.ts".to_string(),
+              "folder".to_string(),
+            ]),
+            disable_paths: vec!["folder/other.ts".to_string()],
+            ..Default::default()
+          },
+        ),
+        (
+          temp_dir.uri().join("root3/").unwrap(),
+          WorkspaceSettings {
+            enable: Some(false),
+            ..Default::default()
+          },
+        ),
+      ],
+    );
+
+    let (workspace_files, hit_limit) = Inner::walk_workspace(&config);
+    assert!(!hit_limit);
+    assert_eq!(
+      json!(workspace_files),
+      json!([
+        temp_dir.uri().join("root1/mod0.ts").unwrap(),
+        temp_dir.uri().join("root1/mod1.js").unwrap(),
+        temp_dir.uri().join("root1/mod2.tsx").unwrap(),
+        temp_dir.uri().join("root1/mod3.d.ts").unwrap(),
+        temp_dir.uri().join("root1/mod4.jsx").unwrap(),
+        temp_dir.uri().join("root1/mod5.mjs").unwrap(),
+        temp_dir.uri().join("root1/mod6.mts").unwrap(),
+        temp_dir.uri().join("root1/mod7.d.mts").unwrap(),
+        temp_dir.uri().join("root1/mod8.json").unwrap(),
+        temp_dir.uri().join("root1/mod9.jsonc").unwrap(),
+        temp_dir.uri().join("root1/sub_dir/mod.ts").unwrap(),
+        temp_dir.uri().join("root2/file1.ts").unwrap(),
+        temp_dir.uri().join("root2/folder/main.ts").unwrap(),
+      ])
+    );
   }
 }

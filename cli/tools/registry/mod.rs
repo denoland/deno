@@ -9,6 +9,8 @@ use std::sync::Arc;
 
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
+use deno_ast::ModuleSpecifier;
+use deno_config::glob::FilePatterns;
 use deno_config::ConfigFile;
 use deno_config::WorkspaceMemberConfig;
 use deno_core::anyhow::bail;
@@ -97,9 +99,9 @@ async fn prepare_publish(
   deno_json: &ConfigFile,
   source_cache: Arc<ParsedSourceCache>,
   graph: Arc<deno_graph::ModuleGraph>,
+  cli_options: Arc<CliOptions>,
   mapped_resolver: Arc<MappedSpecifierResolver>,
   sloppy_imports_resolver: Option<SloppyImportsResolver>,
-  bare_node_builtins: bool,
   diagnostics_collector: &PublishDiagnosticsCollector,
 ) -> Result<Rc<PreparedPublishPackage>, AnyError> {
   let config_path = deno_json.specifier.to_file_path().unwrap();
@@ -145,13 +147,23 @@ async fn prepare_publish(
 
   let diagnostics_collector = diagnostics_collector.clone();
   let tarball = deno_core::unsync::spawn_blocking(move || {
+    let bare_node_builtins = cli_options.unstable_bare_node_builtins();
     let unfurler = SpecifierUnfurler::new(
       &mapped_resolver,
       sloppy_imports_resolver.as_ref(),
       bare_node_builtins,
     );
+    let root_specifier =
+      ModuleSpecifier::from_directory_path(&dir_path).unwrap();
+    collect_excluded_module_diagnostics(
+      &root_specifier,
+      &graph,
+      file_patterns.as_ref(),
+      &diagnostics_collector,
+    );
     tar::create_gzipped_tarball(
       &dir_path,
+      &cli_options,
       LazyGraphSourceParser::new(&source_cache, &graph),
       &diagnostics_collector,
       &unfurler,
@@ -188,6 +200,28 @@ async fn prepare_publish(
       .to_string_lossy()
       .to_string(),
   }))
+}
+
+fn collect_excluded_module_diagnostics(
+  root: &ModuleSpecifier,
+  graph: &deno_graph::ModuleGraph,
+  file_patterns: Option<&FilePatterns>,
+  diagnostics_collector: &PublishDiagnosticsCollector,
+) {
+  let Some(file_patterns) = file_patterns else {
+    return;
+  };
+  let specifiers = graph
+    .specifiers()
+    .map(|(s, _)| s)
+    .filter(|s| s.as_str().starts_with(root.as_str()));
+  for specifier in specifiers {
+    if !file_patterns.matches_specifier(specifier) {
+      diagnostics_collector.push(PublishDiagnostic::ExcludedModule {
+        specifier: specifier.clone(),
+      });
+    }
+  }
 }
 
 #[derive(Serialize)]
@@ -745,7 +779,6 @@ async fn prepare_packages_for_publishing(
   let type_checker = cli_factory.type_checker().await?;
   let fs = cli_factory.fs();
   let cli_options = cli_factory.cli_options();
-  let bare_node_builtins = cli_options.unstable_bare_node_builtins();
 
   if members.len() > 1 {
     println!("Publishing a workspace...");
@@ -776,15 +809,16 @@ async fn prepare_packages_for_publishing(
         None
       };
       let graph = graph.clone();
+      let cli_options = cli_options.clone();
       async move {
         let package = prepare_publish(
           &member.package_name,
           &member.config_file,
           source_cache.clone(),
           graph,
+          cli_options,
           mapped_resolver,
           sloppy_imports_resolver,
-          bare_node_builtins,
           diagnostics_collector,
         )
         .await
@@ -835,6 +869,29 @@ async fn build_and_check_graph_for_publish(
       colors::yellow("Warning"),
     );
     Ok(Arc::new(graph))
+  } else if std::env::var("DENO_INTERNAL_FAST_CHECK_OVERWRITE").as_deref()
+    == Ok("1")
+  {
+    if check_if_git_repo_dirty(cli_options.initial_cwd()).await {
+      bail!("When using DENO_INTERNAL_FAST_CHECK_OVERWRITE, the git repo must be in a clean state.");
+    }
+
+    for module in graph.modules() {
+      if module.specifier().scheme() != "file" {
+        continue;
+      }
+      let Some(js) = module.js() else {
+        continue;
+      };
+      if let Some(module) = js.fast_check_module() {
+        std::fs::write(
+          js.specifier.to_file_path().unwrap(),
+          module.source.as_ref(),
+        )?;
+      }
+    }
+
+    bail!("Exiting due to DENO_INTERNAL_FAST_CHECK_OVERWRITE")
   } else {
     log::info!("Checking for slow types in the public API...");
     let mut any_pkg_had_diagnostics = false;
@@ -887,7 +944,7 @@ pub async fn publish(
   flags: Flags,
   publish_flags: PublishFlags,
 ) -> Result<(), AnyError> {
-  let cli_factory = CliFactory::from_flags(flags).await?;
+  let cli_factory = CliFactory::from_flags(flags)?;
 
   let auth_method =
     get_auth_method(publish_flags.token, publish_flags.dry_run)?;
@@ -931,6 +988,15 @@ pub async fn publish(
     bail!("No packages to publish");
   }
 
+  if std::env::var("DENO_TESTING_DISABLE_GIT_CHECK")
+    .ok()
+    .is_none()
+    && !publish_flags.allow_dirty
+    && check_if_git_repo_dirty(cli_options.initial_cwd()).await
+  {
+    bail!("Aborting due to uncommitted changes. Check in source code or run with --allow-dirty");
+  }
+
   if publish_flags.dry_run {
     for (_, package) in prepared_data.package_by_name {
       log::info!(
@@ -944,15 +1010,6 @@ pub async fn publish(
     }
     log::warn!("{} Aborting due to --dry-run", colors::yellow("Warning"));
     return Ok(());
-  }
-
-  if std::env::var("DENO_TESTING_DISABLE_GIT_CHECK")
-    .ok()
-    .is_none()
-    && !publish_flags.allow_dirty
-    && check_if_git_repo_dirty(cli_options.initial_cwd()).await
-  {
-    bail!("Aborting due to uncomitted changes",);
   }
 
   perform_publish(

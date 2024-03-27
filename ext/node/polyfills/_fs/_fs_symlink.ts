@@ -7,7 +7,7 @@ import { CallbackWithError } from "ext:deno_node/_fs/_fs_common.ts";
 import { pathFromURL } from "ext:deno_web/00_infra.js";
 import { promisify } from "ext:deno_node/internal/util.mjs";
 
-type SymlinkType = "file" | "dir";
+type SymlinkType = "file" | "dir" | "junction";
 
 export function symlink(
   target: string | URL,

@@ -76,6 +76,11 @@ import {
   statSync,
 } from "ext:deno_node/_fs/_fs_stat.ts";
 import {
+  statfs,
+  statfsPromise,
+  statfsSync,
+} from "ext:deno_node/_fs/_fs_statfs.js";
+import {
   symlink,
   symlinkPromise,
   symlinkSync,
@@ -156,6 +161,7 @@ const promises = {
   symlink: symlinkPromise,
   lstat: lstatPromise,
   stat: statPromise,
+  statfs: statfsPromise,
   link: linkPromise,
   unlink: unlinkPromise,
   chmod: chmodPromise,
@@ -253,6 +259,8 @@ export default {
   stat,
   Stats,
   statSync,
+  statfs,
+  statfsSync,
   symlink,
   symlinkSync,
   truncate,
@@ -354,6 +362,8 @@ export {
   rmdirSync,
   rmSync,
   stat,
+  statfs,
+  statfsSync,
   Stats,
   statSync,
   symlink,

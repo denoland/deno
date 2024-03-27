@@ -54,10 +54,22 @@ impl GitIgnoreTree {
     }
   }
 
-  pub fn get_resolved_git_ignore(
+  pub fn get_resolved_git_ignore_for_dir(
     &mut self,
     dir_path: &Path,
   ) -> Option<Rc<DirGitIgnores>> {
+    // for directories, provide itself in order to tell
+    // if it should stop searching for gitignores because
+    // maybe this dir_path is a .git directory
+    let parent = dir_path.parent()?;
+    self.get_resolved_git_ignore_inner(parent, Some(dir_path))
+  }
+
+  pub fn get_resolved_git_ignore_for_file(
+    &mut self,
+    file_path: &Path,
+  ) -> Option<Rc<DirGitIgnores>> {
+    let dir_path = file_path.parent()?;
     self.get_resolved_git_ignore_inner(dir_path, None)
   }
 
@@ -141,9 +153,8 @@ mod test {
     let mut ignore_tree = GitIgnoreTree::new(Arc::new(fs), Vec::new());
     let mut run_test = |path: &str, expected: bool| {
       let path = PathBuf::from(path);
-      let gitignore = ignore_tree
-        .get_resolved_git_ignore(path.parent().unwrap())
-        .unwrap();
+      let gitignore =
+        ignore_tree.get_resolved_git_ignore_for_file(&path).unwrap();
       assert_eq!(
         gitignore.is_ignored(&path, /* is_dir */ false),
         expected,
