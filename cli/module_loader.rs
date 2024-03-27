@@ -463,6 +463,7 @@ impl CliModuleLoader {
       ModuleSourceCode::String(code),
       specifier,
       &code_source.found_url,
+      None,
     ))
   }
 

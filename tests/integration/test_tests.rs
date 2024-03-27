@@ -283,6 +283,18 @@ itest!(junit {
   output: "test/pass.junit.out",
 });
 
+itest!(junit_nested {
+  args: "test --reporter junit test/nested_failures.ts",
+  output: "test/nested_failures.junit.out",
+  exit_code: 1,
+});
+
+itest!(junit_multiple_test_files {
+  args: "test --reporter junit test/pass.ts test/fail.ts",
+  output: "test/junit_multiple_test_files.junit.out",
+  exit_code: 1,
+});
+
 #[test]
 fn junit_path() {
   let context = TestContextBuilder::new().use_temp_cwd().build();

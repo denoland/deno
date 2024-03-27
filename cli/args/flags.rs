@@ -17,6 +17,7 @@ use deno_runtime::permissions::parse_sys_kind;
 use log::debug;
 use log::Level;
 use std::env;
+use std::ffi::OsString;
 use std::net::SocketAddr;
 use std::num::NonZeroU32;
 use std::num::NonZeroU8;
@@ -199,6 +200,7 @@ pub struct UninstallFlags {
 pub struct LintFlags {
   pub files: FileFlags,
   pub rules: bool,
+  pub fix: bool,
   pub maybe_rules_tags: Option<Vec<String>>,
   pub maybe_rules_include: Option<Vec<String>>,
   pub maybe_rules_exclude: Option<Vec<String>>,
@@ -908,7 +910,7 @@ To evaluate code in the shell:
 );
 
 /// Main entry point for parsing deno's command line flags.
-pub fn flags_from_vec(args: Vec<String>) -> clap::error::Result<Flags> {
+pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
   let mut app = clap_root();
   let mut matches = app.try_get_matches_from_mut(&args)?;
 
@@ -2005,6 +2007,12 @@ Ignore linting a file by adding an ignore comment at the top of the file:
     )
     .defer(|cmd| {
       cmd
+        .arg(
+          Arg::new("fix")
+            .long("fix")
+            .help("Fix any linting errors for rules that support it")
+            .action(ArgAction::SetTrue),
+        )
         .arg(
           Arg::new("rules")
             .long("rules")
@@ -3622,6 +3630,7 @@ fn lint_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     Some(f) => f.collect(),
     None => vec![],
   };
+  let fix = matches.get_flag("fix");
   let rules = matches.get_flag("rules");
   let maybe_rules_tags = matches
     .remove_many::<String>("rules-tags")
@@ -3642,6 +3651,7 @@ fn lint_parse(flags: &mut Flags, matches: &mut ArgMatches) {
       include: files,
       ignore,
     },
+    fix,
     rules,
     maybe_rules_tags,
     maybe_rules_include,
@@ -4285,7 +4295,7 @@ mod tests {
 
   /// Creates vector of strings, Vec<String>
   macro_rules! svec {
-    ($($x:expr),* $(,)?) => (vec![$($x.to_string()),*]);
+    ($($x:expr),* $(,)?) => (vec![$($x.to_string().into()),*]);
   }
 
   #[test]
@@ -5015,6 +5025,7 @@ mod tests {
             include: vec!["script_1.ts".to_string(), "script_2.ts".to_string(),],
             ignore: vec![],
           },
+          fix: false,
           rules: false,
           maybe_rules_tags: None,
           maybe_rules_include: None,
@@ -5042,6 +5053,7 @@ mod tests {
             include: vec!["script_1.ts".to_string(), "script_2.ts".to_string()],
             ignore: vec![],
           },
+          fix: false,
           rules: false,
           maybe_rules_tags: None,
           maybe_rules_include: None,
@@ -5070,6 +5082,7 @@ mod tests {
             include: vec!["script_1.ts".to_string(), "script_2.ts".to_string()],
             ignore: vec![],
           },
+          fix: false,
           rules: false,
           maybe_rules_tags: None,
           maybe_rules_include: None,
@@ -5085,8 +5098,12 @@ mod tests {
       }
     );
 
-    let r =
-      flags_from_vec(svec!["deno", "lint", "--ignore=script_1.ts,script_2.ts"]);
+    let r = flags_from_vec(svec![
+      "deno",
+      "lint",
+      "--fix",
+      "--ignore=script_1.ts,script_2.ts"
+    ]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -5095,6 +5112,7 @@ mod tests {
             include: vec![],
             ignore: vec!["script_1.ts".to_string(), "script_2.ts".to_string()],
           },
+          fix: true,
           rules: false,
           maybe_rules_tags: None,
           maybe_rules_include: None,
@@ -5116,6 +5134,7 @@ mod tests {
             include: vec![],
             ignore: vec![],
           },
+          fix: false,
           rules: true,
           maybe_rules_tags: None,
           maybe_rules_include: None,
@@ -5142,6 +5161,7 @@ mod tests {
             include: vec![],
             ignore: vec![],
           },
+          fix: false,
           rules: true,
           maybe_rules_tags: Some(svec!["recommended"]),
           maybe_rules_include: None,
@@ -5169,6 +5189,7 @@ mod tests {
             include: vec![],
             ignore: vec![],
           },
+          fix: false,
           rules: false,
           maybe_rules_tags: Some(svec![""]),
           maybe_rules_include: Some(svec!["ban-untagged-todo", "no-undef"]),
@@ -5190,6 +5211,7 @@ mod tests {
             include: vec!["script_1.ts".to_string()],
             ignore: vec![],
           },
+          fix: false,
           rules: false,
           maybe_rules_tags: None,
           maybe_rules_include: None,
@@ -5218,6 +5240,7 @@ mod tests {
             include: vec!["script_1.ts".to_string()],
             ignore: vec![],
           },
+          fix: false,
           rules: false,
           maybe_rules_tags: None,
           maybe_rules_include: None,
@@ -5247,6 +5270,7 @@ mod tests {
             include: vec!["script_1.ts".to_string()],
             ignore: vec![],
           },
+          fix: false,
           rules: false,
           maybe_rules_tags: None,
           maybe_rules_include: None,

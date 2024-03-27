@@ -2,6 +2,7 @@
 
 use std::collections::BTreeMap;
 use std::env::current_exe;
+use std::ffi::OsString;
 use std::fs;
 use std::future::Future;
 use std::io::Read;
@@ -239,7 +240,7 @@ pub fn is_standalone_binary(exe_path: &Path) -> bool {
 /// the bundle is executed. If not, this function exits with `Ok(None)`.
 pub fn extract_standalone(
   exe_path: &Path,
-  cli_args: Vec<String>,
+  cli_args: Vec<OsString>,
 ) -> Result<
   Option<impl Future<Output = Result<(Metadata, eszip::EszipV2), AnyError>>>,
   AnyError,
@@ -281,7 +282,10 @@ pub fn extract_standalone(
       .context("Failed to read metadata from the current executable")?;
 
     let mut metadata: Metadata = serde_json::from_str(&metadata).unwrap();
-    metadata.argv.append(&mut cli_args[1..].to_vec());
+    metadata.argv.reserve(cli_args.len() - 1);
+    for arg in cli_args.into_iter().skip(1) {
+      metadata.argv.push(arg.into_string().unwrap());
+    }
 
     Ok((metadata, eszip))
   }))

@@ -7,6 +7,7 @@ import {
   createPrivateKey,
   createPublicKey,
   createSecretKey,
+  createSign,
   generateKeyPair,
   generateKeyPairSync,
   KeyObject,
@@ -353,4 +354,51 @@ Deno.test("ECDH getPublicKey compressed", function () {
     const uncompressedKey = ecdh.getPublicKey("binary");
     assertEquals(uncompressedKey.length, 65);
   }
+});
+
+// https://github.com/denoland/deno/issues/20938
+Deno.test("rsa jwt signer", function () {
+  const token = `-----BEGIN PRIVATE KEY-----
+MIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQCVoKHiWLQKlnCG
+oR4d8g+OSGXoJ3yY+BFubB+1TSaCvWGLkqHjYAA0UCgOoaazE2YnXhVlO4tLDLn/
+5R6PJrsxksnup+AWnEbur+CuaeQqizGTQXA0nUrsza/QJxb05GSMW9kupzI5BXBi
+1R8Tmo5I0CpmXDi1yF+nL2NeDXHB999tXcRSrN/Ai11G1HFoYVs36+cm/Jw71BB1
+KsokwFuzvxTFL9bOXDy8/8MlF8QSBFaWBN1tNZ40+oLf/rYeNXpZAFywvC9rc/Ud
+B7J9InYHJQaq+vzuWNq7l0LnkJK+/Mq3AYl5yStjBie6tXC3LCmQ5MmLdzHE+SBQ
+7tUIL6fvAgMBAAECggEAMSMJRp2+smNpHK04iLj/ZshbvvuIrWt5vfuABjgJ15F9
+wSosQ9E4//T60qM/bTuHppH9ELuXKNRLGMATYwtjGgqMifVTX9l+adAURvK7XUVM
+yIEK6hxliJKblA3iOhXu9zEKh4mcsqEYoTw/8l4lL8A8zFSowvnEf9DOHwrnOr09
+bV6+6BZbLgugLqtOB7i5agnviiCV4Z4llWdhP3zW3c8/PUQyTsqebTkY0DB4FnI0
+vC0kQU/v/7MCueH0FA4fMEY9CWuzL3809I9rvUPIBgqSkpXEoWxoGUJxIHGYK6fG
++HHjZQp87Sfz5G4g/Qrq2Gqc2Mb7I0QS2zgBu1tx0QKBgQDH3EyxQ6W9r2S1WqEm
+w2B32AuemWwIdxaeLf4est0rO0G0ihAsx4vNZElKO7weYDypp8AjeYfjuriweyQA
+R8KDWonn9jA2QQfNNkXDIq+d5+zFbfdOFGqQEThLtpi5pPh0+NeUGQQZIb07jqLF
+giuZgOmPVFwru8jYLO04GTZoEwKBgQC/qCP74LHI3/35Ftx5l9CnM5Zr84ByoI5B
+3xt2Sd9OsxULxY/omvcB2EdBZSTVKunGmF2a7MDpOn0r/7FdSuuuqzrMwRqbzRFA
+GSO06vnoA/k6llcfXKqLZqjHuHEAUNpEeAuzNUKP2DgvnHRtXSkBpFb+IUTMlL9y
+O55+g570NQKBgBZiSgSgevOfrTvShrH8t9U0UTjWHg9kpxfYNtnhVnv9CwLZY65g
+Ovwp+zthLVSJmsG1lANlHR8YTo8Ve5a8csCbZ06feA7bgbAuH+oW/GxHCXGjO0t3
+Zef0xcVVEg3YuCsBo8NmedsGuFbvRrOwPInYsk/nNtt/EKOFhJv/1uQZAoGAdaYb
+YLTPrcWCO/PCp4l/9gN+5Ql24eaZLOpuCzDRuZfI5Y8DBgCKfEFtjEEwWQKcuuIx
+I7cNvJ3A1M+C6wfgoTpPP/2R/e3mFvjXqGlNuxUlWseK95+EuUntdZxNEaqQMdOX
+Kw0YrQBHjUJ3XeMAFxfwptN5TjRJSTA73OGjI7kCgYBtw1LmjFd6wJFyqLEsBnqO
+gnVnpxf1DMeMUFpNr+M14P3ETa5UaqiMvCD6VGOzCYv1F7JhnS9TFsYY+FV+L3Nh
+1+bZIPY4D4seyPgH0cCycBSVfqdAHJlfxf/Pm7lHCNxTGEfBWri4Ga1bW+zQpWY7
+SogaIHQjE81ZkmNtU5gM5Q==
+-----END PRIVATE KEY-----`;
+
+  const key = createPrivateKey(token);
+  assertEquals(key.type, "private");
+  assertEquals(key.asymmetricKeyType, "rsa");
+  assertEquals(key.asymmetricKeyDetails?.modulusLength, 2048);
+  assertEquals(key.asymmetricKeyDetails?.publicExponent, 65537n);
+
+  const signer = createSign("RSA-SHA256");
+  signer.update("hello");
+  const signature = signer.sign(key, "base64");
+
+  assertEquals(
+    signature,
+    `jEwckJ/d5GkF/8TTm+wllq2JNghG/m2JYJIW7vS8Vms53zCTTNSSegTSoIVoxWymwTPw2dTtZi41Lg0O271/WvEmQhiWD2dnjz6D/0F4eyn+QUhcmGCadDFyfp7+8x1XOppSw2YB8vL5WCL0QDdp3TAa/rWI0Hn4OftHMa6HPvatkGs+8XlQOGCCfd3TLg+t1UROgpgmetjoAM67mlwxXMGGu/Tr/EbXnnINKeB0iuSmD1FCxlrgFuYWDKxd79n2jZ74FrS/zto+bqWSI5uUa4Ar7yvXtek1Cu1OFM6vgdN9Y6Po2UD9+IT04EhU03LUDY5paYOO8yohz7p7kqHvpA==`,
+  );
 });

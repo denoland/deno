@@ -260,6 +260,12 @@ pub struct FmtOptions {
   pub files: FilePatterns,
 }
 
+impl Default for FmtOptions {
+  fn default() -> Self {
+    Self::new_with_base(PathBuf::from("/"))
+  }
+}
+
 impl FmtOptions {
   pub fn new_with_base(base: PathBuf) -> Self {
     Self {
@@ -391,6 +397,13 @@ pub struct LintOptions {
   pub rules: LintRulesConfig,
   pub files: FilePatterns,
   pub reporter_kind: LintReporterKind,
+  pub fix: bool,
+}
+
+impl Default for LintOptions {
+  fn default() -> Self {
+    Self::new_with_base(PathBuf::from("/"))
+  }
 }
 
 impl LintOptions {
@@ -399,6 +412,7 @@ impl LintOptions {
       rules: Default::default(),
       files: FilePatterns::new_with_base(base),
       reporter_kind: Default::default(),
+      fix: false,
     }
   }
 
@@ -407,6 +421,7 @@ impl LintOptions {
     maybe_lint_flags: Option<LintFlags>,
     initial_cwd: &Path,
   ) -> Result<Self, AnyError> {
+    let fix = maybe_lint_flags.as_ref().map(|f| f.fix).unwrap_or(false);
     let mut maybe_reporter_kind =
       maybe_lint_flags.as_ref().and_then(|lint_flags| {
         if lint_flags.json {
@@ -464,6 +479,7 @@ impl LintOptions {
         maybe_rules_include,
         maybe_rules_exclude,
       ),
+      fix,
     })
   }
 }
@@ -780,11 +796,18 @@ impl CliOptions {
       } else {
         None
       };
+    let parse_options = deno_config::ParseOptions {
+      include_task_comments: matches!(
+        flags.subcommand,
+        DenoSubcommand::Task(..)
+      ),
+    };
     let maybe_config_file = ConfigFile::discover(
       &flags.config_flag,
       flags.config_path_args(&initial_cwd),
       &initial_cwd,
       additional_config_file_names,
+      &parse_options,
     )?;
 
     let mut maybe_package_json = None;
@@ -1167,7 +1190,7 @@ impl CliOptions {
 
   pub fn resolve_tasks_config(
     &self,
-  ) -> Result<IndexMap<String, String>, AnyError> {
+  ) -> Result<IndexMap<String, deno_config::Task>, AnyError> {
     if let Some(config_file) = &self.maybe_config_file {
       config_file.resolve_tasks_config()
     } else if self.maybe_package_json.is_some() {
@@ -1834,7 +1857,12 @@ mod test {
     let cwd = &std::env::current_dir().unwrap();
     let config_specifier =
       ModuleSpecifier::parse("file:///deno/deno.jsonc").unwrap();
-    let config_file = ConfigFile::new(config_text, config_specifier).unwrap();
+    let config_file = ConfigFile::new(
+      config_text,
+      config_specifier,
+      &deno_config::ParseOptions::default(),
+    )
+    .unwrap();
     let actual = resolve_import_map_specifier(
       Some("import-map.json"),
       Some(&config_file),
@@ -1853,7 +1881,12 @@ mod test {
     let config_text = r#"{}"#;
     let config_specifier =
       ModuleSpecifier::parse("file:///deno/deno.jsonc").unwrap();
-    let config_file = ConfigFile::new(config_text, config_specifier).unwrap();
+    let config_file = ConfigFile::new(
+      config_text,
+      config_specifier,
+      &deno_config::ParseOptions::default(),
+    )
+    .unwrap();
     let actual = resolve_import_map_specifier(
       None,
       Some(&config_file),
@@ -1958,7 +1991,6 @@ mod test {
     let mut files = FileCollector::new(|_| true)
       .ignore_git_folder()
       .ignore_node_modules()
-      .ignore_vendor_folder()
       .collect_file_patterns(resolved_files)
       .unwrap();
 

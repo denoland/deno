@@ -4,7 +4,6 @@ mod args;
 mod auth_tokens;
 mod cache;
 mod cdp;
-mod deno_std;
 mod emit;
 mod errors;
 mod factory;
@@ -320,7 +319,7 @@ pub fn main() {
     Box::new(util::draw_thread::DrawThread::show),
   );
 
-  let args: Vec<String> = env::args().collect();
+  let args: Vec<_> = env::args_os().collect();
 
   // NOTE(lucacasonato): due to new PKU feature introduced in V8 11.6 we need to
   // initialize the V8 platform on a parent thread of all threads that will spawn

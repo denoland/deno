@@ -1,0 +1,7 @@
+// test for a module that's excluded from being
+// published, but is found in the module graph
+{
+  "args": "publish --dry-run",
+  "output": "publish.out",
+  "exitCode": 1
+}
