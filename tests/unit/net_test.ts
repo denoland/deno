@@ -2,7 +2,6 @@
 import {
   assert,
   assertEquals,
-  assertNotEquals,
   assertRejects,
   assertThrows,
   delay,
@@ -27,7 +26,6 @@ Deno.test({ permissions: { net: true } }, function netTcpListenClose() {
   assert(listener.addr.transport === "tcp");
   assertEquals(listener.addr.hostname, "127.0.0.1");
   assertEquals(listener.addr.port, listenPort);
-  assertNotEquals(listener.rid, 0);
   listener.close();
 });
 
@@ -233,7 +231,6 @@ Deno.test({ permissions: { net: true } }, async function netTcpDialListen() {
   assertEquals(1, buf[0]);
   assertEquals(2, buf[1]);
   assertEquals(3, buf[2]);
-  assert(conn.rid > 0);
 
   assert(readResult !== null);
 
@@ -269,7 +266,6 @@ Deno.test({ permissions: { net: true } }, async function netTcpSetNoDelay() {
   assertEquals(1, buf[0]);
   assertEquals(2, buf[1]);
   assertEquals(3, buf[2]);
-  assert(conn.rid > 0);
 
   assert(readResult !== null);
 
@@ -305,7 +301,6 @@ Deno.test({ permissions: { net: true } }, async function netTcpSetKeepAlive() {
   assertEquals(1, buf[0]);
   assertEquals(2, buf[1]);
   assertEquals(3, buf[2]);
-  assert(conn.rid > 0);
 
   assert(readResult !== null);
 
@@ -343,7 +338,6 @@ Deno.test(
     assertEquals(1, buf[0]);
     assertEquals(2, buf[1]);
     assertEquals(3, buf[2]);
-    assert(conn.rid > 0);
 
     assert(readResult !== null);
 
@@ -775,7 +769,6 @@ Deno.test(
     assertEquals(1, buf[0]);
     assertEquals(2, buf[1]);
     assertEquals(3, buf[2]);
-    assert(conn.rid > 0);
 
     assert(readResult !== null);
 

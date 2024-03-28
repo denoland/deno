@@ -29,15 +29,6 @@ class TlsConn extends Conn {
     this.#rid = rid;
   }
 
-  get rid() {
-    internals.warnOnDeprecatedApi(
-      "Deno.TlsConn.rid",
-      new Error().stack,
-      "Use `Deno.TlsConn` instance methods instead.",
-    );
-    return this.#rid;
-  }
-
   handshake() {
     return op_tls_handshake(this.#rid);
   }
@@ -110,15 +101,6 @@ class TlsListener extends Listener {
       value: rid,
     });
     this.#rid = rid;
-  }
-
-  get rid() {
-    internals.warnOnDeprecatedApi(
-      "Deno.TlsListener.rid",
-      new Error().stack,
-      "Use `Deno.TlsListener` instance methods instead.",
-    );
-    return this.#rid;
   }
 
   async accept() {
