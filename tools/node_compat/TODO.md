@@ -447,7 +447,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-crypto-dh-modp2.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-dh-modp2.js)
 - [parallel/test-crypto-dh-odd-key.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-dh-odd-key.js)
 - [parallel/test-crypto-dh-padding.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-dh-padding.js)
-- [parallel/test-crypto-dh-stateless.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-dh-stateless.js)
 - [parallel/test-crypto-domain.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-domain.js)
 - [parallel/test-crypto-domains.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-domains.js)
 - [parallel/test-crypto-ecb.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-ecb.js)
