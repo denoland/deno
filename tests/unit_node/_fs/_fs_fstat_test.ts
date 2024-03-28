@@ -75,14 +75,7 @@ Deno.test({
     using file = Deno.openSync(filePath);
 
     try {
-      // HEAD
       assertStatsBigInt(fstatSync(file.rid, { bigint: true }), file.statSync());
-      //
-      assertStatsBigInt(
-        fstatSync(file.rid, { bigint: true }),
-        Deno.fstatSync(file.rid),
-      );
-      //main
     } finally {
       Deno.removeSync(filePath);
     }

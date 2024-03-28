@@ -396,15 +396,6 @@ function parseFileInfo(response) {
   };
 }
 
-function fstatSync(rid) {
-  op_fs_file_stat_sync(rid, statBuf);
-  return statStruct(statBuf);
-}
-
-async function fstat(rid) {
-  return parseFileInfo(await op_fs_file_stat_async(rid));
-}
-
 async function lstat(path) {
   const res = await op_fs_lstat_async(pathFromURL(path));
   return parseFileInfo(res);
@@ -717,12 +708,13 @@ class FsFile {
     return seekSync(this.#rid, offset, whence);
   }
 
-  stat() {
-    return fstat(this.#rid);
+  async stat() {
+    return parseFileInfo(await op_fs_file_stat_async(this.#rid));
   }
 
   statSync() {
-    return fstatSync(this.#rid);
+    op_fs_file_stat_sync(this.#rid, statBuf);
+    return statStruct(statBuf);
   }
 
   async syncData() {
@@ -989,8 +981,6 @@ export {
   flock,
   flockSync,
   FsFile,
-  fstat,
-  fstatSync,
   fsync,
   fsyncSync,
   ftruncate,

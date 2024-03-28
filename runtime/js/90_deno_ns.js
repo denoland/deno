@@ -198,22 +198,6 @@ const denoNs = {
     );
     net.shutdown(rid);
   },
-  fstatSync(rid) {
-    internals.warnOnDeprecatedApi(
-      "Deno.fstatSync()",
-      new Error().stack,
-      "Use `Deno.FsFile.statSync()` instead.",
-    );
-    return fs.fstatSync(rid);
-  },
-  fstat(rid) {
-    internals.warnOnDeprecatedApi(
-      "Deno.fstat()",
-      new Error().stack,
-      "Use `Deno.FsFile.stat()` instead.",
-    );
-    return fs.fstat(rid);
-  },
   fsyncSync: fs.fsyncSync,
   fsync: fs.fsync,
   fdatasyncSync: fs.fdatasyncSync,
