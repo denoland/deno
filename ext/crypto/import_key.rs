@@ -562,7 +562,11 @@ fn import_key_ec_jwk(
             .map_err(|_| data_error("invalid JWK private key"))?
         }
         EcNamedCurve::P521 => {
-          return Err(data_error("Unsupported named curve"))
+          let d = decode_b64url_to_field_bytes::<p521::NistP521>(&d)?;
+          let pk = p521::SecretKey::from_bytes(&d)?;
+
+          pk.to_pkcs8_der()
+            .map_err(|_| data_error("invalid JWK private key"))?
         }
       };
 
@@ -652,7 +656,7 @@ fn import_key_ec(
       // 2-7
       // Deserialize PKCS8 - validate structure, extracts named_curve
       let named_curve_alg = match named_curve {
-        EcNamedCurve::P256 | EcNamedCurve::P384 => {
+        EcNamedCurve::P256 | EcNamedCurve::P384 | EcNamedCurve::P521 => {
           let pk = PrivateKeyInfo::from_der(data.as_ref())
             .map_err(|_| data_error("expected valid PKCS#8 data"))?;
           pk.algorithm
@@ -660,9 +664,6 @@ fn import_key_ec(
             .ok_or_else(|| data_error("malformed parameters"))?
             .try_into()
             .unwrap()
-        }
-        EcNamedCurve::P521 => {
-          return Err(data_error("Unsupported named curve"))
         }
       };
 
