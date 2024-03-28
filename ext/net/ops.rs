@@ -378,7 +378,11 @@ where
   #[cfg(not(windows))]
   socket.set_reuse_address(true)?;
   if reuse_port {
-    #[cfg(any(target_os = "android", target_os = "linux"))]
+    #[cfg(any(
+      target_os = "android",
+      target_os = "linux",
+      target_os = "macos"
+    ))]
     socket.set_reuse_port(true)?;
   }
   let socket_addr = socket2::SockAddr::from(addr);
