@@ -8,8 +8,8 @@ import {
   assertThrows,
 } from "./test_util.ts";
 import { BufReader, BufWriter } from "@std/io/mod.ts";
-import { readAll } from "@std/streams/read_all.ts";
-import { writeAll } from "@std/streams/write_all.ts";
+import { readAll } from "@std/io/read_all.ts";
+import { writeAll } from "@std/io/write_all.ts";
 import { TextProtoReader } from "../testdata/run/textproto.ts";
 
 const encoder = new TextEncoder();
