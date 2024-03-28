@@ -5,6 +5,7 @@ use crate::napi_get_callback_info;
 use crate::napi_new_property;
 use napi_sys::*;
 use std::ptr;
+use std::ptr::addr_of_mut;
 
 static mut CURRENT_DEFERRED: napi_deferred = ptr::null_mut();
 
@@ -13,7 +14,11 @@ extern "C" fn test_promise_new(
   _info: napi_callback_info,
 ) -> napi_value {
   let mut value: napi_value = ptr::null_mut();
-  assert_napi_ok!(napi_create_promise(env, &mut CURRENT_DEFERRED, &mut value));
+  assert_napi_ok!(napi_create_promise(
+    env,
+    addr_of_mut!(CURRENT_DEFERRED),
+    &mut value
+  ));
   value
 }
 

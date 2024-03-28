@@ -231,6 +231,7 @@ pub fn with_folder_sync_lock(
     match fs::OpenOptions::new()
       .write(true)
       .create(true)
+      .truncate(true)
       .open(&sync_lock_path)
     {
       Ok(_) => {

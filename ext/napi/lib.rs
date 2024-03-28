@@ -79,7 +79,7 @@ pub const napi_would_deadlock: napi_status = 21;
 pub const NAPI_AUTO_LENGTH: usize = usize::MAX;
 
 thread_local! {
-  pub static MODULE_TO_REGISTER: RefCell<Option<*const NapiModule>> = RefCell::new(None);
+  pub static MODULE_TO_REGISTER: RefCell<Option<*const NapiModule>> = const { RefCell::new(None) };
 }
 
 type napi_addon_register_func =

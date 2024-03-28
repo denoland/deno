@@ -594,7 +594,7 @@ mod tests {
   static V8_GLOBAL: OnceLock<()> = OnceLock::new();
 
   thread_local! {
-    static ISOLATE: OnceCell<std::sync::Mutex<v8::OwnedIsolate>> = OnceCell::new();
+    static ISOLATE: OnceCell<std::sync::Mutex<v8::OwnedIsolate>> = const { OnceCell::new() };
   }
 
   fn with_isolate<T>(mut f: impl FnMut(&mut v8::Isolate) -> T) -> T {
