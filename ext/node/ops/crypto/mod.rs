@@ -46,6 +46,7 @@ use rsa::RsaPublicKey;
 mod cipher;
 mod dh;
 mod digest;
+mod pkcs3;
 mod primes;
 pub mod x509;
 
@@ -950,17 +951,23 @@ pub async fn op_node_dh_generate_async(
 pub fn op_node_dh_stateless(
   #[buffer] private_key: &[u8],
   #[buffer] public_key: &[u8],
-  #[string] algorithm: &str,
 ) -> Result<ToJsBuffer, AnyError> {
-  // let secret_key = elliptic_curve::SecretKey::<NistP256>::from_pkcs1_der(private_key)?;
-  let public_key = elliptic_curve::PublicKey::<NistP256>::from_sec1_bytes(public_key)?;
+  let pkinfo = pkcs8::PrivateKeyInfo::from_der(private_key)?;
 
-  let shared_secret = elliptic_curve::ecdh::diffie_hellman(
-    secret_key.to_nonzero_scalar(),
-    public_key.as_affine(),
-  );
+  let spki = spki::SubjectPublicKeyInfoRef::try_from(public_key)?;
+  let public_key = spki.subject_public_key;
+  let dh_params =
+    pkcs3::DhParameter::try_from(spki.algorithm.parameters.unwrap())?;
 
-  Ok(shared_secret.raw_secret_bytes().to_vec().into())
+  // OSIP - Octet-String-to-Integer primitive
+  let pubkey = BigUint::from_bytes_be(public_key.as_bytes().unwrap());
+
+  // Exponentiation (z = y^x mod p)
+  let prime = BigUint::from_bytes_be(dh_params.prime.as_bytes());
+  let private_key = BigUint::from_bytes_be(pkinfo.private_key);
+  let shared_secret = pubkey.modpow(&private_key, &prime);
+
+  Ok(shared_secret.to_bytes_be().into())
 }
 
 #[op2(fast)]
@@ -1514,7 +1521,7 @@ pub fn op_node_create_private_key(
   #[buffer] key: &[u8],
   #[string] format: &str,
   #[string] type_: &str,
-) -> Result<(Vec<u8>, AsymmetricKeyDetails), AnyError> {
+) -> Result<(ToJsBuffer, AsymmetricKeyDetails), AnyError> {
   use rsa::pkcs1::der::Decode;
 
   let doc = parse_private_key(key, format, type_)?;
@@ -1522,6 +1529,7 @@ pub fn op_node_create_private_key(
 
   let alg = pk_info.algorithm.oid;
 
+  let key = doc.as_bytes().to_vec();
   let details = match alg {
     RSA_ENCRYPTION_OID => {
       let private_key =
@@ -1589,7 +1597,7 @@ pub fn op_node_create_private_key(
     _ => Err(type_error("Unsupported algorithm")),
   };
 
-  Ok(buffer, details)
+  Ok((key.into(), details?))
 }
 
 fn parse_public_key(
@@ -1621,7 +1629,7 @@ pub fn op_node_create_public_key(
   #[buffer] key: &[u8],
   #[string] format: &str,
   #[string] type_: &str,
-) -> Result<AsymmetricKeyDetails, AnyError> {
+) -> Result<(ToJsBuffer, AsymmetricKeyDetails), AnyError> {
   let mut doc = None;
 
   let pk_info = if type_ != "spki" {
@@ -1633,7 +1641,7 @@ pub fn op_node_create_public_key(
 
   let alg = pk_info.algorithm.oid;
 
-  match alg {
+  let details = match alg {
     RSA_ENCRYPTION_OID => {
       let public_key = rsa::pkcs1::RsaPublicKey::from_der(
         pk_info.subject_public_key.raw_bytes(),
@@ -1699,10 +1707,13 @@ pub fn op_node_create_public_key(
       })
     }
     DH_KEY_AGREEMENT_OID => {
-      // Parse the PEM format
-      // 
-      Ok(AsymmetricKeyDetails::Dh),
+      pkcs3::DhParameter::try_from(pk_info.algorithm.parameters.unwrap())?;
+
+      Ok(AsymmetricKeyDetails::Dh)
     }
     _ => Err(type_error("Unsupported algorithm")),
-  }
+  };
+
+  let der = pk_info.to_der()?.to_vec();
+  Ok((der.into(), details?))
 }
