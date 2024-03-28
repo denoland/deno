@@ -38,7 +38,6 @@ util::unit_test_factory!(
     file_test,
     filereader_test,
     files_test,
-    flock_test,
     fs_events_test,
     get_random_values_test,
     globals_test,

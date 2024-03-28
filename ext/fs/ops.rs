@@ -1494,7 +1494,6 @@ pub fn op_fs_flock_sync(
   #[smi] rid: ResourceId,
   exclusive: bool,
 ) -> Result<(), AnyError> {
-  check_unstable(state, "Deno.flockSync");
   let file = FileResource::get_file(state, rid)?;
   file.lock_sync(exclusive)?;
   Ok(())
@@ -1506,7 +1505,6 @@ pub async fn op_fs_flock_async(
   #[smi] rid: ResourceId,
   exclusive: bool,
 ) -> Result<(), AnyError> {
-  check_unstable(&state.borrow(), "Deno.flock");
   let file = FileResource::get_file(&state.borrow(), rid)?;
   file.lock_async(exclusive).await?;
   Ok(())
@@ -1517,7 +1515,6 @@ pub fn op_fs_funlock_sync(
   state: &mut OpState,
   #[smi] rid: ResourceId,
 ) -> Result<(), AnyError> {
-  check_unstable(state, "Deno.funlockSync");
   let file = FileResource::get_file(state, rid)?;
   file.unlock_sync()?;
   Ok(())
@@ -1528,7 +1525,6 @@ pub async fn op_fs_funlock_async(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
 ) -> Result<(), AnyError> {
-  check_unstable(&state.borrow(), "Deno.funlock");
   let file = FileResource::get_file(&state.borrow(), rid)?;
   file.unlock_async().await?;
   Ok(())
