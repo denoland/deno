@@ -280,12 +280,6 @@ impl Diagnostics {
     Diagnostics(diagnostics)
   }
 
-  pub fn without_remote_ignored_diagnostics_for_local_modules(
-    self,
-  ) -> crate::tsc::Diagnostics {
-    self.filter(|diagnostic| diagnostic.include_when_remote())
-  }
-
   /// Return a set of diagnostics where only the values where the predicate
   /// returns `true` are included.
   pub fn filter<P>(self, predicate: P) -> Self
