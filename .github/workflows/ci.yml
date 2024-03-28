@@ -157,8 +157,8 @@ jobs:
       - name: Clone submodule ./tests/wpt/suite
         run: git submodule update --init --recursive --depth=1 -- ./tests/wpt/suite
         if: '!(matrix.skip) && (matrix.wpt)'
-      - name: Clone submodule ./tools/node_compat/node
-        run: git submodule update --init --recursive --depth=1 -- ./tools/node_compat/node
+      - name: Clone submodule ./tests/node_compat/runner/suite
+        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
         if: '!(matrix.skip) && (matrix.job == ''lint'' && matrix.os == ''linux'')'
       - name: 'Create source tarballs (release, linux)'
         if: |-
@@ -388,7 +388,7 @@ jobs:
         run: deno run --unstable --allow-write --allow-read --allow-run --allow-net ./tools/lint.js
       - name: node_compat/setup.ts --check
         if: '!(matrix.skip) && (matrix.job == ''lint'' && matrix.os == ''linux'')'
-        run: deno run --allow-write --allow-read --allow-run=git ./tools/node_compat/setup.ts --check
+        run: deno run --allow-write --allow-read --allow-run=git ./tests/node_compat/runner/setup.ts --check
       - name: Build debug
         if: '!(matrix.skip) && (matrix.job == ''test'' && matrix.profile == ''debug'')'
         run: |-

@@ -1,10 +1,10 @@
 {
   "imports": {
     "@test_util/": "../../test_util/",
-    "@std/": "../../tests/util/std/"
+    "@std/": "../../util/std/"
   },
   "tasks": {
     "setup": "deno run --allow-read --allow-write ./setup.ts",
-    "test": "deno test -A ../../tests/node_compat/test.ts --"
+    "test": "deno test -A ../test.ts --"
   }
 }
