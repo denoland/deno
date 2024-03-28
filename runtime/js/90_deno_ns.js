@@ -160,7 +160,6 @@ const denoNs = {
     return io.writeSync(rid, data);
   },
   File: fs.File,
-  FsFile: fs.FsFile,
   open: fs.open,
   openSync: fs.openSync,
   create: fs.create,

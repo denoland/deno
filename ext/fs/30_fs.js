@@ -89,7 +89,6 @@ const {
   StringPrototypeStartsWith,
   SymbolAsyncIterator,
   SymbolIterator,
-  SymbolFor,
   Uint32Array,
 } = primordials;
 
@@ -621,7 +620,7 @@ function openSync(
     options,
   );
 
-  return new FsFile(rid, SymbolFor("Deno.internal.FsFile"));
+  return new FsFile(rid);
 }
 
 async function open(
@@ -634,7 +633,7 @@ async function open(
     options,
   );
 
-  return new FsFile(rid, SymbolFor("Deno.internal.FsFile"));
+  return new FsFile(rid);
 }
 
 function createSync(path) {
@@ -661,19 +660,12 @@ class FsFile {
   #readable;
   #writable;
 
-  constructor(rid, symbol) {
+  constructor(rid) {
     ObjectDefineProperty(this, internalRidSymbol, {
       enumerable: false,
       value: rid,
     });
     this.#rid = rid;
-    if (!symbol || symbol !== SymbolFor("Deno.internal.FsFile")) {
-      internals.warnOnDeprecatedApi(
-        "new Deno.FsFile()",
-        new Error().stack,
-        "Use `Deno.open` or `Deno.openSync` instead.",
-      );
-    }
   }
 
   get rid() {
