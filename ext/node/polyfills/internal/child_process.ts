@@ -909,7 +909,6 @@ export function spawnSync(
     result.stderr = stderr;
     result.output = [output.signal, stdout, stderr];
   } catch (err) {
-    console.log("err", err);
     if (err instanceof Deno.errors.NotFound) {
       result.error = _createSpawnSyncError("ENOENT", command, args);
     }
