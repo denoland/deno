@@ -707,13 +707,20 @@ mod tests {
   use deno_core::resolve_url;
   use deno_core::url::Url;
   use deno_runtime::deno_fetch::create_http_client;
+  use deno_runtime::deno_fetch::reqwest::dns::Resolve;
+  use deno_runtime::deno_fetch::reqwest::dns::Resolving;
   use deno_runtime::deno_fetch::CreateHttpClientOptions;
+  use deno_runtime::deno_fetch::DnsResolver;
+  use deno_runtime::deno_fetch::Name;
   use deno_runtime::deno_tls::rustls::RootCertStore;
   use deno_runtime::deno_web::Blob;
   use deno_runtime::deno_web::InMemoryBlobPart;
   use std::collections::hash_map::RandomState;
   use std::collections::HashSet;
   use std::fs::read;
+  use std::net::Ipv4Addr;
+  use std::net::SocketAddr;
+  use std::net::SocketAddrV4;
   use test_util::TempDir;
 
   fn setup(
@@ -1545,6 +1552,19 @@ mod tests {
     )
   }
 
+  fn create_test_client_with_dns_resolver() -> HttpClient {
+    HttpClient::from_client(
+      create_http_client(
+        "test_client",
+        CreateHttpClientOptions {
+          dns_resolver: Some(DnsResolver::new(Arc::new(TestResolver))),
+          ..Default::default()
+        },
+      )
+      .unwrap(),
+    )
+  }
+
   #[tokio::test]
   async fn test_fetch_string() {
     let _http_server_guard = test_util::http_server();
@@ -1683,6 +1703,41 @@ mod tests {
     // Relies on external http server. See target/debug/test_server
     let url = Url::parse("http://127.0.0.1:4545/echo_accept").unwrap();
     let client = create_test_client();
+    let result = fetch_once(
+      &client,
+      FetchOnceArgs {
+        url,
+        maybe_accept: Some("application/json".to_string()),
+        maybe_etag: None,
+        maybe_auth_token: None,
+        maybe_progress_guard: None,
+      },
+    )
+    .await;
+    if let Ok(FetchOnceResult::Code(body, _)) = result {
+      assert_eq!(body, r#"{"accept":"application/json"}"#.as_bytes());
+    } else {
+      panic!();
+    }
+  }
+
+  struct TestResolver;
+
+  impl Resolve for TestResolver {
+    fn resolve(&self, _name: Name) -> Resolving {
+      let iter: Box<dyn Iterator<Item = SocketAddr> + Send> = Box::new(
+        vec![SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0).into()].into_iter(),
+      );
+      Box::pin(async move { Ok(iter) })
+    }
+  }
+
+  #[tokio::test]
+  async fn test_custom_dns_resolver() {
+    let _http_server_guard = test_util::http_server();
+    // Resolves to the test server address on localhost
+    let url = Url::parse("http://google.com:4545/echo_accept").unwrap();
+    let client = create_test_client_with_dns_resolver();
     let result = fetch_once(
       &client,
       FetchOnceArgs {

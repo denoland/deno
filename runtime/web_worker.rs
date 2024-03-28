@@ -106,6 +106,7 @@ pub enum WorkerControlEvent {
 }
 
 use deno_core::serde::Serializer;
+use deno_fetch::DnsResolver;
 
 impl Serialize for WorkerControlEvent {
   fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -377,6 +378,7 @@ pub struct WebWorkerOptions {
   pub cache_storage_dir: Option<std::path::PathBuf>,
   pub stdio: Stdio,
   pub feature_checker: Arc<FeatureChecker>,
+  pub dns_resolver: Option<DnsResolver>,
   pub strace_ops: Option<Vec<String>>,
   pub close_on_idle: bool,
   pub maybe_worker_metadata: Option<WorkerMetadata>,
@@ -445,6 +447,7 @@ impl WebWorker {
             .unsafely_ignore_certificate_errors
             .clone(),
           file_fetch_handler: Rc::new(deno_fetch::FsFetchHandler),
+          dns_resolver: options.dns_resolver.clone(),
           ..Default::default()
         },
       ),
@@ -479,6 +482,7 @@ impl WebWorker {
               .clone(),
             client_cert_chain_and_key: None,
             proxy: None,
+            dns_resolver: options.dns_resolver.clone(),
           },
         ),
       ),

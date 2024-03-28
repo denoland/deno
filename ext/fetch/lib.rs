@@ -1,11 +1,11 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-mod fs_fetch_handler;
-
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::cmp::min;
 use std::convert::From;
+use std::fmt::Debug;
+use std::fmt::Formatter;
 use std::path::Path;
 use std::path::PathBuf;
 use std::pin::Pin;
@@ -15,6 +15,9 @@ use std::task::Context;
 use std::task::Poll;
 
 use bytes::Bytes;
+// Re-export reqwest and data_url
+pub use data_url;
+use data_url::DataUrl;
 use deno_core::anyhow::Error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
@@ -39,13 +42,12 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
-use deno_tls::rustls::RootCertStore;
-use deno_tls::Proxy;
-use deno_tls::RootCertStoreProvider;
-
-use data_url::DataUrl;
 use http_v02::header::CONTENT_LENGTH;
 use http_v02::Uri;
+pub use hyper_v014::client::connect::dns::Name;
+pub use reqwest;
+use reqwest::dns::Resolve;
+use reqwest::dns::Resolving;
 use reqwest::header::HeaderMap;
 use reqwest::header::HeaderName;
 use reqwest::header::HeaderValue;
@@ -64,11 +66,27 @@ use serde::Serialize;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 
-// Re-export reqwest and data_url
-pub use data_url;
-pub use reqwest;
-
+use deno_tls::rustls::RootCertStore;
+use deno_tls::Proxy;
+use deno_tls::RootCertStoreProvider;
 pub use fs_fetch_handler::FsFetchHandler;
+
+mod fs_fetch_handler;
+
+#[derive(Clone)]
+pub struct DnsResolver(Arc<dyn Resolve>);
+
+impl DnsResolver {
+  pub fn new(inner: Arc<dyn Resolve>) -> Self {
+    Self(inner)
+  }
+}
+
+impl Debug for DnsResolver {
+  fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    write!(f, "Custom DnsResolver")
+  }
+}
 
 #[derive(Clone)]
 pub struct Options {
@@ -80,6 +98,7 @@ pub struct Options {
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub client_cert_chain_and_key: Option<(String, String)>,
   pub file_fetch_handler: Rc<dyn FetchHandler>,
+  pub dns_resolver: Option<DnsResolver>,
 }
 
 impl Options {
@@ -101,6 +120,7 @@ impl Default for Options {
       unsafely_ignore_certificate_errors: None,
       client_cert_chain_and_key: None,
       file_fetch_handler: Rc::new(DefaultFileFetchHandler),
+      dns_resolver: None,
     }
   }
 }
@@ -171,6 +191,7 @@ impl FetchHandler for DefaultFileFetchHandler {
 pub fn get_declaration() -> PathBuf {
   PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_fetch.d.ts")
 }
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FetchReturn {
@@ -199,6 +220,7 @@ pub fn get_or_create_client_from_state(
         pool_idle_timeout: None,
         http1: true,
         http2: true,
+        dns_resolver: options.dns_resolver.clone(),
       },
     )?;
     state.put::<reqwest::Client>(client.clone());
@@ -221,6 +243,7 @@ impl ResourceToBodyAdapter {
 
 // SAFETY: we only use this on a single-threaded executor
 unsafe impl Send for ResourceToBodyAdapter {}
+
 // SAFETY: we only use this on a single-threaded executor
 unsafe impl Sync for ResourceToBodyAdapter {}
 
@@ -681,6 +704,7 @@ impl Default for FetchResponseReader {
     Self::BodyReader(stream.peekable())
   }
 }
+
 #[derive(Debug)]
 pub struct FetchResponseResource {
   pub response_reader: AsyncRefCell<FetchResponseReader>,
@@ -870,6 +894,7 @@ where
       ),
       http1: args.http1,
       http2: args.http2,
+      dns_resolver: options.dns_resolver.clone(),
     },
   )?;
 
@@ -890,6 +915,7 @@ pub struct CreateHttpClientOptions {
   pub pool_idle_timeout: Option<Option<u64>>,
   pub http1: bool,
   pub http2: bool,
+  pub dns_resolver: Option<DnsResolver>,
 }
 
 impl Default for CreateHttpClientOptions {
@@ -904,6 +930,7 @@ impl Default for CreateHttpClientOptions {
       pool_idle_timeout: None,
       http1: true,
       http2: true,
+      dns_resolver: None,
     }
   }
 }
@@ -962,8 +989,13 @@ pub fn create_http_client(
     (false, true) => builder = builder.http2_prior_knowledge(),
     (true, true) => {}
     (false, false) => {
-      return Err(type_error("Either `http1` or `http2` needs to be true"))
+      return Err(type_error("Either `http1` or `http2` needs to be true"));
     }
+  }
+
+  if let Some(dns_resolver) = options.dns_resolver {
+    builder =
+      builder.dns_resolver(Arc::new(ResolverWrapper(dns_resolver.0.clone())));
   }
 
   builder.build().map_err(|e| e.into())
@@ -975,4 +1007,12 @@ pub fn op_utf8_to_byte_string(
   #[string] input: String,
 ) -> Result<ByteString, AnyError> {
   Ok(input.into())
+}
+
+struct ResolverWrapper(Arc<dyn Resolve>);
+
+impl Resolve for ResolverWrapper {
+  fn resolve(&self, name: Name) -> Resolving {
+    self.0.resolve(name)
+  }
 }
