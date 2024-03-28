@@ -8,8 +8,6 @@ https://github.com/denoland/deno_install
 
 ### 1.42.0 / 2024.03.28
 
-- FUTURE(ext/fs): remove `Deno.FsFile.rid` (#23087)
-- FUTURE: remove `Deno.resources()` (#23095)
 - feat(add): always produce multiline config file (#23077)
 - feat(ext/node): add riscv64 in process.arch (#23016)
 - feat(init): use jsr specifier for @std/assert (#23073)
@@ -47,6 +45,7 @@ https://github.com/denoland/deno_install
 - fix(ext/node): handle KeyObject in `prepareAsymmetricKey` (#23026)
 - fix(ext/node): handle `null` in stdio array (#23048)
 - fix(ext/node): implement EventEmitterAsyncResource (#22994)
+- fix(ext/node): implement v8 serialize and deserialize (#22975)
 - fix(ext/node): panic in `op_node_ecdh_generate_keys` (#23011)
 - fix(ext/node): pass normalized watchFile handler to StatWatcher (#22940)
 - fix(ext/node): spread args in setImmediate (#22998)
@@ -60,17 +59,15 @@ https://github.com/denoland/deno_install
   (#22944)
 - fix(ext/web): Fix structuredClone Web API type declaration (any -> generic)
   (#22968)
-- fix(kernel): Do not increase counter if store_history=false (#20848)
+- fix(jupyter): Do not increase counter if store_history=false (#20848)
 - fix(lsp): decoding percent-encoding(non-ASCII) file path correctly (#22582)
 - fix(lsp): prefer cache over tsc quick fixes (#23093)
 - fix(lsp): use registry cache for completion search (#23094)
-- fix(node): implement v8 serialize and deserialize (#22975)
 - fix(runtime): use FQDN in NetDescriptor (#23084)
 - fix: do not memoize `Deno.ppid` (#23006)
 - fix: don't panic in test and bench if ops not available (#23055)
 - fix: handle cache body file not existing when using etag (#22931)
 - fix: less aggressive vendor folder ignoring (#23100)
-- perf(cli): use args_os (#23039)
 - perf: warm expensive init code at snapshot time (#22714)
 
 ### 1.41.3 / 2024.03.14
