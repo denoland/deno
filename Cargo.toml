@@ -15,6 +15,7 @@ members = [
   "ext/fetch",
   "ext/ffi",
   "ext/fs",
+  "ext/geometry",
   "ext/http",
   "ext/io",
   "ext/kv",
@@ -70,6 +71,7 @@ deno_crypto = { version = "0.157.0", path = "./ext/crypto" }
 deno_fetch = { version = "0.167.0", path = "./ext/fetch" }
 deno_ffi = { version = "0.130.0", path = "./ext/ffi" }
 deno_fs = { version = "0.53.0", path = "./ext/fs" }
+deno_geometry = { version = "0.1.0", path = "./ext/geometry" }
 deno_http = { version = "0.140.0", path = "./ext/http" }
 deno_io = { version = "0.53.0", path = "./ext/io" }
 deno_kv = { version = "0.51.0", path = "./ext/kv" }
@@ -183,6 +185,9 @@ zstd = "=0.12.4"
 hkdf = "0.12.3"
 rsa = { version = "0.9.3", default-features = false, features = ["std", "pem", "hazmat"] } # hazmat needed for PrehashSigner in ext/node
 
+# geometry
+nalgebra = { version = "0.32.4", default-features = false, features = ["std"] }
+
 # webgpu
 raw-window-handle = "0.5.0"
 wgpu-core = { version = "=0.18", features = ["raw-window-handle"] }
@@ -265,6 +270,8 @@ opt-level = 3
 opt-level = 3
 [profile.bench.package.deno_crypto]
 opt-level = 3
+[profile.bench.package.deno_geometry]
+opt-level = 3
 [profile.bench.package.deno_node]
 opt-level = 3
 [profile.bench.package.num-bigint-dig]
@@ -322,6 +329,8 @@ opt-level = 3
 [profile.release.package.deno_web]
 opt-level = 3
 [profile.release.package.deno_crypto]
+opt-level = 3
+[profile.release.package.deno_geometry]
 opt-level = 3
 [profile.release.package.deno_node]
 opt-level = 3

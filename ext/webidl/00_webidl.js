@@ -660,6 +660,9 @@ converters["UVString?"] = createNullableConverter(
 converters["sequence<double>"] = createSequenceConverter(
   converters.double,
 );
+converters["sequence<unrestricted double>"] = createSequenceConverter(
+  converters["unrestricted double"],
+);
 converters["sequence<object>"] = createSequenceConverter(
   converters.object,
 );
