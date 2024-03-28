@@ -19,6 +19,7 @@ const {
   ArrayPrototypePush,
   ObjectPrototypeIsPrototypeOf,
   Symbol,
+  Error,
   SymbolFor,
   SymbolIterator,
   TypeError,
@@ -45,11 +46,11 @@ class MessageChannel {
   /** @type {MessagePort} */
   #port2;
 
-  constructor() {
+  constructor(nodeWorker = false) {
     this[webidl.brand] = webidl.brand;
     const { 0: port1Id, 1: port2Id } = opCreateEntangledMessagePort();
-    const port1 = createMessagePort(port1Id);
-    const port2 = createMessagePort(port2Id);
+    const port1 = createMessagePort(port1Id, nodeWorker);
+    const port2 = createMessagePort(port2Id, nodeWorker);
     this.#port1 = port1;
     this.#port2 = port2;
   }
@@ -85,16 +86,37 @@ const MessageChannelPrototype = MessageChannel.prototype;
 const _id = Symbol("id");
 const MessagePortIdSymbol = _id;
 const _enabled = Symbol("enabled");
+const _nodeWorker = Symbol("nodeWorker");
+const _closeEventDispatched = Symbol("closeEventDispatched");
 
 /**
  * @param {number} id
  * @returns {MessagePort}
  */
-function createMessagePort(id) {
+function createMessagePort(id, nodeWorker = false) {
+  if (nodeWorker) {
+    defineEventHandler(MessagePort.prototype, "close");
+  }
   const port = webidl.createBranded(MessagePort);
   port[core.hostObjectBrand] = core.hostObjectBrand;
   setEventTargetData(port);
   port[_id] = id;
+  port[_nodeWorker] = nodeWorker;
+  if (nodeWorker) {
+    port.on = port.addListener = function (name, listener) {
+      const _listener = (ev) => listener(ev.data);
+      if (name == "message") {
+        port.onmessage = _listener;
+      } else if (name == "messageerror") {
+        port.onmessageerror = _listener;
+      } else if (name == "close") {
+        port.onclose = _listener;
+      } else {
+        throw new Error("Unsupported event: " + name);
+      }
+      return port;
+    };
+  }
   return port;
 }
 
@@ -103,6 +125,8 @@ class MessagePort extends EventTarget {
   [_id] = null;
   /** @type {boolean} */
   [_enabled] = false;
+  [_nodeWorker] = false;
+  [_closeEventDispatched] = false;
 
   constructor() {
     super();
@@ -160,12 +184,19 @@ class MessagePort extends EventTarget {
           );
         } catch (err) {
           if (ObjectPrototypeIsPrototypeOf(InterruptedPrototype, err)) break;
+          if (this[_nodeWorker]) this.dispatchEvent(new Event("close"));
           throw err;
         }
-        if (data === null) break;
+        if (data === null) {
+          if (this[_nodeWorker] && !this[_closeEventDispatched]) {
+            this.dispatchEvent(new Event("close"));
+            this[_closeEventDispatched] = true;
+          }
+          break;
+        }
         let message, transferables;
         try {
-          const v = deserializeJsMessageData(data);
+          const v = deserializeJsMessageData(data, this[_nodeWorker]);
           message = v[0];
           transferables = v[1];
         } catch (err) {
@@ -193,6 +224,10 @@ class MessagePort extends EventTarget {
     if (this[_id] !== null) {
       core.close(this[_id]);
       this[_id] = null;
+    }
+    if (this[_nodeWorker] && !this[_closeEventDispatched]) {
+      this.dispatchEvent(new Event("close"));
+      this[_closeEventDispatched] = true;
     }
   }
 
@@ -230,7 +265,7 @@ function opCreateEntangledMessagePort() {
  * @param {messagePort.MessageData} messageData
  * @returns {[any, object[]]}
  */
-function deserializeJsMessageData(messageData) {
+function deserializeJsMessageData(messageData, nodeWorker = false) {
   /** @type {object[]} */
   const transferables = [];
   const arrayBufferIdsInTransferables = [];
@@ -243,7 +278,7 @@ function deserializeJsMessageData(messageData) {
       const transferable = messageData.transferables[i];
       switch (transferable.kind) {
         case "messagePort": {
-          const port = createMessagePort(transferable.data);
+          const port = createMessagePort(transferable.data, nodeWorker);
           ArrayPrototypePush(transferables, port);
           ArrayPrototypePush(hostObjects, port);
           break;
@@ -366,6 +401,7 @@ webidl.converters.StructuredSerializeOptions = webidl
   );
 
 function structuredClone(value, options) {
+  console.log("structuredClone invoked");
   const prefix = "Failed to execute 'structuredClone'";
   webidl.requiredArguments(arguments.length, 1, prefix);
   options = webidl.converters.StructuredSerializeOptions(
@@ -374,7 +410,7 @@ function structuredClone(value, options) {
     "Argument 2",
   );
   const messageData = serializeJsMessageData(value, options.transfer);
-  return deserializeJsMessageData(messageData)[0];
+  return deserializeJsMessageData(messageData, false)[0];
 }
 
 export {

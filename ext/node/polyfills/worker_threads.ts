@@ -424,10 +424,21 @@ export function receiveMessageOnPort(port: MessagePort): object | undefined {
   return { message: deserializeJsMessageData(data)[0] };
 }
 
+class NodeMessageChannel {
+  port1: MessagePort;
+  port2: MessagePort;
+
+  constructor() {
+    const { port1, port2 } = new MessageChannel(true);
+    this.port1 = port1;
+    this.port2 = port2;
+  }
+}
+
 export {
   BroadcastChannel,
-  MessageChannel,
   MessagePort,
+  NodeMessageChannel as MessageChannel,
   NodeWorker as Worker,
   parentPort,
   threadId,
@@ -439,7 +450,7 @@ const defaultExport = {
   moveMessagePortToContext,
   receiveMessageOnPort,
   MessagePort,
-  MessageChannel,
+  MessageChannel: NodeMessageChannel,
   BroadcastChannel,
   Worker: NodeWorker,
   getEnvironmentData,

@@ -924,7 +924,7 @@ function bootstrapWorkerRuntime(
     ObjectDefineProperty(globalThis, "Deno", core.propReadOnly(finalDenoNs));
 
     const workerMetadata = maybeWorkerMetadata
-      ? messagePort.deserializeJsMessageData(maybeWorkerMetadata)
+      ? messagePort.deserializeJsMessageData(maybeWorkerMetadata, true)
       : undefined;
 
     if (nodeBootstrap) {
