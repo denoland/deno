@@ -49,8 +49,9 @@ const loadGeometry = createGeometryLoader((transformList, prefix) => {
     };
   }
 
-  // Currently only parsing of a single matrix, matrix3d function is implemented
-  // TODO(petamoriken): Add CSS parser such as lightningcss
+  // Currently only parsing of a single matrix, matrix3d function without units
+  // as arguments is implemented
+  // TODO(petamoriken): Add CSS parser such as lightningcss to support more cases
   const matrixMatch = StringPrototypeMatch(transformList, MATRIX_PATTERN);
   if (matrixMatch !== null) {
     const is2D = matrixMatch[1] === undefined;

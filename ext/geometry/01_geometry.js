@@ -233,6 +233,9 @@ webidl.converters.DOMMatrixInit = webidl.createDictionaryConverter(
 );
 
 const _raw = Symbol("[[raw]]");
+// Property to prevent writing values when an immutable instance is changed to
+// a mutable instance by Object.setPrototypeOf
+// TODO(petamoriken): Implementing resistance to Object.setPrototypeOf in the WebIDL layer
 const _writable = Symbol("[[writable]]");
 const _brand = webidl.brand;
 
