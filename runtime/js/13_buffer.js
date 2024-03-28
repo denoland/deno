@@ -256,28 +256,4 @@ function readAllSync(r) {
   return buf.bytes();
 }
 
-async function writeAll(w, arr) {
-  internals.warnOnDeprecatedApi(
-    "Deno.writeAll()",
-    new Error().stack,
-    "Use `writeAll()` from `https://deno.land/std/io/write_all.ts` instead.",
-  );
-  let nwritten = 0;
-  while (nwritten < arr.length) {
-    nwritten += await w.write(TypedArrayPrototypeSubarray(arr, nwritten));
-  }
-}
-
-function writeAllSync(w, arr) {
-  internals.warnOnDeprecatedApi(
-    "Deno.writeAllSync()",
-    new Error().stack,
-    "Use `writeAllSync()` from `https://deno.land/std/io/write_all.ts` instead.",
-  );
-  let nwritten = 0;
-  while (nwritten < arr.length) {
-    nwritten += w.writeSync(TypedArrayPrototypeSubarray(arr, nwritten));
-  }
-}
-
-export { Buffer, readAll, readAllSync, writeAll, writeAllSync };
+export { Buffer, readAll, readAllSync };
