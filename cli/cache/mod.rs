@@ -25,6 +25,7 @@ use std::time::SystemTime;
 mod cache_db;
 mod caches;
 mod check;
+mod code_cache;
 mod common;
 mod deno_dir;
 mod disk_cache;
@@ -37,6 +38,7 @@ mod parsed_source;
 
 pub use caches::Caches;
 pub use check::TypeCheckCache;
+pub use code_cache::CodeCache;
 pub use common::FastInsecureHasher;
 pub use deno_dir::DenoDir;
 pub use deno_dir::DenoDirProvider;

@@ -1,4 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
@@ -42,6 +43,8 @@ use deno_tls::RootCertStoreProvider;
 use deno_web::BlobStore;
 use log::debug;
 
+use crate::code_cache::CodeCache;
+use crate::code_cache::CodeCacheType;
 use crate::inspector_server::InspectorServer;
 use crate::ops;
 use crate::permissions::PermissionsContainer;
@@ -189,6 +192,9 @@ pub struct WorkerOptions {
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
   pub stdio: Stdio,
   pub feature_checker: Arc<FeatureChecker>,
+
+  /// V8 code cache for module and script source code.
+  pub code_cache: Option<Arc<dyn CodeCache>>,
 }
 
 impl Default for WorkerOptions {
@@ -223,6 +229,7 @@ impl Default for WorkerOptions {
       bootstrap: Default::default(),
       stdio: Default::default(),
       feature_checker: Default::default(),
+      code_cache: Default::default(),
     }
   }
 }
@@ -491,6 +498,22 @@ impl MainWorker {
       validate_import_attributes_cb: Some(Box::new(
         validate_import_attributes_callback,
       )),
+      enable_code_cache: options.code_cache.is_some(),
+      eval_context_code_cache_cbs: options.code_cache.map(|cache| {
+        let cache_clone = cache.clone();
+        (
+          Box::new(move |specifier: &str| {
+            Ok(
+              cache
+                .get_sync(specifier, CodeCacheType::Script)
+                .map(Cow::from),
+            )
+          }) as Box<dyn Fn(&_) -> _>,
+          Box::new(move |specifier: &str, data: &[u8]| {
+            cache_clone.set_sync(specifier, CodeCacheType::Script, data);
+          }) as Box<dyn Fn(&_, &_)>,
+        )
+      }),
       ..Default::default()
     });
 

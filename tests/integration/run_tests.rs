@@ -5170,3 +5170,53 @@ fn run_etag_delete_source_cache() {
       "[WILDCARD]Cache body not found. Trying again without etag.[WILDCARD]",
     );
 }
+
+#[test]
+fn code_cache_test() {
+  let script = util::testdata_path().join("run/001_hello.js");
+  let module_output_path = util::testdata_path().join("run/001_hello.js.out");
+  let mut module_output_file = std::fs::File::open(module_output_path).unwrap();
+  let mut module_output = String::new();
+  module_output_file
+    .read_to_string(&mut module_output)
+    .unwrap();
+  let prg = util::deno_exe_path();
+
+  {
+    let deno_dir = TempDir::new();
+    let output = Command::new(prg.clone())
+      .env("DENO_DIR", deno_dir.path())
+      .current_dir(util::testdata_path())
+      .arg("run")
+      .arg(script.to_string())
+      .output()
+      .expect("Failed to spawn script");
+
+    let str_output = std::str::from_utf8(&output.stdout).unwrap();
+    assert_eq!(module_output, str_output);
+
+    // Check that the code cache database exists.
+    let code_cache_path = deno_dir.path().join("code_cache_v1");
+    assert!(code_cache_path.exists());
+  }
+
+  // Rerun with --no-code-cache.
+  {
+    let deno_dir = TempDir::new();
+    let output = Command::new(prg)
+      .env("DENO_DIR", deno_dir.path())
+      .current_dir(util::testdata_path())
+      .arg("run")
+      .arg("--no-code-cache")
+      .arg(script.to_string())
+      .output()
+      .expect("Failed to spawn script");
+
+    let str_output = std::str::from_utf8(&output.stdout).unwrap();
+    assert_eq!(module_output, str_output);
+
+    // Check that the code cache database exists.
+    let code_cache_path = deno_dir.path().join("code_cache_v1");
+    assert!(!code_cache_path.exists());
+  }
+}
