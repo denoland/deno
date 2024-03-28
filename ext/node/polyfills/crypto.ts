@@ -86,7 +86,6 @@ import {
 import {
   Cipheriv,
   Decipheriv,
-  getCipherInfo,
   privateDecrypt,
   privateEncrypt,
   publicDecrypt,
@@ -149,6 +148,7 @@ import type {
   X509CheckOptions,
 } from "ext:deno_node/internal/crypto/x509.ts";
 import {
+  getCipherInfo,
   getCiphers,
   getCurves,
   secureHeapUsed,
@@ -162,7 +162,12 @@ import type {
 } from "ext:deno_node/_stream.d.ts";
 import { crypto as webcrypto } from "ext:deno_crypto/00_crypto.js";
 
+const subtle = webcrypto.subtle;
 const fipsForced = getOptionValue("--force-fips");
+
+function getRandomValues(typedArray) {
+  return webcrypto.getRandomValues(typedArray);
+}
 
 function createCipheriv(
   algorithm: CipherCCMTypes,
@@ -332,6 +337,7 @@ export default {
   diffieHellman,
   DiffieHellmanGroup,
   ECDH,
+  getRandomValues,
   generateKey,
   generateKeyPair,
   generateKeyPairSync,
@@ -372,6 +378,7 @@ export default {
   Verify,
   verify,
   webcrypto,
+  subtle,
   X509Certificate,
 };
 
@@ -480,6 +487,7 @@ export {
   getDiffieHellman,
   getFips,
   getHashes,
+  getRandomValues,
   Hash,
   hkdf,
   hkdfSync,
@@ -505,6 +513,7 @@ export {
   setFips,
   Sign,
   sign,
+  subtle,
   timingSafeEqual,
   Verify,
   verify,

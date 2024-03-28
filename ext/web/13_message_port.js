@@ -35,9 +35,9 @@ import {
   MessageEvent,
   setEventTargetData,
   setIsTrusted,
-} from "ext:deno_web/02_event.js";
-import { isDetachedBuffer } from "ext:deno_web/06_streams.js";
-import { DOMException } from "ext:deno_web/01_dom_exception.js";
+} from "./02_event.js";
+import { isDetachedBuffer } from "./06_streams.js";
+import { DOMException } from "./01_dom_exception.js";
 
 class MessageChannel {
   /** @type {MessagePort} */
@@ -83,6 +83,7 @@ webidl.configureInterface(MessageChannel);
 const MessageChannelPrototype = MessageChannel.prototype;
 
 const _id = Symbol("id");
+const MessagePortIdSymbol = _id;
 const _enabled = Symbol("enabled");
 
 /**
@@ -380,6 +381,7 @@ export {
   deserializeJsMessageData,
   MessageChannel,
   MessagePort,
+  MessagePortIdSymbol,
   MessagePortPrototype,
   serializeJsMessageData,
   structuredClone,

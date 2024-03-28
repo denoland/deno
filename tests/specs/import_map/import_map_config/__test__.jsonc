@@ -1,0 +1,28 @@
+{
+  "steps": [{
+    "args": "run --quiet --reload --import-map=import_map.json test.ts",
+    "output": "run.out"
+  }, {
+    "args": "run --quiet --reload --import-map=import_map_invalid.json --config=config.json test.ts",
+    "output": "flag_has_precedence.out",
+    "exitCode": 1
+  }, {
+    "args": "run --reload --config=config.json test.ts",
+    "output": "config.out"
+  }, {
+    "cleanDenoDir": true,
+    "args": "cache --quiet --reload --import-map=import_map.json test.ts",
+    "output": "cache.out"
+  }, {
+    "cleanDenoDir": true,
+    "args": "info --quiet --import-map=import_map.json test.ts",
+    "output": "info.out"
+  }, {
+    "args": "run --quiet --reload --import-map=import_map.json unmapped_bare_specifier.ts",
+    "output": "unmapped_bare_specifier.out",
+    "exitCode": 1
+  }, {
+    "args": "run --quiet --reload --import-map import_map.json import_data_url.ts",
+    "output": "import_data_url.out"
+  }]
+}

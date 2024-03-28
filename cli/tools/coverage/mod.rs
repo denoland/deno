@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::CliOptions;
 use crate::args::CoverageFlags;
 use crate::args::FileFlags;
 use crate::args::Flags;
@@ -376,6 +377,7 @@ fn range_to_src_line_index(
 }
 
 fn collect_coverages(
+  cli_options: &CliOptions,
   files: FileFlags,
   initial_cwd: &Path,
 ) -> Result<Vec<cdp::ScriptCoverage>, AnyError> {
@@ -388,27 +390,24 @@ fn collect_coverages(
           initial_cwd.to_path_buf(),
         )])
       } else {
-        PathOrPatternSet::from_relative_path_or_patterns(
+        PathOrPatternSet::from_include_relative_path_or_patterns(
           initial_cwd,
           &files.include,
         )?
       }
     }),
-    exclude: PathOrPatternSet::from_relative_path_or_patterns(
+    exclude: PathOrPatternSet::from_exclude_relative_path_or_patterns(
       initial_cwd,
       &files.ignore,
     )
     .context("Invalid ignore pattern.")?,
   };
-  let file_paths = FileCollector::new(|file_path, _| {
-    file_path
-      .extension()
-      .map(|ext| ext == "json")
-      .unwrap_or(false)
+  let file_paths = FileCollector::new(|e| {
+    e.path.extension().map(|ext| ext == "json").unwrap_or(false)
   })
   .ignore_git_folder()
   .ignore_node_modules()
-  .ignore_vendor_folder()
+  .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
   .collect_file_patterns(file_patterns)?;
 
   for file_path in file_paths {
@@ -465,7 +464,7 @@ pub async fn cover_files(
     return Err(generic_error("No matching coverage profiles found"));
   }
 
-  let factory = CliFactory::from_flags(flags).await?;
+  let factory = CliFactory::from_flags(flags)?;
   let npm_resolver = factory.npm_resolver().await?;
   let file_fetcher = factory.file_fetcher()?;
   let cli_options = factory.cli_options();
@@ -477,8 +476,11 @@ pub async fn cover_files(
   let coverage_root = cli_options
     .initial_cwd()
     .join(&coverage_flags.files.include[0]);
-  let script_coverages =
-    collect_coverages(coverage_flags.files, cli_options.initial_cwd())?;
+  let script_coverages = collect_coverages(
+    cli_options,
+    coverage_flags.files,
+    cli_options.initial_cwd(),
+  )?;
   if script_coverages.is_empty() {
     return Err(generic_error("No coverage files found"));
   }
@@ -488,6 +490,9 @@ pub async fn cover_files(
     coverage_flags.exclude,
     npm_resolver.as_ref(),
   );
+  if script_coverages.is_empty() {
+    return Err(generic_error("No covered files included in the report"));
+  }
 
   let proc_coverages: Vec<_> = script_coverages
     .into_iter()

@@ -5,26 +5,26 @@ use crate::args::JupyterFlags;
 use crate::ops;
 use crate::tools::jupyter::server::StdioMsg;
 use crate::tools::repl;
+use crate::tools::test::create_single_test_event_channel;
+use crate::tools::test::reporters::PrettyTestReporter;
+use crate::tools::test::TestEventWorkerSender;
 use crate::util::logger;
 use crate::CliFactory;
 use deno_core::anyhow::Context;
+use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::located_script_name;
 use deno_core::resolve_url_or_path;
 use deno_core::serde::Deserialize;
 use deno_core::serde_json;
+use deno_core::url::Url;
 use deno_runtime::deno_io::Stdio;
 use deno_runtime::deno_io::StdioPipe;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_terminal::colors;
 use tokio::sync::mpsc;
-use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::mpsc::UnboundedSender;
-
-use super::test::reporters::PrettyTestReporter;
-use super::test::TestEvent;
-use super::test::TestEventSender;
 
 mod install;
 pub(crate) mod jupyter_msg;
@@ -56,7 +56,7 @@ pub async fn kernel(
     logger::init(Some(log::Level::Debug));
   }
 
-  let factory = CliFactory::from_flags(flags).await?;
+  let factory = CliFactory::from_flags(flags)?;
   let cli_options = factory.cli_options();
   let main_module =
     resolve_url_or_path("./$deno$jupyter.ts", cli_options.initial_cwd())
@@ -79,11 +79,13 @@ pub async fn kernel(
         connection_filepath
       )
     })?;
-  let (test_event_sender, test_event_receiver) =
-    unbounded_channel::<TestEvent>();
-  let test_event_sender = TestEventSender::new(test_event_sender);
-  let stdout = StdioPipe::File(test_event_sender.stdout());
-  let stderr = StdioPipe::File(test_event_sender.stderr());
+  let (worker, test_event_receiver) = create_single_test_event_channel();
+  let TestEventWorkerSender {
+    sender: test_event_sender,
+    stdout,
+    stderr,
+  } = worker;
+
   let mut worker = worker_factory
     .create_custom_worker(
       main_module.clone(),
@@ -94,9 +96,9 @@ pub async fn kernel(
       ],
       // FIXME(nayeemrmn): Test output capturing currently doesn't work.
       Stdio {
-        stdin: StdioPipe::Inherit,
-        stdout,
-        stderr,
+        stdin: StdioPipe::inherit(),
+        stdout: StdioPipe::file(stdout),
+        stderr: StdioPipe::file(stderr),
       },
     )
     .await?;
@@ -129,9 +131,16 @@ pub async fn kernel(
       Ok(())
     }
   }
+  let cwd_url =
+    Url::from_directory_path(cli_options.initial_cwd()).map_err(|_| {
+      generic_error(format!(
+        "Unable to construct URL from the path of cwd: {}",
+        cli_options.initial_cwd().to_string_lossy(),
+      ))
+    })?;
   repl_session.set_test_reporter_factory(Box::new(move || {
     Box::new(
-      PrettyTestReporter::new(false, true, false, true)
+      PrettyTestReporter::new(false, true, false, true, cwd_url.clone())
         .with_writer(Box::new(TestWriter(stdio_tx.clone()))),
     )
   }));

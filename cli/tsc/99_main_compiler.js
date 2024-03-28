@@ -354,7 +354,7 @@ delete Object.prototype.__proto__;
       case 2339: {
         const property = getProperty();
         if (property && unstableDenoProps.has(property)) {
-          return `${msg} 'Deno.${property}' is an unstable API. Did you forget to run with the '--unstable' flag? ${unstableMsgSuggestion}`;
+          return `${msg} 'Deno.${property}' is an unstable API. ${unstableMsgSuggestion}`;
         }
         return msg;
       }
@@ -363,7 +363,7 @@ delete Object.prototype.__proto__;
         if (property && unstableDenoProps.has(property)) {
           const suggestion = getMsgSuggestion();
           if (suggestion) {
-            return `${msg} 'Deno.${property}' is an unstable API. Did you forget to run with the '--unstable' flag, or did you mean '${suggestion}'? ${unstableMsgSuggestion}`;
+            return `${msg} 'Deno.${property}' is an unstable API. Did you mean '${suggestion}'? ${unstableMsgSuggestion}`;
           }
         }
         return msg;
@@ -502,9 +502,6 @@ delete Object.prototype.__proto__;
       }
     }
   }
-
-  /** @type {ts.CompilerOptions} */
-  let compilationSettings = {};
 
   /** @type {ts.LanguageService} */
   let languageService;
@@ -720,7 +717,17 @@ delete Object.prototype.__proto__;
       if (logDebug) {
         debug("host.getCompilationSettings()");
       }
-      return compilationSettings;
+      const tsConfig = normalizeConfig(ops.op_ts_config());
+      const { options, errors } = ts
+        .convertCompilerOptionsFromJson(tsConfig, "");
+      Object.assign(options, {
+        allowNonTsExtensions: true,
+        allowImportingTsExtensions: true,
+      });
+      if (errors.length > 0 && logDebug) {
+        debug(ts.formatDiagnostics(errors, host));
+      }
+      return options;
     },
     getScriptFileNames() {
       if (logDebug) {
@@ -1008,21 +1015,6 @@ delete Object.prototype.__proto__;
     switch (method) {
       case "$restart": {
         serverRestart();
-        return respond(id, true);
-      }
-      case "$configure": {
-        const config = normalizeConfig(args[0]);
-        const { options, errors } = ts
-          .convertCompilerOptionsFromJson(config, "");
-        Object.assign(options, {
-          allowNonTsExtensions: true,
-          allowImportingTsExtensions: true,
-        });
-        if (errors.length > 0 && logDebug) {
-          debug(ts.formatDiagnostics(errors, host));
-        }
-        compilationSettings = options;
-        moduleSpecifierCache.clear();
         return respond(id, true);
       }
       case "$getSupportedCodeFixes": {

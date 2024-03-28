@@ -16,7 +16,6 @@ use deno_core::unsync::spawn_blocking;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
 use rustyline::error::ReadlineError;
-use tokio::sync::mpsc::unbounded_channel;
 
 mod channel;
 mod editor;
@@ -32,8 +31,7 @@ pub use session::EvaluationOutput;
 pub use session::ReplSession;
 pub use session::REPL_INTERNALS_NAME;
 
-use super::test::TestEvent;
-use super::test::TestEventSender;
+use super::test::create_single_test_event_channel;
 
 struct Repl {
   session: ReplSession,
@@ -154,7 +152,7 @@ async fn read_eval_file(
 }
 
 pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
-  let factory = CliFactory::from_flags(flags).await?;
+  let factory = CliFactory::from_flags(flags)?;
   let cli_options = factory.cli_options();
   let main_module = cli_options.resolve_main_module()?;
   let permissions = PermissionsContainer::new(Permissions::from_options(
@@ -168,9 +166,8 @@ pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
     .deno_dir()
     .ok()
     .and_then(|dir| dir.repl_history_file_path());
-  let (test_event_sender, test_event_receiver) =
-    unbounded_channel::<TestEvent>();
-  let test_event_sender = TestEventSender::new(test_event_sender);
+  let (worker, test_event_receiver) = create_single_test_event_channel();
+  let test_event_sender = worker.sender;
   let mut worker = worker_factory
     .create_custom_worker(
       main_module.clone(),

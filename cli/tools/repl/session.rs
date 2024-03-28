@@ -14,6 +14,7 @@ use crate::tools::test::reporters::TestReporter;
 use crate::tools::test::run_tests_for_worker;
 use crate::tools::test::worker_has_tests;
 use crate::tools::test::TestEvent;
+use crate::tools::test::TestEventReceiver;
 use crate::tools::test::TestEventSender;
 
 use deno_ast::diagnostics::Diagnostic;
@@ -29,6 +30,7 @@ use deno_ast::ParsedSource;
 use deno_ast::SourcePos;
 use deno_ast::SourceRangedForSpanned;
 use deno_ast::SourceTextInfo;
+use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures::channel::mpsc::UnboundedReceiver;
 use deno_core::futures::FutureExt;
@@ -36,6 +38,7 @@ use deno_core::futures::StreamExt;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
 use deno_core::unsync::spawn;
+use deno_core::url::Url;
 use deno_core::LocalInspectorSession;
 use deno_core::PollEventLoopOptions;
 use deno_graph::source::ResolutionMode;
@@ -183,7 +186,7 @@ pub struct ReplSession {
   test_reporter_factory: Box<dyn Fn() -> Box<dyn TestReporter>>,
   test_event_sender: TestEventSender,
   /// This is only optional because it's temporarily taken when evaluating.
-  test_event_receiver: Option<tokio::sync::mpsc::UnboundedReceiver<TestEvent>>,
+  test_event_receiver: Option<TestEventReceiver>,
   jsx: ReplJsxState,
   experimental_decorators: bool,
 }
@@ -196,10 +199,10 @@ impl ReplSession {
     mut worker: MainWorker,
     main_module: ModuleSpecifier,
     test_event_sender: TestEventSender,
-    test_event_receiver: tokio::sync::mpsc::UnboundedReceiver<TestEvent>,
+    test_event_receiver: TestEventReceiver,
   ) -> Result<Self, AnyError> {
     let language_server = ReplLanguageServer::new_initialized().await?;
-    let mut session = worker.create_inspector_session().await;
+    let mut session = worker.create_inspector_session();
 
     worker
       .js_runtime
@@ -242,6 +245,13 @@ impl ReplSession {
       deno_core::resolve_path("./$deno$repl.ts", cli_options.initial_cwd())
         .unwrap();
 
+    let cwd_url =
+      Url::from_directory_path(cli_options.initial_cwd()).map_err(|_| {
+        generic_error(format!(
+          "Unable to construct URL from the path of cwd: {}",
+          cli_options.initial_cwd().to_string_lossy(),
+        ))
+      })?;
     let ts_config_for_emit = cli_options
       .resolve_ts_config_for_emit(deno_config::TsConfigType::Emit)?;
     let emit_options =
@@ -256,8 +266,14 @@ impl ReplSession {
       language_server,
       referrer,
       notifications: Arc::new(Mutex::new(notification_rx)),
-      test_reporter_factory: Box::new(|| {
-        Box::new(PrettyTestReporter::new(false, true, false, true))
+      test_reporter_factory: Box::new(move || {
+        Box::new(PrettyTestReporter::new(
+          false,
+          true,
+          false,
+          true,
+          cwd_url.clone(),
+        ))
       }),
       main_module,
       test_event_sender,

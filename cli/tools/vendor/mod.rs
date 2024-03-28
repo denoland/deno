@@ -40,7 +40,7 @@ pub async fn vendor(
 ) -> Result<(), AnyError> {
   let mut cli_options = CliOptions::from_flags(flags)?;
   let raw_output_dir = match &vendor_flags.output_path {
-    Some(output_path) => output_path.to_owned(),
+    Some(output_path) => PathBuf::from(output_path).to_owned(),
     None => PathBuf::from("vendor/"),
   };
   let output_dir = resolve_from_cwd(&raw_output_dir)?;
@@ -173,9 +173,24 @@ fn validate_options(
   options: &mut CliOptions,
   output_dir: &Path,
 ) -> Result<(), AnyError> {
+  let import_map_specifier = options
+    .resolve_specified_import_map_specifier()?
+    .or_else(|| {
+      let config_file = options.maybe_config_file().as_ref()?;
+      config_file
+        .to_import_map_specifier()
+        .ok()
+        .flatten()
+        .or_else(|| {
+          if config_file.is_an_import_map() {
+            Some(config_file.specifier.clone())
+          } else {
+            None
+          }
+        })
+    });
   // check the import map
-  if let Some(import_map_path) = options
-    .resolve_import_map_specifier()?
+  if let Some(import_map_path) = import_map_specifier
     .and_then(|p| specifier_to_file_path(&p).ok())
     .and_then(|p| canonicalize_path(&p).ok())
   {

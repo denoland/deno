@@ -35,7 +35,7 @@ jobs:
           deno-version: ${{ matrix.deno-version }}
 
       - name: Install Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
@@ -68,10 +68,10 @@ jobs:
         run: |
           deno run --unstable --allow-write --allow-read --allow-net           \
             --allow-env --allow-run --lock=tools/deno.lock.json                \
-            ./tools/wpt.ts setup
+            ./tests/wpt/wpt.ts setup
           deno run --unstable --allow-write --allow-read --allow-net           \
             --allow-env --allow-run --lock=tools/deno.lock.json                \
-            ./tools/wpt.ts run                                                 \
+            ./tests/wpt/wpt.ts run                                                 \                                                \
             --binary=$(which deno) --quiet --release --no-ignore --json=wpt.json --wptreport=wptreport.json
 
       - name: Upload wpt results to wpt.fyi

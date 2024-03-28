@@ -154,12 +154,6 @@ itest!(_025_reload_js_type_error {
   output: "run/025_reload_js_type_error.js.out",
 });
 
-itest!(_026_redirect_javascript {
-  args: "run --quiet --reload run/026_redirect_javascript.js",
-  output: "run/026_redirect_javascript.js.out",
-  http_server: true,
-});
-
 itest!(_027_redirect_typescript {
   args: "run --quiet --reload run/027_redirect_typescript.ts",
   output: "run/027_redirect_typescript.ts.out",
@@ -178,23 +172,6 @@ itest!(_028_args {
   args:
     "run --quiet --reload run/028_args.ts --arg1 val1 --arg2=val2 -- arg3 arg4",
   output: "run/028_args.ts.out",
-});
-
-itest!(_033_import_map {
-  args:
-    "run --quiet --reload --import-map=import_maps/import_map.json import_maps/test.ts",
-  output: "run/033_import_map.out",
-});
-
-itest!(_033_import_map_in_config_file {
-  args: "run --reload --config=import_maps/config.json import_maps/test.ts",
-  output: "run/033_import_map_in_config_file.out",
-});
-
-itest!(_033_import_map_in_flag_has_precedence {
-  args: "run --quiet --reload --import-map=import_maps/import_map_invalid.json --config=import_maps/config.json import_maps/test.ts",
-  output: "run/033_import_map_in_flag_has_precedence.out",
-  exit_code: 1,
 });
 
 itest!(_033_import_map_remote {
@@ -763,12 +740,6 @@ itest!(env_file_missing {
 itest!(_091_use_define_for_class_fields {
   args: "run --check run/091_use_define_for_class_fields.ts",
   output: "run/091_use_define_for_class_fields.ts.out",
-  exit_code: 1,
-});
-
-itest!(_092_import_map_unmapped_bare_specifier {
-  args: "run --import-map import_maps/import_map.json run/092_import_map_unmapped_bare_specifier.ts",
-  output: "run/092_import_map_unmapped_bare_specifier.ts.out",
   exit_code: 1,
 });
 
@@ -2232,11 +2203,6 @@ itest!(import_data_url_import_relative {
   output: "run/import_data_url_import_relative.ts.out",
   exit_code: 1,
 });
-
-itest!(import_data_url_import_map {
-    args: "run --quiet --reload --import-map import_maps/import_map.json run/import_data_url.ts",
-    output: "run/import_data_url.ts.out",
-  });
 
 itest!(import_data_url_imports {
   args: "run --quiet --reload run/import_data_url_imports.ts",
@@ -4560,15 +4526,14 @@ async fn websocket_server_multi_field_connection_header() {
   assert!(child.wait().unwrap().success());
 }
 
-// TODO(bartlomieju): this should use `deno run`, not `deno test`; but the
-// test hangs then. https://github.com/denoland/deno/issues/14283
 #[tokio::test]
 async fn websocket_server_idletimeout() {
+  test_util::timeout!(60);
   let script =
     util::testdata_path().join("run/websocket_server_idletimeout.ts");
   let root_ca = util::testdata_path().join("tls/RootCA.pem");
   let mut child = util::deno_cmd()
-    .arg("test")
+    .arg("run")
     .arg("--unstable")
     .arg("--allow-net")
     .arg("--cert")
@@ -4579,11 +4544,13 @@ async fn websocket_server_idletimeout() {
     .unwrap();
 
   let stdout = child.stdout.as_mut().unwrap();
-  let mut buffer = [0; 5];
-  let read = stdout.read(&mut buffer).unwrap();
-  assert_eq!(read, 5);
-  let msg = std::str::from_utf8(&buffer).unwrap();
-  assert_eq!(msg, "READY");
+  let mut buf: Vec<u8> = vec![];
+  while !String::from_utf8(buf.clone()).unwrap().contains("READY") {
+    let mut buffer = [0; 64];
+    let read = stdout.read(&mut buffer).unwrap();
+    buf.extend_from_slice(&buffer[0..read]);
+    eprintln!("buf = {buf:?}");
+  }
 
   let stream = tokio::net::TcpStream::connect("localhost:4509")
     .await
@@ -4604,8 +4571,7 @@ async fn websocket_server_idletimeout() {
     fastwebsockets::handshake::client(&SpawnExecutor, req, stream)
       .await
       .unwrap();
-
-  assert!(child.wait().unwrap().success());
+  assert_eq!(child.wait().unwrap().code(), Some(123));
 }
 
 itest!(auto_discover_lockfile {
@@ -5060,14 +5026,21 @@ Warning Sloppy module resolution (hint: specify path to index.tsx file in direct
 }
 
 itest!(unstable_temporal_api {
-  args: "run --unstable-temporal --check run/unstable_temporal_api/main.ts",
+  args: "run --no-config --unstable-temporal --check run/unstable_temporal_api/main.ts",
+  output: "run/unstable_temporal_api/main.out",
+  http_server: false,
+  exit_code: 0,
+});
+
+itest!(unstable_temporal_api_config_file {
+  args: "run --check run/unstable_temporal_api/main.ts",
   output: "run/unstable_temporal_api/main.out",
   http_server: false,
   exit_code: 0,
 });
 
 itest!(unstable_temporal_api_missing_flag {
-  args: "run run/unstable_temporal_api/missing_flag.js",
+  args: "run --no-config run/unstable_temporal_api/missing_flag.js",
   output: "run/unstable_temporal_api/missing_flag.out",
   http_server: false,
   exit_code: 1,
@@ -5163,4 +5136,37 @@ console.log(add(3, 4));
   );
   let output = test_context.new_command().args("run main.ts").run();
   output.assert_matches_text("[WILDCARD]5\n7\n");
+}
+
+#[test]
+fn run_etag_delete_source_cache() {
+  let test_context = TestContextBuilder::new()
+    .use_temp_cwd()
+    .use_http_server()
+    .build();
+  test_context
+    .temp_dir()
+    .write("main.ts", "import 'http://localhost:4545/etag_script.ts'");
+  test_context
+    .new_command()
+    .args("cache main.ts")
+    .run()
+    .skip_output_check();
+
+  // The cache is currently stored unideally in two files where one file has the headers
+  // and the other contains the body. An issue can happen with the etag header where the
+  // headers file exists, but the body was deleted. We need to get the cache to gracefully
+  // handle this scenario.
+  let deno_dir = test_context.deno_dir().path();
+  let etag_script_path = deno_dir.join("deps/http/localhost_PORT4545/26110db7d42c9bad32386735cbc05c301f83e4393963deb8da14fec3b4202a13");
+  assert!(etag_script_path.exists());
+  etag_script_path.remove_file();
+
+  test_context
+    .new_command()
+    .args("cache --reload --log-level=debug main.ts")
+    .run()
+    .assert_matches_text(
+      "[WILDCARD]Cache body not found. Trying again without etag.[WILDCARD]",
+    );
 }

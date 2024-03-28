@@ -9,11 +9,9 @@ use crate::FfiPermissions;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::op2;
-use deno_core::serde_v8;
 use deno_core::v8;
 use deno_core::OpState;
 use deno_core::Resource;
-use deno_core::ResourceId;
 use dlopen2::raw::Library;
 use serde::Deserialize;
 use serde_value::ValueDeserializer;
@@ -132,12 +130,11 @@ pub struct FfiLoadArgs {
 }
 
 #[op2]
-#[serde]
 pub fn op_ffi_load<'scope, FP>(
   scope: &mut v8::HandleScope<'scope>,
   state: &mut OpState,
   #[serde] args: FfiLoadArgs,
-) -> Result<(ResourceId, serde_v8::Value<'scope>), AnyError>
+) -> Result<v8::Local<'scope, v8::Value>, AnyError>
 where
   FP: FfiPermissions + 'static,
 {
@@ -222,13 +219,12 @@ where
     }
   }
 
+  let out = v8::Array::new(scope, 2);
   let rid = state.resource_table.add(resource);
-  Ok((
-    rid,
-    serde_v8::Value {
-      v8_value: obj.into(),
-    },
-  ))
+  let rid_v8 = v8::Integer::new_from_unsigned(scope, rid);
+  out.set_index(scope, 0, rid_v8.into());
+  out.set_index(scope, 1, obj.into());
+  Ok(out.into())
 }
 
 // Create a JavaScript function for synchronous FFI call to
@@ -291,7 +287,7 @@ fn make_sync_fn<'s>(
               let result =
                 // SAFETY: Same return type declared to libffi; trust user to have it right beyond that.
                 unsafe { result.to_v8(scope, symbol.result_type.clone()) };
-              rv.set(result.v8_value);
+              rv.set(result);
             }
           }
         }

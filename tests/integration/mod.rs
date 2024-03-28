@@ -50,6 +50,8 @@ mod node_compat_tests;
 mod node_unit_tests;
 #[path = "npm_tests.rs"]
 mod npm;
+#[path = "pm_tests.rs"]
+mod pm;
 #[path = "publish_tests.rs"]
 mod publish;
 

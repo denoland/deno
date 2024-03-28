@@ -2,28 +2,32 @@
 
 use bytes::Bytes;
 use deno_ast::MediaType;
+use deno_ast::ModuleSpecifier;
 use deno_config::glob::FilePatterns;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
 use sha2::Digest;
 use std::collections::HashSet;
-use std::ffi::OsStr;
 use std::fmt::Write as FmtWrite;
 use std::io::Write;
 use std::path::Path;
 use tar::Header;
 
+use crate::args::CliOptions;
 use crate::cache::LazyGraphSourceParser;
 use crate::tools::registry::paths::PackagePath;
-use crate::util::import_map::ImportMapUnfurler;
+use crate::util::fs::FileCollector;
 
 use super::diagnostics::PublishDiagnostic;
 use super::diagnostics::PublishDiagnosticsCollector;
+use super::unfurl::SpecifierUnfurler;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PublishableTarballFile {
+  pub path_str: String,
   pub specifier: Url,
+  pub hash: String,
   pub size: usize,
 }
 
@@ -36,39 +40,46 @@ pub struct PublishableTarball {
 
 pub fn create_gzipped_tarball(
   dir: &Path,
+  cli_options: &CliOptions,
   source_parser: LazyGraphSourceParser,
   diagnostics_collector: &PublishDiagnosticsCollector,
-  unfurler: &ImportMapUnfurler,
+  unfurler: &SpecifierUnfurler,
   file_patterns: Option<FilePatterns>,
 ) -> Result<PublishableTarball, AnyError> {
+  let file_patterns = file_patterns
+    .unwrap_or_else(|| FilePatterns::new_with_base(dir.to_path_buf()));
   let mut tar = TarGzArchive::new();
   let mut files = vec![];
 
-  let mut paths = HashSet::new();
-
-  let mut iterator = walkdir::WalkDir::new(dir).follow_links(false).into_iter();
-  while let Some(entry) = iterator.next() {
-    let entry = entry?;
-
-    let path = entry.path();
-    let file_type = entry.file_type();
-
-    let matches_pattern = file_patterns
-      .as_ref()
-      .map(|p| p.matches_path(path))
-      .unwrap_or(true);
-    if !matches_pattern
-      || path.file_name() == Some(OsStr::new(".git"))
-      || path.file_name() == Some(OsStr::new("node_modules"))
-      || path.file_name() == Some(OsStr::new(".DS_Store"))
-    {
-      if file_type.is_dir() {
-        iterator.skip_current_dir();
+  let iter_paths = FileCollector::new(|e| {
+    if !e.file_type.is_file() {
+      if let Ok(specifier) = ModuleSpecifier::from_file_path(e.path) {
+        diagnostics_collector.push(PublishDiagnostic::UnsupportedFileType {
+          specifier,
+          kind: if e.file_type.is_symlink() {
+            "symlink".to_owned()
+          } else {
+            format!("{:?}", e.file_type)
+          },
+        });
       }
-      continue;
+      return false;
     }
+    e.path
+      .file_name()
+      .map(|s| s != ".DS_Store" && s != ".gitignore")
+      .unwrap_or(true)
+  })
+  .ignore_git_folder()
+  .ignore_node_modules()
+  .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
+  .use_gitignore()
+  .collect_file_patterns(file_patterns)?;
 
-    let Ok(specifier) = Url::from_file_path(path) else {
+  let mut paths = HashSet::with_capacity(iter_paths.len());
+
+  for path in iter_paths {
+    let Ok(specifier) = Url::from_file_path(&path) else {
       diagnostics_collector
         .to_owned()
         .push(PublishDiagnostic::InvalidPath {
@@ -78,20 +89,20 @@ pub fn create_gzipped_tarball(
       continue;
     };
 
-    if file_type.is_file() {
-      let Ok(relative_path) = path.strip_prefix(dir) else {
-        diagnostics_collector
-          .to_owned()
-          .push(PublishDiagnostic::InvalidPath {
-            path: path.to_path_buf(),
-            message: "path is not in publish directory".to_string(),
-          });
-        continue;
-      };
+    let Ok(relative_path) = path.strip_prefix(dir) else {
+      diagnostics_collector
+        .to_owned()
+        .push(PublishDiagnostic::InvalidPath {
+          path: path.to_path_buf(),
+          message: "path is not in publish directory".to_string(),
+        });
+      continue;
+    };
 
-      let path_str = relative_path.components().fold(
-        "".to_string(),
-        |mut path, component| {
+    let path_str =
+      relative_path
+        .components()
+        .fold("".to_string(), |mut path, component| {
           path.push('/');
           match component {
             std::path::Component::Normal(normal) => {
@@ -102,55 +113,55 @@ pub fn create_gzipped_tarball(
             _ => unreachable!(),
           }
           path
-        },
-      );
+        });
 
-      match PackagePath::new(path_str.clone()) {
-        Ok(package_path) => {
-          if !paths.insert(package_path) {
-            diagnostics_collector.to_owned().push(
-              PublishDiagnostic::DuplicatePath {
-                path: path.to_path_buf(),
-              },
-            );
-          }
-        }
-        Err(err) => {
+    match PackagePath::new(path_str.clone()) {
+      Ok(package_path) => {
+        if !paths.insert(package_path) {
           diagnostics_collector.to_owned().push(
-            PublishDiagnostic::InvalidPath {
+            PublishDiagnostic::DuplicatePath {
               path: path.to_path_buf(),
-              message: err.to_string(),
             },
           );
         }
       }
+      Err(err) => {
+        diagnostics_collector
+          .to_owned()
+          .push(PublishDiagnostic::InvalidPath {
+            path: path.to_path_buf(),
+            message: err.to_string(),
+          });
+      }
+    }
 
-      let content = resolve_content_maybe_unfurling(
-        path,
-        &specifier,
-        unfurler,
-        source_parser,
-        diagnostics_collector,
-      )?;
-      files.push(PublishableTarballFile {
+    let content = resolve_content_maybe_unfurling(
+      &path,
+      &specifier,
+      unfurler,
+      source_parser,
+      diagnostics_collector,
+    )?;
+
+    let media_type = MediaType::from_specifier(&specifier);
+    if matches!(media_type, MediaType::Jsx | MediaType::Tsx) {
+      diagnostics_collector.push(PublishDiagnostic::UnsupportedJsxTsx {
         specifier: specifier.clone(),
-        size: content.len(),
-      });
-      tar
-        .add_file(format!(".{}", path_str), &content)
-        .with_context(|| {
-          format!("Unable to add file to tarball '{}'", entry.path().display())
-        })?;
-    } else if !file_type.is_dir() {
-      diagnostics_collector.push(PublishDiagnostic::UnsupportedFileType {
-        specifier,
-        kind: if file_type.is_symlink() {
-          "symlink".to_owned()
-        } else {
-          format!("{file_type:?}")
-        },
       });
     }
+
+    files.push(PublishableTarballFile {
+      path_str: path_str.clone(),
+      specifier: specifier.clone(),
+      // This hash string matches the checksum computed by registry
+      hash: format!("sha256-{:x}", sha2::Sha256::digest(&content)),
+      size: content.len(),
+    });
+    tar
+      .add_file(format!(".{}", path_str), &content)
+      .with_context(|| {
+        format!("Unable to add file to tarball '{}'", path.display())
+      })?;
   }
 
   let v = tar.finish().context("Unable to finish tarball")?;
@@ -172,7 +183,7 @@ pub fn create_gzipped_tarball(
 fn resolve_content_maybe_unfurling(
   path: &Path,
   specifier: &Url,
-  unfurler: &ImportMapUnfurler,
+  unfurler: &SpecifierUnfurler,
   source_parser: LazyGraphSourceParser,
   diagnostics_collector: &PublishDiagnosticsCollector,
 ) -> Result<Vec<u8>, AnyError> {
@@ -221,7 +232,7 @@ fn resolve_content_maybe_unfurling(
 
   log::debug!("Unfurling {}", specifier);
   let mut reporter = |diagnostic| {
-    diagnostics_collector.push(PublishDiagnostic::ImportMapUnfurl(diagnostic));
+    diagnostics_collector.push(PublishDiagnostic::SpecifierUnfurl(diagnostic));
   };
   let content = unfurler.unfurl(specifier, &parsed_source, &mut reporter);
   Ok(content.into_bytes())

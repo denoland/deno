@@ -16,7 +16,7 @@ export type Encoding =
   | CharacterEncoding
   | LegacyCharacterEncoding;
 
-export type ECDHKeyFormat = "compressed" | "uncompressed" | "hybrid";
+export type ECDHKeyFormat = "compressed" | "uncompressed";
 
 export type BinaryLike = string | ArrayBufferView;
 

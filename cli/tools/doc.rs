@@ -17,7 +17,6 @@ use deno_config::glob::PathOrPatternSet;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::futures::FutureExt;
 use deno_doc as doc;
 use deno_graph::GraphKind;
 use deno_graph::ModuleAnalyzer;
@@ -73,7 +72,7 @@ async fn generate_doc_nodes_for_builtin_types(
 }
 
 pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
-  let factory = CliFactory::from_flags(flags).await?;
+  let factory = CliFactory::from_flags(flags)?;
   let cli_options = factory.cli_options();
   let module_info_cache = factory.module_info_cache()?;
   let parsed_source_cache = factory.parsed_source_cache();
@@ -96,13 +95,16 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
       let module_specifiers = collect_specifiers(
         FilePatterns {
           base: cli_options.initial_cwd().to_path_buf(),
-          include: Some(PathOrPatternSet::from_relative_path_or_patterns(
-            cli_options.initial_cwd(),
-            source_files,
-          )?),
+          include: Some(
+            PathOrPatternSet::from_include_relative_path_or_patterns(
+              cli_options.initial_cwd(),
+              source_files,
+            )?,
+          ),
           exclude: Default::default(),
         },
-        |_, _| true,
+        cli_options.vendor_dir_path().map(ToOwned::to_owned),
+        |_| true,
       )?;
       let graph = module_graph_creator
         .create_graph(GraphKind::TypesOnly, module_specifiers.clone())
@@ -146,16 +148,26 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
         &analyzer,
       )
       .await?;
-      let (_, deno_ns) = deno_ns.first().unwrap();
+      let (_, deno_ns) = deno_ns.into_iter().next().unwrap();
 
-      deno_doc::html::compute_namespaced_symbols(deno_ns, &[])
+      deno_doc::html::compute_namespaced_symbols(
+        deno_ns
+          .into_iter()
+          .map(|node| deno_doc::html::DocNodeWithContext {
+            origin: Rc::new(ShortPath::from("deno".to_string())),
+            ns_qualifiers: Rc::new(vec![]),
+            kind_with_drilldown:
+              deno_doc::html::DocNodeKindWithDrilldown::Other(node.kind),
+            inner: std::sync::Arc::new(node),
+          })
+          .collect(),
+        &[],
+      )
     } else {
       Default::default()
     };
 
-    generate_docs_directory(&doc_nodes_by_url, html_options, deno_ns)
-      .boxed_local()
-      .await
+    generate_docs_directory(doc_nodes_by_url, html_options, deno_ns)
   } else {
     let modules_len = doc_nodes_by_url.len();
     let doc_nodes =
@@ -222,8 +234,8 @@ impl deno_doc::html::HrefResolver for DocResolver {
   }
 }
 
-async fn generate_docs_directory(
-  doc_nodes_by_url: &IndexMap<ModuleSpecifier, Vec<doc::DocNode>>,
+fn generate_docs_directory(
+  doc_nodes_by_url: IndexMap<ModuleSpecifier, Vec<doc::DocNode>>,
   html_options: &DocHtmlFlag,
   deno_ns: std::collections::HashSet<Vec<String>>,
 ) -> Result<(), AnyError> {
