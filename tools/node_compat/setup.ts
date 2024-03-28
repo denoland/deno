@@ -6,7 +6,7 @@
 import { walk } from "@std/fs/walk.ts";
 import { sep } from "@std/path/mod.ts";
 import { ensureFile } from "@std/fs/ensure_file.ts";
-import { writeAll } from "@std/streams/write_all.ts";
+import { writeAll } from "@std/io/write_all.ts";
 import { withoutAll } from "@std/collections/without_all.ts";
 import { relative } from "@std/path/posix.ts";
 
