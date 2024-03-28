@@ -136,6 +136,13 @@ pub struct Diagnostic {
 }
 
 impl Diagnostic {
+  /// If this diagnostic should be included when it comes from a remote module.
+  pub fn include_when_remote(&self) -> bool {
+    /// TS6133: value is declared but its value is never read (noUnusedParameters and noUnusedLocals)
+    const TS6133: u64 = 6133;
+    self.code != TS6133
+  }
+
   fn fmt_category_and_code(&self, f: &mut fmt::Formatter) -> fmt::Result {
     let category = match self.category {
       DiagnosticCategory::Error => "ERROR",
@@ -273,13 +280,19 @@ impl Diagnostics {
     Diagnostics(diagnostics)
   }
 
+  pub fn without_remote_ignored_diagnostics_for_local_modules(
+    self,
+  ) -> crate::tsc::Diagnostics {
+    self.filter(|diagnostic| diagnostic.include_when_remote())
+  }
+
   /// Return a set of diagnostics where only the values where the predicate
   /// returns `true` are included.
-  pub fn filter<P>(&self, predicate: P) -> Self
+  pub fn filter<P>(self, predicate: P) -> Self
   where
-    P: FnMut(&Diagnostic) -> Option<Diagnostic>,
+    P: FnMut(&Diagnostic) -> bool,
   {
-    let diagnostics = self.0.iter().filter_map(predicate).collect();
+    let diagnostics = self.0.into_iter().filter(predicate).collect();
     Self(diagnostics)
   }
 
