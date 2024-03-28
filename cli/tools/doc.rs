@@ -148,14 +148,26 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
         &analyzer,
       )
       .await?;
-      let (_, deno_ns) = deno_ns.first().unwrap();
+      let (_, deno_ns) = deno_ns.into_iter().next().unwrap();
 
-      deno_doc::html::compute_namespaced_symbols(deno_ns, &[])
+      deno_doc::html::compute_namespaced_symbols(
+        deno_ns
+          .into_iter()
+          .map(|node| deno_doc::html::DocNodeWithContext {
+            origin: Rc::new(ShortPath::from("deno".to_string())),
+            ns_qualifiers: Rc::new(vec![]),
+            kind_with_drilldown:
+              deno_doc::html::DocNodeKindWithDrilldown::Other(node.kind),
+            inner: std::sync::Arc::new(node),
+          })
+          .collect(),
+        &[],
+      )
     } else {
       Default::default()
     };
 
-    generate_docs_directory(&doc_nodes_by_url, html_options, deno_ns)
+    generate_docs_directory(doc_nodes_by_url, html_options, deno_ns)
   } else {
     let modules_len = doc_nodes_by_url.len();
     let doc_nodes =
@@ -223,7 +235,7 @@ impl deno_doc::html::HrefResolver for DocResolver {
 }
 
 fn generate_docs_directory(
-  doc_nodes_by_url: &IndexMap<ModuleSpecifier, Vec<doc::DocNode>>,
+  doc_nodes_by_url: IndexMap<ModuleSpecifier, Vec<doc::DocNode>>,
   html_options: &DocHtmlFlag,
   deno_ns: std::collections::HashSet<Vec<String>>,
 ) -> Result<(), AnyError> {
