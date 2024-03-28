@@ -7,6 +7,7 @@ pub mod http2;
 pub mod idna;
 pub mod ipc;
 pub mod os;
+pub mod process;
 pub mod require;
 pub mod util;
 pub mod v8;
