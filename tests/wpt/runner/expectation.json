@@ -6903,10 +6903,7 @@
         },
         "the-iframe-element": {
           "cross-origin-to-whom-part-2.window.html": false,
-          "cross-origin-to-whom.window.html": false,
-          "sandbox-top-navigation-child.tentative.sub.window.html": false,
-          "sandbox-top-navigation-escalate-privileges.tentative.sub.window.html": false,
-          "sandbox-top-navigation-grandchild.tentative.sub.window.html": false
+          "cross-origin-to-whom.window.html": false
         },
         "the-img-element": {
           "historical-progress-event.window.html": false
