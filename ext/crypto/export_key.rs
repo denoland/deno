@@ -447,7 +447,6 @@ fn export_key_ec(
             Err(data_error("expected valid public EC key"))
           }
         }
-        _ => Err(not_supported_error("Unsupported namedCurve")),
       }
     }
     ExportKeyFormat::JwkSecret => Err(unsupported_format()),
