@@ -119,7 +119,11 @@ impl HttpPropertyExtractor for DefaultHttpPropertyExtractor {
   async fn accept_connection_from_listener(
     listener: &NetworkStreamListener,
   ) -> Result<NetworkStream, AnyError> {
-    listener.accept().await.map_err(Into::into)
+    listener
+      .accept()
+      .await
+      .map_err(Into::into)
+      .map(|(stm, _)| stm)
   }
 
   fn listen_properties_from_listener(
