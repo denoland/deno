@@ -200,16 +200,7 @@ impl TypeChecker {
       check_mode: type_check_mode,
     })?;
 
-    let is_publishing = matches!(
-      self.cli_options.sub_command(),
-      crate::args::DenoSubcommand::Publish(_)
-    );
     let mut diagnostics = response.diagnostics.filter(|d| {
-      if is_publishing && !d.include_when_remote() {
-        // don't include ignored remote diagnostics for local modules when publishing
-        return false;
-      }
-
       if self.is_remote_diagnostic(d) {
         type_check_mode == TypeCheckMode::All && d.include_when_remote()
       } else {
