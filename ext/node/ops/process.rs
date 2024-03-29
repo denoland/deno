@@ -18,25 +18,29 @@ fn kill(pid: i32, sig: i32) -> i32 {
   use winapi::shared::winerror::ERROR_INVALID_PARAMETER;
   use winapi::um::errhandlingapi::GetLastError;
   use winapi::um::handleapi::CloseHandle;
+  use winapi::um::processthreadsapi::GetCurrentProcess;
   use winapi::um::processthreadsapi::OpenProcess;
   use winapi::um::processthreadsapi::TerminateProcess;
   use winapi::um::winnt::PROCESS_TERMINATE;
 
-  let p_hnd = if pid == 0 {
-    unsafe { GetCurrentProcess() }
-  } else {
-    unsafe { OpenProcess(PROCESS_TERMINATE, FALSE, pid as DWORD) }
-  };
+  // SAFETY: FFI call to winapi
+  unsafe {
+    let p_hnd = if pid == 0 {
+      GetCurrentProcess()
+    } else {
+      OpenProcess(PROCESS_TERMINATE, FALSE, pid as DWORD)
+    };
 
-  if p_hnd.is_null() {
-    return -1;
+    if p_hnd.is_null() {
+      return GetLastError();
+    }
+
+    if TerminateProcess(p_hnd, 1) == TRUE {
+      return 0;
+    }
+
+    GetLastError()
   }
-
-  if unsafe { TerminateProcess(p_hnd, 1) } == TRUE {
-    return 0;
-  }
-
-  -1
 }
 
 #[op2(fast)]
