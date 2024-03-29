@@ -545,6 +545,11 @@ delete Object.prototype.__proto__;
       return undefined;
     },
     // @ts-ignore Undocumented method.
+    toPath(fileName) {
+      // @ts-ignore Undocumented function.
+      ts.toPath(fileName, this.getCurrentDirectory(), this.getCanonicalFileName(fileName));
+    },
+    // @ts-ignore Undocumented method.
     watchNodeModulesForPackageJsonChanges() {
       return { close() {} };
     },
