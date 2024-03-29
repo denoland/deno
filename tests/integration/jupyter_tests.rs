@@ -191,13 +191,23 @@ async fn connect_socket<S: zeromq::Socket>(
 ) -> S {
   let addr = spec.endpoint(port);
   let mut socket = S::new();
+  let mut connected = false;
   for _ in 0..5 {
-    match socket.connect(&addr).await {
-      Ok(_) => break,
-      Err(e) => {
+    match timeout(Duration::from_secs(5), socket.connect(&addr)).await {
+      Ok(Ok(_)) => {
+        connected = true;
+        break;
+      }
+      Ok(Err(e)) => {
         eprintln!("Failed to connect to {addr}: {e}");
       }
+      Err(e) => {
+        eprintln!("Timed out connecting to {addr}: {e}");
+      }
     }
+  }
+  if !connected {
+    panic!("Failed to connect to {addr}");
   }
   socket
 }
@@ -381,18 +391,24 @@ async fn setup_server() -> (TestContext, ConnectionSpec, JupyterServerProcess) {
   let mut conn = ConnectionSpec::default();
   let conn_file = context.temp_dir().path().join("connection.json");
   conn_file.write_json(&conn);
-  let mut process = context
-    .new_command()
-    .piped_output()
-    .args_vec(vec![
-      "jupyter",
-      "--kernel",
-      "--conn",
-      conn_file.to_string().as_str(),
-    ])
-    .spawn()
-    .unwrap();
-  tokio::time::sleep(Duration::from_millis(2000)).await;
+
+  let start_process = |conn_file: &test_util::PathRef| {
+    context
+      .new_command()
+      .args_vec(vec![
+        "jupyter",
+        "--kernel",
+        "--conn",
+        conn_file.to_string().as_str(),
+      ])
+      .spawn()
+      .unwrap()
+  };
+
+  // try to start the server, retrying up to 5 times
+  // (this can happen due to TOCTOU errors with selecting unused TCP ports)
+  let mut process = start_process(&conn_file);
+  tokio::time::sleep(Duration::from_millis(1000)).await;
 
   for _ in 0..5 {
     if process.try_wait().unwrap().is_none() {
@@ -400,17 +416,8 @@ async fn setup_server() -> (TestContext, ConnectionSpec, JupyterServerProcess) {
     } else {
       conn = ConnectionSpec::default();
       conn_file.write_json(&conn);
-      process = context
-        .new_command()
-        .piped_output()
-        .args_vec(vec![
-          "jupyter",
-          "--kernel",
-          "--conn",
-          conn_file.to_string().as_str(),
-        ])
-        .spawn()
-        .unwrap();
+      process = start_process(&conn_file);
+      tokio::time::sleep(Duration::from_millis(1000)).await;
     }
   }
   if process.try_wait().unwrap().is_some() {
