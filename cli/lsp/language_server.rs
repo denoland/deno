@@ -1069,8 +1069,7 @@ impl Inner {
 
   fn walk_workspace(config: &Config) -> (BTreeSet<ModuleSpecifier>, bool) {
     let mut workspace_files = Default::default();
-    let document_preload_limit =
-      config.workspace_settings().document_preload_limit;
+    let entry_limit = 1000;
     let mut pending = VecDeque::new();
     let mut entry_count = 0;
     let mut roots = config
@@ -1091,7 +1090,7 @@ impl Inner {
         let Ok(entry) = entry else {
           continue;
         };
-        if entry_count >= document_preload_limit {
+        if entry_count >= entry_limit {
           return (workspace_files, true);
         }
         entry_count += 1;
