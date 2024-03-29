@@ -544,6 +544,10 @@ delete Object.prototype.__proto__;
     getGlobalTypingsCacheLocation() {
       return undefined;
     },
+    // @ts-ignore Undocumented method.
+    watchNodeModulesForPackageJsonChanges() {
+      return { close() {} };
+    },
     getSourceFile(
       specifier,
       languageVersion,
