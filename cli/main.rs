@@ -263,16 +263,6 @@ fn exit_with_message(message: &str, code: i32) -> ! {
   std::process::exit(code);
 }
 
-#[inline(always)]
-fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
-  match result {
-    Ok(value) => value,
-    Err(error) => {
-      exit_for_error(error);
-    }
-  }
-}
-
 fn exit_for_error(error: AnyError) -> ! {
   let mut error_string = format!("{error:?}");
   let mut error_code = 1;
@@ -354,10 +344,10 @@ pub fn main() {
     }
   };
 
-  let exit_code =
-    unwrap_or_exit(create_and_run_current_thread_with_maybe_metrics(future));
-
-  std::process::exit(exit_code);
+  match create_and_run_current_thread_with_maybe_metrics(future) {
+    Ok(exit_code) => std::process::exit(exit_code),
+    Err(err) => exit_for_error(err),
+  }
 }
 
 fn resolve_flags_and_init(
@@ -372,7 +362,7 @@ fn resolve_flags_and_init(
       err.print().unwrap();
       std::process::exit(0);
     }
-    Err(err) => unwrap_or_exit(Err(AnyError::from(err))),
+    Err(err) => exit_for_error(AnyError::from(err)),
   };
 
   // TODO(bartlomieju): remove when `--unstable` flag is removed.
