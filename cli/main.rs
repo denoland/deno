@@ -4,7 +4,6 @@ mod args;
 mod auth_tokens;
 mod cache;
 mod cdp;
-mod deno_std;
 mod emit;
 mod errors;
 mod factory;
@@ -153,7 +152,7 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
       tools::jupyter::kernel(flags, jupyter_flags).await
     }),
     DenoSubcommand::Uninstall(uninstall_flags) => spawn_subcommand(async {
-      tools::installer::uninstall(uninstall_flags.name, uninstall_flags.root)
+      tools::installer::uninstall(uninstall_flags)
     }),
     DenoSubcommand::Lsp => spawn_subcommand(async { lsp::start().await }),
     DenoSubcommand::Lint(lint_flags) => spawn_subcommand(async {
@@ -320,7 +319,7 @@ pub fn main() {
     Box::new(util::draw_thread::DrawThread::show),
   );
 
-  let args: Vec<String> = env::args().collect();
+  let args: Vec<_> = env::args_os().collect();
 
   // NOTE(lucacasonato): due to new PKU feature introduced in V8 11.6 we need to
   // initialize the V8 platform on a parent thread of all threads that will spawn

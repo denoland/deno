@@ -28,6 +28,7 @@ impl PrettyTestReporter {
     echo_output: bool,
     filter: bool,
     repl: bool,
+    cwd: Url,
   ) -> PrettyTestReporter {
     PrettyTestReporter {
       parallel,
@@ -37,7 +38,7 @@ impl PrettyTestReporter {
       filter,
       repl,
       scope_test_id: None,
-      cwd: Url::from_directory_path(std::env::current_dir().unwrap()).unwrap(),
+      cwd,
       did_have_user_output: false,
       started_tests: false,
       ended_tests: false,

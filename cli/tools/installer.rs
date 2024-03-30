@@ -5,6 +5,7 @@ use crate::args::CaData;
 use crate::args::Flags;
 use crate::args::InstallFlags;
 use crate::args::TypeCheckMode;
+use crate::args::UninstallFlags;
 use crate::factory::CliFactory;
 use crate::http_util::HttpClient;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
@@ -183,7 +184,13 @@ pub async fn infer_name_from_url(url: &Url) -> Option<String> {
   Some(stem.to_string())
 }
 
-pub fn uninstall(name: String, root: Option<String>) -> Result<(), AnyError> {
+pub fn uninstall(uninstall_flags: UninstallFlags) -> Result<(), AnyError> {
+  let name = uninstall_flags.name;
+  let root = uninstall_flags.root;
+
+  if !uninstall_flags.global {
+    log::warn!("⚠️ `deno install` behavior will change in Deno 2. To preserve the current behavior use the `-g` or `--global` flag.");
+  }
   let cwd = std::env::current_dir().context("Unable to get CWD")?;
   let root = if let Some(root) = root {
     canonicalize_path_maybe_not_exists(&cwd.join(root))?
@@ -241,6 +248,9 @@ pub async fn install_command(
   flags: Flags,
   install_flags: InstallFlags,
 ) -> Result<(), AnyError> {
+  if !install_flags.global {
+    log::warn!("⚠️ `deno install` behavior will change in Deno 2. To preserve the current behavior use the `-g` or `--global` flag.");
+  }
   // ensure the module is cached
   CliFactory::from_flags(flags.clone())?
     .module_load_preparer()
@@ -663,6 +673,7 @@ mod tests {
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
         force: false,
+        global: false,
       },
     )
     .await
@@ -697,6 +708,7 @@ mod tests {
         name: None,
         root: Some(env::temp_dir().to_string_lossy().to_string()),
         force: false,
+        global: false,
       },
     )
     .await
@@ -725,6 +737,7 @@ mod tests {
         name: None,
         root: Some(env::temp_dir().to_string_lossy().to_string()),
         force: false,
+        global: false,
       },
     )
     .await
@@ -758,6 +771,7 @@ mod tests {
         name: None,
         root: Some(env::temp_dir().to_string_lossy().to_string()),
         force: false,
+        global: false,
       },
     )
     .await
@@ -786,6 +800,7 @@ mod tests {
         name: None,
         root: Some(env::temp_dir().to_string_lossy().to_string()),
         force: false,
+        global: false,
       },
     )
     .await
@@ -810,6 +825,7 @@ mod tests {
         name: None,
         root: Some(env::temp_dir().to_string_lossy().to_string()),
         force: false,
+        global: false,
       },
     )
     .await
@@ -836,6 +852,7 @@ mod tests {
         name: Some("echo_test".to_string()),
         root: Some(env::temp_dir().to_string_lossy().to_string()),
         force: false,
+        global: false,
       },
     )
     .await
@@ -864,6 +881,7 @@ mod tests {
         name: Some("echo_test".to_string()),
         root: Some(env::temp_dir().to_string_lossy().to_string()),
         force: false,
+        global: false,
       },
     )
     .await
@@ -897,6 +915,7 @@ mod tests {
         name: Some("echo_test".to_string()),
         root: Some(env::temp_dir().to_string_lossy().to_string()),
         force: false,
+        global: false,
       },
     )
     .await
@@ -926,6 +945,7 @@ mod tests {
         name: Some("echo_test".to_string()),
         root: Some(env::temp_dir().to_string_lossy().to_string()),
         force: false,
+        global: false,
       },
     )
     .await
@@ -956,6 +976,7 @@ mod tests {
         name: None,
         root: Some(temp_dir.to_string_lossy().to_string()),
         force: false,
+        global: false,
       },
     )
     .await
@@ -990,6 +1011,7 @@ mod tests {
         name: None,
         root: Some(env::temp_dir().to_string_lossy().to_string()),
         force: false,
+        global: false,
       },
     )
     .await
@@ -1025,6 +1047,7 @@ mod tests {
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
         force: false,
+        global: false,
       },
     )
     .await
@@ -1054,6 +1077,7 @@ mod tests {
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
         force: false,
+        global: false,
       },
     )
     .await
@@ -1074,6 +1098,7 @@ mod tests {
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
         force: false,
+        global: false,
       },
     )
     .await;
@@ -1095,6 +1120,7 @@ mod tests {
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
         force: true,
+        global: false,
       },
     )
     .await;
@@ -1125,6 +1151,7 @@ mod tests {
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
         force: true,
+        global: false,
       },
     )
     .await;
@@ -1154,6 +1181,7 @@ mod tests {
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
         force: false,
+        global: false,
       },
     )
     .await
@@ -1194,6 +1222,7 @@ mod tests {
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
         force: false,
+        global: false,
       },
     )
     .await
@@ -1238,6 +1267,7 @@ mod tests {
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
         force: true,
+        global: false,
       },
     )
     .await;
@@ -1280,6 +1310,7 @@ mod tests {
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
         force: true,
+        global: false,
       },
     )
     .await;
@@ -1330,8 +1361,12 @@ mod tests {
       File::create(file_path).unwrap();
     }
 
-    uninstall("echo_test".to_string(), Some(temp_dir.path().to_string()))
-      .unwrap();
+    uninstall(UninstallFlags {
+      name: "echo_test".to_string(),
+      root: Some(temp_dir.path().to_string()),
+      global: false,
+    })
+    .unwrap();
 
     assert!(!file_path.exists());
     assert!(!file_path.with_extension("tsconfig.json").exists());

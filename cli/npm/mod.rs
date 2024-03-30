@@ -119,7 +119,7 @@ impl NpmFetchResolver {
     let maybe_get_nv = || async {
       let name = req.name.clone();
       let package_info = self.package_info(&name).await?;
-      // Find the first matching version of the package which is cached.
+      // Find the first matching version of the package.
       let mut versions = package_info.versions.keys().collect::<Vec<_>>();
       versions.sort();
       let version = versions

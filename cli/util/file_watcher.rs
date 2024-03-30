@@ -4,6 +4,7 @@ use crate::args::Flags;
 use crate::colors;
 use crate::util::fs::canonicalize_path;
 
+use deno_config::glob::PathOrPatternSet;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::futures::Future;
@@ -244,6 +245,7 @@ where
   ) -> Result<F, AnyError>,
   F: Future<Output = Result<(), AnyError>>,
 {
+  let exclude_set = flags.resolve_watch_exclude_set()?;
   let (paths_to_watch_tx, mut paths_to_watch_rx) =
     tokio::sync::mpsc::unbounded_channel();
   let (restart_tx, mut restart_rx) = tokio::sync::mpsc::unbounded_channel();
@@ -297,12 +299,12 @@ where
     }
 
     let mut watcher = new_watcher(watcher_sender.clone())?;
-    consume_paths_to_watch(&mut watcher, &mut paths_to_watch_rx);
+    consume_paths_to_watch(&mut watcher, &mut paths_to_watch_rx, &exclude_set);
 
     let receiver_future = async {
       loop {
         let maybe_paths = paths_to_watch_rx.recv().await;
-        add_paths_to_watcher(&mut watcher, &maybe_paths.unwrap());
+        add_paths_to_watcher(&mut watcher, &maybe_paths.unwrap(), &exclude_set);
       }
     };
     let operation_future = error_handler(operation(
@@ -321,7 +323,7 @@ where
         continue;
       },
       success = operation_future => {
-        consume_paths_to_watch(&mut watcher, &mut paths_to_watch_rx);
+        consume_paths_to_watch(&mut watcher, &mut paths_to_watch_rx, &exclude_set);
         // TODO(bartlomieju): print exit code here?
         info!(
           "{} {} {}. Restarting on file change...",
@@ -334,11 +336,11 @@ where
           }
         );
       },
-    };
+    }
     let receiver_future = async {
       loop {
         let maybe_paths = paths_to_watch_rx.recv().await;
-        add_paths_to_watcher(&mut watcher, &maybe_paths.unwrap());
+        add_paths_to_watcher(&mut watcher, &maybe_paths.unwrap(), &exclude_set);
       }
     };
 
@@ -351,7 +353,7 @@ where
         print_after_restart();
         continue;
       },
-    };
+    }
   }
 }
 
@@ -376,28 +378,41 @@ fn new_watcher(
         .iter()
         .filter_map(|path| canonicalize_path(path).ok())
         .collect();
+
       sender.send(paths).unwrap();
     },
     Default::default(),
   )?)
 }
 
-fn add_paths_to_watcher(watcher: &mut RecommendedWatcher, paths: &[PathBuf]) {
+fn add_paths_to_watcher(
+  watcher: &mut RecommendedWatcher,
+  paths: &[PathBuf],
+  paths_to_exclude: &PathOrPatternSet,
+) {
   // Ignore any error e.g. `PathNotFound`
+  let mut watched_paths = Vec::new();
+
   for path in paths {
+    if paths_to_exclude.matches_path(path) {
+      continue;
+    }
+
+    watched_paths.push(path.clone());
     let _ = watcher.watch(path, RecursiveMode::Recursive);
   }
-  log::debug!("Watching paths: {:?}", paths);
+  log::debug!("Watching paths: {:?}", watched_paths);
 }
 
 fn consume_paths_to_watch(
   watcher: &mut RecommendedWatcher,
   receiver: &mut UnboundedReceiver<Vec<PathBuf>>,
+  exclude_set: &PathOrPatternSet,
 ) {
   loop {
     match receiver.try_recv() {
       Ok(paths) => {
-        add_paths_to_watcher(watcher, &paths);
+        add_paths_to_watcher(watcher, &paths, exclude_set);
       }
       Err(e) => match e {
         mpsc::error::TryRecvError::Empty => {

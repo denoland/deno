@@ -233,7 +233,7 @@ async fn bench_specifier_inner(
   let benchmarks = if used_only { only } else { no_only };
   let mut benchmarks = benchmarks
     .into_iter()
-    .filter(|(d, _)| filter.includes(&d.name) && !d.ignore)
+    .filter(|(d, _)| d.warmup || filter.includes(&d.name) && !d.ignore)
     .collect::<Vec<_>>();
   let mut groups = IndexSet::<Option<String>>::new();
   // make sure ungrouped benchmarks are placed above grouped
@@ -432,8 +432,11 @@ pub async fn run_benchmarks(
   let permissions =
     Permissions::from_options(&cli_options.permissions_options())?;
 
-  let specifiers =
-    collect_specifiers(bench_options.files, is_supported_bench_path)?;
+  let specifiers = collect_specifiers(
+    bench_options.files,
+    cli_options.vendor_dir_path().map(ToOwned::to_owned),
+    is_supported_bench_path,
+  )?;
 
   if specifiers.is_empty() {
     return Err(generic_error("No bench modules found"));
@@ -505,6 +508,7 @@ pub async fn run_benchmarks_with_watch(
 
         let bench_modules = collect_specifiers(
           bench_options.files.clone(),
+          cli_options.vendor_dir_path().map(ToOwned::to_owned),
           is_supported_bench_path,
         )?;
 
@@ -543,11 +547,14 @@ pub async fn run_benchmarks_with_watch(
 
         // todo(dsherret): why are we collecting specifiers twice in a row?
         // Seems like a perf bug.
-        let specifiers =
-          collect_specifiers(bench_options.files, is_supported_bench_path)?
-            .into_iter()
-            .filter(|specifier| bench_modules_to_reload.contains(specifier))
-            .collect::<Vec<ModuleSpecifier>>();
+        let specifiers = collect_specifiers(
+          bench_options.files,
+          cli_options.vendor_dir_path().map(ToOwned::to_owned),
+          is_supported_bench_path,
+        )?
+        .into_iter()
+        .filter(|specifier| bench_modules_to_reload.contains(specifier))
+        .collect::<Vec<ModuleSpecifier>>();
 
         check_specifiers(cli_options, module_load_preparer, specifiers.clone())
           .await?;
