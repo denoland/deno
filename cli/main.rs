@@ -330,11 +330,7 @@ pub fn main() {
         // NOTE(lucacasonato): due to new PKU feature introduced in V8 11.6 we need to
         // initialize the V8 platform on a parent thread of all threads that will spawn
         // V8 isolates.
-        let flags = match resolve_flags_and_init(args) {
-          Ok(flags) => flags,
-          Err(err) => exit_for_error(err),
-        };
-
+        let flags = resolve_flags_and_init(args)?;
         run_subcommand(flags).await
       }
       Err(err) => {
