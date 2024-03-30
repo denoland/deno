@@ -5072,7 +5072,7 @@ fn lsp_jsr_auto_import_completion() {
     json!({ "triggerKind": 1 }),
   );
   assert!(!list.is_incomplete);
-  assert_eq!(list.items.len(), 262);
+  assert_eq!(list.items.len(), 263);
   let item = list.items.iter().find(|i| i.label == "add").unwrap();
   assert_eq!(&item.label, "add");
   assert_eq!(
