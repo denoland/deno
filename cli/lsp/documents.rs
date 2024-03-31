@@ -661,7 +661,7 @@ fn recurse_dependents(
       }
     }
   }
-  dependents.into_iter().map(|s| s.clone()).collect()
+  dependents.into_iter().cloned().collect()
 }
 
 #[derive(Debug)]
