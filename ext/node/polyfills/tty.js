@@ -13,6 +13,7 @@ import { LibuvStreamWrap } from "ext:deno_node/internal_binding/stream_wrap.ts";
 import { providerType } from "ext:deno_node/internal_binding/async_wrap.ts";
 import { Socket } from "node:net";
 import { setReadStream } from "ext:deno_node/_process/streams.mjs";
+import * as io from "ext:deno_io/12_io.js";
 
 // Returns true when the given numeric fd is associated with a TTY and false otherwise.
 function isatty(fd) {
@@ -46,7 +47,7 @@ export class ReadStream extends Socket {
     // We only support `stdin`.
     if (fd != 0) throw new Error("Only fd 0 is supported.");
 
-    const tty = new TTY(Deno.stdin);
+    const tty = new TTY(io.stdin);
     super({
       readableHighWaterMark: 0,
       handle: tty,
