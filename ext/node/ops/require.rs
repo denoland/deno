@@ -103,8 +103,7 @@ where
     deno_core::resolve_path(
       &from,
       &(fs.cwd().map_err(AnyError::from)).context("Unable to get CWD")?,
-    )
-    .unwrap()
+    )?
   };
   let from = url_to_file_path(&from_url)?;
 
