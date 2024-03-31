@@ -322,7 +322,6 @@ pub fn main() {
     Cow::Borrowed(&args),
   ) {
     Ok(standalone) => standalone,
-    // TODO(bartlomieju): doesn't handle exit code set by the runtime properly
     Err(err) => exit_for_error(err),
   };
 
