@@ -317,25 +317,27 @@ pub fn main() {
 
   let args: Vec<_> = env::args_os().collect();
   let current_exe_path = current_exe().unwrap();
-  let standalone =
-    standalone::extract_standalone(&current_exe_path, Cow::Borrowed(&args));
+  let maybe_standalone = match standalone::extract_standalone(
+    &current_exe_path,
+    Cow::Borrowed(&args),
+  ) {
+    Ok(standalone) => standalone,
+    // TODO(bartlomieju): doesn't handle exit code set by the runtime properly
+    Err(err) => exit_for_error(err),
+  };
 
   let future = async move {
-    match standalone {
-      Ok(Some(future)) => {
+    match maybe_standalone {
+      Some(future) => {
         let (metadata, eszip) = future.await?;
         standalone::run(eszip, metadata).await
       }
-      Ok(None) => {
+      None => {
         // NOTE(lucacasonato): due to new PKU feature introduced in V8 11.6 we need to
         // initialize the V8 platform on a parent thread of all threads that will spawn
         // V8 isolates.
         let flags = resolve_flags_and_init(args)?;
         run_subcommand(flags).await
-      }
-      Err(err) => {
-        // TODO(bartlomieju): doesn't handle exit code set by the runtime properly
-        exit_for_error(err)
       }
     }
   };
