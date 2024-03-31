@@ -5174,49 +5174,75 @@ fn run_etag_delete_source_cache() {
 #[test]
 fn code_cache_test() {
   let script = util::testdata_path().join("run/001_hello.js");
-  let module_output_path = util::testdata_path().join("run/001_hello.js.out");
-  let mut module_output_file = std::fs::File::open(module_output_path).unwrap();
-  let mut module_output = String::new();
-  module_output_file
-    .read_to_string(&mut module_output)
-    .unwrap();
   let prg = util::deno_exe_path();
+  let deno_dir = TempDir::new();
 
+  // First run with no prior cache.
   {
-    let deno_dir = TempDir::new();
     let output = Command::new(prg.clone())
       .env("DENO_DIR", deno_dir.path())
       .current_dir(util::testdata_path())
       .arg("run")
+      .arg("-Ldebug")
       .arg(script.to_string())
       .output()
       .expect("Failed to spawn script");
 
     let str_output = std::str::from_utf8(&output.stdout).unwrap();
-    assert_eq!(module_output, str_output);
+    assert!(str_output.contains("Hello World"));
+
+    let debug_output = std::str::from_utf8(&output.stderr).unwrap();
+    // There should be no cache hits yet, and the cache should be created.
+    assert!(!debug_output.contains("v8 code cache hit"));
+    assert!(debug_output.contains(
+      format!("Updating v8 code cache for ES module: file://{}", script)
+        .as_str()
+    ));
 
     // Check that the code cache database exists.
     let code_cache_path = deno_dir.path().join("code_cache_v1");
     assert!(code_cache_path.exists());
   }
 
+  // 2nd run with cache.
+  {
+    let output = Command::new(prg.clone())
+      .env("DENO_DIR", deno_dir.path())
+      .current_dir(util::testdata_path())
+      .arg("run")
+      .arg("-Ldebug")
+      .arg(script.to_string())
+      .output()
+      .expect("Failed to spawn script");
+
+    let str_output = std::str::from_utf8(&output.stdout).unwrap();
+    assert!(str_output.contains("Hello World"));
+
+    let debug_output = std::str::from_utf8(&output.stderr).unwrap();
+    // There should be a cache hit, and the cache should not be created.
+    assert!(debug_output.contains(
+      format!("v8 code cache hit for ES module: file://{}", script).as_str()
+    ));
+    assert!(!debug_output.contains("Updating v8 code cache"));
+  }
+
   // Rerun with --no-code-cache.
   {
-    let deno_dir = TempDir::new();
     let output = Command::new(prg)
       .env("DENO_DIR", deno_dir.path())
       .current_dir(util::testdata_path())
       .arg("run")
+      .arg("-Ldebug")
       .arg("--no-code-cache")
       .arg(script.to_string())
       .output()
       .expect("Failed to spawn script");
 
     let str_output = std::str::from_utf8(&output.stdout).unwrap();
-    assert_eq!(module_output, str_output);
+    assert!(str_output.contains("Hello World"));
 
-    // Check that the code cache database exists.
-    let code_cache_path = deno_dir.path().join("code_cache_v1");
-    assert!(!code_cache_path.exists());
+    let debug_output = std::str::from_utf8(&output.stderr).unwrap();
+    // There should be no cache used.
+    assert!(!debug_output.contains("v8 code cache"));
   }
 }
