@@ -213,12 +213,13 @@ impl PackageJson {
     Ok(package_json)
   }
 
-  pub fn main(&self, referrer_kind: NodeModuleKind) -> Option<&String> {
-    if referrer_kind == NodeModuleKind::Esm && self.typ == "module" {
+  pub fn main(&self, referrer_kind: NodeModuleKind) -> Option<&str> {
+    let main = if referrer_kind == NodeModuleKind::Esm && self.typ == "module" {
       self.module.as_ref().or(self.main.as_ref())
     } else {
       self.main.as_ref()
-    }
+    };
+    main.map(|m| m.trim()).filter(|m| !m.is_empty())
   }
 
   pub fn specifier(&self) -> ModuleSpecifier {
