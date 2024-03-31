@@ -649,9 +649,9 @@ fn recurse_dependents(
   specifier: &ModuleSpecifier,
   map: &HashMap<ModuleSpecifier, HashSet<ModuleSpecifier>>,
 ) -> Vec<ModuleSpecifier> {
+  let mut dependents = HashSet::new();
   let mut pending = VecDeque::new();
   pending.push_front(specifier);
-  let mut dependents = HashSet::new();
   while let Some(specifier) = pending.pop_front() {
     if let Some(deps) = map.get(specifier) {
       for dep in deps {
