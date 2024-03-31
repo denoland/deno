@@ -1393,10 +1393,15 @@ impl Documents {
         }
       }
       self.open_docs = open_docs;
+      let mut preload_count = 0;
       for specifier in workspace_files {
         if !config.specifier_enabled(specifier) {
           continue;
         }
+        if preload_count >= config.settings.unscoped.document_preload_limit {
+          break;
+        }
+        preload_count += 1;
         if !self.open_docs.contains_key(specifier)
           && !fs_docs.docs.contains_key(specifier)
         {
