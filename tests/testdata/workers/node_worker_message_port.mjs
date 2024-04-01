@@ -3,10 +3,11 @@ import workerThreads from "node:worker_threads";
 const { port1: mainPort, port2: workerPort } = new workerThreads
   .MessageChannel();
 
+// Note: not using Promise.withResolver() because it's not available in Node.js
 const deferred = createDeferred();
 
 const worker = new workerThreads.Worker(
-  "./worker.cjs",
+  import.meta.resolve("./node_worker_message_port_1.cjs"),
   {
     workerData: { workerPort },
     transferList: [workerPort],
@@ -15,13 +16,11 @@ const worker = new workerThreads.Worker(
 
 worker.on("message", (data) => {
   console.log("worker:", data);
-  //   assertEquals(data, "Hello from worker on parentPort!");
   mainPort.on("message", (msg) => {
     console.log("mainPort:", msg);
-    // assertEquals(msg, "Hello from worker on workerPort!");
     deferred.resolve();
   });
-  mainPort.on("close", (msg) => {
+  mainPort.on("close", (_msg) => {
     console.log("mainPort closed");
   });
 });
@@ -34,11 +33,9 @@ mainPort.close();
 function createDeferred() {
   let resolveCallback;
   let rejectCallback;
-
   const promise = new Promise((resolve, reject) => {
     resolveCallback = resolve;
     rejectCallback = reject;
   });
-
   return { promise, resolve: resolveCallback, reject: rejectCallback };
 }
