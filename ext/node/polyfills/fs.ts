@@ -128,6 +128,7 @@ import {
   ReadStream,
   WriteStream,
 } from "ext:deno_node/internal/fs/streams.mjs";
+import { toUnixTimestamp as _toUnixTimestamp } from "ext:deno_node/internal/fs/utils.mjs";
 
 const {
   F_OK,
@@ -291,9 +292,13 @@ export default {
   WriteStream,
   writeSync,
   X_OK,
+  // For tests
+  _toUnixTimestamp,
 };
 
 export {
+  // For tests
+  _toUnixTimestamp,
   access,
   accessSync,
   appendFile,
