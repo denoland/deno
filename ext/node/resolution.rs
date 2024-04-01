@@ -1232,7 +1232,7 @@ impl NodeResolver {
   ) -> Result<Option<ModuleSpecifier>, AnyError> {
     let maybe_main = if mode.is_types() {
       match package_json.types.as_ref() {
-        Some(types) => Some(types),
+        Some(types) => Some(types.as_str()),
         None => {
           // fallback to checking the main entrypoint for
           // a corresponding declaration file
