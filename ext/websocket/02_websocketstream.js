@@ -428,7 +428,7 @@ class WebSocketStream {
     }
 
     let code = closeInfo.closeCode;
-    if (closeInfo.reason && code === undefined) {
+    if (closeInfo.reason && code === null) {
       code = 1000;
     }
 
@@ -481,7 +481,29 @@ class WebSocketError extends DOMException {
       "Argument 2",
     );
 
-    if (init.reason && init.closeCode) {
+    if (
+      init.closeCode &&
+      !(init.closeCode === 1000 ||
+        (3000 <= init.closeCode && init.closeCode < 5000))
+    ) {
+      throw new DOMException(
+        "The close code must be either 1000 or in the range of 3000 to 4999.",
+        "InvalidAccessError",
+      );
+    }
+
+    const encoder = new TextEncoder();
+    if (
+      init.reason &&
+      TypedArrayPrototypeGetByteLength(encoder.encode(init.reason)) > 123
+    ) {
+      throw new DOMException(
+        "The close reason may not be longer than 123 bytes.",
+        "SyntaxError",
+      );
+    }
+
+    if (init.reason && init.closeCode === null) {
       init.closeCode = 1000;
     }
 
