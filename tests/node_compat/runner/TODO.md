@@ -899,7 +899,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-fs-util-validateoffsetlength.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-fs-util-validateoffsetlength.js)
 - [parallel/test-fs-utils-get-dirents.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-fs-utils-get-dirents.js)
 - [parallel/test-fs-utimes-y2K38.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-fs-utimes-y2K38.js)
-- [parallel/test-fs-utimes.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-fs-utimes.js)
 - [parallel/test-fs-watch-abort-signal.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-fs-watch-abort-signal.js)
 - [parallel/test-fs-watch-close-when-destroyed.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-fs-watch-close-when-destroyed.js)
 - [parallel/test-fs-watch-encoding.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-fs-watch-encoding.js)

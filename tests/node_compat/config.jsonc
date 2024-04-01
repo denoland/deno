@@ -359,6 +359,7 @@
       "test-fs-rmdir-recursive-warns-on-file.js",
       "test-fs-rmdir-recursive.js",
       "test-fs-rmdir-type-check.js",
+      "test-fs-utimes.js",
       "test-fs-watchfile.js",
       "test-fs-write-buffer.js",
       "test-fs-write-file-buffer.js",
