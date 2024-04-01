@@ -18,6 +18,7 @@ const {
   ArrayPrototypeIncludes,
   ArrayPrototypePush,
   ObjectPrototypeIsPrototypeOf,
+  ObjectDefineProperty,
   Symbol,
   SymbolFor,
   SymbolIterator,
@@ -105,11 +106,17 @@ class MessagePort extends EventTarget {
   [_id] = null;
   /** @type {boolean} */
   [_enabled] = false;
-  [workerThreadCloseCb] = null;
-  [_workerThreadCloseCbInvoked] = false;
 
   constructor() {
     super();
+    ObjectDefineProperty(this, workerThreadCloseCb, {
+      value: null,
+      enumerable: false,
+    });
+    ObjectDefineProperty(this, _workerThreadCloseCbInvoked, {
+      value: false,
+      enumerable: false,
+    });
     webidl.illegalConstructor();
   }
 
