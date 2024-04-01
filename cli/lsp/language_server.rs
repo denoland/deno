@@ -366,7 +366,7 @@ impl LanguageServer {
       }
       {
         let mut inner = self.0.write().await;
-        let lockfile = inner.config.tree.root_lockfile();
+        let lockfile = inner.config.tree.root_lockfile().cloned();
         inner.documents.refresh_jsr_resolver(lockfile);
         inner.refresh_npm_specifiers().await;
       }
@@ -512,11 +512,8 @@ impl Inner {
     let cache_metadata = cache::CacheMetadata::new(deps_http_cache.clone());
     let performance = Arc::new(Performance::default());
     let config = Config::default();
-    let ts_server = Arc::new(TsServer::new(
-      performance.clone(),
-      deps_http_cache.clone(),
-      config.tree.clone(),
-    ));
+    let ts_server =
+      Arc::new(TsServer::new(performance.clone(), deps_http_cache.clone()));
     let diagnostics_state = Arc::new(DiagnosticsState::default());
     let diagnostics_server = DiagnosticsServer::new(
       client.clone(),
@@ -761,7 +758,10 @@ impl Inner {
     ));
     let maybe_local_cache =
       self.config.tree.root_vendor_dir().map(|local_path| {
-        Arc::new(LocalLspHttpCache::new(local_path, global_cache.clone()))
+        Arc::new(LocalLspHttpCache::new(
+          local_path.clone(),
+          global_cache.clone(),
+        ))
       });
     let cache: Arc<dyn HttpCache> = maybe_local_cache
       .clone()
@@ -1370,7 +1370,7 @@ impl Inner {
             _ => return None,
           };
           Some(lsp_custom::DenoConfigurationChangeEvent {
-            scope_uri: t.0,
+            scope_uri: t.0.clone(),
             file_uri: e.uri.clone(),
             typ: lsp_custom::DenoConfigurationChangeType::from_file_change_type(
               e.typ,
@@ -1394,7 +1394,7 @@ impl Inner {
             _ => return None,
           };
           Some(lsp_custom::DenoConfigurationChangeEvent {
-            scope_uri: t.0,
+            scope_uri: t.0.clone(),
             file_uri: e.uri.clone(),
             typ: lsp_custom::DenoConfigurationChangeType::from_file_change_type(
               e.typ,
@@ -2001,7 +2001,7 @@ impl Inner {
   ) -> TsResponseImportMapper {
     TsResponseImportMapper::new(
       &self.documents,
-      self.config.tree.root_import_map(),
+      self.config.tree.root_import_map().map(|i| i.as_ref()),
       self.npm.node_resolver.as_deref(),
       self.npm.resolver.as_deref(),
     )
@@ -2314,7 +2314,7 @@ impl Inner {
         &self.jsr_search_api,
         &self.npm.search_api,
         &self.documents,
-        self.config.tree.root_import_map(),
+        self.config.tree.root_import_map().map(|i| i.as_ref()),
       )
       .await;
     }
@@ -3099,7 +3099,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
       }
 
       let mut config_events = vec![];
-      for (scope_uri, config_data) in ls.config.tree.data_by_scope() {
+      for (scope_uri, config_data) in ls.config.tree.data_by_scope().iter() {
         if let Some(config_file) = &config_data.config_file {
           config_events.push(lsp_custom::DenoConfigurationChangeEvent {
             scope_uri: scope_uri.clone(),
@@ -3495,7 +3495,7 @@ impl Inner {
         unsafely_ignore_certificate_errors: workspace_settings
           .unsafely_ignore_certificate_errors
           .clone(),
-        import_map_path: config_data.as_ref().and_then(|d| {
+        import_map_path: config_data.and_then(|d| {
           if d.import_map_from_settings {
             return Some(d.import_map.as_ref()?.base_url().to_string());
           }
@@ -3503,7 +3503,6 @@ impl Inner {
         }),
         node_modules_dir: Some(
           config_data
-            .as_ref()
             .and_then(|d| d.node_modules_dir.as_ref())
             .is_some(),
         ),
@@ -3512,13 +3511,9 @@ impl Inner {
         ..Default::default()
       },
       self.initial_cwd.clone(),
-      config_data
-        .as_ref()
-        .and_then(|d| d.config_file.as_deref().cloned()),
-      config_data.as_ref().and_then(|d| d.lockfile.clone()),
-      config_data
-        .as_ref()
-        .and_then(|d| d.package_json.as_deref().cloned()),
+      config_data.and_then(|d| d.config_file.as_deref().cloned()),
+      config_data.and_then(|d| d.lockfile.clone()),
+      config_data.and_then(|d| d.package_json.as_deref().cloned()),
       force_global_cache,
     )?;
 

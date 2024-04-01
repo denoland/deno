@@ -12199,7 +12199,7 @@ C.test();
     }))
     .all();
 
-  assert_eq!(diagnostics.len(), 0);
+  assert_eq!(json!(diagnostics), json!([]));
 
   client.shutdown();
 }

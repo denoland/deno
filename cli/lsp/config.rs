@@ -731,7 +731,7 @@ pub struct ConfigSnapshot {
   pub client_capabilities: ClientCapabilities,
   pub settings: Settings,
   pub workspace_folders: Vec<(ModuleSpecifier, lsp::WorkspaceFolder)>,
-  pub tree: Arc<ConfigTree>,
+  pub tree: ConfigTree,
 }
 
 impl ConfigSnapshot {
@@ -745,7 +745,7 @@ impl ConfigSnapshot {
   /// Determine if the provided specifier is enabled or not.
   pub fn specifier_enabled(&self, specifier: &ModuleSpecifier) -> bool {
     let config_file = self.tree.config_file_for_specifier(specifier);
-    if let Some(cf) = &config_file {
+    if let Some(cf) = config_file {
       if let Ok(files) = cf.to_files_config() {
         if !files.matches_specifier(specifier) {
           return false;
@@ -875,7 +875,7 @@ pub struct Config {
   pub client_capabilities: ClientCapabilities,
   pub settings: Settings,
   pub workspace_folders: Vec<(ModuleSpecifier, lsp::WorkspaceFolder)>,
-  pub tree: Arc<ConfigTree>,
+  pub tree: ConfigTree,
 }
 
 impl Config {
@@ -993,7 +993,7 @@ impl Config {
 
   pub fn specifier_enabled(&self, specifier: &ModuleSpecifier) -> bool {
     let config_file = self.tree.config_file_for_specifier(specifier);
-    if let Some(cf) = &config_file {
+    if let Some(cf) = config_file {
       if let Ok(files) = cf.to_files_config() {
         if !files.matches_specifier(specifier) {
           return false;
@@ -1082,23 +1082,51 @@ impl Config {
   }
 }
 
-pub fn default_ts_config() -> TsConfig {
-  TsConfig::new(json!({
-    "allowJs": true,
-    "esModuleInterop": true,
-    "experimentalDecorators": false,
-    "isolatedModules": true,
-    "jsx": "react",
-    "lib": ["deno.ns", "deno.window", "deno.unstable"],
-    "module": "esnext",
-    "moduleDetection": "force",
-    "noEmit": true,
-    "resolveJsonModule": true,
-    "strict": true,
-    "target": "esnext",
-    "useDefineForClassFields": true,
-    "useUnknownInCatchVariables": false,
-  }))
+#[derive(Debug, Serialize)]
+pub struct LspTsConfig {
+  #[serde(flatten)]
+  inner: TsConfig,
+}
+
+impl Default for LspTsConfig {
+  fn default() -> Self {
+    Self {
+      inner: TsConfig::new(json!({
+        "allowJs": true,
+        "esModuleInterop": true,
+        "experimentalDecorators": false,
+        "isolatedModules": true,
+        "jsx": "react",
+        "lib": ["deno.ns", "deno.window", "deno.unstable"],
+        "module": "esnext",
+        "moduleDetection": "force",
+        "noEmit": true,
+        "resolveJsonModule": true,
+        "strict": true,
+        "target": "esnext",
+        "useDefineForClassFields": true,
+        "useUnknownInCatchVariables": false,
+      })),
+    }
+  }
+}
+
+impl LspTsConfig {
+  pub fn new(config_file: Option<&ConfigFile>) -> Self {
+    let mut ts_config = Self::default();
+    if let Some(config_file) = config_file {
+      match config_file.to_compiler_options() {
+        Ok((value, maybe_ignored_options)) => {
+          ts_config.inner.merge(&value);
+          if let Some(ignored_options) = maybe_ignored_options {
+            lsp_warn!("{}", ignored_options);
+          }
+        }
+        Err(err) => lsp_warn!("{}", err),
+      }
+    }
+    ts_config
+  }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1116,7 +1144,7 @@ pub struct ConfigData {
   pub fmt_options: Arc<FmtOptions>,
   pub lint_options: Arc<LintOptions>,
   pub lint_rules: Arc<ConfiguredRules>,
-  pub ts_config: Arc<TsConfig>,
+  pub ts_config: Arc<LspTsConfig>,
   pub node_modules_dir: Option<PathBuf>,
   pub vendor_dir: Option<PathBuf>,
   pub lockfile: Option<Arc<Mutex<Lockfile>>>,
@@ -1238,18 +1266,7 @@ impl ConfigData {
       .unwrap_or_default();
     let lint_rules =
       get_configured_rules(lint_options.rules.clone(), config_file.as_ref());
-    let mut ts_config = default_ts_config();
-    if let Some(config_file) = &config_file {
-      match config_file.to_compiler_options() {
-        Ok((value, maybe_ignored_options)) => {
-          ts_config.merge(&value);
-          if let Some(ignored_options) = maybe_ignored_options {
-            lsp_warn!("{}", ignored_options);
-          }
-        }
-        Err(err) => lsp_warn!("{}", err),
-      }
-    }
+    let ts_config = LspTsConfig::new(config_file.as_ref());
     let node_modules_dir =
       config_file.as_ref().and_then(resolve_node_modules_dir);
     let vendor_dir = config_file.as_ref().and_then(|c| c.vendor_dir_path());
@@ -1421,104 +1438,82 @@ impl ConfigData {
   }
 }
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct ConfigTree {
-  first_folder: Mutex<Option<ModuleSpecifier>>,
-  scopes: Mutex<BTreeMap<ModuleSpecifier, Arc<ConfigData>>>,
+  first_folder: Option<ModuleSpecifier>,
+  scopes: Arc<BTreeMap<ModuleSpecifier, ConfigData>>,
 }
 
 impl ConfigTree {
-  pub fn root_data(&self) -> Option<Arc<ConfigData>> {
+  pub fn root_data(&self) -> Option<&ConfigData> {
+    self.first_folder.as_ref().and_then(|s| self.scopes.get(s))
+  }
+
+  pub fn root_ts_config(&self) -> Arc<LspTsConfig> {
     self
-      .first_folder
-      .lock()
-      .as_ref()
-      .and_then(|s| self.scopes.lock().get(s).cloned())
+      .root_data()
+      .map(|d| d.ts_config.clone())
+      .unwrap_or_default()
   }
 
-  pub fn root_ts_config(&self) -> Arc<TsConfig> {
-    self
-      .first_folder
-      .lock()
-      .as_ref()
-      .and_then(|s| self.scopes.lock().get(s).map(|d| d.ts_config.clone()))
-      .unwrap_or_else(|| Arc::new(default_ts_config()))
+  pub fn root_vendor_dir(&self) -> Option<&PathBuf> {
+    self.root_data().and_then(|d| d.vendor_dir.as_ref())
   }
 
-  pub fn root_vendor_dir(&self) -> Option<PathBuf> {
-    self.first_folder.lock().as_ref().and_then(|s| {
-      self.scopes.lock().get(s).and_then(|d| d.vendor_dir.clone())
-    })
+  pub fn root_lockfile(&self) -> Option<&Arc<Mutex<Lockfile>>> {
+    self.root_data().and_then(|d| d.lockfile.as_ref())
   }
 
-  pub fn root_lockfile(&self) -> Option<Arc<Mutex<Lockfile>>> {
-    self
-      .first_folder
-      .lock()
-      .as_ref()
-      .and_then(|s| self.scopes.lock().get(s).and_then(|d| d.lockfile.clone()))
-  }
-
-  pub fn root_import_map(&self) -> Option<Arc<ImportMap>> {
-    self.first_folder.lock().as_ref().and_then(|s| {
-      self.scopes.lock().get(s).and_then(|d| d.import_map.clone())
-    })
+  pub fn root_import_map(&self) -> Option<&Arc<ImportMap>> {
+    self.root_data().and_then(|d| d.import_map.as_ref())
   }
 
   pub fn scope_for_specifier(
     &self,
     specifier: &ModuleSpecifier,
-  ) -> Option<ModuleSpecifier> {
+  ) -> Option<&ModuleSpecifier> {
     self
       .scopes
-      .lock()
       .keys()
       .rfind(|s| specifier.as_str().starts_with(s.as_str()))
-      .cloned()
-      .or_else(|| self.first_folder.lock().clone())
+      .or(self.first_folder.as_ref())
   }
 
   pub fn data_for_specifier(
     &self,
     specifier: &ModuleSpecifier,
-  ) -> Option<Arc<ConfigData>> {
-    let r = self
-      .scopes
-      .lock()
-      .iter()
-      .rfind(|(s, _)| specifier.as_str().starts_with(s.as_str()))
-      .map(|(_, d)| d.clone());
-    r.or_else(|| self.root_data())
+  ) -> Option<&ConfigData> {
+    self
+      .scope_for_specifier(specifier)
+      .and_then(|s| self.scopes.get(s))
   }
 
-  pub fn data_by_scope(&self) -> BTreeMap<ModuleSpecifier, Arc<ConfigData>> {
-    self.scopes.lock().clone()
+  pub fn data_by_scope(&self) -> &Arc<BTreeMap<ModuleSpecifier, ConfigData>> {
+    &self.scopes
   }
 
   pub fn config_file_for_specifier(
     &self,
     specifier: &ModuleSpecifier,
-  ) -> Option<Arc<ConfigFile>> {
+  ) -> Option<&Arc<ConfigFile>> {
     self
       .data_for_specifier(specifier)
-      .and_then(|d| d.config_file.clone())
+      .and_then(|d| d.config_file.as_ref())
   }
 
-  pub fn config_files(&self) -> Vec<Arc<ConfigFile>> {
+  pub fn config_files(&self) -> Vec<&Arc<ConfigFile>> {
     self
       .scopes
-      .lock()
       .iter()
-      .filter_map(|(_, d)| d.config_file.clone())
+      .filter_map(|(_, d)| d.config_file.as_ref())
       .collect()
   }
 
-  pub fn package_jsons(&self) -> Vec<Arc<PackageJson>> {
+  pub fn package_jsons(&self) -> Vec<&Arc<PackageJson>> {
     self
       .scopes
-      .lock()
       .iter()
-      .filter_map(|(_, d)| d.package_json.clone())
+      .filter_map(|(_, d)| d.package_json.as_ref())
       .collect()
   }
 
@@ -1532,8 +1527,34 @@ impl ConfigTree {
       .unwrap_or_default()
   }
 
-  pub async fn refresh(
+  /// Returns (scope_uri, type).
+  pub fn watched_file_type(
     &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<(&ModuleSpecifier, ConfigWatchedFileType)> {
+    for (scope_uri, data) in self.scopes.iter() {
+      if let Some(typ) = data.watched_files.get(specifier) {
+        return Some((scope_uri, *typ));
+      }
+    }
+    None
+  }
+
+  pub fn is_watched_file(&self, specifier: &ModuleSpecifier) -> bool {
+    if specifier.path().ends_with("/deno.json")
+      || specifier.path().ends_with("/deno.jsonc")
+      || specifier.path().ends_with("/package.json")
+    {
+      return true;
+    }
+    self
+      .scopes
+      .values()
+      .any(|data| data.watched_files.contains_key(specifier))
+  }
+
+  pub async fn refresh(
+    &mut self,
     settings: &Settings,
     workspace_files: &BTreeSet<ModuleSpecifier>,
     file_fetcher: &FileFetcher,
@@ -1550,15 +1571,13 @@ impl ConfigTree {
           if let Ok(config_uri) = folder_uri.join(config_path) {
             scopes.insert(
               folder_uri.clone(),
-              Arc::new(
-                ConfigData::load(
-                  Some(&config_uri),
-                  folder_uri,
-                  settings,
-                  Some(file_fetcher),
-                )
-                .await,
-              ),
+              ConfigData::load(
+                Some(&config_uri),
+                folder_uri,
+                settings,
+                Some(file_fetcher),
+              )
+              .await,
             );
           }
         }
@@ -1580,7 +1599,7 @@ impl ConfigTree {
               Some(file_fetcher),
             )
             .await;
-            entry.or_insert(Arc::new(data));
+            entry.or_insert(data);
           }
         }
       }
@@ -1593,46 +1612,17 @@ impl ConfigTree {
       {
         scopes.insert(
           folder_uri.clone(),
-          Arc::new(
-            ConfigData::load(None, folder_uri, settings, Some(file_fetcher))
-              .await,
-          ),
+          ConfigData::load(None, folder_uri, settings, Some(file_fetcher))
+            .await,
         );
       }
     }
-    *self.first_folder.lock() = settings.first_folder.clone();
-    *self.scopes.lock() = scopes;
-  }
-
-  /// Returns (scope_uri, type).
-  pub fn watched_file_type(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Option<(ModuleSpecifier, ConfigWatchedFileType)> {
-    for (scope_uri, data) in self.scopes.lock().iter() {
-      if let Some(typ) = data.watched_files.get(specifier) {
-        return Some((scope_uri.clone(), *typ));
-      }
-    }
-    None
-  }
-
-  pub fn is_watched_file(&self, specifier: &ModuleSpecifier) -> bool {
-    if specifier.path().ends_with("/deno.json")
-      || specifier.path().ends_with("/deno.jsonc")
-      || specifier.path().ends_with("/package.json")
-    {
-      return true;
-    }
-    self
-      .scopes
-      .lock()
-      .values()
-      .any(|data| data.watched_files.contains_key(specifier))
+    self.first_folder = settings.first_folder.clone();
+    self.scopes = Arc::new(scopes);
   }
 
   #[cfg(test)]
-  pub async fn inject_config_file(&self, config_file: ConfigFile) {
+  pub async fn inject_config_file(&mut self, config_file: ConfigFile) {
     let scope = config_file.specifier.join(".").unwrap();
     let data = ConfigData::load_inner(
       Some(config_file),
@@ -1641,8 +1631,8 @@ impl ConfigTree {
       None,
     )
     .await;
-    *self.first_folder.lock() = Some(scope.clone());
-    *self.scopes.lock() = [(scope, Arc::new(data))].into_iter().collect();
+    self.first_folder = Some(scope.clone());
+    self.scopes = Arc::new([(scope, data)].into_iter().collect());
   }
 }
 
