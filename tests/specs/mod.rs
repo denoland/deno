@@ -101,15 +101,12 @@ fn run_test(test: &Test, diagnostic_logger: Rc<RefCell<Vec<u8>>>) {
     builder = builder.cwd(cwd.to_string_lossy());
   }
 
-  if let Some(base) = &metadata.base {
-    match base.as_str() {
-      "npm" => {
-        builder = builder.add_npm_env_vars();
-      }
-      "jsr" => {
-        builder = builder.add_jsr_env_vars().add_npm_env_vars();
-      }
-      _ => panic!("Unknown test base: {}", base),
+  match &metadata.base {
+    // todo(dsherret): add bases in the future as needed
+    Some(base) => panic!("Unknown test base: {}", base),
+    None => {
+      // by default add npm and jsr env vars
+      builder = builder.add_jsr_env_vars().add_npm_env_vars();
     }
   }
 
