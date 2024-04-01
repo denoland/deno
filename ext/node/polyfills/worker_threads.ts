@@ -18,6 +18,7 @@ import {
   MessagePortIdSymbol,
   MessagePortPrototype,
   serializeJsMessageData,
+  workerThreadCloseCb,
 } from "ext:deno_web/13_message_port.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { log } from "ext:runtime/06_util.js";
@@ -342,6 +343,13 @@ internals.__initWorkerThreads = (
     defaultExport.parentPort = parentPort;
     defaultExport.threadId = threadId;
 
+    for (const obj in workerData as Record<string, unknown>) {
+      if (ObjectPrototypeIsPrototypeOf(MessagePortPrototype, workerData[obj])) {
+        workerData[obj] = patchPort(workerData[obj] as MessagePort);
+        break;
+      }
+    }
+
     parentPort.off = parentPort.removeListener = function (
       this: ParentPort,
       name,
@@ -429,10 +437,31 @@ class NodeMessageChannel {
   port2: MessagePort;
 
   constructor() {
-    const { port1, port2 } = new MessageChannel(true);
-    this.port1 = port1;
-    this.port2 = port2;
+    const { port1, port2 } = new MessageChannel();
+    this.port1 = patchPort(port1);
+    this.port2 = patchPort(port2);
   }
+}
+
+function patchPort(port: MessagePort) {
+  port.on = port.addListener = function (this: MessagePort, name, listener) {
+    // deno-lint-ignore no-explicit-any
+    const _listener = (ev: any) => listener(ev.data);
+    if (name == "message") {
+      port.onmessage = _listener;
+    } else if (name == "messageerror") {
+      port.onmessageerror = _listener;
+    } else if (name == "close") {
+      port.addEventListener("close", _listener);
+    } else {
+      throw new Error(`Unknown event: "${name}"`);
+    }
+    return this;
+  };
+  port[workerThreadCloseCb] = () => {
+    port.dispatchEvent(new Event("close"));
+  };
+  return port;
 }
 
 export {
