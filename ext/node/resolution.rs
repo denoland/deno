@@ -4,6 +4,7 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
+use std::rc::Rc;
 
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
@@ -252,7 +253,7 @@ impl NodeResolver {
         specifier,
         referrer,
         NodeModuleKind::Esm,
-        pkg_config.as_ref(),
+        pkg_config.as_deref(),
         conditions,
         mode,
         permissions,
@@ -399,7 +400,7 @@ impl NodeResolver {
     let package_json = self
       .load_package_json(&AllowAllNodePermissions, package_json_path.clone())?;
 
-    Ok(match package_json.bin {
+    Ok(match &package_json.bin {
       Some(Value::String(_)) => {
         let Some(name) = &package_json.name else {
           bail!("'{}' did not have a name", package_json_path.display());
@@ -407,7 +408,7 @@ impl NodeResolver {
         vec![name.to_string()]
       }
       Some(Value::Object(o)) => {
-        o.into_iter().map(|(key, _)| key).collect::<Vec<_>>()
+        o.iter().map(|(key, _)| key.clone()).collect::<Vec<_>>()
       }
       _ => Vec::new(),
     })
@@ -1164,7 +1165,7 @@ impl NodeResolver {
     &self,
     url: &ModuleSpecifier,
     permissions: &dyn NodePermissions,
-  ) -> Result<Option<PackageJson>, AnyError> {
+  ) -> Result<Option<Rc<PackageJson>>, AnyError> {
     let Ok(file_path) = url.to_file_path() else {
       return Ok(None);
     };
@@ -1175,7 +1176,7 @@ impl NodeResolver {
     &self,
     file_path: &Path,
     permissions: &dyn NodePermissions,
-  ) -> Result<Option<PackageJson>, AnyError> {
+  ) -> Result<Option<Rc<PackageJson>>, AnyError> {
     let Some(package_json_path) =
       self.get_closest_package_json_path(file_path)?
     else {
@@ -1213,7 +1214,7 @@ impl NodeResolver {
     &self,
     permissions: &dyn NodePermissions,
     package_json_path: PathBuf,
-  ) -> Result<PackageJson, AnyError> {
+  ) -> Result<Rc<PackageJson>, AnyError> {
     PackageJson::load(
       &*self.fs,
       &*self.npm_resolver,
