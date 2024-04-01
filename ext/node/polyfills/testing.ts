@@ -21,6 +21,8 @@ class NodeSuiteContext {
   didRunBefore = false;
   firstTestId = -1;
   lastTestId = -1;
+  only = false;
+  skip = false;
 
   constructor(public parent: NodeSuiteContext | null, public name: string) {}
 }
@@ -131,7 +133,7 @@ function prepareOptions(name, options, fn, overrides) {
 }
 
 function wrapTestFn(
-  fn: (ctx: NodeTestContext) => unknown,
+  fn: (ctx: NodeTestContext, done: () => void) => unknown,
   ancestors: NodeSuiteContext[],
   id: number,
   resolve: () => void,
@@ -149,7 +151,13 @@ function wrapTestFn(
 
     const nodeTestContext = new NodeTestContext(t);
     try {
-      await fn(nodeTestContext);
+      await fn(nodeTestContext, () => {
+        throw "done";
+      });
+    } catch (err) {
+      if (err !== "done") {
+        throw err;
+      }
     } finally {
       try {
         for (let i = 0; i < ancestors.length; i++) {
@@ -171,7 +179,7 @@ function prepareDenoTest(name, options, fn, overrides) {
   const prepared = prepareOptions(name, options, fn, overrides);
 
   const { promise, resolve } = Promise.withResolvers<void>();
-  const ignore = prepared.options.todo || prepared.options.skip;
+  let ignore = prepared.options.todo || prepared.options.skip;
   let id = -1;
   if (!ignore) {
     id = TEST_ID++;
@@ -185,12 +193,24 @@ function prepareDenoTest(name, options, fn, overrides) {
   let testName = prepared.name;
   const ancestors: NodeSuiteContext[] = [];
   let parent: NodeSuiteContext | null = CURRENT_SUITE;
+  let only = prepared.options.only;
+
   while (parent !== null && parent.parent !== null) {
     ancestors.push(parent);
 
     testName = parent.name + " > " + testName;
-    if (!ignore && parent.firstTestId === -1) {
-      parent.firstTestId = id;
+    if (!ignore) {
+      if (parent.firstTestId === -1) {
+        parent.firstTestId = id;
+      }
+
+      if (parent.only) {
+        only = true;
+      }
+      if (parent.skip) {
+        ignore = true;
+        only = false;
+      }
     }
 
     parent = parent.parent;
@@ -199,7 +219,7 @@ function prepareDenoTest(name, options, fn, overrides) {
   const denoTestOptions = {
     name: testName,
     fn: wrapTestFn(prepared.fn, ancestors, id, resolve),
-    only: prepared.options.only,
+    only,
     ignore,
     sanitizeExit: false,
     sanitizeOps: false,
@@ -225,11 +245,15 @@ test.only = function only(name, options, fn) {
   return prepareDenoTest(name, options, fn, { only: true });
 };
 
-export function describe(
+function prepareDescribe(
   name: string,
   fn: () => unknown,
-): void | Promise<void> {
+  options: { skip?: boolean; only?: boolean } = {},
+) {
   const ctx = new NodeSuiteContext(CURRENT_SUITE, name);
+  ctx.only = Boolean(options.only);
+  ctx.skip = Boolean(options.skip);
+
   const prev = CURRENT_SUITE;
   CURRENT_SUITE = ctx;
   try {
@@ -239,6 +263,19 @@ export function describe(
     prev.lastTestId = TEST_ID;
   }
 }
+
+export function describe(
+  name: string,
+  fn: () => unknown,
+): void | Promise<void> {
+  return prepareDescribe(name, fn);
+}
+describe.only = (name: string, fn: () => unknown) => {
+  return prepareDescribe(name, fn, { only: true });
+};
+describe.skip = (name: string, fn: () => unknown) => {
+  return prepareDescribe(name, fn, { skip: true });
+};
 
 export const it = test;
 
