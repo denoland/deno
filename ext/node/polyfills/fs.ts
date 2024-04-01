@@ -29,6 +29,11 @@ import { ftruncate, ftruncateSync } from "ext:deno_node/_fs/_fs_ftruncate.ts";
 import { futimes, futimesSync } from "ext:deno_node/_fs/_fs_futimes.ts";
 import { link, linkPromise, linkSync } from "ext:deno_node/_fs/_fs_link.ts";
 import { lstat, lstatPromise, lstatSync } from "ext:deno_node/_fs/_fs_lstat.ts";
+import {
+  lutimes,
+  lutimesPromise,
+  lutimesSync,
+} from "ext:deno_node/_fs/_fs_lutimes.ts";
 import { mkdir, mkdirPromise, mkdirSync } from "ext:deno_node/_fs/_fs_mkdir.ts";
 import {
   mkdtemp,
@@ -170,7 +175,7 @@ const promises = {
   // lchown: promisify(lchown),
   chown: chownPromise,
   utimes: utimesPromise,
-  // lutimes = promisify(lutimes),
+  lutimes: lutimesPromise,
   realpath: realpathPromise,
   mkdtemp: mkdtempPromise,
   writeFile: writeFilePromise,
@@ -216,6 +221,8 @@ export default {
   linkSync,
   lstat,
   lstatSync,
+  lutimes,
+  lutimesSync,
   mkdir,
   mkdirSync,
   mkdtemp,
@@ -323,6 +330,8 @@ export {
   linkSync,
   lstat,
   lstatSync,
+  lutimes,
+  lutimesSync,
   mkdir,
   mkdirSync,
   mkdtemp,
