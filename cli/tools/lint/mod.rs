@@ -34,6 +34,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::LintFlags;
 use crate::args::LintOptions;
@@ -78,15 +79,15 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
           let factory = CliFactory::from_flags(flags)?;
           let cli_options = factory.cli_options();
           let lint_options = cli_options.resolve_lint_options(lint_flags)?;
-          let files = collect_lint_files(lint_options.files.clone()).and_then(
-            |files| {
-              if files.is_empty() {
-                Err(generic_error("No target files found."))
-              } else {
-                Ok(files)
-              }
-            },
-          )?;
+          let files =
+            collect_lint_files(cli_options, lint_options.files.clone())
+              .and_then(|files| {
+                if files.is_empty() {
+                  Err(generic_error("No target files found."))
+                } else {
+                  Ok(files)
+                }
+              })?;
           _ = watcher_communicator.watch_paths(files.clone());
 
           let lint_paths = if let Some(paths) = changed_paths {
@@ -133,8 +134,8 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
       reporter_lock.lock().close(1);
       success
     } else {
-      let target_files =
-        collect_lint_files(files.clone()).and_then(|files| {
+      let target_files = collect_lint_files(cli_options, files.clone())
+        .and_then(|files| {
           if files.is_empty() {
             Err(generic_error("No target files found."))
           } else {
@@ -267,11 +268,14 @@ async fn lint_files(
   Ok(!has_error.is_raised())
 }
 
-fn collect_lint_files(files: FilePatterns) -> Result<Vec<PathBuf>, AnyError> {
+fn collect_lint_files(
+  cli_options: &CliOptions,
+  files: FilePatterns,
+) -> Result<Vec<PathBuf>, AnyError> {
   FileCollector::new(|e| is_script_ext(e.path))
     .ignore_git_folder()
     .ignore_node_modules()
-    .ignore_vendor_folder()
+    .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
     .collect_file_patterns(files)
 }
 
@@ -857,6 +861,12 @@ pub struct ConfiguredRules {
   pub no_slow_types: bool,
 }
 
+impl Default for ConfiguredRules {
+  fn default() -> Self {
+    get_configured_rules(Default::default(), None)
+  }
+}
+
 impl ConfiguredRules {
   fn incremental_cache_state(&self) -> Vec<&str> {
     // use a hash of the rule names in order to bust the cache
@@ -878,39 +888,44 @@ pub fn get_configured_rules(
   let implicit_no_slow_types = maybe_config_file
     .map(|c| c.is_package() || !c.json.workspaces.is_empty())
     .unwrap_or(false);
-  if rules.tags.is_none() && rules.include.is_none() && rules.exclude.is_none()
-  {
-    ConfiguredRules {
-      rules: rules::get_recommended_rules(),
-      no_slow_types: implicit_no_slow_types,
-    }
-  } else {
-    let no_slow_types = implicit_no_slow_types
-      && !rules
-        .exclude
-        .as_ref()
-        .map(|exclude| exclude.iter().any(|i| i == NO_SLOW_TYPES_NAME))
-        .unwrap_or(false);
-    let rules = rules::get_filtered_rules(
-      rules.tags.or_else(|| Some(vec!["recommended".to_string()])),
-      rules.exclude.map(|exclude| {
-        exclude
-          .into_iter()
-          .filter(|c| c != NO_SLOW_TYPES_NAME)
-          .collect()
-      }),
-      rules.include.map(|include| {
-        include
-          .into_iter()
-          .filter(|c| c != NO_SLOW_TYPES_NAME)
-          .collect()
-      }),
-    );
-    ConfiguredRules {
-      rules,
-      no_slow_types,
-    }
+  let no_slow_types = implicit_no_slow_types
+    && !rules
+      .exclude
+      .as_ref()
+      .map(|exclude| exclude.iter().any(|i| i == NO_SLOW_TYPES_NAME))
+      .unwrap_or(false);
+  let rules = rules::get_filtered_rules(
+    rules
+      .tags
+      .or_else(|| Some(get_default_tags(maybe_config_file))),
+    rules.exclude.map(|exclude| {
+      exclude
+        .into_iter()
+        .filter(|c| c != NO_SLOW_TYPES_NAME)
+        .collect()
+    }),
+    rules.include.map(|include| {
+      include
+        .into_iter()
+        .filter(|c| c != NO_SLOW_TYPES_NAME)
+        .collect()
+    }),
+  );
+  ConfiguredRules {
+    rules,
+    no_slow_types,
   }
+}
+
+fn get_default_tags(
+  maybe_config_file: Option<&deno_config::ConfigFile>,
+) -> Vec<String> {
+  let mut tags = Vec::with_capacity(2);
+  tags.push("recommended".to_string());
+  if maybe_config_file.map(|c| c.is_package()).unwrap_or(false) {
+    tags.push("jsr".to_string());
+  }
+  tags
 }
 
 #[cfg(test)]

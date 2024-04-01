@@ -128,19 +128,22 @@ fn run_test(test: &Test, diagnostic_logger: Rc<RefCell<Vec<u8>>>) {
       context.deno_dir().path().remove_dir_all();
     }
 
-    let expected_output = if step.output.ends_with(".out") {
-      let test_output_path = cwd.join(&step.output);
-      test_output_path.read_to_string()
-    } else {
-      step.output.clone()
-    };
     let command = context.new_command().envs(&step.envs);
     let command = match &step.args {
       VecOrString::Vec(args) => command.args_vec(args),
       VecOrString::String(text) => command.args(text),
     };
+    let command = match &step.cwd {
+      Some(cwd) => command.current_dir(cwd),
+      None => command,
+    };
     let output = command.run();
-    output.assert_matches_text(expected_output);
+    if step.output.ends_with(".out") {
+      let test_output_path = cwd.join(&step.output);
+      output.assert_matches_file(test_output_path);
+    } else {
+      output.assert_matches_text(&step.output);
+    }
     output.assert_exit_code(step.exit_code);
   }
 }
@@ -194,6 +197,7 @@ struct StepMetaData {
   #[serde(default)]
   pub clean_deno_dir: bool,
   pub args: VecOrString,
+  pub cwd: Option<String>,
   #[serde(default)]
   pub envs: HashMap<String, String>,
   pub output: String,
@@ -299,12 +303,23 @@ fn collect_tests() -> Vec<TestCategory> {
       }
       .with_context(|| format!("Failed to parse {}", metadata_path))
       .unwrap();
+
+      let test_name =
+        format!("{}::{}", category.name, entry.file_name().to_string_lossy());
+
+      // only support characters that work with filtering with `cargo test`
+      if !test_name
+        .chars()
+        .all(|c| c.is_alphanumeric() || matches!(c, '_' | ':'))
+      {
+        panic!(
+          "Invalid test name (only supports alphanumeric and underscore): {}",
+          test_name
+        );
+      }
+
       category.tests.push(Test {
-        name: format!(
-          "{}::{}",
-          category.name,
-          entry.file_name().to_string_lossy()
-        ),
+        name: test_name,
         cwd: test_dir,
         metadata,
       });
