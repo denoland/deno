@@ -334,11 +334,7 @@ impl LanguageServer {
     // do as much as possible in a read, then do a write outside
     let maybe_prepare_cache_result = {
       let inner = self.0.read().await; // ensure dropped
-      match inner.prepare_cache(
-        specifiers,
-        referrer.clone(),
-        force_global_cache,
-      ) {
+      match inner.prepare_cache(specifiers, referrer, force_global_cache) {
         Ok(maybe_cache_result) => maybe_cache_result,
         Err(err) => {
           lsp_warn!("Error preparing caching: {:#}", err);
@@ -370,7 +366,7 @@ impl LanguageServer {
       }
       {
         let mut inner = self.0.write().await;
-        let lockfile = inner.config.tree.lockfile_for_specifier(&referrer);
+        let lockfile = inner.config.tree.root_lockfile();
         inner.documents.refresh_jsr_resolver(lockfile);
         inner.refresh_npm_specifiers().await;
       }
@@ -1154,42 +1150,33 @@ impl Inner {
 
   async fn refresh_config_tree(&mut self) {
     let file_fetcher = self.create_file_fetcher(CacheSetting::RespectHeaders);
-    if let Some(root_uri) = self.config.root_uri() {
-      self
-        .config
-        .tree
-        .refresh(
-          &self.config.settings,
-          root_uri,
-          &self.workspace_files,
-          &file_fetcher,
-        )
-        .await;
-      for config_file in self.config.tree.config_files() {
-        if let Ok((compiler_options, _)) = config_file.to_compiler_options() {
-          if let Some(compiler_options_obj) = compiler_options.as_object() {
-            if let Some(jsx_import_source) =
-              compiler_options_obj.get("jsxImportSource")
-            {
-              if let Some(jsx_import_source) = jsx_import_source.as_str() {
-                let specifiers = vec![Url::parse(&format!(
-                  "data:application/typescript;base64,{}",
-                  base64::engine::general_purpose::STANDARD.encode(format!(
-                    "import '{jsx_import_source}/jsx-runtime';"
-                  ))
-                ))
-                .unwrap()];
-                let referrer = config_file.specifier.clone();
-                self.task_queue.queue_task(Box::new(|ls: LanguageServer| {
-                  spawn(async move {
-                    if let Err(err) =
-                      ls.cache(specifiers, referrer, false).await
-                    {
-                      lsp_warn!("{:#}", err);
-                    }
-                  });
-                }));
-              }
+    self
+      .config
+      .tree
+      .refresh(&self.config.settings, &self.workspace_files, &file_fetcher)
+      .await;
+    for config_file in self.config.tree.config_files() {
+      if let Ok((compiler_options, _)) = config_file.to_compiler_options() {
+        if let Some(compiler_options_obj) = compiler_options.as_object() {
+          if let Some(jsx_import_source) =
+            compiler_options_obj.get("jsxImportSource")
+          {
+            if let Some(jsx_import_source) = jsx_import_source.as_str() {
+              let specifiers = vec![Url::parse(&format!(
+                "data:application/typescript;base64,{}",
+                base64::engine::general_purpose::STANDARD
+                  .encode(format!("import '{jsx_import_source}/jsx-runtime';"))
+              ))
+              .unwrap()];
+              let referrer = config_file.specifier.clone();
+              self.task_queue.queue_task(Box::new(|ls: LanguageServer| {
+                spawn(async move {
+                  if let Err(err) = ls.cache(specifiers, referrer, false).await
+                  {
+                    lsp_warn!("{:#}", err);
+                  }
+                });
+              }));
             }
           }
         }
@@ -2010,11 +1997,11 @@ impl Inner {
 
   pub fn get_ts_response_import_mapper(
     &self,
-    referrer: &ModuleSpecifier,
+    _referrer: &ModuleSpecifier,
   ) -> TsResponseImportMapper {
     TsResponseImportMapper::new(
       &self.documents,
-      self.config.tree.import_map_for_specifier(referrer),
+      self.config.tree.root_import_map(),
       self.npm.node_resolver.as_deref(),
       self.npm.resolver.as_deref(),
     )
@@ -2327,7 +2314,7 @@ impl Inner {
         &self.jsr_search_api,
         &self.npm.search_api,
         &self.documents,
-        self.config.tree.import_map_for_specifier(&specifier),
+        self.config.tree.root_import_map(),
       )
       .await;
     }
@@ -3493,7 +3480,7 @@ impl Inner {
     let mark = self
       .performance
       .mark_with_args("lsp.cache", (&specifiers, &referrer));
-    let config_data = self.config.tree.data_for_specifier(&referrer);
+    let config_data = self.config.tree.root_data();
     let roots = if !specifiers.is_empty() {
       specifiers
     } else {

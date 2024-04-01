@@ -1452,7 +1452,7 @@ fn diagnose_dependency(
     }
   }
 
-  let import_map = snapshot.config.tree.import_map_for_specifier(referrer);
+  let import_map = snapshot.config.tree.root_import_map();
   if let Some(import_map) = &import_map {
     if let Resolution::Ok(resolved) = &dependency.maybe_code {
       if let Some(to) = import_map.lookup(&resolved.specifier, referrer) {

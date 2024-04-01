@@ -781,10 +781,6 @@ pub struct Settings {
 }
 
 impl Settings {
-  pub fn first_root_uri(&self) -> Option<&ModuleSpecifier> {
-    self.first_folder.as_ref()
-  }
-
   /// Returns `None` if the value should be deferred to the presence of a
   /// `deno.json` file.
   pub fn specifier_enabled(&self, specifier: &ModuleSpecifier) -> Option<bool> {
@@ -793,7 +789,7 @@ impl Settings {
       return Some(true);
     };
     let (settings, mut folder_uri) = self.get_for_specifier(specifier);
-    folder_uri = folder_uri.or_else(|| self.first_root_uri());
+    folder_uri = folder_uri.or(self.first_folder.as_ref());
     let mut disable_paths = vec![];
     let mut enable_paths = None;
     if let Some(folder_uri) = folder_uri {
@@ -1427,173 +1423,185 @@ impl ConfigData {
 
 #[derive(Debug, Default)]
 pub struct ConfigTree {
-  root: Mutex<Option<(ModuleSpecifier, Arc<ConfigData>)>>,
+  first_folder: Mutex<Option<ModuleSpecifier>>,
+  scopes: Mutex<BTreeMap<ModuleSpecifier, Arc<ConfigData>>>,
 }
 
 impl ConfigTree {
   pub fn root_data(&self) -> Option<Arc<ConfigData>> {
-    self.root.lock().as_ref().map(|(_, d)| d.clone())
-  }
-
-  pub fn root_config_file(&self) -> Option<Arc<ConfigFile>> {
     self
-      .root
+      .first_folder
       .lock()
       .as_ref()
-      .and_then(|(_, d)| d.config_file.clone())
+      .and_then(|s| self.scopes.lock().get(s).cloned())
   }
 
   pub fn root_ts_config(&self) -> Arc<TsConfig> {
     self
-      .root
+      .first_folder
       .lock()
       .as_ref()
-      .map(|(_, d)| d.ts_config.clone())
+      .and_then(|s| self.scopes.lock().get(s).map(|d| d.ts_config.clone()))
       .unwrap_or_else(|| Arc::new(default_ts_config()))
   }
 
   pub fn root_vendor_dir(&self) -> Option<PathBuf> {
-    self
-      .root
-      .lock()
-      .as_ref()
-      .and_then(|(_, d)| d.vendor_dir.clone())
+    self.first_folder.lock().as_ref().and_then(|s| {
+      self.scopes.lock().get(s).and_then(|d| d.vendor_dir.clone())
+    })
   }
 
   pub fn root_lockfile(&self) -> Option<Arc<Mutex<Lockfile>>> {
     self
-      .root
+      .first_folder
       .lock()
       .as_ref()
-      .and_then(|(_, d)| d.lockfile.clone())
+      .and_then(|s| self.scopes.lock().get(s).and_then(|d| d.lockfile.clone()))
+  }
+
+  pub fn root_import_map(&self) -> Option<Arc<ImportMap>> {
+    self.first_folder.lock().as_ref().and_then(|s| {
+      self.scopes.lock().get(s).and_then(|d| d.import_map.clone())
+    })
   }
 
   pub fn scope_for_specifier(
     &self,
-    _specifier: &ModuleSpecifier,
+    specifier: &ModuleSpecifier,
   ) -> Option<ModuleSpecifier> {
-    self.root.lock().as_ref().map(|r| r.0.clone())
+    self
+      .scopes
+      .lock()
+      .keys()
+      .rfind(|s| specifier.as_str().starts_with(s.as_str()))
+      .cloned()
+      .or_else(|| self.first_folder.lock().clone())
   }
 
   pub fn data_for_specifier(
     &self,
-    _specifier: &ModuleSpecifier,
+    specifier: &ModuleSpecifier,
   ) -> Option<Arc<ConfigData>> {
-    self.root_data()
+    let r = self
+      .scopes
+      .lock()
+      .iter()
+      .rfind(|(s, _)| specifier.as_str().starts_with(s.as_str()))
+      .map(|(_, d)| d.clone());
+    r.or_else(|| self.root_data())
   }
 
   pub fn data_by_scope(&self) -> BTreeMap<ModuleSpecifier, Arc<ConfigData>> {
-    self.root.lock().iter().cloned().collect()
+    self.scopes.lock().clone()
   }
 
   pub fn config_file_for_specifier(
     &self,
-    _specifier: &ModuleSpecifier,
+    specifier: &ModuleSpecifier,
   ) -> Option<Arc<ConfigFile>> {
-    self.root_config_file()
-  }
-
-  pub fn has_config_file_for_specifier(
-    &self,
-    _specifier: &ModuleSpecifier,
-  ) -> bool {
     self
-      .root
-      .lock()
-      .as_ref()
-      .map(|(_, d)| d.config_file.is_some())
-      .unwrap_or(false)
+      .data_for_specifier(specifier)
+      .and_then(|d| d.config_file.clone())
   }
 
   pub fn config_files(&self) -> Vec<Arc<ConfigFile>> {
-    self.root_config_file().into_iter().collect()
+    self
+      .scopes
+      .lock()
+      .iter()
+      .filter_map(|(_, d)| d.config_file.clone())
+      .collect()
   }
 
   pub fn package_jsons(&self) -> Vec<Arc<PackageJson>> {
     self
-      .root
+      .scopes
       .lock()
-      .as_ref()
-      .and_then(|(_, d)| d.package_json.clone())
-      .into_iter()
+      .iter()
+      .filter_map(|(_, d)| d.package_json.clone())
       .collect()
   }
 
   pub fn fmt_options_for_specifier(
     &self,
-    _specifier: &ModuleSpecifier,
+    specifier: &ModuleSpecifier,
   ) -> Arc<FmtOptions> {
     self
-      .root
-      .lock()
-      .as_ref()
-      .map(|(_, d)| d.fmt_options.clone())
+      .data_for_specifier(specifier)
+      .map(|d| d.fmt_options.clone())
       .unwrap_or_default()
-  }
-
-  pub fn lockfile_for_specifier(
-    &self,
-    _specifier: &ModuleSpecifier,
-  ) -> Option<Arc<Mutex<Lockfile>>> {
-    self.root_lockfile()
-  }
-
-  pub fn import_map_for_specifier(
-    &self,
-    _specifier: &ModuleSpecifier,
-  ) -> Option<Arc<ImportMap>> {
-    self
-      .root
-      .lock()
-      .as_ref()
-      .and_then(|(_, d)| d.import_map.clone())
   }
 
   pub async fn refresh(
     &self,
     settings: &Settings,
-    root_uri: &ModuleSpecifier,
     workspace_files: &BTreeSet<ModuleSpecifier>,
     file_fetcher: &FileFetcher,
   ) {
     lsp_log!("Refreshing configuration tree...");
-    let mut root = None;
-    if let Some(config_path) = &settings.unscoped.config {
-      if let Ok(config_uri) = root_uri.join(config_path) {
-        root = Some((
-          root_uri.clone(),
-          Arc::new(
-            ConfigData::load(
-              Some(&config_uri),
-              root_uri,
+    let mut scopes = BTreeMap::new();
+    for (folder_uri, ws_settings) in &settings.by_workspace_folder {
+      let mut ws_settings = ws_settings.as_ref();
+      if Some(folder_uri) == settings.first_folder.as_ref() {
+        ws_settings = ws_settings.or(Some(&settings.unscoped));
+      }
+      if let Some(ws_settings) = ws_settings {
+        if let Some(config_path) = &ws_settings.config {
+          if let Ok(config_uri) = folder_uri.join(config_path) {
+            scopes.insert(
+              folder_uri.clone(),
+              Arc::new(
+                ConfigData::load(
+                  Some(&config_uri),
+                  folder_uri,
+                  settings,
+                  Some(file_fetcher),
+                )
+                .await,
+              ),
+            );
+          }
+        }
+      }
+    }
+
+    for specifier in workspace_files {
+      if specifier.path().ends_with("/deno.json")
+        || specifier.path().ends_with("/deno.jsonc")
+      {
+        if let Ok(scope) = specifier.join(".") {
+          let entry = scopes.entry(scope.clone());
+          #[allow(clippy::map_entry)]
+          if matches!(entry, std::collections::btree_map::Entry::Vacant(_)) {
+            let data = ConfigData::load(
+              Some(specifier),
+              &scope,
               settings,
               Some(file_fetcher),
             )
-            .await,
-          ),
-        ));
+            .await;
+            entry.or_insert(Arc::new(data));
+          }
+        }
       }
-    } else {
-      let get_uri_if_exists = |name| {
-        let uri = root_uri.join(name).ok();
-        uri.filter(|s| workspace_files.contains(s))
-      };
-      let config_uri = get_uri_if_exists("deno.jsonc")
-        .or_else(|| get_uri_if_exists("deno.json"));
-      root = Some((
-        root_uri.clone(),
-        Arc::new(
-          ConfigData::load(
-            config_uri.as_ref(),
-            root_uri,
-            settings,
-            Some(file_fetcher),
-          )
-          .await,
-        ),
-      ));
     }
-    *self.root.lock() = root;
+
+    for folder_uri in settings.by_workspace_folder.keys() {
+      if !scopes
+        .keys()
+        .any(|s| folder_uri.as_str().starts_with(s.as_str()))
+      {
+        scopes.insert(
+          folder_uri.clone(),
+          Arc::new(
+            ConfigData::load(None, folder_uri, settings, Some(file_fetcher))
+              .await,
+          ),
+        );
+      }
+    }
+    *self.first_folder.lock() = settings.first_folder.clone();
+    *self.scopes.lock() = scopes;
   }
 
   /// Returns (scope_uri, type).
@@ -1601,7 +1609,7 @@ impl ConfigTree {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<(ModuleSpecifier, ConfigWatchedFileType)> {
-    if let Some((scope_uri, data)) = &*self.root.lock() {
+    for (scope_uri, data) in self.scopes.lock().iter() {
       if let Some(typ) = data.watched_files.get(specifier) {
         return Some((scope_uri.clone(), *typ));
       }
@@ -1617,10 +1625,10 @@ impl ConfigTree {
       return true;
     }
     self
-      .root
+      .scopes
       .lock()
-      .as_ref()
-      .is_some_and(|(_, d)| d.watched_files.contains_key(specifier))
+      .values()
+      .any(|data| data.watched_files.contains_key(specifier))
   }
 
   #[cfg(test)]
@@ -1633,7 +1641,8 @@ impl ConfigTree {
       None,
     )
     .await;
-    *self.root.lock() = Some((scope, Arc::new(data)));
+    *self.first_folder.lock() = Some(scope.clone());
+    *self.scopes.lock() = [(scope, Arc::new(data))].into_iter().collect();
   }
 }
 

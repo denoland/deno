@@ -4507,7 +4507,10 @@ impl UserPreferences {
         language_settings.preferences.use_aliases_for_renames,
       ),
       // Only use workspace settings for quote style if there's no `deno.json`.
-      quote_preference: if config.tree.has_config_file_for_specifier(specifier)
+      quote_preference: if config
+        .tree
+        .config_file_for_specifier(specifier)
+        .is_some()
       {
         base_preferences.quote_preference
       } else {
