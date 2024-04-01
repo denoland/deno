@@ -33,6 +33,7 @@ required-features = ["run"]
 
 [dev-dependencies]
 bytes.workspace = true
+chrono.workspace = true
 deno_ast.workspace = true
 deno_bench_util.workspace = true
 deno_cache_dir = { workspace = true }
@@ -59,6 +60,8 @@ tower-lsp.workspace = true
 trust-dns-client = "=0.22.0"
 trust-dns-server = "=0.22.1"
 url.workspace = true
+uuid = { workspace = true, features = ["serde"] }
+zeromq.workspace = true
 
 [target.'cfg(unix)'.dev-dependencies]
 nix.workspace = true

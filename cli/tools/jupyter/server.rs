@@ -341,7 +341,9 @@ impl JupyterServer {
     msg: JupyterMessage,
     connection: &mut Connection<zeromq::RouterSocket>,
   ) -> Result<(), AnyError> {
-    self.execution_count += 1;
+    if !msg.silent() && msg.store_history() {
+      self.execution_count += 1;
+    }
     *self.last_execution_request.borrow_mut() = Some(msg.clone());
 
     msg
@@ -396,6 +398,7 @@ impl JupyterServer {
         .with_content(json!({
             "status": "ok",
             "execution_count": self.execution_count,
+            // FIXME: also include user_expressions
         }))
         .send(connection)
         .await?;
