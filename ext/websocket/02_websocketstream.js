@@ -428,7 +428,7 @@ class WebSocketStream {
     }
 
     let code = closeInfo.closeCode;
-    if (closeInfo.reason && code === null) {
+    if (closeInfo.reason && code === undefined) {
       code = 1000;
     }
 
@@ -503,7 +503,7 @@ class WebSocketError extends DOMException {
       );
     }
 
-    if (init.reason && init.closeCode === null) {
+    if (init.reason && init.closeCode === undefined) {
       init.closeCode = 1000;
     }
 
