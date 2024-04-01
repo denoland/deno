@@ -1,0 +1,6 @@
+{
+  "exports": {
+    ".": "./mod.ts",
+    "./assert_equals": "./assert_equals.ts"
+  }
+}

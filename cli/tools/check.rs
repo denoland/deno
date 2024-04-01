@@ -200,28 +200,13 @@ impl TypeChecker {
       check_mode: type_check_mode,
     })?;
 
-    let mut diagnostics = if type_check_mode == TypeCheckMode::Local {
-      response.diagnostics.filter(|d| {
-        if let Some(file_name) = &d.file_name {
-          if !file_name.starts_with("http") {
-            if ModuleSpecifier::parse(file_name)
-              .map(|specifier| !self.node_resolver.in_npm_package(&specifier))
-              .unwrap_or(true)
-            {
-              Some(d.clone())
-            } else {
-              None
-            }
-          } else {
-            None
-          }
-        } else {
-          Some(d.clone())
-        }
-      })
-    } else {
-      response.diagnostics
-    };
+    let mut diagnostics = response.diagnostics.filter(|d| {
+      if self.is_remote_diagnostic(d) {
+        type_check_mode == TypeCheckMode::All && d.include_when_remote()
+      } else {
+        true
+      }
+    });
 
     diagnostics.apply_fast_check_source_maps(&graph);
 
@@ -238,6 +223,20 @@ impl TypeChecker {
     log::debug!("{}", response.stats);
 
     Ok((graph, diagnostics))
+  }
+
+  fn is_remote_diagnostic(&self, d: &tsc::Diagnostic) -> bool {
+    let Some(file_name) = &d.file_name else {
+      return false;
+    };
+    if file_name.starts_with("https://") || file_name.starts_with("http://") {
+      return true;
+    }
+    // check if in an npm package
+    let Ok(specifier) = ModuleSpecifier::parse(file_name) else {
+      return false;
+    };
+    self.node_resolver.in_npm_package(&specifier)
   }
 }
 

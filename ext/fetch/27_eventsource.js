@@ -15,7 +15,6 @@ const {
   StringPrototypeIncludes,
   StringPrototypeIndexOf,
   StringPrototypeSlice,
-  StringPrototypeSplit,
   StringPrototypeStartsWith,
   StringPrototypeToLowerCase,
   SymbolFor,
@@ -268,8 +267,10 @@ class EventSource extends EventTarget {
         } else {
           let field = chunk;
           let value = "";
-          if (StringPrototypeIncludes(chunk, ":")) {
-            ({ 0: field, 1: value } = StringPrototypeSplit(chunk, ":"));
+          const colonIndex = StringPrototypeIndexOf(chunk, ":");
+          if (colonIndex !== -1) {
+            field = StringPrototypeSlice(chunk, 0, colonIndex);
+            value = StringPrototypeSlice(chunk, colonIndex + 1);
             if (StringPrototypeStartsWith(value, " ")) {
               value = StringPrototypeSlice(value, 1);
             }

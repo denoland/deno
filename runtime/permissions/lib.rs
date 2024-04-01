@@ -16,6 +16,8 @@ use deno_core::url;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_terminal::colors;
+use fqdn::fqdn;
+use fqdn::FQDN;
 use once_cell::sync::Lazy;
 use std::borrow::Cow;
 use std::collections::HashSet;
@@ -371,12 +373,12 @@ impl<T: Descriptor + Hash> UnaryPermission<T> {
     api_name: Option<&str>,
   ) -> Result<(), AnyError> {
     skip_check_if_is_permission_fully_granted!(self);
-    self.check_desc(&None, false, api_name, || None)
+    self.check_desc(None, false, api_name, || None)
   }
 
   fn check_desc(
     &mut self,
-    desc: &Option<T>,
+    desc: Option<&T>,
     assert_non_partial: bool,
     api_name: Option<&str>,
     get_display_name: impl Fn() -> Option<String>,
@@ -389,7 +391,7 @@ impl<T: Descriptor + Hash> UnaryPermission<T> {
         api_name,
         || match get_display_name() {
           Some(display_name) => Some(display_name),
-          None => desc.as_ref().map(|d| format!("\"{}\"", d.name())),
+          None => desc.map(|d| format!("\"{}\"", d.name())),
         },
         self.prompt,
       );
@@ -398,10 +400,10 @@ impl<T: Descriptor + Hash> UnaryPermission<T> {
         if is_allow_all {
           self.insert_granted(None);
         } else {
-          self.insert_granted(desc.clone());
+          self.insert_granted(desc.cloned());
         }
       } else {
-        self.insert_prompt_denied(desc.clone());
+        self.insert_prompt_denied(desc.cloned());
       }
     }
     result
@@ -409,13 +411,13 @@ impl<T: Descriptor + Hash> UnaryPermission<T> {
 
   fn query_desc(
     &self,
-    desc: &Option<T>,
+    desc: Option<&T>,
     allow_partial: AllowPartial,
   ) -> PermissionState {
-    let aliases = desc.as_ref().map_or(vec![], T::aliases);
+    let aliases = desc.map_or(vec![], T::aliases);
     for desc in [desc]
       .into_iter()
-      .chain(&aliases.into_iter().map(Some).collect::<Vec<_>>())
+      .chain(aliases.iter().map(Some).collect::<Vec<_>>())
     {
       let state = if self.is_flag_denied(desc) || self.is_prompt_denied(desc) {
         PermissionState::Denied
@@ -453,12 +455,12 @@ impl<T: Descriptor + Hash> UnaryPermission<T> {
 
   fn request_desc(
     &mut self,
-    desc: &Option<T>,
+    desc: Option<&T>,
     get_display_name: impl Fn() -> Option<String>,
   ) -> PermissionState {
     let state = self.query_desc(desc, AllowPartial::TreatAsPartialGranted);
     if state == PermissionState::Granted {
-      self.insert_granted(desc.clone());
+      self.insert_granted(desc.cloned());
       return state;
     }
     if state != PermissionState::Prompt {
@@ -470,10 +472,11 @@ impl<T: Descriptor + Hash> UnaryPermission<T> {
       Some(display_name) => {
         message.push_str(&format!(" to \"{}\"", display_name))
       }
-      None => match desc {
-        Some(desc) => message.push_str(&format!(" to \"{}\"", desc.name())),
-        None => {}
-      },
+      None => {
+        if let Some(desc) = desc {
+          message.push_str(&format!(" to \"{}\"", desc.name()));
+        }
+      }
     }
     match permission_prompt(
       &message,
@@ -482,11 +485,11 @@ impl<T: Descriptor + Hash> UnaryPermission<T> {
       true,
     ) {
       PromptResponse::Allow => {
-        self.insert_granted(desc.clone());
+        self.insert_granted(desc.cloned());
         PermissionState::Granted
       }
       PromptResponse::Deny => {
-        self.insert_prompt_denied(desc.clone());
+        self.insert_prompt_denied(desc.cloned());
         PermissionState::Denied
       }
       PromptResponse::AllowAll => {
@@ -496,8 +499,8 @@ impl<T: Descriptor + Hash> UnaryPermission<T> {
     }
   }
 
-  fn revoke_desc(&mut self, desc: &Option<T>) -> PermissionState {
-    match desc.as_ref() {
+  fn revoke_desc(&mut self, desc: Option<&T>) -> PermissionState {
+    match desc {
       Some(desc) => {
         self.granted_list.retain(|v| !v.stronger_than(desc));
         for alias in desc.aliases() {
@@ -515,16 +518,16 @@ impl<T: Descriptor + Hash> UnaryPermission<T> {
     self.query_desc(desc, AllowPartial::TreatAsPartialGranted)
   }
 
-  fn is_granted(&self, desc: &Option<T>) -> bool {
+  fn is_granted(&self, desc: Option<&T>) -> bool {
     Self::list_contains(desc, self.granted_global, &self.granted_list)
   }
 
-  fn is_flag_denied(&self, desc: &Option<T>) -> bool {
+  fn is_flag_denied(&self, desc: Option<&T>) -> bool {
     Self::list_contains(desc, self.flag_denied_global, &self.flag_denied_list)
   }
 
-  fn is_prompt_denied(&self, desc: &Option<T>) -> bool {
-    match desc.as_ref() {
+  fn is_prompt_denied(&self, desc: Option<&T>) -> bool {
+    match desc {
       Some(desc) => self
         .prompt_denied_list
         .iter()
@@ -533,7 +536,7 @@ impl<T: Descriptor + Hash> UnaryPermission<T> {
     }
   }
 
-  fn is_partial_flag_denied(&self, desc: &Option<T>) -> bool {
+  fn is_partial_flag_denied(&self, desc: Option<&T>) -> bool {
     match desc {
       None => !self.flag_denied_list.is_empty(),
       Some(desc) => self.flag_denied_list.iter().any(|v| desc.stronger_than(v)),
@@ -541,11 +544,11 @@ impl<T: Descriptor + Hash> UnaryPermission<T> {
   }
 
   fn list_contains(
-    desc: &Option<T>,
+    desc: Option<&T>,
     list_global: bool,
     list: &HashSet<T>,
   ) -> bool {
-    match desc.as_ref() {
+    match desc {
       Some(desc) => list_global || list.iter().any(|v| v.stronger_than(desc)),
       None => list_global,
     }
@@ -631,7 +634,8 @@ impl Descriptor for ReadDescriptor {
     perm: &mut UnaryPermission<Self>,
     api_name: Option<&str>,
   ) -> Result<(), AnyError> {
-    UnaryPermission::<Self>::check(perm, &self.0, api_name)
+    skip_check_if_is_permission_fully_granted!(perm);
+    perm.check_desc(Some(self), true, api_name, || None)
   }
 
   fn parse(args: &Option<Vec<Self::Arg>>) -> Result<HashSet<Self>, AnyError> {
@@ -662,7 +666,8 @@ impl Descriptor for WriteDescriptor {
     perm: &mut UnaryPermission<Self>,
     api_name: Option<&str>,
   ) -> Result<(), AnyError> {
-    UnaryPermission::<Self>::check(perm, &self.0, api_name)
+    skip_check_if_is_permission_fully_granted!(perm);
+    perm.check_desc(Some(self), true, api_name, || None)
   }
 
   fn parse(args: &Option<Vec<Self::Arg>>) -> Result<HashSet<Self>, AnyError> {
@@ -683,11 +688,11 @@ impl Descriptor for WriteDescriptor {
 }
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
-pub struct NetDescriptor(pub String, pub Option<u16>);
+pub struct NetDescriptor(pub FQDN, pub Option<u16>);
 
 impl NetDescriptor {
   fn new<T: AsRef<str>>(host: &&(T, Option<u16>)) -> Self {
-    NetDescriptor(host.0.as_ref().to_string(), host.1)
+    NetDescriptor(fqdn!(host.0.as_ref()), host.1)
   }
 }
 
@@ -699,7 +704,8 @@ impl Descriptor for NetDescriptor {
     perm: &mut UnaryPermission<Self>,
     api_name: Option<&str>,
   ) -> Result<(), AnyError> {
-    UnaryPermission::<Self>::check(perm, &(self.0.as_str(), self.1), api_name)
+    skip_check_if_is_permission_fully_granted!(perm);
+    perm.check_desc(Some(self), false, api_name, || None)
   }
 
   fn parse(args: &Option<Vec<Self::Arg>>) -> Result<HashSet<Self>, AnyError> {
@@ -732,14 +738,14 @@ impl FromStr for NetDescriptor {
       .ok_or(url::ParseError::EmptyHost)?
       .to_string();
 
-    Ok(NetDescriptor(hostname, url.port()))
+    Ok(NetDescriptor(fqdn!(&hostname), url.port()))
   }
 }
 
 impl fmt::Display for NetDescriptor {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     f.write_str(&match self.1 {
-      None => self.0.clone(),
+      None => self.0.to_string(),
       Some(port) => format!("{}:{}", self.0, port),
     })
   }
@@ -762,7 +768,8 @@ impl Descriptor for EnvDescriptor {
     perm: &mut UnaryPermission<Self>,
     api_name: Option<&str>,
   ) -> Result<(), AnyError> {
-    UnaryPermission::<Self>::check(perm, &self.0.inner, api_name)
+    skip_check_if_is_permission_fully_granted!(perm);
+    perm.check_desc(Some(self), false, api_name, || None)
   }
 
   fn parse(list: &Option<Vec<Self::Arg>>) -> Result<HashSet<Self>, AnyError> {
@@ -802,7 +809,8 @@ impl Descriptor for RunDescriptor {
     perm: &mut UnaryPermission<Self>,
     api_name: Option<&str>,
   ) -> Result<(), AnyError> {
-    UnaryPermission::<Self>::check(perm, &self.to_string(), api_name)
+    skip_check_if_is_permission_fully_granted!(perm);
+    perm.check_desc(Some(self), false, api_name, || None)
   }
 
   fn parse(args: &Option<Vec<Self::Arg>>) -> Result<HashSet<Self>, AnyError> {
@@ -884,7 +892,8 @@ impl Descriptor for SysDescriptor {
     perm: &mut UnaryPermission<Self>,
     api_name: Option<&str>,
   ) -> Result<(), AnyError> {
-    UnaryPermission::<Self>::check(perm, &self.0, api_name)
+    skip_check_if_is_permission_fully_granted!(perm);
+    perm.check_desc(Some(self), false, api_name, || None)
   }
 
   fn parse(list: &Option<Vec<Self::Arg>>) -> Result<HashSet<Self>, AnyError> {
@@ -919,7 +928,8 @@ impl Descriptor for FfiDescriptor {
     perm: &mut UnaryPermission<Self>,
     api_name: Option<&str>,
   ) -> Result<(), AnyError> {
-    UnaryPermission::<Self>::check(perm, &self.0, api_name)
+    skip_check_if_is_permission_fully_granted!(perm);
+    perm.check_desc(Some(self), true, api_name, || None)
   }
 
   fn parse(list: &Option<Vec<Self::Arg>>) -> Result<HashSet<Self>, AnyError> {
@@ -942,21 +952,28 @@ impl Descriptor for FfiDescriptor {
 impl UnaryPermission<ReadDescriptor> {
   pub fn query(&self, path: Option<&Path>) -> PermissionState {
     self.query_desc(
-      &path.map(|p| ReadDescriptor(resolve_from_cwd(p).unwrap())),
+      path
+        .map(|p| ReadDescriptor(resolve_from_cwd(p).unwrap()))
+        .as_ref(),
       AllowPartial::TreatAsPartialGranted,
     )
   }
 
   pub fn request(&mut self, path: Option<&Path>) -> PermissionState {
     self.request_desc(
-      &path.map(|p| ReadDescriptor(resolve_from_cwd(p).unwrap())),
+      path
+        .map(|p| ReadDescriptor(resolve_from_cwd(p).unwrap()))
+        .as_ref(),
       || Some(path?.display().to_string()),
     )
   }
 
   pub fn revoke(&mut self, path: Option<&Path>) -> PermissionState {
-    self
-      .revoke_desc(&path.map(|p| ReadDescriptor(resolve_from_cwd(p).unwrap())))
+    self.revoke_desc(
+      path
+        .map(|p| ReadDescriptor(resolve_from_cwd(p).unwrap()))
+        .as_ref(),
+    )
   }
 
   pub fn check(
@@ -966,7 +983,7 @@ impl UnaryPermission<ReadDescriptor> {
   ) -> Result<(), AnyError> {
     skip_check_if_is_permission_fully_granted!(self);
     self.check_desc(
-      &Some(ReadDescriptor(resolve_from_cwd(path)?)),
+      Some(&ReadDescriptor(resolve_from_cwd(path)?)),
       true,
       api_name,
       || Some(format!("\"{}\"", path.display())),
@@ -981,7 +998,7 @@ impl UnaryPermission<ReadDescriptor> {
   ) -> Result<(), AnyError> {
     skip_check_if_is_permission_fully_granted!(self);
     let desc = ReadDescriptor(resolve_from_cwd(path)?);
-    self.check_desc(&Some(desc), false, api_name, || {
+    self.check_desc(Some(&desc), false, api_name, || {
       Some(format!("\"{}\"", path.display()))
     })
   }
@@ -996,35 +1013,42 @@ impl UnaryPermission<ReadDescriptor> {
   ) -> Result<(), AnyError> {
     skip_check_if_is_permission_fully_granted!(self);
     let desc = ReadDescriptor(resolve_from_cwd(path)?);
-    self.check_desc(&Some(desc), false, Some(api_name), || {
+    self.check_desc(Some(&desc), false, Some(api_name), || {
       Some(format!("<{display}>"))
     })
   }
 
   pub fn check_all(&mut self, api_name: Option<&str>) -> Result<(), AnyError> {
     skip_check_if_is_permission_fully_granted!(self);
-    self.check_desc(&None, false, api_name, || None)
+    self.check_desc(None, false, api_name, || None)
   }
 }
 
 impl UnaryPermission<WriteDescriptor> {
   pub fn query(&self, path: Option<&Path>) -> PermissionState {
     self.query_desc(
-      &path.map(|p| WriteDescriptor(resolve_from_cwd(p).unwrap())),
+      path
+        .map(|p| WriteDescriptor(resolve_from_cwd(p).unwrap()))
+        .as_ref(),
       AllowPartial::TreatAsPartialGranted,
     )
   }
 
   pub fn request(&mut self, path: Option<&Path>) -> PermissionState {
     self.request_desc(
-      &path.map(|p| WriteDescriptor(resolve_from_cwd(p).unwrap())),
+      path
+        .map(|p| WriteDescriptor(resolve_from_cwd(p).unwrap()))
+        .as_ref(),
       || Some(path?.display().to_string()),
     )
   }
 
   pub fn revoke(&mut self, path: Option<&Path>) -> PermissionState {
-    self
-      .revoke_desc(&path.map(|p| WriteDescriptor(resolve_from_cwd(p).unwrap())))
+    self.revoke_desc(
+      path
+        .map(|p| WriteDescriptor(resolve_from_cwd(p).unwrap()))
+        .as_ref(),
+    )
   }
 
   pub fn check(
@@ -1034,7 +1058,7 @@ impl UnaryPermission<WriteDescriptor> {
   ) -> Result<(), AnyError> {
     skip_check_if_is_permission_fully_granted!(self);
     self.check_desc(
-      &Some(WriteDescriptor(resolve_from_cwd(path)?)),
+      Some(&WriteDescriptor(resolve_from_cwd(path)?)),
       true,
       api_name,
       || Some(format!("\"{}\"", path.display())),
@@ -1049,7 +1073,7 @@ impl UnaryPermission<WriteDescriptor> {
   ) -> Result<(), AnyError> {
     skip_check_if_is_permission_fully_granted!(self);
     self.check_desc(
-      &Some(WriteDescriptor(resolve_from_cwd(path)?)),
+      Some(&WriteDescriptor(resolve_from_cwd(path)?)),
       false,
       api_name,
       || Some(format!("\"{}\"", path.display())),
@@ -1066,14 +1090,14 @@ impl UnaryPermission<WriteDescriptor> {
   ) -> Result<(), AnyError> {
     skip_check_if_is_permission_fully_granted!(self);
     let desc = WriteDescriptor(resolve_from_cwd(path)?);
-    self.check_desc(&Some(desc), false, Some(api_name), || {
+    self.check_desc(Some(&desc), false, Some(api_name), || {
       Some(format!("<{display}>"))
     })
   }
 
   pub fn check_all(&mut self, api_name: Option<&str>) -> Result<(), AnyError> {
     skip_check_if_is_permission_fully_granted!(self);
-    self.check_desc(&None, false, api_name, || None)
+    self.check_desc(None, false, api_name, || None)
   }
 }
 
@@ -1083,7 +1107,7 @@ impl UnaryPermission<NetDescriptor> {
     host: Option<&(T, Option<u16>)>,
   ) -> PermissionState {
     self.query_desc(
-      &host.map(|h| NetDescriptor::new(&h)),
+      host.map(|h| NetDescriptor::new(&h)).as_ref(),
       AllowPartial::TreatAsPartialGranted,
     )
   }
@@ -1092,14 +1116,14 @@ impl UnaryPermission<NetDescriptor> {
     &mut self,
     host: Option<&(T, Option<u16>)>,
   ) -> PermissionState {
-    self.request_desc(&host.map(|h| NetDescriptor::new(&h)), || None)
+    self.request_desc(host.map(|h| NetDescriptor::new(&h)).as_ref(), || None)
   }
 
   pub fn revoke<T: AsRef<str>>(
     &mut self,
     host: Option<&(T, Option<u16>)>,
   ) -> PermissionState {
-    self.revoke_desc(&host.map(|h| NetDescriptor::new(&h)))
+    self.revoke_desc(host.map(|h| NetDescriptor::new(&h)).as_ref())
   }
 
   pub fn check<T: AsRef<str>>(
@@ -1108,7 +1132,7 @@ impl UnaryPermission<NetDescriptor> {
     api_name: Option<&str>,
   ) -> Result<(), AnyError> {
     skip_check_if_is_permission_fully_granted!(self);
-    self.check_desc(&Some(NetDescriptor::new(&host)), false, api_name, || None)
+    self.check_desc(Some(&NetDescriptor::new(&host)), false, api_name, || None)
   }
 
   pub fn check_url(
@@ -1126,31 +1150,31 @@ impl UnaryPermission<NetDescriptor> {
       None => hostname.clone(),
       Some(port) => format!("{hostname}:{port}"),
     };
-    self.check_desc(&Some(NetDescriptor::new(&host)), false, api_name, || {
+    self.check_desc(Some(&NetDescriptor::new(&host)), false, api_name, || {
       Some(format!("\"{}\"", display_host))
     })
   }
 
   pub fn check_all(&mut self) -> Result<(), AnyError> {
     skip_check_if_is_permission_fully_granted!(self);
-    self.check_desc(&None, false, None, || None)
+    self.check_desc(None, false, None, || None)
   }
 }
 
 impl UnaryPermission<EnvDescriptor> {
   pub fn query(&self, env: Option<&str>) -> PermissionState {
     self.query_desc(
-      &env.map(EnvDescriptor::new),
+      env.map(EnvDescriptor::new).as_ref(),
       AllowPartial::TreatAsPartialGranted,
     )
   }
 
   pub fn request(&mut self, env: Option<&str>) -> PermissionState {
-    self.request_desc(&env.map(EnvDescriptor::new), || None)
+    self.request_desc(env.map(EnvDescriptor::new).as_ref(), || None)
   }
 
   pub fn revoke(&mut self, env: Option<&str>) -> PermissionState {
-    self.revoke_desc(&env.map(EnvDescriptor::new))
+    self.revoke_desc(env.map(EnvDescriptor::new).as_ref())
   }
 
   pub fn check(
@@ -1159,29 +1183,32 @@ impl UnaryPermission<EnvDescriptor> {
     api_name: Option<&str>,
   ) -> Result<(), AnyError> {
     skip_check_if_is_permission_fully_granted!(self);
-    self.check_desc(&Some(EnvDescriptor::new(env)), false, api_name, || None)
+    self.check_desc(Some(&EnvDescriptor::new(env)), false, api_name, || None)
   }
 
   pub fn check_all(&mut self) -> Result<(), AnyError> {
     skip_check_if_is_permission_fully_granted!(self);
-    self.check_desc(&None, false, None, || None)
+    self.check_desc(None, false, None, || None)
   }
 }
 
 impl UnaryPermission<SysDescriptor> {
   pub fn query(&self, kind: Option<&str>) -> PermissionState {
     self.query_desc(
-      &kind.map(|k| SysDescriptor(k.to_string())),
+      kind.map(|k| SysDescriptor(k.to_string())).as_ref(),
       AllowPartial::TreatAsPartialGranted,
     )
   }
 
   pub fn request(&mut self, kind: Option<&str>) -> PermissionState {
-    self.request_desc(&kind.map(|k| SysDescriptor(k.to_string())), || None)
+    self
+      .request_desc(kind.map(|k| SysDescriptor(k.to_string())).as_ref(), || {
+        None
+      })
   }
 
   pub fn revoke(&mut self, kind: Option<&str>) -> PermissionState {
-    self.revoke_desc(&kind.map(|k| SysDescriptor(k.to_string())))
+    self.revoke_desc(kind.map(|k| SysDescriptor(k.to_string())).as_ref())
   }
 
   pub fn check(
@@ -1191,7 +1218,7 @@ impl UnaryPermission<SysDescriptor> {
   ) -> Result<(), AnyError> {
     skip_check_if_is_permission_fully_granted!(self);
     self.check_desc(
-      &Some(SysDescriptor(kind.to_string())),
+      Some(&SysDescriptor(kind.to_string())),
       false,
       api_name,
       || None,
@@ -1200,26 +1227,27 @@ impl UnaryPermission<SysDescriptor> {
 
   pub fn check_all(&mut self) -> Result<(), AnyError> {
     skip_check_if_is_permission_fully_granted!(self);
-    self.check_desc(&None, false, None, || None)
+    self.check_desc(None, false, None, || None)
   }
 }
 
 impl UnaryPermission<RunDescriptor> {
   pub fn query(&self, cmd: Option<&str>) -> PermissionState {
     self.query_desc(
-      &cmd.map(|c| RunDescriptor::from(c.to_string())),
+      cmd.map(|c| RunDescriptor::from(c.to_string())).as_ref(),
       AllowPartial::TreatAsPartialGranted,
     )
   }
 
   pub fn request(&mut self, cmd: Option<&str>) -> PermissionState {
-    self.request_desc(&cmd.map(|c| RunDescriptor::from(c.to_string())), || {
-      Some(cmd?.to_string())
-    })
+    self.request_desc(
+      cmd.map(|c| RunDescriptor::from(c.to_string())).as_ref(),
+      || Some(cmd?.to_string()),
+    )
   }
 
   pub fn revoke(&mut self, cmd: Option<&str>) -> PermissionState {
-    self.revoke_desc(&cmd.map(|c| RunDescriptor::from(c.to_string())))
+    self.revoke_desc(cmd.map(|c| RunDescriptor::from(c.to_string())).as_ref())
   }
 
   pub fn check(
@@ -1229,7 +1257,7 @@ impl UnaryPermission<RunDescriptor> {
   ) -> Result<(), AnyError> {
     skip_check_if_is_permission_fully_granted!(self);
     self.check_desc(
-      &Some(RunDescriptor::from(cmd.to_string())),
+      Some(&RunDescriptor::from(cmd.to_string())),
       false,
       api_name,
       || Some(format!("\"{}\"", cmd)),
@@ -1238,27 +1266,35 @@ impl UnaryPermission<RunDescriptor> {
 
   pub fn check_all(&mut self, api_name: Option<&str>) -> Result<(), AnyError> {
     skip_check_if_is_permission_fully_granted!(self);
-    self.check_desc(&None, false, api_name, || None)
+    self.check_desc(None, false, api_name, || None)
   }
 }
 
 impl UnaryPermission<FfiDescriptor> {
   pub fn query(&self, path: Option<&Path>) -> PermissionState {
     self.query_desc(
-      &path.map(|p| FfiDescriptor(resolve_from_cwd(p).unwrap())),
+      path
+        .map(|p| FfiDescriptor(resolve_from_cwd(p).unwrap()))
+        .as_ref(),
       AllowPartial::TreatAsPartialGranted,
     )
   }
 
   pub fn request(&mut self, path: Option<&Path>) -> PermissionState {
     self.request_desc(
-      &path.map(|p| FfiDescriptor(resolve_from_cwd(p).unwrap())),
+      path
+        .map(|p| FfiDescriptor(resolve_from_cwd(p).unwrap()))
+        .as_ref(),
       || Some(path?.display().to_string()),
     )
   }
 
   pub fn revoke(&mut self, path: Option<&Path>) -> PermissionState {
-    self.revoke_desc(&path.map(|p| FfiDescriptor(resolve_from_cwd(p).unwrap())))
+    self.revoke_desc(
+      path
+        .map(|p| FfiDescriptor(resolve_from_cwd(p).unwrap()))
+        .as_ref(),
+    )
   }
 
   pub fn check(
@@ -1268,7 +1304,7 @@ impl UnaryPermission<FfiDescriptor> {
   ) -> Result<(), AnyError> {
     skip_check_if_is_permission_fully_granted!(self);
     self.check_desc(
-      &Some(FfiDescriptor(resolve_from_cwd(path)?)),
+      Some(&FfiDescriptor(resolve_from_cwd(path)?)),
       true,
       api_name,
       || Some(format!("\"{}\"", path.display())),
@@ -1281,14 +1317,14 @@ impl UnaryPermission<FfiDescriptor> {
       Some(path) => Some(FfiDescriptor(resolve_from_cwd(path)?)),
       None => None,
     };
-    self.check_desc(&desc, false, None, || {
+    self.check_desc(desc.as_ref(), false, None, || {
       Some(format!("\"{}\"", path?.display()))
     })
   }
 
   pub fn check_all(&mut self) -> Result<(), AnyError> {
     skip_check_if_is_permission_fully_granted!(self);
-    self.check_desc(&None, false, Some("all"), || None)
+    self.check_desc(None, false, Some("all"), || None)
   }
 }
 
@@ -2869,6 +2905,24 @@ mod tests {
 
     perms.write.check_partial(Path::new("/foo"), None).unwrap();
     assert!(perms.write.check(Path::new("/foo"), None).is_err());
+  }
+
+  #[test]
+  fn test_net_fully_qualified_domain_name() {
+    let mut perms = Permissions {
+      net: Permissions::new_unary(
+        &Some(vec!["allowed.domain".to_string(), "1.1.1.1".to_string()]),
+        &Some(vec!["denied.domain".to_string(), "2.2.2.2".to_string()]),
+        false,
+      )
+      .unwrap(),
+      ..Permissions::none_without_prompt()
+    };
+
+    perms.net.check(&("allowed.domain.", None), None).unwrap();
+    perms.net.check(&("1.1.1.1.", None), None).unwrap();
+    assert!(perms.net.check(&("denied.domain.", None), None).is_err());
+    assert!(perms.net.check(&("2.2.2.2.", None), None).is_err());
   }
 
   #[test]
