@@ -37,7 +37,7 @@ function getValidUnixTime(
   const unixSeconds = toUnixTimestamp(value);
 
   const seconds = MathTrunc(unixSeconds);
-  const nanoseconds = MathTrunc(unixSeconds - seconds) * 1e6;
+  const nanoseconds = MathTrunc((unixSeconds * 1e3) - (seconds * 1e3)) * 1e6;
 
   return [
     seconds,
