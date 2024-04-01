@@ -6,6 +6,19 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.42.1 / 2024.04.01
+
+- fix(check): ignore certain diagnostics in remote modules and when publishing
+  (#23119)
+- fix(ext/node): support stdin: "inherit" in node:child_process (#23110)
+- fix(ext/node): use tty stdin from ext/io (#23044)
+- fix(jsr): exclude yanked versions from 'deno add' and completions (#23113)
+- fix(lsp): don't apply preload limit to workspace walk (#23123)
+- fix(lsp): implement missing ts server host apis (#23131)
+- fix(node): handle empty 'main' entry in pkg json (#23155)
+- fix(node): remove unwrap in op_require_node_module_paths (#23114)
+- fix: deno_graph 0.69.10 (#23147)
+
 ### 1.42.0 / 2024.03.28
 
 - feat(add): always produce multiline config file (#23077)
