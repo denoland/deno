@@ -5193,9 +5193,9 @@ fn code_cache_test() {
 
     let debug_output = std::str::from_utf8(&output.stderr).unwrap();
     // There should be no cache hits yet, and the cache should be created.
-    assert!(!debug_output.contains("v8 code cache hit"));
+    assert!(!debug_output.contains("V8 code cache hit"));
     assert!(debug_output.contains(
-      format!("Updating v8 code cache for ES module: file://{}", script)
+      format!("Updating V8 code cache for ES module: file://{}", script)
         .as_str()
     ));
 
@@ -5221,9 +5221,9 @@ fn code_cache_test() {
     let debug_output = std::str::from_utf8(&output.stderr).unwrap();
     // There should be a cache hit, and the cache should not be created.
     assert!(debug_output.contains(
-      format!("v8 code cache hit for ES module: file://{}", script).as_str()
+      format!("V8 code cache hit for ES module: file://{}", script).as_str()
     ));
-    assert!(!debug_output.contains("Updating v8 code cache"));
+    assert!(!debug_output.contains("Updating V8 code cache"));
   }
 
   // Rerun with --no-code-cache.
@@ -5243,6 +5243,6 @@ fn code_cache_test() {
 
     let debug_output = std::str::from_utf8(&output.stderr).unwrap();
     // There should be no cache used.
-    assert!(!debug_output.contains("v8 code cache"));
+    assert!(!debug_output.contains("V8 code cache"));
   }
 }

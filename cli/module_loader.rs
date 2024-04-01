@@ -470,7 +470,7 @@ impl CliModuleLoader {
           .map(Cow::from)
           .inspect(|_| {
             log::debug!(
-              "v8 code cache hit for ES module: {}",
+              "V8 code cache hit for ES module: {}",
               specifier.to_string()
             );
           })
@@ -706,7 +706,7 @@ impl ModuleLoader for CliModuleLoader {
     code_cache: &[u8],
   ) -> Pin<Box<dyn Future<Output = ()>>> {
     if let Some(cache) = self.shared.code_cache.as_ref() {
-      log::debug!("Updating v8 code cache for ES module: {}", specifier);
+      log::debug!("Updating V8 code cache for ES module: {}", specifier);
       cache.set_sync(
         specifier.as_str(),
         code_cache::CodeCacheType::EsModule,

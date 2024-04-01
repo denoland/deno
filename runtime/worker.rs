@@ -509,7 +509,7 @@ impl MainWorker {
                 .map(Cow::from)
                 .inspect(|_| {
                   log::debug!(
-                    "v8 code cache hit for script: {}",
+                    "V8 code cache hit for script: {}",
                     specifier.to_string()
                   );
                 }),

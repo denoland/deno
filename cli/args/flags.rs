@@ -3954,10 +3954,16 @@ fn test_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     flags.log_level = Some(Level::Error);
   }
 
+  let coverage_dir = matches.remove_one::<String>("coverage");
+  if coverage_dir.is_some() {
+    // Don't use V8 code cache for code coverage runs.
+    flags.no_code_cache = true;
+  }
+
   flags.subcommand = DenoSubcommand::Test(TestFlags {
     no_run,
     doc,
-    coverage_dir: matches.remove_one::<String>("coverage"),
+    coverage_dir,
     fail_fast,
     files: FileFlags { include, ignore },
     filter,
