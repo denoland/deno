@@ -1,0 +1,17 @@
+{
+  "tempDir": true,
+  "envs": {
+    "DENO_DIR": "$DENO_DIR/not_exists"
+  },
+  "steps": [
+    {
+      "args": "fmt main.ts",
+      "output": "fmt.out"
+    },
+    {
+      // ensure the DENO_DIR above is applied correctly
+      "args": ["eval", "console.log(Deno.env.get('DENO_DIR'));"],
+      "output": "[WILDCARD]not_exists\n"
+    }
+  ]
+}

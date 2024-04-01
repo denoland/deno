@@ -183,7 +183,18 @@ impl CacheDB {
     match path {
       // This should never fail unless something is very wrong
       None => Connection::open_in_memory(),
-      Some(path) => Connection::open(path),
+      Some(path) => match Connection::open(path) {
+        Ok(conn) => Ok(conn),
+        Err(err) => {
+          // create the parent directory if it doesn't exist, and try again
+          // let parent = path.parent().unwrap();
+          // if !parent.exists() && std::fs::create_dir_all(parent).is_ok() {
+          // Connection::open(path)
+          // } else {
+          Err(err)
+          // }
+        }
+      },
     }
   }
 
