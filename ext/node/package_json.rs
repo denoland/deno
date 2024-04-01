@@ -18,9 +18,10 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::io::ErrorKind;
 use std::path::PathBuf;
+use std::rc::Rc;
 
 thread_local! {
-  static CACHE: RefCell<HashMap<PathBuf, PackageJson>> = RefCell::new(HashMap::new());
+  static CACHE: RefCell<HashMap<PathBuf, Rc<PackageJson>>> = RefCell::new(HashMap::new());
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -66,7 +67,7 @@ impl PackageJson {
     resolver: &dyn NpmResolver,
     permissions: &dyn NodePermissions,
     path: PathBuf,
-  ) -> Result<PackageJson, AnyError> {
+  ) -> Result<Rc<PackageJson>, AnyError> {
     resolver.ensure_read_permission(permissions, &path)?;
     Self::load_skip_read_permission(fs, path)
   }
@@ -74,7 +75,7 @@ impl PackageJson {
   pub fn load_skip_read_permission(
     fs: &dyn deno_fs::FileSystem,
     path: PathBuf,
-  ) -> Result<PackageJson, AnyError> {
+  ) -> Result<Rc<PackageJson>, AnyError> {
     assert!(path.is_absolute());
 
     if CACHE.with(|cache| cache.borrow().contains_key(&path)) {
@@ -84,7 +85,7 @@ impl PackageJson {
     let source = match fs.read_text_file_sync(&path) {
       Ok(source) => source,
       Err(err) if err.kind() == ErrorKind::NotFound => {
-        return Ok(PackageJson::empty(path));
+        return Ok(Rc::new(PackageJson::empty(path)));
       }
       Err(err) => bail!(
         "Error loading package.json at {}. {:#}",
@@ -93,7 +94,7 @@ impl PackageJson {
       ),
     };
 
-    let package_json = Self::load_from_string(path, source)?;
+    let package_json = Rc::new(Self::load_from_string(path, source)?);
     CACHE.with(|cache| {
       cache
         .borrow_mut()
