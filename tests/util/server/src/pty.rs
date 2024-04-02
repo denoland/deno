@@ -174,7 +174,6 @@ impl Pty {
     let last_index = self.read_bytes.len();
     self.read_until_condition(|pty| {
       let data = String::from_utf8_lossy(&pty.read_bytes[last_index..]);
-      eprintln!("{data:?} {expected:?}");
       data == expected
     });
   }

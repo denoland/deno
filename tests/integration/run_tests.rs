@@ -4682,7 +4682,7 @@ fn stdio_streams_are_locked_in_permission_prompt() {
       console.write_line_raw("i");
       // We ensure that nothing gets written here between the permission prompt and this text, despire the delay
       let crlf = if cfg!(target_os = "linux") {
-        "\r"
+        "\n"
       } else {
         "\r\n"
       };
