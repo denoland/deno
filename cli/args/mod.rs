@@ -1103,7 +1103,7 @@ impl CliOptions {
 
   pub fn has_node_modules_dir(&self) -> bool {
     if self.enable_future_features() {
-      self.maybe_node_modules_folder.is_some() && self.unstable_byonm()
+      self.maybe_node_modules_folder.is_some()
     } else {
       self.maybe_node_modules_folder.is_some() || self.unstable_byonm()
     }
@@ -1594,9 +1594,12 @@ impl CliOptions {
         .unwrap_or(false)
   }
 
-  pub fn unstable_byonm(&self) -> bool {
+  pub fn use_byonm(&self) -> bool {
     self.enable_future_features()
-      || self.flags.unstable_config.byonm
+  }
+
+  pub fn unstable_byonm(&self) -> bool {
+    self.flags.unstable_config.byonm
       || NPM_PROCESS_STATE
         .as_ref()
         .map(|s| matches!(s.kind, NpmProcessStateKind::Byonm))
