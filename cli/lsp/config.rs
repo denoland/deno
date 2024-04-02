@@ -777,11 +777,12 @@ impl ConfigSnapshot {
 pub struct Settings {
   pub unscoped: WorkspaceSettings,
   pub by_workspace_folder: BTreeMap<ModuleSpecifier, Option<WorkspaceSettings>>,
+  pub first_folder: Option<ModuleSpecifier>,
 }
 
 impl Settings {
   pub fn first_root_uri(&self) -> Option<&ModuleSpecifier> {
-    self.by_workspace_folder.first_key_value().map(|e| e.0)
+    self.first_folder.as_ref()
   }
 
   /// Returns `None` if the value should be deferred to the presence of a
@@ -836,13 +837,11 @@ impl Settings {
     let Ok(path) = specifier_to_file_path(specifier) else {
       return (&self.unscoped, None);
     };
-    let mut is_first_folder = true;
     for (folder_uri, settings) in self.by_workspace_folder.iter().rev() {
       let mut settings = settings.as_ref();
-      if is_first_folder {
+      if self.first_folder.as_ref() == Some(folder_uri) {
         settings = settings.or(Some(&self.unscoped));
       }
-      is_first_folder = false;
       if let Some(settings) = settings {
         let Ok(folder_path) = specifier_to_file_path(folder_uri) else {
           continue;
@@ -870,6 +869,7 @@ impl Settings {
           .map(|s| (&s.enable, &s.enable_paths, &s.disable_paths)),
       );
     }
+    hasher.write_hashable(&self.first_folder);
     hasher.finish()
   }
 }
@@ -908,6 +908,7 @@ impl Config {
   ) {
     self.settings.by_workspace_folder =
       folders.iter().map(|(s, _)| (s.clone(), None)).collect();
+    self.settings.first_folder = folders.first().map(|(s, _)| s.clone());
     self.workspace_folders = folders;
   }
 
@@ -1125,6 +1126,7 @@ pub struct ConfigData {
   pub lockfile: Option<Arc<Mutex<Lockfile>>>,
   pub package_json: Option<Arc<PackageJson>>,
   pub import_map: Option<Arc<ImportMap>>,
+  pub import_map_from_settings: bool,
   watched_files: HashMap<ModuleSpecifier, ConfigWatchedFileType>,
 }
 
@@ -1136,7 +1138,10 @@ impl ConfigData {
     file_fetcher: Option<&FileFetcher>,
   ) -> Self {
     if let Some(specifier) = config_file_specifier {
-      match ConfigFile::from_specifier(specifier.clone()) {
+      match ConfigFile::from_specifier(
+        specifier.clone(),
+        &deno_config::ParseOptions::default(),
+      ) {
         Ok(config_file) => {
           lsp_log!(
             "  Resolved Deno configuration file: \"{}\"",
@@ -1314,6 +1319,7 @@ impl ConfigData {
     let mut import_map = None;
     let mut import_map_value = None;
     let mut import_map_specifier = None;
+    let mut import_map_from_settings = false;
     if let Some(config_file) = &config_file {
       if config_file.is_an_import_map() {
         import_map_value = Some(config_file.to_import_map_value_from_imports());
@@ -1322,15 +1328,15 @@ impl ConfigData {
       {
         import_map_specifier = Some(specifier);
       }
-    } else if let Some(import_map_str) = &settings.import_map {
-      if let Ok(specifier) = Url::parse(import_map_str) {
-        import_map_specifier = Some(specifier);
-      } else if let Some(folder_uri) = workspace_folder {
-        if let Ok(specifier) = folder_uri.join(import_map_str) {
-          import_map_specifier = Some(specifier);
-        }
-      }
     }
+    import_map_specifier = import_map_specifier.or_else(|| {
+      let import_map_str = settings.import_map.as_ref()?;
+      let specifier = Url::parse(import_map_str)
+        .ok()
+        .or_else(|| workspace_folder?.join(import_map_str).ok())?;
+      import_map_from_settings = true;
+      Some(specifier)
+    });
     if let Some(specifier) = &import_map_specifier {
       if let Ok(path) = specifier_to_file_path(specifier) {
         watched_files
@@ -1413,6 +1419,7 @@ impl ConfigData {
       lockfile: lockfile.map(Mutex::new).map(Arc::new),
       package_json: package_json.map(Arc::new),
       import_map: import_map.map(Arc::new),
+      import_map_from_settings,
       watched_files,
     }
   }
@@ -1949,7 +1956,12 @@ mod tests {
     config
       .tree
       .inject_config_file(
-        ConfigFile::new("{}", root_uri.join("deno.json").unwrap()).unwrap(),
+        ConfigFile::new(
+          "{}",
+          root_uri.join("deno.json").unwrap(),
+          &deno_config::ParseOptions::default(),
+        )
+        .unwrap(),
       )
       .await;
     assert!(config.specifier_enabled(&root_uri));
@@ -1996,6 +2008,7 @@ mod tests {
           })
           .to_string(),
           root_uri.join("deno.json").unwrap(),
+          &deno_config::ParseOptions::default(),
         )
         .unwrap(),
       )
@@ -2021,6 +2034,7 @@ mod tests {
           })
           .to_string(),
           root_uri.join("deno.json").unwrap(),
+          &deno_config::ParseOptions::default(),
         )
         .unwrap(),
       )
@@ -2038,6 +2052,7 @@ mod tests {
           })
           .to_string(),
           root_uri.join("deno.json").unwrap(),
+          &deno_config::ParseOptions::default(),
         )
         .unwrap(),
       )
@@ -2067,6 +2082,7 @@ mod tests {
           })
           .to_string(),
           root_uri.join("deno.json").unwrap(),
+          &deno_config::ParseOptions::default(),
         )
         .unwrap(),
       )

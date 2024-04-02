@@ -648,16 +648,20 @@ pub fn to_lsp_range(range: &deno_graph::Range) -> lsp::Range {
 fn recurse_dependents(
   specifier: &ModuleSpecifier,
   map: &HashMap<ModuleSpecifier, HashSet<ModuleSpecifier>>,
-  dependents: &mut HashSet<ModuleSpecifier>,
-) {
-  if let Some(deps) = map.get(specifier) {
-    for dep in deps {
-      if !dependents.contains(dep) {
-        dependents.insert(dep.clone());
-        recurse_dependents(dep, map, dependents);
+) -> Vec<ModuleSpecifier> {
+  let mut dependents = HashSet::new();
+  let mut pending = VecDeque::new();
+  pending.push_front(specifier);
+  while let Some(specifier) = pending.pop_front() {
+    if let Some(deps) = map.get(specifier) {
+      for dep in deps {
+        if dependents.insert(dep) {
+          pending.push_front(dep);
+        }
       }
     }
   }
+  dependents.into_iter().cloned().collect()
 }
 
 #[derive(Debug)]
@@ -1106,10 +1110,8 @@ impl Documents {
     specifier: &ModuleSpecifier,
   ) -> Vec<ModuleSpecifier> {
     self.calculate_dependents_if_dirty();
-    let mut dependents = HashSet::new();
     if let Some(specifier) = self.resolve_specifier(specifier) {
-      recurse_dependents(&specifier, &self.dependents_map, &mut dependents);
-      dependents.into_iter().collect()
+      recurse_dependents(&specifier, &self.dependents_map)
     } else {
       vec![]
     }
@@ -1391,10 +1393,15 @@ impl Documents {
         }
       }
       self.open_docs = open_docs;
+      let mut preload_count = 0;
       for specifier in workspace_files {
         if !config.specifier_enabled(specifier) {
           continue;
         }
+        if preload_count >= config.settings.unscoped.document_preload_limit {
+          break;
+        }
+        preload_count += 1;
         if !self.open_docs.contains_key(specifier)
           && !fs_docs.docs.contains_key(specifier)
         {
@@ -1886,6 +1893,7 @@ console.log(b, "hello deno");
             })
             .to_string(),
             config.root_uri().unwrap().join("deno.json").unwrap(),
+            &deno_config::ParseOptions::default(),
           )
           .unwrap(),
         )
@@ -1926,6 +1934,7 @@ console.log(b, "hello deno");
             })
             .to_string(),
             config.root_uri().unwrap().join("deno.json").unwrap(),
+            &deno_config::ParseOptions::default(),
           )
           .unwrap(),
         )

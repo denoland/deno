@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::env::current_exe;
 use std::ffi::OsString;
@@ -240,7 +241,7 @@ pub fn is_standalone_binary(exe_path: &Path) -> bool {
 /// the bundle is executed. If not, this function exits with `Ok(None)`.
 pub fn extract_standalone(
   exe_path: &Path,
-  cli_args: Vec<OsString>,
+  cli_args: Cow<Vec<OsString>>,
 ) -> Result<
   Option<impl Future<Output = Result<(Metadata, eszip::EszipV2), AnyError>>>,
   AnyError,
@@ -257,6 +258,7 @@ pub fn extract_standalone(
 
   file.seek(SeekFrom::Start(trailer.eszip_pos))?;
 
+  let cli_args = cli_args.into_owned();
   // If we have an eszip, read it out
   Ok(Some(async move {
     let bufreader =

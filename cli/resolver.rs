@@ -36,6 +36,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use crate::args::package_json::PackageJsonDeps;
@@ -98,7 +99,7 @@ impl CliNodeResolver {
     &self,
     referrer: &ModuleSpecifier,
     permissions: &dyn NodePermissions,
-  ) -> Result<Option<PackageJson>, AnyError> {
+  ) -> Result<Option<Rc<PackageJson>>, AnyError> {
     self
       .node_resolver
       .get_closest_package_json(referrer, permissions)

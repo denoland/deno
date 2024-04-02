@@ -260,7 +260,6 @@ pub struct FileCollector<TFilter: Fn(WalkEntry) -> bool> {
   file_filter: TFilter,
   ignore_git_folder: bool,
   ignore_node_modules: bool,
-  ignore_vendor_folder: bool,
   vendor_folder: Option<PathBuf>,
   use_gitignore: bool,
 }
@@ -271,7 +270,6 @@ impl<TFilter: Fn(WalkEntry) -> bool> FileCollector<TFilter> {
       file_filter,
       ignore_git_folder: false,
       ignore_node_modules: false,
-      ignore_vendor_folder: false,
       vendor_folder: None,
       use_gitignore: false,
     }
@@ -279,11 +277,6 @@ impl<TFilter: Fn(WalkEntry) -> bool> FileCollector<TFilter> {
 
   pub fn ignore_node_modules(mut self) -> Self {
     self.ignore_node_modules = true;
-    self
-  }
-
-  pub fn ignore_vendor_folder(mut self) -> Self {
-    self.ignore_vendor_folder = true;
     self
   }
 
@@ -422,7 +415,6 @@ impl<TFilter: Fn(WalkEntry) -> bool> FileCollector<TFilter> {
         let dir_name = dir_name.to_string_lossy().to_lowercase();
         let is_ignored_file = match dir_name.as_str() {
           "node_modules" => self.ignore_node_modules,
-          "vendor" => self.ignore_vendor_folder,
           ".git" => self.ignore_git_folder,
           _ => false,
         };
@@ -446,6 +438,7 @@ impl<TFilter: Fn(WalkEntry) -> bool> FileCollector<TFilter> {
 /// Note: This ignores all .git and node_modules folders.
 pub fn collect_specifiers(
   mut files: FilePatterns,
+  vendor_folder: Option<PathBuf>,
   predicate: impl Fn(WalkEntry) -> bool,
 ) -> Result<Vec<ModuleSpecifier>, AnyError> {
   let mut prepared = vec![];
@@ -484,7 +477,7 @@ pub fn collect_specifiers(
   let collected_files = FileCollector::new(predicate)
     .ignore_git_folder()
     .ignore_node_modules()
-    .ignore_vendor_folder()
+    .set_vendor_folder(vendor_folder)
     .collect_file_patterns(files)?;
   let mut collected_files_as_urls = collected_files
     .iter()
@@ -958,7 +951,7 @@ mod tests {
     let file_collector = file_collector
       .ignore_git_folder()
       .ignore_node_modules()
-      .ignore_vendor_folder();
+      .set_vendor_folder(Some(child_dir_path.join("vendor").to_path_buf()));
     let result = file_collector
       .collect_file_patterns(file_patterns.clone())
       .unwrap();
@@ -1074,6 +1067,7 @@ mod tests {
           ignore_dir_path.to_path_buf(),
         )]),
       },
+      None,
       predicate,
     )
     .unwrap();
@@ -1119,6 +1113,7 @@ mod tests {
         .unwrap()])),
         exclude: Default::default(),
       },
+      None,
       predicate,
     )
     .unwrap();
