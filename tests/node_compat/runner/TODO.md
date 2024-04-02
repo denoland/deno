@@ -813,8 +813,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-fs-readlink-type-check.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-fs-readlink-type-check.js)
 - [parallel/test-fs-readv-promises.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-fs-readv-promises.js)
 - [parallel/test-fs-readv-promisify.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-fs-readv-promisify.js)
-- [parallel/test-fs-readv-sync.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-fs-readv-sync.js)
-- [parallel/test-fs-readv.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-fs-readv.js)
 - [parallel/test-fs-ready-event-stream.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-fs-ready-event-stream.js)
 - [parallel/test-fs-realpath-buffer-encoding.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-fs-realpath-buffer-encoding.js)
 - [parallel/test-fs-realpath-on-substed-drive.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-fs-realpath-on-substed-drive.js)
