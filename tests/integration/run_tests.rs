@@ -4677,7 +4677,7 @@ fn stdio_streams_are_locked_in_permission_prompt() {
       console.write_line(r#"Deno.readTextFileSync('Cargo.toml');"#);
       // We will get a permission prompt
       console.expect("Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions) > ");
-      // The worker is blocked so we can expect
+      // The worker is blocked, so nothing else should get written here
       console.human_delay();
       console.write_line_raw("i");
       // We ensure that nothing gets written here between the permission prompt and this text, despire the delay
