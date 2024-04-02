@@ -27,7 +27,6 @@ pub(crate) fn is_compatible(sym: &Symbol) -> bool {
       .any(|t| matches!(t, NativeType::Struct(_)))
 }
 
-#[allow(unused)]
 pub(crate) fn compile_trampoline(sym: &Symbol) -> Trampoline {
   #[cfg(all(target_arch = "x86_64", target_family = "unix"))]
   return SysVAmd64::compile(sym);
