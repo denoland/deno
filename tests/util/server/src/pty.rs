@@ -167,7 +167,7 @@ impl Pty {
     });
   }
 
-  /// Expects the raw text to be found.
+  /// Expects the raw text to be found next.
   #[track_caller]
   pub fn expect_raw_next(&mut self, text: impl AsRef<str>) {
     let expected = text.as_ref();
