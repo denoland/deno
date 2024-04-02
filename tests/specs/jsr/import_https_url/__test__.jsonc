@@ -1,5 +1,4 @@
 {
-  "base": "jsr",
   "steps": [{
     "args": "run -A analyzable.ts",
     "output": "analyzable.out",

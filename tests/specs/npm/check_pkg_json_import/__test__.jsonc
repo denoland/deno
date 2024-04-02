@@ -1,5 +1,4 @@
 {
-  "base": "npm",
   "args": "check --all main.ts",
   "output": "main.out"
 }
