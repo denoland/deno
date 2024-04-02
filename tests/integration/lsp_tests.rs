@@ -2568,6 +2568,70 @@ fn lsp_rename_synbol_file_scheme_edits_only() {
   client.shutdown();
 }
 
+// Regression test for https://github.com/denoland/deno/issues/23121.
+#[test]
+fn lsp_document_preload_limit_zero_deno_json_detection() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("deno.json", json!({}).to_string());
+  let mut client = context.new_lsp_command().build();
+  client.initialize(|builder| {
+    builder.set_preload_limit(0);
+  });
+  let res = client
+    .read_notification_with_method::<Value>("deno/didChangeDenoConfiguration");
+  assert_eq!(
+    res,
+    Some(json!({
+      "changes": [{
+        "scopeUri": temp_dir.uri(),
+        "fileUri": temp_dir.uri().join("deno.json").unwrap(),
+        "type": "added",
+        "configurationType": "denoJson",
+      }],
+    }))
+  );
+  client.shutdown();
+}
+
+// Regression test for https://github.com/denoland/deno/issues/23141.
+#[test]
+fn lsp_import_map_setting_with_deno_json() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("deno.json", json!({}).to_string());
+  temp_dir.write(
+    "import_map.json",
+    json!({
+      "imports": {
+        "file2": "./file2.ts",
+      },
+    })
+    .to_string(),
+  );
+  temp_dir.write("file2.ts", "");
+  let mut client = context.new_lsp_command().build();
+  client.initialize(|builder| {
+    builder.set_import_map("import_map.json");
+  });
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import \"file2\";\n",
+    },
+  }));
+  assert_eq!(json!(diagnostics.all()), json!([]));
+  client.shutdown();
+}
+
 #[test]
 fn lsp_hover_typescript_types() {
   let context = TestContextBuilder::new()

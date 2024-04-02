@@ -542,10 +542,12 @@ where
   )?;
   let node_resolver = state.borrow::<Rc<NodeResolver>>();
   let permissions = state.borrow::<P>();
-  node_resolver.get_closest_package_json(
-    &Url::from_file_path(filename).unwrap(),
-    permissions,
-  )
+  node_resolver
+    .get_closest_package_json(
+      &Url::from_file_path(filename).unwrap(),
+      permissions,
+    )
+    .map(|maybe_pkg| maybe_pkg.map(|pkg| (*pkg).clone()))
 }
 
 #[op2]
@@ -562,6 +564,7 @@ where
   let package_json_path = PathBuf::from(package_json_path);
   node_resolver
     .load_package_json(permissions, package_json_path)
+    .map(|pkg| (*pkg).clone())
     .ok()
 }
 

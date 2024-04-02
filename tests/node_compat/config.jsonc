@@ -334,6 +334,8 @@
       "test-fs-readdir-stack-overflow.js",
       "test-fs-readdir.js",
       "test-fs-readfile-empty.js",
+      "test-fs-readv-sync.js",
+      "test-fs-readv.js",
       "test-fs-realpath-native.js",
       "test-fs-rmdir-recursive-sync-warns-not-found.js",
       "test-fs-rmdir-recursive-sync-warns-on-file.js",
