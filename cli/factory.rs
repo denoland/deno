@@ -402,7 +402,7 @@ impl CliFactory {
       .npm_resolver
       .get_or_try_init_async(async {
         let fs = self.fs();
-        create_cli_npm_resolver(if self.options.unstable_byonm() {
+        create_cli_npm_resolver(if self.options.use_byonm() || self.options.unstable_byonm() {
           CliNpmResolverCreateOptions::Byonm(CliNpmResolverByonmCreateOptions {
             fs: fs.clone(),
             root_node_modules_dir: match self.options.node_modules_dir_path().clone() {
