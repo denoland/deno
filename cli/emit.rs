@@ -4,6 +4,7 @@ use crate::cache::EmitCache;
 use crate::cache::FastInsecureHasher;
 use crate::cache::ParsedSourceCache;
 
+use deno_ast::SourceMapOption;
 use deno_core::error::AnyError;
 use deno_core::ModuleCodeString;
 use deno_core::ModuleSpecifier;
@@ -116,7 +117,7 @@ impl Emitter {
       .parsed_source_cache
       .get_or_parse_module(specifier, source_arc, media_type)?;
     let mut options = self.emit_options.clone();
-    options.inline_source_map = false;
+    options.source_map = SourceMapOption::None;
     let transpiled_source = parsed_source.transpile(&options)?;
     Ok(transpiled_source.text)
   }

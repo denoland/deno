@@ -3,6 +3,7 @@
 
 use deno_ast::MediaType;
 use deno_ast::ParseParams;
+use deno_ast::SourceMapOption;
 use deno_ast::SourceTextInfo;
 use deno_core::error::AnyError;
 use deno_core::extension;
@@ -96,8 +97,11 @@ pub fn maybe_transpile_source(
   })?;
   let transpiled_source = parsed.transpile(&deno_ast::EmitOptions {
     imports_not_used_as_values: deno_ast::ImportsNotUsedAsValues::Remove,
-    inline_source_map: false,
-    source_map: cfg!(debug_assertions),
+    source_map: if cfg!(debug_assertions) {
+      SourceMapOption::Separate
+    } else {
+      SourceMapOption::None
+    },
     ..Default::default()
   })?;
 

@@ -10,6 +10,7 @@ pub mod package_json;
 pub use self::import_map::resolve_import_map;
 use self::package_json::PackageJsonDeps;
 use ::import_map::ImportMap;
+use deno_ast::SourceMapOption;
 use deno_core::resolve_url_or_path;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmSystemInfo;
@@ -165,14 +166,21 @@ pub fn ts_config_to_emit_options(
       "precompile" => (false, false, false, true),
       _ => (false, false, false, false),
     };
+  let source_map = if options.inline_source_map {
+    SourceMapOption::Inline
+  } else if options.source_map {
+    SourceMapOption::Separate
+  } else {
+    SourceMapOption::None
+  };
   deno_ast::EmitOptions {
     use_ts_decorators: options.experimental_decorators,
     use_decorators_proposal: !options.experimental_decorators,
     emit_metadata: options.emit_decorator_metadata,
     imports_not_used_as_values,
-    inline_source_map: options.inline_source_map,
     inline_sources: options.inline_sources,
-    source_map: options.source_map,
+    keep_comments: false,
+    source_map,
     jsx_automatic,
     jsx_development,
     jsx_factory: options.jsx_factory,
