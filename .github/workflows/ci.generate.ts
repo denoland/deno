@@ -558,7 +558,7 @@ const ci = {
         {
           name: "Install updated cURL from Brew",
           run: [
-            "brew install curl",
+            "brew reinstall curl",
           ].join("\n"),
           if: `matrix.os == 'macos'`,
         },
