@@ -322,7 +322,10 @@ export class AsyncLocalStorage {
   }
 
   static snapshot() {
-    return AsyncLocalStorage.bind((cb: (...args: unknown[]) => unknown, ...args: unknown[]) => cb(...args));
+    return AsyncLocalStorage.bind((
+      cb: (...args: unknown[]) => unknown,
+      ...args: unknown[]
+    ) => cb(...args));
   }
 }
 
