@@ -7494,6 +7494,7 @@ mod tests {
         no_prompt: true,
         no_npm: true,
         no_remote: true,
+        no_code_cache: true,
         location: Some(Url::parse("https://foo/").unwrap()),
         type_check_mode: TypeCheckMode::Local,
         allow_net: Some(vec![]),
@@ -7873,6 +7874,7 @@ mod tests {
         }),
         type_check_mode: TypeCheckMode::Local,
         no_prompt: true,
+        no_code_cache: true,
         ..Flags::default()
       }
     );
