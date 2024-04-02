@@ -12,7 +12,7 @@ const ubuntuX86XlRunner = "ubuntu-22.04-xl";
 const ubuntuARMRunner = "ubicloud-standard-16-arm";
 const windowsX86Runner = "windows-2022";
 const windowsX86XlRunner = "windows-2022-xl";
-const macosX86Runner = "macos-12";
+const macosX86Runner = "macos-12/20240218.1";
 const macosArmRunner = "macos-14";
 
 const Runners = {
@@ -553,14 +553,6 @@ const ci = {
             "./tools/install_prebuilt.js ld64.lld",
           ].join("\n"),
           if: `matrix.os == 'macos' && matrix.arch == 'aarch64'`,
-        },
-        // TEMP(mmastrac): macOS runners are failing to run cURL :(
-        {
-          name: "Install updated cURL from Brew",
-          run: [
-            "brew update && brew upgrade curl",
-          ].join("\n"),
-          if: `matrix.os == 'macos'`,
         },
         {
           name: "Install rust-codesign",

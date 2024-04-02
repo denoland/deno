@@ -57,12 +57,12 @@ jobs:
         include:
           - os: macos
             arch: x86_64
-            runner: macos-12
+            runner: macos-12/20240218.1
             job: test
             profile: debug
           - os: macos
             arch: x86_64
-            runner: '${{ (!contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'')) && ''ubuntu-22.04'' || ''macos-12'' }}'
+            runner: '${{ (!contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'')) && ''ubuntu-22.04'' || ''macos-12/20240218.1'' }}'
             job: test
             profile: release
             skip: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'') }}'
@@ -126,7 +126,7 @@ jobs:
             use_sysroot: true
           - os: macos
             arch: x86_64
-            runner: macos-12
+            runner: macos-12/20240218.1
             job: lint
             profile: debug
           - os: windows
@@ -327,9 +327,6 @@ jobs:
       - name: Install macOS aarch64 lld
         run: ./tools/install_prebuilt.js ld64.lld
         if: '!(matrix.skip) && (matrix.os == ''macos'' && matrix.arch == ''aarch64'')'
-      - name: Install updated cURL from Brew
-        run: brew update && brew upgrade curl
-        if: '!(matrix.skip) && (matrix.os == ''macos'')'
       - name: Install rust-codesign
         run: |-
           ./tools/install_prebuilt.js rcodesign
