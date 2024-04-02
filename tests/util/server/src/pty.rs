@@ -77,6 +77,12 @@ impl Pty {
     self.pty.flush().unwrap();
   }
 
+  /// Pause for a human-like delay to read or react to something (human responses are ~100ms).
+  #[track_caller]
+  pub fn human_delay(&mut self) {
+    std::thread::sleep(Duration::from_millis(250));
+  }
+
   #[track_caller]
   pub fn write_line(&mut self, line: impl AsRef<str>) {
     self.write_line_raw(&line);
