@@ -316,6 +316,14 @@ export class AsyncLocalStorage {
     );
     Scope.enter(frame);
   }
+
+  static bind(fn: (...args: unknown[]) => unknown) {
+    return AsyncResource.bind(fn);
+  }
+
+  static snapshot() {
+    return AsyncLocalStorage.bind((cb: (...args: unknown[]) => unknown, ...args: unknown[]) => cb(...args));
+  }
 }
 
 export function executionAsyncId() {
