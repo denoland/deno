@@ -4681,16 +4681,16 @@ fn stdio_streams_are_locked_in_permission_prompt() {
       console.human_delay();
       console.write_line_raw("i");
       // We ensure that nothing gets written here between the permission prompt and this text, despire the delay
-      let crlf = if cfg!(target_os = "linux") {
+      let newline = if cfg!(target_os = "linux") {
         "\n"
       } else {
         "\r\n"
       };
-      console.expect_raw_next(format!("i{crlf}\u{1b}[1A\u{1b}[0J└ Unrecognized option. Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions) > "));
+      console.expect_raw_next(format!("i{newline}\u{1b}[1A\u{1b}[0J└ Unrecognized option. Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions) > "));
       console.human_delay();
       console.write_line_raw("y");
       // We ensure that nothing gets written here between the permission prompt and this text, despire the delay
-      console.expect_raw_next(format!("y{crlf}\x1b[4A\x1b[0J✅ Granted read access to \"Cargo.toml\".{crlf}"));
+      console.expect_raw_next(format!("y{newline}\x1b[4A\x1b[0J✅ Granted read access to \"Cargo.toml\"."));
 
       // Back to spamming!
       console.expect(malicious_output);

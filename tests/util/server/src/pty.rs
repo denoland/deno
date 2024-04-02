@@ -173,8 +173,14 @@ impl Pty {
     let expected = text.as_ref();
     let last_index = self.read_bytes.len();
     self.read_until_condition(|pty| {
-      let data = String::from_utf8_lossy(&pty.read_bytes[last_index..]);
-      data == expected
+      if pty.read_bytes.len() >= last_index + expected.len() {
+        let data = String::from_utf8_lossy(
+          &pty.read_bytes[last_index..last_index + expected.len()],
+        );
+        data == expected
+      } else {
+        false
+      }
     });
   }
 
