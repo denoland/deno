@@ -2,6 +2,12 @@
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 // This code has been inspired by https://github.com/bevry/domain-browser/commit/8bce7f4a093966ca850da75b024239ad5d0b33c6
 
+import { primordials } from "ext:core/mod.js";
+const {
+  FunctionPrototypeBind,
+  FunctionPrototypeCall,
+  FunctionPrototypeApply,
+} = primordials;
 import { EventEmitter } from "node:events";
 
 function emitError(e) {
@@ -17,19 +23,19 @@ export class Domain extends EventEmitter {
   }
 
   add(emitter) {
-    emitter.on("error", emitError.bind(this));
+    emitter.on("error", FunctionPrototypeBind(emitError, this));
   }
 
   remove(emitter) {
-    emitter.removeListener("error", emitError.bind(this));
+    emitter.removeListener("error", FunctionPrototypeBind(emitError, this));
   }
 
   bind(fn) {
     return function () {
       try {
-        fn.apply(null, arguments);
+        FunctionPrototypeApply(fn, null, arguments);
       } catch (e) {
-        emitError.call(this, e);
+        FunctionPrototypeCall(emitError, this, e);
       }
     };
   }
@@ -37,12 +43,12 @@ export class Domain extends EventEmitter {
   intercept(fn) {
     return function (e) {
       if (e) {
-        emitError.call(this, e);
+        FunctionPrototypeCall(emitError, this, e);
       } else {
         try {
-          fn.apply(null, arguments);
+          FunctionPrototypeApply(fn, null, arguments);
         } catch (e) {
-          emitError.call(this, e);
+          FunctionPrototypeCall(emitError, this, e);
         }
       }
     };
@@ -52,7 +58,7 @@ export class Domain extends EventEmitter {
     try {
       fn();
     } catch (e) {
-      emitError.call(this, e);
+      FunctionPrototypeCall(emitError, this, e);
     }
     return this;
   }
