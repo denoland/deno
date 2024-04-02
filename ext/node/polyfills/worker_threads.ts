@@ -367,7 +367,22 @@ internals.__initWorkerThreads = (
       listener,
     ) {
       // deno-lint-ignore no-explicit-any
-      const _listener = (ev: any) => listener(ev.data);
+      const _listener = (ev: any) => {
+        let message = ev.data;
+        if (ObjectPrototypeIsPrototypeOf(MessagePortPrototype, message)) {
+          message = webMessagePortToNodeMessagePort(message);
+        } else {
+          for (const obj in message) {
+            if (
+              ObjectPrototypeIsPrototypeOf(MessagePortPrototype, message[obj])
+            ) {
+              message[obj] = webMessagePortToNodeMessagePort(message[obj]);
+              break;
+            }
+          }
+        }
+        return listener(message);
+      };
       listeners.set(listener, _listener);
       this.addEventListener(name, _listener);
       return this;

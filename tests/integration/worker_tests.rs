@@ -132,3 +132,9 @@ itest_flaky!(node_worker_message_port {
   output: "workers/node_worker_message_port.mjs.out",
   exit_code: 0,
 });
+
+itest!(node_worker_transfer_port {
+  args: "run --quiet --allow-read workers/node_worker_transfer_port.mjs",
+  output: "workers/node_worker_transfer_port.mjs.out",
+  exit_code: 0,
+});
