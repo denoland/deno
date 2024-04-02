@@ -107,7 +107,7 @@ Deno.test(async function snapshot() {
   });
 
   assertEquals(await deferred.promise, null);
-})
+});
 
 Deno.test(async function bind() {
   const als = new AsyncLocalStorage();
@@ -124,4 +124,4 @@ Deno.test(async function bind() {
   });
 
   assertEquals(await deferred.promise, null);
-})
+});
