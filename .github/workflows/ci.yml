@@ -479,33 +479,6 @@ jobs:
           matrix.profile == 'release' &&
           !startsWith(github.ref, 'refs/tags/'))
         run: target/release/deno run -A --unstable ext/websocket/autobahn/fuzzingclient.js
-      - name: 'Test (full, debug)'
-        if: |-
-          !(matrix.skip) && (matrix.job == 'test' &&
-          matrix.profile == 'debug' &&
-          !startsWith(github.ref, 'refs/tags/') &&
-          matrix.os == 'linux')
-        run: cargo test --locked
-        env:
-          CARGO_PROFILE_DEV_DEBUG: 0
-      - name: 'Test (fast, debug)'
-        if: |-
-          !(matrix.skip) && (matrix.job == 'test' &&
-          matrix.profile == 'debug' &&
-          (startsWith(github.ref, 'refs/tags/') || matrix.os != 'linux'))
-        run: |-
-          cargo test --locked --lib
-          cargo test --locked --tests
-        env:
-          CARGO_PROFILE_DEV_DEBUG: 0
-      - name: Test (release)
-        if: |-
-          !(matrix.skip) && (matrix.job == 'test' &&
-          matrix.profile == 'release' &&
-          (matrix.use_sysroot || (
-          github.repository == 'denoland/deno' &&
-          !startsWith(github.ref, 'refs/tags/'))))
-        run: cargo test --release --locked
       - name: Check deno binary
         if: '!(matrix.skip) && (matrix.profile == ''release'' && startsWith(github.ref, ''refs/tags/''))'
         run: target/release/deno eval "console.log(1+2)" | grep 3

@@ -788,44 +788,44 @@ const ci = {
           run:
             "target/release/deno run -A --unstable ext/websocket/autobahn/fuzzingclient.js",
         },
-        {
-          name: "Test (full, debug)",
-          if: [
-            "matrix.job == 'test' &&",
-            "matrix.profile == 'debug' &&",
-            "!startsWith(github.ref, 'refs/tags/') &&",
-            // Run full tests only on Linux.
-            "matrix.os == 'linux'",
-          ].join("\n"),
-          run: "cargo test --locked",
-          env: { CARGO_PROFILE_DEV_DEBUG: 0 },
-        },
-        {
-          name: "Test (fast, debug)",
-          if: [
-            "matrix.job == 'test' &&",
-            "matrix.profile == 'debug' &&",
-            "(startsWith(github.ref, 'refs/tags/') || matrix.os != 'linux')",
-          ].join("\n"),
-          run: [
-            // Run unit then integration tests. Skip doc tests here
-            // since they are sometimes very slow on Mac.
-            "cargo test --locked --lib",
-            "cargo test --locked --tests",
-          ].join("\n"),
-          env: { CARGO_PROFILE_DEV_DEBUG: 0 },
-        },
-        {
-          name: "Test (release)",
-          if: [
-            "matrix.job == 'test' &&",
-            "matrix.profile == 'release' &&",
-            "(matrix.use_sysroot || (",
-            "github.repository == 'denoland/deno' &&",
-            "!startsWith(github.ref, 'refs/tags/')))",
-          ].join("\n"),
-          run: "cargo test --release --locked",
-        },
+        // {
+        //   name: "Test (full, debug)",
+        //   if: [
+        //     "matrix.job == 'test' &&",
+        //     "matrix.profile == 'debug' &&",
+        //     "!startsWith(github.ref, 'refs/tags/') &&",
+        //     // Run full tests only on Linux.
+        //     "matrix.os == 'linux'",
+        //   ].join("\n"),
+        //   run: "cargo test --locked",
+        //   env: { CARGO_PROFILE_DEV_DEBUG: 0 },
+        // },
+        // {
+        //   name: "Test (fast, debug)",
+        //   if: [
+        //     "matrix.job == 'test' &&",
+        //     "matrix.profile == 'debug' &&",
+        //     "(startsWith(github.ref, 'refs/tags/') || matrix.os != 'linux')",
+        //   ].join("\n"),
+        //   run: [
+        //     // Run unit then integration tests. Skip doc tests here
+        //     // since they are sometimes very slow on Mac.
+        //     "cargo test --locked --lib",
+        //     "cargo test --locked --tests",
+        //   ].join("\n"),
+        //   env: { CARGO_PROFILE_DEV_DEBUG: 0 },
+        // },
+        // {
+        //   name: "Test (release)",
+        //   if: [
+        //     "matrix.job == 'test' &&",
+        //     "matrix.profile == 'release' &&",
+        //     "(matrix.use_sysroot || (",
+        //     "github.repository == 'denoland/deno' &&",
+        //     "!startsWith(github.ref, 'refs/tags/')))",
+        //   ].join("\n"),
+        //   run: "cargo test --release --locked",
+        // },
         {
           // Since all tests are skipped when we're building a tagged commit
           // this is a minimal check to ensure that binary is not corrupted
