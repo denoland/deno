@@ -7,7 +7,7 @@ import {
   assertThrows,
   fail,
 } from "@std/assert/mod.ts";
-import { fromFileUrl, relative, sep } from "@std/path/mod.ts";
+import { fromFileUrl, relative, SEPARATOR } from "@std/path/mod.ts";
 import * as workerThreads from "node:worker_threads";
 import { EventEmitter, once } from "node:events";
 
@@ -320,7 +320,7 @@ Deno.test({
   name: "[node/worker_threads] Worker with relative path",
   async fn() {
     const worker = new workerThreads.Worker(
-      `.${sep}` + relative(
+      `.${SEPARATOR}` + relative(
         Deno.cwd(),
         fromFileUrl(new URL("./testdata/worker_threads.mjs", import.meta.url)),
       ),
