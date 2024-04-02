@@ -4,11 +4,11 @@
 /** This copies the test files according to the config file `tests/node_compat/config.jsonc` */
 
 import { walk } from "@std/fs/walk.ts";
-import { sep } from "@std/path/mod.ts";
+import { SEPARATOR } from "@std/path/constants.ts";
 import { ensureFile } from "@std/fs/ensure_file.ts";
-import { writeAll } from "@std/streams/write_all.ts";
+import { writeAll } from "@std/io/write_all.ts";
 import { withoutAll } from "@std/collections/without_all.ts";
-import { relative } from "@std/path/posix.ts";
+import { relative } from "@std/path/posix/relative.ts";
 
 import { config, ignoreList } from "../../tests/node_compat/common.ts";
 
@@ -110,7 +110,7 @@ async function copyTests() {
   console.log("Copying test files...");
 
   for await (const entry of walk(VENDORED_NODE_TEST, { skip: ignoreList })) {
-    const fragments = entry.path.split(sep);
+    const fragments = entry.path.split(SEPARATOR);
     // suite is the directory name after test/. For example, if the file is
     // "node_compat/node/test/fixtures/policy/main.mjs"
     // then suite is "fixtures/policy"
