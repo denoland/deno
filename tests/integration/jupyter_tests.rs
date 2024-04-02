@@ -191,7 +191,24 @@ async fn connect_socket<S: zeromq::Socket>(
 ) -> S {
   let addr = spec.endpoint(port);
   let mut socket = S::new();
-  socket.connect(&addr).await.unwrap();
+  let mut connected = false;
+  for _ in 0..5 {
+    match timeout(Duration::from_secs(5), socket.connect(&addr)).await {
+      Ok(Ok(_)) => {
+        connected = true;
+        break;
+      }
+      Ok(Err(e)) => {
+        eprintln!("Failed to connect to {addr}: {e}");
+      }
+      Err(e) => {
+        eprintln!("Timed out connecting to {addr}: {e}");
+      }
+    }
+  }
+  if !connected {
+    panic!("Failed to connect to {addr}");
+  }
   socket
 }
 
@@ -369,27 +386,48 @@ impl Drop for JupyterServerProcess {
   }
 }
 
-fn setup_server() -> (TestContext, ConnectionSpec, JupyterServerProcess) {
+async fn setup_server() -> (TestContext, ConnectionSpec, JupyterServerProcess) {
   let context = TestContextBuilder::new().use_temp_cwd().build();
-  let conn = ConnectionSpec::default();
+  let mut conn = ConnectionSpec::default();
   let conn_file = context.temp_dir().path().join("connection.json");
   conn_file.write_json(&conn);
-  let process = context
-    .new_command()
-    .piped_output()
-    .args_vec(vec![
-      "jupyter",
-      "--kernel",
-      "--conn",
-      conn_file.to_string().as_str(),
-    ])
-    .spawn()
-    .unwrap();
+
+  let start_process = |conn_file: &test_util::PathRef| {
+    context
+      .new_command()
+      .args_vec(vec![
+        "jupyter",
+        "--kernel",
+        "--conn",
+        conn_file.to_string().as_str(),
+      ])
+      .spawn()
+      .unwrap()
+  };
+
+  // try to start the server, retrying up to 5 times
+  // (this can happen due to TOCTOU errors with selecting unused TCP ports)
+  let mut process = start_process(&conn_file);
+  tokio::time::sleep(Duration::from_millis(1000)).await;
+
+  for _ in 0..5 {
+    if process.try_wait().unwrap().is_none() {
+      break;
+    } else {
+      conn = ConnectionSpec::default();
+      conn_file.write_json(&conn);
+      process = start_process(&conn_file);
+      tokio::time::sleep(Duration::from_millis(1000)).await;
+    }
+  }
+  if process.try_wait().unwrap().is_some() {
+    panic!("Failed to start Jupyter server");
+  }
   (context, conn, JupyterServerProcess(Some(process)))
 }
 
 async fn setup() -> (TestContext, JupyterClient, JupyterServerProcess) {
-  let (context, conn, process) = setup_server();
+  let (context, conn, process) = setup_server().await;
   let client = JupyterClient::new(&conn).await;
   client.io_subscribe("").await.unwrap();
 

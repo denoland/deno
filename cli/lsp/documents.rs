@@ -648,16 +648,20 @@ pub fn to_lsp_range(range: &deno_graph::Range) -> lsp::Range {
 fn recurse_dependents(
   specifier: &ModuleSpecifier,
   map: &HashMap<ModuleSpecifier, HashSet<ModuleSpecifier>>,
-  dependents: &mut HashSet<ModuleSpecifier>,
-) {
-  if let Some(deps) = map.get(specifier) {
-    for dep in deps {
-      if !dependents.contains(dep) {
-        dependents.insert(dep.clone());
-        recurse_dependents(dep, map, dependents);
+) -> Vec<ModuleSpecifier> {
+  let mut dependents = HashSet::new();
+  let mut pending = VecDeque::new();
+  pending.push_front(specifier);
+  while let Some(specifier) = pending.pop_front() {
+    if let Some(deps) = map.get(specifier) {
+      for dep in deps {
+        if dependents.insert(dep) {
+          pending.push_front(dep);
+        }
       }
     }
   }
+  dependents.into_iter().cloned().collect()
 }
 
 #[derive(Debug)]
@@ -1106,10 +1110,8 @@ impl Documents {
     specifier: &ModuleSpecifier,
   ) -> Vec<ModuleSpecifier> {
     self.calculate_dependents_if_dirty();
-    let mut dependents = HashSet::new();
     if let Some(specifier) = self.resolve_specifier(specifier) {
-      recurse_dependents(&specifier, &self.dependents_map, &mut dependents);
-      dependents.into_iter().collect()
+      recurse_dependents(&specifier, &self.dependents_map)
     } else {
       vec![]
     }
@@ -1307,14 +1309,12 @@ impl Documents {
     workspace_files: &BTreeSet<ModuleSpecifier>,
   ) {
     let config_data = config.tree.root_data();
-    let config_file =
-      config_data.as_ref().and_then(|d| d.config_file.as_deref());
+    let config_file = config_data.and_then(|d| d.config_file.as_deref());
     self.resolver = Arc::new(CliGraphResolver::new(CliGraphResolverOptions {
       node_resolver,
       npm_resolver,
       package_json_deps_provider: Arc::new(PackageJsonDepsProvider::new(
         config_data
-          .as_ref()
           .and_then(|d| d.package_json.as_ref())
           .map(|package_json| {
             package_json::get_local_package_json_version_reqs(package_json)
@@ -1322,10 +1322,8 @@ impl Documents {
       )),
       maybe_jsx_import_source_config: config_file
         .and_then(|cf| cf.to_maybe_jsx_import_source_config().ok().flatten()),
-      maybe_import_map: config_data.as_ref().and_then(|d| d.import_map.clone()),
-      maybe_vendor_dir: config_data
-        .as_ref()
-        .and_then(|d| d.vendor_dir.as_ref()),
+      maybe_import_map: config_data.and_then(|d| d.import_map.clone()),
+      maybe_vendor_dir: config_data.and_then(|d| d.vendor_dir.as_ref()),
       bare_node_builtins_enabled: config_file
         .map(|config| config.has_unstable("bare-node-builtins"))
         .unwrap_or(false),
@@ -1336,7 +1334,7 @@ impl Documents {
     }));
     self.jsr_resolver = Arc::new(JsrCacheResolver::new(
       self.cache.clone(),
-      config.tree.root_lockfile(),
+      config.tree.root_lockfile().cloned(),
     ));
     self.redirect_resolver =
       Arc::new(RedirectResolver::new(self.cache.clone()));
@@ -1391,10 +1389,15 @@ impl Documents {
         }
       }
       self.open_docs = open_docs;
+      let mut preload_count = 0;
       for specifier in workspace_files {
         if !config.specifier_enabled(specifier) {
           continue;
         }
+        if preload_count >= config.settings.unscoped.document_preload_limit {
+          break;
+        }
+        preload_count += 1;
         if !self.open_docs.contains_key(specifier)
           && !fs_docs.docs.contains_key(specifier)
         {
@@ -1886,6 +1889,7 @@ console.log(b, "hello deno");
             })
             .to_string(),
             config.root_uri().unwrap().join("deno.json").unwrap(),
+            &deno_config::ParseOptions::default(),
           )
           .unwrap(),
         )
@@ -1926,6 +1930,7 @@ console.log(b, "hello deno");
             })
             .to_string(),
             config.root_uri().unwrap().join("deno.json").unwrap(),
+            &deno_config::ParseOptions::default(),
           )
           .unwrap(),
         )

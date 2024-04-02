@@ -3,7 +3,6 @@
 use super::analysis::CodeActionData;
 use super::code_lens;
 use super::config;
-use super::config::ConfigTree;
 use super::documents::AssetOrDocument;
 use super::documents::DocumentsFilter;
 use super::language_server;
@@ -31,6 +30,7 @@ use crate::tsc;
 use crate::tsc::ResolveArgs;
 use crate::util::path::relative_specifier;
 use crate::util::path::specifier_to_file_path;
+use crate::util::path::to_percent_decoded_str;
 
 use dashmap::DashMap;
 use deno_ast::MediaType;
@@ -221,7 +221,6 @@ pub struct TsServer {
   sender: mpsc::UnboundedSender<Request>,
   receiver: Mutex<Option<mpsc::UnboundedReceiver<Request>>>,
   specifier_map: Arc<TscSpecifierMap>,
-  config_tree: Arc<ConfigTree>,
   inspector_server: Mutex<Option<Arc<InspectorServer>>>,
 }
 
@@ -239,11 +238,7 @@ impl std::fmt::Debug for TsServer {
 }
 
 impl TsServer {
-  pub fn new(
-    performance: Arc<Performance>,
-    cache: Arc<dyn HttpCache>,
-    config_tree: Arc<ConfigTree>,
-  ) -> Self {
+  pub fn new(performance: Arc<Performance>, cache: Arc<dyn HttpCache>) -> Self {
     let (tx, request_rx) = mpsc::unbounded_channel::<Request>();
     Self {
       performance,
@@ -251,7 +246,6 @@ impl TsServer {
       sender: tx,
       receiver: Mutex::new(Some(request_rx)),
       specifier_map: Arc::new(TscSpecifierMap::new()),
-      config_tree,
       inspector_server: Mutex::new(None),
     }
   }
@@ -274,7 +268,6 @@ impl TsServer {
     let performance = self.performance.clone();
     let cache = self.cache.clone();
     let specifier_map = self.specifier_map.clone();
-    let config_tree = self.config_tree.clone();
     let _join_handle = thread::spawn(move || {
       run_tsc_thread(
         receiver,
@@ -282,7 +275,6 @@ impl TsServer {
         cache.clone(),
         specifier_map.clone(),
         maybe_inspector_server,
-        config_tree,
       )
     });
   }
@@ -543,6 +535,10 @@ impl TsServer {
       .and_then(|mut changes| {
         for changes in &mut changes {
           changes.normalize(&self.specifier_map)?;
+          for text_changes in &mut changes.text_changes {
+            text_changes.new_text =
+              to_percent_decoded_str(&text_changes.new_text);
+          }
         }
         Ok(changes)
       })
@@ -1611,7 +1607,41 @@ fn display_parts_to_string(
           link.name = Some(part.text.clone());
         }
       }
-      _ => out.push(part.text.clone()),
+      _ => out.push(
+        // should decode percent-encoding string when hovering over the right edge of module specifier like below
+        // module "file:///path/to/🦕"
+        to_percent_decoded_str(&part.text),
+        // NOTE: The reason why an example above that lacks `.ts` extension is caused by the implementation of tsc itself.
+        // The request `tsc.request.getQuickInfoAtPosition` receives the payload from tsc host as follows.
+        // {
+        //   text_span: {
+        //     start: 19,
+        //     length: 9,
+        //   },
+        //   displayParts:
+        //     [
+        //       {
+        //         text: "module",
+        //         kind: "keyword",
+        //         target: null,
+        //       },
+        //       {
+        //         text: " ",
+        //         kind: "space",
+        //         target: null,
+        //       },
+        //       {
+        //         text: "\"file:///path/to/%F0%9F%A6%95\"",
+        //         kind: "stringLiteral",
+        //         target: null,
+        //       },
+        //     ],
+        //   documentation: [],
+        //   tags: null,
+        // }
+        //
+        // related issue: https://github.com/denoland/deno/issues/16058
+      ),
     }
   }
 
@@ -3845,7 +3875,6 @@ struct State {
   response: Option<Response>,
   state_snapshot: Arc<StateSnapshot>,
   specifier_map: Arc<TscSpecifierMap>,
-  config_tree: Arc<ConfigTree>,
   token: CancellationToken,
 }
 
@@ -3853,7 +3882,6 @@ impl State {
   fn new(
     state_snapshot: Arc<StateSnapshot>,
     specifier_map: Arc<TscSpecifierMap>,
-    config_tree: Arc<ConfigTree>,
     performance: Arc<Performance>,
   ) -> Self {
     Self {
@@ -3862,7 +3890,6 @@ impl State {
       response: None,
       state_snapshot,
       specifier_map,
-      config_tree,
       token: Default::default(),
     }
   }
@@ -4081,7 +4108,7 @@ fn op_script_version(
 fn op_ts_config(state: &mut OpState) -> serde_json::Value {
   let state = state.borrow_mut::<State>();
   let mark = state.performance.mark("tsc.op.op_ts_config");
-  let r = json!(state.config_tree.root_ts_config());
+  let r = json!(state.state_snapshot.config.tree.root_ts_config());
   state.performance.measure(mark);
   r
 }
@@ -4102,19 +4129,13 @@ fn run_tsc_thread(
   cache: Arc<dyn HttpCache>,
   specifier_map: Arc<TscSpecifierMap>,
   maybe_inspector_server: Option<Arc<InspectorServer>>,
-  config_tree: Arc<ConfigTree>,
 ) {
   let has_inspector_server = maybe_inspector_server.is_some();
   // Create and setup a JsRuntime based on a snapshot. It is expected that the
   // supplied snapshot is an isolate that contains the TypeScript language
   // server.
   let mut tsc_runtime = JsRuntime::new(RuntimeOptions {
-    extensions: vec![deno_tsc::init_ops(
-      performance,
-      cache,
-      specifier_map,
-      config_tree,
-    )],
+    extensions: vec![deno_tsc::init_ops(performance, cache, specifier_map)],
     startup_snapshot: Some(tsc::compiler_snapshot()),
     inspector: maybe_inspector_server.is_some(),
     ..Default::default()
@@ -4188,7 +4209,6 @@ deno_core::extension!(deno_tsc,
     performance: Arc<Performance>,
     cache: Arc<dyn HttpCache>,
     specifier_map: Arc<TscSpecifierMap>,
-    config_tree: Arc<ConfigTree>,
   },
   state = |state, options| {
     state.put(State::new(
@@ -4200,7 +4220,6 @@ deno_core::extension!(deno_tsc,
         npm: None,
       }),
       options.specifier_map,
-      options.config_tree,
       options.performance,
     ));
   },
@@ -4468,7 +4487,10 @@ impl UserPreferences {
         language_settings.preferences.use_aliases_for_renames,
       ),
       // Only use workspace settings for quote style if there's no `deno.json`.
-      quote_preference: if config.tree.has_config_file_for_specifier(specifier)
+      quote_preference: if config
+        .tree
+        .config_file_for_specifier(specifier)
+        .is_some()
       {
         base_preferences.quote_preference
       } else {
@@ -4611,12 +4633,14 @@ fn request(
 
 #[cfg(test)]
 mod tests {
+
   use super::*;
   use crate::cache::GlobalHttpCache;
   use crate::cache::HttpCache;
   use crate::cache::RealDenoCacheEnv;
   use crate::http_util::HeadersMap;
   use crate::lsp::cache::CacheMetadata;
+  use crate::lsp::config::ConfigSnapshot;
   use crate::lsp::config::WorkspaceSettings;
   use crate::lsp::documents::Documents;
   use crate::lsp::documents::LanguageId;
@@ -4625,9 +4649,10 @@ mod tests {
   use std::path::Path;
   use test_util::TempDir;
 
-  fn mock_state_snapshot(
+  async fn mock_state_snapshot(
     fixtures: &[(&str, &str, i32, LanguageId)],
     location: &Path,
+    ts_config: Value,
   ) -> StateSnapshot {
     let cache = Arc::new(GlobalHttpCache::new(
       location.to_path_buf(),
@@ -4644,11 +4669,26 @@ mod tests {
         (*source).into(),
       );
     }
+    let mut config = ConfigSnapshot::default();
+    config
+      .tree
+      .inject_config_file(
+        deno_config::ConfigFile::new(
+          &json!({
+            "compilerOptions": ts_config,
+          })
+          .to_string(),
+          resolve_url("file:///deno.json").unwrap(),
+          &deno_config::ParseOptions::default(),
+        )
+        .unwrap(),
+      )
+      .await;
     StateSnapshot {
       documents,
       assets: Default::default(),
       cache_metadata: CacheMetadata::new(cache),
-      config: Default::default(),
+      config: Arc::new(config),
       npm: None,
     }
   }
@@ -4661,22 +4701,10 @@ mod tests {
     let location = temp_dir.path().join("deps").to_path_buf();
     let cache =
       Arc::new(GlobalHttpCache::new(location.clone(), RealDenoCacheEnv));
-    let snapshot = Arc::new(mock_state_snapshot(sources, &location));
+    let snapshot =
+      Arc::new(mock_state_snapshot(sources, &location, config).await);
     let performance = Arc::new(Performance::default());
-    let config_tree = Arc::new(ConfigTree::default());
-    config_tree
-      .inject_config_file(
-        deno_config::ConfigFile::new(
-          &json!({
-            "compilerOptions": config,
-          })
-          .to_string(),
-          resolve_url("file:///deno.json").unwrap(),
-        )
-        .unwrap(),
-      )
-      .await;
-    let ts_server = TsServer::new(performance, cache.clone(), config_tree);
+    let ts_server = TsServer::new(performance, cache.clone());
     ts_server.start(None);
     (ts_server, snapshot, cache)
   }
@@ -5023,6 +5051,7 @@ mod tests {
     .unwrap();
     asset_names.sort();
 
+    // if this test fails, update build.rs
     expected_asset_names.sort();
     assert_eq!(asset_names, expected_asset_names);
 
@@ -5423,7 +5452,7 @@ mod tests {
       .get_edits_for_file_rename(
         snapshot,
         resolve_url("file:///b.ts").unwrap(),
-        resolve_url("file:///c.ts").unwrap(),
+        resolve_url("file:///🦕.ts").unwrap(),
         FormatCodeSettings::default(),
         UserPreferences::default(),
       )
@@ -5438,7 +5467,7 @@ mod tests {
             start: 8,
             length: 6,
           },
-          new_text: "./c.ts".to_string(),
+          new_text: "./🦕.ts".to_string(),
         }],
         is_new_file: None,
       }]

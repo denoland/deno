@@ -21,6 +21,7 @@ use crate::graph_util::enhanced_resolution_error_message;
 use crate::lsp::lsp_custom::DiagnosticBatchNotificationParams;
 use crate::resolver::SloppyImportsResolution;
 use crate::resolver::SloppyImportsResolver;
+use crate::util::path::to_percent_decoded_str;
 
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
@@ -810,7 +811,7 @@ fn generate_lint_diagnostics(
     let (lint_options, lint_rules) = config
       .tree
       .scope_for_specifier(document.specifier())
-      .and_then(|s| config_data_by_scope.get(&s))
+      .and_then(|s| config_data_by_scope.get(s))
       .map(|d| (d.lint_options.clone(), d.lint_rules.clone()))
       .unwrap_or_default();
     diagnostics_vec.push(DiagnosticRecord {
@@ -1212,8 +1213,10 @@ impl DenoDiagnostic {
       specifier: &ModuleSpecifier,
       sloppy_resolution: SloppyImportsResolution,
     ) -> String {
-      let mut message =
-        format!("Unable to load a local module: {}\n", specifier);
+      let mut message = format!(
+        "Unable to load a local module: {}\n",
+        to_percent_decoded_str(specifier.as_ref())
+      );
       if let Some(additional_message) =
         sloppy_resolution.as_suggestion_message()
       {
@@ -1449,8 +1452,8 @@ fn diagnose_dependency(
     }
   }
 
-  let import_map = snapshot.config.tree.import_map_for_specifier(referrer);
-  if let Some(import_map) = &import_map {
+  let import_map = snapshot.config.tree.root_import_map();
+  if let Some(import_map) = import_map {
     if let Resolution::Ok(resolved) = &dependency.maybe_code {
       if let Some(to) = import_map.lookup(&resolved.specifier, referrer) {
         if dependency_key != to {
@@ -1499,7 +1502,7 @@ fn diagnose_dependency(
       },
       dependency.is_dynamic,
       dependency.maybe_attribute_type.as_deref(),
-      import_map.as_deref(),
+      import_map.map(|i| i.as_ref()),
     )
     .iter()
     .flat_map(|diag| {
@@ -1522,7 +1525,7 @@ fn diagnose_dependency(
         &dependency.maybe_type,
         dependency.is_dynamic,
         dependency.maybe_attribute_type.as_deref(),
-        import_map.as_deref(),
+        import_map.map(|i| i.as_ref()),
       )
       .iter()
       .map(|diag| diag.to_lsp_diagnostic(&range)),
@@ -1611,10 +1614,15 @@ mod tests {
         (*source).into(),
       );
     }
-    let config = Config::new_with_roots([resolve_url("file:///").unwrap()]);
+    let mut config = Config::new_with_roots([resolve_url("file:///").unwrap()]);
     if let Some((base_url, json_string)) = maybe_import_map {
       let base_url = resolve_url(base_url).unwrap();
-      let config_file = ConfigFile::new(json_string, base_url).unwrap();
+      let config_file = ConfigFile::new(
+        json_string,
+        base_url,
+        &deno_config::ParseOptions::default(),
+      )
+      .unwrap();
       config.tree.inject_config_file(config_file).await;
     }
     StateSnapshot {
@@ -1681,8 +1689,7 @@ let c: number = "a";
     let snapshot = Arc::new(snapshot);
     let cache =
       Arc::new(GlobalHttpCache::new(cache_location, RealDenoCacheEnv));
-    let ts_server =
-      TsServer::new(Default::default(), cache, Default::default());
+    let ts_server = TsServer::new(Default::default(), cache);
     ts_server.start(None);
 
     // test enabled
@@ -1967,6 +1974,50 @@ let c: number = "a";
           "source": "deno",
           "message": "Relative import path \"bad.d.ts\" not prefixed with / or ./ or ../",
         },
+      ])
+    );
+  }
+
+  #[tokio::test]
+  async fn unable_to_load_a_local_module() {
+    let temp_dir = TempDir::new();
+    let (snapshot, _) = setup(
+      &temp_dir,
+      &[(
+        "file:///a.ts",
+        r#"
+        import { 東京 } from "./🦕.ts";
+        "#,
+        1,
+        LanguageId::TypeScript,
+      )],
+      None,
+    )
+    .await;
+    let config = mock_config();
+    let token = CancellationToken::new();
+    let actual = generate_deno_diagnostics(&snapshot, &config, token);
+    assert_eq!(actual.len(), 1);
+    let record = actual.first().unwrap();
+    assert_eq!(
+      json!(record.versioned.diagnostics),
+      json!([
+        {
+          "range": {
+            "start": {
+              "line": 1,
+              "character": 27
+            },
+            "end": {
+              "line": 1,
+              "character": 35
+            }
+          },
+          "severity": 1,
+          "code": "no-local",
+          "source": "deno",
+          "message": "Unable to load a local module: file:///🦕.ts\nPlease check the file path.",
+        }
       ])
     );
   }

@@ -3,6 +3,7 @@
 use std::borrow::Cow;
 use std::path::Path;
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
@@ -52,7 +53,7 @@ impl ByonmCliNpmResolver {
     &self,
     dep_name: &str,
     referrer: &ModuleSpecifier,
-  ) -> Option<PackageJson> {
+  ) -> Option<Rc<PackageJson>> {
     let referrer_path = referrer.to_file_path().ok()?;
     let mut current_folder = referrer_path.parent()?;
     loop {

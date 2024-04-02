@@ -1,5 +1,5 @@
 {
-  "args": "run main.js",
+  "args": "run -A main.js",
   "output": "main.out",
   "envs": {
     "DENO_FUTURE": "1"

@@ -796,11 +796,18 @@ impl CliOptions {
       } else {
         None
       };
+    let parse_options = deno_config::ParseOptions {
+      include_task_comments: matches!(
+        flags.subcommand,
+        DenoSubcommand::Task(..)
+      ),
+    };
     let maybe_config_file = ConfigFile::discover(
       &flags.config_flag,
       flags.config_path_args(&initial_cwd),
       &initial_cwd,
       additional_config_file_names,
+      &parse_options,
     )?;
 
     let mut maybe_package_json = None;
@@ -1095,7 +1102,11 @@ impl CliOptions {
   }
 
   pub fn has_node_modules_dir(&self) -> bool {
-    self.maybe_node_modules_folder.is_some() || self.unstable_byonm()
+    if self.enable_future_features() {
+      self.maybe_node_modules_folder.is_some()
+    } else {
+      self.maybe_node_modules_folder.is_some() || self.unstable_byonm()
+    }
   }
 
   pub fn node_modules_dir_path(&self) -> Option<PathBuf> {
@@ -1183,7 +1194,7 @@ impl CliOptions {
 
   pub fn resolve_tasks_config(
     &self,
-  ) -> Result<IndexMap<String, String>, AnyError> {
+  ) -> Result<IndexMap<String, deno_config::Task>, AnyError> {
     if let Some(config_file) = &self.maybe_config_file {
       config_file.resolve_tasks_config()
     } else if self.maybe_package_json.is_some() {
@@ -1583,6 +1594,10 @@ impl CliOptions {
         .unwrap_or(false)
   }
 
+  pub fn use_byonm(&self) -> bool {
+    self.enable_future_features()
+  }
+
   pub fn unstable_byonm(&self) -> bool {
     self.flags.unstable_config.byonm
       || NPM_PROCESS_STATE
@@ -1850,7 +1865,12 @@ mod test {
     let cwd = &std::env::current_dir().unwrap();
     let config_specifier =
       ModuleSpecifier::parse("file:///deno/deno.jsonc").unwrap();
-    let config_file = ConfigFile::new(config_text, config_specifier).unwrap();
+    let config_file = ConfigFile::new(
+      config_text,
+      config_specifier,
+      &deno_config::ParseOptions::default(),
+    )
+    .unwrap();
     let actual = resolve_import_map_specifier(
       Some("import-map.json"),
       Some(&config_file),
@@ -1869,7 +1889,12 @@ mod test {
     let config_text = r#"{}"#;
     let config_specifier =
       ModuleSpecifier::parse("file:///deno/deno.jsonc").unwrap();
-    let config_file = ConfigFile::new(config_text, config_specifier).unwrap();
+    let config_file = ConfigFile::new(
+      config_text,
+      config_specifier,
+      &deno_config::ParseOptions::default(),
+    )
+    .unwrap();
     let actual = resolve_import_map_specifier(
       None,
       Some(&config_file),
@@ -1974,7 +1999,6 @@ mod test {
     let mut files = FileCollector::new(|_| true)
       .ignore_git_folder()
       .ignore_node_modules()
-      .ignore_vendor_folder()
       .collect_file_patterns(resolved_files)
       .unwrap();
 
