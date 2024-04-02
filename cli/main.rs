@@ -45,6 +45,7 @@ use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::tokio_util::create_and_run_current_thread_with_maybe_metrics;
 use deno_terminal::colors;
 use factory::CliFactory;
+use std::borrow::Cow;
 use std::env;
 use std::env::current_exe;
 use std::future::Future;
@@ -262,30 +263,25 @@ fn exit_with_message(message: &str, code: i32) -> ! {
   std::process::exit(code);
 }
 
-fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
-  match result {
-    Ok(value) => value,
-    Err(error) => {
-      let mut error_string = format!("{error:?}");
-      let mut error_code = 1;
+fn exit_for_error(error: AnyError) -> ! {
+  let mut error_string = format!("{error:?}");
+  let mut error_code = 1;
 
-      if let Some(e) = error.downcast_ref::<JsError>() {
-        error_string = format_js_error(e);
-      } else if let Some(args::LockfileError::IntegrityCheckFailed(e)) =
-        error.downcast_ref::<args::LockfileError>()
-      {
-        error_string = e.to_string();
-        error_code = 10;
-      } else if let Some(SnapshotFromLockfileError::IntegrityCheckFailed(e)) =
-        error.downcast_ref::<SnapshotFromLockfileError>()
-      {
-        error_string = e.to_string();
-        error_code = 10;
-      }
-
-      exit_with_message(&error_string, error_code);
-    }
+  if let Some(e) = error.downcast_ref::<JsError>() {
+    error_string = format_js_error(e);
+  } else if let Some(args::LockfileError::IntegrityCheckFailed(e)) =
+    error.downcast_ref::<args::LockfileError>()
+  {
+    error_string = e.to_string();
+    error_code = 10;
+  } else if let Some(SnapshotFromLockfileError::IntegrityCheckFailed(e)) =
+    error.downcast_ref::<SnapshotFromLockfileError>()
+  {
+    error_string = e.to_string();
+    error_code = 10;
   }
+
+  exit_with_message(&error_string, error_code);
 }
 
 pub(crate) fn unstable_exit_cb(feature: &str, api_name: &str) {
@@ -320,73 +316,81 @@ pub fn main() {
   );
 
   let args: Vec<_> = env::args_os().collect();
-
-  // NOTE(lucacasonato): due to new PKU feature introduced in V8 11.6 we need to
-  // initialize the V8 platform on a parent thread of all threads that will spawn
-  // V8 isolates.
-
   let current_exe_path = current_exe().unwrap();
-  let standalone =
-    standalone::extract_standalone(&current_exe_path, args.clone());
+  let maybe_standalone = match standalone::extract_standalone(
+    &current_exe_path,
+    Cow::Borrowed(&args),
+  ) {
+    Ok(standalone) => standalone,
+    Err(err) => exit_for_error(err),
+  };
+
   let future = async move {
-    let standalone_res = match standalone {
-      Ok(Some(future)) => {
+    match maybe_standalone {
+      Some(future) => {
         let (metadata, eszip) = future.await?;
         standalone::run(eszip, metadata).await
       }
-      Ok(None) => Ok(()),
-      Err(err) => Err(err),
-    };
-    // TODO(bartlomieju): doesn't handle exit code set by the runtime properly
-    unwrap_or_exit(standalone_res);
-
-    let flags = match flags_from_vec(args) {
-      Ok(flags) => flags,
-      Err(err @ clap::Error { .. })
-        if err.kind() == clap::error::ErrorKind::DisplayHelp
-          || err.kind() == clap::error::ErrorKind::DisplayVersion =>
-      {
-        err.print().unwrap();
-        std::process::exit(0);
-      }
-      Err(err) => unwrap_or_exit(Err(AnyError::from(err))),
-    };
-
-    // TODO(bartlomieju): remove when `--unstable` flag is removed.
-    if flags.unstable_config.legacy_flag_enabled {
-      if matches!(flags.subcommand, DenoSubcommand::Check(_)) {
-        eprintln!(
-          "⚠️  {}",
-          colors::yellow(
-            "The `--unstable` flag is not needed for `deno check` anymore."
-          )
-        );
-      } else {
-        eprintln!(
-          "⚠️  {}",
-          colors::yellow(
-            "The `--unstable` flag is deprecated and will be removed in Deno 2.0. Use granular `--unstable-*` flags instead.\nLearn more at: https://docs.deno.com/runtime/manual/tools/unstable_flags"
-          )
-        );
+      None => {
+        // NOTE(lucacasonato): due to new PKU feature introduced in V8 11.6 we need to
+        // initialize the V8 platform on a parent thread of all threads that will spawn
+        // V8 isolates.
+        let flags = resolve_flags_and_init(args)?;
+        run_subcommand(flags).await
       }
     }
-
-    let default_v8_flags = match flags.subcommand {
-      // Using same default as VSCode:
-      // https://github.com/microsoft/vscode/blob/48d4ba271686e8072fc6674137415bc80d936bc7/extensions/typescript-language-features/src/configuration/configuration.ts#L213-L214
-      DenoSubcommand::Lsp => vec!["--max-old-space-size=3072".to_string()],
-      _ => vec![],
-    };
-    init_v8_flags(&default_v8_flags, &flags.v8_flags, get_v8_flags_from_env());
-    deno_core::JsRuntime::init_platform(None);
-
-    util::logger::init(flags.log_level);
-
-    run_subcommand(flags).await
   };
 
-  let exit_code =
-    unwrap_or_exit(create_and_run_current_thread_with_maybe_metrics(future));
+  match create_and_run_current_thread_with_maybe_metrics(future) {
+    Ok(exit_code) => std::process::exit(exit_code),
+    Err(err) => exit_for_error(err),
+  }
+}
 
-  std::process::exit(exit_code);
+fn resolve_flags_and_init(
+  args: Vec<std::ffi::OsString>,
+) -> Result<Flags, AnyError> {
+  let flags = match flags_from_vec(args) {
+    Ok(flags) => flags,
+    Err(err @ clap::Error { .. })
+      if err.kind() == clap::error::ErrorKind::DisplayHelp
+        || err.kind() == clap::error::ErrorKind::DisplayVersion =>
+    {
+      err.print().unwrap();
+      std::process::exit(0);
+    }
+    Err(err) => exit_for_error(AnyError::from(err)),
+  };
+
+  // TODO(bartlomieju): remove when `--unstable` flag is removed.
+  if flags.unstable_config.legacy_flag_enabled {
+    if matches!(flags.subcommand, DenoSubcommand::Check(_)) {
+      eprintln!(
+        "⚠️  {}",
+        colors::yellow(
+          "The `--unstable` flag is not needed for `deno check` anymore."
+        )
+      );
+    } else {
+      eprintln!(
+        "⚠️  {}",
+        colors::yellow(
+          "The `--unstable` flag is deprecated and will be removed in Deno 2.0. Use granular `--unstable-*` flags instead.\nLearn more at: https://docs.deno.com/runtime/manual/tools/unstable_flags"
+        )
+      );
+    }
+  }
+
+  let default_v8_flags = match flags.subcommand {
+    // Using same default as VSCode:
+    // https://github.com/microsoft/vscode/blob/48d4ba271686e8072fc6674137415bc80d936bc7/extensions/typescript-language-features/src/configuration/configuration.ts#L213-L214
+    DenoSubcommand::Lsp => vec!["--max-old-space-size=3072".to_string()],
+    _ => vec![],
+  };
+
+  init_v8_flags(&default_v8_flags, &flags.v8_flags, get_v8_flags_from_env());
+  deno_core::JsRuntime::init_platform(None);
+  util::logger::init(flags.log_level);
+
+  Ok(flags)
 }
