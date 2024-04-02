@@ -11,6 +11,7 @@ const {
 import { EventEmitter } from "node:events";
 
 function emitError(e) {
+  console.log(arguments);
   this.emit("error", e);
 }
 
@@ -27,7 +28,7 @@ export class Domain extends EventEmitter {
   }
 
   remove(emitter) {
-    emitter.removeListener("error", FunctionPrototypeBind(emitError, this));
+    emitter.off("error", FunctionPrototypeBind(emitError, this));
   }
 
   bind(fn) {
