@@ -167,6 +167,18 @@ impl Pty {
     });
   }
 
+  /// Expects the raw text to be found.
+  #[track_caller]
+  pub fn expect_raw_next(&mut self, text: impl AsRef<str>) {
+    let expected = text.as_ref();
+    let last_index = self.read_bytes.len();
+    self.read_until_condition(|pty| {
+      let data = String::from_utf8_lossy(&pty.read_bytes[last_index..]);
+      eprintln!("{data:?} {expected:?}");
+      data == expected
+    });
+  }
+
   pub fn all_output(&self) -> Cow<str> {
     String::from_utf8_lossy(&self.read_bytes)
   }

@@ -4676,16 +4676,21 @@ fn stdio_streams_are_locked_in_permission_prompt() {
       console.expect(malicious_output);
       console.write_line(r#"Deno.readTextFileSync('Cargo.toml');"#);
       // We will get a permission prompt
-      console.expect("Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)");
+      console.expect("Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions) > ");
       // The worker is blocked so we can expect
       console.human_delay();
       console.write_line_raw("i");
       // We ensure that nothing gets written here between the permission prompt and this text, despire the delay
-      console.expect_raw_in_current_output(" > i\r\n\u{1b}[1A\u{1b}[0J└ Unrecognized option. Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions) > ");
+      let crlf = if cfg!(target_os = "linux") {
+        "\r"
+      } else {
+        "\r\n"
+      };
+      console.expect_raw_next(format!("i{crlf}\u{1b}[1A\u{1b}[0J└ Unrecognized option. Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions) > "));
       console.human_delay();
       console.write_line_raw("y");
       // We ensure that nothing gets written here between the permission prompt and this text, despire the delay
-      console.expect_raw_in_current_output("y\r\n\u{1b}[4A\u{1b}[0J✅ Granted read access to \"Cargo.toml\".\r\n");
+      console.expect_raw_next(format!("y{crlf}\x1b[4A\x1b[0J✅ Granted read access to \"Cargo.toml\".{crlf}"));
 
       // Back to spamming!
       console.expect(malicious_output);
