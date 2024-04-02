@@ -554,6 +554,14 @@ const ci = {
           ].join("\n"),
           if: `matrix.os == 'macos' && matrix.arch == 'aarch64'`,
         },
+        // TEMP(mmastrac): macOS runners are failing to run cURL :(
+        {
+          name: "Install updated cURL from Brew",
+          run: [
+            "brew install curl",
+          ].join("\n"),
+          if: `matrix.os == 'macos'`,
+        },
         {
           name: "Install rust-codesign",
           run: [
