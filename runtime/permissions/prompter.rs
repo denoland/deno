@@ -101,6 +101,7 @@ fn clear_stdin(
 
   const STDIN_FD: i32 = 0;
 
+  // SAFETY: use libc to flush stdin
   unsafe {
     // Create fd_set for select
     let mut raw_fd_set = MaybeUninit::<libc::fd_set>::uninit();
