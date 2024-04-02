@@ -59,7 +59,9 @@ declare module "ext:deno_web/01_mimesniff.js" {
   function parseMimeType(input: string): MimeType | null;
   function essence(mimeType: MimeType): string;
   function serializeMimeType(mimeType: MimeType): string;
-  function extractMimeType(headerValues: string[] | null): MimeType | null;
+  function extractMimeType(
+    headerValues: string[] | null,
+  ): MimeType | null;
 }
 
 declare module "ext:deno_web/02_event.js" {
@@ -97,15 +99,13 @@ declare module "ext:deno_web/06_streams.js" {
 }
 
 declare module "ext:deno_web/13_message_port.js" {
-  type Transferable =
-    | {
-      kind: "messagePort";
-      data: number;
-    }
-    | {
-      kind: "arrayBuffer";
-      data: number;
-    };
+  type Transferable = {
+    kind: "messagePort";
+    data: number;
+  } | {
+    kind: "arrayBuffer";
+    data: number;
+  };
   interface MessageData {
     data: Uint8Array;
     transferables: Transferable[];
@@ -115,6 +115,5 @@ declare module "ext:deno_web/13_message_port.js" {
   const MessagePortIdSymbol: typeof MessagePortIdSymbol;
   function deserializeJsMessageData(
     messageData: messagePort.MessageData,
-    nodeWorker?: boolean,
   ): [object, object[]];
 }

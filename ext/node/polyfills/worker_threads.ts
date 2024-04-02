@@ -17,8 +17,8 @@ import {
   MessagePort,
   MessagePortIdSymbol,
   MessagePortPrototype,
+  nodeWorkerThreadCloseCb,
   serializeJsMessageData,
-  workerThreadCloseCb,
 } from "ext:deno_web/13_message_port.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { log } from "ext:runtime/06_util.js";
@@ -345,7 +345,9 @@ internals.__initWorkerThreads = (
 
     for (const obj in workerData as Record<string, unknown>) {
       if (ObjectPrototypeIsPrototypeOf(MessagePortPrototype, workerData[obj])) {
-        workerData[obj] = patchPort(workerData[obj] as MessagePort);
+        workerData[obj] = webMessagePortToNodeMessagePort(
+          workerData[obj] as MessagePort,
+        );
         break;
       }
     }
@@ -438,12 +440,12 @@ class NodeMessageChannel {
 
   constructor() {
     const { port1, port2 } = new MessageChannel();
-    this.port1 = patchPort(port1);
-    this.port2 = patchPort(port2);
+    this.port1 = webMessagePortToNodeMessagePort(port1);
+    this.port2 = webMessagePortToNodeMessagePort(port2);
   }
 }
 
-function patchPort(port: MessagePort) {
+function webMessagePortToNodeMessagePort(port: MessagePort) {
   port.on = port.addListener = function (this: MessagePort, name, listener) {
     // deno-lint-ignore no-explicit-any
     const _listener = (ev: any) => listener(ev.data);
@@ -458,7 +460,7 @@ function patchPort(port: MessagePort) {
     }
     return this;
   };
-  port[workerThreadCloseCb] = () => {
+  port[nodeWorkerThreadCloseCb] = () => {
     port.dispatchEvent(new Event("close"));
   };
   return port;
