@@ -18,6 +18,7 @@ const {
   ArrayPrototypeIncludes,
   ArrayPrototypePush,
   ObjectPrototypeIsPrototypeOf,
+  ObjectDefineProperty,
   Symbol,
   SymbolFor,
   SymbolIterator,
@@ -85,6 +86,8 @@ const MessageChannelPrototype = MessageChannel.prototype;
 const _id = Symbol("id");
 const MessagePortIdSymbol = _id;
 const _enabled = Symbol("enabled");
+const nodeWorkerThreadCloseCb = Symbol("nodeWorkerThreadCloseCb");
+const nodeWorkerThreadCloseCbInvoked = Symbol("nodeWorkerThreadCloseCbInvoked");
 
 /**
  * @param {number} id
@@ -98,6 +101,16 @@ function createMessagePort(id) {
   return port;
 }
 
+function nodeWorkerThreadMaybeInvokeCloseCb(port) {
+  if (
+    typeof port[nodeWorkerThreadCloseCb] == "function" &&
+    !port[nodeWorkerThreadCloseCbInvoked]
+  ) {
+    port[nodeWorkerThreadCloseCb]();
+    port[nodeWorkerThreadCloseCbInvoked] = true;
+  }
+}
+
 class MessagePort extends EventTarget {
   /** @type {number | null} */
   [_id] = null;
@@ -106,6 +119,14 @@ class MessagePort extends EventTarget {
 
   constructor() {
     super();
+    ObjectDefineProperty(this, nodeWorkerThreadCloseCb, {
+      value: null,
+      enumerable: false,
+    });
+    ObjectDefineProperty(this, nodeWorkerThreadCloseCbInvoked, {
+      value: false,
+      enumerable: false,
+    });
     webidl.illegalConstructor();
   }
 
@@ -160,9 +181,13 @@ class MessagePort extends EventTarget {
           );
         } catch (err) {
           if (ObjectPrototypeIsPrototypeOf(InterruptedPrototype, err)) break;
+          nodeWorkerThreadMaybeInvokeCloseCb(this);
           throw err;
         }
-        if (data === null) break;
+        if (data === null) {
+          nodeWorkerThreadMaybeInvokeCloseCb(this);
+          break;
+        }
         let message, transferables;
         try {
           const v = deserializeJsMessageData(data);
@@ -193,6 +218,7 @@ class MessagePort extends EventTarget {
     if (this[_id] !== null) {
       core.close(this[_id]);
       this[_id] = null;
+      nodeWorkerThreadMaybeInvokeCloseCb(this);
     }
   }
 
@@ -383,6 +409,7 @@ export {
   MessagePort,
   MessagePortIdSymbol,
   MessagePortPrototype,
+  nodeWorkerThreadCloseCb,
   serializeJsMessageData,
   structuredClone,
 };

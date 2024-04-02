@@ -832,50 +832,6 @@ impl Inner {
     file_fetcher
   }
 
-  fn resolve_import_map_specifier(
-    &self,
-    referrer: &ModuleSpecifier,
-  ) -> Result<Option<ModuleSpecifier>, AnyError> {
-    let Some(import_map_str) = self
-      .config
-      .settings
-      .get_for_specifier(referrer)
-      .0
-      .import_map
-      .clone()
-      .and_then(|s| if s.is_empty() { None } else { Some(s) })
-    else {
-      return Ok(None);
-    };
-    lsp_log!(
-      "Using import map from workspace settings: \"{}\"",
-      import_map_str
-    );
-    if let Some(config_file) =
-      self.config.tree.config_file_for_specifier(referrer)
-    {
-      if let Some(import_map_path) = &config_file.json.import_map {
-        lsp_log!("Warning: Import map \"{}\" configured in \"{}\" being ignored due to an import map being explicitly configured in workspace settings.", import_map_path, config_file.specifier);
-      }
-    }
-    if let Ok(url) = Url::parse(&import_map_str) {
-      Ok(Some(url))
-    } else if let Some(root_uri) = self.config.root_uri() {
-      let root_path = specifier_to_file_path(root_uri)?;
-      let import_map_path = root_path.join(&import_map_str);
-      let import_map_url =
-        Url::from_file_path(import_map_path).map_err(|_| {
-          anyhow!("Bad file path for import map: {}", import_map_str)
-        })?;
-      Ok(Some(import_map_url))
-    } else {
-      Err(anyhow!(
-        "The path to the import map (\"{}\") is not resolvable.",
-        import_map_str
-      ))
-    }
-  }
-
   pub fn update_debug_flag(&self) {
     let internal_debug = self.config.workspace_settings().internal_debug;
     super::logging::set_lsp_debug_flag(internal_debug)
@@ -1069,8 +1025,7 @@ impl Inner {
 
   fn walk_workspace(config: &Config) -> (BTreeSet<ModuleSpecifier>, bool) {
     let mut workspace_files = Default::default();
-    let document_preload_limit =
-      config.workspace_settings().document_preload_limit;
+    let entry_limit = 1000;
     let mut pending = VecDeque::new();
     let mut entry_count = 0;
     let mut roots = config
@@ -1091,7 +1046,7 @@ impl Inner {
         let Ok(entry) = entry else {
           continue;
         };
-        if entry_count >= document_preload_limit {
+        if entry_count >= entry_limit {
           return (workspace_files, true);
         }
         entry_count += 1;
@@ -3545,7 +3500,7 @@ impl Inner {
       vec![referrer.clone()]
     };
     let workspace_settings = self.config.workspace_settings();
-    let mut cli_options = CliOptions::new(
+    let cli_options = CliOptions::new(
       Flags {
         cache_path: self.maybe_global_cache_path.clone(),
         ca_stores: workspace_settings.certificate_stores.clone(),
@@ -3553,6 +3508,12 @@ impl Inner {
         unsafely_ignore_certificate_errors: workspace_settings
           .unsafely_ignore_certificate_errors
           .clone(),
+        import_map_path: config_data.as_ref().and_then(|d| {
+          if d.import_map_from_settings {
+            return Some(d.import_map.as_ref()?.base_url().to_string());
+          }
+          None
+        }),
         node_modules_dir: Some(
           config_data
             .as_ref()
@@ -3573,11 +3534,6 @@ impl Inner {
         .and_then(|d| d.package_json.as_deref().cloned()),
       force_global_cache,
     )?;
-    // don't use the specifier in self.maybe_import_map because it's not
-    // necessarily an import map specifier (could be a deno.json)
-    if let Some(import_map) = self.resolve_import_map_specifier(&referrer)? {
-      cli_options.set_import_map_specifier(Some(import_map));
-    }
 
     let open_docs = self.documents.documents(DocumentsFilter::OpenDiagnosable);
     Ok(Some(PrepareCacheResult {

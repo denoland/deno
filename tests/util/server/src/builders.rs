@@ -782,6 +782,13 @@ impl TestCommandBuilder {
     for key in &self.envs_remove {
       envs.remove(key);
     }
+
+    // update any test variables in the env value
+    for value in envs.values_mut() {
+      *value =
+        value.replace("$DENO_DIR", &self.deno_dir.path().to_string_lossy());
+    }
+
     envs
   }
 }
