@@ -11787,6 +11787,45 @@ fn lsp_jupyter_byonm_diagnostics() {
 }
 
 #[test]
+fn lsp_deno_future_env_byonm() {
+  let context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("package.json", json!({}).to_string());
+  let mut client = context.new_lsp_command().env("DENO_FUTURE", "1").build();
+  client.initialize_default();
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import \"npm:chalk\";\n",
+    },
+  }));
+  assert_eq!(
+    json!(diagnostics.all()),
+    json!([
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 7,
+          },
+          "end": {
+            "line": 0,
+            "character": 18,
+          },
+        },
+        "severity": 1,
+        "code": "resolver-error",
+        "source": "deno",
+        "message": format!("Could not find a matching package for 'npm:chalk' in '{}'. You must specify this as a package.json dependency when the node_modules folder is not managed by Deno.", temp_dir.path().join("package.json")),
+      },
+    ])
+  );
+  client.shutdown();
+}
+
+#[test]
 fn lsp_sloppy_imports_warn() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();

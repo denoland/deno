@@ -858,7 +858,8 @@ async fn create_npm_resolver(
   maybe_lockfile: Option<&Arc<Mutex<Lockfile>>>,
   maybe_node_modules_dir_path: Option<PathBuf>,
 ) -> Arc<dyn CliNpmResolver> {
-  let is_byonm = std::env::var("DENO_UNSTABLE_BYONM").as_deref() == Ok("1")
+  let is_byonm = std::env::var("DENO_FUTURE").is_ok()
+    || std::env::var("DENO_UNSTABLE_BYONM").is_ok()
     || maybe_config_file
       .as_ref()
       .map(|c| c.has_unstable("byonm"))
