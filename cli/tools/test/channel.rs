@@ -284,11 +284,17 @@ impl TestEventSenderFactory {
                 Some(mutex) => {
                   // If we fail to write the sync marker for flush (likely in the case where the runtime is shutting down),
                   // we instead just release the mutex and bail.
-                  let success = stdout_writer.write_all(SYNC_MARKER).is_ok()
-                    && stderr_writer.write_all(SYNC_MARKER).is_ok();
-                  if success {
-                    for stream in [&mut test_stdout, &mut test_stderr] {
-                      stream.read_until_sync_marker().await;
+                  for (stream, writer) in [(&mut test_stdout, &mut stdout_writer), (&mut test_stderr, &mut stderr_writer)] {
+                    if stream.is_alive() {
+                      poll_fn(|cx| { _ = stream.poll_pipe(cx); Poll::Ready(()) } ).await;
+                      // There's a theoretical chance here that we don't read any bytes before attempting to
+                      // write into a buffer that's currently full but this doesn't seem to happen in a test
+                      // specifically designed to trigger it.
+                      if writer.write_all(SYNC_MARKER).is_ok() {
+                        stream.read_until_sync_marker().await;
+                      } else {
+                        // stream.
+                      }
                     }
                   }
                   drop(mutex);
@@ -497,6 +503,87 @@ mod tests {
     send_handle.await.unwrap();
     let messages = recv_handle.await.unwrap();
     assert_eq!(messages.len(), 100000);
+  }
+
+  /// Test that flushing a large number of times doesn't hang.
+  #[tokio::test]
+  async fn test_flush_large() {
+    test_util::timeout!(240);
+    let (mut worker, mut receiver) = create_single_test_event_channel();
+    let recv_handle = spawn(async move {
+      let mut queue = vec![];
+      while let Some((_, message)) = receiver.recv().await {
+        if let TestEvent::StepWait(..) = message {
+          queue.push(());
+        }
+      }
+      eprintln!("Receiver closed");
+      queue
+    });
+    let send_handle = spawn_blocking(move || {
+      for _ in 0..25000 {
+        // Write one pipe buffer's worth of message here. We try a few different sizes of potentially
+        // blocking writes.
+        worker.stderr.write_all(&[0; 4 * 1024]).unwrap();
+        worker.sender.send(TestEvent::StepWait(1)).unwrap();
+        worker.stderr.write_all(&[0; 16 * 1024]).unwrap();
+        worker.sender.send(TestEvent::StepWait(1)).unwrap();
+        worker.stderr.write_all(&[0; 64 * 1024]).unwrap();
+        worker.sender.send(TestEvent::StepWait(1)).unwrap();
+        worker.stderr.write_all(&[0; 128 * 1024]).unwrap();
+        worker.sender.send(TestEvent::StepWait(1)).unwrap();
+      }
+      eprintln!("Sent all messages");
+    });
+    send_handle.await.unwrap();
+    let messages = recv_handle.await.unwrap();
+    assert_eq!(messages.len(), 100000);
+  }
+
+  /// Test that flushing a large number of times doesn't hang.
+  #[tokio::test]
+  async fn test_flush_with_close() {
+    test_util::timeout!(240);
+    let (worker, mut receiver) = create_single_test_event_channel();
+    let TestEventWorkerSender {
+      mut sender,
+      stderr,
+      stdout,
+    } = worker;
+    let recv_handle = spawn(async move {
+      let mut queue = vec![];
+      while let Some((_, _)) = receiver.recv().await {
+        queue.push(());
+      }
+      eprintln!("Receiver closed");
+      queue
+    });
+    let send_handle = spawn_blocking(move || {
+      let mut stdout = Some(stdout);
+      let mut stderr = Some(stderr);
+      for i in 0..100000 {
+        if i == 20000 {
+          stdout.take();
+        }
+        if i == 40000 {
+          stderr.take();
+        }
+        if i % 2 == 0 {
+          if let Some(stdout) = &mut stdout {
+            stdout.write_all(b"message").unwrap();
+          }
+        } else {
+          if let Some(stderr) = &mut stderr {
+            stderr.write_all(b"message").unwrap();
+          }
+        }
+        sender.send(TestEvent::StepWait(1)).unwrap();
+      }
+      eprintln!("Sent all messages");
+    });
+    send_handle.await.unwrap();
+    let messages = recv_handle.await.unwrap();
+    assert_eq!(messages.len(), 130000);
   }
 
   /// Test that large numbers of interleaved steps are routed properly.
