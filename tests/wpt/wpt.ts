@@ -34,7 +34,7 @@ import {
 } from "./runner/utils.ts";
 import { pooledMap } from "../util/std/async/pool.ts";
 import { blue, bold, green, red, yellow } from "../util/std/fmt/colors.ts";
-import { writeAll, writeAllSync } from "../util/std/streams/write_all.ts";
+import { writeAll, writeAllSync } from "../util/std/io/write_all.ts";
 import { saveExpectation } from "./runner/utils.ts";
 
 class TestFilter {
@@ -72,6 +72,7 @@ switch (command) {
     break;
 
   case "run":
+    await checkPy3Available();
     await cargoBuild();
     await run();
     break;

@@ -319,7 +319,7 @@ impl RootCertStoreProvider for StandaloneRootCertStoreProvider {
 pub async fn run(
   mut eszip: eszip::EszipV2,
   metadata: Metadata,
-) -> Result<(), AnyError> {
+) -> Result<i32, AnyError> {
   let main_module = &metadata.entrypoint;
   let current_exe_path = std::env::current_exe().unwrap();
   let current_exe_name =
@@ -574,12 +574,14 @@ pub async fn run(
     false,
   );
 
+  // Initialize v8 once from the main thread.
   v8_set_flags(construct_v8_flags(&[], &metadata.v8_flags, vec![]));
+  deno_core::JsRuntime::init_platform(None);
 
   let mut worker = worker_factory
     .create_main_worker(main_module.clone(), permissions)
     .await?;
 
   let exit_code = worker.run().await?;
-  std::process::exit(exit_code)
+  Ok(exit_code)
 }

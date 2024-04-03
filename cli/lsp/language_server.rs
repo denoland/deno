@@ -334,11 +334,7 @@ impl LanguageServer {
     // do as much as possible in a read, then do a write outside
     let maybe_prepare_cache_result = {
       let inner = self.0.read().await; // ensure dropped
-      match inner.prepare_cache(
-        specifiers,
-        referrer.clone(),
-        force_global_cache,
-      ) {
+      match inner.prepare_cache(specifiers, referrer, force_global_cache) {
         Ok(maybe_cache_result) => maybe_cache_result,
         Err(err) => {
           lsp_warn!("Error preparing caching: {:#}", err);
@@ -370,7 +366,7 @@ impl LanguageServer {
       }
       {
         let mut inner = self.0.write().await;
-        let lockfile = inner.config.tree.lockfile_for_specifier(&referrer);
+        let lockfile = inner.config.tree.root_lockfile().cloned();
         inner.documents.refresh_jsr_resolver(lockfile);
         inner.refresh_npm_specifiers().await;
       }
@@ -516,11 +512,8 @@ impl Inner {
     let cache_metadata = cache::CacheMetadata::new(deps_http_cache.clone());
     let performance = Arc::new(Performance::default());
     let config = Config::default();
-    let ts_server = Arc::new(TsServer::new(
-      performance.clone(),
-      deps_http_cache.clone(),
-      config.tree.clone(),
-    ));
+    let ts_server =
+      Arc::new(TsServer::new(performance.clone(), deps_http_cache.clone()));
     let diagnostics_state = Arc::new(DiagnosticsState::default());
     let diagnostics_server = DiagnosticsServer::new(
       client.clone(),
@@ -765,7 +758,10 @@ impl Inner {
     ));
     let maybe_local_cache =
       self.config.tree.root_vendor_dir().map(|local_path| {
-        Arc::new(LocalLspHttpCache::new(local_path, global_cache.clone()))
+        Arc::new(LocalLspHttpCache::new(
+          local_path.clone(),
+          global_cache.clone(),
+        ))
       });
     let cache: Arc<dyn HttpCache> = maybe_local_cache
       .clone()
@@ -830,50 +826,6 @@ impl Inner {
     );
     file_fetcher.set_download_log_level(super::logging::lsp_log_level());
     file_fetcher
-  }
-
-  fn resolve_import_map_specifier(
-    &self,
-    referrer: &ModuleSpecifier,
-  ) -> Result<Option<ModuleSpecifier>, AnyError> {
-    let Some(import_map_str) = self
-      .config
-      .settings
-      .get_for_specifier(referrer)
-      .0
-      .import_map
-      .clone()
-      .and_then(|s| if s.is_empty() { None } else { Some(s) })
-    else {
-      return Ok(None);
-    };
-    lsp_log!(
-      "Using import map from workspace settings: \"{}\"",
-      import_map_str
-    );
-    if let Some(config_file) =
-      self.config.tree.config_file_for_specifier(referrer)
-    {
-      if let Some(import_map_path) = &config_file.json.import_map {
-        lsp_log!("Warning: Import map \"{}\" configured in \"{}\" being ignored due to an import map being explicitly configured in workspace settings.", import_map_path, config_file.specifier);
-      }
-    }
-    if let Ok(url) = Url::parse(&import_map_str) {
-      Ok(Some(url))
-    } else if let Some(root_uri) = self.config.root_uri() {
-      let root_path = specifier_to_file_path(root_uri)?;
-      let import_map_path = root_path.join(&import_map_str);
-      let import_map_url =
-        Url::from_file_path(import_map_path).map_err(|_| {
-          anyhow!("Bad file path for import map: {}", import_map_str)
-        })?;
-      Ok(Some(import_map_url))
-    } else {
-      Err(anyhow!(
-        "The path to the import map (\"{}\") is not resolvable.",
-        import_map_str
-      ))
-    }
   }
 
   pub fn update_debug_flag(&self) {
@@ -1069,8 +1021,7 @@ impl Inner {
 
   fn walk_workspace(config: &Config) -> (BTreeSet<ModuleSpecifier>, bool) {
     let mut workspace_files = Default::default();
-    let document_preload_limit =
-      config.workspace_settings().document_preload_limit;
+    let entry_limit = 1000;
     let mut pending = VecDeque::new();
     let mut entry_count = 0;
     let mut roots = config
@@ -1091,7 +1042,7 @@ impl Inner {
         let Ok(entry) = entry else {
           continue;
         };
-        if entry_count >= document_preload_limit {
+        if entry_count >= entry_limit {
           return (workspace_files, true);
         }
         entry_count += 1;
@@ -1199,42 +1150,33 @@ impl Inner {
 
   async fn refresh_config_tree(&mut self) {
     let file_fetcher = self.create_file_fetcher(CacheSetting::RespectHeaders);
-    if let Some(root_uri) = self.config.root_uri() {
-      self
-        .config
-        .tree
-        .refresh(
-          &self.config.settings,
-          root_uri,
-          &self.workspace_files,
-          &file_fetcher,
-        )
-        .await;
-      for config_file in self.config.tree.config_files() {
-        if let Ok((compiler_options, _)) = config_file.to_compiler_options() {
-          if let Some(compiler_options_obj) = compiler_options.as_object() {
-            if let Some(jsx_import_source) =
-              compiler_options_obj.get("jsxImportSource")
-            {
-              if let Some(jsx_import_source) = jsx_import_source.as_str() {
-                let specifiers = vec![Url::parse(&format!(
-                  "data:application/typescript;base64,{}",
-                  base64::engine::general_purpose::STANDARD.encode(format!(
-                    "import '{jsx_import_source}/jsx-runtime';"
-                  ))
-                ))
-                .unwrap()];
-                let referrer = config_file.specifier.clone();
-                self.task_queue.queue_task(Box::new(|ls: LanguageServer| {
-                  spawn(async move {
-                    if let Err(err) =
-                      ls.cache(specifiers, referrer, false).await
-                    {
-                      lsp_warn!("{:#}", err);
-                    }
-                  });
-                }));
-              }
+    self
+      .config
+      .tree
+      .refresh(&self.config.settings, &self.workspace_files, &file_fetcher)
+      .await;
+    for config_file in self.config.tree.config_files() {
+      if let Ok((compiler_options, _)) = config_file.to_compiler_options() {
+        if let Some(compiler_options_obj) = compiler_options.as_object() {
+          if let Some(jsx_import_source) =
+            compiler_options_obj.get("jsxImportSource")
+          {
+            if let Some(jsx_import_source) = jsx_import_source.as_str() {
+              let specifiers = vec![Url::parse(&format!(
+                "data:application/typescript;base64,{}",
+                base64::engine::general_purpose::STANDARD
+                  .encode(format!("import '{jsx_import_source}/jsx-runtime';"))
+              ))
+              .unwrap()];
+              let referrer = config_file.specifier.clone();
+              self.task_queue.queue_task(Box::new(|ls: LanguageServer| {
+                spawn(async move {
+                  if let Err(err) = ls.cache(specifiers, referrer, false).await
+                  {
+                    lsp_warn!("{:#}", err);
+                  }
+                });
+              }));
             }
           }
         }
@@ -1428,7 +1370,7 @@ impl Inner {
             _ => return None,
           };
           Some(lsp_custom::DenoConfigurationChangeEvent {
-            scope_uri: t.0,
+            scope_uri: t.0.clone(),
             file_uri: e.uri.clone(),
             typ: lsp_custom::DenoConfigurationChangeType::from_file_change_type(
               e.typ,
@@ -1452,7 +1394,7 @@ impl Inner {
             _ => return None,
           };
           Some(lsp_custom::DenoConfigurationChangeEvent {
-            scope_uri: t.0,
+            scope_uri: t.0.clone(),
             file_uri: e.uri.clone(),
             typ: lsp_custom::DenoConfigurationChangeType::from_file_change_type(
               e.typ,
@@ -2055,11 +1997,11 @@ impl Inner {
 
   pub fn get_ts_response_import_mapper(
     &self,
-    referrer: &ModuleSpecifier,
+    _referrer: &ModuleSpecifier,
   ) -> TsResponseImportMapper {
     TsResponseImportMapper::new(
       &self.documents,
-      self.config.tree.import_map_for_specifier(referrer),
+      self.config.tree.root_import_map().map(|i| i.as_ref()),
       self.npm.node_resolver.as_deref(),
       self.npm.resolver.as_deref(),
     )
@@ -2372,7 +2314,7 @@ impl Inner {
         &self.jsr_search_api,
         &self.npm.search_api,
         &self.documents,
-        self.config.tree.import_map_for_specifier(&specifier),
+        self.config.tree.root_import_map().map(|i| i.as_ref()),
       )
       .await;
     }
@@ -3157,7 +3099,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
       }
 
       let mut config_events = vec![];
-      for (scope_uri, config_data) in ls.config.tree.data_by_scope() {
+      for (scope_uri, config_data) in ls.config.tree.data_by_scope().iter() {
         if let Some(config_file) = &config_data.config_file {
           config_events.push(lsp_custom::DenoConfigurationChangeEvent {
             scope_uri: scope_uri.clone(),
@@ -3538,14 +3480,14 @@ impl Inner {
     let mark = self
       .performance
       .mark_with_args("lsp.cache", (&specifiers, &referrer));
-    let config_data = self.config.tree.data_for_specifier(&referrer);
+    let config_data = self.config.tree.root_data();
     let roots = if !specifiers.is_empty() {
       specifiers
     } else {
       vec![referrer.clone()]
     };
     let workspace_settings = self.config.workspace_settings();
-    let mut cli_options = CliOptions::new(
+    let cli_options = CliOptions::new(
       Flags {
         cache_path: self.maybe_global_cache_path.clone(),
         ca_stores: workspace_settings.certificate_stores.clone(),
@@ -3553,9 +3495,14 @@ impl Inner {
         unsafely_ignore_certificate_errors: workspace_settings
           .unsafely_ignore_certificate_errors
           .clone(),
+        import_map_path: config_data.and_then(|d| {
+          if d.import_map_from_settings {
+            return Some(d.import_map.as_ref()?.base_url().to_string());
+          }
+          None
+        }),
         node_modules_dir: Some(
           config_data
-            .as_ref()
             .and_then(|d| d.node_modules_dir.as_ref())
             .is_some(),
         ),
@@ -3564,20 +3511,11 @@ impl Inner {
         ..Default::default()
       },
       self.initial_cwd.clone(),
-      config_data
-        .as_ref()
-        .and_then(|d| d.config_file.as_deref().cloned()),
-      config_data.as_ref().and_then(|d| d.lockfile.clone()),
-      config_data
-        .as_ref()
-        .and_then(|d| d.package_json.as_deref().cloned()),
+      config_data.and_then(|d| d.config_file.as_deref().cloned()),
+      config_data.and_then(|d| d.lockfile.clone()),
+      config_data.and_then(|d| d.package_json.as_deref().cloned()),
       force_global_cache,
     )?;
-    // don't use the specifier in self.maybe_import_map because it's not
-    // necessarily an import map specifier (could be a deno.json)
-    if let Some(import_map) = self.resolve_import_map_specifier(&referrer)? {
-      cli_options.set_import_map_specifier(Some(import_map));
-    }
 
     let open_docs = self.documents.documents(DocumentsFilter::OpenDiagnosable);
     Ok(Some(PrepareCacheResult {
