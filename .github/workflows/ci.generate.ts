@@ -554,7 +554,7 @@ const ci = {
             "curl --version",
             "which curl",
             "cat /etc/hosts",
-            "rm ~/.curlrc",
+            "rm ~/.curlrc || true",
           ].join("\n"),
           if: `matrix.os == 'macos'`,
         },
