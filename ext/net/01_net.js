@@ -101,9 +101,15 @@ class Conn {
 
   constructor(rid, remoteAddr, localAddr) {
     if (internals.future) {
-      ObjectDefineProperty(this, "rid", { value: undefined });
+      ObjectDefineProperty(this, "rid", {
+        enumerable: false,
+        value: undefined,
+      });
     }
-    ObjectDefineProperty(this, internalRidSymbol, { value: rid });
+    ObjectDefineProperty(this, internalRidSymbol, {
+      enumerable: false,
+      value: rid,
+    });
     this.#rid = rid;
     this.#remoteAddr = remoteAddr;
     this.#localAddr = localAddr;
@@ -236,7 +242,10 @@ class UnixConn extends Conn {
 
   constructor(rid, remoteAddr, localAddr) {
     super(rid, remoteAddr, localAddr);
-    ObjectDefineProperty(this, internalRidSymbol, { value: rid });
+    ObjectDefineProperty(this, internalRidSymbol, {
+      enumerable: false,
+      value: rid,
+    });
     this.#rid = rid;
   }
 
@@ -258,9 +267,15 @@ class Listener {
 
   constructor(rid, addr) {
     if (internals.future) {
-      ObjectDefineProperty(this, "rid", { value: undefined });
+      ObjectDefineProperty(this, "rid", {
+        enumerable: false,
+        value: undefined,
+      });
     }
-    ObjectDefineProperty(this, internalRidSymbol, { value: rid });
+    ObjectDefineProperty(this, internalRidSymbol, {
+      enumerable: false,
+      value: rid,
+    });
     this.#rid = rid;
     this.#addr = addr;
   }
