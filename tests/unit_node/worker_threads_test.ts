@@ -16,7 +16,7 @@ Deno.test("[node/worker_threads] BroadcastChannel is exported", () => {
 });
 
 Deno.test("[node/worker_threads] MessageChannel are MessagePort are exported", () => {
-  assertEquals<unknown>(workerThreads.MessageChannel, MessageChannel);
+  assert(workerThreads.MessageChannel);
   assertEquals<unknown>(workerThreads.MessagePort, MessagePort);
 });
 

@@ -225,9 +225,6 @@ impl TestContextBuilder {
     }
 
     let deno_exe = deno_exe_path();
-    self
-      .diagnostic_logger
-      .writeln(format!("deno_exe path {}", deno_exe));
 
     let http_server_guard = if self.use_http_server {
       Some(Rc::new(http_server()))

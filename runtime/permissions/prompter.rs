@@ -91,16 +91,58 @@ pub trait PermissionPrompter: Send + Sync {
 }
 
 pub struct TtyPrompter;
-
 #[cfg(unix)]
 fn clear_stdin(
   _stdin_lock: &mut StdinLock,
   _stderr_lock: &mut StderrLock,
 ) -> Result<(), AnyError> {
-  // TODO(bartlomieju):
-  #[allow(clippy::undocumented_unsafe_blocks)]
-  let r = unsafe { libc::tcflush(0, libc::TCIFLUSH) };
-  assert_eq!(r, 0);
+  use deno_core::anyhow::bail;
+  use std::mem::MaybeUninit;
+
+  const STDIN_FD: i32 = 0;
+
+  // SAFETY: use libc to flush stdin
+  unsafe {
+    // Create fd_set for select
+    let mut raw_fd_set = MaybeUninit::<libc::fd_set>::uninit();
+    libc::FD_ZERO(raw_fd_set.as_mut_ptr());
+    libc::FD_SET(STDIN_FD, raw_fd_set.as_mut_ptr());
+
+    loop {
+      let r = libc::tcflush(STDIN_FD, libc::TCIFLUSH);
+      if r != 0 {
+        bail!("clear_stdin failed (tcflush)");
+      }
+
+      // Initialize timeout for select to be 100ms
+      let mut timeout = libc::timeval {
+        tv_sec: 0,
+        tv_usec: 100_000,
+      };
+
+      // Call select with the stdin file descriptor set
+      let r = libc::select(
+        STDIN_FD + 1, // nfds should be set to the highest-numbered file descriptor in any of the three sets, plus 1.
+        raw_fd_set.as_mut_ptr(),
+        std::ptr::null_mut(),
+        std::ptr::null_mut(),
+        &mut timeout,
+      );
+
+      // Check if select returned an error
+      if r < 0 {
+        bail!("clear_stdin failed (select)");
+      }
+
+      // Check if select returned due to timeout (stdin is quiescent)
+      if r == 0 {
+        break; // Break out of the loop as stdin is quiescent
+      }
+
+      // If select returned due to data available on stdin, clear it by looping around to flush
+    }
+  }
+
   Ok(())
 }
 
@@ -291,9 +333,17 @@ impl PermissionPrompter for TtyPrompter {
     }
 
     let value = loop {
+      // Clear stdin each time we loop around in case the user accidentally pasted
+      // multiple lines or otherwise did something silly to generate a torrent of
+      // input.
+      if let Err(err) = clear_stdin(&mut stdin_lock, &mut stderr_lock) {
+        eprintln!("Error clearing stdin for permission prompt. {err:#}");
+        return PromptResponse::Deny; // don't grant permission if this fails
+      }
+
       let mut input = String::new();
       let result = stdin_lock.read_line(&mut input);
-      if result.is_err() {
+      if result.is_err() || input.len() > 2 {
         break PromptResponse::Deny;
       };
       let ch = match input.chars().next() {
@@ -310,7 +360,7 @@ impl PermissionPrompter for TtyPrompter {
           writeln!(stderr_lock, "✅ {}", colors::bold(&msg)).unwrap();
           break PromptResponse::Allow;
         }
-        'n' | 'N' => {
+        'n' | 'N' | '\x1b' => {
           clear_n_lines(
             &mut stderr_lock,
             if api_name.is_some() { 4 } else { 3 },
