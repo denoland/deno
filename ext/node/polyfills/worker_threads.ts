@@ -25,13 +25,6 @@ import { notImplemented } from "ext:deno_node/_utils.ts";
 import { EventEmitter } from "node:events";
 import { BroadcastChannel } from "ext:deno_broadcast_channel/01_broadcast_channel.js";
 
-const debugWorkerThreads = false;
-function debugWT(...args) {
-  if (debugWorkerThreads) {
-    console.log(...args);
-  }
-}
-
 const { ObjectPrototypeIsPrototypeOf } = primordials;
 const {
   Error,
@@ -43,6 +36,14 @@ const {
   SafeMap,
   TypeError,
 } = primordials;
+
+const debugWorkerThreads = false;
+function debugWT(...args) {
+  if (debugWorkerThreads) {
+    // deno-lint-ignore prefer-primordials
+    console.log(...args);
+  }
+}
 
 export interface WorkerOptions {
   // only for typings
