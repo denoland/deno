@@ -1,7 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 use std::borrow::Cow;
 use std::collections::HashMap;
-use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicI32;
@@ -9,7 +8,6 @@ use std::sync::atomic::Ordering::Relaxed;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
-use std::time::UNIX_EPOCH;
 
 use deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_cache::CreateCache;
@@ -55,6 +53,8 @@ use crate::shared::runtime;
 use crate::BootstrapOptions;
 
 pub type FormatJsErrorFn = dyn Fn(&JsError) -> String + Sync + Send;
+
+pub type GetModifiedFileTimeFn = dyn Fn(&str) -> Option<u64>;
 
 pub fn import_meta_resolve_callback(
   loader: &dyn deno_core::ModuleLoader,
@@ -198,13 +198,10 @@ pub struct WorkerOptions {
   /// V8 code cache for module and script source code.
   pub v8_code_cache: Option<Arc<dyn CodeCache>>,
 
-  pub specifier_resolver:
-    Option<Arc<dyn Fn(&ModuleSpecifier) -> Result<PathBuf, AnyError>>>,
+  /// Callback for getting the modified timestamp for a module specifier.
+  /// Only works with local file path specifiers.
+  pub modified_timestamp_getter: Option<Arc<GetModifiedFileTimeFn>>,
 }
-
-//pub type CreateWebWorkerCb = dyn Fn(CreateWebWorkerArgs) -> (WebWorker, SendableWebWorkerHandle)
-//+ Sync
-//+ Send;
 
 impl Default for WorkerOptions {
   fn default() -> Self {
@@ -239,7 +236,7 @@ impl Default for WorkerOptions {
       stdio: Default::default(),
       feature_checker: Default::default(),
       v8_code_cache: Default::default(),
-      specifier_resolver: Default::default(),
+      modified_timestamp_getter: Default::default(),
     }
   }
 }
@@ -511,57 +508,47 @@ impl MainWorker {
       enable_code_cache: options.v8_code_cache.is_some(),
       eval_context_code_cache_cbs: options.v8_code_cache.map(|cache| {
         let cache_clone = cache.clone();
-        let specifier_resolver = options.specifier_resolver.clone();
-        let specifier_resolver_clone = options.specifier_resolver.clone();
+        let modified_timestamp_getter =
+          options.modified_timestamp_getter.clone();
+        let modified_timestamp_getter_clone =
+          options.modified_timestamp_getter.clone();
         (
           Box::new(move |specifier: &str| {
-            let timestamp = specifier_resolver.as_ref().and_then(|resolver| {
-              let specifier = ModuleSpecifier::parse(specifier).unwrap();
-              match resolver(&specifier) {
-                Ok(path) => std::fs::metadata(&path)
-                  .ok()
-                  .and_then(|m| m.modified().ok())
-                  .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
-                  .map(|d| d.as_millis() as u64),
-                Err(_) => None,
-              }
-            });
+            let code_timestamp = modified_timestamp_getter
+              .as_ref()
+              .and_then(|getter| getter(specifier));
             Ok(
               cache
-                .get_sync(specifier, CodeCacheType::Script, None, timestamp)
+                .get_sync(
+                  specifier,
+                  CodeCacheType::Script,
+                  None,
+                  code_timestamp,
+                )
                 .map(Cow::from)
                 .inspect(|_| {
                   log::debug!(
                     "V8 code cache hit for script: {}, [{}]",
                     specifier.to_string(),
-                    timestamp.unwrap_or(0),
+                    code_timestamp.unwrap_or(0),
                   );
                 }),
             )
           }) as Box<dyn Fn(&_) -> _>,
           Box::new(move |specifier: &str, data: &[u8]| {
-            let timestamp =
-              specifier_resolver_clone.as_ref().and_then(|resolver| {
-                let specifier = ModuleSpecifier::parse(specifier).unwrap();
-                match resolver(&specifier) {
-                  Ok(path) => std::fs::metadata(&path)
-                    .ok()
-                    .and_then(|m| m.modified().ok())
-                    .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
-                    .map(|d| d.as_millis() as u64),
-                  Err(_) => None,
-                }
-              });
+            let code_timestamp = modified_timestamp_getter_clone
+              .as_ref()
+              .and_then(|getter| getter(specifier));
             log::debug!(
               "Updating code cache for script: {}, [{}]",
               specifier,
-              timestamp.unwrap_or(0)
+              code_timestamp.unwrap_or(0)
             );
             cache_clone.set_sync(
               specifier,
               CodeCacheType::Script,
               None,
-              timestamp,
+              code_timestamp,
               data,
             );
           }) as Box<dyn Fn(&_, &_)>,

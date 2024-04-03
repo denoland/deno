@@ -479,7 +479,7 @@ impl CliModuleLoader {
           .flatten();
         let code_timestamp = specifier_to_file_path(specifier)
           .ok()
-          .and_then(|path| std::fs::metadata(&path).ok())
+          .and_then(|path| std::fs::metadata(path).ok())
           .and_then(|m| m.modified().ok())
           .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
           .map(|d| d.as_millis() as u64);
@@ -743,7 +743,7 @@ impl ModuleLoader for CliModuleLoader {
         .flatten();
       let code_timestamp = specifier_to_file_path(specifier)
         .ok()
-        .and_then(|path| std::fs::metadata(&path).ok())
+        .and_then(|path| std::fs::metadata(path).ok())
         .and_then(|m| m.modified().ok())
         .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
         .map(|d| d.as_millis() as u64);
