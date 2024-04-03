@@ -553,7 +553,7 @@ const ci = {
             // cURL's busted for now
             "brew update && brew upgrade curl --force",
           ].join("\n"),
-          if: `matrix.os == 'macos'`
+          if: `matrix.os == 'macos'`,
         },
         {
           name: "Install macOS aarch64 lld",
