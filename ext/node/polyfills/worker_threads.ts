@@ -463,6 +463,7 @@ function webMessagePortToNodeMessagePort(port: MessagePort) {
   return port;
 }
 
+// deno-lint-ignore no-explicit-any
 function patchMessagePortIfFound(data: any) {
   if (ObjectPrototypeIsPrototypeOf(MessagePortPrototype, data)) {
     data = webMessagePortToNodeMessagePort(data);
