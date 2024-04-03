@@ -22,6 +22,7 @@ const {
   Symbol,
   SymbolFor,
   SymbolIterator,
+  SafeArrayIterator,
   TypeError,
 } = primordials;
 const {
@@ -39,6 +40,8 @@ import {
 } from "./02_event.js";
 import { isDetachedBuffer } from "./06_streams.js";
 import { DOMException } from "./01_dom_exception.js";
+
+let messageEventListenerCount = 0;
 
 class MessageChannel {
   /** @type {MessagePort} */
@@ -220,6 +223,20 @@ class MessagePort extends EventTarget {
       this[_id] = null;
       nodeWorkerThreadMaybeInvokeCloseCb(this);
     }
+  }
+
+  removeEventListener(...args) {
+    if (args[0] == "message") {
+      messageEventListenerCount--;
+    }
+    super.removeEventListener(...new SafeArrayIterator(args));
+  }
+
+  addEventListener(...args) {
+    if (args[0] == "message") {
+      messageEventListenerCount++;
+    }
+    super.addEventListener(...new SafeArrayIterator(args));
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
@@ -406,6 +423,7 @@ function structuredClone(value, options) {
 export {
   deserializeJsMessageData,
   MessageChannel,
+  messageEventListenerCount,
   MessagePort,
   MessagePortIdSymbol,
   MessagePortPrototype,
