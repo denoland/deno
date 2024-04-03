@@ -572,10 +572,8 @@ mod tests {
           if let Some(stdout) = &mut stdout {
             stdout.write_all(b"message").unwrap();
           }
-        } else {
-          if let Some(stderr) = &mut stderr {
-            stderr.write_all(b"message").unwrap();
-          }
+        } else if let Some(stderr) = &mut stderr {
+          stderr.write_all(b"message").unwrap();
         }
         sender.send(TestEvent::StepWait(1)).unwrap();
       }
