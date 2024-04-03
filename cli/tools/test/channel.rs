@@ -227,8 +227,8 @@ impl TestEventSenderFactory {
   /// Create a [`TestEventWorkerSender`], along with a stdout/stderr stream.
   pub fn worker(&self) -> TestEventWorkerSender {
     let id = self.worker_id.fetch_add(1, Ordering::AcqRel);
-    let (stdout_reader, mut stdout_writer) = pipe().unwrap();
-    let (stderr_reader, mut stderr_writer) = pipe().unwrap();
+    let (stdout_reader, stdout_writer) = pipe().unwrap();
+    let (stderr_reader, stderr_writer) = pipe().unwrap();
     let (sync_sender, mut sync_receiver) =
       tokio::sync::mpsc::unbounded_channel::<(SendMutex, SendMutex)>();
     let stdout = stdout_writer.try_clone().unwrap();
