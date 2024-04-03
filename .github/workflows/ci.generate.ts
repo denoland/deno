@@ -551,7 +551,7 @@ const ci = {
           name: "Unscrew macOS cURL",
           run: [
             // cURL's busted for now
-            "brew update && brew upgrade curl --force && cat ~/.curlrc",
+            "brew update && brew upgrade curl --force && (cat ~/.curlrc || true)",
           ].join("\n"),
           if: `matrix.os == 'macos'`,
         },
