@@ -86,6 +86,15 @@ impl ContextifyContext {
     let sandbox = v8::Global::new(scope, sandbox_obj);
     let wrapper =
       deno_core::cppgc::make_cppgc_object(scope, Self { context, sandbox });
+    let ptr = deno_core::cppgc::try_unwrap_cppgc_object::<Self>(wrapper.into())
+      .unwrap();
+
+    unsafe {
+      v8_context.set_aligned_pointer_in_embedder_data(
+        0,
+        ptr as *const ContextifyContext as _,
+      );
+    }
 
     let private_str =
       v8::String::new_from_onebyte_const(scope, &PRIVATE_SYMBOL_NAME);
@@ -107,6 +116,13 @@ impl ContextifyContext {
       .and_then(|wrapper| {
         deno_core::cppgc::try_unwrap_cppgc_object::<Self>(wrapper)
       })
+  }
+
+  pub fn is_contextify_context<'a>(
+    scope: &mut v8::HandleScope,
+    object: v8::Local<v8::Object>,
+  ) -> bool {
+    Self::from_sandbox_obj(scope, object).is_some()
   }
 
   pub fn context<'a>(
@@ -131,15 +147,16 @@ impl ContextifyContext {
     v8::Local::new(scope, &self.sandbox)
   }
 
-  fn get(
-    scope: &mut v8::HandleScope,
-    object: v8::Local<v8::Object>,
-  ) -> Option<ContextifyContext> {
+  fn get<'a, 'b, 'c>(
+    scope: &'b mut v8::HandleScope<'a>,
+    object: v8::Local<'a, v8::Object>,
+  ) -> Option<&'c ContextifyContext> {
     let Some(context) = object.get_creation_context(scope) else {
       return None;
     };
 
-    context.get_slot::<ContextifyContext>(scope).cloned()
+    let context_ptr = context.get_aligned_pointer_from_embedder_data(0);
+    Some(unsafe { &*(context_ptr as *const ContextifyContext) })
   }
 }
 
@@ -227,12 +244,14 @@ fn init_global_template_inner(scope: &mut v8::HandleScope) {
 
     config = INDEXED_GETTER_MAP_FN.with(|getter| config.getter_raw(*getter));
     config = INDEXED_SETTER_MAP_FN.with(|setter| config.setter_raw(*setter));
-    config = INDEXED_DELETER_MAP_FN.with(|deleter| config.deleter_raw(*deleter));
+    config =
+      INDEXED_DELETER_MAP_FN.with(|deleter| config.deleter_raw(*deleter));
     config =
       ENUMERATOR_MAP_FN.with(|enumerator| config.enumerator_raw(*enumerator));
-    config = INDEXED_DEFINER_MAP_FN.with(|definer| config.definer_raw(*definer));
     config =
-      INDEXED_DESCRIPTOR_MAP_FN.with(|descriptor| config.descriptor_raw(*descriptor));
+      INDEXED_DEFINER_MAP_FN.with(|definer| config.definer_raw(*definer));
+    config = INDEXED_DESCRIPTOR_MAP_FN
+      .with(|descriptor| config.descriptor_raw(*descriptor));
 
     config
   };
@@ -435,17 +454,19 @@ fn property_definer<'s>(
   let sandbox = ctx.sandbox(scope);
   let scope = &mut v8::ContextScope::new(scope, context);
 
-  let mut define_prop_on_sandbox = |scope: &mut v8::HandleScope, desc_for_sandbox: &mut v8::PropertyDescriptor| {
-    if desc.has_enumerable() {
-      desc_for_sandbox.set_enumerable(desc.enumerable());
-    }
+  let mut define_prop_on_sandbox =
+    |scope: &mut v8::HandleScope,
+     desc_for_sandbox: &mut v8::PropertyDescriptor| {
+      if desc.has_enumerable() {
+        desc_for_sandbox.set_enumerable(desc.enumerable());
+      }
 
-    if desc.has_configurable() {
-      desc_for_sandbox.set_configurable(desc.configurable());
-    }
+      if desc.has_configurable() {
+        desc_for_sandbox.set_configurable(desc.configurable());
+      }
 
-    sandbox.define_property(scope, key.into(), desc_for_sandbox);
-  };
+      sandbox.define_property(scope, key.into(), desc_for_sandbox);
+    };
 
   if desc.has_get() || desc.has_set() {
     let mut desc_for_sandbox = v8::PropertyDescriptor::new_from_get_set(
@@ -463,17 +484,15 @@ fn property_definer<'s>(
 
     define_prop_on_sandbox(scope, &mut desc_for_sandbox);
   } else {
-     let value = if desc.has_value() {
-       desc.value()
-     } else {
-       v8::undefined(scope).into()
-     };
+    let value = if desc.has_value() {
+      desc.value()
+    } else {
+      v8::undefined(scope).into()
+    };
 
     if desc.has_writable() {
-      let mut desc_for_sandbox = v8::PropertyDescriptor::new_from_value_writable(
-        value,
-        desc.writable(),
-      );
+      let mut desc_for_sandbox =
+        v8::PropertyDescriptor::new_from_value_writable(value, desc.writable());
       define_prop_on_sandbox(scope, &mut desc_for_sandbox);
     } else {
       let mut desc_for_sandbox = v8::PropertyDescriptor::new_from_value(value);

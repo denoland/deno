@@ -98,9 +98,14 @@ pub fn op_vm_create_context(
 #[op2]
 pub fn op_vm_is_context(
   scope: &mut v8::HandleScope,
-  sandbox_obj: v8::Local<v8::Object>,
+  sandbox_obj: v8::Local<v8::Value>,
 ) -> bool {
-  false
+  sandbox_obj
+    .try_into()
+    .map(|sandbox_obj| {
+      i::ContextifyContext::is_contextify_context(scope, sandbox_obj)
+    })
+    .unwrap_or(false)
 }
 
 #[cfg(test)]

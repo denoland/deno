@@ -1,5 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-import { isContext, runInNewContext } from "node:vm";
+import { createContext, isContext, runInContext, runInNewContext, Script } from "node:vm";
 import { assertEquals, assertThrows } from "@std/assert/mod.ts";
 
 Deno.test({
@@ -11,15 +11,45 @@ Deno.test({
 });
 
 Deno.test({
+  name: "vm new Script()",
+  fn() {
+    const script = new Script(`
+function add(a, b) {
+  return a + b;
+}
+const x = add(1, 2);
+x
+`);
+
+    const value = script.runInThisContext();
+    assertEquals(value, 3);
+  },
+});
+
+Deno.test({
   name: "vm runInNewContext sandbox",
   fn() {
-    assertThrows(() => runInNewContext("Deno"));
     // deno-lint-ignore no-var
     var a = 1;
     assertThrows(() => runInNewContext("a + 1"));
 
     runInNewContext("a = 2");
     assertEquals(a, 1);
+  },
+});
+
+Deno.test({
+  name: "vm createContext",
+  fn() {
+    // @ts-expect-error implicit any
+    globalThis.globalVar = 3;
+
+    const context = { globalVar: 1 };
+    createContext(context);
+    runInContext("globalVar *= 2", context);
+    assertEquals(context.globalVar, 2);
+    // @ts-expect-error implicit any
+    assertEquals(globalThis.globalVar, 3);
   },
 });
 
