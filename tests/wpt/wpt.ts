@@ -72,6 +72,7 @@ switch (command) {
     break;
 
   case "run":
+    await checkPy3Available();
     await cargoBuild();
     await run();
     break;
