@@ -343,14 +343,7 @@ internals.__initWorkerThreads = (
     defaultExport.parentPort = parentPort;
     defaultExport.threadId = threadId;
 
-    for (const obj in workerData as Record<string, unknown>) {
-      if (ObjectPrototypeIsPrototypeOf(MessagePortPrototype, workerData[obj])) {
-        workerData[obj] = webMessagePortToNodeMessagePort(
-          workerData[obj] as MessagePort,
-        );
-        break;
-      }
-    }
+    workerData = patchMessagePortIfFound(workerData);
 
     parentPort.off = parentPort.removeListener = function (
       this: ParentPort,
@@ -369,18 +362,7 @@ internals.__initWorkerThreads = (
       // deno-lint-ignore no-explicit-any
       const _listener = (ev: any) => {
         let message = ev.data;
-        if (ObjectPrototypeIsPrototypeOf(MessagePortPrototype, message)) {
-          message = webMessagePortToNodeMessagePort(message);
-        } else {
-          for (const obj in message) {
-            if (
-              ObjectPrototypeIsPrototypeOf(MessagePortPrototype, message[obj])
-            ) {
-              message[obj] = webMessagePortToNodeMessagePort(message[obj]);
-              break;
-            }
-          }
-        }
+        message = patchMessagePortIfFound(message);
         return listener(message);
       };
       listeners.set(listener, _listener);
@@ -479,6 +461,21 @@ function webMessagePortToNodeMessagePort(port: MessagePort) {
     port.dispatchEvent(new Event("close"));
   };
   return port;
+}
+
+// deno-lint-ignore no-explicit-any
+function patchMessagePortIfFound(data: any) {
+  if (ObjectPrototypeIsPrototypeOf(MessagePortPrototype, data)) {
+    data = webMessagePortToNodeMessagePort(data);
+  } else {
+    for (const obj in data as Record<string, unknown>) {
+      if (ObjectPrototypeIsPrototypeOf(MessagePortPrototype, data[obj])) {
+        data[obj] = webMessagePortToNodeMessagePort(data[obj] as MessagePort);
+        break;
+      }
+    }
+  }
+  return data;
 }
 
 export {

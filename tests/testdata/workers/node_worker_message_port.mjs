@@ -9,7 +9,7 @@ const deferred = createDeferred();
 const worker = new workerThreads.Worker(
   import.meta.resolve("./node_worker_message_port_1.cjs"),
   {
-    workerData: { workerPort },
+    workerData: workerPort,
     transferList: [workerPort],
   },
 );
