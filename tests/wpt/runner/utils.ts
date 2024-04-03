@@ -144,7 +144,7 @@ export async function checkPy3Available() {
     output.includes("Python 3.11"),
     `The ${
       Deno.build.os == "windows" ? "python.exe" : "python3"
-    } in your path is not Python 3.11.x`,
+    } in your path is not Python 3.11.x. See https://github.com/web-platform-tests/wpt/issues/44427 for more details.`,
   );
 }
 
