@@ -10,7 +10,7 @@ Deno.test("should work on throws", async function () {
   const d = domain.create();
 
   d.on("error", function (err) {
-    // @ts-ignore domain types are out of date
+    // @ts-ignore node:domain types are out of date
     assertEquals(err && err.message, "a thrown error", "error message");
     deferred.resolve();
   });
@@ -100,12 +100,12 @@ Deno.test("intercept should work", async function () {
     assertEquals(a, 2, "value of a");
     assertEquals(b, 3, "value of b");
     throw new Error("a thrown error");
-    // @ts-ignore domain types are out of date
+    // @ts-ignore node:domain types are out of date
   })(null, 2, 3);
 
   d.intercept(function (_a: number, _b: number) {
     throw new Error("should never reach here");
-    // @ts-ignore domain types are out of date
+    // @ts-ignore node:domain types are out of date
   })(new Error("a passed error"), 2, 3);
   await deferred.promise;
 });

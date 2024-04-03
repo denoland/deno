@@ -4,6 +4,7 @@
 
 import { primordials } from "ext:core/mod.js";
 const {
+  ArrayPrototypeSlice,
   FunctionPrototypeBind,
   FunctionPrototypeCall,
   FunctionPrototypeApply,
@@ -11,7 +12,6 @@ const {
 import { EventEmitter } from "node:events";
 
 function emitError(e) {
-  console.log(arguments);
   this.emit("error", e);
 }
 
@@ -19,37 +19,44 @@ export function create() {
   return new Domain();
 }
 export class Domain extends EventEmitter {
+  #handler;
+
   constructor() {
     super();
+    this.#handler = FunctionPrototypeBind(emitError, this);
   }
 
   add(emitter) {
-    emitter.on("error", FunctionPrototypeBind(emitError, this));
+    emitter.on("error", this.#handler);
   }
 
   remove(emitter) {
-    emitter.off("error", FunctionPrototypeBind(emitError, this));
+    emitter.off("error", this.#handler);
   }
 
   bind(fn) {
+    // deno-lint-ignore no-this-alias
+    const self = this;
     return function () {
       try {
-        FunctionPrototypeApply(fn, null, arguments);
+        FunctionPrototypeApply(fn, null, ArrayPrototypeSlice(arguments));
       } catch (e) {
-        FunctionPrototypeCall(emitError, this, e);
+        FunctionPrototypeCall(emitError, self, e);
       }
     };
   }
 
   intercept(fn) {
+    // deno-lint-ignore no-this-alias
+    const self = this;
     return function (e) {
       if (e) {
-        FunctionPrototypeCall(emitError, this, e);
+        FunctionPrototypeCall(emitError, self, e);
       } else {
         try {
-          FunctionPrototypeApply(fn, null, arguments);
+          FunctionPrototypeApply(fn, null, ArrayPrototypeSlice(arguments, 1));
         } catch (e) {
-          FunctionPrototypeCall(emitError, this, e);
+          FunctionPrototypeCall(emitError, self, e);
         }
       }
     };
