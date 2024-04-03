@@ -39,11 +39,11 @@ export class Script {
   }
 
   createCachedData() {
-    notImplemented("Script.prototyp.createCachedData");
+    notImplemented("Script.prototype.createCachedData");
   }
 }
 
-export function createContext(contextObject: any, _options: any) {
+export function createContext(contextObject: any = {}, _options: any) {
   op_vm_create_context(contextObject);
   return contextObject;
 }

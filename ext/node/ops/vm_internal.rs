@@ -3,6 +3,7 @@
 use deno_core::error::AnyError;
 use deno_core::error::type_error;
 use deno_core::v8;
+use deno_core::v8::MapFnTo;
 
 pub const PRIVATE_SYMBOL_NAME: v8::OneByteConst = v8::String::create_external_onebyte_const(b"node:contextify:context");
 
@@ -61,9 +62,10 @@ impl ContextifyScript {
   }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ContextifyContext {
-
+  context: v8::Global<v8::Context>,
+  sandbox: v8::Global<v8::Object>,
 }
 
 impl ContextifyContext {
@@ -86,7 +88,12 @@ impl ContextifyContext {
     let new_context_global = v8_context.global(scope);
     v8_context.set_security_token(main_context.get_security_token(scope));
 
-    let wrapper = deno_core::cppgc::make_cppgc_object(scope, Self {});
+    let context = v8::Global::new(scope, v8_context);
+    let sandbox = v8::Global::new(scope, sandbox_obj);
+    let wrapper = deno_core::cppgc::make_cppgc_object(scope, Self {
+      context,
+      sandbox,
+    });
 
     let private_str = v8::String::new_from_onebyte_const(scope, &PRIVATE_SYMBOL_NAME);
     let private_symbol = v8::Private::for_api(scope, private_str);
@@ -104,6 +111,33 @@ impl ContextifyContext {
 
     sandbox_obj.get_private(scope, private_symbol)
       .and_then(|wrapper| deno_core::cppgc::try_unwrap_cppgc_object::<Self>(wrapper))
+  }
+
+  pub fn context<'a>(&self, scope: &mut v8::HandleScope<'a>) -> v8::Local<'a, v8::Context> {
+    v8::Local::new(scope, &self.context)
+  }
+
+  fn global_proxy<'s>(
+    &self,
+    scope: &mut v8::HandleScope<'s>,
+  ) -> v8::Local<'s, v8::Object> {
+    let ctx = self.context(scope);
+    ctx.global(scope)
+  }
+
+  fn sandbox<'a>(&self, scope: &mut v8::HandleScope<'a>) -> v8::Local<'a, v8::Object> {
+    v8::Local::new(scope, &self.sandbox)
+  }
+
+  fn get(
+    scope: &mut v8::HandleScope,
+    object: v8::Local<v8::Object>,
+  ) -> Option<ContextifyContext> {
+    let Some(context) = object.get_creation_context(scope) else {
+      return None;
+    };
+
+    context.get_slot::<ContextifyContext>(scope).cloned()
   }
 }
 
@@ -148,14 +182,33 @@ fn init_global_template<'a>(
 
 extern "C" fn c_noop(info: *const v8::FunctionCallbackInfo) {}
 
+thread_local! {
+  pub static GETTER_MAP_FN: v8::GenericNamedPropertyGetterCallback<'static> = property_getter.map_fn_to();
+  pub static SETTER_MAP_FN: v8::GenericNamedPropertySetterCallback<'static> = property_setter.map_fn_to();
+  pub static DELETER_MAP_FN: v8::GenericNamedPropertyGetterCallback<'static> = property_deleter.map_fn_to();
+  pub static ENUMERATOR_MAP_FN: v8::GenericNamedPropertyEnumeratorCallback<'static> = property_enumerator.map_fn_to();
+  pub static DEFINER_MAP_FN: v8::GenericNamedPropertyDefinerCallback<'static> = property_definer.map_fn_to();
+  pub static DESCRIPTOR_MAP_FN: v8::GenericNamedPropertyGetterCallback<'static> = property_descriptor.map_fn_to();
+}
+
 fn init_global_template_inner(scope: &mut v8::HandleScope) {
-let global_func_template =
+  let global_func_template =
     v8::FunctionTemplate::builder_raw(c_noop).build(scope);
   let global_object_template = global_func_template.instance_template(scope);
 
   let named_property_handler_config = {
     let mut config = v8::NamedPropertyHandlerConfiguration::new()
       .flags(v8::PropertyHandlerFlags::HAS_NO_SIDE_EFFECT);
+
+    config = GETTER_MAP_FN.with(|getter| config.getter_raw(*getter));
+    config = SETTER_MAP_FN.with(|setter| config.setter_raw(*setter));
+    config = DELETER_MAP_FN.with(|deleter| config.deleter_raw(*deleter));
+    config =
+      ENUMERATOR_MAP_FN.with(|enumerator| config.enumerator_raw(*enumerator));
+    config = DEFINER_MAP_FN.with(|definer| config.definer_raw(*definer));
+    config =
+      DESCRIPTOR_MAP_FN.with(|descriptor| config.descriptor_raw(*descriptor));
+
     config
   };
 
@@ -173,4 +226,59 @@ let global_func_template =
     v8::Global::new(scope, global_object_template),
   );
   scope.set_slot(contextify_global_template_slot);
+}
+
+
+fn property_getter<'s>(
+  scope: &mut v8::HandleScope<'s>,
+  key: v8::Local<'s, v8::Name>,
+  args: v8::PropertyCallbackArguments<'s>,
+  mut rv: v8::ReturnValue,
+) {
+  let ctx = ContextifyContext::get(scope, args.this());
+
+  let context = ctx.context(scope);
+  let sandbox = ctx.sandbox(scope);
+}
+
+fn property_setter<'s>(
+  scope: &mut v8::HandleScope<'s>,
+  key: v8::Local<'s, v8::Name>,
+  value: v8::Local<'s, v8::Value>,
+  args: v8::PropertyCallbackArguments<'s>,
+  mut rv: v8::ReturnValue,
+) {
+}
+
+fn property_deleter<'s>(
+  scope: &mut v8::HandleScope<'s>,
+  key: v8::Local<'s, v8::Name>,
+  args: v8::PropertyCallbackArguments<'s>,
+  mut rv: v8::ReturnValue,
+) {
+
+}
+
+fn property_enumerator<'s>(
+  scope: &mut v8::HandleScope<'s>,
+  args: v8::PropertyCallbackArguments<'s>,
+  mut rv: v8::ReturnValue,
+) {
+}
+
+fn property_definer<'s>(
+  scope: &mut v8::HandleScope<'s>,
+  key: v8::Local<'s, v8::Name>,
+  descriptor: &v8::PropertyDescriptor,
+  args: v8::PropertyCallbackArguments<'s>,
+  mut rv: v8::ReturnValue,
+) {
+}
+
+fn property_descriptor<'s>(
+  scope: &mut v8::HandleScope<'s>,
+  key: v8::Local<'s, v8::Name>,
+  args: v8::PropertyCallbackArguments<'s>,
+  mut rv: v8::ReturnValue,
+) {
 }

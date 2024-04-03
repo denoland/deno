@@ -42,8 +42,10 @@ impl Script {
     sandbox: v8::Local<'s, v8::Value>,
   ) -> Result<v8::Local<'s, v8::Value>, AnyError> {
     let context = if let Ok(sandbox_obj) = sandbox.try_into() {
-      let context = i::ContextifyContext::from_sandbox_obj(scope, sandbox_obj);
-      todo!()
+      let context =
+        i::ContextifyContext::from_sandbox_obj(scope, sandbox_obj)
+          .ok_or_else(|| type_error("Invalid sandbox object"))?;
+      context.context(scope)
     } else {
       scope.get_current_context()
     };
@@ -99,7 +101,7 @@ pub fn op_vm_is_context(
   scope: &mut v8::HandleScope,
   sandbox_obj: v8::Local<v8::Object>,
 ) -> bool {
-  todo!()
+  false
 }
 
 #[cfg(test)]
