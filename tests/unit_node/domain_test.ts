@@ -42,7 +42,7 @@ Deno.test("should be able to remove emitters", async function () {
   let domainGotError = false;
 
   d.add(emitter);
-  d.on("error", function (err) {
+  d.on("error", function (_err) {
     domainGotError = true;
   });
 
@@ -103,7 +103,7 @@ Deno.test("intercept should work", async function () {
     // @ts-ignore domain types are out of date
   })(null, 2, 3);
 
-  d.intercept(function (a: number, b: number) {
+  d.intercept(function (_a: number, _b: number) {
     throw new Error("should never reach here");
     // @ts-ignore domain types are out of date
   })(new Error("a passed error"), 2, 3);
