@@ -548,6 +548,14 @@ const ci = {
           ...sysRootStep,
         },
         {
+          name: "Unscrew macOS cURL",
+          run: [
+            // cURL's busted for now
+            "brew update && brew upgrade curl --force",
+          ].join("\n"),
+          if: `matrix.os == 'macos'`
+        },
+        {
           name: "Install macOS aarch64 lld",
           run: [
             "./tools/install_prebuilt.js ld64.lld",
