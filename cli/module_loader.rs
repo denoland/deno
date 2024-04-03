@@ -5,6 +5,7 @@ use crate::args::CliOptions;
 use crate::args::DenoSubcommand;
 use crate::args::TsTypeLib;
 use crate::cache::CodeCache;
+use crate::cache::ModuleInfoCache;
 use crate::cache::ParsedSourceCache;
 use crate::emit::Emitter;
 use crate::graph_util::graph_lock_or_exit;
@@ -18,6 +19,7 @@ use crate::resolver::ModuleCodeStringSource;
 use crate::resolver::NpmModuleLoader;
 use crate::tools::check;
 use crate::tools::check::TypeChecker;
+use crate::util::path::specifier_to_file_path;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::text_encoding::code_without_source_map;
 use crate::util::text_encoding::source_map_from_code;
@@ -61,6 +63,7 @@ use std::pin::Pin;
 use std::rc::Rc;
 use std::str;
 use std::sync::Arc;
+use std::time::UNIX_EPOCH;
 
 pub struct ModuleLoadPreparer {
   options: Arc<CliOptions>,
@@ -314,6 +317,7 @@ struct SharedCliModuleLoaderState {
   node_resolver: Arc<CliNodeResolver>,
   npm_module_loader: NpmModuleLoader,
   code_cache: Option<Arc<CodeCache>>,
+  module_info_cache: Arc<ModuleInfoCache>,
 }
 
 pub struct CliModuleLoaderFactory {
@@ -332,6 +336,7 @@ impl CliModuleLoaderFactory {
     node_resolver: Arc<CliNodeResolver>,
     npm_module_loader: NpmModuleLoader,
     code_cache: Option<Arc<CodeCache>>,
+    module_info_cache: Arc<ModuleInfoCache>,
   ) -> Self {
     Self {
       shared: Arc::new(SharedCliModuleLoaderState {
@@ -353,6 +358,7 @@ impl CliModuleLoaderFactory {
         node_resolver,
         npm_module_loader,
         code_cache,
+        module_info_cache,
       }),
     }
   }
@@ -464,14 +470,37 @@ impl CliModuleLoader {
     }
 
     let code_cache = if module_type == ModuleType::JavaScript {
+      let code_hash = self
+        .shared
+        .module_info_cache
+        .get_module_source_hash(specifier, code_source.media_type)?;
+      let code_timestamp = match specifier_to_file_path(specifier) {
+        Ok(path) => Some(
+          std::fs::metadata(&path)?
+            .modified()?
+            .duration_since(UNIX_EPOCH)?
+            .as_millis() as u64,
+        ),
+        Err(_) => None,
+      };
       self.shared.code_cache.as_ref().and_then(|cache| {
         cache
-          .get_sync(specifier.as_str(), code_cache::CodeCacheType::EsModule)
+          .get_sync(
+            specifier.as_str(),
+            code_cache::CodeCacheType::EsModule,
+            code_hash.as_ref().map(|hash| hash.as_str()),
+            code_timestamp,
+          )
           .map(Cow::from)
           .inspect(|_| {
             log::debug!(
-              "V8 code cache hit for ES module: {}",
-              specifier.to_string()
+              "V8 code cache hit for ES module: {}, [{},{}]",
+              specifier.to_string(),
+              code_hash
+                .as_ref()
+                .map(|hash| hash.as_str())
+                .unwrap_or("none"),
+              code_timestamp.unwrap_or(0),
             );
           })
       })
@@ -706,10 +735,35 @@ impl ModuleLoader for CliModuleLoader {
     code_cache: &[u8],
   ) -> Pin<Box<dyn Future<Output = ()>>> {
     if let Some(cache) = self.shared.code_cache.as_ref() {
-      log::debug!("Updating V8 code cache for ES module: {}", specifier);
+      let media_type = MediaType::from_specifier(specifier);
+      let code_hash = self
+        .shared
+        .module_info_cache
+        .get_module_source_hash(specifier, media_type)
+        .ok()
+        .flatten();
+      let code_timestamp = match specifier_to_file_path(specifier) {
+        Ok(path) => std::fs::metadata(&path)
+          .ok()
+          .and_then(|m| m.modified().ok())
+          .and_then(|m| m.duration_since(UNIX_EPOCH).ok())
+          .map(|d| d.as_millis() as u64),
+        Err(_) => None,
+      };
+      log::debug!(
+        "Updating V8 code cache for ES module: {}, [{},{}]",
+        specifier,
+        code_hash
+          .as_ref()
+          .map(|hash| hash.as_str())
+          .unwrap_or("none"),
+        code_timestamp.unwrap_or(0)
+      );
       cache.set_sync(
         specifier.as_str(),
         code_cache::CodeCacheType::EsModule,
+        code_hash.as_ref().map(|hash| hash.as_str()),
+        code_timestamp,
         code_cache,
       );
     }

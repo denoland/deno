@@ -798,6 +798,7 @@ impl CliFactory {
         } else {
           Some(self.code_cache()?.clone())
         },
+        self.module_info_cache()?.clone(),
       )),
       self.root_cert_store_provider().clone(),
       self.fs().clone(),

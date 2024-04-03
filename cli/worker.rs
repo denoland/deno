@@ -55,6 +55,7 @@ use crate::npm::CliNpmResolver;
 use crate::util::checksum;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::file_watcher::WatcherRestartMode;
+use crate::util::path::specifier_to_file_path;
 use crate::version;
 
 pub trait ModuleLoaderFactory: Send + Sync {
@@ -647,6 +648,7 @@ impl CliMainWorkerFactory {
       feature_checker,
       skip_op_registration: shared.options.skip_op_registration,
       v8_code_cache: shared.code_cache.clone(),
+      specifier_resolver: Some(Arc::new(specifier_to_file_path)),
     };
 
     let mut worker = MainWorker::bootstrap_from_options(

@@ -5173,7 +5173,8 @@ fn run_etag_delete_source_cache() {
 
 #[test]
 fn code_cache_test() {
-  let script = util::testdata_path().join("run/001_hello.js");
+  let script_dir = TempDir::new();
+  script_dir.write("main.js", "console.log('Hello World - A');");
   let prg = util::deno_exe_path();
   let deno_dir = TempDir::new();
 
@@ -5184,19 +5185,22 @@ fn code_cache_test() {
       .current_dir(util::testdata_path())
       .arg("run")
       .arg("-Ldebug")
-      .arg(script.to_string())
+      .arg(format!("{}/main.js", script_dir.path()))
       .output()
       .expect("Failed to spawn script");
 
     let str_output = std::str::from_utf8(&output.stdout).unwrap();
-    assert!(str_output.contains("Hello World"));
+    assert!(str_output.contains("Hello World - A"));
 
     let debug_output = std::str::from_utf8(&output.stderr).unwrap();
     // There should be no cache hits yet, and the cache should be created.
     assert!(!debug_output.contains("V8 code cache hit"));
     assert!(debug_output.contains(
-      format!("Updating V8 code cache for ES module: file://{}", script)
-        .as_str()
+      format!(
+        "Updating V8 code cache for ES module: file://{}/main.js",
+        script_dir.path()
+      )
+      .as_str()
     ));
 
     // Check that the code cache database exists.
@@ -5211,38 +5215,68 @@ fn code_cache_test() {
       .current_dir(util::testdata_path())
       .arg("run")
       .arg("-Ldebug")
-      .arg(script.to_string())
+      .arg(format!("{}/main.js", script_dir.path()))
       .output()
       .expect("Failed to spawn script");
 
     let str_output = std::str::from_utf8(&output.stdout).unwrap();
-    assert!(str_output.contains("Hello World"));
+    assert!(str_output.contains("Hello World - A"));
 
     let debug_output = std::str::from_utf8(&output.stderr).unwrap();
     // There should be a cache hit, and the cache should not be created.
     assert!(debug_output.contains(
-      format!("V8 code cache hit for ES module: file://{}", script).as_str()
+      format!(
+        "V8 code cache hit for ES module: file://{}/main.js",
+        script_dir.path()
+      )
+      .as_str()
     ));
     assert!(!debug_output.contains("Updating V8 code cache"));
   }
 
   // Rerun with --no-code-cache.
   {
-    let output = Command::new(prg)
+    let output = Command::new(prg.clone())
       .env("DENO_DIR", deno_dir.path())
       .current_dir(util::testdata_path())
       .arg("run")
       .arg("-Ldebug")
       .arg("--no-code-cache")
-      .arg(script.to_string())
+      .arg(format!("{}/main.js", script_dir.path()))
       .output()
       .expect("Failed to spawn script");
 
     let str_output = std::str::from_utf8(&output.stdout).unwrap();
-    assert!(str_output.contains("Hello World"));
+    assert!(str_output.contains("Hello World - A"));
 
     let debug_output = std::str::from_utf8(&output.stderr).unwrap();
     // There should be no cache used.
     assert!(!debug_output.contains("V8 code cache"));
+  }
+
+  // Modify the script, and make sure that the cache is rejected.
+  script_dir.write("main.js", "console.log('Hello World - B');");
+  {
+    let output = Command::new(prg.clone())
+      .env("DENO_DIR", deno_dir.path())
+      .current_dir(util::testdata_path())
+      .arg("run")
+      .arg("-Ldebug")
+      .arg(format!("{}/main.js", script_dir.path()))
+      .output()
+      .expect("Failed to spawn script");
+
+    let str_output = std::str::from_utf8(&output.stdout).unwrap();
+    assert!(str_output.contains("Hello World - B"));
+
+    let debug_output = std::str::from_utf8(&output.stderr).unwrap();
+    assert!(!debug_output.contains("V8 code cache hit"));
+    assert!(debug_output.contains(
+      format!(
+        "Updating V8 code cache for ES module: file://{}/main.js",
+        script_dir.path()
+      )
+      .as_str()
+    ));
   }
 }
