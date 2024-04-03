@@ -21,7 +21,6 @@ import {
   serializeJsMessageData,
 } from "ext:deno_web/13_message_port.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { log } from "ext:runtime/06_util.js";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import { EventEmitter } from "node:events";
 import { BroadcastChannel } from "ext:deno_broadcast_channel/01_broadcast_channel.js";
@@ -37,6 +36,14 @@ const {
   SafeMap,
   TypeError,
 } = primordials;
+
+const debugWorkerThreads = false;
+function debugWT(...args) {
+  if (debugWorkerThreads) {
+    // deno-lint-ignore prefer-primordials
+    console.log(...args);
+  }
+}
 
 export interface WorkerOptions {
   // only for typings
@@ -190,7 +197,7 @@ class NodeWorker extends EventEmitter {
           break;
         }
         case 3: { // Close
-          log(`Host got "close" message from worker: ${this.#name}`);
+          debugWT(`Host got "close" message from worker: ${this.#name}`);
           this.#status = "CLOSED";
           return;
         }
