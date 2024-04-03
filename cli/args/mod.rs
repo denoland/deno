@@ -1627,8 +1627,8 @@ impl CliOptions {
     &self.flags.v8_flags
   }
 
-  pub fn no_code_cache(&self) -> bool {
-    self.flags.no_code_cache
+  pub fn code_cache_enabled(&self) -> bool {
+    self.flags.code_cache_enabled
   }
 
   pub fn watch_paths(&self) -> Vec<PathBuf> {

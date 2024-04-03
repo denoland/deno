@@ -493,7 +493,7 @@ pub struct Flags {
   pub unstable_config: UnstableConfig,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub v8_flags: Vec<String>,
-  pub no_code_cache: bool,
+  pub code_cache_enabled: bool,
 }
 
 fn join_paths(allowlist: &[String], d: &str) -> String {
@@ -1003,8 +1003,6 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
   flags.unstable_config.sloppy_imports =
     matches.get_flag("unstable-sloppy-imports");
 
-  flags.no_code_cache = matches.get_flag("no-code-cache");
-
   if matches.get_flag("quiet") {
     flags.log_level = Some(Level::Error);
   } else if let Some(log_level) = matches.get_one::<String>("log-level") {
@@ -1139,13 +1137,6 @@ fn clap_root() -> Command {
         .value_parser(FalseyValueParser::new())
         .action(ArgAction::SetTrue)
         .global(true),
-    )
-    .arg(
-      Arg::new("no-code-cache")
-          .long("no-code-cache")
-          .help("Disable V8 code cache feature")
-          .action(ArgAction::SetTrue)
-          .global(true),
     );
 
   for (flag_name, help, _) in crate::UNSTABLE_GRANULAR_FLAGS {
@@ -2218,6 +2209,7 @@ fn run_subcommand() -> Command {
         .trailing_var_arg(true),
     )
     .arg(env_file_arg())
+    .arg(no_code_cache_arg())
     .about("Run a JavaScript or TypeScript program")
     .long_about(
       "Run a JavaScript or TypeScript program
@@ -3204,6 +3196,13 @@ fn no_clear_screen_arg() -> Arg {
     .help("Do not clear terminal screen when under watch mode")
 }
 
+fn no_code_cache_arg() -> Arg {
+  Arg::new("no-code-cache")
+    .long("no-code-cache")
+    .help("Disable V8 code cache feature")
+    .action(ArgAction::SetTrue)
+}
+
 fn watch_exclude_arg() -> Arg {
   Arg::new("watch-exclude")
     .long("watch-exclude")
@@ -3803,6 +3802,8 @@ fn run_parse(
 ) -> clap::error::Result<()> {
   runtime_args_parse(flags, matches, true, true);
 
+  flags.code_cache_enabled = !matches.get_flag("no-code-cache");
+
   let mut script_arg =
     matches.remove_many::<String>("script_arg").ok_or_else(|| {
       let mut app = app;
@@ -3954,16 +3955,10 @@ fn test_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     flags.log_level = Some(Level::Error);
   }
 
-  let coverage_dir = matches.remove_one::<String>("coverage");
-  if coverage_dir.is_some() {
-    // Don't use V8 code cache for code coverage runs.
-    flags.no_code_cache = true;
-  }
-
   flags.subcommand = DenoSubcommand::Test(TestFlags {
     no_run,
     doc,
-    coverage_dir,
+    coverage_dir: matches.remove_one::<String>("coverage"),
     fail_fast,
     files: FileFlags { include, ignore },
     filter,
@@ -7494,7 +7489,6 @@ mod tests {
         no_prompt: true,
         no_npm: true,
         no_remote: true,
-        no_code_cache: true,
         location: Some(Url::parse("https://foo/").unwrap()),
         type_check_mode: TypeCheckMode::Local,
         allow_net: Some(vec![]),
@@ -7874,7 +7868,6 @@ mod tests {
         }),
         type_check_mode: TypeCheckMode::Local,
         no_prompt: true,
-        no_code_cache: true,
         ..Flags::default()
       }
     );

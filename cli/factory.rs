@@ -228,7 +228,7 @@ impl CliFactory {
             _ = caches.fast_check_db();
             _ = caches.type_checking_cache_db();
           }
-          if !self.options.no_code_cache() {
+          if self.options.code_cache_enabled() {
             _ = caches.code_cache_db();
           }
         }
@@ -793,10 +793,10 @@ impl CliFactory {
           fs.clone(),
           cli_node_resolver.clone(),
         ),
-        if self.options.no_code_cache() {
-          None
-        } else {
+        if self.options.code_cache_enabled() {
           Some(self.code_cache()?.clone())
+        } else {
+          None
         },
         self.module_info_cache()?.clone(),
       )),
@@ -813,10 +813,10 @@ impl CliFactory {
       // self.options.disable_deprecated_api_warning,
       true,
       self.options.verbose_deprecated_api_warning,
-      if self.options.no_code_cache() {
-        None
-      } else {
+      if self.options.code_cache_enabled() {
         Some(self.code_cache()?.clone())
+      } else {
+        None
       },
     ))
   }

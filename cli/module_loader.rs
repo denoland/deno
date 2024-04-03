@@ -470,20 +470,19 @@ impl CliModuleLoader {
     }
 
     let code_cache = if module_type == ModuleType::JavaScript {
-      let code_hash = self
-        .shared
-        .module_info_cache
-        .get_module_source_hash(specifier, code_source.media_type)?;
-      let code_timestamp = match specifier_to_file_path(specifier) {
-        Ok(path) => Some(
-          std::fs::metadata(&path)?
-            .modified()?
-            .duration_since(UNIX_EPOCH)?
-            .as_millis() as u64,
-        ),
-        Err(_) => None,
-      };
       self.shared.code_cache.as_ref().and_then(|cache| {
+        let code_hash = self
+          .shared
+          .module_info_cache
+          .get_module_source_hash(specifier, code_source.media_type)
+          .ok()
+          .flatten();
+        let code_timestamp = specifier_to_file_path(specifier)
+          .ok()
+          .and_then(|path| std::fs::metadata(&path).ok())
+          .and_then(|m| m.modified().ok())
+          .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+          .map(|d| d.as_millis() as u64);
         cache
           .get_sync(
             specifier.as_str(),
@@ -742,14 +741,12 @@ impl ModuleLoader for CliModuleLoader {
         .get_module_source_hash(specifier, media_type)
         .ok()
         .flatten();
-      let code_timestamp = match specifier_to_file_path(specifier) {
-        Ok(path) => std::fs::metadata(&path)
-          .ok()
-          .and_then(|m| m.modified().ok())
-          .and_then(|m| m.duration_since(UNIX_EPOCH).ok())
-          .map(|d| d.as_millis() as u64),
-        Err(_) => None,
-      };
+      let code_timestamp = specifier_to_file_path(specifier)
+        .ok()
+        .and_then(|path| std::fs::metadata(&path).ok())
+        .and_then(|m| m.modified().ok())
+        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+        .map(|d| d.as_millis() as u64);
       log::debug!(
         "Updating V8 code cache for ES module: {}, [{},{}]",
         specifier,

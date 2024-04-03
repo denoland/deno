@@ -521,7 +521,7 @@ impl MainWorker {
                 Ok(path) => std::fs::metadata(&path)
                   .ok()
                   .and_then(|m| m.modified().ok())
-                  .and_then(|m| m.duration_since(UNIX_EPOCH).ok())
+                  .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
                   .map(|d| d.as_millis() as u64),
                 Err(_) => None,
               }
@@ -547,7 +547,7 @@ impl MainWorker {
                   Ok(path) => std::fs::metadata(&path)
                     .ok()
                     .and_then(|m| m.modified().ok())
-                    .and_then(|m| m.duration_since(UNIX_EPOCH).ok())
+                    .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
                     .map(|d| d.as_millis() as u64),
                   Err(_) => None,
                 }
