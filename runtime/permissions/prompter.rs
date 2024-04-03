@@ -335,7 +335,7 @@ impl PermissionPrompter for TtyPrompter {
     let value = loop {
       // Clear stdin each time we loop around in case the user accidentally pasted
       // multiple lines or otherwise did something silly to generate a torrent of
-      // input.
+      // input. This doesn't work on Windows because `clear_stdin` has other side-effects.
       #[cfg(unix)]
       if let Err(err) = clear_stdin(&mut stdin_lock, &mut stderr_lock) {
         eprintln!("Error clearing stdin for permission prompt. {err:#}");
