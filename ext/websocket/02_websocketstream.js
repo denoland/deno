@@ -279,7 +279,8 @@ class WebSocketStream {
                   core.tryClose(this[_rid]);
                   break;
                 }
-                case 1005: {
+                case 1005:
+                case 1011: {
                   /* closed */
                   this[_closed].resolve({ closeCode: 1005, reason: "" });
                   core.tryClose(this[_rid]);
@@ -376,8 +377,8 @@ class WebSocketStream {
           } else {
             core.tryClose(cancelRid);
           }
-          this[_opened].reject(err);
-          this[_closed].reject(err);
+          this[_opened].reject(new WebSocketError(err));
+          this[_closed].reject(new WebSocketError(err));
         },
       );
     }
@@ -444,7 +445,7 @@ class WebSocketStream {
         },
         (err) => {
           this[_rid] && core.tryClose(this[_rid]);
-          this[_closed].reject(err);
+          this[_closed].reject(new WebSocketError(err));
         },
       );
     }
