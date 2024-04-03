@@ -325,7 +325,7 @@ jobs:
           CFLAGS=-flto=thin --sysroot=/sysroot
           __0
       - name: Unscrew macOS cURL
-        run: brew update && brew upgrade curl --force
+        run: brew update && brew upgrade curl --force && cat ~/.curlrc
         if: '!(matrix.skip) && (matrix.os == ''macos'')'
       - name: Install macOS aarch64 lld
         run: ./tools/install_prebuilt.js ld64.lld
