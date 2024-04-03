@@ -230,7 +230,7 @@ impl TestEventSenderFactory {
     let (stdout_reader, mut stdout_writer) = pipe().unwrap();
     let (stderr_reader, mut stderr_writer) = pipe().unwrap();
     let (sync_sender, mut sync_receiver) =
-      tokio::sync::mpsc::unbounded_channel::<SendMutex>();
+      tokio::sync::mpsc::unbounded_channel::<(SendMutex, SendMutex)>();
     let stdout = stdout_writer.try_clone().unwrap();
     let stderr = stderr_writer.try_clone().unwrap();
     let sender = self.sender.clone();
@@ -281,23 +281,14 @@ impl TestEventSenderFactory {
                 // If the channel closed, we assume that all important data from the streams was synced,
                 // so we just end this task immediately.
                 None => { break },
-                Some(mutex) => {
-                  // If we fail to write the sync marker for flush (likely in the case where the runtime is shutting down),
-                  // we instead just release the mutex and bail.
-                  for (stream, writer) in [(&mut test_stdout, &mut stdout_writer), (&mut test_stderr, &mut stderr_writer)] {
+                Some((mutex1, mutex2)) => {
+                  drop(mutex1);
+                  for stream in [&mut test_stdout, &mut test_stderr] {
                     if stream.is_alive() {
-                      poll_fn(|cx| { _ = stream.poll_pipe(cx); Poll::Ready(()) } ).await;
-                      // There's a theoretical chance here that we don't read any bytes before attempting to
-                      // write into a buffer that's currently full but this doesn't seem to happen in a test
-                      // specifically designed to trigger it.
-                      if writer.write_all(SYNC_MARKER).is_ok() {
-                        stream.read_until_sync_marker().await;
-                      } else {
-                        // stream.
-                      }
+                      stream.read_until_sync_marker().await;
                     }
                   }
-                  drop(mutex);
+                  drop(mutex2);
                 }
               }
             }
@@ -319,6 +310,8 @@ impl TestEventSenderFactory {
       ref_count: Default::default(),
       sender: self.sender.clone(),
       sync_sender,
+      stdout_writer,
+      stderr_writer,
     };
 
     TestEventWorkerSender {
@@ -379,7 +372,9 @@ pub struct TestEventSender {
   pub id: usize,
   ref_count: Arc<()>,
   sender: UnboundedSender<(usize, TestEvent)>,
-  sync_sender: UnboundedSender<SendMutex>,
+  sync_sender: UnboundedSender<(SendMutex, SendMutex)>,
+  stdout_writer: PipeWrite,
+  stderr_writer: PipeWrite,
 }
 
 impl Clone for TestEventSender {
@@ -389,6 +384,8 @@ impl Clone for TestEventSender {
       ref_count: self.ref_count.clone(),
       sender: self.sender.clone(),
       sync_sender: self.sync_sender.clone(),
+      stdout_writer: self.stdout_writer.try_clone().unwrap(),
+      stderr_writer: self.stderr_writer.try_clone().unwrap(),
     }
   }
 }
@@ -406,12 +403,24 @@ impl TestEventSender {
   /// Ensure that all output has been fully flushed by writing a sync marker into the
   /// stdout and stderr streams and waiting for it on the other side.
   pub fn flush(&mut self) -> Result<(), ChannelClosedError> {
-    let mutex = parking_lot::RawMutex::INIT;
-    mutex.lock();
-    self.sync_sender.send(SendMutex(&mutex as _))?;
-    if !mutex.try_lock_for(Duration::from_secs(30)) {
+    let mutex1 = parking_lot::RawMutex::INIT;
+    mutex1.lock();
+    let mutex2 = parking_lot::RawMutex::INIT;
+    mutex2.lock();
+    self
+      .sync_sender
+      .send((SendMutex(&mutex1 as _), SendMutex(&mutex2 as _)))?;
+    if !mutex1.try_lock_for(Duration::from_secs(30)) {
       panic!(
-        "Test flush deadlock, sender closed = {}",
+        "Test flush deadlock 1, sender closed = {}",
+        self.sync_sender.is_closed()
+      );
+    }
+    _ = self.stdout_writer.write_all(SYNC_MARKER);
+    _ = self.stderr_writer.write_all(SYNC_MARKER);
+    if !mutex2.try_lock_for(Duration::from_secs(30)) {
+      panic!(
+        "Test flush deadlock 2, sender closed = {}",
         self.sync_sender.is_closed()
       );
     }
@@ -421,9 +430,8 @@ impl TestEventSender {
 
 #[cfg(test)]
 mod tests {
-  use crate::tools::test::TestResult;
-
   use super::*;
+  use crate::tools::test::TestResult;
   use deno_core::unsync::spawn;
   use deno_core::unsync::spawn_blocking;
 
