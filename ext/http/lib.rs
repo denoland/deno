@@ -211,14 +211,23 @@ impl HttpConnResource {
     self: &Rc<Self>,
   ) -> Result<Option<(HttpStreamResource, String, String)>, AnyError> {
     let fut = async {
+      eprintln!("start accepting");
       let (request_tx, request_rx) = oneshot::channel();
       let (response_tx, response_rx) = oneshot::channel();
 
       let acceptor = HttpAcceptor::new(request_tx, response_rx);
       self.acceptors_tx.unbounded_send(acceptor).ok()?;
 
-      let request = request_rx.await.ok()?;
-
+      let request = request_rx
+        .await
+        .map_err(|e| {
+          eprintln!("got error in request_rx {:?}", e);
+          e
+        })
+        .ok();
+      eprintln!("request is_some() {}", request.is_some());
+      let request = request?;
+      eprintln!("accepted");
       let accept_encoding = {
         let encodings =
           fly_accept_encoding::encodings_iter_http_02(request.headers())
@@ -236,14 +245,24 @@ impl HttpConnResource {
       let url = req_url(&request, self.scheme, &self.addr);
       let stream =
         HttpStreamResource::new(self, request, response_tx, accept_encoding);
+      eprintln!("accepted returns");
       Some((stream, method, url))
     };
 
     async {
       match fut.await {
-        Some(stream) => Ok(Some(stream)),
+        Some(stream) => {
+          eprintln!("fut await returned Some");
+          Ok(Some(stream))
+        }
         // Return the connection error, if any.
-        None => self.closed().map_ok(|_| None).await,
+        None => {
+          // let r = self.closed().map_ok(|_| None).await;
+          eprintln!("fut await returned None");
+          // eprintln!("fut await returned None {:?}", r.is_err());
+          // r
+          Ok(None)
+        }
       }
     }
     .try_or_cancel(&self.cancel_handle)
@@ -262,6 +281,7 @@ impl Resource for HttpConnResource {
   }
 
   fn close(self: Rc<Self>) {
+    eprintln!("close HttpConnResource");
     self.cancel_handle.cancel();
   }
 }
@@ -308,6 +328,9 @@ impl Service<Request<Body>> for HttpService {
     let result = ready!(acceptors_rx.poll_peek(cx))
       .map(|_| ())
       .ok_or(oneshot::Canceled);
+    if matches!(result, Err(oneshot::Canceled)) {
+      eprintln!("got oneshot cancelled in `Service::poll_ready");
+    }
     Poll::Ready(result)
   }
 
@@ -344,7 +367,10 @@ impl HttpAcceptor {
     request_tx
       .send(request)
       .map(|_| response_rx)
-      .unwrap_or_else(|_| oneshot::channel().1) // Make new canceled receiver.
+      .unwrap_or_else(|_| {
+        eprintln!("make new canceled receiver");
+        oneshot::channel().1
+      }) // Make new canceled receiver.
   }
 }
 
@@ -356,6 +382,19 @@ pub struct HttpStreamResource {
   accept_encoding: Encoding,
   cancel_handle: CancelHandle,
   size: SizeHint,
+}
+
+pub struct HttpReadStreamResource {
+  conn: Rc<HttpConnResource>,
+  pub rd: AsyncRefCell<HttpRequestReader>,
+  cancel_handle: CancelHandle,
+  size: SizeHint,
+}
+
+pub struct HttpWriteStreamResource {
+  conn: Rc<HttpConnResource>,
+  wr: AsyncRefCell<HttpResponseWriter>,
+  accept_encoding: Encoding,
 }
 
 impl HttpStreamResource {
@@ -432,6 +471,7 @@ impl Resource for HttpStreamResource {
   }
 
   fn close(self: Rc<Self>) {
+    eprintln!("HttpStreamResource gets closed");
     self.cancel_handle.cancel();
   }
 
@@ -529,8 +569,14 @@ async fn op_http_accept(
       let r = NextRequestResponse(stream_rid, method, url);
       Ok(Some(r))
     }
-    Ok(None) => Ok(None),
-    Err(err) => Err(err),
+    Ok(None) => {
+      eprintln!("got None in `op_http_accept");
+      Ok(None)
+    }
+    Err(err) => {
+      eprintln!("got Err in `op_http_accept` {:?}", err);
+      Err(err)
+    }
   }
 }
 

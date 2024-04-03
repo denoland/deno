@@ -113,6 +113,7 @@ class HttpConn {
     try {
       nextRequest = await op_http_accept(this.#rid);
     } catch (error) {
+      console.log("error", error);
       this.close();
       // A connection error seen here would cause disrupted responses to throw
       // a generic `BadResource` error. Instead store this error and replace
@@ -178,10 +179,10 @@ class HttpConn {
   close() {
     if (!this.#closed) {
       this.#closed = true;
-      core.close(this.#rid);
+      core.tryClose(this.#rid);
       for (const rid of new SafeSetIterator(this.#managedResources)) {
         SetPrototypeDelete(this.#managedResources, rid);
-        core.close(rid);
+        core.tryClose(rid);
       }
     }
   }
