@@ -324,7 +324,7 @@ jobs:
           CC=clang-16
           CFLAGS=-flto=thin --sysroot=/sysroot
           __0
-      - name: Unscrew macOS cURL
+      - name: Remove macOS cURL --ipv4 flag
         run: |-
           curl --version
           which curl

@@ -548,9 +548,9 @@ const ci = {
           ...sysRootStep,
         },
         {
-          name: "Unscrew macOS cURL",
+          name: "Remove macOS cURL --ipv4 flag",
           run: [
-            // cURL's busted for now
+            // cURL's --ipv4 flag is busted for now
             "curl --version",
             "which curl",
             "cat /etc/hosts",
