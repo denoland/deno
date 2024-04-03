@@ -30,3 +30,40 @@ console.log("Deno.writeAll is", Deno.writeAll);
 console.log("Deno.writeAllSync is", Deno.writeAllSync);
 console.log("Deno.write is", Deno.write);
 console.log("Deno.writeSync is", Deno.writeSync);
+
+// TCP
+// Since these tests may run in parallel, ensure this port is unique to this file
+const tcpPort = 4509;
+const tcpListener = Deno.listen({ port: tcpPort });
+console.log("Deno.Listener.prototype.rid is", tcpListener.rid);
+
+const tcpConn = await Deno.connect({ port: tcpPort });
+console.log("Deno.Conn.prototype.rid is", tcpConn.rid);
+
+tcpConn.close();
+tcpListener.close();
+
+// Unix
+const socketPath = "./test.sock";
+const unixListener = Deno.listen({ transport: "unix", path: socketPath });
+
+const unixConn = await Deno.connect({ transport: "unix", path: socketPath });
+console.log("Deno.UnixConn.prototype.rid is", unixConn.rid);
+
+unixConn.close();
+unixListener.close();
+Deno.removeSync(socketPath);
+
+// TLS
+// Since these tests may run in parallel, ensure this port is unique to this file
+const tlsPort = 4510;
+const cert = Deno.readTextFileSync("../../../testdata/tls/localhost.crt");
+const key = Deno.readTextFileSync("../../../testdata/tls/localhost.key");
+const tlsListener = Deno.listenTls({ port: tlsPort, cert, key });
+console.log("Deno.TlsListener.prototype.rid is", tlsListener.rid);
+
+const tlsConn = await Deno.connectTls({ port: tlsPort });
+console.log("Deno.TlsConn.prototype.rid is", tlsConn.rid);
+
+tlsConn.close();
+tlsListener.close();

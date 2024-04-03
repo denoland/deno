@@ -677,6 +677,11 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       9: future,
     } = runtimeOptions;
 
+    // TODO(iuioiua): remove in Deno v2. This allows us to dynamically delete
+    // class properties within constructors for classes that are not defined
+    // within the Deno namespace.
+    internals.future = future;
+
     removeImportedOps();
 
     deprecatedApiWarningDisabled = shouldDisableDeprecatedApiWarning;
