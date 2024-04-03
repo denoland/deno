@@ -12,7 +12,7 @@ const ubuntuX86XlRunner = "ubuntu-22.04-xl";
 const ubuntuARMRunner = "ubicloud-standard-16-arm";
 const windowsX86Runner = "windows-2022";
 const windowsX86XlRunner = "windows-2022-xl";
-const macosX86Runner = "macos-12";
+const macosX86Runner = "macos-13";
 const macosArmRunner = "macos-14";
 
 const Runners = {
@@ -454,7 +454,7 @@ const ci = {
           if: "matrix.wpt",
         },
         {
-          ...submoduleStep("./tools/node_compat/node"),
+          ...submoduleStep("./tests/node_compat/runner/suite"),
           if: "matrix.job == 'lint' && matrix.os == 'linux'",
         },
         {
@@ -653,7 +653,7 @@ const ci = {
           name: "node_compat/setup.ts --check",
           if: "matrix.job == 'lint' && matrix.os == 'linux'",
           run:
-            "deno run --allow-write --allow-read --allow-run=git ./tools/node_compat/setup.ts --check",
+            "deno run --allow-write --allow-read --allow-run=git ./tests/node_compat/runner/setup.ts --check",
         },
         {
           name: "Build debug",
