@@ -1,11 +1,12 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::AnyError;
 use deno_core::error::type_error;
+use deno_core::error::AnyError;
 use deno_core::v8;
 use deno_core::v8::MapFnTo;
 
-pub const PRIVATE_SYMBOL_NAME: v8::OneByteConst = v8::String::create_external_onebyte_const(b"node:contextify:context");
+pub const PRIVATE_SYMBOL_NAME: v8::OneByteConst =
+  v8::String::create_external_onebyte_const(b"node:contextify:context");
 
 /// An unbounded script that can be run in a context.
 #[derive(Debug)]
@@ -25,7 +26,8 @@ impl ContextifyScript {
       source,
       v8::script_compiler::CompileOptions::NoCompileOptions,
       v8::script_compiler::NoCacheReason::NoReason,
-    ).ok_or_else(|| type_error("Failed to compile script"))?;
+    )
+    .ok_or_else(|| type_error("Failed to compile script"))?;
     let script = v8::Global::new(scope, unbound_script);
     Ok(Self { script })
   }
@@ -40,17 +42,9 @@ impl ContextifyScript {
     let unbound_script = v8::Local::new(tc_scope, self.script.clone());
     let script = unbound_script.bind_to_current_context(tc_scope);
 
-    // TODO: support `break_on_first_line` arg
-    // TODO: support `break_on_sigint` and `timeout` args
     let result = script.run(tc_scope);
-    // TODO: support `microtask_queue` arg
 
     if tc_scope.has_caught() {
-      // TODO:
-      // if display_errors {
-      //
-      // }
-
       if !tc_scope.has_terminated() {
         tc_scope.rethrow();
       }
@@ -90,30 +84,35 @@ impl ContextifyContext {
 
     let context = v8::Global::new(scope, v8_context);
     let sandbox = v8::Global::new(scope, sandbox_obj);
-    let wrapper = deno_core::cppgc::make_cppgc_object(scope, Self {
-      context,
-      sandbox,
-    });
+    let wrapper =
+      deno_core::cppgc::make_cppgc_object(scope, Self { context, sandbox });
 
-    let private_str = v8::String::new_from_onebyte_const(scope, &PRIVATE_SYMBOL_NAME);
+    let private_str =
+      v8::String::new_from_onebyte_const(scope, &PRIVATE_SYMBOL_NAME);
     let private_symbol = v8::Private::for_api(scope, private_str);
 
-    sandbox_obj
-      .set_private(scope, private_symbol, wrapper.into());
+    sandbox_obj.set_private(scope, private_symbol, wrapper.into());
   }
 
   pub fn from_sandbox_obj<'a>(
     scope: &mut v8::HandleScope,
     sandbox_obj: v8::Local<v8::Object>,
   ) -> Option<&'a Self> {
-    let private_str = v8::String::new_from_onebyte_const(scope, &PRIVATE_SYMBOL_NAME);
+    let private_str =
+      v8::String::new_from_onebyte_const(scope, &PRIVATE_SYMBOL_NAME);
     let private_symbol = v8::Private::for_api(scope, private_str);
 
-    sandbox_obj.get_private(scope, private_symbol)
-      .and_then(|wrapper| deno_core::cppgc::try_unwrap_cppgc_object::<Self>(wrapper))
+    sandbox_obj
+      .get_private(scope, private_symbol)
+      .and_then(|wrapper| {
+        deno_core::cppgc::try_unwrap_cppgc_object::<Self>(wrapper)
+      })
   }
 
-  pub fn context<'a>(&self, scope: &mut v8::HandleScope<'a>) -> v8::Local<'a, v8::Context> {
+  pub fn context<'a>(
+    &self,
+    scope: &mut v8::HandleScope<'a>,
+  ) -> v8::Local<'a, v8::Context> {
     v8::Local::new(scope, &self.context)
   }
 
@@ -125,7 +124,10 @@ impl ContextifyContext {
     ctx.global(scope)
   }
 
-  fn sandbox<'a>(&self, scope: &mut v8::HandleScope<'a>) -> v8::Local<'a, v8::Object> {
+  fn sandbox<'a>(
+    &self,
+    scope: &mut v8::HandleScope<'a>,
+  ) -> v8::Local<'a, v8::Object> {
     v8::Local::new(scope, &self.sandbox)
   }
 
@@ -179,7 +181,6 @@ fn init_global_template<'a>(
   v8::Local::new(scope, object_template_slot.0)
 }
 
-
 extern "C" fn c_noop(info: *const v8::FunctionCallbackInfo) {}
 
 thread_local! {
@@ -228,17 +229,35 @@ fn init_global_template_inner(scope: &mut v8::HandleScope) {
   scope.set_slot(contextify_global_template_slot);
 }
 
-
 fn property_getter<'s>(
   scope: &mut v8::HandleScope<'s>,
   key: v8::Local<'s, v8::Name>,
   args: v8::PropertyCallbackArguments<'s>,
-  mut rv: v8::ReturnValue,
+  mut ret: v8::ReturnValue,
 ) {
-  let ctx = ContextifyContext::get(scope, args.this());
+  let ctx = ContextifyContext::get(scope, args.this()).unwrap();
 
   let context = ctx.context(scope);
   let sandbox = ctx.sandbox(scope);
+
+  let tc_scope = &mut v8::TryCatch::new(scope);
+  let maybe_rv = sandbox.get_real_named_property(tc_scope, key).or_else(|| {
+    ctx
+      .global_proxy(tc_scope)
+      .get_real_named_property(tc_scope, key)
+  });
+
+  if let Some(mut rv) = maybe_rv {
+    if tc_scope.has_caught() && !tc_scope.has_terminated() {
+      tc_scope.rethrow();
+    }
+
+    if rv == sandbox {
+      rv = ctx.global_proxy(tc_scope).into();
+    }
+
+    ret.set(rv);
+  }
 }
 
 fn property_setter<'s>(
@@ -248,6 +267,87 @@ fn property_setter<'s>(
   args: v8::PropertyCallbackArguments<'s>,
   mut rv: v8::ReturnValue,
 ) {
+  let ctx = ContextifyContext::get(scope, args.this()).unwrap();
+
+  let context = ctx.context(scope);
+  let (attributes, is_declared_on_global_proxy) = match ctx
+    .global_proxy(scope)
+    .get_real_named_property_attributes(scope, key)
+  {
+    Some(attr) => (attr, true),
+    None => (v8::PropertyAttribute::NONE, false),
+  };
+  let mut read_only = attributes.is_read_only();
+
+  let (attributes, is_declared_on_sandbox) = match ctx
+    .sandbox(scope)
+    .get_real_named_property_attributes(scope, key)
+  {
+    Some(attr) => (attr, true),
+    None => (v8::PropertyAttribute::NONE, false),
+  };
+  read_only |= attributes.is_read_only();
+
+  if read_only {
+    return;
+  }
+
+  // true for x = 5
+  // false for this.x = 5
+  // false for Object.defineProperty(this, 'foo', ...)
+  // false for vmResult.x = 5 where vmResult = vm.runInContext();
+  let is_contextual_store = ctx.global_proxy(scope) != args.this();
+
+  // Indicator to not return before setting (undeclared) function declarations
+  // on the sandbox in strict mode, i.e. args.ShouldThrowOnError() = true.
+  // True for 'function f() {}', 'this.f = function() {}',
+  // 'var f = function()'.
+  // In effect only for 'function f() {}' because
+  // var f = function(), is_declared = true
+  // this.f = function() {}, is_contextual_store = false.
+  let is_function = value.is_function();
+
+  let is_declared = is_declared_on_global_proxy || is_declared_on_sandbox;
+  if !is_declared
+    && args.should_throw_on_error()
+    && is_contextual_store
+    && !is_function
+  {
+    return;
+  }
+
+  if !is_declared && key.is_symbol() {
+    return;
+  };
+
+  if ctx.sandbox(scope).set(scope, key.into(), value).is_none() {
+    return;
+  }
+
+  if is_declared_on_sandbox {
+    if let Some(desc) =
+      ctx.sandbox(scope).get_own_property_descriptor(scope, key)
+    {
+      if !desc.is_undefined() {
+        let desc_obj: v8::Local<v8::Object> = desc.try_into().unwrap();
+        // We have to specify the return value for any contextual or get/set
+        // property
+        let get_key =
+          v8::String::new_external_onebyte_static(scope, b"get").unwrap();
+        let set_key =
+          v8::String::new_external_onebyte_static(scope, b"get").unwrap();
+        if desc_obj
+          .has_own_property(scope, get_key.into())
+          .unwrap_or(false)
+          || desc_obj
+            .has_own_property(scope, set_key.into())
+            .unwrap_or(false)
+        {
+          rv.set(value);
+        }
+      }
+    }
+  }
 }
 
 fn property_deleter<'s>(
@@ -256,7 +356,18 @@ fn property_deleter<'s>(
   args: v8::PropertyCallbackArguments<'s>,
   mut rv: v8::ReturnValue,
 ) {
+  let ctx = ContextifyContext::get(scope, args.this()).unwrap();
 
+  let context = ctx.context(scope);
+  let sandbox = ctx.sandbox(scope);
+  let context_scope = &mut v8::ContextScope::new(scope, context);
+  if !sandbox
+    .delete(context_scope, key.into())
+    .unwrap_or(false) {
+    return;
+  }
+
+  rv.set_bool(false);
 }
 
 fn property_enumerator<'s>(

@@ -1,7 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::AnyError;
 use deno_core::error::type_error;
+use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::v8;
 
@@ -42,9 +42,8 @@ impl Script {
     sandbox: v8::Local<'s, v8::Value>,
   ) -> Result<v8::Local<'s, v8::Value>, AnyError> {
     let context = if let Ok(sandbox_obj) = sandbox.try_into() {
-      let context =
-        i::ContextifyContext::from_sandbox_obj(scope, sandbox_obj)
-          .ok_or_else(|| type_error("Invalid sandbox object"))?;
+      let context = i::ContextifyContext::from_sandbox_obj(scope, sandbox_obj)
+        .ok_or_else(|| type_error("Invalid sandbox object"))?;
       context.context(scope)
     } else {
       scope.get_current_context()
