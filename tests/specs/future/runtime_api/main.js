@@ -30,3 +30,5 @@ console.log("Deno.writeAll is", Deno.writeAll);
 console.log("Deno.writeAllSync is", Deno.writeAllSync);
 console.log("Deno.write is", Deno.write);
 console.log("Deno.writeSync is", Deno.writeSync);
+
+self.close();
