@@ -2,6 +2,7 @@
 
 use std::path::PathBuf;
 
+use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 
 use crate::args::ConfigFile;
@@ -42,6 +43,9 @@ pub fn discover(
     },
   };
 
-  let lockfile = Lockfile::new(filename, flags.lock_write)?;
+  let content = std::fs::read_to_string(&filename)
+    .with_context(|| format!("Failed reading '{}'.", filename.display()))?;
+  let lockfile =
+    Lockfile::with_lockfile_content(filename, &content, flags.lock_write)?;
   Ok(Some(lockfile))
 }

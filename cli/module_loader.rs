@@ -5,6 +5,7 @@ use crate::args::CliOptions;
 use crate::args::DenoSubcommand;
 use crate::args::TsTypeLib;
 use crate::cache::ParsedSourceCache;
+use crate::cache::CACHE_PERM;
 use crate::emit::Emitter;
 use crate::graph_util::graph_lock_or_exit;
 use crate::graph_util::CreateGraphOptions;
@@ -17,6 +18,7 @@ use crate::resolver::ModuleCodeStringSource;
 use crate::resolver::NpmModuleLoader;
 use crate::tools::check;
 use crate::tools::check::TypeChecker;
+use crate::util::fs::atomic_write_file;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::text_encoding::code_without_source_map;
 use crate::util::text_encoding::source_map_from_code;
@@ -132,7 +134,10 @@ impl ModuleLoadPreparer {
       // validate the integrity of all the modules
       graph_lock_or_exit(graph, &mut lockfile);
       // update it with anything new
-      lockfile.write().context("Failed writing lockfile.")?;
+      if let Some(bytes) = lockfile.resolve_write_bytes() {
+        atomic_write_file(&lockfile.filename, bytes, CACHE_PERM)
+          .context("Failed writing lockfile.")?;
+      }
     }
 
     // save the graph and get a reference to the new graph

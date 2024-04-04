@@ -49,11 +49,13 @@ use tokio::select;
 use crate::args::package_json::PackageJsonDeps;
 use crate::args::DenoSubcommand;
 use crate::args::StorageKeyResolver;
+use crate::cache::CACHE_PERM;
 use crate::errors;
 use crate::npm::CliNpmResolver;
 use crate::util::checksum;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::file_watcher::WatcherRestartMode;
+use crate::util::fs::atomic_write_file;
 use crate::version;
 
 pub trait ModuleLoaderFactory: Send + Sync {
@@ -529,10 +531,11 @@ impl CliMainWorkerFactory {
         // For npm binary commands, ensure that the lockfile gets updated
         // so that we can re-use the npm resolution the next time it runs
         // for better performance
-        lockfile
-          .lock()
-          .write()
-          .context("Failed writing lockfile.")?;
+        let mut lockfile = lockfile.lock();
+        if let Some(bytes) = lockfile.resolve_write_bytes() {
+          atomic_write_file(&lockfile.filename, bytes, CACHE_PERM)
+            .context("Failed writing lockfile.")?;
+        }
       }
 
       (node_resolution.into_url(), is_main_cjs)

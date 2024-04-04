@@ -15,6 +15,7 @@ use deno_ast::MediaType;
 use deno_config::FmtOptionsConfig;
 use deno_config::TsConfig;
 use deno_core::anyhow::anyhow;
+use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde::de::DeserializeOwned;
 use deno_core::serde::Deserialize;
@@ -1671,7 +1672,14 @@ fn resolve_node_modules_dir(config_file: &ConfigFile) -> Option<PathBuf> {
 }
 
 fn resolve_lockfile_from_path(lockfile_path: PathBuf) -> Option<Lockfile> {
-  match Lockfile::new(lockfile_path, false) {
+  fn load_lockfile(lockfile_path: PathBuf) -> Result<Lockfile, AnyError> {
+    let text = std::fs::read_to_string(&lockfile_path)?;
+    let lockfile =
+      Lockfile::with_lockfile_content(lockfile_path, &text, false)?;
+    Ok(lockfile)
+  }
+
+  match load_lockfile(lockfile_path) {
     Ok(value) => {
       if let Ok(specifier) = ModuleSpecifier::from_file_path(&value.filename) {
         lsp_log!("  Resolved lockfile: \"{}\"", specifier);

@@ -99,6 +99,7 @@ use crate::cache::FastInsecureHasher;
 use crate::cache::GlobalHttpCache;
 use crate::cache::HttpCache;
 use crate::cache::LocalLspHttpCache;
+use crate::cache::CACHE_PERM;
 use crate::factory::CliFactory;
 use crate::file_fetcher::FileFetcher;
 use crate::graph_util;
@@ -119,6 +120,7 @@ use crate::tools::fmt::format_file;
 use crate::tools::fmt::format_parsed_source;
 use crate::tools::upgrade::check_for_upgrades_for_lsp;
 use crate::tools::upgrade::upgrade_check_enabled;
+use crate::util::fs::atomic_write_file;
 use crate::util::fs::remove_dir_all_if_exists;
 use crate::util::path::is_importable_ext;
 use crate::util::path::specifier_to_file_path;
@@ -322,9 +324,13 @@ impl LanguageServer {
       // Update the lockfile on the file system with anything new
       // found after caching
       if let Some(lockfile) = cli_options.maybe_lockfile() {
-        let lockfile = lockfile.lock();
-        if let Err(err) = lockfile.write() {
-          lsp_warn!("Error writing lockfile: {:#}", err);
+        let mut lockfile = lockfile.lock();
+        if let Some(bytes) = lockfile.resolve_write_bytes() {
+          if let Err(err) =
+            atomic_write_file(&lockfile.filename, bytes, CACHE_PERM)
+          {
+            lsp_warn!("Error writing lockfile: {:#}", err);
+          }
         }
       }
 

@@ -28,12 +28,14 @@ use deno_terminal::colors;
 
 use crate::args::Flags;
 use crate::args::InfoFlags;
+use crate::cache::CACHE_PERM;
 use crate::display;
 use crate::factory::CliFactory;
 use crate::graph_util::graph_lock_or_exit;
 use crate::npm::CliNpmResolver;
 use crate::npm::ManagedCliNpmResolver;
 use crate::util::checksum;
+use crate::util::fs::atomic_write_file;
 
 pub async fn info(flags: Flags, info_flags: InfoFlags) -> Result<(), AnyError> {
   let factory = CliFactory::from_flags(flags)?;
@@ -74,7 +76,10 @@ pub async fn info(flags: Flags, info_flags: InfoFlags) -> Result<(), AnyError> {
       // validate the integrity of all the modules
       graph_lock_or_exit(&graph, &mut lockfile);
       // update it with anything new
-      lockfile.write().context("Failed writing lockfile.")?;
+      if let Some(bytes) = lockfile.resolve_write_bytes() {
+        atomic_write_file(&lockfile.filename, bytes, CACHE_PERM)
+          .context("Failed writing lockfile.")?;
+      }
     }
 
     if info_flags.json {
