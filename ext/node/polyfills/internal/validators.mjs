@@ -288,9 +288,51 @@ const validateArray = hideStackFrames(
   },
 );
 
+/**
+ * @callback validateStringArray
+ * @param {*} value
+ * @param {string} name
+ * @returns {asserts value is string[]}
+ */
+
+/** @type {validateStringArray} */
+const validateStringArray = hideStackFrames((value, name) => {
+  validateArray(value, name);
+  for (let i = 0; i < value.length; ++i) {
+    // Don't use validateString here for performance reasons, as
+    // we would generate intermediate strings for the name.
+    if (typeof value[i] !== "string") {
+      throw new codes.ERR_INVALID_ARG_TYPE(`${name}[${i}]`, "string", value[i]);
+    }
+  }
+});
+
+/**
+ * @callback validateBooleanArray
+ * @param {*} value
+ * @param {string} name
+ * @returns {asserts value is boolean[]}
+ */
+
+/** @type {validateBooleanArray} */
+const validateBooleanArray = hideStackFrames((value, name) => {
+  validateArray(value, name);
+  for (let i = 0; i < value.length; ++i) {
+    // Don't use validateBoolean here for performance reasons, as
+    // we would generate intermediate strings for the name.
+    if (value[i] !== true && value[i] !== false) {
+      throw new codes.ERR_INVALID_ARG_TYPE(
+        `${name}[${i}]`,
+        "boolean",
+        value[i],
+      );
+    }
+  }
+});
+
 function validateUnion(value, name, union) {
   if (!ArrayPrototypeIncludes(union, value)) {
-    throw new ERR_INVALID_ARG_TYPE(
+    throw new codes.ERR_INVALID_ARG_TYPE(
       name,
       `('${ArrayPrototypeJoin(union, "|")}')`,
       value,
@@ -305,6 +347,7 @@ export default {
   validateAbortSignal,
   validateArray,
   validateBoolean,
+  validateBooleanArray,
   validateBuffer,
   validateFunction,
   validateInt32,
@@ -314,6 +357,7 @@ export default {
   validateOneOf,
   validatePort,
   validateString,
+  validateStringArray,
   validateUint32,
   validateUnion,
 };
@@ -324,6 +368,7 @@ export {
   validateAbortSignal,
   validateArray,
   validateBoolean,
+  validateBooleanArray,
   validateBuffer,
   validateFunction,
   validateInt32,
@@ -333,6 +378,7 @@ export {
   validateOneOf,
   validatePort,
   validateString,
+  validateStringArray,
   validateUint32,
   validateUnion,
 };

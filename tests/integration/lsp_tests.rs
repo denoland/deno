@@ -1061,6 +1061,7 @@ fn lsp_did_change_deno_configuration_notification() {
       }],
     }))
   );
+  client.shutdown();
 }
 
 #[test]
@@ -1098,6 +1099,7 @@ fn lsp_deno_task() {
       }
     ])
   );
+  client.shutdown();
 }
 
 #[test]
@@ -1110,6 +1112,7 @@ fn lsp_reload_import_registries_command() {
     json!({ "command": "deno.reloadImportRegistries" }),
   );
   assert_eq!(res, json!(true));
+  client.shutdown();
 }
 
 #[test]
@@ -1598,6 +1601,7 @@ fn lsp_inlay_hints() {
       }
     ])
   );
+  client.shutdown();
 }
 
 #[test]
@@ -1645,6 +1649,7 @@ fn lsp_inlay_hints_not_enabled() {
     }),
   );
   assert_eq!(res, json!(null));
+  client.shutdown();
 }
 
 #[test]
@@ -2409,6 +2414,7 @@ fn lsp_hover_dependency() {
       }
     })
   );
+  client.shutdown();
 }
 
 // This tests for a regression covered by denoland/deno#12753 where the lsp was
@@ -4822,6 +4828,7 @@ fn test_lsp_code_actions_ordering() {
       },
     ])
   );
+  client.shutdown();
 }
 
 #[test]
@@ -4851,6 +4858,7 @@ fn lsp_status_file() {
   );
   let res = res.as_str().unwrap().to_string();
   assert!(res.starts_with("# Deno Language Server Status"));
+  client.shutdown();
 }
 
 #[test]
@@ -5598,6 +5606,7 @@ fn lsp_cache_then_definition() {
       },
     }]),
   );
+  client.shutdown();
 }
 
 #[test]
@@ -6355,6 +6364,7 @@ fn lsp_quote_style_from_workspace_settings() {
       },
     }]),
   );
+  client.shutdown();
 }
 
 #[test]
@@ -6812,6 +6822,7 @@ fn lsp_completions_auto_import() {
       ]
     })
   );
+  client.shutdown();
 }
 
 #[test]
@@ -7063,6 +7074,7 @@ fn lsp_npm_completions_auto_import_and_quick_fix_no_import_map() {
       }
     }])
   );
+  client.shutdown();
 }
 
 #[test]
@@ -7102,6 +7114,7 @@ fn lsp_semantic_tokens_for_disabled_module() {
       "data": [0, 6, 9, 7, 9, 0, 15, 9, 7, 8],
     })
   );
+  client.shutdown();
 }
 
 #[test]
@@ -7538,6 +7551,7 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
       ]
     })
   );
+  client.shutdown();
 }
 
 #[test]
@@ -7633,6 +7647,7 @@ fn lsp_completions_snippet() {
       "insertTextFormat": 2
     })
   );
+  client.shutdown();
 }
 
 #[test]
@@ -7688,6 +7703,7 @@ fn lsp_completions_no_snippet() {
       ]
     })
   );
+  client.shutdown();
 }
 
 #[test]
@@ -7919,6 +7935,7 @@ fn lsp_npm_specifier_unopened_file() {
   assert!(!list.is_incomplete);
   assert_eq!(list.items.len(), 63);
   assert!(list.items.iter().any(|i| i.label == "ansi256"));
+  client.shutdown();
 }
 
 #[test]
@@ -11432,6 +11449,193 @@ fn lsp_vendor_dir() {
 
   client.shutdown();
 }
+#[test]
+fn lsp_deno_json_scopes_fmt_config() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.create_dir_all("project1");
+  temp_dir.write(
+    "project1/deno.json",
+    json!({
+      "fmt": {
+        "semiColons": false,
+      },
+    })
+    .to_string(),
+  );
+  temp_dir.create_dir_all("project2");
+  temp_dir.write(
+    "project2/deno.json",
+    json!({
+      "fmt": {
+        "singleQuote": true,
+      },
+    })
+    .to_string(),
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("project1/file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "console.log(\"\");\n",
+    },
+  }));
+  let res = client.write_request(
+    "textDocument/formatting",
+    json!({
+      "textDocument": {
+        "uri": temp_dir.uri().join("project1/file.ts").unwrap(),
+      },
+      "options": {
+        "tabSize": 2,
+        "insertSpaces": true,
+      },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([{
+      "range": {
+        "start": { "line": 0, "character": 15 },
+        "end": { "line": 0, "character": 16 },
+      },
+      "newText": "",
+    }])
+  );
+  client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("project2/file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "console.log(\"\");\n",
+    },
+  }));
+  let res = client.write_request(
+    "textDocument/formatting",
+    json!({
+      "textDocument": {
+        "uri": temp_dir.uri().join("project2/file.ts").unwrap(),
+      },
+      "options": {
+        "tabSize": 2,
+        "insertSpaces": true,
+      },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([{
+      "range": {
+        "start": { "line": 0, "character": 12 },
+        "end": { "line": 0, "character": 14 },
+      },
+      "newText": "''",
+    }])
+  );
+  client.shutdown();
+}
+
+#[test]
+fn lsp_deno_json_scopes_lint_config() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.create_dir_all("project1");
+  temp_dir.write(
+    "project1/deno.json",
+    json!({
+      "lint": {
+        "rules": {
+          "include": ["camelcase"],
+        },
+      },
+    })
+    .to_string(),
+  );
+  temp_dir.create_dir_all("project2");
+  temp_dir.write(
+    "project2/deno.json",
+    json!({
+      "lint": {
+        "rules": {
+          "include": ["ban-untagged-todo"],
+        },
+      },
+    })
+    .to_string(),
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("project1/file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"
+        // TODO: Unused var
+        const snake_case_var = 1;
+        console.log(snake_case_var);
+      "#,
+    },
+  }));
+  assert_eq!(
+    json!(diagnostics.messages_with_source("deno-lint")),
+    json!({
+      "uri": temp_dir.uri().join("project1/file.ts").unwrap(),
+      "diagnostics": [{
+        "range": {
+          "start": { "line": 2, "character": 14 },
+          "end": { "line": 2, "character": 28 },
+        },
+        "severity": 2,
+        "code": "camelcase",
+        "source": "deno-lint",
+        "message": "Identifier 'snake_case_var' is not in camel case.\nConsider renaming `snake_case_var` to `snakeCaseVar`",
+      }],
+      "version": 1,
+    })
+  );
+  client.write_notification(
+    "textDocument/didClose",
+    json!({
+      "textDocument": {
+        "uri": temp_dir.uri().join("project1/file.ts").unwrap(),
+      },
+    }),
+  );
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("project2/file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"
+        // TODO: Unused var
+        const snake_case_var = 1;
+        console.log(snake_case_var);
+      "#,
+    },
+  }));
+  assert_eq!(
+    json!(diagnostics.messages_with_source("deno-lint")),
+    json!({
+      "uri": temp_dir.uri().join("project2/file.ts").unwrap(),
+      "diagnostics": [{
+        "range": {
+          "start": { "line": 1, "character": 8 },
+          "end": { "line": 1, "character": 27 },
+        },
+        "severity": 2,
+        "code": "ban-untagged-todo",
+        "source": "deno-lint",
+        "message": "TODO should be tagged with (@username) or (#issue)\nAdd a user tag or issue reference to the TODO comment, e.g. TODO(@djones), TODO(djones), TODO(#123)",
+      }],
+      "version": 1,
+    })
+  );
+  client.shutdown();
+}
 
 #[test]
 fn lsp_import_unstable_bare_node_builtins_auto_discovered() {
@@ -11995,7 +12199,7 @@ C.test();
     }))
     .all();
 
-  assert_eq!(diagnostics.len(), 0);
+  assert_eq!(json!(diagnostics), json!([]));
 
   client.shutdown();
 }
