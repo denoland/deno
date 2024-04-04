@@ -151,6 +151,13 @@ uuid = { workspace = true, features = ["serde"] }
 walkdir = "=2.3.2"
 zeromq.workspace = true
 zstd.workspace = true
+tracing = "0.1.40"
+tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+opentelemetry = "0.22.0"
+opentelemetry_sdk = { version = "0.22.1", features = ["rt-tokio"] }
+tracing-opentelemetry = "0.23.0"
+opentelemetry-otlp = "0.15.0"
+opentelemetry-semantic-conventions = "0.14.0"
 
 [target.'cfg(windows)'.dependencies]
 fwdansi.workspace = true
