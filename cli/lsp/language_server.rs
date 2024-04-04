@@ -851,7 +851,7 @@ impl Inner {
       .as_ref()
       .map(|c| std::borrow::Cow::Borrowed(c))
       .or_else(|| {
-        std::env::var("DENO_LSP_TRACING").ok().map(|_| {
+        std::env::var("DENO_LSP_TRACE").ok().map(|_| {
           std::borrow::Cow::Owned(super::trace::TracingConfig {
             enable: true,
             ..Default::default()
