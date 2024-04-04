@@ -27,3 +27,4 @@ Deno.writeAll is undefined
 Deno.writeAllSync is undefined
 Deno.write is undefined
 Deno.writeSync is undefined
+Deno.FsFile constructor is illegal
