@@ -67,3 +67,4 @@ console.log("Deno.TlsConn.prototype.rid is", tlsConn.rid);
 
 tlsConn.close();
 tlsListener.close();
+self.close();
