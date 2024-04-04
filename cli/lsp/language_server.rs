@@ -849,7 +849,7 @@ impl Inner {
       .workspace_settings()
       .tracing
       .as_ref()
-      .map(|c| std::borrow::Cow::Borrowed(c))
+      .map(std::borrow::Cow::Borrowed)
       .or_else(|| {
         std::env::var("DENO_LSP_TRACE").ok().map(|_| {
           std::borrow::Cow::Owned(super::trace::TracingConfig {
