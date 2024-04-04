@@ -838,12 +838,26 @@ impl Inner {
   }
 
   pub fn update_tracing(&mut self) {
-    let tracing = self.config.workspace_settings().tracing.as_ref();
+    let tracing = self
+      .config
+      .workspace_settings()
+      .tracing
+      .as_ref()
+      .map(|c| std::borrow::Cow::Borrowed(c))
+      .or_else(|| {
+        std::env::var("DENO_LSP_TRACING").ok().map(|_| {
+          std::borrow::Cow::Owned(super::trace::TracingConfig {
+            enable: true,
+            ..Default::default()
+          })
+        })
+      });
     self._tracing = tracing.and_then(|conf| {
       if !conf.enable {
         return None;
       }
-      super::trace::init_tracing_subscriber(conf)
+      lsp_log!("Initializing tracing subscriber: {:#?}", conf);
+      super::trace::init_tracing_subscriber(&conf)
         .inspect_err(|e| {
           lsp_warn!("Error initializing tracing subscriber: {e:#}");
         })
@@ -1004,6 +1018,7 @@ impl Inner {
       return Err(tower_lsp::jsonrpc::Error::internal_error());
     };
 
+    self.update_tracing();
     self.update_debug_flag();
     self.refresh_workspace_files();
     self.refresh_config_tree().await;
@@ -1350,7 +1365,8 @@ impl Inner {
       }
     };
 
-    self.update_tracing();
+    // FIXME(nathanwhit): call `update_tracing` here to support reconfiguring tracing
+    // without restarting the server, blocked on https://github.com/open-telemetry/opentelemetry-rust/issues/868
     self.update_debug_flag();
     self.refresh_workspace_files();
     self.refresh_config_tree().await;

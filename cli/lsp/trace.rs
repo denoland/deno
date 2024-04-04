@@ -48,17 +48,23 @@ impl fmt::Debug for TracingGuard {
 impl Drop for TracingGuard {
   fn drop(&mut self) {
     lsp_debug!("Shutting down tracing");
-    opentelemetry::global::shutdown_tracer_provider();
+    tokio::task::spawn_blocking(|| {
+      opentelemetry::global::shutdown_tracer_provider()
+    });
   }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Copy)]
+#[derive(
+  Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Copy, Default,
+)]
 pub(crate) enum TracingCollector {
+  #[default]
   OpenTelemetry,
   Logging,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Default)]
+#[serde(default)]
 pub(crate) struct TracingConfig {
   pub(crate) enable: bool,
 
@@ -97,7 +103,6 @@ pub(crate) fn init_tracing_subscriber(
     .with(filter)
     .with(logging_layer)
     .with(open_telemetry_layer)
-    .with(OpenTelemetryLayer::new(make_tracer()?))
     .set_default();
   Ok(TracingGuard(guard))
 }
