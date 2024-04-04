@@ -282,6 +282,9 @@ impl TestEventSenderFactory {
                 // so we just end this task immediately.
                 None => { break },
                 Some((mutex1, mutex2)) => {
+                  // Two phase lock: mutex1 indicates that we are done our general read phase and are ready for
+                  // the sync phase. mutex2 indicates that we have completed the sync phase. This prevents deadlock
+                  // when the pipe is too full to accept the sync marker.
                   drop(mutex1);
                   for stream in [&mut test_stdout, &mut test_stderr] {
                     if stream.is_alive() {
@@ -403,6 +406,9 @@ impl TestEventSender {
   /// Ensure that all output has been fully flushed by writing a sync marker into the
   /// stdout and stderr streams and waiting for it on the other side.
   pub fn flush(&mut self) -> Result<(), ChannelClosedError> {
+    // Two phase lock: mutex1 indicates that we are done our general read phase and are ready for
+    // the sync phase. mutex2 indicates that we have completed the sync phase. This prevents deadlock
+    // when the pipe is too full to accept the sync marker.
     let mutex1 = parking_lot::RawMutex::INIT;
     mutex1.lock();
     let mutex2 = parking_lot::RawMutex::INIT;
