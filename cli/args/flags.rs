@@ -1614,7 +1614,7 @@ Target a specific symbol:
 Show documentation for runtime built-ins:
 
     deno doc
-    deno doc --builtin Deno.Listener",
+    deno doc --filter Deno.Listener",
     )
     .defer(|cmd| {
       cmd
