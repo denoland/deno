@@ -12,6 +12,7 @@ use serde::Deserialize;
 use serde::Serialize;
 use tracing::level_filters::LevelFilter;
 use tracing_opentelemetry::OpenTelemetryLayer;
+use tracing_subscriber::fmt::format::FmtSpan;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
@@ -93,9 +94,11 @@ pub(crate) fn init_tracing_subscriber(
     _ => None,
   };
   let logging_layer = match config.collector {
-    TracingCollector::Logging => {
-      Some(tracing_subscriber::fmt::layer().with_writer(std::io::stderr))
-    }
+    TracingCollector::Logging => Some(
+      tracing_subscriber::fmt::layer()
+        .with_writer(std::io::stderr)
+        .with_span_events(FmtSpan::NEW | FmtSpan::CLOSE),
+    ),
     _ => None,
   };
 
