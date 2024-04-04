@@ -327,7 +327,8 @@ impl Document {
       maybe_lsp_version: None,
       maybe_module,
       maybe_navigation_tree: Mutex::new(None),
-      maybe_parsed_source,
+      maybe_parsed_source: maybe_parsed_source
+        .filter(|_| specifier.scheme() == "file"),
       text_info,
       specifier,
     }))
@@ -403,7 +404,8 @@ impl Document {
       maybe_headers: maybe_headers.map(ToOwned::to_owned),
       maybe_module,
       maybe_navigation_tree: Mutex::new(None),
-      maybe_parsed_source,
+      maybe_parsed_source: maybe_parsed_source
+        .filter(|_| specifier.scheme() == "file"),
       text_info,
       specifier,
     }))
@@ -474,7 +476,8 @@ impl Document {
       line_index,
       maybe_headers: self.0.maybe_headers.clone(),
       maybe_module,
-      maybe_parsed_source,
+      maybe_parsed_source: maybe_parsed_source
+        .filter(|_| self.0.specifier.scheme() == "file"),
       maybe_lsp_version: Some(version),
       maybe_navigation_tree: Mutex::new(None),
     })))
