@@ -13,8 +13,8 @@ pub static CODE_CACHE_DB: CacheDBConfiguration = CacheDBConfiguration {
   table_initializer: "CREATE TABLE IF NOT EXISTS codecache (
       specifier TEXT NOT NULL,
       type TEXT NOT NULL,
-      source_hash TEXT,
-      source_timestamp INTEGER,
+      source_hash TEXT DEFAULT NULL,
+      source_timestamp INTEGER DEFAULT NULL,
       data BLOB NOT NULL,
       PRIMARY KEY (specifier, type)
     );",
@@ -143,16 +143,23 @@ impl CodeCacheInner {
       specifier.to_string().into(),
       code_cache_type.as_str().to_string().into(),
     ];
-    let mut param_index = 3;
+
+    let mut column_index = 3;
     if let Some(source_hash) = source_hash {
-      query += &format!(" AND source_hash=?{}", param_index);
-      param_index += 1;
+      query += &format!(" AND source_hash=?{}", column_index);
+      column_index += 1;
       params.push(source_hash.to_string().into());
+    } else {
+      query += " AND source_hash IS NULL";
     }
     if let Some(source_timestamp) = source_timestamp {
-      query += &format!(" AND source_timestamp=?{}", param_index);
+      query += &format!(" AND source_timestamp=?{}", column_index);
       params.push(source_timestamp.to_string().into());
+    } else {
+      query += " AND source_timestamp IS NULL";
     }
+    query += " LIMIT 1";
+
     self
       .conn
       .query_row(&query, rusqlite::params_from_iter(params), |row| {
@@ -174,16 +181,14 @@ impl CodeCacheInner {
         codecache (specifier, type, source_hash, source_timestamp, data)
       VALUES
         (?1, ?2, ?3, ?4, ?5)";
-    self.conn.execute(
-      sql,
-      params![
-        specifier,
-        code_cache_type.as_str(),
-        source_hash,
-        source_timestamp,
-        data
-      ],
-    )?;
+    let params = params![
+      specifier,
+      code_cache_type.as_str(),
+      source_hash,
+      source_timestamp,
+      data
+    ];
+    self.conn.execute(sql, params)?;
     Ok(())
   }
 }
