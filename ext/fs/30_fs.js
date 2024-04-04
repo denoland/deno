@@ -90,6 +90,7 @@ const {
   SymbolAsyncIterator,
   SymbolIterator,
   SymbolFor,
+  TypeError,
   Uint32Array,
 } = primordials;
 
