@@ -8,7 +8,6 @@ use crate::args::InstallFlagsGlobal;
 use crate::args::InstallKind;
 use crate::args::TypeCheckMode;
 use crate::args::UninstallFlags;
-use crate::args::UninstallFlagsGlobal;
 use crate::args::UninstallKind;
 use crate::factory::CliFactory;
 use crate::http_util::HttpClient;
@@ -192,14 +191,14 @@ pub fn uninstall(uninstall_flags: UninstallFlags) -> Result<(), AnyError> {
   if !uninstall_flags.global {
     log::warn!("⚠️ `deno install` behavior will change in Deno 2. To preserve the current behavior use the `-g` or `--global` flag.");
   }
-  let UninstallKind::Global(UninstallFlagsGlobal { name, root }) =
-    uninstall_flags.kind
-  else {
-    unreachable!();
+
+  let uninstall_flags = match uninstall_flags.kind {
+    UninstallKind::Global(flags) => flags,
+    UninstallKind::Local => unreachable!(),
   };
 
   let cwd = std::env::current_dir().context("Unable to get CWD")?;
-  let root = if let Some(root) = root {
+  let root = if let Some(root) = uninstall_flags.root {
     canonicalize_path_maybe_not_exists(&cwd.join(root))?
   } else {
     get_installer_root()?
@@ -213,7 +212,7 @@ pub fn uninstall(uninstall_flags: UninstallFlags) -> Result<(), AnyError> {
     }
   }
 
-  let file_path = installation_dir.join(&name);
+  let file_path = installation_dir.join(&uninstall_flags.name);
 
   let mut removed = false;
 
@@ -233,7 +232,10 @@ pub fn uninstall(uninstall_flags: UninstallFlags) -> Result<(), AnyError> {
   }
 
   if !removed {
-    return Err(generic_error(format!("No installation found for {name}")));
+    return Err(generic_error(format!(
+      "No installation found for {}",
+      uninstall_flags.name
+    )));
   }
 
   // There might be some extra files to delete
@@ -247,7 +249,7 @@ pub fn uninstall(uninstall_flags: UninstallFlags) -> Result<(), AnyError> {
     }
   }
 
-  log::info!("✅ Successfully uninstalled {}", name);
+  log::info!("✅ Successfully uninstalled {}", uninstall_flags.name);
   Ok(())
 }
 
@@ -259,8 +261,9 @@ pub async fn install_command(
     log::warn!("⚠️ `deno install` behavior will change in Deno 2. To preserve the current behavior use the `-g` or `--global` flag.");
   }
 
-  let InstallKind::Global(install_flags_global) = install_flags.kind else {
-    unreachable!();
+  let install_flags_global = match install_flags.kind {
+    InstallKind::Global(flags) => flags,
+    InstallKind::Local => unreachable!(),
   };
 
   // ensure the module is cached
@@ -524,6 +527,7 @@ fn is_in_path(dir: &Path) -> bool {
 mod tests {
   use super::*;
 
+  use crate::args::UninstallFlagsGlobal;
   use crate::args::UnstableConfig;
   use crate::util::fs::canonicalize_path;
   use deno_config::ConfigFlag;
