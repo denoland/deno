@@ -67,10 +67,14 @@ pub(crate) enum TracingCollector {
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Default)]
 #[serde(default)]
 pub(crate) struct TracingConfig {
+  /// Enable tracing.
   pub(crate) enable: bool,
 
+  /// The collector to use. Defaults to `OpenTelemetry`.
+  /// If `Logging` is used, the collected traces will be written to stderr.
   pub(crate) collector: TracingCollector,
 
+  /// The filter to use. Defaults to `INFO`.
   pub(crate) filter: Option<String>,
 }
 
@@ -97,6 +101,8 @@ pub(crate) fn init_tracing_subscriber(
     TracingCollector::Logging => Some(
       tracing_subscriber::fmt::layer()
         .with_writer(std::io::stderr)
+        // Include span events in the log output.
+        // Without this, only events get logged (and at the moment we have none).
         .with_span_events(FmtSpan::NEW | FmtSpan::CLOSE),
     ),
     _ => None,
