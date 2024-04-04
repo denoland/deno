@@ -837,7 +837,7 @@ function bootstrapWorkerRuntime(
       6: argv0,
       7: shouldDisableDeprecatedApiWarning,
       8: shouldUseVerboseDeprecatedApiWarning,
-      9: _future,
+      9: future,
     } = runtimeOptions;
 
     deprecatedApiWarningDisabled = shouldDisableDeprecatedApiWarning;
@@ -936,6 +936,37 @@ function bootstrapWorkerRuntime(
         workerId,
         workerMetadata,
       );
+    }
+
+    if (future) {
+      delete Deno.Buffer;
+      delete Deno.close;
+      delete Deno.copy;
+      delete Deno.File;
+      delete Deno.fstat;
+      delete Deno.fstatSync;
+      delete Deno.ftruncate;
+      delete Deno.ftruncateSync;
+      delete Deno.flock;
+      delete Deno.flockSync;
+      delete Deno.FsFile.prototype.rid;
+      delete Deno.funlock;
+      delete Deno.funlockSync;
+      delete Deno.iter;
+      delete Deno.iterSync;
+      delete Deno.metrics;
+      delete Deno.readAll;
+      delete Deno.readAllSync;
+      delete Deno.read;
+      delete Deno.readSync;
+      delete Deno.resources;
+      delete Deno.seek;
+      delete Deno.seekSync;
+      delete Deno.shutdown;
+      delete Deno.writeAll;
+      delete Deno.writeAllSync;
+      delete Deno.write;
+      delete Deno.writeSync;
     }
   } else {
     // Warmup
