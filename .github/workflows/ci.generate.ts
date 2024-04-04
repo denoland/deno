@@ -667,15 +667,15 @@ const ci = {
           env: { CARGO_PROFILE_DEV_DEBUG: 0 },
         },
         // For remote debugging only.
-        {
-          name: "Setup tmate session",
-          if: [
-            "(matrix.job == 'test' || matrix.job == 'bench') &&",
-            "matrix.profile == 'release' && (matrix.use_sysroot ||",
-            "github.repository == 'denoland/deno')",
-          ].join("\n"),
-          uses: "mxschmitt/action-tmate@v3",
-        },
+        // {
+        //   name: "Setup tmate session",
+        //   if: [
+        //     "(matrix.job == 'test' || matrix.job == 'bench') &&",
+        //     "matrix.profile == 'release' && (matrix.use_sysroot ||",
+        //     "github.repository == 'denoland/deno')",
+        //   ].join("\n"),
+        //   uses: "mxschmitt/action-tmate@v3",
+        // },
         {
           name: "Build release",
           if: [
