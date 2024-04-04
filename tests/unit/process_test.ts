@@ -7,321 +7,320 @@ import {
   assertThrows,
 } from "./test_util.ts";
 
-// Deno.test(
-//   { permissions: { read: true, run: false } },
-//   function runPermissions() {
-//     assertThrows(() => {
-//       // deno-lint-ignore no-deprecated-deno-api
-//       Deno.run({
-//         cmd: [Deno.execPath(), "eval", "console.log('hello world')"],
-//       });
-//     }, Deno.errors.PermissionDenied);
-//   },
-// );
+Deno.test(
+  { permissions: { read: true, run: false } },
+  function runPermissions() {
+    assertThrows(() => {
+      // deno-lint-ignore no-deprecated-deno-api
+      Deno.run({
+        cmd: [Deno.execPath(), "eval", "console.log('hello world')"],
+      });
+    }, Deno.errors.PermissionDenied);
+  },
+);
 
-// Deno.test(
-//   { permissions: { run: true, read: true } },
-//   async function runSuccess() {
-//     // deno-lint-ignore no-deprecated-deno-api
-//     const p = Deno.run({
-//       // freeze the array to ensure it's not modified
-//       cmd: Object.freeze([
-//         Deno.execPath(),
-//         "eval",
-//         "console.log('hello world')",
-//       ]),
-//       stdout: "piped",
-//       stderr: "null",
-//     });
-//     const status = await p.status();
-//     assertEquals(status.success, true);
-//     assertEquals(status.code, 0);
-//     assertEquals(status.signal, undefined);
-//     p.stdout.close();
-//     p.close();
-//   },
-// );
+Deno.test(
+  { permissions: { run: true, read: true } },
+  async function runSuccess() {
+    // deno-lint-ignore no-deprecated-deno-api
+    const p = Deno.run({
+      // freeze the array to ensure it's not modified
+      cmd: Object.freeze([
+        Deno.execPath(),
+        "eval",
+        "console.log('hello world')",
+      ]),
+      stdout: "piped",
+      stderr: "null",
+    });
+    const status = await p.status();
+    assertEquals(status.success, true);
+    assertEquals(status.code, 0);
+    assertEquals(status.signal, undefined);
+    p.stdout.close();
+    p.close();
+  },
+);
 
-// Deno.test(
-//   { permissions: { run: true, read: true } },
-//   async function runUrl() {
-//     // deno-lint-ignore no-deprecated-deno-api
-//     const p = Deno.run({
-//       cmd: [
-//         new URL(`file:///${Deno.execPath()}`),
-//         "eval",
-//         "console.log('hello world')",
-//       ],
-//       stdout: "piped",
-//       stderr: "null",
-//     });
-//     const status = await p.status();
-//     assertEquals(status.success, true);
-//     assertEquals(status.code, 0);
-//     assertEquals(status.signal, undefined);
-//     p.stdout.close();
-//     p.close();
-//   },
-// );
+Deno.test(
+  { permissions: { run: true, read: true } },
+  async function runUrl() {
+    // deno-lint-ignore no-deprecated-deno-api
+    const p = Deno.run({
+      cmd: [
+        new URL(`file:///${Deno.execPath()}`),
+        "eval",
+        "console.log('hello world')",
+      ],
+      stdout: "piped",
+      stderr: "null",
+    });
+    const status = await p.status();
+    assertEquals(status.success, true);
+    assertEquals(status.code, 0);
+    assertEquals(status.signal, undefined);
+    p.stdout.close();
+    p.close();
+  },
+);
 
-// Deno.test(
-//   { permissions: { run: true, read: true } },
-//   async function runStdinRid0(): Promise<
-//     void
-//   > {
-//     // deno-lint-ignore no-deprecated-deno-api
-//     const p = Deno.run({
-//       cmd: [Deno.execPath(), "eval", "console.log('hello world')"],
-//       stdin: 0,
-//       stdout: "piped",
-//       stderr: "null",
-//     });
-//     const status = await p.status();
-//     assertEquals(status.success, true);
-//     assertEquals(status.code, 0);
-//     assertEquals(status.signal, undefined);
-//     p.stdout.close();
-//     p.close();
-//   },
-// );
+Deno.test(
+  { permissions: { run: true, read: true } },
+  async function runStdinRid0(): Promise<
+    void
+  > {
+    // deno-lint-ignore no-deprecated-deno-api
+    const p = Deno.run({
+      cmd: [Deno.execPath(), "eval", "console.log('hello world')"],
+      stdin: 0,
+      stdout: "piped",
+      stderr: "null",
+    });
+    const status = await p.status();
+    assertEquals(status.success, true);
+    assertEquals(status.code, 0);
+    assertEquals(status.signal, undefined);
+    p.stdout.close();
+    p.close();
+  },
+);
 
-// Deno.test(
-//   { permissions: { run: true, read: true } },
-//   function runInvalidStdio() {
-//     assertThrows(() =>
-//       // deno-lint-ignore no-deprecated-deno-api
-//       Deno.run({
-//         cmd: [Deno.execPath(), "eval", "console.log('hello world')"],
-//         // @ts-expect-error because Deno.run should throw on invalid stdin.
-//         stdin: "a",
-//       })
-//     );
-//     assertThrows(() =>
-//       // deno-lint-ignore no-deprecated-deno-api
-//       Deno.run({
-//         cmd: [Deno.execPath(), "eval", "console.log('hello world')"],
-//         // @ts-expect-error because Deno.run should throw on invalid stdout.
-//         stdout: "b",
-//       })
-//     );
-//     assertThrows(() =>
-//       // deno-lint-ignore no-deprecated-deno-api
-//       Deno.run({
-//         cmd: [Deno.execPath(), "eval", "console.log('hello world')"],
-//         // @ts-expect-error because Deno.run should throw on invalid stderr.
-//         stderr: "c",
-//       })
-//     );
-//   },
-// );
+Deno.test(
+  { permissions: { run: true, read: true } },
+  function runInvalidStdio() {
+    assertThrows(() =>
+      // deno-lint-ignore no-deprecated-deno-api
+      Deno.run({
+        cmd: [Deno.execPath(), "eval", "console.log('hello world')"],
+        // @ts-expect-error because Deno.run should throw on invalid stdin.
+        stdin: "a",
+      })
+    );
+    assertThrows(() =>
+      // deno-lint-ignore no-deprecated-deno-api
+      Deno.run({
+        cmd: [Deno.execPath(), "eval", "console.log('hello world')"],
+        // @ts-expect-error because Deno.run should throw on invalid stdout.
+        stdout: "b",
+      })
+    );
+    assertThrows(() =>
+      // deno-lint-ignore no-deprecated-deno-api
+      Deno.run({
+        cmd: [Deno.execPath(), "eval", "console.log('hello world')"],
+        // @ts-expect-error because Deno.run should throw on invalid stderr.
+        stderr: "c",
+      })
+    );
+  },
+);
 
-// Deno.test(
-//   { permissions: { run: true, read: true } },
-//   async function runCommandFailedWithCode() {
-//     // deno-lint-ignore no-deprecated-deno-api
-//     const p = Deno.run({
-//       cmd: [Deno.execPath(), "eval", "Deno.exit(41 + 1)"],
-//     });
-//     const status = await p.status();
-//     assertEquals(status.success, false);
-//     assertEquals(status.code, 42);
-//     assertEquals(status.signal, undefined);
-//     p.close();
-//   },
-// );
+Deno.test(
+  { permissions: { run: true, read: true } },
+  async function runCommandFailedWithCode() {
+    // deno-lint-ignore no-deprecated-deno-api
+    const p = Deno.run({
+      cmd: [Deno.execPath(), "eval", "Deno.exit(41 + 1)"],
+    });
+    const status = await p.status();
+    assertEquals(status.success, false);
+    assertEquals(status.code, 42);
+    assertEquals(status.signal, undefined);
+    p.close();
+  },
+);
 
-// Deno.test(
-//   {
-//     permissions: { run: true, read: true },
-//   },
-//   async function runCommandFailedWithSignal() {
-//     // deno-lint-ignore no-deprecated-deno-api
-//     const p = Deno.run({
-//       cmd: [
-//         Deno.execPath(),
-//         "eval",
-//         "Deno.kill(Deno.pid, 'SIGKILL')",
-//       ],
-//     });
-//     const status = await p.status();
-//     assertEquals(status.success, false);
-//     if (Deno.build.os === "windows") {
-//       assertEquals(status.code, 1);
-//       assertEquals(status.signal, undefined);
-//     } else {
-//       assertEquals(status.code, 128 + 9);
-//       assertEquals(status.signal, 9);
-//     }
-//     p.close();
-//   },
-// );
+Deno.test(
+  {
+    permissions: { run: true, read: true },
+  },
+  async function runCommandFailedWithSignal() {
+    // deno-lint-ignore no-deprecated-deno-api
+    const p = Deno.run({
+      cmd: [
+        Deno.execPath(),
+        "eval",
+        "Deno.kill(Deno.pid, 'SIGKILL')",
+      ],
+    });
+    const status = await p.status();
+    assertEquals(status.success, false);
+    if (Deno.build.os === "windows") {
+      assertEquals(status.code, 1);
+      assertEquals(status.signal, undefined);
+    } else {
+      assertEquals(status.code, 128 + 9);
+      assertEquals(status.signal, 9);
+    }
+    p.close();
+  },
+);
 
-// Deno.test({ permissions: { run: true } }, function runNotFound() {
-//   let error;
-//   try {
-//     // deno-lint-ignore no-deprecated-deno-api
-//     Deno.run({ cmd: ["this file hopefully doesn't exist"] });
-//   } catch (e) {
-//     error = e;
-//   }
-//   assert(error !== undefined);
-//   assert(error instanceof Deno.errors.NotFound);
-// });
+Deno.test({ permissions: { run: true } }, function runNotFound() {
+  let error;
+  try {
+    // deno-lint-ignore no-deprecated-deno-api
+    Deno.run({ cmd: ["this file hopefully doesn't exist"] });
+  } catch (e) {
+    error = e;
+  }
+  assert(error !== undefined);
+  assert(error instanceof Deno.errors.NotFound);
+});
 
-// Deno.test(
-//   { permissions: { write: true, run: true, read: true } },
-//   async function runWithCwdIsAsync() {
-//     const enc = new TextEncoder();
-//     const cwd = await Deno.makeTempDir({ prefix: "deno_command_test" });
+Deno.test(
+  { permissions: { write: true, run: true, read: true } },
+  async function runWithCwdIsAsync() {
+    const enc = new TextEncoder();
+    const cwd = await Deno.makeTempDir({ prefix: "deno_command_test" });
 
-//     const exitCodeFile = "deno_was_here";
-//     const programFile = "poll_exit.ts";
-//     const program = `
-// async function tryExit() {
-//   try {
-//     const code = parseInt(await Deno.readTextFile("${exitCodeFile}"));
-//     Deno.exit(code);
-//   } catch {
-//     // Retry if we got here before deno wrote the file.
-//     setTimeout(tryExit, 0.01);
-//   }
-// }
+    const exitCodeFile = "deno_was_here";
+    const programFile = "poll_exit.ts";
+    const program = `
+async function tryExit() {
+  try {
+    const code = parseInt(await Deno.readTextFile("${exitCodeFile}"));
+    Deno.exit(code);
+  } catch {
+    // Retry if we got here before deno wrote the file.
+    setTimeout(tryExit, 0.01);
+  }
+}
 
-// tryExit();
-// `;
+tryExit();
+`;
 
-//     Deno.writeFileSync(`${cwd}/${programFile}`, enc.encode(program));
-//     // deno-lint-ignore no-deprecated-deno-api
-//     const p = Deno.run({
-//       cwd,
-//       cmd: [Deno.execPath(), "run", "--allow-read", programFile],
-//     });
+    Deno.writeFileSync(`${cwd}/${programFile}`, enc.encode(program));
+    // deno-lint-ignore no-deprecated-deno-api
+    const p = Deno.run({
+      cwd,
+      cmd: [Deno.execPath(), "run", "--allow-read", programFile],
+    });
 
-//     // Write the expected exit code *after* starting deno.
-//     // This is how we verify that `run()` is actually asynchronous.
-//     const code = 84;
-//     Deno.writeFileSync(`${cwd}/${exitCodeFile}`, enc.encode(`${code}`));
+    // Write the expected exit code *after* starting deno.
+    // This is how we verify that `run()` is actually asynchronous.
+    const code = 84;
+    Deno.writeFileSync(`${cwd}/${exitCodeFile}`, enc.encode(`${code}`));
 
-//     const status = await p.status();
-//     assertEquals(status.success, false);
-//     assertEquals(status.code, code);
-//     assertEquals(status.signal, undefined);
-//     p.close();
-//   },
-// );
+    const status = await p.status();
+    assertEquals(status.success, false);
+    assertEquals(status.code, code);
+    assertEquals(status.signal, undefined);
+    p.close();
+  },
+);
 
-// Deno.test(
-//   { permissions: { run: true, read: true } },
-//   async function runStdinPiped(): Promise<
-//     void
-//   > {
-//     // deno-lint-ignore no-deprecated-deno-api
-//     const p = Deno.run({
-//       cmd: [
-//         Deno.execPath(),
-//         "eval",
-//         `
-//         const buffer = new Uint8Array(5);
-//         await Deno.stdin.read(buffer);
-//         if (new TextDecoder().decode(buffer) !== "hello") {
-//           throw new Error('Expected \\'hello\\'')
-//         }
-//         `,
-//       ],
-//       stdin: "piped",
-//     });
-//     assert(p.stdin);
-//     assert(!p.stdout);
-//     assert(!p.stderr);
+Deno.test(
+  { permissions: { run: true, read: true } },
+  async function runStdinPiped(): Promise<
+    void
+  > {
+    // deno-lint-ignore no-deprecated-deno-api
+    const p = Deno.run({
+      cmd: [
+        Deno.execPath(),
+        "eval",
+        `
+        const buffer = new Uint8Array(5);
+        await Deno.stdin.read(buffer);
+        if (new TextDecoder().decode(buffer) !== "hello") {
+          throw new Error('Expected \\'hello\\'')
+        }
+        `,
+      ],
+      stdin: "piped",
+    });
+    assert(p.stdin);
+    assert(!p.stdout);
+    assert(!p.stderr);
 
-//     const msg = new TextEncoder().encode("hello");
-//     const n = await p.stdin.write(msg);
-//     assertEquals(n, msg.byteLength);
+    const msg = new TextEncoder().encode("hello");
+    const n = await p.stdin.write(msg);
+    assertEquals(n, msg.byteLength);
 
-//     p.stdin.close();
+    p.stdin.close();
 
-//     const status = await p.status();
-//     assertEquals(status.success, true);
-//     assertEquals(status.code, 0);
-//     assertEquals(status.signal, undefined);
-//     p.close();
-//   },
-// );
+    const status = await p.status();
+    assertEquals(status.success, true);
+    assertEquals(status.code, 0);
+    assertEquals(status.signal, undefined);
+    p.close();
+  },
+);
 
-// Deno.test(
-//   { permissions: { run: true, read: true } },
-//   async function runStdoutPiped(): Promise<
-//     void
-//   > {
-//     // deno-lint-ignore no-deprecated-deno-api
-//     const p = Deno.run({
-//       cmd: [
-//         Deno.execPath(),
-//         "eval",
-//         "await Deno.stdout.write(new TextEncoder().encode('hello'))",
-//       ],
-//       stdout: "piped",
-//     });
-//     assert(!p.stdin);
-//     assert(!p.stderr);
+Deno.test(
+  { permissions: { run: true, read: true } },
+  async function runStdoutPiped(): Promise<
+    void
+  > {
+    // deno-lint-ignore no-deprecated-deno-api
+    const p = Deno.run({
+      cmd: [
+        Deno.execPath(),
+        "eval",
+        "await Deno.stdout.write(new TextEncoder().encode('hello'))",
+      ],
+      stdout: "piped",
+    });
+    assert(!p.stdin);
+    assert(!p.stderr);
 
-//     const data = new Uint8Array(10);
-//     let r = await p.stdout.read(data);
-//     if (r === null) {
-//       throw new Error("p.stdout.read(...) should not be null");
-//     }
-//     assertEquals(r, 5);
-//     const s = new TextDecoder().decode(data.subarray(0, r));
-//     assertEquals(s, "hello");
-//     r = await p.stdout.read(data);
-//     assertEquals(r, null);
-//     p.stdout.close();
+    const data = new Uint8Array(10);
+    let r = await p.stdout.read(data);
+    if (r === null) {
+      throw new Error("p.stdout.read(...) should not be null");
+    }
+    assertEquals(r, 5);
+    const s = new TextDecoder().decode(data.subarray(0, r));
+    assertEquals(s, "hello");
+    r = await p.stdout.read(data);
+    assertEquals(r, null);
+    p.stdout.close();
 
-//     const status = await p.status();
-//     assertEquals(status.success, true);
-//     assertEquals(status.code, 0);
-//     assertEquals(status.signal, undefined);
-//     p.close();
-//   },
-// );
+    const status = await p.status();
+    assertEquals(status.success, true);
+    assertEquals(status.code, 0);
+    assertEquals(status.signal, undefined);
+    p.close();
+  },
+);
 
-// Deno.test(
-//   { permissions: { run: true, read: true } },
-//   async function runStderrPiped(): Promise<
-//     void
-//   > {
-//     // deno-lint-ignore no-deprecated-deno-api
-//     const p = Deno.run({
-//       cmd: [
-//         Deno.execPath(),
-//         "--no-code-cache",
-//         "eval",
-//         "await Deno.stderr.write(new TextEncoder().encode('hello'))",
-//       ],
-//       stderr: "piped",
-//     });
-//     assert(!p.stdin);
-//     assert(!p.stdout);
+Deno.test(
+  { permissions: { run: true, read: true } },
+  async function runStderrPiped(): Promise<
+    void
+  > {
+    // deno-lint-ignore no-deprecated-deno-api
+    const p = Deno.run({
+      cmd: [
+        Deno.execPath(),
+        "eval",
+        "await Deno.stderr.write(new TextEncoder().encode('hello'))",
+      ],
+      stderr: "piped",
+    });
+    assert(!p.stdin);
+    assert(!p.stdout);
 
-//     const data = new Uint8Array(10);
-//     let r = await p.stderr.read(data);
-//     if (r === null) {
-//       throw new Error("p.stderr.read should not return null here");
-//     }
-//     assertEquals(r, 5);
-//     const s = new TextDecoder().decode(data.subarray(0, r));
-//     assertEquals(s, "hello");
-//     r = await p.stderr.read(data);
-//     assertEquals(r, null);
-//     p.stderr!.close();
+    const data = new Uint8Array(10);
+    let r = await p.stderr.read(data);
+    if (r === null) {
+      throw new Error("p.stderr.read should not return null here");
+    }
+    assertEquals(r, 5);
+    const s = new TextDecoder().decode(data.subarray(0, r));
+    assertEquals(s, "hello");
+    r = await p.stderr.read(data);
+    assertEquals(r, null);
+    p.stderr!.close();
 
-//     const status = await p.status();
-//     assertEquals(status.success, true);
-//     assertEquals(status.code, 0);
-//     assertEquals(status.signal, undefined);
-//     p.close();
-//   },
-// );
+    const status = await p.status();
+    assertEquals(status.success, true);
+    assertEquals(status.code, 0);
+    assertEquals(status.signal, undefined);
+    p.close();
+  },
+);
 
 Deno.test(
   { permissions: { run: true, read: true } },
@@ -331,7 +330,7 @@ Deno.test(
       cmd: [
         Deno.execPath(),
         "eval",
-        "await Deno.stderr.write(new TextEncoder().encode('hello'))",
+        "await Deno.stdout.write(new TextEncoder().encode('hello'))",
       ],
       stdout: "piped",
     });
@@ -351,7 +350,6 @@ Deno.test(
     const p = Deno.run({
       cmd: [
         Deno.execPath(),
-        //"-Ldebug",
         "eval",
         "await Deno.stderr.write(new TextEncoder().encode('error'))",
       ],
