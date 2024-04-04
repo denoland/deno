@@ -399,11 +399,9 @@ jobs:
           CARGO_PROFILE_DEV_DEBUG: 0
       - name: Setup tmate session
         if: |-
-         !(matrix.skip) && (matrix.job == 'test' &&
-         matrix.profile == 'release' && (matrix.use_sysroot ||
-         (github.repository == 'denoland/deno' &&
-         (github.ref == 'refs/heads/main' ||
-         startsWith(github.ref, 'refs/tags/')))))
+          !(matrix.skip) && ((matrix.job == 'test' || matrix.job == 'bench') &&
+          matrix.profile == 'release' && (matrix.use_sysroot ||
+          github.repository == 'denoland/deno'))
         uses: mxschmitt/action-tmate@v3
       - name: Build release
         if: |-
