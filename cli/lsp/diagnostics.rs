@@ -792,8 +792,14 @@ fn generate_lint_diagnostics(
   let config_data_by_scope = config.tree.data_by_scope();
   let mut diagnostics_vec = Vec::new();
   for document in documents {
-    let settings =
-      config.workspace_settings_for_specifier(document.specifier());
+    let specifier = document.specifier();
+    if specifier.scheme() != "file" {
+      continue;
+    }
+    if !config.specifier_enabled(specifier) {
+      continue;
+    }
+    let settings = config.workspace_settings_for_specifier(specifier);
     if !settings.lint {
       continue;
     }
@@ -803,26 +809,25 @@ fn generate_lint_diagnostics(
     }
     // ignore any npm package files
     if let Some(npm) = &snapshot.npm {
-      if npm.node_resolver.in_npm_package(document.specifier()) {
+      if npm.node_resolver.in_npm_package(specifier) {
         continue;
       }
     }
     let version = document.maybe_lsp_version();
     let (lint_options, lint_rules) = config
       .tree
-      .scope_for_specifier(document.specifier())
+      .scope_for_specifier(specifier)
       .and_then(|s| config_data_by_scope.get(s))
       .map(|d| (d.lint_options.clone(), d.lint_rules.clone()))
       .unwrap_or_default();
     diagnostics_vec.push(DiagnosticRecord {
-      specifier: document.specifier().clone(),
+      specifier: specifier.clone(),
       versioned: VersionedDiagnostics {
         version,
         diagnostics: generate_document_lint_diagnostics(
-          config,
+          &document,
           &lint_options,
           lint_rules.rules.clone(),
-          &document,
         ),
       },
     });
@@ -831,14 +836,10 @@ fn generate_lint_diagnostics(
 }
 
 fn generate_document_lint_diagnostics(
-  config: &ConfigSnapshot,
+  document: &Document,
   lint_options: &LintOptions,
   lint_rules: Vec<&'static dyn LintRule>,
-  document: &Document,
 ) -> Vec<lsp::Diagnostic> {
-  if !config.specifier_enabled(document.specifier()) {
-    return Vec::new();
-  }
   if !lint_options.files.matches_specifier(document.specifier()) {
     return Vec::new();
   }
@@ -1753,6 +1754,9 @@ let c: number = "a";
   fn get_diagnostics_for_single(
     diagnostic_vec: DiagnosticVec,
   ) -> Vec<lsp::Diagnostic> {
+    if diagnostic_vec.is_empty() {
+      return vec![];
+    }
     assert_eq!(diagnostic_vec.len(), 1);
     diagnostic_vec
       .into_iter()
