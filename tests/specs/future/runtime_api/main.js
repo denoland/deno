@@ -44,15 +44,19 @@ tcpConn.close();
 tcpListener.close();
 
 // Unix
-const socketPath = "./test.sock";
-const unixListener = Deno.listen({ transport: "unix", path: socketPath });
+if (Deno.build.os === "windows") {
+  console.log("Deno.UnixConn.prototype.rid is undefined");
+} else {
+  const socketPath = "./test.sock";
+  const unixListener = Deno.listen({ transport: "unix", path: socketPath });
 
-const unixConn = await Deno.connect({ transport: "unix", path: socketPath });
-console.log("Deno.UnixConn.prototype.rid is", unixConn.rid);
+  const unixConn = await Deno.connect({ transport: "unix", path: socketPath });
+  console.log("Deno.UnixConn.prototype.rid is", unixConn.rid);
 
-unixConn.close();
-unixListener.close();
-Deno.removeSync(socketPath);
+  unixConn.close();
+  unixListener.close();
+  Deno.removeSync(socketPath);
+}
 
 // TLS
 // Since these tests may run in parallel, ensure this port is unique to this file
