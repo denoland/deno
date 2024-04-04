@@ -119,6 +119,10 @@ monch.workspace = true
 notify.workspace = true
 once_cell.workspace = true
 open = "5.0.1"
+opentelemetry = "0.22.0"
+opentelemetry-otlp = "0.15.0"
+opentelemetry-semantic-conventions = "0.14.0"
+opentelemetry_sdk = { version = "0.22.1", features = ["rt-tokio"] }
 os_pipe.workspace = true
 p256.workspace = true
 percent-encoding.workspace = true
@@ -144,6 +148,9 @@ thiserror.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
 tower-lsp.workspace = true
+tracing = "0.1.40"
+tracing-opentelemetry = "0.23.0"
+tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 twox-hash = "=1.6.3"
 typed-arena = "=2.0.1"
 unicode-width = "0.1"
@@ -151,13 +158,6 @@ uuid = { workspace = true, features = ["serde"] }
 walkdir = "=2.3.2"
 zeromq.workspace = true
 zstd.workspace = true
-tracing = "0.1.40"
-tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
-opentelemetry = "0.22.0"
-opentelemetry_sdk = { version = "0.22.1", features = ["rt-tokio"] }
-tracing-opentelemetry = "0.23.0"
-opentelemetry-otlp = "0.15.0"
-opentelemetry-semantic-conventions = "0.14.0"
 
 [target.'cfg(windows)'.dependencies]
 fwdansi.workspace = true
