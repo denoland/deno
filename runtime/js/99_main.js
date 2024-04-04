@@ -938,7 +938,6 @@ function bootstrapWorkerRuntime(
     }
 
     if (future) {
-      delete globalThis.window;
       delete Deno.Buffer;
       delete Deno.close;
       delete Deno.copy;
