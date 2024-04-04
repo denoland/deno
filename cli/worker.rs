@@ -813,7 +813,7 @@ fn create_web_worker_callback(
         node_ipc_fd: None,
         disable_deprecated_api_warning: shared.disable_deprecated_api_warning,
         verbose_deprecated_api_warning: shared.verbose_deprecated_api_warning,
-        future: false,
+        future: shared.enable_future_features,
       },
       extensions: vec![],
       startup_snapshot: crate::js::deno_isolate_init(),
