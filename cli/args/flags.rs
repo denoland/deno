@@ -517,6 +517,7 @@ pub struct Flags {
   pub unstable_config: UnstableConfig,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub v8_flags: Vec<String>,
+  pub code_cache_enabled: bool,
 }
 
 fn join_paths(allowlist: &[String], d: &str) -> String {
@@ -2232,6 +2233,7 @@ fn run_subcommand() -> Command {
         .trailing_var_arg(true),
     )
     .arg(env_file_arg())
+    .arg(no_code_cache_arg())
     .about("Run a JavaScript or TypeScript program")
     .long_about(
       "Run a JavaScript or TypeScript program
@@ -3218,6 +3220,13 @@ fn no_clear_screen_arg() -> Arg {
     .help("Do not clear terminal screen when under watch mode")
 }
 
+fn no_code_cache_arg() -> Arg {
+  Arg::new("no-code-cache")
+    .long("no-code-cache")
+    .help("Disable V8 code cache feature")
+    .action(ArgAction::SetTrue)
+}
+
 fn watch_exclude_arg() -> Arg {
   Arg::new("watch-exclude")
     .long("watch-exclude")
@@ -3824,6 +3833,8 @@ fn run_parse(
   app: Command,
 ) -> clap::error::Result<()> {
   runtime_args_parse(flags, matches, true, true);
+
+  flags.code_cache_enabled = !matches.get_flag("no-code-cache");
 
   let mut script_arg =
     matches.remove_many::<String>("script_arg").ok_or_else(|| {
@@ -4465,6 +4476,7 @@ mod tests {
           ..Default::default()
         },
         log_level: Some(Level::Error),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -4536,6 +4548,7 @@ mod tests {
           "script.ts".to_string()
         )),
         reload: true,
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -4557,6 +4570,7 @@ mod tests {
             exclude: vec![],
           }),
         }),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -4581,6 +4595,7 @@ mod tests {
             exclude: vec![],
           }),
         }),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -4605,6 +4620,7 @@ mod tests {
             exclude: vec![],
           }),
         }),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -4629,6 +4645,7 @@ mod tests {
             exclude: vec![],
           }),
         }),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -4655,6 +4672,7 @@ mod tests {
             exclude: vec![],
           }),
         }),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -4683,6 +4701,7 @@ mod tests {
             exclude: vec![],
           }),
         }),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -4711,6 +4730,7 @@ mod tests {
             exclude: vec![String::from("foo")],
           }),
         }),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -4735,6 +4755,7 @@ mod tests {
             exclude: vec![String::from("bar")],
           }),
         }),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -4760,6 +4781,7 @@ mod tests {
             exclude: vec![String::from("foo"), String::from("bar")],
           }),
         }),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -4785,6 +4807,7 @@ mod tests {
             exclude: vec![String::from("baz"), String::from("qux"),],
           }),
         }),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -4802,6 +4825,7 @@ mod tests {
           "script.ts".to_string()
         )),
         allow_write: Some(vec![]),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -4815,6 +4839,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Run(RunFlags::new_default("_".to_string())),
         v8_flags: svec!["--help"],
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -4832,6 +4857,7 @@ mod tests {
           "script.ts".to_string()
         )),
         v8_flags: svec!["--expose-gc", "--gc-stats=1"],
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -4885,6 +4911,7 @@ mod tests {
         )),
         argv: svec!["--title", "X"],
         allow_net: Some(vec![]),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -4908,6 +4935,7 @@ mod tests {
         allow_write: Some(vec![]),
         allow_ffi: Some(vec![]),
         allow_hrtime: true,
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -4923,6 +4951,7 @@ mod tests {
           "gist.ts".to_string()
         )),
         allow_read: Some(vec![]),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -4938,6 +4967,7 @@ mod tests {
           "gist.ts".to_string()
         )),
         deny_read: Some(vec![]),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -4953,6 +4983,7 @@ mod tests {
           "gist.ts".to_string(),
         )),
         allow_hrtime: true,
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -4968,6 +4999,7 @@ mod tests {
           "gist.ts".to_string(),
         )),
         deny_hrtime: true,
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -4995,6 +5027,7 @@ mod tests {
         )),
         argv: svec!["--", "-D", "--allow-net"],
         allow_write: Some(vec![]),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -5709,6 +5742,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         config_flag: ConfigFlag::Path("tsconfig.json".to_owned()),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -6003,6 +6037,7 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags::new_default(
           "script.ts".to_string(),
         )),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -6027,6 +6062,7 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags::new_default(
           "script.ts".to_string(),
         )),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -6051,6 +6087,7 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags::new_default(
           "script.ts".to_string(),
         )),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -6075,6 +6112,7 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags::new_default(
           "script.ts".to_string(),
         )),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -6095,6 +6133,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         allow_net: Some(svec!["127.0.0.1"]),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -6111,6 +6150,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         deny_net: Some(svec!["127.0.0.1"]),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -6127,6 +6167,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         allow_env: Some(svec!["HOME"]),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -6143,6 +6184,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         deny_env: Some(svec!["HOME"]),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -6163,6 +6205,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         allow_env: Some(svec!["HOME", "PATH"]),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -6179,6 +6222,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         deny_env: Some(svec!["HOME", "PATH"]),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -6220,6 +6264,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         allow_sys: Some(vec![]),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -6235,6 +6280,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         deny_sys: Some(vec![]),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -6251,6 +6297,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         allow_sys: Some(svec!["hostname"]),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -6267,6 +6314,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         deny_sys: Some(svec!["hostname"]),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -6287,6 +6335,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         allow_sys: Some(svec!["hostname", "osRelease"]),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -6307,6 +6356,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         deny_sys: Some(svec!["hostname", "osRelease"]),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -6614,6 +6664,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         import_map_path: Some("import_map.json".to_owned()),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -6695,6 +6746,22 @@ mod tests {
           "script.ts".to_string(),
         )),
         env_file: Some(".env".to_owned()),
+        code_cache_enabled: true,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn run_no_code_cache() {
+    let r =
+      flags_from_vec(svec!["deno", "run", "--no-code-cache", "script.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags::new_default(
+          "script.ts".to_string(),
+        )),
         ..Flags::default()
       }
     );
@@ -6711,6 +6778,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         env_file: Some(".another_env".to_owned()),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -6742,6 +6810,7 @@ mod tests {
         )),
         seed: Some(250_u64),
         v8_flags: svec!["--random-seed=250"],
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -6765,6 +6834,7 @@ mod tests {
         )),
         seed: Some(250_u64),
         v8_flags: svec!["--expose-gc", "--random-seed=250"],
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -6906,6 +6976,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         log_level: Some(Level::Debug),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -6921,6 +6992,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         log_level: Some(Level::Error),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -6954,6 +7026,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         argv: svec!["--allow-read", "--allow-net"],
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -6979,6 +7052,7 @@ mod tests {
         location: Some(Url::parse("https://foo/").unwrap()),
         allow_read: Some(vec![]),
         argv: svec!["--allow-net", "-r", "--help", "--foo", "bar"],
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -6991,6 +7065,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         argv: svec!["foo", "bar"],
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -7002,6 +7077,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         argv: svec!["-"],
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -7015,6 +7091,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         argv: svec!["-", "foo", "bar"],
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -7030,6 +7107,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         type_check_mode: TypeCheckMode::None,
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -7046,6 +7124,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         type_check_mode: TypeCheckMode::Local,
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -7090,6 +7169,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         unsafely_ignore_certificate_errors: Some(vec![]),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -7117,6 +7197,7 @@ mod tests {
           "[::1]",
           "1.2.3.4"
         ]),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -7160,6 +7241,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         no_remote: true,
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -7175,6 +7257,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         no_npm: true,
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -7191,6 +7274,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         node_modules_dir: Some(true),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -7208,6 +7292,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         node_modules_dir: Some(false),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -7223,6 +7308,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         vendor: Some(true),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -7235,6 +7321,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         vendor: Some(false),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -7250,6 +7337,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         cached_only: true,
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -7278,6 +7366,7 @@ mod tests {
           "127.0.0.1:4545",
           "localhost:4545"
         ]),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -7306,6 +7395,7 @@ mod tests {
           "127.0.0.1:4545",
           "localhost:4545"
         ]),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -7337,6 +7427,7 @@ mod tests {
           "localhost:5678",
           "[::1]:8080"
         ]),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -7368,6 +7459,7 @@ mod tests {
           "localhost:5678",
           "[::1]:8080"
         ]),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -7390,6 +7482,7 @@ mod tests {
         )),
         lock_write: true,
         lock: Some(String::from("lock.json")),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -7402,6 +7495,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         no_lock: true,
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -7421,6 +7515,7 @@ mod tests {
         )),
         lock_write: true,
         lock: Some(String::from("./deno.lock")),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -7441,6 +7536,7 @@ mod tests {
         )),
         lock_write: true,
         lock: Some(String::from("lock.json")),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -7453,6 +7549,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         lock_write: true,
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -7545,6 +7642,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         ca_data: Some(CaData::File("example.crt".to_owned())),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -7565,6 +7663,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         enable_testing_features: true,
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -8243,6 +8342,7 @@ mod tests {
           "foo.js".to_string(),
         )),
         inspect: Some("127.0.0.1:9229".parse().unwrap()),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -8258,6 +8358,7 @@ mod tests {
           "foo.js".to_string(),
         )),
         inspect_wait: Some("127.0.0.1:9229".parse().unwrap()),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -8275,6 +8376,7 @@ mod tests {
           "foo.js".to_string(),
         )),
         inspect_wait: Some("127.0.0.1:3567".parse().unwrap()),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -8801,6 +8903,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         type_check_mode: TypeCheckMode::Local,
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -8813,6 +8916,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         type_check_mode: TypeCheckMode::All,
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -8825,6 +8929,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         type_check_mode: TypeCheckMode::None,
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -8849,6 +8954,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         config_flag: ConfigFlag::Disabled,
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );

@@ -4,6 +4,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::time::UNIX_EPOCH;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
@@ -23,6 +24,7 @@ use deno_core::PollEventLoopOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::SourceMapGetter;
 use deno_lockfile::Lockfile;
+use deno_runtime::code_cache;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node;
@@ -54,6 +56,7 @@ use crate::npm::CliNpmResolver;
 use crate::util::checksum;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::file_watcher::WatcherRestartMode;
+use crate::util::path::specifier_to_file_path;
 use crate::version;
 
 pub trait ModuleLoaderFactory: Send + Sync {
@@ -147,6 +150,7 @@ struct SharedWorkerState {
   enable_future_features: bool,
   disable_deprecated_api_warning: bool,
   verbose_deprecated_api_warning: bool,
+  code_cache: Option<Arc<dyn code_cache::CodeCache>>,
 }
 
 impl SharedWorkerState {
@@ -425,6 +429,7 @@ impl CliMainWorkerFactory {
     enable_future_features: bool,
     disable_deprecated_api_warning: bool,
     verbose_deprecated_api_warning: bool,
+    code_cache: Option<Arc<dyn code_cache::CodeCache>>,
   ) -> Self {
     Self {
       shared: Arc::new(SharedWorkerState {
@@ -448,6 +453,7 @@ impl CliMainWorkerFactory {
         enable_future_features,
         disable_deprecated_api_warning,
         verbose_deprecated_api_warning,
+        code_cache,
       }),
     }
   }
@@ -642,6 +648,16 @@ impl CliMainWorkerFactory {
       stdio,
       feature_checker,
       skip_op_registration: shared.options.skip_op_registration,
+      v8_code_cache: shared.code_cache.clone(),
+      modified_timestamp_getter: Some(Arc::new(|specifier| {
+        ModuleSpecifier::parse(specifier)
+          .ok()
+          .and_then(|specifier| specifier_to_file_path(&specifier).ok())
+          .and_then(|path| std::fs::metadata(path).ok())
+          .and_then(|m| m.modified().ok())
+          .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+          .map(|d| d.as_millis() as u64)
+      })),
     };
 
     let mut worker = MainWorker::bootstrap_from_options(

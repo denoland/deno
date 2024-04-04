@@ -1,4 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
@@ -42,6 +43,8 @@ use deno_tls::RootCertStoreProvider;
 use deno_web::BlobStore;
 use log::debug;
 
+use crate::code_cache::CodeCache;
+use crate::code_cache::CodeCacheType;
 use crate::inspector_server::InspectorServer;
 use crate::ops;
 use crate::permissions::PermissionsContainer;
@@ -50,6 +53,8 @@ use crate::shared::runtime;
 use crate::BootstrapOptions;
 
 pub type FormatJsErrorFn = dyn Fn(&JsError) -> String + Sync + Send;
+
+pub type GetModifiedFileTimeFn = dyn Fn(&str) -> Option<u64>;
 
 pub fn import_meta_resolve_callback(
   loader: &dyn deno_core::ModuleLoader,
@@ -189,6 +194,13 @@ pub struct WorkerOptions {
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
   pub stdio: Stdio,
   pub feature_checker: Arc<FeatureChecker>,
+
+  /// V8 code cache for module and script source code.
+  pub v8_code_cache: Option<Arc<dyn CodeCache>>,
+
+  /// Callback for getting the modified timestamp for a module specifier.
+  /// Only works with local file path specifiers.
+  pub modified_timestamp_getter: Option<Arc<GetModifiedFileTimeFn>>,
 }
 
 impl Default for WorkerOptions {
@@ -223,6 +235,8 @@ impl Default for WorkerOptions {
       bootstrap: Default::default(),
       stdio: Default::default(),
       feature_checker: Default::default(),
+      v8_code_cache: Default::default(),
+      modified_timestamp_getter: Default::default(),
     }
   }
 }
@@ -491,6 +505,55 @@ impl MainWorker {
       validate_import_attributes_cb: Some(Box::new(
         validate_import_attributes_callback,
       )),
+      enable_code_cache: options.v8_code_cache.is_some(),
+      eval_context_code_cache_cbs: options.v8_code_cache.map(|cache| {
+        let cache_clone = cache.clone();
+        let modified_timestamp_getter =
+          options.modified_timestamp_getter.clone();
+        let modified_timestamp_getter_clone =
+          options.modified_timestamp_getter.clone();
+        (
+          Box::new(move |specifier: &str| {
+            let code_timestamp = modified_timestamp_getter
+              .as_ref()
+              .and_then(|getter| getter(specifier));
+            Ok(
+              cache
+                .get_sync(
+                  specifier,
+                  CodeCacheType::Script,
+                  None,
+                  code_timestamp,
+                )
+                .map(Cow::from)
+                .inspect(|_| {
+                  log::debug!(
+                    "V8 code cache hit for script: {}, [{}]",
+                    specifier.to_string(),
+                    code_timestamp.unwrap_or(0),
+                  );
+                }),
+            )
+          }) as Box<dyn Fn(&_) -> _>,
+          Box::new(move |specifier: &str, data: &[u8]| {
+            let code_timestamp = modified_timestamp_getter_clone
+              .as_ref()
+              .and_then(|getter| getter(specifier));
+            log::debug!(
+              "Updating code cache for script: {}, [{}]",
+              specifier,
+              code_timestamp.unwrap_or(0)
+            );
+            cache_clone.set_sync(
+              specifier,
+              CodeCacheType::Script,
+              None,
+              code_timestamp,
+              data,
+            );
+          }) as Box<dyn Fn(&_, &_)>,
+        )
+      }),
       ..Default::default()
     });
 

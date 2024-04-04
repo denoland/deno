@@ -4,6 +4,8 @@ use crate::args::jsr_url;
 use crate::args::CliOptions;
 use crate::args::DenoSubcommand;
 use crate::args::TsTypeLib;
+use crate::cache::CodeCache;
+use crate::cache::ModuleInfoCache;
 use crate::cache::ParsedSourceCache;
 use crate::emit::Emitter;
 use crate::graph_util::graph_lock_or_exit;
@@ -17,6 +19,7 @@ use crate::resolver::ModuleCodeStringSource;
 use crate::resolver::NpmModuleLoader;
 use crate::tools::check;
 use crate::tools::check::TypeChecker;
+use crate::util::path::specifier_to_file_path;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::text_encoding::code_without_source_map;
 use crate::util::text_encoding::source_map_from_code;
@@ -50,6 +53,7 @@ use deno_graph::JsonModule;
 use deno_graph::Module;
 use deno_graph::Resolution;
 use deno_lockfile::Lockfile;
+use deno_runtime::code_cache;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
@@ -59,6 +63,7 @@ use std::pin::Pin;
 use std::rc::Rc;
 use std::str;
 use std::sync::Arc;
+use std::time::UNIX_EPOCH;
 
 pub struct ModuleLoadPreparer {
   options: Arc<CliOptions>,
@@ -311,6 +316,8 @@ struct SharedCliModuleLoaderState {
   resolver: Arc<CliGraphResolver>,
   node_resolver: Arc<CliNodeResolver>,
   npm_module_loader: NpmModuleLoader,
+  code_cache: Option<Arc<CodeCache>>,
+  module_info_cache: Arc<ModuleInfoCache>,
 }
 
 pub struct CliModuleLoaderFactory {
@@ -328,6 +335,8 @@ impl CliModuleLoaderFactory {
     resolver: Arc<CliGraphResolver>,
     node_resolver: Arc<CliNodeResolver>,
     npm_module_loader: NpmModuleLoader,
+    code_cache: Option<Arc<CodeCache>>,
+    module_info_cache: Arc<ModuleInfoCache>,
   ) -> Self {
     Self {
       shared: Arc::new(SharedCliModuleLoaderState {
@@ -348,6 +357,8 @@ impl CliModuleLoaderFactory {
         resolver,
         node_resolver,
         npm_module_loader,
+        code_cache,
+        module_info_cache,
       }),
     }
   }
@@ -458,12 +469,50 @@ impl CliModuleLoader {
       return Err(generic_error("Attempted to load JSON module without specifying \"type\": \"json\" attribute in the import statement."));
     }
 
+    let code_cache = if module_type == ModuleType::JavaScript {
+      self.shared.code_cache.as_ref().and_then(|cache| {
+        let code_hash = self
+          .shared
+          .module_info_cache
+          .get_module_source_hash(specifier, code_source.media_type)
+          .ok()
+          .flatten();
+        let code_timestamp = specifier_to_file_path(specifier)
+          .ok()
+          .and_then(|path| std::fs::metadata(path).ok())
+          .and_then(|m| m.modified().ok())
+          .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+          .map(|d| d.as_millis() as u64);
+        cache
+          .get_sync(
+            specifier.as_str(),
+            code_cache::CodeCacheType::EsModule,
+            code_hash.as_ref().map(|hash| hash.as_str()),
+            code_timestamp,
+          )
+          .map(Cow::from)
+          .inspect(|_| {
+            log::debug!(
+              "V8 code cache hit for ES module: {}, [{},{}]",
+              specifier.to_string(),
+              code_hash
+                .as_ref()
+                .map(|hash| hash.as_str())
+                .unwrap_or("none"),
+              code_timestamp.unwrap_or(0),
+            );
+          })
+      })
+    } else {
+      None
+    };
+
     Ok(ModuleSource::new_with_redirect(
       module_type,
       ModuleSourceCode::String(code),
       specifier,
       &code_source.found_url,
-      None,
+      code_cache,
     ))
   }
 
@@ -677,6 +726,45 @@ impl ModuleLoader for CliModuleLoader {
         .await
     }
     .boxed_local()
+  }
+
+  fn code_cache_ready(
+    &self,
+    specifier: &ModuleSpecifier,
+    code_cache: &[u8],
+  ) -> Pin<Box<dyn Future<Output = ()>>> {
+    if let Some(cache) = self.shared.code_cache.as_ref() {
+      let media_type = MediaType::from_specifier(specifier);
+      let code_hash = self
+        .shared
+        .module_info_cache
+        .get_module_source_hash(specifier, media_type)
+        .ok()
+        .flatten();
+      let code_timestamp = specifier_to_file_path(specifier)
+        .ok()
+        .and_then(|path| std::fs::metadata(path).ok())
+        .and_then(|m| m.modified().ok())
+        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+        .map(|d| d.as_millis() as u64);
+      log::debug!(
+        "Updating V8 code cache for ES module: {}, [{},{}]",
+        specifier,
+        code_hash
+          .as_ref()
+          .map(|hash| hash.as_str())
+          .unwrap_or("none"),
+        code_timestamp.unwrap_or(0)
+      );
+      cache.set_sync(
+        specifier.as_str(),
+        code_cache::CodeCacheType::EsModule,
+        code_hash.as_ref().map(|hash| hash.as_str()),
+        code_timestamp,
+        code_cache,
+      );
+    }
+    async {}.boxed_local()
   }
 }
 
