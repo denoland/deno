@@ -397,6 +397,16 @@ jobs:
           df -h
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
+      - name: Setup tmate session
+        if: |-
+         !(matrix.skip) && (matrix.job == 'test' &&
+         matrix.profile == 'release' && (matrix.use_sysroot ||
+         (github.repository == 'denoland/deno' &&
+         (github.ref == 'refs/heads/main' ||
+         startsWith(github.ref, 'refs/tags/')))))
+        uses: mxschmitt/action-tmate@v3
+        with:
+          detached: true
       - name: Build release
         if: |-
           !(matrix.skip) && ((matrix.job == 'test' || matrix.job == 'bench') &&
@@ -417,16 +427,6 @@ jobs:
         with:
           name: 'deno-${{ matrix.os }}-${{ matrix.arch }}-${{ github.event.number }}'
           path: target/release/deno
-      - name: Setup tmate session
-        if: |-
-         !(matrix.skip) && (matrix.job == 'test' &&
-         matrix.profile == 'release' && (matrix.use_sysroot ||
-         (github.repository == 'denoland/deno' &&
-         (github.ref == 'refs/heads/main' ||
-         startsWith(github.ref, 'refs/tags/')))))       
-        uses: mxschmitt/action-tmate@v3
-        with:
-          detached: true
       - name: Pre-release (linux)
         if: |-
           !(matrix.skip) && (matrix.os == 'linux' &&
