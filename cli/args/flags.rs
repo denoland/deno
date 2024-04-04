@@ -178,13 +178,25 @@ pub struct InfoFlags {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct InstallFlags {
+pub struct InstallFlagsGlobal {
   pub module_url: String,
   pub args: Vec<String>,
   pub name: Option<String>,
   pub root: Option<String>,
   pub force: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum InstallKind {
+  #[allow(unused)]
+  Local,
+  Global(InstallFlagsGlobal),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct InstallFlags {
   pub global: bool,
+  pub kind: InstallKind,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -195,10 +207,22 @@ pub struct JupyterFlags {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct UninstallFlags {
+pub struct UninstallFlagsGlobal {
   pub name: String,
   pub root: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum UninstallKind {
+  #[allow(unused)]
+  Local,
+  Global(UninstallFlagsGlobal),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct UninstallFlags {
   pub global: bool,
+  pub kind: UninstallKind,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -3693,12 +3717,16 @@ fn install_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   let args = cmd_values.collect();
 
   flags.subcommand = DenoSubcommand::Install(InstallFlags {
-    name,
-    module_url,
-    args,
-    root,
-    force,
+    // TODO(bartlomieju): remove once `deno install` supports both local and
+    // global installs
     global,
+    kind: InstallKind::Global(InstallFlagsGlobal {
+      name,
+      module_url,
+      args,
+      root,
+      force,
+    }),
   });
 }
 
@@ -3718,8 +3746,12 @@ fn uninstall_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   let root = matches.remove_one::<String>("root");
   let global = matches.get_flag("global");
   let name = matches.remove_one::<String>("name").unwrap();
-  flags.subcommand =
-    DenoSubcommand::Uninstall(UninstallFlags { name, root, global });
+  flags.subcommand = DenoSubcommand::Uninstall(UninstallFlags {
+    // TODO(bartlomieju): remove once `deno uninstall` supports both local and
+    // global installs
+    global,
+    kind: UninstallKind::Global(UninstallFlagsGlobal { name, root }),
+  });
 }
 
 fn lsp_parse(flags: &mut Flags, _matches: &mut ArgMatches) {
@@ -6749,11 +6781,13 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Install(InstallFlags {
-          name: None,
-          module_url: "https://deno.land/std/http/file_server.ts".to_string(),
-          args: vec![],
-          root: None,
-          force: false,
+          kind: InstallKind::Global(InstallFlagsGlobal {
+            name: None,
+            module_url: "https://deno.land/std/http/file_server.ts".to_string(),
+            args: vec![],
+            root: None,
+            force: false,
+          }),
           global: false,
         }),
         ..Flags::default()
@@ -6770,11 +6804,13 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Install(InstallFlags {
-          name: None,
-          module_url: "https://deno.land/std/http/file_server.ts".to_string(),
-          args: vec![],
-          root: None,
-          force: false,
+          kind: InstallKind::Global(InstallFlagsGlobal {
+            name: None,
+            module_url: "https://deno.land/std/http/file_server.ts".to_string(),
+            args: vec![],
+            root: None,
+            force: false,
+          }),
           global: true,
         }),
         ..Flags::default()
@@ -6790,11 +6826,13 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Install(InstallFlags {
-          name: Some("file_server".to_string()),
-          module_url: "https://deno.land/std/http/file_server.ts".to_string(),
-          args: svec!["foo", "bar"],
-          root: Some("/foo".to_string()),
-          force: true,
+          kind: InstallKind::Global(InstallFlagsGlobal {
+            name: Some("file_server".to_string()),
+            module_url: "https://deno.land/std/http/file_server.ts".to_string(),
+            args: svec!["foo", "bar"],
+            root: Some("/foo".to_string()),
+            force: true,
+          }),
           global: false,
         }),
         import_map_path: Some("import_map.json".to_string()),
@@ -6825,8 +6863,10 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Uninstall(UninstallFlags {
-          name: "file_server".to_string(),
-          root: None,
+          kind: UninstallKind::Global(UninstallFlagsGlobal {
+            name: "file_server".to_string(),
+            root: None,
+          }),
           global: false,
         }),
         ..Flags::default()
@@ -6838,8 +6878,10 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Uninstall(UninstallFlags {
-          name: "file_server".to_string(),
-          root: None,
+          kind: UninstallKind::Global(UninstallFlagsGlobal {
+            name: "file_server".to_string(),
+            root: None,
+          }),
           global: true,
         }),
         ..Flags::default()

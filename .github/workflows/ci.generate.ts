@@ -548,6 +548,17 @@ const ci = {
           ...sysRootStep,
         },
         {
+          name: "Remove macOS cURL --ipv4 flag",
+          run: [
+            // cURL's --ipv4 flag is busted for now
+            "curl --version",
+            "which curl",
+            "cat /etc/hosts",
+            "rm ~/.curlrc || true",
+          ].join("\n"),
+          if: `matrix.os == 'macos'`,
+        },
+        {
           name: "Install macOS aarch64 lld",
           run: [
             "./tools/install_prebuilt.js ld64.lld",
