@@ -282,7 +282,8 @@ let isClosing = false;
 let globalDispatchEvent;
 
 function hasMessageEventListener() {
-  return event.listenerCount(globalThis, "message") > 0;
+  return event.listenerCount(globalThis, "message") > 0 ||
+    messagePort.messageEventListenerCount > 0;
 }
 
 async function pollForMessages() {
