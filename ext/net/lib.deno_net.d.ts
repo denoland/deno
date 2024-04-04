@@ -448,7 +448,7 @@ declare namespace Deno {
    * @category Network
    */
   export function startTls(
-    conn: Conn,
+    conn: TcpConn,
     options?: StartTlsOptions,
   ): Promise<TlsConn>;
 
