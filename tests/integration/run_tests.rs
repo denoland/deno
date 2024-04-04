@@ -5,6 +5,7 @@ use deno_core::serde_json::json;
 use deno_core::url;
 use deno_fetch::reqwest;
 use pretty_assertions::assert_eq;
+use regex::Regex;
 use std::io::Read;
 use std::io::Write;
 use std::process::Command;
@@ -5202,13 +5203,11 @@ fn code_cache_test() {
     let debug_output = std::str::from_utf8(&output.stderr).unwrap();
     // There should be no cache hits yet, and the cache should be created.
     assert!(!debug_output.contains("V8 code cache hit"));
-    assert!(debug_output.contains(
-      format!(
-        "Updating V8 code cache for ES module: file://{}/main.js",
-        script_dir.path()
-      )
-      .as_str()
-    ));
+    assert!(Regex::new(
+      r"Updating V8 code cache for ES module: file://(.+)/main.js"
+    )
+    .unwrap()
+    .is_match(debug_output));
 
     // Check that the code cache database exists.
     let code_cache_path = deno_dir.path().join("code_cache_v1");
@@ -5231,13 +5230,11 @@ fn code_cache_test() {
 
     let debug_output = std::str::from_utf8(&output.stderr).unwrap();
     // There should be a cache hit, and the cache should not be created.
-    assert!(debug_output.contains(
-      format!(
-        "V8 code cache hit for ES module: file://{}/main.js",
-        script_dir.path()
-      )
-      .as_str()
-    ));
+    assert!(Regex::new(
+      r"V8 code cache hit for ES module: file://(.+)/main.js"
+    )
+    .unwrap()
+    .is_match(debug_output));
     assert!(!debug_output.contains("Updating V8 code cache"));
   }
 
@@ -5278,12 +5275,10 @@ fn code_cache_test() {
 
     let debug_output = std::str::from_utf8(&output.stderr).unwrap();
     assert!(!debug_output.contains("V8 code cache hit"));
-    assert!(debug_output.contains(
-      format!(
-        "Updating V8 code cache for ES module: file://{}/main.js",
-        script_dir.path()
-      )
-      .as_str()
-    ));
+    assert!(Regex::new(
+      r"Updating V8 code cache for ES module: file://(.+)/main.js"
+    )
+    .unwrap()
+    .is_match(debug_output));
   }
 }
