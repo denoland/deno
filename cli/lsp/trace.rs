@@ -60,7 +60,7 @@ pub(crate) enum TracingCollector {
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub(crate) struct TracingConfig {
-  pub(crate) enabled: bool,
+  pub(crate) enable: bool,
 
   pub(crate) collector: TracingCollector,
 
@@ -70,7 +70,7 @@ pub(crate) struct TracingConfig {
 pub(crate) fn init_tracing_subscriber(
   config: &TracingConfig,
 ) -> Result<TracingGuard, anyhow::Error> {
-  if !config.enabled {
+  if !config.enable {
     return Err(anyhow::anyhow!("Tracing is not enabled"));
   }
   let filter = tracing_subscriber::EnvFilter::builder()
@@ -87,7 +87,9 @@ pub(crate) fn init_tracing_subscriber(
     _ => None,
   };
   let logging_layer = match config.collector {
-    TracingCollector::Logging => Some(tracing_subscriber::fmt::layer()),
+    TracingCollector::Logging => {
+      Some(tracing_subscriber::fmt::layer().with_writer(std::io::stderr))
+    }
     _ => None,
   };
 

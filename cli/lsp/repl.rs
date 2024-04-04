@@ -346,5 +346,6 @@ pub fn get_repl_workspace_settings() -> WorkspaceSettings {
       },
       ..Default::default()
     },
+    tracing: Default::default(),
   }
 }

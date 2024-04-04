@@ -81,6 +81,7 @@ use super::refactor;
 use super::registries::ModuleRegistry;
 use super::testing;
 use super::text;
+use super::trace::TracingGuard;
 use super::tsc;
 use super::tsc::Assets;
 use super::tsc::AssetsSnapshot;
@@ -268,6 +269,10 @@ pub struct Inner {
   /// Set to `self.config.settings.enable_settings_hash()` after
   /// refreshing `self.workspace_files`.
   workspace_files_hash: u64,
+
+  /// Guard keeping the current tracing subscriber (if any) alive.
+  /// Dropping this guard will shut down the tracing subscriber.
+  _tracing: Option<TracingGuard>,
 }
 
 impl LanguageServer {
@@ -556,6 +561,7 @@ impl Inner {
       url_map: Default::default(),
       workspace_files: Default::default(),
       workspace_files_hash: 0,
+      _tracing: Default::default(),
     }
   }
 
@@ -829,6 +835,20 @@ impl Inner {
   pub fn update_debug_flag(&self) {
     let internal_debug = self.config.workspace_settings().internal_debug;
     super::logging::set_lsp_debug_flag(internal_debug)
+  }
+
+  pub fn update_tracing(&mut self) {
+    let tracing = self.config.workspace_settings().tracing.as_ref();
+    self._tracing = tracing.and_then(|conf| {
+      if !conf.enable {
+        return None;
+      }
+      super::trace::init_tracing_subscriber(conf)
+        .inspect_err(|e| {
+          lsp_warn!("Error initializing tracing subscriber: {e:#}");
+        })
+        .ok()
+    });
   }
 
   async fn update_registries(&mut self) -> Result<(), AnyError> {
@@ -1330,6 +1350,7 @@ impl Inner {
       }
     };
 
+    self.update_tracing();
     self.update_debug_flag();
     self.refresh_workspace_files();
     self.refresh_config_tree().await;
