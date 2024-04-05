@@ -174,19 +174,9 @@ pub fn create_client_config(
   root_cert_store: Option<RootCertStore>,
   ca_certs: Vec<Vec<u8>>,
   unsafely_ignore_certificate_errors: Option<Vec<String>>,
-  client_cert_chain_and_key: Option<(String, String)>,
+  maybe_cert_chain_and_key: Option<TlsKey>,
   socket_use: SocketUse,
 ) -> Result<ClientConfig, AnyError> {
-  let maybe_cert_chain_and_key =
-    if let Some((cert_chain, private_key)) = client_cert_chain_and_key {
-      // The `remove` is safe because load_private_keys checks that there is at least one key.
-      let private_key = load_private_keys(private_key.as_bytes())?.remove(0);
-      let cert_chain = load_certs(&mut cert_chain.as_bytes())?;
-      Some((cert_chain, private_key))
-    } else {
-      None
-    };
-
   if let Some(ic_allowlist) = unsafely_ignore_certificate_errors {
     let client_config = ClientConfig::builder()
       .with_safe_defaults()
@@ -199,7 +189,7 @@ pub fn create_client_config(
     // are not type-compatible - one wants "client cert", the other wants "transparency policy
     // or client cert".
     let mut client =
-      if let Some((cert_chain, private_key)) = maybe_cert_chain_and_key {
+      if let Some(TlsKey(cert_chain, private_key)) = maybe_cert_chain_and_key {
         client_config
           .with_client_auth_cert(cert_chain, private_key)
           .expect("invalid client key or certificate")
@@ -236,7 +226,7 @@ pub fn create_client_config(
     });
 
   let mut client =
-    if let Some((cert_chain, private_key)) = maybe_cert_chain_and_key {
+    if let Some(TlsKey(cert_chain, private_key)) = maybe_cert_chain_and_key {
       client_config
         .with_client_auth_cert(cert_chain, private_key)
         .expect("invalid client key or certificate")
@@ -270,19 +260,22 @@ pub fn load_certs(
     .map_err(|_| custom_error("InvalidData", "Unable to decode certificate"))?;
 
   if certs.is_empty() {
-    let e = custom_error("InvalidData", "No certificates found in cert file");
-    return Err(e);
+    return Err(cert_not_found_err());
   }
 
   Ok(certs.into_iter().map(Certificate).collect())
 }
 
-fn key_decode_err() -> AnyError {
+pub fn key_decode_err() -> AnyError {
   custom_error("InvalidData", "Unable to decode key")
 }
 
-fn key_not_found_err() -> AnyError {
-  custom_error("InvalidData", "No keys found in key file")
+pub fn key_not_found_err() -> AnyError {
+  custom_error("InvalidData", "No keys found in key data")
+}
+
+pub fn cert_not_found_err() -> AnyError {
+  custom_error("InvalidData", "No certificates found in certificate data")
 }
 
 /// Starts with -----BEGIN RSA PRIVATE KEY-----
@@ -331,3 +324,11 @@ pub fn load_private_keys(bytes: &[u8]) -> Result<Vec<PrivateKey>, AnyError> {
 
   Ok(keys)
 }
+
+pub enum TlsKeys {
+  Null,
+  Static(TlsKey),
+}
+
+#[derive(Clone, Debug)]
+pub struct TlsKey(pub Vec<Certificate>, pub PrivateKey);
