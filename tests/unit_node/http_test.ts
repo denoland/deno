@@ -28,7 +28,8 @@ Deno.test("[node/http listen]", async () => {
     const server = http.createServer();
 
     server.listen(42453, "localhost", () => {
-      assertEquals(server.address().address, "127.0.0.1");
+      // @ts-ignore address() is not a string
+      assertEquals(server.address()!.address, "127.0.0.1");
       server.close();
     });
     server.on("close", () => {
