@@ -35,7 +35,7 @@ impl ContextifyScript {
   pub fn eval_machine<'s>(
     &self,
     scope: &mut v8::HandleScope<'s>,
-    context: v8::Local<v8::Context>,
+    _context: v8::Local<v8::Context>,
   ) -> Option<v8::Local<'s, v8::Value>> {
     let tc_scope = &mut v8::TryCatch::new(scope);
 
@@ -79,7 +79,6 @@ impl ContextifyContext {
     sandbox_obj: v8::Local<v8::Object>,
   ) {
     let main_context = scope.get_current_context();
-    let new_context_global = v8_context.global(scope);
     v8_context.set_security_token(main_context.get_security_token(scope));
 
     let context = v8::Global::new(scope, v8_context);
@@ -198,7 +197,7 @@ fn init_global_template<'a>(
   v8::Local::new(scope, object_template_slot.0)
 }
 
-extern "C" fn c_noop(info: *const v8::FunctionCallbackInfo) {}
+extern "C" fn c_noop(_: *const v8::FunctionCallbackInfo) {}
 
 thread_local! {
   pub static GETTER_MAP_FN: v8::GenericNamedPropertyGetterCallback<'static> = property_getter.map_fn_to();
@@ -274,7 +273,6 @@ fn property_getter<'s>(
 ) {
   let ctx = ContextifyContext::get(scope, args.this()).unwrap();
 
-  let context = ctx.context(scope);
   let sandbox = ctx.sandbox(scope);
 
   let tc_scope = &mut v8::TryCatch::new(scope);
@@ -306,7 +304,6 @@ fn property_setter<'s>(
 ) {
   let ctx = ContextifyContext::get(scope, args.this()).unwrap();
 
-  let context = ctx.context(scope);
   let (attributes, is_declared_on_global_proxy) = match ctx
     .global_proxy(scope)
     .get_real_named_property_attributes(scope, key)
@@ -429,7 +426,7 @@ fn property_definer<'s>(
   key: v8::Local<'s, v8::Name>,
   desc: &v8::PropertyDescriptor,
   args: v8::PropertyCallbackArguments<'s>,
-  mut rv: v8::ReturnValue,
+  _: v8::ReturnValue,
 ) {
   let ctx = ContextifyContext::get(scope, args.this()).unwrap();
 
@@ -454,7 +451,7 @@ fn property_definer<'s>(
   let sandbox = ctx.sandbox(scope);
   let scope = &mut v8::ContextScope::new(scope, context);
 
-  let mut define_prop_on_sandbox =
+  let define_prop_on_sandbox =
     |scope: &mut v8::HandleScope,
      desc_for_sandbox: &mut v8::PropertyDescriptor| {
       if desc.has_enumerable() {
@@ -535,8 +532,6 @@ fn indexed_property_getter<'s>(
   args: v8::PropertyCallbackArguments<'s>,
   rv: v8::ReturnValue,
 ) {
-  let ctx = ContextifyContext::get(scope, args.this()).unwrap();
-
   let key = uint32_to_name(scope, index);
   property_getter(scope, key, args, rv);
 }
@@ -548,8 +543,6 @@ fn indexed_property_setter<'s>(
   args: v8::PropertyCallbackArguments<'s>,
   rv: v8::ReturnValue,
 ) {
-  let ctx = ContextifyContext::get(scope, args.this()).unwrap();
-
   let key = uint32_to_name(scope, index);
   property_setter(scope, key, value, args, rv);
 }
@@ -581,8 +574,6 @@ fn indexed_property_definer<'s>(
   args: v8::PropertyCallbackArguments<'s>,
   rv: v8::ReturnValue,
 ) {
-  let ctx = ContextifyContext::get(scope, args.this()).unwrap();
-
   let key = uint32_to_name(scope, index);
   property_definer(scope, key, descriptor, args, rv);
 }
@@ -593,8 +584,6 @@ fn indexed_property_descriptor<'s>(
   args: v8::PropertyCallbackArguments<'s>,
   rv: v8::ReturnValue,
 ) {
-  let ctx = ContextifyContext::get(scope, args.this()).unwrap();
-
   let key = uint32_to_name(scope, index);
   property_descriptor(scope, key, args, rv);
 }

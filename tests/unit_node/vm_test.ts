@@ -32,20 +32,30 @@ x
   },
 });
 
+// https://github.com/denoland/deno/issues/23186
 Deno.test({
   name: "vm runInNewContext sandbox",
   fn() {
-    // deno-lint-ignore no-var
-    var a = 1;
-    assertThrows(() => runInNewContext("a + 1"));
+    const sandbox = { fromAnotherRealm: false };
+    runInNewContext("fromAnotherRealm = {}", sandbox);
 
-    runInNewContext("a = 2");
-    assertEquals(a, 1);
+    assertEquals(typeof sandbox.fromAnotherRealm, "object");
   },
 });
 
+// https://github.com/denoland/deno/issues/22395
 Deno.test({
-  name: "vm createContext",
+  name: "vm runInewContext with context object",
+  fn() {
+    const context = { a: 1, b: 2 };
+    const result = runInNewContext("a + b", context);
+    assertEquals(result, 3);
+  },
+});
+
+// https://github.com/denoland/deno/issues/18299
+Deno.test({
+  name: "vm createContext and runInContext",
   fn() {
     // @ts-expect-error implicit any
     globalThis.globalVar = 3;
@@ -89,6 +99,7 @@ Deno.test({
   },
 });
 
+// https://github.com/denoland/deno/issues/18315
 Deno.test({
   name: "vm isContext",
   fn() {
