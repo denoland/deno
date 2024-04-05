@@ -153,6 +153,6 @@ Deno.test("[node/fs createWriteStream", async () => {
     });
     await promise;
   } finally {
-    Deno.remove(tempDir, { recursive: true });
+    await Deno.remove(tempDir, { recursive: true });
   }
 });
