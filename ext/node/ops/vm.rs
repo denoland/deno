@@ -68,7 +68,7 @@ pub fn op_vm_create_script<'a>(
   Ok(deno_core::cppgc::make_cppgc_object(scope, script))
 }
 
-#[op2]
+#[op2(reentrant)]
 pub fn op_vm_script_run_in_context<'a>(
   scope: &mut v8::HandleScope<'a>,
   #[cppgc] script: &Script,
@@ -77,7 +77,7 @@ pub fn op_vm_script_run_in_context<'a>(
   script.run_in_context(scope, sandbox)
 }
 
-#[op2]
+#[op2(reentrant)]
 pub fn op_vm_script_run_in_this_context<'a>(
   scope: &'a mut v8::HandleScope,
   #[cppgc] script: &Script,
