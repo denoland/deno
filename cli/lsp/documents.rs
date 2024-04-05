@@ -855,6 +855,7 @@ pub struct Documents {
   /// settings.
   resolver: Arc<CliGraphResolver>,
   jsr_resolver: Arc<JsrCacheResolver>,
+  lockfile: Option<Arc<Mutex<Lockfile>>>,
   /// The npm package requirements found in npm specifiers.
   npm_specifier_reqs: Arc<Vec<PackageReq>>,
   /// Gets if any document had a node: specifier such that a @types/node package
@@ -887,6 +888,7 @@ impl Documents {
         sloppy_imports_resolver: None,
       })),
       jsr_resolver: Arc::new(JsrCacheResolver::new(cache.clone(), None)),
+      lockfile: None,
       npm_specifier_reqs: Default::default(),
       has_injected_types_node_package: false,
       redirect_resolver: Arc::new(RedirectResolver::new(cache)),
@@ -1296,12 +1298,10 @@ impl Documents {
     &self.jsr_resolver
   }
 
-  pub fn refresh_jsr_resolver(
-    &mut self,
-    lockfile: Option<Arc<Mutex<Lockfile>>>,
-  ) {
+  pub fn refresh_lockfile(&mut self, lockfile: Option<Arc<Mutex<Lockfile>>>) {
     self.jsr_resolver =
-      Arc::new(JsrCacheResolver::new(self.cache.clone(), lockfile));
+      Arc::new(JsrCacheResolver::new(self.cache.clone(), lockfile.clone()));
+    self.lockfile = lockfile;
   }
 
   pub fn update_config(
@@ -1339,6 +1339,7 @@ impl Documents {
       self.cache.clone(),
       config.tree.root_lockfile().cloned(),
     ));
+    self.lockfile = config.tree.root_lockfile().cloned();
     self.redirect_resolver =
       Arc::new(RedirectResolver::new(self.cache.clone()));
     let resolver = self.resolver.as_graph_resolver();
@@ -1494,6 +1495,19 @@ impl Documents {
     }
 
     let mut npm_reqs = doc_analyzer.npm_reqs;
+
+    // fill the reqs from the lockfile
+    if let Some(lockfile) = self.lockfile.as_ref() {
+      let lockfile = lockfile.lock();
+      for key in lockfile.content.packages.specifiers.keys() {
+        if let Some(key) = key.strip_prefix("npm:") {
+          if let Ok(req) = PackageReq::from_str(key) {
+            npm_reqs.insert(req);
+          }
+        }
+      }
+    }
+
     // Ensure a @types/node package exists when any module uses a node: specifier.
     // Unlike on the command line, here we just add @types/node to the npm package
     // requirements since this won't end up in the lockfile.
