@@ -185,11 +185,27 @@ declare namespace Deno {
   ): Listener;
 
   /** @category Network */
-  export interface ListenTlsOptions extends TcpListenOptions {
+  export interface TlsServerKeyOptions {
     /** Server private key in PEM format */
     key?: string;
     /** Cert chain in PEM format */
     cert?: string;
+
+    /** A function to return a certificate for a connection, based on the name
+     * specified in the TLS ClientHello packet (SNI). If the function throws or
+     * returns a rejected promise, the connection with the client will be aborted.
+     *
+     * The results of this function are cached by name, if the returned
+     * certificate and key are valid. Entries in the cache may be discarded at any
+     * time. This function will never be invoked in parallel for the same name.
+     *
+     * Multiple names may return the same certificate and key. */
+    resolveCertificate?(name: string): Promise<{ cert: string; key: string }>;
+  }
+
+  /** @category Network */
+  export interface ListenTlsOptions
+    extends TcpListenOptions, TlsServerKeyOptions {
     /** Path to a file containing a PEM formatted CA certificate. Requires
      * `--allow-read`.
      *

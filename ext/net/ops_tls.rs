@@ -5,10 +5,15 @@ use crate::ops::IpAddr;
 use crate::ops::TlsHandshakeInfo;
 use crate::resolve_addr::resolve_addr;
 use crate::resolve_addr::resolve_addr_sync;
+use crate::tls_key;
+use crate::tls_key::new_resolver;
+use crate::tls_key::TlsKeyLookup;
 use crate::tls_key::TlsKeyResolver;
+use crate::tls_key::TlsKeys;
 use crate::DefaultTlsOptions;
 use crate::NetPermissions;
 use crate::UnsafelyIgnoreCertificateErrors;
+use deno_core::anyhow::anyhow;
 use deno_core::error::bad_resource;
 use deno_core::error::custom_error;
 use deno_core::error::generic_error;
@@ -24,6 +29,7 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_core::v8;
 use deno_tls::create_client_config;
 use deno_tls::load_certs;
 use deno_tls::load_private_keys;
@@ -39,6 +45,7 @@ use serde::Deserialize;
 use socket2::Domain;
 use socket2::Socket;
 use socket2::Type;
+use trust_dns_resolver::lookup;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::convert::From;
@@ -158,6 +165,37 @@ pub struct StartTlsArgs {
   ca_certs: Vec<String>,
   hostname: String,
   alpn_protocols: Option<Vec<String>>,
+}
+
+#[op2]
+pub fn op_tls_cert_resolver_create<'s>(scope: &mut v8::HandleScope<'s>) -> v8::Local<'s, v8::Array> {
+  let (resolver, lookup) = new_resolver();
+  let resolver = deno_core::cppgc::make_cppgc_object(scope, TlsKeys::Resolver(resolver));
+  let lookup = deno_core::cppgc::make_cppgc_object(scope, lookup);
+  v8::Array::new_with_elements(scope, &[resolver.into(), lookup.into()])
+}
+
+#[op2(async)]
+#[string]
+pub async fn op_tls_cert_resolver_poll(#[cppgc] lookup: &TlsKeyLookup) -> Option<String> {
+  lookup.poll().await
+}
+
+#[op2(fast)]
+pub fn op_tls_cert_resolver_resolve(#[cppgc] lookup: &TlsKeyLookup, #[string] sni: String, #[string] cert: String, #[string] key: String) {
+  lookup.resolve(sni, Ok((cert, key)))
+}
+
+#[op2(fast)]
+pub fn op_tls_cert_resolver_resolve_error(#[cppgc] lookup: &TlsKeyLookup, #[string] sni: String, #[string] error: String) {
+  lookup.resolve(sni, Err(anyhow!(error)))
+}
+
+#[op2]
+pub fn op_tls_key_static<'s>(scope: &mut v8::HandleScope<'s>, #[string] cert: String, #[string] key: String) -> Result<v8::Local<'s, v8::Object>, AnyError> {
+  let cert = load_certs(&mut BufReader::new(cert.as_bytes()))?.into_iter().next().ok_or_else(|| anyhow!("No certificates found"))?;
+  let key = load_private_keys(key.as_bytes())?.into_iter().next().ok_or_else(|| anyhow!("No keys found"))?;
+  Ok(deno_core::cppgc::make_cppgc_object(scope, TlsKeys::Static(key, cert)))
 }
 
 #[op2]
@@ -374,12 +412,6 @@ impl Resource for TlsListenerResource {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ListenTlsArgs {
-  cert: Option<String>,
-  // TODO(kt3k): Remove this option at v2.0.
-  cert_file: Option<String>,
-  key: Option<String>,
-  // TODO(kt3k): Remove this option at v2.0.
-  key_file: Option<String>,
   alpn_protocols: Option<Vec<String>>,
   reuse_port: bool,
 }
@@ -390,6 +422,7 @@ pub fn op_net_listen_tls<NP>(
   state: &mut OpState,
   #[serde] addr: IpAddr,
   #[serde] args: ListenTlsArgs,
+  #[cppgc] keys: &TlsKeys,
 ) -> Result<(ResourceId, IpAddr), AnyError>
 where
   NP: NetPermissions + 'static,
@@ -398,49 +431,22 @@ where
     super::check_unstable(state, "Deno.listenTls({ reusePort: true })");
   }
 
-  let cert_file = args.cert_file.as_deref();
-  let key_file = args.key_file.as_deref();
-  let cert = args.cert.as_deref();
-  let key = args.key.as_deref();
-
   {
     let permissions = state.borrow_mut::<NP>();
     permissions
       .check_net(&(&addr.hostname, Some(addr.port)), "Deno.listenTls()")?;
-    if let Some(path) = cert_file {
-      permissions.check_read(Path::new(path), "Deno.listenTls()")?;
-    }
-    if let Some(path) = key_file {
-      permissions.check_read(Path::new(path), "Deno.listenTls()")?;
-    }
   }
-
-  let cert_chain = if cert_file.is_some() && cert.is_some() {
-    return Err(generic_error("Both cert and certFile is specified. You can specify either one of them."));
-  } else if let Some(path) = cert_file {
-    load_certs_from_file(path)?
-  } else if let Some(cert) = cert {
-    load_certs(&mut BufReader::new(cert.as_bytes()))?
-  } else {
-    return Err(generic_error("`cert` is not specified."));
-  };
-  let key_der = if key_file.is_some() && key.is_some() {
-    return Err(generic_error(
-      "Both key and keyFile is specified. You can specify either one of them.",
-    ));
-  } else if let Some(path) = key_file {
-    load_private_keys_from_file(path)?.remove(0)
-  } else if let Some(key) = key {
-    load_private_keys(key.as_bytes())?.remove(0)
-  } else {
-    return Err(generic_error("`key` is not specified."));
-  };
 
   let mut tls_config = ServerConfig::builder()
     .with_safe_defaults()
-    .with_no_client_auth()
-    .with_single_cert(cert_chain, key_der)
-    .map_err(|e| {
+    .with_no_client_auth();
+
+  let mut tls_config = match keys {
+    TlsKeys::Static(key, cert) => {
+      tls_config.with_single_cert(cert, key)
+    },
+    TlsKeys::Resolver(resolver) => unimplemented!()
+  }.map_err(|e| {
       custom_error(
         "InvalidData",
         format!("Error creating TLS certificate: {:?}", e),

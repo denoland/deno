@@ -2,6 +2,8 @@ use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::futures::future::Either;
 use deno_core::unsync::spawn;
+use deno_tls::rustls::Certificate;
+use deno_tls::rustls::PrivateKey;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::future::ready;
@@ -9,6 +11,11 @@ use std::future::Future;
 use std::rc::Rc;
 
 type ErrorType = Rc<AnyError>;
+
+pub enum TlsKeys {
+  Static(PrivateKey, Certificate),
+  Resolver(TlsKeyResolver),
+}
 
 enum TlsKeyState {
   Resolving(

@@ -598,7 +598,7 @@ function removeImportedOps() {
   for (let i = 0; i < allOpNames.length; i++) {
     const opName = allOpNames[i];
     if (!ArrayPrototypeIncludes(NOT_IMPORTED_OPS, opName)) {
-      delete ops[opName];
+      // delete ops[opName];
     }
   }
 }
