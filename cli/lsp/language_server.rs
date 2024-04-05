@@ -364,7 +364,7 @@ impl LanguageServer {
       {
         let mut inner = self.0.write().await;
         let lockfile = inner.config.tree.root_lockfile().cloned();
-        inner.documents.refresh_jsr_resolver(lockfile);
+        inner.documents.refresh_lockfile(lockfile);
         inner.refresh_npm_specifiers().await;
       }
       // now refresh the data in a read
@@ -998,6 +998,7 @@ impl Inner {
 
     self.recreate_npm_services_if_necessary().await;
     self.assets.initialize(self.snapshot()).await;
+    self.refresh_documents_config().await;
 
     self.performance.measure(mark);
     Ok(InitializeResult {
