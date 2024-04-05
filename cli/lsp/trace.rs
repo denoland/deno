@@ -6,6 +6,7 @@ use crate::lsp::logging::lsp_debug;
 use deno_core::anyhow;
 use opentelemetry::KeyValue;
 use opentelemetry_otlp::WithExportConfig;
+use opentelemetry_sdk::trace::BatchConfigBuilder;
 use opentelemetry_sdk::Resource;
 use opentelemetry_semantic_conventions::resource::SERVICE_NAME;
 use serde::Deserialize;
@@ -17,6 +18,7 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
 pub(crate) fn make_tracer(
+  endpoint: Option<&str>,
 ) -> Result<opentelemetry_sdk::trace::Tracer, anyhow::Error> {
   Ok(
     opentelemetry_otlp::new_pipeline()
@@ -24,7 +26,7 @@ pub(crate) fn make_tracer(
       .with_exporter(
         opentelemetry_otlp::new_exporter()
           .tonic()
-          .with_endpoint("http://localhost:4317"),
+          .with_endpoint(endpoint.unwrap_or("http://localhost:4317")),
       )
       .with_trace_config(
         opentelemetry_sdk::trace::config()
@@ -33,6 +35,11 @@ pub(crate) fn make_tracer(
             SERVICE_NAME,
             "deno-lsp",
           )])),
+      )
+      .with_batch_config(
+        BatchConfigBuilder::default()
+          .with_max_queue_size(8192)
+          .build(),
       )
       .install_batch(opentelemetry_sdk::runtime::Tokio)?,
   )
@@ -65,7 +72,7 @@ pub(crate) enum TracingCollector {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Default)]
-#[serde(default)]
+#[serde(default, rename_all = "camelCase")]
 pub(crate) struct TracingConfig {
   /// Enable tracing.
   pub(crate) enable: bool,
@@ -76,6 +83,9 @@ pub(crate) struct TracingConfig {
 
   /// The filter to use. Defaults to `INFO`.
   pub(crate) filter: Option<String>,
+
+  /// The endpoint to use for the OpenTelemetry collector.
+  pub(crate) collector_endpoint: Option<String>,
 }
 
 pub(crate) fn init_tracing_subscriber(
@@ -92,9 +102,9 @@ pub(crate) fn init_tracing_subscriber(
     filter.with_env_var("DENO_LSP_TRACE").from_env()?
   };
   let open_telemetry_layer = match config.collector {
-    TracingCollector::OpenTelemetry => {
-      Some(OpenTelemetryLayer::new(make_tracer()?))
-    }
+    TracingCollector::OpenTelemetry => Some(OpenTelemetryLayer::new(
+      make_tracer(config.collector_endpoint.as_deref())?,
+    )),
     _ => None,
   };
   let logging_layer = match config.collector {
