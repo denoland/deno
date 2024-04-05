@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { core } from "ext:core/mod.js";
+// deno-lint-ignore-file no-explicit-any
+
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import {
   op_vm_create_context,
