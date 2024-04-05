@@ -4,7 +4,6 @@ use base64::Engine;
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
-use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
@@ -14,7 +13,6 @@ use deno_core::url;
 use deno_core::ModuleSpecifier;
 use deno_graph::GraphKind;
 use deno_graph::Resolution;
-use deno_lockfile::Lockfile;
 use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::NodeResolver;
@@ -54,6 +52,7 @@ use super::client::Client;
 use super::code_lens;
 use super::completions;
 use super::config::Config;
+use super::config::ConfigData;
 use super::config::ConfigSnapshot;
 use super::config::UpdateImportsOnFileMoveEnabled;
 use super::config::WorkspaceSettings;
@@ -92,7 +91,6 @@ use crate::args::get_root_cert_store;
 use crate::args::CaData;
 use crate::args::CacheSetting;
 use crate::args::CliOptions;
-use crate::args::ConfigFile;
 use crate::args::Flags;
 use crate::cache::DenoDir;
 use crate::cache::FastInsecureHasher;
@@ -152,10 +150,9 @@ struct LspNpmConfigHash(u64);
 impl LspNpmConfigHash {
   pub fn from_inner(inner: &Inner) -> Self {
     let config_data = inner.config.tree.root_data();
-    let node_modules_dir = config_data
-      .as_ref()
-      .and_then(|d| d.node_modules_dir.as_ref());
-    let lockfile = config_data.as_ref().and_then(|d| d.lockfile.as_ref());
+    let node_modules_dir =
+      config_data.and_then(|d| d.node_modules_dir.as_ref());
+    let lockfile = config_data.and_then(|d| d.lockfile.as_ref());
     let mut hasher = FastInsecureHasher::new();
     hasher.write_hashable(node_modules_dir);
     hasher.write_hashable(&inner.maybe_global_cache_path);
@@ -792,11 +789,7 @@ impl Inner {
       &deno_dir,
       &self.initial_cwd,
       &self.http_client,
-      config_data.as_ref().and_then(|d| d.config_file.as_deref()),
-      config_data.as_ref().and_then(|d| d.lockfile.as_ref()),
-      config_data
-        .as_ref()
-        .and_then(|d| d.node_modules_dir.clone()),
+      config_data,
     )
     .await;
     let node_resolver = Arc::new(NodeResolver::new(
@@ -854,16 +847,10 @@ async fn create_npm_resolver(
   deno_dir: &DenoDir,
   initial_cwd: &Path,
   http_client: &Arc<HttpClient>,
-  maybe_config_file: Option<&ConfigFile>,
-  maybe_lockfile: Option<&Arc<Mutex<Lockfile>>>,
-  maybe_node_modules_dir_path: Option<PathBuf>,
+  config_data: Option<&ConfigData>,
 ) -> Arc<dyn CliNpmResolver> {
-  let is_byonm = std::env::var("DENO_UNSTABLE_BYONM").as_deref() == Ok("1")
-    || maybe_config_file
-      .as_ref()
-      .map(|c| c.has_unstable("byonm"))
-      .unwrap_or(false);
-  create_cli_npm_resolver_for_lsp(if is_byonm {
+  let byonm = config_data.map(|d| d.byonm).unwrap_or(false);
+  create_cli_npm_resolver_for_lsp(if byonm {
     CliNpmResolverCreateOptions::Byonm(CliNpmResolverByonmCreateOptions {
       fs: Arc::new(deno_fs::RealFs),
       root_node_modules_dir: initial_cwd.join("node_modules"),
@@ -871,7 +858,7 @@ async fn create_npm_resolver(
   } else {
     CliNpmResolverCreateOptions::Managed(CliNpmResolverManagedCreateOptions {
       http_client: http_client.clone(),
-      snapshot: match maybe_lockfile {
+      snapshot: match config_data.and_then(|d| d.lockfile.as_ref()) {
         Some(lockfile) => {
           CliNpmResolverManagedSnapshotOption::ResolveFromLockfile(
             lockfile.clone(),
@@ -890,7 +877,8 @@ async fn create_npm_resolver(
       // the user is typing.
       cache_setting: CacheSetting::Only,
       text_only_progress_bar: ProgressBar::new(ProgressBarStyle::TextOnly),
-      maybe_node_modules_path: maybe_node_modules_dir_path,
+      maybe_node_modules_path: config_data
+        .and_then(|d| d.node_modules_dir.clone()),
       // do not install while resolving in the lsp—leave that to the cache command
       package_json_installer:
         CliNpmResolverManagedPackageJsonInstallerOption::NoInstall,
