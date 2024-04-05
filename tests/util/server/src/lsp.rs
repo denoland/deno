@@ -464,6 +464,7 @@ impl InitializeParamsBuilder {
 pub struct LspClientBuilder {
   print_stderr: bool,
   capture_stderr: bool,
+  log_debug: bool,
   deno_exe: PathRef,
   root_dir: PathRef,
   use_diagnostic_sync: bool,
@@ -481,6 +482,7 @@ impl LspClientBuilder {
     Self {
       print_stderr: false,
       capture_stderr: false,
+      log_debug: false,
       deno_exe: deno_exe_path(),
       root_dir: deno_dir.path().clone(),
       use_diagnostic_sync: true,
@@ -504,6 +506,11 @@ impl LspClientBuilder {
 
   pub fn capture_stderr(mut self) -> Self {
     self.capture_stderr = true;
+    self
+  }
+
+  pub fn log_debug(mut self) -> Self {
+    self.log_debug = true;
     self
   }
 
@@ -537,6 +544,10 @@ impl LspClientBuilder {
   pub fn build_result(&self) -> Result<LspClient> {
     let deno_dir = self.deno_dir.clone();
     let mut command = Command::new(&self.deno_exe);
+    let mut args = vec!["lsp".to_string()];
+    if self.log_debug {
+      args.push("--log-level=debug".to_string());
+    }
     command
       .env("DENO_DIR", deno_dir.path())
       .env("NPM_CONFIG_REGISTRY", npm_registry_url())
@@ -547,7 +558,7 @@ impl LspClientBuilder {
         if self.use_diagnostic_sync { "1" } else { "" },
       )
       .env("DENO_NO_UPDATE_CHECK", "1")
-      .arg("lsp")
+      .args(args)
       .stdin(Stdio::piped())
       .stdout(Stdio::piped());
     for (key, value) in &self.envs {
@@ -651,7 +662,10 @@ impl LspClient {
   }
 
   #[track_caller]
-  pub fn wait_until_stderr_line(&self, condition: impl Fn(&str) -> bool) {
+  pub fn wait_until_stderr_line(
+    &self,
+    mut condition: impl FnMut(&str) -> bool,
+  ) {
     let timeout_time =
       Instant::now().checked_add(Duration::from_secs(5)).unwrap();
     let lines_rx = self
