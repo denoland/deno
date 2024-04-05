@@ -33,7 +33,10 @@ use serde::Serialize;
 use serde_json::json;
 use serde_json::to_value;
 use serde_json::Value;
+use std::collections::HashMap;
 use std::collections::HashSet;
+use std::ffi::OsStr;
+use std::ffi::OsString;
 use std::io;
 use std::io::BufRead;
 use std::io::BufReader;
@@ -465,6 +468,7 @@ pub struct LspClientBuilder {
   root_dir: PathRef,
   use_diagnostic_sync: bool,
   deno_dir: TempDir,
+  envs: HashMap<OsString, OsString>,
 }
 
 impl LspClientBuilder {
@@ -481,6 +485,7 @@ impl LspClientBuilder {
       root_dir: deno_dir.path().clone(),
       use_diagnostic_sync: true,
       deno_dir,
+      envs: Default::default(),
     }
   }
 
@@ -514,6 +519,17 @@ impl LspClientBuilder {
     self
   }
 
+  pub fn env(
+    mut self,
+    key: impl AsRef<OsStr>,
+    value: impl AsRef<OsStr>,
+  ) -> Self {
+    self
+      .envs
+      .insert(key.as_ref().to_owned(), value.as_ref().to_owned());
+    self
+  }
+
   pub fn build(&self) -> LspClient {
     self.build_result().unwrap()
   }
@@ -534,6 +550,9 @@ impl LspClientBuilder {
       .arg("lsp")
       .stdin(Stdio::piped())
       .stdout(Stdio::piped());
+    for (key, value) in &self.envs {
+      command.env(key, value);
+    }
     if self.capture_stderr {
       command.stderr(Stdio::piped());
     } else if !self.print_stderr {
