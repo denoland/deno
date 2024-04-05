@@ -402,11 +402,11 @@ impl CliFactory {
       .npm_resolver
       .get_or_try_init_async(async {
         let fs = self.fs();
-        create_cli_npm_resolver(if self.options.use_byonm() || self.options.unstable_byonm() {
+        create_cli_npm_resolver(if self.options.use_byonm() {
           CliNpmResolverCreateOptions::Byonm(CliNpmResolverByonmCreateOptions {
             fs: fs.clone(),
-            root_node_modules_dir: match self.options.node_modules_dir_path().clone() {
-              Some(node_modules_path) => node_modules_path,
+            root_node_modules_dir: match self.options.node_modules_dir_path() {
+              Some(node_modules_path) => node_modules_path.to_path_buf(),
               // path needs to be canonicalized for node resolution
               // (node_modules_dir_path above is already canonicalized)
               None => canonicalize_path_maybe_not_exists(self.options.initial_cwd())?
@@ -434,7 +434,7 @@ impl CliFactory {
             npm_global_cache_dir: self.deno_dir()?.npm_folder_path(),
             cache_setting: self.options.cache_setting(),
             text_only_progress_bar: self.text_only_progress_bar().clone(),
-            maybe_node_modules_path: self.options.node_modules_dir_path(),
+            maybe_node_modules_path: self.options.node_modules_dir_path().cloned(),
             package_json_installer:
               CliNpmResolverManagedPackageJsonInstallerOption::ConditionalInstall(
                 self.package_json_deps_provider().clone(),
