@@ -25,7 +25,7 @@ declare namespace Deno {
    *
    * @category Network
    */
-  export interface Listener<T extends Conn = Conn>
+  export interface Listener<T extends Conn = Conn, A extends Addr = Addr>
     extends AsyncIterable<T>, Disposable {
     /** Waits for and resolves to the next connection to the `Listener`. */
     accept(): Promise<T>;
@@ -33,7 +33,7 @@ declare namespace Deno {
      * with errors. */
     close(): void;
     /** Return the address of the `Listener`. */
-    readonly addr: Addr;
+    readonly addr: A;
 
     /**
      * Return the rid of the `Listener`.
@@ -62,14 +62,27 @@ declare namespace Deno {
    *
    * @category Network
    */
-  export type TlsListener = Listener<TlsConn>;
+  export type TlsListener = Listener<TlsConn, NetAddr>;
+
+  /** Specialized listener that accepts TCP connections.
+   *
+   * @category Network
+   */
+  export type TcpListener = Listener<TcpConn, NetAddr>;
+
+  /** Specialized listener that accepts Unix connections.
+   *
+   * @category Network
+   */
+  export type UnixListener = Listener<UnixConn, UnixAddr>;
 
   /** @category Network */
-  export interface Conn extends Reader, Writer, Closer, Disposable {
+  export interface Conn<A extends Addr = Addr>
+    extends Reader, Writer, Closer, Disposable {
     /** The local address of the connection. */
-    readonly localAddr: Addr;
+    readonly localAddr: A;
     /** The remote address of the connection. */
-    readonly remoteAddr: Addr;
+    readonly remoteAddr: A;
     /**
      * The resource ID of the connection.
      *
@@ -105,7 +118,7 @@ declare namespace Deno {
   }
 
   /** @category Network */
-  export interface TlsConn extends Conn {
+  export interface TlsConn extends Conn<NetAddr> {
     /** Runs the client or server handshake protocol to completion if that has
      * not happened yet. Calling this method is optional; the TLS handshake
      * will be completed automatically as soon as data is sent or received. */
@@ -156,7 +169,7 @@ declare namespace Deno {
    */
   export function listen(
     options: TcpListenOptions & { transport?: "tcp" },
-  ): Listener;
+  ): TcpListener;
 
   /** Options which can be set when opening a Unix listener via
    * {@linkcode Deno.listen} or {@linkcode Deno.listenDatagram}.
@@ -182,7 +195,7 @@ declare namespace Deno {
   // deno-lint-ignore adjacent-overload-signatures
   export function listen(
     options: UnixListenOptions & { transport: "unix" },
-  ): Listener;
+  ): UnixListener;
 
   /** @category Network */
   export interface ListenTlsOptions extends TcpListenOptions {
@@ -266,7 +279,7 @@ declare namespace Deno {
   export function connect(options: ConnectOptions): Promise<TcpConn>;
 
   /** @category Network */
-  export interface TcpConn extends Conn {
+  export interface TcpConn extends Conn<NetAddr> {
     /**
      * Enable/disable the use of Nagle's algorithm.
      *
@@ -292,7 +305,7 @@ declare namespace Deno {
   }
 
   /** @category Network */
-  export interface UnixConn extends Conn {
+  export interface UnixConn extends Conn<UnixAddr> {
     /**
      * The resource ID of the connection.
      *
@@ -435,7 +448,7 @@ declare namespace Deno {
    * @category Network
    */
   export function startTls(
-    conn: Conn,
+    conn: TcpConn,
     options?: StartTlsOptions,
   ): Promise<TlsConn>;
 
