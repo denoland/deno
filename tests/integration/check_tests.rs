@@ -224,7 +224,10 @@ fn typecheck_declarations_ns() {
       .to_string_lossy()
       .into_owned(),
   ];
-  let output = context.new_command().args_vec(args).split_output().run();
+  let output = context.new_command()
+    .args_vec(args)
+    .envs(util::env_vars_for_jsr_tests())
+    .split_output().run();
 
   println!("stdout: {}", output.stdout());
   println!("stderr: {}", output.stderr());
