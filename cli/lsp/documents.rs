@@ -1502,7 +1502,7 @@ impl Documents {
     // fill the reqs from the lockfile
     if let Some(lockfile) = self.lockfile.as_ref() {
       let lockfile = lockfile.lock();
-      for (key, _) in &lockfile.content.packages.specifiers {
+      for key in lockfile.content.packages.specifiers.keys() {
         if let Some(key) = key.strip_prefix("npm:") {
           if let Ok(req) = PackageReq::from_str(key) {
             npm_reqs.insert(req);

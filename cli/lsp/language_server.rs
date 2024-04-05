@@ -998,7 +998,6 @@ impl Inner {
 
     self.recreate_npm_services_if_necessary().await;
     self.assets.initialize(self.snapshot()).await;
-    self.refresh_documents_config().await;
 
     self.performance.measure(mark);
     Ok(InitializeResult {
