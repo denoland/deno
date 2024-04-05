@@ -6,11 +6,11 @@
 import { core } from "ext:core/mod.js";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import {
-  op_vm_create_script,
   op_vm_create_context,
+  op_vm_create_script,
+  op_vm_is_context,
   op_vm_script_run_in_context,
   op_vm_script_run_in_this_context,
-  op_vm_is_context,
 } from "ext:core/ops";
 
 export class Script {
@@ -29,11 +29,6 @@ export class Script {
   }
 
   runInNewContext(contextObject: any, options: any) {
-    if (options) {
-      console.warn(
-        "Script.runInNewContext options are currently not supported",
-      );
-    }
     const context = createContext(contextObject);
     return this.runInContext(context, options);
   }
