@@ -662,7 +662,10 @@ impl LspClient {
   }
 
   #[track_caller]
-  pub fn wait_until_stderr_line(&self, mut condition: impl FnMut(&str) -> bool) {
+  pub fn wait_until_stderr_line(
+    &self,
+    mut condition: impl FnMut(&str) -> bool,
+  ) {
     let timeout_time =
       Instant::now().checked_add(Duration::from_secs(5)).unwrap();
     let lines_rx = self

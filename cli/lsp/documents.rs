@@ -1298,10 +1298,7 @@ impl Documents {
     &self.jsr_resolver
   }
 
-  pub fn refresh_lockfile(
-    &mut self,
-    lockfile: Option<Arc<Mutex<Lockfile>>>,
-  ) {
+  pub fn refresh_lockfile(&mut self, lockfile: Option<Arc<Mutex<Lockfile>>>) {
     self.jsr_resolver =
       Arc::new(JsrCacheResolver::new(self.cache.clone(), lockfile.clone()));
     self.lockfile = lockfile;

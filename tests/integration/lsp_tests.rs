@@ -12261,18 +12261,30 @@ fn lsp_uses_lockfile_for_npm_initialization() {
   temp_dir.write("deno.json", "{}");
   // use two npm packages here
   temp_dir.write("main.ts", "import 'npm:@denotest/esm-basic'; import 'npm:@denotest/cjs-default-export';");
-  context.new_command().args("run main.ts").run().skip_output_check();
+  context
+    .new_command()
+    .args("run main.ts")
+    .run()
+    .skip_output_check();
   // remove one of the npm packages and let the other one be found via the lockfile
   temp_dir.write("main.ts", "import 'npm:@denotest/esm-basic';");
   assert!(temp_dir.path().join("deno.lock").exists());
-  let mut client = context.new_lsp_command().capture_stderr().log_debug().build();
+  let mut client = context
+    .new_lsp_command()
+    .capture_stderr()
+    .log_debug()
+    .build();
   client.initialize_default();
   let mut skipping_count = 0;
   client.wait_until_stderr_line(|line| {
     if line.contains("Skipping pending npm resolution.") {
       skipping_count += 1;
     }
-    assert!(!line.contains("Running pending npm resolution."), "Line: {}", line);
+    assert!(
+      !line.contains("Running pending npm resolution."),
+      "Line: {}",
+      line
+    );
     line.contains("Server ready.")
   });
   assert_eq!(skipping_count, 1);
