@@ -292,9 +292,13 @@ impl TestContext {
   }
 
   pub fn new_lsp_command(&self) -> LspClientBuilder {
-    LspClientBuilder::new_with_dir(self.deno_dir.clone())
+    let mut builder = LspClientBuilder::new_with_dir(self.deno_dir.clone())
       .deno_exe(&self.deno_exe)
-      .set_root_dir(self.temp_dir.path().clone())
+      .set_root_dir(self.temp_dir.path().clone());
+    for (key, value) in &self.envs {
+      builder = builder.env(key, value);
+    }
+    builder
   }
 
   pub fn run_npm(&self, args: impl AsRef<str>) {
