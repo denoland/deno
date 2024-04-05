@@ -2857,7 +2857,7 @@ impl Inner {
     Ok(Some(selection_ranges))
   }
 
-  #[tracing::instrument(skip_all)]
+  #[tracing::instrument(skip(self))]
   async fn semantic_tokens_full(
     &self,
     params: SemanticTokensParams,
@@ -2895,7 +2895,7 @@ impl Inner {
     Ok(response)
   }
 
-  #[tracing::instrument(skip_all)]
+  #[tracing::instrument(skip(self))]
   async fn semantic_tokens_range(
     &self,
     params: SemanticTokensRangeParams,
@@ -2934,7 +2934,7 @@ impl Inner {
     Ok(response)
   }
 
-  #[tracing::instrument(skip_all)]
+  #[tracing::instrument(skip(self))]
   async fn signature_help(
     &self,
     params: SignatureHelpParams,
