@@ -88,6 +88,9 @@ impl ContextifyContext {
     let ptr = deno_core::cppgc::try_unwrap_cppgc_object::<Self>(wrapper.into())
       .unwrap();
 
+    // SAFETY: We are storing a pointer to the ContextifyContext
+    // in the embedder data of the v8::Context. The contextified wrapper
+    // lives longer than the execution context, so this should be safe.
     unsafe {
       v8_context.set_aligned_pointer_in_embedder_data(
         0,
@@ -117,7 +120,7 @@ impl ContextifyContext {
       })
   }
 
-  pub fn is_contextify_context<'a>(
+  pub fn is_contextify_context(
     scope: &mut v8::HandleScope,
     object: v8::Local<v8::Object>,
   ) -> bool {
@@ -146,8 +149,8 @@ impl ContextifyContext {
     v8::Local::new(scope, &self.sandbox)
   }
 
-  fn get<'a, 'b, 'c>(
-    scope: &'b mut v8::HandleScope<'a>,
+  fn get<'a, 'c>(
+    scope: &mut v8::HandleScope<'a>,
     object: v8::Local<'a, v8::Object>,
   ) -> Option<&'c ContextifyContext> {
     let Some(context) = object.get_creation_context(scope) else {
@@ -155,6 +158,8 @@ impl ContextifyContext {
     };
 
     let context_ptr = context.get_aligned_pointer_from_embedder_data(0);
+    // SAFETY: We are storing a pointer to the ContextifyContext
+    // in the embedder data of the v8::Context during creation.
     Some(unsafe { &*(context_ptr as *const ContextifyContext) })
   }
 }
@@ -462,7 +467,7 @@ fn property_definer<'s>(
         desc_for_sandbox.set_configurable(desc.configurable());
       }
 
-      sandbox.define_property(scope, key.into(), desc_for_sandbox);
+      sandbox.define_property(scope, key, desc_for_sandbox);
     };
 
   if desc.has_get() || desc.has_set() {

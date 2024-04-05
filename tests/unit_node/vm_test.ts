@@ -1,4 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+import { assertEquals } from "@std/assert/mod.ts";
 import {
   createContext,
   isContext,
@@ -6,7 +7,6 @@ import {
   runInNewContext,
   Script,
 } from "node:vm";
-import { assertEquals, assertThrows } from "@std/assert/mod.ts";
 
 Deno.test({
   name: "vm runInNewContext",

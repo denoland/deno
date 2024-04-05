@@ -1,8 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file no-explicit-any prefer-primordials
-
 import { core } from "ext:core/mod.js";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import {
