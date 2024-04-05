@@ -7,6 +7,7 @@ pub mod ops_tls;
 pub mod ops_unix;
 pub mod raw;
 pub mod resolve_addr;
+pub mod tls_key;
 
 use deno_core::error::AnyError;
 use deno_core::op2;

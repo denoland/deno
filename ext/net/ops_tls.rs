@@ -5,6 +5,7 @@ use crate::ops::IpAddr;
 use crate::ops::TlsHandshakeInfo;
 use crate::resolve_addr::resolve_addr;
 use crate::resolve_addr::resolve_addr_sync;
+use crate::tls_key::TlsKeyResolver;
 use crate::DefaultTlsOptions;
 use crate::NetPermissions;
 use crate::UnsafelyIgnoreCertificateErrors;
