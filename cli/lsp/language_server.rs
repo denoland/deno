@@ -286,7 +286,7 @@ impl LanguageServer {
     async fn create_graph_for_caching(
       cli_options: CliOptions,
       roots: Vec<ModuleSpecifier>,
-      open_docs: Vec<Document>,
+      open_docs: Vec<Arc<Document>>,
     ) -> Result<(), AnyError> {
       let open_docs = open_docs
         .into_iter()
@@ -1193,7 +1193,7 @@ impl Inner {
     &mut self,
     specifier: &ModuleSpecifier,
     params: DidOpenTextDocumentParams,
-  ) -> Document {
+  ) -> Arc<Document> {
     let mark = self.performance.mark_with_args("lsp.did_open", &params);
     let language_id =
       params
@@ -3452,7 +3452,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
 struct PrepareCacheResult {
   cli_options: CliOptions,
   roots: Vec<ModuleSpecifier>,
-  open_docs: Vec<Document>,
+  open_docs: Vec<Arc<Document>>,
   mark: PerformanceMark,
 }
 
