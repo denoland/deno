@@ -32,7 +32,7 @@ impl Script {
     let result = self
       .inner
       .eval_machine(&mut scope, context)
-      .ok_or_else(|| type_error("Failed to run script"))?;
+      .unwrap_or_else(|| v8::undefined(&mut scope).into());
     Ok(scope.escape(result))
   }
 
@@ -54,7 +54,7 @@ impl Script {
     let result = self
       .inner
       .eval_machine(&mut scope, context)
-      .ok_or_else(|| type_error("Failed to run script"))?;
+      .unwrap_or_else(|| v8::undefined(&mut scope).into());
     Ok(scope.escape(result))
   }
 }

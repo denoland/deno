@@ -1,10 +1,11 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-import { assertEquals } from "@std/assert/mod.ts";
+import { assertEquals, assertThrows } from "@std/assert/mod.ts";
 import {
   createContext,
   isContext,
   runInContext,
   runInNewContext,
+  runInThisContext,
   Script,
 } from "node:vm";
 
@@ -66,6 +67,26 @@ Deno.test({
     assertEquals(context.globalVar, 2);
     // @ts-expect-error implicit any
     assertEquals(globalThis.globalVar, 3);
+  },
+});
+
+Deno.test({
+  name: "vm runInThisContext Error rethrow",
+  fn() {
+    assertThrows(
+      () => {
+        runInThisContext("throw new Error('error')");
+      },
+      Error,
+      "error",
+    );
+    assertThrows(
+      () => {
+        runInThisContext("throw new TypeError('type error')");
+      },
+      TypeError,
+      "type error",
+    );
   },
 });
 

@@ -45,6 +45,7 @@ impl ContextifyScript {
     let result = script.run(tc_scope);
 
     if tc_scope.has_caught() {
+      // If there was an exception thrown during script execution, re-throw it.
       if !tc_scope.has_terminated() {
         tc_scope.rethrow();
       }
