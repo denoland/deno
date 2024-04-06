@@ -148,7 +148,7 @@ delete Object.prototype.__proto__;
   }
 
   // In the case of the LSP, this will only ever contain the assets.
-  /** @type {Map<string, ts.SourceFile>} */
+  /** @type {Map<string, WeakRef<ts.SourceFile>>} */
   const sourceFileCache = new Map();
 
   /** @type {string[]=} */
@@ -576,7 +576,7 @@ delete Object.prototype.__proto__;
       // Needs the original specifier
       specifier = normalizedToOriginalMap.get(specifier) ?? specifier;
 
-      let sourceFile = sourceFileCache.get(specifier);
+      let sourceFile = sourceFileCache.get(specifier)?.deref();
       if (sourceFile) {
         return sourceFile;
       }
@@ -610,7 +610,7 @@ delete Object.prototype.__proto__;
       if (specifier.startsWith(ASSETS_URL_PREFIX)) {
         sourceFile.version = "1";
       }
-      sourceFileCache.set(specifier, sourceFile);
+      sourceFileCache.set(specifier, new WeakRef(sourceFile));
       scriptVersionCache.set(specifier, version);
       return sourceFile;
     },
@@ -773,7 +773,7 @@ delete Object.prototype.__proto__;
       if (logDebug) {
         debug(`host.getScriptSnapshot("${specifier}")`);
       }
-      let sourceFile = sourceFileCache.get(specifier);
+      let sourceFile = sourceFileCache.get(specifier)?.deref();
       if (
         !specifier.startsWith(ASSETS_URL_PREFIX) &&
         sourceFile?.version != this.getScriptVersion(specifier)
@@ -994,8 +994,9 @@ delete Object.prototype.__proto__;
   function getAssets() {
     /** @type {{ specifier: string; text: string; }[]} */
     const assets = [];
-    for (const sourceFile of sourceFileCache.values()) {
-      if (sourceFile.fileName.startsWith(ASSETS_URL_PREFIX)) {
+    for (const maybeSourceFile of sourceFileCache.values()) {
+      const sourceFile = maybeSourceFile.deref();
+      if (sourceFile && sourceFile.fileName.startsWith(ASSETS_URL_PREFIX)) {
         assets.push({
           specifier: sourceFile.fileName,
           text: sourceFile.text,
