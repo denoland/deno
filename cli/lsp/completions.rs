@@ -32,7 +32,6 @@ use deno_semver::package::PackageNv;
 use import_map::ImportMap;
 use once_cell::sync::Lazy;
 use regex::Regex;
-use std::sync::Arc;
 use tower_lsp::lsp_types as lsp;
 
 static FILE_PROTO_RE: Lazy<Regex> =
@@ -155,7 +154,7 @@ pub async fn get_import_completions(
   jsr_search_api: &CliJsrSearchApi,
   npm_search_api: &CliNpmSearchApi,
   documents: &Documents,
-  maybe_import_map: Option<Arc<ImportMap>>,
+  maybe_import_map: Option<&ImportMap>,
 ) -> Option<lsp::CompletionResponse> {
   let document = documents.get(specifier)?;
   let (text, _, range) = document.get_maybe_dependency(position)?;
@@ -164,7 +163,7 @@ pub async fn get_import_completions(
     specifier,
     &text,
     &range,
-    maybe_import_map.clone(),
+    maybe_import_map,
     documents,
   ) {
     // completions for import map specifiers
@@ -238,7 +237,7 @@ pub async fn get_import_completions(
       .collect();
     let mut is_incomplete = false;
     if let Some(import_map) = maybe_import_map {
-      items.extend(get_base_import_map_completions(import_map.as_ref()));
+      items.extend(get_base_import_map_completions(import_map));
     }
     if let Some(origin_items) =
       module_registries.get_origin_completions(&text, &range)
@@ -301,7 +300,7 @@ fn get_import_map_completions(
   specifier: &ModuleSpecifier,
   text: &str,
   range: &lsp::Range,
-  maybe_import_map: Option<Arc<ImportMap>>,
+  maybe_import_map: Option<&ImportMap>,
   documents: &Documents,
 ) -> Option<lsp::CompletionList> {
   if !text.is_empty() {
@@ -809,6 +808,7 @@ mod tests {
   use deno_graph::Range;
   use std::collections::HashMap;
   use std::path::Path;
+  use std::sync::Arc;
   use test_util::TempDir;
 
   fn mock_documents(

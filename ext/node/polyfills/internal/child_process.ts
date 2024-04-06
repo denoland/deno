@@ -866,7 +866,7 @@ export function spawnSync(
     windowsVerbatimArguments = false,
   } = options;
   const [
-    _stdin_ = "pipe", // TODO(bartlomieju): use this?
+    stdin_ = "pipe",
     stdout_ = "pipe",
     stderr_ = "pipe",
     _channel, // TODO(kt3k): handle this correctly
@@ -881,6 +881,7 @@ export function spawnSync(
       env: mapValues(env, (value) => value.toString()),
       stdout: toDenoStdio(stdout_),
       stderr: toDenoStdio(stderr_),
+      stdin: stdin_ == "inherit" ? "inherit" : "null",
       uid,
       gid,
       windowsRawArguments: windowsVerbatimArguments,

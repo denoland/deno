@@ -207,14 +207,18 @@ impl JsrFetchResolver {
     let maybe_get_nv = || async {
       let name = req.name.clone();
       let package_info = self.package_info(&name).await?;
-      // Find the first matching version of the package which is cached.
-      let mut versions = package_info.versions.keys().collect::<Vec<_>>();
-      versions.sort();
+      // Find the first matching version of the package.
+      let mut versions = package_info.versions.iter().collect::<Vec<_>>();
+      versions.sort_by_key(|(v, _)| *v);
       let version = versions
         .into_iter()
         .rev()
-        .find(|v| req.version_req.tag().is_none() && req.version_req.matches(v))
-        .cloned()?;
+        .find(|(v, i)| {
+          !i.yanked
+            && req.version_req.tag().is_none()
+            && req.version_req.matches(v)
+        })
+        .map(|(v, _)| v.clone())?;
       Some(PackageNv { name, version })
     };
     let nv = maybe_get_nv().await;

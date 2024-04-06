@@ -110,6 +110,7 @@ import {
 import { write, writeSync } from "ext:deno_node/_fs/_fs_write.mjs";
 // @deno-types="./_fs/_fs_writev.d.ts"
 import { writev, writevSync } from "ext:deno_node/_fs/_fs_writev.mjs";
+import { readv, readvSync } from "ext:deno_node/_fs/_fs_readv.ts";
 import {
   writeFile,
   writeFilePromise,
@@ -250,6 +251,8 @@ export default {
   ReadStream,
   realpath,
   realpathSync,
+  readv,
+  readvSync,
   rename,
   renameSync,
   rmdir,
@@ -353,6 +356,8 @@ export {
   readlinkSync,
   ReadStream,
   readSync,
+  readv,
+  readvSync,
   realpath,
   realpathSync,
   rename,
