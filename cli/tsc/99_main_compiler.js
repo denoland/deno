@@ -550,7 +550,7 @@ delete Object.prototype.__proto__;
       ts.toPath(
         fileName,
         this.getCurrentDirectory(),
-        this.getCanonicalFileName(fileName),
+        this.getCanonicalFileName.bind(this),
       );
     },
     // @ts-ignore Undocumented method.
