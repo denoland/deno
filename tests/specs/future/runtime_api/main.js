@@ -35,4 +35,16 @@ const watcher = Deno.watchFs(".");
 console.log("Deno.FsWatcher.prototype.rid is", watcher.rid);
 watcher.close();
 
+try {
+  new Deno.FsFile(0);
+} catch (error) {
+  if (
+    error instanceof TypeError &&
+    error.message ===
+      "`Deno.FsFile` cannot be constructed, use `Deno.open()` or `Deno.openSync()` instead."
+  ) {
+    console.log("Deno.FsFile constructor is illegal");
+  }
+}
+
 self.close();
