@@ -284,7 +284,6 @@ pub fn op_fetch<FP>(
 where
   FP: FetchPermissions + 'static,
 {
-  eprintln!("op_fetch");
   let (client, allow_host) = if let Some(rid) = client_rid {
     let r = state.resource_table.get::<HttpClientResource>(rid)?;
     (r.client.clone(), r.allow_host)

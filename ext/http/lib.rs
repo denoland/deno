@@ -219,23 +219,13 @@ impl HttpConnResource {
     AnyError,
   > {
     let fut = async {
-      eprintln!("start accepting");
       let (request_tx, request_rx) = oneshot::channel();
       let (response_tx, response_rx) = oneshot::channel();
 
       let acceptor = HttpAcceptor::new(request_tx, response_rx);
       self.acceptors_tx.unbounded_send(acceptor).ok()?;
 
-      let request = request_rx
-        .await
-        .map_err(|e| {
-          eprintln!("got error in request_rx {:?}", e);
-          e
-        })
-        .ok();
-      eprintln!("request is_some() {}", request.is_some());
-      let request = request?;
-      eprintln!("accepted");
+      let request = request_rx.await.ok()?;
       let accept_encoding = {
         let encodings =
           fly_accept_encoding::encodings_iter_http_02(request.headers())
@@ -254,24 +244,14 @@ impl HttpConnResource {
       let read_stream = HttpStreamReadResource::new(self, request);
       let write_stream =
         HttpStreamWriteResource::new(self, response_tx, accept_encoding);
-      eprintln!("accepted returns");
       Some((read_stream, write_stream, method, url))
     };
 
     async {
       match fut.await {
-        Some(stream) => {
-          eprintln!("fut await returned Some");
-          Ok(Some(stream))
-        }
+        Some(stream) => Ok(Some(stream)),
         // Return the connection error, if any.
-        None => {
-          // let r = self.closed().map_ok(|_| None).await;
-          eprintln!("fut await returned None");
-          // eprintln!("fut await returned None {:?}", r.is_err());
-          // r
-          Ok(None)
-        }
+        None => self.closed().map_ok(|_| None).await,
       }
     }
     .try_or_cancel(&self.cancel_handle)
@@ -290,7 +270,6 @@ impl Resource for HttpConnResource {
   }
 
   fn close(self: Rc<Self>) {
-    eprintln!("close HttpConnResource");
     self.cancel_handle.cancel();
   }
 }
@@ -337,9 +316,6 @@ impl Service<Request<Body>> for HttpService {
     let result = ready!(acceptors_rx.poll_peek(cx))
       .map(|_| ())
       .ok_or(oneshot::Canceled);
-    if matches!(result, Err(oneshot::Canceled)) {
-      eprintln!("got oneshot cancelled in `Service::poll_ready");
-    }
     Poll::Ready(result)
   }
 
@@ -376,108 +352,12 @@ impl HttpAcceptor {
     request_tx
       .send(request)
       .map(|_| response_rx)
-      .unwrap_or_else(|_| {
-        eprintln!("make new canceled receiver");
-        oneshot::channel().1
-      }) // Make new canceled receiver.
-  }
-}
-
-/// A resource representing a single HTTP request/response stream.
-pub struct HttpStreamResource {
-  conn: Rc<HttpConnResource>,
-  pub rd: AsyncRefCell<HttpRequestReader>,
-  wr: AsyncRefCell<HttpResponseWriter>,
-  accept_encoding: Encoding,
-  cancel_handle: CancelHandle,
-  size: SizeHint,
-}
-
-impl HttpStreamResource {
-  fn new(
-    conn: &Rc<HttpConnResource>,
-    request: Request<Body>,
-    response_tx: oneshot::Sender<Response<Body>>,
-    accept_encoding: Encoding,
-  ) -> Self {
-    let size = request.body().size_hint();
-    Self {
-      conn: conn.clone(),
-      rd: HttpRequestReader::Headers(request).into(),
-      wr: HttpResponseWriter::Headers(response_tx).into(),
-      accept_encoding,
-      size,
-      cancel_handle: CancelHandle::new(),
-    }
-  }
-}
-
-impl Resource for HttpStreamResource {
-  fn name(&self) -> Cow<str> {
-    "httpStream".into()
-  }
-
-  fn read(self: Rc<Self>, limit: usize) -> AsyncResult<BufView> {
-    Box::pin(async move {
-      let mut rd = RcRef::map(&self, |r| &r.rd).borrow_mut().await;
-
-      let body = loop {
-        match &mut *rd {
-          HttpRequestReader::Headers(_) => {}
-          HttpRequestReader::Body(_, body) => break body,
-          HttpRequestReader::Closed => return Ok(BufView::empty()),
-        }
-        match take(&mut *rd) {
-          HttpRequestReader::Headers(request) => {
-            let (parts, body) = request.into_parts();
-            *rd = HttpRequestReader::Body(parts.headers, body.peekable());
-          }
-          _ => unreachable!(),
-        };
-      };
-
-      let fut = async {
-        let mut body = Pin::new(body);
-        loop {
-          match body.as_mut().peek_mut().await {
-            Some(Ok(chunk)) if !chunk.is_empty() => {
-              let len = min(limit, chunk.len());
-              let buf = chunk.split_to(len);
-              let view = BufView::from(buf);
-              break Ok(view);
-            }
-            // This unwrap is safe because `peek_mut()` returned `Some`, and thus
-            // currently has a peeked value that can be synchronously returned
-            // from `next()`.
-            //
-            // The future returned from `next()` is always ready, so we can
-            // safely call `await` on it without creating a race condition.
-            Some(_) => match body.as_mut().next().await.unwrap() {
-              Ok(chunk) => assert!(chunk.is_empty()),
-              Err(err) => break Err(AnyError::from(err)),
-            },
-            None => break Ok(BufView::empty()),
-          }
-        }
-      };
-
-      let cancel_handle = RcRef::map(&self, |r| &r.cancel_handle);
-      fut.try_or_cancel(cancel_handle).await
-    })
-  }
-
-  fn close(self: Rc<Self>) {
-    eprintln!("HttpStreamResource gets closed");
-    self.cancel_handle.cancel();
-  }
-
-  fn size_hint(&self) -> (u64, Option<u64>) {
-    (self.size.lower(), self.size.upper())
+      .unwrap_or_else(|_| oneshot::channel().1) // Make new canceled receiver.
   }
 }
 
 pub struct HttpStreamReadResource {
-  conn: Rc<HttpConnResource>,
+  _conn: Rc<HttpConnResource>,
   pub rd: AsyncRefCell<HttpRequestReader>,
   cancel_handle: CancelHandle,
   size: SizeHint,
@@ -493,7 +373,7 @@ impl HttpStreamReadResource {
   fn new(conn: &Rc<HttpConnResource>, request: Request<Body>) -> Self {
     let size = request.body().size_hint();
     Self {
-      conn: conn.clone(),
+      _conn: conn.clone(),
       rd: HttpRequestReader::Headers(request).into(),
       size,
       cancel_handle: CancelHandle::new(),
@@ -556,7 +436,6 @@ impl Resource for HttpStreamReadResource {
   }
 
   fn close(self: Rc<Self>) {
-    eprintln!("HttpStreamReadResource gets closed");
     self.cancel_handle.cancel();
   }
 
@@ -683,14 +562,8 @@ async fn op_http_accept(
         NextRequestResponse(read_stream_rid, write_stream_rid, method, url);
       Ok(Some(r))
     }
-    Ok(None) => {
-      eprintln!("got None in `op_http_accept");
-      Ok(None)
-    }
-    Err(err) => {
-      eprintln!("got Err in `op_http_accept` {:?}", err);
-      Err(err)
-    }
+    Ok(None) => Ok(None),
+    Err(err) => Err(err),
   }
 }
 

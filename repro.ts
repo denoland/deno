@@ -1,3 +1,5 @@
+// deno-fmt-ignore-file
+// deno-lint-ignore-file
 Deno.serve({ port: 8001 }, (req) => {
   return new Response("Hello world");
 });
@@ -26,7 +28,7 @@ let id = setTimeout(() => Deno.exit(0), 1000);
   );
   const n = await conn.write(payload);
   console.log(n, payload.length);
-  const buf = new Uint8Array(10);
+  const buf = new Uint8Array(1000);
   console.log("start read");
   const nread = await conn.read(buf);
   console.log("finish read", nread);
