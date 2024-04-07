@@ -401,10 +401,10 @@ function createRespondWith(
       throw error;
     } finally {
       if (deleteManagedResource(httpConn, readStreamRid)) {
-        core.close(readStreamRid);
+        core.tryClose(readStreamRid);
       }
       if (deleteManagedResource(httpConn, writeStreamRid)) {
-        core.close(writeStreamRid);
+        core.tryClose(writeStreamRid);
       }
     }
   };
