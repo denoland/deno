@@ -209,7 +209,15 @@ impl HttpConnResource {
   // Accepts a new incoming HTTP request.
   async fn accept(
     self: &Rc<Self>,
-  ) -> Result<Option<(HttpStreamResource, String, String)>, AnyError> {
+  ) -> Result<
+    Option<(
+      HttpStreamReadResource,
+      HttpStreamWriteResource,
+      String,
+      String,
+    )>,
+    AnyError,
+  > {
     let fut = async {
       eprintln!("start accepting");
       let (request_tx, request_rx) = oneshot::channel();
@@ -243,10 +251,11 @@ impl HttpConnResource {
 
       let method = request.method().to_string();
       let url = req_url(&request, self.scheme, &self.addr);
-      let stream =
-        HttpStreamResource::new(self, request, response_tx, accept_encoding);
+      let read_stream = HttpStreamReadResource::new(self, request);
+      let write_stream =
+        HttpStreamWriteResource::new(self, response_tx, accept_encoding);
       eprintln!("accepted returns");
-      Some((stream, method, url))
+      Some((read_stream, write_stream, method, url))
     };
 
     async {
@@ -384,19 +393,6 @@ pub struct HttpStreamResource {
   size: SizeHint,
 }
 
-pub struct HttpReadStreamResource {
-  conn: Rc<HttpConnResource>,
-  pub rd: AsyncRefCell<HttpRequestReader>,
-  cancel_handle: CancelHandle,
-  size: SizeHint,
-}
-
-pub struct HttpWriteStreamResource {
-  conn: Rc<HttpConnResource>,
-  wr: AsyncRefCell<HttpResponseWriter>,
-  accept_encoding: Encoding,
-}
-
 impl HttpStreamResource {
   fn new(
     conn: &Rc<HttpConnResource>,
@@ -480,6 +476,115 @@ impl Resource for HttpStreamResource {
   }
 }
 
+pub struct HttpStreamReadResource {
+  conn: Rc<HttpConnResource>,
+  pub rd: AsyncRefCell<HttpRequestReader>,
+  cancel_handle: CancelHandle,
+  size: SizeHint,
+}
+
+pub struct HttpStreamWriteResource {
+  conn: Rc<HttpConnResource>,
+  wr: AsyncRefCell<HttpResponseWriter>,
+  accept_encoding: Encoding,
+}
+
+impl HttpStreamReadResource {
+  fn new(conn: &Rc<HttpConnResource>, request: Request<Body>) -> Self {
+    let size = request.body().size_hint();
+    Self {
+      conn: conn.clone(),
+      rd: HttpRequestReader::Headers(request).into(),
+      size,
+      cancel_handle: CancelHandle::new(),
+    }
+  }
+}
+
+impl Resource for HttpStreamReadResource {
+  fn name(&self) -> Cow<str> {
+    "httpReadStream".into()
+  }
+
+  fn read(self: Rc<Self>, limit: usize) -> AsyncResult<BufView> {
+    Box::pin(async move {
+      let mut rd = RcRef::map(&self, |r| &r.rd).borrow_mut().await;
+
+      let body = loop {
+        match &mut *rd {
+          HttpRequestReader::Headers(_) => {}
+          HttpRequestReader::Body(_, body) => break body,
+          HttpRequestReader::Closed => return Ok(BufView::empty()),
+        }
+        match take(&mut *rd) {
+          HttpRequestReader::Headers(request) => {
+            let (parts, body) = request.into_parts();
+            *rd = HttpRequestReader::Body(parts.headers, body.peekable());
+          }
+          _ => unreachable!(),
+        };
+      };
+
+      let fut = async {
+        let mut body = Pin::new(body);
+        loop {
+          match body.as_mut().peek_mut().await {
+            Some(Ok(chunk)) if !chunk.is_empty() => {
+              let len = min(limit, chunk.len());
+              let buf = chunk.split_to(len);
+              let view = BufView::from(buf);
+              break Ok(view);
+            }
+            // This unwrap is safe because `peek_mut()` returned `Some`, and thus
+            // currently has a peeked value that can be synchronously returned
+            // from `next()`.
+            //
+            // The future returned from `next()` is always ready, so we can
+            // safely call `await` on it without creating a race condition.
+            Some(_) => match body.as_mut().next().await.unwrap() {
+              Ok(chunk) => assert!(chunk.is_empty()),
+              Err(err) => break Err(AnyError::from(err)),
+            },
+            None => break Ok(BufView::empty()),
+          }
+        }
+      };
+
+      let cancel_handle = RcRef::map(&self, |r| &r.cancel_handle);
+      fut.try_or_cancel(cancel_handle).await
+    })
+  }
+
+  fn close(self: Rc<Self>) {
+    eprintln!("HttpStreamResource gets closed");
+    self.cancel_handle.cancel();
+  }
+
+  fn size_hint(&self) -> (u64, Option<u64>) {
+    (self.size.lower(), self.size.upper())
+  }
+}
+
+impl HttpStreamWriteResource {
+  fn new(
+    conn: &Rc<HttpConnResource>,
+    response_tx: oneshot::Sender<Response<Body>>,
+    accept_encoding: Encoding,
+  ) -> Self {
+    Self {
+      conn: conn.clone(),
+      wr: HttpResponseWriter::Headers(response_tx).into(),
+      accept_encoding,
+    }
+  }
+}
+
+impl Resource for HttpStreamWriteResource {
+  fn name(&self) -> Cow<str> {
+    "httpWriteStream".into()
+  }
+}
+
 /// The read half of an HTTP stream.
 pub enum HttpRequestReader {
   Headers(Request<Body>),
@@ -544,7 +649,9 @@ impl Drop for BodyUncompressedSender {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct NextRequestResponse(
-  // stream_rid:
+  // read_stream_rid:
+  ResourceId,
+  // write_stream_rid:
   ResourceId,
   // method:
   // This is a String rather than a ByteString because reqwest will only return
@@ -563,10 +670,17 @@ async fn op_http_accept(
   let conn = state.borrow().resource_table.get::<HttpConnResource>(rid)?;
 
   match conn.accept().await {
-    Ok(Some((stream, method, url))) => {
-      let stream_rid =
-        state.borrow_mut().resource_table.add_rc(Rc::new(stream));
-      let r = NextRequestResponse(stream_rid, method, url);
+    Ok(Some((read_stream, write_stream, method, url))) => {
+      let read_stream_rid = state
+        .borrow_mut()
+        .resource_table
+        .add_rc(Rc::new(read_stream));
+      let write_stream_rid = state
+        .borrow_mut()
+        .resource_table
+        .add_rc(Rc::new(write_stream));
+      let r =
+        NextRequestResponse(read_stream_rid, write_stream_rid, method, url);
       Ok(Some(r))
     }
     Ok(None) => {
@@ -674,7 +788,7 @@ async fn op_http_write_headers(
   let stream = state
     .borrow_mut()
     .resource_table
-    .get::<HttpStreamResource>(rid)?;
+    .get::<HttpStreamWriteResource>(rid)?;
 
   // Track supported encoding
   let encoding = stream.accept_encoding;
@@ -739,7 +853,7 @@ fn op_http_headers(
   state: &mut OpState,
   #[smi] rid: u32,
 ) -> Result<Vec<(ByteString, ByteString)>, AnyError> {
-  let stream = state.resource_table.get::<HttpStreamResource>(rid)?;
+  let stream = state.resource_table.get::<HttpStreamReadResource>(rid)?;
   let rd = RcRef::map(&stream, |r| &r.rd)
     .try_borrow()
     .ok_or_else(|| http_error("already in use"))?;
@@ -895,7 +1009,7 @@ async fn op_http_write_resource(
   let http_stream = state
     .borrow()
     .resource_table
-    .get::<HttpStreamResource>(rid)?;
+    .get::<HttpStreamWriteResource>(rid)?;
   let mut wr = RcRef::map(&http_stream, |r| &r.wr).borrow_mut().await;
   let resource = state.borrow().resource_table.get_any(stream)?;
   loop {
@@ -954,7 +1068,7 @@ async fn op_http_write(
   let stream = state
     .borrow()
     .resource_table
-    .get::<HttpStreamResource>(rid)?;
+    .get::<HttpStreamWriteResource>(rid)?;
   let mut wr = RcRef::map(&stream, |r| &r.wr).borrow_mut().await;
 
   match &mut *wr {
@@ -1006,7 +1120,7 @@ async fn op_http_shutdown(
   let stream = state
     .borrow()
     .resource_table
-    .get::<HttpStreamResource>(rid)?;
+    .get::<HttpStreamWriteResource>(rid)?;
   let mut wr = RcRef::map(&stream, |r| &r.wr).borrow_mut().await;
   let wr = take(&mut *wr);
   match wr {
@@ -1054,7 +1168,7 @@ async fn op_http_upgrade_websocket(
   let stream = state
     .borrow_mut()
     .resource_table
-    .get::<HttpStreamResource>(rid)?;
+    .get::<HttpStreamReadResource>(rid)?;
   let mut rd = RcRef::map(&stream, |r| &r.rd).borrow_mut().await;
 
   let request = match &mut *rd {

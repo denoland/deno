@@ -138,8 +138,10 @@ class HttpConn {
       return null;
     }
 
-    const { 0: streamRid, 1: method, 2: url } = nextRequest;
-    SetPrototypeAdd(this.#managedResources, streamRid);
+    const { 0: readStreamRid, 1: writeStreamRid, 2: method, 3: url } =
+      nextRequest;
+    SetPrototypeAdd(this.#managedResources, readStreamRid);
+    SetPrototypeAdd(this.#managedResources, writeStreamRid);
 
     /** @type {ReadableStream<Uint8Array> | undefined} */
     let body = null;
@@ -147,17 +149,17 @@ class HttpConn {
     // It will be closed automatically once the request has been handled and
     // the response has been sent.
     if (method !== "GET" && method !== "HEAD") {
-      body = readableStreamForRid(streamRid, false);
+      body = readableStreamForRid(readStreamRid, false);
     }
 
     const innerRequest = newInnerRequest(
       method,
       url,
-      () => op_http_headers(streamRid),
+      () => op_http_headers(readStreamRid),
       body !== null ? new InnerBody(body) : null,
       false,
     );
-    innerRequest[streamRid] = streamRid;
+    innerRequest[readStreamRid] = readStreamRid;
     const abortController = new AbortController();
     const request = fromInnerRequest(
       innerRequest,
@@ -168,7 +170,8 @@ class HttpConn {
 
     const respondWith = createRespondWith(
       this,
-      streamRid,
+      readStreamRid,
+      writeStreamRid,
       abortController,
     );
 
@@ -210,7 +213,8 @@ class HttpConn {
 
 function createRespondWith(
   httpConn,
-  streamRid,
+  readStreamRid,
+  writeStreamRid,
   abortController,
 ) {
   return async function respondWith(resp) {
@@ -271,7 +275,7 @@ function createRespondWith(
       );
       try {
         await op_http_write_headers(
-          streamRid,
+          writeStreamRid,
           innerResp.status ?? 200,
           innerResp.headerList,
           isStreamingResponseBody ? null : respBody,
@@ -311,7 +315,7 @@ function createRespondWith(
           reader = respBody.getReader(); // Acquire JS lock.
           try {
             await op_http_write_resource(
-              streamRid,
+              writeStreamRid,
               resourceBacking.rid,
             );
             if (resourceBacking.autoClose) core.tryClose(resourceBacking.rid);
@@ -341,7 +345,7 @@ function createRespondWith(
               break;
             }
             try {
-              await op_http_write(streamRid, value);
+              await op_http_write(writeStreamRid, value);
             } catch (error) {
               const connError = httpConn[connErrorSymbol];
               if (
@@ -360,7 +364,7 @@ function createRespondWith(
 
         if (success) {
           try {
-            await op_http_shutdown(streamRid);
+            await op_http_shutdown(writeStreamRid);
           } catch (error) {
             await reader.cancel(error);
             throw error;
@@ -371,7 +375,7 @@ function createRespondWith(
       const ws = resp[_ws];
       if (ws) {
         const wsRid = await op_http_upgrade_websocket(
-          streamRid,
+          readStreamRid,
         );
         ws[_rid] = wsRid;
         ws[_protocol] = resp.headers.get("sec-websocket-protocol");
@@ -396,8 +400,11 @@ function createRespondWith(
       abortController.abort(error);
       throw error;
     } finally {
-      if (deleteManagedResource(httpConn, streamRid)) {
-        core.close(streamRid);
+      if (deleteManagedResource(httpConn, readStreamRid)) {
+        core.close(readStreamRid);
+      }
+      if (deleteManagedResource(httpConn, writeStreamRid)) {
+        core.close(writeStreamRid);
       }
     }
   };
