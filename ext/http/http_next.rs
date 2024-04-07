@@ -68,6 +68,7 @@ use std::ffi::c_void;
 use std::future::Future;
 use std::io;
 use std::pin::Pin;
+use std::ptr::addr_of_mut;
 use std::ptr::null;
 use std::rc::Rc;
 
@@ -142,8 +143,9 @@ macro_rules! external {
           deno_core::ExternalDefinition::new($name);
         // Wash the pointer through black_box so the compiler cannot see what we're going to do with it and needs
         // to assume it will be used for valid purposes.
-        // SAFETY: temporary while waiting on deno core bump
-        let ptr = std::hint::black_box(unsafe { &mut DEFINITION } as *mut _);
+        let ptr =
+          // SAFETY: temporary while waiting on deno core bump
+          std::hint::black_box(unsafe { addr_of_mut!(DEFINITION) } as *mut _);
         ptr as usize
       }
 

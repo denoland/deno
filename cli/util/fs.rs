@@ -676,6 +676,7 @@ impl Drop for LaxSingleProcessFsFlagInner {
 /// This should only be used in places where it's ideal for multiple
 /// processes to not update something on the file system at the same time,
 /// but it's not that big of a deal.
+#[allow(dead_code)]
 pub struct LaxSingleProcessFsFlag(Option<LaxSingleProcessFsFlagInner>);
 
 impl LaxSingleProcessFsFlag {
@@ -687,7 +688,7 @@ impl LaxSingleProcessFsFlag {
     let open_result = std::fs::OpenOptions::new()
       .read(true)
       .write(true)
-      .create(true)
+      .truncate(true)
       .open(&file_path);
 
     match open_result {
