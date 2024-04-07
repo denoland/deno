@@ -556,7 +556,7 @@ impl Resource for HttpStreamReadResource {
   }
 
   fn close(self: Rc<Self>) {
-    eprintln!("HttpStreamResource gets closed");
+    eprintln!("HttpStreamReadResource gets closed");
     self.cancel_handle.cancel();
   }
 
