@@ -99,13 +99,14 @@ pub async fn vendor(
 
   // cache the node_modules folder when it's been added to the config file
   if modified_result.added_node_modules_dir {
-    let node_modules_path = cli_options.node_modules_dir_path().or_else(|| {
-      cli_options
-        .maybe_config_file_specifier()
-        .filter(|c| c.scheme() == "file")
-        .and_then(|c| c.to_file_path().ok())
-        .map(|config_path| config_path.parent().unwrap().join("node_modules"))
-    });
+    let node_modules_path =
+      cli_options.node_modules_dir_path().cloned().or_else(|| {
+        cli_options
+          .maybe_config_file_specifier()
+          .filter(|c| c.scheme() == "file")
+          .and_then(|c| c.to_file_path().ok())
+          .map(|config_path| config_path.parent().unwrap().join("node_modules"))
+      });
     if let Some(node_modules_path) = node_modules_path {
       let cli_options =
         cli_options.with_node_modules_dir_path(node_modules_path);
