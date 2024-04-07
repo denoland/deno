@@ -11787,6 +11787,56 @@ fn lsp_jupyter_byonm_diagnostics() {
 }
 
 #[test]
+fn lsp_deno_future_env_byonm() {
+  let context = TestContextBuilder::for_npm()
+    .env("DENO_FUTURE", "1")
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.path().join("package.json").write_json(&json!({
+    "dependencies": {
+      "@denotest/esm-basic": "*",
+    },
+  }));
+  context.run_npm("install");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"
+        import "npm:chalk";
+        import "@denotest/esm-basic";
+      "#,
+    },
+  }));
+  assert_eq!(
+    json!(diagnostics.all()),
+    json!([
+      {
+        "range": {
+          "start": {
+            "line": 1,
+            "character": 15,
+          },
+          "end": {
+            "line": 1,
+            "character": 26,
+          },
+        },
+        "severity": 1,
+        "code": "resolver-error",
+        "source": "deno",
+        "message": format!("Could not find a matching package for 'npm:chalk' in '{}'. You must specify this as a package.json dependency when the node_modules folder is not managed by Deno.", temp_dir.path().join("package.json")),
+      },
+    ])
+  );
+  client.shutdown();
+}
+
+#[test]
 fn lsp_sloppy_imports_warn() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -12201,5 +12251,42 @@ C.test();
 
   assert_eq!(json!(diagnostics), json!([]));
 
+  client.shutdown();
+}
+
+#[test]
+fn lsp_uses_lockfile_for_npm_initialization() {
+  let context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("deno.json", "{}");
+  // use two npm packages here
+  temp_dir.write("main.ts", "import 'npm:@denotest/esm-basic'; import 'npm:@denotest/cjs-default-export';");
+  context
+    .new_command()
+    .args("run main.ts")
+    .run()
+    .skip_output_check();
+  // remove one of the npm packages and let the other one be found via the lockfile
+  temp_dir.write("main.ts", "import 'npm:@denotest/esm-basic';");
+  assert!(temp_dir.path().join("deno.lock").exists());
+  let mut client = context
+    .new_lsp_command()
+    .capture_stderr()
+    .log_debug()
+    .build();
+  client.initialize_default();
+  let mut skipping_count = 0;
+  client.wait_until_stderr_line(|line| {
+    if line.contains("Skipping pending npm resolution.") {
+      skipping_count += 1;
+    }
+    assert!(
+      !line.contains("Running pending npm resolution."),
+      "Line: {}",
+      line
+    );
+    line.contains("Server ready.")
+  });
+  assert_eq!(skipping_count, 1);
   client.shutdown();
 }

@@ -32,3 +32,5 @@ Deno.Conn.prototype.rid is undefined
 Deno.UnixConn.prototype.rid is undefined
 Deno.TlsListener.prototype.rid is undefined
 Deno.TlsConn.prototype.rid is undefined
+Deno.FsWatcher.prototype.rid is undefined
+Deno.FsFile constructor is illegal
