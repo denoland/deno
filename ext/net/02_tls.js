@@ -151,6 +151,11 @@ function listenTls({
       new Error().stack,
       "Pass the key file contents to the `Deno.ListenTlsOptions.key` option instead.",
     );
+    if (internals.future) {
+      throw new TypeError(
+        "`Deno.ListenTlsOptions.keyFile` has been removed in favor of `Deno.ListenTlsOptions.key`",
+      );
+    }
   }
   if (certFile !== undefined) {
     internals.warnOnDeprecatedApi(
@@ -158,6 +163,11 @@ function listenTls({
       new Error().stack,
       "Pass the cert file contents to the `Deno.ListenTlsOptions.cert` option instead.",
     );
+    if (internals.future) {
+      throw new TypeError(
+        "`Deno.ListenTlsOptions.certFile` has been removed in favor of `Deno.ListenTlsOptions.cert`",
+      );
+    }
   }
   const { 0: rid, 1: localAddr } = op_net_listen_tls(
     { hostname, port: Number(port) },

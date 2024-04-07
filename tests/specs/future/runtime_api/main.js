@@ -88,4 +88,28 @@ try {
   }
 }
 
+try {
+  Deno.listenTls({ port: tlsPort, keyFile: "foo" });
+} catch (error) {
+  if (
+    error instanceof TypeError &&
+    error.message ===
+      "`Deno.ListenTlsOptions.keyFile` has been removed in favor of `Deno.ListenTlsOptions.key`"
+  ) {
+    console.log("Deno.ListenTlsOptions.keyFile is illegal");
+  }
+}
+
+try {
+  Deno.listenTls({ port: tlsPort, certFile: "foo" });
+} catch (error) {
+  if (
+    error instanceof TypeError &&
+    error.message ===
+      "`Deno.ListenTlsOptions.certFile` has been removed in favor of `Deno.ListenTlsOptions.cert`"
+  ) {
+    console.log("Deno.ListenTlsOptions.certFile is illegal");
+  }
+}
+
 self.close();
