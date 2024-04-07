@@ -61,6 +61,11 @@ async function connectTls({
       new Error().stack,
       "Pass the cert file contents to the `Deno.ConnectTlsOptions.cert` option instead.",
     );
+    if (internals.future) {
+      throw new TypeError(
+        "`Deno.ConnectTlsOptions.certFile` has been removed in favor of `Deno.ConnectTlsOptions.cert`.",
+      );
+    }
   }
   if (certChain !== undefined) {
     internals.warnOnDeprecatedApi(
@@ -68,6 +73,11 @@ async function connectTls({
       new Error().stack,
       "Use the `Deno.ConnectTlsOptions.cert` option instead.",
     );
+    if (internals.future) {
+      throw new TypeError(
+        "`Deno.ConnectTlsOptions.certChain` has been removed in favor of `Deno.ConnectTlsOptions.cert`.",
+      );
+    }
   }
   if (privateKey !== undefined) {
     internals.warnOnDeprecatedApi(
@@ -75,6 +85,11 @@ async function connectTls({
       new Error().stack,
       "Use the `Deno.ConnectTlsOptions.key` option instead.",
     );
+    if (internals.future) {
+      throw new TypeError(
+        "`Deno.ConnectTlsOptions.privateKey` has been removed in favor of `Deno.ConnectTlsOptions.key`.",
+      );
+    }
   }
   if (transport !== "tcp") {
     throw new TypeError(`Unsupported transport: '${transport}'`);

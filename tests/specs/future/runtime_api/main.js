@@ -88,4 +88,40 @@ try {
   }
 }
 
+try {
+  await Deno.connectTls({ port: tlsPort, certFile: "foo" });
+} catch (error) {
+  if (
+    error instanceof TypeError &&
+    error.message ===
+      "`Deno.ConnectTlsOptions.certFile` has been removed in favor of `Deno.ConnectTlsOptions.cert`."
+  ) {
+    console.log("Deno.ConnectTlsOptions.certFile is illegal");
+  }
+}
+
+try {
+  await Deno.connectTls({ port: tlsPort, certChain: "foo" });
+} catch (error) {
+  if (
+    error instanceof TypeError &&
+    error.message ===
+      "`Deno.ConnectTlsOptions.certChain` has been removed in favor of `Deno.ConnectTlsOptions.cert`."
+  ) {
+    console.log("Deno.ConnectTlsOptions.certChain is illegal");
+  }
+}
+
+try {
+  await Deno.connectTls({ port: tlsPort, privateKey: "foo" });
+} catch (error) {
+  if (
+    error instanceof TypeError &&
+    error.message ===
+      "`Deno.ConnectTlsOptions.privateKey` has been removed in favor of `Deno.ConnectTlsOptions.key`."
+  ) {
+    console.log("Deno.ConnectTlsOptions.privateKey is illegal");
+  }
+}
+
 self.close();
