@@ -1013,54 +1013,48 @@ impl TsServer {
   }
 }
 
+/// An lsp representation of an asset in memory, that has either been retrieved
+/// from static assets built into Rust, or static assets built into tsc.
 #[derive(Debug, Clone)]
-struct AssetDocumentInner {
+pub struct AssetDocument {
   specifier: ModuleSpecifier,
   text: Arc<str>,
   line_index: Arc<LineIndex>,
   maybe_navigation_tree: Option<Arc<NavigationTree>>,
 }
 
-/// An lsp representation of an asset in memory, that has either been retrieved
-/// from static assets built into Rust, or static assets built into tsc.
-#[derive(Debug, Clone)]
-pub struct AssetDocument(Arc<AssetDocumentInner>);
-
 impl AssetDocument {
   pub fn new(specifier: ModuleSpecifier, text: impl AsRef<str>) -> Self {
     let text = text.as_ref();
-    Self(Arc::new(AssetDocumentInner {
+    Self {
       specifier,
       text: text.into(),
       line_index: Arc::new(LineIndex::new(text)),
       maybe_navigation_tree: None,
-    }))
+    }
   }
 
   pub fn specifier(&self) -> &ModuleSpecifier {
-    &self.0.specifier
+    &self.specifier
   }
 
-  pub fn with_navigation_tree(
-    &self,
-    tree: Arc<NavigationTree>,
-  ) -> AssetDocument {
-    AssetDocument(Arc::new(AssetDocumentInner {
+  pub fn with_navigation_tree(&self, tree: Arc<NavigationTree>) -> Self {
+    Self {
       maybe_navigation_tree: Some(tree),
-      ..(*self.0).clone()
-    }))
+      ..self.clone()
+    }
   }
 
   pub fn text(&self) -> Arc<str> {
-    self.0.text.clone()
+    self.text.clone()
   }
 
   pub fn line_index(&self) -> Arc<LineIndex> {
-    self.0.line_index.clone()
+    self.line_index.clone()
   }
 
   pub fn maybe_navigation_tree(&self) -> Option<Arc<NavigationTree>> {
-    self.0.maybe_navigation_tree.clone()
+    self.maybe_navigation_tree.clone()
   }
 }
 
