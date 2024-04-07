@@ -786,9 +786,12 @@ delete Object.prototype.__proto__;
       if (logDebug) {
         debug(`host.getScriptSnapshot("${specifier}")`);
       }
-      let sourceFile = sourceFileCache.get(specifier)?.deref();
+      const isAsset = specifier.startsWith(ASSETS_URL_PREFIX);
+      let sourceFile = isAsset
+        ? assetSourceFileCache.get(specifier)
+        : sourceFileCache.get(specifier)?.deref();
       if (
-        !specifier.startsWith(ASSETS_URL_PREFIX) &&
+        !isAsset &&
         sourceFile?.version != this.getScriptVersion(specifier)
       ) {
         sourceFileCache.delete(specifier);
