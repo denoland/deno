@@ -102,6 +102,7 @@ const {
   SymbolAsyncIterator,
   SymbolIterator,
   SymbolFor,
+  TypeError,
   Uint32Array,
 } = primordials;
 
@@ -685,6 +686,11 @@ class FsFile {
         new Error().stack,
         "Use `Deno.open` or `Deno.openSync` instead.",
       );
+      if (internals.future) {
+        throw new TypeError(
+          "`Deno.FsFile` cannot be constructed, use `Deno.open()` or `Deno.openSync()` instead.",
+        );
+      }
     }
   }
 

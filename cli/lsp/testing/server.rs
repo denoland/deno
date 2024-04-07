@@ -98,6 +98,9 @@ impl TestServer {
                 .documents(DocumentsFilter::AllDiagnosable)
               {
                 let specifier = document.specifier();
+                if specifier.scheme() != "file" {
+                  continue;
+                }
                 if !snapshot.config.specifier_enabled_for_test(specifier) {
                   continue;
                 }

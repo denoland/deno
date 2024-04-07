@@ -218,6 +218,7 @@ function setupBuiltinModules() {
     "internal/util/inspect": internalUtilInspect,
     "internal/util": internalUtil,
     net,
+    module: Module,
     os,
     "path/posix": pathPosix,
     "path/win32": pathWin32,

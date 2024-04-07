@@ -17,10 +17,10 @@ import {
   MessagePort,
   MessagePortIdSymbol,
   MessagePortPrototype,
+  nodeWorkerThreadCloseCb,
   serializeJsMessageData,
 } from "ext:deno_web/13_message_port.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { log } from "ext:runtime/06_util.js";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import { EventEmitter } from "node:events";
 import { BroadcastChannel } from "ext:deno_broadcast_channel/01_broadcast_channel.js";
@@ -36,6 +36,14 @@ const {
   SafeMap,
   TypeError,
 } = primordials;
+
+const debugWorkerThreads = false;
+function debugWT(...args) {
+  if (debugWorkerThreads) {
+    // deno-lint-ignore prefer-primordials
+    console.log(...args);
+  }
+}
 
 export interface WorkerOptions {
   // only for typings
@@ -189,7 +197,7 @@ class NodeWorker extends EventEmitter {
           break;
         }
         case 3: { // Close
-          log(`Host got "close" message from worker: ${this.#name}`);
+          debugWT(`Host got "close" message from worker: ${this.#name}`);
           this.#status = "CLOSED";
           return;
         }
@@ -342,6 +350,8 @@ internals.__initWorkerThreads = (
     defaultExport.parentPort = parentPort;
     defaultExport.threadId = threadId;
 
+    workerData = patchMessagePortIfFound(workerData);
+
     parentPort.off = parentPort.removeListener = function (
       this: ParentPort,
       name,
@@ -357,7 +367,11 @@ internals.__initWorkerThreads = (
       listener,
     ) {
       // deno-lint-ignore no-explicit-any
-      const _listener = (ev: any) => listener(ev.data);
+      const _listener = (ev: any) => {
+        let message = ev.data;
+        message = patchMessagePortIfFound(message);
+        return listener(message);
+      };
       listeners.set(listener, _listener);
       this.addEventListener(name, _listener);
       return this;
@@ -424,10 +438,57 @@ export function receiveMessageOnPort(port: MessagePort): object | undefined {
   return { message: deserializeJsMessageData(data)[0] };
 }
 
+class NodeMessageChannel {
+  port1: MessagePort;
+  port2: MessagePort;
+
+  constructor() {
+    const { port1, port2 } = new MessageChannel();
+    this.port1 = webMessagePortToNodeMessagePort(port1);
+    this.port2 = webMessagePortToNodeMessagePort(port2);
+  }
+}
+
+function webMessagePortToNodeMessagePort(port: MessagePort) {
+  port.on = port.addListener = function (this: MessagePort, name, listener) {
+    // deno-lint-ignore no-explicit-any
+    const _listener = (ev: any) => listener(ev.data);
+    if (name == "message") {
+      port.onmessage = _listener;
+    } else if (name == "messageerror") {
+      port.onmessageerror = _listener;
+    } else if (name == "close") {
+      port.addEventListener("close", _listener);
+    } else {
+      throw new Error(`Unknown event: "${name}"`);
+    }
+    return this;
+  };
+  port[nodeWorkerThreadCloseCb] = () => {
+    port.dispatchEvent(new Event("close"));
+  };
+  return port;
+}
+
+// deno-lint-ignore no-explicit-any
+function patchMessagePortIfFound(data: any) {
+  if (ObjectPrototypeIsPrototypeOf(MessagePortPrototype, data)) {
+    data = webMessagePortToNodeMessagePort(data);
+  } else {
+    for (const obj in data as Record<string, unknown>) {
+      if (ObjectPrototypeIsPrototypeOf(MessagePortPrototype, data[obj])) {
+        data[obj] = webMessagePortToNodeMessagePort(data[obj] as MessagePort);
+        break;
+      }
+    }
+  }
+  return data;
+}
+
 export {
   BroadcastChannel,
-  MessageChannel,
   MessagePort,
+  NodeMessageChannel as MessageChannel,
   NodeWorker as Worker,
   parentPort,
   threadId,
@@ -439,7 +500,7 @@ const defaultExport = {
   moveMessagePortToContext,
   receiveMessageOnPort,
   MessagePort,
-  MessageChannel,
+  MessageChannel: NodeMessageChannel,
   BroadcastChannel,
   Worker: NodeWorker,
   getEnvironmentData,

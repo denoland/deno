@@ -310,9 +310,15 @@ async fn add_package_reqs_to_snapshot(
       .iter()
       .all(|req| snapshot.package_reqs().contains_key(req))
   {
-    log::debug!("Snapshot already up to date. Skipping pending resolution.");
+    log::debug!(
+      "Snapshot already up to date. Skipping pending npm resolution."
+    );
     snapshot
   } else {
+    log::debug!(
+      /* this string is used in tests!! */
+      "Running pending npm resolution."
+    );
     let pending_resolver = get_npm_pending_resolver(api);
     let result = pending_resolver
       .resolve_pending(snapshot, package_reqs)
