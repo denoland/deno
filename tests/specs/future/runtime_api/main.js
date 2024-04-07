@@ -31,6 +31,10 @@ console.log("Deno.writeAllSync is", Deno.writeAllSync);
 console.log("Deno.write is", Deno.write);
 console.log("Deno.writeSync is", Deno.writeSync);
 
+const watcher = Deno.watchFs(".");
+console.log("Deno.FsWatcher.prototype.rid is", watcher.rid);
+watcher.close();
+
 try {
   new Deno.FsFile(0);
 } catch (error) {
