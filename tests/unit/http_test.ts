@@ -2671,7 +2671,6 @@ Deno.test(
 Deno.test("proxy with fetch", async () => {
   const listener = Deno.listen({ port: listenPort });
   const deferred = Promise.withResolvers<void>();
-  const deferred1 = Promise.withResolvers<void>();
 
   const server = Deno.serve({ port: listenPort + 1 }, (_req) => {
     return new Response("Hello world");
