@@ -93,6 +93,9 @@ const _refed = Symbol("refed");
 const nodeWorkerThreadCloseCb = Symbol("nodeWorkerThreadCloseCb");
 const nodeWorkerThreadCloseCbInvoked = Symbol("nodeWorkerThreadCloseCbInvoked");
 export const refMessagePort = Symbol("refMessagePort");
+/** It is used by 99_main.js and worker_threads to
+ * unref/ref on the global pollForMessages promise. */
+export const unrefPollForMessages = Symbol("unrefPollForMessages");
 
 /**
  * @param {number} id

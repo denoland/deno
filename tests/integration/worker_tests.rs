@@ -144,3 +144,10 @@ itest!(node_worker_message_port_unref {
   output: "workers/node_worker_message_port_unref.mjs.out",
   exit_code: 0,
 });
+
+itest!(node_worker_parent_port_unref {
+  envs: vec![("PARENT_PORT".into(), "1".into())],
+  args: "run --quiet --allow-env --allow-read workers/node_worker_message_port_unref.mjs",
+  output: "workers/node_worker_message_port_unref.mjs.out",
+  exit_code: 0,
+});
