@@ -2798,76 +2798,85 @@ function colorEquals(color1, color2) {
     color1?.[2] == color2?.[2];
 }
 
+function backgroundColorToAnsi(backgroundColor) {
+  switch (backgroundColor) {
+    case null: return "\x1b[49m";
+    case "black":
+      return `\x1b[40m`;
+    case "red":
+      return `\x1b[41m`;
+    case "green":
+      return `\x1b[42m`;
+    case "yellow":
+      return `\x1b[43m`;
+    case "blue":
+      return `\x1b[44m`;
+    case "magenta":
+      return `\x1b[45m`;
+    case "cyan":
+      return `\x1b[46m`;
+    case "white":
+      return `\x1b[47m`;
+    default:
+      if (ArrayIsArray(backgroundColor)) {
+        const { 0: r, 1: g, 2: b } = backgroundColor;
+        return `\x1b[48;2;${r};${g};${b}m`;
+      } else {
+        const parsed = parseCssColor(backgroundColor);
+        if (parsed !== null) {
+          const { 0: r, 1: g, 2: b } = parsed;
+          return `\x1b[48;2;${r};${g};${b}m`;
+        } else {
+          return "\x1b[49m";
+        }
+      }
+  }
+}
+
+function textColorToAnsi(color) {
+  switch (color) {
+    case null:
+      return "\x1b[39m";
+    case "black":
+      return `\x1b[30m`;
+    case "red":
+      return `\x1b[31m`;
+    case "green":
+      return `\x1b[32m`;
+    case "yellow":
+      return `\x1b[33m`;
+    case "blue":
+      return `\x1b[34m`;
+    case "magenta":
+      return `\x1b[35m`;
+    case "cyan":
+      return `\x1b[36m`;
+    case "white":
+      return `\x1b[37m`;
+    default:
+      if (ArrayIsArray(color)) {
+        const { 0: r, 1: g, 2: b } = color;
+        return `\x1b[38;2;${r};${g};${b}m`;
+      } else {
+        const parsed = parseCssColor(color);
+        if (parsed !== null) {
+          const { 0: r, 1: g, 2: b } = parsed;
+          return `\x1b[38;2;${r};${g};${b}m`;
+        } else {
+          return "\x1b[39m";
+        }
+      }
+  }
+}
+
 function cssToAnsi(css, prevCss = null) {
   prevCss = prevCss ?? getDefaultCss();
   let ansi = "";
   if (!colorEquals(css.backgroundColor, prevCss.backgroundColor)) {
-    if (css.backgroundColor == null) {
-      ansi += "\x1b[49m";
-    } else if (css.backgroundColor == "black") {
-      ansi += `\x1b[40m`;
-    } else if (css.backgroundColor == "red") {
-      ansi += `\x1b[41m`;
-    } else if (css.backgroundColor == "green") {
-      ansi += `\x1b[42m`;
-    } else if (css.backgroundColor == "yellow") {
-      ansi += `\x1b[43m`;
-    } else if (css.backgroundColor == "blue") {
-      ansi += `\x1b[44m`;
-    } else if (css.backgroundColor == "magenta") {
-      ansi += `\x1b[45m`;
-    } else if (css.backgroundColor == "cyan") {
-      ansi += `\x1b[46m`;
-    } else if (css.backgroundColor == "white") {
-      ansi += `\x1b[47m`;
-    } else {
-      if (ArrayIsArray(css.backgroundColor)) {
-        const { 0: r, 1: g, 2: b } = css.backgroundColor;
-        ansi += `\x1b[48;2;${r};${g};${b}m`;
-      } else {
-        const parsed = parseCssColor(css.backgroundColor);
-        if (parsed !== null) {
-          const { 0: r, 1: g, 2: b } = parsed;
-          ansi += `\x1b[48;2;${r};${g};${b}m`;
-        } else {
-          ansi += "\x1b[49m";
-        }
-      }
-    }
+    ansi += backgroundColorToAnsi(css.backgroundColor)
   }
   if (!colorEquals(css.color, prevCss.color)) {
-    if (css.color == null) {
-      ansi += "\x1b[39m";
-    } else if (css.color == "black") {
-      ansi += `\x1b[30m`;
-    } else if (css.color == "red") {
-      ansi += `\x1b[31m`;
-    } else if (css.color == "green") {
-      ansi += `\x1b[32m`;
-    } else if (css.color == "yellow") {
-      ansi += `\x1b[33m`;
-    } else if (css.color == "blue") {
-      ansi += `\x1b[34m`;
-    } else if (css.color == "magenta") {
-      ansi += `\x1b[35m`;
-    } else if (css.color == "cyan") {
-      ansi += `\x1b[36m`;
-    } else if (css.color == "white") {
-      ansi += `\x1b[37m`;
-    } else {
-      if (ArrayIsArray(css.color)) {
-        const { 0: r, 1: g, 2: b } = css.color;
-        ansi += `\x1b[38;2;${r};${g};${b}m`;
-      } else {
-        const parsed = parseCssColor(css.color);
-        if (parsed !== null) {
-          const { 0: r, 1: g, 2: b } = parsed;
-          ansi += `\x1b[38;2;${r};${g};${b}m`;
-        } else {
-          ansi += "\x1b[39m";
-        }
-      }
-    }
+    ansi += textColorToAnsi(css.color)
   }
   if (css.fontWeight != prevCss.fontWeight) {
     if (css.fontWeight == "bold") {
