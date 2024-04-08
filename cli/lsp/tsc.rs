@@ -1045,7 +1045,6 @@ impl TsServer {
     self.request::<bool>(snapshot, req).await.unwrap();
   }
 
-  #[tracing::instrument(skip_all)]
   async fn request<R>(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -1062,7 +1061,7 @@ impl TsServer {
     r
   }
 
-  #[tracing::instrument(skip_all)]
+  #[tracing::instrument(skip(self, snapshot, token))]
   async fn request_with_cancellation<R>(
     &self,
     snapshot: Arc<StateSnapshot>,
