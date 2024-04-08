@@ -8202,7 +8202,9 @@
           "incomplete closing handshake should be considered unclean close"
         ],
         "close.any.worker.html?wpt_flags=h2": false,
-        "close.any.worker.html?wss": true,
+        "close.any.worker.html?wss": [
+          "incomplete closing handshake should be considered unclean close"
+        ],
         "constructor.any.html?wpt_flags=h2": true,
         "constructor.any.html?wss": true,
         "constructor.any.worker.html?wpt_flags=h2": true,
