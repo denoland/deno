@@ -2544,7 +2544,7 @@ declare namespace Deno {
     /** Resolves to a {@linkcode Deno.FileInfo} for the file.
      *
      * ```ts
-     * import { assert } from "jsr:@std/assert/assert";
+     * import { assert } from "jsr:@std/assert";
      *
      * using file = await Deno.open("hello.txt");
      * const fileInfo = await file.stat();
@@ -2555,7 +2555,7 @@ declare namespace Deno {
     /** Synchronously returns a {@linkcode Deno.FileInfo} for the file.
      *
      * ```ts
-     * import { assert } from "jsr:@std/assert/assert";
+     * import { assert } from "jsr:@std/assert";
      *
      * using file = Deno.openSync("hello.txt")
      * const fileInfo = file.statSync();
@@ -3804,7 +3804,7 @@ declare namespace Deno {
    * of what it points to.
    *
    * ```ts
-   * import { assert } from "jsr:@std/assert/assert";
+   * import { assert } from "jsr:@std/assert";
    * const fileInfo = await Deno.lstat("hello.txt");
    * assert(fileInfo.isFile);
    * ```
@@ -3821,7 +3821,7 @@ declare namespace Deno {
    * returned instead of what it points to.
    *
    * ```ts
-   * import { assert } from "jsr:@std/assert/assert";
+   * import { assert } from "jsr:@std/assert";
    * const fileInfo = Deno.lstatSync("hello.txt");
    * assert(fileInfo.isFile);
    * ```
@@ -3837,7 +3837,7 @@ declare namespace Deno {
    * always follow symlinks.
    *
    * ```ts
-   * import { assert } from "jsr:@std/assert/assert";
+   * import { assert } from "jsr:@std/assert";
    * const fileInfo = await Deno.stat("hello.txt");
    * assert(fileInfo.isFile);
    * ```
@@ -3853,7 +3853,7 @@ declare namespace Deno {
    * `path`. Will always follow symlinks.
    *
    * ```ts
-   * import { assert } from "jsr:@std/assert/assert";
+   * import { assert } from "jsr:@std/assert";
    * const fileInfo = Deno.statSync("hello.txt");
    * assert(fileInfo.isFile);
    * ```
@@ -5106,7 +5106,7 @@ declare namespace Deno {
     /** Revokes a permission, and resolves to the state of the permission.
      *
      * ```ts
-     * import { assert } from "jsr:@std/assert/assert";
+     * import { assert } from "jsr:@std/assert";
      *
      * const status = await Deno.permissions.revoke({ name: "run" });
      * assert(status.state !== "granted")
@@ -5117,7 +5117,7 @@ declare namespace Deno {
     /** Revokes a permission, and returns the state of the permission.
      *
      * ```ts
-     * import { assert } from "jsr:@std/assert/assert";
+     * import { assert } from "jsr:@std/assert";
      *
      * const status = Deno.permissions.revokeSync({ name: "run" });
      * assert(status.state !== "granted")
@@ -5195,14 +5195,14 @@ declare namespace Deno {
    * ### Revoking
    *
    * ```ts
-   * import { assert } from "jsr:@std/assert/assert";
+   * import { assert } from "jsr:@std/assert";
    *
    * const status = await Deno.permissions.revoke({ name: "run" });
    * assert(status.state !== "granted")
    * ```
    *
    * ```ts
-   * import { assert } from "jsr:@std/assert/assert";
+   * import { assert } from "jsr:@std/assert";
    *
    * const status = Deno.permissions.revokeSync({ name: "run" });
    * assert(status.state !== "granted")
@@ -5530,7 +5530,7 @@ declare namespace Deno {
    * Returns a `Deno.FileInfo` for the given file stream.
    *
    * ```ts
-   * import { assert } from "jsr:@std/assert/assert";
+   * import { assert } from "jsr:@std/assert";
    *
    * const file = await Deno.open("file.txt", { read: true });
    * const fileInfo = await Deno.fstat(file.rid);
@@ -5550,7 +5550,7 @@ declare namespace Deno {
    * stream.
    *
    * ```ts
-   * import { assert } from "jsr:@std/assert/assert";
+   * import { assert } from "jsr:@std/assert";
    *
    * const file = Deno.openSync("file.txt", { read: true });
    * const fileInfo = Deno.fstatSync(file.rid);
