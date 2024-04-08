@@ -10,9 +10,6 @@ pub fn utc_now() -> chrono::DateTime<chrono::Utc> {
   let now = std::time::SystemTime::now()
     .duration_since(std::time::UNIX_EPOCH)
     .expect("system time before Unix epoch");
-  chrono::DateTime::from_timestamp(
-    now.as_secs() as i64,
-    now.subsec_nanos(),
-  )
-  .unwrap()
+  chrono::DateTime::from_timestamp(now.as_secs() as i64, now.subsec_nanos())
+    .unwrap()
 }
