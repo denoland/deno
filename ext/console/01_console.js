@@ -2870,6 +2870,14 @@ function textColorToAnsi(color) {
   }
 }
 
+function fontWeightToAnsi(fontWeight) {
+  return fontWeight == "bold" ? `\x1b[1m` : "\x1b[22m";
+}
+
+function fontStyleToAnsi(fontStyle) {
+  return fontStyle == "italic" ? `\x1b[3m` : "\x1b[23m";
+}
+
 function cssToAnsi(css, prevCss = null) {
   prevCss = prevCss ?? getDefaultCss();
   let ansi = "";
@@ -2880,18 +2888,10 @@ function cssToAnsi(css, prevCss = null) {
     ansi += textColorToAnsi(css.color);
   }
   if (css.fontWeight != prevCss.fontWeight) {
-    if (css.fontWeight == "bold") {
-      ansi += `\x1b[1m`;
-    } else {
-      ansi += "\x1b[22m";
-    }
+    ansi += fontWeightToAnsi(css.fontWeight);
   }
   if (css.fontStyle != prevCss.fontStyle) {
-    if (css.fontStyle == "italic") {
-      ansi += `\x1b[3m`;
-    } else {
-      ansi += "\x1b[23m";
-    }
+    ansi += fontStyleToAnsi(css.fontStyle);
   }
   if (!colorEquals(css.textDecorationColor, prevCss.textDecorationColor)) {
     if (css.textDecorationColor != null) {
