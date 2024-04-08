@@ -1,6 +1,8 @@
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
+use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::OpState;
-use deno_core::error::AnyError;
 use deno_permissions::PermissionsContainer;
 
 #[cfg(unix)]
@@ -46,7 +48,7 @@ fn kill(pid: i32, sig: i32) -> i32 {
 pub fn op_node_process_kill(
   state: &mut OpState,
   #[smi] pid: i32,
-  #[smi] sig: i32
+  #[smi] sig: i32,
 ) -> Result<i32, AnyError> {
   state
     .borrow_mut::<PermissionsContainer>()
