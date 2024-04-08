@@ -152,6 +152,7 @@ fn bind_socket_and_listen(
   } else {
     socket2::Socket::new(Domain::IPV6, Type::STREAM, Some(Protocol::TCP))?
   };
+  #[cfg(not(windows))]
   if REUSE_PORT_LOAD_BALANCES && reuse_port {
     socket.set_reuse_port(true)?;
   }
