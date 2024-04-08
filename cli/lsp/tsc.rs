@@ -3986,6 +3986,7 @@ fn op_resolve<'s>(
   state: &mut OpState,
   #[serde] args: ResolveArgs,
 ) -> Result<v8::Local<'s, v8::Value>, AnyError> {
+  dbg!(format!("op_resolve: {}", &args.base));
   let state = state.borrow_mut::<State>();
   let mark = state.performance.mark_with_args("tsc.op.op_resolve", &args);
   let referrer = state.specifier_map.normalize(&args.base)?;
