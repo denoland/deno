@@ -471,7 +471,7 @@ where
     .next()
     .ok_or_else(|| generic_error("No resolved address found"))?;
 
-  let tcp_listener = TcpListener::bind(bind_addr, args.reuse_port)?;
+  let tcp_listener = TcpListener::bind_direct(bind_addr, args.reuse_port)?;
   let local_addr = tcp_listener.local_addr()?;
 
   let tls_listener_resource = NetworkListenerResource::new(TlsListener {

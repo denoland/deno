@@ -355,7 +355,7 @@ where
     .next()
     .ok_or_else(|| generic_error("No resolved address found"))?;
 
-  let listener = TcpListener::bind(addr, reuse_port)?;
+  let listener = TcpListener::bind_direct(addr, reuse_port)?;
   let local_addr = listener.local_addr()?;
   let listener_resource = NetworkListenerResource::new(listener);
   let rid = state.resource_table.add(listener_resource);
@@ -998,7 +998,7 @@ mod tests {
     let sockets = Arc::new(Mutex::new(vec![]));
     let clone_addr = addr.clone();
     let addr = addr.to_socket_addrs().unwrap().next().unwrap();
-    let listener = TcpListener::bind(addr, false).unwrap();
+    let listener = TcpListener::bind_direct(addr, false).unwrap();
     let accept_fut = listener.accept().boxed_local();
     let store_fut = async move {
       let socket = accept_fut.await.unwrap();
