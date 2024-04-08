@@ -151,6 +151,7 @@ unstableForWindowOrWorkerGlobalScope[unstableIds.broadcastChannel] = {
 };
 unstableForWindowOrWorkerGlobalScope[unstableIds.net] = {
   WebSocketStream: core.propNonEnumerable(webSocketStream.WebSocketStream),
+  WebSocketError: core.propNonEnumerable(webSocketStream.WebSocketError),
 };
 // deno-fmt-ignore
 unstableForWindowOrWorkerGlobalScope[unstableIds.webgpu] = {
