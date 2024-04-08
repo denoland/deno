@@ -1562,6 +1562,7 @@ Deno.test({
         conn.close();
         listener1Recv = true;
         p1 = undefined;
+        listener1.close();
       }).catch(() => {});
     }
     if (!p2) {
@@ -1569,14 +1570,13 @@ Deno.test({
         conn.close();
         listener2Recv = true;
         p2 = undefined;
+        listener2.close();
       }).catch(() => {});
     }
     const conn = await Deno.connectTls({ hostname, port, caCerts });
     conn.close();
     await Promise.race([p1, p2]);
   }
-  listener1.close();
-  listener2.close();
 });
 
 Deno.test({
@@ -1631,5 +1631,18 @@ Deno.test(
         keyFile: "tests/testdata/tls/invalid.key",
       });
     }, Deno.errors.InvalidData);
+  },
+);
+
+Deno.test(
+  { permissions: { net: true, read: true } },
+  function listenTLSEcKey() {
+    const listener = Deno.listenTls({
+      hostname: "localhost",
+      port: 0,
+      certFile: "tests/testdata/tls/localhost_ecc.crt",
+      keyFile: "tests/testdata/tls/localhost_ecc.key",
+    });
+    listener.close();
   },
 );
