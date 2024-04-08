@@ -1,7 +1,18 @@
 {
-  "args": "run -A main.js",
-  "output": "main.out",
-  "envs": {
-    "DENO_FUTURE": "1"
-  }
+  "steps": [
+    {
+      "args": "run -A --unstable-fs main.js",
+      "output": "main.out",
+      "envs": {
+        "DENO_FUTURE": "1"
+      }
+    },
+    {
+      "args": "run -A --unstable-fs worker.js",
+      "output": "main.out",
+      "envs": {
+        "DENO_FUTURE": "1"
+      }
+    }
+  ]
 }

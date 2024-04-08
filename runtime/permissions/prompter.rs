@@ -335,7 +335,8 @@ impl PermissionPrompter for TtyPrompter {
     let value = loop {
       // Clear stdin each time we loop around in case the user accidentally pasted
       // multiple lines or otherwise did something silly to generate a torrent of
-      // input.
+      // input. This doesn't work on Windows because `clear_stdin` has other side-effects.
+      #[cfg(unix)]
       if let Err(err) = clear_stdin(&mut stdin_lock, &mut stderr_lock) {
         eprintln!("Error clearing stdin for permission prompt. {err:#}");
         return PromptResponse::Deny; // don't grant permission if this fails
@@ -343,14 +344,11 @@ impl PermissionPrompter for TtyPrompter {
 
       let mut input = String::new();
       let result = stdin_lock.read_line(&mut input);
-      if result.is_err() || input.len() > 2 {
+      let input = input.trim_end_matches(|c| c == '\r' || c == '\n');
+      if result.is_err() || input.len() != 1 {
         break PromptResponse::Deny;
       };
-      let ch = match input.chars().next() {
-        None => break PromptResponse::Deny,
-        Some(v) => v,
-      };
-      match ch {
+      match input.as_bytes()[0] as char {
         'y' | 'Y' => {
           clear_n_lines(
             &mut stderr_lock,
