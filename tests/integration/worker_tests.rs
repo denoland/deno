@@ -140,7 +140,7 @@ itest!(node_worker_transfer_port {
 });
 
 itest!(node_worker_message_port_unref {
-  args: "run --quiet --allow-read workers/node_worker_message_port_unref.mjs",
+  args: "run --quiet --allow-env --allow-read workers/node_worker_message_port_unref.mjs",
   output: "workers/node_worker_message_port_unref.mjs.out",
   exit_code: 0,
 });
