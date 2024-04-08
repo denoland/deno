@@ -1707,14 +1707,13 @@ impl PermissionsContainer {
     } else if cfg!(target_os = "windows") {
       fn is_normalized_windows_drive_path(path: &Path) -> bool {
         let s = path.as_os_str().as_encoded_bytes();
+        // \\?\X:\
         if s.len() < 7 {
           false
+        } else if s.starts_with(br#"\\?\"#) {
+          s[4].is_ascii_alphabetic() && s[5] == b':' && s[6] == b'\\'
         } else {
-          if s.starts_with(br#"\\?\"#) {
-            s[4].is_ascii_alphabetic() && s[5] == b':' && s[6] == b'\\'
-          } else {
-            false
-          }
+          false
         }
       }
 
