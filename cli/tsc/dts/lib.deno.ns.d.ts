@@ -2789,7 +2789,7 @@ declare namespace Deno {
      * The resource ID assigned to `stdin`. This can be used with the discreet
      * I/O functions in the `Deno` namespace.
      *
-     * @deprecated This will be removed in Deno 2.0. See the
+     * @deprecated This will be soft-removed in Deno 2.0. See the
      * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
      * for migration instructions.
      */
@@ -2837,7 +2837,7 @@ declare namespace Deno {
      * The resource ID assigned to `stdout`. This can be used with the discreet
      * I/O functions in the `Deno` namespace.
      *
-     * @deprecated This will be removed in Deno 2.0. See the
+     * @deprecated This will be soft-removed in Deno 2.0. See the
      * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
      * for migration instructions.
      */
@@ -2871,7 +2871,7 @@ declare namespace Deno {
      * The resource ID assigned to `stderr`. This can be used with the discreet
      * I/O functions in the `Deno` namespace.
      *
-     * @deprecated This will be removed in Deno 2.0. See the
+     * @deprecated This will be soft-removed in Deno 2.0. See the
      * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
      * for migration instructions.
      */
@@ -2969,7 +2969,7 @@ declare namespace Deno {
    * console.log(Deno.isatty(ttyRid)); // true
    * ```
    *
-   * @deprecated This will be removed in Deno 2.0. See the
+   * @deprecated This will be soft-removed in Deno 2.0. See the
    * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
    * for migration instructions.
    *
@@ -4519,7 +4519,7 @@ declare namespace Deno {
    *
    * Requires `allow-run` permission.
    *
-   * @deprecated This will be removed in Deno 2.0. See the
+   * @deprecated This will be soft-removed in Deno 2.0. See the
    * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
    * for migration instructions.
    *
@@ -5633,7 +5633,8 @@ declare namespace Deno {
     respondWith(r: Response | PromiseLike<Response>): Promise<void>;
   }
 
-  /** The async iterable that is returned from {@linkcode Deno.serveHttp} which
+  /**
+   * The async iterable that is returned from {@linkcode serveHttp} which
    * yields up {@linkcode RequestEvent} events, representing individual
    * requests on the HTTP server connection.
    *
@@ -5707,7 +5708,7 @@ declare namespace Deno {
    * used elsewhere. In such a case, this function will fail.
    *
    * @category HTTP Server
-   * @deprecated This will be removed in Deno 2.0. See the
+   * @deprecated This will be soft-removed in Deno 2.0. See the
    * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
    * for migration instructions.
    */
