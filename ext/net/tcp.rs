@@ -46,6 +46,10 @@ pub struct TcpListener {
   conn: Option<Arc<TcpConnection>>,
 }
 
+/// Does this platform implement `SO_REUSEPORT` in a load-balancing manner?
+const REUSE_PORT_LOAD_BALANCES: bool =
+  cfg!(any(target_os = "android", target_os = "linux"));
+
 impl TcpListener {
   /// Bind to a port. On Linux, or when we don't have `SO_REUSEPORT` set, we just bind the port directly.
   /// On other platforms, we emulate `SO_REUSEPORT` by cloning the socket and having each clone race to
@@ -70,7 +74,7 @@ impl TcpListener {
     socket_addr: SocketAddr,
     reuse_port: bool,
   ) -> std::io::Result<Self> {
-    if cfg!(not(target_os = "linux")) && reuse_port {
+    if REUSE_PORT_LOAD_BALANCES && reuse_port {
       Self::bind_load_balanced(socket_addr)
     } else {
       Self::bind_direct(socket_addr, reuse_port)
@@ -148,8 +152,7 @@ fn bind_socket_and_listen(
   } else {
     socket2::Socket::new(Domain::IPV6, Type::STREAM, Some(Protocol::TCP))?
   };
-  #[cfg(target_os = "linux")]
-  if reuse_port {
+  if REUSE_PORT_LOAD_BALANCES && reuse_port {
     socket.set_reuse_port(true)?;
   }
   #[cfg(not(windows))]
