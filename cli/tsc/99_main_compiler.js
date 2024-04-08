@@ -162,6 +162,19 @@ delete Object.prototype.__proto__;
 
   const isCjsCache = new SpecifierIsCjsCache();
 
+  /** @type {ts.CompilerOptions | null} */
+  let tsConfigCache = null;
+  /** @type {string | null} */
+  let tsConfigCacheProjectVersion = null;
+
+  /** @type {string | null} */
+  let projectVersionCache = null;
+  /** @type {number | null} */
+  let projectVersionCacheLastRequestId = null;
+
+  /** @type {number | null} */
+  let lastRequestId = null;
+
   /**
    * @param {ts.CompilerOptions | ts.MinimalResolutionCacheHost} settingsOrHost
    * @returns {ts.CompilerOptions}
@@ -531,7 +544,15 @@ delete Object.prototype.__proto__;
       return new CancellationToken();
     },
     getProjectVersion() {
-      return ops.op_project_version();
+      if (
+        projectVersionCache && projectVersionCacheLastRequestId == lastRequestId
+      ) {
+        return projectVersionCache;
+      }
+      const projectVersion = ops.op_project_version();
+      projectVersionCache = projectVersion;
+      projectVersionCacheLastRequestId = lastRequestId;
+      return projectVersion;
     },
     // @ts-ignore Undocumented method.
     getModuleSpecifierCache() {
@@ -730,6 +751,10 @@ delete Object.prototype.__proto__;
       if (logDebug) {
         debug("host.getCompilationSettings()");
       }
+      const projectVersion = this.getProjectVersion();
+      if (tsConfigCache && tsConfigCacheProjectVersion == projectVersion) {
+        return tsConfigCache;
+      }
       const tsConfig = normalizeConfig(ops.op_ts_config());
       const { options, errors } = ts
         .convertCompilerOptionsFromJson(tsConfig, "");
@@ -740,6 +765,8 @@ delete Object.prototype.__proto__;
       if (errors.length > 0 && logDebug) {
         debug(ts.formatDiagnostics(errors, host));
       }
+      tsConfigCache = options;
+      tsConfigCacheProjectVersion = projectVersion;
       return options;
     },
     getScriptFileNames() {
@@ -1020,7 +1047,7 @@ delete Object.prototype.__proto__;
     if (logDebug) {
       debug(`serverRequest()`, id, method, args);
     }
-
+    lastRequestId = id;
     // reset all memoized source files names
     scriptFileNamesCache = undefined;
     // evict all memoized source file versions
