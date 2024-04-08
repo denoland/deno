@@ -192,20 +192,14 @@ class WebSocketStream {
                     }
                   })(),
                   () => {
-                    const err = new DOMException(
-                      "Closed while connecting",
-                      "NetworkError",
-                    );
+                    const err = new WebSocketError("Closed while connecting");
                     this[_opened].reject(err);
                     this[_closed].reject(err);
                   },
                 );
               },
               () => {
-                const err = new DOMException(
-                  "Closed while connecting",
-                  "NetworkError",
-                );
+                const err = new WebSocketError("Closed while connecting");
                 this[_opened].reject(err);
                 this[_closed].reject(err);
               },
