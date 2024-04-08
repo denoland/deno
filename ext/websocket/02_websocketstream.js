@@ -375,6 +375,7 @@ class WebSocketStream {
             err = options.signal.reason;
           } else {
             core.tryClose(cancelRid);
+            err = new WebSocketError(err.message);
           }
           this[_opened].reject(err);
           this[_closed].reject(err);
@@ -444,6 +445,7 @@ class WebSocketStream {
         },
         (err) => {
           this[_rid] && core.tryClose(this[_rid]);
+          err = new WebSocketError(err.message);
           this[_closed].reject(err);
         },
       );
@@ -481,6 +483,10 @@ class WebSocketError extends DOMException {
       "Argument 2",
     );
 
+    if (!init.closeCode) {
+      init.closeCode = null;
+    }
+
     if (
       init.closeCode &&
       !(init.closeCode === 1000 ||
@@ -503,7 +509,7 @@ class WebSocketError extends DOMException {
       );
     }
 
-    if (init.reason && init.closeCode === undefined) {
+    if (init.reason && init.closeCode === null) {
       init.closeCode = 1000;
     }
 
@@ -529,7 +535,6 @@ class WebSocketError extends DOMException {
         keys: [
           "message",
           "name",
-          "code",
           "closeCode",
           "reason",
         ],
