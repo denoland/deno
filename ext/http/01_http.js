@@ -158,7 +158,6 @@ class HttpConn {
       body !== null ? new InnerBody(body) : null,
       false,
     );
-    innerRequest[readStreamRid] = readStreamRid;
     const abortController = new AbortController();
     const request = fromInnerRequest(
       innerRequest,
