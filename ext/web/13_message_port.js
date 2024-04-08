@@ -89,8 +89,10 @@ const MessageChannelPrototype = MessageChannel.prototype;
 const _id = Symbol("id");
 const MessagePortIdSymbol = _id;
 const _enabled = Symbol("enabled");
+const _refed = Symbol("refed");
 const nodeWorkerThreadCloseCb = Symbol("nodeWorkerThreadCloseCb");
 const nodeWorkerThreadCloseCbInvoked = Symbol("nodeWorkerThreadCloseCbInvoked");
+export const refMessagePort = Symbol("refMessagePort");
 
 /**
  * @param {number} id
@@ -119,6 +121,7 @@ class MessagePort extends EventTarget {
   [_id] = null;
   /** @type {boolean} */
   [_enabled] = false;
+  [_refed] = false;
 
   constructor() {
     super();
@@ -216,6 +219,16 @@ class MessagePort extends EventTarget {
     })();
   }
 
+  [refMessagePort](ref) {
+    if (ref && !this[_refed]) {
+      this[_refed] = true;
+      messageEventListenerCount++;
+    } else if (!ref && this[_refed]) {
+      this[_refed] = false;
+      messageEventListenerCount = 0;
+    }
+  }
+
   close() {
     webidl.assertBranded(this, MessagePortPrototype);
     if (this[_id] !== null) {
@@ -235,6 +248,7 @@ class MessagePort extends EventTarget {
   addEventListener(...args) {
     if (args[0] == "message") {
       messageEventListenerCount++;
+      if (!this[_refed]) this[_refed] = true;
     }
     super.addEventListener(...new SafeArrayIterator(args));
   }

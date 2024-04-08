@@ -18,6 +18,7 @@ import {
   MessagePortIdSymbol,
   MessagePortPrototype,
   nodeWorkerThreadCloseCb,
+  refMessagePort,
   serializeJsMessageData,
 } from "ext:deno_web/13_message_port.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
@@ -466,6 +467,12 @@ function webMessagePortToNodeMessagePort(port: MessagePort) {
   };
   port[nodeWorkerThreadCloseCb] = () => {
     port.dispatchEvent(new Event("close"));
+  };
+  port.unref = () => {
+    port[refMessagePort](false);
+  };
+  port.ref = () => {
+    port[refMessagePort](true);
   };
   return port;
 }
