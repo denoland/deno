@@ -147,15 +147,8 @@ delete Object.prototype.__proto__;
     }
   }
 
-  // Cache of asset source files.
+  // In the case of the LSP, this will only ever contain the assets.
   /** @type {Map<string, ts.SourceFile>} */
-  const assetSourceFileCache = new Map();
-
-  // Cache of source files, keyed by specifier.
-  // Stores weak references to ensure we aren't
-  // retaining `ts.SourceFile` objects longer than needed.
-  // This should not include assets, which have a separate cache.
-  /** @type {Map<string, WeakRef<ts.SourceFile>>} */
   const sourceFileCache = new Map();
 
   /** @type {string[]=} */
@@ -583,11 +576,7 @@ delete Object.prototype.__proto__;
       // Needs the original specifier
       specifier = normalizedToOriginalMap.get(specifier) ?? specifier;
 
-      const isAsset = specifier.startsWith(ASSETS_URL_PREFIX);
-
-      let sourceFile = isAsset
-        ? assetSourceFileCache.get(specifier)
-        : sourceFileCache.get(specifier)?.deref();
+      let sourceFile = sourceFileCache.get(specifier);
       if (sourceFile) {
         return sourceFile;
       }
@@ -618,12 +607,10 @@ delete Object.prototype.__proto__;
       );
       sourceFile.moduleName = specifier;
       sourceFile.version = version;
-      if (isAsset) {
+      if (specifier.startsWith(ASSETS_URL_PREFIX)) {
         sourceFile.version = "1";
-        assetSourceFileCache.set(specifier, sourceFile);
-      } else {
-        sourceFileCache.set(specifier, new WeakRef(sourceFile));
       }
+      sourceFileCache.set(specifier, sourceFile);
       scriptVersionCache.set(specifier, version);
       return sourceFile;
     },
@@ -786,12 +773,9 @@ delete Object.prototype.__proto__;
       if (logDebug) {
         debug(`host.getScriptSnapshot("${specifier}")`);
       }
-      const isAsset = specifier.startsWith(ASSETS_URL_PREFIX);
-      let sourceFile = isAsset
-        ? assetSourceFileCache.get(specifier)
-        : sourceFileCache.get(specifier)?.deref();
+      let sourceFile = sourceFileCache.get(specifier);
       if (
-        !isAsset &&
+        !specifier.startsWith(ASSETS_URL_PREFIX) &&
         sourceFile?.version != this.getScriptVersion(specifier)
       ) {
         sourceFileCache.delete(specifier);
@@ -1010,11 +994,13 @@ delete Object.prototype.__proto__;
   function getAssets() {
     /** @type {{ specifier: string; text: string; }[]} */
     const assets = [];
-    for (const sourceFile of assetSourceFileCache.values()) {
-      assets.push({
-        specifier: sourceFile.fileName,
-        text: sourceFile.text,
-      });
+    for (const sourceFile of sourceFileCache.values()) {
+      if (sourceFile.fileName.startsWith(ASSETS_URL_PREFIX)) {
+        assets.push({
+          specifier: sourceFile.fileName,
+          text: sourceFile.text,
+        });
+      }
     }
     return assets;
   }
@@ -1191,9 +1177,8 @@ delete Object.prototype.__proto__;
     "lib.d.ts files have errors",
   );
 
-  assert(buildSpecifier.startsWith(ASSETS_URL_PREFIX));
   // remove this now that we don't need it anymore for warming up tsc
-  assetSourceFileCache.delete(buildSpecifier);
+  sourceFileCache.delete(buildSpecifier);
 
   // exposes the functions that are called by `tsc::exec()` when type
   // checking TypeScript.
