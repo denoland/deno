@@ -2671,13 +2671,16 @@ Deno.test(
 Deno.test("proxy with fetch", async () => {
   const listener = Deno.listen({ port: listenPort });
   const deferred = Promise.withResolvers<void>();
+  const deferred1 = Promise.withResolvers<void>();
 
   const server = Deno.serve({ port: listenPort + 1 }, (_req) => {
     return new Response("Hello world");
   });
 
+  let httpConn: Deno.HttpConn;
   async function handleHttp(conn: Deno.Conn) {
-    for await (const e of Deno.serveHttp(conn)) {
+    httpConn = Deno.serveHttp(conn);
+    for await (const e of httpConn) {
       await e.respondWith(serve(e.request));
       break;
     }
@@ -2718,6 +2721,7 @@ Deno.test("proxy with fetch", async () => {
   await deferred.promise;
   await server.shutdown();
   await server.finished;
+  httpConn!.close();
 });
 
 function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
