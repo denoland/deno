@@ -1,5 +1,4 @@
 {
-  "base": "jsr",
   "steps": [{
     "args": "run main.ts",
     "output": "main.out"

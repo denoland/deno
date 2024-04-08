@@ -77,6 +77,12 @@ impl Pty {
     self.pty.flush().unwrap();
   }
 
+  /// Pause for a human-like delay to read or react to something (human responses are ~100ms).
+  #[track_caller]
+  pub fn human_delay(&mut self) {
+    std::thread::sleep(Duration::from_millis(250));
+  }
+
   #[track_caller]
   pub fn write_line(&mut self, line: impl AsRef<str>) {
     self.write_line_raw(&line);
@@ -158,6 +164,23 @@ impl Pty {
     self.read_until_condition(|pty| {
       let data = String::from_utf8_lossy(&pty.read_bytes);
       data.contains(text.as_ref())
+    });
+  }
+
+  /// Expects the raw text to be found next.
+  #[track_caller]
+  pub fn expect_raw_next(&mut self, text: impl AsRef<str>) {
+    let expected = text.as_ref();
+    let last_index = self.read_bytes.len();
+    self.read_until_condition(|pty| {
+      if pty.read_bytes.len() >= last_index + expected.len() {
+        let data = String::from_utf8_lossy(
+          &pty.read_bytes[last_index..last_index + expected.len()],
+        );
+        data == expected
+      } else {
+        false
+      }
     });
   }
 

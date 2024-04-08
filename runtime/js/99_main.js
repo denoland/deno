@@ -1,3 +1,4 @@
+// deno-lint-ignore-file no-deprecated-deno-api
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // Remove Intl.v8BreakIterator because it is a non-standard API.
@@ -281,7 +282,8 @@ let isClosing = false;
 let globalDispatchEvent;
 
 function hasMessageEventListener() {
-  return event.listenerCount(globalThis, "message") > 0;
+  return event.listenerCount(globalThis, "message") > 0 ||
+    messagePort.messageEventListenerCount > 0;
 }
 
 async function pollForMessages() {
@@ -676,6 +678,11 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       9: future,
     } = runtimeOptions;
 
+    // TODO(iuioiua): remove in Deno v2. This allows us to dynamically delete
+    // class properties within constructors for classes that are not defined
+    // within the Deno namespace.
+    internals.future = future;
+
     removeImportedOps();
 
     deprecatedApiWarningDisabled = shouldDisableDeprecatedApiWarning;
@@ -779,6 +786,34 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
     }
     if (future) {
       delete globalThis.window;
+      delete Deno.Buffer;
+      delete Deno.close;
+      delete Deno.copy;
+      delete Deno.File;
+      delete Deno.fstat;
+      delete Deno.fstatSync;
+      delete Deno.ftruncate;
+      delete Deno.ftruncateSync;
+      delete Deno.flock;
+      delete Deno.flockSync;
+      delete Deno.FsFile.prototype.rid;
+      delete Deno.funlock;
+      delete Deno.funlockSync;
+      delete Deno.iter;
+      delete Deno.iterSync;
+      delete Deno.metrics;
+      delete Deno.readAll;
+      delete Deno.readAllSync;
+      delete Deno.read;
+      delete Deno.readSync;
+      delete Deno.resources;
+      delete Deno.seek;
+      delete Deno.seekSync;
+      delete Deno.shutdown;
+      delete Deno.writeAll;
+      delete Deno.writeAllSync;
+      delete Deno.write;
+      delete Deno.writeSync;
     }
   } else {
     // Warmup
@@ -807,8 +842,13 @@ function bootstrapWorkerRuntime(
       6: argv0,
       7: shouldDisableDeprecatedApiWarning,
       8: shouldUseVerboseDeprecatedApiWarning,
-      9: _future,
+      9: future,
     } = runtimeOptions;
+
+    // TODO(iuioiua): remove in Deno v2. This allows us to dynamically delete
+    // class properties within constructors for classes that are not defined
+    // within the Deno namespace.
+    internals.future = future;
 
     deprecatedApiWarningDisabled = shouldDisableDeprecatedApiWarning;
     verboseDeprecatedApiWarning = shouldUseVerboseDeprecatedApiWarning;
@@ -906,6 +946,37 @@ function bootstrapWorkerRuntime(
         workerId,
         workerMetadata,
       );
+    }
+
+    if (future) {
+      delete Deno.Buffer;
+      delete Deno.close;
+      delete Deno.copy;
+      delete Deno.File;
+      delete Deno.fstat;
+      delete Deno.fstatSync;
+      delete Deno.ftruncate;
+      delete Deno.ftruncateSync;
+      delete Deno.flock;
+      delete Deno.flockSync;
+      delete Deno.FsFile.prototype.rid;
+      delete Deno.funlock;
+      delete Deno.funlockSync;
+      delete Deno.iter;
+      delete Deno.iterSync;
+      delete Deno.metrics;
+      delete Deno.readAll;
+      delete Deno.readAllSync;
+      delete Deno.read;
+      delete Deno.readSync;
+      delete Deno.resources;
+      delete Deno.seek;
+      delete Deno.seekSync;
+      delete Deno.shutdown;
+      delete Deno.writeAll;
+      delete Deno.writeAllSync;
+      delete Deno.write;
+      delete Deno.writeSync;
     }
   } else {
     // Warmup

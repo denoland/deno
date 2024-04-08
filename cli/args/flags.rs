@@ -9,7 +9,10 @@ use clap::ArgMatches;
 use clap::ColorChoice;
 use clap::Command;
 use clap::ValueHint;
+use deno_config::glob::PathOrPatternSet;
 use deno_config::ConfigFlag;
+use deno_core::anyhow::Context;
+use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_core::url::Url;
 use deno_graph::GraphKind;
@@ -175,12 +178,25 @@ pub struct InfoFlags {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct InstallFlags {
+pub struct InstallFlagsGlobal {
   pub module_url: String,
   pub args: Vec<String>,
   pub name: Option<String>,
   pub root: Option<String>,
   pub force: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum InstallKind {
+  #[allow(unused)]
+  Local,
+  Global(InstallFlagsGlobal),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct InstallFlags {
+  pub global: bool,
+  pub kind: InstallKind,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -191,9 +207,22 @@ pub struct JupyterFlags {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct UninstallFlags {
+pub struct UninstallFlagsGlobal {
   pub name: String,
   pub root: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum UninstallKind {
+  #[allow(unused)]
+  Local,
+  Global(UninstallFlagsGlobal),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct UninstallFlags {
+  pub global: bool,
+  pub kind: UninstallKind,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -247,6 +276,7 @@ impl RunFlags {
 pub struct WatchFlags {
   pub hmr: bool,
   pub no_clear_screen: bool,
+  pub exclude: Vec<String>,
 }
 
 #[derive(Clone, Default, Debug, Eq, PartialEq)]
@@ -254,6 +284,7 @@ pub struct WatchFlagsWithPaths {
   pub hmr: bool,
   pub paths: Vec<String>,
   pub no_clear_screen: bool,
+  pub exclude: Vec<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -829,6 +860,69 @@ impl Flags {
     self.allow_ffi = Some(vec![]);
     self.allow_hrtime = true;
   }
+
+  pub fn resolve_watch_exclude_set(
+    &self,
+  ) -> Result<PathOrPatternSet, AnyError> {
+    if let DenoSubcommand::Run(RunFlags {
+      watch:
+        Some(WatchFlagsWithPaths {
+          exclude: excluded_paths,
+          ..
+        }),
+      ..
+    })
+    | DenoSubcommand::Bundle(BundleFlags {
+      watch:
+        Some(WatchFlags {
+          exclude: excluded_paths,
+          ..
+        }),
+      ..
+    })
+    | DenoSubcommand::Bench(BenchFlags {
+      watch:
+        Some(WatchFlags {
+          exclude: excluded_paths,
+          ..
+        }),
+      ..
+    })
+    | DenoSubcommand::Test(TestFlags {
+      watch:
+        Some(WatchFlags {
+          exclude: excluded_paths,
+          ..
+        }),
+      ..
+    })
+    | DenoSubcommand::Lint(LintFlags {
+      watch:
+        Some(WatchFlags {
+          exclude: excluded_paths,
+          ..
+        }),
+      ..
+    })
+    | DenoSubcommand::Fmt(FmtFlags {
+      watch:
+        Some(WatchFlags {
+          exclude: excluded_paths,
+          ..
+        }),
+      ..
+    }) = &self.subcommand
+    {
+      let cwd = std::env::current_dir()?;
+      PathOrPatternSet::from_exclude_relative_path_or_patterns(
+        &cwd,
+        excluded_paths,
+      )
+      .context("Failed resolving watch exclude patterns.")
+    } else {
+      Ok(PathOrPatternSet::default())
+    }
+  }
 }
 
 static ENV_VARIABLES_HELP: &str = color_print::cstr!(
@@ -1209,6 +1303,7 @@ glob {*_,*.,}bench.{js,mjs,ts,mts,jsx,tsx}:
             .action(ArgAction::SetTrue),
         )
         .arg(watch_arg(false))
+        .arg(watch_exclude_arg())
         .arg(no_clear_screen_arg())
         .arg(script_arg().last(true))
         .arg(env_file_arg())
@@ -1241,6 +1336,7 @@ If no output file is given, the output is written to standard output:
         )
         .arg(Arg::new("out_file").value_hint(ValueHint::FilePath))
         .arg(watch_arg(false))
+        .arg(watch_exclude_arg())
         .arg(no_clear_screen_arg())
         .arg(executable_ext_arg())
     })
@@ -1542,7 +1638,7 @@ Target a specific symbol:
 Show documentation for runtime built-ins:
 
     deno doc
-    deno doc --builtin Deno.Listener",
+    deno doc --filter Deno.Listener",
     )
     .defer(|cmd| {
       cmd
@@ -1724,6 +1820,7 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
             .value_hint(ValueHint::AnyPath),
         )
         .arg(watch_arg(false))
+        .arg(watch_exclude_arg())
         .arg(no_clear_screen_arg())
         .arg(
           Arg::new("use-tabs")
@@ -1852,12 +1949,12 @@ fn install_subcommand() -> Command {
     .long_about(
         "Installs a script as an executable in the installation root's bin directory.
 
-  deno install --allow-net --allow-read https://deno.land/std/http/file_server.ts
-  deno install https://examples.deno.land/color-logging.ts
+  deno install --global --allow-net --allow-read https://deno.land/std/http/file_server.ts
+  deno install -g https://examples.deno.land/color-logging.ts
 
 To change the executable name, use -n/--name:
 
-  deno install --allow-net --allow-read -n serve https://deno.land/std/http/file_server.ts
+  deno install -g --allow-net --allow-read -n serve https://deno.land/std/http/file_server.ts
 
 The executable name is inferred by default:
   - Attempt to take the file stem of the URL path. The above example would
@@ -1869,7 +1966,7 @@ The executable name is inferred by default:
 
 To change the installation root, use --root:
 
-  deno install --allow-net --allow-read --root /usr/local https://deno.land/std/http/file_server.ts
+  deno install -g --allow-net --allow-read --root /usr/local https://deno.land/std/http/file_server.ts
 
 The installation root is determined, in order of precedence:
   - --root option
@@ -1896,6 +1993,13 @@ These must be added to the path manually if required.")
           .short('f')
           .help("Forcefully overwrite existing installation")
           .action(ArgAction::SetTrue))
+      )
+      .arg(
+        Arg::new("global")
+          .long("global")
+          .short('g')
+          .help("Install a package or script as a globally available executable")
+          .action(ArgAction::SetTrue)
       )
       .arg(env_file_arg())
 }
@@ -1948,7 +2052,15 @@ The installation root is determined, in order of precedence:
         Arg::new("root")
           .long("root")
           .help("Installation root")
-          .value_hint(ValueHint::DirPath))
+          .value_hint(ValueHint::DirPath)
+      )
+      .arg(
+        Arg::new("global")
+          .long("global")
+          .short('g')
+          .help("Remove globally installed package or module")
+          .action(ArgAction::SetTrue)
+      )
 )
 }
 
@@ -2078,6 +2190,7 @@ Ignore linting a file by adding an ignore comment at the top of the file:
             .value_hint(ValueHint::AnyPath),
         )
         .arg(watch_arg(false))
+        .arg(watch_exclude_arg())
         .arg(no_clear_screen_arg())
     })
 }
@@ -2109,6 +2222,7 @@ fn run_subcommand() -> Command {
   runtime_args(Command::new("run"), true, true)
     .arg(check_arg(false))
     .arg(watch_arg(true))
+    .arg(watch_exclude_arg())
     .arg(hmr_arg(true))
     .arg(no_clear_screen_arg())
     .arg(executable_ext_arg())
@@ -2291,6 +2405,7 @@ Directory arguments are expanded to all contained files matching the glob
         .conflicts_with("no-run")
         .conflicts_with("coverage"),
     )
+    .arg(watch_exclude_arg())
     .arg(no_clear_screen_arg())
     .arg(script_arg().last(true))
     .arg(
@@ -3103,6 +3218,18 @@ fn no_clear_screen_arg() -> Arg {
     .help("Do not clear terminal screen when under watch mode")
 }
 
+fn watch_exclude_arg() -> Arg {
+  Arg::new("watch-exclude")
+    .long("watch-exclude")
+    .help("Exclude provided files/patterns from watch mode")
+    .value_name("FILES")
+    .num_args(0..)
+    .value_parser(value_parser!(String))
+    .use_value_delimiter(true)
+    .require_equals(true)
+    .value_hint(ValueHint::AnyPath)
+}
+
 fn no_check_arg() -> Arg {
   Arg::new("no-check")
     .num_args(0..=1)
@@ -3582,6 +3709,7 @@ fn install_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   let root = matches.remove_one::<String>("root");
 
   let force = matches.get_flag("force");
+  let global = matches.get_flag("global");
   let name = matches.remove_one::<String>("name");
   let mut cmd_values = matches.remove_many::<String>("cmd").unwrap();
 
@@ -3589,11 +3717,16 @@ fn install_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   let args = cmd_values.collect();
 
   flags.subcommand = DenoSubcommand::Install(InstallFlags {
-    name,
-    module_url,
-    args,
-    root,
-    force,
+    // TODO(bartlomieju): remove once `deno install` supports both local and
+    // global installs
+    global,
+    kind: InstallKind::Global(InstallFlagsGlobal {
+      name,
+      module_url,
+      args,
+      root,
+      force,
+    }),
   });
 }
 
@@ -3611,9 +3744,14 @@ fn jupyter_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 
 fn uninstall_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   let root = matches.remove_one::<String>("root");
-
+  let global = matches.get_flag("global");
   let name = matches.remove_one::<String>("name").unwrap();
-  flags.subcommand = DenoSubcommand::Uninstall(UninstallFlags { name, root });
+  flags.subcommand = DenoSubcommand::Uninstall(UninstallFlags {
+    // TODO(bartlomieju): remove once `deno uninstall` supports both local and
+    // global installs
+    global,
+    kind: UninstallKind::Global(UninstallFlagsGlobal { name, root }),
+  });
 }
 
 fn lsp_parse(flags: &mut Flags, _matches: &mut ArgMatches) {
@@ -4243,6 +4381,10 @@ fn watch_arg_parse(matches: &mut ArgMatches) -> Option<WatchFlags> {
     Some(WatchFlags {
       hmr: false,
       no_clear_screen: matches.get_flag("no-clear-screen"),
+      exclude: matches
+        .remove_many::<String>("watch-exclude")
+        .map(|f| f.collect::<Vec<String>>())
+        .unwrap_or_default(),
     })
   } else {
     None
@@ -4257,6 +4399,10 @@ fn watch_arg_parse_with_paths(
       paths: paths.collect(),
       hmr: false,
       no_clear_screen: matches.get_flag("no-clear-screen"),
+      exclude: matches
+        .remove_many::<String>("watch-exclude")
+        .map(|f| f.collect::<Vec<String>>())
+        .unwrap_or_default(),
     });
   }
 
@@ -4266,6 +4412,10 @@ fn watch_arg_parse_with_paths(
       paths: paths.collect(),
       hmr: true,
       no_clear_screen: matches.get_flag("no-clear-screen"),
+      exclude: matches
+        .remove_many::<String>("watch-exclude")
+        .map(|f| f.collect::<Vec<String>>())
+        .unwrap_or_default(),
     })
 }
 
@@ -4404,6 +4554,7 @@ mod tests {
             hmr: false,
             paths: vec![],
             no_clear_screen: false,
+            exclude: vec![],
           }),
         }),
         ..Flags::default()
@@ -4427,6 +4578,7 @@ mod tests {
             hmr: false,
             paths: vec![],
             no_clear_screen: true,
+            exclude: vec![],
           }),
         }),
         ..Flags::default()
@@ -4450,6 +4602,7 @@ mod tests {
             hmr: true,
             paths: vec![],
             no_clear_screen: true,
+            exclude: vec![],
           }),
         }),
         ..Flags::default()
@@ -4473,6 +4626,7 @@ mod tests {
             hmr: true,
             paths: vec![String::from("foo.txt")],
             no_clear_screen: true,
+            exclude: vec![],
           }),
         }),
         ..Flags::default()
@@ -4498,6 +4652,7 @@ mod tests {
             hmr: false,
             paths: vec![String::from("file1"), String::from("file2")],
             no_clear_screen: false,
+            exclude: vec![],
           }),
         }),
         ..Flags::default()
@@ -4525,6 +4680,109 @@ mod tests {
             hmr: false,
             paths: vec![],
             no_clear_screen: true,
+            exclude: vec![],
+          }),
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn run_watch_with_excluded_paths() {
+    let r = flags_from_vec(svec!(
+      "deno",
+      "run",
+      "--watch",
+      "--watch-exclude=foo",
+      "script.ts"
+    ));
+
+    let flags = r.unwrap();
+    assert_eq!(
+      flags,
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.ts".to_string(),
+          watch: Some(WatchFlagsWithPaths {
+            hmr: false,
+            paths: vec![],
+            no_clear_screen: false,
+            exclude: vec![String::from("foo")],
+          }),
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!(
+      "deno",
+      "run",
+      "--watch=foo",
+      "--watch-exclude=bar",
+      "script.ts"
+    ));
+    let flags = r.unwrap();
+    assert_eq!(
+      flags,
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.ts".to_string(),
+          watch: Some(WatchFlagsWithPaths {
+            hmr: false,
+            paths: vec![String::from("foo")],
+            no_clear_screen: false,
+            exclude: vec![String::from("bar")],
+          }),
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--watch",
+      "--watch-exclude=foo,bar",
+      "script.ts"
+    ]);
+
+    let flags = r.unwrap();
+    assert_eq!(
+      flags,
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.ts".to_string(),
+          watch: Some(WatchFlagsWithPaths {
+            hmr: false,
+            paths: vec![],
+            no_clear_screen: false,
+            exclude: vec![String::from("foo"), String::from("bar")],
+          }),
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--watch=foo,bar",
+      "--watch-exclude=baz,qux",
+      "script.ts"
+    ]);
+
+    let flags = r.unwrap();
+    assert_eq!(
+      flags,
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.ts".to_string(),
+          watch: Some(WatchFlagsWithPaths {
+            hmr: false,
+            paths: vec![String::from("foo"), String::from("bar")],
+            no_clear_screen: false,
+            exclude: vec![String::from("baz"), String::from("qux"),],
           }),
         }),
         ..Flags::default()
@@ -4856,6 +5114,7 @@ mod tests {
           watch: Some(WatchFlags {
             hmr: false,
             no_clear_screen: true,
+            exclude: vec![],
           })
         }),
         ext: Some("ts".to_string()),
@@ -5092,6 +5351,7 @@ mod tests {
           watch: Some(WatchFlags {
             hmr: false,
             no_clear_screen: true,
+            exclude: vec![],
           })
         }),
         ..Flags::default()
@@ -6330,6 +6590,7 @@ mod tests {
           watch: Some(WatchFlags {
             hmr: false,
             no_clear_screen: true,
+            exclude: vec![],
           }),
         }),
         type_check_mode: TypeCheckMode::Local,
@@ -6520,11 +6781,37 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Install(InstallFlags {
-          name: None,
-          module_url: "https://deno.land/std/http/file_server.ts".to_string(),
-          args: vec![],
-          root: None,
-          force: false,
+          kind: InstallKind::Global(InstallFlagsGlobal {
+            name: None,
+            module_url: "https://deno.land/std/http/file_server.ts".to_string(),
+            args: vec![],
+            root: None,
+            force: false,
+          }),
+          global: false,
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "install",
+      "-g",
+      "https://deno.land/std/http/file_server.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Install(InstallFlags {
+          kind: InstallKind::Global(InstallFlagsGlobal {
+            name: None,
+            module_url: "https://deno.land/std/http/file_server.ts".to_string(),
+            args: vec![],
+            root: None,
+            force: false,
+          }),
+          global: true,
         }),
         ..Flags::default()
       }
@@ -6539,11 +6826,14 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Install(InstallFlags {
-          name: Some("file_server".to_string()),
-          module_url: "https://deno.land/std/http/file_server.ts".to_string(),
-          args: svec!["foo", "bar"],
-          root: Some("/foo".to_string()),
-          force: true,
+          kind: InstallKind::Global(InstallFlagsGlobal {
+            name: Some("file_server".to_string()),
+            module_url: "https://deno.land/std/http/file_server.ts".to_string(),
+            args: svec!["foo", "bar"],
+            root: Some("/foo".to_string()),
+            force: true,
+          }),
+          global: false,
         }),
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
@@ -6573,8 +6863,26 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Uninstall(UninstallFlags {
-          name: "file_server".to_string(),
-          root: None,
+          kind: UninstallKind::Global(UninstallFlagsGlobal {
+            name: "file_server".to_string(),
+            root: None,
+          }),
+          global: false,
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "uninstall", "-g", "file_server"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Uninstall(UninstallFlags {
+          kind: UninstallKind::Global(UninstallFlagsGlobal {
+            name: "file_server".to_string(),
+            root: None,
+          }),
+          global: true,
         }),
         ..Flags::default()
       }
@@ -7567,6 +7875,7 @@ mod tests {
           watch: Some(WatchFlags {
             hmr: false,
             no_clear_screen: true,
+            exclude: vec![],
           }),
           reporter: Default::default(),
           junit_path: None,

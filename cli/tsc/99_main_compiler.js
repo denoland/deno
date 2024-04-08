@@ -147,8 +147,15 @@ delete Object.prototype.__proto__;
     }
   }
 
-  // In the case of the LSP, this will only ever contain the assets.
+  // Cache of asset source files.
   /** @type {Map<string, ts.SourceFile>} */
+  const assetSourceFileCache = new Map();
+
+  // Cache of source files, keyed by specifier.
+  // Stores weak references to ensure we aren't
+  // retaining `ts.SourceFile` objects longer than needed.
+  // This should not include assets, which have a separate cache.
+  /** @type {Map<string, WeakRef<ts.SourceFile>>} */
   const sourceFileCache = new Map();
 
   /** @type {string[]=} */
@@ -354,7 +361,7 @@ delete Object.prototype.__proto__;
       case 2339: {
         const property = getProperty();
         if (property && unstableDenoProps.has(property)) {
-          return `${msg} 'Deno.${property}' is an unstable API. Did you forget to run with the '--unstable' flag? ${unstableMsgSuggestion}`;
+          return `${msg} 'Deno.${property}' is an unstable API. ${unstableMsgSuggestion}`;
         }
         return msg;
       }
@@ -363,7 +370,7 @@ delete Object.prototype.__proto__;
         if (property && unstableDenoProps.has(property)) {
           const suggestion = getMsgSuggestion();
           if (suggestion) {
-            return `${msg} 'Deno.${property}' is an unstable API. Did you forget to run with the '--unstable' flag, or did you mean '${suggestion}'? ${unstableMsgSuggestion}`;
+            return `${msg} 'Deno.${property}' is an unstable API. Did you mean '${suggestion}'? ${unstableMsgSuggestion}`;
           }
         }
         return msg;
@@ -503,9 +510,6 @@ delete Object.prototype.__proto__;
     }
   }
 
-  /** @type {ts.CompilerOptions} */
-  let compilationSettings = {};
-
   /** @type {ts.LanguageService} */
   let languageService;
 
@@ -547,6 +551,19 @@ delete Object.prototype.__proto__;
     getGlobalTypingsCacheLocation() {
       return undefined;
     },
+    // @ts-ignore Undocumented method.
+    toPath(fileName) {
+      // @ts-ignore Undocumented function.
+      ts.toPath(
+        fileName,
+        this.getCurrentDirectory(),
+        this.getCanonicalFileName(fileName),
+      );
+    },
+    // @ts-ignore Undocumented method.
+    watchNodeModulesForPackageJsonChanges() {
+      return { close() {} };
+    },
     getSourceFile(
       specifier,
       languageVersion,
@@ -566,7 +583,11 @@ delete Object.prototype.__proto__;
       // Needs the original specifier
       specifier = normalizedToOriginalMap.get(specifier) ?? specifier;
 
-      let sourceFile = sourceFileCache.get(specifier);
+      const isAsset = specifier.startsWith(ASSETS_URL_PREFIX);
+
+      let sourceFile = isAsset
+        ? assetSourceFileCache.get(specifier)
+        : sourceFileCache.get(specifier)?.deref();
       if (sourceFile) {
         return sourceFile;
       }
@@ -597,10 +618,12 @@ delete Object.prototype.__proto__;
       );
       sourceFile.moduleName = specifier;
       sourceFile.version = version;
-      if (specifier.startsWith(ASSETS_URL_PREFIX)) {
+      if (isAsset) {
         sourceFile.version = "1";
+        assetSourceFileCache.set(specifier, sourceFile);
+      } else {
+        sourceFileCache.set(specifier, new WeakRef(sourceFile));
       }
-      sourceFileCache.set(specifier, sourceFile);
       scriptVersionCache.set(specifier, version);
       return sourceFile;
     },
@@ -720,7 +743,17 @@ delete Object.prototype.__proto__;
       if (logDebug) {
         debug("host.getCompilationSettings()");
       }
-      return compilationSettings;
+      const tsConfig = normalizeConfig(ops.op_ts_config());
+      const { options, errors } = ts
+        .convertCompilerOptionsFromJson(tsConfig, "");
+      Object.assign(options, {
+        allowNonTsExtensions: true,
+        allowImportingTsExtensions: true,
+      });
+      if (errors.length > 0 && logDebug) {
+        debug(ts.formatDiagnostics(errors, host));
+      }
+      return options;
     },
     getScriptFileNames() {
       if (logDebug) {
@@ -753,9 +786,12 @@ delete Object.prototype.__proto__;
       if (logDebug) {
         debug(`host.getScriptSnapshot("${specifier}")`);
       }
-      let sourceFile = sourceFileCache.get(specifier);
+      const isAsset = specifier.startsWith(ASSETS_URL_PREFIX);
+      let sourceFile = isAsset
+        ? assetSourceFileCache.get(specifier)
+        : sourceFileCache.get(specifier)?.deref();
       if (
-        !specifier.startsWith(ASSETS_URL_PREFIX) &&
+        !isAsset &&
         sourceFile?.version != this.getScriptVersion(specifier)
       ) {
         sourceFileCache.delete(specifier);
@@ -974,13 +1010,11 @@ delete Object.prototype.__proto__;
   function getAssets() {
     /** @type {{ specifier: string; text: string; }[]} */
     const assets = [];
-    for (const sourceFile of sourceFileCache.values()) {
-      if (sourceFile.fileName.startsWith(ASSETS_URL_PREFIX)) {
-        assets.push({
-          specifier: sourceFile.fileName,
-          text: sourceFile.text,
-        });
-      }
+    for (const sourceFile of assetSourceFileCache.values()) {
+      assets.push({
+        specifier: sourceFile.fileName,
+        text: sourceFile.text,
+      });
     }
     return assets;
   }
@@ -1008,21 +1042,6 @@ delete Object.prototype.__proto__;
     switch (method) {
       case "$restart": {
         serverRestart();
-        return respond(id, true);
-      }
-      case "$configure": {
-        const config = normalizeConfig(args[0]);
-        const { options, errors } = ts
-          .convertCompilerOptionsFromJson(config, "");
-        Object.assign(options, {
-          allowNonTsExtensions: true,
-          allowImportingTsExtensions: true,
-        });
-        if (errors.length > 0 && logDebug) {
-          debug(ts.formatDiagnostics(errors, host));
-        }
-        compilationSettings = options;
-        moduleSpecifierCache.clear();
         return respond(id, true);
       }
       case "$getSupportedCodeFixes": {
@@ -1172,8 +1191,9 @@ delete Object.prototype.__proto__;
     "lib.d.ts files have errors",
   );
 
+  assert(buildSpecifier.startsWith(ASSETS_URL_PREFIX));
   // remove this now that we don't need it anymore for warming up tsc
-  sourceFileCache.delete(buildSpecifier);
+  assetSourceFileCache.delete(buildSpecifier);
 
   // exposes the functions that are called by `tsc::exec()` when type
   // checking TypeScript.

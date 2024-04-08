@@ -268,7 +268,15 @@ fn update_config_file_content(
       let insert_position = obj.range.end - 1;
       text_changes.push(TextChange {
         range: insert_position..insert_position,
-        new_text: format!("\"imports\": {{ {} }}", generated_imports),
+        // NOTE(bartlomieju): adding `\n` here to force the formatter to always
+        // produce a config file that is multline, like so:
+        // ```
+        // {
+        //   "imports": {
+        //     "<package_name>": "<registry>:<package_name>@<semver>"
+        //   }
+        // }
+        new_text: format!("\"imports\": {{\n {} }}", generated_imports),
       })
     }
     // we verified the shape of `imports` above
