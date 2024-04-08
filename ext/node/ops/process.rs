@@ -1,12 +1,15 @@
 use deno_core::op2;
+use deno_core::OpState;
+use deno_core::error::AnyError;
+use deno_permissions::PermissionsContainer;
 
 #[cfg(unix)]
 fn kill(pid: i32, sig: i32) -> i32 {
   // SAFETY: FFI call to libc
   if unsafe { libc::kill(pid, sig) } < 0 {
-    return std::io::Error::last_os_error().raw_os_error().unwrap();
+    std::io::Error::last_os_error().raw_os_error().unwrap()
   } else {
-    return 0;
+    0
   }
 }
 
@@ -40,8 +43,15 @@ fn kill(pid: i32, sig: i32) -> i32 {
 }
 
 #[op2(fast)]
-pub fn op_node_process_kill(#[smi] pid: i32, #[smi] sig: i32) -> i32 {
-  kill(pid, sig)
+pub fn op_node_process_kill(
+  state: &mut OpState,
+  #[smi] pid: i32,
+  #[smi] sig: i32
+) -> Result<i32, AnyError> {
+  state
+    .borrow_mut::<PermissionsContainer>()
+    .check_run_all("process.kill")?;
+  Ok(kill(pid, sig))
 }
 
 #[op2(fast)]
