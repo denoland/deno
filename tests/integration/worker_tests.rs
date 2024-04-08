@@ -1,7 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use test_util::itest;
-use test_util::itest_flaky;
 
 itest!(worker_error {
   args: "run -A workers/worker_error.ts",
@@ -127,7 +126,7 @@ itest!(node_worker_auto_exits {
   exit_code: 0,
 });
 
-itest_flaky!(node_worker_message_port {
+itest!(node_worker_message_port {
   args: "run --quiet --allow-read workers/node_worker_message_port.mjs",
   output: "workers/node_worker_message_port.mjs.out",
   exit_code: 0,
