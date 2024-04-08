@@ -169,6 +169,10 @@ delete Object.prototype.__proto__;
 
   const isCjsCache = new SpecifierIsCjsCache();
 
+  /** @type {ts.CompilerOptions | null} */
+  let tsConfigCache = null;
+  let tsConfigCacheProjectVersion = null;
+
   /**
    * @param {ts.CompilerOptions | ts.MinimalResolutionCacheHost} settingsOrHost
    * @returns {ts.CompilerOptions}
@@ -743,6 +747,10 @@ delete Object.prototype.__proto__;
       if (logDebug) {
         debug("host.getCompilationSettings()");
       }
+      const projectVersion = this.getProjectVersion();
+      if (tsConfigCache && tsConfigCacheProjectVersion == projectVersion) {
+        return tsConfigCache;
+      }
       const tsConfig = normalizeConfig(ops.op_ts_config());
       const { options, errors } = ts
         .convertCompilerOptionsFromJson(tsConfig, "");
@@ -753,6 +761,8 @@ delete Object.prototype.__proto__;
       if (errors.length > 0 && logDebug) {
         debug(ts.formatDiagnostics(errors, host));
       }
+      tsConfigCache = options;
+      tsConfigCacheProjectVersion = projectVersion;
       return options;
     },
     getScriptFileNames() {
