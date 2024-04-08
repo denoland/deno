@@ -1146,6 +1146,13 @@ impl Documents {
     }
   }
 
+  pub fn is_open(&self, specifier: &ModuleSpecifier) -> bool {
+    let Some(specifier) = self.resolve_specifier(specifier) else {
+      return false;
+    };
+    self.open_docs.contains_key(&specifier)
+  }
+
   /// Return a collection of documents that are contained in the document store
   /// based on the provided filter.
   pub fn documents(&self, filter: DocumentsFilter) -> Vec<Arc<Document>> {
