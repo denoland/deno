@@ -574,7 +574,7 @@ declare namespace Deno {
      * Examples:
      *
      * ```ts
-     * import { assertEquals } from "jsr:@std/assert/assert-equals";
+     * import { assertEquals } from "jsr:@std/assert";
      *
      * Deno.test({
      *   name: "inherit",
@@ -589,7 +589,7 @@ declare namespace Deno {
      * ```
      *
      * ```ts
-     * import { assertEquals } from "jsr:@std/assert/assert-equals";
+     * import { assertEquals } from "jsr:@std/assert";
      *
      * Deno.test({
      *   name: "true",
@@ -604,7 +604,7 @@ declare namespace Deno {
      * ```
      *
      * ```ts
-     * import { assertEquals } from "jsr:@std/assert/assert-equals";
+     * import { assertEquals } from "jsr:@std/assert";
      *
      * Deno.test({
      *   name: "false",
@@ -619,7 +619,7 @@ declare namespace Deno {
      * ```
      *
      * ```ts
-     * import { assertEquals } from "jsr:@std/assert/assert-equals";
+     * import { assertEquals } from "jsr:@std/assert";
      *
      * Deno.test({
      *   name: "localhost:8080",
@@ -848,7 +848,7 @@ declare namespace Deno {
    * `fn` can be async if required.
    *
    * ```ts
-   * import { assertEquals } from "jsr:@std/assert/assert-equals";
+   * import { assertEquals } from "jsr:@std/assert";
    *
    * Deno.test({
    *   name: "example test",
@@ -889,7 +889,7 @@ declare namespace Deno {
      * `fn` can be async if required.
      *
      * ```ts
-     * import { assertEquals } from "jsr:@std/assert/assert-equals";
+     * import { assertEquals } from "jsr:@std/assert";
      *
      * Deno.test({
      *   name: "example test",
@@ -926,7 +926,7 @@ declare namespace Deno {
      * `fn` can be async if required.
      *
      * ```ts
-     * import { assertEquals } from "jsr:@std/assert/assert-equals";
+     * import { assertEquals } from "jsr:@std/assert";
      *
      * Deno.test("My test description", () => {
      *   assertEquals("hello", "hello");
@@ -952,7 +952,7 @@ declare namespace Deno {
      * `fn` can be async if required. Declared function must have a name.
      *
      * ```ts
-     * import { assertEquals } from "jsr:@std/assert/assert-equals";
+     * import { assertEquals } from "jsr:@std/assert";
      *
      * Deno.test(function myTestName() {
      *   assertEquals("hello", "hello");
@@ -1002,7 +1002,7 @@ declare namespace Deno {
      * `fn` can be async if required.
      *
      * ```ts
-     * import { assertEquals } from "jsr:@std/assert/assert-equals";
+     * import { assertEquals } from "jsr:@std/assert";
      *
      * Deno.test(
      *   {
@@ -1040,7 +1040,7 @@ declare namespace Deno {
      * `fn` can be async if required. Declared function must have a name.
      *
      * ```ts
-     * import { assertEquals } from "jsr:@std/assert/assert-equals";
+     * import { assertEquals } from "jsr:@std/assert";
      *
      * Deno.test(
      *   { permissions: { read: true } },
@@ -1263,7 +1263,7 @@ declare namespace Deno {
    * will await resolution to consider the test complete.
    *
    * ```ts
-   * import { assertEquals } from "jsr:@std/assert/assert-equals";
+   * import { assertEquals } from "jsr:@std/assert";
    *
    * Deno.bench({
    *   name: "example test",
@@ -1302,7 +1302,7 @@ declare namespace Deno {
    * will await resolution to consider the test complete.
    *
    * ```ts
-   * import { assertEquals } from "jsr:@std/assert/assert-equals";
+   * import { assertEquals } from "jsr:@std/assert";
    *
    * Deno.bench("My test description", () => {
    *   assertEquals("hello", "hello");
@@ -1330,7 +1330,7 @@ declare namespace Deno {
    * will await resolution to consider the test complete.
    *
    * ```ts
-   * import { assertEquals } from "jsr:@std/assert/assert-equals";
+   * import { assertEquals } from "jsr:@std/assert";
    *
    * Deno.bench(function myTestName() {
    *   assertEquals("hello", "hello");
@@ -1355,7 +1355,7 @@ declare namespace Deno {
    * will await resolution to consider the test complete.
    *
    * ```ts
-   * import { assertEquals } from "jsr:@std/assert/assert-equals";
+   * import { assertEquals } from "jsr:@std/assert";
    *
    * Deno.bench(
    *   "My test description",
@@ -1392,7 +1392,7 @@ declare namespace Deno {
    * will await resolution to consider the test complete.
    *
    * ```ts
-   * import { assertEquals } from "jsr:@std/assert/assert-equals";
+   * import { assertEquals } from "jsr:@std/assert";
    *
    * Deno.bench(
    *   { name: "My test description", permissions: { read: true } },
@@ -1426,7 +1426,7 @@ declare namespace Deno {
    * will await resolution to consider the test complete.
    *
    * ```ts
-   * import { assertEquals } from "jsr:@std/assert/assert-equals";
+   * import { assertEquals } from "jsr:@std/assert";
    *
    * Deno.bench(
    *   { permissions: { read: true } },
