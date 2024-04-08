@@ -80,7 +80,7 @@ impl<T: NetworkStreamListenerTrait + 'static> NetworkListenerResource<T> {
 /// Each of the network streams has the exact same pattern for listening, accepting, etc, so
 /// we just codegen them all via macro to avoid repeating each one of these N times.
 macro_rules! network_stream {
-  ( $([$i:ident, $stream:path, $listener:path, $addr:path, $stream_resource:ty]),* ) => {
+  ( $([$i:ident, $il:ident, $stream:path, $listener:path, $addr:path, $stream_resource:ty]),* ) => {
     /// A raw stream of one of the types handled by this extension.
     #[pin_project::pin_project(project = NetworkStreamProject)]
     pub enum NetworkStream {
@@ -103,7 +103,7 @@ macro_rules! network_stream {
         type Stream = $stream;
         type Addr = $addr;
         type ResourceData = ();
-        const RESOURCE_NAME: &'static str = concat!(stringify!($i), " listener");
+        const RESOURCE_NAME: &'static str = concat!(stringify!($il), "Listener");
         async fn accept(&self) -> std::io::Result<(Self::Stream, Self::Addr)> {
           <$listener> :: accept(self).await
         }
@@ -120,7 +120,7 @@ macro_rules! network_stream {
 
       impl NetworkStreamTrait for $stream {
         type Resource = $stream_resource;
-        const RESOURCE_NAME: &'static str = concat!(stringify!($i), " stream");
+        const RESOURCE_NAME: &'static str = concat!(stringify!($il), "Stream");
         fn local_address(&self) -> Result<NetworkStreamAddress, std::io::Error> {
           Ok(NetworkStreamAddress::from(self.local_addr()?))
         }
@@ -257,6 +257,7 @@ macro_rules! network_stream {
 network_stream!(
   [
     Tcp,
+    tcp,
     tokio::net::TcpStream,
     crate::tcp::TcpListener,
     std::net::SocketAddr,
@@ -264,6 +265,7 @@ network_stream!(
   ],
   [
     Tls,
+    tls,
     crate::ops_tls::TlsStream,
     crate::ops_tls::TlsListener,
     std::net::SocketAddr,
@@ -271,6 +273,7 @@ network_stream!(
   ],
   [
     Unix,
+    unix,
     tokio::net::UnixStream,
     tokio::net::UnixListener,
     tokio::net::unix::SocketAddr,
@@ -282,6 +285,7 @@ network_stream!(
 network_stream!(
   [
     Tcp,
+    tcp,
     tokio::net::TcpStream,
     crate::tcp::TcpListener,
     std::net::SocketAddr,
@@ -289,6 +293,7 @@ network_stream!(
   ],
   [
     Tls,
+    tls,
     crate::ops_tls::TlsStream,
     crate::ops_tls::TlsListener,
     std::net::SocketAddr,
