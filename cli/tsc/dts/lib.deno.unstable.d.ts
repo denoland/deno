@@ -2227,6 +2227,26 @@ declare var WebSocketStream: {
   new (url: string, options?: WebSocketStreamOptions): WebSocketStream;
 };
 
+/** **UNSTABLE**: New API, yet to be vetted.
+ *
+ * @tags allow-net
+ * @category Web Sockets
+ */
+declare interface WebSocketError extends DOMException {
+  readonly closeCode: number;
+  readonly reason: string;
+}
+
+/** **UNSTABLE**: New API, yet to be vetted.
+ *
+ * @tags allow-net
+ * @category Web Sockets
+ */
+declare var WebSocketError: {
+  readonly prototype: WebSocketError;
+  new (message?: string, init?: WebSocketCloseInfo): WebSocketError;
+};
+
 // Adapted from `tc39/proposal-temporal`: https://github.com/tc39/proposal-temporal/blob/main/polyfill/index.d.ts
 
 /**
