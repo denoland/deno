@@ -23,6 +23,7 @@ use rustls::PrivateKey;
 use rustls::RootCertStore;
 use rustls::ServerName;
 use rustls_pemfile::certs;
+use rustls_pemfile::ec_private_keys;
 use rustls_pemfile::pkcs8_private_keys;
 use rustls_pemfile::rsa_private_keys;
 use serde::Deserialize;
@@ -290,6 +291,12 @@ fn load_rsa_keys(mut bytes: &[u8]) -> Result<Vec<PrivateKey>, AnyError> {
   Ok(keys.into_iter().map(PrivateKey).collect())
 }
 
+/// Starts with -----BEGIN EC PRIVATE KEY-----
+fn load_ec_keys(mut bytes: &[u8]) -> Result<Vec<PrivateKey>, AnyError> {
+  let keys = ec_private_keys(&mut bytes).map_err(|_| key_decode_err())?;
+  Ok(keys.into_iter().map(PrivateKey).collect())
+}
+
 /// Starts with -----BEGIN PRIVATE KEY-----
 fn load_pkcs8_keys(mut bytes: &[u8]) -> Result<Vec<PrivateKey>, AnyError> {
   let keys = pkcs8_private_keys(&mut bytes).map_err(|_| key_decode_err())?;
@@ -312,6 +319,10 @@ pub fn load_private_keys(bytes: &[u8]) -> Result<Vec<PrivateKey>, AnyError> {
 
   if keys.is_empty() {
     keys = load_pkcs8_keys(bytes)?;
+  }
+
+  if keys.is_empty() {
+    keys = load_ec_keys(bytes)?;
   }
 
   if keys.is_empty() {

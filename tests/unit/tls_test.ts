@@ -1633,3 +1633,16 @@ Deno.test(
     }, Deno.errors.InvalidData);
   },
 );
+
+Deno.test(
+  { permissions: { net: true, read: true } },
+  function listenTLSEcKey() {
+    const listener = Deno.listenTls({
+      hostname: "localhost",
+      port: 0,
+      certFile: "tests/testdata/tls/localhost_ecc.crt",
+      keyFile: "tests/testdata/tls/localhost_ecc.key",
+    });
+    listener.close();
+  },
+);
