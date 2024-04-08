@@ -1710,7 +1710,7 @@ impl PermissionsContainer {
         if s.len() < 7 {
           false
         } else {
-          if path.starts_with(r#"\\?\"#) {
+          if s.starts_with(br#"\\?\"#) {
             s[4].is_ascii_alphabetic() && s[5] == b':' && s[6] == b'\\'
           } else {
             false
@@ -1719,7 +1719,7 @@ impl PermissionsContainer {
       }
 
       // If this is a normalized drive path, accept it
-      if path.starts_with(r#"\\"#) && !is_normalized_windows_drive_path(path) {
+      if !is_normalized_windows_drive_path(path) {
         self.check_was_allow_all_flag_passed().map_err(error_all)?;
       }
     } else {
