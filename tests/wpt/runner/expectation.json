@@ -3695,8 +3695,12 @@
     "urlsearchparams-append.any.worker.html": true,
     "urlsearchparams-constructor.any.html": true,
     "urlsearchparams-constructor.any.worker.html": true,
-    "urlsearchparams-delete.any.html": true,
-    "urlsearchparams-delete.any.worker.html": true,
+    "urlsearchparams-delete.any.html": [
+      "Changing the query of a URL with an opaque path can impact the path if the URL has no fragment"
+    ],
+    "urlsearchparams-delete.any.worker.html": [
+      "Changing the query of a URL with an opaque path can impact the path if the URL has no fragment"
+    ],
     "urlsearchparams-foreach.any.html": true,
     "urlsearchparams-foreach.any.worker.html": true,
     "urlsearchparams-get.any.html": true,
@@ -4559,7 +4563,9 @@
       "URL: Setting <non-spec:/>.pathname = '/.//p' Serialize /. in path",
       "URL: Setting <non-spec:/>.pathname = '/..//p'",
       "URL: Setting <non-spec:/>.pathname = '//p'",
-      "URL: Setting <non-spec:/.//>.pathname = 'p' Drop /. from path"
+      "URL: Setting <non-spec:/.//>.pathname = 'p' Drop /. from path",
+      "URL: Setting <data:space  ?query#fragment>.search = '' Do not drop trailing spaces from non-trailing opaque paths",
+      "URL: Setting <sc:space  ?query#fragment>.search = ''"
     ],
     "url-setters.any.html?include=file": [
       "URL: Setting <file://monkey/>.pathname = '\\\\' File URLs and (back)slashes",
