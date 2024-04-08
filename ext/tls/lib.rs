@@ -266,15 +266,15 @@ pub fn load_certs(
   Ok(certs.into_iter().map(Certificate).collect())
 }
 
-pub fn key_decode_err() -> AnyError {
+fn key_decode_err() -> AnyError {
   custom_error("InvalidData", "Unable to decode key")
 }
 
-pub fn key_not_found_err() -> AnyError {
+fn key_not_found_err() -> AnyError {
   custom_error("InvalidData", "No keys found in key data")
 }
 
-pub fn cert_not_found_err() -> AnyError {
+fn cert_not_found_err() -> AnyError {
   custom_error("InvalidData", "No certificates found in certificate data")
 }
 
@@ -325,10 +325,14 @@ pub fn load_private_keys(bytes: &[u8]) -> Result<Vec<PrivateKey>, AnyError> {
   Ok(keys)
 }
 
+/// A loaded key.
+// FUTURE(mmastrac): add resolver enum value to support dynamic SNI
 pub enum TlsKeys {
+  // TODO(mmastrac): We need Option<&T> for cppgc -- this is a workaround
   Null,
   Static(TlsKey),
 }
 
+/// A TLS certificate/private key pair.
 #[derive(Clone, Debug)]
 pub struct TlsKey(pub Vec<Certificate>, pub PrivateKey);
