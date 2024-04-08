@@ -924,6 +924,10 @@ async fn build_and_check_graph_for_publish(
           },
         )
         .await?;
+      // ignore unused parameter diagnostics that may occur due to fast check
+      // not having function body implementations
+      let check_diagnostics =
+        check_diagnostics.filter(|d| d.include_when_remote());
       if !check_diagnostics.is_empty() {
         bail!(
           concat!(

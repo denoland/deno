@@ -159,8 +159,8 @@ impl PathRef {
     file.write_all(text.as_ref().as_bytes()).unwrap();
   }
 
-  pub fn write(&self, text: impl AsRef<str>) {
-    fs::write(self, text.as_ref()).unwrap();
+  pub fn write(&self, text: impl AsRef<[u8]>) {
+    fs::write(self, text).unwrap();
   }
 
   pub fn write_json<TValue: Serialize>(&self, value: &TValue) {
@@ -461,7 +461,7 @@ impl TempDir {
     self.target_path().join(from).rename(to)
   }
 
-  pub fn write(&self, path: impl AsRef<Path>, text: impl AsRef<str>) {
+  pub fn write(&self, path: impl AsRef<Path>, text: impl AsRef<[u8]>) {
     self.target_path().join(path).write(text)
   }
 

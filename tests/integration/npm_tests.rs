@@ -2279,6 +2279,91 @@ console.log(getKind());
 }
 
 #[test]
+fn future_byonm_cjs_esm_packages() {
+  let test_context = TestContextBuilder::for_npm()
+    .env("DENO_FUTURE", "1")
+    .use_temp_cwd()
+    .build();
+  let dir = test_context.temp_dir();
+
+  test_context.run_npm("init -y");
+  test_context.run_npm("install @denotest/esm-basic @denotest/cjs-default-export @denotest/dual-cjs-esm chalk@4 chai@4.3");
+
+  dir.write(
+    "main.ts",
+    r#"
+import { getValue, setValue } from "@denotest/esm-basic";
+
+setValue(2);
+console.log(getValue());
+
+import cjsDefault from "@denotest/cjs-default-export";
+console.log(cjsDefault.default());
+console.log(cjsDefault.named());
+
+import { getKind } from "@denotest/dual-cjs-esm";
+console.log(getKind());
+
+
+"#,
+  );
+  let output = test_context.new_command().args("run --check main.ts").run();
+  output
+    .assert_matches_text("Check file:///[WILDCARD]/main.ts\n2\n1\n2\nesm\n");
+
+  // should not have created the .deno directory
+  assert!(!dir.path().join("node_modules/.deno").exists());
+
+  // try chai
+  dir.write(
+    "chai.ts",
+    r#"import { expect } from "chai";
+
+    const timeout = setTimeout(() => {}, 0);
+    expect(timeout).to.be.a("number");
+    clearTimeout(timeout);"#,
+  );
+  test_context.new_command().args("run chai.ts").run();
+
+  // try chalk cjs
+  dir.write(
+    "chalk.ts",
+    "import chalk from 'chalk'; console.log(chalk.green('chalk cjs loads'));",
+  );
+  let output = test_context
+    .new_command()
+    .args("run --allow-read chalk.ts")
+    .run();
+  output.assert_matches_text("chalk cjs loads\n");
+
+  // try using an npm specifier for chalk that matches the version we installed
+  dir.write(
+    "chalk.ts",
+    "import chalk from 'npm:chalk@4'; console.log(chalk.green('chalk cjs loads'));",
+  );
+  let output = test_context
+    .new_command()
+    .args("run --allow-read chalk.ts")
+    .run();
+  output.assert_matches_text("chalk cjs loads\n");
+
+  // try with one that doesn't match the package.json
+  dir.write(
+    "chalk.ts",
+    "import chalk from 'npm:chalk@5'; console.log(chalk.green('chalk cjs loads'));",
+  );
+  let output = test_context
+    .new_command()
+    .args("run --allow-read chalk.ts")
+    .run();
+  output.assert_matches_text(
+    r#"error: Could not find a matching package for 'npm:chalk@5' in '[WILDCARD]package.json'. You must specify this as a package.json dependency when the node_modules folder is not managed by Deno.
+    at file:///[WILDCARD]chalk.ts:1:19
+"#);
+  output.assert_exit_code(1);
+}
+
+#[test]
 fn byonm_import_map() {
   let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
   let dir = test_context.temp_dir();
@@ -2323,9 +2408,99 @@ console.log(getValue());
 }
 
 #[test]
+fn future_byonm_import_map() {
+  let test_context = TestContextBuilder::for_npm()
+    .env("DENO_FUTURE", "1")
+    .use_temp_cwd()
+    .build();
+  let dir = test_context.temp_dir();
+  dir.write(
+    "deno.json",
+    r#"{
+    "imports": {
+      "basic": "npm:@denotest/esm-basic"
+    }
+}"#,
+  );
+  dir.write(
+    "package.json",
+    r#"{
+    "name": "my-project",
+    "version": "1.0.0",
+    "type": "module",
+    "dependencies": {
+      "@denotest/esm-basic": "^1.0"
+    }
+}"#,
+  );
+  test_context.run_npm("install");
+
+  dir.write(
+    "main.ts",
+    r#"
+// import map should resolve
+import { getValue } from "basic";
+// and resolving via node resolution
+import { setValue } from "@denotest/esm-basic";
+
+setValue(5);
+console.log(getValue());
+"#,
+  );
+  let output = test_context.new_command().args("run main.ts").run();
+  output.assert_matches_text("5\n");
+  let output = test_context.new_command().args("check main.ts").run();
+  output.assert_matches_text("Check file:///[WILDCARD]/main.ts\n");
+}
+
+#[test]
 fn byonm_package_specifier_not_installed_and_invalid_subpath() {
   let test_context = TestContextBuilder::for_npm()
     .env("DENO_UNSTABLE_BYONM", "1")
+    .use_temp_cwd()
+    .build();
+  let dir = test_context.temp_dir();
+  dir.path().join("package.json").write_json(&json!({
+    "dependencies": {
+      "chalk": "4",
+      "@denotest/conditional-exports-strict": "1"
+    }
+  }));
+  dir.write(
+    "main.ts",
+    "import chalk from 'chalk'; console.log(chalk.green('hi'));",
+  );
+
+  // no npm install has been run, so this should give an informative error
+  let output = test_context.new_command().args("run main.ts").run();
+  output.assert_matches_text(
+    r#"error: Could not resolve "chalk", but found it in a package.json. Deno expects the node_modules/ directory to be up to date. Did you forget to run `npm install`?
+    at file:///[WILDCARD]/main.ts:1:19
+"#,
+  );
+  output.assert_exit_code(1);
+
+  // now test for an invalid sub path after doing an npm install
+  dir.write(
+    "main.ts",
+    "import '@denotest/conditional-exports-strict/test';",
+  );
+
+  test_context.run_npm("install");
+
+  let output = test_context.new_command().args("run main.ts").run();
+  output.assert_matches_text(
+    r#"error: [ERR_PACKAGE_PATH_NOT_EXPORTED] Package subpath './test' is not defined by "exports" in '[WILDCARD]' imported from '[WILDCARD]main.ts'
+    at file:///[WILDCARD]/main.ts:1:8
+"#,
+  );
+  output.assert_exit_code(1);
+}
+
+#[test]
+fn future_byonm_package_specifier_not_installed_and_invalid_subpath() {
+  let test_context = TestContextBuilder::for_npm()
+    .env("DENO_FUTURE", "1")
     .use_temp_cwd()
     .build();
   let dir = test_context.temp_dir();
@@ -2411,10 +2586,156 @@ fn byonm_package_npm_specifier_not_installed_and_invalid_subpath() {
 }
 
 #[test]
+fn future_byonm_package_npm_specifier_not_installed_and_invalid_subpath() {
+  let test_context = TestContextBuilder::for_npm()
+    .env("DENO_FUTURE", "1")
+    .use_temp_cwd()
+    .build();
+  let dir = test_context.temp_dir();
+  dir.path().join("package.json").write_json(&json!({
+    "dependencies": {
+      "chalk": "4",
+      "@denotest/conditional-exports-strict": "1"
+    }
+  }));
+  dir.write(
+    "main.ts",
+    "import chalk from 'npm:chalk'; console.log(chalk.green('hi'));",
+  );
+
+  // no npm install has been run, so this should give an informative error
+  let output = test_context.new_command().args("run main.ts").run();
+  output.assert_matches_text(
+    r#"error: Could not find '[WILDCARD]package.json'. Deno expects the node_modules/ directory to be up to date. Did you forget to run `npm install`?
+    at file:///[WILDCARD]/main.ts:1:19
+"#,
+  );
+  output.assert_exit_code(1);
+
+  // now test for an invalid sub path after doing an npm install
+  dir.write(
+    "main.ts",
+    "import 'npm:@denotest/conditional-exports-strict/test';",
+  );
+
+  test_context.run_npm("install");
+
+  let output = test_context.new_command().args("run main.ts").run();
+  output.assert_matches_text(
+    r#"error: Failed resolving package subpath './test' for '[WILDCARD]package.json'
+    at file:///[WILDCARD]/main.ts:1:8
+"#,
+  );
+  output.assert_exit_code(1);
+}
+
+#[test]
 fn byonm_npm_workspaces() {
   let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
   let dir = test_context.temp_dir();
   dir.write("deno.json", r#"{ "unstable": [ "byonm" ] }"#);
+
+  dir.write(
+    "package.json",
+    r#"{
+  "name": "my-workspace",
+  "workspaces": [
+    "project-a",
+    "project-b"
+  ]
+}
+"#,
+  );
+
+  let project_a_dir = dir.path().join("project-a");
+  project_a_dir.create_dir_all();
+  project_a_dir.join("package.json").write_json(&json!({
+    "name": "project-a",
+    "version": "1.0.0",
+    "main": "./index.js",
+    "type": "module",
+    "dependencies": {
+      "chai": "^4.2",
+      "project-b": "^1"
+    }
+  }));
+  project_a_dir.join("index.js").write(
+    r#"
+import { expect } from "chai";
+
+const timeout = setTimeout(() => {}, 0);
+expect(timeout).to.be.a("number");
+clearTimeout(timeout);
+
+export function add(a, b) {
+  return a + b;
+}
+"#,
+  );
+  project_a_dir
+    .join("index.d.ts")
+    .write("export function add(a: number, b: number): number;");
+
+  let project_b_dir = dir.path().join("project-b");
+  project_b_dir.create_dir_all();
+  project_b_dir.join("package.json").write_json(&json!({
+    "name": "project-b",
+    "version": "1.0.0",
+    "type": "module",
+    "dependencies": {
+      "@denotest/esm-basic": "^1.0",
+    }
+  }));
+  project_b_dir.join("main.ts").write(
+    r#"
+import { getValue, setValue } from "@denotest/esm-basic";
+
+setValue(5);
+console.log(getValue());
+
+import { add } from "project-a";
+console.log(add(1, 2));
+"#,
+  );
+
+  test_context.run_npm("install");
+
+  let output = test_context
+    .new_command()
+    .args("run ./project-b/main.ts")
+    .run();
+  output.assert_matches_text("5\n3\n");
+  let output = test_context
+    .new_command()
+    .args("check ./project-b/main.ts")
+    .run();
+  output.assert_matches_text("Check file:///[WILDCARD]/project-b/main.ts\n");
+
+  // Now a file in the main directory should just be able to
+  // import it via node resolution even though a package.json
+  // doesn't exist here
+  dir.write(
+    "main.ts",
+    r#"
+import { getValue, setValue } from "@denotest/esm-basic";
+
+setValue(7);
+console.log(getValue());
+"#,
+  );
+  let output = test_context.new_command().args("run main.ts").run();
+  output.assert_matches_text("7\n");
+  let output = test_context.new_command().args("check main.ts").run();
+  output.assert_matches_text("Check file:///[WILDCARD]/main.ts\n");
+}
+
+#[test]
+fn future_byonm_npm_workspaces() {
+  let test_context = TestContextBuilder::for_npm()
+    .env("DENO_FUTURE", "1")
+    .use_temp_cwd()
+    .build();
+  let dir = test_context.temp_dir();
 
   dir.write(
     "package.json",
@@ -2719,6 +3040,23 @@ fn different_nested_dep_byonm() {
   let output = test_context
     .new_command()
     .args("run --unstable-byonm main.js")
+    .run();
+  output.assert_matches_file("npm/different_nested_dep/main.out");
+}
+
+#[test]
+fn different_nested_dep_byonm_future() {
+  let test_context = TestContextBuilder::for_npm()
+    .use_copy_temp_dir("npm/different_nested_dep")
+    .cwd("npm/different_nested_dep/")
+    .build();
+
+  test_context.run_npm("install");
+
+  let output = test_context
+    .new_command()
+    .args("run main.js")
+    .env("DENO_FUTURE", "1")
     .run();
   output.assert_matches_file("npm/different_nested_dep/main.out");
 }
