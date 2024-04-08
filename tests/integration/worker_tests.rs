@@ -127,7 +127,7 @@ itest!(node_worker_auto_exits {
   exit_code: 0,
 });
 
-itest_flaky!(node_worker_message_port {
+itest!(node_worker_message_port {
   args: "run --quiet --allow-read workers/node_worker_message_port.mjs",
   output: "workers/node_worker_message_port.mjs.out",
   exit_code: 0,
