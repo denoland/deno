@@ -1,8 +1,10 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::io::TcpStreamResource;
+use crate::raw::NetworkListenerResource;
 use crate::resolve_addr::resolve_addr;
 use crate::resolve_addr::resolve_addr_sync;
+use crate::tcp::TcpListener;
 use crate::NetPermissions;
 use deno_core::error::bad_resource;
 use deno_core::error::custom_error;
@@ -33,7 +35,6 @@ use std::net::Ipv6Addr;
 use std::net::SocketAddr;
 use std::rc::Rc;
 use std::str::FromStr;
-use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 use tokio::net::UdpSocket;
 use trust_dns_proto::rr::rdata::caa::Value;
@@ -85,7 +86,7 @@ pub async fn op_net_accept_tcp(
   let resource = state
     .borrow()
     .resource_table
-    .get::<TcpListenerResource>(rid)
+    .get::<NetworkListenerResource<TcpListener>>(rid)
     .map_err(|_| bad_resource("Listener has been closed"))?;
   let listener = RcRef::map(&resource, |r| &r.listener)
     .try_borrow_mut()
@@ -320,21 +321,6 @@ where
   Ok((rid, IpAddr::from(local_addr), IpAddr::from(remote_addr)))
 }
 
-pub struct TcpListenerResource {
-  pub listener: AsyncRefCell<TcpListener>,
-  pub cancel: CancelHandle,
-}
-
-impl Resource for TcpListenerResource {
-  fn name(&self) -> Cow<str> {
-    "tcpListener".into()
-  }
-
-  fn close(self: Rc<Self>) {
-    self.cancel.cancel();
-  }
-}
-
 struct UdpSocketResource {
   socket: AsyncRefCell<UdpSocket>,
   cancel: CancelHandle,
@@ -369,29 +355,10 @@ where
   let addr = resolve_addr_sync(&addr.hostname, addr.port)?
     .next()
     .ok_or_else(|| generic_error("No resolved address found"))?;
-  let domain = if addr.is_ipv4() {
-    Domain::IPV4
-  } else {
-    Domain::IPV6
-  };
-  let socket = Socket::new(domain, Type::STREAM, None)?;
-  #[cfg(not(windows))]
-  socket.set_reuse_address(true)?;
-  if reuse_port {
-    #[cfg(any(target_os = "android", target_os = "linux"))]
-    socket.set_reuse_port(true)?;
-  }
-  let socket_addr = socket2::SockAddr::from(addr);
-  socket.bind(&socket_addr)?;
-  socket.listen(128)?;
-  socket.set_nonblocking(true)?;
-  let std_listener: std::net::TcpListener = socket.into();
-  let listener = TcpListener::from_std(std_listener)?;
+
+  let listener = TcpListener::bind_direct(addr, reuse_port)?;
   let local_addr = listener.local_addr()?;
-  let listener_resource = TcpListenerResource {
-    listener: AsyncRefCell::new(listener),
-    cancel: Default::default(),
-  };
+  let listener_resource = NetworkListenerResource::new(listener);
   let rid = state.resource_table.add(listener_resource);
 
   Ok((rid, IpAddr::from(local_addr)))
@@ -781,6 +748,7 @@ mod tests {
   use socket2::SockRef;
   use std::net::Ipv4Addr;
   use std::net::Ipv6Addr;
+  use std::net::ToSocketAddrs;
   use std::path::Path;
   use std::sync::Arc;
   use std::sync::Mutex;
@@ -1030,7 +998,8 @@ mod tests {
   ) {
     let sockets = Arc::new(Mutex::new(vec![]));
     let clone_addr = addr.clone();
-    let listener = TcpListener::bind(addr).await.unwrap();
+    let addr = addr.to_socket_addrs().unwrap().next().unwrap();
+    let listener = TcpListener::bind_direct(addr, false).unwrap();
     let accept_fut = listener.accept().boxed_local();
     let store_fut = async move {
       let socket = accept_fut.await.unwrap();
