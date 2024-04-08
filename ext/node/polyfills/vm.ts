@@ -37,6 +37,10 @@ export class Script {
 }
 
 export function createContext(contextObject: any = {}, _options: any) {
+  if (isContext(contextObject)) {
+    return contextObject;
+  }
+
   op_vm_create_context(contextObject);
   return contextObject;
 }

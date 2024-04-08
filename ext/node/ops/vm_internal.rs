@@ -32,6 +32,7 @@ impl ContextifyScript {
     Ok(Self { script })
   }
 
+  // TODO(littledivy): Support `options`
   pub fn eval_machine<'s>(
     &self,
     scope: &mut v8::HandleScope<'s>,
@@ -205,6 +206,9 @@ fn init_global_template<'a>(
 
 extern "C" fn c_noop(_: *const v8::FunctionCallbackInfo) {}
 
+// Using thread_local! to get around compiler bug.
+//
+// See NOTE in ext/node/global.rs#L12
 thread_local! {
   pub static GETTER_MAP_FN: v8::GenericNamedPropertyGetterCallback<'static> = property_getter.map_fn_to();
   pub static SETTER_MAP_FN: v8::GenericNamedPropertySetterCallback<'static> = property_setter.map_fn_to();

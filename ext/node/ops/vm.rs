@@ -91,6 +91,10 @@ pub fn op_vm_create_context(
   sandbox_obj: v8::Local<v8::Object>,
 ) {
   // Don't allow contextifying a sandbox multiple times.
+  assert!(!i::ContextifyContext::is_contextify_context(
+    scope,
+    sandbox_obj
+  ));
 
   i::ContextifyContext::attach(scope, sandbox_obj);
 }
