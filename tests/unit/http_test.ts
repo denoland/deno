@@ -2695,7 +2695,7 @@ Deno.test("proxy with fetch", async () => {
   })();
 
   const proxiedRequest = (async () => {
-    let conn = await Deno.connect({ port: listenPort });
+    const conn = await Deno.connect({ port: listenPort });
     const payload = new TextEncoder().encode(
       "POST /api/sessions HTTP/1.1\x0d\x0aConnection: keep-alive\x0d\x0aContent-Length: 2\x0d\x0a\x0d\x0a{}",
     );
