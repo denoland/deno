@@ -70,7 +70,7 @@ import {
   resourceForReadableStream,
 } from "ext:deno_web/06_streams.js";
 import { listen, listenOptionApiName, TcpConn } from "ext:deno_net/01_net.js";
-import { listenTls } from "ext:deno_net/02_tls.js";
+import { hasTlsKeyPairOptions, listenTls } from "ext:deno_net/02_tls.js";
 import { SymbolAsyncDispose } from "ext:deno_web/00_infra.js";
 
 const _upgraded = Symbol("_upgraded");
@@ -535,7 +535,7 @@ function serve(arg1, arg2) {
     options = {};
   }
 
-  const wantsHttps = options.cert || options.key;
+  const wantsHttps = hasTlsKeyPairOptions(options);
   const wantsUnix = ObjectHasOwn(options, "path");
   const signal = options.signal;
   const onError = options.onError ?? function (error) {
