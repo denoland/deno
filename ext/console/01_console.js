@@ -2800,7 +2800,8 @@ function colorEquals(color1, color2) {
 
 function backgroundColorToAnsi(backgroundColor) {
   switch (backgroundColor) {
-    case null: return "\x1b[49m";
+    case null:
+      return "\x1b[49m";
     case "black":
       return `\x1b[40m`;
     case "red":
@@ -2873,10 +2874,10 @@ function cssToAnsi(css, prevCss = null) {
   prevCss = prevCss ?? getDefaultCss();
   let ansi = "";
   if (!colorEquals(css.backgroundColor, prevCss.backgroundColor)) {
-    ansi += backgroundColorToAnsi(css.backgroundColor)
+    ansi += backgroundColorToAnsi(css.backgroundColor);
   }
   if (!colorEquals(css.color, prevCss.color)) {
-    ansi += textColorToAnsi(css.color)
+    ansi += textColorToAnsi(css.color);
   }
   if (css.fontWeight != prevCss.fontWeight) {
     if (css.fontWeight == "bold") {
