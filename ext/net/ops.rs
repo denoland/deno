@@ -86,7 +86,8 @@ pub async fn op_net_accept_tcp(
   let resource = state
     .borrow()
     .resource_table
-    .get::<NetworkListenerResource<TcpListener>>(rid)?;
+    .get::<NetworkListenerResource<TcpListener>>(rid)
+    .map_err(|_| bad_resource("Listener has been closed"))?;
   let listener = RcRef::map(&resource, |r| &r.listener)
     .try_borrow_mut()
     .ok_or_else(|| custom_error("Busy", "Another accept task is ongoing"))?;

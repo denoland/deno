@@ -7,14 +7,19 @@ use socket2::Domain;
 use socket2::Protocol;
 use socket2::Type;
 
+/// Our per-process `Connections`. We can use this to find an existant listener for
+/// a given local address and clone its socket for us to listen on in our thread.
 static CONNS: std::sync::OnceLock<std::sync::Mutex<Connections>> =
   std::sync::OnceLock::new();
 
+/// Maintains a map of listening address to `TcpConnection`.
 #[derive(Default)]
 struct Connections {
   tcp: HashMap<SocketAddr, Arc<TcpConnection>>,
 }
 
+/// Holds an open listener. We clone the underlying file descriptor (unix) or socket handle (Windows)
+/// and then listen on our copy of it.
 pub struct TcpConnection {
   /// The pristine FD that we'll clone for each LB listener
   #[cfg(unix)]

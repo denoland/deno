@@ -531,6 +531,7 @@ pub async fn op_tls_handshake(
   let resource = state
     .borrow()
     .resource_table
-    .get::<TlsStreamResource>(rid)?;
+    .get::<TlsStreamResource>(rid)
+    .map_err(|_| bad_resource("Listener has been closed"))?;
   resource.handshake().await
 }
