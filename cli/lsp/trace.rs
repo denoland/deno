@@ -19,14 +19,17 @@ use tracing_subscriber::util::SubscriberInitExt;
 
 pub(crate) fn make_tracer(
   endpoint: Option<&str>,
+  max_queue_size: Option<usize>,
 ) -> Result<opentelemetry_sdk::trace::Tracer, anyhow::Error> {
+  let endpoint = endpoint.unwrap_or("http://localhost:4317");
+  let max_queue_size = max_queue_size.unwrap_or(8192);
   Ok(
     opentelemetry_otlp::new_pipeline()
       .tracing()
       .with_exporter(
         opentelemetry_otlp::new_exporter()
           .tonic()
-          .with_endpoint(endpoint.unwrap_or("http://localhost:4317")),
+          .with_endpoint(endpoint),
       )
       .with_trace_config(
         opentelemetry_sdk::trace::config()
@@ -38,7 +41,7 @@ pub(crate) fn make_tracer(
       )
       .with_batch_config(
         BatchConfigBuilder::default()
-          .with_max_queue_size(8192)
+          .with_max_queue_size(max_queue_size)
           .build(),
       )
       .install_batch(opentelemetry_sdk::runtime::Tokio)?,
@@ -65,6 +68,7 @@ impl Drop for TracingGuard {
 #[derive(
   Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Copy, Default,
 )]
+#[serde(rename_all = "camelCase")]
 pub(crate) enum TracingCollector {
   #[default]
   OpenTelemetry,
@@ -86,6 +90,9 @@ pub(crate) struct TracingConfig {
 
   /// The endpoint to use for the OpenTelemetry collector.
   pub(crate) collector_endpoint: Option<String>,
+
+  /// The max queue size for the OpenTelemetry batch exporter.
+  pub(crate) max_queue_size: Option<usize>,
 }
 
 pub(crate) fn init_tracing_subscriber(
@@ -103,7 +110,7 @@ pub(crate) fn init_tracing_subscriber(
   };
   let open_telemetry_layer = match config.collector {
     TracingCollector::OpenTelemetry => Some(OpenTelemetryLayer::new(
-      make_tracer(config.collector_endpoint.as_deref())?,
+      make_tracer(config.collector_endpoint.as_deref(), config.max_queue_size)?,
     )),
     _ => None,
   };

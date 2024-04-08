@@ -257,12 +257,10 @@ pub struct Document {
 }
 
 impl Document {
-  #[tracing::instrument(skip(
-    resolver,
-    npm_resolver,
-    text_info,
-    maybe_headers
-  ))]
+  #[tracing::instrument(
+    level = "debug",
+    skip(resolver, npm_resolver, text_info, maybe_headers)
+  )]
   fn new(
     specifier: ModuleSpecifier,
     fs_version: String,
@@ -735,7 +733,7 @@ struct FileSystemDocuments {
 }
 
 impl FileSystemDocuments {
-  #[tracing::instrument(skip_all)]
+  #[tracing::instrument(level = "debug", skip_all)]
   pub fn get(
     &self,
     cache: &Arc<dyn HttpCache>,
@@ -768,6 +766,7 @@ impl FileSystemDocuments {
 
   /// Adds or updates a document by reading the document from the file system
   /// returning the document.
+  #[tracing::instrument(level = "debug", skip_all)]
   fn refresh_document(
     &self,
     cache: &Arc<dyn HttpCache>,
@@ -1718,7 +1717,7 @@ fn parse_and_analyze_module(
   (Some(parsed_source_result), Some(module_result))
 }
 
-#[tracing::instrument(skip_all)]
+#[tracing::instrument(level = "debug", skip_all)]
 fn parse_source(
   specifier: &ModuleSpecifier,
   text_info: SourceTextInfo,
@@ -1734,7 +1733,7 @@ fn parse_source(
   })
 }
 
-#[tracing::instrument(skip_all)]
+#[tracing::instrument(level = "debug", skip_all)]
 fn analyze_module(
   specifier: &ModuleSpecifier,
   parsed_source_result: &ParsedSourceResult,
