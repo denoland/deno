@@ -1147,7 +1147,7 @@ impl Inner {
       .ts_server
       .project_changed(
         self.snapshot(),
-        vec![],
+        &[],
         self.documents.project_version(),
         true,
       )
@@ -1229,7 +1229,7 @@ impl Inner {
     let version = self.documents.project_version();
     self
       .ts_server
-      .project_changed(self.snapshot(), vec![], version, false)
+      .project_changed(self.snapshot(), &[document.specifier()], version, false)
       .await;
 
     self.performance.measure(mark);
@@ -1253,7 +1253,7 @@ impl Inner {
             .ts_server
             .project_changed(
               self.snapshot(),
-              vec![document.specifier().to_string()],
+              &[document.specifier()],
               version,
               false,
             )
@@ -1315,7 +1315,7 @@ impl Inner {
     let version = self.documents.project_version();
     self
       .ts_server
-      .project_changed(self.snapshot(), vec![], version, false)
+      .project_changed(self.snapshot(), &[&specifier], version, false)
       .await;
     self.performance.measure(mark);
   }

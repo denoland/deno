@@ -282,7 +282,7 @@ impl TsServer {
   pub async fn project_changed(
     &self,
     snapshot: Arc<StateSnapshot>,
-    modified_scripts: Vec<String>,
+    modified_scripts: &[&ModuleSpecifier],
     new_project_version: String,
     tsconfig_changed: bool,
   ) {
@@ -5156,6 +5156,14 @@ mod tests {
         ..snapshot.as_ref().clone()
       })
     };
+    ts_server
+      .project_changed(
+        snapshot.clone(),
+        &[&specifier_dep],
+        snapshot.documents.project_version(),
+        false,
+      )
+      .await;
     let specifier = resolve_url("file:///a.ts").unwrap();
     let diagnostics = ts_server
       .get_diagnostics(snapshot.clone(), vec![specifier], Default::default())
