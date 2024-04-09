@@ -21,6 +21,7 @@ use crate::resolver::SloppyImportsResolution;
 use crate::resolver::SloppyImportsResolver;
 use crate::util::path::specifier_to_file_path;
 
+use dashmap::DashMap;
 use deno_ast::MediaType;
 use deno_ast::ParsedSource;
 use deno_ast::SourceTextInfo;
@@ -52,6 +53,8 @@ use std::collections::VecDeque;
 use std::fs;
 use std::ops::Range;
 use std::str::FromStr;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use tower_lsp::lsp_types as lsp;
 
@@ -720,13 +723,13 @@ impl RedirectResolver {
 
 #[derive(Debug, Default)]
 struct FileSystemDocuments {
-  docs: HashMap<ModuleSpecifier, Arc<Document>>,
-  dirty: bool,
+  docs: DashMap<ModuleSpecifier, Arc<Document>>,
+  dirty: AtomicBool,
 }
 
 impl FileSystemDocuments {
   pub fn get(
-    &mut self,
+    &self,
     cache: &Arc<dyn HttpCache>,
     resolver: &dyn deno_graph::source::Resolver,
     specifier: &ModuleSpecifier,
@@ -737,19 +740,21 @@ impl FileSystemDocuments {
     } else {
       calculate_fs_version(cache, specifier)
     };
-    let file_system_doc = self.docs.get(specifier);
-    if file_system_doc.map(|d| d.fs_version().to_string()) != fs_version {
+    let file_system_doc = self.docs.get(specifier).map(|v| v.value().clone());
+    if file_system_doc.as_ref().map(|d| d.fs_version().to_string())
+      != fs_version
+    {
       // attempt to update the file on the file system
       self.refresh_document(cache, resolver, specifier, npm_resolver)
     } else {
-      file_system_doc.cloned()
+      file_system_doc
     }
   }
 
   /// Adds or updates a document by reading the document from the file system
   /// returning the document.
   fn refresh_document(
-    &mut self,
+    &self,
     cache: &Arc<dyn HttpCache>,
     resolver: &dyn deno_graph::source::Resolver,
     specifier: &ModuleSpecifier,
@@ -810,9 +815,21 @@ impl FileSystemDocuments {
         npm_resolver,
       )
     };
-    self.dirty = true;
     self.docs.insert(specifier.clone(), doc.clone());
+    self.set_dirty(true);
     Some(doc)
+  }
+
+  pub fn remove_document(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<Arc<Document>> {
+    Some(self.docs.remove(specifier)?.1)
+  }
+
+  /// Sets the dirty flag to the provided value and returns the previous value.
+  pub fn set_dirty(&self, dirty: bool) -> bool {
+    self.dirty.swap(dirty, Ordering::Relaxed)
   }
 }
 
@@ -840,7 +857,7 @@ pub struct Documents {
   /// A map of documents that are "open" in the language server.
   open_docs: HashMap<ModuleSpecifier, Arc<Document>>,
   /// Documents stored on the file system.
-  file_system_docs: Arc<Mutex<FileSystemDocuments>>,
+  file_system_docs: Arc<FileSystemDocuments>,
   /// Any imports to the context supplied by configuration files. This is like
   /// the imports into the a module graph in CLI.
   imports: Arc<IndexMap<ModuleSpecifier, GraphImport>>,
@@ -928,11 +945,10 @@ impl Documents {
       resolver,
       npm_resolver,
     );
-    {
-      let mut file_system_docs = self.file_system_docs.lock();
-      file_system_docs.docs.remove(&specifier);
-      file_system_docs.dirty = true;
-    }
+
+    self.file_system_docs.remove_document(&specifier);
+    self.file_system_docs.set_dirty(true);
+
     self.open_docs.insert(specifier, document.clone());
     self.increment_project_version();
     self.dirty = true;
@@ -950,10 +966,7 @@ impl Documents {
       .open_docs
       .get(specifier)
       .cloned()
-      .or_else(|| {
-        let mut file_system_docs = self.file_system_docs.lock();
-        file_system_docs.docs.remove(specifier)
-      })
+      .or_else(|| self.file_system_docs.remove_document(specifier))
       .map(Ok)
       .unwrap_or_else(|| {
         Err(custom_error(
@@ -974,10 +987,11 @@ impl Documents {
   }
 
   pub fn save(&mut self, specifier: &ModuleSpecifier) {
-    let doc = self.open_docs.get(specifier).cloned().or_else(|| {
-      let mut file_system_docs = self.file_system_docs.lock();
-      file_system_docs.docs.remove(specifier)
-    });
+    let doc = self
+      .open_docs
+      .get(specifier)
+      .cloned()
+      .or_else(|| self.file_system_docs.remove_document(specifier));
     let Some(doc) = doc else {
       return;
     };
@@ -991,10 +1005,11 @@ impl Documents {
   /// information about the document is required.
   pub fn close(&mut self, specifier: &ModuleSpecifier) -> Result<(), AnyError> {
     if let Some(document) = self.open_docs.remove(specifier) {
-      {
-        let mut file_system_docs = self.file_system_docs.lock();
-        file_system_docs.docs.insert(specifier.clone(), document);
-      }
+      self
+        .file_system_docs
+        .docs
+        .insert(specifier.clone(), document);
+
       self.increment_project_version();
       self.dirty = true;
     }
@@ -1136,8 +1151,7 @@ impl Documents {
     if let Some(document) = self.open_docs.get(&specifier) {
       Some(document.clone())
     } else {
-      let mut file_system_docs = self.file_system_docs.lock();
-      file_system_docs.get(
+      self.file_system_docs.get(
         &self.cache,
         self.get_resolver(),
         &specifier,
@@ -1174,17 +1188,17 @@ impl Documents {
         // it is technically possible for a Document to end up in both the open
         // and closed documents so we need to ensure we don't return duplicates
         let mut seen_documents = HashSet::new();
-        let file_system_docs = self.file_system_docs.lock();
         self
           .open_docs
           .values()
-          .chain(file_system_docs.docs.values())
+          .cloned()
+          .chain(self.file_system_docs.docs.iter().map(|v| v.value().clone()))
           .filter_map(|doc| {
             // this prefers the open documents
             if seen_documents.insert(doc.specifier().clone())
               && (!diagnosable_only || doc.is_diagnosable())
             {
-              Some(doc.clone())
+              Some(doc)
             } else {
               None
             }
@@ -1283,17 +1297,15 @@ impl Documents {
   ) -> Result<(), AnyError> {
     if let Some(doc) = self.open_docs.get(specifier) {
       doc.update_navigation_tree_if_version(navigation_tree, script_version)
+    } else if let Some(doc) = self.file_system_docs.docs.get_mut(specifier) {
+      doc.update_navigation_tree_if_version(navigation_tree, script_version);
     } else {
-      let mut file_system_docs = self.file_system_docs.lock();
-      if let Some(doc) = file_system_docs.docs.get_mut(specifier) {
-        doc.update_navigation_tree_if_version(navigation_tree, script_version);
-      } else {
-        return Err(custom_error(
-          "NotFound",
-          format!("Specifier not found {specifier}"),
-        ));
-      }
+      return Err(custom_error(
+        "NotFound",
+        format!("Specifier not found {specifier}"),
+      ));
     }
+
     Ok(())
   }
 
@@ -1369,7 +1381,7 @@ impl Documents {
       .map(|c| c.has_unstable("sloppy-imports"))
       .unwrap_or(false);
     {
-      let mut fs_docs = self.file_system_docs.lock();
+      let fs_docs = &self.file_system_docs;
       // Clean up non-existent documents.
       fs_docs.docs.retain(|specifier, _| {
         let Ok(path) = specifier_to_file_path(specifier) else {
@@ -1383,16 +1395,24 @@ impl Documents {
         path.is_file()
       });
       let mut open_docs = std::mem::take(&mut self.open_docs);
-      for docs in [&mut open_docs, &mut fs_docs.docs] {
-        for doc in docs.values_mut() {
-          if !config.specifier_enabled(doc.specifier()) {
-            continue;
-          }
-          if let Some(new_doc) =
-            doc.maybe_with_new_resolver(resolver, npm_resolver)
-          {
-            *doc = new_doc;
-          }
+      for doc in open_docs.values_mut() {
+        if !config.specifier_enabled(doc.specifier()) {
+          continue;
+        }
+        if let Some(new_doc) =
+          doc.maybe_with_new_resolver(resolver, npm_resolver)
+        {
+          *doc = new_doc;
+        }
+      }
+      for mut doc in self.file_system_docs.docs.iter_mut() {
+        if !config.specifier_enabled(doc.specifier()) {
+          continue;
+        }
+        if let Some(new_doc) =
+          doc.maybe_with_new_resolver(resolver, npm_resolver)
+        {
+          *doc.value_mut() = new_doc;
         }
       }
       self.open_docs = open_docs;
@@ -1416,7 +1436,7 @@ impl Documents {
           );
         }
       }
-      fs_docs.dirty = true;
+      fs_docs.set_dirty(true);
     }
     self.dirty = true;
     self.calculate_dependents_if_dirty();
@@ -1473,15 +1493,20 @@ impl Documents {
       }
     }
 
-    let mut file_system_docs = self.file_system_docs.lock();
-    if !file_system_docs.dirty && !self.dirty {
+    let is_fs_docs_dirty = self.file_system_docs.set_dirty(false);
+
+    if !is_fs_docs_dirty && !self.dirty {
       return;
     }
 
     let mut doc_analyzer = DocAnalyzer::default();
     // favor documents that are open in case a document exists in both collections
-    let documents = file_system_docs.docs.iter().chain(self.open_docs.iter());
-    for (specifier, doc) in documents {
+    for entry in self.file_system_docs.docs.iter() {
+      let specifier = entry.key();
+      let doc = entry.value();
+      doc_analyzer.analyze_doc(specifier, doc);
+    }
+    for (specifier, doc) in self.open_docs.iter() {
       doc_analyzer.analyze_doc(specifier, doc);
     }
 
@@ -1490,9 +1515,12 @@ impl Documents {
     while let Some(specifier) = doc_analyzer.pending_specifiers.pop_front() {
       if let Some(doc) = self.open_docs.get(&specifier) {
         doc_analyzer.analyze_doc(&specifier, doc);
-      } else if let Some(doc) =
-        file_system_docs.get(&self.cache, resolver, &specifier, npm_resolver)
-      {
+      } else if let Some(doc) = self.file_system_docs.get(
+        &self.cache,
+        resolver,
+        &specifier,
+        npm_resolver,
+      ) {
         doc_analyzer.analyze_doc(&specifier, &doc);
       }
     }
@@ -1528,7 +1556,6 @@ impl Documents {
       reqs
     });
     self.dirty = false;
-    file_system_docs.dirty = false;
   }
 
   fn get_resolver(&self) -> &dyn deno_graph::source::Resolver {
