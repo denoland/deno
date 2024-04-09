@@ -412,6 +412,16 @@ declare namespace Deno {
      *
      * @default {"127.0.0.1"} */
     hostname?: string;
+    /** Path to a file containing a PEM formatted list of root certificates that will
+     * be used in addition to the default root certificates to verify the peer's certificate. Requires
+     * `--allow-read`.
+     *
+     * @tags allow-read
+     * @deprecated This will be removed in Deno 2.0. See the
+     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+     * for migration instructions.
+     */
+    certFile?: string;
     /** A list of root certificates that will be used in addition to the
      * default root certificates to verify the peer's certificate.
      *

@@ -53,14 +53,44 @@ async function connectTls({
   transport = "tcp",
   caCerts = [],
   alpnProtocols = undefined,
+  keyFormat = undefined,
+  cert = undefined,
+  certFile = undefined,
+  certChain = undefined,
+  key = undefined,
+  keyFile = undefined,
+  privateKey = undefined,
 }) {
   if (transport !== "tcp") {
     throw new TypeError(`Unsupported transport: '${transport}'`);
   }
-  const keyPair = loadTlsKeyPair("Deno.connectTls", arguments[0]);
+  let deprecatedCertFile = undefined;
+
+  // Deno.connectTls has an irregular option where you can just pass `certFile` and
+  // not `keyFile`. In this case it's used for `caCerts` rather than the client key.
+  if (certFile !== undefined && keyFile === undefined) {
+    internals.warnOnDeprecatedApi(
+      "Deno.ConnectTlsOptions.certFile",
+      new Error().stack,
+      "Pass the cert file's contents to the `Deno.ConnectTlsOptions.caCerts` option instead.",
+    );
+
+    deprecatedCertFile = certFile;
+    certFile = undefined;
+  }
+
+  const keyPair = loadTlsKeyPair("Deno.connectTls", {
+    keyFormat,
+    cert,
+    certFile,
+    certChain,
+    key,
+    keyFile,
+    privateKey,
+  });
   const { 0: rid, 1: localAddr, 2: remoteAddr } = await op_net_connect_tls(
     { hostname, port },
-    { certFile, caCerts, cert, key, alpnProtocols },
+    { certFile: deprecatedCertFile, caCerts, alpnProtocols },
     keyPair,
   );
   localAddr.transport = "tcp";
@@ -127,32 +157,38 @@ function loadTlsKeyPair(api, {
   if (keyFormat !== undefined && keyFormat !== "pem") {
     throw new TypeError('If `keyFormat` is specified, it must be "pem"');
   }
-  // Pick one pair of cert/key, certFile/keyFile or certChain/privateKey
-  if ((cert !== undefined) ^ (key !== undefined)) {
-    throw new TypeError("If `cert` is specified, `key` must also be specified");
-  }
-  if ((certFile !== undefined) ^ (keyFile !== undefined)) {
-    throw new TypeError(
-      "If `certFile` is specified, `keyFile` must also be specified",
-    );
-  }
-  if ((certChain !== undefined) ^ (privateKey !== undefined)) {
-    throw new TypeError(
-      "If `certChain` is specified, `privateKey` must also be specified",
-    );
+
+  function exclusive(a1, a1v, a2, a2v) {
+    if (a1v !== undefined && a2v !== undefined) {
+      throw new TypeError(
+        `Cannot specify both \`${a1}\` and \`${a2}\` for \`${api}\`.`,
+      );
+    }
   }
 
   // Ensure that only one pair is valid
-  if (certChain !== undefined && cert !== undefined) {
-    throw new TypeError(
-      "Cannot specify both `certChain` and `cert`",
-    );
+  exclusive("certChain", certChain, "cert", cert);
+  exclusive("certChain", certChain, "certFile", certFile);
+  exclusive("key", key, "keyFile", keyFile);
+  exclusive("key", key, "privateKey", privateKey);
+
+  function both(a1, a1v, a2, a2v) {
+    if (a1v !== undefined && a2v === undefined) {
+      throw new TypeError(
+        `If \`${a1}\` is specified, \`${a2}\` must be specified as well for \`${api}\`.`,
+      );
+    }
+    if (a1v === undefined && a2v !== undefined) {
+      throw new TypeError(
+        `If \`${a2}\` is specified, \`${a1}\` must be specified as well for \`${api}\`.`,
+      );
+    }
   }
-  if (certChain !== undefined && certFile !== undefined) {
-    throw new TypeError(
-      "Cannot specify both `certChain` and `certFile`",
-    );
-  }
+
+  // Pick one pair of cert/key, certFile/keyFile or certChain/privateKey
+  both("cert", cert, "key", key);
+  both("certFile", certFile, "keyFile", keyFile);
+  both("certChain", certChain, "privateKey", privateKey);
 
   if (certFile !== undefined) {
     internals.warnOnDeprecatedApi(
@@ -182,7 +218,7 @@ function loadTlsKeyPair(api, {
       new Error().stack,
       "Use the `Deno.TlsCertifiedKeyPem.cert` option instead.",
     );
-    return op_tls_key_static_from_file("Deno.listenTls", certChain, privateKey);
+    return op_tls_key_static(certChain, privateKey);
   } else if (cert !== undefined) {
     return op_tls_key_static(cert, key);
   } else {
