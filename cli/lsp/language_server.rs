@@ -1143,6 +1143,15 @@ impl Inner {
       .tree
       .refresh(&self.config.settings, &self.workspace_files, &file_fetcher)
       .await;
+    self
+      .ts_server
+      .project_changed(
+        self.snapshot(),
+        vec![],
+        self.documents.project_version(),
+        true,
+      )
+      .await;
     for config_file in self.config.tree.config_files() {
       if let Ok((compiler_options, _)) = config_file.to_compiler_options() {
         if let Some(compiler_options_obj) = compiler_options.as_object() {
@@ -1189,7 +1198,7 @@ impl Inner {
     Ok(())
   }
 
-  fn did_open(
+  async fn did_open(
     &mut self,
     specifier: &ModuleSpecifier,
     params: DidOpenTextDocumentParams,
@@ -1217,6 +1226,11 @@ impl Inner {
       params.text_document.language_id.parse().unwrap(),
       params.text_document.text.into(),
     );
+    let version = self.documents.project_version();
+    self
+      .ts_server
+      .project_changed(self.snapshot(), vec![], version, false)
+      .await;
 
     self.performance.measure(mark);
     document
@@ -1234,6 +1248,16 @@ impl Inner {
     ) {
       Ok(document) => {
         if document.is_diagnosable() {
+          let version = self.documents.project_version();
+          self
+            .ts_server
+            .project_changed(
+              self.snapshot(),
+              vec![document.specifier().to_string()],
+              version,
+              false,
+            )
+            .await;
           self.refresh_npm_specifiers().await;
           self
             .diagnostics_server
@@ -1288,6 +1312,11 @@ impl Inner {
     if let Err(err) = self.documents.close(&specifier) {
       error!("{:#}", err);
     }
+    let version = self.documents.project_version();
+    self
+      .ts_server
+      .project_changed(self.snapshot(), vec![], version, false)
+      .await;
     self.performance.measure(mark);
   }
 
@@ -3178,7 +3207,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     let specifier = inner
       .url_map
       .normalize_url(&params.text_document.uri, LspUrlKind::File);
-    let document = inner.did_open(&specifier, params);
+    let document = inner.did_open(&specifier, params).await;
     if document.is_diagnosable() {
       inner.refresh_npm_specifiers().await;
       let specifiers = inner.documents.dependents(&specifier);

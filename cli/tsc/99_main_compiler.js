@@ -164,16 +164,9 @@ delete Object.prototype.__proto__;
 
   /** @type {ts.CompilerOptions | null} */
   let tsConfigCache = null;
-  /** @type {string | null} */
-  let tsConfigCacheProjectVersion = null;
 
   /** @type {string | null} */
   let projectVersionCache = null;
-  /** @type {number | null} */
-  let projectVersionCacheLastRequestId = null;
-
-  /** @type {number | null} */
-  let lastRequestId = null;
 
   /**
    * @param {ts.CompilerOptions | ts.MinimalResolutionCacheHost} settingsOrHost
@@ -545,13 +538,14 @@ delete Object.prototype.__proto__;
     },
     getProjectVersion() {
       if (
-        projectVersionCache && projectVersionCacheLastRequestId == lastRequestId
+        projectVersionCache
       ) {
+        debug(`getProjectVersion cache hit : ${projectVersionCache}`);
         return projectVersionCache;
       }
       const projectVersion = ops.op_project_version();
       projectVersionCache = projectVersion;
-      projectVersionCacheLastRequestId = lastRequestId;
+      debug(`getProjectVersion cache miss : ${projectVersionCache}`);
       return projectVersion;
     },
     // @ts-ignore Undocumented method.
@@ -751,8 +745,7 @@ delete Object.prototype.__proto__;
       if (logDebug) {
         debug("host.getCompilationSettings()");
       }
-      const projectVersion = this.getProjectVersion();
-      if (tsConfigCache && tsConfigCacheProjectVersion == projectVersion) {
+      if (tsConfigCache) {
         return tsConfigCache;
       }
       const tsConfig = normalizeConfig(ops.op_ts_config());
@@ -766,7 +759,6 @@ delete Object.prototype.__proto__;
         debug(ts.formatDiagnostics(errors, host));
       }
       tsConfigCache = options;
-      tsConfigCacheProjectVersion = projectVersion;
       return options;
     },
     getScriptFileNames() {
@@ -801,13 +793,6 @@ delete Object.prototype.__proto__;
         debug(`host.getScriptSnapshot("${specifier}")`);
       }
       let sourceFile = sourceFileCache.get(specifier);
-      if (
-        !specifier.startsWith(ASSETS_URL_PREFIX) &&
-        sourceFile?.version != this.getScriptVersion(specifier)
-      ) {
-        sourceFileCache.delete(specifier);
-        sourceFile = undefined;
-      }
       if (!sourceFile) {
         sourceFile = this.getSourceFile(
           specifier,
@@ -1047,12 +1032,32 @@ delete Object.prototype.__proto__;
     if (logDebug) {
       debug(`serverRequest()`, id, method, args);
     }
-    lastRequestId = id;
-    // reset all memoized source files names
-    scriptFileNamesCache = undefined;
-    // evict all memoized source file versions
-    scriptVersionCache.clear();
     switch (method) {
+      case "$projectChanged": {
+        /** @type {string[]} */
+        const changedScripts = args[0];
+        /** @type {string} */
+        const newProjectVersion = args[1];
+        /** @type {boolean} */
+        const tsConfigChanged = args[2];
+
+        if (tsConfigChanged) {
+          tsConfigCache = null;
+        }
+
+        if (projectVersionCache !== newProjectVersion) {
+          // TODO: this could be more granular
+          scriptFileNamesCache = undefined;
+        }
+
+        projectVersionCache = newProjectVersion;
+
+        for (const script of changedScripts) {
+          scriptVersionCache.delete(script);
+          sourceFileCache.delete(script);
+        }
+        return respond(id);
+      }
       case "$restart": {
         serverRestart();
         return respond(id, true);

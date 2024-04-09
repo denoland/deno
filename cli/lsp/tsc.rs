@@ -279,6 +279,27 @@ impl TsServer {
     });
   }
 
+  pub async fn project_changed(
+    &self,
+    snapshot: Arc<StateSnapshot>,
+    modified_scripts: Vec<String>,
+    new_project_version: String,
+    tsconfig_changed: bool,
+  ) {
+    let req = TscRequest {
+      method: "$projectChanged",
+      args: json!([modified_scripts, new_project_version, tsconfig_changed]),
+    };
+    self
+      .request::<()>(snapshot, req)
+      .await
+      .map_err(|err| {
+        log::error!("Failed to request to tsserver {}", err);
+        LspError::invalid_request()
+      })
+      .ok();
+  }
+
   pub async fn get_diagnostics(
     &self,
     snapshot: Arc<StateSnapshot>,
