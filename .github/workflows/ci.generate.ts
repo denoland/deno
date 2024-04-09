@@ -678,7 +678,7 @@ const ci = {
           run: [
             // output fs space before and after building
             "df -h",
-            "cargo build --locked -p deno",
+            "cargo build --locked -- -p deno",
             "df -h",
           ].join("\n"),
           env: { CARGO_PROFILE_DEV_DEBUG: 0 },
@@ -703,7 +703,7 @@ const ci = {
           run: [
             // output fs space before and after building
             "df -h",
-            "cargo build --release --locked --all-targets",
+            "cargo build --release --locked --target=x86_64-unknown-linux-gnu -p deno",
             "df -h",
           ].join("\n"),
         },
@@ -720,7 +720,7 @@ const ci = {
           with: {
             name:
               "deno-${{ matrix.os }}-${{ matrix.arch }}-${{ github.event.number }}",
-            path: "target/release/deno",
+            path: "target/x86_64-unknown-linux-gnu/release/deno",
           },
         },
         {
