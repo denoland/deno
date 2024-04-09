@@ -123,21 +123,22 @@ function loadTlsKeyPair({
   keyFile,
   privateKey,
 }) {
+  // Check for "pem" format
   if (keyFormat !== undefined && keyFormat !== "pem") {
-    throw new TypeError("If keyFormat is specified, it must be pem");
+    throw new TypeError('If `keyFormat` is specified, it must be "pem"');
   }
   // Pick one pair of cert/key, certFile/keyFile or certChain/privateKey
   if ((cert !== undefined) ^ (key !== undefined)) {
-    throw new TypeError("If cert is specified, key must also be specified");
+    throw new TypeError("If `cert` is specified, `key` must also be specified");
   }
   if ((certFile !== undefined) ^ (keyFile !== undefined)) {
     throw new TypeError(
-      "If certFile is specified, keyFile must also be specified",
+      "If `certFile` is specified, `keyFile` must also be specified",
     );
   }
   if ((certChain !== undefined) ^ (privateKey !== undefined)) {
     throw new TypeError(
-      "If certChain is specified, privateKey must also be specified",
+      "If `certChain` is specified, `privateKey` must also be specified",
     );
   }
 
@@ -157,24 +158,24 @@ function loadTlsKeyPair({
     internals.warnOnDeprecatedApi(
       "Deno.TlsCertifiedKeyOptions.keyFile",
       new Error().stack,
-      "Pass the key file contents to the `Deno.TlsCertifiedKeyOptions.key` option instead.",
+      "Pass the key file's contents to the `Deno.TlsCertifiedKeyPem.key` option instead.",
     );
     internals.warnOnDeprecatedApi(
       "Deno.TlsCertifiedKeyOptions.certFile",
       new Error().stack,
-      "Pass the cert file contents to the `Deno.TlsCertifiedKeyOptions.cert` option instead.",
+      "Pass the cert file's contents to the `Deno.TlsCertifiedKeyPem.cert` option instead.",
     );
     return op_tls_key_static_from_file("Deno.listenTls", certFile, keyFile);
   } else if (certChain !== undefined) {
     internals.warnOnDeprecatedApi(
       "Deno.TlsCertifiedKeyOptions.privateKey",
       new Error().stack,
-      "Use the `Deno.TlsCertifiedKeyOptions.key` option instead.",
+      "Use the `Deno.TlsCertifiedKeyPem.key` option instead.",
     );
     internals.warnOnDeprecatedApi(
       "Deno.TlsCertifiedKeyOptions.certChain",
       new Error().stack,
-      "Use the `Deno.TlsCertifiedKeyOptions.cert` option instead.",
+      "Use the `Deno.TlsCertifiedKeyPem.cert` option instead.",
     );
     return op_tls_key_static_from_file("Deno.listenTls", certChain, privateKey);
   } else if (cert !== undefined) {
