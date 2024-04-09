@@ -121,7 +121,7 @@ RUSTFLAGS<<__1
   -C link-arg=--sysroot=/sysroot
   -C link-arg=-ldl
   -C link-arg=-Wl,--allow-shlib-undefined
-  -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
+  -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/x86_64-unknown-linux-gnu/release/lto-cache
   -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
   -Zsanitizer=memory
   -Zsanitizer-memory-track-origins
@@ -135,7 +135,7 @@ RUSTDOCFLAGS<<__1
   -C link-arg=--sysroot=/sysroot
   -C link-arg=-ldl
   -C link-arg=-Wl,--allow-shlib-undefined
-  -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
+  -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/x86_64-unknown-linux-gnu/release/lto-cache
   -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
   -Zsanitizer=memory
   -Zsanitizer-memory-track-origins
@@ -473,9 +473,9 @@ const ci = {
             "startsWith(github.ref, 'refs/tags/')",
           ].join("\n"),
           run: [
-            "mkdir -p target/release",
+            "mkdir -p target/x86_64-unknown-linux-gnu/release",
             'tar --exclude=".git*" --exclude=target --exclude=third_party/prebuilt \\',
-            "    -czvf target/release/deno_src.tar.gz -C .. deno",
+            "    -czvf target/x86_64-unknown-linux-gnu/release/deno_src.tar.gz -C .. deno",
           ].join("\n"),
         },
         installRustStep,
