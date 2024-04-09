@@ -966,14 +966,9 @@ declare namespace Deno {
    *
    * @example ```ts
    * const caCert = await Deno.readTextFile("./ca.pem");
-   * const client = Deno.createHttpClient({ caCerts: [ caCert ] });
-   * const response = await fetch("https://myserver.com", { client });
-   * ```
-   *
-   * @example ```ts
-   * const client = Deno.createHttpClient({
-   *   proxy: { url: "http://myproxy.com:8080" }
-   * });
+   * // Load a client key and certificate that we'll use to connect
+   * const { key, cert } = await loadKey("./cert.crt", "./key.key");
+   * const client = Deno.createHttpClient({ caCerts: [ caCert ], key, cert });
    * const response = await fetch("https://myserver.com", { client });
    * ```
    *
