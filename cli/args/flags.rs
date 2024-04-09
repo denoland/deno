@@ -32,6 +32,7 @@ use std::str::FromStr;
 use crate::util::fs::canonicalize_path;
 
 use super::flags_net;
+use super::DENO_FUTURE;
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct FileFlags {
@@ -1974,25 +1975,36 @@ The installation root is determined, in order of precedence:
   - $HOME/.deno
 
 These must be added to the path manually if required.")
-    .defer(|cmd| runtime_args(cmd, true, true).arg(Arg::new("cmd").required(true).num_args(1..).value_hint(ValueHint::FilePath))
-      .arg(check_arg(true))
-      .arg(
+    .defer(|cmd| {
+      let cmd = 
+      runtime_args(cmd, true, true)
+      .arg(check_arg(true));
+
+      let cmd = if *DENO_FUTURE {
+        cmd.arg(Arg::new("cmd").required_if_eq("global", "true").num_args(1..).value_hint(ValueHint::FilePath))
+      } else {
+        cmd.arg(Arg::new("cmd").required(true).num_args(1..).value_hint(ValueHint::FilePath))
+      };
+      
+      cmd.arg(
         Arg::new("name")
           .long("name")
           .short('n')
           .help("Executable file name")
-          .required(false))
+          .required(false)
+      )
       .arg(
         Arg::new("root")
           .long("root")
           .help("Installation root")
-          .value_hint(ValueHint::DirPath))
+          .value_hint(ValueHint::DirPath)
+      )
       .arg(
         Arg::new("force")
           .long("force")
           .short('f')
           .help("Forcefully overwrite existing installation")
-          .action(ArgAction::SetTrue))
+          .action(ArgAction::SetTrue)
       )
       .arg(
         Arg::new("global")
@@ -2002,6 +2014,7 @@ These must be added to the path manually if required.")
           .action(ArgAction::SetTrue)
       )
       .arg(env_file_arg())
+    })
 }
 
 fn jupyter_subcommand() -> Command {
@@ -3705,29 +3718,35 @@ fn info_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 
 fn install_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   runtime_args_parse(flags, matches, true, true);
-
-  let root = matches.remove_one::<String>("root");
-
-  let force = matches.get_flag("force");
+  
   let global = matches.get_flag("global");
-  let name = matches.remove_one::<String>("name");
-  let mut cmd_values = matches.remove_many::<String>("cmd").unwrap();
+  if global {
+    let root = matches.remove_one::<String>("root");
+    let force = matches.get_flag("force");
+    let name = matches.remove_one::<String>("name");
+    let mut cmd_values = matches.remove_many::<String>("cmd").unwrap_or_default();
 
-  let module_url = cmd_values.next().unwrap();
-  let args = cmd_values.collect();
+    let module_url = cmd_values.next().unwrap();
+    let args = cmd_values.collect();
 
-  flags.subcommand = DenoSubcommand::Install(InstallFlags {
-    // TODO(bartlomieju): remove once `deno install` supports both local and
-    // global installs
-    global,
-    kind: InstallKind::Global(InstallFlagsGlobal {
-      name,
-      module_url,
-      args,
-      root,
-      force,
-    }),
-  });
+    flags.subcommand = DenoSubcommand::Install(InstallFlags {
+      // TODO(bartlomieju): remove once `deno install` supports both local and
+      // global installs
+      global,
+      kind: InstallKind::Global(InstallFlagsGlobal {
+        name,
+        module_url,
+        args,
+        root,
+        force,
+      }),
+    });
+  } else {
+    flags.subcommand = DenoSubcommand::Install(InstallFlags {
+      global,
+      kind: InstallKind::Local,
+    })
+  }
 }
 
 fn jupyter_parse(flags: &mut Flags, matches: &mut ArgMatches) {
