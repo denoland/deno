@@ -1046,7 +1046,7 @@ delete Object.prototype.__proto__;
         }
 
         if (projectVersionCache !== newProjectVersion) {
-          // TODO: this could be more granular
+          // TODO(nathanwhit): this could be more granular
           scriptFileNamesCache = undefined;
         }
 
