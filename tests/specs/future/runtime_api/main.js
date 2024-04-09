@@ -61,16 +61,19 @@ if (Deno.build.os === "windows") {
 // TLS
 // Since these tests may run in parallel, ensure this port is unique to this file
 const tlsPort = 4510;
-const cert = Deno.readTextFileSync("../../../testdata/tls/localhost.crt");
-const key = Deno.readTextFileSync("../../../testdata/tls/localhost.key");
-const tlsListener = Deno.listenTls({ port: tlsPort, cert, key });
+const certFile = "../../../testdata/tls/localhost.crt";
+const privateKey = "../../../testdata/tls/localhost.key";
+const tlsListener = Deno.listenTls({
+  port: tlsPort,
+  cert: Deno.readTextFileSync(certFile),
+  key: Deno.readTextFileSync(privateKey),
+});
 console.log("Deno.TlsListener.prototype.rid is", tlsListener.rid);
 
 const tlsConn = await Deno.connectTls({ port: tlsPort });
 console.log("Deno.TlsConn.prototype.rid is", tlsConn.rid);
 
 tlsConn.close();
-tlsListener.close();
 
 const watcher = Deno.watchFs(".");
 console.log("Deno.FsWatcher.prototype.rid is", watcher.rid);
@@ -89,39 +92,50 @@ try {
 }
 
 try {
-  await Deno.connectTls({ port: tlsPort, certFile: "foo" });
+  await Deno.connectTls({
+    port: tlsPort,
+    certFile,
+    key: Deno.readTextFileSync(privateKey),
+  });
 } catch (error) {
   if (
     error instanceof TypeError &&
-    error.message ===
-      "`Deno.ConnectTlsOptions.certFile` has been removed in favor of `Deno.ConnectTlsOptions.cert`."
+    error.message === "No certificate chain provided"
   ) {
-    console.log("Deno.ConnectTlsOptions.certFile is illegal");
+    console.log("Deno.ConnectTlsOptions.certFile does nothing");
   }
 }
 
 try {
-  await Deno.connectTls({ port: tlsPort, certChain: "foo" });
+  await Deno.connectTls({
+    port: tlsPort,
+    certChain: certFile,
+    key: Deno.readTextFileSync(privateKey),
+  });
 } catch (error) {
   if (
     error instanceof TypeError &&
-    error.message ===
-      "`Deno.ConnectTlsOptions.certChain` has been removed in favor of `Deno.ConnectTlsOptions.cert`."
+    error.message === "No certificate chain provided"
   ) {
-    console.log("Deno.ConnectTlsOptions.certChain is illegal");
+    console.log("Deno.ConnectTlsOptions.certChain does nothing");
   }
 }
 
 try {
-  await Deno.connectTls({ port: tlsPort, privateKey: "foo" });
+  await Deno.connectTls({
+    port: tlsPort,
+    cert: Deno.readTextFileSync(certFile),
+    privateKey,
+  });
 } catch (error) {
   if (
     error instanceof TypeError &&
-    error.message ===
-      "`Deno.ConnectTlsOptions.privateKey` has been removed in favor of `Deno.ConnectTlsOptions.key`."
+    error.message === "No private key provided"
   ) {
-    console.log("Deno.ConnectTlsOptions.privateKey is illegal");
+    console.log("Deno.ConnectTlsOptions.privateKey does nothing");
   }
 }
+
+tlsListener.close();
 
 self.close();
