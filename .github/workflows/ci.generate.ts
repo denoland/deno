@@ -123,7 +123,6 @@ RUSTFLAGS<<__1
   -C link-arg=-Wl,--allow-shlib-undefined
   -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
   -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
-  -Zsanitizer=address
   -Zsanitizer=memory
   -Zsanitizer-memory-track-origins
   --cfg tokio_unstable
@@ -138,7 +137,6 @@ RUSTDOCFLAGS<<__1
   -C link-arg=-Wl,--allow-shlib-undefined
   -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
   -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
-  -Zsanitizer=address
   -Zsanitizer=memory
   -Zsanitizer-memory-track-origins
   \${{ env.RUSTFLAGS }}
