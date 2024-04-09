@@ -854,26 +854,28 @@ impl Inner {
   }
 
   pub fn update_tracing(&mut self) {
-    let tracing = self
-      .config
-      .workspace_settings()
-      .tracing
-      .as_ref()
-      .map(std::borrow::Cow::Borrowed)
-      .or_else(|| {
-        std::env::var("DENO_LSP_TRACE").ok().map(|_| {
-          std::borrow::Cow::Owned(super::trace::TracingConfig {
-            enable: true,
-            ..Default::default()
+    let tracing =
+      self
+        .config
+        .workspace_settings()
+        .tracing
+        .clone()
+        .or_else(|| {
+          std::env::var("DENO_LSP_TRACE").ok().map(|_| {
+            super::trace::TracingConfig {
+              enable: true,
+              ..Default::default()
+            }
+            .into()
           })
-        })
-      });
+        });
     self._tracing = tracing.and_then(|conf| {
-      if !conf.enable {
+      if !conf.enabled() {
         return None;
       }
       lsp_log!("Initializing tracing subscriber: {:#?}", conf);
-      super::trace::init_tracing_subscriber(&conf)
+      let config = conf.into();
+      super::trace::init_tracing_subscriber(&config)
         .inspect_err(|e| {
           lsp_warn!("Error initializing tracing subscriber: {e:#}");
         })

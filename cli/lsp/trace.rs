@@ -95,6 +95,40 @@ pub(crate) struct TracingConfig {
   pub(crate) max_queue_size: Option<usize>,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(untagged)]
+pub(crate) enum TracingConfigOrEnabled {
+  Config(TracingConfig),
+  Enabled(bool),
+}
+
+impl From<TracingConfig> for TracingConfigOrEnabled {
+  fn from(value: TracingConfig) -> Self {
+    TracingConfigOrEnabled::Config(value)
+  }
+}
+
+impl From<TracingConfigOrEnabled> for TracingConfig {
+  fn from(value: TracingConfigOrEnabled) -> Self {
+    match value {
+      TracingConfigOrEnabled::Config(config) => config,
+      TracingConfigOrEnabled::Enabled(enabled) => TracingConfig {
+        enable: enabled,
+        ..Default::default()
+      },
+    }
+  }
+}
+
+impl TracingConfigOrEnabled {
+  pub(crate) fn enabled(&self) -> bool {
+    match self {
+      TracingConfigOrEnabled::Config(config) => config.enable,
+      TracingConfigOrEnabled::Enabled(enabled) => *enabled,
+    }
+  }
+}
+
 pub(crate) fn init_tracing_subscriber(
   config: &TracingConfig,
 ) -> Result<TracingGuard, anyhow::Error> {

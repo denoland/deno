@@ -533,7 +533,7 @@ pub struct WorkspaceSettings {
   pub typescript: LanguageWorkspaceSettings,
 
   #[serde(default)]
-  pub tracing: Option<super::trace::TracingConfig>,
+  pub tracing: Option<super::trace::TracingConfigOrEnabled>,
 }
 
 impl Default for WorkspaceSettings {
