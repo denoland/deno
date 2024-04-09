@@ -96,9 +96,9 @@ jobs:
           github.repository == 'denoland/deno' &&
           startsWith(github.ref, 'refs/tags/'))
         run: |-
-          mkdir -p target/release
+          mkdir -p target/x86_64-unknown-linux-gnu/release
           tar --exclude=".git*" --exclude=target --exclude=third_party/prebuilt \
-              -czvf target/release/deno_src.tar.gz -C .. deno
+              -czvf target/x86_64-unknown-linux-gnu/release/deno_src.tar.gz -C .. deno
       - uses: dsherret/rust-toolchain-file@v1
         if: '!(matrix.skip)'
       - if: '!(matrix.skip) && (matrix.job == ''lint'' || matrix.job == ''test'' || matrix.job == ''bench'')'
@@ -233,7 +233,7 @@ jobs:
             -C link-arg=--sysroot=/sysroot
             -C link-arg=-ldl
             -C link-arg=-Wl,--allow-shlib-undefined
-            -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
+            -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/x86_64-unknown-linux-gnu/release/lto-cache
             -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
             -Zsanitizer=memory
             -Zsanitizer-memory-track-origins
@@ -247,7 +247,7 @@ jobs:
             -C link-arg=--sysroot=/sysroot
             -C link-arg=-ldl
             -C link-arg=-Wl,--allow-shlib-undefined
-            -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
+            -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/x86_64-unknown-linux-gnu/release/lto-cache
             -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
             -Zsanitizer=memory
             -Zsanitizer-memory-track-origins
@@ -328,15 +328,6 @@ jobs:
       - name: node_compat/setup.ts --check
         if: '!(matrix.skip) && (matrix.job == ''lint'' && matrix.os == ''linux'')'
         run: deno run --allow-write --allow-read --allow-run=git ./tests/node_compat/runner/setup.ts --check
-      - name: Build debug
-        if: '!(matrix.skip) && (matrix.job == ''test'' && matrix.profile == ''debug'')'
-        run: |-
-          df -h
-          rustup toolchain install nightly
-          cargo +nightly build -Zbuild-std --locked -- -p deno
-          df -h
-        env:
-          CARGO_PROFILE_DEV_DEBUG: 0
       - name: Build release
         if: |-
           !(matrix.skip) && ((matrix.job == 'test' || matrix.job == 'bench') &&
@@ -344,7 +335,9 @@ jobs:
           github.repository == 'denoland/deno'))
         run: |-
           df -h
-          cargo build --release --locked -p deno
+          rustup toolchain install nightly
+          rustup component add rust-src --toolchain nightly
+          cargo +nightly build --release -Zbuild-std --target x86_64-unknown-linux-gnu --locked -- -p deno
           df -h
       - name: Upload PR artifact (linux)
         if: |-
@@ -356,7 +349,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: 'deno-${{ matrix.os }}-${{ matrix.arch }}-${{ github.event.number }}'
-          path: target/release/deno
+          path: target/x86_64-unknown-linux-gnu/release/deno
       - name: Pre-release (linux)
         if: |-
           !(matrix.skip) && (matrix.os == 'linux' &&
