@@ -212,7 +212,7 @@ declare namespace Deno {
    * `PEM`-format (Privacy Enhanced Mail, https://www.rfc-editor.org/rfc/rfc1422) which can be identified by having
    * `-----BEGIN-----` and `-----END-----` markers at the beginning and end of the strings. This type of key is not compatible
    * with `DER`-format keys which are binary.
-   * 
+   *
    * Deno supports RSA, EC, and PKCS8-format keys.
    *
    * ```ts
@@ -441,6 +441,27 @@ declare namespace Deno {
    * @category Network
    */
   export function connectTls(options: ConnectTlsOptions): Promise<TlsConn>;
+
+  /** Establishes a secure connection over TLS (transport layer security) using
+   * an optional cert file, client certificate, hostname (default is "127.0.0.1") and
+   * port.  The cert file is optional and if not included Mozilla's root certificates will
+   * be used (see also https://github.com/ctz/webpki-roots for specifics)
+   *
+   * ```ts
+   * const caCert = await Deno.readTextFile("./certs/my_custom_root_CA.pem");
+   * const key = "----BEGIN PRIVATE KEY----...";
+   * const cert = "----BEGIN CERTIFICATE----...";
+   * const conn1 = await Deno.connectTls({ port: 80, key, cert });
+   * const conn2 = await Deno.connectTls({ caCerts: [caCert], hostname: "192.0.2.1", port: 80, key, cert });
+   * const conn3 = await Deno.connectTls({ hostname: "[2001:db8::1]", port: 80, key, cert });
+   * const conn4 = await Deno.connectTls({ caCerts: [caCert], hostname: "golang.org", port: 80, key, cert });
+   * ```
+   *
+   * Requires `allow-net` permission.
+   *
+   * @tags allow-net
+   * @category Network
+   */
   export function connectTls(
     options: ConnectTlsOptions & TlsCertifiedKeyOptions,
   ): Promise<TlsConn>;
