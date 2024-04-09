@@ -151,24 +151,24 @@ function loadTlsKeyPair({
 
   if (certFile !== undefined) {
     internals.warnOnDeprecatedApi(
-      "Deno.ListenTlsOptions.keyFile",
+      "Deno.TlsCertifiedKeyOptions.keyFile",
       new Error().stack,
       "Pass the key file contents to the `Deno.TlsCertifiedKeyOptions.key` option instead.",
     );
     internals.warnOnDeprecatedApi(
-      "Deno.ListenTlsOptions.certFile",
+      "Deno.TlsCertifiedKeyOptions.certFile",
       new Error().stack,
       "Pass the cert file contents to the `Deno.TlsCertifiedKeyOptions.cert` option instead.",
     );
     return op_tls_key_static_from_file("Deno.listenTls", certFile, keyFile);
   } else if (certChain !== undefined) {
     internals.warnOnDeprecatedApi(
-      "Deno.ConnectTlsOptions.privateKey",
+      "Deno.TlsCertifiedKeyOptions.privateKey",
       new Error().stack,
       "Use the `Deno.TlsCertifiedKeyOptions.key` option instead.",
     );
     internals.warnOnDeprecatedApi(
-      "Deno.ConnectTlsOptions.certChain",
+      "Deno.TlsCertifiedKeyOptions.certChain",
       new Error().stack,
       "Use the `Deno.TlsCertifiedKeyOptions.cert` option instead.",
     );

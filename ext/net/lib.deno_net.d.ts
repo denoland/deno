@@ -212,6 +212,8 @@ declare namespace Deno {
    * `PEM`-format (Privacy Enhanced Mail, https://www.rfc-editor.org/rfc/rfc1422) which can be identified by having
    * `-----BEGIN-----` and `-----END-----` markers at the beginning and end of the strings. This type of key is not compatible
    * with `DER`-format keys which are binary.
+   * 
+   * Deno supports RSA, EC, and PKCS8-format keys.
    *
    * ```ts
    * const key = {
@@ -223,9 +225,9 @@ declare namespace Deno {
    * @category Network
    */
   export interface TlsCertifiedKeyFromString {
-    /** Private key in `PEM` format */
+    /** Private key in `PEM` format. RSA, EC, and PKCS8-format keys are supported. */
     key: string;
-    /** Certificate chain in `PEM` format */
+    /** Certificate chain in `PEM` format. */
     cert: string;
   }
 
@@ -265,7 +267,7 @@ declare namespace Deno {
    */
   export interface TlsCertifiedKeyConnectTls {
     /**
-     * PEM formatted client certificate chain.
+     * Certificate chain in `PEM` format.
      *
      * @deprecated This will be removed in Deno 2.0. See the
      * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
@@ -273,7 +275,7 @@ declare namespace Deno {
      */
     certChain: string;
     /**
-     * PEM formatted (RSA or PKCS8) private key of client certificate.
+     * Private key in `PEM` format. RSA, EC, and PKCS8-format keys are supported.
      *
      * @deprecated This will be removed in Deno 2.0. See the
      * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
