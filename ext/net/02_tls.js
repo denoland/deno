@@ -57,7 +57,7 @@ async function connectTls({
   if (transport !== "tcp") {
     throw new TypeError(`Unsupported transport: '${transport}'`);
   }
-  const keyPair = loadTlsKeyPair(arguments[0]);
+  const keyPair = loadTlsKeyPair("Deno.connectTls", arguments[0]);
   const { 0: rid, 1: localAddr, 2: remoteAddr } = await op_net_connect_tls(
     { hostname, port },
     { certFile, caCerts, cert, key, alpnProtocols },
@@ -114,7 +114,7 @@ function hasTlsKeyPairOptions(options) {
  * Loads a TLS keypair from one of the various options. If no key material is provided,
  * returns a special Null keypair.
  */
-function loadTlsKeyPair({
+function loadTlsKeyPair(api, {
   keyFormat,
   cert,
   certFile,
@@ -165,8 +165,13 @@ function loadTlsKeyPair({
       new Error().stack,
       "Pass the cert file's contents to the `Deno.TlsCertifiedKeyPem.cert` option instead.",
     );
-    return op_tls_key_static_from_file("Deno.listenTls", certFile, keyFile);
+    return op_tls_key_static_from_file(api, certFile, keyFile);
   } else if (certChain !== undefined) {
+    if (api !== "Deno.connectTls") {
+      throw new TypeError(
+        `Invalid options 'certChain' and 'privateKey' for ${api}`,
+      );
+    }
     internals.warnOnDeprecatedApi(
       "Deno.TlsCertifiedKeyOptions.privateKey",
       new Error().stack,
@@ -199,7 +204,7 @@ function listenTls({
   if (!hasTlsKeyPairOptions(arguments[0])) {
     throw new TypeError("A key and certificate are required for `listenTls`");
   }
-  const keyPair = loadTlsKeyPair(arguments[0]);
+  const keyPair = loadTlsKeyPair("Deno.listenTls", arguments[0]);
   const { 0: rid, 1: localAddr } = op_net_listen_tls(
     { hostname, port: Number(port) },
     { alpnProtocols, reusePort },
