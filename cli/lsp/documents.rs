@@ -1411,13 +1411,7 @@ impl Documents {
     if !is_fs_docs_dirty && !self.dirty {
       return;
     }
-    let documents = self
-      .file_system_docs
-      .docs
-      .iter()
-      .map(|p| p.value().clone())
-      .chain(self.open_docs.values().cloned());
-    for doc in documents {
+    let mut visit_doc = |doc: &Arc<Document>| {
       for dependency in doc.dependencies().values() {
         if let Some(dep) = dependency.get_code() {
           if dep.scheme() == "node" {
@@ -1438,6 +1432,12 @@ impl Documents {
           npm_reqs.insert(reference.into_inner().req);
         }
       }
+    };
+    for entry in self.file_system_docs.docs.iter() {
+      visit_doc(entry.value())
+    }
+    for doc in self.open_docs.values() {
+      visit_doc(doc);
     }
 
     // fill the reqs from the lockfile
