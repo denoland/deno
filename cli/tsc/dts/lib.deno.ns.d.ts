@@ -2283,7 +2283,7 @@ declare namespace Deno {
   /** The Deno abstraction for reading and writing files.
    *
    * This is the most straight forward way of handling files within Deno and is
-   * recommended over using the discreet functions within the `Deno` namespace.
+   * recommended over using the discrete functions within the `Deno` namespace.
    *
    * ```ts
    * using file = await Deno.open("/foo/bar.txt", { read: true });
@@ -2786,7 +2786,7 @@ declare namespace Deno {
    */
   export const stdin: Reader & ReaderSync & Closer & {
     /**
-     * The resource ID assigned to `stdin`. This can be used with the discreet
+     * The resource ID assigned to `stdin`. This can be used with the discrete
      * I/O functions in the `Deno` namespace.
      *
      * @deprecated This will be soft-removed in Deno 2.0. See the
@@ -2834,7 +2834,7 @@ declare namespace Deno {
    */
   export const stdout: Writer & WriterSync & Closer & {
     /**
-     * The resource ID assigned to `stdout`. This can be used with the discreet
+     * The resource ID assigned to `stdout`. This can be used with the discrete
      * I/O functions in the `Deno` namespace.
      *
      * @deprecated This will be soft-removed in Deno 2.0. See the
@@ -2868,7 +2868,7 @@ declare namespace Deno {
    */
   export const stderr: Writer & WriterSync & Closer & {
     /**
-     * The resource ID assigned to `stderr`. This can be used with the discreet
+     * The resource ID assigned to `stderr`. This can be used with the discrete
      * I/O functions in the `Deno` namespace.
      *
      * @deprecated This will be soft-removed in Deno 2.0. See the
