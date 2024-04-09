@@ -4,7 +4,6 @@ use base64::Engine;
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
-use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
@@ -14,7 +13,6 @@ use deno_core::url;
 use deno_core::ModuleSpecifier;
 use deno_graph::GraphKind;
 use deno_graph::Resolution;
-use deno_lockfile::Lockfile;
 use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::NodeResolver;
@@ -54,6 +52,7 @@ use super::client::Client;
 use super::code_lens;
 use super::completions;
 use super::config::Config;
+use super::config::ConfigData;
 use super::config::ConfigSnapshot;
 use super::config::UpdateImportsOnFileMoveEnabled;
 use super::config::WorkspaceSettings;
@@ -92,7 +91,6 @@ use crate::args::get_root_cert_store;
 use crate::args::CaData;
 use crate::args::CacheSetting;
 use crate::args::CliOptions;
-use crate::args::ConfigFile;
 use crate::args::Flags;
 use crate::cache::DenoDir;
 use crate::cache::FastInsecureHasher;
@@ -152,10 +150,9 @@ struct LspNpmConfigHash(u64);
 impl LspNpmConfigHash {
   pub fn from_inner(inner: &Inner) -> Self {
     let config_data = inner.config.tree.root_data();
-    let node_modules_dir = config_data
-      .as_ref()
-      .and_then(|d| d.node_modules_dir.as_ref());
-    let lockfile = config_data.as_ref().and_then(|d| d.lockfile.as_ref());
+    let node_modules_dir =
+      config_data.and_then(|d| d.node_modules_dir.as_ref());
+    let lockfile = config_data.and_then(|d| d.lockfile.as_ref());
     let mut hasher = FastInsecureHasher::new();
     hasher.write_hashable(node_modules_dir);
     hasher.write_hashable(&inner.maybe_global_cache_path);
@@ -289,7 +286,7 @@ impl LanguageServer {
     async fn create_graph_for_caching(
       cli_options: CliOptions,
       roots: Vec<ModuleSpecifier>,
-      open_docs: Vec<Document>,
+      open_docs: Vec<Arc<Document>>,
     ) -> Result<(), AnyError> {
       let open_docs = open_docs
         .into_iter()
@@ -334,11 +331,7 @@ impl LanguageServer {
     // do as much as possible in a read, then do a write outside
     let maybe_prepare_cache_result = {
       let inner = self.0.read().await; // ensure dropped
-      match inner.prepare_cache(
-        specifiers,
-        referrer.clone(),
-        force_global_cache,
-      ) {
+      match inner.prepare_cache(specifiers, referrer, force_global_cache) {
         Ok(maybe_cache_result) => maybe_cache_result,
         Err(err) => {
           lsp_warn!("Error preparing caching: {:#}", err);
@@ -370,8 +363,8 @@ impl LanguageServer {
       }
       {
         let mut inner = self.0.write().await;
-        let lockfile = inner.config.tree.lockfile_for_specifier(&referrer);
-        inner.documents.refresh_jsr_resolver(lockfile);
+        let lockfile = inner.config.tree.root_lockfile().cloned();
+        inner.documents.refresh_lockfile(lockfile);
         inner.refresh_npm_specifiers().await;
       }
       // now refresh the data in a read
@@ -516,11 +509,8 @@ impl Inner {
     let cache_metadata = cache::CacheMetadata::new(deps_http_cache.clone());
     let performance = Arc::new(Performance::default());
     let config = Config::default();
-    let ts_server = Arc::new(TsServer::new(
-      performance.clone(),
-      deps_http_cache.clone(),
-      config.tree.clone(),
-    ));
+    let ts_server =
+      Arc::new(TsServer::new(performance.clone(), deps_http_cache.clone()));
     let diagnostics_state = Arc::new(DiagnosticsState::default());
     let diagnostics_server = DiagnosticsServer::new(
       client.clone(),
@@ -765,7 +755,10 @@ impl Inner {
     ));
     let maybe_local_cache =
       self.config.tree.root_vendor_dir().map(|local_path| {
-        Arc::new(LocalLspHttpCache::new(local_path, global_cache.clone()))
+        Arc::new(LocalLspHttpCache::new(
+          local_path.clone(),
+          global_cache.clone(),
+        ))
       });
     let cache: Arc<dyn HttpCache> = maybe_local_cache
       .clone()
@@ -796,11 +789,7 @@ impl Inner {
       &deno_dir,
       &self.initial_cwd,
       &self.http_client,
-      config_data.as_ref().and_then(|d| d.config_file.as_deref()),
-      config_data.as_ref().and_then(|d| d.lockfile.as_ref()),
-      config_data
-        .as_ref()
-        .and_then(|d| d.node_modules_dir.clone()),
+      config_data,
     )
     .await;
     let node_resolver = Arc::new(NodeResolver::new(
@@ -858,16 +847,10 @@ async fn create_npm_resolver(
   deno_dir: &DenoDir,
   initial_cwd: &Path,
   http_client: &Arc<HttpClient>,
-  maybe_config_file: Option<&ConfigFile>,
-  maybe_lockfile: Option<&Arc<Mutex<Lockfile>>>,
-  maybe_node_modules_dir_path: Option<PathBuf>,
+  config_data: Option<&ConfigData>,
 ) -> Arc<dyn CliNpmResolver> {
-  let is_byonm = std::env::var("DENO_UNSTABLE_BYONM").as_deref() == Ok("1")
-    || maybe_config_file
-      .as_ref()
-      .map(|c| c.has_unstable("byonm"))
-      .unwrap_or(false);
-  create_cli_npm_resolver_for_lsp(if is_byonm {
+  let byonm = config_data.map(|d| d.byonm).unwrap_or(false);
+  create_cli_npm_resolver_for_lsp(if byonm {
     CliNpmResolverCreateOptions::Byonm(CliNpmResolverByonmCreateOptions {
       fs: Arc::new(deno_fs::RealFs),
       root_node_modules_dir: initial_cwd.join("node_modules"),
@@ -875,7 +858,7 @@ async fn create_npm_resolver(
   } else {
     CliNpmResolverCreateOptions::Managed(CliNpmResolverManagedCreateOptions {
       http_client: http_client.clone(),
-      snapshot: match maybe_lockfile {
+      snapshot: match config_data.and_then(|d| d.lockfile.as_ref()) {
         Some(lockfile) => {
           CliNpmResolverManagedSnapshotOption::ResolveFromLockfile(
             lockfile.clone(),
@@ -894,7 +877,8 @@ async fn create_npm_resolver(
       // the user is typing.
       cache_setting: CacheSetting::Only,
       text_only_progress_bar: ProgressBar::new(ProgressBarStyle::TextOnly),
-      maybe_node_modules_path: maybe_node_modules_dir_path,
+      maybe_node_modules_path: config_data
+        .and_then(|d| d.node_modules_dir.clone()),
       // do not install while resolving in the lsp—leave that to the cache command
       package_json_installer:
         CliNpmResolverManagedPackageJsonInstallerOption::NoInstall,
@@ -1154,42 +1138,33 @@ impl Inner {
 
   async fn refresh_config_tree(&mut self) {
     let file_fetcher = self.create_file_fetcher(CacheSetting::RespectHeaders);
-    if let Some(root_uri) = self.config.root_uri() {
-      self
-        .config
-        .tree
-        .refresh(
-          &self.config.settings,
-          root_uri,
-          &self.workspace_files,
-          &file_fetcher,
-        )
-        .await;
-      for config_file in self.config.tree.config_files() {
-        if let Ok((compiler_options, _)) = config_file.to_compiler_options() {
-          if let Some(compiler_options_obj) = compiler_options.as_object() {
-            if let Some(jsx_import_source) =
-              compiler_options_obj.get("jsxImportSource")
-            {
-              if let Some(jsx_import_source) = jsx_import_source.as_str() {
-                let specifiers = vec![Url::parse(&format!(
-                  "data:application/typescript;base64,{}",
-                  base64::engine::general_purpose::STANDARD.encode(format!(
-                    "import '{jsx_import_source}/jsx-runtime';"
-                  ))
-                ))
-                .unwrap()];
-                let referrer = config_file.specifier.clone();
-                self.task_queue.queue_task(Box::new(|ls: LanguageServer| {
-                  spawn(async move {
-                    if let Err(err) =
-                      ls.cache(specifiers, referrer, false).await
-                    {
-                      lsp_warn!("{:#}", err);
-                    }
-                  });
-                }));
-              }
+    self
+      .config
+      .tree
+      .refresh(&self.config.settings, &self.workspace_files, &file_fetcher)
+      .await;
+    for config_file in self.config.tree.config_files() {
+      if let Ok((compiler_options, _)) = config_file.to_compiler_options() {
+        if let Some(compiler_options_obj) = compiler_options.as_object() {
+          if let Some(jsx_import_source) =
+            compiler_options_obj.get("jsxImportSource")
+          {
+            if let Some(jsx_import_source) = jsx_import_source.as_str() {
+              let specifiers = vec![Url::parse(&format!(
+                "data:application/typescript;base64,{}",
+                base64::engine::general_purpose::STANDARD
+                  .encode(format!("import '{jsx_import_source}/jsx-runtime';"))
+              ))
+              .unwrap()];
+              let referrer = config_file.specifier.clone();
+              self.task_queue.queue_task(Box::new(|ls: LanguageServer| {
+                spawn(async move {
+                  if let Err(err) = ls.cache(specifiers, referrer, false).await
+                  {
+                    lsp_warn!("{:#}", err);
+                  }
+                });
+              }));
             }
           }
         }
@@ -1218,7 +1193,7 @@ impl Inner {
     &mut self,
     specifier: &ModuleSpecifier,
     params: DidOpenTextDocumentParams,
-  ) -> Document {
+  ) -> Arc<Document> {
     let mark = self.performance.mark_with_args("lsp.did_open", &params);
     let language_id =
       params
@@ -1383,7 +1358,7 @@ impl Inner {
             _ => return None,
           };
           Some(lsp_custom::DenoConfigurationChangeEvent {
-            scope_uri: t.0,
+            scope_uri: t.0.clone(),
             file_uri: e.uri.clone(),
             typ: lsp_custom::DenoConfigurationChangeType::from_file_change_type(
               e.typ,
@@ -1407,7 +1382,7 @@ impl Inner {
             _ => return None,
           };
           Some(lsp_custom::DenoConfigurationChangeEvent {
-            scope_uri: t.0,
+            scope_uri: t.0.clone(),
             file_uri: e.uri.clone(),
             typ: lsp_custom::DenoConfigurationChangeType::from_file_change_type(
               e.typ,
@@ -1589,7 +1564,6 @@ impl Inner {
         Ok(Some(text_edits))
       }
     } else {
-      self.client.show_message(MessageType::WARNING, format!("Unable to format \"{specifier}\". Likely due to unrecoverable syntax errors in the file."));
       Ok(None)
     }
   }
@@ -2010,11 +1984,11 @@ impl Inner {
 
   pub fn get_ts_response_import_mapper(
     &self,
-    referrer: &ModuleSpecifier,
+    _referrer: &ModuleSpecifier,
   ) -> TsResponseImportMapper {
     TsResponseImportMapper::new(
       &self.documents,
-      self.config.tree.import_map_for_specifier(referrer),
+      self.config.tree.root_import_map().map(|i| i.as_ref()),
       self.npm.node_resolver.as_deref(),
       self.npm.resolver.as_deref(),
     )
@@ -2327,7 +2301,7 @@ impl Inner {
         &self.jsr_search_api,
         &self.npm.search_api,
         &self.documents,
-        self.config.tree.import_map_for_specifier(&specifier),
+        self.config.tree.root_import_map().map(|i| i.as_ref()),
       )
       .await;
     }
@@ -3112,7 +3086,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
       }
 
       let mut config_events = vec![];
-      for (scope_uri, config_data) in ls.config.tree.data_by_scope() {
+      for (scope_uri, config_data) in ls.config.tree.data_by_scope().iter() {
         if let Some(config_file) = &config_data.config_file {
           config_events.push(lsp_custom::DenoConfigurationChangeEvent {
             scope_uri: scope_uri.clone(),
@@ -3478,7 +3452,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
 struct PrepareCacheResult {
   cli_options: CliOptions,
   roots: Vec<ModuleSpecifier>,
-  open_docs: Vec<Document>,
+  open_docs: Vec<Arc<Document>>,
   mark: PerformanceMark,
 }
 
@@ -3493,7 +3467,7 @@ impl Inner {
     let mark = self
       .performance
       .mark_with_args("lsp.cache", (&specifiers, &referrer));
-    let config_data = self.config.tree.data_for_specifier(&referrer);
+    let config_data = self.config.tree.root_data();
     let roots = if !specifiers.is_empty() {
       specifiers
     } else {
@@ -3508,7 +3482,7 @@ impl Inner {
         unsafely_ignore_certificate_errors: workspace_settings
           .unsafely_ignore_certificate_errors
           .clone(),
-        import_map_path: config_data.as_ref().and_then(|d| {
+        import_map_path: config_data.and_then(|d| {
           if d.import_map_from_settings {
             return Some(d.import_map.as_ref()?.base_url().to_string());
           }
@@ -3516,7 +3490,6 @@ impl Inner {
         }),
         node_modules_dir: Some(
           config_data
-            .as_ref()
             .and_then(|d| d.node_modules_dir.as_ref())
             .is_some(),
         ),
@@ -3525,13 +3498,9 @@ impl Inner {
         ..Default::default()
       },
       self.initial_cwd.clone(),
-      config_data
-        .as_ref()
-        .and_then(|d| d.config_file.as_deref().cloned()),
-      config_data.as_ref().and_then(|d| d.lockfile.clone()),
-      config_data
-        .as_ref()
-        .and_then(|d| d.package_json.as_deref().cloned()),
+      config_data.and_then(|d| d.config_file.as_deref().cloned()),
+      config_data.and_then(|d| d.lockfile.clone()),
+      config_data.and_then(|d| d.package_json.as_deref().cloned()),
       force_global_cache,
     )?;
 

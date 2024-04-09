@@ -454,7 +454,7 @@ const ci = {
           if: "matrix.wpt",
         },
         {
-          ...submoduleStep("./tools/node_compat/node"),
+          ...submoduleStep("./tests/node_compat/runner/suite"),
           if: "matrix.job == 'lint' && matrix.os == 'linux'",
         },
         {
@@ -546,6 +546,17 @@ const ci = {
         {
           if: "matrix.use_sysroot",
           ...sysRootStep,
+        },
+        {
+          name: "Remove macOS cURL --ipv4 flag",
+          run: [
+            // cURL's --ipv4 flag is busted for now
+            "curl --version",
+            "which curl",
+            "cat /etc/hosts",
+            "rm ~/.curlrc || true",
+          ].join("\n"),
+          if: `matrix.os == 'macos'`,
         },
         {
           name: "Install macOS aarch64 lld",
@@ -653,7 +664,7 @@ const ci = {
           name: "node_compat/setup.ts --check",
           if: "matrix.job == 'lint' && matrix.os == 'linux'",
           run:
-            "deno run --allow-write --allow-read --allow-run=git ./tools/node_compat/setup.ts --check",
+            "deno run --allow-write --allow-read --allow-run=git ./tests/node_compat/runner/setup.ts --check",
         },
         {
           name: "Build debug",

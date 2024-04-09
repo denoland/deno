@@ -7,11 +7,15 @@ import {
   op_net_connect_tls,
   op_net_listen_tls,
   op_tls_handshake,
+  op_tls_key_null,
+  op_tls_key_static,
+  op_tls_key_static_from_file,
   op_tls_start,
 } from "ext:core/ops";
 const {
   Number,
   ObjectDefineProperty,
+  ReflectHas,
   TypeError,
 } = primordials;
 
@@ -91,9 +95,11 @@ async function connectTls({
   }
   cert ??= certChain;
   key ??= privateKey;
+  const keyPair = loadTlsKeyPair(cert, undefined, key, undefined);
   const { 0: rid, 1: localAddr, 2: remoteAddr } = await op_net_connect_tls(
     { hostname, port },
     { certFile, caCerts, cert, key, alpnProtocols },
+    keyPair,
   );
   localAddr.transport = "tcp";
   remoteAddr.transport = "tcp";
@@ -131,6 +137,36 @@ class TlsListener extends Listener {
   }
 }
 
+function hasTlsKeyPairOptions(options) {
+  return (ReflectHas(options, "cert") || ReflectHas(options, "key") ||
+    ReflectHas(options, "certFile") ||
+    ReflectHas(options, "keyFile"));
+}
+
+function loadTlsKeyPair(
+  cert,
+  certFile,
+  key,
+  keyFile,
+) {
+  if ((certFile !== undefined) ^ (keyFile !== undefined)) {
+    throw new TypeError(
+      "If certFile is specified, keyFile must also be specified",
+    );
+  }
+  if ((cert !== undefined) ^ (key !== undefined)) {
+    throw new TypeError("If cert is specified, key must also be specified");
+  }
+
+  if (certFile !== undefined) {
+    return op_tls_key_static_from_file("Deno.listenTls", certFile, keyFile);
+  } else if (cert !== undefined) {
+    return op_tls_key_static(cert, key);
+  } else {
+    return op_tls_key_null();
+  }
+}
+
 function listenTls({
   port,
   cert,
@@ -159,9 +195,12 @@ function listenTls({
       "Pass the cert file contents to the `Deno.ListenTlsOptions.cert` option instead.",
     );
   }
+
+  const keyPair = loadTlsKeyPair(cert, certFile, key, keyFile);
   const { 0: rid, 1: localAddr } = op_net_listen_tls(
     { hostname, port: Number(port) },
-    { cert, certFile, key, keyFile, alpnProtocols, reusePort },
+    { alpnProtocols, reusePort },
+    keyPair,
   );
   return new TlsListener(rid, localAddr);
 }
@@ -184,4 +223,12 @@ async function startTls(
   return new TlsConn(rid, remoteAddr, localAddr);
 }
 
-export { connectTls, listenTls, startTls, TlsConn, TlsListener };
+export {
+  connectTls,
+  hasTlsKeyPairOptions,
+  listenTls,
+  loadTlsKeyPair,
+  startTls,
+  TlsConn,
+  TlsListener,
+};

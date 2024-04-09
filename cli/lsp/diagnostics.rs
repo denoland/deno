@@ -792,8 +792,14 @@ fn generate_lint_diagnostics(
   let config_data_by_scope = config.tree.data_by_scope();
   let mut diagnostics_vec = Vec::new();
   for document in documents {
-    let settings =
-      config.workspace_settings_for_specifier(document.specifier());
+    let specifier = document.specifier();
+    if specifier.scheme() != "file" {
+      continue;
+    }
+    if !config.specifier_enabled(specifier) {
+      continue;
+    }
+    let settings = config.workspace_settings_for_specifier(specifier);
     if !settings.lint {
       continue;
     }
@@ -803,26 +809,25 @@ fn generate_lint_diagnostics(
     }
     // ignore any npm package files
     if let Some(npm) = &snapshot.npm {
-      if npm.node_resolver.in_npm_package(document.specifier()) {
+      if npm.node_resolver.in_npm_package(specifier) {
         continue;
       }
     }
     let version = document.maybe_lsp_version();
     let (lint_options, lint_rules) = config
       .tree
-      .scope_for_specifier(document.specifier())
-      .and_then(|s| config_data_by_scope.get(&s))
+      .scope_for_specifier(specifier)
+      .and_then(|s| config_data_by_scope.get(s))
       .map(|d| (d.lint_options.clone(), d.lint_rules.clone()))
       .unwrap_or_default();
     diagnostics_vec.push(DiagnosticRecord {
-      specifier: document.specifier().clone(),
+      specifier: specifier.clone(),
       versioned: VersionedDiagnostics {
         version,
         diagnostics: generate_document_lint_diagnostics(
-          config,
+          &document,
           &lint_options,
           lint_rules.rules.clone(),
-          &document,
         ),
       },
     });
@@ -831,14 +836,10 @@ fn generate_lint_diagnostics(
 }
 
 fn generate_document_lint_diagnostics(
-  config: &ConfigSnapshot,
+  document: &Document,
   lint_options: &LintOptions,
   lint_rules: Vec<&'static dyn LintRule>,
-  document: &Document,
 ) -> Vec<lsp::Diagnostic> {
-  if !config.specifier_enabled(document.specifier()) {
-    return Vec::new();
-  }
   if !lint_options.files.matches_specifier(document.specifier()) {
     return Vec::new();
   }
@@ -1452,8 +1453,8 @@ fn diagnose_dependency(
     }
   }
 
-  let import_map = snapshot.config.tree.import_map_for_specifier(referrer);
-  if let Some(import_map) = &import_map {
+  let import_map = snapshot.config.tree.root_import_map();
+  if let Some(import_map) = import_map {
     if let Resolution::Ok(resolved) = &dependency.maybe_code {
       if let Some(to) = import_map.lookup(&resolved.specifier, referrer) {
         if dependency_key != to {
@@ -1502,7 +1503,7 @@ fn diagnose_dependency(
       },
       dependency.is_dynamic,
       dependency.maybe_attribute_type.as_deref(),
-      import_map.as_deref(),
+      import_map.map(|i| i.as_ref()),
     )
     .iter()
     .flat_map(|diag| {
@@ -1525,7 +1526,7 @@ fn diagnose_dependency(
         &dependency.maybe_type,
         dependency.is_dynamic,
         dependency.maybe_attribute_type.as_deref(),
-        import_map.as_deref(),
+        import_map.map(|i| i.as_ref()),
       )
       .iter()
       .map(|diag| diag.to_lsp_diagnostic(&range)),
@@ -1614,7 +1615,7 @@ mod tests {
         (*source).into(),
       );
     }
-    let config = Config::new_with_roots([resolve_url("file:///").unwrap()]);
+    let mut config = Config::new_with_roots([resolve_url("file:///").unwrap()]);
     if let Some((base_url, json_string)) = maybe_import_map {
       let base_url = resolve_url(base_url).unwrap();
       let config_file = ConfigFile::new(
@@ -1689,8 +1690,7 @@ let c: number = "a";
     let snapshot = Arc::new(snapshot);
     let cache =
       Arc::new(GlobalHttpCache::new(cache_location, RealDenoCacheEnv));
-    let ts_server =
-      TsServer::new(Default::default(), cache, Default::default());
+    let ts_server = TsServer::new(Default::default(), cache);
     ts_server.start(None);
 
     // test enabled
@@ -1754,6 +1754,9 @@ let c: number = "a";
   fn get_diagnostics_for_single(
     diagnostic_vec: DiagnosticVec,
   ) -> Vec<lsp::Diagnostic> {
+    if diagnostic_vec.is_empty() {
+      return vec![];
+    }
     assert_eq!(diagnostic_vec.len(), 1);
     diagnostic_vec
       .into_iter()

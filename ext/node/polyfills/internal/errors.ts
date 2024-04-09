@@ -17,6 +17,8 @@
  * ERR_INVALID_PACKAGE_CONFIG // package.json stuff, probably useless
  */
 
+import { primordials } from "ext:core/mod.js";
+const { JSONStringify } = primordials;
 import { format, inspect } from "ext:deno_node/internal/util/inspect.mjs";
 import { codes } from "ext:deno_node/internal/error_codes.ts";
 import {
@@ -2629,6 +2631,11 @@ codes.ERR_OUT_OF_RANGE = ERR_OUT_OF_RANGE;
 codes.ERR_SOCKET_BAD_PORT = ERR_SOCKET_BAD_PORT;
 codes.ERR_BUFFER_OUT_OF_BOUNDS = ERR_BUFFER_OUT_OF_BOUNDS;
 codes.ERR_UNKNOWN_ENCODING = ERR_UNKNOWN_ENCODING;
+codes.ERR_PARSE_ARGS_INVALID_OPTION_VALUE = ERR_PARSE_ARGS_INVALID_OPTION_VALUE;
+codes.ERR_PARSE_ARGS_UNEXPECTED_POSITIONAL =
+  ERR_PARSE_ARGS_UNEXPECTED_POSITIONAL;
+codes.ERR_PARSE_ARGS_UNKNOWN_OPTION = ERR_PARSE_ARGS_UNKNOWN_OPTION;
+
 // TODO(kt3k): assign all error classes here.
 
 /**
@@ -2846,6 +2853,7 @@ export default {
   ERR_OUT_OF_RANGE,
   ERR_PACKAGE_IMPORT_NOT_DEFINED,
   ERR_PACKAGE_PATH_NOT_EXPORTED,
+  ERR_PARSE_ARGS_INVALID_OPTION_VALUE,
   ERR_QUICCLIENTSESSION_FAILED,
   ERR_QUICCLIENTSESSION_FAILED_SETSOCKET,
   ERR_QUICSESSION_DESTROYED,

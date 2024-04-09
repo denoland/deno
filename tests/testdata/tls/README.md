@@ -38,6 +38,14 @@ openssl x509 -req -sha256 -days 36135 -in localhost.csr -CA RootCA.pem -CAkey Ro
 Note that the country / state / city / name in the first command can be
 customized.
 
+Generate localhost_ecc.key, localhost_ecc.csr, and localhost_ecc.crt:
+
+```shell
+openssl ecparam -genkey -name prime256v1 -noout --out localhost_ecc.key
+openssl req -new -key localhost_ecc.key -out localhost_ecc.csr -subj "/C=US/ST=YourState/L=YourCity/O=Example-Certificates/CN=localhost.local"
+openssl x509 -req -sha256 -days 36135 -in localhost_ecc.csr -CA RootCA.pem -CAkey RootCA.key -CAcreateserial -extfile domains.txt -out localhost_ecc.crt
+```
+
 For testing purposes we need following files:
 
 - `RootCA.crt`
@@ -45,3 +53,5 @@ For testing purposes we need following files:
 - `RootCA.pem`
 - `localhost.crt`
 - `localhost.key`
+- `localhost_ecc.crt`
+- `localhost_ecc.key`

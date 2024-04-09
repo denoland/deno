@@ -49,8 +49,8 @@
     "tests/util/std",
     "tests/wpt/suite",
     "third_party",
-    "tools/node_compat/TODO.md",
-    "tools/node_compat/node",
+    "tests/node_compat/runner/TODO.md",
+    "tests/node_compat/runner/suite",
     "tests/wpt/runner/expectation.json",
     "tests/wpt/runner/manifest.json",
     "ext/websocket/autobahn/reports"
