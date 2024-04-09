@@ -115,6 +115,7 @@ function hasTlsKeyPairOptions(options) {
  * returns a special Null keypair.
  */
 function loadTlsKeyPair({
+  keyFormat,
   cert,
   certFile,
   certChain,
@@ -122,6 +123,9 @@ function loadTlsKeyPair({
   keyFile,
   privateKey,
 }) {
+  if (keyFormat !== undefined && keyFormat !== "pem") {
+    throw new TypeError("If keyFormat is specified, it must be pem");
+  }
   // Pick one pair of cert/key, certFile/keyFile or certChain/privateKey
   if ((cert !== undefined) ^ (key !== undefined)) {
     throw new TypeError("If cert is specified, key must also be specified");

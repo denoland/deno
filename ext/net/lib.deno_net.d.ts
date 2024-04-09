@@ -203,7 +203,7 @@ declare namespace Deno {
    * @category Network
    */
   export type TlsCertifiedKeyOptions =
-    | TlsCertifiedKeyFromString
+    | TlsCertifiedKeyPem
     | TlsCertifiedKeyFromFile
     | TlsCertifiedKeyConnectTls;
 
@@ -224,7 +224,9 @@ declare namespace Deno {
    *
    * @category Network
    */
-  export interface TlsCertifiedKeyFromString {
+  export interface TlsCertifiedKeyPem {
+    /** The format of this key material, which must be PEM. */
+    keyFormat?: "pem";
     /** Private key in `PEM` format. RSA, EC, and PKCS8-format keys are supported. */
     key: string;
     /** Certificate chain in `PEM` format. */
