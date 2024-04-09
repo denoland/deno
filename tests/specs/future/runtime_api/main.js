@@ -103,6 +103,8 @@ try {
     error.message === "No certificate chain provided"
   ) {
     console.log("Deno.ConnectTlsOptions.certFile does nothing");
+  } else {
+    console.log(error)
   }
 }
 
@@ -118,6 +120,8 @@ try {
     error.message === "No certificate chain provided"
   ) {
     console.log("Deno.ConnectTlsOptions.certChain does nothing");
+  } else {
+    console.log(error)
   }
 }
 
@@ -133,6 +137,8 @@ try {
     error.message === "No private key provided"
   ) {
     console.log("Deno.ConnectTlsOptions.privateKey does nothing");
+  } else {
+    console.log(error)
   }
 }
 
