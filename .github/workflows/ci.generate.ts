@@ -706,7 +706,7 @@ const ci = {
             "df -h",
             "rustup toolchain install nightly",
             "rustup component add rust-src --toolchain nightly", // for -Zbuild-std
-            "cargo +nightly build --release -Zbuild-std --target x86_64-unknown-linux-gnu --locked -- -p deno",
+            "cargo +nightly build --release -Zbuild-std --target x86_64-unknown-linux-gnu --locked -p deno",
             "df -h",
           ].join("\n"),
         },
