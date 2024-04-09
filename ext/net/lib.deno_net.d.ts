@@ -197,12 +197,46 @@ declare namespace Deno {
     options: UnixListenOptions & { transport: "unix" },
   ): UnixListener;
 
-  /** @category Network */
-  export interface ListenTlsOptions extends TcpListenOptions {
-    /** Server private key in PEM format */
-    key?: string;
-    /** Cert chain in PEM format */
-    cert?: string;
+  /** Provides TLS certified keys, ie: a key that has been certified by a trusted certificate authority.
+   * A certified key generally consists of a private key and certificate part.
+   *
+   * @category Network
+   */
+  export type TlsCertifiedKeyOptions =
+    | TlsCertifiedKeyFromString
+    | TlsCertifiedKeyFromFile
+    | TlsCertifiedKeyConnectTls;
+
+  /**
+   * Provides certified key material from strings. The key material is provided in
+   * `PEM`-format (Privacy Enhanced Mail, https://www.rfc-editor.org/rfc/rfc1422) which can be identified by having
+   * `-----BEGIN-----` and `-----END-----` markers at the beginning and end of the strings. This type of key is not compatible
+   * with `DER`-format keys which are binary.
+   *
+   * ```ts
+   * const key = {
+   *  key: "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n",
+   *  cert: "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----\n" }
+   * };
+   * ```
+   *
+   * @category Network
+   */
+  export interface TlsCertifiedKeyFromString {
+    /** Private key in `PEM` format */
+    key: string;
+    /** Certificate chain in `PEM` format */
+    cert: string;
+  }
+
+  /**
+   * @deprecated This will be removed in Deno 2.0. See the
+   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+   * for migration instructions.
+   *
+   * @category Network
+   */
+  export interface TlsCertifiedKeyFromFile {
     /** Path to a file containing a PEM formatted CA certificate. Requires
      * `--allow-read`.
      *
@@ -211,16 +245,45 @@ declare namespace Deno {
      * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
      * for migration instructions.
      */
-    certFile?: string;
-    /** Server private key file. Requires `--allow-read`.
+    certFile: string;
+    /** Path to a file containing a private key file. Requires `--allow-read`.
      *
      * @tags allow-read
      * @deprecated This will be removed in Deno 2.0. See the
      * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
      * for migration instructions.
      */
-    keyFile?: string;
+    keyFile: string;
+  }
 
+  /**
+   * @deprecated This will be removed in Deno 2.0. See the
+   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+   * for migration instructions.
+   *
+   * @category Network
+   */
+  export interface TlsCertifiedKeyConnectTls {
+    /**
+     * PEM formatted client certificate chain.
+     *
+     * @deprecated This will be removed in Deno 2.0. See the
+     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+     * for migration instructions.
+     */
+    certChain: string;
+    /**
+     * PEM formatted (RSA or PKCS8) private key of client certificate.
+     *
+     * @deprecated This will be removed in Deno 2.0. See the
+     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+     * for migration instructions.
+     */
+    privateKey: string;
+  }
+
+  /** @category Network */
+  export interface ListenTlsOptions extends TcpListenOptions {
     transport?: "tcp";
 
     /** Application-Layer Protocol Negotiation (ALPN) protocols to announce to
@@ -246,7 +309,9 @@ declare namespace Deno {
    * @tags allow-net
    * @category Network
    */
-  export function listenTls(options: ListenTlsOptions): TlsListener;
+  export function listenTls(
+    options: ListenTlsOptions & TlsCertifiedKeyOptions,
+  ): TlsListener;
 
   /** @category Network */
   export interface ConnectOptions {
@@ -343,14 +408,6 @@ declare namespace Deno {
      *
      * @default {"127.0.0.1"} */
     hostname?: string;
-    /**
-     * Server certificate file.
-     *
-     * @deprecated This will be removed in Deno 2.0. See the
-     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-     * for migration instructions.
-     */
-    certFile?: string;
     /** A list of root certificates that will be used in addition to the
      * default root certificates to verify the peer's certificate.
      *
@@ -361,26 +418,6 @@ declare namespace Deno {
      * TLS handshake.
      */
     alpnProtocols?: string[];
-    /**
-     * PEM formatted client certificate chain.
-     *
-     * @deprecated This will be removed in Deno 2.0. See the
-     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-     * for migration instructions.
-     */
-    certChain?: string;
-    /**
-     * PEM formatted (RSA or PKCS8) private key of client certificate.
-     *
-     * @deprecated This will be removed in Deno 2.0. See the
-     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-     * for migration instructions.
-     */
-    privateKey?: string;
-    /** Server private key in PEM format. */
-    key?: string;
-    /** Cert chain in PEM format. */
-    cert?: string;
   }
 
   /** Establishes a secure connection over TLS (transport layer security) using
@@ -402,6 +439,9 @@ declare namespace Deno {
    * @category Network
    */
   export function connectTls(options: ConnectTlsOptions): Promise<TlsConn>;
+  export function connectTls(
+    options: ConnectTlsOptions & TlsCertifiedKeyOptions,
+  ): Promise<TlsConn>;
 
   /** @category Network */
   export interface StartTlsOptions {

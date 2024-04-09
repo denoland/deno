@@ -51,51 +51,13 @@ async function connectTls({
   port,
   hostname = "127.0.0.1",
   transport = "tcp",
-  certFile = undefined,
   caCerts = [],
-  certChain = undefined,
-  privateKey = undefined,
-  cert = undefined,
-  key = undefined,
   alpnProtocols = undefined,
 }) {
-  if (certFile !== undefined) {
-    internals.warnOnDeprecatedApi(
-      "Deno.ConnectTlsOptions.certFile",
-      new Error().stack,
-      "Pass the cert file contents to the `Deno.ConnectTlsOptions.cert` option instead.",
-    );
-  }
-  if (certChain !== undefined) {
-    internals.warnOnDeprecatedApi(
-      "Deno.ConnectTlsOptions.certChain",
-      new Error().stack,
-      "Use the `Deno.ConnectTlsOptions.cert` option instead.",
-    );
-  }
-  if (privateKey !== undefined) {
-    internals.warnOnDeprecatedApi(
-      "Deno.ConnectTlsOptions.privateKey",
-      new Error().stack,
-      "Use the `Deno.ConnectTlsOptions.key` option instead.",
-    );
-  }
   if (transport !== "tcp") {
     throw new TypeError(`Unsupported transport: '${transport}'`);
   }
-  if (certChain !== undefined && cert !== undefined) {
-    throw new TypeError(
-      "Cannot specify both `certChain` and `cert`",
-    );
-  }
-  if (privateKey !== undefined && key !== undefined) {
-    throw new TypeError(
-      "Cannot specify both `privateKey` and `key`",
-    );
-  }
-  cert ??= certChain;
-  key ??= privateKey;
-  const keyPair = loadTlsKeyPair(cert, undefined, key, undefined);
+  const keyPair = loadTlsKeyPair(arguments[0]);
   const { 0: rid, 1: localAddr, 2: remoteAddr } = await op_net_connect_tls(
     { hostname, port },
     { certFile, caCerts, cert, key, alpnProtocols },
@@ -137,29 +99,80 @@ class TlsListener extends Listener {
   }
 }
 
+/**
+ * Returns true if this object has the shape of one of the certified key material
+ * interfaces.
+ */
 function hasTlsKeyPairOptions(options) {
   return (ReflectHas(options, "cert") || ReflectHas(options, "key") ||
     ReflectHas(options, "certFile") ||
-    ReflectHas(options, "keyFile"));
+    ReflectHas(options, "keyFile") || ReflectHas(options, "privateKey") ||
+    ReflectHas(options, "certChain"));
 }
 
-function loadTlsKeyPair(
+/**
+ * Loads a TLS keypair from one of the various options. If no key material is provided,
+ * returns a special Null keypair.
+ */
+function loadTlsKeyPair({
   cert,
   certFile,
+  certChain,
   key,
   keyFile,
-) {
+  privateKey,
+}) {
+  // Pick one pair of cert/key, certFile/keyFile or certChain/privateKey
+  if ((cert !== undefined) ^ (key !== undefined)) {
+    throw new TypeError("If cert is specified, key must also be specified");
+  }
   if ((certFile !== undefined) ^ (keyFile !== undefined)) {
     throw new TypeError(
       "If certFile is specified, keyFile must also be specified",
     );
   }
-  if ((cert !== undefined) ^ (key !== undefined)) {
-    throw new TypeError("If cert is specified, key must also be specified");
+  if ((certChain !== undefined) ^ (privateKey !== undefined)) {
+    throw new TypeError(
+      "If certChain is specified, privateKey must also be specified",
+    );
+  }
+
+  // Ensure that only one pair is valid
+  if (certChain !== undefined && cert !== undefined) {
+    throw new TypeError(
+      "Cannot specify both `certChain` and `cert`",
+    );
+  }
+  if (certChain !== undefined && certFile !== undefined) {
+    throw new TypeError(
+      "Cannot specify both `certChain` and `certFile`",
+    );
   }
 
   if (certFile !== undefined) {
+    internals.warnOnDeprecatedApi(
+      "Deno.ListenTlsOptions.keyFile",
+      new Error().stack,
+      "Pass the key file contents to the `Deno.TlsCertifiedKeyOptions.key` option instead.",
+    );
+    internals.warnOnDeprecatedApi(
+      "Deno.ListenTlsOptions.certFile",
+      new Error().stack,
+      "Pass the cert file contents to the `Deno.TlsCertifiedKeyOptions.cert` option instead.",
+    );
     return op_tls_key_static_from_file("Deno.listenTls", certFile, keyFile);
+  } else if (certChain !== undefined) {
+    internals.warnOnDeprecatedApi(
+      "Deno.ConnectTlsOptions.privateKey",
+      new Error().stack,
+      "Use the `Deno.TlsCertifiedKeyOptions.key` option instead.",
+    );
+    internals.warnOnDeprecatedApi(
+      "Deno.ConnectTlsOptions.certChain",
+      new Error().stack,
+      "Use the `Deno.TlsCertifiedKeyOptions.cert` option instead.",
+    );
+    return op_tls_key_static_from_file("Deno.listenTls", certChain, privateKey);
   } else if (cert !== undefined) {
     return op_tls_key_static(cert, key);
   } else {
@@ -169,10 +182,6 @@ function loadTlsKeyPair(
 
 function listenTls({
   port,
-  cert,
-  certFile,
-  key,
-  keyFile,
   hostname = "0.0.0.0",
   transport = "tcp",
   alpnProtocols = undefined,
@@ -181,22 +190,11 @@ function listenTls({
   if (transport !== "tcp") {
     throw new TypeError(`Unsupported transport: '${transport}'`);
   }
-  if (keyFile !== undefined) {
-    internals.warnOnDeprecatedApi(
-      "Deno.ListenTlsOptions.keyFile",
-      new Error().stack,
-      "Pass the key file contents to the `Deno.ListenTlsOptions.key` option instead.",
-    );
-  }
-  if (certFile !== undefined) {
-    internals.warnOnDeprecatedApi(
-      "Deno.ListenTlsOptions.certFile",
-      new Error().stack,
-      "Pass the cert file contents to the `Deno.ListenTlsOptions.cert` option instead.",
-    );
-  }
 
-  const keyPair = loadTlsKeyPair(cert, certFile, key, keyFile);
+  if (!hasTlsKeyPairOptions(arguments[0])) {
+    throw new TypeError("A key and certificate are required for `listenTls`");
+  }
+  const keyPair = loadTlsKeyPair(arguments[0]);
   const { 0: rid, 1: localAddr } = op_net_listen_tls(
     { hostname, port: Number(port) },
     { alpnProtocols, reusePort },
