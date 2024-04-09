@@ -827,8 +827,8 @@ impl FileSystemDocuments {
     Some(self.docs.remove(specifier)?.1)
   }
 
-  pub fn set_dirty(&self, dirty: bool) {
-    self.dirty.store(dirty, Ordering::Relaxed);
+  pub fn set_dirty(&self, dirty: bool) -> bool {
+    self.dirty.swap(dirty, Ordering::Relaxed)
   }
 
   pub fn is_dirty(&self) -> bool {
@@ -1496,7 +1496,9 @@ impl Documents {
       }
     }
 
-    if !self.file_system_docs.is_dirty() && !self.dirty {
+    let is_fs_docs_dirty = self.file_system_docs.set_dirty(false);
+
+    if !is_fs_docs_dirty && !self.dirty {
       return;
     }
 
@@ -1557,7 +1559,6 @@ impl Documents {
       reqs
     });
     self.dirty = false;
-    self.file_system_docs.set_dirty(false);
   }
 
   fn get_resolver(&self) -> &dyn deno_graph::source::Resolver {
