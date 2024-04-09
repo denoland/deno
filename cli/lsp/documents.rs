@@ -827,12 +827,9 @@ impl FileSystemDocuments {
     Some(self.docs.remove(specifier)?.1)
   }
 
+  /// Sets the dirty flag to the provided value and returns the previous value.
   pub fn set_dirty(&self, dirty: bool) -> bool {
     self.dirty.swap(dirty, Ordering::Relaxed)
-  }
-
-  pub fn is_dirty(&self) -> bool {
-    self.dirty.load(Ordering::Relaxed)
   }
 }
 
