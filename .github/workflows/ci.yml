@@ -330,6 +330,7 @@ jobs:
         if: '!(matrix.skip) && (matrix.job == ''test'' && matrix.profile == ''debug'')'
         run: |-
           df -h
+          rustup toolchain install nightly
           cargo +nightly build --locked -- -p deno
           df -h
         env:

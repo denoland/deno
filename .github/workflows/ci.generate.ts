@@ -676,6 +676,7 @@ const ci = {
           run: [
             // output fs space before and after building
             "df -h",
+            "rustup toolchain install nightly",
             "cargo +nightly build --locked -- -p deno",
             "df -h",
           ].join("\n"),
