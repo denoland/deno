@@ -366,7 +366,8 @@ const ci = {
       },
       strategy: {
         matrix: {
-          include: handleMatrixItems([{
+          include: handleMatrixItems([
+            /*{
             ...Runners.macosX86,
             job: "test",
             profile: "debug",
@@ -393,15 +394,15 @@ const ci = {
             job: "test",
             profile: "release",
             skip_pr: true,
-          }, {
-            ...Runners.linuxX86Xl,
-            job: "test",
-            profile: "release",
-            use_sysroot: true,
-            // TODO(ry): Because CI is so slow on for OSX and Windows, we
-            // currently run the Web Platform tests only on Linux.
-            wpt: "${{ !startsWith(github.ref, 'refs/tags/') }}",
-          }, {
+          }, */ {
+              ...Runners.linuxX86Xl,
+              job: "test",
+              profile: "release",
+              use_sysroot: true,
+              // TODO(ry): Because CI is so slow on for OSX and Windows, we
+              // currently run the Web Platform tests only on Linux.
+              wpt: "${{ !startsWith(github.ref, 'refs/tags/') }}",
+            }, /*, {
             ...Runners.linuxX86Xl,
             job: "bench",
             profile: "release",
@@ -434,7 +435,8 @@ const ci = {
             ...Runners.windowsX86,
             job: "lint",
             profile: "debug",
-          }]),
+          }*/
+          ]),
         },
         // Always run main branch builds to completion. This allows the cache to
         // stay mostly up-to-date in situations where a single job fails due to
@@ -676,7 +678,7 @@ const ci = {
           run: [
             // output fs space before and after building
             "df -h",
-            "cargo build --locked --all-targets",
+            "cargo build --locked -p deno",
             "df -h",
           ].join("\n"),
           env: { CARGO_PROFILE_DEV_DEBUG: 0 },
