@@ -104,7 +104,7 @@ try {
   ) {
     console.log("Deno.ConnectTlsOptions.certFile does nothing");
   } else {
-    console.log(error)
+    console.log(error);
   }
 }
 
@@ -121,7 +121,7 @@ try {
   ) {
     console.log("Deno.ConnectTlsOptions.certChain does nothing");
   } else {
-    console.log(error)
+    console.log(error);
   }
 }
 
@@ -138,7 +138,7 @@ try {
   ) {
     console.log("Deno.ConnectTlsOptions.privateKey does nothing");
   } else {
-    console.log(error)
+    console.log(error);
   }
 }
 
