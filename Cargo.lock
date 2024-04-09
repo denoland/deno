@@ -1152,9 +1152,9 @@ dependencies = [
 
 [[package]]
 name = "deno_ast"
-version = "0.35.1"
+version = "0.35.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c45813a2b6c658e5bc5a2f8336460f2b1c1c61a7adaf5e861df16ae3f3c76ca1"
+checksum = "ebb7284111ad08453aab0d07caf32564de730c9a77f2b94a4b69207b15cf1f2d"
 dependencies = [
  "anyhow",
  "base64",
@@ -6308,9 +6308,9 @@ dependencies = [
 
 [[package]]
 name = "swc_ecma_transforms_proposal"
-version = "0.171.18"
+version = "0.171.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "755b89f804230b840519d49444fba3133d494ae7d9d6f7aec7b250d62dba7256"
+checksum = "ac54efb40cb374c53323823da2b5f74406b8531b59a2cb689801cbf22d0057db"
 dependencies = [
  "either",
  "rustc-hash",
@@ -6369,9 +6369,9 @@ dependencies = [
 
 [[package]]
 name = "swc_ecma_utils"
-version = "0.127.16"
+version = "0.127.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b693d3fd413b76be123d2ce899a9788db8f85ca6127a1b1d743ed9cb8a68fdcc"
+checksum = "624c19fdbe1807275b16560892cf7a12a9ac3f631fb10ad45aaa3eeac903e6e5"
 dependencies = [
  "indexmap",
  "num_cpus",
@@ -6448,9 +6448,9 @@ dependencies = [
 
 [[package]]
 name = "swc_visit"
-version = "0.5.11"
+version = "0.5.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c6af31bfc7b5b7405eb0cfb5158a40f12e827af9db74ce93b0cf8b838ee1c100"
+checksum = "7dcfe07ffcd4360d6bf69d75819ccf6c6db852dfbf0f35dd65e9296a2b25c070"
 dependencies = [
  "either",
  "swc_visit_macros",
