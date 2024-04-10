@@ -1072,6 +1072,14 @@ delete Object.prototype.__proto__;
         return respond(id, getAssets());
       }
       case "$getDiagnostics": {
+        const projectVersion = args[1];
+        // there's a possibility that we receive a change notification
+        // but the diagnostic server queues a `$getDiagnostics` request
+        // with a stale project version. in that case, treat it as cancelled
+        // (it's about to be invalidated anyway).
+        if (projectVersionCache && projectVersion !== projectVersionCache) {
+          return respond(id, {});
+        }
         try {
           /** @type {Record<string, any[]>} */
           const diagnosticMap = {};

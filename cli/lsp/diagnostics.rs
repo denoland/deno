@@ -514,6 +514,7 @@ impl DiagnosticsServer {
                         "Error generating TypeScript diagnostics: {}",
                         err
                       );
+                      token.cancel();
                     }
                   })
                   .unwrap_or_default();
