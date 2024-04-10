@@ -18,3 +18,5 @@
  */
 
 export * from "./assert_equals.ts";
+export * from "./assert.ts";
+export * from "./fail.ts";

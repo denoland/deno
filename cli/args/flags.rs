@@ -985,7 +985,8 @@ Docs: https://deno.land/manual@v",
   env!("CARGO_PKG_VERSION"),
   color_print::cstr!(
     "
-Modules: https://deno.land/std/ https://deno.land/x/
+Standard Library: https://jsr.io/@std
+Modules: https://jsr.io/ https://deno.land/x/
 Bugs: https://github.com/denoland/deno/issues
 
 To start the REPL:
@@ -1319,11 +1320,11 @@ Use an alternative bundler like \"deno_emit\", \"esbuild\" or \"rollup\" instead
 
 Output a single JavaScript file with all dependencies.
 
-  deno bundle https://deno.land/std/http/file_server.ts file_server.bundle.js
+  deno bundle jsr:@std/http/file-server file_server.bundle.js
 
 If no output file is given, the output is written to standard output:
 
-  deno bundle https://deno.land/std/http/file_server.ts",
+  deno bundle jsr:@std/http/file-server",
     )
     .defer(|cmd| {
       compile_args(cmd)
@@ -1351,7 +1352,7 @@ fn cache_subcommand() -> Command {
 Download and compile a module with all of its static dependencies and save
 them in the local cache, without running any code:
 
-  deno cache https://deno.land/std/http/file_server.ts
+  deno cache jsr:@std/http/file-server
 
 Future runs of this module will trigger no downloads or compilation unless
 --reload is specified.",
@@ -1372,7 +1373,7 @@ fn check_subcommand() -> Command {
       .long_about(
         "Download and type-check without execution.
 
-  deno check https://deno.land/std/http/file_server.ts
+  deno check jsr:@std/http/file-server
 
 Unless --reload is specified, this command will not re-download already cached dependencies.",
       )
@@ -1407,8 +1408,8 @@ fn compile_subcommand() -> Command {
     .long_about(
       "Compiles the given script into a self contained executable.
 
-  deno compile -A https://deno.land/std/http/file_server.ts
-  deno compile --output file_server https://deno.land/std/http/file_server.ts
+  deno compile -A jsr:@std/http/file-server
+  deno compile --output file_server jsr:@std/http/file-server
 
 Any flags passed which affect runtime behavior, such as '--unstable',
 '--allow-*', '--v8-flags', etc. are encoded into the output executable and
@@ -1900,7 +1901,7 @@ fn info_subcommand() -> Command {
 
 Get information about a module:
 
-  deno info https://deno.land/std/http/file_server.ts
+  deno info jsr:@std/http/file-server
 
 The following information is shown:
 
@@ -1949,12 +1950,12 @@ fn install_subcommand() -> Command {
     .long_about(
         "Installs a script as an executable in the installation root's bin directory.
 
-  deno install --global --allow-net --allow-read https://deno.land/std/http/file_server.ts
+  deno install --global --allow-net --allow-read jsr:@std/http/file-server
   deno install -g https://examples.deno.land/color-logging.ts
 
 To change the executable name, use -n/--name:
 
-  deno install -g --allow-net --allow-read -n serve https://deno.land/std/http/file_server.ts
+  deno install -g --allow-net --allow-read -n serve jsr:@std/http/file-server
 
 The executable name is inferred by default:
   - Attempt to take the file stem of the URL path. The above example would
@@ -1966,7 +1967,7 @@ The executable name is inferred by default:
 
 To change the installation root, use --root:
 
-  deno install -g --allow-net --allow-read --root /usr/local https://deno.land/std/http/file_server.ts
+  deno install -g --allow-net --allow-read --root /usr/local jsr:@std/http/file-server
 
 The installation root is determined, in order of precedence:
   - --root option
@@ -2243,15 +2244,15 @@ ability to spawn subprocesses.
 
 Grant all permissions:
 
-  deno run -A https://deno.land/std/http/file_server.ts
+  deno run -A jsr:@std/http/file-server
 
 Grant permission to read from disk and listen to network:
 
-  deno run --allow-read --allow-net https://deno.land/std/http/file_server.ts
+  deno run --allow-read --allow-net jsr:@std/http/file-server
 
 Grant permission to read allow-listed files from disk:
 
-  deno run --allow-read=/etc https://deno.land/std/http/file_server.ts
+  deno run --allow-read=/etc jsr:@std/http/file-server
 
 Specifying the filename '-' to read the file from stdin.
 
@@ -2506,7 +2507,7 @@ maps remote specifiers to the downloaded files.
 
 Remote modules and multiple modules may also be specified:
 
-  deno vendor main.ts test.deps.ts https://deno.land/std/path/mod.ts",
+  deno vendor main.ts test.deps.ts jsr:@std/path",
       )
     .defer(|cmd| cmd
       .arg(
@@ -3059,9 +3060,9 @@ fn reload_arg() -> Arg {
       "Reload source code cache (recompile TypeScript)
 --reload
   Reload everything
---reload=https://deno.land/std
+--reload=jsr:@std/http/file-server
   Reload only standard modules
---reload=https://deno.land/std/fs/utils.ts,https://deno.land/std/fmt/colors.ts
+--reload=jsr:@std/http/file-server,jsr:@std/assert/assert-equals
   Reloads specific modules
 --reload=npm:
   Reload all npm modules
@@ -6772,18 +6773,15 @@ mod tests {
 
   #[test]
   fn install() {
-    let r = flags_from_vec(svec![
-      "deno",
-      "install",
-      "https://deno.land/std/http/file_server.ts"
-    ]);
+    let r =
+      flags_from_vec(svec!["deno", "install", "jsr:@std/http/file-server"]);
     assert_eq!(
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Install(InstallFlags {
           kind: InstallKind::Global(InstallFlagsGlobal {
             name: None,
-            module_url: "https://deno.land/std/http/file_server.ts".to_string(),
+            module_url: "jsr:@std/http/file-server".to_string(),
             args: vec![],
             root: None,
             force: false,
@@ -6798,7 +6796,7 @@ mod tests {
       "deno",
       "install",
       "-g",
-      "https://deno.land/std/http/file_server.ts"
+      "jsr:@std/http/file-server"
     ]);
     assert_eq!(
       r.unwrap(),
@@ -6806,7 +6804,7 @@ mod tests {
         subcommand: DenoSubcommand::Install(InstallFlags {
           kind: InstallKind::Global(InstallFlagsGlobal {
             name: None,
-            module_url: "https://deno.land/std/http/file_server.ts".to_string(),
+            module_url: "jsr:@std/http/file-server".to_string(),
             args: vec![],
             root: None,
             force: false,
@@ -6821,14 +6819,14 @@ mod tests {
   #[test]
   fn install_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "install", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--unsafely-ignore-certificate-errors", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--inspect=127.0.0.1:9229", "--name", "file_server", "--root", "/foo", "--force", "--env=.example.env", "https://deno.land/std/http/file_server.ts", "foo", "bar"]);
+    let r = flags_from_vec(svec!["deno", "install", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--unsafely-ignore-certificate-errors", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--inspect=127.0.0.1:9229", "--name", "file_server", "--root", "/foo", "--force", "--env=.example.env", "jsr:@std/http/file-server", "foo", "bar"]);
     assert_eq!(
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Install(InstallFlags {
           kind: InstallKind::Global(InstallFlagsGlobal {
             name: Some("file_server".to_string()),
-            module_url: "https://deno.land/std/http/file_server.ts".to_string(),
+            module_url: "jsr:@std/http/file-server".to_string(),
             args: svec!["foo", "bar"],
             root: Some("/foo".to_string()),
             force: true,
