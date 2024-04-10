@@ -215,7 +215,7 @@ fn reload_flag() {
 
 #[test]
 fn typecheck_declarations_ns() {
-  let context = TestContext::default();
+  let context = TestContextBuilder::for_jsr().build();
   let args = vec![
     "test".to_string(),
     "--doc".to_string(),
