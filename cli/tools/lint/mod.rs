@@ -175,7 +175,7 @@ async fn lint_files(
   let reporter_lock =
     Arc::new(Mutex::new(create_reporter(reporter_kind.clone())));
   let has_error = Arc::new(AtomicFlag::default());
-  let linter = create_linter(lint_rules.clone());
+  let linter = Arc::new(Mutex::new(create_linter(lint_rules.clone())));
   let mut futures = Vec::with_capacity(2);
   if lint_rules.no_slow_types {
     if let Some(config_file) = maybe_config_file {
