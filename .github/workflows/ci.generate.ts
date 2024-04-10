@@ -115,34 +115,28 @@ CARGO_PROFILE_BENCH_LTO=false
 CARGO_PROFILE_RELEASE_INCREMENTAL=false
 CARGO_PROFILE_RELEASE_LTO=false
 RUSTFLAGS<<__1
-  -C linker-plugin-lto=true
   -C linker=clang-${llvmVersion}
   -C link-arg=-fuse-ld=lld-${llvmVersion}
   -C link-arg=--sysroot=/sysroot
   -C link-arg=-ldl
   -C link-arg=-Wl,--allow-shlib-undefined
-  -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/x86_64-unknown-linux-gnu/release/lto-cache
-  -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
   -Zsanitizer=memory
   -Zsanitizer-memory-track-origins
   --cfg tokio_unstable
   \${{ env.RUSTFLAGS }}
 __1
 RUSTDOCFLAGS<<__1
-  -C linker-plugin-lto=true
   -C linker=clang-${llvmVersion}
   -C link-arg=-fuse-ld=lld-${llvmVersion}
   -C link-arg=--sysroot=/sysroot
   -C link-arg=-ldl
   -C link-arg=-Wl,--allow-shlib-undefined
-  -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/x86_64-unknown-linux-gnu/release/lto-cache
-  -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
   -Zsanitizer=memory
   -Zsanitizer-memory-track-origins
   \${{ env.RUSTFLAGS }}
 __1
 CC=clang-${llvmVersion}
-CFLAGS=-flto=thin --sysroot=/sysroot
+CFLAGS=--sysroot=/sysroot
 __0`,
 };
 
