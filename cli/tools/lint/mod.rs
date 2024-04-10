@@ -22,6 +22,7 @@ use deno_lint::linter::Linter;
 use deno_lint::linter::LinterBuilder;
 use deno_lint::rules;
 use deno_lint::rules::LintRule;
+use lazy_static::lazy_static;
 use log::debug;
 use log::info;
 use serde::Serialize;
@@ -33,6 +34,7 @@ use std::io::Read;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
+
 
 use crate::args::CliOptions;
 use crate::args::Flags;
@@ -51,9 +53,25 @@ use crate::util::fs::FileCollector;
 use crate::util::path::is_script_ext;
 use crate::util::sync::AtomicFlag;
 
+
 pub mod no_slow_types;
 
 static STDIN_FILE_NAME: &str = "$deno$stdin.ts";
+
+lazy_static! {
+  static ref LINTER: Mutex<Option<Linter>> = Mutex::new(None);
+}
+
+fn get_linter(lint_rules:LintRule) -> Result<Linter, AnyError> {
+  let mut linter = LINTER.lock().unwrap();
+  if let Some(linter) = &*linter {
+      return Ok(linter.clone());
+  }
+
+  let new_linter = create_linter(lint_rules.rules);
+  *linter = Some(new_linter.clone());
+  Ok(new_linter)
+}
 
 fn create_reporter(kind: LintReporterKind) -> Box<dyn LintReporter + Send> {
   match kind {
@@ -218,7 +236,7 @@ async fn lint_files(
 
   futures.push({
     let has_error = has_error.clone();
-    let linter = create_linter(lint_rules.rules);
+    let linter = get_linter(lint_rules.clone());
     let reporter_lock = reporter_lock.clone();
     let incremental_cache = incremental_cache.clone();
     let fix = lint_options.fix;
