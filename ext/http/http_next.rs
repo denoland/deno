@@ -69,7 +69,6 @@ use std::ffi::c_void;
 use std::future::Future;
 use std::io;
 use std::pin::Pin;
-use std::ptr::addr_of_mut;
 use std::ptr::null;
 use std::rc::Rc;
 
