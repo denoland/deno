@@ -155,9 +155,7 @@ impl ContextifyContext {
     scope: &mut v8::HandleScope<'a>,
     object: v8::Local<'a, v8::Object>,
   ) -> Option<&'c ContextifyContext> {
-    let Some(context) = object.get_creation_context(scope) else {
-      return None;
-    };
+    let context = object.get_creation_context(scope)?;
 
     let context_ptr = context.get_aligned_pointer_from_embedder_data(0);
     // SAFETY: We are storing a pointer to the ContextifyContext
