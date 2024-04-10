@@ -159,7 +159,7 @@ function loadTlsKeyPair(api, {
     keyFile = undefined;
     privateKey = undefined;
   }
-  
+
   // Check for "pem" format
   if (keyFormat !== undefined && keyFormat !== "pem") {
     throw new TypeError('If `keyFormat` is specified, it must be "pem"');
