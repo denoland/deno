@@ -445,6 +445,7 @@ const ci = {
         RUST_BACKTRACE: "full",
         // disable anyhow's library backtrace
         RUST_LIB_BACKTRACE: 0,
+        V8_FROM_SOURCE: 1,
       },
       steps: skipJobsIfPrAndMarkedSkip([
         ...cloneRepoStep,
@@ -478,12 +479,7 @@ const ci = {
             "matrix.job == 'lint' || matrix.job == 'test' || matrix.job == 'bench'",
           ...installDenoStep,
         },
-        ...installPythonSteps.map((s) =>
-          withCondition(
-            s,
-            "matrix.job != 'lint' && (matrix.os != 'linux' || matrix.arch != 'aarch64')",
-          )
-        ),
+        ...installPythonSteps,
         {
           // only necessary for benchmarks
           if: "matrix.job == 'bench'",

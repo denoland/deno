@@ -67,6 +67,7 @@ jobs:
       CARGO_TERM_COLOR: always
       RUST_BACKTRACE: full
       RUST_LIB_BACKTRACE: 0
+      V8_FROM_SOURCE: 1
     steps:
       - name: Configure git
         run: |-
@@ -110,9 +111,9 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: 3.11
-        if: '!(matrix.skip) && (matrix.job != ''lint'' && (matrix.os != ''linux'' || matrix.arch != ''aarch64''))'
+        if: '!(matrix.skip)'
       - name: Remove unused versions of Python
-        if: '!(matrix.skip) && (matrix.job != ''lint'' && (matrix.os != ''linux'' || matrix.arch != ''aarch64'') && (matrix.os == ''windows''))'
+        if: '!(matrix.skip) && (matrix.os == ''windows'')'
         shell: pwsh
         run: |-
           $env:PATH -split ";" |

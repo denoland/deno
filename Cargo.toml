@@ -208,7 +208,6 @@ winres = "=0.1.12"
 [profile.release]
 codegen-units = 1
 incremental = true
-lto = true
 opt-level = 'z' # Optimize for size
 debug = true
 
