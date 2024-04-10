@@ -153,6 +153,13 @@ function loadTlsKeyPair(api, {
   keyFile,
   privateKey,
 }) {
+  if (internals.future) {
+    certFile = undefined;
+    certChain = undefined;
+    keyFile = undefined;
+    privateKey = undefined;
+  }
+  
   // Check for "pem" format
   if (keyFormat !== undefined && keyFormat !== "pem") {
     throw new TypeError('If `keyFormat` is specified, it must be "pem"');
@@ -183,11 +190,6 @@ function loadTlsKeyPair(api, {
         `If \`${a2}\` is specified, \`${a1}\` must be specified as well for \`${api}\`.`,
       );
     }
-  }
-
-  if (internals.future) {
-    keyFile = undefined;
-    certFile = undefined;
   }
 
   // Pick one pair of cert/key, certFile/keyFile or certChain/privateKey
