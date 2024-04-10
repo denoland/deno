@@ -61,7 +61,7 @@ const prCacheKeyPrefix =
 // Note that you may need to add more version to the `apt-get remove` line below if you change this
 const llvmVersion = 16;
 const installPkgsCommand =
-  `sudo apt-get install --no-install-recommends debootstrap clang-${llvmVersion} lld-${llvmVersion} clang-tools-${llvmVersion} clang-format-${llvmVersion} clang-tidy-${llvmVersion} libclang-${llvmVersion}-dev`;
+  `sudo apt-get install --no-install-recommends debootstrap clang-${llvmVersion} lld-${llvmVersion} clang-tools-${llvmVersion} clang-format-${llvmVersion} clang-tidy-${llvmVersion}`;
 const sysRootStep = {
   name: "Set up incremental LTO and sysroot build",
   run: `# Setting up sysroot
@@ -136,7 +136,7 @@ RUSTDOCFLAGS<<__1
   \${{ env.RUSTFLAGS }}
 __1
 CC=clang-${llvmVersion}
-CFLAGS=--sysroot=/sysroot -fsanitize=memory
+CFLAGS=--sysroot=/sysroot
 __0`,
 };
 
