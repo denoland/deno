@@ -4064,7 +4064,9 @@ fn op_script_names(state: &mut OpState) -> Vec<String> {
       if seen.insert(specifier.as_str()) {
         if let Some(specifier) = documents.resolve_specifier(specifier) {
           // only include dependencies we know to exist otherwise typescript will error
-          if documents.exists(&specifier) {
+          if documents.exists(&specifier)
+            && (specifier.scheme() == "file" || documents.is_open(&specifier))
+          {
             result.push(specifier.to_string());
           }
         }

@@ -79,8 +79,8 @@ Learn more about writing and running Deno programs
 
 - **[Deno Docs](https://docs.deno.com)**: official guides and reference docs for
   the Deno runtime, [Deno Deploy](https://deno.com/deploy), and beyond.
-- **[Deno Standard Library](https://deno.land/std)**: officially supported
-  common utilities for Deno programs.
+- **[Deno Standard Library](https://jsr.io/@std)**: officially supported common
+  utilities for Deno programs.
 - **[deno.land/x](https://deno.land/x)**: registry for third-party Deno modules.
 - **[Developer Blog](https://deno.com/blog)**: Product updates, tutorials, and
   more from the Deno team.
