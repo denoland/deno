@@ -144,10 +144,6 @@ struct TestVendorEnvironment {
 }
 
 impl VendorEnvironment for TestVendorEnvironment {
-  fn cwd(&self) -> Result<PathBuf, AnyError> {
-    Ok(make_path("/"))
-  }
-
   fn create_dir_all(&self, dir_path: &Path) -> Result<(), AnyError> {
     let mut directories = self.directories.borrow_mut();
     for path in dir_path.ancestors() {
@@ -168,10 +164,6 @@ impl VendorEnvironment for TestVendorEnvironment {
       String::from_utf8(text.to_vec()).unwrap(),
     );
     Ok(())
-  }
-
-  fn path_exists(&self, path: &Path) -> bool {
-    self.files.borrow().contains_key(&path.to_path_buf())
   }
 }
 
