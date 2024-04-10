@@ -194,8 +194,8 @@ pub enum CacheSetting {
   /// This is the equivalent of `--reload` in the CLI.
   ReloadAll,
   /// Only some cached resources should be used.  This is the equivalent of
-  /// `--reload=https://deno.land/std` or
-  /// `--reload=https://deno.land/std,https://deno.land/x/example`.
+  /// `--reload=jsr:@std/http/file-server` or
+  /// `--reload=jsr:@std/http/file-server,jsr:@std/assert/assert-equals`.
   ReloadSome(Vec<String>),
   /// The usability of a cached value is determined by analyzing the cached
   /// headers and other metadata associated with a cached response, reloading
