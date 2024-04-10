@@ -696,7 +696,7 @@ const ci = {
             // output fs space before and after building
             "df -h",
             "rustup component add rust-src", // for -Zbuild-std
-            "cargo build --release -Zbuild-std --target x86_64-unknown-linux-gnu --locked -p deno",
+            "cargo build --release -Zbuild-std -Zgit=shallow-deps --target x86_64-unknown-linux-gnu --locked -p deno",
             "df -h",
           ].join("\n"),
         },

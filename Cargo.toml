@@ -208,7 +208,7 @@ winres = "=0.1.12"
 [profile.release]
 codegen-units = 1
 incremental = true
-opt-level = 'z' # Optimize for size
+opt-level = 1
 debug = true
 
 # Build release with debug symbols: cargo build --profile=release-with-debug
@@ -365,3 +365,6 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.base64-simd]
 opt-level = 3
+
+[patch.crates-io]
+v8 = { git = "https://github.com/mmastrac/rusty_v8", branch = "asan" }
