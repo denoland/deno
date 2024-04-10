@@ -688,6 +688,7 @@ impl LaxSingleProcessFsFlag {
     let open_result = std::fs::OpenOptions::new()
       .read(true)
       .write(true)
+      .create(true)
       .truncate(true)
       .open(&file_path);
 

@@ -230,6 +230,7 @@ pub fn with_folder_sync_lock(
     let sync_lock_path = output_folder.join(NPM_PACKAGE_SYNC_LOCK_FILENAME);
     match fs::OpenOptions::new()
       .write(true)
+      .create(true)
       .truncate(true)
       .open(&sync_lock_path)
     {
