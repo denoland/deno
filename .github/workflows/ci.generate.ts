@@ -446,6 +446,7 @@ const ci = {
         // disable anyhow's library backtrace
         RUST_LIB_BACKTRACE: 0,
         V8_FROM_SOURCE: 1,
+        V8_FORCE_DEBUG: 1,
       },
       steps: skipJobsIfPrAndMarkedSkip([
         ...cloneRepoStep,
