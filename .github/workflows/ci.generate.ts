@@ -714,7 +714,7 @@ const ci = {
           with: {
             name:
               "deno-${{ matrix.os }}-${{ matrix.arch }}-${{ github.event.number }}",
-            path: "target/x86_64-unknown-linux-gnu/release/deno",
+            path: "target/x86_64-unknown-linux-gnu/debug/deno",
           },
         },
         {
