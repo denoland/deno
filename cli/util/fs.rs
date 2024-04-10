@@ -676,7 +676,9 @@ impl Drop for LaxSingleProcessFsFlagInner {
 /// This should only be used in places where it's ideal for multiple
 /// processes to not update something on the file system at the same time,
 /// but it's not that big of a deal.
-pub struct LaxSingleProcessFsFlag(#[allow(dead_code)] Option<LaxSingleProcessFsFlagInner>);
+pub struct LaxSingleProcessFsFlag(
+  #[allow(dead_code)] Option<LaxSingleProcessFsFlagInner>,
+);
 
 impl LaxSingleProcessFsFlag {
   pub async fn lock(file_path: PathBuf, long_wait_message: &str) -> Self {
