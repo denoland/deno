@@ -250,7 +250,7 @@ jobs:
             ${{ env.RUSTFLAGS }}
           __1
           CC=clang-16
-          CFLAGS=--sysroot=/sysroot
+          CFLAGS=--sysroot=/sysroot -fsanitize=memory
           __0
       - name: Remove macOS cURL --ipv4 flag
         run: |-

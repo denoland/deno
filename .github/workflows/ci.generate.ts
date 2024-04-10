@@ -136,7 +136,7 @@ RUSTDOCFLAGS<<__1
   \${{ env.RUSTFLAGS }}
 __1
 CC=clang-${llvmVersion}
-CFLAGS=--sysroot=/sysroot
+CFLAGS=--sysroot=/sysroot -fsanitize=memory
 __0`,
 };
 
