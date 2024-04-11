@@ -6431,8 +6431,8 @@
       "Location's href: stun://[:1] should throw",
       "window.open(): stun://[:1] should throw"
     ],
-    "url-statics-parse.any.html": false,
-    "url-statics-parse.any.worker.html": false
+    "url-statics-parse.any.html": true,
+    "url-statics-parse.any.worker.html": true
   },
   "fetch": {
     "api": {
