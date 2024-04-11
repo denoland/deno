@@ -76,6 +76,7 @@ pub fn graph_valid(
         check_js: options.check_js,
         follow_type_only: options.follow_type_only,
         follow_dynamic: options.is_vendoring,
+        prefer_fast_check_graph: false,
       },
     )
     .errors()
@@ -798,6 +799,7 @@ pub fn has_graph_root_local_dependent_changed(
     deno_graph::WalkOptions {
       follow_dynamic: true,
       follow_type_only: true,
+      prefer_fast_check_graph: true,
       check_js: true,
     },
   );

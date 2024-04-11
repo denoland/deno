@@ -95,15 +95,20 @@ pub fn maybe_transpile_source(
     scope_analysis: false,
     maybe_syntax: None,
   })?;
-  let transpiled_source = parsed.transpile(&deno_ast::EmitOptions {
-    imports_not_used_as_values: deno_ast::ImportsNotUsedAsValues::Remove,
-    source_map: if cfg!(debug_assertions) {
-      SourceMapOption::Separate
-    } else {
-      SourceMapOption::None
+  let transpiled_source = parsed.transpile(
+    &deno_ast::TranspileOptions {
+      imports_not_used_as_values: deno_ast::ImportsNotUsedAsValues::Remove,
+      ..Default::default()
     },
-    ..Default::default()
-  })?;
+    &deno_ast::EmitOptions {
+      source_map: if cfg!(debug_assertions) {
+        SourceMapOption::Separate
+      } else {
+        SourceMapOption::None
+      },
+      ..Default::default()
+    },
+  )?;
 
   let maybe_source_map: Option<SourceMapData> = transpiled_source
     .source_map
