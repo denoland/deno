@@ -522,6 +522,8 @@ impl NpmResolver for ManagedCliNpmResolver {
     let path = self
       .fs_resolver
       .resolve_package_folder_from_package(name, referrer, mode)?;
+    let path =
+      canonicalize_path_maybe_not_exists_with_fs(&path, self.fs.as_ref())?;
     log::debug!("Resolved {} from {} to {}", name, referrer, path.display());
     Ok(path)
   }
