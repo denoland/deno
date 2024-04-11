@@ -6276,7 +6276,13 @@ declare namespace Deno {
    *
    * @category HTTP Server
    */
-  export type ServeTlsOptions = ServeOptions & TlsCertifiedKeyOptions;
+  export interface ServeTlsOptions extends ServeOptions {
+    /** Server private key in PEM format */
+    cert: string;
+
+    /** Cert chain in PEM format */
+    key: string;
+  }
 
   /**
    * @category HTTP Server
