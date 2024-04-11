@@ -1336,7 +1336,7 @@ Deno.test(
         });
       },
       TypeError,
-      "Cannot specify both `key` and `privateKey` for `Deno.connectTls`.",
+      "Cannot specify both `privateKey` and `key`",
     );
   },
 );
