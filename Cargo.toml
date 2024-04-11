@@ -227,6 +227,10 @@ opt-level = 'z' # Optimize for size
 [profile.dev.package.num-bigint-dig]
 opt-level = 3
 
+# rusty-v8 needs at least -O1 to not miscompile
+[profile.dev.package.v8]
+opt-level = 1
+
 # Optimize these packages for performance.
 # NB: the `bench` and `release` profiles must remain EXACTLY the same.
 [profile.bench.package.rand]
