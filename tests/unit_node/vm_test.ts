@@ -1,6 +1,13 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-import { isContext, runInNewContext } from "node:vm";
 import { assertEquals, assertThrows } from "@std/assert/mod.ts";
+import {
+  createContext,
+  isContext,
+  runInContext,
+  runInNewContext,
+  runInThisContext,
+  Script,
+} from "node:vm";
 
 Deno.test({
   name: "vm runInNewContext",
@@ -11,15 +18,75 @@ Deno.test({
 });
 
 Deno.test({
+  name: "vm new Script()",
+  fn() {
+    const script = new Script(`
+function add(a, b) {
+  return a + b;
+}
+const x = add(1, 2);
+x
+`);
+
+    const value = script.runInThisContext();
+    assertEquals(value, 3);
+  },
+});
+
+// https://github.com/denoland/deno/issues/23186
+Deno.test({
   name: "vm runInNewContext sandbox",
   fn() {
-    assertThrows(() => runInNewContext("Deno"));
-    // deno-lint-ignore no-var
-    var a = 1;
-    assertThrows(() => runInNewContext("a + 1"));
+    const sandbox = { fromAnotherRealm: false };
+    runInNewContext("fromAnotherRealm = {}", sandbox);
 
-    runInNewContext("a = 2");
-    assertEquals(a, 1);
+    assertEquals(typeof sandbox.fromAnotherRealm, "object");
+  },
+});
+
+// https://github.com/denoland/deno/issues/22395
+Deno.test({
+  name: "vm runInewContext with context object",
+  fn() {
+    const context = { a: 1, b: 2 };
+    const result = runInNewContext("a + b", context);
+    assertEquals(result, 3);
+  },
+});
+
+// https://github.com/denoland/deno/issues/18299
+Deno.test({
+  name: "vm createContext and runInContext",
+  fn() {
+    // @ts-expect-error implicit any
+    globalThis.globalVar = 3;
+
+    const context = { globalVar: 1 };
+    createContext(context);
+    runInContext("globalVar *= 2", context);
+    assertEquals(context.globalVar, 2);
+    // @ts-expect-error implicit any
+    assertEquals(globalThis.globalVar, 3);
+  },
+});
+
+Deno.test({
+  name: "vm runInThisContext Error rethrow",
+  fn() {
+    assertThrows(
+      () => {
+        runInThisContext("throw new Error('error')");
+      },
+      Error,
+      "error",
+    );
+    assertThrows(
+      () => {
+        runInThisContext("throw new TypeError('type error')");
+      },
+      TypeError,
+      "type error",
+    );
   },
 });
 
@@ -53,6 +120,7 @@ Deno.test({
   },
 });
 
+// https://github.com/denoland/deno/issues/18315
 Deno.test({
   name: "vm isContext",
   fn() {

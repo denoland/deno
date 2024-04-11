@@ -162,6 +162,18 @@ delete Object.prototype.__proto__;
 
   const isCjsCache = new SpecifierIsCjsCache();
 
+  /** @type {ts.CompilerOptions | null} */
+  let tsConfigCache = null;
+
+  /** @type {string | null} */
+  let projectVersionCache = null;
+
+  const ChangeKind = {
+    Opened: 0,
+    Modified: 1,
+    Closed: 2,
+  };
+
   /**
    * @param {ts.CompilerOptions | ts.MinimalResolutionCacheHost} settingsOrHost
    * @returns {ts.CompilerOptions}
@@ -292,6 +304,7 @@ delete Object.prototype.__proto__;
             /** @type {ts.IScriptSnapshot} */ (sourceFile.scriptSnapShot),
           ),
         );
+        documentRegistrySourceFileCache.set(mapKey, sourceFile);
       }
       return sourceFile;
     },
@@ -531,7 +544,16 @@ delete Object.prototype.__proto__;
       return new CancellationToken();
     },
     getProjectVersion() {
-      return ops.op_project_version();
+      if (
+        projectVersionCache
+      ) {
+        debug(`getProjectVersion cache hit : ${projectVersionCache}`);
+        return projectVersionCache;
+      }
+      const projectVersion = ops.op_project_version();
+      projectVersionCache = projectVersion;
+      debug(`getProjectVersion cache miss : ${projectVersionCache}`);
+      return projectVersion;
     },
     // @ts-ignore Undocumented method.
     getModuleSpecifierCache() {
@@ -550,7 +572,7 @@ delete Object.prototype.__proto__;
       ts.toPath(
         fileName,
         this.getCurrentDirectory(),
-        this.getCanonicalFileName(fileName),
+        this.getCanonicalFileName.bind(this),
       );
     },
     // @ts-ignore Undocumented method.
@@ -730,6 +752,9 @@ delete Object.prototype.__proto__;
       if (logDebug) {
         debug("host.getCompilationSettings()");
       }
+      if (tsConfigCache) {
+        return tsConfigCache;
+      }
       const tsConfig = normalizeConfig(ops.op_ts_config());
       const { options, errors } = ts
         .convertCompilerOptionsFromJson(tsConfig, "");
@@ -740,6 +765,7 @@ delete Object.prototype.__proto__;
       if (errors.length > 0 && logDebug) {
         debug(ts.formatDiagnostics(errors, host));
       }
+      tsConfigCache = options;
       return options;
     },
     getScriptFileNames() {
@@ -774,13 +800,6 @@ delete Object.prototype.__proto__;
         debug(`host.getScriptSnapshot("${specifier}")`);
       }
       let sourceFile = sourceFileCache.get(specifier);
-      if (
-        !specifier.startsWith(ASSETS_URL_PREFIX) &&
-        sourceFile?.version != this.getScriptVersion(specifier)
-      ) {
-        sourceFileCache.delete(specifier);
-        sourceFile = undefined;
-      }
       if (!sourceFile) {
         sourceFile = this.getSourceFile(
           specifier,
@@ -1020,12 +1039,36 @@ delete Object.prototype.__proto__;
     if (logDebug) {
       debug(`serverRequest()`, id, method, args);
     }
-
-    // reset all memoized source files names
-    scriptFileNamesCache = undefined;
-    // evict all memoized source file versions
-    scriptVersionCache.clear();
     switch (method) {
+      case "$projectChanged": {
+        /** @type {[string, number][]} */
+        const changedScripts = args[0];
+        /** @type {string} */
+        const newProjectVersion = args[1];
+        /** @type {boolean} */
+        const configChanged = args[2];
+
+        if (configChanged) {
+          tsConfigCache = null;
+        }
+
+        projectVersionCache = newProjectVersion;
+
+        let opened = false;
+        for (const { 0: script, 1: changeKind } of changedScripts) {
+          if (changeKind == ChangeKind.Opened) {
+            opened = true;
+          }
+          scriptVersionCache.delete(script);
+          sourceFileCache.delete(script);
+        }
+
+        if (configChanged || opened) {
+          scriptFileNamesCache = undefined;
+        }
+
+        return respond(id);
+      }
       case "$restart": {
         serverRestart();
         return respond(id, true);
@@ -1040,6 +1083,14 @@ delete Object.prototype.__proto__;
         return respond(id, getAssets());
       }
       case "$getDiagnostics": {
+        const projectVersion = args[1];
+        // there's a possibility that we receive a change notification
+        // but the diagnostic server queues a `$getDiagnostics` request
+        // with a stale project version. in that case, treat it as cancelled
+        // (it's about to be invalidated anyway).
+        if (projectVersionCache && projectVersion !== projectVersionCache) {
+          return respond(id, {});
+        }
         try {
           /** @type {Record<string, any[]>} */
           const diagnosticMap = {};

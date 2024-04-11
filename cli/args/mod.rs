@@ -194,8 +194,8 @@ pub enum CacheSetting {
   /// This is the equivalent of `--reload` in the CLI.
   ReloadAll,
   /// Only some cached resources should be used.  This is the equivalent of
-  /// `--reload=https://deno.land/std` or
-  /// `--reload=https://deno.land/std,https://deno.land/x/example`.
+  /// `--reload=jsr:@std/http/file-server` or
+  /// `--reload=jsr:@std/http/file-server,jsr:@std/assert/assert-equals`.
   ReloadSome(Vec<String>),
   /// The usability of a cached value is determined by analyzing the cached
   /// headers and other metadata associated with a cached response, reloading
@@ -1102,15 +1102,11 @@ impl CliOptions {
   }
 
   pub fn has_node_modules_dir(&self) -> bool {
-    if self.enable_future_features() {
-      self.maybe_node_modules_folder.is_some()
-    } else {
-      self.maybe_node_modules_folder.is_some() || self.unstable_byonm()
-    }
+    self.maybe_node_modules_folder.is_some()
   }
 
-  pub fn node_modules_dir_path(&self) -> Option<PathBuf> {
-    self.maybe_node_modules_folder.clone()
+  pub fn node_modules_dir_path(&self) -> Option<&PathBuf> {
+    self.maybe_node_modules_folder.as_ref()
   }
 
   pub fn with_node_modules_dir_path(&self, path: PathBuf) -> Self {
@@ -1595,10 +1591,14 @@ impl CliOptions {
   }
 
   pub fn use_byonm(&self) -> bool {
-    self.enable_future_features()
-  }
+    if self.enable_future_features()
+      && self.node_modules_dir_enablement().is_none()
+      && self.maybe_package_json.is_some()
+    {
+      return true;
+    }
 
-  pub fn unstable_byonm(&self) -> bool {
+    // check if enabled via unstable
     self.flags.unstable_config.byonm
       || NPM_PROCESS_STATE
         .as_ref()

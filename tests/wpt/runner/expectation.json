@@ -2164,7 +2164,26 @@
         "importVectorKeys step: EdDSA Ed448 verification failure due to shortened signature",
         "importVectorKeys step: EdDSA Ed448 verification failure due to altered data",
         "importVectorKeys step: EdDSA Ed448 signing with wrong algorithm name",
-        "importVectorKeys step: EdDSA Ed448 verifying with wrong algorithm name"
+        "importVectorKeys step: EdDSA Ed448 verifying with wrong algorithm name",
+        "EdDSA Ed448 verification",
+        "EdDSA Ed448 verification with altered signature after call",
+        "EdDSA Ed448 with altered data after call",
+        "EdDSA Ed448 using privateKey to verify",
+        "EdDSA Ed448 using publicKey to sign",
+        "EdDSA Ed448 no verify usage",
+        "EdDSA Ed448 round trip",
+        "EdDSA Ed448 signing with wrong algorithm name",
+        "EdDSA Ed448 verifying with wrong algorithm name",
+        "EdDSA Ed448 verification failure due to altered signature",
+        "EdDSA Ed448 verification failure due to shortened signature",
+        "EdDSA Ed448 verification failure due to altered data",
+        "Ed25519 Verification checks with small-order key of order - Test 0",
+        "Ed25519 Verification checks with small-order key of order - Test 1",
+        "Ed25519 Verification checks with small-order key of order - Test 2",
+        "Ed25519 Verification checks with small-order key of order - Test 3",
+        "Ed25519 Verification checks with small-order key of order - Test 11",
+        "Ed25519 Verification checks with small-order key of order - Test 12",
+        "Ed25519 Verification checks with small-order key of order - Test 13"
       ],
       "eddsa.https.any.worker.html": [
         "Sign and verify using generated Ed448 keys.",
@@ -2179,7 +2198,26 @@
         "importVectorKeys step: EdDSA Ed448 verification failure due to shortened signature",
         "importVectorKeys step: EdDSA Ed448 verification failure due to altered data",
         "importVectorKeys step: EdDSA Ed448 signing with wrong algorithm name",
-        "importVectorKeys step: EdDSA Ed448 verifying with wrong algorithm name"
+        "importVectorKeys step: EdDSA Ed448 verifying with wrong algorithm name",
+        "EdDSA Ed448 verification",
+        "EdDSA Ed448 verification with altered signature after call",
+        "EdDSA Ed448 with altered data after call",
+        "EdDSA Ed448 using privateKey to verify",
+        "EdDSA Ed448 using publicKey to sign",
+        "EdDSA Ed448 no verify usage",
+        "EdDSA Ed448 round trip",
+        "EdDSA Ed448 signing with wrong algorithm name",
+        "EdDSA Ed448 verifying with wrong algorithm name",
+        "EdDSA Ed448 verification failure due to altered signature",
+        "EdDSA Ed448 verification failure due to shortened signature",
+        "EdDSA Ed448 verification failure due to altered data",
+        "Ed25519 Verification checks with small-order key of order - Test 0",
+        "Ed25519 Verification checks with small-order key of order - Test 1",
+        "Ed25519 Verification checks with small-order key of order - Test 2",
+        "Ed25519 Verification checks with small-order key of order - Test 3",
+        "Ed25519 Verification checks with small-order key of order - Test 11",
+        "Ed25519 Verification checks with small-order key of order - Test 12",
+        "Ed25519 Verification checks with small-order key of order - Test 13"
       ]
     },
     "algorithm-discards-context.https.window.html": false
@@ -6903,10 +6941,7 @@
         },
         "the-iframe-element": {
           "cross-origin-to-whom-part-2.window.html": false,
-          "cross-origin-to-whom.window.html": false,
-          "sandbox-top-navigation-child.tentative.sub.window.html": false,
-          "sandbox-top-navigation-escalate-privileges.tentative.sub.window.html": false,
-          "sandbox-top-navigation-grandchild.tentative.sub.window.html": false
+          "cross-origin-to-whom.window.html": false
         },
         "the-img-element": {
           "historical-progress-event.window.html": false
@@ -8162,14 +8197,21 @@
         "backpressure-send.any.html?wss": true,
         "backpressure-send.any.worker.html?wpt_flags=h2": false,
         "backpressure-send.any.worker.html?wss": true,
-        "close.any.html?wpt_flags=h2": true,
-        "close.any.html?wss": true,
-        "close.any.worker.html?wpt_flags=h2": true,
-        "close.any.worker.html?wss": true,
+        "close.any.html?wpt_flags=h2": false,
+        "close.any.html?wss": [
+          "incomplete closing handshake should be considered unclean close"
+        ],
+        "close.any.worker.html?wpt_flags=h2": false,
+        "close.any.worker.html?wss": [
+          "incomplete closing handshake should be considered unclean close"
+        ],
         "constructor.any.html?wpt_flags=h2": true,
         "constructor.any.html?wss": true,
         "constructor.any.worker.html?wpt_flags=h2": true,
-        "constructor.any.worker.html?wss": true
+        "constructor.any.worker.html?wss": true,
+        "close.any.html?default": [
+          "incomplete closing handshake should be considered unclean close"
+        ]
       }
     }
   },
