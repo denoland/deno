@@ -150,7 +150,7 @@ impl std::ops::Deref for HttpServerState {
 
 enum RequestBodyState {
   Incoming(Incoming),
-  Resource(HttpRequestBodyAutocloser),
+  Resource(#[allow(dead_code)] HttpRequestBodyAutocloser),
 }
 
 impl From<Incoming> for RequestBodyState {
