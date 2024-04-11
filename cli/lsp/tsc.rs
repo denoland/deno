@@ -28,6 +28,7 @@ use crate::lsp::documents::Documents;
 use crate::lsp::logging::lsp_warn;
 use crate::tsc;
 use crate::tsc::ResolveArgs;
+use crate::tsc::MISSING_DEPENDENCY_SPECIFIER;
 use crate::util::path::relative_specifier;
 use crate::util::path::specifier_to_file_path;
 use crate::util::path::to_percent_decoded_str;
@@ -4008,7 +4009,7 @@ fn op_load<'s>(
     .mark_with_args("tsc.op.op_load", specifier);
   let specifier = state.specifier_map.normalize(specifier)?;
   let maybe_load_response =
-    if specifier.as_str() == "internal:///missing_dependency.d.ts" {
+    if specifier.as_str() == MISSING_DEPENDENCY_SPECIFIER {
       None
     } else {
       let asset_or_document = state.get_asset_or_document(&specifier);
@@ -4043,14 +4044,16 @@ fn op_resolve<'s>(
       );
       resolved
         .into_iter()
-        .map(|o| match o {
+        // Resolved `node:` specifier means the user doesn't have @types/node,
+        // resolve to stub.
+        .map(|o| match o.filter(|(s, _)| s.scheme() != "node") {
           Some((s, mt)) => Some((
             state.specifier_map.denormalize(&s),
             mt.as_ts_extension().to_string(),
           )),
           None => Some((
-            "internal://missing_dependency.d.ts".to_string(),
-            ".d.ts".to_string(),
+            MISSING_DEPENDENCY_SPECIFIER.to_string(),
+            MediaType::Dts.as_ts_extension().to_string(),
           )),
         })
         .collect()

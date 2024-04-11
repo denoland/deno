@@ -725,14 +725,6 @@ delete Object.prototype.__proto__;
           if (item) {
             isCjsCache.add(item);
             const [resolvedFileName, extension] = item;
-            if (resolvedFileName.startsWith("node:")) {
-              // probably means the user doesn't have @types/node, so resolve to stub
-              return {
-                resolvedFileName: "internal://missing_dependency.d.ts",
-                extension: ".d.ts",
-                isExternalLibraryImport: false,
-              };
-            }
             return {
               resolvedFileName,
               extension,
