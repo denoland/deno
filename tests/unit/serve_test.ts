@@ -3909,4 +3909,5 @@ Deno.test(
 
 // DO NOT REMOVE.
 // Regression test to make sure that `ServeTlsOptions` is an interface.
+// deno-lint-ignore no-empty-interface
 interface MyServeTlsOptions extends Deno.ServeTlsOptions {}
