@@ -2668,6 +2668,61 @@ Deno.test(
   },
 );
 
+Deno.test("proxy with fetch", async () => {
+  const listener = Deno.listen({ port: listenPort });
+  const deferred = Promise.withResolvers<void>();
+
+  const server = Deno.serve({ port: listenPort + 1 }, (_req) => {
+    return new Response("Hello world");
+  });
+
+  let httpConn: Deno.HttpConn;
+  async function handleHttp(conn: Deno.Conn) {
+    httpConn = Deno.serveHttp(conn);
+    for await (const e of httpConn) {
+      await e.respondWith(serve(e.request));
+      break;
+    }
+  }
+
+  async function serve(req: Request) {
+    return await fetch(`http://localhost:${listenPort + 1}/`, req);
+  }
+
+  const originServer = (async () => {
+    for await (const conn of listener) {
+      handleHttp(conn);
+      break;
+    }
+  })();
+
+  const proxiedRequest = (async () => {
+    const conn = await Deno.connect({ port: listenPort });
+    const payload = new TextEncoder().encode(
+      "POST /api/sessions HTTP/1.1\x0d\x0aConnection: keep-alive\x0d\x0aContent-Length: 2\x0d\x0a\x0d\x0a{}",
+    );
+    const n = await conn.write(payload);
+    assertEquals(n, 76);
+    const buf = new Uint8Array(1000);
+    const nread = await conn.read(buf);
+    assertEquals(nread, 150);
+    const respText = new TextDecoder().decode(buf);
+    assert(respText.includes("HTTP/1.1 200 OK"));
+    assert(respText.includes("content-type: text/plain;charset=UTF-8"));
+    assert(respText.includes("vary: Accept-Encoding"));
+    assert(respText.includes("content-length: 11"));
+    assert(respText.includes("Hello world"));
+    conn.close();
+    deferred.resolve();
+  })();
+  await proxiedRequest;
+  await originServer;
+  await deferred.promise;
+  await server.shutdown();
+  await server.finished;
+  httpConn!.close();
+});
+
 function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
   // Based on https://tools.ietf.org/html/rfc2616#section-19.4.6
   const tp = new TextProtoReader(r);

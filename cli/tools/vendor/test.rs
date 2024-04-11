@@ -144,10 +144,6 @@ struct TestVendorEnvironment {
 }
 
 impl VendorEnvironment for TestVendorEnvironment {
-  fn cwd(&self) -> Result<PathBuf, AnyError> {
-    Ok(make_path("/"))
-  }
-
   fn create_dir_all(&self, dir_path: &Path) -> Result<(), AnyError> {
     let mut directories = self.directories.borrow_mut();
     for path in dir_path.ancestors() {
@@ -168,10 +164,6 @@ impl VendorEnvironment for TestVendorEnvironment {
       String::from_utf8(text.to_vec()).unwrap(),
     );
     Ok(())
-  }
-
-  fn path_exists(&self, path: &Path) -> bool {
-    self.files.borrow().contains_key(&path.to_path_buf())
   }
 }
 
@@ -244,13 +236,12 @@ impl VendorTestBuilder {
         let resolver = resolver.clone();
         move |entry_points| {
           async move {
-            let analyzer = DefaultModuleAnalyzer::default();
             Ok(
               build_test_graph(
                 entry_points,
                 loader,
                 resolver.as_graph_resolver(),
-                &analyzer,
+                &DefaultModuleAnalyzer,
               )
               .await,
             )
@@ -318,7 +309,7 @@ async fn build_test_graph(
       &mut loader,
       deno_graph::BuildOptions {
         resolver: Some(resolver),
-        module_analyzer: Some(analyzer),
+        module_analyzer: analyzer,
         ..Default::default()
       },
     )

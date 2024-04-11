@@ -100,6 +100,12 @@ class Conn {
   #writable;
 
   constructor(rid, remoteAddr, localAddr) {
+    if (internals.future) {
+      ObjectDefineProperty(this, "rid", {
+        enumerable: false,
+        value: undefined,
+      });
+    }
     ObjectDefineProperty(this, internalRidSymbol, {
       enumerable: false,
       value: rid,
@@ -260,6 +266,12 @@ class Listener {
   #promise = null;
 
   constructor(rid, addr) {
+    if (internals.future) {
+      ObjectDefineProperty(this, "rid", {
+        enumerable: false,
+        value: undefined,
+      });
+    }
     ObjectDefineProperty(this, internalRidSymbol, {
       enumerable: false,
       value: rid,

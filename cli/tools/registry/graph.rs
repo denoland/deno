@@ -59,6 +59,8 @@ pub fn collect_invalid_external_imports(
   let options = WalkOptions {
     check_js: true,
     follow_dynamic: true,
+    // this being disabled will cause it to follow everything in the graph
+    prefer_fast_check_graph: false,
     follow_type_only: true,
   };
   let mut iter = graph.walk(&graph.roots, options);

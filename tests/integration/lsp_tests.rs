@@ -1061,6 +1061,7 @@ fn lsp_did_change_deno_configuration_notification() {
       }],
     }))
   );
+  client.shutdown();
 }
 
 #[test]
@@ -1098,6 +1099,7 @@ fn lsp_deno_task() {
       }
     ])
   );
+  client.shutdown();
 }
 
 #[test]
@@ -1110,6 +1112,7 @@ fn lsp_reload_import_registries_command() {
     json!({ "command": "deno.reloadImportRegistries" }),
   );
   assert_eq!(res, json!(true));
+  client.shutdown();
 }
 
 #[test]
@@ -1397,7 +1400,7 @@ fn lsp_hover() {
           "language": "typescript",
           "value": "const Deno.args: string[]"
         },
-        "Returns the script arguments to the program.\n\nGive the following command line invocation of Deno:\n\n```sh\ndeno run --allow-read https://examples.deno.land/command-line-arguments.ts Sushi\n```\n\nThen `Deno.args` will contain:\n\n```ts\n[ \"Sushi\" ]\n```\n\nIf you are looking for a structured way to parse arguments, there is the\n[`std/flags`](https://deno.land/std/flags) module as part of the Deno\nstandard library.",
+        "Returns the script arguments to the program.\n\nGive the following command line invocation of Deno:\n\n```sh\ndeno run --allow-read https://examples.deno.land/command-line-arguments.ts Sushi\n```\n\nThen `Deno.args` will contain:\n\n```ts\n[ \"Sushi\" ]\n```\n\nIf you are looking for a structured way to parse arguments, there is\n[`parseArgs()`](https://jsr.io/@std/cli/doc/parse-args/~/parseArgs) from\nthe Deno Standard Library.",
         "\n\n*@category* - Runtime Environment",
       ],
       "range": {
@@ -1598,6 +1601,7 @@ fn lsp_inlay_hints() {
       }
     ])
   );
+  client.shutdown();
 }
 
 #[test]
@@ -1645,6 +1649,7 @@ fn lsp_inlay_hints_not_enabled() {
     }),
   );
   assert_eq!(res, json!(null));
+  client.shutdown();
 }
 
 #[test]
@@ -2409,6 +2414,7 @@ fn lsp_hover_dependency() {
       }
     })
   );
+  client.shutdown();
 }
 
 // This tests for a regression covered by denoland/deno#12753 where the lsp was
@@ -4822,6 +4828,7 @@ fn test_lsp_code_actions_ordering() {
       },
     ])
   );
+  client.shutdown();
 }
 
 #[test]
@@ -4851,6 +4858,7 @@ fn lsp_status_file() {
   );
   let res = res.as_str().unwrap().to_string();
   assert!(res.starts_with("# Deno Language Server Status"));
+  client.shutdown();
 }
 
 #[test]
@@ -5136,7 +5144,7 @@ fn lsp_jsr_auto_import_completion() {
     json!({ "triggerKind": 1 }),
   );
   assert!(!list.is_incomplete);
-  assert_eq!(list.items.len(), 262);
+  assert_eq!(list.items.len(), 263);
   let item = list.items.iter().find(|i| i.label == "add").unwrap();
   assert_eq!(&item.label, "add");
   assert_eq!(
@@ -5216,7 +5224,7 @@ fn lsp_jsr_auto_import_completion_import_map() {
     json!({ "triggerKind": 1 }),
   );
   assert!(!list.is_incomplete);
-  assert_eq!(list.items.len(), 262);
+  assert_eq!(list.items.len(), 263);
   let item = list.items.iter().find(|i| i.label == "add").unwrap();
   assert_eq!(&item.label, "add");
   assert_eq!(json!(&item.label_details), json!({ "description": "add" }));
@@ -5598,6 +5606,7 @@ fn lsp_cache_then_definition() {
       },
     }]),
   );
+  client.shutdown();
 }
 
 #[test]
@@ -6355,6 +6364,7 @@ fn lsp_quote_style_from_workspace_settings() {
       },
     }]),
   );
+  client.shutdown();
 }
 
 #[test]
@@ -6812,6 +6822,7 @@ fn lsp_completions_auto_import() {
       ]
     })
   );
+  client.shutdown();
 }
 
 #[test]
@@ -7063,6 +7074,7 @@ fn lsp_npm_completions_auto_import_and_quick_fix_no_import_map() {
       }
     }])
   );
+  client.shutdown();
 }
 
 #[test]
@@ -7102,6 +7114,7 @@ fn lsp_semantic_tokens_for_disabled_module() {
       "data": [0, 6, 9, 7, 9, 0, 15, 9, 7, 8],
     })
   );
+  client.shutdown();
 }
 
 #[test]
@@ -7538,6 +7551,7 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
       ]
     })
   );
+  client.shutdown();
 }
 
 #[test]
@@ -7633,6 +7647,7 @@ fn lsp_completions_snippet() {
       "insertTextFormat": 2
     })
   );
+  client.shutdown();
 }
 
 #[test]
@@ -7688,6 +7703,7 @@ fn lsp_completions_no_snippet() {
       ]
     })
   );
+  client.shutdown();
 }
 
 #[test]
@@ -7846,18 +7862,18 @@ fn lsp_npm_specifier_unopened_file() {
     .use_http_server()
     .use_temp_cwd()
     .build();
-  let mut client = context.new_lsp_command().build();
-  client.initialize_default();
-
+  let temp_dir = context.temp_dir();
   // create other.ts, which re-exports an npm specifier
-  client.deno_dir().write(
+  temp_dir.write(
     "other.ts",
     "export { default as chalk } from 'npm:chalk@5';",
   );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
 
   // cache the other.ts file to the DENO_DIR
   let deno = deno_cmd_with_deno_dir(client.deno_dir())
-    .current_dir(client.deno_dir().path())
+    .current_dir(temp_dir.path())
     .arg("cache")
     .arg("--quiet")
     .arg("other.ts")
@@ -7875,12 +7891,9 @@ fn lsp_npm_specifier_unopened_file() {
   assert!(stderr.is_empty());
 
   // open main.ts, which imports other.ts (unopened)
-  let main_url =
-    ModuleSpecifier::from_file_path(client.deno_dir().path().join("main.ts"))
-      .unwrap();
   client.did_open(json!({
     "textDocument": {
-      "uri": main_url,
+      "uri": temp_dir.uri().join("main.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "import { chalk } from './other.ts';\n\n",
@@ -7891,7 +7904,7 @@ fn lsp_npm_specifier_unopened_file() {
     "textDocument/didChange",
     json!({
       "textDocument": {
-        "uri": main_url,
+        "uri": temp_dir.uri().join("main.ts").unwrap(),
         "version": 2
       },
       "contentChanges": [
@@ -7909,7 +7922,7 @@ fn lsp_npm_specifier_unopened_file() {
 
   // now ensure completions work
   let list = client.get_completion_list(
-    main_url,
+    temp_dir.uri().join("main.ts").unwrap(),
     (2, 6),
     json!({
       "triggerKind": 2,
@@ -7919,6 +7932,7 @@ fn lsp_npm_specifier_unopened_file() {
   assert!(!list.is_incomplete);
   assert_eq!(list.items.len(), 63);
   assert!(list.items.iter().any(|i| i.label == "ansi256"));
+  client.shutdown();
 }
 
 #[test]
@@ -9030,15 +9044,15 @@ fn lsp_performance() {
       "tsc.host.$getAssets",
       "tsc.host.$getDiagnostics",
       "tsc.host.$getSupportedCodeFixes",
+      "tsc.host.$projectChanged",
       "tsc.host.getQuickInfoAtPosition",
       "tsc.op.op_is_node_file",
       "tsc.op.op_load",
-      "tsc.op.op_project_version",
       "tsc.op.op_script_names",
-      "tsc.op.op_script_version",
       "tsc.op.op_ts_config",
       "tsc.request.$getAssets",
       "tsc.request.$getSupportedCodeFixes",
+      "tsc.request.$projectChanged",
       "tsc.request.getQuickInfoAtPosition",
     ]
   );
@@ -11432,6 +11446,193 @@ fn lsp_vendor_dir() {
 
   client.shutdown();
 }
+#[test]
+fn lsp_deno_json_scopes_fmt_config() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.create_dir_all("project1");
+  temp_dir.write(
+    "project1/deno.json",
+    json!({
+      "fmt": {
+        "semiColons": false,
+      },
+    })
+    .to_string(),
+  );
+  temp_dir.create_dir_all("project2");
+  temp_dir.write(
+    "project2/deno.json",
+    json!({
+      "fmt": {
+        "singleQuote": true,
+      },
+    })
+    .to_string(),
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("project1/file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "console.log(\"\");\n",
+    },
+  }));
+  let res = client.write_request(
+    "textDocument/formatting",
+    json!({
+      "textDocument": {
+        "uri": temp_dir.uri().join("project1/file.ts").unwrap(),
+      },
+      "options": {
+        "tabSize": 2,
+        "insertSpaces": true,
+      },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([{
+      "range": {
+        "start": { "line": 0, "character": 15 },
+        "end": { "line": 0, "character": 16 },
+      },
+      "newText": "",
+    }])
+  );
+  client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("project2/file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "console.log(\"\");\n",
+    },
+  }));
+  let res = client.write_request(
+    "textDocument/formatting",
+    json!({
+      "textDocument": {
+        "uri": temp_dir.uri().join("project2/file.ts").unwrap(),
+      },
+      "options": {
+        "tabSize": 2,
+        "insertSpaces": true,
+      },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([{
+      "range": {
+        "start": { "line": 0, "character": 12 },
+        "end": { "line": 0, "character": 14 },
+      },
+      "newText": "''",
+    }])
+  );
+  client.shutdown();
+}
+
+#[test]
+fn lsp_deno_json_scopes_lint_config() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.create_dir_all("project1");
+  temp_dir.write(
+    "project1/deno.json",
+    json!({
+      "lint": {
+        "rules": {
+          "include": ["camelcase"],
+        },
+      },
+    })
+    .to_string(),
+  );
+  temp_dir.create_dir_all("project2");
+  temp_dir.write(
+    "project2/deno.json",
+    json!({
+      "lint": {
+        "rules": {
+          "include": ["ban-untagged-todo"],
+        },
+      },
+    })
+    .to_string(),
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("project1/file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"
+        // TODO: Unused var
+        const snake_case_var = 1;
+        console.log(snake_case_var);
+      "#,
+    },
+  }));
+  assert_eq!(
+    json!(diagnostics.messages_with_source("deno-lint")),
+    json!({
+      "uri": temp_dir.uri().join("project1/file.ts").unwrap(),
+      "diagnostics": [{
+        "range": {
+          "start": { "line": 2, "character": 14 },
+          "end": { "line": 2, "character": 28 },
+        },
+        "severity": 2,
+        "code": "camelcase",
+        "source": "deno-lint",
+        "message": "Identifier 'snake_case_var' is not in camel case.\nConsider renaming `snake_case_var` to `snakeCaseVar`",
+      }],
+      "version": 1,
+    })
+  );
+  client.write_notification(
+    "textDocument/didClose",
+    json!({
+      "textDocument": {
+        "uri": temp_dir.uri().join("project1/file.ts").unwrap(),
+      },
+    }),
+  );
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("project2/file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"
+        // TODO: Unused var
+        const snake_case_var = 1;
+        console.log(snake_case_var);
+      "#,
+    },
+  }));
+  assert_eq!(
+    json!(diagnostics.messages_with_source("deno-lint")),
+    json!({
+      "uri": temp_dir.uri().join("project2/file.ts").unwrap(),
+      "diagnostics": [{
+        "range": {
+          "start": { "line": 1, "character": 8 },
+          "end": { "line": 1, "character": 27 },
+        },
+        "severity": 2,
+        "code": "ban-untagged-todo",
+        "source": "deno-lint",
+        "message": "TODO should be tagged with (@username) or (#issue)\nAdd a user tag or issue reference to the TODO comment, e.g. TODO(@djones), TODO(djones), TODO(#123)",
+      }],
+      "version": 1,
+    })
+  );
+  client.shutdown();
+}
 
 #[test]
 fn lsp_import_unstable_bare_node_builtins_auto_discovered() {
@@ -11576,6 +11777,56 @@ fn lsp_jupyter_byonm_diagnostics() {
           },
         ],
         "version": 1,
+      },
+    ])
+  );
+  client.shutdown();
+}
+
+#[test]
+fn lsp_deno_future_env_byonm() {
+  let context = TestContextBuilder::for_npm()
+    .env("DENO_FUTURE", "1")
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.path().join("package.json").write_json(&json!({
+    "dependencies": {
+      "@denotest/esm-basic": "*",
+    },
+  }));
+  context.run_npm("install");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"
+        import "npm:chalk";
+        import "@denotest/esm-basic";
+      "#,
+    },
+  }));
+  assert_eq!(
+    json!(diagnostics.all()),
+    json!([
+      {
+        "range": {
+          "start": {
+            "line": 1,
+            "character": 15,
+          },
+          "end": {
+            "line": 1,
+            "character": 26,
+          },
+        },
+        "severity": 1,
+        "code": "resolver-error",
+        "source": "deno",
+        "message": format!("Could not find a matching package for 'npm:chalk' in '{}'. You must specify this as a package.json dependency when the node_modules folder is not managed by Deno.", temp_dir.path().join("package.json")),
       },
     ])
   );
@@ -11995,7 +12246,44 @@ C.test();
     }))
     .all();
 
-  assert_eq!(diagnostics.len(), 0);
+  assert_eq!(json!(diagnostics), json!([]));
 
+  client.shutdown();
+}
+
+#[test]
+fn lsp_uses_lockfile_for_npm_initialization() {
+  let context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("deno.json", "{}");
+  // use two npm packages here
+  temp_dir.write("main.ts", "import 'npm:@denotest/esm-basic'; import 'npm:@denotest/cjs-default-export';");
+  context
+    .new_command()
+    .args("run main.ts")
+    .run()
+    .skip_output_check();
+  // remove one of the npm packages and let the other one be found via the lockfile
+  temp_dir.write("main.ts", "import 'npm:@denotest/esm-basic';");
+  assert!(temp_dir.path().join("deno.lock").exists());
+  let mut client = context
+    .new_lsp_command()
+    .capture_stderr()
+    .log_debug()
+    .build();
+  client.initialize_default();
+  let mut skipping_count = 0;
+  client.wait_until_stderr_line(|line| {
+    if line.contains("Skipping pending npm resolution.") {
+      skipping_count += 1;
+    }
+    assert!(
+      !line.contains("Running pending npm resolution."),
+      "Line: {}",
+      line
+    );
+    line.contains("Server ready.")
+  });
+  assert_eq!(skipping_count, 1);
   client.shutdown();
 }
