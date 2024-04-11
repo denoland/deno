@@ -882,6 +882,10 @@ declare namespace Deno {
     caCerts?: string[];
     /** A HTTP proxy to use for new connections. */
     proxy?: Proxy;
+    /** Cert chain in PEM format. */
+    cert?: string;
+    /** Server private key in PEM format. */
+    key?: string;
     /** Sets the maximum numer of idle connections per host allowed in the pool. */
     poolMaxIdlePerHost?: number;
     /** Set an optional timeout for idle sockets being kept-alive.
@@ -956,27 +960,6 @@ declare namespace Deno {
    */
   export function createHttpClient(
     options: CreateHttpClientOptions,
-  ): HttpClient;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Create a custom HttpClient to use with {@linkcode fetch}. This is an
-   * extension of the web platform Fetch API which allows Deno to use custom
-   * TLS certificates and connect via a proxy while using `fetch()`.
-   *
-   * @example ```ts
-   * const caCert = await Deno.readTextFile("./ca.pem");
-   * // Load a client key and certificate that we'll use to connect
-   * const key = await Deno.readTextFile("./key.key");
-   * const cert = await Deno.readTextFile("./cert.crt");
-   * const client = Deno.createHttpClient({ caCerts: [ caCert ], key, cert });
-   * const response = await fetch("https://myserver.com", { client });
-   * ```
-   *
-   * @category Fetch API
-   */
-  export function createHttpClient(
-    options: CreateHttpClientOptions & TlsCertifiedKeyOptions,
   ): HttpClient;
 
   /** **UNSTABLE**: New API, yet to be vetted.

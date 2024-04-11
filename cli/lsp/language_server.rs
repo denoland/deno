@@ -84,6 +84,7 @@ use super::text;
 use super::tsc;
 use super::tsc::Assets;
 use super::tsc::AssetsSnapshot;
+use super::tsc::ChangeKind;
 use super::tsc::GetCompletionDetailsArgs;
 use super::tsc::TsServer;
 use super::urls;
@@ -1183,13 +1184,23 @@ impl Inner {
     // refresh the npm specifiers because it might have discovered
     // a @types/node package and now's a good time to do that anyway
     self.refresh_npm_specifiers().await;
+
+    self
+      .ts_server
+      .project_changed(
+        self.snapshot(),
+        &[],
+        self.documents.project_version(),
+        true,
+      )
+      .await;
   }
 
   fn shutdown(&self) -> LspResult<()> {
     Ok(())
   }
 
-  fn did_open(
+  async fn did_open(
     &mut self,
     specifier: &ModuleSpecifier,
     params: DidOpenTextDocumentParams,
@@ -1217,6 +1228,16 @@ impl Inner {
       params.text_document.language_id.parse().unwrap(),
       params.text_document.text.into(),
     );
+    let version = self.documents.project_version();
+    self
+      .ts_server
+      .project_changed(
+        self.snapshot(),
+        &[(document.specifier(), ChangeKind::Opened)],
+        version,
+        false,
+      )
+      .await;
 
     self.performance.measure(mark);
     document
@@ -1234,10 +1255,18 @@ impl Inner {
     ) {
       Ok(document) => {
         if document.is_diagnosable() {
-          self.refresh_npm_specifiers().await;
+          let version = self.documents.project_version();
           self
-            .diagnostics_server
-            .invalidate(&self.documents.dependents(&specifier));
+            .ts_server
+            .project_changed(
+              self.snapshot(),
+              &[(document.specifier(), ChangeKind::Modified)],
+              version,
+              false,
+            )
+            .await;
+          self.refresh_npm_specifiers().await;
+          self.diagnostics_server.invalidate(&[specifier]);
           self.send_diagnostics_update();
           self.send_testing_update();
         }
@@ -1279,15 +1308,23 @@ impl Inner {
       .normalize_url(&params.text_document.uri, LspUrlKind::File);
     if self.is_diagnosable(&specifier) {
       self.refresh_npm_specifiers().await;
-      let mut specifiers = self.documents.dependents(&specifier);
-      specifiers.push(specifier.clone());
-      self.diagnostics_server.invalidate(&specifiers);
+      self.diagnostics_server.invalidate(&[specifier.clone()]);
       self.send_diagnostics_update();
       self.send_testing_update();
     }
     if let Err(err) = self.documents.close(&specifier) {
       error!("{:#}", err);
     }
+    let version = self.documents.project_version();
+    self
+      .ts_server
+      .project_changed(
+        self.snapshot(),
+        &[(&specifier, ChangeKind::Closed)],
+        version,
+        false,
+      )
+      .await;
     self.performance.measure(mark);
   }
 
@@ -3178,11 +3215,10 @@ impl tower_lsp::LanguageServer for LanguageServer {
     let specifier = inner
       .url_map
       .normalize_url(&params.text_document.uri, LspUrlKind::File);
-    let document = inner.did_open(&specifier, params);
+    let document = inner.did_open(&specifier, params).await;
     if document.is_diagnosable() {
       inner.refresh_npm_specifiers().await;
-      let specifiers = inner.documents.dependents(&specifier);
-      inner.diagnostics_server.invalidate(&specifiers);
+      inner.diagnostics_server.invalidate(&[specifier]);
       inner.send_diagnostics_update();
       inner.send_testing_update();
     }

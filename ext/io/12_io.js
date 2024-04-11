@@ -40,7 +40,7 @@ async function copy(
   internals.warnOnDeprecatedApi(
     "Deno.copy()",
     new Error().stack,
-    "Use `copy()` from `https://deno.land/std/io/copy.ts` instead.",
+    "Use `copy()` from `https://jsr.io/@std/io/doc/copy/~` instead.",
   );
   let n = 0;
   const bufSize = options?.bufSize ?? DEFAULT_BUFFER_SIZE;
