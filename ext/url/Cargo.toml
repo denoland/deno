@@ -2,7 +2,11 @@
 
 [package]
 name = "deno_url"
+<<<<<<< HEAD
 version = "0.144.0"
+=======
+version = "0.145.0"
+>>>>>>> 04c0a4cbf (1.42.2 (#23314))
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
