@@ -971,9 +971,14 @@ impl Inner {
       self.config.update_capabilities(&params.capabilities);
     }
 
-    self
+    if let Err(e) = self
       .ts_server
-      .start(self.config.internal_inspect().to_address());
+      .start(self.config.internal_inspect().to_address())
+    {
+      lsp_warn!("{}", e);
+      self.client.show_message(MessageType::ERROR, e);
+      return Err(tower_lsp::jsonrpc::Error::internal_error());
+    };
 
     self.update_debug_flag();
     self.refresh_workspace_files();

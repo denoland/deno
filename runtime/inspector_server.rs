@@ -53,10 +53,8 @@ impl InspectorServer {
 
     let (shutdown_server_tx, shutdown_server_rx) = broadcast::channel(1);
 
-    let tcp_listener =
-      std::net::TcpListener::bind(host).with_context(|| {
-        format!("Failed to bind inspector server socket at {}", host)
-      })?;
+    let tcp_listener = std::net::TcpListener::bind(host)
+      .context("Failed to start inspector server")?;
     tcp_listener.set_nonblocking(true)?;
 
     let thread_handle = thread::spawn(move || {
@@ -277,7 +275,7 @@ async fn server(
   let listener = match TcpListener::from_std(listener) {
     Ok(l) => l,
     Err(err) => {
-      eprintln!("Cannot create async listener from std listener: {:?}", err);
+      eprintln!("Cannot start inspector server: {:?}", err);
       return;
     }
   };
