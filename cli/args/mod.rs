@@ -10,6 +10,7 @@ pub mod package_json;
 pub use self::import_map::resolve_import_map;
 use self::package_json::PackageJsonDeps;
 use ::import_map::ImportMap;
+use deno_ast::SourceMapOption;
 use deno_core::resolve_url_or_path;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmSystemInfo;
@@ -146,9 +147,9 @@ pub fn jsr_api_url() -> &'static Url {
   &JSR_API_URL
 }
 
-pub fn ts_config_to_emit_options(
+pub fn ts_config_to_transpile_and_emit_options(
   config: deno_config::TsConfig,
-) -> deno_ast::EmitOptions {
+) -> (deno_ast::TranspileOptions, deno_ast::EmitOptions) {
   let options: deno_config::EmitConfigOptions =
     serde_json::from_value(config.0).unwrap();
   let imports_not_used_as_values =
@@ -165,23 +166,34 @@ pub fn ts_config_to_emit_options(
       "precompile" => (false, false, false, true),
       _ => (false, false, false, false),
     };
-  deno_ast::EmitOptions {
-    use_ts_decorators: options.experimental_decorators,
-    use_decorators_proposal: !options.experimental_decorators,
-    emit_metadata: options.emit_decorator_metadata,
-    imports_not_used_as_values,
-    inline_source_map: options.inline_source_map,
-    inline_sources: options.inline_sources,
-    source_map: options.source_map,
-    jsx_automatic,
-    jsx_development,
-    jsx_factory: options.jsx_factory,
-    jsx_fragment_factory: options.jsx_fragment_factory,
-    jsx_import_source: options.jsx_import_source,
-    precompile_jsx,
-    transform_jsx,
-    var_decl_imports: false,
-  }
+  let source_map = if options.inline_source_map {
+    SourceMapOption::Inline
+  } else if options.source_map {
+    SourceMapOption::Separate
+  } else {
+    SourceMapOption::None
+  };
+  (
+    deno_ast::TranspileOptions {
+      use_ts_decorators: options.experimental_decorators,
+      use_decorators_proposal: !options.experimental_decorators,
+      emit_metadata: options.emit_decorator_metadata,
+      imports_not_used_as_values,
+      jsx_automatic,
+      jsx_development,
+      jsx_factory: options.jsx_factory,
+      jsx_fragment_factory: options.jsx_fragment_factory,
+      jsx_import_source: options.jsx_import_source,
+      precompile_jsx,
+      transform_jsx,
+      var_decl_imports: false,
+    },
+    deno_ast::EmitOptions {
+      inline_sources: options.inline_sources,
+      keep_comments: false,
+      source_map,
+    },
+  )
 }
 
 /// Indicates how cached source files should be handled.

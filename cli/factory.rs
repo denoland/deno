@@ -549,11 +549,14 @@ impl CliFactory {
       if let Some(ignored_options) = ts_config_result.maybe_ignored_options {
         warn!("{}", ignored_options);
       }
-      let emit_options =
-        crate::args::ts_config_to_emit_options(ts_config_result.ts_config);
+      let (transpile_options, emit_options) =
+        crate::args::ts_config_to_transpile_and_emit_options(
+          ts_config_result.ts_config,
+        );
       Ok(Arc::new(Emitter::new(
         self.emit_cache()?.clone(),
         self.parsed_source_cache().clone(),
+        transpile_options,
         emit_options,
       )))
     })

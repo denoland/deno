@@ -236,13 +236,12 @@ impl VendorTestBuilder {
         let resolver = resolver.clone();
         move |entry_points| {
           async move {
-            let analyzer = DefaultModuleAnalyzer::default();
             Ok(
               build_test_graph(
                 entry_points,
                 loader,
                 resolver.as_graph_resolver(),
-                &analyzer,
+                &DefaultModuleAnalyzer,
               )
               .await,
             )
@@ -310,7 +309,7 @@ async fn build_test_graph(
       &mut loader,
       deno_graph::BuildOptions {
         resolver: Some(resolver),
-        module_analyzer: Some(analyzer),
+        module_analyzer: analyzer,
         ..Default::default()
       },
     )
