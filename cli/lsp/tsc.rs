@@ -303,6 +303,10 @@ impl TsServer {
     new_project_version: String,
     config_changed: bool,
   ) {
+    let modified_scripts = modified_scripts
+      .iter()
+      .map(|(spec, change)| (self.specifier_map.denormalize(spec), change))
+      .collect::<Vec<_>>();
     let req = TscRequest {
       method: "$projectChanged",
       args: json!([modified_scripts, new_project_version, config_changed,]),
