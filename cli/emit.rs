@@ -32,7 +32,7 @@ impl Emitter {
     let transpile_and_emit_options_hash = {
       let mut hasher = FastInsecureHasher::default();
       hasher.write_hashable(&transpile_options);
-      hasher.write_hashable(&emit_options);
+      hasher.write_hashable(emit_options);
       hasher.finish()
     };
     Self {
@@ -125,7 +125,7 @@ impl Emitter {
     let parsed_source = self
       .parsed_source_cache
       .get_or_parse_module(specifier, source_arc, media_type)?;
-    let mut options = self.emit_options.clone();
+    let mut options = self.emit_options;
     options.source_map = SourceMapOption::None;
     let transpiled_source =
       parsed_source.transpile(&self.transpile_options, &options)?;
