@@ -1,10 +1,5 @@
 {
   "tempDir": true,
-  "steps": [{
-    "args": "cache main.tsx",
-    "output": "[WILDCARD]"
-  }, {
-    "args": "run -A --log-level=debug main.tsx",
-    "output": "main.out"
-  }]
+  "args": "run -A --log-level=debug main.tsx",
+  "output": "main.out"
 }
