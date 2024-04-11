@@ -53,8 +53,10 @@ impl InspectorServer {
 
     let (shutdown_server_tx, shutdown_server_rx) = broadcast::channel(1);
 
-    let tcp_listener = std::net::TcpListener::bind(host)
-      .context("Failed to start inspector server")?;
+    let tcp_listener =
+      std::net::TcpListener::bind(host).with_context(|| {
+        format!("Failed to start inspector server at \"{}\"", host)
+      })?;
     tcp_listener.set_nonblocking(true)?;
 
     let thread_handle = thread::spawn(move || {
