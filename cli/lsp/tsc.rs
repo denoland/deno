@@ -4039,13 +4039,15 @@ fn op_resolve<'s>(
       );
       resolved
         .into_iter()
-        .map(|o| {
-          o.map(|(s, mt)| {
-            (
-              state.specifier_map.denormalize(&s),
-              mt.as_ts_extension().to_string(),
-            )
-          })
+        .map(|o| match o {
+          Some((s, mt)) => Some((
+            state.specifier_map.denormalize(&s),
+            mt.as_ts_extension().to_string(),
+          )),
+          None => Some((
+            "internal://missing_dependency.d.ts".to_string(),
+            ".d.ts".to_string(),
+          )),
         })
         .collect()
     }
