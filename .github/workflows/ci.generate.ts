@@ -1,6 +1,6 @@
 #!/usr/bin/env -S deno run --allow-write=. --lock=./tools/deno.lock.json
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-import * as yaml from "https://deno.land/std@0.173.0/encoding/yaml.ts";
+import { stringify } from "jsr:@std/yaml@^0.221/stringify";
 
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
@@ -115,24 +115,30 @@ CARGO_PROFILE_BENCH_LTO=false
 CARGO_PROFILE_RELEASE_INCREMENTAL=false
 CARGO_PROFILE_RELEASE_LTO=false
 RUSTFLAGS<<__1
+  -C linker-plugin-lto=true
   -C linker=clang-${llvmVersion}
   -C link-arg=-fuse-ld=lld-${llvmVersion}
   -C link-arg=--sysroot=/sysroot
   -C link-arg=-ldl
   -C link-arg=-Wl,--allow-shlib-undefined
+  -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
+  -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
   --cfg tokio_unstable
   \${{ env.RUSTFLAGS }}
 __1
 RUSTDOCFLAGS<<__1
+  -C linker-plugin-lto=true
   -C linker=clang-${llvmVersion}
   -C link-arg=-fuse-ld=lld-${llvmVersion}
   -C link-arg=--sysroot=/sysroot
   -C link-arg=-ldl
   -C link-arg=-Wl,--allow-shlib-undefined
+  -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
+  -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
   \${{ env.RUSTFLAGS }}
 __1
 CC=clang-${llvmVersion}
-CFLAGS=--sysroot=/sysroot
+CFLAGS=-flto=thin --sysroot=/sysroot
 __0`,
 };
 
@@ -356,8 +362,7 @@ const ci = {
       },
       strategy: {
         matrix: {
-          include: handleMatrixItems([
-            /*{
+          include: handleMatrixItems([{
             ...Runners.macosX86,
             job: "test",
             profile: "debug",
@@ -384,15 +389,15 @@ const ci = {
             job: "test",
             profile: "release",
             skip_pr: true,
-          }, */ {
-              ...Runners.linuxX86Xl,
-              job: "test",
-              profile: "release",
-              use_sysroot: true,
-              // TODO(ry): Because CI is so slow on for OSX and Windows, we
-              // currently run the Web Platform tests only on Linux.
-              wpt: "${{ !startsWith(github.ref, 'refs/tags/') }}",
-            }, /*, {
+          }, {
+            ...Runners.linuxX86Xl,
+            job: "test",
+            profile: "release",
+            use_sysroot: true,
+            // TODO(ry): Because CI is so slow on for OSX and Windows, we
+            // currently run the Web Platform tests only on Linux.
+            wpt: "${{ !startsWith(github.ref, 'refs/tags/') }}",
+          }, {
             ...Runners.linuxX86Xl,
             job: "bench",
             profile: "release",
@@ -425,8 +430,7 @@ const ci = {
             ...Runners.windowsX86,
             job: "lint",
             profile: "debug",
-          }*/
-          ]),
+          }]),
         },
         // Always run main branch builds to completion. This allows the cache to
         // stay mostly up-to-date in situations where a single job fails due to
@@ -441,8 +445,6 @@ const ci = {
         RUST_BACKTRACE: "full",
         // disable anyhow's library backtrace
         RUST_LIB_BACKTRACE: 0,
-        V8_FROM_SOURCE: 1,
-        V8_FORCE_DEBUG: 1,
       },
       steps: skipJobsIfPrAndMarkedSkip([
         ...cloneRepoStep,
@@ -465,9 +467,9 @@ const ci = {
             "startsWith(github.ref, 'refs/tags/')",
           ].join("\n"),
           run: [
-            "mkdir -p target/x86_64-unknown-linux-gnu/release",
+            "mkdir -p target/release",
             'tar --exclude=".git*" --exclude=target --exclude=third_party/prebuilt \\',
-            "    -czvf target/x86_64-unknown-linux-gnu/release/deno_src.tar.gz -C .. deno",
+            "    -czvf target/release/deno_src.tar.gz -C .. deno",
           ].join("\n"),
         },
         installRustStep,
@@ -476,7 +478,12 @@ const ci = {
             "matrix.job == 'lint' || matrix.job == 'test' || matrix.job == 'bench'",
           ...installDenoStep,
         },
-        ...installPythonSteps,
+        ...installPythonSteps.map((s) =>
+          withCondition(
+            s,
+            "matrix.job != 'lint' && (matrix.os != 'linux' || matrix.arch != 'aarch64')",
+          )
+        ),
         {
           // only necessary for benchmarks
           if: "matrix.job == 'bench'",
@@ -659,41 +666,28 @@ const ci = {
           run:
             "deno run --allow-write --allow-read --allow-run=git ./tests/node_compat/runner/setup.ts --check",
         },
-        // {
-        //   name: "Build debug",
-        //   if: "matrix.job == 'test' && matrix.profile == 'debug'",
-        //   run: [
-        //     // output fs space before and after building
-        //     "df -h",
-        //     "rustup toolchain install nightly",
-        //     "cargo build -Zbuild-std --target x86_64-unknown-linux-gnu --locked -- -p deno",
-        //     "df -h",
-        //   ].join("\n"),
-        //   env: { CARGO_PROFILE_DEV_DEBUG: 0 },
-        // },
-        // For remote debugging only.
-        // {
-        //   name: "Setup tmate session",
-        //   if: [
-        //     "(matrix.job == 'test' || matrix.job == 'bench') &&",
-        //     "matrix.profile == 'release' && (matrix.use_sysroot ||",
-        //     "github.repository == 'denoland/deno')",
-        //   ].join("\n"),
-        //   uses: "mxschmitt/action-tmate@v3",
-        // },
         {
           name: "Build debug",
+          if: "matrix.job == 'test' && matrix.profile == 'debug'",
+          run: [
+            // output fs space before and after building
+            "df -h",
+            "cargo build --locked --all-targets",
+            "df -h",
+          ].join("\n"),
+          env: { CARGO_PROFILE_DEV_DEBUG: 0 },
+        },
+        {
+          name: "Build release",
           if: [
             "(matrix.job == 'test' || matrix.job == 'bench') &&",
             "matrix.profile == 'release' && (matrix.use_sysroot ||",
             "github.repository == 'denoland/deno')",
           ].join("\n"),
-          env: { CARGO_PROFILE_DEV_DEBUG: 0 },
           run: [
             // output fs space before and after building
             "df -h",
-            "rustup component add rust-src", // for -Zbuild-std
-            "cargo build --target x86_64-unknown-linux-gnu --locked -p deno",
+            "cargo build --release --locked --all-targets",
             "df -h",
           ].join("\n"),
         },
@@ -710,7 +704,7 @@ const ci = {
           with: {
             name:
               "deno-${{ matrix.os }}-${{ matrix.arch }}-${{ github.event.number }}",
-            path: "target/x86_64-unknown-linux-gnu/debug/deno",
+            path: "target/release/deno",
           },
         },
         {
@@ -1097,7 +1091,7 @@ const ci = {
 
 export function generate() {
   let finalText = `# GENERATED BY ./ci.generate.ts -- DO NOT DIRECTLY EDIT\n\n`;
-  finalText += yaml.stringify(ci, {
+  finalText += stringify(ci, {
     noRefs: true,
     lineWidth: 10_000,
     noCompatMode: true,
