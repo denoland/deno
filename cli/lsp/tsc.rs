@@ -237,6 +237,23 @@ impl std::fmt::Debug for TsServer {
   }
 }
 
+#[derive(Debug, Clone, Copy)]
+#[repr(u8)]
+pub enum ChangeKind {
+  Opened = 0,
+  Modified = 1,
+  Closed = 2,
+}
+
+impl Serialize for ChangeKind {
+  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+  where
+    S: serde::Serializer,
+  {
+    serializer.serialize_i32(*self as i32)
+  }
+}
+
 impl TsServer {
   pub fn new(performance: Arc<Performance>, cache: Arc<dyn HttpCache>) -> Self {
     let (tx, request_rx) = mpsc::unbounded_channel::<Request>();
@@ -279,6 +296,27 @@ impl TsServer {
     });
   }
 
+  pub async fn project_changed(
+    &self,
+    snapshot: Arc<StateSnapshot>,
+    modified_scripts: &[(&ModuleSpecifier, ChangeKind)],
+    new_project_version: String,
+    config_changed: bool,
+  ) {
+    let req = TscRequest {
+      method: "$projectChanged",
+      args: json!([modified_scripts, new_project_version, config_changed,]),
+    };
+    self
+      .request::<()>(snapshot, req)
+      .await
+      .map_err(|err| {
+        log::error!("Failed to request to tsserver {}", err);
+        LspError::invalid_request()
+      })
+      .ok();
+  }
+
   pub async fn get_diagnostics(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -287,10 +325,13 @@ impl TsServer {
   ) -> Result<HashMap<String, Vec<crate::tsc::Diagnostic>>, AnyError> {
     let req = TscRequest {
       method: "$getDiagnostics",
-      args: json!([specifiers
-        .into_iter()
-        .map(|s| self.specifier_map.denormalize(&s))
-        .collect::<Vec<String>>(),]),
+      args: json!([
+        specifiers
+          .into_iter()
+          .map(|s| self.specifier_map.denormalize(&s))
+          .collect::<Vec<String>>(),
+        snapshot.documents.project_version()
+      ]),
     };
     let raw_diagnostics = self.request_with_cancellation::<HashMap<String, Vec<crate::tsc::Diagnostic>>>(snapshot, req, token).await?;
     let mut diagnostics_map = HashMap::with_capacity(raw_diagnostics.len());
@@ -5135,6 +5176,14 @@ mod tests {
         ..snapshot.as_ref().clone()
       })
     };
+    ts_server
+      .project_changed(
+        snapshot.clone(),
+        &[(&specifier_dep, ChangeKind::Opened)],
+        snapshot.documents.project_version(),
+        false,
+      )
+      .await;
     let specifier = resolve_url("file:///a.ts").unwrap();
     let diagnostics = ts_server
       .get_diagnostics(snapshot.clone(), vec![specifier], Default::default())
