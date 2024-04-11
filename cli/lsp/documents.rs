@@ -1228,7 +1228,7 @@ impl Documents {
           maybe_npm,
           referrer,
         ));
-      } else if let Ok(specifier2) = self.get_resolver().resolve(
+      } else if let Ok(specifier) = self.get_resolver().resolve(
         specifier,
         &deno_graph::Range {
           specifier: referrer.clone(),
@@ -1237,8 +1237,8 @@ impl Documents {
         },
         ResolutionMode::Types,
       ) {
-        let media_type = MediaType::from_specifier(&specifier2);
-        results.push(Some((specifier2, media_type)));
+        let media_type = MediaType::from_specifier(&specifier);
+        results.push(Some((specifier, media_type)));
       } else {
         results.push(None);
       }
