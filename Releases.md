@@ -15,12 +15,7 @@ https://github.com/denoland/deno_install
 - FUTURE: enable BYONM by default (#23194)
 - FUTURE: override byonm with nodeModulesDir setting (#23222)
 - FUTURE: remove deprecated APIs within workers (#23220)
-- Revert "perf(lsp): Don't retain `SourceFileObject`s in `sourceFileCache`
-  longer than necessary (#23258)" (#23285)
-- feat(ext/net): Refactor TCP socket listeners for future clustering mode
-  (#23037)
 - feat(lsp): respect nested deno.json for fmt and lint config (#23159)
-- feat: improve AsyncLocalStorage api (#23175)
 - fix(cli): Enforce a human delay in prompt to fix paste problem (#23184)
 - fix(cli): fix deadlock in test writer when test pipe is full (#23210)
 - fix(cli): update `deno doc` help to fit current usage (#23224)
@@ -37,6 +32,7 @@ https://github.com/denoland/deno_install
   (#23209)
 - fix(ext/node): hostname is valid IPv4 addr (#23243)
 - fix(ext/node): implement MessagePort.unref() (#23278)
+- fix(ext/node): improve AsyncLocalStorage api (#23175)
 - fix(ext/node): out-of-order writes of fs.createWriteStream (#23244)
 - fix(ext/node): patch MessagePort if provided as workerData (#23198)
 - fix(ext/node): polyfill node:domain module (#23088)
