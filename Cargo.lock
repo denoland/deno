@@ -1028,11 +1028,7 @@ dependencies = [
 
 [[package]]
 name = "deno"
-<<<<<<< HEAD
-version = "1.42.1"
-=======
 version = "1.42.2"
->>>>>>> 04c0a4cbf (1.42.2 (#23314))
 dependencies = [
  "async-trait",
  "base32",
@@ -1178,11 +1174,7 @@ dependencies = [
 
 [[package]]
 name = "deno_bench_util"
-<<<<<<< HEAD
-version = "0.138.0"
-=======
 version = "0.139.0"
->>>>>>> 04c0a4cbf (1.42.2 (#23314))
 dependencies = [
  "bencher",
  "deno_core",
@@ -1192,11 +1184,7 @@ dependencies = [
 
 [[package]]
 name = "deno_broadcast_channel"
-<<<<<<< HEAD
-version = "0.138.0"
-=======
 version = "0.139.0"
->>>>>>> 04c0a4cbf (1.42.2 (#23314))
 dependencies = [
  "async-trait",
  "deno_core",
@@ -1206,11 +1194,7 @@ dependencies = [
 
 [[package]]
 name = "deno_cache"
-<<<<<<< HEAD
-version = "0.76.0"
-=======
 version = "0.77.0"
->>>>>>> 04c0a4cbf (1.42.2 (#23314))
 dependencies = [
  "async-trait",
  "deno_core",
@@ -1241,11 +1225,7 @@ dependencies = [
 
 [[package]]
 name = "deno_canvas"
-<<<<<<< HEAD
-version = "0.13.0"
-=======
 version = "0.14.0"
->>>>>>> 04c0a4cbf (1.42.2 (#23314))
 dependencies = [
  "deno_core",
  "deno_webgpu",
@@ -1274,11 +1254,7 @@ dependencies = [
 
 [[package]]
 name = "deno_console"
-<<<<<<< HEAD
-version = "0.144.0"
-=======
 version = "0.145.0"
->>>>>>> 04c0a4cbf (1.42.2 (#23314))
 dependencies = [
  "deno_core",
 ]
@@ -1323,11 +1299,7 @@ checksum = "a13951ea98c0a4c372f162d669193b4c9d991512de9f2381dd161027f34b26b1"
 
 [[package]]
 name = "deno_cron"
-<<<<<<< HEAD
-version = "0.24.0"
-=======
 version = "0.25.0"
->>>>>>> 04c0a4cbf (1.42.2 (#23314))
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1340,11 +1312,7 @@ dependencies = [
 
 [[package]]
 name = "deno_crypto"
-<<<<<<< HEAD
-version = "0.158.0"
-=======
 version = "0.159.0"
->>>>>>> 04c0a4cbf (1.42.2 (#23314))
 dependencies = [
  "aes",
  "aes-gcm",
@@ -1419,11 +1387,7 @@ dependencies = [
 
 [[package]]
 name = "deno_fetch"
-<<<<<<< HEAD
-version = "0.168.0"
-=======
 version = "0.169.0"
->>>>>>> 04c0a4cbf (1.42.2 (#23314))
 dependencies = [
  "bytes",
  "data-url",
@@ -1441,11 +1405,7 @@ dependencies = [
 
 [[package]]
 name = "deno_ffi"
-<<<<<<< HEAD
-version = "0.131.0"
-=======
 version = "0.132.0"
->>>>>>> 04c0a4cbf (1.42.2 (#23314))
 dependencies = [
  "deno_core",
  "dlopen2",
@@ -1461,11 +1421,7 @@ dependencies = [
 
 [[package]]
 name = "deno_fs"
-<<<<<<< HEAD
-version = "0.54.0"
-=======
 version = "0.55.0"
->>>>>>> 04c0a4cbf (1.42.2 (#23314))
 dependencies = [
  "async-trait",
  "base32",
@@ -1515,11 +1471,7 @@ dependencies = [
 
 [[package]]
 name = "deno_http"
-<<<<<<< HEAD
-version = "0.141.0"
-=======
 version = "0.142.0"
->>>>>>> 04c0a4cbf (1.42.2 (#23314))
 dependencies = [
  "async-compression",
  "async-trait",
@@ -1558,11 +1510,7 @@ dependencies = [
 
 [[package]]
 name = "deno_io"
-<<<<<<< HEAD
-version = "0.54.0"
-=======
 version = "0.55.0"
->>>>>>> 04c0a4cbf (1.42.2 (#23314))
 dependencies = [
  "async-trait",
  "deno_core",
@@ -1577,11 +1525,7 @@ dependencies = [
 
 [[package]]
 name = "deno_kv"
-<<<<<<< HEAD
-version = "0.52.0"
-=======
 version = "0.53.0"
->>>>>>> 04c0a4cbf (1.42.2 (#23314))
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1653,11 +1597,7 @@ dependencies = [
 
 [[package]]
 name = "deno_napi"
-<<<<<<< HEAD
-version = "0.74.0"
-=======
 version = "0.75.0"
->>>>>>> 04c0a4cbf (1.42.2 (#23314))
 dependencies = [
  "deno_core",
  "libloading 0.7.4",
@@ -1678,11 +1618,7 @@ dependencies = [
 
 [[package]]
 name = "deno_net"
-<<<<<<< HEAD
-version = "0.136.0"
-=======
 version = "0.137.0"
->>>>>>> 04c0a4cbf (1.42.2 (#23314))
 dependencies = [
  "deno_core",
  "deno_tls",
@@ -1699,11 +1635,7 @@ dependencies = [
 
 [[package]]
 name = "deno_node"
-<<<<<<< HEAD
-version = "0.81.0"
-=======
 version = "0.82.0"
->>>>>>> 04c0a4cbf (1.42.2 (#23314))
 dependencies = [
  "aead-gcm-stream",
  "aes",
@@ -1804,11 +1736,7 @@ dependencies = [
 
 [[package]]
 name = "deno_permissions"
-<<<<<<< HEAD
-version = "0.4.0"
-=======
 version = "0.5.0"
->>>>>>> 04c0a4cbf (1.42.2 (#23314))
 dependencies = [
  "console_static_text",
  "deno_core",
@@ -1825,11 +1753,7 @@ dependencies = [
 
 [[package]]
 name = "deno_runtime"
-<<<<<<< HEAD
-version = "0.152.0"
-=======
 version = "0.153.0"
->>>>>>> 04c0a4cbf (1.42.2 (#23314))
 dependencies = [
  "console_static_text",
  "deno_ast",
@@ -1935,11 +1859,7 @@ dependencies = [
 
 [[package]]
 name = "deno_tls"
-<<<<<<< HEAD
-version = "0.131.0"
-=======
 version = "0.132.0"
->>>>>>> 04c0a4cbf (1.42.2 (#23314))
 dependencies = [
  "deno_core",
  "deno_native_certs",
@@ -1972,11 +1892,7 @@ dependencies = [
 
 [[package]]
 name = "deno_url"
-<<<<<<< HEAD
-version = "0.144.0"
-=======
 version = "0.145.0"
->>>>>>> 04c0a4cbf (1.42.2 (#23314))
 dependencies = [
  "deno_bench_util",
  "deno_console",
@@ -1988,11 +1904,7 @@ dependencies = [
 
 [[package]]
 name = "deno_web"
-<<<<<<< HEAD
-version = "0.175.0"
-=======
 version = "0.176.0"
->>>>>>> 04c0a4cbf (1.42.2 (#23314))
 dependencies = [
  "async-trait",
  "base64-simd",
@@ -2013,11 +1925,7 @@ dependencies = [
 
 [[package]]
 name = "deno_webgpu"
-<<<<<<< HEAD
-version = "0.111.0"
-=======
 version = "0.112.0"
->>>>>>> 04c0a4cbf (1.42.2 (#23314))
 dependencies = [
  "deno_core",
  "raw-window-handle",
@@ -2030,11 +1938,7 @@ dependencies = [
 
 [[package]]
 name = "deno_webidl"
-<<<<<<< HEAD
-version = "0.144.0"
-=======
 version = "0.145.0"
->>>>>>> 04c0a4cbf (1.42.2 (#23314))
 dependencies = [
  "deno_bench_util",
  "deno_core",
@@ -2042,11 +1946,7 @@ dependencies = [
 
 [[package]]
 name = "deno_websocket"
-<<<<<<< HEAD
-version = "0.149.0"
-=======
 version = "0.150.0"
->>>>>>> 04c0a4cbf (1.42.2 (#23314))
 dependencies = [
  "bytes",
  "deno_core",
@@ -2066,11 +1966,7 @@ dependencies = [
 
 [[package]]
 name = "deno_webstorage"
-<<<<<<< HEAD
-version = "0.139.0"
-=======
 version = "0.140.0"
->>>>>>> 04c0a4cbf (1.42.2 (#23314))
 dependencies = [
  "deno_core",
  "deno_web",
@@ -4198,11 +4094,7 @@ dependencies = [
 
 [[package]]
 name = "napi_sym"
-<<<<<<< HEAD
-version = "0.74.0"
-=======
 version = "0.75.0"
->>>>>>> 04c0a4cbf (1.42.2 (#23314))
 dependencies = [
  "proc-macro2",
  "quote",

@@ -2,11 +2,7 @@
 
 [package]
 name = "deno_io"
-<<<<<<< HEAD
-version = "0.54.0"
-=======
 version = "0.55.0"
->>>>>>> 04c0a4cbf (1.42.2 (#23314))
 authors.workspace = true
 edition.workspace = true
 license.workspace = true

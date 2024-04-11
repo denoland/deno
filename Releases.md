@@ -6,8 +6,6 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
-<<<<<<< HEAD
-=======
 ### 1.42.2 / 2024.04.11
 
 - FUTURE(ext/fs): make `Deno.FsFile` constructor illegal (#23235)
@@ -55,7 +53,6 @@ https://github.com/denoland/deno_install
 - perf(node): put pkg json into an `Rc` (#23156)
 - perf: reduce allocations in `MediaType::from_specifier` (#23190)
 
->>>>>>> 04c0a4cbf (1.42.2 (#23314))
 ### 1.42.1 / 2024.04.01
 
 - fix(check): ignore certain diagnostics in remote modules and when publishing
