@@ -36,6 +36,7 @@ use crate::util::path::to_percent_decoded_str;
 use dashmap::DashMap;
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
+use deno_core::anyhow::Context as _;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
@@ -268,17 +269,20 @@ impl TsServer {
     }
   }
 
-  pub fn start(&self, inspector_server_addr: Option<String>) {
-    let maybe_inspector_server = inspector_server_addr.and_then(|addr| {
-      let addr: SocketAddr = match addr.parse() {
-        Ok(addr) => addr,
-        Err(err) => {
-          lsp_warn!("Invalid inspector server address \"{}\": {}", &addr, err);
-          return None;
-        }
-      };
-      Some(Arc::new(InspectorServer::new(addr, "deno-lsp-tsc")))
-    });
+  pub fn start(
+    &self,
+    inspector_server_addr: Option<String>,
+  ) -> Result<(), AnyError> {
+    let maybe_inspector_server = match inspector_server_addr {
+      Some(addr) => {
+        let addr: SocketAddr = addr.parse().with_context(|| {
+          format!("Invalid inspector server address \"{}\"", &addr)
+        })?;
+        let server = InspectorServer::new(addr, "deno-lsp-tsc")?;
+        Some(Arc::new(server))
+      }
+      None => None,
+    };
     *self.inspector_server.lock() = maybe_inspector_server.clone();
     // TODO(bartlomieju): why is the join_handle ignored here? Should we store it
     // on the `TsServer` struct.
@@ -295,6 +299,7 @@ impl TsServer {
         maybe_inspector_server,
       )
     });
+    Ok(())
   }
 
   pub async fn project_changed(
@@ -4750,7 +4755,7 @@ mod tests {
       Arc::new(mock_state_snapshot(sources, &location, config).await);
     let performance = Arc::new(Performance::default());
     let ts_server = TsServer::new(performance, cache.clone());
-    ts_server.start(None);
+    ts_server.start(None).unwrap();
     (ts_server, snapshot, cache)
   }
 
