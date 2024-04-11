@@ -200,15 +200,9 @@ dependencies = [
 
 [[package]]
 name = "anyhow"
-<<<<<<< HEAD
-version = "1.0.81"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0952808a6c2afd1aa8947271f3a60f1a6763c7b912d210184c5149b5cf147247"
-=======
 version = "1.0.82"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f538837af36e6f6a9be0faa67f9a314f8119e4e4b5867c6ab40ed60360142519"
->>>>>>> e442d1d35 (.)
 
 [[package]]
 name = "arrayvec"
@@ -979,11 +973,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e16e44ab292b1dddfdaf7be62cfd8877df52f2f3fde5858d95bab606be259f20"
 dependencies = [
  "bitflags 2.5.0",
-<<<<<<< HEAD
- "libloading 0.8.1",
-=======
  "libloading 0.8.3",
->>>>>>> e442d1d35 (.)
  "winapi",
 ]
 
@@ -3212,11 +3202,7 @@ version = "0.2.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5a9de2bdef6354361892492bab5e316b2d78a0ee9971db4d36da9b1eb0e11999"
 dependencies = [
-<<<<<<< HEAD
- "hashbrown 0.14.3",
-=======
  "hashbrown",
->>>>>>> e442d1d35 (.)
  "new_debug_unreachable",
  "once_cell",
  "phf 0.11.2",
