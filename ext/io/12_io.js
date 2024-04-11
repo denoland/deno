@@ -5,7 +5,7 @@
 // Thank you! We love Go! <3
 
 import { core, internals, primordials } from "ext:core/mod.js";
-import { op_is_terminal, op_set_raw } from "ext:core/ops";
+import { op_set_raw } from "ext:core/ops";
 const {
   Uint8Array,
   ArrayPrototypePush,
@@ -40,7 +40,7 @@ async function copy(
   internals.warnOnDeprecatedApi(
     "Deno.copy()",
     new Error().stack,
-    "Use `copy()` from `https://deno.land/std/io/copy.ts` instead.",
+    "Use `copy()` from `https://jsr.io/@std/io/doc/copy/~` instead.",
   );
   let n = 0;
   const bufSize = options?.bufSize ?? DEFAULT_BUFFER_SIZE;
@@ -222,7 +222,7 @@ class Stdin {
   }
 
   isTerminal() {
-    return op_is_terminal(this.#rid);
+    return core.isTerminal(this.#rid);
   }
 }
 
@@ -262,7 +262,7 @@ class Stdout {
   }
 
   isTerminal() {
-    return op_is_terminal(this.#rid);
+    return core.isTerminal(this.#rid);
   }
 }
 
@@ -302,7 +302,7 @@ class Stderr {
   }
 
   isTerminal() {
-    return op_is_terminal(this.#rid);
+    return core.isTerminal(this.#rid);
   }
 }
 

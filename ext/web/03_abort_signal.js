@@ -24,7 +24,7 @@ const {
 } = primordials;
 
 import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { assert } from "ext:deno_web/00_infra.js";
+import { assert } from "./00_infra.js";
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 import {
   defineEventHandler,
@@ -32,8 +32,8 @@ import {
   EventTarget,
   listenerCount,
   setIsTrusted,
-} from "ext:deno_web/02_event.js";
-import { refTimer, setTimeout, unrefTimer } from "ext:deno_web/02_timers.js";
+} from "./02_event.js";
+import { refTimer, setTimeout, unrefTimer } from "./02_timers.js";
 
 // Since WeakSet is not a iterable, WeakRefSet class is provided to store and
 // iterate objects.
@@ -83,7 +83,7 @@ const illegalConstructorKey = Symbol("illegalConstructorKey");
 
 class AbortSignal extends EventTarget {
   static any(signals) {
-    const prefix = "Failed to call 'AbortSignal.any'";
+    const prefix = "Failed to execute 'AbortSignal.any'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     return createDependentAbortSignal(signals, prefix);
   }
@@ -98,7 +98,7 @@ class AbortSignal extends EventTarget {
   }
 
   static timeout(millis) {
-    const prefix = "Failed to call 'AbortSignal.timeout'";
+    const prefix = "Failed to execute 'AbortSignal.timeout'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     millis = webidl.converters["unsigned long long"](
       millis,

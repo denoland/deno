@@ -197,10 +197,10 @@ Deno.test({
           `
           import process from "node:process";
           setInterval(() => {}, 1000);
-          console.log("ready");
           process.on("SIGINT", () => {
             console.log("foo");
           });
+          console.log("ready");
           `,
         ],
         stdout: "piped",
@@ -219,7 +219,7 @@ Deno.test({
       while (!output.includes("ready\n")) {
         await delay(10);
       }
-      for (const i of Array(3)) {
+      for (let i = 0; i < 3; i++) {
         output = "";
         process.kill("SIGINT");
         wait = "foo " + i;
@@ -237,7 +237,7 @@ Deno.test({
 
 Deno.test({
   name: "process.off signal",
-  ignore: true, // This test fails to terminate
+  ignore: Deno.build.os == "windows",
   async fn() {
     const testTimeout = setTimeout(() => fail("Test timed out"), 10_000);
     try {
@@ -246,13 +246,13 @@ Deno.test({
           "eval",
           `
           import process from "node:process";
-          console.log("ready");
           setInterval(() => {}, 1000);
           const listener = () => {
+            process.off("SIGINT", listener);
             console.log("foo");
-            process.off("SIGINT", listener)
           };
           process.on("SIGINT", listener);
+          console.log("ready");
           `,
         ],
         stdout: "piped",
@@ -275,6 +275,7 @@ Deno.test({
       while (!output.includes("foo\n")) {
         await delay(10);
       }
+      process.kill("SIGINT");
       await process.status;
     } finally {
       clearTimeout(testTimeout);
@@ -1055,5 +1056,15 @@ Deno.test({
       userLimits: undefined,
       sharedObjects: undefined,
     });
+  },
+});
+
+Deno.test({
+  name: "process.setSourceMapsEnabled",
+  fn() {
+    // @ts-ignore: setSourceMapsEnabled is not available in the types yet.
+    process.setSourceMapsEnabled(false); // noop
+    // @ts-ignore: setSourceMapsEnabled is not available in the types yet.
+    process.setSourceMapsEnabled(true); // noop
   },
 });

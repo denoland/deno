@@ -83,20 +83,17 @@ impl CliFactoryBuilder {
     }
   }
 
-  pub async fn build_from_flags(
-    self,
-    flags: Flags,
-  ) -> Result<CliFactory, AnyError> {
+  pub fn build_from_flags(self, flags: Flags) -> Result<CliFactory, AnyError> {
     Ok(self.build_from_cli_options(Arc::new(CliOptions::from_flags(flags)?)))
   }
 
-  pub async fn build_from_flags_for_watcher(
+  pub fn build_from_flags_for_watcher(
     mut self,
     flags: Flags,
     watcher_communicator: Arc<WatcherCommunicator>,
   ) -> Result<CliFactory, AnyError> {
     self.watcher_communicator = Some(watcher_communicator);
-    self.build_from_flags(flags).await
+    self.build_from_flags(flags)
   }
 
   pub fn build_from_cli_options(self, options: Arc<CliOptions>) -> CliFactory {
@@ -190,8 +187,8 @@ pub struct CliFactory {
 }
 
 impl CliFactory {
-  pub async fn from_flags(flags: Flags) -> Result<Self, AnyError> {
-    CliFactoryBuilder::new().build_from_flags(flags).await
+  pub fn from_flags(flags: Flags) -> Result<Self, AnyError> {
+    CliFactoryBuilder::new().build_from_flags(flags)
   }
 
   pub fn from_cli_options(options: Arc<CliOptions>) -> Self {
@@ -405,11 +402,11 @@ impl CliFactory {
       .npm_resolver
       .get_or_try_init_async(async {
         let fs = self.fs();
-        create_cli_npm_resolver(if self.options.unstable_byonm() {
+        create_cli_npm_resolver(if self.options.use_byonm() {
           CliNpmResolverCreateOptions::Byonm(CliNpmResolverByonmCreateOptions {
             fs: fs.clone(),
-            root_node_modules_dir: match self.options.node_modules_dir_path().clone() {
-              Some(node_modules_path) => node_modules_path,
+            root_node_modules_dir: match self.options.node_modules_dir_path() {
+              Some(node_modules_path) => node_modules_path.to_path_buf(),
               // path needs to be canonicalized for node resolution
               // (node_modules_dir_path above is already canonicalized)
               None => canonicalize_path_maybe_not_exists(self.options.initial_cwd())?
@@ -437,13 +434,13 @@ impl CliFactory {
             npm_global_cache_dir: self.deno_dir()?.npm_folder_path(),
             cache_setting: self.options.cache_setting(),
             text_only_progress_bar: self.text_only_progress_bar().clone(),
-            maybe_node_modules_path: self.options.node_modules_dir_path(),
+            maybe_node_modules_path: self.options.node_modules_dir_path().cloned(),
             package_json_installer:
               CliNpmResolverManagedPackageJsonInstallerOption::ConditionalInstall(
                 self.package_json_deps_provider().clone(),
               ),
             npm_system_info: self.options.npm_system_info(),
-            npm_registry_url: crate::args::npm_registry_default_url().to_owned(),
+            npm_registry_url: crate::args::npm_registry_url().to_owned(),
           })
         }).await
       }.boxed_local())
@@ -651,7 +648,6 @@ impl CliFactory {
       .get_or_try_init_async(async {
         Ok(Arc::new(ModuleGraphCreator::new(
           self.options.clone(),
-          self.fs().clone(),
           self.npm_resolver().await?.clone(),
           self.module_graph_builder().await?.clone(),
           self.maybe_lockfile().clone(),
@@ -689,7 +685,6 @@ impl CliFactory {
       .get_or_try_init_async(async {
         Ok(Arc::new(ModuleLoadPreparer::new(
           self.options.clone(),
-          self.fs().clone(),
           self.graph_container().clone(),
           self.maybe_lockfile().clone(),
           self.module_graph_builder().await?.clone(),

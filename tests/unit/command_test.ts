@@ -59,7 +59,13 @@ Deno.test(
     const command = new Deno.Command(Deno.execPath(), {
       args: [
         "eval",
-        "if (new TextDecoder().decode(await Deno.readAll(Deno.stdin)) !== 'hello') throw new Error('Expected \\'hello\\'')",
+        `
+        const buffer = new Uint8Array(5);
+        await Deno.stdin.read(buffer);
+        if (new TextDecoder().decode(buffer) !== "hello") {
+          throw new Error('Expected \\'hello\\'')
+        }
+        `,
       ],
       stdin: "piped",
       stdout: "null",
@@ -214,7 +220,13 @@ Deno.test(
     const command = new Deno.Command(Deno.execPath(), {
       args: [
         "eval",
-        "if (new TextDecoder().decode(await Deno.readAll(Deno.stdin)) !== 'hello') throw new Error('Expected \\'hello\\'')",
+        `
+        const buffer = new Uint8Array(5);
+        await Deno.stdin.read(buffer);
+        if (new TextDecoder().decode(buffer) !== "hello") {
+          throw new Error('Expected \\'hello\\'')
+        }
+        `,
       ],
       stdin: "piped",
       stdout: "null",

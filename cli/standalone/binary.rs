@@ -1,7 +1,9 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::env::current_exe;
+use std::ffi::OsString;
 use std::fs;
 use std::future::Future;
 use std::io::Read;
@@ -239,7 +241,7 @@ pub fn is_standalone_binary(exe_path: &Path) -> bool {
 /// the bundle is executed. If not, this function exits with `Ok(None)`.
 pub fn extract_standalone(
   exe_path: &Path,
-  cli_args: Vec<String>,
+  cli_args: Cow<Vec<OsString>>,
 ) -> Result<
   Option<impl Future<Output = Result<(Metadata, eszip::EszipV2), AnyError>>>,
   AnyError,
@@ -256,6 +258,7 @@ pub fn extract_standalone(
 
   file.seek(SeekFrom::Start(trailer.eszip_pos))?;
 
+  let cli_args = cli_args.into_owned();
   // If we have an eszip, read it out
   Ok(Some(async move {
     let bufreader =
@@ -281,7 +284,10 @@ pub fn extract_standalone(
       .context("Failed to read metadata from the current executable")?;
 
     let mut metadata: Metadata = serde_json::from_str(&metadata).unwrap();
-    metadata.argv.append(&mut cli_args[1..].to_vec());
+    metadata.argv.reserve(cli_args.len() - 1);
+    for arg in cli_args.into_iter().skip(1) {
+      metadata.argv.push(arg.into_string().unwrap());
+    }
 
     Ok((metadata, eszip))
   }))
@@ -629,7 +635,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       unstable_config: UnstableConfig {
         legacy_flag_enabled: cli_options.legacy_unstable_flag(),
         bare_node_builtins: cli_options.unstable_bare_node_builtins(),
-        byonm: cli_options.unstable_byonm(),
+        byonm: cli_options.use_byonm(),
         sloppy_imports: cli_options.unstable_sloppy_imports(),
         features: cli_options.unstable_features(),
       },

@@ -9,7 +9,6 @@ use std::io::Read;
 use std::io::Write;
 use std::process::Command;
 use std::process::Stdio;
-use std::time::Duration;
 use test_util as util;
 use test_util::itest;
 use test_util::TempDir;
@@ -154,12 +153,6 @@ itest!(_025_reload_js_type_error {
   output: "run/025_reload_js_type_error.js.out",
 });
 
-itest!(_026_redirect_javascript {
-  args: "run --quiet --reload run/026_redirect_javascript.js",
-  output: "run/026_redirect_javascript.js.out",
-  http_server: true,
-});
-
 itest!(_027_redirect_typescript {
   args: "run --quiet --reload run/027_redirect_typescript.ts",
   output: "run/027_redirect_typescript.ts.out",
@@ -178,23 +171,6 @@ itest!(_028_args {
   args:
     "run --quiet --reload run/028_args.ts --arg1 val1 --arg2=val2 -- arg3 arg4",
   output: "run/028_args.ts.out",
-});
-
-itest!(_033_import_map {
-  args:
-    "run --quiet --reload --import-map=import_maps/import_map.json import_maps/test.ts",
-  output: "run/033_import_map.out",
-});
-
-itest!(_033_import_map_in_config_file {
-  args: "run --reload --config=import_maps/config.json import_maps/test.ts",
-  output: "run/033_import_map_in_config_file.out",
-});
-
-itest!(_033_import_map_in_flag_has_precedence {
-  args: "run --quiet --reload --import-map=import_maps/import_map_invalid.json --config=import_maps/config.json import_maps/test.ts",
-  output: "run/033_import_map_in_flag_has_precedence.out",
-  exit_code: 1,
 });
 
 itest!(_033_import_map_remote {
@@ -536,6 +512,7 @@ fn _090_run_permissions_request() {
         "├ Run again with --allow-run to bypass this prompt.\r\n",
         "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all run permissions)",
       ));
+      console.human_delay();
       console.write_line_raw("y");
       console.expect("Granted run access to \"ls\".");
       console.expect(concat!(
@@ -544,6 +521,7 @@ fn _090_run_permissions_request() {
         "├ Run again with --allow-run to bypass this prompt.\r\n",
         "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all run permissions)",
       ));
+      console.human_delay();
       console.write_line_raw("n");
       console.expect("Denied run access to \"cat\".");
       console.expect("granted");
@@ -563,6 +541,7 @@ fn _090_run_permissions_request_sync() {
         "├ Run again with --allow-run to bypass this prompt.\r\n",
         "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all run permissions)",
       ));
+      console.human_delay();
       console.write_line_raw("y");
       console.expect("Granted run access to \"ls\".");
       console.expect(concat!(
@@ -571,6 +550,7 @@ fn _090_run_permissions_request_sync() {
         "├ Run again with --allow-run to bypass this prompt.\r\n",
         "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all run permissions)",
       ));
+      console.human_delay();
       console.write_line_raw("n");
       console.expect("Denied run access to \"cat\".");
       console.expect("granted");
@@ -591,6 +571,7 @@ fn permissions_prompt_allow_all() {
         "├ Run again with --allow-run to bypass this prompt.\r\n",
         "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all run permissions)",
       ));
+      console.human_delay();
       console.write_line_raw("A");
       console.expect("✅ Granted all run access.");
       // "read" permissions
@@ -600,6 +581,7 @@ fn permissions_prompt_allow_all() {
         "├ Run again with --allow-read to bypass this prompt.\r\n",
         "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
       ));
+      console.human_delay();
       console.write_line_raw("A");
       console.expect("✅ Granted all read access.");
       // "write" permissions
@@ -609,6 +591,7 @@ fn permissions_prompt_allow_all() {
         "├ Run again with --allow-write to bypass this prompt.\r\n",
         "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all write permissions)",
       ));
+      console.human_delay();
       console.write_line_raw("A");
       console.expect("✅ Granted all write access.");
       // "net" permissions
@@ -618,7 +601,8 @@ fn permissions_prompt_allow_all() {
         "├ Run again with --allow-net to bypass this prompt.\r\n",
         "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all net permissions)",
       ));
-      console.write_line_raw("A\n");
+      console.human_delay();
+      console.write_line_raw("A");
       console.expect("✅ Granted all net access.");
       // "env" permissions
       console.expect(concat!(
@@ -627,7 +611,8 @@ fn permissions_prompt_allow_all() {
         "├ Run again with --allow-env to bypass this prompt.\r\n",
         "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all env permissions)",
       ));
-      console.write_line_raw("A\n");
+      console.human_delay();
+      console.write_line_raw("A");
       console.expect("✅ Granted all env access.");
       // "sys" permissions
       console.expect(concat!(
@@ -636,7 +621,8 @@ fn permissions_prompt_allow_all() {
         "├ Run again with --allow-sys to bypass this prompt.\r\n",
         "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all sys permissions)",
       ));
-      console.write_line_raw("A\n");
+      console.human_delay();
+      console.write_line_raw("A");
       console.expect("✅ Granted all sys access.");
       // "ffi" permissions
       console.expect(concat!(
@@ -645,7 +631,8 @@ fn permissions_prompt_allow_all() {
         "├ Run again with --allow-ffi to bypass this prompt.\r\n",
         "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all ffi permissions)",
       ));
-      console.write_line_raw("A\n");
+      console.human_delay();
+      console.write_line_raw("A");
       console.expect("✅ Granted all ffi access.")
     },
   );
@@ -663,6 +650,7 @@ fn permissions_prompt_allow_all_2() {
         "├ Run again with --allow-env to bypass this prompt.\r\n",
         "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all env permissions)",
       ));
+      console.human_delay();
       console.write_line_raw("A");
       console.expect("✅ Granted all env access.");
 
@@ -673,6 +661,7 @@ fn permissions_prompt_allow_all_2() {
         "├ Run again with --allow-sys to bypass this prompt.\r\n",
         "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all sys permissions)",
       ));
+      console.human_delay();
       console.write_line_raw("A");
       console.expect("✅ Granted all sys access.");
 
@@ -683,6 +672,7 @@ fn permissions_prompt_allow_all_2() {
         "├ Run again with --allow-read to bypass this prompt.\r\n",
         "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
       ));
+      console.human_delay();
       console.write_line_raw("A");
       console.expect("✅ Granted all read access.");
     });
@@ -701,6 +691,7 @@ fn permissions_prompt_allow_all_lowercase_a() {
         "├ Run again with --allow-run to bypass this prompt.\r\n",
         "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all run permissions)",
       ));
+      console.human_delay();
       console.write_line_raw("a");
       console.expect("Unrecognized option.");
     });
@@ -743,6 +734,7 @@ fn permissions_cache() {
         "├ Run again with --allow-read to bypass this prompt.\r\n",
         "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
       ));
+      console.human_delay();
       console.write_line_raw("y");
       console.expect("✅ Granted read access to \"foo\".");
       console.expect("granted");
@@ -763,12 +755,6 @@ itest!(env_file_missing {
 itest!(_091_use_define_for_class_fields {
   args: "run --check run/091_use_define_for_class_fields.ts",
   output: "run/091_use_define_for_class_fields.ts.out",
-  exit_code: 1,
-});
-
-itest!(_092_import_map_unmapped_bare_specifier {
-  args: "run --import-map import_maps/import_map.json run/092_import_map_unmapped_bare_specifier.ts",
-  output: "run/092_import_map_unmapped_bare_specifier.ts.out",
   exit_code: 1,
 });
 
@@ -2233,11 +2219,6 @@ itest!(import_data_url_import_relative {
   exit_code: 1,
 });
 
-itest!(import_data_url_import_map {
-    args: "run --quiet --reload --import-map import_maps/import_map.json run/import_data_url.ts",
-    output: "run/import_data_url.ts.out",
-  });
-
 itest!(import_data_url_imports {
   args: "run --quiet --reload run/import_data_url_imports.ts",
   output: "run/import_data_url_imports.ts.out",
@@ -3003,6 +2984,7 @@ mod permissions {
           "├ Run again with --allow-read to bypass this prompt.\r\n",
           "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
         ));
+        console.human_delay();
         console.write_line_raw("y");
         console.expect(concat!(
           "┌ ⚠️  Deno requests read access to \"bar\".\r\n",
@@ -3010,6 +2992,7 @@ mod permissions {
           "├ Run again with --allow-read to bypass this prompt.\r\n",
           "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
         ));
+        console.human_delay();
         console.write_line_raw("n");
         console.expect("granted");
         console.expect("prompt");
@@ -3029,6 +3012,7 @@ mod permissions {
           "├ Run again with --allow-read to bypass this prompt.\r\n",
           "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
         ));
+        console.human_delay();
         console.write_line_raw("y");
         console.expect(concat!(
           "┌ ⚠️  Deno requests read access to \"bar\".\r\n",
@@ -3036,6 +3020,7 @@ mod permissions {
           "├ Run again with --allow-read to bypass this prompt.\r\n",
           "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
         ));
+        console.human_delay();
         console.write_line_raw("n");
         console.expect("granted");
         console.expect("prompt");
@@ -3055,6 +3040,7 @@ mod permissions {
           "├ Run again with --allow-read to bypass this prompt.\r\n",
           "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
         ));
+        console.human_delay();
         console.write_line_raw("y\n");
         console
           .expect("PermissionStatus { state: \"granted\", onchange: null }");
@@ -3077,6 +3063,7 @@ mod permissions {
           "├ Run again with --allow-read to bypass this prompt.\r\n",
           "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
         ));
+        console.human_delay();
         console.write_line_raw("y");
         console
           .expect("PermissionStatus { state: \"granted\", onchange: null }");
@@ -3218,6 +3205,7 @@ fn issue9750() {
         "├ Run again with --allow-env to bypass this prompt.\r\n",
         "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all env permissions)",
       ));
+      console.human_delay();
       console.write_line_raw("n");
       console.expect("Denied env access.");
       console.expect(concat!(
@@ -3225,6 +3213,7 @@ fn issue9750() {
         "├ Run again with --allow-env to bypass this prompt.\r\n",
         "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all env permissions)",
       ));
+      console.human_delay();
       console.write_line_raw("n");
       console.expect_all(&[
         "Denied env access to \"SECRET\".",
@@ -4659,6 +4648,7 @@ fn file_fetcher_preserves_permissions() {
       "const a = await import('http://localhost:4545/run/019_media_types.ts');",
     );
       console.expect("Allow?");
+      console.human_delay();
       console.write_line_raw("y");
       console.expect_all(&["success", "true"]);
     });
@@ -4672,56 +4662,39 @@ fn stdio_streams_are_locked_in_permission_prompt() {
     return;
   }
 
-  let context = TestContextBuilder::new()
-    .use_http_server()
-    .use_copy_temp_dir("run/stdio_streams_are_locked_in_permission_prompt")
-    .build();
-  let mut passed_test = false;
-  let mut i = 0;
-  while !passed_test {
-    i += 1;
-    if i > 5 {
-      panic!("Output happened before permission prompt too many times");
-    }
+  let context = TestContextBuilder::new().build();
 
-    context
-      .new_command()
-      .args("repl --allow-read")
-      .with_pty(|mut console| {
-        let malicious_output = r#"Are you sure you want to continue?"#;
+  context
+    .new_command()
+    .args("repl")
+    .with_pty(|mut console| {
+      let malicious_output = r#"**malicious**"#;
 
-        console.write_line(r#"const url = "file://" + Deno.cwd().replace("\\", "/") + "/run/stdio_streams_are_locked_in_permission_prompt/worker.js";"#);
-        console.expect("undefined");
-        // ensure this file exists
-        console.write_line(r#"const _file = Deno.readTextFileSync("./run/stdio_streams_are_locked_in_permission_prompt/worker.js");"#);
-        console.expect("undefined");
-        console.write_line(r#"new Worker(url, { type: "module" }); await Deno.writeTextFile("./text.txt", "some code");"#);
-        console.expect("Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all write permissions)");
+      // Start a worker that starts spamming stdout
+      console.write_line(r#"new Worker(URL.createObjectURL(new Blob(["setInterval(() => console.log('**malicious**'), 10)"])), { type: "module" });"#);
+      // The worker is now spamming
+      console.expect(malicious_output);
+      console.write_line(r#"Deno.readTextFileSync('Cargo.toml');"#);
+      // We will get a permission prompt
+      console.expect("Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions) > ");
+      // The worker is blocked, so nothing else should get written here
+      console.human_delay();
+      console.write_line_raw("i");
+      // We ensure that nothing gets written here between the permission prompt and this text, despire the delay
+      let newline = if cfg!(target_os = "linux") {
+        "^J"
+      } else {
+        "\r\n"
+      };
+      console.expect_raw_next(format!("i{newline}\u{1b}[1A\u{1b}[0J└ Unrecognized option. Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions) > "));
+      console.human_delay();
+      console.write_line_raw("y");
+      // We ensure that nothing gets written here between the permission prompt and this text, despire the delay
+      console.expect_raw_next(format!("y{newline}\x1b[4A\x1b[0J✅ Granted read access to \"Cargo.toml\"."));
 
-        // Due to the main thread being slow, it may occur that the worker thread outputs
-        // before the permission prompt is shown. This is not a bug and just a timing issue
-        // when dealing with multiple threads. If this occurs, detect such a case and then
-        // retry running the test.
-        if let Some(malicious_index) = console.all_output().find(malicious_output) {
-          let prompt_index = console.all_output().find("Allow?").unwrap();
-          // Ensure the malicious output is shown before the prompt as we
-          // expect in this scenario. If not, that would indicate a bug.
-          assert!(malicious_index < prompt_index);
-          return;
-        }
-
-        std::thread::sleep(Duration::from_millis(50)); // give the other thread some time to output
-        console.write_line_raw("invalid");
-        console.expect("Unrecognized option.");
-        console.expect("Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all write permissions)");
-        console.write_line_raw("y");
-        console.expect("Granted write access to");
-
-        // this output should now be shown below and not above
-        console.expect(malicious_output);
-        passed_test = true;
-      });
-  }
+      // Back to spamming!
+      console.expect(malicious_output);
+  });
 }
 
 #[test]
@@ -5060,14 +5033,21 @@ Warning Sloppy module resolution (hint: specify path to index.tsx file in direct
 }
 
 itest!(unstable_temporal_api {
-  args: "run --unstable-temporal --check run/unstable_temporal_api/main.ts",
+  args: "run --no-config --unstable-temporal --check run/unstable_temporal_api/main.ts",
+  output: "run/unstable_temporal_api/main.out",
+  http_server: false,
+  exit_code: 0,
+});
+
+itest!(unstable_temporal_api_config_file {
+  args: "run --check run/unstable_temporal_api/main.ts",
   output: "run/unstable_temporal_api/main.out",
   http_server: false,
   exit_code: 0,
 });
 
 itest!(unstable_temporal_api_missing_flag {
-  args: "run run/unstable_temporal_api/missing_flag.js",
+  args: "run --no-config run/unstable_temporal_api/missing_flag.js",
   output: "run/unstable_temporal_api/missing_flag.out",
   http_server: false,
   exit_code: 1,
@@ -5163,4 +5143,37 @@ console.log(add(3, 4));
   );
   let output = test_context.new_command().args("run main.ts").run();
   output.assert_matches_text("[WILDCARD]5\n7\n");
+}
+
+#[test]
+fn run_etag_delete_source_cache() {
+  let test_context = TestContextBuilder::new()
+    .use_temp_cwd()
+    .use_http_server()
+    .build();
+  test_context
+    .temp_dir()
+    .write("main.ts", "import 'http://localhost:4545/etag_script.ts'");
+  test_context
+    .new_command()
+    .args("cache main.ts")
+    .run()
+    .skip_output_check();
+
+  // The cache is currently stored unideally in two files where one file has the headers
+  // and the other contains the body. An issue can happen with the etag header where the
+  // headers file exists, but the body was deleted. We need to get the cache to gracefully
+  // handle this scenario.
+  let deno_dir = test_context.deno_dir().path();
+  let etag_script_path = deno_dir.join("deps/http/localhost_PORT4545/26110db7d42c9bad32386735cbc05c301f83e4393963deb8da14fec3b4202a13");
+  assert!(etag_script_path.exists());
+  etag_script_path.remove_file();
+
+  test_context
+    .new_command()
+    .args("cache --reload --log-level=debug main.ts")
+    .run()
+    .assert_matches_text(
+      "[WILDCARD]Cache body not found. Trying again without etag.[WILDCARD]",
+    );
 }

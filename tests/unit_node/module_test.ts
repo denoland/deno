@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { createRequire, Module } from "node:module";
+import { builtinModules, createRequire, isBuiltin, Module } from "node:module";
 import { assert, assertEquals } from "@std/assert/mod.ts";
 import process from "node:process";
 import * as path from "node:path";
@@ -69,4 +69,22 @@ Deno.test("Built-in Node modules have `node:` prefix", () => {
   }
 
   assert(thrown);
+});
+
+Deno.test("[node/module isBuiltin] recognizes node builtins", () => {
+  assert(isBuiltin("node:fs"));
+  assert(isBuiltin("node:test"));
+  assert(isBuiltin("fs"));
+  assert(isBuiltin("buffer"));
+
+  assert(!isBuiltin("internal/errors"));
+  assert(!isBuiltin("test"));
+  assert(!isBuiltin(""));
+  // deno-lint-ignore no-explicit-any
+  assert(!isBuiltin(undefined as any));
+});
+
+// https://github.com/denoland/deno/issues/22731
+Deno.test("[node/module builtinModules] has 'module' in builtins", () => {
+  assert(builtinModules.includes("module"));
 });

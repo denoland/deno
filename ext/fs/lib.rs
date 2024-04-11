@@ -1,10 +1,12 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+mod in_memory_fs;
 mod interface;
 mod ops;
 mod std_fs;
 pub mod sync;
 
+pub use crate::in_memory_fs::InMemoryFs;
 pub use crate::interface::FileSystem;
 pub use crate::interface::FileSystemRc;
 pub use crate::interface::FsDirEntry;

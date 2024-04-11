@@ -160,6 +160,14 @@ impl JupyterMessage {
     self.header["msg_type"].as_str().unwrap_or("")
   }
 
+  pub(crate) fn store_history(&self) -> bool {
+    self.content["store_history"].as_bool().unwrap_or(true)
+  }
+
+  pub(crate) fn silent(&self) -> bool {
+    self.content["silent"].as_bool().unwrap_or(false)
+  }
+
   pub(crate) fn code(&self) -> &str {
     self.content["code"].as_str().unwrap_or("")
   }

@@ -12,7 +12,7 @@ pub struct DotTestReporter {
 }
 
 impl DotTestReporter {
-  pub fn new() -> DotTestReporter {
+  pub fn new(cwd: Url) -> DotTestReporter {
     let console_width = if let Some(size) = crate::util::console::console_size()
     {
       size.cols as usize
@@ -23,7 +23,7 @@ impl DotTestReporter {
     DotTestReporter {
       n: 0,
       width: console_width,
-      cwd: Url::from_directory_path(std::env::current_dir().unwrap()).unwrap(),
+      cwd,
       summary: TestSummary::new(),
     }
   }

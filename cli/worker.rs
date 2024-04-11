@@ -72,12 +72,6 @@ pub trait ModuleLoaderFactory: Send + Sync {
   fn create_source_map_getter(&self) -> Option<Rc<dyn SourceMapGetter>>;
 }
 
-// todo(dsherret): this is temporary and we should remove this
-// once we no longer conditionally initialize the node runtime
-pub trait HasNodeSpecifierChecker: Send + Sync {
-  fn has_node_specifier(&self) -> bool;
-}
-
 #[async_trait::async_trait(?Send)]
 pub trait HmrRunner: Send + Sync {
   async fn start(&mut self) -> Result<(), AnyError>;
@@ -355,7 +349,7 @@ impl CliMainWorker {
       return Ok(None);
     };
 
-    let session = self.worker.create_inspector_session().await;
+    let session = self.worker.create_inspector_session();
 
     let mut hmr_runner = setup_hmr_runner(session);
 
@@ -379,7 +373,7 @@ impl CliMainWorker {
       return Ok(None);
     };
 
-    let session = self.worker.create_inspector_session().await;
+    let session = self.worker.create_inspector_session();
     let mut coverage_collector = create_coverage_collector(session);
     self
       .worker
@@ -813,7 +807,7 @@ fn create_web_worker_callback(
         node_ipc_fd: None,
         disable_deprecated_api_warning: shared.disable_deprecated_api_warning,
         verbose_deprecated_api_warning: shared.verbose_deprecated_api_warning,
-        future: false,
+        future: shared.enable_future_features,
       },
       extensions: vec![],
       startup_snapshot: crate::js::deno_isolate_init(),
@@ -841,6 +835,9 @@ fn create_web_worker_callback(
       stdio: stdio.clone(),
       cache_storage_dir,
       feature_checker,
+      strace_ops: shared.options.strace_ops.clone(),
+      close_on_idle: args.close_on_idle,
+      maybe_worker_metadata: args.maybe_worker_metadata,
     };
 
     WebWorker::bootstrap_from_options(
@@ -862,7 +859,8 @@ mod tests {
   fn create_test_worker() -> MainWorker {
     let main_module =
       resolve_path("./hello.js", &std::env::current_dir().unwrap()).unwrap();
-    let permissions = PermissionsContainer::new(Permissions::default());
+    let permissions =
+      PermissionsContainer::new(Permissions::none_without_prompt());
 
     let options = WorkerOptions {
       startup_snapshot: crate::js::deno_isolate_init(),

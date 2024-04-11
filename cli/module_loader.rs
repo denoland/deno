@@ -7,7 +7,6 @@ use crate::args::TsTypeLib;
 use crate::cache::ParsedSourceCache;
 use crate::emit::Emitter;
 use crate::graph_util::graph_lock_or_exit;
-use crate::graph_util::graph_valid_with_cli_options;
 use crate::graph_util::CreateGraphOptions;
 use crate::graph_util::ModuleGraphBuilder;
 use crate::graph_util::ModuleGraphContainer;
@@ -51,13 +50,11 @@ use deno_graph::JsonModule;
 use deno_graph::Module;
 use deno_graph::Resolution;
 use deno_lockfile::Lockfile;
-use deno_runtime::deno_fs;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_terminal::colors;
 use std::borrow::Cow;
-use std::collections::HashSet;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::str;
@@ -65,7 +62,6 @@ use std::sync::Arc;
 
 pub struct ModuleLoadPreparer {
   options: Arc<CliOptions>,
-  fs: Arc<dyn deno_fs::FileSystem>,
   graph_container: Arc<ModuleGraphContainer>,
   lockfile: Option<Arc<Mutex<Lockfile>>>,
   module_graph_builder: Arc<ModuleGraphBuilder>,
@@ -77,7 +73,6 @@ impl ModuleLoadPreparer {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
     options: Arc<CliOptions>,
-    fs: Arc<dyn deno_fs::FileSystem>,
     graph_container: Arc<ModuleGraphContainer>,
     lockfile: Option<Arc<Mutex<Lockfile>>>,
     module_graph_builder: Arc<ModuleGraphBuilder>,
@@ -86,7 +81,6 @@ impl ModuleLoadPreparer {
   ) -> Self {
     Self {
       options,
-      fs,
       graph_container,
       lockfile,
       module_graph_builder,
@@ -115,11 +109,7 @@ impl ModuleLoadPreparer {
     let mut graph_update_permit =
       self.graph_container.acquire_update_permit().await;
     let graph = graph_update_permit.graph_mut();
-
-    // Determine any modules that have already been emitted this session and
-    // should be skipped.
-    let reload_exclusions: HashSet<ModuleSpecifier> =
-      graph.specifiers().map(|(s, _)| s.clone()).collect();
+    let has_type_checked = !graph.roots.is_empty();
 
     self
       .module_graph_builder
@@ -134,12 +124,7 @@ impl ModuleLoadPreparer {
       )
       .await?;
 
-    graph_valid_with_cli_options(
-      graph,
-      self.fs.as_ref(),
-      &roots,
-      &self.options,
-    )?;
+    self.module_graph_builder.graph_roots_valid(graph, &roots)?;
 
     // If there is a lockfile...
     if let Some(lockfile) = &self.lockfile {
@@ -156,25 +141,24 @@ impl ModuleLoadPreparer {
     drop(_pb_clear_guard);
 
     // type check if necessary
-    if self.options.type_check_mode().is_true()
-      && !self.graph_container.is_type_checked(&roots, lib)
-    {
-      let graph = graph.segment(&roots);
+    if self.options.type_check_mode().is_true() && !has_type_checked {
       self
         .type_checker
         .check(
-          graph,
+          // todo(perf): since this is only done the first time the graph is
+          // created, we could avoid the clone of the graph here by providing
+          // the actual graph on the first run and then getting the Arc<ModuleGraph>
+          // back from the return value.
+          (*graph).clone(),
           check::CheckOptions {
             build_fast_check_graph: true,
             lib,
             log_ignored_options: false,
-            reload: self.options.reload_flag()
-              && !roots.iter().all(|r| reload_exclusions.contains(r)),
+            reload: self.options.reload_flag(),
             type_check_mode: self.options.type_check_mode(),
           },
         )
         .await?;
-      self.graph_container.set_type_checked(&roots, lib);
     }
 
     log::debug!("Prepared module load.");
@@ -479,6 +463,7 @@ impl CliModuleLoader {
       ModuleSourceCode::String(code),
       specifier,
       &code_source.found_url,
+      None,
     ))
   }
 

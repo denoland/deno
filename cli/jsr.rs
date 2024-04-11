@@ -207,14 +207,18 @@ impl JsrFetchResolver {
     let maybe_get_nv = || async {
       let name = req.name.clone();
       let package_info = self.package_info(&name).await?;
-      // Find the first matching version of the package which is cached.
-      let mut versions = package_info.versions.keys().collect::<Vec<_>>();
-      versions.sort();
+      // Find the first matching version of the package.
+      let mut versions = package_info.versions.iter().collect::<Vec<_>>();
+      versions.sort_by_key(|(v, _)| *v);
       let version = versions
         .into_iter()
         .rev()
-        .find(|v| req.version_req.tag().is_none() && req.version_req.matches(v))
-        .cloned()?;
+        .find(|(v, i)| {
+          !i.yanked
+            && req.version_req.tag().is_none()
+            && req.version_req.matches(v)
+        })
+        .map(|(v, _)| v.clone())?;
       Some(PackageNv { name, version })
     };
     let nv = maybe_get_nv().await;
@@ -226,7 +230,7 @@ impl JsrFetchResolver {
     if let Some(info) = self.info_by_name.get(name) {
       return info.value().clone();
     }
-    let read_cached_package_info = || async {
+    let fetch_package_info = || async {
       let meta_url = jsr_url().join(&format!("{}/meta.json", name)).ok()?;
       let file = self
         .file_fetcher
@@ -235,7 +239,7 @@ impl JsrFetchResolver {
         .ok()?;
       serde_json::from_slice::<JsrPackageInfo>(&file.source).ok()
     };
-    let info = read_cached_package_info().await.map(Arc::new);
+    let info = fetch_package_info().await.map(Arc::new);
     self.info_by_name.insert(name.to_string(), info.clone());
     info
   }
@@ -247,7 +251,7 @@ impl JsrFetchResolver {
     if let Some(info) = self.info_by_nv.get(nv) {
       return info.value().clone();
     }
-    let read_cached_package_version_info = || async {
+    let fetch_package_version_info = || async {
       let meta_url = jsr_url()
         .join(&format!("{}/{}_meta.json", &nv.name, &nv.version))
         .ok()?;
@@ -258,7 +262,7 @@ impl JsrFetchResolver {
         .ok()?;
       partial_jsr_package_version_info_from_slice(&file.source).ok()
     };
-    let info = read_cached_package_version_info().await.map(Arc::new);
+    let info = fetch_package_version_info().await.map(Arc::new);
     self.info_by_nv.insert(nv.clone(), info.clone());
     info
   }

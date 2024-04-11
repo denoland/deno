@@ -101,8 +101,7 @@ verify on GitHub that everything looks correct.
   1. Checkout the branch the release is being made on.
   2. Manually run `./tools/release/01_bump_crate_versions.ts`
      1. Ensure the crate versions were bumped correctly
-     2. Ensure deno_std version was updated correctly in `cli/deno_std.rs`
-     3. Ensure `Releases.md` was updated correctly
+     2. Ensure `Releases.md` was updated correctly
   3. Open a PR with the changes and continue with the steps below.
   </details>
 
@@ -160,15 +159,21 @@ verify on GitHub that everything looks correct.
 This should occur after the Deno CLI & std are fully published, as the build
 script generates the symbols based on the latest tags.
 
-- [ ] Run the release workflow in the apiland_scripts repo on the main branch:
-      https://github.com/denoland/apiland_scripts/actions/workflows/release.yml
+- [ ] Run the `release CLI` workflow in the apiland_scripts repo on the main
+      branch:
+      https://github.com/denoland/apiland_scripts/actions/workflows/release_cli.yml
+  - [ ] Verify the workflow ran successfully.
+- [ ] Run the `release STD` workflow in the apiland_scripts repo on the main
+      branch:
+      https://github.com/denoland/apiland_scripts/actions/workflows/release_std.yml
   - [ ] Verify the workflow ran successfully.
 
   <details>
      <summary>Failure Steps</summary>
 
   1. Clone `deno/apiland_scripts`.
-  2. Execute `deno task release`.
+  2. Execute `deno task release:cli`.
+  3. Execute `deno task release:std`.
   </details>
 
 ## Updating `deno_docker`

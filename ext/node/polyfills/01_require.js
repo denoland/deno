@@ -218,6 +218,7 @@ function setupBuiltinModules() {
     "internal/util/inspect": internalUtilInspect,
     "internal/util": internalUtil,
     net,
+    module: Module,
     os,
     "path/posix": pathPosix,
     "path/win32": pathWin32,
@@ -491,31 +492,6 @@ Module.globalPaths = modulePaths;
 
 const CHAR_FORWARD_SLASH = 47;
 const TRAILING_SLASH_REGEX = /(?:^|\/)\.?\.$/;
-const encodedSepRegEx = /%2F|%2C/i;
-
-function finalizeEsmResolution(
-  resolved,
-  parentPath,
-  pkgPath,
-) {
-  if (RegExpPrototypeTest(encodedSepRegEx, resolved)) {
-    throw new ERR_INVALID_MODULE_SPECIFIER(
-      resolved,
-      'must not include encoded "/" or "\\" characters',
-      parentPath,
-    );
-  }
-  // const filename = fileURLToPath(resolved);
-  const filename = resolved;
-  const actual = tryFile(filename, false);
-  if (actual) {
-    return actual;
-  }
-  throw new ERR_MODULE_NOT_FOUND(
-    filename,
-    path.resolve(pkgPath, "package.json"),
-  );
-}
 
 // This only applies to requests of a specific form:
 // 1. name/.*
@@ -1181,6 +1157,25 @@ function createRequire(filenameOrUrl) {
   return createRequireFromPath(filename);
 }
 
+function isBuiltin(moduleName) {
+  if (typeof moduleName !== "string") {
+    return false;
+  }
+
+  if (StringPrototypeStartsWith(moduleName, "node:")) {
+    moduleName = StringPrototypeSlice(moduleName, 5);
+  } else if (moduleName === "test") {
+    // test is only a builtin if it has the "node:" scheme
+    // see https://github.com/nodejs/node/blob/73025c4dec042e344eeea7912ed39f7b7c4a3991/test/parallel/test-module-isBuiltin.js#L14
+    return false;
+  }
+
+  return moduleName in nativeModuleExports &&
+    !StringPrototypeStartsWith(moduleName, "internal/");
+}
+
+Module.isBuiltin = isBuiltin;
+
 Module.createRequire = createRequire;
 
 Module._initPaths = function () {
@@ -1249,7 +1244,7 @@ internals.requireImpl = {
   nativeModuleExports,
 };
 
-export { builtinModules, createRequire, Module };
+export { builtinModules, createRequire, isBuiltin, Module };
 export const _cache = Module._cache;
 export const _extensions = Module._extensions;
 export const _findPath = Module._findPath;

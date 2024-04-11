@@ -466,7 +466,7 @@ class Request {
   }
 
   clone() {
-    const prefix = "Failed to call 'Request.clone'";
+    const prefix = "Failed to execute 'Request.clone'";
     webidl.assertBranded(this, RequestPrototype);
     if (this[_body] && this[_body].unusable()) {
       throw new TypeError("Body is unusable.");
