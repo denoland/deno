@@ -1186,14 +1186,20 @@ impl CliOptions {
     }
   }
 
-  pub fn resolve_inspector_server(&self) -> Option<InspectorServer> {
+  pub fn resolve_inspector_server(
+    &self,
+  ) -> Result<Option<InspectorServer>, AnyError> {
     let maybe_inspect_host = self
       .flags
       .inspect
       .or(self.flags.inspect_brk)
       .or(self.flags.inspect_wait);
-    maybe_inspect_host
-      .map(|host| InspectorServer::new(host, version::get_user_agent()))
+
+    let Some(host) = maybe_inspect_host else {
+      return Ok(None);
+    };
+
+    Ok(Some(InspectorServer::new(host, version::get_user_agent())?))
   }
 
   pub fn maybe_lockfile(&self) -> Option<Arc<Mutex<Lockfile>>> {
