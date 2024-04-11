@@ -1267,5 +1267,5 @@ fn standalone_jsr_dynamic_import() {
   let output = context.new_command().name(&exe).run();
 
   output.assert_exit_code(0);
-  output.assert_matches_text("Hello world");
+  output.assert_matches_text("Hello world\n");
 }
