@@ -3906,3 +3906,7 @@ Deno.test(
     assert(respText === "Internal Server Error");
   },
 );
+
+// DO NOT REMOVE.
+// Regression test to make sure that `ServeTlsOptions` is an interface.
+interface MyServeTlsOptions extends Deno.ServeTlsOptions {}

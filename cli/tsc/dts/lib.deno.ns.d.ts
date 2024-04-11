@@ -6276,7 +6276,21 @@ declare namespace Deno {
    *
    * @category HTTP Server
    */
-  export type ServeTlsOptions = ServeOptions & TlsCertifiedKeyOptions;
+  export interface ServeTlsOptions extends ServeOptions, TlsCertifiedKeyPem {}
+
+  /** Additional options which are used when opening a TLS (HTTPS) server.
+   *
+   * @category HTTP Server
+   */
+  export interface ServeTlsOptions
+    extends ServeOptions, TlsCertifiedKeyFromFile {}
+
+  /** Additional options which are used when opening a TLS (HTTPS) server.
+   *
+   * @category HTTP Server
+   */
+  export interface ServeTlsOptions
+    extends ServeOptions, TlsCertifiedKeyConnectTls {}
 
   /**
    * @category HTTP Server
