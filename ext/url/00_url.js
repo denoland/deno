@@ -353,15 +353,25 @@ const NO_PORT = 65536;
 
 const componentsBuf = new Uint32Array(8);
 class URL {
+  /** @type {URLSearchParams|null} */
   #queryObject = null;
+  /** @type {string} */
   #serialization;
+  /** @type {number} */
   #schemeEnd;
+  /** @type {number} */
   #usernameEnd;
+  /** @type {number} */
   #hostStart;
+  /** @type {number} */
   #hostEnd;
+  /** @type {number} */
   #port;
+  /** @type {number} */
   #pathStart;
+  /** @type {number} */
   #queryStart;
+  /** @type {number} */
   #fragmentStart;
 
   [_updateUrlSearch](value) {
@@ -799,7 +809,7 @@ class URL {
     }
   }
 
-  /** @return {string} */
+  /** @return {URLSearchParams} */
   get searchParams() {
     if (this.#queryObject == null) {
       this.#queryObject = new URLSearchParams(this.search);
