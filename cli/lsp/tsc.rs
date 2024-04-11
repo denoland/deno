@@ -4027,11 +4027,11 @@ fn op_load<'s>(
 }
 
 #[op2]
+#[serde]
 fn op_resolve<'s>(
-  scope: &'s mut v8::HandleScope,
   state: &mut OpState,
   #[serde] args: ResolveArgs,
-) -> Result<v8::Local<'s, v8::Value>, AnyError> {
+) -> Result<Vec<Option<(String, String)>>, AnyError> {
   let state = state.borrow_mut::<State>();
   let mark = state.performance.mark_with_args("tsc.op.op_resolve", &args);
   let referrer = state.specifier_map.normalize(&args.base)?;
@@ -4067,9 +4067,8 @@ fn op_resolve<'s>(
     }
   };
 
-  let response = serde_v8::to_v8(scope, specifiers)?;
   state.performance.measure(mark);
-  Ok(response)
+  Ok(specifiers)
 }
 
 #[op2]
@@ -4753,6 +4752,14 @@ mod tests {
     let ts_server = TsServer::new(performance, cache.clone());
     ts_server.start(None);
     (ts_server, snapshot, cache)
+  }
+
+  fn setup_op_state(state_snapshot: Arc<StateSnapshot>) -> OpState {
+    let state =
+      State::new(state_snapshot, Default::default(), Default::default());
+    let mut op_state = OpState::new(None);
+    op_state.put(state);
+    op_state
   }
 
   #[test]
@@ -5555,6 +5562,38 @@ mod tests {
       user_preferences
         .include_inlay_parameter_name_hints_when_argument_matches_name,
       Some(false)
+    );
+  }
+
+  #[tokio::test]
+  async fn resolve_unknown_dependency_to_stub_module() {
+    let temp_dir = TempDir::new();
+    let (_, snapshot, _) = setup(
+      &temp_dir,
+      json!({
+        "target": "esnext",
+        "module": "esnext",
+        "lib": ["deno.ns", "deno.window"],
+        "noEmit": true,
+      }),
+      &[("file:///a.ts", "", 1, LanguageId::TypeScript)],
+    )
+    .await;
+    let mut state = setup_op_state(snapshot);
+    let resolved = op_resolve::call(
+      &mut state,
+      ResolveArgs {
+        base: "file:///a.ts".to_string(),
+        specifiers: vec!["./b.ts".to_string()],
+      },
+    )
+    .unwrap();
+    assert_eq!(
+      resolved,
+      vec![Some((
+        MISSING_DEPENDENCY_SPECIFIER.to_string(),
+        MediaType::Dts.as_ts_extension().to_string()
+      ))]
     );
   }
 }
