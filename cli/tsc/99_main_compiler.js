@@ -304,6 +304,7 @@ delete Object.prototype.__proto__;
             /** @type {ts.IScriptSnapshot} */ (sourceFile.scriptSnapShot),
           ),
         );
+        documentRegistrySourceFileCache.set(mapKey, sourceFile);
       }
       return sourceFile;
     },
