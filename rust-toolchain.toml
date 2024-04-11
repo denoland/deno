@@ -1,3 +1,3 @@
 [toolchain]
-channel = "nightly-2024-01-14"
+channel = "1.77.2"
 components = ["rustfmt", "clippy"]

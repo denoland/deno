@@ -666,7 +666,7 @@ const ci = {
         //     // output fs space before and after building
         //     "df -h",
         //     "rustup toolchain install nightly",
-        //     "cargo +nightly build -Zbuild-std --target x86_64-unknown-linux-gnu --locked -- -p deno",
+        //     "cargo build -Zbuild-std --target x86_64-unknown-linux-gnu --locked -- -p deno",
         //     "df -h",
         //   ].join("\n"),
         //   env: { CARGO_PROFILE_DEV_DEBUG: 0 },

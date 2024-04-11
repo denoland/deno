@@ -1235,9 +1235,7 @@ impl Inner {
       Ok(document) => {
         if document.is_diagnosable() {
           self.refresh_npm_specifiers().await;
-          self
-            .diagnostics_server
-            .invalidate(&self.documents.dependents(&specifier));
+          self.diagnostics_server.invalidate(&[specifier]);
           self.send_diagnostics_update();
           self.send_testing_update();
         }
@@ -1279,9 +1277,7 @@ impl Inner {
       .normalize_url(&params.text_document.uri, LspUrlKind::File);
     if self.is_diagnosable(&specifier) {
       self.refresh_npm_specifiers().await;
-      let mut specifiers = self.documents.dependents(&specifier);
-      specifiers.push(specifier.clone());
-      self.diagnostics_server.invalidate(&specifiers);
+      self.diagnostics_server.invalidate(&[specifier.clone()]);
       self.send_diagnostics_update();
       self.send_testing_update();
     }
@@ -3181,8 +3177,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     let document = inner.did_open(&specifier, params);
     if document.is_diagnosable() {
       inner.refresh_npm_specifiers().await;
-      let specifiers = inner.documents.dependents(&specifier);
-      inner.diagnostics_server.invalidate(&specifiers);
+      inner.diagnostics_server.invalidate(&[specifier]);
       inner.send_diagnostics_update();
       inner.send_testing_update();
     }
