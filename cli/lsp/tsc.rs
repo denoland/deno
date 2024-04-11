@@ -4028,7 +4028,7 @@ fn op_load<'s>(
 
 #[op2]
 #[serde]
-fn op_resolve<'s>(
+fn op_resolve(
   state: &mut OpState,
   #[serde] args: ResolveArgs,
 ) -> Result<Vec<Option<(String, String)>>, AnyError> {
