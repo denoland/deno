@@ -304,7 +304,7 @@ impl TsServer {
     config_changed: bool,
   ) {
     let modified_scripts = modified_scripts
-      .into_iter()
+      .iter()
       .map(|(spec, change)| (self.specifier_map.denormalize(spec), change))
       .collect::<Vec<_>>();
     let req = TscRequest {
