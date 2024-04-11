@@ -120,8 +120,6 @@ RUSTFLAGS<<__1
   -C link-arg=--sysroot=/sysroot
   -C link-arg=-ldl
   -C link-arg=-Wl,--allow-shlib-undefined
-  -Zsanitizer=memory
-  -Zsanitizer-memory-track-origins
   --cfg tokio_unstable
   \${{ env.RUSTFLAGS }}
 __1
@@ -131,8 +129,6 @@ RUSTDOCFLAGS<<__1
   -C link-arg=--sysroot=/sysroot
   -C link-arg=-ldl
   -C link-arg=-Wl,--allow-shlib-undefined
-  -Zsanitizer=memory
-  -Zsanitizer-memory-track-origins
   \${{ env.RUSTFLAGS }}
 __1
 CC=clang-${llvmVersion}
@@ -697,7 +693,7 @@ const ci = {
             // output fs space before and after building
             "df -h",
             "rustup component add rust-src", // for -Zbuild-std
-            "cargo build -Zbuild-std --target x86_64-unknown-linux-gnu --locked -p deno",
+            "cargo build --target x86_64-unknown-linux-gnu --locked -p deno",
             "df -h",
           ].join("\n"),
         },
