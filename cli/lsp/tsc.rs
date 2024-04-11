@@ -237,6 +237,23 @@ impl std::fmt::Debug for TsServer {
   }
 }
 
+#[derive(Debug, Clone, Copy)]
+#[repr(u8)]
+pub enum ChangeKind {
+  Opened = 0,
+  Modified = 1,
+  Closed = 2,
+}
+
+impl Serialize for ChangeKind {
+  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+  where
+    S: serde::Serializer,
+  {
+    serializer.serialize_i32(*self as i32)
+  }
+}
+
 impl TsServer {
   pub fn new(performance: Arc<Performance>, cache: Arc<dyn HttpCache>) -> Self {
     let (tx, request_rx) = mpsc::unbounded_channel::<Request>();
@@ -282,13 +299,13 @@ impl TsServer {
   pub async fn project_changed(
     &self,
     snapshot: Arc<StateSnapshot>,
-    modified_scripts: &[&ModuleSpecifier],
+    modified_scripts: &[(&ModuleSpecifier, ChangeKind)],
     new_project_version: String,
-    tsconfig_changed: bool,
+    config_changed: bool,
   ) {
     let req = TscRequest {
       method: "$projectChanged",
-      args: json!([modified_scripts, new_project_version, tsconfig_changed]),
+      args: json!([modified_scripts, new_project_version, config_changed,]),
     };
     self
       .request::<()>(snapshot, req)
@@ -5162,7 +5179,7 @@ mod tests {
     ts_server
       .project_changed(
         snapshot.clone(),
-        &[&specifier_dep],
+        &[(&specifier_dep, ChangeKind::Opened)],
         snapshot.documents.project_version(),
         false,
       )

@@ -84,6 +84,7 @@ use super::text;
 use super::tsc;
 use super::tsc::Assets;
 use super::tsc::AssetsSnapshot;
+use super::tsc::ChangeKind;
 use super::tsc::GetCompletionDetailsArgs;
 use super::tsc::TsServer;
 use super::urls;
@@ -1143,15 +1144,6 @@ impl Inner {
       .tree
       .refresh(&self.config.settings, &self.workspace_files, &file_fetcher)
       .await;
-    self
-      .ts_server
-      .project_changed(
-        self.snapshot(),
-        &[],
-        self.documents.project_version(),
-        true,
-      )
-      .await;
     for config_file in self.config.tree.config_files() {
       if let Ok((compiler_options, _)) = config_file.to_compiler_options() {
         if let Some(compiler_options_obj) = compiler_options.as_object() {
@@ -1192,6 +1184,16 @@ impl Inner {
     // refresh the npm specifiers because it might have discovered
     // a @types/node package and now's a good time to do that anyway
     self.refresh_npm_specifiers().await;
+
+    self
+      .ts_server
+      .project_changed(
+        self.snapshot(),
+        &[],
+        self.documents.project_version(),
+        true,
+      )
+      .await;
   }
 
   fn shutdown(&self) -> LspResult<()> {
@@ -1229,7 +1231,12 @@ impl Inner {
     let version = self.documents.project_version();
     self
       .ts_server
-      .project_changed(self.snapshot(), &[document.specifier()], version, false)
+      .project_changed(
+        self.snapshot(),
+        &[(document.specifier(), ChangeKind::Opened)],
+        version,
+        false,
+      )
       .await;
 
     self.performance.measure(mark);
@@ -1253,7 +1260,7 @@ impl Inner {
             .ts_server
             .project_changed(
               self.snapshot(),
-              &[document.specifier()],
+              &[(document.specifier(), ChangeKind::Modified)],
               version,
               false,
             )
@@ -1315,7 +1322,12 @@ impl Inner {
     let version = self.documents.project_version();
     self
       .ts_server
-      .project_changed(self.snapshot(), &[&specifier], version, false)
+      .project_changed(
+        self.snapshot(),
+        &[(&specifier, ChangeKind::Closed)],
+        version,
+        false,
+      )
       .await;
     self.performance.measure(mark);
   }

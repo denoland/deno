@@ -168,6 +168,12 @@ delete Object.prototype.__proto__;
   /** @type {string | null} */
   let projectVersionCache = null;
 
+  const ChangeKind = {
+    Opened: 0,
+    Modified: 1,
+    Closed: 2,
+  };
+
   /**
    * @param {ts.CompilerOptions | ts.MinimalResolutionCacheHost} settingsOrHost
    * @returns {ts.CompilerOptions}
@@ -1034,28 +1040,32 @@ delete Object.prototype.__proto__;
     }
     switch (method) {
       case "$projectChanged": {
-        /** @type {string[]} */
+        /** @type {[string, number][]} */
         const changedScripts = args[0];
         /** @type {string} */
         const newProjectVersion = args[1];
         /** @type {boolean} */
-        const tsConfigChanged = args[2];
+        const configChanged = args[2];
 
-        if (tsConfigChanged) {
+        if (configChanged) {
           tsConfigCache = null;
-        }
-
-        if (projectVersionCache !== newProjectVersion) {
-          // TODO(nathanwhit): this could be more granular
-          scriptFileNamesCache = undefined;
         }
 
         projectVersionCache = newProjectVersion;
 
-        for (const script of changedScripts) {
+        let opened = false;
+        for (const { 0: script, 1: changeKind } of changedScripts) {
+          if (changeKind == ChangeKind.Opened) {
+            opened = true;
+          }
           scriptVersionCache.delete(script);
           sourceFileCache.delete(script);
         }
+
+        if (configChanged || opened) {
+          scriptFileNamesCache = undefined;
+        }
+
         return respond(id);
       }
       case "$restart": {
