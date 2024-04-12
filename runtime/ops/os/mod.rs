@@ -8,7 +8,6 @@ use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::url::Url;
 use deno_core::v8;
-use deno_core::Op;
 use deno_core::OpState;
 use deno_node::NODE_ENV_VAR_ALLOWLIST;
 use serde::Serialize;
@@ -67,7 +66,7 @@ deno_core::extension!(
   ],
   middleware = |op| match op.name {
     "op_exit" | "op_set_exit_code" =>
-      op.with_implementation_from(&deno_core::op_void_sync::DECL),
+      op.with_implementation_from(&deno_core::op_void_sync()),
     _ => op,
   },
 );
