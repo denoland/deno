@@ -16,7 +16,6 @@ use std::sync::Arc;
 pub struct Emitter {
   emit_cache: EmitCache,
   parsed_source_cache: Arc<ParsedSourceCache>,
-  transpile_options: deno_ast::TranspileOptions,
   emit_options: deno_ast::EmitOptions,
   // cached hash of the transpile and emit options
   transpile_and_emit_options_hash: u64,
@@ -26,20 +25,17 @@ impl Emitter {
   pub fn new(
     emit_cache: EmitCache,
     parsed_source_cache: Arc<ParsedSourceCache>,
-    transpile_options: deno_ast::TranspileOptions,
     emit_options: deno_ast::EmitOptions,
   ) -> Self {
     let transpile_and_emit_options_hash = {
       let mut hasher = FastInsecureHasher::default();
-      hasher.write_hashable(&transpile_options);
-      hasher.write_hashable(emit_options);
+      hasher.write_hashable(emit_options.clone());
       hasher.finish()
     };
     Self {
       emit_cache,
       parsed_source_cache,
-      emit_options,
-      transpile_options,
+      emit_options: emit_options.clone(),
       transpile_and_emit_options_hash,
     }
   }
@@ -99,8 +95,7 @@ impl Emitter {
         source.clone(),
         media_type,
       )?;
-      let transpiled_source =
-        parsed_source.transpile(&self.transpile_options, &self.emit_options)?;
+      let transpiled_source = parsed_source.transpile(&self.emit_options)?;
       debug_assert!(transpiled_source.source_map.is_none());
       self.emit_cache.set_emit_code(
         specifier,
@@ -125,10 +120,9 @@ impl Emitter {
     let parsed_source = self
       .parsed_source_cache
       .get_or_parse_module(specifier, source_arc, media_type)?;
-    let mut options = self.emit_options;
+    let mut options = self.emit_options.clone();
     options.source_map = SourceMapOption::None;
-    let transpiled_source =
-      parsed_source.transpile(&self.transpile_options, &options)?;
+    let transpiled_source = parsed_source.transpile(&options)?;
     Ok(transpiled_source.text)
   }
 

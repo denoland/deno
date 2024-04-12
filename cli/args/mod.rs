@@ -149,7 +149,7 @@ pub fn jsr_api_url() -> &'static Url {
 
 pub fn ts_config_to_transpile_and_emit_options(
   config: deno_config::TsConfig,
-) -> (deno_ast::TranspileOptions, deno_ast::EmitOptions) {
+) -> deno_ast::EmitOptions {
   let options: deno_config::EmitConfigOptions =
     serde_json::from_value(config.0).unwrap();
   let imports_not_used_as_values =
@@ -173,27 +173,23 @@ pub fn ts_config_to_transpile_and_emit_options(
   } else {
     SourceMapOption::None
   };
-  (
-    deno_ast::TranspileOptions {
-      use_ts_decorators: options.experimental_decorators,
-      use_decorators_proposal: !options.experimental_decorators,
-      emit_metadata: options.emit_decorator_metadata,
-      imports_not_used_as_values,
-      jsx_automatic,
-      jsx_development,
-      jsx_factory: options.jsx_factory,
-      jsx_fragment_factory: options.jsx_fragment_factory,
-      jsx_import_source: options.jsx_import_source,
-      precompile_jsx,
-      transform_jsx,
-      var_decl_imports: false,
-    },
-    deno_ast::EmitOptions {
-      inline_sources: options.inline_sources,
-      keep_comments: false,
-      source_map,
-    },
-  )
+  deno_ast::EmitOptions {
+    use_ts_decorators: options.experimental_decorators,
+    use_decorators_proposal: !options.experimental_decorators,
+    emit_metadata: options.emit_decorator_metadata,
+    imports_not_used_as_values,
+    jsx_automatic,
+    jsx_development,
+    jsx_factory: options.jsx_factory,
+    jsx_fragment_factory: options.jsx_fragment_factory,
+    jsx_import_source: options.jsx_import_source,
+    precompile_jsx,
+    transform_jsx,
+    var_decl_imports: false,
+    inline_sources: options.inline_sources,
+    keep_comments: false,
+    source_map,
+  }
 }
 
 /// Indicates how cached source files should be handled.
