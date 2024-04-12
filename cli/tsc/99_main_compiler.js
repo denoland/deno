@@ -1021,14 +1021,14 @@ delete Object.prototype.__proto__;
   }
 
   /**
-   * @param {number} id
+   * @param {number} _id
    * @param {any} data
    */
   // TODO(bartlomieju): this feels needlessly generic, both type chcking
   // and language server use it with inefficient serialization. Id is not used
   // anyway...
-  function respond(id, data = null) {
-    ops.op_respond({ id, data });
+  function respond(_id, data = null) {
+    ops.op_respond(JSON.stringify(data));
   }
 
   function serverRequest(id, method, args) {
