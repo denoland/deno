@@ -394,15 +394,6 @@ dependencies = [
 
 [[package]]
 name = "base64-simd"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "781dd20c3aff0bd194fe7d2a977dd92f21c173891f3a03b677359e5fa457e5d5"
-dependencies = [
- "simd-abstraction",
-]
-
-[[package]]
-name = "base64-simd"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "339abbe78e73178762e23bea9dfd08e697eb3f3301cd4be981c0f78ba5859195"
@@ -1318,7 +1309,6 @@ dependencies = [
  "deno_unsync 0.3.2",
  "futures",
  "libc",
- "log",
  "memoffset 0.9.1",
  "parking_lot 0.12.1",
  "pin-project",
