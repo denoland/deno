@@ -8,10 +8,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use deno_core::anyhow::Context;
-use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
-use deno_terminal::colors;
-use file_test_runner::RunTestOptions;
 use serde::Deserialize;
 use test_util::tests_path;
 use test_util::PathRef;
@@ -80,8 +77,8 @@ struct StepMetaData {
 }
 
 pub fn main() {
-  let root_category_result =
-    file_test_runner::collect_tests(file_test_runner::CollectTestsOptions {
+  let root_category =
+    file_test_runner::collect_tests_or_exit(file_test_runner::CollectOptions {
       base: tests_path().join("specs").to_path_buf(),
       strategy: file_test_runner::FileCollectionStrategy::TestPerDirectory {
         file_name: MANIFEST_FILE_NAME.to_string(),
@@ -89,13 +86,6 @@ pub fn main() {
       root_category_name: "specs".to_string(),
       filter_override: None,
     });
-  let root_category = match root_category_result {
-    Ok(root_category) => root_category,
-    Err(err) => {
-      eprintln!("{}: {}", colors::red_bold("error"), err);
-      std::process::exit(1);
-    }
-  };
 
   if root_category.is_empty() {
     return; // all tests filtered out
@@ -104,30 +94,23 @@ pub fn main() {
   let _http_guard = test_util::http_server();
   file_test_runner::run_tests(
     &root_category,
-    &RunTestOptions { parallel: true },
+    file_test_runner::RunOptions { parallel: true },
     Arc::new(|test| {
       let diagnostic_logger = Rc::new(RefCell::new(Vec::<u8>::new()));
-      let panic_message = Arc::new(Mutex::new(Vec::<u8>::new()));
-      // todo: thread local panic hook in order to make this work in parallel
-      std::panic::set_hook({
-        let panic_message = panic_message.clone();
-        Box::new(move |info| {
-          panic_message
-            .lock()
-            .extend(format!("{}", info).into_bytes());
-        })
-      });
-      let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
-        run_test(test, diagnostic_logger.clone())
-      }));
-      let success = result.is_ok();
-      if !success {
-        let mut output = diagnostic_logger.borrow().clone();
-        output.push(b'\n');
-        output.extend(panic_message.lock().iter());
-        file_test_runner::TestResult::Failed { output }
-      } else {
+      let result = file_test_runner::TestResult::from_maybe_panic(
+        AssertUnwindSafe(|| run_test(test, diagnostic_logger.clone())),
+      );
+      match result {
         file_test_runner::TestResult::Passed
+        | file_test_runner::TestResult::Ignored => result,
+        file_test_runner::TestResult::Failed {
+          output: panic_output,
+        } => {
+          let mut output = diagnostic_logger.borrow().clone();
+          output.push(b'\n');
+          output.extend(panic_output);
+          file_test_runner::TestResult::Failed { output }
+        }
       }
     }),
   );
