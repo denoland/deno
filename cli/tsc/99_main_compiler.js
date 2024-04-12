@@ -1028,7 +1028,7 @@ delete Object.prototype.__proto__;
   // and language server use it with inefficient serialization. Id is not used
   // anyway...
   function respond(id, data = null) {
-    ops.op_respond({ id, data });
+    ops.op_respond(JSON.stringify({ id, data }));
   }
 
   function serverRequest(id, method, args) {
