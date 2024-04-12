@@ -60,7 +60,7 @@ pub static COMPILER_SNAPSHOT: Lazy<Box<[u8]>> = Lazy::new(
 
     // NOTE(bartlomieju): Compressing the TSC snapshot in debug build took
     // ~45s on M1 MacBook Pro; without compression it took ~1s.
-    // Thus we're not not using compressed snapshot, trading off
+    // Thus we're not using compressed snapshot, trading off
     // a lot of build time for some startup time in debug build.
     #[cfg(debug_assertions)]
     return COMPRESSED_COMPILER_SNAPSHOT.to_vec().into_boxed_slice();
