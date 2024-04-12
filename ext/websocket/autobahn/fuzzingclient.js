@@ -4,6 +4,7 @@
 
 import { $ } from "https://deno.land/x/dax@0.31.0/mod.ts";
 
+$.setPrintCommand(true);
 const pwd = new URL(".", import.meta.url).pathname;
 
 const AUTOBAHN_TESTSUITE_DOCKER =

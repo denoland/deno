@@ -125,3 +125,28 @@ itest!(node_worker_auto_exits {
   output: "workers/node_worker_auto_exits.mjs.out",
   exit_code: 0,
 });
+
+itest!(node_worker_message_port {
+  args: "run --quiet --allow-read workers/node_worker_message_port.mjs",
+  output: "workers/node_worker_message_port.mjs.out",
+  exit_code: 0,
+});
+
+itest!(node_worker_transfer_port {
+  args: "run --quiet --allow-read workers/node_worker_transfer_port.mjs",
+  output: "workers/node_worker_transfer_port.mjs.out",
+  exit_code: 0,
+});
+
+itest!(node_worker_message_port_unref {
+  args: "run --quiet --allow-env --allow-read workers/node_worker_message_port_unref.mjs",
+  output: "workers/node_worker_message_port_unref.mjs.out",
+  exit_code: 0,
+});
+
+itest!(node_worker_parent_port_unref {
+  envs: vec![("PARENT_PORT".into(), "1".into())],
+  args: "run --quiet --allow-env --allow-read workers/node_worker_message_port_unref.mjs",
+  output: "workers/node_worker_message_port_unref.mjs.out",
+  exit_code: 0,
+});

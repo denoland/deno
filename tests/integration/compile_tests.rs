@@ -1243,3 +1243,29 @@ fn standalone_config_file_respects_compiler_options() {
   output.assert_exit_code(0);
   output.assert_matches_text("[WILDCARD]C.test() called[WILDCARD]");
 }
+
+#[test]
+fn standalone_jsr_dynamic_import() {
+  let context = TestContextBuilder::for_jsr().build();
+  let dir = context.temp_dir();
+  let exe = if cfg!(windows) {
+    dir.path().join("jsr_dynamic_import.exe")
+  } else {
+    dir.path().join("jsr_dynamic_import")
+  };
+  context
+    .new_command()
+    .args_vec([
+      "compile",
+      "--output",
+      &exe.to_string_lossy(),
+      "./compile/jsr_dynamic_import/main.ts",
+    ])
+    .run()
+    .skip_output_check()
+    .assert_exit_code(0);
+  let output = context.new_command().name(&exe).run();
+
+  output.assert_exit_code(0);
+  output.assert_matches_text("Hello world\n");
+}

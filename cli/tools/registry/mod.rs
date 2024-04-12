@@ -212,8 +212,15 @@ fn collect_excluded_module_diagnostics(
     return;
   };
   let specifiers = graph
-    .specifiers()
-    .map(|(s, _)| s)
+    .modules()
+    .filter_map(|m| match m {
+      deno_graph::Module::Js(_) | deno_graph::Module::Json(_) => {
+        Some(m.specifier())
+      }
+      deno_graph::Module::Npm(_)
+      | deno_graph::Module::Node(_)
+      | deno_graph::Module::External(_) => None,
+    })
     .filter(|s| s.as_str().starts_with(root.as_str()));
   for specifier in specifiers {
     if !file_patterns.matches_specifier(specifier) {
@@ -924,6 +931,10 @@ async fn build_and_check_graph_for_publish(
           },
         )
         .await?;
+      // ignore unused parameter diagnostics that may occur due to fast check
+      // not having function body implementations
+      let check_diagnostics =
+        check_diagnostics.filter(|d| d.include_when_remote());
       if !check_diagnostics.is_empty() {
         bail!(
           concat!(

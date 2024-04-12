@@ -162,6 +162,18 @@ delete Object.prototype.__proto__;
 
   const isCjsCache = new SpecifierIsCjsCache();
 
+  /** @type {ts.CompilerOptions | null} */
+  let tsConfigCache = null;
+
+  /** @type {string | null} */
+  let projectVersionCache = null;
+
+  const ChangeKind = {
+    Opened: 0,
+    Modified: 1,
+    Closed: 2,
+  };
+
   /**
    * @param {ts.CompilerOptions | ts.MinimalResolutionCacheHost} settingsOrHost
    * @returns {ts.CompilerOptions}
@@ -292,6 +304,7 @@ delete Object.prototype.__proto__;
             /** @type {ts.IScriptSnapshot} */ (sourceFile.scriptSnapShot),
           ),
         );
+        documentRegistrySourceFileCache.set(mapKey, sourceFile);
       }
       return sourceFile;
     },
@@ -354,7 +367,7 @@ delete Object.prototype.__proto__;
       case 2339: {
         const property = getProperty();
         if (property && unstableDenoProps.has(property)) {
-          return `${msg} 'Deno.${property}' is an unstable API. Did you forget to run with the '--unstable' flag? ${unstableMsgSuggestion}`;
+          return `${msg} 'Deno.${property}' is an unstable API. ${unstableMsgSuggestion}`;
         }
         return msg;
       }
@@ -363,7 +376,7 @@ delete Object.prototype.__proto__;
         if (property && unstableDenoProps.has(property)) {
           const suggestion = getMsgSuggestion();
           if (suggestion) {
-            return `${msg} 'Deno.${property}' is an unstable API. Did you forget to run with the '--unstable' flag, or did you mean '${suggestion}'? ${unstableMsgSuggestion}`;
+            return `${msg} 'Deno.${property}' is an unstable API. Did you mean '${suggestion}'? ${unstableMsgSuggestion}`;
           }
         }
         return msg;
@@ -503,9 +516,6 @@ delete Object.prototype.__proto__;
     }
   }
 
-  /** @type {ts.CompilerOptions} */
-  let compilationSettings = {};
-
   /** @type {ts.LanguageService} */
   let languageService;
 
@@ -534,7 +544,16 @@ delete Object.prototype.__proto__;
       return new CancellationToken();
     },
     getProjectVersion() {
-      return ops.op_project_version();
+      if (
+        projectVersionCache
+      ) {
+        debug(`getProjectVersion cache hit : ${projectVersionCache}`);
+        return projectVersionCache;
+      }
+      const projectVersion = ops.op_project_version();
+      projectVersionCache = projectVersion;
+      debug(`getProjectVersion cache miss : ${projectVersionCache}`);
+      return projectVersion;
     },
     // @ts-ignore Undocumented method.
     getModuleSpecifierCache() {
@@ -546,6 +565,19 @@ delete Object.prototype.__proto__;
     },
     getGlobalTypingsCacheLocation() {
       return undefined;
+    },
+    // @ts-ignore Undocumented method.
+    toPath(fileName) {
+      // @ts-ignore Undocumented function.
+      ts.toPath(
+        fileName,
+        this.getCurrentDirectory(),
+        this.getCanonicalFileName.bind(this),
+      );
+    },
+    // @ts-ignore Undocumented method.
+    watchNodeModulesForPackageJsonChanges() {
+      return { close() {} };
     },
     getSourceFile(
       specifier,
@@ -693,10 +725,6 @@ delete Object.prototype.__proto__;
           if (item) {
             isCjsCache.add(item);
             const [resolvedFileName, extension] = item;
-            if (resolvedFileName.startsWith("node:")) {
-              // probably means the user doesn't have @types/node, so resolve to undefined
-              return undefined;
-            }
             return {
               resolvedFileName,
               extension,
@@ -720,7 +748,21 @@ delete Object.prototype.__proto__;
       if (logDebug) {
         debug("host.getCompilationSettings()");
       }
-      return compilationSettings;
+      if (tsConfigCache) {
+        return tsConfigCache;
+      }
+      const tsConfig = normalizeConfig(ops.op_ts_config());
+      const { options, errors } = ts
+        .convertCompilerOptionsFromJson(tsConfig, "");
+      Object.assign(options, {
+        allowNonTsExtensions: true,
+        allowImportingTsExtensions: true,
+      });
+      if (errors.length > 0 && logDebug) {
+        debug(ts.formatDiagnostics(errors, host));
+      }
+      tsConfigCache = options;
+      return options;
     },
     getScriptFileNames() {
       if (logDebug) {
@@ -754,13 +796,6 @@ delete Object.prototype.__proto__;
         debug(`host.getScriptSnapshot("${specifier}")`);
       }
       let sourceFile = sourceFileCache.get(specifier);
-      if (
-        !specifier.startsWith(ASSETS_URL_PREFIX) &&
-        sourceFile?.version != this.getScriptVersion(specifier)
-      ) {
-        sourceFileCache.delete(specifier);
-        sourceFile = undefined;
-      }
       if (!sourceFile) {
         sourceFile = this.getSourceFile(
           specifier,
@@ -1000,29 +1035,38 @@ delete Object.prototype.__proto__;
     if (logDebug) {
       debug(`serverRequest()`, id, method, args);
     }
-
-    // reset all memoized source files names
-    scriptFileNamesCache = undefined;
-    // evict all memoized source file versions
-    scriptVersionCache.clear();
     switch (method) {
+      case "$projectChanged": {
+        /** @type {[string, number][]} */
+        const changedScripts = args[0];
+        /** @type {string} */
+        const newProjectVersion = args[1];
+        /** @type {boolean} */
+        const configChanged = args[2];
+
+        if (configChanged) {
+          tsConfigCache = null;
+        }
+
+        projectVersionCache = newProjectVersion;
+
+        let opened = false;
+        for (const { 0: script, 1: changeKind } of changedScripts) {
+          if (changeKind == ChangeKind.Opened) {
+            opened = true;
+          }
+          scriptVersionCache.delete(script);
+          sourceFileCache.delete(script);
+        }
+
+        if (configChanged || opened) {
+          scriptFileNamesCache = undefined;
+        }
+
+        return respond(id);
+      }
       case "$restart": {
         serverRestart();
-        return respond(id, true);
-      }
-      case "$configure": {
-        const config = normalizeConfig(args[0]);
-        const { options, errors } = ts
-          .convertCompilerOptionsFromJson(config, "");
-        Object.assign(options, {
-          allowNonTsExtensions: true,
-          allowImportingTsExtensions: true,
-        });
-        if (errors.length > 0 && logDebug) {
-          debug(ts.formatDiagnostics(errors, host));
-        }
-        compilationSettings = options;
-        moduleSpecifierCache.clear();
         return respond(id, true);
       }
       case "$getSupportedCodeFixes": {
@@ -1035,6 +1079,14 @@ delete Object.prototype.__proto__;
         return respond(id, getAssets());
       }
       case "$getDiagnostics": {
+        const projectVersion = args[1];
+        // there's a possibility that we receive a change notification
+        // but the diagnostic server queues a `$getDiagnostics` request
+        // with a stale project version. in that case, treat it as cancelled
+        // (it's about to be invalidated anyway).
+        if (projectVersionCache && projectVersion !== projectVersionCache) {
+          return respond(id, {});
+        }
         try {
           /** @type {Record<string, any[]>} */
           const diagnosticMap = {};

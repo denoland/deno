@@ -298,43 +298,77 @@ pub enum TestFailure {
   HasSanitizersAndOverlaps(IndexSet<String>), // Long names of overlapped tests
 }
 
-impl ToString for TestFailure {
-  fn to_string(&self) -> String {
+impl std::fmt::Display for TestFailure {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     match self {
-      TestFailure::JsError(js_error) => format_test_error(js_error),
-      TestFailure::FailedSteps(1) => "1 test step failed.".to_string(),
-      TestFailure::FailedSteps(n) => format!("{} test steps failed.", n),
-      TestFailure::IncompleteSteps => "Completed while steps were still running. Ensure all steps are awaited with `await t.step(...)`.".to_string(),
-      TestFailure::Incomplete => "Didn't complete before parent. Await step with `await t.step(...)`.".to_string(),
+      TestFailure::JsError(js_error) => {
+        write!(f, "{}", format_test_error(js_error))
+      }
+      TestFailure::FailedSteps(1) => write!(f, "1 test step failed."),
+      TestFailure::FailedSteps(n) => write!(f, "{n} test steps failed."),
+      TestFailure::IncompleteSteps => {
+        write!(f, "Completed while steps were still running. Ensure all steps are awaited with `await t.step(...)`.")
+      }
+      TestFailure::Incomplete => {
+        write!(
+          f,
+          "Didn't complete before parent. Await step with `await t.step(...)`."
+        )
+      }
       TestFailure::Leaked(details, trailer_notes) => {
-        let mut string = "Leaks detected:".to_string();
+        write!(f, "Leaks detected:")?;
         for detail in details {
-          string.push_str(&format!("\n  - {detail}"));
+          write!(f, "\n  - {}", detail)?;
         }
         for trailer in trailer_notes {
-          string.push_str(&format!("\n{trailer}"));
+          write!(f, "\n{}", trailer)?;
         }
-        string
+        Ok(())
       }
       TestFailure::OverlapsWithSanitizers(long_names) => {
-        let mut string = "Started test step while another test step with sanitizers was running:".to_string();
+        write!(f, "Started test step while another test step with sanitizers was running:")?;
         for long_name in long_names {
-          string.push_str(&format!("\n  * {}", long_name));
+          write!(f, "\n  * {}", long_name)?;
         }
-        string
+        Ok(())
       }
       TestFailure::HasSanitizersAndOverlaps(long_names) => {
-        let mut string = "Started test step with sanitizers while another test step was running:".to_string();
+        write!(f, "Started test step with sanitizers while another test step was running:")?;
         for long_name in long_names {
-          string.push_str(&format!("\n  * {}", long_name));
+          write!(f, "\n  * {}", long_name)?;
         }
-        string
+        Ok(())
       }
     }
   }
 }
 
 impl TestFailure {
+  pub fn overview(&self) -> String {
+    match self {
+      TestFailure::JsError(js_error) => js_error.exception_message.clone(),
+      TestFailure::FailedSteps(1) => "1 test step failed".to_string(),
+      TestFailure::FailedSteps(n) => format!("{n} test steps failed"),
+      TestFailure::IncompleteSteps => {
+        "Completed while steps were still running".to_string()
+      }
+      TestFailure::Incomplete => "Didn't complete before parent".to_string(),
+      TestFailure::Leaked(_, _) => "Leaks detected".to_string(),
+      TestFailure::OverlapsWithSanitizers(_) => {
+        "Started test step while another test step with sanitizers was running"
+          .to_string()
+      }
+      TestFailure::HasSanitizersAndOverlaps(_) => {
+        "Started test step with sanitizers while another test step was running"
+          .to_string()
+      }
+    }
+  }
+
+  pub fn detail(&self) -> String {
+    self.to_string()
+  }
+
   fn format_label(&self) -> String {
     match self {
       TestFailure::Incomplete => colors::gray("INCOMPLETE").to_string(),
@@ -465,6 +499,7 @@ pub struct TestSummary {
 
 #[derive(Debug, Clone)]
 struct TestSpecifiersOptions {
+  cwd: Url,
   concurrent_jobs: NonZeroUsize,
   fail_fast: Option<NonZeroUsize>,
   log_level: Option<log::Level>,
@@ -506,23 +541,30 @@ impl TestSummary {
 fn get_test_reporter(options: &TestSpecifiersOptions) -> Box<dyn TestReporter> {
   let parallel = options.concurrent_jobs.get() > 1;
   let reporter: Box<dyn TestReporter> = match &options.reporter {
-    TestReporterConfig::Dot => Box::new(DotTestReporter::new()),
+    TestReporterConfig::Dot => {
+      Box::new(DotTestReporter::new(options.cwd.clone()))
+    }
     TestReporterConfig::Pretty => Box::new(PrettyTestReporter::new(
       parallel,
       options.log_level != Some(Level::Error),
       options.filter,
       false,
+      options.cwd.clone(),
     )),
     TestReporterConfig::Junit => {
-      Box::new(JunitTestReporter::new("-".to_string()))
+      Box::new(JunitTestReporter::new(options.cwd.clone(), "-".to_string()))
     }
     TestReporterConfig::Tap => Box::new(TapTestReporter::new(
+      options.cwd.clone(),
       options.concurrent_jobs > NonZeroUsize::new(1).unwrap(),
     )),
   };
 
   if let Some(junit_path) = &options.junit_path {
-    let junit = Box::new(JunitTestReporter::new(junit_path.to_string()));
+    let junit = Box::new(JunitTestReporter::new(
+      options.cwd.clone(),
+      junit_path.to_string(),
+    ));
     return Box::new(CompoundTestReporter::new(vec![reporter, junit]));
   }
 
@@ -1525,30 +1567,38 @@ fn is_supported_test_ext(path: &Path) -> bool {
 /// - Specifiers matching the `is_supported_test_path` are marked as `TestMode::Executable`.
 /// - Specifiers matching both predicates are marked as `TestMode::Both`
 fn collect_specifiers_with_test_mode(
+  cli_options: &CliOptions,
   files: FilePatterns,
   include_inline: &bool,
 ) -> Result<Vec<(ModuleSpecifier, TestMode)>, AnyError> {
   // todo(dsherret): there's no need to collect twice as it's slow
-  let module_specifiers =
-    collect_specifiers(files.clone(), is_supported_test_path_predicate)?;
+  let vendor_folder = cli_options.vendor_dir_path();
+  let module_specifiers = collect_specifiers(
+    files.clone(),
+    vendor_folder.map(ToOwned::to_owned),
+    is_supported_test_path_predicate,
+  )?;
 
   if *include_inline {
-    return collect_specifiers(files, |e| is_supported_test_ext(e.path)).map(
-      |specifiers| {
-        specifiers
-          .into_iter()
-          .map(|specifier| {
-            let mode = if module_specifiers.contains(&specifier) {
-              TestMode::Both
-            } else {
-              TestMode::Documentation
-            };
+    return collect_specifiers(
+      files,
+      vendor_folder.map(ToOwned::to_owned),
+      |e| is_supported_test_ext(e.path),
+    )
+    .map(|specifiers| {
+      specifiers
+        .into_iter()
+        .map(|specifier| {
+          let mode = if module_specifiers.contains(&specifier) {
+            TestMode::Both
+          } else {
+            TestMode::Documentation
+          };
 
-            (specifier, mode)
-          })
-          .collect()
-      },
-    );
+          (specifier, mode)
+        })
+        .collect()
+    });
   }
 
   let specifiers_with_mode = module_specifiers
@@ -1568,11 +1618,13 @@ fn collect_specifiers_with_test_mode(
 /// cannot be run, and therefore need to be marked as `TestMode::Documentation`
 /// as well.
 async fn fetch_specifiers_with_test_mode(
+  cli_options: &CliOptions,
   file_fetcher: &FileFetcher,
   files: FilePatterns,
   doc: &bool,
 ) -> Result<Vec<(ModuleSpecifier, TestMode)>, AnyError> {
-  let mut specifiers_with_mode = collect_specifiers_with_test_mode(files, doc)?;
+  let mut specifiers_with_mode =
+    collect_specifiers_with_test_mode(cli_options, files, doc)?;
 
   for (specifier, mode) in &mut specifiers_with_mode {
     let file = file_fetcher
@@ -1605,6 +1657,7 @@ pub async fn run_tests(
   let log_level = cli_options.log_level();
 
   let specifiers_with_mode = fetch_specifiers_with_test_mode(
+    cli_options,
     file_fetcher,
     test_options.files.clone(),
     &test_options.doc,
@@ -1641,6 +1694,14 @@ pub async fn run_tests(
       })
       .collect(),
     TestSpecifiersOptions {
+      cwd: Url::from_directory_path(cli_options.initial_cwd()).map_err(
+        |_| {
+          generic_error(format!(
+            "Unable to construct URL from the path of cwd: {}",
+            cli_options.initial_cwd().to_string_lossy(),
+          ))
+        },
+      )?,
       concurrent_jobs: test_options.concurrent_jobs,
       fail_fast: test_options.fail_fast,
       log_level,
@@ -1708,12 +1769,15 @@ pub async fn run_tests_with_watch(
         let module_graph_creator = factory.module_graph_creator().await?;
         let file_fetcher = factory.file_fetcher()?;
         let test_modules = if test_options.doc {
-          collect_specifiers(test_options.files.clone(), |e| {
-            is_supported_test_ext(e.path)
-          })
+          collect_specifiers(
+            test_options.files.clone(),
+            cli_options.vendor_dir_path().map(ToOwned::to_owned),
+            |e| is_supported_test_ext(e.path),
+          )
         } else {
           collect_specifiers(
             test_options.files.clone(),
+            cli_options.vendor_dir_path().map(ToOwned::to_owned),
             is_supported_test_path_predicate,
           )
         }?;
@@ -1748,6 +1812,7 @@ pub async fn run_tests_with_watch(
           Arc::new(factory.create_cli_main_worker_factory().await?);
         let module_load_preparer = factory.module_load_preparer().await?;
         let specifiers_with_mode = fetch_specifiers_with_test_mode(
+          &cli_options,
           file_fetcher,
           test_options.files.clone(),
           &test_options.doc,
@@ -1780,6 +1845,14 @@ pub async fn run_tests_with_watch(
             })
             .collect(),
           TestSpecifiersOptions {
+            cwd: Url::from_directory_path(cli_options.initial_cwd()).map_err(
+              |_| {
+                generic_error(format!(
+                  "Unable to construct URL from the path of cwd: {}",
+                  cli_options.initial_cwd().to_string_lossy(),
+                ))
+              },
+            )?,
             concurrent_jobs: test_options.concurrent_jobs,
             fail_fast: test_options.fail_fast,
             log_level,

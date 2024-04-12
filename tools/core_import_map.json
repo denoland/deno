@@ -32,6 +32,7 @@
     "ext:deno_node/_fs/_fs_mkdir.ts": "../ext/node/polyfills/_fs/_fs_mkdir.ts",
     "ext:deno_node/_fs/_fs_open.ts": "../ext/node/polyfills/_fs/_fs_open.ts",
     "ext:deno_node/_fs/_fs_read.ts": "../ext/node/polyfills/_fs/_fs_read.ts",
+    "ext:deno_node/_fs/_fs_readv.ts": "../ext/node/polyfills/_fs/_fs_readv.ts",
     "ext:deno_node/_fs/_fs_stat.ts": "../ext/node/polyfills/_fs/_fs_stat.ts",
     "ext:deno_node/_fs/_fs_watch.ts": "../ext/node/polyfills/_fs/_fs_watch.ts",
     "ext:deno_node/_fs/_fs_write.mjs": "../ext/node/polyfills/_fs/_fs_write.mjs",

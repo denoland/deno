@@ -6,6 +6,143 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.42.3 / 2024.04.12
+
+- Revert "refactor(ext/net): extract TLS key and certificate from inter…
+  (#23325)
+- fix(inspector): don't panic if port is not free (#22745)
+- fix(lsp): Denormalize specifiers before calling `$projectChanged` (#23322)
+- fix(npm): local nodeModulesDir was sometimes resolving duplicates of same
+  package (#23320)
+- fix(publish): do not warn about excluded external modules in node_modules
+  directory (#23173)
+- fix: upgrade deno_ast related crates (#23187)
+- perf(lsp): use a stub module in tsc for failed resolutions (#23313)
+
+### 1.42.2 / 2024.04.11
+
+- FUTURE(ext/fs): make `Deno.FsFile` constructor illegal (#23235)
+- FUTURE(ext/fs): remove `Deno.FsWatcher.prototype.rid` (#23234)
+- FUTURE(ext/net): remove
+  `Deno.(Conn|TlsConn|Listener|TlsListener|UnixConn).prototype.rid` (#23219)
+- FUTURE: enable BYONM by default (#23194)
+- FUTURE: override byonm with nodeModulesDir setting (#23222)
+- FUTURE: remove deprecated APIs within workers (#23220)
+- feat(lsp): respect nested deno.json for fmt and lint config (#23159)
+- fix(cli): Enforce a human delay in prompt to fix paste problem (#23184)
+- fix(cli): fix deadlock in test writer when test pipe is full (#23210)
+- fix(cli): update `deno doc` help to fit current usage (#23224)
+- fix(ext/fs): account for all ops in leak checks (#23300)
+- fix(ext/http): Make `Deno.serveHttp()` work when proxying (#23269)
+- fix(ext/net): Improve ts types for network APIs (#23228)
+- fix(ext/node): Add "module" to builtinsModule (#23242)
+- fix(ext/node): Add fs.readv, fs.readvSync (#23166)
+- fix(ext/node): MessagePort works (#22999)
+- fix(ext/node): Support returning tokens and option defaults in
+  `node:util.parseArgs` (#23192)
+- fix(ext/node): `node:vm` contexts (#23202)
+- fix(ext/node): count MessagePort message listeners in hasMessageEventListener
+  (#23209)
+- fix(ext/node): hostname is valid IPv4 addr (#23243)
+- fix(ext/node): implement MessagePort.unref() (#23278)
+- fix(ext/node): improve AsyncLocalStorage api (#23175)
+- fix(ext/node): out-of-order writes of fs.createWriteStream (#23244)
+- fix(ext/node): patch MessagePort if provided as workerData (#23198)
+- fix(ext/node): polyfill node:domain module (#23088)
+- fix(ext/tls): add support EC private key (#23261)
+- fix(lsp): Remove client-facing format failure warning (#23196)
+- fix(lsp): respect DENO_FUTURE for BYONM config (#23207)
+- fix(runtime): fix Windows permission prompt (#23212)
+- fix: prevent cache db errors when deno_dir not exists (#23168)
+- perf(lsp): Don't retain `SourceFileObject`s in `sourceFileCache` longer than
+  necessary (#23258)
+- perf(lsp): More granular locking of `FileSystemDocuments` (#23291)
+- perf(lsp): Only evict caches on JS side when things actually change (#23293)
+- perf(lsp): cache ts config in isolate until new project version (#23283)
+- perf(lsp): don't keep remote module ast's in memory (#23230)
+- perf(lsp): don't pass remote modules as tsc roots (#23259)
+- perf(lsp): replace document registry source cache on update (#23311)
+- perf(lsp): use lockfile to reduce npm pkg resolution time (#23247)
+- perf(node): put pkg json into an `Rc` (#23156)
+- perf: reduce allocations in `MediaType::from_specifier` (#23190)
+
+### 1.42.1 / 2024.04.01
+
+- fix(check): ignore certain diagnostics in remote modules and when publishing
+  (#23119)
+- fix(ext/node): support stdin: "inherit" in node:child_process (#23110)
+- fix(ext/node): use tty stdin from ext/io (#23044)
+- fix(jsr): exclude yanked versions from 'deno add' and completions (#23113)
+- fix(lsp): don't apply preload limit to workspace walk (#23123)
+- fix(lsp): implement missing ts server host apis (#23131)
+- fix(node): handle empty 'main' entry in pkg json (#23155)
+- fix(node): remove unwrap in op_require_node_module_paths (#23114)
+- fix: deno_graph 0.69.10 (#23147)
+
+### 1.42.0 / 2024.03.28
+
+- feat(add): always produce multiline config file (#23077)
+- feat(ext/node): add riscv64 in process.arch (#23016)
+- feat(init): use jsr specifier for @std/assert (#23073)
+- feat(install): require -g / --global flag (#23060)
+- feat(lint): `deno lint --fix` and lsp quick fixes (#22615)
+- feat(lint): automatically opt-in packages to `jsr` lint tag (#23072)
+- feat(node): load ES modules defined as CJS (#22945)
+- feat(publish): check for uncommitted files in `deno publish --dry-run`
+  (#22981)
+- feat(task): Task description in the form of comments (#23101)
+- feat(task): cross-platform shebang support (#23091)
+- feat(unstable/publish): error when a package's module is excluded from
+  publishing (#22948)
+- feat: TypeScript 5.4 (#23086)
+- feat: add `--watch-exclude` flag (#21935)
+- feat: deno_task_shell 0.15 (#23019)
+- feat: remove deprecated methods from namespace with `DENO_FUTURE=1` (#23075)
+- feat: type declarations for new Set methods (#23090)
+- fix(bench): Fix group header printing logic + don't filter out the warmup
+  benchmark (#23083)
+- fix(check): do not suggest running with `--unstable` (#23092)
+- fix(cli): output more detailed information for steps when using JUnit reporter
+  (#22797)
+- fix(cli): sanitizer should ignore count of ops started before tests begin
+  (#22932)
+- fix(coverage): Error if no files are included in the report (#22952)
+- fix(ext/fetch): do not truncate field value in `EventSource` (#22368)
+- fix(ext/fetch): make `EventSource` more robust (#22493)
+- fix(ext/node): ECDH.publicKey() point encoding (#23013)
+- fix(ext/node): FsWatcher ref and unref (#22987)
+- fix(ext/node): Reimplement StringDecoder to match node's behavior (#22933)
+- fix(ext/node): add crypto.getRandomValues (#23028)
+- fix(ext/node): add crypto.subtle (#23027)
+- fix(ext/node): add process.setSourceMapsEnabled noop (#22993)
+- fix(ext/node): handle KeyObject in `prepareAsymmetricKey` (#23026)
+- fix(ext/node): handle `null` in stdio array (#23048)
+- fix(ext/node): implement EventEmitterAsyncResource (#22994)
+- fix(ext/node): implement v8 serialize and deserialize (#22975)
+- fix(ext/node): panic in `op_node_ecdh_generate_keys` (#23011)
+- fix(ext/node): pass normalized watchFile handler to StatWatcher (#22940)
+- fix(ext/node): spread args in setImmediate (#22998)
+- fix(ext/node): support Diffie-Hellman key type in `crypto.createPrivateKey()`
+  (#22984)
+- fix(ext/node): support MessagePort in `WorkerOptions.workerData` (#22950)
+- fix(ext/node): support public key point encoding in ECDH.generateKeys()
+  (#22976)
+- fix(ext/node): worker_threads ESM handling (#22841)
+- fix(ext/node): worker_threads doesn't exit if there are message listeners
+  (#22944)
+- fix(ext/web): Fix structuredClone Web API type declaration (any -> generic)
+  (#22968)
+- fix(jupyter): Do not increase counter if store_history=false (#20848)
+- fix(lsp): decoding percent-encoding(non-ASCII) file path correctly (#22582)
+- fix(lsp): prefer cache over tsc quick fixes (#23093)
+- fix(lsp): use registry cache for completion search (#23094)
+- fix(runtime): use FQDN in NetDescriptor (#23084)
+- fix: do not memoize `Deno.ppid` (#23006)
+- fix: don't panic in test and bench if ops not available (#23055)
+- fix: handle cache body file not existing when using etag (#22931)
+- fix: less aggressive vendor folder ignoring (#23100)
+- perf: warm expensive init code at snapshot time (#22714)
+
 ### 1.41.3 / 2024.03.14
 
 - fix(cli): occasional panics on progress bar (#22809)

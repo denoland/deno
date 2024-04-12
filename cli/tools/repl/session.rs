@@ -30,6 +30,7 @@ use deno_ast::ParsedSource;
 use deno_ast::SourcePos;
 use deno_ast::SourceRangedForSpanned;
 use deno_ast::SourceTextInfo;
+use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures::channel::mpsc::UnboundedReceiver;
 use deno_core::futures::FutureExt;
@@ -37,6 +38,7 @@ use deno_core::futures::StreamExt;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
 use deno_core::unsync::spawn;
+use deno_core::url::Url;
 use deno_core::LocalInspectorSession;
 use deno_core::PollEventLoopOptions;
 use deno_graph::source::ResolutionMode;
@@ -243,11 +245,20 @@ impl ReplSession {
       deno_core::resolve_path("./$deno$repl.ts", cli_options.initial_cwd())
         .unwrap();
 
+    let cwd_url =
+      Url::from_directory_path(cli_options.initial_cwd()).map_err(|_| {
+        generic_error(format!(
+          "Unable to construct URL from the path of cwd: {}",
+          cli_options.initial_cwd().to_string_lossy(),
+        ))
+      })?;
     let ts_config_for_emit = cli_options
       .resolve_ts_config_for_emit(deno_config::TsConfigType::Emit)?;
-    let emit_options =
-      crate::args::ts_config_to_emit_options(ts_config_for_emit.ts_config);
-    let experimental_decorators = emit_options.use_ts_decorators;
+    let (transpile_options, _) =
+      crate::args::ts_config_to_transpile_and_emit_options(
+        ts_config_for_emit.ts_config,
+      );
+    let experimental_decorators = transpile_options.use_ts_decorators;
     let mut repl_session = ReplSession {
       npm_resolver,
       resolver,
@@ -257,8 +268,14 @@ impl ReplSession {
       language_server,
       referrer,
       notifications: Arc::new(Mutex::new(notification_rx)),
-      test_reporter_factory: Box::new(|| {
-        Box::new(PrettyTestReporter::new(false, true, false, true))
+      test_reporter_factory: Box::new(move || {
+        Box::new(PrettyTestReporter::new(
+          false,
+          true,
+          false,
+          true,
+          cwd_url.clone(),
+        ))
       }),
       main_module,
       test_event_sender,
@@ -604,23 +621,27 @@ impl ReplSession {
     self.analyze_and_handle_jsx(&parsed_source);
 
     let transpiled_src = parsed_source
-      .transpile(&deno_ast::EmitOptions {
-        use_ts_decorators: self.experimental_decorators,
-        use_decorators_proposal: !self.experimental_decorators,
-        emit_metadata: false,
-        source_map: false,
-        inline_source_map: false,
-        inline_sources: false,
-        imports_not_used_as_values: ImportsNotUsedAsValues::Preserve,
-        transform_jsx: true,
-        precompile_jsx: false,
-        jsx_automatic: self.jsx.import_source.is_some(),
-        jsx_development: false,
-        jsx_factory: self.jsx.factory.clone(),
-        jsx_fragment_factory: self.jsx.frag_factory.clone(),
-        jsx_import_source: self.jsx.import_source.clone(),
-        var_decl_imports: true,
-      })?
+      .transpile(
+        &deno_ast::TranspileOptions {
+          use_ts_decorators: self.experimental_decorators,
+          use_decorators_proposal: !self.experimental_decorators,
+          emit_metadata: false,
+          imports_not_used_as_values: ImportsNotUsedAsValues::Preserve,
+          transform_jsx: true,
+          precompile_jsx: false,
+          jsx_automatic: self.jsx.import_source.is_some(),
+          jsx_development: false,
+          jsx_factory: self.jsx.factory.clone(),
+          jsx_fragment_factory: self.jsx.frag_factory.clone(),
+          jsx_import_source: self.jsx.import_source.clone(),
+          var_decl_imports: true,
+        },
+        &deno_ast::EmitOptions {
+          source_map: deno_ast::SourceMapOption::None,
+          inline_sources: false,
+          keep_comments: false,
+        },
+      )?
       .text;
 
     let value = self

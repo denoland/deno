@@ -1,5 +1,4 @@
 {
-  "base": "jsr",
   "args": "run -A main.ts",
   "output": "main.out",
   "exitCode": 1

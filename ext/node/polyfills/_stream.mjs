@@ -1665,7 +1665,7 @@ var require_destroy = __commonJS({
         } else if (err) {
           errorOrDestroy(stream, err, true);
         } else {
-          process.nextTick(emitConstructNT, stream);
+          stream.emit(kConstruct);
         }
       }
       try {
@@ -1675,9 +1675,6 @@ var require_destroy = __commonJS({
       } catch (err) {
         nextTick(onConstruct, err);
       }
-    }
-    function emitConstructNT(stream) {
-      stream.emit(kConstruct);
     }
     function isRequest(stream) {
       return stream && stream.setHeader && typeof stream.abort === "function";

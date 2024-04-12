@@ -18,6 +18,7 @@ use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_doc as doc;
+use deno_graph::source::NullFileSystem;
 use deno_graph::GraphKind;
 use deno_graph::ModuleAnalyzer;
 use deno_graph::ModuleParser;
@@ -53,8 +54,16 @@ async fn generate_doc_nodes_for_builtin_types(
       vec![source_file_specifier.clone()],
       &mut loader,
       deno_graph::BuildOptions {
-        module_analyzer: Some(analyzer),
-        ..Default::default()
+        module_analyzer: analyzer,
+        file_system: &NullFileSystem,
+        is_dynamic: false,
+        imports: Vec::new(),
+        executor: Default::default(),
+        jsr_url_provider: Default::default(),
+        npm_resolver: None,
+        reporter: None,
+        resolver: None,
+        workspace_members: &[],
       },
     )
     .await;
@@ -103,6 +112,7 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
           ),
           exclude: Default::default(),
         },
+        cli_options.vendor_dir_path().map(ToOwned::to_owned),
         |_| true,
       )?;
       let graph = module_graph_creator
@@ -147,14 +157,27 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
         &analyzer,
       )
       .await?;
-      let (_, deno_ns) = deno_ns.first().unwrap();
+      let (_, deno_ns) = deno_ns.into_iter().next().unwrap();
 
-      deno_doc::html::compute_namespaced_symbols(deno_ns, &[])
+      deno_doc::html::compute_namespaced_symbols(
+        deno_ns
+          .into_iter()
+          .map(|node| deno_doc::html::DocNodeWithContext {
+            origin: Rc::new(ShortPath::from("deno".to_string())),
+            ns_qualifiers: Rc::new(vec![]),
+            kind_with_drilldown:
+              deno_doc::html::DocNodeKindWithDrilldown::Other(node.kind),
+            inner: std::sync::Arc::new(node),
+            drilldown_parent_kind: None,
+          })
+          .collect(),
+        &[],
+      )
     } else {
       Default::default()
     };
 
-    generate_docs_directory(&doc_nodes_by_url, html_options, deno_ns)
+    generate_docs_directory(doc_nodes_by_url, html_options, deno_ns)
   } else {
     let modules_len = doc_nodes_by_url.len();
     let doc_nodes =
@@ -222,7 +245,7 @@ impl deno_doc::html::HrefResolver for DocResolver {
 }
 
 fn generate_docs_directory(
-  doc_nodes_by_url: &IndexMap<ModuleSpecifier, Vec<doc::DocNode>>,
+  doc_nodes_by_url: IndexMap<ModuleSpecifier, Vec<doc::DocNode>>,
   html_options: &DocHtmlFlag,
   deno_ns: std::collections::HashSet<Vec<String>>,
 ) -> Result<(), AnyError> {

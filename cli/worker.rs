@@ -72,12 +72,6 @@ pub trait ModuleLoaderFactory: Send + Sync {
   fn create_source_map_getter(&self) -> Option<Rc<dyn SourceMapGetter>>;
 }
 
-// todo(dsherret): this is temporary and we should remove this
-// once we no longer conditionally initialize the node runtime
-pub trait HasNodeSpecifierChecker: Send + Sync {
-  fn has_node_specifier(&self) -> bool;
-}
-
 #[async_trait::async_trait(?Send)]
 pub trait HmrRunner: Send + Sync {
   async fn start(&mut self) -> Result<(), AnyError>;
@@ -813,7 +807,7 @@ fn create_web_worker_callback(
         node_ipc_fd: None,
         disable_deprecated_api_warning: shared.disable_deprecated_api_warning,
         verbose_deprecated_api_warning: shared.verbose_deprecated_api_warning,
-        future: false,
+        future: shared.enable_future_features,
       },
       extensions: vec![],
       startup_snapshot: crate::js::deno_isolate_init(),
