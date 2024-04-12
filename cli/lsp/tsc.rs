@@ -4063,7 +4063,7 @@ fn op_load<'s>(
   Ok(serialized)
 }
 
-#[tracing::instrument(skip(scope, state))]
+#[tracing::instrument(skip(state))]
 #[op2]
 #[serde]
 fn op_resolve(
