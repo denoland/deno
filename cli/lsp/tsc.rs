@@ -105,7 +105,7 @@ const FILE_EXTENSION_KIND_MODIFIERS: &[&str] =
 type Request = (
   TscRequest,
   Arc<StateSnapshot>,
-  oneshot::Sender<Result<Value, AnyError>>,
+  oneshot::Sender<Result<String, AnyError>>,
   CancellationToken,
 );
 
@@ -1054,13 +1054,13 @@ impl TsServer {
     }
     let token = token.child_token();
     let droppable_token = DroppableToken(token.clone());
-    let (tx, rx) = oneshot::channel::<Result<Value, AnyError>>();
+    let (tx, rx) = oneshot::channel::<Result<String, AnyError>>();
     if self.sender.send((req, snapshot, tx, token)).is_err() {
       return Err(anyhow!("failed to send request to tsc thread"));
     }
     let value = rx.await??;
     drop(droppable_token);
-    Ok(serde_json::from_value::<R>(value)?)
+    Ok(serde_json::from_str(&value)?)
   }
 }
 
@@ -3848,12 +3848,6 @@ impl SelectionRange {
   }
 }
 
-#[derive(Debug, Clone, Deserialize)]
-struct Response {
-  // id: usize,
-  data: Value,
-}
-
 #[derive(Debug, Default)]
 pub struct TscSpecifierMap {
   normalized_specifiers: DashMap<String, ModuleSpecifier>,
@@ -3917,7 +3911,8 @@ impl TscSpecifierMap {
 struct State {
   last_id: usize,
   performance: Arc<Performance>,
-  response: Option<Response>,
+  // the response from JS, as a JSON string
+  response: Option<String>,
   state_snapshot: Arc<StateSnapshot>,
   specifier_map: Arc<TscSpecifierMap>,
   token: CancellationToken,
@@ -4084,10 +4079,10 @@ fn op_resolve_inner(
   Ok(specifiers)
 }
 
-#[op2]
-fn op_respond(state: &mut OpState, #[serde] args: Response) {
+#[op2(fast)]
+fn op_respond(state: &mut OpState, #[string] response: String) {
   let state = state.borrow_mut::<State>();
-  state.response = Some(args);
+  state.response = Some(response);
 }
 
 #[op2]
@@ -4646,7 +4641,7 @@ fn request(
   state_snapshot: Arc<StateSnapshot>,
   request: TscRequest,
   token: CancellationToken,
-) -> Result<Value, AnyError> {
+) -> Result<String, AnyError> {
   if token.is_cancelled() {
     return Err(anyhow!("Operation was cancelled."));
   }
@@ -4679,14 +4674,12 @@ fn request(
   let state = op_state.borrow_mut::<State>();
 
   performance.measure(mark);
-  if let Some(response) = state.response.take() {
-    Ok(response.data)
-  } else {
-    Err(custom_error(
+  state.response.take().ok_or_else(|| {
+    custom_error(
       "RequestError",
       "The response was not received for the request.",
-    ))
-  }
+    )
+  })
 }
 
 #[cfg(test)]
