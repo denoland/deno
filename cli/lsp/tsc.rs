@@ -1060,8 +1060,7 @@ impl TsServer {
     }
     let value = rx.await??;
     drop(droppable_token);
-    let Response { data } = serde_json::from_str::<Response<R>>(&value)?;
-    Ok(data)
+    Ok(serde_json::from_str(&value)?)
   }
 }
 
@@ -3847,12 +3846,6 @@ impl SelectionRange {
       }),
     }
   }
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct Response<T> {
-  // id: usize,
-  data: T,
 }
 
 #[derive(Debug, Default)]
