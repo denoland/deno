@@ -4037,6 +4037,14 @@ fn op_resolve(
   state: &mut OpState,
   #[serde] args: ResolveArgs,
 ) -> Result<Vec<Option<(String, String)>>, AnyError> {
+  op_resolve_inner(state, args)
+}
+
+#[inline]
+fn op_resolve_inner(
+  state: &mut OpState,
+  args: ResolveArgs,
+) -> Result<Vec<Option<(String, String)>>, AnyError> {
   let state = state.borrow_mut::<State>();
   let mark = state.performance.mark_with_args("tsc.op.op_resolve", &args);
   let referrer = state.specifier_map.normalize(&args.base)?;
@@ -5585,7 +5593,7 @@ mod tests {
     )
     .await;
     let mut state = setup_op_state(snapshot);
-    let resolved = op_resolve::call(
+    let resolved = op_resolve_inner(
       &mut state,
       ResolveArgs {
         base: "file:///a.ts".to_string(),
