@@ -48,7 +48,9 @@ pub(crate) fn make_tracer(
   )
 }
 
-pub(crate) struct TracingGuard(tracing::dispatcher::DefaultGuard);
+pub(crate) struct TracingGuard(
+  #[allow(dead_code)] tracing::dispatcher::DefaultGuard,
+);
 
 impl fmt::Debug for TracingGuard {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
