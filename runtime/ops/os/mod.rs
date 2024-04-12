@@ -66,7 +66,7 @@ deno_core::extension!(
   ],
   middleware = |op| match op.name {
     "op_exit" | "op_set_exit_code" =>
-      op.with_implementation_from(&deno_core::op_void_sync),
+      op.with_implementation_from(&deno_core::op_void_sync()),
     _ => op,
   },
 );
