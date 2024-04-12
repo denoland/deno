@@ -304,7 +304,7 @@ impl Document {
     resolver: &dyn deno_graph::source::Resolver,
     npm_resolver: &dyn deno_graph::source::NpmResolver,
   ) -> Arc<Self> {
-    // we only ever do `Document::new` on on disk resources that are supposed to
+    // we only ever do `Document::new` on disk resources that are supposed to
     // be diagnosable, unlike `Document::open`, so it is safe to unconditionally
     // parse the module.
     let (maybe_parsed_source, maybe_module) = parse_and_analyze_module(
