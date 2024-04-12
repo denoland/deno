@@ -689,6 +689,7 @@ dependencies = [
  "deno_terminal",
  "deno_tls",
  "fastwebsockets",
+ "file_test_runner",
  "flaky_test",
  "http 1.1.0",
  "http-body-util",
@@ -2636,6 +2637,19 @@ name = "fiat-crypto"
 version = "0.2.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c007b1ae3abe1cb6f85a16305acd418b7ca6343b953633fee2b76d8f108b830f"
+
+[[package]]
+name = "file_test_runner"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e13bacb20a988be248a13adc6011bce718648f78d4684d4dd0444d05256f4a7b"
+dependencies = [
+ "crossbeam-channel",
+ "deno_terminal",
+ "parking_lot 0.12.1",
+ "regex",
+ "thiserror",
+]
 
 [[package]]
 name = "filetime"
