@@ -1237,8 +1237,7 @@ impl Documents {
         },
         ResolutionMode::Types,
       ) {
-        let media_type = MediaType::from_specifier(&specifier);
-        results.push(Some((specifier, media_type)));
+        results.push(self.resolve_dependency(&specifier, maybe_npm, referrer));
       } else {
         results.push(None);
       }
