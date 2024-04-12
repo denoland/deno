@@ -30,7 +30,6 @@ use deno_graph::GraphKind;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_graph::ResolutionResolved;
-use deno_runtime::deno_node;
 use deno_runtime::deno_node::NodeResolution;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::NodeResolver;
@@ -444,6 +443,9 @@ pub fn as_ts_script_kind(media_type: MediaType) -> i32 {
   }
 }
 
+pub const MISSING_DEPENDENCY_SPECIFIER: &str =
+  "internal:///missing_dependency.d.ts";
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct LoadResponse {
@@ -471,7 +473,7 @@ fn op_load(
     state.maybe_tsbuildinfo.as_deref().map(Cow::Borrowed)
   // in certain situations we return a "blank" module to tsc and we need to
   // handle the request for that module here.
-  } else if load_specifier == "internal:///missing_dependency.d.ts" {
+  } else if load_specifier == MISSING_DEPENDENCY_SPECIFIER {
     None
   } else if let Some(name) = load_specifier.strip_prefix("asset:///") {
     let maybe_source = get_lazily_loaded_asset(name);
@@ -575,14 +577,12 @@ fn op_resolve(
     )?
   };
   for specifier in args.specifiers {
-    if let Some(module_name) = specifier.strip_prefix("node:") {
-      if deno_node::is_builtin_node_module(module_name) {
-        // return itself for node: specifiers because during type checking
-        // we resolve to the ambient modules in the @types/node package
-        // rather than deno_std/node
-        resolved.push((specifier, MediaType::Dts.to_string()));
-        continue;
-      }
+    if specifier.starts_with("node:") {
+      resolved.push((
+        MISSING_DEPENDENCY_SPECIFIER.to_string(),
+        MediaType::Dts.to_string(),
+      ));
+      continue;
     }
 
     if specifier.starts_with("asset:///") {
@@ -632,7 +632,7 @@ fn op_resolve(
         (specifier_str, media_type.as_ts_extension().into())
       }
       None => (
-        "internal:///missing_dependency.d.ts".to_string(),
+        MISSING_DEPENDENCY_SPECIFIER.to_string(),
         ".d.ts".to_string(),
       ),
     };
@@ -1159,7 +1159,7 @@ mod tests {
     .expect("should have not errored");
     assert_eq!(
       actual,
-      vec![("internal:///missing_dependency.d.ts".into(), ".d.ts".into())]
+      vec![(MISSING_DEPENDENCY_SPECIFIER.into(), ".d.ts".into())]
     );
   }
 

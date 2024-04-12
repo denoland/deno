@@ -6,6 +6,19 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.42.3 / 2024.04.12
+
+- Revert "refactor(ext/net): extract TLS key and certificate from inter…
+  (#23325)
+- fix(inspector): don't panic if port is not free (#22745)
+- fix(lsp): Denormalize specifiers before calling `$projectChanged` (#23322)
+- fix(npm): local nodeModulesDir was sometimes resolving duplicates of same
+  package (#23320)
+- fix(publish): do not warn about excluded external modules in node_modules
+  directory (#23173)
+- fix: upgrade deno_ast related crates (#23187)
+- perf(lsp): use a stub module in tsc for failed resolutions (#23313)
+
 ### 1.42.2 / 2024.04.11
 
 - FUTURE(ext/fs): make `Deno.FsFile` constructor illegal (#23235)
