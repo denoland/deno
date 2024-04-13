@@ -18,6 +18,7 @@ use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_doc as doc;
+use deno_graph::source::NullFileSystem;
 use deno_graph::GraphKind;
 use deno_graph::ModuleAnalyzer;
 use deno_graph::ModuleParser;
@@ -53,8 +54,16 @@ async fn generate_doc_nodes_for_builtin_types(
       vec![source_file_specifier.clone()],
       &mut loader,
       deno_graph::BuildOptions {
-        module_analyzer: Some(analyzer),
-        ..Default::default()
+        module_analyzer: analyzer,
+        file_system: &NullFileSystem,
+        is_dynamic: false,
+        imports: Vec::new(),
+        executor: Default::default(),
+        jsr_url_provider: Default::default(),
+        npm_resolver: None,
+        reporter: None,
+        resolver: None,
+        workspace_members: &[],
       },
     )
     .await;
@@ -159,6 +168,7 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
             kind_with_drilldown:
               deno_doc::html::DocNodeKindWithDrilldown::Other(node.kind),
             inner: std::sync::Arc::new(node),
+            drilldown_parent_kind: None,
           })
           .collect(),
         &[],

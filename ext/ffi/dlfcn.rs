@@ -101,7 +101,7 @@ struct ForeignStatic {
 #[derive(Debug)]
 enum ForeignSymbol {
   ForeignFunction(ForeignFunction),
-  ForeignStatic(ForeignStatic),
+  ForeignStatic(#[allow(dead_code)] ForeignStatic),
 }
 
 impl<'de> Deserialize<'de> for ForeignSymbol {

@@ -28,6 +28,7 @@ use crate::lsp::documents::Documents;
 use crate::lsp::logging::lsp_warn;
 use crate::tsc;
 use crate::tsc::ResolveArgs;
+use crate::tsc::MISSING_DEPENDENCY_SPECIFIER;
 use crate::util::path::relative_specifier;
 use crate::util::path::specifier_to_file_path;
 use crate::util::path::to_percent_decoded_str;
@@ -35,6 +36,7 @@ use crate::util::path::to_percent_decoded_str;
 use dashmap::DashMap;
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
+use deno_core::anyhow::Context as _;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
@@ -103,7 +105,7 @@ const FILE_EXTENSION_KIND_MODIFIERS: &[&str] =
 type Request = (
   TscRequest,
   Arc<StateSnapshot>,
-  oneshot::Sender<Result<Value, AnyError>>,
+  oneshot::Sender<Result<String, AnyError>>,
   CancellationToken,
 );
 
@@ -237,6 +239,23 @@ impl std::fmt::Debug for TsServer {
   }
 }
 
+#[derive(Debug, Clone, Copy)]
+#[repr(u8)]
+pub enum ChangeKind {
+  Opened = 0,
+  Modified = 1,
+  Closed = 2,
+}
+
+impl Serialize for ChangeKind {
+  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+  where
+    S: serde::Serializer,
+  {
+    serializer.serialize_i32(*self as i32)
+  }
+}
+
 impl TsServer {
   pub fn new(performance: Arc<Performance>, cache: Arc<dyn HttpCache>) -> Self {
     let (tx, request_rx) = mpsc::unbounded_channel::<Request>();
@@ -250,17 +269,20 @@ impl TsServer {
     }
   }
 
-  pub fn start(&self, inspector_server_addr: Option<String>) {
-    let maybe_inspector_server = inspector_server_addr.and_then(|addr| {
-      let addr: SocketAddr = match addr.parse() {
-        Ok(addr) => addr,
-        Err(err) => {
-          lsp_warn!("Invalid inspector server address \"{}\": {}", &addr, err);
-          return None;
-        }
-      };
-      Some(Arc::new(InspectorServer::new(addr, "deno-lsp-tsc")))
-    });
+  pub fn start(
+    &self,
+    inspector_server_addr: Option<String>,
+  ) -> Result<(), AnyError> {
+    let maybe_inspector_server = match inspector_server_addr {
+      Some(addr) => {
+        let addr: SocketAddr = addr.parse().with_context(|| {
+          format!("Invalid inspector server address \"{}\"", &addr)
+        })?;
+        let server = InspectorServer::new(addr, "deno-lsp-tsc")?;
+        Some(Arc::new(server))
+      }
+      None => None,
+    };
     *self.inspector_server.lock() = maybe_inspector_server.clone();
     // TODO(bartlomieju): why is the join_handle ignored here? Should we store it
     // on the `TsServer` struct.
@@ -277,6 +299,32 @@ impl TsServer {
         maybe_inspector_server,
       )
     });
+    Ok(())
+  }
+
+  pub async fn project_changed(
+    &self,
+    snapshot: Arc<StateSnapshot>,
+    modified_scripts: &[(&ModuleSpecifier, ChangeKind)],
+    new_project_version: String,
+    config_changed: bool,
+  ) {
+    let modified_scripts = modified_scripts
+      .iter()
+      .map(|(spec, change)| (self.specifier_map.denormalize(spec), change))
+      .collect::<Vec<_>>();
+    let req = TscRequest {
+      method: "$projectChanged",
+      args: json!([modified_scripts, new_project_version, config_changed,]),
+    };
+    self
+      .request::<()>(snapshot, req)
+      .await
+      .map_err(|err| {
+        log::error!("Failed to request to tsserver {}", err);
+        LspError::invalid_request()
+      })
+      .ok();
   }
 
   pub async fn get_diagnostics(
@@ -287,10 +335,13 @@ impl TsServer {
   ) -> Result<HashMap<String, Vec<crate::tsc::Diagnostic>>, AnyError> {
     let req = TscRequest {
       method: "$getDiagnostics",
-      args: json!([specifiers
-        .into_iter()
-        .map(|s| self.specifier_map.denormalize(&s))
-        .collect::<Vec<String>>(),]),
+      args: json!([
+        specifiers
+          .into_iter()
+          .map(|s| self.specifier_map.denormalize(&s))
+          .collect::<Vec<String>>(),
+        snapshot.documents.project_version()
+      ]),
     };
     let raw_diagnostics = self.request_with_cancellation::<HashMap<String, Vec<crate::tsc::Diagnostic>>>(snapshot, req, token).await?;
     let mut diagnostics_map = HashMap::with_capacity(raw_diagnostics.len());
@@ -1003,13 +1054,13 @@ impl TsServer {
     }
     let token = token.child_token();
     let droppable_token = DroppableToken(token.clone());
-    let (tx, rx) = oneshot::channel::<Result<Value, AnyError>>();
+    let (tx, rx) = oneshot::channel::<Result<String, AnyError>>();
     if self.sender.send((req, snapshot, tx, token)).is_err() {
       return Err(anyhow!("failed to send request to tsc thread"));
     }
     let value = rx.await??;
     drop(droppable_token);
-    Ok(serde_json::from_value::<R>(value)?)
+    Ok(serde_json::from_str(&value)?)
   }
 }
 
@@ -3797,12 +3848,6 @@ impl SelectionRange {
   }
 }
 
-#[derive(Debug, Clone, Deserialize)]
-struct Response {
-  // id: usize,
-  data: Value,
-}
-
 #[derive(Debug, Default)]
 pub struct TscSpecifierMap {
   normalized_specifiers: DashMap<String, ModuleSpecifier>,
@@ -3866,7 +3911,8 @@ impl TscSpecifierMap {
 struct State {
   last_id: usize,
   performance: Arc<Performance>,
-  response: Option<Response>,
+  // the response from JS, as a JSON string
+  response: Option<String>,
   state_snapshot: Arc<StateSnapshot>,
   specifier_map: Arc<TscSpecifierMap>,
   token: CancellationToken,
@@ -3963,7 +4009,7 @@ fn op_load<'s>(
     .mark_with_args("tsc.op.op_load", specifier);
   let specifier = state.specifier_map.normalize(specifier)?;
   let maybe_load_response =
-    if specifier.as_str() == "internal:///missing_dependency.d.ts" {
+    if specifier.as_str() == MISSING_DEPENDENCY_SPECIFIER {
       None
     } else {
       let asset_or_document = state.get_asset_or_document(&specifier);
@@ -3981,11 +4027,19 @@ fn op_load<'s>(
 }
 
 #[op2]
-fn op_resolve<'s>(
-  scope: &'s mut v8::HandleScope,
+#[serde]
+fn op_resolve(
   state: &mut OpState,
   #[serde] args: ResolveArgs,
-) -> Result<v8::Local<'s, v8::Value>, AnyError> {
+) -> Result<Vec<Option<(String, String)>>, AnyError> {
+  op_resolve_inner(state, args)
+}
+
+#[inline]
+fn op_resolve_inner(
+  state: &mut OpState,
+  args: ResolveArgs,
+) -> Result<Vec<Option<(String, String)>>, AnyError> {
   let state = state.borrow_mut::<State>();
   let mark = state.performance.mark_with_args("tsc.op.op_resolve", &args);
   let referrer = state.specifier_map.normalize(&args.base)?;
@@ -3998,13 +4052,17 @@ fn op_resolve<'s>(
       );
       resolved
         .into_iter()
-        .map(|o| {
-          o.map(|(s, mt)| {
-            (
-              state.specifier_map.denormalize(&s),
-              mt.as_ts_extension().to_string(),
-            )
-          })
+        // Resolved `node:` specifier means the user doesn't have @types/node,
+        // resolve to stub.
+        .map(|o| match o.filter(|(s, _)| s.scheme() != "node") {
+          Some((s, mt)) => Some((
+            state.specifier_map.denormalize(&s),
+            mt.as_ts_extension().to_string(),
+          )),
+          None => Some((
+            MISSING_DEPENDENCY_SPECIFIER.to_string(),
+            MediaType::Dts.as_ts_extension().to_string(),
+          )),
         })
         .collect()
     }
@@ -4017,15 +4075,14 @@ fn op_resolve<'s>(
     }
   };
 
-  let response = serde_v8::to_v8(scope, specifiers)?;
   state.performance.measure(mark);
-  Ok(response)
+  Ok(specifiers)
 }
 
-#[op2]
-fn op_respond(state: &mut OpState, #[serde] args: Response) {
+#[op2(fast)]
+fn op_respond(state: &mut OpState, #[string] response: String) {
   let state = state.borrow_mut::<State>();
-  state.response = Some(args);
+  state.response = Some(response);
 }
 
 #[op2]
@@ -4584,7 +4641,7 @@ fn request(
   state_snapshot: Arc<StateSnapshot>,
   request: TscRequest,
   token: CancellationToken,
-) -> Result<Value, AnyError> {
+) -> Result<String, AnyError> {
   if token.is_cancelled() {
     return Err(anyhow!("Operation was cancelled."));
   }
@@ -4617,14 +4674,12 @@ fn request(
   let state = op_state.borrow_mut::<State>();
 
   performance.measure(mark);
-  if let Some(response) = state.response.take() {
-    Ok(response.data)
-  } else {
-    Err(custom_error(
+  state.response.take().ok_or_else(|| {
+    custom_error(
       "RequestError",
       "The response was not received for the request.",
-    ))
-  }
+    )
+  })
 }
 
 #[cfg(test)]
@@ -4701,8 +4756,16 @@ mod tests {
       Arc::new(mock_state_snapshot(sources, &location, config).await);
     let performance = Arc::new(Performance::default());
     let ts_server = TsServer::new(performance, cache.clone());
-    ts_server.start(None);
+    ts_server.start(None).unwrap();
     (ts_server, snapshot, cache)
+  }
+
+  fn setup_op_state(state_snapshot: Arc<StateSnapshot>) -> OpState {
+    let state =
+      State::new(state_snapshot, Default::default(), Default::default());
+    let mut op_state = OpState::new(None);
+    op_state.put(state);
+    op_state
   }
 
   #[test]
@@ -5135,6 +5198,14 @@ mod tests {
         ..snapshot.as_ref().clone()
       })
     };
+    ts_server
+      .project_changed(
+        snapshot.clone(),
+        &[(&specifier_dep, ChangeKind::Opened)],
+        snapshot.documents.project_version(),
+        false,
+      )
+      .await;
     let specifier = resolve_url("file:///a.ts").unwrap();
     let diagnostics = ts_server
       .get_diagnostics(snapshot.clone(), vec![specifier], Default::default())
@@ -5497,6 +5568,38 @@ mod tests {
       user_preferences
         .include_inlay_parameter_name_hints_when_argument_matches_name,
       Some(false)
+    );
+  }
+
+  #[tokio::test]
+  async fn resolve_unknown_dependency_to_stub_module() {
+    let temp_dir = TempDir::new();
+    let (_, snapshot, _) = setup(
+      &temp_dir,
+      json!({
+        "target": "esnext",
+        "module": "esnext",
+        "lib": ["deno.ns", "deno.window"],
+        "noEmit": true,
+      }),
+      &[("file:///a.ts", "", 1, LanguageId::TypeScript)],
+    )
+    .await;
+    let mut state = setup_op_state(snapshot);
+    let resolved = op_resolve_inner(
+      &mut state,
+      ResolveArgs {
+        base: "file:///a.ts".to_string(),
+        specifiers: vec!["./b.ts".to_string()],
+      },
+    )
+    .unwrap();
+    assert_eq!(
+      resolved,
+      vec![Some((
+        MISSING_DEPENDENCY_SPECIFIER.to_string(),
+        MediaType::Dts.as_ts_extension().to_string()
+      ))]
     );
   }
 }

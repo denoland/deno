@@ -1400,7 +1400,7 @@ fn lsp_hover() {
           "language": "typescript",
           "value": "const Deno.args: string[]"
         },
-        "Returns the script arguments to the program.\n\nGive the following command line invocation of Deno:\n\n```sh\ndeno run --allow-read https://examples.deno.land/command-line-arguments.ts Sushi\n```\n\nThen `Deno.args` will contain:\n\n```ts\n[ \"Sushi\" ]\n```\n\nIf you are looking for a structured way to parse arguments, there is the\n[`std/flags`](https://deno.land/std/flags) module as part of the Deno\nstandard library.",
+        "Returns the script arguments to the program.\n\nGive the following command line invocation of Deno:\n\n```sh\ndeno run --allow-read https://examples.deno.land/command-line-arguments.ts Sushi\n```\n\nThen `Deno.args` will contain:\n\n```ts\n[ \"Sushi\" ]\n```\n\nIf you are looking for a structured way to parse arguments, there is\n[`parseArgs()`](https://jsr.io/@std/cli/doc/parse-args/~/parseArgs) from\nthe Deno Standard Library.",
         "\n\n*@category* - Runtime Environment",
       ],
       "range": {
@@ -7862,18 +7862,18 @@ fn lsp_npm_specifier_unopened_file() {
     .use_http_server()
     .use_temp_cwd()
     .build();
-  let mut client = context.new_lsp_command().build();
-  client.initialize_default();
-
+  let temp_dir = context.temp_dir();
   // create other.ts, which re-exports an npm specifier
-  client.deno_dir().write(
+  temp_dir.write(
     "other.ts",
     "export { default as chalk } from 'npm:chalk@5';",
   );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
 
   // cache the other.ts file to the DENO_DIR
   let deno = deno_cmd_with_deno_dir(client.deno_dir())
-    .current_dir(client.deno_dir().path())
+    .current_dir(temp_dir.path())
     .arg("cache")
     .arg("--quiet")
     .arg("other.ts")
@@ -7891,12 +7891,9 @@ fn lsp_npm_specifier_unopened_file() {
   assert!(stderr.is_empty());
 
   // open main.ts, which imports other.ts (unopened)
-  let main_url =
-    ModuleSpecifier::from_file_path(client.deno_dir().path().join("main.ts"))
-      .unwrap();
   client.did_open(json!({
     "textDocument": {
-      "uri": main_url,
+      "uri": temp_dir.uri().join("main.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "import { chalk } from './other.ts';\n\n",
@@ -7907,7 +7904,7 @@ fn lsp_npm_specifier_unopened_file() {
     "textDocument/didChange",
     json!({
       "textDocument": {
-        "uri": main_url,
+        "uri": temp_dir.uri().join("main.ts").unwrap(),
         "version": 2
       },
       "contentChanges": [
@@ -7925,7 +7922,7 @@ fn lsp_npm_specifier_unopened_file() {
 
   // now ensure completions work
   let list = client.get_completion_list(
-    main_url,
+    temp_dir.uri().join("main.ts").unwrap(),
     (2, 6),
     json!({
       "triggerKind": 2,
@@ -9047,15 +9044,15 @@ fn lsp_performance() {
       "tsc.host.$getAssets",
       "tsc.host.$getDiagnostics",
       "tsc.host.$getSupportedCodeFixes",
+      "tsc.host.$projectChanged",
       "tsc.host.getQuickInfoAtPosition",
       "tsc.op.op_is_node_file",
       "tsc.op.op_load",
-      "tsc.op.op_project_version",
       "tsc.op.op_script_names",
-      "tsc.op.op_script_version",
       "tsc.op.op_ts_config",
       "tsc.request.$getAssets",
       "tsc.request.$getSupportedCodeFixes",
+      "tsc.request.$projectChanged",
       "tsc.request.getQuickInfoAtPosition",
     ]
   );
