@@ -1754,7 +1754,6 @@ dependencies = [
 
 [[package]]
 name = "deno_ops"
-version = "0.148.0"
 version = "0.150.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cc87a3ee5742db42580d2a067a16990159c49044a4e447297bcd60ffb29336d7"
