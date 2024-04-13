@@ -529,15 +529,17 @@ function processRejectionHandled(promise, reason) {
 }
 
 function dispatchLoadEvent() {
-  globalThis.dispatchEvent(new Event("load"));
+  globalThis_.dispatchEvent(new Event("load"));
 }
 
 function dispatchBeforeUnloadEvent() {
-  globalThis.dispatchEvent(new Event("beforeunload", { cancelable: true }));
+  return globalThis_.dispatchEvent(
+    new Event("beforeunload", { cancelable: true }),
+  );
 }
 
 function dispatchUnloadEvent() {
-  globalThis.dispatchEvent(new Event("unload"));
+  globalThis_.dispatchEvent(new Event("unload"));
 }
 
 let hasBootstrapped = false;
