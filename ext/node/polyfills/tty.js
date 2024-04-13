@@ -80,7 +80,7 @@ export class WriteStream extends Socket {
     if (fd > 2) throw new Error("Only fd 0, 1 and 2 are supported.");
 
     const tty = new TTY(
-      fd === 0 ? Deno.stdin : fd === 1 ? Deno.stdout : Deno.stderr,
+      fd === 0 ? io.stdin : fd === 1 ? io.stdout : io.stderr,
     );
 
     super({
