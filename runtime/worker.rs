@@ -114,9 +114,9 @@ pub struct MainWorker {
   should_wait_for_inspector_session: bool,
   exit_code: ExitCode,
   bootstrap_fn_global: Option<v8::Global<v8::Function>>,
-  dispatch_load_event_fn_global: Option<v8::Global<v8::Function>>,
-  dispatch_beforeunload_event_fn_global: Option<v8::Global<v8::Function>>,
-  dispatch_unload_event_fn_global: Option<v8::Global<v8::Function>>,
+  dispatch_load_event_fn_global: v8::Global<v8::Function>,
+  dispatch_beforeunload_event_fn_global: v8::Global<v8::Function>,
+  dispatch_unload_event_fn_global: v8::Global<v8::Function>,
 }
 
 pub struct WorkerOptions {
@@ -591,11 +591,9 @@ impl MainWorker {
         .should_wait_for_inspector_session,
       exit_code,
       bootstrap_fn_global: Some(bootstrap_fn_global),
-      dispatch_load_event_fn_global: Some(dispatch_load_event_fn_global),
-      dispatch_beforeunload_event_fn_global: Some(
-        dispatch_beforeunload_event_fn_global,
-      ),
-      dispatch_unload_event_fn_global: Some(dispatch_unload_event_fn_global),
+      dispatch_load_event_fn_global,
+      dispatch_beforeunload_event_fn_global,
+      dispatch_unload_event_fn_global,
     }
   }
 
@@ -756,10 +754,8 @@ impl MainWorker {
   pub fn dispatch_load_event(&mut self) -> Result<(), AnyError> {
     let scope = &mut self.js_runtime.handle_scope();
     let tc_scope = &mut v8::TryCatch::new(scope);
-    let dispatch_load_event_fn = v8::Local::new(
-      tc_scope,
-      self.dispatch_load_event_fn_global.as_ref().unwrap(),
-    );
+    let dispatch_load_event_fn =
+      v8::Local::new(tc_scope, &self.dispatch_load_event_fn_global);
     let undefined = v8::undefined(tc_scope);
     dispatch_load_event_fn.call(tc_scope, undefined.into(), &[]);
     if let Some(exception) = tc_scope.exception() {
@@ -775,10 +771,8 @@ impl MainWorker {
   pub fn dispatch_unload_event(&mut self) -> Result<(), AnyError> {
     let scope = &mut self.js_runtime.handle_scope();
     let tc_scope = &mut v8::TryCatch::new(scope);
-    let dispatch_unload_event_fn = v8::Local::new(
-      tc_scope,
-      self.dispatch_unload_event_fn_global.as_ref().unwrap(),
-    );
+    let dispatch_unload_event_fn =
+      v8::Local::new(tc_scope, &self.dispatch_unload_event_fn_global);
     let undefined = v8::undefined(tc_scope);
     dispatch_unload_event_fn.call(tc_scope, undefined.into(), &[]);
     if let Some(exception) = tc_scope.exception() {
@@ -794,10 +788,8 @@ impl MainWorker {
   pub fn dispatch_beforeunload_event(&mut self) -> Result<bool, AnyError> {
     let scope = &mut self.js_runtime.handle_scope();
     let tc_scope = &mut v8::TryCatch::new(scope);
-    let dispatch_beforeunload_event_fn = v8::Local::new(
-      tc_scope,
-      self.dispatch_beforeunload_event_fn_global.as_ref().unwrap(),
-    );
+    let dispatch_beforeunload_event_fn =
+      v8::Local::new(tc_scope, &self.dispatch_beforeunload_event_fn_global);
     let undefined = v8::undefined(tc_scope);
     let ret_val =
       dispatch_beforeunload_event_fn.call(tc_scope, undefined.into(), &[]);
