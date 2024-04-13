@@ -132,3 +132,19 @@ Deno.test({
     assertEquals(isContext(sandbox), false);
   },
 });
+
+// https://github.com/denoland/deno/issues/23297
+Deno.test({
+  name: "vm context promise rejection",
+  fn() {
+    const code = `
+function reject() {
+  return Promise.reject(new Error('rejected'));
+}
+reject().catch(() => {})
+    `;
+
+    const script = new Script(code);
+    script.runInNewContext();
+  },
+});

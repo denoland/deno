@@ -4,6 +4,7 @@ use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::v8;
 use deno_core::v8::MapFnTo;
+use std::rc::Rc;
 
 pub const PRIVATE_SYMBOL_NAME: v8::OneByteConst =
   v8::String::create_external_onebyte_const(b"node:contextify:context");
@@ -75,13 +76,19 @@ impl ContextifyContext {
     Self::from_context(scope, context, sandbox_obj);
   }
 
-  pub fn from_context(
+  fn from_context(
     scope: &mut v8::HandleScope,
     v8_context: v8::Local<v8::Context>,
     sandbox_obj: v8::Local<v8::Object>,
   ) {
     let main_context = scope.get_current_context();
+    let context_state = main_context
+      .get_slot::<Rc<deno_core::ContextState>>(scope)
+      .unwrap()
+      .clone();
+
     v8_context.set_security_token(main_context.get_security_token(scope));
+    v8_context.set_slot(scope, context_state);
 
     let context = v8::Global::new(scope, v8_context);
     let sandbox = v8::Global::new(scope, sandbox_obj);
@@ -95,7 +102,7 @@ impl ContextifyContext {
     // lives longer than the execution context, so this should be safe.
     unsafe {
       v8_context.set_aligned_pointer_in_embedder_data(
-        0,
+        1,
         ptr as *const ContextifyContext as _,
       );
     }
@@ -157,7 +164,7 @@ impl ContextifyContext {
   ) -> Option<&'c ContextifyContext> {
     let context = object.get_creation_context(scope)?;
 
-    let context_ptr = context.get_aligned_pointer_from_embedder_data(0);
+    let context_ptr = context.get_aligned_pointer_from_embedder_data(1);
     // SAFETY: We are storing a pointer to the ContextifyContext
     // in the embedder data of the v8::Context during creation.
     Some(unsafe { &*(context_ptr as *const ContextifyContext) })
@@ -228,6 +235,7 @@ fn init_global_template_inner(scope: &mut v8::HandleScope) {
   let global_func_template =
     v8::FunctionTemplate::builder_raw(c_noop).build(scope);
   let global_object_template = global_func_template.instance_template(scope);
+  global_object_template.set_internal_field_count(2);
 
   let named_property_handler_config = {
     let mut config = v8::NamedPropertyHandlerConfiguration::new()
