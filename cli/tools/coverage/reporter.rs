@@ -53,7 +53,7 @@ pub trait CoverageReporter {
   ) -> CoverageSummary {
     let urls = file_reports.iter().map(|rep| &rep.0.url).collect();
     let root = match util::find_root(urls)
-      .and_then(|root_path| root_path.to_file_path().ok()) 
+      .and_then(|root_path| root_path.to_file_path().ok())
     {
       Some(path) => path,
       None => return HashMap::new(),
