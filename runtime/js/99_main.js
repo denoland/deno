@@ -528,6 +528,18 @@ function processRejectionHandled(promise, reason) {
   }
 }
 
+function dispatchLoadEvent() {
+  globalThis.dispatchEvent(new Event("load"));
+}
+
+function dispatchBeforeUnloadEvent() {
+  globalThis.dispatchEvent(new Event("beforeunload", { cancelable: true }));
+}
+
+function dispatchUnloadEvent() {
+  globalThis.dispatchEvent(new Event("unload"));
+}
+
 let hasBootstrapped = false;
 // Delete the `console` object that V8 automaticaly adds onto the global wrapper
 // object on context creation. We don't want this console object to shadow the
@@ -995,6 +1007,9 @@ delete globalThis.nodeBootstrap;
 globalThis.bootstrap = {
   mainRuntime: bootstrapMainRuntime,
   workerRuntime: bootstrapWorkerRuntime,
+  dispatchLoadEvent,
+  dispatchUnloadEvent,
+  dispatchBeforeUnloadEvent,
 };
 
 event.setEventTargetData(globalThis);
