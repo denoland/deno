@@ -294,7 +294,12 @@ async function pollForMessages() {
     );
   }
   while (!isClosing) {
-    const data = await op_worker_recv_message();
+    const recvMessage = op_worker_recv_message();
+    if (globalThis[messagePort.unrefPollForMessages] === true) {
+      core.unrefOpPromise(recvMessage);
+    }
+    const data = await recvMessage;
+    // const data = await op_worker_recv_message();
     if (data === null) break;
     const v = messagePort.deserializeJsMessageData(data);
     const message = v[0];
@@ -678,6 +683,11 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       9: future,
     } = runtimeOptions;
 
+    // TODO(iuioiua): remove in Deno v2. This allows us to dynamically delete
+    // class properties within constructors for classes that are not defined
+    // within the Deno namespace.
+    internals.future = future;
+
     removeImportedOps();
 
     deprecatedApiWarningDisabled = shouldDisableDeprecatedApiWarning;
@@ -839,6 +849,11 @@ function bootstrapWorkerRuntime(
       8: shouldUseVerboseDeprecatedApiWarning,
       9: future,
     } = runtimeOptions;
+
+    // TODO(iuioiua): remove in Deno v2. This allows us to dynamically delete
+    // class properties within constructors for classes that are not defined
+    // within the Deno namespace.
+    internals.future = future;
 
     deprecatedApiWarningDisabled = shouldDisableDeprecatedApiWarning;
     verboseDeprecatedApiWarning = shouldUseVerboseDeprecatedApiWarning;

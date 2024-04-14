@@ -1112,19 +1112,29 @@ impl Default for LspTsConfig {
 }
 
 impl LspTsConfig {
-  pub fn new(config_file: Option<&ConfigFile>) -> Self {
+  pub fn new(
+    config_file: Option<&ConfigFile>,
+    import_map: Option<&ImportMap>,
+  ) -> Self {
     let mut ts_config = Self::default();
-    if let Some(config_file) = config_file {
-      match config_file.to_compiler_options() {
-        Ok((value, maybe_ignored_options)) => {
-          ts_config.inner.merge(&value);
-          if let Some(ignored_options) = maybe_ignored_options {
-            lsp_warn!("{}", ignored_options);
-          }
-        }
-        Err(err) => lsp_warn!("{}", err),
-      }
+    match ts_config.inner.merge_tsconfig_from_config_file(config_file) {
+      Ok(Some(ignored_options)) => lsp_warn!("{}", ignored_options),
+      Err(err) => lsp_warn!("{}", err),
+      _ => {}
     }
+    let mut maybe_map_jsx_import_source = || {
+      let import_map = import_map?;
+      let referrer = &config_file?.specifier;
+      let compiler_options = ts_config.inner.0.as_object_mut()?;
+      let jsx_import_source =
+        compiler_options.get("jsxImportSource")?.as_str()?;
+      let jsx_import_source =
+        import_map.resolve(jsx_import_source, referrer).ok()?;
+      compiler_options
+        .insert("jsxImportSource".to_string(), json!(jsx_import_source));
+      Some(())
+    };
+    maybe_map_jsx_import_source();
     ts_config
   }
 }
@@ -1145,6 +1155,7 @@ pub struct ConfigData {
   pub lint_options: Arc<LintOptions>,
   pub lint_rules: Arc<ConfiguredRules>,
   pub ts_config: Arc<LspTsConfig>,
+  pub byonm: bool,
   pub node_modules_dir: Option<PathBuf>,
   pub vendor_dir: Option<PathBuf>,
   pub lockfile: Option<Arc<Mutex<Lockfile>>>,
@@ -1266,9 +1277,6 @@ impl ConfigData {
       .unwrap_or_default();
     let lint_rules =
       get_configured_rules(lint_options.rules.clone(), config_file.as_ref());
-    let ts_config = LspTsConfig::new(config_file.as_ref());
-    let node_modules_dir =
-      config_file.as_ref().and_then(resolve_node_modules_dir);
     let vendor_dir = config_file.as_ref().and_then(|c| c.vendor_dir_path());
 
     // Load lockfile
@@ -1327,6 +1335,23 @@ impl ConfigData {
         }
       }
     }
+    let byonm = std::env::var("DENO_UNSTABLE_BYONM").is_ok()
+      || config_file
+        .as_ref()
+        .map(|c| c.has_unstable("byonm"))
+        .unwrap_or(false)
+      || (std::env::var("DENO_FUTURE").is_ok()
+        && package_json.is_some()
+        && config_file
+          .as_ref()
+          .map(|c| c.json.node_modules_dir.is_none())
+          .unwrap_or(true));
+    if byonm {
+      lsp_log!("  Enabled 'bring your own node_modules'.");
+    }
+    let node_modules_dir = config_file
+      .as_ref()
+      .and_then(|c| resolve_node_modules_dir(c, byonm));
 
     // Load import map
     let mut import_map = None;
@@ -1420,6 +1445,7 @@ impl ConfigData {
         }
       }
     }
+    let ts_config = LspTsConfig::new(config_file.as_ref(), import_map.as_ref());
 
     ConfigData {
       config_file: config_file.map(Arc::new),
@@ -1427,6 +1453,7 @@ impl ConfigData {
       lint_options: Arc::new(lint_options),
       lint_rules: Arc::new(lint_rules),
       ts_config: Arc::new(ts_config),
+      byonm,
       node_modules_dir,
       vendor_dir,
       lockfile: lockfile.map(Mutex::new).map(Arc::new),
@@ -1648,7 +1675,10 @@ fn resolve_lockfile_from_config(config_file: &ConfigFile) -> Option<Lockfile> {
   resolve_lockfile_from_path(lockfile_path)
 }
 
-fn resolve_node_modules_dir(config_file: &ConfigFile) -> Option<PathBuf> {
+fn resolve_node_modules_dir(
+  config_file: &ConfigFile,
+  byonm: bool,
+) -> Option<PathBuf> {
   // For the language server, require an explicit opt-in via the
   // `nodeModulesDir: true` setting in the deno.json file. This is to
   // reduce the chance of modifying someone's node_modules directory
@@ -1657,7 +1687,8 @@ fn resolve_node_modules_dir(config_file: &ConfigFile) -> Option<PathBuf> {
   if explicitly_disabled {
     return None;
   }
-  let enabled = config_file.json.node_modules_dir == Some(true)
+  let enabled = byonm
+    || config_file.json.node_modules_dir == Some(true)
     || config_file.json.vendor == Some(true);
   if !enabled {
     return None;
