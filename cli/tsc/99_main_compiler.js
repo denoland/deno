@@ -165,7 +165,7 @@ delete Object.prototype.__proto__;
   /** @type {ts.CompilerOptions | null} */
   let tsConfigCache = null;
 
-  /** @type {string | null} */
+  /** @type {number | null} */
   let projectVersionCache = null;
 
   const ChangeKind = {
@@ -1039,7 +1039,7 @@ delete Object.prototype.__proto__;
       case "$projectChanged": {
         /** @type {[string, number][]} */
         const changedScripts = args[0];
-        /** @type {string} */
+        /** @type {number} */
         const newProjectVersion = args[1];
         /** @type {boolean} */
         const configChanged = args[2];
