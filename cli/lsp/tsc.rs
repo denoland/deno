@@ -4043,37 +4043,24 @@ fn op_resolve_inner(
   let state = state.borrow_mut::<State>();
   let mark = state.performance.mark_with_args("tsc.op.op_resolve", &args);
   let referrer = state.specifier_map.normalize(&args.base)?;
-  let specifiers = match state.get_asset_or_document(&referrer) {
-    Some(referrer_doc) => {
-      let resolved = state.state_snapshot.documents.resolve(
-        args.specifiers,
-        &referrer_doc,
-        state.state_snapshot.npm.as_ref(),
-      );
-      resolved
-        .into_iter()
-        // Resolved `node:` specifier means the user doesn't have @types/node,
-        // resolve to stub.
-        .map(|o| match o.filter(|(s, _)| s.scheme() != "node") {
-          Some((s, mt)) => Some((
-            state.specifier_map.denormalize(&s),
-            mt.as_ts_extension().to_string(),
-          )),
-          None => Some((
-            MISSING_DEPENDENCY_SPECIFIER.to_string(),
-            MediaType::Dts.as_ts_extension().to_string(),
-          )),
-        })
-        .collect()
-    }
-    None => {
-      lsp_warn!(
-        "Error resolving. Referring specifier \"{}\" was not found.",
-        args.base
-      );
-      vec![None; args.specifiers.len()]
-    }
-  };
+  let specifiers = state
+    .state_snapshot
+    .documents
+    .resolve(
+      &args.specifiers,
+      &referrer,
+      state.state_snapshot.npm.as_ref(),
+    )
+    .into_iter()
+    .map(|o| {
+      o.map(|(s, mt)| {
+        (
+          state.specifier_map.denormalize(&s),
+          mt.as_ts_extension().to_string(),
+        )
+      })
+    })
+    .collect();
 
   state.performance.measure(mark);
   Ok(specifiers)
@@ -5572,7 +5559,7 @@ mod tests {
   }
 
   #[tokio::test]
-  async fn resolve_unknown_dependency_to_stub_module() {
+  async fn resolve_unknown_dependency() {
     let temp_dir = TempDir::new();
     let (_, snapshot, _) = setup(
       &temp_dir,
@@ -5597,8 +5584,8 @@ mod tests {
     assert_eq!(
       resolved,
       vec![Some((
-        MISSING_DEPENDENCY_SPECIFIER.to_string(),
-        MediaType::Dts.as_ts_extension().to_string()
+        "file:///b.ts".to_string(),
+        MediaType::TypeScript.as_ts_extension().to_string()
       ))]
     );
   }
