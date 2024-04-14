@@ -93,14 +93,24 @@ impl Emitter {
     {
       Ok(emit_code.into())
     } else {
-      // this will use a cached version if it exists
-      let parsed_source = self.parsed_source_cache.get_or_parse_module(
+      // nothing else needs the parsed source at this point, so remove from
+      // the cache in order to not transpile owned
+      let parsed_source = self.parsed_source_cache.remove_or_parse_module(
         specifier,
         source.clone(),
         media_type,
       )?;
-      let transpiled_source =
-        parsed_source.transpile(&self.transpile_options, &self.emit_options)?;
+      let transpiled_source = match parsed_source
+        .transpile_owned(&self.transpile_options, &self.emit_options)
+      {
+        Ok(result) => result?,
+        Err(parsed_source) => {
+          // transpile_owned is more efficient and should be preferred
+          debug_assert!(false, "Transpile owned failed.");
+          parsed_source
+            .transpile(&self.transpile_options, &self.emit_options)?
+        }
+      };
       debug_assert!(transpiled_source.source_map.is_none());
       self.emit_cache.set_emit_code(
         specifier,
@@ -124,11 +134,11 @@ impl Emitter {
     let source_arc: Arc<str> = source_code.into();
     let parsed_source = self
       .parsed_source_cache
-      .get_or_parse_module(specifier, source_arc, media_type)?;
+      .remove_or_parse_module(specifier, source_arc, media_type)?;
     let mut options = self.emit_options;
     options.source_map = SourceMapOption::None;
-    let transpiled_source =
-      parsed_source.transpile(&self.transpile_options, &options)?;
+    let transpiled_source = parsed_source
+      .transpile_owned_with_fallback(&self.transpile_options, &options)?;
     Ok(transpiled_source.text)
   }
 
