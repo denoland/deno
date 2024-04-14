@@ -393,6 +393,11 @@ fn normalize_specifier(
 #[op2]
 #[string]
 fn op_create_hash(s: &mut OpState, #[string] text: &str) -> String {
+  op_create_hash_inner(s, text)
+}
+
+#[inline]
+fn op_create_hash_inner(s: &mut OpState, text: &str) -> String {
   let state = s.borrow_mut::<State>();
   get_hash(text, state.hash_data)
 }
@@ -409,6 +414,11 @@ struct EmitArgs {
 
 #[op2]
 fn op_emit(state: &mut OpState, #[serde] args: EmitArgs) -> bool {
+  op_emit_inner(state, args)
+}
+
+#[inline]
+fn op_emit_inner(state: &mut OpState, args: EmitArgs) -> bool {
   let state = state.borrow_mut::<State>();
   match args.file_name.as_ref() {
     "internal:///.tsbuildinfo" => state.maybe_tsbuildinfo = Some(args.data),
@@ -459,6 +469,13 @@ struct LoadResponse {
 fn op_load(
   state: &mut OpState,
   #[string] load_specifier: &str,
+) -> Result<Option<LoadResponse>, AnyError> {
+  op_load_inner(state, load_specifier)
+}
+
+fn op_load_inner(
+  state: &mut OpState,
+  load_specifier: &str,
 ) -> Result<Option<LoadResponse>, AnyError> {
   let state = state.borrow_mut::<State>();
 
@@ -561,6 +578,14 @@ pub struct ResolveArgs {
 fn op_resolve(
   state: &mut OpState,
   #[serde] args: ResolveArgs,
+) -> Result<Vec<(String, String)>, AnyError> {
+  op_resolve_inner(state, args)
+}
+
+#[inline]
+fn op_resolve_inner(
+  state: &mut OpState,
+  args: ResolveArgs,
 ) -> Result<Vec<(String, String)>, AnyError> {
   let state = state.borrow_mut::<State>();
   let mut resolved: Vec<(String, String)> =
@@ -779,6 +804,11 @@ struct RespondArgs {
 // Can't we use something more efficient here?
 #[op2]
 fn op_respond(state: &mut OpState, #[serde] args: RespondArgs) {
+  op_respond_inner(state, args)
+}
+
+#[inline]
+fn op_respond_inner(state: &mut OpState, args: RespondArgs) {
   let state = state.borrow_mut::<State>();
   state.maybe_response = Some(args);
 }
@@ -1022,7 +1052,7 @@ mod tests {
   #[tokio::test]
   async fn test_create_hash() {
     let mut state = setup(None, Some(123), None).await;
-    let actual = op_create_hash::call(&mut state, "some sort of content");
+    let actual = op_create_hash_inner(&mut state, "some sort of content");
     assert_eq!(actual, "11905938177474799758");
   }
 
@@ -1038,7 +1068,7 @@ mod tests {
   #[tokio::test]
   async fn test_emit_tsbuildinfo() {
     let mut state = setup(None, None, None).await;
-    let actual = op_emit::call(
+    let actual = op_emit_inner(
       &mut state,
       EmitArgs {
         data: "some file content".to_string(),
@@ -1062,7 +1092,7 @@ mod tests {
     )
     .await;
     let actual =
-      op_load::call(&mut state, "https://deno.land/x/mod.ts").unwrap();
+      op_load_inner(&mut state, "https://deno.land/x/mod.ts").unwrap();
     assert_eq!(
       serde_json::to_value(actual).unwrap(),
       json!({
@@ -1081,7 +1111,7 @@ mod tests {
       Some("some content".to_string()),
     )
     .await;
-    let actual = op_load::call(&mut state, "asset:///lib.dom.d.ts")
+    let actual = op_load_inner(&mut state, "asset:///lib.dom.d.ts")
       .expect("should have invoked op")
       .expect("load should have succeeded");
     let expected = get_lazily_loaded_asset("lib.dom.d.ts").unwrap();
@@ -1098,7 +1128,7 @@ mod tests {
       Some("some content".to_string()),
     )
     .await;
-    let actual = op_load::call(&mut state, "internal:///.tsbuildinfo")
+    let actual = op_load_inner(&mut state, "internal:///.tsbuildinfo")
       .expect("should have invoked op")
       .expect("load should have succeeded");
     assert_eq!(
@@ -1114,7 +1144,7 @@ mod tests {
   #[tokio::test]
   async fn test_load_missing_specifier() {
     let mut state = setup(None, None, None).await;
-    let actual = op_load::call(&mut state, "https://deno.land/x/mod.ts")
+    let actual = op_load_inner(&mut state, "https://deno.land/x/mod.ts")
       .expect("should have invoked op");
     assert_eq!(serde_json::to_value(actual).unwrap(), json!(null));
   }
@@ -1127,7 +1157,7 @@ mod tests {
       None,
     )
     .await;
-    let actual = op_resolve::call(
+    let actual = op_resolve_inner(
       &mut state,
       ResolveArgs {
         base: "https://deno.land/x/a.ts".to_string(),
@@ -1149,7 +1179,7 @@ mod tests {
       None,
     )
     .await;
-    let actual = op_resolve::call(
+    let actual = op_resolve_inner(
       &mut state,
       ResolveArgs {
         base: "https://deno.land/x/a.ts".to_string(),
@@ -1177,7 +1207,7 @@ mod tests {
       "stats": [["a", 12]]
     }))
     .unwrap();
-    op_respond::call(&mut state, args);
+    op_respond_inner(&mut state, args);
     let state = state.borrow::<State>();
     assert_eq!(
       state.maybe_response,
