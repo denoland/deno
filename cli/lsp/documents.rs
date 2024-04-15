@@ -73,18 +73,6 @@ pub enum LanguageId {
 }
 
 impl LanguageId {
-  pub fn as_media_type(&self) -> MediaType {
-    match self {
-      LanguageId::JavaScript => MediaType::JavaScript,
-      LanguageId::Jsx => MediaType::Jsx,
-      LanguageId::TypeScript => MediaType::TypeScript,
-      LanguageId::Tsx => MediaType::Tsx,
-      LanguageId::Json => MediaType::Json,
-      LanguageId::JsonC => MediaType::Json,
-      LanguageId::Markdown | LanguageId::Unknown => MediaType::Unknown,
-    }
-  }
-
   pub fn as_extension(&self) -> Option<&'static str> {
     match self {
       LanguageId::JavaScript => Some("js"),
@@ -94,6 +82,18 @@ impl LanguageId {
       LanguageId::Json => Some("json"),
       LanguageId::JsonC => Some("jsonc"),
       LanguageId::Markdown => Some("md"),
+      LanguageId::Unknown => None,
+    }
+  }
+
+  pub fn as_content_type(&self) -> Option<&'static str> {
+    match self {
+      LanguageId::JavaScript => Some("application/javascript"),
+      LanguageId::Jsx => Some("text/jsx"),
+      LanguageId::TypeScript => Some("application/typescript"),
+      LanguageId::Tsx => Some("text/tsx"),
+      LanguageId::Json | LanguageId::JsonC => Some("application/json"),
+      LanguageId::Markdown => Some("text/markdown"),
       LanguageId::Unknown => None,
     }
   }
@@ -639,14 +639,12 @@ fn resolve_media_type(
     return MediaType::from_specifier_and_headers(specifier, maybe_headers);
   }
 
-  if let Some(language_id) = maybe_language_id {
-    let media_type = language_id.as_media_type();
-    if media_type != MediaType::Unknown {
-      return media_type;
-    }
-  }
-
-  MediaType::from_specifier(specifier)
+  // LanguageId is a subset of MediaType, so get its content type and
+  // also use the specifier to inform its media type
+  MediaType::from_specifier_and_content_type(
+    specifier,
+    maybe_language_id.and_then(|id| id.as_content_type()),
+  )
 }
 
 pub fn to_lsp_range(range: &deno_graph::Range) -> lsp::Range {
