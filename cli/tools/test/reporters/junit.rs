@@ -3,8 +3,13 @@
 use std::collections::VecDeque;
 use std::path::PathBuf;
 
+use lazy_regex::Lazy;
+
 use super::fmt::to_relative_path_or_remote_url;
 use super::*;
+
+static ANSI_ESCAPE_REMOVE: Lazy<Regex> =
+  lazy_regex::lazy_regex!(r#"\x1b\[([\x30-\x3f]*[\x20-\x2f]*[\x40-\x7e])"#);
 
 pub struct JunitTestReporter {
   cwd: Url,
@@ -31,13 +36,21 @@ impl JunitTestReporter {
     match status {
       TestResult::Ok => quick_junit::TestCaseStatus::success(),
       TestResult::Ignored => quick_junit::TestCaseStatus::skipped(),
-      TestResult::Failed(failure) => quick_junit::TestCaseStatus::NonSuccess {
-        kind: quick_junit::NonSuccessKind::Failure,
-        message: Some(failure.overview()),
-        ty: None,
-        description: Some(failure.detail()),
-        reruns: vec![],
-      },
+      TestResult::Failed(failure) => {
+        let message = failure.overview();
+        let detail = failure.detail();
+        let message_stripped =
+          ANSI_ESCAPE_REMOVE.replace_all(message.as_str(), "");
+        let detail_stripped =
+          ANSI_ESCAPE_REMOVE.replace_all(detail.as_str(), "");
+        quick_junit::TestCaseStatus::NonSuccess {
+          kind: quick_junit::NonSuccessKind::Failure,
+          message: Some(message_stripped.into()),
+          ty: None,
+          description: Some(detail_stripped.into()),
+          reruns: vec![],
+        }
+      }
       TestResult::Cancelled => quick_junit::TestCaseStatus::NonSuccess {
         kind: quick_junit::NonSuccessKind::Error,
         message: Some("Cancelled".to_string()),
@@ -55,11 +68,17 @@ impl JunitTestReporter {
       TestStepResult::Ok => quick_junit::TestCaseStatus::success(),
       TestStepResult::Ignored => quick_junit::TestCaseStatus::skipped(),
       TestStepResult::Failed(failure) => {
+        let message = failure.overview();
+        let detail = failure.detail();
+        let message_stripped =
+          ANSI_ESCAPE_REMOVE.replace_all(message.as_str(), "");
+        let detail_stripped =
+          ANSI_ESCAPE_REMOVE.replace_all(detail.as_str(), "");
         quick_junit::TestCaseStatus::NonSuccess {
           kind: quick_junit::NonSuccessKind::Failure,
-          message: Some(failure.overview()),
+          message: Some(message_stripped.into()),
           ty: None,
-          description: Some(failure.detail()),
+          description: Some(detail_stripped.into()),
           reruns: vec![],
         }
       }
