@@ -4250,6 +4250,83 @@ fn op_project_version(state: &mut OpState) -> usize {
   r
 }
 
+struct TscRuntime {
+  js_runtime: JsRuntime,
+  server_request_fn_global: v8::Global<v8::Function>,
+}
+
+impl TscRuntime {
+  fn new(mut js_runtime: JsRuntime) -> Self {
+    let server_request_fn_global = {
+      let context = js_runtime.main_context();
+      let scope = &mut js_runtime.handle_scope();
+      let context_local = v8::Local::new(scope, context);
+      let global_obj = context_local.global(scope);
+      let server_request_fn_str =
+        v8::String::new_external_onebyte_static(scope, b"serverRequest")
+          .unwrap();
+      let server_request_fn = v8::Local::try_from(
+        global_obj.get(scope, server_request_fn_str.into()).unwrap(),
+      )
+      .unwrap();
+      v8::Global::new(scope, server_request_fn)
+    };
+    Self {
+      server_request_fn_global,
+      js_runtime,
+    }
+  }
+
+  /// Send a request into the runtime and return the JSON string containing the response.
+  fn request(
+    &mut self,
+    state_snapshot: Arc<StateSnapshot>,
+    request: TscRequest,
+    token: CancellationToken,
+  ) -> Result<String, AnyError> {
+    if token.is_cancelled() {
+      return Err(anyhow!("Operation was cancelled."));
+    }
+    let (performance, id) = {
+      let op_state = self.js_runtime.op_state();
+      let mut op_state = op_state.borrow_mut();
+      let state = op_state.borrow_mut::<State>();
+      state.state_snapshot = state_snapshot;
+      state.token = token;
+      state.last_id += 1;
+      let id = state.last_id;
+      (state.performance.clone(), id)
+    };
+    let mark = performance.mark_with_args(
+      format!("tsc.host.{}", request.method),
+      request.args.clone(),
+    );
+    assert!(
+      request.args.is_array(),
+      "Internal error: expected args to be array"
+    );
+    let request_src = format!(
+      "globalThis.serverRequest({id}, \"{}\", {});",
+      request.method, &request.args
+    );
+    self
+      .js_runtime
+      .execute_script(located_script_name!(), request_src)?;
+
+    let op_state = self.js_runtime.op_state();
+    let mut op_state = op_state.borrow_mut();
+    let state = op_state.borrow_mut::<State>();
+
+    performance.measure(mark);
+    state.response.take().ok_or_else(|| {
+      custom_error(
+        "RequestError",
+        "The response was not received for the request.",
+      )
+    })
+  }
+}
+
 fn run_tsc_thread(
   mut request_rx: UnboundedReceiver<Request>,
   performance: Arc<Performance>,
@@ -4279,12 +4356,12 @@ fn run_tsc_thread(
   let tsc_future = async {
     start_tsc(&mut tsc_runtime, false).unwrap();
     let (request_signal_tx, mut request_signal_rx) = mpsc::unbounded_channel::<()>();
-    let tsc_runtime = Rc::new(tokio::sync::Mutex::new(tsc_runtime));
+    let tsc_runtime = Rc::new(tokio::sync::Mutex::new(TscRuntime::new(tsc_runtime)));
     let tsc_runtime_ = tsc_runtime.clone();
     let event_loop_fut = async {
       loop {
         if has_inspector_server {
-          tsc_runtime_.lock().await.run_event_loop(PollEventLoopOptions {
+          tsc_runtime_.lock().await.js_runtime.run_event_loop(PollEventLoopOptions {
             wait_for_inspector: false,
             pump_v8_message_loop: true,
           }).await.ok();
@@ -4298,7 +4375,7 @@ fn run_tsc_thread(
         biased;
         (maybe_request, mut tsc_runtime) = async { (request_rx.recv().await, tsc_runtime.lock().await) } => {
           if let Some((req, state_snapshot, tx, token, pending_change)) = maybe_request {
-            let value = request(&mut tsc_runtime, state_snapshot, req, pending_change, token.clone());
+            let value = tsc_runtime.request(state_snapshot, req, pending_change, token.clone());
             request_signal_tx.send(()).unwrap();
             let was_sent = tx.send(value).is_ok();
             // Don't print the send error if the token is cancelled, it's expected
@@ -4709,56 +4786,6 @@ pub struct GetNavigateToItemsArgs {
 struct TscRequest {
   method: &'static str,
   args: Value,
-}
-
-/// Send a request into a runtime and return the JSON value of the response.
-fn request(
-  runtime: &mut JsRuntime,
-  state_snapshot: Arc<StateSnapshot>,
-  request: TscRequest,
-  change: Option<Value>,
-  token: CancellationToken,
-) -> Result<String, AnyError> {
-  if token.is_cancelled() {
-    return Err(anyhow!("Operation was cancelled."));
-  }
-  let (performance, id) = {
-    let op_state = runtime.op_state();
-    let mut op_state = op_state.borrow_mut();
-    let state = op_state.borrow_mut::<State>();
-    state.state_snapshot = state_snapshot;
-    state.token = token;
-    state.last_id += 1;
-    let id = state.last_id;
-    (state.performance.clone(), id)
-  };
-  let mark = performance.mark_with_args(
-    format!("tsc.host.{}", request.method),
-    request.args.clone(),
-  );
-  assert!(
-    request.args.is_array(),
-    "Internal error: expected args to be array"
-  );
-  let request_src = format!(
-    "globalThis.serverRequest({id}, \"{}\", {}, {});",
-    request.method,
-    &request.args,
-    change.unwrap_or_default()
-  );
-  runtime.execute_script(located_script_name!(), request_src)?;
-
-  let op_state = runtime.op_state();
-  let mut op_state = op_state.borrow_mut();
-  let state = op_state.borrow_mut::<State>();
-
-  performance.measure(mark);
-  state.response.take().ok_or_else(|| {
-    custom_error(
-      "RequestError",
-      "The response was not received for the request.",
-    )
-  })
 }
 
 #[cfg(test)]
