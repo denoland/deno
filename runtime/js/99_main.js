@@ -1005,6 +1005,10 @@ function bootstrapWorkerRuntime(
 
 const nodeBootstrap = globalThis.nodeBootstrap;
 delete globalThis.nodeBootstrap;
+const dispatchProcessExitEvent = internals.dispatchProcessExitEvent;
+delete internals.dispatchProcessExitEvent;
+const dispatchProcessBeforeExitEvent = internals.dispatchProcessBeforeExitEvent;
+delete internals.dispatchProcessBeforeExitEvent;
 
 globalThis.bootstrap = {
   mainRuntime: bootstrapMainRuntime,
@@ -1012,6 +1016,8 @@ globalThis.bootstrap = {
   dispatchLoadEvent,
   dispatchUnloadEvent,
   dispatchBeforeUnloadEvent,
+  dispatchProcessExitEvent,
+  dispatchProcessBeforeExitEvent,
 };
 
 event.setEventTargetData(globalThis);
