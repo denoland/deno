@@ -84,6 +84,7 @@ use super::text;
 use super::tsc;
 use super::tsc::Assets;
 use super::tsc::AssetsSnapshot;
+use super::tsc::ChangeKind;
 use super::tsc::GetCompletionDetailsArgs;
 use super::tsc::TsServer;
 use super::urls;
@@ -175,6 +176,7 @@ pub struct StateNpmSnapshot {
 /// Snapshot of the state used by TSC.
 #[derive(Clone, Debug)]
 pub struct StateSnapshot {
+  pub project_version: usize,
   pub assets: AssetsSnapshot,
   pub cache_metadata: cache::CacheMetadata,
   pub config: Arc<ConfigSnapshot>,
@@ -253,6 +255,7 @@ pub struct Inner {
   maybe_testing_server: Option<testing::TestServer>,
   /// Services used for dealing with npm related functionality.
   npm: LspNpmServices,
+  project_version: usize,
   /// A collection of measurements which instrument that performance of the LSP.
   performance: Arc<Performance>,
   /// A memoized version of fixable diagnostic codes retrieved from TypeScript.
@@ -536,6 +539,7 @@ impl Inner {
       initial_cwd: initial_cwd.clone(),
       jsr_search_api,
       maybe_global_cache_path: None,
+      project_version: 0,
       task_queue: Default::default(),
       maybe_testing_server: None,
       module_registries,
@@ -668,6 +672,7 @@ impl Inner {
         }
       });
     Arc::new(StateSnapshot {
+      project_version: self.project_version,
       assets: self.assets.snapshot(),
       cache_metadata: self.cache_metadata.clone(),
       config: self.config.snapshot(),
@@ -970,9 +975,14 @@ impl Inner {
       self.config.update_capabilities(&params.capabilities);
     }
 
-    self
+    if let Err(e) = self
       .ts_server
-      .start(self.config.internal_inspect().to_address());
+      .start(self.config.internal_inspect().to_address())
+    {
+      lsp_warn!("{}", e);
+      self.client.show_message(MessageType::ERROR, e);
+      return Err(tower_lsp::jsonrpc::Error::internal_error());
+    };
 
     self.update_debug_flag();
     self.refresh_workspace_files();
@@ -1183,13 +1193,15 @@ impl Inner {
     // refresh the npm specifiers because it might have discovered
     // a @types/node package and now's a good time to do that anyway
     self.refresh_npm_specifiers().await;
+
+    self.project_changed(&[], true).await;
   }
 
   fn shutdown(&self) -> LspResult<()> {
     Ok(())
   }
 
-  fn did_open(
+  async fn did_open(
     &mut self,
     specifier: &ModuleSpecifier,
     params: DidOpenTextDocumentParams,
@@ -1217,6 +1229,9 @@ impl Inner {
       params.text_document.language_id.parse().unwrap(),
       params.text_document.text.into(),
     );
+    self
+      .project_changed(&[(document.specifier(), ChangeKind::Opened)], false)
+      .await;
 
     self.performance.measure(mark);
     document
@@ -1234,10 +1249,14 @@ impl Inner {
     ) {
       Ok(document) => {
         if document.is_diagnosable() {
-          self.refresh_npm_specifiers().await;
           self
-            .diagnostics_server
-            .invalidate(&self.documents.dependents(&specifier));
+            .project_changed(
+              &[(document.specifier(), ChangeKind::Modified)],
+              false,
+            )
+            .await;
+          self.refresh_npm_specifiers().await;
+          self.diagnostics_server.invalidate(&[specifier]);
           self.send_diagnostics_update();
           self.send_testing_update();
         }
@@ -1279,15 +1298,16 @@ impl Inner {
       .normalize_url(&params.text_document.uri, LspUrlKind::File);
     if self.is_diagnosable(&specifier) {
       self.refresh_npm_specifiers().await;
-      let mut specifiers = self.documents.dependents(&specifier);
-      specifiers.push(specifier.clone());
-      self.diagnostics_server.invalidate(&specifiers);
+      self.diagnostics_server.invalidate(&[specifier.clone()]);
       self.send_diagnostics_update();
       self.send_testing_update();
     }
     if let Err(err) = self.documents.close(&specifier) {
       error!("{:#}", err);
     }
+    self
+      .project_changed(&[(&specifier, ChangeKind::Closed)], false)
+      .await;
     self.performance.measure(mark);
   }
 
@@ -2973,6 +2993,18 @@ impl Inner {
     Ok(maybe_symbol_information)
   }
 
+  async fn project_changed(
+    &mut self,
+    modified_scripts: &[(&ModuleSpecifier, ChangeKind)],
+    config_changed: bool,
+  ) {
+    self.project_version += 1; // increment before getting the snapshot
+    self
+      .ts_server
+      .project_changed(self.snapshot(), modified_scripts, config_changed)
+      .await;
+  }
+
   fn send_diagnostics_update(&self) {
     let snapshot = DiagnosticServerUpdateMessage {
       snapshot: self.snapshot(),
@@ -3178,11 +3210,10 @@ impl tower_lsp::LanguageServer for LanguageServer {
     let specifier = inner
       .url_map
       .normalize_url(&params.text_document.uri, LspUrlKind::File);
-    let document = inner.did_open(&specifier, params);
+    let document = inner.did_open(&specifier, params).await;
     if document.is_diagnosable() {
       inner.refresh_npm_specifiers().await;
-      let specifiers = inner.documents.dependents(&specifier);
-      inner.diagnostics_server.invalidate(&specifiers);
+      inner.diagnostics_server.invalidate(&[specifier]);
       inner.send_diagnostics_update();
       inner.send_testing_update();
     }

@@ -465,7 +465,7 @@ async fn inspector_port_collision() {
     .lines()
     .map(|r| r.unwrap())
     .inspect(|line| assert!(!line.contains("Debugger listening")))
-    .find(|line| line.contains("Cannot start inspector server"));
+    .find(|line| line.contains("Failed to start inspector server"));
   assert!(stderr_2_error_message.is_some());
 
   child1.kill().unwrap();

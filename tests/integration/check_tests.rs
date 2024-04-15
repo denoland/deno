@@ -215,7 +215,7 @@ fn reload_flag() {
 
 #[test]
 fn typecheck_declarations_ns() {
-  let context = TestContext::default();
+  let context = TestContextBuilder::for_jsr().build();
   let args = vec![
     "test".to_string(),
     "--doc".to_string(),
@@ -224,7 +224,12 @@ fn typecheck_declarations_ns() {
       .to_string_lossy()
       .into_owned(),
   ];
-  let output = context.new_command().args_vec(args).split_output().run();
+  let output = context
+    .new_command()
+    .args_vec(args)
+    .envs(util::env_vars_for_jsr_tests())
+    .split_output()
+    .run();
 
   println!("stdout: {}", output.stdout());
   println!("stderr: {}", output.stderr());

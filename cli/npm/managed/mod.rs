@@ -522,6 +522,8 @@ impl NpmResolver for ManagedCliNpmResolver {
     let path = self
       .fs_resolver
       .resolve_package_folder_from_package(name, referrer, mode)?;
+    let path =
+      canonicalize_path_maybe_not_exists_with_fs(&path, self.fs.as_ref())?;
     log::debug!("Resolved {} from {} to {}", name, referrer, path.display());
     Ok(path)
   }
@@ -602,6 +604,9 @@ impl CliNpmResolver for ManagedCliNpmResolver {
       .collect::<Vec<_>>();
     package_reqs.sort_by(|a, b| a.0.cmp(&b.0)); // determinism
     let mut hasher = FastInsecureHasher::new();
+    // ensure the cache gets busted when turning nodeModulesDir on or off
+    // as this could cause changes in resolution
+    hasher.write_hashable(self.fs_resolver.node_modules_path().is_some());
     for (pkg_req, pkg_nv) in package_reqs {
       hasher.write_hashable(&pkg_req);
       hasher.write_hashable(&pkg_nv);

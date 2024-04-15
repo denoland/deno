@@ -289,7 +289,7 @@ mod ts {
 
     // NOTE(bartlomieju): Compressing the TSC snapshot in debug build took
     // ~45s on M1 MacBook Pro; without compression it took ~1s.
-    // Thus we're not not using compressed snapshot, trading off
+    // Thus we're not using compressed snapshot, trading off
     // a lot of build time for some startup time in debug build.
     let mut file = std::fs::File::create(snapshot_path).unwrap();
     if cfg!(debug_assertions) {
