@@ -6,6 +6,23 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.42.4 / 2024.04.15
+
+- fix(check): cache bust when changing nodeModulesDir setting (#23355)
+- fix(ext/io): Fix NUL termination error in windows named pipes (#23379)
+- fix(ext/node): add stub for AsyncResource#asyncId() (#23372)
+- fix(ext/node): panic on 'worker_threads.receiveMessageOnPort' (#23386)
+- fix(ext/node): promise rejection in VM contexts (#23305)
+- fix(ext/node): use ext/io stdio in WriteStream (#23354)
+- fix(lsp): ensure project version is incremented when config changes (#23366)
+- fix(lsp): improved cjs tracking (#23374)
+- fix(lsp): slice strings by byte index in code actions (#23387)
+- fix(publish): do not error for param with initializer before required
+  parameter (#23356)
+- fix(publish): handle definite assignment on ts private properties (#23345)
+- perf(lsp): Only deserialize response from `op_respond` once (#23349)
+- perf: do not clone swc `Program` when transpiling (#23365)
+
 ### 1.42.3 / 2024.04.12
 
 - Revert "refactor(ext/net): extract TLS key and certificate from inter…
