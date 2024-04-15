@@ -1126,11 +1126,11 @@ impl CodeActionCollection {
 /// Prepend the whitespace characters found at the start of line_content to content.
 fn prepend_whitespace(content: String, line_content: Option<String>) -> String {
   if let Some(line) = line_content {
-    let whitespaces = line
+    let whitespace_end = line
       .char_indices()
       .find_map(|(i, c)| (!c.is_whitespace()).then_some(i))
       .unwrap_or(0);
-    let whitespace = &line[0..whitespaces];
+    let whitespace = &line[0..whitespace_end];
     format!("{}{}", &whitespace, content)
   } else {
     content
