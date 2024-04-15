@@ -3996,6 +3996,7 @@ struct LoadResponse {
   data: Arc<str>,
   script_kind: i32,
   version: Option<String>,
+  is_cjs: bool,
 }
 
 #[op2]
@@ -4018,6 +4019,10 @@ fn op_load<'s>(
         data: doc.text(),
         script_kind: crate::tsc::as_ts_script_kind(doc.media_type()),
         version: state.script_version(&specifier),
+        is_cjs: matches!(
+          doc.media_type(),
+          MediaType::Cjs | MediaType::Cts | MediaType::Dcts
+        ),
       })
     };
 

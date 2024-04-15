@@ -9,6 +9,10 @@ use std::sync::Arc;
 
 use deno_core::anyhow::Context;
 use deno_core::serde_json;
+use file_test_runner::collection::collect_tests_or_exit;
+use file_test_runner::collection::strategies::TestPerDirectoryCollectionStrategy;
+use file_test_runner::collection::CollectOptions;
+use file_test_runner::collection::CollectedTest;
 use serde::Deserialize;
 use test_util::tests_path;
 use test_util::PathRef;
@@ -69,6 +73,7 @@ struct StepMetaData {
   pub clean_deno_dir: bool,
   pub args: VecOrString,
   pub cwd: Option<String>,
+  pub command_name: Option<String>,
   #[serde(default)]
   pub envs: HashMap<String, String>,
   pub output: String,
@@ -77,15 +82,13 @@ struct StepMetaData {
 }
 
 pub fn main() {
-  let root_category =
-    file_test_runner::collect_tests_or_exit(file_test_runner::CollectOptions {
-      base: tests_path().join("specs").to_path_buf(),
-      strategy: file_test_runner::FileCollectionStrategy::TestPerDirectory {
-        file_name: MANIFEST_FILE_NAME.to_string(),
-      },
-      root_category_name: "specs".to_string(),
-      filter_override: None,
-    });
+  let root_category = collect_tests_or_exit(CollectOptions {
+    base: tests_path().join("specs").to_path_buf(),
+    strategy: Box::new(TestPerDirectoryCollectionStrategy {
+      file_name: MANIFEST_FILE_NAME.to_string(),
+    }),
+    filter_override: None,
+  });
 
   if root_category.is_empty() {
     return; // all tests filtered out
@@ -111,15 +114,13 @@ pub fn main() {
           output.extend(panic_output);
           file_test_runner::TestResult::Failed { output }
         }
+        file_test_runner::TestResult::Steps(_) => unreachable!(),
       }
     }),
   );
 }
 
-fn run_test(
-  test: &file_test_runner::CollectedTest,
-  diagnostic_logger: Rc<RefCell<Vec<u8>>>,
-) {
+fn run_test(test: &CollectedTest, diagnostic_logger: Rc<RefCell<Vec<u8>>>) {
   let metadata_path = PathRef::new(&test.path);
   let metadata_value = metadata_path.read_jsonc_value();
   // checking for "steps" leads to a more targeted error message
@@ -180,6 +181,10 @@ fn run_test(
     };
     let command = match &step.cwd {
       Some(cwd) => command.current_dir(cwd),
+      None => command,
+    };
+    let command = match &step.command_name {
+      Some(command_name) => command.name(command_name),
       None => command,
     };
     let output = command.run();
