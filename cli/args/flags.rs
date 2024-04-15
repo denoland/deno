@@ -939,8 +939,6 @@ static ENV_VARIABLES_HELP: &str = color_print::cstr!(
 
     <g>DENO_DIR</>             Set the cache directory
 
-
-
     <g>DENO_INSTALL_ROOT</>    Set deno install's output directory
                          (defaults to $HOME/.deno/bin)
 
@@ -967,8 +965,6 @@ static ENV_VARIABLES_HELP: &str = color_print::cstr!(
     <g>DENO_V8_FLAGS</>        Set V8 command line options
 
     <g>DENO_WEBGPU_TRACE</>    Directory to use for wgpu traces
-
-
 
     <g>HTTP_PROXY</>           Proxy address for HTTP requests
                          (module downloads, fetch)
