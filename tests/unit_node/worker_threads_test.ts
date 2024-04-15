@@ -416,7 +416,7 @@ Deno.test({
 });
 
 // Regression test for https://github.com/denoland/deno/issues/23362
-Deno.test("[node/worker_threads] receiveMessageOnPort works if there's pending read", async function () {
+Deno.test("[node/worker_threads] receiveMessageOnPort works if there's pending read", function () {
   const { port1, port2 } = new workerThreads.MessageChannel();
 
   const message1 = { hello: "world" };
