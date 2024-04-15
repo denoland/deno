@@ -12287,3 +12287,52 @@ fn lsp_uses_lockfile_for_npm_initialization() {
   assert_eq!(skipping_count, 1);
   client.shutdown();
 }
+
+#[test]
+fn lsp_cjs_internal_types_default_export() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .add_npm_env_vars()
+    .env("DENO_FUTURE", "1")
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("deno.json", r#"{}"#);
+  temp_dir.write(
+    "package.json",
+    r#"{
+  "dependencies": {
+    "@denotest/cjs-internal-types-default-export": "*"
+  }
+}"#,
+  );
+  context.run_npm("install");
+
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  // this was previously being resolved as ESM and not correctly as CJS
+  let node_modules_index_d_ts = temp_dir.path().join(
+    "node_modules/@denotest/cjs-internal-types-default-export/index.d.ts",
+  );
+  client.did_open(json!({
+    "textDocument": {
+      "uri": node_modules_index_d_ts.uri_file(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": node_modules_index_d_ts.read_to_string(),
+    }
+  }));
+  let main_url = temp_dir.path().join("main.ts").uri_file();
+  let diagnostics = client.did_open(
+    json!({
+      "textDocument": {
+        "uri": main_url,
+        "languageId": "typescript",
+        "version": 1,
+        "text": "import * as mod from '@denotest/cjs-internal-types-default-export';\nmod.add(1, 2);",
+      }
+    }),
+  );
+  // previously, diagnostic about `add` not being callable
+  assert_eq!(json!(diagnostics.all()), json!([]));
+}
