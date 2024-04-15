@@ -26,7 +26,6 @@ use deno_core::error::JsError;
 use deno_core::futures::future;
 use deno_core::futures::stream;
 use deno_core::futures::StreamExt;
-use deno_core::located_script_name;
 use deno_core::serde_v8;
 use deno_core::unsync::spawn;
 use deno_core::unsync::spawn_blocking;
@@ -220,7 +219,7 @@ async fn bench_specifier_inner(
   // Ensure that there are no pending exceptions before we start running tests
   worker.run_up_to_duration(Duration::from_millis(0)).await?;
 
-  worker.dispatch_load_event(located_script_name!())?;
+  worker.dispatch_load_event()?;
 
   let benchmarks = {
     let state_rc = worker.js_runtime.op_state();
@@ -269,8 +268,8 @@ async fn bench_specifier_inner(
 
   // Ignore `defaultPrevented` of the `beforeunload` event. We don't allow the
   // event loop to continue beyond what's needed to await results.
-  worker.dispatch_beforeunload_event(located_script_name!())?;
-  worker.dispatch_unload_event(located_script_name!())?;
+  worker.dispatch_beforeunload_event()?;
+  worker.dispatch_unload_event()?;
 
   // Ensure the worker has settled so we can catch any remaining unhandled rejections. We don't
   // want to wait forever here.

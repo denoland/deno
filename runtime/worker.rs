@@ -11,7 +11,6 @@ use std::time::Instant;
 use deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_cache::CreateCache;
 use deno_cache::SqliteBackedCache;
-use deno_core::ascii_str;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::merge_op_metrics;
@@ -115,6 +114,9 @@ pub struct MainWorker {
   should_wait_for_inspector_session: bool,
   exit_code: ExitCode,
   bootstrap_fn_global: Option<v8::Global<v8::Function>>,
+  dispatch_load_event_fn_global: v8::Global<v8::Function>,
+  dispatch_beforeunload_event_fn_global: v8::Global<v8::Function>,
+  dispatch_unload_event_fn_global: v8::Global<v8::Function>,
 }
 
 pub struct WorkerOptions {
@@ -523,7 +525,12 @@ impl MainWorker {
       let inspector = js_runtime.inspector();
       op_state.borrow_mut().put(inspector);
     }
-    let bootstrap_fn_global = {
+    let (
+      bootstrap_fn_global,
+      dispatch_load_event_fn_global,
+      dispatch_beforeunload_event_fn_global,
+      dispatch_unload_event_fn_global,
+    ) = {
       let context = js_runtime.main_context();
       let scope = &mut js_runtime.handle_scope();
       let context_local = v8::Local::new(scope, context);
@@ -541,7 +548,40 @@ impl MainWorker {
         bootstrap_ns.get(scope, main_runtime_str.into()).unwrap();
       let bootstrap_fn =
         v8::Local::<v8::Function>::try_from(bootstrap_fn).unwrap();
-      v8::Global::new(scope, bootstrap_fn)
+      let dispatch_load_event_fn_str =
+        v8::String::new_external_onebyte_static(scope, b"dispatchLoadEvent")
+          .unwrap();
+      let dispatch_load_event_fn = bootstrap_ns
+        .get(scope, dispatch_load_event_fn_str.into())
+        .unwrap();
+      let dispatch_load_event_fn =
+        v8::Local::<v8::Function>::try_from(dispatch_load_event_fn).unwrap();
+      let dispatch_beforeunload_event_fn_str =
+        v8::String::new_external_onebyte_static(
+          scope,
+          b"dispatchBeforeUnloadEvent",
+        )
+        .unwrap();
+      let dispatch_beforeunload_event_fn = bootstrap_ns
+        .get(scope, dispatch_beforeunload_event_fn_str.into())
+        .unwrap();
+      let dispatch_beforeunload_event_fn =
+        v8::Local::<v8::Function>::try_from(dispatch_beforeunload_event_fn)
+          .unwrap();
+      let dispatch_unload_event_fn_str =
+        v8::String::new_external_onebyte_static(scope, b"dispatchUnloadEvent")
+          .unwrap();
+      let dispatch_unload_event_fn = bootstrap_ns
+        .get(scope, dispatch_unload_event_fn_str.into())
+        .unwrap();
+      let dispatch_unload_event_fn =
+        v8::Local::<v8::Function>::try_from(dispatch_unload_event_fn).unwrap();
+      (
+        v8::Global::new(scope, bootstrap_fn),
+        v8::Global::new(scope, dispatch_load_event_fn),
+        v8::Global::new(scope, dispatch_beforeunload_event_fn),
+        v8::Global::new(scope, dispatch_unload_event_fn),
+      )
     };
 
     Self {
@@ -551,6 +591,9 @@ impl MainWorker {
         .should_wait_for_inspector_session,
       exit_code,
       bootstrap_fn_global: Some(bootstrap_fn_global),
+      dispatch_load_event_fn_global,
+      dispatch_beforeunload_event_fn_global,
+      dispatch_unload_event_fn_global,
     }
   }
 
@@ -708,54 +751,53 @@ impl MainWorker {
   /// Dispatches "load" event to the JavaScript runtime.
   ///
   /// Does not poll event loop, and thus not await any of the "load" event handlers.
-  pub fn dispatch_load_event(
-    &mut self,
-    script_name: &'static str,
-  ) -> Result<(), AnyError> {
-    self.js_runtime.execute_script(
-      script_name,
-      // NOTE(@bartlomieju): not using `globalThis` here, because user might delete
-      // it. Instead we're using global `dispatchEvent` function which will
-      // used a saved reference to global scope.
-      ascii_str!("dispatchEvent(new Event('load'))"),
-    )?;
+  pub fn dispatch_load_event(&mut self) -> Result<(), AnyError> {
+    let scope = &mut self.js_runtime.handle_scope();
+    let tc_scope = &mut v8::TryCatch::new(scope);
+    let dispatch_load_event_fn =
+      v8::Local::new(tc_scope, &self.dispatch_load_event_fn_global);
+    let undefined = v8::undefined(tc_scope);
+    dispatch_load_event_fn.call(tc_scope, undefined.into(), &[]);
+    if let Some(exception) = tc_scope.exception() {
+      let error = JsError::from_v8_exception(tc_scope, exception);
+      return Err(error.into());
+    }
     Ok(())
   }
 
   /// Dispatches "unload" event to the JavaScript runtime.
   ///
   /// Does not poll event loop, and thus not await any of the "unload" event handlers.
-  pub fn dispatch_unload_event(
-    &mut self,
-    script_name: &'static str,
-  ) -> Result<(), AnyError> {
-    self.js_runtime.execute_script(
-      script_name,
-      // NOTE(@bartlomieju): not using `globalThis` here, because user might delete
-      // it. Instead we're using global `dispatchEvent` function which will
-      // used a saved reference to global scope.
-      ascii_str!("dispatchEvent(new Event('unload'))"),
-    )?;
+  pub fn dispatch_unload_event(&mut self) -> Result<(), AnyError> {
+    let scope = &mut self.js_runtime.handle_scope();
+    let tc_scope = &mut v8::TryCatch::new(scope);
+    let dispatch_unload_event_fn =
+      v8::Local::new(tc_scope, &self.dispatch_unload_event_fn_global);
+    let undefined = v8::undefined(tc_scope);
+    dispatch_unload_event_fn.call(tc_scope, undefined.into(), &[]);
+    if let Some(exception) = tc_scope.exception() {
+      let error = JsError::from_v8_exception(tc_scope, exception);
+      return Err(error.into());
+    }
     Ok(())
   }
 
   /// Dispatches "beforeunload" event to the JavaScript runtime. Returns a boolean
   /// indicating if the event was prevented and thus event loop should continue
   /// running.
-  pub fn dispatch_beforeunload_event(
-    &mut self,
-    script_name: &'static str,
-  ) -> Result<bool, AnyError> {
-    let value = self.js_runtime.execute_script(
-      script_name,
-      // NOTE(@bartlomieju): not using `globalThis` here, because user might delete
-      // it. Instead we're using global `dispatchEvent` function which will
-      // used a saved reference to global scope.
-      ascii_str!(
-        "dispatchEvent(new Event('beforeunload', { cancelable: true }));"
-      ),
-    )?;
-    let local_value = value.open(&mut self.js_runtime.handle_scope());
-    Ok(local_value.is_false())
+  pub fn dispatch_beforeunload_event(&mut self) -> Result<bool, AnyError> {
+    let scope = &mut self.js_runtime.handle_scope();
+    let tc_scope = &mut v8::TryCatch::new(scope);
+    let dispatch_beforeunload_event_fn =
+      v8::Local::new(tc_scope, &self.dispatch_beforeunload_event_fn_global);
+    let undefined = v8::undefined(tc_scope);
+    let ret_val =
+      dispatch_beforeunload_event_fn.call(tc_scope, undefined.into(), &[]);
+    if let Some(exception) = tc_scope.exception() {
+      let error = JsError::from_v8_exception(tc_scope, exception);
+      return Err(error.into());
+    }
+    let ret_val = ret_val.unwrap();
+    Ok(ret_val.is_false())
   }
 }
