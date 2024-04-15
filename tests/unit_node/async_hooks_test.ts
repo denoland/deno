@@ -127,6 +127,6 @@ Deno.test(async function bind() {
 });
 
 Deno.test(async function asyncResourceStub() {
-  const resource = new AsyncResource('dbquery');
+  const resource = new AsyncResource("dbquery");
   assert(typeof resource.asyncId() === "number");
 });
