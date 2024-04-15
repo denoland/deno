@@ -17,6 +17,7 @@ import {
   MessagePort,
   MessagePortIdSymbol,
   MessagePortPrototype,
+  MessagePortReceiveMessageOnPortSymbol,
   nodeWorkerThreadCloseCb,
   refMessagePort,
   serializeJsMessageData,
@@ -441,6 +442,7 @@ export function receiveMessageOnPort(port: MessagePort): object | undefined {
     err["code"] = "ERR_INVALID_ARG_TYPE";
     throw err;
   }
+  port[MessagePortReceiveMessageOnPortSymbol] = true;
   const data = op_message_port_recv_message_sync(port[MessagePortIdSymbol]);
   if (data === null) return undefined;
   return { message: deserializeJsMessageData(data)[0] };
