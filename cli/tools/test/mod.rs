@@ -1347,7 +1347,7 @@ async fn test_specifiers(
   });
 
   let join_stream = stream::iter(join_handles)
-    .buffer_unordered(concurrent)
+    .buffer_unordered(concurrent_jobs.get())
     .collect::<Vec<Result<Result<(), AnyError>, tokio::task::JoinError>>>();
 
   let handler = spawn(async move { report_tests(receiver, reporter).await.0 });
