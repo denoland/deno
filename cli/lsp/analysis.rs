@@ -1126,9 +1126,11 @@ impl CodeActionCollection {
 /// Prepend the whitespace characters found at the start of line_content to content.
 fn prepend_whitespace(content: String, line_content: Option<String>) -> String {
   if let Some(line) = line_content {
-    let whitespaces =
-      line.chars().position(|c| !c.is_whitespace()).unwrap_or(0);
-    let whitespace = &line[0..whitespaces];
+    let whitespace_end = line
+      .char_indices()
+      .find_map(|(i, c)| (!c.is_whitespace()).then_some(i))
+      .unwrap_or(0);
+    let whitespace = &line[0..whitespace_end];
     format!("{}{}", &whitespace, content)
   } else {
     content
@@ -1269,6 +1271,15 @@ mod tests {
       )
       .unwrap(),
       "utils/sub_utils"
+    );
+  }
+
+  #[test]
+  fn test_prepend_whitespace() {
+    // Regression test for https://github.com/denoland/deno/issues/23361.
+    assert_eq!(
+      &prepend_whitespace("foo".to_string(), Some("\u{a0}bar".to_string())),
+      "\u{a0}foo"
     );
   }
 }
