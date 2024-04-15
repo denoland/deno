@@ -1346,18 +1346,8 @@ async fn test_specifiers(
     })
   });
 
-  // TODO(mmastrac): Temporarily limit concurrency in windows testing to avoid named pipe issue:
-  // *** Unexpected server pipe failure '"\\\\.\\pipe\\deno_pipe_e30f45c9df61b1e4.1198.222\\0"': 3
-  // This is likely because we're hitting some sort of invisible resource limit
-  // This limit is both in cli/lsp/testing/execution.rs and cli/tools/test/mod.rs
-  let concurrent = if cfg!(windows) {
-    std::cmp::min(concurrent_jobs.get(), 4)
-  } else {
-    concurrent_jobs.get()
-  };
-
   let join_stream = stream::iter(join_handles)
-    .buffer_unordered(concurrent)
+    .buffer_unordered(concurrent_jobs.get())
     .collect::<Vec<Result<Result<(), AnyError>, tokio::task::JoinError>>>();
 
   let handler = spawn(async move { report_tests(receiver, reporter).await.0 });
