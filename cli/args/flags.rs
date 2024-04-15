@@ -932,13 +932,13 @@ static ENV_VARIABLES_HELP: &str = color_print::cstr!(
                          private repositories
                          (e.g. "abcde12345@deno.land;54321edcba@github.com")
 
-    <g>DENO_TLS_CA_STORE</>    Comma-separated list of order dependent certificate
-                         stores. Possible values: "system", "mozilla".
-                         Defaults to "mozilla".
-
     <g>DENO_CERT</>            Load certificate authority from PEM encoded file
 
     <g>DENO_DIR</>             Set the cache directory
+
+    <g>DENO_JOBS</>            Number of parallel workers used for the --parallel
+                         flag with the test subcommand. Defaults to number
+                         of available CPUs.
 
     <g>DENO_INSTALL_ROOT</>    Set deno install's output directory
                          (defaults to $HOME/.deno/bin)
@@ -955,13 +955,15 @@ static ENV_VARIABLES_HELP: &str = color_print::cstr!(
     <g>DENO_NO_UPDATE_CHECK</> Set to disable checking if a newer Deno version is
                          available
 
+    <g>DENO_TLS_CA_STORE</>    Comma-separated list of order dependent certificate
+                         stores. Possible values: "system", "mozilla".
+                         Defaults to "mozilla".
+
     <g>DENO_V8_FLAGS</>        Set V8 command line options
 
     <g>DENO_WEBGPU_TRACE</>    Directory to use for wgpu traces
 
-    <g>DENO_JOBS</>            Number of parallel workers used for the --parallel
-                         flag with the test subcommand. Defaults to number
-                         of available CPUs.
+
 
     <g>HTTP_PROXY</>           Proxy address for HTTP requests
                          (module downloads, fetch)
