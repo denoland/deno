@@ -135,10 +135,14 @@ delete Object.prototype.__proto__;
     #cache = new Set();
 
     /** @param {[string, ts.Extension]} param */
-    add([specifier, ext]) {
+    maybeAdd([specifier, ext]) {
       if (ext === ".cjs" || ext === ".d.cts" || ext === ".cts") {
         this.#cache.add(specifier);
       }
+    }
+
+    add(specifier) {
+      this.#cache.add(specifier);
     }
 
     /** @param specifier {string} */
@@ -603,22 +607,30 @@ delete Object.prototype.__proto__;
         return sourceFile;
       }
 
-      /** @type {{ data: string; scriptKind: ts.ScriptKind; version: string; }} */
+      /** @type {{ data: string; scriptKind: ts.ScriptKind; version: string; isCjs: boolean }} */
       const fileInfo = ops.op_load(specifier);
       if (!fileInfo) {
         return undefined;
       }
-      const { data, scriptKind, version } = fileInfo;
+      let { data, scriptKind, version, isCjs } = fileInfo;
       assert(
         data != null,
         `"data" is unexpectedly null for "${specifier}".`,
       );
+
+      // use the cache for non-lsp
+      if (isCjs == null) {
+        isCjs = isCjsCache.has(specifier);
+      } else if (isCjs) {
+        isCjsCache.add(specifier);
+      }
+
       sourceFile = ts.createSourceFile(
         specifier,
         data,
         {
           ...getCreateSourceFileOptions(languageVersion),
-          impliedNodeFormat: isCjsCache.has(specifier)
+          impliedNodeFormat: isCjs
             ? ts.ModuleKind.CommonJS
             : ts.ModuleKind.ESNext,
           // no need to parse docs for `deno check`
@@ -688,7 +700,7 @@ delete Object.prototype.__proto__;
             base: containingFilePath,
           })?.[0];
           if (resolved) {
-            isCjsCache.add(resolved);
+            isCjsCache.maybeAdd(resolved);
             return {
               primary: true,
               resolvedFileName: resolved[0],
@@ -723,7 +735,7 @@ delete Object.prototype.__proto__;
       if (resolved) {
         const result = resolved.map((item) => {
           if (item) {
-            isCjsCache.add(item);
+            isCjsCache.maybeAdd(item);
             const [resolvedFileName, extension] = item;
             return {
               resolvedFileName,

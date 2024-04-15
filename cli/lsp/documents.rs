@@ -12,6 +12,7 @@ use super::tsc::AssetDocument;
 use crate::args::package_json;
 use crate::cache::HttpCache;
 use crate::jsr::JsrCacheResolver;
+use crate::lsp::logging::lsp_warn;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliGraphResolver;
 use crate::resolver::CliGraphResolverOptions;
@@ -43,7 +44,6 @@ use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
 use indexmap::IndexMap;
-use once_cell::sync::Lazy;
 use package_json::PackageJsonDepsProvider;
 use std::borrow::Cow;
 use std::collections::BTreeSet;
@@ -56,36 +56,6 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use tower_lsp::lsp_types as lsp;
-
-static JS_HEADERS: Lazy<HashMap<String, String>> = Lazy::new(|| {
-  ([(
-    "content-type".to_string(),
-    "application/javascript".to_string(),
-  )])
-  .into_iter()
-  .collect()
-});
-
-static JSX_HEADERS: Lazy<HashMap<String, String>> = Lazy::new(|| {
-  ([("content-type".to_string(), "text/jsx".to_string())])
-    .into_iter()
-    .collect()
-});
-
-static TS_HEADERS: Lazy<HashMap<String, String>> = Lazy::new(|| {
-  ([(
-    "content-type".to_string(),
-    "application/typescript".to_string(),
-  )])
-  .into_iter()
-  .collect()
-});
-
-static TSX_HEADERS: Lazy<HashMap<String, String>> = Lazy::new(|| {
-  ([("content-type".to_string(), "text/tsx".to_string())])
-    .into_iter()
-    .collect()
-});
 
 pub const DOCUMENT_SCHEMES: [&str; 5] =
   ["data", "blob", "file", "http", "https"];
@@ -125,16 +95,6 @@ impl LanguageId {
       LanguageId::JsonC => Some("jsonc"),
       LanguageId::Markdown => Some("md"),
       LanguageId::Unknown => None,
-    }
-  }
-
-  fn as_headers(&self) -> Option<&HashMap<String, String>> {
-    match self {
-      Self::JavaScript => Some(&JS_HEADERS),
-      Self::Jsx => Some(&JSX_HEADERS),
-      Self::TypeScript => Some(&TS_HEADERS),
-      Self::Tsx => Some(&TSX_HEADERS),
-      _ => None,
     }
   }
 
@@ -359,7 +319,7 @@ impl Document {
       self.maybe_language_id,
       maybe_node_resolver,
     );
-    // check if the media type has changed
+    // reparse if the media type has changed
     if let Ok(parsed_source) = &parsed_source_result {
       if parsed_source.media_type() != media_type {
         parsed_source_result =
@@ -394,21 +354,22 @@ impl Document {
     }))
   }
 
+  #[allow(clippy::too_many_arguments)]
   fn open(
     specifier: ModuleSpecifier,
     version: i32,
     language_id: LanguageId,
+    maybe_headers: Option<HashMap<String, String>>,
     content: Arc<str>,
     cache: &Arc<dyn HttpCache>,
     resolver: &dyn deno_graph::source::Resolver,
     maybe_node_resolver: Option<&CliNodeResolver>,
     npm_resolver: &dyn deno_graph::source::NpmResolver,
   ) -> Arc<Self> {
-    let maybe_headers = language_id.as_headers();
     let text_info = SourceTextInfo::new(content);
     let media_type = resolve_media_type(
       &specifier,
-      maybe_headers,
+      None,
       Some(language_id),
       maybe_node_resolver,
     );
@@ -416,7 +377,7 @@ impl Document {
       parse_and_analyze_module(
         &specifier,
         text_info.clone(),
-        maybe_headers,
+        maybe_headers.as_ref(),
         media_type,
         resolver,
         npm_resolver,
@@ -434,7 +395,7 @@ impl Document {
       line_index,
       maybe_language_id: Some(language_id),
       maybe_lsp_version: Some(version),
-      maybe_headers: maybe_headers.map(ToOwned::to_owned),
+      maybe_headers,
       maybe_module,
       maybe_navigation_tree: Mutex::new(None),
       maybe_parsed_source: maybe_parsed_source
@@ -476,14 +437,10 @@ impl Document {
       .map(|li| li.is_diagnosable())
       .unwrap_or(false)
     {
-      let maybe_headers = self
-        .maybe_language_id
-        .as_ref()
-        .and_then(|li| li.as_headers());
       parse_and_analyze_module(
         &self.specifier,
         text_info.clone(),
-        maybe_headers,
+        self.maybe_headers.as_ref(),
         media_type,
         resolver,
         npm_resolver,
@@ -663,29 +620,33 @@ fn resolve_media_type(
   maybe_language_id: Option<LanguageId>,
   maybe_node_resolver: Option<&CliNodeResolver>,
 ) -> MediaType {
+  if let Some(node_resolver) = maybe_node_resolver {
+    if node_resolver.in_npm_package(specifier) {
+      match node_resolver.url_to_node_resolution(specifier.clone()) {
+        Ok(resolution) => {
+          let (_, media_type) =
+            NodeResolution::into_specifier_and_media_type(Some(resolution));
+          return media_type;
+        }
+        Err(err) => {
+          lsp_warn!("Node resolution failed for '{}': {}", specifier, err);
+        }
+      }
+    }
+  }
+
   if maybe_headers.is_some() {
     return MediaType::from_specifier_and_headers(specifier, maybe_headers);
   }
 
-  if let Some(node_resolver) = maybe_node_resolver {
-    if node_resolver.in_npm_package(specifier) {
-      if let Ok(resolution) =
-        node_resolver.url_to_node_resolution(specifier.clone())
-      {
-        let (_, media_type) =
-          NodeResolution::into_specifier_and_media_type(Some(resolution));
-        return media_type;
-      }
+  if let Some(language_id) = maybe_language_id {
+    let media_type = language_id.as_media_type();
+    if media_type != MediaType::Unknown {
+      return media_type;
     }
   }
-  let specifier_media_type = MediaType::from_specifier(specifier);
-  if specifier_media_type != MediaType::Unknown {
-    return specifier_media_type;
-  }
 
-  maybe_language_id
-    .map(|id| id.as_media_type())
-    .unwrap_or(MediaType::Unknown)
+  MediaType::from_specifier(specifier)
 }
 
 pub fn to_lsp_range(range: &deno_graph::Range) -> lsp::Range {
@@ -978,6 +939,10 @@ impl Documents {
       specifier.clone(),
       version,
       language_id,
+      // todo(dsherret): don't we want to pass in the headers from
+      // the cache for remote modules here in order to get the
+      // x-typescript-types?
+      None,
       content,
       &self.cache,
       resolver,
