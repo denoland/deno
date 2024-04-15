@@ -291,6 +291,7 @@ pub struct Document {
   // so having a mutex to hold it is ok
   maybe_navigation_tree: Mutex<Option<Arc<tsc::NavigationTree>>>,
   maybe_parsed_source: Option<ParsedSourceResult>,
+  media_type: MediaType,
   specifier: ModuleSpecifier,
   text_info: SourceTextInfo,
 }
@@ -302,15 +303,23 @@ impl Document {
     maybe_headers: Option<HashMap<String, String>>,
     text_info: SourceTextInfo,
     resolver: &dyn deno_graph::source::Resolver,
+    maybe_node_resolver: Option<&CliNodeResolver>,
     npm_resolver: &dyn deno_graph::source::NpmResolver,
   ) -> Arc<Self> {
     // we only ever do `Document::new` on disk resources that are supposed to
     // be diagnosable, unlike `Document::open`, so it is safe to unconditionally
     // parse the module.
+    let media_type = resolve_media_type(
+      &specifier,
+      maybe_headers.as_ref(),
+      None,
+      maybe_node_resolver,
+    );
     let (maybe_parsed_source, maybe_module) = parse_and_analyze_module(
       &specifier,
       text_info.clone(),
       maybe_headers.as_ref(),
+      media_type,
       resolver,
       npm_resolver,
     );
@@ -328,6 +337,7 @@ impl Document {
       maybe_navigation_tree: Mutex::new(None),
       maybe_parsed_source: maybe_parsed_source
         .filter(|_| specifier.scheme() == "file"),
+      media_type,
       text_info,
       specifier,
     })
@@ -336,12 +346,27 @@ impl Document {
   fn maybe_with_new_resolver(
     &self,
     resolver: &dyn deno_graph::source::Resolver,
+    maybe_node_resolver: Option<&CliNodeResolver>,
     npm_resolver: &dyn deno_graph::source::NpmResolver,
   ) -> Option<Arc<Self>> {
-    let parsed_source_result = match &self.maybe_parsed_source {
+    let mut parsed_source_result = match &self.maybe_parsed_source {
       Some(parsed_source_result) => parsed_source_result.clone(),
       None => return None, // nothing to change
     };
+    let media_type = resolve_media_type(
+      &self.specifier,
+      self.maybe_headers.as_ref(),
+      self.maybe_language_id,
+      maybe_node_resolver,
+    );
+    // check if the media type has changed
+    if let Ok(parsed_source) = &parsed_source_result {
+      if parsed_source.media_type() != media_type {
+        parsed_source_result =
+          parse_source(&self.specifier, self.text_info.clone(), media_type);
+      }
+    }
+
     let maybe_module = Some(analyze_module(
       &self.specifier,
       &parsed_source_result,
@@ -363,6 +388,7 @@ impl Document {
       maybe_headers: self.maybe_headers.clone(),
       maybe_language_id: self.maybe_language_id,
       maybe_lsp_version: self.maybe_lsp_version,
+      media_type,
       text_info: self.text_info.clone(),
       specifier: self.specifier.clone(),
     }))
@@ -375,15 +401,23 @@ impl Document {
     content: Arc<str>,
     cache: &Arc<dyn HttpCache>,
     resolver: &dyn deno_graph::source::Resolver,
+    maybe_node_resolver: Option<&CliNodeResolver>,
     npm_resolver: &dyn deno_graph::source::NpmResolver,
   ) -> Arc<Self> {
     let maybe_headers = language_id.as_headers();
     let text_info = SourceTextInfo::new(content);
+    let media_type = resolve_media_type(
+      &specifier,
+      maybe_headers,
+      Some(language_id),
+      maybe_node_resolver,
+    );
     let (maybe_parsed_source, maybe_module) = if language_id.is_diagnosable() {
       parse_and_analyze_module(
         &specifier,
         text_info.clone(),
         maybe_headers,
+        media_type,
         resolver,
         npm_resolver,
       )
@@ -405,6 +439,7 @@ impl Document {
       maybe_navigation_tree: Mutex::new(None),
       maybe_parsed_source: maybe_parsed_source
         .filter(|_| specifier.scheme() == "file"),
+      media_type,
       text_info,
       specifier,
     })
@@ -434,6 +469,7 @@ impl Document {
       }
     }
     let text_info = SourceTextInfo::from_string(content);
+    let media_type = self.media_type;
     let (maybe_parsed_source, maybe_module) = if self
       .maybe_language_id
       .as_ref()
@@ -448,6 +484,7 @@ impl Document {
         &self.specifier,
         text_info.clone(),
         maybe_headers,
+        media_type,
         resolver,
         npm_resolver,
       )
@@ -477,6 +514,7 @@ impl Document {
         .filter(|_| self.specifier.scheme() == "file"),
       maybe_lsp_version: Some(version),
       maybe_navigation_tree: Mutex::new(None),
+      media_type,
     }))
   }
 
@@ -494,6 +532,7 @@ impl Document {
       maybe_parsed_source: self.maybe_parsed_source.clone(),
       maybe_lsp_version: self.maybe_lsp_version,
       maybe_navigation_tree: Mutex::new(None),
+      media_type: self.media_type,
     })
   }
 
@@ -554,18 +593,7 @@ impl Document {
   }
 
   pub fn media_type(&self) -> MediaType {
-    if let Some(Ok(module)) = &self.maybe_module {
-      return module.media_type;
-    }
-    let specifier_media_type = MediaType::from_specifier(&self.specifier);
-    if specifier_media_type != MediaType::Unknown {
-      return specifier_media_type;
-    }
-
-    self
-      .maybe_language_id
-      .map(|id| id.as_media_type())
-      .unwrap_or(MediaType::Unknown)
+    self.media_type
   }
 
   pub fn maybe_language_id(&self) -> Option<LanguageId> {
@@ -627,6 +655,37 @@ impl Document {
         .map(|r| (s.clone(), dep.clone(), r.clone()))
     })
   }
+}
+
+fn resolve_media_type(
+  specifier: &ModuleSpecifier,
+  maybe_headers: Option<&HashMap<String, String>>,
+  maybe_language_id: Option<LanguageId>,
+  maybe_node_resolver: Option<&CliNodeResolver>,
+) -> MediaType {
+  if maybe_headers.is_some() {
+    return MediaType::from_specifier_and_headers(specifier, maybe_headers);
+  }
+
+  if let Some(node_resolver) = maybe_node_resolver {
+    if node_resolver.in_npm_package(specifier) {
+      if let Ok(resolution) =
+        node_resolver.url_to_node_resolution(specifier.clone())
+      {
+        let (_, media_type) =
+          NodeResolution::into_specifier_and_media_type(Some(resolution));
+        return media_type;
+      }
+    }
+  }
+  let specifier_media_type = MediaType::from_specifier(specifier);
+  if specifier_media_type != MediaType::Unknown {
+    return specifier_media_type;
+  }
+
+  maybe_language_id
+    .map(|id| id.as_media_type())
+    .unwrap_or(MediaType::Unknown)
 }
 
 pub fn to_lsp_range(range: &deno_graph::Range) -> lsp::Range {
@@ -712,6 +771,7 @@ impl FileSystemDocuments {
     cache: &Arc<dyn HttpCache>,
     resolver: &dyn deno_graph::source::Resolver,
     specifier: &ModuleSpecifier,
+    maybe_node_resolver: Option<&CliNodeResolver>,
     npm_resolver: &dyn deno_graph::source::NpmResolver,
   ) -> Option<Arc<Document>> {
     let fs_version = if specifier.scheme() == "data" {
@@ -724,7 +784,13 @@ impl FileSystemDocuments {
       != fs_version
     {
       // attempt to update the file on the file system
-      self.refresh_document(cache, resolver, specifier, npm_resolver)
+      self.refresh_document(
+        cache,
+        resolver,
+        specifier,
+        maybe_node_resolver,
+        npm_resolver,
+      )
     } else {
       file_system_doc
     }
@@ -737,6 +803,7 @@ impl FileSystemDocuments {
     cache: &Arc<dyn HttpCache>,
     resolver: &dyn deno_graph::source::Resolver,
     specifier: &ModuleSpecifier,
+    maybe_node_resolver: Option<&CliNodeResolver>,
     npm_resolver: &dyn deno_graph::source::NpmResolver,
   ) -> Option<Arc<Document>> {
     let doc = if specifier.scheme() == "file" {
@@ -751,6 +818,7 @@ impl FileSystemDocuments {
         None,
         SourceTextInfo::from_string(content),
         resolver,
+        maybe_node_resolver,
         npm_resolver,
       )
     } else if specifier.scheme() == "data" {
@@ -764,6 +832,7 @@ impl FileSystemDocuments {
         None,
         SourceTextInfo::from_string(source),
         resolver,
+        maybe_node_resolver,
         npm_resolver,
       )
     } else {
@@ -791,6 +860,7 @@ impl FileSystemDocuments {
         maybe_headers,
         SourceTextInfo::from_string(content),
         resolver,
+        maybe_node_resolver,
         npm_resolver,
       )
     };
@@ -837,6 +907,8 @@ pub struct Documents {
   /// Any imports to the context supplied by configuration files. This is like
   /// the imports into the a module graph in CLI.
   imports: Arc<IndexMap<ModuleSpecifier, GraphImport>>,
+  /// Resolver for node_modules.
+  maybe_node_resolver: Option<Arc<CliNodeResolver>>,
   /// A resolver that takes into account currently loaded import map and JSX
   /// settings.
   resolver: Arc<CliGraphResolver>,
@@ -861,6 +933,7 @@ impl Documents {
       open_docs: HashMap::default(),
       file_system_docs: Default::default(),
       imports: Default::default(),
+      maybe_node_resolver: None,
       resolver: Arc::new(CliGraphResolver::new(CliGraphResolverOptions {
         node_resolver: None,
         npm_resolver: None,
@@ -908,6 +981,7 @@ impl Documents {
       content,
       &self.cache,
       resolver,
+      self.maybe_node_resolver.as_deref(),
       npm_resolver,
     );
 
@@ -1102,6 +1176,7 @@ impl Documents {
         &self.cache,
         self.get_resolver(),
         &specifier,
+        self.maybe_node_resolver.as_deref(),
         self.get_npm_resolver(),
       )
     }
@@ -1281,6 +1356,7 @@ impl Documents {
   ) {
     let config_data = config.tree.root_data();
     let config_file = config_data.and_then(|d| d.config_file.as_deref());
+    self.maybe_node_resolver = node_resolver.clone();
     self.resolver = Arc::new(CliGraphResolver::new(CliGraphResolverOptions {
       node_resolver,
       npm_resolver,
@@ -1352,9 +1428,11 @@ impl Documents {
         if !config.specifier_enabled(doc.specifier()) {
           continue;
         }
-        if let Some(new_doc) =
-          doc.maybe_with_new_resolver(resolver, npm_resolver)
-        {
+        if let Some(new_doc) = doc.maybe_with_new_resolver(
+          resolver,
+          self.maybe_node_resolver.as_deref(),
+          npm_resolver,
+        ) {
           *doc = new_doc;
         }
       }
@@ -1362,9 +1440,11 @@ impl Documents {
         if !config.specifier_enabled(doc.specifier()) {
           continue;
         }
-        if let Some(new_doc) =
-          doc.maybe_with_new_resolver(resolver, npm_resolver)
-        {
+        if let Some(new_doc) = doc.maybe_with_new_resolver(
+          resolver,
+          self.maybe_node_resolver.as_deref(),
+          npm_resolver,
+        ) {
           *doc.value_mut() = new_doc;
         }
       }
@@ -1385,6 +1465,7 @@ impl Documents {
             &self.cache,
             resolver,
             specifier,
+            self.maybe_node_resolver.as_deref(),
             npm_resolver,
           );
         }
@@ -1628,10 +1709,11 @@ fn parse_and_analyze_module(
   specifier: &ModuleSpecifier,
   text_info: SourceTextInfo,
   maybe_headers: Option<&HashMap<String, String>>,
+  media_type: MediaType,
   resolver: &dyn deno_graph::source::Resolver,
   npm_resolver: &dyn deno_graph::source::NpmResolver,
 ) -> (Option<ParsedSourceResult>, Option<ModuleResult>) {
-  let parsed_source_result = parse_source(specifier, text_info, maybe_headers);
+  let parsed_source_result = parse_source(specifier, text_info, media_type);
   let module_result = analyze_module(
     specifier,
     &parsed_source_result,
@@ -1645,12 +1727,12 @@ fn parse_and_analyze_module(
 fn parse_source(
   specifier: &ModuleSpecifier,
   text_info: SourceTextInfo,
-  maybe_headers: Option<&HashMap<String, String>>,
+  media_type: MediaType,
 ) -> ParsedSourceResult {
   deno_ast::parse_module(deno_ast::ParseParams {
     specifier: specifier.clone(),
     text_info,
-    media_type: MediaType::from_specifier_and_headers(specifier, maybe_headers),
+    media_type,
     capture_tokens: true,
     scope_analysis: true,
     maybe_syntax: None,
