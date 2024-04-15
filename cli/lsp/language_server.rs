@@ -176,6 +176,7 @@ pub struct StateNpmSnapshot {
 /// Snapshot of the state used by TSC.
 #[derive(Clone, Debug)]
 pub struct StateSnapshot {
+  pub project_version: usize,
   pub assets: AssetsSnapshot,
   pub cache_metadata: cache::CacheMetadata,
   pub config: Arc<ConfigSnapshot>,
@@ -254,6 +255,7 @@ pub struct Inner {
   maybe_testing_server: Option<testing::TestServer>,
   /// Services used for dealing with npm related functionality.
   npm: LspNpmServices,
+  project_version: usize,
   /// A collection of measurements which instrument that performance of the LSP.
   performance: Arc<Performance>,
   /// A memoized version of fixable diagnostic codes retrieved from TypeScript.
@@ -537,6 +539,7 @@ impl Inner {
       initial_cwd: initial_cwd.clone(),
       jsr_search_api,
       maybe_global_cache_path: None,
+      project_version: 0,
       task_queue: Default::default(),
       maybe_testing_server: None,
       module_registries,
@@ -669,6 +672,7 @@ impl Inner {
         }
       });
     Arc::new(StateSnapshot {
+      project_version: self.project_version,
       assets: self.assets.snapshot(),
       cache_metadata: self.cache_metadata.clone(),
       config: self.config.snapshot(),
@@ -1190,15 +1194,7 @@ impl Inner {
     // a @types/node package and now's a good time to do that anyway
     self.refresh_npm_specifiers().await;
 
-    self
-      .ts_server
-      .project_changed(
-        self.snapshot(),
-        &[],
-        self.documents.project_version(),
-        true,
-      )
-      .await;
+    self.project_changed(&[], true).await;
   }
 
   fn shutdown(&self) -> LspResult<()> {
@@ -1233,15 +1229,8 @@ impl Inner {
       params.text_document.language_id.parse().unwrap(),
       params.text_document.text.into(),
     );
-    let version = self.documents.project_version();
     self
-      .ts_server
-      .project_changed(
-        self.snapshot(),
-        &[(document.specifier(), ChangeKind::Opened)],
-        version,
-        false,
-      )
+      .project_changed(&[(document.specifier(), ChangeKind::Opened)], false)
       .await;
 
     self.performance.measure(mark);
@@ -1260,13 +1249,9 @@ impl Inner {
     ) {
       Ok(document) => {
         if document.is_diagnosable() {
-          let version = self.documents.project_version();
           self
-            .ts_server
             .project_changed(
-              self.snapshot(),
               &[(document.specifier(), ChangeKind::Modified)],
-              version,
               false,
             )
             .await;
@@ -1320,15 +1305,8 @@ impl Inner {
     if let Err(err) = self.documents.close(&specifier) {
       error!("{:#}", err);
     }
-    let version = self.documents.project_version();
     self
-      .ts_server
-      .project_changed(
-        self.snapshot(),
-        &[(&specifier, ChangeKind::Closed)],
-        version,
-        false,
-      )
+      .project_changed(&[(&specifier, ChangeKind::Closed)], false)
       .await;
     self.performance.measure(mark);
   }
@@ -3013,6 +2991,18 @@ impl Inner {
 
     self.performance.measure(mark);
     Ok(maybe_symbol_information)
+  }
+
+  async fn project_changed(
+    &mut self,
+    modified_scripts: &[(&ModuleSpecifier, ChangeKind)],
+    config_changed: bool,
+  ) {
+    self.project_version += 1; // increment before getting the snapshot
+    self
+      .ts_server
+      .project_changed(self.snapshot(), modified_scripts, config_changed)
+      .await;
   }
 
   fn send_diagnostics_update(&self) {

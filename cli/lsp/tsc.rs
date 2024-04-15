@@ -306,7 +306,6 @@ impl TsServer {
     &self,
     snapshot: Arc<StateSnapshot>,
     modified_scripts: &[(&ModuleSpecifier, ChangeKind)],
-    new_project_version: String,
     config_changed: bool,
   ) {
     let modified_scripts = modified_scripts
@@ -315,7 +314,9 @@ impl TsServer {
       .collect::<Vec<_>>();
     let req = TscRequest {
       method: "$projectChanged",
-      args: json!([modified_scripts, new_project_version, config_changed,]),
+      args: json!(
+        [modified_scripts, snapshot.project_version, config_changed,]
+      ),
     };
     self
       .request::<()>(snapshot, req)
@@ -340,7 +341,7 @@ impl TsServer {
           .into_iter()
           .map(|s| self.specifier_map.denormalize(&s))
           .collect::<Vec<String>>(),
-        snapshot.documents.project_version()
+        snapshot.project_version,
       ]),
     };
     let raw_diagnostics = self.request_with_cancellation::<HashMap<String, Vec<crate::tsc::Diagnostic>>>(snapshot, req, token).await?;
@@ -4153,12 +4154,12 @@ fn op_ts_config(state: &mut OpState) -> serde_json::Value {
   r
 }
 
-#[op2]
-#[string]
-fn op_project_version(state: &mut OpState) -> String {
+#[op2(fast)]
+#[number]
+fn op_project_version(state: &mut OpState) -> usize {
   let state: &mut State = state.borrow_mut::<State>();
   let mark = state.performance.mark("tsc.op.op_project_version");
-  let r = state.state_snapshot.documents.project_version();
+  let r = state.state_snapshot.project_version;
   state.performance.measure(mark);
   r
 }
@@ -4253,6 +4254,7 @@ deno_core::extension!(deno_tsc,
   state = |state, options| {
     state.put(State::new(
       Arc::new(StateSnapshot {
+        project_version: 0,
         assets: Default::default(),
         cache_metadata: CacheMetadata::new(options.cache.clone()),
         config: Default::default(),
@@ -4723,6 +4725,7 @@ mod tests {
       )
       .await;
     StateSnapshot {
+      project_version: 0,
       documents,
       assets: Default::default(),
       cache_metadata: CacheMetadata::new(cache),
@@ -5178,10 +5181,8 @@ mod tests {
       )
       .unwrap();
     let snapshot = {
-      let mut documents = snapshot.documents.clone();
-      documents.increment_project_version();
       Arc::new(StateSnapshot {
-        documents,
+        project_version: snapshot.project_version + 1,
         ..snapshot.as_ref().clone()
       })
     };
@@ -5189,7 +5190,6 @@ mod tests {
       .project_changed(
         snapshot.clone(),
         &[(&specifier_dep, ChangeKind::Opened)],
-        snapshot.documents.project_version(),
         false,
       )
       .await;
