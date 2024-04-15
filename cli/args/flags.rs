@@ -932,16 +932,21 @@ static ENV_VARIABLES_HELP: &str = color_print::cstr!(
                          private repositories
                          (e.g. "abcde12345@deno.land;54321edcba@github.com")
 
+    <g>DENO_FUTURE</>          Set to "1" to enable APIs that will take effect in
+                         Deno 2
+
     <g>DENO_CERT</>            Load certificate authority from PEM encoded file
 
     <g>DENO_DIR</>             Set the cache directory
 
-    <g>DENO_JOBS</>            Number of parallel workers used for the --parallel
-                         flag with the test subcommand. Defaults to number
-                         of available CPUs.
+
 
     <g>DENO_INSTALL_ROOT</>    Set deno install's output directory
                          (defaults to $HOME/.deno/bin)
+
+    <g>DENO_JOBS</>            Number of parallel workers used for the --parallel
+                         flag with the test subcommand. Defaults to number
+                         of available CPUs.
 
     <g>DENO_REPL_HISTORY</>    Set REPL history file path
                          History file is disabled when the value is empty
