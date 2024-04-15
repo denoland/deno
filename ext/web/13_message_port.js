@@ -88,6 +88,9 @@ const MessageChannelPrototype = MessageChannel.prototype;
 
 const _id = Symbol("id");
 const MessagePortIdSymbol = _id;
+const MessagePortReceiveMessageOnPortSymbol = Symbol(
+  "MessagePortReceiveMessageOnPort",
+);
 const _enabled = Symbol("enabled");
 const _refed = Symbol("refed");
 const nodeWorkerThreadCloseCb = Symbol("nodeWorkerThreadCloseCb");
@@ -128,6 +131,10 @@ class MessagePort extends EventTarget {
 
   constructor() {
     super();
+    ObjectDefineProperty(this, MessagePortReceiveMessageOnPortSymbol, {
+      value: false,
+      enumerable: false,
+    });
     ObjectDefineProperty(this, nodeWorkerThreadCloseCb, {
       value: null,
       enumerable: false,
@@ -189,7 +196,15 @@ class MessagePort extends EventTarget {
             this[_id],
           );
         } catch (err) {
-          if (ObjectPrototypeIsPrototypeOf(InterruptedPrototype, err)) break;
+          if (ObjectPrototypeIsPrototypeOf(InterruptedPrototype, err)) {
+            // If we were interrupted, check if the interruption is coming
+            // from `receiveMessageOnPort` API from Node compat, if so, continue.
+            if (this[MessagePortReceiveMessageOnPortSymbol]) {
+              this[MessagePortReceiveMessageOnPortSymbol] = false;
+              continue;
+            }
+            break;
+          }
           nodeWorkerThreadMaybeInvokeCloseCb(this);
           throw err;
         }
@@ -444,6 +459,7 @@ export {
   MessagePort,
   MessagePortIdSymbol,
   MessagePortPrototype,
+  MessagePortReceiveMessageOnPortSymbol,
   nodeWorkerThreadCloseCb,
   serializeJsMessageData,
   structuredClone,
