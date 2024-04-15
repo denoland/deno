@@ -52,7 +52,6 @@ hyper-util.workspace = true
 once_cell.workspace = true
 os_pipe.workspace = true
 pretty_assertions.workspace = true
-regex = "1.1.0"
 serde.workspace = true
 serde_repr.workspace = true
 test_util.workspace = true

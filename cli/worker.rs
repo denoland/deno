@@ -4,7 +4,6 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
-use std::time::UNIX_EPOCH;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
@@ -56,7 +55,6 @@ use crate::npm::CliNpmResolver;
 use crate::util::checksum;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::file_watcher::WatcherRestartMode;
-use crate::util::path::specifier_to_file_path;
 use crate::version;
 
 pub trait ModuleLoaderFactory: Send + Sync {
@@ -643,15 +641,6 @@ impl CliMainWorkerFactory {
       feature_checker,
       skip_op_registration: shared.options.skip_op_registration,
       v8_code_cache: shared.code_cache.clone(),
-      modified_timestamp_getter: Some(Arc::new(|specifier| {
-        ModuleSpecifier::parse(specifier)
-          .ok()
-          .and_then(|specifier| specifier_to_file_path(&specifier).ok())
-          .and_then(|path| std::fs::metadata(path).ok())
-          .and_then(|m| m.modified().ok())
-          .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
-          .map(|d| d.as_millis() as u64)
-      })),
     };
 
     let mut worker = MainWorker::bootstrap_from_options(

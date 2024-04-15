@@ -303,7 +303,7 @@ impl CacheDB {
   /// Query a row from the database with a mapping function.
   pub fn query_row<T, F>(
     &self,
-    sql: &str,
+    sql: &'static str,
     params: impl Params,
     f: F,
   ) -> Result<Option<T>, AnyError>

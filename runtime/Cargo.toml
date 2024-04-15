@@ -112,6 +112,7 @@ log.workspace = true
 netif = "0.1.6"
 notify.workspace = true
 once_cell.workspace = true
+percent-encoding.workspace = true
 regex.workspace = true
 ring.workspace = true
 rustyline = { workspace = true, features = ["custom-bindings"] }

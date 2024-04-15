@@ -39,6 +39,7 @@ pub static MODULE_INFO_CACHE_DB: CacheDBConfiguration = CacheDBConfiguration {
   on_failure: CacheFailure::InMemory,
 };
 
+#[derive(Debug)]
 pub struct ModuleInfoCacheSourceHash(String);
 
 impl ModuleInfoCacheSourceHash {
@@ -52,6 +53,12 @@ impl ModuleInfoCacheSourceHash {
 
   pub fn as_str(&self) -> &str {
     &self.0
+  }
+}
+
+impl From<ModuleInfoCacheSourceHash> for String {
+  fn from(source_hash: ModuleInfoCacheSourceHash) -> String {
+    source_hash.0
   }
 }
 

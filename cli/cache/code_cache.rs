@@ -2,7 +2,6 @@
 
 use deno_core::error::AnyError;
 use deno_runtime::code_cache;
-use deno_runtime::deno_webstorage::rusqlite;
 use deno_runtime::deno_webstorage::rusqlite::params;
 
 use super::cache_db::CacheDB;
@@ -13,8 +12,7 @@ pub static CODE_CACHE_DB: CacheDBConfiguration = CacheDBConfiguration {
   table_initializer: "CREATE TABLE IF NOT EXISTS codecache (
       specifier TEXT NOT NULL,
       type TEXT NOT NULL,
-      source_hash TEXT DEFAULT NULL,
-      source_timestamp INTEGER DEFAULT NULL,
+      source_hash TEXT NOT NULL,
       data BLOB NOT NULL,
       PRIMARY KEY (specifier, type)
     );",
@@ -56,14 +54,12 @@ impl CodeCache {
     &self,
     specifier: &str,
     code_cache_type: code_cache::CodeCacheType,
-    source_hash: Option<&str>,
-    source_timestamp: Option<u64>,
+    source_hash: &str,
   ) -> Option<Vec<u8>> {
     Self::ensure_ok(self.inner.get_sync(
       specifier,
       code_cache_type,
       source_hash,
-      source_timestamp,
     ))
   }
 
@@ -71,15 +67,13 @@ impl CodeCache {
     &self,
     specifier: &str,
     code_cache_type: code_cache::CodeCacheType,
-    source_hash: Option<&str>,
-    source_timestamp: Option<u64>,
+    source_hash: &str,
     data: &[u8],
   ) {
     Self::ensure_ok(self.inner.set_sync(
       specifier,
       code_cache_type,
       source_hash,
-      source_timestamp,
       data,
     ));
   }
@@ -90,27 +84,19 @@ impl code_cache::CodeCache for CodeCache {
     &self,
     specifier: &str,
     code_cache_type: code_cache::CodeCacheType,
-    source_hash: Option<&str>,
-    source_timestamp: Option<u64>,
+    source_hash: &str,
   ) -> Option<Vec<u8>> {
-    self.get_sync(specifier, code_cache_type, source_hash, source_timestamp)
+    self.get_sync(specifier, code_cache_type, source_hash)
   }
 
   fn set_sync(
     &self,
     specifier: &str,
     code_cache_type: code_cache::CodeCacheType,
-    source_hash: Option<&str>,
-    source_timestamp: Option<u64>,
+    source_hash: &str,
     data: &[u8],
   ) {
-    self.set_sync(
-      specifier,
-      code_cache_type,
-      source_hash,
-      source_timestamp,
-      data,
-    );
+    self.set_sync(specifier, code_cache_type, source_hash, data);
   }
 }
 
@@ -128,66 +114,37 @@ impl CodeCacheInner {
     &self,
     specifier: &str,
     code_cache_type: code_cache::CodeCacheType,
-    source_hash: Option<&str>,
-    source_timestamp: Option<u64>,
+    source_hash: &str,
   ) -> Result<Option<Vec<u8>>, AnyError> {
-    let mut query = "
+    let query = "
       SELECT
         data
       FROM
         codecache
       WHERE
-        specifier=?1 AND type=?2"
-      .to_string();
-    let mut params: Vec<rusqlite::types::Value> = vec![
-      specifier.to_string().into(),
-      code_cache_type.as_str().to_string().into(),
-    ];
-
-    let mut column_index = 3;
-    if let Some(source_hash) = source_hash {
-      query += &format!(" AND source_hash=?{}", column_index);
-      column_index += 1;
-      params.push(source_hash.to_string().into());
-    } else {
-      query += " AND source_hash IS NULL";
-    }
-    if let Some(source_timestamp) = source_timestamp {
-      query += &format!(" AND source_timestamp=?{}", column_index);
-      params.push(source_timestamp.to_string().into());
-    } else {
-      query += " AND source_timestamp IS NULL";
-    }
-    query += " LIMIT 1";
-
-    self
-      .conn
-      .query_row(&query, rusqlite::params_from_iter(params), |row| {
-        let value: Vec<u8> = row.get(0)?;
-        Ok(value)
-      })
+        specifier=?1 AND type=?2 AND source_hash=?3
+      LIMIT 1";
+    let params = params![specifier, code_cache_type.as_str(), source_hash,];
+    self.conn.query_row(query, params, |row| {
+      let value: Vec<u8> = row.get(0)?;
+      Ok(value)
+    })
   }
 
   pub fn set_sync(
     &self,
     specifier: &str,
     code_cache_type: code_cache::CodeCacheType,
-    source_hash: Option<&str>,
-    source_timestamp: Option<u64>,
+    source_hash: &str,
     data: &[u8],
   ) -> Result<(), AnyError> {
     let sql = "
       INSERT OR REPLACE INTO
-        codecache (specifier, type, source_hash, source_timestamp, data)
+        codecache (specifier, type, source_hash, data)
       VALUES
-        (?1, ?2, ?3, ?4, ?5)";
-    let params = params![
-      specifier,
-      code_cache_type.as_str(),
-      source_hash,
-      source_timestamp,
-      data
-    ];
+        (?1, ?2, ?3, ?4)";
+    let params =
+      params![specifier, code_cache_type.as_str(), source_hash, data];
     self.conn.execute(sql, params)?;
     Ok(())
   }
@@ -206,8 +163,7 @@ mod test {
       .get_sync(
         "file:///foo/bar.js",
         code_cache::CodeCacheType::EsModule,
-        Some("hash"),
-        Some(10),
+        "hash",
       )
       .unwrap()
       .is_none());
@@ -216,8 +172,7 @@ mod test {
       .set_sync(
         "file:///foo/bar.js",
         code_cache::CodeCacheType::EsModule,
-        Some("hash"),
-        Some(10),
+        "hash",
         &data_esm,
       )
       .unwrap();
@@ -226,57 +181,27 @@ mod test {
         .get_sync(
           "file:///foo/bar.js",
           code_cache::CodeCacheType::EsModule,
-          Some("hash"),
-          Some(10),
+          "hash",
         )
         .unwrap()
         .unwrap(),
       data_esm
     );
-    assert!(cache
-      .get_sync(
-        "file:///foo/bar.js",
-        code_cache::CodeCacheType::EsModule,
-        Some("hash"),
-        Some(20),
-      )
-      .unwrap()
-      .is_none());
-    assert!(cache
-      .get_sync(
-        "file:///foo/bar.js",
-        code_cache::CodeCacheType::EsModule,
-        Some("hash"),
-        None,
-      )
-      .unwrap()
-      .is_none());
-    assert!(cache
-      .get_sync(
-        "file:///foo/bar.js",
-        code_cache::CodeCacheType::EsModule,
-        None,
-        Some(10),
-      )
-      .unwrap()
-      .is_none());
 
     assert!(cache
       .get_sync(
         "file:///foo/bar.js",
         code_cache::CodeCacheType::Script,
-        Some("hash"),
-        Some(10),
+        "hash",
       )
       .unwrap()
       .is_none());
-    let data_script = vec![1, 2, 3];
+    let data_script = vec![4, 5, 6];
     cache
       .set_sync(
         "file:///foo/bar.js",
         code_cache::CodeCacheType::Script,
-        Some("hash"),
-        Some(10),
+        "hash",
         &data_script,
       )
       .unwrap();
@@ -285,8 +210,7 @@ mod test {
         .get_sync(
           "file:///foo/bar.js",
           code_cache::CodeCacheType::Script,
-          Some("hash"),
-          Some(10),
+          "hash",
         )
         .unwrap()
         .unwrap(),
@@ -297,46 +221,7 @@ mod test {
         .get_sync(
           "file:///foo/bar.js",
           code_cache::CodeCacheType::EsModule,
-          Some("hash"),
-          Some(10),
-        )
-        .unwrap()
-        .unwrap(),
-      data_esm
-    );
-  }
-
-  #[test]
-  pub fn time_stamp_only() {
-    let conn = CacheDB::in_memory(&CODE_CACHE_DB, "1.0.0");
-    let cache = CodeCacheInner::new(conn);
-
-    assert!(cache
-      .get_sync(
-        "file:///foo/bar.js",
-        code_cache::CodeCacheType::Script,
-        None,
-        Some(10),
-      )
-      .unwrap()
-      .is_none());
-    let data_esm = vec![1, 2, 3];
-    cache
-      .set_sync(
-        "file:///foo/bar.js",
-        code_cache::CodeCacheType::Script,
-        None,
-        Some(10),
-        &data_esm,
-      )
-      .unwrap();
-    assert_eq!(
-      cache
-        .get_sync(
-          "file:///foo/bar.js",
-          code_cache::CodeCacheType::Script,
-          None,
-          Some(10),
+          "hash",
         )
         .unwrap()
         .unwrap(),

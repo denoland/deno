@@ -9,8 +9,6 @@ use deno_ast::ModuleSpecifier;
 use deno_config::glob::PathGlobMatch;
 use deno_config::glob::PathOrPattern;
 use deno_config::glob::PathOrPatternSet;
-use deno_core::error::uri_error;
-use deno_core::error::AnyError;
 
 /// Checks if the path has an extension Deno supports for script execution.
 pub fn is_script_ext(path: &Path) -> bool {
@@ -79,49 +77,6 @@ pub fn mapped_specifier_for_tsc(
     }
   } else {
     None
-  }
-}
-
-/// Attempts to convert a specifier to a file path. By default, uses the Url
-/// crate's `to_file_path()` method, but falls back to try and resolve unix-style
-/// paths on Windows.
-pub fn specifier_to_file_path(
-  specifier: &ModuleSpecifier,
-) -> Result<PathBuf, AnyError> {
-  let result = if specifier.scheme() != "file" {
-    Err(())
-  } else if cfg!(windows) {
-    match specifier.to_file_path() {
-      Ok(path) => Ok(path),
-      Err(()) => {
-        // This might be a unix-style path which is used in the tests even on Windows.
-        // Attempt to see if we can convert it to a `PathBuf`. This code should be removed
-        // once/if https://github.com/servo/rust-url/issues/730 is implemented.
-        if specifier.scheme() == "file"
-          && specifier.host().is_none()
-          && specifier.port().is_none()
-          && specifier.path_segments().is_some()
-        {
-          let path_str = specifier.path();
-          match String::from_utf8(
-            percent_encoding::percent_decode(path_str.as_bytes()).collect(),
-          ) {
-            Ok(path_str) => Ok(PathBuf::from(path_str)),
-            Err(_) => Err(()),
-          }
-        } else {
-          Err(())
-        }
-      }
-    }
-  } else {
-    specifier.to_file_path()
-  };
-  match result {
-    Ok(path) => Ok(path),
-    Err(()) => Err(uri_error(format!(
-      "Invalid file path.\n  Specifier: {specifier}"
-    ))),
   }
 }
 
@@ -286,6 +241,8 @@ pub fn to_percent_decoded_str(s: &str) -> String {
 
 #[cfg(test)]
 mod test {
+  use deno_runtime::fs_util::specifier_to_file_path;
+
   use super::*;
 
   #[test]

@@ -19,15 +19,13 @@ pub trait CodeCache: Send + Sync {
     &self,
     specifier: &str,
     code_cache_type: CodeCacheType,
-    source_hash: Option<&str>,
-    source_timestamp: Option<u64>,
+    source_hash: &str,
   ) -> Option<Vec<u8>>;
   fn set_sync(
     &self,
     specifier: &str,
     code_cache_type: CodeCacheType,
-    source_hash: Option<&str>,
-    source_timestamp: Option<u64>,
+    source_hash: &str,
     data: &[u8],
   );
 }

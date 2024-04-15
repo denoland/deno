@@ -45,6 +45,7 @@ use log::debug;
 
 use crate::code_cache::CodeCache;
 use crate::code_cache::CodeCacheType;
+use crate::fs_util::code_timestamp;
 use crate::inspector_server::InspectorServer;
 use crate::ops;
 use crate::permissions::PermissionsContainer;
@@ -53,8 +54,6 @@ use crate::shared::runtime;
 use crate::BootstrapOptions;
 
 pub type FormatJsErrorFn = dyn Fn(&JsError) -> String + Sync + Send;
-
-pub type GetModifiedFileTimeFn = dyn Fn(&str) -> Option<u64>;
 
 pub fn import_meta_resolve_callback(
   loader: &dyn deno_core::ModuleLoader,
@@ -197,10 +196,6 @@ pub struct WorkerOptions {
 
   /// V8 code cache for module and script source code.
   pub v8_code_cache: Option<Arc<dyn CodeCache>>,
-
-  /// Callback for getting the modified timestamp for a module specifier.
-  /// Only works with local file path specifiers.
-  pub modified_timestamp_getter: Option<Arc<GetModifiedFileTimeFn>>,
 }
 
 impl Default for WorkerOptions {
@@ -236,7 +231,6 @@ impl Default for WorkerOptions {
       stdio: Default::default(),
       feature_checker: Default::default(),
       v8_code_cache: Default::default(),
-      modified_timestamp_getter: Default::default(),
     }
   }
 }
@@ -304,6 +298,51 @@ pub fn create_op_metrics(
   }
 
   (op_summary_metrics, op_metrics_factory_fn)
+}
+
+fn get_code_cache(
+  code_cache: Arc<dyn CodeCache>,
+  specifier: &str,
+) -> Option<Vec<u8>> {
+  // Code hashes are not maintained for op_eval_context scripts. Instead we use
+  // the modified timestamp from the local file system.
+  if let Ok(code_timestamp) = code_timestamp(specifier) {
+    code_cache
+      .get_sync(
+        specifier,
+        CodeCacheType::Script,
+        code_timestamp.to_string().as_str(),
+      )
+      .inspect(|_| {
+        // This log line is also used by tests.
+        log::debug!(
+          "V8 code cache hit for script: {specifier}, [{code_timestamp}]"
+        );
+      })
+  } else {
+    None
+  }
+}
+
+fn set_code_cache(
+  code_cache: Arc<dyn CodeCache>,
+  specifier: &str,
+  data: &[u8],
+) {
+  // Code hashes are not maintained for op_eval_context scripts. Instead we use
+  // the modified timestamp from the local file system.
+  if let Ok(code_timestamp) = code_timestamp(specifier) {
+    // This log line is also used by tests.
+    log::debug!(
+      "Updating V8 code cache for script: {specifier}, [{code_timestamp}]",
+    );
+    code_cache.set_sync(
+      specifier,
+      CodeCacheType::Script,
+      code_timestamp.to_string().as_str(),
+      data,
+    );
+  }
 }
 
 impl MainWorker {
@@ -508,49 +547,12 @@ impl MainWorker {
       enable_code_cache: options.v8_code_cache.is_some(),
       eval_context_code_cache_cbs: options.v8_code_cache.map(|cache| {
         let cache_clone = cache.clone();
-        let modified_timestamp_getter =
-          options.modified_timestamp_getter.clone();
-        let modified_timestamp_getter_clone =
-          options.modified_timestamp_getter.clone();
         (
           Box::new(move |specifier: &str| {
-            let code_timestamp = modified_timestamp_getter
-              .as_ref()
-              .and_then(|getter| getter(specifier));
-            Ok(
-              cache
-                .get_sync(
-                  specifier,
-                  CodeCacheType::Script,
-                  None,
-                  code_timestamp,
-                )
-                .map(Cow::from)
-                .inspect(|_| {
-                  log::debug!(
-                    "V8 code cache hit for script: {}, [{}]",
-                    specifier.to_string(),
-                    code_timestamp.unwrap_or(0),
-                  );
-                }),
-            )
+            Ok(get_code_cache(cache.clone(), specifier).map(Cow::Owned))
           }) as Box<dyn Fn(&_) -> _>,
           Box::new(move |specifier: &str, data: &[u8]| {
-            let code_timestamp = modified_timestamp_getter_clone
-              .as_ref()
-              .and_then(|getter| getter(specifier));
-            log::debug!(
-              "Updating code cache for script: {}, [{}]",
-              specifier,
-              code_timestamp.unwrap_or(0)
-            );
-            cache_clone.set_sync(
-              specifier,
-              CodeCacheType::Script,
-              None,
-              code_timestamp,
-              data,
-            );
+            set_code_cache(cache_clone.clone(), specifier, data);
           }) as Box<dyn Fn(&_, &_)>,
         )
       }),

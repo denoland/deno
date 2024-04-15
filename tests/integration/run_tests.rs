@@ -5,7 +5,6 @@ use deno_core::serde_json::json;
 use deno_core::url;
 use deno_fetch::reqwest;
 use pretty_assertions::assert_eq;
-use regex::Regex;
 use std::io::Read;
 use std::io::Write;
 use std::process::Command;
@@ -5181,104 +5180,82 @@ fn run_etag_delete_source_cache() {
 
 #[test]
 fn code_cache_test() {
-  let script_dir = TempDir::new();
-  script_dir.write("main.js", "console.log('Hello World - A');");
-  let prg = util::deno_exe_path();
   let deno_dir = TempDir::new();
+  let test_context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = test_context.temp_dir();
+  temp_dir.write("main.js", "console.log('Hello World - A');");
 
   // First run with no prior cache.
   {
-    let output = Command::new(prg.clone())
+    let output = test_context
+      .new_command()
       .env("DENO_DIR", deno_dir.path())
-      .current_dir(util::testdata_path())
       .arg("run")
       .arg("-Ldebug")
-      .arg(format!("{}/main.js", script_dir.path()))
-      .output()
-      .expect("Failed to spawn script");
+      .arg("main.js")
+      .split_output()
+      .run();
 
-    let str_output = std::str::from_utf8(&output.stdout).unwrap();
-    assert!(str_output.contains("Hello World - A"));
-
-    let debug_output = std::str::from_utf8(&output.stderr).unwrap();
-    // There should be no cache hits yet, and the cache should be created.
-    assert!(!debug_output.contains("V8 code cache hit"));
-    assert!(Regex::new(
-      r"Updating V8 code cache for ES module: file://(.+)/main.js"
-    )
-    .unwrap()
-    .is_match(debug_output));
+    output
+      .assert_stdout_matches_text("Hello World - A[WILDCARD]")
+      .assert_stderr_matches_text("[WILDCARD]Updating V8 code cache for ES module: file:///[WILDCARD]/main.js[WILDCARD]");
+    assert!(!output.stderr().contains("V8 code cache hit"));
 
     // Check that the code cache database exists.
-    let code_cache_path = deno_dir.path().join("code_cache_v1");
+    let code_cache_path = deno_dir.path().join("v8_code_cache_v1");
     assert!(code_cache_path.exists());
   }
 
   // 2nd run with cache.
   {
-    let output = Command::new(prg.clone())
+    let output = test_context
+      .new_command()
       .env("DENO_DIR", deno_dir.path())
-      .current_dir(util::testdata_path())
       .arg("run")
       .arg("-Ldebug")
-      .arg(format!("{}/main.js", script_dir.path()))
-      .output()
-      .expect("Failed to spawn script");
+      .arg("main.js")
+      .split_output()
+      .run();
 
-    let str_output = std::str::from_utf8(&output.stdout).unwrap();
-    assert!(str_output.contains("Hello World - A"));
-
-    let debug_output = std::str::from_utf8(&output.stderr).unwrap();
-    // There should be a cache hit, and the cache should not be created.
-    assert!(Regex::new(
-      r"V8 code cache hit for ES module: file://(.+)/main.js"
-    )
-    .unwrap()
-    .is_match(debug_output));
-    assert!(!debug_output.contains("Updating V8 code cache"));
+    output
+      .assert_stdout_matches_text("Hello World - A[WILDCARD]")
+      .assert_stderr_matches_text("[WILDCARD]V8 code cache hit for ES module: file:///[WILDCARD]/main.js[WILDCARD]");
+    assert!(!output.stderr().contains("Updating V8 code cache"));
   }
 
   // Rerun with --no-code-cache.
   {
-    let output = Command::new(prg.clone())
+    let output = test_context
+      .new_command()
       .env("DENO_DIR", deno_dir.path())
-      .current_dir(util::testdata_path())
       .arg("run")
       .arg("-Ldebug")
       .arg("--no-code-cache")
-      .arg(format!("{}/main.js", script_dir.path()))
-      .output()
-      .expect("Failed to spawn script");
+      .arg("main.js")
+      .split_output()
+      .run();
 
-    let str_output = std::str::from_utf8(&output.stdout).unwrap();
-    assert!(str_output.contains("Hello World - A"));
-
-    let debug_output = std::str::from_utf8(&output.stderr).unwrap();
-    // There should be no cache used.
-    assert!(!debug_output.contains("V8 code cache"));
+    output
+      .assert_stdout_matches_text("Hello World - A[WILDCARD]")
+      .skip_stderr_check();
+    assert!(!output.stderr().contains("V8 code cache"));
   }
 
   // Modify the script, and make sure that the cache is rejected.
-  script_dir.write("main.js", "console.log('Hello World - B');");
+  temp_dir.write("main.js", "console.log('Hello World - B');");
   {
-    let output = Command::new(prg.clone())
+    let output = test_context
+      .new_command()
       .env("DENO_DIR", deno_dir.path())
-      .current_dir(util::testdata_path())
       .arg("run")
       .arg("-Ldebug")
-      .arg(format!("{}/main.js", script_dir.path()))
-      .output()
-      .expect("Failed to spawn script");
+      .arg("main.js")
+      .split_output()
+      .run();
 
-    let str_output = std::str::from_utf8(&output.stdout).unwrap();
-    assert!(str_output.contains("Hello World - B"));
-
-    let debug_output = std::str::from_utf8(&output.stderr).unwrap();
-    assert!(!debug_output.contains("V8 code cache hit"));
-    assert!(Regex::new(
-      r"Updating V8 code cache for ES module: file://(.+)/main.js"
-    )
-    .unwrap()
-    .is_match(debug_output));
+    output
+      .assert_stdout_matches_text("Hello World - B[WILDCARD]")
+      .assert_stderr_matches_text("[WILDCARD]Updating V8 code cache for ES module: file:///[WILDCARD]/main.js[WILDCARD]");
+    assert!(!output.stderr().contains("V8 code cache hit"));
   }
 }

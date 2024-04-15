@@ -19,7 +19,6 @@ use crate::resolver::ModuleCodeStringSource;
 use crate::resolver::NpmModuleLoader;
 use crate::tools::check;
 use crate::tools::check::TypeChecker;
-use crate::util::path::specifier_to_file_path;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::text_encoding::code_without_source_map;
 use crate::util::text_encoding::source_map_from_code;
@@ -55,6 +54,7 @@ use deno_graph::Resolution;
 use deno_lockfile::Lockfile;
 use deno_runtime::code_cache;
 use deno_runtime::deno_node::NodeResolutionMode;
+use deno_runtime::fs_util::code_timestamp;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_terminal::colors;
@@ -63,7 +63,6 @@ use std::pin::Pin;
 use std::rc::Rc;
 use std::str;
 use std::sync::Arc;
-use std::time::UNIX_EPOCH;
 
 pub struct ModuleLoadPreparer {
   options: Arc<CliOptions>,
@@ -472,36 +471,26 @@ impl CliModuleLoader {
     let code_cache = if module_type == ModuleType::JavaScript {
       self.shared.code_cache.as_ref().and_then(|cache| {
         let code_hash = self
-          .shared
-          .module_info_cache
-          .get_module_source_hash(specifier, code_source.media_type)
+          .get_code_hash_or_timestamp(specifier, code_source.media_type)
           .ok()
           .flatten();
-        let code_timestamp = specifier_to_file_path(specifier)
-          .ok()
-          .and_then(|path| std::fs::metadata(path).ok())
-          .and_then(|m| m.modified().ok())
-          .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
-          .map(|d| d.as_millis() as u64);
-        cache
-          .get_sync(
-            specifier.as_str(),
-            code_cache::CodeCacheType::EsModule,
-            code_hash.as_ref().map(|hash| hash.as_str()),
-            code_timestamp,
-          )
-          .map(Cow::from)
-          .inspect(|_| {
-            log::debug!(
-              "V8 code cache hit for ES module: {}, [{},{}]",
-              specifier.to_string(),
-              code_hash
-                .as_ref()
-                .map(|hash| hash.as_str())
-                .unwrap_or("none"),
-              code_timestamp.unwrap_or(0),
-            );
-          })
+        if let Some(code_hash) = code_hash {
+          cache
+            .get_sync(
+              specifier.as_str(),
+              code_cache::CodeCacheType::EsModule,
+              &code_hash,
+            )
+            .map(Cow::from)
+            .inspect(|_| {
+              // This log line is also used by tests.
+              log::debug!(
+                "V8 code cache hit for ES module: {specifier}, [{code_hash:?}]"
+              );
+            })
+        } else {
+          None
+        }
       })
     } else {
       None
@@ -652,6 +641,25 @@ impl CliModuleLoader {
 
     resolution.map_err(|err| err.into())
   }
+
+  fn get_code_hash_or_timestamp(
+    &self,
+    specifier: &ModuleSpecifier,
+    media_type: MediaType,
+  ) -> Result<Option<String>, AnyError> {
+    let hash = self
+      .shared
+      .module_info_cache
+      .get_module_source_hash(specifier, media_type)?;
+    if let Some(hash) = hash {
+      return Ok(Some(hash.into()));
+    }
+
+    // Use the modified timestamp from the local file system if we don't have a hash.
+    let timestamp = code_timestamp(specifier.as_str())
+      .map(|timestamp| timestamp.to_string())?;
+    Ok(Some(timestamp))
+  }
 }
 
 impl ModuleLoader for CliModuleLoader {
@@ -736,33 +744,21 @@ impl ModuleLoader for CliModuleLoader {
     if let Some(cache) = self.shared.code_cache.as_ref() {
       let media_type = MediaType::from_specifier(specifier);
       let code_hash = self
-        .shared
-        .module_info_cache
-        .get_module_source_hash(specifier, media_type)
+        .get_code_hash_or_timestamp(specifier, media_type)
         .ok()
         .flatten();
-      let code_timestamp = specifier_to_file_path(specifier)
-        .ok()
-        .and_then(|path| std::fs::metadata(path).ok())
-        .and_then(|m| m.modified().ok())
-        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
-        .map(|d| d.as_millis() as u64);
-      log::debug!(
-        "Updating V8 code cache for ES module: {}, [{},{}]",
-        specifier,
-        code_hash
-          .as_ref()
-          .map(|hash| hash.as_str())
-          .unwrap_or("none"),
-        code_timestamp.unwrap_or(0)
-      );
-      cache.set_sync(
-        specifier.as_str(),
-        code_cache::CodeCacheType::EsModule,
-        code_hash.as_ref().map(|hash| hash.as_str()),
-        code_timestamp,
-        code_cache,
-      );
+      if let Some(code_hash) = code_hash {
+        // This log line is also used by tests.
+        log::debug!(
+          "Updating V8 code cache for ES module: {specifier}, [{code_hash:?}]"
+        );
+        cache.set_sync(
+          specifier.as_str(),
+          code_cache::CodeCacheType::EsModule,
+          &code_hash,
+          code_cache,
+        );
+      }
     }
     async {}.boxed_local()
   }

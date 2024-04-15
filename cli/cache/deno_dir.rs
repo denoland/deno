@@ -145,7 +145,7 @@ impl DenoDir {
   /// Path for the V8 code cache.
   pub fn code_cache_db_file_path(&self) -> PathBuf {
     // bump this version name to invalidate the entire cache
-    self.root.join("code_cache_v1")
+    self.root.join("v8_code_cache_v1")
   }
 
   /// Path used for the REPL history file.
