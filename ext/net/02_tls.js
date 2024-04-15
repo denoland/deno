@@ -148,13 +148,11 @@ function loadTlsKeyPair(
   certFile,
   key,
   keyFile,
-  privateKey,
-}) {
+) {
   if (internals.future) {
     certFile = undefined;
     certChain = undefined;
     keyFile = undefined;
-    privateKey = undefined;
   }
 
   if ((certFile !== undefined) ^ (keyFile !== undefined)) {
