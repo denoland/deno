@@ -1,2 +1,1 @@
-Warning: disabling flag --expose_wasm due to conflicting flags
-Hello
+Warning: disabling flag --expose_wasm due to conflicting flags[WILDCARD]Hello[WILDCARD]
