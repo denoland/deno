@@ -851,7 +851,6 @@ pub struct Documents {
   redirect_resolver: Arc<RedirectResolver>,
   /// If --unstable-sloppy-imports is enabled.
   unstable_sloppy_imports: bool,
-  project_version: usize,
 }
 
 impl Documents {
@@ -878,7 +877,6 @@ impl Documents {
       has_injected_types_node_package: false,
       redirect_resolver: Arc::new(RedirectResolver::new(cache)),
       unstable_sloppy_imports: false,
-      project_version: 0,
     }
   }
 
@@ -888,14 +886,6 @@ impl Documents {
       .values()
       .flat_map(|i| i.dependencies.values())
       .flat_map(|value| value.get_type().or_else(|| value.get_code()))
-  }
-
-  pub fn project_version(&self) -> String {
-    self.project_version.to_string()
-  }
-
-  pub fn increment_project_version(&mut self) {
-    self.project_version += 1;
   }
 
   /// "Open" a document from the perspective of the editor, meaning that
@@ -925,7 +915,6 @@ impl Documents {
     self.file_system_docs.set_dirty(true);
 
     self.open_docs.insert(specifier, document.clone());
-    self.increment_project_version();
     self.dirty = true;
     document
   }
@@ -957,7 +946,6 @@ impl Documents {
       self.get_npm_resolver(),
     )?;
     self.open_docs.insert(doc.specifier().clone(), doc.clone());
-    self.increment_project_version();
     Ok(doc)
   }
 
@@ -985,7 +973,6 @@ impl Documents {
         .docs
         .insert(specifier.clone(), document);
 
-      self.increment_project_version();
       self.dirty = true;
     }
     Ok(())
