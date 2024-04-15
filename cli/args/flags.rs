@@ -976,12 +976,12 @@ static ENV_VARIABLES_HELP: &str = color_print::cstr!(
     <g>HTTPS_PROXY</>          Proxy address for HTTPS requests
                          (module downloads, fetch)
 
-    <g>NPM_CONFIG_REGISTRY</>  URL to use for the npm registry.
-
     <g>NO_COLOR</>             Set to disable color
 
     <g>NO_PROXY</>             Comma-separated list of hosts which do not use a proxy
-                         (module downloads, fetch)"#
+                         (module downloads, fetch)
+
+    <g>NPM_CONFIG_REGISTRY</>  URL to use for the npm registry."#
 );
 
 static DENO_HELP: &str = concat!(
