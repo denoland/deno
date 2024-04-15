@@ -851,7 +851,6 @@ pub struct Documents {
   redirect_resolver: Arc<RedirectResolver>,
   /// If --unstable-sloppy-imports is enabled.
   unstable_sloppy_imports: bool,
-  project_version: usize,
 }
 
 impl Documents {
@@ -878,7 +877,6 @@ impl Documents {
       has_injected_types_node_package: false,
       redirect_resolver: Arc::new(RedirectResolver::new(cache)),
       unstable_sloppy_imports: false,
-      project_version: 0,
     }
   }
 
@@ -888,14 +886,6 @@ impl Documents {
       .values()
       .flat_map(|i| i.dependencies.values())
       .flat_map(|value| value.get_type().or_else(|| value.get_code()))
-  }
-
-  pub fn project_version(&self) -> String {
-    self.project_version.to_string()
-  }
-
-  pub fn increment_project_version(&mut self) {
-    self.project_version += 1;
   }
 
   /// "Open" a document from the perspective of the editor, meaning that
@@ -925,7 +915,6 @@ impl Documents {
     self.file_system_docs.set_dirty(true);
 
     self.open_docs.insert(specifier, document.clone());
-    self.increment_project_version();
     self.dirty = true;
     document
   }
@@ -957,7 +946,6 @@ impl Documents {
       self.get_npm_resolver(),
     )?;
     self.open_docs.insert(doc.specifier().clone(), doc.clone());
-    self.increment_project_version();
     Ok(doc)
   }
 
@@ -985,7 +973,6 @@ impl Documents {
         .docs
         .insert(specifier.clone(), document);
 
-      self.increment_project_version();
       self.dirty = true;
     }
     Ok(())
@@ -1173,15 +1160,11 @@ impl Documents {
   /// tsc when type checking.
   pub fn resolve(
     &self,
-    specifiers: Vec<String>,
-    referrer_doc: &AssetOrDocument,
+    specifiers: &[String],
+    referrer: &ModuleSpecifier,
     maybe_npm: Option<&StateNpmSnapshot>,
   ) -> Vec<Option<(ModuleSpecifier, MediaType)>> {
-    let referrer = referrer_doc.specifier();
-    let dependencies = match referrer_doc {
-      AssetOrDocument::Asset(_) => None,
-      AssetOrDocument::Document(doc) => Some(doc.dependencies.clone()),
-    };
+    let dependencies = self.get(referrer).map(|d| d.dependencies.clone());
     let mut results = Vec::new();
     for specifier in specifiers {
       if let Some(npm) = maybe_npm {
@@ -1191,7 +1174,7 @@ impl Documents {
             npm
               .node_resolver
               .resolve(
-                &specifier,
+                specifier,
                 referrer,
                 NodeResolutionMode::Types,
                 &PermissionsContainer::allow_all(),
@@ -1203,14 +1186,14 @@ impl Documents {
         }
       }
       if specifier.starts_with("asset:") {
-        if let Ok(specifier) = ModuleSpecifier::parse(&specifier) {
+        if let Ok(specifier) = ModuleSpecifier::parse(specifier) {
           let media_type = MediaType::from_specifier(&specifier);
           results.push(Some((specifier, media_type)));
         } else {
           results.push(None);
         }
       } else if let Some(dep) =
-        dependencies.as_ref().and_then(|d| d.deps.get(&specifier))
+        dependencies.as_ref().and_then(|d| d.deps.get(specifier))
       {
         if let Some(specifier) = dep.maybe_type.maybe_specifier() {
           results.push(self.resolve_dependency(specifier, maybe_npm, referrer));
@@ -1220,18 +1203,28 @@ impl Documents {
           results.push(None);
         }
       } else if let Some(specifier) = self
-        .resolve_imports_dependency(&specifier)
+        .resolve_imports_dependency(specifier)
         .and_then(|r| r.maybe_specifier())
       {
         results.push(self.resolve_dependency(specifier, maybe_npm, referrer));
       } else if let Ok(npm_req_ref) =
-        NpmPackageReqReference::from_str(&specifier)
+        NpmPackageReqReference::from_str(specifier)
       {
         results.push(node_resolve_npm_req_ref(
           &npm_req_ref,
           maybe_npm,
           referrer,
         ));
+      } else if let Ok(specifier) = self.get_resolver().resolve(
+        specifier,
+        &deno_graph::Range {
+          specifier: referrer.clone(),
+          start: deno_graph::Position::zeroed(),
+          end: deno_graph::Position::zeroed(),
+        },
+        ResolutionMode::Types,
+      ) {
+        results.push(self.resolve_dependency(&specifier, maybe_npm, referrer));
       } else {
         results.push(None);
       }
@@ -1495,7 +1488,9 @@ impl Documents {
     if let Ok(npm_ref) = NpmPackageReqReference::from_specifier(specifier) {
       return node_resolve_npm_req_ref(&npm_ref, maybe_npm, referrer);
     }
-    let doc = self.get(specifier)?;
+    let Some(doc) = self.get(specifier) else {
+      return Some((specifier.clone(), MediaType::from_specifier(specifier)));
+    };
     let maybe_module = doc.maybe_js_module().and_then(|r| r.as_ref().ok());
     let maybe_types_dependency = maybe_module
       .and_then(|m| m.maybe_types_dependency.as_ref().map(|d| &d.dependency));
