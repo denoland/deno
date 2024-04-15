@@ -25,7 +25,12 @@ const { ObjectDefineProperty } = primordials;
  */
 function createHttpClient(options) {
   options.caCerts ??= [];
-  const keyPair = loadTlsKeyPair("Deno.createHttpClient", options);
+  const keyPair = loadTlsKeyPair(
+    options.cert,
+    undefined,
+    options.key,
+    undefined,
+  );
   return new HttpClient(
     op_fetch_custom_client(
       options,

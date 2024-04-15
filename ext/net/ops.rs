@@ -298,6 +298,17 @@ pub async fn op_net_connect_tcp<NP>(
 where
   NP: NetPermissions + 'static,
 {
+  op_net_connect_tcp_inner::<NP>(state, addr).await
+}
+
+#[inline]
+pub async fn op_net_connect_tcp_inner<NP>(
+  state: Rc<RefCell<OpState>>,
+  addr: IpAddr,
+) -> Result<(ResourceId, IpAddr, IpAddr), AnyError>
+where
+  NP: NetPermissions + 'static,
+{
   {
     let mut state_ = state.borrow_mut();
     state_
@@ -627,6 +638,15 @@ pub fn op_set_nodelay(
   #[smi] rid: ResourceId,
   nodelay: bool,
 ) -> Result<(), AnyError> {
+  op_set_nodelay_inner(state, rid, nodelay)
+}
+
+#[inline]
+pub fn op_set_nodelay_inner(
+  state: &mut OpState,
+  rid: ResourceId,
+  nodelay: bool,
+) -> Result<(), AnyError> {
   let resource: Rc<TcpStreamResource> =
     state.resource_table.get::<TcpStreamResource>(rid)?;
   resource.set_nodelay(nodelay)
@@ -636,6 +656,15 @@ pub fn op_set_nodelay(
 pub fn op_set_keepalive(
   state: &mut OpState,
   #[smi] rid: ResourceId,
+  keepalive: bool,
+) -> Result<(), AnyError> {
+  op_set_keepalive_inner(state, rid, keepalive)
+}
+
+#[inline]
+pub fn op_set_keepalive_inner(
+  state: &mut OpState,
+  rid: ResourceId,
   keepalive: bool,
 ) -> Result<(), AnyError> {
   let resource: Rc<TcpStreamResource> =
@@ -969,7 +998,7 @@ mod tests {
   #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
   async fn tcp_set_no_delay() {
     let set_nodelay = Box::new(|state: &mut OpState, rid| {
-      op_set_nodelay::call(state, rid, true).unwrap();
+      op_set_nodelay_inner(state, rid, true).unwrap();
     });
     let test_fn = Box::new(|socket: SockRef| {
       assert!(socket.nodelay().unwrap());
@@ -981,7 +1010,7 @@ mod tests {
   #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
   async fn tcp_set_keepalive() {
     let set_keepalive = Box::new(|state: &mut OpState, rid| {
-      op_set_keepalive::call(state, rid, true).unwrap();
+      op_set_keepalive_inner(state, rid, true).unwrap();
     });
     let test_fn = Box::new(|socket: SockRef| {
       assert!(!socket.nodelay().unwrap());
@@ -1032,7 +1061,7 @@ mod tests {
     };
 
     let mut connect_fut =
-      op_net_connect_tcp::<TestPermission>::call(conn_state, ip_addr)
+      op_net_connect_tcp_inner::<TestPermission>(conn_state, ip_addr)
         .boxed_local();
     let mut rid = None;
 

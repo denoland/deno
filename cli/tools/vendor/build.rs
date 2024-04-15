@@ -2,7 +2,6 @@
 
 use std::fmt::Write as _;
 use std::path::Path;
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
@@ -34,19 +33,13 @@ use super::specifiers::is_remote_specifier;
 
 /// Allows substituting the environment for testing purposes.
 pub trait VendorEnvironment {
-  fn cwd(&self) -> Result<PathBuf, AnyError>;
   fn create_dir_all(&self, dir_path: &Path) -> Result<(), AnyError>;
   fn write_file(&self, file_path: &Path, bytes: &[u8]) -> Result<(), AnyError>;
-  fn path_exists(&self, path: &Path) -> bool;
 }
 
 pub struct RealVendorEnvironment;
 
 impl VendorEnvironment for RealVendorEnvironment {
-  fn cwd(&self) -> Result<PathBuf, AnyError> {
-    Ok(std::env::current_dir()?)
-  }
-
   fn create_dir_all(&self, dir_path: &Path) -> Result<(), AnyError> {
     Ok(std::fs::create_dir_all(dir_path)?)
   }
@@ -54,10 +47,6 @@ impl VendorEnvironment for RealVendorEnvironment {
   fn write_file(&self, file_path: &Path, bytes: &[u8]) -> Result<(), AnyError> {
     std::fs::write(file_path, bytes)
       .with_context(|| format!("Failed writing {}", file_path.display()))
-  }
-
-  fn path_exists(&self, path: &Path) -> bool {
-    path.exists()
   }
 }
 
