@@ -12287,3 +12287,47 @@ fn lsp_uses_lockfile_for_npm_initialization() {
   assert_eq!(skipping_count, 1);
   client.shutdown();
 }
+
+#[test]
+fn lsp_cjs_internal_types_default_export() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .add_npm_env_vars()
+    .env("DENO_FUTURE", "1")
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("deno.json", r#"{}"#);
+  temp_dir.write(
+    "package.json",
+    r#"{
+  "dependencies": {
+    "@denotest/cjs-internal-types-default-export": "*"
+  }
+}"#,
+  );
+  context.run_npm("install");
+
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let main_url = temp_dir.path().join("main.ts").uri_file();
+  client.did_open(
+    json!({
+      "textDocument": {
+        "uri": main_url,
+        "languageId": "typescript",
+        "version": 1,
+        "text": "import * as mod from '@denotest/cjs-internal-types-default-export';\nmod.",
+      }
+    }),
+  );
+  let list =
+    client.get_completion_list(main_url, (1, 4), json!({ "triggerKind": 1 }));
+  assert!(!list.is_incomplete);
+  let items = list
+    .items
+    .iter()
+    .map(|item| item.label.clone())
+    .collect::<Vec<_>>();
+  assert_eq!(items, vec!["add"]);
+}

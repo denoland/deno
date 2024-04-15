@@ -69,6 +69,7 @@ struct StepMetaData {
   pub clean_deno_dir: bool,
   pub args: VecOrString,
   pub cwd: Option<String>,
+  pub command_name: Option<String>,
   #[serde(default)]
   pub envs: HashMap<String, String>,
   pub output: String,
@@ -180,6 +181,10 @@ fn run_test(
     };
     let command = match &step.cwd {
       Some(cwd) => command.current_dir(cwd),
+      None => command,
+    };
+    let command = match &step.command_name {
+      Some(command_name) => command.name(command_name),
       None => command,
     };
     let output = command.run();
