@@ -364,14 +364,11 @@ impl LanguageServer {
           .client
           .show_message(MessageType::WARNING, err);
       }
-      {
-        let mut inner = self.0.write().await;
-        let lockfile = inner.config.tree.root_lockfile().cloned();
-        inner.documents.refresh_lockfile(lockfile);
-        inner.refresh_npm_specifiers().await;
-      }
-      // now refresh the data in a read
-      self.0.read().await.post_cache(result.mark).await;
+      let mut inner = self.0.write().await;
+      let lockfile = inner.config.tree.root_lockfile().cloned();
+      inner.documents.refresh_lockfile(lockfile);
+      inner.refresh_npm_specifiers().await;
+      inner.post_cache(result.mark).await;
     }
     Ok(Some(json!(true)))
   }
@@ -1421,7 +1418,16 @@ impl Inner {
       self.recreate_npm_services_if_necessary().await;
       self.refresh_documents_config().await;
       self.diagnostics_server.invalidate_all();
-      self.ts_server.restart(self.snapshot()).await;
+      self
+        .project_changed(
+          &changes
+            .iter()
+            .map(|(s, _)| (s, ChangeKind::Modified))
+            .collect::<Vec<_>>(),
+          false,
+        )
+        .await;
+      self.ts_server.cleanup_semantic_cache(self.snapshot()).await;
       self.send_diagnostics_update();
       self.send_testing_update();
     }
@@ -3544,13 +3550,14 @@ impl Inner {
     }))
   }
 
-  async fn post_cache(&self, mark: PerformanceMark) {
+  async fn post_cache(&mut self, mark: PerformanceMark) {
     // Now that we have dependencies loaded, we need to re-analyze all the files.
     // For that we're invalidating all the existing diagnostics and restarting
     // the language server for TypeScript (as it might hold to some stale
     // documents).
     self.diagnostics_server.invalidate_all();
-    self.ts_server.restart(self.snapshot()).await;
+    self.project_changed(&[], false).await;
+    self.ts_server.cleanup_semantic_cache(self.snapshot()).await;
     self.send_diagnostics_update();
     self.send_testing_update();
 

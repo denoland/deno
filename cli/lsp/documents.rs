@@ -1015,6 +1015,11 @@ impl Documents {
     Ok(())
   }
 
+  pub fn release(&self, specifier: &ModuleSpecifier) {
+    self.file_system_docs.remove_document(specifier);
+    self.file_system_docs.set_dirty(true);
+  }
+
   /// Return `true` if the provided specifier can be resolved to a document,
   /// otherwise `false`.
   pub fn contains_import(
