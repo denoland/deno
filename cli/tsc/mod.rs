@@ -508,7 +508,20 @@ fn op_load_inner(
     } else {
       &specifier
     };
-    let maybe_source = if let Some(module) = graph.get(specifier) {
+    let maybe_module = match graph.try_get(specifier) {
+      Ok(maybe_module) => maybe_module,
+      Err(err) => match err {
+        deno_graph::ModuleError::UnsupportedMediaType(_, media_type, _) => {
+          return Ok(Some(LoadResponse {
+            data: "".to_string(),
+            version: Some("1".to_string()),
+            script_kind: as_ts_script_kind(*media_type),
+          }))
+        }
+        _ => None,
+      },
+    };
+    let maybe_source = if let Some(module) = maybe_module {
       match module {
         Module::Js(module) => {
           media_type = module.media_type;
@@ -674,7 +687,20 @@ fn resolve_graph_specifier_types(
   state: &State,
 ) -> Result<Option<(ModuleSpecifier, MediaType)>, AnyError> {
   let graph = &state.graph;
-  let maybe_module = graph.get(specifier);
+  let maybe_module = match graph.try_get(specifier) {
+    Ok(Some(module)) => Some(module),
+    Ok(None) => None,
+    Err(err) => match err {
+      deno_graph::ModuleError::UnsupportedMediaType(
+        specifier,
+        media_type,
+        _,
+      ) => {
+        return Ok(Some((specifier.clone(), *media_type)));
+      }
+      _ => None,
+    },
+  };
   // follow the types reference directive, which may be pointing at an npm package
   let maybe_module = match maybe_module {
     Some(Module::Js(module)) => {
