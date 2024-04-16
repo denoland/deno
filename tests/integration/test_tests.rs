@@ -63,6 +63,12 @@ itest!(fail {
   output: "test/fail.out",
 });
 
+itest!(fail_with_contain_unicode_filename {
+  args: "test test/fail_with_contain_unicode_filename🦕.ts",
+  exit_code: 1,
+  output: "test/fail_with_contain_unicode_filename🦕.out",
+});
+
 itest!(collect {
   args: "test --ignore=test/collect/ignore test/collect",
   exit_code: 0,
