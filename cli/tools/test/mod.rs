@@ -50,6 +50,7 @@ use deno_core::unsync::spawn_blocking;
 use deno_core::url::Url;
 use deno_core::v8;
 use deno_core::ModuleSpecifier;
+use deno_core::OpState;
 use deno_core::PollEventLoopOptions;
 use deno_runtime::deno_io::Stdio;
 use deno_runtime::deno_io::StdioPipe;
@@ -67,6 +68,7 @@ use rand::SeedableRng;
 use regex::Regex;
 use serde::Deserialize;
 use std::borrow::Cow;
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
@@ -605,15 +607,13 @@ async fn configure_main_worker(
     Err(error) => {
       // TODO(mmastrac): It would be nice to avoid having this error pattern repeated
       if error.is::<JsError>() {
-        worker
-          .js_runtime
-          .op_state()
-          .borrow_mut()
-          .borrow_mut::<TestEventSender>()
-          .send(TestEvent::UncaughtError(
+        send_test_event(
+          &worker.js_runtime.op_state(),
+          TestEvent::UncaughtError(
             specifier.to_string(),
             Box::new(error.downcast::<JsError>().unwrap()),
-          ))?;
+          ),
+        )?;
         Ok(())
       } else {
         Err(error)
@@ -658,15 +658,13 @@ pub async fn test_specifier(
     Err(error) => {
       // TODO(mmastrac): It would be nice to avoid having this error pattern repeated
       if error.is::<JsError>() {
-        worker
-          .js_runtime
-          .op_state()
-          .borrow_mut()
-          .borrow_mut::<TestEventSender>()
-          .send(TestEvent::UncaughtError(
+        send_test_event(
+          &worker.js_runtime.op_state(),
+          TestEvent::UncaughtError(
             specifier.to_string(),
             Box::new(error.downcast::<JsError>().unwrap()),
-          ))?;
+          ),
+        )?;
         Ok(())
       } else {
         Err(error)
@@ -747,33 +745,41 @@ pub async fn poll_event_loop(worker: &mut MainWorker) -> Result<(), AnyError> {
   .await
 }
 
+pub fn send_test_event(
+  op_state: &RefCell<OpState>,
+  event: TestEvent,
+) -> Result<(), AnyError> {
+  Ok(
+    op_state
+      .borrow_mut()
+      .borrow_mut::<TestEventSender>()
+      .send(event)?,
+  )
+}
+
 pub async fn run_tests_for_worker(
   worker: &mut MainWorker,
   specifier: &ModuleSpecifier,
   options: &TestSpecifierOptions,
   fail_fast_tracker: &FailFastTracker,
 ) -> Result<(), AnyError> {
-  let (TestContainer(tests, test_functions), mut sender) = {
-    let state_rc = worker.js_runtime.op_state();
-    let mut state = state_rc.borrow_mut();
-    (
-      state.take::<TestContainer>(),
-      state.take::<TestEventSender>(),
-    )
-  };
+  let state_rc = worker.js_runtime.op_state();
+  let TestContainer(tests, test_functions) =
+    state_rc.borrow_mut().take::<TestContainer>();
+
   let tests: Arc<TestDescriptions> = tests.into();
-  sender.send(TestEvent::Register(tests.clone()))?;
+  send_test_event(&state_rc, TestEvent::Register(tests.clone()))?;
   let res = run_tests_for_worker_inner(
     worker,
     specifier,
     tests,
     test_functions,
-    &mut sender,
     options,
     fail_fast_tracker,
   )
   .await;
-  _ = sender.send(TestEvent::Completed);
+
+  _ = send_test_event(&state_rc, TestEvent::Completed);
   res
 }
 
@@ -782,11 +788,11 @@ async fn run_tests_for_worker_inner(
   specifier: &ModuleSpecifier,
   tests: Arc<TestDescriptions>,
   test_functions: Vec<v8::Global<v8::Function>>,
-  sender: &mut TestEventSender,
   options: &TestSpecifierOptions,
   fail_fast_tracker: &FailFastTracker,
 ) -> Result<(), AnyError> {
   let unfiltered = tests.len();
+  let state_rc = worker.js_runtime.op_state();
 
   // Build the test plan in a single pass
   let mut tests_to_run = Vec::with_capacity(tests.len());
@@ -814,12 +820,15 @@ async fn run_tests_for_worker_inner(
     tests_to_run.shuffle(&mut SmallRng::seed_from_u64(seed));
   }
 
-  sender.send(TestEvent::Plan(TestPlan {
-    origin: specifier.to_string(),
-    total: tests_to_run.len(),
-    filtered_out: unfiltered - tests_to_run.len(),
-    used_only,
-  }))?;
+  send_test_event(
+    &state_rc,
+    TestEvent::Plan(TestPlan {
+      origin: specifier.to_string(),
+      total: tests_to_run.len(),
+      filtered_out: unfiltered - tests_to_run.len(),
+      used_only,
+    }),
+  )?;
 
   let mut had_uncaught_error = false;
   let stats = worker.js_runtime.runtime_activity_stats_factory();
@@ -874,14 +883,20 @@ async fn run_tests_for_worker_inner(
       .try_take::<deno_runtime::deno_fetch::reqwest::Client>();
 
     if desc.ignore {
-      sender.send(TestEvent::Result(desc.id, TestResult::Ignored, 0))?;
+      send_test_event(
+        &state_rc,
+        TestEvent::Result(desc.id, TestResult::Ignored, 0),
+      )?;
       continue;
     }
     if had_uncaught_error {
-      sender.send(TestEvent::Result(desc.id, TestResult::Cancelled, 0))?;
+      send_test_event(
+        &state_rc,
+        TestEvent::Result(desc.id, TestResult::Cancelled, 0),
+      )?;
       continue;
     }
-    sender.send(TestEvent::Wait(desc.id))?;
+    send_test_event(&state_rc, TestEvent::Wait(desc.id))?;
 
     // Poll event loop once, to allow all ops that are already resolved, but haven't
     // responded to settle.
@@ -902,12 +917,18 @@ async fn run_tests_for_worker_inner(
       Ok(r) => r,
       Err(error) => {
         if error.is::<JsError>() {
-          sender.send(TestEvent::UncaughtError(
-            specifier.to_string(),
-            Box::new(error.downcast::<JsError>().unwrap()),
-          ))?;
+          send_test_event(
+            &state_rc,
+            TestEvent::UncaughtError(
+              specifier.to_string(),
+              Box::new(error.downcast::<JsError>().unwrap()),
+            ),
+          )?;
           fail_fast_tracker.add_failure();
-          sender.send(TestEvent::Result(desc.id, TestResult::Cancelled, 0))?;
+          send_test_event(
+            &state_rc,
+            TestEvent::Result(desc.id, TestResult::Cancelled, 0),
+          )?;
           had_uncaught_error = true;
           continue;
         } else {
@@ -925,7 +946,10 @@ async fn run_tests_for_worker_inner(
     if matches!(result, TestResult::Failed(_)) {
       fail_fast_tracker.add_failure();
       let elapsed = earlier.elapsed().as_millis();
-      sender.send(TestEvent::Result(desc.id, result, elapsed as u64))?;
+      send_test_event(
+        &state_rc,
+        TestEvent::Result(desc.id, result, elapsed as u64),
+      )?;
       continue;
     }
 
@@ -946,17 +970,23 @@ async fn run_tests_for_worker_inner(
         let failure = TestFailure::Leaked(formatted, trailer_notes);
         fail_fast_tracker.add_failure();
         let elapsed = earlier.elapsed().as_millis();
-        sender.send(TestEvent::Result(
-          desc.id,
-          TestResult::Failed(failure),
-          elapsed as u64,
-        ))?;
+        send_test_event(
+          &state_rc,
+          TestEvent::Result(
+            desc.id,
+            TestResult::Failed(failure),
+            elapsed as u64,
+          ),
+        )?;
         continue;
       }
     }
 
     let elapsed = earlier.elapsed().as_millis();
-    sender.send(TestEvent::Result(desc.id, result, elapsed as u64))?;
+    send_test_event(
+      &state_rc,
+      TestEvent::Result(desc.id, result, elapsed as u64),
+    )?;
   }
   Ok(())
 }
