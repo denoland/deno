@@ -1088,6 +1088,7 @@ delete Object.prototype.__proto__;
 
         if (configChanged) {
           tsConfigCache = null;
+          isNodeSourceFileCache.clear();
         }
 
         projectVersionCache = newProjectVersion;
