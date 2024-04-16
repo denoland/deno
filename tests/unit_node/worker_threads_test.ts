@@ -418,21 +418,45 @@ Deno.test({
 // Regression test for https://github.com/denoland/deno/issues/23362
 Deno.test("[node/worker_threads] receiveMessageOnPort works if there's pending read", function () {
   const { port1, port2 } = new workerThreads.MessageChannel();
+  const { port1: port3, port2: port4 } = new workerThreads.MessageChannel();
+  const { port1: port5, port2: port6 } = new workerThreads.MessageChannel();
 
   const message1 = { hello: "world" };
   const message2 = { foo: "bar" };
 
   assertEquals(workerThreads.receiveMessageOnPort(port2), undefined);
   port2.start();
+  port4.start();
+  port6.start();
 
   port1.postMessage(message1);
   port1.postMessage(message2);
+  port3.postMessage(message1);
+  port3.postMessage(message2);
+  port5.postMessage(message1);
+  port5.postMessage(message2);
   assertEquals(workerThreads.receiveMessageOnPort(port2), {
     message: message1,
   });
   assertEquals(workerThreads.receiveMessageOnPort(port2), {
     message: message2,
   });
+  assertEquals(workerThreads.receiveMessageOnPort(port4), {
+    message: message1,
+  });
+  assertEquals(workerThreads.receiveMessageOnPort(port4), {
+    message: message2,
+  });
+  assertEquals(workerThreads.receiveMessageOnPort(port6), {
+    message: message1,
+  });
+  assertEquals(workerThreads.receiveMessageOnPort(port6), {
+    message: message2,
+  });
   port1.close();
   port2.close();
+  port3.close();
+  port4.close();
+  port5.close();
+  port6.close();
 });

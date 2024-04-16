@@ -1118,6 +1118,7 @@ dependencies = [
  "libz-sys",
  "log",
  "lsp-types",
+ "memmem",
  "monch",
  "napi_sym",
  "nix 0.26.2",

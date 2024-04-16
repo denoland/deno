@@ -458,6 +458,10 @@ const ci = {
           if: "matrix.job == 'lint' && matrix.os == 'linux'",
         },
         {
+          ...submoduleStep("./cli/bench/testdata/lsp_benchdata"),
+          if: "matrix.job == 'bench'",
+        },
+        {
           name: "Create source tarballs (release, linux)",
           if: [
             "matrix.os == 'linux' &&",
