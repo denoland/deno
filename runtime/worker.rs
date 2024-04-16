@@ -871,6 +871,6 @@ impl MainWorker {
       return Err(error.into());
     }
     let ret_val = ret_val.unwrap();
-    Ok(ret_val.is_false())
+    Ok(ret_val.is_true())
   }
 }

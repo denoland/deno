@@ -213,9 +213,11 @@ impl CliMainWorker {
       }
 
       let web_continue = self.worker.dispatch_beforeunload_event()?;
-      let node_continue = self.worker.dispatch_process_beforeexit_event()?;
-      if !(web_continue && node_continue) {
-        break;
+      if !web_continue {
+        let node_continue = self.worker.dispatch_process_beforeexit_event()?;
+        if !node_continue {
+          break;
+        }
       }
     }
 
@@ -276,10 +278,12 @@ impl CliMainWorker {
             Err(error) => break Err(error),
           }
           let web_continue = self.inner.worker.dispatch_beforeunload_event()?;
-          let node_continue =
-            self.inner.worker.dispatch_process_beforeexit_event()?;
-          if !(web_continue && node_continue) {
-            break Ok(());
+          if !web_continue {
+            let node_continue =
+              self.inner.worker.dispatch_process_beforeexit_event()?;
+            if !node_continue {
+              break Ok(());
+            }
           }
         };
         self.pending_unload = false;
