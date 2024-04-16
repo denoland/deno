@@ -518,7 +518,7 @@ fn op_load_inner(
             script_kind: as_ts_script_kind(*media_type),
           }))
         }
-        err => return Err(err.clone().into()),
+        _ => None,
       },
     };
     let maybe_source = if let Some(module) = maybe_module {
@@ -698,7 +698,7 @@ fn resolve_graph_specifier_types(
       ) => {
         return Ok(Some((specifier.clone(), *media_type)));
       }
-      err => return Err(err.clone().into()),
+      _ => None,
     },
   };
   // follow the types reference directive, which may be pointing at an npm package
