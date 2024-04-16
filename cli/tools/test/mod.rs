@@ -764,8 +764,9 @@ pub async fn run_tests_for_worker(
   fail_fast_tracker: &FailFastTracker,
 ) -> Result<(), AnyError> {
   let state_rc = worker.js_runtime.op_state();
+  // Take whatever tests have been registered
   let TestContainer(tests, test_functions) =
-    state_rc.borrow_mut().take::<TestContainer>();
+    std::mem::take(&mut *state_rc.borrow_mut().borrow_mut::<TestContainer>());
 
   let tests: Arc<TestDescriptions> = tests.into();
   send_test_event(&state_rc, TestEvent::Register(tests.clone()))?;
