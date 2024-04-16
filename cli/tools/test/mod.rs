@@ -21,6 +21,7 @@ use crate::util::path::is_script_ext;
 use crate::util::path::mapped_specifier_for_tsc;
 use crate::util::path::matches_pattern_or_exact_path;
 use crate::worker::CliMainWorkerFactory;
+use crate::worker::CoverageCollector;
 
 use deno_ast::swc::common::comments::CommentKind;
 use deno_ast::MediaType;
@@ -571,23 +572,83 @@ fn get_test_reporter(options: &TestSpecifiersOptions) -> Box<dyn TestReporter> {
   reporter
 }
 
+async fn configure_main_worker(
+  worker_factory: Arc<CliMainWorkerFactory>,
+  specifier: &Url,
+  permissions: Permissions,
+  worker_sender: TestEventWorkerSender,
+  options: &TestSpecifierOptions,
+) -> Result<(Option<Box<dyn CoverageCollector>>, MainWorker), anyhow::Error> {
+  let mut worker = worker_factory
+    .create_custom_worker(
+      specifier.clone(),
+      PermissionsContainer::new(permissions),
+      vec![ops::testing::deno_test::init_ops(worker_sender.sender)],
+      Stdio {
+        stdin: StdioPipe::inherit(),
+        stdout: StdioPipe::file(worker_sender.stdout),
+        stderr: StdioPipe::file(worker_sender.stderr),
+      },
+    )
+    .await?;
+  let coverage_collector = worker.maybe_setup_coverage_collector().await?;
+  if options.trace_leaks {
+    worker.execute_script_static(
+      located_script_name!(),
+      "Deno[Deno.internal].core.setLeakTracingEnabled(true);",
+    )?;
+  }
+  let res = worker.execute_side_module_possibly_with_npm().await;
+  let mut worker = worker.into_main_worker();
+  match res {
+    Ok(()) => Ok(()),
+    Err(error) => {
+      // TODO(mmastrac): It would be nice to avoid having this error pattern repeated
+      if error.is::<JsError>() {
+        worker
+          .js_runtime
+          .op_state()
+          .borrow_mut()
+          .borrow_mut::<TestEventSender>()
+          .send(TestEvent::UncaughtError(
+            specifier.to_string(),
+            Box::new(error.downcast::<JsError>().unwrap()),
+          ))?;
+        Ok(())
+      } else {
+        Err(error)
+      }
+    }
+  }?;
+  Ok((coverage_collector, worker))
+}
+
 /// Test a single specifier as documentation containing test programs, an executable test module or
 /// both.
 pub async fn test_specifier(
   worker_factory: Arc<CliMainWorkerFactory>,
   permissions: Permissions,
   specifier: ModuleSpecifier,
-  mut worker_sender: TestEventWorkerSender,
+  worker_sender: TestEventWorkerSender,
   fail_fast_tracker: FailFastTracker,
   options: TestSpecifierOptions,
 ) -> Result<(), AnyError> {
-  match test_specifier_inner(
+  if fail_fast_tracker.should_stop() {
+    return Ok(());
+  }
+  let (coverage_collector, mut worker) = configure_main_worker(
     worker_factory,
+    &specifier,
     permissions,
+    worker_sender,
+    &options,
+  )
+  .await?;
+
+  match test_specifier_inner(
+    &mut worker,
+    coverage_collector,
     specifier.clone(),
-    &mut worker_sender.sender,
-    StdioPipe::file(worker_sender.stdout),
-    StdioPipe::file(worker_sender.stderr),
     fail_fast_tracker,
     options,
   )
@@ -595,11 +656,17 @@ pub async fn test_specifier(
   {
     Ok(()) => Ok(()),
     Err(error) => {
+      // TODO(mmastrac): It would be nice to avoid having this error pattern repeated
       if error.is::<JsError>() {
-        worker_sender.sender.send(TestEvent::UncaughtError(
-          specifier.to_string(),
-          Box::new(error.downcast::<JsError>().unwrap()),
-        ))?;
+        worker
+          .js_runtime
+          .op_state()
+          .borrow_mut()
+          .borrow_mut::<TestEventSender>()
+          .send(TestEvent::UncaughtError(
+            specifier.to_string(),
+            Box::new(error.downcast::<JsError>().unwrap()),
+          ))?;
         Ok(())
       } else {
         Err(error)
@@ -612,51 +679,18 @@ pub async fn test_specifier(
 /// both.
 #[allow(clippy::too_many_arguments)]
 async fn test_specifier_inner(
-  worker_factory: Arc<CliMainWorkerFactory>,
-  permissions: Permissions,
+  worker: &mut MainWorker,
+  mut coverage_collector: Option<Box<dyn CoverageCollector>>,
   specifier: ModuleSpecifier,
-  sender: &mut TestEventSender,
-  stdout: StdioPipe,
-  stderr: StdioPipe,
   fail_fast_tracker: FailFastTracker,
   options: TestSpecifierOptions,
 ) -> Result<(), AnyError> {
-  if fail_fast_tracker.should_stop() {
-    return Ok(());
-  }
-  let mut worker = worker_factory
-    .create_custom_worker(
-      specifier.clone(),
-      PermissionsContainer::new(permissions),
-      vec![ops::testing::deno_test::init_ops(sender.clone())],
-      Stdio {
-        stdin: StdioPipe::inherit(),
-        stdout,
-        stderr,
-      },
-    )
-    .await?;
-
-  let mut coverage_collector = worker.maybe_setup_coverage_collector().await?;
-
-  if options.trace_leaks {
-    worker.execute_script_static(
-      located_script_name!(),
-      "Deno[Deno.internal].core.setLeakTracingEnabled(true);",
-    )?;
-  }
-
-  // We execute the main module as a side module so that import.meta.main is not set.
-  worker.execute_side_module_possibly_with_npm().await?;
-
-  let mut worker = worker.into_main_worker();
-
   // Ensure that there are no pending exceptions before we start running tests
   worker.run_up_to_duration(Duration::from_millis(0)).await?;
 
   worker.dispatch_load_event()?;
 
-  run_tests_for_worker(&mut worker, &specifier, &options, &fail_fast_tracker)
+  run_tests_for_worker(worker, &specifier, &options, &fail_fast_tracker)
     .await?;
 
   // Ignore `defaultPrevented` of the `beforeunload` event. We don't allow the
@@ -665,13 +699,18 @@ async fn test_specifier_inner(
   worker.dispatch_unload_event()?;
 
   // Ensure all output has been flushed
-  _ = sender.flush();
+  _ = worker
+    .js_runtime
+    .op_state()
+    .borrow_mut()
+    .borrow_mut::<TestEventSender>()
+    .flush();
 
   // Ensure the worker has settled so we can catch any remaining unhandled rejections. We don't
   // want to wait forever here.
   worker.run_up_to_duration(Duration::from_millis(0)).await?;
 
-  if let Some(coverage_collector) = coverage_collector.as_mut() {
+  if let Some(coverage_collector) = &mut coverage_collector {
     worker
       .js_runtime
       .with_event_loop_future(
@@ -718,8 +757,8 @@ pub async fn run_tests_for_worker(
     let state_rc = worker.js_runtime.op_state();
     let mut state = state_rc.borrow_mut();
     (
-      std::mem::take(&mut *state.borrow_mut::<TestContainer>()),
-      state.borrow::<TestEventSender>().clone(),
+      state.take::<TestContainer>(),
+      state.take::<TestEventSender>(),
     )
   };
   let tests: Arc<TestDescriptions> = tests.into();

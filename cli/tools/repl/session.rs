@@ -184,7 +184,6 @@ pub struct ReplSession {
   referrer: ModuleSpecifier,
   main_module: ModuleSpecifier,
   test_reporter_factory: Box<dyn Fn() -> Box<dyn TestReporter>>,
-  test_event_sender: TestEventSender,
   /// This is only optional because it's temporarily taken when evaluating.
   test_event_receiver: Option<TestEventReceiver>,
   jsx: ReplJsxState,
@@ -198,7 +197,6 @@ impl ReplSession {
     resolver: Arc<CliGraphResolver>,
     mut worker: MainWorker,
     main_module: ModuleSpecifier,
-    test_event_sender: TestEventSender,
     test_event_receiver: TestEventReceiver,
   ) -> Result<Self, AnyError> {
     let language_server = ReplLanguageServer::new_initialized().await?;
@@ -278,7 +276,6 @@ impl ReplSession {
         ))
       }),
       main_module,
-      test_event_sender,
       test_event_receiver: Some(test_event_receiver),
       jsx: ReplJsxState {
         factory: "React.createElement".to_string(),
@@ -467,7 +464,11 @@ impl ReplSession {
       .await
       .unwrap();
       self
-        .test_event_sender
+        .worker
+        .js_runtime
+        .op_state()
+        .borrow_mut()
+        .borrow_mut::<TestEventSender>()
         .send(TestEvent::ForceEndReport)
         .unwrap();
       self.test_event_receiver = Some(report_tests_handle.await.unwrap().1);
