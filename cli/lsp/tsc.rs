@@ -4311,9 +4311,9 @@ impl TscRuntime {
       let tc_scope = &mut v8::TryCatch::new(scope);
       let server_request_fn =
         v8::Local::new(tc_scope, &self.server_request_fn_global);
-      let undefined = v8::Local::<'_, v8::Value>::from(v8::undefined(tc_scope));
+      let undefined = v8::undefined(tc_scope).into();
 
-      let args: Vec<v8::Local<'_, v8::Value>> = vec![
+      let args = vec![
         v8::Integer::new(tc_scope, id as i32).into(),
         v8::String::new(tc_scope, request.method).unwrap().into(),
         deno_core::serde_v8::to_v8(tc_scope, request.args)?,
