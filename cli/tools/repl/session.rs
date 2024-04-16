@@ -254,9 +254,11 @@ impl ReplSession {
       })?;
     let ts_config_for_emit = cli_options
       .resolve_ts_config_for_emit(deno_config::TsConfigType::Emit)?;
-    let emit_options =
-      crate::args::ts_config_to_emit_options(ts_config_for_emit.ts_config);
-    let experimental_decorators = emit_options.use_ts_decorators;
+    let (transpile_options, _) =
+      crate::args::ts_config_to_transpile_and_emit_options(
+        ts_config_for_emit.ts_config,
+      );
+    let experimental_decorators = transpile_options.use_ts_decorators;
     let mut repl_session = ReplSession {
       npm_resolver,
       resolver,
@@ -619,23 +621,27 @@ impl ReplSession {
     self.analyze_and_handle_jsx(&parsed_source);
 
     let transpiled_src = parsed_source
-      .transpile(&deno_ast::EmitOptions {
-        use_ts_decorators: self.experimental_decorators,
-        use_decorators_proposal: !self.experimental_decorators,
-        emit_metadata: false,
-        source_map: false,
-        inline_source_map: false,
-        inline_sources: false,
-        imports_not_used_as_values: ImportsNotUsedAsValues::Preserve,
-        transform_jsx: true,
-        precompile_jsx: false,
-        jsx_automatic: self.jsx.import_source.is_some(),
-        jsx_development: false,
-        jsx_factory: self.jsx.factory.clone(),
-        jsx_fragment_factory: self.jsx.frag_factory.clone(),
-        jsx_import_source: self.jsx.import_source.clone(),
-        var_decl_imports: true,
-      })?
+      .transpile(
+        &deno_ast::TranspileOptions {
+          use_ts_decorators: self.experimental_decorators,
+          use_decorators_proposal: !self.experimental_decorators,
+          emit_metadata: false,
+          imports_not_used_as_values: ImportsNotUsedAsValues::Preserve,
+          transform_jsx: true,
+          precompile_jsx: false,
+          jsx_automatic: self.jsx.import_source.is_some(),
+          jsx_development: false,
+          jsx_factory: self.jsx.factory.clone(),
+          jsx_fragment_factory: self.jsx.frag_factory.clone(),
+          jsx_import_source: self.jsx.import_source.clone(),
+          var_decl_imports: true,
+        },
+        &deno_ast::EmitOptions {
+          source_map: deno_ast::SourceMapOption::None,
+          inline_sources: false,
+          keep_comments: false,
+        },
+      )?
       .text;
 
     let value = self

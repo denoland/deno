@@ -654,15 +654,15 @@ async fn test_specifier_inner(
   // Ensure that there are no pending exceptions before we start running tests
   worker.run_up_to_duration(Duration::from_millis(0)).await?;
 
-  worker.dispatch_load_event(located_script_name!())?;
+  worker.dispatch_load_event()?;
 
   run_tests_for_worker(&mut worker, &specifier, &options, &fail_fast_tracker)
     .await?;
 
   // Ignore `defaultPrevented` of the `beforeunload` event. We don't allow the
   // event loop to continue beyond what's needed to await results.
-  worker.dispatch_beforeunload_event(located_script_name!())?;
-  worker.dispatch_unload_event(located_script_name!())?;
+  worker.dispatch_beforeunload_event()?;
+  worker.dispatch_unload_event()?;
 
   // Ensure all output has been flushed
   _ = sender.flush();
@@ -1346,18 +1346,8 @@ async fn test_specifiers(
     })
   });
 
-  // TODO(mmastrac): Temporarily limit concurrency in windows testing to avoid named pipe issue:
-  // *** Unexpected server pipe failure '"\\\\.\\pipe\\deno_pipe_e30f45c9df61b1e4.1198.222\\0"': 3
-  // This is likely because we're hitting some sort of invisible resource limit
-  // This limit is both in cli/lsp/testing/execution.rs and cli/tools/test/mod.rs
-  let concurrent = if cfg!(windows) {
-    std::cmp::min(concurrent_jobs.get(), 4)
-  } else {
-    concurrent_jobs.get()
-  };
-
   let join_stream = stream::iter(join_handles)
-    .buffer_unordered(concurrent)
+    .buffer_unordered(concurrent_jobs.get())
     .collect::<Vec<Result<Result<(), AnyError>, tokio::task::JoinError>>>();
 
   let handler = spawn(async move { report_tests(receiver, reporter).await.0 });

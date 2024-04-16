@@ -212,8 +212,15 @@ fn collect_excluded_module_diagnostics(
     return;
   };
   let specifiers = graph
-    .specifiers()
-    .map(|(s, _)| s)
+    .modules()
+    .filter_map(|m| match m {
+      deno_graph::Module::Js(_) | deno_graph::Module::Json(_) => {
+        Some(m.specifier())
+      }
+      deno_graph::Module::Npm(_)
+      | deno_graph::Module::Node(_)
+      | deno_graph::Module::External(_) => None,
+    })
     .filter(|s| s.as_str().starts_with(root.as_str()));
   for specifier in specifiers {
     if !file_patterns.matches_specifier(specifier) {

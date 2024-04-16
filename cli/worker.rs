@@ -10,7 +10,6 @@ use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
-use deno_core::located_script_name;
 use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
 use deno_core::v8;
@@ -70,12 +69,6 @@ pub trait ModuleLoaderFactory: Send + Sync {
   ) -> Rc<dyn ModuleLoader>;
 
   fn create_source_map_getter(&self) -> Option<Rc<dyn SourceMapGetter>>;
-}
-
-// todo(dsherret): this is temporary and we should remove this
-// once we no longer conditionally initialize the node runtime
-pub trait HasNodeSpecifierChecker: Send + Sync {
-  fn has_node_specifier(&self) -> bool;
 }
 
 #[async_trait::async_trait(?Send)]
@@ -188,7 +181,7 @@ impl CliMainWorker {
       self.execute_main_module_possibly_with_npm().await?;
     }
 
-    self.worker.dispatch_load_event(located_script_name!())?;
+    self.worker.dispatch_load_event()?;
 
     loop {
       if let Some(hmr_runner) = maybe_hmr_runner.as_mut() {
@@ -219,15 +212,12 @@ impl CliMainWorker {
           .await?;
       }
 
-      if !self
-        .worker
-        .dispatch_beforeunload_event(located_script_name!())?
-      {
+      if !self.worker.dispatch_beforeunload_event()? {
         break;
       }
     }
 
-    self.worker.dispatch_unload_event(located_script_name!())?;
+    self.worker.dispatch_unload_event()?;
 
     if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
       self
@@ -274,10 +264,7 @@ impl CliMainWorker {
       /// respectively.
       pub async fn execute(&mut self) -> Result<(), AnyError> {
         self.inner.execute_main_module_possibly_with_npm().await?;
-        self
-          .inner
-          .worker
-          .dispatch_load_event(located_script_name!())?;
+        self.inner.worker.dispatch_load_event()?;
         self.pending_unload = true;
 
         let result = loop {
@@ -285,11 +272,7 @@ impl CliMainWorker {
             Ok(()) => {}
             Err(error) => break Err(error),
           }
-          match self
-            .inner
-            .worker
-            .dispatch_beforeunload_event(located_script_name!())
-          {
+          match self.inner.worker.dispatch_beforeunload_event() {
             Ok(default_prevented) if default_prevented => {} // continue loop
             Ok(_) => break Ok(()),
             Err(error) => break Err(error),
@@ -299,10 +282,7 @@ impl CliMainWorker {
 
         result?;
 
-        self
-          .inner
-          .worker
-          .dispatch_unload_event(located_script_name!())?;
+        self.inner.worker.dispatch_unload_event()?;
 
         Ok(())
       }
@@ -311,10 +291,7 @@ impl CliMainWorker {
     impl Drop for FileWatcherModuleExecutor {
       fn drop(&mut self) {
         if self.pending_unload {
-          let _ = self
-            .inner
-            .worker
-            .dispatch_unload_event(located_script_name!());
+          let _ = self.inner.worker.dispatch_unload_event();
         }
       }
     }

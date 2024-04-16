@@ -85,7 +85,7 @@ declare interface WebSocket extends EventTarget {
    */
   readonly url: string;
   /**
-   * Closes the WebSocket connection, optionally using code as the the WebSocket connection close code and reason as the the WebSocket connection close reason.
+   * Closes the WebSocket connection, optionally using code as the WebSocket connection close code and reason as the WebSocket connection close reason.
    */
   close(code?: number, reason?: string): void;
   /**
