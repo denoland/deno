@@ -17,8 +17,11 @@ import {
   MessagePort,
   MessagePortIdSymbol,
   MessagePortPrototype,
+  MessagePortReceiveMessageOnPortSymbol,
   nodeWorkerThreadCloseCb,
+  refMessagePort,
   serializeJsMessageData,
+  unrefPollForMessages,
 } from "ext:deno_web/13_message_port.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { notImplemented } from "ext:deno_node/_utils.ts";
@@ -398,6 +401,12 @@ internals.__initWorkerThreads = (
     parentPort.addEventListener("offline", () => {
       parentPort.emit("close");
     });
+    parentPort.unref = () => {
+      parentPort[unrefPollForMessages] = true;
+    };
+    parentPort.ref = () => {
+      parentPort[unrefPollForMessages] = false;
+    };
   }
 };
 
@@ -433,6 +442,7 @@ export function receiveMessageOnPort(port: MessagePort): object | undefined {
     err["code"] = "ERR_INVALID_ARG_TYPE";
     throw err;
   }
+  port[MessagePortReceiveMessageOnPortSymbol] = true;
   const data = op_message_port_recv_message_sync(port[MessagePortIdSymbol]);
   if (data === null) return undefined;
   return { message: deserializeJsMessageData(data)[0] };
@@ -466,6 +476,12 @@ function webMessagePortToNodeMessagePort(port: MessagePort) {
   };
   port[nodeWorkerThreadCloseCb] = () => {
     port.dispatchEvent(new Event("close"));
+  };
+  port.unref = () => {
+    port[refMessagePort](false);
+  };
+  port.ref = () => {
+    port[refMessagePort](true);
   };
   return port;
 }

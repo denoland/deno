@@ -9,3 +9,6 @@
 [submodule "tests/node_compat/runner/suite"]
 	path = tests/node_compat/runner/suite
 	url = https://github.com/denoland/node_test.git
+[submodule "cli/bench/testdata/lsp_benchdata"]
+	path = cli/bench/testdata/lsp_benchdata
+	url = https://github.com/denoland/deno_lsp_benchdata.git

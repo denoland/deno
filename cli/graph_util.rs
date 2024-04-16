@@ -76,6 +76,7 @@ pub fn graph_valid(
         check_js: options.check_js,
         follow_type_only: options.follow_type_only,
         follow_dynamic: options.is_vendoring,
+        prefer_fast_check_graph: false,
       },
     )
     .errors()
@@ -109,13 +110,23 @@ pub fn graph_valid(
         }
       }
 
+      if graph.graph_kind() == GraphKind::TypesOnly
+        && matches!(
+          error,
+          ModuleGraphError::ModuleError(ModuleError::UnsupportedMediaType(..))
+        )
+      {
+        log::debug!("Ignoring: {}", message);
+        return None;
+      }
+
       if options.is_vendoring {
         // warn about failing dynamic imports when vendoring, but don't fail completely
         if matches!(
           error,
           ModuleGraphError::ModuleError(ModuleError::MissingDynamic(_, _))
         ) {
-          log::warn!("Ignoring: {:#}", message);
+          log::warn!("Ignoring: {}", message);
           return None;
         }
 
@@ -441,14 +452,13 @@ impl ModuleGraphBuilder {
         loader.as_mut_loader(),
         deno_graph::BuildOptions {
           is_dynamic: options.is_dynamic,
-          jsr_url_provider: Some(&CliJsrUrlProvider),
+          jsr_url_provider: &CliJsrUrlProvider,
           executor: Default::default(),
           imports: maybe_imports,
           resolver: Some(graph_resolver),
-          file_system: Some(&DenoGraphFsAdapter(self.fs.as_ref())),
+          file_system: &DenoGraphFsAdapter(self.fs.as_ref()),
           npm_resolver: Some(graph_npm_resolver),
-          module_analyzer: Some(&analyzer),
-          module_parser: Some(&parser),
+          module_analyzer: &analyzer,
           reporter: maybe_file_watcher_reporter,
           workspace_members: &workspace_members,
         },
@@ -799,6 +809,7 @@ pub fn has_graph_root_local_dependent_changed(
     deno_graph::WalkOptions {
       follow_dynamic: true,
       follow_type_only: true,
+      prefer_fast_check_graph: true,
       check_js: true,
     },
   );

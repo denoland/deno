@@ -549,11 +549,14 @@ impl CliFactory {
       if let Some(ignored_options) = ts_config_result.maybe_ignored_options {
         warn!("{}", ignored_options);
       }
-      let emit_options =
-        crate::args::ts_config_to_emit_options(ts_config_result.ts_config);
+      let (transpile_options, emit_options) =
+        crate::args::ts_config_to_transpile_and_emit_options(
+          ts_config_result.ts_config,
+        );
       Ok(Arc::new(Emitter::new(
         self.emit_cache()?.clone(),
         self.parsed_source_cache().clone(),
+        transpile_options,
         emit_options,
       )))
     })
@@ -663,17 +666,22 @@ impl CliFactory {
         // todo(dsherret): ideally the graph container would not be used
         // for deno cache because it doesn't dynamically load modules
         DenoSubcommand::Cache(_) => GraphKind::All,
+        DenoSubcommand::Check(_) => GraphKind::TypesOnly,
         _ => self.options.type_check_mode().as_graph_kind(),
       };
       Arc::new(ModuleGraphContainer::new(graph_kind))
     })
   }
 
-  pub fn maybe_inspector_server(&self) -> &Option<Arc<InspectorServer>> {
-    self
-      .services
-      .maybe_inspector_server
-      .get_or_init(|| self.options.resolve_inspector_server().map(Arc::new))
+  pub fn maybe_inspector_server(
+    &self,
+  ) -> Result<&Option<Arc<InspectorServer>>, AnyError> {
+    self.services.maybe_inspector_server.get_or_try_init(|| {
+      match self.options.resolve_inspector_server() {
+        Ok(server) => Ok(server.map(Arc::new)),
+        Err(err) => Err(err),
+      }
+    })
   }
 
   pub async fn module_load_preparer(
@@ -786,7 +794,7 @@ impl CliFactory {
       self.root_cert_store_provider().clone(),
       self.fs().clone(),
       maybe_file_watcher_communicator,
-      self.maybe_inspector_server().clone(),
+      self.maybe_inspector_server()?.clone(),
       self.maybe_lockfile().clone(),
       self.feature_checker().clone(),
       self.create_cli_main_worker_options()?,
