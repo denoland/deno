@@ -3519,14 +3519,8 @@
       "URL: no structured serialize/deserialize support",
       "URLSearchParams: no structured serialize/deserialize support"
     ],
-    "idlharness.any.html": [
-      "URL interface: operation parse(USVString, optional USVString)",
-      "URL interface: calling parse(USVString, optional USVString) on new URL(\"http://foo\") with too few arguments must throw TypeError"
-    ],
-    "idlharness.any.worker.html": [
-      "URL interface: operation parse(USVString, optional USVString)",
-      "URL interface: calling parse(USVString, optional USVString) on new URL(\"http://foo\") with too few arguments must throw TypeError"
-    ],
+    "idlharness.any.html": true,
+    "idlharness.any.worker.html": true,
     "toascii.window.html": [
       "aa-- (using <a>.host)",
       "aa-- (using <a>.hostname)",
@@ -5699,6 +5693,8 @@
       "Parsing: </\\/\\//example.org/../path> against <http://example.org/>"
     ],
     "a-element.html?include=file": [
+      "Parsing: <file:.> against <about:blank>",
+      "Parsing: <file:.> against <http://www.example.com/test>",
       "Parsing: <file:/example.com/> against <http://example.org/foo/bar>",
       "Parsing: <file://example:1/> against <about:blank>",
       "Parsing: <file://example:test/> against <about:blank>",
