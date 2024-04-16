@@ -29,3 +29,9 @@ itest!(
     exit_code: 0,
   }
 );
+
+itest!(web_node_events_dispatched_in_correct_order {
+  args: "run node/events_order.ts",
+  output: "node/events_order.out",
+  exit_code: 0,
+});

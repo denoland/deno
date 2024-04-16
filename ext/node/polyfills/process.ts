@@ -805,6 +805,7 @@ function processOnError(event: ErrorEvent) {
 function dispatchProcessBeforeExitEvent() {
   process.emit("beforeExit", process.exitCode || 0);
   processTicksAndRejections();
+  return core.eventLoopHasMoreWork();
 }
 
 function dispatchProcessExitEvent() {

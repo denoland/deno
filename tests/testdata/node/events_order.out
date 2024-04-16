@@ -1,0 +1,4 @@
+beforeunload emitted from addEventListener
+beforeExit emitted from process.on
+unload emitted from addEventListener
+exit emitted from process.on
