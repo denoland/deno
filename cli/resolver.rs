@@ -223,6 +223,13 @@ impl CliNodeResolver {
     Ok(specifier)
   }
 
+  pub fn url_to_node_resolution(
+    &self,
+    specifier: ModuleSpecifier,
+  ) -> Result<NodeResolution, AnyError> {
+    self.node_resolver.url_to_node_resolution(specifier)
+  }
+
   fn handle_node_resolve_result(
     &self,
     result: Result<Option<NodeResolution>, AnyError>,

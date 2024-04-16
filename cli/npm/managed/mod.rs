@@ -604,6 +604,9 @@ impl CliNpmResolver for ManagedCliNpmResolver {
       .collect::<Vec<_>>();
     package_reqs.sort_by(|a, b| a.0.cmp(&b.0)); // determinism
     let mut hasher = FastInsecureHasher::new();
+    // ensure the cache gets busted when turning nodeModulesDir on or off
+    // as this could cause changes in resolution
+    hasher.write_hashable(self.fs_resolver.node_modules_path().is_some());
     for (pkg_req, pkg_nv) in package_reqs {
       hasher.write_hashable(&pkg_req);
       hasher.write_hashable(&pkg_nv);
