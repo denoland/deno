@@ -108,7 +108,7 @@ fn bench_deco_apps_edits(deno_exe: &Path) -> Duration {
       client.write_notification(req.method(), req.params());
     } else {
       reqs += 1;
-      client.write_request_no_wait(req.method(), req.params());
+      client.write_jsonrpc(req.method(), req.params());
     }
   }
   for _ in 0..reqs {

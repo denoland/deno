@@ -941,7 +941,7 @@ impl LspClient {
     })
   }
 
-  pub fn write_request_no_wait(
+  pub fn write_jsonrpc(
     &mut self,
     method: impl AsRef<str>,
     params: impl Serialize,
