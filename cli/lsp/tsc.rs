@@ -4285,8 +4285,10 @@ impl TscRuntime {
     token: CancellationToken,
   ) -> Result<String, AnyError> {
     if token.is_cancelled() {
+      println!("Cancelled!");
       return Err(anyhow!("Operation was cancelled."));
     }
+    println!("Request {:?}", request);
     let (performance, id) = {
       let op_state = self.js_runtime.op_state();
       let mut op_state = op_state.borrow_mut();
@@ -4305,13 +4307,24 @@ impl TscRuntime {
       request.args.is_array(),
       "Internal error: expected args to be array"
     );
-    let request_src = format!(
-      "globalThis.serverRequest({id}, \"{}\", {});",
-      request.method, &request.args
-    );
-    self
-      .js_runtime
-      .execute_script(located_script_name!(), request_src)?;
+    {
+      let scope = &mut self.js_runtime.handle_scope();
+      let tc_scope = &mut v8::TryCatch::new(scope);
+      let server_request_fn =
+        v8::Local::new(tc_scope, &self.server_request_fn_global);
+      let undefined = v8::Local::<'_, v8::Value>::from(v8::undefined(tc_scope));
+
+      let args: Vec<v8::Local<'_, v8::Value>> = vec![
+        v8::Integer::new(tc_scope, id as i32).into(),
+        v8::String::new(tc_scope, request.method).unwrap().into(),
+        deno_core::serde_v8::to_v8(tc_scope, request.args)?,
+      ];
+
+      server_request_fn.call(tc_scope, undefined, &args);
+      if tc_scope.has_caught() && !tc_scope.has_terminated() {
+        tc_scope.rethrow();
+      }
+    }
 
     let op_state = self.js_runtime.op_state();
     let mut op_state = op_state.borrow_mut();
@@ -4375,6 +4388,7 @@ fn run_tsc_thread(
         biased;
         (maybe_request, mut tsc_runtime) = async { (request_rx.recv().await, tsc_runtime.lock().await) } => {
           if let Some((req, state_snapshot, tx, token, pending_change)) = maybe_request {
+            println!("Request: {:?}", req);
             let value = tsc_runtime.request(state_snapshot, req, pending_change, token.clone());
             request_signal_tx.send(()).unwrap();
             let was_sent = tx.send(value).is_ok();
@@ -5351,7 +5365,7 @@ mod tests {
   }
 
   #[tokio::test]
-  async fn test_completions() {
+  async fn test_completionss() {
     let fixture = r#"
       import { B } from "https://deno.land/x/b/mod.ts";
 
