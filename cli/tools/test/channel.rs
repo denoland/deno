@@ -16,7 +16,6 @@ use std::io::Write;
 use std::pin::Pin;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
 use std::task::ready;
 use std::task::Poll;
 use std::time::Duration;
@@ -310,7 +309,6 @@ impl TestEventSenderFactory {
 
     let sender = TestEventSender {
       id,
-      ref_count: Default::default(),
       sender: self.sender.clone(),
       sync_sender,
       stdout_writer,
@@ -373,24 +371,10 @@ pub struct TestEventWorkerSender {
 /// are not guaranteed to be sent on drop unless flush is explicitly called.
 pub struct TestEventSender {
   pub id: usize,
-  ref_count: Arc<()>,
   sender: UnboundedSender<(usize, TestEvent)>,
   sync_sender: UnboundedSender<(SendMutex, SendMutex)>,
   stdout_writer: PipeWrite,
   stderr_writer: PipeWrite,
-}
-
-impl Clone for TestEventSender {
-  fn clone(&self) -> Self {
-    Self {
-      id: self.id,
-      ref_count: self.ref_count.clone(),
-      sender: self.sender.clone(),
-      sync_sender: self.sync_sender.clone(),
-      stdout_writer: self.stdout_writer.try_clone().unwrap(),
-      stderr_writer: self.stderr_writer.try_clone().unwrap(),
-    }
-  }
 }
 
 impl TestEventSender {
