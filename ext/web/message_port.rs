@@ -53,7 +53,6 @@ impl MessagePort {
     Ok(())
   }
 
-  #[allow(clippy::await_holding_refcell_ref)] // TODO(ry) remove!
   pub async fn recv(
     &self,
     state: Rc<RefCell<OpState>>,
