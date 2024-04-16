@@ -1,0 +1,18 @@
+{
+  "steps": [{
+    "args": "check exists.ts",
+    "output": "exists.out"
+  }, {
+    "args": "run --check exists.ts",
+    "output": "exists_run_with_check.out",
+    "exitCode": 1
+  }, {
+    "args": "check not_exists.ts",
+    "output": "not_exists.out",
+    "exitCode": 1
+  }, {
+    "args": "check exists_and_try_uses.ts",
+    "output": "exists_and_try_uses.out",
+    "exitCode": 1
+  }]
+}

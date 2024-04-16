@@ -666,6 +666,7 @@ impl CliFactory {
         // todo(dsherret): ideally the graph container would not be used
         // for deno cache because it doesn't dynamically load modules
         DenoSubcommand::Cache(_) => GraphKind::All,
+        DenoSubcommand::Check(_) => GraphKind::TypesOnly,
         _ => self.options.type_check_mode().as_graph_kind(),
       };
       Arc::new(ModuleGraphContainer::new(graph_kind))
