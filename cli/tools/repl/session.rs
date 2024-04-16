@@ -12,10 +12,10 @@ use crate::tools::test::report_tests;
 use crate::tools::test::reporters::PrettyTestReporter;
 use crate::tools::test::reporters::TestReporter;
 use crate::tools::test::run_tests_for_worker;
+use crate::tools::test::send_test_event;
 use crate::tools::test::worker_has_tests;
 use crate::tools::test::TestEvent;
 use crate::tools::test::TestEventReceiver;
-use crate::tools::test::TestEventSender;
 
 use deno_ast::diagnostics::Diagnostic;
 use deno_ast::swc::ast as swc_ast;
@@ -463,14 +463,11 @@ impl ReplSession {
       )
       .await
       .unwrap();
-      self
-        .worker
-        .js_runtime
-        .op_state()
-        .borrow_mut()
-        .borrow_mut::<TestEventSender>()
-        .send(TestEvent::ForceEndReport)
-        .unwrap();
+      send_test_event(
+        &self.worker.js_runtime.op_state(),
+        TestEvent::ForceEndReport,
+      )
+      .unwrap();
       self.test_event_receiver = Some(report_tests_handle.await.unwrap().1);
     }
 
