@@ -2,7 +2,11 @@
 
 [package]
 name = "deno_http"
+<<<<<<< HEAD
 version = "0.143.0"
+=======
+version = "0.144.0"
+>>>>>>> 7cb23c5e3 (1.42.4 (#23390))
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
