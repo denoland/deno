@@ -110,13 +110,23 @@ pub fn graph_valid(
         }
       }
 
+      if graph.graph_kind() == GraphKind::TypesOnly
+        && matches!(
+          error,
+          ModuleGraphError::ModuleError(ModuleError::UnsupportedMediaType(..))
+        )
+      {
+        log::debug!("Ignoring: {}", message);
+        return None;
+      }
+
       if options.is_vendoring {
         // warn about failing dynamic imports when vendoring, but don't fail completely
         if matches!(
           error,
           ModuleGraphError::ModuleError(ModuleError::MissingDynamic(_, _))
         ) {
-          log::warn!("Ignoring: {:#}", message);
+          log::warn!("Ignoring: {}", message);
           return None;
         }
 
