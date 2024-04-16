@@ -212,12 +212,17 @@ impl CliMainWorker {
           .await?;
       }
 
-      if !self.worker.dispatch_beforeunload_event()? {
-        break;
+      let web_continue = self.worker.dispatch_beforeunload_event()?;
+      if !web_continue {
+        let node_continue = self.worker.dispatch_process_beforeexit_event()?;
+        if !node_continue {
+          break;
+        }
       }
     }
 
     self.worker.dispatch_unload_event()?;
+    self.worker.dispatch_process_exit_event()?;
 
     if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
       self
@@ -272,10 +277,13 @@ impl CliMainWorker {
             Ok(()) => {}
             Err(error) => break Err(error),
           }
-          match self.inner.worker.dispatch_beforeunload_event() {
-            Ok(default_prevented) if default_prevented => {} // continue loop
-            Ok(_) => break Ok(()),
-            Err(error) => break Err(error),
+          let web_continue = self.inner.worker.dispatch_beforeunload_event()?;
+          if !web_continue {
+            let node_continue =
+              self.inner.worker.dispatch_process_beforeexit_event()?;
+            if !node_continue {
+              break Ok(());
+            }
           }
         };
         self.pending_unload = false;
@@ -283,6 +291,7 @@ impl CliMainWorker {
         result?;
 
         self.inner.worker.dispatch_unload_event()?;
+        self.inner.worker.dispatch_process_exit_event()?;
 
         Ok(())
       }

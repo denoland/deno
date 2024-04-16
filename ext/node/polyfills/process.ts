@@ -802,15 +802,13 @@ function processOnError(event: ErrorEvent) {
   uncaughtExceptionHandler(event.error, "uncaughtException");
 }
 
-function processOnBeforeUnload(event: Event) {
+function dispatchProcessBeforeExitEvent() {
   process.emit("beforeExit", process.exitCode || 0);
   processTicksAndRejections();
-  if (core.eventLoopHasMoreWork()) {
-    event.preventDefault();
-  }
+  return core.eventLoopHasMoreWork();
 }
 
-function processOnUnload() {
+function dispatchProcessExitEvent() {
   if (!process._exiting) {
     process._exiting = true;
     process.emit("exit", process.exitCode || 0);
@@ -856,16 +854,6 @@ function synchronizeListeners() {
   } else {
     globalThis.removeEventListener("error", processOnError);
   }
-  if (beforeExitListenerCount > 0) {
-    globalThis.addEventListener("beforeunload", processOnBeforeUnload);
-  } else {
-    globalThis.removeEventListener("beforeunload", processOnBeforeUnload);
-  }
-  if (exitListenerCount > 0) {
-    globalThis.addEventListener("unload", processOnUnload);
-  } else {
-    globalThis.removeEventListener("unload", processOnUnload);
-  }
 }
 
 // Overwrites the 1st and 2nd items with getters.
@@ -880,6 +868,8 @@ Object.defineProperty(argv, "1", {
   },
 });
 
+internals.dispatchProcessBeforeExitEvent = dispatchProcessBeforeExitEvent;
+internals.dispatchProcessExitEvent = dispatchProcessExitEvent;
 // Should be called only once, in `runtime/js/99_main.js` when the runtime is
 // bootstrapped.
 internals.__bootstrapNodeProcess = function (
