@@ -4285,7 +4285,6 @@ impl TscRuntime {
     token: CancellationToken,
   ) -> Result<String, AnyError> {
     if token.is_cancelled() {
-      println!("Cancelled!");
       return Err(anyhow!("Operation was cancelled."));
     }
     let (performance, id) = {
@@ -4387,7 +4386,6 @@ fn run_tsc_thread(
         biased;
         (maybe_request, mut tsc_runtime) = async { (request_rx.recv().await, tsc_runtime.lock().await) } => {
           if let Some((req, state_snapshot, tx, token, pending_change)) = maybe_request {
-            println!("Request: {:?}", req);
             let value = tsc_runtime.request(state_snapshot, req, pending_change, token.clone());
             request_signal_tx.send(()).unwrap();
             let was_sent = tx.send(value).is_ok();
@@ -5364,7 +5362,7 @@ mod tests {
   }
 
   #[tokio::test]
-  async fn test_completionss() {
+  async fn test_completions() {
     let fixture = r#"
       import { B } from "https://deno.land/x/b/mod.ts";
 
