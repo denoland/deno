@@ -117,6 +117,8 @@ pub struct MainWorker {
   dispatch_load_event_fn_global: v8::Global<v8::Function>,
   dispatch_beforeunload_event_fn_global: v8::Global<v8::Function>,
   dispatch_unload_event_fn_global: v8::Global<v8::Function>,
+  dispatch_process_beforeexit_event_fn_global: v8::Global<v8::Function>,
+  dispatch_process_exit_event_fn_global: v8::Global<v8::Function>,
 }
 
 pub struct WorkerOptions {
@@ -530,6 +532,8 @@ impl MainWorker {
       dispatch_load_event_fn_global,
       dispatch_beforeunload_event_fn_global,
       dispatch_unload_event_fn_global,
+      dispatch_process_beforeexit_event_fn_global,
+      dispatch_process_exit_event_fn_global,
     ) = {
       let context = js_runtime.main_context();
       let scope = &mut js_runtime.handle_scope();
@@ -576,11 +580,39 @@ impl MainWorker {
         .unwrap();
       let dispatch_unload_event_fn =
         v8::Local::<v8::Function>::try_from(dispatch_unload_event_fn).unwrap();
+      let dispatch_process_beforeexit_event =
+        v8::String::new_external_onebyte_static(
+          scope,
+          b"dispatchProcessBeforeExitEvent",
+        )
+        .unwrap();
+      let dispatch_process_beforeexit_event_fn = bootstrap_ns
+        .get(scope, dispatch_process_beforeexit_event.into())
+        .unwrap();
+      let dispatch_process_beforeexit_event_fn =
+        v8::Local::<v8::Function>::try_from(
+          dispatch_process_beforeexit_event_fn,
+        )
+        .unwrap();
+      let dispatch_process_exit_event =
+        v8::String::new_external_onebyte_static(
+          scope,
+          b"dispatchProcessExitEvent",
+        )
+        .unwrap();
+      let dispatch_process_exit_event_fn = bootstrap_ns
+        .get(scope, dispatch_process_exit_event.into())
+        .unwrap();
+      let dispatch_process_exit_event_fn =
+        v8::Local::<v8::Function>::try_from(dispatch_process_exit_event_fn)
+          .unwrap();
       (
         v8::Global::new(scope, bootstrap_fn),
         v8::Global::new(scope, dispatch_load_event_fn),
         v8::Global::new(scope, dispatch_beforeunload_event_fn),
         v8::Global::new(scope, dispatch_unload_event_fn),
+        v8::Global::new(scope, dispatch_process_beforeexit_event_fn),
+        v8::Global::new(scope, dispatch_process_exit_event_fn),
       )
     };
 
@@ -594,6 +626,8 @@ impl MainWorker {
       dispatch_load_event_fn_global,
       dispatch_beforeunload_event_fn_global,
       dispatch_unload_event_fn_global,
+      dispatch_process_beforeexit_event_fn_global,
+      dispatch_process_exit_event_fn_global,
     }
   }
 
@@ -782,6 +816,21 @@ impl MainWorker {
     Ok(())
   }
 
+  /// Dispatches process.emit("exit") event for node compat.
+  pub fn dispatch_process_exit_event(&mut self) -> Result<(), AnyError> {
+    let scope = &mut self.js_runtime.handle_scope();
+    let tc_scope = &mut v8::TryCatch::new(scope);
+    let dispatch_process_exit_event_fn =
+      v8::Local::new(tc_scope, &self.dispatch_process_exit_event_fn_global);
+    let undefined = v8::undefined(tc_scope);
+    dispatch_process_exit_event_fn.call(tc_scope, undefined.into(), &[]);
+    if let Some(exception) = tc_scope.exception() {
+      let error = JsError::from_v8_exception(tc_scope, exception);
+      return Err(error.into());
+    }
+    Ok(())
+  }
+
   /// Dispatches "beforeunload" event to the JavaScript runtime. Returns a boolean
   /// indicating if the event was prevented and thus event loop should continue
   /// running.
@@ -799,5 +848,29 @@ impl MainWorker {
     }
     let ret_val = ret_val.unwrap();
     Ok(ret_val.is_false())
+  }
+
+  /// Dispatches process.emit("beforeExit") event for node compat.
+  pub fn dispatch_process_beforeexit_event(
+    &mut self,
+  ) -> Result<bool, AnyError> {
+    let scope = &mut self.js_runtime.handle_scope();
+    let tc_scope = &mut v8::TryCatch::new(scope);
+    let dispatch_process_beforeexit_event_fn = v8::Local::new(
+      tc_scope,
+      &self.dispatch_process_beforeexit_event_fn_global,
+    );
+    let undefined = v8::undefined(tc_scope);
+    let ret_val = dispatch_process_beforeexit_event_fn.call(
+      tc_scope,
+      undefined.into(),
+      &[],
+    );
+    if let Some(exception) = tc_scope.exception() {
+      let error = JsError::from_v8_exception(tc_scope, exception);
+      return Err(error.into());
+    }
+    let ret_val = ret_val.unwrap();
+    Ok(ret_val.is_true())
   }
 }

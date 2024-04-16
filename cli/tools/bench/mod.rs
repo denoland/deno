@@ -269,7 +269,9 @@ async fn bench_specifier_inner(
   // Ignore `defaultPrevented` of the `beforeunload` event. We don't allow the
   // event loop to continue beyond what's needed to await results.
   worker.dispatch_beforeunload_event()?;
+  worker.dispatch_process_beforeexit_event()?;
   worker.dispatch_unload_event()?;
+  worker.dispatch_process_exit_event()?;
 
   // Ensure the worker has settled so we can catch any remaining unhandled rejections. We don't
   // want to wait forever here.
