@@ -4288,7 +4288,6 @@ impl TscRuntime {
       println!("Cancelled!");
       return Err(anyhow!("Operation was cancelled."));
     }
-    println!("Request {:?}", request);
     let (performance, id) = {
       let op_state = self.js_runtime.op_state();
       let mut op_state = op_state.borrow_mut();
