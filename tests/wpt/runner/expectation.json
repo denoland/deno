@@ -1,7 +1,11 @@
 {
   "WebCryptoAPI": {
-    "getRandomValues.any.html": true,
-    "getRandomValues.any.worker.html": true,
+    "getRandomValues.any.html": [
+      "Float arrays"
+    ],
+    "getRandomValues.any.worker.html": [
+      "Float arrays"
+    ],
     "derive_bits_keys": {
       "ecdh_bits.https.any.html": [
         "P-521 good parameters",
@@ -2180,7 +2184,6 @@
         "Ed25519 Verification checks with small-order key of order - Test 0",
         "Ed25519 Verification checks with small-order key of order - Test 1",
         "Ed25519 Verification checks with small-order key of order - Test 2",
-        "Ed25519 Verification checks with small-order key of order - Test 3",
         "Ed25519 Verification checks with small-order key of order - Test 11",
         "Ed25519 Verification checks with small-order key of order - Test 12",
         "Ed25519 Verification checks with small-order key of order - Test 13"
@@ -2214,7 +2217,6 @@
         "Ed25519 Verification checks with small-order key of order - Test 0",
         "Ed25519 Verification checks with small-order key of order - Test 1",
         "Ed25519 Verification checks with small-order key of order - Test 2",
-        "Ed25519 Verification checks with small-order key of order - Test 3",
         "Ed25519 Verification checks with small-order key of order - Test 11",
         "Ed25519 Verification checks with small-order key of order - Test 12",
         "Ed25519 Verification checks with small-order key of order - Test 13"
@@ -2889,8 +2891,14 @@
     "api-replacement-encodings.any.worker.html": true,
     "api-surrogates-utf8.any.html": true,
     "api-surrogates-utf8.any.worker.html": true,
-    "encodeInto.any.html": true,
-    "encodeInto.any.worker.html": true,
+    "encodeInto.any.html": [
+      "Invalid encodeInto() destination: Float16Array, backed by: ArrayBuffer",
+      "Invalid encodeInto() destination: Float16Array, backed by: SharedArrayBuffer"
+    ],
+    "encodeInto.any.worker.html": [
+      "Invalid encodeInto() destination: Float16Array, backed by: ArrayBuffer",
+      "Invalid encodeInto() destination: Float16Array, backed by: SharedArrayBuffer"
+    ],
     "idlharness.any.html": true,
     "idlharness.any.worker.html": true,
     "iso-2022-jp-decoder.any.html": true,
@@ -5685,6 +5693,8 @@
       "Parsing: </\\/\\//example.org/../path> against <http://example.org/>"
     ],
     "a-element.html?include=file": [
+      "Parsing: <file:.> against <about:blank>",
+      "Parsing: <file:.> against <http://www.example.com/test>",
       "Parsing: <file:/example.com/> against <http://example.org/foo/bar>",
       "Parsing: <file://example:1/> against <about:blank>",
       "Parsing: <file://example:test/> against <about:blank>",
@@ -6842,52 +6852,8 @@
         "request-headers-case.any.worker.html": false,
         "request-headers-nonascii.any.html": true,
         "request-headers-nonascii.any.worker.html": true,
-        "request-headers.any.html": [
-          "Fetch with PUT without body",
-          "Fetch with PUT with body",
-          "Fetch with POST without body",
-          "Fetch with POST with text body",
-          "Fetch with POST with FormData body",
-          "Fetch with POST with URLSearchParams body",
-          "Fetch with POST with Blob body",
-          "Fetch with POST with ArrayBuffer body",
-          "Fetch with POST with Uint8Array body",
-          "Fetch with POST with Int8Array body",
-          "Fetch with POST with Float32Array body",
-          "Fetch with POST with Float64Array body",
-          "Fetch with POST with DataView body",
-          "Fetch with POST with Blob body with mime type",
-          "Fetch with Chicken",
-          "Fetch with Chicken with body",
-          "Fetch with POST and mode \"same-origin\" needs an Origin header",
-          "Fetch with POST and mode \"no-cors\" needs an Origin header",
-          "Fetch with PUT and mode \"same-origin\" needs an Origin header",
-          "Fetch with TacO and mode \"same-origin\" needs an Origin header",
-          "Fetch with TacO and mode \"cors\" needs an Origin header"
-        ],
-        "request-headers.any.worker.html": [
-          "Fetch with PUT without body",
-          "Fetch with PUT with body",
-          "Fetch with POST without body",
-          "Fetch with POST with text body",
-          "Fetch with POST with FormData body",
-          "Fetch with POST with URLSearchParams body",
-          "Fetch with POST with Blob body",
-          "Fetch with POST with ArrayBuffer body",
-          "Fetch with POST with Uint8Array body",
-          "Fetch with POST with Int8Array body",
-          "Fetch with POST with Float32Array body",
-          "Fetch with POST with Float64Array body",
-          "Fetch with POST with DataView body",
-          "Fetch with POST with Blob body with mime type",
-          "Fetch with Chicken",
-          "Fetch with Chicken with body",
-          "Fetch with POST and mode \"same-origin\" needs an Origin header",
-          "Fetch with POST and mode \"no-cors\" needs an Origin header",
-          "Fetch with PUT and mode \"same-origin\" needs an Origin header",
-          "Fetch with TacO and mode \"same-origin\" needs an Origin header",
-          "Fetch with TacO and mode \"cors\" needs an Origin header"
-        ],
+        "request-headers.any.html": false,
+        "request-headers.any.worker.html": false,
         "text-utf8.any.html": true,
         "text-utf8.any.worker.html": true,
         "accept-header.any.html": true,
@@ -7156,8 +7122,12 @@
         "response-from-stream.any.worker.html": true,
         "response-cancel-stream.any.html": true,
         "response-cancel-stream.any.worker.html": true,
-        "response-clone.any.html": true,
-        "response-clone.any.worker.html": true,
+        "response-clone.any.html": [
+          "Check response clone use structureClone for teed ReadableStreams (Float16Arraychunk)"
+        ],
+        "response-clone.any.worker.html": [
+          "Check response clone use structureClone for teed ReadableStreams (Float16Arraychunk)"
+        ],
         "response-consume-empty.any.html": [
           "Consume empty FormData response body as text"
         ],
@@ -8520,8 +8490,12 @@
     "blob": {
       "Blob-array-buffer.any.html": true,
       "Blob-array-buffer.any.worker.html": true,
-      "Blob-constructor.any.html": true,
-      "Blob-constructor.any.worker.html": true,
+      "Blob-constructor.any.html": [
+        "Passing typed arrays as elements of the blobParts array should work."
+      ],
+      "Blob-constructor.any.worker.html": [
+        "Passing typed arrays as elements of the blobParts array should work."
+      ],
       "Blob-slice-overflow.any.html": true,
       "Blob-slice-overflow.any.worker.html": true,
       "Blob-slice.any.html": true,
@@ -9080,7 +9054,7 @@
     "storage_key.window.html": true,
     "storage_key_empty_string.window.html": true,
     "storage_length.window.html": true,
-    "storage_local_setitem_quotaexceedederr.window.html": true,
+    "storage_local_setitem_quotaexceedederr.window.html": false,
     "storage_removeitem.window.html": true,
     "storage_session_setitem_quotaexceedederr.window.html": true,
     "storage_set_value_enumerate.window.html": true,
@@ -10136,7 +10110,8 @@
           "The IDBKeyRange interface object should be exposed.",
           "The IDBCursor interface object should be exposed.",
           "The IDBCursorWithValue interface object should be exposed.",
-          "The IDBTransaction interface object should be exposed."
+          "The IDBTransaction interface object should be exposed.",
+          "The Float16Array interface object should be exposed."
         ],
         "002.worker.html": true
       },
@@ -10675,8 +10650,8 @@
     "compression-with-detach.tentative.window.html": true,
     "decompression-bad-chunks.tentative.any.html": true,
     "decompression-bad-chunks.tentative.any.worker.html": true,
-    "decompression-buffersource.tentative.any.html": true,
-    "decompression-buffersource.tentative.any.worker.html": true,
+    "decompression-buffersource.tentative.any.html": false,
+    "decompression-buffersource.tentative.any.worker.html": false,
     "decompression-constructor-error.tentative.any.html": true,
     "decompression-constructor-error.tentative.any.worker.html": true,
     "decompression-correct-input.tentative.any.html": true,
