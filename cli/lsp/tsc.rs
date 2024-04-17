@@ -4811,6 +4811,7 @@ pub enum TscRequest {
     )>,
   ),
   // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6205
+  #[allow(clippy::type_complexity)]
   GetCompletionEntryDetails(
     Box<(
       String,
