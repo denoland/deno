@@ -1707,7 +1707,7 @@ fn analyze_module(
   match parsed_source_result {
     Ok(parsed_source) => Ok(deno_graph::parse_module_from_ast(
       deno_graph::ParseModuleFromAstOptions {
-        graph_kind: deno_graph::GraphKind::All,
+        graph_kind: deno_graph::GraphKind::TypesOnly,
         specifier,
         maybe_headers,
         parsed_source,
