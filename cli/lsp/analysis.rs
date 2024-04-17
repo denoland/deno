@@ -10,7 +10,7 @@ use crate::args::jsr_url;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliNodeResolver;
 use crate::tools::lint::create_linter;
-use crate::util::path::specifier_to_file_path;
+use deno_runtime::fs_util::specifier_to_file_path;
 
 use deno_ast::SourceRange;
 use deno_ast::SourceRangedForSpanned;

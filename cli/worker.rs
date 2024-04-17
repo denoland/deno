@@ -22,6 +22,7 @@ use deno_core::PollEventLoopOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::SourceMapGetter;
 use deno_lockfile::Lockfile;
+use deno_runtime::code_cache;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node;
@@ -140,6 +141,7 @@ struct SharedWorkerState {
   enable_future_features: bool,
   disable_deprecated_api_warning: bool,
   verbose_deprecated_api_warning: bool,
+  code_cache: Option<Arc<dyn code_cache::CodeCache>>,
 }
 
 impl SharedWorkerState {
@@ -411,6 +413,7 @@ impl CliMainWorkerFactory {
     enable_future_features: bool,
     disable_deprecated_api_warning: bool,
     verbose_deprecated_api_warning: bool,
+    code_cache: Option<Arc<dyn code_cache::CodeCache>>,
   ) -> Self {
     Self {
       shared: Arc::new(SharedWorkerState {
@@ -434,6 +437,7 @@ impl CliMainWorkerFactory {
         enable_future_features,
         disable_deprecated_api_warning,
         verbose_deprecated_api_warning,
+        code_cache,
       }),
     }
   }
@@ -628,6 +632,7 @@ impl CliMainWorkerFactory {
       stdio,
       feature_checker,
       skip_op_registration: shared.options.skip_op_registration,
+      v8_code_cache: shared.code_cache.clone(),
     };
 
     let mut worker = MainWorker::bootstrap_from_options(

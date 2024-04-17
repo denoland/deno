@@ -5177,3 +5177,205 @@ fn run_etag_delete_source_cache() {
       "[WILDCARD]Cache body not found. Trying again without etag.[WILDCARD]",
     );
 }
+
+#[test]
+fn code_cache_test() {
+  let deno_dir = TempDir::new();
+  let test_context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = test_context.temp_dir();
+  temp_dir.write("main.js", "console.log('Hello World - A');");
+
+  // First run with no prior cache.
+  {
+    let output = test_context
+      .new_command()
+      .env("DENO_DIR", deno_dir.path())
+      .arg("run")
+      .arg("-Ldebug")
+      .arg("main.js")
+      .split_output()
+      .run();
+
+    output
+      .assert_stdout_matches_text("Hello World - A[WILDCARD]")
+      .assert_stderr_matches_text("[WILDCARD]Updating V8 code cache for ES module: file:///[WILDCARD]/main.js[WILDCARD]");
+    assert!(!output.stderr().contains("V8 code cache hit"));
+
+    // Check that the code cache database exists.
+    let code_cache_path = deno_dir.path().join("v8_code_cache_v1");
+    assert!(code_cache_path.exists());
+  }
+
+  // 2nd run with cache.
+  {
+    let output = test_context
+      .new_command()
+      .env("DENO_DIR", deno_dir.path())
+      .arg("run")
+      .arg("-Ldebug")
+      .arg("main.js")
+      .split_output()
+      .run();
+
+    output
+      .assert_stdout_matches_text("Hello World - A[WILDCARD]")
+      .assert_stderr_matches_text("[WILDCARD]V8 code cache hit for ES module: file:///[WILDCARD]/main.js[WILDCARD]");
+    assert!(!output.stderr().contains("Updating V8 code cache"));
+  }
+
+  // Rerun with --no-code-cache.
+  {
+    let output = test_context
+      .new_command()
+      .env("DENO_DIR", deno_dir.path())
+      .arg("run")
+      .arg("-Ldebug")
+      .arg("--no-code-cache")
+      .arg("main.js")
+      .split_output()
+      .run();
+
+    output
+      .assert_stdout_matches_text("Hello World - A[WILDCARD]")
+      .skip_stderr_check();
+    assert!(!output.stderr().contains("V8 code cache"));
+  }
+
+  // Modify the script, and make sure that the cache is rejected.
+  temp_dir.write("main.js", "console.log('Hello World - B');");
+  {
+    let output = test_context
+      .new_command()
+      .env("DENO_DIR", deno_dir.path())
+      .arg("run")
+      .arg("-Ldebug")
+      .arg("main.js")
+      .split_output()
+      .run();
+
+    output
+      .assert_stdout_matches_text("Hello World - B[WILDCARD]")
+      .assert_stderr_matches_text("[WILDCARD]Updating V8 code cache for ES module: file:///[WILDCARD]/main.js[WILDCARD]");
+    assert!(!output.stderr().contains("V8 code cache hit"));
+  }
+}
+
+#[test]
+fn code_cache_npm_test() {
+  let deno_dir = TempDir::new();
+  let test_context = TestContextBuilder::new()
+    .use_temp_cwd()
+    .use_http_server()
+    .build();
+  let temp_dir = test_context.temp_dir();
+  temp_dir.write(
+    "main.js",
+    "import chalk from \"npm:chalk@5\";console.log(chalk('Hello World'));",
+  );
+
+  // First run with no prior cache.
+  {
+    let output = test_context
+      .new_command()
+      .env("DENO_DIR", deno_dir.path())
+      .envs(env_vars_for_npm_tests())
+      .arg("run")
+      .arg("-Ldebug")
+      .arg("-A")
+      .arg("main.js")
+      .split_output()
+      .run();
+
+    output
+      .assert_stdout_matches_text("Hello World[WILDCARD]")
+      .assert_stderr_matches_text("[WILDCARD]Updating V8 code cache for ES module: file:///[WILDCARD]/main.js[WILDCARD]")
+      .assert_stderr_matches_text("[WILDCARD]Updating V8 code cache for ES module: file:///[WILDCARD]/npm/registry/chalk/5.[WILDCARD]/source/index.js[WILDCARD]");
+    assert!(!output.stderr().contains("V8 code cache hit"));
+
+    // Check that the code cache database exists.
+    let code_cache_path = deno_dir.path().join("v8_code_cache_v1");
+    assert!(code_cache_path.exists());
+  }
+
+  // 2nd run with cache.
+  {
+    let output = test_context
+      .new_command()
+      .env("DENO_DIR", deno_dir.path())
+      .envs(env_vars_for_npm_tests())
+      .arg("run")
+      .arg("-Ldebug")
+      .arg("-A")
+      .arg("main.js")
+      .split_output()
+      .run();
+
+    output
+      .assert_stdout_matches_text("Hello World[WILDCARD]")
+      .assert_stderr_matches_text("[WILDCARD]V8 code cache hit for ES module: file:///[WILDCARD]/main.js[WILDCARD]")
+      .assert_stderr_matches_text("[WILDCARD]V8 code cache hit for ES module: file:///[WILDCARD]/npm/registry/chalk/5.[WILDCARD]/source/index.js[WILDCARD]");
+    assert!(!output.stderr().contains("Updating V8 code cache"));
+  }
+}
+
+#[test]
+fn code_cache_npm_with_require_test() {
+  let deno_dir = TempDir::new();
+  let test_context = TestContextBuilder::new()
+    .use_temp_cwd()
+    .use_http_server()
+    .build();
+  let temp_dir = test_context.temp_dir();
+  temp_dir.write(
+    "main.js",
+    "import fraction from \"npm:autoprefixer\";console.log(typeof fraction);",
+  );
+
+  // First run with no prior cache.
+  {
+    let output = test_context
+      .new_command()
+      .env("DENO_DIR", deno_dir.path())
+      .envs(env_vars_for_npm_tests())
+      .arg("run")
+      .arg("-Ldebug")
+      .arg("-A")
+      .arg("main.js")
+      .split_output()
+      .run();
+
+    output
+      .assert_stdout_matches_text("function[WILDCARD]")
+      .assert_stderr_matches_text("[WILDCARD]Updating V8 code cache for ES module: file:///[WILDCARD]/main.js[WILDCARD]")
+      .assert_stderr_matches_text("[WILDCARD]Updating V8 code cache for ES module: file:///[WILDCARD]/npm/registry/autoprefixer/[WILDCARD]/autoprefixer.js[WILDCARD]")
+      .assert_stderr_matches_text("[WILDCARD]Updating V8 code cache for script: file:///[WILDCARD]/npm/registry/autoprefixer/[WILDCARD]/autoprefixer.js[WILDCARD]")
+      .assert_stderr_matches_text("[WILDCARD]Updating V8 code cache for script: file:///[WILDCARD]/npm/registry/browserslist/[WILDCARD]/index.js[WILDCARD]");
+    assert!(!output.stderr().contains("V8 code cache hit"));
+
+    // Check that the code cache database exists.
+    let code_cache_path = deno_dir.path().join("v8_code_cache_v1");
+    assert!(code_cache_path.exists());
+  }
+
+  // 2nd run with cache.
+  {
+    let output = test_context
+      .new_command()
+      .env("DENO_DIR", deno_dir.path())
+      .envs(env_vars_for_npm_tests())
+      .arg("run")
+      .arg("-Ldebug")
+      .arg("-A")
+      .arg("main.js")
+      .split_output()
+      .run();
+
+    output
+      .assert_stdout_matches_text("function[WILDCARD]")
+      .assert_stderr_matches_text("[WILDCARD]V8 code cache hit for ES module: file:///[WILDCARD]/main.js[WILDCARD]")
+      .assert_stderr_matches_text("[WILDCARD]V8 code cache hit for ES module: file:///[WILDCARD]/npm/registry/autoprefixer/[WILDCARD]/autoprefixer.js[WILDCARD]")
+      .assert_stderr_matches_text("[WILDCARD]V8 code cache hit for script: file:///[WILDCARD]/npm/registry/autoprefixer/[WILDCARD]/autoprefixer.js[WILDCARD]")
+      .assert_stderr_matches_text("[WILDCARD]V8 code cache hit for script: file:///[WILDCARD]/npm/registry/browserslist/[WILDCARD]/index.js[WILDCARD]");
+    assert!(!output.stderr().contains("Updating V8 code cache"));
+  }
+}

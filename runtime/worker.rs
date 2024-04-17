@@ -1,4 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
@@ -41,6 +42,9 @@ use deno_tls::RootCertStoreProvider;
 use deno_web::BlobStore;
 use log::debug;
 
+use crate::code_cache::CodeCache;
+use crate::code_cache::CodeCacheType;
+use crate::fs_util::code_timestamp;
 use crate::inspector_server::InspectorServer;
 use crate::ops;
 use crate::permissions::PermissionsContainer;
@@ -193,6 +197,9 @@ pub struct WorkerOptions {
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
   pub stdio: Stdio,
   pub feature_checker: Arc<FeatureChecker>,
+
+  /// V8 code cache for module and script source code.
+  pub v8_code_cache: Option<Arc<dyn CodeCache>>,
 }
 
 impl Default for WorkerOptions {
@@ -227,6 +234,7 @@ impl Default for WorkerOptions {
       bootstrap: Default::default(),
       stdio: Default::default(),
       feature_checker: Default::default(),
+      v8_code_cache: Default::default(),
     }
   }
 }
@@ -294,6 +302,51 @@ pub fn create_op_metrics(
   }
 
   (op_summary_metrics, op_metrics_factory_fn)
+}
+
+fn get_code_cache(
+  code_cache: Arc<dyn CodeCache>,
+  specifier: &str,
+) -> Option<Vec<u8>> {
+  // Code hashes are not maintained for op_eval_context scripts. Instead we use
+  // the modified timestamp from the local file system.
+  if let Ok(code_timestamp) = code_timestamp(specifier) {
+    code_cache
+      .get_sync(
+        specifier,
+        CodeCacheType::Script,
+        code_timestamp.to_string().as_str(),
+      )
+      .inspect(|_| {
+        // This log line is also used by tests.
+        log::debug!(
+          "V8 code cache hit for script: {specifier}, [{code_timestamp}]"
+        );
+      })
+  } else {
+    None
+  }
+}
+
+fn set_code_cache(
+  code_cache: Arc<dyn CodeCache>,
+  specifier: &str,
+  data: &[u8],
+) {
+  // Code hashes are not maintained for op_eval_context scripts. Instead we use
+  // the modified timestamp from the local file system.
+  if let Ok(code_timestamp) = code_timestamp(specifier) {
+    // This log line is also used by tests.
+    log::debug!(
+      "Updating V8 code cache for script: {specifier}, [{code_timestamp}]",
+    );
+    code_cache.set_sync(
+      specifier,
+      CodeCacheType::Script,
+      code_timestamp.to_string().as_str(),
+      data,
+    );
+  }
 }
 
 impl MainWorker {
@@ -495,6 +548,18 @@ impl MainWorker {
       validate_import_attributes_cb: Some(Box::new(
         validate_import_attributes_callback,
       )),
+      enable_code_cache: options.v8_code_cache.is_some(),
+      eval_context_code_cache_cbs: options.v8_code_cache.map(|cache| {
+        let cache_clone = cache.clone();
+        (
+          Box::new(move |specifier: &str| {
+            Ok(get_code_cache(cache.clone(), specifier).map(Cow::Owned))
+          }) as Box<dyn Fn(&_) -> _>,
+          Box::new(move |specifier: &str, data: &[u8]| {
+            set_code_cache(cache_clone.clone(), specifier, data);
+          }) as Box<dyn Fn(&_, &_)>,
+        )
+      }),
       ..Default::default()
     });
 
