@@ -252,6 +252,39 @@ Deno.test(function getPreferredCanvasFormat() {
   assert(preferredFormat === "bgra8unorm" || preferredFormat === "rgba8unorm");
 });
 
+Deno.test({
+  ignore: isWsl || isLinuxOrMacCI,
+}, async function validateGPUExtent3D() {
+  const adapter = await navigator.gpu.requestAdapter();
+  assert(adapter);
+  const device = await adapter.requestDevice();
+  assert(device);
+
+  const format = "rgba8unorm-srgb";
+  const usage = GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC;
+
+  // validate GPUExtent3D via the argument of size property's length of GPUDevice.createTexture when it is an Array
+  // https://www.w3.org/TR/2024/WD-webgpu-20240409/#dom-gpudevice-createtexture
+  assertThrows(
+    () => device.createTexture({
+      size: [],
+      format,
+      usage,
+    }),
+  );
+  assertThrows(
+    () => device.createTexture({
+      size: [256, 256, 1, 1],
+      format,
+      usage,
+    }),
+  );
+
+  device.destroy();
+  const resources = Object.keys(Deno.resources());
+  Deno.close(Number(resources[resources.length - 1]));
+});
+
 async function checkIsWsl() {
   return Deno.build.os === "linux" && await hasMicrosoftProcVersion();
 
