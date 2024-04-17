@@ -5302,6 +5302,18 @@ webidl.converters["GPUExtent3D"] = (V, opts) => {
     return webidl.converters["GPUExtent3DDict"](V, opts);
   }
   if (typeof V === "object") {
+    // validate GPUExtent3D when its an Array
+    if (ArrayIsArray(V)) {
+      const min = 1;
+      const max = 3;
+      if (V.length < min || V.length > max) {
+        throw webidl.makeException(
+          TypeError,
+          `A sequence of number used as a GPUExtent3D must have between ${min} and ${max} elements.`,
+          opts,
+        );
+      }
+    }
     const method = V[SymbolIterator];
     if (method !== undefined) {
       return webidl.converters["sequence<GPUIntegerCoordinate>"](V, opts);
