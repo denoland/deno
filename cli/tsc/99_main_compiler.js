@@ -343,14 +343,14 @@ delete Object.prototype.__proto__;
     },
 
     releaseDocumentWithKey(path, key, _scriptKind, _impliedNodeFormat) {
-      const mapKey = path + key;
-      documentRegistrySourceFileCache.delete(mapKey);
       const sourceRefCount = sourceRefCounts.get(path) ?? 1;
       if (sourceRefCount <= 1) {
         sourceRefCounts.delete(path);
         // We call `cleanupSemanticCache` for other purposes, don't bust the
         // source cache in this case.
         if (lastRequestMethod != "cleanupSemanticCache") {
+          const mapKey = path + key;
+          documentRegistrySourceFileCache.delete(mapKey);
           sourceTextCache.delete(path);
           ops.op_release(path);
         }
