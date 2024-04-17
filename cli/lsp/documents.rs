@@ -211,36 +211,14 @@ impl AssetOrDocument {
   }
 }
 
-#[derive(Debug, Default)]
-struct DocumentDependencies {
-  deps: IndexMap<String, deno_graph::Dependency>,
-  maybe_types_dependency: Option<deno_graph::TypesDependency>,
-}
-
-impl DocumentDependencies {
-  pub fn from_maybe_module(maybe_module: &Option<ModuleResult>) -> Self {
-    if let Some(Ok(module)) = &maybe_module {
-      Self::from_module(module)
-    } else {
-      Self::default()
-    }
-  }
-
-  pub fn from_module(module: &deno_graph::JsModule) -> Self {
-    Self {
-      deps: module.dependencies.clone(),
-      maybe_types_dependency: module.maybe_types_dependency.clone(),
-    }
-  }
-}
-
 type ModuleResult = Result<deno_graph::JsModule, deno_graph::ModuleGraphError>;
 type ParsedSourceResult = Result<ParsedSource, deno_ast::ParseDiagnostic>;
 
 #[derive(Debug)]
 pub struct Document {
   /// Contains the last-known-good set of dependencies from parsing the module.
-  dependencies: Arc<DocumentDependencies>,
+  dependencies: Arc<IndexMap<String, deno_graph::Dependency>>,
+  maybe_types_dependency: Option<Arc<deno_graph::TypesDependency>>,
   fs_version: String,
   line_index: Arc<LineIndex>,
   maybe_headers: Option<HashMap<String, String>>,
@@ -282,11 +260,18 @@ impl Document {
       resolver,
       npm_resolver,
     );
-    let dependencies =
-      Arc::new(DocumentDependencies::from_maybe_module(&maybe_module));
+    let maybe_module = maybe_module.and_then(Result::ok);
+    let dependencies = maybe_module
+      .as_ref()
+      .map(|m| Arc::new(m.dependencies.clone()))
+      .unwrap_or_default();
+    let maybe_types_dependency = maybe_module
+      .as_ref()
+      .and_then(|m| Some(Arc::new(m.maybe_types_dependency.clone()?)));
     let line_index = Arc::new(LineIndex::new(text_info.text_str()));
     Arc::new(Document {
       dependencies,
+      maybe_types_dependency,
       fs_version,
       line_index,
       maybe_headers,
@@ -332,11 +317,18 @@ impl Document {
       resolver,
       npm_resolver,
     ));
-    let dependencies =
-      Arc::new(DocumentDependencies::from_maybe_module(&maybe_module));
+    let maybe_module = maybe_module.and_then(Result::ok);
+    let dependencies = maybe_module
+      .as_ref()
+      .map(|m| Arc::new(m.dependencies.clone()))
+      .unwrap_or_default();
+    let maybe_types_dependency = maybe_module
+      .as_ref()
+      .and_then(|m| Some(Arc::new(m.maybe_types_dependency.clone()?)));
     Some(Arc::new(Self {
       // updated properties
       dependencies,
+      maybe_types_dependency,
       maybe_navigation_tree: Mutex::new(None),
       maybe_parsed_source: Some(parsed_source_result),
       // maintain - this should all be copies/clones
@@ -382,11 +374,18 @@ impl Document {
     } else {
       (None, None)
     };
-    let dependencies =
-      Arc::new(DocumentDependencies::from_maybe_module(&maybe_module));
+    let maybe_module = maybe_module.and_then(Result::ok);
+    let dependencies = maybe_module
+      .as_ref()
+      .map(|m| Arc::new(m.dependencies.clone()))
+      .unwrap_or_default();
+    let maybe_types_dependency = maybe_module
+      .as_ref()
+      .and_then(|m| Some(Arc::new(m.maybe_types_dependency.clone()?)));
     let line_index = Arc::new(LineIndex::new(text_info.text_str()));
     Arc::new(Self {
       dependencies,
+      maybe_types_dependency,
       fs_version: calculate_fs_version(cache, &specifier)
         .unwrap_or_else(|| "1".to_string()),
       line_index,
@@ -444,11 +443,15 @@ impl Document {
     } else {
       (None, None)
     };
-    let dependencies = if let Some(Ok(module)) = &maybe_module {
-      Arc::new(DocumentDependencies::from_module(module))
-    } else {
-      self.dependencies.clone() // use the last known good
-    };
+    let maybe_module = maybe_module.and_then(Result::ok);
+    let dependencies = maybe_module
+      .as_ref()
+      .map(|m| Arc::new(m.dependencies.clone()))
+      .unwrap_or_else(|| self.dependencies.clone());
+    let maybe_types_dependency = maybe_module
+      .as_ref()
+      .and_then(|m| Some(Arc::new(m.maybe_types_dependency.clone()?)))
+      .or_else(|| self.maybe_types_dependency.clone());
     let line_index = if index_valid == IndexValid::All {
       line_index
     } else {
@@ -459,6 +462,7 @@ impl Document {
       fs_version: self.fs_version.clone(),
       maybe_language_id: self.maybe_language_id,
       dependencies,
+      maybe_types_dependency,
       text_info,
       line_index,
       maybe_headers: self.maybe_headers.clone(),
@@ -477,6 +481,7 @@ impl Document {
         .unwrap_or_else(|| "1".to_string()),
       maybe_language_id: self.maybe_language_id,
       dependencies: self.dependencies.clone(),
+      maybe_types_dependency: self.maybe_types_dependency.clone(),
       text_info: self.text_info.clone(),
       line_index: self.line_index.clone(),
       maybe_headers: self.maybe_headers.clone(),
@@ -535,11 +540,11 @@ impl Document {
     self.maybe_lsp_version.is_some()
   }
 
-  pub fn maybe_types_dependency(&self) -> Resolution {
-    if let Some(types_dep) = self.dependencies.maybe_types_dependency.as_ref() {
-      types_dep.dependency.clone()
+  pub fn maybe_types_dependency(&self) -> &Resolution {
+    if let Some(types_dep) = self.maybe_types_dependency.as_deref() {
+      &types_dep.dependency
     } else {
-      Resolution::None
+      &Resolution::None
     }
   }
 
@@ -581,7 +586,7 @@ impl Document {
   }
 
   pub fn dependencies(&self) -> &IndexMap<String, deno_graph::Dependency> {
-    &self.dependencies.deps
+    self.dependencies.as_ref()
   }
 
   /// If the supplied position is within a dependency range, return the resolved
@@ -1196,7 +1201,8 @@ impl Documents {
     referrer: &ModuleSpecifier,
     maybe_npm: Option<&StateNpmSnapshot>,
   ) -> Vec<Option<(ModuleSpecifier, MediaType)>> {
-    let dependencies = self.get(referrer).map(|d| d.dependencies.clone());
+    let document = self.get(referrer);
+    let dependencies = document.as_ref().map(|d| d.dependencies());
     let mut results = Vec::new();
     for specifier in specifiers {
       if let Some(npm) = maybe_npm {
@@ -1225,7 +1231,7 @@ impl Documents {
           results.push(None);
         }
       } else if let Some(dep) =
-        dependencies.as_ref().and_then(|d| d.deps.get(specifier))
+        dependencies.as_ref().and_then(|d| d.get(specifier))
       {
         if let Some(specifier) = dep.maybe_type.maybe_specifier() {
           results.push(self.resolve_dependency(specifier, maybe_npm, referrer));
