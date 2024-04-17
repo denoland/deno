@@ -65,14 +65,17 @@ jobs:
 
       - name: Run web platform tests
         shell: bash
+        # Setup WPT and run tests. We ignore the exit code of the test run
+        # because the CI job reports the results to WPT.fyi, and we still want
+        # to report failure.
         run: |
           deno run --unstable --allow-write --allow-read --allow-net           \
             --allow-env --allow-run --lock=tools/deno.lock.json                \
             ./tests/wpt/wpt.ts setup
           deno run --unstable --allow-write --allow-read --allow-net           \
             --allow-env --allow-run --lock=tools/deno.lock.json                \
-            ./tests/wpt/wpt.ts run                                                 \                                                \
-            --binary=$(which deno) --quiet --release --no-ignore --json=wpt.json --wptreport=wptreport.json
+            ./tests/wpt/wpt.ts run                                             \
+            --binary=$(which deno) --quiet --release --no-ignore --json=wpt.json --wptreport=wptreport.json || true
 
       - name: Upload wpt results to wpt.fyi
         env:
