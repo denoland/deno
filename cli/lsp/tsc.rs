@@ -356,6 +356,21 @@ impl TsServer {
     Ok(diagnostics_map)
   }
 
+  pub async fn cleanup_semantic_cache(&self, snapshot: Arc<StateSnapshot>) {
+    let req = TscRequest {
+      method: "cleanupSemanticCache",
+      args: json!([]),
+    };
+    self
+      .request::<()>(snapshot, req)
+      .await
+      .map_err(|err| {
+        log::error!("Failed to request to tsserver {}", err);
+        LspError::invalid_request()
+      })
+      .ok();
+  }
+
   pub async fn find_references(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -1008,14 +1023,6 @@ impl TsServer {
       log::error!("Unable to get inlay hints: {}", err);
       LspError::internal_error()
     })
-  }
-
-  pub async fn restart(&self, snapshot: Arc<StateSnapshot>) {
-    let req = TscRequest {
-      method: "$restart",
-      args: json!([]),
-    };
-    self.request::<bool>(snapshot, req).await.unwrap();
   }
 
   async fn request<R>(
@@ -4032,6 +4039,21 @@ fn op_load<'s>(
   Ok(serialized)
 }
 
+#[op2(fast)]
+fn op_release(
+  state: &mut OpState,
+  #[string] specifier: &str,
+) -> Result<(), AnyError> {
+  let state = state.borrow_mut::<State>();
+  let mark = state
+    .performance
+    .mark_with_args("tsc.op.op_release", specifier);
+  let specifier = state.specifier_map.normalize(specifier)?;
+  state.state_snapshot.documents.release(&specifier);
+  state.performance.measure(mark);
+  Ok(())
+}
+
 #[op2]
 #[serde]
 fn op_resolve(
@@ -4244,6 +4266,7 @@ deno_core::extension!(deno_tsc,
     op_is_cancelled,
     op_is_node_file,
     op_load,
+    op_release,
     op_resolve,
     op_respond,
     op_script_names,
