@@ -3,7 +3,7 @@ Check [WILDLINE]/tests/specs/publish/prefer_fast_check_graph/mod.ts
 Checking for slow types in the public API...
 Check [WILDLINE]/tests/specs/publish/prefer_fast_check_graph/mod.ts
 error[invalid-external-import]: invalid import to a non-JSR 'https' specifier
- --> [WILDLINE]/tests/specs/publish/prefer_fast_check_graph/deps.ts:1:15
+ --> [WILDLINE]deps.ts:1:15
   | 
 1 | export * from "https://deno.land/std/assert/assert.ts";
   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the specifier
