@@ -447,6 +447,7 @@ pub struct CliGraphResolver {
   sloppy_imports_resolver: Option<SloppyImportsResolver>,
   mapped_specifier_resolver: MappedSpecifierResolver,
   maybe_default_jsx_import_source: Option<String>,
+  maybe_default_jsx_import_source_types: Option<String>,
   maybe_jsx_import_source_module: Option<String>,
   maybe_vendor_specifier: Option<ModuleSpecifier>,
   node_resolver: Option<Arc<CliNodeResolver>>,
@@ -488,6 +489,10 @@ impl CliGraphResolver {
         .maybe_jsx_import_source_config
         .as_ref()
         .and_then(|c| c.default_specifier.clone()),
+      maybe_default_jsx_import_source_types: options
+        .maybe_jsx_import_source_config
+        .as_ref()
+        .and_then(|c| c.default_types_specifier.clone()),
       maybe_jsx_import_source_module: options
         .maybe_jsx_import_source_config
         .map(|c| c.module),
@@ -552,6 +557,10 @@ impl CliGraphResolver {
 impl Resolver for CliGraphResolver {
   fn default_jsx_import_source(&self) -> Option<String> {
     self.maybe_default_jsx_import_source.clone()
+  }
+
+  fn default_jsx_import_source_types(&self) -> Option<String> {
+    self.maybe_default_jsx_import_source_types.clone()
   }
 
   fn jsx_import_source_module(&self) -> &str {
