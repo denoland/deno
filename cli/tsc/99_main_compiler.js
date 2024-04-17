@@ -835,7 +835,7 @@ delete Object.prototype.__proto__;
         return ts.ScriptSnapshot.fromString(sourceFile.text);
       }
       let sourceText = sourceTextCache.get(specifier);
-      if (!sourceText) {
+      if (sourceText == undefined) {
         /** @type {{ data: string, version: string, isCjs: boolean }} */
         const fileInfo = ops.op_load(specifier);
         if (!fileInfo) {
