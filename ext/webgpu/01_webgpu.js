@@ -1126,6 +1126,7 @@ class GPUDevice extends EventTarget {
       "Argument 1",
     );
     const device = assertDevice(this, prefix, "this");
+    // assign normalized size to descriptor due to createGPUTexture needs it
     descriptor.size = normalizeGPUExtent3D(descriptor.size);
     const { rid, err } = op_webgpu_create_texture({
       deviceRid: device.rid,
