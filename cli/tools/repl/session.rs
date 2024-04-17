@@ -640,6 +640,7 @@ impl ReplSession {
           keep_comments: false,
         },
       )?
+      .into_source()
       .text;
 
     let value = self

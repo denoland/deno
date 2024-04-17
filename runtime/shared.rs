@@ -96,7 +96,7 @@ pub fn maybe_transpile_source(
     maybe_syntax: None,
   })?;
   let transpiled_source = parsed
-    .transpile_owned(
+    .transpile(
       &deno_ast::TranspileOptions {
         imports_not_used_as_values: deno_ast::ImportsNotUsedAsValues::Remove,
         ..Default::default()
@@ -109,8 +109,8 @@ pub fn maybe_transpile_source(
         },
         ..Default::default()
       },
-    )
-    .unwrap()?;
+    )?
+    .into_source();
 
   let maybe_source_map: Option<SourceMapData> = transpiled_source
     .source_map
