@@ -13,6 +13,7 @@ import * as console from "ext:deno_console/01_console.js";
 import * as ffi from "ext:deno_ffi/00_ffi.js";
 import * as net from "ext:deno_net/01_net.js";
 import * as tls from "ext:deno_net/02_tls.js";
+import * as serve from "ext:deno_http/00_serve.js";
 import * as http from "ext:deno_http/01_http.js";
 import * as errors from "ext:runtime/01_errors.js";
 import * as version from "ext:runtime/01_version.ts";
@@ -25,8 +26,6 @@ import * as fsEvents from "ext:runtime/40_fs_events.js";
 import * as process from "ext:runtime/40_process.js";
 import * as signals from "ext:runtime/40_signals.js";
 import * as tty from "ext:runtime/40_tty.js";
-// TODO(bartlomieju): this is funky we have two `http` imports
-import * as httpRuntime from "ext:runtime/40_http.js";
 import * as kv from "ext:deno_kv/01_db.ts";
 import * as cron from "ext:deno_cron/01_cron.ts";
 import * as webgpuSurface from "ext:deno_webgpu/02_surface.js";
@@ -225,9 +224,8 @@ const denoNs = {
   permissions: permissions.permissions,
   Permissions: permissions.Permissions,
   PermissionStatus: permissions.PermissionStatus,
-  // TODO(bartlomieju): why is this not in one of extensions?
-  serveHttp: httpRuntime.serveHttp,
-  serve: http.serve,
+  serveHttp: http.serveHttp,
+  serve: serve.serve,
   resolveDns: net.resolveDns,
   upgradeWebSocket: http.upgradeWebSocket,
   utime: fs.utime,
@@ -292,8 +290,6 @@ denoNsUnstableById[unstableIds.fs] = {
 denoNsUnstableById[unstableIds.http] = {
   HttpClient: httpClient.HttpClient,
   createHttpClient: httpClient.createHttpClient,
-  // TODO(bartlomieju): why is it needed?
-  http,
 };
 
 denoNsUnstableById[unstableIds.kv] = {
@@ -328,8 +324,6 @@ const denoNsUnstable = {
   umask: fs.umask,
   HttpClient: httpClient.HttpClient,
   createHttpClient: httpClient.createHttpClient,
-  // TODO(bartlomieju): why is it needed?
-  http,
   dlopen: ffi.dlopen,
   UnsafeCallback: ffi.UnsafeCallback,
   UnsafePointer: ffi.UnsafePointer,
