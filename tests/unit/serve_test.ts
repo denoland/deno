@@ -404,7 +404,7 @@ Deno.test(async function httpServerCanResolveHostnames() {
 
 Deno.test(async function httpServerRejectsOnAddrInUse() {
   const ac = new AbortController();
-  const { promise, resolve } = Promise.withResolvers<void>();
+  const { promise, resolve } = Promise.withResolvers();
 
   const server = Deno.serve({
     handler: (_req) => new Response("ok"),
@@ -435,7 +435,7 @@ Deno.test(async function httpServerRejectsOnAddrInUse() {
 Deno.test({ permissions: { net: true } }, async function httpServerBasic() {
   const ac = new AbortController();
   const deferred = Promise.withResolvers<void>();
-  const listeningDeferred = Promise.withResolvers<void>();
+  const listeningDeferred = Promise.withResolvers<Deno.NetAddr>();
 
   const server = Deno.serve({
     handler: async (request, { remoteAddr }) => {
@@ -450,11 +450,13 @@ Deno.test({ permissions: { net: true } }, async function httpServerBasic() {
     },
     port: servePort,
     signal: ac.signal,
-    onListen: onListen(listeningDeferred.resolve),
+    onListen: (addr) => listeningDeferred.resolve(addr),
     onError: createOnErrorCb(ac),
   });
 
-  await listeningDeferred.promise;
+  const addr = await listeningDeferred.promise;
+  assertEquals(addr.hostname, server.addr.hostname);
+  assertEquals(addr.port, server.addr.port);
   const resp = await fetch(`http://127.0.0.1:${servePort}/`, {
     headers: { "connection": "close" },
   });
@@ -475,7 +477,7 @@ Deno.test(
   async function httpServerOnListener() {
     const ac = new AbortController();
     const deferred = Promise.withResolvers<void>();
-    const listeningDeferred = Promise.withResolvers<void>();
+    const listeningDeferred = Promise.withResolvers();
     const listener = Deno.listen({ port: servePort });
     const server = serveHttpOnListener(
       listener,
@@ -3815,7 +3817,7 @@ Deno.test(
     permissions: { run: true, read: true, write: true },
   },
   async function httpServerUnixDomainSocket() {
-    const { promise, resolve } = Promise.withResolvers<{ path: string }>();
+    const { promise, resolve } = Promise.withResolvers<Deno.UnixAddr>();
     const ac = new AbortController();
     const filePath = tmpUnixSocketPath();
     const server = Deno.serve(
@@ -3833,7 +3835,7 @@ Deno.test(
       },
     );
 
-    assertEquals(await promise, { path: filePath });
+    assertEquals((await promise).path, filePath);
     assertEquals(
       "hello world!",
       await curlRequest(["--unix-socket", filePath, "http://localhost"]),

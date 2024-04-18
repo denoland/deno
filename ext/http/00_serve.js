@@ -593,19 +593,24 @@ function serve(arg1, arg2) {
     listenOpts.port = listener.addr.port;
   }
 
+  let addr = listener.addr;
   const onListen = (scheme) => {
-    // If the hostname is "0.0.0.0", we display "localhost" in console
-    // because browsers in Windows don't resolve "0.0.0.0".
-    // See the discussion in https://github.com/denoland/deno_std/issues/1165
-    const hostname = listenOpts.hostname == "0.0.0.0"
-      ? "localhost"
-      : listenOpts.hostname;
-    const port = listenOpts.port;
+    if (!wantsUnix) {
+      // If the hostname is "0.0.0.0", we display "localhost" in console
+      // because browsers in Windows don't resolve "0.0.0.0".
+      // See the discussion in https://github.com/denoland/deno_std/issues/1165
+      const hostname = addr.hostname == "0.0.0.0" ? "localhost" : addr.hostname;
+      addr.hostname = hostname;
+    }
 
     if (options.onListen) {
-      options.onListen({ hostname, port });
+      options.onListen(addr);
     } else {
-      console.log(`Listening on ${scheme}${hostname}:${port}/`);
+      if (wantsUnix) {
+        console.log(`Listening on ${scheme}${addr.path}/`);
+      } else {
+        console.log(`Listening on ${scheme}${addr.hostname}:${addr.port}/`);
+      }
     }
   };
 
@@ -625,7 +630,7 @@ function serveHttpOnListener(listener, signal, handler, onError, onListen) {
 
   onListen(context.scheme);
 
-  return serveHttpOn(context, callback);
+  return serveHttpOn(context, listener.addr, callback);
 }
 
 /**
@@ -641,10 +646,10 @@ function serveHttpOnConnection(connection, signal, handler, onError, onListen) {
 
   onListen(context.scheme);
 
-  return serveHttpOn(context, callback);
+  return serveHttpOn(context, connection.localAddr, callback);
 }
 
-function serveHttpOn(context, callback) {
+function serveHttpOn(context, addr, callback) {
   let ref = true;
   let currentPromise = null;
 
@@ -700,6 +705,7 @@ function serveHttpOn(context, callback) {
   })();
 
   return {
+    addr,
     finished,
     async shutdown() {
       if (!context.closing && !context.closed) {
