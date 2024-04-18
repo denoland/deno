@@ -990,7 +990,7 @@ mod tests {
     let mut loader = MockLoader { fixtures };
     let mut graph = ModuleGraph::new(GraphKind::TypesOnly);
     graph
-      .build(vec![specifier], &mut loader, Default::default())
+      .build(vec![specifier], &loader, Default::default())
       .await;
     let state = State::new(
       Arc::new(graph),
@@ -1016,7 +1016,7 @@ mod tests {
     let mut loader = MockLoader { fixtures };
     let mut graph = ModuleGraph::new(GraphKind::TypesOnly);
     graph
-      .build(vec![specifier.clone()], &mut loader, Default::default())
+      .build(vec![specifier.clone()], &loader, Default::default())
       .await;
     let config = TsConfig::new(json!({
       "allowJs": true,
