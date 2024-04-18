@@ -393,7 +393,7 @@ impl FileFetcher {
       {
         FetchOnceResult::NotModified => {
           let file_or_redirect =
-            self.fetch_cached_once(&specifier, maybe_checksum.clone())?;
+            self.fetch_cached_once(specifier, maybe_checksum)?;
           match file_or_redirect {
             Some(file_or_redirect) => Ok(file_or_redirect),
             None => {
@@ -412,11 +412,11 @@ impl FileFetcher {
           }
         }
         FetchOnceResult::Redirect(redirect_url, headers) => {
-          self.http_cache.set(&specifier, headers, &[])?;
+          self.http_cache.set(specifier, headers, &[])?;
           Ok(FileOrRedirect::Redirect(redirect_url))
         }
         FetchOnceResult::Code(bytes, headers) => {
-          self.http_cache.set(&specifier, headers.clone(), &bytes)?;
+          self.http_cache.set(specifier, headers.clone(), &bytes)?;
           if let Some(checksum) = &maybe_checksum {
             checksum.check_source(&bytes)?;
           }
@@ -427,13 +427,13 @@ impl FileFetcher {
           }))
         }
         FetchOnceResult::RequestError(err) => {
-          handle_request_or_server_error(&mut retried, &specifier, err).await?;
+          handle_request_or_server_error(&mut retried, specifier, err).await?;
           continue;
         }
         FetchOnceResult::ServerError(status) => {
           handle_request_or_server_error(
             &mut retried,
-            &specifier,
+            specifier,
             status.to_string(),
           )
           .await?;
@@ -793,7 +793,7 @@ mod tests {
     let result: Result<File, AnyError> = file_fetcher
       .fetch_with_options_and_max_redirect(
         FetchOptions {
-          specifier: &specifier,
+          specifier,
           permissions: &PermissionsContainer::allow_all(),
           maybe_accept: None,
           maybe_cache_setting: Some(&file_fetcher.cache_setting),

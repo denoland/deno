@@ -987,7 +987,7 @@ mod tests {
       .unwrap_or_else(|| ModuleSpecifier::parse("file:///main.ts").unwrap());
     let hash_data = maybe_hash_data.unwrap_or(0);
     let fixtures = test_util::testdata_path().join("tsc2");
-    let mut loader = MockLoader { fixtures };
+    let loader = MockLoader { fixtures };
     let mut graph = ModuleGraph::new(GraphKind::TypesOnly);
     graph
       .build(vec![specifier], &loader, Default::default())
@@ -1013,7 +1013,7 @@ mod tests {
   ) -> Result<Response, AnyError> {
     let hash_data = 123; // something random
     let fixtures = test_util::testdata_path().join("tsc2");
-    let mut loader = MockLoader { fixtures };
+    let loader = MockLoader { fixtures };
     let mut graph = ModuleGraph::new(GraphKind::TypesOnly);
     graph
       .build(vec![specifier.clone()], &loader, Default::default())
