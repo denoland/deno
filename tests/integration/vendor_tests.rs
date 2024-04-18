@@ -529,6 +529,39 @@ fn update_existing_config_test() {
 }
 
 #[test]
+fn update_existing_empty_config_test() {
+  let _server = http_server();
+  let t = TempDir::new();
+  t.write(
+    "my_app.ts",
+    "import {Logger} from 'http://localhost:4545/vendor/logger.ts'; new Logger().log('outputted');",
+  );
+  t.write("deno.json", "");
+
+  let deno = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("vendor")
+    .arg("my_app.ts")
+    .arg("--output")
+    .arg("vendor2")
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let output = deno.wait_with_output().unwrap();
+  assert_eq!(
+    String::from_utf8_lossy(&output.stderr).trim(),
+    format!(
+      "Download http://localhost:4545/vendor/logger.ts\n{}\n\n{}",
+      vendored_text("1 module", "vendor2"),
+      success_text_updated_deno_json("vendor2",)
+    )
+  );
+  assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "");
+  assert!(output.status.success());
+}
+
+#[test]
 fn vendor_npm_node_specifiers() {
   let context = TestContextBuilder::for_npm().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
