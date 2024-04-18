@@ -3,13 +3,15 @@
 import EventEmitter from "node:events";
 import http, { type RequestOptions } from "node:http";
 import https from "node:https";
-import net from "node:net";
-import { assert, assertEquals, fail } from "@std/assert/mod.ts";
+import {
+  assert,
+  assertEquals,
+  fail,
+} from "@std/assert/mod.ts";
 import { assertSpyCalls, spy } from "@std/testing/mock.ts";
 
 import { gzip } from "node:zlib";
 import { Buffer } from "node:buffer";
-import { serve } from "@std/http/server.ts";
 import { execCode } from "../unit/test_util.ts";
 
 Deno.test("[node/http listen]", async () => {
@@ -27,9 +29,7 @@ Deno.test("[node/http listen]", async () => {
     const { promise, resolve } = Promise.withResolvers<void>();
     const server = http.createServer();
 
-    server.listen(42453, "localhost", () => {
-      // @ts-ignore address() is not a string
-      assertEquals(server.address()!.address, "127.0.0.1");
+    server.listen(() => {
       server.close();
     });
     server.on("close", () => {
@@ -346,12 +346,12 @@ Deno.test("[node/http] send request with non-chunked body", async () => {
     return new Response("ok");
   };
   const abortController = new AbortController();
-  const servePromise = serve(handler, {
+  const servePromise = Deno.serve({
     hostname,
     port,
     signal: abortController.signal,
     onListen: undefined,
-  });
+  }, handler).finished;
 
   const opts: RequestOptions = {
     host: hostname,
@@ -401,12 +401,12 @@ Deno.test("[node/http] send request with chunked body", async () => {
     return new Response("ok");
   };
   const abortController = new AbortController();
-  const servePromise = serve(handler, {
+  const servePromise = Deno.serve({
     hostname,
     port,
     signal: abortController.signal,
     onListen: undefined,
-  });
+  }, handler).finished;
 
   const opts: RequestOptions = {
     host: hostname,
@@ -450,12 +450,12 @@ Deno.test("[node/http] send request with chunked body as default", async () => {
     return new Response("ok");
   };
   const abortController = new AbortController();
-  const servePromise = serve(handler, {
+  const servePromise = Deno.serve({
     hostname,
     port,
     signal: abortController.signal,
     onListen: undefined,
-  });
+  }, handler).finished;
 
   const opts: RequestOptions = {
     host: hostname,

@@ -1,0 +1,6 @@
+{
+  "version": "3",
+  "remote": {
+    "http://127.0.0.1:4545/workers/test_worker.ts": "ee0b6255eeded4febcdeadad37d53b20ac0ba4fd9c6f964d30b22a66c0c4c2d8"
+  }
+}
