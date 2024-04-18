@@ -16,6 +16,7 @@ use deno_fetch::CreateHttpClientOptions;
 use deno_tls::rustls::RootCertStore;
 use deno_tls::Proxy;
 use deno_tls::RootCertStoreProvider;
+use deno_tls::TlsKey;
 use denokv_remote::MetadataEndpoint;
 use denokv_remote::Remote;
 use url::Url;
@@ -26,7 +27,7 @@ pub struct HttpOptions {
   pub root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
   pub proxy: Option<Proxy>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
-  pub client_cert_chain_and_key: Option<(String, String)>,
+  pub client_cert_chain_and_key: Option<TlsKey>,
 }
 
 impl HttpOptions {

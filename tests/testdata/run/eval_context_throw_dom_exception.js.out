@@ -1,4 +1,4 @@
-[Object: null prototype] {
+{
   thrown: DOMException: foo
     at new DOMException (ext:deno_web/01_dom_exception.js:[WILDCARD])
     at [WILDCARD]

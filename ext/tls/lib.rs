@@ -23,6 +23,7 @@ use rustls::PrivateKey;
 use rustls::RootCertStore;
 use rustls::ServerName;
 use rustls_pemfile::certs;
+use rustls_pemfile::ec_private_keys;
 use rustls_pemfile::pkcs8_private_keys;
 use rustls_pemfile::rsa_private_keys;
 use serde::Deserialize;
@@ -173,19 +174,9 @@ pub fn create_client_config(
   root_cert_store: Option<RootCertStore>,
   ca_certs: Vec<Vec<u8>>,
   unsafely_ignore_certificate_errors: Option<Vec<String>>,
-  client_cert_chain_and_key: Option<(String, String)>,
+  maybe_cert_chain_and_key: Option<TlsKey>,
   socket_use: SocketUse,
 ) -> Result<ClientConfig, AnyError> {
-  let maybe_cert_chain_and_key =
-    if let Some((cert_chain, private_key)) = client_cert_chain_and_key {
-      // The `remove` is safe because load_private_keys checks that there is at least one key.
-      let private_key = load_private_keys(private_key.as_bytes())?.remove(0);
-      let cert_chain = load_certs(&mut cert_chain.as_bytes())?;
-      Some((cert_chain, private_key))
-    } else {
-      None
-    };
-
   if let Some(ic_allowlist) = unsafely_ignore_certificate_errors {
     let client_config = ClientConfig::builder()
       .with_safe_defaults()
@@ -198,7 +189,7 @@ pub fn create_client_config(
     // are not type-compatible - one wants "client cert", the other wants "transparency policy
     // or client cert".
     let mut client =
-      if let Some((cert_chain, private_key)) = maybe_cert_chain_and_key {
+      if let Some(TlsKey(cert_chain, private_key)) = maybe_cert_chain_and_key {
         client_config
           .with_client_auth_cert(cert_chain, private_key)
           .expect("invalid client key or certificate")
@@ -235,7 +226,7 @@ pub fn create_client_config(
     });
 
   let mut client =
-    if let Some((cert_chain, private_key)) = maybe_cert_chain_and_key {
+    if let Some(TlsKey(cert_chain, private_key)) = maybe_cert_chain_and_key {
       client_config
         .with_client_auth_cert(cert_chain, private_key)
         .expect("invalid client key or certificate")
@@ -269,8 +260,7 @@ pub fn load_certs(
     .map_err(|_| custom_error("InvalidData", "Unable to decode certificate"))?;
 
   if certs.is_empty() {
-    let e = custom_error("InvalidData", "No certificates found in cert file");
-    return Err(e);
+    return Err(cert_not_found_err());
   }
 
   Ok(certs.into_iter().map(Certificate).collect())
@@ -281,12 +271,22 @@ fn key_decode_err() -> AnyError {
 }
 
 fn key_not_found_err() -> AnyError {
-  custom_error("InvalidData", "No keys found in key file")
+  custom_error("InvalidData", "No keys found in key data")
+}
+
+fn cert_not_found_err() -> AnyError {
+  custom_error("InvalidData", "No certificates found in certificate data")
 }
 
 /// Starts with -----BEGIN RSA PRIVATE KEY-----
 fn load_rsa_keys(mut bytes: &[u8]) -> Result<Vec<PrivateKey>, AnyError> {
   let keys = rsa_private_keys(&mut bytes).map_err(|_| key_decode_err())?;
+  Ok(keys.into_iter().map(PrivateKey).collect())
+}
+
+/// Starts with -----BEGIN EC PRIVATE KEY-----
+fn load_ec_keys(mut bytes: &[u8]) -> Result<Vec<PrivateKey>, AnyError> {
+  let keys = ec_private_keys(&mut bytes).map_err(|_| key_decode_err())?;
   Ok(keys.into_iter().map(PrivateKey).collect())
 }
 
@@ -315,8 +315,24 @@ pub fn load_private_keys(bytes: &[u8]) -> Result<Vec<PrivateKey>, AnyError> {
   }
 
   if keys.is_empty() {
+    keys = load_ec_keys(bytes)?;
+  }
+
+  if keys.is_empty() {
     return Err(key_not_found_err());
   }
 
   Ok(keys)
 }
+
+/// A loaded key.
+// FUTURE(mmastrac): add resolver enum value to support dynamic SNI
+pub enum TlsKeys {
+  // TODO(mmastrac): We need Option<&T> for cppgc -- this is a workaround
+  Null,
+  Static(TlsKey),
+}
+
+/// A TLS certificate/private key pair.
+#[derive(Clone, Debug)]
+pub struct TlsKey(pub Vec<Certificate>, pub PrivateKey);

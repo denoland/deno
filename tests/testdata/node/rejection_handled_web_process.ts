@@ -23,4 +23,4 @@ setTimeout(() => {
 
 setTimeout(() => {
   console.log("Success");
-}, 500);
+}, 1000);

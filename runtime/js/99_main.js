@@ -294,7 +294,12 @@ async function pollForMessages() {
     );
   }
   while (!isClosing) {
-    const data = await op_worker_recv_message();
+    const recvMessage = op_worker_recv_message();
+    if (globalThis[messagePort.unrefPollForMessages] === true) {
+      core.unrefOpPromise(recvMessage);
+    }
+    const data = await recvMessage;
+    // const data = await op_worker_recv_message();
     if (data === null) break;
     const v = messagePort.deserializeJsMessageData(data);
     const message = v[0];
@@ -521,6 +526,20 @@ function processRejectionHandled(promise, reason) {
   if (typeof internals.nodeProcessRejectionHandledCallback !== "undefined") {
     internals.nodeProcessRejectionHandledCallback(rejectionHandledEvent);
   }
+}
+
+function dispatchLoadEvent() {
+  globalThis_.dispatchEvent(new Event("load"));
+}
+
+function dispatchBeforeUnloadEvent() {
+  return globalThis_.dispatchEvent(
+    new Event("beforeunload", { cancelable: true }),
+  );
+}
+
+function dispatchUnloadEvent() {
+  globalThis_.dispatchEvent(new Event("unload"));
 }
 
 let hasBootstrapped = false;
@@ -986,10 +1005,19 @@ function bootstrapWorkerRuntime(
 
 const nodeBootstrap = globalThis.nodeBootstrap;
 delete globalThis.nodeBootstrap;
+const dispatchProcessExitEvent = internals.dispatchProcessExitEvent;
+delete internals.dispatchProcessExitEvent;
+const dispatchProcessBeforeExitEvent = internals.dispatchProcessBeforeExitEvent;
+delete internals.dispatchProcessBeforeExitEvent;
 
 globalThis.bootstrap = {
   mainRuntime: bootstrapMainRuntime,
   workerRuntime: bootstrapWorkerRuntime,
+  dispatchLoadEvent,
+  dispatchUnloadEvent,
+  dispatchBeforeUnloadEvent,
+  dispatchProcessExitEvent,
+  dispatchProcessBeforeExitEvent,
 };
 
 event.setEventTargetData(globalThis);
