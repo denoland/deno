@@ -455,6 +455,7 @@ impl ModuleGraphBuilder {
           jsr_url_provider: &CliJsrUrlProvider,
           executor: Default::default(),
           imports: maybe_imports,
+          passthrough_jsr_specifiers: false,
           resolver: Some(graph_resolver),
           file_system: &DenoGraphFsAdapter(self.fs.as_ref()),
           npm_resolver: Some(graph_npm_resolver),

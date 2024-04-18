@@ -1643,7 +1643,7 @@ impl<'a> OpenDocumentsGraphLoader<'a> {
 
 impl<'a> deno_graph::source::Loader for OpenDocumentsGraphLoader<'a> {
   fn load(
-    &mut self,
+    &self,
     specifier: &ModuleSpecifier,
     options: deno_graph::source::LoadOptions,
   ) -> deno_graph::source::LoadFuture {
@@ -1662,7 +1662,7 @@ impl<'a> deno_graph::source::Loader for OpenDocumentsGraphLoader<'a> {
   }
 
   fn cache_module_info(
-    &mut self,
+    &self,
     specifier: &deno_ast::ModuleSpecifier,
     source: &Arc<[u8]>,
     module_info: &deno_graph::ModuleInfo,

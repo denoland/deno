@@ -957,7 +957,7 @@ mod tests {
 
   impl deno_graph::source::Loader for MockLoader {
     fn load(
-      &mut self,
+      &self,
       specifier: &ModuleSpecifier,
       _options: deno_graph::source::LoadOptions,
     ) -> deno_graph::source::LoadFuture {
