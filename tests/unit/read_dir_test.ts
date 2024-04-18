@@ -82,6 +82,26 @@ Deno.test({ permissions: { read: false } }, async function readDirPerm() {
   }, Deno.errors.PermissionDenied);
 });
 
+Deno.test(
+  { permissions: { read: true }, ignore: Deno.build.os == "windows" },
+  async function readDirDevFd(): Promise<
+    void
+  > {
+    for await (const _ of Deno.readDir("/dev/fd")) {
+      // We don't actually care whats in here; just that we don't panic on non regular entries
+    }
+  },
+);
+
+Deno.test(
+  { permissions: { read: true }, ignore: Deno.build.os == "windows" },
+  function readDirDevFdSync() {
+    for (const _ of Deno.readDirSync("/dev/fd")) {
+      // We don't actually care whats in here; just that we don't panic on non regular file entries
+    }
+  },
+);
+
 Deno.test({ permissions: { read: true } }, async function readDirNotFound() {
   await assertRejects(
     async () => {
