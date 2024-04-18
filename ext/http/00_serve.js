@@ -594,13 +594,13 @@ function serve(arg1, arg2) {
   }
 
   let addr = listener.addr;
-  const onListen = (scheme) => {
-    // If the hostname is "0.0.0.0", we display "localhost" in console
-    // because browsers in Windows don't resolve "0.0.0.0".
-    // See the discussion in https://github.com/denoland/deno_std/issues/1165
-    const hostname = addr.hostname == "0.0.0.0" ? "localhost" : addr.hostname;
-    addr.hostname = hostname;
+  // If the hostname is "0.0.0.0", we display "localhost" in console
+  // because browsers in Windows don't resolve "0.0.0.0".
+  // See the discussion in https://github.com/denoland/deno_std/issues/1165
+  const hostname = addr.hostname == "0.0.0.0" ? "localhost" : addr.hostname;
+  addr.hostname = hostname;
 
+  const onListen = (scheme) => {
     if (options.onListen) {
       options.onListen(addr);
     } else {
