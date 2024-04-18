@@ -4058,9 +4058,10 @@ fn op_release(
 #[serde]
 fn op_resolve(
   state: &mut OpState,
-  #[serde] args: ResolveArgs,
+  #[string] base: String,
+  #[serde] specifiers: Vec<String>,
 ) -> Result<Vec<Option<(String, String)>>, AnyError> {
-  op_resolve_inner(state, args)
+  op_resolve_inner(state, ResolveArgs { base, specifiers })
 }
 
 #[inline]
