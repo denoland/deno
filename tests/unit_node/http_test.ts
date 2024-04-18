@@ -3,11 +3,7 @@
 import EventEmitter from "node:events";
 import http, { type RequestOptions } from "node:http";
 import https from "node:https";
-import {
-  assert,
-  assertEquals,
-  fail,
-} from "@std/assert/mod.ts";
+import { assert, assertEquals, fail } from "@std/assert/mod.ts";
 import { assertSpyCalls, spy } from "@std/testing/mock.ts";
 
 import { gzip } from "node:zlib";
