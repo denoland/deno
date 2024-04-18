@@ -554,6 +554,7 @@ impl FileFetcher {
     let maybe_checksum = options.maybe_checksum;
     let options = options.fetch_options;
     let specifier = options.specifier;
+    // note: this debug output is used by the tests
     debug!(
       "FileFetcher::fetch_once_with_options() - specifier: {}",
       specifier
