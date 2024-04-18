@@ -77,7 +77,7 @@ Host: localhost
 Connection: close
 
 `);
-  let chunk = Promise.withResolvers<Uint8Array>();
+  const chunk = Promise.withResolvers<Uint8Array>();
   conn.on("data", (received) => {
     conn.destroy();
     ctl.abort();
