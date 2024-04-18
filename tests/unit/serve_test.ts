@@ -43,7 +43,10 @@ function onListen(
 }
 
 async function makeServer(
-  handler: (req: Request) => Response | Promise<Response>,
+  handler: (
+    req: Request,
+    info: Deno.ServeHandlerInfo,
+  ) => Response | Promise<Response>,
 ): Promise<
   {
     finished: Promise<void>;
