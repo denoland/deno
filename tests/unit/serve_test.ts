@@ -404,7 +404,7 @@ Deno.test(async function httpServerCanResolveHostnames() {
 
 Deno.test(async function httpServerRejectsOnAddrInUse() {
   const ac = new AbortController();
-  const { promise, resolve } = Promise.withResolvers();
+  const { promise, resolve } = Promise.withResolvers<void>();
 
   const server = Deno.serve({
     handler: (_req) => new Response("ok"),
