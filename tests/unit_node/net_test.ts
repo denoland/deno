@@ -55,7 +55,7 @@ Deno.test("[node/net] net.connect().unref() works", async () => {
   const ctl = new AbortController();
   const server = Deno.serve({
     signal: ctl.signal,
-    port: 0, // any available port will dotoo 
+    port: 0, // any available port will do
     handler: () => new Response("hello"),
     onListen: async ({ port, hostname }) => {
       const { stdout, stderr } = await new Deno.Command(Deno.execPath(), {
