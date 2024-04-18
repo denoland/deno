@@ -9,7 +9,6 @@ import { assertSpyCalls, spy } from "@std/testing/mock.ts";
 
 import { gzip } from "node:zlib";
 import { Buffer } from "node:buffer";
-import { serve } from "@std/http/server.ts";
 import { execCode } from "../unit/test_util.ts";
 
 Deno.test("[node/http listen]", async () => {
@@ -338,20 +337,18 @@ Deno.test("[node/http] send request with non-chunked body", async () => {
   const hostname = "localhost";
   const port = 4505;
 
-  // NOTE: Instead of node/http.createServer(), serve() in std/http/server.ts is used.
-  // https://github.com/denoland/deno_std/pull/2755#discussion_r1005592634
   const handler = async (req: Request) => {
     requestHeaders = req.headers;
     requestBody = await req.text();
     return new Response("ok");
   };
   const abortController = new AbortController();
-  const servePromise = serve(handler, {
+  const servePromise = Deno.serve({
     hostname,
     port,
     signal: abortController.signal,
     onListen: undefined,
-  });
+  }, handler).finished;
 
   const opts: RequestOptions = {
     host: hostname,
@@ -393,20 +390,18 @@ Deno.test("[node/http] send request with chunked body", async () => {
   const hostname = "localhost";
   const port = 4505;
 
-  // NOTE: Instead of node/http.createServer(), serve() in std/http/server.ts is used.
-  // https://github.com/denoland/deno_std/pull/2755#discussion_r1005592634
   const handler = async (req: Request) => {
     requestHeaders = req.headers;
     requestBody = await req.text();
     return new Response("ok");
   };
   const abortController = new AbortController();
-  const servePromise = serve(handler, {
+  const servePromise = Deno.serve({
     hostname,
     port,
     signal: abortController.signal,
     onListen: undefined,
-  });
+  }, handler).finished;
 
   const opts: RequestOptions = {
     host: hostname,
@@ -442,20 +437,18 @@ Deno.test("[node/http] send request with chunked body as default", async () => {
   const hostname = "localhost";
   const port = 4505;
 
-  // NOTE: Instead of node/http.createServer(), serve() in std/http/server.ts is used.
-  // https://github.com/denoland/deno_std/pull/2755#discussion_r1005592634
   const handler = async (req: Request) => {
     requestHeaders = req.headers;
     requestBody = await req.text();
     return new Response("ok");
   };
   const abortController = new AbortController();
-  const servePromise = serve(handler, {
+  const servePromise = Deno.serve({
     hostname,
     port,
     signal: abortController.signal,
     onListen: undefined,
-  });
+  }, handler).finished;
 
   const opts: RequestOptions = {
     host: hostname,
