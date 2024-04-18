@@ -1628,6 +1628,7 @@ mod tests {
       config.tree.inject_config_file(config_file).await;
     }
     StateSnapshot {
+      project_version: 0,
       documents,
       assets: Default::default(),
       cache_metadata: cache::CacheMetadata::new(Arc::new(

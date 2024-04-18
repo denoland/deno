@@ -1,0 +1,5 @@
+Check file:///[WILDLINE]/exists_and_try_uses.ts
+error: TS1192 [ERROR]: Module '"file:///[WILDLINE]/app.css"' has no default export.
+import test from "./app.css";
+       ~~~~
+    at file:///[WILDLINE]/exists_and_try_uses.ts:1:8

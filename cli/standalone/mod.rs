@@ -572,6 +572,8 @@ pub async fn run(
     // metadata.disable_deprecated_api_warning,
     true,
     false,
+    // Code cache is not supported for standalone binary yet.
+    None,
   );
 
   // Initialize v8 once from the main thread.

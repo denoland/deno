@@ -5,6 +5,7 @@ use crate::cache::FastInsecureHasher;
 use crate::cache::ParsedSourceCache;
 
 use deno_ast::SourceMapOption;
+use deno_ast::TranspileResult;
 use deno_core::error::AnyError;
 use deno_core::ModuleCodeString;
 use deno_core::ModuleSpecifier;
@@ -32,7 +33,7 @@ impl Emitter {
     let transpile_and_emit_options_hash = {
       let mut hasher = FastInsecureHasher::default();
       hasher.write_hashable(&transpile_options);
-      hasher.write_hashable(emit_options);
+      hasher.write_hashable(&emit_options);
       hasher.finish()
     };
     Self {
@@ -101,14 +102,12 @@ impl Emitter {
         media_type,
       )?;
       let transpiled_source = match parsed_source
-        .transpile_owned(&self.transpile_options, &self.emit_options)
+        .transpile(&self.transpile_options, &self.emit_options)?
       {
-        Ok(result) => result?,
-        Err(parsed_source) => {
-          // transpile_owned is more efficient and should be preferred
+        TranspileResult::Owned(source) => source,
+        TranspileResult::Cloned(source) => {
           debug_assert!(false, "Transpile owned failed.");
-          parsed_source
-            .transpile(&self.transpile_options, &self.emit_options)?
+          source
         }
       };
       debug_assert!(transpiled_source.source_map.is_none());
@@ -135,10 +134,11 @@ impl Emitter {
     let parsed_source = self
       .parsed_source_cache
       .remove_or_parse_module(specifier, source_arc, media_type)?;
-    let mut options = self.emit_options;
+    let mut options = self.emit_options.clone();
     options.source_map = SourceMapOption::None;
     let transpiled_source = parsed_source
-      .transpile_owned_with_fallback(&self.transpile_options, &options)?;
+      .transpile(&self.transpile_options, &options)?
+      .into_source();
     Ok(transpiled_source.text)
   }
 

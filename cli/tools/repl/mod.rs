@@ -172,9 +172,7 @@ pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
     .create_custom_worker(
       main_module.clone(),
       permissions,
-      vec![crate::ops::testing::deno_test::init_ops(
-        test_event_sender.clone(),
-      )],
+      vec![crate::ops::testing::deno_test::init_ops(test_event_sender)],
       Default::default(),
     )
     .await?;
@@ -186,7 +184,6 @@ pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
     resolver,
     worker,
     main_module,
-    test_event_sender,
     test_event_receiver,
   )
   .await?;

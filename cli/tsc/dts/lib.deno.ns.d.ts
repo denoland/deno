@@ -6277,11 +6277,23 @@ declare namespace Deno {
    * @category HTTP Server
    */
   export interface ServeTlsOptions extends ServeOptions {
-    /** Server private key in PEM format */
-    cert: string;
+    /**
+     * Server private key in PEM format. Use {@linkcode TlsCertifiedKeyOptions} instead.
+     *
+     * @deprecated This will be removed in Deno 2.0. See the
+     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+     * for migration instructions.
+     */
+    cert?: string;
 
-    /** Cert chain in PEM format */
-    key: string;
+    /**
+     * Cert chain in PEM format.  Use {@linkcode TlsCertifiedKeyOptions} instead.
+     *
+     * @deprecated This will be removed in Deno 2.0. See the
+     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+     * for migration instructions.
+     */
+    key?: string;
   }
 
   /**
@@ -6490,7 +6502,10 @@ declare namespace Deno {
    * @category HTTP Server
    */
   export function serve(
-    options: ServeOptions | ServeTlsOptions,
+    options:
+      | ServeOptions
+      | ServeTlsOptions
+      | (ServeTlsOptions & TlsCertifiedKeyOptions),
     handler: ServeHandler,
   ): HttpServer;
   /** Serves HTTP requests with the given option bag.
@@ -6546,6 +6561,12 @@ declare namespace Deno {
    * @category HTTP Server
    */
   export function serve(
-    options: ServeInit & (ServeOptions | ServeTlsOptions),
+    options:
+      & ServeInit
+      & (
+        | ServeOptions
+        | ServeTlsOptions
+        | (ServeTlsOptions & TlsCertifiedKeyOptions)
+      ),
   ): HttpServer;
 }

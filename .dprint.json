@@ -19,6 +19,7 @@
     ".git",
     "cli/bench/testdata/express-router.js",
     "cli/bench/testdata/npm/",
+    "cli/bench/testdata/lsp_benchdata/",
     "cli/tsc/dts/lib.d.ts",
     "cli/tsc/dts/lib.scripthost.d.ts",
     "cli/tsc/dts/lib.decorators*.d.ts",

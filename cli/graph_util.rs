@@ -18,9 +18,9 @@ use crate::tools::check;
 use crate::tools::check::TypeChecker;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::fs::canonicalize_path;
-use crate::util::path::specifier_to_file_path;
 use crate::util::sync::TaskQueue;
 use crate::util::sync::TaskQueuePermit;
+use deno_runtime::fs_util::specifier_to_file_path;
 
 use deno_config::WorkspaceMemberConfig;
 use deno_core::anyhow::bail;
@@ -110,13 +110,23 @@ pub fn graph_valid(
         }
       }
 
+      if graph.graph_kind() == GraphKind::TypesOnly
+        && matches!(
+          error,
+          ModuleGraphError::ModuleError(ModuleError::UnsupportedMediaType(..))
+        )
+      {
+        log::debug!("Ignoring: {}", message);
+        return None;
+      }
+
       if options.is_vendoring {
         // warn about failing dynamic imports when vendoring, but don't fail completely
         if matches!(
           error,
           ModuleGraphError::ModuleError(ModuleError::MissingDynamic(_, _))
         ) {
-          log::warn!("Ignoring: {:#}", message);
+          log::warn!("Ignoring: {}", message);
           return None;
         }
 
