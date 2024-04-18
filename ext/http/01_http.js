@@ -4,11 +4,13 @@ import { core, internals, primordials } from "ext:core/mod.js";
 const {
   BadResourcePrototype,
   InterruptedPrototype,
+  internalRidSymbol,
 } = core;
 import {
   op_http_accept,
   op_http_headers,
   op_http_shutdown,
+  op_http_start,
   op_http_upgrade_websocket,
   op_http_websocket_accept_header,
   op_http_write,
@@ -71,7 +73,6 @@ import {
   readableStreamForRid,
   ReadableStreamPrototype,
 } from "ext:deno_web/06_streams.js";
-import { serve } from "ext:deno_http/00_serve.js";
 import { SymbolDispose } from "ext:deno_web/00_infra.js";
 
 const connErrorSymbol = Symbol("connError");
@@ -557,4 +558,14 @@ function buildCaseInsensitiveCommaValueFinder(checkText) {
 internals.buildCaseInsensitiveCommaValueFinder =
   buildCaseInsensitiveCommaValueFinder;
 
-export { _ws, HttpConn, serve, upgradeWebSocket };
+function serveHttp(conn) {
+  internals.warnOnDeprecatedApi(
+    "Deno.serveHttp()",
+    new Error().stack,
+    "Use `Deno.serve()` instead.",
+  );
+  const rid = op_http_start(conn[internalRidSymbol]);
+  return new HttpConn(rid, conn.remoteAddr, conn.localAddr);
+}
+
+export { _ws, HttpConn, serveHttp, upgradeWebSocket };
