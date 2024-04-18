@@ -310,6 +310,7 @@ fn update_config_text(
 ) -> Result<ModifiedResult, AnyError> {
   use jsonc_parser::ast::ObjectProp;
   use jsonc_parser::ast::Value;
+  let text = if text.trim().is_empty() { "{}\n" } else { text };
   let ast =
     jsonc_parser::parse_to_ast(text, &Default::default(), &Default::default())?;
   let obj = match ast.value {
