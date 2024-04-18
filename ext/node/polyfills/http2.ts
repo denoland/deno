@@ -1677,7 +1677,10 @@ export function connect(
       case "https:":
         // TODO(bartlomieju): handle `initializeTLSOptions` here
         url = `https://${host}${port == 443 ? "" : (":" + port)}`;
-        socket = tlsConnect(port, host, { manualStart: true });
+        socket = tlsConnect(port, host, {
+          manualStart: true,
+          ALPNProtocols: ["h2", "http/1.1"],
+        });
         break;
       default:
         throw new ERR_HTTP2_UNSUPPORTED_PROTOCOL(protocol);

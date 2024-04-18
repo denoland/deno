@@ -12,24 +12,61 @@ const tlsTestdataDir = fromFileUrl(
 );
 const keyFile = join(tlsTestdataDir, "localhost.key");
 const certFile = join(tlsTestdataDir, "localhost.crt");
-const key = await Deno.readTextFile(keyFile);
-const cert = await Deno.readTextFile(certFile);
-const rootCaCert = await Deno.readTextFile(join(tlsTestdataDir, "RootCA.pem"));
+const key = Deno.readTextFileSync(keyFile);
+const cert = Deno.readTextFileSync(certFile);
+const rootCaCert = Deno.readTextFileSync(join(tlsTestdataDir, "RootCA.pem"));
+
+for (
+  const [alpnServer, alpnClient, expected] of [
+    [["a", "b"], ["a"], ["a"]],
+    [["a", "b"], ["b"], ["b"]],
+    [["a", "b"], ["a", "b"], ["a"]],
+    [["a", "b"], [], []],
+    [[], ["a", "b"], []],
+  ]
+) {
+  Deno.test(`tls.connect sends correct ALPN: '${alpnServer}' + '${alpnClient}' = '${expected}'`, async () => {
+    const listener = Deno.listenTls({
+      port: 0,
+      key,
+      cert,
+      alpnProtocols: alpnServer,
+    });
+    const outgoing = tls.connect({
+      host: "localhost",
+      port: listener.addr.port,
+      ALPNProtocols: alpnClient,
+      secureContext: {
+        ca: rootCaCert,
+        // deno-lint-ignore no-explicit-any
+      } as any,
+    });
+
+    const conn = await listener.accept();
+    const handshake = await conn.handshake();
+    assertEquals(handshake.alpnProtocol, expected[0] || null);
+    conn.close();
+    outgoing.destroy();
+    listener.close();
+  });
+}
 
 Deno.test("tls.connect makes tls connection", async () => {
   const ctl = new AbortController();
+  let port;
   const serve = Deno.serve({
-    port: 8443,
+    port: 0,
     key,
     cert,
     signal: ctl.signal,
+    onListen: (listen) => port = listen.port,
   }, () => new Response("hello"));
 
   await delay(200);
 
   const conn = tls.connect({
     host: "localhost",
-    port: 8443,
+    port,
     secureContext: {
       ca: rootCaCert,
       // deno-lint-ignore no-explicit-any
@@ -40,15 +77,18 @@ Host: localhost
 Connection: close
 
 `);
-  conn.on("data", (chunk) => {
-    const text = new TextDecoder().decode(chunk);
-    const bodyText = text.split("\r\n\r\n").at(-1)?.trim();
-    assertEquals(bodyText, "hello");
+  let chunk = Promise.withResolvers<Uint8Array>();
+  conn.on("data", (received) => {
     conn.destroy();
     ctl.abort();
+    chunk.resolve(received);
   });
 
   await serve.finished;
+
+  const text = new TextDecoder().decode(await chunk.promise);
+  const bodyText = text.split("\r\n\r\n").at(-1)?.trim();
+  assertEquals(bodyText, "hello");
 });
 
 // https://github.com/denoland/deno/pull/20120

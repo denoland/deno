@@ -337,8 +337,6 @@ Deno.test("[node/http] send request with non-chunked body", async () => {
   const hostname = "localhost";
   const port = 4505;
 
-  // NOTE: Instead of node/http.createServer(), serve() in std/http/server.ts is used.
-  // https://github.com/denoland/deno_std/pull/2755#discussion_r1005592634
   const handler = async (req: Request) => {
     requestHeaders = req.headers;
     requestBody = await req.text();
@@ -392,8 +390,6 @@ Deno.test("[node/http] send request with chunked body", async () => {
   const hostname = "localhost";
   const port = 4505;
 
-  // NOTE: Instead of node/http.createServer(), serve() in std/http/server.ts is used.
-  // https://github.com/denoland/deno_std/pull/2755#discussion_r1005592634
   const handler = async (req: Request) => {
     requestHeaders = req.headers;
     requestBody = await req.text();
@@ -441,8 +437,6 @@ Deno.test("[node/http] send request with chunked body as default", async () => {
   const hostname = "localhost";
   const port = 4505;
 
-  // NOTE: Instead of node/http.createServer(), serve() in std/http/server.ts is used.
-  // https://github.com/denoland/deno_std/pull/2755#discussion_r1005592634
   const handler = async (req: Request) => {
     requestHeaders = req.headers;
     requestBody = await req.text();
