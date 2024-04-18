@@ -66,9 +66,9 @@ deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "proposa
 deno_cache_dir = { workspace = true }
 deno_config = "=0.15.0"
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
-deno_doc = { version = "=0.124.0", features = ["html"] }
-deno_emit = "=0.39.1"
-deno_graph = { version = "=0.72.0", features = ["tokio_executor"] }
+deno_doc = { version = "=0.125.0", features = ["html"] }
+deno_emit = "=0.40.0"
+deno_graph = { version = "=0.73.1", features = ["tokio_executor"] }
 deno_lint = { version = "=0.58.3", features = ["docs"] }
 deno_lockfile.workspace = true
 deno_npm = "=0.17.0"
@@ -76,7 +76,7 @@ deno_runtime = { workspace = true, features = ["include_js_files_for_snapshottin
 deno_semver = "=0.5.4"
 deno_task_shell = "=0.16.0"
 deno_terminal.workspace = true
-eszip = "=0.67.0"
+eszip = "=0.68.0"
 napi_sym.workspace = true
 
 async-trait.workspace = true
