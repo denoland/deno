@@ -383,6 +383,88 @@ Deno.test({
   Deno.close(Number(resources[resources.length - 1]));
 });
 
+Deno.test({
+  ignore: isWsl || isLinuxOrMacCI,
+}, async function validateGPUOrigin3D() {
+  const adapter = await navigator.gpu.requestAdapter();
+  assert(adapter);
+  const device = await adapter.requestDevice();
+  assert(device);
+
+  const format = "rgba8unorm-srgb";
+  const encoder = device.createCommandEncoder();
+  const buffer = device.createBuffer({
+    size: new Uint32Array([1, 4, 3, 295]).byteLength,
+    usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
+  });
+  const usage = GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC;
+  const size = [256, 256, 1];
+  const texture = device.createTexture({
+    size,
+    format,
+    usage,
+  });
+
+  // value for validating GPUOrigin3D
+  const overSize = [256, 256, 1, 1];
+
+  // validate the argument of destination.origin property's length of GPUCommandEncoder.copyBufferToTexture when its a sequence
+  // https://www.w3.org/TR/2024/WD-webgpu-20240409/#dom-gpucommandencoder-copybuffertotexture
+  assertThrows(
+    () =>
+      encoder.copyBufferToTexture(
+        { buffer },
+        { texture, origin: overSize },
+        size,
+      ),
+  );
+  // validate the argument of source.origin property's length of GPUCommandEncoder.copyTextureToBuffer when its a sequence
+  // https://www.w3.org/TR/2024/WD-webgpu-20240409/#dom-gpucommandencoder-copytexturetobuffer
+  assertThrows(
+    () =>
+      encoder.copyTextureToBuffer(
+        { texture, origin: overSize },
+        { buffer },
+        size,
+      ),
+  );
+  // validate the argument of source.origin property's length of GPUCommandEncoder.copyTextureToTexture when its a sequence
+  // https://www.w3.org/TR/2024/WD-webgpu-20240409/#dom-gpucommandencoder-copytexturetotexture
+  assertThrows(
+    () =>
+      encoder.copyTextureToTexture(
+        { texture, origin: overSize },
+        { texture },
+        size,
+      ),
+  );
+  // validate the argument of destination.origin property's length of GPUCommandEncoder.copyTextureToTexture when its a sequence
+  assertThrows(
+    () =>
+      encoder.copyTextureToTexture(
+        { texture },
+        { texture, origin: overSize },
+        size,
+      ),
+  );
+  // validate the argument of destination.origin property's length of GPUQueue.writeTexture when its a sequence
+  // https://www.w3.org/TR/2024/WD-webgpu-20240409/#dom-gpuqueue-writetexture
+  assertThrows(
+    () =>
+      device.queue.writeTexture(
+        { texture, origin: overSize },
+        new Uint8Array([1 * 255, 1 * 255, 1 * 255, 1 * 255]),
+        {},
+        size,
+      ),
+  );
+  // NOTE: GPUQueue.copyExternalImageToTexture needs to be validated the argument of destination.origin property's length when its a sequence, but it is not implemented yet
+
+  device.destroy();
+  const resources = Object.keys(Deno.resources());
+  Deno.close(Number(resources[resources.length - 1]));
+});
+
 async function checkIsWsl() {
   return Deno.build.os === "linux" && await hasMicrosoftProcVersion();
 
