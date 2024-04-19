@@ -63,6 +63,7 @@ export { stderr, stdin, stdout };
 
 import { getBinding } from "ext:deno_node/internal_binding/mod.ts";
 import * as constants from "ext:deno_node/internal_binding/constants.ts";
+import * as uv from "ext:deno_node/internal_binding/uv.ts";
 import type { BindingName } from "ext:deno_node/internal_binding/mod.ts";
 import { buildAllowedFlags } from "ext:deno_node/internal/process/per_thread.mjs";
 
@@ -257,6 +258,13 @@ memoryUsage.rss = function (): number {
 
 // Returns a negative error code than can be recognized by errnoException
 function _kill(pid: number, sig: number): number {
+  const maybeSignal = Object.entries(constants.os.signals).find((
+    [_, numericCode],
+  ) => numericCode === sig);
+
+  if (!maybeSignal) {
+    return uv.codeMap.get("EINVAL");
+  }
   return op_node_process_kill(pid, sig);
 }
 
