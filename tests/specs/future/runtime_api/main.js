@@ -88,25 +88,17 @@ try {
   }
 }
 
+// Note: this could throw with a `Deno.errors.NotFound` error if `keyFile` and
+// `certFile` were used.
 try {
-  Deno.listenTls({ port: tlsPort, keyFile: "foo", cert });
+  Deno.listenTls({ port: tlsPort, keyFile: "foo", certFile: "foo" });
 } catch (error) {
   if (
-    error instanceof Error &&
-    error.message === "`key` is not specified."
+    error instanceof Deno.errors.InvalidData &&
+    error.message ===
+      "Deno.listenTls requires a key: Error creating TLS certificate"
   ) {
-    console.log("Deno.ListenTlsOptions.keyFile does nothing");
-  }
-}
-
-try {
-  Deno.listenTls({ port: tlsPort, certFile: "foo" });
-} catch (error) {
-  if (
-    error instanceof Error &&
-    error.message === "`cert` is not specified."
-  ) {
-    console.log("Deno.ListenTlsOptions.certFile does nothing");
+    console.log("Deno.ListenTlsOptions.(keyFile|certFile) do nothing");
   }
 }
 
