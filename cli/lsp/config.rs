@@ -870,7 +870,7 @@ impl Settings {
   }
 }
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct Config {
   pub client_capabilities: ClientCapabilities,
   pub settings: Settings,

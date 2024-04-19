@@ -972,6 +972,8 @@ impl Inner {
       self.config.update_capabilities(&params.capabilities);
     }
 
+    self.documents.initialize(&self.config);
+
     if let Err(e) = self
       .ts_server
       .start(self.config.internal_inspect().to_address())
