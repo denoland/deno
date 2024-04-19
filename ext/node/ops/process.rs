@@ -20,8 +20,8 @@ fn kill(pid: i32, sig: i32) -> i32 {
   use winapi::shared::minwindef::DWORD;
   use winapi::shared::minwindef::FALSE;
   use winapi::shared::minwindef::TRUE;
-  use winapi::um::processthreadsapi::OpenProcess;
   use winapi::um::processthreadsapi::GetCurrentProcess;
+  use winapi::um::processthreadsapi::OpenProcess;
   use winapi::um::processthreadsapi::TerminateProcess;
   use winapi::um::winnt::PROCESS_TERMINATE;
 
