@@ -681,7 +681,8 @@ delete Object.prototype.__proto__;
         debug(`host.writeFile("${fileName}")`);
       }
       return ops.op_emit(
-        { fileName, data },
+        data,
+        fileName,
       );
     },
     getCurrentDirectory() {
@@ -717,10 +718,10 @@ delete Object.prototype.__proto__;
           : arg;
         if (fileReference.fileName.startsWith("npm:")) {
           /** @type {[string, ts.Extension] | undefined} */
-          const resolved = ops.op_resolve({
-            specifiers: [fileReference.fileName],
-            base: containingFilePath,
-          })?.[0];
+          const resolved = ops.op_resolve(
+            containingFilePath,
+            [fileReference.fileName],
+          )?.[0];
           if (resolved) {
             isCjsCache.maybeAdd(resolved);
             return {
@@ -750,10 +751,10 @@ delete Object.prototype.__proto__;
         debug(`  specifiers: ${specifiers.join(", ")}`);
       }
       /** @type {Array<[string, ts.Extension] | undefined>} */
-      const resolved = ops.op_resolve({
-        specifiers,
+      const resolved = ops.op_resolve(
         base,
-      });
+        specifiers,
+      );
       if (resolved) {
         const result = resolved.map((item) => {
           if (item) {
