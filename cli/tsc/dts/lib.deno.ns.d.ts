@@ -6239,26 +6239,6 @@ declare namespace Deno {
     info: ServeHandlerInfo,
   ) => Response | Promise<Response>;
 
-  /** Additional information for an HTTP request and its connection.
-   *
-   * @category HTTP Server
-   */
-  export interface ServeTlsHandlerInfo extends ServeHandlerInfo {
-  }
-
-  /** A handler for HTTP requests. Consumes a request and returns a response.
-   *
-   * If a handler throws, the server calling the handler will assume the impact
-   * of the error is isolated to the individual request. It will catch the error
-   * and if necessary will close the underlying connection.
-   *
-   * @category HTTP Server
-   */
-  export type ServeTlsHandler = (
-    request: Request,
-    info: ServeTlsHandlerInfo,
-  ) => Response | Promise<Response>;
-
   /** Options which can be set when calling {@linkcode Deno.serve}.
    *
    * @category HTTP Server
@@ -6329,7 +6309,7 @@ declare namespace Deno {
    */
   export interface ServeTlsInit {
     /** The handler to invoke to process each incoming request. */
-    handler: ServeTlsHandler;
+    handler: ServeHandler;
   }
 
   /** @category HTTP Server */
@@ -6597,7 +6577,7 @@ declare namespace Deno {
     options:
       | ServeTlsOptions
       | (ServeTlsOptions & TlsCertifiedKeyOptions),
-    handler: ServeTlsHandler,
+    handler: ServeHandler,
   ): HttpServer<Deno.NetAddr>;
   /** Serves HTTP requests with the given option bag.
    *
