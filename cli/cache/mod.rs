@@ -2,7 +2,7 @@
 
 use crate::args::CacheSetting;
 use crate::errors::get_error_class_name;
-use crate::file_fetcher::FetchOnceOptions;
+use crate::file_fetcher::FetchNoFollowOptions;
 use crate::file_fetcher::FetchOptions;
 use crate::file_fetcher::FileFetcher;
 use crate::file_fetcher::FileOrRedirect;
@@ -236,7 +236,7 @@ impl Loader for FetchCacher {
         LoaderCacheSetting::Only => Some(CacheSetting::Only),
       };
       file_fetcher
-        .fetch_no_follow_with_options(FetchOnceOptions {
+        .fetch_no_follow_with_options(FetchNoFollowOptions {
           fetch_options: FetchOptions {
             specifier: &specifier,
             permissions: &permissions,

@@ -153,7 +153,7 @@ pub struct FetchOptions<'a> {
   pub maybe_cache_setting: Option<&'a CacheSetting>,
 }
 
-pub struct FetchOnceOptions<'a> {
+pub struct FetchNoFollowOptions<'a> {
   pub fetch_options: FetchOptions<'a>,
   /// This setting doesn't make sense to provide for `FetchOptions`
   /// since the required checksum may change for a redirect.
@@ -526,7 +526,7 @@ impl FileFetcher {
     let mut specifier = Cow::Borrowed(options.specifier);
     for _ in 0..=max_redirect {
       match self
-        .fetch_no_follow_with_options(FetchOnceOptions {
+        .fetch_no_follow_with_options(FetchNoFollowOptions {
           fetch_options: FetchOptions {
             specifier: &specifier,
             permissions: options.permissions,
@@ -552,7 +552,7 @@ impl FileFetcher {
   /// Fetches without following redirects.
   pub async fn fetch_no_follow_with_options(
     &self,
-    options: FetchOnceOptions<'_>,
+    options: FetchNoFollowOptions<'_>,
   ) -> Result<FileOrRedirect, AnyError> {
     let maybe_checksum = options.maybe_checksum;
     let options = options.fetch_options;
@@ -1741,7 +1741,7 @@ mod tests {
   }
 
   #[tokio::test]
-  async fn test_fetch_once_with_redirect() {
+  async fn test_fetch_no_follow_with_redirect() {
     let _http_server_guard = test_util::http_server();
     // Relies on external http server. See target/debug/test_server
     let url = Url::parse("http://127.0.0.1:4546/assets/fixture.json").unwrap();
