@@ -270,7 +270,6 @@ impl Loader for FetchCacher {
               }))
             },
           }
-          
         })
         .unwrap_or_else(|err| {
           if let Some(io_err) = err.downcast_ref::<std::io::Error>() {

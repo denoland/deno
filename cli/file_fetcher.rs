@@ -376,8 +376,7 @@ impl FileFetcher {
     }
 
     let mut maybe_etag = maybe_etag;
-    // retry intermittent failures
-    let mut retried = false;
+    let mut retried = false; // retry intermittent failures
     let result = loop {
       let result = match fetch_once(
         &self.http_client,
