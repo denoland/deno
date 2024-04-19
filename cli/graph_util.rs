@@ -453,6 +453,7 @@ impl ModuleGraphBuilder {
         deno_graph::BuildOptions {
           is_dynamic: options.is_dynamic,
           jsr_url_provider: &CliJsrUrlProvider,
+          passthrough_jsr_specifiers: false,
           executor: Default::default(),
           imports: maybe_imports,
           resolver: Some(graph_resolver),
