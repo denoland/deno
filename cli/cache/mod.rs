@@ -236,7 +236,7 @@ impl Loader for FetchCacher {
         LoaderCacheSetting::Only => Some(CacheSetting::Only),
       };
       file_fetcher
-        .fetch_once_with_options(FetchOnceOptions {
+        .fetch_no_follow_with_options(FetchOnceOptions {
           fetch_options: FetchOptions {
             specifier: &specifier,
             permissions: &permissions,

@@ -215,7 +215,7 @@ impl FileFetcher {
   ) -> Result<Option<File>, AnyError> {
     let mut specifier = Cow::Borrowed(specifier);
     for _ in 0..=redirect_limit {
-      match self.fetch_cached_once(&specifier, None)? {
+      match self.fetch_cached_no_follow(&specifier, None)? {
         Some(FileOrRedirect::File(file)) => {
           return Ok(Some(file));
         }
@@ -230,12 +230,15 @@ impl FileFetcher {
     Err(custom_error("Http", "Too many redirects."))
   }
 
-  fn fetch_cached_once(
+  fn fetch_cached_no_follow(
     &self,
     specifier: &ModuleSpecifier,
     maybe_checksum: Option<&LoaderChecksum>,
   ) -> Result<Option<FileOrRedirect>, AnyError> {
-    debug!("FileFetcher::fetch_cached_once - specifier: {}", specifier);
+    debug!(
+      "FileFetcher::fetch_cached_no_follow - specifier: {}",
+      specifier
+    );
 
     let cache_key = self.http_cache.cache_item_key(specifier)?; // compute this once
     let Some(headers) = self.http_cache.read_headers(&cache_key)? else {
@@ -307,7 +310,7 @@ impl FileFetcher {
     })
   }
 
-  async fn fetch_remote_once(
+  async fn fetch_remote_no_follow(
     &self,
     specifier: &ModuleSpecifier,
     maybe_accept: Option<&str>,
@@ -315,13 +318,13 @@ impl FileFetcher {
     maybe_checksum: Option<&LoaderChecksum>,
   ) -> Result<FileOrRedirect, AnyError> {
     debug!(
-      "FileFetcher::fetch_remote_once() - specifier: {}",
+      "FileFetcher::fetch_remote_no_follow - specifier: {}",
       specifier
     );
 
     if self.should_use_cache(specifier, cache_setting) {
       if let Some(file_or_redirect) =
-        self.fetch_cached_once(specifier, maybe_checksum)?
+        self.fetch_cached_no_follow(specifier, maybe_checksum)?
       {
         return Ok(file_or_redirect);
       }
@@ -378,7 +381,7 @@ impl FileFetcher {
     let mut maybe_etag = maybe_etag;
     let mut retried = false; // retry intermittent failures
     let result = loop {
-      let result = match fetch_once(
+      let result = match fetch_no_follow(
         &self.http_client,
         FetchOnceArgs {
           url: specifier.clone(),
@@ -392,7 +395,7 @@ impl FileFetcher {
       {
         FetchOnceResult::NotModified => {
           let file_or_redirect =
-            self.fetch_cached_once(specifier, maybe_checksum)?;
+            self.fetch_cached_no_follow(specifier, maybe_checksum)?;
           match file_or_redirect {
             Some(file_or_redirect) => Ok(file_or_redirect),
             None => {
@@ -523,7 +526,7 @@ impl FileFetcher {
     let mut specifier = Cow::Borrowed(options.specifier);
     for _ in 0..=max_redirect {
       match self
-        .fetch_once_with_options(FetchOnceOptions {
+        .fetch_no_follow_with_options(FetchOnceOptions {
           fetch_options: FetchOptions {
             specifier: &specifier,
             permissions: options.permissions,
@@ -546,7 +549,8 @@ impl FileFetcher {
     Err(custom_error("Http", "Too many redirects."))
   }
 
-  pub async fn fetch_once_with_options(
+  /// Fetches without following redirects.
+  pub async fn fetch_no_follow_with_options(
     &self,
     options: FetchOnceOptions<'_>,
   ) -> Result<FileOrRedirect, AnyError> {
@@ -555,7 +559,7 @@ impl FileFetcher {
     let specifier = options.specifier;
     // note: this debug output is used by the tests
     debug!(
-      "FileFetcher::fetch_once_with_options() - specifier: {}",
+      "FileFetcher::fetch_no_follow_with_options - specifier: {}",
       specifier
     );
     let scheme = get_validated_scheme(specifier)?;
@@ -580,7 +584,7 @@ impl FileFetcher {
       ))
     } else {
       self
-        .fetch_remote_once(
+        .fetch_remote_no_follow(
           specifier,
           options.maybe_accept,
           options.maybe_cache_setting.unwrap_or(&self.cache_setting),
@@ -637,7 +641,7 @@ struct FetchOnceArgs<'a> {
 /// yields Code(ResultPayload).
 /// If redirect occurs, does not follow and
 /// yields Redirect(url).
-async fn fetch_once<'a>(
+async fn fetch_no_follow<'a>(
   http_client: &HttpClient,
   args: FetchOnceArgs<'a>,
 ) -> Result<FetchOnceResult, AnyError> {
@@ -1586,7 +1590,7 @@ mod tests {
     // Relies on external http server. See target/debug/test_server
     let url = Url::parse("http://127.0.0.1:4545/assets/fixture.json").unwrap();
     let client = create_test_client();
-    let result = fetch_once(
+    let result = fetch_no_follow(
       &client,
       FetchOnceArgs {
         url,
@@ -1614,7 +1618,7 @@ mod tests {
     let url = Url::parse("http://127.0.0.1:4545/run/import_compression/gziped")
       .unwrap();
     let client = create_test_client();
-    let result = fetch_once(
+    let result = fetch_no_follow(
       &client,
       FetchOnceArgs {
         url,
@@ -1643,7 +1647,7 @@ mod tests {
     let _http_server_guard = test_util::http_server();
     let url = Url::parse("http://127.0.0.1:4545/etag_script.ts").unwrap();
     let client = create_test_client();
-    let result = fetch_once(
+    let result = fetch_no_follow(
       &client,
       FetchOnceArgs {
         url: url.clone(),
@@ -1666,7 +1670,7 @@ mod tests {
       panic!();
     }
 
-    let res = fetch_once(
+    let res = fetch_no_follow(
       &client,
       FetchOnceArgs {
         url,
@@ -1687,7 +1691,7 @@ mod tests {
     let url = Url::parse("http://127.0.0.1:4545/run/import_compression/brotli")
       .unwrap();
     let client = create_test_client();
-    let result = fetch_once(
+    let result = fetch_no_follow(
       &client,
       FetchOnceArgs {
         url,
@@ -1718,7 +1722,7 @@ mod tests {
     // Relies on external http server. See target/debug/test_server
     let url = Url::parse("http://127.0.0.1:4545/echo_accept").unwrap();
     let client = create_test_client();
-    let result = fetch_once(
+    let result = fetch_no_follow(
       &client,
       FetchOnceArgs {
         url,
@@ -1745,7 +1749,7 @@ mod tests {
     let target_url =
       Url::parse("http://localhost:4545/assets/fixture.json").unwrap();
     let client = create_test_client();
-    let result = fetch_once(
+    let result = fetch_no_follow(
       &client,
       FetchOnceArgs {
         url,
@@ -1782,7 +1786,7 @@ mod tests {
       )
       .unwrap(),
     );
-    let result = fetch_once(
+    let result = fetch_no_follow(
       &client,
       FetchOnceArgs {
         url,
@@ -1831,7 +1835,7 @@ mod tests {
         .unwrap(),
       );
 
-      let result = fetch_once(
+      let result = fetch_no_follow(
         &client,
         FetchOnceArgs {
           url,
@@ -1895,7 +1899,7 @@ mod tests {
       .unwrap(),
     );
 
-    let result = fetch_once(
+    let result = fetch_no_follow(
       &client,
       FetchOnceArgs {
         url,
@@ -1950,7 +1954,7 @@ mod tests {
       )
       .unwrap(),
     );
-    let result = fetch_once(
+    let result = fetch_no_follow(
       &client,
       FetchOnceArgs {
         url,
@@ -1993,7 +1997,7 @@ mod tests {
       )
       .unwrap(),
     );
-    let result = fetch_once(
+    let result = fetch_no_follow(
       &client,
       FetchOnceArgs {
         url: url.clone(),
@@ -2017,7 +2021,7 @@ mod tests {
       panic!();
     }
 
-    let res = fetch_once(
+    let res = fetch_no_follow(
       &client,
       FetchOnceArgs {
         url,
@@ -2053,7 +2057,7 @@ mod tests {
       )
       .unwrap(),
     );
-    let result = fetch_once(
+    let result = fetch_no_follow(
       &client,
       FetchOnceArgs {
         url,
@@ -2084,7 +2088,7 @@ mod tests {
     let url_str = "http://127.0.0.1:4545/bad_redirect";
     let url = Url::parse(url_str).unwrap();
     let client = create_test_client();
-    let result = fetch_once(
+    let result = fetch_no_follow(
       &client,
       FetchOnceArgs {
         url,
@@ -2107,7 +2111,7 @@ mod tests {
     let url_str = "http://127.0.0.1:4545/server_error";
     let url = Url::parse(url_str).unwrap();
     let client = create_test_client();
-    let result = fetch_once(
+    let result = fetch_no_follow(
       &client,
       FetchOnceArgs {
         url,
@@ -2132,7 +2136,7 @@ mod tests {
     let url_str = "http://127.0.0.1:9999/";
     let url = Url::parse(url_str).unwrap();
     let client = create_test_client();
-    let result = fetch_once(
+    let result = fetch_no_follow(
       &client,
       FetchOnceArgs {
         url,
