@@ -272,6 +272,31 @@ impl PendingChange {
       self.config_changed,
     ])
   }
+
+  fn coalesce(
+    &mut self,
+    new_version: usize,
+    modified_scripts: Vec<(String, ChangeKind)>,
+    config_changed: bool,
+  ) {
+    self.project_version = self.project_version.max(new_version);
+    self.config_changed |= config_changed;
+    for (spec, new) in modified_scripts {
+      if let Some((_, current)) =
+        self.modified_scripts.iter_mut().find(|(s, _)| s == &spec)
+      {
+        match (*current, new) {
+          (_, ChangeKind::Closed) => {
+            *current = ChangeKind::Closed;
+          }
+          (ChangeKind::Opened, ChangeKind::Modified) => {
+            *current = ChangeKind::Modified;
+          }
+          _ => {}
+        }
+      }
+    }
+  }
 }
 
 impl TsServer {
@@ -321,40 +346,23 @@ impl TsServer {
     Ok(())
   }
 
-  pub async fn project_changed(
+  pub fn project_changed<'a>(
     &self,
     snapshot: Arc<StateSnapshot>,
-    modified_scripts: &[(&ModuleSpecifier, ChangeKind)],
+    modified_scripts: impl IntoIterator<Item = (&'a ModuleSpecifier, ChangeKind)>,
     config_changed: bool,
   ) {
     let modified_scripts = modified_scripts
-      .iter()
-      .map(|(spec, change)| (self.specifier_map.denormalize(spec), *change))
+      .into_iter()
+      .map(|(spec, change)| (self.specifier_map.denormalize(spec), change))
       .collect::<Vec<_>>();
     match &mut *self.pending_change.lock() {
       Some(pending_change) => {
-        pending_change.project_version =
-          pending_change.project_version.max(snapshot.project_version);
-        pending_change.config_changed |= config_changed;
-        for script in &mut pending_change.modified_scripts {
-          if let Some((_, change)) =
-            modified_scripts.iter().find(|(s, _)| s == &script.0)
-          {
-            match (script.1, change) {
-              (ChangeKind::Opened, ChangeKind::Closed) => {
-                script.1 = ChangeKind::Closed;
-              }
-              (ChangeKind::Opened, ChangeKind::Modified) => {
-                script.1 = ChangeKind::Modified;
-              }
-              (ChangeKind::Modified, ChangeKind::Closed) => {
-                script.1 = ChangeKind::Closed;
-              }
-              (ChangeKind::Modified, ChangeKind::Modified) => {}
-              _ => {}
-            }
-          }
-        }
+        pending_change.coalesce(
+          snapshot.project_version,
+          modified_scripts,
+          config_changed,
+        );
       }
       pending => {
         let pending_change = PendingChange {
@@ -3990,7 +3998,6 @@ impl State {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<AssetOrDocument> {
-    lsp_log!("get_asset_or_document {}", specifier);
     let snapshot = &self.state_snapshot;
     if specifier.scheme() == "asset" {
       snapshot.assets.get(specifier).map(AssetOrDocument::Asset)
@@ -5262,13 +5269,11 @@ mod tests {
         ..snapshot.as_ref().clone()
       })
     };
-    ts_server
-      .project_changed(
-        snapshot.clone(),
-        &[(&specifier_dep, ChangeKind::Opened)],
-        false,
-      )
-      .await;
+    ts_server.project_changed(
+      snapshot.clone(),
+      &[(&specifier_dep, ChangeKind::Opened)],
+      false,
+    );
     let specifier = resolve_url("file:///a.ts").unwrap();
     let diagnostics = ts_server
       .get_diagnostics(snapshot.clone(), vec![specifier], Default::default())

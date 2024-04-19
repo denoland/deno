@@ -542,7 +542,7 @@ delete Object.prototype.__proto__;
     }
   }
 
-  /** @type {ts.LanguageService} */
+  /** @type {ts.LanguageService & { [k:string]: any }} */
   let languageService;
 
   /** An object literal of the incremental compiler host, which provides the
