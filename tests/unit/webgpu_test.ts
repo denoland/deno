@@ -384,6 +384,12 @@ Deno.test({
 });
 
 Deno.test({
+  ignore: true,
+}, async function validateGPUOrigin2D() {
+  // NOTE: GPUQueue.copyExternalImageToTexture needs to be validated the argument of source.origin property's length when its a sequence, but it is not implemented yet
+});
+
+Deno.test({
   ignore: isWsl || isLinuxOrMacCI,
 }, async function validateGPUOrigin3D() {
   const adapter = await navigator.gpu.requestAdapter();
