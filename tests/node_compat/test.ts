@@ -76,18 +76,24 @@ async function runTest(t: Deno.TestContext, path: string): Promise<void> {
         // contain actual JS objects, not strings :)).
         envVars["NODE_TEST_KNOWN_GLOBALS"] = "0";
       }
-
+      // TODO(nathanwhit): once we match node's behavior on executing
+      // `node:test` tests when we run a file, we can remove this
+      const usesNodeTest = testSource.includes("node:test");
       const args = [
-        "run",
+        usesNodeTest ? "test" : "run",
         "-A",
         "--quiet",
         //"--unsafely-ignore-certificate-errors",
         "--unstable-unsafe-proto",
         "--unstable-bare-node-builtins",
         "--v8-flags=" + v8Flags.join(),
-        "runner.ts",
-        testCase,
       ];
+      if (usesNodeTest) {
+        // deno test typechecks by default + we want to pass script args
+        args.push("--no-check", "runner.ts", "--", testCase);
+      } else {
+        args.push("runner.ts", testCase);
+      }
 
       // Pipe stdout in order to output each test result as Deno.test output
       // That way the tests will respect the `--quiet` option when provided

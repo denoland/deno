@@ -1102,11 +1102,11 @@ impl CliOptions {
   }
 
   pub fn has_node_modules_dir(&self) -> bool {
-    self.maybe_node_modules_folder.is_some() || self.unstable_byonm()
+    self.maybe_node_modules_folder.is_some()
   }
 
-  pub fn node_modules_dir_path(&self) -> Option<PathBuf> {
-    self.maybe_node_modules_folder.clone()
+  pub fn node_modules_dir_path(&self) -> Option<&PathBuf> {
+    self.maybe_node_modules_folder.as_ref()
   }
 
   pub fn with_node_modules_dir_path(&self, path: PathBuf) -> Self {
@@ -1590,7 +1590,15 @@ impl CliOptions {
         .unwrap_or(false)
   }
 
-  pub fn unstable_byonm(&self) -> bool {
+  pub fn use_byonm(&self) -> bool {
+    if self.enable_future_features()
+      && self.node_modules_dir_enablement().is_none()
+      && self.maybe_package_json.is_some()
+    {
+      return true;
+    }
+
+    // check if enabled via unstable
     self.flags.unstable_config.byonm
       || NPM_PROCESS_STATE
         .as_ref()

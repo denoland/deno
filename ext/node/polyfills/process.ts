@@ -12,7 +12,7 @@ import {
   op_set_exit_code,
 } from "ext:core/ops";
 
-import { notImplemented, warnNotImplemented } from "ext:deno_node/_utils.ts";
+import { warnNotImplemented } from "ext:deno_node/_utils.ts";
 import { EventEmitter } from "node:events";
 import Module from "node:module";
 import { report } from "ext:deno_node/internal/process/report.ts";
@@ -48,7 +48,6 @@ import {
 } from "ext:deno_node/_next_tick.ts";
 import { isWindows } from "ext:deno_node/_util/os.ts";
 import * as io from "ext:deno_io/12_io.js";
-import { Command } from "ext:runtime/40_process.js";
 
 export let argv0 = "";
 
@@ -259,6 +258,13 @@ memoryUsage.rss = function (): number {
 
 // Returns a negative error code than can be recognized by errnoException
 function _kill(pid: number, sig: number): number {
+  const maybeSignal = Object.entries(constants.os.signals).find((
+    [_, numericCode],
+  ) => numericCode === sig);
+
+  if (!maybeSignal) {
+    return uv.codeMap.get("EINVAL");
+  }
   return op_node_process_kill(pid, sig);
 }
 

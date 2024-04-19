@@ -225,9 +225,6 @@ impl TestContextBuilder {
     }
 
     let deno_exe = deno_exe_path();
-    self
-      .diagnostic_logger
-      .writeln(format!("deno_exe path {}", deno_exe));
 
     let http_server_guard = if self.use_http_server {
       Some(Rc::new(http_server()))
@@ -295,9 +292,13 @@ impl TestContext {
   }
 
   pub fn new_lsp_command(&self) -> LspClientBuilder {
-    LspClientBuilder::new_with_dir(self.deno_dir.clone())
+    let mut builder = LspClientBuilder::new_with_dir(self.deno_dir.clone())
       .deno_exe(&self.deno_exe)
-      .set_root_dir(self.temp_dir.path().clone())
+      .set_root_dir(self.temp_dir.path().clone());
+    for (key, value) in &self.envs {
+      builder = builder.env(key, value);
+    }
+    builder
   }
 
   pub fn run_npm(&self, args: impl AsRef<str>) {
@@ -782,6 +783,13 @@ impl TestCommandBuilder {
     for key in &self.envs_remove {
       envs.remove(key);
     }
+
+    // update any test variables in the env value
+    for value in envs.values_mut() {
+      *value =
+        value.replace("$DENO_DIR", &self.deno_dir.path().to_string_lossy());
+    }
+
     envs
   }
 }
