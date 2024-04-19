@@ -292,45 +292,59 @@ impl Document {
     maybe_node_resolver: Option<&CliNodeResolver>,
     npm_resolver: &dyn deno_graph::source::NpmResolver,
   ) -> Option<Arc<Self>> {
-    let mut parsed_source_result = match &self.maybe_parsed_source {
-      Some(parsed_source_result) => parsed_source_result.clone(),
-      None => return None, // nothing to change
-    };
     let media_type = resolve_media_type(
       &self.specifier,
       self.maybe_headers.as_ref(),
       self.maybe_language_id,
       maybe_node_resolver,
     );
-    // reparse if the media type has changed
-    if let Ok(parsed_source) = &parsed_source_result {
-      if parsed_source.media_type() != media_type {
-        parsed_source_result =
-          parse_source(&self.specifier, self.text_info.clone(), media_type);
-      }
+    let dependencies;
+    let maybe_types_dependency;
+    let maybe_parsed_source;
+    if media_type != self.media_type {
+      let parsed_source_result =
+        parse_source(&self.specifier, self.text_info.clone(), media_type);
+      let maybe_module = analyze_module(
+        &self.specifier,
+        &parsed_source_result,
+        self.maybe_headers.as_ref(),
+        resolver,
+        npm_resolver,
+      )
+      .ok();
+      dependencies = maybe_module
+        .as_ref()
+        .map(|m| Arc::new(m.dependencies.clone()))
+        .unwrap_or_default();
+      maybe_types_dependency = maybe_module
+        .as_ref()
+        .and_then(|m| Some(Arc::new(m.maybe_types_dependency.clone()?)));
+      maybe_parsed_source = Some(parsed_source_result);
+    } else {
+      dependencies = Arc::new(
+        self
+          .dependencies
+          .iter()
+          .map(|(s, d)| {
+            (
+              s.clone(),
+              d.with_new_resolver(s, Some(resolver), Some(npm_resolver)),
+            )
+          })
+          .collect(),
+      );
+      maybe_types_dependency = self.maybe_types_dependency.as_ref().map(|d| {
+        Arc::new(d.with_new_resolver(Some(resolver), Some(npm_resolver)))
+      });
+      maybe_parsed_source = self.maybe_parsed_source.clone();
     }
-
-    let maybe_module = Some(analyze_module(
-      &self.specifier,
-      &parsed_source_result,
-      self.maybe_headers.as_ref(),
-      resolver,
-      npm_resolver,
-    ));
-    let maybe_module = maybe_module.and_then(Result::ok);
-    let dependencies = maybe_module
-      .as_ref()
-      .map(|m| Arc::new(m.dependencies.clone()))
-      .unwrap_or_default();
-    let maybe_types_dependency = maybe_module
-      .as_ref()
-      .and_then(|m| Some(Arc::new(m.maybe_types_dependency.clone()?)));
     Some(Arc::new(Self {
       // updated properties
       dependencies,
       maybe_types_dependency,
       maybe_navigation_tree: Mutex::new(None),
-      maybe_parsed_source: Some(parsed_source_result),
+      maybe_parsed_source: maybe_parsed_source
+        .filter(|_| self.specifier.scheme() == "file"),
       // maintain - this should all be copies/clones
       fs_version: self.fs_version.clone(),
       line_index: self.line_index.clone(),
@@ -1633,7 +1647,7 @@ impl<'a> OpenDocumentsGraphLoader<'a> {
 
 impl<'a> deno_graph::source::Loader for OpenDocumentsGraphLoader<'a> {
   fn load(
-    &mut self,
+    &self,
     specifier: &ModuleSpecifier,
     options: deno_graph::source::LoadOptions,
   ) -> deno_graph::source::LoadFuture {
@@ -1652,7 +1666,7 @@ impl<'a> deno_graph::source::Loader for OpenDocumentsGraphLoader<'a> {
   }
 
   fn cache_module_info(
-    &mut self,
+    &self,
     specifier: &deno_ast::ModuleSpecifier,
     source: &Arc<[u8]>,
     module_info: &deno_graph::ModuleInfo,
