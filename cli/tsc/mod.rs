@@ -412,9 +412,13 @@ struct EmitArgs {
   file_name: String,
 }
 
-#[op2]
-fn op_emit(state: &mut OpState, #[serde] args: EmitArgs) -> bool {
-  op_emit_inner(state, args)
+#[op2(fast)]
+fn op_emit(
+  state: &mut OpState,
+  #[string] data: String,
+  #[string] file_name: String,
+) -> bool {
+  op_emit_inner(state, EmitArgs { data, file_name })
 }
 
 #[inline]
@@ -590,9 +594,10 @@ pub struct ResolveArgs {
 #[serde]
 fn op_resolve(
   state: &mut OpState,
-  #[serde] args: ResolveArgs,
+  #[string] base: String,
+  #[serde] specifiers: Vec<String>,
 ) -> Result<Vec<(String, String)>, AnyError> {
-  op_resolve_inner(state, args)
+  op_resolve_inner(state, ResolveArgs { base, specifiers })
 }
 
 #[inline]
