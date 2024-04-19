@@ -1850,6 +1850,15 @@ class GPUQueue {
     device.pushError(err);
   }
 
+  /**
+   * @param {GPUImageCopyExternalImage} source
+   * @param {GPUImageCopyTextureTagged} destination
+   * @param {GPUExtent3D} copySize
+   */
+  copyExternalImageToTexture(source, destination, copySize) {
+    throw new Error("not implemented");
+  }
+
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
     return inspect(
       createFilteredInspectProxy({
