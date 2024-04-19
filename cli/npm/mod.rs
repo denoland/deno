@@ -142,7 +142,7 @@ impl NpmFetchResolver {
       let info_url = npm_registry_url().join(name).ok()?;
       let file = self
         .file_fetcher
-        .fetch(&info_url, PermissionsContainer::allow_all())
+        .fetch(&info_url, &PermissionsContainer::allow_all())
         .await
         .ok()?;
       serde_json::from_slice::<NpmPackageInfo>(&file.source).ok()

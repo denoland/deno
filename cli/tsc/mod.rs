@@ -957,7 +957,7 @@ mod tests {
 
   impl deno_graph::source::Loader for MockLoader {
     fn load(
-      &mut self,
+      &self,
       specifier: &ModuleSpecifier,
       _options: deno_graph::source::LoadOptions,
     ) -> deno_graph::source::LoadFuture {
@@ -987,10 +987,10 @@ mod tests {
       .unwrap_or_else(|| ModuleSpecifier::parse("file:///main.ts").unwrap());
     let hash_data = maybe_hash_data.unwrap_or(0);
     let fixtures = test_util::testdata_path().join("tsc2");
-    let mut loader = MockLoader { fixtures };
+    let loader = MockLoader { fixtures };
     let mut graph = ModuleGraph::new(GraphKind::TypesOnly);
     graph
-      .build(vec![specifier], &mut loader, Default::default())
+      .build(vec![specifier], &loader, Default::default())
       .await;
     let state = State::new(
       Arc::new(graph),
@@ -1013,10 +1013,10 @@ mod tests {
   ) -> Result<Response, AnyError> {
     let hash_data = 123; // something random
     let fixtures = test_util::testdata_path().join("tsc2");
-    let mut loader = MockLoader { fixtures };
+    let loader = MockLoader { fixtures };
     let mut graph = ModuleGraph::new(GraphKind::TypesOnly);
     graph
-      .build(vec![specifier.clone()], &mut loader, Default::default())
+      .build(vec![specifier.clone()], &loader, Default::default())
       .await;
     let config = TsConfig::new(json!({
       "allowJs": true,
