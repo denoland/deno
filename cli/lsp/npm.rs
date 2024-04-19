@@ -48,7 +48,7 @@ impl PackageSearchApi for CliNpmSearchApi {
       .append_pair("text", &format!("{} boost-exact:false", query));
     let file = self
       .file_fetcher
-      .fetch(&search_url, PermissionsContainer::allow_all())
+      .fetch(&search_url, &PermissionsContainer::allow_all())
       .await?
       .into_text_decoded()?;
     let names = Arc::new(parse_npm_search_response(&file.source)?);

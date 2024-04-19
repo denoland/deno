@@ -116,7 +116,13 @@ impl Loader for TestLoader {
     specifier: &ModuleSpecifier,
     _options: deno_graph::source::LoadOptions,
   ) -> LoadFuture {
-    let specifier = self.redirects.get(specifier).unwrap_or(specifier);
+    if let Some(redirect) = self.redirects.get(specifier) {
+      return Box::pin(futures::future::ready(Ok(Some(
+        LoadResponse::Redirect {
+          specifier: redirect.clone(),
+        },
+      ))));
+    }
     let result = self.files.get(specifier).map(|result| match result {
       Ok(result) => Ok(LoadResponse::Module {
         specifier: specifier.clone(),
