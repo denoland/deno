@@ -54,18 +54,17 @@ async fn generate_doc_nodes_for_builtin_types(
       vec![source_file_specifier.clone()],
       &loader,
       deno_graph::BuildOptions {
-        module_analyzer: analyzer,
-        file_system: &NullFileSystem,
-        is_dynamic: false,
         imports: Vec::new(),
+        is_dynamic: false,
         passthrough_jsr_specifiers: false,
+        workspace_members: &[],
         executor: Default::default(),
+        file_system: &NullFileSystem,
         jsr_url_provider: Default::default(),
-        passthrough_jsr_specifiers: false,
+        module_analyzer: analyzer,
         npm_resolver: None,
         reporter: None,
         resolver: None,
-        workspace_members: &[],
       },
     )
     .await;
