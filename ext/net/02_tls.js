@@ -61,12 +61,6 @@ async function connectTls({
   keyFile = undefined,
   privateKey = undefined,
 }) {
-  if (internals.future) {
-    certFile = undefined;
-    certChain = undefined;
-    privateKey = undefined;
-  }
-  
   if (transport !== "tcp") {
     throw new TypeError(`Unsupported transport: '${transport}'`);
   }
@@ -159,6 +153,13 @@ function loadTlsKeyPair(api, {
   keyFile,
   privateKey,
 }) {
+  if (internals.future) {
+    certFile = undefined;
+    certChain = undefined;
+    keyFile = undefined;
+    privateKey = undefined;
+  }
+
   // Check for "pem" format
   if (keyFormat !== undefined && keyFormat !== "pem") {
     throw new TypeError('If `keyFormat` is specified, it must be "pem"');

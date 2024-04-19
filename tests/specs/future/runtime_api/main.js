@@ -61,13 +61,9 @@ if (Deno.build.os === "windows") {
 // TLS
 // Since these tests may run in parallel, ensure this port is unique to this file
 const tlsPort = 4510;
-const certFile = "../../../testdata/tls/localhost.crt";
-const privateKey = "../../../testdata/tls/localhost.key";
-const tlsListener = Deno.listenTls({
-  port: tlsPort,
-  cert: Deno.readTextFileSync(certFile),
-  key: Deno.readTextFileSync(privateKey),
-});
+const cert = Deno.readTextFileSync("../../../testdata/tls/localhost.crt");
+const key = Deno.readTextFileSync("../../../testdata/tls/localhost.key");
+const tlsListener = Deno.listenTls({ port: tlsPort, cert, key });
 console.log("Deno.TlsListener.prototype.rid is", tlsListener.rid);
 
 const tlsConn = await Deno.connectTls({ port: tlsPort });
@@ -91,52 +87,45 @@ try {
   }
 }
 
+// Note: this could throw with a `Deno.errors.NotFound` error if `keyFile` and
+// `certFile` were used.
 try {
   await Deno.connectTls({
     port: tlsPort,
-    certFile,
-    key: Deno.readTextFileSync(privateKey),
+    certFile: "foo",
+    keyFile: "foo",
   });
+  console.log("Hey");
 } catch (error) {
+  console.log(error);
   if (
-    error instanceof TypeError &&
-    error.message === "No certificate chain provided"
+    error instanceof Deno.errors.InvalidData &&
+    error.message ===
+      "Deno.connectTls requires a key: Error creating TLS certificate"
   ) {
-    console.log("Deno.ConnectTlsOptions.certFile does nothing");
+    console.log("Deno.ConnectTlsOptions.(certFile|keyFile) do nothing");
   } else {
     console.log(error);
   }
 }
 
+// Note: this could throw with a `Deno.errors.NotFound` error if `certChain` and
+// `privateKey` were used.
 try {
   await Deno.connectTls({
     port: tlsPort,
-    certChain: certFile,
-    key: Deno.readTextFileSync(privateKey),
+    certChain: "foo",
+    privateKey: "foo",
   });
 } catch (error) {
-  if (
-    error instanceof TypeError &&
-    error.message === "No certificate chain provided"
-  ) {
-    console.log("Deno.ConnectTlsOptions.certChain does nothing");
-  } else {
-    console.log(error);
-  }
-}
+  console.log(error);
 
-try {
-  await Deno.connectTls({
-    port: tlsPort,
-    cert: Deno.readTextFileSync(certFile),
-    privateKey,
-  });
-} catch (error) {
   if (
-    error instanceof TypeError &&
-    error.message === "No private key provided"
+    error instanceof Deno.errors.InvalidData &&
+    error.message ===
+      "Deno.connectTls requires a key: Error creating TLS certificate"
   ) {
-    console.log("Deno.ConnectTlsOptions.privateKey does nothing");
+    console.log("Deno.ConnectTlsOptions.(certChain|privateKey) do nothing");
   } else {
     console.log(error);
   }
