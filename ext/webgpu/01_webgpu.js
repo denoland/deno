@@ -1855,6 +1855,7 @@ class GPUQueue {
    * @param {GPUImageCopyTextureTagged} destination
    * @param {GPUExtent3D} copySize
    */
+  // deno-lint-ignore no-unused-vars
   copyExternalImageToTexture(source, destination, copySize) {
     throw new Error("not implemented");
   }
