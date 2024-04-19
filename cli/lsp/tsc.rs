@@ -107,6 +107,7 @@ type Request = (
   Arc<StateSnapshot>,
   oneshot::Sender<Result<String, AnyError>>,
   CancellationToken,
+  Option<Value>,
 );
 
 #[derive(Debug, Clone, Copy, Serialize_repr)]
@@ -224,6 +225,7 @@ pub struct TsServer {
   receiver: Mutex<Option<mpsc::UnboundedReceiver<Request>>>,
   specifier_map: Arc<TscSpecifierMap>,
   inspector_server: Mutex<Option<Arc<InspectorServer>>>,
+  pending_change: Mutex<Option<PendingChange>>,
 }
 
 impl std::fmt::Debug for TsServer {
@@ -256,6 +258,22 @@ impl Serialize for ChangeKind {
   }
 }
 
+pub struct PendingChange {
+  pub modified_scripts: Vec<(String, ChangeKind)>,
+  pub project_version: usize,
+  pub config_changed: bool,
+}
+
+impl PendingChange {
+  fn to_json(&self) -> Value {
+    json!([
+      self.modified_scripts,
+      self.project_version,
+      self.config_changed,
+    ])
+  }
+}
+
 impl TsServer {
   pub fn new(performance: Arc<Performance>, cache: Arc<dyn HttpCache>) -> Self {
     let (tx, request_rx) = mpsc::unbounded_channel::<Request>();
@@ -266,6 +284,7 @@ impl TsServer {
       receiver: Mutex::new(Some(request_rx)),
       specifier_map: Arc::new(TscSpecifierMap::new()),
       inspector_server: Mutex::new(None),
+      pending_change: Mutex::new(None),
     }
   }
 
@@ -310,22 +329,42 @@ impl TsServer {
   ) {
     let modified_scripts = modified_scripts
       .iter()
-      .map(|(spec, change)| (self.specifier_map.denormalize(spec), change))
+      .map(|(spec, change)| (self.specifier_map.denormalize(spec), *change))
       .collect::<Vec<_>>();
-    let req = TscRequest {
-      method: "$projectChanged",
-      args: json!(
-        [modified_scripts, snapshot.project_version, config_changed,]
-      ),
-    };
-    self
-      .request::<()>(snapshot, req)
-      .await
-      .map_err(|err| {
-        log::error!("Failed to request to tsserver {}", err);
-        LspError::invalid_request()
-      })
-      .ok();
+    match &mut *self.pending_change.lock() {
+      Some(pending_change) => {
+        pending_change.project_version =
+          pending_change.project_version.max(snapshot.project_version);
+        pending_change.config_changed |= config_changed;
+        for script in &mut pending_change.modified_scripts {
+          if let Some((_, change)) =
+            modified_scripts.iter().find(|(s, _)| s == &script.0)
+          {
+            match (script.1, change) {
+              (ChangeKind::Opened, ChangeKind::Closed) => {
+                script.1 = ChangeKind::Closed;
+              }
+              (ChangeKind::Opened, ChangeKind::Modified) => {
+                script.1 = ChangeKind::Modified;
+              }
+              (ChangeKind::Modified, ChangeKind::Closed) => {
+                script.1 = ChangeKind::Closed;
+              }
+              (ChangeKind::Modified, ChangeKind::Modified) => {}
+              _ => {}
+            }
+          }
+        }
+      }
+      pending => {
+        let pending_change = PendingChange {
+          modified_scripts,
+          project_version: snapshot.project_version,
+          config_changed,
+        };
+        *pending = Some(pending_change);
+      }
+    }
   }
 
   pub async fn get_diagnostics(
@@ -1063,7 +1102,12 @@ impl TsServer {
     let token = token.child_token();
     let droppable_token = DroppableToken(token.clone());
     let (tx, rx) = oneshot::channel::<Result<String, AnyError>>();
-    if self.sender.send((req, snapshot, tx, token)).is_err() {
+    let change = self.pending_change.lock().take();
+    if self
+      .sender
+      .send((req, snapshot, tx, token, change.map(|c| c.to_json())))
+      .is_err()
+    {
       return Err(anyhow!("failed to send request to tsc thread"));
     }
     let value = rx.await??;
@@ -3946,6 +3990,7 @@ impl State {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<AssetOrDocument> {
+    lsp_log!("get_asset_or_document {}", specifier);
     let snapshot = &self.state_snapshot;
     if specifier.scheme() == "asset" {
       snapshot.assets.get(specifier).map(AssetOrDocument::Asset)
@@ -4238,8 +4283,8 @@ fn run_tsc_thread(
       tokio::select! {
         biased;
         (maybe_request, mut tsc_runtime) = async { (request_rx.recv().await, tsc_runtime.lock().await) } => {
-          if let Some((req, state_snapshot, tx, token)) = maybe_request {
-            let value = request(&mut tsc_runtime, state_snapshot, req, token.clone());
+          if let Some((req, state_snapshot, tx, token, pending_change)) = maybe_request {
+            let value = request(&mut tsc_runtime, state_snapshot, req, pending_change, token.clone());
             request_signal_tx.send(()).unwrap();
             let was_sent = tx.send(value).is_ok();
             // Don't print the send error if the token is cancelled, it's expected
@@ -4657,6 +4702,7 @@ fn request(
   runtime: &mut JsRuntime,
   state_snapshot: Arc<StateSnapshot>,
   request: TscRequest,
+  change: Option<Value>,
   token: CancellationToken,
 ) -> Result<String, AnyError> {
   if token.is_cancelled() {
@@ -4681,8 +4727,10 @@ fn request(
     "Internal error: expected args to be array"
   );
   let request_src = format!(
-    "globalThis.serverRequest({id}, \"{}\", {});",
-    request.method, &request.args
+    "globalThis.serverRequest({id}, \"{}\", {}, {});",
+    request.method,
+    &request.args,
+    change.unwrap_or_default()
   );
   runtime.execute_script(located_script_name!(), request_src)?;
 
