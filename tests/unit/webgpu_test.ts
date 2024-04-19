@@ -274,6 +274,9 @@ Deno.test({
   // values for validating GPUColor
   const invalidSize = [0, 0, 0];
 
+  const msgIncludes =
+    "A sequence of number used as a GPUColor must have exactly 4 elements.";
+
   // validate the argument of descriptor.colorAttachments[@@iterator].clearValue property's length of GPUCommandEncoder.beginRenderPass when its a sequence
   // https://www.w3.org/TR/2024/WD-webgpu-20240409/#dom-gpucommandencoder-beginrenderpass
   assertThrows(
@@ -288,6 +291,8 @@ Deno.test({
           },
         ],
       }),
+    TypeError,
+    msgIncludes,
   );
   const renderPass = encoder.beginRenderPass({
     colorAttachments: [
@@ -303,6 +308,8 @@ Deno.test({
   // https://www.w3.org/TR/2024/WD-webgpu-20240409/#dom-gpurenderpassencoder-setblendconstant
   assertThrows(
     () => renderPass.setBlendConstant(invalidSize),
+    TypeError,
+    msgIncludes,
   );
 
   device.destroy();
@@ -335,46 +342,69 @@ Deno.test({
   const belowSize: Array<number> = [];
   const overSize = [256, 256, 1, 1];
 
+  const msgIncludes =
+    "A sequence of number used as a GPUExtent3D must have between 1 and 3 elements.";
+
   // validate the argument of descriptor.size property's length of GPUDevice.createTexture when its a sequence
   // https://www.w3.org/TR/2024/WD-webgpu-20240409/#dom-gpudevice-createtexture
   assertThrows(
     () => device.createTexture({ size: belowSize, format, usage }),
+    TypeError,
+    msgIncludes,
   );
   assertThrows(
     () => device.createTexture({ size: overSize, format, usage }),
+    TypeError,
+    msgIncludes,
   );
   // validate the argument of copySize property's length of GPUCommandEncoder.copyBufferToTexture when its a sequence
   // https://www.w3.org/TR/2024/WD-webgpu-20240409/#dom-gpucommandencoder-copybuffertotexture
   assertThrows(
     () => encoder.copyBufferToTexture({ buffer }, { texture }, belowSize),
+    TypeError,
+    msgIncludes,
   );
   assertThrows(
     () => encoder.copyBufferToTexture({ buffer }, { texture }, overSize),
+    TypeError,
+    msgIncludes,
   );
   // validate the argument of copySize property's length of GPUCommandEncoder.copyTextureToBuffer when its a sequence
   // https://www.w3.org/TR/2024/WD-webgpu-20240409/#dom-gpucommandencoder-copytexturetobuffer
   assertThrows(
     () => encoder.copyTextureToBuffer({ texture }, { buffer }, belowSize),
+    TypeError,
+    msgIncludes,
   );
   assertThrows(
     () => encoder.copyTextureToBuffer({ texture }, { buffer }, overSize),
+    TypeError,
+    msgIncludes,
   );
   // validate the argument of copySize property's length of GPUCommandEncoder.copyTextureToTexture when its a sequence
   // https://www.w3.org/TR/2024/WD-webgpu-20240409/#dom-gpucommandencoder-copytexturetotexture
   assertThrows(
     () => encoder.copyTextureToTexture({ texture }, { texture }, belowSize),
+    TypeError,
+    msgIncludes,
   );
   assertThrows(
     () => encoder.copyTextureToTexture({ texture }, { texture }, overSize),
+    TypeError,
+    msgIncludes,
   );
   const data = new Uint8Array([1 * 255, 1 * 255, 1 * 255, 1 * 255]);
   // validate the argument of size property's length of GPUQueue.writeTexture when its a sequence
   // https://www.w3.org/TR/2024/WD-webgpu-20240409/#dom-gpuqueue-writetexture
   assertThrows(
     () => device.queue.writeTexture({ texture }, data, {}, belowSize),
+    TypeError,
+    msgIncludes,
   );
   assertThrows(
     () => device.queue.writeTexture({ texture }, data, {}, overSize),
+    TypeError,
+    msgIncludes,
   );
   // NOTE: GPUQueue.copyExternalImageToTexture needs to be validated the argument of copySize property's length when its a sequence, but it is not implemented yet
 
@@ -414,6 +444,9 @@ Deno.test({
   // value for validating GPUOrigin3D
   const overSize = [256, 256, 1, 1];
 
+  const msgIncludes =
+    "A sequence of number used as a GPUOrigin3D must have at most 3 elements.";
+
   // validate the argument of destination.origin property's length of GPUCommandEncoder.copyBufferToTexture when its a sequence
   // https://www.w3.org/TR/2024/WD-webgpu-20240409/#dom-gpucommandencoder-copybuffertotexture
   assertThrows(
@@ -423,6 +456,8 @@ Deno.test({
         { texture, origin: overSize },
         size,
       ),
+    TypeError,
+    msgIncludes,
   );
   // validate the argument of source.origin property's length of GPUCommandEncoder.copyTextureToBuffer when its a sequence
   // https://www.w3.org/TR/2024/WD-webgpu-20240409/#dom-gpucommandencoder-copytexturetobuffer
@@ -433,6 +468,8 @@ Deno.test({
         { buffer },
         size,
       ),
+    TypeError,
+    msgIncludes,
   );
   // validate the argument of source.origin property's length of GPUCommandEncoder.copyTextureToTexture when its a sequence
   // https://www.w3.org/TR/2024/WD-webgpu-20240409/#dom-gpucommandencoder-copytexturetotexture
@@ -443,6 +480,8 @@ Deno.test({
         { texture },
         size,
       ),
+    TypeError,
+    msgIncludes,
   );
   // validate the argument of destination.origin property's length of GPUCommandEncoder.copyTextureToTexture when its a sequence
   assertThrows(
@@ -452,6 +491,8 @@ Deno.test({
         { texture, origin: overSize },
         size,
       ),
+    TypeError,
+    msgIncludes,
   );
   // validate the argument of destination.origin property's length of GPUQueue.writeTexture when its a sequence
   // https://www.w3.org/TR/2024/WD-webgpu-20240409/#dom-gpuqueue-writetexture
@@ -463,6 +504,8 @@ Deno.test({
         {},
         size,
       ),
+    TypeError,
+    msgIncludes,
   );
   // NOTE: GPUQueue.copyExternalImageToTexture needs to be validated the argument of destination.origin property's length when its a sequence, but it is not implemented yet
 
