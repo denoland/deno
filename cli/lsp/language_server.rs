@@ -1198,7 +1198,7 @@ impl Inner {
     Ok(())
   }
 
-  async fn did_open(
+  fn did_open(
     &mut self,
     specifier: &ModuleSpecifier,
     params: DidOpenTextDocumentParams,
@@ -3205,7 +3205,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     let specifier = inner
       .url_map
       .normalize_url(&params.text_document.uri, LspUrlKind::File);
-    let document = inner.did_open(&specifier, params).await;
+    let document = inner.did_open(&specifier, params);
     if document.is_diagnosable() {
       inner.refresh_npm_specifiers().await;
       inner.diagnostics_server.invalidate(&[specifier]);
