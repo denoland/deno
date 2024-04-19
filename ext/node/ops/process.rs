@@ -35,14 +35,14 @@ fn kill(pid: i32, _sig: i32) -> i32 {
     };
 
     if p_hnd.is_null() {
-      return GetLastError();
+      return GetLastError() as i32;
     }
 
     if TerminateProcess(p_hnd, 1) == TRUE {
       return 0;
     }
 
-    GetLastError()
+    GetLastError() as i32
   }
 }
 
