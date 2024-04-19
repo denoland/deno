@@ -667,7 +667,7 @@ ObjectDefineProperties(finalDenoNs, {
         new Error().stack,
         'Use `Symbol.for("Deno.customInspect")` instead.',
       );
-      return customInspect;
+      return internals.future ? undefined : customInspect;
     },
   },
 });
