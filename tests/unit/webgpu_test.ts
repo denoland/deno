@@ -254,6 +254,64 @@ Deno.test(function getPreferredCanvasFormat() {
 
 Deno.test({
   ignore: isWsl || isLinuxOrMacCI,
+}, async function validateGPUColor() {
+  const adapter = await navigator.gpu.requestAdapter();
+  assert(adapter);
+  const device = await adapter.requestDevice();
+  assert(device);
+
+  const format = "rgba8unorm-srgb";
+  const encoder = device.createCommandEncoder();
+  const texture = device.createTexture({
+    size: [256, 256],
+    format,
+    usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC,
+  });
+  const view = texture.createView();
+  const storeOp = "store";
+  const loadOp = "clear";
+
+  // values for validating GPUColor
+  const invalidSize = [0, 0, 0];
+
+  // validate the argument of descriptor.colorAttachments[@@iterator].clearValue property's length of GPUCommandEncoder.beginRenderPass when its a sequence
+  // https://www.w3.org/TR/2024/WD-webgpu-20240409/#dom-gpucommandencoder-beginrenderpass
+  assertThrows(
+    () =>
+      encoder.beginRenderPass({
+        colorAttachments: [
+          {
+            view,
+            storeOp,
+            loadOp,
+            clearValue: invalidSize,
+          },
+        ],
+      }),
+  );
+  const renderPass = encoder.beginRenderPass({
+    colorAttachments: [
+      {
+        view,
+        storeOp,
+        loadOp,
+        clearValue: [0, 0, 0, 1],
+      },
+    ],
+  });
+  // validate the argument of color length of GPURenderPassEncoder.setBlendConstant when its a sequence
+  // https://www.w3.org/TR/2024/WD-webgpu-20240409/#dom-gpurenderpassencoder-setblendconstant
+  assertThrows(
+    () => renderPass.setBlendConstant(invalidSize),
+  );
+
+  device.destroy();
+  const resources = Object.keys(Deno.resources());
+  Deno.close(Number(resources[resources.length - 1]));
+});
+
+Deno.test({
+  ignore: isWsl || isLinuxOrMacCI,
 }, async function validateGPUExtent3D() {
   const adapter = await navigator.gpu.requestAdapter();
   assert(adapter);
