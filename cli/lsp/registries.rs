@@ -512,10 +512,9 @@ impl ModuleRegistry {
       .file_fetcher
       .fetch_with_options(FetchOptions {
         specifier,
-        permissions: PermissionsContainer::allow_all(),
+        permissions: &PermissionsContainer::allow_all(),
         maybe_accept: Some("application/vnd.deno.reg.v2+json, application/vnd.deno.reg.v1+json;q=0.9, application/json;q=0.8"),
         maybe_cache_setting: None,
-        maybe_checksum: None,
       })
       .await;
     // if there is an error fetching, we will cache an empty file, so that
@@ -609,7 +608,7 @@ impl ModuleRegistry {
         .ok()?;
         let file = self
           .file_fetcher
-          .fetch(&endpoint, PermissionsContainer::allow_all())
+          .fetch(&endpoint, &PermissionsContainer::allow_all())
           .await
           .ok()?
           .into_text_decoded()
@@ -975,7 +974,7 @@ impl ModuleRegistry {
     let specifier = Url::parse(url).ok()?;
     let file = self
       .file_fetcher
-      .fetch(&specifier, PermissionsContainer::allow_all())
+      .fetch(&specifier, &PermissionsContainer::allow_all())
       .await
       .ok()?
       .into_text_decoded()
@@ -1034,7 +1033,7 @@ impl ModuleRegistry {
     let specifier = ModuleSpecifier::parse(url).ok()?;
     let file = self
       .file_fetcher
-      .fetch(&specifier, PermissionsContainer::allow_all())
+      .fetch(&specifier, &PermissionsContainer::allow_all())
       .await
       .map_err(|err| {
         error!(
@@ -1072,7 +1071,7 @@ impl ModuleRegistry {
         .ok()?;
     let file = self
       .file_fetcher
-      .fetch(&specifier, PermissionsContainer::allow_all())
+      .fetch(&specifier, &PermissionsContainer::allow_all())
       .await
       .map_err(|err| {
         error!(
