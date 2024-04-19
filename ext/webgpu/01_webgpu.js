@@ -6723,6 +6723,15 @@ webidl.converters["GPUOrigin2D"] = (V, opts) => {
   if (typeof V === "object") {
     const method = V[SymbolIterator];
     if (method !== undefined) {
+      // validate length of GPUOrigin2D
+      const length = 2;
+      if (V.length > length) {
+        throw webidl.makeException(
+          TypeError,
+          `A sequence of number used as a GPUOrigin2D must have at most ${length} elements.`,
+          opts,
+        );
+      }
       return webidl.converters["sequence<GPUIntegerCoordinate>"](V, opts);
     }
     return webidl.converters["GPUOrigin2DDict"](V, opts);
