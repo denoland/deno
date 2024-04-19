@@ -5271,7 +5271,7 @@ mod tests {
     };
     ts_server.project_changed(
       snapshot.clone(),
-      &[(&specifier_dep, ChangeKind::Opened)],
+      [(&specifier_dep, ChangeKind::Opened)],
       false,
     );
     let specifier = resolve_url("file:///a.ts").unwrap();
