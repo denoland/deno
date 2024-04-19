@@ -10,6 +10,7 @@ const {
   StringPrototypeToLowerCase,
   StringPrototypeToUpperCase,
   TypeError,
+  Symbol,
 } = primordials;
 import { toInnerRequest } from "ext:deno_fetch/23_request.js";
 import {
@@ -32,7 +33,6 @@ import {
 } from "ext:deno_websocket/01_websocket.js";
 
 const _ws = Symbol("[[associated_ws]]");
-const upgradeHttp = {};
 
 const websocketCvf = buildCaseInsensitiveCommaValueFinder("websocket");
 const upgradeCvf = buildCaseInsensitiveCommaValueFinder("upgrade");
@@ -182,4 +182,4 @@ function buildCaseInsensitiveCommaValueFinder(checkText) {
 internals.buildCaseInsensitiveCommaValueFinder =
   buildCaseInsensitiveCommaValueFinder;
 
-export { _ws, upgradeHttp, upgradeWebSocket };
+export { _ws, upgradeWebSocket };
