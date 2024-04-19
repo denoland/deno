@@ -185,7 +185,7 @@ pub fn ts_config_to_transpile_and_emit_options(
       jsx_fragment_factory: options.jsx_fragment_factory,
       jsx_import_source: options.jsx_import_source,
       precompile_jsx,
-      precompile_jsx_skip_elements: None,
+      precompile_jsx_skip_elements: options.jsx_precompile_skip_elements,
       transform_jsx,
       var_decl_imports: false,
     },

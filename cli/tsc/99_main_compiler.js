@@ -958,6 +958,9 @@ delete Object.prototype.__proto__;
     if (config.jsx === "precompile") {
       config.jsx = "react-jsx";
     }
+    if (config.jsxPrecompileSkipElements) {
+      delete config.jsxPrecompileSkipElements;
+    }
     return config;
   }
 
