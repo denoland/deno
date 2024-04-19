@@ -6799,6 +6799,15 @@ webidl.converters["GPUColor"] = (V, opts) => {
   if (typeof V === "object") {
     const method = V[SymbolIterator];
     if (method !== undefined) {
+      // validate length of GPUColor
+      const length = 4;
+      if (V.length !== length) {
+        throw webidl.makeException(
+          TypeError,
+          `A sequence of number used as a GPUColor must have exactly ${length} elements.`,
+          opts,
+        );
+      }
       return webidl.converters["sequence<double>"](V, opts);
     }
     return webidl.converters["GPUColorDict"](V, opts);
