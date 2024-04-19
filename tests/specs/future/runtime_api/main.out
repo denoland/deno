@@ -34,5 +34,5 @@ Deno.TlsListener.prototype.rid is undefined
 Deno.TlsConn.prototype.rid is undefined
 Deno.FsWatcher.prototype.rid is undefined
 Deno.FsFile constructor is illegal
-Deno.ConnectTlsOptions.(certFile|privateKey) do nothing
+Deno.ConnectTlsOptions.(certFile|keyFile) do nothing
 Deno.ConnectTlsOptions.(certChain|privateKey) do nothing

@@ -61,8 +61,12 @@ if (Deno.build.os === "windows") {
 // TLS
 // Since these tests may run in parallel, ensure this port is unique to this file
 const tlsPort = 4510;
-const cert = Deno.readTextFileSync("../../../testdata/tls/localhost.crt");
-const key = Deno.readTextFileSync("../../../testdata/tls/localhost.key");
+const cert = Deno.readTextFileSync(
+  new URL("../../../testdata/tls/localhost.crt", import.meta.url),
+);
+const key = Deno.readTextFileSync(
+  new URL("../../../testdata/tls/localhost.key", import.meta.url),
+);
 const tlsListener = Deno.listenTls({ port: tlsPort, cert, key });
 console.log("Deno.TlsListener.prototype.rid is", tlsListener.rid);
 
@@ -89,47 +93,23 @@ try {
 
 // Note: this could throw with a `Deno.errors.NotFound` error if `keyFile` and
 // `certFile` were used.
-try {
-  await Deno.connectTls({
-    port: tlsPort,
-    certFile: "foo",
-    keyFile: "foo",
-  });
-  console.log("Hey");
-} catch (error) {
-  console.log(error);
-  if (
-    error instanceof Deno.errors.InvalidData &&
-    error.message ===
-      "Deno.connectTls requires a key: Error creating TLS certificate"
-  ) {
-    console.log("Deno.ConnectTlsOptions.(certFile|keyFile) do nothing");
-  } else {
-    console.log(error);
-  }
-}
+const conn1 = await Deno.connectTls({
+  port: tlsPort,
+  certFile: "foo",
+  keyFile: "foo",
+});
+conn1.close();
+console.log("Deno.ConnectTlsOptions.(certFile|keyFile) do nothing");
 
-// Note: this could throw with a `Deno.errors.NotFound` error if `certChain` and
-// `privateKey` were used.
-try {
-  await Deno.connectTls({
-    port: tlsPort,
-    certChain: "foo",
-    privateKey: "foo",
-  });
-} catch (error) {
-  console.log(error);
-
-  if (
-    error instanceof Deno.errors.InvalidData &&
-    error.message ===
-      "Deno.connectTls requires a key: Error creating TLS certificate"
-  ) {
-    console.log("Deno.ConnectTlsOptions.(certChain|privateKey) do nothing");
-  } else {
-    console.log(error);
-  }
-}
+// Note: this could throw with a `Deno.errors.InvalidData` error if `certChain`
+// and `privateKey` were used.
+const conn2 = await Deno.connectTls({
+  port: tlsPort,
+  certChain: "foo",
+  privateKey: "foo",
+});
+conn2.close();
+console.log("Deno.ConnectTlsOptions.(certChain|privateKey) do nothing");
 
 tlsListener.close();
 
