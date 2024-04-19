@@ -1297,8 +1297,9 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.276.0"
-source = "git+https://github.com/bartlomieju/deno_core.git?branch=revert_drop#d22f3b838b6d71d7ea306b8d2a7df623a0238ab5"
+version = "0.277.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3c562e5660bfaebd9565e938402c55f482faab0c4bd7a784817d9696a9c9cdf0"
 dependencies = [
  "anyhow",
  "bincode",
@@ -1755,8 +1756,9 @@ dependencies = [
 
 [[package]]
 name = "deno_ops"
-version = "0.152.0"
-source = "git+https://github.com/bartlomieju/deno_core.git?branch=revert_drop#d22f3b838b6d71d7ea306b8d2a7df623a0238ab5"
+version = "0.153.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ad83b1a23861e77c36c2e7d0158a24d613c8a2303b423d0a2c21b27bc199821c"
 dependencies = [
  "proc-macro-rules",
  "proc-macro2",
@@ -5701,8 +5703,9 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.185.0"
-source = "git+https://github.com/bartlomieju/deno_core.git?branch=revert_drop#d22f3b838b6d71d7ea306b8d2a7df623a0238ab5"
+version = "0.186.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ed95f28fe0e7082a4bf8b914d14d3876e21340fab5c088556496e5c4b26cfedb"
 dependencies = [
  "bytes",
  "num-bigint",
