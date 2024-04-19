@@ -34,6 +34,9 @@ fn as_delete_notification(uri: ModuleSpecifier) -> TestingNotification {
   )
 }
 
+pub type TestServerTests =
+  Arc<tokio::sync::Mutex<HashMap<ModuleSpecifier, (TestModule, String)>>>;
+
 /// The main structure which handles requests and sends notifications related
 /// to the Testing API.
 #[derive(Debug)]
@@ -45,7 +48,7 @@ pub struct TestServer {
   /// A map of run ids to test runs
   runs: Arc<Mutex<HashMap<u32, TestRun>>>,
   /// Tests that are discovered from a versioned document
-  tests: Arc<Mutex<HashMap<ModuleSpecifier, (TestModule, String)>>>,
+  tests: TestServerTests,
   /// A channel for requesting that changes to documents be statically analyzed
   /// for tests
   update_channel: mpsc::UnboundedSender<Arc<StateSnapshot>>,
@@ -57,8 +60,7 @@ impl TestServer {
     performance: Arc<Performance>,
     maybe_root_uri: Option<ModuleSpecifier>,
   ) -> Self {
-    let tests: Arc<Mutex<HashMap<ModuleSpecifier, (TestModule, String)>>> =
-      Arc::new(Mutex::new(HashMap::new()));
+    let tests = Default::default();
 
     let (update_channel, mut update_rx) =
       mpsc::unbounded_channel::<Arc<StateSnapshot>>();
@@ -80,14 +82,13 @@ impl TestServer {
     let _update_join_handle = thread::spawn(move || {
       let runtime = create_basic_runtime();
 
-      #[allow(clippy::await_holding_lock)]
       runtime.block_on(async {
         loop {
           match update_rx.recv().await {
             None => break,
             Some(snapshot) => {
               let mark = performance.mark("lsp.testing_update");
-              let mut tests = tests.lock();
+              let mut tests = tests.lock().await;
               // we create a list of test modules we currently are tracking
               // eliminating any we go over when iterating over the document
               let mut keys: HashSet<ModuleSpecifier> =
@@ -200,14 +201,14 @@ impl TestServer {
   }
 
   /// A request from the client to start a test run.
-  pub fn run_request(
+  pub async fn run_request(
     &self,
     params: lsp_custom::TestRunRequestParams,
     workspace_settings: config::WorkspaceSettings,
   ) -> LspResult<Option<Value>> {
     let test_run =
-      { TestRun::new(&params, self.tests.clone(), workspace_settings) };
-    let enqueued = test_run.as_enqueued();
+      { TestRun::init(&params, self.tests.clone(), workspace_settings).await };
+    let enqueued = test_run.as_enqueued().await;
     {
       let mut runs = self.runs.lock();
       runs.insert(params.id, test_run);

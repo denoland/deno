@@ -3,6 +3,7 @@
 use super::definitions::TestDefinition;
 use super::definitions::TestModule;
 use super::lsp_custom;
+use super::server::TestServerTests;
 
 use crate::args::flags_from_vec;
 use crate::args::DenoSubcommand;
@@ -21,7 +22,6 @@ use deno_core::error::JsError;
 use deno_core::futures::future;
 use deno_core::futures::stream;
 use deno_core::futures::StreamExt;
-use deno_core::parking_lot::Mutex;
 use deno_core::parking_lot::RwLock;
 use deno_core::unsync::spawn;
 use deno_core::unsync::spawn_blocking;
@@ -147,19 +147,19 @@ pub struct TestRun {
   kind: lsp_custom::TestRunKind,
   filters: HashMap<ModuleSpecifier, LspTestFilter>,
   queue: HashSet<ModuleSpecifier>,
-  tests: Arc<Mutex<HashMap<ModuleSpecifier, (TestModule, String)>>>,
+  tests: TestServerTests,
   token: CancellationToken,
   workspace_settings: config::WorkspaceSettings,
 }
 
 impl TestRun {
-  pub fn new(
+  pub async fn init(
     params: &lsp_custom::TestRunRequestParams,
-    tests: Arc<Mutex<HashMap<ModuleSpecifier, (TestModule, String)>>>,
+    tests: TestServerTests,
     workspace_settings: config::WorkspaceSettings,
   ) -> Self {
     let (queue, filters) = {
-      let tests = tests.lock();
+      let tests = tests.lock().await;
       as_queue_and_filters(params, &tests)
     };
 
@@ -176,8 +176,8 @@ impl TestRun {
 
   /// Provide the tests of a test run as an enqueued module which can be sent
   /// to the client to indicate tests are enqueued for testing.
-  pub fn as_enqueued(&self) -> Vec<lsp_custom::EnqueuedTestModule> {
-    let tests = self.tests.lock();
+  pub async fn as_enqueued(&self) -> Vec<lsp_custom::EnqueuedTestModule> {
+    let tests = self.tests.lock().await;
     self
       .queue
       .iter()
@@ -332,7 +332,7 @@ impl TestRun {
           match event {
             test::TestEvent::Register(description) => {
               for (_, description) in description.into_iter() {
-                reporter.report_register(description);
+                reporter.report_register(description).await;
                 // TODO(mmastrac): we shouldn't need to clone here - we can re-use the descriptions
                 tests.write().insert(description.id, description.clone());
               }
@@ -378,7 +378,7 @@ impl TestRun {
               summary.uncaught_errors.push((origin, error));
             }
             test::TestEvent::StepRegister(description) => {
-              reporter.report_step_register(&description);
+              reporter.report_step_register(&description).await;
               test_steps.insert(description.id, description);
             }
             test::TestEvent::StepWait(id) => {
@@ -541,7 +541,7 @@ struct LspTestReporter {
   client: Client,
   id: u32,
   maybe_root_uri: Option<ModuleSpecifier>,
-  files: Arc<Mutex<HashMap<ModuleSpecifier, (TestModule, String)>>>,
+  files: TestServerTests,
   tests: IndexMap<usize, LspTestDescription>,
   current_test: Option<usize>,
 }
@@ -551,7 +551,7 @@ impl LspTestReporter {
     run: &TestRun,
     client: Client,
     maybe_root_uri: Option<&ModuleSpecifier>,
-    files: Arc<Mutex<HashMap<ModuleSpecifier, (TestModule, String)>>>,
+    files: TestServerTests,
   ) -> Self {
     Self {
       client,
@@ -576,8 +576,8 @@ impl LspTestReporter {
 
   fn report_plan(&mut self, _plan: &test::TestPlan) {}
 
-  fn report_register(&mut self, desc: &test::TestDescription) {
-    let mut files = self.files.lock();
+  async fn report_register(&mut self, desc: &test::TestDescription) {
+    let mut files = self.files.lock().await;
     let specifier = ModuleSpecifier::parse(&desc.location.file_name).unwrap();
     let (test_module, _) = files
       .entry(specifier.clone())
@@ -681,8 +681,8 @@ impl LspTestReporter {
     }
   }
 
-  fn report_step_register(&mut self, desc: &test::TestStepDescription) {
-    let mut files = self.files.lock();
+  async fn report_step_register(&mut self, desc: &test::TestStepDescription) {
+    let mut files = self.files.lock().await;
     let specifier = ModuleSpecifier::parse(&desc.location.file_name).unwrap();
     let (test_module, _) = files
       .entry(specifier.clone())
