@@ -627,6 +627,7 @@ impl ReplSession {
           imports_not_used_as_values: ImportsNotUsedAsValues::Preserve,
           transform_jsx: true,
           precompile_jsx: false,
+          precompile_jsx_skip_elements: None,
           jsx_automatic: self.jsx.import_source.is_some(),
           jsx_development: false,
           jsx_factory: self.jsx.factory.clone(),

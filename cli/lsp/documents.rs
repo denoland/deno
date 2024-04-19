@@ -211,42 +211,19 @@ impl AssetOrDocument {
   }
 }
 
-#[derive(Debug, Default)]
-struct DocumentDependencies {
-  deps: IndexMap<String, deno_graph::Dependency>,
-  maybe_types_dependency: Option<deno_graph::TypesDependency>,
-}
-
-impl DocumentDependencies {
-  pub fn from_maybe_module(maybe_module: &Option<ModuleResult>) -> Self {
-    if let Some(Ok(module)) = &maybe_module {
-      Self::from_module(module)
-    } else {
-      Self::default()
-    }
-  }
-
-  pub fn from_module(module: &deno_graph::JsModule) -> Self {
-    Self {
-      deps: module.dependencies.clone(),
-      maybe_types_dependency: module.maybe_types_dependency.clone(),
-    }
-  }
-}
-
 type ModuleResult = Result<deno_graph::JsModule, deno_graph::ModuleGraphError>;
 type ParsedSourceResult = Result<ParsedSource, deno_ast::ParseDiagnostic>;
 
 #[derive(Debug)]
 pub struct Document {
   /// Contains the last-known-good set of dependencies from parsing the module.
-  dependencies: Arc<DocumentDependencies>,
+  dependencies: Arc<IndexMap<String, deno_graph::Dependency>>,
+  maybe_types_dependency: Option<Arc<deno_graph::TypesDependency>>,
   fs_version: String,
   line_index: Arc<LineIndex>,
   maybe_headers: Option<HashMap<String, String>>,
   maybe_language_id: Option<LanguageId>,
   maybe_lsp_version: Option<i32>,
-  maybe_module: Option<ModuleResult>,
   // this is a lazily constructed value based on the state of the document,
   // so having a mutex to hold it is ok
   maybe_navigation_tree: Mutex<Option<Arc<tsc::NavigationTree>>>,
@@ -283,17 +260,23 @@ impl Document {
       resolver,
       npm_resolver,
     );
-    let dependencies =
-      Arc::new(DocumentDependencies::from_maybe_module(&maybe_module));
+    let maybe_module = maybe_module.and_then(Result::ok);
+    let dependencies = maybe_module
+      .as_ref()
+      .map(|m| Arc::new(m.dependencies.clone()))
+      .unwrap_or_default();
+    let maybe_types_dependency = maybe_module
+      .as_ref()
+      .and_then(|m| Some(Arc::new(m.maybe_types_dependency.clone()?)));
     let line_index = Arc::new(LineIndex::new(text_info.text_str()));
     Arc::new(Document {
       dependencies,
+      maybe_types_dependency,
       fs_version,
       line_index,
       maybe_headers,
       maybe_language_id: None,
       maybe_lsp_version: None,
-      maybe_module,
       maybe_navigation_tree: Mutex::new(None),
       maybe_parsed_source: maybe_parsed_source
         .filter(|_| specifier.scheme() == "file"),
@@ -309,39 +292,59 @@ impl Document {
     maybe_node_resolver: Option<&CliNodeResolver>,
     npm_resolver: &dyn deno_graph::source::NpmResolver,
   ) -> Option<Arc<Self>> {
-    let mut parsed_source_result = match &self.maybe_parsed_source {
-      Some(parsed_source_result) => parsed_source_result.clone(),
-      None => return None, // nothing to change
-    };
     let media_type = resolve_media_type(
       &self.specifier,
       self.maybe_headers.as_ref(),
       self.maybe_language_id,
       maybe_node_resolver,
     );
-    // reparse if the media type has changed
-    if let Ok(parsed_source) = &parsed_source_result {
-      if parsed_source.media_type() != media_type {
-        parsed_source_result =
-          parse_source(&self.specifier, self.text_info.clone(), media_type);
-      }
+    let dependencies;
+    let maybe_types_dependency;
+    let maybe_parsed_source;
+    if media_type != self.media_type {
+      let parsed_source_result =
+        parse_source(&self.specifier, self.text_info.clone(), media_type);
+      let maybe_module = analyze_module(
+        &self.specifier,
+        &parsed_source_result,
+        self.maybe_headers.as_ref(),
+        resolver,
+        npm_resolver,
+      )
+      .ok();
+      dependencies = maybe_module
+        .as_ref()
+        .map(|m| Arc::new(m.dependencies.clone()))
+        .unwrap_or_default();
+      maybe_types_dependency = maybe_module
+        .as_ref()
+        .and_then(|m| Some(Arc::new(m.maybe_types_dependency.clone()?)));
+      maybe_parsed_source = Some(parsed_source_result);
+    } else {
+      dependencies = Arc::new(
+        self
+          .dependencies
+          .iter()
+          .map(|(s, d)| {
+            (
+              s.clone(),
+              d.with_new_resolver(s, Some(resolver), Some(npm_resolver)),
+            )
+          })
+          .collect(),
+      );
+      maybe_types_dependency = self.maybe_types_dependency.as_ref().map(|d| {
+        Arc::new(d.with_new_resolver(Some(resolver), Some(npm_resolver)))
+      });
+      maybe_parsed_source = self.maybe_parsed_source.clone();
     }
-
-    let maybe_module = Some(analyze_module(
-      &self.specifier,
-      &parsed_source_result,
-      self.maybe_headers.as_ref(),
-      resolver,
-      npm_resolver,
-    ));
-    let dependencies =
-      Arc::new(DocumentDependencies::from_maybe_module(&maybe_module));
     Some(Arc::new(Self {
       // updated properties
       dependencies,
-      maybe_module,
+      maybe_types_dependency,
       maybe_navigation_tree: Mutex::new(None),
-      maybe_parsed_source: Some(parsed_source_result),
+      maybe_parsed_source: maybe_parsed_source
+        .filter(|_| self.specifier.scheme() == "file"),
       // maintain - this should all be copies/clones
       fs_version: self.fs_version.clone(),
       line_index: self.line_index.clone(),
@@ -385,18 +388,24 @@ impl Document {
     } else {
       (None, None)
     };
-    let dependencies =
-      Arc::new(DocumentDependencies::from_maybe_module(&maybe_module));
+    let maybe_module = maybe_module.and_then(Result::ok);
+    let dependencies = maybe_module
+      .as_ref()
+      .map(|m| Arc::new(m.dependencies.clone()))
+      .unwrap_or_default();
+    let maybe_types_dependency = maybe_module
+      .as_ref()
+      .and_then(|m| Some(Arc::new(m.maybe_types_dependency.clone()?)));
     let line_index = Arc::new(LineIndex::new(text_info.text_str()));
     Arc::new(Self {
       dependencies,
+      maybe_types_dependency,
       fs_version: calculate_fs_version(cache, &specifier)
         .unwrap_or_else(|| "1".to_string()),
       line_index,
       maybe_language_id: Some(language_id),
       maybe_lsp_version: Some(version),
       maybe_headers,
-      maybe_module,
       maybe_navigation_tree: Mutex::new(None),
       maybe_parsed_source: maybe_parsed_source
         .filter(|_| specifier.scheme() == "file"),
@@ -448,11 +457,15 @@ impl Document {
     } else {
       (None, None)
     };
-    let dependencies = if let Some(Ok(module)) = &maybe_module {
-      Arc::new(DocumentDependencies::from_module(module))
-    } else {
-      self.dependencies.clone() // use the last known good
-    };
+    let maybe_module = maybe_module.and_then(Result::ok);
+    let dependencies = maybe_module
+      .as_ref()
+      .map(|m| Arc::new(m.dependencies.clone()))
+      .unwrap_or_else(|| self.dependencies.clone());
+    let maybe_types_dependency = maybe_module
+      .as_ref()
+      .and_then(|m| Some(Arc::new(m.maybe_types_dependency.clone()?)))
+      .or_else(|| self.maybe_types_dependency.clone());
     let line_index = if index_valid == IndexValid::All {
       line_index
     } else {
@@ -463,10 +476,10 @@ impl Document {
       fs_version: self.fs_version.clone(),
       maybe_language_id: self.maybe_language_id,
       dependencies,
+      maybe_types_dependency,
       text_info,
       line_index,
       maybe_headers: self.maybe_headers.clone(),
-      maybe_module,
       maybe_parsed_source: maybe_parsed_source
         .filter(|_| self.specifier.scheme() == "file"),
       maybe_lsp_version: Some(version),
@@ -482,10 +495,10 @@ impl Document {
         .unwrap_or_else(|| "1".to_string()),
       maybe_language_id: self.maybe_language_id,
       dependencies: self.dependencies.clone(),
+      maybe_types_dependency: self.maybe_types_dependency.clone(),
       text_info: self.text_info.clone(),
       line_index: self.line_index.clone(),
       maybe_headers: self.maybe_headers.clone(),
-      maybe_module: self.maybe_module.clone(),
       maybe_parsed_source: self.maybe_parsed_source.clone(),
       maybe_lsp_version: self.maybe_lsp_version,
       maybe_navigation_tree: Mutex::new(None),
@@ -541,11 +554,11 @@ impl Document {
     self.maybe_lsp_version.is_some()
   }
 
-  pub fn maybe_types_dependency(&self) -> Resolution {
-    if let Some(types_dep) = self.dependencies.maybe_types_dependency.as_ref() {
-      types_dep.dependency.clone()
+  pub fn maybe_types_dependency(&self) -> &Resolution {
+    if let Some(types_dep) = self.maybe_types_dependency.as_deref() {
+      &types_dep.dependency
     } else {
-      Resolution::None
+      &Resolution::None
     }
   }
 
@@ -560,10 +573,6 @@ impl Document {
   /// Returns the current language server client version if any.
   pub fn maybe_lsp_version(&self) -> Option<i32> {
     self.maybe_lsp_version
-  }
-
-  fn maybe_js_module(&self) -> Option<&ModuleResult> {
-    self.maybe_module.as_ref()
   }
 
   pub fn maybe_parsed_source(
@@ -591,7 +600,7 @@ impl Document {
   }
 
   pub fn dependencies(&self) -> &IndexMap<String, deno_graph::Dependency> {
-    &self.dependencies.deps
+    self.dependencies.as_ref()
   }
 
   /// If the supplied position is within a dependency range, return the resolved
@@ -601,12 +610,11 @@ impl Document {
     &self,
     position: &lsp::Position,
   ) -> Option<(String, deno_graph::Dependency, deno_graph::Range)> {
-    let module = self.maybe_js_module()?.as_ref().ok()?;
     let position = deno_graph::Position {
       line: position.line as usize,
       character: position.character as usize,
     };
-    module.dependencies.iter().find_map(|(s, dep)| {
+    self.dependencies().iter().find_map(|(s, dep)| {
       dep
         .includes(&position)
         .map(|r| (s.clone(), dep.clone(), r.clone()))
@@ -1207,7 +1215,8 @@ impl Documents {
     referrer: &ModuleSpecifier,
     maybe_npm: Option<&StateNpmSnapshot>,
   ) -> Vec<Option<(ModuleSpecifier, MediaType)>> {
-    let dependencies = self.get(referrer).map(|d| d.dependencies.clone());
+    let document = self.get(referrer);
+    let dependencies = document.as_ref().map(|d| d.dependencies());
     let mut results = Vec::new();
     for specifier in specifiers {
       if let Some(npm) = maybe_npm {
@@ -1236,7 +1245,7 @@ impl Documents {
           results.push(None);
         }
       } else if let Some(dep) =
-        dependencies.as_ref().and_then(|d| d.deps.get(specifier))
+        dependencies.as_ref().and_then(|d| d.get(specifier))
       {
         if let Some(specifier) = dep.maybe_type.maybe_specifier() {
           results.push(self.resolve_dependency(specifier, maybe_npm, referrer));
@@ -1540,12 +1549,7 @@ impl Documents {
     let Some(doc) = self.get(specifier) else {
       return Some((specifier.clone(), MediaType::from_specifier(specifier)));
     };
-    let maybe_module = doc.maybe_js_module().and_then(|r| r.as_ref().ok());
-    let maybe_types_dependency = maybe_module
-      .and_then(|m| m.maybe_types_dependency.as_ref().map(|d| &d.dependency));
-    if let Some(specifier) =
-      maybe_types_dependency.and_then(|d| d.maybe_specifier())
-    {
+    if let Some(specifier) = doc.maybe_types_dependency().maybe_specifier() {
       self.resolve_dependency(specifier, maybe_npm, referrer)
     } else {
       let media_type = doc.media_type();
@@ -1643,7 +1647,7 @@ impl<'a> OpenDocumentsGraphLoader<'a> {
 
 impl<'a> deno_graph::source::Loader for OpenDocumentsGraphLoader<'a> {
   fn load(
-    &mut self,
+    &self,
     specifier: &ModuleSpecifier,
     options: deno_graph::source::LoadOptions,
   ) -> deno_graph::source::LoadFuture {
@@ -1662,7 +1666,7 @@ impl<'a> deno_graph::source::Loader for OpenDocumentsGraphLoader<'a> {
   }
 
   fn cache_module_info(
-    &mut self,
+    &self,
     specifier: &deno_ast::ModuleSpecifier,
     source: &Arc<[u8]>,
     module_info: &deno_graph::ModuleInfo,
@@ -1717,7 +1721,7 @@ fn analyze_module(
   match parsed_source_result {
     Ok(parsed_source) => Ok(deno_graph::parse_module_from_ast(
       deno_graph::ParseModuleFromAstOptions {
-        graph_kind: deno_graph::GraphKind::All,
+        graph_kind: deno_graph::GraphKind::TypesOnly,
         specifier,
         maybe_headers,
         parsed_source,

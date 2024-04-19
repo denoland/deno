@@ -112,7 +112,7 @@ impl TestLoader {
 
 impl Loader for TestLoader {
   fn load(
-    &mut self,
+    &self,
     specifier: &ModuleSpecifier,
     _options: deno_graph::source::LoadOptions,
   ) -> LoadFuture {
@@ -298,7 +298,7 @@ fn build_resolver(
 
 async fn build_test_graph(
   roots: Vec<ModuleSpecifier>,
-  mut loader: TestLoader,
+  loader: TestLoader,
   resolver: &dyn deno_graph::source::Resolver,
   analyzer: &dyn deno_graph::ModuleAnalyzer,
 ) -> ModuleGraph {
@@ -306,7 +306,7 @@ async fn build_test_graph(
   graph
     .build(
       roots,
-      &mut loader,
+      &loader,
       deno_graph::BuildOptions {
         resolver: Some(resolver),
         module_analyzer: analyzer,

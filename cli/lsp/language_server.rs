@@ -1610,10 +1610,9 @@ impl Inner {
     let hover = if let Some((_, dep, range)) = asset_or_doc
       .get_maybe_dependency(&params.text_document_position_params.position)
     {
-      let dep_maybe_types_dependency = dep
-        .get_code()
-        .and_then(|s| self.documents.get(s))
-        .map(|d| d.maybe_types_dependency());
+      let dep_doc = dep.get_code().and_then(|s| self.documents.get(s));
+      let dep_maybe_types_dependency =
+        dep_doc.as_ref().map(|d| d.maybe_types_dependency());
       let value = match (dep.maybe_code.is_none(), dep.maybe_type.is_none(), &dep_maybe_types_dependency) {
         (false, false, None) => format!(
           "**Resolved Dependency**\n\n**Code**: {}\n\n**Types**: {}\n",
