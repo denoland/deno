@@ -61,6 +61,7 @@ async fn generate_doc_nodes_for_builtin_types(
         passthrough_jsr_specifiers: false,
         executor: Default::default(),
         jsr_url_provider: Default::default(),
+        passthrough_jsr_specifiers: false,
         npm_resolver: None,
         reporter: None,
         resolver: None,
