@@ -233,7 +233,7 @@ async function ensureNoNewITests() {
     // console.log(`"${entry.name}": ${actualCount},`);
     if (actualCount > expectedCount) {
       throw new Error(
-        `New itest added to ${entry.name}! Please move this test to ~/tests/specs.`,
+        `New itest added to ${entry.name}! The itest macro is deprecated. Please move this test to ~/tests/specs.`,
       );
     } else if (actualCount < expectedCount) {
       throw new Error(
