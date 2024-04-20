@@ -236,16 +236,11 @@ Deno.test({
 });
 
 Deno.test({ permissions: { run: true, read: true } }, function processKill() {
-  // deno-lint-ignore no-deprecated-deno-api
-  const p = Deno.run({
-    cmd: [Deno.execPath(), "eval", "setTimeout(() => {}, 10000)"],
-  });
-  assert(!p.stdin);
-  assert(!p.stdout);
+  const p = new Deno.Command(Deno.execPath(), {
+    cmd: ["eval", "setTimeout(() => {}, 10000)"],
+  }).spawn();
 
   process.kill(p.pid);
-
-  p.close();
 });
 
 Deno.test({
