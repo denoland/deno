@@ -89,7 +89,7 @@ To get auto-complete for these files, add the following to a local
 {
   "json.schemas": [{
     "fileMatch": [
-      "__spec__.jsonc"
+      "__test__.jsonc"
     ],
     "url": "./tests/specs/schema.json"
   }]
