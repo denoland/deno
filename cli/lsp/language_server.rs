@@ -1879,6 +1879,7 @@ impl Inner {
           &self.config,
           &specifier,
         )),
+        params.context.trigger_kind,
         only,
       )
       .await?;

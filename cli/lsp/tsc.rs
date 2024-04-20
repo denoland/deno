@@ -490,8 +490,14 @@ impl TsServer {
     specifier: ModuleSpecifier,
     range: Range<u32>,
     preferences: Option<UserPreferences>,
+    trigger_kind: Option<lsp::CodeActionTriggerKind>,
     only: String,
   ) -> Result<Vec<ApplicableRefactorInfo>, LspError> {
+    let trigger_kind: Option<&str> = trigger_kind.map(|reason| match reason {
+      lsp::CodeActionTriggerKind::INVOKED => "invoked",
+      lsp::CodeActionTriggerKind::AUTOMATIC => "implicit",
+      _ => unreachable!(),
+    });
     let req = TscRequest {
       method: "getApplicableRefactors",
       // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6274
@@ -499,7 +505,7 @@ impl TsServer {
         self.specifier_map.denormalize(&specifier),
         { "pos": range.start, "end": range.end },
         preferences.unwrap_or_default(),
-        json!(null),
+        trigger_kind,
         only,
       ]),
     };
