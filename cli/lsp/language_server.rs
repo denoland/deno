@@ -404,8 +404,11 @@ impl LanguageServer {
     let inner = self.0.read().await;
     if let Some(testing_server) = &inner.maybe_testing_server {
       match params.map(serde_json::from_value) {
-        Some(Ok(params)) => testing_server
-          .run_request(params, inner.config.workspace_settings().clone()),
+        Some(Ok(params)) => {
+          testing_server
+            .run_request(params, inner.config.workspace_settings().clone())
+            .await
+        }
         Some(Err(err)) => Err(LspError::invalid_params(err.to_string())),
         None => Err(LspError::invalid_params("Missing parameters")),
       }
@@ -971,6 +974,8 @@ impl Inner {
       self.config.set_workspace_folders(workspace_folders);
       self.config.update_capabilities(&params.capabilities);
     }
+
+    self.documents.initialize(&self.config);
 
     if let Err(e) = self
       .ts_server
