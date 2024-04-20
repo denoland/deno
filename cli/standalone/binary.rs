@@ -1,15 +1,21 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::env::current_exe;
+use std::ffi::OsString;
+use std::fs;
+use std::future::Future;
 use std::io::Read;
 use std::io::Seek;
 use std::io::SeekFrom;
 use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
+use std::process::Command;
 
 use deno_ast::ModuleSpecifier;
+use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::io::AllowStdIo;
@@ -17,12 +23,10 @@ use deno_core::futures::AsyncReadExt;
 use deno_core::futures::AsyncSeekExt;
 use deno_core::serde_json;
 use deno_core::url::Url;
-use deno_npm::registry::PackageDepNpmSchemeValueParseError;
-use deno_npm::resolution::SerializedNpmResolutionSnapshot;
 use deno_npm::NpmSystemInfo;
 use deno_runtime::permissions::PermissionsOptions;
-use deno_semver::npm::NpmPackageReq;
-use deno_semver::npm::NpmVersionReqSpecifierParseError;
+use deno_semver::package::PackageReq;
+use deno_semver::VersionReqSpecifierParseError;
 use log::Level;
 use serde::Deserialize;
 use serde::Serialize;
@@ -33,13 +37,12 @@ use crate::args::CaData;
 use crate::args::CliOptions;
 use crate::args::CompileFlags;
 use crate::args::PackageJsonDepsProvider;
+use crate::args::UnstableConfig;
 use crate::cache::DenoDir;
 use crate::file_fetcher::FileFetcher;
 use crate::http_util::HttpClient;
-use crate::npm::CliNpmRegistryApi;
 use crate::npm::CliNpmResolver;
-use crate::npm::NpmCache;
-use crate::npm::NpmResolution;
+use crate::npm::InnerCliNpmResolverRef;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 
@@ -52,7 +55,6 @@ const MAGIC_TRAILER: &[u8; 8] = b"d3n0l4nd";
 
 #[derive(Serialize, Deserialize)]
 enum SerializablePackageJsonDepValueParseError {
-  SchemeValue(String),
   Specifier(String),
   Unsupported { scheme: String },
 }
@@ -60,9 +62,6 @@ enum SerializablePackageJsonDepValueParseError {
 impl SerializablePackageJsonDepValueParseError {
   pub fn from_err(err: PackageJsonDepValueParseError) -> Self {
     match err {
-      PackageJsonDepValueParseError::SchemeValue(err) => {
-        Self::SchemeValue(err.value)
-      }
       PackageJsonDepValueParseError::Specifier(err) => {
         Self::Specifier(err.source.to_string())
       }
@@ -74,14 +73,9 @@ impl SerializablePackageJsonDepValueParseError {
 
   pub fn into_err(self) -> PackageJsonDepValueParseError {
     match self {
-      SerializablePackageJsonDepValueParseError::SchemeValue(value) => {
-        PackageJsonDepValueParseError::SchemeValue(
-          PackageDepNpmSchemeValueParseError { value },
-        )
-      }
       SerializablePackageJsonDepValueParseError::Specifier(source) => {
         PackageJsonDepValueParseError::Specifier(
-          NpmVersionReqSpecifierParseError {
+          VersionReqSpecifierParseError {
             source: monch::ParseErrorFailureError::new(source),
           },
         )
@@ -97,7 +91,7 @@ impl SerializablePackageJsonDepValueParseError {
 pub struct SerializablePackageJsonDeps(
   BTreeMap<
     String,
-    Result<NpmPackageReq, SerializablePackageJsonDepValueParseError>,
+    Result<PackageReq, SerializablePackageJsonDepValueParseError>,
   >,
 );
 
@@ -125,9 +119,20 @@ impl SerializablePackageJsonDeps {
 }
 
 #[derive(Deserialize, Serialize)]
+pub enum NodeModules {
+  Managed {
+    /// Whether this uses a node_modules directory (true) or the global cache (false).
+    node_modules_dir: bool,
+    package_json_deps: Option<SerializablePackageJsonDeps>,
+  },
+  Byonm {
+    package_json_deps: Option<SerializablePackageJsonDeps>,
+  },
+}
+
+#[derive(Deserialize, Serialize)]
 pub struct Metadata {
   pub argv: Vec<String>,
-  pub unstable: bool,
   pub seed: Option<u64>,
   pub permissions: PermissionsOptions,
   pub location: Option<Url>,
@@ -138,10 +143,9 @@ pub struct Metadata {
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub maybe_import_map: Option<(Url, String)>,
   pub entrypoint: ModuleSpecifier,
-  /// Whether this uses a node_modules directory (true) or the global cache (false).
-  pub node_modules_dir: bool,
-  pub npm_snapshot: Option<SerializedNpmResolutionSnapshot>,
-  pub package_json_deps: Option<SerializablePackageJsonDeps>,
+  pub node_modules: Option<NodeModules>,
+  pub disable_deprecated_api_warning: bool,
+  pub unstable_config: UnstableConfig,
 }
 
 pub fn load_npm_vfs(root_dir_path: PathBuf) -> Result<FileBackedVfs, AnyError> {
@@ -235,49 +239,58 @@ pub fn is_standalone_binary(exe_path: &Path) -> bool {
 /// binary by skipping over the trailer width at the end of the file,
 /// then checking for the magic trailer string `d3n0l4nd`. If found,
 /// the bundle is executed. If not, this function exits with `Ok(None)`.
-pub async fn extract_standalone(
+pub fn extract_standalone(
   exe_path: &Path,
-  cli_args: Vec<String>,
-) -> Result<Option<(Metadata, eszip::EszipV2)>, AnyError> {
-  let file = std::fs::File::open(exe_path)?;
-
-  let mut bufreader =
-    deno_core::futures::io::BufReader::new(AllowStdIo::new(file));
-
-  let _trailer_pos = bufreader
-    .seek(SeekFrom::End(-(TRAILER_SIZE as i64)))
-    .await?;
+  cli_args: Cow<Vec<OsString>>,
+) -> Result<
+  Option<impl Future<Output = Result<(Metadata, eszip::EszipV2), AnyError>>>,
+  AnyError,
+> {
+  // We do the first part sync so it can complete quickly
+  let mut file = std::fs::File::open(exe_path)?;
+  file.seek(SeekFrom::End(-(TRAILER_SIZE as i64)))?;
   let mut trailer = [0; TRAILER_SIZE];
-  bufreader.read_exact(&mut trailer).await?;
+  file.read_exact(&mut trailer)?;
   let trailer = match Trailer::parse(&trailer)? {
     None => return Ok(None),
     Some(trailer) => trailer,
   };
 
-  bufreader.seek(SeekFrom::Start(trailer.eszip_pos)).await?;
+  file.seek(SeekFrom::Start(trailer.eszip_pos))?;
 
-  let (eszip, loader) = eszip::EszipV2::parse(bufreader)
-    .await
-    .context("Failed to parse eszip header")?;
+  let cli_args = cli_args.into_owned();
+  // If we have an eszip, read it out
+  Ok(Some(async move {
+    let bufreader =
+      deno_core::futures::io::BufReader::new(AllowStdIo::new(file));
 
-  let mut bufreader = loader.await.context("Failed to parse eszip archive")?;
+    let (eszip, loader) = eszip::EszipV2::parse(bufreader)
+      .await
+      .context("Failed to parse eszip header")?;
 
-  bufreader
-    .seek(SeekFrom::Start(trailer.metadata_pos))
-    .await?;
+    let mut bufreader =
+      loader.await.context("Failed to parse eszip archive")?;
 
-  let mut metadata = String::new();
+    bufreader
+      .seek(SeekFrom::Start(trailer.metadata_pos))
+      .await?;
 
-  bufreader
-    .take(trailer.metadata_len())
-    .read_to_string(&mut metadata)
-    .await
-    .context("Failed to read metadata from the current executable")?;
+    let mut metadata = String::new();
 
-  let mut metadata: Metadata = serde_json::from_str(&metadata).unwrap();
-  metadata.argv.append(&mut cli_args[1..].to_vec());
+    bufreader
+      .take(trailer.metadata_len())
+      .read_to_string(&mut metadata)
+      .await
+      .context("Failed to read metadata from the current executable")?;
 
-  Ok(Some((metadata, eszip)))
+    let mut metadata: Metadata = serde_json::from_str(&metadata).unwrap();
+    metadata.argv.reserve(cli_args.len() - 1);
+    for arg in cli_args.into_iter().skip(1) {
+      metadata.argv.push(arg.into_string().unwrap());
+    }
+
+    Ok((metadata, eszip))
+  }))
 }
 
 const TRAILER_SIZE: usize = std::mem::size_of::<Trailer>() + 8; // 8 bytes for the magic trailer string
@@ -338,14 +351,76 @@ fn u64_from_bytes(arr: &[u8]) -> Result<u64, AnyError> {
   Ok(u64::from_be_bytes(*fixed_arr))
 }
 
+pub fn unpack_into_dir(
+  exe_name: &str,
+  archive_name: &str,
+  archive_data: Vec<u8>,
+  is_windows: bool,
+  temp_dir: &tempfile::TempDir,
+) -> Result<PathBuf, AnyError> {
+  let temp_dir_path = temp_dir.path();
+  let exe_ext = if is_windows { "exe" } else { "" };
+  let archive_path = temp_dir_path.join(exe_name).with_extension("zip");
+  let exe_path = temp_dir_path.join(exe_name).with_extension(exe_ext);
+  assert!(!exe_path.exists());
+
+  let archive_ext = Path::new(archive_name)
+    .extension()
+    .and_then(|ext| ext.to_str())
+    .unwrap();
+  let unpack_status = match archive_ext {
+    "zip" if cfg!(windows) => {
+      fs::write(&archive_path, &archive_data)?;
+      Command::new("tar.exe")
+        .arg("xf")
+        .arg(&archive_path)
+        .arg("-C")
+        .arg(temp_dir_path)
+        .spawn()
+        .map_err(|err| {
+          if err.kind() == std::io::ErrorKind::NotFound {
+            std::io::Error::new(
+              std::io::ErrorKind::NotFound,
+              "`tar.exe` was not found in your PATH",
+            )
+          } else {
+            err
+          }
+        })?
+        .wait()?
+    }
+    "zip" => {
+      fs::write(&archive_path, &archive_data)?;
+      Command::new("unzip")
+        .current_dir(temp_dir_path)
+        .arg(&archive_path)
+        .spawn()
+        .map_err(|err| {
+          if err.kind() == std::io::ErrorKind::NotFound {
+            std::io::Error::new(
+              std::io::ErrorKind::NotFound,
+              "`unzip` was not found in your PATH, please install `unzip`",
+            )
+          } else {
+            err
+          }
+        })?
+        .wait()?
+    }
+    ext => bail!("Unsupported archive type: '{ext}'"),
+  };
+  if !unpack_status.success() {
+    bail!("Failed to unpack archive.");
+  }
+  assert!(exe_path.exists());
+  fs::remove_file(&archive_path)?;
+  Ok(exe_path)
+}
 pub struct DenoCompileBinaryWriter<'a> {
   file_fetcher: &'a FileFetcher,
   client: &'a HttpClient,
   deno_dir: &'a DenoDir,
-  npm_api: &'a CliNpmRegistryApi,
-  npm_cache: &'a NpmCache,
-  npm_resolution: &'a NpmResolution,
-  npm_resolver: &'a CliNpmResolver,
+  npm_resolver: &'a dyn CliNpmResolver,
   npm_system_info: NpmSystemInfo,
   package_json_deps_provider: &'a PackageJsonDepsProvider,
 }
@@ -356,10 +431,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     file_fetcher: &'a FileFetcher,
     client: &'a HttpClient,
     deno_dir: &'a DenoDir,
-    npm_api: &'a CliNpmRegistryApi,
-    npm_cache: &'a NpmCache,
-    npm_resolution: &'a NpmResolution,
-    npm_resolver: &'a CliNpmResolver,
+    npm_resolver: &'a dyn CliNpmResolver,
     npm_system_info: NpmSystemInfo,
     package_json_deps_provider: &'a PackageJsonDepsProvider,
   ) -> Self {
@@ -367,11 +439,8 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       file_fetcher,
       client,
       deno_dir,
-      npm_api,
-      npm_cache,
       npm_resolver,
       npm_system_info,
-      npm_resolution,
       package_json_deps_provider,
     }
   }
@@ -385,8 +454,18 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     cli_options: &CliOptions,
   ) -> Result<(), AnyError> {
     // Select base binary based on target
-    let original_binary =
-      self.get_base_binary(compile_flags.target.clone()).await?;
+    let mut original_binary = self.get_base_binary(compile_flags).await?;
+
+    if compile_flags.no_terminal {
+      let target = compile_flags.resolve_target();
+      if !target.contains("windows") {
+        bail!(
+          "The `--no-terminal` flag is only available when targeting Windows (current: {})",
+          target,
+        )
+      }
+      set_windows_binary_to_gui(&mut original_binary)?;
+    }
 
     self
       .write_standalone_binary(
@@ -402,15 +481,18 @@ impl<'a> DenoCompileBinaryWriter<'a> {
 
   async fn get_base_binary(
     &self,
-    target: Option<String>,
+    compile_flags: &CompileFlags,
   ) -> Result<Vec<u8>, AnyError> {
-    if target.is_none() {
-      let path = std::env::current_exe()?;
+    // Used for testing.
+    //
+    // Phase 2 of the 'min sized' deno compile RFC talks
+    // about adding this as a flag.
+    if let Some(path) = std::env::var_os("DENORT_BIN") {
       return Ok(std::fs::read(path)?);
     }
 
-    let target = target.unwrap_or_else(|| env!("TARGET").to_string());
-    let binary_name = format!("deno-{target}.zip");
+    let target = compile_flags.resolve_target();
+    let binary_name = format!("denort-{target}.zip");
 
     let binary_path_suffix = if crate::version::is_canary() {
       format!("canary/{}/{}", crate::version::GIT_COMMIT_HASH, binary_name)
@@ -429,7 +511,9 @@ impl<'a> DenoCompileBinaryWriter<'a> {
 
     let archive_data = std::fs::read(binary_path)?;
     let temp_dir = tempfile::TempDir::new()?;
-    let base_binary_path = crate::tools::upgrade::unpack_into_dir(
+    let base_binary_path = unpack_into_dir(
+      "denort",
+      &binary_name,
       archive_data,
       target.contains("windows"),
       &temp_dir,
@@ -475,7 +559,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     &self,
     writer: &mut impl Write,
     original_bin: Vec<u8>,
-    eszip: eszip::EszipV2,
+    mut eszip: eszip::EszipV2,
     entrypoint: &ModuleSpecifier,
     cli_options: &CliOptions,
     compile_flags: &CompileFlags,
@@ -492,18 +576,47 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       .resolve_import_map(self.file_fetcher)
       .await?
       .map(|import_map| (import_map.base_url().clone(), import_map.to_json()));
-    let (npm_snapshot, npm_vfs, npm_files) =
-      if self.npm_resolution.has_packages() {
-        let (root_dir, files) = self.build_vfs()?.into_dir_and_files();
-        let snapshot = self.npm_resolution.serialized_snapshot();
-        (Some(snapshot), Some(root_dir), files)
-      } else {
-        (None, None, Vec::new())
+    let (npm_vfs, npm_files, node_modules) =
+      match self.npm_resolver.as_inner() {
+        InnerCliNpmResolverRef::Managed(managed) => {
+          let snapshot =
+            managed.serialized_valid_snapshot_for_system(&self.npm_system_info);
+          if !snapshot.as_serialized().packages.is_empty() {
+            let (root_dir, files) = self.build_vfs()?.into_dir_and_files();
+            eszip.add_npm_snapshot(snapshot);
+            (
+              Some(root_dir),
+              files,
+              Some(NodeModules::Managed {
+                node_modules_dir: self
+                  .npm_resolver
+                  .root_node_modules_path()
+                  .is_some(),
+                package_json_deps: self.package_json_deps_provider.deps().map(
+                  |deps| SerializablePackageJsonDeps::from_deps(deps.clone()),
+                ),
+              }),
+            )
+          } else {
+            (None, Vec::new(), None)
+          }
+        }
+        InnerCliNpmResolverRef::Byonm(_) => {
+          let (root_dir, files) = self.build_vfs()?.into_dir_and_files();
+          (
+            Some(root_dir),
+            files,
+            Some(NodeModules::Byonm {
+              package_json_deps: self.package_json_deps_provider.deps().map(
+                |deps| SerializablePackageJsonDeps::from_deps(deps.clone()),
+              ),
+            }),
+          )
+        }
       };
 
     let metadata = Metadata {
       argv: compile_flags.args.clone(),
-      unstable: cli_options.unstable(),
       seed: cli_options.seed(),
       location: cli_options.location_flag().clone(),
       permissions: cli_options.permissions_options(),
@@ -516,12 +629,16 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       ca_data,
       entrypoint: entrypoint.clone(),
       maybe_import_map,
-      node_modules_dir: self.npm_resolver.node_modules_path().is_some(),
-      npm_snapshot,
-      package_json_deps: self
-        .package_json_deps_provider
-        .deps()
-        .map(|deps| SerializablePackageJsonDeps::from_deps(deps.clone())),
+      node_modules,
+      disable_deprecated_api_warning: cli_options
+        .disable_deprecated_api_warning,
+      unstable_config: UnstableConfig {
+        legacy_flag_enabled: cli_options.legacy_unstable_flag(),
+        bare_node_builtins: cli_options.unstable_bare_node_builtins(),
+        byonm: cli_options.use_byonm(),
+        sloppy_imports: cli_options.unstable_sloppy_imports(),
+        features: cli_options.unstable_features(),
+      },
     };
 
     write_binary_bytes(
@@ -535,28 +652,91 @@ impl<'a> DenoCompileBinaryWriter<'a> {
   }
 
   fn build_vfs(&self) -> Result<VfsBuilder, AnyError> {
-    if let Some(node_modules_path) = self.npm_resolver.node_modules_path() {
-      let mut builder = VfsBuilder::new(node_modules_path.clone());
-      builder.add_dir_recursive(&node_modules_path)?;
-      Ok(builder)
-    } else {
-      // DO NOT include the user's registry url as it may contain credentials,
-      // but also don't make this dependent on the registry url
-      let registry_url = self.npm_api.base_url();
-      let root_path = self.npm_cache.registry_folder(registry_url);
-      let mut builder = VfsBuilder::new(root_path);
-      for package in self
-        .npm_resolution
-        .all_system_packages(&self.npm_system_info)
-      {
-        let folder = self
-          .npm_resolver
-          .resolve_pkg_folder_from_pkg_id(&package.id)?;
-        builder.add_dir_recursive(&folder)?;
+    fn maybe_warn_different_system(system_info: &NpmSystemInfo) {
+      if system_info != &NpmSystemInfo::default() {
+        log::warn!("{} The node_modules directory may be incompatible with the target system.", crate::colors::yellow("Warning"));
       }
-      // overwrite the root directory's name to obscure the user's registry url
-      builder.set_root_dir_name("node_modules".to_string());
-      Ok(builder)
+    }
+
+    match self.npm_resolver.as_inner() {
+      InnerCliNpmResolverRef::Managed(npm_resolver) => {
+        if let Some(node_modules_path) = npm_resolver.root_node_modules_path() {
+          maybe_warn_different_system(&self.npm_system_info);
+          let mut builder = VfsBuilder::new(node_modules_path.clone())?;
+          builder.add_dir_recursive(node_modules_path)?;
+          Ok(builder)
+        } else {
+          // DO NOT include the user's registry url as it may contain credentials,
+          // but also don't make this dependent on the registry url
+          let registry_url = npm_resolver.registry_base_url();
+          let root_path =
+            npm_resolver.registry_folder_in_global_cache(registry_url);
+          let mut builder = VfsBuilder::new(root_path)?;
+          for package in npm_resolver.all_system_packages(&self.npm_system_info)
+          {
+            let folder =
+              npm_resolver.resolve_pkg_folder_from_pkg_id(&package.id)?;
+            builder.add_dir_recursive(&folder)?;
+          }
+          // overwrite the root directory's name to obscure the user's registry url
+          builder.set_root_dir_name("node_modules".to_string());
+          Ok(builder)
+        }
+      }
+      InnerCliNpmResolverRef::Byonm(npm_resolver) => {
+        maybe_warn_different_system(&self.npm_system_info);
+        // the root_node_modules directory will always exist for byonm
+        let node_modules_path = npm_resolver.root_node_modules_path().unwrap();
+        let parent_path = node_modules_path.parent().unwrap();
+        let mut builder = VfsBuilder::new(parent_path.to_path_buf())?;
+        let package_json_path = parent_path.join("package.json");
+        if package_json_path.exists() {
+          builder.add_file_at_path(&package_json_path)?;
+        }
+        if node_modules_path.exists() {
+          builder.add_dir_recursive(node_modules_path)?;
+        }
+        Ok(builder)
+      }
     }
   }
+}
+
+/// This function sets the subsystem field in the PE header to 2 (GUI subsystem)
+/// For more information about the PE header: https://learn.microsoft.com/en-us/windows/win32/debug/pe-format
+fn set_windows_binary_to_gui(bin: &mut [u8]) -> Result<(), AnyError> {
+  // Get the PE header offset located in an i32 found at offset 60
+  // See: https://learn.microsoft.com/en-us/windows/win32/debug/pe-format#ms-dos-stub-image-only
+  let start_pe = u32::from_le_bytes((bin[60..64]).try_into()?);
+
+  // Get image type (PE32 or PE32+) indicates whether the binary is 32 or 64 bit
+  // The used offset and size values can be found here:
+  // https://learn.microsoft.com/en-us/windows/win32/debug/pe-format#optional-header-image-only
+  let start_32 = start_pe as usize + 28;
+  let magic_32 =
+    u16::from_le_bytes(bin[(start_32)..(start_32 + 2)].try_into()?);
+
+  let start_64 = start_pe as usize + 24;
+  let magic_64 =
+    u16::from_le_bytes(bin[(start_64)..(start_64 + 2)].try_into()?);
+
+  // Take the standard fields size for the current architecture (32 or 64 bit)
+  // This is the ofset for the Windows-Specific fields
+  let standard_fields_size = if magic_32 == 0x10b {
+    28
+  } else if magic_64 == 0x20b {
+    24
+  } else {
+    bail!("Could not find a matching magic field in the PE header")
+  };
+
+  // Set the subsystem field (offset 68) to 2 (GUI subsystem)
+  // For all possible options, see: https://learn.microsoft.com/en-us/windows/win32/debug/pe-format#optional-header-windows-specific-fields-image-only
+  let subsystem_offset = 68;
+  let subsystem_start =
+    start_pe as usize + standard_fields_size + subsystem_offset;
+  let subsystem: u16 = 2;
+  bin[(subsystem_start)..(subsystem_start + 2)]
+    .copy_from_slice(&subsystem.to_le_bytes());
+  Ok(())
 }

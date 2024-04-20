@@ -137,7 +137,7 @@ interface Map<K, V> {
     readonly [Symbol.toStringTag]: string;
 }
 
-interface WeakMap<K extends object, V> {
+interface WeakMap<K extends WeakKey, V> {
     readonly [Symbol.toStringTag]: string;
 }
 
@@ -145,7 +145,7 @@ interface Set<T> {
     readonly [Symbol.toStringTag]: string;
 }
 
-interface WeakSet<T extends object> {
+interface WeakSet<T extends WeakKey> {
     readonly [Symbol.toStringTag]: string;
 }
 

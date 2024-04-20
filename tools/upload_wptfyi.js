@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // This script pushes new WPT results to wpt.fyi. When the `--ghstatus` flag is
 // passed, will automatically add a status check to the commit with a link to

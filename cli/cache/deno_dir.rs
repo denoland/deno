@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use once_cell::sync::OnceCell;
 
@@ -71,7 +71,6 @@ impl DenoDir {
       root,
       gen_cache: DiskCache::new(&gen_path),
     };
-    deno_dir.gen_cache.ensure_dir_exists(&gen_path)?;
 
     Ok(deno_dir)
   }
@@ -97,6 +96,12 @@ impl DenoDir {
   pub fn dep_analysis_db_file_path(&self) -> PathBuf {
     // bump this version name to invalidate the entire cache
     self.root.join("dep_analysis_cache_v1")
+  }
+
+  /// Path for the cache used for fast check.
+  pub fn fast_check_cache_db_file_path(&self) -> PathBuf {
+    // bump this version name to invalidate the entire cache
+    self.root.join("fast_check_cache_v1")
   }
 
   /// Path for caching node analysis.
@@ -135,6 +140,12 @@ impl DenoDir {
   /// Folder used for the npm cache.
   pub fn npm_folder_path(&self) -> PathBuf {
     self.root.join("npm")
+  }
+
+  /// Path for the V8 code cache.
+  pub fn code_cache_db_file_path(&self) -> PathBuf {
+    // bump this version name to invalidate the entire cache
+    self.root.join("v8_code_cache_v1")
   }
 
   /// Path used for the REPL history file.

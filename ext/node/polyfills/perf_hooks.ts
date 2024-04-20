@@ -1,4 +1,8 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import {
   performance as shimPerformance,
@@ -12,7 +16,7 @@ const constants = {};
 const performance:
   & Omit<
     Performance,
-    "clearMeasures" | "getEntries" | "getEntriesByName" | "getEntriesByType"
+    "clearMeasures" | "getEntries"
   >
   & {
     // deno-lint-ignore no-explicit-any
@@ -50,8 +54,13 @@ const performance:
     nodeTiming: {},
     now: () => shimPerformance.now(),
     timerify: () => notImplemented("timerify from performance"),
-    // deno-lint-ignore no-explicit-any
-    timeOrigin: (shimPerformance as any).timeOrigin,
+    get timeOrigin() {
+      // deno-lint-ignore no-explicit-any
+      return (shimPerformance as any).timeOrigin;
+    },
+    getEntriesByName: (name, type) =>
+      shimPerformance.getEntriesByName(name, type),
+    getEntriesByType: (type) => shimPerformance.getEntriesByType(type),
     markResourceTiming: () => {},
     // @ts-ignore waiting on update in `deno`, but currently this is
     // a circular dependency

@@ -1,6 +1,6 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-const primordials = globalThis.__bootstrap.primordials;
+import { primordials } from "ext:core/mod.js";
 const {
   ArrayPrototypeFilter,
   ArrayPrototypeFind,
@@ -14,15 +14,15 @@ const {
   SymbolFor,
   TypeError,
 } = primordials;
+
 import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { structuredClone } from "ext:deno_web/02_structured_clone.js";
+import { structuredClone } from "./02_structured_clone.js";
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
-import { EventTarget } from "ext:deno_web/02_event.js";
-import { opNow } from "ext:deno_web/02_timers.js";
-import DOMException from "ext:deno_web/01_dom_exception.js";
+import { EventTarget } from "./02_event.js";
+import { opNow } from "./02_timers.js";
+import { DOMException } from "./01_dom_exception.js";
 
 const illegalConstructorKey = Symbol("illegalConstructorKey");
-const customInspect = SymbolFor("Deno.customInspect");
 let performanceEntries = [];
 let timeOrigin;
 
@@ -196,23 +196,26 @@ class PerformanceEntry {
     };
   }
 
-  [customInspect](inspect) {
-    return inspect(createFilteredInspectProxy({
-      object: this,
-      evaluate: ObjectPrototypeIsPrototypeOf(
-        PerformanceEntryPrototype,
-        this,
-      ),
-      keys: [
-        "name",
-        "entryType",
-        "startTime",
-        "duration",
-      ],
-    }));
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          PerformanceEntryPrototype,
+          this,
+        ),
+        keys: [
+          "name",
+          "entryType",
+          "startTime",
+          "duration",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
-webidl.configurePrototype(PerformanceEntry);
+webidl.configureInterface(PerformanceEntry);
 const PerformanceEntryPrototype = PerformanceEntry.prototype;
 
 const _detail = Symbol("[[detail]]");
@@ -265,21 +268,24 @@ class PerformanceMark extends PerformanceEntry {
     };
   }
 
-  [customInspect](inspect) {
-    return inspect(createFilteredInspectProxy({
-      object: this,
-      evaluate: ObjectPrototypeIsPrototypeOf(PerformanceMarkPrototype, this),
-      keys: [
-        "name",
-        "entryType",
-        "startTime",
-        "duration",
-        "detail",
-      ],
-    }));
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(PerformanceMarkPrototype, this),
+        keys: [
+          "name",
+          "entryType",
+          "startTime",
+          "duration",
+          "detail",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
-webidl.configurePrototype(PerformanceMark);
+webidl.configureInterface(PerformanceMark);
 const PerformanceMarkPrototype = PerformanceMark.prototype;
 class PerformanceMeasure extends PerformanceEntry {
   [_detail] = null;
@@ -321,24 +327,27 @@ class PerformanceMeasure extends PerformanceEntry {
     };
   }
 
-  [customInspect](inspect) {
-    return inspect(createFilteredInspectProxy({
-      object: this,
-      evaluate: ObjectPrototypeIsPrototypeOf(
-        PerformanceMeasurePrototype,
-        this,
-      ),
-      keys: [
-        "name",
-        "entryType",
-        "startTime",
-        "duration",
-        "detail",
-      ],
-    }));
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          PerformanceMeasurePrototype,
+          this,
+        ),
+        keys: [
+          "name",
+          "entryType",
+          "startTime",
+          "duration",
+          "detail",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
-webidl.configurePrototype(PerformanceMeasure);
+webidl.configureInterface(PerformanceMeasure);
 const PerformanceMeasurePrototype = PerformanceMeasure.prototype;
 class Performance extends EventTarget {
   constructor(key = null) {
@@ -569,15 +578,18 @@ class Performance extends EventTarget {
     };
   }
 
-  [customInspect](inspect) {
-    return inspect(createFilteredInspectProxy({
-      object: this,
-      evaluate: ObjectPrototypeIsPrototypeOf(PerformancePrototype, this),
-      keys: [],
-    }));
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(PerformancePrototype, this),
+        keys: ["timeOrigin"],
+      }),
+      inspectOptions,
+    );
   }
 }
-webidl.configurePrototype(Performance);
+webidl.configureInterface(Performance);
 const PerformancePrototype = Performance.prototype;
 
 webidl.converters["Performance"] = webidl.createInterfaceConverter(

@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 use crate::util::progress_bar::UpdateGuard;
 use crate::version::get_user_agent;
 
@@ -259,7 +259,7 @@ impl HttpClient {
     result
   }
 
-  fn client(&self) -> Result<&reqwest::Client, AnyError> {
+  pub(crate) fn client(&self) -> Result<&reqwest::Client, AnyError> {
     self.cell.get_or_try_init(|| {
       create_http_client(
         get_user_agent(),

@@ -1,11 +1,11 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Copyright DefinitelyTyped contributors. All rights reserved. MIT license.
 // deno-lint-ignore-file no-explicit-any
 
 import * as stream from "ext:deno_node/_stream.d.ts";
-import * as promises from "ext:deno_node/fs/promises.ts";
+import * as promises from "node:fs/promises";
 
-import { Buffer } from "ext:deno_node/buffer.ts";
+import { Buffer } from "node:buffer";
 import { BufferEncoding, ErrnoException } from "ext:deno_node/_global.d.ts";
 
 type PathLike = string | Buffer | URL;

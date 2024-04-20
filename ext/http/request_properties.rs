@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 use deno_core::error::AnyError;
 use deno_core::OpState;
 use deno_core::ResourceId;
@@ -8,9 +8,9 @@ use deno_net::raw::NetworkStream;
 use deno_net::raw::NetworkStreamAddress;
 use deno_net::raw::NetworkStreamListener;
 use deno_net::raw::NetworkStreamType;
+use hyper::header::HOST;
 use hyper::HeaderMap;
 use hyper::Uri;
-use hyper1::header::HOST;
 use std::borrow::Cow;
 use std::net::Ipv4Addr;
 use std::net::SocketAddr;
@@ -119,7 +119,11 @@ impl HttpPropertyExtractor for DefaultHttpPropertyExtractor {
   async fn accept_connection_from_listener(
     listener: &NetworkStreamListener,
   ) -> Result<NetworkStream, AnyError> {
-    listener.accept().await.map_err(Into::into)
+    listener
+      .accept()
+      .await
+      .map_err(Into::into)
+      .map(|(stm, _)| stm)
   }
 
   fn listen_properties_from_listener(

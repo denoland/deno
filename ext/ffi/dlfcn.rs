@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::check_unstable;
 use crate::ir::out_buffer_as_ptr;
@@ -8,13 +8,11 @@ use crate::turbocall;
 use crate::FfiPermissions;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
-use deno_core::op;
-use deno_core::serde_v8;
+use deno_core::op2;
 use deno_core::v8;
 use deno_core::OpState;
 use deno_core::Resource;
-use deno_core::ResourceId;
-use dlopen::raw::Library;
+use dlopen2::raw::Library;
 use serde::Deserialize;
 use serde_value::ValueDeserializer;
 use std::borrow::Cow;
@@ -103,7 +101,7 @@ struct ForeignStatic {
 #[derive(Debug)]
 enum ForeignSymbol {
   ForeignFunction(ForeignFunction),
-  ForeignStatic(ForeignStatic),
+  ForeignStatic(#[allow(dead_code)] ForeignStatic),
 }
 
 impl<'de> Deserialize<'de> for ForeignSymbol {
@@ -131,12 +129,12 @@ pub struct FfiLoadArgs {
   symbols: HashMap<String, ForeignSymbol>,
 }
 
-#[op(v8)]
-pub fn op_ffi_load<FP, 'scope>(
+#[op2]
+pub fn op_ffi_load<'scope, FP>(
   scope: &mut v8::HandleScope<'scope>,
   state: &mut OpState,
-  args: FfiLoadArgs,
-) -> Result<(ResourceId, serde_v8::Value<'scope>), AnyError>
+  #[serde] args: FfiLoadArgs,
+) -> Result<v8::Local<'scope, v8::Value>, AnyError>
 where
   FP: FfiPermissions + 'static,
 {
@@ -144,10 +142,10 @@ where
 
   check_unstable(state, "Deno.dlopen");
   let permissions = state.borrow_mut::<FP>();
-  permissions.check(Some(&PathBuf::from(&path)))?;
+  permissions.check_partial(Some(&PathBuf::from(&path)))?;
 
   let lib = Library::open(&path).map_err(|e| {
-    dlopen::Error::OpeningLibraryError(std::io::Error::new(
+    dlopen2::Error::OpeningLibraryError(std::io::Error::new(
       std::io::ErrorKind::Other,
       format_error(e, path),
     ))
@@ -221,13 +219,12 @@ where
     }
   }
 
+  let out = v8::Array::new(scope, 2);
   let rid = state.resource_table.add(resource);
-  Ok((
-    rid,
-    serde_v8::Value {
-      v8_value: obj.into(),
-    },
-  ))
+  let rid_v8 = v8::Integer::new_from_unsigned(scope, rid);
+  out.set_index(scope, 0, rid_v8.into());
+  out.set_index(scope, 1, obj.into());
+  Ok(out.into())
 }
 
 // Create a JavaScript function for synchronous FFI call to
@@ -290,7 +287,7 @@ fn make_sync_fn<'s>(
               let result =
                 // SAFETY: Same return type declared to libffi; trust user to have it right beyond that.
                 unsafe { result.to_v8(scope, symbol.result_type.clone()) };
-              rv.set(result.v8_value);
+              rv.set(result);
             }
           }
         }
@@ -341,7 +338,7 @@ fn make_sync_fn<'s>(
 
 // `path` is only used on Windows.
 #[allow(unused_variables)]
-pub(crate) fn format_error(e: dlopen::Error, path: String) -> String {
+pub(crate) fn format_error(e: dlopen2::Error, path: String) -> String {
   match e {
     #[cfg(target_os = "windows")]
     // This calls FormatMessageW with library path
@@ -350,7 +347,7 @@ pub(crate) fn format_error(e: dlopen::Error, path: String) -> String {
     // flag without any arguments.
     //
     // https://github.com/denoland/deno/issues/11632
-    dlopen::Error::OpeningLibraryError(e) => {
+    dlopen2::Error::OpeningLibraryError(e) => {
       use std::ffi::OsStr;
       use std::os::windows::ffi::OsStrExt;
       use winapi::shared::minwindef::DWORD;
@@ -377,7 +374,7 @@ pub(crate) fn format_error(e: dlopen::Error, path: String) -> String {
 
       let path = OsStr::new(&path)
         .encode_wide()
-        .chain(Some(0).into_iter())
+        .chain(Some(0))
         .collect::<Vec<_>>();
 
       let arguments = [path.as_ptr()];
@@ -431,7 +428,7 @@ mod tests {
     use super::format_error;
 
     // BAD_EXE_FORMAT
-    let err = dlopen::Error::OpeningLibraryError(
+    let err = dlopen2::Error::OpeningLibraryError(
       std::io::Error::from_raw_os_error(0x000000C1),
     );
     assert_eq!(

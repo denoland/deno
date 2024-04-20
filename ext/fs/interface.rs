@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::path::Path;
 use std::path::PathBuf;
@@ -64,6 +64,8 @@ pub enum FsFileType {
   File,
   #[serde(rename = "dir")]
   Directory,
+  #[serde(rename = "junction")]
+  Junction,
 }
 
 #[derive(Serialize)]
@@ -78,6 +80,25 @@ pub struct FsDirEntry {
 #[allow(clippy::disallowed_types)]
 pub type FileSystemRc = crate::sync::MaybeArc<dyn FileSystem>;
 
+pub trait AccessCheckFn:
+  for<'a> FnMut(
+  bool,
+  &'a Path,
+  &'a OpenOptions,
+) -> FsResult<std::borrow::Cow<'a, Path>>
+{
+}
+impl<T> AccessCheckFn for T where
+  T: for<'a> FnMut(
+    bool,
+    &'a Path,
+    &'a OpenOptions,
+  ) -> FsResult<std::borrow::Cow<'a, Path>>
+{
+}
+
+pub type AccessCheckCb<'a> = &'a mut (dyn AccessCheckFn + 'a);
+
 #[async_trait::async_trait(?Send)]
 pub trait FileSystem: std::fmt::Debug + MaybeSend + MaybeSync {
   fn cwd(&self) -> FsResult<PathBuf>;
@@ -89,14 +110,17 @@ pub trait FileSystem: std::fmt::Debug + MaybeSend + MaybeSync {
     &self,
     path: &Path,
     options: OpenOptions,
+    access_check: Option<AccessCheckCb>,
   ) -> FsResult<Rc<dyn File>>;
-  async fn open_async(
-    &self,
+  async fn open_async<'a>(
+    &'a self,
     path: PathBuf,
     options: OpenOptions,
+    access_check: Option<AccessCheckCb<'a>>,
   ) -> FsResult<Rc<dyn File>>;
 
-  fn mkdir_sync(&self, path: &Path, recusive: bool, mode: u32) -> FsResult<()>;
+  fn mkdir_sync(&self, path: &Path, recursive: bool, mode: u32)
+    -> FsResult<()>;
   async fn mkdir_async(
     &self,
     path: PathBuf,
@@ -129,6 +153,9 @@ pub trait FileSystem: std::fmt::Debug + MaybeSend + MaybeSync {
     oldpath: PathBuf,
     newpath: PathBuf,
   ) -> FsResult<()>;
+
+  fn cp_sync(&self, path: &Path, new_path: &Path) -> FsResult<()>;
+  async fn cp_async(&self, path: PathBuf, new_path: PathBuf) -> FsResult<()>;
 
   fn stat_sync(&self, path: &Path) -> FsResult<FsStat>;
   async fn stat_async(&self, path: PathBuf) -> FsResult<FsStat>;
@@ -196,22 +223,24 @@ pub trait FileSystem: std::fmt::Debug + MaybeSend + MaybeSync {
     &self,
     path: &Path,
     options: OpenOptions,
+    access_check: Option<AccessCheckCb>,
     data: &[u8],
   ) -> FsResult<()> {
-    let file = self.open_sync(path, options)?;
+    let file = self.open_sync(path, options, access_check)?;
     if let Some(mode) = options.mode {
       file.clone().chmod_sync(mode)?;
     }
     file.write_all_sync(data)?;
     Ok(())
   }
-  async fn write_file_async(
-    &self,
+  async fn write_file_async<'a>(
+    &'a self,
     path: PathBuf,
     options: OpenOptions,
+    access_check: Option<AccessCheckCb<'a>>,
     data: Vec<u8>,
   ) -> FsResult<()> {
-    let file = self.open_async(path, options).await?;
+    let file = self.open_async(path, options, access_check).await?;
     if let Some(mode) = options.mode {
       file.clone().chmod_async(mode).await?;
     }
@@ -219,36 +248,58 @@ pub trait FileSystem: std::fmt::Debug + MaybeSend + MaybeSync {
     Ok(())
   }
 
-  fn read_file_sync(&self, path: &Path) -> FsResult<Vec<u8>> {
+  fn read_file_sync(
+    &self,
+    path: &Path,
+    access_check: Option<AccessCheckCb>,
+  ) -> FsResult<Vec<u8>> {
     let options = OpenOptions::read();
-    let file = self.open_sync(path, options)?;
+    let file = self.open_sync(path, options, access_check)?;
     let buf = file.read_all_sync()?;
     Ok(buf)
   }
-  async fn read_file_async(&self, path: PathBuf) -> FsResult<Vec<u8>> {
+  async fn read_file_async<'a>(
+    &'a self,
+    path: PathBuf,
+    access_check: Option<AccessCheckCb<'a>>,
+  ) -> FsResult<Vec<u8>> {
     let options = OpenOptions::read();
-    let file = self.open_async(path, options).await?;
+    let file = self.open_async(path, options, access_check).await?;
     let buf = file.read_all_async().await?;
     Ok(buf)
   }
 
-  fn is_file(&self, path: &Path) -> bool {
+  fn is_file_sync(&self, path: &Path) -> bool {
     self.stat_sync(path).map(|m| m.is_file).unwrap_or(false)
   }
 
-  fn is_dir(&self, path: &Path) -> bool {
+  fn is_dir_sync(&self, path: &Path) -> bool {
     self
       .stat_sync(path)
       .map(|m| m.is_directory)
       .unwrap_or(false)
   }
 
-  fn exists(&self, path: &Path) -> bool {
+  fn exists_sync(&self, path: &Path) -> bool {
     self.stat_sync(path).is_ok()
   }
 
-  fn read_to_string(&self, path: &Path) -> FsResult<String> {
-    let buf = self.read_file_sync(path)?;
+  fn read_text_file_sync(
+    &self,
+    path: &Path,
+    access_check: Option<AccessCheckCb>,
+  ) -> FsResult<String> {
+    let buf = self.read_file_sync(path, access_check)?;
+    String::from_utf8(buf).map_err(|err| {
+      std::io::Error::new(std::io::ErrorKind::InvalidData, err).into()
+    })
+  }
+  async fn read_text_file_async<'a>(
+    &'a self,
+    path: PathBuf,
+    access_check: Option<AccessCheckCb<'a>>,
+  ) -> FsResult<String> {
+    let buf = self.read_file_async(path, access_check).await?;
     String::from_utf8(buf).map_err(|err| {
       std::io::Error::new(std::io::ErrorKind::InvalidData, err).into()
     })

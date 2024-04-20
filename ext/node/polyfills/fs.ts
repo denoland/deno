@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import {
   access,
   accessPromise,
@@ -18,6 +18,7 @@ import {
   copyFilePromise,
   copyFileSync,
 } from "ext:deno_node/_fs/_fs_copy.ts";
+import { cp, cpPromise, cpSync } from "ext:deno_node/_fs/_fs_cp.js";
 import Dir from "ext:deno_node/_fs/_fs_dir.ts";
 import Dirent from "ext:deno_node/_fs/_fs_dirent.ts";
 import { exists, existsSync } from "ext:deno_node/_fs/_fs_exists.ts";
@@ -68,7 +69,17 @@ import {
 } from "ext:deno_node/_fs/_fs_rename.ts";
 import { rmdir, rmdirPromise, rmdirSync } from "ext:deno_node/_fs/_fs_rmdir.ts";
 import { rm, rmPromise, rmSync } from "ext:deno_node/_fs/_fs_rm.ts";
-import { stat, statPromise, statSync } from "ext:deno_node/_fs/_fs_stat.ts";
+import {
+  stat,
+  statPromise,
+  Stats,
+  statSync,
+} from "ext:deno_node/_fs/_fs_stat.ts";
+import {
+  statfs,
+  statfsPromise,
+  statfsSync,
+} from "ext:deno_node/_fs/_fs_statfs.js";
 import {
   symlink,
   symlinkPromise,
@@ -99,12 +110,12 @@ import {
 import { write, writeSync } from "ext:deno_node/_fs/_fs_write.mjs";
 // @deno-types="./_fs/_fs_writev.d.ts"
 import { writev, writevSync } from "ext:deno_node/_fs/_fs_writev.mjs";
+import { readv, readvSync } from "ext:deno_node/_fs/_fs_readv.ts";
 import {
   writeFile,
   writeFilePromise,
   writeFileSync,
 } from "ext:deno_node/_fs/_fs_writeFile.ts";
-import { Stats } from "ext:deno_node/internal/fs/utils.mjs";
 // @deno-types="./internal/fs/streams.d.ts"
 import {
   createReadStream,
@@ -136,7 +147,9 @@ const {
 
 const promises = {
   access: accessPromise,
+  constants,
   copyFile: copyFilePromise,
+  cp: cpPromise,
   open: openPromise,
   opendir: opendirPromise,
   rename: renamePromise,
@@ -149,6 +162,7 @@ const promises = {
   symlink: symlinkPromise,
   lstat: lstatPromise,
   stat: statPromise,
+  statfs: statfsPromise,
   link: linkPromise,
   unlink: unlinkPromise,
   chmod: chmodPromise,
@@ -179,6 +193,8 @@ export default {
   constants,
   copyFile,
   copyFileSync,
+  cp,
+  cpSync,
   createReadStream,
   createWriteStream,
   Dir,
@@ -235,6 +251,8 @@ export default {
   ReadStream,
   realpath,
   realpathSync,
+  readv,
+  readvSync,
   rename,
   renameSync,
   rmdir,
@@ -244,6 +262,8 @@ export default {
   stat,
   Stats,
   statSync,
+  statfs,
+  statfsSync,
   symlink,
   symlinkSync,
   truncate,
@@ -280,6 +300,8 @@ export {
   constants,
   copyFile,
   copyFileSync,
+  cp,
+  cpSync,
   createReadStream,
   createWriteStream,
   Dir,
@@ -334,6 +356,8 @@ export {
   readlinkSync,
   ReadStream,
   readSync,
+  readv,
+  readvSync,
   realpath,
   realpathSync,
   rename,
@@ -343,6 +367,8 @@ export {
   rmdirSync,
   rmSync,
   stat,
+  statfs,
+  statfsSync,
   Stats,
   statSync,
   symlink,

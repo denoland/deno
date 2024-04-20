@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 #![allow(non_upper_case_globals)]
 
@@ -308,10 +308,9 @@ fn napi_coerce_to_number(
   check_env!(env);
   let env = unsafe { &mut *env };
   let value = napi_value_unchecked(value);
-  let Some(coerced) = value
-    .to_number(&mut env.scope()) else {
-      return napi_number_expected;
-    };
+  let Some(coerced) = value.to_number(&mut env.scope()) else {
+    return napi_number_expected;
+  };
   let value: v8::Local<v8::Value> = coerced.into();
   *result = value.into();
   napi_ok
@@ -367,7 +366,9 @@ fn napi_create_dataview(
   let global = context.global(&mut env.scope());
   let data_view_name = v8::String::new(&mut env.scope(), "DataView").unwrap();
   let data_view = global.get(&mut env.scope(), data_view_name.into()).unwrap();
-  let data_view = v8::Local::<v8::Function>::try_from(data_view).unwrap();
+  let Ok(data_view) = v8::Local::<v8::Function>::try_from(data_view) else {
+    return napi_function_expected;
+  };
   let byte_offset = v8::Number::new(&mut env.scope(), byte_offset as f64);
   let byte_length = v8::Number::new(&mut env.scope(), len as f64);
   let value = data_view
@@ -906,7 +907,9 @@ fn napi_create_typedarray(
   check_env!(env);
   let env = unsafe { &mut *env };
   let ab = napi_value_unchecked(arraybuffer);
-  let ab = v8::Local::<v8::ArrayBuffer>::try_from(ab).unwrap();
+  let Ok(ab) = v8::Local::<v8::ArrayBuffer>::try_from(ab) else {
+    return napi_arraybuffer_expected;
+  };
   let typedarray: v8::Local<v8::Value> = match ty {
     napi_uint8_array => {
       v8::Uint8Array::new(&mut env.scope(), ab, byte_offset, length)
@@ -1352,10 +1355,9 @@ fn napi_call_function(
 
 #[napi_sym::napi_sym]
 fn napi_close_escapable_handle_scope(
-  env: *mut Env,
+  _env: *mut Env,
   _scope: napi_escapable_handle_scope,
 ) -> napi_status {
-  let mut _env = &mut *(env as *mut Env);
   // TODO: do this properly
   napi_ok
 }
@@ -1363,13 +1365,15 @@ fn napi_close_escapable_handle_scope(
 #[napi_sym::napi_sym]
 fn napi_close_handle_scope(
   env: *mut Env,
-  scope: napi_handle_scope,
+  _scope: napi_handle_scope,
 ) -> napi_status {
-  let env = &mut *(env as *mut Env);
+  let env = &mut *env;
   if env.open_handle_scopes == 0 {
     return napi_handle_scope_mismatch;
   }
-  let _scope = &mut *(scope as *mut v8::HandleScope);
+  // TODO: We are not opening a handle scope, therefore we cannot close it
+  // TODO: this is also not implemented in napi_open_handle_scope
+  // let _scope = &mut *(scope as *mut v8::HandleScope);
   env.open_handle_scopes -= 1;
   napi_ok
 }
@@ -1497,7 +1501,7 @@ fn napi_define_class(
       env_ptr,
       *result,
       static_descriptors.len(),
-      static_descriptors.as_ptr() as *const napi_property_descriptor,
+      static_descriptors.as_ptr(),
     ));
   }
 
@@ -1519,7 +1523,8 @@ fn napi_define_properties(
 
   let scope = &mut env.scope();
 
-  let Ok(object) = v8::Local::<v8::Object>::try_from(napi_value_unchecked(obj)) else {
+  let Ok(object) = v8::Local::<v8::Object>::try_from(napi_value_unchecked(obj))
+  else {
     return napi_object_expected;
   };
 
@@ -1559,7 +1564,7 @@ fn napi_define_properties(
       let define_maybe = object.define_property(scope, name, &desc);
       return_status_if_false!(
         env_ptr,
-        !define_maybe.unwrap_or(false),
+        define_maybe.is_some(),
         napi_invalid_arg
       );
     } else if property.method.is_some() {
@@ -1614,11 +1619,9 @@ fn napi_delete_property(
   check_arg!(env, result);
 
   let scope = &mut env.scope();
-  let Some(object) = object
-    .map(|o| o.to_object(scope))
-    .flatten() else {
-      return napi_invalid_arg;
-    };
+  let Some(object) = object.map(|o| o.to_object(scope)).flatten() else {
+    return napi_invalid_arg;
+  };
 
   let Some(deleted) = object.delete(scope, key.unwrap_unchecked()) else {
     return napi_generic_failure;
@@ -1630,8 +1633,7 @@ fn napi_delete_property(
 
 // TODO: properly implement ref counting stuff
 #[napi_sym::napi_sym]
-fn napi_delete_reference(env: *mut Env, _nref: napi_ref) -> napi_status {
-  let mut _env = &mut *(env as *mut Env);
+fn napi_delete_reference(_env: *mut Env, _nref: napi_ref) -> napi_status {
   napi_ok
 }
 
@@ -1739,12 +1741,15 @@ fn napi_get_buffer_info(
   check_env!(env);
   let env = unsafe { &mut *env };
   let value = napi_value_unchecked(value);
-  let buf = v8::Local::<v8::Uint8Array>::try_from(value).unwrap();
+  let Ok(buf) = v8::Local::<v8::ArrayBufferView>::try_from(value) else {
+    return napi_arraybuffer_expected;
+  };
   let buffer_name = v8::String::new(&mut env.scope(), "buffer").unwrap();
-  let abuf = v8::Local::<v8::ArrayBuffer>::try_from(
+  let Ok(abuf) = v8::Local::<v8::ArrayBuffer>::try_from(
     buf.get(&mut env.scope(), buffer_name.into()).unwrap(),
-  )
-  .unwrap();
+  ) else {
+    return napi_arraybuffer_expected;
+  };
   if !data.is_null() {
     *data = get_array_buffer_ptr(abuf);
   }
@@ -1806,12 +1811,15 @@ fn napi_get_dataview_info(
   check_env!(env);
   let env = unsafe { &mut *env };
   let value = napi_value_unchecked(value);
-  let buf = v8::Local::<v8::DataView>::try_from(value).unwrap();
+  let Ok(buf) = v8::Local::<v8::DataView>::try_from(value) else {
+    return napi_invalid_arg;
+  };
   let buffer_name = v8::String::new(&mut env.scope(), "buffer").unwrap();
-  let abuf = v8::Local::<v8::ArrayBuffer>::try_from(
+  let Ok(abuf) = v8::Local::<v8::ArrayBuffer>::try_from(
     buf.get(&mut env.scope(), buffer_name.into()).unwrap(),
-  )
-  .unwrap();
+  ) else {
+    return napi_invalid_arg;
+  };
   if !data.is_null() {
     *data = get_array_buffer_ptr(abuf);
   }
@@ -1829,7 +1837,9 @@ fn napi_get_date_value(
   let value = napi_value_unchecked(value);
   return_status_if_false!(env, value.is_date(), napi_date_expected);
   let env = unsafe { &mut *env };
-  let date = v8::Local::<v8::Date>::try_from(value).unwrap();
+  let Ok(date) = v8::Local::<v8::Date>::try_from(value) else {
+    return napi_date_expected;
+  };
   // TODO: should be value of
   *result = date.number_value(&mut env.scope()).unwrap();
   napi_ok
@@ -1845,7 +1855,9 @@ fn napi_get_element(
   check_env!(env);
   let env = unsafe { &mut *env };
   let object = napi_value_unchecked(object);
-  let array = v8::Local::<v8::Array>::try_from(object).unwrap();
+  let Ok(array) = v8::Local::<v8::Array>::try_from(object) else {
+    return napi_invalid_arg;
+  };
   let value: v8::Local<v8::Value> =
     array.get_index(&mut env.scope(), index).unwrap();
   *result = value.into();
@@ -1869,7 +1881,7 @@ fn napi_get_instance_data(
   env: *mut Env,
   result: *mut *mut c_void,
 ) -> napi_status {
-  let env = &mut *(env as *mut Env);
+  let env = &mut *env;
   let shared = env.shared();
   *result = shared.instance_data;
   napi_ok
@@ -2157,11 +2169,9 @@ fn napi_has_own_property(
   check_arg!(env, result);
 
   let scope = &mut env.scope();
-  let Some(object) = object
-    .map(|o| o.to_object(scope))
-    .flatten() else {
-      return napi_invalid_arg;
-    };
+  let Some(object) = object.map(|o| o.to_object(scope)).flatten() else {
+    return napi_invalid_arg;
+  };
 
   if key.is_none() {
     return napi_invalid_arg;
@@ -2170,7 +2180,7 @@ fn napi_has_own_property(
     return napi_name_expected;
   };
 
-  let Some(has_own) =  object.has_own_property(scope, key) else {
+  let Some(has_own) = object.has_own_property(scope, key) else {
     return napi_generic_failure;
   };
 
@@ -2192,11 +2202,9 @@ fn napi_has_property(
   check_arg!(env, result);
 
   let scope = &mut env.scope();
-  let Some(object) = object
-    .map(|o| o.to_object(scope))
-    .flatten() else {
-      return napi_invalid_arg;
-    };
+  let Some(object) = object.map(|o| o.to_object(scope)).flatten() else {
+    return napi_invalid_arg;
+  };
 
   let Some(has) = object.has(scope, key.unwrap_unchecked()) else {
     return napi_generic_failure;
@@ -2219,10 +2227,9 @@ fn napi_instanceof(
 
   let value = napi_value_unchecked(value);
   let constructor = napi_value_unchecked(constructor);
-  let Some(ctor) = constructor
-    .to_object(&mut env.scope()) else {
-      return napi_object_expected;
-    };
+  let Some(ctor) = constructor.to_object(&mut env.scope()) else {
+    return napi_object_expected;
+  };
   if !ctor.is_function() {
     return napi_function_expected;
   }
@@ -2333,8 +2340,7 @@ fn napi_is_error(
 }
 
 #[napi_sym::napi_sym]
-fn napi_is_exception_pending(env: *mut Env, result: *mut bool) -> napi_status {
-  let mut _env = &mut *(env as *mut Env);
+fn napi_is_exception_pending(_env: *mut Env, result: *mut bool) -> napi_status {
   // TODO
   *result = false;
   napi_ok
@@ -2373,7 +2379,9 @@ fn napi_new_instance(
   check_env!(env);
   let env = unsafe { &mut *env };
   let constructor = napi_value_unchecked(constructor);
-  let constructor = v8::Local::<v8::Function>::try_from(constructor).unwrap();
+  let Ok(constructor) = v8::Local::<v8::Function>::try_from(constructor) else {
+    return napi_function_expected;
+  };
   let args: &[v8::Local<v8::Value>] =
     transmute(std::slice::from_raw_parts(argv, argc));
   let inst = constructor.new_instance(&mut env.scope(), args).unwrap();
@@ -2428,8 +2436,9 @@ fn napi_open_handle_scope(
   env: *mut Env,
   _result: *mut napi_handle_scope,
 ) -> napi_status {
-  let env = &mut *(env as *mut Env);
+  let env = &mut *env;
 
+  // TODO: this is also not implemented in napi_close_handle_scope
   // *result = &mut env.scope() as *mut _ as napi_handle_scope;
   env.open_handle_scopes += 1;
   napi_ok
@@ -2551,7 +2560,9 @@ fn napi_set_element(
   check_env!(env);
   let env = unsafe { &mut *env };
   let object = napi_value_unchecked(object);
-  let array = v8::Local::<v8::Array>::try_from(object).unwrap();
+  let Ok(array) = v8::Local::<v8::Array>::try_from(object) else {
+    return napi_invalid_arg;
+  };
   let value = napi_value_unchecked(value);
   array.set_index(&mut env.scope(), index, value).unwrap();
   napi_ok
@@ -2564,7 +2575,7 @@ fn napi_set_instance_data(
   finalize_cb: Option<napi_finalize>,
   finalize_hint: *mut c_void,
 ) -> napi_status {
-  let env = &mut *(env as *mut Env);
+  let env = &mut *env;
   let shared = env.shared_mut();
   shared.instance_data = data;
   shared.data_finalize = if finalize_cb.is_some() {
@@ -2606,11 +2617,9 @@ fn napi_set_property(
   check_arg_option!(env, value);
 
   let scope = &mut env.scope();
-  let Some(object) = object
-    .map(|o| o.to_object(scope))
-    .flatten() else {
-      return napi_invalid_arg
-    };
+  let Some(object) = object.map(|o| o.to_object(scope)).flatten() else {
+    return napi_invalid_arg;
+  };
 
   if object
     .set(scope, key.unwrap_unchecked(), value.unwrap_unchecked())
@@ -2798,10 +2807,9 @@ fn napi_unwrap(
   let shared = &*(env.shared as *const EnvShared);
   let napi_wrap = v8::Local::new(&mut env.scope(), &shared.napi_wrap);
   let ext = obj.get_private(&mut env.scope(), napi_wrap).unwrap();
-  let Some(ext) = v8::Local::<v8::External>::try_from(ext)
-    .ok() else {
-      return napi_invalid_arg;
-    };
+  let Some(ext) = v8::Local::<v8::External>::try_from(ext).ok() else {
+    return napi_invalid_arg;
+  };
   *result = ext.value();
   napi_ok
 }

@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -19,6 +19,9 @@
 // DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
 
 import {
   ERR_INVALID_ARG_TYPE,
@@ -66,15 +69,15 @@ import {
   CHAR_VERTICAL_LINE,
   CHAR_ZERO_WIDTH_NOBREAK_SPACE,
 } from "ext:deno_node/path/_constants.ts";
-import * as path from "ext:deno_node/path.ts";
-import { toASCII, toUnicode } from "ext:deno_node/punycode.ts";
+import * as path from "node:path";
+import {
+  domainToASCII as idnaToASCII,
+  domainToUnicode as idnaToUnicode,
+} from "ext:deno_node/internal/idna.ts";
 import { isWindows, osType } from "ext:deno_node/_util/os.ts";
 import { encodeStr, hexTable } from "ext:deno_node/internal/querystring.ts";
-import querystring from "ext:deno_node/querystring.ts";
-import type {
-  ParsedUrlQuery,
-  ParsedUrlQueryInput,
-} from "ext:deno_node/querystring.ts";
+import querystring from "node:querystring";
+import type { ParsedUrlQuery, ParsedUrlQueryInput } from "node:querystring";
 import { URL, URLSearchParams } from "ext:deno_url/00_url.js";
 
 const forwardSlashRegEx = /\//g;
@@ -813,7 +816,7 @@ export class Url {
 
           // Use lenient mode (`true`) to try to support even non-compliant
           // URLs.
-          this.hostname = toASCII(this.hostname);
+          this.hostname = idnaToASCII(this.hostname);
 
           // Prevent two potential routes of hostname spoofing.
           // 1. If this.hostname is empty, it must have become empty due to toASCII
@@ -1251,7 +1254,7 @@ export function resolveObject(source: string | Url, relative: string) {
  * @see https://www.rfc-editor.org/rfc/rfc3490#section-4
  */
 export function domainToASCII(domain: string) {
-  return toASCII(domain);
+  return idnaToASCII(domain);
 }
 
 /**
@@ -1261,7 +1264,7 @@ export function domainToASCII(domain: string) {
  * @see https://www.rfc-editor.org/rfc/rfc3490#section-4
  */
 export function domainToUnicode(domain: string) {
-  return toUnicode(domain);
+  return idnaToUnicode(domain);
 }
 
 /**
@@ -1396,7 +1399,7 @@ export function pathToFileURL(filepath: string): URL {
       );
     }
 
-    outURL.hostname = domainToASCII(hostname);
+    outURL.hostname = idnaToASCII(hostname);
     outURL.pathname = encodePathChars(paths.slice(3).join("/"));
   } else {
     let resolved = path.resolve(filepath);

@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 import { getBinding } from "ext:deno_node/internal_binding/mod.ts";
 import type { BindingName } from "ext:deno_node/internal_binding/mod.ts";

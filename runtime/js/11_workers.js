@@ -1,18 +1,27 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-const core = globalThis.Deno.core;
-const ops = core.ops;
-const primordials = globalThis.__bootstrap.primordials;
+import { core, primordials } from "ext:core/mod.js";
+import {
+  op_create_worker,
+  op_host_post_message,
+  op_host_recv_ctrl,
+  op_host_recv_message,
+  op_host_terminate_worker,
+} from "ext:core/ops";
 const {
   ArrayPrototypeFilter,
   Error,
   ObjectPrototypeIsPrototypeOf,
   String,
   StringPrototypeStartsWith,
+  Symbol,
+  SymbolFor,
   SymbolIterator,
   SymbolToStringTag,
 } = primordials;
+
 import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 import { URL } from "ext:deno_url/00_url.js";
 import { getLocationHref } from "ext:deno_web/12_location.js";
 import { serializePermissions } from "ext:runtime/10_permissions.js";
@@ -22,6 +31,7 @@ import {
   ErrorEvent,
   EventTarget,
   MessageEvent,
+  setIsTrusted,
 } from "ext:deno_web/02_event.js";
 import {
   deserializeJsMessageData,
@@ -36,36 +46,43 @@ function createWorker(
   permissions,
   name,
   workerType,
+  closeOnIdle,
 ) {
-  return ops.op_create_worker({
+  return op_create_worker({
     hasSourceCode,
     name,
     permissions: serializePermissions(permissions),
     sourceCode,
     specifier,
     workerType,
+    closeOnIdle,
   });
 }
 
 function hostTerminateWorker(id) {
-  ops.op_host_terminate_worker(id);
+  op_host_terminate_worker(id);
 }
 
 function hostPostMessage(id, data) {
-  ops.op_host_post_message(id, data);
+  op_host_post_message(id, data);
 }
 
 function hostRecvCtrl(id) {
-  return core.opAsync("op_host_recv_ctrl", id);
+  return op_host_recv_ctrl(id);
 }
 
 function hostRecvMessage(id) {
-  return core.opAsync("op_host_recv_message", id);
+  return op_host_recv_message(id);
 }
+
+const privateWorkerRef = Symbol();
 
 class Worker extends EventTarget {
   #id = 0;
   #name = "";
+  #refCount = 1;
+  #messagePromise = undefined;
+  #controlPromise = undefined;
 
   // "RUNNING" | "CLOSED" | "TERMINATED"
   // "TERMINATED" means that any controls or messages received will be
@@ -111,12 +128,37 @@ class Worker extends EventTarget {
       hasSourceCode,
       sourceCode,
       deno?.permissions,
-      name,
+      this.#name,
       workerType,
+      false,
     );
     this.#id = id;
     this.#pollControl();
     this.#pollMessages();
+  }
+
+  [privateWorkerRef](ref) {
+    if (ref) {
+      this.#refCount++;
+    } else {
+      this.#refCount--;
+    }
+
+    if (!ref && this.#refCount == 0) {
+      if (this.#controlPromise) {
+        core.unrefOpPromise(this.#controlPromise);
+      }
+      if (this.#messagePromise) {
+        core.unrefOpPromise(this.#messagePromise);
+      }
+    } else if (ref && this.#refCount == 1) {
+      if (this.#controlPromise) {
+        core.refOpPromise(this.#controlPromise);
+      }
+      if (this.#messagePromise) {
+        core.refOpPromise(this.#messagePromise);
+      }
+    }
   }
 
   #handleError(e) {
@@ -142,7 +184,11 @@ class Worker extends EventTarget {
 
   #pollControl = async () => {
     while (this.#status === "RUNNING") {
-      const { 0: type, 1: data } = await hostRecvCtrl(this.#id);
+      this.#controlPromise = hostRecvCtrl(this.#id);
+      if (this.#refCount < 1) {
+        core.unrefOpPromise(this.#controlPromise);
+      }
+      const { 0: type, 1: data } = await this.#controlPromise;
 
       // If terminate was called then we ignore all messages
       if (this.#status === "TERMINATED") {
@@ -173,7 +219,11 @@ class Worker extends EventTarget {
 
   #pollMessages = async () => {
     while (this.#status !== "TERMINATED") {
-      const data = await hostRecvMessage(this.#id);
+      this.#messagePromise = hostRecvMessage(this.#id);
+      if (this.#refCount < 1) {
+        core.unrefOpPromise(this.#messagePromise);
+      }
+      const data = await this.#messagePromise;
       if (this.#status === "TERMINATED" || data === null) {
         return;
       }
@@ -187,6 +237,7 @@ class Worker extends EventTarget {
           cancelable: false,
           data: err,
         });
+        setIsTrusted(event, true);
         this.dispatchEvent(event);
         return;
       }
@@ -198,6 +249,7 @@ class Worker extends EventTarget {
           (t) => ObjectPrototypeIsPrototypeOf(MessagePortPrototype, t),
         ),
       });
+      setIsTrusted(event, true);
       this.dispatchEvent(event);
     }
   };
@@ -239,8 +291,25 @@ class Worker extends EventTarget {
     }
   }
 
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(WorkerPrototype, this),
+        keys: [
+          "onerror",
+          "onmessage",
+          "onmessageerror",
+        ],
+      }),
+      inspectOptions,
+    );
+  }
+
   [SymbolToStringTag] = "Worker";
 }
+
+const WorkerPrototype = Worker.prototype;
 
 defineEventHandler(Worker.prototype, "error");
 defineEventHandler(Worker.prototype, "message");

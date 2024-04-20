@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::hash::Hasher;
 
@@ -9,6 +9,10 @@ pub struct FastInsecureHasher(twox_hash::XxHash64);
 impl FastInsecureHasher {
   pub fn new() -> Self {
     Self::default()
+  }
+
+  pub fn hash(hashable: impl std::hash::Hash) -> u64 {
+    Self::new().write_hashable(hashable).finish()
   }
 
   pub fn write_str(&mut self, text: &str) -> &mut Self {
@@ -33,7 +37,7 @@ impl FastInsecureHasher {
 
   pub fn write_hashable(
     &mut self,
-    hashable: &impl std::hash::Hash,
+    hashable: impl std::hash::Hash,
   ) -> &mut Self {
     hashable.hash(&mut self.0);
     self

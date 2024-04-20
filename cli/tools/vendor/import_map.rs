@@ -1,9 +1,10 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use deno_ast::LineAndColumnIndex;
 use deno_ast::ModuleSpecifier;
 use deno_ast::SourceTextInfo;
 use deno_core::error::AnyError;
+use deno_graph::source::ResolutionMode;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_graph::Position;
@@ -14,6 +15,7 @@ use import_map::SpecifierMap;
 use indexmap::IndexMap;
 use log::warn;
 
+use crate::args::JsxImportSourceConfig;
 use crate::cache::ParsedSourceCache;
 
 use super::mappings::Mappings;
@@ -176,14 +178,30 @@ impl<'a> ImportsBuilder<'a> {
   }
 }
 
+pub struct BuildImportMapInput<'a> {
+  pub base_dir: &'a ModuleSpecifier,
+  pub modules: &'a [&'a Module],
+  pub graph: &'a ModuleGraph,
+  pub mappings: &'a Mappings,
+  pub original_import_map: Option<&'a ImportMap>,
+  pub jsx_import_source: Option<&'a JsxImportSourceConfig>,
+  pub resolver: &'a dyn deno_graph::source::Resolver,
+  pub parsed_source_cache: &'a ParsedSourceCache,
+}
+
 pub fn build_import_map(
-  base_dir: &ModuleSpecifier,
-  graph: &ModuleGraph,
-  modules: &[&Module],
-  mappings: &Mappings,
-  original_import_map: Option<&ImportMap>,
-  parsed_source_cache: &ParsedSourceCache,
+  input: BuildImportMapInput<'_>,
 ) -> Result<String, AnyError> {
+  let BuildImportMapInput {
+    base_dir,
+    modules,
+    graph,
+    mappings,
+    original_import_map,
+    jsx_import_source,
+    resolver,
+    parsed_source_cache,
+  } = input;
   let mut builder = ImportMapBuilder::new(base_dir, mappings);
   visit_modules(graph, modules, mappings, &mut builder, parsed_source_cache)?;
 
@@ -191,6 +209,23 @@ pub fn build_import_map(
     builder
       .imports
       .add(base_specifier.to_string(), base_specifier);
+  }
+
+  // add the jsx import source to the destination import map, if mapped in the original import map
+  if let Some(jsx_import_source) = jsx_import_source {
+    if let Some(specifier_text) = jsx_import_source.maybe_specifier_text() {
+      if let Ok(resolved_url) = resolver.resolve(
+        &specifier_text,
+        &deno_graph::Range {
+          specifier: jsx_import_source.base_url.clone(),
+          start: deno_graph::Position::zeroed(),
+          end: deno_graph::Position::zeroed(),
+        },
+        ResolutionMode::Execution,
+      ) {
+        builder.imports.add(specifier_text, &resolved_url);
+      }
+    }
   }
 
   Ok(builder.into_import_map(original_import_map).to_json())
@@ -205,7 +240,7 @@ fn visit_modules(
 ) -> Result<(), AnyError> {
   for module in modules {
     let module = match module {
-      Module::Esm(module) => module,
+      Module::Js(module) => module,
       // skip visiting Json modules as they are leaves
       Module::Json(_)
       | Module::Npm(_)
@@ -214,9 +249,8 @@ fn visit_modules(
     };
 
     let parsed_source =
-      parsed_source_cache.get_parsed_source_from_esm_module(module)?;
+      parsed_source_cache.get_parsed_source_from_js_module(module)?;
     let text_info = parsed_source.text_info().clone();
-    let source_text = &module.source;
 
     for dep in module.dependencies.values() {
       visit_resolution(
@@ -226,7 +260,7 @@ fn visit_modules(
         &module.specifier,
         mappings,
         &text_info,
-        source_text,
+        &module.source,
       );
       visit_resolution(
         &dep.maybe_type,
@@ -235,7 +269,7 @@ fn visit_modules(
         &module.specifier,
         mappings,
         &text_info,
-        source_text,
+        &module.source,
       );
     }
 
@@ -247,7 +281,7 @@ fn visit_modules(
         &module.specifier,
         mappings,
         &text_info,
-        source_text,
+        &module.source,
       );
     }
   }

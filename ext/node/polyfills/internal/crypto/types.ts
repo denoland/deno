@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
 import { Buffer } from "../../buffer.ts";
@@ -16,7 +16,7 @@ export type Encoding =
   | CharacterEncoding
   | LegacyCharacterEncoding;
 
-export type ECDHKeyFormat = "compressed" | "uncompressed" | "hybrid";
+export type ECDHKeyFormat = "compressed" | "uncompressed";
 
 export type BinaryLike = string | ArrayBufferView;
 

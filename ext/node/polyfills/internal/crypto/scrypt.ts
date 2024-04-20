@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 /*
 MIT License
 
@@ -21,13 +21,14 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
- */
+*/
 
-import { Buffer } from "ext:deno_node/buffer.ts";
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
+import { Buffer } from "node:buffer";
 import { HASH_DATA } from "ext:deno_node/internal/crypto/types.ts";
-
-const { core } = globalThis.__bootstrap;
-const { ops } = core;
+import { op_node_scrypt_async, op_node_scrypt_sync } from "ext:core/ops";
 
 type Opts = Partial<{
   N: number;
@@ -72,7 +73,7 @@ export function scryptSync(
   }
 
   const buf = Buffer.alloc(keylen);
-  ops.op_node_scrypt_sync(
+  op_node_scrypt_sync(
     password,
     salt,
     keylen,
@@ -107,8 +108,7 @@ export function scrypt(
   }
 
   try {
-    core.opAsync(
-      "op_node_scrypt_async",
+    op_node_scrypt_async(
       password,
       salt,
       keylen,

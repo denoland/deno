@@ -1,23 +1,31 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-// import { ReadableStreamPrototype } from "ext:deno_web/06_streams.js";
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
 
-const core = globalThis.__bootstrap.core;
+import { core } from "ext:core/mod.js";
+import {
+  op_fetch_response_upgrade,
+  op_fetch_send,
+  op_node_http_request,
+} from "ext:core/ops";
+
 import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
-import { type Deferred, deferred } from "ext:deno_node/_util/async.ts";
+import { setTimeout } from "ext:deno_web/02_timers.js";
 import {
   _normalizeArgs,
   // createConnection,
   ListenOptions,
   Socket,
-} from "ext:deno_node/net.ts";
-import { Buffer } from "ext:deno_node/buffer.ts";
+} from "node:net";
+import { Buffer } from "node:buffer";
 import { ERR_SERVER_NOT_RUNNING } from "ext:deno_node/internal/errors.ts";
-import { EventEmitter } from "ext:deno_node/events.ts";
+import { EventEmitter } from "node:events";
 import { nextTick } from "ext:deno_node/_next_tick.ts";
 import {
   validateBoolean,
   validateInteger,
+  validateObject,
   validatePort,
 } from "ext:deno_node/internal/validators.mjs";
 import {
@@ -25,12 +33,14 @@ import {
   finished,
   Readable as NodeReadable,
   Writable as NodeWritable,
-} from "ext:deno_node/stream.ts";
+} from "node:stream";
 import {
   OutgoingMessage,
   parseUniqueHeadersOption,
   validateHeaderName,
+  validateHeaderValue,
 } from "ext:deno_node/_http_outgoing.ts";
+import { ok as assert } from "node:assert";
 import { kOutHeaders } from "ext:deno_node/internal/http.ts";
 import { _checkIsHttpToken as checkIsHttpToken } from "ext:deno_node/_http_common.ts";
 import { Agent, globalAgent } from "ext:deno_node/_http_agent.mjs";
@@ -38,9 +48,11 @@ import { Agent, globalAgent } from "ext:deno_node/_http_agent.mjs";
 import { urlToHttpOptions } from "ext:deno_node/internal/url.ts";
 import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
 import { constants, TCP } from "ext:deno_node/internal_binding/tcp_wrap.ts";
+import { notImplemented, warnNotImplemented } from "ext:deno_node/_utils.ts";
 import {
   connResetException,
   ERR_HTTP_HEADERS_SENT,
+  ERR_HTTP_SOCKET_ASSIGNED,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_HTTP_TOKEN,
   ERR_INVALID_PROTOCOL,
@@ -49,6 +61,13 @@ import {
 import { getTimerDuration } from "ext:deno_node/internal/timers.mjs";
 import { serve, upgradeHttpRaw } from "ext:deno_http/00_serve.js";
 import { createHttpClient } from "ext:deno_fetch/22_http_client.js";
+import { headersEntries } from "ext:deno_fetch/20_headers.js";
+import { timerId } from "ext:deno_web/03_abort_signal.js";
+import { clearTimeout as webClearTimeout } from "ext:deno_web/02_timers.js";
+import { resourceForReadableStream } from "ext:deno_web/06_streams.js";
+import { TcpConn } from "ext:deno_net/01_net.js";
+
+const { internalRidSymbol } = core;
 
 enum STATUS_CODES {
   /** RFC 7231, 6.2.1 */
@@ -264,6 +283,33 @@ const kError = Symbol("kError");
 
 const kUniqueHeaders = Symbol("kUniqueHeaders");
 
+class FakeSocket extends EventEmitter {
+  constructor(
+    opts: {
+      encrypted?: boolean | undefined;
+      remotePort?: number | undefined;
+      remoteAddress?: string | undefined;
+    } = {},
+  ) {
+    super();
+    this.remoteAddress = opts.remoteAddress;
+    this.remotePort = opts.remotePort;
+    this.encrypted = opts.encrypted;
+    this.writable = true;
+    this.readable = true;
+  }
+
+  setKeepAlive() {}
+
+  end() {}
+
+  destroy() {}
+
+  setTimeout(callback, timeout = 0, ...args) {
+    setTimeout(callback, timeout, args);
+  }
+}
+
 /** ClientRequest represents the http(s) request from the client */
 class ClientRequest extends OutgoingMessage {
   defaultProtocol = "http:";
@@ -349,10 +395,7 @@ class ClientRequest extends OutgoingMessage {
     this.socketPath = options!.socketPath;
 
     if (options!.timeout !== undefined) {
-      const msecs = getTimerDuration(options.timeout, "timeout");
-      const timeout = AbortSignal.timeout(msecs);
-      timeout.onabort = () => this.emit("timeout");
-      this._timeout = timeout;
+      this.setTimeout(options.timeout);
     }
 
     const signal = options!.signal;
@@ -500,6 +543,14 @@ class ClientRequest extends OutgoingMessage {
       delete optsWithoutSignal.signal;
     }
 
+    if (options!.createConnection) {
+      warnNotImplemented("ClientRequest.options.createConnection");
+    }
+
+    if (options!.lookup) {
+      notImplemented("ClientRequest.options.lookup");
+    }
+
     // initiate connection
     // TODO(crowlKats): finish this
     /*if (this.agent) {
@@ -533,7 +584,10 @@ class ClientRequest extends OutgoingMessage {
         this.onSocket(createConnection(optsWithoutSignal));
       }
     }*/
+    this.onSocket(new FakeSocket({ encrypted: this._encrypted }));
+  }
 
+  _writeHeader() {
     const url = this._createUrlStrFromOptions();
 
     const headers = [];
@@ -547,210 +601,193 @@ class ClientRequest extends OutgoingMessage {
     const client = this._getClient() ?? createHttpClient({ http2: false });
     this._client = client;
 
-    const req = core.ops.op_node_http_request(
+    if (
+      this.method === "POST" || this.method === "PATCH" || this.method === "PUT"
+    ) {
+      const { readable, writable } = new TransformStream({
+        cancel: (e) => {
+          this._requestSendError = e;
+        },
+      });
+
+      this._bodyWritable = writable;
+      this._bodyWriter = writable.getWriter();
+
+      this._bodyWriteRid = resourceForReadableStream(readable);
+    }
+
+    this._req = op_node_http_request(
       this.method,
       url,
       headers,
-      client.rid,
-      this.method === "POST" || this.method === "PATCH",
+      client[internalRidSymbol],
+      this._bodyWriteRid,
     );
+  }
 
-    this._req = req;
-
-    if (req.requestBodyRid !== null) {
-      const reader = this.stream.getReader();
-      (async () => {
-        let done = false;
-        while (!done) {
-          let val;
-          try {
-            const res = await reader.read();
-            done = res.done;
-            val = res.value;
-          } catch (err) {
-            //if (terminator.aborted) break;
-            // TODO(lucacasonato): propagate error into response body stream
-            this._requestSendError = err;
-            this._requestSendErrorSet = true;
-            break;
-          }
-          if (done) break;
-          try {
-            await core.writeAll(req.requestBodyRid, val);
-          } catch (err) {
-            //if (terminator.aborted) break;
-            await reader.cancel(err);
-            // TODO(lucacasonato): propagate error into response body stream
-            this._requestSendError = err;
-            this._requestSendErrorSet = true;
-            break;
-          }
-        }
-        if (done /*&& !terminator.aborted*/) {
-          try {
-            await core.shutdown(req.requestBodyRid);
-          } catch (err) {
-            // TODO(bartlomieju): fix this conditional
-            // deno-lint-ignore no-constant-condition
-            if (true) {
-              this._requestSendError = err;
-              this._requestSendErrorSet = true;
-            }
-          }
-        }
-        //WeakMapPrototypeDelete(requestBodyReaders, req);
-        core.tryClose(req.requestBodyRid);
-      })();
+  _implicitHeader() {
+    if (this._header) {
+      throw new ERR_HTTP_HEADERS_SENT("render");
     }
+    this._storeHeader(
+      this.method + " " + this.path + " HTTP/1.1\r\n",
+      this[kOutHeaders],
+    );
   }
 
   _getClient(): Deno.HttpClient | undefined {
     return undefined;
   }
 
-  onSocket(socket, err) {
-    if (this.destroyed || err) {
-      this.destroyed = true;
-
-      // deno-lint-ignore no-inner-declarations
-      function _destroy(req, err) {
-        if (!req.aborted && !err) {
-          err = connResetException("socket hang up");
-        }
-        if (err) {
-          req.emit("error", err);
-        }
-        req._closed = true;
-        req.emit("close");
-      }
-
-      if (socket) {
-        if (!err && this.agent && !socket.destroyed) {
-          socket.emit("free");
-        } else {
-          finished(socket.destroy(err || this[kError]), (er) => {
-            if (er?.code === "ERR_STREAM_PREMATURE_CLOSE") {
-              er = null;
-            }
-            _destroy(this, er || err);
-          });
-          return;
-        }
-      }
-
-      _destroy(this, err || this[kError]);
-    } else {
-      //tickOnSocket(this, socket);
-      //this._flush();
-    }
-  }
-
-  // TODO(bartlomieju): use callback here
-  // deno-lint-ignore no-explicit-any
-  end(chunk?: any, encoding?: any, _cb?: any): this {
-    this.finished = true;
-
-    if (chunk !== undefined) {
-      this.write(chunk, encoding);
-    }
-    this.controller.close();
-
-    core.opAsync("op_fetch_send", this._req.requestRid).then((res) => {
-      if (this._timeout) {
-        this._timeout.onabort = null;
-      }
-      this._client.close();
-      const incoming = new IncomingMessageForClient(this.socket);
-
-      // TODO(@crowlKats):
-      // incoming.httpVersionMajor = versionMajor;
-      // incoming.httpVersionMinor = versionMinor;
-      // incoming.httpVersion = `${versionMajor}.${versionMinor}`;
-      // incoming.joinDuplicateHeaders = socket?.server?.joinDuplicateHeaders ||
-      //  parser.joinDuplicateHeaders;
-
-      incoming.url = res.url;
-      incoming.statusCode = res.status;
-      incoming.statusMessage = res.statusText;
-
-      incoming._addHeaderLines(
-        res.headers,
-        Object.entries(res.headers).flat().length,
-      );
-      incoming._bodyRid = res.responseRid;
-
-      if (this._req.cancelHandleRid !== null) {
-        core.tryClose(this._req.cancelHandleRid);
-      }
-
-      this.emit("response", incoming);
-    }).catch((err) => {
-      if (this._req.cancelHandleRid !== null) {
-        core.tryClose(this._req.cancelHandleRid);
-      }
-
-      if (this._requestSendErrorSet) {
-        // if the request body stream errored, we want to propagate that error
-        // instead of the original error from opFetchSend
-        throw new TypeError("Failed to fetch: request body stream errored", {
-          cause: this._requestSendError,
-        });
-      }
-
-      if (err.message.includes("connection closed before message completed")) {
-        // Node.js seems ignoring this error
-      } else if (err.message.includes("The signal has been aborted")) {
-        // Remap this error
-        this.emit("error", connResetException("socket hang up"));
-      } else {
-        this.emit("error", err);
-      }
+  // TODO(bartlomieju): handle error
+  onSocket(socket, _err) {
+    nextTick(() => {
+      this.socket = socket;
+      this.emit("socket", socket);
     });
   }
-  /*
-    override async _final() {
-      if (this.controller) {
-        this.controller.close();
-      }
 
-      const body = await this._createBody(this.body, this.opts);
-      const client = await this._createCustomClient();
-      const opts = {
-        body,
-        method: this.opts.method,
-        client,
-        headers: this.opts.headers,
-        signal: this.opts.signal ?? undefined,
-      };
-      const mayResponse = fetch(this._createUrlStrFromOptions(this.opts), opts)
-        .catch((e) => {
-          if (e.message.includes("connection closed before message completed")) {
-            // Node.js seems ignoring this error
-          } else if (e.message.includes("The signal has been aborted")) {
-            // Remap this error
-            this.emit("error", connResetException("socket hang up"));
-          } else {
-            this.emit("error", e);
+  // deno-lint-ignore no-explicit-any
+  end(chunk?: any, encoding?: any, cb?: any): this {
+    if (typeof chunk === "function") {
+      cb = chunk;
+      chunk = null;
+      encoding = null;
+    } else if (typeof encoding === "function") {
+      cb = encoding;
+      encoding = null;
+    }
+
+    this.finished = true;
+    if (chunk) {
+      this.write_(chunk, encoding, null, true);
+    } else if (!this._headerSent) {
+      this._contentLength = 0;
+      this._implicitHeader();
+      this._send("", "latin1");
+    }
+    this._bodyWriter?.close();
+
+    (async () => {
+      try {
+        const res = await op_fetch_send(this._req.requestRid);
+        try {
+          cb?.();
+        } catch (_) {
+          //
+        }
+        if (this._timeout) {
+          this._timeout.removeEventListener("abort", this._timeoutCb);
+          webClearTimeout(this._timeout[timerId]);
+        }
+        this._client.close();
+        const incoming = new IncomingMessageForClient(this.socket);
+        incoming.req = this;
+        this.res = incoming;
+
+        // TODO(@crowlKats):
+        // incoming.httpVersionMajor = versionMajor;
+        // incoming.httpVersionMinor = versionMinor;
+        // incoming.httpVersion = `${versionMajor}.${versionMinor}`;
+        // incoming.joinDuplicateHeaders = socket?.server?.joinDuplicateHeaders ||
+        //  parser.joinDuplicateHeaders;
+
+        incoming.url = res.url;
+        incoming.statusCode = res.status;
+        incoming.statusMessage = res.statusText;
+        incoming.upgrade = null;
+
+        for (const [key, _value] of res.headers) {
+          if (key.toLowerCase() === "upgrade") {
+            incoming.upgrade = true;
+            break;
           }
-          return undefined;
-        });
+        }
 
-      const res = new IncomingMessageForClient(
-        await mayResponse,
-        this._createSocket(),
-      );
-      this.emit("response", res);
-      if (client) {
-        res.on("end", () => {
-          client.close();
-        });
+        incoming._addHeaderLines(
+          res.headers,
+          Object.entries(res.headers).flat().length,
+        );
+
+        if (this._req.cancelHandleRid !== null) {
+          core.tryClose(this._req.cancelHandleRid);
+        }
+
+        if (incoming.upgrade) {
+          if (this.listenerCount("upgrade") === 0) {
+            // No listeners, so we got nothing to do
+            // destroy?
+            return;
+          }
+
+          if (this.method === "CONNECT") {
+            throw new Error("not implemented CONNECT");
+          }
+
+          const upgradeRid = await op_fetch_response_upgrade(
+            res.responseRid,
+          );
+          assert(typeof res.remoteAddrIp !== "undefined");
+          assert(typeof res.remoteAddrIp !== "undefined");
+          const conn = new TcpConn(
+            upgradeRid,
+            {
+              transport: "tcp",
+              hostname: res.remoteAddrIp,
+              port: res.remoteAddrIp,
+            },
+            // TODO(bartlomieju): figure out actual values
+            {
+              transport: "tcp",
+              hostname: "127.0.0.1",
+              port: 80,
+            },
+          );
+          const socket = new Socket({
+            handle: new TCP(constants.SERVER, conn),
+          });
+
+          this.upgradeOrConnect = true;
+
+          this.emit("upgrade", incoming, socket, Buffer.from([]));
+          this.destroyed = true;
+          this._closed = true;
+          this.emit("close");
+        } else {
+          {
+            incoming._bodyRid = res.responseRid;
+          }
+          this.emit("response", incoming);
+        }
+      } catch (err) {
+        if (this._req.cancelHandleRid !== null) {
+          core.tryClose(this._req.cancelHandleRid);
+        }
+
+        if (this._requestSendError !== undefined) {
+          // if the request body stream errored, we want to propagate that error
+          // instead of the original error from opFetchSend
+          throw new TypeError(
+            "Failed to fetch: request body stream errored",
+            {
+              cause: this._requestSendError,
+            },
+          );
+        }
+
+        if (
+          err.message.includes("connection closed before message completed")
+        ) {
+          // Node.js seems ignoring this error
+        } else if (err.message.includes("The signal has been aborted")) {
+          // Remap this error
+          this.emit("error", connResetException("socket hang up"));
+        } else {
+          this.emit("error", err);
+        }
       }
-      if (this.opts.timeout != undefined) {
-        clearTimeout(this.opts.timeout);
-        this.opts.timeout = undefined;
-      }
-      this.cb?.(res);
-    }*/
+    })();
+  }
 
   abort() {
     if (this.aborted) {
@@ -769,6 +806,13 @@ class ClientRequest extends OutgoingMessage {
     }
     this.destroyed = true;
 
+    const rid = this._client?.[internalRidSymbol];
+    if (rid) {
+      core.tryClose(rid);
+    }
+    if (this._req.cancelHandleRid !== null) {
+      core.tryClose(this._req.cancelHandleRid);
+    }
     // If we're aborting, we don't care about any more response data.
     if (this.res) {
       this.res._dump();
@@ -792,23 +836,26 @@ class ClientRequest extends OutgoingMessage {
     const auth = this.auth;
     const host = this.host ?? this.hostname ?? "localhost";
     const hash = this.hash ? `#${this.hash}` : "";
-    const search = this.search ? this.search : "";
     const defaultPort = this.agent?.defaultPort;
     const port = this.port ?? defaultPort ?? 80;
     let path = this.path ?? "/";
     if (!path.startsWith("/")) {
       path = "/" + path;
     }
-    return `${protocol}//${auth ? `${auth}@` : ""}${host}${
-      port === 80 ? "" : `:${port}`
-    }${path}${search}${hash}`;
+    const url = new URL(
+      `${protocol}//${auth ? `${auth}@` : ""}${host}${
+        port === 80 ? "" : `:${port}`
+      }${path}`,
+    );
+    url.hash = hash;
+    return url.href;
   }
 
   setTimeout(msecs: number, callback?: () => void) {
     if (msecs === 0) {
       if (this._timeout) {
         this.removeAllListeners("timeout");
-        this._timeout.onabort = () => {};
+        this._timeout.removeEventListener("abort", this._timeoutCb);
         this._timeout = undefined;
       }
 
@@ -822,7 +869,8 @@ class ClientRequest extends OutgoingMessage {
     if (callback) this.once("timeout", callback);
 
     const timeout = AbortSignal.timeout(msecs);
-    timeout.onabort = () => this.emit("timeout");
+    this._timeoutCb = () => this.emit("timeout");
+    timeout.addEventListener("abort", this._timeoutCb);
     this._timeout = timeout;
 
     return this;
@@ -856,6 +904,11 @@ class ClientRequest extends OutgoingMessage {
       value = value.join("; ");
     }
     headers.push([key, value]);
+  }
+
+  // Once a socket is assigned to this request and is connected socket.setNoDelay() will be called.
+  setNoDelay() {
+    this.socket?.setNoDelay?.();
   }
 }
 
@@ -1028,6 +1081,7 @@ export class IncomingMessageForClient extends NodeReadable {
   // any messages, before ever calling this.  In that case, just skip
   // it, since something else is destroying this connection anyway.
   _destroy(err, cb) {
+    this.complete = true;
     if (!this.readableEnded || !this.complete) {
       this.aborted = true;
       this.emit("aborted");
@@ -1288,6 +1342,8 @@ export class ServerResponse extends NodeWritable {
   headersSent = false;
   #firstChunk: Chunk | null = null;
   #resolve: (value: Response | PromiseLike<Response>) => void;
+  // deno-lint-ignore no-explicit-any
+  #socketOverride: any | null = null;
 
   static #enqueue(controller: ReadableStreamDefaultController, chunk: Chunk) {
     if (typeof chunk === "string") {
@@ -1303,7 +1359,10 @@ export class ServerResponse extends NodeWritable {
     return status === 101 || status === 204 || status === 205 || status === 304;
   }
 
-  constructor(resolve: (value: Response | PromiseLike<Response>) => void) {
+  constructor(
+    resolve: (value: Response | PromiseLike<Response>) => void,
+    socket: FakeSocket,
+  ) {
     let controller: ReadableByteStreamController;
     const readable = new ReadableStream({
       start(c) {
@@ -1314,7 +1373,11 @@ export class ServerResponse extends NodeWritable {
       autoDestroy: true,
       defaultEncoding: "utf-8",
       emitClose: true,
-      write: (chunk, _encoding, cb) => {
+      write: (chunk, encoding, cb) => {
+        if (this.#socketOverride && this.#socketOverride.writable) {
+          this.#socketOverride.write(chunk, encoding);
+          return cb();
+        }
         if (!this.headersSent) {
           if (this.#firstChunk === null) {
             this.#firstChunk = chunk;
@@ -1346,6 +1409,7 @@ export class ServerResponse extends NodeWritable {
     });
     this.#readable = readable;
     this.#resolve = resolve;
+    this.socket = socket;
   }
 
   setHeader(name: string, value: string) {
@@ -1354,13 +1418,16 @@ export class ServerResponse extends NodeWritable {
   }
 
   getHeader(name: string) {
-    return this.#headers.get(name);
+    return this.#headers.get(name) ?? undefined;
   }
   removeHeader(name: string) {
     return this.#headers.delete(name);
   }
   getHeaderNames() {
     return Array.from(this.#headers.keys());
+  }
+  getHeaders() {
+    return Object.fromEntries(this.#headers.entries());
   }
   hasHeader(name: string) {
     return this.#headers.has(name);
@@ -1419,22 +1486,41 @@ export class ServerResponse extends NodeWritable {
     return super.end(chunk, encoding, cb);
   }
 
+  flushHeaders() {
+    // no-op
+  }
+
   // Undocumented API used by `npm:compression`.
   _implicitHeader() {
     this.writeHead(this.statusCode);
+  }
+
+  assignSocket(socket) {
+    if (socket._httpMessage) {
+      throw new ERR_HTTP_SOCKET_ASSIGNED();
+    }
+    socket._httpMessage = this;
+    this.#socketOverride = socket;
+  }
+
+  detachSocket(socket) {
+    assert(socket._httpMessage === this);
+    socket._httpMessage = null;
+    this.#socketOverride = null;
   }
 }
 
 // TODO(@AaronO): optimize
 export class IncomingMessageForServer extends NodeReadable {
   #req: Request;
+  #headers: Record<string, string>;
   url: string;
   method: string;
   // Polyfills part of net.Socket object.
   // These properties are used by `npm:forwarded` for example.
   socket: { remoteAddress: string; remotePort: number };
 
-  constructor(req: Request, remoteAddr: { hostname: string; port: number }) {
+  constructor(req: Request, socket: FakeSocket) {
     // Check if no body (GET/HEAD/OPTIONS/...)
     const reader = req.body?.getReader();
     super({
@@ -1461,10 +1547,7 @@ export class IncomingMessageForServer extends NodeReadable {
     // url: (new URL(request.url).pathname),
     this.url = req.url?.slice(req.url.indexOf("/", 8));
     this.method = req.method;
-    this.socket = {
-      remoteAddress: remoteAddr.hostname,
-      remotePort: remoteAddr.port,
-    };
+    this.socket = socket;
     this.#req = req;
   }
 
@@ -1476,8 +1559,24 @@ export class IncomingMessageForServer extends NodeReadable {
     return "1.1";
   }
 
+  set httpVersion(val) {
+    assert(val === "1.1");
+  }
+
   get headers() {
-    return Object.fromEntries(this.#req.headers.entries());
+    if (!this.#headers) {
+      this.#headers = {};
+      const entries = headersEntries(this.#req.headers);
+      for (let i = 0; i < entries.length; i++) {
+        const entry = entries[i];
+        this.#headers[entry[0]] = entry[1];
+      }
+    }
+    return this.#headers;
+  }
+
+  set headers(val) {
+    this.#headers = val;
   }
 
   get upgrade(): boolean {
@@ -1493,33 +1592,45 @@ export class IncomingMessageForServer extends NodeReadable {
   }
 }
 
-type ServerHandler = (
+export type ServerHandler = (
   req: IncomingMessageForServer,
   res: ServerResponse,
 ) => void;
 
-export function Server(handler?: ServerHandler): ServerImpl {
-  return new ServerImpl(handler);
+export function Server(opts, requestListener?: ServerHandler): ServerImpl {
+  return new ServerImpl(opts, requestListener);
 }
 
-class ServerImpl extends EventEmitter {
+export class ServerImpl extends EventEmitter {
   #httpConnections: Set<Deno.HttpConn> = new Set();
   #listener?: Deno.Listener;
 
   #addr: Deno.NetAddr;
   #hasClosed = false;
-  #server: Deno.Server;
+  #server: Deno.HttpServer;
   #unref = false;
   #ac?: AbortController;
-  #servePromise: Deferred<void>;
+  #serveDeferred: ReturnType<typeof Promise.withResolvers<void>>;
   listening = false;
 
-  constructor(handler?: ServerHandler) {
+  constructor(opts, requestListener?: ServerHandler) {
     super();
-    this.#servePromise = deferred();
-    this.#servePromise.then(() => this.emit("close"));
-    if (handler !== undefined) {
-      this.on("request", handler);
+
+    if (typeof opts === "function") {
+      requestListener = opts;
+      opts = kEmptyObject;
+    } else if (opts == null) {
+      opts = kEmptyObject;
+    } else {
+      validateObject(opts, "options");
+    }
+
+    this._opts = opts;
+
+    this.#serveDeferred = Promise.withResolvers<void>();
+    this.#serveDeferred.promise.then(() => this.emit("close"));
+    if (requestListener !== undefined) {
+      this.on("request", requestListener);
     }
   }
 
@@ -1542,31 +1653,41 @@ class ServerImpl extends EventEmitter {
 
     // TODO(bnoordhuis) Node prefers [::] when host is omitted,
     // we on the other hand default to 0.0.0.0.
-    const hostname = options.host ?? "0.0.0.0";
+    let hostname = options.host ?? "0.0.0.0";
+    if (hostname == "localhost") {
+      hostname = "127.0.0.1";
+    }
     this.#addr = {
       hostname,
       port,
     } as Deno.NetAddr;
     this.listening = true;
-    nextTick(() => this.#serve());
+    nextTick(() => this._serve());
 
     return this;
   }
 
-  #serve() {
+  _serve() {
     const ac = new AbortController();
     const handler = (request: Request, info: Deno.ServeHandlerInfo) => {
-      const req = new IncomingMessageForServer(request, info.remoteAddr);
+      const socket = new FakeSocket({
+        remoteAddress: info.remoteAddr.hostname,
+        remotePort: info.remoteAddr.port,
+        encrypted: this._encrypted,
+      });
+      const req = new IncomingMessageForServer(request, socket);
       if (req.upgrade && this.listenerCount("upgrade") > 0) {
         const { conn, response } = upgradeHttpRaw(request);
         const socket = new Socket({
           handle: new TCP(constants.SERVER, conn),
         });
+        // Update socket held by `req`.
+        req.socket = socket;
         this.emit("upgrade", req, socket, Buffer.from([]));
         return response;
       } else {
         return new Promise<Response>((resolve): void => {
-          const res = new ServerResponse(resolve);
+          const res = new ServerResponse(resolve, socket);
           this.emit("request", req, res);
         });
       }
@@ -1576,22 +1697,29 @@ class ServerImpl extends EventEmitter {
       return;
     }
     this.#ac = ac;
-    this.#server = serve(
-      {
-        handler: handler as Deno.ServeHandler,
-        ...this.#addr,
-        signal: ac.signal,
-        // @ts-ignore Might be any without `--unstable` flag
-        onListen: ({ port }) => {
-          this.#addr!.port = port;
-          this.emit("listening");
+    try {
+      this.#server = serve(
+        {
+          handler: handler as Deno.ServeHandler,
+          ...this.#addr,
+          signal: ac.signal,
+          // @ts-ignore Might be any without `--unstable` flag
+          onListen: ({ port }) => {
+            this.#addr!.port = port;
+            this.emit("listening");
+          },
+          ...this._additionalServeOptions?.(),
         },
-      },
-    );
+      );
+    } catch (e) {
+      this.emit("error", e);
+      return;
+    }
+
     if (this.#unref) {
       this.#server.unref();
     }
-    this.#server.finished.then(() => this.#servePromise!.resolve());
+    this.#server.finished.then(() => this.#serveDeferred!.resolve());
   }
 
   setTimeout() {
@@ -1631,7 +1759,7 @@ class ServerImpl extends EventEmitter {
       this.#ac.abort();
       this.#ac = undefined;
     } else {
-      this.#servePromise!.resolve();
+      this.#serveDeferred!.resolve();
     }
 
     this.#server = undefined;
@@ -1648,8 +1776,8 @@ class ServerImpl extends EventEmitter {
 
 Server.prototype = ServerImpl.prototype;
 
-export function createServer(handler?: ServerHandler) {
-  return Server(handler);
+export function createServer(opts, requestListener?: ServerHandler) {
+  return Server(opts, requestListener);
 }
 
 /** Makes an HTTP request. */
@@ -1695,13 +1823,17 @@ export function get(...args: any[]) {
 export {
   Agent,
   ClientRequest,
+  globalAgent,
   IncomingMessageForServer as IncomingMessage,
   METHODS,
   OutgoingMessage,
   STATUS_CODES,
+  validateHeaderName,
+  validateHeaderValue,
 };
 export default {
   Agent,
+  globalAgent,
   ClientRequest,
   STATUS_CODES,
   METHODS,
@@ -1714,4 +1846,6 @@ export default {
   ServerResponse,
   request,
   get,
+  validateHeaderName,
+  validateHeaderValue,
 };

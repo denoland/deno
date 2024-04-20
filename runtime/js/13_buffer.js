@@ -1,11 +1,10 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // This code has been ported almost directly from Go's src/bytes/buffer.go
 // Copyright 2009 The Go Authors. All rights reserved. BSD license.
 // https://github.com/golang/go/blob/master/LICENSE
 
-import { assert } from "ext:deno_web/00_infra.js";
-const primordials = globalThis.__bootstrap.primordials;
+import { internals, primordials } from "ext:core/mod.js";
 const {
   ArrayBufferPrototypeGetByteLength,
   TypedArrayPrototypeSubarray,
@@ -19,6 +18,8 @@ const {
   Uint8Array,
   Error,
 } = primordials;
+
+import { assert } from "ext:deno_web/00_infra.js";
 
 // MIN_READ is the minimum ArrayBuffer size passed to a read call by
 // buffer.ReadFrom. As long as the Buffer has at least MIN_READ bytes beyond
@@ -44,6 +45,11 @@ class Buffer {
   #off = 0; // read at buf[off], write at buf[buf.byteLength]
 
   constructor(ab) {
+    internals.warnOnDeprecatedApi(
+      "new Deno.Buffer()",
+      new Error().stack,
+      "Use `Buffer` from `https://jsr.io/@std/io/doc/buffer/~` instead.",
+    );
     if (ab == null) {
       this.#buf = new Uint8Array(0);
       return;
@@ -229,18 +235,33 @@ class Buffer {
 }
 
 async function readAll(r) {
+  internals.warnOnDeprecatedApi(
+    "Deno.readAll()",
+    new Error().stack,
+    "Use `readAll()` from `https://jsr.io/@std/io/doc/read-all/~` instead.",
+  );
   const buf = new Buffer();
   await buf.readFrom(r);
   return buf.bytes();
 }
 
 function readAllSync(r) {
+  internals.warnOnDeprecatedApi(
+    "Deno.readAllSync()",
+    new Error().stack,
+    "Use `readAllSync()` from `https://jsr.io/@std/io/doc/read-all/~` instead.",
+  );
   const buf = new Buffer();
   buf.readFromSync(r);
   return buf.bytes();
 }
 
 async function writeAll(w, arr) {
+  internals.warnOnDeprecatedApi(
+    "Deno.writeAll()",
+    new Error().stack,
+    "Use `writeAll()` from `https://jsr.io/@std/io/doc/write-all/~` instead.",
+  );
   let nwritten = 0;
   while (nwritten < arr.length) {
     nwritten += await w.write(TypedArrayPrototypeSubarray(arr, nwritten));
@@ -248,6 +269,11 @@ async function writeAll(w, arr) {
 }
 
 function writeAllSync(w, arr) {
+  internals.warnOnDeprecatedApi(
+    "Deno.writeAllSync()",
+    new Error().stack,
+    "Use `writeAllSync()` from `https://jsr.io/@std/io/doc/write-all/~` instead.",
+  );
   let nwritten = 0;
   while (nwritten < arr.length) {
     nwritten += w.writeSync(TypedArrayPrototypeSubarray(arr, nwritten));

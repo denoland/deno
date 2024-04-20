@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -20,8 +20,14 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-const core = globalThis.Deno.core;
-const ops = core.ops;
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
+import {
+  op_node_unstable_net_listen_udp,
+  op_node_unstable_net_listen_unixpacket,
+} from "ext:core/ops";
+
 import {
   AsyncWrap,
   providerType,
@@ -31,15 +37,15 @@ import { HandleWrap } from "ext:deno_node/internal_binding/handle_wrap.ts";
 import { ownerSymbol } from "ext:deno_node/internal_binding/symbols.ts";
 import { codeMap, errorMap } from "ext:deno_node/internal_binding/uv.ts";
 import { notImplemented } from "ext:deno_node/_utils.ts";
-import { Buffer } from "ext:deno_node/buffer.ts";
+import { Buffer } from "node:buffer";
 import type { ErrnoException } from "ext:deno_node/internal/errors.ts";
 import { isIP } from "ext:deno_node/internal/net.ts";
 import * as net from "ext:deno_net/01_net.js";
 import { isLinux, isWindows } from "ext:deno_node/_util/os.ts";
 
 const DenoListenDatagram = net.createListenDatagram(
-  ops.op_node_unstable_net_listen_udp,
-  ops.op_node_unstable_net_listen_unixpacket,
+  op_node_unstable_net_listen_udp,
+  op_node_unstable_net_listen_unixpacket,
 );
 
 type MessageType = string | Uint8Array | Buffer | DataView;
@@ -75,6 +81,7 @@ export class UDP extends HandleWrap {
 
   #listener?: Deno.DatagramConn;
   #receiving = false;
+  #unrefed = false;
 
   #recvBufferSize = UDP_DGRAM_MAXSIZE;
   #sendBufferSize = UDP_DGRAM_MAXSIZE;
@@ -270,7 +277,8 @@ export class UDP extends HandleWrap {
   }
 
   override ref() {
-    notImplemented("udp.UDP.prototype.ref");
+    this.#listener?.ref();
+    this.#unrefed = false;
   }
 
   send(
@@ -312,7 +320,8 @@ export class UDP extends HandleWrap {
   }
 
   override unref() {
-    notImplemented("udp.UDP.prototype.unref");
+    this.#listener?.unref();
+    this.#unrefed = true;
   }
 
   #doBind(ip: string, port: number, _flags: number, family: number): number {
@@ -439,6 +448,10 @@ export class UDP extends HandleWrap {
     let buf: Uint8Array;
     let remoteAddr: Deno.NetAddr | null;
     let nread: number | null;
+
+    if (this.#unrefed) {
+      this.#listener!.unref();
+    }
 
     try {
       [buf, remoteAddr] = (await this.#listener!.receive(p)) as [

@@ -1,61 +1,111 @@
 #!/usr/bin/env -S deno run --allow-write=. --lock=./tools/deno.lock.json
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import * as yaml from "https://deno.land/std@0.173.0/encoding/yaml.ts";
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+import { stringify } from "jsr:@std/yaml@^0.221/stringify";
 
-const Runners = (() => {
-  const ubuntuRunner = "ubuntu-22.04";
-  const ubuntuXlRunner = "ubuntu-22.04-xl";
+// Bump this number when you want to purge the cache.
+// Note: the tools/release/01_bump_crate_versions.ts script will update this version
+// automatically via regex, so ensure that this line maintains this format.
+const cacheVersion = 85;
 
-  return {
-    ubuntuXl:
-      `\${{ github.repository == 'denoland/deno' && '${ubuntuXlRunner}' || '${ubuntuRunner}' }}`,
-    ubuntu: ubuntuRunner,
-    linux: ubuntuRunner,
-    macos: "macos-12",
-    windows: "windows-2022",
-  };
-})();
-// bump the number at the start when you want to purge the cache
+const ubuntuX86Runner = "ubuntu-22.04";
+const ubuntuX86XlRunner = "ubuntu-22.04-xl";
+const ubuntuARMRunner = "ubicloud-standard-16-arm";
+const windowsX86Runner = "windows-2022";
+const windowsX86XlRunner = "windows-2022-xl";
+const macosX86Runner = "macos-13";
+const macosArmRunner = "macos-14";
+
+const Runners = {
+  linuxX86: {
+    os: "linux",
+    arch: "x86_64",
+    runner: ubuntuX86Runner,
+  },
+  linuxX86Xl: {
+    os: "linux",
+    arch: "x86_64",
+    runner:
+      `\${{ github.repository == 'denoland/deno' && '${ubuntuX86XlRunner}' || '${ubuntuX86Runner}' }}`,
+  },
+  linuxArm: {
+    os: "linux",
+    arch: "aarch64",
+    runner: ubuntuARMRunner,
+  },
+  macosX86: {
+    os: "macos",
+    arch: "x86_64",
+    runner: macosX86Runner,
+  },
+  macosArm: {
+    os: "macos",
+    arch: "aarch64",
+    runner: macosArmRunner,
+  },
+  windowsX86: {
+    os: "windows",
+    arch: "x86_64",
+    runner: windowsX86Runner,
+  },
+  windowsX86Xl: {
+    os: "windows",
+    arch: "x86_64",
+    runner:
+      `\${{ github.repository == 'denoland/deno' && '${windowsX86XlRunner}' || '${windowsX86Runner}' }}`,
+  },
+} as const;
+
 const prCacheKeyPrefix =
-  "31-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ matrix.job }}-";
+  `${cacheVersion}-cargo-target-\${{ matrix.os }}-\${{ matrix.arch }}-\${{ matrix.profile }}-\${{ matrix.job }}-`;
 
+// Note that you may need to add more version to the `apt-get remove` line below if you change this
+const llvmVersion = 17;
 const installPkgsCommand =
-  "sudo apt-get install --no-install-recommends debootstrap clang-15 lld-15";
+  `sudo apt-get install --no-install-recommends clang-${llvmVersion} lld-${llvmVersion} clang-tools-${llvmVersion} clang-format-${llvmVersion} clang-tidy-${llvmVersion}`;
 const sysRootStep = {
   name: "Set up incremental LTO and sysroot build",
-  run: `# Avoid running man-db triggers, which sometimes takes several minutes
+  run: `# Setting up sysroot
+export DEBIAN_FRONTEND=noninteractive
+# Avoid running man-db triggers, which sometimes takes several minutes
 # to complete.
-sudo apt-get remove --purge -y man-db
+sudo apt-get -qq remove --purge -y man-db  > /dev/null 2> /dev/null
+# Remove older clang before we install
+sudo apt-get -qq remove \
+  'clang-12*' 'clang-13*' 'clang-14*' 'clang-15*' 'clang-16*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'llvm-15*' 'llvm-16*' 'lld-12*' 'lld-13*' 'lld-14*' 'lld-15*' 'lld-16*' > /dev/null 2> /dev/null
 
-# Install clang-15, lld-15, and debootstrap.
-echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-15 main" |
-  sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-jammy-15.list
+# Install clang-XXX, lld-XXX, and debootstrap.
+echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-${llvmVersion} main" |
+  sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-jammy-${llvmVersion}.list
 curl https://apt.llvm.org/llvm-snapshot.gpg.key |
   gpg --dearmor                                 |
 sudo dd of=/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
 sudo apt-get update
 # this was unreliable sometimes, so try again if it fails
 ${installPkgsCommand} || echo 'Failed. Trying again.' && sudo apt-get clean && sudo apt-get update && ${installPkgsCommand}
+# Fix alternatives
+(yes '' | sudo update-alternatives --force --all) > /dev/null 2> /dev/null || true
 
-# Create ubuntu-16.04 sysroot environment, which is used to avoid
-# depending on a very recent version of glibc.
-# \`libc6-dev\` is required for building any C source files.
-# \`file\` and \`make\` are needed to build libffi-sys.
-# \`curl\` is needed to build rusty_v8.
-sudo debootstrap                                     \\
-  --include=ca-certificates,curl,file,libc6-dev,make \\
-  --no-merged-usr --variant=minbase xenial /sysroot  \\
-  http://azure.archive.ubuntu.com/ubuntu
+echo "Decompressing sysroot..."
+wget -q https://github.com/denoland/deno_sysroot_build/releases/download/sysroot-20240207/sysroot-\`uname -m\`.tar.xz -O /tmp/sysroot.tar.xz
+cd /
+xzcat /tmp/sysroot.tar.xz | sudo tar -x
 sudo mount --rbind /dev /sysroot/dev
 sudo mount --rbind /sys /sysroot/sys
 sudo mount --rbind /home /sysroot/home
 sudo mount -t proc /proc /sysroot/proc
+cd
 
-cp third_party/prebuilt/linux64/libdl/libdl.so.2 .
-cp third_party/prebuilt/linux64/libdl/libdl.a .
-
-sudo ln -s libdl.so.2 /sysroot/lib/x86_64-linux-gnu/libdl.so
-sudo ln -s libdl.a /sysroot/lib/x86_64-linux-gnu/libdl.a
+if [[ \`uname -m\` == "aarch64" ]]; then
+  echo "Copying libdl.a"
+  sudo cp /sysroot/usr/lib/aarch64-linux-gnu/libdl.a /sysroot/lib/aarch64-linux-gnu/libdl.a
+  echo "Copying libdl.so"
+  sudo cp /sysroot/lib/aarch64-linux-gnu/libdl.so.2 /sysroot/lib/aarch64-linux-gnu/libdl.so
+else
+  echo "Copying libdl.a"
+  sudo cp /sysroot/usr/lib/x86_64-linux-gnu/libdl.a /sysroot/lib/x86_64-linux-gnu/libdl.a
+  echo "Copying libdl.so"
+  sudo cp /sysroot/lib/x86_64-linux-gnu/libdl.so.2 /sysroot/lib/x86_64-linux-gnu/libdl.so
+fi
 
 # Configure the build environment. Both Rust and Clang will produce
 # llvm bitcode only, so we can use lld's incremental LTO support.
@@ -66,19 +116,20 @@ CARGO_PROFILE_RELEASE_INCREMENTAL=false
 CARGO_PROFILE_RELEASE_LTO=false
 RUSTFLAGS<<__1
   -C linker-plugin-lto=true
-  -C linker=clang-15
-  -C link-arg=-fuse-ld=lld-15
+  -C linker=clang-${llvmVersion}
+  -C link-arg=-fuse-ld=lld-${llvmVersion}
   -C link-arg=--sysroot=/sysroot
   -C link-arg=-ldl
   -C link-arg=-Wl,--allow-shlib-undefined
   -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
   -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
+  --cfg tokio_unstable
   \${{ env.RUSTFLAGS }}
 __1
 RUSTDOCFLAGS<<__1
   -C linker-plugin-lto=true
-  -C linker=clang-15
-  -C link-arg=-fuse-ld=lld-15
+  -C linker=clang-${llvmVersion}
+  -C link-arg=-fuse-ld=lld-${llvmVersion}
   -C link-arg=--sysroot=/sysroot
   -C link-arg=-ldl
   -C link-arg=-Wl,--allow-shlib-undefined
@@ -86,10 +137,12 @@ RUSTDOCFLAGS<<__1
   -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
   \${{ env.RUSTFLAGS }}
 __1
-CC=clang-15
+CC=/usr/bin/clang-${llvmVersion}
 CFLAGS=-flto=thin --sysroot=/sysroot
 __0`,
 };
+
+const installBenchTools = "./tools/install_prebuilt.js wrk hyperfine";
 
 const cloneRepoStep = [{
   name: "Configure git",
@@ -99,7 +152,7 @@ const cloneRepoStep = [{
   ].join("\n"),
 }, {
   name: "Clone repository",
-  uses: "actions/checkout@v3",
+  uses: "actions/checkout@v4",
   with: {
     // Use depth > 1, because sometimes we need to rebuild main and if
     // other commits have landed it will become impossible to rebuild if
@@ -119,11 +172,11 @@ const installRustStep = {
 };
 const installPythonSteps = [{
   name: "Install Python",
-  uses: "actions/setup-python@v4",
+  uses: "actions/setup-python@v5",
   with: { "python-version": 3.11 },
 }, {
   name: "Remove unused versions of Python",
-  if: "startsWith(matrix.os, 'windows')",
+  if: "matrix.os == 'windows'",
   shell: "pwsh",
   run: [
     '$env:PATH -split ";" |',
@@ -134,8 +187,13 @@ const installPythonSteps = [{
 }];
 const installNodeStep = {
   name: "Install Node",
-  uses: "actions/setup-node@v3",
+  uses: "actions/setup-node@v4",
   with: { "node-version": 18 },
+};
+const installProtocStep = {
+  name: "Install protoc",
+  uses: "arduino/setup-protoc@v3",
+  with: { "version": "21.12", "repo-token": "${{ secrets.GITHUB_TOKEN }}" },
 };
 const installDenoStep = {
   name: "Install Deno",
@@ -145,7 +203,7 @@ const installDenoStep = {
 
 const authenticateWithGoogleCloud = {
   name: "Authenticate with Google Cloud",
-  uses: "google-github-actions/auth@v1",
+  uses: "google-github-actions/auth@v2",
   with: {
     "project_id": "denoland",
     "credentials_json": "${{ secrets.GCP_SA_KEY }}",
@@ -163,7 +221,7 @@ function skipJobsIfPrAndMarkedSkip(
   return steps.map((s) =>
     withCondition(
       s,
-      "!(github.event_name == 'pull_request' && matrix.skip_pr)",
+      "!(matrix.skip)",
     )
   );
 }
@@ -199,47 +257,53 @@ function removeSurroundingExpression(text: string) {
 
 function handleMatrixItems(items: {
   skip_pr?: string | true;
-  os: string;
+  skip?: string;
+  os: "linux" | "macos" | "windows";
+  arch: "x86_64" | "aarch64";
+  runner: string;
   profile?: string;
   job?: string;
   use_sysroot?: boolean;
   wpt?: string;
 }[]) {
-  function getOsDisplayName(os: string) {
-    if (os.includes("ubuntu")) {
-      return "ubuntu-x86_64";
-    } else if (os.includes("windows")) {
-      return "windows-x86_64";
-    } else if (os.includes("macos")) {
-      return "macos-x86_64";
-    } else {
-      throw new Error(`Display name not found: ${os}`);
-    }
-  }
-
   return items.map((item) => {
-    // use a free "ubuntu" runner on jobs that are skipped on pull requests
+    // use a free "ubuntu" runner on jobs that are skipped
+
+    // skip_pr is shorthand for skip = github.event_name == 'pull_request'.
     if (item.skip_pr != null) {
-      let text = "${{ github.event_name == 'pull_request' && ";
-      if (typeof item.skip_pr === "string") {
-        text += removeSurroundingExpression(item.skip_pr.toString()) + " && ";
+      if (item.skip_pr === true) {
+        item.skip = "${{ github.event_name == 'pull_request' }}";
+      } else if (typeof item.skip_pr === "string") {
+        item.skip = "${{ github.event_name == 'pull_request' && " +
+          removeSurroundingExpression(item.skip_pr.toString()) + " }}";
       }
-      text += `'${Runners.ubuntu}' || ${
-        removeSurroundingExpression(item.os)
+      delete item.skip_pr;
+    }
+
+    if (typeof item.skip === "string") {
+      let runner =
+        "${{ (!contains(github.event.pull_request.labels.*.name, 'ci-full') && (";
+      runner += removeSurroundingExpression(item.skip.toString()) + ")) && ";
+      runner += `'${ubuntuX86Runner}' || ${
+        removeSurroundingExpression(item.runner)
       } }}`;
 
       // deno-lint-ignore no-explicit-any
-      (item as any).runner = text;
+      (item as any).runner = runner;
+      item.skip =
+        "${{ !contains(github.event.pull_request.labels.*.name, 'ci-full') && (" +
+        removeSurroundingExpression(item.skip.toString()) + ") }}";
     }
-    return {
-      ...item,
-      os_display_name: getOsDisplayName(item.os),
-    };
+
+    return { ...item };
   });
 }
 
 const ci = {
   name: "ci",
+  permissions: {
+    contents: "write",
+  },
   on: {
     push: {
       branches: ["main"],
@@ -284,10 +348,10 @@ const ci = {
     },
     build: {
       name:
-        "${{ matrix.job }} ${{ matrix.profile }} ${{ matrix.os_display_name }}",
+        "${{ matrix.job }} ${{ matrix.profile }} ${{ matrix.os }}-${{ matrix.arch }}",
       needs: ["pre_build"],
       if: "${{ needs.pre_build.outputs.skip_build != 'true' }}",
-      "runs-on": "${{ matrix.runner || matrix.os }}",
+      "runs-on": "${{ matrix.runner }}",
       "timeout-minutes": 120,
       defaults: {
         run: {
@@ -299,25 +363,34 @@ const ci = {
       strategy: {
         matrix: {
           include: handleMatrixItems([{
-            os: Runners.macos,
+            ...Runners.macosX86,
             job: "test",
             profile: "debug",
           }, {
-            os: Runners.macos,
+            ...Runners.macosX86,
             job: "test",
             profile: "release",
             skip_pr: true,
           }, {
-            os: Runners.windows,
+            ...Runners.macosArm,
             job: "test",
             profile: "debug",
           }, {
-            os: Runners.windows,
+            ...Runners.macosArm,
             job: "test",
             profile: "release",
             skip_pr: true,
           }, {
-            os: Runners.ubuntuXl,
+            ...Runners.windowsX86,
+            job: "test",
+            profile: "debug",
+          }, {
+            ...Runners.windowsX86Xl,
+            job: "test",
+            profile: "release",
+            skip_pr: true,
+          }, {
+            ...Runners.linuxX86Xl,
             job: "test",
             profile: "release",
             use_sysroot: true,
@@ -325,19 +398,36 @@ const ci = {
             // currently run the Web Platform tests only on Linux.
             wpt: "${{ !startsWith(github.ref, 'refs/tags/') }}",
           }, {
-            os: Runners.ubuntuXl,
+            ...Runners.linuxX86Xl,
             job: "bench",
             profile: "release",
             use_sysroot: true,
             skip_pr:
               "${{ !contains(github.event.pull_request.labels.*.name, 'ci-bench') }}",
           }, {
-            os: Runners.ubuntu,
+            ...Runners.linuxX86,
             job: "test",
             profile: "debug",
             use_sysroot: true,
           }, {
-            os: Runners.ubuntu,
+            ...Runners.linuxX86,
+            job: "lint",
+            profile: "debug",
+          }, {
+            ...Runners.linuxArm,
+            job: "test",
+            profile: "debug",
+          }, {
+            ...Runners.linuxArm,
+            job: "test",
+            profile: "release",
+            use_sysroot: true,
+          }, {
+            ...Runners.macosX86,
+            job: "lint",
+            profile: "debug",
+          }, {
+            ...Runners.windowsX86,
             job: "lint",
             profile: "debug",
           }]),
@@ -353,23 +443,28 @@ const ci = {
       env: {
         CARGO_TERM_COLOR: "always",
         RUST_BACKTRACE: "full",
+        // disable anyhow's library backtrace
+        RUST_LIB_BACKTRACE: 0,
       },
       steps: skipJobsIfPrAndMarkedSkip([
         ...cloneRepoStep,
-        submoduleStep("./test_util/std"),
-        submoduleStep("./third_party"),
+        submoduleStep("./tests/util/std"),
         {
-          ...submoduleStep("./test_util/wpt"),
+          ...submoduleStep("./tests/wpt/suite"),
           if: "matrix.wpt",
         },
         {
-          ...submoduleStep("./tools/node_compat/node"),
-          if: "matrix.job == 'lint'",
+          ...submoduleStep("./tests/node_compat/runner/suite"),
+          if: "matrix.job == 'lint' && matrix.os == 'linux'",
+        },
+        {
+          ...submoduleStep("./cli/bench/testdata/lsp_benchdata"),
+          if: "matrix.job == 'bench'",
         },
         {
           name: "Create source tarballs (release, linux)",
           if: [
-            "startsWith(matrix.os, 'ubuntu') &&",
+            "matrix.os == 'linux' &&",
             "matrix.profile == 'release' &&",
             "matrix.job == 'test' &&",
             "github.repository == 'denoland/deno' &&",
@@ -383,17 +478,22 @@ const ci = {
         },
         installRustStep,
         {
-          if: "matrix.job == 'lint' || matrix.job == 'test'",
+          if:
+            "matrix.job == 'lint' || matrix.job == 'test' || matrix.job == 'bench'",
           ...installDenoStep,
         },
         ...installPythonSteps.map((s) =>
-          withCondition(s, "matrix.job != 'lint'")
+          withCondition(
+            s,
+            "matrix.job != 'lint' && (matrix.os != 'linux' || matrix.arch != 'aarch64')",
+          )
         ),
         {
           // only necessary for benchmarks
           if: "matrix.job == 'bench'",
           ...installNodeStep,
         },
+        installProtocStep,
         {
           if: [
             "matrix.profile == 'release' &&",
@@ -407,14 +507,14 @@ const ci = {
         {
           name: "Setup gcloud (unix)",
           if: [
-            "runner.os != 'Windows' &&",
+            "matrix.os != 'windows' &&",
             "matrix.profile == 'release' &&",
             "matrix.job == 'test' &&",
             "github.repository == 'denoland/deno' &&",
             "(github.ref == 'refs/heads/main' ||",
             "startsWith(github.ref, 'refs/tags/'))",
           ].join("\n"),
-          uses: "google-github-actions/setup-gcloud@v1",
+          uses: "google-github-actions/setup-gcloud@v2",
           with: {
             project_id: "denoland",
           },
@@ -422,14 +522,14 @@ const ci = {
         {
           name: "Setup gcloud (windows)",
           if: [
-            "runner.os == 'Windows' &&",
+            "matrix.os == 'windows' &&",
             "matrix.profile == 'release' &&",
             "matrix.job == 'test' &&",
             "github.repository == 'denoland/deno' &&",
             "(github.ref == 'refs/heads/main' ||",
             "startsWith(github.ref, 'refs/tags/'))",
           ].join("\n"),
-          uses: "google-github-actions/setup-gcloud@v1",
+          uses: "google-github-actions/setup-gcloud@v2",
           env: {
             CLOUDSDK_PYTHON: "${{env.pythonLocation}}\\python.exe",
           },
@@ -452,41 +552,76 @@ const ci = {
           ...sysRootStep,
         },
         {
+          name: "Remove macOS cURL --ipv4 flag",
+          run: [
+            // cURL's --ipv4 flag is busted for now
+            "curl --version",
+            "which curl",
+            "cat /etc/hosts",
+            "rm ~/.curlrc || true",
+          ].join("\n"),
+          if: `matrix.os == 'macos'`,
+        },
+        {
+          name: "Install macOS aarch64 lld",
+          run: [
+            "./tools/install_prebuilt.js ld64.lld",
+          ].join("\n"),
+          if: `matrix.os == 'macos' && matrix.arch == 'aarch64'`,
+        },
+        {
+          name: "Install rust-codesign",
+          run: [
+            "./tools/install_prebuilt.js rcodesign",
+            "echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH",
+          ].join("\n"),
+          if: `matrix.os == 'macos'`,
+        },
+        {
           name: "Log versions",
           run: [
-            "python --version",
-            "rustc --version",
-            "cargo --version",
-            // Deno is installed when linting.
-            'if [ "${{ matrix.job }}" == "lint" ]',
-            "then",
-            "  deno --version",
-            "fi",
-            // Node is installed for benchmarks.
-            'if [ "${{ matrix.job }}" == "bench" ]',
-            "then",
-            "  node -v",
-            "fi",
+            "echo '*** Python'",
+            "command -v python && python --version || echo 'No python found or bad executable'",
+            "echo '*** Rust'",
+            "command -v rustc && rustc --version || echo 'No rustc found or bad executable'",
+            "echo '*** Cargo'",
+            "command -v cargo && cargo --version || echo 'No cargo found or bad executable'",
+            "echo '*** Deno'",
+            "command -v deno && deno --version || echo 'No deno found or bad executable'",
+            "echo '*** Node'",
+            "command -v node && node --version || echo 'No node found or bad executable'",
+            "echo '*** Installed packages'",
+            "command -v dpkg && dpkg -l || echo 'No dpkg found or bad executable'",
+          ].join("\n"),
+        },
+        {
+          name: "Install benchmark tools",
+          if: "matrix.job == 'bench'",
+          run: [
+            installBenchTools,
           ].join("\n"),
         },
         {
           name: "Cache Cargo home",
-          uses: "actions/cache@v3",
+          uses: "actions/cache@v4",
           with: {
             // See https://doc.rust-lang.org/cargo/guide/cargo-home.html#caching-the-cargo-home-in-ci
+            // Note that with the new sparse registry format, we no longer have to cache a `.git` dir
             path: [
               "~/.cargo/registry/index",
               "~/.cargo/registry/cache",
-              "~/.cargo/git/db",
             ].join("\n"),
             key:
-              "31-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}",
+              `${cacheVersion}-cargo-home-\${{ matrix.os }}-\${{ matrix.arch }}-\${{ hashFiles('Cargo.lock') }}`,
+            // We will try to restore from the closest cargo-home we can find
+            "restore-keys":
+              `${cacheVersion}-cargo-home-\${{ matrix.os }}-\${{ matrix.arch }}`,
           },
         },
         {
           // Restore cache from the latest 'main' branch build.
           name: "Restore cache build output (PR)",
-          uses: "actions/cache/restore@v3",
+          uses: "actions/cache/restore@v4",
           if:
             "github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')",
           with: {
@@ -509,31 +644,15 @@ const ci = {
           },
         },
         {
-          // Shallow the cloning the crates.io index makes CI faster because it
-          // obviates the need for Cargo to clone the index. If we don't do this
-          // Cargo will `git clone` the github repository that contains the entire
-          // history of the crates.io index from github. We don't believe the
-          // identifier '1ecc6299db9ec823' will ever change, but if it does then this
-          // command must be updated.
-          name: "Shallow clone crates.io index",
-          run: [
-            "if [ ! -d ~/.cargo/registry/index/github.com-1ecc6299db9ec823/.git ]",
-            "then",
-            "  git clone --depth 1 --no-checkout                      \\",
-            "            https://github.com/rust-lang/crates.io-index \\",
-            "            ~/.cargo/registry/index/github.com-1ecc6299db9ec823",
-            "fi",
-          ].join("\n"),
-        },
-        {
           name: "test_format.js",
-          if: "matrix.job == 'lint'",
+          if: "matrix.job == 'lint' && matrix.os == 'linux'",
           run:
-            "deno run --unstable --allow-write --allow-read --allow-run ./tools/format.js --check",
+            "deno run --unstable --allow-write --allow-read --allow-run --allow-net ./tools/format.js --check",
         },
         {
           name: "Lint PR title",
-          if: "matrix.job == 'lint' && github.event_name == 'pull_request'",
+          if:
+            "matrix.job == 'lint' && github.event_name == 'pull_request' && matrix.os == 'linux'",
           env: {
             PR_TITLE: "${{ github.event.pull_request.title }}",
           },
@@ -543,18 +662,23 @@ const ci = {
           name: "lint.js",
           if: "matrix.job == 'lint'",
           run:
-            "deno run --unstable --allow-write --allow-read --allow-run ./tools/lint.js",
+            "deno run --unstable --allow-write --allow-read --allow-run --allow-net ./tools/lint.js",
         },
         {
           name: "node_compat/setup.ts --check",
-          if: "matrix.job == 'lint'",
+          if: "matrix.job == 'lint' && matrix.os == 'linux'",
           run:
-            "deno run --allow-write --allow-read --allow-run=git ./tools/node_compat/setup.ts --check",
+            "deno run --allow-write --allow-read --allow-run=git ./tests/node_compat/runner/setup.ts --check",
         },
         {
           name: "Build debug",
           if: "matrix.job == 'test' && matrix.profile == 'debug'",
-          run: "cargo build --locked --all-targets",
+          run: [
+            // output fs space before and after building
+            "df -h",
+            "cargo build --locked --all-targets",
+            "df -h",
+          ].join("\n"),
           env: { CARGO_PROFILE_DEV_DEBUG: 0 },
         },
         {
@@ -562,11 +686,14 @@ const ci = {
           if: [
             "(matrix.job == 'test' || matrix.job == 'bench') &&",
             "matrix.profile == 'release' && (matrix.use_sysroot ||",
-            "(github.repository == 'denoland/deno' &&",
-            "(github.ref == 'refs/heads/main' ||",
-            "startsWith(github.ref, 'refs/tags/'))))",
+            "github.repository == 'denoland/deno')",
           ].join("\n"),
-          run: "cargo build --release --locked --all-targets",
+          run: [
+            // output fs space before and after building
+            "df -h",
+            "cargo build --release --locked --all-targets",
+            "df -h",
+          ].join("\n"),
         },
         {
           name: "Upload PR artifact (linux)",
@@ -577,120 +704,129 @@ const ci = {
             "(github.ref == 'refs/heads/main' ||",
             "startsWith(github.ref, 'refs/tags/'))))",
           ].join("\n"),
-          uses: "actions/upload-artifact@v3",
+          uses: "actions/upload-artifact@v4",
           with: {
-            name: "deno-${{ github.event.number }}",
+            name:
+              "deno-${{ matrix.os }}-${{ matrix.arch }}-${{ github.event.number }}",
             path: "target/release/deno",
           },
         },
         {
           name: "Pre-release (linux)",
           if: [
-            "startsWith(matrix.os, 'ubuntu') &&",
+            "matrix.os == 'linux' &&",
             "matrix.job == 'test' &&",
             "matrix.profile == 'release' &&",
             "github.repository == 'denoland/deno'",
           ].join("\n"),
           run: [
             "cd target/release",
-            "zip -r deno-x86_64-unknown-linux-gnu.zip deno",
+            "zip -r deno-${{ matrix.arch }}-unknown-linux-gnu.zip deno",
+            "strip denort",
+            "zip -r denort-${{ matrix.arch }}-unknown-linux-gnu.zip denort",
             "./deno types > lib.deno.d.ts",
           ].join("\n"),
         },
         {
           name: "Pre-release (mac)",
           if: [
-            "startsWith(matrix.os, 'macOS') &&",
+            `matrix.os == 'macos' &&`,
             "matrix.job == 'test' &&",
             "matrix.profile == 'release' &&",
-            "github.repository == 'denoland/deno' &&",
-            "(github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))",
+            "github.repository == 'denoland/deno'",
           ].join("\n"),
+          env: {
+            "APPLE_CODESIGN_KEY": "${{ secrets.APPLE_CODESIGN_KEY }}",
+            "APPLE_CODESIGN_PASSWORD": "${{ secrets.APPLE_CODESIGN_PASSWORD }}",
+          },
           run: [
+            'echo "Key is $(echo $APPLE_CODESIGN_KEY | base64 -d | wc -c) bytes"',
+            "rcodesign sign target/release/deno " +
+            "--code-signature-flags=runtime " +
+            '--p12-password="$APPLE_CODESIGN_PASSWORD" ' +
+            "--p12-file=<(echo $APPLE_CODESIGN_KEY | base64 -d) " +
+            "--entitlements-xml-file=cli/entitlements.plist",
             "cd target/release",
-            "zip -r deno-x86_64-apple-darwin.zip deno",
+            "zip -r deno-${{ matrix.arch }}-apple-darwin.zip deno",
+            "strip denort",
+            "zip -r denort-${{ matrix.arch }}-apple-darwin.zip denort",
           ]
             .join("\n"),
         },
         {
           name: "Pre-release (windows)",
           if: [
-            "startsWith(matrix.os, 'windows') &&",
+            "matrix.os == 'windows' &&",
             "matrix.job == 'test' &&",
             "matrix.profile == 'release' &&",
-            "github.repository == 'denoland/deno' &&",
-            "(github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))",
+            "github.repository == 'denoland/deno'",
           ].join("\n"),
           shell: "pwsh",
-          run:
-            "Compress-Archive -CompressionLevel Optimal -Force -Path target/release/deno.exe -DestinationPath target/release/deno-x86_64-pc-windows-msvc.zip",
+          run: [
+            "Compress-Archive -CompressionLevel Optimal -Force -Path target/release/deno.exe -DestinationPath target/release/deno-${{ matrix.arch }}-pc-windows-msvc.zip",
+            "Compress-Archive -CompressionLevel Optimal -Force -Path target/release/denort.exe -DestinationPath target/release/denort-${{ matrix.arch }}-pc-windows-msvc.zip",
+          ].join("\n"),
         },
         {
-          name: "Upload canary to dl.deno.land (unix)",
+          name: "Upload canary to dl.deno.land",
           if: [
-            "runner.os != 'Windows' &&",
             "matrix.job == 'test' &&",
             "matrix.profile == 'release' &&",
             "github.repository == 'denoland/deno' &&",
             "github.ref == 'refs/heads/main'",
           ].join("\n"),
-          run:
+          run: [
             'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/',
-        },
-        {
-          name: "Upload canary to dl.deno.land (windows)",
-          if: [
-            "runner.os == 'Windows' &&",
-            "matrix.job == 'test' &&",
-            "matrix.profile == 'release' &&",
-            "github.repository == 'denoland/deno' &&",
-            "github.ref == 'refs/heads/main'",
+            "echo ${{ github.sha }} > canary-latest.txt",
+            'gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt',
           ].join("\n"),
-          env: {
-            CLOUDSDK_PYTHON: "${{env.pythonLocation}}\\python.exe",
-          },
-          run:
-            'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/',
         },
         {
           name: "Autobahn testsuite",
           if: [
-            "matrix.job == 'test' && matrix.profile == 'release' &&",
-            "!startsWith(github.ref, 'refs/tags/') && startsWith(matrix.os, 'ubuntu')",
+            "(matrix.os == 'linux' && matrix.arch != 'aarch64') &&",
+            "matrix.job == 'test' &&",
+            "matrix.profile == 'release' &&",
+            "!startsWith(github.ref, 'refs/tags/')",
           ].join("\n"),
           run:
             "target/release/deno run -A --unstable ext/websocket/autobahn/fuzzingclient.js",
         },
         {
-          name: "Test debug",
+          name: "Test (full, debug)",
           if: [
-            "matrix.job == 'test' && matrix.profile == 'debug' &&",
-            "!startsWith(github.ref, 'refs/tags/') && startsWith(matrix.os, 'ubuntu')",
+            "matrix.job == 'test' &&",
+            "matrix.profile == 'debug' &&",
+            "!startsWith(github.ref, 'refs/tags/') &&",
+            // Run full tests only on Linux.
+            "matrix.os == 'linux'",
           ].join("\n"),
           run: "cargo test --locked",
           env: { CARGO_PROFILE_DEV_DEBUG: 0 },
         },
         {
-          name: "Test debug (fast)",
+          name: "Test (fast, debug)",
           if: [
-            "matrix.job == 'test' && matrix.profile == 'debug' && ",
-            "!startsWith(matrix.os, 'ubuntu')",
+            "matrix.job == 'test' &&",
+            "matrix.profile == 'debug' &&",
+            "(startsWith(github.ref, 'refs/tags/') || matrix.os != 'linux')",
           ].join("\n"),
           run: [
             // Run unit then integration tests. Skip doc tests here
             // since they are sometimes very slow on Mac.
             "cargo test --locked --lib",
-            "cargo test --locked --test '*'",
+            "cargo test --locked --tests",
           ].join("\n"),
           env: { CARGO_PROFILE_DEV_DEBUG: 0 },
         },
         {
-          name: "Test release",
+          name: "Test (release)",
           if: [
-            "matrix.job == 'test' && matrix.profile == 'release' &&",
+            "matrix.job == 'test' &&",
+            "matrix.profile == 'release' &&",
             "(matrix.use_sysroot || (",
             "github.repository == 'denoland/deno' &&",
-            "github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')))",
+            "!startsWith(github.ref, 'refs/tags/')))",
           ].join("\n"),
           run: "cargo test --release --locked",
         },
@@ -707,15 +843,17 @@ const ci = {
         },
         {
           // Verify that the binary actually works in the Ubuntu-16.04 sysroot.
+          // TODO(mmastrac): make this work for aarch64 as well
           name: "Check deno binary (in sysroot)",
-          if: "matrix.profile == 'release' && matrix.use_sysroot",
+          if:
+            "matrix.profile == 'release' && matrix.use_sysroot && matrix.arch != 'aarch64'",
           run: 'sudo chroot /sysroot "$(pwd)/target/release/deno" --version',
         },
         {
           name: "Configure hosts file for WPT",
           if: "matrix.wpt",
           run: "./wpt make-hosts-file | sudo tee -a /etc/hosts",
-          "working-directory": "test_util/wpt/",
+          "working-directory": "tests/wpt/suite/",
         },
         {
           name: "Run web platform tests (debug)",
@@ -727,11 +865,11 @@ const ci = {
             "deno run --allow-env --allow-net --allow-read --allow-run \\",
             "        --allow-write --unstable                         \\",
             "        --lock=tools/deno.lock.json                      \\",
-            "        ./tools/wpt.ts setup",
+            "        ./tests/wpt/wpt.ts setup",
             "deno run --allow-env --allow-net --allow-read --allow-run \\",
             "         --allow-write --unstable                         \\",
             "         --lock=tools/deno.lock.json              \\",
-            '         ./tools/wpt.ts run --quiet --binary="$DENO_BIN"',
+            '         ./tests/wpt/wpt.ts run --quiet --binary="$DENO_BIN"',
           ].join("\n"),
         },
         {
@@ -744,11 +882,11 @@ const ci = {
             "deno run --allow-env --allow-net --allow-read --allow-run \\",
             "         --allow-write --unstable                         \\",
             "         --lock=tools/deno.lock.json                      \\",
-            "         ./tools/wpt.ts setup",
+            "         ./tests/wpt/wpt.ts setup",
             "deno run --allow-env --allow-net --allow-read --allow-run \\",
             "         --allow-write --unstable                         \\",
             "         --lock=tools/deno.lock.json                      \\",
-            "         ./tools/wpt.ts run --quiet --release             \\",
+            "         ./tests/wpt/wpt.ts run --quiet --release             \\",
             '                            --binary="$DENO_BIN"          \\',
             "                            --json=wpt.json               \\",
             "                            --wptreport=wptreport.json",
@@ -759,7 +897,7 @@ const ci = {
           "continue-on-error": true,
           if: [
             "matrix.wpt &&",
-            "runner.os == 'Linux' &&",
+            "matrix.os == 'linux' &&",
             "matrix.profile == 'release' &&",
             "github.repository == 'denoland/deno' &&",
             "github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')",
@@ -777,7 +915,7 @@ const ci = {
           "continue-on-error": true,
           if: [
             "matrix.wpt &&",
-            "runner.os == 'Linux' &&",
+            "matrix.os == 'linux' &&",
             "matrix.profile == 'release' &&",
             "github.repository == 'denoland/deno' &&",
             "github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')",
@@ -828,6 +966,7 @@ const ci = {
           run: [
             'du -hd1 "./target/${{ matrix.profile }}"',
             'du -ha  "./target/${{ matrix.profile }}/deno"',
+            'du -ha  "./target/${{ matrix.profile }}/denort"',
           ].join("\n"),
         },
         {
@@ -841,7 +980,7 @@ const ci = {
         {
           name: "Upload release to dl.deno.land (unix)",
           if: [
-            "runner.os != 'Windows' &&",
+            "matrix.os != 'windows' &&",
             "matrix.job == 'test' &&",
             "matrix.profile == 'release' &&",
             "github.repository == 'denoland/deno' &&",
@@ -853,7 +992,7 @@ const ci = {
         {
           name: "Upload release to dl.deno.land (windows)",
           if: [
-            "runner.os == 'Windows' &&",
+            "matrix.os == 'windows' &&",
             "matrix.job == 'test' &&",
             "matrix.profile == 'release' &&",
             "github.repository == 'denoland/deno' &&",
@@ -893,8 +1032,15 @@ const ci = {
           with: {
             files: [
               "target/release/deno-x86_64-pc-windows-msvc.zip",
+              "target/release/denort-x86_64-pc-windows-msvc.zip",
               "target/release/deno-x86_64-unknown-linux-gnu.zip",
+              "target/release/denort-x86_64-unknown-linux-gnu.zip",
               "target/release/deno-x86_64-apple-darwin.zip",
+              "target/release/denort-x86_64-apple-darwin.zip",
+              "target/release/deno-aarch64-unknown-linux-gnu.zip",
+              "target/release/denort-aarch64-unknown-linux-gnu.zip",
+              "target/release/deno-aarch64-apple-darwin.zip",
+              "target/release/denort-aarch64-apple-darwin.zip",
               "target/release/deno_src.tar.gz",
               "target/release/lib.deno.d.ts",
             ].join("\n"),
@@ -905,7 +1051,7 @@ const ci = {
         {
           // In main branch, always create a fresh cache
           name: "Save cache build output (main)",
-          uses: "actions/cache/save@v3",
+          uses: "actions/cache/save@v4",
           if:
             "(matrix.job == 'test' || matrix.job == 'lint') && github.ref == 'refs/heads/main'",
           with: {
@@ -922,7 +1068,7 @@ const ci = {
     },
     "publish-canary": {
       name: "publish canary",
-      "runs-on": "ubuntu-22.04",
+      "runs-on": ubuntuX86Runner,
       needs: ["build"],
       if:
         "github.repository == 'denoland/deno' && github.ref == 'refs/heads/main'",
@@ -930,7 +1076,7 @@ const ci = {
         authenticateWithGoogleCloud,
         {
           name: "Setup gcloud",
-          uses: "google-github-actions/setup-gcloud@v1",
+          uses: "google-github-actions/setup-gcloud@v2",
           with: {
             project_id: "denoland",
           },
@@ -947,11 +1093,18 @@ const ci = {
   },
 };
 
-let finalText = `# GENERATED BY ./ci.generate.ts -- DO NOT DIRECTLY EDIT\n\n`;
-finalText += yaml.stringify(ci, {
-  noRefs: true,
-  lineWidth: 10_000,
-  noCompatMode: true,
-});
+export function generate() {
+  let finalText = `# GENERATED BY ./ci.generate.ts -- DO NOT DIRECTLY EDIT\n\n`;
+  finalText += stringify(ci, {
+    noRefs: true,
+    lineWidth: 10_000,
+    noCompatMode: true,
+  });
+  return finalText;
+}
 
-Deno.writeTextFileSync(new URL("./ci.yml", import.meta.url), finalText);
+export const CI_YML_URL = new URL("./ci.yml", import.meta.url);
+
+if (import.meta.main) {
+  Deno.writeTextFileSync(CI_YML_URL, generate());
+}

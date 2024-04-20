@@ -1,0 +1,5 @@
+{
+  "tempDir": true,
+  "args": "run -A --log-level=debug main.tsx",
+  "output": "main.out"
+}

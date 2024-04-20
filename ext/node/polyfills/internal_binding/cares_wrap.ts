@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -24,6 +24,9 @@
 // - https://github.com/nodejs/node/blob/master/src/cares_wrap.cc
 // - https://github.com/nodejs/node/blob/master/src/cares_wrap.h
 
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
 import type { ErrnoException } from "ext:deno_node/internal/errors.ts";
 import { isIPv4 } from "ext:deno_node/internal/net.ts";
 import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
@@ -31,7 +34,6 @@ import {
   AsyncWrap,
   providerType,
 } from "ext:deno_node/internal_binding/async_wrap.ts";
-// deno-lint-ignore camelcase
 import { ares_strerror } from "ext:deno_node/internal_binding/ares.ts";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import { isWindows } from "ext:deno_node/_util/os.ts";

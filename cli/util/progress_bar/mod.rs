@@ -1,9 +1,9 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use std::time::SystemTime;
+use std::time::Instant;
 
 use deno_core::parking_lot::Mutex;
 use deno_runtime::ops::tty::ConsoleSize;
@@ -122,7 +122,7 @@ struct InternalState {
   /// If this guard exists, then it means the progress
   /// bar is displaying in the draw thread.
   draw_thread_guard: Option<DrawThreadGuard>,
-  start_time: SystemTime,
+  start_time: Instant,
   keep_alive_count: usize,
   total_entries: usize,
   entries: Vec<ProgressBarEntry>,
@@ -139,7 +139,7 @@ impl ProgressBarInner {
     Self {
       state: Arc::new(Mutex::new(InternalState {
         draw_thread_guard: None,
-        start_time: SystemTime::now(),
+        start_time: Instant::now(),
         keep_alive_count: 0,
         total_entries: 0,
         entries: Vec::new(),
@@ -207,7 +207,7 @@ impl ProgressBarInner {
     if internal_state.draw_thread_guard.is_none()
       && internal_state.keep_alive_count > 0
     {
-      internal_state.start_time = SystemTime::now();
+      internal_state.start_time = Instant::now();
       internal_state.draw_thread_guard =
         Some(DrawThread::add_entry(Arc::new(self.clone())));
     }
@@ -228,7 +228,7 @@ impl DrawThreadRenderer for ProgressBarInner {
         .or_else(|| state.entries.iter().last())
         .unwrap();
       ProgressData {
-        duration: state.start_time.elapsed().unwrap(),
+        duration: state.start_time.elapsed(),
         terminal_width: size.cols,
         pending_entries: state.entries.len(),
         total_entries: state.total_entries,

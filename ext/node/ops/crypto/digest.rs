@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::Resource;
@@ -98,6 +98,19 @@ impl Hash {
       Sha384(context) => context.finalize(),
       Sha512(context) => context.finalize(),
     }
+  }
+
+  pub fn get_hashes() -> Vec<&'static str> {
+    vec![
+      "md4",
+      "md5",
+      "ripemd160",
+      "sha1",
+      "sha224",
+      "sha256",
+      "sha384",
+      "sha512",
+    ]
   }
 }
 
