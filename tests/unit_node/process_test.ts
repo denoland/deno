@@ -237,7 +237,7 @@ Deno.test({
 
 Deno.test({ permissions: { run: true, read: true } }, function processKill() {
   const p = new Deno.Command(Deno.execPath(), {
-    cmd: ["eval", "setTimeout(() => {}, 10000)"],
+    args: ["eval", "setTimeout(() => {}, 10000)"],
   }).spawn();
 
   process.kill(p.pid);
