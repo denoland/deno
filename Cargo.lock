@@ -1684,6 +1684,7 @@ dependencies = [
  "deno_fs",
  "deno_media_type",
  "deno_net",
+ "deno_permissions",
  "deno_whoami",
  "digest",
  "dsa",
