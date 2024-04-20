@@ -576,6 +576,12 @@ fn cp(from: &Path, to: &Path) -> FsResult<()> {
         );
       }
     }
+
+    // Ensure parent destination directory exists
+    if let Some(parent) = to.parent() {
+      fs::create_dir_all(parent)?;
+    }
+
     copy_file(from, to)
   }
 
