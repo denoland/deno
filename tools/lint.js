@@ -184,8 +184,8 @@ async function ensureCiYmlUpToDate() {
 
 async function ensureNoNewITests() {
   // Note: Only decrease these numbers. Never increase them!!
-  // This is to help ensure we slowly deprecate these tests to
-  // spec tests.
+  // This is to help ensure we slowly deprecate these tests and
+  // replace them with spec tests.
   const iTestCounts = {
     "bench_tests.rs": 37,
     "bundle_tests.rs": 12,
