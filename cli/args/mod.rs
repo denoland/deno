@@ -185,6 +185,7 @@ pub fn ts_config_to_transpile_and_emit_options(
       jsx_fragment_factory: options.jsx_fragment_factory,
       jsx_import_source: options.jsx_import_source,
       precompile_jsx,
+      precompile_jsx_skip_elements: None,
       transform_jsx,
       var_decl_imports: false,
     },
@@ -1651,6 +1652,10 @@ impl CliOptions {
 
   pub fn v8_flags(&self) -> &Vec<String> {
     &self.flags.v8_flags
+  }
+
+  pub fn code_cache_enabled(&self) -> bool {
+    self.flags.code_cache_enabled
   }
 
   pub fn watch_paths(&self) -> Vec<PathBuf> {

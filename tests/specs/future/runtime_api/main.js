@@ -61,8 +61,12 @@ if (Deno.build.os === "windows") {
 // TLS
 // Since these tests may run in parallel, ensure this port is unique to this file
 const tlsPort = 4510;
-const cert = Deno.readTextFileSync("../../../testdata/tls/localhost.crt");
-const key = Deno.readTextFileSync("../../../testdata/tls/localhost.key");
+const cert = Deno.readTextFileSync(
+  new URL("../../../testdata/tls/localhost.crt", import.meta.url),
+);
+const key = Deno.readTextFileSync(
+  new URL("../../../testdata/tls/localhost.key", import.meta.url),
+);
 const tlsListener = Deno.listenTls({ port: tlsPort, cert, key });
 console.log("Deno.TlsListener.prototype.rid is", tlsListener.rid);
 
@@ -87,5 +91,7 @@ try {
     console.log("Deno.FsFile constructor is illegal");
   }
 }
+
+console.log("Deno.customInspect is", Deno.customInspect);
 
 self.close();

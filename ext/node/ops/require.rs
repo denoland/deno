@@ -452,7 +452,7 @@ where
   let file_path = PathBuf::from(file_path);
   ensure_read_permission::<P>(state, &file_path)?;
   let fs = state.borrow::<FileSystemRc>();
-  Ok(fs.read_text_file_sync(&file_path)?)
+  Ok(fs.read_text_file_sync(&file_path, None)?)
 }
 
 #[op2]

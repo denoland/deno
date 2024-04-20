@@ -10,7 +10,6 @@ use crate::lsp::logging::lsp_warn;
 use crate::tools::lint::get_configured_rules;
 use crate::tools::lint::ConfiguredRules;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
-use crate::util::path::specifier_to_file_path;
 use deno_ast::MediaType;
 use deno_config::FmtOptionsConfig;
 use deno_config::TsConfig;
@@ -25,6 +24,7 @@ use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
 use deno_lockfile::Lockfile;
 use deno_runtime::deno_node::PackageJson;
+use deno_runtime::fs_util::specifier_to_file_path;
 use deno_runtime::permissions::PermissionsContainer;
 use import_map::ImportMap;
 use lsp::Url;
@@ -870,7 +870,7 @@ impl Settings {
   }
 }
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct Config {
   pub client_capabilities: ClientCapabilities,
   pub settings: Settings,
@@ -1393,7 +1393,7 @@ impl ConfigData {
       if import_map_value.is_none() {
         if let Some(file_fetcher) = file_fetcher {
           let fetch_result = file_fetcher
-            .fetch(specifier, PermissionsContainer::allow_all())
+            .fetch(specifier, &PermissionsContainer::allow_all())
             .await;
           let value_result = fetch_result.and_then(|f| {
             serde_json::from_slice::<Value>(&f.source).map_err(|e| e.into())

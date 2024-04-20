@@ -37,7 +37,7 @@ async fn generate_doc_nodes_for_builtin_types(
   let source_file_specifier =
     ModuleSpecifier::parse("internal://lib.deno.d.ts").unwrap();
   let content = get_types_declaration_file_text();
-  let mut loader = deno_graph::source::MemoryLoader::new(
+  let loader = deno_graph::source::MemoryLoader::new(
     vec![(
       source_file_specifier.to_string(),
       deno_graph::source::Source::Module {
@@ -52,18 +52,19 @@ async fn generate_doc_nodes_for_builtin_types(
   graph
     .build(
       vec![source_file_specifier.clone()],
-      &mut loader,
+      &loader,
       deno_graph::BuildOptions {
-        module_analyzer: analyzer,
-        file_system: &NullFileSystem,
-        is_dynamic: false,
         imports: Vec::new(),
+        is_dynamic: false,
+        passthrough_jsr_specifiers: false,
+        workspace_members: &[],
         executor: Default::default(),
+        file_system: &NullFileSystem,
         jsr_url_provider: Default::default(),
+        module_analyzer: analyzer,
         npm_resolver: None,
         reporter: None,
         resolver: None,
-        workspace_members: &[],
       },
     )
     .await;

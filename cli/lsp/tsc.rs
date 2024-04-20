@@ -30,8 +30,8 @@ use crate::tsc;
 use crate::tsc::ResolveArgs;
 use crate::tsc::MISSING_DEPENDENCY_SPECIFIER;
 use crate::util::path::relative_specifier;
-use crate::util::path::specifier_to_file_path;
 use crate::util::path::to_percent_decoded_str;
+use deno_runtime::fs_util::specifier_to_file_path;
 
 use dashmap::DashMap;
 use deno_ast::MediaType;
@@ -105,7 +105,7 @@ const FILE_EXTENSION_KIND_MODIFIERS: &[&str] =
 type Request = (
   TscRequest,
   Arc<StateSnapshot>,
-  oneshot::Sender<Result<Value, AnyError>>,
+  oneshot::Sender<Result<String, AnyError>>,
   CancellationToken,
 );
 
@@ -306,7 +306,6 @@ impl TsServer {
     &self,
     snapshot: Arc<StateSnapshot>,
     modified_scripts: &[(&ModuleSpecifier, ChangeKind)],
-    new_project_version: String,
     config_changed: bool,
   ) {
     let modified_scripts = modified_scripts
@@ -315,7 +314,9 @@ impl TsServer {
       .collect::<Vec<_>>();
     let req = TscRequest {
       method: "$projectChanged",
-      args: json!([modified_scripts, new_project_version, config_changed,]),
+      args: json!(
+        [modified_scripts, snapshot.project_version, config_changed,]
+      ),
     };
     self
       .request::<()>(snapshot, req)
@@ -340,7 +341,7 @@ impl TsServer {
           .into_iter()
           .map(|s| self.specifier_map.denormalize(&s))
           .collect::<Vec<String>>(),
-        snapshot.documents.project_version()
+        snapshot.project_version,
       ]),
     };
     let raw_diagnostics = self.request_with_cancellation::<HashMap<String, Vec<crate::tsc::Diagnostic>>>(snapshot, req, token).await?;
@@ -353,6 +354,21 @@ impl TsServer {
       diagnostics_map.insert(specifier, diagnostics);
     }
     Ok(diagnostics_map)
+  }
+
+  pub async fn cleanup_semantic_cache(&self, snapshot: Arc<StateSnapshot>) {
+    let req = TscRequest {
+      method: "cleanupSemanticCache",
+      args: json!([]),
+    };
+    self
+      .request::<()>(snapshot, req)
+      .await
+      .map_err(|err| {
+        log::error!("Failed to request to tsserver {}", err);
+        LspError::invalid_request()
+      })
+      .ok();
   }
 
   pub async fn find_references(
@@ -474,8 +490,14 @@ impl TsServer {
     specifier: ModuleSpecifier,
     range: Range<u32>,
     preferences: Option<UserPreferences>,
+    trigger_kind: Option<lsp::CodeActionTriggerKind>,
     only: String,
   ) -> Result<Vec<ApplicableRefactorInfo>, LspError> {
+    let trigger_kind: Option<&str> = trigger_kind.map(|reason| match reason {
+      lsp::CodeActionTriggerKind::INVOKED => "invoked",
+      lsp::CodeActionTriggerKind::AUTOMATIC => "implicit",
+      _ => unreachable!(),
+    });
     let req = TscRequest {
       method: "getApplicableRefactors",
       // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6274
@@ -483,7 +505,7 @@ impl TsServer {
         self.specifier_map.denormalize(&specifier),
         { "pos": range.start, "end": range.end },
         preferences.unwrap_or_default(),
-        json!(null),
+        trigger_kind,
         only,
       ]),
     };
@@ -1009,14 +1031,6 @@ impl TsServer {
     })
   }
 
-  pub async fn restart(&self, snapshot: Arc<StateSnapshot>) {
-    let req = TscRequest {
-      method: "$restart",
-      args: json!([]),
-    };
-    self.request::<bool>(snapshot, req).await.unwrap();
-  }
-
   async fn request<R>(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -1054,13 +1068,13 @@ impl TsServer {
     }
     let token = token.child_token();
     let droppable_token = DroppableToken(token.clone());
-    let (tx, rx) = oneshot::channel::<Result<Value, AnyError>>();
+    let (tx, rx) = oneshot::channel::<Result<String, AnyError>>();
     if self.sender.send((req, snapshot, tx, token)).is_err() {
       return Err(anyhow!("failed to send request to tsc thread"));
     }
     let value = rx.await??;
     drop(droppable_token);
-    Ok(serde_json::from_value::<R>(value)?)
+    Ok(serde_json::from_str(&value)?)
   }
 }
 
@@ -3848,12 +3862,6 @@ impl SelectionRange {
   }
 }
 
-#[derive(Debug, Clone, Deserialize)]
-struct Response {
-  // id: usize,
-  data: Value,
-}
-
 #[derive(Debug, Default)]
 pub struct TscSpecifierMap {
   normalized_specifiers: DashMap<String, ModuleSpecifier>,
@@ -3917,7 +3925,8 @@ impl TscSpecifierMap {
 struct State {
   last_id: usize,
   performance: Arc<Performance>,
-  response: Option<Response>,
+  // the response from JS, as a JSON string
+  response: Option<String>,
   state_snapshot: Arc<StateSnapshot>,
   specifier_map: Arc<TscSpecifierMap>,
   token: CancellationToken,
@@ -4000,6 +4009,7 @@ struct LoadResponse {
   data: Arc<str>,
   script_kind: i32,
   version: Option<String>,
+  is_cjs: bool,
 }
 
 #[op2]
@@ -4022,6 +4032,10 @@ fn op_load<'s>(
         data: doc.text(),
         script_kind: crate::tsc::as_ts_script_kind(doc.media_type()),
         version: state.script_version(&specifier),
+        is_cjs: matches!(
+          doc.media_type(),
+          MediaType::Cjs | MediaType::Cts | MediaType::Dcts
+        ),
       })
     };
 
@@ -4031,55 +4045,66 @@ fn op_load<'s>(
   Ok(serialized)
 }
 
+#[op2(fast)]
+fn op_release(
+  state: &mut OpState,
+  #[string] specifier: &str,
+) -> Result<(), AnyError> {
+  let state = state.borrow_mut::<State>();
+  let mark = state
+    .performance
+    .mark_with_args("tsc.op.op_release", specifier);
+  let specifier = state.specifier_map.normalize(specifier)?;
+  state.state_snapshot.documents.release(&specifier);
+  state.performance.measure(mark);
+  Ok(())
+}
+
 #[op2]
 #[serde]
 fn op_resolve(
   state: &mut OpState,
-  #[serde] args: ResolveArgs,
+  #[string] base: String,
+  #[serde] specifiers: Vec<String>,
+) -> Result<Vec<Option<(String, String)>>, AnyError> {
+  op_resolve_inner(state, ResolveArgs { base, specifiers })
+}
+
+#[inline]
+fn op_resolve_inner(
+  state: &mut OpState,
+  args: ResolveArgs,
 ) -> Result<Vec<Option<(String, String)>>, AnyError> {
   let state = state.borrow_mut::<State>();
   let mark = state.performance.mark_with_args("tsc.op.op_resolve", &args);
   let referrer = state.specifier_map.normalize(&args.base)?;
-  let specifiers = match state.get_asset_or_document(&referrer) {
-    Some(referrer_doc) => {
-      let resolved = state.state_snapshot.documents.resolve(
-        args.specifiers,
-        &referrer_doc,
-        state.state_snapshot.npm.as_ref(),
-      );
-      resolved
-        .into_iter()
-        // Resolved `node:` specifier means the user doesn't have @types/node,
-        // resolve to stub.
-        .map(|o| match o.filter(|(s, _)| s.scheme() != "node") {
-          Some((s, mt)) => Some((
-            state.specifier_map.denormalize(&s),
-            mt.as_ts_extension().to_string(),
-          )),
-          None => Some((
-            MISSING_DEPENDENCY_SPECIFIER.to_string(),
-            MediaType::Dts.as_ts_extension().to_string(),
-          )),
-        })
-        .collect()
-    }
-    None => {
-      lsp_warn!(
-        "Error resolving. Referring specifier \"{}\" was not found.",
-        args.base
-      );
-      vec![None; args.specifiers.len()]
-    }
-  };
+  let specifiers = state
+    .state_snapshot
+    .documents
+    .resolve(
+      &args.specifiers,
+      &referrer,
+      state.state_snapshot.npm.as_ref(),
+    )
+    .into_iter()
+    .map(|o| {
+      o.map(|(s, mt)| {
+        (
+          state.specifier_map.denormalize(&s),
+          mt.as_ts_extension().to_string(),
+        )
+      })
+    })
+    .collect();
 
   state.performance.measure(mark);
   Ok(specifiers)
 }
 
-#[op2]
-fn op_respond(state: &mut OpState, #[serde] args: Response) {
+#[op2(fast)]
+fn op_respond(state: &mut OpState, #[string] response: String) {
   let state = state.borrow_mut::<State>();
-  state.response = Some(args);
+  state.response = Some(response);
 }
 
 #[op2]
@@ -4163,12 +4188,12 @@ fn op_ts_config(state: &mut OpState) -> serde_json::Value {
   r
 }
 
-#[op2]
-#[string]
-fn op_project_version(state: &mut OpState) -> String {
+#[op2(fast)]
+#[number]
+fn op_project_version(state: &mut OpState) -> usize {
   let state: &mut State = state.borrow_mut::<State>();
   let mark = state.performance.mark("tsc.op.op_project_version");
-  let r = state.state_snapshot.documents.project_version();
+  let r = state.state_snapshot.project_version;
   state.performance.measure(mark);
   r
 }
@@ -4248,6 +4273,7 @@ deno_core::extension!(deno_tsc,
     op_is_cancelled,
     op_is_node_file,
     op_load,
+    op_release,
     op_resolve,
     op_respond,
     op_script_names,
@@ -4263,6 +4289,7 @@ deno_core::extension!(deno_tsc,
   state = |state, options| {
     state.put(State::new(
       Arc::new(StateSnapshot {
+        project_version: 0,
         assets: Default::default(),
         cache_metadata: CacheMetadata::new(options.cache.clone()),
         config: Default::default(),
@@ -4638,7 +4665,7 @@ fn request(
   state_snapshot: Arc<StateSnapshot>,
   request: TscRequest,
   token: CancellationToken,
-) -> Result<Value, AnyError> {
+) -> Result<String, AnyError> {
   if token.is_cancelled() {
     return Err(anyhow!("Operation was cancelled."));
   }
@@ -4671,14 +4698,12 @@ fn request(
   let state = op_state.borrow_mut::<State>();
 
   performance.measure(mark);
-  if let Some(response) = state.response.take() {
-    Ok(response.data)
-  } else {
-    Err(custom_error(
+  state.response.take().ok_or_else(|| {
+    custom_error(
       "RequestError",
       "The response was not received for the request.",
-    ))
-  }
+    )
+  })
 }
 
 #[cfg(test)]
@@ -4735,6 +4760,7 @@ mod tests {
       )
       .await;
     StateSnapshot {
+      project_version: 0,
       documents,
       assets: Default::default(),
       cache_metadata: CacheMetadata::new(cache),
@@ -5190,10 +5216,8 @@ mod tests {
       )
       .unwrap();
     let snapshot = {
-      let mut documents = snapshot.documents.clone();
-      documents.increment_project_version();
       Arc::new(StateSnapshot {
-        documents,
+        project_version: snapshot.project_version + 1,
         ..snapshot.as_ref().clone()
       })
     };
@@ -5201,7 +5225,6 @@ mod tests {
       .project_changed(
         snapshot.clone(),
         &[(&specifier_dep, ChangeKind::Opened)],
-        snapshot.documents.project_version(),
         false,
       )
       .await;
@@ -5571,7 +5594,7 @@ mod tests {
   }
 
   #[tokio::test]
-  async fn resolve_unknown_dependency_to_stub_module() {
+  async fn resolve_unknown_dependency() {
     let temp_dir = TempDir::new();
     let (_, snapshot, _) = setup(
       &temp_dir,
@@ -5585,7 +5608,7 @@ mod tests {
     )
     .await;
     let mut state = setup_op_state(snapshot);
-    let resolved = op_resolve::call(
+    let resolved = op_resolve_inner(
       &mut state,
       ResolveArgs {
         base: "file:///a.ts".to_string(),
@@ -5596,8 +5619,8 @@ mod tests {
     assert_eq!(
       resolved,
       vec![Some((
-        MISSING_DEPENDENCY_SPECIFIER.to_string(),
-        MediaType::Dts.as_ts_extension().to_string()
+        "file:///b.ts".to_string(),
+        MediaType::TypeScript.as_ts_extension().to_string()
       ))]
     );
   }

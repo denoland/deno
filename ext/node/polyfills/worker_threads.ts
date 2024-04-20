@@ -17,6 +17,7 @@ import {
   MessagePort,
   MessagePortIdSymbol,
   MessagePortPrototype,
+  MessagePortReceiveMessageOnPortSymbol,
   nodeWorkerThreadCloseCb,
   refMessagePort,
   serializeJsMessageData,
@@ -26,6 +27,7 @@ import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import { EventEmitter } from "node:events";
 import { BroadcastChannel } from "ext:deno_broadcast_channel/01_broadcast_channel.js";
+import process from "node:process";
 
 const { ObjectPrototypeIsPrototypeOf } = primordials;
 const {
@@ -127,6 +129,7 @@ class NodeWorker extends EventEmitter {
     const serializedWorkerMetadata = serializeJsMessageData({
       workerData: options?.workerData,
       environmentData: environmentData,
+      env: options?.env,
     }, options?.transferList ?? []);
     const id = op_create_worker(
       {
@@ -347,6 +350,10 @@ internals.__initWorkerThreads = (
       const { 0: metadata, 1: _ } = maybeWorkerMetadata;
       workerData = metadata.workerData;
       environmentData = metadata.environmentData;
+      const env = metadata.env;
+      if (env) {
+        process.env = env;
+      }
     }
     defaultExport.workerData = workerData;
     defaultExport.parentPort = parentPort;
@@ -441,6 +448,7 @@ export function receiveMessageOnPort(port: MessagePort): object | undefined {
     err["code"] = "ERR_INVALID_ARG_TYPE";
     throw err;
   }
+  port[MessagePortReceiveMessageOnPortSymbol] = true;
   const data = op_message_port_recv_message_sync(port[MessagePortIdSymbol]);
   if (data === null) return undefined;
   return { message: deserializeJsMessageData(data)[0] };

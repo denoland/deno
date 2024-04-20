@@ -125,3 +125,8 @@ Deno.test(async function bind() {
 
   assertEquals(await deferred.promise, null);
 });
+
+Deno.test(function asyncResourceStub() {
+  const resource = new AsyncResource("dbquery");
+  assert(typeof resource.asyncId() === "number");
+});
