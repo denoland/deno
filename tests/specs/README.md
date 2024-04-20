@@ -76,8 +76,25 @@ a "steps" array.
 - `args` - A string (that will be spilt on whitespace into an args array) or an
   array of arguments.
 - `output` - Path to use to assert the output.
-- `clean` (boolean) - Whether to empty the deno_dir before running the step.
+- `cleanDenoDir` (boolean) - Whether to empty the deno_dir before running the
+  step.
 - `exitCode` (number) - Expected exit code.
+
+### Auto-complete
+
+To get auto-complete for these files, add the following to a local
+`.vscode/settings.json` file:
+
+```json
+{
+  "json.schemas": [{
+    "fileMatch": [
+      "__test__.jsonc"
+    ],
+    "url": "./tests/specs/schema.json"
+  }]
+}
+```
 
 ## `.out` files
 
