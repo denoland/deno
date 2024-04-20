@@ -7,6 +7,8 @@ mod std_fs;
 pub mod sync;
 
 pub use crate::in_memory_fs::InMemoryFs;
+pub use crate::interface::AccessCheckCb;
+pub use crate::interface::AccessCheckFn;
 pub use crate::interface::FileSystem;
 pub use crate::interface::FileSystemRc;
 pub use crate::interface::FsDirEntry;
@@ -20,9 +22,18 @@ use crate::ops::*;
 
 use deno_core::error::AnyError;
 use deno_core::OpState;
+use deno_io::fs::FsError;
 use std::path::Path;
 
-pub trait FsPermissions {
+pub trait FsPermissions: Send + Sync {
+  fn check_open<'a>(
+    &mut self,
+    resolved: bool,
+    read: bool,
+    write: bool,
+    path: &'a Path,
+    api_name: &str,
+  ) -> Result<std::borrow::Cow<'a, Path>, FsError>;
   fn check_read(&mut self, path: &Path, api_name: &str)
     -> Result<(), AnyError>;
   fn check_read_all(&mut self, api_name: &str) -> Result<(), AnyError>;
@@ -50,19 +61,20 @@ pub trait FsPermissions {
     api_name: &str,
   ) -> Result<(), AnyError>;
 
-  fn check(
+  fn check<'a>(
     &mut self,
+    resolved: bool,
     open_options: &OpenOptions,
-    path: &Path,
+    path: &'a Path,
     api_name: &str,
-  ) -> Result<(), AnyError> {
-    if open_options.read {
-      self.check_read(path, api_name)?;
-    }
-    if open_options.write || open_options.append {
-      self.check_write(path, api_name)?;
-    }
-    Ok(())
+  ) -> Result<std::borrow::Cow<'a, Path>, FsError> {
+    self.check_open(
+      resolved,
+      open_options.read,
+      open_options.write || open_options.append,
+      path,
+      api_name,
+    )
   }
 }
 

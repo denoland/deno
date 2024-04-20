@@ -35,3 +35,4 @@ Deno.TlsConn.prototype.rid is undefined
 Deno.FsWatcher.prototype.rid is undefined
 Deno.FsFile constructor is illegal
 Deno.ListenTlsOptions.(keyFile|certFile) do nothing
+Deno.customInspect is undefined
