@@ -4,9 +4,9 @@ use deno_ast::ParsedSource;
 use deno_ast::SourceRange;
 use deno_ast::SourceTextInfo;
 use deno_core::ModuleSpecifier;
-use deno_graph::DefaultModuleAnalyzer;
 use deno_graph::DependencyDescriptor;
 use deno_graph::DynamicTemplatePart;
+use deno_graph::ParserModuleAnalyzer;
 use deno_graph::TypeScriptReference;
 use deno_runtime::deno_node::is_builtin_node_module;
 
@@ -192,7 +192,7 @@ impl<'a> SpecifierUnfurler<'a> {
     diagnostic_reporter: &mut dyn FnMut(SpecifierUnfurlerDiagnostic),
   ) -> String {
     let mut text_changes = Vec::new();
-    let module_info = DefaultModuleAnalyzer::module_info(parsed_source);
+    let module_info = ParserModuleAnalyzer::module_info(parsed_source);
     let analyze_specifier =
       |specifier: &str,
        range: &deno_graph::PositionRange,

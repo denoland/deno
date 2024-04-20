@@ -9,6 +9,7 @@ use crate::args::PackageJsonDepsProvider;
 use crate::args::StorageKeyResolver;
 use crate::args::TsConfigType;
 use crate::cache::Caches;
+use crate::cache::CodeCache;
 use crate::cache::DenoDir;
 use crate::cache::DenoDirProvider;
 use crate::cache::EmitCache;
@@ -178,6 +179,7 @@ struct CliFactoryServices {
   cjs_resolutions: Deferred<Arc<CjsResolutionStore>>,
   cli_node_resolver: Deferred<Arc<CliNodeResolver>>,
   feature_checker: Deferred<Arc<FeatureChecker>>,
+  code_cache: Deferred<Arc<CodeCache>>,
 }
 
 pub struct CliFactory {
@@ -225,6 +227,9 @@ impl CliFactory {
           if self.options.type_check_mode().is_true() {
             _ = caches.fast_check_db();
             _ = caches.type_checking_cache_db();
+          }
+          if self.options.code_cache_enabled() {
+            _ = caches.code_cache_db();
           }
         }
         _ => {}
@@ -402,11 +407,11 @@ impl CliFactory {
       .npm_resolver
       .get_or_try_init_async(async {
         let fs = self.fs();
-        create_cli_npm_resolver(if self.options.use_byonm() || self.options.unstable_byonm() {
+        create_cli_npm_resolver(if self.options.use_byonm() {
           CliNpmResolverCreateOptions::Byonm(CliNpmResolverByonmCreateOptions {
             fs: fs.clone(),
-            root_node_modules_dir: match self.options.node_modules_dir_path().clone() {
-              Some(node_modules_path) => node_modules_path,
+            root_node_modules_dir: match self.options.node_modules_dir_path() {
+              Some(node_modules_path) => node_modules_path.to_path_buf(),
               // path needs to be canonicalized for node resolution
               // (node_modules_dir_path above is already canonicalized)
               None => canonicalize_path_maybe_not_exists(self.options.initial_cwd())?
@@ -434,7 +439,7 @@ impl CliFactory {
             npm_global_cache_dir: self.deno_dir()?.npm_folder_path(),
             cache_setting: self.options.cache_setting(),
             text_only_progress_bar: self.text_only_progress_bar().clone(),
-            maybe_node_modules_path: self.options.node_modules_dir_path(),
+            maybe_node_modules_path: self.options.node_modules_dir_path().cloned(),
             package_json_installer:
               CliNpmResolverManagedPackageJsonInstallerOption::ConditionalInstall(
                 self.package_json_deps_provider().clone(),
@@ -534,6 +539,12 @@ impl CliFactory {
     })
   }
 
+  pub fn code_cache(&self) -> Result<&Arc<CodeCache>, AnyError> {
+    self.services.code_cache.get_or_try_init(|| {
+      Ok(Arc::new(CodeCache::new(self.caches()?.code_cache_db())))
+    })
+  }
+
   pub fn parsed_source_cache(&self) -> &Arc<ParsedSourceCache> {
     self
       .services
@@ -549,11 +560,14 @@ impl CliFactory {
       if let Some(ignored_options) = ts_config_result.maybe_ignored_options {
         warn!("{}", ignored_options);
       }
-      let emit_options =
-        crate::args::ts_config_to_emit_options(ts_config_result.ts_config);
+      let (transpile_options, emit_options) =
+        crate::args::ts_config_to_transpile_and_emit_options(
+          ts_config_result.ts_config,
+        );
       Ok(Arc::new(Emitter::new(
         self.emit_cache()?.clone(),
         self.parsed_source_cache().clone(),
+        transpile_options,
         emit_options,
       )))
     })
@@ -663,17 +677,22 @@ impl CliFactory {
         // todo(dsherret): ideally the graph container would not be used
         // for deno cache because it doesn't dynamically load modules
         DenoSubcommand::Cache(_) => GraphKind::All,
+        DenoSubcommand::Check(_) => GraphKind::TypesOnly,
         _ => self.options.type_check_mode().as_graph_kind(),
       };
       Arc::new(ModuleGraphContainer::new(graph_kind))
     })
   }
 
-  pub fn maybe_inspector_server(&self) -> &Option<Arc<InspectorServer>> {
-    self
-      .services
-      .maybe_inspector_server
-      .get_or_init(|| self.options.resolve_inspector_server().map(Arc::new))
+  pub fn maybe_inspector_server(
+    &self,
+  ) -> Result<&Option<Arc<InspectorServer>>, AnyError> {
+    self.services.maybe_inspector_server.get_or_try_init(|| {
+      match self.options.resolve_inspector_server() {
+        Ok(server) => Ok(server.map(Arc::new)),
+        Err(err) => Err(err),
+      }
+    })
   }
 
   pub async fn module_load_preparer(
@@ -782,11 +801,17 @@ impl CliFactory {
           fs.clone(),
           cli_node_resolver.clone(),
         ),
+        if self.options.code_cache_enabled() {
+          Some(self.code_cache()?.clone())
+        } else {
+          None
+        },
+        self.module_info_cache()?.clone(),
       )),
       self.root_cert_store_provider().clone(),
       self.fs().clone(),
       maybe_file_watcher_communicator,
-      self.maybe_inspector_server().clone(),
+      self.maybe_inspector_server()?.clone(),
       self.maybe_lockfile().clone(),
       self.feature_checker().clone(),
       self.create_cli_main_worker_options()?,
@@ -796,6 +821,11 @@ impl CliFactory {
       // self.options.disable_deprecated_api_warning,
       true,
       self.options.verbose_deprecated_api_warning,
+      if self.options.code_cache_enabled() {
+        Some(self.code_cache()?.clone())
+      } else {
+        None
+      },
     ))
   }
 

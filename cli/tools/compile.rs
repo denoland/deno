@@ -73,10 +73,17 @@ pub async fn compile(
 
   let ts_config_for_emit =
     cli_options.resolve_ts_config_for_emit(deno_config::TsConfigType::Emit)?;
-  let emit_options =
-    crate::args::ts_config_to_emit_options(ts_config_for_emit.ts_config);
+  let (transpile_options, emit_options) =
+    crate::args::ts_config_to_transpile_and_emit_options(
+      ts_config_for_emit.ts_config,
+    );
   let parser = parsed_source_cache.as_capturing_parser();
-  let eszip = eszip::EszipV2::from_graph(graph, &parser, emit_options)?;
+  let eszip = eszip::EszipV2::from_graph(
+    graph,
+    &parser,
+    transpile_options,
+    emit_options,
+  )?;
 
   log::info!(
     "{} {} to {}",

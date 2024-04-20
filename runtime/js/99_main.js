@@ -282,7 +282,8 @@ let isClosing = false;
 let globalDispatchEvent;
 
 function hasMessageEventListener() {
-  return event.listenerCount(globalThis, "message") > 0;
+  return event.listenerCount(globalThis, "message") > 0 ||
+    messagePort.messageEventListenerCount > 0;
 }
 
 async function pollForMessages() {
@@ -293,7 +294,12 @@ async function pollForMessages() {
     );
   }
   while (!isClosing) {
-    const data = await op_worker_recv_message();
+    const recvMessage = op_worker_recv_message();
+    if (globalThis[messagePort.unrefPollForMessages] === true) {
+      core.unrefOpPromise(recvMessage);
+    }
+    const data = await recvMessage;
+    // const data = await op_worker_recv_message();
     if (data === null) break;
     const v = messagePort.deserializeJsMessageData(data);
     const message = v[0];
@@ -522,6 +528,20 @@ function processRejectionHandled(promise, reason) {
   }
 }
 
+function dispatchLoadEvent() {
+  globalThis_.dispatchEvent(new Event("load"));
+}
+
+function dispatchBeforeUnloadEvent() {
+  return globalThis_.dispatchEvent(
+    new Event("beforeunload", { cancelable: true }),
+  );
+}
+
+function dispatchUnloadEvent() {
+  globalThis_.dispatchEvent(new Event("unload"));
+}
+
 let hasBootstrapped = false;
 // Delete the `console` object that V8 automaticaly adds onto the global wrapper
 // object on context creation. We don't want this console object to shadow the
@@ -647,7 +667,7 @@ ObjectDefineProperties(finalDenoNs, {
         new Error().stack,
         'Use `Symbol.for("Deno.customInspect")` instead.',
       );
-      return customInspect;
+      return internals.future ? undefined : customInspect;
     },
   },
 });
@@ -676,6 +696,11 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       8: shouldUseVerboseDeprecatedApiWarning,
       9: future,
     } = runtimeOptions;
+
+    // TODO(iuioiua): remove in Deno v2. This allows us to dynamically delete
+    // class properties within constructors for classes that are not defined
+    // within the Deno namespace.
+    internals.future = future;
 
     removeImportedOps();
 
@@ -836,8 +861,13 @@ function bootstrapWorkerRuntime(
       6: argv0,
       7: shouldDisableDeprecatedApiWarning,
       8: shouldUseVerboseDeprecatedApiWarning,
-      9: _future,
+      9: future,
     } = runtimeOptions;
+
+    // TODO(iuioiua): remove in Deno v2. This allows us to dynamically delete
+    // class properties within constructors for classes that are not defined
+    // within the Deno namespace.
+    internals.future = future;
 
     deprecatedApiWarningDisabled = shouldDisableDeprecatedApiWarning;
     verboseDeprecatedApiWarning = shouldUseVerboseDeprecatedApiWarning;
@@ -936,6 +966,37 @@ function bootstrapWorkerRuntime(
         workerMetadata,
       );
     }
+
+    if (future) {
+      delete Deno.Buffer;
+      delete Deno.close;
+      delete Deno.copy;
+      delete Deno.File;
+      delete Deno.fstat;
+      delete Deno.fstatSync;
+      delete Deno.ftruncate;
+      delete Deno.ftruncateSync;
+      delete Deno.flock;
+      delete Deno.flockSync;
+      delete Deno.FsFile.prototype.rid;
+      delete Deno.funlock;
+      delete Deno.funlockSync;
+      delete Deno.iter;
+      delete Deno.iterSync;
+      delete Deno.metrics;
+      delete Deno.readAll;
+      delete Deno.readAllSync;
+      delete Deno.read;
+      delete Deno.readSync;
+      delete Deno.resources;
+      delete Deno.seek;
+      delete Deno.seekSync;
+      delete Deno.shutdown;
+      delete Deno.writeAll;
+      delete Deno.writeAllSync;
+      delete Deno.write;
+      delete Deno.writeSync;
+    }
   } else {
     // Warmup
     return;
@@ -944,10 +1005,19 @@ function bootstrapWorkerRuntime(
 
 const nodeBootstrap = globalThis.nodeBootstrap;
 delete globalThis.nodeBootstrap;
+const dispatchProcessExitEvent = internals.dispatchProcessExitEvent;
+delete internals.dispatchProcessExitEvent;
+const dispatchProcessBeforeExitEvent = internals.dispatchProcessBeforeExitEvent;
+delete internals.dispatchProcessBeforeExitEvent;
 
 globalThis.bootstrap = {
   mainRuntime: bootstrapMainRuntime,
   workerRuntime: bootstrapWorkerRuntime,
+  dispatchLoadEvent,
+  dispatchUnloadEvent,
+  dispatchBeforeUnloadEvent,
+  dispatchProcessExitEvent,
+  dispatchProcessBeforeExitEvent,
 };
 
 event.setEventTargetData(globalThis);

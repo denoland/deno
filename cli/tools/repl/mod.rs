@@ -145,7 +145,7 @@ async fn read_eval_file(
     deno_core::resolve_url_or_path(eval_file, cli_options.initial_cwd())?;
 
   let file = file_fetcher
-    .fetch(&specifier, PermissionsContainer::allow_all())
+    .fetch(&specifier, &PermissionsContainer::allow_all())
     .await?;
 
   Ok(file.into_text_decoded()?.source)
@@ -172,9 +172,7 @@ pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
     .create_custom_worker(
       main_module.clone(),
       permissions,
-      vec![crate::ops::testing::deno_test::init_ops(
-        test_event_sender.clone(),
-      )],
+      vec![crate::ops::testing::deno_test::init_ops(test_event_sender)],
       Default::default(),
     )
     .await?;
@@ -186,7 +184,6 @@ pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
     resolver,
     worker,
     main_module,
-    test_event_sender,
     test_event_receiver,
   )
   .await?;

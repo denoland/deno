@@ -33,7 +33,10 @@ use serde::Serialize;
 use serde_json::json;
 use serde_json::to_value;
 use serde_json::Value;
+use std::collections::HashMap;
 use std::collections::HashSet;
+use std::ffi::OsStr;
+use std::ffi::OsString;
 use std::io;
 use std::io::BufRead;
 use std::io::BufReader;
@@ -461,10 +464,12 @@ impl InitializeParamsBuilder {
 pub struct LspClientBuilder {
   print_stderr: bool,
   capture_stderr: bool,
+  log_debug: bool,
   deno_exe: PathRef,
   root_dir: PathRef,
   use_diagnostic_sync: bool,
   deno_dir: TempDir,
+  envs: HashMap<OsString, OsString>,
 }
 
 impl LspClientBuilder {
@@ -477,10 +482,12 @@ impl LspClientBuilder {
     Self {
       print_stderr: false,
       capture_stderr: false,
+      log_debug: false,
       deno_exe: deno_exe_path(),
       root_dir: deno_dir.path().clone(),
       use_diagnostic_sync: true,
       deno_dir,
+      envs: Default::default(),
     }
   }
 
@@ -502,6 +509,11 @@ impl LspClientBuilder {
     self
   }
 
+  pub fn log_debug(mut self) -> Self {
+    self.log_debug = true;
+    self
+  }
+
   /// Whether to use the synchronization messages to better sync diagnostics
   /// between the test client and server.
   pub fn use_diagnostic_sync(mut self, value: bool) -> Self {
@@ -514,6 +526,17 @@ impl LspClientBuilder {
     self
   }
 
+  pub fn env(
+    mut self,
+    key: impl AsRef<OsStr>,
+    value: impl AsRef<OsStr>,
+  ) -> Self {
+    self
+      .envs
+      .insert(key.as_ref().to_owned(), value.as_ref().to_owned());
+    self
+  }
+
   pub fn build(&self) -> LspClient {
     self.build_result().unwrap()
   }
@@ -521,6 +544,10 @@ impl LspClientBuilder {
   pub fn build_result(&self) -> Result<LspClient> {
     let deno_dir = self.deno_dir.clone();
     let mut command = Command::new(&self.deno_exe);
+    let mut args = vec!["lsp".to_string()];
+    if self.log_debug {
+      args.push("--log-level=debug".to_string());
+    }
     command
       .env("DENO_DIR", deno_dir.path())
       .env("NPM_CONFIG_REGISTRY", npm_registry_url())
@@ -531,9 +558,12 @@ impl LspClientBuilder {
         if self.use_diagnostic_sync { "1" } else { "" },
       )
       .env("DENO_NO_UPDATE_CHECK", "1")
-      .arg("lsp")
+      .args(args)
       .stdin(Stdio::piped())
       .stdout(Stdio::piped());
+    for (key, value) in &self.envs {
+      command.env(key, value);
+    }
     if self.capture_stderr {
       command.stderr(Stdio::piped());
     } else if !self.print_stderr {
@@ -632,7 +662,10 @@ impl LspClient {
   }
 
   #[track_caller]
-  pub fn wait_until_stderr_line(&self, condition: impl Fn(&str) -> bool) {
+  pub fn wait_until_stderr_line(
+    &self,
+    mut condition: impl FnMut(&str) -> bool,
+  ) {
     let timeout_time =
       Instant::now().checked_add(Duration::from_secs(5)).unwrap();
     let lines_rx = self
@@ -908,6 +941,21 @@ impl LspClient {
     })
   }
 
+  pub fn write_jsonrpc(
+    &mut self,
+    method: impl AsRef<str>,
+    params: impl Serialize,
+  ) {
+    let value = json!({
+      "jsonrpc": "2.0",
+      "id": self.request_id,
+      "method": method.as_ref(),
+      "params": params,
+    });
+    self.write(value);
+    self.request_id += 1;
+  }
+
   fn write(&mut self, value: Value) {
     let value_str = value.to_string();
     let msg = format!(
@@ -992,6 +1040,17 @@ impl LspClient {
           panic!("LSP ERROR: {error:?}");
         }
         Some(maybe_result.clone().unwrap())
+      }
+      _ => None,
+    })
+  }
+
+  pub fn read_latest_response(
+    &mut self,
+  ) -> (u64, Option<Value>, Option<LspResponseError>) {
+    self.reader.read_message(|msg| match msg {
+      LspMessage::Response(id, val, err) => {
+        Some((*id, val.clone(), err.clone()))
       }
       _ => None,
     })

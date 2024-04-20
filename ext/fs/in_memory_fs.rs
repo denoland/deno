@@ -19,6 +19,7 @@ use deno_io::fs::FsError;
 use deno_io::fs::FsResult;
 use deno_io::fs::FsStat;
 
+use crate::interface::AccessCheckCb;
 use crate::interface::FsDirEntry;
 use crate::interface::FsFileType;
 use crate::FileSystem;
@@ -48,6 +49,7 @@ impl InMemoryFs {
         .write_file_sync(
           &path,
           OpenOptions::write(true, false, false, None),
+          None,
           &text.into_bytes(),
         )
         .unwrap();
@@ -82,15 +84,17 @@ impl FileSystem for InMemoryFs {
     &self,
     _path: &Path,
     _options: OpenOptions,
+    _access_check: Option<AccessCheckCb>,
   ) -> FsResult<Rc<dyn File>> {
     Err(FsError::NotSupported)
   }
-  async fn open_async(
-    &self,
+  async fn open_async<'a>(
+    &'a self,
     path: PathBuf,
     options: OpenOptions,
+    access_check: Option<AccessCheckCb<'a>>,
   ) -> FsResult<Rc<dyn File>> {
-    self.open_sync(&path, options)
+    self.open_sync(&path, options, access_check)
   }
 
   fn mkdir_sync(
@@ -350,6 +354,7 @@ impl FileSystem for InMemoryFs {
     &self,
     path: &Path,
     options: OpenOptions,
+    _access_check: Option<AccessCheckCb>,
     data: &[u8],
   ) -> FsResult<()> {
     let path = normalize_path(path);
@@ -397,16 +402,21 @@ impl FileSystem for InMemoryFs {
     }
   }
 
-  async fn write_file_async(
-    &self,
+  async fn write_file_async<'a>(
+    &'a self,
     path: PathBuf,
     options: OpenOptions,
+    access_check: Option<AccessCheckCb<'a>>,
     data: Vec<u8>,
   ) -> FsResult<()> {
-    self.write_file_sync(&path, options, &data)
+    self.write_file_sync(&path, options, access_check, &data)
   }
 
-  fn read_file_sync(&self, path: &Path) -> FsResult<Vec<u8>> {
+  fn read_file_sync(
+    &self,
+    path: &Path,
+    _access_check: Option<AccessCheckCb>,
+  ) -> FsResult<Vec<u8>> {
     let entry = self.get_entry(path);
     match entry {
       Some(entry) => match &*entry {
@@ -419,7 +429,11 @@ impl FileSystem for InMemoryFs {
       None => Err(FsError::Io(Error::new(ErrorKind::NotFound, "Not found"))),
     }
   }
-  async fn read_file_async(&self, path: PathBuf) -> FsResult<Vec<u8>> {
-    self.read_file_sync(&path)
+  async fn read_file_async<'a>(
+    &'a self,
+    path: PathBuf,
+    access_check: Option<AccessCheckCb<'a>>,
+  ) -> FsResult<Vec<u8>> {
+    self.read_file_sync(&path, access_check)
   }
 }

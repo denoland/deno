@@ -17,14 +17,17 @@ import {
   MessagePort,
   MessagePortIdSymbol,
   MessagePortPrototype,
+  MessagePortReceiveMessageOnPortSymbol,
   nodeWorkerThreadCloseCb,
+  refMessagePort,
   serializeJsMessageData,
+  unrefPollForMessages,
 } from "ext:deno_web/13_message_port.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { log } from "ext:runtime/06_util.js";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import { EventEmitter } from "node:events";
 import { BroadcastChannel } from "ext:deno_broadcast_channel/01_broadcast_channel.js";
+import process from "node:process";
 
 const { ObjectPrototypeIsPrototypeOf } = primordials;
 const {
@@ -37,6 +40,14 @@ const {
   SafeMap,
   TypeError,
 } = primordials;
+
+const debugWorkerThreads = false;
+function debugWT(...args) {
+  if (debugWorkerThreads) {
+    // deno-lint-ignore prefer-primordials
+    console.log(...args);
+  }
+}
 
 export interface WorkerOptions {
   // only for typings
@@ -118,6 +129,7 @@ class NodeWorker extends EventEmitter {
     const serializedWorkerMetadata = serializeJsMessageData({
       workerData: options?.workerData,
       environmentData: environmentData,
+      env: options?.env,
     }, options?.transferList ?? []);
     const id = op_create_worker(
       {
@@ -190,7 +202,7 @@ class NodeWorker extends EventEmitter {
           break;
         }
         case 3: { // Close
-          log(`Host got "close" message from worker: ${this.#name}`);
+          debugWT(`Host got "close" message from worker: ${this.#name}`);
           this.#status = "CLOSED";
           return;
         }
@@ -338,19 +350,16 @@ internals.__initWorkerThreads = (
       const { 0: metadata, 1: _ } = maybeWorkerMetadata;
       workerData = metadata.workerData;
       environmentData = metadata.environmentData;
+      const env = metadata.env;
+      if (env) {
+        process.env = env;
+      }
     }
     defaultExport.workerData = workerData;
     defaultExport.parentPort = parentPort;
     defaultExport.threadId = threadId;
 
-    for (const obj in workerData as Record<string, unknown>) {
-      if (ObjectPrototypeIsPrototypeOf(MessagePortPrototype, workerData[obj])) {
-        workerData[obj] = webMessagePortToNodeMessagePort(
-          workerData[obj] as MessagePort,
-        );
-        break;
-      }
-    }
+    workerData = patchMessagePortIfFound(workerData);
 
     parentPort.off = parentPort.removeListener = function (
       this: ParentPort,
@@ -369,18 +378,7 @@ internals.__initWorkerThreads = (
       // deno-lint-ignore no-explicit-any
       const _listener = (ev: any) => {
         let message = ev.data;
-        if (ObjectPrototypeIsPrototypeOf(MessagePortPrototype, message)) {
-          message = webMessagePortToNodeMessagePort(message);
-        } else {
-          for (const obj in message) {
-            if (
-              ObjectPrototypeIsPrototypeOf(MessagePortPrototype, message[obj])
-            ) {
-              message[obj] = webMessagePortToNodeMessagePort(message[obj]);
-              break;
-            }
-          }
-        }
+        message = patchMessagePortIfFound(message);
         return listener(message);
       };
       listeners.set(listener, _listener);
@@ -409,6 +407,12 @@ internals.__initWorkerThreads = (
     parentPort.addEventListener("offline", () => {
       parentPort.emit("close");
     });
+    parentPort.unref = () => {
+      parentPort[unrefPollForMessages] = true;
+    };
+    parentPort.ref = () => {
+      parentPort[unrefPollForMessages] = false;
+    };
   }
 };
 
@@ -444,6 +448,7 @@ export function receiveMessageOnPort(port: MessagePort): object | undefined {
     err["code"] = "ERR_INVALID_ARG_TYPE";
     throw err;
   }
+  port[MessagePortReceiveMessageOnPortSymbol] = true;
   const data = op_message_port_recv_message_sync(port[MessagePortIdSymbol]);
   if (data === null) return undefined;
   return { message: deserializeJsMessageData(data)[0] };
@@ -478,7 +483,28 @@ function webMessagePortToNodeMessagePort(port: MessagePort) {
   port[nodeWorkerThreadCloseCb] = () => {
     port.dispatchEvent(new Event("close"));
   };
+  port.unref = () => {
+    port[refMessagePort](false);
+  };
+  port.ref = () => {
+    port[refMessagePort](true);
+  };
   return port;
+}
+
+// deno-lint-ignore no-explicit-any
+function patchMessagePortIfFound(data: any) {
+  if (ObjectPrototypeIsPrototypeOf(MessagePortPrototype, data)) {
+    data = webMessagePortToNodeMessagePort(data);
+  } else {
+    for (const obj in data as Record<string, unknown>) {
+      if (ObjectPrototypeIsPrototypeOf(MessagePortPrototype, data[obj])) {
+        data[obj] = webMessagePortToNodeMessagePort(data[obj] as MessagePort);
+        break;
+      }
+    }
+  }
+  return data;
 }
 
 export {

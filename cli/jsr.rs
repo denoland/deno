@@ -234,7 +234,7 @@ impl JsrFetchResolver {
       let meta_url = jsr_url().join(&format!("{}/meta.json", name)).ok()?;
       let file = self
         .file_fetcher
-        .fetch(&meta_url, PermissionsContainer::allow_all())
+        .fetch(&meta_url, &PermissionsContainer::allow_all())
         .await
         .ok()?;
       serde_json::from_slice::<JsrPackageInfo>(&file.source).ok()
@@ -257,7 +257,7 @@ impl JsrFetchResolver {
         .ok()?;
       let file = self
         .file_fetcher
-        .fetch(&meta_url, PermissionsContainer::allow_all())
+        .fetch(&meta_url, &PermissionsContainer::allow_all())
         .await
         .ok()?;
       partial_jsr_package_version_info_from_slice(&file.source).ok()

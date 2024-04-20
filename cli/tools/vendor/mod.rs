@@ -24,7 +24,7 @@ use crate::tools::fmt::format_json;
 use crate::util::fs::canonicalize_path;
 use crate::util::fs::resolve_from_cwd;
 use crate::util::path::relative_specifier;
-use crate::util::path::specifier_to_file_path;
+use deno_runtime::fs_util::specifier_to_file_path;
 
 mod analyze;
 mod build;
@@ -99,13 +99,14 @@ pub async fn vendor(
 
   // cache the node_modules folder when it's been added to the config file
   if modified_result.added_node_modules_dir {
-    let node_modules_path = cli_options.node_modules_dir_path().or_else(|| {
-      cli_options
-        .maybe_config_file_specifier()
-        .filter(|c| c.scheme() == "file")
-        .and_then(|c| c.to_file_path().ok())
-        .map(|config_path| config_path.parent().unwrap().join("node_modules"))
-    });
+    let node_modules_path =
+      cli_options.node_modules_dir_path().cloned().or_else(|| {
+        cli_options
+          .maybe_config_file_specifier()
+          .filter(|c| c.scheme() == "file")
+          .and_then(|c| c.to_file_path().ok())
+          .map(|config_path| config_path.parent().unwrap().join("node_modules"))
+      });
     if let Some(node_modules_path) = node_modules_path {
       let cli_options =
         cli_options.with_node_modules_dir_path(node_modules_path);
@@ -309,6 +310,7 @@ fn update_config_text(
 ) -> Result<ModifiedResult, AnyError> {
   use jsonc_parser::ast::ObjectProp;
   use jsonc_parser::ast::Value;
+  let text = if text.trim().is_empty() { "{}\n" } else { text };
   let ast =
     jsonc_parser::parse_to_ast(text, &Default::default(), &Default::default())?;
   let obj = match ast.value {

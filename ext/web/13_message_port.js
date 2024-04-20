@@ -22,6 +22,7 @@ const {
   Symbol,
   SymbolFor,
   SymbolIterator,
+  SafeArrayIterator,
   TypeError,
 } = primordials;
 const {
@@ -39,6 +40,8 @@ import {
 } from "./02_event.js";
 import { isDetachedBuffer } from "./06_streams.js";
 import { DOMException } from "./01_dom_exception.js";
+
+let messageEventListenerCount = 0;
 
 class MessageChannel {
   /** @type {MessagePort} */
@@ -85,9 +88,17 @@ const MessageChannelPrototype = MessageChannel.prototype;
 
 const _id = Symbol("id");
 const MessagePortIdSymbol = _id;
+const MessagePortReceiveMessageOnPortSymbol = Symbol(
+  "MessagePortReceiveMessageOnPort",
+);
 const _enabled = Symbol("enabled");
+const _refed = Symbol("refed");
 const nodeWorkerThreadCloseCb = Symbol("nodeWorkerThreadCloseCb");
 const nodeWorkerThreadCloseCbInvoked = Symbol("nodeWorkerThreadCloseCbInvoked");
+export const refMessagePort = Symbol("refMessagePort");
+/** It is used by 99_main.js and worker_threads to
+ * unref/ref on the global pollForMessages promise. */
+export const unrefPollForMessages = Symbol("unrefPollForMessages");
 
 /**
  * @param {number} id
@@ -116,9 +127,14 @@ class MessagePort extends EventTarget {
   [_id] = null;
   /** @type {boolean} */
   [_enabled] = false;
+  [_refed] = false;
 
   constructor() {
     super();
+    ObjectDefineProperty(this, MessagePortReceiveMessageOnPortSymbol, {
+      value: false,
+      enumerable: false,
+    });
     ObjectDefineProperty(this, nodeWorkerThreadCloseCb, {
       value: null,
       enumerable: false,
@@ -180,7 +196,15 @@ class MessagePort extends EventTarget {
             this[_id],
           );
         } catch (err) {
-          if (ObjectPrototypeIsPrototypeOf(InterruptedPrototype, err)) break;
+          if (ObjectPrototypeIsPrototypeOf(InterruptedPrototype, err)) {
+            // If we were interrupted, check if the interruption is coming
+            // from `receiveMessageOnPort` API from Node compat, if so, continue.
+            if (this[MessagePortReceiveMessageOnPortSymbol]) {
+              this[MessagePortReceiveMessageOnPortSymbol] = false;
+              continue;
+            }
+            break;
+          }
           nodeWorkerThreadMaybeInvokeCloseCb(this);
           throw err;
         }
@@ -213,6 +237,16 @@ class MessagePort extends EventTarget {
     })();
   }
 
+  [refMessagePort](ref) {
+    if (ref && !this[_refed]) {
+      this[_refed] = true;
+      messageEventListenerCount++;
+    } else if (!ref && this[_refed]) {
+      this[_refed] = false;
+      messageEventListenerCount = 0;
+    }
+  }
+
   close() {
     webidl.assertBranded(this, MessagePortPrototype);
     if (this[_id] !== null) {
@@ -220,6 +254,21 @@ class MessagePort extends EventTarget {
       this[_id] = null;
       nodeWorkerThreadMaybeInvokeCloseCb(this);
     }
+  }
+
+  removeEventListener(...args) {
+    if (args[0] == "message") {
+      messageEventListenerCount--;
+    }
+    super.removeEventListener(...new SafeArrayIterator(args));
+  }
+
+  addEventListener(...args) {
+    if (args[0] == "message") {
+      messageEventListenerCount++;
+      if (!this[_refed]) this[_refed] = true;
+    }
+    super.addEventListener(...new SafeArrayIterator(args));
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
@@ -406,9 +455,11 @@ function structuredClone(value, options) {
 export {
   deserializeJsMessageData,
   MessageChannel,
+  messageEventListenerCount,
   MessagePort,
   MessagePortIdSymbol,
   MessagePortPrototype,
+  MessagePortReceiveMessageOnPortSymbol,
   nodeWorkerThreadCloseCb,
   serializeJsMessageData,
   structuredClone,

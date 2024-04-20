@@ -44,6 +44,8 @@ use deno_tls::Proxy;
 use deno_tls::RootCertStoreProvider;
 
 use data_url::DataUrl;
+use deno_tls::TlsKey;
+use deno_tls::TlsKeys;
 use http_v02::header::CONTENT_LENGTH;
 use http_v02::Uri;
 use reqwest::header::HeaderMap;
@@ -78,7 +80,7 @@ pub struct Options {
   pub request_builder_hook:
     Option<fn(RequestBuilder) -> Result<RequestBuilder, AnyError>>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
-  pub client_cert_chain_and_key: Option<(String, String)>,
+  pub client_cert_chain_and_key: Option<TlsKey>,
   pub file_fetch_handler: Rc<dyn FetchHandler>,
 }
 
@@ -794,8 +796,6 @@ impl HttpClientResource {
 pub struct CreateHttpClientArgs {
   ca_certs: Vec<String>,
   proxy: Option<Proxy>,
-  cert: Option<String>,
-  key: Option<String>,
   pool_max_idle_per_host: Option<usize>,
   pool_idle_timeout: Option<serde_json::Value>,
   #[serde(default = "default_true")]
@@ -815,6 +815,7 @@ fn default_true() -> bool {
 pub fn op_fetch_custom_client<FP>(
   state: &mut OpState,
   #[serde] args: CreateHttpClientArgs,
+  #[cppgc] tls_keys: &deno_tls::TlsKeys,
 ) -> Result<ResourceId, AnyError>
 where
   FP: FetchPermissions + 'static,
@@ -825,19 +826,9 @@ where
     permissions.check_net_url(&url, "Deno.createHttpClient()")?;
   }
 
-  let client_cert_chain_and_key = {
-    if args.cert.is_some() || args.key.is_some() {
-      let cert_chain = args
-        .cert
-        .ok_or_else(|| type_error("No certificate chain provided"))?;
-      let private_key = args
-        .key
-        .ok_or_else(|| type_error("No private key provided"))?;
-
-      Some((cert_chain, private_key))
-    } else {
-      None
-    }
+  let client_cert_chain_and_key = match tls_keys {
+    TlsKeys::Null => None,
+    TlsKeys::Static(key) => Some(key.clone()),
   };
 
   let options = state.borrow::<Options>();
@@ -885,7 +876,7 @@ pub struct CreateHttpClientOptions {
   pub ca_certs: Vec<Vec<u8>>,
   pub proxy: Option<Proxy>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
-  pub client_cert_chain_and_key: Option<(String, String)>,
+  pub client_cert_chain_and_key: Option<TlsKey>,
   pub pool_max_idle_per_host: Option<usize>,
   pub pool_idle_timeout: Option<Option<u64>>,
   pub http1: bool,

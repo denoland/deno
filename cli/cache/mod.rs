@@ -2,8 +2,10 @@
 
 use crate::args::CacheSetting;
 use crate::errors::get_error_class_name;
+use crate::file_fetcher::FetchNoFollowOptions;
 use crate::file_fetcher::FetchOptions;
 use crate::file_fetcher::FileFetcher;
+use crate::file_fetcher::FileOrRedirect;
 use crate::npm::CliNpmResolver;
 use crate::util::fs::atomic_write_file;
 
@@ -25,6 +27,7 @@ use std::time::SystemTime;
 mod cache_db;
 mod caches;
 mod check;
+mod code_cache;
 mod common;
 mod deno_dir;
 mod disk_cache;
@@ -37,6 +40,7 @@ mod parsed_source;
 
 pub use caches::Caches;
 pub use check::TypeCheckCache;
+pub use code_cache::CodeCache;
 pub use common::FastInsecureHasher;
 pub use deno_dir::DenoDir;
 pub use deno_dir::DenoDirProvider;
@@ -190,7 +194,7 @@ impl Loader for FetchCacher {
   }
 
   fn load(
-    &mut self,
+    &self,
     specifier: &ModuleSpecifier,
     options: deno_graph::source::LoadOptions,
   ) -> LoadFuture {
@@ -232,29 +236,40 @@ impl Loader for FetchCacher {
         LoaderCacheSetting::Only => Some(CacheSetting::Only),
       };
       file_fetcher
-        .fetch_with_options(FetchOptions {
-          specifier: &specifier,
-          permissions,
-          maybe_accept: None,
-          maybe_cache_setting: maybe_cache_setting.as_ref(),
-          maybe_checksum: options.maybe_checksum,
+        .fetch_no_follow_with_options(FetchNoFollowOptions {
+          fetch_options: FetchOptions {
+            specifier: &specifier,
+            permissions: &permissions,
+            maybe_accept: None,
+            maybe_cache_setting: maybe_cache_setting.as_ref(),
+          },
+          maybe_checksum: options.maybe_checksum.as_ref(),
         })
         .await
-        .map(|file| {
-          let maybe_headers =
-            match (file.maybe_headers, file_header_overrides.get(&specifier)) {
-              (Some(headers), Some(overrides)) => {
-                Some(headers.into_iter().chain(overrides.clone()).collect())
-              }
-              (Some(headers), None) => Some(headers),
-              (None, Some(overrides)) => Some(overrides.clone()),
-              (None, None) => None,
-            };
-          Ok(Some(LoadResponse::Module {
-            specifier: file.specifier,
-            maybe_headers,
-            content: file.source,
-          }))
+        .map(|file_or_redirect| {
+          match file_or_redirect {
+            FileOrRedirect::File(file) => {
+              let maybe_headers =
+              match (file.maybe_headers, file_header_overrides.get(&specifier)) {
+                (Some(headers), Some(overrides)) => {
+                  Some(headers.into_iter().chain(overrides.clone()).collect())
+                }
+                (Some(headers), None) => Some(headers),
+                (None, Some(overrides)) => Some(overrides.clone()),
+                (None, None) => None,
+              };
+            Ok(Some(LoadResponse::Module {
+              specifier: file.specifier,
+              maybe_headers,
+              content: file.source,
+            }))
+            },
+            FileOrRedirect::Redirect(redirect_specifier) => {
+              Ok(Some(LoadResponse::Redirect {
+                specifier: redirect_specifier,
+              }))
+            },
+          }
         })
         .unwrap_or_else(|err| {
           if let Some(io_err) = err.downcast_ref::<std::io::Error>() {
@@ -276,7 +291,7 @@ impl Loader for FetchCacher {
   }
 
   fn cache_module_info(
-    &mut self,
+    &self,
     specifier: &ModuleSpecifier,
     source: &Arc<[u8]>,
     module_info: &deno_graph::ModuleInfo,
