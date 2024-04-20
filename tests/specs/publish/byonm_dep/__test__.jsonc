@@ -1,0 +1,4 @@
+{
+  "args": "publish --dry-run --allow-dirty",
+  "output": "publish.out"
+}

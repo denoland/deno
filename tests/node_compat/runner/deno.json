@@ -1,0 +1,10 @@
+{
+  "imports": {
+    "@test_util/": "../../test_util/",
+    "@std/": "../../util/std/"
+  },
+  "tasks": {
+    "setup": "deno run --allow-read --allow-write ./setup.ts",
+    "test": "deno test -A ../test.ts --"
+  }
+}

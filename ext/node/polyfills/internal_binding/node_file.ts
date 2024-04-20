@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -24,6 +24,9 @@
 // - https://github.com/nodejs/node/blob/master/src/node_file-inl.h
 // - https://github.com/nodejs/node/blob/master/src/node_file.cc
 // - https://github.com/nodejs/node/blob/master/src/node_file.h
+
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
 
 import { assert } from "ext:deno_node/_util/asserts.ts";
 import * as io from "ext:deno_io/12_io.js";

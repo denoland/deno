@@ -1,17 +1,18 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::HashSet;
 use std::collections::VecDeque;
-use std::fmt::Write;
 use std::path::Path;
 use std::path::PathBuf;
 
+use deno_core::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::ModuleSpecifier;
 use once_cell::sync::Lazy;
 
 use deno_core::error::AnyError;
 
+use crate::path::to_file_specifier;
 use crate::resolution::NodeResolverRc;
 use crate::NodeModuleKind;
 use crate::NodePermissions;
@@ -19,87 +20,57 @@ use crate::NodeResolutionMode;
 use crate::NpmResolverRc;
 use crate::PackageJson;
 use crate::PathClean;
-use crate::NODE_GLOBAL_THIS_NAME;
-
-static NODE_GLOBALS: &[&str] = &[
-  "Buffer",
-  "clearImmediate",
-  "clearInterval",
-  "clearTimeout",
-  "console",
-  "global",
-  "process",
-  "setImmediate",
-  "setInterval",
-  "setTimeout",
-  "performance",
-];
 
 #[derive(Debug, Clone)]
-pub struct CjsAnalysis {
+pub enum CjsAnalysis {
+  /// File was found to be an ES module and the translator should
+  /// load the code as ESM.
+  Esm(String),
+  Cjs(CjsAnalysisExports),
+}
+
+#[derive(Debug, Clone)]
+pub struct CjsAnalysisExports {
   pub exports: Vec<String>,
   pub reexports: Vec<String>,
 }
 
 /// Code analyzer for CJS and ESM files.
-pub trait CjsEsmCodeAnalyzer {
+pub trait CjsCodeAnalyzer {
   /// Analyzes CommonJs code for exports and reexports, which is
   /// then used to determine the wrapper ESM module exports.
+  ///
+  /// Note that the source is provided by the caller when the caller
+  /// already has it. If the source is needed by the implementation,
+  /// then it can use the provided source, or otherwise load it if
+  /// necessary.
   fn analyze_cjs(
     &self,
     specifier: &ModuleSpecifier,
-    source: &str,
+    maybe_source: Option<String>,
   ) -> Result<CjsAnalysis, AnyError>;
-
-  /// Analyzes ESM code for top level declarations. This is used
-  /// to help inform injecting node specific globals into Node ESM
-  /// code. For example, if a top level `setTimeout` function exists
-  /// then we don't want to inject a `setTimeout` declaration.
-  ///
-  /// Note: This will go away in the future once we do this all in v8.
-  fn analyze_esm_top_level_decls(
-    &self,
-    specifier: &ModuleSpecifier,
-    source: &str,
-  ) -> Result<HashSet<String>, AnyError>;
 }
 
-pub struct NodeCodeTranslator<TCjsEsmCodeAnalyzer: CjsEsmCodeAnalyzer> {
-  cjs_esm_code_analyzer: TCjsEsmCodeAnalyzer,
+pub struct NodeCodeTranslator<TCjsCodeAnalyzer: CjsCodeAnalyzer> {
+  cjs_code_analyzer: TCjsCodeAnalyzer,
   fs: deno_fs::FileSystemRc,
   node_resolver: NodeResolverRc,
   npm_resolver: NpmResolverRc,
 }
 
-impl<TCjsEsmCodeAnalyzer: CjsEsmCodeAnalyzer>
-  NodeCodeTranslator<TCjsEsmCodeAnalyzer>
-{
+impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
   pub fn new(
-    cjs_esm_code_analyzer: TCjsEsmCodeAnalyzer,
+    cjs_code_analyzer: TCjsCodeAnalyzer,
     fs: deno_fs::FileSystemRc,
     node_resolver: NodeResolverRc,
     npm_resolver: NpmResolverRc,
   ) -> Self {
     Self {
-      cjs_esm_code_analyzer,
+      cjs_code_analyzer,
       fs,
       node_resolver,
       npm_resolver,
     }
-  }
-
-  /// Resolves the code to be used when executing Node specific ESM code.
-  ///
-  /// Note: This will go away in the future once we do this all in v8.
-  pub fn esm_code_with_node_globals(
-    &self,
-    specifier: &ModuleSpecifier,
-    source: &str,
-  ) -> Result<String, AnyError> {
-    let top_level_decls = self
-      .cjs_esm_code_analyzer
-      .analyze_esm_top_level_decls(specifier, source)?;
-    Ok(esm_code_from_top_level_decls(source, &top_level_decls))
   }
 
   /// Translates given CJS module into ESM. This function will perform static
@@ -111,13 +82,18 @@ impl<TCjsEsmCodeAnalyzer: CjsEsmCodeAnalyzer>
   pub fn translate_cjs_to_esm(
     &self,
     specifier: &ModuleSpecifier,
-    source: &str,
+    source: Option<String>,
     permissions: &dyn NodePermissions,
   ) -> Result<String, AnyError> {
     let mut temp_var_count = 0;
     let mut handled_reexports: HashSet<String> = HashSet::default();
 
-    let analysis = self.cjs_esm_code_analyzer.analyze_cjs(specifier, source)?;
+    let analysis = self.cjs_code_analyzer.analyze_cjs(specifier, source)?;
+
+    let analysis = match analysis {
+      CjsAnalysis::Esm(source) => return Ok(source),
+      CjsAnalysis::Cjs(analysis) => analysis,
+    };
 
     let mut source = vec![
       r#"import {createRequire as __internalCreateRequire} from "node:module";
@@ -144,8 +120,8 @@ impl<TCjsEsmCodeAnalyzer: CjsEsmCodeAnalyzer>
 
       handled_reexports.insert(reexport.to_string());
 
-      // First, resolve relate reexport specifier
-      let resolved_reexport = self.resolve(
+      // First, resolve the reexport specifier
+      let reexport_specifier = self.resolve(
         &reexport,
         &referrer,
         // FIXME(bartlomieju): check if these conditions are okay, probably
@@ -154,35 +130,39 @@ impl<TCjsEsmCodeAnalyzer: CjsEsmCodeAnalyzer>
         NodeResolutionMode::Execution,
         permissions,
       )?;
-      // Second, read the source code from disk
-      let reexport_specifier =
-        ModuleSpecifier::from_file_path(&resolved_reexport).unwrap();
-      let reexport_file_text = self
-        .fs
-        .read_to_string(&resolved_reexport)
-        .map_err(AnyError::from)
+
+      // Second, resolve its exports and re-exports
+      let analysis = self
+        .cjs_code_analyzer
+        .analyze_cjs(&reexport_specifier, None)
         .with_context(|| {
           format!(
-            "Could not find '{}' ({}) referenced from {}",
+            "Could not load '{}' ({}) referenced from {}",
             reexport, reexport_specifier, referrer
           )
         })?;
-      {
-        let analysis = self
-          .cjs_esm_code_analyzer
-          .analyze_cjs(&reexport_specifier, &reexport_file_text)?;
-
-        for reexport in analysis.reexports {
-          reexports_to_handle.push_back((reexport, reexport_specifier.clone()));
+      let analysis = match analysis {
+        CjsAnalysis::Esm(_) => {
+          // todo(dsherret): support this once supporting requiring ES modules
+          return Err(anyhow::anyhow!(
+            "Cannot require ES module '{}' from '{}'",
+            reexport_specifier,
+            specifier
+          ));
         }
+        CjsAnalysis::Cjs(analysis) => analysis,
+      };
 
-        all_exports.extend(
-          analysis
-            .exports
-            .into_iter()
-            .filter(|e| e.as_str() != "default"),
-        );
+      for reexport in analysis.reexports {
+        reexports_to_handle.push_back((reexport, reexport_specifier.clone()));
       }
+
+      all_exports.extend(
+        analysis
+          .exports
+          .into_iter()
+          .filter(|e| e.as_str() != "default"),
+      );
     }
 
     source.push(format!(
@@ -202,7 +182,7 @@ impl<TCjsEsmCodeAnalyzer: CjsEsmCodeAnalyzer>
         add_export(
           &mut source,
           export,
-          &format!("mod[\"{export}\"]"),
+          &format!("mod[\"{}\"]", escape_for_double_quote_string(export)),
           &mut temp_var_count,
         );
       }
@@ -221,7 +201,7 @@ impl<TCjsEsmCodeAnalyzer: CjsEsmCodeAnalyzer>
     conditions: &[&str],
     mode: NodeResolutionMode,
     permissions: &dyn NodePermissions,
-  ) -> Result<PathBuf, AnyError> {
+  ) -> Result<ModuleSpecifier, AnyError> {
     if specifier.starts_with('/') {
       todo!();
     }
@@ -230,14 +210,14 @@ impl<TCjsEsmCodeAnalyzer: CjsEsmCodeAnalyzer>
     if specifier.starts_with("./") || specifier.starts_with("../") {
       if let Some(parent) = referrer_path.parent() {
         return self
-          .file_extension_probe(parent.join(specifier), &referrer_path);
+          .file_extension_probe(parent.join(specifier), &referrer_path)
+          .map(|p| to_file_specifier(&p));
       } else {
         todo!();
       }
     }
 
     // We've got a bare specifier or maybe bare_specifier/blah.js"
-
     let (package_specifier, package_subpath) =
       parse_specifier(specifier).unwrap();
 
@@ -249,18 +229,17 @@ impl<TCjsEsmCodeAnalyzer: CjsEsmCodeAnalyzer>
     )?;
 
     let package_json_path = module_dir.join("package.json");
-    if self.fs.exists(&package_json_path) {
-      let package_json = PackageJson::load(
-        &*self.fs,
-        &*self.npm_resolver,
-        permissions,
-        package_json_path.clone(),
-      )?;
-
+    let package_json = PackageJson::load(
+      &*self.fs,
+      &*self.npm_resolver,
+      permissions,
+      package_json_path.clone(),
+    )?;
+    if package_json.exists {
       if let Some(exports) = &package_json.exports {
         return self.node_resolver.package_exports_resolve(
           &package_json_path,
-          package_subpath,
+          &package_subpath,
           exports,
           referrer,
           NodeModuleKind::Esm,
@@ -273,30 +252,50 @@ impl<TCjsEsmCodeAnalyzer: CjsEsmCodeAnalyzer>
       // old school
       if package_subpath != "." {
         let d = module_dir.join(package_subpath);
-        if self.fs.is_dir(&d) {
+        if self.fs.is_dir_sync(&d) {
           // subdir might have a package.json that specifies the entrypoint
           let package_json_path = d.join("package.json");
-          if self.fs.exists(&package_json_path) {
-            let package_json = PackageJson::load(
-              &*self.fs,
-              &*self.npm_resolver,
-              permissions,
-              package_json_path,
-            )?;
+          let package_json = PackageJson::load(
+            &*self.fs,
+            &*self.npm_resolver,
+            permissions,
+            package_json_path,
+          )?;
+          if package_json.exists {
             if let Some(main) = package_json.main(NodeModuleKind::Cjs) {
-              return Ok(d.join(main).clean());
+              return Ok(to_file_specifier(&d.join(main).clean()));
             }
           }
 
-          return Ok(d.join("index.js").clean());
+          return Ok(to_file_specifier(&d.join("index.js").clean()));
         }
-        return self.file_extension_probe(d, &referrer_path);
+        return self
+          .file_extension_probe(d, &referrer_path)
+          .map(|p| to_file_specifier(&p));
       } else if let Some(main) = package_json.main(NodeModuleKind::Cjs) {
-        return Ok(module_dir.join(main).clean());
+        return Ok(to_file_specifier(&module_dir.join(main).clean()));
       } else {
-        return Ok(module_dir.join("index.js").clean());
+        return Ok(to_file_specifier(&module_dir.join("index.js").clean()));
       }
     }
+
+    // as a fallback, attempt to resolve it via the ancestor directories
+    let mut last = referrer_path.as_path();
+    while let Some(parent) = last.parent() {
+      if !self.npm_resolver.in_npm_package_at_dir_path(parent) {
+        break;
+      }
+      let path = if parent.ends_with("node_modules") {
+        parent.join(specifier)
+      } else {
+        parent.join("node_modules").join(specifier)
+      };
+      if let Ok(path) = self.file_extension_probe(path, &referrer_path) {
+        return Ok(to_file_specifier(&path));
+      }
+      last = parent;
+    }
+
     Err(not_found(specifier, &referrer_path))
   }
 
@@ -306,69 +305,49 @@ impl<TCjsEsmCodeAnalyzer: CjsEsmCodeAnalyzer>
     referrer: &Path,
   ) -> Result<PathBuf, AnyError> {
     let p = p.clean();
-    if self.fs.exists(&p) {
+    if self.fs.exists_sync(&p) {
       let file_name = p.file_name().unwrap();
       let p_js =
         p.with_file_name(format!("{}.js", file_name.to_str().unwrap()));
-      if self.fs.is_file(&p_js) {
+      if self.fs.is_file_sync(&p_js) {
         return Ok(p_js);
-      } else if self.fs.is_dir(&p) {
+      } else if self.fs.is_dir_sync(&p) {
         return Ok(p.join("index.js"));
       } else {
         return Ok(p);
       }
     } else if let Some(file_name) = p.file_name() {
-      let p_js =
-        p.with_file_name(format!("{}.js", file_name.to_str().unwrap()));
-      if self.fs.is_file(&p_js) {
-        return Ok(p_js);
+      {
+        let p_js =
+          p.with_file_name(format!("{}.js", file_name.to_str().unwrap()));
+        if self.fs.is_file_sync(&p_js) {
+          return Ok(p_js);
+        }
+      }
+      {
+        let p_json =
+          p.with_file_name(format!("{}.json", file_name.to_str().unwrap()));
+        if self.fs.is_file_sync(&p_json) {
+          return Ok(p_json);
+        }
       }
     }
     Err(not_found(&p.to_string_lossy(), referrer))
   }
 }
 
-fn esm_code_from_top_level_decls(
-  file_text: &str,
-  top_level_decls: &HashSet<String>,
-) -> String {
-  let mut globals = Vec::with_capacity(NODE_GLOBALS.len());
-  let has_global_this = top_level_decls.contains("globalThis");
-  for global in NODE_GLOBALS.iter() {
-    if !top_level_decls.contains(&global.to_string()) {
-      globals.push(*global);
-    }
-  }
-
-  let mut result = String::new();
-  let global_this_expr = NODE_GLOBAL_THIS_NAME;
-  let global_this_expr = if has_global_this {
-    global_this_expr
-  } else {
-    write!(result, "var globalThis = {global_this_expr};").unwrap();
-    "globalThis"
-  };
-  for global in globals {
-    write!(result, "var {global} = {global_this_expr}.{global};").unwrap();
-  }
-
-  // strip the shebang
-  let file_text = if file_text.starts_with("#!/") {
-    let start_index = file_text.find('\n').unwrap_or(file_text.len());
-    &file_text[start_index..]
-  } else {
-    file_text
-  };
-  result.push_str(file_text);
-
-  result
-}
-
 static RESERVED_WORDS: Lazy<HashSet<&str>> = Lazy::new(|| {
   HashSet::from([
+    "abstract",
+    "arguments",
+    "async",
+    "await",
+    "boolean",
     "break",
+    "byte",
     "case",
     "catch",
+    "char",
     "class",
     "const",
     "continue",
@@ -376,41 +355,57 @@ static RESERVED_WORDS: Lazy<HashSet<&str>> = Lazy::new(|| {
     "default",
     "delete",
     "do",
+    "double",
     "else",
+    "enum",
+    "eval",
     "export",
     "extends",
     "false",
+    "final",
     "finally",
+    "float",
     "for",
     "function",
+    "get",
+    "goto",
     "if",
+    "implements",
     "import",
     "in",
     "instanceof",
+    "int",
+    "interface",
+    "let",
+    "long",
+    "mod",
+    "native",
     "new",
     "null",
+    "package",
+    "private",
+    "protected",
+    "public",
     "return",
+    "set",
+    "short",
+    "static",
     "super",
     "switch",
+    "synchronized",
     "this",
     "throw",
+    "throws",
+    "transient",
     "true",
     "try",
     "typeof",
     "var",
     "void",
+    "volatile",
     "while",
     "with",
     "yield",
-    "let",
-    "enum",
-    "implements",
-    "interface",
-    "package",
-    "private",
-    "protected",
-    "public",
-    "static",
   ])
 });
 
@@ -422,6 +417,16 @@ fn add_export(
 ) {
   fn is_valid_var_decl(name: &str) -> bool {
     // it's ok to be super strict here
+    if name.is_empty() {
+      return false;
+    }
+
+    if let Some(first) = name.chars().next() {
+      if !first.is_ascii_alphabetic() && first != '_' && first != '$' {
+        return false;
+      }
+    }
+
     name
       .chars()
       .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$')
@@ -438,7 +443,8 @@ fn add_export(
       "const __deno_export_{temp_var_count}__ = {initializer};"
     ));
     source.push(format!(
-      "export {{ __deno_export_{temp_var_count}__ as \"{name}\" }};"
+      "export {{ __deno_export_{temp_var_count}__ as \"{}\" }};",
+      escape_for_double_quote_string(name)
     ));
   } else {
     source.push(format!("export const {name} = {initializer};"));
@@ -496,53 +502,19 @@ fn not_found(path: &str, referrer: &Path) -> AnyError {
   std::io::Error::new(std::io::ErrorKind::NotFound, msg).into()
 }
 
+fn escape_for_double_quote_string(text: &str) -> String {
+  text.replace('\\', "\\\\").replace('"', "\\\"")
+}
 #[cfg(test)]
 mod tests {
   use super::*;
-
-  #[test]
-  fn test_esm_code_with_node_globals() {
-    let r = esm_code_from_top_level_decls(
-      "export const x = 1;",
-      &HashSet::from(["x".to_string()]),
-    );
-    assert!(
-      r.contains(&format!("var globalThis = {};", NODE_GLOBAL_THIS_NAME,))
-    );
-    assert!(r.contains("var process = globalThis.process;"));
-    assert!(r.contains("export const x = 1;"));
-  }
-
-  #[test]
-  fn test_esm_code_with_node_globals_with_shebang() {
-    let r = esm_code_from_top_level_decls(
-      "#!/usr/bin/env node\nexport const x = 1;",
-      &HashSet::from(["x".to_string()]),
-    );
-    assert_eq!(
-      r,
-      format!(
-        concat!(
-          "var globalThis = {}",
-          ";var Buffer = globalThis.Buffer;",
-          "var clearImmediate = globalThis.clearImmediate;var clearInterval = globalThis.clearInterval;",
-          "var clearTimeout = globalThis.clearTimeout;var console = globalThis.console;",
-          "var global = globalThis.global;var process = globalThis.process;",
-          "var setImmediate = globalThis.setImmediate;var setInterval = globalThis.setInterval;",
-          "var setTimeout = globalThis.setTimeout;var performance = globalThis.performance;\n",
-          "export const x = 1;"
-        ),
-        NODE_GLOBAL_THIS_NAME,
-      )
-    );
-  }
 
   #[test]
   fn test_add_export() {
     let mut temp_var_count = 0;
     let mut source = vec![];
 
-    let exports = vec!["static", "server", "app", "dashed-export"];
+    let exports = vec!["static", "server", "app", "dashed-export", "3d"];
     for export in exports {
       add_export(&mut source, export, "init", &mut temp_var_count);
     }
@@ -555,6 +527,8 @@ mod tests {
         "export const app = init;".to_string(),
         "const __deno_export_2__ = init;".to_string(),
         "export { __deno_export_2__ as \"dashed-export\" };".to_string(),
+        "const __deno_export_3__ = init;".to_string(),
+        "export { __deno_export_3__ as \"3d\" };".to_string(),
       ]
     )
   }

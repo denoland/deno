@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::io::Write;
 
@@ -44,6 +44,7 @@ pub fn init(maybe_level: Option<log::Level>) {
   // used to make available the lsp_debug which is then filtered out at runtime
   // in the cli logger
   .filter_module("deno::lsp::performance", log::LevelFilter::Debug)
+  .filter_module("rustls", log::LevelFilter::Off)
   .format(|buf, record| {
     let mut target = record.target().to_string();
     if let Some(line_no) = record.line() {

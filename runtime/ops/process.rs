@@ -1,10 +1,11 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use super::check_unstable;
 use crate::permissions::PermissionsContainer;
+use deno_core::anyhow::Context;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op;
+use deno_core::op2;
 use deno_core::serde_json;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
@@ -12,7 +13,7 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
-use deno_core::ZeroCopyBuf;
+use deno_core::ToJsBuffer;
 use deno_io::fs::FileResource;
 use deno_io::ChildStderrResource;
 use deno_io::ChildStdinResource;
@@ -32,6 +33,8 @@ use std::os::windows::process::CommandExt;
 use std::os::unix::prelude::ExitStatusExt;
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
+
+pub const UNSTABLE_FEATURE_NAME: &str = "process";
 
 #[derive(Copy, Clone, Eq, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -112,9 +115,6 @@ deno_core::extension!(
     deprecated::op_run_status,
     deprecated::op_kill,
   ],
-  customizer = |ext: &mut deno_core::ExtensionBuilder| {
-    ext.force_op_registration();
-  },
 );
 
 /// Second member stores the pid separately from the RefCell. It's needed for
@@ -141,6 +141,7 @@ pub struct SpawnArgs {
   uid: Option<u32>,
   #[cfg(windows)]
   windows_raw_arguments: bool,
+  ipc: Option<i32>,
 
   #[serde(flatten)]
   stdio: ChildStdio,
@@ -201,15 +202,17 @@ impl TryFrom<ExitStatus> for ChildStatus {
 #[serde(rename_all = "camelCase")]
 pub struct SpawnOutput {
   status: ChildStatus,
-  stdout: Option<ZeroCopyBuf>,
-  stderr: Option<ZeroCopyBuf>,
+  stdout: Option<ToJsBuffer>,
+  stderr: Option<ToJsBuffer>,
 }
+
+type CreateCommand = (std::process::Command, Option<ResourceId>);
 
 fn create_command(
   state: &mut OpState,
   args: SpawnArgs,
   api_name: &str,
-) -> Result<std::process::Command, AnyError> {
+) -> Result<CreateCommand, AnyError> {
   state
     .borrow_mut::<PermissionsContainer>()
     .check_run(&args.cmd, api_name)?;
@@ -245,15 +248,6 @@ fn create_command(
   if let Some(uid) = args.uid {
     command.uid(uid);
   }
-  #[cfg(unix)]
-  // TODO(bartlomieju):
-  #[allow(clippy::undocumented_unsafe_blocks)]
-  unsafe {
-    command.pre_exec(|| {
-      libc::setgroups(0, std::ptr::null());
-      Ok(())
-    });
-  }
 
   command.stdin(args.stdio.stdin.as_stdio());
   command.stdout(match args.stdio.stdout {
@@ -265,7 +259,218 @@ fn create_command(
     value => value.as_stdio(),
   });
 
-  Ok(command)
+  #[cfg(unix)]
+  // TODO(bartlomieju):
+  #[allow(clippy::undocumented_unsafe_blocks)]
+  unsafe {
+    if let Some(ipc) = args.ipc {
+      if ipc < 0 {
+        return Ok((command, None));
+      }
+      // SockFlag is broken on macOS
+      // https://github.com/nix-rust/nix/issues/861
+      let mut fds = [-1, -1];
+      #[cfg(not(target_os = "macos"))]
+      let flags = libc::SOCK_CLOEXEC | libc::SOCK_NONBLOCK;
+
+      #[cfg(target_os = "macos")]
+      let flags = 0;
+
+      let ret = libc::socketpair(
+        libc::AF_UNIX,
+        libc::SOCK_STREAM | flags,
+        0,
+        fds.as_mut_ptr(),
+      );
+      if ret != 0 {
+        return Err(std::io::Error::last_os_error().into());
+      }
+
+      if cfg!(target_os = "macos") {
+        let fcntl =
+          |fd: i32, flag: libc::c_int| -> Result<(), std::io::Error> {
+            let flags = libc::fcntl(fd, libc::F_GETFL, 0);
+
+            if flags == -1 {
+              return Err(fail(fds));
+            }
+            let ret = libc::fcntl(fd, libc::F_SETFL, flags | flag);
+            if ret == -1 {
+              return Err(fail(fds));
+            }
+            Ok(())
+          };
+
+        fn fail(fds: [i32; 2]) -> std::io::Error {
+          unsafe {
+            libc::close(fds[0]);
+            libc::close(fds[1]);
+          }
+          std::io::Error::last_os_error()
+        }
+
+        // SOCK_NONBLOCK is not supported on macOS.
+        (fcntl)(fds[0], libc::O_NONBLOCK)?;
+        (fcntl)(fds[1], libc::O_NONBLOCK)?;
+
+        // SOCK_CLOEXEC is not supported on macOS.
+        (fcntl)(fds[0], libc::FD_CLOEXEC)?;
+        (fcntl)(fds[1], libc::FD_CLOEXEC)?;
+      }
+
+      let fd1 = fds[0];
+      let fd2 = fds[1];
+
+      command.pre_exec(move || {
+        if ipc >= 0 {
+          let _fd = libc::dup2(fd2, ipc);
+          libc::close(fd2);
+        }
+        libc::setgroups(0, std::ptr::null());
+        Ok(())
+      });
+
+      /* One end returned to parent process (this) */
+      let pipe_rid = Some(
+        state
+          .resource_table
+          .add(deno_node::IpcJsonStreamResource::new(fd1 as _)?),
+      );
+
+      /* The other end passed to child process via DENO_CHANNEL_FD */
+      command.env("DENO_CHANNEL_FD", format!("{}", ipc));
+
+      return Ok((command, pipe_rid));
+    }
+
+    Ok((command, None))
+  }
+
+  #[cfg(windows)]
+  // Safety: We setup a windows named pipe and pass one end to the child process.
+  unsafe {
+    use windows_sys::Win32::Foundation::CloseHandle;
+    use windows_sys::Win32::Foundation::DuplicateHandle;
+    use windows_sys::Win32::Foundation::DUPLICATE_SAME_ACCESS;
+    use windows_sys::Win32::Foundation::ERROR_ACCESS_DENIED;
+    use windows_sys::Win32::Foundation::ERROR_PIPE_CONNECTED;
+    use windows_sys::Win32::Foundation::GENERIC_READ;
+    use windows_sys::Win32::Foundation::GENERIC_WRITE;
+    use windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE;
+    use windows_sys::Win32::Security::SECURITY_ATTRIBUTES;
+    use windows_sys::Win32::Storage::FileSystem::CreateFileW;
+    use windows_sys::Win32::Storage::FileSystem::FILE_FLAG_FIRST_PIPE_INSTANCE;
+    use windows_sys::Win32::Storage::FileSystem::FILE_FLAG_OVERLAPPED;
+    use windows_sys::Win32::Storage::FileSystem::OPEN_EXISTING;
+    use windows_sys::Win32::Storage::FileSystem::PIPE_ACCESS_DUPLEX;
+    use windows_sys::Win32::System::Pipes::ConnectNamedPipe;
+    use windows_sys::Win32::System::Pipes::CreateNamedPipeW;
+    use windows_sys::Win32::System::Pipes::PIPE_READMODE_BYTE;
+    use windows_sys::Win32::System::Pipes::PIPE_TYPE_BYTE;
+    use windows_sys::Win32::System::Threading::GetCurrentProcess;
+
+    use std::io;
+    use std::os::windows::ffi::OsStrExt;
+    use std::path::Path;
+    use std::ptr;
+
+    if let Some(ipc) = args.ipc {
+      if ipc < 0 {
+        return Ok((command, None));
+      }
+
+      let (path, hd1) = loop {
+        let name = format!("\\\\.\\pipe\\{}", uuid::Uuid::new_v4());
+        let mut path = Path::new(&name)
+          .as_os_str()
+          .encode_wide()
+          .collect::<Vec<_>>();
+        path.push(0);
+
+        let hd1 = CreateNamedPipeW(
+          path.as_ptr(),
+          PIPE_ACCESS_DUPLEX
+            | FILE_FLAG_FIRST_PIPE_INSTANCE
+            | FILE_FLAG_OVERLAPPED,
+          PIPE_TYPE_BYTE | PIPE_READMODE_BYTE,
+          1,
+          65536,
+          65536,
+          0,
+          std::ptr::null_mut(),
+        );
+
+        if hd1 == INVALID_HANDLE_VALUE {
+          let err = io::Error::last_os_error();
+          /* If the pipe name is already in use, try again. */
+          if err.raw_os_error() == Some(ERROR_ACCESS_DENIED as i32) {
+            continue;
+          }
+
+          return Err(err.into());
+        }
+
+        break (path, hd1);
+      };
+
+      /* Create child pipe handle. */
+      let s = SECURITY_ATTRIBUTES {
+        nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
+        lpSecurityDescriptor: ptr::null_mut(),
+        bInheritHandle: 1,
+      };
+      let mut hd2 = CreateFileW(
+        path.as_ptr(),
+        GENERIC_READ | GENERIC_WRITE,
+        0,
+        &s,
+        OPEN_EXISTING,
+        FILE_FLAG_OVERLAPPED,
+        0,
+      );
+      if hd2 == INVALID_HANDLE_VALUE {
+        return Err(io::Error::last_os_error().into());
+      }
+
+      // Will not block because we have create the pair.
+      if ConnectNamedPipe(hd1, ptr::null_mut()) == 0 {
+        let err = std::io::Error::last_os_error();
+        if err.raw_os_error() != Some(ERROR_PIPE_CONNECTED as i32) {
+          CloseHandle(hd2);
+          return Err(err.into());
+        }
+      }
+
+      // Duplicating the handle to allow the child process to use it.
+      if DuplicateHandle(
+        GetCurrentProcess(),
+        hd2,
+        GetCurrentProcess(),
+        &mut hd2,
+        0,
+        1,
+        DUPLICATE_SAME_ACCESS,
+      ) == 0
+      {
+        return Err(std::io::Error::last_os_error().into());
+      }
+
+      /* One end returned to parent process (this) */
+      let pipe_fd = Some(
+        state
+          .resource_table
+          .add(deno_node::IpcJsonStreamResource::new(hd1 as i64)?),
+      );
+
+      /* The other end passed to child process via DENO_CHANNEL_FD */
+      command.env("DENO_CHANNEL_FD", format!("{}", hd2 as i64));
+
+      return Ok((command, pipe_fd));
+    }
+  }
+
+  #[cfg(not(unix))]
+  return Ok((command, None));
 }
 
 #[derive(Serialize)]
@@ -276,11 +481,13 @@ struct Child {
   stdin_rid: Option<ResourceId>,
   stdout_rid: Option<ResourceId>,
   stderr_rid: Option<ResourceId>,
+  pipe_fd: Option<ResourceId>,
 }
 
 fn spawn_child(
   state: &mut OpState,
   command: std::process::Command,
+  pipe_fd: Option<ResourceId>,
 ) -> Result<Child, AnyError> {
   let mut command = tokio::process::Command::from(command);
   // TODO(@crowlkats): allow detaching processes.
@@ -288,7 +495,53 @@ fn spawn_child(
   // We want to kill child when it's closed
   command.kill_on_drop(true);
 
-  let mut child = command.spawn()?;
+  let mut child = match command.spawn() {
+    Ok(child) => child,
+    Err(err) => {
+      let command = command.as_std();
+      let command_name = command.get_program().to_string_lossy();
+
+      if let Some(cwd) = command.get_current_dir() {
+        // launching a sub process always depends on the real
+        // file system so using these methods directly is ok
+        #[allow(clippy::disallowed_methods)]
+        if !cwd.exists() {
+          return Err(
+            std::io::Error::new(
+              std::io::ErrorKind::NotFound,
+              format!(
+                "Failed to spawn '{}': No such cwd '{}'",
+                command_name,
+                cwd.to_string_lossy()
+              ),
+            )
+            .into(),
+          );
+        }
+
+        #[allow(clippy::disallowed_methods)]
+        if !cwd.is_dir() {
+          return Err(
+            std::io::Error::new(
+              std::io::ErrorKind::NotFound,
+              format!(
+                "Failed to spawn '{}': cwd is not a directory '{}'",
+                command_name,
+                cwd.to_string_lossy()
+              ),
+            )
+            .into(),
+          );
+        }
+      }
+
+      return Err(AnyError::from(err).context(format!(
+        "Failed to spawn '{}'",
+        command.get_program().to_string_lossy()
+      )));
+    }
+  };
+
   let pid = child.id().expect("Process ID should be set.");
 
   let stdin_rid = child
@@ -316,47 +569,55 @@ fn spawn_child(
     stdin_rid,
     stdout_rid,
     stderr_rid,
+    pipe_fd,
   })
 }
 
-#[op]
+#[op2]
+#[serde]
 fn op_spawn_child(
   state: &mut OpState,
-  args: SpawnArgs,
-  api_name: String,
+  #[serde] args: SpawnArgs,
+  #[string] api_name: String,
 ) -> Result<Child, AnyError> {
-  let command = create_command(state, args, &api_name)?;
-  spawn_child(state, command)
+  let (command, pipe_rid) = create_command(state, args, &api_name)?;
+  spawn_child(state, command, pipe_rid)
 }
 
-#[op]
+#[op2(async)]
+#[allow(clippy::await_holding_refcell_ref)]
+#[serde]
 async fn op_spawn_wait(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
 ) -> Result<ChildStatus, AnyError> {
-  #![allow(clippy::await_holding_refcell_ref)]
   let resource = state
     .borrow_mut()
     .resource_table
     .get::<ChildResource>(rid)?;
   let result = resource.0.try_borrow_mut()?.wait().await?.try_into();
-  state
-    .borrow_mut()
-    .resource_table
-    .close(rid)
-    .expect("shouldn't have closed until now");
+  if let Ok(resource) = state.borrow_mut().resource_table.take_any(rid) {
+    resource.close();
+  }
   result
 }
 
-#[op]
+#[op2]
+#[serde]
 fn op_spawn_sync(
   state: &mut OpState,
-  args: SpawnArgs,
+  #[serde] args: SpawnArgs,
 ) -> Result<SpawnOutput, AnyError> {
   let stdout = matches!(args.stdio.stdout, Stdio::Piped);
   let stderr = matches!(args.stdio.stderr, Stdio::Piped);
-  let output =
-    create_command(state, args, "Deno.Command().outputSync()")?.output()?;
+  let (mut command, _) =
+    create_command(state, args, "Deno.Command().outputSync()")?;
+  let output = command.output().with_context(|| {
+    format!(
+      "Failed to spawn '{}'",
+      command.get_program().to_string_lossy()
+    )
+  })?;
 
   Ok(SpawnOutput {
     status: output.status.try_into()?,
@@ -373,11 +634,11 @@ fn op_spawn_sync(
   })
 }
 
-#[op]
+#[op2(fast)]
 fn op_spawn_kill(
   state: &mut OpState,
-  rid: ResourceId,
-  signal: String,
+  #[smi] rid: ResourceId,
+  #[string] signal: String,
 ) -> Result<(), AnyError> {
   if let Ok(child_resource) = state.resource_table.get::<ChildResource>(rid) {
     deprecated::kill(child_resource.1 as i32, &signal)?;
@@ -424,7 +685,7 @@ mod deprecated {
   #[derive(Serialize)]
   #[serde(rename_all = "camelCase")]
   // TODO(@AaronO): maybe find a more descriptive name or a convention for return structs
-  struct RunInfo {
+  pub struct RunInfo {
     rid: ResourceId,
     pid: Option<u32>,
     stdin_rid: Option<ResourceId>,
@@ -432,10 +693,11 @@ mod deprecated {
     stderr_rid: Option<ResourceId>,
   }
 
-  #[op]
-  fn op_run(
+  #[op2]
+  #[serde]
+  pub fn op_run(
     state: &mut OpState,
-    run_args: RunArgs,
+    #[serde] run_args: RunArgs,
   ) -> Result<RunInfo, AnyError> {
     let args = run_args.cmd;
     state
@@ -444,7 +706,7 @@ mod deprecated {
     let env = run_args.env;
     let cwd = run_args.cwd;
 
-    let mut c = Command::new(args.get(0).unwrap());
+    let mut c = Command::new(args.first().unwrap());
     (1..args.len()).for_each(|i| {
       let arg = args.get(i).unwrap();
       c.arg(arg);
@@ -452,7 +714,7 @@ mod deprecated {
     cwd.map(|d| c.current_dir(d));
 
     if run_args.clear_env {
-      super::check_unstable(state, "Deno.run.clearEnv");
+      super::check_unstable(state, UNSTABLE_FEATURE_NAME, "Deno.run.clearEnv");
       c.env_clear();
     }
     for (key, value) in &env {
@@ -461,12 +723,12 @@ mod deprecated {
 
     #[cfg(unix)]
     if let Some(gid) = run_args.gid {
-      super::check_unstable(state, "Deno.run.gid");
+      super::check_unstable(state, UNSTABLE_FEATURE_NAME, "Deno.run.gid");
       c.gid(gid);
     }
     #[cfg(unix)]
     if let Some(uid) = run_args.uid {
-      super::check_unstable(state, "Deno.run.uid");
+      super::check_unstable(state, UNSTABLE_FEATURE_NAME, "Deno.run.uid");
       c.uid(uid);
     }
     #[cfg(unix)]
@@ -549,16 +811,17 @@ mod deprecated {
 
   #[derive(Serialize)]
   #[serde(rename_all = "camelCase")]
-  struct ProcessStatus {
+  pub struct ProcessStatus {
     got_signal: bool,
     exit_code: i32,
     exit_signal: i32,
   }
 
-  #[op]
-  async fn op_run_status(
+  #[op2(async)]
+  #[serde]
+  pub async fn op_run_status(
     state: Rc<RefCell<OpState>>,
-    rid: ResourceId,
+    #[smi] rid: ResourceId,
   ) -> Result<ProcessStatus, AnyError> {
     let resource = state
       .borrow_mut()
@@ -571,7 +834,7 @@ mod deprecated {
     #[cfg(unix)]
     let signal = run_status.signal();
     #[cfg(not(unix))]
-    let signal = None;
+    let signal = Default::default();
 
     code
       .or(signal)
@@ -640,12 +903,12 @@ mod deprecated {
     }
   }
 
-  #[op]
-  fn op_kill(
+  #[op2(fast)]
+  pub fn op_kill(
     state: &mut OpState,
-    pid: i32,
-    signal: String,
-    api_name: String,
+    #[smi] pid: i32,
+    #[string] signal: String,
+    #[string] api_name: String,
   ) -> Result<(), AnyError> {
     state
       .borrow_mut::<PermissionsContainer>()

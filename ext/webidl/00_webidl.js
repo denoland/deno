@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // Adapted from https://github.com/jsdom/webidl-conversions.
 // Copyright Domenic Denicola. Licensed under BSD-2-Clause License.
@@ -6,10 +6,14 @@
 
 /// <reference path="../../core/internal.d.ts" />
 
-const core = globalThis.Deno.core;
-const primordials = globalThis.__bootstrap.primordials;
+import { core, primordials } from "ext:core/mod.js";
 const {
-  ArrayBufferPrototype,
+  isArrayBuffer,
+  isDataView,
+  isSharedArrayBuffer,
+  isTypedArray,
+} = core;
+const {
   ArrayBufferIsView,
   ArrayPrototypeForEach,
   ArrayPrototypePush,
@@ -25,7 +29,6 @@ const {
   Int16Array,
   Int32Array,
   Int8Array,
-  isNaN,
   MathFloor,
   MathFround,
   MathMax,
@@ -36,9 +39,7 @@ const {
   Number,
   NumberIsFinite,
   NumberIsNaN,
-  // deno-lint-ignore camelcase
   NumberMAX_SAFE_INTEGER,
-  // deno-lint-ignore camelcase
   NumberMIN_SAFE_INTEGER,
   ObjectAssign,
   ObjectCreate,
@@ -70,10 +71,10 @@ const {
   SetPrototypeDelete,
   SetPrototypeAdd,
   // TODO(lucacasonato): add SharedArrayBuffer to primordials
-  // SharedArrayBufferPrototype
+  // SharedArrayBufferPrototype,
   String,
-  StringFromCodePoint,
   StringPrototypeCharCodeAt,
+  StringPrototypeToWellFormed,
   Symbol,
   SymbolIterator,
   SymbolToStringTag,
@@ -121,7 +122,7 @@ function type(V) {
     case "function":
     // Falls through
     default:
-      // Per ES spec, typeof returns an implemention-defined value that is not any of the existing ones for
+      // Per ES spec, typeof returns an implementation-defined value that is not any of the existing ones for
       // uncallable non-standard exotic objects. Yet Type() which the Web IDL spec depends on returns Object for
       // such cases. So treat the default case as an object.
       return "Object";
@@ -353,7 +354,7 @@ converters.float = (V, prefix, context, _opts) => {
 converters["unrestricted float"] = (V, _prefix, _context, _opts) => {
   const x = toNumber(V);
 
-  if (isNaN(x)) {
+  if (NumberIsNaN(x)) {
     return x;
   }
 
@@ -402,11 +403,19 @@ converters.DOMString = function (V, prefix, context, opts = {}) {
   return String(V);
 };
 
-// deno-lint-ignore no-control-regex
-const IS_BYTE_STRING = new SafeRegExp(/^[\x00-\xFF]*$/);
+function isByteString(input) {
+  for (let i = 0; i < input.length; i++) {
+    if (StringPrototypeCharCodeAt(input, i) > 255) {
+      // If a character code is greater than 255, it means the string is not a byte string.
+      return false;
+    }
+  }
+  return true;
+}
+
 converters.ByteString = (V, prefix, context, opts) => {
   const x = converters.DOMString(V, prefix, context, opts);
-  if (!RegExpPrototypeTest(IS_BYTE_STRING, x)) {
+  if (!isByteString(x)) {
     throw makeException(
       TypeError,
       "is not a valid ByteString",
@@ -419,29 +428,7 @@ converters.ByteString = (V, prefix, context, opts) => {
 
 converters.USVString = (V, prefix, context, opts) => {
   const S = converters.DOMString(V, prefix, context, opts);
-  const n = S.length;
-  let U = "";
-  for (let i = 0; i < n; ++i) {
-    const c = StringPrototypeCharCodeAt(S, i);
-    if (c < 0xd800 || c > 0xdfff) {
-      U += StringFromCodePoint(c);
-    } else if (0xdc00 <= c && c <= 0xdfff) {
-      U += StringFromCodePoint(0xfffd);
-    } else if (i === n - 1) {
-      U += StringFromCodePoint(0xfffd);
-    } else {
-      const d = StringPrototypeCharCodeAt(S, i + 1);
-      if (0xdc00 <= d && d <= 0xdfff) {
-        const a = c & 0x3ff;
-        const b = d & 0x3ff;
-        U += StringFromCodePoint((2 << 15) + (2 << 9) * a + b);
-        ++i;
-      } else {
-        U += StringFromCodePoint(0xfffd);
-      }
-    }
-  }
-  return U;
+  return StringPrototypeToWellFormed(S);
 };
 
 converters.object = (V, prefix, context, _opts) => {
@@ -473,27 +460,13 @@ function convertCallbackFunction(V, prefix, context, _opts) {
   return V;
 }
 
-function isDataView(V) {
-  return ArrayBufferIsView(V) &&
-    TypedArrayPrototypeGetSymbolToStringTag(V) === undefined;
-}
-
-function isNonSharedArrayBuffer(V) {
-  return ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, V);
-}
-
-function isSharedArrayBuffer(V) {
-  // deno-lint-ignore prefer-primordials
-  return ObjectPrototypeIsPrototypeOf(SharedArrayBuffer.prototype, V);
-}
-
 converters.ArrayBuffer = (
   V,
   prefix = undefined,
   context = undefined,
   opts = {},
 ) => {
-  if (!isNonSharedArrayBuffer(V)) {
+  if (!isArrayBuffer(V)) {
     if (opts.allowShared && !isSharedArrayBuffer(V)) {
       throw makeException(
         TypeError,
@@ -528,7 +501,10 @@ converters.DataView = (
     );
   }
 
-  if (!opts.allowShared && isSharedArrayBuffer(DataViewPrototypeGetBuffer(V))) {
+  if (
+    !opts.allowShared &&
+    isSharedArrayBuffer(DataViewPrototypeGetBuffer(V))
+  ) {
     throw makeException(
       TypeError,
       "is backed by a SharedArrayBuffer, which is not allowed",
@@ -605,7 +581,7 @@ converters.ArrayBufferView = (
     );
   }
   let buffer;
-  if (TypedArrayPrototypeGetSymbolToStringTag(V) !== undefined) {
+  if (isTypedArray(V)) {
     buffer = TypedArrayPrototypeGetBuffer(V);
   } else {
     buffer = DataViewPrototypeGetBuffer(V);
@@ -630,7 +606,7 @@ converters.BufferSource = (
 ) => {
   if (ArrayBufferIsView(V)) {
     let buffer;
-    if (TypedArrayPrototypeGetSymbolToStringTag(V) !== undefined) {
+    if (isTypedArray(V)) {
       buffer = TypedArrayPrototypeGetBuffer(V);
     } else {
       buffer = DataViewPrototypeGetBuffer(V);
@@ -647,7 +623,7 @@ converters.BufferSource = (
     return V;
   }
 
-  if (!opts.allowShared && !isNonSharedArrayBuffer(V)) {
+  if (!opts.allowShared && !isArrayBuffer(V)) {
     throw makeException(
       TypeError,
       "is not an ArrayBuffer or a view on one",
@@ -658,7 +634,7 @@ converters.BufferSource = (
   if (
     opts.allowShared &&
     !isSharedArrayBuffer(V) &&
-    !isNonSharedArrayBuffer(V)
+    !isArrayBuffer(V)
   ) {
     throw makeException(
       TypeError,
@@ -1132,36 +1108,42 @@ function mixinPairIterable(name, prototype, dataSymbol, keyKey, valueKey) {
   return ObjectDefineProperties(prototype.prototype, properties);
 }
 
-function configurePrototype(prototype) {
-  const descriptors = ObjectGetOwnPropertyDescriptors(prototype.prototype);
+function configureInterface(interface_) {
+  configureProperties(interface_);
+  configureProperties(interface_.prototype);
+  ObjectDefineProperty(interface_.prototype, SymbolToStringTag, {
+    value: interface_.name,
+    enumerable: false,
+    configurable: true,
+    writable: false,
+  });
+}
+
+function configureProperties(obj) {
+  const descriptors = ObjectGetOwnPropertyDescriptors(obj);
   for (const key in descriptors) {
     if (!ObjectHasOwn(descriptors, key)) {
       continue;
     }
     if (key === "constructor") continue;
+    if (key === "prototype") continue;
     const descriptor = descriptors[key];
     if (
       ReflectHas(descriptor, "value") &&
       typeof descriptor.value === "function"
     ) {
-      ObjectDefineProperty(prototype.prototype, key, {
+      ObjectDefineProperty(obj, key, {
         enumerable: true,
         writable: true,
         configurable: true,
       });
     } else if (ReflectHas(descriptor, "get")) {
-      ObjectDefineProperty(prototype.prototype, key, {
+      ObjectDefineProperty(obj, key, {
         enumerable: true,
         configurable: true,
       });
     }
   }
-  ObjectDefineProperty(prototype.prototype, SymbolToStringTag, {
-    value: prototype.name,
-    enumerable: false,
-    configurable: true,
-    writable: false,
-  });
 }
 
 const setlikeInner = Symbol("[[set]]");
@@ -1269,7 +1251,7 @@ function setlike(obj, objPrototype, readonly) {
 export {
   assertBranded,
   brand,
-  configurePrototype,
+  configureInterface,
   converters,
   createBranded,
   createDictionaryConverter,

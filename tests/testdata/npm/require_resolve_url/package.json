@@ -1,0 +1,7 @@
+{
+  "name": "@denotest/example",
+  "version": "1.0.0",
+  "dependencies": {
+    "@denotest/esm-basic": "*"
+  }
+}

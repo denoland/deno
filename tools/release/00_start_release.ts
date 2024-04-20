@@ -1,5 +1,5 @@
 #!/usr/bin/env -S deno run -A --quiet --lock=tools/deno.lock.json
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import { $, createOctoKit, semver } from "./deps.ts";
 
 const currentDirPath = $.path(import.meta).parentOrThrow();

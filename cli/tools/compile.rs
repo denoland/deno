@@ -1,16 +1,16 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::CompileFlags;
 use crate::args::Flags;
 use crate::factory::CliFactory;
 use crate::standalone::is_standalone_binary;
-use crate::util::path::path_has_trailing_slash;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
-use deno_runtime::colors;
+use deno_graph::GraphKind;
+use deno_terminal::colors;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -21,10 +21,10 @@ pub async fn compile(
   flags: Flags,
   compile_flags: CompileFlags,
 ) -> Result<(), AnyError> {
-  let factory = CliFactory::from_flags(flags).await?;
+  let factory = CliFactory::from_flags(flags)?;
   let cli_options = factory.cli_options();
-  let module_graph_builder = factory.module_graph_builder().await?;
-  let parsed_source_cache = factory.parsed_source_cache()?;
+  let module_graph_creator = factory.module_graph_creator().await?;
+  let parsed_source_cache = factory.parsed_source_cache();
   let binary_writer = factory.create_compile_binary_writer().await?;
   let module_specifier = cli_options.resolve_main_module()?;
   let module_roots = {
@@ -36,6 +36,18 @@ pub async fn compile(
     vec
   };
 
+  // this is not supported, so show a warning about it, but don't error in order
+  // to allow someone to still run `deno compile` when this is in a deno.json
+  if cli_options.unstable_sloppy_imports() {
+    log::warn!(
+      concat!(
+        "{} Sloppy imports are not supported in deno compile. ",
+        "The compiled executable may encouter runtime errors.",
+      ),
+      crate::colors::yellow("Warning"),
+    );
+  }
+
   let output_path = resolve_compile_executable_output_path(
     &compile_flags,
     cli_options.initial_cwd(),
@@ -43,14 +55,35 @@ pub async fn compile(
   .await?;
 
   let graph = Arc::try_unwrap(
-    module_graph_builder
-      .create_graph_and_maybe_check(module_roots)
+    module_graph_creator
+      .create_graph_and_maybe_check(module_roots.clone())
       .await?,
   )
   .unwrap();
+  let graph = if cli_options.type_check_mode().is_true() {
+    // In this case, the previous graph creation did type checking, which will
+    // create a module graph with types information in it. We don't want to
+    // store that in the eszip so create a code only module graph from scratch.
+    module_graph_creator
+      .create_graph(GraphKind::CodeOnly, module_roots)
+      .await?
+  } else {
+    graph
+  };
 
+  let ts_config_for_emit =
+    cli_options.resolve_ts_config_for_emit(deno_config::TsConfigType::Emit)?;
+  let (transpile_options, emit_options) =
+    crate::args::ts_config_to_transpile_and_emit_options(
+      ts_config_for_emit.ts_config,
+    );
   let parser = parsed_source_cache.as_capturing_parser();
-  let eszip = eszip::EszipV2::from_graph(graph, &parser, Default::default())?;
+  let eszip = eszip::EszipV2::from_graph(
+    graph,
+    &parser,
+    transpile_options,
+    emit_options,
+  )?;
 
   log::info!(
     "{} {} to {}",
@@ -60,8 +93,9 @@ pub async fn compile(
   );
   validate_output_path(&output_path)?;
 
-  let mut file = std::fs::File::create(&output_path)?;
-  binary_writer
+  let mut file = std::fs::File::create(&output_path)
+    .with_context(|| format!("Opening file '{}'", output_path.display()))?;
+  let write_result = binary_writer
     .write_bin(
       &mut file,
       eszip,
@@ -70,8 +104,13 @@ pub async fn compile(
       cli_options,
     )
     .await
-    .with_context(|| format!("Writing {}", output_path.display()))?;
+    .with_context(|| format!("Writing {}", output_path.display()));
   drop(file);
+  if let Err(err) = write_result {
+    // errored, so attempt to remove the output path
+    let _ = std::fs::remove_file(output_path);
+    return Err(err);
+  }
 
   // set it as executable
   #[cfg(unix)]
@@ -141,31 +180,34 @@ async fn resolve_compile_executable_output_path(
   let module_specifier =
     resolve_url_or_path(&compile_flags.source_file, current_dir)?;
 
-  let mut output = compile_flags.output.clone();
-
-  if let Some(out) = output.as_ref() {
-    if path_has_trailing_slash(out) {
+  let output_flag = compile_flags.output.clone();
+  let mut output_path = if let Some(out) = output_flag.as_ref() {
+    let mut out_path = PathBuf::from(out);
+    if out.ends_with('/') || out.ends_with('\\') {
       if let Some(infer_file_name) = infer_name_from_url(&module_specifier)
         .await
         .map(PathBuf::from)
       {
-        output = Some(out.join(infer_file_name));
+        out_path = out_path.join(infer_file_name);
       }
     } else {
-      output = Some(out.to_path_buf());
+      out_path = out_path.to_path_buf();
     }
-  }
+    Some(out_path)
+  } else {
+    None
+  };
 
-  if output.is_none() {
-    output = infer_name_from_url(&module_specifier)
+  if output_flag.is_none() {
+    output_path = infer_name_from_url(&module_specifier)
       .await
       .map(PathBuf::from)
   }
 
-  output.ok_or_else(|| generic_error(
+  output_path.ok_or_else(|| generic_error(
     "An executable name was not provided. One could not be inferred from the URL. Aborting.",
-  )).map(|output| {
-    get_os_specific_filepath(output, &compile_flags.target)
+  )).map(|output_path| {
+    get_os_specific_filepath(output_path, &compile_flags.target)
   })
 }
 
@@ -198,9 +240,10 @@ mod test {
     let path = resolve_compile_executable_output_path(
       &CompileFlags {
         source_file: "mod.ts".to_string(),
-        output: Some(PathBuf::from("./file")),
+        output: Some(String::from("./file")),
         args: Vec::new(),
         target: Some("x86_64-unknown-linux-gnu".to_string()),
+        no_terminal: false,
         include: vec![],
       },
       &std::env::current_dir().unwrap(),
@@ -219,10 +262,11 @@ mod test {
     let path = resolve_compile_executable_output_path(
       &CompileFlags {
         source_file: "mod.ts".to_string(),
-        output: Some(PathBuf::from("./file")),
+        output: Some(String::from("./file")),
         args: Vec::new(),
         target: Some("x86_64-pc-windows-msvc".to_string()),
         include: vec![],
+        no_terminal: false,
       },
       &std::env::current_dir().unwrap(),
     )

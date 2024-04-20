@@ -22,3 +22,4 @@ and limitations under the License.
 /// <reference lib="es2017.string" />
 /// <reference lib="es2017.intl" />
 /// <reference lib="es2017.typedarrays" />
+/// <reference lib="es2017.date" />

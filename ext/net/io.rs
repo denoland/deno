@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -152,6 +152,7 @@ impl UnixStreamResource {
   fn write(self: Rc<Self>, _data: &[u8]) -> AsyncResult<usize> {
     unreachable!()
   }
+  #[allow(clippy::unused_async)]
   pub async fn shutdown(self: Rc<Self>) -> Result<(), AnyError> {
     unreachable!()
   }

@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use bytes::Bytes;
 use deno_core::futures::future::poll_fn;
@@ -126,7 +126,7 @@ pub struct NetworkBufferedStream<S: AsyncRead + Unpin> {
 }
 
 impl<S: AsyncRead + Unpin> NetworkBufferedStream<S> {
-  /// This constructor is private, because passing partically initialized data between the [`NetworkStreamPrefixCheck`] and
+  /// This constructor is private, because passing partially initialized data between the [`NetworkStreamPrefixCheck`] and
   /// this [`NetworkBufferedStream`] is challenging without the introduction of extra copies.
   fn new(
     io: S,

@@ -6,8 +6,8 @@
   [`denoland/deno`](https://github.com/denoland/deno/),
   [`denoland/deno_std`](https://github.com/denoland/deno_std/),
   [`denoland/dotcom`](https://github.com/denoland/dotcom/),
-  [`denoland/deno_docker`](https://github.com/denoland/deno_docker/)
-  [`denoland/manual`](https://github.com/denoland/manual/)
+  [`denoland/deno_docker`](https://github.com/denoland/deno_docker/),
+  [`denoland/deno-docs`](https://github.com/denoland/deno-docs)
 
 **During this process `main` branch (or any other branch that you're creating
 release from) should be frozen and no commits should land until the release is
@@ -101,8 +101,7 @@ verify on GitHub that everything looks correct.
   1. Checkout the branch the release is being made on.
   2. Manually run `./tools/release/01_bump_crate_versions.ts`
      1. Ensure the crate versions were bumped correctly
-     2. Ensure deno_std version was updated correctly in `cli/deno_std.rs`
-     3. Ensure `Releases.md` was updated correctly
+     2. Ensure `Releases.md` was updated correctly
   3. Open a PR with the changes and continue with the steps below.
   </details>
 
@@ -131,52 +130,21 @@ verify on GitHub that everything looks correct.
   The CI pipeline will create a release draft on GitHub
   (https://github.com/denoland/deno/releases).
 
-- [ ] Upload Apple M1 build (`deno-aarch64-apple-darwin.zip`) to the release
-      draft and to https://console.cloud.google.com/storage/browser/dl.deno.land
-
-  Send the following commands:
-
-  ```
-  git fetch upstream $BRANCH_NAME && git checkout -B $BRANCH_NAME upstream/$BRANCH_NAME
-  cargo build --release
-  cd target/release
-  set DENO_VERSION (./deno -V)
-  echo "Built $DENO_VERSION"
-  test $DENO_VERSION = "deno $VERSION"; or begin; echo "Version didn't match!!!"; exit 1; end
-  zip -r deno-aarch64-apple-darwin.zip deno
-  ```
-
-  And ask them to upload to these links:
-
-  - https://console.cloud.google.com/storage/browser/dl.deno.land/release/v$VERSION
-  - https://github.com/denoland/deno/releases/
-
 - ⛔ Verify that:
-  - [ ] There are 8 assets on the release draft.
-  - [ ] There are 4 zip files for this version on
+  - [ ] There are 14 assets on the release draft.
+  - [ ] There are 10 zip files for this version on
         [dl.deno.land](https://console.cloud.google.com/storage/browser/dl.deno.land/release/v$VERSION).
-  - [ ] The aarch64 Mac build was built from the correct branch AFTER the
-        version bump and has the same version as the release when doing
-        `deno -V` (ask someone with an M1 Mac to verify this if you don't have
-        one).
 
 - [ ] Publish the release on Github
 
-- [ ] Run the
-      https://github.com/denoland/dotcom/actions/workflows/update_versions.yml
-      workflow.
-  - [ ] This should open a PR. Review and merge it.
+- [ ] Update https://github.com/denoland/dotcom/blob/main/versions.json and open
+      a PR.
+  - [ ] Merge the PR.
 
-  <details>
-     <summary>Failure Steps</summary>
-
-  1. Update https://github.com/denoland/dotcom/blob/main/versions.json manually.
-  2. Open a PR and merge.
-  </details>
-
-- [ ] Push a new tag to [`manual`](https://github.com/denoland/manual). The tag
-      must match the CLI tag; you don't need to create dedicated commit for that
-      purpose, it's enough to tag the latest commit in that repo.
+- [ ] Run
+      https://github.com/denoland/deno-docs/actions/workflows/update_versions.yml
+      to automatically open a PR.
+  - [ ] Merge the PR.
 
 - [ ] For minor releases: make sure https://github.com/mdn/browser-compat-data
       has been updated to reflect Web API changes in this release. Usually done
@@ -191,14 +159,21 @@ verify on GitHub that everything looks correct.
 This should occur after the Deno CLI & std are fully published, as the build
 script generates the symbols based on the latest tags.
 
-- [ ] Run the release workflow in the apiland_scripts repo on the main branch:
-      https://github.com/denoland/apiland_scripts/actions/workflows/release.yml
+- [ ] Run the `release CLI` workflow in the apiland_scripts repo on the main
+      branch:
+      https://github.com/denoland/apiland_scripts/actions/workflows/release_cli.yml
+  - [ ] Verify the workflow ran successfully.
+- [ ] Run the `release STD` workflow in the apiland_scripts repo on the main
+      branch:
+      https://github.com/denoland/apiland_scripts/actions/workflows/release_std.yml
+  - [ ] Verify the workflow ran successfully.
 
   <details>
      <summary>Failure Steps</summary>
 
-  1. Clone `deno/apliland_scripts`.
-  2. Execute `deno task release`.
+  1. Clone `deno/apiland_scripts`.
+  2. Execute `deno task release:cli`.
+  3. Execute `deno task release:std`.
   </details>
 
 ## Updating `deno_docker`
@@ -207,6 +182,13 @@ script generates the symbols based on the latest tags.
       https://github.com/denoland/deno_docker/actions/workflows/version_bump.yml
 - [ ] This will open a PR. Review and merge it.
 - [ ] Create a tag with the version number (_without_ `v` prefix).
+
+## Updating `deno-lambda`
+
+- [ ] Run the version bump workflow:
+      https://github.com/denoland/deno-lambda/actions/workflows/bump.yml
+- [ ] This will open a PR. Review and merge it.
+- [ ] Create a release with the version number (_without_ `v` prefix).
 
 ## All done!
 

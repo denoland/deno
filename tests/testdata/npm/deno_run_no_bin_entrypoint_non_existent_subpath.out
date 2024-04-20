@@ -1,0 +1,3 @@
+error: '[WILDCARD]@denotest[WILDCARD]esm-basic[WILDCARD]package.json' did not have a bin property
+
+Fallback failed: Cannot find module 'file:///[WILDCARD]/non-existent.js'

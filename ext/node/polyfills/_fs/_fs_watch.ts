@@ -1,13 +1,16 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { basename } from "ext:deno_node/path.ts";
-import { EventEmitter } from "ext:deno_node/events.ts";
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
+import { basename } from "node:path";
+import { EventEmitter } from "node:events";
 import { notImplemented } from "ext:deno_node/_utils.ts";
-import { promisify } from "ext:deno_node/util.ts";
+import { promisify } from "node:util";
 import { getValidatedPath } from "ext:deno_node/internal/fs/utils.mjs";
 import { validateFunction } from "ext:deno_node/internal/validators.mjs";
 import { stat, Stats } from "ext:deno_node/_fs/_fs_stat.ts";
-import { Stats as StatsClass } from "ext:deno_node/internal/fs/utils.mjs";
-import { Buffer } from "ext:deno_node/buffer.ts";
+import { Buffer } from "node:buffer";
 import { delay } from "ext:deno_node/_util/async.ts";
 
 const statPromisified = promisify(stat);
@@ -18,7 +21,7 @@ const statAsync = async (filename: string): Promise<Stats | null> => {
     return emptyStats;
   }
 };
-const emptyStats = new StatsClass(
+const emptyStats = new Stats(
   0,
   0,
   0,
@@ -143,7 +146,7 @@ export function watch(
       }
       throw e;
     }
-  });
+  }, () => iterator);
 
   if (listener) {
     fsWatcher.on("change", listener.bind({ _handle: fsWatcher }));
@@ -208,7 +211,7 @@ export function watchFile(
     statWatchers.set(watchPath, stat);
   }
 
-  stat.addListener("change", listener!);
+  stat.addListener("change", handler);
   return stat;
 }
 
@@ -249,6 +252,7 @@ class StatWatcher extends EventEmitter {
   #bigint: boolean;
   #refCount = 0;
   #abortController = new AbortController();
+
   constructor(bigint: boolean) {
     super();
     this.#bigint = bigint;
@@ -303,19 +307,22 @@ class StatWatcher extends EventEmitter {
     this.emit("stop");
   }
   ref() {
-    notImplemented("FSWatcher.ref() is not implemented");
+    notImplemented("StatWatcher.ref() is not implemented");
   }
   unref() {
-    notImplemented("FSWatcher.unref() is not implemented");
+    notImplemented("StatWatcher.unref() is not implemented");
   }
 }
 
 class FSWatcher extends EventEmitter {
   #closer: () => void;
   #closed = false;
-  constructor(closer: () => void) {
+  #watcher: () => Deno.FsWatcher;
+
+  constructor(closer: () => void, getter: () => Deno.FsWatcher) {
     super();
     this.#closer = closer;
+    this.#watcher = getter;
   }
   close() {
     if (this.#closed) {
@@ -326,10 +333,10 @@ class FSWatcher extends EventEmitter {
     this.#closer();
   }
   ref() {
-    notImplemented("FSWatcher.ref() is not implemented");
+    this.#watcher().ref();
   }
   unref() {
-    notImplemented("FSWatcher.unref() is not implemented");
+    this.#watcher().unref();
   }
 }
 

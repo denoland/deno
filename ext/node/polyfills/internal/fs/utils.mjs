@@ -1,7 +1,11 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
 "use strict";
 
-import { Buffer } from "ext:deno_node/buffer.ts";
+import { Buffer } from "node:buffer";
 import {
   ERR_FS_EISDIR,
   ERR_FS_INVALID_SYMLINK_TYPE,
@@ -19,7 +23,7 @@ import {
   isUint8Array,
 } from "ext:deno_node/internal/util/types.ts";
 import { once } from "ext:deno_node/internal/util.mjs";
-import { deprecate } from "ext:deno_node/util.ts";
+import { deprecate } from "node:util";
 import { toPathIfFileURL } from "ext:deno_node/internal/url.ts";
 import {
   validateAbortSignal,
@@ -30,14 +34,14 @@ import {
   validateObject,
   validateUint32,
 } from "ext:deno_node/internal/validators.mjs";
-import pathModule from "ext:deno_node/path.ts";
+import pathModule from "node:path";
 const kType = Symbol("type");
 const kStats = Symbol("stats");
 import assert from "ext:deno_node/internal/assert.mjs";
 import { lstat, lstatSync } from "ext:deno_node/_fs/_fs_lstat.ts";
 import { stat, statSync } from "ext:deno_node/_fs/_fs_stat.ts";
 import { isWindows } from "ext:deno_node/_util/os.ts";
-import process from "ext:deno_node/process.ts";
+import process from "node:process";
 
 import {
   fs as fsConstants,

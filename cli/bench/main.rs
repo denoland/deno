@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
 use deno_core::serde_json;
@@ -12,19 +12,19 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::process::Stdio;
 use std::time::SystemTime;
+use test_util::PathRef;
 
 include!("../util/time.rs");
 
 mod http;
 mod lsp;
-mod websocket;
 
-fn read_json(filename: &str) -> Result<Value> {
+fn read_json(filename: &Path) -> Result<Value> {
   let f = fs::File::open(filename)?;
   Ok(serde_json::from_reader(f)?)
 }
 
-fn write_json(filename: &str, value: &Value) -> Result<()> {
+fn write_json(filename: &Path, value: &Value) -> Result<()> {
   let f = fs::File::create(filename)?;
   serde_json::to_writer(f, value)?;
   Ok(())
@@ -37,7 +37,7 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
   // invalidating that cache.
   (
     "cold_hello",
-    &["run", "--reload", "cli/tests/testdata/run/002_hello.ts"],
+    &["run", "--reload", "tests/testdata/run/002_hello.ts"],
     None,
   ),
   (
@@ -45,23 +45,19 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
     &[
       "run",
       "--reload",
-      "cli/tests/testdata/run/003_relative_import.ts",
+      "tests/testdata/run/003_relative_import.ts",
     ],
     None,
   ),
-  (
-    "hello",
-    &["run", "cli/tests/testdata/run/002_hello.ts"],
-    None,
-  ),
+  ("hello", &["run", "tests/testdata/run/002_hello.ts"], None),
   (
     "relative_import",
-    &["run", "cli/tests/testdata/run/003_relative_import.ts"],
+    &["run", "tests/testdata/run/003_relative_import.ts"],
     None,
   ),
   (
     "error_001",
-    &["run", "cli/tests/testdata/run/error_001.ts"],
+    &["run", "tests/testdata/run/error_001.ts"],
     Some(1),
   ),
   (
@@ -70,7 +66,7 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
       "run",
       "--reload",
       "--no-check",
-      "cli/tests/testdata/run/002_hello.ts",
+      "tests/testdata/run/002_hello.ts",
     ],
     None,
   ),
@@ -79,7 +75,7 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
     &[
       "run",
       "--allow-read",
-      "cli/tests/testdata/workers/bench_startup.ts",
+      "tests/testdata/workers/bench_startup.ts",
     ],
     None,
   ),
@@ -88,7 +84,7 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
     &[
       "run",
       "--allow-read",
-      "cli/tests/testdata/workers/bench_round_robin.ts",
+      "tests/testdata/workers/bench_round_robin.ts",
     ],
     None,
   ),
@@ -97,31 +93,28 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
     &[
       "run",
       "--allow-read",
-      "cli/tests/testdata/workers/bench_large_message.ts",
+      "tests/testdata/workers/bench_large_message.ts",
     ],
     None,
   ),
   (
     "text_decoder",
-    &["run", "cli/tests/testdata/benches/text_decoder_perf.js"],
+    &["run", "tests/testdata/benches/text_decoder_perf.js"],
     None,
   ),
   (
     "text_encoder",
-    &["run", "cli/tests/testdata/benches/text_encoder_perf.js"],
+    &["run", "tests/testdata/benches/text_encoder_perf.js"],
     None,
   ),
   (
     "text_encoder_into",
-    &[
-      "run",
-      "cli/tests/testdata/benches/text_encoder_into_perf.js",
-    ],
+    &["run", "tests/testdata/benches/text_encoder_into_perf.js"],
     None,
   ),
   (
     "response_string",
-    &["run", "cli/tests/testdata/benches/response_string_perf.js"],
+    &["run", "tests/testdata/benches/response_string_perf.js"],
     None,
   ),
   (
@@ -130,7 +123,7 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
       "check",
       "--reload",
       "--unstable",
-      "test_util/std/examples/chat/server_test.ts",
+      "tests/util/std/http/file_server_test.ts",
     ],
     None,
   ),
@@ -141,7 +134,7 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
       "--reload",
       "--no-check",
       "--unstable",
-      "test_util/std/examples/chat/server_test.ts",
+      "tests/util/std/http/file_server_test.ts",
     ],
     None,
   ),
@@ -150,7 +143,7 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
     &[
       "bundle",
       "--unstable",
-      "test_util/std/examples/chat/server_test.ts",
+      "tests/util/std/http/file_server_test.ts",
     ],
     None,
   ),
@@ -160,7 +153,7 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
       "bundle",
       "--no-check",
       "--unstable",
-      "test_util/std/examples/chat/server_test.ts",
+      "tests/util/std/http/file_server_test.ts",
     ],
     None,
   ),
@@ -170,17 +163,17 @@ const RESULT_KEYS: &[&str] =
   &["mean", "stddev", "user", "system", "min", "max"];
 fn run_exec_time(
   deno_exe: &Path,
-  target_dir: &Path,
+  target_dir: &PathRef,
 ) -> Result<HashMap<String, HashMap<String, f64>>> {
-  let hyperfine_exe = test_util::prebuilt_tool_path("hyperfine");
+  let hyperfine_exe = test_util::prebuilt_tool_path("hyperfine").to_string();
 
   let benchmark_file = target_dir.join("hyperfine_results.json");
-  let benchmark_file = benchmark_file.to_str().unwrap();
+  let benchmark_file_str = benchmark_file.to_string();
 
   let mut command = [
-    hyperfine_exe.to_str().unwrap(),
+    hyperfine_exe.as_str(),
     "--export-json",
-    benchmark_file,
+    benchmark_file_str.as_str(),
     "--warmup",
     "3",
   ]
@@ -213,7 +206,7 @@ fn run_exec_time(
   );
 
   let mut results = HashMap::<String, HashMap<String, f64>>::new();
-  let hyperfine_results = read_json(benchmark_file)?;
+  let hyperfine_results = read_json(benchmark_file.as_path())?;
   for ((name, _, _), data) in EXEC_TIME_BENCHMARKS.iter().zip(
     hyperfine_results
       .as_object()
@@ -270,7 +263,7 @@ fn get_binary_sizes(target_dir: &Path) -> Result<HashMap<String, i64>> {
 
   sizes.insert(
     "deno".to_string(),
-    test_util::deno_exe_path().metadata()?.len() as i64,
+    test_util::deno_exe_path().as_path().metadata()?.len() as i64,
   );
 
   // add up size for everything in target/release/deps/libswc*
@@ -313,8 +306,8 @@ fn get_binary_sizes(target_dir: &Path) -> Result<HashMap<String, i64>> {
 }
 
 const BUNDLES: &[(&str, &str)] = &[
-  ("file_server", "./test_util/std/http/file_server.ts"),
-  ("gist", "./test_util/std/examples/gist.ts"),
+  ("file_server", "./tests/util/std/http/file_server.ts"),
+  ("welcome", "./tests/testdata/welcome.ts"),
 ];
 fn bundle_benchmark(deno_exe: &Path) -> Result<HashMap<String, i64>> {
   let mut sizes = HashMap::<String, i64>::new();
@@ -402,7 +395,6 @@ struct BenchResult {
   max_memory: HashMap<String, i64>,
   lsp_exec_time: HashMap<String, i64>,
   req_per_sec: HashMap<String, i64>,
-  ws_msg_per_sec: HashMap<String, f64>,
   syscall_count: HashMap<String, i64>,
   thread_count: HashMap<String, i64>,
 }
@@ -418,7 +410,6 @@ async fn main() -> Result<()> {
     "cargo_deps",
     "lsp",
     "http",
-    "websocket",
     "strace",
     "mem_usage",
   ];
@@ -440,7 +431,11 @@ async fn main() -> Result<()> {
   println!("Starting Deno benchmark");
 
   let target_dir = test_util::target_dir();
-  let deno_exe = test_util::deno_exe_path();
+  let deno_exe = if let Ok(p) = std::env::var("DENO_BENCH_EXE") {
+    PathBuf::from(p)
+  } else {
+    test_util::deno_exe_path().to_path_buf()
+  };
   env::set_current_dir(test_util::root_path())?;
 
   let mut new_data = BenchResult {
@@ -458,11 +453,6 @@ async fn main() -> Result<()> {
     ..Default::default()
   };
 
-  if benchmarks.contains(&"websocket") {
-    let ws = websocket::benchmark()?;
-    new_data.ws_msg_per_sec = ws;
-  }
-
   if benchmarks.contains(&"bundle") {
     let bundle_size = bundle_benchmark(&deno_exe)?;
     new_data.bundle_size = bundle_size;
@@ -474,7 +464,7 @@ async fn main() -> Result<()> {
   }
 
   if benchmarks.contains(&"binary_size") {
-    let binary_sizes = get_binary_sizes(&target_dir)?;
+    let binary_sizes = get_binary_sizes(target_dir.as_path())?;
     new_data.binary_size = binary_sizes;
   }
 
@@ -489,7 +479,7 @@ async fn main() -> Result<()> {
   }
 
   if benchmarks.contains(&"http") && cfg!(not(target_os = "windows")) {
-    let stats = http::benchmark(&target_dir)?;
+    let stats = http::benchmark(target_dir.as_path())?;
     let req_per_sec = stats
       .iter()
       .map(|(name, result)| (name.clone(), result.requests as i64))
@@ -554,11 +544,10 @@ async fn main() -> Result<()> {
     new_data.max_memory = max_memory;
   }
 
-  if let Some(filename) = target_dir.join("bench.json").to_str() {
-    write_json(filename, &serde_json::to_value(&new_data)?)?;
-  } else {
-    eprintln!("Cannot write bench.json, path is invalid");
-  }
+  write_json(
+    target_dir.join("bench.json").as_path(),
+    &serde_json::to_value(&new_data)?,
+  )?;
 
   Ok(())
 }

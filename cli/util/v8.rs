@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 #[inline(always)]
 pub fn get_v8_flags_from_env() -> Vec<String> {
@@ -16,7 +16,7 @@ pub fn construct_v8_flags(
 ) -> Vec<String> {
   std::iter::once("UNUSED_BUT_NECESSARY_ARG0".to_owned())
     .chain(default_v8_flags.iter().cloned())
-    .chain(env_v8_flags.into_iter())
+    .chain(env_v8_flags)
     .chain(v8_flags.iter().cloned())
     .collect::<Vec<_>>()
 }

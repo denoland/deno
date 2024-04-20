@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -17,6 +17,7 @@ use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::BufMutView;
 use deno_core::BufView;
+use deno_core::ResourceHandleFd;
 use deno_runtime::deno_fs::FsDirEntry;
 use deno_runtime::deno_io;
 use deno_runtime::deno_io::fs::FsError;
@@ -91,31 +92,42 @@ impl VfsBuilder {
       if file_type.is_dir() {
         self.add_dir_recursive_internal(&path)?;
       } else if file_type.is_file() {
-        let file_bytes = std::fs::read(&path)
-          .with_context(|| format!("Reading {}", path.display()))?;
-        self.add_file(&path, file_bytes)?;
+        self.add_file_at_path(&path)?;
       } else if file_type.is_symlink() {
-        let target = util::fs::canonicalize_path(&path)
-          .with_context(|| format!("Reading symlink {}", path.display()))?;
-        if let Err(StripRootError { .. }) = self.add_symlink(&path, &target) {
-          if target.is_file() {
-            // this may change behavior, so warn the user about it
+        match util::fs::canonicalize_path(&path) {
+          Ok(target) => {
+            if let Err(StripRootError { .. }) = self.add_symlink(&path, &target)
+            {
+              if target.is_file() {
+                // this may change behavior, so warn the user about it
+                log::warn!(
+                  "{} Symlink target is outside '{}'. Inlining symlink at '{}' to '{}' as file.",
+                  crate::colors::yellow("Warning"),
+                  self.root_path.display(),
+                  path.display(),
+                  target.display(),
+                );
+                // inline the symlink and make the target file
+                let file_bytes = std::fs::read(&target)
+                  .with_context(|| format!("Reading {}", path.display()))?;
+                self.add_file(&path, file_bytes)?;
+              } else {
+                log::warn!(
+                  "{} Symlink target is outside '{}'. Excluding symlink at '{}' with target '{}'.",
+                  crate::colors::yellow("Warning"),
+                  self.root_path.display(),
+                  path.display(),
+                  target.display(),
+                );
+              }
+            }
+          }
+          Err(err) => {
             log::warn!(
-              "Symlink target is outside '{}'. Inlining symlink at '{}' to '{}' as file.",
-              self.root_path.display(),
+              "{} Failed resolving symlink. Ignoring.\n    Path: {}\n    Message: {:#}",
+              crate::colors::yellow("Warning"),
               path.display(),
-              target.display(),
-            );
-            // inline the symlink and make the target file
-            let file_bytes = std::fs::read(&target)
-              .with_context(|| format!("Reading {}", path.display()))?;
-            self.add_file(&path, file_bytes)?;
-          } else {
-            log::warn!(
-              "Symlink target is outside '{}'. Excluding symlink at '{}' with target '{}'.",
-              self.root_path.display(),
-              path.display(),
-              target.display(),
+              err
             );
           }
         }
@@ -160,6 +172,12 @@ impl VfsBuilder {
     }
 
     Ok(current_dir)
+  }
+
+  pub fn add_file_at_path(&mut self, path: &Path) -> Result<(), AnyError> {
+    let file_bytes = std::fs::read(path)
+      .with_context(|| format!("Reading {}", path.display()))?;
+    self.add_file(path, file_bytes)
   }
 
   fn add_file(&mut self, path: &Path, data: Vec<u8>) -> Result<(), AnyError> {
@@ -697,12 +715,7 @@ impl deno_io::fs::File for FileBackedVfsFile {
   fn as_stdio(self: Rc<Self>) -> FsResult<std::process::Stdio> {
     Err(FsError::NotSupported)
   }
-  #[cfg(unix)]
-  fn backing_fd(self: Rc<Self>) -> Option<std::os::unix::prelude::RawFd> {
-    None
-  }
-  #[cfg(windows)]
-  fn backing_fd(self: Rc<Self>) -> Option<std::os::windows::io::RawHandle> {
+  fn backing_fd(self: Rc<Self>) -> Option<ResourceHandleFd> {
     None
   }
   fn try_clone_inner(self: Rc<Self>) -> FsResult<Rc<dyn deno_io::fs::File>> {
@@ -850,9 +863,9 @@ mod test {
     let temp_dir = TempDir::new();
     // we canonicalize the temp directory because the vfs builder
     // will canonicalize the root path
-    let temp_dir_path = canonicalize_path(temp_dir.path()).unwrap();
-    let src_path = temp_dir_path.join("src");
-    temp_dir.create_dir_all(&src_path);
+    let src_path = temp_dir.path().canonicalize().join("src");
+    src_path.create_dir_all();
+    let src_path = src_path.to_path_buf();
     let mut builder = VfsBuilder::new(src_path.clone()).unwrap();
     builder
       .add_file(&src_path.join("a.txt"), "data".into())
@@ -922,19 +935,19 @@ mod test {
   #[test]
   fn test_include_dir_recursive() {
     let temp_dir = TempDir::new();
-    let temp_dir_path = canonicalize_path(temp_dir.path()).unwrap();
+    let temp_dir_path = temp_dir.path().canonicalize();
     temp_dir.create_dir_all("src/nested/sub_dir");
     temp_dir.write("src/a.txt", "data");
     temp_dir.write("src/b.txt", "data");
     util::fs::symlink_dir(
-      &temp_dir_path.join("src/nested/sub_dir"),
-      &temp_dir_path.join("src/sub_dir_link"),
+      temp_dir_path.join("src/nested/sub_dir").as_path(),
+      temp_dir_path.join("src/sub_dir_link").as_path(),
     )
     .unwrap();
     temp_dir.write("src/nested/sub_dir/c.txt", "c");
 
     // build and create the virtual fs
-    let src_path = temp_dir_path.join("src");
+    let src_path = temp_dir_path.join("src").to_path_buf();
     let mut builder = VfsBuilder::new(src_path.clone()).unwrap();
     builder.add_dir_recursive(&src_path).unwrap();
     let (dest_path, virtual_fs) = into_virtual_fs(builder, &temp_dir);
@@ -983,12 +996,12 @@ mod test {
     let file = std::fs::File::open(&virtual_fs_file).unwrap();
     let dest_path = temp_dir.path().join("dest");
     (
-      dest_path.clone(),
+      dest_path.to_path_buf(),
       FileBackedVfs::new(
         file,
         VfsRoot {
           dir: root_dir,
-          root_path: dest_path,
+          root_path: dest_path.to_path_buf(),
           start_file_offset: 0,
         },
       ),
@@ -998,9 +1011,9 @@ mod test {
   #[test]
   fn circular_symlink() {
     let temp_dir = TempDir::new();
-    let temp_dir_path = canonicalize_path(temp_dir.path()).unwrap();
-    let src_path = temp_dir_path.join("src");
-    temp_dir.create_dir_all(&src_path);
+    let src_path = temp_dir.path().canonicalize().join("src");
+    src_path.create_dir_all();
+    let src_path = src_path.to_path_buf();
     let mut builder = VfsBuilder::new(src_path.clone()).unwrap();
     builder
       .add_symlink(&src_path.join("a.txt"), &src_path.join("b.txt"))
@@ -1033,11 +1046,11 @@ mod test {
   #[tokio::test]
   async fn test_open_file() {
     let temp_dir = TempDir::new();
-    let temp_path = canonicalize_path(temp_dir.path()).unwrap();
+    let temp_path = temp_dir.path().canonicalize();
     let mut builder = VfsBuilder::new(temp_path.to_path_buf()).unwrap();
     builder
       .add_file(
-        &temp_path.join("a.txt"),
+        temp_path.join("a.txt").as_path(),
         "0123456789".to_string().into_bytes(),
       )
       .unwrap();

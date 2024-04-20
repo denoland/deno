@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::NodeModuleKind;
 use crate::NodePermissions;
@@ -18,9 +18,10 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::io::ErrorKind;
 use std::path::PathBuf;
+use std::rc::Rc;
 
 thread_local! {
-  static CACHE: RefCell<HashMap<PathBuf, PackageJson>> = RefCell::new(HashMap::new());
+  static CACHE: RefCell<HashMap<PathBuf, Rc<PackageJson>>> = RefCell::new(HashMap::new());
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -36,8 +37,8 @@ pub struct PackageJson {
   pub path: PathBuf,
   pub typ: String,
   pub types: Option<String>,
-  pub dependencies: Option<HashMap<String, String>>,
-  pub dev_dependencies: Option<HashMap<String, String>>,
+  pub dependencies: Option<IndexMap<String, String>>,
+  pub dev_dependencies: Option<IndexMap<String, String>>,
   pub scripts: Option<IndexMap<String, String>>,
 }
 
@@ -66,7 +67,7 @@ impl PackageJson {
     resolver: &dyn NpmResolver,
     permissions: &dyn NodePermissions,
     path: PathBuf,
-  ) -> Result<PackageJson, AnyError> {
+  ) -> Result<Rc<PackageJson>, AnyError> {
     resolver.ensure_read_permission(permissions, &path)?;
     Self::load_skip_read_permission(fs, path)
   }
@@ -74,17 +75,17 @@ impl PackageJson {
   pub fn load_skip_read_permission(
     fs: &dyn deno_fs::FileSystem,
     path: PathBuf,
-  ) -> Result<PackageJson, AnyError> {
+  ) -> Result<Rc<PackageJson>, AnyError> {
     assert!(path.is_absolute());
 
     if CACHE.with(|cache| cache.borrow().contains_key(&path)) {
       return Ok(CACHE.with(|cache| cache.borrow()[&path].clone()));
     }
 
-    let source = match fs.read_to_string(&path) {
+    let source = match fs.read_text_file_sync(&path, None) {
       Ok(source) => source,
       Err(err) if err.kind() == ErrorKind::NotFound => {
-        return Ok(PackageJson::empty(path));
+        return Ok(Rc::new(PackageJson::empty(path)));
       }
       Err(err) => bail!(
         "Error loading package.json at {}. {:#}",
@@ -93,20 +94,37 @@ impl PackageJson {
       ),
     };
 
-    if source.trim().is_empty() {
-      return Ok(PackageJson::empty(path));
-    }
-
-    Self::load_from_string(path, source)
+    let package_json = Rc::new(Self::load_from_string(path, source)?);
+    CACHE.with(|cache| {
+      cache
+        .borrow_mut()
+        .insert(package_json.path.clone(), package_json.clone());
+    });
+    Ok(package_json)
   }
 
   pub fn load_from_string(
     path: PathBuf,
     source: String,
   ) -> Result<PackageJson, AnyError> {
-    let package_json: Value = serde_json::from_str(&source)
-      .map_err(|err| anyhow::anyhow!("malformed package.json {}", err))?;
+    if source.trim().is_empty() {
+      return Ok(PackageJson::empty(path));
+    }
 
+    let package_json: Value = serde_json::from_str(&source).map_err(|err| {
+      anyhow::anyhow!(
+        "malformed package.json: {}\n    at {}",
+        err,
+        path.display()
+      )
+    })?;
+    Self::load_from_value(path, package_json)
+  }
+
+  pub fn load_from_value(
+    path: PathBuf,
+    package_json: serde_json::Value,
+  ) -> Result<PackageJson, AnyError> {
     let imports_val = package_json.get("imports");
     let main_val = package_json.get("main");
     let module_val = package_json.get("module");
@@ -114,14 +132,14 @@ impl PackageJson {
     let version_val = package_json.get("version");
     let type_val = package_json.get("type");
     let bin = package_json.get("bin").map(ToOwned::to_owned);
-    let exports = package_json.get("exports").map(|exports| {
-      if is_conditional_exports_main_sugar(exports) {
+    let exports = package_json.get("exports").and_then(|exports| {
+      Some(if is_conditional_exports_main_sugar(exports) {
         let mut map = Map::new();
         map.insert(".".to_string(), exports.to_owned());
         map
       } else {
-        exports.as_object().unwrap().to_owned()
-      }
+        exports.as_object()?.to_owned()
+      })
     });
 
     let imports = imports_val
@@ -134,7 +152,7 @@ impl PackageJson {
 
     let dependencies = package_json.get("dependencies").and_then(|d| {
       if d.is_object() {
-        let deps: HashMap<String, String> =
+        let deps: IndexMap<String, String> =
           serde_json::from_value(d.to_owned()).unwrap();
         Some(deps)
       } else {
@@ -143,7 +161,7 @@ impl PackageJson {
     });
     let dev_dependencies = package_json.get("devDependencies").and_then(|d| {
       if d.is_object() {
-        let deps: HashMap<String, String> =
+        let deps: IndexMap<String, String> =
           serde_json::from_value(d.to_owned()).unwrap();
         Some(deps)
       } else {
@@ -193,20 +211,16 @@ impl PackageJson {
       scripts,
     };
 
-    CACHE.with(|cache| {
-      cache
-        .borrow_mut()
-        .insert(package_json.path.clone(), package_json.clone());
-    });
     Ok(package_json)
   }
 
-  pub fn main(&self, referrer_kind: NodeModuleKind) -> Option<&String> {
-    if referrer_kind == NodeModuleKind::Esm && self.typ == "module" {
+  pub fn main(&self, referrer_kind: NodeModuleKind) -> Option<&str> {
+    let main = if referrer_kind == NodeModuleKind::Esm && self.typ == "module" {
       self.module.as_ref().or(self.main.as_ref())
     } else {
       self.main.as_ref()
-    }
+    };
+    main.map(|m| m.trim()).filter(|m| !m.is_empty())
   }
 
   pub fn specifier(&self) -> ModuleSpecifier {
@@ -239,4 +253,20 @@ fn is_conditional_exports_main_sugar(exports: &Value) -> bool {
   }
 
   is_conditional_sugar
+}
+
+#[cfg(test)]
+mod test {
+  use super::*;
+
+  #[test]
+  fn null_exports_should_not_crash() {
+    let package_json = PackageJson::load_from_string(
+      PathBuf::from("/package.json"),
+      r#"{ "exports": null }"#.to_string(),
+    )
+    .unwrap();
+
+    assert!(package_json.exports.is_none());
+  }
 }

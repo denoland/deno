@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use deno_bench_util::bench_js_sync_with;
 use deno_bench_util::bench_or_profile;
@@ -6,25 +6,23 @@ use deno_bench_util::bencher::benchmark_group;
 use deno_bench_util::bencher::Bencher;
 use deno_bench_util::BenchOptions;
 use deno_core::Extension;
-use deno_core::ExtensionFileSource;
-use deno_core::ExtensionFileSourceCode;
 
 fn setup() -> Vec<Extension> {
-  vec![Extension::builder("bench_setup")
-    .js(vec![ExtensionFileSource {
-      specifier: "ext:bench_setup/setup.js",
-      code: ExtensionFileSourceCode::IncludedInBinary(
-        r#"
-      const hello = "hello world\n";
-      const hello1k = hello.repeat(1e3);
-      const hello1m = hello.repeat(1e6);
-      const helloEncoded = Deno.core.encode(hello);
-      const hello1kEncoded = Deno.core.encode(hello1k);
-      const hello1mEncoded = Deno.core.encode(hello1m);
-      "#,
-      ),
-    }])
-    .build()]
+  deno_core::extension!(
+    bench_setup,
+    js = ["ext:bench_setup/setup.js" = {
+      source = r#"
+        const hello = "hello world\n";
+        const hello1k = hello.repeat(1e3);
+        const hello1m = hello.repeat(1e6);
+        const helloEncoded = Deno.core.encode(hello);
+        const hello1kEncoded = Deno.core.encode(hello1k);
+        const hello1mEncoded = Deno.core.encode(hello1m);
+      "#
+    }]
+  );
+
+  vec![bench_setup::init_ops_and_esm()]
 }
 
 fn bench_utf8_encode_12_b(b: &mut Bencher) {

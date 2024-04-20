@@ -1,12 +1,44 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-// vendored from std/testing/asserts.ts
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// vendored from std/assert/mod.ts
 
+import { primordials } from "ext:core/mod.js";
+const {
+  DatePrototype,
+  ArrayPrototypeJoin,
+  ArrayPrototypeMap,
+  DatePrototypeGetTime,
+  Error,
+  NumberIsNaN,
+  Object,
+  ObjectIs,
+  ObjectKeys,
+  ObjectPrototypeIsPrototypeOf,
+  ReflectHas,
+  ReflectOwnKeys,
+  RegExpPrototype,
+  RegExpPrototypeTest,
+  SafeMap,
+  SafeRegExp,
+  String,
+  StringPrototypeReplace,
+  StringPrototypeSplit,
+  SymbolIterator,
+  TypeError,
+  WeakMapPrototype,
+  WeakSetPrototype,
+  WeakRefPrototype,
+  WeakRefPrototypeDeref,
+} = primordials;
+
+import { URLPrototype } from "ext:deno_url/00_url.js";
 import { red } from "ext:deno_node/_util/std_fmt_colors.ts";
 import {
   buildMessage,
   diff,
   diffstr,
 } from "ext:deno_node/_util/std_testing_diff.ts";
+
+const FORMAT_PATTERN = new SafeRegExp(/(?=["\\])/g);
 
 /** Converts the input into a string. Objects, Sets and Maps are sorted so as to
  * make tests less flaky */
@@ -23,7 +55,7 @@ export function format(v: unknown): string {
       // getters should be true in assertEquals.
       getters: true,
     })
-    : `"${String(v).replace(/(?=["\\])/g, "\\")}"`;
+    : `"${StringPrototypeReplace(String(v), FORMAT_PATTERN, "\\")}"`;
 }
 
 const CAN_NOT_DISPLAY = "[Cannot display]";
@@ -35,56 +67,75 @@ export class AssertionError extends Error {
   }
 }
 
-function isKeyedCollection(x: unknown): x is Set<unknown> {
-  return [Symbol.iterator, "size"].every((k) => k in (x as Set<unknown>));
+function isKeyedCollection(
+  x: unknown,
+): x is { size: number; entries(): Iterable<[unknown, unknown]> } {
+  return ReflectHas(x, SymbolIterator) && ReflectHas(x, "size");
 }
 
 /** Deep equality comparison used in assertions */
 export function equal(c: unknown, d: unknown): boolean {
-  const seen = new Map();
+  const seen = new SafeMap();
   return (function compare(a: unknown, b: unknown): boolean {
     // Have to render RegExp & Date for string comparison
     // unless it's mistreated as object
     if (
       a &&
       b &&
-      ((a instanceof RegExp && b instanceof RegExp) ||
-        (a instanceof URL && b instanceof URL))
+      ((ObjectPrototypeIsPrototypeOf(RegExpPrototype, a) &&
+        ObjectPrototypeIsPrototypeOf(RegExpPrototype, b)) ||
+        (ObjectPrototypeIsPrototypeOf(URLPrototype, a) &&
+          ObjectPrototypeIsPrototypeOf(URLPrototype, b)))
     ) {
       return String(a) === String(b);
     }
-    if (a instanceof Date && b instanceof Date) {
-      const aTime = a.getTime();
-      const bTime = b.getTime();
+    if (
+      ObjectPrototypeIsPrototypeOf(DatePrototype, a) &&
+      ObjectPrototypeIsPrototypeOf(DatePrototype, b)
+    ) {
+      const aTime = DatePrototypeGetTime(a);
+      const bTime = DatePrototypeGetTime(b);
       // Check for NaN equality manually since NaN is not
       // equal to itself.
-      if (Number.isNaN(aTime) && Number.isNaN(bTime)) {
+      if (NumberIsNaN(aTime) && NumberIsNaN(bTime)) {
         return true;
       }
       return aTime === bTime;
     }
     if (typeof a === "number" && typeof b === "number") {
-      return Number.isNaN(a) && Number.isNaN(b) || a === b;
+      return NumberIsNaN(a) && NumberIsNaN(b) || a === b;
     }
-    if (Object.is(a, b)) {
+    if (ObjectIs(a, b)) {
       return true;
     }
     if (a && typeof a === "object" && b && typeof b === "object") {
       if (a && b && !constructorsEqual(a, b)) {
         return false;
       }
-      if (a instanceof WeakMap || b instanceof WeakMap) {
-        if (!(a instanceof WeakMap && b instanceof WeakMap)) return false;
+      if (
+        ObjectPrototypeIsPrototypeOf(WeakMapPrototype, a) ||
+        ObjectPrototypeIsPrototypeOf(WeakMapPrototype, b)
+      ) {
+        if (
+          !(ObjectPrototypeIsPrototypeOf(WeakMapPrototype, a) &&
+            ObjectPrototypeIsPrototypeOf(WeakMapPrototype, b))
+        ) return false;
         throw new TypeError("cannot compare WeakMap instances");
       }
-      if (a instanceof WeakSet || b instanceof WeakSet) {
-        if (!(a instanceof WeakSet && b instanceof WeakSet)) return false;
+      if (
+        ObjectPrototypeIsPrototypeOf(WeakSetPrototype, a) ||
+        ObjectPrototypeIsPrototypeOf(WeakSetPrototype, b)
+      ) {
+        if (
+          !(ObjectPrototypeIsPrototypeOf(WeakSetPrototype, a) &&
+            ObjectPrototypeIsPrototypeOf(WeakSetPrototype, b))
+        ) return false;
         throw new TypeError("cannot compare WeakSet instances");
       }
       if (seen.get(a) === b) {
         return true;
       }
-      if (Object.keys(a || {}).length !== Object.keys(b || {}).length) {
+      if (ObjectKeys(a || {}).length !== ObjectKeys(b || {}).length) {
         return false;
       }
       seen.set(a, b);
@@ -95,7 +146,10 @@ export function equal(c: unknown, d: unknown): boolean {
 
         let unmatchedEntries = a.size;
 
+        // TODO(petamoriken): use primordials
+        // deno-lint-ignore prefer-primordials
         for (const [aKey, aValue] of a.entries()) {
+          // deno-lint-ignore prefer-primordials
           for (const [bKey, bValue] of b.entries()) {
             /* Given that Map keys can be references, we need
              * to ensure that they are also deeply equal */
@@ -108,27 +162,34 @@ export function equal(c: unknown, d: unknown): boolean {
             }
           }
         }
-
         return unmatchedEntries === 0;
       }
+
       const merged = { ...a, ...b };
-      for (
-        const key of [
-          ...Object.getOwnPropertyNames(merged),
-          ...Object.getOwnPropertySymbols(merged),
-        ]
-      ) {
+      const keys = ReflectOwnKeys(merged);
+      for (let i = 0; i < keys.length; ++i) {
+        const key = keys[i];
         type Key = keyof typeof merged;
         if (!compare(a && a[key as Key], b && b[key as Key])) {
           return false;
         }
-        if (((key in a) && (!(key in b))) || ((key in b) && (!(key in a)))) {
+        if (
+          (ReflectHas(a, key) && !ReflectHas(b, key)) ||
+          (ReflectHas(b, key) && !ReflectHas(a, key))
+        ) {
           return false;
         }
       }
-      if (a instanceof WeakRef || b instanceof WeakRef) {
-        if (!(a instanceof WeakRef && b instanceof WeakRef)) return false;
-        return compare(a.deref(), b.deref());
+
+      if (
+        ObjectPrototypeIsPrototypeOf(WeakRefPrototype, a) ||
+        ObjectPrototypeIsPrototypeOf(WeakRefPrototype, b)
+      ) {
+        if (
+          !(ObjectPrototypeIsPrototypeOf(WeakRefPrototype, a) &&
+            ObjectPrototypeIsPrototypeOf(WeakRefPrototype, b))
+        ) return false;
+        return compare(WeakRefPrototypeDeref(a), WeakRefPrototypeDeref(b));
       }
       return true;
     }
@@ -136,7 +197,6 @@ export function equal(c: unknown, d: unknown): boolean {
   })(c, d);
 }
 
-// deno-lint-ignore ban-types
 function constructorsEqual(a: object, b: object) {
   return a.constructor === b.constructor ||
     a.constructor === Object && !b.constructor ||
@@ -164,8 +224,14 @@ export function assertEquals<T>(actual: T, expected: T, msg?: string) {
       (typeof expected === "string");
     const diffResult = stringDiff
       ? diffstr(actual as string, expected as string)
-      : diff(actualString.split("\n"), expectedString.split("\n"));
-    const diffMsg = buildMessage(diffResult, { stringDiff }).join("\n");
+      : diff(
+        StringPrototypeSplit(actualString, "\n"),
+        StringPrototypeSplit(expectedString, "\n"),
+      );
+    const diffMsg = ArrayPrototypeJoin(
+      buildMessage(diffResult, { stringDiff }),
+      "\n",
+    );
     message = `Values are not equal:\n${diffMsg}`;
   } catch {
     message = `\n${red(red(CAN_NOT_DISPLAY))} + \n\n`;
@@ -207,7 +273,7 @@ export function assertStrictEquals<T>(
   expected: T,
   msg?: string,
 ): asserts actual is T {
-  if (Object.is(actual, expected)) {
+  if (ObjectIs(actual, expected)) {
     return;
   }
 
@@ -220,10 +286,13 @@ export function assertStrictEquals<T>(
     const expectedString = format(expected);
 
     if (actualString === expectedString) {
-      const withOffset = actualString
-        .split("\n")
-        .map((l) => `    ${l}`)
-        .join("\n");
+      const withOffset = ArrayPrototypeJoin(
+        ArrayPrototypeMap(
+          StringPrototypeSplit(actualString, "\n"),
+          (l: string) => `    ${l}`,
+        ),
+        "\n",
+      );
       message =
         `Values have the same structure but are not reference-equal:\n\n${
           red(withOffset)
@@ -234,8 +303,14 @@ export function assertStrictEquals<T>(
           (typeof expected === "string");
         const diffResult = stringDiff
           ? diffstr(actual as string, expected as string)
-          : diff(actualString.split("\n"), expectedString.split("\n"));
-        const diffMsg = buildMessage(diffResult, { stringDiff }).join("\n");
+          : diff(
+            StringPrototypeSplit(actualString, "\n"),
+            StringPrototypeSplit(expectedString, "\n"),
+          );
+        const diffMsg = ArrayPrototypeJoin(
+          buildMessage(diffResult, { stringDiff }),
+          "\n",
+        );
         message = `Values are not strictly equal:\n${diffMsg}`;
       } catch {
         message = `\n${CAN_NOT_DISPLAY} + \n\n`;
@@ -253,7 +328,7 @@ export function assertNotStrictEquals<T>(
   expected: T,
   msg?: string,
 ) {
-  if (!Object.is(actual, expected)) {
+  if (!ObjectIs(actual, expected)) {
     return;
   }
 
@@ -269,7 +344,7 @@ export function assertMatch(
   expected: RegExp,
   msg?: string,
 ) {
-  if (!expected.test(actual)) {
+  if (!RegExpPrototypeTest(expected, actual)) {
     if (!msg) {
       msg = `actual: "${actual}" expected to match: "${expected}"`;
     }
@@ -284,7 +359,7 @@ export function assertNotMatch(
   expected: RegExp,
   msg?: string,
 ) {
-  if (expected.test(actual)) {
+  if (RegExpPrototypeTest(expected, actual)) {
     if (!msg) {
       msg = `actual: "${actual}" expected to not match: "${expected}"`;
     }

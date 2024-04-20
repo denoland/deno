@@ -1,10 +1,11 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use deno_runtime::deno_fs::AccessCheckCb;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_fs::FsDirEntry;
 use deno_runtime::deno_fs::FsFileType;
@@ -47,6 +48,7 @@ impl DenoCompileFileSystem {
         create_new: false,
         mode: None,
       },
+      None,
       &old_file_bytes,
     )
   }
@@ -75,22 +77,24 @@ impl FileSystem for DenoCompileFileSystem {
     &self,
     path: &Path,
     options: OpenOptions,
+    access_check: Option<AccessCheckCb>,
   ) -> FsResult<Rc<dyn File>> {
     if self.0.is_path_within(path) {
       Ok(self.0.open_file(path)?)
     } else {
-      RealFs.open_sync(path, options)
+      RealFs.open_sync(path, options, access_check)
     }
   }
-  async fn open_async(
-    &self,
+  async fn open_async<'a>(
+    &'a self,
     path: PathBuf,
     options: OpenOptions,
+    access_check: Option<AccessCheckCb<'a>>,
   ) -> FsResult<Rc<dyn File>> {
     if self.0.is_path_within(&path) {
       Ok(self.0.open_file(&path)?)
     } else {
-      RealFs.open_async(path, options).await
+      RealFs.open_async(path, options, access_check).await
     }
   }
 
@@ -173,6 +177,17 @@ impl FileSystem for DenoCompileFileSystem {
     } else {
       RealFs.copy_file_async(oldpath, newpath).await
     }
+  }
+
+  fn cp_sync(&self, from: &Path, to: &Path) -> FsResult<()> {
+    self.error_if_in_vfs(to)?;
+
+    RealFs.cp_sync(from, to)
+  }
+  async fn cp_async(&self, from: PathBuf, to: PathBuf) -> FsResult<()> {
+    self.error_if_in_vfs(&to)?;
+
+    RealFs.cp_async(from, to).await
   }
 
   fn stat_sync(&self, path: &Path) -> FsResult<FsStat> {

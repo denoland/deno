@@ -20,9 +20,15 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
 "use strict";
 
-import { ERR_INVALID_ARG_VALUE, ERR_INVALID_CURSOR_POS } from "ext:deno_node/internal/errors.ts";
+import {
+  ERR_INVALID_ARG_VALUE,
+  ERR_INVALID_CURSOR_POS,
+} from "ext:deno_node/internal/errors.ts";
 
 import { validateFunction } from "ext:deno_node/internal/validators.mjs";
 

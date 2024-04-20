@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
 // deno-lint-ignore-file
@@ -21,7 +21,7 @@ import {
   isTypedArray,
 } from "ext:deno_node/internal/util/types.ts";
 
-import { Buffer } from "ext:deno_node/buffer.ts";
+import { Buffer } from "node:buffer";
 import {
   getOwnNonIndexProperties,
   ONLY_ENUMERABLE,

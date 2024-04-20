@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -6,7 +6,7 @@ use std::rc::Rc;
 
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op;
+use deno_core::op2;
 
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
@@ -15,13 +15,15 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use futures::future::poll_fn;
 use serde::Deserialize;
 use serde::Serialize;
+use tokio::sync::mpsc::error::TryRecvError;
 use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::mpsc::UnboundedSender;
 
-enum Transferable {
+pub enum Transferable {
   MessagePort(MessagePort),
   ArrayBuffer(u32),
 }
@@ -55,12 +57,15 @@ impl MessagePort {
     &self,
     state: Rc<RefCell<OpState>>,
   ) -> Result<Option<JsMessageData>, AnyError> {
-    #![allow(clippy::await_holding_refcell_ref)] // TODO(ry) remove!
-    let mut rx = self
-      .rx
-      .try_borrow_mut()
-      .map_err(|_| type_error("Port receiver is already borrowed"))?;
-    if let Some((data, transferables)) = rx.recv().await {
+    let rx = &self.rx;
+
+    let maybe_data = poll_fn(|cx| {
+      let mut rx = rx.borrow_mut();
+      rx.poll_recv(cx)
+    })
+    .await;
+
+    if let Some((data, transferables)) = maybe_data {
       let js_transferables =
         serialize_transferables(&mut state.borrow_mut(), transferables);
       return Ok(Some(JsMessageData {
@@ -111,7 +116,8 @@ impl Resource for MessagePortResource {
   }
 }
 
-#[op]
+#[op2]
+#[serde]
 pub fn op_message_port_create_entangled(
   state: &mut OpState,
 ) -> (ResourceId, ResourceId) {
@@ -138,7 +144,7 @@ pub enum JsTransferable {
   ArrayBuffer(u32),
 }
 
-fn deserialize_js_transferables(
+pub fn deserialize_js_transferables(
   state: &mut OpState,
   js_transferables: Vec<JsTransferable>,
 ) -> Result<Vec<Transferable>, AnyError> {
@@ -163,7 +169,7 @@ fn deserialize_js_transferables(
   Ok(transferables)
 }
 
-fn serialize_transferables(
+pub fn serialize_transferables(
   state: &mut OpState,
   transferables: Vec<Transferable>,
 ) -> Vec<JsTransferable> {
@@ -187,15 +193,15 @@ fn serialize_transferables(
 
 #[derive(Deserialize, Serialize)]
 pub struct JsMessageData {
-  data: DetachedBuffer,
-  transferables: Vec<JsTransferable>,
+  pub data: DetachedBuffer,
+  pub transferables: Vec<JsTransferable>,
 }
 
-#[op]
+#[op2]
 pub fn op_message_port_post_message(
   state: &mut OpState,
-  rid: ResourceId,
-  data: JsMessageData,
+  #[smi] rid: ResourceId,
+  #[serde] data: JsMessageData,
 ) -> Result<(), AnyError> {
   for js_transferable in &data.transferables {
     if let JsTransferable::MessagePort(id) = js_transferable {
@@ -206,14 +212,14 @@ pub fn op_message_port_post_message(
   }
 
   let resource = state.resource_table.get::<MessagePortResource>(rid)?;
-
   resource.port.send(state, data)
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 pub async fn op_message_port_recv_message(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
 ) -> Result<Option<JsMessageData>, AnyError> {
   let resource = {
     let state = state.borrow();
@@ -224,4 +230,24 @@ pub async fn op_message_port_recv_message(
   };
   let cancel = RcRef::map(resource.clone(), |r| &r.cancel);
   resource.port.recv(state).or_cancel(cancel).await?
+}
+
+#[op2]
+#[serde]
+pub fn op_message_port_recv_message_sync(
+  state: &mut OpState, // Rc<RefCell<OpState>>,
+  #[smi] rid: ResourceId,
+) -> Result<Option<JsMessageData>, AnyError> {
+  let resource = state.resource_table.get::<MessagePortResource>(rid)?;
+  resource.cancel.cancel();
+  let mut rx = resource.port.rx.borrow_mut();
+
+  match rx.try_recv() {
+    Ok((d, t)) => Ok(Some(JsMessageData {
+      data: d,
+      transferables: serialize_transferables(state, t),
+    })),
+    Err(TryRecvError::Empty) => Ok(None),
+    Err(TryRecvError::Disconnected) => Ok(None),
+  }
 }

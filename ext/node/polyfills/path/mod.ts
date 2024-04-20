@@ -1,6 +1,6 @@
 // Copyright the Browserify authors. MIT License.
 // Ported mostly from https://github.com/browserify/path-browserify/
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import { isWindows } from "ext:deno_node/_util/os.ts";
 import _win32 from "ext:deno_node/path/_win32.ts";
@@ -28,7 +28,6 @@ export const {
   dirname,
   extname,
   format,
-  fromFileUrl,
   isAbsolute,
   join,
   normalize,
@@ -36,7 +35,6 @@ export const {
   relative,
   resolve,
   sep,
-  toFileUrl,
   toNamespacedPath,
 } = path;
 export default path;

@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
@@ -209,6 +209,18 @@ impl LineIndex {
 pub fn get_edits(a: &str, b: &str, line_index: &LineIndex) -> Vec<TextEdit> {
   if a == b {
     return vec![];
+  }
+  // Heuristic to detect things like minified files. `diff()` is expensive.
+  if b.chars().filter(|c| *c == '\n').count()
+    > line_index.utf8_offsets.len() * 3
+  {
+    return vec![TextEdit {
+      range: lsp::Range {
+        start: lsp::Position::new(0, 0),
+        end: line_index.position_utf16(TextSize::from(a.len() as u32)),
+      },
+      new_text: b.to_string(),
+    }];
   }
   let chunks = diff(a, b);
   let mut text_edits = Vec::<TextEdit>::new();

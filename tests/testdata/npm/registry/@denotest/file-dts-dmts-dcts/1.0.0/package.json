@@ -1,0 +1,13 @@
+{
+  "name": "@denotest/dts-and-dmts-same-file",
+  "version": "1.0.0",
+  "exports": {
+    ".": {
+      "import": "./main.mjs",
+      "require": "./main.js"
+    },
+    "./mjs": "./main.mjs",
+    "./cjs": "./main.cjs",
+    "./js": "./main.js"
+  }
+}
