@@ -5,12 +5,6 @@ use test_util::itest;
 use test_util::TestContext;
 use test_util::TestContextBuilder;
 
-itest!(_036_import_map_fetch {
-  args:
-    "cache --quiet --reload --import-map=import_maps/import_map.json import_maps/test.ts",
-    output: "cache/036_import_map_fetch.out",
-  });
-
 itest!(_037_fetch_multiple {
   args: "cache --reload --check=all run/fetch/test.ts run/fetch/other.ts",
   http_server: true,
@@ -183,5 +177,5 @@ fn loads_type_graph() {
     .new_command()
     .args("cache --reload -L debug run/type_directives_js_main.js")
     .run();
-  output.assert_matches_text("[WILDCARD] - FileFetcher::fetch() - specifier: file:///[WILDCARD]/subdir/type_reference.d.ts[WILDCARD]");
+  output.assert_matches_text("[WILDCARD] - FileFetcher::fetch_no_follow_with_options - specifier: file:///[WILDCARD]/subdir/type_reference.d.ts[WILDCARD]");
 }

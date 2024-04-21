@@ -21,7 +21,7 @@ use crate::graph_util::enhanced_resolution_error_message;
 use crate::lsp::lsp_custom::DiagnosticBatchNotificationParams;
 use crate::resolver::SloppyImportsResolution;
 use crate::resolver::SloppyImportsResolver;
-use crate::tools::lint::get_configured_rules;
+use crate::util::path::to_percent_decoded_str;
 
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
@@ -35,6 +35,7 @@ use deno_core::unsync::spawn;
 use deno_core::unsync::spawn_blocking;
 use deno_core::unsync::JoinHandle;
 use deno_core::ModuleSpecifier;
+use deno_graph::source::ResolutionMode;
 use deno_graph::Resolution;
 use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
@@ -45,6 +46,7 @@ use deno_runtime::tokio_util::create_basic_runtime;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
+use import_map::ImportMap;
 use log::error;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -61,10 +63,10 @@ use tower_lsp::lsp_types as lsp;
 pub struct DiagnosticServerUpdateMessage {
   pub snapshot: Arc<StateSnapshot>,
   pub config: Arc<ConfigSnapshot>,
-  pub lint_options: LintOptions,
   pub url_map: LspUrlMap,
 }
 
+#[derive(Debug)]
 struct DiagnosticRecord {
   pub specifier: ModuleSpecifier,
   pub versioned: VersionedDiagnostics,
@@ -460,7 +462,6 @@ impl DiagnosticsServer {
                   DiagnosticServerUpdateMessage {
                     snapshot,
                     config,
-                    lint_options,
                     url_map,
                   },
                 batch_index,
@@ -513,6 +514,7 @@ impl DiagnosticsServer {
                         "Error generating TypeScript diagnostics: {}",
                         err
                       );
+                      token.cancel();
                     }
                   })
                   .unwrap_or_default();
@@ -611,14 +613,7 @@ impl DiagnosticsServer {
                   let mark = performance.mark("lsp.update_diagnostics_lint");
                   let diagnostics = spawn_blocking({
                     let token = token.clone();
-                    move || {
-                      generate_lint_diagnostics(
-                        &snapshot,
-                        &config,
-                        &lint_options,
-                        token,
-                      )
-                    }
+                    move || generate_lint_diagnostics(&snapshot, &config, token)
                   })
                   .await
                   .unwrap();
@@ -790,21 +785,22 @@ fn ts_json_to_diagnostics(
 fn generate_lint_diagnostics(
   snapshot: &language_server::StateSnapshot,
   config: &ConfigSnapshot,
-  lint_options: &LintOptions,
   token: CancellationToken,
 ) -> DiagnosticVec {
   let documents = snapshot
     .documents
     .documents(DocumentsFilter::OpenDiagnosable);
-  let lint_rules = get_configured_rules(
-    lint_options.rules.clone(),
-    config.config_file.as_ref(),
-  )
-  .rules;
+  let config_data_by_scope = config.tree.data_by_scope();
   let mut diagnostics_vec = Vec::new();
   for document in documents {
-    let settings =
-      config.workspace_settings_for_specifier(document.specifier());
+    let specifier = document.specifier();
+    if specifier.scheme() != "file" {
+      continue;
+    }
+    if !config.specifier_enabled(specifier) {
+      continue;
+    }
+    let settings = config.workspace_settings_for_specifier(specifier);
     if !settings.lint {
       continue;
     }
@@ -814,20 +810,25 @@ fn generate_lint_diagnostics(
     }
     // ignore any npm package files
     if let Some(npm) = &snapshot.npm {
-      if npm.node_resolver.in_npm_package(document.specifier()) {
+      if npm.node_resolver.in_npm_package(specifier) {
         continue;
       }
     }
     let version = document.maybe_lsp_version();
+    let (lint_options, lint_rules) = config
+      .tree
+      .scope_for_specifier(specifier)
+      .and_then(|s| config_data_by_scope.get(s))
+      .map(|d| (d.lint_options.clone(), d.lint_rules.clone()))
+      .unwrap_or_default();
     diagnostics_vec.push(DiagnosticRecord {
-      specifier: document.specifier().clone(),
+      specifier: specifier.clone(),
       versioned: VersionedDiagnostics {
         version,
         diagnostics: generate_document_lint_diagnostics(
-          config,
-          lint_options,
-          lint_rules.clone(),
           &document,
+          &lint_options,
+          lint_rules.rules.clone(),
         ),
       },
     });
@@ -836,14 +837,10 @@ fn generate_lint_diagnostics(
 }
 
 fn generate_document_lint_diagnostics(
-  config: &ConfigSnapshot,
+  document: &Document,
   lint_options: &LintOptions,
   lint_rules: Vec<&'static dyn LintRule>,
-  document: &Document,
 ) -> Vec<lsp::Diagnostic> {
-  if !config.specifier_enabled(document.specifier()) {
-    return Vec::new();
-  }
   if !lint_options.files.matches_specifier(document.specifier()) {
     return Vec::new();
   }
@@ -1218,8 +1215,10 @@ impl DenoDiagnostic {
       specifier: &ModuleSpecifier,
       sloppy_resolution: SloppyImportsResolution,
     ) -> String {
-      let mut message =
-        format!("Unable to load a local module: {}\n", specifier);
+      let mut message = format!(
+        "Unable to load a local module: {}\n",
+        to_percent_decoded_str(specifier.as_ref())
+      );
       if let Some(additional_message) =
         sloppy_resolution.as_suggestion_message()
       {
@@ -1240,7 +1239,7 @@ impl DenoDiagnostic {
       Self::NoCacheJsr(pkg_req, specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Uncached or missing jsr package: {}", pkg_req), Some(json!({ "specifier": specifier }))),
       Self::NoCacheNpm(pkg_req, specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Uncached or missing npm package: {}", pkg_req), Some(json!({ "specifier": specifier }))),
       Self::NoLocal(specifier) => {
-        let sloppy_resolution = SloppyImportsResolver::resolve_with_fs(&deno_fs::RealFs, specifier);
+        let sloppy_resolution = SloppyImportsResolver::resolve_with_fs(&deno_fs::RealFs, specifier, ResolutionMode::Execution);
         let data = sloppy_resolution.as_lsp_quick_fix_message().map(|message| {
           json!({
             "specifier": specifier,
@@ -1303,7 +1302,35 @@ fn diagnose_resolution(
   resolution: &Resolution,
   is_dynamic: bool,
   maybe_assert_type: Option<&str>,
+  import_map: Option<&ImportMap>,
 ) -> Vec<DenoDiagnostic> {
+  fn check_redirect_diagnostic(
+    specifier: &ModuleSpecifier,
+    doc: &Document,
+  ) -> Option<DenoDiagnostic> {
+    let doc_specifier = doc.specifier();
+    // If the module was redirected, we want to issue an informational
+    // diagnostic that indicates this. This then allows us to issue a code
+    // action to replace the specifier with the final redirected one.
+    if specifier.scheme() == "jsr" || doc_specifier == specifier {
+      return None;
+    }
+    // don't bother warning about sloppy import redirects from .js to .d.ts
+    // because explaining how to fix this via a diagnostic involves using
+    // @deno-types and that's a bit complicated to explain
+    let is_sloppy_import_dts_redirect = doc_specifier.scheme() == "file"
+      && doc.media_type().is_declaration()
+      && !MediaType::from_specifier(specifier).is_declaration();
+    if is_sloppy_import_dts_redirect {
+      return None;
+    }
+
+    Some(DenoDiagnostic::Redirect {
+      from: specifier.clone(),
+      to: doc_specifier.clone(),
+    })
+  }
+
   let mut diagnostics = vec![];
   match resolution {
     Resolution::Ok(resolved) => {
@@ -1318,15 +1345,8 @@ fn diagnose_resolution(
         }
       }
       if let Some(doc) = snapshot.documents.get(specifier) {
-        let doc_specifier = doc.specifier();
-        // If the module was redirected, we want to issue an informational
-        // diagnostic that indicates this. This then allows us to issue a code
-        // action to replace the specifier with the final redirected one.
-        if specifier.scheme() != "jsr" && doc_specifier != specifier {
-          diagnostics.push(DenoDiagnostic::Redirect {
-            from: specifier.clone(),
-            to: doc_specifier.clone(),
-          });
+        if let Some(diagnostic) = check_redirect_diagnostic(specifier, &doc) {
+          diagnostics.push(diagnostic);
         }
         if doc.media_type() == MediaType::Json {
           match maybe_assert_type {
@@ -1371,7 +1391,7 @@ fn diagnose_resolution(
             .push(DenoDiagnostic::InvalidNodeSpecifier(specifier.clone()));
         } else if module_name == dependency_key {
           let mut is_mapped = false;
-          if let Some(import_map) = &snapshot.maybe_import_map {
+          if let Some(import_map) = import_map {
             if let Resolution::Ok(resolved) = &resolution {
               if import_map.resolve(module_name, &resolved.specifier).is_ok() {
                 is_mapped = true;
@@ -1434,7 +1454,8 @@ fn diagnose_dependency(
     }
   }
 
-  if let Some(import_map) = &snapshot.maybe_import_map {
+  let import_map = snapshot.config.tree.root_import_map();
+  if let Some(import_map) = import_map {
     if let Resolution::Ok(resolved) = &dependency.maybe_code {
       if let Some(to) = import_map.lookup(&resolved.specifier, referrer) {
         if dependency_key != to {
@@ -1455,18 +1476,35 @@ fn diagnose_dependency(
     .iter()
     .map(|i| documents::to_lsp_range(&i.range))
     .collect();
+  // TODO(nayeemrmn): This is a crude way of detecting `@deno-types` which has
+  // a different specifier and therefore needs a separate call to
+  // `diagnose_resolution()`. It would be much cleaner if that were modelled as
+  // a separate dependency: https://github.com/denoland/deno_graph/issues/247.
+  let is_types_deno_types = !dependency.maybe_type.is_none()
+    && !dependency
+      .imports
+      .iter()
+      .any(|i| dependency.maybe_type.includes(&i.range.start).is_some());
 
   diagnostics.extend(
     diagnose_resolution(
       snapshot,
       dependency_key,
-      if dependency.maybe_code.is_none() {
+      if dependency.maybe_code.is_none()
+        // If not @deno-types, diagnose the types if the code errored because
+        // it's likely resolving into the node_modules folder, which might be
+        // erroring correctly due to resolution only being for bundlers. Let this
+        // fail at runtime if necesarry, but don't bother erroring in the editor
+        || !is_types_deno_types && matches!(dependency.maybe_type, Resolution::Ok(_))
+          && matches!(dependency.maybe_code, Resolution::Err(_))
+      {
         &dependency.maybe_type
       } else {
         &dependency.maybe_code
       },
       dependency.is_dynamic,
       dependency.maybe_attribute_type.as_deref(),
+      import_map.map(|i| i.as_ref()),
     )
     .iter()
     .flat_map(|diag| {
@@ -1475,16 +1513,8 @@ fn diagnose_dependency(
         .map(|range| diag.to_lsp_diagnostic(range))
     }),
   );
-  // TODO(nayeemrmn): This is a crude way of detecting `@deno-types` which has
-  // a different specifier and therefore needs a separate call to
-  // `diagnose_resolution()`. It would be much cleaner if that were modelled as
-  // a separate dependency: https://github.com/denoland/deno_graph/issues/247.
-  if !dependency.maybe_type.is_none()
-    && !dependency
-      .imports
-      .iter()
-      .any(|i| dependency.maybe_type.includes(&i.range.start).is_some())
-  {
+
+  if is_types_deno_types {
     let range = match &dependency.maybe_type {
       Resolution::Ok(resolved) => documents::to_lsp_range(&resolved.range),
       Resolution::Err(error) => documents::to_lsp_range(error.range()),
@@ -1497,6 +1527,7 @@ fn diagnose_dependency(
         &dependency.maybe_type,
         dependency.is_dynamic,
         dependency.maybe_attribute_type.as_deref(),
+        import_map.map(|i| i.as_ref()),
       )
       .iter()
       .map(|diag| diag.to_lsp_diagnostic(&range)),
@@ -1551,20 +1582,21 @@ mod tests {
   use super::*;
   use crate::cache::GlobalHttpCache;
   use crate::cache::RealDenoCacheEnv;
+  use crate::lsp::config::Config;
   use crate::lsp::config::ConfigSnapshot;
   use crate::lsp::config::Settings;
   use crate::lsp::config::WorkspaceSettings;
   use crate::lsp::documents::Documents;
   use crate::lsp::documents::LanguageId;
   use crate::lsp::language_server::StateSnapshot;
-  use deno_config::glob::FilePatterns;
+  use deno_config::ConfigFile;
   use pretty_assertions::assert_eq;
   use std::path::Path;
   use std::path::PathBuf;
   use std::sync::Arc;
   use test_util::TempDir;
 
-  fn mock_state_snapshot(
+  async fn mock_state_snapshot(
     fixtures: &[(&str, &str, i32, LanguageId)],
     location: &Path,
     maybe_import_map: Option<(&str, &str)>,
@@ -1584,22 +1616,25 @@ mod tests {
         (*source).into(),
       );
     }
-    let maybe_import_map = maybe_import_map.map(|(base, json_string)| {
-      let base_url = ModuleSpecifier::parse(base).unwrap();
-      let result = import_map::parse_from_json(&base_url, json_string).unwrap();
-      if !result.diagnostics.is_empty() {
-        panic!("unexpected import map diagnostics");
-      }
-      Arc::new(result.import_map)
-    });
+    let mut config = Config::new_with_roots([resolve_url("file:///").unwrap()]);
+    if let Some((base_url, json_string)) = maybe_import_map {
+      let base_url = resolve_url(base_url).unwrap();
+      let config_file = ConfigFile::new(
+        json_string,
+        base_url,
+        &deno_config::ParseOptions::default(),
+      )
+      .unwrap();
+      config.tree.inject_config_file(config_file).await;
+    }
     StateSnapshot {
+      project_version: 0,
       documents,
-      maybe_import_map,
       assets: Default::default(),
       cache_metadata: cache::CacheMetadata::new(Arc::new(
         GlobalHttpCache::new(location.to_path_buf(), RealDenoCacheEnv),
       )),
-      config: Default::default(),
+      config: config.snapshot(),
       npm: None,
     }
   }
@@ -1626,14 +1661,14 @@ mod tests {
     }
   }
 
-  fn setup(
+  async fn setup(
     temp_dir: &TempDir,
     sources: &[(&str, &str, i32, LanguageId)],
     maybe_import_map: Option<(&str, &str)>,
   ) -> (StateSnapshot, PathBuf) {
     let location = temp_dir.path().join("deps").to_path_buf();
     let state_snapshot =
-      mock_state_snapshot(sources, &location, maybe_import_map);
+      mock_state_snapshot(sources, &location, maybe_import_map).await;
     (state_snapshot, location)
   }
 
@@ -1652,17 +1687,13 @@ let c: number = "a";
         LanguageId::TypeScript,
       )],
       None,
-    );
+    )
+    .await;
     let snapshot = Arc::new(snapshot);
     let cache =
       Arc::new(GlobalHttpCache::new(cache_location, RealDenoCacheEnv));
     let ts_server = TsServer::new(Default::default(), cache);
-    ts_server.start(None);
-    let lint_options = LintOptions {
-      rules: Default::default(),
-      files: FilePatterns::new_with_base(temp_dir.path().to_path_buf()),
-      reporter_kind: Default::default(),
-    };
+    ts_server.start(None).unwrap();
 
     // test enabled
     {
@@ -1670,7 +1701,6 @@ let c: number = "a";
       let diagnostics = generate_lint_diagnostics(
         &snapshot,
         &enabled_config,
-        &lint_options,
         Default::default(),
       );
       assert_eq!(get_diagnostics_for_single(diagnostics).len(), 6);
@@ -1682,7 +1712,7 @@ let c: number = "a";
       )
       .await
       .unwrap();
-      assert_eq!(get_diagnostics_for_single(diagnostics).len(), 5);
+      assert_eq!(get_diagnostics_for_single(diagnostics).len(), 4);
       let diagnostics = generate_deno_diagnostics(
         &snapshot,
         &enabled_config,
@@ -1702,7 +1732,6 @@ let c: number = "a";
       let diagnostics = generate_lint_diagnostics(
         &snapshot,
         &disabled_config,
-        &lint_options,
         Default::default(),
       );
       assert_eq!(get_diagnostics_for_single(diagnostics).len(), 0);
@@ -1727,6 +1756,9 @@ let c: number = "a";
   fn get_diagnostics_for_single(
     diagnostic_vec: DiagnosticVec,
   ) -> Vec<lsp::Diagnostic> {
+    if diagnostic_vec.is_empty() {
+      return vec![];
+    }
     assert_eq!(diagnostic_vec.len(), 1);
     diagnostic_vec
       .into_iter()
@@ -1763,7 +1795,8 @@ let c: number = "a";
         }
       }"#,
       )),
-    );
+    )
+    .await;
     let config = mock_config();
     let token = CancellationToken::new();
     let actual = generate_deno_diagnostics(&snapshot, &config, token);
@@ -1889,7 +1922,8 @@ let c: number = "a";
         LanguageId::TypeScript,
       )],
       None,
-    );
+    )
+    .await;
     let config = mock_config();
     let token = CancellationToken::new();
     let actual = generate_deno_diagnostics(&snapshot, &config, token);
@@ -1946,6 +1980,50 @@ let c: number = "a";
           "source": "deno",
           "message": "Relative import path \"bad.d.ts\" not prefixed with / or ./ or ../",
         },
+      ])
+    );
+  }
+
+  #[tokio::test]
+  async fn unable_to_load_a_local_module() {
+    let temp_dir = TempDir::new();
+    let (snapshot, _) = setup(
+      &temp_dir,
+      &[(
+        "file:///a.ts",
+        r#"
+        import { 東京 } from "./🦕.ts";
+        "#,
+        1,
+        LanguageId::TypeScript,
+      )],
+      None,
+    )
+    .await;
+    let config = mock_config();
+    let token = CancellationToken::new();
+    let actual = generate_deno_diagnostics(&snapshot, &config, token);
+    assert_eq!(actual.len(), 1);
+    let record = actual.first().unwrap();
+    assert_eq!(
+      json!(record.versioned.diagnostics),
+      json!([
+        {
+          "range": {
+            "start": {
+              "line": 1,
+              "character": 27
+            },
+            "end": {
+              "line": 1,
+              "character": 35
+            }
+          },
+          "severity": 1,
+          "code": "no-local",
+          "source": "deno",
+          "message": "Unable to load a local module: file:///🦕.ts\nPlease check the file path.",
+        }
       ])
     );
   }

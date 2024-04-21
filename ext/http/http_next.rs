@@ -20,6 +20,7 @@ use crate::websocket_upgrade::WebSocketUpgrade;
 use crate::LocalExecutor;
 use cache_control::CacheControl;
 use deno_core::error::AnyError;
+use deno_core::external;
 use deno_core::futures::future::poll_fn;
 use deno_core::futures::TryFutureExt;
 use deno_core::op2;
@@ -129,30 +130,6 @@ impl<
 
 #[repr(transparent)]
 struct RcHttpRecord(Rc<HttpRecord>);
-
-// Temp copy
-/// Define an external type.
-macro_rules! external {
-  ($type:ident, $name:literal) => {
-    impl deno_core::Externalizable for $type {
-      fn external_marker() -> usize {
-        // Use the address of a static mut as a way to get around lack of usize-sized TypeId. Because it is mutable, the
-        // compiler cannot collapse multiple definitions into one.
-        static mut DEFINITION: deno_core::ExternalDefinition =
-          deno_core::ExternalDefinition::new($name);
-        // Wash the pointer through black_box so the compiler cannot see what we're going to do with it and needs
-        // to assume it will be used for valid purposes.
-        // SAFETY: temporary while waiting on deno core bump
-        let ptr = std::hint::black_box(unsafe { &mut DEFINITION } as *mut _);
-        ptr as usize
-      }
-
-      fn external_name() -> &'static str {
-        $name
-      }
-    }
-  };
-}
 
 // Register the [`HttpRecord`] as an external.
 external!(RcHttpRecord, "http record");
@@ -289,7 +266,7 @@ pub fn op_http_set_promise_complete(external: *const c_void, status: u16) {
 
 fn set_promise_complete(http: Rc<HttpRecord>, status: u16) {
   // The Javascript code should never provide a status that is invalid here (see 23_response.js), so we
-  // will quitely ignore invalid values.
+  // will quietly ignore invalid values.
   if let Ok(code) = StatusCode::from_u16(status) {
     http.response_parts().status = code;
   }
@@ -686,7 +663,7 @@ fn set_response(
     http.set_response_body(response_fn(compression));
 
     // The Javascript code should never provide a status that is invalid here (see 23_response.js), so we
-    // will quitely ignore invalid values.
+    // will quietly ignore invalid values.
     if let Ok(code) = StatusCode::from_u16(status) {
       http.response_parts().status = code;
     }

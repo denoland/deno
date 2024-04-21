@@ -703,9 +703,11 @@ pub async fn op_ws_close(
 pub fn op_ws_get_buffer(
   state: &mut OpState,
   #[smi] rid: ResourceId,
-) -> Result<ToJsBuffer, AnyError> {
-  let resource = state.resource_table.get::<ServerWebSocket>(rid)?;
-  Ok(resource.buffer.take().unwrap().into())
+) -> Option<ToJsBuffer> {
+  let Ok(resource) = state.resource_table.get::<ServerWebSocket>(rid) else {
+    return None;
+  };
+  resource.buffer.take().map(ToJsBuffer::from)
 }
 
 #[op2]
@@ -713,9 +715,11 @@ pub fn op_ws_get_buffer(
 pub fn op_ws_get_buffer_as_string(
   state: &mut OpState,
   #[smi] rid: ResourceId,
-) -> Result<String, AnyError> {
-  let resource = state.resource_table.get::<ServerWebSocket>(rid)?;
-  Ok(resource.string.take().unwrap())
+) -> Option<String> {
+  let Ok(resource) = state.resource_table.get::<ServerWebSocket>(rid) else {
+    return None;
+  };
+  resource.string.take()
 }
 
 #[op2]

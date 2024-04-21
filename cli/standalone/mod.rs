@@ -44,6 +44,7 @@ use deno_core::RequestedModuleType;
 use deno_core::ResolutionKind;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::analyze::NodeCodeTranslator;
+use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::RootCertStoreProvider;
@@ -111,9 +112,13 @@ impl ModuleLoader for EmbeddedModuleLoader {
     if let Some(result) = self.shared.node_resolver.resolve_if_in_npm_package(
       specifier,
       &referrer,
+      NodeResolutionMode::Execution,
       permissions,
     ) {
-      return result;
+      return match result? {
+        Some(res) => Ok(res.into_url()),
+        None => Err(generic_error("not found")),
+      };
     }
 
     let maybe_mapped = self
@@ -128,18 +133,26 @@ impl ModuleLoader for EmbeddedModuleLoader {
       .map(|r| r.as_str())
       .unwrap_or(specifier);
     if let Ok(reference) = NpmPackageReqReference::from_str(specifier_text) {
-      return self.shared.node_resolver.resolve_req_reference(
-        &reference,
-        permissions,
-        &referrer,
-      );
+      return self
+        .shared
+        .node_resolver
+        .resolve_req_reference(
+          &reference,
+          permissions,
+          &referrer,
+          NodeResolutionMode::Execution,
+        )
+        .map(|res| res.into_url());
     }
 
-    match maybe_mapped {
-      Some(resolved) => Ok(resolved),
-      None => deno_core::resolve_import(specifier, referrer.as_str())
-        .map_err(|err| err.into()),
-    }
+    let specifier = match maybe_mapped {
+      Some(resolved) => resolved,
+      None => deno_core::resolve_import(specifier, referrer.as_str())?,
+    };
+    self
+      .shared
+      .node_resolver
+      .handle_if_in_node_modules(specifier)
   }
 
   fn load(
@@ -166,6 +179,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
           deno_core::ModuleType::JavaScript,
           ModuleSourceCode::String(data_url_text.into()),
           original_specifier,
+          None,
         ),
       ));
     }
@@ -192,6 +206,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
             ModuleSourceCode::String(code_source.code),
             original_specifier,
             &code_source.found_url,
+            None,
           ),
         )),
         Err(err) => deno_core::ModuleLoadResponse::Sync(Err(err)),
@@ -231,6 +246,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
           ModuleSourceCode::String(code.into()),
           &original_specifier,
           &found_specifier,
+          None,
         ))
       }
       .boxed_local(),
@@ -303,7 +319,7 @@ impl RootCertStoreProvider for StandaloneRootCertStoreProvider {
 pub async fn run(
   mut eszip: eszip::EszipV2,
   metadata: Metadata,
-) -> Result<(), AnyError> {
+) -> Result<i32, AnyError> {
   let main_module = &metadata.entrypoint;
   let current_exe_path = std::env::current_exe().unwrap();
   let current_exe_name =
@@ -452,7 +468,8 @@ pub async fn run(
     Arc::new(parse_from_json(&base, &source).unwrap().import_map)
   });
   let cli_node_resolver = Arc::new(CliNodeResolver::new(
-    cjs_resolutions.clone(),
+    Some(cjs_resolutions.clone()),
+    fs.clone(),
     node_resolver.clone(),
     npm_resolver.clone(),
   ));
@@ -536,11 +553,10 @@ pub async fn run(
       is_npm_main: main_module.scheme() == "npm",
       skip_op_registration: true,
       location: metadata.location,
-      maybe_binary_npm_command_name: NpmPackageReqReference::from_specifier(
-        main_module,
-      )
-      .ok()
-      .map(|req_ref| npm_pkg_req_ref_to_binary_command(&req_ref)),
+      argv0: NpmPackageReqReference::from_specifier(main_module)
+        .ok()
+        .map(|req_ref| npm_pkg_req_ref_to_binary_command(&req_ref))
+        .or(std::env::args().next()),
       origin_data_folder_path: None,
       seed: metadata.seed,
       unsafely_ignore_certificate_errors: metadata
@@ -556,14 +572,18 @@ pub async fn run(
     // metadata.disable_deprecated_api_warning,
     true,
     false,
+    // Code cache is not supported for standalone binary yet.
+    None,
   );
 
+  // Initialize v8 once from the main thread.
   v8_set_flags(construct_v8_flags(&[], &metadata.v8_flags, vec![]));
+  deno_core::JsRuntime::init_platform(None);
 
   let mut worker = worker_factory
     .create_main_worker(main_module.clone(), permissions)
     .await?;
 
   let exit_code = worker.run().await?;
-  std::process::exit(exit_code)
+  Ok(exit_code)
 }

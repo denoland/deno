@@ -84,6 +84,7 @@ const WS_PING_PORT: u16 = 4245;
 const H2_GRPC_PORT: u16 = 4246;
 const H2S_GRPC_PORT: u16 = 4247;
 const REGISTRY_SERVER_PORT: u16 = 4250;
+const PROVENANCE_MOCK_SERVER_PORT: u16 = 4251;
 
 // Use the single-threaded scheduler. The hyper server is used as a point of
 // comparison for the (single-threaded!) benchmarks in cli/bench. We're not
@@ -127,6 +128,8 @@ pub async fn run_all_servers() {
   let h2_grpc_server_fut = grpc::h2_grpc_server(H2_GRPC_PORT, H2S_GRPC_PORT);
 
   let registry_server_fut = registry::registry_server(REGISTRY_SERVER_PORT);
+  let provenance_mock_server_fut =
+    registry::provenance_mock_server(PROVENANCE_MOCK_SERVER_PORT);
 
   let server_fut = async {
     futures::join!(
@@ -154,6 +157,7 @@ pub async fn run_all_servers() {
       h2_only_server_fut,
       h2_grpc_server_fut,
       registry_server_fut,
+      provenance_mock_server_fut,
     )
   }
   .boxed_local();

@@ -26,12 +26,10 @@ use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::RuntimeOptions;
-use deno_core::Snapshot;
 use deno_graph::GraphKind;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_graph::ResolutionResolved;
-use deno_runtime::deno_node;
 use deno_runtime::deno_node::NodeResolution;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::NodeResolver;
@@ -62,7 +60,7 @@ pub static COMPILER_SNAPSHOT: Lazy<Box<[u8]>> = Lazy::new(
 
     // NOTE(bartlomieju): Compressing the TSC snapshot in debug build took
     // ~45s on M1 MacBook Pro; without compression it took ~1s.
-    // Thus we're not not using compressed snapshot, trading off
+    // Thus we're not using compressed snapshot, trading off
     // a lot of build time for some startup time in debug build.
     #[cfg(debug_assertions)]
     return COMPRESSED_COMPILER_SNAPSHOT.to_vec().into_boxed_slice();
@@ -140,8 +138,8 @@ fn get_asset_texts_from_new_runtime() -> Result<Vec<AssetText>, AnyError> {
   Ok(serde_v8::from_v8::<Vec<AssetText>>(scope, local)?)
 }
 
-pub fn compiler_snapshot() -> Snapshot {
-  Snapshot::Static(&COMPILER_SNAPSHOT)
+pub fn compiler_snapshot() -> &'static [u8] {
+  &COMPILER_SNAPSHOT
 }
 
 macro_rules! inc {
@@ -395,6 +393,11 @@ fn normalize_specifier(
 #[op2]
 #[string]
 fn op_create_hash(s: &mut OpState, #[string] text: &str) -> String {
+  op_create_hash_inner(s, text)
+}
+
+#[inline]
+fn op_create_hash_inner(s: &mut OpState, text: &str) -> String {
   let state = s.borrow_mut::<State>();
   get_hash(text, state.hash_data)
 }
@@ -409,8 +412,17 @@ struct EmitArgs {
   file_name: String,
 }
 
-#[op2]
-fn op_emit(state: &mut OpState, #[serde] args: EmitArgs) -> bool {
+#[op2(fast)]
+fn op_emit(
+  state: &mut OpState,
+  #[string] data: String,
+  #[string] file_name: String,
+) -> bool {
+  op_emit_inner(state, EmitArgs { data, file_name })
+}
+
+#[inline]
+fn op_emit_inner(state: &mut OpState, args: EmitArgs) -> bool {
   let state = state.borrow_mut::<State>();
   match args.file_name.as_ref() {
     "internal:///.tsbuildinfo" => state.maybe_tsbuildinfo = Some(args.data),
@@ -445,6 +457,9 @@ pub fn as_ts_script_kind(media_type: MediaType) -> i32 {
   }
 }
 
+pub const MISSING_DEPENDENCY_SPECIFIER: &str =
+  "internal:///missing_dependency.d.ts";
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct LoadResponse {
@@ -459,6 +474,13 @@ fn op_load(
   state: &mut OpState,
   #[string] load_specifier: &str,
 ) -> Result<Option<LoadResponse>, AnyError> {
+  op_load_inner(state, load_specifier)
+}
+
+fn op_load_inner(
+  state: &mut OpState,
+  load_specifier: &str,
+) -> Result<Option<LoadResponse>, AnyError> {
   let state = state.borrow_mut::<State>();
 
   let specifier = normalize_specifier(load_specifier, &state.current_dir)
@@ -472,7 +494,7 @@ fn op_load(
     state.maybe_tsbuildinfo.as_deref().map(Cow::Borrowed)
   // in certain situations we return a "blank" module to tsc and we need to
   // handle the request for that module here.
-  } else if load_specifier == "internal:///missing_dependency.d.ts" {
+  } else if load_specifier == MISSING_DEPENDENCY_SPECIFIER {
     None
   } else if let Some(name) = load_specifier.strip_prefix("asset:///") {
     let maybe_source = get_lazily_loaded_asset(name);
@@ -490,7 +512,20 @@ fn op_load(
     } else {
       &specifier
     };
-    let maybe_source = if let Some(module) = graph.get(specifier) {
+    let maybe_module = match graph.try_get(specifier) {
+      Ok(maybe_module) => maybe_module,
+      Err(err) => match err {
+        deno_graph::ModuleError::UnsupportedMediaType(_, media_type, _) => {
+          return Ok(Some(LoadResponse {
+            data: "".to_string(),
+            version: Some("1".to_string()),
+            script_kind: as_ts_script_kind(*media_type),
+          }))
+        }
+        _ => None,
+      },
+    };
+    let maybe_source = if let Some(module) = maybe_module {
       match module {
         Module::Js(module) => {
           media_type = module.media_type;
@@ -559,7 +594,16 @@ pub struct ResolveArgs {
 #[serde]
 fn op_resolve(
   state: &mut OpState,
-  #[serde] args: ResolveArgs,
+  #[string] base: String,
+  #[serde] specifiers: Vec<String>,
+) -> Result<Vec<(String, String)>, AnyError> {
+  op_resolve_inner(state, ResolveArgs { base, specifiers })
+}
+
+#[inline]
+fn op_resolve_inner(
+  state: &mut OpState,
+  args: ResolveArgs,
 ) -> Result<Vec<(String, String)>, AnyError> {
   let state = state.borrow_mut::<State>();
   let mut resolved: Vec<(String, String)> =
@@ -576,14 +620,12 @@ fn op_resolve(
     )?
   };
   for specifier in args.specifiers {
-    if let Some(module_name) = specifier.strip_prefix("node:") {
-      if deno_node::is_builtin_node_module(module_name) {
-        // return itself for node: specifiers because during type checking
-        // we resolve to the ambient modules in the @types/node package
-        // rather than deno_std/node
-        resolved.push((specifier, MediaType::Dts.to_string()));
-        continue;
-      }
+    if specifier.starts_with("node:") {
+      resolved.push((
+        MISSING_DEPENDENCY_SPECIFIER.to_string(),
+        MediaType::Dts.to_string(),
+      ));
+      continue;
     }
 
     if specifier.starts_with("asset:///") {
@@ -633,7 +675,7 @@ fn op_resolve(
         (specifier_str, media_type.as_ts_extension().into())
       }
       None => (
-        "internal:///missing_dependency.d.ts".to_string(),
+        MISSING_DEPENDENCY_SPECIFIER.to_string(),
         ".d.ts".to_string(),
       ),
     };
@@ -650,7 +692,20 @@ fn resolve_graph_specifier_types(
   state: &State,
 ) -> Result<Option<(ModuleSpecifier, MediaType)>, AnyError> {
   let graph = &state.graph;
-  let maybe_module = graph.get(specifier);
+  let maybe_module = match graph.try_get(specifier) {
+    Ok(Some(module)) => Some(module),
+    Ok(None) => None,
+    Err(err) => match err {
+      deno_graph::ModuleError::UnsupportedMediaType(
+        specifier,
+        media_type,
+        _,
+      ) => {
+        return Ok(Some((specifier.clone(), *media_type)));
+      }
+      _ => None,
+    },
+  };
   // follow the types reference directive, which may be pointing at an npm package
   let maybe_module = match maybe_module {
     Some(Module::Js(module)) => {
@@ -780,6 +835,11 @@ struct RespondArgs {
 // Can't we use something more efficient here?
 #[op2]
 fn op_respond(state: &mut OpState, #[serde] args: RespondArgs) {
+  op_respond_inner(state, args)
+}
+
+#[inline]
+fn op_respond_inner(state: &mut OpState, args: RespondArgs) {
   let state = state.borrow_mut::<State>();
   state.maybe_response = Some(args);
 }
@@ -849,7 +909,7 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
     "rootNames": root_names,
     "localOnly": request.check_mode == TypeCheckMode::Local,
   });
-  let exec_source = format!("globalThis.exec({request_value})").into();
+  let exec_source = format!("globalThis.exec({request_value})");
 
   let mut runtime = JsRuntime::new(RuntimeOptions {
     startup_snapshot: Some(compiler_snapshot()),
@@ -902,7 +962,7 @@ mod tests {
 
   impl deno_graph::source::Loader for MockLoader {
     fn load(
-      &mut self,
+      &self,
       specifier: &ModuleSpecifier,
       _options: deno_graph::source::LoadOptions,
     ) -> deno_graph::source::LoadFuture {
@@ -932,10 +992,10 @@ mod tests {
       .unwrap_or_else(|| ModuleSpecifier::parse("file:///main.ts").unwrap());
     let hash_data = maybe_hash_data.unwrap_or(0);
     let fixtures = test_util::testdata_path().join("tsc2");
-    let mut loader = MockLoader { fixtures };
+    let loader = MockLoader { fixtures };
     let mut graph = ModuleGraph::new(GraphKind::TypesOnly);
     graph
-      .build(vec![specifier], &mut loader, Default::default())
+      .build(vec![specifier], &loader, Default::default())
       .await;
     let state = State::new(
       Arc::new(graph),
@@ -958,10 +1018,10 @@ mod tests {
   ) -> Result<Response, AnyError> {
     let hash_data = 123; // something random
     let fixtures = test_util::testdata_path().join("tsc2");
-    let mut loader = MockLoader { fixtures };
+    let loader = MockLoader { fixtures };
     let mut graph = ModuleGraph::new(GraphKind::TypesOnly);
     graph
-      .build(vec![specifier.clone()], &mut loader, Default::default())
+      .build(vec![specifier.clone()], &loader, Default::default())
       .await;
     let config = TsConfig::new(json!({
       "allowJs": true,
@@ -1008,7 +1068,7 @@ mod tests {
       ..Default::default()
     });
     js_runtime
-      .execute_script_static(
+      .execute_script(
         "<anon>",
         r#"
       if (!(globalThis.exec)) {
@@ -1023,7 +1083,7 @@ mod tests {
   #[tokio::test]
   async fn test_create_hash() {
     let mut state = setup(None, Some(123), None).await;
-    let actual = op_create_hash::call(&mut state, "some sort of content");
+    let actual = op_create_hash_inner(&mut state, "some sort of content");
     assert_eq!(actual, "11905938177474799758");
   }
 
@@ -1039,7 +1099,7 @@ mod tests {
   #[tokio::test]
   async fn test_emit_tsbuildinfo() {
     let mut state = setup(None, None, None).await;
-    let actual = op_emit::call(
+    let actual = op_emit_inner(
       &mut state,
       EmitArgs {
         data: "some file content".to_string(),
@@ -1063,7 +1123,7 @@ mod tests {
     )
     .await;
     let actual =
-      op_load::call(&mut state, "https://deno.land/x/mod.ts").unwrap();
+      op_load_inner(&mut state, "https://deno.land/x/mod.ts").unwrap();
     assert_eq!(
       serde_json::to_value(actual).unwrap(),
       json!({
@@ -1082,7 +1142,7 @@ mod tests {
       Some("some content".to_string()),
     )
     .await;
-    let actual = op_load::call(&mut state, "asset:///lib.dom.d.ts")
+    let actual = op_load_inner(&mut state, "asset:///lib.dom.d.ts")
       .expect("should have invoked op")
       .expect("load should have succeeded");
     let expected = get_lazily_loaded_asset("lib.dom.d.ts").unwrap();
@@ -1099,7 +1159,7 @@ mod tests {
       Some("some content".to_string()),
     )
     .await;
-    let actual = op_load::call(&mut state, "internal:///.tsbuildinfo")
+    let actual = op_load_inner(&mut state, "internal:///.tsbuildinfo")
       .expect("should have invoked op")
       .expect("load should have succeeded");
     assert_eq!(
@@ -1115,7 +1175,7 @@ mod tests {
   #[tokio::test]
   async fn test_load_missing_specifier() {
     let mut state = setup(None, None, None).await;
-    let actual = op_load::call(&mut state, "https://deno.land/x/mod.ts")
+    let actual = op_load_inner(&mut state, "https://deno.land/x/mod.ts")
       .expect("should have invoked op");
     assert_eq!(serde_json::to_value(actual).unwrap(), json!(null));
   }
@@ -1128,7 +1188,7 @@ mod tests {
       None,
     )
     .await;
-    let actual = op_resolve::call(
+    let actual = op_resolve_inner(
       &mut state,
       ResolveArgs {
         base: "https://deno.land/x/a.ts".to_string(),
@@ -1150,7 +1210,7 @@ mod tests {
       None,
     )
     .await;
-    let actual = op_resolve::call(
+    let actual = op_resolve_inner(
       &mut state,
       ResolveArgs {
         base: "https://deno.land/x/a.ts".to_string(),
@@ -1160,7 +1220,7 @@ mod tests {
     .expect("should have not errored");
     assert_eq!(
       actual,
-      vec![("internal:///missing_dependency.d.ts".into(), ".d.ts".into())]
+      vec![(MISSING_DEPENDENCY_SPECIFIER.into(), ".d.ts".into())]
     );
   }
 
@@ -1178,7 +1238,7 @@ mod tests {
       "stats": [["a", 12]]
     }))
     .unwrap();
-    op_respond::call(&mut state, args);
+    op_respond_inner(&mut state, args);
     let state = state.borrow::<State>();
     assert_eq!(
       state.maybe_response,

@@ -70,7 +70,7 @@ import {
   resourceForReadableStream,
 } from "ext:deno_web/06_streams.js";
 import { listen, listenOptionApiName, TcpConn } from "ext:deno_net/01_net.js";
-import { listenTls } from "ext:deno_net/02_tls.js";
+import { hasTlsKeyPairOptions, listenTls } from "ext:deno_net/02_tls.js";
 import { SymbolAsyncDispose } from "ext:deno_web/00_infra.js";
 
 const _upgraded = Symbol("_upgraded");
@@ -535,7 +535,7 @@ function serve(arg1, arg2) {
     options = {};
   }
 
-  const wantsHttps = options.cert || options.key;
+  const wantsHttps = hasTlsKeyPairOptions(options);
   const wantsUnix = ObjectHasOwn(options, "path");
   const signal = options.signal;
   const onError = options.onError ?? function (error) {
@@ -552,7 +552,7 @@ function serve(arg1, arg2) {
     const path = listener.addr.path;
     return serveHttpOnListener(listener, signal, handler, onError, () => {
       if (options.onListen) {
-        options.onListen({ path });
+        options.onListen(listener.addr);
       } else {
         console.log(`Listening on ${path}`);
       }
@@ -593,19 +593,18 @@ function serve(arg1, arg2) {
     listenOpts.port = listener.addr.port;
   }
 
-  const onListen = (scheme) => {
-    // If the hostname is "0.0.0.0", we display "localhost" in console
-    // because browsers in Windows don't resolve "0.0.0.0".
-    // See the discussion in https://github.com/denoland/deno_std/issues/1165
-    const hostname = listenOpts.hostname == "0.0.0.0"
-      ? "localhost"
-      : listenOpts.hostname;
-    const port = listenOpts.port;
+  const addr = listener.addr;
+  // If the hostname is "0.0.0.0", we display "localhost" in console
+  // because browsers in Windows don't resolve "0.0.0.0".
+  // See the discussion in https://github.com/denoland/deno_std/issues/1165
+  const hostname = addr.hostname == "0.0.0.0" ? "localhost" : addr.hostname;
+  addr.hostname = hostname;
 
+  const onListen = (scheme) => {
     if (options.onListen) {
-      options.onListen({ hostname, port });
+      options.onListen(addr);
     } else {
-      console.log(`Listening on ${scheme}${hostname}:${port}/`);
+      console.log(`Listening on ${scheme}${addr.hostname}:${addr.port}/`);
     }
   };
 
@@ -625,7 +624,7 @@ function serveHttpOnListener(listener, signal, handler, onError, onListen) {
 
   onListen(context.scheme);
 
-  return serveHttpOn(context, callback);
+  return serveHttpOn(context, listener.addr, callback);
 }
 
 /**
@@ -641,10 +640,10 @@ function serveHttpOnConnection(connection, signal, handler, onError, onListen) {
 
   onListen(context.scheme);
 
-  return serveHttpOn(context, callback);
+  return serveHttpOn(context, connection.localAddr, callback);
 }
 
-function serveHttpOn(context, callback) {
+function serveHttpOn(context, addr, callback) {
   let ref = true;
   let currentPromise = null;
 
@@ -700,6 +699,7 @@ function serveHttpOn(context, callback) {
   })();
 
   return {
+    addr,
     finished,
     async shutdown() {
       if (!context.closing && !context.closed) {

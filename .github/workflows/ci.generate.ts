@@ -1,18 +1,18 @@
 #!/usr/bin/env -S deno run --allow-write=. --lock=./tools/deno.lock.json
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-import * as yaml from "https://deno.land/std@0.173.0/encoding/yaml.ts";
+import { stringify } from "jsr:@std/yaml@^0.221/stringify";
 
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 75;
+const cacheVersion = 85;
 
 const ubuntuX86Runner = "ubuntu-22.04";
 const ubuntuX86XlRunner = "ubuntu-22.04-xl";
 const ubuntuARMRunner = "ubicloud-standard-16-arm";
 const windowsX86Runner = "windows-2022";
 const windowsX86XlRunner = "windows-2022-xl";
-const macosX86Runner = "macos-12";
+const macosX86Runner = "macos-13";
 const macosArmRunner = "macos-14";
 
 const Runners = {
@@ -59,9 +59,9 @@ const prCacheKeyPrefix =
   `${cacheVersion}-cargo-target-\${{ matrix.os }}-\${{ matrix.arch }}-\${{ matrix.profile }}-\${{ matrix.job }}-`;
 
 // Note that you may need to add more version to the `apt-get remove` line below if you change this
-const llvmVersion = 16;
+const llvmVersion = 17;
 const installPkgsCommand =
-  `sudo apt-get install --no-install-recommends debootstrap clang-${llvmVersion} lld-${llvmVersion} clang-tools-${llvmVersion} clang-format-${llvmVersion} clang-tidy-${llvmVersion}`;
+  `sudo apt-get install --no-install-recommends clang-${llvmVersion} lld-${llvmVersion} clang-tools-${llvmVersion} clang-format-${llvmVersion} clang-tidy-${llvmVersion}`;
 const sysRootStep = {
   name: "Set up incremental LTO and sysroot build",
   run: `# Setting up sysroot
@@ -71,7 +71,7 @@ export DEBIAN_FRONTEND=noninteractive
 sudo apt-get -qq remove --purge -y man-db  > /dev/null 2> /dev/null
 # Remove older clang before we install
 sudo apt-get -qq remove \
-  'clang-12*' 'clang-13*' 'clang-14*' 'clang-15*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'llvm-15*' 'lld-12*' 'lld-13*' 'lld-14*' 'lld-15*' > /dev/null 2> /dev/null
+  'clang-12*' 'clang-13*' 'clang-14*' 'clang-15*' 'clang-16*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'llvm-15*' 'llvm-16*' 'lld-12*' 'lld-13*' 'lld-14*' 'lld-15*' 'lld-16*' > /dev/null 2> /dev/null
 
 # Install clang-XXX, lld-XXX, and debootstrap.
 echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-${llvmVersion} main" |
@@ -137,7 +137,7 @@ RUSTDOCFLAGS<<__1
   -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
   \${{ env.RUSTFLAGS }}
 __1
-CC=clang-${llvmVersion}
+CC=/usr/bin/clang-${llvmVersion}
 CFLAGS=-flto=thin --sysroot=/sysroot
 __0`,
 };
@@ -203,7 +203,7 @@ const installDenoStep = {
 
 const authenticateWithGoogleCloud = {
   name: "Authenticate with Google Cloud",
-  uses: "google-github-actions/auth@v1",
+  uses: "google-github-actions/auth@v2",
   with: {
     "project_id": "denoland",
     "credentials_json": "${{ secrets.GCP_SA_KEY }}",
@@ -301,6 +301,9 @@ function handleMatrixItems(items: {
 
 const ci = {
   name: "ci",
+  permissions: {
+    contents: "write",
+  },
   on: {
     push: {
       branches: ["main"],
@@ -451,8 +454,12 @@ const ci = {
           if: "matrix.wpt",
         },
         {
-          ...submoduleStep("./tools/node_compat/node"),
+          ...submoduleStep("./tests/node_compat/runner/suite"),
           if: "matrix.job == 'lint' && matrix.os == 'linux'",
+        },
+        {
+          ...submoduleStep("./cli/bench/testdata/lsp_benchdata"),
+          if: "matrix.job == 'bench'",
         },
         {
           name: "Create source tarballs (release, linux)",
@@ -507,7 +514,7 @@ const ci = {
             "(github.ref == 'refs/heads/main' ||",
             "startsWith(github.ref, 'refs/tags/'))",
           ].join("\n"),
-          uses: "google-github-actions/setup-gcloud@v1",
+          uses: "google-github-actions/setup-gcloud@v2",
           with: {
             project_id: "denoland",
           },
@@ -522,7 +529,7 @@ const ci = {
             "(github.ref == 'refs/heads/main' ||",
             "startsWith(github.ref, 'refs/tags/'))",
           ].join("\n"),
-          uses: "google-github-actions/setup-gcloud@v1",
+          uses: "google-github-actions/setup-gcloud@v2",
           env: {
             CLOUDSDK_PYTHON: "${{env.pythonLocation}}\\python.exe",
           },
@@ -543,6 +550,17 @@ const ci = {
         {
           if: "matrix.use_sysroot",
           ...sysRootStep,
+        },
+        {
+          name: "Remove macOS cURL --ipv4 flag",
+          run: [
+            // cURL's --ipv4 flag is busted for now
+            "curl --version",
+            "which curl",
+            "cat /etc/hosts",
+            "rm ~/.curlrc || true",
+          ].join("\n"),
+          if: `matrix.os == 'macos'`,
         },
         {
           name: "Install macOS aarch64 lld",
@@ -650,7 +668,7 @@ const ci = {
           name: "node_compat/setup.ts --check",
           if: "matrix.job == 'lint' && matrix.os == 'linux'",
           run:
-            "deno run --allow-write --allow-read --allow-run=git ./tools/node_compat/setup.ts --check",
+            "deno run --allow-write --allow-read --allow-run=git ./tests/node_compat/runner/setup.ts --check",
         },
         {
           name: "Build debug",
@@ -704,6 +722,7 @@ const ci = {
           run: [
             "cd target/release",
             "zip -r deno-${{ matrix.arch }}-unknown-linux-gnu.zip deno",
+            "strip denort",
             "zip -r denort-${{ matrix.arch }}-unknown-linux-gnu.zip denort",
             "./deno types > lib.deno.d.ts",
           ].join("\n"),
@@ -729,6 +748,7 @@ const ci = {
             "--entitlements-xml-file=cli/entitlements.plist",
             "cd target/release",
             "zip -r deno-${{ matrix.arch }}-apple-darwin.zip deno",
+            "strip denort",
             "zip -r denort-${{ matrix.arch }}-apple-darwin.zip denort",
           ]
             .join("\n"),
@@ -845,11 +865,11 @@ const ci = {
             "deno run --allow-env --allow-net --allow-read --allow-run \\",
             "        --allow-write --unstable                         \\",
             "        --lock=tools/deno.lock.json                      \\",
-            "        ./tools/wpt.ts setup",
+            "        ./tests/wpt/wpt.ts setup",
             "deno run --allow-env --allow-net --allow-read --allow-run \\",
             "         --allow-write --unstable                         \\",
             "         --lock=tools/deno.lock.json              \\",
-            '         ./tools/wpt.ts run --quiet --binary="$DENO_BIN"',
+            '         ./tests/wpt/wpt.ts run --quiet --binary="$DENO_BIN"',
           ].join("\n"),
         },
         {
@@ -862,11 +882,11 @@ const ci = {
             "deno run --allow-env --allow-net --allow-read --allow-run \\",
             "         --allow-write --unstable                         \\",
             "         --lock=tools/deno.lock.json                      \\",
-            "         ./tools/wpt.ts setup",
+            "         ./tests/wpt/wpt.ts setup",
             "deno run --allow-env --allow-net --allow-read --allow-run \\",
             "         --allow-write --unstable                         \\",
             "         --lock=tools/deno.lock.json                      \\",
-            "         ./tools/wpt.ts run --quiet --release             \\",
+            "         ./tests/wpt/wpt.ts run --quiet --release             \\",
             '                            --binary="$DENO_BIN"          \\',
             "                            --json=wpt.json               \\",
             "                            --wptreport=wptreport.json",
@@ -1056,7 +1076,7 @@ const ci = {
         authenticateWithGoogleCloud,
         {
           name: "Setup gcloud",
-          uses: "google-github-actions/setup-gcloud@v1",
+          uses: "google-github-actions/setup-gcloud@v2",
           with: {
             project_id: "denoland",
           },
@@ -1073,11 +1093,18 @@ const ci = {
   },
 };
 
-let finalText = `# GENERATED BY ./ci.generate.ts -- DO NOT DIRECTLY EDIT\n\n`;
-finalText += yaml.stringify(ci, {
-  noRefs: true,
-  lineWidth: 10_000,
-  noCompatMode: true,
-});
+export function generate() {
+  let finalText = `# GENERATED BY ./ci.generate.ts -- DO NOT DIRECTLY EDIT\n\n`;
+  finalText += stringify(ci, {
+    noRefs: true,
+    lineWidth: 10_000,
+    noCompatMode: true,
+  });
+  return finalText;
+}
 
-Deno.writeTextFileSync(new URL("./ci.yml", import.meta.url), finalText);
+export const CI_YML_URL = new URL("./ci.yml", import.meta.url);
+
+if (import.meta.main) {
+  Deno.writeTextFileSync(CI_YML_URL, generate());
+}

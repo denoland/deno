@@ -1085,7 +1085,7 @@ fn closed_file_pre_load_does_not_occur() {
     .new_command()
     .args_vec(["repl", "-A", "--log-level=debug"])
     .with_pty(|console| {
-      assert_contains!(console.all_output(), "Skipping document preload.",);
+      assert_contains!(console.all_output(), "Skipped document preload.",);
     });
 }
 
@@ -1117,5 +1117,18 @@ fn pty_promise_was_collected_regression_test() {
   );
 
   assert_contains!(out, "Uint8Array(67108864)");
+  assert!(err.is_empty());
+}
+
+#[test]
+fn eval_file_promise_error() {
+  let (out, err) = util::run_and_collect_output_with_args(
+    true,
+    vec!["repl", "--eval-file=./repl/promise_rejection.ts"],
+    None,
+    None,
+    false,
+  );
+  assert_contains!(out, "Uncaught undefined");
   assert!(err.is_empty());
 }

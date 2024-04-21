@@ -539,15 +539,15 @@ declare namespace Deno {
    *
    * @category FFI
    */
-  export class UnsafeFnPointer<Fn extends ForeignFunction> {
+  export class UnsafeFnPointer<const Fn extends ForeignFunction> {
     /** The pointer to the function. */
     pointer: PointerObject<Fn>;
     /** The definition of the function. */
     definition: Fn;
 
-    constructor(pointer: PointerObject<Fn>, definition: Const<Fn>);
+    constructor(pointer: PointerObject<NoInfer<Fn>>, definition: Fn);
     /** @deprecated Properly type {@linkcode pointer} using {@linkcode NativeTypedFunction} or {@linkcode UnsafeCallbackDefinition} types. */
-    constructor(pointer: PointerObject, definition: Const<Fn>);
+    constructor(pointer: PointerObject, definition: Fn);
 
     /** Call the foreign function. */
     call: FromForeignFunction<Fn>;
@@ -606,10 +606,11 @@ declare namespace Deno {
    * @category FFI
    */
   export class UnsafeCallback<
-    Definition extends UnsafeCallbackDefinition = UnsafeCallbackDefinition,
+    const Definition extends UnsafeCallbackDefinition =
+      UnsafeCallbackDefinition,
   > {
     constructor(
-      definition: Const<Definition>,
+      definition: Definition,
       callback: UnsafeCallbackFunction<
         Definition["parameters"],
         Definition["result"]
@@ -636,7 +637,7 @@ declare namespace Deno {
     static threadSafe<
       Definition extends UnsafeCallbackDefinition = UnsafeCallbackDefinition,
     >(
-      definition: Const<Definition>,
+      definition: Definition,
       callback: UnsafeCallbackFunction<
         Definition["parameters"],
         Definition["result"]
@@ -701,20 +702,6 @@ declare namespace Deno {
     close(): void;
   }
 
-  /**
-   *  This magic code used to implement better type hints for {@linkcode Deno.dlopen}
-   *
-   *  @category FFI
-   */
-  type Cast<A, B> = A extends B ? A : B;
-  /** @category FFI */
-  type Const<T> = Cast<
-    T,
-    | (T extends string | number | bigint | boolean ? T : never)
-    | { [K in keyof T]: Const<T[K]> }
-    | []
-  >;
-
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * Opens an external dynamic library and registers symbols, making foreign
@@ -761,9 +748,9 @@ declare namespace Deno {
    * @tags allow-ffi
    * @category FFI
    */
-  export function dlopen<S extends ForeignLibraryInterface>(
+  export function dlopen<const S extends ForeignLibraryInterface>(
     filename: string | URL,
-    symbols: Const<S>,
+    symbols: S,
   ): DynamicLibrary<S>;
 
   /** **UNSTABLE**: New API, yet to be vetted.
@@ -895,10 +882,6 @@ declare namespace Deno {
     caCerts?: string[];
     /** A HTTP proxy to use for new connections. */
     proxy?: Proxy;
-    /** Server private key in PEM format. */
-    cert?: string;
-    /** Cert chain in PEM format. */
-    key?: string;
     /** Sets the maximum numer of idle connections per host allowed in the pool. */
     poolMaxIdlePerHost?: number;
     /** Set an optional timeout for idle sockets being kept-alive.
@@ -973,6 +956,27 @@ declare namespace Deno {
    */
   export function createHttpClient(
     options: CreateHttpClientOptions,
+  ): HttpClient;
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Create a custom HttpClient to use with {@linkcode fetch}. This is an
+   * extension of the web platform Fetch API which allows Deno to use custom
+   * TLS certificates and connect via a proxy while using `fetch()`.
+   *
+   * @example ```ts
+   * const caCert = await Deno.readTextFile("./ca.pem");
+   * // Load a client key and certificate that we'll use to connect
+   * const key = await Deno.readTextFile("./key.key");
+   * const cert = await Deno.readTextFile("./cert.crt");
+   * const client = Deno.createHttpClient({ caCerts: [ caCert ], key, cert });
+   * const response = await fetch("https://myserver.com", { client });
+   * ```
+   *
+   * @category Fetch API
+   */
+  export function createHttpClient(
+    options: CreateHttpClientOptions & TlsCertifiedKeyOptions,
   ): HttpClient;
 
   /** **UNSTABLE**: New API, yet to be vetted.
@@ -2238,6 +2242,26 @@ declare interface WebSocketStream {
 declare var WebSocketStream: {
   readonly prototype: WebSocketStream;
   new (url: string, options?: WebSocketStreamOptions): WebSocketStream;
+};
+
+/** **UNSTABLE**: New API, yet to be vetted.
+ *
+ * @tags allow-net
+ * @category Web Sockets
+ */
+declare interface WebSocketError extends DOMException {
+  readonly closeCode: number;
+  readonly reason: string;
+}
+
+/** **UNSTABLE**: New API, yet to be vetted.
+ *
+ * @tags allow-net
+ * @category Web Sockets
+ */
+declare var WebSocketError: {
+  readonly prototype: WebSocketError;
+  new (message?: string, init?: WebSocketCloseInfo): WebSocketError;
 };
 
 // Adapted from `tc39/proposal-temporal`: https://github.com/tc39/proposal-temporal/blob/main/polyfill/index.d.ts
@@ -4242,6 +4266,11 @@ declare namespace Temporal {
 
     readonly [Symbol.toStringTag]: "Temporal.Now";
   };
+}
+
+interface Date {
+  /** @category Temporal */
+  toTemporalInstant(): Temporal.Instant;
 }
 
 /** @category Intl */

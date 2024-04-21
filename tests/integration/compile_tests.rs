@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::serde_json;
 use test_util as util;
 use util::assert_contains;
 use util::assert_not_contains;
@@ -1140,6 +1141,7 @@ fn granular_unstable_features() {
       "--output",
       &exe.to_string_lossy(),
       "--unstable-kv",
+      "--unstable-temporal",
       "./compile/unstable_features.ts",
     ])
     .run();
@@ -1147,7 +1149,41 @@ fn granular_unstable_features() {
   output.skip_output_check();
   let output = context.new_command().name(&exe).run();
   output.assert_exit_code(0);
-  output.assert_matches_text("Kv {}\n");
+  output.assert_matches_text("Kv {}\nObject [Temporal] {}\n");
+}
+
+#[test]
+fn granular_unstable_features_config_file() {
+  let context = TestContextBuilder::new().build();
+  let dir = context.temp_dir();
+  let exe = if cfg!(windows) {
+    dir.path().join("app.exe")
+  } else {
+    dir.path().join("app")
+  };
+  dir.write(
+    "deno.json",
+    serde_json::to_string_pretty(&serde_json::json!({
+      "unstable": ["kv", "temporal"]
+    }))
+    .unwrap(),
+  );
+  let output = context
+    .new_command()
+    .args_vec([
+      "compile",
+      "--config",
+      &dir.path().join("deno.json").to_string(),
+      "--output",
+      &exe.to_string_lossy(),
+      "./compile/unstable_features.ts",
+    ])
+    .run();
+  output.assert_exit_code(0);
+  output.skip_output_check();
+  let output = context.new_command().name(&exe).run();
+  output.assert_exit_code(0);
+  output.assert_matches_text("Kv {}\nObject [Temporal] {}\n");
 }
 
 #[test]
@@ -1177,4 +1213,59 @@ fn dynamic_import_bad_data_uri() {
   output.assert_matches_text(
     "[WILDCARD]TypeError: Unable to decode data url.[WILDCARD]",
   );
+}
+
+#[test]
+fn standalone_config_file_respects_compiler_options() {
+  let context = TestContextBuilder::new().build();
+  let dir = context.temp_dir();
+  let exe = if cfg!(windows) {
+    dir.path().join("compiler_options.exe")
+  } else {
+    dir.path().join("compiler_options")
+  };
+  context
+    .new_command()
+    .args_vec([
+      "compile",
+      "--allow-read",
+      "--config",
+      "compile/compiler_options/deno.json",
+      "--output",
+      &exe.to_string_lossy(),
+      "./compile/compiler_options/main.ts",
+    ])
+    .run()
+    .skip_output_check()
+    .assert_exit_code(0);
+  let output = context.new_command().name(&exe).run();
+
+  output.assert_exit_code(0);
+  output.assert_matches_text("[WILDCARD]C.test() called[WILDCARD]");
+}
+
+#[test]
+fn standalone_jsr_dynamic_import() {
+  let context = TestContextBuilder::for_jsr().build();
+  let dir = context.temp_dir();
+  let exe = if cfg!(windows) {
+    dir.path().join("jsr_dynamic_import.exe")
+  } else {
+    dir.path().join("jsr_dynamic_import")
+  };
+  context
+    .new_command()
+    .args_vec([
+      "compile",
+      "--output",
+      &exe.to_string_lossy(),
+      "./compile/jsr_dynamic_import/main.ts",
+    ])
+    .run()
+    .skip_output_check()
+    .assert_exit_code(0);
+  let output = context.new_command().name(&exe).run();
+
+  output.assert_exit_code(0);
+  output.assert_matches_text("Hello world\n");
 }

@@ -3,12 +3,12 @@
 import EventEmitter from "node:events";
 import http, { type RequestOptions } from "node:http";
 import https from "node:https";
+import net from "node:net";
 import { assert, assertEquals, fail } from "@std/assert/mod.ts";
 import { assertSpyCalls, spy } from "@std/testing/mock.ts";
 
 import { gzip } from "node:zlib";
 import { Buffer } from "node:buffer";
-import { serve } from "@std/http/server.ts";
 import { execCode } from "../unit/test_util.ts";
 
 Deno.test("[node/http listen]", async () => {
@@ -26,7 +26,9 @@ Deno.test("[node/http listen]", async () => {
     const { promise, resolve } = Promise.withResolvers<void>();
     const server = http.createServer();
 
-    server.listen(() => {
+    server.listen(42453, "localhost", () => {
+      // @ts-ignore address() is not a string
+      assertEquals(server.address()!.address, "127.0.0.1");
       server.close();
     });
     server.on("close", () => {
@@ -335,20 +337,18 @@ Deno.test("[node/http] send request with non-chunked body", async () => {
   const hostname = "localhost";
   const port = 4505;
 
-  // NOTE: Instead of node/http.createServer(), serve() in std/http/server.ts is used.
-  // https://github.com/denoland/deno_std/pull/2755#discussion_r1005592634
   const handler = async (req: Request) => {
     requestHeaders = req.headers;
     requestBody = await req.text();
     return new Response("ok");
   };
   const abortController = new AbortController();
-  const servePromise = serve(handler, {
+  const servePromise = Deno.serve({
     hostname,
     port,
     signal: abortController.signal,
     onListen: undefined,
-  });
+  }, handler).finished;
 
   const opts: RequestOptions = {
     host: hostname,
@@ -390,20 +390,18 @@ Deno.test("[node/http] send request with chunked body", async () => {
   const hostname = "localhost";
   const port = 4505;
 
-  // NOTE: Instead of node/http.createServer(), serve() in std/http/server.ts is used.
-  // https://github.com/denoland/deno_std/pull/2755#discussion_r1005592634
   const handler = async (req: Request) => {
     requestHeaders = req.headers;
     requestBody = await req.text();
     return new Response("ok");
   };
   const abortController = new AbortController();
-  const servePromise = serve(handler, {
+  const servePromise = Deno.serve({
     hostname,
     port,
     signal: abortController.signal,
     onListen: undefined,
-  });
+  }, handler).finished;
 
   const opts: RequestOptions = {
     host: hostname,
@@ -439,20 +437,18 @@ Deno.test("[node/http] send request with chunked body as default", async () => {
   const hostname = "localhost";
   const port = 4505;
 
-  // NOTE: Instead of node/http.createServer(), serve() in std/http/server.ts is used.
-  // https://github.com/denoland/deno_std/pull/2755#discussion_r1005592634
   const handler = async (req: Request) => {
     requestHeaders = req.headers;
     requestBody = await req.text();
     return new Response("ok");
   };
   const abortController = new AbortController();
-  const servePromise = serve(handler, {
+  const servePromise = Deno.serve({
     hostname,
     port,
     signal: abortController.signal,
     onListen: undefined,
-  });
+  }, handler).finished;
 
   const opts: RequestOptions = {
     host: hostname,
@@ -937,4 +933,68 @@ Deno.test("[node/http] ServerResponse getHeader", async () => {
   });
 
   await promise;
+});
+
+Deno.test("[node/http] IncomingMessage override", () => {
+  const req = new http.IncomingMessage(new net.Socket());
+  // https://github.com/dougmoscrop/serverless-http/blob/3aaa6d0fe241109a8752efb011c242d249f32368/lib/request.js#L20-L30
+  Object.assign(req, {
+    ip: "1.1.1.1",
+    complete: true,
+    httpVersion: "1.1",
+    httpVersionMajor: "1",
+    httpVersionMinor: "1",
+    method: "GET",
+    headers: {},
+    body: "",
+    url: "https://1.1.1.1",
+  });
+});
+
+Deno.test("[node/http] ServerResponse assignSocket and detachSocket", () => {
+  const req = new http.IncomingMessage(new net.Socket());
+  const res = new http.ServerResponse(req);
+  let writtenData: string | Uint8Array | undefined = undefined;
+  let writtenEncoding: string | Uint8Array | undefined = undefined;
+  const socket = {
+    _writableState: {},
+    writable: true,
+    on: Function.prototype,
+    removeListener: Function.prototype,
+    destroy: Function.prototype,
+    cork: Function.prototype,
+    uncork: Function.prototype,
+    write: (
+      data: string | Uint8Array,
+      encoding: string,
+      _cb?: (err?: Error) => void,
+    ) => {
+      writtenData = data;
+      writtenEncoding = encoding;
+    },
+  };
+  // @ts-ignore it's a socket mock
+  res.assignSocket(socket);
+
+  res.write("Hello World!", "utf8");
+  assertEquals(writtenData, Buffer.from("Hello World!"));
+  assertEquals(writtenEncoding, "buffer");
+
+  writtenData = undefined;
+  writtenEncoding = undefined;
+
+  // @ts-ignore it's a socket mock
+  res.detachSocket(socket);
+  res.write("Hello World!", "utf8");
+  assertEquals(writtenData, undefined);
+  assertEquals(writtenEncoding, undefined);
+});
+
+Deno.test("[node/http] ServerResponse getHeaders", () => {
+  const req = new http.IncomingMessage(new net.Socket());
+  const res = new http.ServerResponse(req);
+  res.setHeader("foo", "bar");
+  res.setHeader("bar", "baz");
+  assertEquals(res.getHeaderNames(), ["bar", "foo"]);
+  assertEquals(res.getHeaders(), { "bar": "baz", "foo": "bar" });
 });

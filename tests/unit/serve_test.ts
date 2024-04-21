@@ -8,6 +8,8 @@ import {
   assertEquals,
   assertStringIncludes,
   assertThrows,
+  curlRequest,
+  curlRequestWithStdErr,
   execCode,
   fail,
   tmpUnixSocketPath,
@@ -41,7 +43,10 @@ function onListen(
 }
 
 async function makeServer(
-  handler: (req: Request) => Response | Promise<Response>,
+  handler: (
+    req: Request,
+    info: Deno.ServeHandlerInfo,
+  ) => Response | Promise<Response>,
 ): Promise<
   {
     finished: Promise<void>;
@@ -430,7 +435,7 @@ Deno.test(async function httpServerRejectsOnAddrInUse() {
 Deno.test({ permissions: { net: true } }, async function httpServerBasic() {
   const ac = new AbortController();
   const deferred = Promise.withResolvers<void>();
-  const listeningDeferred = Promise.withResolvers<void>();
+  const listeningDeferred = Promise.withResolvers<Deno.NetAddr>();
 
   const server = Deno.serve({
     handler: async (request, { remoteAddr }) => {
@@ -445,11 +450,13 @@ Deno.test({ permissions: { net: true } }, async function httpServerBasic() {
     },
     port: servePort,
     signal: ac.signal,
-    onListen: onListen(listeningDeferred.resolve),
+    onListen: (addr) => listeningDeferred.resolve(addr),
     onError: createOnErrorCb(ac),
   });
 
-  await listeningDeferred.promise;
+  const addr = await listeningDeferred.promise;
+  assertEquals(addr.hostname, server.addr.hostname);
+  assertEquals(addr.port, server.addr.port);
   const resp = await fetch(`http://127.0.0.1:${servePort}/`, {
     headers: { "connection": "close" },
   });
@@ -470,7 +477,7 @@ Deno.test(
   async function httpServerOnListener() {
     const ac = new AbortController();
     const deferred = Promise.withResolvers<void>();
-    const listeningDeferred = Promise.withResolvers<void>();
+    const listeningDeferred = Promise.withResolvers();
     const listener = Deno.listen({ port: servePort });
     const server = serveHttpOnListener(
       listener,
@@ -3793,32 +3800,6 @@ Deno.test(
   },
 );
 
-async function curlRequest(args: string[]) {
-  const { success, stdout, stderr } = await new Deno.Command("curl", {
-    args,
-    stdout: "piped",
-    stderr: "piped",
-  }).output();
-  assert(
-    success,
-    `Failed to cURL ${args}: stdout\n\n${stdout}\n\nstderr:\n\n${stderr}`,
-  );
-  return new TextDecoder().decode(stdout);
-}
-
-async function curlRequestWithStdErr(args: string[]) {
-  const { success, stdout, stderr } = await new Deno.Command("curl", {
-    args,
-    stdout: "piped",
-    stderr: "piped",
-  }).output();
-  assert(
-    success,
-    `Failed to cURL ${args}: stdout\n\n${stdout}\n\nstderr:\n\n${stderr}`,
-  );
-  return [new TextDecoder().decode(stdout), new TextDecoder().decode(stderr)];
-}
-
 Deno.test("Deno.HttpServer is not thenable", async () => {
   // deno-lint-ignore require-await
   async function serveTest() {
@@ -3836,7 +3817,7 @@ Deno.test(
     permissions: { run: true, read: true, write: true },
   },
   async function httpServerUnixDomainSocket() {
-    const { promise, resolve } = Promise.withResolvers<{ path: string }>();
+    const { promise, resolve } = Promise.withResolvers<Deno.UnixAddr>();
     const ac = new AbortController();
     const filePath = tmpUnixSocketPath();
     const server = Deno.serve(
@@ -3854,7 +3835,7 @@ Deno.test(
       },
     );
 
-    assertEquals(await promise, { path: filePath });
+    assertEquals((await promise).path, filePath);
     assertEquals(
       "hello world!",
       await curlRequest(["--unix-socket", filePath, "http://localhost"]),

@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::serde_json::json;
 use deno_core::url::Url;
 use test_util as util;
 use test_util::itest;
@@ -231,7 +232,7 @@ itest!(ops_sanitizer_timeout_failure {
 
 itest!(ops_sanitizer_multiple_timeout_tests {
   args:
-    "test --trace-ops test/sanitizer/ops_sanitizer_multiple_timeout_tests.ts",
+    "test --trace-leaks test/sanitizer/ops_sanitizer_multiple_timeout_tests.ts",
   exit_code: 1,
   output: "test/sanitizer/ops_sanitizer_multiple_timeout_tests.out",
 });
@@ -243,13 +244,13 @@ itest!(ops_sanitizer_multiple_timeout_tests_no_trace {
 });
 
 itest!(sanitizer_trace_ops_catch_error {
-  args: "test -A --trace-ops test/sanitizer/trace_ops_caught_error/main.ts",
+  args: "test -A --trace-leaks test/sanitizer/trace_ops_caught_error/main.ts",
   exit_code: 0,
   output: "test/sanitizer/trace_ops_caught_error/main.out",
 });
 
 itest!(ops_sanitizer_closed_inside_started_before {
-  args: "test --trace-ops test/sanitizer/ops_sanitizer_closed_inside_started_before.ts",
+  args: "test --trace-leaks test/sanitizer/ops_sanitizer_closed_inside_started_before.ts",
   exit_code: 1,
   output: "test/sanitizer/ops_sanitizer_closed_inside_started_before.out",
 });
@@ -265,6 +266,12 @@ itest!(resource_sanitizer {
   output: "test/sanitizer/resource_sanitizer.out",
 });
 
+itest!(ops_sanitizer_tcp {
+  args: "test --allow-net --trace-leaks test/sanitizer/ops_sanitizer_tcp.ts",
+  exit_code: 1,
+  output: "test/sanitizer/ops_sanitizer_tcp.out",
+});
+
 itest!(exit_sanitizer {
   args: "test test/sanitizer/exit_sanitizer.ts",
   output: "test/sanitizer/exit_sanitizer.out",
@@ -274,6 +281,18 @@ itest!(exit_sanitizer {
 itest!(junit {
   args: "test --reporter junit test/pass.ts",
   output: "test/pass.junit.out",
+});
+
+itest!(junit_nested {
+  args: "test --reporter junit test/nested_failures.ts",
+  output: "test/nested_failures.junit.out",
+  exit_code: 1,
+});
+
+itest!(junit_multiple_test_files {
+  args: "test --reporter junit test/pass.ts test/fail.ts",
+  output: "test/junit_multiple_test_files.junit.out",
+  exit_code: 1,
 });
 
 #[test]
@@ -649,7 +668,7 @@ fn conditionally_loads_type_graph() {
     .new_command()
     .args("test --reload -L debug run/type_directives_js_main.js")
     .run();
-  output.assert_matches_text("[WILDCARD] - FileFetcher::fetch() - specifier: file:///[WILDCARD]/subdir/type_reference.d.ts[WILDCARD]");
+  output.assert_matches_text("[WILDCARD] - FileFetcher::fetch_no_follow_with_options - specifier: file:///[WILDCARD]/subdir/type_reference.d.ts[WILDCARD]");
   let output = context
     .new_command()
     .args("test --reload -L debug --no-check run/type_directives_js_main.js")
@@ -662,3 +681,32 @@ itest!(test_include_relative_pattern_dot_slash {
   output: "test/relative_pattern_dot_slash/output.out",
   cwd: Some("test/relative_pattern_dot_slash"),
 });
+
+#[test]
+fn opt_out_top_level_exclude_via_test_unexclude() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir().path();
+  temp_dir.join("deno.json").write_json(&json!({
+    "test": {
+      "exclude": [ "!excluded.test.ts" ]
+    },
+    "exclude": [ "excluded.test.ts", "actually_excluded.test.ts" ]
+  }));
+
+  temp_dir
+    .join("main.test.ts")
+    .write("Deno.test('test1', () => {});");
+  temp_dir
+    .join("excluded.test.ts")
+    .write("Deno.test('test2', () => {});");
+  temp_dir
+    .join("actually_excluded.test.ts")
+    .write("Deno.test('test3', () => {});");
+
+  let output = context.new_command().arg("test").run();
+  output.assert_exit_code(0);
+  let output = output.combined_output();
+  assert_contains!(output, "main.test.ts");
+  assert_contains!(output, "excluded.test.ts");
+  assert_not_contains!(output, "actually_excluded.test.ts");
+}

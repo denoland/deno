@@ -72,7 +72,6 @@ import {
   op_fs_utime_sync,
   op_fs_write_file_async,
   op_fs_write_file_sync,
-  op_is_terminal,
   op_set_raw,
 } from "ext:core/ops";
 const {
@@ -91,6 +90,7 @@ const {
   SymbolAsyncIterator,
   SymbolIterator,
   SymbolFor,
+  TypeError,
   Uint32Array,
 } = primordials;
 
@@ -674,6 +674,11 @@ class FsFile {
         new Error().stack,
         "Use `Deno.open` or `Deno.openSync` instead.",
       );
+      if (internals.future) {
+        throw new TypeError(
+          "`Deno.FsFile` cannot be constructed, use `Deno.open()` or `Deno.openSync()` instead.",
+        );
+      }
     }
   }
 
@@ -769,7 +774,7 @@ class FsFile {
   }
 
   isTerminal() {
-    return op_is_terminal(this.#rid);
+    return core.isTerminal(this.#rid);
   }
 
   setRaw(mode, options = {}) {

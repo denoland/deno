@@ -40,7 +40,7 @@ import { core, internals } from "ext:core/mod.js";
 
 const $display = Symbol.for("Jupyter.display");
 
-/** Escape copied from https://deno.land/std@0.192.0/html/entities.ts */
+/** Escape copied from https://jsr.io/@std/html/0.221.0/entities.ts */
 const rawToEntityEntries = [
   ["&", "&amp;"],
   ["<", "&lt;"],
@@ -337,9 +337,7 @@ async function formatInner(obj, raw) {
 internals.jupyter = { formatInner };
 
 function enableJupyter() {
-  const {
-    op_jupyter_broadcast,
-  } = core.ensureFastOps();
+  const { op_jupyter_broadcast } = core.ops;
 
   async function broadcast(
     msgType,
