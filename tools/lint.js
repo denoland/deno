@@ -21,6 +21,7 @@ if (js) {
   promises.push(dlint());
   promises.push(dlintPreferPrimordials());
   promises.push(ensureCiYmlUpToDate());
+  promises.push(ensureNoNewITests());
 
   if (rs) {
     promises.push(checkCopyright());
@@ -178,5 +179,67 @@ async function ensureCiYmlUpToDate() {
     throw new Error(
       "./.github/workflows/ci.yml is out of date. Run: ./.github/workflows/ci.generate.ts",
     );
+  }
+}
+
+async function ensureNoNewITests() {
+  // Note: Only decrease these numbers. Never increase them!!
+  // This is to help ensure we slowly deprecate these tests and
+  // replace them with spec tests.
+  const iTestCounts = {
+    "bench_tests.rs": 37,
+    "bundle_tests.rs": 12,
+    "cache_tests.rs": 11,
+    "cert_tests.rs": 3,
+    "check_tests.rs": 28,
+    "compile_tests.rs": 0,
+    "coverage_tests.rs": 0,
+    "doc_tests.rs": 17,
+    "eval_tests.rs": 9,
+    "flags_tests.rs": 0,
+    "fmt_tests.rs": 17,
+    "info_tests.rs": 20,
+    "init_tests.rs": 0,
+    "inspector_tests.rs": 0,
+    "install_tests.rs": 0,
+    "jsr_tests.rs": 0,
+    "js_unit_tests.rs": 0,
+    "jupyter_tests.rs": 0,
+    "lint_tests.rs": 24,
+    "lsp_tests.rs": 0,
+    "node_compat_tests.rs": 4,
+    "node_unit_tests.rs": 3,
+    "npm_tests.rs": 98,
+    "pm_tests.rs": 0,
+    "publish_tests.rs": 28,
+    "repl_tests.rs": 0,
+    "run_tests.rs": 381,
+    "shared_library_tests.rs": 0,
+    "task_tests.rs": 30,
+    "test_tests.rs": 80,
+    "upgrade_tests.rs": 0,
+    "vendor_tests.rs": 1,
+    "watcher_tests.rs": 0,
+    "worker_tests.rs": 23,
+  };
+  const integrationDir = join(ROOT_PATH, "tests", "integration");
+  for await (const entry of Deno.readDir(integrationDir)) {
+    if (!entry.name.endsWith("_tests.rs")) {
+      continue;
+    }
+    const fileText = await Deno.readTextFile(join(integrationDir, entry.name));
+    const actualCount = fileText.match(/itest\!/g)?.length ?? 0;
+    const expectedCount = iTestCounts[entry.name] ?? 0;
+    // console.log(`"${entry.name}": ${actualCount},`);
+    if (actualCount > expectedCount) {
+      throw new Error(
+        `New itest added to ${entry.name}! The itest macro is deprecated. Please move this test to ~/tests/specs.`,
+      );
+    } else if (actualCount < expectedCount) {
+      throw new Error(
+        `Thanks for removing an itest in ${entry.name}. ` +
+          `Please update the count in tools/lint.js for this file to ${actualCount}.`,
+      );
+    }
   }
 }

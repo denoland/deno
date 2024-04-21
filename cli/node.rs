@@ -112,7 +112,7 @@ impl CjsCodeAnalyzer for CliCjsCodeAnalyzer {
       Some(source) => source,
       None => self
         .fs
-        .read_text_file_sync(&specifier.to_file_path().unwrap())?,
+        .read_text_file_sync(&specifier.to_file_path().unwrap(), None)?,
     };
     let analysis = self.inner_cjs_analysis(specifier, &source)?;
     match analysis {

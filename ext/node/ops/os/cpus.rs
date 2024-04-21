@@ -240,7 +240,7 @@ pub fn cpu_info() -> Option<Vec<CpuInfo>> {
 pub fn cpu_info() -> Option<Vec<CpuInfo>> {
   use std::io::BufRead;
 
-  let mut cpus = vec![CpuInfo::new(); 8192]; /* Kernel maxmimum */
+  let mut cpus = vec![CpuInfo::new(); 8192]; /* Kernel maximum */
 
   let fp = std::fs::File::open("/proc/stat").ok()?;
   let reader = std::io::BufReader::new(fp);

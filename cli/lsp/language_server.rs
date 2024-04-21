@@ -404,8 +404,11 @@ impl LanguageServer {
     let inner = self.0.read().await;
     if let Some(testing_server) = &inner.maybe_testing_server {
       match params.map(serde_json::from_value) {
-        Some(Ok(params)) => testing_server
-          .run_request(params, inner.config.workspace_settings().clone()),
+        Some(Ok(params)) => {
+          testing_server
+            .run_request(params, inner.config.workspace_settings().clone())
+            .await
+        }
         Some(Err(err)) => Err(LspError::invalid_params(err.to_string())),
         None => Err(LspError::invalid_params("Missing parameters")),
       }
@@ -971,6 +974,8 @@ impl Inner {
       self.config.set_workspace_folders(workspace_folders);
       self.config.update_capabilities(&params.capabilities);
     }
+
+    self.documents.initialize(&self.config);
 
     if let Err(e) = self
       .ts_server
@@ -1610,10 +1615,9 @@ impl Inner {
     let hover = if let Some((_, dep, range)) = asset_or_doc
       .get_maybe_dependency(&params.text_document_position_params.position)
     {
-      let dep_maybe_types_dependency = dep
-        .get_code()
-        .and_then(|s| self.documents.get(s))
-        .map(|d| d.maybe_types_dependency());
+      let dep_doc = dep.get_code().and_then(|s| self.documents.get(s));
+      let dep_maybe_types_dependency =
+        dep_doc.as_ref().map(|d| d.maybe_types_dependency());
       let value = match (dep.maybe_code.is_none(), dep.maybe_type.is_none(), &dep_maybe_types_dependency) {
         (false, false, None) => format!(
           "**Resolved Dependency**\n\n**Code**: {}\n\n**Types**: {}\n",
@@ -1875,6 +1879,7 @@ impl Inner {
           &self.config,
           &specifier,
         )),
+        params.context.trigger_kind,
         only,
       )
       .await?;

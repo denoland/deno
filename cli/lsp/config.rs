@@ -870,7 +870,7 @@ impl Settings {
   }
 }
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct Config {
   pub client_capabilities: ClientCapabilities,
   pub settings: Settings,
@@ -1393,7 +1393,7 @@ impl ConfigData {
       if import_map_value.is_none() {
         if let Some(file_fetcher) = file_fetcher {
           let fetch_result = file_fetcher
-            .fetch(specifier, PermissionsContainer::allow_all())
+            .fetch(specifier, &PermissionsContainer::allow_all())
             .await;
           let value_result = fetch_result.and_then(|f| {
             serde_json::from_slice::<Value>(&f.source).map_err(|e| e.into())

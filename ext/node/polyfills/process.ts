@@ -5,9 +5,14 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { core, internals } from "ext:core/mod.js";
-import { op_geteuid, op_process_abort, op_set_exit_code } from "ext:core/ops";
+import {
+  op_geteuid,
+  op_node_process_kill,
+  op_process_abort,
+  op_set_exit_code,
+} from "ext:core/ops";
 
-import { notImplemented, warnNotImplemented } from "ext:deno_node/_utils.ts";
+import { warnNotImplemented } from "ext:deno_node/_utils.ts";
 import { EventEmitter } from "node:events";
 import Module from "node:module";
 import { report } from "ext:deno_node/internal/process/report.ts";
@@ -43,7 +48,6 @@ import {
 } from "ext:deno_node/_next_tick.ts";
 import { isWindows } from "ext:deno_node/_util/os.ts";
 import * as io from "ext:deno_io/12_io.js";
-import { Command } from "ext:runtime/40_process.js";
 
 export let argv0 = "";
 
@@ -254,49 +258,14 @@ memoryUsage.rss = function (): number {
 
 // Returns a negative error code than can be recognized by errnoException
 function _kill(pid: number, sig: number): number {
-  let errCode;
+  const maybeSignal = Object.entries(constants.os.signals).find((
+    [_, numericCode],
+  ) => numericCode === sig);
 
-  if (sig === 0) {
-    let status;
-    if (Deno.build.os === "windows") {
-      status = (new Command("powershell.exe", {
-        args: ["Get-Process", "-pid", pid],
-      })).outputSync();
-    } else {
-      status = (new Command("kill", {
-        args: ["-0", pid],
-      })).outputSync();
-    }
-
-    if (!status.success) {
-      errCode = uv.codeMap.get("ESRCH");
-    }
-  } else {
-    // Reverse search the shortname based on the numeric code
-    const maybeSignal = Object.entries(constants.os.signals).find((
-      [_, numericCode],
-    ) => numericCode === sig);
-
-    if (!maybeSignal) {
-      errCode = uv.codeMap.get("EINVAL");
-    } else {
-      try {
-        Deno.kill(pid, maybeSignal[0] as Deno.Signal);
-      } catch (e) {
-        if (e instanceof TypeError) {
-          throw notImplemented(maybeSignal[0]);
-        }
-
-        throw e;
-      }
-    }
+  if (!maybeSignal) {
+    return uv.codeMap.get("EINVAL");
   }
-
-  if (!errCode) {
-    return 0;
-  } else {
-    return errCode;
-  }
+  return op_node_process_kill(pid, sig);
 }
 
 export function dlopen(module, filename, _flags) {

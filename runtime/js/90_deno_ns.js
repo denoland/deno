@@ -15,6 +15,7 @@ import * as net from "ext:deno_net/01_net.js";
 import * as tls from "ext:deno_net/02_tls.js";
 import * as serve from "ext:deno_http/00_serve.js";
 import * as http from "ext:deno_http/01_http.js";
+import * as websocket from "ext:deno_http/02_websocket.ts";
 import * as errors from "ext:runtime/01_errors.js";
 import * as version from "ext:runtime/01_version.ts";
 import * as permissions from "ext:runtime/10_permissions.js";
@@ -227,7 +228,7 @@ const denoNs = {
   serveHttp: http.serveHttp,
   serve: serve.serve,
   resolveDns: net.resolveDns,
-  upgradeWebSocket: http.upgradeWebSocket,
+  upgradeWebSocket: websocket.upgradeWebSocket,
   utime: fs.utime,
   utimeSync: fs.utimeSync,
   kill: process.kill,

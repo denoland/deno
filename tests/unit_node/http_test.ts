@@ -998,3 +998,7 @@ Deno.test("[node/http] ServerResponse getHeaders", () => {
   assertEquals(res.getHeaderNames(), ["bar", "foo"]);
   assertEquals(res.getHeaders(), { "bar": "baz", "foo": "bar" });
 });
+
+Deno.test("[node/http] maxHeaderSize is defined", () => {
+  assertEquals(http.maxHeaderSize, 16_384);
+});
