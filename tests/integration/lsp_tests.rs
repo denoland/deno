@@ -8811,7 +8811,7 @@ fn lsp_diagnostics_refresh_dependents() {
     }),
   );
   let diagnostics = client.read_diagnostics();
-  assert_eq!(diagnostics.all().len(), 0); // no diagnostics now
+  assert_eq!(json!(diagnostics.all()), json!([])); // no diagnostics now
 
   client.shutdown();
   assert_eq!(client.queue_len(), 0);
@@ -9044,7 +9044,6 @@ fn lsp_performance() {
       "tsc.host.$getAssets",
       "tsc.host.$getDiagnostics",
       "tsc.host.$getSupportedCodeFixes",
-      "tsc.host.$projectChanged",
       "tsc.host.getQuickInfoAtPosition",
       "tsc.op.op_is_node_file",
       "tsc.op.op_load",
@@ -9052,7 +9051,6 @@ fn lsp_performance() {
       "tsc.op.op_ts_config",
       "tsc.request.$getAssets",
       "tsc.request.$getSupportedCodeFixes",
-      "tsc.request.$projectChanged",
       "tsc.request.getQuickInfoAtPosition",
     ]
   );
