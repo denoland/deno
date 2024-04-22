@@ -7,6 +7,7 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fs;
+use std::os::unix::fs::symlink;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -24,6 +25,7 @@ use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
+use deno_core::parking_lot::Mutex;
 use deno_core::unsync::spawn;
 use deno_core::unsync::JoinHandle;
 use deno_core::url::Url;
@@ -293,6 +295,7 @@ async fn sync_resolution_with_fs(
     Vec::with_capacity(package_partitions.packages.len());
   let mut newest_packages_by_name: HashMap<&String, &NpmResolutionPackage> =
     HashMap::with_capacity(package_partitions.packages.len());
+  let bin_entries_to_setup = Arc::new(Mutex::new(Vec::with_capacity(16)));
   for package in &package_partitions.packages {
     if let Some(current_pkg) =
       newest_packages_by_name.get_mut(&package.id.nv.name)
@@ -321,6 +324,7 @@ async fn sync_resolution_with_fs(
       let cache = cache.clone();
       let registry_url = registry_url.clone();
       let package = package.clone();
+      let bin_entries_to_setup = bin_entries_to_setup.clone();
       let handle = spawn(async move {
         cache
           .ensure_package(&package.id.nv, &package.dist, &registry_url)
@@ -344,26 +348,11 @@ async fn sync_resolution_with_fs(
         }
         // write out a file that indicates this folder has been initialized
         fs::write(initialized_file, "")?;
-        // set up an entry in `node_modules/.bin/` if package provides bin entry(ies)
-        if let Some(bin_entries) = &package.bin {
-          match bin_entries {
-            deno_npm::registry::NpmPackageVersionBinEntry::String(script) => {
-              let name = package.id.nv.name;
-              eprintln!(
-                "need to setup \"{}\" ({}) in `node_modules/.bin/",
-                name, script
-              );
-            }
-            deno_npm::registry::NpmPackageVersionBinEntry::Map(entries) => {
-              for (name, script) in entries {
-                eprintln!(
-                  "need to setup \"{}\" ({}) in `node_modules/.bin/",
-                  name, script
-                );
-              }
-            }
-          }
+
+        if package.bin.is_some() {
+          bin_entries_to_setup.lock().push((package.clone(), package_path));
         }
+
         // finally stop showing the progress bar
         drop(pb_guard); // explicit for clarity
         Ok(())
@@ -491,6 +480,35 @@ async fn sync_resolution_with_fs(
         &local_registry_package_path,
         &join_package_name(&deno_node_modules_dir, &package.id.nv.name),
       )?;
+    }
+  }
+
+
+  // 6. Set up `node_modules/.bin` entries for packages that need it.
+  for (package, package_path) in &*bin_entries_to_setup.lock() {
+    let package = snapshot.package_from_id(&package.id).unwrap();
+    if let Some(bin_entries) = &package.bin {
+      match bin_entries {
+        deno_npm::registry::NpmPackageVersionBinEntry::String(script) => {
+          let name = &package.id.nv.name;
+          symlink_bin_entry(
+            name,
+            script,
+            &package_path,
+            &bin_node_modules_dir_path,
+          )?;
+        }
+        deno_npm::registry::NpmPackageVersionBinEntry::Map(entries) => {
+          for (name, script) in entries {
+            symlink_bin_entry(
+              name,
+              script,
+              &package_path,
+              &bin_node_modules_dir_path,
+            )?;
+          }
+        }
+      }
     }
   }
 
@@ -668,6 +686,39 @@ fn get_package_folder_id_from_folder_name(
     nv: PackageNv { name, version },
     copy_index,
   })
+}
+
+fn symlink_bin_entry(
+  bin_name: &str,
+  bin_script: &str,
+  package_path: &Path,
+  bin_node_modules_dir_path: &Path,
+) -> Result<(), AnyError> {
+  let link = bin_node_modules_dir_path.join(bin_name);
+  let original = package_path.join(bin_script);
+
+  // Don't bother setting up another link if it already exists
+  if link.exists() {
+    let resolved = std::fs::read_link(&link).ok();
+    if let Some(resolved) = resolved {
+      if resolved != original {
+        log::warn!(
+          "{} Trying to set up '{}' bin for \"{}\", but an entry pointing to \"{}\" already exists. Skipping...", 
+          deno_terminal::colors::yellow("Warning"), 
+          bin_name, 
+          resolved.display(), 
+          original.display()
+        );
+        return Ok(());
+      }
+    }
+  }
+
+  // TODO: handle Windows
+  symlink(&original, &link).with_context(|| {
+    format!("Can't set up '{}' bin at {}", bin_name, link.display())
+  })?;
+  Ok(())
 }
 
 fn symlink_package_dir(
