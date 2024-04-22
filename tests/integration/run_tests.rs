@@ -4947,6 +4947,15 @@ itest!(workspaces_nested_member {
   exit_code: 1,
 });
 
+itest!(workspaces_members_are_imports {
+  args: "run -A main.ts",
+  output: "run/workspaces/members_are_imports/main.out",
+  cwd: Some("run/workspaces/members_are_imports/"),
+  copy_temp_dir: Some("run/workspaces/members_are_imports/"),
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+});
+
 itest!(unsafe_proto {
   args: "run -A run/unsafe_proto/main.js",
   output: "run/unsafe_proto/main.out",
