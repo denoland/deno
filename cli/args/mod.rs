@@ -67,6 +67,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use thiserror::Error;
 
+use crate::args::import_map::enhance_import_map_value_with_workspace_members;
 use crate::file_fetcher::FileFetcher;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::version;
@@ -975,6 +976,10 @@ impl CliOptions {
           base_import_map_config,
           children_configs,
         );
+      let import_map = enhance_import_map_value_with_workspace_members(
+        import_map,
+        &workspace_config.members,
+      );
       log::debug!(
         "Workspace config generated this import map {}",
         serde_json::to_string_pretty(&import_map).unwrap()
