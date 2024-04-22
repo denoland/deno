@@ -2887,14 +2887,8 @@
     "api-replacement-encodings.any.worker.html": true,
     "api-surrogates-utf8.any.html": true,
     "api-surrogates-utf8.any.worker.html": true,
-    "encodeInto.any.html": [
-      "Invalid encodeInto() destination: Float16Array, backed by: ArrayBuffer",
-      "Invalid encodeInto() destination: Float16Array, backed by: SharedArrayBuffer"
-    ],
-    "encodeInto.any.worker.html": [
-      "Invalid encodeInto() destination: Float16Array, backed by: ArrayBuffer",
-      "Invalid encodeInto() destination: Float16Array, backed by: SharedArrayBuffer"
-    ],
+    "encodeInto.any.html": true,
+    "encodeInto.any.worker.html": true,
     "idlharness.any.html": true,
     "idlharness.any.worker.html": true,
     "iso-2022-jp-decoder.any.html": true,
