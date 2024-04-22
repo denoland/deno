@@ -542,7 +542,7 @@ delete Object.prototype.__proto__;
     }
   }
 
-  /** @type {ts.LanguageService} */
+  /** @type {ts.LanguageService & { [k:string]: any }} */
   let languageService;
 
   /** An object literal of the incremental compiler host, which provides the
@@ -1073,42 +1073,43 @@ delete Object.prototype.__proto__;
     ops.op_respond(JSON.stringify(data));
   }
 
-  function serverRequest(id, method, args) {
+  /**
+   * @param {number} id
+   * @param {string} method
+   * @param {any[]} args
+   * @param {[[string, number][], number, boolean] | null} maybeChange
+   */
+  function serverRequest(id, method, args, maybeChange) {
     if (logDebug) {
-      debug(`serverRequest()`, id, method, args);
+      debug(`serverRequest()`, id, method, args, maybeChange);
     }
     lastRequestMethod = method;
-    switch (method) {
-      case "$projectChanged": {
-        /** @type {[string, number][]} */
-        const changedScripts = args[0];
-        /** @type {number} */
-        const newProjectVersion = args[1];
-        /** @type {boolean} */
-        const configChanged = args[2];
+    if (maybeChange !== null) {
+      const changedScripts = maybeChange[0];
+      const newProjectVersion = maybeChange[1];
+      const configChanged = maybeChange[2];
 
-        if (configChanged) {
-          tsConfigCache = null;
-          isNodeSourceFileCache.clear();
-        }
-
-        projectVersionCache = newProjectVersion;
-
-        let opened = false;
-        for (const { 0: script, 1: changeKind } of changedScripts) {
-          if (changeKind == ChangeKind.Opened) {
-            opened = true;
-          }
-          scriptVersionCache.delete(script);
-          sourceTextCache.delete(script);
-        }
-
-        if (configChanged || opened) {
-          scriptFileNamesCache = undefined;
-        }
-
-        return respond(id);
+      if (configChanged) {
+        tsConfigCache = null;
+        isNodeSourceFileCache.clear();
       }
+
+      projectVersionCache = newProjectVersion;
+
+      let opened = false;
+      for (const { 0: script, 1: changeKind } of changedScripts) {
+        if (changeKind == ChangeKind.Opened) {
+          opened = true;
+        }
+        scriptVersionCache.delete(script);
+        sourceTextCache.delete(script);
+      }
+
+      if (configChanged || opened) {
+        scriptFileNamesCache = undefined;
+      }
+    }
+    switch (method) {
       case "$getSupportedCodeFixes": {
         return respond(
           id,

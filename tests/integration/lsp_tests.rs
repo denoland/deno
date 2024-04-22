@@ -9044,7 +9044,6 @@ fn lsp_performance() {
       "tsc.host.$getAssets",
       "tsc.host.$getDiagnostics",
       "tsc.host.$getSupportedCodeFixes",
-      "tsc.host.$projectChanged",
       "tsc.host.getQuickInfoAtPosition",
       "tsc.op.op_is_node_file",
       "tsc.op.op_load",
@@ -9052,7 +9051,6 @@ fn lsp_performance() {
       "tsc.op.op_ts_config",
       "tsc.request.$getAssets",
       "tsc.request.$getSupportedCodeFixes",
-      "tsc.request.$projectChanged",
       "tsc.request.getQuickInfoAtPosition",
     ]
   );

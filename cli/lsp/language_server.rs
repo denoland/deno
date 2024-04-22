@@ -1196,14 +1196,14 @@ impl Inner {
     // a @types/node package and now's a good time to do that anyway
     self.refresh_npm_specifiers().await;
 
-    self.project_changed(&[], true).await;
+    self.project_changed([], true);
   }
 
   fn shutdown(&self) -> LspResult<()> {
     Ok(())
   }
 
-  async fn did_open(
+  fn did_open(
     &mut self,
     specifier: &ModuleSpecifier,
     params: DidOpenTextDocumentParams,
@@ -1231,9 +1231,7 @@ impl Inner {
       params.text_document.language_id.parse().unwrap(),
       params.text_document.text.into(),
     );
-    self
-      .project_changed(&[(document.specifier(), ChangeKind::Opened)], false)
-      .await;
+    self.project_changed([(document.specifier(), ChangeKind::Opened)], false);
 
     self.performance.measure(mark);
     document
@@ -1251,12 +1249,10 @@ impl Inner {
     ) {
       Ok(document) => {
         if document.is_diagnosable() {
-          self
-            .project_changed(
-              &[(document.specifier(), ChangeKind::Modified)],
-              false,
-            )
-            .await;
+          self.project_changed(
+            [(document.specifier(), ChangeKind::Modified)],
+            false,
+          );
           self.refresh_npm_specifiers().await;
           self.diagnostics_server.invalidate(&[specifier]);
           self.send_diagnostics_update();
@@ -1307,9 +1303,7 @@ impl Inner {
     if let Err(err) = self.documents.close(&specifier) {
       error!("{:#}", err);
     }
-    self
-      .project_changed(&[(&specifier, ChangeKind::Closed)], false)
-      .await;
+    self.project_changed([(&specifier, ChangeKind::Closed)], false);
     self.performance.measure(mark);
   }
 
@@ -1423,15 +1417,10 @@ impl Inner {
       self.recreate_npm_services_if_necessary().await;
       self.refresh_documents_config().await;
       self.diagnostics_server.invalidate_all();
-      self
-        .project_changed(
-          &changes
-            .iter()
-            .map(|(s, _)| (s, ChangeKind::Modified))
-            .collect::<Vec<_>>(),
-          false,
-        )
-        .await;
+      self.project_changed(
+        changes.iter().map(|(s, _)| (s, ChangeKind::Modified)),
+        false,
+      );
       self.ts_server.cleanup_semantic_cache(self.snapshot()).await;
       self.send_diagnostics_update();
       self.send_testing_update();
@@ -3004,16 +2993,17 @@ impl Inner {
     Ok(maybe_symbol_information)
   }
 
-  async fn project_changed(
+  fn project_changed<'a>(
     &mut self,
-    modified_scripts: &[(&ModuleSpecifier, ChangeKind)],
+    modified_scripts: impl IntoIterator<Item = (&'a ModuleSpecifier, ChangeKind)>,
     config_changed: bool,
   ) {
     self.project_version += 1; // increment before getting the snapshot
-    self
-      .ts_server
-      .project_changed(self.snapshot(), modified_scripts, config_changed)
-      .await;
+    self.ts_server.project_changed(
+      self.snapshot(),
+      modified_scripts,
+      config_changed,
+    );
   }
 
   fn send_diagnostics_update(&self) {
@@ -3221,7 +3211,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     let specifier = inner
       .url_map
       .normalize_url(&params.text_document.uri, LspUrlKind::File);
-    let document = inner.did_open(&specifier, params).await;
+    let document = inner.did_open(&specifier, params);
     if document.is_diagnosable() {
       inner.refresh_npm_specifiers().await;
       inner.diagnostics_server.invalidate(&[specifier]);
@@ -3561,7 +3551,7 @@ impl Inner {
     // the language server for TypeScript (as it might hold to some stale
     // documents).
     self.diagnostics_server.invalidate_all();
-    self.project_changed(&[], false).await;
+    self.project_changed([], false);
     self.ts_server.cleanup_semantic_cache(self.snapshot()).await;
     self.send_diagnostics_update();
     self.send_testing_update();
