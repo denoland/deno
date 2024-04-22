@@ -258,7 +258,6 @@ async fn install_local(flags: Flags) -> Result<(), AnyError> {
   let cli_options = factory.cli_options();
   let npm_resolver = factory.npm_resolver().await?;
 
-  eprintln!("{}", npm_resolver.as_managed().is_some());
   if let Some(npm_resolver) = npm_resolver.as_managed() {
     npm_resolver.ensure_top_level_package_json_install().await?;
     npm_resolver.resolve_pending().await?;
