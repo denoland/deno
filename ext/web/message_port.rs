@@ -15,6 +15,7 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use futures::future::poll_fn;
 use serde::Deserialize;
 use serde::Serialize;
 use tokio::sync::mpsc::error::TryRecvError;
@@ -52,16 +53,19 @@ impl MessagePort {
     Ok(())
   }
 
-  #[allow(clippy::await_holding_refcell_ref)] // TODO(ry) remove!
   pub async fn recv(
     &self,
     state: Rc<RefCell<OpState>>,
   ) -> Result<Option<JsMessageData>, AnyError> {
-    let mut rx = self
-      .rx
-      .try_borrow_mut()
-      .map_err(|_| type_error("Port receiver is already borrowed"))?;
-    if let Some((data, transferables)) = rx.recv().await {
+    let rx = &self.rx;
+
+    let maybe_data = poll_fn(|cx| {
+      let mut rx = rx.borrow_mut();
+      rx.poll_recv(cx)
+    })
+    .await;
+
+    if let Some((data, transferables)) = maybe_data {
       let js_transferables =
         serialize_transferables(&mut state.borrow_mut(), transferables);
       return Ok(Some(JsMessageData {
@@ -235,6 +239,7 @@ pub fn op_message_port_recv_message_sync(
   #[smi] rid: ResourceId,
 ) -> Result<Option<JsMessageData>, AnyError> {
   let resource = state.resource_table.get::<MessagePortResource>(rid)?;
+  resource.cancel.cancel();
   let mut rx = resource.port.rx.borrow_mut();
 
   match rx.try_recv() {

@@ -75,11 +75,6 @@ where
   Ok(euid)
 }
 
-#[op2(fast)]
-pub fn op_process_abort() {
-  std::process::abort();
-}
-
 #[op2]
 #[serde]
 pub fn op_cpus<P>(state: &mut OpState) -> Result<Vec<cpus::CpuInfo>, AnyError>

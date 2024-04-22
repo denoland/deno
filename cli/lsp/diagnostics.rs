@@ -514,6 +514,7 @@ impl DiagnosticsServer {
                         "Error generating TypeScript diagnostics: {}",
                         err
                       );
+                      token.cancel();
                     }
                   })
                   .unwrap_or_default();
@@ -1627,6 +1628,7 @@ mod tests {
       config.tree.inject_config_file(config_file).await;
     }
     StateSnapshot {
+      project_version: 0,
       documents,
       assets: Default::default(),
       cache_metadata: cache::CacheMetadata::new(Arc::new(
@@ -1691,7 +1693,7 @@ let c: number = "a";
     let cache =
       Arc::new(GlobalHttpCache::new(cache_location, RealDenoCacheEnv));
     let ts_server = TsServer::new(Default::default(), cache);
-    ts_server.start(None);
+    ts_server.start(None).unwrap();
 
     // test enabled
     {

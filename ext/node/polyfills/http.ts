@@ -1820,6 +1820,8 @@ export function get(...args: any[]) {
   return req;
 }
 
+export const maxHeaderSize = 16_384;
+
 export {
   Agent,
   ClientRequest,
@@ -1848,4 +1850,5 @@ export default {
   get,
   validateHeaderName,
   validateHeaderValue,
+  maxHeaderSize,
 };

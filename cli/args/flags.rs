@@ -518,6 +518,7 @@ pub struct Flags {
   pub unstable_config: UnstableConfig,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub v8_flags: Vec<String>,
+  pub code_cache_enabled: bool,
 }
 
 fn join_paths(allowlist: &[String], d: &str) -> String {
@@ -933,9 +934,8 @@ static ENV_VARIABLES_HELP: &str = color_print::cstr!(
                          private repositories
                          (e.g. "abcde12345@deno.land;54321edcba@github.com")
 
-    <g>DENO_TLS_CA_STORE</>    Comma-separated list of order dependent certificate
-                         stores. Possible values: "system", "mozilla".
-                         Defaults to "mozilla".
+    <g>DENO_FUTURE</>          Set to "1" to enable APIs that will take effect in
+                         Deno 2
 
     <g>DENO_CERT</>            Load certificate authority from PEM encoded file
 
@@ -943,6 +943,10 @@ static ENV_VARIABLES_HELP: &str = color_print::cstr!(
 
     <g>DENO_INSTALL_ROOT</>    Set deno install's output directory
                          (defaults to $HOME/.deno/bin)
+
+    <g>DENO_JOBS</>            Number of parallel workers used for the --parallel
+                         flag with the test subcommand. Defaults to number
+                         of available CPUs.
 
     <g>DENO_REPL_HISTORY</>    Set REPL history file path
                          History file is disabled when the value is empty
@@ -956,13 +960,13 @@ static ENV_VARIABLES_HELP: &str = color_print::cstr!(
     <g>DENO_NO_UPDATE_CHECK</> Set to disable checking if a newer Deno version is
                          available
 
+    <g>DENO_TLS_CA_STORE</>    Comma-separated list of order dependent certificate
+                         stores. Possible values: "system", "mozilla".
+                         Defaults to "mozilla".
+
     <g>DENO_V8_FLAGS</>        Set V8 command line options
 
     <g>DENO_WEBGPU_TRACE</>    Directory to use for wgpu traces
-
-    <g>DENO_JOBS</>            Number of parallel workers used for the --parallel
-                         flag with the test subcommand. Defaults to number
-                         of available CPUs.
 
     <g>HTTP_PROXY</>           Proxy address for HTTP requests
                          (module downloads, fetch)
@@ -970,12 +974,12 @@ static ENV_VARIABLES_HELP: &str = color_print::cstr!(
     <g>HTTPS_PROXY</>          Proxy address for HTTPS requests
                          (module downloads, fetch)
 
-    <g>NPM_CONFIG_REGISTRY</>  URL to use for the npm registry.
-
     <g>NO_COLOR</>             Set to disable color
 
     <g>NO_PROXY</>             Comma-separated list of hosts which do not use a proxy
-                         (module downloads, fetch)"#
+                         (module downloads, fetch)
+
+    <g>NPM_CONFIG_REGISTRY</>  URL to use for the npm registry."#
 );
 
 static DENO_HELP: &str = concat!(
@@ -986,7 +990,8 @@ Docs: https://deno.land/manual@v",
   env!("CARGO_PKG_VERSION"),
   color_print::cstr!(
     "
-Modules: https://deno.land/std/ https://deno.land/x/
+Standard Library: https://jsr.io/@std
+Modules: https://jsr.io/ https://deno.land/x/
 Bugs: https://github.com/denoland/deno/issues
 
 To start the REPL:
@@ -1320,11 +1325,11 @@ Use an alternative bundler like \"deno_emit\", \"esbuild\" or \"rollup\" instead
 
 Output a single JavaScript file with all dependencies.
 
-  deno bundle https://deno.land/std/http/file_server.ts file_server.bundle.js
+  deno bundle jsr:@std/http/file-server file_server.bundle.js
 
 If no output file is given, the output is written to standard output:
 
-  deno bundle https://deno.land/std/http/file_server.ts",
+  deno bundle jsr:@std/http/file-server",
     )
     .defer(|cmd| {
       compile_args(cmd)
@@ -1352,7 +1357,7 @@ fn cache_subcommand() -> Command {
 Download and compile a module with all of its static dependencies and save
 them in the local cache, without running any code:
 
-  deno cache https://deno.land/std/http/file_server.ts
+  deno cache jsr:@std/http/file-server
 
 Future runs of this module will trigger no downloads or compilation unless
 --reload is specified.",
@@ -1373,7 +1378,7 @@ fn check_subcommand() -> Command {
       .long_about(
         "Download and type-check without execution.
 
-  deno check https://deno.land/std/http/file_server.ts
+  deno check jsr:@std/http/file-server
 
 Unless --reload is specified, this command will not re-download already cached dependencies.",
       )
@@ -1408,8 +1413,8 @@ fn compile_subcommand() -> Command {
     .long_about(
       "Compiles the given script into a self contained executable.
 
-  deno compile -A https://deno.land/std/http/file_server.ts
-  deno compile --output file_server https://deno.land/std/http/file_server.ts
+  deno compile -A jsr:@std/http/file-server
+  deno compile --output file_server jsr:@std/http/file-server
 
 Any flags passed which affect runtime behavior, such as '--unstable',
 '--allow-*', '--v8-flags', etc. are encoded into the output executable and
@@ -1901,7 +1906,7 @@ fn info_subcommand() -> Command {
 
 Get information about a module:
 
-  deno info https://deno.land/std/http/file_server.ts
+  deno info jsr:@std/http/file-server
 
 The following information is shown:
 
@@ -1950,12 +1955,12 @@ fn install_subcommand() -> Command {
     .long_about(
         "Installs a script as an executable in the installation root's bin directory.
 
-  deno install --global --allow-net --allow-read https://deno.land/std/http/file_server.ts
+  deno install --global --allow-net --allow-read jsr:@std/http/file-server
   deno install -g https://examples.deno.land/color-logging.ts
 
 To change the executable name, use -n/--name:
 
-  deno install -g --allow-net --allow-read -n serve https://deno.land/std/http/file_server.ts
+  deno install -g --allow-net --allow-read -n serve jsr:@std/http/file-server
 
 The executable name is inferred by default:
   - Attempt to take the file stem of the URL path. The above example would
@@ -1967,7 +1972,7 @@ The executable name is inferred by default:
 
 To change the installation root, use --root:
 
-  deno install -g --allow-net --allow-read --root /usr/local https://deno.land/std/http/file_server.ts
+  deno install -g --allow-net --allow-read --root /usr/local jsr:@std/http/file-server
 
 The installation root is determined, in order of precedence:
   - --root option
@@ -2245,6 +2250,7 @@ fn run_subcommand() -> Command {
         .trailing_var_arg(true),
     )
     .arg(env_file_arg())
+    .arg(no_code_cache_arg())
     .about("Run a JavaScript or TypeScript program")
     .long_about(
       "Run a JavaScript or TypeScript program
@@ -2256,15 +2262,15 @@ ability to spawn subprocesses.
 
 Grant all permissions:
 
-  deno run -A https://deno.land/std/http/file_server.ts
+  deno run -A jsr:@std/http/file-server
 
 Grant permission to read from disk and listen to network:
 
-  deno run --allow-read --allow-net https://deno.land/std/http/file_server.ts
+  deno run --allow-read --allow-net jsr:@std/http/file-server
 
 Grant permission to read allow-listed files from disk:
 
-  deno run --allow-read=/etc https://deno.land/std/http/file_server.ts
+  deno run --allow-read=/etc jsr:@std/http/file-server
 
 Specifying the filename '-' to read the file from stdin.
 
@@ -2519,7 +2525,7 @@ maps remote specifiers to the downloaded files.
 
 Remote modules and multiple modules may also be specified:
 
-  deno vendor main.ts test.deps.ts https://deno.land/std/path/mod.ts",
+  deno vendor main.ts test.deps.ts jsr:@std/path",
       )
     .defer(|cmd| cmd
       .arg(
@@ -3072,9 +3078,9 @@ fn reload_arg() -> Arg {
       "Reload source code cache (recompile TypeScript)
 --reload
   Reload everything
---reload=https://deno.land/std
+--reload=jsr:@std/http/file-server
   Reload only standard modules
---reload=https://deno.land/std/fs/utils.ts,https://deno.land/std/fmt/colors.ts
+--reload=jsr:@std/http/file-server,jsr:@std/assert/assert-equals
   Reloads specific modules
 --reload=npm:
   Reload all npm modules
@@ -3229,6 +3235,13 @@ fn no_clear_screen_arg() -> Arg {
     .long("no-clear-screen")
     .action(ArgAction::SetTrue)
     .help("Do not clear terminal screen when under watch mode")
+}
+
+fn no_code_cache_arg() -> Arg {
+  Arg::new("no-code-cache")
+    .long("no-code-cache")
+    .help("Disable V8 code cache feature")
+    .action(ArgAction::SetTrue)
 }
 
 fn watch_exclude_arg() -> Arg {
@@ -3843,6 +3856,8 @@ fn run_parse(
   app: Command,
 ) -> clap::error::Result<()> {
   runtime_args_parse(flags, matches, true, true);
+
+  flags.code_cache_enabled = !matches.get_flag("no-code-cache");
 
   let mut script_arg =
     matches.remove_many::<String>("script_arg").ok_or_else(|| {
@@ -4484,6 +4499,7 @@ mod tests {
           ..Default::default()
         },
         log_level: Some(Level::Error),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -4555,6 +4571,7 @@ mod tests {
           "script.ts".to_string()
         )),
         reload: true,
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -4576,6 +4593,7 @@ mod tests {
             exclude: vec![],
           }),
         }),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -4600,6 +4618,7 @@ mod tests {
             exclude: vec![],
           }),
         }),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -4624,6 +4643,7 @@ mod tests {
             exclude: vec![],
           }),
         }),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -4648,6 +4668,7 @@ mod tests {
             exclude: vec![],
           }),
         }),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -4674,6 +4695,7 @@ mod tests {
             exclude: vec![],
           }),
         }),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -4702,6 +4724,7 @@ mod tests {
             exclude: vec![],
           }),
         }),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -4730,6 +4753,7 @@ mod tests {
             exclude: vec![String::from("foo")],
           }),
         }),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -4754,6 +4778,7 @@ mod tests {
             exclude: vec![String::from("bar")],
           }),
         }),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -4779,6 +4804,7 @@ mod tests {
             exclude: vec![String::from("foo"), String::from("bar")],
           }),
         }),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -4804,6 +4830,7 @@ mod tests {
             exclude: vec![String::from("baz"), String::from("qux"),],
           }),
         }),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -4821,6 +4848,7 @@ mod tests {
           "script.ts".to_string()
         )),
         allow_write: Some(vec![]),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -4834,6 +4862,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Run(RunFlags::new_default("_".to_string())),
         v8_flags: svec!["--help"],
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -4851,6 +4880,7 @@ mod tests {
           "script.ts".to_string()
         )),
         v8_flags: svec!["--expose-gc", "--gc-stats=1"],
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -4904,6 +4934,7 @@ mod tests {
         )),
         argv: svec!["--title", "X"],
         allow_net: Some(vec![]),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -4927,6 +4958,7 @@ mod tests {
         allow_write: Some(vec![]),
         allow_ffi: Some(vec![]),
         allow_hrtime: true,
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -4942,6 +4974,7 @@ mod tests {
           "gist.ts".to_string()
         )),
         allow_read: Some(vec![]),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -4957,6 +4990,7 @@ mod tests {
           "gist.ts".to_string()
         )),
         deny_read: Some(vec![]),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -4972,6 +5006,7 @@ mod tests {
           "gist.ts".to_string(),
         )),
         allow_hrtime: true,
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -4987,6 +5022,7 @@ mod tests {
           "gist.ts".to_string(),
         )),
         deny_hrtime: true,
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -5014,6 +5050,7 @@ mod tests {
         )),
         argv: svec!["--", "-D", "--allow-net"],
         allow_write: Some(vec![]),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -5728,6 +5765,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         config_flag: ConfigFlag::Path("tsconfig.json".to_owned()),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -6022,6 +6060,7 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags::new_default(
           "script.ts".to_string(),
         )),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -6046,6 +6085,7 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags::new_default(
           "script.ts".to_string(),
         )),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -6070,6 +6110,7 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags::new_default(
           "script.ts".to_string(),
         )),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -6094,6 +6135,7 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags::new_default(
           "script.ts".to_string(),
         )),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -6114,6 +6156,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         allow_net: Some(svec!["127.0.0.1"]),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -6130,6 +6173,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         deny_net: Some(svec!["127.0.0.1"]),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -6146,6 +6190,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         allow_env: Some(svec!["HOME"]),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -6162,6 +6207,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         deny_env: Some(svec!["HOME"]),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -6182,6 +6228,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         allow_env: Some(svec!["HOME", "PATH"]),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -6198,6 +6245,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         deny_env: Some(svec!["HOME", "PATH"]),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -6239,6 +6287,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         allow_sys: Some(vec![]),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -6254,6 +6303,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         deny_sys: Some(vec![]),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -6270,6 +6320,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         allow_sys: Some(svec!["hostname"]),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -6286,6 +6337,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         deny_sys: Some(svec!["hostname"]),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -6306,6 +6358,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         allow_sys: Some(svec!["hostname", "osRelease"]),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -6326,6 +6379,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         deny_sys: Some(svec!["hostname", "osRelease"]),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -6633,6 +6687,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         import_map_path: Some("import_map.json".to_owned()),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -6714,6 +6769,22 @@ mod tests {
           "script.ts".to_string(),
         )),
         env_file: Some(".env".to_owned()),
+        code_cache_enabled: true,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn run_no_code_cache() {
+    let r =
+      flags_from_vec(svec!["deno", "run", "--no-code-cache", "script.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags::new_default(
+          "script.ts".to_string(),
+        )),
         ..Flags::default()
       }
     );
@@ -6730,6 +6801,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         env_file: Some(".another_env".to_owned()),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -6761,6 +6833,7 @@ mod tests {
         )),
         seed: Some(250_u64),
         v8_flags: svec!["--random-seed=250"],
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -6784,6 +6857,7 @@ mod tests {
         )),
         seed: Some(250_u64),
         v8_flags: svec!["--expose-gc", "--random-seed=250"],
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -6791,18 +6865,15 @@ mod tests {
 
   #[test]
   fn install() {
-    let r = flags_from_vec(svec![
-      "deno",
-      "install",
-      "https://deno.land/std/http/file_server.ts"
-    ]);
+    let r =
+      flags_from_vec(svec!["deno", "install", "jsr:@std/http/file-server"]);
     assert_eq!(
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Install(InstallFlags {
           kind: InstallKind::Global(InstallFlagsGlobal {
             name: None,
-            module_url: "https://deno.land/std/http/file_server.ts".to_string(),
+            module_url: "jsr:@std/http/file-server".to_string(),
             args: vec![],
             root: None,
             force: false,
@@ -6817,7 +6888,7 @@ mod tests {
       "deno",
       "install",
       "-g",
-      "https://deno.land/std/http/file_server.ts"
+      "jsr:@std/http/file-server"
     ]);
     assert_eq!(
       r.unwrap(),
@@ -6825,7 +6896,7 @@ mod tests {
         subcommand: DenoSubcommand::Install(InstallFlags {
           kind: InstallKind::Global(InstallFlagsGlobal {
             name: None,
-            module_url: "https://deno.land/std/http/file_server.ts".to_string(),
+            module_url: "jsr:@std/http/file-server".to_string(),
             args: vec![],
             root: None,
             force: false,
@@ -6840,14 +6911,14 @@ mod tests {
   #[test]
   fn install_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "install", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--unsafely-ignore-certificate-errors", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--inspect=127.0.0.1:9229", "--name", "file_server", "--root", "/foo", "--force", "--env=.example.env", "https://deno.land/std/http/file_server.ts", "foo", "bar"]);
+    let r = flags_from_vec(svec!["deno", "install", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--unsafely-ignore-certificate-errors", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--inspect=127.0.0.1:9229", "--name", "file_server", "--root", "/foo", "--force", "--env=.example.env", "jsr:@std/http/file-server", "foo", "bar"]);
     assert_eq!(
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Install(InstallFlags {
           kind: InstallKind::Global(InstallFlagsGlobal {
             name: Some("file_server".to_string()),
-            module_url: "https://deno.land/std/http/file_server.ts".to_string(),
+            module_url: "jsr:@std/http/file-server".to_string(),
             args: svec!["foo", "bar"],
             root: Some("/foo".to_string()),
             force: true,
@@ -6925,6 +6996,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         log_level: Some(Level::Debug),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -6940,6 +7012,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         log_level: Some(Level::Error),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -6973,6 +7046,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         argv: svec!["--allow-read", "--allow-net"],
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -6998,6 +7072,7 @@ mod tests {
         location: Some(Url::parse("https://foo/").unwrap()),
         allow_read: Some(vec![]),
         argv: svec!["--allow-net", "-r", "--help", "--foo", "bar"],
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -7010,6 +7085,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         argv: svec!["foo", "bar"],
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -7021,6 +7097,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         argv: svec!["-"],
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -7034,6 +7111,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         argv: svec!["-", "foo", "bar"],
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -7049,6 +7127,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         type_check_mode: TypeCheckMode::None,
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -7065,6 +7144,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         type_check_mode: TypeCheckMode::Local,
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -7109,6 +7189,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         unsafely_ignore_certificate_errors: Some(vec![]),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -7136,6 +7217,7 @@ mod tests {
           "[::1]",
           "1.2.3.4"
         ]),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -7179,6 +7261,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         no_remote: true,
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -7194,6 +7277,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         no_npm: true,
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -7210,6 +7294,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         node_modules_dir: Some(true),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -7227,6 +7312,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         node_modules_dir: Some(false),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -7242,6 +7328,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         vendor: Some(true),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -7254,6 +7341,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         vendor: Some(false),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -7269,6 +7357,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         cached_only: true,
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -7297,6 +7386,7 @@ mod tests {
           "127.0.0.1:4545",
           "localhost:4545"
         ]),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -7325,6 +7415,7 @@ mod tests {
           "127.0.0.1:4545",
           "localhost:4545"
         ]),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -7356,6 +7447,7 @@ mod tests {
           "localhost:5678",
           "[::1]:8080"
         ]),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -7387,6 +7479,7 @@ mod tests {
           "localhost:5678",
           "[::1]:8080"
         ]),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -7409,6 +7502,7 @@ mod tests {
         )),
         lock_write: true,
         lock: Some(String::from("lock.json")),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -7421,6 +7515,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         no_lock: true,
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -7440,6 +7535,7 @@ mod tests {
         )),
         lock_write: true,
         lock: Some(String::from("./deno.lock")),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -7460,6 +7556,7 @@ mod tests {
         )),
         lock_write: true,
         lock: Some(String::from("lock.json")),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -7472,6 +7569,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         lock_write: true,
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -7564,6 +7662,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         ca_data: Some(CaData::File("example.crt".to_owned())),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -7584,6 +7683,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         enable_testing_features: true,
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -8262,6 +8362,7 @@ mod tests {
           "foo.js".to_string(),
         )),
         inspect: Some("127.0.0.1:9229".parse().unwrap()),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -8277,6 +8378,7 @@ mod tests {
           "foo.js".to_string(),
         )),
         inspect_wait: Some("127.0.0.1:9229".parse().unwrap()),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -8294,6 +8396,7 @@ mod tests {
           "foo.js".to_string(),
         )),
         inspect_wait: Some("127.0.0.1:3567".parse().unwrap()),
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -8820,6 +8923,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         type_check_mode: TypeCheckMode::Local,
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -8832,6 +8936,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         type_check_mode: TypeCheckMode::All,
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -8844,6 +8949,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         type_check_mode: TypeCheckMode::None,
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -8868,6 +8974,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         config_flag: ConfigFlag::Disabled,
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );

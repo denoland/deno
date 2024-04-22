@@ -28,7 +28,7 @@ pub async fn resolve_import_map(
         let specifier = specifier.clone();
         async move {
           let file = file_fetcher
-            .fetch(&specifier, PermissionsContainer::allow_all())
+            .fetch(&specifier, &PermissionsContainer::allow_all())
             .await?
             .into_text_decoded()?;
           Ok(file.source.to_string())
@@ -62,7 +62,7 @@ async fn resolve_import_map_from_specifier(
     serde_json::from_str(&data_url_text)?
   } else {
     let file = file_fetcher
-      .fetch(&specifier, PermissionsContainer::allow_all())
+      .fetch(&specifier, &PermissionsContainer::allow_all())
       .await?
       .into_text_decoded()?;
     serde_json::from_str(&file.source)?

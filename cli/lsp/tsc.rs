@@ -28,13 +28,15 @@ use crate::lsp::documents::Documents;
 use crate::lsp::logging::lsp_warn;
 use crate::tsc;
 use crate::tsc::ResolveArgs;
+use crate::tsc::MISSING_DEPENDENCY_SPECIFIER;
 use crate::util::path::relative_specifier;
-use crate::util::path::specifier_to_file_path;
 use crate::util::path::to_percent_decoded_str;
+use deno_runtime::fs_util::specifier_to_file_path;
 
 use dashmap::DashMap;
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
+use deno_core::anyhow::Context as _;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
@@ -103,8 +105,9 @@ const FILE_EXTENSION_KIND_MODIFIERS: &[&str] =
 type Request = (
   TscRequest,
   Arc<StateSnapshot>,
-  oneshot::Sender<Result<Value, AnyError>>,
+  oneshot::Sender<Result<String, AnyError>>,
   CancellationToken,
+  Option<Value>,
 );
 
 #[derive(Debug, Clone, Copy, Serialize_repr)]
@@ -222,6 +225,7 @@ pub struct TsServer {
   receiver: Mutex<Option<mpsc::UnboundedReceiver<Request>>>,
   specifier_map: Arc<TscSpecifierMap>,
   inspector_server: Mutex<Option<Arc<InspectorServer>>>,
+  pending_change: Mutex<Option<PendingChange>>,
 }
 
 impl std::fmt::Debug for TsServer {
@@ -237,6 +241,64 @@ impl std::fmt::Debug for TsServer {
   }
 }
 
+#[derive(Debug, Clone, Copy)]
+#[repr(u8)]
+pub enum ChangeKind {
+  Opened = 0,
+  Modified = 1,
+  Closed = 2,
+}
+
+impl Serialize for ChangeKind {
+  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+  where
+    S: serde::Serializer,
+  {
+    serializer.serialize_i32(*self as i32)
+  }
+}
+
+pub struct PendingChange {
+  pub modified_scripts: Vec<(String, ChangeKind)>,
+  pub project_version: usize,
+  pub config_changed: bool,
+}
+
+impl PendingChange {
+  fn to_json(&self) -> Value {
+    json!([
+      self.modified_scripts,
+      self.project_version,
+      self.config_changed,
+    ])
+  }
+
+  fn coalesce(
+    &mut self,
+    new_version: usize,
+    modified_scripts: Vec<(String, ChangeKind)>,
+    config_changed: bool,
+  ) {
+    self.project_version = self.project_version.max(new_version);
+    self.config_changed |= config_changed;
+    for (spec, new) in modified_scripts {
+      if let Some((_, current)) =
+        self.modified_scripts.iter_mut().find(|(s, _)| s == &spec)
+      {
+        match (*current, new) {
+          (_, ChangeKind::Closed) => {
+            *current = ChangeKind::Closed;
+          }
+          (ChangeKind::Opened, ChangeKind::Modified) => {
+            *current = ChangeKind::Modified;
+          }
+          _ => {}
+        }
+      }
+    }
+  }
+}
+
 impl TsServer {
   pub fn new(performance: Arc<Performance>, cache: Arc<dyn HttpCache>) -> Self {
     let (tx, request_rx) = mpsc::unbounded_channel::<Request>();
@@ -247,20 +309,24 @@ impl TsServer {
       receiver: Mutex::new(Some(request_rx)),
       specifier_map: Arc::new(TscSpecifierMap::new()),
       inspector_server: Mutex::new(None),
+      pending_change: Mutex::new(None),
     }
   }
 
-  pub fn start(&self, inspector_server_addr: Option<String>) {
-    let maybe_inspector_server = inspector_server_addr.and_then(|addr| {
-      let addr: SocketAddr = match addr.parse() {
-        Ok(addr) => addr,
-        Err(err) => {
-          lsp_warn!("Invalid inspector server address \"{}\": {}", &addr, err);
-          return None;
-        }
-      };
-      Some(Arc::new(InspectorServer::new(addr, "deno-lsp-tsc")))
-    });
+  pub fn start(
+    &self,
+    inspector_server_addr: Option<String>,
+  ) -> Result<(), AnyError> {
+    let maybe_inspector_server = match inspector_server_addr {
+      Some(addr) => {
+        let addr: SocketAddr = addr.parse().with_context(|| {
+          format!("Invalid inspector server address \"{}\"", &addr)
+        })?;
+        let server = InspectorServer::new(addr, "deno-lsp-tsc")?;
+        Some(Arc::new(server))
+      }
+      None => None,
+    };
     *self.inspector_server.lock() = maybe_inspector_server.clone();
     // TODO(bartlomieju): why is the join_handle ignored here? Should we store it
     // on the `TsServer` struct.
@@ -277,6 +343,36 @@ impl TsServer {
         maybe_inspector_server,
       )
     });
+    Ok(())
+  }
+
+  pub fn project_changed<'a>(
+    &self,
+    snapshot: Arc<StateSnapshot>,
+    modified_scripts: impl IntoIterator<Item = (&'a ModuleSpecifier, ChangeKind)>,
+    config_changed: bool,
+  ) {
+    let modified_scripts = modified_scripts
+      .into_iter()
+      .map(|(spec, change)| (self.specifier_map.denormalize(spec), change))
+      .collect::<Vec<_>>();
+    match &mut *self.pending_change.lock() {
+      Some(pending_change) => {
+        pending_change.coalesce(
+          snapshot.project_version,
+          modified_scripts,
+          config_changed,
+        );
+      }
+      pending => {
+        let pending_change = PendingChange {
+          modified_scripts,
+          project_version: snapshot.project_version,
+          config_changed,
+        };
+        *pending = Some(pending_change);
+      }
+    }
   }
 
   pub async fn get_diagnostics(
@@ -287,10 +383,13 @@ impl TsServer {
   ) -> Result<HashMap<String, Vec<crate::tsc::Diagnostic>>, AnyError> {
     let req = TscRequest {
       method: "$getDiagnostics",
-      args: json!([specifiers
-        .into_iter()
-        .map(|s| self.specifier_map.denormalize(&s))
-        .collect::<Vec<String>>(),]),
+      args: json!([
+        specifiers
+          .into_iter()
+          .map(|s| self.specifier_map.denormalize(&s))
+          .collect::<Vec<String>>(),
+        snapshot.project_version,
+      ]),
     };
     let raw_diagnostics = self.request_with_cancellation::<HashMap<String, Vec<crate::tsc::Diagnostic>>>(snapshot, req, token).await?;
     let mut diagnostics_map = HashMap::with_capacity(raw_diagnostics.len());
@@ -302,6 +401,21 @@ impl TsServer {
       diagnostics_map.insert(specifier, diagnostics);
     }
     Ok(diagnostics_map)
+  }
+
+  pub async fn cleanup_semantic_cache(&self, snapshot: Arc<StateSnapshot>) {
+    let req = TscRequest {
+      method: "cleanupSemanticCache",
+      args: json!([]),
+    };
+    self
+      .request::<()>(snapshot, req)
+      .await
+      .map_err(|err| {
+        log::error!("Failed to request to tsserver {}", err);
+        LspError::invalid_request()
+      })
+      .ok();
   }
 
   pub async fn find_references(
@@ -423,8 +537,14 @@ impl TsServer {
     specifier: ModuleSpecifier,
     range: Range<u32>,
     preferences: Option<UserPreferences>,
+    trigger_kind: Option<lsp::CodeActionTriggerKind>,
     only: String,
   ) -> Result<Vec<ApplicableRefactorInfo>, LspError> {
+    let trigger_kind: Option<&str> = trigger_kind.map(|reason| match reason {
+      lsp::CodeActionTriggerKind::INVOKED => "invoked",
+      lsp::CodeActionTriggerKind::AUTOMATIC => "implicit",
+      _ => unreachable!(),
+    });
     let req = TscRequest {
       method: "getApplicableRefactors",
       // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6274
@@ -432,7 +552,7 @@ impl TsServer {
         self.specifier_map.denormalize(&specifier),
         { "pos": range.start, "end": range.end },
         preferences.unwrap_or_default(),
-        json!(null),
+        trigger_kind,
         only,
       ]),
     };
@@ -958,14 +1078,6 @@ impl TsServer {
     })
   }
 
-  pub async fn restart(&self, snapshot: Arc<StateSnapshot>) {
-    let req = TscRequest {
-      method: "$restart",
-      args: json!([]),
-    };
-    self.request::<bool>(snapshot, req).await.unwrap();
-  }
-
   async fn request<R>(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -1003,13 +1115,18 @@ impl TsServer {
     }
     let token = token.child_token();
     let droppable_token = DroppableToken(token.clone());
-    let (tx, rx) = oneshot::channel::<Result<Value, AnyError>>();
-    if self.sender.send((req, snapshot, tx, token)).is_err() {
+    let (tx, rx) = oneshot::channel::<Result<String, AnyError>>();
+    let change = self.pending_change.lock().take();
+    if self
+      .sender
+      .send((req, snapshot, tx, token, change.map(|c| c.to_json())))
+      .is_err()
+    {
       return Err(anyhow!("failed to send request to tsc thread"));
     }
     let value = rx.await??;
     drop(droppable_token);
-    Ok(serde_json::from_value::<R>(value)?)
+    Ok(serde_json::from_str(&value)?)
   }
 }
 
@@ -3797,12 +3914,6 @@ impl SelectionRange {
   }
 }
 
-#[derive(Debug, Clone, Deserialize)]
-struct Response {
-  // id: usize,
-  data: Value,
-}
-
 #[derive(Debug, Default)]
 pub struct TscSpecifierMap {
   normalized_specifiers: DashMap<String, ModuleSpecifier>,
@@ -3866,7 +3977,8 @@ impl TscSpecifierMap {
 struct State {
   last_id: usize,
   performance: Arc<Performance>,
-  response: Option<Response>,
+  // the response from JS, as a JSON string
+  response: Option<String>,
   state_snapshot: Arc<StateSnapshot>,
   specifier_map: Arc<TscSpecifierMap>,
   token: CancellationToken,
@@ -3949,6 +4061,7 @@ struct LoadResponse {
   data: Arc<str>,
   script_kind: i32,
   version: Option<String>,
+  is_cjs: bool,
 }
 
 #[op2]
@@ -3963,7 +4076,7 @@ fn op_load<'s>(
     .mark_with_args("tsc.op.op_load", specifier);
   let specifier = state.specifier_map.normalize(specifier)?;
   let maybe_load_response =
-    if specifier.as_str() == "internal:///missing_dependency.d.ts" {
+    if specifier.as_str() == MISSING_DEPENDENCY_SPECIFIER {
       None
     } else {
       let asset_or_document = state.get_asset_or_document(&specifier);
@@ -3971,6 +4084,10 @@ fn op_load<'s>(
         data: doc.text(),
         script_kind: crate::tsc::as_ts_script_kind(doc.media_type()),
         version: state.script_version(&specifier),
+        is_cjs: matches!(
+          doc.media_type(),
+          MediaType::Cjs | MediaType::Cts | MediaType::Dcts
+        ),
       })
     };
 
@@ -3980,52 +4097,66 @@ fn op_load<'s>(
   Ok(serialized)
 }
 
-#[op2]
-fn op_resolve<'s>(
-  scope: &'s mut v8::HandleScope,
+#[op2(fast)]
+fn op_release(
   state: &mut OpState,
-  #[serde] args: ResolveArgs,
-) -> Result<v8::Local<'s, v8::Value>, AnyError> {
+  #[string] specifier: &str,
+) -> Result<(), AnyError> {
   let state = state.borrow_mut::<State>();
-  let mark = state.performance.mark_with_args("tsc.op.op_resolve", &args);
-  let referrer = state.specifier_map.normalize(&args.base)?;
-  let specifiers = match state.get_asset_or_document(&referrer) {
-    Some(referrer_doc) => {
-      let resolved = state.state_snapshot.documents.resolve(
-        args.specifiers,
-        &referrer_doc,
-        state.state_snapshot.npm.as_ref(),
-      );
-      resolved
-        .into_iter()
-        .map(|o| {
-          o.map(|(s, mt)| {
-            (
-              state.specifier_map.denormalize(&s),
-              mt.as_ts_extension().to_string(),
-            )
-          })
-        })
-        .collect()
-    }
-    None => {
-      lsp_warn!(
-        "Error resolving. Referring specifier \"{}\" was not found.",
-        args.base
-      );
-      vec![None; args.specifiers.len()]
-    }
-  };
-
-  let response = serde_v8::to_v8(scope, specifiers)?;
+  let mark = state
+    .performance
+    .mark_with_args("tsc.op.op_release", specifier);
+  let specifier = state.specifier_map.normalize(specifier)?;
+  state.state_snapshot.documents.release(&specifier);
   state.performance.measure(mark);
-  Ok(response)
+  Ok(())
 }
 
 #[op2]
-fn op_respond(state: &mut OpState, #[serde] args: Response) {
+#[serde]
+fn op_resolve(
+  state: &mut OpState,
+  #[string] base: String,
+  #[serde] specifiers: Vec<String>,
+) -> Result<Vec<Option<(String, String)>>, AnyError> {
+  op_resolve_inner(state, ResolveArgs { base, specifiers })
+}
+
+#[inline]
+fn op_resolve_inner(
+  state: &mut OpState,
+  args: ResolveArgs,
+) -> Result<Vec<Option<(String, String)>>, AnyError> {
   let state = state.borrow_mut::<State>();
-  state.response = Some(args);
+  let mark = state.performance.mark_with_args("tsc.op.op_resolve", &args);
+  let referrer = state.specifier_map.normalize(&args.base)?;
+  let specifiers = state
+    .state_snapshot
+    .documents
+    .resolve(
+      &args.specifiers,
+      &referrer,
+      state.state_snapshot.npm.as_ref(),
+    )
+    .into_iter()
+    .map(|o| {
+      o.map(|(s, mt)| {
+        (
+          state.specifier_map.denormalize(&s),
+          mt.as_ts_extension().to_string(),
+        )
+      })
+    })
+    .collect();
+
+  state.performance.measure(mark);
+  Ok(specifiers)
+}
+
+#[op2(fast)]
+fn op_respond(state: &mut OpState, #[string] response: String) {
+  let state = state.borrow_mut::<State>();
+  state.response = Some(response);
 }
 
 #[op2]
@@ -4109,12 +4240,12 @@ fn op_ts_config(state: &mut OpState) -> serde_json::Value {
   r
 }
 
-#[op2]
-#[string]
-fn op_project_version(state: &mut OpState) -> String {
+#[op2(fast)]
+#[number]
+fn op_project_version(state: &mut OpState) -> usize {
   let state: &mut State = state.borrow_mut::<State>();
   let mark = state.performance.mark("tsc.op.op_project_version");
-  let r = state.state_snapshot.documents.project_version();
+  let r = state.state_snapshot.project_version;
   state.performance.measure(mark);
   r
 }
@@ -4166,8 +4297,8 @@ fn run_tsc_thread(
       tokio::select! {
         biased;
         (maybe_request, mut tsc_runtime) = async { (request_rx.recv().await, tsc_runtime.lock().await) } => {
-          if let Some((req, state_snapshot, tx, token)) = maybe_request {
-            let value = request(&mut tsc_runtime, state_snapshot, req, token.clone());
+          if let Some((req, state_snapshot, tx, token, pending_change)) = maybe_request {
+            let value = request(&mut tsc_runtime, state_snapshot, req, pending_change, token.clone());
             request_signal_tx.send(()).unwrap();
             let was_sent = tx.send(value).is_ok();
             // Don't print the send error if the token is cancelled, it's expected
@@ -4194,6 +4325,7 @@ deno_core::extension!(deno_tsc,
     op_is_cancelled,
     op_is_node_file,
     op_load,
+    op_release,
     op_resolve,
     op_respond,
     op_script_names,
@@ -4209,6 +4341,7 @@ deno_core::extension!(deno_tsc,
   state = |state, options| {
     state.put(State::new(
       Arc::new(StateSnapshot {
+        project_version: 0,
         assets: Default::default(),
         cache_metadata: CacheMetadata::new(options.cache.clone()),
         config: Default::default(),
@@ -4583,8 +4716,9 @@ fn request(
   runtime: &mut JsRuntime,
   state_snapshot: Arc<StateSnapshot>,
   request: TscRequest,
+  change: Option<Value>,
   token: CancellationToken,
-) -> Result<Value, AnyError> {
+) -> Result<String, AnyError> {
   if token.is_cancelled() {
     return Err(anyhow!("Operation was cancelled."));
   }
@@ -4607,8 +4741,10 @@ fn request(
     "Internal error: expected args to be array"
   );
   let request_src = format!(
-    "globalThis.serverRequest({id}, \"{}\", {});",
-    request.method, &request.args
+    "globalThis.serverRequest({id}, \"{}\", {}, {});",
+    request.method,
+    &request.args,
+    change.unwrap_or_default()
   );
   runtime.execute_script(located_script_name!(), request_src)?;
 
@@ -4617,14 +4753,12 @@ fn request(
   let state = op_state.borrow_mut::<State>();
 
   performance.measure(mark);
-  if let Some(response) = state.response.take() {
-    Ok(response.data)
-  } else {
-    Err(custom_error(
+  state.response.take().ok_or_else(|| {
+    custom_error(
       "RequestError",
       "The response was not received for the request.",
-    ))
-  }
+    )
+  })
 }
 
 #[cfg(test)]
@@ -4681,6 +4815,7 @@ mod tests {
       )
       .await;
     StateSnapshot {
+      project_version: 0,
       documents,
       assets: Default::default(),
       cache_metadata: CacheMetadata::new(cache),
@@ -4701,8 +4836,16 @@ mod tests {
       Arc::new(mock_state_snapshot(sources, &location, config).await);
     let performance = Arc::new(Performance::default());
     let ts_server = TsServer::new(performance, cache.clone());
-    ts_server.start(None);
+    ts_server.start(None).unwrap();
     (ts_server, snapshot, cache)
+  }
+
+  fn setup_op_state(state_snapshot: Arc<StateSnapshot>) -> OpState {
+    let state =
+      State::new(state_snapshot, Default::default(), Default::default());
+    let mut op_state = OpState::new(None);
+    op_state.put(state);
+    op_state
   }
 
   #[test]
@@ -5128,13 +5271,16 @@ mod tests {
       )
       .unwrap();
     let snapshot = {
-      let mut documents = snapshot.documents.clone();
-      documents.increment_project_version();
       Arc::new(StateSnapshot {
-        documents,
+        project_version: snapshot.project_version + 1,
         ..snapshot.as_ref().clone()
       })
     };
+    ts_server.project_changed(
+      snapshot.clone(),
+      [(&specifier_dep, ChangeKind::Opened)],
+      false,
+    );
     let specifier = resolve_url("file:///a.ts").unwrap();
     let diagnostics = ts_server
       .get_diagnostics(snapshot.clone(), vec![specifier], Default::default())
@@ -5497,6 +5643,38 @@ mod tests {
       user_preferences
         .include_inlay_parameter_name_hints_when_argument_matches_name,
       Some(false)
+    );
+  }
+
+  #[tokio::test]
+  async fn resolve_unknown_dependency() {
+    let temp_dir = TempDir::new();
+    let (_, snapshot, _) = setup(
+      &temp_dir,
+      json!({
+        "target": "esnext",
+        "module": "esnext",
+        "lib": ["deno.ns", "deno.window"],
+        "noEmit": true,
+      }),
+      &[("file:///a.ts", "", 1, LanguageId::TypeScript)],
+    )
+    .await;
+    let mut state = setup_op_state(snapshot);
+    let resolved = op_resolve_inner(
+      &mut state,
+      ResolveArgs {
+        base: "file:///a.ts".to_string(),
+        specifiers: vec!["./b.ts".to_string()],
+      },
+    )
+    .unwrap();
+    assert_eq!(
+      resolved,
+      vec![Some((
+        "file:///b.ts".to_string(),
+        MediaType::TypeScript.as_ts_extension().to_string()
+      ))]
     );
   }
 }

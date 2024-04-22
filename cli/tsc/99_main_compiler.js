@@ -135,10 +135,14 @@ delete Object.prototype.__proto__;
     #cache = new Set();
 
     /** @param {[string, ts.Extension]} param */
-    add([specifier, ext]) {
+    maybeAdd([specifier, ext]) {
       if (ext === ".cjs" || ext === ".d.cts" || ext === ".cts") {
         this.#cache.add(specifier);
       }
+    }
+
+    add(specifier) {
+      this.#cache.add(specifier);
     }
 
     /** @param specifier {string} */
@@ -151,6 +155,12 @@ delete Object.prototype.__proto__;
   /** @type {Map<string, ts.SourceFile>} */
   const sourceFileCache = new Map();
 
+  /** @type {Map<string, string>} */
+  const sourceTextCache = new Map();
+
+  /** @type {Map<string, number>} */
+  const sourceRefCounts = new Map();
+
   /** @type {string[]=} */
   let scriptFileNamesCache;
 
@@ -161,6 +171,20 @@ delete Object.prototype.__proto__;
   const isNodeSourceFileCache = new Map();
 
   const isCjsCache = new SpecifierIsCjsCache();
+
+  /** @type {ts.CompilerOptions | null} */
+  let tsConfigCache = null;
+
+  /** @type {number | null} */
+  let projectVersionCache = null;
+
+  let lastRequestMethod = null;
+
+  const ChangeKind = {
+    Opened: 0,
+    Modified: 1,
+    Closed: 2,
+  };
 
   /**
    * @param {ts.CompilerOptions | ts.MinimalResolutionCacheHost} settingsOrHost
@@ -234,6 +258,8 @@ delete Object.prototype.__proto__;
         );
         documentRegistrySourceFileCache.set(mapKey, sourceFile);
       }
+      const sourceRefCount = sourceRefCounts.get(fileName) ?? 0;
+      sourceRefCounts.set(fileName, sourceRefCount + 1);
       return sourceFile;
     },
 
@@ -292,6 +318,7 @@ delete Object.prototype.__proto__;
             /** @type {ts.IScriptSnapshot} */ (sourceFile.scriptSnapShot),
           ),
         );
+        documentRegistrySourceFileCache.set(mapKey, sourceFile);
       }
       return sourceFile;
     },
@@ -316,8 +343,20 @@ delete Object.prototype.__proto__;
     },
 
     releaseDocumentWithKey(path, key, _scriptKind, _impliedNodeFormat) {
-      const mapKey = path + key;
-      documentRegistrySourceFileCache.delete(mapKey);
+      const sourceRefCount = sourceRefCounts.get(path) ?? 1;
+      if (sourceRefCount <= 1) {
+        sourceRefCounts.delete(path);
+        // We call `cleanupSemanticCache` for other purposes, don't bust the
+        // source cache in this case.
+        if (lastRequestMethod != "cleanupSemanticCache") {
+          const mapKey = path + key;
+          documentRegistrySourceFileCache.delete(mapKey);
+          sourceTextCache.delete(path);
+          ops.op_release(path);
+        }
+      } else {
+        sourceRefCounts.set(path, sourceRefCount - 1);
+      }
     },
 
     reportStats() {
@@ -503,7 +542,7 @@ delete Object.prototype.__proto__;
     }
   }
 
-  /** @type {ts.LanguageService} */
+  /** @type {ts.LanguageService & { [k:string]: any }} */
   let languageService;
 
   /** An object literal of the incremental compiler host, which provides the
@@ -531,7 +570,16 @@ delete Object.prototype.__proto__;
       return new CancellationToken();
     },
     getProjectVersion() {
-      return ops.op_project_version();
+      if (
+        projectVersionCache
+      ) {
+        debug(`getProjectVersion cache hit : ${projectVersionCache}`);
+        return projectVersionCache;
+      }
+      const projectVersion = ops.op_project_version();
+      projectVersionCache = projectVersion;
+      debug(`getProjectVersion cache miss : ${projectVersionCache}`);
+      return projectVersion;
     },
     // @ts-ignore Undocumented method.
     getModuleSpecifierCache() {
@@ -581,22 +629,30 @@ delete Object.prototype.__proto__;
         return sourceFile;
       }
 
-      /** @type {{ data: string; scriptKind: ts.ScriptKind; version: string; }} */
+      /** @type {{ data: string; scriptKind: ts.ScriptKind; version: string; isCjs: boolean }} */
       const fileInfo = ops.op_load(specifier);
       if (!fileInfo) {
         return undefined;
       }
-      const { data, scriptKind, version } = fileInfo;
+      let { data, scriptKind, version, isCjs } = fileInfo;
       assert(
         data != null,
         `"data" is unexpectedly null for "${specifier}".`,
       );
+
+      // use the cache for non-lsp
+      if (isCjs == null) {
+        isCjs = isCjsCache.has(specifier);
+      } else if (isCjs) {
+        isCjsCache.add(specifier);
+      }
+
       sourceFile = ts.createSourceFile(
         specifier,
         data,
         {
           ...getCreateSourceFileOptions(languageVersion),
-          impliedNodeFormat: isCjsCache.has(specifier)
+          impliedNodeFormat: isCjs
             ? ts.ModuleKind.CommonJS
             : ts.ModuleKind.ESNext,
           // no need to parse docs for `deno check`
@@ -625,7 +681,8 @@ delete Object.prototype.__proto__;
         debug(`host.writeFile("${fileName}")`);
       }
       return ops.op_emit(
-        { fileName, data },
+        data,
+        fileName,
       );
     },
     getCurrentDirectory() {
@@ -661,12 +718,12 @@ delete Object.prototype.__proto__;
           : arg;
         if (fileReference.fileName.startsWith("npm:")) {
           /** @type {[string, ts.Extension] | undefined} */
-          const resolved = ops.op_resolve({
-            specifiers: [fileReference.fileName],
-            base: containingFilePath,
-          })?.[0];
+          const resolved = ops.op_resolve(
+            containingFilePath,
+            [fileReference.fileName],
+          )?.[0];
           if (resolved) {
-            isCjsCache.add(resolved);
+            isCjsCache.maybeAdd(resolved);
             return {
               primary: true,
               resolvedFileName: resolved[0],
@@ -694,19 +751,15 @@ delete Object.prototype.__proto__;
         debug(`  specifiers: ${specifiers.join(", ")}`);
       }
       /** @type {Array<[string, ts.Extension] | undefined>} */
-      const resolved = ops.op_resolve({
-        specifiers,
+      const resolved = ops.op_resolve(
         base,
-      });
+        specifiers,
+      );
       if (resolved) {
         const result = resolved.map((item) => {
           if (item) {
-            isCjsCache.add(item);
+            isCjsCache.maybeAdd(item);
             const [resolvedFileName, extension] = item;
-            if (resolvedFileName.startsWith("node:")) {
-              // probably means the user doesn't have @types/node, so resolve to undefined
-              return undefined;
-            }
             return {
               resolvedFileName,
               extension,
@@ -730,6 +783,9 @@ delete Object.prototype.__proto__;
       if (logDebug) {
         debug("host.getCompilationSettings()");
       }
+      if (tsConfigCache) {
+        return tsConfigCache;
+      }
       const tsConfig = normalizeConfig(ops.op_ts_config());
       const { options, errors } = ts
         .convertCompilerOptionsFromJson(tsConfig, "");
@@ -740,6 +796,7 @@ delete Object.prototype.__proto__;
       if (errors.length > 0 && logDebug) {
         debug(ts.formatDiagnostics(errors, host));
       }
+      tsConfigCache = options;
       return options;
     },
     getScriptFileNames() {
@@ -773,26 +830,26 @@ delete Object.prototype.__proto__;
       if (logDebug) {
         debug(`host.getScriptSnapshot("${specifier}")`);
       }
-      let sourceFile = sourceFileCache.get(specifier);
-      if (
-        !specifier.startsWith(ASSETS_URL_PREFIX) &&
-        sourceFile?.version != this.getScriptVersion(specifier)
-      ) {
-        sourceFileCache.delete(specifier);
-        sourceFile = undefined;
-      }
-      if (!sourceFile) {
-        sourceFile = this.getSourceFile(
-          specifier,
-          specifier.endsWith(".json")
-            ? ts.ScriptTarget.JSON
-            : ts.ScriptTarget.ESNext,
-        );
-      }
+      const sourceFile = sourceFileCache.get(specifier);
       if (sourceFile) {
+        // This case only occurs for assets.
         return ts.ScriptSnapshot.fromString(sourceFile.text);
       }
-      return undefined;
+      let sourceText = sourceTextCache.get(specifier);
+      if (sourceText == undefined) {
+        /** @type {{ data: string, version: string, isCjs: boolean }} */
+        const fileInfo = ops.op_load(specifier);
+        if (!fileInfo) {
+          return undefined;
+        }
+        if (fileInfo.isCjs) {
+          isCjsCache.add(specifier);
+        }
+        sourceTextCache.set(specifier, fileInfo.data);
+        scriptVersionCache.set(specifier, fileInfo.version);
+        sourceText = fileInfo.data;
+      }
+      return ts.ScriptSnapshot.fromString(sourceText);
     },
   };
 
@@ -901,6 +958,9 @@ delete Object.prototype.__proto__;
     if (config.jsx === "precompile") {
       config.jsx = "react-jsx";
     }
+    if (config.jsxPrecompileSkipElements) {
+      delete config.jsxPrecompileSkipElements;
+    }
     return config;
   }
 
@@ -1006,30 +1066,53 @@ delete Object.prototype.__proto__;
   }
 
   /**
-   * @param {number} id
+   * @param {number} _id
    * @param {any} data
    */
   // TODO(bartlomieju): this feels needlessly generic, both type chcking
   // and language server use it with inefficient serialization. Id is not used
   // anyway...
-  function respond(id, data = null) {
-    ops.op_respond({ id, data });
+  function respond(_id, data = null) {
+    ops.op_respond(JSON.stringify(data));
   }
 
-  function serverRequest(id, method, args) {
+  /**
+   * @param {number} id
+   * @param {string} method
+   * @param {any[]} args
+   * @param {[[string, number][], number, boolean] | null} maybeChange
+   */
+  function serverRequest(id, method, args, maybeChange) {
     if (logDebug) {
-      debug(`serverRequest()`, id, method, args);
+      debug(`serverRequest()`, id, method, args, maybeChange);
     }
+    lastRequestMethod = method;
+    if (maybeChange !== null) {
+      const changedScripts = maybeChange[0];
+      const newProjectVersion = maybeChange[1];
+      const configChanged = maybeChange[2];
 
-    // reset all memoized source files names
-    scriptFileNamesCache = undefined;
-    // evict all memoized source file versions
-    scriptVersionCache.clear();
-    switch (method) {
-      case "$restart": {
-        serverRestart();
-        return respond(id, true);
+      if (configChanged) {
+        tsConfigCache = null;
+        isNodeSourceFileCache.clear();
       }
+
+      projectVersionCache = newProjectVersion;
+
+      let opened = false;
+      for (const { 0: script, 1: changeKind } of changedScripts) {
+        if (changeKind == ChangeKind.Opened) {
+          opened = true;
+        }
+        scriptVersionCache.delete(script);
+        sourceTextCache.delete(script);
+      }
+
+      if (configChanged || opened) {
+        scriptFileNamesCache = undefined;
+      }
+    }
+    switch (method) {
       case "$getSupportedCodeFixes": {
         return respond(
           id,
@@ -1040,6 +1123,14 @@ delete Object.prototype.__proto__;
         return respond(id, getAssets());
       }
       case "$getDiagnostics": {
+        const projectVersion = args[1];
+        // there's a possibility that we receive a change notification
+        // but the diagnostic server queues a `$getDiagnostics` request
+        // with a stale project version. in that case, treat it as cancelled
+        // (it's about to be invalidated anyway).
+        if (projectVersionCache && projectVersion !== projectVersionCache) {
+          return respond(id, {});
+        }
         try {
           /** @type {Record<string, any[]>} */
           const diagnosticMap = {};
@@ -1091,12 +1182,6 @@ delete Object.prototype.__proto__;
     languageService = ts.createLanguageService(host, documentRegistry);
     setLogDebug(debugFlag, "TSLS");
     debug("serverInit()");
-  }
-
-  function serverRestart() {
-    languageService = ts.createLanguageService(host, documentRegistry);
-    isNodeSourceFileCache.clear();
-    debug("serverRestart()");
   }
 
   // A build time only op that provides some setup information that is used to

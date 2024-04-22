@@ -51,7 +51,7 @@ impl PackageSearchApi for CliJsrSearchApi {
     search_url.query_pairs_mut().append_pair("query", query);
     let file = self
       .file_fetcher
-      .fetch(&search_url, PermissionsContainer::allow_all())
+      .fetch(&search_url, &PermissionsContainer::allow_all())
       .await?
       .into_text_decoded()?;
     let names = Arc::new(parse_jsr_search_response(&file.source)?);

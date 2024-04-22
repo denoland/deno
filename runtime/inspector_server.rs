@@ -2,6 +2,8 @@
 
 // Alias for the future `!` type.
 use core::convert::Infallible as Never;
+use deno_core::anyhow::Context;
+use deno_core::error::AnyError;
 use deno_core::futures::channel::mpsc;
 use deno_core::futures::channel::mpsc::UnboundedReceiver;
 use deno_core::futures::channel::mpsc::UnboundedSender;
@@ -45,27 +47,38 @@ pub struct InspectorServer {
 }
 
 impl InspectorServer {
-  pub fn new(host: SocketAddr, name: &'static str) -> Self {
+  pub fn new(host: SocketAddr, name: &'static str) -> Result<Self, AnyError> {
     let (register_inspector_tx, register_inspector_rx) =
       mpsc::unbounded::<InspectorInfo>();
 
     let (shutdown_server_tx, shutdown_server_rx) = broadcast::channel(1);
+
+    let tcp_listener =
+      std::net::TcpListener::bind(host).with_context(|| {
+        format!("Failed to start inspector server at \"{}\"", host)
+      })?;
+    tcp_listener.set_nonblocking(true)?;
 
     let thread_handle = thread::spawn(move || {
       let rt = crate::tokio_util::create_basic_runtime();
       let local = tokio::task::LocalSet::new();
       local.block_on(
         &rt,
-        server(host, register_inspector_rx, shutdown_server_rx, name),
+        server(
+          tcp_listener,
+          register_inspector_rx,
+          shutdown_server_rx,
+          name,
+        ),
       )
     });
 
-    Self {
+    Ok(Self {
       host,
       register_inspector_tx,
       shutdown_server_tx: Some(shutdown_server_tx),
       thread_handle: Some(thread_handle),
-    }
+    })
   }
 
   pub fn register_inspector(
@@ -220,7 +233,7 @@ fn handle_json_version_request(
 }
 
 async fn server(
-  host: SocketAddr,
+  listener: std::net::TcpListener,
   register_inspector_rx: UnboundedReceiver<InspectorInfo>,
   shutdown_server_rx: broadcast::Receiver<()>,
   name: &str,
@@ -261,7 +274,7 @@ async fn server(
   });
 
   // Create the server manually so it can use the Local Executor
-  let listener = match TcpListener::bind(&host).await {
+  let listener = match TcpListener::from_std(listener) {
     Ok(l) => l,
     Err(err) => {
       eprintln!("Cannot start inspector server: {:?}", err);

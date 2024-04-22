@@ -18,9 +18,9 @@ use crate::tools::check;
 use crate::tools::check::TypeChecker;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::fs::canonicalize_path;
-use crate::util::path::specifier_to_file_path;
 use crate::util::sync::TaskQueue;
 use crate::util::sync::TaskQueuePermit;
+use deno_runtime::fs_util::specifier_to_file_path;
 
 use deno_config::WorkspaceMemberConfig;
 use deno_core::anyhow::bail;
@@ -76,6 +76,7 @@ pub fn graph_valid(
         check_js: options.check_js,
         follow_type_only: options.follow_type_only,
         follow_dynamic: options.is_vendoring,
+        prefer_fast_check_graph: false,
       },
     )
     .errors()
@@ -109,13 +110,23 @@ pub fn graph_valid(
         }
       }
 
+      if graph.graph_kind() == GraphKind::TypesOnly
+        && matches!(
+          error,
+          ModuleGraphError::ModuleError(ModuleError::UnsupportedMediaType(..))
+        )
+      {
+        log::debug!("Ignoring: {}", message);
+        return None;
+      }
+
       if options.is_vendoring {
         // warn about failing dynamic imports when vendoring, but don't fail completely
         if matches!(
           error,
           ModuleGraphError::ModuleError(ModuleError::MissingDynamic(_, _))
         ) {
-          log::warn!("Ignoring: {:#}", message);
+          log::warn!("Ignoring: {}", message);
           return None;
         }
 
@@ -440,17 +451,17 @@ impl ModuleGraphBuilder {
         options.roots,
         loader.as_mut_loader(),
         deno_graph::BuildOptions {
-          is_dynamic: options.is_dynamic,
-          jsr_url_provider: Some(&CliJsrUrlProvider),
-          executor: Default::default(),
           imports: maybe_imports,
-          resolver: Some(graph_resolver),
-          file_system: Some(&DenoGraphFsAdapter(self.fs.as_ref())),
-          npm_resolver: Some(graph_npm_resolver),
-          module_analyzer: Some(&analyzer),
-          module_parser: Some(&parser),
-          reporter: maybe_file_watcher_reporter,
+          is_dynamic: options.is_dynamic,
+          passthrough_jsr_specifiers: false,
           workspace_members: &workspace_members,
+          executor: Default::default(),
+          file_system: &DenoGraphFsAdapter(self.fs.as_ref()),
+          jsr_url_provider: &CliJsrUrlProvider,
+          npm_resolver: Some(graph_npm_resolver),
+          module_analyzer: &analyzer,
+          reporter: maybe_file_watcher_reporter,
+          resolver: Some(graph_resolver),
         },
       )
       .await
@@ -799,6 +810,7 @@ pub fn has_graph_root_local_dependent_changed(
     deno_graph::WalkOptions {
       follow_dynamic: true,
       follow_type_only: true,
+      prefer_fast_check_graph: true,
       check_js: true,
     },
   );
