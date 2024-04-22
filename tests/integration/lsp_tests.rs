@@ -8811,7 +8811,7 @@ fn lsp_diagnostics_refresh_dependents() {
     }),
   );
   let diagnostics = client.read_diagnostics();
-  assert_eq!(diagnostics.all().len(), 0); // no diagnostics now
+  assert_eq!(json!(diagnostics.all()), json!([])); // no diagnostics now
 
   client.shutdown();
   assert_eq!(client.queue_len(), 0);

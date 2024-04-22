@@ -610,11 +610,7 @@ impl Inner {
             .assets
             .cache_navigation_tree(specifier, navigation_tree.clone())?,
           AssetOrDocument::Document(doc) => {
-            self.documents.try_cache_navigation_tree(
-              specifier,
-              &doc.script_version(),
-              navigation_tree.clone(),
-            )?
+            doc.cache_navigation_tree(navigation_tree.clone());
           }
         }
         navigation_tree
@@ -1300,9 +1296,7 @@ impl Inner {
       self.send_diagnostics_update();
       self.send_testing_update();
     }
-    if let Err(err) = self.documents.close(&specifier) {
-      error!("{:#}", err);
-    }
+    self.documents.close(&specifier);
     self.project_changed([(&specifier, ChangeKind::Closed)], false);
     self.performance.measure(mark);
   }

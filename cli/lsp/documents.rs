@@ -1,7 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use super::cache::calculate_fs_version;
-use super::cache::calculate_fs_version_at_path;
 use super::cache::LSP_DISALLOW_GLOBAL_TO_LOCAL_COPY;
 use super::config::Config;
 use super::language_server::StateNpmSnapshot;
@@ -273,6 +272,7 @@ fn get_maybe_test_module_fut(
 
 #[derive(Clone, Debug, Default)]
 pub struct DocumentOpenData {
+  lsp_version: i32,
   maybe_parsed_source: Option<ParsedSourceResult>,
 }
 
@@ -281,13 +281,12 @@ pub struct Document {
   /// Contains the last-known-good set of dependencies from parsing the module.
   dependencies: Arc<IndexMap<String, deno_graph::Dependency>>,
   maybe_types_dependency: Option<Arc<deno_graph::TypesDependency>>,
-  fs_version: String,
+  maybe_fs_version: Option<String>,
   line_index: Arc<LineIndex>,
   maybe_headers: Option<HashMap<String, String>>,
   maybe_language_id: Option<LanguageId>,
-  maybe_lsp_version: Option<i32>,
-  // this is a lazily constructed value based on the state of the document,
-  // so having a mutex to hold it is ok
+  /// This is cached in a mutex so `workspace/symbol` and
+  /// `textDocument/codeLens` requests don't require a write lock.
   maybe_navigation_tree: Mutex<Option<Arc<tsc::NavigationTree>>>,
   maybe_test_module_fut: Option<TestModuleFut>,
   media_type: MediaType,
@@ -298,34 +297,40 @@ pub struct Document {
 }
 
 impl Document {
+  /// Open documents should have `maybe_lsp_version.is_some()`.
   #[allow(clippy::too_many_arguments)]
   fn new(
     specifier: ModuleSpecifier,
-    fs_version: String,
+    content: Arc<str>,
+    maybe_lsp_version: Option<i32>,
+    maybe_language_id: Option<LanguageId>,
     maybe_headers: Option<HashMap<String, String>>,
-    text_info: SourceTextInfo,
     resolver: &dyn deno_graph::source::Resolver,
     maybe_node_resolver: Option<&CliNodeResolver>,
     npm_resolver: &dyn deno_graph::source::NpmResolver,
     config: &Config,
+    cache: &Arc<dyn HttpCache>,
   ) -> Arc<Self> {
-    // we only ever do `Document::new` on disk resources that are supposed to
-    // be diagnosable, unlike `Document::open`, so it is safe to unconditionally
-    // parse the module.
+    let text_info = SourceTextInfo::new(content);
     let media_type = resolve_media_type(
       &specifier,
       maybe_headers.as_ref(),
-      None,
+      maybe_language_id,
       maybe_node_resolver,
     );
-    let (maybe_parsed_source, maybe_module) = parse_and_analyze_module(
-      &specifier,
-      text_info.clone(),
-      maybe_headers.as_ref(),
-      media_type,
-      resolver,
-      npm_resolver,
-    );
+    let (maybe_parsed_source, maybe_module) =
+      if media_type_is_diagnosable(media_type) {
+        parse_and_analyze_module(
+          &specifier,
+          text_info.clone(),
+          maybe_headers.as_ref(),
+          media_type,
+          resolver,
+          npm_resolver,
+        )
+      } else {
+        (None, None)
+      };
     let maybe_module = maybe_module.and_then(Result::ok);
     let dependencies = maybe_module
       .as_ref()
@@ -337,30 +342,32 @@ impl Document {
     let line_index = Arc::new(LineIndex::new(text_info.text_str()));
     let maybe_test_module_fut =
       get_maybe_test_module_fut(maybe_parsed_source.as_ref(), config);
-    Arc::new(Document {
+    Arc::new(Self {
       dependencies,
       maybe_types_dependency,
-      fs_version,
+      maybe_fs_version: calculate_fs_version(cache, &specifier),
       line_index,
+      maybe_language_id,
       maybe_headers,
-      maybe_language_id: None,
-      maybe_lsp_version: None,
       maybe_navigation_tree: Mutex::new(None),
       maybe_test_module_fut,
       media_type,
-      open_data: None,
+      open_data: maybe_lsp_version.map(|v| DocumentOpenData {
+        lsp_version: v,
+        maybe_parsed_source,
+      }),
       text_info,
       specifier,
     })
   }
 
-  fn maybe_with_new_resolver(
+  fn with_new_resolver(
     &self,
     resolver: &dyn deno_graph::source::Resolver,
     maybe_node_resolver: Option<&CliNodeResolver>,
     npm_resolver: &dyn deno_graph::source::NpmResolver,
     config: &Config,
-  ) -> Option<Arc<Self>> {
+  ) -> Arc<Self> {
     let media_type = resolve_media_type(
       &self.specifier,
       self.maybe_headers.as_ref(),
@@ -414,87 +421,24 @@ impl Document {
         .clone()
         .filter(|_| config.specifier_enabled_for_test(&self.specifier));
     }
-    Some(Arc::new(Self {
+    Arc::new(Self {
       // updated properties
       dependencies,
       maybe_types_dependency,
       maybe_navigation_tree: Mutex::new(None),
       // maintain - this should all be copies/clones
-      fs_version: self.fs_version.clone(),
+      maybe_fs_version: self.maybe_fs_version.clone(),
       line_index: self.line_index.clone(),
       maybe_headers: self.maybe_headers.clone(),
       maybe_language_id: self.maybe_language_id,
-      maybe_lsp_version: self.maybe_lsp_version,
       maybe_test_module_fut,
       media_type,
-      open_data: self.open_data.is_some().then_some(DocumentOpenData {
+      open_data: self.open_data.as_ref().map(|d| DocumentOpenData {
+        lsp_version: d.lsp_version,
         maybe_parsed_source,
       }),
       text_info: self.text_info.clone(),
       specifier: self.specifier.clone(),
-    }))
-  }
-
-  #[allow(clippy::too_many_arguments)]
-  fn open(
-    specifier: ModuleSpecifier,
-    version: i32,
-    language_id: LanguageId,
-    maybe_headers: Option<HashMap<String, String>>,
-    content: Arc<str>,
-    cache: &Arc<dyn HttpCache>,
-    resolver: &dyn deno_graph::source::Resolver,
-    maybe_node_resolver: Option<&CliNodeResolver>,
-    npm_resolver: &dyn deno_graph::source::NpmResolver,
-    config: &Config,
-  ) -> Arc<Self> {
-    let text_info = SourceTextInfo::new(content);
-    let media_type = resolve_media_type(
-      &specifier,
-      None,
-      Some(language_id),
-      maybe_node_resolver,
-    );
-    let (maybe_parsed_source, maybe_module) = if language_id.is_diagnosable() {
-      parse_and_analyze_module(
-        &specifier,
-        text_info.clone(),
-        maybe_headers.as_ref(),
-        media_type,
-        resolver,
-        npm_resolver,
-      )
-    } else {
-      (None, None)
-    };
-    let maybe_module = maybe_module.and_then(Result::ok);
-    let dependencies = maybe_module
-      .as_ref()
-      .map(|m| Arc::new(m.dependencies.clone()))
-      .unwrap_or_default();
-    let maybe_types_dependency = maybe_module
-      .as_ref()
-      .and_then(|m| Some(Arc::new(m.maybe_types_dependency.clone()?)));
-    let line_index = Arc::new(LineIndex::new(text_info.text_str()));
-    let maybe_test_module_fut =
-      get_maybe_test_module_fut(maybe_parsed_source.as_ref(), config);
-    Arc::new(Self {
-      dependencies,
-      maybe_types_dependency,
-      fs_version: calculate_fs_version(cache, &specifier)
-        .unwrap_or_else(|| "1".to_string()),
-      line_index,
-      maybe_language_id: Some(language_id),
-      maybe_lsp_version: Some(version),
-      maybe_headers,
-      maybe_navigation_tree: Mutex::new(None),
-      maybe_test_module_fut,
-      media_type,
-      open_data: Some(DocumentOpenData {
-        maybe_parsed_source,
-      }),
-      text_info,
-      specifier,
     })
   }
 
@@ -559,36 +503,55 @@ impl Document {
       get_maybe_test_module_fut(maybe_parsed_source.as_ref(), config);
     Ok(Arc::new(Self {
       specifier: self.specifier.clone(),
-      fs_version: self.fs_version.clone(),
+      maybe_fs_version: self.maybe_fs_version.clone(),
       maybe_language_id: self.maybe_language_id,
       dependencies,
       maybe_types_dependency,
       text_info,
       line_index,
       maybe_headers: self.maybe_headers.clone(),
-      maybe_lsp_version: Some(version),
       maybe_navigation_tree: Mutex::new(None),
       maybe_test_module_fut,
       media_type,
       open_data: self.open_data.is_some().then_some(DocumentOpenData {
+        lsp_version: version,
         maybe_parsed_source,
       }),
     }))
   }
 
-  pub fn saved(&self, cache: &Arc<dyn HttpCache>) -> Arc<Self> {
+  pub fn closed(&self, cache: &Arc<dyn HttpCache>) -> Arc<Self> {
     Arc::new(Self {
       specifier: self.specifier.clone(),
-      fs_version: calculate_fs_version(cache, &self.specifier)
-        .unwrap_or_else(|| "1".to_string()),
+      maybe_fs_version: calculate_fs_version(cache, &self.specifier),
       maybe_language_id: self.maybe_language_id,
       dependencies: self.dependencies.clone(),
       maybe_types_dependency: self.maybe_types_dependency.clone(),
       text_info: self.text_info.clone(),
       line_index: self.line_index.clone(),
       maybe_headers: self.maybe_headers.clone(),
-      maybe_lsp_version: self.maybe_lsp_version,
-      maybe_navigation_tree: Mutex::new(None),
+      maybe_navigation_tree: Mutex::new(
+        self.maybe_navigation_tree.lock().clone(),
+      ),
+      maybe_test_module_fut: self.maybe_test_module_fut.clone(),
+      media_type: self.media_type,
+      open_data: None,
+    })
+  }
+
+  pub fn saved(&self, cache: &Arc<dyn HttpCache>) -> Arc<Self> {
+    Arc::new(Self {
+      specifier: self.specifier.clone(),
+      maybe_fs_version: calculate_fs_version(cache, &self.specifier),
+      maybe_language_id: self.maybe_language_id,
+      dependencies: self.dependencies.clone(),
+      maybe_types_dependency: self.maybe_types_dependency.clone(),
+      text_info: self.text_info.clone(),
+      line_index: self.line_index.clone(),
+      maybe_headers: self.maybe_headers.clone(),
+      maybe_navigation_tree: Mutex::new(
+        self.maybe_navigation_tree.lock().clone(),
+      ),
       maybe_test_module_fut: self.maybe_test_module_fut.clone(),
       media_type: self.media_type,
       open_data: self.open_data.clone(),
@@ -611,15 +574,19 @@ impl Document {
     self.line_index.clone()
   }
 
-  fn fs_version(&self) -> &str {
-    self.fs_version.as_str()
+  fn maybe_fs_version(&self) -> Option<&str> {
+    self.maybe_fs_version.as_deref()
   }
 
   pub fn script_version(&self) -> String {
-    self
-      .maybe_lsp_version()
-      .map(|v| format!("{}+{v}", self.fs_version()))
-      .unwrap_or_else(|| self.fs_version().to_string())
+    match (self.maybe_fs_version(), self.maybe_lsp_version()) {
+      (None, None) => "1".to_string(),
+      (None, Some(lsp_version)) => format!("1+{lsp_version}"),
+      (Some(fs_version), None) => fs_version.to_string(),
+      (Some(fs_version), Some(lsp_version)) => {
+        format!("{fs_version}+{lsp_version}")
+      }
+    }
   }
 
   pub fn is_diagnosable(&self) -> bool {
@@ -627,7 +594,7 @@ impl Document {
   }
 
   pub fn is_open(&self) -> bool {
-    self.maybe_lsp_version.is_some()
+    self.open_data.is_some()
   }
 
   pub fn maybe_types_dependency(&self) -> &Resolution {
@@ -648,7 +615,7 @@ impl Document {
 
   /// Returns the current language server client version if any.
   pub fn maybe_lsp_version(&self) -> Option<i32> {
-    self.maybe_lsp_version
+    self.open_data.as_ref().map(|d| d.lsp_version)
   }
 
   pub fn maybe_parsed_source(
@@ -663,20 +630,6 @@ impl Document {
 
   pub fn maybe_navigation_tree(&self) -> Option<Arc<tsc::NavigationTree>> {
     self.maybe_navigation_tree.lock().clone()
-  }
-
-  pub fn update_navigation_tree_if_version(
-    &self,
-    tree: Arc<tsc::NavigationTree>,
-    script_version: &str,
-  ) {
-    // Ensure we are updating the same document that the navigation tree was
-    // created for. Note: this should not be racy between the version check
-    // and setting the navigation tree, because the document is immutable
-    // and this is enforced by it being wrapped in an Arc.
-    if self.script_version() == script_version {
-      *self.maybe_navigation_tree.lock() = Some(tree);
-    }
   }
 
   pub fn dependencies(&self) -> &IndexMap<String, deno_graph::Dependency> {
@@ -699,6 +652,13 @@ impl Document {
         .includes(&position)
         .map(|r| (s.clone(), dep.clone(), r.clone()))
     })
+  }
+
+  pub fn cache_navigation_tree(
+    &self,
+    navigation_tree: Arc<tsc::NavigationTree>,
+  ) {
+    *self.maybe_navigation_tree.lock() = Some(navigation_tree);
   }
 }
 
@@ -723,16 +683,18 @@ fn resolve_media_type(
     }
   }
 
+  if let Some(language_id) = maybe_language_id {
+    return MediaType::from_specifier_and_content_type(
+      specifier,
+      language_id.as_content_type(),
+    );
+  }
+
   if maybe_headers.is_some() {
     return MediaType::from_specifier_and_headers(specifier, maybe_headers);
   }
 
-  // LanguageId is a subset of MediaType, so get its content type and
-  // also use the specifier to inform its media type
-  MediaType::from_specifier_and_content_type(
-    specifier,
-    maybe_language_id.and_then(|id| id.as_content_type()),
-  )
+  MediaType::from_specifier(specifier)
 }
 
 pub fn to_lsp_range(range: &deno_graph::Range) -> lsp::Range {
@@ -822,15 +784,20 @@ impl FileSystemDocuments {
     npm_resolver: &dyn deno_graph::source::NpmResolver,
     config: &Config,
   ) -> Option<Arc<Document>> {
-    let fs_version = if specifier.scheme() == "data" {
-      Some("1".to_string())
-    } else {
-      calculate_fs_version(cache, specifier)
+    let new_fs_version = calculate_fs_version(cache, specifier);
+    let old_doc = self.docs.get(specifier).map(|v| v.value().clone());
+    let dirty = match &old_doc {
+      None => true,
+      Some(old_doc) => {
+        match (old_doc.maybe_fs_version(), new_fs_version.as_deref()) {
+          (None, None) => {
+            matches!(specifier.scheme(), "file" | "http" | "https")
+          }
+          (old, new) => old != new,
+        }
+      }
     };
-    let file_system_doc = self.docs.get(specifier).map(|v| v.value().clone());
-    if file_system_doc.as_ref().map(|d| d.fs_version().to_string())
-      != fs_version
-    {
+    if dirty {
       // attempt to update the file on the file system
       self.refresh_document(
         cache,
@@ -841,7 +808,7 @@ impl FileSystemDocuments {
         config,
       )
     } else {
-      file_system_doc
+      old_doc
     }
   }
 
@@ -858,19 +825,20 @@ impl FileSystemDocuments {
   ) -> Option<Arc<Document>> {
     let doc = if specifier.scheme() == "file" {
       let path = specifier_to_file_path(specifier).ok()?;
-      let fs_version = calculate_fs_version_at_path(&path)?;
       let bytes = fs::read(path).ok()?;
       let content =
         deno_graph::source::decode_owned_source(specifier, bytes, None).ok()?;
       Document::new(
         specifier.clone(),
-        fs_version,
+        content.into(),
         None,
-        SourceTextInfo::from_string(content),
+        None,
+        None,
         resolver,
         maybe_node_resolver,
         npm_resolver,
         config,
+        cache,
       )
     } else if specifier.scheme() == "data" {
       let source = deno_graph::source::RawDataUrl::parse(specifier)
@@ -879,16 +847,17 @@ impl FileSystemDocuments {
         .ok()?;
       Document::new(
         specifier.clone(),
-        "1".to_string(),
+        source.into(),
         None,
-        SourceTextInfo::from_string(source),
+        None,
+        None,
         resolver,
         maybe_node_resolver,
         npm_resolver,
         config,
+        cache,
       )
     } else {
-      let fs_version = calculate_fs_version(cache, specifier)?;
       let cache_key = cache.cache_item_key(specifier).ok()?;
       let bytes = cache
         .read_file_bytes(&cache_key, None, LSP_DISALLOW_GLOBAL_TO_LOCAL_COPY)
@@ -908,13 +877,15 @@ impl FileSystemDocuments {
       let maybe_headers = Some(specifier_headers);
       Document::new(
         specifier.clone(),
-        fs_version,
+        content.into(),
+        None,
+        None,
         maybe_headers,
-        SourceTextInfo::from_string(content),
         resolver,
         maybe_node_resolver,
         npm_resolver,
         config,
+        cache,
       )
     };
     self.docs.insert(specifier.clone(), doc.clone());
@@ -1033,20 +1004,20 @@ impl Documents {
   ) -> Arc<Document> {
     let resolver = self.get_resolver();
     let npm_resolver = self.get_npm_resolver();
-    let document = Document::open(
+    let document = Document::new(
       specifier.clone(),
-      version,
-      language_id,
+      content,
+      Some(version),
+      Some(language_id),
       // todo(dsherret): don't we want to pass in the headers from
       // the cache for remote modules here in order to get the
       // x-typescript-types?
       None,
-      content,
-      &self.cache,
       resolver,
       self.maybe_node_resolver.as_deref(),
       npm_resolver,
       self.config.as_ref(),
+      &self.cache,
     );
 
     self.file_system_docs.remove_document(&specifier);
@@ -1105,8 +1076,9 @@ impl Documents {
   /// Close an open document, this essentially clears any editor state that is
   /// being held, and the document store will revert to the file system if
   /// information about the document is required.
-  pub fn close(&mut self, specifier: &ModuleSpecifier) -> Result<(), AnyError> {
+  pub fn close(&mut self, specifier: &ModuleSpecifier) {
     if let Some(document) = self.open_docs.remove(specifier) {
+      let document = document.closed(&self.cache);
       self
         .file_system_docs
         .docs
@@ -1114,7 +1086,6 @@ impl Documents {
 
       self.dirty = true;
     }
-    Ok(())
   }
 
   pub fn release(&self, specifier: &ModuleSpecifier) {
@@ -1387,28 +1358,6 @@ impl Documents {
     self.dirty = true;
   }
 
-  /// Tries to cache a navigation tree that is associated with the provided specifier
-  /// if the document stored has the same script version.
-  pub fn try_cache_navigation_tree(
-    &self,
-    specifier: &ModuleSpecifier,
-    script_version: &str,
-    navigation_tree: Arc<tsc::NavigationTree>,
-  ) -> Result<(), AnyError> {
-    if let Some(doc) = self.open_docs.get(specifier) {
-      doc.update_navigation_tree_if_version(navigation_tree, script_version)
-    } else if let Some(doc) = self.file_system_docs.docs.get_mut(specifier) {
-      doc.update_navigation_tree_if_version(navigation_tree, script_version);
-    } else {
-      return Err(custom_error(
-        "NotFound",
-        format!("Specifier not found {specifier}"),
-      ));
-    }
-
-    Ok(())
-  }
-
   pub fn get_jsr_resolver(&self) -> &Arc<JsrCacheResolver> {
     &self.jsr_resolver
   }
@@ -1501,27 +1450,23 @@ impl Documents {
         if !config.specifier_enabled(doc.specifier()) {
           continue;
         }
-        if let Some(new_doc) = doc.maybe_with_new_resolver(
+        *doc = doc.with_new_resolver(
           resolver,
           self.maybe_node_resolver.as_deref(),
           npm_resolver,
           self.config.as_ref(),
-        ) {
-          *doc = new_doc;
-        }
+        );
       }
       for mut doc in self.file_system_docs.docs.iter_mut() {
         if !config.specifier_enabled(doc.specifier()) {
           continue;
         }
-        if let Some(new_doc) = doc.maybe_with_new_resolver(
+        *doc.value_mut() = doc.with_new_resolver(
           resolver,
           self.maybe_node_resolver.as_deref(),
           npm_resolver,
           self.config.as_ref(),
-        ) {
-          *doc.value_mut() = new_doc;
-        }
+        );
       }
       self.open_docs = open_docs;
       let mut preload_count = 0;
@@ -1861,7 +1806,7 @@ mod tests {
   }
 
   #[test]
-  fn test_documents_open() {
+  fn test_documents_open_close() {
     let temp_dir = TempDir::new();
     let (mut documents, _) = setup(&temp_dir);
     let specifier = ModuleSpecifier::parse("file:///a.ts").unwrap();
@@ -1869,13 +1814,21 @@ mod tests {
 console.log(b);
 "#;
     let document = documents.open(
-      specifier,
+      specifier.clone(),
       1,
       "javascript".parse().unwrap(),
       content.into(),
     );
-    assert!(document.is_open());
     assert!(document.is_diagnosable());
+    assert!(document.is_open());
+    assert!(document.maybe_parsed_source().is_some());
+    assert!(document.maybe_lsp_version().is_some());
+    documents.close(&specifier);
+    // We can't use `Documents::get()` here, it will look through the real FS.
+    let document = documents.file_system_docs.docs.get(&specifier).unwrap();
+    assert!(!document.is_open());
+    assert!(document.maybe_parsed_source().is_none());
+    assert!(document.maybe_lsp_version().is_none());
   }
 
   #[test]
@@ -1941,7 +1894,7 @@ console.log(b, "hello deno");
 
     // make a clone of the document store and close the document in that one
     let mut documents2 = documents.clone();
-    documents2.close(&file_specifier).unwrap();
+    documents2.close(&file_specifier);
 
     // At this point the document will be in both documents and the shared file system documents.
     // Now make sure that the original documents doesn't return both copies
