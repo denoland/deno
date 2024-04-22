@@ -803,8 +803,15 @@ impl Flags {
         std::env::current_dir().ok()
       }
       Add(_) | Bundle(_) | Completions(_) | Doc(_) | Fmt(_) | Init(_)
-      | Install(_) | Uninstall(_) | Jupyter(_) | Lsp | Lint(_) | Types
+      | Uninstall(_) | Jupyter(_) | Lsp | Lint(_) | Types
       | Upgrade(_) | Vendor(_) => None,
+      Install(_) => {
+        if *DENO_FUTURE {
+          std::env::current_dir().ok()
+        } else {
+          None
+        }
+      },
     }
   }
 
