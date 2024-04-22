@@ -265,6 +265,10 @@ async fn sync_resolution_with_fs(
   fs::create_dir_all(&deno_node_modules_dir).with_context(|| {
     format!("Creating '{}'", deno_local_registry_dir.display())
   })?;
+  let bin_node_modules_dir_path = root_node_modules_dir_path.join(".bin");
+  fs::create_dir_all(&bin_node_modules_dir_path).with_context(|| {
+    format!("Creating '{}'", bin_node_modules_dir_path.display())
+  })?;
 
   let single_process_lock = LaxSingleProcessFsFlag::lock(
     deno_local_registry_dir.join(".deno.lock"),
@@ -340,6 +344,26 @@ async fn sync_resolution_with_fs(
         }
         // write out a file that indicates this folder has been initialized
         fs::write(initialized_file, "")?;
+        // set up an entry in `node_modules/.bin/` if package provides bin entry(ies)
+        if let Some(bin_entries) = &package.bin {
+          match bin_entries {
+            deno_npm::registry::NpmPackageVersionBinEntry::String(script) => {
+              let name = package.id.nv.name;
+              eprintln!(
+                "need to setup \"{}\" ({}) in `node_modules/.bin/",
+                name, script
+              );
+            }
+            deno_npm::registry::NpmPackageVersionBinEntry::Map(entries) => {
+              for (name, script) in entries {
+                eprintln!(
+                  "need to setup \"{}\" ({}) in `node_modules/.bin/",
+                  name, script
+                );
+              }
+            }
+          }
+        }
         // finally stop showing the progress bar
         drop(pb_guard); // explicit for clarity
         Ok(())
