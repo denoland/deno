@@ -331,6 +331,7 @@ impl Document {
       } else {
         (None, None)
       };
+    dbg!(specifier.as_str(), maybe_parsed_source.as_ref().map(|s| s.as_ref().map(|_| ())), maybe_module.as_ref().map(|s| s.as_ref().map(|_| ())));
     let maybe_module = maybe_module.and_then(Result::ok);
     let dependencies = maybe_module
       .as_ref()

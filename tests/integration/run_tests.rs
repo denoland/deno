@@ -2098,6 +2098,12 @@ itest!(jsx_import_source_precompile_import_map {
   http_server: true,
 });
 
+itest!(jsx_import_source_precompile_import_map_skip_element {
+  args: "run --reload --check --import-map jsx/import-map.json --no-lock --config jsx/deno-jsx-precompile-skip.jsonc run/jsx_precompile/skip.tsx",
+  output: "run/jsx_precompile/skip.out",
+  http_server: true,
+});
+
 itest!(jsx_import_source_import_map {
   args: "run --reload --import-map jsx/import-map.json --no-lock --config jsx/deno-jsx-import-map.jsonc run/jsx_import_source_no_pragma.tsx",
   output: "run/jsx_import_source_import_map.out",
