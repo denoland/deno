@@ -401,10 +401,7 @@ impl TsServer {
   }
 
   pub async fn cleanup_semantic_cache(&self, snapshot: Arc<StateSnapshot>) {
-    let req = TscRequest {
-      method: "cleanupSemanticCache",
-      args: json!([]),
-    };
+    let req = TscRequest::CleanupSemanticCache;
     self
       .request::<()>(snapshot, req)
       .await
@@ -4746,9 +4743,9 @@ pub struct JsNull;
 pub enum TscRequest {
   ProjectChanged((Vec<(String, ChangeKind)>, usize, bool)),
   GetDiagnostics((Vec<String>, usize)),
-  Restart,
   GetAssets,
 
+  CleanupSemanticCache,
   // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6230
   FindReferences((String, u32)),
   // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6235
@@ -4947,7 +4944,7 @@ impl TscRequest {
       TscRequest::ProvideInlayHints(args) => {
         ("provideInlayHints", Some(serde_v8::to_v8(scope, args)?))
       }
-      TscRequest::Restart => ("$restart", None),
+      TscRequest::CleanupSemanticCache => ("cleanupSemanticCache", None),
       TscRequest::GetAssets => ("$getAssets", None),
     };
 
@@ -4958,6 +4955,7 @@ impl TscRequest {
     match self {
       TscRequest::ProjectChanged(_) => "$projectChanged",
       TscRequest::GetDiagnostics(_) => "$getDiagnostics",
+      TscRequest::CleanupSemanticCache => "cleanupSemanticCache",
       TscRequest::FindReferences(_) => "findReferences",
       TscRequest::GetNavigationTree(_) => "getNavigationTree",
       TscRequest::GetSupportedCodeFixes => "$getSupportedCodeFixes",
@@ -4993,7 +4991,6 @@ impl TscRequest {
       TscRequest::GetSignatureHelpItems(_) => "getSignatureHelpItems",
       TscRequest::GetNavigateToItems(_) => "getNavigateToItems",
       TscRequest::ProvideInlayHints(_) => "provideInlayHints",
-      TscRequest::Restart => "$restart",
       TscRequest::GetAssets => "$getAssets",
     }
   }
