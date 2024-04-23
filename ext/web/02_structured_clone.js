@@ -36,6 +36,7 @@ const {
   Uint16Array,
   Uint32Array,
   BigUint64Array,
+  Float16Array,
   Float32Array,
   Float64Array,
 } = primordials;
@@ -114,6 +115,9 @@ function structuredClone(value) {
         break;
       case "BigUint64Array":
         Constructor = BigUint64Array;
+        break;
+      case "Float16Array":
+        Constructor = Float16Array;
         break;
       case "Float32Array":
         Constructor = Float32Array;

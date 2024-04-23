@@ -67,6 +67,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use thiserror::Error;
 
+use crate::args::import_map::enhance_import_map_value_with_workspace_members;
 use crate::file_fetcher::FileFetcher;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::version;
@@ -149,9 +150,10 @@ pub fn jsr_api_url() -> &'static Url {
 
 pub fn ts_config_to_transpile_and_emit_options(
   config: deno_config::TsConfig,
-) -> (deno_ast::TranspileOptions, deno_ast::EmitOptions) {
+) -> Result<(deno_ast::TranspileOptions, deno_ast::EmitOptions), AnyError> {
   let options: deno_config::EmitConfigOptions =
-    serde_json::from_value(config.0).unwrap();
+    serde_json::from_value(config.0)
+      .context("Failed to parse compilerOptions")?;
   let imports_not_used_as_values =
     match options.imports_not_used_as_values.as_str() {
       "preserve" => deno_ast::ImportsNotUsedAsValues::Preserve,
@@ -173,7 +175,7 @@ pub fn ts_config_to_transpile_and_emit_options(
   } else {
     SourceMapOption::None
   };
-  (
+  Ok((
     deno_ast::TranspileOptions {
       use_ts_decorators: options.experimental_decorators,
       use_decorators_proposal: !options.experimental_decorators,
@@ -194,7 +196,7 @@ pub fn ts_config_to_transpile_and_emit_options(
       keep_comments: false,
       source_map,
     },
-  )
+  ))
 }
 
 /// Indicates how cached source files should be handled.
@@ -975,6 +977,10 @@ impl CliOptions {
           base_import_map_config,
           children_configs,
         );
+      let import_map = enhance_import_map_value_with_workspace_members(
+        import_map,
+        &workspace_config.members,
+      );
       log::debug!(
         "Workspace config generated this import map {}",
         serde_json::to_string_pretty(&import_map).unwrap()
