@@ -624,9 +624,11 @@ delete Object.prototype.__proto__;
       // Needs the original specifier
       specifier = normalizedToOriginalMap.get(specifier) ?? specifier;
 
-      let sourceFile = shouldCreateNewSourceFile
-        ? undefined
-        : sourceFileCache.get(specifier);
+      if (shouldCreateNewSourceFile) {
+        sourceFileCache.delete(specifier);
+      }
+
+      let sourceFile = sourceFileCache.get(specifier);
       if (sourceFile) {
         return sourceFile;
       }
