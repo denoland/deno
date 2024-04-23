@@ -1104,15 +1104,18 @@ delete Object.prototype.__proto__;
       projectVersionCache = newProjectVersion;
 
       let opened = false;
+      let closed = false;
       for (const { 0: script, 1: changeKind } of changedScripts) {
-        if (changeKind == ChangeKind.Opened) {
+        if (changeKind === ChangeKind.Opened) {
           opened = true;
+        } else if (changeKind === ChangeKind.Closed) {
+          closed = true;
         }
         scriptVersionCache.delete(script);
         sourceTextCache.delete(script);
       }
 
-      if (configChanged || opened) {
+      if (configChanged || opened || closed) {
         scriptFileNamesCache = undefined;
       }
     }

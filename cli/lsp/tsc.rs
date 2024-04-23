@@ -241,7 +241,7 @@ impl std::fmt::Debug for TsServer {
   }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 #[repr(u8)]
 pub enum ChangeKind {
   Opened = 0,
@@ -258,6 +258,7 @@ impl Serialize for ChangeKind {
   }
 }
 
+#[derive(Debug, PartialEq)]
 pub struct PendingChange {
   pub modified_scripts: Vec<(String, ChangeKind)>,
   pub project_version: usize,
@@ -288,21 +289,42 @@ impl PendingChange {
     modified_scripts: Vec<(String, ChangeKind)>,
     config_changed: bool,
   ) {
+    use ChangeKind::*;
     self.project_version = self.project_version.max(new_version);
     self.config_changed |= config_changed;
     for (spec, new) in modified_scripts {
       if let Some((_, current)) =
         self.modified_scripts.iter_mut().find(|(s, _)| s == &spec)
       {
+        // already a pending change for this specifier,
+        // coalesce the change kinds
         match (*current, new) {
-          (_, ChangeKind::Closed) => {
-            *current = ChangeKind::Closed;
+          (_, Closed) => {
+            *current = Closed;
           }
-          (ChangeKind::Opened, ChangeKind::Modified) => {
-            *current = ChangeKind::Modified;
+          (Opened | Closed, Opened) => {
+            *current = Opened;
           }
-          _ => {}
+          (Modified, Opened) => {
+            lsp_warn!("Unexpected change from Modified -> Opened");
+            *current = Opened;
+          }
+          (Opened, Modified) => {
+            // Opening may change the set of files in the project
+            *current = Opened;
+          }
+          (Closed, Modified) => {
+            lsp_warn!("Unexpected change from Closed -> Modifed");
+            // Shouldn't happen, but if it does treat it as closed
+            // since it's "stronger" than modifying an open doc
+            *current = Closed;
+          }
+          (Modified, Modified) => {
+            // no change
+          }
         }
+      } else {
+        self.modified_scripts.push((spec, new));
       }
     }
   }
@@ -5929,5 +5951,85 @@ mod tests {
         MediaType::TypeScript.as_ts_extension().to_string()
       ))]
     );
+  }
+
+  #[test]
+  fn coalesce_pending_change() {
+    use ChangeKind::*;
+    fn change<S: AsRef<str>>(
+      project_version: usize,
+      scripts: impl IntoIterator<Item = (S, ChangeKind)>,
+      config_changed: bool,
+    ) -> PendingChange {
+      PendingChange {
+        project_version,
+        modified_scripts: scripts
+          .into_iter()
+          .map(|(s, c)| (s.as_ref().into(), c))
+          .collect(),
+        config_changed,
+      }
+    }
+    let cases = [
+      (
+        // start
+        change(1, [("file:///a.ts", Closed)], false),
+        // new
+        change(2, Some(("file:///b.ts", Opened)), false),
+        // expected
+        change(
+          2,
+          [("file:///a.ts", Closed), ("file:///b.ts", Opened)],
+          false,
+        ),
+      ),
+      (
+        // start
+        change(
+          1,
+          [("file:///a.ts", Closed), ("file:///b.ts", Opened)],
+          false,
+        ),
+        // new
+        change(
+          2,
+          // a gets closed then reopened, b gets opened then closed
+          [("file:///a.ts", Opened), ("file:///b.ts", Closed)],
+          false,
+        ),
+        // expected
+        change(
+          2,
+          [("file:///a.ts", Opened), ("file:///b.ts", Closed)],
+          false,
+        ),
+      ),
+      (
+        change(
+          1,
+          [("file:///a.ts", Opened), ("file:///b.ts", Modified)],
+          false,
+        ),
+        // new
+        change(
+          2,
+          // a gets opened then modified, b gets modified then closed
+          [("file:///a.ts", Opened), ("file:///b.ts", Closed)],
+          false,
+        ),
+        // expected
+        change(
+          2,
+          [("file:///a.ts", Opened), ("file:///b.ts", Closed)],
+          false,
+        ),
+      ),
+    ];
+
+    for (start, new, expected) in cases {
+      let mut pending = start;
+      pending.coalesce(new.project_version, new.modified_scripts, false);
+      assert_eq!(pending, expected);
+    }
   }
 }
