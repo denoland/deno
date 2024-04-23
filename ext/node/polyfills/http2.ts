@@ -1019,6 +1019,7 @@ export class ClientHttp2Stream extends Duplex {
         core.tryClose(this[kDenoResponse].bodyRid);
         this.push(null);
         debugHttp2(">>> read null chunk");
+        this.read(0);
         this[kMaybeDestroy]();
         return;
       }
