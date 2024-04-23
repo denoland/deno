@@ -609,7 +609,7 @@ delete Object.prototype.__proto__;
       specifier,
       languageVersion,
       _onError,
-      _shouldCreateNewSourceFile,
+      shouldCreateNewSourceFile,
     ) {
       if (logDebug) {
         debug(
@@ -623,6 +623,10 @@ delete Object.prototype.__proto__;
 
       // Needs the original specifier
       specifier = normalizedToOriginalMap.get(specifier) ?? specifier;
+
+      if (shouldCreateNewSourceFile) {
+        sourceFileCache.delete(specifier);
+      }
 
       let sourceFile = sourceFileCache.get(specifier);
       if (sourceFile) {
@@ -1100,15 +1104,18 @@ delete Object.prototype.__proto__;
       projectVersionCache = newProjectVersion;
 
       let opened = false;
+      let closed = false;
       for (const { 0: script, 1: changeKind } of changedScripts) {
-        if (changeKind == ChangeKind.Opened) {
+        if (changeKind === ChangeKind.Opened) {
           opened = true;
+        } else if (changeKind === ChangeKind.Closed) {
+          closed = true;
         }
         scriptVersionCache.delete(script);
         sourceTextCache.delete(script);
       }
 
-      if (configChanged || opened) {
+      if (configChanged || opened || closed) {
         scriptFileNamesCache = undefined;
       }
     }

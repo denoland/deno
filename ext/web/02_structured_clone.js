@@ -36,7 +36,6 @@ const {
   Uint16Array,
   Uint32Array,
   BigUint64Array,
-  Float16Array,
   Float32Array,
   Float64Array,
 } = primordials;
@@ -59,7 +58,7 @@ function cloneArrayBuffer(
   );
 }
 
-// TODO(petamoriken): Resizable ArrayBuffer support in the future
+// TODO(petamoriken): add Resizable ArrayBuffer support
 /** Clone a value in a similar way to structured cloning. It is similar to a
  * StructureDeserialize(StructuredSerialize(...)). */
 function structuredClone(value) {
@@ -117,6 +116,7 @@ function structuredClone(value) {
         Constructor = BigUint64Array;
         break;
       case "Float16Array":
+        // TODO(petamoriken): add Float16Array to primordials
         Constructor = Float16Array;
         break;
       case "Float32Array":
