@@ -526,13 +526,9 @@ jobs:
         env:
           DENO_BIN: ./target/debug/deno
         run: |-
-          deno run --allow-env --allow-net --allow-read --allow-run \
-                  --allow-write --unstable                         \
-                  --lock=tools/deno.lock.json                      \
+          deno run -A --unstable --lock=tools/deno.lock.json       \
                   ./tests/wpt/wpt.ts setup
-          deno run --allow-env --allow-net --allow-read --allow-run \
-                   --allow-write --unstable                         \
-                   --lock=tools/deno.lock.json              \
+          deno run -A --unstable --lock=tools/deno.lock.json       \
                    ./tests/wpt/wpt.ts run --quiet --binary="$DENO_BIN"
       - name: Run web platform tests (release)
         if: '!(matrix.skip) && (matrix.wpt && matrix.profile == ''release'')'
