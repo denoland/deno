@@ -288,21 +288,42 @@ impl PendingChange {
     modified_scripts: Vec<(String, ChangeKind)>,
     config_changed: bool,
   ) {
+    use ChangeKind::*;
     self.project_version = self.project_version.max(new_version);
     self.config_changed |= config_changed;
     for (spec, new) in modified_scripts {
       if let Some((_, current)) =
         self.modified_scripts.iter_mut().find(|(s, _)| s == &spec)
       {
+        // already a pending change for this specifier,
+        // coalesce the change kinds
         match (*current, new) {
-          (_, ChangeKind::Closed) => {
-            *current = ChangeKind::Closed;
+          (_, Closed) => {
+            *current = Closed;
           }
-          (ChangeKind::Opened, ChangeKind::Modified) => {
-            *current = ChangeKind::Modified;
+          (Opened | Closed, Opened) => {
+            *current = Opened;
           }
-          _ => {}
+          (Modified, Opened) => {
+            lsp_warn!("Unexpected change from Modified -> Opened");
+            *current = Opened;
+          }
+          (Opened, Modified) => {
+            // Opening may change the set of files in the project
+            *current = Opened;
+          }
+          (Closed, Modified) => {
+            lsp_warn!("Unexpected change from Closed -> Modifed");
+            // Shouldn't happen, but if it does treat it as closed
+            // since it's "stronger" than modifying an open doc
+            *current = Closed;
+          }
+          (Modified, Modified) => {
+            // no change
+          }
         }
+      } else {
+        self.modified_scripts.push((spec, new));
       }
     }
   }
