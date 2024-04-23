@@ -1,5 +1,5 @@
 {
-    "args": "run main.ts",
-    "output": "main.out",
-    "exitCode": 1
+  "args": "run main.ts",
+  "output": "main.out",
+  "exitCode": 1
 }
