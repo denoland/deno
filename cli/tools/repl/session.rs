@@ -255,7 +255,7 @@ impl ReplSession {
     let (transpile_options, _) =
       crate::args::ts_config_to_transpile_and_emit_options(
         ts_config_for_emit.ts_config,
-      );
+      )?;
     let experimental_decorators = transpile_options.use_ts_decorators;
     let mut repl_session = ReplSession {
       npm_resolver,
