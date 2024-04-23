@@ -71,12 +71,12 @@ deno_emit = "=0.40.0"
 deno_graph = { version = "=0.73.1", features = ["tokio_executor"] }
 deno_lint = { version = "=0.58.3", features = ["docs"] }
 deno_lockfile.workspace = true
-deno_npm = "=0.17.0"
+deno_npm = "=0.18.0"
 deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting"] }
 deno_semver = "=0.5.4"
 deno_task_shell = "=0.16.0"
 deno_terminal.workspace = true
-eszip = "=0.68.0"
+eszip = "=0.68.1"
 napi_sym.workspace = true
 
 async-trait.workspace = true
