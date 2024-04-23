@@ -791,8 +791,37 @@ internals.upgradeHttpRaw = upgradeHttpRaw;
 internals.serveHttpOnListener = serveHttpOnListener;
 internals.serveHttpOnConnection = serveHttpOnConnection;
 
+function registerDeclarativeServer(exports) {
+  if (ObjectHasOwn(exports, "fetch")) {
+    if (typeof exports.fetch !== "function" || exports.fetch.length !== 1) {
+      throw new TypeError(
+        "Invalid type for fetch: must be a function with a single parameter",
+      );
+    }
+    return ({ servePort, serveHost }) => {
+      Deno.serve({
+        port: servePort,
+        hostname: serveHost,
+        onListen: ({ port, hostname }) => {
+          console.debug(
+            `%cdeno serve%c: Listening on %chttp://${hostname}:${port}/%c`,
+            "color: green",
+            "color: inherit",
+            "color: yellow",
+            "color: inherit",
+          );
+        },
+        handler: (req) => {
+          return exports.fetch(req);
+        },
+      });
+    };
+  }
+}
+
 export {
   addTrailers,
+  registerDeclarativeServer,
   serve,
   serveHttpOnConnection,
   serveHttpOnListener,
