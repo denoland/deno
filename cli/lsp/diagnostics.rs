@@ -1010,6 +1010,9 @@ impl DenoDiagnostic {
         } else {
           match err {
             ResolutionError::InvalidDowngrade { .. } => "invalid-downgrade",
+            ResolutionError::InvalidJsrHttpsTypesImport { .. } => {
+              "invalid-jsr-https-types-import"
+            }
             ResolutionError::InvalidLocalImport { .. } => {
               "invalid-local-import"
             }

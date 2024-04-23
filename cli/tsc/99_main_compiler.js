@@ -17,7 +17,7 @@ delete Object.prototype.__proto__;
   const core = window.Deno.core;
   const ops = core.ops;
 
-  let logDebug = false;
+  let logDebug = true;
   let logSource = "JS";
 
   // The map from the normalized specifier to the original.
@@ -84,7 +84,7 @@ delete Object.prototype.__proto__;
    * @param source {string}
    */
   function setLogDebug(debug, source) {
-    logDebug = debug;
+    //logDebug = debug;
     if (source) {
       logSource = source;
     }
