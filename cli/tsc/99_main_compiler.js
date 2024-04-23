@@ -609,7 +609,7 @@ delete Object.prototype.__proto__;
       specifier,
       languageVersion,
       _onError,
-      _shouldCreateNewSourceFile,
+      shouldCreateNewSourceFile,
     ) {
       if (logDebug) {
         debug(
@@ -623,6 +623,10 @@ delete Object.prototype.__proto__;
 
       // Needs the original specifier
       specifier = normalizedToOriginalMap.get(specifier) ?? specifier;
+
+      if (shouldCreateNewSourceFile) {
+        sourceFileCache.delete(specifier);
+      }
 
       let sourceFile = sourceFileCache.get(specifier);
       if (sourceFile) {
