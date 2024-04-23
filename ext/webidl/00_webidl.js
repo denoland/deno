@@ -525,6 +525,8 @@ ArrayPrototypeForEach(
     Uint16Array,
     Uint32Array,
     Uint8ClampedArray,
+    // TODO(petamoriken): add Float16Array converter
+    // Float16Array,
     Float32Array,
     Float64Array,
   ],
