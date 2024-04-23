@@ -58,7 +58,7 @@ function cloneArrayBuffer(
   );
 }
 
-// TODO(petamoriken): Resizable ArrayBuffer support in the future
+// TODO(petamoriken): add Resizable ArrayBuffer support
 /** Clone a value in a similar way to structured cloning. It is similar to a
  * StructureDeserialize(StructuredSerialize(...)). */
 function structuredClone(value) {
