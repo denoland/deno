@@ -107,7 +107,7 @@ type Request = (
   Arc<StateSnapshot>,
   oneshot::Sender<Result<String, AnyError>>,
   CancellationToken,
-  Option<Value>,
+  Option<PendingChange>,
 );
 
 #[derive(Debug, Clone, Copy, Serialize_repr)]
@@ -265,12 +265,21 @@ pub struct PendingChange {
 }
 
 impl PendingChange {
-  fn to_json(&self) -> Value {
-    json!([
-      self.modified_scripts,
-      self.project_version,
-      self.config_changed,
-    ])
+  fn to_v8<'s>(
+    &self,
+    scope: &mut v8::HandleScope<'s>,
+  ) -> Result<v8::Local<'s, v8::Value>, AnyError> {
+    let modified_scripts = serde_v8::to_v8(scope, &self.modified_scripts)?;
+    let project_version =
+      v8::Integer::new_from_unsigned(scope, self.project_version as u32).into();
+    let config_changed = v8::Boolean::new(scope, self.config_changed).into();
+    Ok(
+      v8::Array::new_with_elements(
+        scope,
+        &[modified_scripts, project_version, config_changed],
+      )
+      .into(),
+    )
   }
 
   fn coalesce(
@@ -1047,7 +1056,7 @@ impl TsServer {
     let change = self.pending_change.lock().take();
     if self
       .sender
-      .send((req, snapshot, tx, token, change.map(|c| c.to_json())))
+      .send((req, snapshot, tx, token, change))
       .is_err()
     {
       return Err(anyhow!("failed to send request to tsc thread"));
@@ -4207,6 +4216,7 @@ impl TscRuntime {
     &mut self,
     state_snapshot: Arc<StateSnapshot>,
     request: TscRequest,
+    change: Option<PendingChange>,
     token: CancellationToken,
   ) -> Result<String, AnyError> {
     if token.is_cancelled() {
@@ -4232,11 +4242,18 @@ impl TscRuntime {
         v8::Local::new(tc_scope, &self.server_request_fn_global);
       let undefined = v8::undefined(tc_scope).into();
 
+      let change = if let Some(change) = change {
+        change.to_v8(tc_scope)?
+      } else {
+        v8::null(tc_scope).into()
+      };
+
       let (method, req_args) = request.to_server_request(tc_scope)?;
       let args = vec![
         v8::Integer::new(tc_scope, id as i32).into(),
         v8::String::new(tc_scope, method).unwrap().into(),
         req_args.unwrap_or_else(|| v8::Array::new(tc_scope, 0).into()),
+        change,
       ];
 
       server_request_fn.call(tc_scope, undefined, &args);
@@ -4741,7 +4758,6 @@ pub struct JsNull;
 
 #[derive(Serialize)]
 pub enum TscRequest {
-  ProjectChanged((Vec<(String, ChangeKind)>, usize, bool)),
   GetDiagnostics((Vec<String>, usize)),
   GetAssets,
 
@@ -4766,7 +4782,13 @@ pub enum TscRequest {
   ),
   // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6274
   GetApplicableRefactors(
-    Box<(String, TscTextRange, UserPreferences, &'static str, String)>,
+    Box<(
+      String,
+      TscTextRange,
+      UserPreferences,
+      Option<&'static str>,
+      String,
+    )>,
   ),
   // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6258
   GetCombinedCodeFix(
@@ -4853,9 +4875,6 @@ impl TscRequest {
     scope: &mut v8::HandleScope<'s>,
   ) -> Result<(&'static str, Option<v8::Local<'s, v8::Value>>), AnyError> {
     let args = match self {
-      TscRequest::ProjectChanged(args) => {
-        ("$projectChanged", Some(serde_v8::to_v8(scope, args)?))
-      }
       TscRequest::GetDiagnostics(args) => {
         ("$getDiagnostics", Some(serde_v8::to_v8(scope, args)?))
       }
@@ -4953,7 +4972,6 @@ impl TscRequest {
 
   fn method(&self) -> &'static str {
     match self {
-      TscRequest::ProjectChanged(_) => "$projectChanged",
       TscRequest::GetDiagnostics(_) => "$getDiagnostics",
       TscRequest::CleanupSemanticCache => "cleanupSemanticCache",
       TscRequest::FindReferences(_) => "findReferences",
