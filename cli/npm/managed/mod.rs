@@ -31,7 +31,6 @@ use crate::args::NpmProcessStateKind;
 use crate::args::PackageJsonDepsProvider;
 use crate::cache::FastInsecureHasher;
 use crate::util::fs::canonicalize_path_maybe_not_exists_with_fs;
-use crate::util::progress_bar::ProgressBar;
 
 use self::cache::NpmCache;
 use self::installer::PackageJsonDepsInstaller;
@@ -168,8 +167,6 @@ fn create_inner(
     npm_cache,
     maybe_lockfile,
     package_json_deps_installer,
-    text_only_progress_bar,
-    npm_system_info,
   ))
 }
 
@@ -252,8 +249,6 @@ pub struct ManagedCliNpmResolver {
   global_npm_cache: Arc<NpmCache>,
   resolution: Arc<NpmResolution>,
   maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
-  npm_system_info: NpmSystemInfo,
-  progress_bar: ProgressBar,
   package_json_deps_installer: Arc<PackageJsonDepsInstaller>,
 }
 
@@ -275,8 +270,6 @@ impl ManagedCliNpmResolver {
     global_npm_cache: Arc<NpmCache>,
     maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
     package_json_deps_installer: Arc<PackageJsonDepsInstaller>,
-    progress_bar: ProgressBar,
-    npm_system_info: NpmSystemInfo,
   ) -> Self {
     Self {
       api,
@@ -286,8 +279,6 @@ impl ManagedCliNpmResolver {
       resolution,
       maybe_lockfile,
       package_json_deps_installer,
-      progress_bar,
-      npm_system_info,
     }
   }
 
@@ -546,35 +537,6 @@ impl NpmResolver for ManagedCliNpmResolver {
 impl CliNpmResolver for ManagedCliNpmResolver {
   fn into_npm_resolver(self: Arc<Self>) -> Arc<dyn NpmResolver> {
     self
-  }
-
-  fn clone_snapshotted(&self) -> Arc<dyn CliNpmResolver> {
-    // create a new snapshotted npm resolution and resolver
-    let npm_resolution = Arc::new(NpmResolution::new(
-      self.api.clone(),
-      self.resolution.snapshot(),
-      self.maybe_lockfile.clone(),
-    ));
-
-    Arc::new(ManagedCliNpmResolver::new(
-      self.api.clone(),
-      self.fs.clone(),
-      npm_resolution.clone(),
-      create_npm_fs_resolver(
-        self.fs.clone(),
-        self.global_npm_cache.clone(),
-        &self.progress_bar,
-        self.api.base_url().clone(),
-        npm_resolution,
-        self.root_node_modules_path().map(ToOwned::to_owned),
-        self.npm_system_info.clone(),
-      ),
-      self.global_npm_cache.clone(),
-      self.maybe_lockfile.clone(),
-      self.package_json_deps_installer.clone(),
-      self.progress_bar.clone(),
-      self.npm_system_info.clone(),
-    ))
   }
 
   fn as_inner(&self) -> InnerCliNpmResolverRef {

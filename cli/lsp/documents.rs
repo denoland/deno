@@ -3,7 +3,6 @@
 use super::cache::calculate_fs_version;
 use super::cache::LSP_DISALLOW_GLOBAL_TO_LOCAL_COPY;
 use super::config::Config;
-use super::language_server::StateNpmSnapshot;
 use super::testing::TestCollector;
 use super::testing::TestModule;
 use super::text::LineIndex;
@@ -308,7 +307,6 @@ impl Document {
     maybe_language_id: Option<LanguageId>,
     maybe_headers: Option<HashMap<String, String>>,
     resolver: Arc<CliGraphResolver>,
-    maybe_node_resolver: Option<&CliNodeResolver>,
     config: Arc<Config>,
     cache: &Arc<dyn HttpCache>,
   ) -> Arc<Self> {
@@ -317,7 +315,7 @@ impl Document {
       &specifier,
       maybe_headers.as_ref(),
       maybe_language_id,
-      maybe_node_resolver,
+      resolver.maybe_node_resolver(),
     );
     let (maybe_parsed_source, maybe_module) =
       if media_type_is_diagnosable(media_type) {
@@ -366,7 +364,6 @@ impl Document {
   fn with_new_config(
     &self,
     resolver: Arc<CliGraphResolver>,
-    maybe_node_resolver: Option<&CliNodeResolver>,
     config: Arc<Config>,
   ) -> Arc<Self> {
     let graph_resolver = resolver.as_graph_resolver();
@@ -375,7 +372,7 @@ impl Document {
       &self.specifier,
       self.maybe_headers.as_ref(),
       self.maybe_language_id,
-      maybe_node_resolver,
+      resolver.maybe_node_resolver(),
     );
     let dependencies;
     let maybe_types_dependency;
@@ -785,7 +782,6 @@ impl FileSystemDocuments {
     &self,
     specifier: &ModuleSpecifier,
     resolver: &Arc<CliGraphResolver>,
-    maybe_node_resolver: Option<&CliNodeResolver>,
     config: &Arc<Config>,
     cache: &Arc<dyn HttpCache>,
   ) -> Option<Arc<Document>> {
@@ -804,13 +800,7 @@ impl FileSystemDocuments {
     };
     if dirty {
       // attempt to update the file on the file system
-      self.refresh_document(
-        specifier,
-        resolver,
-        maybe_node_resolver,
-        config,
-        cache,
-      )
+      self.refresh_document(specifier, resolver, config, cache)
     } else {
       old_doc
     }
@@ -822,7 +812,6 @@ impl FileSystemDocuments {
     &self,
     specifier: &ModuleSpecifier,
     resolver: &Arc<CliGraphResolver>,
-    maybe_node_resolver: Option<&CliNodeResolver>,
     config: &Arc<Config>,
     cache: &Arc<dyn HttpCache>,
   ) -> Option<Arc<Document>> {
@@ -838,7 +827,6 @@ impl FileSystemDocuments {
         None,
         None,
         resolver.clone(),
-        maybe_node_resolver,
         config.clone(),
         cache,
       )
@@ -854,7 +842,6 @@ impl FileSystemDocuments {
         None,
         None,
         resolver.clone(),
-        maybe_node_resolver,
         config.clone(),
         cache,
       )
@@ -883,7 +870,6 @@ impl FileSystemDocuments {
         None,
         maybe_headers,
         resolver.clone(),
-        maybe_node_resolver,
         config.clone(),
         cache,
       )
@@ -932,8 +918,6 @@ pub struct Documents {
   /// Any imports to the context supplied by configuration files. This is like
   /// the imports into the a module graph in CLI.
   imports: Arc<IndexMap<ModuleSpecifier, GraphImport>>,
-  /// Resolver for node_modules.
-  maybe_node_resolver: Option<Arc<CliNodeResolver>>,
   /// A resolver that takes into account currently loaded import map and JSX
   /// settings.
   resolver: Arc<CliGraphResolver>,
@@ -959,7 +943,6 @@ impl Documents {
       open_docs: HashMap::default(),
       file_system_docs: Default::default(),
       imports: Default::default(),
-      maybe_node_resolver: None,
       resolver: Arc::new(CliGraphResolver::new(CliGraphResolverOptions {
         node_resolver: None,
         npm_resolver: None,
@@ -1012,7 +995,6 @@ impl Documents {
       // x-typescript-types?
       None,
       self.resolver.clone(),
-      self.maybe_node_resolver.as_deref(),
       self.config.clone(),
       &self.cache,
     );
@@ -1208,7 +1190,6 @@ impl Documents {
       self.file_system_docs.get(
         &specifier,
         &self.resolver,
-        self.maybe_node_resolver.as_deref(),
         &self.config,
         &self.cache,
       )
@@ -1270,18 +1251,17 @@ impl Documents {
     &self,
     specifiers: &[String],
     referrer: &ModuleSpecifier,
-    maybe_npm: Option<&StateNpmSnapshot>,
   ) -> Vec<Option<(ModuleSpecifier, MediaType)>> {
     let document = self.get(referrer);
     let dependencies = document.as_ref().map(|d| d.dependencies());
     let mut results = Vec::new();
+    let node_resolver = self.resolver.maybe_node_resolver();
     for specifier in specifiers {
-      if let Some(npm) = maybe_npm {
-        if npm.node_resolver.in_npm_package(referrer) {
+      if let Some(node_resolver) = node_resolver {
+        if node_resolver.in_npm_package(referrer) {
           // we're in an npm package, so use node resolution
           results.push(Some(NodeResolution::into_specifier_and_media_type(
-            npm
-              .node_resolver
+            node_resolver
               .resolve(
                 specifier,
                 referrer,
@@ -1305,9 +1285,9 @@ impl Documents {
         dependencies.as_ref().and_then(|d| d.get(specifier))
       {
         if let Some(specifier) = dep.maybe_type.maybe_specifier() {
-          results.push(self.resolve_dependency(specifier, maybe_npm, referrer));
+          results.push(self.resolve_dependency(specifier, referrer));
         } else if let Some(specifier) = dep.maybe_code.maybe_specifier() {
-          results.push(self.resolve_dependency(specifier, maybe_npm, referrer));
+          results.push(self.resolve_dependency(specifier, referrer));
         } else {
           results.push(None);
         }
@@ -1315,13 +1295,13 @@ impl Documents {
         .resolve_imports_dependency(specifier)
         .and_then(|r| r.maybe_specifier())
       {
-        results.push(self.resolve_dependency(specifier, maybe_npm, referrer));
+        results.push(self.resolve_dependency(specifier, referrer));
       } else if let Ok(npm_req_ref) =
         NpmPackageReqReference::from_str(specifier)
       {
         results.push(node_resolve_npm_req_ref(
           &npm_req_ref,
-          maybe_npm,
+          node_resolver,
           referrer,
         ));
       } else if let Ok(specifier) = self.resolver.as_graph_resolver().resolve(
@@ -1333,7 +1313,7 @@ impl Documents {
         },
         ResolutionMode::Types,
       ) {
-        results.push(self.resolve_dependency(&specifier, maybe_npm, referrer));
+        results.push(self.resolve_dependency(&specifier, referrer));
       } else {
         results.push(None);
       }
@@ -1347,6 +1327,10 @@ impl Documents {
     self.cache = cache.clone();
     self.redirect_resolver = Arc::new(RedirectResolver::new(cache));
     self.dirty = true;
+  }
+
+  pub fn get_resolver(&self) -> &Arc<CliGraphResolver> {
+    &self.resolver
   }
 
   pub fn get_jsr_resolver(&self) -> &Arc<JsrCacheResolver> {
@@ -1369,7 +1353,6 @@ impl Documents {
     self.config = Arc::new(config.clone());
     let config_data = config.tree.root_data();
     let config_file = config_data.and_then(|d| d.config_file.as_deref());
-    self.maybe_node_resolver = node_resolver.clone();
     self.resolver = Arc::new(CliGraphResolver::new(CliGraphResolverOptions {
       node_resolver,
       npm_resolver,
@@ -1441,21 +1424,14 @@ impl Documents {
         if !config.specifier_enabled(doc.specifier()) {
           continue;
         }
-        *doc = doc.with_new_config(
-          self.resolver.clone(),
-          self.maybe_node_resolver.as_deref(),
-          self.config.clone(),
-        );
+        *doc = doc.with_new_config(self.resolver.clone(), self.config.clone());
       }
       for mut doc in self.file_system_docs.docs.iter_mut() {
         if !config.specifier_enabled(doc.specifier()) {
           continue;
         }
-        *doc.value_mut() = doc.with_new_config(
-          self.resolver.clone(),
-          self.maybe_node_resolver.as_deref(),
-          self.config.clone(),
-        );
+        *doc.value_mut() =
+          doc.with_new_config(self.resolver.clone(), self.config.clone());
       }
       self.open_docs = open_docs;
       let mut preload_count = 0;
@@ -1473,7 +1449,6 @@ impl Documents {
           fs_docs.refresh_document(
             specifier,
             &self.resolver,
-            self.maybe_node_resolver.as_deref(),
             &self.config,
             &self.cache,
           );
@@ -1555,7 +1530,6 @@ impl Documents {
   fn resolve_dependency(
     &self,
     specifier: &ModuleSpecifier,
-    maybe_npm: Option<&StateNpmSnapshot>,
     referrer: &ModuleSpecifier,
   ) -> Option<(ModuleSpecifier, MediaType)> {
     if let Some(module_name) = specifier.as_str().strip_prefix("node:") {
@@ -1568,13 +1542,17 @@ impl Documents {
     }
 
     if let Ok(npm_ref) = NpmPackageReqReference::from_specifier(specifier) {
-      return node_resolve_npm_req_ref(&npm_ref, maybe_npm, referrer);
+      return node_resolve_npm_req_ref(
+        &npm_ref,
+        self.resolver.maybe_node_resolver(),
+        referrer,
+      );
     }
     let Some(doc) = self.get(specifier) else {
       return Some((specifier.clone(), MediaType::from_specifier(specifier)));
     };
     if let Some(specifier) = doc.maybe_types_dependency().maybe_specifier() {
-      self.resolve_dependency(specifier, maybe_npm, referrer)
+      self.resolve_dependency(specifier, referrer)
     } else {
       let media_type = doc.media_type();
       Some((doc.specifier().clone(), media_type))
@@ -1597,13 +1575,12 @@ impl Documents {
 
 fn node_resolve_npm_req_ref(
   npm_req_ref: &NpmPackageReqReference,
-  maybe_npm: Option<&StateNpmSnapshot>,
+  node_resolver: Option<&CliNodeResolver>,
   referrer: &ModuleSpecifier,
 ) -> Option<(ModuleSpecifier, MediaType)> {
-  maybe_npm.map(|npm| {
+  node_resolver.map(|node_resolver| {
     NodeResolution::into_specifier_and_media_type(
-      npm
-        .node_resolver
+      node_resolver
         .resolve_req_reference(
           npm_req_ref,
           &PermissionsContainer::allow_all(),

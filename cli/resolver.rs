@@ -509,6 +509,14 @@ impl CliGraphResolver {
     self
   }
 
+  pub fn maybe_node_resolver(&self) -> Option<&CliNodeResolver> {
+    self.node_resolver.as_deref()
+  }
+
+  pub fn maybe_npm_resolver(&self) -> Option<&Arc<dyn CliNpmResolver>> {
+    self.npm_resolver.as_ref()
+  }
+
   pub fn found_package_json_dep(&self) -> bool {
     self.found_package_json_dep_flag.is_raised()
   }

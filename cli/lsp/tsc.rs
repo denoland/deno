@@ -3979,9 +3979,10 @@ fn op_is_node_file(state: &mut OpState, #[string] path: String) -> bool {
   let r = match ModuleSpecifier::parse(&path) {
     Ok(specifier) => state
       .state_snapshot
-      .npm
-      .as_ref()
-      .map(|n| n.npm_resolver.in_npm_package(&specifier))
+      .documents
+      .get_resolver()
+      .maybe_npm_resolver()
+      .map(|npm_resolver| npm_resolver.in_npm_package(&specifier))
       .unwrap_or(false),
     Err(_) => false,
   };
@@ -4067,11 +4068,7 @@ fn op_resolve_inner(
   let specifiers = state
     .state_snapshot
     .documents
-    .resolve(
-      &args.specifiers,
-      &referrer,
-      state.state_snapshot.npm.as_ref(),
-    )
+    .resolve(&args.specifiers, &referrer)
     .into_iter()
     .map(|o| {
       o.map(|(s, mt)| {
@@ -4372,7 +4369,6 @@ deno_core::extension!(deno_tsc,
         cache_metadata: CacheMetadata::new(options.cache.clone()),
         config: Default::default(),
         documents: Documents::new(options.cache.clone()),
-        npm: None,
       }),
       options.specifier_map,
       options.performance,
@@ -5073,7 +5069,6 @@ mod tests {
       assets: Default::default(),
       cache_metadata: CacheMetadata::new(cache),
       config: Arc::new(config),
-      npm: None,
     }
   }
 

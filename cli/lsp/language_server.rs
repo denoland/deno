@@ -167,12 +167,6 @@ impl LspNpmConfigHash {
 #[derive(Debug, Clone)]
 pub struct LanguageServer(Arc<tokio::sync::RwLock<Inner>>, CancellationToken);
 
-#[derive(Clone, Debug)]
-pub struct StateNpmSnapshot {
-  pub node_resolver: Arc<CliNodeResolver>,
-  pub npm_resolver: Arc<dyn CliNpmResolver>,
-}
-
 /// Snapshot of the state used by TSC.
 #[derive(Clone, Debug)]
 pub struct StateSnapshot {
@@ -181,7 +175,6 @@ pub struct StateSnapshot {
   pub cache_metadata: cache::CacheMetadata,
   pub config: Arc<ConfigSnapshot>,
   pub documents: Documents,
-  pub npm: Option<StateNpmSnapshot>,
 }
 
 type LanguageServerTaskFn = Box<dyn FnOnce(LanguageServer) + Send + Sync>;
@@ -645,35 +638,12 @@ impl Inner {
   }
 
   pub fn snapshot(&self) -> Arc<StateSnapshot> {
-    let maybe_state_npm_snapshot = self
-      .npm
-      .resolver
-      .as_ref()
-      .map(|resolver| resolver.clone_snapshotted())
-      .map(|resolver| {
-        let fs = Arc::new(deno_fs::RealFs);
-        let node_resolver = Arc::new(NodeResolver::new(
-          fs.clone(),
-          resolver.clone().into_npm_resolver(),
-        ));
-        let cli_node_resolver = Arc::new(CliNodeResolver::new(
-          None,
-          fs,
-          node_resolver,
-          resolver.clone(),
-        ));
-        StateNpmSnapshot {
-          node_resolver: cli_node_resolver,
-          npm_resolver: resolver,
-        }
-      });
     Arc::new(StateSnapshot {
       project_version: self.project_version,
       assets: self.assets.snapshot(),
       cache_metadata: self.cache_metadata.clone(),
       config: self.config.snapshot(),
       documents: self.documents.clone(),
-      npm: maybe_state_npm_snapshot,
     })
   }
 

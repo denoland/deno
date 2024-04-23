@@ -178,13 +178,6 @@ impl CliNpmResolver for ByonmCliNpmResolver {
     self
   }
 
-  fn clone_snapshotted(&self) -> Arc<dyn CliNpmResolver> {
-    Arc::new(Self {
-      fs: self.fs.clone(),
-      root_node_modules_dir: self.root_node_modules_dir.clone(),
-    })
-  }
-
   fn as_inner(&self) -> InnerCliNpmResolverRef {
     InnerCliNpmResolverRef::Byonm(self)
   }
