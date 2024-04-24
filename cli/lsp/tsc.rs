@@ -4290,8 +4290,6 @@ impl TscRuntime {
   }
 }
 
-// fn print_exception(tc_scope: &mut v8::TryCatch<>)
-
 fn run_tsc_thread(
   mut request_rx: UnboundedReceiver<Request>,
   performance: Arc<Performance>,
