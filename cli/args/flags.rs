@@ -22,6 +22,7 @@ use log::Level;
 use std::env;
 use std::ffi::OsString;
 use std::net::SocketAddr;
+use std::num::NonZeroU16;
 use std::num::NonZeroU32;
 use std::num::NonZeroU8;
 use std::num::NonZeroUsize;
@@ -272,6 +273,26 @@ impl RunFlags {
   }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ServeFlags {
+  pub script: String,
+  pub watch: Option<WatchFlagsWithPaths>,
+  pub port: NonZeroU16,
+  pub host: String,
+}
+
+impl ServeFlags {
+  #[cfg(test)]
+  pub fn new_default(script: String, port: u16, host: &str) -> Self {
+    Self {
+      script,
+      watch: None,
+      port: NonZeroU16::new(port).unwrap(),
+      host: host.to_owned(),
+    }
+  }
+}
+
 #[derive(Clone, Default, Debug, Eq, PartialEq)]
 pub struct WatchFlags {
   pub hmr: bool,
@@ -366,6 +387,7 @@ pub enum DenoSubcommand {
   Lint(LintFlags),
   Repl(ReplFlags),
   Run(RunFlags),
+  Serve(ServeFlags),
   Task(TaskFlags),
   Test(TestFlags),
   Types,
@@ -776,7 +798,7 @@ impl Flags {
     use DenoSubcommand::*;
 
     match &self.subcommand {
-      Run(RunFlags { script, .. }) => {
+      Run(RunFlags { script, .. }) | Serve(ServeFlags { script, .. }) => {
         let module_specifier = resolve_url_or_path(script, current_dir).ok()?;
         if module_specifier.scheme() == "file" {
           let p = module_specifier
@@ -1063,6 +1085,7 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
       "lsp" => lsp_parse(&mut flags, &mut m),
       "repl" => repl_parse(&mut flags, &mut m),
       "run" => run_parse(&mut flags, &mut m, app)?,
+      "serve" => serve_parse(&mut flags, &mut m, app)?,
       "task" => task_parse(&mut flags, &mut m),
       "test" => test_parse(&mut flags, &mut m),
       "types" => types_parse(&mut flags, &mut m),
@@ -1198,6 +1221,7 @@ fn clap_root() -> Command {
         .global(true),
     )
     .subcommand(run_subcommand())
+    .subcommand(serve_subcommand())
     .defer(|cmd| {
       cmd
         .subcommand(add_subcommand())
@@ -2263,6 +2287,59 @@ Specifying the filename '-' to read the file from stdin.
 
   curl https://examples.deno.land/hello-world.ts | deno run -",
     )
+}
+
+fn serve_host_validator(host: &str) -> Result<String, String> {
+  if Url::parse(&format!("internal://{host}:9999")).is_ok() {
+    Ok(host.to_owned())
+  } else {
+    Err(format!("Bad serve host: {host}"))
+  }
+}
+
+fn serve_subcommand() -> Command {
+  runtime_args(Command::new("serve"), true, true)
+    .arg(
+      Arg::new("port")
+        .long("port")
+        .help("The TCP port to serve on, defaulting to 8000.")
+        .value_parser(value_parser!(NonZeroU16)),
+    )
+    .arg(
+      Arg::new("host")
+        .long("host")
+        .help("The TCP address to serve on, defaulting to 0.0.0.0 (all interfaces).")
+        .value_parser(serve_host_validator),
+    )
+    .arg(check_arg(false))
+    .arg(watch_arg(true))
+    .arg(watch_exclude_arg())
+    .arg(hmr_arg(true))
+    .arg(no_clear_screen_arg())
+    .arg(executable_ext_arg())
+    .arg(
+      script_arg()
+        .required_unless_present("v8-flags")
+        .trailing_var_arg(true),
+    )
+    .arg(env_file_arg())
+    .arg(no_code_cache_arg())
+    .about("Run a server")
+    .long_about("Run a server defined in a main module
+
+The serve command uses the default exports of the main module to determine which
+servers to start.
+
+See https://docs.deno.com/runtime/manual/tools/serve for
+more detailed information.
+
+Start a server defined in server.ts:
+
+  deno serve server.ts
+
+Start a server defined in server.ts, watching for changes and running on port 5050:
+
+  deno serve --watch --port 5050 server.ts")
 }
 
 fn task_subcommand() -> Command {
@@ -3863,6 +3940,63 @@ fn run_parse(
   Ok(())
 }
 
+fn serve_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+  app: Command,
+) -> clap::error::Result<()> {
+  // deno serve implies --allow-net=host:port
+  let port = matches
+    .remove_one::<NonZeroU16>("port")
+    .unwrap_or(NonZeroU16::new(8000).unwrap());
+  let host = matches
+    .remove_one::<String>("host")
+    .unwrap_or_else(|| "0.0.0.0".to_owned());
+
+  runtime_args_parse(flags, matches, true, true);
+  // If the user didn't pass --allow-net, add this port to the network
+  // allowlist. If the host is 0.0.0.0, we add :{port} and allow the same network perms
+  // as if it was passed to --allow-net directly.
+  let allowed = flags_net::parse(vec![if host == "0.0.0.0" {
+    format!(":{port}")
+  } else {
+    format!("{host}:{port}")
+  }])?;
+  match &mut flags.allow_net {
+    None => flags.allow_net = Some(allowed),
+    Some(v) => {
+      if !v.is_empty() {
+        v.extend(allowed);
+      }
+    }
+  }
+  flags.code_cache_enabled = !matches.get_flag("no-code-cache");
+
+  let mut script_arg =
+    matches.remove_many::<String>("script_arg").ok_or_else(|| {
+      let mut app = app;
+      let subcommand = &mut app.find_subcommand_mut("serve").unwrap();
+      subcommand.error(
+        clap::error::ErrorKind::MissingRequiredArgument,
+        "[SCRIPT_ARG] may only be omitted with --v8-flags=--help",
+      )
+    })?;
+
+  let script = script_arg.next().unwrap();
+  flags.argv.extend(script_arg);
+
+  ext_arg_parse(flags, matches);
+
+  flags.subcommand = DenoSubcommand::Serve(ServeFlags {
+    script,
+    watch: watch_arg_parse_with_paths(matches),
+    port,
+    host,
+  });
+
+  Ok(())
+}
+
 fn task_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   flags.config_flag = matches
     .remove_one::<String>("config")
@@ -4858,7 +4992,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Run(RunFlags::new_default(
-          "script.ts".to_string()
+          "script.ts".to_string(),
         )),
         v8_flags: svec!["--expose-gc", "--gc-stats=1"],
         code_cache_enabled: true,
@@ -4871,6 +5005,115 @@ mod tests {
       .unwrap_err()
       .to_string()
       .contains("[SCRIPT_ARG] may only be omitted with --v8-flags=--help"));
+  }
+
+  #[test]
+  fn serve_flags() {
+    let r = flags_from_vec(svec!["deno", "serve", "main.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Serve(ServeFlags::new_default(
+          "main.ts".to_string(),
+          8000,
+          "0.0.0.0"
+        )),
+        allow_net: Some(vec![
+          "0.0.0.0:8000".to_string(),
+          "127.0.0.1:8000".to_string(),
+          "localhost:8000".to_string()
+        ]),
+        code_cache_enabled: true,
+        ..Flags::default()
+      }
+    );
+    let r = flags_from_vec(svec!["deno", "serve", "--port", "5000", "main.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Serve(ServeFlags::new_default(
+          "main.ts".to_string(),
+          5000,
+          "0.0.0.0"
+        )),
+        allow_net: Some(vec![
+          "0.0.0.0:5000".to_string(),
+          "127.0.0.1:5000".to_string(),
+          "localhost:5000".to_string()
+        ]),
+        code_cache_enabled: true,
+        ..Flags::default()
+      }
+    );
+    let r = flags_from_vec(svec![
+      "deno",
+      "serve",
+      "--port",
+      "5000",
+      "--allow-net=example.com",
+      "main.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Serve(ServeFlags::new_default(
+          "main.ts".to_string(),
+          5000,
+          "0.0.0.0"
+        )),
+        allow_net: Some(vec![
+          "example.com".to_string(),
+          "0.0.0.0:5000".to_string(),
+          "127.0.0.1:5000".to_string(),
+          "localhost:5000".to_string()
+        ]),
+        code_cache_enabled: true,
+        ..Flags::default()
+      }
+    );
+    let r = flags_from_vec(svec![
+      "deno",
+      "serve",
+      "--port",
+      "5000",
+      "--allow-net",
+      "main.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Serve(ServeFlags::new_default(
+          "main.ts".to_string(),
+          5000,
+          "0.0.0.0"
+        )),
+        allow_net: Some(vec![]),
+        code_cache_enabled: true,
+        ..Flags::default()
+      }
+    );
+    let r = flags_from_vec(svec![
+      "deno",
+      "serve",
+      "--port",
+      "5000",
+      "--host",
+      "example.com",
+      "main.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Serve(ServeFlags::new_default(
+          "main.ts".to_string(),
+          5000,
+          "example.com"
+        )),
+        allow_net: Some(vec!["example.com:5000".to_owned()]),
+        code_cache_enabled: true,
+        ..Flags::default()
+      }
+    );
   }
 
   #[test]
