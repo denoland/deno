@@ -549,24 +549,24 @@
       "type": "array",
       "description": "List of unstable features to enable.",
       "items": {
-        "type": "string"
-      },
-      "examples": [
-        "broadcast-channel",
-        "bare-node-builtins",
-        "byonm",
-        "cron",
-        "ffi",
-        "fs",
-        "http",
-        "kv",
-        "net",
-        "sloppy-imports",
-        "temporal",
-        "unsafe-proto",
-        "webgpu",
-        "worker-options"
-      ]
+        "type": "string",
+        "examples": [
+          "broadcast-channel",
+          "bare-node-builtins",
+          "byonm",
+          "cron",
+          "ffi",
+          "fs",
+          "http",
+          "kv",
+          "net",
+          "sloppy-imports",
+          "temporal",
+          "unsafe-proto",
+          "webgpu",
+          "worker-options"
+        ]
+      }
     },
     "name": {
       "type": "string",
