@@ -78,7 +78,9 @@ pub async fn run_server_with_acceptor<'a, A, F, S>(
       while let Some(result) = acceptor.next().await {
         let stream = result?;
         let io = TokioIo::new(stream);
-        unsync::spawn(hyper_serve_connection(io, handler, error_msg, kind));
+        deno_unsync::spawn(hyper_serve_connection(
+          io, handler, error_msg, kind,
+        ));
       }
       Ok(())
     }
@@ -147,6 +149,6 @@ where
   Fut::Output: 'static,
 {
   fn execute(&self, fut: Fut) {
-    unsync::spawn(fut);
+    deno_unsync::spawn(fut);
   }
 }
