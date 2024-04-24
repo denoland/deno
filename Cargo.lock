@@ -1145,6 +1145,7 @@ dependencies = [
  "shell-escape",
  "spki",
  "tar",
+ "task-local-extensions",
  "tempfile",
  "test_server",
  "text-size",

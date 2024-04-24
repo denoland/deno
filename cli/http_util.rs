@@ -393,6 +393,11 @@ pub async fn get_response_body_with_progress(
 mod test {
   use super::*;
 
+  use deno_runtime::deno_fetch::reqwest_middleware;
+  use std::sync::Arc;
+  use std::sync::Mutex;
+  use task_local_extensions;
+
   #[tokio::test]
   async fn test_http_client_download_redirect() {
     let _http_server_guard = test_util::http_server();
@@ -412,6 +417,54 @@ mod test {
       .err()
       .unwrap();
     assert_eq!(err.to_string(), "Too many redirects.");
+  }
+
+  #[tokio::test]
+  async fn test_http_client_middleware() {
+    // set up a middleware with a counter
+    struct CountingMiddleware {
+      count: Arc<Mutex<i32>>,
+    }
+
+    impl CountingMiddleware {
+      fn increment(&self) {
+        let mut count = self.count.lock().unwrap();
+        *count += 1;
+      }
+    }
+
+    #[async_trait::async_trait]
+    impl reqwest_middleware::Middleware for CountingMiddleware {
+      async fn handle(
+        &self,
+        req: reqwest::Request,
+        extensions: &mut task_local_extensions::Extensions,
+        next: reqwest_middleware::Next<'_>,
+      ) -> reqwest_middleware::Result<reqwest::Response> {
+        self.increment();
+        next.run(req, extensions).await
+      }
+    }
+
+    let _http_server_guard = test_util::http_server();
+
+    let count = Arc::new(Mutex::new(0));
+    let middleware = CountingMiddleware {
+      count: count.clone(),
+    };
+
+    deno_runtime::deno_fetch::add_middleware(Arc::new(middleware)).unwrap();
+    let client = HttpClient::new(None, None);
+
+    // make a request to the server and expect a 404 Not found
+    let err = client
+      .download_text("http://localhost:4545/")
+      .await
+      .err()
+      .unwrap();
+    assert_eq!(err.to_string(), "Not found.");
+    // check that the middleware has been called once
+    assert_eq!(*count.lock().unwrap(), 1);
   }
 
   #[test]
