@@ -1,7 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use bytes::Bytes;
-use deno_core::unsync;
 use futures::Future;
 use futures::FutureExt;
 use futures::Stream;
@@ -46,7 +45,7 @@ where
       loop {
         let (stream, _) = listener.accept().await?;
         let io = TokioIo::new(stream);
-        unsync::spawn(hyper_serve_connection(
+        deno_unsync::spawn(hyper_serve_connection(
           io,
           handler,
           options.error_msg,

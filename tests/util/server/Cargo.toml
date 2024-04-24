@@ -20,6 +20,7 @@ base64.workspace = true
 bytes.workspace = true
 console_static_text.workspace = true
 denokv_proto.workspace = true
+deno_unsync = "0"
 fastwebsockets.workspace = true
 flate2 = { workspace = true, features = ["default"] }
 futures.workspace = true

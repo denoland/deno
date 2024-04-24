@@ -6583,6 +6583,7 @@ dependencies = [
  "base64",
  "bytes",
  "console_static_text",
+ "deno_unsync",
  "denokv_proto",
  "fastwebsockets",
  "flate2",
