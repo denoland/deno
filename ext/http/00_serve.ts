@@ -4,6 +4,7 @@ import { core, internals, primordials } from "ext:core/mod.js";
 const {
   BadResourcePrototype,
   InterruptedPrototype,
+  Interrupted,
   internalRidSymbol,
 } = core;
 import {
@@ -147,12 +148,17 @@ class InnerRequest {
   close(success = true) {
     // The completion signal fires only if someone cares
     if (this.#completed) {
-      this.#completed.resolve(undefined);
+      if (success) {
+        this.#completed.resolve(undefined);
+      } else {
+        this.#completed.reject(
+          new Interrupted("HTTP response was not sent successfully"),
+        );
+      }
     }
-    // The AbortController fires only on failure
-    if (!success) {
-      this.#abortController.abort();
-    }
+    // Unconditionally abort the request signal. Note that we don't use
+    // an error here.
+    this.#abortController.abort();
     this.#external = null;
   }
 
@@ -286,9 +292,13 @@ class InnerRequest {
 
   get completed() {
     if (!this.#completed) {
-      let resolve;
-      const promise = new Promise((r) => resolve = r);
-      this.#completed = { promise, resolve };
+      // NOTE: this is faster than Promise.withResolvers()
+      let resolve, reject;
+      const promise = new Promise((r1, r2) => {
+        resolve = r1;
+        reject = r2;
+      });
+      this.#completed = { promise, resolve, reject };
     }
     return this.#completed.promise;
   }
