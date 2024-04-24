@@ -11468,6 +11468,8 @@ fn lsp_deno_json_scopes_fmt_config() {
     })
     .to_string(),
   );
+  temp_dir.create_dir_all("project2/project3");
+  temp_dir.write("project2/project3/deno.json", json!({}).to_string());
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.did_open(json!({
@@ -11530,6 +11532,38 @@ fn lsp_deno_json_scopes_fmt_config() {
       "newText": "''",
     }])
   );
+  // `project2/project3/file.ts` should use the fmt settings from
+  // `project2/deno.json`, since `project2/project3/deno.json` has no fmt field.
+  client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("project2/project3/file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "console.log(\"\");\n",
+    },
+  }));
+  let res = client.write_request(
+    "textDocument/formatting",
+    json!({
+      "textDocument": {
+        "uri": temp_dir.uri().join("project2/project3/file.ts").unwrap(),
+      },
+      "options": {
+        "tabSize": 2,
+        "insertSpaces": true,
+      },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([{
+      "range": {
+        "start": { "line": 0, "character": 12 },
+        "end": { "line": 0, "character": 14 },
+      },
+      "newText": "''",
+    }])
+  );
   client.shutdown();
 }
 
@@ -11561,6 +11595,8 @@ fn lsp_deno_json_scopes_lint_config() {
     })
     .to_string(),
   );
+  temp_dir.create_dir_all("project2/project3");
+  temp_dir.write("project2/project3/deno.json", json!({}).to_string());
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
   let diagnostics = client.did_open(json!({
@@ -11616,6 +11652,46 @@ fn lsp_deno_json_scopes_lint_config() {
     json!(diagnostics.messages_with_source("deno-lint")),
     json!({
       "uri": temp_dir.uri().join("project2/file.ts").unwrap(),
+      "diagnostics": [{
+        "range": {
+          "start": { "line": 1, "character": 8 },
+          "end": { "line": 1, "character": 27 },
+        },
+        "severity": 2,
+        "code": "ban-untagged-todo",
+        "source": "deno-lint",
+        "message": "TODO should be tagged with (@username) or (#issue)\nAdd a user tag or issue reference to the TODO comment, e.g. TODO(@djones), TODO(djones), TODO(#123)",
+      }],
+      "version": 1,
+    })
+  );
+  client.write_notification(
+    "textDocument/didClose",
+    json!({
+      "textDocument": {
+        "uri": temp_dir.uri().join("project2/file.ts").unwrap(),
+      },
+    }),
+  );
+  // `project2/project3/file.ts` should use the lint settings from
+  // `project2/deno.json`, since `project2/project3/deno.json` has no lint
+  // field.
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("project2/project3/file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"
+        // TODO: Unused var
+        const snake_case_var = 1;
+        console.log(snake_case_var);
+      "#,
+    },
+  }));
+  assert_eq!(
+    json!(diagnostics.messages_with_source("deno-lint")),
+    json!({
+      "uri": temp_dir.uri().join("project2/project3/file.ts").unwrap(),
       "diagnostics": [{
         "range": {
           "start": { "line": 1, "character": 8 },

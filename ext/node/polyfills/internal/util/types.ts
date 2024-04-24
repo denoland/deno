@@ -58,6 +58,10 @@ export function isBigUint64Array(value: unknown): value is BigUint64Array {
   return TypedArrayPrototypeGetSymbolToStringTag(value) === "BigUint64Array";
 }
 
+export function isFloat16Array(value: unknown): value is Float16Array {
+  return TypedArrayPrototypeGetSymbolToStringTag(value) === "Float16Array";
+}
+
 export function isFloat32Array(value: unknown): value is Float32Array {
   return TypedArrayPrototypeGetSymbolToStringTag(value) === "Float32Array";
 }

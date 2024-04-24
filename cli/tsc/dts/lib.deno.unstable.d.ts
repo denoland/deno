@@ -10,6 +10,17 @@
 declare namespace Deno {
   export {}; // stop default export type behavior
 
+  /** Information for a HTTP request.
+   *
+   * @category HTTP Server
+   */
+  export interface ServeHandlerInfo {
+    /** The remote address of the connection. */
+    remoteAddr: Deno.NetAddr;
+    /** The completion promise */
+    completed: Promise<void>;
+  }
+
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * Retrieve the process umask.  If `mask` is provided, sets the process umask.

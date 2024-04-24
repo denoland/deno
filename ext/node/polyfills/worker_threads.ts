@@ -29,7 +29,7 @@ import { EventEmitter } from "node:events";
 import { BroadcastChannel } from "ext:deno_broadcast_channel/01_broadcast_channel.js";
 import process from "node:process";
 
-const { ObjectPrototypeIsPrototypeOf } = primordials;
+const { JSONParse, JSONStringify, ObjectPrototypeIsPrototypeOf } = primordials;
 const {
   Error,
   Symbol,
@@ -126,10 +126,18 @@ class NodeWorker extends EventEmitter {
     }
     this.#name = name;
 
+    // One of the most common usages will be to pass `process.env` here,
+    // but because `process.env` is a Proxy in Deno, we need to get a plain
+    // object out of it - otherwise we'll run in `DataCloneError`s.
+    // See https://github.com/denoland/deno/issues/23522.
+    let env_ = undefined;
+    if (options?.env) {
+      env_ = JSONParse(JSONStringify(options?.env));
+    }
     const serializedWorkerMetadata = serializeJsMessageData({
       workerData: options?.workerData,
       environmentData: environmentData,
-      env: options?.env,
+      env: env_,
     }, options?.transferList ?? []);
     const id = op_create_worker(
       {
