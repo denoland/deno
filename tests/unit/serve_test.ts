@@ -2874,6 +2874,37 @@ Deno.test(
   },
 );
 
+// Regression test for https://github.com/denoland/deno/issues/23537
+Deno.test(
+  { permissions: { read: true, net: true } },
+  async function httpServerUndefinedCert() {
+    const ac = new AbortController();
+    const { promise, resolve } = Promise.withResolvers<void>();
+    const hostname = "127.0.0.1";
+
+    const server = Deno.serve({
+      handler: () => new Response("Hello World"),
+      hostname,
+      port: servePort,
+      signal: ac.signal,
+      onListen: onListen(resolve),
+      onError: createOnErrorCb(ac),
+      cert: undefined,
+      key: undefined,
+    });
+
+    await promise;
+    const resp = await fetch(`http://localhost:${servePort}/`);
+
+    const respBody = await resp.text();
+    assertEquals("Hello World", respBody);
+
+    client.close();
+    ac.abort();
+    await server.finished;
+  },
+);
+
 Deno.test(
   { permissions: { read: true, net: true } },
   async function httpServerWithTls() {
