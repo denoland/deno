@@ -4260,12 +4260,12 @@ impl TscRuntime {
       if tc_scope.has_caught() && !tc_scope.has_terminated() {
         if let Some(stack_trace) = tc_scope.stack_trace() {
           lsp_warn!(
-            "Error during TSC request {method} tsc runtime stack:\n\t{}",
+            "Error during TS request \"{method}\":\n  {}",
             stack_trace.to_rust_string_lossy(tc_scope),
           );
         } else {
           lsp_warn!(
-            "Error during TSC request {method} tsc runtime:\n\t{}",
+            "Error during TS request \"{method}\":\n  {}",
             tc_scope
               .exception()
               .map(|exc| exc.to_rust_string_lossy(tc_scope))
