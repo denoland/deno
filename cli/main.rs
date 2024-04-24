@@ -29,6 +29,7 @@ mod worker;
 use crate::args::flags_from_vec;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
+use crate::args::DENO_FUTURE;
 use crate::util::display;
 use crate::util::v8::get_v8_flags_from_env;
 use crate::util::v8::init_v8_flags;
@@ -390,12 +391,12 @@ fn resolve_flags_and_init(
     // https://github.com/microsoft/vscode/blob/48d4ba271686e8072fc6674137415bc80d936bc7/extensions/typescript-language-features/src/configuration/configuration.ts#L213-L214
     DenoSubcommand::Lsp => vec!["--max-old-space-size=3072".to_string()],
     _ => {
-      if std::env::var("DENO_FUTURE").is_ok() {
+      if *DENO_FUTURE {
         vec!["--no-harmony-import-assertions".to_string()]
       } else {
         vec![]
       }
-    },
+    }
   };
 
   init_v8_flags(&default_v8_flags, &flags.v8_flags, get_v8_flags_from_env());
