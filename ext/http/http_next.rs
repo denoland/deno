@@ -683,7 +683,7 @@ pub async fn op_http_set_response_body_resource(
   #[smi] stream_rid: ResourceId,
   auto_close: bool,
   status: u16,
-) -> Result<(), AnyError> {
+) -> Result<bool, AnyError> {
   let http =
     // SAFETY: op is called with external.
     unsafe { clone_external!(external, "op_http_set_response_body_resource") };
@@ -716,8 +716,7 @@ pub async fn op_http_set_response_body_resource(
     },
   );
 
-  http.response_body_finished().await;
-  Ok(())
+  Ok(http.response_body_finished().await)
 }
 
 #[op2(fast)]

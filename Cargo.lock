@@ -1309,7 +1309,7 @@ dependencies = [
  "cooked-waker",
  "deno_core_icudata",
  "deno_ops",
- "deno_unsync 0.3.2",
+ "deno_unsync",
  "futures",
  "libc",
  "memoffset 0.9.1",
@@ -1340,7 +1340,6 @@ dependencies = [
  "async-trait",
  "chrono",
  "deno_core",
- "deno_unsync 0.1.1",
  "saffron",
  "tokio",
 ]
@@ -1486,7 +1485,7 @@ dependencies = [
  "data-url",
  "deno_ast",
  "deno_semver",
- "deno_unsync 0.3.2",
+ "deno_unsync",
  "encoding_rs",
  "futures",
  "import_map",
@@ -1570,7 +1569,6 @@ dependencies = [
  "deno_fetch",
  "deno_node",
  "deno_tls",
- "deno_unsync 0.1.1",
  "denokv_proto",
  "denokv_remote",
  "denokv_sqlite",
@@ -1907,15 +1905,6 @@ dependencies = [
  "rustls-webpki",
  "serde",
  "webpki-roots",
-]
-
-[[package]]
-name = "deno_unsync"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ac0984205f25e71ddd1be603d76e70255953c12ff864707359ab195d26dfc7b3"
-dependencies = [
- "tokio",
 ]
 
 [[package]]
@@ -6594,7 +6583,7 @@ dependencies = [
  "base64",
  "bytes",
  "console_static_text",
- "deno_unsync 0.3.2",
+ "deno_unsync",
  "denokv_proto",
  "fastwebsockets",
  "flate2",
