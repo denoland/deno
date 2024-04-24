@@ -4,13 +4,16 @@ use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::ToJsBuffer;
+use image::codecs::png::PngDecoder;
 use image::imageops::FilterType;
 use image::ColorType;
-use image::ImageDecoder;
+use image::DynamicImage;
+use image::GenericImageView;
 use image::Pixel;
 use image::RgbaImage;
 use serde::Deserialize;
 use serde::Serialize;
+use std::io::BufReader;
 use std::path::PathBuf;
 
 #[derive(Debug, Deserialize)]
@@ -118,24 +121,21 @@ struct DecodedPng {
 #[op2]
 #[serde]
 fn op_image_decode_png(#[buffer] buf: &[u8]) -> Result<DecodedPng, AnyError> {
-  let png = image::codecs::png::PngDecoder::new(buf)?;
-
-  let (width, height) = png.dimensions();
+  let reader = BufReader::new(buf);
+  let decoder = PngDecoder::new(reader)?;
+  let image = DynamicImage::from_decoder(decoder)?;
+  let (width, height) = image.dimensions();
 
   // TODO(@crowlKats): maybe use DynamicImage https://docs.rs/image/0.24.7/image/enum.DynamicImage.html ?
-  if png.color_type() != ColorType::Rgba8 {
+  if image.color() != ColorType::Rgba8 {
     return Err(type_error(format!(
       "Color type '{:?}' not supported",
-      png.color_type()
+      image.color()
     )));
   }
 
-  let mut png_data = Vec::with_capacity(png.total_bytes() as usize);
-
-  png.read_image(&mut png_data)?;
-
   Ok(DecodedPng {
-    data: png_data.into(),
+    data: image.to_rgba8().into_raw().into(),
     width,
     height,
   })
