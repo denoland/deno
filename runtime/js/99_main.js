@@ -53,7 +53,7 @@ const {
 const {
   isNativeError,
 } = core;
-import { registerDeclarativeServer } from "ext:deno_http/00_serve.js";
+import { registerDeclarativeServer } from "ext:deno_http/00_serve.ts";
 import * as event from "ext:deno_web/02_event.js";
 import * as location from "ext:deno_web/12_location.js";
 import * as version from "ext:runtime/01_version.ts";
