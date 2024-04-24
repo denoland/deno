@@ -2889,6 +2889,7 @@ Deno.test(
       signal: ac.signal,
       onListen: onListen(resolve),
       onError: createOnErrorCb(ac),
+      // Undefined should be equivalent to missing
       cert: undefined,
       key: undefined,
     });
@@ -2899,7 +2900,6 @@ Deno.test(
     const respBody = await resp.text();
     assertEquals("Hello World", respBody);
 
-    client.close();
     ac.abort();
     await server.finished;
   },
