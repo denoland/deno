@@ -12,6 +12,7 @@ use super::tsc::AssetDocument;
 
 use crate::args::package_json;
 use crate::cache::HttpCache;
+use crate::graph_util::CliJsrUrlProvider;
 use crate::jsr::JsrCacheResolver;
 use crate::lsp::logging::lsp_warn;
 use crate::npm::CliNpmResolver;
@@ -409,13 +410,22 @@ impl Document {
           .map(|(s, d)| {
             (
               s.clone(),
-              d.with_new_resolver(s, Some(graph_resolver), Some(npm_resolver)),
+              d.with_new_resolver(
+                s,
+                &CliJsrUrlProvider,
+                Some(graph_resolver),
+                Some(npm_resolver),
+              ),
             )
           })
           .collect(),
       );
       maybe_types_dependency = self.maybe_types_dependency.as_ref().map(|d| {
-        Arc::new(d.with_new_resolver(Some(graph_resolver), Some(npm_resolver)))
+        Arc::new(d.with_new_resolver(
+          &CliJsrUrlProvider,
+          Some(graph_resolver),
+          Some(npm_resolver),
+        ))
       });
       maybe_parsed_source = self.maybe_parsed_source();
       maybe_test_module_fut = self
@@ -1409,6 +1419,7 @@ impl Documents {
             let graph_import = GraphImport::new(
               &referrer,
               imports,
+              &CliJsrUrlProvider,
               Some(graph_resolver),
               Some(npm_resolver),
             );
@@ -1745,6 +1756,7 @@ fn analyze_module(
         // use a null file system because there's no need to bother resolving
         // dynamic imports like import(`./dir/${something}`) in the LSP
         file_system: &deno_graph::source::NullFileSystem,
+        jsr_url_provider: &CliJsrUrlProvider,
         maybe_resolver: Some(resolver.as_graph_resolver()),
         maybe_npm_resolver: Some(resolver.as_graph_npm_resolver()),
       },
