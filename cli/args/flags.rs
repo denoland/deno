@@ -2330,7 +2330,7 @@ fn serve_subcommand() -> Command {
 The serve command uses the default exports of the main module to determine which
 servers to start.
 
-See https://docs.deno.com/runtime/manual/getting_started/command_line_interface for
+See https://docs.deno.com/runtime/manual/tools/serve for
 more detailed information.
 
 Start a server defined in server.ts:
