@@ -2843,7 +2843,20 @@ Deno.test(
   async function httpServerCancelFetch() {
     const request2 = Promise.withResolvers<void>();
     const request2Aborted = Promise.withResolvers<string>();
-    const { finished, abort } = await makeServer(async (req) => {
+    let completed = 0;
+    let aborted = 0;
+    const { finished, abort } = await makeServer(async (req, context) => {
+      context.completed.then(() => {
+        console.log("completed");
+        completed++;
+      }).catch(() => {
+        console.log("completed (error)");
+        completed++;
+      });
+      req.signal.onabort = () => {
+        console.log("aborted", req.url);
+        aborted++;
+      };
       if (req.url.endsWith("/1")) {
         const fetchRecursive = await fetch(`http://localhost:${servePort}/2`);
         return new Response(fetchRecursive.body);
@@ -2871,6 +2884,8 @@ Deno.test(
 
     abort();
     await finished;
+    assertEquals(completed, 2);
+    assertEquals(aborted, 2);
   },
 );
 
