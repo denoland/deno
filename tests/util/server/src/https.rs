@@ -3,6 +3,7 @@ use anyhow::anyhow;
 use deno_tls::load_certs;
 use deno_tls::load_private_keys;
 use deno_tls::rustls;
+use deno_tls::rustls::server::WebPkiClientVerifier;
 use deno_tls::RootCertStore;
 use deno_tls::TlsStream;
 use futures::Stream;
@@ -70,7 +71,13 @@ pub fn get_tls_config(
   let key_file = std::fs::File::open(key_path)?;
   let ca_file = std::fs::File::open(ca_path)?;
 
-  let err_map = |x| io::Error::new(io::ErrorKind::InvalidData, x);
+  fn err_map<E>(e: E) -> io::Error
+  where
+    E: Into<Box<dyn std::error::Error + Send + Sync>>,
+  {
+    io::Error::new(io::ErrorKind::InvalidData, e)
+  }
+
   let certs =
     load_certs(&mut io::BufReader::new(cert_file)).map_err(err_map)?;
 
@@ -83,17 +90,16 @@ pub fn get_tls_config(
   let key = load_private_keys(&key).map_err(err_map)?.remove(0);
 
   let mut root_cert_store = RootCertStore::empty();
-  root_cert_store.add(&ca_cert).unwrap();
+  root_cert_store.add(ca_cert).unwrap();
 
   // Allow (but do not require) client authentication.
+  let verifier = WebPkiClientVerifier::builder(root_cert_store.into())
+    .allow_unauthenticated()
+    .build()
+    .map_err(err_map)?;
 
   let mut config = rustls::ServerConfig::builder()
-    .with_safe_defaults()
-    .with_client_cert_verifier(Arc::new(
-      rustls::server::AllowAnyAnonymousOrAuthenticatedClient::new(
-        root_cert_store,
-      ),
-    ))
+    .with_client_cert_verifier(verifier)
     .with_single_cert(certs, key)
     .map_err(|e| anyhow!("Error setting cert: {:?}", e))
     .unwrap();

@@ -9,11 +9,14 @@ pub mod package_json;
 
 pub use self::import_map::resolve_import_map;
 use self::package_json::PackageJsonDeps;
+use deno_runtime::permissions::PermissionsOptions;
 use ::import_map::ImportMap;
 use deno_ast::SourceMapOption;
 use deno_core::resolve_url_or_path;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmSystemInfo;
+use deno_runtime::deno_tls::create_default_root_cert_store;
+use deno_runtime::deno_tls::create_platform_cert_store;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_semver::npm::NpmPackageReqReference;
 use indexmap::IndexMap;
@@ -43,13 +46,10 @@ use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_runtime::deno_node::PackageJson;
-use deno_runtime::deno_tls::deno_native_certs::load_native_certs;
-use deno_runtime::deno_tls::rustls;
+
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::rustls_pemfile;
-use deno_runtime::deno_tls::webpki_roots;
 use deno_runtime::inspector_server::InspectorServer;
-use deno_runtime::permissions::PermissionsOptions;
 use deno_terminal::colors;
 use dotenvy::from_filename;
 use once_cell::sync::Lazy;
@@ -601,7 +601,6 @@ pub fn get_root_cert_store(
   maybe_ca_stores: Option<Vec<String>>,
   maybe_ca_data: Option<CaData>,
 ) -> Result<RootCertStore, RootCertStoreLoadError> {
-  let mut root_cert_store = RootCertStore::empty();
   let ca_stores: Vec<String> = maybe_ca_stores
     .or_else(|| {
       let env_ca_store = env::var("DENO_TLS_CA_STORE").ok()?;
@@ -615,26 +614,18 @@ pub fn get_root_cert_store(
     })
     .unwrap_or_else(|| vec!["mozilla".to_string()]);
 
+  let mut root_cert_store = RootCertStore::empty();
   for store in ca_stores.iter() {
     match store.as_str() {
       "mozilla" => {
-        root_cert_store.add_trust_anchors(
-          webpki_roots::TLS_SERVER_ROOTS.iter().map(|ta| {
-            rustls::OwnedTrustAnchor::from_subject_spki_name_constraints(
-              ta.subject,
-              ta.spki,
-              ta.name_constraints,
-            )
-          }),
-        );
+        root_cert_store
+          .roots
+          .extend(create_default_root_cert_store().roots);
       }
       "system" => {
-        let roots = load_native_certs().expect("could not load platform certs");
-        for root in roots {
-          root_cert_store
-            .add(&rustls::Certificate(root.0))
-            .expect("Failed to add platform cert to root cert store");
-        }
+        root_cert_store
+          .roots
+          .extend(create_platform_cert_store().roots);
       }
       _ => {
         return Err(RootCertStoreLoadError::UnknownStore(store.clone()));
@@ -665,8 +656,9 @@ pub fn get_root_cert_store(
     };
 
     match result {
-      Ok(certs) => {
-        root_cert_store.add_parsable_certificates(&certs);
+      Ok(_certs) => {
+        unreachable!()
+        // root_cert_store.add(&certs);
       }
       Err(e) => {
         return Err(RootCertStoreLoadError::FailedAddPemFile(e.to_string()));

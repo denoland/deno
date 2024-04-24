@@ -39,5 +39,7 @@ tokio.workspace = true
 url.workspace = true
 uuid = { workspace = true, features = ["serde"] }
 
+reqwest_11 = { package = "reqwest", version = "=0.11.27", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli", "socks", "json"] }
+
 [build-dependencies]
 prost-build.workspace = true

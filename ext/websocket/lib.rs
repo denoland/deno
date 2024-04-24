@@ -22,7 +22,9 @@ use deno_core::ResourceId;
 use deno_core::ToJsBuffer;
 use deno_net::raw::NetworkStream;
 use deno_tls::create_client_config;
+use deno_tls::rustls::pki_types::ServerName;
 use deno_tls::rustls::ClientConfig;
+use deno_tls::rustls::ClientConnection;
 use deno_tls::RootCertStoreProvider;
 use deno_tls::SocketUse;
 use http::header::CONNECTION;
@@ -35,7 +37,6 @@ use http::StatusCode;
 use http::Uri;
 use once_cell::sync::Lazy;
 use rustls_tokio_stream::rustls::RootCertStore;
-use rustls_tokio_stream::rustls::ServerName;
 use rustls_tokio_stream::TlsStream;
 use serde::Serialize;
 use std::borrow::Cow;
@@ -232,12 +233,11 @@ async fn handshake_http1_wss(
 ) -> Result<(WebSocket<WebSocketStream>, http::HeaderMap), AnyError> {
   let tcp_socket = TcpStream::connect(addr).await?;
   let tls_config = create_ws_client_config(state, SocketUse::Http1Only)?;
-  let dnsname =
-    ServerName::try_from(domain).map_err(|_| invalid_hostname(domain))?;
+  let dnsname = ServerName::try_from(domain.to_owned())
+    .map_err(|_| invalid_hostname(domain))?;
   let mut tls_connector = TlsStream::new_client_side(
     tcp_socket,
-    tls_config.into(),
-    dnsname,
+    ClientConnection::new(tls_config.into(), dnsname).unwrap(),
     NonZeroUsize::new(65536),
   );
   // If we can bail on an http/1.1 ALPN mismatch here, we can avoid doing extra work
@@ -258,11 +258,14 @@ async fn handshake_http2_wss(
 ) -> Result<(WebSocket<WebSocketStream>, http::HeaderMap), AnyError> {
   let tcp_socket = TcpStream::connect(addr).await?;
   let tls_config = create_ws_client_config(state, SocketUse::Http2Only)?;
-  let dnsname =
-    ServerName::try_from(domain).map_err(|_| invalid_hostname(domain))?;
+  let dnsname = ServerName::try_from(domain.to_owned())
+    .map_err(|_| invalid_hostname(domain))?;
   // We need to better expose the underlying errors here
-  let mut tls_connector =
-    TlsStream::new_client_side(tcp_socket, tls_config.into(), dnsname, None);
+  let mut tls_connector = TlsStream::new_client_side(
+    tcp_socket,
+    ClientConnection::new(tls_config.into(), dnsname).unwrap(),
+    None,
+  );
   let handshake = tls_connector.handshake().await?;
   if handshake.alpn.is_none() {
     bail!("Didn't receive h2 alpn, aborting connection");
