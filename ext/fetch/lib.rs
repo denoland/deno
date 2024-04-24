@@ -989,7 +989,9 @@ pub fn create_http_client(
     user_agent, options,
   )?);
 
-  let middlewares = HTTP_MIDDLEWARE.lock().unwrap();
+  let middlewares = HTTP_MIDDLEWARE
+    .lock()
+    .map_err(|_e| generic_error("cannot acquire poisoned lock"))?;
   for m in middlewares.iter() {
     cb = cb.with_arc(m.clone());
   }
