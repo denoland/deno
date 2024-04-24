@@ -8109,7 +8109,7 @@ mod tests {
     );
 
     let r = flags_from_vec(svec!["deno", "doc", "--html", "path/to/module.ts"]);
-    assert!(r.is_err());
+    assert!(r.is_ok());
 
     let r = flags_from_vec(svec![
       "deno",
