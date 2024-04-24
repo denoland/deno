@@ -4258,6 +4258,20 @@ impl TscRuntime {
 
       server_request_fn.call(tc_scope, undefined, &args);
       if tc_scope.has_caught() && !tc_scope.has_terminated() {
+        if let Some(stack_trace) = tc_scope.stack_trace() {
+          lsp_warn!(
+            "Error during TSC request {method} tsc runtime stack:\n\t{}",
+            stack_trace.to_rust_string_lossy(tc_scope),
+          );
+        } else {
+          lsp_warn!(
+            "Error during TSC request {method} tsc runtime:\n\t{}",
+            tc_scope
+              .exception()
+              .map(|exc| exc.to_rust_string_lossy(tc_scope))
+              .unwrap_or_default(),
+          );
+        }
         tc_scope.rethrow();
       }
     }
@@ -4275,6 +4289,8 @@ impl TscRuntime {
     })
   }
 }
+
+// fn print_exception(tc_scope: &mut v8::TryCatch<>)
 
 fn run_tsc_thread(
   mut request_rx: UnboundedReceiver<Request>,
