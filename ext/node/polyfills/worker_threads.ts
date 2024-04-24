@@ -29,7 +29,7 @@ import { EventEmitter } from "node:events";
 import { BroadcastChannel } from "ext:deno_broadcast_channel/01_broadcast_channel.js";
 import process from "node:process";
 
-const { ObjectPrototypeIsPrototypeOf } = primordials;
+const { JSONParse, JSONStringify, ObjectPrototypeIsPrototypeOf } = primordials;
 const {
   Error,
   Symbol,
@@ -132,7 +132,7 @@ class NodeWorker extends EventEmitter {
     // See https://github.com/denoland/deno/issues/23522.
     let env_ = undefined;
     if (options?.env) {
-      env_ = JSON.parse(JSON.stringify(options?.env));
+      env_ = JSONParse(JSONStringify(options?.env));
     }
     const serializedWorkerMetadata = serializeJsMessageData({
       workerData: options?.workerData,
