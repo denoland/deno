@@ -143,7 +143,10 @@ async fn prepare_publish(
   let Some((scope, name_no_scope)) = name_no_at.split_once('/') else {
     bail!("Invalid package name, use '@<scope_name>/<package_name> format");
   };
-  let file_patterns = deno_json.to_publish_config()?.map(|c| c.files);
+  let file_patterns = deno_json
+    .to_publish_config()?
+    .map(|c| c.files)
+    .unwrap_or_else(|| FilePatterns::new_with_base(dir_path.to_path_buf()));
 
   let diagnostics_collector = diagnostics_collector.clone();
   let tarball = deno_core::unsync::spawn_blocking(move || {
@@ -158,7 +161,7 @@ async fn prepare_publish(
     collect_excluded_module_diagnostics(
       &root_specifier,
       &graph,
-      file_patterns.as_ref(),
+      &file_patterns,
       &diagnostics_collector,
     );
     tar::create_gzipped_tarball(
@@ -205,12 +208,9 @@ async fn prepare_publish(
 fn collect_excluded_module_diagnostics(
   root: &ModuleSpecifier,
   graph: &deno_graph::ModuleGraph,
-  file_patterns: Option<&FilePatterns>,
+  file_patterns: &FilePatterns,
   diagnostics_collector: &PublishDiagnosticsCollector,
 ) {
-  let Some(file_patterns) = file_patterns else {
-    return;
-  };
   let specifiers = graph
     .modules()
     .filter_map(|m| match m {
@@ -223,7 +223,9 @@ fn collect_excluded_module_diagnostics(
     })
     .filter(|s| s.as_str().starts_with(root.as_str()));
   for specifier in specifiers {
+    eprintln!("SPECIFIER: {}", specifier);
     if !file_patterns.matches_specifier(specifier) {
+      eprintln!("NOT MATCHED");
       diagnostics_collector.push(PublishDiagnostic::ExcludedModule {
         specifier: specifier.clone(),
       });

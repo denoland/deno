@@ -44,10 +44,8 @@ pub fn create_gzipped_tarball(
   source_parser: LazyGraphSourceParser,
   diagnostics_collector: &PublishDiagnosticsCollector,
   unfurler: &SpecifierUnfurler,
-  file_patterns: Option<FilePatterns>,
+  file_patterns: FilePatterns,
 ) -> Result<PublishableTarball, AnyError> {
-  let file_patterns = file_patterns
-    .unwrap_or_else(|| FilePatterns::new_with_base(dir.to_path_buf()));
   let mut tar = TarGzArchive::new();
   let mut files = vec![];
 
