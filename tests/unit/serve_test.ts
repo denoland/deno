@@ -2846,8 +2846,11 @@ Deno.test(
     let completed = 0;
     let aborted = 0;
     const { finished, abort } = await makeServer(async (req, context) => {
-      context.completed.finally(() => {
+      context.completed.then(() => {
         console.log("completed");
+        completed++;
+      }).catch(() => {
+        console.log("completed (error)");
         completed++;
       });
       req.signal.onabort = () => {
