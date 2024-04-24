@@ -16,6 +16,7 @@ use std::net::SocketAddr;
 use std::pin::Pin;
 use std::result::Result;
 use tokio::net::TcpListener;
+use deno_core::unsync;
 
 #[derive(Debug, Clone, Copy)]
 pub enum ServerKind {
@@ -45,7 +46,7 @@ where
       loop {
         let (stream, _) = listener.accept().await?;
         let io = TokioIo::new(stream);
-        deno_unsync::spawn(hyper_serve_connection(
+        unsync::spawn(hyper_serve_connection(
           io,
           handler,
           options.error_msg,
@@ -78,7 +79,7 @@ pub async fn run_server_with_acceptor<'a, A, F, S>(
       while let Some(result) = acceptor.next().await {
         let stream = result?;
         let io = TokioIo::new(stream);
-        deno_unsync::spawn(hyper_serve_connection(
+        unsync::spawn(hyper_serve_connection(
           io, handler, error_msg, kind,
         ));
       }
@@ -149,6 +150,6 @@ where
   Fut::Output: 'static,
 {
   fn execute(&self, fut: Fut) {
-    deno_unsync::spawn(fut);
+    unsync::spawn(fut);
   }
 }
