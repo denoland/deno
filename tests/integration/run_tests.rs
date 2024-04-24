@@ -1694,14 +1694,22 @@ fn type_directives_js_main() {
   assert_not_contains!(output.combined_output(), "type_reference.d.ts");
 }
 
+itest!(test_import_assertions {
+  args: "run --reload run/deno_import_assertions.ts",
+  output: "run/deno_import_assertions.ts.out",
+});
+
+// TODO(petamoriken): Need to quit TypeScript transpiling `assert` to `with` in deno_ast
 #[test]
-fn test_deno_futures_env() {
+fn test_import_assertions_with_deno_futures_env() {
   let context = TestContextBuilder::new().add_future_env_vars().build();
   let output = context
     .new_command()
-    .args("run --quiet --reload run/deno_futures_env.ts")
+    .args("run --quiet --reload run/deno_import_assertions.ts")
     .run();
-  output.assert_exit_code(0);
+  output
+    .assert_exit_code(1)
+    .assert_matches_file("run/deno_import_assertions.ts.out2");
 }
 
 itest!(type_directives_redirect {
