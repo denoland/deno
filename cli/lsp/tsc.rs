@@ -4003,9 +4003,7 @@ fn op_is_node_file(state: &mut OpState, #[string] path: String) -> bool {
       .state_snapshot
       .documents
       .get_resolver()
-      .maybe_npm_resolver()
-      .map(|npm_resolver| npm_resolver.in_npm_package(&specifier))
-      .unwrap_or(false),
+      .in_npm_package(&specifier),
     Err(_) => false,
   };
   state.performance.measure(mark);

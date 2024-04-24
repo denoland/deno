@@ -315,7 +315,7 @@ impl Document {
       &specifier,
       maybe_headers.as_ref(),
       maybe_language_id,
-      resolver.maybe_node_resolver(),
+      &resolver,
     );
     let (maybe_parsed_source, maybe_module) =
       if media_type_is_diagnosable(media_type) {
@@ -366,13 +366,11 @@ impl Document {
     resolver: Arc<CliGraphResolver>,
     config: Arc<Config>,
   ) -> Arc<Self> {
-    let graph_resolver = resolver.as_graph_resolver();
-    let npm_resolver = resolver.as_graph_npm_resolver();
     let media_type = resolve_media_type(
       &self.specifier,
       self.maybe_headers.as_ref(),
       self.maybe_language_id,
-      resolver.maybe_node_resolver(),
+      &resolver,
     );
     let dependencies;
     let maybe_types_dependency;
@@ -399,6 +397,8 @@ impl Document {
       maybe_test_module_fut =
         get_maybe_test_module_fut(maybe_parsed_source.as_ref(), &config);
     } else {
+      let graph_resolver = resolver.as_graph_resolver();
+      let npm_resolver = resolver.as_graph_npm_resolver();
       dependencies = Arc::new(
         self
           .dependencies
@@ -669,20 +669,19 @@ fn resolve_media_type(
   specifier: &ModuleSpecifier,
   maybe_headers: Option<&HashMap<String, String>>,
   maybe_language_id: Option<LanguageId>,
-  maybe_node_resolver: Option<&CliNodeResolver>,
+  resolver: &CliGraphResolver,
 ) -> MediaType {
-  if let Some(node_resolver) = maybe_node_resolver {
-    if node_resolver.in_npm_package(specifier) {
-      match node_resolver.url_to_node_resolution(specifier.clone()) {
-        Ok(resolution) => {
-          let (_, media_type) =
-            NodeResolution::into_specifier_and_media_type(Some(resolution));
-          return media_type;
-        }
-        Err(err) => {
-          lsp_warn!("Node resolution failed for '{}': {}", specifier, err);
-        }
+  if resolver.in_npm_package(specifier) {
+    match resolver.url_to_node_resolution(specifier.clone()) {
+      Ok(Some(resolution)) => {
+        let (_, media_type) =
+          NodeResolution::into_specifier_and_media_type(Some(resolution));
+        return media_type;
       }
+      Err(err) => {
+        lsp_warn!("Node resolution failed for '{}': {}", specifier, err);
+      }
+      _ => {}
     }
   }
 
@@ -1255,24 +1254,22 @@ impl Documents {
     let document = self.get(referrer);
     let dependencies = document.as_ref().map(|d| d.dependencies());
     let mut results = Vec::new();
-    let node_resolver = self.resolver.maybe_node_resolver();
     for specifier in specifiers {
-      if let Some(node_resolver) = node_resolver {
-        if node_resolver.in_npm_package(referrer) {
-          // we're in an npm package, so use node resolution
-          results.push(Some(NodeResolution::into_specifier_and_media_type(
-            node_resolver
-              .resolve(
-                specifier,
-                referrer,
-                NodeResolutionMode::Types,
-                &PermissionsContainer::allow_all(),
-              )
-              .ok()
-              .flatten(),
-          )));
-          continue;
-        }
+      if self.resolver.in_npm_package(referrer) {
+        // we're in an npm package, so use node resolution
+        results.push(Some(NodeResolution::into_specifier_and_media_type(
+          self
+            .resolver
+            .node_resolve(
+              specifier,
+              referrer,
+              NodeResolutionMode::Types,
+              &PermissionsContainer::allow_all(),
+            )
+            .ok()
+            .flatten(),
+        )));
+        continue;
       }
       if specifier.starts_with("asset:") {
         if let Ok(specifier) = ModuleSpecifier::parse(specifier) {
@@ -1301,8 +1298,8 @@ impl Documents {
       {
         results.push(node_resolve_npm_req_ref(
           &npm_req_ref,
-          node_resolver,
           referrer,
+          &self.resolver,
         ));
       } else if let Ok(specifier) = self.resolver.as_graph_resolver().resolve(
         specifier,
@@ -1542,11 +1539,7 @@ impl Documents {
     }
 
     if let Ok(npm_ref) = NpmPackageReqReference::from_specifier(specifier) {
-      return node_resolve_npm_req_ref(
-        &npm_ref,
-        self.resolver.maybe_node_resolver(),
-        referrer,
-      );
+      return node_resolve_npm_req_ref(&npm_ref, referrer, &self.resolver);
     }
     let Some(doc) = self.get(specifier) else {
       return Some((specifier.clone(), MediaType::from_specifier(specifier)));
@@ -1575,21 +1568,20 @@ impl Documents {
 
 fn node_resolve_npm_req_ref(
   npm_req_ref: &NpmPackageReqReference,
-  node_resolver: Option<&CliNodeResolver>,
   referrer: &ModuleSpecifier,
+  resolver: &CliGraphResolver,
 ) -> Option<(ModuleSpecifier, MediaType)> {
-  node_resolver.map(|node_resolver| {
-    NodeResolution::into_specifier_and_media_type(
-      node_resolver
-        .resolve_req_reference(
-          npm_req_ref,
-          &PermissionsContainer::allow_all(),
-          referrer,
-          NodeResolutionMode::Types,
-        )
-        .ok(),
-    )
-  })
+  Some(NodeResolution::into_specifier_and_media_type(
+    resolver
+      .resolve_npm_req_reference(
+        npm_req_ref,
+        &PermissionsContainer::allow_all(),
+        referrer,
+        NodeResolutionMode::Types,
+      )
+      .ok()
+      .flatten(),
+  ))
 }
 
 /// Loader that will look at the open documents.

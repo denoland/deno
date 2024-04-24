@@ -808,12 +808,9 @@ fn generate_lint_diagnostics(
     if token.is_cancelled() {
       break;
     }
-    let node_resolver = snapshot.documents.get_resolver().maybe_node_resolver();
     // ignore any npm package files
-    if let Some(node_resolver) = node_resolver {
-      if node_resolver.in_npm_package(specifier) {
-        continue;
-      }
+    if snapshot.documents.get_resolver().in_npm_package(specifier) {
+      continue;
     }
     let version = document.maybe_lsp_version();
     let (lint_options, lint_rules) = config
@@ -1345,7 +1342,10 @@ fn diagnose_resolution(
           diagnostics.push(DenoDiagnostic::DenoWarn(message));
         }
       }
-      let npm_resolver = snapshot.documents.get_resolver().maybe_npm_resolver();
+      let managed_npm_resolver = snapshot
+        .documents
+        .get_resolver()
+        .maybe_managed_npm_resolver();
       if let Some(doc) = snapshot.documents.get(specifier) {
         if let Some(diagnostic) = check_redirect_diagnostic(specifier, &doc) {
           diagnostics.push(diagnostic);
@@ -1374,9 +1374,7 @@ fn diagnose_resolution(
       } else if let Ok(pkg_ref) =
         NpmPackageReqReference::from_specifier(specifier)
       {
-        if let Some(npm_resolver) =
-          npm_resolver.and_then(|npm_resolver| npm_resolver.as_managed())
-        {
+        if let Some(npm_resolver) = managed_npm_resolver {
           // show diagnostics for npm package references that aren't cached
           let req = pkg_ref.into_inner().req;
           if !npm_resolver.is_pkg_req_folder_cached(&req) {
@@ -1403,9 +1401,7 @@ fn diagnose_resolution(
             diagnostics
               .push(DenoDiagnostic::BareNodeSpecifier(module_name.to_string()));
           }
-        } else if let Some(npm_resolver) =
-          npm_resolver.and_then(|npm_resolver| npm_resolver.as_managed())
-        {
+        } else if let Some(npm_resolver) = managed_npm_resolver {
           // check that a @types/node package exists in the resolver
           let types_node_req = PackageReq::from_str("@types/node").unwrap();
           if !npm_resolver.is_pkg_req_folder_cached(&types_node_req) {
@@ -1446,11 +1442,8 @@ fn diagnose_dependency(
   dependency_key: &str,
   dependency: &deno_graph::Dependency,
 ) {
-  let npm_resolver = snapshot.documents.get_resolver().maybe_npm_resolver();
-  if let Some(npm_resolver) = npm_resolver {
-    if npm_resolver.in_npm_package(referrer) {
-      return; // ignore, surface typescript errors instead
-    }
+  if snapshot.documents.get_resolver().in_npm_package(referrer) {
+    return; // ignore, surface typescript errors instead
   }
 
   let import_map = snapshot.config.tree.root_import_map();
