@@ -127,7 +127,7 @@ impl Default for DocSourceFileFlag {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DocHtmlFlag {
-  pub name: String,
+  pub name: Option<String>,
   pub output: String,
 }
 
@@ -1695,7 +1695,6 @@ Show documentation for runtime built-ins:
             .long("name")
             .help("The name that will be displayed in the docs")
             .action(ArgAction::Set)
-            .required_if_eq("html", "true")
             .require_equals(true)
         )
         .arg(
@@ -3690,7 +3689,7 @@ fn doc_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   let json = matches.get_flag("json");
   let filter = matches.remove_one::<String>("filter");
   let html = if matches.get_flag("html") {
-    let name = matches.remove_one::<String>("name").unwrap();
+    let name = matches.remove_one::<String>("name");
     let output = matches
       .remove_one::<String>("output")
       .unwrap_or(String::from("./docs/"));
@@ -8353,7 +8352,7 @@ mod tests {
     );
 
     let r = flags_from_vec(svec!["deno", "doc", "--html", "path/to/module.ts"]);
-    assert!(r.is_err());
+    assert!(r.is_ok());
 
     let r = flags_from_vec(svec![
       "deno",
@@ -8370,7 +8369,7 @@ mod tests {
           json: false,
           lint: false,
           html: Some(DocHtmlFlag {
-            name: "My library".to_string(),
+            name: Some("My library".to_string()),
             output: String::from("./docs/"),
           }),
           source_files: DocSourceFileFlag::Paths(svec!["path/to/module.ts"]),
@@ -8396,7 +8395,7 @@ mod tests {
           private: false,
           json: false,
           html: Some(DocHtmlFlag {
-            name: "My library".to_string(),
+            name: Some("My library".to_string()),
             output: String::from("./foo"),
           }),
           lint: true,
