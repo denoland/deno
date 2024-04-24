@@ -3176,7 +3176,7 @@ fn get_parameters_from_parts(parts: &[SymbolDisplayPart]) -> Vec<String> {
           break;
         }
       } else if part.text == "..." && paren_count == 1 {
-        // Found rest parmeter. Do not fill in any further arguments.
+        // Found rest parameter. Do not fill in any further arguments.
         break;
       } else if part.text == "{" {
         brace_count += 1;
