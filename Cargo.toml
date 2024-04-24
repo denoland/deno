@@ -146,6 +146,7 @@ prost-build = "0.11"
 rand = "=0.8.5"
 regex = "^1.7.0"
 reqwest = { version = "=0.11.20", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli", "socks", "json"] } # pinned because of https://github.com/seanmonstar/reqwest/pull/1955
+reqwest-middleware = { version = "0.2.5" }
 ring = "^0.17.0"
 rusqlite = { version = "=0.29.0", features = ["unlock_notify", "bundled"] }
 rustls = "0.21.11"

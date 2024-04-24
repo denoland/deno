@@ -11,11 +11,13 @@ use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::task::Context;
 use std::task::Poll;
 
 use bytes::Bytes;
 use deno_core::anyhow::Error;
+use deno_core::error::generic_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures::stream::Peekable;
@@ -48,6 +50,7 @@ use deno_tls::TlsKey;
 use deno_tls::TlsKeys;
 use http_v02::header::CONTENT_LENGTH;
 use http_v02::Uri;
+use once_cell::sync::Lazy;
 use reqwest::header::HeaderMap;
 use reqwest::header::HeaderName;
 use reqwest::header::HeaderValue;
@@ -59,8 +62,10 @@ use reqwest::redirect::Policy;
 use reqwest::Body;
 use reqwest::Client;
 use reqwest::Method;
-use reqwest::RequestBuilder;
 use reqwest::Response;
+use reqwest_middleware::ClientBuilder;
+use reqwest_middleware::ClientWithMiddleware;
+use reqwest_middleware::RequestBuilder;
 use serde::Deserialize;
 use serde::Serialize;
 use tokio::io::AsyncReadExt;
@@ -69,8 +74,23 @@ use tokio::io::AsyncWriteExt;
 // Re-export reqwest and data_url
 pub use data_url;
 pub use reqwest;
+pub use reqwest_middleware;
 
 pub use fs_fetch_handler::FsFetchHandler;
+
+static HTTP_MIDDLEWARE: Lazy<
+  Mutex<Vec<Arc<dyn reqwest_middleware::Middleware>>>,
+> = Lazy::new(|| Mutex::new(vec![]));
+
+pub fn add_middleware(
+  middleware: Arc<dyn reqwest_middleware::Middleware>,
+) -> Result<(), AnyError> {
+  HTTP_MIDDLEWARE
+    .lock()
+    .map_err(|_e| generic_error("cannot acquire poisoned lock"))?
+    .push(middleware);
+  Ok(())
+}
 
 #[derive(Clone)]
 pub struct Options {
@@ -182,8 +202,8 @@ pub struct FetchReturn {
 
 pub fn get_or_create_client_from_state(
   state: &mut OpState,
-) -> Result<reqwest::Client, AnyError> {
-  if let Some(client) = state.try_borrow::<reqwest::Client>() {
+) -> Result<ClientWithMiddleware, AnyError> {
+  if let Some(client) = state.try_borrow::<ClientWithMiddleware>() {
     Ok(client.clone())
   } else {
     let options = state.borrow::<Options>();
@@ -203,7 +223,7 @@ pub fn get_or_create_client_from_state(
         http2: true,
       },
     )?;
-    state.put::<reqwest::Client>(client.clone());
+    state.put::<ClientWithMiddleware>(client.clone());
     Ok(client)
   }
 }
@@ -775,7 +795,7 @@ impl Resource for FetchResponseResource {
 }
 
 pub struct HttpClientResource {
-  pub client: Client,
+  pub client: ClientWithMiddleware,
   pub allow_host: bool,
 }
 
@@ -786,7 +806,7 @@ impl Resource for HttpClientResource {
 }
 
 impl HttpClientResource {
-  fn new(client: Client, allow_host: bool) -> Self {
+  fn new(client: ClientWithMiddleware, allow_host: bool) -> Self {
     Self { client, allow_host }
   }
 }
@@ -901,7 +921,7 @@ impl Default for CreateHttpClientOptions {
 
 /// Create new instance of async reqwest::Client. This client supports
 /// proxies and doesn't follow redirects.
-pub fn create_http_client(
+pub fn create_http_client_without_middleware(
   user_agent: &str,
   options: CreateHttpClientOptions,
 ) -> Result<Client, AnyError> {
@@ -956,8 +976,25 @@ pub fn create_http_client(
       return Err(type_error("Either `http1` or `http2` needs to be true"))
     }
   }
-
   builder.build().map_err(|e| e.into())
+}
+
+/// Create new instance of async reqwest_middleware::ClientWithMiddleware. This client supports
+/// proxies and doesn't follow redirects.
+pub fn create_http_client(
+  user_agent: &str,
+  options: CreateHttpClientOptions,
+) -> Result<ClientWithMiddleware, AnyError> {
+  let mut cb = ClientBuilder::new(create_http_client_without_middleware(
+    user_agent, options,
+  )?);
+
+  let middlewares = HTTP_MIDDLEWARE.lock().unwrap();
+  for m in middlewares.iter() {
+    cb = cb.with_arc(m.clone());
+  }
+
+  Ok(cb.build())
 }
 
 #[op2]

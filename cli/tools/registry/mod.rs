@@ -22,6 +22,7 @@ use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::unsync::JoinSet;
 use deno_runtime::deno_fetch::reqwest;
+use deno_runtime::deno_fetch::reqwest_middleware;
 use deno_terminal::colors;
 use import_map::ImportMap;
 use lsp_types::Url;
@@ -244,7 +245,7 @@ pub enum Permission<'s> {
 }
 
 async fn get_auth_headers(
-  client: &reqwest::Client,
+  client: &reqwest_middleware::ClientWithMiddleware,
   registry_url: String,
   packages: Vec<Rc<PreparedPublishPackage>>,
   auth_method: AuthMethod,
@@ -402,7 +403,7 @@ async fn get_auth_headers(
 /// Check if both `scope` and `package` already exist, if not return
 /// a URL to the management panel to create them.
 async fn check_if_scope_and_package_exist(
-  client: &reqwest::Client,
+  client: &reqwest_middleware::ClientWithMiddleware,
   registry_api_url: &str,
   registry_manage_url: &str,
   scope: &str,
@@ -434,7 +435,7 @@ async fn check_if_scope_and_package_exist(
 }
 
 async fn ensure_scopes_and_packages_exist(
-  client: &reqwest::Client,
+  client: &reqwest_middleware::ClientWithMiddleware,
   registry_api_url: String,
   registry_manage_url: String,
   packages: Vec<Rc<PreparedPublishPackage>>,

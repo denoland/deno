@@ -4,6 +4,7 @@ use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_runtime::deno_fetch::reqwest;
 use lsp_types::Url;
+use deno_runtime::deno_fetch::reqwest_middleware;
 use serde::de::DeserializeOwned;
 
 #[derive(serde::Deserialize)]
@@ -116,7 +117,7 @@ pub async fn parse_response<T: DeserializeOwned>(
 }
 
 pub async fn get_scope(
-  client: &reqwest::Client,
+  client: &reqwest_middleware::ClientWithMiddleware,
   registry_api_url: &str,
   scope: &str,
 ) -> Result<reqwest::Response, AnyError> {
@@ -134,7 +135,7 @@ pub fn get_package_api_url(
 }
 
 pub async fn get_package(
-  client: &reqwest::Client,
+  client: &reqwest_middleware::ClientWithMiddleware,
   registry_api_url: &str,
   scope: &str,
   package: &str,

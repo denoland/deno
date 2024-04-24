@@ -11,7 +11,7 @@ use async_trait::async_trait;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::OpState;
-use deno_fetch::create_http_client;
+use deno_fetch::create_http_client_without_middleware;
 use deno_fetch::CreateHttpClientOptions;
 use deno_tls::rustls::RootCertStore;
 use deno_tls::Proxy;
@@ -126,7 +126,7 @@ impl<P: RemoteDbHandlerPermissions + 'static> DatabaseHandler
     };
 
     let options = &self.http_options;
-    let client = create_http_client(
+    let client = create_http_client_without_middleware(
       &options.user_agent,
       CreateHttpClientOptions {
         root_cert_store: options.root_cert_store()?,
