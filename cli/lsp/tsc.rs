@@ -4280,6 +4280,20 @@ impl TscRuntime {
 
       server_request_fn.call(tc_scope, undefined, &args);
       if tc_scope.has_caught() && !tc_scope.has_terminated() {
+        if let Some(stack_trace) = tc_scope.stack_trace() {
+          lsp_warn!(
+            "Error during TS request \"{method}\":\n  {}",
+            stack_trace.to_rust_string_lossy(tc_scope),
+          );
+        } else {
+          lsp_warn!(
+            "Error during TS request \"{method}\":\n  {}",
+            tc_scope
+              .exception()
+              .map(|exc| exc.to_rust_string_lossy(tc_scope))
+              .unwrap_or_default(),
+          );
+        }
         tc_scope.rethrow();
       }
     }
