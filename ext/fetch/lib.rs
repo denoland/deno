@@ -82,6 +82,7 @@ static HTTP_MIDDLEWARE: Lazy<
   Mutex<Vec<Arc<dyn reqwest_middleware::Middleware>>>,
 > = Lazy::new(|| Mutex::new(vec![]));
 
+// Add a middleware to be added to all http clients.
 pub fn add_middleware(
   middleware: Arc<dyn reqwest_middleware::Middleware>,
 ) -> Result<(), AnyError> {
@@ -89,6 +90,16 @@ pub fn add_middleware(
     .lock()
     .map_err(|_e| generic_error("cannot acquire poisoned lock"))?
     .push(middleware);
+  Ok(())
+}
+
+// Clear all added middleware so that  no middleware is added to new http
+// clients.
+pub fn clear_middleware() -> Result<(), AnyError> {
+  HTTP_MIDDLEWARE
+    .lock()
+    .map_err(|_e| generic_error("cannot acquire poisoned lock"))?
+    .clear();
   Ok(())
 }
 
