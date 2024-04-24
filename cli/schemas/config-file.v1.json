@@ -597,6 +597,13 @@
           "examples": [{ ".": "./mod.ts" }]
         }
       ]
+    },
+    "workspaces": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "The members of this workspace."
     }
   }
 }
