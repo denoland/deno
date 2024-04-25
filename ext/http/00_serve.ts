@@ -139,7 +139,6 @@ class InnerRequest {
   #upgraded;
   #urlValue;
   #completed;
-  #abortController;
   request;
 
   constructor(external, context) {
