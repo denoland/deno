@@ -255,7 +255,6 @@ pub fn uninstall(uninstall_flags: UninstallFlags) -> Result<(), AnyError> {
 
 async fn install_local(flags: Flags) -> Result<(), AnyError> {
   let factory = CliFactory::from_flags(flags)?;
-  let cli_options = factory.cli_options();
   let npm_resolver = factory.npm_resolver().await?;
 
   if let Some(npm_resolver) = npm_resolver.as_managed() {
