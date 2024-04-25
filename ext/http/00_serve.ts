@@ -78,7 +78,6 @@ import {
 import { listen, listenOptionApiName, TcpConn } from "ext:deno_net/01_net.js";
 import { hasTlsKeyPairOptions, listenTls } from "ext:deno_net/02_tls.js";
 import { SymbolAsyncDispose } from "ext:deno_web/00_infra.js";
-import { abort } from "../node/polyfills/process";
 
 const _upgraded = Symbol("_upgraded");
 
