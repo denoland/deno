@@ -3527,6 +3527,7 @@ impl Inner {
       config_data.and_then(|d| d.config_file.as_deref().cloned()),
       config_data.and_then(|d| d.lockfile.clone()),
       config_data.and_then(|d| d.package_json.as_deref().cloned()),
+      config_data.and_then(|d| d.npmrc.clone()),
       force_global_cache,
     )?;
 
