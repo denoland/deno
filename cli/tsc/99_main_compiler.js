@@ -1079,12 +1079,17 @@ delete Object.prototype.__proto__;
   /**
    * @param {number} _id
    * @param {any} data
+   * @param {any | null} data
    */
   // TODO(bartlomieju): this feels needlessly generic, both type chcking
   // and language server use it with inefficient serialization. Id is not used
   // anyway...
-  function respond(_id, data = null) {
-    ops.op_respond(JSON.stringify(data));
+  function respond(_id, data = null, error = null) {
+    if (error) {
+      ops.op_respond("", error);
+    } else {
+      ops.op_respond(JSON.stringify(data), "");
+    }
   }
 
   /**
@@ -1208,6 +1213,9 @@ delete Object.prototype.__proto__;
     languageService = ts.createLanguageService(host, documentRegistry);
     setLogDebug(debugFlag, "TSLS");
     debug("serverInit()");
+    // while (true) {
+
+    // }
   }
 
   // A build time only op that provides some setup information that is used to
