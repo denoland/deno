@@ -1,11 +1,13 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 use anyhow::anyhow;
+use deno_tls::load_certs;
+use deno_tls::rustls_pemfile;
+use deno_tls::rustls_tokio_stream::rustls;
+use deno_tls::rustls_tokio_stream::TlsStream;
+use deno_tls::Certificate;
+use deno_tls::PrivateKey;
 use futures::Stream;
 use futures::StreamExt;
-use rustls::Certificate;
-use rustls::PrivateKey;
-use rustls_tokio_stream::rustls;
-use rustls_tokio_stream::TlsStream;
 use std::io;
 use std::num::NonZeroUsize;
 use std::result::Result;
@@ -68,14 +70,7 @@ pub fn get_tls_config(
   let key_file = std::fs::File::open(key_path)?;
   let ca_file = std::fs::File::open(ca_path)?;
 
-  let certs: Vec<Certificate> = {
-    let mut cert_reader = io::BufReader::new(cert_file);
-    rustls_pemfile::certs(&mut cert_reader)
-      .unwrap()
-      .into_iter()
-      .map(Certificate)
-      .collect()
-  };
+  let certs = load_certs(&mut io::BufReader::new(cert_file))?;
 
   let mut ca_cert_reader = io::BufReader::new(ca_file);
   let ca_cert = rustls_pemfile::certs(&mut ca_cert_reader)

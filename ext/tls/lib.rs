@@ -15,12 +15,9 @@ use rustls::client::HandshakeSignatureValid;
 use rustls::client::ServerCertVerified;
 use rustls::client::ServerCertVerifier;
 use rustls::client::WebPkiVerifier;
-use rustls::Certificate;
 use rustls::ClientConfig;
 use rustls::DigitallySignedStruct;
 use rustls::Error;
-use rustls::PrivateKey;
-use rustls::RootCertStore;
 use rustls::ServerName;
 use rustls_pemfile::certs;
 use rustls_pemfile::ec_private_keys;
@@ -32,6 +29,10 @@ use std::io::BufReader;
 use std::io::Cursor;
 use std::sync::Arc;
 use std::time::SystemTime;
+
+pub type Certificate = rustls::Certificate;
+pub type PrivateKey = rustls::PrivateKey;
+pub type RootCertStore = rustls::RootCertStore;
 
 /// Lazily resolves the root cert store.
 ///
