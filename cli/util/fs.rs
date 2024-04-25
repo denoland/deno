@@ -529,6 +529,46 @@ pub fn copy_dir_recursive(from: &Path, to: &Path) -> Result<(), AnyError> {
   Ok(())
 }
 
+mod imp {
+  #[cfg(target_vendor = "apple")]
+  pub use darwin::copy_file;
+
+  #[cfg(not(target_vendor = "apple"))]
+  pub use non_darwin::copy_file;
+
+  #[cfg(target_vendor = "apple")]
+  mod darwin {
+    use std::ffi::CString;
+    use std::os::unix::ffi::OsStrExt;
+
+    use super::super::*;
+    pub fn copy_file(from: &Path, to: &Path) -> Result<(), std::io::Error> {
+      let from_c = CString::new(from.as_os_str().as_bytes()).unwrap();
+      let to_c = CString::new(to.as_os_str().as_bytes()).unwrap();
+      let result =
+        unsafe { libc::clonefile(from_c.as_ptr(), to_c.as_ptr(), 0) };
+      if result == 0 {
+        Ok(())
+      } else {
+        Err(std::io::Error::last_os_error())
+      }
+    }
+  }
+
+  #[cfg(all(not(target_vendor = "apple")))]
+  mod non_darwin {
+    use super::super::*;
+
+    pub fn copy_file(from: &Path, to: &Path) -> Result<(), std::io::Error> {
+      std::fs::hard_link(from, to)
+    }
+  }
+}
+
+fn fast_copy_file(from: &Path, to: &Path) -> Result<(), std::io::Error> {
+  imp::copy_file(from, to)
+}
+
 /// Hardlinks the files in one directory to another directory.
 ///
 /// Note: Does not handle symlinks.
@@ -554,7 +594,7 @@ pub fn hard_link_dir_recursive(from: &Path, to: &Path) -> Result<(), AnyError> {
       // a way to hard link with overwriting in Rust, but maybe there is some
       // way with platform specific code. The workaround here is to handle
       // scenarios where something else might create or remove files.
-      if let Err(err) = std::fs::hard_link(&new_from, &new_to) {
+      if let Err(err) = fast_copy_file(&new_from, &new_to) {
         if err.kind() == ErrorKind::AlreadyExists {
           if let Err(err) = std::fs::remove_file(&new_to) {
             if err.kind() == ErrorKind::NotFound {
@@ -575,7 +615,7 @@ pub fn hard_link_dir_recursive(from: &Path, to: &Path) -> Result<(), AnyError> {
 
           // Always attempt to recreate the hardlink. In contention scenarios, the other process
           // might have been killed or exited after removing the file, but before creating the hardlink
-          if let Err(err) = std::fs::hard_link(&new_from, &new_to) {
+          if let Err(err) = fast_copy_file(&new_from, &new_to) {
             // Assume another process/thread created this hard link to the file we are wanting
             // to now create then sleep a little bit to let the other process/thread move ahead
             // faster to reduce contention.
