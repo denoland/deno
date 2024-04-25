@@ -1,10 +1,10 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use deno_tls::TlsStream;
 use futures::StreamExt;
 use h2;
 use hyper::header::HeaderName;
 use hyper::header::HeaderValue;
-use rustls_tokio_stream::TlsStream;
 use tokio::net::TcpStream;
 use tokio::task::LocalSet;
 

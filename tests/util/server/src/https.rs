@@ -1,12 +1,14 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 use anyhow::anyhow;
+use deno_tls::load_certs;
+use deno_tls::load_private_keys;
+use deno_tls::rustls;
+use deno_tls::RootCertStore;
+use deno_tls::TlsStream;
 use futures::Stream;
 use futures::StreamExt;
-use rustls::Certificate;
-use rustls::PrivateKey;
-use rustls_tokio_stream::rustls;
-use rustls_tokio_stream::TlsStream;
 use std::io;
+use std::io::Read;
 use std::num::NonZeroUsize;
 use std::result::Result;
 use std::sync::Arc;
@@ -68,65 +70,43 @@ pub fn get_tls_config(
   let key_file = std::fs::File::open(key_path)?;
   let ca_file = std::fs::File::open(ca_path)?;
 
-  let certs: Vec<Certificate> = {
-    let mut cert_reader = io::BufReader::new(cert_file);
-    rustls_pemfile::certs(&mut cert_reader)
-      .unwrap()
-      .into_iter()
-      .map(Certificate)
-      .collect()
-  };
+  let err_map = |x| io::Error::new(io::ErrorKind::InvalidData, x);
+  let certs =
+    load_certs(&mut io::BufReader::new(cert_file)).map_err(err_map)?;
 
   let mut ca_cert_reader = io::BufReader::new(ca_file);
-  let ca_cert = rustls_pemfile::certs(&mut ca_cert_reader)
-    .expect("Cannot load CA certificate")
-    .remove(0);
+  let ca_cert = load_certs(&mut ca_cert_reader).map_err(err_map)?.remove(0);
 
   let mut key_reader = io::BufReader::new(key_file);
-  let key = {
-    let pkcs8_key = rustls_pemfile::pkcs8_private_keys(&mut key_reader)
-      .expect("Cannot load key file");
-    let rsa_key = rustls_pemfile::rsa_private_keys(&mut key_reader)
-      .expect("Cannot load key file");
-    if !pkcs8_key.is_empty() {
-      Some(pkcs8_key[0].clone())
-    } else if !rsa_key.is_empty() {
-      Some(rsa_key[0].clone())
-    } else {
-      None
+  let mut key = vec![];
+  key_reader.read_to_end(&mut key)?;
+  let key = load_private_keys(&key).map_err(err_map)?.remove(0);
+
+  let mut root_cert_store = RootCertStore::empty();
+  root_cert_store.add(&ca_cert).unwrap();
+
+  // Allow (but do not require) client authentication.
+
+  let mut config = rustls::ServerConfig::builder()
+    .with_safe_defaults()
+    .with_client_cert_verifier(Arc::new(
+      rustls::server::AllowAnyAnonymousOrAuthenticatedClient::new(
+        root_cert_store,
+      ),
+    ))
+    .with_single_cert(certs, key)
+    .map_err(|e| anyhow!("Error setting cert: {:?}", e))
+    .unwrap();
+
+  match http_versions {
+    SupportedHttpVersions::All => {
+      config.alpn_protocols = vec!["h2".into(), "http/1.1".into()];
     }
-  };
-
-  match key {
-    Some(key) => {
-      let mut root_cert_store = rustls::RootCertStore::empty();
-      root_cert_store.add(&rustls::Certificate(ca_cert)).unwrap();
-
-      // Allow (but do not require) client authentication.
-
-      let mut config = rustls::ServerConfig::builder()
-        .with_safe_defaults()
-        .with_client_cert_verifier(Arc::new(
-          rustls::server::AllowAnyAnonymousOrAuthenticatedClient::new(
-            root_cert_store,
-          ),
-        ))
-        .with_single_cert(certs, PrivateKey(key))
-        .map_err(|e| anyhow!("Error setting cert: {:?}", e))
-        .unwrap();
-
-      match http_versions {
-        SupportedHttpVersions::All => {
-          config.alpn_protocols = vec!["h2".into(), "http/1.1".into()];
-        }
-        SupportedHttpVersions::Http1Only => {}
-        SupportedHttpVersions::Http2Only => {
-          config.alpn_protocols = vec!["h2".into()];
-        }
-      }
-
-      Ok(Arc::new(config))
+    SupportedHttpVersions::Http1Only => {}
+    SupportedHttpVersions::Http2Only => {
+      config.alpn_protocols = vec!["h2".into()];
     }
-    None => Err(io::Error::new(io::ErrorKind::Other, "Cannot find key")),
   }
+
+  Ok(Arc::new(config))
 }
