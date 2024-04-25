@@ -19,6 +19,7 @@ async-stream = "0.3.3"
 base64.workspace = true
 bytes.workspace = true
 console_static_text.workspace = true
+deno_tls.workspace = true
 deno_unsync = "0"
 denokv_proto.workspace = true
 fastwebsockets.workspace = true
@@ -43,8 +44,6 @@ pretty_assertions.workspace = true
 prost.workspace = true
 regex.workspace = true
 reqwest.workspace = true
-rustls-pemfile.workspace = true
-rustls-tokio-stream.workspace = true
 semver = "=1.0.14"
 serde.workspace = true
 serde_json.workspace = true

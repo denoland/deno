@@ -61,6 +61,7 @@ use std::env;
 use std::io::BufReader;
 use std::io::Cursor;
 use std::net::SocketAddr;
+use std::num::NonZeroU16;
 use std::num::NonZeroUsize;
 use std::path::Path;
 use std::path::PathBuf;
@@ -1022,6 +1023,22 @@ impl CliOptions {
     }
   }
 
+  pub fn serve_port(&self) -> Option<NonZeroU16> {
+    if let DenoSubcommand::Serve(flags) = self.sub_command() {
+      Some(flags.port)
+    } else {
+      None
+    }
+  }
+
+  pub fn serve_host(&self) -> Option<String> {
+    if let DenoSubcommand::Serve(flags) = self.sub_command() {
+      Some(flags.host.clone())
+    } else {
+      None
+    }
+  }
+
   pub fn enable_future_features(&self) -> bool {
     *DENO_FUTURE
   }
@@ -1061,6 +1078,10 @@ impl CliOptions {
           resolve_url_or_path(&run_flags.script, self.initial_cwd())
             .map_err(AnyError::from)
         }
+      }
+      DenoSubcommand::Serve(run_flags) => {
+        resolve_url_or_path(&run_flags.script, self.initial_cwd())
+          .map_err(AnyError::from)
       }
       _ => {
         bail!("No main module.")

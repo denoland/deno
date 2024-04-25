@@ -35,6 +35,7 @@ const {
   ObjectAssign,
   ObjectDefineProperties,
   ObjectDefineProperty,
+  ObjectHasOwn,
   ObjectKeys,
   ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
@@ -52,6 +53,7 @@ const {
 const {
   isNativeError,
 } = core;
+import { registerDeclarativeServer } from "ext:deno_http/00_serve.ts";
 import * as event from "ext:deno_web/02_event.js";
 import * as location from "ext:deno_web/12_location.js";
 import * as version from "ext:runtime/01_version.ts";
@@ -679,6 +681,18 @@ const {
   target,
 } = op_snapshot_options();
 
+const executionModes = {
+  none: 0,
+  worker: 1,
+  run: 2,
+  repl: 3,
+  eval: 4,
+  test: 5,
+  bench: 6,
+  serve: 7,
+  jupyter: 8,
+};
+
 function bootstrapMainRuntime(runtimeOptions, warmup = false) {
   if (!warmup) {
     if (hasBootstrapped) {
@@ -695,7 +709,51 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       7: shouldDisableDeprecatedApiWarning,
       8: shouldUseVerboseDeprecatedApiWarning,
       9: future,
+      10: mode,
+      11: servePort,
+      12: serveHost,
     } = runtimeOptions;
+
+    if (mode === executionModes.run || mode === executionModes.serve) {
+      let serve = undefined;
+      core.addMainModuleHandler((main) => {
+        if (ObjectHasOwn(main, "default")) {
+          try {
+            serve = registerDeclarativeServer(main.default);
+          } catch (e) {
+            if (mode === executionModes.serve) {
+              throw e;
+            }
+          }
+        }
+
+        if (mode === executionModes.serve && !serve) {
+          console.error(
+            `%cerror: %cdeno serve requires %cexport default { fetch }%c in the main module, did you mean to run \"deno run\"?`,
+            "color: yellow;",
+            "color: inherit;",
+            "font-weight: bold;",
+            "font-weight: normal;",
+          );
+          return;
+        }
+
+        if (serve) {
+          if (mode === executionModes.run) {
+            console.error(
+              `%cwarning: %cDetected %cexport default { fetch }%c, did you mean to run \"deno serve\"?`,
+              "color: yellow;",
+              "color: inherit;",
+              "font-weight: bold;",
+              "font-weight: normal;",
+            );
+          }
+          if (mode === executionModes.serve) {
+            serve({ servePort, serveHost });
+          }
+        }
+      });
+    }
 
     // TODO(iuioiua): remove in Deno v2. This allows us to dynamically delete
     // class properties within constructors for classes that are not defined
