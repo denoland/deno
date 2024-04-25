@@ -7158,12 +7158,8 @@
         "response-from-stream.any.worker.html": true,
         "response-cancel-stream.any.html": true,
         "response-cancel-stream.any.worker.html": true,
-        "response-clone.any.html": [
-          "Check response clone use structureClone for teed ReadableStreams (Float16Arraychunk)"
-        ],
-        "response-clone.any.worker.html": [
-          "Check response clone use structureClone for teed ReadableStreams (Float16Arraychunk)"
-        ],
+        "response-clone.any.html": true,
+        "response-clone.any.worker.html": true,
         "response-consume-empty.any.html": [
           "Consume empty FormData response body as text"
         ],

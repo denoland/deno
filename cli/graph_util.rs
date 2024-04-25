@@ -611,7 +611,7 @@ impl ModuleGraphBuilder {
 
     graph.build_fast_check_type_graph(
       deno_graph::BuildFastCheckTypeGraphOptions {
-        jsr_url_provider: Some(&CliJsrUrlProvider),
+        jsr_url_provider: &CliJsrUrlProvider,
         fast_check_cache: fast_check_cache.as_ref().map(|c| c as _),
         fast_check_dts: false,
         module_parser: Some(&parser),
@@ -969,7 +969,7 @@ pub fn format_range_with_colors(range: &deno_graph::Range) -> String {
 }
 
 #[derive(Debug, Default, Clone, Copy)]
-struct CliJsrUrlProvider;
+pub struct CliJsrUrlProvider;
 
 impl deno_graph::source::JsrUrlProvider for CliJsrUrlProvider {
   fn url(&self) -> &'static ModuleSpecifier {

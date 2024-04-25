@@ -10,6 +10,17 @@
 declare namespace Deno {
   export {}; // stop default export type behavior
 
+  /** Information for a HTTP request.
+   *
+   * @category HTTP Server
+   */
+  export interface ServeHandlerInfo {
+    /** The remote address of the connection. */
+    remoteAddr: Deno.NetAddr;
+    /** The completion promise */
+    completed: Promise<void>;
+  }
+
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * Retrieve the process umask.  If `mask` is provided, sets the process umask.
@@ -765,12 +776,13 @@ declare namespace Deno {
    *  | "cocoa" (macOS)   | `NSView*`     | -               |
    *  | "win32" (Windows) | `HWND`        | `HINSTANCE`     |
    *  | "x11" (Linux)     | Xlib `Window` | Xlib `Display*` |
+   *  | "wayland" (Linux) | `wl_surface*` | `wl_display*`   |
    *
    * @category WebGPU
    */
   export class UnsafeWindowSurface {
     constructor(
-      system: "cocoa" | "win32" | "x11",
+      system: "cocoa" | "win32" | "x11" | "wayland",
       windowHandle: Deno.PointerValue<unknown>,
       displayHandle: Deno.PointerValue<unknown>,
     );

@@ -59,6 +59,7 @@ use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::tokio_util::create_and_run_current_thread;
 use deno_runtime::worker::MainWorker;
+use deno_runtime::WorkerExecutionMode;
 use indexmap::IndexMap;
 use indexmap::IndexSet;
 use log::Level;
@@ -583,6 +584,7 @@ async fn configure_main_worker(
 ) -> Result<(Option<Box<dyn CoverageCollector>>, MainWorker), anyhow::Error> {
   let mut worker = worker_factory
     .create_custom_worker(
+      WorkerExecutionMode::Test,
       specifier.clone(),
       PermissionsContainer::new(permissions),
       vec![ops::testing::deno_test::init_ops(worker_sender.sender)],

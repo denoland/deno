@@ -85,6 +85,7 @@ const H2_GRPC_PORT: u16 = 4246;
 const H2S_GRPC_PORT: u16 = 4247;
 const REGISTRY_SERVER_PORT: u16 = 4250;
 const PROVENANCE_MOCK_SERVER_PORT: u16 = 4251;
+const PRIVATE_NPM_REGISTRY_1_PORT: u16 = 4252;
 
 // Use the single-threaded scheduler. The hyper server is used as a point of
 // comparison for the (single-threaded!) benchmarks in cli/bench. We're not
@@ -130,6 +131,8 @@ pub async fn run_all_servers() {
   let registry_server_fut = registry::registry_server(REGISTRY_SERVER_PORT);
   let provenance_mock_server_fut =
     registry::provenance_mock_server(PROVENANCE_MOCK_SERVER_PORT);
+  let private_npm_registry_1_server_fut =
+    wrap_private_npm_registry1(PRIVATE_NPM_REGISTRY_1_PORT);
 
   let server_fut = async {
     futures::join!(
@@ -158,6 +161,7 @@ pub async fn run_all_servers() {
       h2_grpc_server_fut,
       registry_server_fut,
       provenance_mock_server_fut,
+      private_npm_registry_1_server_fut,
     )
   }
   .boxed_local();
@@ -1087,49 +1091,9 @@ async fn main_server(
       }
 
       // serve npm registry files
-      if let Some(suffix) = req
-        .uri()
-        .path()
-        .strip_prefix("/npm/registry/@denotest/")
-        .or_else(|| req.uri().path().strip_prefix("/npm/registry/@denotest%2f"))
+      if let Some(resp) = try_serve_npm_registry(&req, file_path.clone()).await
       {
-        // serve all requests to /npm/registry/@deno using the file system
-        // at that path
-        match handle_custom_npm_registry_path(suffix) {
-          Ok(Some(response)) => return Ok(response),
-          Ok(None) => {} // ignore, not found
-          Err(err) => {
-            return Response::builder()
-              .status(StatusCode::INTERNAL_SERVER_ERROR)
-              .body(string_body(&format!("{err:#}")))
-              .map_err(|e| e.into());
-          }
-        }
-      } else if req.uri().path().starts_with("/npm/registry/") {
-        // otherwise, serve based on registry.json and tgz files
-        let is_tarball = req.uri().path().ends_with(".tgz");
-        if !is_tarball {
-          file_path.push("registry.json");
-        }
-        if let Ok(file) = tokio::fs::read(&file_path).await {
-          let file_resp = custom_headers(req.uri().path(), file);
-          return Ok(file_resp);
-        } else if should_download_npm_packages() {
-          if let Err(err) =
-            download_npm_registry_file(req.uri(), &file_path, is_tarball).await
-          {
-            return Response::builder()
-              .status(StatusCode::INTERNAL_SERVER_ERROR)
-              .body(string_body(&format!("{err:#}")))
-              .map_err(|e| e.into());
-          };
-
-          // serve the file
-          if let Ok(file) = tokio::fs::read(&file_path).await {
-            let file_resp = custom_headers(req.uri().path(), file);
-            return Ok(file_resp);
-          }
-        }
+        return resp;
       } else if let Some(suffix) = req.uri().path().strip_prefix("/deno_std/") {
         let file_path = std_path().join(suffix);
         if let Ok(file) = tokio::fs::read(&file_path).await {
@@ -1152,6 +1116,51 @@ async fn main_server(
         .map_err(|e| e.into())
     }
   };
+}
+
+const PRIVATE_NPM_REGISTRY_AUTH_TOKEN: &str = "private-reg-token";
+
+async fn wrap_private_npm_registry1(port: u16) {
+  let npm_registry_addr = SocketAddr::from(([127, 0, 0, 1], port));
+  run_server(
+    ServerOptions {
+      addr: npm_registry_addr,
+      kind: ServerKind::Auto,
+      error_msg: "HTTP server error",
+    },
+    private_npm_registry1,
+  )
+  .await;
+}
+
+async fn private_npm_registry1(
+  req: Request<hyper::body::Incoming>,
+) -> Result<Response<UnsyncBoxBody<Bytes, Infallible>>, anyhow::Error> {
+  let auth = req
+    .headers()
+    .get("authorization")
+    .and_then(|x| x.to_str().ok())
+    .unwrap_or_default();
+  if auth != format!("Bearer {}", PRIVATE_NPM_REGISTRY_AUTH_TOKEN) {
+    return Ok(
+      Response::builder()
+        .status(StatusCode::UNAUTHORIZED)
+        .body(empty_body())
+        .unwrap(),
+    );
+  }
+
+  let mut file_path = testdata_path().to_path_buf();
+  file_path.push(&req.uri().path()[1..].replace("%2f", "/"));
+
+  if let Some(resp) = try_serve_npm_registry(&req, file_path).await {
+    return resp;
+  }
+
+  Response::builder()
+    .status(StatusCode::NOT_FOUND)
+    .body(empty_body())
+    .map_err(|e| e.into())
 }
 
 fn handle_custom_npm_registry_path(
@@ -1184,6 +1193,62 @@ fn should_download_npm_packages() -> bool {
   // when this env var is set, it will download and save npm packages
   // to the testdata/npm/registry directory
   std::env::var("DENO_TEST_UTIL_UPDATE_NPM") == Ok("1".to_string())
+}
+
+async fn try_serve_npm_registry(
+  req: &Request<hyper::body::Incoming>,
+  mut file_path: PathBuf,
+) -> Option<Result<Response<UnsyncBoxBody<Bytes, Infallible>>, anyhow::Error>> {
+  if let Some(suffix) = req
+    .uri()
+    .path()
+    .strip_prefix("/npm/registry/@denotest/")
+    .or_else(|| req.uri().path().strip_prefix("/npm/registry/@denotest%2f"))
+  {
+    // serve all requests to /npm/registry/@deno using the file system
+    // at that path
+    match handle_custom_npm_registry_path(suffix) {
+      Ok(Some(response)) => return Some(Ok(response)),
+      Ok(None) => {} // ignore, not found
+      Err(err) => {
+        return Some(
+          Response::builder()
+            .status(StatusCode::INTERNAL_SERVER_ERROR)
+            .body(string_body(&format!("{err:#}")))
+            .map_err(|e| e.into()),
+        );
+      }
+    }
+  } else if req.uri().path().starts_with("/npm/registry/") {
+    // otherwise, serve based on registry.json and tgz files
+    let is_tarball = req.uri().path().ends_with(".tgz");
+    if !is_tarball {
+      file_path.push("registry.json");
+    }
+    if let Ok(file) = tokio::fs::read(&file_path).await {
+      let file_resp = custom_headers(req.uri().path(), file);
+      return Some(Ok(file_resp));
+    } else if should_download_npm_packages() {
+      if let Err(err) =
+        download_npm_registry_file(req.uri(), &file_path, is_tarball).await
+      {
+        return Some(
+          Response::builder()
+            .status(StatusCode::INTERNAL_SERVER_ERROR)
+            .body(string_body(&format!("{err:#}")))
+            .map_err(|e| e.into()),
+        );
+      };
+
+      // serve the file
+      if let Ok(file) = tokio::fs::read(&file_path).await {
+        let file_resp = custom_headers(req.uri().path(), file);
+        return Some(Ok(file_resp));
+      }
+    }
+  }
+
+  None
 }
 
 async fn download_npm_registry_file(
