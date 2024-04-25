@@ -7,6 +7,7 @@ import { primordials } from "ext:core/mod.js";
 const {
   ArrayPrototypeEvery,
   ArrayPrototypePush,
+  FunctionPrototypeApply,
   ObjectPrototypeIsPrototypeOf,
   SafeSet,
   SafeSetIterator,
@@ -202,7 +203,7 @@ class AbortSignal extends EventTarget {
   // only be used by Deno internals, which use it to essentially cancel async
   // ops which would block the event loop.
   addEventListener() {
-    super.addEventListener.apply(this, arguments);
+    FunctionPrototypeApply(super.addEventListener, this, arguments);
     if (listenerCount(this, "abort") > 0) {
       if (this[timerId] !== null) {
         refTimer(this[timerId]);
@@ -219,7 +220,7 @@ class AbortSignal extends EventTarget {
   }
 
   removeEventListener() {
-    super.removeEventListener.apply(this, arguments);
+    FunctionPrototypeApply(super.removeEventListener, this, arguments);
     if (listenerCount(this, "abort") === 0) {
       if (this[timerId] !== null) {
         unrefTimer(this[timerId]);
