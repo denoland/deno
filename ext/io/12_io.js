@@ -9,6 +9,7 @@ import { op_set_raw } from "ext:core/ops";
 const {
   Uint8Array,
   ArrayPrototypePush,
+  Symbol,
   TypedArrayPrototypeSubarray,
   TypedArrayPrototypeSet,
   TypedArrayPrototypeGetByteLength,

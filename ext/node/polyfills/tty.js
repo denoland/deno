@@ -9,7 +9,10 @@ const {
 } = core;
 
 import { ERR_INVALID_FD } from "ext:deno_node/internal/errors.ts";
-import { LibuvStreamWrap, kStreamBaseField } from "ext:deno_node/internal_binding/stream_wrap.ts";
+import {
+  kStreamBaseField,
+  LibuvStreamWrap,
+} from "ext:deno_node/internal_binding/stream_wrap.ts";
 import { providerType } from "ext:deno_node/internal_binding/async_wrap.ts";
 import { Socket } from "node:net";
 import { setReadStream } from "ext:deno_node/_process/streams.mjs";
@@ -39,7 +42,6 @@ class TTY extends LibuvStreamWrap {
 
   ref() {
     this[kStreamBaseField][io.REF]();
-
   }
 
   unref() {
