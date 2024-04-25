@@ -90,6 +90,15 @@ impl ModuleLoader for EmbeddedModuleLoader {
     referrer: &str,
     kind: ResolutionKind,
   ) -> Result<ModuleSpecifier, AnyError> {
+    // eprintln!("RESOLVING {} from {}", specifier, referrer);
+    // if specifier.starts_with("jsr:") {
+    //   return Ok(
+    //     ModuleSpecifier::parse(
+    //       &self.shared.eszip.get_module(specifier).unwrap().specifier,
+    //     )
+    //     .unwrap(),
+    //   );
+    // }
     let referrer = if referrer == "." {
       if kind != ResolutionKind::MainModule {
         return Err(generic_error(format!(
