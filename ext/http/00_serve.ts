@@ -160,7 +160,7 @@ class InnerRequest {
     }
     if (!signalAbortError) {
       signalAbortError = new DOMException(
-        "The signal has already been aborted.",
+        "The request has been cancelled.",
         "AbortError",
       );
     }
