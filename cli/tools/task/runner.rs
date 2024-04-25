@@ -28,130 +28,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use tokio::task::LocalSet;
 
-pub async fn execute_script(
-  flags: Flags,
-  task_flags: TaskFlags,
-) -> Result<i32, AnyError> {
-  let factory = CliFactory::from_flags(flags)?;
-  let cli_options = factory.cli_options();
-  let tasks_config = cli_options.resolve_tasks_config()?;
-  let maybe_package_json = cli_options.maybe_package_json();
-  let package_json_scripts = maybe_package_json
-    .as_ref()
-    .and_then(|p| p.scripts.clone())
-    .unwrap_or_default();
-
-  let task_name = match &task_flags.task {
-    Some(task) => task,
-    None => {
-      print_available_tasks(&tasks_config, &package_json_scripts);
-      return Ok(1);
-    }
-  };
-  let npm_resolver = factory.npm_resolver().await?;
-  let node_resolver = factory.node_resolver().await?;
-
-  if let Some(
-    deno_config::Task::Definition(script)
-    | deno_config::Task::Commented {
-      definition: script, ..
-    },
-  ) = tasks_config.get(task_name)
-  {
-    let config_file_url = cli_options.maybe_config_file_specifier().unwrap();
-    let config_file_path = if config_file_url.scheme() == "file" {
-      config_file_url.to_file_path().unwrap()
-    } else {
-      bail!("Only local configuration files are supported")
-    };
-    let cwd = match task_flags.cwd {
-      Some(path) => canonicalize_path(&PathBuf::from(path))?,
-      None => config_file_path.parent().unwrap().to_owned(),
-    };
-
-    let npm_commands =
-      resolve_npm_commands(npm_resolver.as_ref(), node_resolver)?;
-    run_task(
-      task_name,
-      script,
-      &cwd,
-      cli_options,
-      npm_commands,
-      npm_resolver.as_ref(),
-    )
-    .await
-  } else if package_json_scripts.contains_key(task_name) {
-    let package_json_deps_provider = factory.package_json_deps_provider();
-
-    if let Some(package_deps) = package_json_deps_provider.deps() {
-      for (key, value) in package_deps {
-        if let Err(err) = value {
-          log::info!(
-            "{} Ignoring dependency '{}' in package.json because its version requirement failed to parse: {:#}",
-            colors::yellow("Warning"),
-            key,
-            err,
-          );
-        }
-      }
-    }
-
-    // ensure the npm packages are installed if using a node_modules
-    // directory and managed resolver
-    if cli_options.has_node_modules_dir() {
-      if let Some(npm_resolver) = npm_resolver.as_managed() {
-        npm_resolver.ensure_top_level_package_json_install().await?;
-        npm_resolver.resolve_pending().await?;
-      }
-    }
-
-    let cwd = match task_flags.cwd {
-      Some(path) => canonicalize_path(&PathBuf::from(path))?,
-      None => maybe_package_json
-        .as_ref()
-        .unwrap()
-        .path
-        .parent()
-        .unwrap()
-        .to_owned(),
-    };
-
-    // At this point we already checked if the task name exists in package.json.
-    // We can therefore check for "pre" and "post" scripts too, since we're only
-    // dealing with package.json here and not deno.json
-    let task_names = vec![
-      format!("pre{}", task_name),
-      task_name.clone(),
-      format!("post{}", task_name),
-    ];
-    let npm_commands =
-      resolve_npm_commands(npm_resolver.as_ref(), node_resolver)?;
-    for task_name in task_names {
-      if let Some(script) = package_json_scripts.get(&task_name) {
-        let exit_code = run_task(
-          &task_name,
-          script,
-          &cwd,
-          cli_options,
-          npm_commands.clone(),
-          npm_resolver.as_ref(),
-        )
-        .await?;
-        if exit_code > 0 {
-          return Ok(exit_code);
-        }
-      }
-    }
-
-    Ok(0)
-  } else {
-    eprintln!("Task not found: {task_name}");
-    print_available_tasks(&tasks_config, &package_json_scripts);
-    Ok(1)
-  }
-}
-
-async fn run_task(
+pub async fn run_task(
   task_name: &str,
   script: &str,
   cwd: &Path,
@@ -238,139 +115,7 @@ fn collect_env_vars() -> HashMap<String, String> {
   env_vars
 }
 
-fn print_available_tasks(
-  // order can be important, so these use an index map
-  tasks_config: &IndexMap<String, deno_config::Task>,
-  package_json_scripts: &IndexMap<String, String>,
-) {
-  eprintln!("{}", colors::green("Available tasks:"));
-
-  let mut had_task = false;
-  for (is_deno, (key, task)) in tasks_config
-    .iter()
-    .map(|(k, t)| (true, (k, t.clone())))
-    .chain(
-      package_json_scripts
-        .iter()
-        .filter(|(key, _)| !tasks_config.contains_key(*key))
-        .map(|(k, v)| (false, (k, deno_config::Task::Definition(v.clone())))),
-    )
-  {
-    eprintln!(
-      "- {}{}",
-      colors::cyan(key),
-      if is_deno {
-        "".to_string()
-      } else {
-        format!(" {}", colors::italic_gray("(package.json)"))
-      }
-    );
-    let definition = match &task {
-      deno_config::Task::Definition(definition) => definition,
-      deno_config::Task::Commented { definition, .. } => definition,
-    };
-    if let deno_config::Task::Commented { comments, .. } = &task {
-      let slash_slash = colors::italic_gray("//");
-      for comment in comments {
-        eprintln!("    {slash_slash} {}", colors::italic_gray(comment));
-      }
-    }
-    eprintln!("    {definition}");
-    had_task = true;
-  }
-  if !had_task {
-    eprintln!("  {}", colors::red("No tasks found in configuration file"));
-  }
-}
-
-struct NpxCommand;
-
-impl ShellCommand for NpxCommand {
-  fn execute(
-    &self,
-    mut context: ShellCommandContext,
-  ) -> LocalBoxFuture<'static, ExecuteResult> {
-    if let Some(first_arg) = context.args.first().cloned() {
-      if let Some(command) = context.state.resolve_command(&first_arg) {
-        let context = ShellCommandContext {
-          args: context.args.iter().skip(1).cloned().collect::<Vec<_>>(),
-          ..context
-        };
-        command.execute(context)
-      } else {
-        let _ = context
-          .stderr
-          .write_line(&format!("npx: could not resolve command '{first_arg}'"));
-        Box::pin(futures::future::ready(ExecuteResult::from_exit_code(1)))
-      }
-    } else {
-      let _ = context.stderr.write_line("npx: missing command");
-      Box::pin(futures::future::ready(ExecuteResult::from_exit_code(1)))
-    }
-  }
-}
-
-#[derive(Clone)]
-struct NpmPackageBinCommand {
-  name: String,
-  npm_package: PackageNv,
-}
-
-impl ShellCommand for NpmPackageBinCommand {
-  fn execute(
-    &self,
-    context: ShellCommandContext,
-  ) -> LocalBoxFuture<'static, ExecuteResult> {
-    let mut args = vec![
-      "run".to_string(),
-      "-A".to_string(),
-      if self.npm_package.name == self.name {
-        format!("npm:{}", self.npm_package)
-      } else {
-        format!("npm:{}/{}", self.npm_package, self.name)
-      },
-    ];
-    args.extend(context.args);
-    let executable_command = deno_task_shell::ExecutableCommand::new(
-      "deno".to_string(),
-      std::env::current_exe().unwrap(),
-    );
-    executable_command.execute(ShellCommandContext { args, ..context })
-  }
-}
-
-/// Runs a module in the node_modules folder.
-#[derive(Clone)]
-struct NodeModulesFileRunCommand {
-  command_name: String,
-  path: PathBuf,
-}
-
-impl ShellCommand for NodeModulesFileRunCommand {
-  fn execute(
-    &self,
-    mut context: ShellCommandContext,
-  ) -> LocalBoxFuture<'static, ExecuteResult> {
-    let mut args = vec![
-      "run".to_string(),
-      "--ext=js".to_string(),
-      "-A".to_string(),
-      self.path.to_string_lossy().to_string(),
-    ];
-    args.extend(context.args);
-    let executable_command = deno_task_shell::ExecutableCommand::new(
-      "deno".to_string(),
-      std::env::current_exe().unwrap(),
-    );
-    // set this environment variable so that the launched process knows the npm command name
-    context
-      .state
-      .apply_env_var("DENO_INTERNAL_NPM_CMD_NAME", &self.command_name);
-    executable_command.execute(ShellCommandContext { args, ..context })
-  }
-}
-
-fn resolve_npm_commands(
+pub fn resolve_npm_commands(
   npm_resolver: &dyn CliNpmResolver,
   node_resolver: &NodeResolver,
 ) -> Result<HashMap<String, Rc<dyn ShellCommand>>, AnyError> {
@@ -487,6 +232,93 @@ fn resolve_managed_npm_commands(
     result.insert("npx".to_string(), Rc::new(NpxCommand));
   }
   Ok(result)
+}
+
+struct NpxCommand;
+
+impl ShellCommand for NpxCommand {
+  fn execute(
+    &self,
+    mut context: ShellCommandContext,
+  ) -> LocalBoxFuture<'static, ExecuteResult> {
+    if let Some(first_arg) = context.args.first().cloned() {
+      if let Some(command) = context.state.resolve_command(&first_arg) {
+        let context = ShellCommandContext {
+          args: context.args.iter().skip(1).cloned().collect::<Vec<_>>(),
+          ..context
+        };
+        command.execute(context)
+      } else {
+        let _ = context
+          .stderr
+          .write_line(&format!("npx: could not resolve command '{first_arg}'"));
+        Box::pin(futures::future::ready(ExecuteResult::from_exit_code(1)))
+      }
+    } else {
+      let _ = context.stderr.write_line("npx: missing command");
+      Box::pin(futures::future::ready(ExecuteResult::from_exit_code(1)))
+    }
+  }
+}
+
+#[derive(Clone)]
+struct NpmPackageBinCommand {
+  name: String,
+  npm_package: PackageNv,
+}
+
+impl ShellCommand for NpmPackageBinCommand {
+  fn execute(
+    &self,
+    context: ShellCommandContext,
+  ) -> LocalBoxFuture<'static, ExecuteResult> {
+    let mut args = vec![
+      "run".to_string(),
+      "-A".to_string(),
+      if self.npm_package.name == self.name {
+        format!("npm:{}", self.npm_package)
+      } else {
+        format!("npm:{}/{}", self.npm_package, self.name)
+      },
+    ];
+    args.extend(context.args);
+    let executable_command = deno_task_shell::ExecutableCommand::new(
+      "deno".to_string(),
+      std::env::current_exe().unwrap(),
+    );
+    executable_command.execute(ShellCommandContext { args, ..context })
+  }
+}
+
+/// Runs a module in the node_modules folder.
+#[derive(Clone)]
+struct NodeModulesFileRunCommand {
+  command_name: String,
+  path: PathBuf,
+}
+
+impl ShellCommand for NodeModulesFileRunCommand {
+  fn execute(
+    &self,
+    mut context: ShellCommandContext,
+  ) -> LocalBoxFuture<'static, ExecuteResult> {
+    let mut args = vec![
+      "run".to_string(),
+      "--ext=js".to_string(),
+      "-A".to_string(),
+      self.path.to_string_lossy().to_string(),
+    ];
+    args.extend(context.args);
+    let executable_command = deno_task_shell::ExecutableCommand::new(
+      "deno".to_string(),
+      std::env::current_exe().unwrap(),
+    );
+    // set this environment variable so that the launched process knows the npm command name
+    context
+      .state
+      .apply_env_var("DENO_INTERNAL_NPM_CMD_NAME", &self.command_name);
+    executable_command.execute(ShellCommandContext { args, ..context })
+  }
 }
 
 #[cfg(test)]
