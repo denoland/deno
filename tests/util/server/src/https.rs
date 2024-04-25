@@ -3,6 +3,7 @@ use anyhow::anyhow;
 use deno_tls::load_certs;
 use deno_tls::load_private_keys;
 use deno_tls::rustls;
+use deno_tls::RootCertStore;
 use deno_tls::TlsStream;
 use futures::Stream;
 use futures::StreamExt;
@@ -81,7 +82,7 @@ pub fn get_tls_config(
   key_reader.read_to_end(&mut key)?;
   let key = load_private_keys(&key).map_err(err_map)?.remove(0);
 
-  let mut root_cert_store = rustls::RootCertStore::empty();
+  let mut root_cert_store = RootCertStore::empty();
   root_cert_store.add(&ca_cert).unwrap();
 
   // Allow (but do not require) client authentication.
