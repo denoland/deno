@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use bytes::Bytes;
+use deno_tls::TlsStream;
 use futures::Future;
 use futures::FutureExt;
 use futures::Stream;
@@ -69,7 +70,7 @@ pub async fn run_server_with_acceptor<'a, A, F, S>(
   error_msg: &'static str,
   kind: ServerKind,
 ) where
-  A: Stream<Item = io::Result<rustls_tokio_stream::TlsStream>> + ?Sized,
+  A: Stream<Item = io::Result<TlsStream>> + ?Sized,
   F: Fn(Request<hyper::body::Incoming>) -> S + Copy + 'static,
   S: Future<Output = HandlerOutput> + 'static,
 {

@@ -3,7 +3,7 @@
 pub use deno_native_certs;
 pub use rustls;
 pub use rustls_pemfile;
-pub use rustls_tokio_stream;
+pub use rustls_tokio_stream::*;
 pub use webpki;
 pub use webpki_roots;
 
@@ -264,7 +264,7 @@ pub fn load_certs(
     return Err(cert_not_found_err());
   }
 
-  Ok(certs.into_iter().map(Certificate).collect())
+  Ok(certs.into_iter().map(rustls::Certificate).collect())
 }
 
 fn key_decode_err() -> AnyError {
@@ -282,19 +282,19 @@ fn cert_not_found_err() -> AnyError {
 /// Starts with -----BEGIN RSA PRIVATE KEY-----
 fn load_rsa_keys(mut bytes: &[u8]) -> Result<Vec<PrivateKey>, AnyError> {
   let keys = rsa_private_keys(&mut bytes).map_err(|_| key_decode_err())?;
-  Ok(keys.into_iter().map(PrivateKey).collect())
+  Ok(keys.into_iter().map(rustls::PrivateKey).collect())
 }
 
 /// Starts with -----BEGIN EC PRIVATE KEY-----
 fn load_ec_keys(mut bytes: &[u8]) -> Result<Vec<PrivateKey>, AnyError> {
   let keys = ec_private_keys(&mut bytes).map_err(|_| key_decode_err())?;
-  Ok(keys.into_iter().map(PrivateKey).collect())
+  Ok(keys.into_iter().map(rustls::PrivateKey).collect())
 }
 
 /// Starts with -----BEGIN PRIVATE KEY-----
 fn load_pkcs8_keys(mut bytes: &[u8]) -> Result<Vec<PrivateKey>, AnyError> {
   let keys = pkcs8_private_keys(&mut bytes).map_err(|_| key_decode_err())?;
-  Ok(keys.into_iter().map(PrivateKey).collect())
+  Ok(keys.into_iter().map(rustls::PrivateKey).collect())
 }
 
 fn filter_invalid_encoding_err(
