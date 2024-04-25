@@ -3892,7 +3892,7 @@ fn install_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   runtime_args_parse(flags, matches, true, true);
 
   let global = matches.get_flag("global");
-  if global {
+  if global || !*DENO_FUTURE {
     let root = matches.remove_one::<String>("root");
     let force = matches.get_flag("force");
     let name = matches.remove_one::<String>("name");
