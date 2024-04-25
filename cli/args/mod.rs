@@ -1331,6 +1331,10 @@ impl CliOptions {
     &self.maybe_package_json
   }
 
+  pub fn maybe_npmrc(&self) -> &Option<Arc<NpmRc>> {
+    &self.maybe_npmrc
+  }
+
   pub fn maybe_package_json_deps(&self) -> Option<PackageJsonDeps> {
     if matches!(
       self.flags.subcommand,

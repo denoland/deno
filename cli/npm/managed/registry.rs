@@ -18,6 +18,7 @@ use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use deno_core::url::Url;
+use deno_npm::npm_rc::NpmRc;
 use deno_npm::registry::NpmPackageInfo;
 use deno_npm::registry::NpmRegistryApi;
 use deno_npm::registry::NpmRegistryPackageInfoLoadError;
@@ -39,6 +40,7 @@ impl CliNpmRegistryApi {
     base_url: Url,
     cache: Arc<NpmCache>,
     http_client: Arc<HttpClient>,
+    maybe_npmrc: Option<Arc<NpmRc>>,
     progress_bar: ProgressBar,
   ) -> Self {
     Self(Some(Arc::new(CliNpmRegistryApiInner {
@@ -47,6 +49,7 @@ impl CliNpmRegistryApi {
       force_reload_flag: Default::default(),
       mem_cache: Default::default(),
       previously_reloaded_packages: Default::default(),
+      maybe_npmrc,
       http_client,
       progress_bar,
     })))
@@ -127,6 +130,7 @@ struct CliNpmRegistryApiInner {
   mem_cache: Mutex<HashMap<String, CacheItem>>,
   previously_reloaded_packages: Mutex<HashSet<String>>,
   http_client: Arc<HttpClient>,
+  maybe_npmrc: Option<Arc<NpmRc>>,
   progress_bar: ProgressBar,
 }
 
@@ -303,6 +307,7 @@ impl CliNpmRegistryApiInner {
 
     let maybe_bytes = self
       .http_client
+      // TODO: Use .npmrc here to pass auth token
       .download_with_progress(package_url, &guard)
       .await?;
     match maybe_bytes {
@@ -331,7 +336,15 @@ impl CliNpmRegistryApiInner {
         .remove(b'@')
         .remove(b'_')
         .remove(b'~');
-    let name = percent_encoding::utf8_percent_encode(name, &ASCII_SET);
+    let encoded_name = percent_encoding::utf8_percent_encode(name, &ASCII_SET);
+
+    if let Some(npmrc) = self.maybe_npmrc.as_ref() {
+      let maybe_config = npmrc.config_for_package(name, self.base_url.as_str());
+      if let Some(config) = maybe_config {
+        return config.base_url.join(&encoded_name.to_string()).unwrap();
+      }
+    }
+
     self.base_url.join(&name.to_string()).unwrap()
   }
 

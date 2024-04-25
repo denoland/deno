@@ -386,6 +386,8 @@ pub async fn run(
               ),
             npm_registry_url,
             npm_system_info: Default::default(),
+            // TODO(bartlomieju): do we need to support it here?
+            maybe_npmrc: None,
           }),
         )
         .await?;
@@ -442,6 +444,8 @@ pub async fn run(
               ),
             npm_registry_url,
             npm_system_info: Default::default(),
+            // TODO(bartlomieju): do we need to support it here?
+            maybe_npmrc: None,
           }),
         )
         .await?;

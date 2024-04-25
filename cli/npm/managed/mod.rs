@@ -11,6 +11,7 @@ use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_graph::NpmPackageReqResolution;
+use deno_npm::npm_rc::NpmRc;
 use deno_npm::registry::NpmRegistryApi;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::resolution::PackageReqNotFoundError;
@@ -73,6 +74,7 @@ pub struct CliNpmResolverManagedCreateOptions {
   pub npm_system_info: NpmSystemInfo,
   pub package_json_installer: CliNpmResolverManagedPackageJsonInstallerOption,
   pub npm_registry_url: Url,
+  pub maybe_npmrc: Option<Arc<NpmRc>>,
 }
 
 pub async fn create_managed_npm_resolver_for_lsp(
@@ -191,6 +193,7 @@ fn create_api(
     options.npm_registry_url.clone(),
     npm_cache.clone(),
     options.http_client.clone(),
+    options.maybe_npmrc.clone(),
     options.text_only_progress_bar.clone(),
   ))
 }

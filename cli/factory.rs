@@ -447,6 +447,7 @@ impl CliFactory {
               ),
             npm_system_info: self.options.npm_system_info(),
             npm_registry_url: crate::args::npm_registry_url().to_owned(),
+            maybe_npmrc: self.options.maybe_npmrc().clone()
           })
         }).await
       }.boxed_local())

@@ -885,6 +885,8 @@ async fn create_npm_resolver(
         CliNpmResolverManagedPackageJsonInstallerOption::NoInstall,
       npm_registry_url: crate::args::npm_registry_url().to_owned(),
       npm_system_info: NpmSystemInfo::default(),
+      // TODO(bartlomieju): support .npmrc here
+      maybe_npmrc: None,
     })
   })
   .await
