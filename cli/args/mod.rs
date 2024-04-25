@@ -13,6 +13,7 @@ use ::import_map::ImportMap;
 use deno_ast::SourceMapOption;
 use deno_core::resolve_url_or_path;
 use deno_npm::npm_rc::NpmRc;
+use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_tls::RootCertStoreProvider;
@@ -553,7 +554,7 @@ fn discover_npmrc(
   _flags: &Flags,
   _maybe_stop_at: Option<PathBuf>,
   current_dir: &Path,
-) -> Result<Option<Arc<NpmRc>>, AnyError> {
+) -> Result<Arc<ResolvedNpmRc>, AnyError> {
   const NPMRC_NAME: &str = ".npmrc";
 
   let path = current_dir.join(NPMRC_NAME);
@@ -571,11 +572,24 @@ fn discover_npmrc(
     let npmrc = NpmRc::parse(&source, &get_env_var).with_context(|| {
       format!("Failed to parse .npmrc at {}", path.display())
     })?;
-    return Ok(Some(Arc::new(npmrc)));
+    let resolved = npmrc
+      .as_resolved(npm_registry_url())
+      .with_context(|| format!("Failed to resolve .npmrc options"))?;
+    return Ok(Arc::new(resolved));
   }
 
   log::debug!("No .npmrc file found");
-  Ok(None)
+  Ok(create_default_npmrc())
+}
+
+pub fn create_default_npmrc() -> Arc<ResolvedNpmRc> {
+  Arc::new(ResolvedNpmRc {
+    default_config: deno_npm::npm_rc::RegistryConfigWithUrl {
+      registry_url: npm_registry_url().clone(),
+      config: Default::default(),
+    },
+    scopes: Default::default(),
+  })
 }
 
 struct CliRootCertStoreProvider {
@@ -754,7 +768,7 @@ pub struct CliOptions {
   maybe_vendor_folder: Option<PathBuf>,
   maybe_config_file: Option<ConfigFile>,
   maybe_package_json: Option<PackageJson>,
-  maybe_npmrc: Option<Arc<NpmRc>>,
+  npmrc: Arc<ResolvedNpmRc>,
   maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
   overrides: CliOptionOverrides,
   maybe_workspace_config: Option<WorkspaceConfig>,
@@ -769,7 +783,7 @@ impl CliOptions {
     maybe_config_file: Option<ConfigFile>,
     maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
     maybe_package_json: Option<PackageJson>,
-    maybe_npmrc: Option<Arc<NpmRc>>,
+    npmrc: Arc<ResolvedNpmRc>,
     force_global_cache: bool,
   ) -> Result<Self, AnyError> {
     if let Some(insecure_allowlist) =
@@ -829,7 +843,7 @@ impl CliOptions {
       maybe_config_file,
       maybe_lockfile,
       maybe_package_json,
-      maybe_npmrc,
+      npmrc,
       maybe_node_modules_folder,
       maybe_vendor_folder,
       overrides: Default::default(),
@@ -863,7 +877,6 @@ impl CliOptions {
     )?;
 
     let mut maybe_package_json = None;
-    let mut maybe_npmrc = None;
     if flags.config_flag == deno_config::ConfigFlag::Disabled
       || flags.no_npm
       || has_flag_env_var("DENO_NO_PACKAGE_JSON")
@@ -884,9 +897,7 @@ impl CliOptions {
     } else {
       maybe_package_json = discover_package_json(&flags, None, &initial_cwd)?;
     }
-    if maybe_package_json.is_some() {
-      maybe_npmrc = discover_npmrc(&flags, None, &initial_cwd)?;
-    }
+    let npmrc = discover_npmrc(&flags, None, &initial_cwd)?;
 
     let maybe_lock_file =
       lockfile::discover(&flags, maybe_config_file.as_ref())?;
@@ -896,7 +907,7 @@ impl CliOptions {
       maybe_config_file,
       maybe_lock_file.map(|l| Arc::new(Mutex::new(l))),
       maybe_package_json,
-      maybe_npmrc,
+      npmrc,
       false,
     )
   }
@@ -1198,7 +1209,7 @@ impl CliOptions {
       maybe_vendor_folder: self.maybe_vendor_folder.clone(),
       maybe_config_file: self.maybe_config_file.clone(),
       maybe_package_json: self.maybe_package_json.clone(),
-      maybe_npmrc: self.maybe_npmrc.clone(),
+      npmrc: self.npmrc.clone(),
       maybe_lockfile: self.maybe_lockfile.clone(),
       maybe_workspace_config: self.maybe_workspace_config.clone(),
       overrides: self.overrides.clone(),
@@ -1330,8 +1341,8 @@ impl CliOptions {
     &self.maybe_package_json
   }
 
-  pub fn maybe_npmrc(&self) -> &Option<Arc<NpmRc>> {
-    &self.maybe_npmrc
+  pub fn npmrc(&self) -> &Arc<ResolvedNpmRc> {
+    &self.npmrc
   }
 
   pub fn maybe_package_json_deps(&self) -> Option<PackageJsonDeps> {

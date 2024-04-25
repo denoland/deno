@@ -18,7 +18,8 @@ use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use deno_core::url::Url;
-use deno_npm::npm_rc::NpmRc;
+use deno_npm::npm_rc::RegistryConfig;
+use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageInfo;
 use deno_npm::registry::NpmRegistryApi;
 use deno_npm::registry::NpmRegistryPackageInfoLoadError;
@@ -40,7 +41,7 @@ impl CliNpmRegistryApi {
     base_url: Url,
     cache: Arc<NpmCache>,
     http_client: Arc<HttpClient>,
-    maybe_npmrc: Option<Arc<NpmRc>>,
+    npmrc: Arc<ResolvedNpmRc>,
     progress_bar: ProgressBar,
   ) -> Self {
     Self(Some(Arc::new(CliNpmRegistryApiInner {
@@ -49,7 +50,7 @@ impl CliNpmRegistryApi {
       force_reload_flag: Default::default(),
       mem_cache: Default::default(),
       previously_reloaded_packages: Default::default(),
-      maybe_npmrc,
+      npmrc,
       http_client,
       progress_bar,
     })))
@@ -130,7 +131,7 @@ struct CliNpmRegistryApiInner {
   mem_cache: Mutex<HashMap<String, CacheItem>>,
   previously_reloaded_packages: Mutex<HashSet<String>>,
   http_client: Arc<HttpClient>,
-  maybe_npmrc: Option<Arc<NpmRc>>,
+  npmrc: Arc<ResolvedNpmRc>,
   progress_bar: ProgressBar,
 }
 
@@ -277,26 +278,14 @@ impl CliNpmRegistryApiInner {
     &self,
     name: &str,
   ) -> Result<Option<NpmPackageInfo>, AnyError> {
-    let mut registry_url = self.base_url.clone();
-    let mut maybe_registry_config: Option<&deno_npm::npm_rc::RegistryConfig> =
-      None;
-
-    if let Some(npmrc) = self.maybe_npmrc.as_ref() {
-      let maybe_registry_url_and_config =
-        npmrc.registry_url_and_config_for_package(name, self.base_url.as_str());
-      if let Some((registry_url_str, config)) = maybe_registry_url_and_config {
-        registry_url = Url::parse(&registry_url_str).with_context(|| {
-          format!("Failed to parse registry URL: '{}'", registry_url_str)
-        })?;
-        maybe_registry_config = Some(config);
-      }
-    }
+    let registry_url = self.npmrc.get_registry_url(name);
+    let registry_config = self.npmrc.get_registry_config(name);
 
     self
       .load_package_info_from_registry_inner(
         name,
         &registry_url,
-        maybe_registry_config,
+        &registry_config,
       )
       .await
       .with_context(|| {
@@ -312,7 +301,7 @@ impl CliNpmRegistryApiInner {
     &self,
     name: &str,
     registry_url: &Url,
-    maybe_registry_config: Option<&deno_npm::npm_rc::RegistryConfig>,
+    registry_config: &RegistryConfig,
   ) -> Result<Option<NpmPackageInfo>, AnyError> {
     if *self.cache.cache_setting() == CacheSetting::Only {
       return Err(custom_error(
@@ -325,17 +314,15 @@ impl CliNpmRegistryApiInner {
 
     let package_url = self.get_package_url(name, registry_url);
     let guard = self.progress_bar.update(package_url.as_str());
-    let mut maybe_header = None;
 
+    let mut maybe_header = None;
     // TODO(bartlomieju): support more auth methods besides token
-    if let Some(registry_config) = maybe_registry_config {
-      if let Some(token) = registry_config.auth_token.as_ref() {
-        maybe_header = Some((
-          reqwest::header::AUTHORIZATION,
-          reqwest::header::HeaderValue::from_str(&format!("Bearer {}", token))
-            .unwrap(),
-        ))
-      }
+    if let Some(token) = registry_config.auth_token.as_ref() {
+      maybe_header = Some((
+        reqwest::header::AUTHORIZATION,
+        reqwest::header::HeaderValue::from_str(&format!("Bearer {}", token))
+          .unwrap(),
+      ))
     }
 
     let maybe_bytes = self

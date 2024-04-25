@@ -88,6 +88,7 @@ use super::tsc::ChangeKind;
 use super::tsc::GetCompletionDetailsArgs;
 use super::tsc::TsServer;
 use super::urls;
+use crate::args::create_default_npmrc;
 use crate::args::get_root_cert_store;
 use crate::args::CaData;
 use crate::args::CacheSetting;
@@ -886,7 +887,7 @@ async fn create_npm_resolver(
       npm_registry_url: crate::args::npm_registry_url().to_owned(),
       npm_system_info: NpmSystemInfo::default(),
       // TODO(bartlomieju): support .npmrc here
-      maybe_npmrc: None,
+      npmrc: create_default_npmrc(),
     })
   })
   .await
@@ -3529,7 +3530,9 @@ impl Inner {
       config_data.and_then(|d| d.config_file.as_deref().cloned()),
       config_data.and_then(|d| d.lockfile.clone()),
       config_data.and_then(|d| d.package_json.as_deref().cloned()),
-      config_data.and_then(|d| d.npmrc.clone()),
+      config_data
+        .and_then(|d| d.npmrc.clone())
+        .unwrap_or_else(create_default_npmrc),
       force_global_cache,
     )?;
 

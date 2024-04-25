@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::create_default_npmrc;
 use crate::args::get_root_cert_store;
 use crate::args::npm_pkg_req_ref_to_binary_command;
 use crate::args::CaData;
@@ -387,7 +388,7 @@ pub async fn run(
             npm_registry_url,
             npm_system_info: Default::default(),
             // TODO(bartlomieju): do we need to support it here?
-            maybe_npmrc: None,
+            npmrc: create_default_npmrc(),
           }),
         )
         .await?;
@@ -445,7 +446,7 @@ pub async fn run(
             npm_registry_url,
             npm_system_info: Default::default(),
             // TODO(bartlomieju): do we need to support it here?
-            maybe_npmrc: None,
+            npmrc: create_default_npmrc(),
           }),
         )
         .await?;

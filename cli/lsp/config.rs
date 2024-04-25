@@ -23,7 +23,7 @@ use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
 use deno_lockfile::Lockfile;
-use deno_npm::npm_rc::NpmRc;
+use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::fs_util::specifier_to_file_path;
 use deno_runtime::permissions::PermissionsContainer;
@@ -1161,7 +1161,7 @@ pub struct ConfigData {
   pub vendor_dir: Option<PathBuf>,
   pub lockfile: Option<Arc<Mutex<Lockfile>>>,
   pub package_json: Option<Arc<PackageJson>>,
-  pub npmrc: Option<Arc<NpmRc>>,
+  pub npmrc: Option<Arc<ResolvedNpmRc>>,
   pub import_map: Option<Arc<ImportMap>>,
   pub import_map_from_settings: bool,
   watched_files: HashMap<ModuleSpecifier, ConfigWatchedFileType>,
