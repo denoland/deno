@@ -1,0 +1,9 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "install --root ./bins ./main.js",
+      "output": "install.out"
+    }
+  ]
+}
