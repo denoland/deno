@@ -535,7 +535,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
 
       self
         .client
-        .download_with_progress(download_url, &progress)
+        .download_with_progress(download_url, None, &progress)
         .await?
     };
     let bytes = match maybe_bytes {

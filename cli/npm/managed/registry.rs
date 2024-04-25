@@ -277,13 +277,33 @@ impl CliNpmRegistryApiInner {
     &self,
     name: &str,
   ) -> Result<Option<NpmPackageInfo>, AnyError> {
+    let mut registry_url = self.base_url.clone();
+    let mut maybe_registry_config: Option<&deno_npm::npm_rc::RegistryConfig> =
+      None;
+
+    eprintln!("{:?}", self.maybe_npmrc);
+    if let Some(npmrc) = self.maybe_npmrc.as_ref() {
+      let maybe_registry_url_and_config =
+        npmrc.registry_url_and_config_for_package(name, self.base_url.as_str());
+      if let Some((registry_url_str, config)) = maybe_registry_url_and_config {
+        registry_url = Url::parse(&registry_url_str).with_context(|| {
+          format!("Failed to parse registry URL: '{}'", registry_url_str)
+        })?;
+        maybe_registry_config = Some(config);
+      }
+    }
+
     self
-      .load_package_info_from_registry_inner(name)
+      .load_package_info_from_registry_inner(
+        name,
+        &registry_url,
+        maybe_registry_config,
+      )
       .await
       .with_context(|| {
         format!(
           "Error getting response at {} for package \"{}\"",
-          self.get_package_url(name),
+          self.get_package_url(name, &registry_url),
           name
         )
       })
@@ -292,6 +312,8 @@ impl CliNpmRegistryApiInner {
   async fn load_package_info_from_registry_inner(
     &self,
     name: &str,
+    registry_url: &Url,
+    maybe_registry_config: Option<&deno_npm::npm_rc::RegistryConfig>,
   ) -> Result<Option<NpmPackageInfo>, AnyError> {
     if *self.cache.cache_setting() == CacheSetting::Only {
       return Err(custom_error(
@@ -302,13 +324,26 @@ impl CliNpmRegistryApiInner {
       ));
     }
 
-    let package_url = self.get_package_url(name);
+    let package_url = self.get_package_url(name, registry_url);
     let guard = self.progress_bar.update(package_url.as_str());
+    let mut maybe_header = None;
+
+    // TODO(bartlomieju): support more auth methods besides token
+    if let Some(registry_config) = maybe_registry_config {
+      if let Some(token) = registry_config.auth_token.as_ref() {
+        maybe_header = Some((
+          reqwest::header::AUTHORIZATION,
+          reqwest::header::HeaderValue::from_str(&format!("Bearer {}", token))
+            .unwrap(),
+        ))
+      }
+    }
+
+    eprintln!("maybe header {:#?}", maybe_header);
 
     let maybe_bytes = self
       .http_client
-      // TODO: Use .npmrc here to pass auth token
-      .download_with_progress(package_url, &guard)
+      .download_with_progress(package_url, maybe_header, &guard)
       .await?;
     match maybe_bytes {
       Some(bytes) => {
@@ -320,7 +355,7 @@ impl CliNpmRegistryApiInner {
     }
   }
 
-  fn get_package_url(&self, name: &str) -> Url {
+  fn get_package_url(&self, name: &str, registry_url: &Url) -> Url {
     // list of all characters used in npm packages:
     //  !, ', (, ), *, -, ., /, [0-9], @, [A-Za-z], _, ~
     const ASCII_SET: percent_encoding::AsciiSet =
@@ -336,16 +371,8 @@ impl CliNpmRegistryApiInner {
         .remove(b'@')
         .remove(b'_')
         .remove(b'~');
-    let encoded_name = percent_encoding::utf8_percent_encode(name, &ASCII_SET);
-
-    if let Some(npmrc) = self.maybe_npmrc.as_ref() {
-      let maybe_config = npmrc.config_for_package(name, self.base_url.as_str());
-      if let Some(config) = maybe_config {
-        return config.base_url.join(&encoded_name.to_string()).unwrap();
-      }
-    }
-
-    self.base_url.join(&name.to_string()).unwrap()
+    let name = percent_encoding::utf8_percent_encode(name, &ASCII_SET);
+    registry_url.join(&name.to_string()).unwrap()
   }
 
   fn get_package_file_cache_path(&self, name: &str) -> PathBuf {

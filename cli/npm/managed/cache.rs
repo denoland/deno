@@ -123,7 +123,7 @@ impl NpmCache {
     let guard = self.progress_bar.update(&dist.tarball);
     let maybe_bytes = self
       .http_client
-      .download_with_progress(&dist.tarball, &guard)
+      .download_with_progress(&dist.tarball, None, &guard)
       .await?;
     match maybe_bytes {
       Some(bytes) => {

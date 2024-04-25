@@ -568,10 +568,9 @@ fn discover_npmrc(
   }
 
   if let Some(source) = maybe_source {
-    let npmrc = deno_npm::npm_rc::parse_npm_rc(&source, &get_env_var)
-      .with_context(|| {
-        format!("Failed to parse .npmrc at {}", path.display())
-      })?;
+    let npmrc = NpmRc::parse(&source, &get_env_var).with_context(|| {
+      format!("Failed to parse .npmrc at {}", path.display())
+    })?;
     return Ok(Some(Arc::new(npmrc)));
   }
 
