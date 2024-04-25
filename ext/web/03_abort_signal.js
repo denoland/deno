@@ -8,7 +8,6 @@ const {
   ArrayPrototypeEvery,
   ArrayPrototypePush,
   ObjectPrototypeIsPrototypeOf,
-  SafeArrayIterator,
   SafeSet,
   SafeSetIterator,
   SafeWeakRef,
