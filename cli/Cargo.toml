@@ -6,10 +6,10 @@ version = "1.43.0"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
+exclude = ["bench/testdata/lsp_benchdata/"]
 license.workspace = true
 repository.workspace = true
 description = "Provides the deno executable"
-exclude = ["bench/testdata/lsp_benchdata/"]
 
 [[bin]]
 name = "deno"
