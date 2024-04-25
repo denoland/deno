@@ -36,7 +36,7 @@ pub struct NpmCache {
   fs: Arc<dyn deno_fs::FileSystem>,
   http_client: Arc<HttpClient>,
   progress_bar: ProgressBar,
-  npmrc: Arc<ResolvedNpmRc>,
+  pub(crate) npmrc: Arc<ResolvedNpmRc>,
   /// ensures a package is only downloaded once per run
   previously_reloaded_packages: Mutex<HashSet<PackageNv>>,
 }
@@ -86,7 +86,6 @@ impl NpmCache {
     &self,
     package: &PackageNv,
     dist: &NpmPackageVersionDistInfo,
-    default_registry_url: &Url,
   ) -> Result<(), AnyError> {
     let registry_url = self.npmrc.get_registry_url(&package.name);
     let registry_config = self.npmrc.get_registry_config(&package.name);
@@ -197,8 +196,9 @@ impl NpmCache {
   pub fn package_folder_for_name_and_version(
     &self,
     package: &PackageNv,
-    registry_url: &Url,
   ) -> PathBuf {
+    // TODO: move downstream
+    let registry_url = self.npmrc.get_registry_url(&package.name);
     self
       .cache_dir
       .package_folder_for_name_and_version(package, registry_url)

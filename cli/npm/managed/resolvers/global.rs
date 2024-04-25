@@ -153,12 +153,7 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
       .resolution
       .all_system_packages_partitioned(&self.system_info);
 
-    cache_packages(
-      package_partitions.packages,
-      &self.cache,
-      &self.registry_url,
-    )
-    .await?;
+    cache_packages(package_partitions.packages, &self.cache).await?;
 
     // create the copy package folders
     for copy in package_partitions.copy_packages {

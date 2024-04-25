@@ -35,7 +35,6 @@ pub fn create_npm_fs_resolver(
       fs,
       cache,
       progress_bar.clone(),
-      registry_url,
       node_modules_folder,
       resolution,
       system_info,
