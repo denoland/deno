@@ -253,6 +253,18 @@ pub fn uninstall(uninstall_flags: UninstallFlags) -> Result<(), AnyError> {
   Ok(())
 }
 
+async fn install_local(flags: Flags) -> Result<(), AnyError> {
+  let factory = CliFactory::from_flags(flags)?;
+  let cli_options = factory.cli_options();
+  let npm_resolver = factory.npm_resolver().await?;
+
+  if let Some(npm_resolver) = npm_resolver.as_managed() {
+    npm_resolver.ensure_top_level_package_json_install().await?;
+    npm_resolver.resolve_pending().await?;
+  }
+  Ok(())
+}
+
 pub async fn install_command(
   flags: Flags,
   install_flags: InstallFlags,
@@ -263,7 +275,7 @@ pub async fn install_command(
 
   let install_flags_global = match install_flags.kind {
     InstallKind::Global(flags) => flags,
-    InstallKind::Local => unreachable!(),
+    InstallKind::Local => return install_local(flags).await,
   };
 
   // ensure the module is cached
