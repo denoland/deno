@@ -3,8 +3,8 @@
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_runtime::deno_fetch::reqwest;
-use lsp_types::Url;
 use deno_runtime::deno_fetch::reqwest_middleware;
+use lsp_types::Url;
 use serde::de::DeserializeOwned;
 
 #[derive(serde::Deserialize)]
