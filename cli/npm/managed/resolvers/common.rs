@@ -129,15 +129,15 @@ impl RegistryReadPermissionChecker {
 pub async fn cache_packages(
   packages: Vec<NpmResolutionPackage>,
   cache: &Arc<NpmCache>,
-  registry_url: &Url,
+  default_registry_url: &Url,
 ) -> Result<(), AnyError> {
   let mut handles = Vec::with_capacity(packages.len());
   for package in packages {
     let cache = cache.clone();
-    let registry_url = registry_url.clone();
+    let default_registry_url = default_registry_url.clone();
     let handle = spawn(async move {
       cache
-        .ensure_package(&package.id.nv, &package.dist, &registry_url)
+        .ensure_package(&package.id.nv, &package.dist, &default_registry_url)
         .await
     });
     handles.push(handle);

@@ -13,6 +13,7 @@ use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
+use deno_npm::npm_rc::NpmRc;
 use deno_npm::registry::NpmPackageVersionDistInfo;
 use deno_npm::NpmPackageCacheFolderId;
 use deno_runtime::deno_fs;
@@ -34,6 +35,7 @@ pub struct NpmCache {
   fs: Arc<dyn deno_fs::FileSystem>,
   http_client: Arc<HttpClient>,
   progress_bar: ProgressBar,
+  maybe_npmrc: Option<Arc<NpmRc>>,
   /// ensures a package is only downloaded once per run
   previously_reloaded_packages: Mutex<HashSet<PackageNv>>,
 }
@@ -45,6 +47,7 @@ impl NpmCache {
     fs: Arc<dyn deno_fs::FileSystem>,
     http_client: Arc<HttpClient>,
     progress_bar: ProgressBar,
+    maybe_npmrc: Option<Arc<NpmRc>>,
   ) -> Self {
     Self {
       cache_dir,
@@ -53,6 +56,7 @@ impl NpmCache {
       http_client,
       progress_bar,
       previously_reloaded_packages: Default::default(),
+      maybe_npmrc,
     }
   }
 
@@ -81,10 +85,28 @@ impl NpmCache {
     &self,
     package: &PackageNv,
     dist: &NpmPackageVersionDistInfo,
-    registry_url: &Url,
+    default_registry_url: &Url,
   ) -> Result<(), AnyError> {
+    let mut registry_url = default_registry_url.clone();
+    let mut maybe_registry_config: Option<&deno_npm::npm_rc::RegistryConfig> =
+      None;
+
+    if let Some(npmrc) = self.maybe_npmrc.as_ref() {
+      let maybe_registry_url_and_config = npmrc
+        .registry_url_and_config_for_package(
+          &package.name,
+          registry_url.as_str(),
+        );
+      if let Some((registry_url_str, config)) = maybe_registry_url_and_config {
+        registry_url = Url::parse(&registry_url_str).with_context(|| {
+          format!("Failed to parse registry URL: '{}'", registry_url_str)
+        })?;
+        maybe_registry_config = Some(config);
+      }
+    }
+
     self
-      .ensure_package_inner(package, dist, registry_url)
+      .ensure_package_inner(package, dist, &registry_url, maybe_registry_config)
       .await
       .with_context(|| format!("Failed caching npm package '{package}'."))
   }
@@ -94,6 +116,7 @@ impl NpmCache {
     package: &PackageNv,
     dist: &NpmPackageVersionDistInfo,
     registry_url: &Url,
+    maybe_registry_config: Option<&deno_npm::npm_rc::RegistryConfig>,
   ) -> Result<(), AnyError> {
     let package_folder = self
       .cache_dir
@@ -120,10 +143,22 @@ impl NpmCache {
       bail!("Tarball URL was empty.");
     }
 
+    let mut maybe_header = None;
+    // TODO(bartlomieju): support more auth methods besides token
+    if let Some(registry_config) = maybe_registry_config {
+      if let Some(token) = registry_config.auth_token.as_ref() {
+        maybe_header = Some((
+          reqwest::header::AUTHORIZATION,
+          reqwest::header::HeaderValue::from_str(&format!("Bearer {}", token))
+            .unwrap(),
+        ))
+      }
+    }
+
     let guard = self.progress_bar.update(&dist.tarball);
     let maybe_bytes = self
       .http_client
-      .download_with_progress(&dist.tarball, None, &guard)
+      .download_with_progress(&dist.tarball, maybe_header, &guard)
       .await?;
     match maybe_bytes {
       Some(bytes) => {

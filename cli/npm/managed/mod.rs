@@ -182,6 +182,7 @@ fn create_cache(options: &CliNpmResolverManagedCreateOptions) -> Arc<NpmCache> {
     options.fs.clone(),
     options.http_client.clone(),
     options.text_only_progress_bar.clone(),
+    options.maybe_npmrc.clone(),
   ))
 }
 
