@@ -14,6 +14,7 @@ const {
   ArrayPrototypeMap,
   ArrayPrototypeSlice,
   ArrayPrototypeSplice,
+  ObjectFreeze,
   ObjectKeys,
   ObjectPrototypeIsPrototypeOf,
   RegExpPrototypeExec,
@@ -376,7 +377,7 @@ class Request {
 
     // 29 & 30.
     if (signal !== null) {
-      this[_signal] = createDependentAbortSignal([signal], prefix);
+      this[_signalCache] = createDependentAbortSignal([signal], prefix);
     }
 
     // 31.
@@ -483,15 +484,15 @@ class Request {
     }
     const clonedReq = cloneInnerRequest(this[_request]);
 
-    assert(this[_signal] !== null);
+    const materializedSignal = this[_signal];
     const clonedSignal = createDependentAbortSignal(
-      [this[_signal]],
+      [materializedSignal],
       prefix,
     );
 
     const request = new Request(_brand);
     request[_request] = clonedReq;
-    request[_signal] = clonedSignal;
+    request[_signalCache] = clonedSignal;
     request[_getHeaders] = () =>
       headersFromHeaderList(
         clonedReq.headerList,
@@ -590,7 +591,7 @@ const signalAbortError = new DOMException(
   "The request has been cancelled.",
   "AbortError",
 );
-// ObjectFreeze(signalAbortError);
+ObjectFreeze(signalAbortError);
 
 function abortRequest(request) {
   if (request[_signal]) {
