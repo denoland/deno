@@ -125,6 +125,7 @@ enum CacheItem {
 
 #[derive(Debug)]
 struct CliNpmRegistryApiInner {
+  // TODO: remove
   base_url: Url,
   cache: Arc<NpmCache>,
   force_reload_flag: AtomicFlag,
@@ -360,7 +361,7 @@ impl CliNpmRegistryApiInner {
   }
 
   fn get_package_file_cache_path(&self, name: &str) -> PathBuf {
-    let name_folder_path = self.cache.package_name_folder(name, &self.base_url);
+    let name_folder_path = self.cache.package_name_folder(name);
     name_folder_path.join("registry.json")
   }
 

@@ -157,10 +157,9 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
 
     // create the copy package folders
     for copy in package_partitions.copy_packages {
-      self.cache.ensure_copy_package(
-        &copy.get_package_cache_folder_id(),
-        &self.registry_url,
-      )?;
+      self
+        .cache
+        .ensure_copy_package(&copy.get_package_cache_folder_id())?;
     }
 
     Ok(())

@@ -13,7 +13,6 @@ use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
-use deno_npm::npm_rc::RegistryConfig;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageVersionDistInfo;
 use deno_npm::NpmPackageCacheFolderId;
@@ -87,11 +86,8 @@ impl NpmCache {
     package: &PackageNv,
     dist: &NpmPackageVersionDistInfo,
   ) -> Result<(), AnyError> {
-    let registry_url = self.npmrc.get_registry_url(&package.name);
-    let registry_config = self.npmrc.get_registry_config(&package.name);
-
     self
-      .ensure_package_inner(package, dist, &registry_url, &registry_config)
+      .ensure_package_inner(package, dist)
       .await
       .with_context(|| format!("Failed caching npm package '{package}'."))
   }
@@ -100,9 +96,10 @@ impl NpmCache {
     &self,
     package: &PackageNv,
     dist: &NpmPackageVersionDistInfo,
-    registry_url: &Url,
-    registry_config: &RegistryConfig,
   ) -> Result<(), AnyError> {
+    let registry_url = self.npmrc.get_registry_url(&package.name);
+    let registry_config = self.npmrc.get_registry_config(&package.name);
+
     let package_folder = self
       .cache_dir
       .package_folder_for_name_and_version(package, registry_url);
@@ -160,8 +157,8 @@ impl NpmCache {
   pub fn ensure_copy_package(
     &self,
     folder_id: &NpmPackageCacheFolderId,
-    registry_url: &Url,
   ) -> Result<(), AnyError> {
+    let registry_url = self.npmrc.get_registry_url(&folder_id.nv.name);
     assert_ne!(folder_id.copy_index, 0);
     let package_folder = self
       .cache_dir
@@ -197,17 +194,18 @@ impl NpmCache {
     &self,
     package: &PackageNv,
   ) -> PathBuf {
-    // TODO: move downstream
     let registry_url = self.npmrc.get_registry_url(&package.name);
     self
       .cache_dir
       .package_folder_for_name_and_version(package, registry_url)
   }
 
-  pub fn package_name_folder(&self, name: &str, registry_url: &Url) -> PathBuf {
+  pub fn package_name_folder(&self, name: &str) -> PathBuf {
+    let registry_url = self.npmrc.get_registry_url(name);
     self.cache_dir.package_name_folder(name, registry_url)
   }
 
+  // TODO: remove registry_url
   pub fn registry_folder(&self, registry_url: &Url) -> PathBuf {
     self.cache_dir.registry_folder(registry_url)
   }
