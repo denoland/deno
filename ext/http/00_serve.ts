@@ -126,6 +126,8 @@ function addTrailers(resp, headerList) {
   op_http_set_response_trailers(inner.external, headerList);
 }
 
+let signalAbortError;
+
 class InnerRequest {
   #external;
   #context;
@@ -156,9 +158,15 @@ class InnerRequest {
         );
       }
     }
+    if (!signalAbortError) {
+      signalAbortError = new DOMException(
+        "The request has been cancelled.",
+        "AbortError",
+      );
+    }
     // Unconditionally abort the request signal. Note that we don't use
     // an error here.
-    this.#abortController.abort();
+    this.#abortController.abort(signalAbortError);
     this.#external = null;
   }
 
