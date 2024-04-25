@@ -29,11 +29,11 @@ use deno_core::ResourceId;
 use deno_tls::create_client_config;
 use deno_tls::load_certs;
 use deno_tls::load_private_keys;
-use deno_tls::rustls::pki_types::CertificateDer;
-use deno_tls::rustls::pki_types::PrivateKeyDer;
 use deno_tls::rustls::pki_types::ServerName;
 use deno_tls::rustls::ClientConnection;
 use deno_tls::rustls::ServerConfig;
+use deno_tls::Certificate;
+use deno_tls::PrivateKey;
 use deno_tls::SocketUse;
 use deno_tls::TlsKey;
 use deno_tls::TlsKeys;
@@ -403,9 +403,7 @@ where
   Ok((rid, IpAddr::from(local_addr), IpAddr::from(remote_addr)))
 }
 
-fn load_certs_from_file(
-  path: &str,
-) -> Result<Vec<CertificateDer<'static>>, AnyError> {
+fn load_certs_from_file(path: &str) -> Result<Vec<Certificate>, AnyError> {
   let cert_file = File::open(path)?;
   let reader = &mut BufReader::new(cert_file);
   load_certs(reader)
@@ -413,7 +411,7 @@ fn load_certs_from_file(
 
 fn load_private_keys_from_file(
   path: &str,
-) -> Result<Vec<PrivateKeyDer<'static>>, AnyError> {
+) -> Result<Vec<PrivateKey>, AnyError> {
   let key_bytes = std::fs::read(path)?;
   load_private_keys(&key_bytes)
 }

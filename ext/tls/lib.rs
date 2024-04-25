@@ -185,11 +185,7 @@ pub struct BasicAuth {
 pub fn create_default_root_cert_store() -> RootCertStore {
   let mut root_cert_store = RootCertStore::empty();
   for ta in webpki_roots::TLS_SERVER_ROOTS {
-    root_cert_store.roots.push(TrustAnchor {
-      name_constraints: ta.name_constraints.map(|x| Der::from(x).to_owned()),
-      subject: ta.subject.into(),
-      subject_public_key_info: ta.spki.into(),
-    });
+    root_cert_store.roots.push(ta.clone());
   }
   debug_assert!(!root_cert_store.is_empty());
   root_cert_store

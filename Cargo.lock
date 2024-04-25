@@ -1911,7 +1911,7 @@ dependencies = [
  "rustls-tokio-stream",
  "rustls-webpki 0.101.7",
  "serde",
- "webpki-roots 0.25.4",
+ "webpki-roots 0.26.1",
 ]
 
 [[package]]
