@@ -9,6 +9,7 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Provides the deno executable"
+exclude = ["bench/testdata/lsp_benchdata/"]
 
 [[bin]]
 name = "deno"
