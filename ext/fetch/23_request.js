@@ -43,8 +43,12 @@ import {
   headersFromHeaderList,
 } from "ext:deno_fetch/20_headers.js";
 import { HttpClientPrototype } from "ext:deno_fetch/22_http_client.js";
-import * as abortSignal from "ext:deno_web/03_abort_signal.js";
-
+import {
+  createDependentAbortSignal,
+  newSignal,
+  signalAbort,
+} from "ext:deno_web/03_abort_signal.js";
+import { DOMException } from "ext:deno_web/01_dom_exception.js";
 const { internalRidSymbol } = core;
 
 const _request = Symbol("request");
@@ -52,6 +56,7 @@ const _headers = Symbol("headers");
 const _getHeaders = Symbol("get headers");
 const _headersCache = Symbol("headers cache");
 const _signal = Symbol("signal");
+const _signalCache = Symbol("signalCache");
 const _mimeType = Symbol("mime type");
 const _body = Symbol("body");
 const _url = Symbol("url");
@@ -262,7 +267,13 @@ class Request {
   }
 
   /** @type {AbortSignal} */
-  [_signal];
+  get [_signal]() {
+    const signal = this[_signalCache];
+    if (signal !== undefined) {
+      return signal;
+    }
+    return (this[_signalCache] = newSignal());
+  }
   get [_mimeType]() {
     const values = getDecodeSplitHeader(
       headerListFromHeaders(this[_headers]),
@@ -363,11 +374,10 @@ class Request {
     // 28.
     this[_request] = request;
 
-    // 29.
-    const signals = signal !== null ? [signal] : [];
-
-    // 30.
-    this[_signal] = abortSignal.createDependentAbortSignal(signals, prefix);
+    // 29 & 30.
+    if (signal !== null) {
+      this[_signal] = createDependentAbortSignal([signal], prefix);
+    }
 
     // 31.
     this[_headers] = headersFromHeaderList(request.headerList, "request");
@@ -474,16 +484,20 @@ class Request {
     const clonedReq = cloneInnerRequest(this[_request]);
 
     assert(this[_signal] !== null);
-    const clonedSignal = abortSignal.createDependentAbortSignal(
+    const clonedSignal = createDependentAbortSignal(
       [this[_signal]],
       prefix,
     );
 
-    return fromInnerRequest(
-      clonedReq,
-      clonedSignal,
-      guardFromHeaders(this[_headers]),
-    );
+    const request = new Request(_brand);
+    request[_request] = clonedReq;
+    request[_signal] = clonedSignal;
+    request[_getHeaders] = () =>
+      headersFromHeaderList(
+        clonedReq.headerList,
+        guardFromHeaders(this[_headers]),
+      );
+    return request;
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
@@ -562,19 +576,30 @@ function toInnerRequest(request) {
 
 /**
  * @param {InnerRequest} inner
- * @param {AbortSignal} signal
  * @param {"request" | "immutable" | "request-no-cors" | "response" | "none"} guard
  * @returns {Request}
  */
-function fromInnerRequest(inner, signal, guard) {
+function fromInnerRequest(inner, guard) {
   const request = new Request(_brand);
   request[_request] = inner;
-  request[_signal] = signal;
   request[_getHeaders] = () => headersFromHeaderList(inner.headerList, guard);
   return request;
 }
 
+const signalAbortError = new DOMException(
+  "The request has been cancelled.",
+  "AbortError",
+);
+// ObjectFreeze(signalAbortError);
+
+function abortRequest(request) {
+  if (request[_signal]) {
+    request[_signal][signalAbort](signalAbortError);
+  }
+}
+
 export {
+  abortRequest,
   fromInnerRequest,
   newInnerRequest,
   processUrlList,

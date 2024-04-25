@@ -49,7 +49,11 @@ import {
   ResponsePrototype,
   toInnerResponse,
 } from "ext:deno_fetch/23_response.js";
-import { fromInnerRequest, toInnerRequest } from "ext:deno_fetch/23_request.js";
+import {
+  abortRequest,
+  fromInnerRequest,
+  toInnerRequest,
+} from "ext:deno_fetch/23_request.js";
 import { AbortController } from "ext:deno_web/03_abort_signal.js";
 import {
   _eventLoop,
@@ -74,6 +78,7 @@ import {
 import { listen, listenOptionApiName, TcpConn } from "ext:deno_net/01_net.js";
 import { hasTlsKeyPairOptions, listenTls } from "ext:deno_net/02_tls.js";
 import { SymbolAsyncDispose } from "ext:deno_web/00_infra.js";
+import { abort } from "../node/polyfills/process";
 
 const _upgraded = Symbol("_upgraded");
 
@@ -126,8 +131,6 @@ function addTrailers(resp, headerList) {
   op_http_set_response_trailers(inner.external, headerList);
 }
 
-let signalAbortError;
-
 class InnerRequest {
   #external;
   #context;
@@ -138,13 +141,13 @@ class InnerRequest {
   #urlValue;
   #completed;
   #abortController;
+  request;
 
-  constructor(external, context, abortController) {
+  constructor(external, context) {
     this.#external = external;
     this.#context = context;
     this.#upgraded = false;
     this.#completed = undefined;
-    this.#abortController = abortController;
   }
 
   close(success = true) {
@@ -158,15 +161,7 @@ class InnerRequest {
         );
       }
     }
-    if (!signalAbortError) {
-      signalAbortError = new DOMException(
-        "The request has been cancelled.",
-        "AbortError",
-      );
-    }
-    // Unconditionally abort the request signal. Note that we don't use
-    // an error here.
-    this.#abortController.abort(signalAbortError);
+    abortRequest(this.request);
     this.#external = null;
   }
 
@@ -492,17 +487,16 @@ function fastSyncResponseOrStream(
  */
 function mapToCallback(context, callback, onError) {
   return async function (req) {
-    const abortController = new AbortController();
-    const signal = abortController.signal;
-
     // Get the response from the user-provided callback. If that fails, use onError. If that fails, return a fallback
     // 500 error.
     let innerRequest;
     let response;
     try {
-      innerRequest = new InnerRequest(req, context, abortController);
+      innerRequest = new InnerRequest(req, context);
+      const request = fromInnerRequest(innerRequest, "immutable");
+      innerRequest.request = request;
       response = await callback(
-        fromInnerRequest(innerRequest, signal, "immutable"),
+        request,
         new ServeHandlerInfo(innerRequest),
       );
 
