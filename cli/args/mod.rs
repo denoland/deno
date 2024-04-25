@@ -9,7 +9,6 @@ pub mod package_json;
 
 pub use self::import_map::resolve_import_map;
 use self::package_json::PackageJsonDeps;
-use deno_runtime::permissions::PermissionsOptions;
 use ::import_map::ImportMap;
 use deno_ast::SourceMapOption;
 use deno_core::resolve_url_or_path;
@@ -18,6 +17,7 @@ use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_tls::create_default_root_cert_store;
 use deno_runtime::deno_tls::create_platform_cert_store;
 use deno_runtime::deno_tls::RootCertStoreProvider;
+use deno_runtime::permissions::PermissionsOptions;
 use deno_semver::npm::NpmPackageReqReference;
 use indexmap::IndexMap;
 

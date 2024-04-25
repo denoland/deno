@@ -20,13 +20,13 @@ use deno_core::anyhow::anyhow;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 
-use rustls::ClientConfig;
-use rustls::DigitallySignedStruct;
-use rustls::Error;
 use rustls::client::danger::HandshakeSignatureValid;
 use rustls::client::danger::ServerCertVerified;
 use rustls::client::danger::ServerCertVerifier;
 use rustls::client::WebPkiServerVerifier;
+use rustls::ClientConfig;
+use rustls::DigitallySignedStruct;
+use rustls::Error;
 use rustls_pemfile::certs;
 use rustls_pemfile::ec_private_keys;
 use rustls_pemfile::pkcs8_private_keys;
@@ -328,9 +328,7 @@ fn cert_not_found_err() -> AnyError {
 }
 
 /// Starts with -----BEGIN RSA PRIVATE KEY-----
-fn load_rsa_keys(
-  mut bytes: &[u8],
-) -> Result<Vec<PrivateKey>, AnyError> {
+fn load_rsa_keys(mut bytes: &[u8]) -> Result<Vec<PrivateKey>, AnyError> {
   let keys = rsa_private_keys(&mut bytes).map_err(|_| key_decode_err())?;
   Ok(
     keys
@@ -341,9 +339,7 @@ fn load_rsa_keys(
 }
 
 /// Starts with -----BEGIN EC PRIVATE KEY-----
-fn load_ec_keys(
-  mut bytes: &[u8],
-) -> Result<Vec<PrivateKey>, AnyError> {
+fn load_ec_keys(mut bytes: &[u8]) -> Result<Vec<PrivateKey>, AnyError> {
   let keys = ec_private_keys(&mut bytes).map_err(|_| key_decode_err())?;
   Ok(
     keys
@@ -354,9 +350,7 @@ fn load_ec_keys(
 }
 
 /// Starts with -----BEGIN PRIVATE KEY-----
-fn load_pkcs8_keys(
-  mut bytes: &[u8],
-) -> Result<Vec<PrivateKey>, AnyError> {
+fn load_pkcs8_keys(mut bytes: &[u8]) -> Result<Vec<PrivateKey>, AnyError> {
   let keys = pkcs8_private_keys(&mut bytes).map_err(|_| key_decode_err())?;
   Ok(
     keys
