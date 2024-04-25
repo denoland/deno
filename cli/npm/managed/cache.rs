@@ -182,11 +182,8 @@ impl NpmCache {
     Ok(())
   }
 
-  pub fn package_folder_for_id(
-    &self,
-    id: &NpmPackageCacheFolderId,
-    registry_url: &Url,
-  ) -> PathBuf {
+  pub fn package_folder_for_id(&self, id: &NpmPackageCacheFolderId) -> PathBuf {
+    let registry_url = self.npmrc.get_registry_url(&id.nv.name);
     self.cache_dir.package_folder_for_id(id, registry_url)
   }
 

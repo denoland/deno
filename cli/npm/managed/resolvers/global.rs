@@ -84,11 +84,7 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
       .resolution
       .resolve_pkg_cache_folder_id_from_pkg_id(id)
       .unwrap();
-    Ok(
-      self
-        .cache
-        .package_folder_for_id(&folder_id, &self.registry_url),
-    )
+    Ok(self.cache.package_folder_for_id(&folder_id))
   }
 
   fn resolve_package_folder_from_package(
@@ -129,11 +125,7 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
     else {
       return Ok(None);
     };
-    Ok(Some(
-      self
-        .cache
-        .package_folder_for_id(&pkg_folder_id, &self.registry_url),
-    ))
+    Ok(Some(self.cache.package_folder_for_id(&pkg_folder_id)))
   }
 
   fn resolve_package_cache_folder_id_from_specifier(
