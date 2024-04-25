@@ -281,7 +281,6 @@ impl CliNpmRegistryApiInner {
     let mut maybe_registry_config: Option<&deno_npm::npm_rc::RegistryConfig> =
       None;
 
-    eprintln!("{:?}", self.maybe_npmrc);
     if let Some(npmrc) = self.maybe_npmrc.as_ref() {
       let maybe_registry_url_and_config =
         npmrc.registry_url_and_config_for_package(name, self.base_url.as_str());
@@ -338,8 +337,6 @@ impl CliNpmRegistryApiInner {
         ))
       }
     }
-
-    eprintln!("maybe header {:#?}", maybe_header);
 
     let maybe_bytes = self
       .http_client
