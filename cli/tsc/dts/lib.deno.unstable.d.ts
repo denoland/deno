@@ -776,12 +776,13 @@ declare namespace Deno {
    *  | "cocoa" (macOS)   | `NSView*`     | -               |
    *  | "win32" (Windows) | `HWND`        | `HINSTANCE`     |
    *  | "x11" (Linux)     | Xlib `Window` | Xlib `Display*` |
+   *  | "wayland" (Linux) | `wl_surface*` | `wl_display*`   |
    *
    * @category WebGPU
    */
   export class UnsafeWindowSurface {
     constructor(
-      system: "cocoa" | "win32" | "x11",
+      system: "cocoa" | "win32" | "x11" | "wayland",
       windowHandle: Deno.PointerValue<unknown>,
       displayHandle: Deno.PointerValue<unknown>,
     );
