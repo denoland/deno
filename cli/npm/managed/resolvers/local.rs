@@ -7,6 +7,7 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fs;
+use std::io::Write;
 use std::os::unix::fs::symlink;
 use std::path::Path;
 use std::path::PathBuf;
@@ -298,6 +299,8 @@ async fn sync_resolution_with_fs(
   let mut newest_packages_by_name: HashMap<&String, &NpmResolutionPackage> =
     HashMap::with_capacity(package_partitions.packages.len());
   let bin_entries_to_setup = Arc::new(Mutex::new(Vec::with_capacity(16)));
+  let packages_with_install_scripts = Arc::new(Mutex::new(Vec::with_capacity(16)));
+
   for package in &package_partitions.packages {
     if let Some(current_pkg) =
       newest_packages_by_name.get_mut(&package.id.nv.name)
@@ -327,6 +330,7 @@ async fn sync_resolution_with_fs(
       let registry_url = registry_url.clone();
       let package = package.clone();
       let bin_entries_to_setup = bin_entries_to_setup.clone();
+      let packages_with_install_scripts = packages_with_install_scripts.clone();
       let handle = spawn(async move {
         cache
           .ensure_package(&package.id.nv, &package.dist, &registry_url)
@@ -352,7 +356,11 @@ async fn sync_resolution_with_fs(
         fs::write(initialized_file, "")?;
 
         if package.bin.is_some() {
-          bin_entries_to_setup.lock().push((package.clone(), package_path));
+          bin_entries_to_setup.lock().push((package.clone(), package_path.clone()));
+        }
+
+        if package.scripts.contains_key("install") || package.scripts.contains_key("postinstall") {
+          packages_with_install_scripts.lock().push((package.clone(), package_path));
         }
 
         // finally stop showing the progress bar
@@ -510,6 +518,45 @@ async fn sync_resolution_with_fs(
             )?;
           }
         }
+      }
+    }
+  }
+
+  // 7. Run pre/post/install scripts for packages
+  for (package, package_path) in &*packages_with_install_scripts.lock() {
+    let package = snapshot.package_from_id(&package.id).unwrap();
+
+    for (script_name, script) in &package.scripts {
+      if script_name == "preinstall" || script_name == "install" || script_name == "postinstall" {
+        log::warn!(
+          "⚠️  {} {} has a \"{}\" script that might be required to execute for the package to work correctly.", 
+          deno_terminal::colors::yellow("Warning"), 
+          deno_terminal::colors::green(format!("{}", package.id.nv.name)), 
+          deno_terminal::colors::gray(format!("{}", script_name)),
+        );
+        log::warn!("  Script: {}", deno_terminal::colors::gray(script));
+        // TODO: add a prompt here to ask if we should run the script.
+        log::warn!("  Do you want to run this script with full permissions? [y/N]");
+        // ASCII code for the bell character.
+        print!("\x07");
+        eprint!(" > ");
+        let mut buf = String::new();
+        let mut should_run = false;
+        loop {
+          let line_result = std::io::stdin().read_line(&mut buf);
+          if let Ok(_nread) = line_result {
+            let answer = buf.trim();
+            if answer == "y" || answer == "Y" {
+              should_run = true;
+              break;
+            } else if answer == "n" || answer == "N" {
+              break;
+            }
+          }
+        }
+        // if should_run {
+          
+        // }
       }
     }
   }
