@@ -1343,17 +1343,21 @@ fn clap_root() -> Command {
     .after_help(ENV_VARIABLES_HELP)
 }
 
-fn add_subcommand_args() -> impl IntoIterator<Item = Arg> {
-  [
-    Arg::new("npm")
-      .help("Look up packages in npm if unspecified")
-      .action(ArgAction::SetTrue),
-    Arg::new("packages")
-      .help("List of packages to add")
-      .required(true)
-      .num_args(1..)
-      .action(ArgAction::Append),
-  ]
+fn add_args(cmd: Command) -> Command {
+  cmd
+    .arg(
+      Arg::new("npm")
+        .long("npm")
+        .help("Look up packages in npm if unspecified")
+        .action(ArgAction::SetTrue),
+    )
+    .arg(
+      Arg::new("packages")
+        .help("List of packages to add")
+        .required(true)
+        .num_args(1..)
+        .action(ArgAction::Append),
+    )
 }
 
 fn add_subcommand() -> Command {
@@ -1369,15 +1373,7 @@ You can add multiple dependencies at once:
   deno add @std/path @std/assert
 ",
     )
-    .defer(|cmd| {
-      cmd.arg(
-        Arg::new("packages")
-          .help("List of packages to add")
-          .required(true)
-          .num_args(1..)
-          .action(ArgAction::Append),
-      )
-    })
+    .defer(|cmd| add_args(cmd))
 }
 
 fn bench_subcommand() -> Command {
@@ -2168,6 +2164,7 @@ These must be added to the path manually if required.")
     .defer(|cmd| {
       let cmd = runtime_args(cmd, true, true).arg(check_arg(true));
       let cmd = install_args(cmd, true);
+      add_args(cmd)
     })
 }
 
