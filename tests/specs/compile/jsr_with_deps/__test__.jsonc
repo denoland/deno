@@ -1,7 +1,7 @@
 {
   "tempDir": true,
   "steps": [{
-    "args": "compile --vendor --output main main.ts",
+    "args": "compile --output main main.ts",
     "output": "[WILDCARD]"
   }, {
     "commandName": "./main",

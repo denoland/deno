@@ -90,15 +90,6 @@ impl ModuleLoader for EmbeddedModuleLoader {
     referrer: &str,
     kind: ResolutionKind,
   ) -> Result<ModuleSpecifier, AnyError> {
-    eprintln!("RESOLVING {} from {}", specifier, referrer);
-    // if specifier.starts_with("jsr:") {
-    //   return Ok(
-    //     ModuleSpecifier::parse(
-    //       &self.shared.eszip.get_module(specifier).unwrap().specifier,
-    //     )
-    //     .unwrap(),
-    //   );
-    // }
     let referrer = if referrer == "." {
       if kind != ResolutionKind::MainModule {
         return Err(generic_error(format!(
@@ -154,6 +145,11 @@ impl ModuleLoader for EmbeddedModuleLoader {
         )
         .map(|res| res.into_url());
     }
+    if specifier.starts_with("jsr:") {
+      if let Some(module) = self.shared.eszip.get_module(specifier) {
+        return Ok(ModuleSpecifier::parse(&module.specifier).unwrap());
+      }
+    }
 
     let specifier = match maybe_mapped {
       Some(resolved) => resolved,
@@ -172,7 +168,6 @@ impl ModuleLoader for EmbeddedModuleLoader {
     is_dynamic: bool,
     _requested_module_type: RequestedModuleType,
   ) -> deno_core::ModuleLoadResponse {
-    eprintln!("LOADING: {}", original_specifier);
     if original_specifier.scheme() == "data" {
       let data_url_text =
         match deno_graph::source::RawDataUrl::parse(original_specifier)
@@ -185,7 +180,6 @@ impl ModuleLoader for EmbeddedModuleLoader {
             )));
           }
         };
-      eprintln!("Loaded: {}", original_specifier);
       return deno_core::ModuleLoadResponse::Sync(Ok(
         deno_core::ModuleSource::new(
           deno_core::ModuleType::JavaScript,
@@ -209,21 +203,18 @@ impl ModuleLoader for EmbeddedModuleLoader {
       )
     {
       return match result {
-        Ok(code_source) => {
-          eprintln!("Loaded 2: {}", original_specifier);
-          deno_core::ModuleLoadResponse::Sync(Ok(
-            deno_core::ModuleSource::new_with_redirect(
-              match code_source.media_type {
-                MediaType::Json => ModuleType::Json,
-                _ => ModuleType::JavaScript,
-              },
-              ModuleSourceCode::String(code_source.code),
-              original_specifier,
-              &code_source.found_url,
-              None,
-            ),
-          ))
-        }
+        Ok(code_source) => deno_core::ModuleLoadResponse::Sync(Ok(
+          deno_core::ModuleSource::new_with_redirect(
+            match code_source.media_type {
+              MediaType::Json => ModuleType::Json,
+              _ => ModuleType::JavaScript,
+            },
+            ModuleSourceCode::String(code_source.code),
+            original_specifier,
+            &code_source.found_url,
+            None,
+          ),
+        )),
         Err(err) => deno_core::ModuleLoadResponse::Sync(Err(err)),
       };
     }
@@ -231,7 +222,6 @@ impl ModuleLoader for EmbeddedModuleLoader {
     let Some(module) =
       self.shared.eszip.get_module(original_specifier.as_str())
     else {
-      eprintln!("ERROR LOADING: {}", original_specifier);
       return deno_core::ModuleLoadResponse::Sync(Err(type_error(format!(
         "Module not found: {}",
         original_specifier
@@ -248,7 +238,6 @@ impl ModuleLoader for EmbeddedModuleLoader {
         })?;
         let code = arc_u8_to_arc_str(code)
           .map_err(|_| type_error("Module source is not utf-8"))?;
-        eprintln!("Loaded 3: {}", original_specifier);
         Ok(deno_core::ModuleSource::new_with_redirect(
           match module.kind {
             eszip::ModuleKind::JavaScript => ModuleType::JavaScript,
