@@ -47,7 +47,7 @@ pub struct CustomNpmPackageCache {
 impl CustomNpmPackageCache {
   pub fn new(registry_url: String) -> Self {
     let registry_url = registry_url
-      .strip_suffix("/")
+      .strip_suffix('/')
       .unwrap_or(&registry_url)
       .to_string();
     Self {

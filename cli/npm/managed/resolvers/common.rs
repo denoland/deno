@@ -43,11 +43,6 @@ pub trait NpmPackageFsResolver: Send + Sync {
     mode: NodeResolutionMode,
   ) -> Result<PathBuf, AnyError>;
 
-  fn resolve_package_folder_from_specifier(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Result<Option<PathBuf>, AnyError>;
-
   fn resolve_package_cache_folder_id_from_specifier(
     &self,
     specifier: &ModuleSpecifier,

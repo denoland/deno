@@ -99,6 +99,10 @@ impl NpmCacheDir {
     specifier: &ModuleSpecifier,
     registry_url: &Url,
   ) -> Option<NpmPackageCacheFolderId> {
+    eprintln!(
+      "resolve package folder id from specifier {}",
+      specifier.as_str()
+    );
     let registry_root_dir = self
       .root_dir_url
       .join(&format!(
@@ -109,6 +113,7 @@ impl NpmCacheDir {
       ))
       // this not succeeding indicates a fatal issue, so unwrap
       .unwrap();
+    eprintln!("registry root url {}", registry_root_dir.as_str());
     let mut relative_url = registry_root_dir.make_relative(specifier)?;
     if relative_url.starts_with("../") {
       return None;

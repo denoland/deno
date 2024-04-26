@@ -32,6 +32,7 @@ use super::common::RegistryReadPermissionChecker;
 pub struct GlobalNpmPackageResolver {
   cache: Arc<NpmCache>,
   resolution: Arc<NpmResolution>,
+  // TODO(remove):
   registry_url: Url,
   system_info: NpmSystemInfo,
   registry_read_permission_checker: RegistryReadPermissionChecker,
@@ -113,19 +114,6 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
         .resolve_package_from_package(name, &referrer_pkg_id)?
     };
     self.package_folder(&pkg.id)
-  }
-
-  fn resolve_package_folder_from_specifier(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Result<Option<PathBuf>, AnyError> {
-    let Some(pkg_folder_id) = self
-      .cache
-      .resolve_package_folder_id_from_specifier(specifier, &self.registry_url)
-    else {
-      return Ok(None);
-    };
-    Ok(Some(self.cache.package_folder_for_id(&pkg_folder_id)))
   }
 
   fn resolve_package_cache_folder_id_from_specifier(

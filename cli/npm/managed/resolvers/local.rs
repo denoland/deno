@@ -123,6 +123,17 @@ impl LocalNpmPackageResolver {
       .map(Some)
       .map_err(|err| err.into())
   }
+
+  fn resolve_package_folder_from_specifier(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Result<Option<PathBuf>, AnyError> {
+    let Some(local_path) = self.resolve_folder_for_specifier(specifier)? else {
+      return Ok(None);
+    };
+    let package_root_path = self.resolve_package_root(&local_path);
+    Ok(Some(package_root_path))
+  }
 }
 
 #[async_trait]
@@ -197,17 +208,6 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
       name,
       referrer
     );
-  }
-
-  fn resolve_package_folder_from_specifier(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Result<Option<PathBuf>, AnyError> {
-    let Some(local_path) = self.resolve_folder_for_specifier(specifier)? else {
-      return Ok(None);
-    };
-    let package_root_path = self.resolve_package_root(&local_path);
-    Ok(Some(package_root_path))
   }
 
   fn resolve_package_cache_folder_id_from_specifier(

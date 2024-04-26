@@ -574,7 +574,7 @@ fn discover_npmrc(
     })?;
     let resolved = npmrc
       .as_resolved(npm_registry_url())
-      .with_context(|| format!("Failed to resolve .npmrc options"))?;
+      .context("Failed to resolve .npmrc options")?;
     return Ok(Arc::new(resolved));
   }
 

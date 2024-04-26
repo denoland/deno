@@ -285,14 +285,14 @@ impl CliNpmRegistryApiInner {
     self
       .load_package_info_from_registry_inner(
         name,
-        &registry_url,
-        &registry_config,
+        registry_url,
+        registry_config,
       )
       .await
       .with_context(|| {
         format!(
           "Error getting response at {} for package \"{}\"",
-          self.get_package_url(name, &registry_url),
+          self.get_package_url(name, registry_url),
           name
         )
       })
