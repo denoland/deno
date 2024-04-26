@@ -36,7 +36,7 @@ import {
 } from "ext:deno_node/internal/stream_base_commons.ts";
 import { FileHandle } from "node:fs/promises";
 import { kStreamBaseField } from "ext:deno_node/internal_binding/stream_wrap.ts";
-import { serveHttpOnConnection } from "ext:deno_http/00_serve.js";
+import { serveHttpOnConnection } from "ext:deno_http/00_serve.ts";
 import { nextTick } from "ext:deno_node/_next_tick.ts";
 import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
 import { Duplex } from "node:stream";
@@ -1677,7 +1677,10 @@ export function connect(
       case "https:":
         // TODO(bartlomieju): handle `initializeTLSOptions` here
         url = `https://${host}${port == 443 ? "" : (":" + port)}`;
-        socket = tlsConnect(port, host, { manualStart: true });
+        socket = tlsConnect(port, host, {
+          manualStart: true,
+          ALPNProtocols: ["h2", "http/1.1"],
+        });
         break;
       default:
         throw new ERR_HTTP2_UNSUPPORTED_PROTOCOL(protocol);

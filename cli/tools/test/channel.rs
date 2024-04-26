@@ -10,13 +10,13 @@ use deno_runtime::deno_io::pipe;
 use deno_runtime::deno_io::AsyncPipeRead;
 use deno_runtime::deno_io::PipeRead;
 use deno_runtime::deno_io::PipeWrite;
+use memmem::Searcher;
 use std::fmt::Display;
 use std::future::Future;
 use std::io::Write;
 use std::pin::Pin;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
 use std::task::ready;
 use std::task::Poll;
 use std::time::Duration;
@@ -31,6 +31,7 @@ use tokio::sync::mpsc::WeakUnboundedSender;
 /// 8-byte sync marker that is unlikely to appear in normal output. Equivalent
 /// to the string `"\u{200B}\0\u{200B}\0"`.
 const SYNC_MARKER: &[u8; 8] = &[226, 128, 139, 0, 226, 128, 139, 0];
+const HALF_SYNC_MARKER: &[u8; 4] = &[226, 128, 139, 0];
 
 const BUFFER_SIZE: usize = 4096;
 
@@ -203,8 +204,30 @@ impl TestStream {
         }
         Ok(read) => {
           flush.extend(&buffer[0..read]);
-          if flush.ends_with(SYNC_MARKER) {
-            flush.truncate(flush.len() - SYNC_MARKER.len());
+
+          // "ends_with" is cheaper, so check that first
+          if flush.ends_with(HALF_SYNC_MARKER) {
+            // We might have read the full sync marker.
+            if flush.ends_with(SYNC_MARKER) {
+              flush.truncate(flush.len() - SYNC_MARKER.len());
+            } else {
+              flush.truncate(flush.len() - HALF_SYNC_MARKER.len());
+            }
+            // Try to send our flushed buffer. If the channel is closed, this stream will
+            // be marked as not alive.
+            _ = self.send(flush);
+            return;
+          }
+
+          // If we don't end with the marker, then we need to search the bytes we read plus four bytes
+          // from before. There's still a possibility that the marker could be split because of a pipe
+          // buffer that fills up, forcing the flush to be written across two writes and interleaving
+          // data between, but that's a risk we take with this sync marker approach.
+          let searcher = memmem::TwoWaySearcher::new(HALF_SYNC_MARKER);
+          let start =
+            (flush.len() - read).saturating_sub(HALF_SYNC_MARKER.len());
+          if let Some(offset) = searcher.search_in(&flush[start..]) {
+            flush.truncate(offset);
             // Try to send our flushed buffer. If the channel is closed, this stream will
             // be marked as not alive.
             _ = self.send(flush);
@@ -310,7 +333,6 @@ impl TestEventSenderFactory {
 
     let sender = TestEventSender {
       id,
-      ref_count: Default::default(),
       sender: self.sender.clone(),
       sync_sender,
       stdout_writer,
@@ -373,24 +395,10 @@ pub struct TestEventWorkerSender {
 /// are not guaranteed to be sent on drop unless flush is explicitly called.
 pub struct TestEventSender {
   pub id: usize,
-  ref_count: Arc<()>,
   sender: UnboundedSender<(usize, TestEvent)>,
   sync_sender: UnboundedSender<(SendMutex, SendMutex)>,
   stdout_writer: PipeWrite,
   stderr_writer: PipeWrite,
-}
-
-impl Clone for TestEventSender {
-  fn clone(&self) -> Self {
-    Self {
-      id: self.id,
-      ref_count: self.ref_count.clone(),
-      sender: self.sender.clone(),
-      sync_sender: self.sync_sender.clone(),
-      stdout_writer: self.stdout_writer.try_clone().unwrap(),
-      stderr_writer: self.stderr_writer.try_clone().unwrap(),
-    }
-  }
 }
 
 impl TestEventSender {

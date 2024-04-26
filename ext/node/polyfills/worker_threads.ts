@@ -17,15 +17,19 @@ import {
   MessagePort,
   MessagePortIdSymbol,
   MessagePortPrototype,
+  MessagePortReceiveMessageOnPortSymbol,
   nodeWorkerThreadCloseCb,
+  refMessagePort,
   serializeJsMessageData,
+  unrefPollForMessages,
 } from "ext:deno_web/13_message_port.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import { EventEmitter } from "node:events";
 import { BroadcastChannel } from "ext:deno_broadcast_channel/01_broadcast_channel.js";
+import process from "node:process";
 
-const { ObjectPrototypeIsPrototypeOf } = primordials;
+const { JSONParse, JSONStringify, ObjectPrototypeIsPrototypeOf } = primordials;
 const {
   Error,
   Symbol,
@@ -122,9 +126,18 @@ class NodeWorker extends EventEmitter {
     }
     this.#name = name;
 
+    // One of the most common usages will be to pass `process.env` here,
+    // but because `process.env` is a Proxy in Deno, we need to get a plain
+    // object out of it - otherwise we'll run in `DataCloneError`s.
+    // See https://github.com/denoland/deno/issues/23522.
+    let env_ = undefined;
+    if (options?.env) {
+      env_ = JSONParse(JSONStringify(options?.env));
+    }
     const serializedWorkerMetadata = serializeJsMessageData({
       workerData: options?.workerData,
       environmentData: environmentData,
+      env: env_,
     }, options?.transferList ?? []);
     const id = op_create_worker(
       {
@@ -345,6 +358,10 @@ internals.__initWorkerThreads = (
       const { 0: metadata, 1: _ } = maybeWorkerMetadata;
       workerData = metadata.workerData;
       environmentData = metadata.environmentData;
+      const env = metadata.env;
+      if (env) {
+        process.env = env;
+      }
     }
     defaultExport.workerData = workerData;
     defaultExport.parentPort = parentPort;
@@ -398,6 +415,12 @@ internals.__initWorkerThreads = (
     parentPort.addEventListener("offline", () => {
       parentPort.emit("close");
     });
+    parentPort.unref = () => {
+      parentPort[unrefPollForMessages] = true;
+    };
+    parentPort.ref = () => {
+      parentPort[unrefPollForMessages] = false;
+    };
   }
 };
 
@@ -433,6 +456,7 @@ export function receiveMessageOnPort(port: MessagePort): object | undefined {
     err["code"] = "ERR_INVALID_ARG_TYPE";
     throw err;
   }
+  port[MessagePortReceiveMessageOnPortSymbol] = true;
   const data = op_message_port_recv_message_sync(port[MessagePortIdSymbol]);
   if (data === null) return undefined;
   return { message: deserializeJsMessageData(data)[0] };
@@ -466,6 +490,12 @@ function webMessagePortToNodeMessagePort(port: MessagePort) {
   };
   port[nodeWorkerThreadCloseCb] = () => {
     port.dispatchEvent(new Event("close"));
+  };
+  port.unref = () => {
+    port[refMessagePort](false);
+  };
+  port.ref = () => {
+    port[refMessagePort](true);
   };
   return port;
 }

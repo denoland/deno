@@ -112,11 +112,17 @@ impl TestLoader {
 
 impl Loader for TestLoader {
   fn load(
-    &mut self,
+    &self,
     specifier: &ModuleSpecifier,
     _options: deno_graph::source::LoadOptions,
   ) -> LoadFuture {
-    let specifier = self.redirects.get(specifier).unwrap_or(specifier);
+    if let Some(redirect) = self.redirects.get(specifier) {
+      return Box::pin(futures::future::ready(Ok(Some(
+        LoadResponse::Redirect {
+          specifier: redirect.clone(),
+        },
+      ))));
+    }
     let result = self.files.get(specifier).map(|result| match result {
       Ok(result) => Ok(LoadResponse::Module {
         specifier: specifier.clone(),
@@ -144,10 +150,6 @@ struct TestVendorEnvironment {
 }
 
 impl VendorEnvironment for TestVendorEnvironment {
-  fn cwd(&self) -> Result<PathBuf, AnyError> {
-    Ok(make_path("/"))
-  }
-
   fn create_dir_all(&self, dir_path: &Path) -> Result<(), AnyError> {
     let mut directories = self.directories.borrow_mut();
     for path in dir_path.ancestors() {
@@ -168,10 +170,6 @@ impl VendorEnvironment for TestVendorEnvironment {
       String::from_utf8(text.to_vec()).unwrap(),
     );
     Ok(())
-  }
-
-  fn path_exists(&self, path: &Path) -> bool {
-    self.files.borrow().contains_key(&path.to_path_buf())
   }
 }
 
@@ -244,13 +242,12 @@ impl VendorTestBuilder {
         let resolver = resolver.clone();
         move |entry_points| {
           async move {
-            let analyzer = DefaultModuleAnalyzer::default();
             Ok(
               build_test_graph(
                 entry_points,
                 loader,
                 resolver.as_graph_resolver(),
-                &analyzer,
+                &DefaultModuleAnalyzer,
               )
               .await,
             )
@@ -307,7 +304,7 @@ fn build_resolver(
 
 async fn build_test_graph(
   roots: Vec<ModuleSpecifier>,
-  mut loader: TestLoader,
+  loader: TestLoader,
   resolver: &dyn deno_graph::source::Resolver,
   analyzer: &dyn deno_graph::ModuleAnalyzer,
 ) -> ModuleGraph {
@@ -315,10 +312,10 @@ async fn build_test_graph(
   graph
     .build(
       roots,
-      &mut loader,
+      &loader,
       deno_graph::BuildOptions {
         resolver: Some(resolver),
-        module_analyzer: Some(analyzer),
+        module_analyzer: analyzer,
         ..Default::default()
       },
     )

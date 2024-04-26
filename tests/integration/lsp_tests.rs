@@ -1400,7 +1400,7 @@ fn lsp_hover() {
           "language": "typescript",
           "value": "const Deno.args: string[]"
         },
-        "Returns the script arguments to the program.\n\nGive the following command line invocation of Deno:\n\n```sh\ndeno run --allow-read https://examples.deno.land/command-line-arguments.ts Sushi\n```\n\nThen `Deno.args` will contain:\n\n```ts\n[ \"Sushi\" ]\n```\n\nIf you are looking for a structured way to parse arguments, there is the\n[`std/flags`](https://deno.land/std/flags) module as part of the Deno\nstandard library.",
+        "Returns the script arguments to the program.\n\nGive the following command line invocation of Deno:\n\n```sh\ndeno run --allow-read https://examples.deno.land/command-line-arguments.ts Sushi\n```\n\nThen `Deno.args` will contain:\n\n```ts\n[ \"Sushi\" ]\n```\n\nIf you are looking for a structured way to parse arguments, there is\n[`parseArgs()`](https://jsr.io/@std/cli/doc/parse-args/~/parseArgs) from\nthe Deno Standard Library.",
         "\n\n*@category* - Runtime Environment",
       ],
       "range": {
@@ -1459,7 +1459,8 @@ fn lsp_hover_asset() {
           "language": "typescript",
           "value": "interface Date",
         },
-        "Enables basic storage and retrieval of dates and times."
+        "Enables basic storage and retrieval of dates and times.",
+        "\n\n*@category* - Temporal  \n\n*@tags* - unstable"
       ],
       "range": {
         "start": { "line": 111, "character": 10, },
@@ -2035,7 +2036,7 @@ fn lsp_hover_unstable_always_enabled() {
           "value":"interface Deno.ForeignLibraryInterface"
         },
         "**UNSTABLE**: New API, yet to be vetted.\n\nA foreign library interface descriptor.",
-        "\n\n*@category* - FFI",
+        "\n\n*@category* - FFI  \n\n*@tags* - unstable",
       ],
       "range":{
         "start":{ "line":0, "character":14 },
@@ -2080,7 +2081,7 @@ fn lsp_hover_unstable_enabled() {
           "value":"interface Deno.ForeignLibraryInterface"
         },
         "**UNSTABLE**: New API, yet to be vetted.\n\nA foreign library interface descriptor.",
-        "\n\n*@category* - FFI",
+        "\n\n*@category* - FFI  \n\n*@tags* - unstable",
       ],
       "range":{
         "start":{ "line":0, "character":14 },
@@ -5144,7 +5145,7 @@ fn lsp_jsr_auto_import_completion() {
     json!({ "triggerKind": 1 }),
   );
   assert!(!list.is_incomplete);
-  assert_eq!(list.items.len(), 262);
+  assert_eq!(list.items.len(), 264);
   let item = list.items.iter().find(|i| i.label == "add").unwrap();
   assert_eq!(&item.label, "add");
   assert_eq!(
@@ -5224,7 +5225,7 @@ fn lsp_jsr_auto_import_completion_import_map() {
     json!({ "triggerKind": 1 }),
   );
   assert!(!list.is_incomplete);
-  assert_eq!(list.items.len(), 262);
+  assert_eq!(list.items.len(), 264);
   let item = list.items.iter().find(|i| i.label == "add").unwrap();
   assert_eq!(&item.label, "add");
   assert_eq!(json!(&item.label_details), json!({ "description": "add" }));
@@ -7862,18 +7863,18 @@ fn lsp_npm_specifier_unopened_file() {
     .use_http_server()
     .use_temp_cwd()
     .build();
-  let mut client = context.new_lsp_command().build();
-  client.initialize_default();
-
+  let temp_dir = context.temp_dir();
   // create other.ts, which re-exports an npm specifier
-  client.deno_dir().write(
+  temp_dir.write(
     "other.ts",
     "export { default as chalk } from 'npm:chalk@5';",
   );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
 
   // cache the other.ts file to the DENO_DIR
   let deno = deno_cmd_with_deno_dir(client.deno_dir())
-    .current_dir(client.deno_dir().path())
+    .current_dir(temp_dir.path())
     .arg("cache")
     .arg("--quiet")
     .arg("other.ts")
@@ -7891,12 +7892,9 @@ fn lsp_npm_specifier_unopened_file() {
   assert!(stderr.is_empty());
 
   // open main.ts, which imports other.ts (unopened)
-  let main_url =
-    ModuleSpecifier::from_file_path(client.deno_dir().path().join("main.ts"))
-      .unwrap();
   client.did_open(json!({
     "textDocument": {
-      "uri": main_url,
+      "uri": temp_dir.uri().join("main.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "import { chalk } from './other.ts';\n\n",
@@ -7907,7 +7905,7 @@ fn lsp_npm_specifier_unopened_file() {
     "textDocument/didChange",
     json!({
       "textDocument": {
-        "uri": main_url,
+        "uri": temp_dir.uri().join("main.ts").unwrap(),
         "version": 2
       },
       "contentChanges": [
@@ -7925,7 +7923,7 @@ fn lsp_npm_specifier_unopened_file() {
 
   // now ensure completions work
   let list = client.get_completion_list(
-    main_url,
+    temp_dir.uri().join("main.ts").unwrap(),
     (2, 6),
     json!({
       "triggerKind": 2,
@@ -8814,7 +8812,7 @@ fn lsp_diagnostics_refresh_dependents() {
     }),
   );
   let diagnostics = client.read_diagnostics();
-  assert_eq!(diagnostics.all().len(), 0); // no diagnostics now
+  assert_eq!(json!(diagnostics.all()), json!([])); // no diagnostics now
 
   client.shutdown();
   assert_eq!(client.queue_len(), 0);
@@ -9050,9 +9048,7 @@ fn lsp_performance() {
       "tsc.host.getQuickInfoAtPosition",
       "tsc.op.op_is_node_file",
       "tsc.op.op_load",
-      "tsc.op.op_project_version",
       "tsc.op.op_script_names",
-      "tsc.op.op_script_version",
       "tsc.op.op_ts_config",
       "tsc.request.$getAssets",
       "tsc.request.$getSupportedCodeFixes",
@@ -11473,6 +11469,8 @@ fn lsp_deno_json_scopes_fmt_config() {
     })
     .to_string(),
   );
+  temp_dir.create_dir_all("project2/project3");
+  temp_dir.write("project2/project3/deno.json", json!({}).to_string());
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.did_open(json!({
@@ -11535,6 +11533,38 @@ fn lsp_deno_json_scopes_fmt_config() {
       "newText": "''",
     }])
   );
+  // `project2/project3/file.ts` should use the fmt settings from
+  // `project2/deno.json`, since `project2/project3/deno.json` has no fmt field.
+  client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("project2/project3/file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "console.log(\"\");\n",
+    },
+  }));
+  let res = client.write_request(
+    "textDocument/formatting",
+    json!({
+      "textDocument": {
+        "uri": temp_dir.uri().join("project2/project3/file.ts").unwrap(),
+      },
+      "options": {
+        "tabSize": 2,
+        "insertSpaces": true,
+      },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([{
+      "range": {
+        "start": { "line": 0, "character": 12 },
+        "end": { "line": 0, "character": 14 },
+      },
+      "newText": "''",
+    }])
+  );
   client.shutdown();
 }
 
@@ -11566,6 +11596,8 @@ fn lsp_deno_json_scopes_lint_config() {
     })
     .to_string(),
   );
+  temp_dir.create_dir_all("project2/project3");
+  temp_dir.write("project2/project3/deno.json", json!({}).to_string());
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
   let diagnostics = client.did_open(json!({
@@ -11621,6 +11653,46 @@ fn lsp_deno_json_scopes_lint_config() {
     json!(diagnostics.messages_with_source("deno-lint")),
     json!({
       "uri": temp_dir.uri().join("project2/file.ts").unwrap(),
+      "diagnostics": [{
+        "range": {
+          "start": { "line": 1, "character": 8 },
+          "end": { "line": 1, "character": 27 },
+        },
+        "severity": 2,
+        "code": "ban-untagged-todo",
+        "source": "deno-lint",
+        "message": "TODO should be tagged with (@username) or (#issue)\nAdd a user tag or issue reference to the TODO comment, e.g. TODO(@djones), TODO(djones), TODO(#123)",
+      }],
+      "version": 1,
+    })
+  );
+  client.write_notification(
+    "textDocument/didClose",
+    json!({
+      "textDocument": {
+        "uri": temp_dir.uri().join("project2/file.ts").unwrap(),
+      },
+    }),
+  );
+  // `project2/project3/file.ts` should use the lint settings from
+  // `project2/deno.json`, since `project2/project3/deno.json` has no lint
+  // field.
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("project2/project3/file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"
+        // TODO: Unused var
+        const snake_case_var = 1;
+        console.log(snake_case_var);
+      "#,
+    },
+  }));
+  assert_eq!(
+    json!(diagnostics.messages_with_source("deno-lint")),
+    json!({
+      "uri": temp_dir.uri().join("project2/project3/file.ts").unwrap(),
       "diagnostics": [{
         "range": {
           "start": { "line": 1, "character": 8 },
@@ -12289,4 +12361,53 @@ fn lsp_uses_lockfile_for_npm_initialization() {
   });
   assert_eq!(skipping_count, 1);
   client.shutdown();
+}
+
+#[test]
+fn lsp_cjs_internal_types_default_export() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .add_npm_env_vars()
+    .env("DENO_FUTURE", "1")
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("deno.json", r#"{}"#);
+  temp_dir.write(
+    "package.json",
+    r#"{
+  "dependencies": {
+    "@denotest/cjs-internal-types-default-export": "*"
+  }
+}"#,
+  );
+  context.run_npm("install");
+
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  // this was previously being resolved as ESM and not correctly as CJS
+  let node_modules_index_d_ts = temp_dir.path().join(
+    "node_modules/@denotest/cjs-internal-types-default-export/index.d.ts",
+  );
+  client.did_open(json!({
+    "textDocument": {
+      "uri": node_modules_index_d_ts.uri_file(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": node_modules_index_d_ts.read_to_string(),
+    }
+  }));
+  let main_url = temp_dir.path().join("main.ts").uri_file();
+  let diagnostics = client.did_open(
+    json!({
+      "textDocument": {
+        "uri": main_url,
+        "languageId": "typescript",
+        "version": 1,
+        "text": "import * as mod from '@denotest/cjs-internal-types-default-export';\nmod.add(1, 2);",
+      }
+    }),
+  );
+  // previously, diagnostic about `add` not being callable
+  assert_eq!(json!(diagnostics.all()), json!([]));
 }

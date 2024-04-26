@@ -84,6 +84,7 @@ use super::text;
 use super::tsc;
 use super::tsc::Assets;
 use super::tsc::AssetsSnapshot;
+use super::tsc::ChangeKind;
 use super::tsc::GetCompletionDetailsArgs;
 use super::tsc::TsServer;
 use super::urls;
@@ -119,10 +120,10 @@ use crate::tools::upgrade::check_for_upgrades_for_lsp;
 use crate::tools::upgrade::upgrade_check_enabled;
 use crate::util::fs::remove_dir_all_if_exists;
 use crate::util::path::is_importable_ext;
-use crate::util::path::specifier_to_file_path;
 use crate::util::path::to_percent_decoded_str;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
+use deno_runtime::fs_util::specifier_to_file_path;
 
 struct LspRootCertStoreProvider(RootCertStore);
 
@@ -175,6 +176,7 @@ pub struct StateNpmSnapshot {
 /// Snapshot of the state used by TSC.
 #[derive(Clone, Debug)]
 pub struct StateSnapshot {
+  pub project_version: usize,
   pub assets: AssetsSnapshot,
   pub cache_metadata: cache::CacheMetadata,
   pub config: Arc<ConfigSnapshot>,
@@ -253,6 +255,7 @@ pub struct Inner {
   maybe_testing_server: Option<testing::TestServer>,
   /// Services used for dealing with npm related functionality.
   npm: LspNpmServices,
+  project_version: usize,
   /// A collection of measurements which instrument that performance of the LSP.
   performance: Arc<Performance>,
   /// A memoized version of fixable diagnostic codes retrieved from TypeScript.
@@ -361,14 +364,11 @@ impl LanguageServer {
           .client
           .show_message(MessageType::WARNING, err);
       }
-      {
-        let mut inner = self.0.write().await;
-        let lockfile = inner.config.tree.root_lockfile().cloned();
-        inner.documents.refresh_lockfile(lockfile);
-        inner.refresh_npm_specifiers().await;
-      }
-      // now refresh the data in a read
-      self.0.read().await.post_cache(result.mark).await;
+      let mut inner = self.0.write().await;
+      let lockfile = inner.config.tree.root_lockfile().cloned();
+      inner.documents.refresh_lockfile(lockfile);
+      inner.refresh_npm_specifiers().await;
+      inner.post_cache(result.mark).await;
     }
     Ok(Some(json!(true)))
   }
@@ -404,8 +404,11 @@ impl LanguageServer {
     let inner = self.0.read().await;
     if let Some(testing_server) = &inner.maybe_testing_server {
       match params.map(serde_json::from_value) {
-        Some(Ok(params)) => testing_server
-          .run_request(params, inner.config.workspace_settings().clone()),
+        Some(Ok(params)) => {
+          testing_server
+            .run_request(params, inner.config.workspace_settings().clone())
+            .await
+        }
         Some(Err(err)) => Err(LspError::invalid_params(err.to_string())),
         None => Err(LspError::invalid_params("Missing parameters")),
       }
@@ -536,6 +539,7 @@ impl Inner {
       initial_cwd: initial_cwd.clone(),
       jsr_search_api,
       maybe_global_cache_path: None,
+      project_version: 0,
       task_queue: Default::default(),
       maybe_testing_server: None,
       module_registries,
@@ -606,11 +610,7 @@ impl Inner {
             .assets
             .cache_navigation_tree(specifier, navigation_tree.clone())?,
           AssetOrDocument::Document(doc) => {
-            self.documents.try_cache_navigation_tree(
-              specifier,
-              &doc.script_version(),
-              navigation_tree.clone(),
-            )?
+            doc.cache_navigation_tree(navigation_tree.clone());
           }
         }
         navigation_tree
@@ -668,6 +668,7 @@ impl Inner {
         }
       });
     Arc::new(StateSnapshot {
+      project_version: self.project_version,
       assets: self.assets.snapshot(),
       cache_metadata: self.cache_metadata.clone(),
       config: self.config.snapshot(),
@@ -970,9 +971,16 @@ impl Inner {
       self.config.update_capabilities(&params.capabilities);
     }
 
-    self
+    self.documents.initialize(&self.config);
+
+    if let Err(e) = self
       .ts_server
-      .start(self.config.internal_inspect().to_address());
+      .start(self.config.internal_inspect().to_address())
+    {
+      lsp_warn!("{}", e);
+      self.client.show_message(MessageType::ERROR, e);
+      return Err(tower_lsp::jsonrpc::Error::internal_error());
+    };
 
     self.update_debug_flag();
     self.refresh_workspace_files();
@@ -1183,6 +1191,8 @@ impl Inner {
     // refresh the npm specifiers because it might have discovered
     // a @types/node package and now's a good time to do that anyway
     self.refresh_npm_specifiers().await;
+
+    self.project_changed([], true);
   }
 
   fn shutdown(&self) -> LspResult<()> {
@@ -1217,6 +1227,7 @@ impl Inner {
       params.text_document.language_id.parse().unwrap(),
       params.text_document.text.into(),
     );
+    self.project_changed([(document.specifier(), ChangeKind::Opened)], false);
 
     self.performance.measure(mark);
     document
@@ -1234,10 +1245,12 @@ impl Inner {
     ) {
       Ok(document) => {
         if document.is_diagnosable() {
+          self.project_changed(
+            [(document.specifier(), ChangeKind::Modified)],
+            false,
+          );
           self.refresh_npm_specifiers().await;
-          self
-            .diagnostics_server
-            .invalidate(&self.documents.dependents(&specifier));
+          self.diagnostics_server.invalidate(&[specifier]);
           self.send_diagnostics_update();
           self.send_testing_update();
         }
@@ -1279,15 +1292,12 @@ impl Inner {
       .normalize_url(&params.text_document.uri, LspUrlKind::File);
     if self.is_diagnosable(&specifier) {
       self.refresh_npm_specifiers().await;
-      let mut specifiers = self.documents.dependents(&specifier);
-      specifiers.push(specifier.clone());
-      self.diagnostics_server.invalidate(&specifiers);
+      self.diagnostics_server.invalidate(&[specifier.clone()]);
       self.send_diagnostics_update();
       self.send_testing_update();
     }
-    if let Err(err) = self.documents.close(&specifier) {
-      error!("{:#}", err);
-    }
+    self.documents.close(&specifier);
+    self.project_changed([(&specifier, ChangeKind::Closed)], false);
     self.performance.measure(mark);
   }
 
@@ -1401,7 +1411,11 @@ impl Inner {
       self.recreate_npm_services_if_necessary().await;
       self.refresh_documents_config().await;
       self.diagnostics_server.invalidate_all();
-      self.ts_server.restart(self.snapshot()).await;
+      self.project_changed(
+        changes.iter().map(|(s, _)| (s, ChangeKind::Modified)),
+        false,
+      );
+      self.ts_server.cleanup_semantic_cache(self.snapshot()).await;
       self.send_diagnostics_update();
       self.send_testing_update();
     }
@@ -1584,10 +1598,9 @@ impl Inner {
     let hover = if let Some((_, dep, range)) = asset_or_doc
       .get_maybe_dependency(&params.text_document_position_params.position)
     {
-      let dep_maybe_types_dependency = dep
-        .get_code()
-        .and_then(|s| self.documents.get(s))
-        .map(|d| d.maybe_types_dependency());
+      let dep_doc = dep.get_code().and_then(|s| self.documents.get(s));
+      let dep_maybe_types_dependency =
+        dep_doc.as_ref().map(|d| d.maybe_types_dependency());
       let value = match (dep.maybe_code.is_none(), dep.maybe_type.is_none(), &dep_maybe_types_dependency) {
         (false, false, None) => format!(
           "**Resolved Dependency**\n\n**Code**: {}\n\n**Types**: {}\n",
@@ -1849,6 +1862,7 @@ impl Inner {
           &self.config,
           &specifier,
         )),
+        params.context.trigger_kind,
         only,
       )
       .await?;
@@ -2973,6 +2987,19 @@ impl Inner {
     Ok(maybe_symbol_information)
   }
 
+  fn project_changed<'a>(
+    &mut self,
+    modified_scripts: impl IntoIterator<Item = (&'a ModuleSpecifier, ChangeKind)>,
+    config_changed: bool,
+  ) {
+    self.project_version += 1; // increment before getting the snapshot
+    self.ts_server.project_changed(
+      self.snapshot(),
+      modified_scripts,
+      config_changed,
+    );
+  }
+
   fn send_diagnostics_update(&self) {
     let snapshot = DiagnosticServerUpdateMessage {
       snapshot: self.snapshot(),
@@ -3181,8 +3208,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     let document = inner.did_open(&specifier, params);
     if document.is_diagnosable() {
       inner.refresh_npm_specifiers().await;
-      let specifiers = inner.documents.dependents(&specifier);
-      inner.diagnostics_server.invalidate(&specifiers);
+      inner.diagnostics_server.invalidate(&[specifier]);
       inner.send_diagnostics_update();
       inner.send_testing_update();
     }
@@ -3513,13 +3539,14 @@ impl Inner {
     }))
   }
 
-  async fn post_cache(&self, mark: PerformanceMark) {
+  async fn post_cache(&mut self, mark: PerformanceMark) {
     // Now that we have dependencies loaded, we need to re-analyze all the files.
     // For that we're invalidating all the existing diagnostics and restarting
     // the language server for TypeScript (as it might hold to some stale
     // documents).
     self.diagnostics_server.invalidate_all();
-    self.ts_server.restart(self.snapshot()).await;
+    self.project_changed([], false);
+    self.ts_server.cleanup_semantic_cache(self.snapshot()).await;
     self.send_diagnostics_update();
     self.send_testing_update();
 

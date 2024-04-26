@@ -897,7 +897,7 @@ fn parse_wildcard_pattern_text(
   enum InnerPart<'a> {
     Wildcard,
     Wildline,
-    Wildnum(usize),
+    Wildchars(usize),
     UnorderedLines(Vec<&'a str>),
     Char,
   }
@@ -921,7 +921,12 @@ fn parse_wildcard_pattern_text(
         Ok((input, value))
       }
 
-      fn parse_wild_num(input: &str) -> ParseResult<usize> {
+      fn parse_wild_char(input: &str) -> ParseResult<()> {
+        let (input, _) = tag("[WILDCHAR]")(input)?;
+        ParseResult::Ok((input, ()))
+      }
+
+      fn parse_wild_chars(input: &str) -> ParseResult<usize> {
         let (input, _) = tag("[WILDCHARS(")(input)?;
         let (input, times) = parse_num(input)?;
         let (input, _) = tag(")]")(input)?;
@@ -929,10 +934,11 @@ fn parse_wildcard_pattern_text(
       }
 
       while !self.current_input.is_empty() {
-        let (next_input, inner_part) = or5(
+        let (next_input, inner_part) = or6(
           map(tag("[WILDCARD]"), |_| InnerPart::Wildcard),
           map(tag("[WILDLINE]"), |_| InnerPart::Wildline),
-          map(parse_wild_num, InnerPart::Wildnum),
+          map(parse_wild_char, |_| InnerPart::Wildchars(1)),
+          map(parse_wild_chars, InnerPart::Wildchars),
           map(parse_unordered_lines, |lines| {
             InnerPart::UnorderedLines(lines)
           }),
@@ -947,7 +953,7 @@ fn parse_wildcard_pattern_text(
             self.queue_previous_text(next_input);
             self.parts.push(WildcardPatternPart::Wildline);
           }
-          InnerPart::Wildnum(times) => {
+          InnerPart::Wildchars(times) => {
             self.queue_previous_text(next_input);
             self.parts.push(WildcardPatternPart::Wildnum(times));
           }

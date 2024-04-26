@@ -50,6 +50,7 @@ use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
+use deno_runtime::WorkerExecutionMode;
 use deno_runtime::WorkerLogLevel;
 use deno_semver::npm::NpmPackageReqReference;
 use import_map::parse_from_json;
@@ -567,11 +568,15 @@ pub async fn run(
       create_coverage_collector: None,
     },
     None,
+    None,
+    None,
     false,
     // TODO(bartlomieju): temporarily disabled
     // metadata.disable_deprecated_api_warning,
     true,
     false,
+    // Code cache is not supported for standalone binary yet.
+    None,
   );
 
   // Initialize v8 once from the main thread.
@@ -579,7 +584,11 @@ pub async fn run(
   deno_core::JsRuntime::init_platform(None);
 
   let mut worker = worker_factory
-    .create_main_worker(main_module.clone(), permissions)
+    .create_main_worker(
+      WorkerExecutionMode::Run,
+      main_module.clone(),
+      permissions,
+    )
     .await?;
 
   let exit_code = worker.run().await?;

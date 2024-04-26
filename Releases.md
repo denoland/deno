@@ -6,6 +6,150 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.43.0 / 2024.04.25
+
+- FUTURE(ext/net): remove
+  `Deno.ConnectTlsOptions.(certFile|certChain|privateKey)` (#23270)
+- FUTURE(ext/net): remove `Deno.ListenTlsOptions.(keyFile|certFile)` (#23271)
+- FUTURE: remove `Deno.customInspect` (#23453)
+- feat(check): allow using side effect imports with unknown module kinds (ex.
+  css modules) (#23392)
+- feat(ext/http): Add `addr` to HttpServer (#23442)
+- feat(ext/http): Implement request.signal for Deno.serve (#23425)
+- feat(ext/net): extract TLS key and certificate from interfaces (#23327)
+- feat(ext/url): add `URL.parse` (#23318)
+- feat(ext/webgpu): support `UnsafeWindowSurface` on wayland (#23423)
+- feat(jsr): support importing from jsr via HTTPS specifiers (except for type
+  checking) (#23513)
+- feat(runtime): Allow embedders to perform additional access checks on file
+  open (#23208)
+- feat(task): support running npm binary commands in deno.json (#23478)
+- feat: Add `deno serve` subcommand (#23511)
+- feat: add jsx precompile skip element option (#23457)
+- feat: enable Float16Array support (#23490)
+- feat: upgrade V8 to 12.4 (#23435)
+- fix(ci): Fix bench job (#23410)
+- fix(cli): Don't panic on invalid emit options (#23463)
+- fix(cli): Identify and fix a test deadlock (#23411)
+- fix(cli): TestEventSender should be !Clone (#23405)
+- fix(cli): avoid `deno add` and `deno vendor` errors when deno.json is empty
+  (#23439)
+- fix(config): move json schema unstable examples to item (#23506)
+- fix(ext/net): check for TLS using undefined rather than using ReflectHas
+  (#23538)
+- fix(ext/node): Correctly send ALPN on node TLS connections (#23434)
+- fix(ext/node): Support `env` option in worker_thread (#23462)
+- fix(ext/node): `cp` into non-existent parent directory (#23469)
+- fix(ext/node): define http.maxHeaderSize (#23479)
+- fix(ext/node): dispatch beforeExit/exit events irrespective of listeners
+  (#23382)
+- fix(ext/node): implement process.kill in Rust (#23130)
+- fix(ext/node): remove unwraps from fallible conversions (#23447)
+- fix(ext/node): worker_threads copies env object (#23536)
+- fix(ext/node): worker_threads.receiveMessageOnPort doesn't panic (#23406)
+- fix(fmt): error for more unterminated nodes (#23449)
+- fix(lsp): Fix logic for coalescing pending changes + clear script names cache
+  when file is closed (#23517)
+- fix(lsp): inherit missing fmt and lint config from parent scopes (#23547)
+- fix(lsp): remove Document::open_data on close (#23483)
+- fix(publish): --dry-publish should error for gitignored excluded files
+  (#23540)
+- fix(publish): support import equals (#23421)
+- fix(workspace): provide workspace members as 'imports' in import map (#23492)
+- fix: Fix some typos in comments (#23470)
+- fix: Float16Array support (#23512)
+- fix: add `DENO_FUTURE` to `deno --help` (#23368)
+- fix: allow WPT to successfully exit using `--exit-zero` (#23418)
+- fix: unref stdin read (#23534)
+- fix: update CLI flags for WPT (#23501)
+- perf(ext/http): cache abort signal error (#23548)
+- perf(lsp): Avoid passing struct into op_resolve (#23452)
+- perf(lsp): Batch "$projectChanged" notification in with the next JS request
+  (#23451)
+- perf(lsp): Call `serverRequest` via V8 instead of via `executeScript` (#23409)
+- perf(lsp): Pass code action trigger kind to TSC (#23466)
+- perf(lsp): cleanup document dependencies (#23426)
+- perf(lsp): only store parsed sources for open documents (#23454)
+- perf(lsp): release unused documents (#23398)
+- perf: v8 code cache (#23081)
+
+### 1.42.4 / 2024.04.15
+
+- fix(check): cache bust when changing nodeModulesDir setting (#23355)
+- fix(ext/io): Fix NUL termination error in windows named pipes (#23379)
+- fix(ext/node): add stub for AsyncResource#asyncId() (#23372)
+- fix(ext/node): panic on 'worker_threads.receiveMessageOnPort' (#23386)
+- fix(ext/node): promise rejection in VM contexts (#23305)
+- fix(ext/node): use ext/io stdio in WriteStream (#23354)
+- fix(lsp): ensure project version is incremented when config changes (#23366)
+- fix(lsp): improved cjs tracking (#23374)
+- fix(lsp): slice strings by byte index in code actions (#23387)
+- fix(publish): do not error for param with initializer before required
+  parameter (#23356)
+- fix(publish): handle definite assignment on ts private properties (#23345)
+- perf(lsp): Only deserialize response from `op_respond` once (#23349)
+- perf: do not clone swc `Program` when transpiling (#23365)
+
+### 1.42.3 / 2024.04.12
+
+- Revert "refactor(ext/net): extract TLS key and certificate from inter…
+  (#23325)
+- fix(inspector): don't panic if port is not free (#22745)
+- fix(lsp): Denormalize specifiers before calling `$projectChanged` (#23322)
+- fix(npm): local nodeModulesDir was sometimes resolving duplicates of same
+  package (#23320)
+- fix(publish): do not warn about excluded external modules in node_modules
+  directory (#23173)
+- fix: upgrade deno_ast related crates (#23187)
+- perf(lsp): use a stub module in tsc for failed resolutions (#23313)
+
+### 1.42.2 / 2024.04.11
+
+- FUTURE(ext/fs): make `Deno.FsFile` constructor illegal (#23235)
+- FUTURE(ext/fs): remove `Deno.FsWatcher.prototype.rid` (#23234)
+- FUTURE(ext/net): remove
+  `Deno.(Conn|TlsConn|Listener|TlsListener|UnixConn).prototype.rid` (#23219)
+- FUTURE: enable BYONM by default (#23194)
+- FUTURE: override byonm with nodeModulesDir setting (#23222)
+- FUTURE: remove deprecated APIs within workers (#23220)
+- feat(lsp): respect nested deno.json for fmt and lint config (#23159)
+- fix(cli): Enforce a human delay in prompt to fix paste problem (#23184)
+- fix(cli): fix deadlock in test writer when test pipe is full (#23210)
+- fix(cli): update `deno doc` help to fit current usage (#23224)
+- fix(ext/fs): account for all ops in leak checks (#23300)
+- fix(ext/http): Make `Deno.serveHttp()` work when proxying (#23269)
+- fix(ext/net): Improve ts types for network APIs (#23228)
+- fix(ext/node): Add "module" to builtinsModule (#23242)
+- fix(ext/node): Add fs.readv, fs.readvSync (#23166)
+- fix(ext/node): MessagePort works (#22999)
+- fix(ext/node): Support returning tokens and option defaults in
+  `node:util.parseArgs` (#23192)
+- fix(ext/node): `node:vm` contexts (#23202)
+- fix(ext/node): count MessagePort message listeners in hasMessageEventListener
+  (#23209)
+- fix(ext/node): hostname is valid IPv4 addr (#23243)
+- fix(ext/node): implement MessagePort.unref() (#23278)
+- fix(ext/node): improve AsyncLocalStorage api (#23175)
+- fix(ext/node): out-of-order writes of fs.createWriteStream (#23244)
+- fix(ext/node): patch MessagePort if provided as workerData (#23198)
+- fix(ext/node): polyfill node:domain module (#23088)
+- fix(ext/tls): add support EC private key (#23261)
+- fix(lsp): Remove client-facing format failure warning (#23196)
+- fix(lsp): respect DENO_FUTURE for BYONM config (#23207)
+- fix(runtime): fix Windows permission prompt (#23212)
+- fix: prevent cache db errors when deno_dir not exists (#23168)
+- perf(lsp): Don't retain `SourceFileObject`s in `sourceFileCache` longer than
+  necessary (#23258)
+- perf(lsp): More granular locking of `FileSystemDocuments` (#23291)
+- perf(lsp): Only evict caches on JS side when things actually change (#23293)
+- perf(lsp): cache ts config in isolate until new project version (#23283)
+- perf(lsp): don't keep remote module ast's in memory (#23230)
+- perf(lsp): don't pass remote modules as tsc roots (#23259)
+- perf(lsp): replace document registry source cache on update (#23311)
+- perf(lsp): use lockfile to reduce npm pkg resolution time (#23247)
+- perf(node): put pkg json into an `Rc` (#23156)
+- perf: reduce allocations in `MediaType::from_specifier` (#23190)
+
 ### 1.42.1 / 2024.04.01
 
 - fix(check): ignore certain diagnostics in remote modules and when publishing

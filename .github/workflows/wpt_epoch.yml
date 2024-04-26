@@ -66,13 +66,11 @@ jobs:
       - name: Run web platform tests
         shell: bash
         run: |
-          deno run --unstable --allow-write --allow-read --allow-net           \
-            --allow-env --allow-run --lock=tools/deno.lock.json                \
+          deno run --unstable -A --lock=tools/deno.lock.json                   \
             ./tests/wpt/wpt.ts setup
-          deno run --unstable --allow-write --allow-read --allow-net           \
-            --allow-env --allow-run --lock=tools/deno.lock.json                \
-            ./tests/wpt/wpt.ts run                                                 \                                                \
-            --binary=$(which deno) --quiet --release --no-ignore --json=wpt.json --wptreport=wptreport.json
+          deno run --unstable -A --lock=tools/deno.lock.json                   \
+            ./tests/wpt/wpt.ts run                                             \                                                \
+            --binary=$(which deno) --quiet --release --no-ignore --json=wpt.json --wptreport=wptreport.json --exit-zero
 
       - name: Upload wpt results to wpt.fyi
         env:
