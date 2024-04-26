@@ -5368,9 +5368,11 @@ fn node_process_stdin_unref_with_pty() {
     .with_pty(|mut console| {
       console.expect("START\r\n");
       console.write_line("foo");
+      console.expect("foo\r\n");
       console.write_line("bar");
+      console.expect("bar\r\n");
       console.write_line("baz");
-      console.expect("foo\r\nbar\r\nbaz\r\n");
+      console.expect("baz\r\n");
     });
 
   TestContext::default()
