@@ -51,10 +51,11 @@ use hyper_utils::ServerOptions;
 use super::https::get_tls_listener_stream;
 use super::https::SupportedHttpVersions;
 use super::npm::CUSTOM_NPM_PACKAGE_CACHE;
+use super::npm::CUSTOM_NPM_PACKAGE_CACHE_FOR_PRIVATE_REGISTRY;
 use super::std_path;
 use super::testdata_path;
 
-const PORT: u16 = 4545;
+pub(crate) const PORT: u16 = 4545;
 const TEST_AUTH_TOKEN: &str = "abcdef123456789";
 const TEST_BASIC_AUTH_USERNAME: &str = "testuser123";
 const TEST_BASIC_AUTH_PASSWORD: &str = "testpassabc";
@@ -85,7 +86,7 @@ const H2_GRPC_PORT: u16 = 4246;
 const H2S_GRPC_PORT: u16 = 4247;
 const REGISTRY_SERVER_PORT: u16 = 4250;
 const PROVENANCE_MOCK_SERVER_PORT: u16 = 4251;
-const PRIVATE_NPM_REGISTRY_1_PORT: u16 = 4252;
+pub(crate) const PRIVATE_NPM_REGISTRY_1_PORT: u16 = 4252;
 
 // Use the single-threaded scheduler. The hyper server is used as a point of
 // comparison for the (single-threaded!) benchmarks in cli/bench. We're not
@@ -1091,7 +1092,9 @@ async fn main_server(
       }
 
       // serve npm registry files
-      if let Some(resp) = try_serve_npm_registry(&req, file_path.clone()).await
+      if let Some(resp) =
+        try_serve_npm_registry(&req, file_path.clone(), NpmRegistryKind::Public)
+          .await
       {
         return resp;
       } else if let Some(suffix) = req.uri().path().strip_prefix("/deno_std/") {
@@ -1119,6 +1122,11 @@ async fn main_server(
 }
 
 const PRIVATE_NPM_REGISTRY_AUTH_TOKEN: &str = "private-reg-token";
+
+enum NpmRegistryKind {
+  Public,
+  Private,
+}
 
 async fn wrap_private_npm_registry1(port: u16) {
   let npm_registry_addr = SocketAddr::from(([127, 0, 0, 1], port));
@@ -1153,7 +1161,9 @@ async fn private_npm_registry1(
   let mut file_path = testdata_path().to_path_buf();
   file_path.push(&req.uri().path()[1..].replace("%2f", "/"));
 
-  if let Some(resp) = try_serve_npm_registry(&req, file_path).await {
+  if let Some(resp) =
+    try_serve_npm_registry(&req, file_path, NpmRegistryKind::Private).await
+  {
     return resp;
   }
 
@@ -1165,12 +1175,16 @@ async fn private_npm_registry1(
 
 fn handle_custom_npm_registry_path(
   path: &str,
+  registry_kind: NpmRegistryKind,
 ) -> Result<Option<Response<UnsyncBoxBody<Bytes, Infallible>>>, anyhow::Error> {
   let parts = path
     .split('/')
     .filter(|p| !p.is_empty())
     .collect::<Vec<_>>();
-  let cache = &CUSTOM_NPM_PACKAGE_CACHE;
+  let cache = match registry_kind {
+    NpmRegistryKind::Public => &CUSTOM_NPM_PACKAGE_CACHE,
+    NpmRegistryKind::Private => &CUSTOM_NPM_PACKAGE_CACHE_FOR_PRIVATE_REGISTRY,
+  };
   let package_name = format!("@denotest/{}", parts[0]);
   if parts.len() == 2 {
     if let Some(file_bytes) =
@@ -1198,6 +1212,7 @@ fn should_download_npm_packages() -> bool {
 async fn try_serve_npm_registry(
   req: &Request<hyper::body::Incoming>,
   mut file_path: PathBuf,
+  registry_kind: NpmRegistryKind,
 ) -> Option<Result<Response<UnsyncBoxBody<Bytes, Infallible>>, anyhow::Error>> {
   if let Some(suffix) = req
     .uri()
@@ -1207,7 +1222,7 @@ async fn try_serve_npm_registry(
   {
     // serve all requests to /npm/registry/@deno using the file system
     // at that path
-    match handle_custom_npm_registry_path(suffix) {
+    match handle_custom_npm_registry_path(suffix, registry_kind) {
       Ok(Some(response)) => return Some(Ok(response)),
       Ok(None) => {} // ignore, not found
       Err(err) => {
