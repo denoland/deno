@@ -884,7 +884,6 @@ async fn create_npm_resolver(
       // do not install while resolving in the lsp—leave that to the cache command
       package_json_installer:
         CliNpmResolverManagedPackageJsonInstallerOption::NoInstall,
-      npm_registry_url: crate::args::npm_registry_url().to_owned(),
       npm_system_info: NpmSystemInfo::default(),
       // TODO(bartlomieju): support .npmrc here
       npmrc: create_default_npmrc(),

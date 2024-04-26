@@ -38,14 +38,12 @@ pub struct CliNpmRegistryApi(Option<Arc<CliNpmRegistryApiInner>>);
 
 impl CliNpmRegistryApi {
   pub fn new(
-    base_url: Url,
     cache: Arc<NpmCache>,
     http_client: Arc<HttpClient>,
     npmrc: Arc<ResolvedNpmRc>,
     progress_bar: ProgressBar,
   ) -> Self {
     Self(Some(Arc::new(CliNpmRegistryApiInner {
-      base_url,
       cache,
       force_reload_flag: Default::default(),
       mem_cache: Default::default(),
@@ -66,11 +64,6 @@ impl CliNpmRegistryApi {
     name: &str,
   ) -> Option<Arc<NpmPackageInfo>> {
     self.inner().get_cached_package_info(name)
-  }
-
-  // TODO: remove
-  pub fn base_url(&self) -> &Url {
-    &self.inner().base_url
   }
 
   fn inner(&self) -> &Arc<CliNpmRegistryApiInner> {
@@ -126,8 +119,6 @@ enum CacheItem {
 
 #[derive(Debug)]
 struct CliNpmRegistryApiInner {
-  // TODO: remove
-  base_url: Url,
   cache: Arc<NpmCache>,
   force_reload_flag: AtomicFlag,
   mem_cache: Mutex<HashMap<String, CacheItem>>,

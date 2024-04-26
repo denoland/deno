@@ -357,7 +357,7 @@ pub async fn run(
         let vfs_root_dir_path = if node_modules_dir {
           root_path
         } else {
-          npm_cache_dir.registry_folder(&npm_registry_url)
+          npm_cache_dir.root_dir().to_owned()
         };
         let vfs = load_npm_vfs(vfs_root_dir_path.clone())
           .context("Failed to load npm vfs.")?;
@@ -386,7 +386,6 @@ pub async fn run(
               CliNpmResolverManagedPackageJsonInstallerOption::ConditionalInstall(
                 package_json_deps_provider.clone(),
               ),
-            npm_registry_url,
             npm_system_info: Default::default(),
             // TODO(bartlomieju): do we need to support it here?
             npmrc: create_default_npmrc(),
@@ -444,7 +443,6 @@ pub async fn run(
               CliNpmResolverManagedPackageJsonInstallerOption::ConditionalInstall(
                 package_json_deps_provider.clone(),
               ),
-            npm_registry_url,
             npm_system_info: Default::default(),
             // TODO(bartlomieju): do we need to support it here?
             npmrc: create_default_npmrc(),

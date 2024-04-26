@@ -95,7 +95,7 @@ impl NpmCacheDir {
     }
   }
 
-  pub fn registry_folder(&self, registry_url: &Url) -> PathBuf {
+  fn registry_folder(&self, registry_url: &Url) -> PathBuf {
     self
       .root_dir
       .join(root_url_to_safe_local_dirname(registry_url))

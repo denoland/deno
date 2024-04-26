@@ -9,7 +9,6 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
-use deno_core::url::Url;
 use deno_graph::NpmPackageReqResolution;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmRegistryApi;
@@ -73,7 +72,6 @@ pub struct CliNpmResolverManagedCreateOptions {
   pub maybe_node_modules_path: Option<PathBuf>,
   pub npm_system_info: NpmSystemInfo,
   pub package_json_installer: CliNpmResolverManagedPackageJsonInstallerOption,
-  pub npm_registry_url: Url,
   pub npmrc: Arc<ResolvedNpmRc>,
 }
 
@@ -190,7 +188,6 @@ fn create_api(
   npm_cache: Arc<NpmCache>,
 ) -> Arc<CliNpmRegistryApi> {
   Arc::new(CliNpmRegistryApi::new(
-    options.npm_registry_url.clone(),
     npm_cache.clone(),
     options.http_client.clone(),
     options.npmrc.clone(),
@@ -486,17 +483,8 @@ impl ManagedCliNpmResolver {
       .map_err(|err| err.into())
   }
 
-  // TODO: remove this one
-  pub fn registry_base_url(&self) -> &ModuleSpecifier {
-    self.api.base_url()
-  }
-
-  // TODO: maybe remove
-  pub fn registry_folder_in_global_cache(
-    &self,
-    registry_url: &ModuleSpecifier,
-  ) -> PathBuf {
-    self.global_npm_cache.registry_folder(registry_url)
+  pub fn global_cache_root_folder(&self) -> PathBuf {
+    self.global_npm_cache.root_folder()
   }
 }
 

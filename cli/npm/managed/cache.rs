@@ -206,11 +206,6 @@ impl NpmCache {
     self.cache_dir.root_dir().to_owned()
   }
 
-  // TODO: remove registry_url
-  pub fn registry_folder(&self, registry_url: &Url) -> PathBuf {
-    self.cache_dir.registry_folder(registry_url)
-  }
-
   pub fn resolve_package_folder_id_from_specifier(
     &self,
     specifier: &ModuleSpecifier,
