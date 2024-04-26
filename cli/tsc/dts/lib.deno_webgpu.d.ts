@@ -9,7 +9,7 @@
  * @category WebGPU
  * @tags unstable
  */
-interface GPUObjectBase {
+declare interface GPUObjectBase {
   label: string;
 }
 
@@ -1214,7 +1214,7 @@ declare interface GPUImageCopyTexture {
  * @category WebGPU
  * @tags unstable
  */
-interface GPUProgrammablePassEncoder {
+declare interface GPUProgrammablePassEncoder {
   setBindGroup(
     index: number,
     bindGroup: GPUBindGroup,
@@ -1288,7 +1288,7 @@ declare interface GPUComputePassDescriptor extends GPUObjectDescriptorBase {
  * @category WebGPU
  * @tags unstable
  */
-interface GPURenderEncoderBase {
+declare interface GPURenderEncoderBase {
   setPipeline(pipeline: GPURenderPipeline): undefined;
 
   setIndexBuffer(

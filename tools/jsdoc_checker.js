@@ -44,9 +44,17 @@ for (const file of project.getSourceFiles()) {
       continue;
     }
 
-    /*if (!(node.isExported() || node.hasDeclareKeyword())) {
-      throw new Error(getErrorPrefix(node) + "declare or export keyword");
-    }*/
+    const parent = node.getFirstAncestorByKind(ts.SyntaxKind.ModuleDeclaration);
+
+    if (parent) {
+      if (!node.isExported()) {
+        errors.push(getErrorPrefix(node) + "export keyword");
+        continue;
+      }
+    } else if (!node.hasDeclareKeyword()) {
+      errors.push(getErrorPrefix(node) + "declare keyword");
+      continue;
+    }
 
     const jsDoc = node.getFirstChildIfKind(ts.SyntaxKind.JSDoc);
     if (!jsDoc) {

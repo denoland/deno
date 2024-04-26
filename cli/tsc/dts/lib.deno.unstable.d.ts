@@ -50,7 +50,7 @@ declare namespace Deno {
    * @category FFI
    * @tags unstable
    */
-  type NativeNumberType =
+  export type NativeNumberType =
     | "u8"
     | "i8"
     | "u16"
@@ -67,7 +67,7 @@ declare namespace Deno {
    * @category FFI
    * @tags unstable
    */
-  type NativeBigIntType =
+  export type NativeBigIntType =
     | "u64"
     | "i64"
     | "usize"
@@ -80,7 +80,7 @@ declare namespace Deno {
    * @category FFI
    * @tags unstable
    */
-  type NativeBooleanType = "bool";
+  export type NativeBooleanType = "bool";
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -89,7 +89,7 @@ declare namespace Deno {
    * @category FFI
    * @tags unstable
    */
-  type NativePointerType = "pointer";
+  export type NativePointerType = "pointer";
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -98,7 +98,7 @@ declare namespace Deno {
    * @category FFI
    * @tags unstable
    */
-  type NativeBufferType = "buffer";
+  export type NativeBufferType = "buffer";
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -107,7 +107,7 @@ declare namespace Deno {
    * @category FFI
    * @tags unstable
    */
-  type NativeFunctionType = "function";
+  export type NativeFunctionType = "function";
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -116,7 +116,7 @@ declare namespace Deno {
    * @category FFI
    * @tags unstable
    */
-  type NativeVoidType = "void";
+  export type NativeVoidType = "void";
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -125,13 +125,13 @@ declare namespace Deno {
    * @category FFI
    * @tags unstable
    */
-  type NativeStructType = { readonly struct: readonly NativeType[] };
+  export type NativeStructType = { readonly struct: readonly NativeType[] };
 
   /**
    * @category FFI
    * @tags unstable
    */
-  const brand: unique symbol;
+  export const brand: unique symbol;
 
   /**
    * @category FFI
@@ -211,7 +211,7 @@ declare namespace Deno {
    * @category FFI
    * @tags unstable
    */
-  type ToNativeType<T extends NativeType = NativeType> = T extends
+  export type ToNativeType<T extends NativeType = NativeType> = T extends
     NativeStructType ? BufferSource
     : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
       : T extends NativeI8Enum<infer U> ? U
@@ -237,7 +237,7 @@ declare namespace Deno {
    * @category FFI
    * @tags unstable
    */
-  type ToNativeResultType<T extends NativeResultType = NativeResultType> =
+  export type ToNativeResultType<T extends NativeResultType = NativeResultType> =
     T extends NativeStructType ? BufferSource
       : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
         : T extends NativeI8Enum<infer U> ? U
@@ -264,7 +264,7 @@ declare namespace Deno {
    * @category FFI
    * @tags unstable
    */
-  type ToNativeParameterTypes<T extends readonly NativeType[]> =
+  export type ToNativeParameterTypes<T extends readonly NativeType[]> =
     //
     [(T[number])[]] extends [T] ? ToNativeType<T[number]>[]
       : [readonly (T[number])[]] extends [T]
@@ -282,7 +282,7 @@ declare namespace Deno {
    * @category FFI
    * @tags unstable
    */
-  type FromNativeType<T extends NativeType = NativeType> = T extends
+  export type FromNativeType<T extends NativeType = NativeType> = T extends
     NativeStructType ? Uint8Array
     : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
       : T extends NativeI8Enum<infer U> ? U
@@ -308,7 +308,7 @@ declare namespace Deno {
    * @category FFI
    * @tags unstable
    */
-  type FromNativeResultType<T extends NativeResultType = NativeResultType> =
+  export type FromNativeResultType<T extends NativeResultType = NativeResultType> =
     T extends NativeStructType ? Uint8Array
       : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
         : T extends NativeI8Enum<infer U> ? U
@@ -333,7 +333,7 @@ declare namespace Deno {
    * @category FFI
    * @tags unstable
    */
-  type FromNativeParameterTypes<
+  export type FromNativeParameterTypes<
     T extends readonly NativeType[],
   > =
     //
@@ -416,7 +416,7 @@ declare namespace Deno {
    * @category FFI
    * @tags unstable
    */
-  type StaticForeignSymbol<T extends ForeignFunction | ForeignStatic> =
+  export type StaticForeignSymbol<T extends ForeignFunction | ForeignStatic> =
     T extends ForeignFunction ? FromForeignFunction<T>
       : T extends ForeignStatic ? FromNativeType<T["type"]>
       : never;
@@ -426,7 +426,7 @@ declare namespace Deno {
    *  @category FFI
    *  @tags unstable
    */
-  type FromForeignFunction<T extends ForeignFunction> = T["parameters"] extends
+  export type FromForeignFunction<T extends ForeignFunction> = T["parameters"] extends
     readonly [] ? () => StaticForeignSymbolReturnType<T>
     : (
       ...args: ToNativeParameterTypes<T["parameters"]>
@@ -437,7 +437,7 @@ declare namespace Deno {
    * @category FFI
    * @tags unstable
    */
-  type StaticForeignSymbolReturnType<T extends ForeignFunction> =
+  export type StaticForeignSymbolReturnType<T extends ForeignFunction> =
     ConditionalAsync<T["nonblocking"], FromNativeResultType<T["result"]>>;
 
   /** **UNSTABLE**: New API, yet to be vetted.
@@ -445,7 +445,7 @@ declare namespace Deno {
    * @category FFI
    * @tags unstable
    */
-  type ConditionalAsync<IsAsync extends boolean | undefined, T> =
+  export type ConditionalAsync<IsAsync extends boolean | undefined, T> =
     IsAsync extends true ? Promise<T> : T;
 
   /** **UNSTABLE**: New API, yet to be vetted.
@@ -455,7 +455,7 @@ declare namespace Deno {
    * @category FFI
    * @tags unstable
    */
-  type StaticForeignLibraryInterface<T extends ForeignLibraryInterface> = {
+  export type StaticForeignLibraryInterface<T extends ForeignLibraryInterface> = {
     [K in keyof T]: T[K]["optional"] extends true
       ? StaticForeignSymbol<T[K]> | null
       : StaticForeignSymbol<T[K]>;
@@ -646,7 +646,7 @@ declare namespace Deno {
    * @category FFI
    * @tags unstable
    */
-  type UnsafeCallbackFunction<
+  export type UnsafeCallbackFunction<
     Parameters extends readonly NativeType[] = readonly NativeType[],
     Result extends NativeResultType = NativeResultType,
   > = Parameters extends readonly [] ? () => ToNativeResultType<Result> : (
@@ -859,7 +859,7 @@ declare namespace Deno {
    * @category Sub Process
    * @tags unstable
    */
-  interface UnstableRunOptions extends RunOptions {
+  export interface UnstableRunOptions extends RunOptions {
     /** If `true`, clears the environment variables before executing the
      * sub-process.
      *
@@ -1067,7 +1067,7 @@ declare namespace Deno {
    * @category Network
    * @tags unstable
    */
-  interface MulticastV4Membership {
+  export interface MulticastV4Membership {
     /** Leaves the multicast group. */
     leave: () => Promise<void>;
     /** Sets the multicast loopback option. If enabled, multicast packets will be looped back to the local socket. */
@@ -1083,7 +1083,7 @@ declare namespace Deno {
    * @category Network
    * @tags unstable
    */
-  interface MulticastV6Membership {
+  export interface MulticastV6Membership {
     /** Leaves the multicast group. */
     leave: () => Promise<void>;
     /** Sets the multicast loopback option. If enabled, multicast packets will be looped back to the local socket. */
@@ -1276,7 +1276,7 @@ declare namespace Deno {
    * @category Cron
    * @tags unstable
    */
-  type CronScheduleExpression = number | { exact: number | number[] } | {
+  export type CronScheduleExpression = number | { exact: number | number[] } | {
     start?: number;
     end?: number;
     every?: number;
@@ -2096,7 +2096,7 @@ declare namespace Deno {
      * @category Jupyter
      * @tags unstable
      */
-    type VegaObject = {
+    export type VegaObject = {
       $schema: string;
       [key: string]: unknown;
     };
@@ -2510,7 +2510,7 @@ declare namespace Temporal {
    * @category Temporal
    * @tags unstable
    */
-  type OffsetDisambiguationOptions = {
+  export type OffsetDisambiguationOptions = {
     /**
      * Time zone definitions can change. If an application stores data about
      * events in the future, then stored data about future events may become
@@ -3199,21 +3199,21 @@ declare namespace Temporal {
    * @category Temporal
    * @tags unstable
    */
-  type YearOrEraAndEraYear = { era: string; eraYear: number } | {
+  export type YearOrEraAndEraYear = { era: string; eraYear: number } | {
     year: number;
   };
   /**
    * @category Temporal
    * @tags unstable
    */
-  type MonthCodeOrMonthAndYear = (YearOrEraAndEraYear & { month: number }) | {
+  export type MonthCodeOrMonthAndYear = (YearOrEraAndEraYear & { month: number }) | {
     monthCode: string;
   };
   /**
    * @category Temporal
    * @tags unstable
    */
-  type MonthOrMonthCode = { month: number } | { monthCode: string };
+  export type MonthOrMonthCode = { month: number } | { monthCode: string };
 
   /**
    * @category Temporal
@@ -3562,7 +3562,7 @@ declare namespace Temporal {
    * @category Temporal
    * @tags unstable
    */
-  type PlainDateISOFields = {
+  export type PlainDateISOFields = {
     isoYear: number;
     isoMonth: number;
     isoDay: number;
@@ -3684,7 +3684,7 @@ declare namespace Temporal {
    * @category Temporal
    * @tags unstable
    */
-  type PlainDateTimeISOFields = {
+  export type PlainDateTimeISOFields = {
     isoYear: number;
     isoMonth: number;
     isoDay: number;
@@ -3907,7 +3907,7 @@ declare namespace Temporal {
    * @category Temporal
    * @tags unstable
    */
-  type PlainTimeISOFields = {
+export  type PlainTimeISOFields = {
     isoHour: number;
     isoMinute: number;
     isoSecond: number;
@@ -4215,7 +4215,7 @@ declare namespace Temporal {
    * @category Temporal
    * @tags unstable
    */
-  type ZonedDateTimeISOFields = {
+  export type ZonedDateTimeISOFields = {
     isoYear: number;
     isoMonth: number;
     isoDay: number;
@@ -4525,7 +4525,7 @@ declare namespace Temporal {
  * @category Temporal
  * @tags unstable
  */
-interface Date {
+declare interface Date {
   toTemporalInstant(): Temporal.Instant;
 }
 
@@ -4538,7 +4538,7 @@ declare namespace Intl {
    * @category Intl
    * @tags unstable
    */
-  type Formattable =
+  export type Formattable =
     | Date
     | Temporal.Instant
     | Temporal.ZonedDateTime
@@ -4552,7 +4552,7 @@ declare namespace Intl {
    * @category Intl
    * @tags unstable
    */
-  interface DateTimeFormatRangePart {
+  export interface DateTimeFormatRangePart {
     source: "shared" | "startRange" | "endRange";
   }
 
@@ -4627,7 +4627,7 @@ declare namespace Intl {
  * @category Web APIs
  * @tags unstable
  */
-interface Float16Array {
+declare interface Float16Array {
   /**
    * The size in bytes of each element in the array.
    */
@@ -4942,7 +4942,7 @@ interface Float16Array {
  * @category Web APIs
  * @tags unstable
  */
-interface Float16ArrayConstructor {
+declare interface Float16ArrayConstructor {
   readonly prototype: Float16Array;
   new (length: number): Float16Array;
   new (array: ArrayLike<number> | ArrayBufferLike): Float16Array;
@@ -4991,7 +4991,7 @@ declare var Float16Array: Float16ArrayConstructor;
  * @category Web APIs
  * @tags unstable
  */
-interface Float16 {
+declare interface Float16 {
   [Symbol.iterator](): IterableIterator<number>;
   /**
    * Returns an array of key, value pairs for every entry in the array
@@ -5011,7 +5011,7 @@ interface Float16 {
  * @category Web APIs
  * @tags unstable
  */
-interface Float16Constructor {
+declare interface Float16Constructor {
   new (elements: Iterable<number>): Float16;
 
   /**
@@ -5031,7 +5031,7 @@ interface Float16Constructor {
  * @category Web APIs
  * @tags unstable
  */
-interface Float16Array {
+declare interface Float16Array {
   readonly [Symbol.toStringTag]: "Float16Array";
 }
 
@@ -5039,7 +5039,7 @@ interface Float16Array {
  * @category Web APIs
  * @tags unstable
  */
-interface Float16Array {
+declare interface Float16Array {
   /**
    * Determines whether an array includes a certain element, returning true or false as appropriate.
    * @param searchElement The element to search for.
@@ -5052,7 +5052,7 @@ interface Float16Array {
  * @category Web APIs
  * @tags unstable
  */
-interface Float16ArrayConstructor {
+declare interface Float16ArrayConstructor {
   new (): Float16Array;
 }
 
@@ -5060,7 +5060,7 @@ interface Float16ArrayConstructor {
  * @category Web APIs
  * @tags unstable
  */
-interface Float16Array {
+declare interface Float16Array {
   /**
    * Returns the item located at the specified index.
    * @param index The zero-based index of the desired code unit. A negative index will count back from the last item.
@@ -5072,7 +5072,7 @@ interface Float16Array {
  * @category Web APIs
  * @tags unstable
  */
-interface Float16Array {
+declare interface Float16Array {
   /**
    * Returns the value of the last element in the array where predicate is true, and undefined
    * otherwise.
@@ -5148,7 +5148,7 @@ interface Float16Array {
  * @category Web APIs
  * @tags unstable
  */
-interface DataView {
+declare interface DataView {
   /**
    * Gets the Float16 value at the specified byte offset from the start of the view. There is
    * no alignment constraint; multi-byte values may be fetched from any offset.
