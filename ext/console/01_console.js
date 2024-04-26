@@ -2875,7 +2875,7 @@ function fontWeightToAnsi(fontWeight) {
 }
 
 function fontStyleToAnsi(fontStyle) {
-  return fontStyle == "italic" ? `\x1b[3m` : "\x1b[23m";
+  return fontStyle === "italic" ? `\x1b[3m` : "\x1b[23m";
 }
 
 function cssToAnsi(css, prevCss = null) {
