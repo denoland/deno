@@ -3999,12 +3999,7 @@ fn op_is_node_file(state: &mut OpState, #[string] path: String) -> bool {
   let state = state.borrow::<State>();
   let mark = state.performance.mark("tsc.op.op_is_node_file");
   let r = match ModuleSpecifier::parse(&path) {
-    Ok(specifier) => state
-      .state_snapshot
-      .npm
-      .as_ref()
-      .map(|n| n.npm_resolver.in_npm_package(&specifier))
-      .unwrap_or(false),
+    Ok(specifier) => state.state_snapshot.resolver.in_npm_package(&specifier),
     Err(_) => false,
   };
   state.performance.measure(mark);
@@ -4089,11 +4084,7 @@ fn op_resolve_inner(
   let specifiers = state
     .state_snapshot
     .documents
-    .resolve(
-      &args.specifiers,
-      &referrer,
-      state.state_snapshot.npm.as_ref(),
-    )
+    .resolve(&args.specifiers, &referrer)
     .into_iter()
     .map(|o| {
       o.map(|(s, mt)| {
@@ -4408,7 +4399,7 @@ deno_core::extension!(deno_tsc,
         cache_metadata: CacheMetadata::new(options.cache.clone()),
         config: Default::default(),
         documents: Documents::new(options.cache.clone()),
-        npm: None,
+        resolver: Default::default(),
       }),
       options.specifier_map,
       options.performance,
@@ -5052,17 +5043,17 @@ impl TscRequest {
 
 #[cfg(test)]
 mod tests {
-
   use super::*;
   use crate::cache::GlobalHttpCache;
   use crate::cache::HttpCache;
   use crate::cache::RealDenoCacheEnv;
   use crate::http_util::HeadersMap;
   use crate::lsp::cache::CacheMetadata;
-  use crate::lsp::config::ConfigSnapshot;
+  use crate::lsp::config::Config;
   use crate::lsp::config::WorkspaceSettings;
   use crate::lsp::documents::Documents;
   use crate::lsp::documents::LanguageId;
+  use crate::lsp::resolver::LspResolver;
   use crate::lsp::text::LineIndex;
   use pretty_assertions::assert_eq;
   use std::path::Path;
@@ -5088,7 +5079,7 @@ mod tests {
         (*source).into(),
       );
     }
-    let mut config = ConfigSnapshot::default();
+    let mut config = Config::default();
     config
       .tree
       .inject_config_file(
@@ -5103,13 +5094,16 @@ mod tests {
         .unwrap(),
       )
       .await;
+    let resolver = LspResolver::default()
+      .with_new_config(&config, None, None)
+      .await;
     StateSnapshot {
       project_version: 0,
       documents,
       assets: Default::default(),
       cache_metadata: CacheMetadata::new(cache),
-      config: Arc::new(config),
-      npm: None,
+      config: config.snapshot(),
+      resolver,
     }
   }
 
