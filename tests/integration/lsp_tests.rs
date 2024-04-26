@@ -1459,8 +1459,7 @@ fn lsp_hover_asset() {
           "language": "typescript",
           "value": "interface Date",
         },
-        "Enables basic storage and retrieval of dates and times.",
-        "\n\n*@category* - Temporal  \n\n*@tags* - unstable"
+        "Enables basic storage and retrieval of dates and times."
       ],
       "range": {
         "start": { "line": 111, "character": 10, },
