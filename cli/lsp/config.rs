@@ -1151,6 +1151,7 @@ pub enum ConfigWatchedFileType {
 /// Contains the config file and dependent information.
 #[derive(Debug, Clone)]
 pub struct ConfigData {
+  pub scope: ModuleSpecifier,
   pub config_file: Option<Arc<ConfigFile>>,
   pub fmt_options: Arc<FmtOptions>,
   pub lint_options: Arc<LintOptions>,
@@ -1491,6 +1492,7 @@ impl ConfigData {
     let ts_config = LspTsConfig::new(config_file.as_ref(), import_map.as_ref());
 
     ConfigData {
+      scope: scope.clone(),
       config_file: config_file.map(Arc::new),
       fmt_options,
       lint_options,

@@ -809,10 +809,8 @@ fn generate_lint_diagnostics(
       break;
     }
     // ignore any npm package files
-    if let Some(npm) = &snapshot.npm {
-      if npm.node_resolver.in_npm_package(specifier) {
-        continue;
-      }
+    if snapshot.resolver.in_npm_package(specifier) {
+      continue;
     }
     let version = document.maybe_lsp_version();
     let (lint_options, lint_rules) = config
@@ -1347,6 +1345,7 @@ fn diagnose_resolution(
           diagnostics.push(DenoDiagnostic::DenoWarn(message));
         }
       }
+      let managed_npm_resolver = snapshot.resolver.maybe_managed_npm_resolver();
       if let Some(doc) = snapshot.documents.get(specifier) {
         if let Some(diagnostic) = check_redirect_diagnostic(specifier, &doc) {
           diagnostics.push(diagnostic);
@@ -1375,11 +1374,7 @@ fn diagnose_resolution(
       } else if let Ok(pkg_ref) =
         NpmPackageReqReference::from_specifier(specifier)
       {
-        if let Some(npm_resolver) = snapshot
-          .npm
-          .as_ref()
-          .and_then(|n| n.npm_resolver.as_managed())
-        {
+        if let Some(npm_resolver) = managed_npm_resolver {
           // show diagnostics for npm package references that aren't cached
           let req = pkg_ref.into_inner().req;
           if !npm_resolver.is_pkg_req_folder_cached(&req) {
@@ -1406,11 +1401,7 @@ fn diagnose_resolution(
             diagnostics
               .push(DenoDiagnostic::BareNodeSpecifier(module_name.to_string()));
           }
-        } else if let Some(npm_resolver) = snapshot
-          .npm
-          .as_ref()
-          .and_then(|n| n.npm_resolver.as_managed())
-        {
+        } else if let Some(npm_resolver) = managed_npm_resolver {
           // check that a @types/node package exists in the resolver
           let types_node_req = PackageReq::from_str("@types/node").unwrap();
           if !npm_resolver.is_pkg_req_folder_cached(&types_node_req) {
@@ -1451,10 +1442,8 @@ fn diagnose_dependency(
   dependency_key: &str,
   dependency: &deno_graph::Dependency,
 ) {
-  if let Some(npm) = &snapshot.npm {
-    if npm.npm_resolver.in_npm_package(referrer) {
-      return; // ignore, surface typescript errors instead
-    }
+  if snapshot.resolver.in_npm_package(referrer) {
+    return; // ignore, surface typescript errors instead
   }
 
   let import_map = snapshot.config.tree.root_import_map();
@@ -1592,6 +1581,7 @@ mod tests {
   use crate::lsp::documents::Documents;
   use crate::lsp::documents::LanguageId;
   use crate::lsp::language_server::StateSnapshot;
+  use crate::lsp::resolver::LspResolver;
   use deno_config::ConfigFile;
   use pretty_assertions::assert_eq;
   use std::path::Path;
@@ -1630,6 +1620,9 @@ mod tests {
       .unwrap();
       config.tree.inject_config_file(config_file).await;
     }
+    let resolver = LspResolver::default()
+      .with_new_config(&config, None, None)
+      .await;
     StateSnapshot {
       project_version: 0,
       documents,
@@ -1638,7 +1631,7 @@ mod tests {
         GlobalHttpCache::new(location.to_path_buf(), RealDenoCacheEnv),
       )),
       config: config.snapshot(),
-      npm: None,
+      resolver,
     }
   }
 

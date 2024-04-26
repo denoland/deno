@@ -882,7 +882,7 @@ declare namespace Deno {
   /**
    * @category Testing
    */
-  interface DenoTest {
+  export interface DenoTest {
     /** Register a test which will be run when `deno test` is used on the command
      * line and the containing module looks like a test module.
      *
@@ -4095,7 +4095,7 @@ declare namespace Deno {
    * @deprecated This will be removed in Deno 2.0.
    *
    * @category Observability */
-  interface ResourceMap {
+  export interface ResourceMap {
     [rid: number]: unknown;
   }
 
