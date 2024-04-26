@@ -396,6 +396,9 @@ jobs:
       - name: lint.js
         if: '!(matrix.skip) && (matrix.job == ''lint'')'
         run: deno run --unstable --allow-write --allow-read --allow-run --allow-net ./tools/lint.js
+      - name: jsdoc_checker.js
+        if: '!(matrix.skip) && (matrix.job == ''lint'')'
+        run: deno run --allow-read --allow-env --allow-sys ./tools/jsdoc_checker.js
       - name: node_compat/setup.ts --check
         if: '!(matrix.skip) && (matrix.job == ''lint'' && matrix.os == ''linux'')'
         run: deno run --allow-write --allow-read --allow-run=git ./tests/node_compat/runner/setup.ts --check

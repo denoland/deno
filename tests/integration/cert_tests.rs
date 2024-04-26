@@ -2,7 +2,7 @@
 
 use deno_tls::rustls;
 use deno_tls::rustls_pemfile;
-use deno_tls::rustls_tokio_stream::TlsStream;
+use deno_tls::TlsStream;
 use std::io::BufReader;
 use std::io::Cursor;
 use std::io::Read;
