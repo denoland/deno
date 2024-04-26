@@ -537,16 +537,16 @@ async fn sync_resolution_with_fs(
     let script_names = ["preinstall", "install", "postinstall"];
     let scripts = script_names
       .iter()
-      .filter_map(|s| package.scripts.get(*s))
+      .filter_map(|s| package.scripts.get(*s).map(|value| (s, value)))
       .collect::<Vec<_>>();
-    if scripts.is_empty() {
+    if !scripts.is_empty() {
       log::warn!(
         "⚠️  {} {} has install scripts that might be required to execute for the package to work correctly.", 
         deno_terminal::colors::yellow("Warning"), 
         deno_terminal::colors::green(format!("{}", package.id.nv.name)), 
       );
-      for script in scripts {
-        log::warn!("  Script: {}", deno_terminal::colors::gray(script));
+      for (name, script) in scripts {
+        log::warn!("  {}: {}", name, deno_terminal::colors::gray(script));
       }
       // TODO: add a prompt here to ask if we should run the script.
       log::warn!("  Do you want to run this with full permissions? [y/N]");
