@@ -1322,7 +1322,11 @@ fn clap_root() -> Command {
         .subcommand(fmt_subcommand())
         .subcommand(init_subcommand())
         .subcommand(info_subcommand())
-        .subcommand(install_subcommand())
+        .subcommand(if *DENO_FUTURE {
+          future_install_subcommand()
+        } else {
+          install_subcommand()
+        })
         .subcommand(jupyter_subcommand())
         .subcommand(uninstall_subcommand())
         .subcommand(lsp_subcommand())
@@ -2069,20 +2073,72 @@ TypeScript compiler cache: Subdirectory containing TS compiler output.",
       ))
 }
 
+fn install_args(cmd: Command, deno_future: bool) -> Command {
+  let cmd = if deno_future {
+    cmd.arg(
+      Arg::new("cmd")
+        .required_if_eq("global", "true")
+        .num_args(1..)
+        .value_hint(ValueHint::FilePath),
+    )
+  } else {
+    cmd.arg(
+      Arg::new("cmd")
+        .required(true)
+        .num_args(1..)
+        .value_hint(ValueHint::FilePath),
+    )
+  };
+  cmd
+    .arg(
+      Arg::new("name")
+        .long("name")
+        .short('n')
+        .help("Executable file name")
+        .required(false),
+    )
+    .arg(
+      Arg::new("root")
+        .long("root")
+        .help("Installation root")
+        .value_hint(ValueHint::DirPath),
+    )
+    .arg(
+      Arg::new("force")
+        .long("force")
+        .short('f')
+        .help("Forcefully overwrite existing installation")
+        .action(ArgAction::SetTrue),
+    )
+    .arg(
+      Arg::new("global")
+        .long("global")
+        .short('g')
+        .help("Install a package or script as a globally available executable")
+        .action(ArgAction::SetTrue),
+    )
+    .arg(env_file_arg())
+}
+
 fn future_install_subcommand() -> Command {
   Command::new("install")
     .about("Install dependencies")
     .long_about(
-        "Installs dependencies either in the local project or globally to a bin directory.
-        
-")
-}
+"Installs dependencies either in the local project or globally to a bin directory.
 
-fn install_subcommand() -> Command {
-  Command::new("install")
-    .about("Install script as an executable")
-    .long_about(
-        "Installs a script as an executable in the installation root's bin directory.
+Local installation
+-------------------
+If the --global flag is not set, adds dependencies to the local project's configuration
+(package.json / deno.json) and installs them in the package cache. If no dependency
+is specified, installs all dependencies listed in package.json.
+
+  deno install
+  deno install @std/bytes
+  deno install npm:chalk
+
+Global installation
+-------------------
+If the --global flag is set, installs a script as an executable in the installation root's bin directory.
 
   deno install --global --allow-net --allow-read jsr:@std/http/file-server
   deno install -g https://examples.deno.land/color-logging.ts
@@ -2110,44 +2166,45 @@ The installation root is determined, in order of precedence:
 
 These must be added to the path manually if required.")
     .defer(|cmd| {
-      let cmd =
-      runtime_args(cmd, true, true)
-      .arg(check_arg(true));
+      let cmd = runtime_args(cmd, true, true).arg(check_arg(true));
+      let cmd = install_args(cmd, true);
+    })
+}
 
-      let cmd = if *DENO_FUTURE {
-        cmd.arg(Arg::new("cmd").required_if_eq("global", "true").num_args(1..).value_hint(ValueHint::FilePath))
-      } else {
-        cmd.arg(Arg::new("cmd").required(true).num_args(1..).value_hint(ValueHint::FilePath))
-      };
+fn install_subcommand() -> Command {
+  Command::new("install")
+    .about("Install script as an executable")
+    .long_about(
+"Installs a script as an executable in the installation root's bin directory.
 
-      cmd.arg(
-        Arg::new("name")
-          .long("name")
-          .short('n')
-          .help("Executable file name")
-          .required(false)
-      )
-      .arg(
-        Arg::new("root")
-          .long("root")
-          .help("Installation root")
-          .value_hint(ValueHint::DirPath)
-      )
-      .arg(
-        Arg::new("force")
-          .long("force")
-          .short('f')
-          .help("Forcefully overwrite existing installation")
-          .action(ArgAction::SetTrue)
-      )
-      .arg(
-        Arg::new("global")
-          .long("global")
-          .short('g')
-          .help("Install a package or script as a globally available executable")
-          .action(ArgAction::SetTrue)
-      )
-      .arg(env_file_arg())
+  deno install --global --allow-net --allow-read jsr:@std/http/file-server
+  deno install -g https://examples.deno.land/color-logging.ts
+
+To change the executable name, use -n/--name:
+
+  deno install -g --allow-net --allow-read -n serve jsr:@std/http/file-server
+
+The executable name is inferred by default:
+  - Attempt to take the file stem of the URL path. The above example would
+    become 'file_server'.
+  - If the file stem is something generic like 'main', 'mod', 'index' or 'cli',
+    and the path has no parent, take the file name of the parent path. Otherwise
+    settle with the generic name.
+  - If the resulting name has an '@...' suffix, strip it.
+
+To change the installation root, use --root:
+
+  deno install -g --allow-net --allow-read --root /usr/local jsr:@std/http/file-server
+
+The installation root is determined, in order of precedence:
+  - --root option
+  - DENO_INSTALL_ROOT environment variable
+  - $HOME/.deno
+
+These must be added to the path manually if required.")
+    .defer(|cmd| {
+      let cmd = runtime_args(cmd, true, true).arg(check_arg(true));
+      install_args(cmd, false)
     })
 }
 
