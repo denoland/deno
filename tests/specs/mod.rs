@@ -152,8 +152,11 @@ fn run_test(test: &CollectedTest, diagnostic_logger: Rc<RefCell<Vec<u8>>>) {
     // todo(dsherret): add bases in the future as needed
     Some(base) => panic!("Unknown test base: {}", base),
     None => {
-      // by default add npm and jsr env vars
-      builder = builder.add_jsr_env_vars().add_npm_env_vars();
+      // by default add all these
+      builder = builder
+        .add_jsr_env_vars()
+        .add_npm_env_vars()
+        .add_compile_env_vars();
     }
   }
 

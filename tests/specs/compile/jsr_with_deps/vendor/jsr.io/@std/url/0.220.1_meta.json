@@ -1,0 +1,286 @@
+{
+  "manifest": {
+    "/join.ts": {
+      "size": 981,
+      "checksum": "sha256-091473ce0a28db24e1a8c8e083d5e697fe7abadb364b248de5e9b74583718eb2"
+    },
+    "/basename.ts": {
+      "size": 1564,
+      "checksum": "sha256-aa8c857158f0cc25113c5d23f918d7752f3a3145f0707348b34bee4b3b743b7e"
+    },
+    "/basename_test.ts": {
+      "size": 774,
+      "checksum": "sha256-4ac8a88f9100505543239fe63f67a304677af0d2bdb6373872b114ae446b1383"
+    },
+    "/mod.ts": {
+      "size": 369,
+      "checksum": "sha256-e2621f6a0db6fdbe7fbbd240064095bb203014657e5e1ab81db1c44d80dce6c9"
+    },
+    "/normalize.ts": {
+      "size": 898,
+      "checksum": "sha256-464ea27c3630ded8245f5dc871963b233d12eb365a8d6af8404822f20063b614"
+    },
+    "/deno.json": {
+      "size": 254,
+      "checksum": "sha256-7f2da3973ffb74c8f43068fffcd0ee867759f80e357bcc27014ed4eee77f6a09"
+    },
+    "/dirname_test.ts": {
+      "size": 854,
+      "checksum": "sha256-0266ac255140fc2086dead60508a7c0fbfe3a8deae690b1e8f2ad55d96220a26"
+    },
+    "/dirname.ts": {
+      "size": 1154,
+      "checksum": "sha256-1d6c3e3e64f526cebace39067f40410ca1bd36c598f4076f95826e2b460387f1"
+    },
+    "/join_test.ts": {
+      "size": 841,
+      "checksum": "sha256-6e7284bddc720f2d05ea4154986f21d63eff2fe9fc03e1382b9472707882a936"
+    },
+    "/extname_test.ts": {
+      "size": 694,
+      "checksum": "sha256-802f1a98786e85b96c1a8ae70fe8a2097e44549582fab03a3c04481a41e2937f"
+    },
+    "/_strip.ts": {
+      "size": 362,
+      "checksum": "sha256-928fe9af16d7c5bf24816d1e90d84bfe702f3e059f9d63509b5a37087e947800"
+    },
+    "/normalize_test.ts": {
+      "size": 1009,
+      "checksum": "sha256-8ed75c5d0f2a8a1658acedee805ec3593b53ce2516a7ee9e9db9a0339182c6ba"
+    },
+    "/extname.ts": {
+      "size": 1005,
+      "checksum": "sha256-2215bb9468a3b742e8f89e8514df3128d623e19210a634df120667665f6243dc"
+    }
+  },
+  "moduleGraph1": {
+    "/mod.ts": {
+      "dependencies": [
+        {
+          "type": "static",
+          "kind": "export",
+          "specifier": "./basename.ts",
+          "specifierRange": [
+            [
+              11,
+              14
+            ],
+            [
+              11,
+              29
+            ]
+          ]
+        },
+        {
+          "type": "static",
+          "kind": "export",
+          "specifier": "./dirname.ts",
+          "specifierRange": [
+            [
+              12,
+              14
+            ],
+            [
+              12,
+              28
+            ]
+          ]
+        },
+        {
+          "type": "static",
+          "kind": "export",
+          "specifier": "./extname.ts",
+          "specifierRange": [
+            [
+              13,
+              14
+            ],
+            [
+              13,
+              28
+            ]
+          ]
+        },
+        {
+          "type": "static",
+          "kind": "export",
+          "specifier": "./join.ts",
+          "specifierRange": [
+            [
+              14,
+              14
+            ],
+            [
+              14,
+              25
+            ]
+          ]
+        },
+        {
+          "type": "static",
+          "kind": "export",
+          "specifier": "./normalize.ts",
+          "specifierRange": [
+            [
+              15,
+              14
+            ],
+            [
+              15,
+              30
+            ]
+          ]
+        }
+      ]
+    },
+    "/dirname.ts": {
+      "dependencies": [
+        {
+          "type": "static",
+          "kind": "import",
+          "specifier": "jsr:/@std/path@^0.220.1/posix/dirname",
+          "specifierRange": [
+            [
+              3,
+              40
+            ],
+            [
+              3,
+              79
+            ]
+          ]
+        },
+        {
+          "type": "static",
+          "kind": "import",
+          "specifier": "./_strip.ts",
+          "specifierRange": [
+            [
+              4,
+              22
+            ],
+            [
+              4,
+              35
+            ]
+          ]
+        }
+      ]
+    },
+    "/_strip.ts": {},
+    "/basename.ts": {
+      "dependencies": [
+        {
+          "type": "static",
+          "kind": "import",
+          "specifier": "jsr:/@std/path@^0.220.1/posix/basename",
+          "specifierRange": [
+            [
+              3,
+              42
+            ],
+            [
+              3,
+              82
+            ]
+          ]
+        },
+        {
+          "type": "static",
+          "kind": "import",
+          "specifier": "./_strip.ts",
+          "specifierRange": [
+            [
+              4,
+              22
+            ],
+            [
+              4,
+              35
+            ]
+          ]
+        }
+      ]
+    },
+    "/extname.ts": {
+      "dependencies": [
+        {
+          "type": "static",
+          "kind": "import",
+          "specifier": "jsr:/@std/path@^0.220.1/posix/extname",
+          "specifierRange": [
+            [
+              3,
+              40
+            ],
+            [
+              3,
+              79
+            ]
+          ]
+        },
+        {
+          "type": "static",
+          "kind": "import",
+          "specifier": "./_strip.ts",
+          "specifierRange": [
+            [
+              4,
+              22
+            ],
+            [
+              4,
+              35
+            ]
+          ]
+        }
+      ]
+    },
+    "/join.ts": {
+      "dependencies": [
+        {
+          "type": "static",
+          "kind": "import",
+          "specifier": "jsr:/@std/path@^0.220.1/posix/join",
+          "specifierRange": [
+            [
+              3,
+              34
+            ],
+            [
+              3,
+              70
+            ]
+          ]
+        }
+      ]
+    },
+    "/normalize.ts": {
+      "dependencies": [
+        {
+          "type": "static",
+          "kind": "import",
+          "specifier": "jsr:/@std/path@^0.220.1/posix/normalize",
+          "specifierRange": [
+            [
+              3,
+              44
+            ],
+            [
+              3,
+              85
+            ]
+          ]
+        }
+      ]
+    }
+  },
+  "exports": {
+    ".": "./mod.ts",
+    "./basename": "./basename.ts",
+    "./dirname": "./dirname.ts",
+    "./extname": "./extname.ts",
+    "./join": "./join.ts",
+    "./normalize": "./normalize.ts"
+  }
+}
