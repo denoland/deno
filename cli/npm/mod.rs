@@ -65,6 +65,8 @@ pub enum InnerCliNpmResolverRef<'a> {
 pub trait CliNpmResolver: NpmResolver {
   fn into_npm_resolver(self: Arc<Self>) -> Arc<dyn NpmResolver>;
 
+  fn clone_snapshotted(&self) -> Arc<dyn CliNpmResolver>;
+
   fn as_inner(&self) -> InnerCliNpmResolverRef;
 
   fn as_managed(&self) -> Option<&ManagedCliNpmResolver> {

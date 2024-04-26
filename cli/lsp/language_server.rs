@@ -595,7 +595,7 @@ impl Inner {
       cache_metadata: self.cache_metadata.clone(),
       config: self.config.snapshot(),
       documents: self.documents.clone(),
-      resolver: self.resolver.clone(),
+      resolver: self.resolver.snapshot(),
     })
   }
 
@@ -1017,16 +1017,14 @@ impl Inner {
         }
       }
     }
-    self.resolver = Arc::new(
-      self
-        .resolver
-        .with_new_config(
-          &self.config,
-          self.maybe_global_cache_path.as_deref(),
-          Some(&self.http_client),
-        )
-        .await,
-    );
+    self.resolver = self
+      .resolver
+      .with_new_config(
+        &self.config,
+        self.maybe_global_cache_path.as_deref(),
+        Some(&self.http_client),
+      )
+      .await;
   }
 
   async fn refresh_documents_config(&mut self) {

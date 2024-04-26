@@ -1861,11 +1861,9 @@ console.log(b, "hello deno");
         )
         .await;
 
-      let resolver = Arc::new(
-        LspResolver::default()
-          .with_new_config(&config, None, None)
-          .await,
-      );
+      let resolver = LspResolver::default()
+        .with_new_config(&config, None, None)
+        .await;
       documents.update_config(&config, &resolver, &workspace_files);
 
       // open the document
@@ -1907,11 +1905,9 @@ console.log(b, "hello deno");
         )
         .await;
 
-      let resolver = Arc::new(
-        LspResolver::default()
-          .with_new_config(&config, None, None)
-          .await,
-      );
+      let resolver = LspResolver::default()
+        .with_new_config(&config, None, None)
+        .await;
       documents.update_config(&config, &resolver, &workspace_files);
 
       // check the document's dependencies

@@ -46,6 +46,7 @@ pub struct LspResolver {
   npm_resolver: Option<Arc<dyn CliNpmResolver>>,
   node_resolver: Option<Arc<CliNodeResolver>>,
   npm_config_hash: LspNpmConfigHash,
+  config: Arc<Config>,
 }
 
 impl Default for LspResolver {
@@ -55,6 +56,7 @@ impl Default for LspResolver {
       npm_resolver: None,
       node_resolver: None,
       npm_config_hash: LspNpmConfigHash(0),
+      config: Default::default(),
     }
   }
 }
@@ -65,7 +67,7 @@ impl LspResolver {
     config: &Config,
     global_cache_path: Option<&Path>,
     http_client: Option<&Arc<HttpClient>>,
-  ) -> Self {
+  ) -> Arc<Self> {
     let npm_config_hash = LspNpmConfigHash::new(config, global_cache_path);
     let mut npm_resolver = None;
     let mut node_resolver = None;
@@ -76,18 +78,7 @@ impl LspResolver {
         npm_resolver =
           create_npm_resolver(config_data, global_cache_path, http_client)
             .await;
-        if let Some(npm_resolver) = &npm_resolver {
-          let node_resolver_inner = Arc::new(NodeResolver::new(
-            Arc::new(deno_fs::RealFs),
-            npm_resolver.clone().into_npm_resolver(),
-          ));
-          node_resolver = Some(Arc::new(CliNodeResolver::new(
-            None,
-            Arc::new(deno_fs::RealFs),
-            node_resolver_inner,
-            npm_resolver.clone(),
-          )));
-        }
+        node_resolver = create_node_resolver(npm_resolver.as_ref());
       }
     } else {
       npm_resolver = self.npm_resolver.clone();
@@ -98,12 +89,31 @@ impl LspResolver {
       npm_resolver.as_ref(),
       node_resolver.as_ref(),
     );
-    Self {
+    Arc::new(Self {
       graph_resolver,
       npm_resolver,
       node_resolver,
       npm_config_hash,
-    }
+      config: Arc::new(config.clone()),
+    })
+  }
+
+  pub fn snapshot(&self) -> Arc<Self> {
+    let npm_resolver =
+      self.npm_resolver.as_ref().map(|r| r.clone_snapshotted());
+    let node_resolver = create_node_resolver(npm_resolver.as_ref());
+    let graph_resolver = create_graph_resolver(
+      &self.config,
+      npm_resolver.as_ref(),
+      node_resolver.as_ref(),
+    );
+    Arc::new(Self {
+      graph_resolver,
+      npm_resolver,
+      node_resolver,
+      npm_config_hash: self.npm_config_hash.clone(),
+      config: self.config.clone(),
+    })
   }
 
   pub async fn set_npm_package_reqs(
@@ -245,6 +255,23 @@ async fn create_npm_resolver(
     })
   };
   Some(create_cli_npm_resolver_for_lsp(options).await)
+}
+
+fn create_node_resolver(
+  npm_resolver: Option<&Arc<dyn CliNpmResolver>>,
+) -> Option<Arc<CliNodeResolver>> {
+  let npm_resolver = npm_resolver?;
+  let fs = Arc::new(deno_fs::RealFs);
+  let node_resolver_inner = Arc::new(NodeResolver::new(
+    fs.clone(),
+    npm_resolver.clone().into_npm_resolver(),
+  ));
+  Some(Arc::new(CliNodeResolver::new(
+    None,
+    fs,
+    node_resolver_inner,
+    npm_resolver.clone(),
+  )))
 }
 
 fn create_graph_resolver(

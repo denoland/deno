@@ -5094,11 +5094,9 @@ mod tests {
         .unwrap(),
       )
       .await;
-    let resolver = Arc::new(
-      LspResolver::default()
-        .with_new_config(&config, None, None)
-        .await,
-    );
+    let resolver = LspResolver::default()
+      .with_new_config(&config, None, None)
+      .await;
     StateSnapshot {
       project_version: 0,
       documents,
