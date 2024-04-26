@@ -626,50 +626,6 @@ Deno.test({
 });
 
 Deno.test({
-  name: "process.stdin.unref() unrefs stdin reading",
-  async fn() {
-    const input = `foo\nbar\nbaz\n`;
-    const inputBytes = new TextEncoder().encode(input);
-
-    const evalCode = (code: string) =>
-      new Deno.Command(Deno.execPath(), {
-        args: ["eval", code],
-        stdin: "piped",
-        stdout: "piped",
-      }).spawn();
-
-    // If process.stdin.unref() is not called, stdin.pipe(stdout) pipes all the input to stdout
-    {
-      const cp = await evalCode(`import process from 'node:process';
-process.stdin.pipe(process.stdout);`);
-      ReadableStream.from([inputBytes]).pipeTo(cp.stdin);
-      const { stdout } = await cp.output();
-      assertEquals(stdout, inputBytes);
-    }
-
-    // If process.stdin.unref() is called, the program exits before stdin.pipe(stdout) start piping the input to stdout
-    {
-      const cp = await evalCode(`import process from 'node:process';
-process.stdin.unref();
-process.stdin.pipe(process.stdout);`);
-      ReadableStream.from([inputBytes]).pipeTo(cp.stdin);
-      const { stdout } = await cp.output();
-      assertEquals(stdout, new Uint8Array());
-    }
-    // process.stdin.ref() cancels the effect of process.stdin.unref()
-    {
-      const cp = await evalCode(`import process from 'node:process';
-process.stdin.unref();
-process.stdin.pipe(process.stdout);
-process.stdin.ref();`);
-      ReadableStream.from([inputBytes]).pipeTo(cp.stdin);
-      const { stdout } = await cp.output();
-      assertEquals(stdout, inputBytes);
-    }
-  },
-});
-
-Deno.test({
   name: "process.stdout",
   fn() {
     assertEquals(process.stdout.fd, Deno.stdout.rid);

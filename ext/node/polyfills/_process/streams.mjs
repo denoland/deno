@@ -11,7 +11,7 @@ import {
   cursorTo,
   moveCursor,
 } from "ext:deno_node/internal/readline/callbacks.mjs";
-import { Readable, Writable } from "node:stream";
+import { Duplex, Readable, Writable } from "node:stream";
 import * as io from "ext:deno_io/12_io.js";
 import { guessHandleType } from "ext:deno_node/internal_binding/util.ts";
 
@@ -155,9 +155,27 @@ export const initStdin = (warmup = false) => {
     }
     case "PIPE":
     case "TCP": {
-      // TODO(kt3k): Replace this with new Socket({ fd, ... }) when fd option is available in Socket.
+      // For PIPE and TCP, `new Duplex()` should be replaced `new net.Socket()` if possible.
+      // There are two problems that need to be resolved.
+      // 1. Using them here introduces a circular dependency.
+      // 2. Creating a net.Socket() from a fd is not currently supported.
       // https://github.com/nodejs/node/blob/v18.12.1/lib/internal/bootstrap/switches/is_main_thread.js#L206
-      stdin = new readStream(fd);
+      // https://github.com/nodejs/node/blob/v18.12.1/lib/net.js#L329
+      stdin = new Duplex({
+        readable: stdinType === "TTY" ? undefined : true,
+        writable: stdinType === "TTY" ? undefined : false,
+        readableHighWaterMark: stdinType === "TTY" ? 0 : undefined,
+        allowHalfOpen: false,
+        emitClose: false,
+        autoDestroy: true,
+        decodeStrings: false,
+        read: _read,
+      });
+
+      if (stdinType !== "TTY") {
+        // Make sure the stdin can't be `.end()`-ed
+        stdin._writableState.ended = true;
+      }
       break;
     }
     default: {
