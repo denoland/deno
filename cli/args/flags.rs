@@ -1343,21 +1343,24 @@ fn clap_root() -> Command {
     .after_help(ENV_VARIABLES_HELP)
 }
 
-fn add_args(cmd: Command) -> Command {
-  cmd
-    .arg(
-      Arg::new("npm")
-        .long("npm")
-        .help("Look up packages in npm if unspecified")
-        .action(ArgAction::SetTrue),
-    )
-    .arg(
+fn add_args(cmd: Command, include_packages: bool) -> Command {
+  let cmd = cmd.arg(
+    Arg::new("npm")
+      .long("npm")
+      .help("Look up packages in npm if unspecified")
+      .action(ArgAction::SetTrue),
+  );
+  if include_packages {
+    cmd.arg(
       Arg::new("packages")
         .help("List of packages to add")
         .required(true)
         .num_args(1..)
         .action(ArgAction::Append),
     )
+  } else {
+    cmd
+  }
 }
 
 fn add_subcommand() -> Command {
@@ -1373,7 +1376,7 @@ You can add multiple dependencies at once:
   deno add @std/path @std/assert
 ",
     )
-    .defer(|cmd| add_args(cmd))
+    .defer(|cmd| add_args(cmd, true))
 }
 
 fn bench_subcommand() -> Command {
@@ -2072,7 +2075,7 @@ TypeScript compiler cache: Subdirectory containing TS compiler output.",
 fn install_args(cmd: Command, deno_future: bool) -> Command {
   let cmd = if deno_future {
     cmd.arg(
-      Arg::new("cmd")
+      Arg::new("packages")
         .required_if_eq("global", "true")
         .num_args(1..)
         .value_hint(ValueHint::FilePath),
@@ -2164,7 +2167,7 @@ These must be added to the path manually if required.")
     .defer(|cmd| {
       let cmd = runtime_args(cmd, true, true).arg(check_arg(true));
       let cmd = install_args(cmd, true);
-      add_args(cmd)
+      add_args(cmd, false)
     })
 }
 
