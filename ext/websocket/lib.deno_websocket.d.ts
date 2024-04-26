@@ -28,6 +28,7 @@ declare interface CloseEvent extends Event {
   readonly wasClean: boolean;
 }
 
+/** @category Web Sockets */
 declare var CloseEvent: {
   readonly prototype: CloseEvent;
   new (type: string, eventInitDict?: CloseEventInit): CloseEvent;
