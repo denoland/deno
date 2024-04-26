@@ -237,25 +237,26 @@ declare namespace Deno {
    * @category FFI
    * @tags unstable
    */
-  export type ToNativeResultType<T extends NativeResultType = NativeResultType> =
-    T extends NativeStructType ? BufferSource
-      : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
-        : T extends NativeI8Enum<infer U> ? U
-        : T extends NativeU16Enum<infer U> ? U
-        : T extends NativeI16Enum<infer U> ? U
-        : T extends NativeU32Enum<infer U> ? U
-        : T extends NativeI32Enum<infer U> ? U
-        : number
-      : T extends NativeBigIntType ? number | bigint
-      : T extends NativeBooleanType ? boolean
-      : T extends NativePointerType
-        ? T extends NativeTypedPointer<infer U> ? U | null : PointerValue
-      : T extends NativeFunctionType
-        ? T extends NativeTypedFunction<infer U> ? PointerObject<U> | null
-        : PointerValue
-      : T extends NativeBufferType ? BufferSource | null
-      : T extends NativeVoidType ? void
-      : never;
+  export type ToNativeResultType<
+    T extends NativeResultType = NativeResultType,
+  > = T extends NativeStructType ? BufferSource
+    : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
+      : T extends NativeI8Enum<infer U> ? U
+      : T extends NativeU16Enum<infer U> ? U
+      : T extends NativeI16Enum<infer U> ? U
+      : T extends NativeU32Enum<infer U> ? U
+      : T extends NativeI32Enum<infer U> ? U
+      : number
+    : T extends NativeBigIntType ? number | bigint
+    : T extends NativeBooleanType ? boolean
+    : T extends NativePointerType
+      ? T extends NativeTypedPointer<infer U> ? U | null : PointerValue
+    : T extends NativeFunctionType
+      ? T extends NativeTypedFunction<infer U> ? PointerObject<U> | null
+      : PointerValue
+    : T extends NativeBufferType ? BufferSource | null
+    : T extends NativeVoidType ? void
+    : never;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -308,25 +309,26 @@ declare namespace Deno {
    * @category FFI
    * @tags unstable
    */
-  export type FromNativeResultType<T extends NativeResultType = NativeResultType> =
-    T extends NativeStructType ? Uint8Array
-      : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
-        : T extends NativeI8Enum<infer U> ? U
-        : T extends NativeU16Enum<infer U> ? U
-        : T extends NativeI16Enum<infer U> ? U
-        : T extends NativeU32Enum<infer U> ? U
-        : T extends NativeI32Enum<infer U> ? U
-        : number
-      : T extends NativeBigIntType ? number | bigint
-      : T extends NativeBooleanType ? boolean
-      : T extends NativePointerType
-        ? T extends NativeTypedPointer<infer U> ? U | null : PointerValue
-      : T extends NativeBufferType ? PointerValue
-      : T extends NativeFunctionType
-        ? T extends NativeTypedFunction<infer U> ? PointerObject<U> | null
-        : PointerValue
-      : T extends NativeVoidType ? void
-      : never;
+  export type FromNativeResultType<
+    T extends NativeResultType = NativeResultType,
+  > = T extends NativeStructType ? Uint8Array
+    : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
+      : T extends NativeI8Enum<infer U> ? U
+      : T extends NativeU16Enum<infer U> ? U
+      : T extends NativeI16Enum<infer U> ? U
+      : T extends NativeU32Enum<infer U> ? U
+      : T extends NativeI32Enum<infer U> ? U
+      : number
+    : T extends NativeBigIntType ? number | bigint
+    : T extends NativeBooleanType ? boolean
+    : T extends NativePointerType
+      ? T extends NativeTypedPointer<infer U> ? U | null : PointerValue
+    : T extends NativeBufferType ? PointerValue
+    : T extends NativeFunctionType
+      ? T extends NativeTypedFunction<infer U> ? PointerObject<U> | null
+      : PointerValue
+    : T extends NativeVoidType ? void
+    : never;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -426,11 +428,11 @@ declare namespace Deno {
    *  @category FFI
    *  @tags unstable
    */
-  export type FromForeignFunction<T extends ForeignFunction> = T["parameters"] extends
-    readonly [] ? () => StaticForeignSymbolReturnType<T>
-    : (
-      ...args: ToNativeParameterTypes<T["parameters"]>
-    ) => StaticForeignSymbolReturnType<T>;
+  export type FromForeignFunction<T extends ForeignFunction> =
+    T["parameters"] extends readonly [] ? () => StaticForeignSymbolReturnType<T>
+      : (
+        ...args: ToNativeParameterTypes<T["parameters"]>
+      ) => StaticForeignSymbolReturnType<T>;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -455,11 +457,12 @@ declare namespace Deno {
    * @category FFI
    * @tags unstable
    */
-  export type StaticForeignLibraryInterface<T extends ForeignLibraryInterface> = {
-    [K in keyof T]: T[K]["optional"] extends true
-      ? StaticForeignSymbol<T[K]> | null
-      : StaticForeignSymbol<T[K]>;
-  };
+  export type StaticForeignLibraryInterface<T extends ForeignLibraryInterface> =
+    {
+      [K in keyof T]: T[K]["optional"] extends true
+        ? StaticForeignSymbol<T[K]> | null
+        : StaticForeignSymbol<T[K]>;
+    };
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -3206,9 +3209,11 @@ declare namespace Temporal {
    * @category Temporal
    * @tags unstable
    */
-  export type MonthCodeOrMonthAndYear = (YearOrEraAndEraYear & { month: number }) | {
-    monthCode: string;
-  };
+  export type MonthCodeOrMonthAndYear =
+    | (YearOrEraAndEraYear & { month: number })
+    | {
+      monthCode: string;
+    };
   /**
    * @category Temporal
    * @tags unstable
@@ -3907,7 +3912,7 @@ declare namespace Temporal {
    * @category Temporal
    * @tags unstable
    */
-export  type PlainTimeISOFields = {
+  export type PlainTimeISOFields = {
     isoHour: number;
     isoMinute: number;
     isoSecond: number;
