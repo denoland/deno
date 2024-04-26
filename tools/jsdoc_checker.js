@@ -1,6 +1,6 @@
 #!/usr/bin/env -S deno run --allow-read --allow-env --allow-sys
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-import { Project, Node, ts } from "npm:ts-morph@22.0.0";
+import { Node, Project, ts } from "npm:ts-morph@22.0.0";
 import { join, ROOT_PATH } from "./util.js";
 
 const libs = [
@@ -32,15 +32,21 @@ project.addSourceFilesAtPaths(libs);
 const unstableFiles = project.addSourceFilesAtPaths(unstableLibs);
 
 for (const file of project.getSourceFiles()) {
-  for (const node of file.getDescendants().filter((descendant) => Node.isExportable(descendant))) {
-    if (node.getKind() === ts.SyntaxKind.ModuleDeclaration && node.getName() === "Deno") {
+  for (
+    const node of file.getDescendants().filter((descendant) =>
+      Node.isExportable(descendant)
+    )
+  ) {
+    if (
+      node.getKind() === ts.SyntaxKind.ModuleDeclaration &&
+      node.getName() === "Deno"
+    ) {
       continue;
     }
 
     /*if (!(node.isExported() || node.hasDeclareKeyword())) {
       throw new Error(getErrorPrefix(node) + "declare or export keyword");
     }*/
-
 
     const jsDoc = node.getFirstChildIfKind(ts.SyntaxKind.JSDoc);
     if (!jsDoc) {
@@ -57,8 +63,13 @@ for (const file of project.getSourceFiles()) {
 
     if (unstableFiles.includes(file)) {
       const tagsTag = tags.find((tag) => tag.getTagName() === "tags");
-      if (!(tagsTag?.getComment() && tagsTag.getCommentText().includes("unstable"))) {
-        errors.push(getErrorPrefix(node) + "JSDoc @tags tag with value 'unstable'");
+      if (
+        !(tagsTag?.getComment() &&
+          tagsTag.getCommentText().includes("unstable"))
+      ) {
+        errors.push(
+          getErrorPrefix(node) + "JSDoc @tags tag with value 'unstable'",
+        );
       }
     }
   }
