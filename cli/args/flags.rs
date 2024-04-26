@@ -48,6 +48,7 @@ pub struct FileFlags {
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct AddFlags {
+  pub npm: bool,
   pub packages: Vec<String>,
 }
 
@@ -196,7 +197,7 @@ pub struct InstallFlagsGlobal {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum InstallKind {
   #[allow(unused)]
-  Local,
+  Local(Option<AddFlags>),
   Global(InstallFlagsGlobal),
 }
 
@@ -1338,6 +1339,19 @@ fn clap_root() -> Command {
     .after_help(ENV_VARIABLES_HELP)
 }
 
+fn add_subcommand_args() -> impl IntoIterator<Item = Arg> {
+  [
+    Arg::new("npm")
+      .help("Look up packages in npm if unspecified")
+      .action(ArgAction::SetTrue),
+    Arg::new("packages")
+      .help("List of packages to add")
+      .required(true)
+      .num_args(1..)
+      .action(ArgAction::Append),
+  ]
+}
+
 fn add_subcommand() -> Command {
   Command::new("add")
     .about("Add dependencies")
@@ -2053,6 +2067,15 @@ TypeScript compiler cache: Subdirectory containing TS compiler output.",
           .help("UNSTABLE: Outputs the information in JSON format")
           .action(ArgAction::SetTrue),
       ))
+}
+
+fn future_install_subcommand() -> Command {
+  Command::new("install")
+    .about("Install dependencies")
+    .long_about(
+        "Installs dependencies either in the local project or globally to a bin directory.
+        
+")
 }
 
 fn install_subcommand() -> Command {
@@ -3575,8 +3598,18 @@ fn unsafely_ignore_certificate_errors_arg() -> Arg {
 }
 
 fn add_parse(flags: &mut Flags, matches: &mut ArgMatches) {
-  let packages = matches.remove_many::<String>("packages").unwrap().collect();
-  flags.subcommand = DenoSubcommand::Add(AddFlags { packages });
+  flags.subcommand = DenoSubcommand::Add(add_parse_inner(matches, None));
+}
+
+fn add_parse_inner(
+  matches: &mut ArgMatches,
+  packages: Option<clap::parser::Values<String>>,
+) -> AddFlags {
+  let npm: bool = matches.get_flag("npm");
+  let packages = packages
+    .unwrap_or_else(|| matches.remove_many::<String>("packages").unwrap())
+    .collect();
+  AddFlags { packages, npm }
 }
 
 fn bench_parse(flags: &mut Flags, matches: &mut ArgMatches) {
@@ -3915,9 +3948,12 @@ fn install_parse(flags: &mut Flags, matches: &mut ArgMatches) {
       }),
     });
   } else {
+    let local_flags = matches
+      .remove_many("packages")
+      .map(|packages| add_parse_inner(matches, Some(packages)));
     flags.subcommand = DenoSubcommand::Install(InstallFlags {
       global,
-      kind: InstallKind::Local,
+      kind: InstallKind::Local(local_flags),
     })
   }
 }
@@ -9634,6 +9670,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Add(AddFlags {
           packages: svec!["@david/which"],
+          ..Default::default()
         }),
         ..Flags::default()
       }
@@ -9645,6 +9682,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Add(AddFlags {
           packages: svec!["@david/which", "@luca/hello"],
+          ..Default::default()
         }),
         ..Flags::default()
       }

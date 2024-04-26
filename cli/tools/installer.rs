@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::resolve_no_prompt;
+use crate::args::AddFlags;
 use crate::args::CaData;
 use crate::args::Flags;
 use crate::args::InstallFlags;
@@ -253,10 +254,15 @@ pub fn uninstall(uninstall_flags: UninstallFlags) -> Result<(), AnyError> {
   Ok(())
 }
 
-async fn install_local(flags: Flags) -> Result<(), AnyError> {
+async fn install_local(
+  flags: Flags,
+  maybe_add_flags: Option<AddFlags>,
+) -> Result<(), AnyError> {
+  if let Some(add_flags) = maybe_add_flags {
+    return super::registry::add(flags, add_flags).await;
+  }
   let factory = CliFactory::from_flags(flags)?;
   let npm_resolver = factory.npm_resolver().await?;
-
   if let Some(npm_resolver) = npm_resolver.as_managed() {
     npm_resolver.ensure_top_level_package_json_install().await?;
     npm_resolver.resolve_pending().await?;
@@ -274,7 +280,9 @@ pub async fn install_command(
 
   let install_flags_global = match install_flags.kind {
     InstallKind::Global(flags) => flags,
-    InstallKind::Local => return install_local(flags).await,
+    InstallKind::Local(maybe_add_flags) => {
+      return install_local(flags, maybe_add_flags).await
+    }
   };
 
   // ensure the module is cached
