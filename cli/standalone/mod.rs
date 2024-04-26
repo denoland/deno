@@ -342,7 +342,8 @@ pub async fn run(
   let root_path = std::env::temp_dir()
     .join(format!("deno-compile-{}", current_exe_name))
     .join("node_modules");
-  let npm_cache_dir = NpmCacheDir::new(root_path.clone());
+  let npm_cache_dir =
+    NpmCacheDir::new(root_path.clone(), vec![npm_registry_url.clone()]);
   let npm_global_cache_dir = npm_cache_dir.get_cache_location();
   let cache_setting = CacheSetting::Only;
   let (package_json_deps_provider, fs, npm_resolver, maybe_vfs_root) =

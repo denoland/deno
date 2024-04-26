@@ -96,7 +96,7 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
   ) -> Result<PathBuf, AnyError> {
     let Some(referrer_pkg_id) = self
       .cache
-      .resolve_package_folder_id_from_specifier(referrer, &self.registry_url)
+      .resolve_package_folder_id_from_specifier(referrer)
     else {
       bail!("could not find npm package for '{}'", referrer);
     };
@@ -121,10 +121,9 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
     specifier: &ModuleSpecifier,
   ) -> Result<Option<NpmPackageCacheFolderId>, AnyError> {
     Ok(
-      self.cache.resolve_package_folder_id_from_specifier(
-        specifier,
-        &self.registry_url,
-      ),
+      self
+        .cache
+        .resolve_package_folder_id_from_specifier(specifier),
     )
   }
 

@@ -177,7 +177,10 @@ fn create_inner(
 
 fn create_cache(options: &CliNpmResolverManagedCreateOptions) -> Arc<NpmCache> {
   Arc::new(NpmCache::new(
-    NpmCacheDir::new(options.npm_global_cache_dir.clone()),
+    NpmCacheDir::new(
+      options.npm_global_cache_dir.clone(),
+      options.npmrc.get_all_known_registries_urls(),
+    ),
     options.cache_setting.clone(),
     options.fs.clone(),
     options.http_client.clone(),

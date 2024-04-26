@@ -210,11 +210,10 @@ impl NpmCache {
   pub fn resolve_package_folder_id_from_specifier(
     &self,
     specifier: &ModuleSpecifier,
-    registry_url: &Url,
   ) -> Option<NpmPackageCacheFolderId> {
     self
       .cache_dir
-      .resolve_package_folder_id_from_specifier(specifier, registry_url)
+      .resolve_package_folder_id_from_specifier(specifier)
   }
 }
 
