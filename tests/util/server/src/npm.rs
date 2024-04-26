@@ -15,22 +15,34 @@ use tar::Builder;
 
 use crate::testdata_path;
 
-pub static CUSTOM_NPM_PACKAGE_CACHE: Lazy<CustomNpmPackageCache> =
+pub const DENOTEST_SCOPE_NAME: &str = "@denotest";
+
+pub static PUBLIC_TEST_NPM_REGISTRY: Lazy<TestNpmRegistry> = Lazy::new(|| {
+  TestNpmRegistry::new(
+    NpmRegistryKind::Public,
+    &format!("http://localhost:{}", crate::servers::PORT),
+    "/npm/registry",
+  )
+});
+
+// TODO: rewrite to use config
+pub static PRIVATE_TEST_NPM_REGISTRY_1: Lazy<TestNpmRegistry> =
   Lazy::new(|| {
-    CustomNpmPackageCache::new(format!(
-      "http://localhost:{}/npm/registry",
-      crate::servers::PORT,
-    ))
+    TestNpmRegistry::new(
+      NpmRegistryKind::Private,
+      &format!(
+        "http://localhost:{}",
+        crate::servers::PRIVATE_NPM_REGISTRY_1_PORT
+      ),
+      // TODO: change it
+      "/npm/registry",
+    )
   });
 
-pub static CUSTOM_NPM_PACKAGE_CACHE_FOR_PRIVATE_REGISTRY: Lazy<
-  CustomNpmPackageCache,
-> = Lazy::new(|| {
-  CustomNpmPackageCache::new(format!(
-    "http://localhost:{}/npm/registry",
-    crate::servers::PRIVATE_NPM_REGISTRY_1_PORT
-  ))
-});
+pub enum NpmRegistryKind {
+  Public,
+  Private,
+}
 
 struct CustomNpmPackage {
   pub registry_file: String,
@@ -39,19 +51,32 @@ struct CustomNpmPackage {
 
 /// Creates tarballs and a registry json file for npm packages
 /// in the `testdata/npm/registry/@denotest` directory.
-pub struct CustomNpmPackageCache {
-  registry_url: String,
+pub struct TestNpmRegistry {
+  #[allow(unused)]
+  kind: NpmRegistryKind,
+  // Eg. http://localhost:4544/
+  hostname: String,
+  // Eg. /registry/npm/
+  path: String,
+
   cache: Mutex<HashMap<String, CustomNpmPackage>>,
 }
 
-impl CustomNpmPackageCache {
-  pub fn new(registry_url: String) -> Self {
-    let registry_url = registry_url
-      .strip_suffix('/')
-      .unwrap_or(&registry_url)
-      .to_string();
+impl TestNpmRegistry {
+  pub fn new(kind: NpmRegistryKind, hostname: &str, path: &str) -> Self {
+    let hostname = hostname.strip_suffix('/').unwrap_or(hostname).to_string();
+    assert!(
+      !path.is_empty(),
+      "npm test registry must have a non-empty path"
+    );
+    let stripped = path.strip_prefix('/').unwrap_or(path);
+    let stripped = path.strip_suffix('/').unwrap_or(stripped);
+    let path = format!("/{}/", stripped);
+
     Self {
-      registry_url,
+      hostname,
+      path,
+      kind,
       cache: Default::default(),
     }
   }
@@ -79,7 +104,7 @@ impl CustomNpmPackageCache {
   ) -> Result<Option<TResult>> {
     // it's ok if multiple threads race here as they will do the same work twice
     if !self.cache.lock().contains_key(package_name) {
-      match get_npm_package(package_name, &self.registry_url)? {
+      match get_npm_package(&self.hostname, &self.path, package_name)? {
         Some(package) => {
           self.cache.lock().insert(package_name.to_string(), package);
         }
@@ -88,11 +113,35 @@ impl CustomNpmPackageCache {
     }
     Ok(self.cache.lock().get(package_name).map(func))
   }
+
+  pub fn strip_registry_path_prefix_from_uri_path<'s>(
+    &self,
+    uri_path: &'s str,
+  ) -> Option<&'s str> {
+    uri_path.strip_prefix(&self.path)
+  }
+
+  pub fn strip_denotest_prefix_from_uri_path<'s>(
+    &self,
+    uri_path: &'s str,
+  ) -> Option<&'s str> {
+    let prefix1 = format!("{}{}/", self.path, DENOTEST_SCOPE_NAME);
+    let prefix2 = format!("{}{}%2f", self.path, DENOTEST_SCOPE_NAME);
+
+    uri_path
+      .strip_prefix(&prefix1)
+      .or_else(|| uri_path.strip_prefix(&prefix2))
+  }
+
+  pub fn uri_path_starts_with_registry_path(&self, uri_path: &str) -> bool {
+    uri_path.starts_with(&self.path)
+  }
 }
 
 fn get_npm_package(
+  registry_hostname: &str,
+  registry_path: &str,
   package_name: &str,
-  registry_url: &str,
 ) -> Result<Option<CustomNpmPackage>> {
   let package_folder = testdata_path().join("npm/registry").join(package_name);
   if !package_folder.exists() {
@@ -141,7 +190,8 @@ fn get_npm_package(
     dist.insert("shasum".to_string(), "dummy-value".into());
     dist.insert(
       "tarball".to_string(),
-      format!("{registry_url}/{package_name}/{version}.tgz").into(),
+      format!("{registry_hostname}{registry_path}{package_name}/{version}.tgz")
+        .into(),
     );
 
     tarballs.insert(version.clone(), tarball_bytes);
