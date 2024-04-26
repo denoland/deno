@@ -18,6 +18,7 @@ mod js;
 mod node;
 mod npm;
 mod resolver;
+mod task_runner;
 mod util;
 mod version;
 mod worker;

@@ -537,7 +537,7 @@ async fn sync_resolution_with_fs(
     let script_names = ["preinstall", "install", "postinstall"];
     let scripts = script_names
       .iter()
-      .filter_map(|s| package.scripts.get(*s).map(|value| (s, value)))
+      .filter_map(|name| package.scripts.get(*name).map(|value| (name, value)))
       .collect::<Vec<_>>();
     if !scripts.is_empty() {
       log::warn!(
@@ -545,7 +545,7 @@ async fn sync_resolution_with_fs(
         deno_terminal::colors::yellow("Warning"), 
         deno_terminal::colors::green(format!("{}", package.id.nv.name)), 
       );
-      for (name, script) in scripts {
+      for (name, script) in &scripts {
         log::warn!("  {}: {}", name, deno_terminal::colors::gray(script));
       }
       // TODO: add a prompt here to ask if we should run the script.
@@ -567,7 +567,18 @@ async fn sync_resolution_with_fs(
           }
         }
       }
-      if should_run {}
+      if should_run {
+        for (task_name, script) in scripts {
+          crate::task_runner::run_task(
+            task_name,
+            script,
+            /* cwd */ &package_path,
+            Default::default(), // todo
+            Some(&root_node_modules_dir_path),
+          )
+          .await?;
+        }
+      }
     }
   }
 

@@ -16,9 +16,8 @@ use crate::args::TaskFlags;
 use crate::colors;
 use crate::factory::CliFactory;
 use crate::npm::CliNpmResolver;
+use crate::task_runner;
 use crate::util::fs::canonicalize_path;
-
-pub mod runner;
 
 pub async fn execute_script(
   flags: Flags,
@@ -62,7 +61,7 @@ pub async fn execute_script(
     };
 
     let npm_commands =
-      runner::resolve_npm_commands(npm_resolver.as_ref(), node_resolver)?;
+      task_runner::resolve_npm_commands(npm_resolver.as_ref(), node_resolver)?;
     run_task(
       task_name,
       script,
@@ -117,7 +116,7 @@ pub async fn execute_script(
       format!("post{}", task_name),
     ];
     let npm_commands =
-      runner::resolve_npm_commands(npm_resolver.as_ref(), node_resolver)?;
+      task_runner::resolve_npm_commands(npm_resolver.as_ref(), node_resolver)?;
     for task_name in task_names {
       if let Some(script) = package_json_scripts.get(&task_name) {
         let exit_code = run_task(
@@ -153,7 +152,7 @@ async fn run_task(
 ) -> Result<i32, AnyError> {
   let script = get_script_with_args(script, cli_options);
   output_task(task_name, &script);
-  runner::run_task(
+  task_runner::run_task(
     task_name,
     &script,
     cwd,

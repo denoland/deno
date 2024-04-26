@@ -20,6 +20,7 @@ mod npm;
 mod ops;
 mod resolver;
 mod standalone;
+mod task_runner;
 mod tools;
 mod tsc;
 mod util;
