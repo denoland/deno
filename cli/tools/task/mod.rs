@@ -1,15 +1,22 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::collections::HashMap;
+use std::path::Path;
+use std::path::PathBuf;
+use std::rc::Rc;
+
+use deno_core::anyhow::bail;
+use deno_core::error::AnyError;
+use deno_task_shell::ShellCommand;
+use indexmap::IndexMap;
+
+use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::TaskFlags;
 use crate::colors;
 use crate::factory::CliFactory;
+use crate::npm::CliNpmResolver;
 use crate::util::fs::canonicalize_path;
-
-use deno_core::anyhow::bail;
-use deno_core::error::AnyError;
-use indexmap::IndexMap;
-use std::path::PathBuf;
 
 pub mod runner;
 
@@ -56,7 +63,7 @@ pub async fn execute_script(
 
     let npm_commands =
       runner::resolve_npm_commands(npm_resolver.as_ref(), node_resolver)?;
-    runner::run_task(
+    run_task(
       task_name,
       script,
       &cwd,
@@ -113,7 +120,7 @@ pub async fn execute_script(
       runner::resolve_npm_commands(npm_resolver.as_ref(), node_resolver)?;
     for task_name in task_names {
       if let Some(script) = package_json_scripts.get(&task_name) {
-        let exit_code = runner::run_task(
+        let exit_code = run_task(
           &task_name,
           script,
           &cwd,
@@ -134,6 +141,35 @@ pub async fn execute_script(
     print_available_tasks(&tasks_config, &package_json_scripts);
     Ok(1)
   }
+}
+
+async fn run_task(
+  task_name: &str,
+  script: &str,
+  cwd: &Path,
+  cli_options: &CliOptions,
+  npm_commands: HashMap<String, Rc<dyn ShellCommand>>,
+  npm_resolver: &dyn CliNpmResolver,
+) -> Result<i32, AnyError> {
+  let script = get_script_with_args(script, cli_options);
+  output_task(task_name, &script);
+  runner::run_task(
+    task_name,
+    &script,
+    cwd,
+    npm_commands,
+    npm_resolver.root_node_modules_path().map(|p| p.as_path()),
+  )
+  .await
+}
+
+fn output_task(task_name: &str, script: &str) {
+  log::info!(
+    "{} {} {}",
+    colors::green("Task"),
+    colors::cyan(&task_name),
+    script,
+  );
 }
 
 fn print_available_tasks(
@@ -179,4 +215,17 @@ fn print_available_tasks(
   if !had_task {
     eprintln!("  {}", colors::red("No tasks found in configuration file"));
   }
+}
+
+fn get_script_with_args(script: &str, options: &CliOptions) -> String {
+  let additional_args = options
+    .argv()
+    .iter()
+    // surround all the additional arguments in double quotes
+    // and sanitize any command substitution
+    .map(|a| format!("\"{}\"", a.replace('"', "\\\"").replace('$', "\\$")))
+    .collect::<Vec<_>>()
+    .join(" ");
+  let script = format!("{script} {additional_args}");
+  script.trim().to_owned()
 }

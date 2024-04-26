@@ -1,15 +1,10 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::args::CliOptions;
-use crate::args::Flags;
-use crate::args::TaskFlags;
-use crate::colors;
-use crate::factory::CliFactory;
-use crate::npm::CliNpmResolver;
-use crate::npm::InnerCliNpmResolverRef;
-use crate::npm::ManagedCliNpmResolver;
-use crate::util::fs::canonicalize_path;
-use deno_core::anyhow::bail;
+use std::collections::HashMap;
+use std::path::Path;
+use std::path::PathBuf;
+use std::rc::Rc;
+
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures;
@@ -19,69 +14,42 @@ use deno_semver::package::PackageNv;
 use deno_task_shell::ExecuteResult;
 use deno_task_shell::ShellCommand;
 use deno_task_shell::ShellCommandContext;
-use indexmap::IndexMap;
 use lazy_regex::Lazy;
 use regex::Regex;
-use std::collections::HashMap;
-use std::path::Path;
-use std::path::PathBuf;
-use std::rc::Rc;
 use tokio::task::LocalSet;
+
+use crate::npm::CliNpmResolver;
+use crate::npm::InnerCliNpmResolverRef;
+use crate::npm::ManagedCliNpmResolver;
 
 pub async fn run_task(
   task_name: &str,
   script: &str,
   cwd: &Path,
-  cli_options: &CliOptions,
   npm_commands: HashMap<String, Rc<dyn ShellCommand>>,
-  npm_resolver: &dyn CliNpmResolver,
+  root_node_modules_path: Option<&Path>,
 ) -> Result<i32, AnyError> {
-  let script = get_script_with_args(script, cli_options);
-  output_task(task_name, &script);
-  let seq_list = deno_task_shell::parser::parse(&script)
+  let seq_list = deno_task_shell::parser::parse(script)
     .with_context(|| format!("Error parsing script '{}'.", task_name))?;
-  let env_vars = match npm_resolver.root_node_modules_path() {
-    Some(dir_path) => collect_env_vars_with_node_modules_dir(dir_path),
-    None => collect_env_vars(),
-  };
+  let env_vars = collect_env_vars_with_node_modules_dir(root_node_modules_path);
   let local = LocalSet::new();
   let future = deno_task_shell::execute(seq_list, env_vars, cwd, npm_commands);
   Ok(local.run_until(future).await)
 }
 
-fn get_script_with_args(script: &str, options: &CliOptions) -> String {
-  let additional_args = options
-    .argv()
-    .iter()
-    // surround all the additional arguments in double quotes
-    // and sanitize any command substitution
-    .map(|a| format!("\"{}\"", a.replace('"', "\\\"").replace('$', "\\$")))
-    .collect::<Vec<_>>()
-    .join(" ");
-  let script = format!("{script} {additional_args}");
-  script.trim().to_owned()
-}
-
-fn output_task(task_name: &str, script: &str) {
-  log::info!(
-    "{} {} {}",
-    colors::green("Task"),
-    colors::cyan(&task_name),
-    script,
-  );
-}
-
 fn collect_env_vars_with_node_modules_dir(
-  node_modules_dir_path: &Path,
+  node_modules_dir_path: Option<&Path>,
 ) -> HashMap<String, String> {
   let mut env_vars = collect_env_vars();
-  prepend_to_path(
-    &mut env_vars,
-    node_modules_dir_path
-      .join(".bin")
-      .to_string_lossy()
-      .to_string(),
-  );
+  if let Some(node_modules_dir_path) = node_modules_dir_path {
+    prepend_to_path(
+      &mut env_vars,
+      node_modules_dir_path
+        .join(".bin")
+        .to_string_lossy()
+        .to_string(),
+    );
+  }
   env_vars
 }
 
