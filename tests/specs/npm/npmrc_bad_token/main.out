@@ -1,0 +1,4 @@
+Download http://127.0.0.1:4252/npm/registry/@denotest/esm-basic
+Download http://127.0.0.1:4252/npm/registry/@denotest/esm-basic
+error: Error getting response at http://127.0.0.1:4252/npm/registry/@denotest/esm-basic for package "@denotest/esm-basic": Bad response: 401
+
