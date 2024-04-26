@@ -16,7 +16,21 @@ use tar::Builder;
 use crate::testdata_path;
 
 pub static CUSTOM_NPM_PACKAGE_CACHE: Lazy<CustomNpmPackageCache> =
-  Lazy::new(CustomNpmPackageCache::default);
+  Lazy::new(|| {
+    CustomNpmPackageCache::new(format!(
+      "http://localhost:{}/npm/registry",
+      crate::servers::PORT,
+    ))
+  });
+
+pub static CUSTOM_NPM_PACKAGE_CACHE_FOR_PRIVATE_REGISTRY: Lazy<
+  CustomNpmPackageCache,
+> = Lazy::new(|| {
+  CustomNpmPackageCache::new(format!(
+    "http://localhost:{}/npm/registry",
+    crate::servers::PRIVATE_NPM_REGISTRY_1_PORT
+  ))
+});
 
 struct CustomNpmPackage {
   pub registry_file: String,
@@ -25,10 +39,23 @@ struct CustomNpmPackage {
 
 /// Creates tarballs and a registry json file for npm packages
 /// in the `testdata/npm/registry/@denotest` directory.
-#[derive(Default)]
-pub struct CustomNpmPackageCache(Mutex<HashMap<String, CustomNpmPackage>>);
+pub struct CustomNpmPackageCache {
+  registry_url: String,
+  cache: Mutex<HashMap<String, CustomNpmPackage>>,
+}
 
 impl CustomNpmPackageCache {
+  pub fn new(registry_url: String) -> Self {
+    let registry_url = registry_url
+      .strip_suffix('/')
+      .unwrap_or(&registry_url)
+      .to_string();
+    Self {
+      registry_url,
+      cache: Default::default(),
+    }
+  }
+
   pub fn tarball_bytes(
     &self,
     name: &str,
@@ -51,19 +78,22 @@ impl CustomNpmPackageCache {
     func: impl FnOnce(&CustomNpmPackage) -> TResult,
   ) -> Result<Option<TResult>> {
     // it's ok if multiple threads race here as they will do the same work twice
-    if !self.0.lock().contains_key(package_name) {
-      match get_npm_package(package_name)? {
+    if !self.cache.lock().contains_key(package_name) {
+      match get_npm_package(package_name, &self.registry_url)? {
         Some(package) => {
-          self.0.lock().insert(package_name.to_string(), package);
+          self.cache.lock().insert(package_name.to_string(), package);
         }
         None => return Ok(None),
       }
     }
-    Ok(self.0.lock().get(package_name).map(func))
+    Ok(self.cache.lock().get(package_name).map(func))
   }
 }
 
-fn get_npm_package(package_name: &str) -> Result<Option<CustomNpmPackage>> {
+fn get_npm_package(
+  package_name: &str,
+  registry_url: &str,
+) -> Result<Option<CustomNpmPackage>> {
   let package_folder = testdata_path().join("npm/registry").join(package_name);
   if !package_folder.exists() {
     return Ok(None);
@@ -111,10 +141,7 @@ fn get_npm_package(package_name: &str) -> Result<Option<CustomNpmPackage>> {
     dist.insert("shasum".to_string(), "dummy-value".into());
     dist.insert(
       "tarball".to_string(),
-      format!(
-        "http://localhost:4545/npm/registry/{package_name}/{version}.tgz"
-      )
-      .into(),
+      format!("{registry_url}/{package_name}/{version}.tgz").into(),
     );
 
     tarballs.insert(version.clone(), tarball_bytes);
