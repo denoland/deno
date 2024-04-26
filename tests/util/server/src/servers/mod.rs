@@ -50,8 +50,7 @@ use hyper_utils::ServerOptions;
 
 use super::https::get_tls_listener_stream;
 use super::https::SupportedHttpVersions;
-use super::npm::CUSTOM_NPM_PACKAGE_CACHE;
-use super::npm::CUSTOM_NPM_PACKAGE_CACHE_FOR_PRIVATE_REGISTRY;
+use super::npm;
 use super::std_path;
 use super::testdata_path;
 
@@ -1084,26 +1083,30 @@ async fn main_server(
       );
     }
     _ => {
+      let uri_path = req.uri().path();
       let mut file_path = testdata_path().to_path_buf();
-      file_path.push(&req.uri().path()[1..].replace("%2f", "/"));
+      file_path.push(&uri_path[1..].replace("%2f", "/"));
       if let Ok(file) = tokio::fs::read(&file_path).await {
-        let file_resp = custom_headers(req.uri().path(), file);
+        let file_resp = custom_headers(uri_path, file);
         return Ok(file_resp);
       }
 
       // serve npm registry files
-      if let Some(resp) =
-        try_serve_npm_registry(&req, file_path.clone(), NpmRegistryKind::Public)
-          .await
+      if let Some(resp) = try_serve_npm_registry(
+        uri_path,
+        file_path.clone(),
+        &npm::PUBLIC_TEST_NPM_REGISTRY,
+      )
+      .await
       {
         return resp;
-      } else if let Some(suffix) = req.uri().path().strip_prefix("/deno_std/") {
+      } else if let Some(suffix) = uri_path.strip_prefix("/deno_std/") {
         let file_path = std_path().join(suffix);
         if let Ok(file) = tokio::fs::read(&file_path).await {
-          let file_resp = custom_headers(req.uri().path(), file);
+          let file_resp = custom_headers(uri_path, file);
           return Ok(file_resp);
         }
-      } else if let Some(suffix) = req.uri().path().strip_prefix("/sleep/") {
+      } else if let Some(suffix) = uri_path.strip_prefix("/sleep/") {
         let duration = suffix.parse::<u64>().unwrap();
         tokio::time::sleep(Duration::from_millis(duration)).await;
         return Response::builder()
@@ -1122,11 +1125,6 @@ async fn main_server(
 }
 
 const PRIVATE_NPM_REGISTRY_AUTH_TOKEN: &str = "private-reg-token";
-
-enum NpmRegistryKind {
-  Public,
-  Private,
-}
 
 async fn wrap_private_npm_registry1(port: u16) {
   let npm_registry_addr = SocketAddr::from(([127, 0, 0, 1], port));
@@ -1158,11 +1156,16 @@ async fn private_npm_registry1(
     );
   }
 
-  let mut file_path = testdata_path().to_path_buf();
-  file_path.push(&req.uri().path()[1..].replace("%2f", "/"));
+  let uri_path = req.uri().path();
+  let mut testdata_file_path = testdata_path().to_path_buf();
+  testdata_file_path.push(&uri_path[1..].replace("%2f", "/"));
 
-  if let Some(resp) =
-    try_serve_npm_registry(&req, file_path, NpmRegistryKind::Private).await
+  if let Some(resp) = try_serve_npm_registry(
+    uri_path,
+    testdata_file_path,
+    &npm::PRIVATE_TEST_NPM_REGISTRY_1,
+  )
+  .await
   {
     return resp;
   }
@@ -1175,26 +1178,25 @@ async fn private_npm_registry1(
 
 fn handle_custom_npm_registry_path(
   path: &str,
-  registry_kind: NpmRegistryKind,
+  test_npm_registry: &npm::TestNpmRegistry,
 ) -> Result<Option<Response<UnsyncBoxBody<Bytes, Infallible>>>, anyhow::Error> {
   let parts = path
     .split('/')
     .filter(|p| !p.is_empty())
     .collect::<Vec<_>>();
-  let cache = match registry_kind {
-    NpmRegistryKind::Public => &CUSTOM_NPM_PACKAGE_CACHE,
-    NpmRegistryKind::Private => &CUSTOM_NPM_PACKAGE_CACHE_FOR_PRIVATE_REGISTRY,
-  };
+
   let package_name = format!("@denotest/{}", parts[0]);
   if parts.len() == 2 {
-    if let Some(file_bytes) =
-      cache.tarball_bytes(&package_name, parts[1].trim_end_matches(".tgz"))?
+    if let Some(file_bytes) = test_npm_registry
+      .tarball_bytes(&package_name, parts[1].trim_end_matches(".tgz"))?
     {
       let file_resp = custom_headers("file.tgz", file_bytes);
       return Ok(Some(file_resp));
     }
   } else if parts.len() == 1 {
-    if let Some(registry_file) = cache.registry_file(&package_name)? {
+    if let Some(registry_file) =
+      test_npm_registry.registry_file(&package_name)?
+    {
       let file_resp = custom_headers("registry.json", registry_file);
       return Ok(Some(file_resp));
     }
@@ -1210,19 +1212,16 @@ fn should_download_npm_packages() -> bool {
 }
 
 async fn try_serve_npm_registry(
-  req: &Request<hyper::body::Incoming>,
-  mut file_path: PathBuf,
-  registry_kind: NpmRegistryKind,
+  uri_path: &str,
+  mut testdata_file_path: PathBuf,
+  test_npm_registry: &npm::TestNpmRegistry,
 ) -> Option<Result<Response<UnsyncBoxBody<Bytes, Infallible>>, anyhow::Error>> {
-  if let Some(suffix) = req
-    .uri()
-    .path()
-    .strip_prefix("/npm/registry/@denotest/")
-    .or_else(|| req.uri().path().strip_prefix("/npm/registry/@denotest%2f"))
+  if let Some(suffix) =
+    test_npm_registry.strip_denotest_prefix_from_uri_path(uri_path)
   {
-    // serve all requests to /npm/registry/@deno using the file system
+    // serve all requests to the `DENOTEST_SCOPE_NAME` using the file system
     // at that path
-    match handle_custom_npm_registry_path(suffix, registry_kind) {
+    match handle_custom_npm_registry_path(suffix, test_npm_registry) {
       Ok(Some(response)) => return Some(Ok(response)),
       Ok(None) => {} // ignore, not found
       Err(err) => {
@@ -1234,18 +1233,23 @@ async fn try_serve_npm_registry(
         );
       }
     }
-  } else if req.uri().path().starts_with("/npm/registry/") {
+  } else if test_npm_registry.uri_path_starts_with_registry_path(uri_path) {
     // otherwise, serve based on registry.json and tgz files
-    let is_tarball = req.uri().path().ends_with(".tgz");
+    let is_tarball = uri_path.ends_with(".tgz");
     if !is_tarball {
-      file_path.push("registry.json");
+      testdata_file_path.push("registry.json");
     }
-    if let Ok(file) = tokio::fs::read(&file_path).await {
-      let file_resp = custom_headers(req.uri().path(), file);
+    if let Ok(file) = tokio::fs::read(&testdata_file_path).await {
+      let file_resp = custom_headers(uri_path, file);
       return Some(Ok(file_resp));
     } else if should_download_npm_packages() {
-      if let Err(err) =
-        download_npm_registry_file(req.uri(), &file_path, is_tarball).await
+      if let Err(err) = download_npm_registry_file(
+        test_npm_registry,
+        uri_path,
+        &testdata_file_path,
+        is_tarball,
+      )
+      .await
       {
         return Some(
           Response::builder()
@@ -1256,8 +1260,8 @@ async fn try_serve_npm_registry(
       };
 
       // serve the file
-      if let Ok(file) = tokio::fs::read(&file_path).await {
-        let file_resp = custom_headers(req.uri().path(), file);
+      if let Ok(file) = tokio::fs::read(&testdata_file_path).await {
+        let file_resp = custom_headers(uri_path, file);
         return Some(Ok(file_resp));
       }
     }
@@ -1266,14 +1270,32 @@ async fn try_serve_npm_registry(
   None
 }
 
+// Replaces URL of public npm registry (`https://registry.npmjs.org/`) with
+// the test registry (`http://localhost:4545/npm/registry/`).
+//
+// These strings end up in `registry.json` files for each downloaded package
+// that are stored in `tests/testdata/` directory.
+//
+// If another npm test registry wants to use them, it should replace
+// these values with appropriate URL when serving.
+fn replace_default_npm_registry_url_with_test_npm_registry_url(
+  str_: String,
+  package_name: &str,
+) -> String {
+  str_.replace(
+    &format!("https://registry.npmjs.org/{package_name}/-/"),
+    &format!("http://localhost:4545/npm/registry/{package_name}/"),
+  )
+}
+
 async fn download_npm_registry_file(
-  uri: &hyper::Uri,
-  file_path: &PathBuf,
+  test_npm_registry: &npm::TestNpmRegistry,
+  uri_path: &str,
+  testdata_file_path: &PathBuf,
   is_tarball: bool,
 ) -> Result<(), anyhow::Error> {
-  let url_parts = uri
-    .path()
-    .strip_prefix("/npm/registry/")
+  let url_parts = test_npm_registry
+    .strip_registry_path_prefix_from_uri_path(uri_path)
     .unwrap()
     .split('/')
     .collect::<Vec<_>>();
@@ -1283,7 +1305,7 @@ async fn download_npm_registry_file(
     url_parts.into_iter().take(1).collect::<Vec<_>>().join("/")
   };
   let url = if is_tarball {
-    let file_name = file_path.file_name().unwrap().to_string_lossy();
+    let file_name = testdata_file_path.file_name().unwrap().to_string_lossy();
     format!("https://registry.npmjs.org/{package_name}/-/{file_name}")
   } else {
     format!("https://registry.npmjs.org/{package_name}")
@@ -1294,16 +1316,14 @@ async fn download_npm_registry_file(
   let bytes = if is_tarball {
     bytes.to_vec()
   } else {
-    String::from_utf8(bytes.to_vec())
-      .unwrap()
-      .replace(
-        &format!("https://registry.npmjs.org/{package_name}/-/"),
-        &format!("http://localhost:4545/npm/registry/{package_name}/"),
-      )
-      .into_bytes()
+    replace_default_npm_registry_url_with_test_npm_registry_url(
+      String::from_utf8(bytes.to_vec()).unwrap(),
+      &package_name,
+    )
+    .into_bytes()
   };
-  std::fs::create_dir_all(file_path.parent().unwrap())?;
-  std::fs::write(file_path, bytes)?;
+  std::fs::create_dir_all(testdata_file_path.parent().unwrap())?;
+  std::fs::write(testdata_file_path, bytes)?;
   Ok(())
 }
 
