@@ -3,6 +3,7 @@
 //! Code for local node_modules resolution.
 
 use std::borrow::Cow;
+use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -11,6 +12,7 @@ use std::io::Write;
 use std::os::unix::fs::symlink;
 use std::path::Path;
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use crate::cache::CACHE_PERM;
@@ -131,7 +133,7 @@ impl LocalNpmPackageResolver {
   }
 }
 
-#[async_trait]
+#[async_trait(?Send)]
 impl NpmPackageFsResolver for LocalNpmPackageResolver {
   fn root_dir_url(&self) -> &Url {
     &self.root_node_modules_url
@@ -298,8 +300,8 @@ async fn sync_resolution_with_fs(
     Vec::with_capacity(package_partitions.packages.len());
   let mut newest_packages_by_name: HashMap<&String, &NpmResolutionPackage> =
     HashMap::with_capacity(package_partitions.packages.len());
-  let bin_entries_to_setup = Arc::new(Mutex::new(Vec::with_capacity(16)));
-  let packages_with_install_scripts = Arc::new(Mutex::new(Vec::with_capacity(16)));
+  let bin_entries_to_setup = Rc::new(RefCell::new(Vec::with_capacity(16)));
+  let packages_with_install_scripts = Rc::new(RefCell::new(Vec::with_capacity(16)));
 
   for package in &package_partitions.packages {
     if let Some(current_pkg) =
@@ -356,11 +358,11 @@ async fn sync_resolution_with_fs(
         fs::write(initialized_file, "")?;
 
         if package.bin.is_some() {
-          bin_entries_to_setup.lock().push((package.clone(), package_path.clone()));
+          bin_entries_to_setup.borrow_mut().push((package.clone(), package_path.clone()));
         }
 
         if package.scripts.contains_key("install") || package.scripts.contains_key("postinstall") {
-          packages_with_install_scripts.lock().push((package.clone(), package_path));
+          packages_with_install_scripts.borrow_mut().push((package.clone(), package_path));
         }
 
         // finally stop showing the progress bar
@@ -495,7 +497,7 @@ async fn sync_resolution_with_fs(
 
 
   // 6. Set up `node_modules/.bin` entries for packages that need it.
-  for (package, package_path) in &*bin_entries_to_setup.lock() {
+  for (package, package_path) in &*bin_entries_to_setup.borrow_mut() {
     let package = snapshot.package_from_id(&package.id).unwrap();
     if let Some(bin_entries) = &package.bin {
       match bin_entries {
@@ -523,7 +525,7 @@ async fn sync_resolution_with_fs(
   }
 
   // 7. Run pre/post/install scripts for packages
-  for (package, package_path) in &*packages_with_install_scripts.lock() {
+  for (package, package_path) in &*packages_with_install_scripts.borrow_mut() {
     let package = snapshot.package_from_id(&package.id).unwrap();
 
     for (script_name, script) in &package.scripts {

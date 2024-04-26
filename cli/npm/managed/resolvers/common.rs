@@ -23,7 +23,7 @@ use deno_runtime::deno_node::NodeResolutionMode;
 use super::super::cache::NpmCache;
 
 /// Part of the resolution that interacts with the file system.
-#[async_trait]
+#[async_trait(?Send)]
 pub trait NpmPackageFsResolver: Send + Sync {
   /// Specifier for the root directory.
   fn root_dir_url(&self) -> &Url;
