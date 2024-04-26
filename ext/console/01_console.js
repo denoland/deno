@@ -2871,7 +2871,7 @@ function textColorToAnsi(color) {
 }
 
 function fontWeightToAnsi(fontWeight) {
-  return fontWeight == "bold" ? `\x1b[1m` : "\x1b[22m";
+  return fontWeight === "bold" ? `\x1b[1m` : "\x1b[22m";
 }
 
 function fontStyleToAnsi(fontStyle) {
