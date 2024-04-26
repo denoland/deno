@@ -825,15 +825,15 @@ impl Flags {
         std::env::current_dir().ok()
       }
       Add(_) | Bundle(_) | Completions(_) | Doc(_) | Fmt(_) | Init(_)
-      | Uninstall(_) | Jupyter(_) | Lsp | Lint(_) | Types
-      | Upgrade(_) | Vendor(_) => None,
+      | Uninstall(_) | Jupyter(_) | Lsp | Lint(_) | Types | Upgrade(_)
+      | Vendor(_) => None,
       Install(_) => {
         if *DENO_FUTURE {
           std::env::current_dir().ok()
         } else {
           None
         }
-      },
+      }
     }
   }
 
@@ -2011,7 +2011,7 @@ The installation root is determined, in order of precedence:
 
 These must be added to the path manually if required.")
     .defer(|cmd| {
-      let cmd = 
+      let cmd =
       runtime_args(cmd, true, true)
       .arg(check_arg(true));
 
@@ -2020,7 +2020,7 @@ These must be added to the path manually if required.")
       } else {
         cmd.arg(Arg::new("cmd").required(true).num_args(1..).value_hint(ValueHint::FilePath))
       };
-      
+
       cmd.arg(
         Arg::new("name")
           .long("name")
@@ -3814,13 +3814,14 @@ fn info_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 
 fn install_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   runtime_args_parse(flags, matches, true, true);
-  
+
   let global = matches.get_flag("global");
   if global {
     let root = matches.remove_one::<String>("root");
     let force = matches.get_flag("force");
     let name = matches.remove_one::<String>("name");
-    let mut cmd_values = matches.remove_many::<String>("cmd").unwrap_or_default();
+    let mut cmd_values =
+      matches.remove_many::<String>("cmd").unwrap_or_default();
 
     let module_url = cmd_values.next().unwrap();
     let args = cmd_values.collect();
