@@ -569,13 +569,13 @@ async fn sync_resolution_with_fs(
       }
       if should_run {
         for (task_name, script) in scripts {
-          crate::task_runner::run_task(
+          crate::task_runner::run_task(crate::task_runner::RunTaskOptions {
             task_name,
             script,
-            /* cwd */ &package_path,
-            Default::default(), // todo
-            Some(&root_node_modules_dir_path),
-          )
+            cwd: &package_path,
+            npm_commands: Default::default(), // todo
+            root_node_modules_path: Some(&root_node_modules_dir_path),
+          })
           .await?;
         }
       }

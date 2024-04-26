@@ -152,13 +152,15 @@ async fn run_task(
 ) -> Result<i32, AnyError> {
   let script = get_script_with_args(script, cli_options);
   output_task(task_name, &script);
-  task_runner::run_task(
+  task_runner::run_task(task_runner::RunTaskOptions {
     task_name,
-    &script,
+    script: &script,
     cwd,
     npm_commands,
-    npm_resolver.root_node_modules_path().map(|p| p.as_path()),
-  )
+    root_node_modules_path: npm_resolver
+      .root_node_modules_path()
+      .map(|p| p.as_path()),
+  })
   .await
 }
 

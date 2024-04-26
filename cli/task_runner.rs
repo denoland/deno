@@ -22,18 +22,30 @@ use crate::npm::CliNpmResolver;
 use crate::npm::InnerCliNpmResolverRef;
 use crate::npm::ManagedCliNpmResolver;
 
-pub async fn run_task(
-  task_name: &str,
-  script: &str,
-  cwd: &Path,
-  npm_commands: HashMap<String, Rc<dyn ShellCommand>>,
-  root_node_modules_path: Option<&Path>,
+pub struct RunTaskOptions<'a> {
+  pub task_name: &'a str,
+  pub script: &'a str,
+  pub cwd: &'a Path,
+  pub npm_commands: HashMap<String, Rc<dyn ShellCommand>>,
+  pub root_node_modules_path: Option<&'a Path>,
+}
+
+pub async fn run_task<'a>(
+  options: RunTaskOptions<'a>,
 ) -> Result<i32, AnyError> {
-  let seq_list = deno_task_shell::parser::parse(script)
-    .with_context(|| format!("Error parsing script '{}'.", task_name))?;
-  let env_vars = collect_env_vars_with_node_modules_dir(root_node_modules_path);
+  let seq_list =
+    deno_task_shell::parser::parse(options.script).with_context(|| {
+      format!("Error parsing script '{}'.", options.task_name)
+    })?;
+  let env_vars =
+    collect_env_vars_with_node_modules_dir(options.root_node_modules_path);
   let local = LocalSet::new();
-  let future = deno_task_shell::execute(seq_list, env_vars, cwd, npm_commands);
+  let future = deno_task_shell::execute(
+    seq_list,
+    env_vars,
+    options.cwd,
+    options.npm_commands,
+  );
   Ok(local.run_until(future).await)
 }
 
