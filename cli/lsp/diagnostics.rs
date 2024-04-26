@@ -809,7 +809,7 @@ fn generate_lint_diagnostics(
       break;
     }
     // ignore any npm package files
-    if snapshot.documents.get_resolver().in_npm_package(specifier) {
+    if snapshot.resolver.in_npm_package(specifier) {
       continue;
     }
     let version = document.maybe_lsp_version();
@@ -1345,10 +1345,7 @@ fn diagnose_resolution(
           diagnostics.push(DenoDiagnostic::DenoWarn(message));
         }
       }
-      let managed_npm_resolver = snapshot
-        .documents
-        .get_resolver()
-        .maybe_managed_npm_resolver();
+      let managed_npm_resolver = snapshot.resolver.maybe_managed_npm_resolver();
       if let Some(doc) = snapshot.documents.get(specifier) {
         if let Some(diagnostic) = check_redirect_diagnostic(specifier, &doc) {
           diagnostics.push(diagnostic);
@@ -1445,7 +1442,7 @@ fn diagnose_dependency(
   dependency_key: &str,
   dependency: &deno_graph::Dependency,
 ) {
-  if snapshot.documents.get_resolver().in_npm_package(referrer) {
+  if snapshot.resolver.in_npm_package(referrer) {
     return; // ignore, surface typescript errors instead
   }
 
@@ -1584,6 +1581,7 @@ mod tests {
   use crate::lsp::documents::Documents;
   use crate::lsp::documents::LanguageId;
   use crate::lsp::language_server::StateSnapshot;
+  use crate::lsp::resolver::LspResolver;
   use deno_config::ConfigFile;
   use pretty_assertions::assert_eq;
   use std::path::Path;
@@ -1622,6 +1620,11 @@ mod tests {
       .unwrap();
       config.tree.inject_config_file(config_file).await;
     }
+    let resolver = Arc::new(
+      LspResolver::default()
+        .with_new_config(&config, None, None)
+        .await,
+    );
     StateSnapshot {
       project_version: 0,
       documents,
@@ -1630,6 +1633,7 @@ mod tests {
         GlobalHttpCache::new(location.to_path_buf(), RealDenoCacheEnv),
       )),
       config: config.snapshot(),
+      resolver,
     }
   }
 

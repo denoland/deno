@@ -49,7 +49,6 @@ use crate::node::CliNodeCodeTranslator;
 use crate::npm::ByonmCliNpmResolver;
 use crate::npm::CliNpmResolver;
 use crate::npm::InnerCliNpmResolverRef;
-use crate::npm::ManagedCliNpmResolver;
 use crate::util::sync::AtomicFlag;
 
 pub fn format_range_with_colors(range: &deno_graph::Range) -> String {
@@ -508,55 +507,6 @@ impl CliGraphResolver {
 
   pub fn as_graph_npm_resolver(&self) -> &dyn NpmResolver {
     self
-  }
-
-  pub fn maybe_managed_npm_resolver(&self) -> Option<&ManagedCliNpmResolver> {
-    self.npm_resolver.as_ref().and_then(|r| r.as_managed())
-  }
-
-  pub fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool {
-    if let Some(npm_resolver) = &self.npm_resolver {
-      return npm_resolver.in_npm_package(specifier);
-    }
-    false
-  }
-
-  pub fn node_resolve(
-    &self,
-    specifier: &str,
-    referrer: &ModuleSpecifier,
-    mode: NodeResolutionMode,
-    permissions: &PermissionsContainer,
-  ) -> Result<Option<NodeResolution>, AnyError> {
-    let Some(node_resolver) = self.node_resolver.as_ref() else {
-      return Ok(None);
-    };
-    node_resolver.resolve(specifier, referrer, mode, permissions)
-  }
-
-  pub fn resolve_npm_req_reference(
-    &self,
-    req_ref: &NpmPackageReqReference,
-    permissions: &PermissionsContainer,
-    referrer: &ModuleSpecifier,
-    mode: NodeResolutionMode,
-  ) -> Result<Option<NodeResolution>, AnyError> {
-    let Some(node_resolver) = self.node_resolver.as_ref() else {
-      return Ok(None);
-    };
-    node_resolver
-      .resolve_req_reference(req_ref, permissions, referrer, mode)
-      .map(Some)
-  }
-
-  pub fn url_to_node_resolution(
-    &self,
-    specifier: ModuleSpecifier,
-  ) -> Result<Option<NodeResolution>, AnyError> {
-    let Some(node_resolver) = self.node_resolver.as_ref() else {
-      return Ok(None);
-    };
-    node_resolver.url_to_node_resolution(specifier).map(Some)
   }
 
   pub fn found_package_json_dep(&self) -> bool {
