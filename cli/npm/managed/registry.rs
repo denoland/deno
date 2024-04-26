@@ -68,6 +68,7 @@ impl CliNpmRegistryApi {
     self.inner().get_cached_package_info(name)
   }
 
+  // TODO: remove
   pub fn base_url(&self) -> &Url {
     &self.inner().base_url
   }

@@ -486,6 +486,7 @@ impl ManagedCliNpmResolver {
       .map_err(|err| err.into())
   }
 
+  // TODO: remove this one
   pub fn registry_base_url(&self) -> &ModuleSpecifier {
     self.api.base_url()
   }
