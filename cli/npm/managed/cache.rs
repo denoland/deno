@@ -202,6 +202,10 @@ impl NpmCache {
     self.cache_dir.package_name_folder(name, registry_url)
   }
 
+  pub fn root_folder(&self) -> PathBuf {
+    self.cache_dir.root_dir().to_owned()
+  }
+
   // TODO: remove registry_url
   pub fn registry_folder(&self, registry_url: &Url) -> PathBuf {
     self.cache_dir.registry_folder(registry_url)

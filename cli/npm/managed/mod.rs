@@ -494,6 +494,7 @@ impl ManagedCliNpmResolver {
     self.api.base_url()
   }
 
+  // TODO: maybe remove
   pub fn registry_folder_in_global_cache(
     &self,
     registry_url: &ModuleSpecifier,

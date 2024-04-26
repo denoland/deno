@@ -32,8 +32,6 @@ use super::common::RegistryReadPermissionChecker;
 pub struct GlobalNpmPackageResolver {
   cache: Arc<NpmCache>,
   resolution: Arc<NpmResolution>,
-  // TODO(remove):
-  registry_url: Url,
   system_info: NpmSystemInfo,
   registry_read_permission_checker: RegistryReadPermissionChecker,
 }
@@ -42,18 +40,16 @@ impl GlobalNpmPackageResolver {
   pub fn new(
     fs: Arc<dyn FileSystem>,
     cache: Arc<NpmCache>,
-    registry_url: Url,
     resolution: Arc<NpmResolution>,
     system_info: NpmSystemInfo,
   ) -> Self {
     Self {
       cache: cache.clone(),
       resolution,
-      registry_url: registry_url.clone(),
       system_info,
       registry_read_permission_checker: RegistryReadPermissionChecker::new(
         fs,
-        cache.registry_folder(&registry_url),
+        cache.root_folder(),
       ),
     }
   }

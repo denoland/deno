@@ -42,7 +42,6 @@ pub fn create_npm_fs_resolver(
     None => Arc::new(GlobalNpmPackageResolver::new(
       fs,
       cache,
-      registry_url,
       resolution,
       system_info,
     )),

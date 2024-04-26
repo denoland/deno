@@ -47,6 +47,10 @@ impl NpmCacheDir {
     }
   }
 
+  pub fn root_dir(&self) -> &Path {
+    &self.root_dir
+  }
+
   pub fn root_dir_url(&self) -> &Url {
     &self.root_dir_url
   }
@@ -101,11 +105,6 @@ impl NpmCacheDir {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<NpmPackageCacheFolderId> {
-    eprintln!(
-      "resolve package folder id from specifier {}",
-      specifier.as_str()
-    );
-
     let mut maybe_relative_url = None;
 
     // Iterate through known registries and try to get a match.
@@ -131,30 +130,10 @@ impl NpmCacheDir {
       }
 
       maybe_relative_url = Some(relative_url);
-      eprintln!("registry root url {}", registry_root_dir.as_str());
       break;
     }
 
-    let Some(mut relative_url) = maybe_relative_url else {
-      return None;
-    };
-
-    eprintln!("relative_url {}", relative_url);
-    // let registry_root_dir = self
-    //   .root_dir_url
-    //   .join(&format!(
-    //     "{}/",
-    //     root_url_to_safe_local_dirname(registry_url)
-    //       .to_string_lossy()
-    //       .replace('\\', "/")
-    //   ))
-    //   // this not succeeding indicates a fatal issue, so unwrap
-    //   .unwrap();
-    // eprintln!("registry root url {}", registry_root_dir.as_str());
-    // let mut relative_url = registry_root_dir.make_relative(specifier)?;
-    // if relative_url.starts_with("../") {
-    //   return None;
-    // }
+    let mut relative_url = maybe_relative_url?;
 
     // base32 decode the url if it starts with an underscore
     // * Ex. _{base32(package_name)}/
