@@ -665,6 +665,12 @@ const ci = {
             "deno run --unstable --allow-write --allow-read --allow-run --allow-net ./tools/lint.js",
         },
         {
+          name: "jsdoc_checker.js",
+          if: "matrix.job == 'lint'",
+          run:
+            "deno run --allow-read --allow-env --allow-sys ./tools/jsdoc_checker.js",
+        },
+        {
           name: "node_compat/setup.ts --check",
           if: "matrix.job == 'lint' && matrix.os == 'linux'",
           run:
