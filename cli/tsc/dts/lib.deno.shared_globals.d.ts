@@ -628,6 +628,7 @@ declare interface PerformanceMarkOptions {
   startTime?: number;
 }
 
+/** @category Performance */
 declare interface PerformanceMeasureOptions {
   /** Metadata to be included in the measure. */
   detail?: any;

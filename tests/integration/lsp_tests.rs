@@ -1459,7 +1459,8 @@ fn lsp_hover_asset() {
           "language": "typescript",
           "value": "interface Date",
         },
-        "Enables basic storage and retrieval of dates and times."
+        "Enables basic storage and retrieval of dates and times.",
+        "\n\n*@category* - Temporal  \n\n*@tags* - unstable"
       ],
       "range": {
         "start": { "line": 111, "character": 10, },
@@ -2035,7 +2036,7 @@ fn lsp_hover_unstable_always_enabled() {
           "value":"interface Deno.ForeignLibraryInterface"
         },
         "**UNSTABLE**: New API, yet to be vetted.\n\nA foreign library interface descriptor.",
-        "\n\n*@category* - FFI",
+        "\n\n*@category* - FFI  \n\n*@tags* - unstable",
       ],
       "range":{
         "start":{ "line":0, "character":14 },
@@ -2080,7 +2081,7 @@ fn lsp_hover_unstable_enabled() {
           "value":"interface Deno.ForeignLibraryInterface"
         },
         "**UNSTABLE**: New API, yet to be vetted.\n\nA foreign library interface descriptor.",
-        "\n\n*@category* - FFI",
+        "\n\n*@category* - FFI  \n\n*@tags* - unstable",
       ],
       "range":{
         "start":{ "line":0, "character":14 },

@@ -5,13 +5,19 @@
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
 
-/** @category Broadcast Channel */
+/**
+ * @category Broadcast Channel
+ * @tags unstable
+ */
 declare interface BroadcastChannelEventMap {
   "message": MessageEvent;
   "messageerror": MessageEvent;
 }
 
-/** @category Broadcast Channel */
+/**
+ * @category Broadcast Channel
+ * @tags unstable
+ */
 declare interface BroadcastChannel extends EventTarget {
   /**
    * Returns the channel name (as passed to the constructor).
@@ -51,7 +57,10 @@ declare interface BroadcastChannel extends EventTarget {
   ): void;
 }
 
-/** @category Broadcast Channel */
+/**
+ * @category Broadcast Channel
+ * @tags unstable
+ */
 declare var BroadcastChannel: {
   readonly prototype: BroadcastChannel;
   new (name: string): BroadcastChannel;
