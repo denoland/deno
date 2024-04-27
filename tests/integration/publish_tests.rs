@@ -267,40 +267,6 @@ itest!(bare_node_builtins_warning_no_warnings {
   http_server: true,
 });
 
-itest!(sloppy_imports {
-  args: "publish --token 'sadfasdf' --dry-run --unstable-sloppy-imports",
-  output: "publish/sloppy_imports.out",
-  cwd: Some("publish/sloppy_imports"),
-  envs: env_vars_for_jsr_tests(),
-  http_server: true,
-});
-
-itest!(sloppy_imports_not_enabled {
-  args: "publish --token 'sadfasdf' --dry-run",
-  output: "publish/sloppy_imports_not_enabled.out",
-  cwd: Some("publish/sloppy_imports"),
-  envs: env_vars_for_jsr_tests(),
-  http_server: true,
-  exit_code: 1,
-});
-
-itest!(sloppy_imports_no_warnings {
-  args: "publish --token 'sadfasdf' --dry-run  --unstable-sloppy-imports",
-  output: "publish/sloppy_imports_no_warnings.out",
-  cwd: Some("publish/sloppy_imports"),
-  envs: env_vars_for_jsr_tests()
-    .into_iter()
-    .chain(
-      vec![(
-        "DENO_DISABLE_PEDANTIC_NODE_WARNINGS".to_string(),
-        "1".to_string()
-      )]
-      .into_iter()
-    )
-    .collect(),
-  http_server: true,
-});
-
 itest!(jsr_jsonc {
   args: "publish --token 'sadfasdf'",
   cwd: Some("publish/jsr_jsonc"),
