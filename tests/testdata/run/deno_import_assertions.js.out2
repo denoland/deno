@@ -1,4 +1,0 @@
-error: Uncaught SyntaxError: Unexpected identifier 'assert'
-import foo from "./deno_import_assertions.json" assert { type: "json" };
-                                                ^
-    at <anonymous> (file:///[WILDCARD]/deno_import_assertions.js:[WILDCARD])

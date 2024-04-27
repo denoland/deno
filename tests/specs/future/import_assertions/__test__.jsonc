@@ -1,0 +1,15 @@
+{
+  "steps": [
+    {
+      "args": "run main.js",
+      "output": "main.out",
+      "envs": {
+        "DENO_FUTURE": "1"
+      }
+    },
+    {
+      "args": "run main.js",
+      "output": "main.out2"
+    }
+  ]
+}
