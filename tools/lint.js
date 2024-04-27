@@ -205,7 +205,7 @@ async function ensureNoNewITests() {
     "jsr_tests.rs": 0,
     "js_unit_tests.rs": 0,
     "jupyter_tests.rs": 0,
-    "lint_tests.rs": 21,
+    "lint_tests.rs": 18,
     "lsp_tests.rs": 0,
     "node_compat_tests.rs": 4,
     "node_unit_tests.rs": 3,
