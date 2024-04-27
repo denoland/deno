@@ -1,6 +1,6 @@
 // ensure the cwd is this directory
 const cwd = Deno.cwd();
-if (!cwd.endsWith("no_deno_json")) {
+if (!cwd.endsWith("code")) {
   console.log(cwd);
   throw "FAIL";
 } else {
