@@ -4124,9 +4124,9 @@ fn op_script_names(state: &mut OpState) -> Vec<String> {
   }
 
   // inject these next because they're global
-  for import in documents.module_graph_imports() {
-    if seen.insert(import.as_str()) {
-      result.push(import.to_string());
+  for specifier in state.state_snapshot.resolver.graph_import_specifiers() {
+    if seen.insert(specifier.as_str()) {
+      result.push(specifier.to_string());
     }
   }
 

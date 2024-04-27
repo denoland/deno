@@ -32,7 +32,6 @@ use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
 use deno_core::ModuleSpecifier;
 use deno_graph::source::ResolutionMode;
-use deno_graph::GraphImport;
 use deno_graph::Resolution;
 use deno_lockfile::Lockfile;
 use deno_runtime::deno_node;
@@ -918,9 +917,6 @@ pub struct Documents {
   open_docs: HashMap<ModuleSpecifier, Arc<Document>>,
   /// Documents stored on the file system.
   file_system_docs: Arc<FileSystemDocuments>,
-  /// Any imports to the context supplied by configuration files. This is like
-  /// the imports into the a module graph in CLI.
-  imports: Arc<IndexMap<ModuleSpecifier, GraphImport>>,
   /// A resolver that takes into account currently loaded import map and JSX
   /// settings.
   resolver: Arc<LspResolver>,
@@ -945,7 +941,6 @@ impl Documents {
       dirty: true,
       open_docs: HashMap::default(),
       file_system_docs: Default::default(),
-      imports: Default::default(),
       resolver: Default::default(),
       jsr_resolver: Arc::new(JsrCacheResolver::new(cache.clone(), None)),
       lockfile: None,
@@ -958,14 +953,6 @@ impl Documents {
 
   pub fn initialize(&mut self, config: &Config) {
     self.config = Arc::new(config.clone());
-  }
-
-  pub fn module_graph_imports(&self) -> impl Iterator<Item = &ModuleSpecifier> {
-    self
-      .imports
-      .values()
-      .flat_map(|i| i.dependencies.values())
-      .flat_map(|value| value.get_type().or_else(|| value.get_code()))
   }
 
   /// "Open" a document from the perspective of the editor, meaning that
@@ -1279,7 +1266,8 @@ impl Documents {
           results.push(None);
         }
       } else if let Some(specifier) = self
-        .resolve_imports_dependency(specifier)
+        .resolver
+        .resolve_graph_import(specifier)
         .and_then(|r| r.maybe_specifier())
       {
         results.push(self.resolve_dependency(specifier, referrer));
@@ -1343,27 +1331,6 @@ impl Documents {
     self.lockfile = config.tree.root_lockfile().cloned();
     self.redirect_resolver =
       Arc::new(RedirectResolver::new(self.cache.clone()));
-    let graph_resolver = self.resolver.as_graph_resolver();
-    let npm_resolver = self.resolver.as_graph_npm_resolver();
-    self.imports = Arc::new(
-      if let Some(Ok(imports)) = config_file.map(|cf| cf.to_maybe_imports()) {
-        imports
-          .into_iter()
-          .map(|(referrer, imports)| {
-            let graph_import = GraphImport::new(
-              &referrer,
-              imports,
-              &CliJsrUrlProvider,
-              Some(graph_resolver),
-              Some(npm_resolver),
-            );
-            (referrer, graph_import)
-          })
-          .collect()
-      } else {
-        IndexMap::new()
-      },
-    );
     self.unstable_sloppy_imports = config_file
       .map(|c| c.has_unstable("sloppy-imports"))
       .unwrap_or(false);
@@ -1515,19 +1482,6 @@ impl Documents {
       let media_type = doc.media_type();
       Some((doc.specifier().clone(), media_type))
     }
-  }
-
-  /// Iterate through any "imported" modules, checking to see if a dependency
-  /// is available. This is used to provide "global" imports like the JSX import
-  /// source.
-  fn resolve_imports_dependency(&self, specifier: &str) -> Option<&Resolution> {
-    for graph_imports in self.imports.values() {
-      let maybe_dep = graph_imports.dependencies.get(specifier);
-      if maybe_dep.is_some() {
-        return maybe_dep.map(|d| &d.maybe_type);
-      }
-    }
-    None
   }
 }
 
