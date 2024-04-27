@@ -359,9 +359,15 @@ impl HttpClient {
       for _ in 0..5 {
         let new_url = resolve_redirect_from_response(&url, &response)?;
         let mut builder = self.get_no_redirect(new_url.clone())?;
-        if let Some((header_name, header_value)) = maybe_header.as_ref() {
-          builder = builder.header(header_name, header_value);
+
+        if new_url.origin() == url.origin() {
+          if let Some((header_name, header_value)) = maybe_header.as_ref() {
+            builder = builder.header(header_name, header_value);
+          }
+        } else {
+          maybe_header = None;
         }
+
         let new_response = builder.send().await?;
         let status = new_response.status();
         if status.is_redirection() {
