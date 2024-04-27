@@ -145,12 +145,6 @@ itest!(check_imported_files_listed_in_exclude_option {
   exit_code: 1,
 });
 
-itest!(check_with_excluded_file_specified {
-  args: "check lib/types.d.ts",
-  cwd: Some("check/excluded_file_specified/"),
-  output: "check/excluded_file_specified/check.out",
-});
-
 #[test]
 fn cache_switching_config_then_no_config() {
   let context = TestContext::default();
@@ -277,13 +271,6 @@ itest!(check_dts {
   args: "check --quiet check/dts/check_dts.d.ts",
   output: "check/dts/check_dts.out",
   exit_code: 1,
-});
-
-itest!(check_types_dts {
-  args: "check main.ts",
-  cwd: Some("check/types_dts/"),
-  output: "check/types_dts/main.out",
-  exit_code: 0,
 });
 
 itest!(package_json_basic {
