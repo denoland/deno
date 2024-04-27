@@ -100,10 +100,6 @@ itest!(info_missing_module {
   output: "info/info_missing_module.out",
 });
 
-
-
-
-
 itest!(info_recursive_modules {
   args: "info --quiet info/info_recursive_imports_test.ts",
   output: "info/info_recursive_imports_test.out",

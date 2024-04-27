@@ -661,8 +661,6 @@ fn conditionally_loads_type_graph() {
   assert_not_contains!(output.combined_output(), "type_reference.d.ts");
 }
 
-
-
 #[test]
 fn opt_out_top_level_exclude_via_test_unexclude() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
