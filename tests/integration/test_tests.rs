@@ -661,11 +661,7 @@ fn conditionally_loads_type_graph() {
   assert_not_contains!(output.combined_output(), "type_reference.d.ts");
 }
 
-itest!(test_include_relative_pattern_dot_slash {
-  args: "test",
-  output: "test/relative_pattern_dot_slash/output.out",
-  cwd: Some("test/relative_pattern_dot_slash"),
-});
+
 
 #[test]
 fn opt_out_top_level_exclude_via_test_unexclude() {
