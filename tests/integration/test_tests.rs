@@ -584,21 +584,6 @@ itest!(package_json_basic {
   exit_code: 0,
 });
 
-itest!(test_lock {
-  args: "test",
-  http_server: true,
-  cwd: Some("lockfile/basic"),
-  exit_code: 10,
-  output: "lockfile/basic/fail.out",
-});
-
-itest!(test_no_lock {
-  args: "test --no-lock",
-  http_server: true,
-  cwd: Some("lockfile/basic"),
-  output: "lockfile/basic/test.nolock.out",
-});
-
 itest!(test_replace_timers {
   args: "test test/replace_timers.js",
   output: "test/replace_timers.js.out",
