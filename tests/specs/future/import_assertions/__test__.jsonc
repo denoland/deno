@@ -3,6 +3,7 @@
     {
       "args": "run main.js",
       "output": "main.out",
+      "exitCode": 1,
       "envs": {
         "DENO_FUTURE": "1"
       }
