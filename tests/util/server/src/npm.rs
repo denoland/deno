@@ -35,7 +35,7 @@ pub static PRIVATE_TEST_NPM_REGISTRY_1: Lazy<TestNpmRegistry> =
         crate::servers::PRIVATE_NPM_REGISTRY_1_PORT
       ),
       // TODO: change it
-      "/npm/registry",
+      "/private_registry_1",
     )
   });
 
