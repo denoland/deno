@@ -1,0 +1,5 @@
+{
+  "args": "lint",
+  "output": "no_slow_types.out",
+  "exitCode": 1
+}
