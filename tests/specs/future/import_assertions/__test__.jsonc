@@ -2,7 +2,7 @@
   "steps": [
     {
       "args": "run main.js",
-      "output": "main.out",
+      "output": "error.out",
       "exitCode": 1,
       "envs": {
         "DENO_FUTURE": "1"
@@ -10,7 +10,7 @@
     },
     {
       "args": "run main.js",
-      "output": "main.out2"
+      "output": "success.out"
     }
   ]
 }
