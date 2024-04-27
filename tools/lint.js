@@ -187,7 +187,7 @@ async function ensureNoNewITests() {
   // This is to help ensure we slowly deprecate these tests and
   // replace them with spec tests.
   const iTestCounts = {
-    "bench_tests.rs": 37,
+    "bench_tests.rs": 35,
     "bundle_tests.rs": 12,
     "cache_tests.rs": 11,
     "cert_tests.rs": 3,

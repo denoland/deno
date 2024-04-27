@@ -182,14 +182,6 @@ itest!(successful {
   http_server: true,
 });
 
-itest!(provenance {
-  args: "publish",
-  output: "publish/successful_provenance.out",
-  cwd: Some("publish/successful"),
-  envs: env_vars_for_jsr_provenance_tests(),
-  http_server: true,
-});
-
 itest!(no_check {
   args: "publish --token 'sadfasdf' --no-check",
   // still type checks the slow types output though
@@ -324,6 +316,20 @@ itest!(unsupported_jsx_tsx {
   envs: env_vars_for_jsr_npm_tests(),
   http_server: true,
 });
+
+#[test]
+fn provenance() {
+  TestContextBuilder::new()
+    .use_http_server()
+    .envs(env_vars_for_jsr_provenance_tests())
+    .cwd("publish/successful")
+    .build()
+    .new_command()
+    .args("publish")
+    .run()
+    .assert_exit_code(0)
+    .assert_matches_file("publish/successful_provenance.out");
+}
 
 #[test]
 fn ignores_gitignore() {
