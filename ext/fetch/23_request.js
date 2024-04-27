@@ -592,8 +592,8 @@ const signalAbortError = new DOMException(
 );
 ObjectFreeze(signalAbortError);
 
-function abortRequest(request) {
-  if (request[_signalCache]) {
+function abortRequest(request, createNew = false) {
+  if (request[_signalCache] || createNew) {
     request[_signal][signalAbort](signalAbortError);
   }
 }

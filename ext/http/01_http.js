@@ -382,7 +382,7 @@ function createRespondWith(
         ws[_serverHandleIdleTimeout]();
       }
     } catch (error) {
-      abortRequest(request);
+      abortRequest(request, true);
       throw error;
     } finally {
       if (deleteManagedResource(httpConn, readStreamRid)) {
