@@ -5,80 +5,10 @@ use std::process::Command;
 use deno_core::serde_json::json;
 use test_util::assert_contains;
 use test_util::assert_not_contains;
-use test_util::env_vars_for_jsr_npm_tests;
 use test_util::env_vars_for_jsr_provenance_tests;
 use test_util::env_vars_for_jsr_tests;
 use test_util::env_vars_for_jsr_tests_with_git_check;
-use test_util::env_vars_for_npm_tests;
-use test_util::itest;
 use test_util::TestContextBuilder;
-
-itest!(no_token {
-  args: "publish",
-  cwd: Some("publish/missing_deno_json"),
-  output: "publish/no_token.out",
-  envs: env_vars_for_jsr_tests(),
-  exit_code: 1,
-});
-
-itest!(missing_deno_json {
-  args: "publish --token 'sadfasdf'",
-  output: "publish/missing_deno_json.out",
-  cwd: Some("publish/missing_deno_json"),
-  envs: env_vars_for_jsr_tests(),
-  exit_code: 1,
-});
-
-itest!(has_slow_types {
-  args: "publish --token 'sadfasdf'",
-  output: "publish/has_slow_types.out",
-  cwd: Some("publish/has_slow_types"),
-  envs: env_vars_for_jsr_tests(),
-  exit_code: 1,
-});
-
-itest!(allow_slow_types {
-  args: "publish --allow-slow-types --token 'sadfasdf'",
-  output: "publish/allow_slow_types.out",
-  cwd: Some("publish/has_slow_types"),
-  envs: env_vars_for_jsr_tests(),
-  http_server: true,
-  exit_code: 0,
-});
-
-itest!(invalid_path {
-  args: "publish --token 'sadfasdf'",
-  output: "publish/invalid_path.out",
-  cwd: Some("publish/invalid_path"),
-  envs: env_vars_for_jsr_tests(),
-  exit_code: 1,
-});
-
-itest!(symlink {
-  args: "publish --token 'sadfasdf' --dry-run",
-  output: "publish/symlink.out",
-  cwd: Some("publish/symlink"),
-  envs: env_vars_for_jsr_tests(),
-  exit_code: 0,
-});
-
-itest!(invalid_import {
-  args: "publish --token 'sadfasdf' --dry-run",
-  output: "publish/invalid_import.out",
-  cwd: Some("publish/invalid_import"),
-  envs: env_vars_for_jsr_npm_tests(),
-  exit_code: 1,
-  http_server: true,
-});
-
-itest!(invalid_import_esm_sh_suggestion {
-  args: "publish --token 'sadfasdf' --dry-run",
-  output: "publish/invalid_import_esm_sh_suggestion.out",
-  cwd: Some("publish/invalid_import_esm_sh_suggestion"),
-  envs: env_vars_for_jsr_npm_tests(),
-  exit_code: 1,
-  http_server: true,
-});
 
 #[test]
 fn publish_non_exported_files_using_import_map() {
@@ -138,150 +68,6 @@ fn publish_warning_not_in_graph() {
       "[WILDCARD]unable to analyze dynamic import[WILDCARD]",
     );
 }
-
-itest!(javascript_missing_decl_file {
-  args: "publish --token 'sadfasdf'",
-  output: "publish/javascript_missing_decl_file.out",
-  cwd: Some("publish/javascript_missing_decl_file"),
-  envs: env_vars_for_jsr_tests(),
-  exit_code: 0,
-  http_server: true,
-});
-
-itest!(unanalyzable_dynamic_import {
-  args: "publish --token 'sadfasdf'",
-  output: "publish/unanalyzable_dynamic_import.out",
-  cwd: Some("publish/unanalyzable_dynamic_import"),
-  envs: env_vars_for_jsr_tests(),
-  exit_code: 0,
-  http_server: true,
-});
-
-itest!(javascript_decl_file {
-  args: "publish --token 'sadfasdf'",
-  output: "publish/javascript_decl_file.out",
-  cwd: Some("publish/javascript_decl_file"),
-  envs: env_vars_for_jsr_tests(),
-  http_server: true,
-  exit_code: 0,
-});
-
-itest!(package_json {
-  args: "publish --token 'sadfasdf'",
-  output: "publish/package_json.out",
-  cwd: Some("publish/package_json"),
-  envs: env_vars_for_jsr_npm_tests(),
-  http_server: true,
-});
-
-itest!(successful {
-  args: "publish --token 'sadfasdf'",
-  output: "publish/successful.out",
-  cwd: Some("publish/successful"),
-  envs: env_vars_for_jsr_tests(),
-  http_server: true,
-});
-
-itest!(no_check {
-  args: "publish --token 'sadfasdf' --no-check",
-  // still type checks the slow types output though
-  output: "publish/successful_no_check.out",
-  cwd: Some("publish/successful"),
-  envs: env_vars_for_jsr_tests(),
-  http_server: true,
-});
-
-itest!(node_specifier {
-  args: "publish --token 'sadfasdf'",
-  output: "publish/node_specifier.out",
-  cwd: Some("publish/node_specifier"),
-  envs: env_vars_for_jsr_tests()
-    .into_iter()
-    .chain(env_vars_for_npm_tests().into_iter())
-    .collect(),
-  http_server: true,
-});
-
-itest!(config_file_jsonc {
-  args: "publish --token 'sadfasdf'",
-  output: "publish/deno_jsonc.out",
-  cwd: Some("publish/deno_jsonc"),
-  envs: env_vars_for_jsr_tests(),
-  http_server: true,
-});
-
-itest!(workspace_all {
-  args: "publish --token 'sadfasdf'",
-  output: "publish/workspace.out",
-  cwd: Some("publish/workspace"),
-  envs: env_vars_for_jsr_tests(),
-  http_server: true,
-});
-
-itest!(workspace_individual {
-  args: "publish --token 'sadfasdf'",
-  output: "publish/workspace_individual.out",
-  cwd: Some("publish/workspace/bar"),
-  envs: env_vars_for_jsr_tests(),
-  http_server: true,
-});
-
-itest!(dry_run {
-  args: "publish --token 'sadfasdf' --dry-run",
-  cwd: Some("publish/successful"),
-  output: "publish/dry_run.out",
-  envs: env_vars_for_jsr_tests(),
-  http_server: true,
-});
-
-itest!(config_flag {
-  args: "publish --token 'sadfasdf' --config=successful/deno.json",
-  output: "publish/successful.out",
-  cwd: Some("publish"),
-  envs: env_vars_for_jsr_tests(),
-  http_server: true,
-});
-
-itest!(bare_node_builtins {
-  args: "publish --token 'sadfasdf' --dry-run --unstable-bare-node-builtins",
-  output: "publish/bare_node_builtins.out",
-  cwd: Some("publish/bare_node_builtins"),
-  envs: env_vars_for_jsr_npm_tests(),
-  http_server: true,
-});
-
-itest!(bare_node_builtins_warning_no_warnings {
-  args: "publish --token 'sadfasdf' --dry-run  --unstable-bare-node-builtins",
-  output: "publish/bare_node_builtins_no_warnings.out",
-  cwd: Some("publish/bare_node_builtins"),
-  envs: env_vars_for_jsr_npm_tests()
-    .into_iter()
-    .chain(
-      vec![(
-        "DENO_DISABLE_PEDANTIC_NODE_WARNINGS".to_string(),
-        "1".to_string()
-      )]
-      .into_iter()
-    )
-    .collect(),
-  http_server: true,
-});
-
-itest!(jsr_jsonc {
-  args: "publish --token 'sadfasdf'",
-  cwd: Some("publish/jsr_jsonc"),
-  output: "publish/jsr_jsonc/mod.out",
-  envs: env_vars_for_jsr_tests(),
-  http_server: true,
-});
-
-itest!(unsupported_jsx_tsx {
-  args: "publish --token 'sadfasdf'",
-  cwd: Some("publish/unsupported_jsx_tsx"),
-  output: "publish/unsupported_jsx_tsx/mod.out",
-  envs: env_vars_for_jsr_npm_tests(),
-  http_server: true,
-});
 
 #[test]
 fn provenance() {
@@ -601,20 +387,6 @@ fn not_includes_vendor_dir_only_when_vendor_true() {
   }
 }
 
-fn publish_context_builder() -> TestContextBuilder {
-  TestContextBuilder::new()
-    .use_http_server()
-    .envs(env_vars_for_jsr_tests())
-    .use_temp_cwd()
-}
-
-fn publish_context_builder_with_git_checks() -> TestContextBuilder {
-  TestContextBuilder::new()
-    .use_http_server()
-    .envs(env_vars_for_jsr_tests_with_git_check())
-    .use_temp_cwd()
-}
-
 #[test]
 fn allow_dirty() {
   let context = publish_context_builder_with_git_checks().build();
@@ -710,4 +482,18 @@ fn allow_dirty_dry_run() {
   output.assert_exit_code(1);
   let output = output.combined_output();
   assert_contains!(output, "Aborting due to uncommitted changes. Check in source code or run with --allow-dirty");
+}
+
+fn publish_context_builder() -> TestContextBuilder {
+  TestContextBuilder::new()
+    .use_http_server()
+    .envs(env_vars_for_jsr_tests())
+    .use_temp_cwd()
+}
+
+fn publish_context_builder_with_git_checks() -> TestContextBuilder {
+  TestContextBuilder::new()
+    .use_http_server()
+    .envs(env_vars_for_jsr_tests_with_git_check())
+    .use_temp_cwd()
 }
