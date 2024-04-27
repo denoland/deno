@@ -4,11 +4,10 @@ use super::diagnostics::DenoDiagnostic;
 use super::diagnostics::DiagnosticSource;
 use super::documents::Documents;
 use super::language_server;
+use super::resolver::LspResolver;
 use super::tsc;
 
 use crate::args::jsr_url;
-use crate::npm::CliNpmResolver;
-use crate::resolver::CliNodeResolver;
 use crate::tools::lint::create_linter;
 use deno_runtime::fs_util::specifier_to_file_path;
 
@@ -27,7 +26,6 @@ use deno_lint::diagnostic::LintDiagnostic;
 use deno_lint::rules::LintRule;
 use deno_runtime::deno_node::NpmResolver;
 use deno_runtime::deno_node::PathClean;
-use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::jsr::JsrPackageNvReference;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
@@ -217,22 +215,19 @@ fn code_as_string(code: &Option<lsp::NumberOrString>) -> String {
 pub struct TsResponseImportMapper<'a> {
   documents: &'a Documents,
   maybe_import_map: Option<&'a ImportMap>,
-  node_resolver: Option<&'a CliNodeResolver>,
-  npm_resolver: Option<&'a dyn CliNpmResolver>,
+  resolver: &'a LspResolver,
 }
 
 impl<'a> TsResponseImportMapper<'a> {
   pub fn new(
     documents: &'a Documents,
     maybe_import_map: Option<&'a ImportMap>,
-    node_resolver: Option<&'a CliNodeResolver>,
-    npm_resolver: Option<&'a dyn CliNpmResolver>,
+    resolver: &'a LspResolver,
   ) -> Self {
     Self {
       documents,
       maybe_import_map,
-      node_resolver,
-      npm_resolver,
+      resolver,
     }
   }
 
@@ -304,9 +299,7 @@ impl<'a> TsResponseImportMapper<'a> {
       return Some(spec_str);
     }
 
-    if let Some(npm_resolver) =
-      self.npm_resolver.as_ref().and_then(|r| r.as_managed())
-    {
+    if let Some(npm_resolver) = self.resolver.maybe_managed_npm_resolver() {
       if npm_resolver.in_npm_package(specifier) {
         if let Ok(Some(pkg_id)) =
           npm_resolver.resolve_pkg_id_from_specifier(specifier)
@@ -370,9 +363,9 @@ impl<'a> TsResponseImportMapper<'a> {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<String> {
-    let node_resolver = self.node_resolver?;
-    let package_json = node_resolver
-      .get_closest_package_json(specifier, &PermissionsContainer::allow_all())
+    let package_json = self
+      .resolver
+      .get_closest_package_json(specifier)
       .ok()
       .flatten()?;
     let root_folder = package_json.path.parent()?;
