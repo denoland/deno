@@ -3,7 +3,7 @@
 use super::analysis;
 use super::cache;
 use super::client::Client;
-use super::config::ConfigSnapshot;
+use super::config::Config;
 use super::documents;
 use super::documents::Document;
 use super::documents::DocumentsFilter;
@@ -62,7 +62,6 @@ use tower_lsp::lsp_types as lsp;
 #[derive(Debug)]
 pub struct DiagnosticServerUpdateMessage {
   pub snapshot: Arc<StateSnapshot>,
-  pub config: Arc<ConfigSnapshot>,
   pub url_map: LspUrlMap,
 }
 
@@ -458,12 +457,7 @@ impl DiagnosticsServer {
                 }
               };
               let ChannelUpdateMessage {
-                message:
-                  DiagnosticServerUpdateMessage {
-                    snapshot,
-                    config,
-                    url_map,
-                  },
+                message: DiagnosticServerUpdateMessage { snapshot, url_map },
                 batch_index,
               } = message;
               let url_map = Arc::new(url_map);
@@ -480,7 +474,7 @@ impl DiagnosticsServer {
                 let token = token.clone();
                 let ts_diagnostics_store = ts_diagnostics_store.clone();
                 let snapshot = snapshot.clone();
-                let config = config.clone();
+                let config = snapshot.config.clone();
                 let url_map = url_map.clone();
                 async move {
                   if let Some(previous_handle) = previous_ts_handle {
@@ -555,7 +549,7 @@ impl DiagnosticsServer {
                 let diagnostics_publisher = diagnostics_publisher.clone();
                 let token = token.clone();
                 let snapshot = snapshot.clone();
-                let config = config.clone();
+                let config = snapshot.config.clone();
                 let url_map = url_map.clone();
                 async move {
                   if let Some(previous_handle) = previous_deps_handle {
@@ -604,7 +598,7 @@ impl DiagnosticsServer {
                 let diagnostics_publisher = diagnostics_publisher.clone();
                 let token = token.clone();
                 let snapshot = snapshot.clone();
-                let config = config.clone();
+                let config = snapshot.config.clone();
                 let url_map = url_map.clone();
                 async move {
                   if let Some(previous_handle) = previous_lint_handle {
@@ -784,7 +778,7 @@ fn ts_json_to_diagnostics(
 
 fn generate_lint_diagnostics(
   snapshot: &language_server::StateSnapshot,
-  config: &ConfigSnapshot,
+  config: &Config,
   token: CancellationToken,
 ) -> DiagnosticVec {
   let documents = snapshot
@@ -865,7 +859,7 @@ fn generate_document_lint_diagnostics(
 
 async fn generate_ts_diagnostics(
   snapshot: Arc<language_server::StateSnapshot>,
-  config: &ConfigSnapshot,
+  config: &Config,
   ts_server: &tsc::TsServer,
   token: CancellationToken,
 ) -> Result<DiagnosticVec, AnyError> {
@@ -1532,7 +1526,7 @@ fn diagnose_dependency(
 /// an import map to shorten an URL.
 fn generate_deno_diagnostics(
   snapshot: &language_server::StateSnapshot,
-  config: &ConfigSnapshot,
+  config: &Config,
   token: CancellationToken,
 ) -> DiagnosticVec {
   let mut diagnostics_vec = Vec::new();
@@ -1575,7 +1569,6 @@ mod tests {
   use crate::cache::GlobalHttpCache;
   use crate::cache::RealDenoCacheEnv;
   use crate::lsp::config::Config;
-  use crate::lsp::config::ConfigSnapshot;
   use crate::lsp::config::Settings;
   use crate::lsp::config::WorkspaceSettings;
   use crate::lsp::documents::Documents;
@@ -1630,14 +1623,14 @@ mod tests {
       cache_metadata: cache::CacheMetadata::new(Arc::new(
         GlobalHttpCache::new(location.to_path_buf(), RealDenoCacheEnv),
       )),
-      config: config.snapshot(),
+      config: Arc::new(config),
       resolver,
     }
   }
 
-  fn mock_config() -> ConfigSnapshot {
+  fn mock_config() -> Config {
     let root_uri = resolve_url("file:///").unwrap();
-    ConfigSnapshot {
+    Config {
       settings: Settings {
         unscoped: WorkspaceSettings {
           enable: Some(true),

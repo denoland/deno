@@ -5102,7 +5102,7 @@ mod tests {
       documents,
       assets: Default::default(),
       cache_metadata: CacheMetadata::new(cache),
-      config: config.snapshot(),
+      config: Arc::new(config),
       resolver,
     }
   }

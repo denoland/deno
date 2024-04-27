@@ -48,7 +48,6 @@ use super::client::Client;
 use super::code_lens;
 use super::completions;
 use super::config::Config;
-use super::config::ConfigSnapshot;
 use super::config::UpdateImportsOnFileMoveEnabled;
 use super::config::WorkspaceSettings;
 use super::config::SETTINGS_SECTION;
@@ -127,7 +126,7 @@ pub struct StateSnapshot {
   pub project_version: usize,
   pub assets: AssetsSnapshot,
   pub cache_metadata: cache::CacheMetadata,
-  pub config: Arc<ConfigSnapshot>,
+  pub config: Arc<Config>,
   pub documents: Documents,
   pub resolver: Arc<LspResolver>,
 }
@@ -593,7 +592,7 @@ impl Inner {
       project_version: self.project_version,
       assets: self.assets.snapshot(),
       cache_metadata: self.cache_metadata.clone(),
-      config: self.config.snapshot(),
+      config: Arc::new(self.config.clone()),
       documents: self.documents.clone(),
       resolver: self.resolver.snapshot(),
     })
@@ -2145,7 +2144,7 @@ impl Inner {
       response = completions::get_import_completions(
         &specifier,
         &params.text_document_position.position,
-        &self.config.snapshot(),
+        &self.config,
         &self.client,
         &self.module_registries,
         &self.jsr_search_api,
@@ -2839,7 +2838,6 @@ impl Inner {
   fn send_diagnostics_update(&self) {
     let snapshot = DiagnosticServerUpdateMessage {
       snapshot: self.snapshot(),
-      config: self.config.snapshot(),
       url_map: self.url_map.clone(),
     };
     if let Err(err) = self.diagnostics_server.update(snapshot) {
