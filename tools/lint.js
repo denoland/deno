@@ -211,7 +211,7 @@ async function ensureNoNewITests() {
     "node_unit_tests.rs": 3,
     "npm_tests.rs": 98,
     "pm_tests.rs": 0,
-    "publish_tests.rs": 24,
+    "publish_tests.rs": 0,
     "repl_tests.rs": 0,
     "run_tests.rs": 373,
     "shared_library_tests.rs": 0,
