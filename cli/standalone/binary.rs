@@ -488,7 +488,9 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     // Phase 2 of the 'min sized' deno compile RFC talks
     // about adding this as a flag.
     if let Some(path) = std::env::var_os("DENORT_BIN") {
-      return Ok(std::fs::read(path)?);
+      return std::fs::read(&path).with_context(|| {
+        format!("Could not find denort at '{}'", path.to_string_lossy())
+      });
     }
 
     let target = compile_flags.resolve_target();

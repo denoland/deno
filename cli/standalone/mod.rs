@@ -150,6 +150,13 @@ impl ModuleLoader for EmbeddedModuleLoader {
       Some(resolved) => resolved,
       None => deno_core::resolve_import(specifier, referrer.as_str())?,
     };
+
+    if specifier.scheme() == "jsr" {
+      if let Some(module) = self.shared.eszip.get_module(specifier.as_str()) {
+        return Ok(ModuleSpecifier::parse(&module.specifier).unwrap());
+      }
+    }
+
     self
       .shared
       .node_resolver
