@@ -1695,17 +1695,16 @@ fn type_directives_js_main() {
 }
 
 itest!(test_import_assertions {
-  args: "run --reload run/deno_import_assertions.ts",
-  output: "run/deno_import_assertions.ts.out",
+  args: "run --reload run/deno_import_assertions.js",
+  output: "run/deno_import_assertions.js.out",
 });
 
-// TODO(petamoriken): Need to quit TypeScript transpiling `assert` to `with` in deno_ast
 #[test]
 fn test_import_assertions_with_deno_futures_env() {
   let context = TestContextBuilder::new().add_future_env_vars().build();
   let output = context
     .new_command()
-    .args("run --quiet --reload run/deno_import_assertions.ts")
+    .args("run --quiet --reload run/deno_import_assertions.js")
     .run();
   output
     .assert_exit_code(1)

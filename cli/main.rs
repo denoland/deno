@@ -392,6 +392,8 @@ fn resolve_flags_and_init(
     DenoSubcommand::Lsp => vec!["--max-old-space-size=3072".to_string()],
     _ => {
       if *DENO_FUTURE {
+        // TypeScript removes the `assert` keywords in the deno_ast transpile, so this flag only affects JavaScript
+        // TODO(petamoriken): Need to check TypeScript `assert` keywords in deno_ast
         vec!["--no-harmony-import-assertions".to_string()]
       } else {
         vec![]
