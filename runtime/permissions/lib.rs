@@ -688,6 +688,28 @@ impl Descriptor for WriteDescriptor {
   }
 }
 
+/// Modify `fqdn!` to handle domain names ending with a dot
+/// Handle parsing error
+macro_rules! fqdn {
+    ($($args:expr),*) => {{
+        #[allow(unused_mut)]
+        let mut str = std::string::String::new();
+        $( str += "."; str += $args; )*
+
+
+        let fqdn_string = if str.ends_with('.') {
+            &str[1..str.len() - 1]
+        } else {
+            &str[1..]
+        };
+
+        match fqdn_string.parse::<$crate::FQDN>() {
+            Ok(fqdn) => fqdn,
+            Err(_) => $crate::FQDN::default(),
+        }
+    }}
+}
+
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct NetDescriptor(pub FQDN, pub Option<u16>);
 
