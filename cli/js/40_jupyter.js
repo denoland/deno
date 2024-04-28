@@ -337,7 +337,14 @@ async function formatInner(obj, raw) {
 internals.jupyter = { formatInner };
 
 function enableJupyter() {
-  const { op_jupyter_broadcast } = core.ops;
+  const { op_jupyter_broadcast, op_jupyter_input } = core.ops;
+
+  async function input(
+    prompt,
+    password,
+  ) {
+    return await op_jupyter_input(prompt, password);
+  }
 
   async function broadcast(
     msgType,
@@ -412,6 +419,25 @@ function enableJupyter() {
     return;
   }
 
+  // Override confirm and prompt because they depend on a tty
+  // and in the Deno.jupyter environment that doesn't exist.
+  async function confirm(message = "Confirm") {
+    const answer = await input(`${message} [y/N] `, false)
+    return answer === "Y" || answer === "y";
+  }
+
+  async function prompt(message = "Prompt", defaultValue = "", { password = false } = {}) {
+    const answer = await input(`${message} [${defaultValue}] `, password)
+
+    if(answer === "") {
+      return defaultValue;
+    }
+
+    return answer;
+  }
+
+  globalThis.confirm = confirm;
+  globalThis.prompt = prompt;
   globalThis.Deno.jupyter = {
     broadcast,
     display,

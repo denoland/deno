@@ -51,19 +51,21 @@ impl JupyterServer {
       bind_socket::<zeromq::RouterSocket>(&spec, spec.shell_port).await?;
     let control_socket =
       bind_socket::<zeromq::RouterSocket>(&spec, spec.control_port).await?;
-    let _stdin_socket =
+    let stdin_socket =
       bind_socket::<zeromq::RouterSocket>(&spec, spec.stdin_port).await?;
     let iopub_socket =
       bind_socket::<zeromq::PubSocket>(&spec, spec.iopub_port).await?;
     let iopub_socket = Arc::new(Mutex::new(iopub_socket));
+    let stdin_socket = Arc::new(Mutex::new(stdin_socket));
     let last_execution_request = Rc::new(RefCell::new(None));
 
-    // Store `iopub_socket` in the op state so it's accessible to the runtime API.
+    // Store `iopub_socket` and `stdin_socket` in the op state for access to the runtime API.
     {
       let op_state_rc = repl_session.worker.js_runtime.op_state();
       let mut op_state = op_state_rc.borrow_mut();
       op_state.put(iopub_socket.clone());
       op_state.put(last_execution_request.clone());
+      op_state.put(stdin_socket.clone());
     }
 
     let cancel_handle = CancelHandle::new_rc();
