@@ -9,6 +9,7 @@ use std::env::current_exe;
 use std::io::ErrorKind;
 use std::io::Write;
 use std::path::Path;
+use std::path::PathBuf;
 use tempfile::TempDir;
 
 const DENO_ICON_32: &[u8] = include_bytes!("./resources/deno-logo-32x32.png");
@@ -48,13 +49,39 @@ fn install_icon(
   Ok(())
 }
 
-pub fn install() -> Result<(), AnyError> {
-  let temp_dir = TempDir::new().unwrap();
-  let kernel_json_path = temp_dir.path().join("kernel.json");
+pub fn install(directory: Option<PathBuf>) -> Result<(), AnyError> {
+  let outcome = match directory {
+    Some(path) => install_via_directory_flag(&path),
+    None => install_via_jupyter(),
+  };
 
+  if outcome.is_err() {
+    bail!("🆘 Failed to install Deno kernel");
+  }
+
+  println!("✅ Deno kernelspec installed successfully.");
+  Ok(())
+}
+
+fn install_via_directory_flag(output_dir: &PathBuf) -> Result<(), AnyError> {
+  let mut dir = output_dir.clone();
+  if !dir.ends_with("deno") {
+    dir.push("deno");
+  }
+
+  std::fs::create_dir_all(dir.as_path())?;
+  create_kernelspec_in_directory(&dir)?;
+
+  log::info!("📂 Installing to custom location: {}.", &dir.display());
+  Ok(())
+}
+
+fn create_kernelspec_in_directory(directory: &PathBuf) -> Result<(), AnyError> {
+  let kernel_json_path = directory.join("kernel.json");
   // TODO(bartlomieju): add remaining fields as per
   // https://jupyter-client.readthedocs.io/en/stable/kernels.html#kernel-specs
   // FIXME(bartlomieju): replace `current_exe` before landing?
+
   let json_data = json!({
       "argv": [current_exe().unwrap().to_string_lossy(), "jupyter", "--kernel", "--conn", "{connection_file}"],
       "display_name": "Deno",
@@ -63,9 +90,20 @@ pub fn install() -> Result<(), AnyError> {
 
   let f = std::fs::File::create(kernel_json_path)?;
   serde_json::to_writer_pretty(f, &json_data)?;
-  install_icon(temp_dir.path(), "logo-32x32.png", DENO_ICON_32)?;
-  install_icon(temp_dir.path(), "logo-64x64.png", DENO_ICON_64)?;
-  install_icon(temp_dir.path(), "logo-svg.svg", DENO_ICON_SVG)?;
+  install_icon(directory, "logo-32x32.png", DENO_ICON_32)?;
+  install_icon(directory, "logo-64x64.png", DENO_ICON_64)?;
+  install_icon(directory, "logo-svg.svg", DENO_ICON_SVG)?;
+  Ok(())
+}
+
+fn install_via_jupyter() -> Result<(), AnyError> {
+  let temp_dir = TempDir::new().unwrap();
+
+  let create_kernelspec_result =
+    create_kernelspec_in_directory(&temp_dir.path().to_path_buf());
+  if create_kernelspec_result.is_err() {
+    return create_kernelspec_result;
+  }
 
   let child_result = std::process::Command::new("jupyter")
     .args([
@@ -106,8 +144,6 @@ pub fn install() -> Result<(), AnyError> {
       bail!("Failed to install kernelspec: {}", err);
     }
   }
-
   let _ = std::fs::remove_dir(temp_dir);
-  println!("✅ Deno kernelspec installed successfully.");
   Ok(())
 }

@@ -46,7 +46,7 @@ pub async fn kernel(
   }
 
   if jupyter_flags.install {
-    install::install()?;
+    install::install(jupyter_flags.directory)?;
     return Ok(());
   }
 

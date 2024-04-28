@@ -205,6 +205,7 @@ pub struct JupyterFlags {
   pub install: bool,
   pub kernel: bool,
   pub conn_file: Option<String>,
+  pub directory: Option<PathBuf>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -2056,6 +2057,14 @@ fn jupyter_subcommand() -> Command {
         .value_parser(value_parser!(String))
         .value_hint(ValueHint::FilePath)
         .conflicts_with("install"))
+    .arg(
+      Arg::new("directory")
+        .long("directory")
+        .help("Sets the directory to install kernelspec.")
+        .value_parser(value_parser!(PathBuf))
+        .value_hint(ValueHint::DirPath)
+        .requires("install")
+    )
     .about("Deno kernel for Jupyter notebooks")
 }
 
@@ -3823,11 +3832,17 @@ fn jupyter_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   let conn_file = matches.remove_one::<String>("conn");
   let kernel = matches.get_flag("kernel");
   let install = matches.get_flag("install");
+  let directory = if matches.contains_id("directory") {
+    matches.remove_one::<PathBuf>("directory")
+  } else {
+    None
+  };
 
   flags.subcommand = DenoSubcommand::Jupyter(JupyterFlags {
     install,
     kernel,
     conn_file,
+    directory,
   });
 }
 
@@ -9256,6 +9271,7 @@ mod tests {
           install: false,
           kernel: false,
           conn_file: None,
+          directory: None,
         }),
         ..Flags::default()
       }
@@ -9269,6 +9285,27 @@ mod tests {
           install: true,
           kernel: false,
           conn_file: None,
+          directory: None,
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "jupyter",
+      "--install",
+      "--directory",
+      "/tmp/deno"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Jupyter(JupyterFlags {
+          install: true,
+          kernel: false,
+          conn_file: None,
+          directory: Some(PathBuf::from_str("/tmp/deno"))
         }),
         ..Flags::default()
       }
@@ -9288,6 +9325,7 @@ mod tests {
           install: false,
           kernel: true,
           conn_file: Some(String::from("path/to/conn/file")),
+          directory: None,
         }),
         ..Flags::default()
       }
