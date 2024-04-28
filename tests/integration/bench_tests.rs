@@ -11,73 +11,17 @@ use util::env_vars_for_npm_tests;
 use util::TestContext;
 use util::TestContextBuilder;
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 itest!(collect {
   args: "bench --ignore=bench/collect/ignore bench/collect",
   exit_code: 0,
   output: "bench/collect.out",
 });
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 itest!(filter {
   args: "bench --filter=foo bench/filter",
   exit_code: 0,
   output: "bench/filter.out",
 });
-
-
-
-
-
-
-
-
-
-
-
-
 
 itest_flaky!(bench_explicit_start_end_low_precision {
   args: "bench --quiet -A bench/explicit_start_and_end_low_precision.ts",
@@ -101,8 +45,6 @@ itest!(bench_with_malformed_config {
   exit_code: 1,
   output: "bench/collect_with_malformed_config.out",
 });
-
-
 
 #[test]
 fn recursive_permissions_pledge() {
