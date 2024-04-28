@@ -386,7 +386,7 @@ pub mod reporter {
         ))
         .unwrap();
         s.push_str(&format!(
-          "\n   {}x times {} than {}",
+          "\n   {}x {} than {}",
           if faster { diff } else { inv_diff },
           if faster { "faster" } else { "slower" },
           b.name

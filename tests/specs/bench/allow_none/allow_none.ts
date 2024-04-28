@@ -1,5 +1,3 @@
-import { unreachable } from "../../../tests/util/std/assert/mod.ts";
-
 const permissions: Deno.PermissionName[] = [
   "read",
   "write",
@@ -17,7 +15,7 @@ for (const name of permissions) {
       [name]: true,
     },
     fn() {
-      unreachable();
+      throw new Error("unreachable");
     },
   });
 }
