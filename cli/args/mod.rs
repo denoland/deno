@@ -110,7 +110,7 @@ pub static DENO_DISABLE_PEDANTIC_NODE_WARNINGS: Lazy<bool> = Lazy::new(|| {
     .is_some()
 });
 
-static DENO_FUTURE: Lazy<bool> =
+pub static DENO_FUTURE: Lazy<bool> =
   Lazy::new(|| std::env::var("DENO_FUTURE").ok().is_some());
 
 pub fn jsr_url() -> &'static Url {
