@@ -109,8 +109,14 @@ pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
     }
   }
 
-  let config_file_contents =
-    tokio::fs::read_to_string(&config_file_path).await.unwrap();
+  let config_file_contents = {
+    let contents = tokio::fs::read_to_string(&config_file_path).await.unwrap();
+    if contents.trim().is_empty() {
+      "{}\n".into()
+    } else {
+      contents
+    }
+  };
   let ast = jsonc_parser::parse_to_ast(
     &config_file_contents,
     &Default::default(),

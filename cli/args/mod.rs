@@ -61,12 +61,14 @@ use std::env;
 use std::io::BufReader;
 use std::io::Cursor;
 use std::net::SocketAddr;
+use std::num::NonZeroU16;
 use std::num::NonZeroUsize;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 use thiserror::Error;
 
+use crate::args::import_map::enhance_import_map_value_with_workspace_members;
 use crate::file_fetcher::FileFetcher;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::version;
@@ -149,9 +151,10 @@ pub fn jsr_api_url() -> &'static Url {
 
 pub fn ts_config_to_transpile_and_emit_options(
   config: deno_config::TsConfig,
-) -> (deno_ast::TranspileOptions, deno_ast::EmitOptions) {
+) -> Result<(deno_ast::TranspileOptions, deno_ast::EmitOptions), AnyError> {
   let options: deno_config::EmitConfigOptions =
-    serde_json::from_value(config.0).unwrap();
+    serde_json::from_value(config.0)
+      .context("Failed to parse compilerOptions")?;
   let imports_not_used_as_values =
     match options.imports_not_used_as_values.as_str() {
       "preserve" => deno_ast::ImportsNotUsedAsValues::Preserve,
@@ -173,7 +176,7 @@ pub fn ts_config_to_transpile_and_emit_options(
   } else {
     SourceMapOption::None
   };
-  (
+  Ok((
     deno_ast::TranspileOptions {
       use_ts_decorators: options.experimental_decorators,
       use_decorators_proposal: !options.experimental_decorators,
@@ -185,6 +188,7 @@ pub fn ts_config_to_transpile_and_emit_options(
       jsx_fragment_factory: options.jsx_fragment_factory,
       jsx_import_source: options.jsx_import_source,
       precompile_jsx,
+      precompile_jsx_skip_elements: options.jsx_precompile_skip_elements,
       transform_jsx,
       var_decl_imports: false,
     },
@@ -193,7 +197,7 @@ pub fn ts_config_to_transpile_and_emit_options(
       keep_comments: false,
       source_map,
     },
-  )
+  ))
 }
 
 /// Indicates how cached source files should be handled.
@@ -974,6 +978,10 @@ impl CliOptions {
           base_import_map_config,
           children_configs,
         );
+      let import_map = enhance_import_map_value_with_workspace_members(
+        import_map,
+        &workspace_config.members,
+      );
       log::debug!(
         "Workspace config generated this import map {}",
         serde_json::to_string_pretty(&import_map).unwrap()
@@ -1010,6 +1018,22 @@ impl CliOptions {
       // Remove so that child processes don't inherit this environment variable.
       std::env::remove_var("DENO_CHANNEL_FD");
       node_channel_fd.parse::<i64>().ok()
+    } else {
+      None
+    }
+  }
+
+  pub fn serve_port(&self) -> Option<NonZeroU16> {
+    if let DenoSubcommand::Serve(flags) = self.sub_command() {
+      Some(flags.port)
+    } else {
+      None
+    }
+  }
+
+  pub fn serve_host(&self) -> Option<String> {
+    if let DenoSubcommand::Serve(flags) = self.sub_command() {
+      Some(flags.host.clone())
     } else {
       None
     }
@@ -1054,6 +1078,10 @@ impl CliOptions {
           resolve_url_or_path(&run_flags.script, self.initial_cwd())
             .map_err(AnyError::from)
         }
+      }
+      DenoSubcommand::Serve(run_flags) => {
+        resolve_url_or_path(&run_flags.script, self.initial_cwd())
+          .map_err(AnyError::from)
       }
       _ => {
         bail!("No main module.")
@@ -1651,6 +1679,10 @@ impl CliOptions {
 
   pub fn v8_flags(&self) -> &Vec<String> {
     &self.flags.v8_flags
+  }
+
+  pub fn code_cache_enabled(&self) -> bool {
+    self.flags.code_cache_enabled
   }
 
   pub fn watch_paths(&self) -> Vec<PathBuf> {

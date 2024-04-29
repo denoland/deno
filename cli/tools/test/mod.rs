@@ -59,6 +59,7 @@ use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::tokio_util::create_and_run_current_thread;
 use deno_runtime::worker::MainWorker;
+use deno_runtime::WorkerExecutionMode;
 use indexmap::IndexMap;
 use indexmap::IndexSet;
 use log::Level;
@@ -583,6 +584,7 @@ async fn configure_main_worker(
 ) -> Result<(Option<Box<dyn CoverageCollector>>, MainWorker), anyhow::Error> {
   let mut worker = worker_factory
     .create_custom_worker(
+      WorkerExecutionMode::Test,
       specifier.clone(),
       PermissionsContainer::new(permissions),
       vec![ops::testing::deno_test::init_ops(worker_sender.sender)],
@@ -1277,7 +1279,7 @@ async fn fetch_inline_files(
   for specifier in specifiers {
     let fetch_permissions = PermissionsContainer::allow_all();
     let file = file_fetcher
-      .fetch(&specifier, fetch_permissions)
+      .fetch(&specifier, &fetch_permissions)
       .await?
       .into_text_decoded()?;
 
@@ -1688,7 +1690,7 @@ async fn fetch_specifiers_with_test_mode(
 
   for (specifier, mode) in &mut specifiers_with_mode {
     let file = file_fetcher
-      .fetch(specifier, PermissionsContainer::allow_all())
+      .fetch(specifier, &PermissionsContainer::allow_all())
       .await?;
 
     let (media_type, _) = file.resolve_media_type_and_charset();

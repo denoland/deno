@@ -7,6 +7,8 @@
 import { KeyObject } from "ext:deno_node/internal/crypto/keys.ts";
 import { kAesKeyLengths } from "ext:deno_node/internal/crypto/util.ts";
 import {
+  PrivateKeyObject,
+  PublicKeyObject,
   SecretKeyObject,
   setOwnedKey,
 } from "ext:deno_node/internal/crypto/keys.ts";
@@ -564,8 +566,8 @@ export function generateKeyPair(
   ) => void,
 ) {
   createJob(kAsync, type, options).then(([privateKey, publicKey]) => {
-    privateKey = new KeyObject("private", setOwnedKey(privateKey));
-    publicKey = new KeyObject("public", setOwnedKey(publicKey));
+    privateKey = new PrivateKeyObject(setOwnedKey(privateKey), { type });
+    publicKey = new PublicKeyObject(setOwnedKey(publicKey), { type });
 
     if (typeof options === "object" && options !== null) {
       const { publicKeyEncoding, privateKeyEncoding } = options as any;
@@ -766,8 +768,8 @@ export function generateKeyPairSync(
   | KeyPairSyncResult<string | Buffer, string | Buffer> {
   let [privateKey, publicKey] = createJob(kSync, type, options);
 
-  privateKey = new KeyObject("private", setOwnedKey(privateKey));
-  publicKey = new KeyObject("public", setOwnedKey(publicKey));
+  privateKey = new PrivateKeyObject(setOwnedKey(privateKey), { type });
+  publicKey = new PublicKeyObject(setOwnedKey(publicKey), { type });
 
   if (typeof options === "object" && options !== null) {
     const { publicKeyEncoding, privateKeyEncoding } = options as any;

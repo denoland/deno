@@ -43,7 +43,7 @@ deno_lockfile.workspace = true
 deno_terminal.workspace = true
 deno_tls.workspace = true
 fastwebsockets = { workspace = true, features = ["upgrade", "unstable-split"] }
-file_test_runner = "0.4.0"
+file_test_runner = "0.4.1"
 flaky_test = "=0.1.0"
 http.workspace = true
 http-body-util.workspace = true

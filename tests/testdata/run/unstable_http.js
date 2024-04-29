@@ -2,10 +2,6 @@ const scope = import.meta.url.slice(-7) === "#worker" ? "worker" : "main";
 
 console.log(scope, Deno.HttpClient);
 console.log(scope, Deno.createHttpClient);
-console.log(scope, Deno.http?.HttpConn);
-console.log(scope, Deno.http?._ws);
-console.log(scope, Deno.http?.serve);
-console.log(scope, Deno.http?.upgradeWebSocket);
 
 if (scope === "worker") {
   postMessage("done");

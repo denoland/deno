@@ -421,6 +421,7 @@ pub fn benchmarks(deno_exe: &Path) -> HashMap<String, i64> {
   let mean =
     (times.iter().sum::<Duration>() / times.len() as u32).as_millis() as i64;
   println!("      ({} runs, mean: {}ms)", times.len(), mean);
+  exec_times.insert("deco_apps_edits_nav".to_string(), mean);
 
   println!("<- End benchmarking lsp");
 

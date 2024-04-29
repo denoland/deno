@@ -10,6 +10,7 @@ import {
 import { fromFileUrl, relative, SEPARATOR } from "@std/path/mod.ts";
 import * as workerThreads from "node:worker_threads";
 import { EventEmitter, once } from "node:events";
+import process from "node:process";
 
 Deno.test("[node/worker_threads] BroadcastChannel is exported", () => {
   assertEquals<unknown>(workerThreads.BroadcastChannel, BroadcastChannel);
@@ -459,4 +460,58 @@ Deno.test("[node/worker_threads] receiveMessageOnPort works if there's pending r
   port4.close();
   port5.close();
   port6.close();
+});
+
+Deno.test({
+  name: "[node/worker_threads] Worker env",
+  async fn() {
+    const deferred = Promise.withResolvers<void>();
+    const worker = new workerThreads.Worker(
+      `
+      import { parentPort } from "node:worker_threads";
+      import process from "node:process";
+      parentPort.postMessage(process.env.TEST_ENV);
+      `,
+      {
+        eval: true,
+        env: { TEST_ENV: "test" },
+      },
+    );
+
+    worker.on("message", (data) => {
+      assertEquals(data, "test");
+      deferred.resolve();
+    });
+
+    await deferred.promise;
+    await worker.terminate();
+  },
+});
+
+Deno.test({
+  name: "[node/worker_threads] Worker env using process.env",
+  async fn() {
+    const deferred = Promise.withResolvers<void>();
+    const worker = new workerThreads.Worker(
+      `
+      import { parentPort } from "node:worker_threads";
+      import process from "node:process";
+      parentPort.postMessage("ok");
+      `,
+      {
+        eval: true,
+        // Make sure this doesn't throw `DataCloneError`.
+        // See https://github.com/denoland/deno/issues/23522.
+        env: process.env,
+      },
+    );
+
+    worker.on("message", (data) => {
+      assertEquals(data, "ok");
+      deferred.resolve();
+    });
+
+    await deferred.promise;
+    await worker.terminate();
+  },
 });

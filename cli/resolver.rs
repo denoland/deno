@@ -27,6 +27,7 @@ use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_node::NpmResolver as DenoNodeNpmResolver;
 use deno_runtime::deno_node::PackageJson;
+use deno_runtime::fs_util::specifier_to_file_path;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
@@ -48,7 +49,6 @@ use crate::node::CliNodeCodeTranslator;
 use crate::npm::ByonmCliNpmResolver;
 use crate::npm::CliNpmResolver;
 use crate::npm::InnerCliNpmResolverRef;
-use crate::util::path::specifier_to_file_path;
 use crate::util::sync::AtomicFlag;
 
 pub fn format_range_with_colors(range: &deno_graph::Range) -> String {
@@ -305,7 +305,7 @@ impl NpmModuleLoader {
     let file_path = specifier.to_file_path().unwrap();
     let code = self
       .fs
-      .read_text_file_sync(&file_path)
+      .read_text_file_sync(&file_path, None)
       .map_err(AnyError::from)
       .with_context(|| {
         if file_path.is_dir() {

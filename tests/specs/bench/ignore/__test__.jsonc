@@ -1,0 +1,5 @@
+{
+  "args": "bench ignore.ts",
+  "output": "ignore.out",
+  "exitCode": 0
+}

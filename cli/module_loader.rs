@@ -4,6 +4,8 @@ use crate::args::jsr_url;
 use crate::args::CliOptions;
 use crate::args::DenoSubcommand;
 use crate::args::TsTypeLib;
+use crate::cache::CodeCache;
+use crate::cache::ModuleInfoCache;
 use crate::cache::ParsedSourceCache;
 use crate::emit::Emitter;
 use crate::graph_util::graph_lock_or_exit;
@@ -50,7 +52,9 @@ use deno_graph::JsonModule;
 use deno_graph::Module;
 use deno_graph::Resolution;
 use deno_lockfile::Lockfile;
+use deno_runtime::code_cache;
 use deno_runtime::deno_node::NodeResolutionMode;
+use deno_runtime::fs_util::code_timestamp;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_terminal::colors;
@@ -311,6 +315,8 @@ struct SharedCliModuleLoaderState {
   resolver: Arc<CliGraphResolver>,
   node_resolver: Arc<CliNodeResolver>,
   npm_module_loader: NpmModuleLoader,
+  code_cache: Option<Arc<CodeCache>>,
+  module_info_cache: Arc<ModuleInfoCache>,
 }
 
 pub struct CliModuleLoaderFactory {
@@ -328,6 +334,8 @@ impl CliModuleLoaderFactory {
     resolver: Arc<CliGraphResolver>,
     node_resolver: Arc<CliNodeResolver>,
     npm_module_loader: NpmModuleLoader,
+    code_cache: Option<Arc<CodeCache>>,
+    module_info_cache: Arc<ModuleInfoCache>,
   ) -> Self {
     Self {
       shared: Arc::new(SharedCliModuleLoaderState {
@@ -348,6 +356,8 @@ impl CliModuleLoaderFactory {
         resolver,
         node_resolver,
         npm_module_loader,
+        code_cache,
+        module_info_cache,
       }),
     }
   }
@@ -458,12 +468,40 @@ impl CliModuleLoader {
       return Err(generic_error("Attempted to load JSON module without specifying \"type\": \"json\" attribute in the import statement."));
     }
 
+    let code_cache = if module_type == ModuleType::JavaScript {
+      self.shared.code_cache.as_ref().and_then(|cache| {
+        let code_hash = self
+          .get_code_hash_or_timestamp(specifier, code_source.media_type)
+          .ok()
+          .flatten();
+        if let Some(code_hash) = code_hash {
+          cache
+            .get_sync(
+              specifier.as_str(),
+              code_cache::CodeCacheType::EsModule,
+              &code_hash,
+            )
+            .map(Cow::from)
+            .inspect(|_| {
+              // This log line is also used by tests.
+              log::debug!(
+                "V8 code cache hit for ES module: {specifier}, [{code_hash:?}]"
+              );
+            })
+        } else {
+          None
+        }
+      })
+    } else {
+      None
+    };
+
     Ok(ModuleSource::new_with_redirect(
       module_type,
       ModuleSourceCode::String(code),
       specifier,
       &code_source.found_url,
-      None,
+      code_cache,
     ))
   }
 
@@ -603,6 +641,25 @@ impl CliModuleLoader {
 
     resolution.map_err(|err| err.into())
   }
+
+  fn get_code_hash_or_timestamp(
+    &self,
+    specifier: &ModuleSpecifier,
+    media_type: MediaType,
+  ) -> Result<Option<String>, AnyError> {
+    let hash = self
+      .shared
+      .module_info_cache
+      .get_module_source_hash(specifier, media_type)?;
+    if let Some(hash) = hash {
+      return Ok(Some(hash.into()));
+    }
+
+    // Use the modified timestamp from the local file system if we don't have a hash.
+    let timestamp = code_timestamp(specifier.as_str())
+      .map(|timestamp| timestamp.to_string())?;
+    Ok(Some(timestamp))
+  }
 }
 
 impl ModuleLoader for CliModuleLoader {
@@ -677,6 +734,33 @@ impl ModuleLoader for CliModuleLoader {
         .await
     }
     .boxed_local()
+  }
+
+  fn code_cache_ready(
+    &self,
+    specifier: &ModuleSpecifier,
+    code_cache: &[u8],
+  ) -> Pin<Box<dyn Future<Output = ()>>> {
+    if let Some(cache) = self.shared.code_cache.as_ref() {
+      let media_type = MediaType::from_specifier(specifier);
+      let code_hash = self
+        .get_code_hash_or_timestamp(specifier, media_type)
+        .ok()
+        .flatten();
+      if let Some(code_hash) = code_hash {
+        // This log line is also used by tests.
+        log::debug!(
+          "Updating V8 code cache for ES module: {specifier}, [{code_hash:?}]"
+        );
+        cache.set_sync(
+          specifier.as_str(),
+          code_cache::CodeCacheType::EsModule,
+          &code_hash,
+          code_cache,
+        );
+      }
+    }
+    async {}.boxed_local()
   }
 }
 
