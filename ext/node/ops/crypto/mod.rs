@@ -684,7 +684,7 @@ pub async fn op_node_generate_rsa_async(
 
 #[op2]
 #[string]
-fn op_node_export_rsa_public_pem(
+pub fn op_node_export_rsa_public_pem(
   #[buffer] pkcs1_der: &[u8],
 ) -> Result<String, AnyError> {
   let public_key = RsaPublicKey::from_pkcs1_der(pkcs1_der)?;
@@ -694,7 +694,7 @@ fn op_node_export_rsa_public_pem(
 
 #[op2]
 #[serde]
-fn op_node_export_rsa_spki_der(
+pub fn op_node_export_rsa_spki_der(
   #[buffer] pkcs1_der: &[u8],
 ) -> Result<ToJsBuffer, AnyError> {
   let public_key = RsaPublicKey::from_pkcs1_der(pkcs1_der)?;

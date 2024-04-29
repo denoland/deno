@@ -7,6 +7,8 @@
 import {
   op_node_create_private_key,
   op_node_create_public_key,
+  op_node_export_rsa_public_pem,
+  op_node_export_rsa_spki_der,
 } from "ext:core/ops";
 
 import {
@@ -376,21 +378,22 @@ export class PublicKeyObject extends AsymmetricKeyObject {
   }
 
   export(options: unknown) {
+    const key = KEY_STORE.get(this[kHandle]);
     switch (this.asymmetricKeyType) {
       case "rsa":
       case "rsa-pss": {
-        switch (options.type) {
+        switch (options.format) {
           case "pem":
             return op_node_export_rsa_public_pem(key);
           case "der": {
-            if (options.format == "pkcs1") {
+            if (options.type == "pkcs1") {
               return key;
             } else {
               return op_node_export_rsa_spki_der(key);
             }
           }
-          case "jwk":
-            throw new TypeError("not implemented");
+          default:
+            throw new TypeError(`exporting ${options.type} is not implemented`);
         }
         break;
       }

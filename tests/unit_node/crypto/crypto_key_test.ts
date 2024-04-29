@@ -15,7 +15,7 @@ import {
 } from "node:crypto";
 import { promisify } from "node:util";
 import { Buffer } from "node:buffer";
-import { assertEquals, assertThrows } from "@std/assert/mod.ts";
+import { assert, assertEquals, assertThrows } from "@std/assert/mod.ts";
 
 const RUN_SLOW_TESTS = Deno.env.get("SLOW_TESTS") === "1";
 
@@ -408,5 +408,6 @@ Deno.test("generate rsa export public key", async function () {
     modulusLength: 2048,
   });
 
-  const x = publicKey.export({ format: "pem", type: "spki" });
+  const spkiPem = publicKey.export({ format: "pem", type: "spki" });
+  assert(spkiPem.startsWith("-----BEGIN PUBLIC KEY-----"));
 });
