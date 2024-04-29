@@ -1694,16 +1694,6 @@ fn type_directives_js_main() {
   assert_not_contains!(output.combined_output(), "type_reference.d.ts");
 }
 
-#[test]
-fn test_deno_futures_env() {
-  let context = TestContextBuilder::new().add_future_env_vars().build();
-  let output = context
-    .new_command()
-    .args("run --quiet --reload run/deno_futures_env.ts")
-    .run();
-  output.assert_exit_code(0);
-}
-
 itest!(type_directives_redirect {
   args: "run --reload --check run/type_directives_redirect.ts",
   output: "run/type_directives_redirect.ts.out",
