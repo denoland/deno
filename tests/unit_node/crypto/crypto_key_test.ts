@@ -404,7 +404,7 @@ SogaIHQjE81ZkmNtU5gM5Q==
 });
 
 Deno.test("generate rsa export public key", async function () {
-  const { publicKey, privateKey } = await generateKeyPairAsync("rsa", {
+  const { publicKey } = await generateKeyPairAsync("rsa", {
     modulusLength: 2048,
   });
 
