@@ -2845,7 +2845,7 @@ Deno.test(
   { permissions: { net: true } },
   async function httpServerSignalCancelled() {
     let stashedRequest;
-    const { finished, abort } = await makeServer(async (req) => {
+    const { finished, abort } = await makeServer((req) => {
       // The cache signal is `undefined` because it has not been requested
       assertEquals(getCachedAbortSignal(req), undefined);
       stashedRequest = req;
