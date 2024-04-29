@@ -94,6 +94,19 @@ function exit(code) {
   throw new Error("Code not reachable");
 }
 
+let _exitCode;
+const exitCode = {
+  get() {
+    return _exitCode;
+  },
+  set(value) {
+    _exitCode = parseInt(value) || undefined;
+    if (typeof _exitCode === "number") {
+      op_set_exit_code(_exitCode);
+    }
+  }
+};
+
 function setEnv(key, value) {
   op_set_env(key, value);
 }
