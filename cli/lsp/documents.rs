@@ -1289,21 +1289,15 @@ impl Documents {
     results
   }
 
-  /// Update the location of the on disk cache for the document store.
-  pub fn set_cache(&mut self, cache: Arc<dyn HttpCache>) {
-    // TODO update resolved dependencies?
-    self.cache = cache.clone();
-    self.redirect_resolver = Arc::new(RedirectResolver::new(cache));
-    self.dirty = true;
-  }
-
   pub fn update_config(
     &mut self,
     config: &Config,
     resolver: &Arc<LspResolver>,
+    cache: Arc<dyn HttpCache>,
     workspace_files: &BTreeSet<ModuleSpecifier>,
   ) {
     self.config = Arc::new(config.clone());
+    self.cache = cache;
     let config_data = config.tree.root_data();
     let config_file = config_data.and_then(|d| d.config_file.as_deref());
     self.resolver = resolver.clone();
@@ -1797,7 +1791,12 @@ console.log(b, "hello deno");
       let resolver = LspResolver::default()
         .with_new_config(&config, cache.clone(), None, None)
         .await;
-      documents.update_config(&config, &resolver, &workspace_files);
+      documents.update_config(
+        &config,
+        &resolver,
+        cache.clone(),
+        &workspace_files,
+      );
 
       // open the document
       let document = documents.open(
@@ -1839,9 +1838,9 @@ console.log(b, "hello deno");
         .await;
 
       let resolver = LspResolver::default()
-        .with_new_config(&config, cache, None, None)
+        .with_new_config(&config, cache.clone(), None, None)
         .await;
-      documents.update_config(&config, &resolver, &workspace_files);
+      documents.update_config(&config, &resolver, cache, &workspace_files);
 
       // check the document's dependencies
       let document = documents.get(&file1_specifier).unwrap();

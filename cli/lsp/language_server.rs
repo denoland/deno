@@ -686,7 +686,6 @@ impl Inner {
       .map(|c| c as Arc<dyn HttpCache>)
       .unwrap_or(global_cache);
     self.deps_http_cache = cache.clone();
-    self.documents.set_cache(cache.clone());
     self.cache_metadata.set_cache(cache);
     self.url_map.set_cache(maybe_local_cache);
     self.maybe_global_cache_path = new_cache_path;
@@ -1031,6 +1030,7 @@ impl Inner {
     self.documents.update_config(
       &self.config,
       &self.resolver,
+      self.deps_http_cache.clone(),
       &self.workspace_files,
     );
 
