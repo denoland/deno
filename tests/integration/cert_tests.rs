@@ -8,39 +8,9 @@ use std::io::Cursor;
 use std::io::Read;
 use std::sync::Arc;
 use test_util as util;
-use test_util::itest;
-use test_util::itest_flaky;
 use url::Url;
 use util::testdata_path;
 use util::TestContext;
-
-
-
-
-
-itest_flaky!(cafile_eval {
-  args: "eval --cert tls/RootCA.pem fetch('https://localhost:5545/cert/cafile_ts_fetch.ts.out').then(r=>r.text()).then(t=>console.log(t.trimEnd()))",
-  output: "cert/cafile_ts_fetch.ts.out",
-  http_server: true,
-});
-
-itest_flaky!(cafile_info {
-  args:
-    "info --quiet --cert tls/RootCA.pem https://localhost:5545/cert/cafile_info.ts",
-  output: "cert/cafile_info.ts.out",
-  http_server: true,
-});
-
-
-
-
-
-// TODO(bartlomieju): reenable, this test was flaky on macOS CI during 1.30.3 release
-// itest!(deno_land_unsafe_ssl {
-//   args:
-//     "run --quiet --reload --allow-net --unsafely-ignore-certificate-errors=deno.land cert/deno_land_unsafe_ssl.ts",
-//   output: "cert/deno_land_unsafe_ssl.ts.out",
-// });
 
 #[flaky_test::flaky_test]
 fn cafile_env_fetch() {
