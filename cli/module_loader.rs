@@ -79,10 +79,8 @@ pub async fn load_top_level_deps(factory: &CliFactory) -> Result<(), AnyError> {
       .filter_map(|entry| {
         if entry.key.ends_with('/') {
           None
-        } else if let Some(value) = entry.value {
-          Some(value.clone())
         } else {
-          None
+          entry.value.cloned()
         }
       })
       .collect();
