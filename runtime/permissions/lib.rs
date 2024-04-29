@@ -16,7 +16,6 @@ use deno_core::url;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_terminal::colors;
-use fqdn::fqdn;
 use fqdn::FQDN;
 use once_cell::sync::Lazy;
 use std::borrow::Cow;
@@ -3314,5 +3313,51 @@ mod tests {
       false
     )
     .is_err());
+  }
+
+  #[test]
+  fn test_from_str_valid() {
+    let input = "example.com:8080";
+    let expected_fqdn = fqdn!("example.com");
+    let expected_port = Some(8080);
+    let result = NetDescriptor::from_str(input).unwrap();
+    assert_eq!(result.0, expected_fqdn);
+    assert_eq!(result.1, expected_port);
+  }
+
+  #[test]
+  fn test_from_str_invalid_empty() {
+    let input = "";
+    assert!(NetDescriptor::from_str(input).is_err());
+  }
+
+  #[test]
+  fn test_from_str_invalid_no_host() {
+    let input = ":8080";
+    assert!(NetDescriptor::from_str(input).is_err());
+  }
+
+  #[test]
+  fn test_macro_expansion() {
+    let host = "example.com";
+    let port = Some(8080);
+    let descriptor_tuple: (&str, Option<u16>) = (host, port);
+    let descriptor = NetDescriptor::new(&&descriptor_tuple);
+    assert_eq!(descriptor.0, fqdn!("example.com."));
+    assert_eq!(descriptor.1, Some(8080));
+  }
+
+  #[test]
+  fn test_parse_with_unknown_scheme() {
+    let input = "example.com:8080";
+    let descriptor = NetDescriptor::from_str(input).unwrap();
+    assert_eq!(descriptor.0, fqdn!("example.com."));
+    assert_eq!(descriptor.1, Some(8080));
+  }
+
+  #[test]
+  fn test_from_str_invalid_unparsable() {
+    let input = "foo@bar.com.";
+    assert_eq!(fqdn!(input), crate::FQDN::default());
   }
 }
