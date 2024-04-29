@@ -395,7 +395,6 @@ export class PublicKeyObject extends AsymmetricKeyObject {
           default:
             throw new TypeError(`exporting ${options.type} is not implemented`);
         }
-        break;
       }
       default:
         throw new TypeError(
