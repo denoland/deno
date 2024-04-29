@@ -345,7 +345,7 @@ impl HttpClient {
   pub async fn get_redirected_response<U: reqwest::IntoUrl>(
     &self,
     url: U,
-    maybe_header: Option<(HeaderName, HeaderValue)>,
+    mut maybe_header: Option<(HeaderName, HeaderValue)>,
   ) -> Result<Response, AnyError> {
     let mut url = url.into_url()?;
 
