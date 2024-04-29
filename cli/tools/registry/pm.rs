@@ -164,7 +164,7 @@ fn package_json_dependency_entry(
     )
   } else if selected.package_name.starts_with("jsr:") {
     let jsr_package = strip_specifier_prefix(&selected.package_name);
-    let jsr_package = jsr_package.strip_prefix("@").unwrap_or(jsr_package);
+    let jsr_package = jsr_package.strip_prefix('@').unwrap_or(jsr_package);
     let scope_replaced = jsr_package.replace('/', "__");
     let version_req =
       format!("npm:@jsr/{scope_replaced}@{}", selected.version_req);
