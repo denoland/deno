@@ -139,6 +139,7 @@ export {
   env,
   execPath,
   exit,
+  exitCode,
   gid,
   hostname,
   loadavg,
