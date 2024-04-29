@@ -55,8 +55,12 @@ pub fn install(directory: Option<PathBuf>) -> Result<(), AnyError> {
     None => install_via_jupyter(),
   };
 
-  if outcome.is_err() {
-    bail!("🆘 Failed to install Deno kernel");
+  match outcome {
+    Ok(()) => Ok(()),
+    Err(err) => {
+        println!("{}", err);
+        bail!();
+    }
   }
 
   println!("✅ Deno kernelspec installed successfully.");
@@ -96,11 +100,11 @@ fn create_kernelspec_in_directory(directory: &PathBuf) -> Result<(), AnyError> {
   Ok(())
 }
 
+
 fn install_via_jupyter() -> Result<(), AnyError> {
   let temp_dir = TempDir::new().unwrap();
 
-  let create_kernelspec_result =
-    create_kernelspec_in_directory(&temp_dir.path().to_path_buf());
+  let create_kernelspec_result = create_kernelspec_in_directory(&temp_dir.path().to_path_buf());
   if create_kernelspec_result.is_err() {
     return create_kernelspec_result;
   }
