@@ -2075,7 +2075,7 @@ TypeScript compiler cache: Subdirectory containing TS compiler output.",
 fn install_args(cmd: Command, deno_future: bool) -> Command {
   let cmd = if deno_future {
     cmd.arg(
-      Arg::new("packages")
+      Arg::new("cmd")
         .required_if_eq("global", "true")
         .num_args(1..)
         .value_hint(ValueHint::FilePath),
@@ -4006,7 +4006,7 @@ fn install_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     });
   } else {
     let local_flags = matches
-      .remove_many("packages")
+      .remove_many("cmd")
       .map(|packages| add_parse_inner(matches, Some(packages)));
     flags.subcommand = DenoSubcommand::Install(InstallFlags {
       global,
