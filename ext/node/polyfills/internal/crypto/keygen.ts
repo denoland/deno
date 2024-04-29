@@ -768,8 +768,8 @@ export function generateKeyPairSync(
   | KeyPairSyncResult<string | Buffer, string | Buffer> {
   let [privateKey, publicKey] = createJob(kSync, type, options);
 
-  privateKey = new KeyObject("private", setOwnedKey(privateKey));
-  publicKey = new KeyObject("public", setOwnedKey(publicKey));
+  privateKey = new PrivateKeyObject(setOwnedKey(privateKey), { type });
+  publicKey = new PublicKeyObject(setOwnedKey(publicKey), { type });
 
   if (typeof options === "object" && options !== null) {
     const { publicKeyEncoding, privateKeyEncoding } = options as any;
