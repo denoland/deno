@@ -25,6 +25,7 @@ use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 use deno_cache_dir::HttpCache;
 use deno_core::error::AnyError;
+use deno_core::parking_lot::Mutex;
 use deno_graph::source::NpmResolver;
 use deno_graph::source::Resolver;
 use deno_graph::GraphImport;
@@ -44,6 +45,7 @@ use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use indexmap::IndexMap;
 use package_json::PackageJsonDepsProvider;
+use std::collections::HashMap;
 use std::path::Path;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -55,6 +57,7 @@ pub struct LspResolver {
   npm_resolver: Option<Arc<dyn CliNpmResolver>>,
   node_resolver: Option<Arc<CliNodeResolver>>,
   npm_config_hash: LspNpmConfigHash,
+  redirect_resolver: Option<Arc<RedirectResolver>>,
   graph_imports: Arc<IndexMap<ModuleSpecifier, GraphImport>>,
   config: Arc<Config>,
 }
@@ -67,6 +70,7 @@ impl Default for LspResolver {
       npm_resolver: None,
       node_resolver: None,
       npm_config_hash: LspNpmConfigHash(0),
+      redirect_resolver: None,
       graph_imports: Default::default(),
       config: Default::default(),
     }
@@ -103,9 +107,10 @@ impl LspResolver {
       node_resolver.as_ref(),
     );
     let jsr_resolver = Some(Arc::new(JsrCacheResolver::new(
-      cache,
+      cache.clone(),
       config_data.and_then(|d| d.lockfile.clone()),
     )));
+    let redirect_resolver = Some(Arc::new(RedirectResolver::new(cache)));
     let graph_imports = config_data
       .and_then(|d| d.config_file.as_ref())
       .and_then(|cf| cf.to_maybe_imports().ok())
@@ -133,6 +138,7 @@ impl LspResolver {
       npm_resolver,
       node_resolver,
       npm_config_hash,
+      redirect_resolver,
       graph_imports,
       config: Arc::new(config.clone()),
     })
@@ -153,6 +159,7 @@ impl LspResolver {
       npm_resolver,
       node_resolver,
       npm_config_hash: self.npm_config_hash.clone(),
+      redirect_resolver: self.redirect_resolver.clone(),
       graph_imports: self.graph_imports.clone(),
       config: self.config.clone(),
     })
@@ -284,6 +291,16 @@ impl LspResolver {
     node_resolver
       .get_closest_package_json(referrer, &PermissionsContainer::allow_all())
   }
+
+  pub fn resolve_redirects(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<ModuleSpecifier> {
+    let Some(redirect_resolver) = self.redirect_resolver.as_ref() else {
+      return Some(specifier.clone());
+    };
+    redirect_resolver.resolve(specifier)
+  }
 }
 
 async fn create_npm_resolver(
@@ -404,5 +421,58 @@ impl LspNpmConfigHash {
     }
     hasher.write_hashable(global_cache_path);
     Self(hasher.finish())
+  }
+}
+
+#[derive(Debug)]
+struct RedirectResolver {
+  cache: Arc<dyn HttpCache>,
+  redirects: Mutex<HashMap<ModuleSpecifier, ModuleSpecifier>>,
+}
+
+impl RedirectResolver {
+  pub fn new(cache: Arc<dyn HttpCache>) -> Self {
+    Self {
+      cache,
+      redirects: Mutex::new(HashMap::new()),
+    }
+  }
+
+  pub fn resolve(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<ModuleSpecifier> {
+    if matches!(specifier.scheme(), "http" | "https") {
+      let mut redirects = self.redirects.lock();
+      if let Some(specifier) = redirects.get(specifier) {
+        Some(specifier.clone())
+      } else {
+        let redirect = self.resolve_remote(specifier, 10)?;
+        redirects.insert(specifier.clone(), redirect.clone());
+        Some(redirect)
+      }
+    } else {
+      Some(specifier.clone())
+    }
+  }
+
+  fn resolve_remote(
+    &self,
+    specifier: &ModuleSpecifier,
+    redirect_limit: usize,
+  ) -> Option<ModuleSpecifier> {
+    if redirect_limit > 0 {
+      let cache_key = self.cache.cache_item_key(specifier).ok()?;
+      let headers = self.cache.read_headers(&cache_key).ok().flatten()?;
+      if let Some(location) = headers.get("location") {
+        let redirect =
+          deno_core::resolve_import(location, specifier.as_str()).ok()?;
+        self.resolve_remote(&redirect, redirect_limit - 1)
+      } else {
+        Some(specifier.clone())
+      }
+    } else {
+      None
+    }
   }
 }
