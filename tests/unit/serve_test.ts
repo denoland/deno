@@ -2846,6 +2846,7 @@ Deno.test(
   async function httpServerSignalCancelled() {
     let stashedRequest;
     const { finished, abort } = await makeServer(async (req) => {
+      // The cache signal is `undefined` because it has not been requested
       assertEquals(getCachedAbortSignal(req), undefined);
       stashedRequest = req;
       return new Response("ok");
@@ -2854,9 +2855,11 @@ Deno.test(
     abort();
     await finished;
 
-    // False is a semaphore for a signal that should be aborted on creation
+    // `false` is a semaphore for a signal that should be aborted on creation
     assertEquals(getCachedAbortSignal(stashedRequest!), false);
+    // Requesting the signal causes it to be materialized
     assert(stashedRequest!.signal.aborted);
+    // The cached signal is now a full `AbortSignal`
     assertEquals(
       getCachedAbortSignal(stashedRequest!).constructor,
       AbortSignal,
