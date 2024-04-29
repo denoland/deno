@@ -189,7 +189,7 @@ class MessagePort extends EventTarget {
     (async () => {
       this[_enabled] = true;
       while (true) {
-        if (this[_id] === null) break;
+        if (this[_id] === null || messageEventListenerCount === 0) break;
         let data;
         try {
           data = await op_message_port_recv_message(
