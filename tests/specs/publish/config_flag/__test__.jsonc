@@ -1,0 +1,4 @@
+{
+  "args": "publish --token 'sadfasdf' --config=successful/deno.json",
+  "output": "successful.out"
+}
