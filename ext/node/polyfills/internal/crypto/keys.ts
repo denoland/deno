@@ -360,7 +360,7 @@ class AsymmetricKeyObject extends KeyObject {
   }
 }
 
-class PrivateKeyObject extends AsymmetricKeyObject {
+export class PrivateKeyObject extends AsymmetricKeyObject {
   constructor(handle: unknown, details: unknown) {
     super("private", handle, details);
   }
@@ -370,13 +370,35 @@ class PrivateKeyObject extends AsymmetricKeyObject {
   }
 }
 
-class PublicKeyObject extends AsymmetricKeyObject {
+export class PublicKeyObject extends AsymmetricKeyObject {
   constructor(handle: unknown, details: unknown) {
     super("public", handle, details);
   }
 
-  export(_options: unknown) {
-    notImplemented("crypto.PublicKeyObject.prototype.export");
+  export(options: unknown) {
+    switch (this.asymmetricKeyType) {
+      case "rsa":
+      case "rsa-pss": {
+        switch (options.type) {
+          case "pem":
+            return op_node_export_rsa_public_pem(key);
+          case "der": {
+            if (options.format == "pkcs1") {
+              return key;
+            } else {
+              return op_node_export_rsa_spki_der(key);
+            }
+          }
+          case "jwk":
+            throw new TypeError("not implemented");
+        }
+        break;
+      }
+      default:
+        throw new TypeError(
+          `exporting ${this.asymmetricKeyType} is not implemented`,
+        );
+    }
   }
 }
 
@@ -414,4 +436,6 @@ export default {
   prepareSecretKey,
   setOwnedKey,
   SecretKeyObject,
+  PrivateKeyObject,
+  PublicKeyObject,
 };

@@ -402,3 +402,11 @@ SogaIHQjE81ZkmNtU5gM5Q==
     `jEwckJ/d5GkF/8TTm+wllq2JNghG/m2JYJIW7vS8Vms53zCTTNSSegTSoIVoxWymwTPw2dTtZi41Lg0O271/WvEmQhiWD2dnjz6D/0F4eyn+QUhcmGCadDFyfp7+8x1XOppSw2YB8vL5WCL0QDdp3TAa/rWI0Hn4OftHMa6HPvatkGs+8XlQOGCCfd3TLg+t1UROgpgmetjoAM67mlwxXMGGu/Tr/EbXnnINKeB0iuSmD1FCxlrgFuYWDKxd79n2jZ74FrS/zto+bqWSI5uUa4Ar7yvXtek1Cu1OFM6vgdN9Y6Po2UD9+IT04EhU03LUDY5paYOO8yohz7p7kqHvpA==`,
   );
 });
+
+Deno.test("generate rsa export public key", async function () {
+  const { publicKey, privateKey } = await generateKeyPairAsync("rsa", {
+    modulusLength: 2048,
+  });
+
+  const x = publicKey.export({ format: "pem", type: "spki" });
+});
