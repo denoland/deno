@@ -78,6 +78,7 @@ a "steps" array.
 - `output` - Path to use to assert the output.
 - `cleanDenoDir` (boolean) - Whether to empty the deno_dir before running the
   step.
+- `flaky` - Step should be repeated until success a maximum of 3 times.
 - `if` (`"windows"`, `"linux"`, `"mac"`, `"unix"`) - Whether to run this step.
 - `exitCode` (number) - Expected exit code.
 

@@ -6,24 +6,6 @@ use util::env_vars_for_npm_tests;
 use util::TestContext;
 use util::TestContextBuilder;
 
-itest!(_095_check_with_bare_import {
-  args: "check cache/095_cache_with_bare_import.ts",
-  output: "cache/095_cache_with_bare_import.ts.out",
-  exit_code: 1,
-});
-
-itest!(check_extensionless {
-  args: "check --reload http://localhost:4545/subdir/no_js_ext",
-  output: "cache/cache_extensionless.out",
-  http_server: true,
-});
-
-itest!(check_random_extension {
-  args: "check --reload http://localhost:4545/subdir/no_js_ext@1.0.0",
-  output: "cache/cache_random_extension.out",
-  http_server: true,
-});
-
 itest!(check_all {
   args: "check --quiet --all check/all/check_all.ts",
   output: "check/all/check_all.out",

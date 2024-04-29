@@ -189,9 +189,9 @@ async function ensureNoNewITests() {
   const iTestCounts = {
     "bench_tests.rs": 0,
     "bundle_tests.rs": 12,
-    "cache_tests.rs": 11,
+    "cache_tests.rs": 0,
     "cert_tests.rs": 3,
-    "check_tests.rs": 26,
+    "check_tests.rs": 23,
     "compile_tests.rs": 0,
     "coverage_tests.rs": 0,
     "doc_tests.rs": 15,
@@ -206,6 +206,7 @@ async function ensureNoNewITests() {
     "js_unit_tests.rs": 0,
     "jupyter_tests.rs": 0,
     "lint_tests.rs": 18,
+    // Read the comment above. Please don't increase these numbers!
     "lsp_tests.rs": 0,
     "node_compat_tests.rs": 4,
     "node_unit_tests.rs": 3,
@@ -233,7 +234,7 @@ async function ensureNoNewITests() {
     // console.log(`"${entry.name}": ${actualCount},`);
     if (actualCount > expectedCount) {
       throw new Error(
-        `New itest added to ${entry.name}! The itest macro is deprecated. Please move this test to ~/tests/specs.`,
+        `New itest added to ${entry.name}! The itest macro is deprecated. Please move your new test to ~/tests/specs.`,
       );
     } else if (actualCount < expectedCount) {
       throw new Error(
