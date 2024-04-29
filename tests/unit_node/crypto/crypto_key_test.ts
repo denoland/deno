@@ -409,5 +409,6 @@ Deno.test("generate rsa export public key", async function () {
   });
 
   const spkiPem = publicKey.export({ format: "pem", type: "spki" });
+  assert(typeof spkiPem === "string");
   assert(spkiPem.startsWith("-----BEGIN PUBLIC KEY-----"));
 });
