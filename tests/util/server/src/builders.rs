@@ -740,6 +740,8 @@ impl TestCommandBuilder {
     };
     if command_name == "deno" {
       deno_exe_path()
+    } else if command_name.starts_with("./") && self.cwd.is_some() {
+      self.cwd.as_ref().unwrap().join(command_name)
     } else {
       PathRef::new(PathBuf::from(command_name))
     }

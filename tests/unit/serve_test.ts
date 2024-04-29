@@ -23,6 +23,7 @@ const {
   addTrailers,
   serveHttpOnListener,
   serveHttpOnConnection,
+  getCachedAbortSignal,
   // @ts-expect-error TypeScript (as of 3.7) does not support indexing namespaces by symbol
 } = Deno[Deno.internal];
 
@@ -2837,6 +2838,34 @@ for (const delay of ["delay", "nodelay"]) {
     });
   }
 }
+
+// Test for the internal implementation detail of cached request signals. Ensure that the request's
+// signal is aborted if we try to access it after the request has been completed.
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerSignalCancelled() {
+    let stashedRequest;
+    const { finished, abort } = await makeServer((req) => {
+      // The cache signal is `undefined` because it has not been requested
+      assertEquals(getCachedAbortSignal(req), undefined);
+      stashedRequest = req;
+      return new Response("ok");
+    });
+    await (await fetch(`http://localhost:${servePort}`)).text();
+    abort();
+    await finished;
+
+    // `false` is a semaphore for a signal that should be aborted on creation
+    assertEquals(getCachedAbortSignal(stashedRequest!), false);
+    // Requesting the signal causes it to be materialized
+    assert(stashedRequest!.signal.aborted);
+    // The cached signal is now a full `AbortSignal`
+    assertEquals(
+      getCachedAbortSignal(stashedRequest!).constructor,
+      AbortSignal,
+    );
+  },
+);
 
 Deno.test(
   { permissions: { net: true } },

@@ -187,36 +187,37 @@ async function ensureNoNewITests() {
   // This is to help ensure we slowly deprecate these tests and
   // replace them with spec tests.
   const iTestCounts = {
-    "bench_tests.rs": 37,
+    "bench_tests.rs": 0,
     "bundle_tests.rs": 12,
-    "cache_tests.rs": 11,
+    "cache_tests.rs": 0,
     "cert_tests.rs": 3,
-    "check_tests.rs": 28,
+    "check_tests.rs": 23,
     "compile_tests.rs": 0,
     "coverage_tests.rs": 0,
-    "doc_tests.rs": 17,
+    "doc_tests.rs": 15,
     "eval_tests.rs": 9,
     "flags_tests.rs": 0,
     "fmt_tests.rs": 17,
-    "info_tests.rs": 20,
+    "info_tests.rs": 18,
     "init_tests.rs": 0,
     "inspector_tests.rs": 0,
     "install_tests.rs": 0,
     "jsr_tests.rs": 0,
     "js_unit_tests.rs": 0,
     "jupyter_tests.rs": 0,
-    "lint_tests.rs": 24,
+    "lint_tests.rs": 18,
+    // Read the comment above. Please don't increase these numbers!
     "lsp_tests.rs": 0,
     "node_compat_tests.rs": 4,
     "node_unit_tests.rs": 3,
     "npm_tests.rs": 98,
     "pm_tests.rs": 0,
-    "publish_tests.rs": 28,
+    "publish_tests.rs": 0,
     "repl_tests.rs": 0,
-    "run_tests.rs": 379,
+    "run_tests.rs": 373,
     "shared_library_tests.rs": 0,
     "task_tests.rs": 30,
-    "test_tests.rs": 80,
+    "test_tests.rs": 77,
     "upgrade_tests.rs": 0,
     "vendor_tests.rs": 1,
     "watcher_tests.rs": 0,
@@ -233,7 +234,7 @@ async function ensureNoNewITests() {
     // console.log(`"${entry.name}": ${actualCount},`);
     if (actualCount > expectedCount) {
       throw new Error(
-        `New itest added to ${entry.name}! The itest macro is deprecated. Please move this test to ~/tests/specs.`,
+        `New itest added to ${entry.name}! The itest macro is deprecated. Please move your new test to ~/tests/specs.`,
       );
     } else if (actualCount < expectedCount) {
       throw new Error(
