@@ -1,1 +1,1 @@
-import '~/shared/models.ts';
+import "~/shared/models.ts";
