@@ -146,9 +146,37 @@ impl ConfigFile {
   }
 }
 
+/// removes the `npm:` or `jsr:` prefix from a
+/// specifier (e.g. for inserting into
+/// `package.json`)
+fn strip_specifier_prefix(specifier: &str) -> &str {
+  let specifier = specifier.strip_prefix("npm:").unwrap_or(specifier);
+  specifier.strip_prefix("jsr:").unwrap_or(specifier)
+}
+
+fn package_json_dependency_entry(
+  selected: SelectedPackage,
+) -> (String, String) {
+  if selected.package_name.starts_with("npm:") {
+    (
+      strip_specifier_prefix(&selected.package_name).into(),
+      selected.version_req,
+    )
+  } else if selected.package_name.starts_with("jsr:") {
+    let jsr_package = strip_specifier_prefix(&selected.package_name);
+    let jsr_package = jsr_package.strip_prefix("@").unwrap_or(jsr_package);
+    let scope_replaced = jsr_package.replace('/', "__");
+    let version_req =
+      format!("npm:@jsr/{scope_replaced}@{}", selected.version_req);
+    (selected.import_name, version_req)
+  } else {
+    (selected.package_name, selected.version_req)
+  }
+}
+
 pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
   let (config_file, cli_factory) =
-    ConfigFile::from_flags(flags, &add_flags).await?;
+    ConfigFile::from_flags(flags.clone(), &add_flags).await?;
 
   let config_specifier = config_file.specifier();
   if config_specifier.scheme() != "file" {
@@ -259,8 +287,8 @@ pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
     );
 
     if is_npm {
-      existing_imports
-        .insert(selected_package.package_name, selected_package.version_req)
+      let (name, version) = package_json_dependency_entry(selected_package);
+      existing_imports.insert(name, version)
     } else {
       existing_imports.insert(
         selected_package.import_name,
@@ -292,7 +320,15 @@ pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
     .await
     .context("Failed to update configuration file")?;
 
-  // TODO(bartlomieju): we should now cache the imports from the config file.
+  // TODO(bartlomieju): we should now cache the imports from the deno.json.
+
+  // make a new CliFactory to pick up the updated config file
+  let cli_factory = CliFactory::from_flags(flags)?;
+  let npm_resolver = cli_factory.npm_resolver().await?;
+  if let Some(npm_resolver) = npm_resolver.as_managed() {
+    npm_resolver.ensure_top_level_package_json_install().await?;
+    npm_resolver.resolve_pending().await?;
+  }
 
   Ok(())
 }
