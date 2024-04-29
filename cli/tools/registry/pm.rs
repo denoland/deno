@@ -324,11 +324,8 @@ pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
 
   // make a new CliFactory to pick up the updated config file
   let cli_factory = CliFactory::from_flags(flags)?;
-  let npm_resolver = cli_factory.npm_resolver().await?;
-  if let Some(npm_resolver) = npm_resolver.as_managed() {
-    npm_resolver.ensure_top_level_package_json_install().await?;
-    npm_resolver.resolve_pending().await?;
-  }
+  // cache deps
+  crate::module_loader::load_top_level_deps(&cli_factory).await?;
 
   Ok(())
 }

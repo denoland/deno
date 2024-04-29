@@ -261,12 +261,10 @@ async fn install_local(
   if let Some(add_flags) = maybe_add_flags {
     return super::registry::add(flags, add_flags).await;
   }
+
   let factory = CliFactory::from_flags(flags)?;
-  let npm_resolver = factory.npm_resolver().await?;
-  if let Some(npm_resolver) = npm_resolver.as_managed() {
-    npm_resolver.ensure_top_level_package_json_install().await?;
-    npm_resolver.resolve_pending().await?;
-  }
+  crate::module_loader::load_top_level_deps(&factory).await?;
+
   Ok(())
 }
 
