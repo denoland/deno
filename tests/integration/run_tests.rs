@@ -4918,35 +4918,6 @@ itest!(explicit_resource_management {
   output: "run/explicit_resource_management/main.out",
 });
 
-itest!(workspaces_basic {
-  args: "run -L debug -A main.ts",
-  output: "run/workspaces/basic/main.out",
-  cwd: Some("run/workspaces/basic/"),
-  copy_temp_dir: Some("run/workspaces/basic/"),
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
-
-itest!(workspaces_member_outside_root_dir {
-  args: "run -A main.ts",
-  output: "run/workspaces/member_outside_root_dir/main.out",
-  cwd: Some("run/workspaces/member_outside_root_dir/"),
-  copy_temp_dir: Some("run/workspaces/member_outside_root_dir/"),
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-  exit_code: 1,
-});
-
-itest!(workspaces_nested_member {
-  args: "run -A main.ts",
-  output: "run/workspaces/nested_member/main.out",
-  cwd: Some("run/workspaces/nested_member/"),
-  copy_temp_dir: Some("run/workspaces/nested_member/"),
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-  exit_code: 1,
-});
-
 itest!(unsafe_proto {
   args: "run -A run/unsafe_proto/main.js",
   output: "run/unsafe_proto/main.out",
@@ -5387,4 +5358,33 @@ fn code_cache_npm_with_require_test() {
       .assert_stderr_matches_text("[WILDCARD]V8 code cache hit for script: file:///[WILDCARD]/npm/registry/browserslist/[WILDCARD]/index.js[WILDCARD]");
     assert!(!output.stderr().contains("Updating V8 code cache"));
   }
+}
+
+#[test]
+fn node_process_stdin_unref_with_pty() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "--quiet", "run/node_process_stdin_unref_with_pty.js"])
+    .with_pty(|mut console| {
+      console.expect("START\r\n");
+      console.write_line("foo");
+      console.expect("foo\r\n");
+      console.write_line("bar");
+      console.expect("bar\r\n");
+      console.write_line("baz");
+      console.expect("baz\r\n");
+    });
+
+  TestContext::default()
+    .new_command()
+    .args_vec([
+      "run",
+      "--quiet",
+      "run/node_process_stdin_unref_with_pty.js",
+      "--unref",
+    ])
+    .with_pty(|mut console| {
+      // if process.stdin.unref is called, the program immediately ends by skipping reading from stdin.
+      console.expect("START\r\nEND\r\n");
+    });
 }

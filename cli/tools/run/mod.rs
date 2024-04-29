@@ -5,10 +5,10 @@ use std::io::Read;
 use deno_core::error::AnyError;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
+use deno_runtime::WorkerExecutionMode;
 
 use crate::args::EvalFlags;
 use crate::args::Flags;
-use crate::args::RunFlags;
 use crate::args::WatchFlagsWithPaths;
 use crate::factory::CliFactory;
 use crate::factory::CliFactoryBuilder;
@@ -19,8 +19,9 @@ use crate::util::file_watcher::WatcherRestartMode;
 pub mod hmr;
 
 pub async fn run_script(
+  mode: WorkerExecutionMode,
   flags: Flags,
-  run_flags: RunFlags,
+  watch: Option<WatchFlagsWithPaths>,
 ) -> Result<i32, AnyError> {
   if !flags.has_permission() && flags.has_permission_in_argv() {
     log::warn!(
@@ -33,8 +34,8 @@ To grant permissions, set them before the script argument. For example:
     );
   }
 
-  if let Some(watch_flags) = run_flags.watch {
-    return run_with_watch(flags, watch_flags).await;
+  if let Some(watch_flags) = watch {
+    return run_with_watch(mode, flags, watch_flags).await;
   }
 
   // TODO(bartlomieju): actually I think it will also fail if there's an import
@@ -68,7 +69,7 @@ To grant permissions, set them before the script argument. For example:
   )?);
   let worker_factory = factory.create_cli_main_worker_factory().await?;
   let mut worker = worker_factory
-    .create_main_worker(main_module, permissions)
+    .create_main_worker(mode, main_module, permissions)
     .await?;
 
   let exit_code = worker.run().await?;
@@ -98,7 +99,7 @@ pub async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
   });
 
   let mut worker = worker_factory
-    .create_main_worker(main_module, permissions)
+    .create_main_worker(WorkerExecutionMode::Run, main_module, permissions)
     .await?;
   let exit_code = worker.run().await?;
   Ok(exit_code)
@@ -107,6 +108,7 @@ pub async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
 // TODO(bartlomieju): this function is not handling `exit_code` set by the runtime
 // code properly.
 async fn run_with_watch(
+  mode: WorkerExecutionMode,
   flags: Flags,
   watch_flags: WatchFlagsWithPaths,
 ) -> Result<i32, AnyError> {
@@ -135,7 +137,7 @@ async fn run_with_watch(
         let mut worker = factory
           .create_cli_main_worker_factory()
           .await?
-          .create_main_worker(main_module, permissions)
+          .create_main_worker(mode, main_module, permissions)
           .await?;
 
         if watch_flags.hmr {
@@ -184,7 +186,7 @@ pub async fn eval_command(
   )?);
   let worker_factory = factory.create_cli_main_worker_factory().await?;
   let mut worker = worker_factory
-    .create_main_worker(main_module, permissions)
+    .create_main_worker(WorkerExecutionMode::Eval, main_module, permissions)
     .await?;
   let exit_code = worker.run().await?;
   Ok(exit_code)

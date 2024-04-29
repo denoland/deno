@@ -3,9 +3,11 @@
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_fetch::reqwest;
 use pretty_assertions::assert_eq;
 use test_util as util;
 use test_util::itest;
+use url::Url;
 use util::assert_contains;
 use util::env_vars_for_npm_tests;
 use util::http_server;
@@ -3080,4 +3082,30 @@ fn run_cjs_in_node_modules_folder() {
     .args("run node_modules/package/main.js")
     .run()
     .assert_matches_text("hi\n");
+}
+
+#[tokio::test]
+async fn test_private_npm_registry() {
+  let _server = http_server();
+
+  // For now just check that private server rejects requests without proper
+  // auth header.
+
+  let client = reqwest::Client::new();
+
+  let url =
+    Url::parse("http://127.0.0.1:4252/npm/registry/@denotest/bin/0.5.0")
+      .unwrap();
+
+  let req = reqwest::Request::new(reqwest::Method::GET, url.clone());
+  let resp = client.execute(req).await.unwrap();
+  assert_eq!(resp.status(), reqwest::StatusCode::UNAUTHORIZED);
+
+  let mut req = reqwest::Request::new(reqwest::Method::GET, url.clone());
+  req.headers_mut().insert(
+    reqwest::header::AUTHORIZATION,
+    reqwest::header::HeaderValue::from_static("Bearer private-reg-token"),
+  );
+  let resp = client.execute(req).await.unwrap();
+  assert_eq!(resp.status(), reqwest::StatusCode::OK);
 }

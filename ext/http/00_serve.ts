@@ -4,6 +4,7 @@ import { core, internals, primordials } from "ext:core/mod.js";
 const {
   BadResourcePrototype,
   InterruptedPrototype,
+  Interrupted,
   internalRidSymbol,
 } = core;
 import {
@@ -37,6 +38,7 @@ const {
   TypeError,
   TypedArrayPrototypeGetSymbolToStringTag,
   Uint8Array,
+  Promise,
 } = primordials;
 
 import { InnerBody } from "ext:deno_fetch/22_body.js";
@@ -47,7 +49,11 @@ import {
   ResponsePrototype,
   toInnerResponse,
 } from "ext:deno_fetch/23_response.js";
-import { fromInnerRequest, toInnerRequest } from "ext:deno_fetch/23_request.js";
+import {
+  abortRequest,
+  fromInnerRequest,
+  toInnerRequest,
+} from "ext:deno_fetch/23_request.js";
 import { AbortController } from "ext:deno_web/03_abort_signal.js";
 import {
   _eventLoop,
@@ -132,14 +138,28 @@ class InnerRequest {
   #body;
   #upgraded;
   #urlValue;
+  #completed;
+  request;
 
   constructor(external, context) {
     this.#external = external;
     this.#context = context;
     this.#upgraded = false;
+    this.#completed = undefined;
   }
 
-  close() {
+  close(success = true) {
+    // The completion signal fires only if someone cares
+    if (this.#completed) {
+      if (success) {
+        this.#completed.resolve(undefined);
+      } else {
+        this.#completed.reject(
+          new Interrupted("HTTP response was not sent successfully"),
+        );
+      }
+    }
+    abortRequest(this.request);
     this.#external = null;
   }
 
@@ -271,6 +291,19 @@ class InnerRequest {
       path;
   }
 
+  get completed() {
+    if (!this.#completed) {
+      // NOTE: this is faster than Promise.withResolvers()
+      let resolve, reject;
+      const promise = new Promise((r1, r2) => {
+        resolve = r1;
+        reject = r2;
+      });
+      this.#completed = { promise, resolve, reject };
+    }
+    return this.#completed.promise;
+  }
+
   get remoteAddr() {
     const transport = this.#context.listener?.addr.transport;
     if (transport === "unix" || transport === "unixpacket") {
@@ -375,16 +408,24 @@ class CallbackContext {
 }
 
 class ServeHandlerInfo {
-  #inner = null;
-  constructor(inner) {
+  #inner: InnerRequest;
+  constructor(inner: InnerRequest) {
     this.#inner = inner;
   }
   get remoteAddr() {
     return this.#inner.remoteAddr;
   }
+  get completed() {
+    return this.#inner.completed;
+  }
 }
 
-function fastSyncResponseOrStream(req, respBody, status, innerRequest) {
+function fastSyncResponseOrStream(
+  req,
+  respBody,
+  status,
+  innerRequest: InnerRequest,
+) {
   if (respBody === null || respBody === undefined) {
     // Don't set the body
     innerRequest?.close();
@@ -428,8 +469,8 @@ function fastSyncResponseOrStream(req, respBody, status, innerRequest) {
       autoClose,
       status,
     ),
-    () => {
-      innerRequest?.close();
+    (success) => {
+      innerRequest?.close(success);
       op_http_close_after_finish(req);
     },
   );
@@ -443,8 +484,6 @@ function fastSyncResponseOrStream(req, respBody, status, innerRequest) {
  * This function returns a promise that will only reject in the case of abnormal exit.
  */
 function mapToCallback(context, callback, onError) {
-  const signal = context.abortController.signal;
-
   return async function (req) {
     // Get the response from the user-provided callback. If that fails, use onError. If that fails, return a fallback
     // 500 error.
@@ -452,8 +491,10 @@ function mapToCallback(context, callback, onError) {
     let response;
     try {
       innerRequest = new InnerRequest(req, context);
+      const request = fromInnerRequest(innerRequest, "immutable");
+      innerRequest.request = request;
       response = await callback(
-        fromInnerRequest(innerRequest, signal, "immutable"),
+        request,
         new ServeHandlerInfo(innerRequest),
       );
 
@@ -509,9 +550,27 @@ function mapToCallback(context, callback, onError) {
   };
 }
 
+type RawHandler = (
+  request: Request,
+  info: ServeHandlerInfo,
+) => Response | Promise<Response>;
+
+type RawServeOptions = {
+  port?: number;
+  hostname?: string;
+  signal?: AbortSignal;
+  reusePort?: boolean;
+  key?: string;
+  cert?: string;
+  onError?: (error: unknown) => Response | Promise<Response>;
+  onListen?: (params: { hostname: string; port: number }) => void;
+  handler?: RawHandler;
+};
+
 function serve(arg1, arg2) {
-  let options = undefined;
-  let handler = undefined;
+  let options: RawServeOptions | undefined;
+  let handler: RawHandler | undefined;
+
   if (typeof arg1 === "function") {
     handler = arg1;
   } else if (typeof arg2 === "function") {
@@ -732,8 +791,37 @@ internals.upgradeHttpRaw = upgradeHttpRaw;
 internals.serveHttpOnListener = serveHttpOnListener;
 internals.serveHttpOnConnection = serveHttpOnConnection;
 
+function registerDeclarativeServer(exports) {
+  if (ObjectHasOwn(exports, "fetch")) {
+    if (typeof exports.fetch !== "function" || exports.fetch.length !== 1) {
+      throw new TypeError(
+        "Invalid type for fetch: must be a function with a single parameter",
+      );
+    }
+    return ({ servePort, serveHost }) => {
+      Deno.serve({
+        port: servePort,
+        hostname: serveHost,
+        onListen: ({ port, hostname }) => {
+          console.debug(
+            `%cdeno serve%c: Listening on %chttp://${hostname}:${port}/%c`,
+            "color: green",
+            "color: inherit",
+            "color: yellow",
+            "color: inherit",
+          );
+        },
+        handler: (req) => {
+          return exports.fetch(req);
+        },
+      });
+    };
+  }
+}
+
 export {
   addTrailers,
+  registerDeclarativeServer,
   serve,
   serveHttpOnConnection,
   serveHttpOnListener,

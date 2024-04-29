@@ -36,7 +36,7 @@ import {
 } from "ext:deno_node/internal/stream_base_commons.ts";
 import { FileHandle } from "node:fs/promises";
 import { kStreamBaseField } from "ext:deno_node/internal_binding/stream_wrap.ts";
-import { serveHttpOnConnection } from "ext:deno_http/00_serve.js";
+import { serveHttpOnConnection } from "ext:deno_http/00_serve.ts";
 import { nextTick } from "ext:deno_node/_next_tick.ts";
 import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
 import { Duplex } from "node:stream";

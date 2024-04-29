@@ -35,6 +35,7 @@ use deno_core::PollEventLoopOptions;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::tokio_util::create_and_run_current_thread;
+use deno_runtime::WorkerExecutionMode;
 use indexmap::IndexMap;
 use indexmap::IndexSet;
 use log::Level;
@@ -204,6 +205,7 @@ async fn bench_specifier_inner(
 ) -> Result<(), AnyError> {
   let mut worker = worker_factory
     .create_custom_worker(
+      WorkerExecutionMode::Bench,
       specifier.clone(),
       PermissionsContainer::new(permissions),
       vec![ops::bench::deno_bench::init_ops(sender.clone())],
