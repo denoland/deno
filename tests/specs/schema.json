@@ -36,6 +36,9 @@
             "type": "string"
           }
         },
+        "flaky": {
+          "type": "boolean"
+        },
         "if": {
           "type": "string",
           "examples": [

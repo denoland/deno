@@ -106,21 +106,6 @@ itest!(deno_doc_invalid_url {
   exit_code: 1,
 });
 
-itest!(doc_lock {
-  args: "doc main.ts",
-  http_server: true,
-  cwd: Some("lockfile/basic"),
-  exit_code: 10,
-  output: "lockfile/basic/fail.out",
-});
-
-itest!(doc_no_lock {
-  args: "doc --no-lock main.ts",
-  http_server: true,
-  cwd: Some("lockfile/basic"),
-  output: "lockfile/basic/doc.nolock.out",
-});
-
 #[test]
 fn deno_doc_html() {
   let context = TestContext::default();

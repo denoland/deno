@@ -1,0 +1,4 @@
+{
+  "args": "bench --quiet check_local_by_default.ts",
+  "output": "check_local_by_default.out"
+}

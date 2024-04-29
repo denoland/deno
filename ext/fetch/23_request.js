@@ -9,7 +9,7 @@
 /// <reference path="./lib.deno_fetch.d.ts" />
 /// <reference lib="esnext" />
 
-import { core, primordials } from "ext:core/mod.js";
+import { core, internals, primordials } from "ext:core/mod.js";
 const {
   ArrayPrototypeMap,
   ArrayPrototypeSlice,
@@ -269,10 +269,20 @@ class Request {
   /** @type {AbortSignal} */
   get [_signal]() {
     const signal = this[_signalCache];
-    if (signal !== undefined) {
+    // This signal not been created yet, and the request is still in progress
+    if (signal === undefined) {
+      const signal = newSignal();
+      this[_signalCache] = signal;
       return signal;
     }
-    return (this[_signalCache] = newSignal());
+    // This signal has not been created yet, but the request has already completed
+    if (signal === false) {
+      const signal = newSignal();
+      this[_signalCache] = signal;
+      signal[signalAbort](signalAbortError);
+      return signal;
+    }
+    return signal;
   }
   get [_mimeType]() {
     const values = getDecodeSplitHeader(
@@ -593,10 +603,19 @@ const signalAbortError = new DOMException(
 ObjectFreeze(signalAbortError);
 
 function abortRequest(request) {
-  if (request[_signal]) {
+  if (request[_signalCache] !== undefined) {
     request[_signal][signalAbort](signalAbortError);
+  } else {
+    request[_signalCache] = false;
   }
 }
+
+function getCachedAbortSignal(request) {
+  return request[_signalCache];
+}
+
+// For testing
+internals.getCachedAbortSignal = getCachedAbortSignal;
 
 export {
   abortRequest,

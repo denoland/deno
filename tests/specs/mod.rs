@@ -71,6 +71,9 @@ struct StepMetaData {
   /// Whether to clean the deno_dir before running the step.
   #[serde(default)]
   pub clean_deno_dir: bool,
+  /// If the test should be retried multiple times on failure.
+  #[serde(default)]
+  pub flaky: bool,
   pub args: VecOrString,
   pub cwd: Option<String>,
   #[serde(rename = "if")]
@@ -173,33 +176,12 @@ fn run_test(test: &CollectedTest, diagnostic_logger: Rc<RefCell<Vec<u8>>>) {
   }
 
   for step in metadata.steps.iter().filter(|s| should_run_step(s)) {
-    if step.clean_deno_dir {
-      context.deno_dir().path().remove_dir_all();
-    }
-
-    let command = context
-      .new_command()
-      .envs(metadata.envs.iter().chain(step.envs.iter()));
-    let command = match &step.args {
-      VecOrString::Vec(args) => command.args_vec(args),
-      VecOrString::String(text) => command.args(text),
-    };
-    let command = match &step.cwd {
-      Some(cwd) => command.current_dir(cwd),
-      None => command,
-    };
-    let command = match &step.command_name {
-      Some(command_name) => command.name(command_name),
-      None => command,
-    };
-    let output = command.run();
-    if step.output.ends_with(".out") {
-      let test_output_path = cwd.join(&step.output);
-      output.assert_matches_file(test_output_path);
+    let run_func = || run_step(step, &metadata, &cwd, &context);
+    if step.flaky {
+      run_flaky(run_func);
     } else {
-      output.assert_matches_text(&step.output);
+      run_func();
     }
-    output.assert_exit_code(step.exit_code);
   }
 }
 
@@ -215,6 +197,53 @@ fn should_run_step(step: &StepMetaData) -> bool {
   } else {
     true
   }
+}
+
+fn run_flaky(action: impl Fn()) {
+  for _ in 0..2 {
+    let result = std::panic::catch_unwind(AssertUnwindSafe(&action));
+    if result.is_ok() {
+      return;
+    }
+  }
+
+  // surface error on third try
+  action();
+}
+
+fn run_step(
+  step: &StepMetaData,
+  metadata: &MultiTestMetaData,
+  cwd: &PathRef,
+  context: &test_util::TestContext,
+) {
+  if step.clean_deno_dir {
+    context.deno_dir().path().remove_dir_all();
+  }
+
+  let command = context
+    .new_command()
+    .envs(metadata.envs.iter().chain(step.envs.iter()));
+  let command = match &step.args {
+    VecOrString::Vec(args) => command.args_vec(args),
+    VecOrString::String(text) => command.args(text),
+  };
+  let command = match &step.cwd {
+    Some(cwd) => command.current_dir(cwd),
+    None => command,
+  };
+  let command = match &step.command_name {
+    Some(command_name) => command.name(command_name),
+    None => command,
+  };
+  let output = command.run();
+  if step.output.ends_with(".out") {
+    let test_output_path = cwd.join(&step.output);
+    output.assert_matches_file(test_output_path);
+  } else {
+    output.assert_matches_text(&step.output);
+  }
+  output.assert_exit_code(step.exit_code);
 }
 
 fn resolve_test_and_assertion_files(
