@@ -1,0 +1,4 @@
+{
+  "args": "run --quiet --reload --cert RootCA.pem cafile_url_imports.ts",
+  "output": "cafile_url_imports.ts.out"
+}

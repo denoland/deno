@@ -1,0 +1,4 @@
+{
+  "args": "run --quiet --reload --allow-net --cert RootCA.pem cafile_ts_fetch.ts",
+  "output": "cafile_ts_fetch.ts.out"
+}

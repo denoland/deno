@@ -14,18 +14,9 @@ use url::Url;
 use util::testdata_path;
 use util::TestContext;
 
-itest_flaky!(cafile_url_imports {
-  args: "run --quiet --reload --cert tls/RootCA.pem cert/cafile_url_imports.ts",
-  output: "cert/cafile_url_imports.ts.out",
-  http_server: true,
-});
 
-itest_flaky!(cafile_ts_fetch {
-  args:
-    "run --quiet --reload --allow-net --cert tls/RootCA.pem cert/cafile_ts_fetch.ts",
-  output: "cert/cafile_ts_fetch.ts.out",
-  http_server: true,
-});
+
+
 
 itest_flaky!(cafile_eval {
   args: "eval --cert tls/RootCA.pem fetch('https://localhost:5545/cert/cafile_ts_fetch.ts.out').then(r=>r.text()).then(t=>console.log(t.trimEnd()))",
@@ -40,18 +31,9 @@ itest_flaky!(cafile_info {
   http_server: true,
 });
 
-itest_flaky!(cafile_url_imports_unsafe_ssl {
-  args: "run --quiet --reload --unsafely-ignore-certificate-errors=localhost cert/cafile_url_imports.ts",
-  output: "cert/cafile_url_imports_unsafe_ssl.ts.out",
-  http_server: true,
-});
 
-itest_flaky!(cafile_ts_fetch_unsafe_ssl {
-  args:
-    "run --quiet --reload --allow-net --unsafely-ignore-certificate-errors cert/cafile_ts_fetch.ts",
-  output: "cert/cafile_ts_fetch_unsafe_ssl.ts.out",
-  http_server: true,
-});
+
+
 
 // TODO(bartlomieju): reenable, this test was flaky on macOS CI during 1.30.3 release
 // itest!(deno_land_unsafe_ssl {
