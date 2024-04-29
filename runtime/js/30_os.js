@@ -94,6 +94,23 @@ function exit(code) {
   throw new Error("Code not reachable");
 }
 
+let _exitCode = 0;
+Object.defineProperty(exit, "code", {
+  get() {
+    return _exitCode;
+  },
+  set(value) {
+    const code = parseInt(value) || undefined;
+    if (typeof code !== "number") {
+      throw new TypeError("Exit code must be a number.");
+    }
+    _exitCode = code;
+    op_set_exit_code(code);
+  },
+  enumerable: true,
+  configurable: true,
+});
+
 function setEnv(key, value) {
   op_set_env(key, value);
 }
