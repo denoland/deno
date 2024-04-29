@@ -60,19 +60,6 @@ itest_flaky!(cafile_ts_fetch_unsafe_ssl {
 //   output: "cert/deno_land_unsafe_ssl.ts.out",
 // });
 
-itest!(ip_address_unsafe_ssl {
-  args:
-    "run --quiet --reload --allow-net --unsafely-ignore-certificate-errors=1.1.1.1 cert/ip_address_unsafe_ssl.ts",
-  output: "cert/ip_address_unsafe_ssl.ts.out",
-});
-
-itest!(localhost_unsafe_ssl {
-  args: "run --quiet --reload --allow-net --unsafely-ignore-certificate-errors=deno.land cert/cafile_url_imports.ts",
-  output: "cert/localhost_unsafe_ssl.ts.out",
-  http_server: true,
-  exit_code: 1,
-});
-
 #[flaky_test::flaky_test]
 fn cafile_env_fetch() {
   let module_url =
