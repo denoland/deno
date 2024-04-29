@@ -192,7 +192,7 @@ class MessagePort extends EventTarget {
         if (this[_id] === null) break;
         // Exit if no message event listeners are present in Node compat mode.
         if (
-          typeof port[nodeWorkerThreadCloseCb] == "function" &&
+          typeof this[nodeWorkerThreadCloseCb] == "function" &&
           messageEventListenerCount === 0
         ) break;
         let data;
