@@ -12,7 +12,6 @@ use super::tsc::AssetDocument;
 
 use crate::cache::HttpCache;
 use crate::graph_util::CliJsrUrlProvider;
-use crate::jsr::JsrCacheResolver;
 use crate::lsp::logging::lsp_warn;
 use crate::resolver::SloppyImportsFsEntry;
 use crate::resolver::SloppyImportsResolution;
@@ -920,7 +919,6 @@ pub struct Documents {
   /// A resolver that takes into account currently loaded import map and JSX
   /// settings.
   resolver: Arc<LspResolver>,
-  jsr_resolver: Arc<JsrCacheResolver>,
   lockfile: Option<Arc<Mutex<Lockfile>>>,
   /// The npm package requirements found in npm specifiers.
   npm_specifier_reqs: Arc<Vec<PackageReq>>,
@@ -942,17 +940,12 @@ impl Documents {
       open_docs: HashMap::default(),
       file_system_docs: Default::default(),
       resolver: Default::default(),
-      jsr_resolver: Arc::new(JsrCacheResolver::new(cache.clone(), None)),
       lockfile: None,
       npm_specifier_reqs: Default::default(),
       has_injected_types_node_package: false,
       redirect_resolver: Arc::new(RedirectResolver::new(cache)),
       unstable_sloppy_imports: false,
     }
-  }
-
-  pub fn initialize(&mut self, config: &Config) {
-    self.config = Arc::new(config.clone());
   }
 
   /// "Open" a document from the perspective of the editor, meaning that
@@ -1089,7 +1082,7 @@ impl Documents {
       let specifier = if let Ok(jsr_req_ref) =
         JsrPackageReqReference::from_specifier(specifier)
       {
-        Cow::Owned(self.jsr_resolver.jsr_to_registry_url(&jsr_req_ref)?)
+        Cow::Owned(self.resolver.jsr_to_registry_url(&jsr_req_ref)?)
       } else {
         Cow::Borrowed(specifier)
       };
@@ -1304,16 +1297,6 @@ impl Documents {
     self.dirty = true;
   }
 
-  pub fn get_jsr_resolver(&self) -> &Arc<JsrCacheResolver> {
-    &self.jsr_resolver
-  }
-
-  pub fn refresh_lockfile(&mut self, lockfile: Option<Arc<Mutex<Lockfile>>>) {
-    self.jsr_resolver =
-      Arc::new(JsrCacheResolver::new(self.cache.clone(), lockfile.clone()));
-    self.lockfile = lockfile;
-  }
-
   pub fn update_config(
     &mut self,
     config: &Config,
@@ -1324,10 +1307,6 @@ impl Documents {
     let config_data = config.tree.root_data();
     let config_file = config_data.and_then(|d| d.config_file.as_deref());
     self.resolver = resolver.clone();
-    self.jsr_resolver = Arc::new(JsrCacheResolver::new(
-      self.cache.clone(),
-      config.tree.root_lockfile().cloned(),
-    ));
     self.lockfile = config.tree.root_lockfile().cloned();
     self.redirect_resolver =
       Arc::new(RedirectResolver::new(self.cache.clone()));
@@ -1656,20 +1635,20 @@ mod tests {
   use test_util::PathRef;
   use test_util::TempDir;
 
-  fn setup(temp_dir: &TempDir) -> (Documents, PathRef) {
+  fn setup(temp_dir: &TempDir) -> (Documents, PathRef, Arc<dyn HttpCache>) {
     let location = temp_dir.path().join("deps");
     let cache = Arc::new(GlobalHttpCache::new(
       location.to_path_buf(),
       RealDenoCacheEnv,
     ));
-    let documents = Documents::new(cache);
-    (documents, location)
+    let documents = Documents::new(cache.clone());
+    (documents, location, cache)
   }
 
   #[test]
   fn test_documents_open_close() {
     let temp_dir = TempDir::new();
-    let (mut documents, _) = setup(&temp_dir);
+    let (mut documents, _, _) = setup(&temp_dir);
     let specifier = ModuleSpecifier::parse("file:///a.ts").unwrap();
     let content = r#"import * as b from "./b.ts";
 console.log(b);
@@ -1695,7 +1674,7 @@ console.log(b);
   #[test]
   fn test_documents_change() {
     let temp_dir = TempDir::new();
-    let (mut documents, _) = setup(&temp_dir);
+    let (mut documents, _, _) = setup(&temp_dir);
     let specifier = ModuleSpecifier::parse("file:///a.ts").unwrap();
     let content = r#"import * as b from "./b.ts";
 console.log(b);
@@ -1739,7 +1718,7 @@ console.log(b, "hello deno");
     // it should never happen that a user of this API causes this to happen,
     // but we'll guard against it anyway
     let temp_dir = TempDir::new();
-    let (mut documents, documents_path) = setup(&temp_dir);
+    let (mut documents, documents_path, _) = setup(&temp_dir);
     let file_path = documents_path.join("file.ts");
     let file_specifier = ModuleSpecifier::from_file_path(&file_path).unwrap();
     documents_path.create_dir_all();
@@ -1767,7 +1746,7 @@ console.log(b, "hello deno");
     // it should never happen that a user of this API causes this to happen,
     // but we'll guard against it anyway
     let temp_dir = TempDir::new();
-    let (mut documents, documents_path) = setup(&temp_dir);
+    let (mut documents, documents_path, cache) = setup(&temp_dir);
     fs::create_dir_all(&documents_path).unwrap();
 
     let file1_path = documents_path.join("file1.ts");
@@ -1816,7 +1795,7 @@ console.log(b, "hello deno");
         .await;
 
       let resolver = LspResolver::default()
-        .with_new_config(&config, None, None)
+        .with_new_config(&config, cache.clone(), None, None)
         .await;
       documents.update_config(&config, &resolver, &workspace_files);
 
@@ -1860,7 +1839,7 @@ console.log(b, "hello deno");
         .await;
 
       let resolver = LspResolver::default()
-        .with_new_config(&config, None, None)
+        .with_new_config(&config, cache, None, None)
         .await;
       documents.update_config(&config, &resolver, &workspace_files);
 

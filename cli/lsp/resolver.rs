@@ -6,6 +6,7 @@ use crate::cache::DenoDir;
 use crate::cache::FastInsecureHasher;
 use crate::graph_util::CliJsrUrlProvider;
 use crate::http_util::HttpClient;
+use crate::jsr::JsrCacheResolver;
 use crate::lsp::config::Config;
 use crate::lsp::config::ConfigData;
 use crate::lsp::logging::lsp_warn;
@@ -22,6 +23,7 @@ use crate::resolver::CliGraphResolverOptions;
 use crate::resolver::CliNodeResolver;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
+use deno_cache_dir::HttpCache;
 use deno_core::error::AnyError;
 use deno_graph::source::NpmResolver;
 use deno_graph::source::Resolver;
@@ -36,7 +38,9 @@ use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::fs_util::specifier_to_file_path;
 use deno_runtime::permissions::PermissionsContainer;
+use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
+use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use indexmap::IndexMap;
 use package_json::PackageJsonDepsProvider;
@@ -47,6 +51,7 @@ use std::sync::Arc;
 #[derive(Debug, Clone)]
 pub struct LspResolver {
   graph_resolver: Arc<CliGraphResolver>,
+  jsr_resolver: Option<Arc<JsrCacheResolver>>,
   npm_resolver: Option<Arc<dyn CliNpmResolver>>,
   node_resolver: Option<Arc<CliNodeResolver>>,
   npm_config_hash: LspNpmConfigHash,
@@ -58,6 +63,7 @@ impl Default for LspResolver {
   fn default() -> Self {
     Self {
       graph_resolver: create_graph_resolver(None, None, None),
+      jsr_resolver: None,
       npm_resolver: None,
       node_resolver: None,
       npm_config_hash: LspNpmConfigHash(0),
@@ -71,6 +77,7 @@ impl LspResolver {
   pub async fn with_new_config(
     &self,
     config: &Config,
+    cache: Arc<dyn HttpCache>,
     global_cache_path: Option<&Path>,
     http_client: Option<&Arc<HttpClient>>,
   ) -> Arc<Self> {
@@ -95,6 +102,10 @@ impl LspResolver {
       npm_resolver.as_ref(),
       node_resolver.as_ref(),
     );
+    let jsr_resolver = Some(Arc::new(JsrCacheResolver::new(
+      cache,
+      config_data.and_then(|d| d.lockfile.clone()),
+    )));
     let graph_imports = config_data
       .and_then(|d| d.config_file.as_ref())
       .and_then(|cf| cf.to_maybe_imports().ok())
@@ -118,6 +129,7 @@ impl LspResolver {
       .unwrap_or_default();
     Arc::new(Self {
       graph_resolver,
+      jsr_resolver,
       npm_resolver,
       node_resolver,
       npm_config_hash,
@@ -137,6 +149,7 @@ impl LspResolver {
     );
     Arc::new(Self {
       graph_resolver,
+      jsr_resolver: self.jsr_resolver.clone(),
       npm_resolver,
       node_resolver,
       npm_config_hash: self.npm_config_hash.clone(),
@@ -163,6 +176,25 @@ impl LspResolver {
 
   pub fn as_graph_npm_resolver(&self) -> &dyn NpmResolver {
     self.graph_resolver.as_ref()
+  }
+
+  pub fn jsr_to_registry_url(
+    &self,
+    req_ref: &JsrPackageReqReference,
+  ) -> Option<ModuleSpecifier> {
+    self.jsr_resolver.as_ref()?.jsr_to_registry_url(req_ref)
+  }
+
+  pub fn jsr_lookup_export_for_path(
+    &self,
+    nv: &PackageNv,
+    path: &str,
+  ) -> Option<String> {
+    self.jsr_resolver.as_ref()?.lookup_export_for_path(nv, path)
+  }
+
+  pub fn jsr_lookup_req_for_nv(&self, nv: &PackageNv) -> Option<PackageReq> {
+    self.jsr_resolver.as_ref()?.lookup_req_for_nv(nv)
   }
 
   pub fn maybe_managed_npm_resolver(&self) -> Option<&ManagedCliNpmResolver> {

@@ -5095,7 +5095,7 @@ mod tests {
       )
       .await;
     let resolver = LspResolver::default()
-      .with_new_config(&config, None, None)
+      .with_new_config(&config, cache.clone(), None, None)
       .await;
     StateSnapshot {
       project_version: 0,
