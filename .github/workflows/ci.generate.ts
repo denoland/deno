@@ -647,7 +647,7 @@ const ci = {
           name: "test_format.js",
           if: "matrix.job == 'lint' && matrix.os == 'linux'",
           run:
-            "deno run --unstable --allow-write --allow-read --allow-run --allow-net ./tools/format.js --check",
+            "deno run --unstable --allow-write --allow-read --allow-run --allow-net --config=tests/util/std/deno.json ./tools/format.js --check",
         },
         {
           name: "Lint PR title",

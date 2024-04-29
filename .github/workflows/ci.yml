@@ -387,7 +387,7 @@ jobs:
           cache-path: ./target
       - name: test_format.js
         if: '!(matrix.skip) && (matrix.job == ''lint'' && matrix.os == ''linux'')'
-        run: deno run --unstable --allow-write --allow-read --allow-run --allow-net ./tools/format.js --check
+        run: deno run --unstable --allow-write --allow-read --allow-run --allow-net --config=tests/util/std/deno.json ./tools/format.js --check
       - name: Lint PR title
         if: '!(matrix.skip) && (matrix.job == ''lint'' && github.event_name == ''pull_request'' && matrix.os == ''linux'')'
         env:
