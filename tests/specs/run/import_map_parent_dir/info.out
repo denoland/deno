@@ -1,0 +1,7 @@
+local: [WILDLINE]main.ts
+type: TypeScript
+dependencies: 1 unique
+size: [WILDLINE]
+
+file:///V:/deno/tests/specs/run/import_map_parent_dir/sub/main.ts ([WILDLINE])
+└── file:///V:/deno/tests/specs/run/import_map_parent_dir/shared/models.ts ([WILDLINE])
