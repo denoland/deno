@@ -296,7 +296,7 @@ impl Diagnostic for PublishDiagnostic {
       InvalidExternalImport { .. } => Some(Cow::Borrowed("replace this import with one from jsr or npm, or vendor the dependency into your package")),
       UnsupportedJsxTsx { .. } => None,
       ExcludedModule { .. } => Some(
-        Cow::Borrowed("remove the module from 'exclude' and/or 'publish.exclude' in the config file"),
+        Cow::Borrowed("remove the module from 'exclude' and/or 'publish.exclude' in the config file or use 'publish.exclude' with a negative glob to unexclude from gitignore"),
       ),
     }
   }

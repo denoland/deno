@@ -22,6 +22,7 @@ use deno_runtime::deno_io::Stdio;
 use deno_runtime::deno_io::StdioPipe;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
+use deno_runtime::WorkerExecutionMode;
 use deno_terminal::colors;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::UnboundedSender;
@@ -88,11 +89,12 @@ pub async fn kernel(
 
   let mut worker = worker_factory
     .create_custom_worker(
+      WorkerExecutionMode::Jupyter,
       main_module.clone(),
       permissions,
       vec![
         ops::jupyter::deno_jupyter::init_ops(stdio_tx.clone()),
-        ops::testing::deno_test::init_ops(test_event_sender.clone()),
+        ops::testing::deno_test::init_ops(test_event_sender),
       ],
       // FIXME(nayeemrmn): Test output capturing currently doesn't work.
       Stdio {
@@ -114,7 +116,6 @@ pub async fn kernel(
     resolver,
     worker,
     main_module,
-    test_event_sender,
     test_event_receiver,
   )
   .await?;

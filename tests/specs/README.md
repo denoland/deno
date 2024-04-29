@@ -76,8 +76,27 @@ a "steps" array.
 - `args` - A string (that will be spilt on whitespace into an args array) or an
   array of arguments.
 - `output` - Path to use to assert the output.
-- `clean` (boolean) - Whether to empty the deno_dir before running the step.
+- `cleanDenoDir` (boolean) - Whether to empty the deno_dir before running the
+  step.
+- `flaky` - Step should be repeated until success a maximum of 3 times.
+- `if` (`"windows"`, `"linux"`, `"mac"`, `"unix"`) - Whether to run this step.
 - `exitCode` (number) - Expected exit code.
+
+### Auto-complete
+
+To get auto-complete for these files, add the following to a local
+`.vscode/settings.json` file:
+
+```json
+{
+  "json.schemas": [{
+    "fileMatch": [
+      "__test__.jsonc"
+    ],
+    "url": "./tests/specs/schema.json"
+  }]
+}
+```
 
 ## `.out` files
 
@@ -87,6 +106,7 @@ Within the file, you can use the following for matching:
 
 - `[WILDCARD]` - match any text at the wildcard
 - `[WILDLINE]` - match any text on the current line
+- `[WILDCHAR]` - match the next character
 - `[WILDCHARS(5)]` - match any of the next 5 characters
 - `[UNORDERED_START]` followed by many lines then `[UNORDERED_END]` will match
   the lines in any order (useful for non-deterministic output)

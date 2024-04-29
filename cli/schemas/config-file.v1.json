@@ -76,6 +76,14 @@
           "default": "react",
           "markdownDescription": "Specify module specifier used to import the JSX factory functions when using jsx: `react-jsx*`.\n\nSee more: https://www.typescriptlang.org/tsconfig/#jsxImportSource"
         },
+        "jsxPrecompileSkipElements": {
+          "description": "Specify list of elements that should be exempt from being precompiled when the jsx 'precompile' transform is used.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "markdownDescription": "Specify list of elements that should be exempt from being precompiled when the jsx `precompile` transform is used."
+        },
         "keyofStringsOnly": {
           "description": "Make keyof only return strings instead of string, numbers or symbols. Legacy option.",
           "type": "boolean",
@@ -541,24 +549,24 @@
       "type": "array",
       "description": "List of unstable features to enable.",
       "items": {
-        "type": "string"
-      },
-      "examples": [
-        "broadcast-channel",
-        "bare-node-builtins",
-        "byonm",
-        "cron",
-        "ffi",
-        "fs",
-        "http",
-        "kv",
-        "net",
-        "sloppy-imports",
-        "temporal",
-        "unsafe-proto",
-        "webgpu",
-        "worker-options"
-      ]
+        "type": "string",
+        "examples": [
+          "broadcast-channel",
+          "bare-node-builtins",
+          "byonm",
+          "cron",
+          "ffi",
+          "fs",
+          "http",
+          "kv",
+          "net",
+          "sloppy-imports",
+          "temporal",
+          "unsafe-proto",
+          "webgpu",
+          "worker-options"
+        ]
+      }
     },
     "name": {
       "type": "string",
@@ -589,6 +597,13 @@
           "examples": [{ ".": "./mod.ts" }]
         }
       ]
+    },
+    "workspaces": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "The members of this workspace."
     }
   }
 }

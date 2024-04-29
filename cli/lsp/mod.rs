@@ -32,6 +32,7 @@ mod performance;
 mod refactor;
 mod registries;
 mod repl;
+mod resolver;
 mod search;
 mod semantic_tokens;
 mod testing;

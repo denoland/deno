@@ -195,6 +195,7 @@ declare interface URL {
 declare var URL: {
   readonly prototype: URL;
   new (url: string | URL, base?: string | URL): URL;
+  parse(url: string | URL, base?: string | URL): URL | null;
   canParse(url: string | URL, base?: string | URL): boolean;
   createObjectURL(blob: Blob): string;
   revokeObjectURL(url: string): void;

@@ -19,7 +19,7 @@ async-stream = "0.3.3"
 base64.workspace = true
 bytes.workspace = true
 console_static_text.workspace = true
-deno_unsync = "0.3.0"
+deno_unsync = "0"
 denokv_proto.workspace = true
 fastwebsockets.workspace = true
 flate2 = { workspace = true, features = ["default"] }

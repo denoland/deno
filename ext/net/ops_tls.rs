@@ -10,6 +10,7 @@ use crate::tcp::TcpListener;
 use crate::DefaultTlsOptions;
 use crate::NetPermissions;
 use crate::UnsafelyIgnoreCertificateErrors;
+use deno_core::anyhow::anyhow;
 use deno_core::error::bad_resource;
 use deno_core::error::custom_error;
 use deno_core::error::generic_error;
@@ -448,18 +449,13 @@ where
     .with_no_client_auth();
 
   let mut tls_config = match keys {
-    TlsKeys::Null => {
-      unreachable!()
-    }
-    TlsKeys::Static(TlsKey(cert, key)) => {
-      tls_config.with_single_cert(cert.clone(), key.clone())
-    }
+    TlsKeys::Null => Err(anyhow!("Deno.listenTls requires a key")),
+    TlsKeys::Static(TlsKey(cert, key)) => tls_config
+      .with_single_cert(cert.clone(), key.clone())
+      .map_err(|e| anyhow!(e)),
   }
   .map_err(|e| {
-    custom_error(
-      "InvalidData",
-      format!("Error creating TLS certificate: {:?}", e),
-    )
+    custom_error("InvalidData", "Error creating TLS certificate").context(e)
   })?;
 
   if let Some(alpn_protocols) = args.alpn_protocols {

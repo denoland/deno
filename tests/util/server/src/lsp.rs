@@ -941,6 +941,21 @@ impl LspClient {
     })
   }
 
+  pub fn write_jsonrpc(
+    &mut self,
+    method: impl AsRef<str>,
+    params: impl Serialize,
+  ) {
+    let value = json!({
+      "jsonrpc": "2.0",
+      "id": self.request_id,
+      "method": method.as_ref(),
+      "params": params,
+    });
+    self.write(value);
+    self.request_id += 1;
+  }
+
   fn write(&mut self, value: Value) {
     let value_str = value.to_string();
     let msg = format!(
@@ -1025,6 +1040,17 @@ impl LspClient {
           panic!("LSP ERROR: {error:?}");
         }
         Some(maybe_result.clone().unwrap())
+      }
+      _ => None,
+    })
+  }
+
+  pub fn read_latest_response(
+    &mut self,
+  ) -> (u64, Option<Value>, Option<LspResponseError>) {
+    self.reader.read_message(|msg| match msg {
+      LspMessage::Response(id, val, err) => {
+        Some((*id, val.clone(), err.clone()))
       }
       _ => None,
     })

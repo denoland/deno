@@ -33,6 +33,7 @@ use crate::util::display;
 use crate::util::v8::get_v8_flags_from_env;
 use crate::util::v8::init_v8_flags;
 
+use deno_runtime::WorkerExecutionMode;
 pub use deno_runtime::UNSTABLE_GRANULAR_FLAGS;
 
 use deno_core::anyhow::Context;
@@ -174,8 +175,11 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
       if run_flags.is_stdin() {
         tools::run::run_from_stdin(flags).await
       } else {
-        tools::run::run_script(flags, run_flags).await
+        tools::run::run_script(WorkerExecutionMode::Run, flags, run_flags.watch).await
       }
+    }),
+    DenoSubcommand::Serve(serve_flags) => spawn_subcommand(async move {
+      tools::run::run_script(WorkerExecutionMode::Serve, flags, serve_flags.watch).await
     }),
     DenoSubcommand::Task(task_flags) => spawn_subcommand(async {
       tools::task::execute_script(flags, task_flags).await
