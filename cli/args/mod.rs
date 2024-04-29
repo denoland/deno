@@ -547,28 +547,44 @@ fn discover_package_json(
   Ok(None)
 }
 
-// TODO(bartlomieju): improve discovery, right now we're just looking at CWD
-/// Discover `.npmrc` file. If `maybe_stop_at` is provided, we will stop
-/// crawling up the directory tree at that path.
+/// Discover `.npmrc` file - currently we only support it next to `package.json`
+/// or next to `deno.json`.
+///
+/// In the future we will need to support it in user directory or global directory
+/// as per https://docs.npmjs.com/cli/v10/configuring-npm/npmrc#files.
 fn discover_npmrc(
-  _flags: &Flags,
-  _maybe_stop_at: Option<PathBuf>,
-  current_dir: &Path,
+  maybe_package_json_path: Option<PathBuf>,
+  maybe_deno_json_path: Option<PathBuf>,
 ) -> Result<Arc<ResolvedNpmRc>, AnyError> {
   const NPMRC_NAME: &str = ".npmrc";
-
-  let path = current_dir.join(NPMRC_NAME);
-  let maybe_source = match std::fs::read_to_string(&path) {
-    Ok(source) => Some(source),
-    Err(err) if err.kind() == std::io::ErrorKind::NotFound => None,
-    Err(err) => bail!("Error loading .npmrc at {}. {:#}", path.display(), err),
-  };
 
   fn get_env_var(var_name: &str) -> Option<String> {
     std::env::var(var_name).ok()
   }
 
-  if let Some(source) = maybe_source {
+  fn try_to_read_npmrc(
+    dir: &Path,
+  ) -> Result<Option<(String, PathBuf)>, AnyError> {
+    let path = dir.join(NPMRC_NAME);
+    let maybe_source = match std::fs::read_to_string(&path) {
+      Ok(source) => Some(source),
+      Err(err) if err.kind() == std::io::ErrorKind::NotFound => None,
+      Err(err) => {
+        bail!("Error loading .npmrc at {}. {:#}", path.display(), err)
+      }
+    };
+
+    Ok(if let Some(source) = maybe_source {
+      Some((source, path))
+    } else {
+      None
+    })
+  }
+
+  fn try_to_parse_npmrc(
+    source: String,
+    path: &Path,
+  ) -> Result<Arc<ResolvedNpmRc>, AnyError> {
     let npmrc = NpmRc::parse(&source, &get_env_var).with_context(|| {
       format!("Failed to parse .npmrc at {}", path.display())
     })?;
@@ -576,6 +592,22 @@ fn discover_npmrc(
       .as_resolved(npm_registry_url())
       .context("Failed to resolve .npmrc options")?;
     return Ok(Arc::new(resolved));
+  }
+
+  if let Some(package_json_path) = maybe_package_json_path {
+    if let Some(package_json_dir) = package_json_path.parent() {
+      if let Some((source, path)) = try_to_read_npmrc(package_json_dir)? {
+        return try_to_parse_npmrc(source, &path);
+      }
+    }
+  }
+
+  if let Some(deno_json_path) = maybe_deno_json_path {
+    if let Some(deno_json_dir) = deno_json_path.parent() {
+      if let Some((source, path)) = try_to_read_npmrc(deno_json_dir)? {
+        return try_to_parse_npmrc(source, &path);
+      }
+    }
   }
 
   log::debug!("No .npmrc file found");
@@ -897,7 +929,16 @@ impl CliOptions {
     } else {
       maybe_package_json = discover_package_json(&flags, None, &initial_cwd)?;
     }
-    let npmrc = discover_npmrc(&flags, None, &initial_cwd)?;
+    let npmrc = discover_npmrc(
+      maybe_package_json.as_ref().map(|p| p.path.clone()),
+      maybe_config_file.as_ref().and_then(|cf| {
+        if cf.specifier.scheme() == "file" {
+          Some(cf.specifier.to_file_path().unwrap())
+        } else {
+          None
+        }
+      }),
+    )?;
 
     let maybe_lock_file =
       lockfile::discover(&flags, maybe_config_file.as_ref())?;
