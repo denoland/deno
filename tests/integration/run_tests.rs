@@ -1018,7 +1018,7 @@ fn lock_deno_json_package_json_deps() {
   deno_json.write_json(&json!({
     "imports": {
       "esm-basic": "npm:@denotest/esm-basic",
-      "module_graph": "jsr:@denotest/module_graph@1.4",
+      "module_graph": "jsr:@denotest/module-graph@1.4",
     }
   }));
   let main_ts = temp_dir.join("main.ts");
@@ -1035,11 +1035,11 @@ fn lock_deno_json_package_json_deps() {
     "version": "3",
     "packages": {
       "specifiers": {
-        "jsr:@denotest/module_graph@1.4": "jsr:@denotest/module_graph@1.4.0",
+        "jsr:@denotest/module-graph@1.4": "jsr:@denotest/module-graph@1.4.0",
         "npm:@denotest/esm-basic": "npm:@denotest/esm-basic@1.0.0"
       },
       "jsr": {
-        "@denotest/module_graph@1.4.0": {
+        "@denotest/module-graph@1.4.0": {
           "integrity": "32de0973c5fa55772326fcd504a757f386d2b010db3e13e78f3bcf851e69473d"
         }
       },
@@ -1053,7 +1053,7 @@ fn lock_deno_json_package_json_deps() {
     "remote": {},
     "workspace": {
       "dependencies": [
-        "jsr:@denotest/module_graph@1.4",
+        "jsr:@denotest/module-graph@1.4",
         "npm:@denotest/esm-basic"
       ]
     }
@@ -1063,7 +1063,7 @@ fn lock_deno_json_package_json_deps() {
   // it to a package.json that uses an alias
   deno_json.write_json(&json!({
     "imports": {
-      "module_graph": "jsr:@denotest/module_graph@1.4",
+      "module_graph": "jsr:@denotest/module-graph@1.4",
     }
   }));
   package_json.write_json(&json!({
@@ -1087,11 +1087,11 @@ fn lock_deno_json_package_json_deps() {
     "version": "3",
     "packages": {
       "specifiers": {
-        "jsr:@denotest/module_graph@1.4": "jsr:@denotest/module_graph@1.4.0",
+        "jsr:@denotest/module-graph@1.4": "jsr:@denotest/module-graph@1.4.0",
         "npm:@denotest/esm-basic": "npm:@denotest/esm-basic@1.0.0"
       },
       "jsr": {
-        "@denotest/module_graph@1.4.0": {
+        "@denotest/module-graph@1.4.0": {
           "integrity": "32de0973c5fa55772326fcd504a757f386d2b010db3e13e78f3bcf851e69473d"
         }
       },
@@ -1105,7 +1105,7 @@ fn lock_deno_json_package_json_deps() {
     "remote": {},
     "workspace": {
       "dependencies": [
-        "jsr:@denotest/module_graph@1.4"
+        "jsr:@denotest/module-graph@1.4"
       ],
       "packageJson": {
         "dependencies": [
@@ -1128,10 +1128,10 @@ fn lock_deno_json_package_json_deps() {
     "version": "3",
     "packages": {
       "specifiers": {
-        "jsr:@denotest/module_graph@1.4": "jsr:@denotest/module_graph@1.4.0",
+        "jsr:@denotest/module-graph@1.4": "jsr:@denotest/module-graph@1.4.0",
       },
       "jsr": {
-        "@denotest/module_graph@1.4.0": {
+        "@denotest/module-graph@1.4.0": {
           "integrity": "32de0973c5fa55772326fcd504a757f386d2b010db3e13e78f3bcf851e69473d"
         }
       }
@@ -1139,7 +1139,7 @@ fn lock_deno_json_package_json_deps() {
     "remote": {},
     "workspace": {
       "dependencies": [
-        "jsr:@denotest/module_graph@1.4"
+        "jsr:@denotest/module-graph@1.4"
       ]
     }
   }));
@@ -1692,16 +1692,6 @@ fn type_directives_js_main() {
     .args("run --reload -L debug run/type_directives_js_main.js")
     .run();
   assert_not_contains!(output.combined_output(), "type_reference.d.ts");
-}
-
-#[test]
-fn test_deno_futures_env() {
-  let context = TestContextBuilder::new().add_future_env_vars().build();
-  let output = context
-    .new_command()
-    .args("run --quiet --reload run/deno_futures_env.ts")
-    .run();
-  output.assert_exit_code(0);
 }
 
 itest!(type_directives_redirect {
