@@ -11,5 +11,9 @@
     "args": "info --quiet --cert RootCA.pem https://localhost:5545/cert/cafile_info.ts",
     "flaky": true,
     "output": "cafile_info.ts.out"
+  }, {
+    "args": "cache --quiet --cert ROOTCA.pem http://localhost:4545/cert/cafile_url_imports.ts",
+    "flaky": true,
+    "output": ""
   }]
 }

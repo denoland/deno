@@ -1,6 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -547,9 +546,9 @@ impl TestCommandBuilder {
       return;
     }
 
-    let args = self.build_args();
-    let args = args.iter().map(|s| s.as_str()).collect::<Vec<_>>();
     let cwd = self.build_cwd();
+    let args = self.build_args(&cwd);
+    let args = args.iter().map(|s| s.as_str()).collect::<Vec<_>>();
     let mut envs = self.build_envs(&cwd);
     if !envs.contains_key("NO_COLOR") {
       // set this by default for pty tests
@@ -696,14 +695,14 @@ impl TestCommandBuilder {
 
   fn build_command(&self) -> Command {
     let command_path = self.build_command_path();
-    let args = self.build_args();
+    let cwd = self.build_cwd();
+    let args = self.build_args(&cwd);
     self.diagnostic_logger.writeln(format!(
       "command {} {}",
       command_path,
       args.join(" ")
     ));
     let mut command = Command::new(command_path);
-    let cwd = self.build_cwd();
     self
       .diagnostic_logger
       .writeln(format!("command cwd {}", cwd.display()));
@@ -743,7 +742,7 @@ impl TestCommandBuilder {
     }
   }
 
-  fn build_args(&self) -> Vec<String> {
+  fn build_args(&self, cwd: &Path) -> Vec<String> {
     if self.args_vec.is_empty() {
       std::borrow::Cow::Owned(
         self
@@ -760,7 +759,7 @@ impl TestCommandBuilder {
       std::borrow::Cow::Borrowed(&self.args_vec)
     }
     .iter()
-    .map(|arg| arg.replace("$TESTDATA", &testdata_path().to_string_lossy()))
+    .map(|arg| self.replace_vars(arg, cwd))
     .collect::<Vec<_>>()
   }
 
@@ -792,14 +791,18 @@ impl TestCommandBuilder {
 
     // update any test variables in the env value
     for value in envs.values_mut() {
-      // todo(dsherret): use monch to extract out the env vars
-      *value = value
-        .replace("$DENO_DIR", &self.deno_dir.path().to_string_lossy())
-        .replace("$TESTDATA", &testdata_path().to_string_lossy())
-        .replace("$PWD", &cwd.to_string_lossy());
+      *value = self.replace_vars(value, cwd);
     }
 
     envs
+  }
+
+  fn replace_vars(&self, text: &str, cwd: &Path) -> String {
+    // todo(dsherret): use monch to extract out the vars
+    text
+      .replace("$DENO_DIR", &self.deno_dir.path().to_string_lossy())
+      .replace("$TESTDATA", &testdata_path().to_string_lossy())
+      .replace("$PWD", &cwd.to_string_lossy())
   }
 }
 
