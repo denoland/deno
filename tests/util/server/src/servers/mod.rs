@@ -801,6 +801,46 @@ async fn main_server(
       );
       Ok(res)
     }
+    (_, "/jsx-types/jsx-runtime") | (_, "/jsx-types/jsx-dev-runtime") => {
+      let mut res = Response::new(string_body(
+        r#"
+/// <reference types="./jsx-runtime.d.ts" />
+        "#,
+      ));
+      res.headers_mut().insert(
+        "Content-type",
+        HeaderValue::from_static("application/javascript"),
+      );
+      Ok(res)
+    }
+    (_, "/jsx-types/jsx-runtime.d.ts") => {
+      let mut res = Response::new(string_body(
+        r#"export function jsx(
+          _type: "a" | "b",
+          _props: any,
+          _key: any,
+          _source: any,
+          _self: any,
+        ): any;
+        export const jsxs: typeof jsx;
+        export const jsxDEV: typeof jsx;
+        export const Fragment: unique symbol;
+
+        declare global {
+          namespace JSX {
+            interface IntrinsicElements {
+              [tagName: string]: Record<string, any>;
+            }
+          }
+        }
+        "#,
+      ));
+      res.headers_mut().insert(
+        "Content-type",
+        HeaderValue::from_static("application/typescript"),
+      );
+      Ok(res)
+    }
     (_, "/dynamic") => {
       let mut res = Response::new(string_body(
         &serde_json::to_string_pretty(&std::time::SystemTime::now()).unwrap(),
