@@ -1452,19 +1452,56 @@ declare namespace Deno {
     fn: (b: BenchContext) => void | Promise<void>,
   ): void;
 
-  /** Exit the Deno process with optional exit code.
-   *
-   * If no exit code is supplied then Deno will exit with return code of `0`.
-   *
-   * In worker contexts this is an alias to `self.close();`.
-   *
-   * ```ts
-   * Deno.exit(5);
-   * ```
+  /** An interface containing methods to iteract with the process exit state.
    *
    * @category Runtime Environment
    */
-  export function exit(code?: number): never;
+  export interface Exit {
+    /** Exit the Deno process with optional exit code.
+     *
+     * If no exit code is supplied then Deno will exit with return code of `0`.
+     *
+     * In worker contexts this is an alias to `self.close();`.
+     *
+     * ```ts
+     * Deno.exit(5);
+     * ```
+     *
+     * @category Runtime Environment
+     */
+    (code?: number): never;
+
+    /** Get the Deno process exit code.
+     *
+     * If no exit code has been supplied, then Deno will assume a return code of `0`.
+     *
+     * ```ts
+     * console.log(Deno.exit.code); //-> 0
+     * ```
+     *
+     * @category Runtime Environment
+     */
+    get code(): number;
+  
+    /** Set the Deno process exit code.
+     *
+     * A number or non-NaN string must be provided, otherwise a TypeError will be thrown.
+     *
+     * ```ts
+     * Deno.exit.code = 1;
+     * console.log(Deno.exit.code); //-> 1
+     * ```
+     *
+     * @category Runtime Environment
+     */
+    set code(value: number | string);
+  }
+
+  /** An interface containing methods to iteract with the process exit state.
+   *
+   * @category Runtime Environment
+   */
+  export const exit: Exit;
 
   /** An interface containing methods to interact with the process environment
    * variables.
