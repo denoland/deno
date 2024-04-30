@@ -422,14 +422,18 @@ function enableJupyter() {
   // Override confirm and prompt because they depend on a tty
   // and in the Deno.jupyter environment that doesn't exist.
   async function confirm(message = "Confirm") {
-    const answer = await input(`${message} [y/N] `, false)
+    const answer = await input(`${message} [y/N] `, false);
     return answer === "Y" || answer === "y";
   }
 
-  async function prompt(message = "Prompt", defaultValue = "", { password = false } = {}) {
-    const answer = await input(`${message} [${defaultValue}] `, password)
+  async function prompt(
+    message = "Prompt",
+    defaultValue = "",
+    { password = false } = {},
+  ) {
+    const answer = await input(`${message} [${defaultValue}] `, password);
 
-    if(answer === "") {
+    if (answer === "") {
       return defaultValue;
     }
 
