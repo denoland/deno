@@ -70,12 +70,13 @@ function setExitHandler(fn) {
   exitHandler = fn;
 }
 
+let _exitCode = 0;
 function exit(code) {
   // Set exit code first so unload event listeners can override it.
   if (typeof code === "number") {
     op_set_exit_code(code);
   } else {
-    code = 0;
+    code = _exitCode;
   }
 
   // Dispatches `unload` only when it's not dispatched yet.
@@ -94,13 +95,12 @@ function exit(code) {
   throw new Error("Code not reachable");
 }
 
-let _exitCode = 0;
 Object.defineProperty(exit, "code", {
   get() {
     return _exitCode;
   },
   set(value) {
-    const code = parseInt(value) || undefined;
+    const code = parseInt(value, 10) || undefined;
     if (typeof code !== "number") {
       throw new TypeError("Exit code must be a number.");
     }
