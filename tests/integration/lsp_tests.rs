@@ -10627,8 +10627,8 @@ export function B() {
     }),
   );
 
-  let mut diagnostics = client.read_diagnostics();
-  println!("{:#?}", diagnostics);
+  let diagnostics = client.read_diagnostics();
+  assert_eq!(diagnostics.all().len(), 0);
 
   let res = client.write_request(
     "textDocument/hover",
