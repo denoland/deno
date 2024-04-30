@@ -444,7 +444,10 @@ function enableJupyter() {
     defaultValue = "",
     { password = false } = {},
   ) {
-    const answer = await input(`${message} [${defaultValue}] `, password);
+    if (defaultValue != "") {
+      message += ` [${defaultValue}]`;
+    }
+    const answer = await input(`${message}`, password);
 
     if (answer === "") {
       return defaultValue;
