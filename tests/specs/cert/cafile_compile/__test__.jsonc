@@ -1,7 +1,7 @@
 {
   "tempDir": true,
   "steps": [{
-    "args": "compile --allow-net --cert ../ROOTCA.pem cafile_ts_fetch.ts",
+    "args": "compile --allow-net --cert ../RootCA.pem cafile_ts_fetch.ts",
     "cwd": "cert",
     "output": "[WILDCARD]"
   }, {
