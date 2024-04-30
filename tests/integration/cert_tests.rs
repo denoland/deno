@@ -13,22 +13,6 @@ use util::testdata_path;
 use util::TestContext;
 
 #[flaky_test::flaky_test]
-fn cafile_env_fetch() {
-  let module_url =
-    Url::parse("https://localhost:5545/cert/cafile_url_imports.ts").unwrap();
-  let context = TestContext::with_http_server();
-  let cafile = testdata_path().join("tls/RootCA.pem");
-
-  context
-    .new_command()
-    .args(format!("cache {module_url}"))
-    .env("DENO_CERT", cafile)
-    .run()
-    .assert_exit_code(0)
-    .skip_output_check();
-}
-
-#[flaky_test::flaky_test]
 fn cafile_fetch() {
   let module_url =
     Url::parse("http://localhost:4545/cert/cafile_url_imports.ts").unwrap();

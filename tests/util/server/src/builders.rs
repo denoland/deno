@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -548,7 +549,8 @@ impl TestCommandBuilder {
 
     let args = self.build_args();
     let args = args.iter().map(|s| s.as_str()).collect::<Vec<_>>();
-    let mut envs = self.build_envs();
+    let cwd = self.build_cwd();
+    let mut envs = self.build_envs(&cwd);
     if !envs.contains_key("NO_COLOR") {
       // set this by default for pty tests
       envs.insert("NO_COLOR".to_string(), "1".to_string());
@@ -562,11 +564,6 @@ impl TestCommandBuilder {
       }
     }
 
-    let cwd = self
-      .cwd
-      .as_ref()
-      .map(PathBuf::from)
-      .unwrap_or_else(|| std::env::current_dir().unwrap());
     let command_path = self.build_command_path();
 
     self.diagnostic_logger.writeln(format!(
@@ -706,12 +703,11 @@ impl TestCommandBuilder {
       args.join(" ")
     ));
     let mut command = Command::new(command_path);
-    if let Some(cwd) = &self.cwd {
-      self
-        .diagnostic_logger
-        .writeln(format!("command cwd {}", cwd));
-      command.current_dir(cwd);
-    }
+    let cwd = self.build_cwd();
+    self
+      .diagnostic_logger
+      .writeln(format!("command cwd {}", cwd.display()));
+    command.current_dir(&cwd);
     if let Some(stdin) = &self.stdin {
       command.stdin(stdin.take());
     }
@@ -726,7 +722,7 @@ impl TestCommandBuilder {
     if self.env_clear {
       command.env_clear();
     }
-    let envs = self.build_envs();
+    let envs = self.build_envs(&cwd);
     command.envs(envs);
     command.stdin(Stdio::piped());
     command
@@ -768,7 +764,15 @@ impl TestCommandBuilder {
     .collect::<Vec<_>>()
   }
 
-  fn build_envs(&self) -> HashMap<String, String> {
+  fn build_cwd(&self) -> PathBuf {
+    self
+      .cwd
+      .as_ref()
+      .map(PathBuf::from)
+      .unwrap_or_else(|| std::env::current_dir().unwrap())
+  }
+
+  fn build_envs(&self, cwd: &Path) -> HashMap<String, String> {
     let mut envs = self.envs.clone();
     if !envs.contains_key("DENO_DIR") {
       envs.insert("DENO_DIR".to_string(), self.deno_dir.path().to_string());
@@ -788,8 +792,11 @@ impl TestCommandBuilder {
 
     // update any test variables in the env value
     for value in envs.values_mut() {
-      *value =
-        value.replace("$DENO_DIR", &self.deno_dir.path().to_string_lossy());
+      // todo(dsherret): use monch to extract out the env vars
+      *value = value
+        .replace("$DENO_DIR", &self.deno_dir.path().to_string_lossy())
+        .replace("$TESTDATA", &testdata_path().to_string_lossy())
+        .replace("$PWD", &cwd.to_string_lossy());
     }
 
     envs
