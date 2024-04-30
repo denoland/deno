@@ -48,7 +48,6 @@ pub struct FileFlags {
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct AddFlags {
-  pub npm: bool,
   pub packages: Vec<String>,
 }
 
@@ -3662,11 +3661,10 @@ fn add_parse_inner(
   matches: &mut ArgMatches,
   packages: Option<clap::parser::Values<String>>,
 ) -> AddFlags {
-  let npm: bool = matches.get_flag("npm");
   let packages = packages
     .unwrap_or_else(|| matches.remove_many::<String>("packages").unwrap())
     .collect();
-  AddFlags { packages, npm }
+  AddFlags { packages }
 }
 
 fn bench_parse(flags: &mut Flags, matches: &mut ArgMatches) {
@@ -9727,7 +9725,6 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Add(AddFlags {
           packages: svec!["@david/which"],
-          ..Default::default()
         }),
         ..Flags::default()
       }
@@ -9739,7 +9736,6 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Add(AddFlags {
           packages: svec!["@david/which", "@luca/hello"],
-          ..Default::default()
         }),
         ..Flags::default()
       }

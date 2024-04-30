@@ -97,32 +97,20 @@ impl ConfigFile {
   /// creates a `deno.json` file - in this case
   /// we also return a new `CliFactory` that knows about
   /// the new config
-  async fn from_flags(
-    flags: Flags,
-    add_flags: &AddFlags,
-  ) -> Result<(Self, CliFactory), AnyError> {
+  async fn from_flags(flags: Flags) -> Result<(Self, CliFactory), AnyError> {
     let factory = CliFactory::from_flags(flags.clone())?;
     let options = factory.cli_options().clone();
 
     match (options.maybe_config_file(), options.maybe_package_json()) {
-      // when both are present, it's hard to come up with a consistent
-      // and easy to explain behavior. for now,
-      // only choose the `package.json` if the `--npm` flag is
-      // passed
-      (Some(deno), Some(package_json)) if add_flags.npm => Ok((
-        ConfigFile::Npm(
-          package_json.clone(),
-          deno.to_fmt_config()?.map(|f| f.options),
-        ),
-        factory,
-      )),
+      // when both are present, for now,
+      // default to deno.json
       (Some(deno), Some(_) | None) => {
         Ok((ConfigFile::Deno(deno.clone()), factory))
       }
-      (None, Some(package_json)) => {
+      (None, Some(package_json)) if options.enable_future_features() => {
         Ok((ConfigFile::Npm(package_json.clone(), None), factory))
       }
-      (None, None) => {
+      (None, Some(_) | None) => {
         tokio::fs::write(options.initial_cwd().join("deno.json"), "{}\n")
           .await
           .context("Failed to create deno.json file")?;
@@ -176,7 +164,7 @@ fn package_json_dependency_entry(
 
 pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
   let (config_file, cli_factory) =
-    ConfigFile::from_flags(flags.clone(), &add_flags).await?;
+    ConfigFile::from_flags(flags.clone()).await?;
 
   let config_specifier = config_file.specifier();
   if config_specifier.scheme() != "file" {
@@ -190,9 +178,7 @@ pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
   let mut package_reqs = Vec::with_capacity(add_flags.packages.len());
 
   for package_name in add_flags.packages.iter() {
-    let req = if package_name.starts_with("npm:")
-      || (add_flags.npm && !package_name.starts_with("jsr"))
-    {
+    let req = if package_name.starts_with("npm:") {
       let pkg_req = NpmPackageReqReference::from_str(&format!(
         "npm:{}",
         package_name.strip_prefix("npm:").unwrap_or(package_name)
@@ -325,7 +311,9 @@ pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
   // make a new CliFactory to pick up the updated config file
   let cli_factory = CliFactory::from_flags(flags)?;
   // cache deps
-  crate::module_loader::load_top_level_deps(&cli_factory).await?;
+  if cli_factory.cli_options().enable_future_features() {
+    crate::module_loader::load_top_level_deps(&cli_factory).await?;
+  }
 
   Ok(())
 }
