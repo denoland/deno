@@ -21,7 +21,10 @@ import {
 const {
   Error,
   FunctionPrototypeBind,
+  ObjectDefineProperty,
+  NumberParseInt,
   SymbolFor,
+  TypeError,
 } = primordials;
 
 import { Event, EventTarget } from "ext:deno_web/02_event.js";
@@ -95,12 +98,12 @@ function exit(code) {
   throw new Error("Code not reachable");
 }
 
-Object.defineProperty(exit, "code", {
+ObjectDefineProperty(exit, "code", {
   get() {
     return _exitCode;
   },
   set(value) {
-    const code = parseInt(value, 10) || undefined;
+    const code = NumberParseInt(value, 10) || undefined;
     if (typeof code !== "number") {
       throw new TypeError("Exit code must be a number.");
     }
