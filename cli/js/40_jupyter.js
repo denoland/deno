@@ -423,7 +423,6 @@ function enableJupyter() {
    * Prompt for user confirmation (in Jupyter Notebook context)
    * Override confirm and prompt because they depend on a tty
    * and in the Deno.jupyter environment that doesn't exist.
-   * @constructor
    * @param {string} message - The message to display.
    * @returns {Promise<boolean>} User confirmation.
    */
@@ -434,7 +433,6 @@ function enableJupyter() {
 
   /**
    * Prompt for user input (in Jupyter Notebook context)
-   * @constructor
    * @param {string} message - The message to display.
    * @param {string} defaultValue - The value used if none is provided.
    * @param {object} options Options
