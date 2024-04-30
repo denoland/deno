@@ -16,10 +16,14 @@ Deno.test({
     assertEquals(Deno.exit.code, 0);
 
     // Throws on non-number values
-    assertThrows(() => {
-      // @ts-expect-error Testing for runtime error
-      Deno.exit.code = "not a number";
-    }, TypeError, "Exit code must be a number.");
+    assertThrows(
+      () => {
+        // @ts-expect-error Testing for runtime error
+        Deno.exit.code = "not a number";
+      },
+      TypeError,
+      "Exit code must be a number.",
+    );
   },
 });
 
