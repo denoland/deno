@@ -3176,7 +3176,7 @@ fn get_parameters_from_parts(parts: &[SymbolDisplayPart]) -> Vec<String> {
           break;
         }
       } else if part.text == "..." && paren_count == 1 {
-        // Found rest parmeter. Do not fill in any further arguments.
+        // Found rest parameter. Do not fill in any further arguments.
         break;
       } else if part.text == "{" {
         brace_count += 1;
@@ -4124,9 +4124,9 @@ fn op_script_names(state: &mut OpState) -> Vec<String> {
   }
 
   // inject these next because they're global
-  for import in documents.module_graph_imports() {
-    if seen.insert(import.as_str()) {
-      result.push(import.to_string());
+  for specifier in state.state_snapshot.resolver.graph_import_specifiers() {
+    if seen.insert(specifier.as_str()) {
+      result.push(specifier.to_string());
     }
   }
 
@@ -5095,7 +5095,7 @@ mod tests {
       )
       .await;
     let resolver = LspResolver::default()
-      .with_new_config(&config, None, None)
+      .with_new_config(&config, cache.clone(), None, None)
       .await;
     StateSnapshot {
       project_version: 0,

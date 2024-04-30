@@ -484,9 +484,17 @@ function webMessagePortToNodeMessagePort(port: MessagePort) {
     // deno-lint-ignore no-explicit-any
     const _listener = (ev: any) => listener(ev.data);
     if (name == "message") {
-      port.onmessage = _listener;
+      if (port.onmessage === null) {
+        port.onmessage = _listener;
+      } else {
+        port.addEventListener("message", _listener);
+      }
     } else if (name == "messageerror") {
-      port.onmessageerror = _listener;
+      if (port.onmessageerror === null) {
+        port.onmessageerror = _listener;
+      } else {
+        port.addEventListener("messageerror", _listener);
+      }
     } else if (name == "close") {
       port.addEventListener("close", _listener);
     } else {

@@ -4,6 +4,7 @@ use super::logging::lsp_log;
 use crate::args::ConfigFile;
 use crate::args::FmtOptions;
 use crate::args::LintOptions;
+use crate::args::DENO_FUTURE;
 use crate::cache::FastInsecureHasher;
 use crate::file_fetcher::FileFetcher;
 use crate::lsp::logging::lsp_warn;
@@ -1070,8 +1071,14 @@ impl LspTsConfig {
       let import_map = import_map?;
       let referrer = &config_file?.specifier;
       let compiler_options = ts_config.inner.0.as_object_mut()?;
-      let jsx_import_source =
-        compiler_options.get("jsxImportSource")?.as_str()?;
+      let jsx_import_source = compiler_options
+        .get("jsxImportSourceTypes")
+        .and_then(|v| v.as_str())
+        .or_else(|| {
+          compiler_options
+            .get("jsxImportSource")
+            .and_then(|v| v.as_str())
+        })?;
       let jsx_import_source =
         import_map.resolve(jsx_import_source, referrer).ok()?;
       compiler_options
@@ -1324,7 +1331,7 @@ impl ConfigData {
         .as_ref()
         .map(|c| c.has_unstable("byonm"))
         .unwrap_or(false)
-      || (std::env::var("DENO_FUTURE").is_ok()
+      || (*DENO_FUTURE
         && package_json.is_some()
         && config_file
           .as_ref()

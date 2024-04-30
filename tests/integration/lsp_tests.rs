@@ -10525,6 +10525,10 @@ export function B() {
       }
     })
   );
+
+  let diagnostics = client.read_diagnostics();
+  println!("{:?}", diagnostics);
+
   client.shutdown();
 }
 
@@ -10581,6 +10585,74 @@ fn lsp_jsx_import_source_config_file_automatic_cache() {
     }));
   }
   assert_eq!(diagnostics.all(), vec![]);
+  client.shutdown();
+}
+
+#[test]
+fn lsp_jsx_import_source_types_pragma() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.tsx",
+      "languageId": "typescriptreact",
+      "version": 1,
+      "text":
+"/** @jsxImportSource http://localhost:4545/jsx */
+/** @jsxImportSourceTypes http://localhost:4545/jsx-types */
+/** @jsxRuntime automatic */
+
+function A() {
+  return <a>Hello</a>;
+}
+
+export function B() {
+  return <A></A>;
+}
+",
+    }
+  }));
+  client.write_request(
+    "workspace/executeCommand",
+    json!({
+      "command": "deno.cache",
+      "arguments": [
+        [],
+        "file:///a/file.tsx",
+      ],
+    }),
+  );
+
+  let diagnostics = client.read_diagnostics();
+  assert_eq!(diagnostics.all().len(), 0);
+
+  let res = client.write_request(
+    "textDocument/hover",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.tsx"
+      },
+      "position": { "line": 0, "character": 25 }
+    }),
+  );
+  assert_eq!(
+    res,
+    json!({
+      "contents": {
+        "kind": "markdown",
+        "value": "**Resolved Dependency**\n\n**Code**: http&#8203;://localhost:4545/jsx/jsx-runtime\n\n**Types**: http&#8203;://localhost:4545/jsx-types/jsx-runtime\n",
+      },
+      "range": {
+        "start": { "line": 0, "character": 21 },
+        "end": { "line": 0, "character": 46 }
+      }
+    })
+  );
+
   client.shutdown();
 }
 
