@@ -10628,7 +10628,7 @@ export function B() {
   );
 
   let diagnostics = client.read_diagnostics();
-  assert_eq!(diagnostics.all().len(), 0);
+  assert_eq!(json!(diagnostics.all()), json!([]));
 
   let res = client.write_request(
     "textDocument/hover",
