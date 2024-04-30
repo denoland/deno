@@ -1482,7 +1482,7 @@ declare namespace Deno {
      * @category Runtime Environment
      */
     get code(): number;
-  
+
     /** Set the Deno process exit code.
      *
      * A number or non-NaN string must be provided, otherwise a TypeError will be thrown.
