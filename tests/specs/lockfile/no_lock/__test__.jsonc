@@ -1,0 +1,31 @@
+{
+  "steps": [{
+    "args": "info main.ts",
+    "output": "fail_initial.out",
+    "exitCode": 10
+  }, {
+    "args": "info --no-lock main.ts",
+    "output": "info.nolock.out"
+  }, {
+    "args": "bench",
+    "output": "fail.out",
+    "exitCode": 10
+  }, {
+    "args": "bench --no-lock",
+    "output": "bench.nolock.out"
+  }, {
+    "args": "doc main.ts",
+    "exitCode": 10,
+    "output": "fail.out"
+  }, {
+    "args": "doc --no-lock main.ts",
+    "output": "doc.nolock.out"
+  }, {
+    "args": "test",
+    "exitCode": 10,
+    "output": "fail.out"
+  }, {
+    "args": "test --no-lock",
+    "output": "test.nolock.out"
+  }]
+}

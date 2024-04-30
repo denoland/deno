@@ -1,0 +1,8 @@
+{
+  "steps": [{
+    "args": "run message_port_removelistener.mjs",
+    "output": "message_port_removelistener.mjs.out",
+    // Note: successful exit asserts that the test passed
+    "exitCode": 0
+  }]
+}

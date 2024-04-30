@@ -36,6 +36,18 @@
             "type": "string"
           }
         },
+        "flaky": {
+          "type": "boolean"
+        },
+        "if": {
+          "type": "string",
+          "examples": [
+            "mac",
+            "linux",
+            "windows",
+            "unix"
+          ]
+        },
         "output": {
           "type": "string"
         },

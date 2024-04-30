@@ -1,0 +1,2 @@
+[WILDCARD]error: Relative import path "foo" not prefixed with / or ./ or ../
+    at file:///[WILDCARD]/095_cache_with_bare_import.ts:[WILDCARD]

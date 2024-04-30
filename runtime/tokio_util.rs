@@ -99,7 +99,13 @@ where
   #[cfg(not(tokio_unstable))]
   let join_handle = rt.spawn(future);
 
-  rt.block_on(join_handle).unwrap().into_inner()
+  let r = rt.block_on(join_handle).unwrap().into_inner();
+  // Forcefully shutdown the runtime - we're done executing JS code at this
+  // point, but there might be outstanding blocking tasks that were created and
+  // latered "unrefed". They won't terminate on their own, so we're forcing
+  // termination of Tokio runtime at this point.
+  rt.shutdown_background();
+  r
 }
 
 #[inline(always)]

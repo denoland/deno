@@ -29,7 +29,12 @@ function initialize(
 
     // FIXME(bartlomieju): not nice to depend on `Deno` namespace here
     // but it's the only way to get `args` and `version` and this point.
-    internals.__bootstrapNodeProcess(argv0, Deno.args, Deno.version);
+    internals.__bootstrapNodeProcess(
+      argv0,
+      Deno.args,
+      Deno.version,
+      Deno.env.get("NODE_DEBUG") ?? "",
+    );
     internals.__initWorkerThreads(
       runningOnMainThread,
       workerId,
@@ -40,7 +45,13 @@ function initialize(
     delete internals.requireImpl;
   } else {
     // Warm up the process module
-    internals.__bootstrapNodeProcess(undefined, undefined, undefined, true);
+    internals.__bootstrapNodeProcess(
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      true,
+    );
   }
 }
 

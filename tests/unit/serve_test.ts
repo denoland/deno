@@ -23,6 +23,7 @@ const {
   addTrailers,
   serveHttpOnListener,
   serveHttpOnConnection,
+  getCachedAbortSignal,
   // @ts-expect-error TypeScript (as of 3.7) does not support indexing namespaces by symbol
 } = Deno[Deno.internal];
 
@@ -2838,12 +2839,53 @@ for (const delay of ["delay", "nodelay"]) {
   }
 }
 
+// Test for the internal implementation detail of cached request signals. Ensure that the request's
+// signal is aborted if we try to access it after the request has been completed.
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerSignalCancelled() {
+    let stashedRequest;
+    const { finished, abort } = await makeServer((req) => {
+      // The cache signal is `undefined` because it has not been requested
+      assertEquals(getCachedAbortSignal(req), undefined);
+      stashedRequest = req;
+      return new Response("ok");
+    });
+    await (await fetch(`http://localhost:${servePort}`)).text();
+    abort();
+    await finished;
+
+    // `false` is a semaphore for a signal that should be aborted on creation
+    assertEquals(getCachedAbortSignal(stashedRequest!), false);
+    // Requesting the signal causes it to be materialized
+    assert(stashedRequest!.signal.aborted);
+    // The cached signal is now a full `AbortSignal`
+    assertEquals(
+      getCachedAbortSignal(stashedRequest!).constructor,
+      AbortSignal,
+    );
+  },
+);
+
 Deno.test(
   { permissions: { net: true } },
   async function httpServerCancelFetch() {
     const request2 = Promise.withResolvers<void>();
     const request2Aborted = Promise.withResolvers<string>();
-    const { finished, abort } = await makeServer(async (req) => {
+    let completed = 0;
+    let aborted = 0;
+    const { finished, abort } = await makeServer(async (req, context) => {
+      context.completed.then(() => {
+        console.log("completed");
+        completed++;
+      }).catch(() => {
+        console.log("completed (error)");
+        completed++;
+      });
+      req.signal.onabort = () => {
+        console.log("aborted", req.url);
+        aborted++;
+      };
       if (req.url.endsWith("/1")) {
         const fetchRecursive = await fetch(`http://localhost:${servePort}/2`);
         return new Response(fetchRecursive.body);
@@ -2871,6 +2913,39 @@ Deno.test(
 
     abort();
     await finished;
+    assertEquals(completed, 2);
+    assertEquals(aborted, 2);
+  },
+);
+
+// Regression test for https://github.com/denoland/deno/issues/23537
+Deno.test(
+  { permissions: { read: true, net: true } },
+  async function httpServerUndefinedCert() {
+    const ac = new AbortController();
+    const { promise, resolve } = Promise.withResolvers<void>();
+    const hostname = "127.0.0.1";
+
+    const server = Deno.serve({
+      handler: () => new Response("Hello World"),
+      hostname,
+      port: servePort,
+      signal: ac.signal,
+      onListen: onListen(resolve),
+      onError: createOnErrorCb(ac),
+      // Undefined should be equivalent to missing
+      cert: undefined,
+      key: undefined,
+    });
+
+    await promise;
+    const resp = await fetch(`http://localhost:${servePort}/`);
+
+    const respBody = await resp.text();
+    assertEquals("Hello World", respBody);
+
+    ac.abort();
+    await server.finished;
   },
 );
 

@@ -71,8 +71,13 @@ struct StepMetaData {
   /// Whether to clean the deno_dir before running the step.
   #[serde(default)]
   pub clean_deno_dir: bool,
+  /// If the test should be retried multiple times on failure.
+  #[serde(default)]
+  pub flaky: bool,
   pub args: VecOrString,
   pub cwd: Option<String>,
+  #[serde(rename = "if")]
+  pub if_cond: Option<String>,
   pub command_name: Option<String>,
   #[serde(default)]
   pub envs: HashMap<String, String>,
@@ -152,8 +157,11 @@ fn run_test(test: &CollectedTest, diagnostic_logger: Rc<RefCell<Vec<u8>>>) {
     // todo(dsherret): add bases in the future as needed
     Some(base) => panic!("Unknown test base: {}", base),
     None => {
-      // by default add npm and jsr env vars
-      builder = builder.add_jsr_env_vars().add_npm_env_vars();
+      // by default add all these
+      builder = builder
+        .add_jsr_env_vars()
+        .add_npm_env_vars()
+        .add_compile_env_vars();
     }
   }
 
@@ -167,35 +175,75 @@ fn run_test(test: &CollectedTest, diagnostic_logger: Rc<RefCell<Vec<u8>>>) {
     cwd.copy_to_recursive_with_exclusions(temp_dir, &assertion_paths);
   }
 
-  for step in &metadata.steps {
-    if step.clean_deno_dir {
-      context.deno_dir().path().remove_dir_all();
-    }
-
-    let command = context
-      .new_command()
-      .envs(metadata.envs.iter().chain(step.envs.iter()));
-    let command = match &step.args {
-      VecOrString::Vec(args) => command.args_vec(args),
-      VecOrString::String(text) => command.args(text),
-    };
-    let command = match &step.cwd {
-      Some(cwd) => command.current_dir(cwd),
-      None => command,
-    };
-    let command = match &step.command_name {
-      Some(command_name) => command.name(command_name),
-      None => command,
-    };
-    let output = command.run();
-    if step.output.ends_with(".out") {
-      let test_output_path = cwd.join(&step.output);
-      output.assert_matches_file(test_output_path);
+  for step in metadata.steps.iter().filter(|s| should_run_step(s)) {
+    let run_func = || run_step(step, &metadata, &cwd, &context);
+    if step.flaky {
+      run_flaky(run_func);
     } else {
-      output.assert_matches_text(&step.output);
+      run_func();
     }
-    output.assert_exit_code(step.exit_code);
   }
+}
+
+fn should_run_step(step: &StepMetaData) -> bool {
+  if let Some(cond) = &step.if_cond {
+    match cond.as_str() {
+      "windows" => cfg!(windows),
+      "unix" => cfg!(unix),
+      "mac" => cfg!(target_os = "macos"),
+      "linux" => cfg!(target_os = "linux"),
+      value => panic!("Unknown if condition: {}", value),
+    }
+  } else {
+    true
+  }
+}
+
+fn run_flaky(action: impl Fn()) {
+  for _ in 0..2 {
+    let result = std::panic::catch_unwind(AssertUnwindSafe(&action));
+    if result.is_ok() {
+      return;
+    }
+  }
+
+  // surface error on third try
+  action();
+}
+
+fn run_step(
+  step: &StepMetaData,
+  metadata: &MultiTestMetaData,
+  cwd: &PathRef,
+  context: &test_util::TestContext,
+) {
+  if step.clean_deno_dir {
+    context.deno_dir().path().remove_dir_all();
+  }
+
+  let command = context
+    .new_command()
+    .envs(metadata.envs.iter().chain(step.envs.iter()));
+  let command = match &step.args {
+    VecOrString::Vec(args) => command.args_vec(args),
+    VecOrString::String(text) => command.args(text),
+  };
+  let command = match &step.cwd {
+    Some(cwd) => command.current_dir(cwd),
+    None => command,
+  };
+  let command = match &step.command_name {
+    Some(command_name) => command.name(command_name),
+    None => command,
+  };
+  let output = command.run();
+  if step.output.ends_with(".out") {
+    let test_output_path = cwd.join(&step.output);
+    output.assert_matches_file(test_output_path);
+  } else {
+    output.assert_matches_text(&step.output);
+  }
+  output.assert_exit_code(step.exit_code);
 }
 
 fn resolve_test_and_assertion_files(
