@@ -44,6 +44,42 @@ Deno.test({
 });
 
 Deno.test({
+  name: "Running Deno.exit(value) overrides Deno.exit.code",
+  fn() {
+    let args: unknown[] | undefined;
+
+    const originalExit = Deno.exit;
+    Deno.exit = (...x) => {
+      args = x;
+    };
+
+    Deno.exit.code = 42;
+    Deno.exit(0);
+
+    assertEquals(args, [0]);
+    Deno.exit = originalExit;
+  },
+});
+
+Deno.test({
+  name: "Running Deno.exit() uses Deno.exit.code as fallback",
+  fn() {
+    let args: unknown[] | undefined;
+
+    const originalExit = Deno.exit;
+    Deno.exit = (...x) => {
+      args = x;
+    };
+
+    Deno.exit.code = 42;
+    Deno.exit();
+
+    assertEquals(args, [42]);
+    Deno.exit = originalExit;
+  },
+});
+
+Deno.test({
   name: "Retrieving the set exit code before process termination",
   fn() {
     Deno.exit.code = 42;
