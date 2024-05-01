@@ -1,5 +1,10 @@
+// Opening certain files requires --allow-all permission. This file is executed with
+// --allow-read only.
+
 const testCases = [
+  // Allowed, safe
   [["darwin", "linux"], null, "/dev/null"],
+  // Denied, requires `--allow-all`
   [["darwin", "linux"], /PermissionDenied/, "/etc/hosts"],
   [["darwin", "linux"], /PermissionDenied/, "/dev/ptmx"],
   [["linux"], /PermissionDenied/, "/proc/self/environ"],
