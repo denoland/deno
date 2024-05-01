@@ -1,13 +1,13 @@
-import fs from 'node:fs/promises';
-import { Worker, isMainThread } from 'node:worker_threads';
+import fs from "node:fs/promises";
+import { isMainThread, Worker } from "node:worker_threads";
 
-await fs.writeFile('mod.mjs', 'export default ' + isMainThread);
+await fs.writeFile("mod.mjs", "export default " + isMainThread);
 
-const path = new URL('mod.mjs', import.meta.url);
+const path = new URL("mod.mjs", import.meta.url);
 const i = await import(path.href);
 console.log(i);
 
 if (isMainThread) {
-  const worker = new Worker(new URL('test.mjs', import.meta.url));
-  worker.on('message', (msg) => console.log(msg));
+  const worker = new Worker(new URL("test.mjs", import.meta.url));
+  worker.on("message", (msg) => console.log(msg));
 }
