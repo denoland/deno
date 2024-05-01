@@ -4964,11 +4964,11 @@ const readableStreamAsyncIteratorPrototype = ObjectSetPrototypeOf({
       return PromiseResolve({ value: undefined, done: true });
     };
 
-    const returnPromise = reader[_iteratorNext]
+    reader[_iteratorNext] = reader[_iteratorNext]
       ? PromisePrototypeThen(reader[_iteratorNext], returnSteps, returnSteps)
       : returnSteps();
     return PromisePrototypeThen(
-      returnPromise,
+      reader[_iteratorNext],
       () => ({ value: arg, done: true }),
     );
   },
