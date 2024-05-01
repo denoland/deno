@@ -6,6 +6,8 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.44.0 / 2024.05.01
+
 ### 1.43.0 / 2024.05.01
 
 - FUTURE(ext/net): remove
