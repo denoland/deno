@@ -10,6 +10,7 @@ use crate::tools::jupyter::server::StdioMsg;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::serde_json;
+use deno_core::serde_json::json;
 use deno_core::OpState;
 use tokio::sync::mpsc;
 use tokio::sync::Mutex;
@@ -17,6 +18,7 @@ use tokio::sync::Mutex;
 deno_core::extension!(deno_jupyter,
   ops = [
     op_jupyter_broadcast,
+    op_jupyter_input,
   ],
   options = {
     sender: mpsc::UnboundedSender<StdioMsg>,
@@ -29,6 +31,61 @@ deno_core::extension!(deno_jupyter,
     state.put(options.sender);
   },
 );
+
+#[op2(async)]
+#[string]
+pub async fn op_jupyter_input(
+  state: Rc<RefCell<OpState>>,
+  #[string] prompt: String,
+  #[serde] is_password: serde_json::Value,
+) -> Result<Option<String>, AnyError> {
+  let (_iopub_socket, last_execution_request, stdin_socket) = {
+    let s = state.borrow();
+
+    (
+      s.borrow::<Arc<Mutex<Connection<zeromq::PubSocket>>>>()
+        .clone(),
+      s.borrow::<Rc<RefCell<Option<JupyterMessage>>>>().clone(),
+      s.borrow::<Arc<Mutex<Connection<zeromq::RouterSocket>>>>()
+        .clone(),
+    )
+  };
+
+  let mut stdin = stdin_socket.lock().await;
+
+  let maybe_last_request = last_execution_request.borrow().clone();
+  if let Some(last_request) = maybe_last_request {
+    if !last_request.allow_stdin() {
+      return Ok(None);
+    }
+
+    /*
+     * Using with_identities() because of jupyter client docs instruction
+     * Requires cloning identities per :
+     * https://jupyter-client.readthedocs.io/en/latest/messaging.html#messages-on-the-stdin-router-dealer-channel
+     * The stdin socket of the client is required to have the
+     *  same zmq IDENTITY as the client’s shell socket.
+     *  Because of this, the input_request must be sent with the same IDENTITY
+     *  routing prefix as the execute_reply in order for the frontend to receive the message.
+     * """
+     */
+    last_request
+      .new_message("input_request")
+      .with_identities(&last_request)
+      .with_content(json!({
+        "prompt": prompt,
+        "password": is_password,
+      }))
+      .send(&mut *stdin)
+      .await?;
+
+    let response = JupyterMessage::read(&mut *stdin).await?;
+
+    return Ok(Some(response.value().to_string()));
+  }
+
+  Ok(None)
+}
 
 #[op2(async)]
 pub async fn op_jupyter_broadcast(

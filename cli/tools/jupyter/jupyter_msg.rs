@@ -180,6 +180,14 @@ impl JupyterMessage {
     self.content["comm_id"].as_str().unwrap_or("")
   }
 
+  pub(crate) fn allow_stdin(&self) -> bool {
+    self.content["allow_stdin"].as_bool().unwrap_or(false)
+  }
+
+  pub(crate) fn value(&self) -> &str {
+    self.content["value"].as_str().unwrap_or("")
+  }
+
   // Creates a new child message of this message. ZMQ identities are not transferred.
   pub(crate) fn new_message(&self, msg_type: &str) -> JupyterMessage {
     let mut header = self.header.clone();
@@ -232,6 +240,14 @@ impl JupyterMessage {
 
   pub(crate) fn with_buffers(mut self, buffers: Vec<Bytes>) -> JupyterMessage {
     self.buffers = buffers;
+    self
+  }
+
+  pub(crate) fn with_identities(
+    mut self,
+    msg: &JupyterMessage,
+  ) -> JupyterMessage {
+    self.zmq_identities = msg.zmq_identities.clone();
     self
   }
 
