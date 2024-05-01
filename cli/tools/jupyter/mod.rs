@@ -28,8 +28,8 @@ use tokio::sync::mpsc;
 use tokio::sync::mpsc::UnboundedSender;
 
 mod install;
-pub(crate) mod jupyter_msg;
-pub(crate) mod server;
+pub mod jupyter_msg;
+pub mod server;
 
 pub async fn kernel(
   flags: Flags,
