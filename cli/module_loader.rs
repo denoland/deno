@@ -93,6 +93,20 @@ impl ModuleLoadPreparer {
     }
   }
 
+  pub fn new_for_worker(
+    &self,
+    graph_container: Arc<ModuleGraphContainer>,
+  ) -> Self {
+    Self {
+      options: self.options.clone(),
+      graph_container,
+      lockfile: self.lockfile.clone(),
+      module_graph_builder: self.module_graph_builder.clone(),
+      progress_bar: self.progress_bar.clone(),
+      type_checker: self.type_checker.clone(),
+    }
+  }
+
   /// This method must be called for a module or a static importer of that
   /// module before attempting to `load()` it from a `JsRuntime`. It will
   /// populate the graph data in memory with the necessary source code, write
@@ -221,6 +235,7 @@ impl ModuleLoadPreparer {
   }
 }
 
+#[derive(Clone)]
 struct PreparedModuleLoader {
   emitter: Arc<Emitter>,
   graph_container: Arc<ModuleGraphContainer>,
@@ -228,6 +243,14 @@ struct PreparedModuleLoader {
 }
 
 impl PreparedModuleLoader {
+  pub fn for_worker(&self, graph_container: Arc<ModuleGraphContainer>) -> Self {
+    Self {
+      emitter: self.emitter.clone(),
+      graph_container,
+      parsed_source_cache: self.parsed_source_cache.clone(),
+    }
+  }
+
   pub fn load_prepared_module(
     &self,
     specifier: &ModuleSpecifier,
@@ -319,6 +342,34 @@ struct SharedCliModuleLoaderState {
   module_info_cache: Arc<ModuleInfoCache>,
 }
 
+impl SharedCliModuleLoaderState {
+  fn for_worker(&self) -> Self {
+    let graph_container =
+      Arc::new(ModuleGraphContainer::new(deno_graph::GraphKind::All));
+    let module_load_preparer = self
+      .module_load_preparer
+      .new_for_worker(graph_container.clone());
+    let prepared_module_loader = self
+      .prepared_module_loader
+      .for_worker(graph_container.clone());
+
+    Self {
+      lib_window: self.lib_worker,
+      lib_worker: self.lib_worker,
+      is_inspecting: self.is_inspecting,
+      is_repl: self.is_repl,
+      graph_container,
+      module_load_preparer: Arc::new(module_load_preparer),
+      prepared_module_loader,
+      resolver: self.resolver.clone(),
+      node_resolver: self.node_resolver.clone(),
+      npm_module_loader: self.npm_module_loader.clone(),
+      code_cache: self.code_cache.clone(),
+      module_info_cache: self.module_info_cache.clone(),
+    }
+  }
+}
+
 pub struct CliModuleLoaderFactory {
   shared: Arc<SharedCliModuleLoaderState>,
 }
@@ -367,12 +418,19 @@ impl CliModuleLoaderFactory {
     lib: TsTypeLib,
     root_permissions: PermissionsContainer,
     dynamic_permissions: PermissionsContainer,
+    worker: bool,
   ) -> Rc<dyn ModuleLoader> {
+    let shared = if worker {
+      Arc::new(self.shared.for_worker())
+    } else {
+      self.shared.clone()
+    };
+
     Rc::new(CliModuleLoader {
       lib,
       root_permissions,
       dynamic_permissions,
-      shared: self.shared.clone(),
+      shared,
     })
   }
 }
@@ -387,6 +445,7 @@ impl ModuleLoaderFactory for CliModuleLoaderFactory {
       self.shared.lib_window,
       root_permissions,
       dynamic_permissions,
+      false,
     )
   }
 
@@ -399,6 +458,7 @@ impl ModuleLoaderFactory for CliModuleLoaderFactory {
       self.shared.lib_worker,
       root_permissions,
       dynamic_permissions,
+      true,
     )
   }
 
