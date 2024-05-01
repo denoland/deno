@@ -1343,12 +1343,6 @@ fn clap_root() -> Command {
 }
 
 fn add_args(cmd: Command, include_packages: bool) -> Command {
-  let cmd = cmd.arg(
-    Arg::new("npm")
-      .long("npm")
-      .help("Look up packages in npm if unspecified")
-      .action(ArgAction::SetTrue),
-  );
   if include_packages {
     cmd.arg(
       Arg::new("packages")
