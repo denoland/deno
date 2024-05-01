@@ -2,7 +2,7 @@ import { emptyDir } from "../../../util/std/fs/empty_dir.ts";
 
 const DIR = "./coverage";
 const COMMAND = new Deno.Command(Deno.execPath(), {
-  args: ["test", "--coverage"],
+  args: ["test", "--coverage", "--clean"],
   stdout: "null",
 });
 
