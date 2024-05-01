@@ -213,6 +213,7 @@ impl deno_kv::sqlite::SqliteDbHandlerPermissions for Permissions {
 pub fn create_runtime_snapshot(
   snapshot_path: PathBuf,
   snapshot_options: SnapshotOptions,
+  // NOTE: For embedders that wish to add additional extensions to the snapshot
   custom_extensions: Vec<Extension>,
 ) {
   // NOTE(bartlomieju): ordering is important here, keep it in sync with
