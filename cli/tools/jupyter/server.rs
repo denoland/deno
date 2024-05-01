@@ -193,8 +193,8 @@ impl JupyterServer {
     msg: JupyterMessage,
     connection: &mut Connection<zeromq::RouterSocket>,
   ) -> Result<(), AnyError> {
-    (*self.iopub_socket.lock().await)
-      .send(
+    self
+      .send_iopub(
         &msg
           .new_message("status")
           .with_content(json!({"execution_state": "busy"})),
@@ -218,9 +218,7 @@ impl JupyterServer {
           .await?;
       }
       "comm_open" => {
-        (*self.iopub_socket.lock().await)
-          .send(&msg.comm_close_message())
-          .await?;
+        self.send_iopub(&msg.comm_close_message()).await?;
       }
       "complete_request" => {
         let user_code = msg.code();
@@ -313,8 +311,8 @@ impl JupyterServer {
       }
     }
 
-    (*self.iopub_socket.lock().await)
-      .send(
+    self
+      .send_iopub(
         &msg
           .new_message("status")
           .with_content(json!({"execution_state": "idle"})),
@@ -333,8 +331,8 @@ impl JupyterServer {
     }
     *self.last_execution_request.borrow_mut() = Some(msg.clone());
 
-    (*self.iopub_socket.lock().await)
-      .send(&msg.new_message("execute_input").with_content(json!({
+    self
+      .send_iopub(&msg.new_message("execute_input").with_content(json!({
           "execution_count": self.execution_count,
           "code": msg.code()
       })))
@@ -348,8 +346,8 @@ impl JupyterServer {
     let evaluate_response = match result {
       Ok(eval_response) => eval_response,
       Err(err) => {
-        (*self.iopub_socket.lock().await)
-          .send(&msg.new_message("error").with_content(json!({
+        self
+          .send_iopub(&msg.new_message("error").with_content(json!({
             "ename": err.to_string(),
             "evalue": " ", // Fake value, otherwise old Jupyter frontends don't show the error
             "traceback": [],
@@ -458,8 +456,8 @@ impl JupyterServer {
         message
       };
 
-      (*self.iopub_socket.lock().await)
-        .send(&msg.new_message("error").with_content(json!({
+      self
+        .send_iopub(&msg.new_message("error").with_content(json!({
           "ename": ename,
           "evalue": evalue,
           "traceback": traceback,
@@ -474,6 +472,13 @@ impl JupyterServer {
     }
 
     Ok(())
+  }
+
+  async fn send_iopub(
+    &mut self,
+    message: &JupyterMessage,
+  ) -> Result<(), AnyError> {
+    self.iopub_socket.lock().await.send(message).await
   }
 }
 
