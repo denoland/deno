@@ -293,7 +293,6 @@ async fn create_install_shim(
   };
 
   if shim_data.file_path.exists() && !install_flags_global.force {
-    eprintln!("DATA: {}", shim_data.file_path.display());
     return Err(generic_error(
       "Existing installation found. Aborting (Use -f to overwrite).",
     ));
