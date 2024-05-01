@@ -168,8 +168,8 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
     };
     let package_root_path = self.resolve_package_root(&local_path);
     let mut current_folder = package_root_path.as_path();
-    loop {
-      current_folder = current_folder.parent().unwrap();
+    while let Some(parent_folder) = current_folder.parent() {
+      current_folder = parent_folder;
       let node_modules_folder = if current_folder.ends_with("node_modules") {
         Cow::Borrowed(current_folder)
       } else {
@@ -191,13 +191,15 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
       }
 
       if current_folder == self.root_node_modules_path {
-        bail!(
-          "could not find package '{}' from referrer '{}'.",
-          name,
-          referrer
-        );
+        break;
       }
     }
+
+    bail!(
+      "could not find package '{}' from referrer '{}'.",
+      name,
+      referrer
+    );
   }
 
   fn resolve_package_folder_from_specifier(

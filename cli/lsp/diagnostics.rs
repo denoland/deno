@@ -3,7 +3,7 @@
 use super::analysis;
 use super::cache;
 use super::client::Client;
-use super::config::ConfigSnapshot;
+use super::config::Config;
 use super::documents;
 use super::documents::Document;
 use super::documents::DocumentsFilter;
@@ -62,7 +62,6 @@ use tower_lsp::lsp_types as lsp;
 #[derive(Debug)]
 pub struct DiagnosticServerUpdateMessage {
   pub snapshot: Arc<StateSnapshot>,
-  pub config: Arc<ConfigSnapshot>,
   pub url_map: LspUrlMap,
 }
 
@@ -458,12 +457,7 @@ impl DiagnosticsServer {
                 }
               };
               let ChannelUpdateMessage {
-                message:
-                  DiagnosticServerUpdateMessage {
-                    snapshot,
-                    config,
-                    url_map,
-                  },
+                message: DiagnosticServerUpdateMessage { snapshot, url_map },
                 batch_index,
               } = message;
               let url_map = Arc::new(url_map);
@@ -480,7 +474,7 @@ impl DiagnosticsServer {
                 let token = token.clone();
                 let ts_diagnostics_store = ts_diagnostics_store.clone();
                 let snapshot = snapshot.clone();
-                let config = config.clone();
+                let config = snapshot.config.clone();
                 let url_map = url_map.clone();
                 async move {
                   if let Some(previous_handle) = previous_ts_handle {
@@ -555,7 +549,7 @@ impl DiagnosticsServer {
                 let diagnostics_publisher = diagnostics_publisher.clone();
                 let token = token.clone();
                 let snapshot = snapshot.clone();
-                let config = config.clone();
+                let config = snapshot.config.clone();
                 let url_map = url_map.clone();
                 async move {
                   if let Some(previous_handle) = previous_deps_handle {
@@ -604,7 +598,7 @@ impl DiagnosticsServer {
                 let diagnostics_publisher = diagnostics_publisher.clone();
                 let token = token.clone();
                 let snapshot = snapshot.clone();
-                let config = config.clone();
+                let config = snapshot.config.clone();
                 let url_map = url_map.clone();
                 async move {
                   if let Some(previous_handle) = previous_lint_handle {
@@ -784,7 +778,7 @@ fn ts_json_to_diagnostics(
 
 fn generate_lint_diagnostics(
   snapshot: &language_server::StateSnapshot,
-  config: &ConfigSnapshot,
+  config: &Config,
   token: CancellationToken,
 ) -> DiagnosticVec {
   let documents = snapshot
@@ -809,10 +803,8 @@ fn generate_lint_diagnostics(
       break;
     }
     // ignore any npm package files
-    if let Some(npm) = &snapshot.npm {
-      if npm.node_resolver.in_npm_package(specifier) {
-        continue;
-      }
+    if snapshot.resolver.in_npm_package(specifier) {
+      continue;
     }
     let version = document.maybe_lsp_version();
     let (lint_options, lint_rules) = config
@@ -867,7 +859,7 @@ fn generate_document_lint_diagnostics(
 
 async fn generate_ts_diagnostics(
   snapshot: Arc<language_server::StateSnapshot>,
-  config: &ConfigSnapshot,
+  config: &Config,
   ts_server: &tsc::TsServer,
   token: CancellationToken,
 ) -> Result<DiagnosticVec, AnyError> {
@@ -1010,6 +1002,9 @@ impl DenoDiagnostic {
         } else {
           match err {
             ResolutionError::InvalidDowngrade { .. } => "invalid-downgrade",
+            ResolutionError::InvalidJsrHttpsTypesImport { .. } => {
+              "invalid-jsr-https-types-import"
+            }
             ResolutionError::InvalidLocalImport { .. } => {
               "invalid-local-import"
             }
@@ -1344,6 +1339,7 @@ fn diagnose_resolution(
           diagnostics.push(DenoDiagnostic::DenoWarn(message));
         }
       }
+      let managed_npm_resolver = snapshot.resolver.maybe_managed_npm_resolver();
       if let Some(doc) = snapshot.documents.get(specifier) {
         if let Some(diagnostic) = check_redirect_diagnostic(specifier, &doc) {
           diagnostics.push(diagnostic);
@@ -1372,11 +1368,7 @@ fn diagnose_resolution(
       } else if let Ok(pkg_ref) =
         NpmPackageReqReference::from_specifier(specifier)
       {
-        if let Some(npm_resolver) = snapshot
-          .npm
-          .as_ref()
-          .and_then(|n| n.npm_resolver.as_managed())
-        {
+        if let Some(npm_resolver) = managed_npm_resolver {
           // show diagnostics for npm package references that aren't cached
           let req = pkg_ref.into_inner().req;
           if !npm_resolver.is_pkg_req_folder_cached(&req) {
@@ -1403,11 +1395,7 @@ fn diagnose_resolution(
             diagnostics
               .push(DenoDiagnostic::BareNodeSpecifier(module_name.to_string()));
           }
-        } else if let Some(npm_resolver) = snapshot
-          .npm
-          .as_ref()
-          .and_then(|n| n.npm_resolver.as_managed())
-        {
+        } else if let Some(npm_resolver) = managed_npm_resolver {
           // check that a @types/node package exists in the resolver
           let types_node_req = PackageReq::from_str("@types/node").unwrap();
           if !npm_resolver.is_pkg_req_folder_cached(&types_node_req) {
@@ -1448,10 +1436,8 @@ fn diagnose_dependency(
   dependency_key: &str,
   dependency: &deno_graph::Dependency,
 ) {
-  if let Some(npm) = &snapshot.npm {
-    if npm.npm_resolver.in_npm_package(referrer) {
-      return; // ignore, surface typescript errors instead
-    }
+  if snapshot.resolver.in_npm_package(referrer) {
+    return; // ignore, surface typescript errors instead
   }
 
   let import_map = snapshot.config.tree.root_import_map();
@@ -1540,7 +1526,7 @@ fn diagnose_dependency(
 /// an import map to shorten an URL.
 fn generate_deno_diagnostics(
   snapshot: &language_server::StateSnapshot,
-  config: &ConfigSnapshot,
+  config: &Config,
   token: CancellationToken,
 ) -> DiagnosticVec {
   let mut diagnostics_vec = Vec::new();
@@ -1583,12 +1569,12 @@ mod tests {
   use crate::cache::GlobalHttpCache;
   use crate::cache::RealDenoCacheEnv;
   use crate::lsp::config::Config;
-  use crate::lsp::config::ConfigSnapshot;
   use crate::lsp::config::Settings;
   use crate::lsp::config::WorkspaceSettings;
   use crate::lsp::documents::Documents;
   use crate::lsp::documents::LanguageId;
   use crate::lsp::language_server::StateSnapshot;
+  use crate::lsp::resolver::LspResolver;
   use deno_config::ConfigFile;
   use pretty_assertions::assert_eq;
   use std::path::Path;
@@ -1605,7 +1591,7 @@ mod tests {
       location.to_path_buf(),
       RealDenoCacheEnv,
     ));
-    let mut documents = Documents::new(cache);
+    let mut documents = Documents::new(cache.clone());
     for (specifier, source, version, language_id) in fixtures {
       let specifier =
         resolve_url(specifier).expect("failed to create specifier");
@@ -1627,6 +1613,9 @@ mod tests {
       .unwrap();
       config.tree.inject_config_file(config_file).await;
     }
+    let resolver = LspResolver::default()
+      .with_new_config(&config, cache, None, None)
+      .await;
     StateSnapshot {
       project_version: 0,
       documents,
@@ -1634,14 +1623,14 @@ mod tests {
       cache_metadata: cache::CacheMetadata::new(Arc::new(
         GlobalHttpCache::new(location.to_path_buf(), RealDenoCacheEnv),
       )),
-      config: config.snapshot(),
-      npm: None,
+      config: Arc::new(config),
+      resolver,
     }
   }
 
-  fn mock_config() -> ConfigSnapshot {
+  fn mock_config() -> Config {
     let root_uri = resolve_url("file:///").unwrap();
-    ConfigSnapshot {
+    Config {
       settings: Settings {
         unscoped: WorkspaceSettings {
           enable: Some(true),

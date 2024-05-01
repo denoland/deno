@@ -296,6 +296,7 @@ impl Loader for FetchCacher {
     source: &Arc<[u8]>,
     module_info: &deno_graph::ModuleInfo,
   ) {
+    log::debug!("Caching module info for {}", specifier);
     let source_hash = ModuleInfoCacheSourceHash::from_source(source);
     let result = self.module_info_cache.set_module_info(
       specifier,

@@ -1,12 +1,12 @@
-Download http://127.0.0.1:4250/@denotest/no_module_graph/meta.json
-Download http://127.0.0.1:4250/@denotest/no_module_graph/0.1.0_meta.json
-Download http://127.0.0.1:4250/@denotest/no_module_graph/0.1.0/mod.ts
-Download http://127.0.0.1:4250/@denotest/no_module_graph/0.1.0/TestClass.ts
+Download http://127.0.0.1:4250/@denotest/no-module-graph/meta.json
+Download http://127.0.0.1:4250/@denotest/no-module-graph/0.1.0_meta.json
+Download http://127.0.0.1:4250/@denotest/no-module-graph/0.1.0/mod.ts
+Download http://127.0.0.1:4250/@denotest/no-module-graph/0.1.0/TestClass.ts
 local: [WILDCARD]main.ts
 type: TypeScript
 dependencies: 2 unique
 size: [WILDCARD]
 
 file:///[WILDCARD]/jsr/no_module_graph/main.ts ([WILDCARD])
-└─┬ http://127.0.0.1:4250/@denotest/no_module_graph/0.1.0/mod.ts ([WILDCARD])
-  └── http://127.0.0.1:4250/@denotest/no_module_graph/0.1.0/TestClass.ts ([WILDCARD])
+└─┬ http://127.0.0.1:4250/@denotest/no-module-graph/0.1.0/mod.ts ([WILDCARD])
+  └── http://127.0.0.1:4250/@denotest/no-module-graph/0.1.0/TestClass.ts ([WILDCARD])

@@ -15,6 +15,7 @@ use deno_core::serde_json;
 use deno_core::unsync::spawn_blocking;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
+use deno_runtime::WorkerExecutionMode;
 use rustyline::error::ReadlineError;
 
 mod channel;
@@ -170,6 +171,7 @@ pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
   let test_event_sender = worker.sender;
   let mut worker = worker_factory
     .create_custom_worker(
+      WorkerExecutionMode::Repl,
       main_module.clone(),
       permissions,
       vec![crate::ops::testing::deno_test::init_ops(test_event_sender)],

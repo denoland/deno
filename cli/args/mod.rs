@@ -61,6 +61,7 @@ use std::env;
 use std::io::BufReader;
 use std::io::Cursor;
 use std::net::SocketAddr;
+use std::num::NonZeroU16;
 use std::num::NonZeroUsize;
 use std::path::Path;
 use std::path::PathBuf;
@@ -109,7 +110,7 @@ pub static DENO_DISABLE_PEDANTIC_NODE_WARNINGS: Lazy<bool> = Lazy::new(|| {
     .is_some()
 });
 
-static DENO_FUTURE: Lazy<bool> =
+pub static DENO_FUTURE: Lazy<bool> =
   Lazy::new(|| std::env::var("DENO_FUTURE").ok().is_some());
 
 pub fn jsr_url() -> &'static Url {
@@ -195,6 +196,7 @@ pub fn ts_config_to_transpile_and_emit_options(
       inline_sources: options.inline_sources,
       keep_comments: false,
       source_map,
+      source_map_file: None,
     },
   ))
 }
@@ -942,7 +944,7 @@ impl CliOptions {
     &self,
   ) -> Result<Option<ModuleSpecifier>, AnyError> {
     match self.overrides.import_map_specifier.clone() {
-      Some(maybe_path) => Ok(maybe_path),
+      Some(maybe_url) => Ok(maybe_url),
       None => resolve_import_map_specifier(
         self.flags.import_map_path.as_deref(),
         self.maybe_config_file.as_ref(),
@@ -1022,6 +1024,22 @@ impl CliOptions {
     }
   }
 
+  pub fn serve_port(&self) -> Option<NonZeroU16> {
+    if let DenoSubcommand::Serve(flags) = self.sub_command() {
+      Some(flags.port)
+    } else {
+      None
+    }
+  }
+
+  pub fn serve_host(&self) -> Option<String> {
+    if let DenoSubcommand::Serve(flags) = self.sub_command() {
+      Some(flags.host.clone())
+    } else {
+      None
+    }
+  }
+
   pub fn enable_future_features(&self) -> bool {
     *DENO_FUTURE
   }
@@ -1061,6 +1079,10 @@ impl CliOptions {
           resolve_url_or_path(&run_flags.script, self.initial_cwd())
             .map_err(AnyError::from)
         }
+      }
+      DenoSubcommand::Serve(run_flags) => {
+        resolve_url_or_path(&run_flags.script, self.initial_cwd())
+          .map_err(AnyError::from)
       }
       _ => {
         bail!("No main module.")

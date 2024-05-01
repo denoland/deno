@@ -131,7 +131,7 @@ deno_core::extension!(
     http_next::op_http_close,
     http_next::op_http_cancel,
   ],
-  esm = ["00_serve.js", "01_http.js", "02_websocket.ts"],
+  esm = ["00_serve.ts", "01_http.js", "02_websocket.ts"],
 );
 
 pub enum HttpSocketAddr {

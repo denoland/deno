@@ -304,6 +304,7 @@ fn partial_jsr_package_version_info_from_slice(
       .as_object_mut()
       .and_then(|o| o.remove("exports"))
       .unwrap_or_default(),
-    module_graph: None,
+    module_graph_1: None,
+    module_graph_2: None,
   })
 }

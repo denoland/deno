@@ -21,7 +21,7 @@ declare type ResizeQuality = "high" | "low" | "medium" | "pixelated";
 declare type ImageBitmapSource = Blob | ImageData;
 
 /** @category Web APIs */
-interface ImageBitmapOptions {
+declare interface ImageBitmapOptions {
   colorSpaceConversion?: ColorSpaceConversion;
   imageOrientation?: ImageOrientation;
   premultiplyAlpha?: PremultiplyAlpha;
@@ -46,7 +46,7 @@ declare function createImageBitmap(
 ): Promise<ImageBitmap>;
 
 /** @category Web APIs */
-interface ImageBitmap {
+declare interface ImageBitmap {
   readonly height: number;
   readonly width: number;
   close(): void;

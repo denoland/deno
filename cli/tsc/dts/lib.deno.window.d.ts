@@ -206,6 +206,7 @@ declare function removeEventListener<
   listener: (this: Window, ev: WindowEventMap[K]) => any,
   options?: boolean | EventListenerOptions,
 ): void;
+/** @category DOM Events */
 declare function removeEventListener(
   type: string,
   listener: EventListenerOrEventListenerObject,

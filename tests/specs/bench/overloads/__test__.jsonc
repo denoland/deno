@@ -1,0 +1,5 @@
+{
+  "args": "bench overloads.ts",
+  "output": "overloads.out",
+  "exitCode": 0
+}

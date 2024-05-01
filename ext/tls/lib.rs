@@ -3,7 +3,7 @@
 pub use deno_native_certs;
 pub use rustls;
 pub use rustls_pemfile;
-pub use rustls_tokio_stream;
+pub use rustls_tokio_stream::*;
 pub use webpki;
 pub use webpki_roots;
 
@@ -15,12 +15,9 @@ use rustls::client::HandshakeSignatureValid;
 use rustls::client::ServerCertVerified;
 use rustls::client::ServerCertVerifier;
 use rustls::client::WebPkiVerifier;
-use rustls::Certificate;
 use rustls::ClientConfig;
 use rustls::DigitallySignedStruct;
 use rustls::Error;
-use rustls::PrivateKey;
-use rustls::RootCertStore;
 use rustls::ServerName;
 use rustls_pemfile::certs;
 use rustls_pemfile::ec_private_keys;
@@ -32,6 +29,10 @@ use std::io::BufReader;
 use std::io::Cursor;
 use std::sync::Arc;
 use std::time::SystemTime;
+
+pub type Certificate = rustls::Certificate;
+pub type PrivateKey = rustls::PrivateKey;
+pub type RootCertStore = rustls::RootCertStore;
 
 /// Lazily resolves the root cert store.
 ///
@@ -263,7 +264,7 @@ pub fn load_certs(
     return Err(cert_not_found_err());
   }
 
-  Ok(certs.into_iter().map(Certificate).collect())
+  Ok(certs.into_iter().map(rustls::Certificate).collect())
 }
 
 fn key_decode_err() -> AnyError {
@@ -281,19 +282,19 @@ fn cert_not_found_err() -> AnyError {
 /// Starts with -----BEGIN RSA PRIVATE KEY-----
 fn load_rsa_keys(mut bytes: &[u8]) -> Result<Vec<PrivateKey>, AnyError> {
   let keys = rsa_private_keys(&mut bytes).map_err(|_| key_decode_err())?;
-  Ok(keys.into_iter().map(PrivateKey).collect())
+  Ok(keys.into_iter().map(rustls::PrivateKey).collect())
 }
 
 /// Starts with -----BEGIN EC PRIVATE KEY-----
 fn load_ec_keys(mut bytes: &[u8]) -> Result<Vec<PrivateKey>, AnyError> {
   let keys = ec_private_keys(&mut bytes).map_err(|_| key_decode_err())?;
-  Ok(keys.into_iter().map(PrivateKey).collect())
+  Ok(keys.into_iter().map(rustls::PrivateKey).collect())
 }
 
 /// Starts with -----BEGIN PRIVATE KEY-----
 fn load_pkcs8_keys(mut bytes: &[u8]) -> Result<Vec<PrivateKey>, AnyError> {
   let keys = pkcs8_private_keys(&mut bytes).map_err(|_| key_decode_err())?;
-  Ok(keys.into_iter().map(PrivateKey).collect())
+  Ok(keys.into_iter().map(rustls::PrivateKey).collect())
 }
 
 fn filter_invalid_encoding_err(
