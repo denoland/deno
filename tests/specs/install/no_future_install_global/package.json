@@ -2,6 +2,5 @@
   "name": "deno-test-bin",
   "dependencies": {
     "@denotest/esm-basic": "*"
-  },
-  "type": "module"
+  }
 }

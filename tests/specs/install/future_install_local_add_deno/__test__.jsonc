@@ -10,7 +10,7 @@
       "output": "install.out"
     },
     {
-      "args": "run --cached-only main.js",
+      "args": "run --allow-read=./deno.json --cached-only main.js",
       "exitCode": 0,
       "output": "main.out"
     }

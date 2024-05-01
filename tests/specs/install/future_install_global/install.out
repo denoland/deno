@@ -1,5 +1,5 @@
 Download http://localhost:4545/npm/registry/@denotest/esm-basic
 Download http://localhost:4545/npm/registry/@denotest/esm-basic/1.0.0.tgz
 Initialize @denotest/esm-basic@1.0.0
-✅ Successfully installed deno-cli-test[WILDCARD]
+✅ Successfully installed deno-test-bin[WILDCARD]
 [WILDCARD]
