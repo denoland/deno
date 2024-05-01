@@ -538,7 +538,7 @@ jobs:
         env:
           DENO_BIN: ./target/release/deno
         run: |-
-          deno run -A --unstable  --lock=tools/deno.lock.json       \
+          deno run -A --unstable --lock=tools/deno.lock.json        \
                    ./tests/wpt/wpt.ts setup
           deno run -A --unstable --lock=tools/deno.lock.json        \
                    ./tests/wpt/wpt.ts run --quiet --release         \
