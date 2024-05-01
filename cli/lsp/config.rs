@@ -1057,35 +1057,13 @@ impl Default for LspTsConfig {
 }
 
 impl LspTsConfig {
-  pub fn new(
-    config_file: Option<&ConfigFile>,
-    import_map: Option<&ImportMap>,
-  ) -> Self {
+  pub fn new(config_file: Option<&ConfigFile>) -> Self {
     let mut ts_config = Self::default();
     match ts_config.inner.merge_tsconfig_from_config_file(config_file) {
       Ok(Some(ignored_options)) => lsp_warn!("{}", ignored_options),
       Err(err) => lsp_warn!("{}", err),
       _ => {}
     }
-    let mut maybe_map_jsx_import_source = || {
-      let import_map = import_map?;
-      let referrer = &config_file?.specifier;
-      let compiler_options = ts_config.inner.0.as_object_mut()?;
-      let jsx_import_source = compiler_options
-        .get("jsxImportSourceTypes")
-        .and_then(|v| v.as_str())
-        .or_else(|| {
-          compiler_options
-            .get("jsxImportSource")
-            .and_then(|v| v.as_str())
-        })?;
-      let jsx_import_source =
-        import_map.resolve(jsx_import_source, referrer).ok()?;
-      compiler_options
-        .insert("jsxImportSource".to_string(), json!(jsx_import_source));
-      Some(())
-    };
-    maybe_map_jsx_import_source();
     ts_config
   }
 }
@@ -1268,6 +1246,8 @@ impl ConfigData {
       (lint_options, lint_rules)
     });
 
+    let ts_config = LspTsConfig::new(config_file.as_ref());
+
     let vendor_dir = config_file.as_ref().and_then(|c| c.vendor_dir_path());
 
     // Load lockfile
@@ -1436,7 +1416,6 @@ impl ConfigData {
         }
       }
     }
-    let ts_config = LspTsConfig::new(config_file.as_ref(), import_map.as_ref());
 
     ConfigData {
       scope: scope.clone(),
