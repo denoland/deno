@@ -22,13 +22,14 @@ use deno_runtime::deno_io::Stdio;
 use deno_runtime::deno_io::StdioPipe;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
+use deno_runtime::WorkerExecutionMode;
 use deno_terminal::colors;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::UnboundedSender;
 
 mod install;
-pub(crate) mod jupyter_msg;
-pub(crate) mod server;
+pub mod jupyter_msg;
+pub mod server;
 
 pub async fn kernel(
   flags: Flags,
@@ -88,6 +89,7 @@ pub async fn kernel(
 
   let mut worker = worker_factory
     .create_custom_worker(
+      WorkerExecutionMode::Jupyter,
       main_module.clone(),
       permissions,
       vec![

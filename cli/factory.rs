@@ -219,6 +219,7 @@ impl CliFactory {
       // Warm up the caches we know we'll likely need based on the CLI mode
       match self.options.sub_command() {
         DenoSubcommand::Run(_)
+        | DenoSubcommand::Serve(_)
         | DenoSubcommand::Bench(_)
         | DenoSubcommand::Test(_)
         | DenoSubcommand::Check(_) => {
@@ -563,7 +564,7 @@ impl CliFactory {
       let (transpile_options, emit_options) =
         crate::args::ts_config_to_transpile_and_emit_options(
           ts_config_result.ts_config,
-        );
+        )?;
       Ok(Arc::new(Emitter::new(
         self.emit_cache()?.clone(),
         self.parsed_source_cache().clone(),
@@ -816,6 +817,8 @@ impl CliFactory {
       self.feature_checker().clone(),
       self.create_cli_main_worker_options()?,
       self.options.node_ipc_fd(),
+      self.options.serve_port(),
+      self.options.serve_host(),
       self.options.enable_future_features(),
       // TODO(bartlomieju): temporarily disabled
       // self.options.disable_deprecated_api_warning,

@@ -13,9 +13,6 @@ use deno_core::url;
 use deno_core::ModuleSpecifier;
 use deno_graph::GraphKind;
 use deno_graph::Resolution;
-use deno_npm::NpmSystemInfo;
-use deno_runtime::deno_fs;
-use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_semver::jsr::JsrPackageReqReference;
@@ -29,7 +26,6 @@ use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::env;
 use std::fmt::Write as _;
-use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::mpsc::unbounded_channel;
@@ -52,8 +48,6 @@ use super::client::Client;
 use super::code_lens;
 use super::completions;
 use super::config::Config;
-use super::config::ConfigData;
-use super::config::ConfigSnapshot;
 use super::config::UpdateImportsOnFileMoveEnabled;
 use super::config::WorkspaceSettings;
 use super::config::SETTINGS_SECTION;
@@ -79,6 +73,7 @@ use super::performance::Performance;
 use super::performance::PerformanceMark;
 use super::refactor;
 use super::registries::ModuleRegistry;
+use super::resolver::LspResolver;
 use super::testing;
 use super::text;
 use super::tsc;
@@ -94,7 +89,6 @@ use crate::args::CacheSetting;
 use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::cache::DenoDir;
-use crate::cache::FastInsecureHasher;
 use crate::cache::GlobalHttpCache;
 use crate::cache::HttpCache;
 use crate::cache::LocalLspHttpCache;
@@ -106,14 +100,6 @@ use crate::lsp::config::ConfigWatchedFileType;
 use crate::lsp::logging::init_log_file;
 use crate::lsp::tsc::file_text_changes_to_workspace_edit;
 use crate::lsp::urls::LspUrlKind;
-use crate::npm::create_cli_npm_resolver_for_lsp;
-use crate::npm::CliNpmResolver;
-use crate::npm::CliNpmResolverByonmCreateOptions;
-use crate::npm::CliNpmResolverCreateOptions;
-use crate::npm::CliNpmResolverManagedCreateOptions;
-use crate::npm::CliNpmResolverManagedPackageJsonInstallerOption;
-use crate::npm::CliNpmResolverManagedSnapshotOption;
-use crate::resolver::CliNodeResolver;
 use crate::tools::fmt::format_file;
 use crate::tools::fmt::format_parsed_source;
 use crate::tools::upgrade::check_for_upgrades_for_lsp;
@@ -121,8 +107,6 @@ use crate::tools::upgrade::upgrade_check_enabled;
 use crate::util::fs::remove_dir_all_if_exists;
 use crate::util::path::is_importable_ext;
 use crate::util::path::to_percent_decoded_str;
-use crate::util::progress_bar::ProgressBar;
-use crate::util::progress_bar::ProgressBarStyle;
 use deno_runtime::fs_util::specifier_to_file_path;
 
 struct LspRootCertStoreProvider(RootCertStore);
@@ -133,45 +117,8 @@ impl RootCertStoreProvider for LspRootCertStoreProvider {
   }
 }
 
-#[derive(Debug)]
-struct LspNpmServices {
-  /// When this hash changes, the services need updating
-  config_hash: LspNpmConfigHash,
-  /// Npm's search api.
-  search_api: CliNpmSearchApi,
-  /// Node resolver.
-  node_resolver: Option<Arc<CliNodeResolver>>,
-  /// Resolver for npm packages.
-  resolver: Option<Arc<dyn CliNpmResolver>>,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-struct LspNpmConfigHash(u64);
-
-impl LspNpmConfigHash {
-  pub fn from_inner(inner: &Inner) -> Self {
-    let config_data = inner.config.tree.root_data();
-    let node_modules_dir =
-      config_data.and_then(|d| d.node_modules_dir.as_ref());
-    let lockfile = config_data.and_then(|d| d.lockfile.as_ref());
-    let mut hasher = FastInsecureHasher::new();
-    hasher.write_hashable(node_modules_dir);
-    hasher.write_hashable(&inner.maybe_global_cache_path);
-    if let Some(lockfile) = lockfile {
-      hasher.write_hashable(&*lockfile.lock());
-    }
-    Self(hasher.finish())
-  }
-}
-
 #[derive(Debug, Clone)]
 pub struct LanguageServer(Arc<tokio::sync::RwLock<Inner>>, CancellationToken);
-
-#[derive(Clone, Debug)]
-pub struct StateNpmSnapshot {
-  pub node_resolver: Arc<CliNodeResolver>,
-  pub npm_resolver: Arc<dyn CliNpmResolver>,
-}
 
 /// Snapshot of the state used by TSC.
 #[derive(Clone, Debug)]
@@ -179,9 +126,9 @@ pub struct StateSnapshot {
   pub project_version: usize,
   pub assets: AssetsSnapshot,
   pub cache_metadata: cache::CacheMetadata,
-  pub config: Arc<ConfigSnapshot>,
+  pub config: Arc<Config>,
   pub documents: Documents,
-  pub npm: Option<StateNpmSnapshot>,
+  pub resolver: Arc<LspResolver>,
 }
 
 type LanguageServerTaskFn = Box<dyn FnOnce(LanguageServer) + Send + Sync>;
@@ -253,11 +200,11 @@ pub struct Inner {
   maybe_global_cache_path: Option<PathBuf>,
   /// A lazily create "server" for handling test run requests.
   maybe_testing_server: Option<testing::TestServer>,
-  /// Services used for dealing with npm related functionality.
-  npm: LspNpmServices,
+  npm_search_api: CliNpmSearchApi,
   project_version: usize,
   /// A collection of measurements which instrument that performance of the LSP.
   performance: Arc<Performance>,
+  resolver: Arc<LspResolver>,
   /// A memoized version of fixable diagnostic codes retrieved from TypeScript.
   ts_fixable_diagnostics: Vec<String>,
   /// An abstraction that handles interactions with TypeScript.
@@ -544,13 +491,9 @@ impl Inner {
       maybe_testing_server: None,
       module_registries,
       module_registries_location,
-      npm: LspNpmServices {
-        config_hash: LspNpmConfigHash(0), // this will be updated in initialize
-        search_api: npm_search_api,
-        node_resolver: None,
-        resolver: None,
-      },
+      npm_search_api,
       performance,
+      resolver: Default::default(),
       ts_fixable_diagnostics: Default::default(),
       ts_server,
       url_map: Default::default(),
@@ -610,11 +553,7 @@ impl Inner {
             .assets
             .cache_navigation_tree(specifier, navigation_tree.clone())?,
           AssetOrDocument::Document(doc) => {
-            self.documents.try_cache_navigation_tree(
-              specifier,
-              &doc.script_version(),
-              navigation_tree.clone(),
-            )?
+            doc.cache_navigation_tree(navigation_tree.clone());
           }
         }
         navigation_tree
@@ -649,35 +588,13 @@ impl Inner {
   }
 
   pub fn snapshot(&self) -> Arc<StateSnapshot> {
-    let maybe_state_npm_snapshot = self
-      .npm
-      .resolver
-      .as_ref()
-      .map(|resolver| resolver.clone_snapshotted())
-      .map(|resolver| {
-        let fs = Arc::new(deno_fs::RealFs);
-        let node_resolver = Arc::new(NodeResolver::new(
-          fs.clone(),
-          resolver.clone().into_npm_resolver(),
-        ));
-        let cli_node_resolver = Arc::new(CliNodeResolver::new(
-          None,
-          fs,
-          node_resolver,
-          resolver.clone(),
-        ));
-        StateNpmSnapshot {
-          node_resolver: cli_node_resolver,
-          npm_resolver: resolver,
-        }
-      });
     Arc::new(StateSnapshot {
       project_version: self.project_version,
       assets: self.assets.snapshot(),
       cache_metadata: self.cache_metadata.clone(),
-      config: self.config.snapshot(),
+      config: Arc::new(self.config.clone()),
       documents: self.documents.clone(),
-      npm: maybe_state_npm_snapshot,
+      resolver: self.resolver.snapshot(),
     })
   }
 
@@ -751,7 +668,7 @@ impl Inner {
     );
     self.jsr_search_api =
       CliJsrSearchApi::new(self.module_registries.file_fetcher.clone());
-    self.npm.search_api =
+    self.npm_search_api =
       CliNpmSearchApi::new(self.module_registries.file_fetcher.clone());
     // update the cache path
     let global_cache = Arc::new(GlobalHttpCache::new(
@@ -775,42 +692,6 @@ impl Inner {
     self.url_map.set_cache(maybe_local_cache);
     self.maybe_global_cache_path = new_cache_path;
     Ok(())
-  }
-
-  async fn recreate_npm_services_if_necessary(&mut self) {
-    let deno_dir = match DenoDir::new(self.maybe_global_cache_path.clone()) {
-      Ok(deno_dir) => deno_dir,
-      Err(err) => {
-        lsp_warn!("Error getting deno dir: {:#}", err);
-        return;
-      }
-    };
-    let config_hash = LspNpmConfigHash::from_inner(self);
-    if config_hash == self.npm.config_hash {
-      return; // no need to do anything
-    }
-    let config_data = self.config.tree.root_data();
-    let npm_resolver = create_npm_resolver(
-      &deno_dir,
-      &self.initial_cwd,
-      &self.http_client,
-      config_data,
-    )
-    .await;
-    let node_resolver = Arc::new(NodeResolver::new(
-      Arc::new(deno_fs::RealFs),
-      npm_resolver.clone().into_npm_resolver(),
-    ));
-    self.npm.node_resolver = Some(Arc::new(CliNodeResolver::new(
-      None,
-      Arc::new(deno_fs::RealFs),
-      node_resolver,
-      npm_resolver.clone(),
-    )));
-    self.npm.resolver = Some(npm_resolver);
-
-    // update the hash
-    self.npm.config_hash = config_hash;
   }
 
   fn create_file_fetcher(&self, cache_setting: CacheSetting) -> FileFetcher {
@@ -846,52 +727,6 @@ impl Inner {
     self.performance.measure(mark);
     Ok(())
   }
-}
-
-async fn create_npm_resolver(
-  deno_dir: &DenoDir,
-  initial_cwd: &Path,
-  http_client: &Arc<HttpClient>,
-  config_data: Option<&ConfigData>,
-) -> Arc<dyn CliNpmResolver> {
-  let byonm = config_data.map(|d| d.byonm).unwrap_or(false);
-  create_cli_npm_resolver_for_lsp(if byonm {
-    CliNpmResolverCreateOptions::Byonm(CliNpmResolverByonmCreateOptions {
-      fs: Arc::new(deno_fs::RealFs),
-      root_node_modules_dir: initial_cwd.join("node_modules"),
-    })
-  } else {
-    CliNpmResolverCreateOptions::Managed(CliNpmResolverManagedCreateOptions {
-      http_client: http_client.clone(),
-      snapshot: match config_data.and_then(|d| d.lockfile.as_ref()) {
-        Some(lockfile) => {
-          CliNpmResolverManagedSnapshotOption::ResolveFromLockfile(
-            lockfile.clone(),
-          )
-        }
-        None => CliNpmResolverManagedSnapshotOption::Specified(None),
-      },
-      // Don't provide the lockfile. We don't want these resolvers
-      // updating it. Only the cache request should update the lockfile.
-      maybe_lockfile: None,
-      fs: Arc::new(deno_fs::RealFs),
-      npm_global_cache_dir: deno_dir.npm_folder_path(),
-      // Use an "only" cache setting in order to make the
-      // user do an explicit "cache" command and prevent
-      // the cache from being filled with lots of packages while
-      // the user is typing.
-      cache_setting: CacheSetting::Only,
-      text_only_progress_bar: ProgressBar::new(ProgressBarStyle::TextOnly),
-      maybe_node_modules_path: config_data
-        .and_then(|d| d.node_modules_dir.clone()),
-      // do not install while resolving in the lsp—leave that to the cache command
-      package_json_installer:
-        CliNpmResolverManagedPackageJsonInstallerOption::NoInstall,
-      npm_registry_url: crate::args::npm_registry_url().to_owned(),
-      npm_system_info: NpmSystemInfo::default(),
-    })
-  })
-  .await
 }
 
 // lspower::LanguageServer methods. This file's LanguageServer delegates to us.
@@ -1008,7 +843,6 @@ impl Inner {
       self.client.show_message(MessageType::WARNING, err);
     }
 
-    self.recreate_npm_services_if_necessary().await;
     self.assets.initialize(self.snapshot()).await;
 
     self.performance.measure(mark);
@@ -1182,13 +1016,20 @@ impl Inner {
         }
       }
     }
+    self.resolver = self
+      .resolver
+      .with_new_config(
+        &self.config,
+        self.maybe_global_cache_path.as_deref(),
+        Some(&self.http_client),
+      )
+      .await;
   }
 
   async fn refresh_documents_config(&mut self) {
     self.documents.update_config(
       &self.config,
-      self.npm.node_resolver.clone(),
-      self.npm.resolver.clone(),
+      &self.resolver,
       &self.workspace_files,
     );
 
@@ -1196,14 +1037,14 @@ impl Inner {
     // a @types/node package and now's a good time to do that anyway
     self.refresh_npm_specifiers().await;
 
-    self.project_changed(&[], true).await;
+    self.project_changed([], true);
   }
 
   fn shutdown(&self) -> LspResult<()> {
     Ok(())
   }
 
-  async fn did_open(
+  fn did_open(
     &mut self,
     specifier: &ModuleSpecifier,
     params: DidOpenTextDocumentParams,
@@ -1231,9 +1072,7 @@ impl Inner {
       params.text_document.language_id.parse().unwrap(),
       params.text_document.text.into(),
     );
-    self
-      .project_changed(&[(document.specifier(), ChangeKind::Opened)], false)
-      .await;
+    self.project_changed([(document.specifier(), ChangeKind::Opened)], false);
 
     self.performance.measure(mark);
     document
@@ -1251,12 +1090,10 @@ impl Inner {
     ) {
       Ok(document) => {
         if document.is_diagnosable() {
-          self
-            .project_changed(
-              &[(document.specifier(), ChangeKind::Modified)],
-              false,
-            )
-            .await;
+          self.project_changed(
+            [(document.specifier(), ChangeKind::Modified)],
+            false,
+          );
           self.refresh_npm_specifiers().await;
           self.diagnostics_server.invalidate(&[specifier]);
           self.send_diagnostics_update();
@@ -1270,17 +1107,10 @@ impl Inner {
 
   async fn refresh_npm_specifiers(&mut self) {
     let package_reqs = self.documents.npm_package_reqs();
-    let npm_resolver = self.npm.resolver.clone();
+    let resolver = self.resolver.clone();
     // spawn to avoid the LSP's Send requirements
-    let handle = spawn(async move {
-      if let Some(npm_resolver) =
-        npm_resolver.as_ref().and_then(|r| r.as_managed())
-      {
-        npm_resolver.set_package_reqs(&package_reqs).await
-      } else {
-        Ok(())
-      }
-    });
+    let handle =
+      spawn(async move { resolver.set_npm_package_reqs(&package_reqs).await });
     if let Err(err) = handle.await.unwrap() {
       lsp_warn!("Could not set npm package requirements. {:#}", err);
     }
@@ -1304,12 +1134,8 @@ impl Inner {
       self.send_diagnostics_update();
       self.send_testing_update();
     }
-    if let Err(err) = self.documents.close(&specifier) {
-      error!("{:#}", err);
-    }
-    self
-      .project_changed(&[(&specifier, ChangeKind::Closed)], false)
-      .await;
+    self.documents.close(&specifier);
+    self.project_changed([(&specifier, ChangeKind::Closed)], false);
     self.performance.measure(mark);
   }
 
@@ -1343,7 +1169,6 @@ impl Inner {
       lsp_warn!("Error updating registries: {:#}", err);
       self.client.show_message(MessageType::WARNING, err);
     }
-    self.recreate_npm_services_if_necessary().await;
     self.refresh_documents_config().await;
     self.diagnostics_server.invalidate_all();
     self.send_diagnostics_update();
@@ -1420,18 +1245,12 @@ impl Inner {
           },
         );
       }
-      self.recreate_npm_services_if_necessary().await;
       self.refresh_documents_config().await;
       self.diagnostics_server.invalidate_all();
-      self
-        .project_changed(
-          &changes
-            .iter()
-            .map(|(s, _)| (s, ChangeKind::Modified))
-            .collect::<Vec<_>>(),
-          false,
-        )
-        .await;
+      self.project_changed(
+        changes.iter().map(|(s, _)| (s, ChangeKind::Modified)),
+        false,
+      );
       self.ts_server.cleanup_semantic_cache(self.snapshot()).await;
       self.send_diagnostics_update();
       self.send_testing_update();
@@ -1879,6 +1698,7 @@ impl Inner {
           &self.config,
           &specifier,
         )),
+        params.context.trigger_kind,
         only,
       )
       .await?;
@@ -2019,8 +1839,7 @@ impl Inner {
     TsResponseImportMapper::new(
       &self.documents,
       self.config.tree.root_import_map().map(|i| i.as_ref()),
-      self.npm.node_resolver.as_deref(),
-      self.npm.resolver.as_deref(),
+      self.resolver.as_ref(),
     )
   }
 
@@ -2325,11 +2144,11 @@ impl Inner {
       response = completions::get_import_completions(
         &specifier,
         &params.text_document_position.position,
-        &self.config.snapshot(),
+        &self.config,
         &self.client,
         &self.module_registries,
         &self.jsr_search_api,
-        &self.npm.search_api,
+        &self.npm_search_api,
         &self.documents,
         self.config.tree.root_import_map().map(|i| i.as_ref()),
       )
@@ -3003,22 +2822,22 @@ impl Inner {
     Ok(maybe_symbol_information)
   }
 
-  async fn project_changed(
+  fn project_changed<'a>(
     &mut self,
-    modified_scripts: &[(&ModuleSpecifier, ChangeKind)],
+    modified_scripts: impl IntoIterator<Item = (&'a ModuleSpecifier, ChangeKind)>,
     config_changed: bool,
   ) {
     self.project_version += 1; // increment before getting the snapshot
-    self
-      .ts_server
-      .project_changed(self.snapshot(), modified_scripts, config_changed)
-      .await;
+    self.ts_server.project_changed(
+      self.snapshot(),
+      modified_scripts,
+      config_changed,
+    );
   }
 
   fn send_diagnostics_update(&self) {
     let snapshot = DiagnosticServerUpdateMessage {
       snapshot: self.snapshot(),
-      config: self.config.snapshot(),
       url_map: self.url_map.clone(),
     };
     if let Err(err) = self.diagnostics_server.update(snapshot) {
@@ -3220,7 +3039,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     let specifier = inner
       .url_map
       .normalize_url(&params.text_document.uri, LspUrlKind::File);
-    let document = inner.did_open(&specifier, params).await;
+    let document = inner.did_open(&specifier, params);
     if document.is_diagnosable() {
       inner.refresh_npm_specifiers().await;
       inner.diagnostics_server.invalidate(&[specifier]);
@@ -3560,7 +3379,7 @@ impl Inner {
     // the language server for TypeScript (as it might hold to some stale
     // documents).
     self.diagnostics_server.invalidate_all();
-    self.project_changed(&[], false).await;
+    self.project_changed([], false);
     self.ts_server.cleanup_semantic_cache(self.snapshot()).await;
     self.send_diagnostics_update();
     self.send_testing_update();

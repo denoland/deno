@@ -10,6 +10,7 @@ import {
 import { fromFileUrl, relative, SEPARATOR } from "@std/path/mod.ts";
 import * as workerThreads from "node:worker_threads";
 import { EventEmitter, once } from "node:events";
+import process from "node:process";
 
 Deno.test("[node/worker_threads] BroadcastChannel is exported", () => {
   assertEquals<unknown>(workerThreads.BroadcastChannel, BroadcastChannel);
@@ -484,5 +485,54 @@ Deno.test({
 
     await deferred.promise;
     await worker.terminate();
+  },
+});
+
+Deno.test({
+  name: "[node/worker_threads] Worker env using process.env",
+  async fn() {
+    const deferred = Promise.withResolvers<void>();
+    const worker = new workerThreads.Worker(
+      `
+      import { parentPort } from "node:worker_threads";
+      import process from "node:process";
+      parentPort.postMessage("ok");
+      `,
+      {
+        eval: true,
+        // Make sure this doesn't throw `DataCloneError`.
+        // See https://github.com/denoland/deno/issues/23522.
+        env: process.env,
+      },
+    );
+
+    worker.on("message", (data) => {
+      assertEquals(data, "ok");
+      deferred.resolve();
+    });
+
+    await deferred.promise;
+    await worker.terminate();
+  },
+});
+
+Deno.test({
+  name:
+    "[node/worker_threads] MessagePort.on all message listeners are invoked",
+  async fn() {
+    const output: string[] = [];
+    const deferred = Promise.withResolvers<void>();
+    const { port1, port2 } = new workerThreads.MessageChannel();
+    port1.on("message", (msg) => output.push(msg));
+    port1.on("message", (msg) => output.push(msg + 2));
+    port1.on("message", (msg) => {
+      output.push(msg + 3);
+      deferred.resolve();
+    });
+    port2.postMessage("hi!");
+    await deferred.promise;
+    assertEquals(output, ["hi!", "hi!2", "hi!3"]);
+    port2.close();
+    port1.close();
   },
 });

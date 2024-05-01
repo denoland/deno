@@ -15,7 +15,6 @@ import {
 const {
   Number,
   ObjectDefineProperty,
-  ReflectHas,
   TypeError,
 } = primordials;
 
@@ -134,10 +133,10 @@ class TlsListener extends Listener {
  * interfaces.
  */
 function hasTlsKeyPairOptions(options) {
-  return (ReflectHas(options, "cert") || ReflectHas(options, "key") ||
-    ReflectHas(options, "certFile") ||
-    ReflectHas(options, "keyFile") || ReflectHas(options, "privateKey") ||
-    ReflectHas(options, "certChain"));
+  return (options.cert !== undefined || options.key !== undefined ||
+    options.certFile !== undefined ||
+    options.keyFile !== undefined || options.privateKey !== undefined ||
+    options.certChain !== undefined);
 }
 
 /**
@@ -153,6 +152,13 @@ function loadTlsKeyPair(api, {
   keyFile,
   privateKey,
 }) {
+  if (internals.future) {
+    certFile = undefined;
+    certChain = undefined;
+    keyFile = undefined;
+    privateKey = undefined;
+  }
+
   // Check for "pem" format
   if (keyFormat !== undefined && keyFormat !== "pem") {
     throw new TypeError('If `keyFormat` is specified, it must be "pem"');

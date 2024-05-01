@@ -70,7 +70,6 @@ declare module "ext:deno_fetch/26_fetch.js" {
   function toInnerRequest(request: Request): InnerRequest;
   function fromInnerRequest(
     inner: InnerRequest,
-    signal: AbortSignal | null,
     guard:
       | "request"
       | "immutable"

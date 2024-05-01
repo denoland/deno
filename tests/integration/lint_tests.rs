@@ -213,48 +213,6 @@ fn lint_with_glob_config_and_flags() {
   assert_contains!(output, "Checked 2 files");
 }
 
-itest!(no_slow_types {
-  args: "lint",
-  output: "lint/no_slow_types/no_slow_types.out",
-  cwd: Some("lint/no_slow_types"),
-  exit_code: 1,
-});
-
-itest!(no_slow_types_entrypoint {
-  args: "lint a.ts",
-  output: "lint/no_slow_types/no_slow_types_entrypoint.out",
-  cwd: Some("lint/no_slow_types"),
-  exit_code: 1,
-});
-
-itest!(no_slow_types_non_entrypoint {
-  args: "lint d.ts",
-  output_str: Some("Checked 1 file\n"),
-  cwd: Some("lint/no_slow_types"),
-  exit_code: 0,
-});
-
-itest!(no_slow_types_excluded {
-  args: "lint --rules-exclude=no-slow-types",
-  output_str: Some("Checked 4 files\n"),
-  cwd: Some("lint/no_slow_types"),
-  exit_code: 0,
-});
-
-itest!(no_slow_types_non_package {
-  args: "lint --config=deno.non-package.json",
-  output_str: Some("Checked 4 files\n"),
-  cwd: Some("lint/no_slow_types"),
-  exit_code: 0,
-});
-
-itest!(no_slow_types_workspace {
-  args: "lint",
-  output: "lint/no_slow_types_workspace/output.out",
-  cwd: Some("lint/no_slow_types_workspace"),
-  exit_code: 1,
-});
-
 #[test]
 fn opt_out_top_level_exclude_via_lint_unexclude() {
   let context = TestContextBuilder::new().use_temp_cwd().build();

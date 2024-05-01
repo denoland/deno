@@ -1,0 +1,28 @@
+Check file:///[WILDCARD]/pass.ts
+{
+  "runtime": "Deno/[WILDCARD]",
+  "cpu": "[WILDCARD]",
+  "benches": [
+    {
+      "origin": "file:///[WILDCARD]/pass.ts",
+      "group": null,
+      "name": "bench0",
+      "baseline": false,
+      "results": [
+        {
+          "ok": {
+            "n": [WILDCARD],
+            "min": [WILDCARD],
+            "max": [WILDCARD],
+            "avg": [WILDCARD],
+            "p75": [WILDCARD],
+            "p99": [WILDCARD],
+            "p995": [WILDCARD],
+            "p999": [WILDCARD]
+          }
+        }
+      ]
+    },
+[WILDCARD]
+  ]
+}
