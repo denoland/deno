@@ -416,6 +416,9 @@ Deno.test({
     assertEquals(process.env.HELLO, "false");
     process.env.HELLO = "WORLD";
     assertEquals(process.env.HELLO, "WORLD");
+
+    delete process.env.HELLO;
+    assertEquals(process.env.HELLO, undefined);
   },
 });
 
