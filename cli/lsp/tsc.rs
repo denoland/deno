@@ -1074,18 +1074,25 @@ impl TsServer {
     }
     let token = token.child_token();
     let droppable_token = DroppableToken(token.clone());
-    let (tx, rx) = oneshot::channel::<Result<String, AnyError>>();
+    let (tx, mut rx) = oneshot::channel::<Result<String, AnyError>>();
     let change = self.pending_change.lock().take();
     if self
       .sender
-      .send((req, snapshot, tx, token, change))
+      .send((req, snapshot, tx, token.clone(), change))
       .is_err()
     {
       return Err(anyhow!("failed to send request to tsc thread"));
     }
-    let value = rx.await??;
-    drop(droppable_token);
-    Ok(serde_json::from_str(&value)?)
+    tokio::select! {
+      value = &mut rx => {
+        let value = value??;
+        drop(droppable_token);
+        Ok(serde_json::from_str(&value)?)
+      }
+      _ = token.cancelled() => {
+        Err(anyhow!("request cancelled"))
+      }
+    }
   }
 }
 
@@ -4124,9 +4131,9 @@ fn op_script_names(state: &mut OpState) -> Vec<String> {
   }
 
   // inject these next because they're global
-  for specifier in state.state_snapshot.resolver.graph_import_specifiers() {
-    if seen.insert(specifier.as_str()) {
-      result.push(specifier.to_string());
+  for import in documents.module_graph_imports() {
+    if seen.insert(import.as_str()) {
+      result.push(import.to_string());
     }
   }
 
@@ -4275,6 +4282,15 @@ impl TscRuntime {
           lsp_warn!(
             "Error during TS request \"{method}\":\n  {}",
             stack_trace.to_rust_string_lossy(tc_scope),
+          );
+        } else if let Some(message) = tc_scope.message() {
+          lsp_warn!(
+            "Error during TS request \"{method}\":\n  {}\n  {}",
+            message.get(tc_scope).to_rust_string_lossy(tc_scope),
+            tc_scope
+              .exception()
+              .map(|exc| exc.to_rust_string_lossy(tc_scope))
+              .unwrap_or_default()
           );
         } else {
           lsp_warn!(
@@ -5095,7 +5111,7 @@ mod tests {
       )
       .await;
     let resolver = LspResolver::default()
-      .with_new_config(&config, cache.clone(), None, None)
+      .with_new_config(&config, None, None)
       .await;
     StateSnapshot {
       project_version: 0,
