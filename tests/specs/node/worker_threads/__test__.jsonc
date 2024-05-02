@@ -1,8 +1,43 @@
 {
-  "steps": [{
-    "args": "run message_port_removelistener.mjs",
-    "output": "message_port_removelistener.mjs.out",
-    // Note: successful exit asserts that the test passed
-    "exitCode": 0
-  }]
+  "steps": [
+    {
+      "args": "run message_port_removelistener.mjs",
+      "output": "message_port_removelistener.mjs.out",
+      // Note: successful exit asserts that the test passed
+      "exitCode": 0
+    },
+    {
+      "args": "run --allow-env --allow-read node_worker_message_port_unref.mjs",
+      "envs": {
+        "PARENT_PORT": "1"
+      },
+      "output": "node_worker_message_port_unref.mjs.out",
+      "exitCode": 0
+    },
+    {
+      "args": "run --allow-env --allow-read node_worker_message_port_unref.mjs",
+      "envs": {
+        "PARENT_PORT": "1"
+      },
+      "output": "node_worker_message_port_unref.mjs.out",
+      "exitCode": 0
+    },
+    {
+      "args": "run --allow-env --allow-read node_worker_message_port.mjs",
+      "output": "node_worker_message_port.mjs.out",
+      "exitCode": 0
+    },
+    {
+      "args": "run --quiet --allow-read node_worker_transfer_port.mjs",
+      "output": "node_worker_transfer_port.mjs.out",
+      "exitCode": 0
+    },
+    {
+      // Test for https://github.com/denoland/deno/issues/22629
+      // Test for https://github.com/denoland/deno/issues/22934
+      "args": "run --quiet --allow-read node_worker_auto_exits.mjs",
+      "output": "node_worker_auto_exits.mjs.out",
+      "exitCode": 0
+    }
+  ]
 }
