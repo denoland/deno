@@ -1074,7 +1074,7 @@ impl TsServer {
     }
     let token = token.child_token();
     let droppable_token = DroppableToken(token.clone());
-    let (tx, rx) = oneshot::channel::<Result<String, AnyError>>();
+    let (tx, mut rx) = oneshot::channel::<Result<String, AnyError>>();
     let change = self.pending_change.lock().take();
     if self
       .sender
@@ -1083,12 +1083,16 @@ impl TsServer {
     {
       return Err(anyhow!("failed to send request to tsc thread"));
     }
-    let value = rx.await??;
-    if token.is_cancelled() {
-      return Err(anyhow!("request cancelled"));
+    tokio::select! {
+      value = &mut rx => {
+        let value = value??;
+        drop(droppable_token);
+        Ok(serde_json::from_str(&value)?)
+      }
+      _ = token.cancelled() => {
+        Err(anyhow!("request cancelled"))
+      }
     }
-    drop(droppable_token);
-    Ok(serde_json::from_str(&value)?)
   }
 }
 
