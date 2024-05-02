@@ -242,6 +242,9 @@ Deno.test(
       args: ["eval", "setTimeout(() => {}, 10000)"],
     }).spawn();
 
+     // kill with signal 0 should keep the process alive (true means no error happened)
+    assertEquals(process.kill(p.pid, 0), true);
+    
     process.kill(p.pid);
     await p.status;
   },
