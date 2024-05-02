@@ -5,7 +5,6 @@ use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::panic::AssertUnwindSafe;
-use std::path::Path;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -15,6 +14,7 @@ use file_test_runner::collection::collect_tests_or_exit;
 use file_test_runner::collection::strategies::TestPerDirectoryCollectionStrategy;
 use file_test_runner::collection::CollectOptions;
 use file_test_runner::collection::CollectedTest;
+use file_test_runner::TestResult;
 use serde::Deserialize;
 use test_util::tests_path;
 use test_util::PathRef;
@@ -29,9 +29,28 @@ enum VecOrString {
   String(String),
 }
 
+type JsonMap = serde_json::Map<String, serde_json::Value>;
+
 #[derive(Clone, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 struct MultiTestMetaData {
+  /// Whether to copy all the non-assertion files in the current
+  /// test directory to a temporary directory before running the
+  /// steps.
+  #[serde(default)]
+  pub temp_dir: bool,
+  /// The base environment to use for the test.
+  #[serde(default)]
+  pub base: Option<String>,
+  #[serde(default)]
+  pub envs: HashMap<String, String>,
+  #[serde(default)]
+  pub tests: BTreeMap<String, JsonMap>,
+}
+
+#[derive(Clone, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct MultiStepMetaData {
   /// Whether to copy all the non-assertion files in the current
   /// test directory to a temporary directory before running the
   /// steps.
@@ -58,8 +77,8 @@ struct SingleTestMetaData {
 }
 
 impl SingleTestMetaData {
-  pub fn into_multi(self) -> MultiTestMetaData {
-    MultiTestMetaData {
+  pub fn into_multi(self) -> MultiStepMetaData {
+    MultiStepMetaData {
       base: self.base,
       temp_dir: self.temp_dir,
       envs: Default::default(),
@@ -71,9 +90,6 @@ impl SingleTestMetaData {
 #[derive(Clone, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 struct StepMetaData {
-  /// Whether to clean the deno_dir before running the step.
-  #[serde(default)]
-  pub clean_deno_dir: bool,
   /// If the test should be retried multiple times on failure.
   #[serde(default)]
   pub flaky: bool,
@@ -106,30 +122,11 @@ pub fn main() {
   file_test_runner::run_tests(
     &root_category,
     file_test_runner::RunOptions { parallel: true },
-    Arc::new(|test| {
-      let diagnostic_logger = Rc::new(RefCell::new(Vec::<u8>::new()));
-      let result = handle_test(test, diagnostic_logger.clone());
-      match result {
-        file_test_runner::TestResult::Passed
-        | file_test_runner::TestResult::Ignored => result,
-        file_test_runner::TestResult::Failed {
-          output: panic_output,
-        } => {
-          let mut output = diagnostic_logger.borrow().clone();
-          output.push(b'\n');
-          output.extend(panic_output);
-          file_test_runner::TestResult::Failed { output }
-        }
-        file_test_runner::TestResult::Steps(_) => unreachable!(),
-      }
-    }),
+    Arc::new(handle_test),
   );
 }
 
-fn handle_test(
-  test: &CollectedTest,
-  diagnostic_logger: Rc<RefCell<Vec<u8>>>,
-) -> file_test_runner::TestResult {
+fn handle_test(test: &CollectedTest) -> TestResult {
   let test_path = PathRef::new(&test.path);
   let metadata_value = test_path.read_jsonc_value();
   let cwd = test_path.parent();
@@ -138,24 +135,81 @@ fn handle_test(
     .map(|o| o.contains_key("tests"))
     .unwrap_or(false)
   {
-    todo!();
+    let data: MultiTestMetaData = serde_json::from_value(metadata_value)
+      .with_context(|| format!("Failed deserializing {}", test_path))
+      .unwrap();
+    run_multi_test(data, &cwd)
   } else {
-    file_test_runner::TestResult::from_maybe_panic(AssertUnwindSafe(|| {
-      run_test(metadata_value, &cwd, diagnostic_logger.clone())
-    }))
+    run_test(metadata_value, &cwd)
   }
 }
 
-fn run_test(
+fn run_multi_test(
+  mut multi_test_meta_data: MultiTestMetaData,
+  cwd: &PathRef,
+) -> TestResult {
+  fn merge_json_value(
+    multi_test_meta_data: &MultiTestMetaData,
+    value: &mut JsonMap,
+  ) {
+    if let Some(base) = &multi_test_meta_data.base {
+      if !value.contains_key("base") {
+        value.insert("base".to_string(), base.clone().into());
+      }
+    }
+    if multi_test_meta_data.temp_dir && !value.contains_key("tempDir") {
+      value.insert("tempDir".to_string(), true.into());
+    }
+    if !multi_test_meta_data.envs.is_empty() {
+      if !value.contains_key("envs") {
+        value.insert("envs".to_string(), JsonMap::default().into());
+      }
+      let envs_obj = value.get_mut("envs").unwrap().as_object_mut().unwrap();
+      for (key, value) in &multi_test_meta_data.envs {
+        if !envs_obj.contains_key(key) {
+          envs_obj.insert(key.into(), value.clone().into());
+        }
+      }
+    }
+  }
+
+  let mut results = Vec::with_capacity(multi_test_meta_data.tests.len());
+  for (name, mut test) in std::mem::take(&mut multi_test_meta_data.tests) {
+    merge_json_value(&multi_test_meta_data, &mut test);
+    let result = run_test(serde_json::Value::Object(test), cwd);
+    results.push(file_test_runner::TestStepResult { name, result });
+  }
+  TestResult::Steps(results)
+}
+
+fn run_test(metadata_value: serde_json::Value, cwd: &PathRef) -> TestResult {
+  let diagnostic_logger = Rc::new(RefCell::new(Vec::<u8>::new()));
+  let result = TestResult::from_maybe_panic(AssertUnwindSafe(|| {
+    run_test_inner(metadata_value, cwd, diagnostic_logger.clone())
+  }));
+  match result {
+    TestResult::Failed {
+      output: panic_output,
+    } => {
+      let mut output = diagnostic_logger.borrow().clone();
+      output.push(b'\n');
+      output.extend(panic_output);
+      TestResult::Failed { output }
+    }
+    TestResult::Passed | TestResult::Ignored | TestResult::Steps(_) => result,
+  }
+}
+
+fn run_test_inner(
   metadata_value: serde_json::Value,
   cwd: &PathRef,
   diagnostic_logger: Rc<RefCell<Vec<u8>>>,
 ) {
   let metadata = deserialize_value(metadata_value);
 
-  let context = test_context_from_metadata(&metadata, &cwd, diagnostic_logger);
+  let context = test_context_from_metadata(&metadata, cwd, diagnostic_logger);
   for step in metadata.steps.iter().filter(|s| should_run_step(s)) {
-    let run_func = || run_step(step, &metadata, &cwd, &context);
+    let run_func = || run_step(step, &metadata, cwd, &context);
     if step.flaky {
       run_flaky(run_func);
     } else {
@@ -164,7 +218,7 @@ fn run_test(
   }
 }
 
-fn deserialize_value(metadata_value: serde_json::Value) -> MultiTestMetaData {
+fn deserialize_value(metadata_value: serde_json::Value) -> MultiStepMetaData {
   // checking for "steps" leads to a more targeted error message
   // instead of when deserializing an untagged enum
   if metadata_value
@@ -172,7 +226,7 @@ fn deserialize_value(metadata_value: serde_json::Value) -> MultiTestMetaData {
     .map(|o| o.contains_key("steps"))
     .unwrap_or(false)
   {
-    serde_json::from_value::<MultiTestMetaData>(metadata_value)
+    serde_json::from_value::<MultiStepMetaData>(metadata_value)
   } else {
     serde_json::from_value::<SingleTestMetaData>(metadata_value)
       .map(|s| s.into_multi())
@@ -182,7 +236,7 @@ fn deserialize_value(metadata_value: serde_json::Value) -> MultiTestMetaData {
 }
 
 fn test_context_from_metadata(
-  metadata: &MultiTestMetaData,
+  metadata: &MultiStepMetaData,
   cwd: &PathRef,
   diagnostic_logger: Rc<RefCell<Vec<u8>>>,
 ) -> test_util::TestContext {
@@ -213,7 +267,7 @@ fn test_context_from_metadata(
     // copy all the files in the cwd to a temp directory
     // excluding the metadata and assertion files
     let temp_dir = context.temp_dir().path();
-    let assertion_paths = resolve_test_and_assertion_files(&cwd, &metadata);
+    let assertion_paths = resolve_test_and_assertion_files(cwd, metadata);
     cwd.copy_to_recursive_with_exclusions(temp_dir, &assertion_paths);
   }
   context
@@ -247,14 +301,10 @@ fn run_flaky(action: impl Fn()) {
 
 fn run_step(
   step: &StepMetaData,
-  metadata: &MultiTestMetaData,
+  metadata: &MultiStepMetaData,
   cwd: &PathRef,
   context: &test_util::TestContext,
 ) {
-  if step.clean_deno_dir {
-    context.deno_dir().path().remove_dir_all();
-  }
-
   let command = context
     .new_command()
     .envs(metadata.envs.iter().chain(step.envs.iter()));
@@ -282,7 +332,7 @@ fn run_step(
 
 fn resolve_test_and_assertion_files(
   dir: &PathRef,
-  metadata: &MultiTestMetaData,
+  metadata: &MultiStepMetaData,
 ) -> HashSet<PathRef> {
   let mut result = HashSet::with_capacity(metadata.steps.len() + 1);
   result.insert(dir.join(MANIFEST_FILE_NAME));
