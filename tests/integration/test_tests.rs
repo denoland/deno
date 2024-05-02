@@ -177,6 +177,12 @@ itest!(text {
   output: "test/text.out",
 });
 
+itest!(type_check_with_doc {
+  args: "test --doc test/type_check_with_doc.ts",
+  exit_code: 1,
+  output: "test/type_check_with_doc.out",
+});
+
 itest!(quiet {
   args: "test --quiet test/quiet.ts",
   exit_code: 0,
