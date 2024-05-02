@@ -1338,16 +1338,12 @@ pub async fn check_specifiers(
     .collect::<Vec<_>>();
 
   if !inline_files.is_empty() {
-    let specifiers = inline_files
-      .iter()
-      .map(|file| file.specifier.clone())
-      .collect::<Vec<_>>();
-
     for file in inline_files {
       file_fetcher.insert_memory_files(file);
     }
 
-    module_specifiers.extend(specifiers);
+    module_specifiers
+      .extend(inline_files.iter().map(|file| file.specifier.clone()));
   }
 
   module_load_preparer
