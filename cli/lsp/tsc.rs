@@ -4279,6 +4279,15 @@ impl TscRuntime {
             "Error during TS request \"{method}\":\n  {}",
             stack_trace.to_rust_string_lossy(tc_scope),
           );
+        } else if let Some(message) = tc_scope.message() {
+          lsp_warn!(
+            "Error during TS request \"{method}\":\n  {}\n  {}",
+            message.get(tc_scope).to_rust_string_lossy(tc_scope),
+            tc_scope
+              .exception()
+              .map(|exc| exc.to_rust_string_lossy(tc_scope))
+              .unwrap_or_default()
+          );
         } else {
           lsp_warn!(
             "Error during TS request \"{method}\":\n  {}",
