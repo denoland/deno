@@ -1,9 +1,11 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::cell::RefCell;
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::panic::AssertUnwindSafe;
+use std::ptr::metadata;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -40,6 +42,7 @@ struct MultiTestMetaData {
   pub base: Option<String>,
   #[serde(default)]
   pub envs: HashMap<String, String>,
+  #[serde(default)]
   pub steps: Vec<StepMetaData>,
 }
 
@@ -125,15 +128,30 @@ pub fn main() {
   );
 }
 
-fn run_test(test: &CollectedTest, diagnostic_logger: Rc<RefCell<Vec<u8>>>) {
+fn run_test(path: &CollectedTest, diagnostic_logger: Rc<RefCell<Vec<u8>>>) {
   let metadata_path = PathRef::new(&test.path);
   let metadata_value = metadata_path.read_jsonc_value();
+  let metadata = deserialize_value(&metadata_value);
+  let cwd = PathRef::new(test.path.parent().unwrap());
+
+  let context = test_context_from_metadata(&metadata, &cwd);
+  for step in metadata.steps.iter().filter(|s| should_run_step(s)) {
+    let run_func = || run_step(step, &metadata, &cwd, &context);
+    if step.flaky {
+      run_flaky(run_func);
+    } else {
+      run_func();
+    }
+  }
+}
+
+fn deserialize_value(metadata_value: &serde_json::Value) -> MultiTestMetaData {
   // checking for "steps" leads to a more targeted error message
   // instead of when deserializing an untagged enum
-  let metadata = if metadata_value
+  if metadata_value
     .as_object()
-    .and_then(|o| o.get("steps"))
-    .is_some()
+    .map(|o| o.get("steps").is_some())
+    .unwrap_or(false)
   {
     serde_json::from_value::<MultiTestMetaData>(metadata_value)
   } else {
@@ -141,11 +159,15 @@ fn run_test(test: &CollectedTest, diagnostic_logger: Rc<RefCell<Vec<u8>>>) {
       .map(|s| s.into_multi())
   }
   .with_context(|| format!("Failed to parse {}", metadata_path))
-  .unwrap();
+  .unwrap()
+}
 
+fn test_context_from_metadata(
+  metadata: &MultiTestMetaData,
+  cwd: &PathRef,
+) -> test_util::TestContext {
   let mut builder = TestContextBuilder::new();
   builder = builder.logging_capture(diagnostic_logger);
-  let cwd = PathRef::new(test.path.parent().unwrap());
 
   if metadata.temp_dir {
     builder = builder.use_temp_cwd();
@@ -174,15 +196,7 @@ fn run_test(test: &CollectedTest, diagnostic_logger: Rc<RefCell<Vec<u8>>>) {
     let assertion_paths = resolve_test_and_assertion_files(&cwd, &metadata);
     cwd.copy_to_recursive_with_exclusions(temp_dir, &assertion_paths);
   }
-
-  for step in metadata.steps.iter().filter(|s| should_run_step(s)) {
-    let run_func = || run_step(step, &metadata, &cwd, &context);
-    if step.flaky {
-      run_flaky(run_func);
-    } else {
-      run_func();
-    }
-  }
+  context
 }
 
 fn should_run_step(step: &StepMetaData) -> bool {
