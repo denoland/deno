@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::panic::AssertUnwindSafe;
-use std::ptr::metadata;
+use std::path::Path;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -108,9 +108,7 @@ pub fn main() {
     file_test_runner::RunOptions { parallel: true },
     Arc::new(|test| {
       let diagnostic_logger = Rc::new(RefCell::new(Vec::<u8>::new()));
-      let result = file_test_runner::TestResult::from_maybe_panic(
-        AssertUnwindSafe(|| run_test(test, diagnostic_logger.clone())),
-      );
+      let result = handle_test(test, diagnostic_logger.clone());
       match result {
         file_test_runner::TestResult::Passed
         | file_test_runner::TestResult::Ignored => result,
@@ -128,13 +126,34 @@ pub fn main() {
   );
 }
 
-fn run_test(path: &CollectedTest, diagnostic_logger: Rc<RefCell<Vec<u8>>>) {
-  let metadata_path = PathRef::new(&test.path);
-  let metadata_value = metadata_path.read_jsonc_value();
-  let metadata = deserialize_value(&metadata_value);
-  let cwd = PathRef::new(test.path.parent().unwrap());
+fn handle_test(
+  test: &CollectedTest,
+  diagnostic_logger: Rc<RefCell<Vec<u8>>>,
+) -> file_test_runner::TestResult {
+  let test_path = PathRef::new(&test.path);
+  let metadata_value = test_path.read_jsonc_value();
+  let cwd = test_path.parent();
+  if metadata_value
+    .as_object()
+    .map(|o| o.contains_key("tests"))
+    .unwrap_or(false)
+  {
+    todo!();
+  } else {
+    file_test_runner::TestResult::from_maybe_panic(AssertUnwindSafe(|| {
+      run_test(metadata_value, &cwd, diagnostic_logger.clone())
+    }))
+  }
+}
 
-  let context = test_context_from_metadata(&metadata, &cwd);
+fn run_test(
+  metadata_value: serde_json::Value,
+  cwd: &PathRef,
+  diagnostic_logger: Rc<RefCell<Vec<u8>>>,
+) {
+  let metadata = deserialize_value(metadata_value);
+
+  let context = test_context_from_metadata(&metadata, &cwd, diagnostic_logger);
   for step in metadata.steps.iter().filter(|s| should_run_step(s)) {
     let run_func = || run_step(step, &metadata, &cwd, &context);
     if step.flaky {
@@ -145,12 +164,12 @@ fn run_test(path: &CollectedTest, diagnostic_logger: Rc<RefCell<Vec<u8>>>) {
   }
 }
 
-fn deserialize_value(metadata_value: &serde_json::Value) -> MultiTestMetaData {
+fn deserialize_value(metadata_value: serde_json::Value) -> MultiTestMetaData {
   // checking for "steps" leads to a more targeted error message
   // instead of when deserializing an untagged enum
   if metadata_value
     .as_object()
-    .map(|o| o.get("steps").is_some())
+    .map(|o| o.contains_key("steps"))
     .unwrap_or(false)
   {
     serde_json::from_value::<MultiTestMetaData>(metadata_value)
@@ -158,13 +177,14 @@ fn deserialize_value(metadata_value: &serde_json::Value) -> MultiTestMetaData {
     serde_json::from_value::<SingleTestMetaData>(metadata_value)
       .map(|s| s.into_multi())
   }
-  .with_context(|| format!("Failed to parse {}", metadata_path))
+  .context("Failed to parse test spec")
   .unwrap()
 }
 
 fn test_context_from_metadata(
   metadata: &MultiTestMetaData,
   cwd: &PathRef,
+  diagnostic_logger: Rc<RefCell<Vec<u8>>>,
 ) -> test_util::TestContext {
   let mut builder = TestContextBuilder::new();
   builder = builder.logging_capture(diagnostic_logger);
