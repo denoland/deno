@@ -1078,12 +1078,15 @@ impl TsServer {
     let change = self.pending_change.lock().take();
     if self
       .sender
-      .send((req, snapshot, tx, token, change))
+      .send((req, snapshot, tx, token.clone(), change))
       .is_err()
     {
       return Err(anyhow!("failed to send request to tsc thread"));
     }
     let value = rx.await??;
+    if token.is_cancelled() {
+      return Err(anyhow!("request cancelled"));
+    }
     drop(droppable_token);
     Ok(serde_json::from_str(&value)?)
   }

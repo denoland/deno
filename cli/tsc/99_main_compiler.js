@@ -1053,6 +1053,15 @@ delete Object.prototype.__proto__;
     debug("<<< exec stop");
   }
 
+  /**
+   * @param {any} e
+   * @returns {e is (OperationCanceledError | ts.OperationCanceledException)}
+   */
+  function isCancellationError(e) {
+    return e instanceof OperationCanceledError ||
+      e instanceof ts.OperationCanceledException;
+  }
+
   function getAssets() {
     /** @type {{ specifier: string; text: string; }[]} */
     const assets = [];
@@ -1149,14 +1158,14 @@ delete Object.prototype.__proto__;
           return respond(id, diagnosticMap);
         } catch (e) {
           if (
-            !(e instanceof OperationCanceledError ||
-              e instanceof ts.OperationCanceledException)
+            !isCancellationError(e)
           ) {
             if ("stack" in e) {
               error(e.stack);
             } else {
               error(e);
             }
+            throw e;
           }
           return respond(id, {});
         }
@@ -1168,7 +1177,19 @@ delete Object.prototype.__proto__;
           if (method == "getCompletionEntryDetails") {
             args[4] ??= undefined;
           }
-          return respond(id, languageService[method](...args));
+          try {
+            return respond(id, languageService[method](...args));
+          } catch (e) {
+            if (!isCancellationError(e)) {
+              if ("stack" in e) {
+                error(e.stack);
+              } else {
+                error(e);
+              }
+              throw e;
+            }
+            return respond(id);
+          }
         }
         throw new TypeError(
           // @ts-ignore exhausted case statement sets type to never
