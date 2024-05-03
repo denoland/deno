@@ -174,27 +174,28 @@ pub struct Inner {
   /// Cached versions of "fixed" assets that can either be inlined in Rust or
   /// are part of the TypeScript snapshot and have to be fetched out.
   assets: Assets,
+  /// This may be a copy of `self.global_cache`, or a vendor dir if one is
+  /// configured.
+  cache: Arc<dyn HttpCache>,
   /// A representation of metadata associated with specifiers in the DENO_DIR
-  /// which is used by the language server
+  /// or vendor dir which is used by the language server.
   cache_metadata: cache::CacheMetadata,
   /// The LSP client that this LSP server is connected to.
   pub client: Client,
   /// Configuration information.
   pub config: Config,
-  deps_http_cache: Arc<dyn HttpCache>,
   diagnostics_state: Arc<diagnostics::DiagnosticsState>,
   diagnostics_server: diagnostics::DiagnosticsServer,
   /// The collection of documents that the server is currently handling, either
   /// on disk or "open" within the client.
   pub documents: Documents,
+  global_cache: Arc<GlobalHttpCache>,
   initial_cwd: PathBuf,
   jsr_search_api: CliJsrSearchApi,
   http_client: Arc<HttpClient>,
   task_queue: LanguageServerTaskQueue,
   /// Handles module registries, which allow discovery of modules
-  module_registries: ModuleRegistry,
-  /// The path to the module registries cache
-  module_registries_location: PathBuf,
+  module_registry: ModuleRegistry,
   /// An optional path to the DENO_DIR which has been specified in the client
   /// options.
   maybe_global_cache_path: Option<PathBuf>,
@@ -441,26 +442,23 @@ impl LanguageServer {
 impl Inner {
   fn new(client: Client) -> Self {
     let dir = DenoDir::new(None).expect("could not access DENO_DIR");
-    let module_registries_location = dir.registries_folder_path();
     let http_client = Arc::new(HttpClient::new(None, None));
-    let module_registries = ModuleRegistry::new(
-      module_registries_location.clone(),
-      http_client.clone(),
-    );
+    let module_registry =
+      ModuleRegistry::new(dir.registries_folder_path(), http_client.clone());
     let jsr_search_api =
-      CliJsrSearchApi::new(module_registries.file_fetcher.clone());
+      CliJsrSearchApi::new(module_registry.file_fetcher.clone());
     let npm_search_api =
-      CliNpmSearchApi::new(module_registries.file_fetcher.clone());
-    let deps_http_cache = Arc::new(GlobalHttpCache::new(
+      CliNpmSearchApi::new(module_registry.file_fetcher.clone());
+    let global_cache = Arc::new(GlobalHttpCache::new(
       dir.deps_folder_path(),
       crate::cache::RealDenoCacheEnv,
     ));
-    let documents = Documents::new(deps_http_cache.clone());
-    let cache_metadata = cache::CacheMetadata::new(deps_http_cache.clone());
+    let cache = global_cache.clone();
+    let documents = Documents::new(cache.clone());
+    let cache_metadata = cache::CacheMetadata::new(cache.clone());
     let performance = Arc::new(Performance::default());
     let config = Config::default();
-    let ts_server =
-      Arc::new(TsServer::new(performance.clone(), deps_http_cache.clone()));
+    let ts_server = Arc::new(TsServer::new(performance.clone(), cache.clone()));
     let diagnostics_state = Arc::new(DiagnosticsState::default());
     let diagnostics_server = DiagnosticsServer::new(
       client.clone(),
@@ -475,13 +473,14 @@ impl Inner {
 
     Self {
       assets,
+      cache,
       cache_metadata,
       client,
       config,
-      deps_http_cache,
       diagnostics_state,
       diagnostics_server,
       documents,
+      global_cache,
       http_client,
       initial_cwd: initial_cwd.clone(),
       jsr_search_api,
@@ -489,8 +488,7 @@ impl Inner {
       project_version: 0,
       task_queue: Default::default(),
       maybe_testing_server: None,
-      module_registries,
-      module_registries_location,
+      module_registry,
       npm_search_api,
       performance,
       resolver: Default::default(),
@@ -598,51 +596,38 @@ impl Inner {
     })
   }
 
-  pub fn update_cache(&mut self) -> Result<(), AnyError> {
-    let mark = self.performance.mark("lsp.update_cache");
-    self.performance.measure(mark);
+  pub async fn update_global_cache(&mut self) {
+    let mark = self.performance.mark("lsp.update_global_cache");
     let maybe_cache = &self.config.workspace_settings().cache;
-    let maybe_global_cache_path = if let Some(cache_str) = maybe_cache {
-      lsp_log!("Setting global cache path from: \"{}\"", cache_str);
+    self.maybe_global_cache_path = if let Some(cache_str) = maybe_cache {
       let cache_url = if let Ok(url) = Url::from_file_path(cache_str) {
         Ok(url)
       } else if let Some(root_uri) = self.config.root_uri() {
-        let root_path = specifier_to_file_path(root_uri)?;
-        let cache_path = root_path.join(cache_str);
-        Url::from_file_path(cache_path).map_err(|_| {
-          anyhow!("Bad file path for import path: {:?}", cache_str)
-        })
+        root_uri.join(cache_str).map_err(|e| e.into())
       } else {
         Err(anyhow!(
-          "The path to the cache path (\"{}\") is not resolvable.",
-          cache_str
+          "The configured cache path \"{cache_str}\" is not resolvable outside of a workspace.",
         ))
-      }?;
-      let cache_path = specifier_to_file_path(&cache_url)?;
-      lsp_log!(
-        "  Resolved global cache path: \"{}\"",
-        cache_path.to_string_lossy()
-      );
-      Some(cache_path)
+      };
+      cache_url
+        .and_then(|s| specifier_to_file_path(&s))
+        .inspect(|p| {
+          lsp_log!("Resolved global cache path: \"{}\"", p.to_string_lossy());
+        })
+        .inspect_err(|err| {
+          lsp_warn!("Failed to resolve custom cache path: {err}");
+        })
+        .ok()
     } else {
       None
     };
-    if self.maybe_global_cache_path != maybe_global_cache_path {
-      self.set_new_global_cache_path(maybe_global_cache_path)?;
-    }
-    Ok(())
-  }
-
-  fn recreate_http_client_and_dependents(&mut self) -> Result<(), AnyError> {
-    self.set_new_global_cache_path(self.maybe_global_cache_path.clone())
-  }
-
-  /// Recreates the http client and all dependent structs.
-  fn set_new_global_cache_path(
-    &mut self,
-    new_cache_path: Option<PathBuf>,
-  ) -> Result<(), AnyError> {
-    let dir = DenoDir::new(new_cache_path.clone())?;
+    let deno_dir = match DenoDir::new(self.maybe_global_cache_path.clone()) {
+      Ok(d) => d,
+      Err(err) => {
+        lsp_warn!("Couldn't access DENO_DIR: {err}");
+        return;
+      }
+    };
     let workspace_settings = self.config.workspace_settings();
     let maybe_root_path = self
       .config
@@ -652,7 +637,9 @@ impl Inner {
       maybe_root_path,
       workspace_settings.certificate_stores.clone(),
       workspace_settings.tls_certificate.clone().map(CaData::File),
-    )?;
+    )
+    .inspect_err(|err| lsp_warn!("Failed to load root cert store: {err}"))
+    .unwrap_or_else(|_| RootCertStore::empty());
     let root_cert_store_provider =
       Arc::new(LspRootCertStoreProvider(root_cert_store));
     self.http_client = Arc::new(HttpClient::new(
@@ -661,71 +648,52 @@ impl Inner {
         .unsafely_ignore_certificate_errors
         .clone(),
     ));
-    self.module_registries_location = dir.registries_folder_path();
-    self.module_registries = ModuleRegistry::new(
-      self.module_registries_location.clone(),
+    self.module_registry = ModuleRegistry::new(
+      deno_dir.registries_folder_path(),
       self.http_client.clone(),
     );
+    let workspace_settings = self.config.workspace_settings();
+    for (registry, enabled) in workspace_settings.suggest.imports.hosts.iter() {
+      if *enabled {
+        lsp_log!("Enabling import suggestions for: {}", registry);
+        self.module_registry.enable(registry).await;
+      } else {
+        self.module_registry.disable(registry);
+      }
+    }
     self.jsr_search_api =
-      CliJsrSearchApi::new(self.module_registries.file_fetcher.clone());
+      CliJsrSearchApi::new(self.module_registry.file_fetcher.clone());
     self.npm_search_api =
-      CliNpmSearchApi::new(self.module_registries.file_fetcher.clone());
-    // update the cache path
-    let global_cache = Arc::new(GlobalHttpCache::new(
-      dir.deps_folder_path(),
+      CliNpmSearchApi::new(self.module_registry.file_fetcher.clone());
+    self.global_cache = Arc::new(GlobalHttpCache::new(
+      deno_dir.deps_folder_path(),
       crate::cache::RealDenoCacheEnv,
     ));
+    self.performance.measure(mark);
+  }
+
+  pub fn update_cache(&mut self) {
+    let mark = self.performance.mark("lsp.update_cache");
     let maybe_local_cache =
       self.config.tree.root_vendor_dir().map(|local_path| {
         Arc::new(LocalLspHttpCache::new(
           local_path.clone(),
-          global_cache.clone(),
+          self.global_cache.clone(),
         ))
       });
-    let cache: Arc<dyn HttpCache> = maybe_local_cache
+    self.url_map.set_cache(maybe_local_cache.clone());
+    self.cache = maybe_local_cache
       .clone()
       .map(|c| c as Arc<dyn HttpCache>)
-      .unwrap_or(global_cache);
-    self.deps_http_cache = cache.clone();
-    self.documents.set_cache(cache.clone());
-    self.cache_metadata.set_cache(cache);
-    self.url_map.set_cache(maybe_local_cache);
-    self.maybe_global_cache_path = new_cache_path;
-    Ok(())
-  }
-
-  fn create_file_fetcher(&self, cache_setting: CacheSetting) -> FileFetcher {
-    let mut file_fetcher = FileFetcher::new(
-      self.deps_http_cache.clone(),
-      cache_setting,
-      true,
-      self.http_client.clone(),
-      Default::default(),
-      None,
-    );
-    file_fetcher.set_download_log_level(super::logging::lsp_log_level());
-    file_fetcher
+      .unwrap_or(self.global_cache.clone());
+    self.documents.set_cache(self.cache.clone());
+    self.cache_metadata.set_cache(self.cache.clone());
+    self.performance.measure(mark);
   }
 
   pub fn update_debug_flag(&self) {
     let internal_debug = self.config.workspace_settings().internal_debug;
     super::logging::set_lsp_debug_flag(internal_debug)
-  }
-
-  async fn update_registries(&mut self) -> Result<(), AnyError> {
-    let mark = self.performance.mark("lsp.update_registries");
-    self.recreate_http_client_and_dependents()?;
-    let workspace_settings = self.config.workspace_settings();
-    for (registry, enabled) in workspace_settings.suggest.imports.hosts.iter() {
-      if *enabled {
-        lsp_log!("Enabling import suggestions for: {}", registry);
-        self.module_registries.enable(registry).await?;
-      } else {
-        self.module_registries.disable(registry)?;
-      }
-    }
-    self.performance.measure(mark);
-    Ok(())
   }
 }
 
@@ -822,12 +790,10 @@ impl Inner {
     };
 
     self.update_debug_flag();
+    self.update_global_cache().await;
     self.refresh_workspace_files();
     self.refresh_config_tree().await;
-    if let Err(err) = self.update_cache() {
-      lsp_warn!("Error updating cache: {:#}", err);
-      self.client.show_message(MessageType::WARNING, err);
-    }
+    self.update_cache();
 
     if capabilities.code_action_provider.is_some() {
       let fixable_diagnostics = self
@@ -836,13 +802,6 @@ impl Inner {
         .await?;
       self.ts_fixable_diagnostics = fixable_diagnostics;
     }
-
-    // Check to see if we need to setup any module registries
-    if let Err(err) = self.update_registries().await {
-      lsp_warn!("Error updating registries: {:#}", err);
-      self.client.show_message(MessageType::WARNING, err);
-    }
-
     self.assets.initialize(self.snapshot()).await;
 
     self.performance.measure(mark);
@@ -983,7 +942,15 @@ impl Inner {
   }
 
   async fn refresh_config_tree(&mut self) {
-    let file_fetcher = self.create_file_fetcher(CacheSetting::RespectHeaders);
+    let mut file_fetcher = FileFetcher::new(
+      self.global_cache.clone(),
+      CacheSetting::RespectHeaders,
+      true,
+      self.http_client.clone(),
+      Default::default(),
+      None,
+    );
+    file_fetcher.set_download_log_level(super::logging::lsp_log_level());
     self
       .config
       .tree
@@ -1159,16 +1126,10 @@ impl Inner {
     };
 
     self.update_debug_flag();
+    self.update_global_cache().await;
     self.refresh_workspace_files();
     self.refresh_config_tree().await;
-    if let Err(err) = self.update_cache() {
-      lsp_warn!("Error updating cache: {:#}", err);
-      self.client.show_message(MessageType::WARNING, err);
-    }
-    if let Err(err) = self.update_registries().await {
-      lsp_warn!("Error updating registries: {:#}", err);
-      self.client.show_message(MessageType::WARNING, err);
-    }
+    self.update_cache();
     self.refresh_documents_config().await;
     self.diagnostics_server.invalidate_all();
     self.send_diagnostics_update();
@@ -1469,12 +1430,12 @@ impl Inner {
         ),
         (true, true, _) => unreachable!("{}", json!(params)),
       };
-      let value =
-        if let Some(docs) = self.module_registries.get_hover(&dep).await {
-          format!("{value}\n\n---\n\n{docs}")
-        } else {
-          value
-        };
+      let value = if let Some(docs) = self.module_registry.get_hover(&dep).await
+      {
+        format!("{value}\n\n---\n\n{docs}")
+      } else {
+        value
+      };
       Some(Hover {
         contents: HoverContents::Markup(MarkupContent {
           kind: MarkupKind::Markdown,
@@ -2146,7 +2107,7 @@ impl Inner {
         &params.text_document_position.position,
         &self.config,
         &self.client,
-        &self.module_registries,
+        &self.module_registry,
         &self.jsr_search_api,
         &self.npm_search_api,
         &self.documents,
@@ -2277,7 +2238,7 @@ impl Inner {
         }
       } else if let Some(url) = data.documentation {
         CompletionItem {
-          documentation: self.module_registries.get_documentation(&url).await,
+          documentation: self.module_registry.get_documentation(&url).await,
           data: None,
           ..params
         }
@@ -3470,16 +3431,15 @@ impl Inner {
   }
 
   async fn reload_import_registries(&mut self) -> LspResult<Option<Value>> {
-    remove_dir_all_if_exists(&self.module_registries_location)
+    remove_dir_all_if_exists(&self.module_registry.location)
       .await
       .map_err(|err| {
         error!("Unable to remove registries cache: {:#}", err);
         LspError::internal_error()
       })?;
-    self.update_registries().await.map_err(|err| {
-      error!("Unable to update registries: {:#}", err);
-      LspError::internal_error()
-    })?;
+    self.module_registry.clear_cache();
+    self.jsr_search_api.clear_cache();
+    self.npm_search_api.clear_cache();
     Ok(Some(json!(true)))
   }
 

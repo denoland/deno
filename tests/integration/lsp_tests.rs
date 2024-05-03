@@ -9041,7 +9041,7 @@ fn lsp_performance() {
       "lsp.update_diagnostics_deps",
       "lsp.update_diagnostics_lint",
       "lsp.update_diagnostics_ts",
-      "lsp.update_registries",
+      "lsp.update_global_cache",
       "tsc.host.$getAssets",
       "tsc.host.$getDiagnostics",
       "tsc.host.$getSupportedCodeFixes",
