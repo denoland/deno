@@ -190,7 +190,7 @@ async function ensureNoNewITests() {
     "bench_tests.rs": 0,
     "bundle_tests.rs": 12,
     "cache_tests.rs": 0,
-    "cert_tests.rs": 3,
+    "cert_tests.rs": 0,
     "check_tests.rs": 23,
     "compile_tests.rs": 0,
     "coverage_tests.rs": 0,
