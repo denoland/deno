@@ -8,20 +8,15 @@ use crate::cache::CodeCache;
 use crate::cache::ModuleInfoCache;
 use crate::cache::ParsedSourceCache;
 use crate::emit::Emitter;
-use crate::graph_util::graph_lock_or_exit;
-use crate::graph_util::CreateGraphOptions;
-use crate::graph_util::ModuleGraphBuilder;
-use crate::graph_util::ModuleGraphContainer;
+use crate::module_load_preparer::ModuleLoadPreparer;
 use crate::node;
 use crate::resolver::CliGraphResolver;
 use crate::resolver::CliNodeResolver;
 use crate::resolver::ModuleCodeStringSource;
 use crate::resolver::NpmModuleLoader;
-use crate::tools::check;
-use crate::tools::check::TypeChecker;
-use crate::util::progress_bar::ProgressBar;
 use crate::util::text_encoding::code_without_source_map;
 use crate::util::text_encoding::source_map_from_code;
+use crate::worker::ModuleLoaderAndSourceMapGetter;
 use crate::worker::ModuleLoaderFactory;
 
 use deno_ast::MediaType;
@@ -33,9 +28,7 @@ use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures::future::FutureExt;
 use deno_core::futures::Future;
-use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url;
-use deno_core::resolve_url_or_path;
 use deno_core::ModuleCodeString;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSource;
@@ -47,210 +40,33 @@ use deno_core::ResolutionKind;
 use deno_core::SourceMapGetter;
 use deno_graph::source::ResolutionMode;
 use deno_graph::source::Resolver;
+use deno_graph::GraphKind;
 use deno_graph::JsModule;
 use deno_graph::JsonModule;
 use deno_graph::Module;
+use deno_graph::ModuleGraph;
 use deno_graph::Resolution;
-use deno_lockfile::Lockfile;
 use deno_runtime::code_cache;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::fs_util::code_timestamp;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
-use deno_terminal::colors;
 use std::borrow::Cow;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::str;
 use std::sync::Arc;
 
-pub struct ModuleLoadPreparer {
-  options: Arc<CliOptions>,
-  graph_container: Arc<ModuleGraphContainer>,
-  lockfile: Option<Arc<Mutex<Lockfile>>>,
-  module_graph_builder: Arc<ModuleGraphBuilder>,
-  progress_bar: ProgressBar,
-  type_checker: Arc<TypeChecker>,
-}
-
-impl ModuleLoadPreparer {
-  #[allow(clippy::too_many_arguments)]
-  pub fn new(
-    options: Arc<CliOptions>,
-    graph_container: Arc<ModuleGraphContainer>,
-    lockfile: Option<Arc<Mutex<Lockfile>>>,
-    module_graph_builder: Arc<ModuleGraphBuilder>,
-    progress_bar: ProgressBar,
-    type_checker: Arc<TypeChecker>,
-  ) -> Self {
-    Self {
-      options,
-      graph_container,
-      lockfile,
-      module_graph_builder,
-      progress_bar,
-      type_checker,
-    }
-  }
-
-  pub fn new_for_worker(
-    &self,
-    graph_container: Arc<ModuleGraphContainer>,
-  ) -> Self {
-    Self {
-      options: self.options.clone(),
-      graph_container,
-      lockfile: self.lockfile.clone(),
-      module_graph_builder: self.module_graph_builder.clone(),
-      progress_bar: self.progress_bar.clone(),
-      type_checker: self.type_checker.clone(),
-    }
-  }
-
-  /// This method must be called for a module or a static importer of that
-  /// module before attempting to `load()` it from a `JsRuntime`. It will
-  /// populate the graph data in memory with the necessary source code, write
-  /// emits where necessary or report any module graph / type checking errors.
-  #[allow(clippy::too_many_arguments)]
-  pub async fn prepare_module_load(
-    &self,
-    roots: Vec<ModuleSpecifier>,
-    is_dynamic: bool,
-    lib: TsTypeLib,
-    permissions: PermissionsContainer,
-  ) -> Result<(), AnyError> {
-    log::debug!("Preparing module load.");
-    let _pb_clear_guard = self.progress_bar.clear_guard();
-
-    let mut cache = self.module_graph_builder.create_fetch_cacher(permissions);
-    log::debug!("Creating module graph.");
-    let mut graph_update_permit =
-      self.graph_container.acquire_update_permit().await;
-    let graph = graph_update_permit.graph_mut();
-    let has_type_checked = !graph.roots.is_empty();
-
-    self
-      .module_graph_builder
-      .build_graph_with_npm_resolution(
-        graph,
-        CreateGraphOptions {
-          is_dynamic,
-          graph_kind: graph.graph_kind(),
-          roots: roots.clone(),
-          loader: Some(&mut cache),
-        },
-      )
-      .await?;
-
-    self.module_graph_builder.graph_roots_valid(graph, &roots)?;
-
-    // If there is a lockfile...
-    if let Some(lockfile) = &self.lockfile {
-      let mut lockfile = lockfile.lock();
-      // validate the integrity of all the modules
-      graph_lock_or_exit(graph, &mut lockfile);
-      // update it with anything new
-      lockfile.write().context("Failed writing lockfile.")?;
-    }
-
-    // save the graph and get a reference to the new graph
-    let graph = graph_update_permit.commit();
-
-    drop(_pb_clear_guard);
-
-    // type check if necessary
-    if self.options.type_check_mode().is_true() && !has_type_checked {
-      self
-        .type_checker
-        .check(
-          // todo(perf): since this is only done the first time the graph is
-          // created, we could avoid the clone of the graph here by providing
-          // the actual graph on the first run and then getting the Arc<ModuleGraph>
-          // back from the return value.
-          (*graph).clone(),
-          check::CheckOptions {
-            build_fast_check_graph: true,
-            lib,
-            log_ignored_options: false,
-            reload: self.options.reload_flag(),
-            type_check_mode: self.options.type_check_mode(),
-          },
-        )
-        .await?;
-    }
-
-    log::debug!("Prepared module load.");
-
-    Ok(())
-  }
-
-  /// Helper around prepare_module_load that loads and type checks
-  /// the provided files.
-  pub async fn load_and_type_check_files(
-    &self,
-    files: &[String],
-  ) -> Result<(), AnyError> {
-    let lib = self.options.ts_type_lib_window();
-
-    let specifiers = self.collect_specifiers(files)?;
-
-    if specifiers.is_empty() {
-      log::warn!("{} No matching files found.", colors::yellow("Warning"));
-    }
-
-    self
-      .prepare_module_load(
-        specifiers,
-        false,
-        lib,
-        PermissionsContainer::allow_all(),
-      )
-      .await
-  }
-
-  fn collect_specifiers(
-    &self,
-    files: &[String],
-  ) -> Result<Vec<ModuleSpecifier>, AnyError> {
-    let excludes = self.options.resolve_config_excludes()?;
-    Ok(
-      files
-        .iter()
-        .filter_map(|file| {
-          let file_url =
-            resolve_url_or_path(file, self.options.initial_cwd()).ok()?;
-          if file_url.scheme() != "file" {
-            return Some(file_url);
-          }
-          // ignore local files that match any of files listed in `exclude` option
-          let file_path = file_url.to_file_path().ok()?;
-          if excludes.matches_path(&file_path) {
-            None
-          } else {
-            Some(file_url)
-          }
-        })
-        .collect::<Vec<_>>(),
-    )
-  }
-}
+use super::module_graph_container::WorkerModuleGraphContainer;
 
 #[derive(Clone)]
 struct PreparedModuleLoader {
   emitter: Arc<Emitter>,
-  graph_container: Arc<ModuleGraphContainer>,
+  graph_container: Rc<WorkerModuleGraphContainer>,
   parsed_source_cache: Arc<ParsedSourceCache>,
 }
 
 impl PreparedModuleLoader {
-  pub fn for_worker(&self, graph_container: Arc<ModuleGraphContainer>) -> Self {
-    Self {
-      emitter: self.emitter.clone(),
-      graph_container,
-      parsed_source_cache: self.parsed_source_cache.clone(),
-    }
-  }
-
   pub fn load_prepared_module(
     &self,
     specifier: &ModuleSpecifier,
@@ -328,46 +144,19 @@ impl PreparedModuleLoader {
 }
 
 struct SharedCliModuleLoaderState {
+  graph_kind: GraphKind,
   lib_window: TsTypeLib,
   lib_worker: TsTypeLib,
   is_inspecting: bool,
   is_repl: bool,
-  graph_container: Arc<ModuleGraphContainer>,
-  module_load_preparer: Arc<ModuleLoadPreparer>,
-  prepared_module_loader: PreparedModuleLoader,
+  code_cache: Option<Arc<CodeCache>>,
+  emitter: Arc<Emitter>,
   resolver: Arc<CliGraphResolver>,
+  module_info_cache: Arc<ModuleInfoCache>,
+  module_load_preparer: Arc<ModuleLoadPreparer>,
   node_resolver: Arc<CliNodeResolver>,
   npm_module_loader: NpmModuleLoader,
-  code_cache: Option<Arc<CodeCache>>,
-  module_info_cache: Arc<ModuleInfoCache>,
-}
-
-impl SharedCliModuleLoaderState {
-  fn for_worker(&self) -> Self {
-    let graph_container =
-      Arc::new(ModuleGraphContainer::new(deno_graph::GraphKind::All));
-    let module_load_preparer = self
-      .module_load_preparer
-      .new_for_worker(graph_container.clone());
-    let prepared_module_loader = self
-      .prepared_module_loader
-      .for_worker(graph_container.clone());
-
-    Self {
-      lib_window: self.lib_worker,
-      lib_worker: self.lib_worker,
-      is_inspecting: self.is_inspecting,
-      is_repl: self.is_repl,
-      graph_container,
-      module_load_preparer: Arc::new(module_load_preparer),
-      prepared_module_loader,
-      resolver: self.resolver.clone(),
-      node_resolver: self.node_resolver.clone(),
-      npm_module_loader: self.npm_module_loader.clone(),
-      code_cache: self.code_cache.clone(),
-      module_info_cache: self.module_info_cache.clone(),
-    }
-  }
+  parsed_source_cache: Arc<ParsedSourceCache>,
 }
 
 pub struct CliModuleLoaderFactory {
@@ -378,18 +167,18 @@ impl CliModuleLoaderFactory {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
     options: &CliOptions,
+    code_cache: Option<Arc<CodeCache>>,
     emitter: Arc<Emitter>,
-    graph_container: Arc<ModuleGraphContainer>,
+    module_info_cache: Arc<ModuleInfoCache>,
     module_load_preparer: Arc<ModuleLoadPreparer>,
-    parsed_source_cache: Arc<ParsedSourceCache>,
-    resolver: Arc<CliGraphResolver>,
     node_resolver: Arc<CliNodeResolver>,
     npm_module_loader: NpmModuleLoader,
-    code_cache: Option<Arc<CodeCache>>,
-    module_info_cache: Arc<ModuleInfoCache>,
+    parsed_source_cache: Arc<ParsedSourceCache>,
+    resolver: Arc<CliGraphResolver>,
   ) -> Self {
     Self {
       shared: Arc::new(SharedCliModuleLoaderState {
+        graph_kind: options.graph_kind(),
         lib_window: options.ts_type_lib_window(),
         lib_worker: options.ts_type_lib_worker(),
         is_inspecting: options.is_inspecting(),
@@ -397,55 +186,58 @@ impl CliModuleLoaderFactory {
           options.sub_command(),
           DenoSubcommand::Repl(_) | DenoSubcommand::Jupyter(_)
         ),
-        prepared_module_loader: PreparedModuleLoader {
-          emitter,
-          graph_container: graph_container.clone(),
-          parsed_source_cache,
-        },
-        graph_container,
+        code_cache,
+        emitter,
+        module_info_cache,
         module_load_preparer,
-        resolver,
         node_resolver,
         npm_module_loader,
-        code_cache,
-        module_info_cache,
+        parsed_source_cache,
+        resolver,
       }),
     }
   }
 
   fn create_with_lib(
     &self,
+    module_graph: Arc<ModuleGraph>,
     lib: TsTypeLib,
     root_permissions: PermissionsContainer,
     dynamic_permissions: PermissionsContainer,
-    worker: bool,
-  ) -> Rc<dyn ModuleLoader> {
-    let shared = if worker {
-      Arc::new(self.shared.for_worker())
-    } else {
-      self.shared.clone()
-    };
-
-    Rc::new(CliModuleLoader {
+  ) -> ModuleLoaderAndSourceMapGetter {
+    let graph_container =
+      Rc::new(WorkerModuleGraphContainer::new(module_graph));
+    let loader = Rc::new(CliModuleLoader {
       lib,
       root_permissions,
       dynamic_permissions,
-      shared,
-    })
+      graph_container: graph_container.clone(),
+      prepared_module_loader: PreparedModuleLoader {
+        emitter: self.shared.emitter.clone(),
+        graph_container,
+        parsed_source_cache: self.shared.parsed_source_cache.clone(),
+      },
+      shared: self.shared.clone(),
+    });
+    ModuleLoaderAndSourceMapGetter {
+      module_loader: loader.clone(),
+      source_map_getter: Some(loader),
+    }
   }
 }
 
 impl ModuleLoaderFactory for CliModuleLoaderFactory {
   fn create_for_main(
     &self,
+    starting_module_graph: Arc<ModuleGraph>,
     root_permissions: PermissionsContainer,
     dynamic_permissions: PermissionsContainer,
-  ) -> Rc<dyn ModuleLoader> {
+  ) -> ModuleLoaderAndSourceMapGetter {
     self.create_with_lib(
+      starting_module_graph,
       self.shared.lib_window,
       root_permissions,
       dynamic_permissions,
-      false,
     )
   }
 
@@ -453,19 +245,14 @@ impl ModuleLoaderFactory for CliModuleLoaderFactory {
     &self,
     root_permissions: PermissionsContainer,
     dynamic_permissions: PermissionsContainer,
-  ) -> Rc<dyn ModuleLoader> {
+  ) -> ModuleLoaderAndSourceMapGetter {
     self.create_with_lib(
+      // create a fresh module graph for the worker
+      Arc::new(ModuleGraph::new(self.shared.graph_kind)),
       self.shared.lib_worker,
       root_permissions,
       dynamic_permissions,
-      true,
     )
-  }
-
-  fn create_source_map_getter(&self) -> Option<Rc<dyn SourceMapGetter>> {
-    Some(Rc::new(CliSourceMapGetter {
-      shared: self.shared.clone(),
-    }))
   }
 }
 
@@ -479,6 +266,8 @@ struct CliModuleLoader {
   /// "root permissions" for Web Worker.
   dynamic_permissions: PermissionsContainer,
   shared: Arc<SharedCliModuleLoaderState>,
+  graph_container: Rc<WorkerModuleGraphContainer>,
+  prepared_module_loader: PreparedModuleLoader,
 }
 
 impl CliModuleLoader {
@@ -502,7 +291,6 @@ impl CliModuleLoader {
       result?
     } else {
       self
-        .shared
         .prepared_module_loader
         .load_prepared_module(specifier, maybe_referrer)?
     };
@@ -606,7 +394,7 @@ impl CliModuleLoader {
       };
     }
 
-    let graph = self.shared.graph_container.graph();
+    let graph = self.graph_container.graph();
     let maybe_resolved = match graph.get(referrer) {
       Some(Module::Js(module)) => {
         module.dependencies.get(specifier).map(|d| &d.maybe_code)
@@ -772,13 +560,12 @@ impl ModuleLoader for CliModuleLoader {
     _maybe_referrer: Option<String>,
     is_dynamic: bool,
   ) -> Pin<Box<dyn Future<Output = Result<(), AnyError>>>> {
-    if let Some(result) =
-      self.shared.npm_module_loader.maybe_prepare_load(specifier)
-    {
-      return Box::pin(deno_core::futures::future::ready(result));
+    if self.shared.node_resolver.in_npm_package(&specifier) {
+      return Box::pin(deno_core::futures::future::ready(Ok(())));
     }
 
     let specifier = specifier.clone();
+    let graph_container = self.graph_container.clone();
     let module_load_preparer = self.shared.module_load_preparer.clone();
 
     let root_permissions = if is_dynamic {
@@ -789,9 +576,19 @@ impl ModuleLoader for CliModuleLoader {
     let lib = self.lib;
 
     async move {
+      let mut update_permit = graph_container.acquire_update_permit().await;
+      let graph = update_permit.graph_mut();
       module_load_preparer
-        .prepare_module_load(vec![specifier], is_dynamic, lib, root_permissions)
-        .await
+        .prepare_module_load(
+          graph,
+          &[specifier],
+          is_dynamic,
+          lib,
+          root_permissions,
+        )
+        .await?;
+      update_permit.commit();
+      Ok(())
     }
     .boxed_local()
   }
@@ -824,11 +621,7 @@ impl ModuleLoader for CliModuleLoader {
   }
 }
 
-struct CliSourceMapGetter {
-  shared: Arc<SharedCliModuleLoaderState>,
-}
-
-impl SourceMapGetter for CliSourceMapGetter {
+impl SourceMapGetter for CliModuleLoader {
   fn get_source_map(&self, file_name: &str) -> Option<Vec<u8>> {
     let specifier = resolve_url(file_name).ok()?;
     match specifier.scheme() {
@@ -838,7 +631,6 @@ impl SourceMapGetter for CliSourceMapGetter {
       _ => return None,
     }
     let source = self
-      .shared
       .prepared_module_loader
       .load_prepared_module(&specifier, None)
       .ok()?;
@@ -850,7 +642,7 @@ impl SourceMapGetter for CliSourceMapGetter {
     file_name: &str,
     line_number: usize,
   ) -> Option<String> {
-    let graph = self.shared.graph_container.graph();
+    let graph = self.graph_container.graph();
     let code = match graph.get(&resolve_url(file_name).ok()?) {
       Some(deno_graph::Module::Js(module)) => &module.source,
       Some(deno_graph::Module::Json(module)) => &module.source,

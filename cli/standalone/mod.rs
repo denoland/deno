@@ -27,6 +27,7 @@ use crate::util::progress_bar::ProgressBarStyle;
 use crate::util::v8::construct_v8_flags;
 use crate::worker::CliMainWorkerFactory;
 use crate::worker::CliMainWorkerOptions;
+use crate::worker::ModuleLoaderAndSourceMapGetter;
 use crate::worker::ModuleLoaderFactory;
 use deno_ast::MediaType;
 use deno_core::anyhow::Context;
@@ -42,6 +43,7 @@ use deno_core::ModuleSpecifier;
 use deno_core::ModuleType;
 use deno_core::RequestedModuleType;
 use deno_core::ResolutionKind;
+use deno_graph::ModuleGraph;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::analyze::NodeCodeTranslator;
 use deno_runtime::deno_node::NodeResolutionMode;
@@ -280,32 +282,33 @@ struct StandaloneModuleLoaderFactory {
 impl ModuleLoaderFactory for StandaloneModuleLoaderFactory {
   fn create_for_main(
     &self,
+    _module_graph: Arc<ModuleGraph>,
     root_permissions: PermissionsContainer,
     dynamic_permissions: PermissionsContainer,
-  ) -> Rc<dyn ModuleLoader> {
-    Rc::new(EmbeddedModuleLoader {
-      shared: self.shared.clone(),
-      root_permissions,
-      dynamic_permissions,
-    })
+  ) -> ModuleLoaderAndSourceMapGetter {
+    ModuleLoaderAndSourceMapGetter {
+      module_loader: Rc::new(EmbeddedModuleLoader {
+        shared: self.shared.clone(),
+        root_permissions,
+        dynamic_permissions,
+      }),
+      source_map_getter: None,
+    }
   }
 
   fn create_for_worker(
     &self,
     root_permissions: PermissionsContainer,
     dynamic_permissions: PermissionsContainer,
-  ) -> Rc<dyn ModuleLoader> {
-    Rc::new(EmbeddedModuleLoader {
-      shared: self.shared.clone(),
-      root_permissions,
-      dynamic_permissions,
-    })
-  }
-
-  fn create_source_map_getter(
-    &self,
-  ) -> Option<Rc<dyn deno_core::SourceMapGetter>> {
-    None
+  ) -> ModuleLoaderAndSourceMapGetter {
+    ModuleLoaderAndSourceMapGetter {
+      module_loader: Rc::new(EmbeddedModuleLoader {
+        shared: self.shared.clone(),
+        root_permissions,
+        dynamic_permissions,
+      }),
+      source_map_getter: None,
+    }
   }
 }
 
@@ -594,6 +597,8 @@ pub async fn run(
     .create_main_worker(
       WorkerExecutionMode::Run,
       main_module.clone(),
+      // todo(THIS PR): remove this
+      Arc::new(ModuleGraph::new(deno_graph::GraphKind::All)),
       permissions,
     )
     .await?;

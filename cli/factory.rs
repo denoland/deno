@@ -23,11 +23,10 @@ use crate::emit::Emitter;
 use crate::file_fetcher::FileFetcher;
 use crate::graph_util::FileWatcherReporter;
 use crate::graph_util::ModuleGraphBuilder;
-use crate::graph_util::ModuleGraphContainer;
 use crate::graph_util::ModuleGraphCreator;
 use crate::http_util::HttpClient;
-use crate::module_loader::CliModuleLoaderFactory;
-use crate::module_loader::ModuleLoadPreparer;
+use crate::module_load_preparer::MainModuleGraphPreparer;
+use crate::module_load_preparer::ModuleLoadPreparer;
 use crate::node::CliCjsCodeAnalyzer;
 use crate::node::CliNodeCodeTranslator;
 use crate::npm::create_cli_npm_resolver;
@@ -53,6 +52,7 @@ use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 use crate::worker::CliMainWorkerFactory;
 use crate::worker::CliMainWorkerOptions;
+use crate::workers::CliModuleLoaderFactory;
 use std::path::PathBuf;
 
 use deno_core::error::AnyError;
@@ -60,7 +60,6 @@ use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
 use deno_core::FeatureChecker;
 
-use deno_graph::GraphKind;
 use deno_lockfile::WorkspaceMemberConfig;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::analyze::NodeCodeTranslator;
@@ -157,7 +156,6 @@ struct CliFactoryServices {
   emit_cache: Deferred<EmitCache>,
   emitter: Deferred<Arc<Emitter>>,
   fs: Deferred<Arc<dyn deno_fs::FileSystem>>,
-  graph_container: Deferred<Arc<ModuleGraphContainer>>,
   lockfile: Deferred<Option<Arc<Mutex<Lockfile>>>>,
   maybe_import_map: Deferred<Option<Arc<ImportMap>>>,
   maybe_inspector_server: Deferred<Option<Arc<InspectorServer>>>,
@@ -672,19 +670,6 @@ impl CliFactory {
       .await
   }
 
-  pub fn graph_container(&self) -> &Arc<ModuleGraphContainer> {
-    self.services.graph_container.get_or_init(|| {
-      let graph_kind = match self.options.sub_command() {
-        // todo(dsherret): ideally the graph container would not be used
-        // for deno cache because it doesn't dynamically load modules
-        DenoSubcommand::Cache(_) => GraphKind::All,
-        DenoSubcommand::Check(_) => GraphKind::TypesOnly,
-        _ => self.options.type_check_mode().as_graph_kind(),
-      };
-      Arc::new(ModuleGraphContainer::new(graph_kind))
-    })
-  }
-
   pub fn maybe_inspector_server(
     &self,
   ) -> Result<&Option<Arc<InspectorServer>>, AnyError> {
@@ -705,7 +690,6 @@ impl CliFactory {
       .get_or_try_init_async(async {
         Ok(Arc::new(ModuleLoadPreparer::new(
           self.options.clone(),
-          self.graph_container().clone(),
           self.maybe_lockfile().clone(),
           self.module_graph_builder().await?.clone(),
           self.text_only_progress_bar().clone(),
@@ -769,6 +753,15 @@ impl CliFactory {
     ))
   }
 
+  pub async fn create_main_module_graph_preparer(
+    &self,
+  ) -> Result<MainModuleGraphPreparer, AnyError> {
+    Ok(MainModuleGraphPreparer::new(
+      self.options.clone(),
+      self.module_load_preparer().await?.clone(),
+    ))
+  }
+
   pub async fn create_cli_main_worker_factory(
     &self,
   ) -> Result<CliMainWorkerFactory, AnyError> {
@@ -790,11 +783,14 @@ impl CliFactory {
       self.blob_store().clone(),
       Box::new(CliModuleLoaderFactory::new(
         &self.options,
+        if self.options.code_cache_enabled() {
+          Some(self.code_cache()?.clone())
+        } else {
+          None
+        },
         self.emitter()?.clone(),
-        self.graph_container().clone(),
+        self.module_info_cache()?.clone(),
         self.module_load_preparer().await?.clone(),
-        self.parsed_source_cache().clone(),
-        self.resolver().await?.clone(),
         cli_node_resolver.clone(),
         NpmModuleLoader::new(
           self.cjs_resolutions().clone(),
@@ -802,12 +798,8 @@ impl CliFactory {
           fs.clone(),
           cli_node_resolver.clone(),
         ),
-        if self.options.code_cache_enabled() {
-          Some(self.code_cache()?.clone())
-        } else {
-          None
-        },
-        self.module_info_cache()?.clone(),
+        self.parsed_source_cache().clone(),
+        self.resolver().await?.clone(),
       )),
       self.root_cert_store_provider().clone(),
       self.fs().clone(),

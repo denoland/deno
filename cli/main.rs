@@ -13,7 +13,7 @@ mod http_util;
 mod js;
 mod jsr;
 mod lsp;
-mod module_loader;
+mod module_load_preparer;
 mod napi;
 mod node;
 mod npm;
@@ -25,6 +25,7 @@ mod tsc;
 mod util;
 mod version;
 mod worker;
+mod workers;
 
 use crate::args::flags_from_vec;
 use crate::args::DenoSubcommand;
@@ -112,18 +113,19 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
     }),
     DenoSubcommand::Cache(cache_flags) => spawn_subcommand(async move {
       let factory = CliFactory::from_flags(flags)?;
-      let module_load_preparer = factory.module_load_preparer().await?;
       let emitter = factory.emitter()?;
-      let graph_container = factory.graph_container();
-      module_load_preparer
+      let mut module_graph_preparer =
+        factory.create_main_module_graph_preparer().await?;
+      module_graph_preparer
         .load_and_type_check_files(&cache_flags.files)
         .await?;
-      emitter.cache_module_emits(&graph_container.graph())
+      emitter.cache_module_emits(&module_graph_preparer.graph())
     }),
     DenoSubcommand::Check(check_flags) => spawn_subcommand(async move {
       let factory = CliFactory::from_flags(flags)?;
-      let module_load_preparer = factory.module_load_preparer().await?;
-      module_load_preparer
+      let mut module_graph_preparer =
+        factory.create_main_module_graph_preparer().await?;
+      module_graph_preparer
         .load_and_type_check_files(&check_flags.files)
         .await
     }),

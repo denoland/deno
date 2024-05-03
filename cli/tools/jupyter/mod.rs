@@ -1,5 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::sync::Arc;
+
 use crate::args::Flags;
 use crate::args::JupyterFlags;
 use crate::ops;
@@ -18,6 +20,7 @@ use deno_core::resolve_url_or_path;
 use deno_core::serde::Deserialize;
 use deno_core::serde_json;
 use deno_core::url::Url;
+use deno_graph::ModuleGraph;
 use deno_runtime::deno_io::Stdio;
 use deno_runtime::deno_io::StdioPipe;
 use deno_runtime::permissions::Permissions;
@@ -91,6 +94,7 @@ pub async fn kernel(
     .create_custom_worker(
       WorkerExecutionMode::Jupyter,
       main_module.clone(),
+      Arc::new(ModuleGraph::new(cli_options.graph_kind())),
       permissions,
       vec![
         ops::jupyter::deno_jupyter::init_ops(stdio_tx.clone()),

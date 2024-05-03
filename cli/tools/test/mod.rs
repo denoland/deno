@@ -11,7 +11,7 @@ use crate::factory::CliFactoryBuilder;
 use crate::file_fetcher::File;
 use crate::file_fetcher::FileFetcher;
 use crate::graph_util::has_graph_root_local_dependent_changed;
-use crate::module_loader::ModuleLoadPreparer;
+use crate::module_load_preparer::MainModuleGraphPreparer;
 use crate::ops;
 use crate::util::file_watcher;
 use crate::util::fs::collect_specifiers;
@@ -52,6 +52,7 @@ use deno_core::v8;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::PollEventLoopOptions;
+use deno_graph::ModuleGraph;
 use deno_runtime::deno_io::Stdio;
 use deno_runtime::deno_io::StdioPipe;
 use deno_runtime::fmt_errors::format_js_error;
@@ -578,6 +579,7 @@ fn get_test_reporter(options: &TestSpecifiersOptions) -> Box<dyn TestReporter> {
 async fn configure_main_worker(
   worker_factory: Arc<CliMainWorkerFactory>,
   specifier: &Url,
+  module_graph: Arc<ModuleGraph>,
   permissions: Permissions,
   worker_sender: TestEventWorkerSender,
   options: &TestSpecifierOptions,
@@ -586,6 +588,7 @@ async fn configure_main_worker(
     .create_custom_worker(
       WorkerExecutionMode::Test,
       specifier.clone(),
+      module_graph,
       PermissionsContainer::new(permissions),
       vec![ops::testing::deno_test::init_ops(worker_sender.sender)],
       Stdio {
@@ -631,6 +634,7 @@ pub async fn test_specifier(
   worker_factory: Arc<CliMainWorkerFactory>,
   permissions: Permissions,
   specifier: ModuleSpecifier,
+  module_graph: Arc<ModuleGraph>,
   worker_sender: TestEventWorkerSender,
   fail_fast_tracker: FailFastTracker,
   options: TestSpecifierOptions,
@@ -641,6 +645,7 @@ pub async fn test_specifier(
   let (coverage_collector, mut worker) = configure_main_worker(
     worker_factory,
     &specifier,
+    module_graph,
     permissions,
     worker_sender,
     &options,
@@ -1305,12 +1310,10 @@ async fn fetch_inline_files(
 
 /// Type check a collection of module and document specifiers.
 pub async fn check_specifiers(
-  cli_options: &CliOptions,
   file_fetcher: &FileFetcher,
-  module_load_preparer: &ModuleLoadPreparer,
+  main_graph_preparer: &mut MainModuleGraphPreparer,
   specifiers: Vec<(ModuleSpecifier, TestMode)>,
 ) -> Result<(), AnyError> {
-  let lib = cli_options.ts_type_lib_window();
   let inline_files = fetch_inline_files(
     file_fetcher,
     specifiers
@@ -1330,20 +1333,13 @@ pub async fn check_specifiers(
     let specifiers = inline_files
       .iter()
       .map(|file| file.specifier.clone())
-      .collect();
+      .collect::<Vec<_>>();
 
     for file in inline_files {
       file_fetcher.insert_memory_files(file);
     }
 
-    module_load_preparer
-      .prepare_module_load(
-        specifiers,
-        false,
-        lib,
-        PermissionsContainer::new(Permissions::allow_all()),
-      )
-      .await?;
+    main_graph_preparer.check_specifiers(&specifiers).await?;
   }
 
   let module_specifiers = specifiers
@@ -1355,15 +1351,10 @@ pub async fn check_specifiers(
         None
       }
     })
-    .collect();
+    .collect::<Vec<_>>();
 
-  module_load_preparer
-    .prepare_module_load(
-      module_specifiers,
-      false,
-      lib,
-      PermissionsContainer::allow_all(),
-    )
+  main_graph_preparer
+    .check_specifiers(&module_specifiers)
     .await?;
 
   Ok(())
@@ -1376,6 +1367,7 @@ async fn test_specifiers(
   worker_factory: Arc<CliMainWorkerFactory>,
   permissions: &Permissions,
   specifiers: Vec<ModuleSpecifier>,
+  module_graph: Arc<ModuleGraph>,
   options: TestSpecifiersOptions,
 ) -> Result<(), AnyError> {
   let specifiers = if let Some(seed) = options.specifier.shuffle {
@@ -1406,11 +1398,13 @@ async fn test_specifiers(
     let worker_sender = test_event_sender_factory.worker();
     let fail_fast_tracker = fail_fast_tracker.clone();
     let specifier_options = options.specifier.clone();
+    let module_graph = module_graph.clone();
     spawn_blocking(move || {
       create_and_run_current_thread(test_specifier(
         worker_factory,
         permissions,
         specifier,
+        module_graph,
         worker_sender,
         fail_fast_tracker,
         specifier_options,
@@ -1710,7 +1704,6 @@ pub async fn run_tests(
   let cli_options = factory.cli_options();
   let test_options = cli_options.resolve_test_options(test_flags)?;
   let file_fetcher = factory.file_fetcher()?;
-  let module_load_preparer = factory.module_load_preparer().await?;
   // Various test files should not share the same permissions in terms of
   // `PermissionsContainer` - otherwise granting/revoking permissions in one
   // file would have impact on other files, which is undesirable.
@@ -1730,10 +1723,12 @@ pub async fn run_tests(
     return Err(generic_error("No test modules found"));
   }
 
+  let mut main_graph_preparer =
+    factory.create_main_module_graph_preparer().await?;
+
   check_specifiers(
-    cli_options,
     file_fetcher,
-    module_load_preparer,
+    &mut main_graph_preparer,
     specifiers_with_mode.clone(),
   )
   .await?;
@@ -1755,6 +1750,7 @@ pub async fn run_tests(
         _ => Some(s),
       })
       .collect(),
+    Arc::new(main_graph_preparer.into_graph()),
     TestSpecifiersOptions {
       cwd: Url::from_directory_path(cli_options.initial_cwd()).map_err(
         |_| {
@@ -1872,7 +1868,6 @@ pub async fn run_tests_with_watch(
 
         let worker_factory =
           Arc::new(factory.create_cli_main_worker_factory().await?);
-        let module_load_preparer = factory.module_load_preparer().await?;
         let specifiers_with_mode = fetch_specifiers_with_test_mode(
           &cli_options,
           file_fetcher,
@@ -1884,10 +1879,11 @@ pub async fn run_tests_with_watch(
         .filter(|(specifier, _)| test_modules_to_reload.contains(specifier))
         .collect::<Vec<(ModuleSpecifier, TestMode)>>();
 
+        let mut main_graph_preparer =
+          factory.create_main_module_graph_preparer().await?;
         check_specifiers(
-          &cli_options,
           file_fetcher,
-          module_load_preparer,
+          &mut main_graph_preparer,
           specifiers_with_mode.clone(),
         )
         .await?;
@@ -1906,6 +1902,7 @@ pub async fn run_tests_with_watch(
               _ => Some(s),
             })
             .collect(),
+          Arc::new(main_graph_preparer.into_graph()),
           TestSpecifiersOptions {
             cwd: Url::from_directory_path(cli_options.initial_cwd()).map_err(
               |_| {

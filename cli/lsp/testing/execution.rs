@@ -219,10 +219,11 @@ impl TestRun {
     // file would have impact on other files, which is undesirable.
     let permissions =
       Permissions::from_options(&factory.cli_options().permissions_options())?;
+    let mut main_graph_preparer =
+      factory.create_main_module_graph_preparer().await?;
     test::check_specifiers(
-      factory.cli_options(),
       factory.file_fetcher()?,
-      factory.module_load_preparer().await?,
+      &mut main_graph_preparer,
       self
         .queue
         .iter()
@@ -263,6 +264,7 @@ impl TestRun {
     let mut test_steps = IndexMap::new();
     let worker_factory =
       Arc::new(factory.create_cli_main_worker_factory().await?);
+    let module_graph = Arc::new(main_graph_preparer.into_graph());
 
     let join_handles = queue.into_iter().map(move |specifier| {
       let specifier = specifier.clone();
@@ -284,6 +286,7 @@ impl TestRun {
           .unwrap_or_default(),
       };
       let token = self.token.clone();
+      let module_graph = module_graph.clone();
 
       spawn_blocking(move || {
         if fail_fast_tracker.should_stop() {
@@ -298,6 +301,7 @@ impl TestRun {
             worker_factory,
             permissions,
             specifier,
+            module_graph,
             worker_sender,
             fail_fast_tracker,
             test::TestSpecifierOptions {
