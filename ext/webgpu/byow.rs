@@ -6,6 +6,7 @@ use deno_core::op2;
 use deno_core::OpState;
 use deno_core::ResourceId;
 use std::ffi::c_void;
+use std::ptr::NonNull;
 
 use crate::surface::WebGpuSurface;
 
@@ -36,8 +37,9 @@ pub fn op_webgpu_surface_create(
   }
 
   let (win_handle, display_handle) = raw_window(system, p1, p2)?;
-  let surface =
-    instance.instance_create_surface(display_handle, win_handle, ());
+  let surface = unsafe {
+    instance.instance_create_surface(display_handle, win_handle, None)?
+  };
 
   let rid = state
     .resource_table
@@ -53,22 +55,22 @@ type RawHandles = (
 #[cfg(target_os = "macos")]
 fn raw_window(
   system: &str,
-  ns_window: *const c_void,
+  _ns_window: *const c_void,
   ns_view: *const c_void,
 ) -> Result<RawHandles, AnyError> {
   if system != "cocoa" {
     return Err(type_error("Invalid system on macOS"));
   }
 
-  let win_handle = {
-    let mut handle = raw_window_handle::AppKitWindowHandle::empty();
-    handle.ns_window = ns_window as *mut c_void;
-    handle.ns_view = ns_view as *mut c_void;
+  let win_handle = raw_window_handle::RawWindowHandle::AppKit(
+    raw_window_handle::AppKitWindowHandle::new(
+      NonNull::new(ns_view as *mut c_void)
+        .ok_or(type_error("ns_view is null"))?,
+    ),
+  );
 
-    raw_window_handle::RawWindowHandle::AppKit(handle)
-  };
   let display_handle = raw_window_handle::RawDisplayHandle::AppKit(
-    raw_window_handle::AppKitDisplayHandle::empty(),
+    raw_window_handle::AppKitDisplayHandle::new(),
   );
   Ok((win_handle, display_handle))
 }
@@ -85,9 +87,7 @@ fn raw_window(
   }
 
   let win_handle = {
-    use raw_window_handle::Win32WindowHandle;
-
-    let mut handle = Win32WindowHandle::empty();
+    let mut handle = raw_window_handle::Win32WindowHandle::new();
     handle.hwnd = window as *mut c_void;
     handle.hinstance = hinstance as *mut c_void;
 
@@ -95,7 +95,7 @@ fn raw_window(
   };
 
   let display_handle =
-    raw_window_handle::RawDisplayHandle::Windows(WindowsDisplayHandle::empty());
+    raw_window_handle::RawDisplayHandle::Windows(WindowsDisplayHandle::new());
   Ok((win_handle, display_handle))
 }
 
@@ -107,33 +107,30 @@ fn raw_window(
 ) -> Result<RawHandles, AnyError> {
   let (win_handle, display_handle);
   if system == "x11" {
-    win_handle = {
-      let mut handle = raw_window_handle::XlibWindowHandle::empty();
-      handle.window = window as *mut c_void as _;
+    win_handle = raw_window_handle::RawWindowHandle::Xlib(
+      raw_window_handle::XlibWindowHandle::new(window as *mut c_void as _),
+    );
 
-      raw_window_handle::RawWindowHandle::Xlib(handle)
-    };
-
-    display_handle = {
-      let mut handle = raw_window_handle::XlibDisplayHandle::empty();
-      handle.display = display as *mut c_void;
-
-      raw_window_handle::RawDisplayHandle::Xlib(handle)
-    };
+    display_handle = raw_window_handle::RawDisplayHandle::Xlib(
+      raw_window_handle::XlibDisplayHandle::new(
+        NonNull::new(display as *mut c_void),
+        0,
+      ),
+    );
   } else if system == "wayland" {
-    win_handle = {
-      let mut handle = raw_window_handle::WaylandWindowHandle::empty();
-      handle.surface = window as _;
+    win_handle = raw_window_handle::RawWindowHandle::Wayland(
+      raw_window_handle::WaylandWindowHandle::new(
+        NonNull::new(window as *mut c_void)
+          .ok_or(type_error("window is null"))?,
+      ),
+    );
 
-      raw_window_handle::RawWindowHandle::Wayland(handle)
-    };
-
-    display_handle = {
-      let mut handle = raw_window_handle::WaylandDisplayHandle::empty();
-      handle.display = display as _;
-
-      raw_window_handle::RawDisplayHandle::Wayland(handle)
-    };
+    display_handle = raw_window_handle::RawDisplayHandle::Wayland(
+      raw_window_handle::WaylandDisplayHandle::new(
+        NonNull::new(display as *mut c_void)
+          .ok_or(type_error("display is null"))?,
+      ),
+    );
   } else {
     return Err(type_error("Invalid system on Linux"));
   }
