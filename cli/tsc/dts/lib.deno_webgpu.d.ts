@@ -664,7 +664,10 @@ declare type GPUTextureSampleType =
  * @category WebGPU
  * @tags unstable
  */
-declare type GPUStorageTextureAccess = "write-only" | "read-only" | "read-write";
+declare type GPUStorageTextureAccess =
+  | "write-only"
+  | "read-only"
+  | "read-write";
 
 /**
  * @category WebGPU
