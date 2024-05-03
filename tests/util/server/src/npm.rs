@@ -38,6 +38,18 @@ pub static PRIVATE_TEST_NPM_REGISTRY_1: Lazy<TestNpmRegistry> =
     )
   });
 
+pub static PRIVATE_TEST_NPM_REGISTRY_2: Lazy<TestNpmRegistry> =
+  Lazy::new(|| {
+    TestNpmRegistry::new(
+      NpmRegistryKind::Private,
+      &format!(
+        "http://localhost:{}",
+        crate::servers::PRIVATE_NPM_REGISTRY_2_PORT
+      ),
+      "/private_registry_2",
+    )
+  });
+
 pub enum NpmRegistryKind {
   Public,
   Private,

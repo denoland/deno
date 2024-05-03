@@ -86,6 +86,7 @@ const H2S_GRPC_PORT: u16 = 4247;
 const REGISTRY_SERVER_PORT: u16 = 4250;
 const PROVENANCE_MOCK_SERVER_PORT: u16 = 4251;
 pub(crate) const PRIVATE_NPM_REGISTRY_1_PORT: u16 = 4252;
+pub(crate) const PRIVATE_NPM_REGISTRY_2_PORT: u16 = 4253;
 
 // Use the single-threaded scheduler. The hyper server is used as a point of
 // comparison for the (single-threaded!) benchmarks in cli/bench. We're not
@@ -133,6 +134,8 @@ pub async fn run_all_servers() {
     registry::provenance_mock_server(PROVENANCE_MOCK_SERVER_PORT);
   let private_npm_registry_1_server_fut =
     wrap_private_npm_registry1(PRIVATE_NPM_REGISTRY_1_PORT);
+  let private_npm_registry_2_server_fut =
+    wrap_private_npm_registry2(PRIVATE_NPM_REGISTRY_2_PORT);
 
   let server_fut = async {
     futures::join!(
@@ -162,6 +165,7 @@ pub async fn run_all_servers() {
       registry_server_fut,
       provenance_mock_server_fut,
       private_npm_registry_1_server_fut,
+      private_npm_registry_2_server_fut,
     )
   }
   .boxed_local();
@@ -1164,7 +1168,8 @@ async fn main_server(
   };
 }
 
-const PRIVATE_NPM_REGISTRY_AUTH_TOKEN: &str = "private-reg-token";
+const PRIVATE_NPM_REGISTRY_1_AUTH_TOKEN: &str = "private-reg-token";
+const PRIVATE_NPM_REGISTRY_2_AUTH_TOKEN: &str = "private-reg-token2";
 
 async fn wrap_private_npm_registry1(port: u16) {
   let npm_registry_addr = SocketAddr::from(([127, 0, 0, 1], port));
@@ -1179,6 +1184,19 @@ async fn wrap_private_npm_registry1(port: u16) {
   .await;
 }
 
+async fn wrap_private_npm_registry2(port: u16) {
+  let npm_registry_addr = SocketAddr::from(([127, 0, 0, 1], port));
+  run_server(
+    ServerOptions {
+      addr: npm_registry_addr,
+      kind: ServerKind::Auto,
+      error_msg: "HTTP server error",
+    },
+    private_npm_registry2,
+  )
+  .await;
+}
+
 async fn private_npm_registry1(
   req: Request<hyper::body::Incoming>,
 ) -> Result<Response<UnsyncBoxBody<Bytes, Infallible>>, anyhow::Error> {
@@ -1187,7 +1205,7 @@ async fn private_npm_registry1(
     .get("authorization")
     .and_then(|x| x.to_str().ok())
     .unwrap_or_default();
-  if auth != format!("Bearer {}", PRIVATE_NPM_REGISTRY_AUTH_TOKEN) {
+  if auth != format!("Bearer {}", PRIVATE_NPM_REGISTRY_1_AUTH_TOKEN) {
     return Ok(
       Response::builder()
         .status(StatusCode::UNAUTHORIZED)
@@ -1204,6 +1222,43 @@ async fn private_npm_registry1(
     uri_path,
     testdata_file_path,
     &npm::PRIVATE_TEST_NPM_REGISTRY_1,
+  )
+  .await
+  {
+    return resp;
+  }
+
+  Response::builder()
+    .status(StatusCode::NOT_FOUND)
+    .body(empty_body())
+    .map_err(|e| e.into())
+}
+
+async fn private_npm_registry2(
+  req: Request<hyper::body::Incoming>,
+) -> Result<Response<UnsyncBoxBody<Bytes, Infallible>>, anyhow::Error> {
+  let auth = req
+    .headers()
+    .get("authorization")
+    .and_then(|x| x.to_str().ok())
+    .unwrap_or_default();
+  if auth != format!("Bearer {}", PRIVATE_NPM_REGISTRY_2_AUTH_TOKEN) {
+    return Ok(
+      Response::builder()
+        .status(StatusCode::UNAUTHORIZED)
+        .body(empty_body())
+        .unwrap(),
+    );
+  }
+
+  let uri_path = req.uri().path();
+  let mut testdata_file_path = testdata_path().to_path_buf();
+  testdata_file_path.push(&uri_path[1..].replace("%2f", "/"));
+
+  if let Some(resp) = try_serve_npm_registry(
+    uri_path,
+    testdata_file_path,
+    &npm::PRIVATE_TEST_NPM_REGISTRY_2,
   )
   .await
   {
