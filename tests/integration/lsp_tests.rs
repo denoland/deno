@@ -5391,7 +5391,8 @@ fn lsp_code_actions_deno_cache_all() {
 
   let res =
     client
-    .write_request(      "textDocument/codeAction",
+    .write_request(
+      "textDocument/codeAction",
       json!({
         "textDocument": {
           "uri": "file:///a/file.ts",
@@ -5417,8 +5418,7 @@ fn lsp_code_actions_deno_cache_all() {
           "only": ["quickfix"],
         }
       }),
-    )
-    ;
+    );
   assert_eq!(
     res,
     json!([
@@ -7075,6 +7075,71 @@ fn lsp_npm_completions_auto_import_and_quick_fix_no_import_map() {
       }
     }])
   );
+  client.shutdown();
+}
+
+#[test]
+fn lsp_npm_always_caches() {
+  // npm specifiers should always be cached even when not specified
+  // because they affect the resolution of each other
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir_path = context.temp_dir().path();
+
+  // this file should be auto-discovered by the lsp
+  let not_opened_file = temp_dir_path.join("not_opened.ts");
+  not_opened_file.write("import chalk from 'npm:chalk@5.0';\n");
+
+  // create the lsp and cache a different npm specifier
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let opened_file_uri = temp_dir_path.join("file.ts").uri_file();
+  client.did_open(
+    json!({
+      "textDocument": {
+        "uri": opened_file_uri,
+        "languageId": "typescript",
+        "version": 1,
+        "text": "import {getClient} from 'npm:@denotest/types-exports-subpaths@1/client';\n",
+      }
+    }),
+  );
+  client.write_request(
+    "workspace/executeCommand",
+    json!({
+      "command": "deno.cache",
+      "arguments": [
+        ["npm:@denotest/types-exports-subpaths@1/client"],
+        opened_file_uri,
+      ],
+    }),
+  );
+
+  // now open a new file and chalk should be working
+  let new_file_uri = temp_dir_path.join("new_file.ts").uri_file();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": new_file_uri,
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import chalk from 'npm:chalk@5.0';\nchalk.",
+    }
+  }));
+
+  let list = client.get_completion_list(
+    new_file_uri,
+    (1, 6),
+    json!({
+      "triggerKind": 2,
+      "triggerCharacter": "."
+    }),
+  );
+  assert!(!list.is_incomplete);
+  assert!(list.items.iter().any(|i| i.label == "green"));
+  assert!(list.items.iter().any(|i| i.label == "red"));
+
   client.shutdown();
 }
 

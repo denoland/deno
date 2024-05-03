@@ -279,9 +279,9 @@ impl LanguageServer {
       Ok(())
     }
 
-    // do as much as possible in a read, then do a write outside
+    // prepare the cache inside the lock
     let maybe_prepare_cache_result = {
-      let inner = self.0.read().await; // ensure dropped
+      let mut inner = self.0.write().await; // ensure dropped
       match inner.prepare_cache(specifiers, referrer, force_global_cache) {
         Ok(maybe_cache_result) => maybe_cache_result,
         Err(err) => {
@@ -297,6 +297,7 @@ impl LanguageServer {
       }
     };
     if let Some(result) = maybe_prepare_cache_result {
+      // cache outside the lock
       let cli_options = result.cli_options;
       let roots = result.roots;
       let open_docs = result.open_docs;
@@ -312,6 +313,8 @@ impl LanguageServer {
           .client
           .show_message(MessageType::WARNING, err);
       }
+
+      // now get the lock back to update with the new information
       let mut inner = self.0.write().await;
       let lockfile = inner.config.tree.root_lockfile().cloned();
       inner.documents.refresh_lockfile(lockfile);
@@ -3280,7 +3283,7 @@ struct PrepareCacheResult {
 // These are implementations of custom commands supported by the LSP
 impl Inner {
   fn prepare_cache(
-    &self,
+    &mut self,
     specifiers: Vec<ModuleSpecifier>,
     referrer: ModuleSpecifier,
     force_global_cache: bool,
@@ -3289,11 +3292,22 @@ impl Inner {
       .performance
       .mark_with_args("lsp.cache", (&specifiers, &referrer));
     let config_data = self.config.tree.root_data();
-    let roots = if !specifiers.is_empty() {
+    let mut roots = if !specifiers.is_empty() {
       specifiers
     } else {
       vec![referrer.clone()]
     };
+
+    // always include the npm packages since resolution of one npm package
+    // might affect the resolution of other npm packages
+    roots.extend(
+      self
+        .documents
+        .npm_package_reqs()
+        .iter()
+        .map(|req| ModuleSpecifier::parse(&format!("npm:{}", req)).unwrap()),
+    );
+
     let workspace_settings = self.config.workspace_settings();
     let cli_options = CliOptions::new(
       Flags {
