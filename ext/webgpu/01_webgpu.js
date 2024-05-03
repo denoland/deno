@@ -193,7 +193,7 @@ function assertDeviceMatch(
   const resourceDevice = assertDevice(resource, prefix, resourceContext);
   if (resourceDevice.rid !== self.rid) {
     throw new DOMException(
-      `${prefix}: ${resourceContext} belongs to a diffent device than ${selfContext}.`,
+      `${prefix}: ${resourceContext} belongs to a different device than ${selfContext}.`,
       "OperationError",
     );
   }
@@ -324,6 +324,7 @@ class GPU {
   /**
    * @param {GPURequestAdapterOptions} options
    */
+  // deno-lint-ignore require-await
   async requestAdapter(options = {}) {
     webidl.assertBranded(this, GPUPrototype);
     options = webidl.converters.GPURequestAdapterOptions(
@@ -332,7 +333,7 @@ class GPU {
       "Argument 1",
     );
 
-    const { err, ...data } = await op_webgpu_request_adapter(
+    const { err, ...data } = op_webgpu_request_adapter(
       options.powerPreference,
       options.forceFallbackAdapter,
     );
@@ -411,6 +412,7 @@ class GPUAdapter {
    * @param {GPUDeviceDescriptor} descriptor
    * @returns {Promise<GPUDevice>}
    */
+  // deno-lint-ignore require-await
   async requestDevice(descriptor = {}) {
     webidl.assertBranded(this, GPUAdapterPrototype);
     const prefix = "Failed to execute 'requestDevice' on 'GPUAdapter'";
@@ -431,7 +433,7 @@ class GPUAdapter {
       }
     }
 
-    const { rid, features, limits } = await op_webgpu_request_device(
+    const { rid, features, limits } = op_webgpu_request_device(
       this[_adapter].rid,
       descriptor.label,
       requiredFeatures,
@@ -455,7 +457,7 @@ class GPUAdapter {
    * @param {string[]} unmaskHints
    * @returns {Promise<GPUAdapterInfo>}
    */
-  async requestAdapterInfo(unmaskHints = []) {
+  requestAdapterInfo(unmaskHints = []) {
     webidl.assertBranded(this, GPUAdapterPrototype);
     const prefix = "Failed to execute 'requestAdapterInfo' on 'GPUAdapter'";
     unmaskHints = webidl.converters["sequence<DOMString>"](
@@ -469,9 +471,7 @@ class GPUAdapter {
       architecture,
       device,
       description,
-    } = await op_webgpu_request_adapter_info(
-      this[_adapter].rid,
-    );
+    } = op_webgpu_request_adapter_info(this[_adapter].rid);
 
     const adapterInfo = webidl.createBranded(GPUAdapterInfo);
     adapterInfo[_vendor] = ArrayPrototypeIncludes(unmaskHints, "vendor")
@@ -484,7 +484,7 @@ class GPUAdapter {
       : "";
     adapterInfo[_description] =
       ArrayPrototypeIncludes(unmaskHints, "description") ? description : "";
-    return adapterInfo;
+    return PromiseResolve(adapterInfo);
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
@@ -2040,7 +2040,7 @@ class GPUBuffer {
     device.pushErrorPromise(promise);
     const err = await promise;
     if (err) {
-      throw new DOMException("validation error occured", "OperationError");
+      throw new DOMException("validation error occurred", "OperationError");
     }
     this[_state] = "mapped";
     this[_mappingRange] = [offset, offset + rangeSize];

@@ -105,23 +105,38 @@ fn raw_window(
   window: *const c_void,
   display: *const c_void,
 ) -> Result<RawHandles, AnyError> {
-  if system != "x11" {
+  let (win_handle, display_handle);
+  if system == "x11" {
+    win_handle = {
+      let mut handle = raw_window_handle::XlibWindowHandle::empty();
+      handle.window = window as *mut c_void as _;
+
+      raw_window_handle::RawWindowHandle::Xlib(handle)
+    };
+
+    display_handle = {
+      let mut handle = raw_window_handle::XlibDisplayHandle::empty();
+      handle.display = display as *mut c_void;
+
+      raw_window_handle::RawDisplayHandle::Xlib(handle)
+    };
+  } else if system == "wayland" {
+    win_handle = {
+      let mut handle = raw_window_handle::WaylandWindowHandle::empty();
+      handle.surface = window as _;
+
+      raw_window_handle::RawWindowHandle::Wayland(handle)
+    };
+
+    display_handle = {
+      let mut handle = raw_window_handle::WaylandDisplayHandle::empty();
+      handle.display = display as _;
+
+      raw_window_handle::RawDisplayHandle::Wayland(handle)
+    };
+  } else {
     return Err(type_error("Invalid system on Linux"));
   }
-
-  let win_handle = {
-    let mut handle = raw_window_handle::XlibWindowHandle::empty();
-    handle.window = window as *mut c_void as _;
-
-    raw_window_handle::RawWindowHandle::Xlib(handle)
-  };
-
-  let display_handle = {
-    let mut handle = raw_window_handle::XlibDisplayHandle::empty();
-    handle.display = display as *mut c_void;
-
-    raw_window_handle::RawDisplayHandle::Xlib(handle)
-  };
 
   Ok((win_handle, display_handle))
 }

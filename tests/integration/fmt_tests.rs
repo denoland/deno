@@ -1,8 +1,10 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::serde_json::json;
 use test_util as util;
 use test_util::itest;
 use util::assert_contains;
+use util::assert_not_contains;
 use util::PathRef;
 use util::TestContext;
 use util::TestContextBuilder;
@@ -350,4 +352,29 @@ fn fmt_with_glob_config_and_flags() {
   }
 
   assert_contains!(output, "Found 2 not formatted files in 2 files");
+}
+
+#[test]
+fn opt_out_top_level_exclude_via_fmt_unexclude() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir().path();
+  temp_dir.join("deno.json").write_json(&json!({
+    "fmt": {
+      "exclude": [ "!excluded.ts" ]
+    },
+    "exclude": [ "excluded.ts", "actually_excluded.ts" ]
+  }));
+
+  temp_dir.join("main.ts").write("const a   = 1;");
+  temp_dir.join("excluded.ts").write("const a   = 2;");
+  temp_dir
+    .join("actually_excluded.ts")
+    .write("const a   = 2;");
+
+  let output = context.new_command().arg("fmt").run();
+  output.assert_exit_code(0);
+  let output = output.combined_output();
+  assert_contains!(output, "main.ts");
+  assert_contains!(output, "excluded.ts");
+  assert_not_contains!(output, "actually_excluded.ts");
 }

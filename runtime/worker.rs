@@ -1,4 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
@@ -11,7 +12,6 @@ use std::time::Instant;
 use deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_cache::CreateCache;
 use deno_cache::SqliteBackedCache;
-use deno_core::ascii_str;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::merge_op_metrics;
@@ -42,9 +42,13 @@ use deno_tls::RootCertStoreProvider;
 use deno_web::BlobStore;
 use log::debug;
 
+use crate::code_cache::CodeCache;
+use crate::code_cache::CodeCacheType;
+use crate::fs_util::code_timestamp;
 use crate::inspector_server::InspectorServer;
 use crate::ops;
 use crate::permissions::PermissionsContainer;
+use crate::shared::maybe_transpile_source;
 use crate::shared::runtime;
 use crate::BootstrapOptions;
 
@@ -114,6 +118,11 @@ pub struct MainWorker {
   should_wait_for_inspector_session: bool,
   exit_code: ExitCode,
   bootstrap_fn_global: Option<v8::Global<v8::Function>>,
+  dispatch_load_event_fn_global: v8::Global<v8::Function>,
+  dispatch_beforeunload_event_fn_global: v8::Global<v8::Function>,
+  dispatch_unload_event_fn_global: v8::Global<v8::Function>,
+  dispatch_process_beforeexit_event_fn_global: v8::Global<v8::Function>,
+  dispatch_process_exit_event_fn_global: v8::Global<v8::Function>,
 }
 
 pub struct WorkerOptions {
@@ -188,6 +197,9 @@ pub struct WorkerOptions {
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
   pub stdio: Stdio,
   pub feature_checker: Arc<FeatureChecker>,
+
+  /// V8 code cache for module and script source code.
+  pub v8_code_cache: Option<Arc<dyn CodeCache>>,
 }
 
 impl Default for WorkerOptions {
@@ -222,11 +234,12 @@ impl Default for WorkerOptions {
       bootstrap: Default::default(),
       stdio: Default::default(),
       feature_checker: Default::default(),
+      v8_code_cache: Default::default(),
     }
   }
 }
 
-fn create_op_metrics(
+pub fn create_op_metrics(
   enable_op_summary_metrics: bool,
   strace_ops: Option<Vec<String>>,
 ) -> (
@@ -291,6 +304,51 @@ fn create_op_metrics(
   (op_summary_metrics, op_metrics_factory_fn)
 }
 
+fn get_code_cache(
+  code_cache: Arc<dyn CodeCache>,
+  specifier: &str,
+) -> Option<Vec<u8>> {
+  // Code hashes are not maintained for op_eval_context scripts. Instead we use
+  // the modified timestamp from the local file system.
+  if let Ok(code_timestamp) = code_timestamp(specifier) {
+    code_cache
+      .get_sync(
+        specifier,
+        CodeCacheType::Script,
+        code_timestamp.to_string().as_str(),
+      )
+      .inspect(|_| {
+        // This log line is also used by tests.
+        log::debug!(
+          "V8 code cache hit for script: {specifier}, [{code_timestamp}]"
+        );
+      })
+  } else {
+    None
+  }
+}
+
+fn set_code_cache(
+  code_cache: Arc<dyn CodeCache>,
+  specifier: &str,
+  data: &[u8],
+) {
+  // Code hashes are not maintained for op_eval_context scripts. Instead we use
+  // the modified timestamp from the local file system.
+  if let Ok(code_timestamp) = code_timestamp(specifier) {
+    // This log line is also used by tests.
+    log::debug!(
+      "Updating V8 code cache for script: {specifier}, [{code_timestamp}]",
+    );
+    code_cache.set_sync(
+      specifier,
+      CodeCacheType::Script,
+      code_timestamp.to_string().as_str(),
+      data,
+    );
+  }
+}
+
 impl MainWorker {
   pub fn bootstrap_from_options(
     main_module: ModuleSpecifier,
@@ -314,6 +372,9 @@ impl MainWorker {
         enable_testing_features: bool,
       },
       state = |state, options| {
+        // Save the permissions container and the wrapper.
+        state.put::<deno_permissions::PermissionsContainer>(options.permissions.0.clone());
+        // This is temporary until we migrate all exts/ to the deno_permissions crate.
         state.put::<PermissionsContainer>(options.permissions);
         state.put(ops::TestingFeaturesEnabled(options.enable_testing_features));
       },
@@ -446,16 +507,6 @@ impl MainWorker {
         extension.esm_files = std::borrow::Cow::Borrowed(&[]);
         extension.esm_entry_point = None;
       }
-      #[cfg(not(feature = "only_snapshotted_js_sources"))]
-      {
-        use crate::shared::maybe_transpile_source;
-        for source in extension.esm_files.to_mut() {
-          maybe_transpile_source(source).unwrap();
-        }
-        for source in extension.js_files.to_mut() {
-          maybe_transpile_source(source).unwrap();
-        }
-      }
     }
 
     extensions.extend(std::mem::take(&mut options.extensions));
@@ -482,6 +533,9 @@ impl MainWorker {
       shared_array_buffer_store: options.shared_array_buffer_store.clone(),
       compiled_wasm_module_store: options.compiled_wasm_module_store.clone(),
       extensions,
+      extension_transpiler: Some(Rc::new(|specifier, source| {
+        maybe_transpile_source(specifier, source)
+      })),
       inspector: options.maybe_inspector_server.is_some(),
       is_main: true,
       feature_checker: Some(options.feature_checker.clone()),
@@ -495,12 +549,35 @@ impl MainWorker {
       validate_import_attributes_cb: Some(Box::new(
         validate_import_attributes_callback,
       )),
+      enable_code_cache: options.v8_code_cache.is_some(),
+      eval_context_code_cache_cbs: options.v8_code_cache.map(|cache| {
+        let cache_clone = cache.clone();
+        (
+          Box::new(move |specifier: &str| {
+            Ok(get_code_cache(cache.clone(), specifier).map(Cow::Owned))
+          }) as Box<dyn Fn(&_) -> _>,
+          Box::new(move |specifier: &str, data: &[u8]| {
+            set_code_cache(cache_clone.clone(), specifier, data);
+          }) as Box<dyn Fn(&_, &_)>,
+        )
+      }),
       ..Default::default()
     });
 
     if let Some(op_summary_metrics) = op_summary_metrics {
       js_runtime.op_state().borrow_mut().put(op_summary_metrics);
     }
+    extern "C" fn message_handler(
+      _msg: v8::Local<v8::Message>,
+      _exception: v8::Local<v8::Value>,
+    ) {
+      // TODO(@littledivy): Propogate message to users.
+    }
+
+    // Register message listener
+    js_runtime
+      .v8_isolate()
+      .add_message_listener(message_handler);
 
     if let Some(server) = options.maybe_inspector_server.clone() {
       server.register_inspector(
@@ -516,7 +593,14 @@ impl MainWorker {
       let inspector = js_runtime.inspector();
       op_state.borrow_mut().put(inspector);
     }
-    let bootstrap_fn_global = {
+    let (
+      bootstrap_fn_global,
+      dispatch_load_event_fn_global,
+      dispatch_beforeunload_event_fn_global,
+      dispatch_unload_event_fn_global,
+      dispatch_process_beforeexit_event_fn_global,
+      dispatch_process_exit_event_fn_global,
+    ) = {
       let context = js_runtime.main_context();
       let scope = &mut js_runtime.handle_scope();
       let context_local = v8::Local::new(scope, context);
@@ -534,7 +618,68 @@ impl MainWorker {
         bootstrap_ns.get(scope, main_runtime_str.into()).unwrap();
       let bootstrap_fn =
         v8::Local::<v8::Function>::try_from(bootstrap_fn).unwrap();
-      v8::Global::new(scope, bootstrap_fn)
+      let dispatch_load_event_fn_str =
+        v8::String::new_external_onebyte_static(scope, b"dispatchLoadEvent")
+          .unwrap();
+      let dispatch_load_event_fn = bootstrap_ns
+        .get(scope, dispatch_load_event_fn_str.into())
+        .unwrap();
+      let dispatch_load_event_fn =
+        v8::Local::<v8::Function>::try_from(dispatch_load_event_fn).unwrap();
+      let dispatch_beforeunload_event_fn_str =
+        v8::String::new_external_onebyte_static(
+          scope,
+          b"dispatchBeforeUnloadEvent",
+        )
+        .unwrap();
+      let dispatch_beforeunload_event_fn = bootstrap_ns
+        .get(scope, dispatch_beforeunload_event_fn_str.into())
+        .unwrap();
+      let dispatch_beforeunload_event_fn =
+        v8::Local::<v8::Function>::try_from(dispatch_beforeunload_event_fn)
+          .unwrap();
+      let dispatch_unload_event_fn_str =
+        v8::String::new_external_onebyte_static(scope, b"dispatchUnloadEvent")
+          .unwrap();
+      let dispatch_unload_event_fn = bootstrap_ns
+        .get(scope, dispatch_unload_event_fn_str.into())
+        .unwrap();
+      let dispatch_unload_event_fn =
+        v8::Local::<v8::Function>::try_from(dispatch_unload_event_fn).unwrap();
+      let dispatch_process_beforeexit_event =
+        v8::String::new_external_onebyte_static(
+          scope,
+          b"dispatchProcessBeforeExitEvent",
+        )
+        .unwrap();
+      let dispatch_process_beforeexit_event_fn = bootstrap_ns
+        .get(scope, dispatch_process_beforeexit_event.into())
+        .unwrap();
+      let dispatch_process_beforeexit_event_fn =
+        v8::Local::<v8::Function>::try_from(
+          dispatch_process_beforeexit_event_fn,
+        )
+        .unwrap();
+      let dispatch_process_exit_event =
+        v8::String::new_external_onebyte_static(
+          scope,
+          b"dispatchProcessExitEvent",
+        )
+        .unwrap();
+      let dispatch_process_exit_event_fn = bootstrap_ns
+        .get(scope, dispatch_process_exit_event.into())
+        .unwrap();
+      let dispatch_process_exit_event_fn =
+        v8::Local::<v8::Function>::try_from(dispatch_process_exit_event_fn)
+          .unwrap();
+      (
+        v8::Global::new(scope, bootstrap_fn),
+        v8::Global::new(scope, dispatch_load_event_fn),
+        v8::Global::new(scope, dispatch_beforeunload_event_fn),
+        v8::Global::new(scope, dispatch_unload_event_fn),
+        v8::Global::new(scope, dispatch_process_beforeexit_event_fn),
+        v8::Global::new(scope, dispatch_process_exit_event_fn),
+      )
     };
 
     Self {
@@ -544,6 +689,11 @@ impl MainWorker {
         .should_wait_for_inspector_session,
       exit_code,
       bootstrap_fn_global: Some(bootstrap_fn_global),
+      dispatch_load_event_fn_global,
+      dispatch_beforeunload_event_fn_global,
+      dispatch_unload_event_fn_global,
+      dispatch_process_beforeexit_event_fn_global,
+      dispatch_process_exit_event_fn_global,
     }
   }
 
@@ -559,11 +709,16 @@ impl MainWorker {
     }
 
     let scope = &mut self.js_runtime.handle_scope();
+    let scope = &mut v8::TryCatch::new(scope);
     let args = options.as_v8(scope);
     let bootstrap_fn = self.bootstrap_fn_global.take().unwrap();
     let bootstrap_fn = v8::Local::new(scope, bootstrap_fn);
     let undefined = v8::undefined(scope);
-    bootstrap_fn.call(scope, undefined.into(), &[args]).unwrap();
+    bootstrap_fn.call(scope, undefined.into(), &[args]);
+    if let Some(exception) = scope.exception() {
+      let error = JsError::from_v8_exception(scope, exception);
+      panic!("Bootstrap exception: {error}");
+    }
   }
 
   /// See [JsRuntime::execute_script](deno_core::JsRuntime::execute_script)
@@ -580,10 +735,7 @@ impl MainWorker {
     &mut self,
     module_specifier: &ModuleSpecifier,
   ) -> Result<ModuleId, AnyError> {
-    self
-      .js_runtime
-      .load_main_module(module_specifier, None)
-      .await
+    self.js_runtime.load_main_es_module(module_specifier).await
   }
 
   /// Loads and instantiates specified JavaScript module as "side" module.
@@ -591,10 +743,7 @@ impl MainWorker {
     &mut self,
     module_specifier: &ModuleSpecifier,
   ) -> Result<ModuleId, AnyError> {
-    self
-      .js_runtime
-      .load_side_module(module_specifier, None)
-      .await
+    self.js_runtime.load_side_es_module(module_specifier).await
   }
 
   /// Executes specified JavaScript module.
@@ -675,7 +824,7 @@ impl MainWorker {
 
   /// Create new inspector session. This function panics if Worker
   /// was not configured to create inspector.
-  pub async fn create_inspector_session(&mut self) -> LocalInspectorSession {
+  pub fn create_inspector_session(&mut self) -> LocalInspectorSession {
     self.js_runtime.maybe_init_inspector();
     self.js_runtime.inspector().borrow().create_local_session()
   }
@@ -702,54 +851,92 @@ impl MainWorker {
   /// Dispatches "load" event to the JavaScript runtime.
   ///
   /// Does not poll event loop, and thus not await any of the "load" event handlers.
-  pub fn dispatch_load_event(
-    &mut self,
-    script_name: &'static str,
-  ) -> Result<(), AnyError> {
-    self.js_runtime.execute_script(
-      script_name,
-      // NOTE(@bartlomieju): not using `globalThis` here, because user might delete
-      // it. Instead we're using global `dispatchEvent` function which will
-      // used a saved reference to global scope.
-      ascii_str!("dispatchEvent(new Event('load'))"),
-    )?;
+  pub fn dispatch_load_event(&mut self) -> Result<(), AnyError> {
+    let scope = &mut self.js_runtime.handle_scope();
+    let tc_scope = &mut v8::TryCatch::new(scope);
+    let dispatch_load_event_fn =
+      v8::Local::new(tc_scope, &self.dispatch_load_event_fn_global);
+    let undefined = v8::undefined(tc_scope);
+    dispatch_load_event_fn.call(tc_scope, undefined.into(), &[]);
+    if let Some(exception) = tc_scope.exception() {
+      let error = JsError::from_v8_exception(tc_scope, exception);
+      return Err(error.into());
+    }
     Ok(())
   }
 
   /// Dispatches "unload" event to the JavaScript runtime.
   ///
   /// Does not poll event loop, and thus not await any of the "unload" event handlers.
-  pub fn dispatch_unload_event(
-    &mut self,
-    script_name: &'static str,
-  ) -> Result<(), AnyError> {
-    self.js_runtime.execute_script(
-      script_name,
-      // NOTE(@bartlomieju): not using `globalThis` here, because user might delete
-      // it. Instead we're using global `dispatchEvent` function which will
-      // used a saved reference to global scope.
-      ascii_str!("dispatchEvent(new Event('unload'))"),
-    )?;
+  pub fn dispatch_unload_event(&mut self) -> Result<(), AnyError> {
+    let scope = &mut self.js_runtime.handle_scope();
+    let tc_scope = &mut v8::TryCatch::new(scope);
+    let dispatch_unload_event_fn =
+      v8::Local::new(tc_scope, &self.dispatch_unload_event_fn_global);
+    let undefined = v8::undefined(tc_scope);
+    dispatch_unload_event_fn.call(tc_scope, undefined.into(), &[]);
+    if let Some(exception) = tc_scope.exception() {
+      let error = JsError::from_v8_exception(tc_scope, exception);
+      return Err(error.into());
+    }
+    Ok(())
+  }
+
+  /// Dispatches process.emit("exit") event for node compat.
+  pub fn dispatch_process_exit_event(&mut self) -> Result<(), AnyError> {
+    let scope = &mut self.js_runtime.handle_scope();
+    let tc_scope = &mut v8::TryCatch::new(scope);
+    let dispatch_process_exit_event_fn =
+      v8::Local::new(tc_scope, &self.dispatch_process_exit_event_fn_global);
+    let undefined = v8::undefined(tc_scope);
+    dispatch_process_exit_event_fn.call(tc_scope, undefined.into(), &[]);
+    if let Some(exception) = tc_scope.exception() {
+      let error = JsError::from_v8_exception(tc_scope, exception);
+      return Err(error.into());
+    }
     Ok(())
   }
 
   /// Dispatches "beforeunload" event to the JavaScript runtime. Returns a boolean
   /// indicating if the event was prevented and thus event loop should continue
   /// running.
-  pub fn dispatch_beforeunload_event(
+  pub fn dispatch_beforeunload_event(&mut self) -> Result<bool, AnyError> {
+    let scope = &mut self.js_runtime.handle_scope();
+    let tc_scope = &mut v8::TryCatch::new(scope);
+    let dispatch_beforeunload_event_fn =
+      v8::Local::new(tc_scope, &self.dispatch_beforeunload_event_fn_global);
+    let undefined = v8::undefined(tc_scope);
+    let ret_val =
+      dispatch_beforeunload_event_fn.call(tc_scope, undefined.into(), &[]);
+    if let Some(exception) = tc_scope.exception() {
+      let error = JsError::from_v8_exception(tc_scope, exception);
+      return Err(error.into());
+    }
+    let ret_val = ret_val.unwrap();
+    Ok(ret_val.is_false())
+  }
+
+  /// Dispatches process.emit("beforeExit") event for node compat.
+  pub fn dispatch_process_beforeexit_event(
     &mut self,
-    script_name: &'static str,
   ) -> Result<bool, AnyError> {
-    let value = self.js_runtime.execute_script(
-      script_name,
-      // NOTE(@bartlomieju): not using `globalThis` here, because user might delete
-      // it. Instead we're using global `dispatchEvent` function which will
-      // used a saved reference to global scope.
-      ascii_str!(
-        "dispatchEvent(new Event('beforeunload', { cancelable: true }));"
-      ),
-    )?;
-    let local_value = value.open(&mut self.js_runtime.handle_scope());
-    Ok(local_value.is_false())
+    let scope = &mut self.js_runtime.handle_scope();
+    let tc_scope = &mut v8::TryCatch::new(scope);
+    let dispatch_process_beforeexit_event_fn = v8::Local::new(
+      tc_scope,
+      &self.dispatch_process_beforeexit_event_fn_global,
+    );
+    let undefined = v8::undefined(tc_scope);
+    let ret_val = dispatch_process_beforeexit_event_fn.call(
+      tc_scope,
+      undefined.into(),
+      &[],
+    );
+    if let Some(exception) = tc_scope.exception() {
+      let error = JsError::from_v8_exception(tc_scope, exception);
+      return Err(error.into());
+    }
+    let ret_val = ret_val.unwrap();
+    Ok(ret_val.is_true())
   }
 }

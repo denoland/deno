@@ -3,6 +3,7 @@
 use std::borrow::Cow;
 use std::path::Path;
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
@@ -20,7 +21,7 @@ use crate::args::package_json::get_local_package_json_version_reqs;
 use crate::args::NpmProcessState;
 use crate::args::NpmProcessStateKind;
 use crate::util::fs::canonicalize_path_maybe_not_exists_with_fs;
-use crate::util::path::specifier_to_file_path;
+use deno_runtime::fs_util::specifier_to_file_path;
 
 use super::common::types_package_name;
 use super::CliNpmResolver;
@@ -52,7 +53,7 @@ impl ByonmCliNpmResolver {
     &self,
     dep_name: &str,
     referrer: &ModuleSpecifier,
-  ) -> Option<PackageJson> {
+  ) -> Option<Rc<PackageJson>> {
     let referrer_path = referrer.to_file_path().ok()?;
     let mut current_folder = referrer_path.parent()?;
     loop {

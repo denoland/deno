@@ -152,7 +152,8 @@ declare function confirm(message?: string): boolean;
  * If the default value is given and the user inputs the empty string, then it returns the given
  * default value.
  *
- * If the default value is not given and the user inputs the empty string, it returns null.
+ * If the default value is not given and the user inputs the empty string, it returns the empty
+ * string.
  *
  * If the stdin is not interactive, it returns null.
  *
@@ -205,6 +206,7 @@ declare function removeEventListener<
   listener: (this: Window, ev: WindowEventMap[K]) => any,
   options?: boolean | EventListenerOptions,
 ): void;
+/** @category DOM Events */
 declare function removeEventListener(
   type: string,
   listener: EventListenerOrEventListenerObject,

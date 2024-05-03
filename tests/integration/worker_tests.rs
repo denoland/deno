@@ -111,3 +111,9 @@ itest!(worker_doest_stall_event_loop {
   output: "workers/worker_doest_stall_event_loop.ts.out",
   exit_code: 0,
 });
+
+itest!(worker_ids_are_sequential {
+  args: "run --quiet -A workers/worker_ids_are_sequential.ts",
+  output: "workers/worker_ids_are_sequential.ts.out",
+  exit_code: 0,
+});

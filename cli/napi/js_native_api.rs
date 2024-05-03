@@ -366,7 +366,9 @@ fn napi_create_dataview(
   let global = context.global(&mut env.scope());
   let data_view_name = v8::String::new(&mut env.scope(), "DataView").unwrap();
   let data_view = global.get(&mut env.scope(), data_view_name.into()).unwrap();
-  let data_view = v8::Local::<v8::Function>::try_from(data_view).unwrap();
+  let Ok(data_view) = v8::Local::<v8::Function>::try_from(data_view) else {
+    return napi_function_expected;
+  };
   let byte_offset = v8::Number::new(&mut env.scope(), byte_offset as f64);
   let byte_length = v8::Number::new(&mut env.scope(), len as f64);
   let value = data_view
@@ -905,7 +907,9 @@ fn napi_create_typedarray(
   check_env!(env);
   let env = unsafe { &mut *env };
   let ab = napi_value_unchecked(arraybuffer);
-  let ab = v8::Local::<v8::ArrayBuffer>::try_from(ab).unwrap();
+  let Ok(ab) = v8::Local::<v8::ArrayBuffer>::try_from(ab) else {
+    return napi_arraybuffer_expected;
+  };
   let typedarray: v8::Local<v8::Value> = match ty {
     napi_uint8_array => {
       v8::Uint8Array::new(&mut env.scope(), ab, byte_offset, length)
@@ -1737,12 +1741,15 @@ fn napi_get_buffer_info(
   check_env!(env);
   let env = unsafe { &mut *env };
   let value = napi_value_unchecked(value);
-  let buf = v8::Local::<v8::ArrayBufferView>::try_from(value).unwrap();
+  let Ok(buf) = v8::Local::<v8::ArrayBufferView>::try_from(value) else {
+    return napi_arraybuffer_expected;
+  };
   let buffer_name = v8::String::new(&mut env.scope(), "buffer").unwrap();
-  let abuf = v8::Local::<v8::ArrayBuffer>::try_from(
+  let Ok(abuf) = v8::Local::<v8::ArrayBuffer>::try_from(
     buf.get(&mut env.scope(), buffer_name.into()).unwrap(),
-  )
-  .unwrap();
+  ) else {
+    return napi_arraybuffer_expected;
+  };
   if !data.is_null() {
     *data = get_array_buffer_ptr(abuf);
   }
@@ -1804,12 +1811,15 @@ fn napi_get_dataview_info(
   check_env!(env);
   let env = unsafe { &mut *env };
   let value = napi_value_unchecked(value);
-  let buf = v8::Local::<v8::DataView>::try_from(value).unwrap();
+  let Ok(buf) = v8::Local::<v8::DataView>::try_from(value) else {
+    return napi_invalid_arg;
+  };
   let buffer_name = v8::String::new(&mut env.scope(), "buffer").unwrap();
-  let abuf = v8::Local::<v8::ArrayBuffer>::try_from(
+  let Ok(abuf) = v8::Local::<v8::ArrayBuffer>::try_from(
     buf.get(&mut env.scope(), buffer_name.into()).unwrap(),
-  )
-  .unwrap();
+  ) else {
+    return napi_invalid_arg;
+  };
   if !data.is_null() {
     *data = get_array_buffer_ptr(abuf);
   }
@@ -1827,7 +1837,9 @@ fn napi_get_date_value(
   let value = napi_value_unchecked(value);
   return_status_if_false!(env, value.is_date(), napi_date_expected);
   let env = unsafe { &mut *env };
-  let date = v8::Local::<v8::Date>::try_from(value).unwrap();
+  let Ok(date) = v8::Local::<v8::Date>::try_from(value) else {
+    return napi_date_expected;
+  };
   // TODO: should be value of
   *result = date.number_value(&mut env.scope()).unwrap();
   napi_ok
@@ -1843,7 +1855,9 @@ fn napi_get_element(
   check_env!(env);
   let env = unsafe { &mut *env };
   let object = napi_value_unchecked(object);
-  let array = v8::Local::<v8::Array>::try_from(object).unwrap();
+  let Ok(array) = v8::Local::<v8::Array>::try_from(object) else {
+    return napi_invalid_arg;
+  };
   let value: v8::Local<v8::Value> =
     array.get_index(&mut env.scope(), index).unwrap();
   *result = value.into();
@@ -2326,7 +2340,9 @@ fn napi_new_instance(
   check_env!(env);
   let env = unsafe { &mut *env };
   let constructor = napi_value_unchecked(constructor);
-  let constructor = v8::Local::<v8::Function>::try_from(constructor).unwrap();
+  let Ok(constructor) = v8::Local::<v8::Function>::try_from(constructor) else {
+    return napi_function_expected;
+  };
   let args: &[v8::Local<v8::Value>] =
     transmute(std::slice::from_raw_parts(argv, argc));
   let inst = constructor.new_instance(&mut env.scope(), args).unwrap();
@@ -2505,7 +2521,9 @@ fn napi_set_element(
   check_env!(env);
   let env = unsafe { &mut *env };
   let object = napi_value_unchecked(object);
-  let array = v8::Local::<v8::Array>::try_from(object).unwrap();
+  let Ok(array) = v8::Local::<v8::Array>::try_from(object) else {
+    return napi_invalid_arg;
+  };
   let value = napi_value_unchecked(value);
   array.set_index(&mut env.scope(), index, value).unwrap();
   napi_ok

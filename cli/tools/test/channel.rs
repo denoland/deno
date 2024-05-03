@@ -5,16 +5,21 @@ use super::TestStdioStream;
 use deno_core::futures::future::poll_fn;
 use deno_core::parking_lot;
 use deno_core::parking_lot::lock_api::RawMutex;
+use deno_core::parking_lot::lock_api::RawMutexTimed;
 use deno_runtime::deno_io::pipe;
 use deno_runtime::deno_io::AsyncPipeRead;
 use deno_runtime::deno_io::PipeRead;
 use deno_runtime::deno_io::PipeWrite;
+use memmem::Searcher;
 use std::fmt::Display;
+use std::future::Future;
 use std::io::Write;
 use std::pin::Pin;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
+use std::task::ready;
+use std::task::Poll;
+use std::time::Duration;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncReadExt;
 use tokio::io::ReadBuf;
@@ -26,6 +31,7 @@ use tokio::sync::mpsc::WeakUnboundedSender;
 /// 8-byte sync marker that is unlikely to appear in normal output. Equivalent
 /// to the string `"\u{200B}\0\u{200B}\0"`.
 const SYNC_MARKER: &[u8; 8] = &[226, 128, 139, 0, 226, 128, 139, 0];
+const HALF_SYNC_MARKER: &[u8; 4] = &[226, 128, 139, 0];
 
 const BUFFER_SIZE: usize = 4096;
 
@@ -143,17 +149,23 @@ impl TestStream {
     self.read_opt.is_some()
   }
 
+  /// Cancellation-safe.
+  #[inline]
+  fn pipe(&mut self) -> impl Future<Output = ()> + '_ {
+    poll_fn(|cx| self.poll_pipe(cx))
+  }
+
   /// Attempt to read from a given stream, pushing all of the data in it into the given
   /// [`UnboundedSender`] before returning.
-  async fn pipe(&mut self) {
+  fn poll_pipe(&mut self, cx: &mut std::task::Context) -> Poll<()> {
     let mut buffer = [0_u8; BUFFER_SIZE];
     let mut buf = ReadBuf::new(&mut buffer);
     let res = {
-      // No more stream, so just return.
+      // No more stream, we shouldn't hit this case.
       let Some(stream) = &mut self.read_opt else {
-        return;
+        unreachable!();
       };
-      poll_fn(|cx| Pin::new(&mut *stream).poll_read(cx, &mut buf)).await
+      ready!(Pin::new(&mut *stream).poll_read(cx, &mut buf))
     };
     match res {
       Ok(_) => {
@@ -173,6 +185,7 @@ impl TestStream {
         self.read_opt.take();
       }
     }
+    Poll::Ready(())
   }
 
   /// Read and "block" until the sync markers have been read.
@@ -191,8 +204,30 @@ impl TestStream {
         }
         Ok(read) => {
           flush.extend(&buffer[0..read]);
-          if flush.ends_with(SYNC_MARKER) {
-            flush.truncate(flush.len() - SYNC_MARKER.len());
+
+          // "ends_with" is cheaper, so check that first
+          if flush.ends_with(HALF_SYNC_MARKER) {
+            // We might have read the full sync marker.
+            if flush.ends_with(SYNC_MARKER) {
+              flush.truncate(flush.len() - SYNC_MARKER.len());
+            } else {
+              flush.truncate(flush.len() - HALF_SYNC_MARKER.len());
+            }
+            // Try to send our flushed buffer. If the channel is closed, this stream will
+            // be marked as not alive.
+            _ = self.send(flush);
+            return;
+          }
+
+          // If we don't end with the marker, then we need to search the bytes we read plus four bytes
+          // from before. There's still a possibility that the marker could be split because of a pipe
+          // buffer that fills up, forcing the flush to be written across two writes and interleaving
+          // data between, but that's a risk we take with this sync marker approach.
+          let searcher = memmem::TwoWaySearcher::new(HALF_SYNC_MARKER);
+          let start =
+            (flush.len() - read).saturating_sub(HALF_SYNC_MARKER.len());
+          if let Some(offset) = searcher.search_in(&flush[start..]) {
+            flush.truncate(offset);
             // Try to send our flushed buffer. If the channel is closed, this stream will
             // be marked as not alive.
             _ = self.send(flush);
@@ -215,10 +250,10 @@ impl TestEventSenderFactory {
   /// Create a [`TestEventWorkerSender`], along with a stdout/stderr stream.
   pub fn worker(&self) -> TestEventWorkerSender {
     let id = self.worker_id.fetch_add(1, Ordering::AcqRel);
-    let (stdout_reader, mut stdout_writer) = pipe().unwrap();
-    let (stderr_reader, mut stderr_writer) = pipe().unwrap();
+    let (stdout_reader, stdout_writer) = pipe().unwrap();
+    let (stderr_reader, stderr_writer) = pipe().unwrap();
     let (sync_sender, mut sync_receiver) =
-      tokio::sync::mpsc::unbounded_channel::<SendMutex>();
+      tokio::sync::mpsc::unbounded_channel::<(SendMutex, SendMutex)>();
     let stdout = stdout_writer.try_clone().unwrap();
     let stderr = stderr_writer.try_clone().unwrap();
     let sender = self.sender.clone();
@@ -249,30 +284,44 @@ impl TestEventSenderFactory {
         let mut test_stderr =
           TestStream::new(id, TestStdioStream::Stderr, stderr_reader, sender)?;
 
+        // This ensures that the stdout and stderr streams in the select! loop below cannot starve each
+        // other.
+        let mut alternate_stream_priority = false;
+
         // This function will be woken whenever a stream or the receiver is ready
         loop {
+          alternate_stream_priority = !alternate_stream_priority;
+          let (a, b) = if alternate_stream_priority {
+            (&mut test_stdout, &mut test_stderr)
+          } else {
+            (&mut test_stderr, &mut test_stdout)
+          };
+
           tokio::select! {
-            _ = test_stdout.pipe(), if test_stdout.is_alive() => {},
-            _ = test_stderr.pipe(), if test_stdout.is_alive() => {},
+            biased; // We actually want to poll the channel first
             recv = sync_receiver.recv() => {
               match recv {
                 // If the channel closed, we assume that all important data from the streams was synced,
                 // so we just end this task immediately.
                 None => { break },
-                Some(mutex) => {
-                  // If we fail to write the sync marker for flush (likely in the case where the runtime is shutting down),
-                  // we instead just release the mutex and bail.
-                  let success = stdout_writer.write_all(SYNC_MARKER).is_ok()
-                    && stderr_writer.write_all(SYNC_MARKER).is_ok();
-                  if success {
-                    for stream in [&mut test_stdout, &mut test_stderr] {
+                Some((mutex1, mutex2)) => {
+                  // Two phase lock: mutex1 indicates that we are done our general read phase and are ready for
+                  // the sync phase. mutex2 indicates that we have completed the sync phase. This prevents deadlock
+                  // when the pipe is too full to accept the sync marker.
+                  drop(mutex1);
+                  for stream in [&mut test_stdout, &mut test_stderr] {
+                    if stream.is_alive() {
                       stream.read_until_sync_marker().await;
                     }
                   }
-                  drop(mutex);
+                  drop(mutex2);
                 }
               }
             }
+            // Poll stdout first if `alternate_stream_priority` is true, otherwise poll stderr first.
+            // This is necessary because of the `biased` flag above to avoid starvation.
+            _ = a.pipe(), if a.is_alive() => {},
+            _ = b.pipe(), if b.is_alive() => {},
           }
         }
 
@@ -284,9 +333,10 @@ impl TestEventSenderFactory {
 
     let sender = TestEventSender {
       id,
-      ref_count: Default::default(),
       sender: self.sender.clone(),
       sync_sender,
+      stdout_writer,
+      stderr_writer,
     };
 
     TestEventWorkerSender {
@@ -345,20 +395,10 @@ pub struct TestEventWorkerSender {
 /// are not guaranteed to be sent on drop unless flush is explicitly called.
 pub struct TestEventSender {
   pub id: usize,
-  ref_count: Arc<()>,
   sender: UnboundedSender<(usize, TestEvent)>,
-  sync_sender: UnboundedSender<SendMutex>,
-}
-
-impl Clone for TestEventSender {
-  fn clone(&self) -> Self {
-    Self {
-      id: self.id,
-      ref_count: self.ref_count.clone(),
-      sender: self.sender.clone(),
-      sync_sender: self.sync_sender.clone(),
-    }
-  }
+  sync_sender: UnboundedSender<(SendMutex, SendMutex)>,
+  stdout_writer: PipeWrite,
+  stderr_writer: PipeWrite,
 }
 
 impl TestEventSender {
@@ -374,19 +414,38 @@ impl TestEventSender {
   /// Ensure that all output has been fully flushed by writing a sync marker into the
   /// stdout and stderr streams and waiting for it on the other side.
   pub fn flush(&mut self) -> Result<(), ChannelClosedError> {
-    let mutex = parking_lot::RawMutex::INIT;
-    mutex.lock();
-    self.sync_sender.send(SendMutex(&mutex as _))?;
-    mutex.lock();
+    // Two phase lock: mutex1 indicates that we are done our general read phase and are ready for
+    // the sync phase. mutex2 indicates that we have completed the sync phase. This prevents deadlock
+    // when the pipe is too full to accept the sync marker.
+    let mutex1 = parking_lot::RawMutex::INIT;
+    mutex1.lock();
+    let mutex2 = parking_lot::RawMutex::INIT;
+    mutex2.lock();
+    self
+      .sync_sender
+      .send((SendMutex(&mutex1 as _), SendMutex(&mutex2 as _)))?;
+    if !mutex1.try_lock_for(Duration::from_secs(30)) {
+      panic!(
+        "Test flush deadlock 1, sender closed = {}",
+        self.sync_sender.is_closed()
+      );
+    }
+    _ = self.stdout_writer.write_all(SYNC_MARKER);
+    _ = self.stderr_writer.write_all(SYNC_MARKER);
+    if !mutex2.try_lock_for(Duration::from_secs(30)) {
+      panic!(
+        "Test flush deadlock 2, sender closed = {}",
+        self.sync_sender.is_closed()
+      );
+    }
     Ok(())
   }
 }
 
 #[cfg(test)]
 mod tests {
-  use crate::tools::test::TestResult;
-
   use super::*;
+  use crate::tools::test::TestResult;
   use deno_core::unsync::spawn;
   use deno_core::unsync::spawn_blocking;
 
@@ -444,10 +503,9 @@ mod tests {
   }
 
   /// Test that flushing a large number of times doesn't hang.
-  #[ignore]
   #[tokio::test]
   async fn test_flush_lots() {
-    test_util::timeout!(60);
+    test_util::timeout!(240);
     let (mut worker, mut receiver) = create_single_test_event_channel();
     let recv_handle = spawn(async move {
       let mut queue = vec![];
@@ -467,6 +525,85 @@ mod tests {
     send_handle.await.unwrap();
     let messages = recv_handle.await.unwrap();
     assert_eq!(messages.len(), 100000);
+  }
+
+  /// Test that flushing a large number of times doesn't hang.
+  #[tokio::test]
+  async fn test_flush_large() {
+    test_util::timeout!(240);
+    let (mut worker, mut receiver) = create_single_test_event_channel();
+    let recv_handle = spawn(async move {
+      let mut queue = vec![];
+      while let Some((_, message)) = receiver.recv().await {
+        if let TestEvent::StepWait(..) = message {
+          queue.push(());
+        }
+      }
+      eprintln!("Receiver closed");
+      queue
+    });
+    let send_handle = spawn_blocking(move || {
+      for _ in 0..25000 {
+        // Write one pipe buffer's worth of message here. We try a few different sizes of potentially
+        // blocking writes.
+        worker.stderr.write_all(&[0; 4 * 1024]).unwrap();
+        worker.sender.send(TestEvent::StepWait(1)).unwrap();
+        worker.stderr.write_all(&[0; 16 * 1024]).unwrap();
+        worker.sender.send(TestEvent::StepWait(1)).unwrap();
+        worker.stderr.write_all(&[0; 64 * 1024]).unwrap();
+        worker.sender.send(TestEvent::StepWait(1)).unwrap();
+        worker.stderr.write_all(&[0; 128 * 1024]).unwrap();
+        worker.sender.send(TestEvent::StepWait(1)).unwrap();
+      }
+      eprintln!("Sent all messages");
+    });
+    send_handle.await.unwrap();
+    let messages = recv_handle.await.unwrap();
+    assert_eq!(messages.len(), 100000);
+  }
+
+  /// Test that flushing a large number of times doesn't hang.
+  #[tokio::test]
+  async fn test_flush_with_close() {
+    test_util::timeout!(240);
+    let (worker, mut receiver) = create_single_test_event_channel();
+    let TestEventWorkerSender {
+      mut sender,
+      stderr,
+      stdout,
+    } = worker;
+    let recv_handle = spawn(async move {
+      let mut queue = vec![];
+      while let Some((_, _)) = receiver.recv().await {
+        queue.push(());
+      }
+      eprintln!("Receiver closed");
+      queue
+    });
+    let send_handle = spawn_blocking(move || {
+      let mut stdout = Some(stdout);
+      let mut stderr = Some(stderr);
+      for i in 0..100000 {
+        if i == 20000 {
+          stdout.take();
+        }
+        if i == 40000 {
+          stderr.take();
+        }
+        if i % 2 == 0 {
+          if let Some(stdout) = &mut stdout {
+            stdout.write_all(b"message").unwrap();
+          }
+        } else if let Some(stderr) = &mut stderr {
+          stderr.write_all(b"message").unwrap();
+        }
+        sender.send(TestEvent::StepWait(1)).unwrap();
+      }
+      eprintln!("Sent all messages");
+    });
+    send_handle.await.unwrap();
+    let messages = recv_handle.await.unwrap();
+    assert_eq!(messages.len(), 130000);
   }
 
   /// Test that large numbers of interleaved steps are routed properly.

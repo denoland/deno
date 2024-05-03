@@ -99,7 +99,6 @@ impl BenchReporter for JsonReporter {
 pub struct ConsoleReporter {
   name: String,
   show_output: bool,
-  has_ungrouped: bool,
   group: Option<String>,
   baseline: bool,
   group_measurements: Vec<(BenchDescription, BenchStats)>,
@@ -114,7 +113,6 @@ impl ConsoleReporter {
       options: None,
       baseline: false,
       name: String::new(),
-      has_ungrouped: false,
       group_measurements: Vec::new(),
     }
   }
@@ -140,7 +138,6 @@ impl BenchReporter for ConsoleReporter {
     let options = self.options.as_mut().unwrap();
 
     options.percentiles = true;
-    options.colors = colors::use_color();
 
     if FIRST_PLAN
       .compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst)
@@ -173,18 +170,11 @@ impl BenchReporter for ConsoleReporter {
     self.name = desc.name.clone();
 
     match &desc.group {
-      None => {
-        self.has_ungrouped = true;
-      }
+      None => {}
 
       Some(group) => {
         if self.group.is_none() || group != self.group.as_ref().unwrap() {
           self.report_group_summary();
-        }
-
-        if (self.group.is_none() && self.has_ungrouped)
-          || (self.group.is_some() && self.group_measurements.is_empty())
-        {
           println!("{} {}", colors::gray("group"), colors::green(group));
         }
 
@@ -255,10 +245,9 @@ impl BenchReporter for ConsoleReporter {
   }
 
   fn report_group_summary(&mut self) {
-    let options = match self.options.as_ref() {
-      None => return,
-      Some(options) => options,
-    };
+    if self.options.is_none() {
+      return;
+    }
 
     if 2 <= self.group_measurements.len()
       && (self.group.is_some() || (self.group.is_none() && self.baseline))
@@ -284,7 +273,6 @@ impl BenchReporter for ConsoleReporter {
               },
             })
             .collect::<Vec<mitata::reporter::GroupBenchmark>>(),
-          options
         )
       );
     }

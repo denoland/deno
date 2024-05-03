@@ -30,6 +30,7 @@ util::unit_test_factory!(
     error_stack_test,
     error_test,
     esnext_test,
+    event_source_test,
     event_target_test,
     event_test,
     fetch_test,

@@ -47,15 +47,14 @@ pub async fn get_tls_listener_stream(
   let cert_file = "tls/localhost.crt";
   let key_file = "tls/localhost.key";
   let ca_cert_file = "tls/RootCA.pem";
-  let tls_config = get_tls_config(cert_file, key_file, ca_cert_file, http)
-    .await
-    .unwrap();
+  let tls_config =
+    get_tls_config(cert_file, key_file, ca_cert_file, http).unwrap();
 
   let tcp = get_tcp_listener_stream(name, port).await;
   get_tls_listener_stream_from_tcp(tls_config, tcp)
 }
 
-pub async fn get_tls_config(
+pub fn get_tls_config(
   cert: &str,
   key: &str,
   ca: &str,

@@ -3,7 +3,7 @@
 use crate::args::jsr_url;
 use crate::args::CliOptions;
 use crate::args::Lockfile;
-use crate::args::TsTypeLib;
+use crate::args::DENO_DISABLE_PEDANTIC_NODE_WARNINGS;
 use crate::cache;
 use crate::cache::GlobalHttpCache;
 use crate::cache::ModuleInfoCache;
@@ -18,9 +18,9 @@ use crate::tools::check;
 use crate::tools::check::TypeChecker;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::fs::canonicalize_path;
-use crate::util::path::specifier_to_file_path;
 use crate::util::sync::TaskQueue;
 use crate::util::sync::TaskQueuePermit;
+use deno_runtime::fs_util::specifier_to_file_path;
 
 use deno_config::WorkspaceMemberConfig;
 use deno_core::anyhow::bail;
@@ -45,7 +45,6 @@ use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use import_map::ImportMapError;
-use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -55,27 +54,6 @@ pub struct GraphValidOptions {
   pub check_js: bool,
   pub follow_type_only: bool,
   pub is_vendoring: bool,
-}
-
-/// Check if `roots` and their deps are available. Returns `Ok(())` if
-/// so. Returns `Err(_)` if there is a known module graph or resolution
-/// error statically reachable from `roots` and not a dynamic import.
-pub fn graph_valid_with_cli_options(
-  graph: &ModuleGraph,
-  fs: &dyn FileSystem,
-  roots: &[ModuleSpecifier],
-  options: &CliOptions,
-) -> Result<(), AnyError> {
-  graph_valid(
-    graph,
-    fs,
-    roots,
-    GraphValidOptions {
-      is_vendoring: false,
-      follow_type_only: options.type_check_mode().is_true(),
-      check_js: options.check_js(),
-    },
-  )
 }
 
 /// Check if `roots` and their deps are available. Returns `Ok(())` if
@@ -98,6 +76,7 @@ pub fn graph_valid(
         check_js: options.check_js,
         follow_type_only: options.follow_type_only,
         follow_dynamic: options.is_vendoring,
+        prefer_fast_check_graph: false,
       },
     )
     .errors()
@@ -131,13 +110,23 @@ pub fn graph_valid(
         }
       }
 
+      if graph.graph_kind() == GraphKind::TypesOnly
+        && matches!(
+          error,
+          ModuleGraphError::ModuleError(ModuleError::UnsupportedMediaType(..))
+        )
+      {
+        log::debug!("Ignoring: {}", message);
+        return None;
+      }
+
       if options.is_vendoring {
         // warn about failing dynamic imports when vendoring, but don't fail completely
         if matches!(
           error,
           ModuleGraphError::ModuleError(ModuleError::MissingDynamic(_, _))
         ) {
-          log::warn!("Ignoring: {:#}", message);
+          log::warn!("Ignoring: {}", message);
           return None;
         }
 
@@ -166,7 +155,7 @@ pub fn graph_valid(
   }
 }
 
-/// Checks the lockfile against the graph and and exits on errors.
+/// Checks the lockfile against the graph and exits on errors.
 pub fn graph_lock_or_exit(graph: &ModuleGraph, lockfile: &mut Lockfile) {
   for module in graph.modules() {
     let source = match module {
@@ -213,7 +202,6 @@ pub struct CreateGraphOptions<'a> {
 
 pub struct ModuleGraphCreator {
   options: Arc<CliOptions>,
-  fs: Arc<dyn FileSystem>,
   npm_resolver: Arc<dyn CliNpmResolver>,
   module_graph_builder: Arc<ModuleGraphBuilder>,
   lockfile: Option<Arc<Mutex<Lockfile>>>,
@@ -223,7 +211,6 @@ pub struct ModuleGraphCreator {
 impl ModuleGraphCreator {
   pub fn new(
     options: Arc<CliOptions>,
-    fs: Arc<dyn FileSystem>,
     npm_resolver: Arc<dyn CliNpmResolver>,
     module_graph_builder: Arc<ModuleGraphBuilder>,
     lockfile: Option<Arc<Mutex<Lockfile>>>,
@@ -231,7 +218,6 @@ impl ModuleGraphCreator {
   ) -> Self {
     Self {
       options,
-      fs,
       npm_resolver,
       lockfile,
       module_graph_builder,
@@ -266,9 +252,10 @@ impl ModuleGraphCreator {
       .await
   }
 
-  pub async fn create_publish_graph(
+  pub async fn create_and_validate_publish_graph(
     &self,
     packages: &[WorkspaceMemberConfig],
+    build_fast_check_graph: bool,
   ) -> Result<ModuleGraph, AnyError> {
     let mut roots = Vec::new();
     for package in packages {
@@ -282,15 +269,18 @@ impl ModuleGraphCreator {
         loader: None,
       })
       .await?;
+    self.graph_valid(&graph)?;
     if self.options.type_check_mode().is_true() {
       self.type_check_graph(graph.clone()).await?;
     }
-    self.module_graph_builder.build_fast_check_graph(
-      &mut graph,
-      BuildFastCheckGraphOptions {
-        workspace_fast_check: true,
-      },
-    )?;
+    if build_fast_check_graph {
+      self.module_graph_builder.build_fast_check_graph(
+        &mut graph,
+        BuildFastCheckGraphOptions {
+          workspace_fast_check: true,
+        },
+      )?;
+    }
     Ok(graph)
   }
 
@@ -329,12 +319,7 @@ impl ModuleGraphCreator {
       })
       .await?;
 
-    graph_valid_with_cli_options(
-      &graph,
-      self.fs.as_ref(),
-      &graph.roots,
-      &self.options,
-    )?;
+    self.graph_valid(&graph)?;
     if let Some(lockfile) = &self.lockfile {
       graph_lock_or_exit(&graph, &mut lockfile.lock());
     }
@@ -346,6 +331,10 @@ impl ModuleGraphCreator {
     } else {
       Ok(Arc::new(graph))
     }
+  }
+
+  pub fn graph_valid(&self, graph: &ModuleGraph) -> Result<(), AnyError> {
+    self.module_graph_builder.graph_valid(graph)
   }
 
   async fn type_check_graph(
@@ -462,17 +451,17 @@ impl ModuleGraphBuilder {
         options.roots,
         loader.as_mut_loader(),
         deno_graph::BuildOptions {
-          is_dynamic: options.is_dynamic,
-          jsr_url_provider: Some(&CliJsrUrlProvider),
-          executor: Default::default(),
           imports: maybe_imports,
-          resolver: Some(graph_resolver),
-          file_system: Some(&DenoGraphFsAdapter(self.fs.as_ref())),
-          npm_resolver: Some(graph_npm_resolver),
-          module_analyzer: Some(&analyzer),
-          module_parser: Some(&parser),
-          reporter: maybe_file_watcher_reporter,
+          is_dynamic: options.is_dynamic,
+          passthrough_jsr_specifiers: false,
           workspace_members: &workspace_members,
+          executor: Default::default(),
+          file_system: &DenoGraphFsAdapter(self.fs.as_ref()),
+          jsr_url_provider: &CliJsrUrlProvider,
+          npm_resolver: Some(graph_npm_resolver),
+          module_analyzer: &analyzer,
+          reporter: maybe_file_watcher_reporter,
+          resolver: Some(graph_resolver),
         },
       )
       .await
@@ -622,7 +611,7 @@ impl ModuleGraphBuilder {
 
     graph.build_fast_check_type_graph(
       deno_graph::BuildFastCheckTypeGraphOptions {
-        jsr_url_provider: Some(&CliJsrUrlProvider),
+        jsr_url_provider: &CliJsrUrlProvider,
         fast_check_cache: fast_check_cache.as_ref().map(|c| c as _),
         fast_check_dts: false,
         module_parser: Some(&parser),
@@ -657,6 +646,30 @@ impl ModuleGraphBuilder {
       permissions,
     )
   }
+
+  /// Check if `roots` and their deps are available. Returns `Ok(())` if
+  /// so. Returns `Err(_)` if there is a known module graph or resolution
+  /// error statically reachable from `roots` and not a dynamic import.
+  pub fn graph_valid(&self, graph: &ModuleGraph) -> Result<(), AnyError> {
+    self.graph_roots_valid(graph, &graph.roots)
+  }
+
+  pub fn graph_roots_valid(
+    &self,
+    graph: &ModuleGraph,
+    roots: &[ModuleSpecifier],
+  ) -> Result<(), AnyError> {
+    graph_valid(
+      graph,
+      self.fs.as_ref(),
+      roots,
+      GraphValidOptions {
+        is_vendoring: false,
+        follow_type_only: self.options.type_check_mode().is_true(),
+        check_js: self.options.check_js(),
+      },
+    )
+  }
 }
 
 pub fn error_for_any_npm_specifier(
@@ -681,9 +694,11 @@ pub fn enhanced_resolution_error_message(error: &ResolutionError) -> String {
   let mut message = format!("{error}");
 
   if let Some(specifier) = get_resolution_error_bare_node_specifier(error) {
-    message.push_str(&format!(
+    if !*DENO_DISABLE_PEDANTIC_NODE_WARNINGS {
+      message.push_str(&format!(
         "\nIf you want to use a built-in Node module, add a \"node:\" prefix (ex. \"node:{specifier}\")."
       ));
+    }
   }
 
   message
@@ -694,7 +709,8 @@ pub fn enhanced_module_error_message(
   error: &ModuleError,
 ) -> String {
   let additional_message = match error {
-    ModuleError::Missing(specifier, _) => {
+    ModuleError::LoadingErr(specifier, _, _) // ex. "Is a directory" error
+    | ModuleError::Missing(specifier, _) => {
       SloppyImportsResolver::resolve_with_fs(
         fs,
         specifier,
@@ -747,29 +763,20 @@ fn get_resolution_error_bare_specifier(
   }
 }
 
-#[derive(Debug)]
-struct GraphData {
-  graph: Arc<ModuleGraph>,
-  checked_libs: HashMap<TsTypeLib, HashSet<ModuleSpecifier>>,
-}
-
 /// Holds the `ModuleGraph` and what parts of it are type checked.
 pub struct ModuleGraphContainer {
   // Allow only one request to update the graph data at a time,
   // but allow other requests to read from it at any time even
   // while another request is updating the data.
   update_queue: Arc<TaskQueue>,
-  graph_data: Arc<RwLock<GraphData>>,
+  inner: Arc<RwLock<Arc<ModuleGraph>>>,
 }
 
 impl ModuleGraphContainer {
   pub fn new(graph_kind: GraphKind) -> Self {
     Self {
       update_queue: Default::default(),
-      graph_data: Arc::new(RwLock::new(GraphData {
-        graph: Arc::new(ModuleGraph::new(graph_kind)),
-        checked_libs: Default::default(),
-      })),
+      inner: Arc::new(RwLock::new(Arc::new(ModuleGraph::new(graph_kind)))),
     }
   }
 
@@ -780,53 +787,13 @@ impl ModuleGraphContainer {
     let permit = self.update_queue.acquire().await;
     ModuleGraphUpdatePermit {
       permit,
-      graph_data: self.graph_data.clone(),
-      graph: (*self.graph_data.read().graph).clone(),
+      inner: self.inner.clone(),
+      graph: (**self.inner.read()).clone(),
     }
   }
 
   pub fn graph(&self) -> Arc<ModuleGraph> {
-    self.graph_data.read().graph.clone()
-  }
-
-  /// Mark `roots` and all of their dependencies as type checked under `lib`.
-  /// Assumes that all of those modules are known.
-  pub fn set_type_checked(&self, roots: &[ModuleSpecifier], lib: TsTypeLib) {
-    // It's ok to analyze and update this while the module graph itself is
-    // being updated in a permit because the module graph update is always
-    // additive and this will be a subset of the original graph
-    let graph = self.graph();
-    let entries = graph.walk(
-      roots,
-      deno_graph::WalkOptions {
-        check_js: true,
-        follow_dynamic: true,
-        follow_type_only: true,
-      },
-    );
-
-    // now update
-    let mut data = self.graph_data.write();
-    let checked_lib_set = data.checked_libs.entry(lib).or_default();
-    for (specifier, _) in entries {
-      checked_lib_set.insert(specifier.clone());
-    }
-  }
-
-  /// Check if `roots` are all marked as type checked under `lib`.
-  pub fn is_type_checked(
-    &self,
-    roots: &[ModuleSpecifier],
-    lib: TsTypeLib,
-  ) -> bool {
-    let data = self.graph_data.read();
-    match data.checked_libs.get(&lib) {
-      Some(checked_lib_set) => roots.iter().all(|r| {
-        let found = data.graph.resolve(r);
-        checked_lib_set.contains(&found)
-      }),
-      None => false,
-    }
+    self.inner.read().clone()
   }
 }
 
@@ -843,6 +810,7 @@ pub fn has_graph_root_local_dependent_changed(
     deno_graph::WalkOptions {
       follow_dynamic: true,
       follow_type_only: true,
+      prefer_fast_check_graph: true,
       check_js: true,
     },
   );
@@ -866,7 +834,7 @@ pub fn has_graph_root_local_dependent_changed(
 /// new graph in the ModuleGraphContainer.
 pub struct ModuleGraphUpdatePermit<'a> {
   permit: TaskQueuePermit<'a>,
-  graph_data: Arc<RwLock<GraphData>>,
+  inner: Arc<RwLock<Arc<ModuleGraph>>>,
   graph: ModuleGraph,
 }
 
@@ -880,7 +848,7 @@ impl<'a> ModuleGraphUpdatePermit<'a> {
   /// and returns an Arc to the new module graph.
   pub fn commit(self) -> Arc<ModuleGraph> {
     let graph = Arc::new(self.graph);
-    self.graph_data.write().graph = graph.clone();
+    *self.inner.write() = graph.clone();
     drop(self.permit); // explicit drop for clarity
     graph
   }
@@ -1001,7 +969,7 @@ pub fn format_range_with_colors(range: &deno_graph::Range) -> String {
 }
 
 #[derive(Debug, Default, Clone, Copy)]
-struct CliJsrUrlProvider;
+pub struct CliJsrUrlProvider;
 
 impl deno_graph::source::JsrUrlProvider for CliJsrUrlProvider {
   fn url(&self) -> &'static ModuleSpecifier {

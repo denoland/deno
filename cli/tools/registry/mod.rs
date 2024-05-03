@@ -1,12 +1,17 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::io::IsTerminal;
+use std::path::Path;
+use std::process::Stdio;
 use std::rc::Rc;
 use std::sync::Arc;
 
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
+use deno_ast::ModuleSpecifier;
+use deno_config::glob::FilePatterns;
 use deno_config::ConfigFile;
 use deno_config::WorkspaceMemberConfig;
 use deno_core::anyhow::bail;
@@ -24,6 +29,7 @@ use lsp_types::Url;
 use serde::Deserialize;
 use serde::Serialize;
 use sha2::Digest;
+use tokio::process::Command;
 
 use crate::args::jsr_api_url;
 use crate::args::jsr_url;
@@ -59,11 +65,11 @@ use auth::get_auth_method;
 use auth::AuthMethod;
 pub use pm::add;
 use publish_order::PublishOrderGraph;
-pub use unfurl::deno_json_deps;
 use unfurl::SpecifierUnfurler;
 
 use super::check::TypeChecker;
 
+use self::paths::CollectedPublishPath;
 use self::tar::PublishableTarball;
 
 fn ring_bell() {
@@ -95,13 +101,13 @@ async fn prepare_publish(
   deno_json: &ConfigFile,
   source_cache: Arc<ParsedSourceCache>,
   graph: Arc<deno_graph::ModuleGraph>,
+  cli_options: Arc<CliOptions>,
   mapped_resolver: Arc<MappedSpecifierResolver>,
   sloppy_imports_resolver: Option<SloppyImportsResolver>,
-  bare_node_builtins: bool,
   diagnostics_collector: &PublishDiagnosticsCollector,
 ) -> Result<Rc<PreparedPublishPackage>, AnyError> {
   let config_path = deno_json.specifier.to_file_path().unwrap();
-  let dir_path = config_path.parent().unwrap().to_path_buf();
+  let root_dir = config_path.parent().unwrap().to_path_buf();
   let Some(version) = deno_json.json.version.clone() else {
     bail!("{} is missing 'version' field", deno_json.specifier);
   };
@@ -109,7 +115,7 @@ async fn prepare_publish(
     let mut suggested_entrypoint = None;
 
     for entrypoint in SUGGESTED_ENTRYPOINTS {
-      if dir_path.join(entrypoint).exists() {
+      if root_dir.join(entrypoint).exists() {
         suggested_entrypoint = Some(entrypoint);
         break;
       }
@@ -139,21 +145,38 @@ async fn prepare_publish(
   let Some((scope, name_no_scope)) = name_no_at.split_once('/') else {
     bail!("Invalid package name, use '@<scope_name>/<package_name> format");
   };
-  let file_patterns = deno_json.to_publish_config()?.map(|c| c.files);
+  let file_patterns = deno_json
+    .to_publish_config()?
+    .map(|c| c.files)
+    .unwrap_or_else(|| FilePatterns::new_with_base(root_dir.to_path_buf()));
 
   let diagnostics_collector = diagnostics_collector.clone();
   let tarball = deno_core::unsync::spawn_blocking(move || {
+    let bare_node_builtins = cli_options.unstable_bare_node_builtins();
     let unfurler = SpecifierUnfurler::new(
       &mapped_resolver,
       sloppy_imports_resolver.as_ref(),
       bare_node_builtins,
     );
+    let root_specifier =
+      ModuleSpecifier::from_directory_path(&root_dir).unwrap();
+    let publish_paths = paths::collect_publish_paths(
+      &root_dir,
+      &cli_options,
+      &diagnostics_collector,
+      file_patterns,
+    )?;
+    collect_excluded_module_diagnostics(
+      &root_specifier,
+      &graph,
+      &publish_paths,
+      &diagnostics_collector,
+    );
     tar::create_gzipped_tarball(
-      &dir_path,
+      &publish_paths,
       LazyGraphSourceParser::new(&source_cache, &graph),
       &diagnostics_collector,
       &unfurler,
-      file_patterns,
     )
     .context("Failed to create a tarball")
   })
@@ -186,6 +209,36 @@ async fn prepare_publish(
       .to_string_lossy()
       .to_string(),
   }))
+}
+
+fn collect_excluded_module_diagnostics(
+  root: &ModuleSpecifier,
+  graph: &deno_graph::ModuleGraph,
+  publish_paths: &[CollectedPublishPath],
+  diagnostics_collector: &PublishDiagnosticsCollector,
+) {
+  let publish_specifiers = publish_paths
+    .iter()
+    .map(|path| &path.specifier)
+    .collect::<HashSet<_>>();
+  let graph_specifiers = graph
+    .modules()
+    .filter_map(|m| match m {
+      deno_graph::Module::Js(_) | deno_graph::Module::Json(_) => {
+        Some(m.specifier())
+      }
+      deno_graph::Module::Npm(_)
+      | deno_graph::Module::Node(_)
+      | deno_graph::Module::External(_) => None,
+    })
+    .filter(|s| s.as_str().starts_with(root.as_str()));
+  for specifier in graph_specifiers {
+    if !publish_specifiers.contains(specifier) {
+      diagnostics_collector.push(PublishDiagnostic::ExcludedModule {
+        specifier: specifier.clone(),
+      });
+    }
+  }
 }
 
 #[derive(Serialize)]
@@ -689,7 +742,7 @@ async fn publish_package(
         package.scope, package.package, package.version
       ),
       digest: provenance::SubjectDigest {
-        sha256: hex::encode(sha2::Sha256::digest(&meta_bytes)),
+        sha256: faster_hex::hex_string(&sha2::Sha256::digest(&meta_bytes)),
       },
     };
     let bundle = provenance::generate_provenance(subject).await?;
@@ -743,7 +796,6 @@ async fn prepare_packages_for_publishing(
   let type_checker = cli_factory.type_checker().await?;
   let fs = cli_factory.fs();
   let cli_options = cli_factory.cli_options();
-  let bare_node_builtins = cli_options.unstable_bare_node_builtins();
 
   if members.len() > 1 {
     println!("Publishing a workspace...");
@@ -774,15 +826,16 @@ async fn prepare_packages_for_publishing(
         None
       };
       let graph = graph.clone();
+      let cli_options = cli_options.clone();
       async move {
         let package = prepare_publish(
           &member.package_name,
           &member.config_file,
           source_cache.clone(),
           graph,
+          cli_options,
           mapped_resolver,
           sloppy_imports_resolver,
-          bare_node_builtins,
           diagnostics_collector,
         )
         .await
@@ -813,8 +866,10 @@ async fn build_and_check_graph_for_publish(
   diagnostics_collector: &PublishDiagnosticsCollector,
   packages: &[WorkspaceMemberConfig],
 ) -> Result<Arc<deno_graph::ModuleGraph>, deno_core::anyhow::Error> {
-  let graph = module_graph_creator.create_publish_graph(packages).await?;
-  graph.valid()?;
+  let build_fast_check_graph = !allow_slow_types;
+  let graph = module_graph_creator
+    .create_and_validate_publish_graph(packages, build_fast_check_graph)
+    .await?;
 
   // todo(dsherret): move to lint rule
   collect_invalid_external_imports(&graph, diagnostics_collector);
@@ -831,6 +886,29 @@ async fn build_and_check_graph_for_publish(
       colors::yellow("Warning"),
     );
     Ok(Arc::new(graph))
+  } else if std::env::var("DENO_INTERNAL_FAST_CHECK_OVERWRITE").as_deref()
+    == Ok("1")
+  {
+    if check_if_git_repo_dirty(cli_options.initial_cwd()).await {
+      bail!("When using DENO_INTERNAL_FAST_CHECK_OVERWRITE, the git repo must be in a clean state.");
+    }
+
+    for module in graph.modules() {
+      if module.specifier().scheme() != "file" {
+        continue;
+      }
+      let Some(js) = module.js() else {
+        continue;
+      };
+      if let Some(module) = js.fast_check_module() {
+        std::fs::write(
+          js.specifier.to_file_path().unwrap(),
+          module.source.as_ref(),
+        )?;
+      }
+    }
+
+    bail!("Exiting due to DENO_INTERNAL_FAST_CHECK_OVERWRITE")
   } else {
     log::info!("Checking for slow types in the public API...");
     let mut any_pkg_had_diagnostics = false;
@@ -863,6 +941,10 @@ async fn build_and_check_graph_for_publish(
           },
         )
         .await?;
+      // ignore unused parameter diagnostics that may occur due to fast check
+      // not having function body implementations
+      let check_diagnostics =
+        check_diagnostics.filter(|d| d.include_when_remote());
       if !check_diagnostics.is_empty() {
         bail!(
           concat!(
@@ -883,9 +965,10 @@ pub async fn publish(
   flags: Flags,
   publish_flags: PublishFlags,
 ) -> Result<(), AnyError> {
-  let cli_factory = CliFactory::from_flags(flags).await?;
+  let cli_factory = CliFactory::from_flags(flags)?;
 
-  let auth_method = get_auth_method(publish_flags.token)?;
+  let auth_method =
+    get_auth_method(publish_flags.token, publish_flags.dry_run)?;
 
   let import_map = cli_factory
     .maybe_import_map()
@@ -924,6 +1007,15 @@ pub async fn publish(
 
   if prepared_data.package_by_name.is_empty() {
     bail!("No packages to publish");
+  }
+
+  if std::env::var("DENO_TESTING_DISABLE_GIT_CHECK")
+    .ok()
+    .is_none()
+    && !publish_flags.allow_dirty
+    && check_if_git_repo_dirty(cli_options.initial_cwd()).await
+  {
+    bail!("Aborting due to uncommitted changes. Check in source code or run with --allow-dirty");
   }
 
   if publish_flags.dry_run {
@@ -1018,6 +1110,34 @@ fn verify_version_manifest(
   }
 
   Ok(())
+}
+
+async fn check_if_git_repo_dirty(cwd: &Path) -> bool {
+  let bin_name = if cfg!(windows) { "git.exe" } else { "git" };
+
+  // Check if git exists
+  let git_exists = Command::new(bin_name)
+    .arg("--version")
+    .stderr(Stdio::null())
+    .stdout(Stdio::null())
+    .status()
+    .await
+    .map_or(false, |status| status.success());
+
+  if !git_exists {
+    return false; // Git is not installed
+  }
+
+  // Check if there are uncommitted changes
+  let output = Command::new(bin_name)
+    .current_dir(cwd)
+    .args(["status", "--porcelain"])
+    .output()
+    .await
+    .expect("Failed to execute command");
+
+  let output_str = String::from_utf8_lossy(&output.stdout);
+  !output_str.trim().is_empty()
 }
 
 #[cfg(test)]

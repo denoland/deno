@@ -35,9 +35,10 @@ pub async fn bundle(
       move |flags, watcher_communicator, _changed_paths| {
         let bundle_flags = bundle_flags.clone();
         Ok(async move {
-          let factory = CliFactoryBuilder::new()
-            .build_from_flags_for_watcher(flags, watcher_communicator.clone())
-            .await?;
+          let factory = CliFactoryBuilder::new().build_from_flags_for_watcher(
+            flags,
+            watcher_communicator.clone(),
+          )?;
           let cli_options = factory.cli_options();
           let _ = watcher_communicator.watch_paths(cli_options.watch_paths());
           bundle_action(factory, &bundle_flags).await?;
@@ -48,7 +49,7 @@ pub async fn bundle(
     )
     .await?;
   } else {
-    let factory = CliFactory::from_flags(flags).await?;
+    let factory = CliFactory::from_flags(flags)?;
     bundle_action(factory, &bundle_flags).await?;
   }
 
@@ -143,15 +144,18 @@ fn bundle_module_graph(
     }
   }
 
+  let (transpile_options, emit_options) =
+    crate::args::ts_config_to_transpile_and_emit_options(
+      ts_config_result.ts_config,
+    )?;
   deno_emit::bundle_graph(
     graph,
     deno_emit::BundleOptions {
       minify: false,
       bundle_type: deno_emit::BundleType::Module,
-      emit_options: crate::args::ts_config_to_emit_options(
-        ts_config_result.ts_config,
-      ),
+      emit_options,
       emit_ignore_directives: true,
+      transpile_options,
     },
   )
 }

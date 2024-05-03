@@ -2,7 +2,7 @@
 import * as path from "@std/path/mod.ts";
 import { assert } from "@std/assert/mod.ts";
 import { assertCallbackErrorUncaught } from "../_test_utils.ts";
-import { copyFile, copyFileSync, existsSync } from "node:fs";
+import { copyFile, copyFileSync, cpSync, existsSync } from "node:fs";
 
 const destFile = "./destination.txt";
 
@@ -49,4 +49,14 @@ Deno.test("[std/node/fs] copyFile callback isn't called twice if error is thrown
       await Deno.remove(tempDir, { recursive: true });
     },
   });
+});
+
+Deno.test("[std/node/fs] cp creates destination directory", async () => {
+  const tempDir = await Deno.makeTempDir();
+  const tempFile1 = path.join(tempDir, "file1.txt");
+  const tempFile2 = path.join(tempDir, "dir", "file2.txt");
+  await Deno.writeTextFile(tempFile1, "hello world");
+  cpSync(tempFile1, tempFile2);
+  assert(existsSync(tempFile2));
+  await Deno.remove(tempDir, { recursive: true });
 });

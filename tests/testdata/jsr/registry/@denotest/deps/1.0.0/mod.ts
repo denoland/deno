@@ -1,5 +1,5 @@
-import { Other } from "jsr:@denotest/module_graph@1/other";
-import version from "jsr:@denotest/no_module_graph@^0.1";
+import { Other } from "jsr:@denotest/module-graph@1/other";
+import version from "jsr:@denotest/no-module-graph@^0.1";
 
 export default {
   version,

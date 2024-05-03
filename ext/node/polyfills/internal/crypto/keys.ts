@@ -4,7 +4,12 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { op_node_create_private_key } from "ext:core/ops";
+import {
+  op_node_create_private_key,
+  op_node_create_public_key,
+  op_node_export_rsa_public_pem,
+  op_node_export_rsa_spki_der,
+} from "ext:core/ops";
 
 import {
   kHandle,
@@ -63,7 +68,7 @@ export const getArrayBufferOrView = hideStackFrames(
     | Uint16Array
     | Uint32Array => {
     if (isAnyArrayBuffer(buffer)) {
-      return buffer;
+      return new Uint8Array(buffer);
     }
     if (typeof buffer === "string") {
       if (encoding === "buffer") {
@@ -212,6 +217,12 @@ export interface JsonWebKeyInput {
 export function prepareAsymmetricKey(key) {
   if (isStringOrBuffer(key)) {
     return { format: "pem", data: getArrayBufferOrView(key, "key") };
+  } else if (isKeyObject(key)) {
+    return {
+      // Assumes that assymetric keys are stored as PEM.
+      format: "pem",
+      data: getKeyMaterial(key),
+    };
   } else if (typeof key == "object") {
     const { key: data, encoding, format, type } = key;
     if (!isStringOrBuffer(data)) {
@@ -239,9 +250,12 @@ export function createPrivateKey(
 }
 
 export function createPublicKey(
-  _key: PublicKeyInput | string | Buffer | KeyObject | JsonWebKeyInput,
-): KeyObject {
-  notImplemented("crypto.createPublicKey");
+  key: PublicKeyInput | string | Buffer | JsonWebKeyInput,
+): PublicKeyObject {
+  const { data, format, type } = prepareAsymmetricKey(key);
+  const details = op_node_create_public_key(data, format, type);
+  const handle = setOwnedKey(copyBuffer(data));
+  return new PublicKeyObject(handle, details);
 }
 
 function getKeyTypes(allowKeyObject: boolean, bufferOnly = false) {
@@ -348,13 +362,45 @@ class AsymmetricKeyObject extends KeyObject {
   }
 }
 
-class PrivateKeyObject extends AsymmetricKeyObject {
+export class PrivateKeyObject extends AsymmetricKeyObject {
   constructor(handle: unknown, details: unknown) {
     super("private", handle, details);
   }
 
   export(_options: unknown) {
     notImplemented("crypto.PrivateKeyObject.prototype.export");
+  }
+}
+
+export class PublicKeyObject extends AsymmetricKeyObject {
+  constructor(handle: unknown, details: unknown) {
+    super("public", handle, details);
+  }
+
+  export(options: unknown) {
+    const key = KEY_STORE.get(this[kHandle]);
+    switch (this.asymmetricKeyType) {
+      case "rsa":
+      case "rsa-pss": {
+        switch (options.format) {
+          case "pem":
+            return op_node_export_rsa_public_pem(key);
+          case "der": {
+            if (options.type == "pkcs1") {
+              return key;
+            } else {
+              return op_node_export_rsa_spki_der(key);
+            }
+          }
+          default:
+            throw new TypeError(`exporting ${options.type} is not implemented`);
+        }
+      }
+      default:
+        throw new TypeError(
+          `exporting ${this.asymmetricKeyType} is not implemented`,
+        );
+    }
   }
 }
 
@@ -392,4 +438,6 @@ export default {
   prepareSecretKey,
   setOwnedKey,
   SecretKeyObject,
+  PrivateKeyObject,
+  PublicKeyObject,
 };

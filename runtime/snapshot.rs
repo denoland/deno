@@ -10,13 +10,31 @@ use deno_core::snapshot::*;
 use deno_core::v8;
 use deno_core::Extension;
 use deno_http::DefaultHttpPropertyExtractor;
+use deno_io::fs::FsError;
 use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::sync::Arc;
 
 #[derive(Clone)]
 struct Permissions;
+
+impl deno_websocket::WebSocketPermissions for Permissions {
+  fn check_net_url(
+    &mut self,
+    _url: &deno_core::url::Url,
+    _api_name: &str,
+  ) -> Result<(), deno_core::error::AnyError> {
+    unreachable!("snapshotting!")
+  }
+}
+
+impl deno_web::TimersPermission for Permissions {
+  fn allow_hrtime(&mut self) -> bool {
+    unreachable!("snapshotting!")
+  }
+}
 
 impl deno_fetch::FetchPermissions for Permissions {
   fn check_net_url(
@@ -32,22 +50,6 @@ impl deno_fetch::FetchPermissions for Permissions {
     _p: &Path,
     _api_name: &str,
   ) -> Result<(), deno_core::error::AnyError> {
-    unreachable!("snapshotting!")
-  }
-}
-
-impl deno_websocket::WebSocketPermissions for Permissions {
-  fn check_net_url(
-    &mut self,
-    _url: &deno_core::url::Url,
-    _api_name: &str,
-  ) -> Result<(), deno_core::error::AnyError> {
-    unreachable!("snapshotting!")
-  }
-}
-
-impl deno_web::TimersPermission for Permissions {
-  fn allow_hrtime(&mut self) -> bool {
     unreachable!("snapshotting!")
   }
 }
@@ -128,6 +130,17 @@ impl deno_net::NetPermissions for Permissions {
 }
 
 impl deno_fs::FsPermissions for Permissions {
+  fn check_open<'a>(
+    &mut self,
+    _resolved: bool,
+    _read: bool,
+    _write: bool,
+    _path: &'a Path,
+    _api_name: &str,
+  ) -> Result<std::borrow::Cow<'a, Path>, FsError> {
+    unreachable!("snapshotting!")
+  }
+
   fn check_read(
     &mut self,
     _path: &Path,
@@ -200,6 +213,8 @@ impl deno_kv::sqlite::SqliteDbHandlerPermissions for Permissions {
 pub fn create_runtime_snapshot(
   snapshot_path: PathBuf,
   snapshot_options: SnapshotOptions,
+  // NOTE: For embedders that wish to add additional extensions to the snapshot
+  custom_extensions: Vec<Extension>,
 ) {
   // NOTE(bartlomieju): ordering is important here, keep it in sync with
   // `runtime/worker.rs`, `runtime/web_worker.rs` and `runtime/snapshot.rs`!
@@ -257,21 +272,16 @@ pub fn create_runtime_snapshot(
     ops::bootstrap::deno_bootstrap::init_ops(Some(snapshot_options)),
     ops::web_worker::deno_web_worker::init_ops(),
   ];
-
-  for extension in &mut extensions {
-    for source in extension.esm_files.to_mut() {
-      maybe_transpile_source(source).unwrap();
-    }
-    for source in extension.js_files.to_mut() {
-      maybe_transpile_source(source).unwrap();
-    }
-  }
+  extensions.extend(custom_extensions);
 
   let output = create_snapshot(
     CreateSnapshotOptions {
       cargo_manifest_dir: env!("CARGO_MANIFEST_DIR"),
       startup_snapshot: None,
       extensions,
+      extension_transpiler: Some(Rc::new(|specifier, source| {
+        maybe_transpile_source(specifier, source)
+      })),
       with_runtime_cb: Some(Box::new(|rt| {
         let isolate = rt.v8_isolate();
         let scope = &mut v8::HandleScope::new(isolate);

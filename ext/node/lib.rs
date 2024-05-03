@@ -1,5 +1,8 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+#![deny(clippy::print_stderr)]
+#![deny(clippy::print_stdout)]
+
 use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
@@ -237,6 +240,9 @@ deno_core::extension!(deno_node,
     ops::crypto::op_node_ecdh_generate_keys,
     ops::crypto::op_node_ecdh_compute_secret,
     ops::crypto::op_node_ecdh_compute_public_key,
+    ops::crypto::op_node_ecdh_encode_pubkey,
+    ops::crypto::op_node_export_rsa_public_pem,
+    ops::crypto::op_node_export_rsa_spki_der,
     ops::crypto::x509::op_node_x509_parse,
     ops::crypto::x509::op_node_x509_ca,
     ops::crypto::x509::op_node_x509_check_email,
@@ -252,12 +258,19 @@ deno_core::extension!(deno_node,
     ops::fs::op_node_fs_exists_sync<P>,
     ops::fs::op_node_cp_sync<P>,
     ops::fs::op_node_cp<P>,
+    ops::fs::op_node_statfs<P>,
     ops::winerror::op_node_sys_to_uv_error,
     ops::v8::op_v8_cached_data_version_tag,
     ops::v8::op_v8_get_heap_statistics,
-    ops::v8::op_vm_run_in_new_context,
+    ops::vm::op_vm_create_script,
+    ops::vm::op_vm_create_context,
+    ops::vm::op_vm_script_run_in_context,
+    ops::vm::op_vm_script_run_in_this_context,
+    ops::vm::op_vm_is_context,
     ops::idna::op_node_idna_domain_to_ascii,
     ops::idna::op_node_idna_domain_to_unicode,
+    ops::idna::op_node_idna_punycode_to_ascii,
+    ops::idna::op_node_idna_punycode_to_unicode,
     ops::idna::op_node_idna_punycode_decode,
     ops::idna::op_node_idna_punycode_encode,
     ops::zlib::op_zlib_new,
@@ -296,7 +309,6 @@ deno_core::extension!(deno_node,
     ops::os::op_node_os_username<P>,
     ops::os::op_geteuid<P>,
     ops::os::op_cpus<P>,
-    ops::os::op_process_abort,
     op_node_build_os,
     op_node_is_promise_rejected,
     op_npm_process_state,
@@ -323,10 +335,14 @@ deno_core::extension!(deno_node,
     ops::require::op_require_package_imports_resolve<P>,
     ops::require::op_require_break_on_next_statement,
     ops::util::op_node_guess_handle_type,
+    ops::worker_threads::op_worker_threads_filename<P>,
     ops::crypto::op_node_create_private_key,
+    ops::crypto::op_node_create_public_key,
     ops::ipc::op_node_child_ipc_pipe,
     ops::ipc::op_node_ipc_write,
     ops::ipc::op_node_ipc_read,
+    ops::process::op_node_process_kill,
+    ops::process::op_process_abort,
   ],
   esm_entry_point = "ext:deno_node/02_init.js",
   esm = [
@@ -362,11 +378,13 @@ deno_core::extension!(deno_node,
     "_fs/_fs_readdir.ts",
     "_fs/_fs_readFile.ts",
     "_fs/_fs_readlink.ts",
+    "_fs/_fs_readv.ts",
     "_fs/_fs_realpath.ts",
     "_fs/_fs_rename.ts",
     "_fs/_fs_rm.ts",
     "_fs/_fs_rmdir.ts",
     "_fs/_fs_stat.ts",
+    "_fs/_fs_statfs.js",
     "_fs/_fs_symlink.ts",
     "_fs/_fs_truncate.ts",
     "_fs/_fs_unlink.ts",
@@ -636,8 +654,7 @@ pub fn load_cjs_module(
     main = main,
     module = escape_for_single_quote_string(module),
     inspect_brk = inspect_brk,
-  )
-  .into();
+  );
 
   js_runtime.execute_script(located_script_name!(), source_code)?;
   Ok(())
