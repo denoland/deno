@@ -163,6 +163,12 @@ impl JsrCacheResolver {
     self.info_by_nv.insert(nv.clone(), info.clone());
     info
   }
+
+  pub fn clear_cache(&self) {
+    self.nv_by_req.clear();
+    self.info_by_nv.clear();
+    self.info_by_name.clear();
+  }
 }
 
 fn read_cached_url(

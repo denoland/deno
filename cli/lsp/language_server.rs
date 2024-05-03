@@ -13,6 +13,7 @@ use deno_core::url;
 use deno_core::ModuleSpecifier;
 use deno_graph::GraphKind;
 use deno_graph::Resolution;
+use deno_lockfile::Lockfile;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_semver::jsr::JsrPackageReqReference;
@@ -89,6 +90,7 @@ use crate::args::CacheSetting;
 use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::cache::DenoDir;
+use crate::cache::FastInsecureHasher;
 use crate::cache::GlobalHttpCache;
 use crate::cache::HttpCache;
 use crate::cache::LocalLspHttpCache;
@@ -316,10 +318,37 @@ impl LanguageServer {
 
       // now get the lock back to update with the new information
       let mut inner = self.0.write().await;
-      let lockfile = inner.config.tree.root_lockfile().cloned();
-      inner.documents.refresh_lockfile(lockfile);
-      inner.refresh_npm_specifiers().await;
-      inner.post_cache(result.mark).await;
+      let lockfile_changed =
+        inner.config.tree.data_by_scope().iter().any(|(_, data)| {
+          if let Some(lockfile) = &data.lockfile {
+            let lockfile = lockfile.lock();
+            let path = lockfile.filename.clone();
+            if let Ok(new_lockfile) = Lockfile::new(path, false) {
+              return FastInsecureHasher::hash(&*lockfile)
+                != FastInsecureHasher::hash(new_lockfile);
+            } else {
+              return true;
+            }
+          }
+          false
+        });
+      if lockfile_changed {
+        inner.refresh_config_tree().await;
+        inner.refresh_resolver().await;
+        inner.refresh_documents_config().await;
+      } else {
+        inner.resolver.reset_jsr_resolver();
+        inner.refresh_npm_specifiers().await;
+        inner.project_changed([], false);
+      }
+      inner.diagnostics_server.invalidate_all();
+      inner
+        .ts_server
+        .cleanup_semantic_cache(inner.snapshot())
+        .await;
+      inner.send_diagnostics_update();
+      inner.send_testing_update();
+      inner.performance.measure(result.mark);
     }
     Ok(Some(json!(true)))
   }
@@ -689,7 +718,6 @@ impl Inner {
       .clone()
       .map(|c| c as Arc<dyn HttpCache>)
       .unwrap_or(self.global_cache.clone());
-    self.documents.set_cache(self.cache.clone());
     self.cache_metadata.set_cache(self.cache.clone());
     self.performance.measure(mark);
   }
@@ -780,8 +808,6 @@ impl Inner {
       self.config.set_workspace_folders(workspace_folders);
       self.config.update_capabilities(&params.capabilities);
     }
-
-    self.documents.initialize(&self.config);
 
     if let Err(e) = self
       .ts_server
@@ -986,10 +1012,14 @@ impl Inner {
         }
       }
     }
+  }
+
+  async fn refresh_resolver(&mut self) {
     self.resolver = self
       .resolver
       .with_new_config(
         &self.config,
+        self.cache.clone(),
         self.maybe_global_cache_path.as_deref(),
         Some(&self.http_client),
       )
@@ -1000,6 +1030,7 @@ impl Inner {
     self.documents.update_config(
       &self.config,
       &self.resolver,
+      self.cache.clone(),
       &self.workspace_files,
     );
 
@@ -1133,6 +1164,7 @@ impl Inner {
     self.refresh_workspace_files();
     self.refresh_config_tree().await;
     self.update_cache();
+    self.refresh_resolver().await;
     self.refresh_documents_config().await;
     self.diagnostics_server.invalidate_all();
     self.send_diagnostics_update();
@@ -1181,6 +1213,7 @@ impl Inner {
       self.workspace_files_hash = 0;
       self.refresh_workspace_files();
       self.refresh_config_tree().await;
+      self.refresh_resolver().await;
       deno_config_changes.extend(changes.iter().filter_map(|(s, e)| {
         self.config.tree.watched_file_type(s).and_then(|t| {
           let configuration_type = match t.1 {
@@ -1482,10 +1515,7 @@ impl Inner {
             if let Ok(jsr_req_ref) =
               JsrPackageReqReference::from_specifier(specifier)
             {
-              if let Some(url) = self
-                .documents
-                .get_jsr_resolver()
-                .jsr_to_registry_url(&jsr_req_ref)
+              if let Some(url) = self.resolver.jsr_to_registry_url(&jsr_req_ref)
               {
                 result = format!("{result} (<{url}>)");
               }
@@ -2955,6 +2985,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     {
       let mut ls = self.0.write().await;
       init_log_file(ls.config.log_file());
+      ls.refresh_resolver().await;
       ls.refresh_documents_config().await;
       ls.diagnostics_server.invalidate_all();
       ls.send_diagnostics_update();
@@ -3089,6 +3120,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
       let mut ls = self.0.write().await;
       ls.refresh_workspace_files();
       ls.refresh_config_tree().await;
+      ls.refresh_resolver().await;
       ls.refresh_documents_config().await;
       ls.diagnostics_server.invalidate_all();
       ls.send_diagnostics_update();
@@ -3346,20 +3378,6 @@ impl Inner {
       roots,
       mark,
     }))
-  }
-
-  async fn post_cache(&mut self, mark: PerformanceMark) {
-    // Now that we have dependencies loaded, we need to re-analyze all the files.
-    // For that we're invalidating all the existing diagnostics and restarting
-    // the language server for TypeScript (as it might hold to some stale
-    // documents).
-    self.diagnostics_server.invalidate_all();
-    self.project_changed([], false);
-    self.ts_server.cleanup_semantic_cache(self.snapshot()).await;
-    self.send_diagnostics_update();
-    self.send_testing_update();
-
-    self.performance.measure(mark);
   }
 
   fn get_performance(&self) -> Value {

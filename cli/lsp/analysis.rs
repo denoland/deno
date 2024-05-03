@@ -259,8 +259,7 @@ impl<'a> TsResponseImportMapper<'a> {
       let version = Version::parse_standard(segments.next()?).ok()?;
       let nv = PackageNv { name, version };
       let path = segments.collect::<Vec<_>>().join("/");
-      let jsr_resolver = self.documents.get_jsr_resolver();
-      let export = jsr_resolver.lookup_export_for_path(&nv, &path)?;
+      let export = self.resolver.jsr_lookup_export_for_path(&nv, &path)?;
       let sub_path = (export != ".").then_some(export);
       let mut req = None;
       req = req.or_else(|| {
@@ -282,7 +281,7 @@ impl<'a> TsResponseImportMapper<'a> {
         }
         None
       });
-      req = req.or_else(|| jsr_resolver.lookup_req_for_nv(&nv));
+      req = req.or_else(|| self.resolver.jsr_lookup_req_for_nv(&nv));
       let spec_str = if let Some(req) = req {
         let req_ref = PackageReqReference { req, sub_path };
         JsrPackageReqReference::new(req_ref).to_string()
