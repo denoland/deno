@@ -515,3 +515,24 @@ Deno.test({
     await worker.terminate();
   },
 });
+
+Deno.test({
+  name:
+    "[node/worker_threads] MessagePort.on all message listeners are invoked",
+  async fn() {
+    const output: string[] = [];
+    const deferred = Promise.withResolvers<void>();
+    const { port1, port2 } = new workerThreads.MessageChannel();
+    port1.on("message", (msg) => output.push(msg));
+    port1.on("message", (msg) => output.push(msg + 2));
+    port1.on("message", (msg) => {
+      output.push(msg + 3);
+      deferred.resolve();
+    });
+    port2.postMessage("hi!");
+    await deferred.promise;
+    assertEquals(output, ["hi!", "hi!2", "hi!3"]);
+    port2.close();
+    port1.close();
+  },
+});

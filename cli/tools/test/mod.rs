@@ -1326,27 +1326,7 @@ pub async fn check_specifiers(
   )
   .await?;
 
-  if !inline_files.is_empty() {
-    let specifiers = inline_files
-      .iter()
-      .map(|file| file.specifier.clone())
-      .collect();
-
-    for file in inline_files {
-      file_fetcher.insert_memory_files(file);
-    }
-
-    module_load_preparer
-      .prepare_module_load(
-        specifiers,
-        false,
-        lib,
-        PermissionsContainer::new(Permissions::allow_all()),
-      )
-      .await?;
-  }
-
-  let module_specifiers = specifiers
+  let mut module_specifiers = specifiers
     .into_iter()
     .filter_map(|(specifier, mode)| {
       if mode != TestMode::Documentation {
@@ -1355,7 +1335,16 @@ pub async fn check_specifiers(
         None
       }
     })
-    .collect();
+    .collect::<Vec<_>>();
+
+  if !inline_files.is_empty() {
+    module_specifiers
+      .extend(inline_files.iter().map(|file| file.specifier.clone()));
+
+    for file in inline_files {
+      file_fetcher.insert_memory_files(file);
+    }
+  }
 
   module_load_preparer
     .prepare_module_load(
