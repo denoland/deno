@@ -80,7 +80,7 @@ pub struct Options {
   pub request_builder_hook:
     Option<fn(RequestBuilder) -> Result<RequestBuilder, AnyError>>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
-  pub client_cert_chain_and_key: Option<TlsKey>,
+  pub client_cert_chain_and_key: TlsKeys,
   pub file_fetch_handler: Rc<dyn FetchHandler>,
 }
 
@@ -101,7 +101,7 @@ impl Default for Options {
       proxy: None,
       request_builder_hook: None,
       unsafely_ignore_certificate_errors: None,
-      client_cert_chain_and_key: None,
+      client_cert_chain_and_key: TlsKeys::Null,
       file_fetch_handler: Rc::new(DefaultFileFetchHandler),
     }
   }
@@ -205,7 +205,7 @@ pub fn create_client_from_options(
       unsafely_ignore_certificate_errors: options
         .unsafely_ignore_certificate_errors
         .clone(),
-      client_cert_chain_and_key: options.client_cert_chain_and_key.clone(),
+      client_cert_chain_and_key: Some(options.client_cert_chain_and_key.clone()),
       pool_max_idle_per_host: None,
       pool_idle_timeout: None,
       http1: true,
@@ -832,11 +832,6 @@ where
     permissions.check_net_url(&url, "Deno.createHttpClient()")?;
   }
 
-  let client_cert_chain_and_key = match tls_keys {
-    TlsKeys::Null => None,
-    TlsKeys::Static(key) => Some(key.clone()),
-  };
-
   let options = state.borrow::<Options>();
   let ca_certs = args
     .ca_certs
@@ -853,7 +848,7 @@ where
       unsafely_ignore_certificate_errors: options
         .unsafely_ignore_certificate_errors
         .clone(),
-      client_cert_chain_and_key,
+      client_cert_chain_and_key: tls_keys.clone().try_into().unwrap(),
       pool_max_idle_per_host: args.pool_max_idle_per_host,
       pool_idle_timeout: args.pool_idle_timeout.and_then(
         |timeout| match timeout {
@@ -915,7 +910,7 @@ pub fn create_http_client(
     options.root_cert_store,
     options.ca_certs,
     options.unsafely_ignore_certificate_errors,
-    options.client_cert_chain_and_key,
+    options.client_cert_chain_and_key.into(),
     deno_tls::SocketUse::Http,
   )?;
 
