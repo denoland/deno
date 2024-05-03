@@ -11,9 +11,13 @@ use std::sync::Arc;
 use deno_core::anyhow::Context;
 use deno_core::serde_json;
 use file_test_runner::collection::collect_tests_or_exit;
+use file_test_runner::collection::strategies::FileTestMapperStrategy;
 use file_test_runner::collection::strategies::TestPerDirectoryCollectionStrategy;
 use file_test_runner::collection::CollectOptions;
+use file_test_runner::collection::CollectTestsError;
+use file_test_runner::collection::CollectedCategoryOrTest;
 use file_test_runner::collection::CollectedTest;
+use file_test_runner::collection::CollectedTestCategory;
 use file_test_runner::TestResult;
 use serde::Deserialize;
 use test_util::tests_path;
@@ -46,6 +50,50 @@ struct MultiTestMetaData {
   pub envs: HashMap<String, String>,
   #[serde(default)]
   pub tests: BTreeMap<String, JsonMap>,
+}
+
+impl MultiTestMetaData {
+  pub fn into_collected_tests(
+    mut self,
+    parent_test: &CollectedTest,
+  ) -> Vec<CollectedTest<serde_json::Value>> {
+    fn merge_json_value(
+      multi_test_meta_data: &MultiTestMetaData,
+      value: &mut JsonMap,
+    ) {
+      if let Some(base) = &multi_test_meta_data.base {
+        if !value.contains_key("base") {
+          value.insert("base".to_string(), base.clone().into());
+        }
+      }
+      if multi_test_meta_data.temp_dir && !value.contains_key("tempDir") {
+        value.insert("tempDir".to_string(), true.into());
+      }
+      if !multi_test_meta_data.envs.is_empty() {
+        if !value.contains_key("envs") {
+          value.insert("envs".to_string(), JsonMap::default().into());
+        }
+        let envs_obj = value.get_mut("envs").unwrap().as_object_mut().unwrap();
+        for (key, value) in &multi_test_meta_data.envs {
+          if !envs_obj.contains_key(key) {
+            envs_obj.insert(key.into(), value.clone().into());
+          }
+        }
+      }
+    }
+
+    let mut collected_tests = Vec::with_capacity(self.tests.len());
+    for (name, mut json_data) in std::mem::take(&mut self.tests) {
+      merge_json_value(&self, &mut json_data);
+      collected_tests.push(CollectedTest {
+        name: format!("{}::{}", parent_test.name, name),
+        path: parent_test.path.clone(),
+        data: serde_json::Value::Object(json_data),
+      });
+    }
+
+    collected_tests
+  }
 }
 
 #[derive(Clone, Deserialize)]
@@ -106,13 +154,17 @@ struct StepMetaData {
 }
 
 pub fn main() {
-  let root_category = collect_tests_or_exit(CollectOptions {
-    base: tests_path().join("specs").to_path_buf(),
-    strategy: Box::new(TestPerDirectoryCollectionStrategy {
-      file_name: MANIFEST_FILE_NAME.to_string(),
-    }),
-    filter_override: None,
-  });
+  let root_category =
+    collect_tests_or_exit::<serde_json::Value>(CollectOptions {
+      base: tests_path().join("specs").to_path_buf(),
+      strategy: Box::new(FileTestMapperStrategy {
+        base_strategy: TestPerDirectoryCollectionStrategy {
+          file_name: MANIFEST_FILE_NAME.to_string(),
+        },
+        map: map_test_within_file,
+      }),
+      filter_override: None,
+    });
 
   if root_category.is_empty() {
     return; // all tests filtered out
@@ -122,14 +174,16 @@ pub fn main() {
   file_test_runner::run_tests(
     &root_category,
     file_test_runner::RunOptions { parallel: true },
-    Arc::new(handle_test),
+    Arc::new(run_test),
   );
 }
 
-fn handle_test(test: &CollectedTest) -> TestResult {
+/// Maps a __test__.jsonc file to a category of tests if it contains a "test" object.
+fn map_test_within_file(
+  test: CollectedTest,
+) -> Result<CollectedCategoryOrTest<serde_json::Value>, CollectTestsError> {
   let test_path = PathRef::new(&test.path);
   let metadata_value = test_path.read_jsonc_value();
-  let cwd = test_path.parent();
   if metadata_value
     .as_object()
     .map(|o| o.contains_key("tests"))
@@ -137,55 +191,31 @@ fn handle_test(test: &CollectedTest) -> TestResult {
   {
     let data: MultiTestMetaData = serde_json::from_value(metadata_value)
       .with_context(|| format!("Failed deserializing {}", test_path))
-      .unwrap();
-    run_multi_test(data, &cwd)
+      .map_err(|err| CollectTestsError::Other(err))?;
+    Ok(CollectedCategoryOrTest::Category(CollectedTestCategory {
+      children: data
+        .into_collected_tests(&test)
+        .into_iter()
+        .map(CollectedCategoryOrTest::Test)
+        .collect(),
+      name: test.name,
+      path: test.path,
+    }))
   } else {
-    run_test(metadata_value, &cwd)
+    Ok(CollectedCategoryOrTest::Test(CollectedTest {
+      name: test.name,
+      path: test.path,
+      data: metadata_value,
+    }))
   }
 }
 
-fn run_multi_test(
-  mut multi_test_meta_data: MultiTestMetaData,
-  cwd: &PathRef,
-) -> TestResult {
-  fn merge_json_value(
-    multi_test_meta_data: &MultiTestMetaData,
-    value: &mut JsonMap,
-  ) {
-    if let Some(base) = &multi_test_meta_data.base {
-      if !value.contains_key("base") {
-        value.insert("base".to_string(), base.clone().into());
-      }
-    }
-    if multi_test_meta_data.temp_dir && !value.contains_key("tempDir") {
-      value.insert("tempDir".to_string(), true.into());
-    }
-    if !multi_test_meta_data.envs.is_empty() {
-      if !value.contains_key("envs") {
-        value.insert("envs".to_string(), JsonMap::default().into());
-      }
-      let envs_obj = value.get_mut("envs").unwrap().as_object_mut().unwrap();
-      for (key, value) in &multi_test_meta_data.envs {
-        if !envs_obj.contains_key(key) {
-          envs_obj.insert(key.into(), value.clone().into());
-        }
-      }
-    }
-  }
-
-  let mut results = Vec::with_capacity(multi_test_meta_data.tests.len());
-  for (name, mut test) in std::mem::take(&mut multi_test_meta_data.tests) {
-    merge_json_value(&multi_test_meta_data, &mut test);
-    let result = run_test(serde_json::Value::Object(test), cwd);
-    results.push(file_test_runner::TestStepResult { name, result });
-  }
-  TestResult::Steps(results)
-}
-
-fn run_test(metadata_value: serde_json::Value, cwd: &PathRef) -> TestResult {
+fn run_test(test: &CollectedTest<serde_json::Value>) -> TestResult {
+  let cwd = PathRef::new(&test.path).parent();
+  let metadata_value = test.data.clone();
   let diagnostic_logger = Rc::new(RefCell::new(Vec::<u8>::new()));
   let result = TestResult::from_maybe_panic(AssertUnwindSafe(|| {
-    run_test_inner(metadata_value, cwd, diagnostic_logger.clone())
+    run_test_inner(metadata_value, &cwd, diagnostic_logger.clone())
   }));
   match result {
     TestResult::Failed {
@@ -196,7 +226,9 @@ fn run_test(metadata_value: serde_json::Value, cwd: &PathRef) -> TestResult {
       output.extend(panic_output);
       TestResult::Failed { output }
     }
-    TestResult::Passed | TestResult::Ignored | TestResult::Steps(_) => result,
+    TestResult::Passed | TestResult::Ignored | TestResult::SubTests(_) => {
+      result
+    }
   }
 }
 
