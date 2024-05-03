@@ -333,7 +333,6 @@ impl LanguageServer {
           false
         });
       if lockfile_changed {
-        inner.refresh_config_tree().await;
         inner.refresh_resolver().await;
         inner.refresh_documents_config().await;
       } else {
