@@ -37,6 +37,7 @@ pub fn op_webgpu_surface_create(
   }
 
   let (win_handle, display_handle) = raw_window(system, p1, p2)?;
+  // SAFETY: see above comment
   let surface = unsafe {
     instance.instance_create_surface(display_handle, win_handle, None)?
   };

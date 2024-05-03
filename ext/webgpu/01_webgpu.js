@@ -299,7 +299,6 @@ class GPUValidationError extends GPUError {
     this[_message] = message;
   }
 }
-const GPUValidationErrorPrototype = GPUValidationError.prototype;
 
 class GPUOutOfMemoryError extends GPUError {
   name = "GPUOutOfMemoryError";
@@ -312,7 +311,6 @@ class GPUOutOfMemoryError extends GPUError {
     this[_message] = message;
   }
 }
-const GPUOutOfMemoryErrorPrototype = GPUOutOfMemoryError.prototype;
 
 class GPUInternalError extends GPUError {
   name = "GPUInternalError";
@@ -321,7 +319,6 @@ class GPUInternalError extends GPUError {
     this[webidl.brand] = webidl.brand;
   }
 }
-const GPUInternalErrorPrototype = GPUInternalError.prototype;
 
 class GPUUncapturedErrorEvent extends Event {
   #error;
@@ -998,7 +995,7 @@ class InnerGPUDevice {
       ({ filter }) => filter === error.type,
     );
     if (scope) {
-      scope.errors.push(constructedError);
+      ArrayPrototypePush(constructedError);
     } else {
       this.device.dispatchEvent(
         new GPUUncapturedErrorEvent("uncapturederror", {
@@ -1311,7 +1308,6 @@ class GPUDevice extends EventTarget {
       } else {
         // deno-lint-ignore prefer-primordials
         const rid = assertResource(resource.buffer, prefix, context);
-        // deno-lint-ignore prefer-primordials
         return {
           binding: entry.binding,
           kind: "GPUBufferBinding",
