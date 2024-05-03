@@ -1719,7 +1719,7 @@ declare class GPUUncapturedErrorEvent extends EventTarget {
  * @category GPU
  * @tags unstable
  */
-interface GPUUncapturedErrorEventInit extends EventInit {
+declare interface GPUUncapturedErrorEventInit extends EventInit {
   error: GPUError;
 }
 
