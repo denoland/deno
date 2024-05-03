@@ -575,11 +575,7 @@ fn discover_npmrc(
       }
     };
 
-    Ok(if let Some(source) = maybe_source {
-      Some((source, path))
-    } else {
-      None
-    })
+    Ok(maybe_source.map(|source| (source, path)))
   }
 
   fn try_to_parse_npmrc(
@@ -592,7 +588,7 @@ fn discover_npmrc(
     let resolved = npmrc
       .as_resolved(npm_registry_url())
       .context("Failed to resolve .npmrc options")?;
-    return Ok(Arc::new(resolved));
+    Ok(Arc::new(resolved))
   }
 
   if let Some(package_json_path) = maybe_package_json_path {
