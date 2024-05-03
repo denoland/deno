@@ -3094,7 +3094,7 @@ async fn test_private_npm_registry() {
   let client = reqwest::Client::new();
 
   let url =
-    Url::parse("http://127.0.0.1:4252/npm/registry/@denotest/bin/0.5.0")
+    Url::parse("http://127.0.0.1:4252/private_registry_1/@denotest/bin/0.5.0")
       .unwrap();
 
   let req = reqwest::Request::new(reqwest::Method::GET, url.clone());
