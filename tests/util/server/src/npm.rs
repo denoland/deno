@@ -16,6 +16,7 @@ use tar::Builder;
 use crate::testdata_path;
 
 pub const DENOTEST_SCOPE_NAME: &str = "@denotest";
+pub const DENOTEST2_SCOPE_NAME: &str = "@denotest2";
 
 pub static PUBLIC_TEST_NPM_REGISTRY: Lazy<TestNpmRegistry> = Lazy::new(|| {
   TestNpmRegistry::new(
@@ -121,16 +122,33 @@ impl TestNpmRegistry {
     uri_path.strip_prefix(&self.path)
   }
 
-  pub fn strip_denotest_prefix_from_uri_path<'s>(
+  pub fn get_test_scope_and_package_name_with_path_from_uri_path<'s>(
     &self,
     uri_path: &'s str,
-  ) -> Option<&'s str> {
+  ) -> Option<(&'s str, &'s str)> {
     let prefix1 = format!("{}{}/", self.path, DENOTEST_SCOPE_NAME);
     let prefix2 = format!("{}{}%2f", self.path, DENOTEST_SCOPE_NAME);
 
-    uri_path
+    let maybe_package_name_with_path = uri_path
       .strip_prefix(&prefix1)
-      .or_else(|| uri_path.strip_prefix(&prefix2))
+      .or_else(|| uri_path.strip_prefix(&prefix2));
+
+    if let Some(package_name_with_path) = maybe_package_name_with_path {
+      return Some((DENOTEST_SCOPE_NAME, package_name_with_path));
+    }
+
+    let prefix1 = format!("{}{}/", self.path, DENOTEST2_SCOPE_NAME);
+    let prefix2 = format!("{}{}%2f", self.path, DENOTEST2_SCOPE_NAME);
+
+    let maybe_package_name_with_path = uri_path
+      .strip_prefix(&prefix1)
+      .or_else(|| uri_path.strip_prefix(&prefix2));
+
+    if let Some(package_name_with_path) = maybe_package_name_with_path {
+      return Some((DENOTEST2_SCOPE_NAME, package_name_with_path));
+    }
+
+    None
   }
 
   pub fn uri_path_starts_with_registry_path(&self, uri_path: &str) -> bool {
