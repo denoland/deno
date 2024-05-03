@@ -2,13 +2,13 @@
   "tests": {
     "message_port_removelistener": {
       "args": "run message_port_removelistener.mjs",
-      "output": "message_port_removelistener.mjs.out",
+      "output": "message_port_removelistener.out",
       // Note: successful exit asserts that the test passed
       "exitCode": 0
     },
     "message_port_unref": {
       "args": "run --allow-env --allow-read message_port_unref.mjs",
-      "output": "message_port_unref.mjs.out",
+      "output": "message_port_unref.out",
       "exitCode": 0
     },
     "parent_port_unref": {
