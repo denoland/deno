@@ -1026,7 +1026,7 @@ function bootstrapWorkerRuntime(
         runningOnMainThread: false,
         argv0,
         workerId,
-        workerMetadata,
+        maybeWorkerMetadata: workerMetadata,
         nodeDebug: Deno.env.get("NODE_DEBUG"),
       });
     }
