@@ -5866,6 +5866,35 @@ mod tests {
     );
   }
 
+  #[test]
+  fn test_classification_to_semantic_tokens_multiline_tokens() {
+    let line_index = Arc::new(LineIndex::new("  to\nken  \n"));
+    let classifications = Classifications {
+      spans: vec![2, 6, 2057],
+    };
+    let semantic_tokens =
+      classifications.to_semantic_tokens(line_index).unwrap();
+    assert_eq!(
+      &semantic_tokens.data,
+      &[
+        lsp::SemanticToken {
+          delta_line: 0,
+          delta_start: 2,
+          length: 3,
+          token_type: 7,
+          token_modifiers_bitset: 9,
+        },
+        lsp::SemanticToken {
+          delta_line: 1,
+          delta_start: 0,
+          length: 3,
+          token_type: 7,
+          token_modifiers_bitset: 9,
+        },
+      ]
+    );
+  }
+
   #[tokio::test]
   async fn test_get_edits_for_file_rename() {
     let temp_dir = TempDir::new();
