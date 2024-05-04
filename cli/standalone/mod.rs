@@ -43,7 +43,6 @@ use deno_core::ModuleSpecifier;
 use deno_core::ModuleType;
 use deno_core::RequestedModuleType;
 use deno_core::ResolutionKind;
-use deno_graph::ModuleGraph;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::analyze::NodeCodeTranslator;
 use deno_runtime::deno_node::NodeResolutionMode;
@@ -282,7 +281,6 @@ struct StandaloneModuleLoaderFactory {
 impl ModuleLoaderFactory for StandaloneModuleLoaderFactory {
   fn create_for_main(
     &self,
-    _module_graph: Arc<ModuleGraph>,
     root_permissions: PermissionsContainer,
     dynamic_permissions: PermissionsContainer,
   ) -> ModuleLoaderAndSourceMapGetter {
@@ -597,8 +595,6 @@ pub async fn run(
     .create_main_worker(
       WorkerExecutionMode::Run,
       main_module.clone(),
-      // todo(THIS PR): remove this
-      Arc::new(ModuleGraph::new(deno_graph::GraphKind::All)),
       permissions,
     )
     .await?;

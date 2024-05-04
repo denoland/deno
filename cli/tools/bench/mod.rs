@@ -31,7 +31,6 @@ use deno_core::unsync::spawn_blocking;
 use deno_core::v8;
 use deno_core::ModuleSpecifier;
 use deno_core::PollEventLoopOptions;
-use deno_graph::ModuleGraph;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::tokio_util::create_and_run_current_thread;
@@ -150,7 +149,6 @@ async fn bench_specifier(
   worker_factory: Arc<CliMainWorkerFactory>,
   permissions: Permissions,
   specifier: ModuleSpecifier,
-  main_module_graph: Arc<ModuleGraph>,
   sender: UnboundedSender<BenchEvent>,
   filter: TestFilter,
 ) -> Result<(), AnyError> {
@@ -158,7 +156,6 @@ async fn bench_specifier(
     worker_factory,
     permissions,
     specifier.clone(),
-    main_module_graph,
     &sender,
     filter,
   )
@@ -184,7 +181,6 @@ async fn bench_specifier_inner(
   worker_factory: Arc<CliMainWorkerFactory>,
   permissions: Permissions,
   specifier: ModuleSpecifier,
-  main_module_graph: Arc<ModuleGraph>,
   sender: &UnboundedSender<BenchEvent>,
   filter: TestFilter,
 ) -> Result<(), AnyError> {
@@ -192,7 +188,6 @@ async fn bench_specifier_inner(
     .create_custom_worker(
       WorkerExecutionMode::Bench,
       specifier.clone(),
-      main_module_graph,
       PermissionsContainer::new(permissions),
       vec![ops::bench::deno_bench::init_ops(sender.clone())],
       Default::default(),
@@ -273,7 +268,6 @@ async fn bench_specifiers(
   worker_factory: Arc<CliMainWorkerFactory>,
   permissions: &Permissions,
   specifiers: Vec<ModuleSpecifier>,
-  main_module_graph: Arc<ModuleGraph>,
   options: BenchSpecifierOptions,
 ) -> Result<(), AnyError> {
   let (sender, mut receiver) = unbounded_channel::<BenchEvent>();
@@ -285,13 +279,11 @@ async fn bench_specifiers(
     let permissions = permissions.clone();
     let sender = sender.clone();
     let options = option_for_handles.clone();
-    let main_module_graph = main_module_graph.clone();
     spawn_blocking(move || {
       let future = bench_specifier(
         worker_factory,
         permissions,
         specifier,
-        main_module_graph,
         sender,
         options.filter,
       );
@@ -434,9 +426,8 @@ pub async fn run_benchmarks(
     return Err(generic_error("No bench modules found"));
   }
 
-  let mut main_graph_preparer =
-    factory.create_main_module_graph_preparer().await?;
-  main_graph_preparer.check_specifiers(&specifiers).await?;
+  let main_graph_container = factory.main_module_graph_container().await?;
+  main_graph_container.check_specifiers(&specifiers).await?;
 
   if bench_options.no_run {
     return Ok(());
@@ -449,7 +440,6 @@ pub async fn run_benchmarks(
     worker_factory,
     &permissions,
     specifiers,
-    Arc::new(main_graph_preparer.into_graph()),
     BenchSpecifierOptions {
       filter: TestFilter::from_flag(&bench_options.filter),
       json: bench_options.json,
@@ -545,9 +535,11 @@ pub async fn run_benchmarks_with_watch(
         .filter(|specifier| bench_modules_to_reload.contains(specifier))
         .collect::<Vec<ModuleSpecifier>>();
 
-        let mut main_graph_preparer =
-          factory.create_main_module_graph_preparer().await?;
-        main_graph_preparer.check_specifiers(&specifiers).await?;
+        factory
+          .main_module_graph_container()
+          .await?
+          .check_specifiers(&specifiers)
+          .await?;
 
         if bench_options.no_run {
           return Ok(());
@@ -558,7 +550,6 @@ pub async fn run_benchmarks_with_watch(
           worker_factory,
           &permissions,
           specifiers,
-          Arc::new(main_graph_preparer.into_graph()),
           BenchSpecifierOptions {
             filter: TestFilter::from_flag(&bench_options.filter),
             json: bench_options.json,

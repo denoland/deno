@@ -13,7 +13,6 @@ use deno_core::error::AnyError;
 use deno_core::futures::StreamExt;
 use deno_core::serde_json;
 use deno_core::unsync::spawn_blocking;
-use deno_graph::ModuleGraph;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::WorkerExecutionMode;
@@ -174,7 +173,6 @@ pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
     .create_custom_worker(
       WorkerExecutionMode::Repl,
       main_module.clone(),
-      Arc::new(ModuleGraph::new(cli_options.graph_kind())),
       permissions,
       vec![crate::ops::testing::deno_test::init_ops(test_event_sender)],
       Default::default(),

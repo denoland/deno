@@ -1,23 +1,11 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::args::jsr_url;
-use crate::args::CliOptions;
-use crate::args::DenoSubcommand;
-use crate::args::TsTypeLib;
-use crate::cache::CodeCache;
-use crate::cache::ModuleInfoCache;
-use crate::cache::ParsedSourceCache;
-use crate::emit::Emitter;
-use crate::module_load_preparer::ModuleLoadPreparer;
-use crate::node;
-use crate::resolver::CliGraphResolver;
-use crate::resolver::CliNodeResolver;
-use crate::resolver::ModuleCodeStringSource;
-use crate::resolver::NpmModuleLoader;
-use crate::util::text_encoding::code_without_source_map;
-use crate::util::text_encoding::source_map_from_code;
-use crate::worker::ModuleLoaderAndSourceMapGetter;
-use crate::worker::ModuleLoaderFactory;
+use std::borrow::Cow;
+use std::cell::RefCell;
+use std::pin::Pin;
+use std::rc::Rc;
+use std::str;
+use std::sync::Arc;
 
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
@@ -28,6 +16,7 @@ use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures::future::FutureExt;
 use deno_core::futures::Future;
+use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url;
 use deno_core::ModuleCodeString;
 use deno_core::ModuleLoader;
@@ -46,20 +35,138 @@ use deno_graph::JsonModule;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_graph::Resolution;
+use deno_lockfile::Lockfile;
 use deno_runtime::code_cache;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::fs_util::code_timestamp;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
-use std::borrow::Cow;
-use std::pin::Pin;
-use std::rc::Rc;
-use std::str;
-use std::sync::Arc;
 
-use super::module_graph_container::ModuleGraphContainer;
-use super::module_graph_container::ModuleGraphUpdatePermit;
-use super::module_graph_container::WorkerModuleGraphContainer;
+use crate::args::jsr_url;
+use crate::args::CliOptions;
+use crate::args::DenoSubcommand;
+use crate::args::TsTypeLib;
+use crate::cache::CodeCache;
+use crate::cache::ModuleInfoCache;
+use crate::cache::ParsedSourceCache;
+use crate::emit::Emitter;
+use crate::graph_container::MainModuleGraphContainer;
+use crate::graph_container::ModuleGraphContainer;
+use crate::graph_container::ModuleGraphUpdatePermit;
+use crate::graph_util::graph_lock_or_exit;
+use crate::graph_util::CreateGraphOptions;
+use crate::graph_util::ModuleGraphBuilder;
+use crate::node;
+use crate::resolver::CliGraphResolver;
+use crate::resolver::CliNodeResolver;
+use crate::resolver::ModuleCodeStringSource;
+use crate::resolver::NpmModuleLoader;
+use crate::tools::check;
+use crate::tools::check::TypeChecker;
+use crate::util::progress_bar::ProgressBar;
+use crate::util::text_encoding::code_without_source_map;
+use crate::util::text_encoding::source_map_from_code;
+use crate::worker::ModuleLoaderAndSourceMapGetter;
+use crate::worker::ModuleLoaderFactory;
+
+pub struct ModuleLoadPreparer {
+  options: Arc<CliOptions>,
+  lockfile: Option<Arc<Mutex<Lockfile>>>,
+  module_graph_builder: Arc<ModuleGraphBuilder>,
+  progress_bar: ProgressBar,
+  type_checker: Arc<TypeChecker>,
+}
+
+impl ModuleLoadPreparer {
+  #[allow(clippy::too_many_arguments)]
+  pub fn new(
+    options: Arc<CliOptions>,
+    lockfile: Option<Arc<Mutex<Lockfile>>>,
+    module_graph_builder: Arc<ModuleGraphBuilder>,
+    progress_bar: ProgressBar,
+    type_checker: Arc<TypeChecker>,
+  ) -> Self {
+    Self {
+      options,
+      lockfile,
+      module_graph_builder,
+      progress_bar,
+      type_checker,
+    }
+  }
+
+  /// This method must be called for a module or a static importer of that
+  /// module before attempting to `load()` it from a `JsRuntime`. It will
+  /// populate the graph data in memory with the necessary source code, write
+  /// emits where necessary or report any module graph / type checking errors.
+  #[allow(clippy::too_many_arguments)]
+  pub async fn prepare_module_load(
+    &self,
+    graph: &mut ModuleGraph,
+    roots: &[ModuleSpecifier],
+    is_dynamic: bool,
+    lib: TsTypeLib,
+    permissions: PermissionsContainer,
+  ) -> Result<(), AnyError> {
+    log::debug!("Preparing module load.");
+    let _pb_clear_guard = self.progress_bar.clear_guard();
+
+    let mut cache = self.module_graph_builder.create_fetch_cacher(permissions);
+    log::debug!("Building module graph.");
+    let has_type_checked = !graph.roots.is_empty();
+
+    self
+      .module_graph_builder
+      .build_graph_with_npm_resolution(
+        graph,
+        CreateGraphOptions {
+          is_dynamic,
+          graph_kind: graph.graph_kind(),
+          roots: roots.to_vec(),
+          loader: Some(&mut cache),
+        },
+      )
+      .await?;
+
+    self.module_graph_builder.graph_roots_valid(graph, roots)?;
+
+    // If there is a lockfile...
+    if let Some(lockfile) = &self.lockfile {
+      let mut lockfile = lockfile.lock();
+      // validate the integrity of all the modules
+      graph_lock_or_exit(graph, &mut lockfile);
+      // update it with anything new
+      lockfile.write().context("Failed writing lockfile.")?;
+    }
+
+    drop(_pb_clear_guard);
+
+    // type check if necessary
+    if self.options.type_check_mode().is_true() && !has_type_checked {
+      self
+        .type_checker
+        .check(
+          // todo(perf): since this is only done the first time the graph is
+          // created, we could avoid the clone of the graph here by providing
+          // the actual graph on the first run and then getting the Arc<ModuleGraph>
+          // back from the return value.
+          graph.clone(),
+          check::CheckOptions {
+            build_fast_check_graph: true,
+            lib,
+            log_ignored_options: false,
+            reload: self.options.reload_flag(),
+            type_check_mode: self.options.type_check_mode(),
+          },
+        )
+        .await?;
+    }
+
+    log::debug!("Prepared module load.");
+
+    Ok(())
+  }
+}
 
 struct SharedCliModuleLoaderState {
   graph_kind: GraphKind,
@@ -69,12 +176,13 @@ struct SharedCliModuleLoaderState {
   is_repl: bool,
   code_cache: Option<Arc<CodeCache>>,
   emitter: Arc<Emitter>,
-  resolver: Arc<CliGraphResolver>,
+  main_module_graph_container: Arc<MainModuleGraphContainer>,
   module_info_cache: Arc<ModuleInfoCache>,
   module_load_preparer: Arc<ModuleLoadPreparer>,
   node_resolver: Arc<CliNodeResolver>,
   npm_module_loader: NpmModuleLoader,
   parsed_source_cache: Arc<ParsedSourceCache>,
+  resolver: Arc<CliGraphResolver>,
 }
 
 pub struct CliModuleLoaderFactory {
@@ -87,6 +195,7 @@ impl CliModuleLoaderFactory {
     options: &CliOptions,
     code_cache: Option<Arc<CodeCache>>,
     emitter: Arc<Emitter>,
+    main_module_graph_container: Arc<MainModuleGraphContainer>,
     module_info_cache: Arc<ModuleInfoCache>,
     module_load_preparer: Arc<ModuleLoadPreparer>,
     node_resolver: Arc<CliNodeResolver>,
@@ -106,6 +215,7 @@ impl CliModuleLoaderFactory {
         ),
         code_cache,
         emitter,
+        main_module_graph_container,
         module_info_cache,
         module_load_preparer,
         node_resolver,
@@ -116,9 +226,9 @@ impl CliModuleLoaderFactory {
     }
   }
 
-  fn create_with_lib(
+  fn create_with_lib<TGraphContainer: ModuleGraphContainer>(
     &self,
-    module_graph: Arc<ModuleGraph>,
+    graph_container: TGraphContainer,
     lib: TsTypeLib,
     root_permissions: PermissionsContainer,
     dynamic_permissions: PermissionsContainer,
@@ -127,7 +237,7 @@ impl CliModuleLoaderFactory {
       lib,
       root_permissions,
       dynamic_permissions,
-      graph_container: WorkerModuleGraphContainer::new(module_graph),
+      graph_container,
       emitter: self.shared.emitter.clone(),
       parsed_source_cache: self.shared.parsed_source_cache.clone(),
       shared: self.shared.clone(),
@@ -142,12 +252,11 @@ impl CliModuleLoaderFactory {
 impl ModuleLoaderFactory for CliModuleLoaderFactory {
   fn create_for_main(
     &self,
-    starting_module_graph: Arc<ModuleGraph>,
     root_permissions: PermissionsContainer,
     dynamic_permissions: PermissionsContainer,
   ) -> ModuleLoaderAndSourceMapGetter {
     self.create_with_lib(
-      starting_module_graph,
+      (*self.shared.main_module_graph_container).clone(),
       self.shared.lib_window,
       root_permissions,
       dynamic_permissions,
@@ -161,7 +270,9 @@ impl ModuleLoaderFactory for CliModuleLoaderFactory {
   ) -> ModuleLoaderAndSourceMapGetter {
     self.create_with_lib(
       // create a fresh module graph for the worker
-      Arc::new(ModuleGraph::new(self.shared.graph_kind)),
+      WorkerModuleGraphContainer::new(Arc::new(ModuleGraph::new(
+        self.shared.graph_kind,
+      ))),
       self.shared.lib_worker,
       root_permissions,
       dynamic_permissions,
@@ -549,7 +660,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     _maybe_referrer: Option<String>,
     is_dynamic: bool,
   ) -> Pin<Box<dyn Future<Output = Result<(), AnyError>>>> {
-    if self.shared.node_resolver.in_npm_package(&specifier) {
+    if self.shared.node_resolver.in_npm_package(specifier) {
       return Box::pin(deno_core::futures::future::ready(Ok(())));
     }
 
@@ -647,5 +758,56 @@ impl<TGraphContainer: ModuleGraphContainer> SourceMapGetter
     } else {
       Some(lines[line_number].to_string())
     }
+  }
+}
+
+/// Holds the `ModuleGraph` in workers.
+#[derive(Clone)]
+struct WorkerModuleGraphContainer {
+  // Allow only one request to update the graph data at a time,
+  // but allow other requests to read from it at any time even
+  // while another request is updating the data.
+  update_queue: Rc<deno_core::unsync::TaskQueue>,
+  inner: Rc<RefCell<Arc<ModuleGraph>>>,
+}
+
+impl WorkerModuleGraphContainer {
+  pub fn new(module_graph: Arc<ModuleGraph>) -> Self {
+    Self {
+      update_queue: Default::default(),
+      inner: Rc::new(RefCell::new(module_graph)),
+    }
+  }
+}
+
+impl ModuleGraphContainer for WorkerModuleGraphContainer {
+  async fn acquire_update_permit(&self) -> impl ModuleGraphUpdatePermit {
+    let permit = self.update_queue.acquire().await;
+    WorkerModuleGraphUpdatePermit {
+      permit,
+      inner: self.inner.clone(),
+      graph: (**self.inner.borrow()).clone(),
+    }
+  }
+
+  fn graph(&self) -> Arc<ModuleGraph> {
+    self.inner.borrow().clone()
+  }
+}
+
+struct WorkerModuleGraphUpdatePermit {
+  permit: deno_core::unsync::TaskQueuePermit,
+  inner: Rc<RefCell<Arc<ModuleGraph>>>,
+  graph: ModuleGraph,
+}
+
+impl ModuleGraphUpdatePermit for WorkerModuleGraphUpdatePermit {
+  fn graph_mut(&mut self) -> &mut ModuleGraph {
+    &mut self.graph
+  }
+
+  fn commit(self) {
+    *self.inner.borrow_mut() = Arc::new(self.graph);
+    drop(self.permit); // explicit drop for clarity
   }
 }

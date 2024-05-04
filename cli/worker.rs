@@ -22,7 +22,6 @@ use deno_core::ModuleLoader;
 use deno_core::PollEventLoopOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::SourceMapGetter;
-use deno_graph::ModuleGraph;
 use deno_lockfile::Lockfile;
 use deno_runtime::code_cache;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
@@ -67,7 +66,6 @@ pub struct ModuleLoaderAndSourceMapGetter {
 pub trait ModuleLoaderFactory: Send + Sync {
   fn create_for_main(
     &self,
-    main_module_graph: Arc<ModuleGraph>,
     root_permissions: PermissionsContainer,
     dynamic_permissions: PermissionsContainer,
   ) -> ModuleLoaderAndSourceMapGetter;
@@ -459,14 +457,12 @@ impl CliMainWorkerFactory {
     &self,
     mode: WorkerExecutionMode,
     main_module: ModuleSpecifier,
-    main_module_graph: Arc<ModuleGraph>,
     permissions: PermissionsContainer,
   ) -> Result<CliMainWorker, AnyError> {
     self
       .create_custom_worker(
         mode,
         main_module,
-        main_module_graph,
         permissions,
         vec![],
         Default::default(),
@@ -478,7 +474,6 @@ impl CliMainWorkerFactory {
     &self,
     mode: WorkerExecutionMode,
     main_module: ModuleSpecifier,
-    main_module_graph: Arc<ModuleGraph>,
     permissions: PermissionsContainer,
     custom_extensions: Vec<Extension>,
     stdio: deno_runtime::deno_io::Stdio,
@@ -559,11 +554,9 @@ impl CliMainWorkerFactory {
     let ModuleLoaderAndSourceMapGetter {
       module_loader,
       source_map_getter,
-    } = shared.module_loader_factory.create_for_main(
-      main_module_graph,
-      PermissionsContainer::allow_all(),
-      permissions.clone(),
-    );
+    } = shared
+      .module_loader_factory
+      .create_for_main(PermissionsContainer::allow_all(), permissions.clone());
     let maybe_inspector_server = shared.maybe_inspector_server.clone();
 
     let create_web_worker_cb =

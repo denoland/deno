@@ -1,10 +1,8 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::io::Read;
-use std::sync::Arc;
 
 use deno_core::error::AnyError;
-use deno_graph::ModuleGraph;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::WorkerExecutionMode;
@@ -71,12 +69,7 @@ To grant permissions, set them before the script argument. For example:
   )?);
   let worker_factory = factory.create_cli_main_worker_factory().await?;
   let mut worker = worker_factory
-    .create_main_worker(
-      mode,
-      main_module,
-      Arc::new(ModuleGraph::new(cli_options.graph_kind())),
-      permissions,
-    )
+    .create_main_worker(mode, main_module, permissions)
     .await?;
 
   let exit_code = worker.run().await?;
@@ -106,12 +99,7 @@ pub async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
   });
 
   let mut worker = worker_factory
-    .create_main_worker(
-      WorkerExecutionMode::Run,
-      main_module,
-      Arc::new(ModuleGraph::new(cli_options.graph_kind())),
-      permissions,
-    )
+    .create_main_worker(WorkerExecutionMode::Run, main_module, permissions)
     .await?;
   let exit_code = worker.run().await?;
   Ok(exit_code)
@@ -149,12 +137,7 @@ async fn run_with_watch(
         let mut worker = factory
           .create_cli_main_worker_factory()
           .await?
-          .create_main_worker(
-            mode,
-            main_module,
-            Arc::new(ModuleGraph::new(cli_options.graph_kind())),
-            permissions,
-          )
+          .create_main_worker(mode, main_module, permissions)
           .await?;
 
         if watch_flags.hmr {
@@ -203,12 +186,7 @@ pub async fn eval_command(
   )?);
   let worker_factory = factory.create_cli_main_worker_factory().await?;
   let mut worker = worker_factory
-    .create_main_worker(
-      WorkerExecutionMode::Eval,
-      main_module,
-      Arc::new(ModuleGraph::new(cli_options.graph_kind())),
-      permissions,
-    )
+    .create_main_worker(WorkerExecutionMode::Eval, main_module, permissions)
     .await?;
   let exit_code = worker.run().await?;
   Ok(exit_code)

@@ -268,9 +268,9 @@ pub async fn install_command(
 
   // ensure the module is cached
   let factory = CliFactory::from_flags(flags.clone())?;
-  let mut module_graph_preparer =
-    factory.create_main_module_graph_preparer().await?;
-  module_graph_preparer
+  factory
+    .main_module_graph_container()
+    .await?
     .load_and_type_check_files(&[install_flags_global.module_url.clone()])
     .await?;
 

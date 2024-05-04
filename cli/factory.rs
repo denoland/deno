@@ -21,12 +21,13 @@ use crate::cache::NodeAnalysisCache;
 use crate::cache::ParsedSourceCache;
 use crate::emit::Emitter;
 use crate::file_fetcher::FileFetcher;
+use crate::graph_container::MainModuleGraphContainer;
 use crate::graph_util::FileWatcherReporter;
 use crate::graph_util::ModuleGraphBuilder;
 use crate::graph_util::ModuleGraphCreator;
 use crate::http_util::HttpClient;
-use crate::module_load_preparer::MainModuleGraphPreparer;
-use crate::module_load_preparer::ModuleLoadPreparer;
+use crate::module_loader::CliModuleLoaderFactory;
+use crate::module_loader::ModuleLoadPreparer;
 use crate::node::CliCjsCodeAnalyzer;
 use crate::node::CliNodeCodeTranslator;
 use crate::npm::create_cli_npm_resolver;
@@ -52,7 +53,6 @@ use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 use crate::worker::CliMainWorkerFactory;
 use crate::worker::CliMainWorkerOptions;
-use crate::workers::CliModuleLoaderFactory;
 use std::path::PathBuf;
 
 use deno_core::error::AnyError;
@@ -156,6 +156,7 @@ struct CliFactoryServices {
   emit_cache: Deferred<EmitCache>,
   emitter: Deferred<Arc<Emitter>>,
   fs: Deferred<Arc<dyn deno_fs::FileSystem>>,
+  main_graph_container: Deferred<Arc<MainModuleGraphContainer>>,
   lockfile: Deferred<Option<Arc<Mutex<Lockfile>>>>,
   maybe_import_map: Deferred<Option<Arc<ImportMap>>>,
   maybe_inspector_server: Deferred<Option<Arc<InspectorServer>>>,
@@ -670,6 +671,21 @@ impl CliFactory {
       .await
   }
 
+  pub async fn main_module_graph_container(
+    &self,
+  ) -> Result<&Arc<MainModuleGraphContainer>, AnyError> {
+    self
+      .services
+      .main_graph_container
+      .get_or_try_init_async(async {
+        Ok(Arc::new(MainModuleGraphContainer::new(
+          self.cli_options().clone(),
+          self.module_load_preparer().await?.clone(),
+        )))
+      })
+      .await
+  }
+
   pub fn maybe_inspector_server(
     &self,
   ) -> Result<&Option<Arc<InspectorServer>>, AnyError> {
@@ -753,15 +769,6 @@ impl CliFactory {
     ))
   }
 
-  pub async fn create_main_module_graph_preparer(
-    &self,
-  ) -> Result<MainModuleGraphPreparer, AnyError> {
-    Ok(MainModuleGraphPreparer::new(
-      self.options.clone(),
-      self.module_load_preparer().await?.clone(),
-    ))
-  }
-
   pub async fn create_cli_main_worker_factory(
     &self,
   ) -> Result<CliMainWorkerFactory, AnyError> {
@@ -789,6 +796,7 @@ impl CliFactory {
           None
         },
         self.emitter()?.clone(),
+        self.main_module_graph_container().await?.clone(),
         self.module_info_cache()?.clone(),
         self.module_load_preparer().await?.clone(),
         cli_node_resolver.clone(),
