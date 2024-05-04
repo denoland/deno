@@ -60,7 +60,6 @@ pub struct LspResolver {
   redirect_resolver: Option<Arc<RedirectResolver>>,
   graph_imports: Arc<IndexMap<ModuleSpecifier, GraphImport>>,
   config: Arc<Config>,
-  cache: Option<Arc<dyn HttpCache>>,
 }
 
 impl Default for LspResolver {
@@ -74,7 +73,6 @@ impl Default for LspResolver {
       redirect_resolver: None,
       graph_imports: Default::default(),
       config: Default::default(),
-      cache: None,
     }
   }
 }
@@ -112,8 +110,7 @@ impl LspResolver {
       cache.clone(),
       config_data.and_then(|d| d.lockfile.clone()),
     )));
-    let redirect_resolver =
-      Some(Arc::new(RedirectResolver::new(cache.clone())));
+    let redirect_resolver = Some(Arc::new(RedirectResolver::new(cache)));
     let graph_imports = config_data
       .and_then(|d| d.config_file.as_ref())
       .and_then(|cf| cf.to_maybe_imports().ok())
@@ -144,7 +141,6 @@ impl LspResolver {
       redirect_resolver,
       graph_imports,
       config: Arc::new(config.clone()),
-      cache: Some(cache),
     })
   }
 
@@ -166,7 +162,6 @@ impl LspResolver {
       redirect_resolver: self.redirect_resolver.clone(),
       graph_imports: self.graph_imports.clone(),
       config: self.config.clone(),
-      cache: self.cache.clone(),
     })
   }
 
