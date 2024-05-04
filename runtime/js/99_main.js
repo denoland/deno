@@ -859,7 +859,12 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
     ObjectDefineProperty(globalThis, "Deno", core.propReadOnly(finalDenoNs));
 
     if (nodeBootstrap) {
-      nodeBootstrap(hasNodeModulesDir, argv0, /* runningOnMainThread */ true);
+      nodeBootstrap({
+        usesLocalNodeModulesDir: hasNodeModulesDir,
+        runningOnMainThread: true,
+        argv0,
+        nodeDebug: Deno.env.get("NODE_DEBUG"),
+      });
     }
     if (future) {
       delete globalThis.window;
@@ -1016,13 +1021,14 @@ function bootstrapWorkerRuntime(
       : undefined;
 
     if (nodeBootstrap) {
-      nodeBootstrap(
-        hasNodeModulesDir,
+      nodeBootstrap({
+        usesLocalNodeModulesDir: hasNodeModulesDir,
+        runningOnMainThread: false,
         argv0,
-        /* runningOnMainThread */ false,
         workerId,
         workerMetadata,
-      );
+        nodeDebug: Deno.env.get("NODE_DEBUG"),
+      });
     }
 
     if (future) {
@@ -1097,4 +1103,4 @@ bootstrapWorkerRuntime(
   undefined,
   true,
 );
-nodeBootstrap(undefined, undefined, undefined, undefined, undefined, true);
+nodeBootstrap({ warmup: true });
