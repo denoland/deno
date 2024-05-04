@@ -6,6 +6,7 @@ use deno_core::op2;
 use deno_core::OpState;
 use deno_core::ResourceId;
 use std::ffi::c_void;
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 use std::ptr::NonNull;
 
 use crate::surface::WebGpuSurface;
@@ -88,9 +89,11 @@ fn raw_window(
   }
 
   let win_handle = {
-    let mut handle = raw_window_handle::Win32WindowHandle::new();
-    handle.hwnd = window as *mut c_void;
-    handle.hinstance = hinstance as *mut c_void;
+    let mut handle = raw_window_handle::Win32WindowHandle::new(
+      std::num::NonZeroIsize::new(window as isize)
+        .ok_or(type_error("window is null"))?,
+    );
+    handle.hinstance = std::num::NonZeroIsize::new(hinstance as isize);
 
     raw_window_handle::RawWindowHandle::Win32(handle)
   };
