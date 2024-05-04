@@ -1015,7 +1015,7 @@ export class ClientHttp2Stream extends Duplex {
           this.emit("trailers", trailers);
         }
 
-        debugHttp2("tryClose");
+        debugHttp2(">>> tryClose", this[kDenoResponse]?.bodyRid);
         core.tryClose(this[kDenoResponse].bodyRid);
         this.push(null);
         debugHttp2(">>> read null chunk");
@@ -1246,10 +1246,12 @@ function finishCloseStream(stream, code) {
         debugHttp2(
           ">>> finishCloseStream close",
           stream[kDenoRid],
-          stream[kDenoResponse].bodyRid,
+          stream[kDenoResponse]?.bodyRid,
         );
         core.tryClose(stream[kDenoRid]);
-        core.tryClose(stream[kDenoResponse].bodyRid);
+        if (stream[kDenoResponse]) {
+          core.tryClose(stream[kDenoResponse].bodyRid);
+        }
         stream.emit("close");
       });
     });
@@ -1265,7 +1267,9 @@ function finishCloseStream(stream, code) {
         stream[kDenoResponse].bodyRid,
       );
       core.tryClose(stream[kDenoRid]);
-      core.tryClose(stream[kDenoResponse].bodyRid);
+      if (stream[kDenoResponse]) {
+        core.tryClose(stream[kDenoResponse].bodyRid);
+      }
       nextTick(() => {
         stream.emit("close");
       });
@@ -1273,10 +1277,12 @@ function finishCloseStream(stream, code) {
       debugHttp2(
         ">>> finishCloseStream close2 catch",
         stream[kDenoRid],
-        stream[kDenoResponse].bodyRid,
+        stream[kDenoResponse]?.bodyRid,
       );
       core.tryClose(stream[kDenoRid]);
-      core.tryClose(stream[kDenoResponse].bodyRid);
+      if (stream[kDenoResponse]) {
+        core.tryClose(stream[kDenoResponse].bodyRid);
+      }
       nextTick(() => {
         stream.emit("close");
       });
