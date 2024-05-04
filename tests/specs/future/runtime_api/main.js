@@ -74,7 +74,6 @@ const tlsConn = await Deno.connectTls({ port: tlsPort });
 console.log("Deno.TlsConn.prototype.rid is", tlsConn.rid);
 
 tlsConn.close();
-tlsListener.close();
 
 const watcher = Deno.watchFs(".");
 console.log("Deno.FsWatcher.prototype.rid is", watcher.rid);
@@ -92,6 +91,41 @@ try {
   }
 }
 
+// Note: this could throw with a `Deno.errors.NotFound` error if `keyFile` and
+// `certFile` were used.
+const conn1 = await Deno.connectTls({
+  port: tlsPort,
+  certFile: "foo",
+  keyFile: "foo",
+});
+conn1.close();
+console.log("Deno.ConnectTlsOptions.(certFile|keyFile) do nothing");
+
+// Note: this could throw with a `Deno.errors.InvalidData` error if `certChain`
+// and `privateKey` were used.
+const conn2 = await Deno.connectTls({
+  port: tlsPort,
+  certChain: "foo",
+  privateKey: "foo",
+});
+conn2.close();
+console.log("Deno.ConnectTlsOptions.(certChain|privateKey) do nothing");
+
+tlsListener.close();
+
+// Note: this could throw with a `Deno.errors.NotFound` error if `keyFile` and
+// `certFile` were used.
+try {
+  Deno.listenTls({ port: tlsPort, keyFile: "foo", certFile: "foo" });
+} catch (error) {
+  if (
+    error instanceof Deno.errors.InvalidData &&
+    error.message ===
+      "Deno.listenTls requires a key: Error creating TLS certificate"
+  ) {
+    console.log("Deno.ListenTlsOptions.(keyFile|certFile) do nothing");
+  }
+}
 console.log("Deno.customInspect is", Deno.customInspect);
 
 self.close();

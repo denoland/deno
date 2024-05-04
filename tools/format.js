@@ -9,7 +9,7 @@ const cmd = new Deno.Command("deno", {
     "run",
     "-A",
     "--no-config",
-    "npm:dprint@0.45.0",
+    "npm:dprint@0.45.1",
     subcommand,
     "--config=" + configFile,
   ],

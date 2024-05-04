@@ -5,6 +5,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { core, internals } from "ext:core/mod.js";
+import { initializeDebugEnv } from "ext:deno_node/internal/util/debuglog.ts";
 import {
   op_geteuid,
   op_node_process_kill,
@@ -845,6 +846,7 @@ internals.__bootstrapNodeProcess = function (
   argv0Val: string | undefined,
   args: string[],
   denoVersions: Record<string, string>,
+  nodeDebug: string,
   warmup = false,
 ) {
   if (!warmup) {
@@ -890,6 +892,8 @@ internals.__bootstrapNodeProcess = function (
     arch = arch_();
     platform = isWindows ? "win32" : Deno.build.os;
     pid = Deno.pid;
+
+    initializeDebugEnv(nodeDebug);
 
     // @ts-ignore Remove setStartTime and #startTime is not modifiable
     delete process.setStartTime;

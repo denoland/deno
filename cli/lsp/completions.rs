@@ -1,7 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use super::client::Client;
-use super::config::ConfigSnapshot;
+use super::config::Config;
 use super::config::WorkspaceSettings;
 use super::documents::Documents;
 use super::documents::DocumentsFilter;
@@ -148,7 +148,7 @@ fn to_narrow_lsp_range(
 pub async fn get_import_completions(
   specifier: &ModuleSpecifier,
   position: &lsp::Position,
-  config: &ConfigSnapshot,
+  config: &Config,
   client: &Client,
   module_registries: &ModuleRegistry,
   jsr_search_api: &CliJsrSearchApi,

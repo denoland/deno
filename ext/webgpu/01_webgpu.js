@@ -193,7 +193,7 @@ function assertDeviceMatch(
   const resourceDevice = assertDevice(resource, prefix, resourceContext);
   if (resourceDevice.rid !== self.rid) {
     throw new DOMException(
-      `${prefix}: ${resourceContext} belongs to a diffent device than ${selfContext}.`,
+      `${prefix}: ${resourceContext} belongs to a different device than ${selfContext}.`,
       "OperationError",
     );
   }

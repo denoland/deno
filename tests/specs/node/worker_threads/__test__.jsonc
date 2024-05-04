@@ -1,0 +1,40 @@
+{
+  "tests": {
+    "auto_exits": {
+      // Test for https://github.com/denoland/deno/issues/22629
+      // Test for https://github.com/denoland/deno/issues/22934
+      "args": "run --quiet --allow-read auto_exits.mjs",
+      "output": "auto_exits.out",
+      "exitCode": 0
+    },
+    "message_port": {
+      "args": "run --allow-env --allow-read message_port.mjs",
+      "output": "message_port.out",
+      "exitCode": 0
+    },
+    "message_port_transfer": {
+      "args": "run --quiet --allow-read message_port_transfer.mjs",
+      "output": "message_port_transfer.out",
+      "exitCode": 0
+    },
+    "message_port_removelistener": {
+      "args": "run message_port_removelistener.mjs",
+      "output": "message_port_removelistener.out",
+      // Note: successful exit asserts that the test passed
+      "exitCode": 0
+    },
+    "message_port_unref": {
+      "args": "run --allow-env --allow-read message_port_unref.mjs",
+      "output": "message_port_unref.out",
+      "exitCode": 0
+    },
+    "parent_port_unref": {
+      "args": "run --allow-env --allow-read message_port_unref.mjs",
+      "envs": {
+        "PARENT_PORT": "1"
+      },
+      "output": "message_port_unref.out",
+      "exitCode": 0
+    }
+  }
+}

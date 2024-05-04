@@ -1,0 +1,4 @@
+{
+  "args": "check --reload --all http://localhost:4545/subdir/no_js_ext",
+  "output": "check.out"
+}
