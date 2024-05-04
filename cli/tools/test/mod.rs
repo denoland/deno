@@ -1324,20 +1324,7 @@ pub async fn check_specifiers(
   )
   .await?;
 
-  if !inline_files.is_empty() {
-    let specifiers = inline_files
-      .iter()
-      .map(|file| file.specifier.clone())
-      .collect::<Vec<_>>();
-
-    for file in inline_files {
-      file_fetcher.insert_memory_files(file);
-    }
-
-    main_graph_container.check_specifiers(&specifiers).await?;
-  }
-
-  let module_specifiers = specifiers
+  let mut module_specifiers = specifiers
     .into_iter()
     .filter_map(|(specifier, mode)| {
       if mode != TestMode::Documentation {
@@ -1347,6 +1334,15 @@ pub async fn check_specifiers(
       }
     })
     .collect::<Vec<_>>();
+
+  if !inline_files.is_empty() {
+    module_specifiers
+      .extend(inline_files.iter().map(|file| file.specifier.clone()));
+
+    for file in inline_files {
+      file_fetcher.insert_memory_files(file);
+    }
+  }
 
   main_graph_container
     .check_specifiers(&module_specifiers)
