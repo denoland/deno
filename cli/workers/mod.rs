@@ -3,4 +3,5 @@
 mod module_graph_container;
 mod module_loader;
 
+pub use module_graph_container::MainModuleGraphContainer;
 pub use module_loader::CliModuleLoaderFactory;

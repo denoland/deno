@@ -57,91 +57,9 @@ use std::rc::Rc;
 use std::str;
 use std::sync::Arc;
 
+use super::module_graph_container::ModuleGraphContainer;
+use super::module_graph_container::ModuleGraphUpdatePermit;
 use super::module_graph_container::WorkerModuleGraphContainer;
-
-#[derive(Clone)]
-struct PreparedModuleLoader {
-  emitter: Arc<Emitter>,
-  graph_container: Rc<WorkerModuleGraphContainer>,
-  parsed_source_cache: Arc<ParsedSourceCache>,
-}
-
-impl PreparedModuleLoader {
-  pub fn load_prepared_module(
-    &self,
-    specifier: &ModuleSpecifier,
-    maybe_referrer: Option<&ModuleSpecifier>,
-  ) -> Result<ModuleCodeStringSource, AnyError> {
-    if specifier.scheme() == "node" {
-      unreachable!(); // Node built-in modules should be handled internally.
-    }
-
-    let graph = self.graph_container.graph();
-    match graph.get(specifier) {
-      Some(deno_graph::Module::Json(JsonModule {
-        source,
-        media_type,
-        specifier,
-        ..
-      })) => Ok(ModuleCodeStringSource {
-        code: source.clone().into(),
-        found_url: specifier.clone(),
-        media_type: *media_type,
-      }),
-      Some(deno_graph::Module::Js(JsModule {
-        source,
-        media_type,
-        specifier,
-        ..
-      })) => {
-        let code: ModuleCodeString = match media_type {
-          MediaType::JavaScript
-          | MediaType::Unknown
-          | MediaType::Cjs
-          | MediaType::Mjs
-          | MediaType::Json => source.clone().into(),
-          MediaType::Dts | MediaType::Dcts | MediaType::Dmts => {
-            Default::default()
-          }
-          MediaType::TypeScript
-          | MediaType::Mts
-          | MediaType::Cts
-          | MediaType::Jsx
-          | MediaType::Tsx => {
-            // get emit text
-            self
-              .emitter
-              .emit_parsed_source(specifier, *media_type, source)?
-          }
-          MediaType::TsBuildInfo | MediaType::Wasm | MediaType::SourceMap => {
-            panic!("Unexpected media type {media_type} for {specifier}")
-          }
-        };
-
-        // at this point, we no longer need the parsed source in memory, so free it
-        self.parsed_source_cache.free(specifier);
-
-        Ok(ModuleCodeStringSource {
-          code,
-          found_url: specifier.clone(),
-          media_type: *media_type,
-        })
-      }
-      Some(
-        deno_graph::Module::External(_)
-        | deno_graph::Module::Node(_)
-        | deno_graph::Module::Npm(_),
-      )
-      | None => {
-        let mut msg = format!("Loading unprepared module: {specifier}");
-        if let Some(referrer) = maybe_referrer {
-          msg = format!("{}, imported from: {}", msg, referrer.as_str());
-        }
-        Err(anyhow!(msg))
-      }
-    }
-  }
-}
 
 struct SharedCliModuleLoaderState {
   graph_kind: GraphKind,
@@ -205,18 +123,13 @@ impl CliModuleLoaderFactory {
     root_permissions: PermissionsContainer,
     dynamic_permissions: PermissionsContainer,
   ) -> ModuleLoaderAndSourceMapGetter {
-    let graph_container =
-      Rc::new(WorkerModuleGraphContainer::new(module_graph));
     let loader = Rc::new(CliModuleLoader {
       lib,
       root_permissions,
       dynamic_permissions,
-      graph_container: graph_container.clone(),
-      prepared_module_loader: PreparedModuleLoader {
-        emitter: self.shared.emitter.clone(),
-        graph_container,
-        parsed_source_cache: self.shared.parsed_source_cache.clone(),
-      },
+      graph_container: WorkerModuleGraphContainer::new(module_graph),
+      emitter: self.shared.emitter.clone(),
+      parsed_source_cache: self.shared.parsed_source_cache.clone(),
       shared: self.shared.clone(),
     });
     ModuleLoaderAndSourceMapGetter {
@@ -256,7 +169,7 @@ impl ModuleLoaderFactory for CliModuleLoaderFactory {
   }
 }
 
-struct CliModuleLoader {
+struct CliModuleLoader<TGraphContainer: ModuleGraphContainer> {
   lib: TsTypeLib,
   /// The initial set of permissions used to resolve the static imports in the
   /// worker. These are "allow all" for main worker, and parent thread
@@ -266,11 +179,12 @@ struct CliModuleLoader {
   /// "root permissions" for Web Worker.
   dynamic_permissions: PermissionsContainer,
   shared: Arc<SharedCliModuleLoaderState>,
-  graph_container: Rc<WorkerModuleGraphContainer>,
-  prepared_module_loader: PreparedModuleLoader,
+  emitter: Arc<Emitter>,
+  parsed_source_cache: Arc<ParsedSourceCache>,
+  graph_container: TGraphContainer,
 }
 
-impl CliModuleLoader {
+impl<TGraphContainer: ModuleGraphContainer> CliModuleLoader<TGraphContainer> {
   fn load_sync(
     &self,
     specifier: &ModuleSpecifier,
@@ -290,9 +204,7 @@ impl CliModuleLoader {
     {
       result?
     } else {
-      self
-        .prepared_module_loader
-        .load_prepared_module(specifier, maybe_referrer)?
+      self.load_prepared_module(specifier, maybe_referrer)?
     };
     let code = if self.shared.is_inspecting {
       // we need the code with the source map in order for
@@ -508,9 +420,86 @@ impl CliModuleLoader {
       .map(|timestamp| timestamp.to_string())?;
     Ok(Some(timestamp))
   }
+
+  fn load_prepared_module(
+    &self,
+    specifier: &ModuleSpecifier,
+    maybe_referrer: Option<&ModuleSpecifier>,
+  ) -> Result<ModuleCodeStringSource, AnyError> {
+    if specifier.scheme() == "node" {
+      unreachable!(); // Node built-in modules should be handled internally.
+    }
+
+    let graph = self.graph_container.graph();
+    match graph.get(specifier) {
+      Some(deno_graph::Module::Json(JsonModule {
+        source,
+        media_type,
+        specifier,
+        ..
+      })) => Ok(ModuleCodeStringSource {
+        code: source.clone().into(),
+        found_url: specifier.clone(),
+        media_type: *media_type,
+      }),
+      Some(deno_graph::Module::Js(JsModule {
+        source,
+        media_type,
+        specifier,
+        ..
+      })) => {
+        let code: ModuleCodeString = match media_type {
+          MediaType::JavaScript
+          | MediaType::Unknown
+          | MediaType::Cjs
+          | MediaType::Mjs
+          | MediaType::Json => source.clone().into(),
+          MediaType::Dts | MediaType::Dcts | MediaType::Dmts => {
+            Default::default()
+          }
+          MediaType::TypeScript
+          | MediaType::Mts
+          | MediaType::Cts
+          | MediaType::Jsx
+          | MediaType::Tsx => {
+            // get emit text
+            self
+              .emitter
+              .emit_parsed_source(specifier, *media_type, source)?
+          }
+          MediaType::TsBuildInfo | MediaType::Wasm | MediaType::SourceMap => {
+            panic!("Unexpected media type {media_type} for {specifier}")
+          }
+        };
+
+        // at this point, we no longer need the parsed source in memory, so free it
+        self.parsed_source_cache.free(specifier);
+
+        Ok(ModuleCodeStringSource {
+          code,
+          found_url: specifier.clone(),
+          media_type: *media_type,
+        })
+      }
+      Some(
+        deno_graph::Module::External(_)
+        | deno_graph::Module::Node(_)
+        | deno_graph::Module::Npm(_),
+      )
+      | None => {
+        let mut msg = format!("Loading unprepared module: {specifier}");
+        if let Some(referrer) = maybe_referrer {
+          msg = format!("{}, imported from: {}", msg, referrer.as_str());
+        }
+        Err(anyhow!(msg))
+      }
+    }
+  }
 }
 
-impl ModuleLoader for CliModuleLoader {
+impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
+  for CliModuleLoader<TGraphContainer>
+{
   fn resolve(
     &self,
     specifier: &str,
@@ -617,11 +606,13 @@ impl ModuleLoader for CliModuleLoader {
         );
       }
     }
-    async {}.boxed_local()
+    std::future::ready(()).boxed_local()
   }
 }
 
-impl SourceMapGetter for CliModuleLoader {
+impl<TGraphContainer: ModuleGraphContainer> SourceMapGetter
+  for CliModuleLoader<TGraphContainer>
+{
   fn get_source_map(&self, file_name: &str) -> Option<Vec<u8>> {
     let specifier = resolve_url(file_name).ok()?;
     match specifier.scheme() {
@@ -630,10 +621,7 @@ impl SourceMapGetter for CliModuleLoader {
       "wasm" | "file" | "http" | "https" | "data" | "blob" => (),
       _ => return None,
     }
-    let source = self
-      .prepared_module_loader
-      .load_prepared_module(&specifier, None)
-      .ok()?;
+    let source = self.load_prepared_module(&specifier, None).ok()?;
     source_map_from_code(&source.code)
   }
 
