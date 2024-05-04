@@ -26,6 +26,7 @@ pub struct JsrCacheResolver {
   info_by_nv: DashMap<PackageNv, Option<Arc<JsrPackageVersionInfo>>>,
   info_by_name: DashMap<String, Option<Arc<JsrPackageInfo>>>,
   cache: Arc<dyn HttpCache>,
+  lockfile: Option<Arc<Mutex<Lockfile>>>,
 }
 
 impl JsrCacheResolver {
@@ -33,8 +34,22 @@ impl JsrCacheResolver {
     cache: Arc<dyn HttpCache>,
     lockfile: Option<Arc<Mutex<Lockfile>>>,
   ) -> Self {
-    let nv_by_req = DashMap::new();
-    if let Some(lockfile) = lockfile {
+    let resolver = Self {
+      nv_by_req: Default::default(),
+      info_by_nv: Default::default(),
+      info_by_name: Default::default(),
+      cache: cache.clone(),
+      lockfile,
+    };
+    resolver.reset();
+    resolver
+  }
+
+  pub fn reset(&self) {
+    self.nv_by_req.clear();
+    self.info_by_nv.clear();
+    self.info_by_name.clear();
+    if let Some(lockfile) = &self.lockfile {
       for (req_url, nv_url) in &lockfile.lock().content.packages.specifiers {
         let Some(req) = req_url.strip_prefix("jsr:") else {
           continue;
@@ -48,14 +63,8 @@ impl JsrCacheResolver {
         let Ok(nv) = PackageNv::from_str(nv) else {
           continue;
         };
-        nv_by_req.insert(req, Some(nv));
+        self.nv_by_req.insert(req, Some(nv));
       }
-    }
-    Self {
-      nv_by_req,
-      info_by_nv: Default::default(),
-      info_by_name: Default::default(),
-      cache: cache.clone(),
     }
   }
 
@@ -162,12 +171,6 @@ impl JsrCacheResolver {
     let info = read_cached_package_version_info().map(Arc::new);
     self.info_by_nv.insert(nv.clone(), info.clone());
     info
-  }
-
-  pub fn clear_cache(&self) {
-    self.nv_by_req.clear();
-    self.info_by_nv.clear();
-    self.info_by_name.clear();
   }
 }
 
