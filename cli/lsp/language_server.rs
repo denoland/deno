@@ -13,7 +13,6 @@ use deno_core::url;
 use deno_core::ModuleSpecifier;
 use deno_graph::GraphKind;
 use deno_graph::Resolution;
-use deno_lockfile::Lockfile;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_semver::jsr::JsrPackageReqReference;
@@ -90,7 +89,6 @@ use crate::args::CacheSetting;
 use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::cache::DenoDir;
-use crate::cache::FastInsecureHasher;
 use crate::cache::GlobalHttpCache;
 use crate::cache::HttpCache;
 use crate::cache::LocalLspHttpCache;
@@ -318,29 +316,10 @@ impl LanguageServer {
 
       // now get the lock back to update with the new information
       let mut inner = self.0.write().await;
-      let lockfile_changed =
-        inner.config.tree.data_by_scope().iter().any(|(_, data)| {
-          if let Some(lockfile) = &data.lockfile {
-            let lockfile = lockfile.lock();
-            let path = lockfile.filename.clone();
-            if let Ok(new_lockfile) = Lockfile::new(path, false) {
-              return FastInsecureHasher::hash(&*lockfile)
-                != FastInsecureHasher::hash(new_lockfile);
-            } else {
-              return true;
-            }
-          }
-          false
-        });
-      if lockfile_changed {
-        inner.refresh_resolver().await;
-        inner.refresh_documents_config().await;
-      } else {
-        inner.resolver.reset_jsr_resolver();
-        inner.refresh_npm_specifiers().await;
-        inner.project_changed([], false);
-      }
+      inner.resolver.did_cache();
+      inner.refresh_npm_specifiers().await;
       inner.diagnostics_server.invalidate_all();
+      inner.project_changed([], false);
       inner
         .ts_server
         .cleanup_semantic_cache(inner.snapshot())
