@@ -2496,9 +2496,9 @@ pub struct Classifications {
 impl Classifications {
   pub fn to_semantic_tokens(
     &self,
-    asset_or_doc: &AssetOrDocument,
     line_index: Arc<LineIndex>,
   ) -> LspResult<lsp::SemanticTokens> {
+    // https://github.com/microsoft/vscode/blob/1.89.0/extensions/typescript-language-features/src/languageFeatures/semanticTokens.ts#L89-L115
     let token_count = self.spans.len() / 3;
     let mut builder = SemanticTokensBuilder::new();
     for i in 0..token_count {
@@ -2517,25 +2517,24 @@ impl Classifications {
       let start_pos = line_index.position_tsc(offset.into());
       let end_pos = line_index.position_tsc(TextSize::from(offset + length));
 
-      if start_pos.line == end_pos.line
-        && start_pos.character <= end_pos.character
-      {
+      for line in start_pos.line..(end_pos.line + 1) {
+        let start_character = if line == start_pos.line {
+          start_pos.character
+        } else {
+          0
+        };
+        let end_character = if line == end_pos.line {
+          end_pos.character
+        } else {
+          line_index.line_length_utf16(line).into()
+        };
         builder.push(
-          start_pos.line,
-          start_pos.character,
-          end_pos.character - start_pos.character,
+          line,
+          start_character,
+          end_character - start_character,
           token_type,
           token_modifiers,
         );
-      } else {
-        log::error!(
-          "unexpected positions\nspecifier: {}\nopen: {}\nstart_pos: {:?}\nend_pos: {:?}",
-          asset_or_doc.specifier(),
-          asset_or_doc.is_open(),
-          start_pos,
-          end_pos
-        );
-        return Err(LspError::internal_error());
       }
     }
     Ok(builder.build(None))
@@ -5864,6 +5863,35 @@ mod tests {
     assert_eq!(
       change.new_text,
       "import { someLongVariable } from './b.ts'\n"
+    );
+  }
+
+  #[test]
+  fn test_classification_to_semantic_tokens_multiline_tokens() {
+    let line_index = Arc::new(LineIndex::new("  to\nken  \n"));
+    let classifications = Classifications {
+      spans: vec![2, 6, 2057],
+    };
+    let semantic_tokens =
+      classifications.to_semantic_tokens(line_index).unwrap();
+    assert_eq!(
+      &semantic_tokens.data,
+      &[
+        lsp::SemanticToken {
+          delta_line: 0,
+          delta_start: 2,
+          length: 3,
+          token_type: 7,
+          token_modifiers_bitset: 9,
+        },
+        lsp::SemanticToken {
+          delta_line: 1,
+          delta_start: 0,
+          length: 3,
+          token_type: 7,
+          token_modifiers_bitset: 9,
+        },
+      ]
     );
   }
 
