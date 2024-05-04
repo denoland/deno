@@ -994,7 +994,7 @@ class InnerGPUDevice {
       ({ filter }) => filter === error.type,
     );
     if (scope) {
-      ArrayPrototypePush(constructedError);
+      ArrayPrototypePush(scope.errors, constructedError);
     } else {
       this.device.dispatchEvent(
         new GPUUncapturedErrorEvent("uncapturederror", {
