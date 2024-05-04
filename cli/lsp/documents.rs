@@ -32,7 +32,6 @@ use deno_core::parking_lot::Mutex;
 use deno_core::ModuleSpecifier;
 use deno_graph::source::ResolutionMode;
 use deno_graph::Resolution;
-use deno_lockfile::Lockfile;
 use deno_runtime::deno_node;
 use deno_runtime::deno_node::NodeResolution;
 use deno_runtime::deno_node::NodeResolutionMode;
@@ -861,7 +860,6 @@ pub struct Documents {
   /// A resolver that takes into account currently loaded import map and JSX
   /// settings.
   resolver: Arc<LspResolver>,
-  lockfile: Option<Arc<Mutex<Lockfile>>>,
   /// The npm package requirements found in npm specifiers.
   npm_specifier_reqs: Arc<Vec<PackageReq>>,
   /// Gets if any document had a node: specifier such that a @types/node package
@@ -880,7 +878,6 @@ impl Documents {
       open_docs: HashMap::default(),
       file_system_docs: Default::default(),
       resolver: Default::default(),
-      lockfile: None,
       npm_specifier_reqs: Default::default(),
       has_injected_types_node_package: false,
       unstable_sloppy_imports: false,
@@ -1243,7 +1240,6 @@ impl Documents {
     let config_data = config.tree.root_data();
     let config_file = config_data.and_then(|d| d.config_file.as_deref());
     self.resolver = resolver.clone();
-    self.lockfile = config.tree.root_lockfile().cloned();
     self.unstable_sloppy_imports = config_file
       .map(|c| c.has_unstable("sloppy-imports"))
       .unwrap_or(false);
@@ -1341,7 +1337,7 @@ impl Documents {
     }
 
     // fill the reqs from the lockfile
-    if let Some(lockfile) = self.lockfile.as_ref() {
+    if let Some(lockfile) = self.config.tree.root_lockfile() {
       let lockfile = lockfile.lock();
       for key in lockfile.content.packages.specifiers.keys() {
         if let Some(key) = key.strip_prefix("npm:") {
