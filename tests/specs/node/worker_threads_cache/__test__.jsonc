@@ -1,4 +1,5 @@
 {
+  "tempDir": true,
   "args": "run -A main.ts",
-  "out": "main.out"
+  "output": "main.out"
 }

@@ -8,6 +8,6 @@ const i = await import(path.href);
 console.log(i);
 
 if (isMainThread) {
-  const worker = new Worker(new URL("test.mjs", import.meta.url));
+  const worker = new Worker(new URL("main.ts", import.meta.url));
   worker.on("message", (msg) => console.log(msg));
 }
