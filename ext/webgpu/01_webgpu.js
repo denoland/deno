@@ -330,7 +330,7 @@ class GPUUncapturedErrorEvent extends Event {
     const prefix = "Failed to construct 'GPUUncapturedErrorEvent'";
     webidl.requiredArguments(arguments.length, 2, prefix);
     gpuUncapturedErrorEventInitDict = webidl.converters
-      .gpuUncapturedErrorEventInitDict(
+      .GPUUncapturedErrorEventInit(
         gpuUncapturedErrorEventInitDict,
         prefix,
         "Argument 2",
@@ -345,7 +345,6 @@ class GPUUncapturedErrorEvent extends Event {
   }
 }
 const GPUUncapturedErrorEventPrototype = GPUUncapturedErrorEvent.prototype;
-defineEventHandler(GPUUncapturedErrorEvent.prototype, "uncapturederror");
 
 class GPU {
   [webidl.brand] = webidl.brand;
@@ -1816,6 +1815,7 @@ class GPUDevice extends EventTarget {
 }
 GPUObjectBaseMixin("GPUDevice", GPUDevice);
 const GPUDevicePrototype = GPUDevice.prototype;
+defineEventHandler(GPUDevice.prototype, "uncapturederror");
 
 class GPUPipelineError extends DOMException {
   #reason;

@@ -835,7 +835,7 @@ declare interface GPUPipelineBase {
 declare interface GPUProgrammableStage {
   module: GPUShaderModule;
   entryPoint?: string;
-  constants: Record<string, number>;
+  constants?: Record<string, number>;
 }
 
 /**

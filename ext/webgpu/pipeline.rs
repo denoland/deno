@@ -76,7 +76,7 @@ pub enum GPUPipelineLayoutOrGPUAutoLayoutMode {
 pub struct GpuProgrammableStage {
   module: ResourceId,
   entry_point: Option<String>,
-  constants: HashMap<String, f64>,
+  constants: Option<HashMap<String, f64>>,
 }
 
 #[op2]
@@ -113,7 +113,7 @@ pub fn op_webgpu_create_compute_pipeline(
     stage: wgpu_core::pipeline::ProgrammableStageDescriptor {
       module: compute_shader_module_resource.1,
       entry_point: compute.entry_point.map(Cow::from),
-      constants: Cow::Owned(compute.constants),
+      constants: Cow::Owned(compute.constants.unwrap_or_default()),
       zero_initialize_workgroup_memory: true,
     },
   };
@@ -284,8 +284,8 @@ impl<'a> From<GpuVertexBufferLayout>
 #[serde(rename_all = "camelCase")]
 struct GpuVertexState {
   module: ResourceId,
-  entry_point: String,
-  constants: HashMap<String, f64>,
+  entry_point: Option<String>,
+  constants: Option<HashMap<String, f64>>,
   buffers: Vec<Option<GpuVertexBufferLayout>>,
 }
 
@@ -312,8 +312,8 @@ impl From<GpuMultisampleState> for wgpu_types::MultisampleState {
 struct GpuFragmentState {
   targets: Vec<Option<wgpu_types::ColorTargetState>>,
   module: u32,
-  entry_point: String,
-  constants: HashMap<String, f64>,
+  entry_point: Option<String>,
+  constants: Option<HashMap<String, f64>>,
 }
 
 #[derive(Deserialize)]
@@ -364,8 +364,8 @@ pub fn op_webgpu_create_render_pipeline(
     Some(wgpu_core::pipeline::FragmentState {
       stage: wgpu_core::pipeline::ProgrammableStageDescriptor {
         module: fragment_shader_module_resource.1,
-        entry_point: Some(Cow::from(fragment.entry_point)),
-        constants: Cow::Owned(fragment.constants),
+        entry_point: fragment.entry_point.map(Cow::from),
+        constants: Cow::Owned(fragment.constants.unwrap_or_default()),
         // Required to be true for WebGPU
         zero_initialize_workgroup_memory: true,
       },
@@ -389,8 +389,8 @@ pub fn op_webgpu_create_render_pipeline(
     vertex: wgpu_core::pipeline::VertexState {
       stage: wgpu_core::pipeline::ProgrammableStageDescriptor {
         module: vertex_shader_module_resource.1,
-        entry_point: Some(Cow::Owned(args.vertex.entry_point)),
-        constants: Cow::Owned(args.vertex.constants),
+        entry_point: args.vertex.entry_point.map(Cow::Owned),
+        constants: Cow::Owned(args.vertex.constants.unwrap_or_default()),
         // Required to be true for WebGPU
         zero_initialize_workgroup_memory: true,
       },
