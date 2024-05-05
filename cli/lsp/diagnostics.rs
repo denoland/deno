@@ -932,12 +932,6 @@ struct DiagnosticDataStrSpecifier {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct DiagnosticDataRedirect {
-  pub redirect: ModuleSpecifier,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
 struct DiagnosticDataNoLocal {
   pub to: ModuleSpecifier,
   pub message: String,
@@ -970,9 +964,9 @@ pub enum DenoDiagnostic {
   NoCacheNpm(PackageReq, ModuleSpecifier),
   /// A local module was not found on the local file system.
   NoLocal(ModuleSpecifier),
-  /// The specifier resolved to a remote specifier that was redirected to
-  /// another specifier.
-  Redirect {
+  /// The specifier was canonicalized to another, e.g. an extensionless 'sloppy'
+  /// import.
+  NonCanonical {
     from: ModuleSpecifier,
     to: ModuleSpecifier,
   },
@@ -995,7 +989,7 @@ impl DenoDiagnostic {
       Self::NoCacheJsr(_, _) => "no-cache-jsr",
       Self::NoCacheNpm(_, _) => "no-cache-npm",
       Self::NoLocal(_) => "no-local",
-      Self::Redirect { .. } => "redirect",
+      Self::NonCanonical { .. } => "non-canonical",
       Self::ResolutionError(err) => {
         if graph_util::get_resolution_error_bare_node_specifier(err).is_some() {
           "import-node-prefix-missing"
@@ -1121,14 +1115,15 @@ impl DenoDiagnostic {
             ..Default::default()
           }
         }
-        "redirect" => {
+        "non-canonical" => {
           let data = diagnostic
             .data
             .clone()
             .ok_or_else(|| anyhow!("Diagnostic is missing data"))?;
-          let data: DiagnosticDataRedirect = serde_json::from_value(data)?;
+          let data: DiagnosticDataSpecifier = serde_json::from_value(data)?;
           lsp::CodeAction {
-            title: "Update specifier to its redirected specifier.".to_string(),
+            title: "Update specifier to its canonicalized specifier."
+              .to_string(),
             kind: Some(lsp::CodeActionKind::QUICKFIX),
             diagnostics: Some(vec![diagnostic.clone()]),
             edit: Some(lsp::WorkspaceEdit {
@@ -1137,7 +1132,7 @@ impl DenoDiagnostic {
                 vec![lsp::TextEdit {
                   new_text: format!(
                     "\"{}\"",
-                    specifier_text_for_redirected(&data.redirect, specifier)
+                    specifier_text_maybe_relative(&data.specifier, specifier)
                   ),
                   range: diagnostic.range,
                 }],
@@ -1193,7 +1188,7 @@ impl DenoDiagnostic {
         | "no-cache-jsr"
         | "no-cache-npm"
         | "no-attribute-type"
-        | "redirect"
+        | "non-canonical"
         | "import-node-prefix-missing" => true,
         "no-local" => diagnostic.data.is_some(),
         _ => false,
@@ -1244,7 +1239,7 @@ impl DenoDiagnostic {
         });
         (lsp::DiagnosticSeverity::ERROR, no_local_message(specifier, sloppy_resolution), data)
       },
-      Self::Redirect { from, to} => (lsp::DiagnosticSeverity::INFORMATION, format!("The import of \"{from}\" was redirected to \"{to}\"."), Some(json!({ "specifier": from, "redirect": to }))),
+      Self::NonCanonical { from, to} => (lsp::DiagnosticSeverity::WARNING, format!("The import of \"{from}\" was canonicalized to \"{to}\"."), Some(json!({ "specifier": to }))),
       Self::ResolutionError(err) => (
         lsp::DiagnosticSeverity::ERROR,
         enhanced_resolution_error_message(err),
@@ -1266,15 +1261,15 @@ impl DenoDiagnostic {
   }
 }
 
-fn specifier_text_for_redirected(
-  redirect: &lsp::Url,
+fn specifier_text_maybe_relative(
+  specifier: &lsp::Url,
   referrer: &lsp::Url,
 ) -> String {
-  if redirect.scheme() == "file" && referrer.scheme() == "file" {
+  if specifier.scheme() == "file" && referrer.scheme() == "file" {
     // use a relative specifier when it's going to a file url
-    relative_specifier(redirect, referrer)
+    relative_specifier(specifier, referrer)
   } else {
-    redirect.to_string()
+    specifier.to_string()
   }
 }
 
@@ -1299,28 +1294,24 @@ fn diagnose_resolution(
   maybe_assert_type: Option<&str>,
   import_map: Option<&ImportMap>,
 ) -> Vec<DenoDiagnostic> {
-  fn check_redirect_diagnostic(
+  fn check_non_canonical_diagnostic(
     specifier: &ModuleSpecifier,
     doc: &Document,
   ) -> Option<DenoDiagnostic> {
     let doc_specifier = doc.specifier();
-    // If the module was redirected, we want to issue an informational
-    // diagnostic that indicates this. This then allows us to issue a code
-    // action to replace the specifier with the final redirected one.
-    if specifier.scheme() == "jsr" || doc_specifier == specifier {
+    if doc_specifier == specifier || specifier.scheme() != "file" {
       return None;
     }
     // don't bother warning about sloppy import redirects from .js to .d.ts
     // because explaining how to fix this via a diagnostic involves using
     // @deno-types and that's a bit complicated to explain
-    let is_sloppy_import_dts_redirect = doc_specifier.scheme() == "file"
-      && doc.media_type().is_declaration()
+    let is_sloppy_import_to_dts = doc.media_type().is_declaration()
       && !MediaType::from_specifier(specifier).is_declaration();
-    if is_sloppy_import_dts_redirect {
+    if is_sloppy_import_to_dts {
       return None;
     }
 
-    Some(DenoDiagnostic::Redirect {
+    Some(DenoDiagnostic::NonCanonical {
       from: specifier.clone(),
       to: doc_specifier.clone(),
     })
@@ -1341,7 +1332,9 @@ fn diagnose_resolution(
       }
       let managed_npm_resolver = snapshot.resolver.maybe_managed_npm_resolver();
       if let Some(doc) = snapshot.documents.get(specifier) {
-        if let Some(diagnostic) = check_redirect_diagnostic(specifier, &doc) {
+        if let Some(diagnostic) =
+          check_non_canonical_diagnostic(specifier, &doc)
+        {
           diagnostics.push(diagnostic);
         }
         if doc.media_type() == MediaType::Json {
@@ -2018,10 +2011,10 @@ let c: number = "a";
   }
 
   #[test]
-  fn test_specifier_text_for_redirected() {
+  fn test_specifier_text_maybe_relative() {
     #[track_caller]
     fn run_test(specifier: &str, referrer: &str, expected: &str) {
-      let result = specifier_text_for_redirected(
+      let result = specifier_text_maybe_relative(
         &ModuleSpecifier::parse(specifier).unwrap(),
         &ModuleSpecifier::parse(referrer).unwrap(),
       );
