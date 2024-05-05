@@ -485,6 +485,7 @@ async fn fmt_check_all_files_on_each_change_test() {
     wait_contains("error", &mut stderr_lines).await,
     "Found 2 not formatted files in 2 files"
   );
+  wait_contains("Fmt failed.", &mut stderr_lines).await;
 
   // Change content of the file again to be badly formatted
   badly_formatted_original.copy(&badly_formatted_1);
