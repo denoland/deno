@@ -1,0 +1,16 @@
+{
+  "steps": [
+    {
+      "args": "check jsr:@std/http",
+      "output": "http.out"
+    },
+    {
+      "args": "check https://deno.land/x/fresh/src/types.ts",
+      "output": "fresh.out"
+    },
+    {
+      "args": "check jsr:@oak/oak",
+      "output": "oak.out"
+    }
+  ]
+}
