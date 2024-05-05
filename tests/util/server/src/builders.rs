@@ -546,9 +546,10 @@ impl TestCommandBuilder {
       return;
     }
 
-    let args = self.build_args();
+    let cwd = self.build_cwd();
+    let args = self.build_args(&cwd);
     let args = args.iter().map(|s| s.as_str()).collect::<Vec<_>>();
-    let mut envs = self.build_envs();
+    let mut envs = self.build_envs(&cwd);
     if !envs.contains_key("NO_COLOR") {
       // set this by default for pty tests
       envs.insert("NO_COLOR".to_string(), "1".to_string());
@@ -562,11 +563,6 @@ impl TestCommandBuilder {
       }
     }
 
-    let cwd = self
-      .cwd
-      .as_ref()
-      .map(PathBuf::from)
-      .unwrap_or_else(|| std::env::current_dir().unwrap());
     let command_path = self.build_command_path();
 
     self.diagnostic_logger.writeln(format!(
@@ -699,19 +695,18 @@ impl TestCommandBuilder {
 
   fn build_command(&self) -> Command {
     let command_path = self.build_command_path();
-    let args = self.build_args();
+    let cwd = self.build_cwd();
+    let args = self.build_args(&cwd);
     self.diagnostic_logger.writeln(format!(
       "command {} {}",
       command_path,
       args.join(" ")
     ));
     let mut command = Command::new(command_path);
-    if let Some(cwd) = &self.cwd {
-      self
-        .diagnostic_logger
-        .writeln(format!("command cwd {}", cwd));
-      command.current_dir(cwd);
-    }
+    self
+      .diagnostic_logger
+      .writeln(format!("command cwd {}", cwd.display()));
+    command.current_dir(&cwd);
     if let Some(stdin) = &self.stdin {
       command.stdin(stdin.take());
     }
@@ -726,7 +721,7 @@ impl TestCommandBuilder {
     if self.env_clear {
       command.env_clear();
     }
-    let envs = self.build_envs();
+    let envs = self.build_envs(&cwd);
     command.envs(envs);
     command.stdin(Stdio::piped());
     command
@@ -747,7 +742,7 @@ impl TestCommandBuilder {
     }
   }
 
-  fn build_args(&self) -> Vec<String> {
+  fn build_args(&self, cwd: &Path) -> Vec<String> {
     if self.args_vec.is_empty() {
       std::borrow::Cow::Owned(
         self
@@ -764,11 +759,19 @@ impl TestCommandBuilder {
       std::borrow::Cow::Borrowed(&self.args_vec)
     }
     .iter()
-    .map(|arg| arg.replace("$TESTDATA", &testdata_path().to_string_lossy()))
+    .map(|arg| self.replace_vars(arg, cwd))
     .collect::<Vec<_>>()
   }
 
-  fn build_envs(&self) -> HashMap<String, String> {
+  fn build_cwd(&self) -> PathBuf {
+    self
+      .cwd
+      .as_ref()
+      .map(PathBuf::from)
+      .unwrap_or_else(|| std::env::current_dir().unwrap())
+  }
+
+  fn build_envs(&self, cwd: &Path) -> HashMap<String, String> {
     let mut envs = self.envs.clone();
     if !envs.contains_key("DENO_DIR") {
       envs.insert("DENO_DIR".to_string(), self.deno_dir.path().to_string());
@@ -788,11 +791,18 @@ impl TestCommandBuilder {
 
     // update any test variables in the env value
     for value in envs.values_mut() {
-      *value =
-        value.replace("$DENO_DIR", &self.deno_dir.path().to_string_lossy());
+      *value = self.replace_vars(value, cwd);
     }
 
     envs
+  }
+
+  fn replace_vars(&self, text: &str, cwd: &Path) -> String {
+    // todo(dsherret): use monch to extract out the vars
+    text
+      .replace("$DENO_DIR", &self.deno_dir.path().to_string_lossy())
+      .replace("$TESTDATA", &testdata_path().to_string_lossy())
+      .replace("$PWD", &cwd.to_string_lossy())
   }
 }
 

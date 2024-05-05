@@ -5,7 +5,7 @@ import { stringify } from "jsr:@std/yaml@^0.221/stringify";
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 86;
+const cacheVersion = 87;
 
 const ubuntuX86Runner = "ubuntu-22.04";
 const ubuntuX86XlRunner = "ubuntu-22.04-xl";
@@ -881,14 +881,10 @@ const ci = {
             DENO_BIN: "./target/release/deno",
           },
           run: [
-            "deno run --allow-env --allow-net --allow-read --allow-run \\",
-            "         --allow-write --unstable                         \\",
-            "         --lock=tools/deno.lock.json                      \\",
+            "deno run -A --unstable --lock=tools/deno.lock.json        \\",
             "         ./tests/wpt/wpt.ts setup",
-            "deno run --allow-env --allow-net --allow-read --allow-run \\",
-            "         --allow-write --unstable                         \\",
-            "         --lock=tools/deno.lock.json                      \\",
-            "         ./tests/wpt/wpt.ts run --quiet --release             \\",
+            "deno run -A --unstable --lock=tools/deno.lock.json        \\",
+            "         ./tests/wpt/wpt.ts run --quiet --release         \\",
             '                            --binary="$DENO_BIN"          \\',
             "                            --json=wpt.json               \\",
             "                            --wptreport=wptreport.json",
