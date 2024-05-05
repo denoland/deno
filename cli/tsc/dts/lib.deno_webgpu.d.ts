@@ -1122,7 +1122,7 @@ declare class GPUCommandBuffer implements GPUObjectBase {
  * @category GPU
  * @tags unstable
  */
-declare interface GPUCommandBufferDescriptor extends GPUObjectDescriptorBase { }
+declare interface GPUCommandBufferDescriptor extends GPUObjectDescriptorBase {}
 
 /**
  * @category GPU
@@ -1189,7 +1189,7 @@ declare class GPUCommandEncoder implements GPUObjectBase {
  * @category GPU
  * @tags unstable
  */
-declare interface GPUCommandEncoderDescriptor extends GPUObjectDescriptorBase { }
+declare interface GPUCommandEncoderDescriptor extends GPUObjectDescriptorBase {}
 
 /**
  * @category GPU
@@ -1481,7 +1481,7 @@ declare class GPURenderBundle implements GPUObjectBase {
  * @category GPU
  * @tags unstable
  */
-declare interface GPURenderBundleDescriptor extends GPUObjectDescriptorBase { }
+declare interface GPURenderBundleDescriptor extends GPUObjectDescriptorBase {}
 
 /**
  * @category GPU
