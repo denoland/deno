@@ -124,6 +124,7 @@ import {
   defineEventHandler,
   Event,
   EventTarget,
+  setEventTargetData,
 } from "ext:deno_web/02_event.js";
 import { DOMException } from "ext:deno_web/01_dom_exception.js";
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
@@ -478,10 +479,12 @@ class GPUAdapter {
       features: createGPUSupportedFeatures(features),
       limits: createGPUSupportedLimits(limits),
     });
+    const queue = createGPUQueue(descriptor.label, inner, queueRid);
+    inner.trackResource(queue);
     const device = createGPUDevice(
       descriptor.label,
       inner,
-      createGPUQueue(descriptor.label, inner, queueRid),
+      queue,
     );
     inner.device = device;
     return device;
@@ -1017,6 +1020,7 @@ function createGPUDevice(label, inner, queue) {
   device[_label] = label;
   device[_device] = inner;
   device[_queue] = queue;
+  setEventTargetData(device);
   return device;
 }
 
@@ -1860,6 +1864,15 @@ class GPUQueue {
   [_device];
   /** @type {number} */
   [_rid];
+
+  [_cleanup]() {
+    const rid = this[_rid];
+    if (rid !== undefined) {
+      core.close(rid);
+      /** @type {number | undefined} */
+      this[_rid] = undefined;
+    }
+  }
 
   constructor() {
     webidl.illegalConstructor();

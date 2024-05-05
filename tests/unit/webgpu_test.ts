@@ -103,6 +103,7 @@ Deno.test({
 
   // TODO(lucacasonato): webgpu spec should add a explicit destroy method for
   // adapters.
+  console.log(Deno.resources());
   const resources = Object.keys(Deno.resources());
   Deno.close(Number(resources[resources.length - 1]));
 });
