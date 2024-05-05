@@ -44,6 +44,7 @@ pub fn op_worker_sync_fetch(
   assert_eq!(handle.worker_type, WebWorkerType::Classic);
 
   // it's not safe to share a client across tokio runtimes, so create a fresh one
+  // https://github.com/seanmonstar/reqwest/issues/1148#issuecomment-910868788
   let options = state.borrow::<deno_fetch::Options>().clone();
   let client = deno_fetch::create_client_from_options(&options)?;
 
