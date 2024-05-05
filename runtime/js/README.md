@@ -2,8 +2,8 @@
 
 This directory contains Deno runtime code written in plain JavaScript.
 
-Each file is an ES module and is prefixed with a number, telling in which
-order scripts should be loaded into V8 isolate.
+Each file is an ES module and is prefixed with a number, telling in which order
+scripts should be loaded into V8 isolate.
 
 ## Deno Web APIs
 
