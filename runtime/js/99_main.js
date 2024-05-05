@@ -706,12 +706,13 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       3: inspectFlag,
       5: hasNodeModulesDir,
       6: argv0,
-      7: shouldDisableDeprecatedApiWarning,
-      8: shouldUseVerboseDeprecatedApiWarning,
-      9: future,
-      10: mode,
-      11: servePort,
-      12: serveHost,
+      7: nodeDebug,
+      8: shouldDisableDeprecatedApiWarning,
+      9: shouldUseVerboseDeprecatedApiWarning,
+      10: future,
+      11: mode,
+      12: servePort,
+      13: serveHost,
     } = runtimeOptions;
 
     if (mode === executionModes.run || mode === executionModes.serve) {
@@ -863,7 +864,7 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
         usesLocalNodeModulesDir: hasNodeModulesDir,
         runningOnMainThread: true,
         argv0,
-        nodeDebug: Deno.env.get("NODE_DEBUG"),
+        nodeDebug,
       });
     }
     if (future) {
@@ -922,9 +923,10 @@ function bootstrapWorkerRuntime(
       4: enableTestingFeaturesFlag,
       5: hasNodeModulesDir,
       6: argv0,
-      7: shouldDisableDeprecatedApiWarning,
-      8: shouldUseVerboseDeprecatedApiWarning,
-      9: future,
+      7: nodeDebug,
+      8: shouldDisableDeprecatedApiWarning,
+      9: shouldUseVerboseDeprecatedApiWarning,
+      10: future,
     } = runtimeOptions;
 
     // TODO(iuioiua): remove in Deno v2. This allows us to dynamically delete
@@ -1027,7 +1029,7 @@ function bootstrapWorkerRuntime(
         argv0,
         workerId,
         maybeWorkerMetadata: workerMetadata,
-        nodeDebug: Deno.env.get("NODE_DEBUG"),
+        nodeDebug,
       });
     }
 
