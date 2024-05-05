@@ -1,0 +1,5 @@
+{
+  "args": "test --quiet main.js",
+  "output": "main.out",
+  "exitCode": 1
+}

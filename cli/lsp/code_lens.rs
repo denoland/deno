@@ -86,7 +86,7 @@ impl DenoTestCollector {
       range,
       command: Some(lsp::Command {
         title: title.to_string(),
-        command: "deno.test".to_string(),
+        command: "deno.client.test".to_string(),
         arguments: Some(vec![
           json!(self.specifier),
           json!(name.as_ref()),
@@ -108,11 +108,16 @@ impl DenoTestCollector {
                   &key_value_prop.key
                 {
                   if sym == "name" {
-                    if let ast::Expr::Lit(ast::Lit::Str(lit_str)) =
-                      key_value_prop.value.as_ref()
-                    {
-                      let name = lit_str.value.to_string();
-                      self.add_code_lenses(name, range);
+                    match key_value_prop.value.as_ref() {
+                      ast::Expr::Lit(ast::Lit::Str(lit_str)) => {
+                        let name = lit_str.value.to_string();
+                        self.add_code_lenses(name, range);
+                      }
+                      ast::Expr::Tpl(tpl) if tpl.quasis.len() == 1 => {
+                        let name = tpl.quasis.first().unwrap().raw.to_string();
+                        self.add_code_lenses(name, range);
+                      }
+                      _ => {}
                     }
                   }
                 }
@@ -128,6 +133,10 @@ impl DenoTestCollector {
         }
         ast::Expr::Lit(ast::Lit::Str(lit_str)) => {
           let name = lit_str.value.to_string();
+          self.add_code_lenses(name, range);
+        }
+        ast::Expr::Tpl(tpl) if tpl.quasis.len() == 1 => {
+          let name = tpl.quasis.first().unwrap().raw.to_string();
           self.add_code_lenses(name, range);
         }
         _ => (),
@@ -273,7 +282,7 @@ async fn resolve_implementation_code_lens(
       };
       lsp::Command {
         title,
-        command: "deno.showReferences".to_string(),
+        command: "deno.client.showReferences".to_string(),
         arguments: Some(vec![
           json!(data.specifier),
           json!(code_lens.range.start),
@@ -364,7 +373,7 @@ async fn resolve_references_code_lens(
   } else {
     lsp::Command {
       title,
-      command: "deno.showReferences".to_string(),
+      command: "deno.client.showReferences".to_string(),
       arguments: Some(vec![
         json!(data.specifier),
         json!(code_lens.range.start),
@@ -406,7 +415,7 @@ pub fn collect_test(
 }
 
 /// Return tsc navigation tree code lenses.
-pub async fn collect_tsc(
+pub fn collect_tsc(
   specifier: &ModuleSpecifier,
   code_lens_settings: &CodeLensSettings,
   line_index: Arc<LineIndex>,
@@ -547,9 +556,11 @@ mod tests {
       Deno.test.ignore("test ignore", () => {});
 
       Deno.test.only("test only", () => {});
+
+      Deno.test(`test template literal name`, () => {});
     "#;
     let parsed_module = deno_ast::parse_module(deno_ast::ParseParams {
-      specifier: specifier.to_string(),
+      specifier: specifier.clone(),
       text_info: SourceTextInfo::new(source.into()),
       media_type: MediaType::TypeScript,
       capture_tokens: true,
@@ -576,7 +587,7 @@ mod tests {
           },
           command: Some(lsp::Command {
             title: "▶\u{fe0e} Run Test".to_string(),
-            command: "deno.test".to_string(),
+            command: "deno.client.test".to_string(),
             arguments: Some(vec![
               json!("https://deno.land/x/mod.ts"),
               json!("test a"),
@@ -600,7 +611,7 @@ mod tests {
           },
           command: Some(lsp::Command {
             title: "Debug".to_string(),
-            command: "deno.test".to_string(),
+            command: "deno.client.test".to_string(),
             arguments: Some(vec![
               json!("https://deno.land/x/mod.ts"),
               json!("test a"),
@@ -624,7 +635,7 @@ mod tests {
           },
           command: Some(lsp::Command {
             title: "▶\u{fe0e} Run Test".to_string(),
-            command: "deno.test".to_string(),
+            command: "deno.client.test".to_string(),
             arguments: Some(vec![
               json!("https://deno.land/x/mod.ts"),
               json!("useFnName"),
@@ -648,7 +659,7 @@ mod tests {
           },
           command: Some(lsp::Command {
             title: "Debug".to_string(),
-            command: "deno.test".to_string(),
+            command: "deno.client.test".to_string(),
             arguments: Some(vec![
               json!("https://deno.land/x/mod.ts"),
               json!("useFnName"),
@@ -672,7 +683,7 @@ mod tests {
           },
           command: Some(lsp::Command {
             title: "▶\u{fe0e} Run Test".to_string(),
-            command: "deno.test".to_string(),
+            command: "deno.client.test".to_string(),
             arguments: Some(vec![
               json!("https://deno.land/x/mod.ts"),
               json!("test b"),
@@ -696,7 +707,7 @@ mod tests {
           },
           command: Some(lsp::Command {
             title: "Debug".to_string(),
-            command: "deno.test".to_string(),
+            command: "deno.client.test".to_string(),
             arguments: Some(vec![
               json!("https://deno.land/x/mod.ts"),
               json!("test b"),
@@ -720,7 +731,7 @@ mod tests {
           },
           command: Some(lsp::Command {
             title: "▶\u{fe0e} Run Test".to_string(),
-            command: "deno.test".to_string(),
+            command: "deno.client.test".to_string(),
             arguments: Some(vec![
               json!("https://deno.land/x/mod.ts"),
               json!("test ignore"),
@@ -744,7 +755,7 @@ mod tests {
           },
           command: Some(lsp::Command {
             title: "Debug".to_string(),
-            command: "deno.test".to_string(),
+            command: "deno.client.test".to_string(),
             arguments: Some(vec![
               json!("https://deno.land/x/mod.ts"),
               json!("test ignore"),
@@ -768,7 +779,7 @@ mod tests {
           },
           command: Some(lsp::Command {
             title: "▶\u{fe0e} Run Test".to_string(),
-            command: "deno.test".to_string(),
+            command: "deno.client.test".to_string(),
             arguments: Some(vec![
               json!("https://deno.land/x/mod.ts"),
               json!("test only"),
@@ -792,10 +803,58 @@ mod tests {
           },
           command: Some(lsp::Command {
             title: "Debug".to_string(),
-            command: "deno.test".to_string(),
+            command: "deno.client.test".to_string(),
             arguments: Some(vec![
               json!("https://deno.land/x/mod.ts"),
               json!("test only"),
+              json!({
+                "inspect": true,
+              }),
+            ]),
+          }),
+          data: None,
+        },
+        lsp::CodeLens {
+          range: lsp::Range {
+            start: lsp::Position {
+              line: 14,
+              character: 11,
+            },
+            end: lsp::Position {
+              line: 14,
+              character: 15,
+            },
+          },
+          command: Some(lsp::Command {
+            title: "▶\u{fe0e} Run Test".to_string(),
+            command: "deno.client.test".to_string(),
+            arguments: Some(vec![
+              json!("https://deno.land/x/mod.ts"),
+              json!("test template literal name"),
+              json!({
+                "inspect": false,
+              }),
+            ]),
+          }),
+          data: None,
+        },
+        lsp::CodeLens {
+          range: lsp::Range {
+            start: lsp::Position {
+              line: 14,
+              character: 11,
+            },
+            end: lsp::Position {
+              line: 14,
+              character: 15,
+            },
+          },
+          command: Some(lsp::Command {
+            title: "Debug".to_string(),
+            command: "deno.client.test".to_string(),
+            arguments: Some(vec![
+              json!("https://deno.land/x/mod.ts"),
+              json!("test template literal name"),
               json!({
                 "inspect": true,
               }),

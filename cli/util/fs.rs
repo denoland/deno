@@ -1,16 +1,9 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::anyhow::Context;
-use deno_core::error::AnyError;
-pub use deno_core::normalize_path;
-use deno_core::unsync::spawn_blocking;
-use deno_core::ModuleSpecifier;
-use deno_runtime::deno_crypto::rand;
-use deno_runtime::deno_fs::FileSystem;
-use deno_runtime::deno_node::PathClean;
-use std::borrow::Cow;
+use std::collections::HashSet;
 use std::env::current_dir;
 use std::fmt::Write as FmtWrite;
+use std::fs::FileType;
 use std::fs::OpenOptions;
 use std::io::Error;
 use std::io::ErrorKind;
@@ -21,12 +14,24 @@ use std::sync::Arc;
 use std::time::Duration;
 use walkdir::WalkDir;
 
-use crate::args::FilesConfig;
+use deno_config::glob::FilePatterns;
+use deno_config::glob::PathOrPattern;
+use deno_config::glob::PathOrPatternSet;
+use deno_core::anyhow::anyhow;
+use deno_core::anyhow::Context;
+use deno_core::error::AnyError;
+pub use deno_core::normalize_path;
+use deno_core::unsync::spawn_blocking;
+use deno_core::ModuleSpecifier;
+use deno_runtime::deno_crypto::rand;
+use deno_runtime::deno_fs::FileSystem;
+use deno_runtime::deno_node::PathClean;
+
+use crate::util::gitignore::DirGitIgnores;
+use crate::util::gitignore::GitIgnoreTree;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 use crate::util::progress_bar::ProgressMessagePrompt;
-
-use super::path::specifier_to_file_path;
 
 /// Writes the file to the file system at a temporary path, then
 /// renames it to the destination in a single sys call in order
@@ -242,33 +247,32 @@ pub fn resolve_from_cwd(path: &Path) -> Result<PathBuf, AnyError> {
   Ok(normalize_path(resolved_path))
 }
 
+#[derive(Debug, Clone)]
+pub struct WalkEntry<'a> {
+  pub path: &'a Path,
+  pub file_type: &'a FileType,
+  pub patterns: &'a FilePatterns,
+}
+
 /// Collects file paths that satisfy the given predicate, by recursively walking `files`.
 /// If the walker visits a path that is listed in `ignore`, it skips descending into the directory.
-pub struct FileCollector<TFilter: Fn(&Path) -> bool> {
-  canonicalized_ignore: Vec<PathBuf>,
+pub struct FileCollector<TFilter: Fn(WalkEntry) -> bool> {
   file_filter: TFilter,
   ignore_git_folder: bool,
   ignore_node_modules: bool,
-  ignore_vendor_folder: bool,
+  vendor_folder: Option<PathBuf>,
+  use_gitignore: bool,
 }
 
-impl<TFilter: Fn(&Path) -> bool> FileCollector<TFilter> {
+impl<TFilter: Fn(WalkEntry) -> bool> FileCollector<TFilter> {
   pub fn new(file_filter: TFilter) -> Self {
     Self {
-      canonicalized_ignore: Default::default(),
       file_filter,
       ignore_git_folder: false,
       ignore_node_modules: false,
-      ignore_vendor_folder: false,
+      vendor_folder: None,
+      use_gitignore: false,
     }
-  }
-
-  pub fn add_ignore_paths(mut self, paths: &[PathBuf]) -> Self {
-    // retain only the paths which exist and ignore the rest
-    self
-      .canonicalized_ignore
-      .extend(paths.iter().filter_map(|i| canonicalize_path(i).ok()));
-    self
   }
 
   pub fn ignore_node_modules(mut self) -> Self {
@@ -276,8 +280,8 @@ impl<TFilter: Fn(&Path) -> bool> FileCollector<TFilter> {
     self
   }
 
-  pub fn ignore_vendor_folder(mut self) -> Self {
-    self.ignore_vendor_folder = true;
+  pub fn set_vendor_folder(mut self, vendor_folder: Option<PathBuf>) -> Self {
+    self.vendor_folder = vendor_folder;
     self
   }
 
@@ -286,62 +290,146 @@ impl<TFilter: Fn(&Path) -> bool> FileCollector<TFilter> {
     self
   }
 
-  pub fn collect_files(
+  pub fn use_gitignore(mut self) -> Self {
+    self.use_gitignore = true;
+    self
+  }
+
+  pub fn collect_file_patterns(
     &self,
-    files: Option<&[PathBuf]>,
+    file_patterns: FilePatterns,
   ) -> Result<Vec<PathBuf>, AnyError> {
-    let mut target_files = Vec::new();
-    let files = if let Some(files) = files {
-      Cow::Borrowed(files)
+    fn is_pattern_matched(
+      maybe_git_ignore: Option<&DirGitIgnores>,
+      path: &Path,
+      is_dir: bool,
+      file_patterns: &FilePatterns,
+    ) -> bool {
+      use deno_config::glob::FilePatternsMatch;
+
+      let path_kind = match is_dir {
+        true => deno_config::glob::PathKind::Directory,
+        false => deno_config::glob::PathKind::File,
+      };
+      match file_patterns.matches_path_detail(path, path_kind) {
+        FilePatternsMatch::Passed => {
+          // check gitignore
+          let is_gitignored = maybe_git_ignore
+            .as_ref()
+            .map(|git_ignore| git_ignore.is_ignored(path, is_dir))
+            .unwrap_or(false);
+          !is_gitignored
+        }
+        FilePatternsMatch::PassedOptedOutExclude => true,
+        FilePatternsMatch::Excluded => false,
+      }
+    }
+
+    let mut maybe_git_ignores = if self.use_gitignore {
+      // Override explicitly specified include paths in the
+      // .gitignore file. This does not apply to globs because
+      // that is way too complicated to reason about.
+      let include_paths = file_patterns
+        .include
+        .as_ref()
+        .map(|include| {
+          include
+            .inner()
+            .iter()
+            .filter_map(|path_or_pattern| {
+              if let PathOrPattern::Path(p) = path_or_pattern {
+                Some(p.clone())
+              } else {
+                None
+              }
+            })
+            .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+      Some(GitIgnoreTree::new(
+        Arc::new(deno_runtime::deno_fs::RealFs),
+        include_paths,
+      ))
     } else {
-      Cow::Owned(vec![PathBuf::from(".")])
+      None
     };
-    for file in files.iter() {
-      if let Ok(file) = canonicalize_path(file) {
-        // use an iterator like this in order to minimize the number of file system operations
-        let mut iterator = WalkDir::new(&file).into_iter();
-        loop {
-          let e = match iterator.next() {
-            None => break,
-            Some(Err(_)) => continue,
-            Some(Ok(entry)) => entry,
-          };
-          let file_type = e.file_type();
-          let is_dir = file_type.is_dir();
-          if let Ok(c) = canonicalize_path(e.path()) {
-            if self.canonicalized_ignore.iter().any(|i| c.starts_with(i)) {
-              if is_dir {
-                iterator.skip_current_dir();
-              }
-            } else if is_dir {
-              let should_ignore_dir = c
-                .file_name()
-                .map(|dir_name| {
-                  let dir_name = dir_name.to_string_lossy().to_lowercase();
-                  let is_ignored_file = match dir_name.as_str() {
-                    "node_modules" => self.ignore_node_modules,
-                    "vendor" => self.ignore_vendor_folder,
-                    ".git" => self.ignore_git_folder,
-                    _ => false,
-                  };
-                  // allow the user to opt out of ignoring by explicitly specifying the dir
-                  file != c && is_ignored_file
-                })
-                .unwrap_or(false);
-              if should_ignore_dir {
-                iterator.skip_current_dir();
-              }
-            } else if (self.file_filter)(e.path()) {
-              target_files.push(c);
+    let mut target_files = Vec::new();
+    let mut visited_paths = HashSet::new();
+    let file_patterns_by_base = file_patterns.split_by_base();
+    for file_patterns in file_patterns_by_base {
+      let file = normalize_path(&file_patterns.base);
+      // use an iterator in order to minimize the number of file system operations
+      let mut iterator = WalkDir::new(&file)
+        .follow_links(false) // the default, but be explicit
+        .into_iter();
+      loop {
+        let e = match iterator.next() {
+          None => break,
+          Some(Err(_)) => continue,
+          Some(Ok(entry)) => entry,
+        };
+        let file_type = e.file_type();
+        let is_dir = file_type.is_dir();
+        let path = e.path().to_path_buf();
+        let maybe_gitignore =
+          maybe_git_ignores.as_mut().and_then(|git_ignores| {
+            if is_dir {
+              git_ignores.get_resolved_git_ignore_for_dir(&path)
+            } else {
+              git_ignores.get_resolved_git_ignore_for_file(&path)
             }
-          } else if is_dir {
-            // failed canonicalizing, so skip it
+          });
+        if !is_pattern_matched(
+          maybe_gitignore.as_deref(),
+          &path,
+          is_dir,
+          &file_patterns,
+        ) {
+          if is_dir {
             iterator.skip_current_dir();
           }
+        } else if is_dir {
+          // allow the user to opt out of ignoring by explicitly specifying the dir
+          let opt_out_ignore = file == path;
+          let should_ignore_dir = !opt_out_ignore && self.is_ignored_dir(&path);
+          if should_ignore_dir || !visited_paths.insert(path.clone()) {
+            iterator.skip_current_dir();
+          }
+        } else if (self.file_filter)(WalkEntry {
+          path: &path,
+          file_type: &file_type,
+          patterns: &file_patterns,
+        }) && visited_paths.insert(path.clone())
+        {
+          target_files.push(path);
         }
       }
     }
     Ok(target_files)
+  }
+
+  fn is_ignored_dir(&self, path: &Path) -> bool {
+    path
+      .file_name()
+      .map(|dir_name| {
+        let dir_name = dir_name.to_string_lossy().to_lowercase();
+        let is_ignored_file = match dir_name.as_str() {
+          "node_modules" => self.ignore_node_modules,
+          ".git" => self.ignore_git_folder,
+          _ => false,
+        };
+        is_ignored_file
+      })
+      .unwrap_or(false)
+      || self.is_vendor_folder(path)
+  }
+
+  fn is_vendor_folder(&self, path: &Path) -> bool {
+    self
+      .vendor_folder
+      .as_ref()
+      .map(|vendor_folder| path == *vendor_folder)
+      .unwrap_or(false)
   }
 }
 
@@ -349,53 +437,55 @@ impl<TFilter: Fn(&Path) -> bool> FileCollector<TFilter> {
 /// Specifiers that start with http and https are left intact.
 /// Note: This ignores all .git and node_modules folders.
 pub fn collect_specifiers(
-  files: &FilesConfig,
-  predicate: impl Fn(&Path) -> bool,
+  mut files: FilePatterns,
+  vendor_folder: Option<PathBuf>,
+  predicate: impl Fn(WalkEntry) -> bool,
 ) -> Result<Vec<ModuleSpecifier>, AnyError> {
   let mut prepared = vec![];
-  let file_collector = FileCollector::new(predicate)
-    .add_ignore_paths(&files.exclude)
+
+  // break out the remote specifiers
+  if let Some(include_mut) = &mut files.include {
+    let includes = std::mem::take(include_mut);
+    let path_or_patterns = includes.into_path_or_patterns();
+    let mut result = Vec::with_capacity(path_or_patterns.len());
+    for path_or_pattern in path_or_patterns {
+      match path_or_pattern {
+        PathOrPattern::Path(path) => {
+          if path.is_dir() {
+            result.push(PathOrPattern::Path(path));
+          } else if !files.exclude.matches_path(&path) {
+            let url = specifier_from_file_path(&path)?;
+            prepared.push(url);
+          }
+        }
+        PathOrPattern::NegatedPath(path) => {
+          // add it back
+          result.push(PathOrPattern::NegatedPath(path));
+        }
+        PathOrPattern::RemoteUrl(remote_url) => {
+          prepared.push(remote_url);
+        }
+        PathOrPattern::Pattern(pattern) => {
+          // add it back
+          result.push(PathOrPattern::Pattern(pattern));
+        }
+      }
+    }
+    *include_mut = PathOrPatternSet::new(result);
+  }
+
+  let collected_files = FileCollector::new(predicate)
     .ignore_git_folder()
     .ignore_node_modules()
-    .ignore_vendor_folder();
+    .set_vendor_folder(vendor_folder)
+    .collect_file_patterns(files)?;
+  let mut collected_files_as_urls = collected_files
+    .iter()
+    .map(|f| specifier_from_file_path(f).unwrap())
+    .collect::<Vec<ModuleSpecifier>>();
 
-  let root_path = current_dir()?;
-  let include_files = if let Some(include) = &files.include {
-    Cow::Borrowed(include)
-  } else {
-    Cow::Owned(vec![root_path.clone()])
-  };
-  for path in include_files.iter() {
-    let path = path.to_string_lossy();
-    let lowercase_path = path.to_lowercase();
-    if lowercase_path.starts_with("http://")
-      || lowercase_path.starts_with("https://")
-    {
-      let url = ModuleSpecifier::parse(&path)?;
-      prepared.push(url);
-      continue;
-    }
-
-    let p = if lowercase_path.starts_with("file://") {
-      specifier_to_file_path(&ModuleSpecifier::parse(&path)?)?
-    } else {
-      root_path.join(path.as_ref())
-    };
-    let p = normalize_path(p);
-    if p.is_dir() {
-      let test_files = file_collector.collect_files(Some(&[p]))?;
-      let mut test_files_as_urls = test_files
-        .iter()
-        .map(|f| ModuleSpecifier::from_file_path(f).unwrap())
-        .collect::<Vec<ModuleSpecifier>>();
-
-      test_files_as_urls.sort();
-      prepared.extend(test_files_as_urls);
-    } else {
-      let url = ModuleSpecifier::from_file_path(p).unwrap();
-      prepared.push(url);
-    }
-  }
+  collected_files_as_urls.sort();
+  prepared.extend(collected_files_as_urls);
 
   Ok(prepared)
 }
@@ -586,7 +676,9 @@ impl Drop for LaxSingleProcessFsFlagInner {
 /// This should only be used in places where it's ideal for multiple
 /// processes to not update something on the file system at the same time,
 /// but it's not that big of a deal.
-pub struct LaxSingleProcessFsFlag(Option<LaxSingleProcessFsFlagInner>);
+pub struct LaxSingleProcessFsFlag(
+  #[allow(dead_code)] Option<LaxSingleProcessFsFlagInner>,
+);
 
 impl LaxSingleProcessFsFlag {
   pub async fn lock(file_path: PathBuf, long_wait_message: &str) -> Self {
@@ -598,6 +690,7 @@ impl LaxSingleProcessFsFlag {
       .read(true)
       .write(true)
       .create(true)
+      .truncate(false)
       .open(&file_path);
 
     match open_result {
@@ -709,6 +802,13 @@ impl LaxSingleProcessFsFlag {
   }
 }
 
+pub fn specifier_from_file_path(
+  path: &Path,
+) -> Result<ModuleSpecifier, AnyError> {
+  ModuleSpecifier::from_file_path(path)
+    .map_err(|_| anyhow!("Invalid file path '{}'", path.display()))
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -812,18 +912,24 @@ mod tests {
     let ignore_dir_files = ["g.d.ts", ".gitignore"];
     create_files(&ignore_dir_path, &ignore_dir_files);
 
-    let file_collector = FileCollector::new(|path| {
+    let file_patterns = FilePatterns {
+      base: root_dir_path.to_path_buf(),
+      include: None,
+      exclude: PathOrPatternSet::new(vec![PathOrPattern::Path(
+        ignore_dir_path.to_path_buf(),
+      )]),
+    };
+    let file_collector = FileCollector::new(|e| {
       // exclude dotfiles
-      path
+      e.path
         .file_name()
         .and_then(|f| f.to_str())
         .map(|f| !f.starts_with('.'))
         .unwrap_or(false)
-    })
-    .add_ignore_paths(&[ignore_dir_path.to_path_buf()]);
+    });
 
     let result = file_collector
-      .collect_files(Some(&[root_dir_path.to_path_buf()]))
+      .collect_file_patterns(file_patterns.clone())
       .unwrap();
     let expected = [
       "README.md",
@@ -848,9 +954,9 @@ mod tests {
     let file_collector = file_collector
       .ignore_git_folder()
       .ignore_node_modules()
-      .ignore_vendor_folder();
+      .set_vendor_folder(Some(child_dir_path.join("vendor").to_path_buf()));
     let result = file_collector
-      .collect_files(Some(&[root_dir_path.to_path_buf()]))
+      .collect_file_patterns(file_patterns.clone())
       .unwrap();
     let expected = [
       "README.md",
@@ -869,12 +975,19 @@ mod tests {
     assert_eq!(file_names, expected);
 
     // test opting out of ignoring by specifying the dir
-    let result = file_collector
-      .collect_files(Some(&[
-        root_dir_path.to_path_buf(),
-        root_dir_path.to_path_buf().join("child/node_modules/"),
-      ]))
-      .unwrap();
+    let file_patterns = FilePatterns {
+      base: root_dir_path.to_path_buf(),
+      include: Some(PathOrPatternSet::new(vec![
+        PathOrPattern::Path(root_dir_path.to_path_buf()),
+        PathOrPattern::Path(
+          root_dir_path.to_path_buf().join("child/node_modules/"),
+        ),
+      ])),
+      exclude: PathOrPatternSet::new(vec![PathOrPattern::Path(
+        ignore_dir_path.to_path_buf(),
+      )]),
+    };
+    let result = file_collector.collect_file_patterns(file_patterns).unwrap();
     let expected = [
       "README.md",
       "a.ts",
@@ -930,9 +1043,9 @@ mod tests {
     let ignore_dir_files = ["g.d.ts", ".gitignore"];
     create_files(&ignore_dir_path, &ignore_dir_files);
 
-    let predicate = |path: &Path| {
+    let predicate = |e: WalkEntry| {
       // exclude dotfiles
-      path
+      e.path
         .file_name()
         .and_then(|f| f.to_str())
         .map(|f| !f.starts_with('.'))
@@ -940,38 +1053,50 @@ mod tests {
     };
 
     let result = collect_specifiers(
-      &FilesConfig {
-        include: Some(vec![
-          PathBuf::from("http://localhost:8080"),
-          root_dir_path.to_path_buf(),
-          PathBuf::from("https://localhost:8080".to_string()),
-        ]),
-        exclude: vec![ignore_dir_path.to_path_buf()],
+      FilePatterns {
+        base: root_dir_path.to_path_buf(),
+        include: Some(
+          PathOrPatternSet::from_include_relative_path_or_patterns(
+            root_dir_path.as_path(),
+            &[
+              "http://localhost:8080".to_string(),
+              "./".to_string(),
+              "https://localhost:8080".to_string(),
+            ],
+          )
+          .unwrap(),
+        ),
+        exclude: PathOrPatternSet::new(vec![PathOrPattern::Path(
+          ignore_dir_path.to_path_buf(),
+        )]),
       },
+      None,
       predicate,
     )
     .unwrap();
 
-    let root_dir_url =
-      ModuleSpecifier::from_file_path(root_dir_path.canonicalize())
-        .unwrap()
-        .to_string();
-    let expected: Vec<ModuleSpecifier> = [
-      "http://localhost:8080",
-      &format!("{root_dir_url}/a.ts"),
-      &format!("{root_dir_url}/b.js"),
-      &format!("{root_dir_url}/c.tsx"),
-      &format!("{root_dir_url}/child/README.md"),
-      &format!("{root_dir_url}/child/e.mjs"),
-      &format!("{root_dir_url}/child/f.mjsx"),
-      &format!("{root_dir_url}/d.jsx"),
-      "https://localhost:8080",
-    ]
-    .iter()
-    .map(|f| ModuleSpecifier::parse(f).unwrap())
-    .collect::<Vec<_>>();
+    let root_dir_url = ModuleSpecifier::from_file_path(&root_dir_path)
+      .unwrap()
+      .to_string();
+    let expected = vec![
+      "http://localhost:8080/".to_string(),
+      "https://localhost:8080/".to_string(),
+      format!("{root_dir_url}/a.ts"),
+      format!("{root_dir_url}/b.js"),
+      format!("{root_dir_url}/c.tsx"),
+      format!("{root_dir_url}/child/README.md"),
+      format!("{root_dir_url}/child/e.mjs"),
+      format!("{root_dir_url}/child/f.mjsx"),
+      format!("{root_dir_url}/d.jsx"),
+    ];
 
-    assert_eq!(result, expected);
+    assert_eq!(
+      result
+        .into_iter()
+        .map(|s| s.to_string())
+        .collect::<Vec<_>>(),
+      expected
+    );
 
     let scheme = if cfg!(target_os = "windows") {
       "file:///"
@@ -979,28 +1104,36 @@ mod tests {
       "file://"
     };
     let result = collect_specifiers(
-      &FilesConfig {
-        include: Some(vec![PathBuf::from(format!(
-          "{}{}",
-          scheme,
-          root_dir_path.join("child").to_string().replace('\\', "/")
-        ))]),
-        exclude: vec![],
+      FilePatterns {
+        base: root_dir_path.to_path_buf(),
+        include: Some(PathOrPatternSet::new(vec![PathOrPattern::new(
+          &format!(
+            "{}{}",
+            scheme,
+            root_dir_path.join("child").to_string().replace('\\', "/")
+          ),
+        )
+        .unwrap()])),
+        exclude: Default::default(),
       },
+      None,
       predicate,
     )
     .unwrap();
 
-    let expected: Vec<ModuleSpecifier> = [
-      &format!("{root_dir_url}/child/README.md"),
-      &format!("{root_dir_url}/child/e.mjs"),
-      &format!("{root_dir_url}/child/f.mjsx"),
-    ]
-    .iter()
-    .map(|f| ModuleSpecifier::parse(f).unwrap())
-    .collect::<Vec<_>>();
+    let expected = vec![
+      format!("{root_dir_url}/child/README.md"),
+      format!("{root_dir_url}/child/e.mjs"),
+      format!("{root_dir_url}/child/f.mjsx"),
+    ];
 
-    assert_eq!(result, expected);
+    assert_eq!(
+      result
+        .into_iter()
+        .map(|s| s.to_string())
+        .collect::<Vec<_>>(),
+      expected
+    );
   }
 
   #[tokio::test]

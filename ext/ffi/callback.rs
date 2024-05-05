@@ -34,7 +34,7 @@ use std::task::Poll;
 static THREAD_ID_COUNTER: AtomicU32 = AtomicU32::new(1);
 
 thread_local! {
-  static LOCAL_THREAD_ID: RefCell<u32> = RefCell::new(0);
+  static LOCAL_THREAD_ID: RefCell<u32> = const { RefCell::new(0) };
 }
 
 #[derive(Clone)]

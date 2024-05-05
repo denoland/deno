@@ -10,7 +10,6 @@ use crate::tools::jupyter::server::StdioMsg;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::serde_json;
-use deno_core::Op;
 use deno_core::OpState;
 use tokio::sync::mpsc;
 use tokio::sync::Mutex;
@@ -23,7 +22,7 @@ deno_core::extension!(deno_jupyter,
     sender: mpsc::UnboundedSender<StdioMsg>,
   },
   middleware = |op| match op.name {
-    "op_print" => op_print::DECL,
+    "op_print" => op_print(),
     _ => op,
   },
   state = |state, options| {
@@ -51,12 +50,16 @@ pub async fn op_jupyter_broadcast(
 
   let maybe_last_request = last_execution_request.borrow().clone();
   if let Some(last_request) = maybe_last_request {
-    last_request
-      .new_message(&message_type)
-      .with_content(content)
-      .with_metadata(metadata)
-      .with_buffers(buffers.into_iter().map(|b| b.to_vec().into()).collect())
-      .send(&mut *iopub_socket.lock().await)
+    (*iopub_socket.lock().await)
+      .send(
+        &last_request
+          .new_message(&message_type)
+          .with_content(content)
+          .with_metadata(metadata)
+          .with_buffers(
+            buffers.into_iter().map(|b| b.to_vec().into()).collect(),
+          ),
+      )
       .await?;
   }
 

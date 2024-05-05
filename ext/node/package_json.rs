@@ -18,9 +18,10 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::io::ErrorKind;
 use std::path::PathBuf;
+use std::rc::Rc;
 
 thread_local! {
-  static CACHE: RefCell<HashMap<PathBuf, PackageJson>> = RefCell::new(HashMap::new());
+  static CACHE: RefCell<HashMap<PathBuf, Rc<PackageJson>>> = RefCell::new(HashMap::new());
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -66,7 +67,7 @@ impl PackageJson {
     resolver: &dyn NpmResolver,
     permissions: &dyn NodePermissions,
     path: PathBuf,
-  ) -> Result<PackageJson, AnyError> {
+  ) -> Result<Rc<PackageJson>, AnyError> {
     resolver.ensure_read_permission(permissions, &path)?;
     Self::load_skip_read_permission(fs, path)
   }
@@ -74,17 +75,17 @@ impl PackageJson {
   pub fn load_skip_read_permission(
     fs: &dyn deno_fs::FileSystem,
     path: PathBuf,
-  ) -> Result<PackageJson, AnyError> {
+  ) -> Result<Rc<PackageJson>, AnyError> {
     assert!(path.is_absolute());
 
     if CACHE.with(|cache| cache.borrow().contains_key(&path)) {
       return Ok(CACHE.with(|cache| cache.borrow()[&path].clone()));
     }
 
-    let source = match fs.read_text_file_sync(&path) {
+    let source = match fs.read_text_file_sync(&path, None) {
       Ok(source) => source,
       Err(err) if err.kind() == ErrorKind::NotFound => {
-        return Ok(PackageJson::empty(path));
+        return Ok(Rc::new(PackageJson::empty(path)));
       }
       Err(err) => bail!(
         "Error loading package.json at {}. {:#}",
@@ -93,11 +94,7 @@ impl PackageJson {
       ),
     };
 
-    if source.trim().is_empty() {
-      return Ok(PackageJson::empty(path));
-    }
-
-    let package_json = Self::load_from_string(path, source)?;
+    let package_json = Rc::new(Self::load_from_string(path, source)?);
     CACHE.with(|cache| {
       cache
         .borrow_mut()
@@ -110,6 +107,10 @@ impl PackageJson {
     path: PathBuf,
     source: String,
   ) -> Result<PackageJson, AnyError> {
+    if source.trim().is_empty() {
+      return Ok(PackageJson::empty(path));
+    }
+
     let package_json: Value = serde_json::from_str(&source).map_err(|err| {
       anyhow::anyhow!(
         "malformed package.json: {}\n    at {}",
@@ -213,12 +214,13 @@ impl PackageJson {
     Ok(package_json)
   }
 
-  pub fn main(&self, referrer_kind: NodeModuleKind) -> Option<&String> {
-    if referrer_kind == NodeModuleKind::Esm && self.typ == "module" {
+  pub fn main(&self, referrer_kind: NodeModuleKind) -> Option<&str> {
+    let main = if referrer_kind == NodeModuleKind::Esm && self.typ == "module" {
       self.module.as_ref().or(self.main.as_ref())
     } else {
       self.main.as_ref()
-    }
+    };
+    main.map(|m| m.trim()).filter(|m| !m.is_empty())
   }
 
   pub fn specifier(&self) -> ModuleSpecifier {

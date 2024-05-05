@@ -1,7 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-const { ops } = globalThis.__bootstrap.core;
+import { op_node_sys_to_uv_error } from "ext:core/ops";
 
 export function uvTranslateSysError(sysErrno: number): string {
-  return ops.op_node_sys_to_uv_error(sysErrno);
+  return op_node_sys_to_uv_error(sysErrno);
 }

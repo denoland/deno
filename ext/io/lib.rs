@@ -11,7 +11,6 @@ use deno_core::BufMutView;
 use deno_core::BufView;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
-use deno_core::Op;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -50,6 +49,15 @@ use winapi::um::processenv::GetStdHandle;
 use winapi::um::winbase;
 
 pub mod fs;
+mod pipe;
+#[cfg(windows)]
+mod winpipe;
+
+pub use pipe::pipe;
+pub use pipe::AsyncPipeRead;
+pub use pipe::AsyncPipeWrite;
+pub use pipe::PipeRead;
+pub use pipe::PipeWrite;
 
 // Store the stdio fd/handles in global statics in order to keep them
 // alive for the duration of the application since the last handle/fd
@@ -93,7 +101,7 @@ deno_core::extension!(deno_io,
     stdio: Option<Stdio>,
   },
   middleware = |op| match op.name {
-    "op_print" => op_print::DECL,
+    "op_print" => op_print(),
     _ => op,
   },
   state = |state, options| {
@@ -101,36 +109,36 @@ deno_core::extension!(deno_io,
       let t = &mut state.resource_table;
 
       let rid = t.add(fs::FileResource::new(
-        Rc::new(match stdio.stdin {
-          StdioPipe::Inherit => StdFileResourceInner::new(
+        Rc::new(match stdio.stdin.pipe {
+          StdioPipeInner::Inherit => StdFileResourceInner::new(
             StdFileResourceKind::Stdin,
             STDIN_HANDLE.try_clone().unwrap(),
           ),
-          StdioPipe::File(pipe) => StdFileResourceInner::file(pipe),
+          StdioPipeInner::File(pipe) => StdFileResourceInner::file(pipe),
         }),
         "stdin".to_string(),
       ));
       assert_eq!(rid, 0, "stdin must have ResourceId 0");
 
       let rid = t.add(FileResource::new(
-        Rc::new(match stdio.stdout {
-          StdioPipe::Inherit => StdFileResourceInner::new(
+        Rc::new(match stdio.stdout.pipe {
+          StdioPipeInner::Inherit => StdFileResourceInner::new(
             StdFileResourceKind::Stdout,
             STDOUT_HANDLE.try_clone().unwrap(),
           ),
-          StdioPipe::File(pipe) => StdFileResourceInner::file(pipe),
+          StdioPipeInner::File(pipe) => StdFileResourceInner::file(pipe),
         }),
         "stdout".to_string(),
       ));
       assert_eq!(rid, 1, "stdout must have ResourceId 1");
 
       let rid = t.add(FileResource::new(
-        Rc::new(match stdio.stderr {
-          StdioPipe::Inherit => StdFileResourceInner::new(
+        Rc::new(match stdio.stderr.pipe {
+          StdioPipeInner::Inherit => StdFileResourceInner::new(
             StdFileResourceKind::Stderr,
             STDERR_HANDLE.try_clone().unwrap(),
           ),
-          StdioPipe::File(pipe) => StdFileResourceInner::file(pipe),
+          StdioPipeInner::File(pipe) => StdFileResourceInner::file(pipe),
         }),
         "stderr".to_string(),
       ));
@@ -139,22 +147,41 @@ deno_core::extension!(deno_io,
   },
 );
 
-pub enum StdioPipe {
+#[derive(Default)]
+pub struct StdioPipe {
+  pipe: StdioPipeInner,
+}
+
+impl StdioPipe {
+  pub const fn inherit() -> Self {
+    StdioPipe {
+      pipe: StdioPipeInner::Inherit,
+    }
+  }
+
+  pub fn file(f: impl Into<StdFile>) -> Self {
+    StdioPipe {
+      pipe: StdioPipeInner::File(f.into()),
+    }
+  }
+}
+
+#[derive(Default)]
+enum StdioPipeInner {
+  #[default]
   Inherit,
   File(StdFile),
 }
 
-impl Default for StdioPipe {
-  fn default() -> Self {
-    Self::Inherit
-  }
-}
-
 impl Clone for StdioPipe {
   fn clone(&self) -> Self {
-    match self {
-      StdioPipe::Inherit => StdioPipe::Inherit,
-      StdioPipe::File(pipe) => StdioPipe::File(pipe.try_clone().unwrap()),
+    match &self.pipe {
+      StdioPipeInner::Inherit => Self {
+        pipe: StdioPipeInner::Inherit,
+      },
+      StdioPipeInner::File(pipe) => Self {
+        pipe: StdioPipeInner::File(pipe.try_clone().unwrap()),
+      },
     }
   }
 }

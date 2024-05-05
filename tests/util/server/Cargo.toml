@@ -1,0 +1,63 @@
+# Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
+[package]
+name = "test_server"
+version = "0.1.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+repository.workspace = true
+
+[[bin]]
+name = "test_server"
+path = "src/test_server.rs"
+
+[dependencies]
+anyhow.workspace = true
+async-stream = "0.3.3"
+base64.workspace = true
+bytes.workspace = true
+console_static_text.workspace = true
+deno_unsync = "0"
+denokv_proto.workspace = true
+fastwebsockets.workspace = true
+flate2 = { workspace = true, features = ["default"] }
+futures.workspace = true
+glob.workspace = true
+h2.workspace = true
+http.workspace = true
+http-body-util.workspace = true
+hyper.workspace = true
+hyper-util.workspace = true
+jsonc-parser.workspace = true
+lazy-regex.workspace = true
+libc.workspace = true
+lsp-types.workspace = true
+monch.workspace = true
+nix.workspace = true
+once_cell.workspace = true
+os_pipe.workspace = true
+parking_lot.workspace = true
+pretty_assertions.workspace = true
+prost.workspace = true
+regex.workspace = true
+reqwest.workspace = true
+rustls-pemfile.workspace = true
+rustls-tokio-stream.workspace = true
+semver = "=1.0.14"
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+tar.workspace = true
+tempfile.workspace = true
+termcolor.workspace = true
+tokio.workspace = true
+url.workspace = true
+win32job = "2"
+
+[target.'cfg(windows)'.dependencies]
+winapi = { workspace = true, features = ["consoleapi", "synchapi", "handleapi", "namedpipeapi", "winbase", "winerror"] }
+
+[build-dependencies]
+prost-build.workspace = true

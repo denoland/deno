@@ -1,0 +1,9 @@
+{
+  "name": "@scope/package",
+  "version": "0.0.0",
+  "exports": "./main.ts",
+  "lock": false,
+  "compilerOptions": {
+    "noUnusedParameters": true
+  }
+}

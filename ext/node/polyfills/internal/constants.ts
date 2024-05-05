@@ -1,8 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
-const { ops } = globalThis.__bootstrap.core;
-const isWindows = ops.op_node_build_os() === "windows";
+import { isWindows } from "ext:deno_node/_util/os.ts";
 
 // Alphabet chars.
 export const CHAR_UPPERCASE_A = 65; /* A */

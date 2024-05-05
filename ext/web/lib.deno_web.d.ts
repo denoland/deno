@@ -1124,10 +1124,10 @@ declare var MessagePort: {
  *
  * @category DOM APIs
  */
-declare function structuredClone(
-  value: any,
+declare function structuredClone<T = any>(
+  value: T,
   options?: StructuredSerializeOptions,
-): any;
+): T;
 
 /**
  * An API for compressing a stream of data.
@@ -1239,15 +1239,15 @@ declare function reportError(
 ): void;
 
 /** @category Web APIs */
-type PredefinedColorSpace = "srgb" | "display-p3";
+declare type PredefinedColorSpace = "srgb" | "display-p3";
 
 /** @category Web APIs */
-interface ImageDataSettings {
+declare interface ImageDataSettings {
   readonly colorSpace?: PredefinedColorSpace;
 }
 
 /** @category Web APIs */
-interface ImageData {
+declare interface ImageData {
   readonly colorSpace: PredefinedColorSpace;
   readonly data: Uint8ClampedArray;
   readonly height: number;

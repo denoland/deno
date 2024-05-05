@@ -3,7 +3,6 @@
 /// <reference no-default-lib="true" />
 /// <reference lib="deno.ns" />
 /// <reference lib="deno.shared_globals" />
-/// <reference lib="deno.webgpu" />
 /// <reference lib="deno.webstorage" />
 /// <reference lib="esnext" />
 /// <reference lib="deno.cache" />
@@ -12,6 +11,7 @@
 declare interface WindowEventMap {
   "error": ErrorEvent;
   "unhandledrejection": PromiseRejectionEvent;
+  "rejectionhandled": PromiseRejectionEvent;
 }
 
 /** @category Web APIs */
@@ -23,6 +23,9 @@ declare interface Window extends EventTarget {
   onbeforeunload: ((this: Window, ev: Event) => any) | null;
   onunload: ((this: Window, ev: Event) => any) | null;
   onunhandledrejection:
+    | ((this: Window, ev: PromiseRejectionEvent) => any)
+    | null;
+  onrejectionhandled:
     | ((this: Window, ev: PromiseRejectionEvent) => any)
     | null;
   close: () => void;
@@ -149,7 +152,8 @@ declare function confirm(message?: string): boolean;
  * If the default value is given and the user inputs the empty string, then it returns the given
  * default value.
  *
- * If the default value is not given and the user inputs the empty string, it returns null.
+ * If the default value is not given and the user inputs the empty string, it returns the empty
+ * string.
  *
  * If the stdin is not interactive, it returns null.
  *
@@ -202,6 +206,7 @@ declare function removeEventListener<
   listener: (this: Window, ev: WindowEventMap[K]) => any,
   options?: boolean | EventListenerOptions,
 ): void;
+/** @category DOM Events */
 declare function removeEventListener(
   type: string,
   listener: EventListenerOrEventListenerObject,

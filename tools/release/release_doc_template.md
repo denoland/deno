@@ -4,7 +4,6 @@
 
 - Forks and local clones of
   [`denoland/deno`](https://github.com/denoland/deno/),
-  [`denoland/deno_std`](https://github.com/denoland/deno_std/),
   [`denoland/dotcom`](https://github.com/denoland/dotcom/),
   [`denoland/deno_docker`](https://github.com/denoland/deno_docker/),
   [`denoland/deno-docs`](https://github.com/denoland/deno-docs)
@@ -16,7 +15,7 @@ cut.**
 - [ ] Check https://deno.land/benchmarks?-100 and ensure there's no recent
       regressions.
 - [ ] Write a message in company's #cli channel:
-      `:lock: deno and deno_std are now locked (<LINK TO THIS FORKED GIST GOES HERE>)`
+      `:lock: deno is now locked (<LINK TO THIS FORKED GIST GOES HERE>)`
 
 ## Patch release preparation
 
@@ -40,42 +39,6 @@ verify on GitHub that everything looks correct.
 
 - [ ] Unstable `feat` commits were merged.
 - [ ] Internal API commits like `feat(core)` were merged.
-
-## Updating `deno_std`
-
-- [ ] Go to the "version_bump" workflow in the deno_std repo's actions:
-      https://github.com/denoland/deno_std/actions/workflows/version_bump.yml
-  1. Click on the "Run workflow" button.
-  1. For the kind of release, select "minor".
-  1. Run the workflow.
-
-- [ ] A PR will be automatically created. Follow the checklist in the PR, review
-      it, and merge the PR.
-  - ⛔ DO NOT create a release tag manually. That will automatically happen.
-
-  <details>
-    <summary>Failure Steps</summary>
-
-  1. Checkout the latest main.
-  2. Manually run `./_tools/release/01_bump_version.ts --minor`
-     1. Ensure the version in `version.ts` is updated correctly.
-     2. Ensure `Releases.md` is updated correctly.
-     3. Ensure all the tests pass with the latest build (examine the repo for
-        what the command is and run the local built deno binary)
-  3. Open a PR with the changes and continue with the steps below.
-  </details>
-
-- Wait for the CI run to complete which will automatically tag the repo and
-  create a draft release.
-  - [ ] Review the draft release and then publish it.
-
-  <details>
-    <summary>Failure Steps</summary>
-
-  1. Tag the repo manually in the format `x.x.x`
-  2. Draft a new GH release by copying and pasting the release notes from
-     `Releases.md`
-  </details>
 
 ## Updating `deno`
 
@@ -101,8 +64,7 @@ verify on GitHub that everything looks correct.
   1. Checkout the branch the release is being made on.
   2. Manually run `./tools/release/01_bump_crate_versions.ts`
      1. Ensure the crate versions were bumped correctly
-     2. Ensure deno_std version was updated correctly in `cli/deno_std.rs`
-     3. Ensure `Releases.md` was updated correctly
+     2. Ensure `Releases.md` was updated correctly
   3. Open a PR with the changes and continue with the steps below.
   </details>
 
@@ -132,8 +94,8 @@ verify on GitHub that everything looks correct.
   (https://github.com/denoland/deno/releases).
 
 - ⛔ Verify that:
-  - [ ] There are 8 assets on the release draft.
-  - [ ] There are 4 zip files for this version on
+  - [ ] There are 14 assets on the release draft.
+  - [ ] There are 10 zip files for this version on
         [dl.deno.land](https://console.cloud.google.com/storage/browser/dl.deno.land/release/v$VERSION).
 
 - [ ] Publish the release on Github
@@ -155,20 +117,21 @@ verify on GitHub that everything looks correct.
       automatically opened that forwards the release commit back to main. If so,
       merge it. If not and it failed, please manually create one.
 
-## Updating `deno.land/api` & `deno.land/std` symbols
+## Updating `deno.land/api` symbols
 
 This should occur after the Deno CLI & std are fully published, as the build
 script generates the symbols based on the latest tags.
 
-- [ ] Run the release workflow in the apiland_scripts repo on the main branch:
-      https://github.com/denoland/apiland_scripts/actions/workflows/release.yml
+- [ ] Run the `release CLI` workflow in the apiland_scripts repo on the main
+      branch:
+      https://github.com/denoland/apiland_scripts/actions/workflows/release_cli.yml
   - [ ] Verify the workflow ran successfully.
 
   <details>
      <summary>Failure Steps</summary>
 
   1. Clone `deno/apiland_scripts`.
-  2. Execute `deno task release`.
+  2. Execute `deno task release:cli`.
   </details>
 
 ## Updating `deno_docker`
@@ -178,7 +141,14 @@ script generates the symbols based on the latest tags.
 - [ ] This will open a PR. Review and merge it.
 - [ ] Create a tag with the version number (_without_ `v` prefix).
 
+## Updating `deno-lambda`
+
+- [ ] Run the version bump workflow:
+      https://github.com/denoland/deno-lambda/actions/workflows/bump.yml
+- [ ] This will open a PR. Review and merge it.
+- [ ] Create a release with the version number (_without_ `v` prefix).
+
 ## All done!
 
 - [ ] Write a message in company's #cli channel:
-      `:unlock: deno and deno_std are now unlocked`.
+      `:unlock: deno is now unlocked`.

@@ -5,6 +5,7 @@ use std::collections::VecDeque;
 use std::path::Path;
 use std::path::PathBuf;
 
+use deno_core::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::ModuleSpecifier;
 use once_cell::sync::Lazy;
@@ -21,7 +22,15 @@ use crate::PackageJson;
 use crate::PathClean;
 
 #[derive(Debug, Clone)]
-pub struct CjsAnalysis {
+pub enum CjsAnalysis {
+  /// File was found to be an ES module and the translator should
+  /// load the code as ESM.
+  Esm(String),
+  Cjs(CjsAnalysisExports),
+}
+
+#[derive(Debug, Clone)]
+pub struct CjsAnalysisExports {
   pub exports: Vec<String>,
   pub reexports: Vec<String>,
 }
@@ -38,7 +47,7 @@ pub trait CjsCodeAnalyzer {
   fn analyze_cjs(
     &self,
     specifier: &ModuleSpecifier,
-    maybe_source: Option<&str>,
+    maybe_source: Option<String>,
   ) -> Result<CjsAnalysis, AnyError>;
 }
 
@@ -73,13 +82,18 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
   pub fn translate_cjs_to_esm(
     &self,
     specifier: &ModuleSpecifier,
-    source: Option<&str>,
+    source: Option<String>,
     permissions: &dyn NodePermissions,
   ) -> Result<String, AnyError> {
     let mut temp_var_count = 0;
     let mut handled_reexports: HashSet<String> = HashSet::default();
 
     let analysis = self.cjs_code_analyzer.analyze_cjs(specifier, source)?;
+
+    let analysis = match analysis {
+      CjsAnalysis::Esm(source) => return Ok(source),
+      CjsAnalysis::Cjs(analysis) => analysis,
+    };
 
     let mut source = vec![
       r#"import {createRequire as __internalCreateRequire} from "node:module";
@@ -127,6 +141,17 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
             reexport, reexport_specifier, referrer
           )
         })?;
+      let analysis = match analysis {
+        CjsAnalysis::Esm(_) => {
+          // todo(dsherret): support this once supporting requiring ES modules
+          return Err(anyhow::anyhow!(
+            "Cannot require ES module '{}' from '{}'",
+            reexport_specifier,
+            specifier
+          ));
+        }
+        CjsAnalysis::Cjs(analysis) => analysis,
+      };
 
       for reexport in analysis.reexports {
         reexports_to_handle.push_back((reexport, reexport_specifier.clone()));
@@ -392,6 +417,16 @@ fn add_export(
 ) {
   fn is_valid_var_decl(name: &str) -> bool {
     // it's ok to be super strict here
+    if name.is_empty() {
+      return false;
+    }
+
+    if let Some(first) = name.chars().next() {
+      if !first.is_ascii_alphabetic() && first != '_' && first != '$' {
+        return false;
+      }
+    }
+
     name
       .chars()
       .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$')
@@ -479,7 +514,7 @@ mod tests {
     let mut temp_var_count = 0;
     let mut source = vec![];
 
-    let exports = vec!["static", "server", "app", "dashed-export"];
+    let exports = vec!["static", "server", "app", "dashed-export", "3d"];
     for export in exports {
       add_export(&mut source, export, "init", &mut temp_var_count);
     }
@@ -492,6 +527,8 @@ mod tests {
         "export const app = init;".to_string(),
         "const __deno_export_2__ = init;".to_string(),
         "export { __deno_export_2__ as \"dashed-export\" };".to_string(),
+        "const __deno_export_3__ = init;".to_string(),
+        "export { __deno_export_3__ as \"3d\" };".to_string(),
       ]
     )
   }

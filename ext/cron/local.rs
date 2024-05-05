@@ -14,8 +14,8 @@ use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::futures::FutureExt;
-use deno_unsync::spawn;
-use deno_unsync::JoinHandle;
+use deno_core::unsync::spawn;
+use deno_core::unsync::JoinHandle;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::WeakSender;
 use tokio::sync::OwnedSemaphorePermit;
@@ -318,9 +318,7 @@ fn compute_next_deadline(cron_expression: &str) -> Result<u64, AnyError> {
   Ok(next_deadline.timestamp_millis() as u64)
 }
 
-fn validate_backoff_schedule(
-  backoff_schedule: &Vec<u32>,
-) -> Result<(), AnyError> {
+fn validate_backoff_schedule(backoff_schedule: &[u32]) -> Result<(), AnyError> {
   if backoff_schedule.len() > MAX_BACKOFF_COUNT {
     return Err(type_error("Invalid backoff schedule"));
   }

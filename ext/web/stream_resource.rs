@@ -518,7 +518,7 @@ pub fn op_readable_stream_resource_write_buf(
 
 /// Write to the channel synchronously, returning 0 if the channel was closed, 1 if we wrote
 /// successfully, 2 if the channel was full and we need to block.
-#[op2(fast)]
+#[op2]
 pub fn op_readable_stream_resource_write_sync(
   sender: *const c_void,
   #[buffer] buffer: JsBuffer,
@@ -594,7 +594,7 @@ mod tests {
   static V8_GLOBAL: OnceLock<()> = OnceLock::new();
 
   thread_local! {
-    static ISOLATE: OnceCell<std::sync::Mutex<v8::OwnedIsolate>> = OnceCell::new();
+    static ISOLATE: OnceCell<std::sync::Mutex<v8::OwnedIsolate>> = const { OnceCell::new() };
   }
 
   fn with_isolate<T>(mut f: impl FnMut(&mut v8::Isolate) -> T) -> T {

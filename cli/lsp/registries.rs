@@ -416,6 +416,7 @@ enum VariableItems {
 #[derive(Debug, Clone)]
 pub struct ModuleRegistry {
   origins: HashMap<String, Vec<RegistryConfiguration>>,
+  pub location: PathBuf,
   pub file_fetcher: FileFetcher,
   http_cache: Arc<GlobalHttpCache>,
 }
@@ -424,7 +425,7 @@ impl ModuleRegistry {
   pub fn new(location: PathBuf, http_client: Arc<HttpClient>) -> Self {
     // the http cache should always be the global one for registry completions
     let http_cache = Arc::new(GlobalHttpCache::new(
-      location,
+      location.clone(),
       crate::cache::RealDenoCacheEnv,
     ));
     let mut file_fetcher = FileFetcher::new(
@@ -439,6 +440,7 @@ impl ModuleRegistry {
 
     Self {
       origins: HashMap::new(),
+      location,
       file_fetcher,
       http_cache,
     }
@@ -488,10 +490,12 @@ impl ModuleRegistry {
   }
 
   /// Disable a registry, removing its configuration, if any, from memory.
-  pub async fn disable(&mut self, origin: &str) -> Result<(), AnyError> {
-    let origin = base_url(&Url::parse(origin)?);
+  pub fn disable(&mut self, origin: &str) {
+    let Ok(origin_url) = Url::parse(origin) else {
+      return;
+    };
+    let origin = base_url(&origin_url);
     self.origins.remove(&origin);
-    Ok(())
   }
 
   /// Check to see if the given origin has a registry configuration.
@@ -512,7 +516,7 @@ impl ModuleRegistry {
       .file_fetcher
       .fetch_with_options(FetchOptions {
         specifier,
-        permissions: PermissionsContainer::allow_all(),
+        permissions: &PermissionsContainer::allow_all(),
         maybe_accept: Some("application/vnd.deno.reg.v2+json, application/vnd.deno.reg.v1+json;q=0.9, application/json;q=0.8"),
         maybe_cache_setting: None,
       })
@@ -528,7 +532,7 @@ impl ModuleRegistry {
       );
       self.http_cache.set(specifier, headers_map, &[])?;
     }
-    let file = fetch_result?;
+    let file = fetch_result?.into_text_decoded()?;
     let config: RegistryConfigurationJson = serde_json::from_str(&file.source)?;
     validate_config(&config)?;
     Ok(config.registries)
@@ -536,13 +540,17 @@ impl ModuleRegistry {
 
   /// Enable a registry by attempting to retrieve its configuration and
   /// validating it.
-  pub async fn enable(&mut self, origin: &str) -> Result<(), AnyError> {
-    let origin_url = Url::parse(origin)?;
+  pub async fn enable(&mut self, origin: &str) {
+    let Ok(origin_url) = Url::parse(origin) else {
+      return;
+    };
     let origin = base_url(&origin_url);
     #[allow(clippy::map_entry)]
     // we can't use entry().or_insert_with() because we can't use async closures
     if !self.origins.contains_key(&origin) {
-      let specifier = origin_url.join(CONFIG_PATH)?;
+      let Ok(specifier) = origin_url.join(CONFIG_PATH) else {
+        return;
+      };
       match self.fetch_config(&specifier).await {
         Ok(configs) => {
           self.origins.insert(origin, configs);
@@ -557,8 +565,6 @@ impl ModuleRegistry {
         }
       }
     }
-
-    Ok(())
   }
 
   #[cfg(test)]
@@ -608,8 +614,10 @@ impl ModuleRegistry {
         .ok()?;
         let file = self
           .file_fetcher
-          .fetch(&endpoint, PermissionsContainer::allow_all())
+          .fetch(&endpoint, &PermissionsContainer::allow_all())
           .await
+          .ok()?
+          .into_text_decoded()
           .ok()?;
         let documentation: lsp::Documentation =
           serde_json::from_str(&file.source).ok()?;
@@ -972,8 +980,10 @@ impl ModuleRegistry {
     let specifier = Url::parse(url).ok()?;
     let file = self
       .file_fetcher
-      .fetch(&specifier, PermissionsContainer::allow_all())
+      .fetch(&specifier, &PermissionsContainer::allow_all())
       .await
+      .ok()?
+      .into_text_decoded()
       .ok()?;
     serde_json::from_str(&file.source).ok()
   }
@@ -1029,7 +1039,7 @@ impl ModuleRegistry {
     let specifier = ModuleSpecifier::parse(url).ok()?;
     let file = self
       .file_fetcher
-      .fetch(&specifier, PermissionsContainer::allow_all())
+      .fetch(&specifier, &PermissionsContainer::allow_all())
       .await
       .map_err(|err| {
         error!(
@@ -1037,6 +1047,8 @@ impl ModuleRegistry {
           specifier, err
         );
       })
+      .ok()?
+      .into_text_decoded()
       .ok()?;
     let items: VariableItems = serde_json::from_str(&file.source)
       .map_err(|err| {
@@ -1065,7 +1077,7 @@ impl ModuleRegistry {
         .ok()?;
     let file = self
       .file_fetcher
-      .fetch(&specifier, PermissionsContainer::allow_all())
+      .fetch(&specifier, &PermissionsContainer::allow_all())
       .await
       .map_err(|err| {
         error!(
@@ -1073,6 +1085,8 @@ impl ModuleRegistry {
           specifier, err
         );
       })
+      .ok()?
+      .into_text_decoded()
       .ok()?;
     let items: VariableItems = serde_json::from_str(&file.source)
       .map_err(|err| {
@@ -1083,6 +1097,10 @@ impl ModuleRegistry {
       })
       .ok()?;
     Some(items)
+  }
+
+  pub fn clear_cache(&self) {
+    self.file_fetcher.clear_memory_files();
   }
 }
 
@@ -1248,10 +1266,7 @@ mod tests {
     let location = temp_dir.path().join("registries").to_path_buf();
     let mut module_registry =
       ModuleRegistry::new(location, Arc::new(HttpClient::new(None, None)));
-    module_registry
-      .enable("http://localhost:4545/")
-      .await
-      .expect("could not enable");
+    module_registry.enable("http://localhost:4545/").await;
     let range = lsp::Range {
       start: lsp::Position {
         line: 0,
@@ -1309,10 +1324,7 @@ mod tests {
     let location = temp_dir.path().join("registries").to_path_buf();
     let mut module_registry =
       ModuleRegistry::new(location, Arc::new(HttpClient::new(None, None)));
-    module_registry
-      .enable("http://localhost:4545/")
-      .await
-      .expect("could not enable");
+    module_registry.enable("http://localhost:4545/").await;
     let range = lsp::Range {
       start: lsp::Position {
         line: 0,

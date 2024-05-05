@@ -4,10 +4,16 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-const internals = globalThis.__bootstrap.internals;
-const { core } = globalThis.__bootstrap;
-const { ops } = core;
-import { notImplemented, warnNotImplemented } from "ext:deno_node/_utils.ts";
+import { core, internals } from "ext:core/mod.js";
+import { initializeDebugEnv } from "ext:deno_node/internal/util/debuglog.ts";
+import {
+  op_geteuid,
+  op_node_process_kill,
+  op_process_abort,
+  op_set_exit_code,
+} from "ext:core/ops";
+
+import { warnNotImplemented } from "ext:deno_node/_utils.ts";
 import { EventEmitter } from "node:events";
 import Module from "node:module";
 import { report } from "ext:deno_node/internal/process/report.ts";
@@ -43,18 +49,13 @@ import {
 } from "ext:deno_node/_next_tick.ts";
 import { isWindows } from "ext:deno_node/_util/os.ts";
 import * as io from "ext:deno_io/12_io.js";
-import { Command } from "ext:runtime/40_process.js";
 
-let argv0Getter = () => "";
-export let argv0 = "deno";
+export let argv0 = "";
 
-// TODO(kt3k): This should be set at start up time
 export let arch = "";
 
-// TODO(kt3k): This should be set at start up time
 export let platform = "";
 
-// TODO(kt3k): This should be set at start up time
 export let pid = 0;
 
 let stdin, stdout, stderr;
@@ -69,11 +70,10 @@ import { buildAllowedFlags } from "ext:deno_node/internal/process/per_thread.mjs
 
 const notImplementedEvents = [
   "multipleResolves",
-  "rejectionHandled",
   "worker",
 ];
 
-export const argv: string[] = [];
+export const argv: string[] = ["", ""];
 let globalProcessExitCode: number | undefined = undefined;
 
 /** https://nodejs.org/api/process.html#process_process_exit_code */
@@ -98,8 +98,17 @@ export const exit = (code?: number | string) => {
   process.reallyExit(process.exitCode || 0);
 };
 
+/** https://nodejs.org/api/process.html#processumaskmask */
+export const umask = () => {
+  // Always return the system default umask value.
+  // We don't use Deno.umask here because it has a race
+  // condition bug.
+  // See https://github.com/denoland/deno_std/issues/1893#issuecomment-1032897779
+  return 0o22;
+};
+
 export const abort = () => {
-  ops.op_process_abort();
+  op_process_abort();
 };
 
 function addReadOnlyProcessAlias(
@@ -250,49 +259,14 @@ memoryUsage.rss = function (): number {
 
 // Returns a negative error code than can be recognized by errnoException
 function _kill(pid: number, sig: number): number {
-  let errCode;
+  const maybeSignal = Object.entries(constants.os.signals).find((
+    [_, numericCode],
+  ) => numericCode === sig);
 
-  if (sig === 0) {
-    let status;
-    if (Deno.build.os === "windows") {
-      status = (new Command("powershell.exe", {
-        args: ["Get-Process", "-pid", pid],
-      })).outputSync();
-    } else {
-      status = (new Command("kill", {
-        args: ["-0", pid],
-      })).outputSync();
-    }
-
-    if (!status.success) {
-      errCode = uv.codeMap.get("ESRCH");
-    }
-  } else {
-    // Reverse search the shortname based on the numeric code
-    const maybeSignal = Object.entries(constants.os.signals).find((
-      [_, numericCode],
-    ) => numericCode === sig);
-
-    if (!maybeSignal) {
-      errCode = uv.codeMap.get("EINVAL");
-    } else {
-      try {
-        Deno.kill(pid, maybeSignal[0] as Deno.Signal);
-      } catch (e) {
-        if (e instanceof TypeError) {
-          throw notImplemented(maybeSignal[0]);
-        }
-
-        throw e;
-      }
-    }
+  if (!maybeSignal) {
+    return uv.codeMap.get("EINVAL");
   }
-
-  if (!errCode) {
-    return 0;
-  } else {
-    return errCode;
-  }
+  return op_node_process_kill(pid, sig);
 }
 
 export function dlopen(module, filename, _flags) {
@@ -360,9 +334,6 @@ class Process extends EventEmitter {
 
   /** https://nodejs.org/api/process.html#process_process_arch */
   get arch() {
-    if (!arch) {
-      arch = arch_();
-    }
     return arch;
   }
 
@@ -387,9 +358,6 @@ class Process extends EventEmitter {
   argv = argv;
 
   get argv0() {
-    if (!argv0) {
-      argv0 = argv0Getter();
-    }
     return argv0;
   }
 
@@ -440,7 +408,7 @@ class Process extends EventEmitter {
     globalProcessExitCode = code;
     code = parseInt(code) || 0;
     if (!isNaN(code)) {
-      ops.op_set_exit_code(code);
+      op_set_exit_code(code);
     }
   }
 
@@ -553,18 +521,23 @@ class Process extends EventEmitter {
 
   /** https://nodejs.org/api/process.html#process_process_pid */
   get pid() {
-    if (!pid) {
-      pid = Deno.pid;
-    }
     return pid;
+  }
+
+  /** https://nodejs.org/api/process.html#processppid */
+  get ppid() {
+    return Deno.ppid;
   }
 
   /** https://nodejs.org/api/process.html#process_process_platform */
   get platform() {
-    if (!platform) {
-      platform = isWindows ? "win32" : Deno.build.os;
-    }
     return platform;
+  }
+
+  // https://nodejs.org/api/process.html#processsetsourcemapsenabledval
+  setSourceMapsEnabled(_val: boolean) {
+    // This is a no-op in Deno. Source maps are always enabled.
+    // TODO(@satyarohith): support disabling source maps if needed.
   }
 
   override addListener(event: "exit", listener: (code: number) => void): this;
@@ -676,7 +649,7 @@ class Process extends EventEmitter {
 
   /** This method is removed on Windows */
   geteuid?(): number {
-    return ops.op_geteuid();
+    return op_geteuid();
   }
 
   // TODO(kt3k): Implement this when we added -e option to node compat mode
@@ -740,6 +713,7 @@ export const removeListener = process.removeListener;
 export const removeAllListeners = process.removeAllListeners;
 
 let unhandledRejectionListenerCount = 0;
+let rejectionHandledListenerCount = 0;
 let uncaughtExceptionListenerCount = 0;
 let beforeExitListenerCount = 0;
 let exitListenerCount = 0;
@@ -748,6 +722,9 @@ process.on("newListener", (event: string) => {
   switch (event) {
     case "unhandledRejection":
       unhandledRejectionListenerCount++;
+      break;
+    case "rejectionHandled":
+      rejectionHandledListenerCount++;
       break;
     case "uncaughtException":
       uncaughtExceptionListenerCount++;
@@ -768,6 +745,9 @@ process.on("removeListener", (event: string) => {
   switch (event) {
     case "unhandledRejection":
       unhandledRejectionListenerCount--;
+      break;
+    case "rejectionHandled":
+      rejectionHandledListenerCount--;
       break;
     case "uncaughtException":
       uncaughtExceptionListenerCount--;
@@ -792,15 +772,13 @@ function processOnError(event: ErrorEvent) {
   uncaughtExceptionHandler(event.error, "uncaughtException");
 }
 
-function processOnBeforeUnload(event: Event) {
+function dispatchProcessBeforeExitEvent() {
   process.emit("beforeExit", process.exitCode || 0);
   processTicksAndRejections();
-  if (core.eventLoopHasMoreWork()) {
-    event.preventDefault();
-  }
+  return core.eventLoopHasMoreWork();
 }
 
-function processOnUnload() {
+function dispatchProcessExitEvent() {
   if (!process._exiting) {
     process._exiting = true;
     process.emit("exit", process.exitCode || 0);
@@ -831,87 +809,113 @@ function synchronizeListeners() {
     internals.nodeProcessUnhandledRejectionCallback = undefined;
   }
 
+  // Install special "handledrejection" handler, that will be called
+  // last.
+  if (rejectionHandledListenerCount > 0) {
+    internals.nodeProcessRejectionHandledCallback = (event) => {
+      process.emit("rejectionHandled", event.reason, event.promise);
+    };
+  } else {
+    internals.nodeProcessRejectionHandledCallback = undefined;
+  }
+
   if (uncaughtExceptionListenerCount > 0) {
     globalThis.addEventListener("error", processOnError);
   } else {
     globalThis.removeEventListener("error", processOnError);
   }
-  if (beforeExitListenerCount > 0) {
-    globalThis.addEventListener("beforeunload", processOnBeforeUnload);
-  } else {
-    globalThis.removeEventListener("beforeunload", processOnBeforeUnload);
-  }
-  if (exitListenerCount > 0) {
-    globalThis.addEventListener("unload", processOnUnload);
-  } else {
-    globalThis.removeEventListener("unload", processOnUnload);
-  }
 }
 
+// Overwrites the 1st and 2nd items with getters.
+Object.defineProperty(argv, "0", { get: () => argv0 });
+Object.defineProperty(argv, "1", {
+  get: () => {
+    if (Deno.mainModule?.startsWith("file:")) {
+      return pathFromURL(new URL(Deno.mainModule));
+    } else {
+      return join(Deno.cwd(), "$deno$node.js");
+    }
+  },
+});
+
+internals.dispatchProcessBeforeExitEvent = dispatchProcessBeforeExitEvent;
+internals.dispatchProcessExitEvent = dispatchProcessExitEvent;
 // Should be called only once, in `runtime/js/99_main.js` when the runtime is
 // bootstrapped.
 internals.__bootstrapNodeProcess = function (
   argv0Val: string | undefined,
   args: string[],
   denoVersions: Record<string, string>,
+  nodeDebug: string,
+  warmup = false,
 ) {
-  // Overwrites the 1st item with getter.
-  if (typeof argv0Val === "string") {
-    Object.defineProperty(argv, "0", {
-      get: () => {
-        return argv0Val;
-      },
-    });
-    argv0Getter = () => argv0Val;
+  if (!warmup) {
+    argv0 = argv0Val || "";
+    // Manually concatenate these arrays to avoid triggering the getter
+    for (let i = 0; i < args.length; i++) {
+      argv[i + 2] = args[i];
+    }
+
+    for (const [key, value] of Object.entries(denoVersions)) {
+      versions[key] = value;
+    }
+
+    core.setNextTickCallback(processTicksAndRejections);
+    core.setMacrotaskCallback(runNextTicks);
+    enableNextTick();
+
+    // Replace stdin if it is not a terminal
+    const newStdin = initStdin();
+    if (newStdin) {
+      stdin = process.stdin = newStdin;
+    }
+
+    // Replace stdout/stderr if they are not terminals
+    if (!io.stdout.isTerminal()) {
+      /** https://nodejs.org/api/process.html#process_process_stdout */
+      stdout = process.stdout = createWritableStdioStream(
+        io.stdout,
+        "stdout",
+      );
+    }
+
+    if (!io.stderr.isTerminal()) {
+      /** https://nodejs.org/api/process.html#process_process_stderr */
+      stderr = process.stderr = createWritableStdioStream(
+        io.stderr,
+        "stderr",
+      );
+    }
+
+    process.setStartTime(Date.now());
+
+    arch = arch_();
+    platform = isWindows ? "win32" : Deno.build.os;
+    pid = Deno.pid;
+
+    initializeDebugEnv(nodeDebug);
+
+    // @ts-ignore Remove setStartTime and #startTime is not modifiable
+    delete process.setStartTime;
+    delete internals.__bootstrapNodeProcess;
   } else {
-    Object.defineProperty(argv, "0", {
-      get: () => {
-        return Deno.execPath();
-      },
-    });
-    argv0Getter = () => Deno.execPath();
+    // Warmup, assuming stdin/stdout/stderr are all terminals
+    stdin = process.stdin = initStdin(true);
+
+    /** https://nodejs.org/api/process.html#process_process_stdout */
+    stdout = process.stdout = createWritableStdioStream(
+      io.stdout,
+      "stdout",
+      true,
+    );
+
+    /** https://nodejs.org/api/process.html#process_process_stderr */
+    stderr = process.stderr = createWritableStdioStream(
+      io.stderr,
+      "stderr",
+      true,
+    );
   }
-
-  // Overwrites the 2st item with getter.
-  Object.defineProperty(argv, "1", {
-    get: () => {
-      if (Deno.mainModule?.startsWith("file:")) {
-        return pathFromURL(new URL(Deno.mainModule));
-      } else {
-        return join(Deno.cwd(), "$deno$node.js");
-      }
-    },
-  });
-  for (let i = 0; i < args.length; i++) {
-    argv[i + 2] = args[i];
-  }
-
-  for (const [key, value] of Object.entries(denoVersions)) {
-    versions[key] = value;
-  }
-
-  core.setNextTickCallback(processTicksAndRejections);
-  core.setMacrotaskCallback(runNextTicks);
-  enableNextTick();
-
-  stdin = process.stdin = initStdin();
-  /** https://nodejs.org/api/process.html#process_process_stdout */
-  stdout = process.stdout = createWritableStdioStream(
-    io.stdout,
-    "stdout",
-  );
-
-  /** https://nodejs.org/api/process.html#process_process_stderr */
-  stderr = process.stderr = createWritableStdioStream(
-    io.stderr,
-    "stderr",
-  );
-
-  process.setStartTime(Date.now());
-
-  // @ts-ignore Remove setStartTime and #startTime is not modifiable
-  delete process.setStartTime;
-  delete internals.__bootstrapNodeProcess;
 };
 
 export default process;

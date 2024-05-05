@@ -6,28 +6,37 @@
 /// <reference path="../web/lib.deno_web.d.ts" />
 /// <reference path="./lib.deno_webgpu.d.ts" />
 
-import { core, primordials } from "ext:core/mod.js";
-const ops = core.ops;
+import { primordials } from "ext:core/mod.js";
+import {
+  op_webgpu_surface_configure,
+  op_webgpu_surface_create,
+  op_webgpu_surface_get_current_texture,
+  op_webgpu_surface_present,
+} from "ext:core/ops";
+const {
+  ObjectPrototypeIsPrototypeOf,
+  Symbol,
+  SymbolFor,
+  TypeError,
+} = primordials;
+
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
-const { Symbol, SymbolFor, ObjectPrototypeIsPrototypeOf } = primordials;
-import {
-  _device,
+import {   _device,
   assertDevice,
   createGPUTexture,
   GPUTextureUsage,
-} from "ext:deno_webgpu/01_webgpu.js";
+  loadWebGPU } from "ext:deno_webgpu/00_init.js";
 import { DOMException } from "ext:deno_web/01_dom_exception.js";
 
 const _surfaceRid = Symbol("[[surfaceRid]]");
 const _configuration = Symbol("[[configuration]]");
 const _canvas = Symbol("[[canvas]]");
 const _currentTexture = Symbol("[[currentTexture]]");
+const _present = Symbol("[[present]]");
 class GPUCanvasContext {
   /** @type {number} */
   [_surfaceRid];
-  /** @type {InnerGPUDevice} */
-  [_device];
   [_configuration];
   [_canvas];
   /** @type {GPUTexture | undefined} */
@@ -51,6 +60,7 @@ class GPUCanvasContext {
       context: "Argument 1",
     });
 
+    const { _device, assertDevice } = loadWebGPU();
     this[_device] = configuration.device[_device];
     this[_configuration] = configuration;
     const device = assertDevice(this, {
@@ -58,7 +68,7 @@ class GPUCanvasContext {
       context: "configuration.device",
     });
 
-    const { err } = ops.op_webgpu_surface_configure({
+    const { err } = op_webgpu_surface_configure({
       surfaceRid: this[_surfaceRid],
       deviceRid: device.rid,
       format: configuration.format,
@@ -73,6 +83,8 @@ class GPUCanvasContext {
   }
 
   unconfigure() {
+    const { _device } = loadWebGPU();
+
     webidl.assertBranded(this, GPUCanvasContextPrototype);
 
     this[_configuration] = null;
@@ -87,6 +99,7 @@ class GPUCanvasContext {
     if (this[_configuration] === null) {
       throw new DOMException("context is not configured.", "InvalidStateError");
     }
+    const { createGPUTexture, assertDevice } = loadWebGPU();
 
     const device = assertDevice(this, { prefix, context: "this" });
 
@@ -94,7 +107,7 @@ class GPUCanvasContext {
       return this[_currentTexture];
     }
 
-    const { rid } = ops.op_webgpu_surface_get_current_texture(
+    const { rid } = op_webgpu_surface_get_current_texture(
       device.rid,
       this[_surfaceRid],
     );
@@ -120,15 +133,17 @@ class GPUCanvasContext {
     return texture;
   }
 
-  // Extended from spec. Required to present the texture; browser don't need this.
-  present() {
+  // Required to present the texture; browser don't need this.
+  [_present]() {
+    const { assertDevice } = loadWebGPU();
+
     webidl.assertBranded(this, GPUCanvasContextPrototype);
     const prefix = "Failed to execute 'present' on 'GPUCanvasContext'";
     const device = assertDevice(this[_currentTexture], {
       prefix,
       context: "this",
     });
-    ops.op_webgpu_surface_present(device.rid, this[_surfaceRid]);
+    op_webgpu_surface_present(device.rid, this[_surfaceRid]);
     this[_currentTexture].destroy();
     this[_currentTexture] = undefined;
   }
@@ -149,6 +164,7 @@ class GPUCanvasContext {
 const GPUCanvasContextPrototype = GPUCanvasContext.prototype;
 
 function createCanvasContext(options) {
+  // lazy load webgpu if needed
   const canvasContext = webidl.createBranded(GPUCanvasContext);
   canvasContext[_surfaceRid] = options.surfaceRid;
   canvasContext[_canvas] = options.canvas;
@@ -331,72 +347,26 @@ webidl.converters["GPUCanvasAlphaMode"] = webidl.createEnumConverter(
     "premultiplied",
   ],
 );
+// TODO(@littledivy): This will extend `OffscreenCanvas` when we add it.
+class UnsafeWindowSurface {
+  #ctx;
+  #surfaceRid;
 
-// NON-SPEC: ENUM: GPUPresentMode
-webidl.converters["GPUPresentMode"] = webidl.createEnumConverter(
-  "GPUPresentMode",
-  [
-    "autoVsync",
-    "autoNoVsync",
-    "fifo",
-    "fifoRelaxed",
-    "immediate",
-    "mailbox",
-  ],
-);
+  constructor(system, win, display) {
+    this.#surfaceRid = op_webgpu_surface_create(system, win, display);
+  }
 
-// DICT: GPUCanvasConfiguration
-const dictMembersGPUCanvasConfiguration = [
-  { key: "device", converter: webidl.converters.GPUDevice, required: true },
-  {
-    key: "format",
-    converter: webidl.converters.GPUTextureFormat,
-    required: true,
-  },
-  {
-    key: "usage",
-    converter: webidl.converters["GPUTextureUsageFlags"],
-    defaultValue: GPUTextureUsage.RENDER_ATTACHMENT,
-  },
-  {
-    key: "alphaMode",
-    converter: webidl.converters["GPUCanvasAlphaMode"],
-    defaultValue: "opaque",
-  },
+  getContext(context) {
+    if (context !== "webgpu") {
+      throw new TypeError("Only 'webgpu' context is supported.");
+    }
+    this.#ctx = createCanvasContext({ surfaceRid: this.#surfaceRid });
+    return this.#ctx;
+  }
 
-  // Extended from spec
-  {
-    key: "presentMode",
-    converter: webidl.converters["GPUPresentMode"],
-  },
-  {
-    key: "width",
-    converter: webidl.converters["long"],
-    required: true,
-  },
-  {
-    key: "height",
-    converter: webidl.converters["long"],
-    required: true,
-  },
-  {
-    key: "viewFormats",
-    converter: webidl.createSequenceConverter(
-      webidl.converters["GPUTextureFormat"],
-    ),
-    get defaultValue() {
-      return [];
-    },
-  },
-];
-webidl.converters["GPUCanvasConfiguration"] = webidl
-  .createDictionaryConverter(
-    "GPUCanvasConfiguration",
-    dictMembersGPUCanvasConfiguration,
-  );
+  present() {
+    this.#ctx[_present]();
+  }
+}
 
-window.__bootstrap.webgpu = {
-  ...window.__bootstrap.webgpu,
-  GPUCanvasContext,
-  createCanvasContext,
-};
+export { GPUCanvasContext, UnsafeWindowSurface };

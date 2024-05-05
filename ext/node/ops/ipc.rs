@@ -408,6 +408,7 @@ mod impl_ {
     use deno_core::RcRef;
     use std::rc::Rc;
 
+    #[allow(clippy::unused_async)]
     #[cfg(unix)]
     pub async fn pair() -> (Rc<IpcJsonStreamResource>, tokio::net::UnixStream) {
       let (a, b) = tokio::net::UnixStream::pair().unwrap();
@@ -437,6 +438,7 @@ mod impl_ {
       (client, server)
     }
 
+    #[allow(clippy::print_stdout)]
     #[tokio::test]
     async fn bench_ipc() -> Result<(), Box<dyn std::error::Error>> {
       // A simple round trip benchmark for quick dev feedback.

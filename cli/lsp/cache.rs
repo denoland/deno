@@ -1,7 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::cache::HttpCache;
-use crate::util::path::specifier_to_file_path;
+use deno_runtime::fs_util::specifier_to_file_path;
 
 use deno_core::parking_lot::Mutex;
 use deno_core::ModuleSpecifier;
@@ -10,6 +10,16 @@ use std::fs;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::SystemTime;
+
+/// In the LSP, we disallow the cache from automatically copying from
+/// the global cache to the local cache for technical reasons.
+///
+/// 1. We need to verify the checksums from the lockfile are correct when
+///    moving from the global to the local cache.
+/// 2. We need to verify the checksums for JSR https specifiers match what
+///    is found in the package's manifest.
+pub const LSP_DISALLOW_GLOBAL_TO_LOCAL_COPY: deno_cache_dir::GlobalToLocalCopy =
+  deno_cache_dir::GlobalToLocalCopy::Disallow;
 
 pub fn calculate_fs_version(
   cache: &Arc<dyn HttpCache>,
@@ -123,8 +133,8 @@ impl CacheMetadata {
       return None;
     }
     let cache_key = self.cache.cache_item_key(specifier).ok()?;
-    let specifier_metadata = self.cache.read_metadata(&cache_key).ok()??;
-    let values = Arc::new(parse_metadata(&specifier_metadata.headers));
+    let headers = self.cache.read_headers(&cache_key).ok()??;
+    let values = Arc::new(parse_metadata(&headers));
     let version = calculate_fs_version_in_cache(&self.cache, specifier);
     let mut metadata_map = self.metadata.lock();
     let metadata = Metadata { values, version };

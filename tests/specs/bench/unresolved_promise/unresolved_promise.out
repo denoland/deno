@@ -1,0 +1,9 @@
+Check [WILDCARD]/unresolved_promise.ts
+error: Top-level await promise never resolved
+await new Promise((_resolve, _reject) => {});
+^
+    at <anonymous> ([WILDCARD]/unresolved_promise.ts:1:1)
+This error was not caught from a benchmark and caused the bench runner to fail on the referenced module.
+It most likely originated from a dangling promise, event/timeout handler or top-level code.
+
+error: Bench failed

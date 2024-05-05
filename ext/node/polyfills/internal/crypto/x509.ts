@@ -4,6 +4,21 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
+import {
+  op_node_x509_ca,
+  op_node_x509_check_email,
+  op_node_x509_fingerprint,
+  op_node_x509_fingerprint256,
+  op_node_x509_fingerprint512,
+  op_node_x509_get_issuer,
+  op_node_x509_get_serial_number,
+  op_node_x509_get_subject,
+  op_node_x509_get_valid_from,
+  op_node_x509_get_valid_to,
+  op_node_x509_key_usage,
+  op_node_x509_parse,
+} from "ext:core/ops";
+
 import { KeyObject } from "ext:deno_node/internal/crypto/keys.ts";
 import { Buffer } from "node:buffer";
 import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
@@ -11,8 +26,6 @@ import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
 import { validateString } from "ext:deno_node/internal/validators.mjs";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import { BinaryLike } from "ext:deno_node/internal/crypto/types.ts";
-
-const { ops } = globalThis.__bootstrap.core;
 
 // deno-lint-ignore no-explicit-any
 export type PeerCertificate = any;
@@ -56,11 +69,11 @@ export class X509Certificate {
       );
     }
 
-    this.#handle = ops.op_node_x509_parse(buffer);
+    this.#handle = op_node_x509_parse(buffer);
   }
 
   get ca(): boolean {
-    return ops.op_node_x509_ca(this.#handle);
+    return op_node_x509_ca(this.#handle);
   }
 
   checkEmail(
@@ -68,7 +81,7 @@ export class X509Certificate {
     _options?: Pick<X509CheckOptions, "subject">,
   ): string | undefined {
     validateString(email, "email");
-    if (ops.op_node_x509_check_email(this.#handle, email)) {
+    if (op_node_x509_check_email(this.#handle, email)) {
       return email;
     }
   }
@@ -90,15 +103,15 @@ export class X509Certificate {
   }
 
   get fingerprint(): string {
-    return ops.op_node_x509_fingerprint(this.#handle);
+    return op_node_x509_fingerprint(this.#handle);
   }
 
   get fingerprint256(): string {
-    return ops.op_node_x509_fingerprint256(this.#handle);
+    return op_node_x509_fingerprint256(this.#handle);
   }
 
   get fingerprint512(): string {
-    return ops.op_node_x509_fingerprint512(this.#handle);
+    return op_node_x509_fingerprint512(this.#handle);
   }
 
   get infoAccess(): string | undefined {
@@ -108,7 +121,7 @@ export class X509Certificate {
   }
 
   get issuer(): string {
-    return ops.op_node_x509_get_issuer(this.#handle);
+    return op_node_x509_get_issuer(this.#handle);
   }
 
   get issuerCertificate(): X509Certificate | undefined {
@@ -116,7 +129,7 @@ export class X509Certificate {
   }
 
   get keyUsage(): string[] | undefined {
-    const flags = ops.op_node_x509_key_usage(this.#handle);
+    const flags = op_node_x509_key_usage(this.#handle);
     if (flags === 0) return undefined;
     const result: string[] = [];
     if (flags & 0x01) result.push("DigitalSignature");
@@ -144,11 +157,11 @@ export class X509Certificate {
   }
 
   get serialNumber(): string {
-    return ops.op_node_x509_get_serial_number(this.#handle);
+    return op_node_x509_get_serial_number(this.#handle);
   }
 
   get subject(): string {
-    return ops.op_node_x509_get_subject(this.#handle);
+    return op_node_x509_get_subject(this.#handle);
   }
 
   get subjectAltName(): string | undefined {
@@ -168,11 +181,11 @@ export class X509Certificate {
   }
 
   get validFrom(): string {
-    return ops.op_node_x509_get_valid_from(this.#handle);
+    return op_node_x509_get_valid_from(this.#handle);
   }
 
   get validTo(): string {
-    return ops.op_node_x509_get_valid_to(this.#handle);
+    return op_node_x509_get_valid_to(this.#handle);
   }
 
   verify(_publicKey: KeyObject): boolean {

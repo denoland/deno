@@ -5,16 +5,16 @@ import {
   join,
   resolve,
   toFileUrl,
-} from "../test_util/std/path/mod.ts";
+} from "../tests/util/std/path/mod.ts";
 import { wait } from "https://deno.land/x/wait@0.1.13/mod.ts";
 export { dirname, fromFileUrl, join, resolve, toFileUrl };
-export { existsSync, walk } from "../test_util/std/fs/mod.ts";
-export { TextLineStream } from "../test_util/std/streams/text_line_stream.ts";
-export { delay } from "../test_util/std/async/delay.ts";
+export { existsSync, walk } from "../tests/util/std/fs/mod.ts";
+export { TextLineStream } from "../tests/util/std/streams/text_line_stream.ts";
+export { delay } from "../tests/util/std/async/delay.ts";
 
 // [toolName] --version output
 const versions = {
-  "dlint": "dlint 0.51.0",
+  "dlint": "dlint 0.52.2",
 };
 
 const compressed = new Set(["ld64.lld", "rcodesign"]);
@@ -175,7 +175,7 @@ export function getPrebuiltToolPath(toolName) {
   return join(PREBUILT_TOOL_DIR, toolName + executableSuffix);
 }
 
-const commitId = "c249f61eaed67db26c2934b195dc51e3ab91ae03";
+const commitId = "5f2097d8247c7fbe30ba227f894d70ae5c1524c7";
 const downloadUrl =
   `https://raw.githubusercontent.com/denoland/deno_third_party/${commitId}/prebuilt/${platformDirName}`;
 
