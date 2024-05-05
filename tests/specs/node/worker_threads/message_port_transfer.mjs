@@ -2,7 +2,7 @@ import { MessageChannel, Worker } from "node:worker_threads";
 
 const { port1, port2 } = new MessageChannel();
 const worker = new Worker(
-  import.meta.resolve("./node_worker_transfer_port_1.mjs"),
+  import.meta.resolve("./message_port_transfer1.mjs"),
 );
 // Send the port directly after the worker is created
 worker.postMessage(port2, [port2]);

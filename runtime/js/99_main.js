@@ -706,12 +706,13 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       3: inspectFlag,
       5: hasNodeModulesDir,
       6: argv0,
-      7: shouldDisableDeprecatedApiWarning,
-      8: shouldUseVerboseDeprecatedApiWarning,
-      9: future,
-      10: mode,
-      11: servePort,
-      12: serveHost,
+      7: nodeDebug,
+      8: shouldDisableDeprecatedApiWarning,
+      9: shouldUseVerboseDeprecatedApiWarning,
+      10: future,
+      11: mode,
+      12: servePort,
+      13: serveHost,
     } = runtimeOptions;
 
     if (mode === executionModes.run || mode === executionModes.serve) {
@@ -859,7 +860,12 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
     ObjectDefineProperty(globalThis, "Deno", core.propReadOnly(finalDenoNs));
 
     if (nodeBootstrap) {
-      nodeBootstrap(hasNodeModulesDir, argv0, /* runningOnMainThread */ true);
+      nodeBootstrap({
+        usesLocalNodeModulesDir: hasNodeModulesDir,
+        runningOnMainThread: true,
+        argv0,
+        nodeDebug,
+      });
     }
     if (future) {
       delete globalThis.window;
@@ -917,9 +923,10 @@ function bootstrapWorkerRuntime(
       4: enableTestingFeaturesFlag,
       5: hasNodeModulesDir,
       6: argv0,
-      7: shouldDisableDeprecatedApiWarning,
-      8: shouldUseVerboseDeprecatedApiWarning,
-      9: future,
+      7: nodeDebug,
+      8: shouldDisableDeprecatedApiWarning,
+      9: shouldUseVerboseDeprecatedApiWarning,
+      10: future,
     } = runtimeOptions;
 
     // TODO(iuioiua): remove in Deno v2. This allows us to dynamically delete
@@ -1016,13 +1023,14 @@ function bootstrapWorkerRuntime(
       : undefined;
 
     if (nodeBootstrap) {
-      nodeBootstrap(
-        hasNodeModulesDir,
+      nodeBootstrap({
+        usesLocalNodeModulesDir: hasNodeModulesDir,
+        runningOnMainThread: false,
         argv0,
-        /* runningOnMainThread */ false,
         workerId,
-        workerMetadata,
-      );
+        maybeWorkerMetadata: workerMetadata,
+        nodeDebug,
+      });
     }
 
     if (future) {
@@ -1097,4 +1105,4 @@ bootstrapWorkerRuntime(
   undefined,
   true,
 );
-nodeBootstrap(undefined, undefined, undefined, undefined, undefined, true);
+nodeBootstrap({ warmup: true });

@@ -10,8 +10,6 @@ mod bench;
 mod bundle;
 #[path = "cache_tests.rs"]
 mod cache;
-#[path = "cert_tests.rs"]
-mod cert;
 #[path = "check_tests.rs"]
 mod check;
 #[path = "compile_tests.rs"]

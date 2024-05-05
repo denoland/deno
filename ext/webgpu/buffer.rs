@@ -26,8 +26,7 @@ impl Resource for WebGpuBuffer {
   }
 
   fn close(self: Rc<Self>) {
-    let instance = &self.0;
-    gfx_select!(self.1 => instance.buffer_drop(self.1, true));
+    gfx_select!(self.1 => self.0.buffer_drop(self.1, true));
   }
 }
 
@@ -65,7 +64,7 @@ pub fn op_webgpu_create_buffer(
   gfx_put!(device => instance.device_create_buffer(
     device,
     &descriptor,
-    ()
+    None
   ) => state, WebGpuBuffer)
 }
 
@@ -100,14 +99,15 @@ pub async fn op_webgpu_buffer_get_map_async(
     // TODO(lucacasonato): error handling
     let maybe_err = gfx_select!(buffer => instance.buffer_map_async(
             buffer,
-            offset..(offset + size),
+            offset,
+            Some(size),
             wgpu_core::resource::BufferMapOperation {
                 host: match mode {
                     1 => wgpu_core::device::HostMap::Read,
                     2 => wgpu_core::device::HostMap::Write,
                     _ => unreachable!(),
                 },
-                callback: wgpu_core::resource::BufferMapCallback::from_rust(callback),
+                callback: Some(wgpu_core::resource::BufferMapCallback::from_rust(callback)),
             }
         ))
         .err();
@@ -124,7 +124,7 @@ pub async fn op_webgpu_buffer_get_map_async(
       {
         let state = state.borrow();
         let instance = state.borrow::<super::Instance>();
-        gfx_select!(device => instance.device_poll(device, wgpu_types::Maintain::Wait))
+        gfx_select!(device => instance.device_poll(device, wgpu_types::Maintain::wait()))
                     .unwrap();
       }
       tokio::time::sleep(Duration::from_millis(10)).await;
