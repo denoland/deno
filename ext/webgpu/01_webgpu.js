@@ -92,8 +92,7 @@ const {
   ArrayBuffer,
   ArrayBufferPrototypeGetByteLength,
   ArrayIsArray,
-  ArrayPrototypeFilter,
-  ArrayPrototypeIncludes,
+  ArrayPrototypeFindLast,
   ArrayPrototypeMap,
   ArrayPrototypePop,
   ArrayPrototypePush,
@@ -104,12 +103,9 @@ const {
   ObjectHasOwn,
   ObjectPrototypeIsPrototypeOf,
   Promise,
-  PromisePrototypeCatch,
-  PromisePrototypeThen,
   PromiseReject,
   PromiseResolve,
   SafeArrayIterator,
-  SafePromiseAll,
   SafeSet,
   SafeWeakRef,
   SetPrototypeHas,
@@ -124,7 +120,12 @@ const {
 } = primordials;
 
 import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { EventTarget } from "ext:deno_web/02_event.js";
+import {
+  defineEventHandler,
+  Event,
+  EventTarget,
+  setEventTargetData,
+} from "ext:deno_web/02_event.js";
 import { DOMException } from "ext:deno_web/01_dom_exception.js";
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 
@@ -299,7 +300,6 @@ class GPUValidationError extends GPUError {
     this[_message] = message;
   }
 }
-const GPUValidationErrorPrototype = GPUValidationError.prototype;
 
 class GPUOutOfMemoryError extends GPUError {
   name = "GPUOutOfMemoryError";
@@ -312,7 +312,40 @@ class GPUOutOfMemoryError extends GPUError {
     this[_message] = message;
   }
 }
-const GPUOutOfMemoryErrorPrototype = GPUOutOfMemoryError.prototype;
+
+class GPUInternalError extends GPUError {
+  name = "GPUInternalError";
+  constructor() {
+    super(illegalConstructorKey);
+    this[webidl.brand] = webidl.brand;
+  }
+}
+
+class GPUUncapturedErrorEvent extends Event {
+  #error;
+
+  constructor(type, gpuUncapturedErrorEventInitDict) {
+    super(type, gpuUncapturedErrorEventInitDict);
+    this[webidl.brand] = webidl.brand;
+
+    const prefix = "Failed to construct 'GPUUncapturedErrorEvent'";
+    webidl.requiredArguments(arguments.length, 2, prefix);
+    gpuUncapturedErrorEventInitDict = webidl.converters
+      .GPUUncapturedErrorEventInit(
+        gpuUncapturedErrorEventInitDict,
+        prefix,
+        "Argument 2",
+      );
+
+    this.#error = gpuUncapturedErrorEventInitDict.error;
+  }
+
+  get error() {
+    webidl.assertBranded(this, GPUUncapturedErrorEventPrototype);
+    return this.#error;
+  }
+}
+const GPUUncapturedErrorEventPrototype = GPUUncapturedErrorEvent.prototype;
 
 class GPU {
   [webidl.brand] = webidl.brand;
@@ -433,7 +466,7 @@ class GPUAdapter {
       }
     }
 
-    const { rid, features, limits } = op_webgpu_request_device(
+    const { rid, queueRid, features, limits } = op_webgpu_request_device(
       this[_adapter].rid,
       descriptor.label,
       requiredFeatures,
@@ -446,25 +479,22 @@ class GPUAdapter {
       features: createGPUSupportedFeatures(features),
       limits: createGPUSupportedLimits(limits),
     });
-    return createGPUDevice(
+    const queue = createGPUQueue(descriptor.label, inner, queueRid);
+    inner.trackResource(queue);
+    const device = createGPUDevice(
       descriptor.label,
       inner,
-      createGPUQueue(descriptor.label, inner),
+      queue,
     );
+    inner.device = device;
+    return device;
   }
 
   /**
-   * @param {string[]} unmaskHints
    * @returns {Promise<GPUAdapterInfo>}
    */
-  requestAdapterInfo(unmaskHints = []) {
+  requestAdapterInfo() {
     webidl.assertBranded(this, GPUAdapterPrototype);
-    const prefix = "Failed to execute 'requestAdapterInfo' on 'GPUAdapter'";
-    unmaskHints = webidl.converters["sequence<DOMString>"](
-      unmaskHints,
-      prefix,
-      "Argument 1",
-    );
 
     const {
       vendor,
@@ -474,16 +504,10 @@ class GPUAdapter {
     } = op_webgpu_request_adapter_info(this[_adapter].rid);
 
     const adapterInfo = webidl.createBranded(GPUAdapterInfo);
-    adapterInfo[_vendor] = ArrayPrototypeIncludes(unmaskHints, "vendor")
-      ? vendor
-      : "";
-    adapterInfo[_architecture] =
-      ArrayPrototypeIncludes(unmaskHints, "architecture") ? architecture : "";
-    adapterInfo[_device] = ArrayPrototypeIncludes(unmaskHints, "device")
-      ? device
-      : "";
-    adapterInfo[_description] =
-      ArrayPrototypeIncludes(unmaskHints, "description") ? description : "";
+    adapterInfo[_vendor] = vendor;
+    adapterInfo[_architecture] = architecture;
+    adapterInfo[_device] = device;
+    adapterInfo[_description] = description;
     return PromiseResolve(adapterInfo);
   }
 
@@ -687,6 +711,14 @@ class GPUSupportedLimits {
     webidl.assertBranded(this, GPUSupportedLimitsPrototype);
     return this[_limits].maxInterStageShaderComponents;
   }
+  get maxColorAttachments() {
+    webidl.assertBranded(this, GPUSupportedLimitsPrototype);
+    return this[_limits].maxColorAttachments;
+  }
+  get maxColorAttachmentBytesPerSample() {
+    webidl.assertBranded(this, GPUSupportedLimitsPrototype);
+    return this[_limits].maxColorAttachmentBytesPerSample;
+  }
   get maxComputeWorkgroupStorageSize() {
     webidl.assertBranded(this, GPUSupportedLimitsPrototype);
     return this[_limits].maxComputeWorkgroupStorageSize;
@@ -743,6 +775,8 @@ class GPUSupportedLimits {
           "maxVertexAttributes",
           "maxVertexBufferArrayStride",
           "maxInterStageShaderComponents",
+          "maxColorAttachments",
+          "maxColorAttachmentBytesPerSample",
           "maxComputeWorkgroupStorageSize",
           "maxComputeInvocationsPerWorkgroup",
           "maxComputeWorkgroupSizeX",
@@ -773,6 +807,7 @@ class GPUSupportedFeatures {
   constructor() {
     webidl.illegalConstructor();
   }
+
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
     if (ObjectPrototypeIsPrototypeOf(GPUSupportedFeaturesPrototype, this)) {
       return `${this.constructor.name} ${
@@ -783,7 +818,6 @@ class GPUSupportedFeatures {
     }
   }
 }
-
 const GPUSupportedFeaturesPrototype = GPUSupportedFeatures.prototype;
 
 /**
@@ -870,7 +904,7 @@ function GPUObjectBaseMixin(name, type) {
 /**
  * @typedef ErrorScope
  * @property {string} filter
- * @property {Promise<void>[]} operations
+ * @property {GPUError[]} errors
  */
 
 /**
@@ -879,6 +913,7 @@ function GPUObjectBaseMixin(name, type) {
  * @property {number | undefined} rid
  * @property {GPUSupportedFeatures} features
  * @property {GPUSupportedLimits} limits
+ * @property {GPUDevice} device
  */
 
 class InnerGPUDevice {
@@ -900,6 +935,8 @@ class InnerGPUDevice {
   resolveLost;
   /** @type {ErrorScope[]} */
   errorScopeStack;
+  /** @type {GPUDevice} */
+  device;
 
   /**
    * @param {InnerGPUDeviceOptions} options
@@ -923,79 +960,51 @@ class InnerGPUDevice {
     ArrayPrototypePush(this.resources, new SafeWeakRef(resource));
   }
 
-  /** @param {{ type: string, value: string | null } | undefined} err */
-  pushError(err) {
-    this.pushErrorPromise(PromiseResolve(err));
-  }
+  // Ref: https://gpuweb.github.io/gpuweb/#abstract-opdef-dispatch-error
+  /** @param {{ type: string, value: string | null } | undefined} error */
+  pushError(error) {
+    if (!error) {
+      return;
+    }
 
-  /** @param {Promise<{ type: string, value: string | null } | undefined>} promise */
-  pushErrorPromise(promise) {
-    const operation = PromisePrototypeThen(promise, (err) => {
-      if (err) {
-        switch (err.type) {
-          case "lost":
-            this.isLost = true;
-            this.resolveLost(
-              createGPUDeviceLostInfo(undefined, "device was lost"),
-            );
-            break;
-          case "validation":
-            return PromiseReject(
-              new GPUValidationError(err.value ?? "validation error"),
-            );
-          case "out-of-memory":
-            return PromiseReject(new GPUOutOfMemoryError());
-        }
-      }
-    });
+    let constructedError;
+    switch (error.type) {
+      case "lost":
+        this.isLost = true;
+        this.resolveLost(
+          createGPUDeviceLostInfo(undefined, "device was lost"),
+        );
+        return;
+      case "validation":
+        constructedError = new GPUValidationError(
+          error.value ?? "validation error",
+        );
+        break;
+      case "out-of-memory":
+        constructedError = new GPUOutOfMemoryError();
+        break;
+      case "internal":
+        constructedError = new GPUInternalError();
+        break;
+    }
 
-    const validationStack = ArrayPrototypeFilter(
+    if (this.isLost) {
+      return;
+    }
+
+    const scope = ArrayPrototypeFindLast(
       this.errorScopeStack,
-      ({ filter }) => filter == "validation",
+      ({ filter }) => filter === error.type,
     );
-    const validationScope = validationStack[validationStack.length - 1];
-    const validationFilteredPromise = PromisePrototypeCatch(
-      operation,
-      (err) => {
-        if (ObjectPrototypeIsPrototypeOf(GPUValidationErrorPrototype, err)) {
-          return PromiseReject(err);
-        }
-        return PromiseResolve();
-      },
-    );
-    if (validationScope) {
-      ArrayPrototypePush(
-        validationScope.operations,
-        validationFilteredPromise,
+    if (scope) {
+      ArrayPrototypePush(scope.errors, constructedError);
+    } else {
+      this.device.dispatchEvent(
+        new GPUUncapturedErrorEvent("uncapturederror", {
+          error: constructedError,
+        }),
       );
-    } else {
-      PromisePrototypeCatch(validationFilteredPromise, () => {
-        // TODO(lucacasonato): emit an UncapturedErrorEvent
-      });
     }
-    // prevent uncaptured promise rejections
-    PromisePrototypeCatch(validationFilteredPromise, (_err) => {});
-
-    const oomStack = ArrayPrototypeFilter(
-      this.errorScopeStack,
-      ({ filter }) => filter == "out-of-memory",
-    );
-    const oomScope = oomStack[oomStack.length - 1];
-    const oomFilteredPromise = PromisePrototypeCatch(operation, (err) => {
-      if (ObjectPrototypeIsPrototypeOf(GPUOutOfMemoryErrorPrototype, err)) {
-        return PromiseReject(err);
-      }
-      return PromiseResolve();
-    });
-    if (oomScope) {
-      ArrayPrototypePush(oomScope.operations, oomFilteredPromise);
-    } else {
-      PromisePrototypeCatch(oomFilteredPromise, () => {
-        // TODO(lucacasonato): emit an UncapturedErrorEvent
-      });
-    }
-    // prevent uncaptured promise rejections
-    PromisePrototypeCatch(oomFilteredPromise, (_err) => {});
   }
 }
 
@@ -1011,6 +1020,7 @@ function createGPUDevice(label, inner, queue) {
   device[_label] = label;
   device[_device] = inner;
   device[_queue] = queue;
+  setEventTargetData(device);
   return device;
 }
 
@@ -1283,11 +1293,6 @@ class GPUDevice extends EventTarget {
       const resource = entry.resource;
       if (ObjectPrototypeIsPrototypeOf(GPUSamplerPrototype, resource)) {
         const rid = assertResource(resource, prefix, context);
-        assertDeviceMatch(device, resource, {
-          prefix,
-          resourceContext: context,
-          selfContext: "this",
-        });
         return {
           binding: entry.binding,
           kind: "GPUSampler",
@@ -1298,11 +1303,6 @@ class GPUDevice extends EventTarget {
       ) {
         const rid = assertResource(resource, prefix, context);
         assertResource(resource[_texture], prefix, context);
-        assertDeviceMatch(device, resource[_texture], {
-          prefix,
-          resourceContext: context,
-          selfContext: "this",
-        });
         return {
           binding: entry.binding,
           kind: "GPUTextureView",
@@ -1311,12 +1311,6 @@ class GPUDevice extends EventTarget {
       } else {
         // deno-lint-ignore prefer-primordials
         const rid = assertResource(resource.buffer, prefix, context);
-        // deno-lint-ignore prefer-primordials
-        assertDeviceMatch(device, resource.buffer, {
-          prefix,
-          resourceContext: context,
-          selfContext: "this",
-        });
         return {
           binding: entry.binding,
           kind: "GPUBufferBinding",
@@ -1509,12 +1503,166 @@ class GPUDevice extends EventTarget {
 
   createComputePipelineAsync(descriptor) {
     // TODO(lucacasonato): this should be real async
-    return PromiseResolve(this.createComputePipeline(descriptor));
+
+    webidl.assertBranded(this, GPUDevicePrototype);
+    const prefix =
+      "Failed to execute 'createComputePipelineAsync' on 'GPUDevice'";
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    descriptor = webidl.converters.GPUComputePipelineDescriptor(
+      descriptor,
+      prefix,
+      "Argument 1",
+    );
+    const device = assertDevice(this, prefix, "this");
+    let layout = descriptor.layout;
+    if (typeof descriptor.layout !== "string") {
+      const context = "layout";
+      layout = assertResource(descriptor.layout, prefix, context);
+      assertDeviceMatch(device, descriptor.layout, {
+        prefix,
+        resourceContext: context,
+        selfContext: "this",
+      });
+    }
+    const module = assertResource(
+      descriptor.compute.module,
+      prefix,
+      "compute shader module",
+    );
+    assertDeviceMatch(device, descriptor.compute.module, {
+      prefix,
+      resourceContext: "compute shader module",
+      selfContext: "this",
+    });
+
+    const { rid, err } = op_webgpu_create_compute_pipeline(
+      device.rid,
+      descriptor.label,
+      layout,
+      {
+        module,
+        entryPoint: descriptor.compute.entryPoint,
+        constants: descriptor.compute.constants,
+      },
+    );
+    device.pushError(err);
+    if (err) {
+      switch (err.type) {
+        case "validation":
+          return PromiseReject(
+            new GPUPipelineError(err.value ?? "validation error", {
+              reason: "validation",
+            }),
+          );
+        case "internal":
+          return PromiseReject(
+            new GPUPipelineError("internal error", {
+              reason: "validation",
+            }),
+          );
+      }
+    }
+
+    const computePipeline = createGPUComputePipeline(
+      descriptor.label,
+      device,
+      rid,
+    );
+    device.trackResource(computePipeline);
+    return PromiseResolve(computePipeline);
   }
 
   createRenderPipelineAsync(descriptor) {
     // TODO(lucacasonato): this should be real async
-    return PromiseResolve(this.createRenderPipeline(descriptor));
+
+    webidl.assertBranded(this, GPUDevicePrototype);
+    const prefix =
+      "Failed to execute 'createRenderPipelineAsync' on 'GPUDevice'";
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    descriptor = webidl.converters.GPURenderPipelineDescriptor(
+      descriptor,
+      prefix,
+      "Argument 1",
+    );
+    const device = assertDevice(this, prefix, "this");
+    let layout = descriptor.layout;
+    if (typeof descriptor.layout !== "string") {
+      const context = "layout";
+      layout = assertResource(descriptor.layout, prefix, context);
+      assertDeviceMatch(device, descriptor.layout, {
+        prefix,
+        resourceContext: context,
+        selfContext: "this",
+      });
+    }
+    const module = assertResource(
+      descriptor.vertex.module,
+      prefix,
+      "vertex shader module",
+    );
+    assertDeviceMatch(device, descriptor.vertex.module, {
+      prefix,
+      resourceContext: "vertex shader module",
+      selfContext: "this",
+    });
+    let fragment = undefined;
+    if (descriptor.fragment) {
+      const module = assertResource(
+        descriptor.fragment.module,
+        prefix,
+        "fragment shader module",
+      );
+      assertDeviceMatch(device, descriptor.fragment.module, {
+        prefix,
+        resourceContext: "fragment shader module",
+        selfContext: "this",
+      });
+      fragment = {
+        module,
+        entryPoint: descriptor.fragment.entryPoint,
+        targets: descriptor.fragment.targets,
+      };
+    }
+
+    const { rid, err } = op_webgpu_create_render_pipeline({
+      deviceRid: device.rid,
+      label: descriptor.label,
+      layout,
+      vertex: {
+        module,
+        entryPoint: descriptor.vertex.entryPoint,
+        buffers: descriptor.vertex.buffers,
+      },
+      primitive: descriptor.primitive,
+      depthStencil: descriptor.depthStencil,
+      multisample: descriptor.multisample,
+      fragment,
+    });
+    device.pushError(err);
+    if (err) {
+      switch (err.type) {
+        case "validation":
+          return PromiseReject(
+            new GPUPipelineError(err.value ?? "validation error", {
+              reason: "validation",
+            }),
+          );
+        case "internal":
+          return PromiseReject(
+            new GPUPipelineError("internal error", {
+              reason: "validation",
+            }),
+          );
+      }
+    }
+
+    const renderPipeline = createGPURenderPipeline(
+      descriptor.label,
+      device,
+      rid,
+    );
+    device.trackResource(renderPipeline);
+    return renderPipeline;
   }
 
   /**
@@ -1626,7 +1774,7 @@ class GPUDevice extends EventTarget {
     webidl.requiredArguments(arguments.length, 1, prefix);
     filter = webidl.converters.GPUErrorFilter(filter, prefix, "Argument 1");
     const device = assertDevice(this, prefix, "this");
-    ArrayPrototypePush(device.errorScopeStack, { filter, operations: [] });
+    ArrayPrototypePush(device.errorScopeStack, { filter, errors: [] });
   }
 
   /**
@@ -1647,12 +1795,7 @@ class GPUDevice extends EventTarget {
         "OperationError",
       );
     }
-    const operations = SafePromiseAll(scope.operations);
-    return PromisePrototypeThen(
-      operations,
-      () => PromiseResolve(null),
-      (err) => PromiseResolve(err),
-    );
+    return PromiseResolve(scope.errors[0] ?? null);
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
@@ -1676,23 +1819,60 @@ class GPUDevice extends EventTarget {
 }
 GPUObjectBaseMixin("GPUDevice", GPUDevice);
 const GPUDevicePrototype = GPUDevice.prototype;
+defineEventHandler(GPUDevice.prototype, "uncapturederror");
+
+class GPUPipelineError extends DOMException {
+  #reason;
+
+  constructor(message = "", options = {}) {
+    const prefix = "Failed to construct 'GPUPipelineError'";
+    message = webidl.converters.DOMString(message, prefix, "Argument 1");
+    options = webidl.converters.GPUPipelineErrorInit(
+      options,
+      prefix,
+      "Argument 2",
+    );
+    super(message, "GPUPipelineError");
+
+    this.#reason = options.reason;
+  }
+
+  get reason() {
+    webidl.assertBranded(this, GPUPipelineErrorPrototype);
+    return this.#reason;
+  }
+}
+const GPUPipelineErrorPrototype = GPUPipelineError.prototype;
 
 /**
  * @param {string | null} label
  * @param {InnerGPUDevice} device
+ * @param {number} rid
  * @returns {GPUQueue}
  */
-function createGPUQueue(label, device) {
+function createGPUQueue(label, device, rid) {
   /** @type {GPUQueue} */
   const queue = webidl.createBranded(GPUQueue);
   queue[_label] = label;
   queue[_device] = device;
+  queue[_rid] = rid;
   return queue;
 }
 
 class GPUQueue {
   /** @type {InnerGPUDevice} */
   [_device];
+  /** @type {number} */
+  [_rid];
+
+  [_cleanup]() {
+    const rid = this[_rid];
+    if (rid !== undefined) {
+      core.close(rid);
+      /** @type {number | undefined} */
+      this[_rid] = undefined;
+    }
+  }
 
   constructor() {
     webidl.illegalConstructor();
@@ -1726,7 +1906,7 @@ class GPUQueue {
         return rid;
       },
     );
-    const { err } = op_webgpu_queue_submit(device.rid, commandBufferRids);
+    const { err } = op_webgpu_queue_submit(this[_rid], commandBufferRids);
     for (let i = 0; i < commandBuffers.length; ++i) {
       commandBuffers[i][_rid] = undefined;
     }
@@ -1782,7 +1962,7 @@ class GPUQueue {
     }
 
     const { err } = op_webgpu_write_buffer(
-      device.rid,
+      this[_rid],
       bufferRid,
       bufferOffset,
       dataOffset,
@@ -1833,7 +2013,7 @@ class GPUQueue {
     }
 
     const { err } = op_webgpu_write_texture(
-      device.rid,
+      this[_rid],
       {
         texture: textureRid,
         mipLevel: destination.mipLevel,
@@ -2027,19 +2207,15 @@ class GPUBuffer {
 
     this[_mapMode] = mode;
     this[_state] = "pending";
-    const promise = PromisePrototypeThen(
-      op_webgpu_buffer_get_map_async(
-        bufferRid,
-        device.rid,
-        mode,
-        offset,
-        rangeSize,
-      ),
-      ({ err }) => err,
+    const { err } = await op_webgpu_buffer_get_map_async(
+      bufferRid,
+      device.rid,
+      mode,
+      offset,
+      rangeSize,
     );
-    device.pushErrorPromise(promise);
-    const err = await promise;
     if (err) {
+      device.pushError(err);
       throw new DOMException("validation error occurred", "OperationError");
     }
     this[_state] = "mapped";
@@ -5136,6 +5312,7 @@ webidl.converters["GPUFeatureName"] = webidl.createEnumConverter(
     "texture-compression-astc",
     "rg11b10ufloat-renderable",
     "bgra8unorm-storage",
+    "float32-filterable",
 
     // extended from spec
 
@@ -5171,6 +5348,27 @@ webidl.converters["GPUFeatureName"] = webidl.createEnumConverter(
     "shader-i16",
     "shader-primitive-index",
     "shader-early-depth-test",
+  ],
+);
+
+// DICTIONARY: GPUPipelineErrorInit
+webidl.converters["GPUPipelineErrorInit"] = webidl.createDictionaryConverter(
+  "GPUPipelineErrorInit",
+  [
+    {
+      key: "reason",
+      converter: webidl.converters.GPUPipelineErrorReason,
+      required: true,
+    },
+  ],
+);
+
+// ENUM: GPUPipelineErrorReason
+webidl.converters["GPUPipelineErrorReason"] = webidl.createEnumConverter(
+  "GPUPipelineErrorReason",
+  [
+    "validation",
+    "internal",
   ],
 );
 
@@ -5353,6 +5551,7 @@ webidl.converters["GPUTextureFormat"] = webidl.createEnumConverter(
     "bgra8unorm",
     "bgra8unorm-srgb",
     "rgb9e5ufloat",
+    "rgb10a2uint",
     "rgb10a2unorm",
     "rg11b10ufloat",
     "rg32uint",
@@ -5768,6 +5967,8 @@ webidl.converters["GPUStorageTextureAccess"] = webidl.createEnumConverter(
   "GPUStorageTextureAccess",
   [
     "write-only",
+    "read-only",
+    "read-write",
   ],
 );
 
@@ -6027,7 +6228,6 @@ const dictMembersGPUProgrammableStage = [
   {
     key: "entryPoint",
     converter: webidl.converters["USVString"],
-    required: true,
   },
   {
     key: "constants",
@@ -6110,6 +6310,7 @@ webidl.converters["GPUVertexFormat"] = webidl.createEnumConverter(
     "sint32x2",
     "sint32x3",
     "sint32x4",
+    "unorm10-10-10-2",
   ],
 );
 
@@ -7070,6 +7271,7 @@ webidl.converters["GPUErrorFilter"] = webidl.createEnumConverter(
   [
     "out-of-memory",
     "validation",
+    "internal",
   ],
 );
 
@@ -7209,6 +7411,7 @@ export {
   GPUDevice,
   GPUDeviceLostInfo,
   GPUError,
+  GPUInternalError,
   GPUMapMode,
   GPUOutOfMemoryError,
   GPUPipelineLayout,
@@ -7226,5 +7429,6 @@ export {
   GPUTexture,
   GPUTextureUsage,
   GPUTextureView,
+  GPUUncapturedErrorEvent,
   GPUValidationError,
 };
