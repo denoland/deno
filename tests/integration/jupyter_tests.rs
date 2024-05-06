@@ -5,6 +5,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use bytes::Bytes;
+use test_util::assertions::assert_json_subset;
 use test_util::DenoChild;
 use test_util::TestContext;
 use test_util::TestContextBuilder;
@@ -488,31 +489,6 @@ async fn setup() -> (TestContext, JupyterClient, JupyterServerProcess) {
   (context, client, process)
 }
 
-/// Asserts that the actual value is equal to the expected value, but
-/// only for the keys present in the expected value.
-/// In other words, `assert_eq_subset(json!({"a": 1, "b": 2}), json!({"a": 1}))` would pass.
-#[track_caller]
-fn assert_eq_subset(actual: Value, expected: Value) {
-  match (actual, expected) {
-    (Value::Object(actual), Value::Object(expected)) => {
-      for (k, v) in expected.iter() {
-        let Some(actual_v) = actual.get(k) else {
-          panic!("Key {k:?} not found in actual value ({actual:#?})");
-        };
-        assert_eq_subset(actual_v.clone(), v.clone());
-      }
-    }
-    (Value::Array(actual), Value::Array(expected)) => {
-      for (i, v) in expected.iter().enumerate() {
-        assert_eq_subset(actual[i].clone(), v.clone());
-      }
-    }
-    (actual, expected) => {
-      assert_eq!(actual, expected);
-    }
-  }
-}
-
 #[tokio::test]
 async fn jupyter_heartbeat_echoes() -> Result<()> {
   let (_ctx, client, _process) = setup().await;
@@ -531,7 +507,7 @@ async fn jupyter_kernel_info() -> Result<()> {
     .await?;
   let msg = client.recv(Control).await?;
   assert_eq!(msg.header.msg_type, "kernel_info_reply");
-  assert_eq_subset(
+  assert_json_subset(
     msg.content,
     json!({
       "status": "ok",
@@ -568,7 +544,7 @@ async fn jupyter_execute_request() -> Result<()> {
     .await?;
   let reply = client.recv(Shell).await?;
   assert_eq!(reply.header.msg_type, "execute_reply");
-  assert_eq_subset(
+  assert_json_subset(
     reply.content,
     json!({
       "status": "ok",
@@ -602,7 +578,7 @@ async fn jupyter_execute_request() -> Result<()> {
     })
     .expect("execution_state idle not found");
   assert_eq!(execution_idle.parent_header, request.header.to_json());
-  assert_eq_subset(
+  assert_json_subset(
     execution_idle.content.clone(),
     json!({
       "execution_state": "idle",
@@ -615,7 +591,7 @@ async fn jupyter_execute_request() -> Result<()> {
     .expect("stream not found");
   assert_eq!(execution_result.header.msg_type, "stream");
   assert_eq!(execution_result.parent_header, request.header.to_json());
-  assert_eq_subset(
+  assert_json_subset(
     execution_result.content.clone(),
     json!({
       "name": "stdout",
@@ -643,7 +619,7 @@ async fn jupyter_store_history_false() -> Result<()> {
 
   let reply = client.recv(Shell).await?;
   assert_eq!(reply.header.msg_type, "execute_reply");
-  assert_eq_subset(
+  assert_json_subset(
     reply.content,
     json!({
       "status": "ok",
