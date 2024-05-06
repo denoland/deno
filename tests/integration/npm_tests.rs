@@ -921,9 +921,7 @@ fn node_modules_dir_cache() {
   let package_global_cache_dir = deno_dir
     .path()
     .join("npm")
-    .join("localhost_4545")
-    .join("npm")
-    .join("registry")
+    .join("localhost_4252")
     .join("@denotest")
     .join("dual-cjs-esm")
     .join("1.0.0");
@@ -953,7 +951,7 @@ fn node_modules_dir_cache() {
 #[test]
 fn ensure_registry_files_local() {
   // ensures the registry files all point at local tarballs
-  let registry_dir_path = util::testdata_path().join("npm").join("registry");
+  let registry_dir_path = util::tests_path().join("registry").join("npm");
   for entry in std::fs::read_dir(&registry_dir_path).unwrap() {
     let entry = entry.unwrap();
     if entry.metadata().unwrap().is_dir() {
@@ -1548,9 +1546,7 @@ fn peer_deps_with_copied_folders_and_lockfile() {
   let grandchild_path = deno_dir
     .path()
     .join("npm")
-    .join("localhost_4545")
-    .join("npm")
-    .join("registry")
+    .join("localhost_4252")
     .join("@denotest")
     .join("peer-dep-test-grandchild");
   assert!(grandchild_path.join("1.0.0").exists());
@@ -1710,7 +1706,7 @@ fn reload_info_not_found_cache_but_exists_remote() {
     version: &str,
   ) {
     let registry_json_path =
-      format!("npm/localhost_4545/npm/registry/{}/registry.json", package);
+      format!("npm/localhost_4252/{}/registry.json", package);
     let mut registry_json: Value =
       serde_json::from_str(&deno_dir.read_to_string(&registry_json_path))
         .unwrap();
@@ -3091,7 +3087,7 @@ async fn test_private_npm_registry() {
 
   let client = reqwest::Client::new();
 
-  let url = Url::parse("http://127.0.0.1:4253/@denotest/bin/0.5.0").unwrap();
+  let url = Url::parse("http://127.0.0.1:4253/@denotest2/basic").unwrap();
 
   let req = reqwest::Request::new(reqwest::Method::GET, url.clone());
   let resp = client.execute(req).await.unwrap();

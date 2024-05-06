@@ -22,8 +22,10 @@ pub const DENOTEST2_SCOPE_NAME: &str = "@denotest2";
 pub static PUBLIC_TEST_NPM_REGISTRY: Lazy<TestNpmRegistry> = Lazy::new(|| {
   TestNpmRegistry::new(
     NpmRegistryKind::Public,
-    &format!("http://localhost:{}", crate::servers::PORT),
-    "npm/registry",
+    &format!(
+      "http://localhost:{}",
+      crate::servers::PUBLIC_NPM_REGISTRY_PORT
+    ),
     "npm",
   )
 });
@@ -37,7 +39,6 @@ pub static PRIVATE_TEST_NPM_REGISTRY_1: Lazy<TestNpmRegistry> =
         "http://localhost:{}",
         crate::servers::PRIVATE_NPM_REGISTRY_1_PORT
       ),
-      "/",
       "npm-private",
     )
   });
@@ -59,8 +60,6 @@ pub struct TestNpmRegistry {
   kind: NpmRegistryKind,
   // Eg. http://localhost:4544/
   hostname: String,
-  /// Remote path (Eg. /registry/npm)
-  path: String,
   /// Path in the tests/registry folder (Eg. npm)
   local_path: String,
 
@@ -68,24 +67,11 @@ pub struct TestNpmRegistry {
 }
 
 impl TestNpmRegistry {
-  pub fn new(
-    kind: NpmRegistryKind,
-    hostname: &str,
-    path: &str,
-    local_path: &str,
-  ) -> Self {
+  pub fn new(kind: NpmRegistryKind, hostname: &str, local_path: &str) -> Self {
     let hostname = hostname.strip_suffix('/').unwrap_or(hostname).to_string();
-    assert!(
-      !path.is_empty(),
-      "npm test registry must have a non-empty path"
-    );
-    let stripped = path.strip_prefix('/').unwrap_or(path);
-    let stripped = path.strip_suffix('/').unwrap_or(stripped);
-    let path = format!("/{}/", stripped);
 
     Self {
       hostname,
-      path,
       local_path: local_path.to_string(),
       kind,
       cache: Default::default(),
@@ -123,12 +109,7 @@ impl TestNpmRegistry {
   ) -> Result<Option<TResult>> {
     // it's ok if multiple threads race here as they will do the same work twice
     if !self.cache.lock().contains_key(package_name) {
-      match get_npm_package(
-        &self.hostname,
-        &self.path,
-        &self.local_path,
-        package_name,
-      )? {
+      match get_npm_package(&self.hostname, &self.local_path, package_name)? {
         Some(package) => {
           self.cache.lock().insert(package_name.to_string(), package);
         }
@@ -138,19 +119,12 @@ impl TestNpmRegistry {
     Ok(self.cache.lock().get(package_name).map(func))
   }
 
-  pub fn strip_registry_path_prefix_from_uri_path<'s>(
-    &self,
-    uri_path: &'s str,
-  ) -> Option<&'s str> {
-    uri_path.strip_prefix(&self.path)
-  }
-
   pub fn get_test_scope_and_package_name_with_path_from_uri_path<'s>(
     &self,
     uri_path: &'s str,
   ) -> Option<(&'s str, &'s str)> {
-    let prefix1 = format!("{}{}/", self.path, DENOTEST_SCOPE_NAME);
-    let prefix2 = format!("{}{}%2f", self.path, DENOTEST_SCOPE_NAME);
+    let prefix1 = format!("/{}/", DENOTEST_SCOPE_NAME);
+    let prefix2 = format!("/{}%2f", DENOTEST_SCOPE_NAME);
 
     let maybe_package_name_with_path = uri_path
       .strip_prefix(&prefix1)
@@ -160,8 +134,8 @@ impl TestNpmRegistry {
       return Some((DENOTEST_SCOPE_NAME, package_name_with_path));
     }
 
-    let prefix1 = format!("{}{}/", self.path, DENOTEST2_SCOPE_NAME);
-    let prefix2 = format!("{}{}%2f", self.path, DENOTEST2_SCOPE_NAME);
+    let prefix1 = format!("/{}/", DENOTEST2_SCOPE_NAME);
+    let prefix2 = format!("/{}%2f", DENOTEST2_SCOPE_NAME);
 
     let maybe_package_name_with_path = uri_path
       .strip_prefix(&prefix1)
@@ -173,15 +147,10 @@ impl TestNpmRegistry {
 
     None
   }
-
-  pub fn uri_path_starts_with_registry_path(&self, uri_path: &str) -> bool {
-    uri_path.starts_with(&self.path)
-  }
 }
 
 fn get_npm_package(
   registry_hostname: &str,
-  registry_path: &str,
   local_path: &str,
   package_name: &str,
 ) -> Result<Option<CustomNpmPackage>> {
@@ -235,8 +204,7 @@ fn get_npm_package(
     dist.insert("shasum".to_string(), "dummy-value".into());
     dist.insert(
       "tarball".to_string(),
-      format!("{registry_hostname}{registry_path}{package_name}/{version}.tgz")
-        .into(),
+      format!("{registry_hostname}/{package_name}/{version}.tgz").into(),
     );
 
     tarballs.insert(version.clone(), tarball_bytes);

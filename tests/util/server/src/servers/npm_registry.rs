@@ -168,7 +168,7 @@ async fn try_serve_npm_registry(
         );
       }
     }
-  } else if test_npm_registry.uri_path_starts_with_registry_path(uri_path) {
+  } else {
     // otherwise, serve based on registry.json and tgz files
     let is_tarball = uri_path.ends_with(".tgz");
     if !is_tarball {
@@ -230,11 +230,7 @@ async fn download_npm_registry_file(
   testdata_file_path: &PathBuf,
   is_tarball: bool,
 ) -> Result<(), anyhow::Error> {
-  let url_parts = test_npm_registry
-    .strip_registry_path_prefix_from_uri_path(uri_path)
-    .unwrap()
-    .split('/')
-    .collect::<Vec<_>>();
+  let url_parts = uri_path.split('/').collect::<Vec<_>>();
   let package_name = if url_parts[0].starts_with('@') {
     url_parts.into_iter().take(2).collect::<Vec<_>>().join("/")
   } else {
