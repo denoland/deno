@@ -975,12 +975,11 @@ fn lock_redirects() {
     .new_command()
     .args("run main.ts Hi there")
     .run()
-    .assert_matches_text(
-      concat!(
-        "Download http://localhost:4545/echo.ts\n",
-        "Download http://localhost:4545/npm/registry/@denotest/esm-basic\n",
-        "Download http://localhost:4545/npm/registry/@denotest/esm-basic/1.0.0.tgz\n",
-        "Hi, there",
+    .assert_matches_text(concat!(
+      "Download http://localhost:4545/echo.ts\n",
+      "Download http://localhost:4252/@denotest/esm-basic\n",
+      "Download http://localhost:4252/@denotest/esm-basic/1.0.0.tgz\n",
+      "Hi, there",
     ));
   util::assertions::assert_wildcard_match(
     &temp_dir.read_to_string("deno.lock"),

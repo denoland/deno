@@ -14,6 +14,7 @@ use parking_lot::Mutex;
 use tar::Builder;
 
 use crate::tests_path;
+use crate::PathRef;
 
 pub const DENOTEST_SCOPE_NAME: &str = "@denotest";
 pub const DENOTEST2_SCOPE_NAME: &str = "@denotest2";
@@ -22,7 +23,8 @@ pub static PUBLIC_TEST_NPM_REGISTRY: Lazy<TestNpmRegistry> = Lazy::new(|| {
   TestNpmRegistry::new(
     NpmRegistryKind::Public,
     &format!("http://localhost:{}", crate::servers::PORT),
-    "/npm",
+    "npm/registry",
+    "npm",
   )
 });
 
@@ -35,7 +37,8 @@ pub static PRIVATE_TEST_NPM_REGISTRY_1: Lazy<TestNpmRegistry> =
         "http://localhost:{}",
         crate::servers::PRIVATE_NPM_REGISTRY_1_PORT
       ),
-      "/npm-private",
+      "/",
+      "npm-private",
     )
   });
 
@@ -50,20 +53,27 @@ struct CustomNpmPackage {
 }
 
 /// Creates tarballs and a registry json file for npm packages
-/// in the `testdata/npm/registry/@denotest` directory.
+/// in the `tests/registry/npm/@denotest` directory.
 pub struct TestNpmRegistry {
   #[allow(unused)]
   kind: NpmRegistryKind,
   // Eg. http://localhost:4544/
   hostname: String,
-  /// Path in the tests/registry folder (Eg. npm/)
+  /// Remote path (Eg. /registry/npm)
   path: String,
+  /// Path in the tests/registry folder (Eg. npm)
+  local_path: String,
 
   cache: Mutex<HashMap<String, CustomNpmPackage>>,
 }
 
 impl TestNpmRegistry {
-  pub fn new(kind: NpmRegistryKind, hostname: &str, path: &str) -> Self {
+  pub fn new(
+    kind: NpmRegistryKind,
+    hostname: &str,
+    path: &str,
+    local_path: &str,
+  ) -> Self {
     let hostname = hostname.strip_suffix('/').unwrap_or(hostname).to_string();
     assert!(
       !path.is_empty(),
@@ -76,9 +86,14 @@ impl TestNpmRegistry {
     Self {
       hostname,
       path,
+      local_path: local_path.to_string(),
       kind,
       cache: Default::default(),
     }
+  }
+
+  pub fn root_dir(&self) -> PathRef {
+    tests_path().join("registry").join(&self.local_path)
   }
 
   pub fn tarball_bytes(
@@ -97,6 +112,10 @@ impl TestNpmRegistry {
     self.get_package_property(name, |p| p.registry_file.as_bytes().to_vec())
   }
 
+  pub fn package_url(&self, package_name: &str) -> String {
+    format!("http://{}/{}/", self.hostname, package_name)
+  }
+
   fn get_package_property<TResult>(
     &self,
     package_name: &str,
@@ -104,7 +123,12 @@ impl TestNpmRegistry {
   ) -> Result<Option<TResult>> {
     // it's ok if multiple threads race here as they will do the same work twice
     if !self.cache.lock().contains_key(package_name) {
-      match get_npm_package(&self.hostname, &self.path, package_name)? {
+      match get_npm_package(
+        &self.hostname,
+        &self.path,
+        &self.local_path,
+        package_name,
+      )? {
         Some(package) => {
           self.cache.lock().insert(package_name.to_string(), package);
         }
@@ -158,11 +182,12 @@ impl TestNpmRegistry {
 fn get_npm_package(
   registry_hostname: &str,
   registry_path: &str,
+  local_path: &str,
   package_name: &str,
 ) -> Result<Option<CustomNpmPackage>> {
   let package_folder = tests_path()
     .join("registry")
-    .join(registry_path)
+    .join(local_path)
     .join(package_name);
   if !package_folder.exists() {
     return Ok(None);
