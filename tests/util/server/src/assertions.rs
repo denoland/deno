@@ -116,7 +116,7 @@ pub fn assert_wildcard_match_with_logger(
 ///
 /// ```
 /// # use serde_json::json;
-///
+/// # use test_server::assertions::assert_json_subset;
 /// assert_json_subset(json!({"a": 1, "b": 2}), json!({"a": 1}));
 ///
 /// // Arrays are compared element by element
