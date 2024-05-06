@@ -56,7 +56,7 @@ pub fn install(directory: Option<PathBuf>) -> Result<(), AnyError> {
   };
 
   if outcome.is_err() {
-    bail!("🆘 Failed to install Deno kernel");
+    bail!("🆘 Failed to install Deno kernel: {:?}", outcome.unwrap_err());
   }
 
   println!("✅ Deno kernelspec installed successfully.");
