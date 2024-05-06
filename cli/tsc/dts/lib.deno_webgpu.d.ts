@@ -217,12 +217,6 @@ declare type GPUBufferUsageFlags = number;
 declare type GPUFlagsConstant = number;
 
 /** @category WebGPU */
-declare type GPUImageCopyExternalImageSource =
-  | ImageBitmap
-  | ImageData
-  | GPUCanvasContext;
-
-/** @category WebGPU */
 declare class GPUBufferUsage {
   static MAP_READ: 0x0001;
   static MAP_WRITE: 0x0002;
@@ -915,24 +909,11 @@ declare interface GPUImageCopyBuffer extends GPUImageDataLayout {
 }
 
 /** @category WebGPU */
-declare interface GPUImageCopyExternalImage {
-  source: GPUImageCopyExternalImageSource;
-  origin?: GPUOrigin2D;
-  flipY?: boolean;
-}
-
-/** @category WebGPU */
 declare interface GPUImageCopyTexture {
   texture: GPUTexture;
   mipLevel?: number;
   origin?: GPUOrigin3D;
   aspect?: GPUTextureAspect;
-}
-
-/** @category WebGPU */
-declare interface GPUImageCopyTextureTagged extends GPUImageCopyTexture {
-  colorSpace?: PredefinedColorSpace;
-  premultipliedAlpha?: boolean;
 }
 
 /** @category WebGPU */
@@ -1255,12 +1236,6 @@ declare class GPUQueue implements GPUObjectBase {
     dataLayout: GPUImageDataLayout,
     size: GPUExtent3D,
   ): undefined;
-
-  copyExternalImageToTexture(
-    source: GPUImageCopyExternalImage,
-    destination: GPUImageCopyTextureTagged,
-    copySize: GPUExtent3D,
-  ): undefined;
 }
 
 /** @category WebGPU */
@@ -1319,15 +1294,6 @@ declare interface GPUColorDict {
 
 /** @category WebGPU */
 declare type GPUColor = number[] | GPUColorDict;
-
-/** @category WebGPU */
-declare interface GPUOrigin2DDict {
-  x?: number;
-  y?: number;
-}
-
-/** @category WebGPU */
-declare type GPUOrigin2D = number[] | GPUOrigin2DDict;
 
 /** @category WebGPU */
 declare interface GPUOrigin3DDict {
