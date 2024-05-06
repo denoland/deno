@@ -14,13 +14,15 @@ rustflags = [
 [target.x86_64-apple-darwin]
 rustflags = [
   "-C",
-  "link-args=-weak_framework Metal -weak_framework MetalPerformanceShaders -weak_framework QuartzCore -weak_framework CoreGraphics",
+  "linker=/usr/local/bin/lld",
+  "-C",
+  "link-args=-L/Users/divy/gh/lzld -llzld_x86_64"
+
 ]
 
 [target.aarch64-apple-darwin]
 rustflags = [
   "-C",
-  # path to the lld linker
   "linker=/usr/local/bin/lld",
   "-C",
   "link-args=-L/Users/divy/gh/lzld -llzld_arm64"
