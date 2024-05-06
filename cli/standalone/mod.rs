@@ -499,7 +499,9 @@ pub async fn run(
   };
 
   let permissions = {
-    let mut permissions = metadata.permissions;
+    let maybe_cwd = std::env::current_dir().ok();
+    let mut permissions =
+      metadata.permissions.to_options(maybe_cwd.as_deref())?;
     // if running with an npm vfs, grant read access to it
     if let Some(vfs_root) = maybe_vfs_root {
       match &mut permissions.allow_read {

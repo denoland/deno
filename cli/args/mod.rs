@@ -1524,10 +1524,6 @@ impl CliOptions {
     &self.flags.cache_path
   }
 
-  pub fn no_prompt(&self) -> bool {
-    resolve_no_prompt(&self.flags)
-  }
-
   pub fn no_remote(&self) -> bool {
     self.flags.no_remote
   }
@@ -1540,45 +1536,12 @@ impl CliOptions {
     self.flags.config_flag == deno_config::ConfigFlag::Disabled
   }
 
-  pub fn permissions_options(&self) -> PermissionsOptions {
-    PermissionsOptions {
-      allow_all: self.flags.allow_all,
-      allow_env: self.flags.allow_env.clone(),
-      deny_env: self.flags.deny_env.clone(),
-      allow_hrtime: self.flags.allow_hrtime,
-      deny_hrtime: self.flags.deny_hrtime,
-      allow_net: self.flags.allow_net.clone(),
-      deny_net: self.flags.deny_net.clone(),
-      allow_ffi: convert_option_str_to_path_buf(
-        &self.flags.allow_ffi,
-        self.initial_cwd(),
-      ),
-      deny_ffi: convert_option_str_to_path_buf(
-        &self.flags.deny_ffi,
-        self.initial_cwd(),
-      ),
-      allow_read: convert_option_str_to_path_buf(
-        &self.flags.allow_read,
-        self.initial_cwd(),
-      ),
-      deny_read: convert_option_str_to_path_buf(
-        &self.flags.deny_read,
-        self.initial_cwd(),
-      ),
-      allow_run: self.flags.allow_run.clone(),
-      deny_run: self.flags.deny_run.clone(),
-      allow_sys: self.flags.allow_sys.clone(),
-      deny_sys: self.flags.deny_sys.clone(),
-      allow_write: convert_option_str_to_path_buf(
-        &self.flags.allow_write,
-        self.initial_cwd(),
-      ),
-      deny_write: convert_option_str_to_path_buf(
-        &self.flags.deny_write,
-        self.initial_cwd(),
-      ),
-      prompt: !self.no_prompt(),
-    }
+  pub fn permission_flags(&self) -> &PermissionFlags {
+    &self.flags.permissions
+  }
+
+  pub fn permissions_options(&self) -> Result<PermissionsOptions, AnyError> {
+    self.flags.permissions.to_options(Some(&self.initial_cwd))
   }
 
   pub fn reload_flag(&self) -> bool {
@@ -1871,7 +1834,7 @@ fn resolve_files(
 }
 
 /// Resolves the no_prompt value based on the cli flags and environment.
-pub fn resolve_no_prompt(flags: &Flags) -> bool {
+pub fn resolve_no_prompt(flags: &PermissionFlags) -> bool {
   flags.no_prompt || has_flag_env_var("DENO_NO_PROMPT")
 }
 
@@ -1885,20 +1848,6 @@ pub fn npm_pkg_req_ref_to_binary_command(
 ) -> String {
   let binary_name = req_ref.sub_path().unwrap_or(req_ref.req().name.as_str());
   binary_name.to_string()
-}
-
-fn convert_option_str_to_path_buf(
-  flag: &Option<Vec<String>>,
-  initial_cwd: &Path,
-) -> Option<Vec<PathBuf>> {
-  if let Some(allow_ffi_paths) = &flag {
-    let mut full_paths = Vec::new();
-    full_paths
-      .extend(allow_ffi_paths.iter().map(|path| initial_cwd.join(path)));
-    Some(full_paths)
-  } else {
-    None
-  }
 }
 
 #[cfg(test)]
