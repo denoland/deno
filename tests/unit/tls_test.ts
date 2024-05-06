@@ -1654,7 +1654,7 @@ Deno.test(
 Deno.test(
   { permissions: { net: true, read: true } },
   async function listenResolver() {
-    let sniRequests: string[] = [];
+    const sniRequests: string[] = [];
     const keys = {
       "server-1": { cert, key },
       "server-2": { cert: certEcc, key: keyEcc },

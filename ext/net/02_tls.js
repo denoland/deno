@@ -20,6 +20,7 @@ const {
   Number,
   ObjectDefineProperty,
   TypeError,
+  SymbolFor,
 } = primordials;
 
 import { Conn, Listener } from "ext:deno_net/01_net.js";
@@ -291,8 +292,8 @@ async function startTls(
   return new TlsConn(rid, remoteAddr, localAddr);
 }
 
-const resolverSymbol = Symbol("useResolver");
-const serverNameSymbol = Symbol("serverName");
+const resolverSymbol = SymbolFor("unstableSniResolver");
+const serverNameSymbol = SymbolFor("unstableServerName");
 
 function createTlsKeyResolver(callback) {
   const { 0: resolver, 1: lookup } = op_tls_cert_resolver_create();

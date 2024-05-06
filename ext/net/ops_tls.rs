@@ -280,7 +280,8 @@ pub fn op_tls_cert_resolver_resolve(
   let TlsKeys::Static(key) = key.take() else {
     bail!("unexpected key type");
   };
-  Ok(lookup.resolve(sni, Ok(key)))
+  lookup.resolve(sni, Ok(key));
+  Ok(())
 }
 
 #[op2(fast)]

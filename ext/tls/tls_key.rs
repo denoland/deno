@@ -1,7 +1,9 @@
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 use crate::Certificate;
 use crate::PrivateKey;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
+use deno_core::futures::future::poll_fn;
 use deno_core::futures::future::Either;
 use deno_core::futures::FutureExt;
 use deno_core::unsync::spawn;
@@ -190,16 +192,14 @@ impl TlsKeyResolver {
           // Someone beat us to it
         }
       }
-      Ok(res.map_err(|_| anyhow!("Failed"))?)
+      res.map_err(|_| anyhow!("Failed"))
     });
-    Either::Right(async move {
-      let res = handle.await?;
-      res
-    })
+    Either::Right(async move { handle.await? })
   }
 }
 
 pub struct TlsKeyLookup {
+  #[allow(clippy::type_complexity)]
   resolution_rx: RefCell<
     mpsc::UnboundedReceiver<(
       String,
@@ -213,7 +213,9 @@ pub struct TlsKeyLookup {
 impl TlsKeyLookup {
   /// Only one poll call may be active at any time. This method holds a `RefCell` lock.
   pub async fn poll(&self) -> Option<String> {
-    if let Some((sni, sender)) = self.resolution_rx.borrow_mut().recv().await {
+    if let Some((sni, sender)) =
+      poll_fn(|cx| self.resolution_rx.borrow_mut().poll_recv(cx)).await
+    {
       self.pending.borrow_mut().insert(sni.clone(), sender);
       Some(sni)
     } else {
@@ -228,7 +230,7 @@ impl TlsKeyLookup {
       .borrow_mut()
       .remove(&sni)
       .unwrap()
-      .send(res.map_err(|e| Rc::new(e)));
+      .send(res.map_err(Rc::new));
   }
 }
 
