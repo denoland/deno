@@ -108,15 +108,16 @@ impl TestNpmRegistry {
     func: impl FnOnce(&CustomNpmPackage) -> TResult,
   ) -> Result<Option<TResult>> {
     // it's ok if multiple threads race here as they will do the same work twice
-    if !self.cache.lock().contains_key(package_name) {
+    let mut cache = self.cache.lock(); // temp only allow one thread at a time
+    if !cache.contains_key(package_name) {
       match get_npm_package(&self.hostname, &self.local_path, package_name)? {
         Some(package) => {
-          self.cache.lock().insert(package_name.to_string(), package);
+          cache.insert(package_name.to_string(), package);
         }
         None => return Ok(None),
       }
     }
-    Ok(self.cache.lock().get(package_name).map(func))
+    Ok(cache.get(package_name).map(func))
   }
 
   pub fn get_test_scope_and_package_name_with_path_from_uri_path<'s>(
