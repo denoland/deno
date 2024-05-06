@@ -1691,17 +1691,8 @@ impl PermissionsContainer {
           self.check_was_allow_all_flag_passed().map_err(error_all)?;
         }
       }
-      if path.starts_with("/etc") {
-        self.check_was_allow_all_flag_passed().map_err(error_all)?;
-      }
     } else if cfg!(unix) {
       if path.starts_with("/dev") {
-        self.check_was_allow_all_flag_passed().map_err(error_all)?;
-      }
-      if path.starts_with("/etc") {
-        self.check_was_allow_all_flag_passed().map_err(error_all)?;
-      }
-      if path.starts_with("/private/etc") {
         self.check_was_allow_all_flag_passed().map_err(error_all)?;
       }
     } else if cfg!(target_os = "windows") {
