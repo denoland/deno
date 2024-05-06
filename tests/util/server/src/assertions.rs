@@ -111,9 +111,17 @@ pub fn assert_wildcard_match_with_logger(
 
 /// Asserts that the actual `serde_json::Value` is equal to the expected `serde_json::Value`, but
 /// only for the keys present in the expected value.
-/// In other words, `assert_eq_subset(json!({"a": 1, "b": 2}), json!({"a": 1}))` would pass.
-/// Arrays are compared element by element, i.e. `assert_eq_subset(json!([{ "a": 1, "b": 2 }, {}]), json!([{"a": 1}, {}]))`
-/// would pass.
+///
+/// # Example
+///
+/// ```
+/// # use serde_json::json;
+///
+/// assert_json_subset(json!({"a": 1, "b": 2}), json!({"a": 1}));
+///
+/// // Arrays are compared element by element
+/// assert_json_subset(json!([{ "a": 1, "b": 2 }, {}]), json!([{"a": 1}, {}]));
+/// ```
 #[track_caller]
 pub fn assert_json_subset(
   actual: serde_json::Value,
