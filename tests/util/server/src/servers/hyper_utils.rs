@@ -58,7 +58,7 @@ where
   if let Err(e) = fut.await {
     let err_str = e.to_string();
     if !err_str.contains("early eof") {
-      eprintln!("{}: {:?}", options.error_msg, e);
+      eprintln!("{}: {:#?}", options.error_msg, e);
     }
   }
 }
