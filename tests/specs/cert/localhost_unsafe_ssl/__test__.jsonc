@@ -1,0 +1,5 @@
+{
+  "args": "run --quiet --reload --allow-net --unsafely-ignore-certificate-errors=deno.land cafile_url_imports.ts",
+  "output": "localhost_unsafe_ssl.ts.out",
+  "exitCode": 1
+}

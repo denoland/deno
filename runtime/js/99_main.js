@@ -35,6 +35,7 @@ const {
   ObjectAssign,
   ObjectDefineProperties,
   ObjectDefineProperty,
+  ObjectHasOwn,
   ObjectKeys,
   ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
@@ -52,6 +53,7 @@ const {
 const {
   isNativeError,
 } = core;
+import { registerDeclarativeServer } from "ext:deno_http/00_serve.ts";
 import * as event from "ext:deno_web/02_event.js";
 import * as location from "ext:deno_web/12_location.js";
 import * as version from "ext:runtime/01_version.ts";
@@ -667,7 +669,7 @@ ObjectDefineProperties(finalDenoNs, {
         new Error().stack,
         'Use `Symbol.for("Deno.customInspect")` instead.',
       );
-      return customInspect;
+      return internals.future ? undefined : customInspect;
     },
   },
 });
@@ -678,6 +680,18 @@ const {
   v8Version,
   target,
 } = op_snapshot_options();
+
+const executionModes = {
+  none: 0,
+  worker: 1,
+  run: 2,
+  repl: 3,
+  eval: 4,
+  test: 5,
+  bench: 6,
+  serve: 7,
+  jupyter: 8,
+};
 
 function bootstrapMainRuntime(runtimeOptions, warmup = false) {
   if (!warmup) {
@@ -692,10 +706,55 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       3: inspectFlag,
       5: hasNodeModulesDir,
       6: argv0,
-      7: shouldDisableDeprecatedApiWarning,
-      8: shouldUseVerboseDeprecatedApiWarning,
-      9: future,
+      7: nodeDebug,
+      8: shouldDisableDeprecatedApiWarning,
+      9: shouldUseVerboseDeprecatedApiWarning,
+      10: future,
+      11: mode,
+      12: servePort,
+      13: serveHost,
     } = runtimeOptions;
+
+    if (mode === executionModes.run || mode === executionModes.serve) {
+      let serve = undefined;
+      core.addMainModuleHandler((main) => {
+        if (ObjectHasOwn(main, "default")) {
+          try {
+            serve = registerDeclarativeServer(main.default);
+          } catch (e) {
+            if (mode === executionModes.serve) {
+              throw e;
+            }
+          }
+        }
+
+        if (mode === executionModes.serve && !serve) {
+          console.error(
+            `%cerror: %cdeno serve requires %cexport default { fetch }%c in the main module, did you mean to run \"deno run\"?`,
+            "color: yellow;",
+            "color: inherit;",
+            "font-weight: bold;",
+            "font-weight: normal;",
+          );
+          return;
+        }
+
+        if (serve) {
+          if (mode === executionModes.run) {
+            console.error(
+              `%cwarning: %cDetected %cexport default { fetch }%c, did you mean to run \"deno serve\"?`,
+              "color: yellow;",
+              "color: inherit;",
+              "font-weight: bold;",
+              "font-weight: normal;",
+            );
+          }
+          if (mode === executionModes.serve) {
+            serve({ servePort, serveHost });
+          }
+        }
+      });
+    }
 
     // TODO(iuioiua): remove in Deno v2. This allows us to dynamically delete
     // class properties within constructors for classes that are not defined
@@ -801,7 +860,12 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
     ObjectDefineProperty(globalThis, "Deno", core.propReadOnly(finalDenoNs));
 
     if (nodeBootstrap) {
-      nodeBootstrap(hasNodeModulesDir, argv0, /* runningOnMainThread */ true);
+      nodeBootstrap({
+        usesLocalNodeModulesDir: hasNodeModulesDir,
+        runningOnMainThread: true,
+        argv0,
+        nodeDebug,
+      });
     }
     if (future) {
       delete globalThis.window;
@@ -859,9 +923,10 @@ function bootstrapWorkerRuntime(
       4: enableTestingFeaturesFlag,
       5: hasNodeModulesDir,
       6: argv0,
-      7: shouldDisableDeprecatedApiWarning,
-      8: shouldUseVerboseDeprecatedApiWarning,
-      9: future,
+      7: nodeDebug,
+      8: shouldDisableDeprecatedApiWarning,
+      9: shouldUseVerboseDeprecatedApiWarning,
+      10: future,
     } = runtimeOptions;
 
     // TODO(iuioiua): remove in Deno v2. This allows us to dynamically delete
@@ -958,13 +1023,14 @@ function bootstrapWorkerRuntime(
       : undefined;
 
     if (nodeBootstrap) {
-      nodeBootstrap(
-        hasNodeModulesDir,
+      nodeBootstrap({
+        usesLocalNodeModulesDir: hasNodeModulesDir,
+        runningOnMainThread: false,
         argv0,
-        /* runningOnMainThread */ false,
         workerId,
-        workerMetadata,
-      );
+        maybeWorkerMetadata: workerMetadata,
+        nodeDebug,
+      });
     }
 
     if (future) {
@@ -1039,4 +1105,4 @@ bootstrapWorkerRuntime(
   undefined,
   true,
 );
-nodeBootstrap(undefined, undefined, undefined, undefined, undefined, true);
+nodeBootstrap({ warmup: true });

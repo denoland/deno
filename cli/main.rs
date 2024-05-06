@@ -29,10 +29,12 @@ mod worker;
 use crate::args::flags_from_vec;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
+use crate::args::DENO_FUTURE;
 use crate::util::display;
 use crate::util::v8::get_v8_flags_from_env;
 use crate::util::v8::init_v8_flags;
 
+use deno_runtime::WorkerExecutionMode;
 pub use deno_runtime::UNSTABLE_GRANULAR_FLAGS;
 
 use deno_core::anyhow::Context;
@@ -174,8 +176,11 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
       if run_flags.is_stdin() {
         tools::run::run_from_stdin(flags).await
       } else {
-        tools::run::run_script(flags, run_flags).await
+        tools::run::run_script(WorkerExecutionMode::Run, flags, run_flags.watch).await
       }
+    }),
+    DenoSubcommand::Serve(serve_flags) => spawn_subcommand(async move {
+      tools::run::run_script(WorkerExecutionMode::Serve, flags, serve_flags.watch).await
     }),
     DenoSubcommand::Task(task_flags) => spawn_subcommand(async {
       tools::task::execute_script(flags, task_flags).await
@@ -385,7 +390,15 @@ fn resolve_flags_and_init(
     // Using same default as VSCode:
     // https://github.com/microsoft/vscode/blob/48d4ba271686e8072fc6674137415bc80d936bc7/extensions/typescript-language-features/src/configuration/configuration.ts#L213-L214
     DenoSubcommand::Lsp => vec!["--max-old-space-size=3072".to_string()],
-    _ => vec![],
+    _ => {
+      if *DENO_FUTURE {
+        // deno_ast removes TypeScript `assert` keywords, so this flag only affects JavaScript
+        // TODO(petamoriken): Need to check TypeScript `assert` keywords in deno_ast
+        vec!["--no-harmony-import-assertions".to_string()]
+      } else {
+        vec![]
+      }
+    }
   };
 
   init_v8_flags(&default_v8_flags, &flags.v8_flags, get_v8_flags_from_env());

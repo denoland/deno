@@ -155,6 +155,12 @@ delete Object.prototype.__proto__;
   /** @type {Map<string, ts.SourceFile>} */
   const sourceFileCache = new Map();
 
+  /** @type {Map<string, string>} */
+  const sourceTextCache = new Map();
+
+  /** @type {Map<string, number>} */
+  const sourceRefCounts = new Map();
+
   /** @type {string[]=} */
   let scriptFileNamesCache;
 
@@ -171,6 +177,8 @@ delete Object.prototype.__proto__;
 
   /** @type {number | null} */
   let projectVersionCache = null;
+
+  let lastRequestMethod = null;
 
   const ChangeKind = {
     Opened: 0,
@@ -250,6 +258,8 @@ delete Object.prototype.__proto__;
         );
         documentRegistrySourceFileCache.set(mapKey, sourceFile);
       }
+      const sourceRefCount = sourceRefCounts.get(fileName) ?? 0;
+      sourceRefCounts.set(fileName, sourceRefCount + 1);
       return sourceFile;
     },
 
@@ -333,8 +343,20 @@ delete Object.prototype.__proto__;
     },
 
     releaseDocumentWithKey(path, key, _scriptKind, _impliedNodeFormat) {
-      const mapKey = path + key;
-      documentRegistrySourceFileCache.delete(mapKey);
+      const sourceRefCount = sourceRefCounts.get(path) ?? 1;
+      if (sourceRefCount <= 1) {
+        sourceRefCounts.delete(path);
+        // We call `cleanupSemanticCache` for other purposes, don't bust the
+        // source cache in this case.
+        if (lastRequestMethod != "cleanupSemanticCache") {
+          const mapKey = path + key;
+          documentRegistrySourceFileCache.delete(mapKey);
+          sourceTextCache.delete(path);
+          ops.op_release(path);
+        }
+      } else {
+        sourceRefCounts.set(path, sourceRefCount - 1);
+      }
     },
 
     reportStats() {
@@ -520,7 +542,7 @@ delete Object.prototype.__proto__;
     }
   }
 
-  /** @type {ts.LanguageService} */
+  /** @type {ts.LanguageService & { [k:string]: any }} */
   let languageService;
 
   /** An object literal of the incremental compiler host, which provides the
@@ -587,6 +609,8 @@ delete Object.prototype.__proto__;
       specifier,
       languageVersion,
       _onError,
+      // this is not used by the lsp because source
+      // files are created in the document registry
       _shouldCreateNewSourceFile,
     ) {
       if (logDebug) {
@@ -659,7 +683,8 @@ delete Object.prototype.__proto__;
         debug(`host.writeFile("${fileName}")`);
       }
       return ops.op_emit(
-        { fileName, data },
+        data,
+        fileName,
       );
     },
     getCurrentDirectory() {
@@ -695,10 +720,10 @@ delete Object.prototype.__proto__;
           : arg;
         if (fileReference.fileName.startsWith("npm:")) {
           /** @type {[string, ts.Extension] | undefined} */
-          const resolved = ops.op_resolve({
-            specifiers: [fileReference.fileName],
-            base: containingFilePath,
-          })?.[0];
+          const resolved = ops.op_resolve(
+            containingFilePath,
+            [fileReference.fileName],
+          )?.[0];
           if (resolved) {
             isCjsCache.maybeAdd(resolved);
             return {
@@ -728,10 +753,10 @@ delete Object.prototype.__proto__;
         debug(`  specifiers: ${specifiers.join(", ")}`);
       }
       /** @type {Array<[string, ts.Extension] | undefined>} */
-      const resolved = ops.op_resolve({
-        specifiers,
+      const resolved = ops.op_resolve(
         base,
-      });
+        specifiers,
+      );
       if (resolved) {
         const result = resolved.map((item) => {
           if (item) {
@@ -807,19 +832,26 @@ delete Object.prototype.__proto__;
       if (logDebug) {
         debug(`host.getScriptSnapshot("${specifier}")`);
       }
-      let sourceFile = sourceFileCache.get(specifier);
-      if (!sourceFile) {
-        sourceFile = this.getSourceFile(
-          specifier,
-          specifier.endsWith(".json")
-            ? ts.ScriptTarget.JSON
-            : ts.ScriptTarget.ESNext,
-        );
-      }
+      const sourceFile = sourceFileCache.get(specifier);
       if (sourceFile) {
+        // This case only occurs for assets.
         return ts.ScriptSnapshot.fromString(sourceFile.text);
       }
-      return undefined;
+      let sourceText = sourceTextCache.get(specifier);
+      if (sourceText == undefined) {
+        /** @type {{ data: string, version: string, isCjs: boolean }} */
+        const fileInfo = ops.op_load(specifier);
+        if (!fileInfo) {
+          return undefined;
+        }
+        if (fileInfo.isCjs) {
+          isCjsCache.add(specifier);
+        }
+        sourceTextCache.set(specifier, fileInfo.data);
+        scriptVersionCache.set(specifier, fileInfo.version);
+        sourceText = fileInfo.data;
+      }
+      return ts.ScriptSnapshot.fromString(sourceText);
     },
   };
 
@@ -928,6 +960,9 @@ delete Object.prototype.__proto__;
     if (config.jsx === "precompile") {
       config.jsx = "react-jsx";
     }
+    if (config.jsxPrecompileSkipElements) {
+      delete config.jsxPrecompileSkipElements;
+    }
     return config;
   }
 
@@ -1018,6 +1053,15 @@ delete Object.prototype.__proto__;
     debug("<<< exec stop");
   }
 
+  /**
+   * @param {any} e
+   * @returns {e is (OperationCanceledError | ts.OperationCanceledException)}
+   */
+  function isCancellationError(e) {
+    return e instanceof OperationCanceledError ||
+      e instanceof ts.OperationCanceledException;
+  }
+
   function getAssets() {
     /** @type {{ specifier: string; text: string; }[]} */
     const assets = [];
@@ -1043,44 +1087,46 @@ delete Object.prototype.__proto__;
     ops.op_respond(JSON.stringify(data));
   }
 
-  function serverRequest(id, method, args) {
+  /**
+   * @param {number} id
+   * @param {string} method
+   * @param {any[]} args
+   * @param {[[string, number][], number, boolean] | null} maybeChange
+   */
+  function serverRequest(id, method, args, maybeChange) {
     if (logDebug) {
-      debug(`serverRequest()`, id, method, args);
+      debug(`serverRequest()`, id, method, args, maybeChange);
+    }
+    lastRequestMethod = method;
+    if (maybeChange !== null) {
+      const changedScripts = maybeChange[0];
+      const newProjectVersion = maybeChange[1];
+      const configChanged = maybeChange[2];
+
+      if (configChanged) {
+        tsConfigCache = null;
+        isNodeSourceFileCache.clear();
+      }
+
+      projectVersionCache = newProjectVersion;
+
+      let opened = false;
+      let closed = false;
+      for (const { 0: script, 1: changeKind } of changedScripts) {
+        if (changeKind === ChangeKind.Opened) {
+          opened = true;
+        } else if (changeKind === ChangeKind.Closed) {
+          closed = true;
+        }
+        scriptVersionCache.delete(script);
+        sourceTextCache.delete(script);
+      }
+
+      if (configChanged || opened || closed) {
+        scriptFileNamesCache = undefined;
+      }
     }
     switch (method) {
-      case "$projectChanged": {
-        /** @type {[string, number][]} */
-        const changedScripts = args[0];
-        /** @type {number} */
-        const newProjectVersion = args[1];
-        /** @type {boolean} */
-        const configChanged = args[2];
-
-        if (configChanged) {
-          tsConfigCache = null;
-        }
-
-        projectVersionCache = newProjectVersion;
-
-        let opened = false;
-        for (const { 0: script, 1: changeKind } of changedScripts) {
-          if (changeKind == ChangeKind.Opened) {
-            opened = true;
-          }
-          scriptVersionCache.delete(script);
-          sourceFileCache.delete(script);
-        }
-
-        if (configChanged || opened) {
-          scriptFileNamesCache = undefined;
-        }
-
-        return respond(id);
-      }
-      case "$restart": {
-        serverRestart();
-        return respond(id, true);
-      }
       case "$getSupportedCodeFixes": {
         return respond(
           id,
@@ -1112,14 +1158,14 @@ delete Object.prototype.__proto__;
           return respond(id, diagnosticMap);
         } catch (e) {
           if (
-            !(e instanceof OperationCanceledError ||
-              e instanceof ts.OperationCanceledException)
+            !isCancellationError(e)
           ) {
             if ("stack" in e) {
               error(e.stack);
             } else {
               error(e);
             }
+            throw e;
           }
           return respond(id, {});
         }
@@ -1131,7 +1177,19 @@ delete Object.prototype.__proto__;
           if (method == "getCompletionEntryDetails") {
             args[4] ??= undefined;
           }
-          return respond(id, languageService[method](...args));
+          try {
+            return respond(id, languageService[method](...args));
+          } catch (e) {
+            if (!isCancellationError(e)) {
+              if ("stack" in e) {
+                error(e.stack);
+              } else {
+                error(e);
+              }
+              throw e;
+            }
+            return respond(id);
+          }
         }
         throw new TypeError(
           // @ts-ignore exhausted case statement sets type to never
@@ -1150,12 +1208,6 @@ delete Object.prototype.__proto__;
     languageService = ts.createLanguageService(host, documentRegistry);
     setLogDebug(debugFlag, "TSLS");
     debug("serverInit()");
-  }
-
-  function serverRestart() {
-    languageService = ts.createLanguageService(host, documentRegistry);
-    isNodeSourceFileCache.clear();
-    debug("serverRestart()");
   }
 
   // A build time only op that provides some setup information that is used to

@@ -3,6 +3,7 @@
 use super::definitions::TestDefinition;
 use super::definitions::TestModule;
 use super::lsp_custom;
+use super::server::TestServerTests;
 
 use crate::args::flags_from_vec;
 use crate::args::DenoSubcommand;
@@ -21,7 +22,6 @@ use deno_core::error::JsError;
 use deno_core::futures::future;
 use deno_core::futures::stream;
 use deno_core::futures::StreamExt;
-use deno_core::parking_lot::Mutex;
 use deno_core::parking_lot::RwLock;
 use deno_core::unsync::spawn;
 use deno_core::unsync::spawn_blocking;
@@ -42,7 +42,7 @@ use tower_lsp::lsp_types as lsp;
 /// any filters to be applied to those tests
 fn as_queue_and_filters(
   params: &lsp_custom::TestRunRequestParams,
-  tests: &HashMap<ModuleSpecifier, TestModule>,
+  tests: &HashMap<ModuleSpecifier, (TestModule, String)>,
 ) -> (
   HashSet<ModuleSpecifier>,
   HashMap<ModuleSpecifier, LspTestFilter>,
@@ -52,7 +52,7 @@ fn as_queue_and_filters(
 
   if let Some(include) = &params.include {
     for item in include {
-      if let Some(test_definitions) = tests.get(&item.text_document.uri) {
+      if let Some((test_definitions, _)) = tests.get(&item.text_document.uri) {
         queue.insert(item.text_document.uri.clone());
         if let Some(id) = &item.id {
           if let Some(test) = test_definitions.get(id) {
@@ -74,7 +74,7 @@ fn as_queue_and_filters(
   }
 
   for item in &params.exclude {
-    if let Some(test_definitions) = tests.get(&item.text_document.uri) {
+    if let Some((test_definitions, _)) = tests.get(&item.text_document.uri) {
       if let Some(id) = &item.id {
         // there is no way to exclude a test step
         if item.step_id.is_none() {
@@ -91,7 +91,7 @@ fn as_queue_and_filters(
     }
   }
 
-  queue.retain(|s| !tests.get(s).unwrap().is_empty());
+  queue.retain(|s| !tests.get(s).unwrap().0.is_empty());
 
   (queue, filters)
 }
@@ -147,19 +147,19 @@ pub struct TestRun {
   kind: lsp_custom::TestRunKind,
   filters: HashMap<ModuleSpecifier, LspTestFilter>,
   queue: HashSet<ModuleSpecifier>,
-  tests: Arc<Mutex<HashMap<ModuleSpecifier, TestModule>>>,
+  tests: TestServerTests,
   token: CancellationToken,
   workspace_settings: config::WorkspaceSettings,
 }
 
 impl TestRun {
-  pub fn new(
+  pub async fn init(
     params: &lsp_custom::TestRunRequestParams,
-    tests: Arc<Mutex<HashMap<ModuleSpecifier, TestModule>>>,
+    tests: TestServerTests,
     workspace_settings: config::WorkspaceSettings,
   ) -> Self {
     let (queue, filters) = {
-      let tests = tests.lock();
+      let tests = tests.lock().await;
       as_queue_and_filters(params, &tests)
     };
 
@@ -176,13 +176,13 @@ impl TestRun {
 
   /// Provide the tests of a test run as an enqueued module which can be sent
   /// to the client to indicate tests are enqueued for testing.
-  pub fn as_enqueued(&self) -> Vec<lsp_custom::EnqueuedTestModule> {
-    let tests = self.tests.lock();
+  pub async fn as_enqueued(&self) -> Vec<lsp_custom::EnqueuedTestModule> {
+    let tests = self.tests.lock().await;
     self
       .queue
       .iter()
       .map(|s| {
-        let ids = if let Some(test_module) = tests.get(s) {
+        let ids = if let Some((test_module, _)) = tests.get(s) {
           if let Some(filter) = self.filters.get(s) {
             filter.as_ids(test_module)
           } else {
@@ -332,7 +332,7 @@ impl TestRun {
           match event {
             test::TestEvent::Register(description) => {
               for (_, description) in description.into_iter() {
-                reporter.report_register(description);
+                reporter.report_register(description).await;
                 // TODO(mmastrac): we shouldn't need to clone here - we can re-use the descriptions
                 tests.write().insert(description.id, description.clone());
               }
@@ -378,7 +378,7 @@ impl TestRun {
               summary.uncaught_errors.push((origin, error));
             }
             test::TestEvent::StepRegister(description) => {
-              reporter.report_step_register(&description);
+              reporter.report_step_register(&description).await;
               test_steps.insert(description.id, description);
             }
             test::TestEvent::StepWait(id) => {
@@ -541,7 +541,7 @@ struct LspTestReporter {
   client: Client,
   id: u32,
   maybe_root_uri: Option<ModuleSpecifier>,
-  files: Arc<Mutex<HashMap<ModuleSpecifier, TestModule>>>,
+  files: TestServerTests,
   tests: IndexMap<usize, LspTestDescription>,
   current_test: Option<usize>,
 }
@@ -551,7 +551,7 @@ impl LspTestReporter {
     run: &TestRun,
     client: Client,
     maybe_root_uri: Option<&ModuleSpecifier>,
-    files: Arc<Mutex<HashMap<ModuleSpecifier, TestModule>>>,
+    files: TestServerTests,
   ) -> Self {
     Self {
       client,
@@ -576,12 +576,12 @@ impl LspTestReporter {
 
   fn report_plan(&mut self, _plan: &test::TestPlan) {}
 
-  fn report_register(&mut self, desc: &test::TestDescription) {
-    let mut files = self.files.lock();
+  async fn report_register(&mut self, desc: &test::TestDescription) {
+    let mut files = self.files.lock().await;
     let specifier = ModuleSpecifier::parse(&desc.location.file_name).unwrap();
-    let test_module = files
+    let (test_module, _) = files
       .entry(specifier.clone())
-      .or_insert_with(|| TestModule::new(specifier, "1".to_string()));
+      .or_insert_with(|| (TestModule::new(specifier), "1".to_string()));
     let (static_id, is_new) = test_module.register_dynamic(desc);
     self.tests.insert(
       desc.id,
@@ -681,12 +681,12 @@ impl LspTestReporter {
     }
   }
 
-  fn report_step_register(&mut self, desc: &test::TestStepDescription) {
-    let mut files = self.files.lock();
+  async fn report_step_register(&mut self, desc: &test::TestStepDescription) {
+    let mut files = self.files.lock().await;
     let specifier = ModuleSpecifier::parse(&desc.location.file_name).unwrap();
-    let test_module = files
+    let (test_module, _) = files
       .entry(specifier.clone())
-      .or_insert_with(|| TestModule::new(specifier, "1".to_string()));
+      .or_insert_with(|| (TestModule::new(specifier), "1".to_string()));
     let (static_id, is_new) = test_module.register_step_dynamic(
       desc,
       self.tests.get(&desc.parent_id).unwrap().static_id(),
@@ -828,7 +828,6 @@ mod tests {
     };
     let test_module = TestModule {
       specifier: specifier.clone(),
-      script_version: "1".to_string(),
       defs: vec![
         (test_def_a.id.clone(), test_def_a.clone()),
         (test_def_b.id.clone(), test_def_b.clone()),
@@ -836,10 +835,10 @@ mod tests {
       .into_iter()
       .collect(),
     };
-    tests.insert(specifier.clone(), test_module.clone());
+    tests.insert(specifier.clone(), (test_module.clone(), "1".to_string()));
     tests.insert(
       non_test_specifier.clone(),
-      TestModule::new(non_test_specifier, "1".to_string()),
+      (TestModule::new(non_test_specifier), "1".to_string()),
     );
     let (queue, filters) = as_queue_and_filters(&params, &tests);
     assert_eq!(json!(queue), json!([specifier]));

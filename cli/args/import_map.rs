@@ -28,7 +28,7 @@ pub async fn resolve_import_map(
         let specifier = specifier.clone();
         async move {
           let file = file_fetcher
-            .fetch(&specifier, PermissionsContainer::allow_all())
+            .fetch(&specifier, &PermissionsContainer::allow_all())
             .await?
             .into_text_decoded()?;
           Ok(file.source.to_string())
@@ -62,7 +62,7 @@ async fn resolve_import_map_from_specifier(
     serde_json::from_str(&data_url_text)?
   } else {
     let file = file_fetcher
-      .fetch(&specifier, PermissionsContainer::allow_all())
+      .fetch(&specifier, &PermissionsContainer::allow_all())
       .await?
       .into_text_decoded()?;
     serde_json::from_str(&file.source)?
@@ -95,4 +95,33 @@ fn print_import_map_diagnostics(diagnostics: &[ImportMapDiagnostic]) {
         .join("\n")
     );
   }
+}
+
+pub fn enhance_import_map_value_with_workspace_members(
+  mut import_map_value: serde_json::Value,
+  workspace_members: &[deno_config::WorkspaceMemberConfig],
+) -> serde_json::Value {
+  let mut imports =
+    if let Some(imports) = import_map_value.get("imports").as_ref() {
+      imports.as_object().unwrap().clone()
+    } else {
+      serde_json::Map::new()
+    };
+
+  for workspace_member in workspace_members {
+    let name = &workspace_member.package_name;
+    let version = &workspace_member.package_version;
+    // Don't override existings, explicit imports
+    if imports.contains_key(name) {
+      continue;
+    }
+
+    imports.insert(
+      name.to_string(),
+      serde_json::Value::String(format!("jsr:{}@^{}", name, version)),
+    );
+  }
+
+  import_map_value["imports"] = serde_json::Value::Object(imports);
+  ::import_map::ext::expand_import_map_value(import_map_value)
 }

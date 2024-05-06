@@ -26,6 +26,7 @@ pub use deno_webidl;
 pub use deno_websocket;
 pub use deno_webstorage;
 
+pub mod code_cache;
 pub mod errors;
 pub mod fmt_errors;
 pub mod fs_util;
@@ -40,6 +41,7 @@ pub mod worker;
 
 mod worker_bootstrap;
 pub use worker_bootstrap::BootstrapOptions;
+pub use worker_bootstrap::WorkerExecutionMode;
 pub use worker_bootstrap::WorkerLogLevel;
 
 mod shared;

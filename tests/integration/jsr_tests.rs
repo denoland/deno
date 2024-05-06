@@ -128,7 +128,7 @@ fn specifiers_in_lockfile() {
 
   temp_dir.write(
     "main.ts",
-    r#"import version from "jsr:@denotest/no_module_graph@0.1";
+    r#"import version from "jsr:@denotest/no-module-graph@0.1";
 
 console.log(version);"#,
   );
@@ -146,8 +146,8 @@ console.log(version);"#,
     .content
     .packages
     .specifiers
-    .get_mut("jsr:@denotest/no_module_graph@0.1")
-    .unwrap() = "jsr:@denotest/no_module_graph@0.1.0".to_string();
+    .get_mut("jsr:@denotest/no-module-graph@0.1")
+    .unwrap() = "jsr:@denotest/no-module-graph@0.1.0".to_string();
   lockfile_path.write(lockfile.as_json_string());
 
   test_context
@@ -238,7 +238,7 @@ fn lockfile_bad_package_integrity() {
 
   temp_dir.write(
     "main.ts",
-    r#"import version from "jsr:@denotest/no_module_graph@0.1";
+    r#"import version from "jsr:@denotest/no-module-graph@0.1";
 
 console.log(version);"#,
   );
@@ -252,14 +252,14 @@ console.log(version);"#,
 
   let lockfile_path = temp_dir.path().join("deno.lock");
   let mut lockfile = Lockfile::new(lockfile_path.to_path_buf(), false).unwrap();
-  let pkg_name = "@denotest/no_module_graph@0.1.1";
+  let pkg_name = "@denotest/no-module-graph@0.1.1";
   let original_integrity = get_lockfile_pkg_integrity(&lockfile, pkg_name);
   set_lockfile_pkg_integrity(&mut lockfile, pkg_name, "bad_integrity");
   lockfile_path.write(lockfile.as_json_string());
 
   let actual_integrity =
-    test_context.get_jsr_package_integrity("@denotest/no_module_graph/0.1.1");
-  let integrity_check_failed_msg = format!("error: Integrity check failed for http://127.0.0.1:4250/@denotest/no_module_graph/0.1.1_meta.json
+    test_context.get_jsr_package_integrity("@denotest/no-module-graph/0.1.1");
+  let integrity_check_failed_msg = format!("error: Integrity check failed for http://127.0.0.1:4250/@denotest/no-module-graph/0.1.1_meta.json
 
 Actual: {}
 Expected: bad_integrity

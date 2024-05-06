@@ -23,8 +23,7 @@ impl Resource for WebGpuCommandEncoder {
   }
 
   fn close(self: Rc<Self>) {
-    let instance = &self.0;
-    gfx_select!(self.1 => instance.command_encoder_drop(self.1));
+    gfx_select!(self.1 => self.0.command_encoder_drop(self.1));
   }
 }
 
@@ -39,8 +38,7 @@ impl Resource for WebGpuCommandBuffer {
 
   fn close(self: Rc<Self>) {
     if let Some(id) = *self.1.borrow() {
-      let instance = &self.0;
-      gfx_select!(id => instance.command_buffer_drop(id));
+      gfx_select!(id => self.0.command_buffer_drop(id));
     }
   }
 }
@@ -63,7 +61,7 @@ pub fn op_webgpu_create_command_encoder(
   gfx_put!(device => instance.device_create_command_encoder(
     device,
     &descriptor,
-    ()
+    None
   ) => state, WebGpuCommandEncoder)
 }
 
@@ -493,7 +491,7 @@ pub fn op_webgpu_command_encoder_clear_buffer(
     command_encoder,
     destination_resource.1,
     offset,
-    std::num::NonZeroU64::new(size)
+    Some(size)
   ))
 }
 

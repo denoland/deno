@@ -255,7 +255,7 @@ impl ReplSession {
     let (transpile_options, _) =
       crate::args::ts_config_to_transpile_and_emit_options(
         ts_config_for_emit.ts_config,
-      );
+      )?;
     let experimental_decorators = transpile_options.use_ts_decorators;
     let mut repl_session = ReplSession {
       npm_resolver,
@@ -627,6 +627,7 @@ impl ReplSession {
           imports_not_used_as_values: ImportsNotUsedAsValues::Preserve,
           transform_jsx: true,
           precompile_jsx: false,
+          precompile_jsx_skip_elements: None,
           jsx_automatic: self.jsx.import_source.is_some(),
           jsx_development: false,
           jsx_factory: self.jsx.factory.clone(),
@@ -636,10 +637,12 @@ impl ReplSession {
         },
         &deno_ast::EmitOptions {
           source_map: deno_ast::SourceMapOption::None,
+          source_map_file: None,
           inline_sources: false,
           keep_comments: false,
         },
       )?
+      .into_source()
       .text;
 
     let value = self

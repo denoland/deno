@@ -550,6 +550,12 @@ function reportFinal(
     }. ${finalPassedCount} passed; ${finalFailedCount} failed; ${finalExpectedFailedAndFailedCount} expected failure; total ${finalTotalCount} (${duration}ms)\n`,
   );
 
+  // We ignore the exit code of the test run because the CI job reports the
+  // results to WPT.fyi, and we still want to report failure.
+  if (Deno.args.includes("--exit-zero")) {
+    return 0;
+  }
+
   return failed ? 1 : 0;
 }
 

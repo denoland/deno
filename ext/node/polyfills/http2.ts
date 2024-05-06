@@ -36,7 +36,7 @@ import {
 } from "ext:deno_node/internal/stream_base_commons.ts";
 import { FileHandle } from "node:fs/promises";
 import { kStreamBaseField } from "ext:deno_node/internal_binding/stream_wrap.ts";
-import { serveHttpOnConnection } from "ext:deno_http/00_serve.js";
+import { serveHttpOnConnection } from "ext:deno_http/00_serve.ts";
 import { nextTick } from "ext:deno_node/_next_tick.ts";
 import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
 import { Duplex } from "node:stream";
@@ -1015,10 +1015,11 @@ export class ClientHttp2Stream extends Duplex {
           this.emit("trailers", trailers);
         }
 
-        debugHttp2("tryClose");
+        debugHttp2(">>> tryClose", this[kDenoResponse]?.bodyRid);
         core.tryClose(this[kDenoResponse].bodyRid);
         this.push(null);
         debugHttp2(">>> read null chunk");
+        this.read(0);
         this[kMaybeDestroy]();
         return;
       }
@@ -1245,10 +1246,12 @@ function finishCloseStream(stream, code) {
         debugHttp2(
           ">>> finishCloseStream close",
           stream[kDenoRid],
-          stream[kDenoResponse].bodyRid,
+          stream[kDenoResponse]?.bodyRid,
         );
         core.tryClose(stream[kDenoRid]);
-        core.tryClose(stream[kDenoResponse].bodyRid);
+        if (stream[kDenoResponse]) {
+          core.tryClose(stream[kDenoResponse].bodyRid);
+        }
         stream.emit("close");
       });
     });
@@ -1264,7 +1267,9 @@ function finishCloseStream(stream, code) {
         stream[kDenoResponse].bodyRid,
       );
       core.tryClose(stream[kDenoRid]);
-      core.tryClose(stream[kDenoResponse].bodyRid);
+      if (stream[kDenoResponse]) {
+        core.tryClose(stream[kDenoResponse].bodyRid);
+      }
       nextTick(() => {
         stream.emit("close");
       });
@@ -1272,10 +1277,12 @@ function finishCloseStream(stream, code) {
       debugHttp2(
         ">>> finishCloseStream close2 catch",
         stream[kDenoRid],
-        stream[kDenoResponse].bodyRid,
+        stream[kDenoResponse]?.bodyRid,
       );
       core.tryClose(stream[kDenoRid]);
-      core.tryClose(stream[kDenoResponse].bodyRid);
+      if (stream[kDenoResponse]) {
+        core.tryClose(stream[kDenoResponse].bodyRid);
+      }
       nextTick(() => {
         stream.emit("close");
       });
@@ -1677,7 +1684,10 @@ export function connect(
       case "https:":
         // TODO(bartlomieju): handle `initializeTLSOptions` here
         url = `https://${host}${port == 443 ? "" : (":" + port)}`;
-        socket = tlsConnect(port, host, { manualStart: true });
+        socket = tlsConnect(port, host, {
+          manualStart: true,
+          ALPNProtocols: ["h2", "http/1.1"],
+        });
         break;
       default:
         throw new ERR_HTTP2_UNSUPPORTED_PROTOCOL(protocol);

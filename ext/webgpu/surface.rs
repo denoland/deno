@@ -60,6 +60,7 @@ pub fn op_webgpu_surface_configure(
     present_mode: args.present_mode.unwrap_or_default(),
     alpha_mode: args.alpha_mode,
     view_formats: args.view_formats,
+    desired_maximum_frame_latency: 2,
   };
 
   let err =
@@ -85,7 +86,7 @@ pub fn op_webgpu_surface_get_current_texture(
   let surface = surface_resource.1;
 
   let output =
-    gfx_select!(device => instance.surface_get_current_texture(surface, ()))?;
+    gfx_select!(device => instance.surface_get_current_texture(surface, None))?;
 
   match output.status {
     SurfaceStatus::Good | SurfaceStatus::Suboptimal => {
