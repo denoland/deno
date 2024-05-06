@@ -32,7 +32,7 @@ fn range_of_nth(
     .match_indices(text)
     .nth(n)
     .map(|(i, _)| i)
-    .expect(&*format!("couldn't find text {text} in source {src}"));
+    .unwrap_or_else(|| panic!("couldn't find text {text} in source {src}"));
   let end = start + text.len();
   let mut line = 0;
   let mut col = 0;
@@ -12610,5 +12610,5 @@ fn lsp_ts_code_fix_any_param() {
     }
   }
 
-  panic!("failed to find 'Infer parameter types from usage' fix in {fixes:?}");
+  panic!("failed to find 'Infer parameter types from usage' fix in fixes: {fixes:#?}");
 }
