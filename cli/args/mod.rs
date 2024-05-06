@@ -110,7 +110,7 @@ pub static DENO_DISABLE_PEDANTIC_NODE_WARNINGS: Lazy<bool> = Lazy::new(|| {
     .is_some()
 });
 
-static DENO_FUTURE: Lazy<bool> =
+pub static DENO_FUTURE: Lazy<bool> =
   Lazy::new(|| std::env::var("DENO_FUTURE").ok().is_some());
 
 pub fn jsr_url() -> &'static Url {
@@ -196,6 +196,7 @@ pub fn ts_config_to_transpile_and_emit_options(
       inline_sources: options.inline_sources,
       keep_comments: false,
       source_map,
+      source_map_file: None,
     },
   ))
 }
@@ -943,7 +944,7 @@ impl CliOptions {
     &self,
   ) -> Result<Option<ModuleSpecifier>, AnyError> {
     match self.overrides.import_map_specifier.clone() {
-      Some(maybe_path) => Ok(maybe_path),
+      Some(maybe_url) => Ok(maybe_url),
       None => resolve_import_map_specifier(
         self.flags.import_map_path.as_deref(),
         self.maybe_config_file.as_ref(),

@@ -801,6 +801,46 @@ async fn main_server(
       );
       Ok(res)
     }
+    (_, "/jsx-types/jsx-runtime") | (_, "/jsx-types/jsx-dev-runtime") => {
+      let mut res = Response::new(string_body(
+        r#"
+/// <reference types="./jsx-runtime.d.ts" />
+        "#,
+      ));
+      res.headers_mut().insert(
+        "Content-type",
+        HeaderValue::from_static("application/javascript"),
+      );
+      Ok(res)
+    }
+    (_, "/jsx-types/jsx-runtime.d.ts") => {
+      let mut res = Response::new(string_body(
+        r#"export function jsx(
+          _type: "a" | "b",
+          _props: any,
+          _key: any,
+          _source: any,
+          _self: any,
+        ): any;
+        export const jsxs: typeof jsx;
+        export const jsxDEV: typeof jsx;
+        export const Fragment: unique symbol;
+
+        declare global {
+          namespace JSX {
+            interface IntrinsicElements {
+              [tagName: string]: Record<string, any>;
+            }
+          }
+        }
+        "#,
+      ));
+      res.headers_mut().insert(
+        "Content-type",
+        HeaderValue::from_static("application/typescript"),
+      );
+      Ok(res)
+    }
     (_, "/dynamic") => {
       let mut res = Response::new(string_body(
         &serde_json::to_string_pretty(&std::time::SystemTime::now()).unwrap(),
@@ -1177,23 +1217,26 @@ async fn private_npm_registry1(
 }
 
 fn handle_custom_npm_registry_path(
+  scope_name: &str,
   path: &str,
   test_npm_registry: &npm::TestNpmRegistry,
 ) -> Result<Option<Response<UnsyncBoxBody<Bytes, Infallible>>>, anyhow::Error> {
-  let parts = path
+  let mut parts = path
     .split('/')
     .filter(|p| !p.is_empty())
     .collect::<Vec<_>>();
+  let remainder = parts.split_off(1);
+  let name = parts[0];
+  let package_name = format!("{}/{}", scope_name, name);
 
-  let package_name = format!("@denotest/{}", parts[0]);
-  if parts.len() == 2 {
+  if remainder.len() == 1 {
     if let Some(file_bytes) = test_npm_registry
-      .tarball_bytes(&package_name, parts[1].trim_end_matches(".tgz"))?
+      .tarball_bytes(&package_name, remainder[0].trim_end_matches(".tgz"))?
     {
       let file_resp = custom_headers("file.tgz", file_bytes);
       return Ok(Some(file_resp));
     }
-  } else if parts.len() == 1 {
+  } else if remainder.is_empty() {
     if let Some(registry_file) =
       test_npm_registry.registry_file(&package_name)?
     {
@@ -1216,12 +1259,16 @@ async fn try_serve_npm_registry(
   mut testdata_file_path: PathBuf,
   test_npm_registry: &npm::TestNpmRegistry,
 ) -> Option<Result<Response<UnsyncBoxBody<Bytes, Infallible>>, anyhow::Error>> {
-  if let Some(suffix) =
-    test_npm_registry.strip_denotest_prefix_from_uri_path(uri_path)
+  if let Some((scope_name, package_name_with_path)) = test_npm_registry
+    .get_test_scope_and_package_name_with_path_from_uri_path(uri_path)
   {
-    // serve all requests to the `DENOTEST_SCOPE_NAME` using the file system
-    // at that path
-    match handle_custom_npm_registry_path(suffix, test_npm_registry) {
+    // serve all requests to the `DENOTEST_SCOPE_NAME` or `DENOTEST2_SCOPE_NAME`
+    // using the file system at that path
+    match handle_custom_npm_registry_path(
+      scope_name,
+      package_name_with_path,
+      test_npm_registry,
+    ) {
       Ok(Some(response)) => return Some(Ok(response)),
       Ok(None) => {} // ignore, not found
       Err(err) => {

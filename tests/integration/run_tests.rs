@@ -1,14 +1,21 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use bytes::Bytes;
-use deno_core::serde_json::json;
-use deno_core::url;
-use deno_fetch::reqwest;
-use pretty_assertions::assert_eq;
+use std::io::BufReader;
+use std::io::Cursor;
 use std::io::Read;
 use std::io::Write;
 use std::process::Command;
 use std::process::Stdio;
+use std::sync::Arc;
+
+use bytes::Bytes;
+use deno_core::serde_json::json;
+use deno_core::url;
+use deno_fetch::reqwest;
+use deno_tls::rustls;
+use deno_tls::rustls_pemfile;
+use deno_tls::TlsStream;
+use pretty_assertions::assert_eq;
 use test_util as util;
 use test_util::itest;
 use test_util::TempDir;
@@ -1018,7 +1025,7 @@ fn lock_deno_json_package_json_deps() {
   deno_json.write_json(&json!({
     "imports": {
       "esm-basic": "npm:@denotest/esm-basic",
-      "module_graph": "jsr:@denotest/module_graph@1.4",
+      "module_graph": "jsr:@denotest/module-graph@1.4",
     }
   }));
   let main_ts = temp_dir.join("main.ts");
@@ -1035,11 +1042,11 @@ fn lock_deno_json_package_json_deps() {
     "version": "3",
     "packages": {
       "specifiers": {
-        "jsr:@denotest/module_graph@1.4": "jsr:@denotest/module_graph@1.4.0",
+        "jsr:@denotest/module-graph@1.4": "jsr:@denotest/module-graph@1.4.0",
         "npm:@denotest/esm-basic": "npm:@denotest/esm-basic@1.0.0"
       },
       "jsr": {
-        "@denotest/module_graph@1.4.0": {
+        "@denotest/module-graph@1.4.0": {
           "integrity": "32de0973c5fa55772326fcd504a757f386d2b010db3e13e78f3bcf851e69473d"
         }
       },
@@ -1053,7 +1060,7 @@ fn lock_deno_json_package_json_deps() {
     "remote": {},
     "workspace": {
       "dependencies": [
-        "jsr:@denotest/module_graph@1.4",
+        "jsr:@denotest/module-graph@1.4",
         "npm:@denotest/esm-basic"
       ]
     }
@@ -1063,7 +1070,7 @@ fn lock_deno_json_package_json_deps() {
   // it to a package.json that uses an alias
   deno_json.write_json(&json!({
     "imports": {
-      "module_graph": "jsr:@denotest/module_graph@1.4",
+      "module_graph": "jsr:@denotest/module-graph@1.4",
     }
   }));
   package_json.write_json(&json!({
@@ -1087,11 +1094,11 @@ fn lock_deno_json_package_json_deps() {
     "version": "3",
     "packages": {
       "specifiers": {
-        "jsr:@denotest/module_graph@1.4": "jsr:@denotest/module_graph@1.4.0",
+        "jsr:@denotest/module-graph@1.4": "jsr:@denotest/module-graph@1.4.0",
         "npm:@denotest/esm-basic": "npm:@denotest/esm-basic@1.0.0"
       },
       "jsr": {
-        "@denotest/module_graph@1.4.0": {
+        "@denotest/module-graph@1.4.0": {
           "integrity": "32de0973c5fa55772326fcd504a757f386d2b010db3e13e78f3bcf851e69473d"
         }
       },
@@ -1105,7 +1112,7 @@ fn lock_deno_json_package_json_deps() {
     "remote": {},
     "workspace": {
       "dependencies": [
-        "jsr:@denotest/module_graph@1.4"
+        "jsr:@denotest/module-graph@1.4"
       ],
       "packageJson": {
         "dependencies": [
@@ -1128,10 +1135,10 @@ fn lock_deno_json_package_json_deps() {
     "version": "3",
     "packages": {
       "specifiers": {
-        "jsr:@denotest/module_graph@1.4": "jsr:@denotest/module_graph@1.4.0",
+        "jsr:@denotest/module-graph@1.4": "jsr:@denotest/module-graph@1.4.0",
       },
       "jsr": {
-        "@denotest/module_graph@1.4.0": {
+        "@denotest/module-graph@1.4.0": {
           "integrity": "32de0973c5fa55772326fcd504a757f386d2b010db3e13e78f3bcf851e69473d"
         }
       }
@@ -1139,7 +1146,7 @@ fn lock_deno_json_package_json_deps() {
     "remote": {},
     "workspace": {
       "dependencies": [
-        "jsr:@denotest/module_graph@1.4"
+        "jsr:@denotest/module-graph@1.4"
       ]
     }
   }));
@@ -1692,16 +1699,6 @@ fn type_directives_js_main() {
     .args("run --reload -L debug run/type_directives_js_main.js")
     .run();
   assert_not_contains!(output.combined_output(), "type_reference.d.ts");
-}
-
-#[test]
-fn test_deno_futures_env() {
-  let context = TestContextBuilder::new().add_future_env_vars().build();
-  let output = context
-    .new_command()
-    .args("run --quiet --reload run/deno_futures_env.ts")
-    .run();
-  output.assert_exit_code(0);
 }
 
 itest!(type_directives_redirect {
@@ -3439,17 +3436,6 @@ itest!(config_not_auto_discovered_for_remote_script {
   http_server: true,
 });
 
-itest!(package_json_auto_discovered_for_local_script_arg {
-  args: "run -L debug -A no_deno_json/main.ts",
-  output: "run/with_package_json/no_deno_json/main.out",
-  // notice this is not in no_deno_json
-  cwd: Some("run/with_package_json/"),
-  // prevent creating a node_modules dir in the code directory
-  copy_temp_dir: Some("run/with_package_json/"),
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
-
 // In this case we shouldn't discover `package.json` file, because it's in a
 // directory that is above the directory containing `deno.json` file.
 itest!(
@@ -3464,36 +3450,6 @@ itest!(
   }
 );
 
-itest!(package_json_not_auto_discovered_no_config {
-  args: "run -L debug -A --no-config noconfig.ts",
-  output: "run/with_package_json/no_deno_json/noconfig.out",
-  cwd: Some("run/with_package_json/no_deno_json/"),
-});
-
-itest!(package_json_not_auto_discovered_no_npm {
-  args: "run -L debug -A --no-npm noconfig.ts",
-  output: "run/with_package_json/no_deno_json/noconfig.out",
-  cwd: Some("run/with_package_json/no_deno_json/"),
-});
-
-itest!(package_json_not_auto_discovered_env_var {
-  args: "run -L debug -A noconfig.ts",
-  output: "run/with_package_json/no_deno_json/noconfig.out",
-  cwd: Some("run/with_package_json/no_deno_json/"),
-  envs: vec![("DENO_NO_PACKAGE_JSON".to_string(), "1".to_string())],
-});
-
-itest!(
-  package_json_auto_discovered_node_modules_relative_package_json {
-    args: "run -A main.js",
-    output: "run/with_package_json/no_deno_json/sub_dir/main.out",
-    cwd: Some("run/with_package_json/no_deno_json/sub_dir"),
-    copy_temp_dir: Some("run/with_package_json/no_deno_json/"),
-    envs: env_vars_for_npm_tests(),
-    http_server: true,
-  }
-);
-
 itest!(package_json_auto_discovered_for_npm_binary {
   args: "run -L debug -A npm:@denotest/bin/cli-esm this is a test",
   output: "run/with_package_json/npm_binary/main.out",
@@ -3501,14 +3457,6 @@ itest!(package_json_auto_discovered_for_npm_binary {
   copy_temp_dir: Some("run/with_package_json/"),
   envs: env_vars_for_npm_tests(),
   http_server: true,
-});
-
-itest!(package_json_auto_discovered_no_package_json_imports {
-  // this should not use --quiet because we should ensure no package.json install occurs
-  args: "run -A no_package_json_imports.ts",
-  output: "run/with_package_json/no_deno_json/no_package_json_imports.out",
-  cwd: Some("run/with_package_json/no_deno_json"),
-  copy_temp_dir: Some("run/with_package_json/no_deno_json"),
 });
 
 #[test]
@@ -5387,4 +5335,100 @@ fn node_process_stdin_unref_with_pty() {
       // if process.stdin.unref is called, the program immediately ends by skipping reading from stdin.
       console.expect("START\r\nEND\r\n");
     });
+}
+
+#[tokio::test]
+async fn listen_tls_alpn() {
+  let mut child = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--unstable")
+    .arg("--quiet")
+    .arg("--allow-net")
+    .arg("--allow-read")
+    .arg("./cert/listen_tls_alpn.ts")
+    .arg("4504")
+    .stdout_piped()
+    .spawn()
+    .unwrap();
+  let stdout = child.stdout.as_mut().unwrap();
+  let mut msg = [0; 5];
+  let read = stdout.read(&mut msg).unwrap();
+  assert_eq!(read, 5);
+  assert_eq!(&msg, b"READY");
+
+  let mut reader = &mut BufReader::new(Cursor::new(include_bytes!(
+    "../testdata/tls/RootCA.crt"
+  )));
+  let certs = rustls_pemfile::certs(&mut reader).unwrap();
+  let mut root_store = rustls::RootCertStore::empty();
+  root_store.add_parsable_certificates(&certs);
+  let mut cfg = rustls::ClientConfig::builder()
+    .with_safe_defaults()
+    .with_root_certificates(root_store)
+    .with_no_client_auth();
+  cfg.alpn_protocols.push(b"foobar".to_vec());
+  let cfg = Arc::new(cfg);
+
+  let hostname = rustls::ServerName::try_from("localhost").unwrap();
+
+  let tcp_stream = tokio::net::TcpStream::connect("localhost:4504")
+    .await
+    .unwrap();
+  let mut tls_stream =
+    TlsStream::new_client_side(tcp_stream, cfg, hostname, None);
+
+  let handshake = tls_stream.handshake().await.unwrap();
+
+  assert_eq!(handshake.alpn, Some(b"foobar".to_vec()));
+
+  let status = child.wait().unwrap();
+  assert!(status.success());
+}
+
+#[tokio::test]
+async fn listen_tls_alpn_fail() {
+  let mut child = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--unstable")
+    .arg("--quiet")
+    .arg("--allow-net")
+    .arg("--allow-read")
+    .arg("./cert/listen_tls_alpn_fail.ts")
+    .arg("4505")
+    .stdout_piped()
+    .spawn()
+    .unwrap();
+  let stdout = child.stdout.as_mut().unwrap();
+  let mut msg = [0; 5];
+  let read = stdout.read(&mut msg).unwrap();
+  assert_eq!(read, 5);
+  assert_eq!(&msg, b"READY");
+
+  let mut reader = &mut BufReader::new(Cursor::new(include_bytes!(
+    "../testdata/tls/RootCA.crt"
+  )));
+  let certs = rustls_pemfile::certs(&mut reader).unwrap();
+  let mut root_store = rustls::RootCertStore::empty();
+  root_store.add_parsable_certificates(&certs);
+  let mut cfg = rustls::ClientConfig::builder()
+    .with_safe_defaults()
+    .with_root_certificates(root_store)
+    .with_no_client_auth();
+  cfg.alpn_protocols.push(b"boofar".to_vec());
+  let cfg = Arc::new(cfg);
+
+  let hostname = rustls::ServerName::try_from("localhost").unwrap();
+
+  let tcp_stream = tokio::net::TcpStream::connect("localhost:4505")
+    .await
+    .unwrap();
+  let mut tls_stream =
+    TlsStream::new_client_side(tcp_stream, cfg, hostname, None);
+
+  tls_stream.handshake().await.unwrap_err();
+
+  let status = child.wait().unwrap();
+  assert!(status.success());
 }

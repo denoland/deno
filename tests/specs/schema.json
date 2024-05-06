@@ -21,9 +21,6 @@
             }
           }]
         },
-        "cleanDenoDir": {
-          "type": "boolean"
-        },
         "cwd": {
           "type": "string"
         },
@@ -35,6 +32,9 @@
           "additionalProperties": {
             "type": "string"
           }
+        },
+        "flaky": {
+          "type": "boolean"
         },
         "if": {
           "type": "string",
@@ -52,32 +52,53 @@
           "type": "integer"
         }
       }
-    }
-  },
-  "oneOf": [{
-    "required": ["steps"],
-    "properties": {
-      "tempDir": {
-        "type": "boolean"
-      },
-      "base": {
-        "type": "string"
-      },
-      "envs": {
-        "type": "object",
-        "additionalProperties": {
-          "type": "string"
+    },
+    "single_or_multi_step_test": {
+      "oneOf": [{
+        "required": ["steps"],
+        "properties": {
+          "tempDir": {
+            "type": "boolean"
+          },
+          "base": {
+            "type": "string"
+          },
+          "envs": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/single_test"
+            }
+          }
         }
-      },
-      "steps": {
-        "type": "array",
-        "items": {
+      }, {
+        "allOf": [{
+          "properties": {
+            "tempDir": {
+              "type": "boolean"
+            },
+            "base": {
+              "type": "string"
+            },
+            "envs": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            }
+          }
+        }, {
           "$ref": "#/definitions/single_test"
-        }
-      }
-    }
-  }, {
-    "allOf": [{
+        }]
+      }]
+    },
+    "multi_test": {
+      "required": ["tests"],
       "properties": {
         "tempDir": {
           "type": "boolean"
@@ -90,10 +111,19 @@
           "additionalProperties": {
             "type": "string"
           }
+        },
+        "tests": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/single_or_multi_step_test"
+          }
         }
       }
-    }, {
-      "$ref": "#/definitions/single_test"
-    }]
+    }
+  },
+  "oneOf": [{
+    "$ref": "#/definitions/single_or_multi_step_test"
+  }, {
+    "$ref": "#/definitions/multi_test"
   }]
 }

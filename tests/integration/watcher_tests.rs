@@ -192,7 +192,8 @@ fn child_lines(
   (stdout_lines, stderr_lines)
 }
 
-#[tokio::test]
+#[flaky_test]
+#[tokio::main]
 async fn lint_watch_test() {
   let t = TempDir::new();
   let badly_linted_original =
@@ -209,10 +210,10 @@ async fn lint_watch_test() {
     util::testdata_path().join("lint/watch/badly_linted_fixed2.js.out");
   let badly_linted = t.path().join("badly_linted.js");
 
-  std::fs::copy(badly_linted_original, &badly_linted).unwrap();
+  badly_linted_original.copy(&badly_linted);
 
   let mut child = util::deno_cmd()
-    .current_dir(util::testdata_path())
+    .current_dir(t.path())
     .arg("lint")
     .arg(&badly_linted)
     .arg("--watch")
@@ -224,32 +225,31 @@ async fn lint_watch_test() {
 
   assert_contains!(&next_line, "Lint started");
   let mut output = read_all_lints(&mut stderr_lines).await;
-  let expected = std::fs::read_to_string(badly_linted_output).unwrap();
+  let expected = badly_linted_output.read_to_string();
   assert_eq!(output, expected);
 
   // Change content of the file again to be badly-linted
-  std::fs::copy(badly_linted_fixed1, &badly_linted).unwrap();
-  std::thread::sleep(std::time::Duration::from_secs(1));
+  badly_linted_fixed1.copy(&badly_linted);
 
   output = read_all_lints(&mut stderr_lines).await;
-  let expected = std::fs::read_to_string(badly_linted_fixed1_output).unwrap();
+  let expected = badly_linted_fixed1_output.read_to_string();
   assert_eq!(output, expected);
 
   // Change content of the file again to be badly-linted
-  std::fs::copy(badly_linted_fixed2, &badly_linted).unwrap();
+  badly_linted_fixed2.copy(&badly_linted);
 
   output = read_all_lints(&mut stderr_lines).await;
-  let expected = std::fs::read_to_string(badly_linted_fixed2_output).unwrap();
+  let expected = badly_linted_fixed2_output.read_to_string();
   assert_eq!(output, expected);
 
   // the watcher process is still alive
   assert!(child.try_wait().unwrap().is_none());
 
   child.kill().unwrap();
-  drop(t);
 }
 
-#[tokio::test]
+#[flaky_test]
+#[tokio::main]
 async fn lint_watch_without_args_test() {
   let t = TempDir::new();
   let badly_linted_original =
@@ -266,7 +266,7 @@ async fn lint_watch_without_args_test() {
     util::testdata_path().join("lint/watch/badly_linted_fixed2.js.out");
   let badly_linted = t.path().join("badly_linted.js");
 
-  std::fs::copy(badly_linted_original, &badly_linted).unwrap();
+  badly_linted_original.copy(&badly_linted);
 
   let mut child = util::deno_cmd()
     .current_dir(t.path())
@@ -280,22 +280,21 @@ async fn lint_watch_without_args_test() {
   let next_line = next_line(&mut stderr_lines).await.unwrap();
   assert_contains!(&next_line, "Lint started");
   let mut output = read_all_lints(&mut stderr_lines).await;
-  let expected = std::fs::read_to_string(badly_linted_output).unwrap();
+  let expected = badly_linted_output.read_to_string();
   assert_eq!(output, expected);
 
   // Change content of the file again to be badly-linted
-  std::fs::copy(badly_linted_fixed1, &badly_linted).unwrap();
+  badly_linted_fixed1.copy(&badly_linted);
 
   output = read_all_lints(&mut stderr_lines).await;
-  let expected = std::fs::read_to_string(badly_linted_fixed1_output).unwrap();
+  let expected = badly_linted_fixed1_output.read_to_string();
   assert_eq!(output, expected);
 
   // Change content of the file again to be badly-linted
-  std::fs::copy(badly_linted_fixed2, &badly_linted).unwrap();
-  std::thread::sleep(std::time::Duration::from_secs(1));
+  badly_linted_fixed2.copy(&badly_linted);
 
   output = read_all_lints(&mut stderr_lines).await;
-  let expected = std::fs::read_to_string(badly_linted_fixed2_output).unwrap();
+  let expected = badly_linted_fixed2_output.read_to_string();
   assert_eq!(output, expected);
 
   // the watcher process is still alive
@@ -305,7 +304,8 @@ async fn lint_watch_without_args_test() {
   drop(t);
 }
 
-#[tokio::test]
+#[flaky_test]
+#[tokio::main]
 async fn lint_all_files_on_each_change_test() {
   let t = TempDir::new();
   let badly_linted_fixed0 =
@@ -317,11 +317,11 @@ async fn lint_all_files_on_each_change_test() {
 
   let badly_linted_1 = t.path().join("badly_linted_1.js");
   let badly_linted_2 = t.path().join("badly_linted_2.js");
-  std::fs::copy(badly_linted_fixed0, badly_linted_1).unwrap();
-  std::fs::copy(badly_linted_fixed1, &badly_linted_2).unwrap();
+  badly_linted_fixed0.copy(&badly_linted_1);
+  badly_linted_fixed1.copy(&badly_linted_2);
 
   let mut child = util::deno_cmd()
-    .current_dir(util::testdata_path())
+    .current_dir(t.path())
     .arg("lint")
     .arg(t.path())
     .arg("--watch")
@@ -336,7 +336,7 @@ async fn lint_all_files_on_each_change_test() {
     "Checked 2 files"
   );
 
-  std::fs::copy(badly_linted_fixed2, badly_linted_2).unwrap();
+  badly_linted_fixed2.copy(&badly_linted_2);
 
   assert_contains!(
     wait_contains("Checked", &mut stderr_lines).await,
@@ -349,17 +349,18 @@ async fn lint_all_files_on_each_change_test() {
   drop(t);
 }
 
-#[tokio::test]
+#[flaky_test]
+#[tokio::main]
 async fn fmt_watch_test() {
   let fmt_testdata_path = util::testdata_path().join("fmt");
   let t = TempDir::new();
   let fixed = fmt_testdata_path.join("badly_formatted_fixed.js");
   let badly_formatted_original = fmt_testdata_path.join("badly_formatted.mjs");
   let badly_formatted = t.path().join("badly_formatted.js");
-  std::fs::copy(&badly_formatted_original, &badly_formatted).unwrap();
+  badly_formatted_original.copy(&badly_formatted);
 
   let mut child = util::deno_cmd()
-    .current_dir(&fmt_testdata_path)
+    .current_dir(t.path())
     .arg("fmt")
     .arg(&badly_formatted)
     .arg("--watch")
@@ -380,12 +381,12 @@ async fn fmt_watch_test() {
   );
   wait_contains("Fmt finished", &mut stderr_lines).await;
 
-  let expected = std::fs::read_to_string(fixed.clone()).unwrap();
-  let actual = std::fs::read_to_string(badly_formatted.clone()).unwrap();
+  let expected = fixed.read_to_string();
+  let actual = badly_formatted.read_to_string();
   assert_eq!(actual, expected);
 
   // Change content of the file again to be badly formatted
-  std::fs::copy(&badly_formatted_original, &badly_formatted).unwrap();
+  badly_formatted_original.copy(&badly_formatted);
 
   assert_contains!(
     skip_restarting_line(&mut stderr_lines).await,
@@ -398,20 +399,21 @@ async fn fmt_watch_test() {
   wait_contains("Fmt finished", &mut stderr_lines).await;
 
   // Check if file has been automatically formatted by watcher
-  let expected = std::fs::read_to_string(fixed).unwrap();
-  let actual = std::fs::read_to_string(badly_formatted).unwrap();
+  let expected = fixed.read_to_string();
+  let actual = badly_formatted.read_to_string();
   assert_eq!(actual, expected);
   check_alive_then_kill(child);
 }
 
-#[tokio::test]
+#[flaky_test]
+#[tokio::main]
 async fn fmt_watch_without_args_test() {
   let fmt_testdata_path = util::testdata_path().join("fmt");
   let t = TempDir::new();
   let fixed = fmt_testdata_path.join("badly_formatted_fixed.js");
   let badly_formatted_original = fmt_testdata_path.join("badly_formatted.mjs");
   let badly_formatted = t.path().join("badly_formatted.js");
-  std::fs::copy(&badly_formatted_original, &badly_formatted).unwrap();
+  badly_formatted_original.copy(&badly_formatted);
 
   let mut child = util::deno_cmd()
     .current_dir(t.path())
@@ -432,13 +434,14 @@ async fn fmt_watch_without_args_test() {
     wait_contains("Checked", &mut stderr_lines).await,
     "Checked 1 file"
   );
+  wait_contains("Fmt finished.", &mut stderr_lines).await;
 
-  let expected = std::fs::read_to_string(fixed.clone()).unwrap();
-  let actual = std::fs::read_to_string(badly_formatted.clone()).unwrap();
+  let expected = fixed.read_to_string();
+  let actual = badly_formatted.read_to_string();
   assert_eq!(actual, expected);
 
   // Change content of the file again to be badly formatted
-  std::fs::copy(&badly_formatted_original, &badly_formatted).unwrap();
+  badly_formatted_original.copy(&badly_formatted);
   assert_contains!(
     skip_restarting_line(&mut stderr_lines).await,
     "badly_formatted.js"
@@ -449,25 +452,25 @@ async fn fmt_watch_without_args_test() {
   );
 
   // Check if file has been automatically formatted by watcher
-  let expected = std::fs::read_to_string(fixed).unwrap();
-  let actual = std::fs::read_to_string(badly_formatted).unwrap();
+  let expected = fixed.read_to_string();
+  let actual = badly_formatted.read_to_string();
   assert_eq!(actual, expected);
   check_alive_then_kill(child);
 }
 
-#[ignore = "https://github.com/denoland/deno/issues/19629"]
-#[tokio::test]
+#[flaky_test]
+#[tokio::main]
 async fn fmt_check_all_files_on_each_change_test() {
   let t = TempDir::new();
   let fmt_testdata_path = util::testdata_path().join("fmt");
   let badly_formatted_original = fmt_testdata_path.join("badly_formatted.mjs");
   let badly_formatted_1 = t.path().join("badly_formatted_1.js");
   let badly_formatted_2 = t.path().join("badly_formatted_2.js");
-  std::fs::copy(&badly_formatted_original, &badly_formatted_1).unwrap();
-  std::fs::copy(&badly_formatted_original, badly_formatted_2).unwrap();
+  badly_formatted_original.copy(&badly_formatted_1);
+  badly_formatted_original.copy(&badly_formatted_2);
 
   let mut child = util::deno_cmd()
-    .current_dir(&fmt_testdata_path)
+    .current_dir(t.path())
     .arg("fmt")
     .arg(t.path())
     .arg("--watch")
@@ -482,9 +485,10 @@ async fn fmt_check_all_files_on_each_change_test() {
     wait_contains("error", &mut stderr_lines).await,
     "Found 2 not formatted files in 2 files"
   );
+  wait_contains("Fmt failed.", &mut stderr_lines).await;
 
   // Change content of the file again to be badly formatted
-  std::fs::copy(&badly_formatted_original, &badly_formatted_1).unwrap();
+  badly_formatted_original.copy(&badly_formatted_1);
 
   assert_contains!(
     wait_contains("error", &mut stderr_lines).await,
@@ -494,7 +498,8 @@ async fn fmt_check_all_files_on_each_change_test() {
   check_alive_then_kill(child);
 }
 
-#[tokio::test]
+#[flaky_test]
+#[tokio::main]
 async fn bundle_js_watch() {
   use std::path::PathBuf;
   // Test strategy extends this of test bundle_js by adding watcher
@@ -505,7 +510,7 @@ async fn bundle_js_watch() {
   let t = TempDir::new();
   let bundle = t.path().join("mod6.bundle.js");
   let mut deno = util::deno_cmd()
-    .current_dir(util::testdata_path())
+    .current_dir(t.path())
     .arg("bundle")
     .arg(&file_to_watch)
     .arg(&bundle)
@@ -568,7 +573,8 @@ async fn bundle_js_watch() {
 }
 
 /// Confirm that the watcher continues to work even if module resolution fails at the *first* attempt
-#[tokio::test]
+#[flaky_test]
+#[tokio::main]
 async fn bundle_watch_not_exit() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.ts");
@@ -576,7 +582,7 @@ async fn bundle_watch_not_exit() {
   let target_file = t.path().join("target.js");
 
   let mut deno = util::deno_cmd()
-    .current_dir(util::testdata_path())
+    .current_dir(t.path())
     .arg("bundle")
     .arg(&file_to_watch)
     .arg(&target_file)
@@ -631,14 +637,15 @@ async fn bundle_watch_not_exit() {
   check_alive_then_kill(deno);
 }
 
-#[tokio::test]
+#[flaky_test]
+#[tokio::main]
 async fn run_watch_no_dynamic() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
   file_to_watch.write("console.log('Hello world');");
 
   let mut child = util::deno_cmd()
-    .current_dir(util::testdata_path())
+    .current_dir(t.path())
     .arg("run")
     .arg("--watch")
     .arg("--unstable")
@@ -713,7 +720,8 @@ async fn run_watch_no_dynamic() {
 // if that's because of a bug in code or the runner itself. We should reenable
 // it once we upgrade to XL runners for macOS.
 #[cfg(not(target_os = "macos"))]
-#[tokio::test]
+#[flaky_test]
+#[tokio::main]
 async fn run_watch_external_watch_files() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
@@ -727,7 +735,7 @@ async fn run_watch_external_watch_files() {
   watch_arg.push_str(&external_file_to_watch_str);
 
   let mut child = util::deno_cmd()
-    .current_dir(util::testdata_path())
+    .current_dir(t.path())
     .arg("run")
     .arg(watch_arg)
     .arg("-L")
@@ -756,7 +764,8 @@ async fn run_watch_external_watch_files() {
   check_alive_then_kill(child);
 }
 
-#[tokio::test]
+#[flaky_test]
+#[tokio::main]
 async fn run_watch_load_unload_events() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
@@ -774,7 +783,7 @@ async fn run_watch_load_unload_events() {
   );
 
   let mut child = util::deno_cmd()
-    .current_dir(util::testdata_path())
+    .current_dir(t.path())
     .arg("run")
     .arg("--watch")
     .arg("--unstable")
@@ -819,14 +828,15 @@ async fn run_watch_load_unload_events() {
 }
 
 /// Confirm that the watcher continues to work even if module resolution fails at the *first* attempt
-#[tokio::test]
+#[flaky_test]
+#[tokio::main]
 async fn run_watch_not_exit() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
   file_to_watch.write("syntax error ^^");
 
   let mut child = util::deno_cmd()
-    .current_dir(util::testdata_path())
+    .current_dir(t.path())
     .arg("run")
     .arg("--watch")
     .arg("--unstable")
@@ -852,7 +862,8 @@ async fn run_watch_not_exit() {
   check_alive_then_kill(child);
 }
 
-#[tokio::test]
+#[flaky_test]
+#[tokio::main]
 async fn run_watch_with_import_map_and_relative_paths() {
   fn create_relative_tmp_file(
     directory: &TempDir,
@@ -905,14 +916,15 @@ async fn run_watch_with_import_map_and_relative_paths() {
   check_alive_then_kill(child);
 }
 
-#[tokio::test]
+#[flaky_test]
+#[tokio::main]
 async fn run_watch_with_ext_flag() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch");
   file_to_watch.write("interface I{}; console.log(42);");
 
   let mut child = util::deno_cmd()
-    .current_dir(util::testdata_path())
+    .current_dir(t.path())
     .arg("run")
     .arg("--watch")
     .arg("--log-level")
@@ -941,7 +953,8 @@ async fn run_watch_with_ext_flag() {
   check_alive_then_kill(child);
 }
 
-#[tokio::test]
+#[flaky_test]
+#[tokio::main]
 async fn run_watch_error_messages() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
@@ -949,7 +962,7 @@ async fn run_watch_error_messages() {
     .write("throw SyntaxError(`outer`, {cause: TypeError(`inner`)})");
 
   let mut child = util::deno_cmd()
-    .current_dir(util::testdata_path())
+    .current_dir(t.path())
     .arg("run")
     .arg("--watch")
     .arg(&file_to_watch)
@@ -971,12 +984,13 @@ async fn run_watch_error_messages() {
   check_alive_then_kill(child);
 }
 
-#[tokio::test]
+#[flaky_test]
+#[tokio::main]
 async fn test_watch_basic() {
   let t = TempDir::new();
 
   let mut child = util::deno_cmd()
-    .current_dir(util::testdata_path())
+    .current_dir(t.path())
     .arg("test")
     .arg("--watch")
     .arg("--unstable")
@@ -1132,7 +1146,7 @@ async fn test_watch_doc() {
   let t = TempDir::new();
 
   let mut child = util::deno_cmd()
-    .current_dir(util::testdata_path())
+    .current_dir(t.path())
     .arg("test")
     .arg("--watch")
     .arg("--doc")
@@ -1175,13 +1189,14 @@ async fn test_watch_doc() {
   check_alive_then_kill(child);
 }
 
-#[tokio::test]
+#[flaky_test]
+#[tokio::main]
 async fn test_watch_module_graph_error_referrer() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
   file_to_watch.write("import './nonexistent.js';");
   let mut child = util::deno_cmd()
-    .current_dir(util::testdata_path())
+    .current_dir(t.path())
     .arg("run")
     .arg("--watch")
     .arg(&file_to_watch)
@@ -1203,7 +1218,8 @@ async fn test_watch_module_graph_error_referrer() {
 }
 
 // Regression test for https://github.com/denoland/deno/issues/15428.
-#[tokio::test]
+#[flaky_test]
+#[tokio::main]
 async fn test_watch_unload_handler_error_on_drop() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
@@ -1218,7 +1234,7 @@ async fn test_watch_unload_handler_error_on_drop() {
     "#,
   );
   let mut child = util::deno_cmd()
-    .current_dir(util::testdata_path())
+    .current_dir(t.path())
     .arg("run")
     .arg("--watch")
     .arg(&file_to_watch)
@@ -1233,7 +1249,8 @@ async fn test_watch_unload_handler_error_on_drop() {
   check_alive_then_kill(child);
 }
 
-#[tokio::test]
+#[flaky_test]
+#[tokio::main]
 async fn run_watch_blob_urls_reset() {
   let _g = util::http_server();
   let t = TempDir::new();
@@ -1255,7 +1272,7 @@ async fn run_watch_blob_urls_reset() {
     "#;
   file_to_watch.write(file_content);
   let mut child = util::deno_cmd()
-    .current_dir(util::testdata_path())
+    .current_dir(t.path())
     .arg("run")
     .arg("--watch")
     .arg(&file_to_watch)
@@ -1274,7 +1291,8 @@ async fn run_watch_blob_urls_reset() {
 }
 
 #[cfg(unix)]
-#[tokio::test]
+#[flaky_test]
+#[tokio::main]
 async fn test_watch_sigint() {
   use nix::sys::signal;
   use nix::sys::signal::Signal;
@@ -1299,12 +1317,13 @@ async fn test_watch_sigint() {
   assert_eq!(exit_status.code(), Some(130));
 }
 
-#[tokio::test]
+#[flaky_test]
+#[tokio::main]
 async fn bench_watch_basic() {
   let t = TempDir::new();
 
   let mut child = util::deno_cmd()
-    .current_dir(util::testdata_path())
+    .current_dir(t.path())
     .arg("bench")
     .arg("--watch")
     .arg("--no-check")
@@ -1412,7 +1431,8 @@ async fn bench_watch_basic() {
 }
 
 // Regression test for https://github.com/denoland/deno/issues/15465.
-#[tokio::test]
+#[flaky_test]
+#[tokio::main]
 async fn run_watch_reload_once() {
   let _g = util::http_server();
   let t = TempDir::new();
@@ -1424,7 +1444,7 @@ async fn run_watch_reload_once() {
   file_to_watch.write(file_content);
 
   let mut child = util::deno_cmd()
-    .current_dir(util::testdata_path())
+    .current_dir(t.path())
     .arg("run")
     .arg("--watch")
     .arg("--reload")
@@ -1450,7 +1470,8 @@ async fn run_watch_reload_once() {
 
 /// Regression test for https://github.com/denoland/deno/issues/18960. Ensures that Deno.serve
 /// operates properly after a watch restart.
-#[tokio::test]
+#[flaky_test]
+#[tokio::main]
 async fn test_watch_serve() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
@@ -1461,7 +1482,7 @@ async fn test_watch_serve() {
   file_to_watch.write(file_content);
 
   let mut child = util::deno_cmd()
-    .current_dir(util::testdata_path())
+    .current_dir(t.path())
     .arg("run")
     .arg("--watch")
     .arg("--allow-net")
@@ -1486,7 +1507,8 @@ async fn test_watch_serve() {
   check_alive_then_kill(child);
 }
 
-#[tokio::test]
+#[flaky_test]
+#[tokio::main]
 async fn run_watch_dynamic_imports() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
@@ -1511,7 +1533,7 @@ async fn run_watch_dynamic_imports() {
   );
 
   let mut child = util::deno_cmd()
-    .current_dir(util::testdata_path())
+    .current_dir(t.path())
     .arg("run")
     .arg("--watch")
     .arg("--unstable")
@@ -1572,7 +1594,8 @@ async fn run_watch_dynamic_imports() {
   check_alive_then_kill(child);
 }
 
-#[tokio::test]
+#[flaky_test]
+#[tokio::main]
 async fn run_watch_inspect() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
@@ -1583,7 +1606,7 @@ async fn run_watch_inspect() {
   );
 
   let mut child = util::deno_cmd()
-    .current_dir(util::testdata_path())
+    .current_dir(t.path())
     .arg("run")
     .arg("--watch")
     .arg("--inspect")
@@ -1613,7 +1636,8 @@ async fn run_watch_inspect() {
   check_alive_then_kill(child);
 }
 
-#[tokio::test]
+#[flaky_test]
+#[tokio::main]
 async fn run_watch_with_excluded_paths() {
   let t = TempDir::new();
 
@@ -1628,7 +1652,7 @@ async fn run_watch_with_excluded_paths() {
   mjs_file_to_exclude.write("export const foo = 0;");
 
   let mut child = util::deno_cmd()
-    .current_dir(util::testdata_path())
+    .current_dir(t.path())
     .arg("run")
     .arg("--watch")
     .arg("--watch-exclude=file_to_exclude.js,*.mjs")
@@ -1652,7 +1676,8 @@ async fn run_watch_with_excluded_paths() {
   check_alive_then_kill(child);
 }
 
-#[tokio::test]
+#[flaky_test]
+#[tokio::main]
 async fn run_hmr_server() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
@@ -1676,7 +1701,7 @@ console.log("Listening...")
   );
 
   let mut child = util::deno_cmd()
-    .current_dir(util::testdata_path())
+    .current_dir(t.path())
     .arg("run")
     .arg("--unstable-hmr")
     .arg("--allow-net")
@@ -1719,7 +1744,8 @@ console.log("Listening...")
   check_alive_then_kill(child);
 }
 
-#[tokio::test]
+#[flaky_test]
+#[tokio::main]
 async fn run_hmr_jsx() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
@@ -1743,7 +1769,7 @@ export function foo() {
   );
 
   let mut child = util::deno_cmd()
-    .current_dir(util::testdata_path())
+    .current_dir(t.path())
     .arg("run")
     .arg("--unstable-hmr")
     .arg("-L")
@@ -1774,7 +1800,8 @@ export function foo() {
   check_alive_then_kill(child);
 }
 
-#[tokio::test]
+#[flaky_test]
+#[tokio::main]
 async fn run_hmr_uncaught_error() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
@@ -1801,7 +1828,7 @@ export function foo() {
   );
 
   let mut child = util::deno_cmd()
-    .current_dir(util::testdata_path())
+    .current_dir(t.path())
     .arg("run")
     .arg("--unstable-hmr")
     .arg("-L")
@@ -1834,7 +1861,8 @@ export function foo() {
   check_alive_then_kill(child);
 }
 
-#[tokio::test]
+#[flaky_test]
+#[tokio::main]
 async fn run_hmr_unhandled_rejection() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
@@ -1866,7 +1894,7 @@ export function foo() {
   );
 
   let mut child = util::deno_cmd()
-    .current_dir(util::testdata_path())
+    .current_dir(t.path())
     .arg("run")
     .arg("--unstable-hmr")
     .arg("-L")

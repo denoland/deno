@@ -201,7 +201,6 @@ pub mod reporter {
   pub struct Options {
     size: usize,
     pub avg: bool,
-    pub colors: bool,
     pub min_max: bool,
     pub percentiles: bool,
   }
@@ -210,7 +209,6 @@ pub mod reporter {
     pub fn new(names: &[&str]) -> Options {
       Options {
         avg: true,
-        colors: true,
         min_max: true,
         size: size(names),
         percentiles: true,
@@ -253,23 +251,12 @@ pub mod reporter {
     let mut s = String::new();
 
     s.push_str(&format!("{:<size$}", n));
-    s.push_str(&format!(
-      "{}: {}",
-      &(if !options.colors {
-        "error".to_string()
-      } else {
-        colors::red("error").to_string()
-      }),
-      e.message
-    ));
+    s.push_str(&format!("{}: {}", colors::red("error"), e.message));
 
     if let Some(ref stack) = e.stack {
       s.push('\n');
 
-      match options.colors {
-        false => s.push_str(stack),
-        true => s.push_str(&colors::gray(stack).to_string()),
-      }
+      s.push_str(&colors::gray(stack).to_string());
     }
 
     s
@@ -304,64 +291,36 @@ pub mod reporter {
 
     s.push_str(&format!("{:<size$}", name));
 
-    if !options.colors {
-      if options.avg {
-        s.push_str(&format!(
-          "{:>14}",
-          format!("{}/iter", fmt_duration(stats.avg))
-        ));
-        s.push_str(&format!("{:>14}", avg_to_iter_per_s(stats.avg)));
-      }
-      if options.min_max {
-        s.push_str(&format!(
-          "{:>24}",
-          format!(
-            "({} … {})",
-            fmt_duration(stats.min),
-            fmt_duration(stats.max)
-          )
-        ));
-      }
-      if options.percentiles {
-        s.push_str(&format!(
-          " {:>9} {:>9} {:>9}",
-          fmt_duration(stats.p75),
-          fmt_duration(stats.p99),
-          fmt_duration(stats.p995)
-        ));
-      }
-    } else {
-      if options.avg {
-        s.push_str(&format!(
-          "{:>30}",
-          format!("{}/iter", colors::yellow(fmt_duration(stats.avg)))
-        ));
-        s.push_str(&format!("{:>14}", avg_to_iter_per_s(stats.avg)));
-      }
-      if options.min_max {
-        s.push_str(&format!(
-          "{:>50}",
-          format!(
-            "({} … {})",
-            colors::cyan(fmt_duration(stats.min)),
-            colors::magenta(fmt_duration(stats.max))
-          )
-        ));
-      }
-      if options.percentiles {
-        s.push_str(&format!(
-          " {:>22} {:>22} {:>22}",
-          colors::magenta(fmt_duration(stats.p75)),
-          colors::magenta(fmt_duration(stats.p99)),
-          colors::magenta(fmt_duration(stats.p995))
-        ));
-      }
+    if options.avg {
+      s.push_str(&format!(
+        "{:>30}",
+        format!("{}/iter", colors::yellow(fmt_duration(stats.avg)))
+      ));
+      s.push_str(&format!("{:>14}", avg_to_iter_per_s(stats.avg)));
+    }
+    if options.min_max {
+      s.push_str(&format!(
+        "{:>50}",
+        format!(
+          "({} … {})",
+          colors::cyan(fmt_duration(stats.min)),
+          colors::magenta(fmt_duration(stats.max))
+        )
+      ));
+    }
+    if options.percentiles {
+      s.push_str(&format!(
+        " {:>22} {:>22} {:>22}",
+        colors::magenta(fmt_duration(stats.p75)),
+        colors::magenta(fmt_duration(stats.p99)),
+        colors::magenta(fmt_duration(stats.p995))
+      ));
     }
 
     s
   }
 
-  pub fn summary(benchmarks: &[GroupBenchmark], options: &Options) -> String {
+  pub fn summary(benchmarks: &[GroupBenchmark]) -> String {
     let mut s = String::new();
     let mut benchmarks = benchmarks.to_owned();
     benchmarks.sort_by(|a, b| a.stats.avg.partial_cmp(&b.stats.avg).unwrap());
@@ -370,58 +329,34 @@ pub mod reporter {
       .find(|b| b.baseline)
       .unwrap_or(&benchmarks[0]);
 
-    if !options.colors {
-      s.push_str(&format!("summary\n  {}", baseline.name));
+    s.push_str(&format!(
+      "{}\n  {}",
+      colors::gray("summary"),
+      colors::cyan_bold(&baseline.name)
+    ));
 
-      for b in benchmarks.iter().filter(|b| *b != baseline) {
-        let faster = b.stats.avg >= baseline.stats.avg;
-        let diff = f64::from_str(&format!(
-          "{:.2}",
-          1.0 / baseline.stats.avg * b.stats.avg
-        ))
-        .unwrap();
-        let inv_diff = f64::from_str(&format!(
-          "{:.2}",
-          1.0 / b.stats.avg * baseline.stats.avg
-        ))
-        .unwrap();
-        s.push_str(&format!(
-          "\n   {}x times {} than {}",
-          if faster { diff } else { inv_diff },
-          if faster { "faster" } else { "slower" },
-          b.name
-        ));
-      }
-    } else {
+    for b in benchmarks.iter().filter(|b| *b != baseline) {
+      let faster = b.stats.avg >= baseline.stats.avg;
+      let diff = f64::from_str(&format!(
+        "{:.2}",
+        1.0 / baseline.stats.avg * b.stats.avg
+      ))
+      .unwrap();
+      let inv_diff = f64::from_str(&format!(
+        "{:.2}",
+        1.0 / b.stats.avg * baseline.stats.avg
+      ))
+      .unwrap();
       s.push_str(&format!(
-        "{}\n  {}",
-        colors::gray("summary"),
-        colors::cyan_bold(&baseline.name)
+        "\n   {}x {} than {}",
+        if faster {
+          colors::green(diff.to_string()).to_string()
+        } else {
+          colors::red(inv_diff.to_string()).to_string()
+        },
+        if faster { "faster" } else { "slower" },
+        colors::cyan_bold(&b.name)
       ));
-
-      for b in benchmarks.iter().filter(|b| *b != baseline) {
-        let faster = b.stats.avg >= baseline.stats.avg;
-        let diff = f64::from_str(&format!(
-          "{:.2}",
-          1.0 / baseline.stats.avg * b.stats.avg
-        ))
-        .unwrap();
-        let inv_diff = f64::from_str(&format!(
-          "{:.2}",
-          1.0 / b.stats.avg * baseline.stats.avg
-        ))
-        .unwrap();
-        s.push_str(&format!(
-          "\n   {}x {} than {}",
-          if faster {
-            colors::green(diff.to_string()).to_string()
-          } else {
-            colors::red(inv_diff.to_string()).to_string()
-          },
-          if faster { "faster" } else { "slower" },
-          colors::cyan_bold(&b.name)
-        ));
-      }
     }
 
     s
