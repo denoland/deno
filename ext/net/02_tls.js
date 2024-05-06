@@ -303,7 +303,7 @@ function createTlsKeyResolver(callback) {
         break;
       }
       try {
-        const key = callback(sni);
+        const key = await callback(sni);
         if (!hasTlsKeyPairOptions(key)) {
           op_tls_cert_resolver_resolve_error(lookup, sni, "Invalid key");
         } else {

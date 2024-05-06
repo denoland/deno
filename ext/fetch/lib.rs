@@ -205,7 +205,9 @@ pub fn create_client_from_options(
       unsafely_ignore_certificate_errors: options
         .unsafely_ignore_certificate_errors
         .clone(),
-      client_cert_chain_and_key: Some(options.client_cert_chain_and_key.clone()),
+      client_cert_chain_and_key: Some(
+        options.client_cert_chain_and_key.clone(),
+      ),
       pool_max_idle_per_host: None,
       pool_idle_timeout: None,
       http1: true,
