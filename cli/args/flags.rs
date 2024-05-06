@@ -629,7 +629,7 @@ impl PermissionFlags {
         &self.deny_write,
         initial_cwd,
       )?,
-      prompt: !resolve_no_prompt(&self),
+      prompt: !resolve_no_prompt(self),
     })
   }
 }
