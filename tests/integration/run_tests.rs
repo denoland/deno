@@ -977,8 +977,8 @@ fn lock_redirects() {
     .run()
     .assert_matches_text(concat!(
       "Download http://localhost:4545/echo.ts\n",
-      "Download http://localhost:4252/@denotest/esm-basic\n",
-      "Download http://localhost:4252/@denotest/esm-basic/1.0.0.tgz\n",
+      "Download http://localhost:4558/@denotest/esm-basic\n",
+      "Download http://localhost:4558/@denotest/esm-basic/1.0.0.tgz\n",
       "Hi, there",
     ));
   util::assertions::assert_wildcard_match(
