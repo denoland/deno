@@ -490,7 +490,7 @@ const ci = {
         ),
         {
           // only necessary for benchmarks
-          if: "matrix.job == 'bench'",
+          if: "matrix.job == 'bench' || matrix.job == 'test'",
           ...installNodeStep,
         },
         installProtocStep,
