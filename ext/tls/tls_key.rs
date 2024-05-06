@@ -1,5 +1,3 @@
-use crate::load_certs;
-use crate::load_private_keys;
 use crate::Certificate;
 use crate::PrivateKey;
 use deno_core::anyhow::anyhow;
@@ -14,16 +12,17 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 use std::future::ready;
 use std::future::Future;
-use std::io::BufReader;
 use std::io::ErrorKind;
 use std::rc::Rc;
 use std::sync::Arc;
+use tokio::sync::broadcast;
+use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 
 type ErrorType = Rc<AnyError>;
 
 /// A TLS certificate/private key pair.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TlsKey(pub Vec<Certificate>, pub PrivateKey);
 
 #[derive(Clone, Debug, Default)]
@@ -33,6 +32,20 @@ pub enum TlsKeys {
   Null,
   Static(TlsKey),
   Resolver(TlsKeyResolver),
+}
+
+pub struct TlsKeysHolder(RefCell<TlsKeys>);
+
+impl TlsKeysHolder {
+  pub fn take(&self) -> TlsKeys {
+    std::mem::take(&mut *self.0.borrow_mut())
+  }
+}
+
+impl From<TlsKeys> for TlsKeysHolder {
+  fn from(value: TlsKeys) -> Self {
+    TlsKeysHolder(RefCell::new(value))
+  }
 }
 
 impl TryInto<Option<TlsKey>> for TlsKeys {
@@ -56,16 +69,14 @@ impl From<Option<TlsKey>> for TlsKeys {
 }
 
 enum TlsKeyState {
-  Resolving(
-    tokio::sync::broadcast::Receiver<Result<(String, String), ErrorType>>,
-  ),
-  Resolved(Result<(String, String), ErrorType>),
+  Resolving(broadcast::Receiver<Result<TlsKey, ErrorType>>),
+  Resolved(Result<TlsKey, ErrorType>),
 }
 
 struct TlsKeyResolverInner {
-  resolution_tx: tokio::sync::mpsc::UnboundedSender<(
+  resolution_tx: mpsc::UnboundedSender<(
     String,
-    tokio::sync::broadcast::Sender<Result<(String, String), ErrorType>>,
+    broadcast::Sender<Result<TlsKey, ErrorType>>,
   )>,
   cache: RefCell<HashMap<String, TlsKeyState>>,
 }
@@ -75,25 +86,18 @@ pub struct TlsKeyResolver {
   inner: Rc<TlsKeyResolverInner>,
 }
 
-static_assertions::assert_impl_all!((Arc<ServerConfig>, std::io::Error): Send, Sync);
-
 impl TlsKeyResolver {
   async fn resolve_internal(
     &self,
     sni: String,
     alpn: Vec<Vec<u8>>,
   ) -> Result<Arc<ServerConfig>, AnyError> {
-    let (cert, key) = self.resolve(sni).await?;
-    let cert = load_certs(&mut BufReader::new(cert.as_bytes()))?;
-    let key = load_private_keys(key.as_bytes())?
-      .into_iter()
-      .next()
-      .unwrap();
+    let key = self.resolve(sni).await?;
 
     let mut tls_config = ServerConfig::builder()
       .with_safe_defaults()
       .with_no_client_auth()
-      .with_single_cert(cert, key)?;
+      .with_single_cert(key.0, key.1)?;
     tls_config.alpn_protocols = alpn;
     Ok(tls_config.into())
   }
@@ -102,8 +106,7 @@ impl TlsKeyResolver {
     self,
     alpn: Vec<Vec<u8>>,
   ) -> ServerConfigProvider {
-    let (tx, mut rx) =
-      tokio::sync::mpsc::unbounded_channel::<(_, oneshot::Sender<_>)>();
+    let (tx, mut rx) = mpsc::unbounded_channel::<(_, oneshot::Sender<_>)>();
 
     // We don't want to make the resolver multi-threaded, but the `ServerConfigProvider` is
     // required to be wrapped in an Arc. To fix this, we spawn a task in our current runtime
@@ -137,7 +140,7 @@ impl Debug for TlsKeyResolver {
 }
 
 pub fn new_resolver() -> (TlsKeyResolver, TlsKeyLookup) {
-  let (resolution_tx, resolution_rx) = tokio::sync::mpsc::unbounded_channel();
+  let (resolution_tx, resolution_rx) = mpsc::unbounded_channel();
   (
     TlsKeyResolver {
       inner: Rc::new(TlsKeyResolverInner {
@@ -158,12 +161,12 @@ impl TlsKeyResolver {
   pub fn resolve(
     &self,
     sni: String,
-  ) -> impl Future<Output = Result<(String, String), AnyError>> {
+  ) -> impl Future<Output = Result<TlsKey, AnyError>> {
     let mut cache = self.inner.cache.borrow_mut();
     let mut recv = match cache.get(&sni) {
       None => {
         eprintln!("send");
-        let (tx, rx) = tokio::sync::broadcast::channel(1);
+        let (tx, rx) = broadcast::channel(1);
         cache.insert(sni.clone(), TlsKeyState::Resolving(rx.resubscribe()));
         _ = self.inner.resolution_tx.send((sni.clone(), tx));
         rx
@@ -199,17 +202,13 @@ impl TlsKeyResolver {
 
 pub struct TlsKeyLookup {
   resolution_rx: RefCell<
-    tokio::sync::mpsc::UnboundedReceiver<(
+    mpsc::UnboundedReceiver<(
       String,
-      tokio::sync::broadcast::Sender<Result<(String, String), ErrorType>>,
+      broadcast::Sender<Result<TlsKey, ErrorType>>,
     )>,
   >,
-  pending: RefCell<
-    HashMap<
-      String,
-      tokio::sync::broadcast::Sender<Result<(String, String), ErrorType>>,
-    >,
-  >,
+  pending:
+    RefCell<HashMap<String, broadcast::Sender<Result<TlsKey, ErrorType>>>>,
 }
 
 impl TlsKeyLookup {
@@ -226,7 +225,8 @@ impl TlsKeyLookup {
   }
 
   /// Resolve a previously polled item.
-  pub fn resolve(&self, sni: String, res: Result<(String, String), AnyError>) {
+  pub fn resolve(&self, sni: String, res: Result<TlsKey, AnyError>) {
+    eprintln!("resolved {sni}");
     _ = self
       .pending
       .borrow_mut()
@@ -240,22 +240,27 @@ impl TlsKeyLookup {
 pub mod tests {
   use super::*;
   use deno_core::unsync::spawn;
+  use rustls::Certificate;
+  use rustls::PrivateKey;
+
+  fn tls_key_for_test(sni: &str) -> TlsKey {
+    TlsKey(
+      vec![Certificate(format!("{sni}-cert").into_bytes())],
+      PrivateKey(format!("{sni}-key").into_bytes()),
+    )
+  }
 
   #[tokio::test]
   async fn test_resolve_once() {
     let (resolver, lookup) = new_resolver();
     let task = spawn(async move {
       while let Some(sni) = lookup.poll().await {
-        lookup.resolve(
-          sni.clone(),
-          Ok((format!("{sni}-cert"), format!("{sni}-key"))),
-        );
+        lookup.resolve(sni.clone(), Ok(tls_key_for_test(&sni)));
       }
     });
 
-    let (cert, key) = resolver.resolve("example.com".to_owned()).await.unwrap();
-    assert_eq!("example.com-cert", cert);
-    assert_eq!("example.com-key", key);
+    let key = resolver.resolve("example.com".to_owned()).await.unwrap();
+    assert_eq!(tls_key_for_test("example.com"), key);
     drop(resolver);
 
     task.await.unwrap();
@@ -266,22 +271,17 @@ pub mod tests {
     let (resolver, lookup) = new_resolver();
     let task = spawn(async move {
       while let Some(sni) = lookup.poll().await {
-        lookup.resolve(
-          sni.clone(),
-          Ok((format!("{sni}-cert"), format!("{sni}-key"))),
-        );
+        lookup.resolve(sni.clone(), Ok(tls_key_for_test(&sni)));
       }
     });
 
     let f1 = resolver.resolve("example.com".to_owned());
     let f2 = resolver.resolve("example.com".to_owned());
 
-    let (cert, key) = f1.await.unwrap();
-    assert_eq!("example.com-cert", cert);
-    assert_eq!("example.com-key", key);
-    let (cert, key) = f2.await.unwrap();
-    assert_eq!("example.com-cert", cert);
-    assert_eq!("example.com-key", key);
+    let key = f1.await.unwrap();
+    assert_eq!(tls_key_for_test("example.com"), key);
+    let key = f2.await.unwrap();
+    assert_eq!(tls_key_for_test("example.com"), key);
     drop(resolver);
 
     task.await.unwrap();
@@ -292,22 +292,17 @@ pub mod tests {
     let (resolver, lookup) = new_resolver();
     let task = spawn(async move {
       while let Some(sni) = lookup.poll().await {
-        lookup.resolve(
-          sni.clone(),
-          Ok((format!("{sni}-cert"), format!("{sni}-key"))),
-        );
+        lookup.resolve(sni.clone(), Ok(tls_key_for_test(&sni)));
       }
     });
 
     let f1 = resolver.resolve("example1.com".to_owned());
     let f2 = resolver.resolve("example2.com".to_owned());
 
-    let (cert, key) = f1.await.unwrap();
-    assert_eq!("example1.com-cert", cert);
-    assert_eq!("example1.com-key", key);
-    let (cert, key) = f2.await.unwrap();
-    assert_eq!("example2.com-cert", cert);
-    assert_eq!("example2.com-key", key);
+    let key = f1.await.unwrap();
+    assert_eq!(tls_key_for_test("example.com"), key);
+    let key = f2.await.unwrap();
+    assert_eq!(tls_key_for_test("example.com"), key);
     drop(resolver);
 
     task.await.unwrap();

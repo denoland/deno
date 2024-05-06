@@ -11,6 +11,8 @@ import { BufReader, BufWriter } from "@std/io/mod.ts";
 import { readAll } from "@std/io/read_all.ts";
 import { writeAll } from "@std/io/write_all.ts";
 import { TextProtoReader } from "../testdata/run/textproto.ts";
+// @ts-expect-error TypeScript (as of 3.7) does not support indexing namespaces by symbol
+const { resolverSymbol, serverNameSymbol } = Deno[Deno.internal];
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -1643,6 +1645,55 @@ Deno.test(
       certFile: "tests/testdata/tls/localhost_ecc.crt",
       keyFile: "tests/testdata/tls/localhost_ecc.key",
     });
+    listener.close();
+  },
+);
+
+Deno.test(
+  { permissions: { net: true, read: true } },
+  async function listenResolver() {
+    const listener = Deno.listenTls({
+      hostname: "localhost",
+      port: 0,
+      [resolverSymbol]: (sni: string) => {
+        console.log(sni);
+        return {
+          cert,
+          key,
+        };
+      },
+    });
+
+    {
+      const conn = await Deno.connectTls({
+        hostname: "localhost",
+        [serverNameSymbol]: "server-1",
+        port: listener.addr.port,
+      });
+      const [handshake, serverConn] = await Promise.all([
+        conn.handshake(),
+        listener.accept(),
+      ]);
+      console.log("connected", handshake, serverConn);
+      conn.close();
+      serverConn.close();
+    }
+
+    {
+      const conn = await Deno.connectTls({
+        hostname: "localhost",
+        [serverNameSymbol]: "server-2",
+        port: listener.addr.port,
+      });
+      const [handshake, serverConn] = await Promise.all([
+        conn.handshake(),
+        listener.accept(),
+      ]);
+      console.log("connected", handshake, serverConn);
+      conn.close();
+      serverConn.close();
+    }
+
     listener.close();
   },
 );

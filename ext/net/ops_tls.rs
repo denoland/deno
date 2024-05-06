@@ -11,14 +11,13 @@ use crate::DefaultTlsOptions;
 use crate::NetPermissions;
 use crate::UnsafelyIgnoreCertificateErrors;
 use deno_core::anyhow::anyhow;
+use deno_core::anyhow::bail;
 use deno_core::error::bad_resource;
 use deno_core::error::custom_error;
 use deno_core::error::generic_error;
 use deno_core::error::invalid_hostname;
 use deno_core::error::AnyError;
-use deno_core::futures::FutureExt;
 use deno_core::op2;
-use deno_core::unsync::spawn;
 use deno_core::v8;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
@@ -32,7 +31,6 @@ use deno_tls::create_client_config;
 use deno_tls::load_certs;
 use deno_tls::load_private_keys;
 use deno_tls::new_resolver;
-use deno_tls::rustls::server::ClientHello;
 use deno_tls::rustls::Certificate;
 use deno_tls::rustls::ClientConnection;
 use deno_tls::rustls::PrivateKey;
@@ -42,8 +40,8 @@ use deno_tls::ServerConfigProvider;
 use deno_tls::SocketUse;
 use deno_tls::TlsKey;
 use deno_tls::TlsKeyLookup;
-use deno_tls::TlsKeyResolver;
 use deno_tls::TlsKeys;
+use deno_tls::TlsKeysHolder;
 use rustls_tokio_stream::TlsStreamRead;
 use rustls_tokio_stream::TlsStreamWrite;
 use serde::Deserialize;
@@ -184,6 +182,7 @@ pub struct ConnectTlsArgs {
   cert_file: Option<String>,
   ca_certs: Vec<String>,
   alpn_protocols: Option<Vec<String>>,
+  server_name: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -199,7 +198,10 @@ pub struct StartTlsArgs {
 pub fn op_tls_key_null<'s>(
   scope: &mut v8::HandleScope<'s>,
 ) -> Result<v8::Local<'s, v8::Object>, AnyError> {
-  Ok(deno_core::cppgc::make_cppgc_object(scope, TlsKeys::Null))
+  Ok(deno_core::cppgc::make_cppgc_object(
+    scope,
+    TlsKeysHolder::from(TlsKeys::Null),
+  ))
 }
 
 #[op2]
@@ -215,7 +217,7 @@ pub fn op_tls_key_static<'s>(
     .unwrap();
   Ok(deno_core::cppgc::make_cppgc_object(
     scope,
-    TlsKeys::Static(TlsKey(cert, key)),
+    TlsKeysHolder::from(TlsKeys::Static(TlsKey(cert, key))),
   ))
 }
 
@@ -244,7 +246,7 @@ where
     .unwrap();
   Ok(deno_core::cppgc::make_cppgc_object(
     scope,
-    TlsKeys::Static(TlsKey(cert, key)),
+    TlsKeysHolder::from(TlsKeys::Static(TlsKey(cert, key))),
   ))
 }
 
@@ -253,8 +255,10 @@ pub fn op_tls_cert_resolver_create<'s>(
   scope: &mut v8::HandleScope<'s>,
 ) -> v8::Local<'s, v8::Array> {
   let (resolver, lookup) = new_resolver();
-  let resolver =
-    deno_core::cppgc::make_cppgc_object(scope, TlsKeys::Resolver(resolver));
+  let resolver = deno_core::cppgc::make_cppgc_object(
+    scope,
+    TlsKeysHolder::from(TlsKeys::Resolver(resolver)),
+  );
   let lookup = deno_core::cppgc::make_cppgc_object(scope, lookup);
   v8::Array::new_with_elements(scope, &[resolver.into(), lookup.into()])
 }
@@ -271,10 +275,12 @@ pub async fn op_tls_cert_resolver_poll(
 pub fn op_tls_cert_resolver_resolve(
   #[cppgc] lookup: &TlsKeyLookup,
   #[string] sni: String,
-  #[string] cert: String,
-  #[string] key: String,
-) {
-  lookup.resolve(sni, Ok((cert, key)))
+  #[cppgc] key: &TlsKeysHolder,
+) -> Result<(), AnyError> {
+  let TlsKeys::Static(key) = key.take() else {
+    bail!("unexpected key type");
+  };
+  Ok(lookup.resolve(sni, Ok(key)))
 }
 
 #[op2(fast)]
@@ -377,7 +383,7 @@ pub async fn op_net_connect_tls<NP>(
   state: Rc<RefCell<OpState>>,
   #[serde] addr: IpAddr,
   #[serde] args: ConnectTlsArgs,
-  #[cppgc] key_pair: &TlsKeys,
+  #[cppgc] key_pair: &TlsKeysHolder,
 ) -> Result<(ResourceId, IpAddr, IpAddr), AnyError>
 where
   NP: NetPermissions + 'static,
@@ -414,8 +420,12 @@ where
     .borrow()
     .borrow::<DefaultTlsOptions>()
     .root_cert_store()?;
-  let hostname_dns = ServerName::try_from(&*addr.hostname)
-    .map_err(|_| invalid_hostname(&addr.hostname))?;
+  let hostname_dns = if let Some(server_name) = args.server_name {
+    ServerName::try_from(server_name.as_str())
+  } else {
+    ServerName::try_from(&*addr.hostname)
+  }
+  .map_err(|_| invalid_hostname(&addr.hostname))?;
   let connect_addr = resolve_addr(&addr.hostname, addr.port)
     .await?
     .next()
@@ -428,7 +438,7 @@ where
     root_cert_store,
     ca_certs,
     unsafely_ignore_certificate_errors,
-    key_pair.clone(),
+    key_pair.take(),
     SocketUse::GeneralSsl,
   )?;
 
@@ -481,7 +491,7 @@ pub fn op_net_listen_tls<NP>(
   state: &mut OpState,
   #[serde] addr: IpAddr,
   #[serde] args: ListenTlsArgs,
-  #[cppgc] keys: &TlsKeys,
+  #[cppgc] keys: &TlsKeysHolder,
 ) -> Result<(ResourceId, IpAddr), AnyError>
 where
   NP: NetPermissions + 'static,
@@ -508,7 +518,7 @@ where
     .into_iter()
     .map(|s| s.into_bytes())
     .collect();
-  let listener = match keys.clone() {
+  let listener = match keys.take() {
     TlsKeys::Null => Err(anyhow!("Deno.listenTls requires a key")),
     TlsKeys::Static(TlsKey(cert, key)) => {
       let mut tls_config = ServerConfig::builder()
