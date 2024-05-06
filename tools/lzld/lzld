@@ -8,9 +8,10 @@ lld=$(which lld)
 if [ -z "$lld" ]; then
   lld=$(which ld64.lld)
 fi
+
 if [ ! -x "$lld" ]; then
   echo "Error: unable to find 'lld' binary" >&2
-  exit 1
+  exit 23
 fi
 
 # Filter out `-framework` arguments.
@@ -31,5 +32,5 @@ done
 args+=("-L$(dirname "$(realpath "$0")")")
 args+=("-llzld_${arch}")
 
-# Run `lld` with the filtered arguments.
 exec "$lld" "${args[@]}"
+
