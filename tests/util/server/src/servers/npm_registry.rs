@@ -30,7 +30,12 @@ pub async fn public_npm_registry(port: u16) {
     },
     {
       move |req| async move {
-        handle_req_for_registry(req, &npm::PUBLIC_TEST_NPM_REGISTRY).await
+        let result =
+          handle_req_for_registry(req, &npm::PUBLIC_TEST_NPM_REGISTRY).await;
+        if let Err(err) = &result {
+          eprintln!("npm error: {:#?}", err);
+        }
+        result
       }
     },
   )
