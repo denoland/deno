@@ -6603,8 +6603,8 @@
         ],
         "forbidden-method.any.html": true,
         "forbidden-method.any.worker.html": true,
-        "request-bad-port.any.html": false,
-        "request-bad-port.any.worker.html": false,
+        "request-bad-port.any.html": true,
+        "request-bad-port.any.worker.html": true,
         "request-cache-default-conditional.any.html": true,
         "request-cache-default-conditional.any.worker.html": true,
         "request-cache-default.any.html": [
