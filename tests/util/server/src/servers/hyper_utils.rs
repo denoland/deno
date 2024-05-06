@@ -135,7 +135,7 @@ async fn hyper_serve_connection<I, F, S>(
   if let Err(e) = result {
     let err_str = e.to_string();
     if !err_str.contains("early eof") {
-      eprintln!("{}: {:?}", error_msg, e);
+      eprintln!("{}: {:#?}", error_msg, e);
     }
   }
 }
