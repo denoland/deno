@@ -358,7 +358,7 @@ impl Default for HttpServerStarter {
         if line.starts_with("ready:") {
           ready_count += 1;
         }
-        if ready_count == 12 {
+        if ready_count == 27 {
           break;
         }
       } else {

@@ -42,6 +42,7 @@ where
   let fut: Pin<Box<dyn Future<Output = Result<(), anyhow::Error>>>> =
     async move {
       let listener = TcpListener::bind(options.addr).await?;
+      println!("ready: {}", options.addr);
       loop {
         let (stream, _) = listener.accept().await?;
         let io = TokioIo::new(stream);

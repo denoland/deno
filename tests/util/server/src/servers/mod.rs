@@ -169,6 +169,8 @@ pub async fn run_all_servers() {
       private_npm_registry_1_server_fut,
       registry_server_fut,
       provenance_mock_server_fut,
+      // when adding new servers here, make sure to update tests/util/server/src/lib.rs
+      // to wait
     )
   }
   .boxed_local();
