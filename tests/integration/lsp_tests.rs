@@ -9,6 +9,7 @@ use deno_core::url::Url;
 use pretty_assertions::assert_eq;
 use std::fs;
 use test_util::assert_starts_with;
+use test_util::assertions::assert_json_subset;
 use test_util::deno_cmd_with_deno_dir;
 use test_util::env_vars_for_npm_tests;
 use test_util::lsp::LspClient;
@@ -12541,4 +12542,73 @@ fn lsp_cjs_internal_types_default_export() {
   );
   // previously, diagnostic about `add` not being callable
   assert_eq!(json!(diagnostics.all()), json!([]));
+}
+
+#[test]
+fn lsp_ts_code_fix_any_param() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+
+  let src = "export function foo(param) { console.log(param); }";
+
+  let param_def = range_of("param", src);
+
+  let main_url = temp_dir.path().join("main.ts").uri_file();
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": main_url,
+      "languageId": "typescript",
+      "version": 1,
+      "text": src,
+    }
+  }));
+  // make sure the "implicit any type" diagnostic is there for "param"
+  assert_json_subset(
+    json!(diagnostics.all()),
+    json!([{
+      "range": param_def,
+      "code": 7006,
+      "message": "Parameter 'param' implicitly has an 'any' type."
+    }]),
+  );
+
+  // response is array of fixes
+  let response = client.write_request(
+    "textDocument/codeAction",
+    json!({
+      "textDocument": {
+        "uri": main_url,
+      },
+      "range": lsp::Range {
+        start: param_def.end,
+        ..param_def
+      },
+      "context": {
+        "diagnostics": diagnostics.all(),
+      }
+    }),
+  );
+  let fixes = response.as_array().unwrap();
+
+  // we're looking for the quick fix that pertains to our diagnostic,
+  // specifically the "Infer parameter types from usage" fix
+  for fix in fixes {
+    let Some(diags) = fix.get("diagnostics") else {
+      continue;
+    };
+    let Some(fix_title) = fix.get("title").and_then(|s| s.as_str()) else {
+      continue;
+    };
+    if diags == &json!(diagnostics.all())
+      && fix_title == "Infer parameter types from usage"
+    {
+      // found it!
+      return;
+    }
+  }
+
+  panic!("failed to find 'Infer parameter types from usage' fix in {fixes:?}");
 }
