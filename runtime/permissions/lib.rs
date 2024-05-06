@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::anyhow::Context;
+use deno_core::anyhow::{anyhow, Context};
 use deno_core::error::custom_error;
 use deno_core::error::type_error;
 use deno_core::error::uri_error;
@@ -687,34 +687,14 @@ impl Descriptor for WriteDescriptor {
   }
 }
 
-/// Modify `fqdn!` to handle domain names ending with a dot
-/// Handle parsing error
-macro_rules! fqdn {
-    ($($args:expr),*) => {{
-        #[allow(unused_mut)]
-        let mut str = std::string::String::new();
-        $( str += "."; str += $args; )*
-
-
-        let fqdn_string = if str.ends_with('.') {
-            &str[1..str.len() - 1]
-        } else {
-            &str[1..]
-        };
-
-        match fqdn_string.parse::<$crate::FQDN>() {
-            Ok(fqdn) => fqdn,
-            Err(_) => $crate::FQDN::default(),
-        }
-    }}
-}
-
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct NetDescriptor(pub FQDN, pub Option<u16>);
 
 impl NetDescriptor {
-  fn new<T: AsRef<str>>(host: &&(T, Option<u16>)) -> Self {
-    NetDescriptor(fqdn!(host.0.as_ref()), host.1)
+    fn new<T: AsRef<str>>(host: &&(T, Option<u16>)) -> Result<Self, AnyError> {
+    let fqdn = FQDN::from_str(host.0.as_ref())
+      .with_context(|| format!("Failed to parse {}", host.0.as_ref()))?;
+    Ok(NetDescriptor(fqdn, host.1))
   }
 }
 
@@ -754,13 +734,16 @@ impl FromStr for NetDescriptor {
     // Set the scheme to `unknown` to parse the URL, as we really don't know
     // what the scheme is. We only using Url::parse to parse the host and port
     // and don't care about the scheme.
-    let url = url::Url::parse(&format!("unknown://{s}"))?;
+    let url = url::Url::parse(&format!("unknown://{s}")).with_context(|| format!("Failed to parse {}", s))?;
     let hostname = url
       .host_str()
       .ok_or(url::ParseError::EmptyHost)?
       .to_string();
 
-    Ok(NetDescriptor(fqdn!(&hostname), url.port()))
+    let fqdn = FQDN::from_str(&hostname)
+      .with_context(|| format!("Failed to parse {}", hostname))?;
+
+    Ok(NetDescriptor(fqdn, url.port()))
   }
 }
 
@@ -1122,30 +1105,65 @@ impl UnaryPermission<WriteDescriptor> {
     self.check_desc(None, false, api_name, || None)
   }
 }
-
 impl UnaryPermission<NetDescriptor> {
   pub fn query<T: AsRef<str>>(
     &self,
     host: Option<&(T, Option<u16>)>,
   ) -> PermissionState {
-    self.query_desc(
-      host.map(|h| NetDescriptor::new(&h)).as_ref(),
-      AllowPartial::TreatAsPartialGranted,
-    )
+    let net_desc_result = match host {
+      Some(&(ref host_str, port_option)) => {
+        NetDescriptor::new(&&(host_str.as_ref(), port_option))
+      }
+      None => Err(anyhow!("Host information is missing")),
+    };
+    match net_desc_result {
+      Ok(net_desc) => {
+        self.query_desc(Some(&net_desc), AllowPartial::TreatAsPartialGranted)
+      }
+
+      Err(err) => {
+        eprintln!("Error creating NetDescriptor: {}", err);
+        PermissionState::Prompt
+      }
+    }
   }
 
   pub fn request<T: AsRef<str>>(
     &mut self,
     host: Option<&(T, Option<u16>)>,
   ) -> PermissionState {
-    self.request_desc(host.map(|h| NetDescriptor::new(&h)).as_ref(), || None)
+    let net_desc_result = match host {
+      Some(&(ref host_str, port_option)) => {
+        NetDescriptor::new(&&(host_str.as_ref(), port_option))
+      }
+      None => Err(anyhow!("Host information is missing")),
+    };
+    match net_desc_result {
+      Ok(net_desc) => self.request_desc(Some(&net_desc), || None),
+      Err(err) => {
+        eprintln!("Error creating NetDescriptor: {}", err);
+        PermissionState::Prompt
+      }
+    }
   }
 
   pub fn revoke<T: AsRef<str>>(
     &mut self,
     host: Option<&(T, Option<u16>)>,
   ) -> PermissionState {
-    self.revoke_desc(host.map(|h| NetDescriptor::new(&h)).as_ref())
+    let net_desc_result = match host {
+      Some(&(ref host_str, port_option)) => {
+        NetDescriptor::new(&&(host_str.as_ref(), port_option))
+      }
+      None => Err(anyhow!("Host information is missing")),
+    };
+    match net_desc_result {
+      Ok(net_desc) => self.revoke_desc(Some(&net_desc)),
+      Err(err) => {
+        eprintln!("Error creating NetDescriptor: {}", err);
+        PermissionState::Prompt
+      }
+    }
   }
 
   pub fn check<T: AsRef<str>>(
@@ -1154,7 +1172,16 @@ impl UnaryPermission<NetDescriptor> {
     api_name: Option<&str>,
   ) -> Result<(), AnyError> {
     skip_check_if_is_permission_fully_granted!(self);
-    self.check_desc(Some(&NetDescriptor::new(&host)), false, api_name, || None)
+    let net_desc_result = NetDescriptor::new(&&(host.0.as_ref(), host.1));
+    match net_desc_result {
+      Ok(net_desc) => {
+        self.check_desc(Some(&net_desc), false, api_name, || None)
+      }
+      Err(err) => {
+        eprintln!("Error creating NetDescriptor: {}", err);
+        Err(err)
+      }
+    }
   }
 
   pub fn check_url(
@@ -1163,18 +1190,31 @@ impl UnaryPermission<NetDescriptor> {
     api_name: Option<&str>,
   ) -> Result<(), AnyError> {
     skip_check_if_is_permission_fully_granted!(self);
+
     let hostname = url
       .host_str()
-      .ok_or_else(|| uri_error("Missing host"))?
+      .ok_or_else(|| anyhow!("Missing host"))?
       .to_string();
-    let host = &(&hostname, url.port_or_known_default());
-    let display_host = match url.port() {
-      None => hostname.clone(),
-      Some(port) => format!("{hostname}:{port}"),
-    };
-    self.check_desc(Some(&NetDescriptor::new(&host)), false, api_name, || {
-      Some(format!("\"{}\"", display_host))
-    })
+    let port = url.port_or_known_default();
+    let host = &&(hostname.clone(), port);
+
+    let net_desc_result = NetDescriptor::new(host);
+
+    match net_desc_result {
+      Ok(net_desc) => {
+        let display_host = match url.port() {
+          None => hostname.clone(),
+          Some(port) => format!("{}:{}", hostname, port),
+        };
+        self.check_desc(Some(&net_desc), false, api_name, || {
+          Some(format!("\"{}\"", display_host))
+        })
+      }
+      Err(err) => {
+        eprintln!("Error creating NetDescriptor: {}", err);
+        Err(err)
+      }
+    }
   }
 
   pub fn check_all(&mut self) -> Result<(), AnyError> {
@@ -3316,48 +3356,55 @@ mod tests {
   }
 
   #[test]
-  fn test_from_str_valid() {
-    let input = "example.com:8080";
-    let expected_fqdn = fqdn!("example.com");
-    let expected_port = Some(8080);
-    let result = NetDescriptor::from_str(input).unwrap();
-    assert_eq!(result.0, expected_fqdn);
-    assert_eq!(result.1, expected_port);
+  fn test_net_descriptor_valid() {
+    let host: (String, Option<u16>) = ("foo.bar.com.".to_string(), Some(1));
+    let result = NetDescriptor::new(&&host);
+    assert!(result.is_ok());
+    let net_descriptor = result.unwrap();
+    assert_eq!(net_descriptor.0.to_string(), "foo.bar.com");
+    assert_eq!(net_descriptor.1, Some(1));
   }
 
   #[test]
-  fn test_from_str_invalid_empty() {
-    let input = "";
-    assert!(NetDescriptor::from_str(input).is_err());
+  fn test_net_descriptor_invalid_with_special_characters() {
+    let host: (String, Option<u16>) = ("foo@bar.com.".to_string(), Some(1));
+    let result = NetDescriptor::new(&&host);
+    assert!(result.is_err());
+    let expected_error_message = "Failed to parse foo@bar.com.";
+    assert_eq!(result.unwrap_err().to_string(), expected_error_message);
   }
 
   #[test]
-  fn test_from_str_invalid_no_host() {
-    let input = ":8080";
-    assert!(NetDescriptor::from_str(input).is_err());
+  fn test_net_descriptor_from_str_valid() {
+    let url_string = "example.com:8080";
+    let result = NetDescriptor::from_str(url_string);
+    assert!(result.is_ok());
+    let net_descriptor = result.unwrap();
+    assert_eq!(net_descriptor.0.to_string(), "example.com");
+    assert_eq!(net_descriptor.1, Some(8080));
   }
 
   #[test]
-  fn test_macro_expansion() {
-    let host = "example.com";
-    let port = Some(8080);
-    let descriptor_tuple: (&str, Option<u16>) = (host, port);
-    let descriptor = NetDescriptor::new(&&descriptor_tuple);
-    assert_eq!(descriptor.0, fqdn!("example.com."));
-    assert_eq!(descriptor.1, Some(8080));
+  fn test_permission_query_invalid_hostname() {
+    let permission = UnaryPermission::<NetDescriptor>::default();
+    let invalid_host: (String, Option<u16>) = ("foo@bar.com.".to_string(), Some(443));
+    let state = permission.query(Some(&&invalid_host));
+    assert_eq!(state, PermissionState::Prompt);
   }
 
   #[test]
-  fn test_parse_with_unknown_scheme() {
-    let input = "example.com:8080";
-    let descriptor = NetDescriptor::from_str(input).unwrap();
-    assert_eq!(descriptor.0, fqdn!("example.com."));
-    assert_eq!(descriptor.1, Some(8080));
+  fn test_request_invalid_domain() {
+    let mut permission = UnaryPermission::<NetDescriptor>::default();
+    let invalid_host: (String, Option<u16>) = ("foo@bar.com.".to_string(), Some(443));
+    let result = permission.request(Some(&&invalid_host));
+    assert_eq!(result, PermissionState::Prompt);
   }
 
   #[test]
-  fn test_from_str_invalid_unparsable() {
-    let input = "foo@bar.com.";
-    assert_eq!(fqdn!(input), crate::FQDN::default());
+  fn test_revoke_invalid_domain() {
+    let mut permission = UnaryPermission::<NetDescriptor>::default();
+    let invalid_host: (String, Option<u16>) = ("foo@bar.com.".to_string(), Some(443));
+    let result = permission.revoke(Some(&&invalid_host));
+    assert_eq!(result, PermissionState::Prompt);
   }
 }
