@@ -58,7 +58,7 @@ where
   if let Err(e) = fut.await {
     let err_str = e.to_string();
     if !err_str.contains("early eof") {
-      eprintln!("{}: {:#?}", options.error_msg, e);
+      eprintln!("{}: {:?}", options.error_msg, e);
     }
   }
 }
@@ -113,7 +113,7 @@ async fn hyper_serve_connection<I, F, S>(
       builder
         .serve_connection(io, service)
         .await
-        .map_err(|e| anyhow::anyhow!("{:#?}", e))
+        .map_err(|e| anyhow::anyhow!("{:?}", e))
     }
     ServerKind::OnlyHttp1 => {
       let builder = hyper::server::conn::http1::Builder::new();
@@ -135,7 +135,7 @@ async fn hyper_serve_connection<I, F, S>(
   if let Err(e) = result {
     let err_str = e.to_string();
     if !err_str.contains("early eof") {
-      eprintln!("{}: {:#?}", error_msg, e);
+      eprintln!("{}: {:?}", error_msg, e);
     }
   }
 }
