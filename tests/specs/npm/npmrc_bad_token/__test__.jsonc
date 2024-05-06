@@ -2,5 +2,8 @@
   "tempDir": true,
   "args": "run -A main.js",
   "output": "main.out",
-  "exitCode": 1
+  "exitCode": 1,
+  "envs": {
+    "DENO_FUTURE": "1"
+  }
 }

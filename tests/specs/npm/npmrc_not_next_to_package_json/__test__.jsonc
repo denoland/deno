@@ -1,5 +1,8 @@
 {
   "tempDir": true,
   "args": "run -A -L debug subdir/main.js",
-  "output": "main.out"
+  "output": "main.out",
+  "envs": {
+    "DENO_FUTURE": "1"
+  }
 }
