@@ -69,6 +69,7 @@ const REDIRECT_ABSOLUTE_PORT: u16 = 4550;
 const AUTH_REDIRECT_PORT: u16 = 4551;
 const TLS_CLIENT_AUTH_PORT: u16 = 4552;
 const BASIC_AUTH_REDIRECT_PORT: u16 = 4554;
+// 4555 is used by the proxy server, and 4556 is used by net_listen_allow_localhost_4555_fail
 const TLS_PORT: u16 = 4557;
 const HTTPS_PORT: u16 = 5545;
 const H1_ONLY_TLS_PORT: u16 = 5546;

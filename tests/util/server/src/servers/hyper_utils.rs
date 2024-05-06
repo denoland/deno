@@ -113,7 +113,7 @@ async fn hyper_serve_connection<I, F, S>(
       builder
         .serve_connection(io, service)
         .await
-        .map_err(|e| anyhow::anyhow!("{}", e))
+        .map_err(|e| anyhow::anyhow!("{:#?}", e))
     }
     ServerKind::OnlyHttp1 => {
       let builder = hyper::server::conn::http1::Builder::new();
