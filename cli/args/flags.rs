@@ -2058,8 +2058,8 @@ fn jupyter_subcommand() -> Command {
         .value_hint(ValueHint::FilePath)
         .conflicts_with("install"))
     .arg(
-      Arg::new("directory")
-        .long("directory")
+      Arg::new("dir")
+        .long("dir")
         .help("Sets the directory to install kernelspec.")
         .value_parser(value_parser!(PathBuf))
         .value_hint(ValueHint::DirPath)
@@ -9295,7 +9295,7 @@ mod tests {
       "deno",
       "jupyter",
       "--install",
-      "--directory",
+      "--dir",
       "/tmp/deno"
     ]);
     assert_eq!(
@@ -9305,7 +9305,7 @@ mod tests {
           install: true,
           kernel: false,
           conn_file: None,
-          directory: Some(PathBuf::from_str("/tmp/deno"))
+          directory: Some(PathBuf::from_str("/tmp/deno").unwrap_or_default())
         }),
         ..Flags::default()
       }
