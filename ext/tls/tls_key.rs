@@ -165,7 +165,6 @@ impl TlsKeyResolver {
     let mut cache = self.inner.cache.borrow_mut();
     let mut recv = match cache.get(&sni) {
       None => {
-        eprintln!("send");
         let (tx, rx) = broadcast::channel(1);
         cache.insert(sni.clone(), TlsKeyState::Resolving(rx.resubscribe()));
         _ = self.inner.resolution_tx.send((sni.clone(), tx));
@@ -214,9 +213,7 @@ pub struct TlsKeyLookup {
 impl TlsKeyLookup {
   /// Only one poll call may be active at any time. This method holds a `RefCell` lock.
   pub async fn poll(&self) -> Option<String> {
-    eprintln!("poll");
     if let Some((sni, sender)) = self.resolution_rx.borrow_mut().recv().await {
-      eprintln!("got {sni}");
       self.pending.borrow_mut().insert(sni.clone(), sender);
       Some(sni)
     } else {
@@ -226,7 +223,6 @@ impl TlsKeyLookup {
 
   /// Resolve a previously polled item.
   pub fn resolve(&self, sni: String, res: Result<TlsKey, AnyError>) {
-    eprintln!("resolved {sni}");
     _ = self
       .pending
       .borrow_mut()

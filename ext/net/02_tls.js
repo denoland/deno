@@ -170,7 +170,6 @@ function loadTlsKeyPair(api, {
 
   // TODO(mmastrac): remove this temporary symbol when the API lands
   if (arguments[1][resolverSymbol] !== undefined) {
-    console.log("resolver");
     return createTlsKeyResolver(arguments[1][resolverSymbol]);
   }
 

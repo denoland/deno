@@ -192,14 +192,12 @@ pub fn create_client_config(
     // However it's not really feasible to deduplicate it as the `client_config` instances
     // are not type-compatible - one wants "client cert", the other wants "transparency policy
     // or client cert".
-    let mut client = if let TlsKeys::Static(TlsKey(cert_chain, private_key)) =
-      maybe_cert_chain_and_key
-    {
-      client_config
+    let mut client = match maybe_cert_chain_and_key {
+      TlsKeys::Static(TlsKey(cert_chain, private_key)) => client_config
         .with_client_auth_cert(cert_chain, private_key)
-        .expect("invalid client key or certificate")
-    } else {
-      client_config.with_no_client_auth()
+        .expect("invalid client key or certificate"),
+      TlsKeys::Null => client_config.with_no_client_auth(),
+      TlsKeys::Resolver(_) => unimplemented!(),
     };
 
     add_alpn(&mut client, socket_use);

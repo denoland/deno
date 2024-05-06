@@ -1652,11 +1652,12 @@ Deno.test(
 Deno.test(
   { permissions: { net: true, read: true } },
   async function listenResolver() {
+    let sniRequests = [];
     const listener = Deno.listenTls({
       hostname: "localhost",
       port: 0,
       [resolverSymbol]: (sni: string) => {
-        console.log(sni);
+        sniRequests.push(sni);
         return {
           cert,
           key,
@@ -1670,11 +1671,10 @@ Deno.test(
         [serverNameSymbol]: "server-1",
         port: listener.addr.port,
       });
-      const [handshake, serverConn] = await Promise.all([
+      const [_handshake, serverConn] = await Promise.all([
         conn.handshake(),
         listener.accept(),
       ]);
-      console.log("connected", handshake, serverConn);
       conn.close();
       serverConn.close();
     }
@@ -1685,15 +1685,15 @@ Deno.test(
         [serverNameSymbol]: "server-2",
         port: listener.addr.port,
       });
-      const [handshake, serverConn] = await Promise.all([
+      const [_handshake, serverConn] = await Promise.all([
         conn.handshake(),
         listener.accept(),
       ]);
-      console.log("connected", handshake, serverConn);
       conn.close();
       serverConn.close();
     }
 
+    assertEquals(sniRequests, ["server-1", "server-2"]);
     listener.close();
   },
 );
