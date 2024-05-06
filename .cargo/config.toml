@@ -23,7 +23,7 @@ rustflags = [
   # path to the lld linker
   "linker=/usr/local/bin/lld",
   "-C",
-  "link-args=-L/Users/divy/gh/lzld -llzld"
+  "link-args=-L/Users/divy/gh/lzld -llzld_arm64"
 ]
 
 [target.'cfg(all())']
