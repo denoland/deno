@@ -1376,7 +1376,7 @@ async fn wrap_client_auth_https_server(port: u16) {
   .await
 }
 
-fn custom_headers(
+pub fn custom_headers(
   p: &str,
   body: Vec<u8>,
 ) -> Response<UnsyncBoxBody<Bytes, Infallible>> {

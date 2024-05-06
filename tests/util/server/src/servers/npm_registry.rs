@@ -84,10 +84,9 @@ async fn handle_req_for_registry(
   file_path.push(&uri_path[1..].replace("%2f", "/").replace("%2F", "/"));
 
   // serve if the filepath exists
-  if let Ok(body) = tokio::fs::read(&file_path).await {
-    return Ok(Response::new(UnsyncBoxBody::new(
-      http_body_util::Full::new(Bytes::from(body)),
-    )));
+  if let Ok(file) = tokio::fs::read(&file_path).await {
+    let file_resp = custom_headers(uri_path, file);
+    return Ok(file_resp);
   }
 
   // otherwise try to serve from the registry
@@ -97,11 +96,10 @@ async fn handle_req_for_registry(
     return resp;
   }
 
-  let empty_body = UnsyncBoxBody::new(Empty::new());
-  let res = Response::builder()
+  Response::builder()
     .status(StatusCode::NOT_FOUND)
-    .body(empty_body)?;
-  Ok(res)
+    .body(empty_body())
+    .map_err(|e| e.into())
 }
 
 fn handle_custom_npm_registry_path(
