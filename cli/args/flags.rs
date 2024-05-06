@@ -3832,8 +3832,8 @@ fn jupyter_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   let conn_file = matches.remove_one::<String>("conn");
   let kernel = matches.get_flag("kernel");
   let install = matches.get_flag("install");
-  let directory = if matches.contains_id("directory") {
-    matches.remove_one::<PathBuf>("directory")
+  let directory = if matches.contains_id("dir") {
+    matches.remove_one::<PathBuf>("dir")
   } else {
     None
   };
