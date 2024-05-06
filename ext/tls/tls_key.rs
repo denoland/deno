@@ -298,9 +298,9 @@ pub mod tests {
     let f2 = resolver.resolve("example2.com".to_owned());
 
     let key = f1.await.unwrap();
-    assert_eq!(tls_key_for_test("example.com"), key);
+    assert_eq!(tls_key_for_test("example1.com"), key);
     let key = f2.await.unwrap();
-    assert_eq!(tls_key_for_test("example.com"), key);
+    assert_eq!(tls_key_for_test("example2.com"), key);
     drop(resolver);
 
     task.await.unwrap();
