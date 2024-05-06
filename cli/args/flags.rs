@@ -9305,7 +9305,7 @@ mod tests {
           install: true,
           kernel: false,
           conn_file: None,
-          directory: Some(PathBuf::from_str("/tmp/deno").unwrap()),
+          directory: Some(PathBuf::from_str("/tmp/deno"))
         }),
         ..Flags::default()
       }
