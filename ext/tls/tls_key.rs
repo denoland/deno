@@ -1,15 +1,24 @@
+use crate::load_certs;
+use crate::load_private_keys;
 use crate::Certificate;
 use crate::PrivateKey;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::futures::future::Either;
+use deno_core::futures::FutureExt;
 use deno_core::unsync::spawn;
+use rustls::ServerConfig;
+use rustls_tokio_stream::ServerConfigProvider;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::future::ready;
 use std::future::Future;
+use std::io::BufReader;
+use std::io::ErrorKind;
 use std::rc::Rc;
+use std::sync::Arc;
+use tokio::sync::oneshot;
 
 type ErrorType = Rc<AnyError>;
 
@@ -64,6 +73,61 @@ struct TlsKeyResolverInner {
 #[derive(Clone)]
 pub struct TlsKeyResolver {
   inner: Rc<TlsKeyResolverInner>,
+}
+
+static_assertions::assert_impl_all!((Arc<ServerConfig>, std::io::Error): Send, Sync);
+
+impl TlsKeyResolver {
+  async fn resolve_internal(
+    &self,
+    sni: String,
+    alpn: Vec<Vec<u8>>,
+  ) -> Result<Arc<ServerConfig>, AnyError> {
+    let (cert, key) = self.resolve(sni).await?;
+    let cert = load_certs(&mut BufReader::new(cert.as_bytes()))?;
+    let key = load_private_keys(key.as_bytes())?
+      .into_iter()
+      .next()
+      .unwrap();
+
+    let mut tls_config = ServerConfig::builder()
+      .with_safe_defaults()
+      .with_no_client_auth()
+      .with_single_cert(cert, key)?;
+    tls_config.alpn_protocols = alpn;
+    Ok(tls_config.into())
+  }
+
+  pub fn into_server_config_provider(
+    self,
+    alpn: Vec<Vec<u8>>,
+  ) -> ServerConfigProvider {
+    let (tx, mut rx) =
+      tokio::sync::mpsc::unbounded_channel::<(_, oneshot::Sender<_>)>();
+
+    // We don't want to make the resolver multi-threaded, but the `ServerConfigProvider` is
+    // required to be wrapped in an Arc. To fix this, we spawn a task in our current runtime
+    // to respond to the requests.
+    spawn(async move {
+      while let Some((sni, txr)) = rx.recv().await {
+        _ = txr.send(self.resolve_internal(sni, alpn.clone()).await);
+      }
+    });
+
+    Arc::new(move |hello| {
+      // Take ownership of the SNI information
+      let sni = hello.server_name().unwrap_or_default().to_owned();
+      let (txr, rxr) = tokio::sync::oneshot::channel::<_>();
+      _ = tx.send((sni, txr));
+      rxr
+        .map(|res| match res {
+          Err(e) => Err(std::io::Error::new(ErrorKind::InvalidData, e)),
+          Ok(Err(e)) => Err(std::io::Error::new(ErrorKind::InvalidData, e)),
+          Ok(Ok(res)) => Ok(res),
+        })
+        .boxed()
+    })
+  }
 }
 
 impl Debug for TlsKeyResolver {
