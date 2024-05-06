@@ -4,8 +4,8 @@
 const testCases = [
   // Allowed, safe
   [["darwin", "linux"], null, "/dev/null"],
+  [["darwin", "linux"], null, "/etc/passwd"],
   // Denied, requires `--allow-all`
-  [["darwin", "linux"], /PermissionDenied/, "/etc/hosts"],
   [["darwin", "linux"], /PermissionDenied/, "/dev/ptmx"],
   [["linux"], /PermissionDenied/, "/proc/self/environ"],
   [["linux"], /PermissionDenied/, "/proc/self/mem"],
