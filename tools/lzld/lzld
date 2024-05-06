@@ -1,6 +1,8 @@
 #!/bin/bash
 set -e
 
+arch=$(uname -m)
+
 # Find the path to the `lld` binary.
 lld=$(which lld)
 if [ ! -x "$lld" ]; then
@@ -21,6 +23,8 @@ while [ $# -gt 0 ]; do
       ;;
   esac
 done
+
+args+=("-L$(dirname "$(realpath "$0")") -llzld_${arch}")
 
 # Run `lld` with the filtered arguments.
 exec "$lld" "${args[@]}"
