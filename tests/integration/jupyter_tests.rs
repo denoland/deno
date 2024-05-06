@@ -397,7 +397,7 @@ impl Drop for JupyterServerProcess {
 async fn server_ready_on(addr: &str) -> bool {
   matches!(
     timeout(
-      Duration::from_millis(100),
+      Duration::from_millis(1000),
       tokio::net::TcpStream::connect(addr.trim_start_matches("tcp://")),
     )
     .await,
