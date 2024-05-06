@@ -46,6 +46,12 @@ brew install deno
 choco install deno
 ```
 
+[Scoop](https://scoop.sh/#/apps?q=deno&id=678d8fb557b611df996989c675b1099630a5bbee) (Windows):
+
+```powershell
+scoop install deno
+```
+
 ### Build and install from source
 
 Complete instructions for building Deno from source can be found in the manual
