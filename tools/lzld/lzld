@@ -12,6 +12,7 @@ fi
 
 # Filter out `-framework` arguments.
 args=()
+
 while [ $# -gt 0 ]; do
   case "$1" in
     -framework)
@@ -24,7 +25,8 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-args+=("-L$(dirname "$(realpath "$0")") -llzld_${arch}")
+args+=("-L$(dirname "$(realpath "$0")")")
+args+=("-llzld_${arch}")
 
 # Run `lld` with the filtered arguments.
 exec "$lld" "${args[@]}"
