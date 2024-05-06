@@ -13,7 +13,7 @@ use once_cell::sync::Lazy;
 use parking_lot::Mutex;
 use tar::Builder;
 
-use crate::testdata_path;
+use crate::tests_path;
 
 pub const DENOTEST_SCOPE_NAME: &str = "@denotest";
 pub const DENOTEST2_SCOPE_NAME: &str = "@denotest2";
@@ -22,7 +22,7 @@ pub static PUBLIC_TEST_NPM_REGISTRY: Lazy<TestNpmRegistry> = Lazy::new(|| {
   TestNpmRegistry::new(
     NpmRegistryKind::Public,
     &format!("http://localhost:{}", crate::servers::PORT),
-    "/npm/registry",
+    "/npm",
   )
 });
 
@@ -35,8 +35,7 @@ pub static PRIVATE_TEST_NPM_REGISTRY_1: Lazy<TestNpmRegistry> =
         "http://localhost:{}",
         crate::servers::PRIVATE_NPM_REGISTRY_1_PORT
       ),
-      // TODO: change it
-      "/npm/registry",
+      "/npm-private",
     )
   });
 
@@ -57,7 +56,7 @@ pub struct TestNpmRegistry {
   kind: NpmRegistryKind,
   // Eg. http://localhost:4544/
   hostname: String,
-  // Eg. /registry/npm/
+  /// Path in the tests/registry folder (Eg. npm/)
   path: String,
 
   cache: Mutex<HashMap<String, CustomNpmPackage>>,
@@ -161,7 +160,10 @@ fn get_npm_package(
   registry_path: &str,
   package_name: &str,
 ) -> Result<Option<CustomNpmPackage>> {
-  let package_folder = testdata_path().join("npm/registry").join(package_name);
+  let package_folder = tests_path()
+    .join("registry")
+    .join(registry_path)
+    .join(package_name);
   if !package_folder.exists() {
     return Ok(None);
   }
