@@ -6,7 +6,7 @@
 /// <reference lib="esnext" />
 
 /**
- * @category Broadcast Channel
+ * @category Messaging
  * @tags unstable
  */
 declare interface BroadcastChannelEventMap {
@@ -15,7 +15,7 @@ declare interface BroadcastChannelEventMap {
 }
 
 /**
- * @category Broadcast Channel
+ * @category Messaging
  * @tags unstable
  */
 declare interface BroadcastChannel extends EventTarget {
@@ -58,7 +58,7 @@ declare interface BroadcastChannel extends EventTarget {
 }
 
 /**
- * @category Broadcast Channel
+ * @category Messaging
  * @tags unstable
  */
 declare var BroadcastChannel: {

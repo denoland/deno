@@ -843,7 +843,7 @@ declare namespace Deno {
    *  | "x11" (Linux)     | Xlib `Window` | Xlib `Display*` |
    *  | "wayland" (Linux) | `wl_surface*` | `wl_display*`   |
    *
-   * @category WebGPU
+   * @category GPU
    * @tags unstable
    */
   export class UnsafeWindowSurface {
@@ -940,7 +940,7 @@ declare namespace Deno {
    * const req = await fetch("https://myserver.com", { client });
    * ```
    *
-   * @category Fetch API
+   * @category Fetch
    * @tags unstable
    */
   export interface HttpClient extends Disposable {
@@ -952,7 +952,7 @@ declare namespace Deno {
    *
    * The options used when creating a {@linkcode Deno.HttpClient}.
    *
-   * @category Fetch API
+   * @category Fetch
    * @tags unstable
    */
   export interface CreateHttpClientOptions {
@@ -991,7 +991,7 @@ declare namespace Deno {
    * The definition of a proxy when specifying
    * {@linkcode Deno.CreateHttpClientOptions}.
    *
-   * @category Fetch API
+   * @category Fetch
    * @tags unstable
    */
   export interface Proxy {
@@ -1006,7 +1006,7 @@ declare namespace Deno {
    * Basic authentication credentials to be used with a {@linkcode Deno.Proxy}
    * server when specifying {@linkcode Deno.CreateHttpClientOptions}.
    *
-   * @category Fetch API
+   * @category Fetch
    * @tags unstable
    */
   export interface BasicAuth {
@@ -1035,7 +1035,7 @@ declare namespace Deno {
    * const response = await fetch("https://myserver.com", { client });
    * ```
    *
-   * @category Fetch API
+   * @category Fetch
    * @tags unstable
    */
   export function createHttpClient(
@@ -1057,7 +1057,7 @@ declare namespace Deno {
    * const response = await fetch("https://myserver.com", { client });
    * ```
    *
-   * @category Fetch API
+   * @category Fetch
    * @tags unstable
    */
   export function createHttpClient(
@@ -1269,7 +1269,7 @@ declare namespace Deno {
    * can be found in the Deno Manual.
    *
    * @tags allow-read, allow-write, unstable
-   * @category KV
+   * @category Cloud
    */
   export function openKv(path?: string): Promise<Deno.Kv>;
 
@@ -1277,7 +1277,7 @@ declare namespace Deno {
    *
    * CronScheduleExpression is used as the type of `minute`, `hour`,
    * `dayOfMonth`, `month`, and `dayOfWeek` in {@linkcode CronSchedule}.
-   * @category Cron
+   * @category Cloud
    * @tags unstable
    */
   export type CronScheduleExpression = number | { exact: number | number[] } | {
@@ -1290,7 +1290,7 @@ declare namespace Deno {
    *
    * CronSchedule is the interface used for JSON format
    * cron `schedule`.
-   * @category Cron
+   * @category Cloud
    * @tags unstable
    */
   export interface CronSchedule {
@@ -1322,7 +1322,7 @@ declare namespace Deno {
    * as specified by interface {@linkcode CronSchedule}, where time is specified
    * using UTC time zone.
    *
-   * @category Cron
+   * @category Cloud
    * @tags unstable
    */
   export function cron(
@@ -1354,7 +1354,7 @@ declare namespace Deno {
    * means that a failed execution will be retried at most 3 times, with 1
    * second, 5 seconds, and 10 seconds delay between each retry.
    *
-   * @category Cron
+   * @category Cloud
    * @tags unstable
    */
   export function cron(
@@ -1379,7 +1379,7 @@ declare namespace Deno {
    * exceeds this limit, an error will be thrown on the operation that this key
    * was passed to.
    *
-   * @category KV
+   * @category Cloud
    * @tags unstable
    */
   export type KvKey = readonly KvKeyPart[];
@@ -1416,7 +1416,7 @@ declare namespace Deno {
    * `1.0` is a number and `0n` is a bigint, and type ordering has precedence
    * over the ordering of values within a type.
    *
-   * @category KV
+   * @category Cloud
    * @tags unstable
    */
   export type KvKeyPart =
@@ -1434,7 +1434,7 @@ declare namespace Deno {
    * - `strong` - This operation must be strongly-consistent.
    * - `eventual` - Eventually-consistent behavior is allowed.
    *
-   * @category KV
+   * @category Cloud
    * @tags unstable
    */
   export type KvConsistencyLevel = "strong" | "eventual";
@@ -1449,7 +1449,7 @@ declare namespace Deno {
    * starting at a given key). A range selector selects all keys that are
    * lexicographically between the given start and end keys.
    *
-   * @category KV
+   * @category Cloud
    * @tags unstable
    */
   export type KvListSelector =
@@ -1488,7 +1488,7 @@ declare namespace Deno {
    *   existing value must be of type `Deno.KvU64`. If the key does not exist,
    *   the value is set to the given value.
    *
-   * @category KV
+   * @category Cloud
    * @tags unstable
    */
   export type KvMutation =
@@ -1508,7 +1508,7 @@ declare namespace Deno {
    * The cursor getter returns the cursor that can be used to resume the
    * iteration from the current position in the future.
    *
-   * @category KV
+   * @category Cloud
    * @tags unstable
    */
   export class KvListIterator<T> implements AsyncIterableIterator<KvEntry<T>> {
@@ -1531,7 +1531,7 @@ declare namespace Deno {
    * key-value pair. It can be used to perform atomic operations on the KV store
    * by passing it to the `check` method of a {@linkcode Deno.AtomicOperation}.
    *
-   * @category KV
+   * @category Cloud
    * @tags unstable
    */
   export type KvEntry<T> = { key: KvKey; value: T; versionstamp: string };
@@ -1544,7 +1544,7 @@ declare namespace Deno {
    * This is the same as a {@linkcode KvEntry}, but the `value` and `versionstamp`
    * fields may be `null` if no value exists for the given key in the KV store.
    *
-   * @category KV
+   * @category Cloud
    * @tags unstable
    */
   export type KvEntryMaybe<T> = KvEntry<T> | {
@@ -1557,7 +1557,7 @@ declare namespace Deno {
    *
    * Options for listing key-value pairs in a {@linkcode Deno.Kv}.
    *
-   * @category KV
+   * @category Cloud
    * @tags unstable
    */
   export interface KvListOptions {
@@ -1612,7 +1612,7 @@ declare namespace Deno {
   }
 
   /**
-   * @category KV
+   * @category Cloud
    * @tags unstable
    */
   export interface KvCommitResult {
@@ -1622,7 +1622,7 @@ declare namespace Deno {
   }
 
   /**
-   * @category KV
+   * @category Cloud
    * @tags unstable
    */
   export interface KvCommitError {
@@ -1636,7 +1636,7 @@ declare namespace Deno {
    * not match the given versionstamp. A check with a `null` versionstamp checks
    * that the key-value pair does not currently exist in the KV store.
    *
-   * @category KV
+   * @category Cloud
    * @tags unstable
    */
   export interface AtomicCheck {
@@ -1678,7 +1678,7 @@ declare namespace Deno {
    * will be a {@linkcode Deno.KvCommitResult} object with a `ok: true` property
    * and the versionstamp of the value committed to KV.
    *
-   * @category KV
+   * @category Cloud
    * @tags unstable
    */
   export class AtomicOperation {
@@ -1795,7 +1795,7 @@ declare namespace Deno {
    * of a JSON serialization of that same value. If theses limits are exceeded,
    * an exception will be thrown.
    *
-   * @category KV
+   * @category Cloud
    * @tags unstable
    */
   export class Kv implements Disposable {
@@ -2066,7 +2066,7 @@ declare namespace Deno {
    * Wrapper type for 64-bit unsigned integers for use as values in a
    * {@linkcode Deno.Kv}.
    *
-   * @category KV
+   * @category Cloud
    * @tags unstable
    */
   export class KvU64 {
@@ -2283,7 +2283,7 @@ declare namespace Deno {
  * way to connect via proxies and use custom TLS certificates.
  *
  * @tags allow-net, allow-read, unstable
- * @category Fetch API
+ * @category Fetch
  */
 declare function fetch(
   input: Request | URL | string,
@@ -2292,7 +2292,7 @@ declare function fetch(
 
 /** **UNSTABLE**: New API, yet to be vetted.
  *
- * @category Web Workers
+ * @category Workers
  * @tags unstable
  */
 declare interface WorkerOptions {
@@ -2333,7 +2333,7 @@ declare interface WorkerOptions {
 
 /** **UNSTABLE**: New API, yet to be vetted.
  *
- * @category Web Sockets
+ * @category WebSockets
  * @tags unstable
  */
 declare interface WebSocketStreamOptions {
@@ -2344,7 +2344,7 @@ declare interface WebSocketStreamOptions {
 
 /** **UNSTABLE**: New API, yet to be vetted.
  *
- * @category Web Sockets
+ * @category WebSockets
  * @tags unstable
  */
 declare interface WebSocketConnection {
@@ -2356,7 +2356,7 @@ declare interface WebSocketConnection {
 
 /** **UNSTABLE**: New API, yet to be vetted.
  *
- * @category Web Sockets
+ * @category WebSockets
  * @tags unstable
  */
 declare interface WebSocketCloseInfo {
@@ -2367,7 +2367,7 @@ declare interface WebSocketCloseInfo {
 /** **UNSTABLE**: New API, yet to be vetted.
  *
  * @tags allow-net, unstable
- * @category Web Sockets
+ * @category WebSockets
  */
 declare interface WebSocketStream {
   url: string;
@@ -2379,7 +2379,7 @@ declare interface WebSocketStream {
 /** **UNSTABLE**: New API, yet to be vetted.
  *
  * @tags allow-net, unstable
- * @category Web Sockets
+ * @category WebSockets
  */
 declare var WebSocketStream: {
   readonly prototype: WebSocketStream;
@@ -2389,7 +2389,7 @@ declare var WebSocketStream: {
 /** **UNSTABLE**: New API, yet to be vetted.
  *
  * @tags allow-net, unstable
- * @category Web Sockets
+ * @category WebSockets
  */
 declare interface WebSocketError extends DOMException {
   readonly closeCode: number;
@@ -2399,7 +2399,7 @@ declare interface WebSocketError extends DOMException {
 /** **UNSTABLE**: New API, yet to be vetted.
  *
  * @tags allow-net, unstable
- * @category Web Sockets
+ * @category WebSockets
  */
 declare var WebSocketError: {
   readonly prototype: WebSocketError;
@@ -4630,7 +4630,7 @@ declare namespace Intl {
  * A typed array of 16-bit float values. The contents are initialized to 0. If the requested number
  * of bytes could not be allocated an exception is raised.
  *
- * @category Web APIs
+ * @category Platform
  * @tags unstable
  */
 declare interface Float16Array {
@@ -4945,7 +4945,7 @@ declare interface Float16Array {
 }
 
 /**
- * @category Web APIs
+ * @category Platform
  * @tags unstable
  */
 declare interface Float16ArrayConstructor {
@@ -4988,13 +4988,13 @@ declare interface Float16ArrayConstructor {
   ): Float16Array;
 }
 /**
- * @category Web APIs
+ * @category Platform
  * @tags unstable
  */
 declare var Float16Array: Float16ArrayConstructor;
 
 /**
- * @category Web APIs
+ * @category Platform
  * @tags unstable
  */
 declare interface Float16 {
@@ -5014,7 +5014,7 @@ declare interface Float16 {
 }
 
 /**
- * @category Web APIs
+ * @category Platform
  * @tags unstable
  */
 declare interface Float16Constructor {
@@ -5034,7 +5034,7 @@ declare interface Float16Constructor {
 }
 
 /**
- * @category Web APIs
+ * @category Platform
  * @tags unstable
  */
 declare interface Float16Array {
@@ -5042,7 +5042,7 @@ declare interface Float16Array {
 }
 
 /**
- * @category Web APIs
+ * @category Platform
  * @tags unstable
  */
 declare interface Float16Array {
@@ -5055,7 +5055,7 @@ declare interface Float16Array {
 }
 
 /**
- * @category Web APIs
+ * @category Platform
  * @tags unstable
  */
 declare interface Float16ArrayConstructor {
@@ -5063,7 +5063,7 @@ declare interface Float16ArrayConstructor {
 }
 
 /**
- * @category Web APIs
+ * @category Platform
  * @tags unstable
  */
 declare interface Float16Array {
@@ -5075,7 +5075,7 @@ declare interface Float16Array {
 }
 
 /**
- * @category Web APIs
+ * @category Platform
  * @tags unstable
  */
 declare interface Float16Array {
@@ -5151,7 +5151,7 @@ declare interface Float16Array {
 }
 
 /**
- * @category Web APIs
+ * @category Platform
  * @tags unstable
  */
 declare interface DataView {
