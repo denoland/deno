@@ -11,22 +11,19 @@ rustflags = [
   "link-arg=/STACK:4194304",
 ]
 
-[target.x86_64-apple-darwin]
-linker = "../lzld/lzld"
-rustflags = [
-  "-C",
-  "linker-flavor=ld64.lld",
-  "-C",
-  "link-args=-L/Users/divy/gh/lzld -llzld_x86_64"
-]
+# TODO: build lzld for x86_64
+# [target.x86_64-apple-darwin]
+# linker = "tools/lzld/lzld"
+# rustflags = [
+#   "-C",
+#   "linker-flavor=ld64.lld",
+# ]
 
 [target.aarch64-apple-darwin]
-linker = "../lzld/lzld"
+linker = "tools/lzld/lzld"
 rustflags = [
   "-C",
   "linker-flavor=ld64.lld",
-  "-C",
-  "link-args=-L/Users/divy/gh/lzld -llzld_arm64"
 ]
 
 [target.'cfg(all())']

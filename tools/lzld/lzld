@@ -1,0 +1,26 @@
+#!/bin/bash
+set -e
+
+# Find the path to the `lld` binary.
+lld=$(which lld)
+if [ ! -x "$lld" ]; then
+  echo "Error: unable to find 'lld' binary" >&2
+  exit 1
+fi
+
+# Filter out `-framework` arguments.
+args=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -framework)
+      shift 2
+      ;;
+    *)
+      args+=("$1")
+      shift
+      ;;
+  esac
+done
+
+# Run `lld` with the filtered arguments.
+exec "$lld" "${args[@]}"
