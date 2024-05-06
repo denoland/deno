@@ -5,6 +5,9 @@ arch=$(uname -m)
 
 # Find the path to the `lld` binary.
 lld=$(which lld)
+if [ -z "$lld" ]; then
+  lld=$(which ld64.lld)
+fi
 if [ ! -x "$lld" ]; then
   echo "Error: unable to find 'lld' binary" >&2
   exit 1
