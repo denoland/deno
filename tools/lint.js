@@ -59,6 +59,7 @@ async function dlint() {
     ":!:tests/testdata/file_extensions/ts_with_js_extension.js",
     ":!:tests/testdata/fmt/**",
     ":!:tests/testdata/lint/**",
+    ":!:tests/testdata/npm/**",
     ":!:tests/testdata/run/**",
     ":!:tests/testdata/tsc/**",
     ":!:tests/testdata/test/glob/**",
