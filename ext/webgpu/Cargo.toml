@@ -19,22 +19,30 @@ path = "lib.rs"
 deno_core.workspace = true
 serde = { workspace = true, features = ["derive"] }
 tokio = { workspace = true, features = ["full"] }
-wgpu-types = { workspace = true, features = ["trace", "replay", "serde"] }
+wgpu-types = { workspace = true, features = ["serde"] }
 raw-window-handle = { workspace = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies.wgpu-core]
 workspace = true
-features = ["trace", "replay", "serde", "strict_asserts", "wgsl", "gles"]
+features = [
+  "raw-window-handle",
+  "trace",
+  "replay",
+  "serde",
+  "strict_asserts",
+  "wgsl",
+  "gles",
+]
 
 # We want the wgpu-core Metal backend on macOS and iOS.
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies.wgpu-core]
 workspace = true
 features = ["metal"]
 
-# We want the wgpu-core Direct3D backends on Windows.
+# We want the wgpu-core Direct3D backend on Windows.
 [target.'cfg(windows)'.dependencies.wgpu-core]
 workspace = true
-features = ["dx11", "dx12"]
+features = ["dx12"]
 
 [target.'cfg(windows)'.dependencies.wgpu-hal]
 workspace = true

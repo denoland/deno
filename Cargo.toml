@@ -185,10 +185,10 @@ hkdf = "0.12.3"
 rsa = { version = "0.9.3", default-features = false, features = ["std", "pem", "hazmat"] } # hazmat needed for PrehashSigner in ext/node
 
 # webgpu
-raw-window-handle = "0.5.0"
-wgpu-core = { version = "=0.18", features = ["raw-window-handle"] }
-wgpu-hal = "=0.18"
-wgpu-types = "=0.18"
+raw-window-handle = "0.6.0"
+wgpu-core = "0.20"
+wgpu-hal = "0.20"
+wgpu-types = "0.20"
 
 # macros
 proc-macro2 = "1"

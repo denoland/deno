@@ -1,4 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
 use deno_core::error::AnyError;
 use deno_core::ResourceId;
 use serde::Serialize;
@@ -89,6 +90,7 @@ pub enum WebGpuError {
   Lost,
   OutOfMemory,
   Validation(String),
+  Internal,
 }
 
 impl From<CreateBufferError> for WebGpuError {
@@ -106,9 +108,7 @@ impl From<DeviceError> for WebGpuError {
     match err {
       DeviceError::Lost => WebGpuError::Lost,
       DeviceError::OutOfMemory => WebGpuError::OutOfMemory,
-      DeviceError::ResourceCreationFailed
-      | DeviceError::Invalid
-      | DeviceError::WrongDevice => WebGpuError::Validation(fmt_err(&err)),
+      _ => WebGpuError::Validation(fmt_err(&err)),
     }
   }
 }

@@ -48,6 +48,8 @@ declare class GPUSupportedLimits {
   maxVertexAttributes?: number;
   maxVertexBufferArrayStride?: number;
   maxInterStageShaderComponents?: number;
+  maxColorAttachments?: number;
+  maxColorAttachmentBytesPerSample?: number;
   maxComputeWorkgroupStorageSize?: number;
   maxComputeInvocationsPerWorkgroup?: number;
   maxComputeWorkgroupSizeX?: number;
@@ -124,7 +126,7 @@ declare class GPUAdapter {
   readonly isFallbackAdapter: boolean;
 
   requestDevice(descriptor?: GPUDeviceDescriptor): Promise<GPUDevice>;
-  requestAdapterInfo(unmaskHints?: string[]): Promise<GPUAdapterInfo>;
+  requestAdapterInfo(): Promise<GPUAdapterInfo>;
 }
 
 /**
@@ -150,6 +152,9 @@ declare type GPUFeatureName =
   | "timestamp-query"
   | "indirect-first-instance"
   | "shader-f16"
+  | "rg11b10ufloat-renderable"
+  | "bgra8unorm-storage"
+  | "float32-filterable"
   // extended from spec
   | "mappable-primary-buffers"
   | "sampled-texture-binding-array"
@@ -427,6 +432,7 @@ declare type GPUTextureFormat =
   | "bgra8unorm"
   | "bgra8unorm-srgb"
   | "rgb9e5ufloat"
+  | "rgb10a2uint"
   | "rgb10a2unorm"
   | "rg11b10ufloat"
   | "rg32uint"
@@ -658,7 +664,10 @@ declare type GPUTextureSampleType =
  * @category WebGPU
  * @tags unstable
  */
-declare type GPUStorageTextureAccess = "write-only";
+declare type GPUStorageTextureAccess =
+  | "write-only"
+  | "read-only"
+  | "read-write";
 
 /**
  * @category WebGPU
@@ -757,6 +766,30 @@ declare interface GPUCompilationInfo {
 }
 
 /**
+ * @category GPU
+ * @tags unstable
+ */
+declare class GPUPipelineError extends DOMException {
+  constructor(message?: string, options?: GPUPipelineErrorInit);
+
+  readonly reason: GPUPipelineErrorReason;
+}
+
+/**
+ * @category GPU
+ * @tags unstable
+ */
+declare interface GPUPipelineErrorInit {
+  reason: GPUPipelineErrorReason;
+}
+
+/**
+ * @category GPU
+ * @tags unstable
+ */
+declare type GPUPipelineErrorReason = "validation" | "internal";
+
+/**
  * @category WebGPU
  * @tags unstable
  */
@@ -801,7 +834,8 @@ declare interface GPUPipelineBase {
  */
 declare interface GPUProgrammableStage {
   module: GPUShaderModule;
-  entryPoint: string;
+  entryPoint?: string;
+  constants?: Record<string, number>;
 }
 
 /**
@@ -1063,7 +1097,8 @@ declare type GPUVertexFormat =
   | "sint32"
   | "sint32x2"
   | "sint32x3"
-  | "sint32x4";
+  | "sint32x4"
+  | "unorm10-10-10-2";
 
 /**
  * @category WebGPU
@@ -1654,10 +1689,39 @@ declare class GPUValidationError extends GPUError {
 }
 
 /**
+ * @category GPU
+ * @tags unstable
+ */
+declare class GPUInternalError extends GPUError {
+  constructor(message: string);
+}
+
+/**
  * @category WebGPU
  * @tags unstable
  */
-declare type GPUErrorFilter = "out-of-memory" | "validation";
+declare type GPUErrorFilter = "out-of-memory" | "validation" | "internal";
+
+/**
+ * @category GPU
+ * @tags unstable
+ */
+declare class GPUUncapturedErrorEvent extends EventTarget {
+  constructor(
+    type: string,
+    gpuUncapturedErrorEventInitDict: GPUUncapturedErrorEventInit,
+  );
+
+  readonly error: GPUError;
+}
+
+/**
+ * @category GPU
+ * @tags unstable
+ */
+declare interface GPUUncapturedErrorEventInit extends EventInit {
+  error: GPUError;
+}
 
 /**
  * @category WebGPU
