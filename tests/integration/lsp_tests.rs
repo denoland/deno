@@ -16,6 +16,65 @@ use test_util::testdata_path;
 use test_util::TestContextBuilder;
 use tower_lsp::lsp_types as lsp;
 
+/// Helper to get the `lsp::Range` of the `n`th occurrence of
+/// `text` in `src`. `n` is zero-based, like most indexes.
+fn range_of_nth(
+  n: usize,
+  text: impl AsRef<str>,
+  src: impl AsRef<str>,
+) -> lsp::Range {
+  let text = text.as_ref();
+
+  let src = src.as_ref();
+
+  let start = src
+    .match_indices(text)
+    .nth(n)
+    .map(|(i, _)| i)
+    .expect(&*format!("couldn't find text {text} in source {src}"));
+  let end = start + text.len();
+  let mut line = 0;
+  let mut col = 0;
+  let mut byte_idx = 0;
+
+  let pos = |line, col| lsp::Position {
+    line,
+    character: col,
+  };
+
+  let mut start_pos = None;
+  let mut end_pos = None;
+  for c in src.chars() {
+    if byte_idx == start {
+      start_pos = Some(pos(line, col));
+    }
+    if byte_idx == end {
+      end_pos = Some(pos(line, col));
+      break;
+    }
+    if c == '\n' {
+      line += 1;
+      col = 0;
+    } else {
+      col += c.len_utf16() as u32;
+    }
+    byte_idx += c.len_utf8();
+  }
+  if start_pos.is_some() && end_pos.is_none() {
+    // range extends to end of string
+    end_pos = Some(pos(line, col));
+  }
+
+  let (start, end) = (start_pos.unwrap(), end_pos.unwrap());
+  lsp::Range { start, end }
+}
+
+/// Helper to get the `lsp::Range` of the first occurrence of
+/// `text` in `src`. Equivalent to `range_of_nth(0, text, src)`.
+fn range_of(text: impl AsRef<str>, src: impl AsRef<str>) -> lsp::Range {
+  range_of_nth(0, text, src)
+}
+
 #[test]
 fn lsp_startup_shutdown() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
