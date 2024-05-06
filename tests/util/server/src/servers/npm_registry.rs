@@ -10,7 +10,6 @@ use super::ServerKind;
 use super::ServerOptions;
 use bytes::Bytes;
 use http_body_util::combinators::UnsyncBoxBody;
-use http_body_util::Empty;
 use hyper::body::Incoming;
 use hyper::Request;
 use hyper::Response;
