@@ -433,7 +433,7 @@ pub async fn run_benchmarks(
   // `PermissionsContainer` - otherwise granting/revoking permissions in one
   // file would have impact on other files, which is undesirable.
   let permissions =
-    Permissions::from_options(&cli_options.permissions_options())?;
+    Permissions::from_options(&cli_options.permissions_options()?)?;
 
   let specifiers = collect_specifiers(
     bench_options.files,
@@ -519,7 +519,7 @@ pub async fn run_benchmarks_with_watch(
         // `PermissionsContainer` - otherwise granting/revoking permissions in one
         // file would have impact on other files, which is undesirable.
         let permissions =
-          Permissions::from_options(&cli_options.permissions_options())?;
+          Permissions::from_options(&cli_options.permissions_options()?)?;
 
         let graph = module_graph_creator
           .create_graph(graph_kind, bench_modules)
