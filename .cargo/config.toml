@@ -12,18 +12,19 @@ rustflags = [
 ]
 
 [target.x86_64-apple-darwin]
+linker = "../lzld/lzld"
 rustflags = [
   "-C",
-  "linker=/usr/local/bin/lld",
+  "linker-flavor=ld64.lld",
   "-C",
   "link-args=-L/Users/divy/gh/lzld -llzld_x86_64"
-
 ]
 
 [target.aarch64-apple-darwin]
+linker = "../lzld/lzld"
 rustflags = [
   "-C",
-  "linker=/usr/local/bin/lld",
+  "linker-flavor=ld64.lld",
   "-C",
   "link-args=-L/Users/divy/gh/lzld -llzld_arm64"
 ]
