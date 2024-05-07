@@ -3979,8 +3979,7 @@ fn install_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     let args = cmd_values.collect();
 
     flags.subcommand = DenoSubcommand::Install(InstallFlags {
-      // TODO(bartlomieju): remove once `deno install` supports both local and
-      // global installs
+      // TODO(bartlomieju): remove for 2.0
       global,
       kind: InstallKind::Global(InstallFlagsGlobal {
         name,
