@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::borrow::Cow;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -28,23 +29,43 @@ use crate::file_fetcher::FileFetcher;
 use crate::jsr::JsrFetchResolver;
 use crate::npm::NpmFetchResolver;
 
-enum ConfigFile {
-  Deno(deno_config::ConfigFile),
+enum DenoConfigFormat {
+  Json,
+  Jsonc,
+}
+
+impl DenoConfigFormat {
+  fn from_specifier(spec: &ModuleSpecifier) -> Result<Self, AnyError> {
+    let file_name = spec
+      .path_segments()
+      .ok_or_else(|| anyhow!("Empty path in deno config specifier: {spec}"))?
+      .last()
+      .unwrap();
+    match file_name {
+      "deno.json" => Ok(Self::Json),
+      "deno.jsonc" => Ok(Self::Jsonc),
+      _ => bail!("Unsupported deno config file: {file_name}"),
+    }
+  }
+}
+
+enum DenoOrPackageJson {
+  Deno(deno_config::ConfigFile, DenoConfigFormat),
   Npm(deno_node::PackageJson, Option<FmtOptionsConfig>),
 }
 
-impl ConfigFile {
-  fn specifier(&self) -> ModuleSpecifier {
+impl DenoOrPackageJson {
+  fn specifier(&self) -> Cow<ModuleSpecifier> {
     match self {
-      Self::Deno(d) => d.specifier.clone(),
-      Self::Npm(n, ..) => n.specifier(),
+      Self::Deno(d, ..) => Cow::Borrowed(&d.specifier),
+      Self::Npm(n, ..) => Cow::Owned(n.specifier()),
     }
   }
 
   /// Returns the existing imports/dependencies from the config.
   fn existing_imports(&self) -> Result<IndexMap<String, String>, AnyError> {
     match self {
-      ConfigFile::Deno(deno) => {
+      DenoOrPackageJson::Deno(deno, ..) => {
         if let Some(imports) = deno.json.imports.clone() {
           match serde_json::from_value(imports) {
             Ok(map) => Ok(map),
@@ -56,7 +77,7 @@ impl ConfigFile {
           Ok(Default::default())
         }
       }
-      ConfigFile::Npm(npm, ..) => {
+      DenoOrPackageJson::Npm(npm, ..) => {
         Ok(npm.dependencies.clone().unwrap_or_default())
       }
     }
@@ -64,27 +85,30 @@ impl ConfigFile {
 
   fn fmt_options(&self) -> FmtOptionsConfig {
     match self {
-      ConfigFile::Deno(deno) => deno
+      DenoOrPackageJson::Deno(deno, ..) => deno
         .to_fmt_config()
         .ok()
         .flatten()
         .map(|f| f.options)
         .unwrap_or_default(),
-      ConfigFile::Npm(_, config) => config.clone().unwrap_or_default(),
+      DenoOrPackageJson::Npm(_, config) => config.clone().unwrap_or_default(),
     }
   }
 
   fn imports_key(&self) -> &'static str {
     match self {
-      ConfigFile::Deno(_) => "imports",
-      ConfigFile::Npm(..) => "dependencies",
+      DenoOrPackageJson::Deno(..) => "imports",
+      DenoOrPackageJson::Npm(..) => "dependencies",
     }
   }
 
   fn file_name(&self) -> &'static str {
     match self {
-      ConfigFile::Deno(_) => "deno.json",
-      ConfigFile::Npm(..) => "package.json",
+      DenoOrPackageJson::Deno(_, format) => match format {
+        DenoConfigFormat::Json => "deno.json",
+        DenoConfigFormat::Jsonc => "deno.jsonc",
+      },
+      DenoOrPackageJson::Npm(..) => "package.json",
     }
   }
 
@@ -97,28 +121,31 @@ impl ConfigFile {
   /// creates a `deno.json` file - in this case
   /// we also return a new `CliFactory` that knows about
   /// the new config
-  async fn from_flags(flags: Flags) -> Result<(Self, CliFactory), AnyError> {
+  fn from_flags(flags: Flags) -> Result<(Self, CliFactory), AnyError> {
     let factory = CliFactory::from_flags(flags.clone())?;
     let options = factory.cli_options().clone();
 
     match (options.maybe_config_file(), options.maybe_package_json()) {
       // when both are present, for now,
       // default to deno.json
-      (Some(deno), Some(_) | None) => {
-        Ok((ConfigFile::Deno(deno.clone()), factory))
-      }
+      (Some(deno), Some(_) | None) => Ok((
+        DenoOrPackageJson::Deno(
+          deno.clone(),
+          DenoConfigFormat::from_specifier(&deno.specifier)?,
+        ),
+        factory,
+      )),
       (None, Some(package_json)) if options.enable_future_features() => {
-        Ok((ConfigFile::Npm(package_json.clone(), None), factory))
+        Ok((DenoOrPackageJson::Npm(package_json.clone(), None), factory))
       }
       (None, Some(_) | None) => {
-        tokio::fs::write(options.initial_cwd().join("deno.json"), "{}\n")
-          .await
+        std::fs::write(options.initial_cwd().join("deno.json"), "{}\n")
           .context("Failed to create deno.json file")?;
         log::info!("Created deno.json configuration file.");
         let new_factory = CliFactory::from_flags(flags.clone())?;
         let new_options = new_factory.cli_options().clone();
         Ok((
-          ConfigFile::Deno(
+          DenoOrPackageJson::Deno(
             new_options
               .maybe_config_file()
               .as_ref()
@@ -126,6 +153,7 @@ impl ConfigFile {
                 anyhow!("config not found, but it was just created")
               })?
               .clone(),
+            DenoConfigFormat::Json,
           ),
           new_factory,
         ))
@@ -152,7 +180,7 @@ fn package_json_dependency_entry(
 
 pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
   let (config_file, cli_factory) =
-    ConfigFile::from_flags(flags.clone()).await?;
+    DenoOrPackageJson::from_flags(flags.clone())?;
 
   let config_specifier = config_file.specifier();
   if config_specifier.scheme() != "file" {
