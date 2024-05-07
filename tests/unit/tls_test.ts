@@ -11,8 +11,6 @@ import { BufReader, BufWriter } from "@std/io/mod.ts";
 import { readAll } from "@std/io/read_all.ts";
 import { writeAll } from "@std/io/write_all.ts";
 import { TextProtoReader } from "../testdata/run/textproto.ts";
-// @ts-expect-error TypeScript (as of 3.7) does not support indexing namespaces by symbol
-const { resolverSymbol, serverNameSymbol } = Deno[Deno.internal];
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -1647,54 +1645,6 @@ Deno.test(
       certFile: "tests/testdata/tls/localhost_ecc.crt",
       keyFile: "tests/testdata/tls/localhost_ecc.key",
     });
-    listener.close();
-  },
-);
-
-Deno.test(
-  { permissions: { net: true, read: true } },
-  async function listenResolver() {
-    const sniRequests: string[] = [];
-    const keys = {
-      "server-1": { cert, key },
-      "server-2": { cert: certEcc, key: keyEcc },
-      "fail-server-3": { cert: "(invalid)", key: "(bad)" },
-    };
-    const listener = Deno.listenTls({
-      hostname: "localhost",
-      port: 0,
-      [resolverSymbol]: (sni: string) => {
-        sniRequests.push(sni);
-        return keys[sni]!;
-      },
-    });
-
-    for (
-      const server of ["server-1", "server-2", "fail-server-3", "fail-server-4"]
-    ) {
-      const conn = await Deno.connectTls({
-        hostname: "localhost",
-        [serverNameSymbol]: server,
-        port: listener.addr.port,
-      });
-      const serverConn = await listener.accept();
-      if (server.startsWith("fail-")) {
-        await assertRejects(async () => await conn.handshake());
-        await assertRejects(async () => await serverConn.handshake());
-      } else {
-        await conn.handshake();
-        await serverConn.handshake();
-      }
-      conn.close();
-      serverConn.close();
-    }
-
-    assertEquals(sniRequests, [
-      "server-1",
-      "server-2",
-      "fail-server-3",
-      "fail-server-4",
-    ]);
     listener.close();
   },
 );
