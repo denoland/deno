@@ -1,4 +1,4 @@
-import { getValue, setValue } from "@denotest/esm-basic";
+import { getValue, setValue } from "@denotest/basic";
 import * as test from "@denotest2/basic";
 
 console.log(getValue());

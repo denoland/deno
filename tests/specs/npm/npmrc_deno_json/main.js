@@ -1,4 +1,4 @@
-import { getValue, setValue } from "npm:@denotest/esm-basic";
+import { getValue, setValue } from "npm:@denotest/basic";
 
 console.log(getValue());
 setValue(42);

@@ -1,9 +1,9 @@
 [UNORDERED_START]
-Download http://127.0.0.1:4252/private_registry_1/@denotest/esm-basic
-Download http://localhost:4252/private_registry_1/@denotest/esm-basic/1.0.0.tgz
-Download http://127.0.0.1:4253/private_registry_2/@denotest2/basic
-Download http://localhost:4253/private_registry_2/@denotest2/basic/1.0.0.tgz
-Initialize @denotest/esm-basic@1.0.0
+Download http://127.0.0.1:4559/npm-private/@denotest/basic
+Download http://localhost:4559/npm-private/@denotest/basic/1.0.0.tgz
+Download http://127.0.0.1:4560/npm-private2/@denotest2/basic
+Download http://localhost:4560/npm-private2/@denotest2/basic/1.0.0.tgz
+Initialize @denotest/basic@1.0.0
 Initialize @denotest2/basic@1.0.0
 [UNORDERED_END]
 0

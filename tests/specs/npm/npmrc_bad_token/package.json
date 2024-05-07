@@ -2,6 +2,6 @@
   "name": "npmrc_test",
   "version": "0.0.1",
   "dependencies": {
-    "@denotest/esm-basic": "1.0.0"
+    "@denotest/basic": "1.0.0"
   }
 }
