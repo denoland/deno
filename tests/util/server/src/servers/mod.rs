@@ -72,7 +72,7 @@ const BASIC_AUTH_REDIRECT_PORT: u16 = 4554;
 // 4555 is used by the proxy server
 // 4556 is used by net_listen_allow_localhost_4555_fail
 const TLS_PORT: u16 = 4557;
-// 4558 is used by complex_permissions_test
+// 4558 is used by net_listen_allow_localhost_4555
 const HTTPS_PORT: u16 = 5545;
 const H1_ONLY_TLS_PORT: u16 = 5546;
 const H2_ONLY_TLS_PORT: u16 = 5547;

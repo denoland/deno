@@ -2939,7 +2939,7 @@ mod permissions {
     let _http_guard = util::http_server();
     let (_, err) = util::run_and_collect_output(
       true,
-        "run --allow-net=localhost:4260 run/complex_permissions_test.ts netListen localhost:4260",
+        "run --allow-net=localhost:4588 run/complex_permissions_test.ts netListen localhost:4588",
         None,
         None,
         false,
