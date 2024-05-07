@@ -1,32 +1,23 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::collections::HashMap;
+use std::path::Path;
+use std::path::PathBuf;
+use std::rc::Rc;
+
+use deno_core::anyhow::bail;
+use deno_core::error::AnyError;
+use deno_task_shell::ShellCommand;
+use indexmap::IndexMap;
+
 use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::TaskFlags;
 use crate::colors;
 use crate::factory::CliFactory;
 use crate::npm::CliNpmResolver;
-use crate::npm::InnerCliNpmResolverRef;
-use crate::npm::ManagedCliNpmResolver;
+use crate::task_runner;
 use crate::util::fs::canonicalize_path;
-use deno_core::anyhow::bail;
-use deno_core::anyhow::Context;
-use deno_core::error::AnyError;
-use deno_core::futures;
-use deno_core::futures::future::LocalBoxFuture;
-use deno_runtime::deno_node::NodeResolver;
-use deno_semver::package::PackageNv;
-use deno_task_shell::ExecuteResult;
-use deno_task_shell::ShellCommand;
-use deno_task_shell::ShellCommandContext;
-use indexmap::IndexMap;
-use lazy_regex::Lazy;
-use regex::Regex;
-use std::collections::HashMap;
-use std::path::Path;
-use std::path::PathBuf;
-use std::rc::Rc;
-use tokio::task::LocalSet;
 
 pub async fn execute_script(
   flags: Flags,
@@ -70,7 +61,7 @@ pub async fn execute_script(
     };
 
     let npm_commands =
-      resolve_npm_commands(npm_resolver.as_ref(), node_resolver)?;
+      task_runner::resolve_npm_commands(npm_resolver.as_ref(), node_resolver)?;
     run_task(
       task_name,
       script,
@@ -125,7 +116,7 @@ pub async fn execute_script(
       format!("post{}", task_name),
     ];
     let npm_commands =
-      resolve_npm_commands(npm_resolver.as_ref(), node_resolver)?;
+      task_runner::resolve_npm_commands(npm_resolver.as_ref(), node_resolver)?;
     for task_name in task_names {
       if let Some(script) = package_json_scripts.get(&task_name) {
         let exit_code = run_task(
@@ -161,28 +152,16 @@ async fn run_task(
 ) -> Result<i32, AnyError> {
   let script = get_script_with_args(script, cli_options);
   output_task(task_name, &script);
-  let seq_list = deno_task_shell::parser::parse(&script)
-    .with_context(|| format!("Error parsing script '{}'.", task_name))?;
-  let env_vars = match npm_resolver.root_node_modules_path() {
-    Some(dir_path) => collect_env_vars_with_node_modules_dir(dir_path),
-    None => collect_env_vars(),
-  };
-  let local = LocalSet::new();
-  let future = deno_task_shell::execute(seq_list, env_vars, cwd, npm_commands);
-  Ok(local.run_until(future).await)
-}
-
-fn get_script_with_args(script: &str, options: &CliOptions) -> String {
-  let additional_args = options
-    .argv()
-    .iter()
-    // surround all the additional arguments in double quotes
-    // and sanitize any command substitution
-    .map(|a| format!("\"{}\"", a.replace('"', "\\\"").replace('$', "\\$")))
-    .collect::<Vec<_>>()
-    .join(" ");
-  let script = format!("{script} {additional_args}");
-  script.trim().to_owned()
+  task_runner::run_task(task_runner::RunTaskOptions {
+    task_name,
+    script: &script,
+    cwd,
+    npm_commands,
+    root_node_modules_path: npm_resolver
+      .root_node_modules_path()
+      .map(|p| p.as_path()),
+  })
+  .await
 }
 
 fn output_task(task_name: &str, script: &str) {
@@ -192,50 +171,6 @@ fn output_task(task_name: &str, script: &str) {
     colors::cyan(&task_name),
     script,
   );
-}
-
-fn collect_env_vars_with_node_modules_dir(
-  node_modules_dir_path: &Path,
-) -> HashMap<String, String> {
-  let mut env_vars = collect_env_vars();
-  prepend_to_path(
-    &mut env_vars,
-    node_modules_dir_path
-      .join(".bin")
-      .to_string_lossy()
-      .to_string(),
-  );
-  env_vars
-}
-
-fn prepend_to_path(env_vars: &mut HashMap<String, String>, value: String) {
-  match env_vars.get_mut("PATH") {
-    Some(path) => {
-      if path.is_empty() {
-        *path = value;
-      } else {
-        *path =
-          format!("{}{}{}", value, if cfg!(windows) { ";" } else { ":" }, path);
-      }
-    }
-    None => {
-      env_vars.insert("PATH".to_string(), value);
-    }
-  }
-}
-
-fn collect_env_vars() -> HashMap<String, String> {
-  // get the starting env vars (the PWD env var will be set by deno_task_shell)
-  let mut env_vars = std::env::vars().collect::<HashMap<String, String>>();
-  const INIT_CWD_NAME: &str = "INIT_CWD";
-  if !env_vars.contains_key(INIT_CWD_NAME) {
-    if let Ok(cwd) = std::env::current_dir() {
-      // if not set, set an INIT_CWD env var that has the cwd
-      env_vars
-        .insert(INIT_CWD_NAME.to_string(), cwd.to_string_lossy().to_string());
-    }
-  }
-  env_vars
 }
 
 fn print_available_tasks(
@@ -283,272 +218,15 @@ fn print_available_tasks(
   }
 }
 
-struct NpxCommand;
-
-impl ShellCommand for NpxCommand {
-  fn execute(
-    &self,
-    mut context: ShellCommandContext,
-  ) -> LocalBoxFuture<'static, ExecuteResult> {
-    if let Some(first_arg) = context.args.first().cloned() {
-      if let Some(command) = context.state.resolve_command(&first_arg) {
-        let context = ShellCommandContext {
-          args: context.args.iter().skip(1).cloned().collect::<Vec<_>>(),
-          ..context
-        };
-        command.execute(context)
-      } else {
-        let _ = context
-          .stderr
-          .write_line(&format!("npx: could not resolve command '{first_arg}'"));
-        Box::pin(futures::future::ready(ExecuteResult::from_exit_code(1)))
-      }
-    } else {
-      let _ = context.stderr.write_line("npx: missing command");
-      Box::pin(futures::future::ready(ExecuteResult::from_exit_code(1)))
-    }
-  }
-}
-
-#[derive(Clone)]
-struct NpmPackageBinCommand {
-  name: String,
-  npm_package: PackageNv,
-}
-
-impl ShellCommand for NpmPackageBinCommand {
-  fn execute(
-    &self,
-    context: ShellCommandContext,
-  ) -> LocalBoxFuture<'static, ExecuteResult> {
-    let mut args = vec![
-      "run".to_string(),
-      "-A".to_string(),
-      if self.npm_package.name == self.name {
-        format!("npm:{}", self.npm_package)
-      } else {
-        format!("npm:{}/{}", self.npm_package, self.name)
-      },
-    ];
-    args.extend(context.args);
-    let executable_command = deno_task_shell::ExecutableCommand::new(
-      "deno".to_string(),
-      std::env::current_exe().unwrap(),
-    );
-    executable_command.execute(ShellCommandContext { args, ..context })
-  }
-}
-
-/// Runs a module in the node_modules folder.
-#[derive(Clone)]
-struct NodeModulesFileRunCommand {
-  command_name: String,
-  path: PathBuf,
-}
-
-impl ShellCommand for NodeModulesFileRunCommand {
-  fn execute(
-    &self,
-    mut context: ShellCommandContext,
-  ) -> LocalBoxFuture<'static, ExecuteResult> {
-    let mut args = vec![
-      "run".to_string(),
-      "--ext=js".to_string(),
-      "-A".to_string(),
-      self.path.to_string_lossy().to_string(),
-    ];
-    args.extend(context.args);
-    let executable_command = deno_task_shell::ExecutableCommand::new(
-      "deno".to_string(),
-      std::env::current_exe().unwrap(),
-    );
-    // set this environment variable so that the launched process knows the npm command name
-    context
-      .state
-      .apply_env_var("DENO_INTERNAL_NPM_CMD_NAME", &self.command_name);
-    executable_command.execute(ShellCommandContext { args, ..context })
-  }
-}
-
-fn resolve_npm_commands(
-  npm_resolver: &dyn CliNpmResolver,
-  node_resolver: &NodeResolver,
-) -> Result<HashMap<String, Rc<dyn ShellCommand>>, AnyError> {
-  match npm_resolver.as_inner() {
-    InnerCliNpmResolverRef::Byonm(npm_resolver) => {
-      let node_modules_dir = npm_resolver.root_node_modules_path().unwrap();
-      Ok(resolve_npm_commands_from_bin_dir(node_modules_dir))
-    }
-    InnerCliNpmResolverRef::Managed(npm_resolver) => {
-      resolve_managed_npm_commands(npm_resolver, node_resolver)
-    }
-  }
-}
-
-fn resolve_npm_commands_from_bin_dir(
-  node_modules_dir: &Path,
-) -> HashMap<String, Rc<dyn ShellCommand>> {
-  let mut result = HashMap::<String, Rc<dyn ShellCommand>>::new();
-  let bin_dir = node_modules_dir.join(".bin");
-  log::debug!("Resolving commands in '{}'.", bin_dir.display());
-  match std::fs::read_dir(&bin_dir) {
-    Ok(entries) => {
-      for entry in entries {
-        let Ok(entry) = entry else {
-          continue;
-        };
-        if let Some(command) = resolve_bin_dir_entry_command(entry) {
-          result.insert(command.command_name.clone(), Rc::new(command));
-        }
-      }
-    }
-    Err(err) => {
-      log::debug!("Failed read_dir for '{}': {:#}", bin_dir.display(), err);
-    }
-  }
-  result
-}
-
-fn resolve_bin_dir_entry_command(
-  entry: std::fs::DirEntry,
-) -> Option<NodeModulesFileRunCommand> {
-  if entry.path().extension().is_some() {
-    return None; // only look at files without extensions (even on Windows)
-  }
-  let file_type = entry.file_type().ok()?;
-  let path = if file_type.is_file() {
-    entry.path()
-  } else if file_type.is_symlink() {
-    entry.path().canonicalize().ok()?
-  } else {
-    return None;
-  };
-  let text = std::fs::read_to_string(&path).ok()?;
-  let command_name = entry.file_name().to_string_lossy().to_string();
-  if let Some(path) = resolve_execution_path_from_npx_shim(path, &text) {
-    log::debug!(
-      "Resolved npx command '{}' to '{}'.",
-      command_name,
-      path.display()
-    );
-    Some(NodeModulesFileRunCommand { command_name, path })
-  } else {
-    log::debug!("Failed resolving npx command '{}'.", command_name);
-    None
-  }
-}
-
-/// This is not ideal, but it works ok because it allows us to bypass
-/// the shebang and execute the script directly with Deno.
-fn resolve_execution_path_from_npx_shim(
-  file_path: PathBuf,
-  text: &str,
-) -> Option<PathBuf> {
-  static SCRIPT_PATH_RE: Lazy<Regex> =
-    lazy_regex::lazy_regex!(r#""\$basedir\/([^"]+)" "\$@""#);
-
-  if text.starts_with("#!/usr/bin/env node") {
-    // launch this file itself because it's a JS file
-    Some(file_path)
-  } else {
-    // Search for...
-    // > "$basedir/../next/dist/bin/next" "$@"
-    // ...which is what it will look like on Windows
-    SCRIPT_PATH_RE
-      .captures(text)
-      .and_then(|c| c.get(1))
-      .map(|relative_path| {
-        file_path.parent().unwrap().join(relative_path.as_str())
-      })
-  }
-}
-
-fn resolve_managed_npm_commands(
-  npm_resolver: &ManagedCliNpmResolver,
-  node_resolver: &NodeResolver,
-) -> Result<HashMap<String, Rc<dyn ShellCommand>>, AnyError> {
-  let mut result = HashMap::new();
-  let snapshot = npm_resolver.snapshot();
-  for id in snapshot.top_level_packages() {
-    let package_folder = npm_resolver.resolve_pkg_folder_from_pkg_id(id)?;
-    let bin_commands =
-      node_resolver.resolve_binary_commands(&package_folder)?;
-    for bin_command in bin_commands {
-      result.insert(
-        bin_command.to_string(),
-        Rc::new(NpmPackageBinCommand {
-          name: bin_command,
-          npm_package: id.nv.clone(),
-        }) as Rc<dyn ShellCommand>,
-      );
-    }
-  }
-  if !result.contains_key("npx") {
-    result.insert("npx".to_string(), Rc::new(NpxCommand));
-  }
-  Ok(result)
-}
-
-#[cfg(test)]
-mod test {
-  use super::*;
-
-  #[test]
-  fn test_prepend_to_path() {
-    let mut env_vars = HashMap::new();
-
-    prepend_to_path(&mut env_vars, "/example".to_string());
-    assert_eq!(
-      env_vars,
-      HashMap::from([("PATH".to_string(), "/example".to_string())])
-    );
-
-    prepend_to_path(&mut env_vars, "/example2".to_string());
-    let separator = if cfg!(windows) { ";" } else { ":" };
-    assert_eq!(
-      env_vars,
-      HashMap::from([(
-        "PATH".to_string(),
-        format!("/example2{}/example", separator)
-      )])
-    );
-
-    env_vars.get_mut("PATH").unwrap().clear();
-    prepend_to_path(&mut env_vars, "/example".to_string());
-    assert_eq!(
-      env_vars,
-      HashMap::from([("PATH".to_string(), "/example".to_string())])
-    );
-  }
-
-  #[test]
-  fn test_resolve_execution_path_from_npx_shim() {
-    // example shim on unix
-    let unix_shim = r#"#!/usr/bin/env node
-"use strict";
-console.log('Hi!');
-"#;
-    let path = PathBuf::from("/node_modules/.bin/example");
-    assert_eq!(
-      resolve_execution_path_from_npx_shim(path.clone(), unix_shim).unwrap(),
-      path
-    );
-    // example shim on windows
-    let windows_shim = r#"#!/bin/sh
-basedir=$(dirname "$(echo "$0" | sed -e 's,\\,/,g')")
-
-case `uname` in
-    *CYGWIN*|*MINGW*|*MSYS*) basedir=`cygpath -w "$basedir"`;;
-esac
-
-if [ -x "$basedir/node" ]; then
-  exec "$basedir/node"  "$basedir/../example/bin/example" "$@"
-else 
-  exec node  "$basedir/../example/bin/example" "$@"
-fi"#;
-    assert_eq!(
-      resolve_execution_path_from_npx_shim(path.clone(), windows_shim).unwrap(),
-      path.parent().unwrap().join("../example/bin/example")
-    );
-  }
+fn get_script_with_args(script: &str, options: &CliOptions) -> String {
+  let additional_args = options
+    .argv()
+    .iter()
+    // surround all the additional arguments in double quotes
+    // and sanitize any command substitution
+    .map(|a| format!("\"{}\"", a.replace('"', "\\\"").replace('$', "\\$")))
+    .collect::<Vec<_>>()
+    .join(" ");
+  let script = format!("{script} {additional_args}");
+  script.trim().to_owned()
 }

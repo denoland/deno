@@ -3,12 +3,16 @@
 //! Code for local node_modules resolution.
 
 use std::borrow::Cow;
+use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fs;
+use std::io::Write;
+use std::os::unix::fs::symlink;
 use std::path::Path;
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use crate::cache::CACHE_PERM;
@@ -24,6 +28,7 @@ use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
+use deno_core::parking_lot::Mutex;
 use deno_core::unsync::spawn;
 use deno_core::unsync::JoinHandle;
 use deno_core::url::Url;
@@ -128,7 +133,7 @@ impl LocalNpmPackageResolver {
   }
 }
 
-#[async_trait]
+#[async_trait(?Send)]
 impl NpmPackageFsResolver for LocalNpmPackageResolver {
   fn root_dir_url(&self) -> &Url {
     &self.root_node_modules_url
@@ -267,6 +272,10 @@ async fn sync_resolution_with_fs(
   fs::create_dir_all(&deno_node_modules_dir).with_context(|| {
     format!("Creating '{}'", deno_local_registry_dir.display())
   })?;
+  let bin_node_modules_dir_path = root_node_modules_dir_path.join(".bin");
+  fs::create_dir_all(&bin_node_modules_dir_path).with_context(|| {
+    format!("Creating '{}'", bin_node_modules_dir_path.display())
+  })?;
 
   let single_process_lock = LaxSingleProcessFsFlag::lock(
     deno_local_registry_dir.join(".deno.lock"),
@@ -291,6 +300,10 @@ async fn sync_resolution_with_fs(
     Vec::with_capacity(package_partitions.packages.len());
   let mut newest_packages_by_name: HashMap<&String, &NpmResolutionPackage> =
     HashMap::with_capacity(package_partitions.packages.len());
+  let bin_entries_to_setup = Rc::new(RefCell::new(Vec::with_capacity(16)));
+  let packages_with_install_scripts =
+    Rc::new(RefCell::new(Vec::with_capacity(16)));
+
   for package in &package_partitions.packages {
     if let Some(current_pkg) =
       newest_packages_by_name.get_mut(&package.id.nv.name)
@@ -319,6 +332,8 @@ async fn sync_resolution_with_fs(
       let cache = cache.clone();
       let registry_url = registry_url.clone();
       let package = package.clone();
+      let bin_entries_to_setup = bin_entries_to_setup.clone();
+      let packages_with_install_scripts = packages_with_install_scripts.clone();
       let handle = spawn(async move {
         cache
           .ensure_package(&package.id.nv, &package.dist, &registry_url)
@@ -342,6 +357,21 @@ async fn sync_resolution_with_fs(
         }
         // write out a file that indicates this folder has been initialized
         fs::write(initialized_file, "")?;
+
+        if package.bin.is_some() {
+          bin_entries_to_setup
+            .borrow_mut()
+            .push((package.clone(), package_path.clone()));
+        }
+
+        if package.scripts.contains_key("install")
+          || package.scripts.contains_key("postinstall")
+        {
+          packages_with_install_scripts
+            .borrow_mut()
+            .push((package.clone(), package_path));
+        }
+
         // finally stop showing the progress bar
         drop(pb_guard); // explicit for clarity
         Ok(())
@@ -469,6 +499,86 @@ async fn sync_resolution_with_fs(
         &local_registry_package_path,
         &join_package_name(&deno_node_modules_dir, &package.id.nv.name),
       )?;
+    }
+  }
+
+  // 6. Set up `node_modules/.bin` entries for packages that need it.
+  for (package, package_path) in &*bin_entries_to_setup.borrow_mut() {
+    let package = snapshot.package_from_id(&package.id).unwrap();
+    if let Some(bin_entries) = &package.bin {
+      match bin_entries {
+        deno_npm::registry::NpmPackageVersionBinEntry::String(script) => {
+          let name = &package.id.nv.name;
+          symlink_bin_entry(
+            name,
+            script,
+            &package_path,
+            &bin_node_modules_dir_path,
+          )?;
+        }
+        deno_npm::registry::NpmPackageVersionBinEntry::Map(entries) => {
+          for (name, script) in entries {
+            symlink_bin_entry(
+              name,
+              script,
+              &package_path,
+              &bin_node_modules_dir_path,
+            )?;
+          }
+        }
+      }
+    }
+  }
+
+  // 7. Run pre/post/install scripts for packages
+  for (package, package_path) in &*packages_with_install_scripts.borrow_mut() {
+    let package = snapshot.package_from_id(&package.id).unwrap();
+
+    let script_names = ["preinstall", "install", "postinstall"];
+    let scripts = script_names
+      .iter()
+      .filter_map(|name| package.scripts.get(*name).map(|value| (name, value)))
+      .collect::<Vec<_>>();
+    if !scripts.is_empty() {
+      log::warn!(
+        "⚠️  {} {} has install scripts that might be required to execute for the package to work correctly.", 
+        deno_terminal::colors::yellow("Warning"), 
+        deno_terminal::colors::green(format!("{}", package.id.nv.name)), 
+      );
+      for (name, script) in &scripts {
+        log::warn!("  {}: {}", name, deno_terminal::colors::gray(script));
+      }
+      // TODO: add a prompt here to ask if we should run the script.
+      log::warn!("  Do you want to run this with full permissions? [y/N]");
+      // ASCII code for the bell character.
+      print!("\x07");
+      eprint!(" > ");
+      let mut buf = String::new();
+      let mut should_run = false;
+      loop {
+        let line_result = std::io::stdin().read_line(&mut buf);
+        if let Ok(_nread) = line_result {
+          let answer = buf.trim();
+          if answer == "y" || answer == "Y" {
+            should_run = true;
+            break;
+          } else if answer == "n" || answer == "N" {
+            break;
+          }
+        }
+      }
+      if should_run {
+        for (task_name, script) in scripts {
+          crate::task_runner::run_task(crate::task_runner::RunTaskOptions {
+            task_name,
+            script,
+            cwd: &package_path,
+            npm_commands: Default::default(), // todo
+            root_node_modules_path: Some(&root_node_modules_dir_path),
+          })
+          .await?;
+        }
+      }
     }
   }
 
@@ -646,6 +756,39 @@ fn get_package_folder_id_from_folder_name(
     nv: PackageNv { name, version },
     copy_index,
   })
+}
+
+fn symlink_bin_entry(
+  bin_name: &str,
+  bin_script: &str,
+  package_path: &Path,
+  bin_node_modules_dir_path: &Path,
+) -> Result<(), AnyError> {
+  let link = bin_node_modules_dir_path.join(bin_name);
+  let original = package_path.join(bin_script);
+
+  // Don't bother setting up another link if it already exists
+  if link.exists() {
+    let resolved = std::fs::read_link(&link).ok();
+    if let Some(resolved) = resolved {
+      if resolved != original {
+        log::warn!(
+          "{} Trying to set up '{}' bin for \"{}\", but an entry pointing to \"{}\" already exists. Skipping...", 
+          deno_terminal::colors::yellow("Warning"), 
+          bin_name,
+          resolved.display(),
+          original.display()
+        );
+        return Ok(());
+      }
+    }
+  }
+
+  // TODO: handle Windows
+  symlink(&original, &link).with_context(|| {
+    format!("Can't set up '{}' bin at {}", bin_name, link.display())
+  })?;
+  Ok(())
 }
 
 fn symlink_package_dir(
