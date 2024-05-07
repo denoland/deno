@@ -1,4 +1,4 @@
-Download http://127.0.0.1:4559/npm-private/@denotest/basic
-Download http://127.0.0.1:4559/npm-private/@denotest/basic
-error: Error getting response at http://127.0.0.1:4559/npm-private/@denotest/basic for package "@denotest/basic": Bad response: 401
+Download http://127.0.0.1:4559/@denotest/basic
+Download http://127.0.0.1:4559/@denotest/basic
+error: Error getting response at http://127.0.0.1:4559/@denotest/basic for package "@denotest/basic": Bad response: 401
 [WILDCARD]
