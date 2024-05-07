@@ -30,7 +30,14 @@ while [ $# -gt 0 ]; do
       shift
       ;;
     *)
-      args+=("$1")
+      if [[ $1 == -Wl,* ]]; then
+        IFS=',' read -r -a wl_args <<< "${1:4}"
+        for arg in "${wl_args[@]}"; do
+          args+=("$arg")
+        done
+      else
+        args+=("$1")
+      fi
       shift
       ;;
   esac
