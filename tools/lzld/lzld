@@ -1,6 +1,4 @@
 #!/bin/bash
-set -e
-
 arch=$(uname -m)
 
 # Find the path to the `lld` binary.
