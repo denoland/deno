@@ -1550,8 +1550,14 @@ impl Inner {
         match diagnostic.source.as_deref() {
           Some("deno-ts") => {
             let code = match diagnostic.code.as_ref().unwrap() {
-              NumberOrString::String(code) => code.to_string(),
-              NumberOrString::Number(code) => code.to_string(),
+              NumberOrString::String(code) => match code.parse() {
+                Ok(c) => c,
+                Err(e) => {
+                  lsp_warn!("Invalid diagnostic code {code}: {e}");
+                  continue;
+                }
+              },
+              NumberOrString::Number(code) => *code,
             };
             let codes = vec![code];
             let actions = self
