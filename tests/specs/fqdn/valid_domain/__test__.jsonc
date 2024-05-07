@@ -1,9 +1,0 @@
-{
-  "tempDir": true,
-  "steps": [
-    {
-      "args": " run  --allow-read --allow-env  --allow-write=notion-next --allow-net=api.notion.com,www.google.com,aws.amazon.com  main.js",
-      "output": "main.out"
-    }
-  ]
-}

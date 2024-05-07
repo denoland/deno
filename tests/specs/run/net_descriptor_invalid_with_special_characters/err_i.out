@@ -1,0 +1,4 @@
+error: Failed to parse *.amazon.com
+
+Caused by:
+    invalid char found in FQDN

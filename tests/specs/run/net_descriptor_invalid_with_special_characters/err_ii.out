@@ -1,0 +1,2 @@
+error: Uncaught (in promise) Error: No such host is known. (os error 11001)
+    at async Object.connect (ext:deno_net/01_net.js:587:55)

@@ -9644,10 +9644,13 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags::new_default(
           "script.ts".to_string()
         )),
-        allow_env: Some(vec![], ),
-        allow_net: Some(vec!["api.notion.com".to_string(), "*.amazonaws.com".to_string(), ], ),
-        allow_read: Some(vec![], ),
-        allow_write: Some(vec!["notion-next".to_string(), ], ),
+        permissions: PermissionFlags {
+            allow_env: Some(vec![], ),
+            allow_net: Some(vec!["api.notion.com".to_string(), "*.amazonaws.com".to_string(), ], ),
+            allow_read: Some(vec![], ),
+            allow_write: Some(vec!["notion-next".to_string(), ], ),
+             ..Default::default()
+        },
         unstable_config: UnstableConfig {
           ..Default::default()
         },
