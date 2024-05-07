@@ -1,8 +1,5 @@
 {
   "tempDir": true,
   "args": "run -A main.js",
-  "output": "main.out",
-  "envs": {
-    "DENO_FUTURE": "1"
-  }
+  "output": "main.out"
 }
