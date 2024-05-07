@@ -8,6 +8,7 @@ use std::cmp;
 use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::fmt;
+use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -70,14 +71,20 @@ impl From<PerformanceMark> for PerformanceMeasure {
   }
 }
 
-/// A simple structure for marking a start of something to measure the duration
-/// of and measuring that duration.  Each measurement is identified by a string
-/// name and a counter is incremented each time a new measurement is marked.
-///
-/// The structure will limit the size of measurements to the most recent 1000,
-/// and will roll off when that limit is reached.
 #[derive(Debug)]
-pub struct Performance {
+pub struct PerformanceScopeMark {
+  performance_inner: Arc<PerformanceInner>,
+  inner: Option<PerformanceMark>,
+}
+
+impl Drop for PerformanceScopeMark {
+  fn drop(&mut self) {
+    self.performance_inner.measure(self.inner.take().unwrap());
+  }
+}
+
+#[derive(Debug)]
+struct PerformanceInner {
   counts: Mutex<HashMap<String, u32>>,
   measurements_by_type:
     Mutex<HashMap<String, (/* count */ u32, /* duration */ f64)>>,
@@ -85,7 +92,36 @@ pub struct Performance {
   measures: Mutex<VecDeque<PerformanceMeasure>>,
 }
 
-impl Default for Performance {
+impl PerformanceInner {
+  fn measure(&self, mark: PerformanceMark) -> Duration {
+    let measure = PerformanceMeasure::from(mark);
+    lsp_debug!(
+      "{},",
+      json!({
+        "type": "measure",
+        "name": measure.name,
+        "count": measure.count,
+        "duration": measure.duration.as_micros() as f64 / 1000.0,
+      })
+    );
+    let duration = measure.duration;
+    {
+      let mut measurements_by_type = self.measurements_by_type.lock();
+      let measurement = measurements_by_type
+        .entry(measure.name.to_string())
+        .or_insert((0, 0.0));
+      measurement.1 += duration.as_micros() as f64 / 1000.0;
+    }
+    let mut measures = self.measures.lock();
+    measures.push_front(measure);
+    while measures.len() > self.max_size {
+      measures.pop_back();
+    }
+    duration
+  }
+}
+
+impl Default for PerformanceInner {
   fn default() -> Self {
     Self {
       counts: Default::default(),
@@ -96,12 +132,21 @@ impl Default for Performance {
   }
 }
 
+/// A simple structure for marking a start of something to measure the duration
+/// of and measuring that duration.  Each measurement is identified by a string
+/// name and a counter is incremented each time a new measurement is marked.
+///
+/// The structure will limit the size of measurements to the most recent 1000,
+/// and will roll off when that limit is reached.
+#[derive(Debug, Default)]
+pub struct Performance(Arc<PerformanceInner>);
+
 impl Performance {
   /// Return the count and average duration of a measurement identified by name.
   #[cfg(test)]
   pub fn average(&self, name: &str) -> Option<(usize, Duration)> {
     let mut items = Vec::new();
-    for measure in self.measures.lock().iter() {
+    for measure in self.0.measures.lock().iter() {
       if measure.name == name {
         items.push(measure.duration);
       }
@@ -120,7 +165,7 @@ impl Performance {
   /// of each measurement.
   pub fn averages(&self) -> Vec<PerformanceAverage> {
     let mut averages: HashMap<String, Vec<Duration>> = HashMap::new();
-    for measure in self.measures.lock().iter() {
+    for measure in self.0.measures.lock().iter() {
       averages
         .entry(measure.name.clone())
         .or_default()
@@ -141,7 +186,7 @@ impl Performance {
   }
 
   pub fn measurements_by_type(&self) -> Vec<(String, u32, f64)> {
-    let measurements_by_type = self.measurements_by_type.lock();
+    let measurements_by_type = self.0.measurements_by_type.lock();
     measurements_by_type
       .iter()
       .map(|(name, (count, duration))| (name.to_string(), *count, *duration))
@@ -150,7 +195,7 @@ impl Performance {
 
   pub fn averages_as_f64(&self) -> Vec<(String, u32, f64)> {
     let mut averages: HashMap<String, Vec<Duration>> = HashMap::new();
-    for measure in self.measures.lock().iter() {
+    for measure in self.0.measures.lock().iter() {
       averages
         .entry(measure.name.clone())
         .or_default()
@@ -172,11 +217,11 @@ impl Performance {
     maybe_args: Option<V>,
   ) -> PerformanceMark {
     let name = name.as_ref();
-    let mut counts = self.counts.lock();
+    let mut counts = self.0.counts.lock();
     let count = counts.entry(name.to_string()).or_insert(0);
     *count += 1;
     {
-      let mut measurements_by_type = self.measurements_by_type.lock();
+      let mut measurements_by_type = self.0.measurements_by_type.lock();
       let measurement = measurements_by_type
         .entry(name.to_string())
         .or_insert((0, 0.0));
@@ -221,38 +266,32 @@ impl Performance {
     self.mark_inner(name, Some(args))
   }
 
+  /// Creates a performance mark which will be measured against on drop. Use
+  /// like this:
+  /// ```rust
+  /// let _mark = self.performance.measure_scope("foo");
+  /// ```
+  /// Don't use like this:
+  /// ```rust
+  /// // ❌
+  /// let _ = self.performance.measure_scope("foo");
+  /// ```
+  pub fn measure_scope<S: AsRef<str>>(&self, name: S) -> PerformanceScopeMark {
+    PerformanceScopeMark {
+      performance_inner: self.0.clone(),
+      inner: Some(self.mark(name)),
+    }
+  }
+
   /// A function which accepts a previously created performance mark which will
   /// be used to finalize the duration of the span being measured, and add the
   /// measurement to the internal buffer.
   pub fn measure(&self, mark: PerformanceMark) -> Duration {
-    let measure = PerformanceMeasure::from(mark);
-    lsp_debug!(
-      "{},",
-      json!({
-        "type": "measure",
-        "name": measure.name,
-        "count": measure.count,
-        "duration": measure.duration.as_micros() as f64 / 1000.0,
-      })
-    );
-    let duration = measure.duration;
-    {
-      let mut measurements_by_type = self.measurements_by_type.lock();
-      let measurement = measurements_by_type
-        .entry(measure.name.to_string())
-        .or_insert((0, 0.0));
-      measurement.1 += duration.as_micros() as f64 / 1000.0;
-    }
-    let mut measures = self.measures.lock();
-    measures.push_front(measure);
-    while measures.len() > self.max_size {
-      measures.pop_back();
-    }
-    duration
+    self.0.measure(mark)
   }
 
   pub fn to_vec(&self) -> Vec<PerformanceMeasure> {
-    let measures = self.measures.lock();
+    let measures = self.0.measures.lock();
     measures.iter().cloned().collect()
   }
 }
