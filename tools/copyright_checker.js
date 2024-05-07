@@ -24,6 +24,7 @@ export async function checkCopyright() {
     "*.js",
     "*.ts",
     ":!:.github/mtime_cache/action.js",
+    ":!:tests/registry/**",
     ":!:tests/specs/**",
     ":!:tests/testdata/**",
     ":!:cli/bench/testdata/**",
@@ -71,7 +72,7 @@ export async function checkCopyright() {
       !fileText.startsWith(C_STYLE_COPYRIGHT_LINE)
     ) {
       let trimmedText = fileText;
-      // Attempt to trim accceptable lines
+      // Attempt to trim acceptable lines
       while (
         ACCEPTABLE_LINES.test(trimmedText) &&
         !trimmedText.startsWith(C_STYLE_COPYRIGHT_LINE)

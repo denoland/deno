@@ -219,6 +219,7 @@ impl CliFactory {
       // Warm up the caches we know we'll likely need based on the CLI mode
       match self.options.sub_command() {
         DenoSubcommand::Run(_)
+        | DenoSubcommand::Serve(_)
         | DenoSubcommand::Bench(_)
         | DenoSubcommand::Test(_)
         | DenoSubcommand::Check(_) => {
@@ -816,6 +817,8 @@ impl CliFactory {
       self.feature_checker().clone(),
       self.create_cli_main_worker_options()?,
       self.options.node_ipc_fd(),
+      self.options.serve_port(),
+      self.options.serve_host(),
       self.options.enable_future_features(),
       // TODO(bartlomieju): temporarily disabled
       // self.options.disable_deprecated_api_warning,
@@ -882,6 +885,7 @@ impl CliFactory {
         .options
         .take_binary_npm_command_name()
         .or(std::env::args().next()),
+      node_debug: std::env::var("NODE_DEBUG").ok(),
       origin_data_folder_path: Some(self.deno_dir()?.origin_data_folder_path()),
       seed: self.options.seed(),
       unsafely_ignore_certificate_errors: self

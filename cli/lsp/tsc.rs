@@ -511,7 +511,7 @@ impl TsServer {
     snapshot: Arc<StateSnapshot>,
     specifier: ModuleSpecifier,
     range: Range<u32>,
-    codes: Vec<String>,
+    codes: Vec<i32>,
     format_code_settings: FormatCodeSettings,
     preferences: UserPreferences,
   ) -> Vec<CodeFixAction> {
@@ -1074,18 +1074,25 @@ impl TsServer {
     }
     let token = token.child_token();
     let droppable_token = DroppableToken(token.clone());
-    let (tx, rx) = oneshot::channel::<Result<String, AnyError>>();
+    let (tx, mut rx) = oneshot::channel::<Result<String, AnyError>>();
     let change = self.pending_change.lock().take();
     if self
       .sender
-      .send((req, snapshot, tx, token, change))
+      .send((req, snapshot, tx, token.clone(), change))
       .is_err()
     {
       return Err(anyhow!("failed to send request to tsc thread"));
     }
-    let value = rx.await??;
-    drop(droppable_token);
-    Ok(serde_json::from_str(&value)?)
+    tokio::select! {
+      value = &mut rx => {
+        let value = value??;
+        drop(droppable_token);
+        Ok(serde_json::from_str(&value)?)
+      }
+      _ = token.cancelled() => {
+        Err(anyhow!("request cancelled"))
+      }
+    }
   }
 }
 
@@ -2489,9 +2496,9 @@ pub struct Classifications {
 impl Classifications {
   pub fn to_semantic_tokens(
     &self,
-    asset_or_doc: &AssetOrDocument,
     line_index: Arc<LineIndex>,
   ) -> LspResult<lsp::SemanticTokens> {
+    // https://github.com/microsoft/vscode/blob/1.89.0/extensions/typescript-language-features/src/languageFeatures/semanticTokens.ts#L89-L115
     let token_count = self.spans.len() / 3;
     let mut builder = SemanticTokensBuilder::new();
     for i in 0..token_count {
@@ -2510,25 +2517,24 @@ impl Classifications {
       let start_pos = line_index.position_tsc(offset.into());
       let end_pos = line_index.position_tsc(TextSize::from(offset + length));
 
-      if start_pos.line == end_pos.line
-        && start_pos.character <= end_pos.character
-      {
+      for line in start_pos.line..(end_pos.line + 1) {
+        let start_character = if line == start_pos.line {
+          start_pos.character
+        } else {
+          0
+        };
+        let end_character = if line == end_pos.line {
+          end_pos.character
+        } else {
+          line_index.line_length_utf16(line).into()
+        };
         builder.push(
-          start_pos.line,
-          start_pos.character,
-          end_pos.character - start_pos.character,
+          line,
+          start_character,
+          end_character - start_character,
           token_type,
           token_modifiers,
         );
-      } else {
-        log::error!(
-          "unexpected positions\nspecifier: {}\nopen: {}\nstart_pos: {:?}\nend_pos: {:?}",
-          asset_or_doc.specifier(),
-          asset_or_doc.is_open(),
-          start_pos,
-          end_pos
-        );
-        return Err(LspError::internal_error());
       }
     }
     Ok(builder.build(None))
@@ -3176,7 +3182,7 @@ fn get_parameters_from_parts(parts: &[SymbolDisplayPart]) -> Vec<String> {
           break;
         }
       } else if part.text == "..." && paren_count == 1 {
-        // Found rest parmeter. Do not fill in any further arguments.
+        // Found rest parameter. Do not fill in any further arguments.
         break;
       } else if part.text == "{" {
         brace_count += 1;
@@ -3999,12 +4005,7 @@ fn op_is_node_file(state: &mut OpState, #[string] path: String) -> bool {
   let state = state.borrow::<State>();
   let mark = state.performance.mark("tsc.op.op_is_node_file");
   let r = match ModuleSpecifier::parse(&path) {
-    Ok(specifier) => state
-      .state_snapshot
-      .npm
-      .as_ref()
-      .map(|n| n.npm_resolver.in_npm_package(&specifier))
-      .unwrap_or(false),
+    Ok(specifier) => state.state_snapshot.resolver.in_npm_package(&specifier),
     Err(_) => false,
   };
   state.performance.measure(mark);
@@ -4089,11 +4090,7 @@ fn op_resolve_inner(
   let specifiers = state
     .state_snapshot
     .documents
-    .resolve(
-      &args.specifiers,
-      &referrer,
-      state.state_snapshot.npm.as_ref(),
-    )
+    .resolve(&args.specifiers, &referrer)
     .into_iter()
     .map(|o| {
       o.map(|(s, mt)| {
@@ -4280,6 +4277,29 @@ impl TscRuntime {
 
       server_request_fn.call(tc_scope, undefined, &args);
       if tc_scope.has_caught() && !tc_scope.has_terminated() {
+        if let Some(stack_trace) = tc_scope.stack_trace() {
+          lsp_warn!(
+            "Error during TS request \"{method}\":\n  {}",
+            stack_trace.to_rust_string_lossy(tc_scope),
+          );
+        } else if let Some(message) = tc_scope.message() {
+          lsp_warn!(
+            "Error during TS request \"{method}\":\n  {}\n  {}",
+            message.get(tc_scope).to_rust_string_lossy(tc_scope),
+            tc_scope
+              .exception()
+              .map(|exc| exc.to_rust_string_lossy(tc_scope))
+              .unwrap_or_default()
+          );
+        } else {
+          lsp_warn!(
+            "Error during TS request \"{method}\":\n  {}",
+            tc_scope
+              .exception()
+              .map(|exc| exc.to_rust_string_lossy(tc_scope))
+              .unwrap_or_default(),
+          );
+        }
         tc_scope.rethrow();
       }
     }
@@ -4394,7 +4414,7 @@ deno_core::extension!(deno_tsc,
         cache_metadata: CacheMetadata::new(options.cache.clone()),
         config: Default::default(),
         documents: Documents::new(options.cache.clone()),
-        npm: None,
+        resolver: Default::default(),
       }),
       options.specifier_map,
       options.performance,
@@ -4797,7 +4817,7 @@ pub enum TscRequest {
       String,
       u32,
       u32,
-      Vec<String>,
+      Vec<i32>,
       FormatCodeSettings,
       UserPreferences,
     )>,
@@ -5038,17 +5058,17 @@ impl TscRequest {
 
 #[cfg(test)]
 mod tests {
-
   use super::*;
   use crate::cache::GlobalHttpCache;
   use crate::cache::HttpCache;
   use crate::cache::RealDenoCacheEnv;
   use crate::http_util::HeadersMap;
   use crate::lsp::cache::CacheMetadata;
-  use crate::lsp::config::ConfigSnapshot;
+  use crate::lsp::config::Config;
   use crate::lsp::config::WorkspaceSettings;
   use crate::lsp::documents::Documents;
   use crate::lsp::documents::LanguageId;
+  use crate::lsp::resolver::LspResolver;
   use crate::lsp::text::LineIndex;
   use pretty_assertions::assert_eq;
   use std::path::Path;
@@ -5074,7 +5094,7 @@ mod tests {
         (*source).into(),
       );
     }
-    let mut config = ConfigSnapshot::default();
+    let mut config = Config::default();
     config
       .tree
       .inject_config_file(
@@ -5089,13 +5109,16 @@ mod tests {
         .unwrap(),
       )
       .await;
+    let resolver = LspResolver::default()
+      .with_new_config(&config, None, None)
+      .await;
     StateSnapshot {
       project_version: 0,
       documents,
       assets: Default::default(),
       cache_metadata: CacheMetadata::new(cache),
       config: Arc::new(config),
-      npm: None,
+      resolver,
     }
   }
 
@@ -5840,6 +5863,35 @@ mod tests {
     assert_eq!(
       change.new_text,
       "import { someLongVariable } from './b.ts'\n"
+    );
+  }
+
+  #[test]
+  fn test_classification_to_semantic_tokens_multiline_tokens() {
+    let line_index = Arc::new(LineIndex::new("  to\nken  \n"));
+    let classifications = Classifications {
+      spans: vec![2, 6, 2057],
+    };
+    let semantic_tokens =
+      classifications.to_semantic_tokens(line_index).unwrap();
+    assert_eq!(
+      &semantic_tokens.data,
+      &[
+        lsp::SemanticToken {
+          delta_line: 0,
+          delta_start: 2,
+          length: 3,
+          token_type: 7,
+          token_modifiers_bitset: 9,
+        },
+        lsp::SemanticToken {
+          delta_line: 1,
+          delta_start: 0,
+          length: 3,
+          token_type: 7,
+          token_modifiers_bitset: 9,
+        },
+      ]
     );
   }
 

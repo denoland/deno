@@ -116,6 +116,10 @@ impl MemoryFiles {
   pub fn insert(&self, specifier: ModuleSpecifier, file: File) -> Option<File> {
     self.0.lock().insert(specifier, file)
   }
+
+  pub fn clear(&self) {
+    self.0.lock().clear();
+  }
 }
 
 /// Fetch a source file from the local file system.
@@ -615,6 +619,10 @@ impl FileFetcher {
   /// Insert a temporary module for the file fetcher.
   pub fn insert_memory_files(&self, file: File) -> Option<File> {
     self.memory_files.insert(file.specifier.clone(), file)
+  }
+
+  pub fn clear_memory_files(&self) {
+    self.memory_files.clear();
   }
 }
 

@@ -59,6 +59,7 @@ use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::tokio_util::create_and_run_current_thread;
 use deno_runtime::worker::MainWorker;
+use deno_runtime::WorkerExecutionMode;
 use indexmap::IndexMap;
 use indexmap::IndexSet;
 use log::Level;
@@ -583,6 +584,7 @@ async fn configure_main_worker(
 ) -> Result<(Option<Box<dyn CoverageCollector>>, MainWorker), anyhow::Error> {
   let mut worker = worker_factory
     .create_custom_worker(
+      WorkerExecutionMode::Test,
       specifier.clone(),
       PermissionsContainer::new(permissions),
       vec![ops::testing::deno_test::init_ops(worker_sender.sender)],
@@ -1324,27 +1326,7 @@ pub async fn check_specifiers(
   )
   .await?;
 
-  if !inline_files.is_empty() {
-    let specifiers = inline_files
-      .iter()
-      .map(|file| file.specifier.clone())
-      .collect();
-
-    for file in inline_files {
-      file_fetcher.insert_memory_files(file);
-    }
-
-    module_load_preparer
-      .prepare_module_load(
-        specifiers,
-        false,
-        lib,
-        PermissionsContainer::new(Permissions::allow_all()),
-      )
-      .await?;
-  }
-
-  let module_specifiers = specifiers
+  let mut module_specifiers = specifiers
     .into_iter()
     .filter_map(|(specifier, mode)| {
       if mode != TestMode::Documentation {
@@ -1353,7 +1335,16 @@ pub async fn check_specifiers(
         None
       }
     })
-    .collect();
+    .collect::<Vec<_>>();
+
+  if !inline_files.is_empty() {
+    module_specifiers
+      .extend(inline_files.iter().map(|file| file.specifier.clone()));
+
+    for file in inline_files {
+      file_fetcher.insert_memory_files(file);
+    }
+  }
 
   module_load_preparer
     .prepare_module_load(
@@ -1713,7 +1704,7 @@ pub async fn run_tests(
   // `PermissionsContainer` - otherwise granting/revoking permissions in one
   // file would have impact on other files, which is undesirable.
   let permissions =
-    Permissions::from_options(&cli_options.permissions_options())?;
+    Permissions::from_options(&cli_options.permissions_options()?)?;
   let log_level = cli_options.log_level();
 
   let specifiers_with_mode = fetch_specifiers_with_test_mode(
@@ -1843,7 +1834,7 @@ pub async fn run_tests_with_watch(
         }?;
 
         let permissions =
-          Permissions::from_options(&cli_options.permissions_options())?;
+          Permissions::from_options(&cli_options.permissions_options()?)?;
         let graph = module_graph_creator
           .create_graph(graph_kind, test_modules)
           .await?;

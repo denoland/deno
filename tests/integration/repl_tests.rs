@@ -786,7 +786,7 @@ fn pty_clear_function() {
       console.expect_raw_in_current_output("[1;1H");
     }
     console.expect("undefined"); // advance past the "clear()"'s undefined
-    console.expect("> ");
+    console.expect(">");
     console.write_line("const clear = 1234 + 2000;");
     console.expect("undefined");
     console.write_line("clear;");
@@ -899,7 +899,7 @@ fn repl_with_quiet_flag() {
 }
 
 #[test]
-fn repl_unit_tests() {
+fn repl_deno_test() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line_raw(
       "\
@@ -919,7 +919,6 @@ fn repl_unit_tests() {
     console.expect("Hello again from outside of test!");
     // FIXME(nayeemrmn): REPL unit tests don't support output capturing.
     console.expect("Hello from inside of test!");
-    console.expect("test1 ...");
     console.expect("  step1 ... ok (");
     console.expect("test1 ... ok (");
     console.expect("test2 ... FAILED (");
