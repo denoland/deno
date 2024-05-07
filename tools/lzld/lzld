@@ -20,6 +20,15 @@ while [ $# -gt 0 ]; do
     -framework)
       shift 2
       ;;
+    -Wl)
+      # Process `-Wl`
+      shift
+      IFS=',' read -r -a wl_args <<< "$1"
+      for arg in "${wl_args[@]}"; do
+        args+=("$arg")
+      done
+      shift
+      ;;
     *)
       args+=("$1")
       shift

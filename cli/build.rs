@@ -408,7 +408,7 @@ fn main() {
 
   #[cfg(target_os = "macos")]
   println!(
-    "cargo:rustc-link-args-bin=deno=-Wl -exported_symbols_list {}",
+    "cargo:rustc-link-args-bin=deno=-Wl,-exported_symbols_list,{}",
     symbols_path.display()
   );
 
