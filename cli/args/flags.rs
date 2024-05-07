@@ -2114,6 +2114,7 @@ fn install_args(cmd: Command, deno_future: bool) -> Command {
 
 fn future_install_subcommand() -> Command {
   Command::new("install")
+    .visible_alias("i")
     .about("Install dependencies")
     .long_about(
 "Installs dependencies either in the local project or globally to a bin directory.
