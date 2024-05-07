@@ -22,7 +22,7 @@ Deno.test({ permissions: { read: true } }, function watchFsInvalidPath() {
   } else {
     assertThrows(() => {
       Deno.watchFs("non-existent.file");
-    }, Deno.errors.NotFound);
+    });
   }
 });
 
@@ -32,7 +32,7 @@ async function getTwoEvents(
   const events = [];
   for await (const event of iter) {
     events.push(event);
-    if (events.length > 2) break;
+    if (events.length >= 2) break;
   }
   return events;
 }

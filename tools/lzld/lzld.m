@@ -22,3 +22,4 @@ extern void *MTLCopyAllDevices(void) {
 
     return MTLCopyAllDevices_();
 }
+

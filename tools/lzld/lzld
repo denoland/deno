@@ -45,8 +45,6 @@ done
 
 args+=("-L$(dirname "$(realpath "$0")")")
 args+=("-llzld_${arch}")
-# Needed for fsevents. TODO: add patches for these as well.
-args+=("-framework" "CoreFoundation" "-framework" "CoreServices")
 
 exec "$lld" "${args[@]}"
 
