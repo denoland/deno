@@ -134,24 +134,12 @@ impl ConfigFile {
   }
 }
 
-/// removes the `npm:` or `jsr:` prefix from a
-/// specifier (e.g. for inserting into
-/// `package.json`)
-fn strip_specifier_prefix(specifier: &str) -> &str {
-  let specifier = specifier.strip_prefix("npm:").unwrap_or(specifier);
-  specifier.strip_prefix("jsr:").unwrap_or(specifier)
-}
-
 fn package_json_dependency_entry(
   selected: SelectedPackage,
 ) -> (String, String) {
-  if selected.package_name.starts_with("npm:") {
-    (
-      strip_specifier_prefix(&selected.package_name).into(),
-      selected.version_req,
-    )
-  } else if selected.package_name.starts_with("jsr:") {
-    let jsr_package = strip_specifier_prefix(&selected.package_name);
+  if let Some(npm_package) = selected.package_name.strip_prefix("npm:") {
+    (npm_package.into(), selected.version_req)
+  } else if let Some(jsr_package) = selected.package_name.strip_prefix("jsr:") {
     let jsr_package = jsr_package.strip_prefix('@').unwrap_or(jsr_package);
     let scope_replaced = jsr_package.replace('/', "__");
     let version_req =

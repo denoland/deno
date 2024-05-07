@@ -721,7 +721,7 @@ pub struct CliOptions {
   maybe_node_modules_folder: Option<PathBuf>,
   maybe_vendor_folder: Option<PathBuf>,
   maybe_config_file: Option<ConfigFile>,
-  pub maybe_package_json: Option<PackageJson>,
+  maybe_package_json: Option<PackageJson>,
   maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
   overrides: CliOptionOverrides,
   maybe_workspace_config: Option<WorkspaceConfig>,

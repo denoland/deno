@@ -914,14 +914,14 @@ impl Flags {
       }
       Task(_) | Check(_) | Coverage(_) | Cache(_) | Info(_) | Eval(_)
       | Test(_) | Bench(_) | Repl(_) | Compile(_) | Publish(_) => {
-        std::env::current_dir().ok()
+        Some(current_dir.to_path_buf())
       }
       Add(_) | Bundle(_) | Completions(_) | Doc(_) | Fmt(_) | Init(_)
       | Uninstall(_) | Jupyter(_) | Lsp | Lint(_) | Types | Upgrade(_)
       | Vendor(_) => None,
       Install(_) => {
         if *DENO_FUTURE {
-          std::env::current_dir().ok()
+          Some(current_dir.to_path_buf())
         } else {
           None
         }
@@ -1342,20 +1342,6 @@ fn clap_root() -> Command {
     .after_help(ENV_VARIABLES_HELP)
 }
 
-fn add_args(cmd: Command, include_packages: bool) -> Command {
-  if include_packages {
-    cmd.arg(
-      Arg::new("packages")
-        .help("List of packages to add")
-        .required(true)
-        .num_args(1..)
-        .action(ArgAction::Append),
-    )
-  } else {
-    cmd
-  }
-}
-
 fn add_subcommand() -> Command {
   Command::new("add")
     .about("Add dependencies")
@@ -1369,7 +1355,15 @@ You can add multiple dependencies at once:
   deno add @std/path @std/assert
 ",
     )
-    .defer(|cmd| add_args(cmd, true))
+    .defer(|cmd| {
+      cmd.arg(
+        Arg::new("packages")
+          .help("List of packages to add")
+          .required(true)
+          .num_args(1..)
+          .action(ArgAction::Append),
+      )
+    })
 }
 
 fn bench_subcommand() -> Command {
@@ -2161,7 +2155,7 @@ These must be added to the path manually if required.")
     .defer(|cmd| {
       let cmd = runtime_args(cmd, true, true).arg(check_arg(true));
       let cmd = install_args(cmd, true);
-      add_args(cmd, false)
+      cmd
     })
 }
 
