@@ -2154,8 +2154,7 @@ The installation root is determined, in order of precedence:
 These must be added to the path manually if required.")
     .defer(|cmd| {
       let cmd = runtime_args(cmd, true, true).arg(check_arg(true));
-      let cmd = install_args(cmd, true);
-      cmd
+      install_args(cmd, true)
     })
 }
 
