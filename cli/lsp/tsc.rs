@@ -511,7 +511,7 @@ impl TsServer {
     snapshot: Arc<StateSnapshot>,
     specifier: ModuleSpecifier,
     range: Range<u32>,
-    codes: Vec<String>,
+    codes: Vec<i32>,
     format_code_settings: FormatCodeSettings,
     preferences: UserPreferences,
   ) -> Vec<CodeFixAction> {
@@ -4817,7 +4817,7 @@ pub enum TscRequest {
       String,
       u32,
       u32,
-      Vec<String>,
+      Vec<i32>,
       FormatCodeSettings,
       UserPreferences,
     )>,

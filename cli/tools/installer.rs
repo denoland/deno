@@ -426,7 +426,7 @@ async fn resolve_shim_data(
     executable_args.push("--cached-only".to_string());
   }
 
-  if resolve_no_prompt(flags) {
+  if resolve_no_prompt(&flags.permissions) {
     executable_args.push("--no-prompt".to_string());
   }
 
@@ -527,6 +527,7 @@ fn is_in_path(dir: &Path) -> bool {
 mod tests {
   use super::*;
 
+  use crate::args::PermissionFlags;
   use crate::args::UninstallFlagsGlobal;
   use crate::args::UnstableConfig;
   use crate::util::fs::canonicalize_path;
@@ -878,8 +879,11 @@ mod tests {
   async fn install_with_flags() {
     let shim_data = resolve_shim_data(
       &Flags {
-        allow_net: Some(vec![]),
-        allow_read: Some(vec![]),
+        permissions: PermissionFlags {
+          allow_net: Some(vec![]),
+          allow_read: Some(vec![]),
+          ..Default::default()
+        },
         type_check_mode: TypeCheckMode::None,
         log_level: Some(Level::Error),
         ..Flags::default()
@@ -914,7 +918,10 @@ mod tests {
   async fn install_prompt() {
     let shim_data = resolve_shim_data(
       &Flags {
-        no_prompt: true,
+        permissions: PermissionFlags {
+          no_prompt: true,
+          ..Default::default()
+        },
         ..Flags::default()
       },
       &InstallFlagsGlobal {
@@ -943,7 +950,10 @@ mod tests {
   async fn install_allow_all() {
     let shim_data = resolve_shim_data(
       &Flags {
-        allow_all: true,
+        permissions: PermissionFlags {
+          allow_all: true,
+          ..Default::default()
+        },
         ..Flags::default()
       },
       &InstallFlagsGlobal {
@@ -973,7 +983,10 @@ mod tests {
     let temp_dir = canonicalize_path(&env::temp_dir()).unwrap();
     let shim_data = resolve_shim_data(
       &Flags {
-        allow_all: true,
+        permissions: PermissionFlags {
+          allow_all: true,
+          ..Default::default()
+        },
         ..Flags::default()
       },
       &InstallFlagsGlobal {
@@ -1006,7 +1019,10 @@ mod tests {
   async fn install_npm_no_lock() {
     let shim_data = resolve_shim_data(
       &Flags {
-        allow_all: true,
+        permissions: PermissionFlags {
+          allow_all: true,
+          ..Default::default()
+        },
         no_lock: true,
         ..Flags::default()
       },

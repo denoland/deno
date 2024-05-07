@@ -11,14 +11,18 @@ use clap::Command;
 use clap::ValueHint;
 use deno_config::glob::PathOrPatternSet;
 use deno_config::ConfigFlag;
+use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_core::url::Url;
 use deno_graph::GraphKind;
 use deno_runtime::permissions::parse_sys_kind;
+use deno_runtime::permissions::PermissionsOptions;
 use log::debug;
 use log::Level;
+use serde::Deserialize;
+use serde::Serialize;
 use std::env;
 use std::ffi::OsString;
 use std::net::SocketAddr;
@@ -30,6 +34,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
 
+use crate::args::resolve_no_prompt;
 use crate::util::fs::canonicalize_path;
 
 use super::flags_net;
@@ -488,23 +493,6 @@ pub struct Flags {
   pub argv: Vec<String>,
   pub subcommand: DenoSubcommand,
 
-  pub allow_all: bool,
-  pub allow_env: Option<Vec<String>>,
-  pub deny_env: Option<Vec<String>>,
-  pub allow_hrtime: bool,
-  pub deny_hrtime: bool,
-  pub allow_net: Option<Vec<String>>,
-  pub deny_net: Option<Vec<String>>,
-  pub allow_ffi: Option<Vec<String>>,
-  pub deny_ffi: Option<Vec<String>>,
-  pub allow_read: Option<Vec<String>>,
-  pub deny_read: Option<Vec<String>>,
-  pub allow_run: Option<Vec<String>>,
-  pub deny_run: Option<Vec<String>>,
-  pub allow_sys: Option<Vec<String>>,
-  pub deny_sys: Option<Vec<String>>,
-  pub allow_write: Option<Vec<String>>,
-  pub deny_write: Option<Vec<String>>,
   pub ca_stores: Option<Vec<String>>,
   pub ca_data: Option<CaData>,
   pub cache_blocklist: Vec<String>,
@@ -532,7 +520,6 @@ pub struct Flags {
   pub no_remote: bool,
   pub no_lock: bool,
   pub no_npm: bool,
-  pub no_prompt: bool,
   pub reload: bool,
   pub seed: Option<u64>,
   pub strace_ops: Option<Vec<String>>,
@@ -540,6 +527,111 @@ pub struct Flags {
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub v8_flags: Vec<String>,
   pub code_cache_enabled: bool,
+  pub permissions: PermissionFlags,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Default, Serialize, Deserialize)]
+pub struct PermissionFlags {
+  pub allow_all: bool,
+  pub allow_env: Option<Vec<String>>,
+  pub deny_env: Option<Vec<String>>,
+  pub allow_hrtime: bool,
+  pub deny_hrtime: bool,
+  pub allow_ffi: Option<Vec<String>>,
+  pub deny_ffi: Option<Vec<String>>,
+  pub allow_net: Option<Vec<String>>,
+  pub deny_net: Option<Vec<String>>,
+  pub allow_read: Option<Vec<String>>,
+  pub deny_read: Option<Vec<String>>,
+  pub allow_run: Option<Vec<String>>,
+  pub deny_run: Option<Vec<String>>,
+  pub allow_sys: Option<Vec<String>>,
+  pub deny_sys: Option<Vec<String>>,
+  pub allow_write: Option<Vec<String>>,
+  pub deny_write: Option<Vec<String>>,
+  pub no_prompt: bool,
+}
+
+impl PermissionFlags {
+  pub fn has_permission(&self) -> bool {
+    self.allow_all
+      || self.allow_env.is_some()
+      || self.deny_env.is_some()
+      || self.allow_hrtime
+      || self.deny_hrtime
+      || self.allow_ffi.is_some()
+      || self.deny_ffi.is_some()
+      || self.allow_net.is_some()
+      || self.deny_net.is_some()
+      || self.allow_read.is_some()
+      || self.deny_read.is_some()
+      || self.allow_run.is_some()
+      || self.deny_run.is_some()
+      || self.allow_sys.is_some()
+      || self.deny_sys.is_some()
+      || self.allow_write.is_some()
+      || self.deny_write.is_some()
+  }
+
+  pub fn to_options(
+    &self,
+    // will be None when `deno compile` can't resolve the cwd
+    initial_cwd: Option<&Path>,
+  ) -> Result<PermissionsOptions, AnyError> {
+    fn convert_option_str_to_path_buf(
+      flag: &Option<Vec<String>>,
+      initial_cwd: Option<&Path>,
+    ) -> Result<Option<Vec<PathBuf>>, AnyError> {
+      let Some(paths) = &flag else {
+        return Ok(None);
+      };
+
+      let mut new_paths = Vec::with_capacity(paths.len());
+      for path in paths {
+        if let Some(initial_cwd) = initial_cwd {
+          new_paths.push(initial_cwd.join(path))
+        } else {
+          let path = PathBuf::from(path);
+          if path.is_absolute() {
+            new_paths.push(path);
+          } else {
+            bail!("Could not resolve relative permission path '{}' when current working directory could not be resolved.", path.display())
+          }
+        }
+      }
+      Ok(Some(new_paths))
+    }
+
+    Ok(PermissionsOptions {
+      allow_all: self.allow_all,
+      allow_env: self.allow_env.clone(),
+      deny_env: self.deny_env.clone(),
+      allow_hrtime: self.allow_hrtime,
+      deny_hrtime: self.deny_hrtime,
+      allow_net: self.allow_net.clone(),
+      deny_net: self.deny_net.clone(),
+      allow_ffi: convert_option_str_to_path_buf(&self.allow_ffi, initial_cwd)?,
+      deny_ffi: convert_option_str_to_path_buf(&self.deny_ffi, initial_cwd)?,
+      allow_read: convert_option_str_to_path_buf(
+        &self.allow_read,
+        initial_cwd,
+      )?,
+      deny_read: convert_option_str_to_path_buf(&self.deny_read, initial_cwd)?,
+      allow_run: self.allow_run.clone(),
+      deny_run: self.deny_run.clone(),
+      allow_sys: self.allow_sys.clone(),
+      deny_sys: self.deny_sys.clone(),
+      allow_write: convert_option_str_to_path_buf(
+        &self.allow_write,
+        initial_cwd,
+      )?,
+      deny_write: convert_option_str_to_path_buf(
+        &self.deny_write,
+        initial_cwd,
+      )?,
+      prompt: !resolve_no_prompt(self),
+    })
+  }
 }
 
 fn join_paths(allowlist: &[String], d: &str) -> String {
@@ -556,12 +648,12 @@ impl Flags {
   pub fn to_permission_args(&self) -> Vec<String> {
     let mut args = vec![];
 
-    if self.allow_all {
+    if self.permissions.allow_all {
       args.push("--allow-all".to_string());
       return args;
     }
 
-    match &self.allow_read {
+    match &self.permissions.allow_read {
       Some(read_allowlist) if read_allowlist.is_empty() => {
         args.push("--allow-read".to_string());
       }
@@ -572,7 +664,7 @@ impl Flags {
       _ => {}
     }
 
-    match &self.deny_read {
+    match &self.permissions.deny_read {
       Some(read_denylist) if read_denylist.is_empty() => {
         args.push("--deny-read".to_string());
       }
@@ -583,7 +675,7 @@ impl Flags {
       _ => {}
     }
 
-    match &self.allow_write {
+    match &self.permissions.allow_write {
       Some(write_allowlist) if write_allowlist.is_empty() => {
         args.push("--allow-write".to_string());
       }
@@ -594,7 +686,7 @@ impl Flags {
       _ => {}
     }
 
-    match &self.deny_write {
+    match &self.permissions.deny_write {
       Some(write_denylist) if write_denylist.is_empty() => {
         args.push("--deny-write".to_string());
       }
@@ -605,7 +697,7 @@ impl Flags {
       _ => {}
     }
 
-    match &self.allow_net {
+    match &self.permissions.allow_net {
       Some(net_allowlist) if net_allowlist.is_empty() => {
         args.push("--allow-net".to_string());
       }
@@ -616,7 +708,7 @@ impl Flags {
       _ => {}
     }
 
-    match &self.deny_net {
+    match &self.permissions.deny_net {
       Some(net_denylist) if net_denylist.is_empty() => {
         args.push("--deny-net".to_string());
       }
@@ -641,7 +733,7 @@ impl Flags {
       _ => {}
     }
 
-    match &self.allow_env {
+    match &self.permissions.allow_env {
       Some(env_allowlist) if env_allowlist.is_empty() => {
         args.push("--allow-env".to_string());
       }
@@ -652,7 +744,7 @@ impl Flags {
       _ => {}
     }
 
-    match &self.deny_env {
+    match &self.permissions.deny_env {
       Some(env_denylist) if env_denylist.is_empty() => {
         args.push("--deny-env".to_string());
       }
@@ -663,7 +755,7 @@ impl Flags {
       _ => {}
     }
 
-    match &self.allow_run {
+    match &self.permissions.allow_run {
       Some(run_allowlist) if run_allowlist.is_empty() => {
         args.push("--allow-run".to_string());
       }
@@ -674,7 +766,7 @@ impl Flags {
       _ => {}
     }
 
-    match &self.deny_run {
+    match &self.permissions.deny_run {
       Some(run_denylist) if run_denylist.is_empty() => {
         args.push("--deny-run".to_string());
       }
@@ -685,7 +777,7 @@ impl Flags {
       _ => {}
     }
 
-    match &self.allow_sys {
+    match &self.permissions.allow_sys {
       Some(sys_allowlist) if sys_allowlist.is_empty() => {
         args.push("--allow-sys".to_string());
       }
@@ -696,7 +788,7 @@ impl Flags {
       _ => {}
     }
 
-    match &self.deny_sys {
+    match &self.permissions.deny_sys {
       Some(sys_denylist) if sys_denylist.is_empty() => {
         args.push("--deny-sys".to_string());
       }
@@ -707,7 +799,7 @@ impl Flags {
       _ => {}
     }
 
-    match &self.allow_ffi {
+    match &self.permissions.allow_ffi {
       Some(ffi_allowlist) if ffi_allowlist.is_empty() => {
         args.push("--allow-ffi".to_string());
       }
@@ -718,7 +810,7 @@ impl Flags {
       _ => {}
     }
 
-    match &self.deny_ffi {
+    match &self.permissions.deny_ffi {
       Some(ffi_denylist) if ffi_denylist.is_empty() => {
         args.push("--deny-ffi".to_string());
       }
@@ -729,11 +821,11 @@ impl Flags {
       _ => {}
     }
 
-    if self.allow_hrtime {
+    if self.permissions.allow_hrtime {
       args.push("--allow-hrtime".to_string());
     }
 
-    if self.deny_hrtime {
+    if self.permissions.deny_hrtime {
       args.push("--deny-hrtime".to_string());
     }
 
@@ -830,23 +922,7 @@ impl Flags {
   }
 
   pub fn has_permission(&self) -> bool {
-    self.allow_all
-      || self.allow_hrtime
-      || self.deny_hrtime
-      || self.allow_env.is_some()
-      || self.deny_env.is_some()
-      || self.allow_ffi.is_some()
-      || self.deny_ffi.is_some()
-      || self.allow_net.is_some()
-      || self.deny_net.is_some()
-      || self.allow_read.is_some()
-      || self.deny_read.is_some()
-      || self.allow_run.is_some()
-      || self.deny_run.is_some()
-      || self.allow_sys.is_some()
-      || self.deny_sys.is_some()
-      || self.allow_write.is_some()
-      || self.deny_write.is_some()
+    self.permissions.has_permission()
   }
 
   pub fn has_permission_in_argv(&self) -> bool {
@@ -873,15 +949,15 @@ impl Flags {
 
   #[inline(always)]
   fn allow_all(&mut self) {
-    self.allow_all = true;
-    self.allow_read = Some(vec![]);
-    self.allow_env = Some(vec![]);
-    self.allow_net = Some(vec![]);
-    self.allow_run = Some(vec![]);
-    self.allow_write = Some(vec![]);
-    self.allow_sys = Some(vec![]);
-    self.allow_ffi = Some(vec![]);
-    self.allow_hrtime = true;
+    self.permissions.allow_all = true;
+    self.permissions.allow_read = Some(vec![]);
+    self.permissions.allow_env = Some(vec![]);
+    self.permissions.allow_net = Some(vec![]);
+    self.permissions.allow_run = Some(vec![]);
+    self.permissions.allow_write = Some(vec![]);
+    self.permissions.allow_sys = Some(vec![]);
+    self.permissions.allow_ffi = Some(vec![]);
+    self.permissions.allow_hrtime = true;
   }
 
   pub fn resolve_watch_exclude_set(
@@ -1112,14 +1188,14 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
 fn handle_repl_flags(flags: &mut Flags, repl_flags: ReplFlags) {
   // If user runs just `deno` binary we enter REPL and allow all permissions.
   if repl_flags.is_default_command {
-    flags.allow_net = Some(vec![]);
-    flags.allow_env = Some(vec![]);
-    flags.allow_run = Some(vec![]);
-    flags.allow_read = Some(vec![]);
-    flags.allow_sys = Some(vec![]);
-    flags.allow_write = Some(vec![]);
-    flags.allow_ffi = Some(vec![]);
-    flags.allow_hrtime = true;
+    flags.permissions.allow_net = Some(vec![]);
+    flags.permissions.allow_env = Some(vec![]);
+    flags.permissions.allow_run = Some(vec![]);
+    flags.permissions.allow_read = Some(vec![]);
+    flags.permissions.allow_sys = Some(vec![]);
+    flags.permissions.allow_write = Some(vec![]);
+    flags.permissions.allow_ffi = Some(vec![]);
+    flags.permissions.allow_hrtime = true;
   }
   flags.subcommand = DenoSubcommand::Repl(repl_flags);
 }
@@ -3490,7 +3566,7 @@ fn bench_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 
   // NOTE: `deno bench` always uses `--no-prompt`, tests shouldn't ever do
   // interactive prompts, unless done by user code
-  flags.no_prompt = true;
+  flags.permissions.no_prompt = true;
 
   let json = matches.get_flag("json");
 
@@ -3533,7 +3609,7 @@ fn bundle_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 
   let out_file =
     if let Some(out_file) = matches.remove_one::<String>("out_file") {
-      flags.allow_write = Some(vec![]);
+      flags.permissions.allow_write = Some(vec![]);
       Some(out_file)
     } else {
       None
@@ -3961,8 +4037,8 @@ fn serve_parse(
   } else {
     format!("{host}:{port}")
   }])?;
-  match &mut flags.allow_net {
-    None => flags.allow_net = Some(allowed),
+  match &mut flags.permissions.allow_net {
+    None => flags.permissions.allow_net = Some(allowed),
     Some(v) => {
       if !v.is_empty() {
         v.extend(allowed);
@@ -4027,7 +4103,7 @@ fn test_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   runtime_args_parse(flags, matches, true, true);
   // NOTE: `deno test` always uses `--no-prompt`, tests shouldn't ever do
   // interactive prompts, unless done by user code
-  flags.no_prompt = true;
+  flags.permissions.no_prompt = true;
 
   let ignore = match matches.remove_many::<String>("ignore") {
     Some(f) => f.collect(),
@@ -4218,77 +4294,77 @@ fn compile_args_without_check_parse(
 fn permission_args_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   unsafely_ignore_certificate_errors_parse(flags, matches);
   if let Some(read_wl) = matches.remove_many::<String>("allow-read") {
-    flags.allow_read = Some(read_wl.collect());
+    flags.permissions.allow_read = Some(read_wl.collect());
   }
 
   if let Some(read_wl) = matches.remove_many::<String>("deny-read") {
-    flags.deny_read = Some(read_wl.collect());
+    flags.permissions.deny_read = Some(read_wl.collect());
   }
 
   if let Some(write_wl) = matches.remove_many::<String>("allow-write") {
-    flags.allow_write = Some(write_wl.collect());
+    flags.permissions.allow_write = Some(write_wl.collect());
   }
 
   if let Some(write_wl) = matches.remove_many::<String>("deny-write") {
-    flags.deny_write = Some(write_wl.collect());
+    flags.permissions.deny_write = Some(write_wl.collect());
   }
 
   if let Some(net_wl) = matches.remove_many::<String>("allow-net") {
     let net_allowlist = flags_net::parse(net_wl.collect()).unwrap();
-    flags.allow_net = Some(net_allowlist);
+    flags.permissions.allow_net = Some(net_allowlist);
   }
 
   if let Some(net_wl) = matches.remove_many::<String>("deny-net") {
     let net_denylist = flags_net::parse(net_wl.collect()).unwrap();
-    flags.deny_net = Some(net_denylist);
+    flags.permissions.deny_net = Some(net_denylist);
   }
 
   if let Some(env_wl) = matches.remove_many::<String>("allow-env") {
-    flags.allow_env = Some(env_wl.collect());
-    debug!("env allowlist: {:#?}", &flags.allow_env);
+    flags.permissions.allow_env = Some(env_wl.collect());
+    debug!("env allowlist: {:#?}", &flags.permissions.allow_env);
   }
 
   if let Some(env_wl) = matches.remove_many::<String>("deny-env") {
-    flags.deny_env = Some(env_wl.collect());
-    debug!("env denylist: {:#?}", &flags.deny_env);
+    flags.permissions.deny_env = Some(env_wl.collect());
+    debug!("env denylist: {:#?}", &flags.permissions.deny_env);
   }
 
   if let Some(run_wl) = matches.remove_many::<String>("allow-run") {
-    flags.allow_run = Some(run_wl.collect());
-    debug!("run allowlist: {:#?}", &flags.allow_run);
+    flags.permissions.allow_run = Some(run_wl.collect());
+    debug!("run allowlist: {:#?}", &flags.permissions.allow_run);
   }
 
   if let Some(run_wl) = matches.remove_many::<String>("deny-run") {
-    flags.deny_run = Some(run_wl.collect());
-    debug!("run denylist: {:#?}", &flags.deny_run);
+    flags.permissions.deny_run = Some(run_wl.collect());
+    debug!("run denylist: {:#?}", &flags.permissions.deny_run);
   }
 
   if let Some(sys_wl) = matches.remove_many::<String>("allow-sys") {
-    flags.allow_sys = Some(sys_wl.collect());
-    debug!("sys info allowlist: {:#?}", &flags.allow_sys);
+    flags.permissions.allow_sys = Some(sys_wl.collect());
+    debug!("sys info allowlist: {:#?}", &flags.permissions.allow_sys);
   }
 
   if let Some(sys_wl) = matches.remove_many::<String>("deny-sys") {
-    flags.deny_sys = Some(sys_wl.collect());
-    debug!("sys info denylist: {:#?}", &flags.deny_sys);
+    flags.permissions.deny_sys = Some(sys_wl.collect());
+    debug!("sys info denylist: {:#?}", &flags.permissions.deny_sys);
   }
 
   if let Some(ffi_wl) = matches.remove_many::<String>("allow-ffi") {
-    flags.allow_ffi = Some(ffi_wl.collect());
-    debug!("ffi allowlist: {:#?}", &flags.allow_ffi);
+    flags.permissions.allow_ffi = Some(ffi_wl.collect());
+    debug!("ffi allowlist: {:#?}", &flags.permissions.allow_ffi);
   }
 
   if let Some(ffi_wl) = matches.remove_many::<String>("deny-ffi") {
-    flags.deny_ffi = Some(ffi_wl.collect());
-    debug!("ffi denylist: {:#?}", &flags.deny_ffi);
+    flags.permissions.deny_ffi = Some(ffi_wl.collect());
+    debug!("ffi denylist: {:#?}", &flags.permissions.deny_ffi);
   }
 
   if matches.get_flag("allow-hrtime") {
-    flags.allow_hrtime = true;
+    flags.permissions.allow_hrtime = true;
   }
 
   if matches.get_flag("deny-hrtime") {
-    flags.deny_hrtime = true;
+    flags.permissions.deny_hrtime = true;
   }
 
   if matches.get_flag("allow-all") {
@@ -4296,7 +4372,7 @@ fn permission_args_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   }
 
   if matches.get_flag("no-prompt") {
-    flags.no_prompt = true;
+    flags.permissions.no_prompt = true;
   }
 }
 
@@ -4961,7 +5037,10 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags::new_default(
           "script.ts".to_string()
         )),
-        allow_write: Some(vec![]),
+        permissions: PermissionFlags {
+          allow_write: Some(vec![]),
+          ..Default::default()
+        },
         code_cache_enabled: true,
         ..Flags::default()
       }
@@ -5017,11 +5096,14 @@ mod tests {
           8000,
           "0.0.0.0"
         )),
-        allow_net: Some(vec![
-          "0.0.0.0:8000".to_string(),
-          "127.0.0.1:8000".to_string(),
-          "localhost:8000".to_string()
-        ]),
+        permissions: PermissionFlags {
+          allow_net: Some(vec![
+            "0.0.0.0:8000".to_string(),
+            "127.0.0.1:8000".to_string(),
+            "localhost:8000".to_string()
+          ]),
+          ..Default::default()
+        },
         code_cache_enabled: true,
         ..Flags::default()
       }
@@ -5035,11 +5117,14 @@ mod tests {
           5000,
           "0.0.0.0"
         )),
-        allow_net: Some(vec![
-          "0.0.0.0:5000".to_string(),
-          "127.0.0.1:5000".to_string(),
-          "localhost:5000".to_string()
-        ]),
+        permissions: PermissionFlags {
+          allow_net: Some(vec![
+            "0.0.0.0:5000".to_string(),
+            "127.0.0.1:5000".to_string(),
+            "localhost:5000".to_string()
+          ]),
+          ..Default::default()
+        },
         code_cache_enabled: true,
         ..Flags::default()
       }
@@ -5060,12 +5145,15 @@ mod tests {
           5000,
           "0.0.0.0"
         )),
-        allow_net: Some(vec![
-          "example.com".to_string(),
-          "0.0.0.0:5000".to_string(),
-          "127.0.0.1:5000".to_string(),
-          "localhost:5000".to_string()
-        ]),
+        permissions: PermissionFlags {
+          allow_net: Some(vec![
+            "example.com".to_string(),
+            "0.0.0.0:5000".to_string(),
+            "127.0.0.1:5000".to_string(),
+            "localhost:5000".to_string()
+          ]),
+          ..Default::default()
+        },
         code_cache_enabled: true,
         ..Flags::default()
       }
@@ -5086,7 +5174,10 @@ mod tests {
           5000,
           "0.0.0.0"
         )),
-        allow_net: Some(vec![]),
+        permissions: PermissionFlags {
+          allow_net: Some(vec![]),
+          ..Default::default()
+        },
         code_cache_enabled: true,
         ..Flags::default()
       }
@@ -5108,7 +5199,10 @@ mod tests {
           5000,
           "example.com"
         )),
-        allow_net: Some(vec!["example.com:5000".to_owned()]),
+        permissions: PermissionFlags {
+          allow_net: Some(vec!["example.com:5000".to_owned()]),
+          ..Default::default()
+        },
         code_cache_enabled: true,
         ..Flags::default()
       }
@@ -5156,7 +5250,10 @@ mod tests {
           "gist.ts".to_string()
         )),
         argv: svec!["--title", "X"],
-        allow_net: Some(vec![]),
+        permissions: PermissionFlags {
+          allow_net: Some(vec![]),
+          ..Default::default()
+        },
         code_cache_enabled: true,
         ..Flags::default()
       }
@@ -5172,15 +5269,18 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags::new_default(
           "gist.ts".to_string()
         )),
-        allow_all: true,
-        allow_net: Some(vec![]),
-        allow_env: Some(vec![]),
-        allow_run: Some(vec![]),
-        allow_read: Some(vec![]),
-        allow_sys: Some(vec![]),
-        allow_write: Some(vec![]),
-        allow_ffi: Some(vec![]),
-        allow_hrtime: true,
+        permissions: PermissionFlags {
+          allow_all: true,
+          allow_net: Some(vec![]),
+          allow_env: Some(vec![]),
+          allow_run: Some(vec![]),
+          allow_read: Some(vec![]),
+          allow_sys: Some(vec![]),
+          allow_write: Some(vec![]),
+          allow_ffi: Some(vec![]),
+          allow_hrtime: true,
+          ..Default::default()
+        },
         code_cache_enabled: true,
         ..Flags::default()
       }
@@ -5196,7 +5296,10 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags::new_default(
           "gist.ts".to_string()
         )),
-        allow_read: Some(vec![]),
+        permissions: PermissionFlags {
+          allow_read: Some(vec![]),
+          ..Default::default()
+        },
         code_cache_enabled: true,
         ..Flags::default()
       }
@@ -5212,7 +5315,10 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags::new_default(
           "gist.ts".to_string()
         )),
-        deny_read: Some(vec![]),
+        permissions: PermissionFlags {
+          deny_read: Some(vec![]),
+          ..Default::default()
+        },
         code_cache_enabled: true,
         ..Flags::default()
       }
@@ -5228,7 +5334,10 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags::new_default(
           "gist.ts".to_string(),
         )),
-        allow_hrtime: true,
+        permissions: PermissionFlags {
+          allow_hrtime: true,
+          ..Default::default()
+        },
         code_cache_enabled: true,
         ..Flags::default()
       }
@@ -5244,7 +5353,10 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags::new_default(
           "gist.ts".to_string(),
         )),
-        deny_hrtime: true,
+        permissions: PermissionFlags {
+          deny_hrtime: true,
+          ..Default::default()
+        },
         code_cache_enabled: true,
         ..Flags::default()
       }
@@ -5272,7 +5384,10 @@ mod tests {
           "script.ts".to_string(),
         )),
         argv: svec!["--", "-D", "--allow-net"],
-        allow_write: Some(vec![]),
+        permissions: PermissionFlags {
+          allow_write: Some(vec![]),
+          ..Default::default()
+        },
         code_cache_enabled: true,
         ..Flags::default()
       }
@@ -6004,15 +6119,18 @@ mod tests {
           print: false,
           code: "'console.log(\"hello\")'".to_string(),
         }),
-        allow_all: true,
-        allow_net: Some(vec![]),
-        allow_env: Some(vec![]),
-        allow_run: Some(vec![]),
-        allow_read: Some(vec![]),
-        allow_sys: Some(vec![]),
-        allow_write: Some(vec![]),
-        allow_ffi: Some(vec![]),
-        allow_hrtime: true,
+        permissions: PermissionFlags {
+          allow_all: true,
+          allow_net: Some(vec![]),
+          allow_env: Some(vec![]),
+          allow_run: Some(vec![]),
+          allow_read: Some(vec![]),
+          allow_sys: Some(vec![]),
+          allow_write: Some(vec![]),
+          allow_ffi: Some(vec![]),
+          allow_hrtime: true,
+          ..Default::default()
+        },
         ..Flags::default()
       }
     );
@@ -6028,15 +6146,18 @@ mod tests {
           print: true,
           code: "1+2".to_string(),
         }),
-        allow_all: true,
-        allow_net: Some(vec![]),
-        allow_env: Some(vec![]),
-        allow_run: Some(vec![]),
-        allow_read: Some(vec![]),
-        allow_sys: Some(vec![]),
-        allow_write: Some(vec![]),
-        allow_ffi: Some(vec![]),
-        allow_hrtime: true,
+        permissions: PermissionFlags {
+          allow_all: true,
+          allow_net: Some(vec![]),
+          allow_env: Some(vec![]),
+          allow_run: Some(vec![]),
+          allow_read: Some(vec![]),
+          allow_sys: Some(vec![]),
+          allow_write: Some(vec![]),
+          allow_ffi: Some(vec![]),
+          allow_hrtime: true,
+          ..Default::default()
+        },
         ..Flags::default()
       }
     );
@@ -6053,15 +6174,18 @@ mod tests {
           print: false,
           code: "'console.log(\"hello\")'".to_string(),
         }),
-        allow_all: true,
-        allow_net: Some(vec![]),
-        allow_env: Some(vec![]),
-        allow_run: Some(vec![]),
-        allow_read: Some(vec![]),
-        allow_sys: Some(vec![]),
-        allow_write: Some(vec![]),
-        allow_ffi: Some(vec![]),
-        allow_hrtime: true,
+        permissions: PermissionFlags {
+          allow_all: true,
+          allow_net: Some(vec![]),
+          allow_env: Some(vec![]),
+          allow_run: Some(vec![]),
+          allow_read: Some(vec![]),
+          allow_sys: Some(vec![]),
+          allow_write: Some(vec![]),
+          allow_ffi: Some(vec![]),
+          allow_hrtime: true,
+          ..Default::default()
+        },
         ext: Some("ts".to_string()),
         ..Flags::default()
       }
@@ -6092,15 +6216,18 @@ mod tests {
         v8_flags: svec!["--help", "--random-seed=1"],
         seed: Some(1),
         inspect: Some("127.0.0.1:9229".parse().unwrap()),
-        allow_all: true,
-        allow_net: Some(vec![]),
-        allow_env: Some(vec![]),
-        allow_run: Some(vec![]),
-        allow_read: Some(vec![]),
-        allow_sys: Some(vec![]),
-        allow_write: Some(vec![]),
-        allow_ffi: Some(vec![]),
-        allow_hrtime: true,
+        permissions: PermissionFlags {
+          allow_all: true,
+          allow_net: Some(vec![]),
+          allow_env: Some(vec![]),
+          allow_run: Some(vec![]),
+          allow_read: Some(vec![]),
+          allow_sys: Some(vec![]),
+          allow_write: Some(vec![]),
+          allow_ffi: Some(vec![]),
+          allow_hrtime: true,
+          ..Default::default()
+        },
         env_file: Some(".example.env".to_owned()),
         ..Flags::default()
       }
@@ -6124,15 +6251,18 @@ mod tests {
           code: "console.log(Deno.args)".to_string(),
         }),
         argv: svec!["arg1", "arg2"],
-        allow_all: true,
-        allow_net: Some(vec![]),
-        allow_env: Some(vec![]),
-        allow_run: Some(vec![]),
-        allow_read: Some(vec![]),
-        allow_sys: Some(vec![]),
-        allow_write: Some(vec![]),
-        allow_ffi: Some(vec![]),
-        allow_hrtime: true,
+        permissions: PermissionFlags {
+          allow_all: true,
+          allow_net: Some(vec![]),
+          allow_env: Some(vec![]),
+          allow_run: Some(vec![]),
+          allow_read: Some(vec![]),
+          allow_sys: Some(vec![]),
+          allow_write: Some(vec![]),
+          allow_ffi: Some(vec![]),
+          allow_hrtime: true,
+          ..Default::default()
+        },
         ..Flags::default()
       }
     );
@@ -6149,21 +6279,24 @@ mod tests {
           eval: None,
           is_default_command: true,
         }),
-        allow_net: Some(vec![]),
         unsafely_ignore_certificate_errors: None,
-        allow_env: Some(vec![]),
-        deny_env: None,
-        allow_run: Some(vec![]),
-        deny_run: None,
-        allow_read: Some(vec![]),
-        deny_read: None,
-        allow_sys: Some(vec![]),
-        deny_sys: None,
-        allow_write: Some(vec![]),
-        deny_write: None,
-        allow_ffi: Some(vec![]),
-        deny_ffi: None,
-        allow_hrtime: true,
+        permissions: PermissionFlags {
+          allow_net: Some(vec![]),
+          allow_env: Some(vec![]),
+          deny_env: None,
+          allow_run: Some(vec![]),
+          deny_run: None,
+          allow_read: Some(vec![]),
+          deny_read: None,
+          allow_sys: Some(vec![]),
+          deny_sys: None,
+          allow_write: Some(vec![]),
+          deny_write: None,
+          allow_ffi: Some(vec![]),
+          deny_ffi: None,
+          allow_hrtime: true,
+          ..Default::default()
+        },
         ..Flags::default()
       }
     );
@@ -6207,15 +6340,18 @@ mod tests {
         v8_flags: svec!["--help", "--random-seed=1"],
         seed: Some(1),
         inspect: Some("127.0.0.1:9229".parse().unwrap()),
-        allow_all: true,
-        allow_net: Some(vec![]),
-        allow_env: Some(vec![]),
-        allow_run: Some(vec![]),
-        allow_read: Some(vec![]),
-        allow_sys: Some(vec![]),
-        allow_write: Some(vec![]),
-        allow_ffi: Some(vec![]),
-        allow_hrtime: true,
+        permissions: PermissionFlags {
+          allow_all: true,
+          allow_net: Some(vec![]),
+          allow_env: Some(vec![]),
+          allow_run: Some(vec![]),
+          allow_read: Some(vec![]),
+          allow_sys: Some(vec![]),
+          allow_write: Some(vec![]),
+          allow_ffi: Some(vec![]),
+          allow_hrtime: true,
+          ..Default::default()
+        },
         env_file: Some(".example.env".to_owned()),
         unsafely_ignore_certificate_errors: Some(vec![]),
         ..Flags::default()
@@ -6235,7 +6371,10 @@ mod tests {
           eval: Some("console.log('hello');".to_string()),
           is_default_command: false,
         }),
-        allow_write: Some(vec![]),
+        permissions: PermissionFlags {
+          allow_write: Some(vec![]),
+          ..Default::default()
+        },
         type_check_mode: TypeCheckMode::None,
         ..Flags::default()
       }
@@ -6279,7 +6418,10 @@ mod tests {
     assert_eq!(
       r.unwrap(),
       Flags {
-        allow_read: Some(vec![String::from("."), temp_dir]),
+        permissions: PermissionFlags {
+          allow_read: Some(vec![String::from("."), temp_dir]),
+          ..Default::default()
+        },
         subcommand: DenoSubcommand::Run(RunFlags::new_default(
           "script.ts".to_string(),
         )),
@@ -6304,7 +6446,10 @@ mod tests {
     assert_eq!(
       r.unwrap(),
       Flags {
-        deny_read: Some(vec![String::from("."), temp_dir]),
+        permissions: PermissionFlags {
+          deny_read: Some(vec![String::from("."), temp_dir]),
+          ..Default::default()
+        },
         subcommand: DenoSubcommand::Run(RunFlags::new_default(
           "script.ts".to_string(),
         )),
@@ -6329,7 +6474,10 @@ mod tests {
     assert_eq!(
       r.unwrap(),
       Flags {
-        allow_write: Some(vec![String::from("."), temp_dir]),
+        permissions: PermissionFlags {
+          allow_write: Some(vec![String::from("."), temp_dir]),
+          ..Default::default()
+        },
         subcommand: DenoSubcommand::Run(RunFlags::new_default(
           "script.ts".to_string(),
         )),
@@ -6354,7 +6502,10 @@ mod tests {
     assert_eq!(
       r.unwrap(),
       Flags {
-        deny_write: Some(vec![String::from("."), temp_dir]),
+        permissions: PermissionFlags {
+          deny_write: Some(vec![String::from("."), temp_dir]),
+          ..Default::default()
+        },
         subcommand: DenoSubcommand::Run(RunFlags::new_default(
           "script.ts".to_string(),
         )),
@@ -6378,7 +6529,10 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags::new_default(
           "script.ts".to_string(),
         )),
-        allow_net: Some(svec!["127.0.0.1"]),
+        permissions: PermissionFlags {
+          allow_net: Some(svec!["127.0.0.1"]),
+          ..Default::default()
+        },
         code_cache_enabled: true,
         ..Flags::default()
       }
@@ -6395,7 +6549,10 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags::new_default(
           "script.ts".to_string(),
         )),
-        deny_net: Some(svec!["127.0.0.1"]),
+        permissions: PermissionFlags {
+          deny_net: Some(svec!["127.0.0.1"]),
+          ..Default::default()
+        },
         code_cache_enabled: true,
         ..Flags::default()
       }
@@ -6412,7 +6569,10 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags::new_default(
           "script.ts".to_string(),
         )),
-        allow_env: Some(svec!["HOME"]),
+        permissions: PermissionFlags {
+          allow_env: Some(svec!["HOME"]),
+          ..Default::default()
+        },
         code_cache_enabled: true,
         ..Flags::default()
       }
@@ -6429,7 +6589,10 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags::new_default(
           "script.ts".to_string(),
         )),
-        deny_env: Some(svec!["HOME"]),
+        permissions: PermissionFlags {
+          deny_env: Some(svec!["HOME"]),
+          ..Default::default()
+        },
         code_cache_enabled: true,
         ..Flags::default()
       }
@@ -6450,7 +6613,10 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags::new_default(
           "script.ts".to_string(),
         )),
-        allow_env: Some(svec!["HOME", "PATH"]),
+        permissions: PermissionFlags {
+          allow_env: Some(svec!["HOME", "PATH"]),
+          ..Default::default()
+        },
         code_cache_enabled: true,
         ..Flags::default()
       }
@@ -6467,7 +6633,10 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags::new_default(
           "script.ts".to_string(),
         )),
-        deny_env: Some(svec!["HOME", "PATH"]),
+        permissions: PermissionFlags {
+          deny_env: Some(svec!["HOME", "PATH"]),
+          ..Default::default()
+        },
         code_cache_enabled: true,
         ..Flags::default()
       }
@@ -6509,7 +6678,10 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags::new_default(
           "script.ts".to_string(),
         )),
-        allow_sys: Some(vec![]),
+        permissions: PermissionFlags {
+          allow_sys: Some(vec![]),
+          ..Default::default()
+        },
         code_cache_enabled: true,
         ..Flags::default()
       }
@@ -6525,7 +6697,10 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags::new_default(
           "script.ts".to_string(),
         )),
-        deny_sys: Some(vec![]),
+        permissions: PermissionFlags {
+          deny_sys: Some(vec![]),
+          ..Default::default()
+        },
         code_cache_enabled: true,
         ..Flags::default()
       }
@@ -6542,7 +6717,10 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags::new_default(
           "script.ts".to_string(),
         )),
-        allow_sys: Some(svec!["hostname"]),
+        permissions: PermissionFlags {
+          allow_sys: Some(svec!["hostname"]),
+          ..Default::default()
+        },
         code_cache_enabled: true,
         ..Flags::default()
       }
@@ -6559,7 +6737,10 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags::new_default(
           "script.ts".to_string(),
         )),
-        deny_sys: Some(svec!["hostname"]),
+        permissions: PermissionFlags {
+          deny_sys: Some(svec!["hostname"]),
+          ..Default::default()
+        },
         code_cache_enabled: true,
         ..Flags::default()
       }
@@ -6580,7 +6761,10 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags::new_default(
           "script.ts".to_string(),
         )),
-        allow_sys: Some(svec!["hostname", "osRelease"]),
+        permissions: PermissionFlags {
+          allow_sys: Some(svec!["hostname", "osRelease"]),
+          ..Default::default()
+        },
         code_cache_enabled: true,
         ..Flags::default()
       }
@@ -6601,7 +6785,10 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags::new_default(
           "script.ts".to_string(),
         )),
-        deny_sys: Some(svec!["hostname", "osRelease"]),
+        permissions: PermissionFlags {
+          deny_sys: Some(svec!["hostname", "osRelease"]),
+          ..Default::default()
+        },
         code_cache_enabled: true,
         ..Flags::default()
       }
@@ -6763,7 +6950,10 @@ mod tests {
           out_file: Some("bundle.js".to_string()),
           watch: Default::default(),
         }),
-        allow_write: Some(vec![]),
+        permissions: PermissionFlags {
+          allow_write: Some(vec![]),
+          ..Default::default()
+        },
         no_remote: true,
         type_check_mode: TypeCheckMode::Local,
         config_flag: ConfigFlag::Path("tsconfig.json".to_owned()),
@@ -6784,7 +6974,10 @@ mod tests {
           watch: Default::default(),
         }),
         type_check_mode: TypeCheckMode::Local,
-        allow_write: Some(vec![]),
+        permissions: PermissionFlags {
+          allow_write: Some(vec![]),
+          ..Default::default()
+        },
         ..Flags::default()
       }
     );
@@ -7160,9 +7353,12 @@ mod tests {
         v8_flags: svec!["--help", "--random-seed=1"],
         seed: Some(1),
         inspect: Some("127.0.0.1:9229".parse().unwrap()),
-        allow_net: Some(vec![]),
         unsafely_ignore_certificate_errors: Some(vec![]),
-        allow_read: Some(vec![]),
+        permissions: PermissionFlags {
+          allow_net: Some(vec![]),
+          allow_read: Some(vec![]),
+          ..Default::default()
+        },
         env_file: Some(".example.env".to_owned()),
         ..Flags::default()
       }
@@ -7293,7 +7489,10 @@ mod tests {
           "script.ts".to_string(),
         )),
         location: Some(Url::parse("https://foo/").unwrap()),
-        allow_read: Some(vec![]),
+        permissions: PermissionFlags {
+          allow_read: Some(vec![]),
+          ..Default::default()
+        },
         argv: svec!["--allow-net", "-r", "--help", "--foo", "bar"],
         code_cache_enabled: true,
         ..Flags::default()
@@ -7600,15 +7799,18 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags::new_default(
           "script.ts".to_string(),
         )),
-        allow_net: Some(svec![
-          "deno.land",
-          "0.0.0.0:8000",
-          "127.0.0.1:8000",
-          "localhost:8000",
-          "0.0.0.0:4545",
-          "127.0.0.1:4545",
-          "localhost:4545"
-        ]),
+        permissions: PermissionFlags {
+          allow_net: Some(svec![
+            "deno.land",
+            "0.0.0.0:8000",
+            "127.0.0.1:8000",
+            "localhost:8000",
+            "0.0.0.0:4545",
+            "127.0.0.1:4545",
+            "localhost:4545"
+          ]),
+          ..Default::default()
+        },
         code_cache_enabled: true,
         ..Flags::default()
       }
@@ -7629,15 +7831,18 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags::new_default(
           "script.ts".to_string(),
         )),
-        deny_net: Some(svec![
-          "deno.land",
-          "0.0.0.0:8000",
-          "127.0.0.1:8000",
-          "localhost:8000",
-          "0.0.0.0:4545",
-          "127.0.0.1:4545",
-          "localhost:4545"
-        ]),
+        permissions: PermissionFlags {
+          deny_net: Some(svec![
+            "deno.land",
+            "0.0.0.0:8000",
+            "127.0.0.1:8000",
+            "localhost:8000",
+            "0.0.0.0:4545",
+            "127.0.0.1:4545",
+            "localhost:4545"
+          ]),
+          ..Default::default()
+        },
         code_cache_enabled: true,
         ..Flags::default()
       }
@@ -7658,18 +7863,21 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags::new_default(
           "script.ts".to_string(),
         )),
-        allow_net: Some(svec![
-          "deno.land",
-          "deno.land:80",
-          "::",
-          "127.0.0.1",
-          "[::1]",
-          "1.2.3.4:5678",
-          "0.0.0.0:5678",
-          "127.0.0.1:5678",
-          "localhost:5678",
-          "[::1]:8080"
-        ]),
+        permissions: PermissionFlags {
+          allow_net: Some(svec![
+            "deno.land",
+            "deno.land:80",
+            "::",
+            "127.0.0.1",
+            "[::1]",
+            "1.2.3.4:5678",
+            "0.0.0.0:5678",
+            "127.0.0.1:5678",
+            "localhost:5678",
+            "[::1]:8080"
+          ]),
+          ..Default::default()
+        },
         code_cache_enabled: true,
         ..Flags::default()
       }
@@ -7690,18 +7898,21 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags::new_default(
           "script.ts".to_string(),
         )),
-        deny_net: Some(svec![
-          "deno.land",
-          "deno.land:80",
-          "::",
-          "127.0.0.1",
-          "[::1]",
-          "1.2.3.4:5678",
-          "0.0.0.0:5678",
-          "127.0.0.1:5678",
-          "localhost:5678",
-          "[::1]:8080"
-        ]),
+        permissions: PermissionFlags {
+          deny_net: Some(svec![
+            "deno.land",
+            "deno.land:80",
+            "::",
+            "127.0.0.1",
+            "[::1]",
+            "1.2.3.4:5678",
+            "0.0.0.0:5678",
+            "127.0.0.1:5678",
+            "localhost:5678",
+            "[::1]:8080"
+          ]),
+          ..Default::default()
+        },
         code_cache_enabled: true,
         ..Flags::default()
       }
@@ -7857,12 +8068,15 @@ mod tests {
           legacy_flag_enabled: true,
           ..Default::default()
         },
-        no_prompt: true,
         no_npm: true,
         no_remote: true,
         location: Some(Url::parse("https://foo/").unwrap()),
         type_check_mode: TypeCheckMode::Local,
-        allow_net: Some(vec![]),
+        permissions: PermissionFlags {
+          no_prompt: true,
+          allow_net: Some(vec![]),
+          ..Default::default()
+        },
         argv: svec!["arg1", "arg2"],
         ..Flags::default()
       }
@@ -7937,7 +8151,10 @@ mod tests {
           junit_path: None,
         }),
         type_check_mode: TypeCheckMode::Local,
-        no_prompt: true,
+        permissions: PermissionFlags {
+          no_prompt: true,
+          ..Default::default()
+        },
         ..Flags::default()
       }
     );
@@ -7971,7 +8188,10 @@ mod tests {
           junit_path: None,
         }),
         type_check_mode: TypeCheckMode::Local,
-        no_prompt: true,
+        permissions: PermissionFlags {
+          no_prompt: true,
+          ..Default::default()
+        },
         ..Flags::default()
       }
     );
@@ -8008,7 +8228,10 @@ mod tests {
           reporter: Default::default(),
           junit_path: None,
         }),
-        no_prompt: true,
+        permissions: PermissionFlags {
+          no_prompt: true,
+          ..Default::default()
+        },
         type_check_mode: TypeCheckMode::Local,
         enable_testing_features: true,
         ..Flags::default()
@@ -8026,7 +8249,10 @@ mod tests {
           reporter: TestReporterConfig::Pretty,
           ..Default::default()
         }),
-        no_prompt: true,
+        permissions: PermissionFlags {
+          no_prompt: true,
+          ..Default::default()
+        },
         type_check_mode: TypeCheckMode::Local,
         ..Flags::default()
       }
@@ -8040,7 +8266,10 @@ mod tests {
           reporter: TestReporterConfig::Dot,
           ..Default::default()
         }),
-        no_prompt: true,
+        permissions: PermissionFlags {
+          no_prompt: true,
+          ..Default::default()
+        },
         type_check_mode: TypeCheckMode::Local,
         log_level: Some(Level::Error),
         ..Flags::default()
@@ -8055,7 +8284,10 @@ mod tests {
           reporter: TestReporterConfig::Junit,
           ..Default::default()
         }),
-        no_prompt: true,
+        permissions: PermissionFlags {
+          no_prompt: true,
+          ..Default::default()
+        },
         type_check_mode: TypeCheckMode::Local,
         ..Flags::default()
       }
@@ -8069,7 +8301,10 @@ mod tests {
           reporter: TestReporterConfig::Tap,
           ..Default::default()
         }),
-        no_prompt: true,
+        permissions: PermissionFlags {
+          no_prompt: true,
+          ..Default::default()
+        },
         type_check_mode: TypeCheckMode::Local,
         log_level: Some(Level::Error),
         ..Flags::default()
@@ -8090,7 +8325,10 @@ mod tests {
           junit_path: Some("report.xml".to_string()),
           ..Default::default()
         }),
-        no_prompt: true,
+        permissions: PermissionFlags {
+          no_prompt: true,
+          ..Default::default()
+        },
         type_check_mode: TypeCheckMode::Local,
         log_level: Some(Level::Error),
         ..Flags::default()
@@ -8125,7 +8363,10 @@ mod tests {
           reporter: Default::default(),
           junit_path: None,
         }),
-        no_prompt: true,
+        permissions: PermissionFlags {
+          no_prompt: true,
+          ..Default::default()
+        },
         type_check_mode: TypeCheckMode::Local,
         ..Flags::default()
       }
@@ -8156,7 +8397,10 @@ mod tests {
           reporter: Default::default(),
           junit_path: None,
         }),
-        no_prompt: true,
+        permissions: PermissionFlags {
+          no_prompt: true,
+          ..Default::default()
+        },
         type_check_mode: TypeCheckMode::Local,
         ..Flags::default()
       }
@@ -8186,7 +8430,10 @@ mod tests {
           reporter: Default::default(),
           junit_path: None,
         }),
-        no_prompt: true,
+        permissions: PermissionFlags {
+          no_prompt: true,
+          ..Default::default()
+        },
         type_check_mode: TypeCheckMode::Local,
         ..Flags::default()
       }
@@ -8223,7 +8470,10 @@ mod tests {
           junit_path: None,
         }),
         type_check_mode: TypeCheckMode::Local,
-        no_prompt: true,
+        permissions: PermissionFlags {
+          no_prompt: true,
+          ..Default::default()
+        },
         ..Flags::default()
       }
     );
@@ -8240,7 +8490,10 @@ mod tests {
           ..TestFlags::default()
         }),
         type_check_mode: TypeCheckMode::Local,
-        no_prompt: true,
+        permissions: PermissionFlags {
+          no_prompt: true,
+          ..Default::default()
+        },
         ..Flags::default()
       }
     );
@@ -8676,9 +8929,12 @@ mod tests {
         ca_data: Some(CaData::File("example.crt".to_string())),
         cached_only: true,
         location: Some(Url::parse("https://foo/").unwrap()),
-        allow_read: Some(vec![]),
+        permissions: PermissionFlags {
+          allow_read: Some(vec![]),
+          allow_net: Some(vec![]),
+          ..Default::default()
+        },
         unsafely_ignore_certificate_errors: Some(vec![]),
-        allow_net: Some(vec![]),
         v8_flags: svec!["--help", "--random-seed=1"],
         seed: Some(1),
         env_file: Some(".example.env".to_owned()),
@@ -9105,8 +9361,11 @@ mod tests {
         no_remote: true,
         type_check_mode: TypeCheckMode::Local,
         location: Some(Url::parse("https://foo/").unwrap()),
-        allow_net: Some(vec![]),
-        no_prompt: true,
+        permissions: PermissionFlags {
+          allow_net: Some(vec![]),
+          no_prompt: true,
+          ..Default::default()
+        },
         argv: svec!["arg1", "arg2"],
         ..Flags::default()
       }
@@ -9129,7 +9388,10 @@ mod tests {
           },
           watch: Some(Default::default()),
         }),
-        no_prompt: true,
+        permissions: PermissionFlags {
+          no_prompt: true,
+          ..Default::default()
+        },
         type_check_mode: TypeCheckMode::Local,
         ..Flags::default()
       }

@@ -24,7 +24,6 @@ use deno_core::futures::AsyncSeekExt;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_npm::NpmSystemInfo;
-use deno_runtime::permissions::PermissionsOptions;
 use deno_semver::package::PackageReq;
 use deno_semver::VersionReqSpecifierParseError;
 use log::Level;
@@ -37,6 +36,7 @@ use crate::args::CaData;
 use crate::args::CliOptions;
 use crate::args::CompileFlags;
 use crate::args::PackageJsonDepsProvider;
+use crate::args::PermissionFlags;
 use crate::args::UnstableConfig;
 use crate::cache::DenoDir;
 use crate::file_fetcher::FileFetcher;
@@ -134,7 +134,7 @@ pub enum NodeModules {
 pub struct Metadata {
   pub argv: Vec<String>,
   pub seed: Option<u64>,
-  pub permissions: PermissionsOptions,
+  pub permissions: PermissionFlags,
   pub location: Option<Url>,
   pub v8_flags: Vec<String>,
   pub log_level: Option<Level>,
@@ -621,7 +621,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       argv: compile_flags.args.clone(),
       seed: cli_options.seed(),
       location: cli_options.location_flag().clone(),
-      permissions: cli_options.permissions_options(),
+      permissions: cli_options.permission_flags().clone(),
       v8_flags: cli_options.v8_flags().clone(),
       unsafely_ignore_certificate_errors: cli_options
         .unsafely_ignore_certificate_errors()
