@@ -5,7 +5,6 @@
   },
   "steps": [
     {
-      "cleanDenoDir": true,
       "args": "install",
       "output": "install.out"
     },

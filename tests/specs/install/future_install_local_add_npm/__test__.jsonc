@@ -5,12 +5,10 @@
   },
   "steps": [
     {
-      "cleanDenoDir": true,
       "args": "install npm:@denotest/esm-basic",
       "output": "install.out"
     },
     {
-      "cleanDenoDir": true,
       "args": "run --allow-read=./package.json --cached-only main.js",
       "exitCode": 0,
       "output": "main.out"

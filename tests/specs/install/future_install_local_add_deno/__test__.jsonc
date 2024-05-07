@@ -5,7 +5,6 @@
   },
   "steps": [
     {
-      "cleanDenoDir": true,
       "args": "install npm:@denotest/esm-basic",
       "output": "install.out"
     },
