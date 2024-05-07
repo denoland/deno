@@ -9,9 +9,17 @@
       "output": "install.out"
     },
     {
-      "args": "run --allow-read=./package.json --cached-only main.js",
+      // make sure the dep got cached
+      "args": "run --cached-only main.js",
       "exitCode": 0,
-      "output": "main.out"
+      "output": ""
+    },
+    {
+      "args": [
+        "eval",
+        "console.log(Deno.readTextFileSync('package.json').trim())"
+      ],
+      "output": "package.json.out"
     }
   ]
 }

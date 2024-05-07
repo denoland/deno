@@ -9,9 +9,9 @@
       "output": "install.out"
     },
     {
+      // ensure deps are actually cached
       "args": "run --cached-only main.js",
-      "exitCode": 0,
-      "output": "main.out"
+      "output": ""
     }
   ]
 }

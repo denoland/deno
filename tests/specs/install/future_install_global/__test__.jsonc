@@ -10,7 +10,7 @@
     },
     {
       "args": "run -A assert.js",
-      "output": "assert.out"
+      "output": ""
     }
   ]
 }
