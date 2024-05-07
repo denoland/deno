@@ -168,7 +168,6 @@ pub async fn run_all_servers() {
   futures.extend(npm_registry_server_futs);
   futures.extend(private_npm_registry_1_server_futs);
 
-  // update this constant when not equal
   assert_eq!(futures.len(), TEST_SERVERS_COUNT);
 
   futures::future::join_all(futures).await;
