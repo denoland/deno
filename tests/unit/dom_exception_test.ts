@@ -24,7 +24,7 @@ Deno.test(function nameToCodeMappingPrototypeAccess() {
 });
 
 Deno.test(function callSitesEvalsDoesntThrow() {
-  let e2 = new DOMException("asdf");
+  const e2 = new DOMException("asdf");
   // @ts-ignore no types for `__callSiteEvals` but it's observable.
   assert(Array.isArray(e2.__callSiteEvals));
 });
