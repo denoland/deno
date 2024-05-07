@@ -16,8 +16,6 @@ const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 const cert = Deno.readTextFileSync("tests/testdata/tls/localhost.crt");
 const key = Deno.readTextFileSync("tests/testdata/tls/localhost.key");
-const certEcc = Deno.readTextFileSync("tests/testdata/tls/localhost_ecc.crt");
-const keyEcc = Deno.readTextFileSync("tests/testdata/tls/localhost_ecc.key");
 const caCerts = [Deno.readTextFileSync("tests/testdata/tls/RootCA.pem")];
 
 async function sleep(msec: number) {

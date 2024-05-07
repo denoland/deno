@@ -1,4 +1,16 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
+//! These represent the various types of TLS keys we support for both client and server
+//! connections.
+//!
+//! A TLS key will most often be static, and will loaded from a certificate and key file
+//! or string. These are represented by `TlsKey`, which is stored in `TlsKeys::Static`.
+//!
+//! In more complex cases, you may need a `TlsKeyResolver`/`TlsKeyLookup` pair, which
+//! requires polling of the `TlsKeyLookup` lookup queue. The underlying channels that used for
+//! key lookup can handle closing one end of the pair, in which case they will just
+//! attempt to clean up the associated resources.
+
 use crate::Certificate;
 use crate::PrivateKey;
 use deno_core::anyhow::anyhow;
