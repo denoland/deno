@@ -46,6 +46,7 @@ use deno_tls::RootCertStoreProvider;
 use data_url::DataUrl;
 use deno_tls::TlsKey;
 use deno_tls::TlsKeys;
+use deno_tls::TlsKeysHolder;
 use http_v02::header::CONTENT_LENGTH;
 use http_v02::Uri;
 use reqwest::header::HeaderMap;
@@ -825,7 +826,7 @@ fn default_true() -> bool {
 pub fn op_fetch_custom_client<FP>(
   state: &mut OpState,
   #[serde] args: CreateHttpClientArgs,
-  #[cppgc] tls_keys: &deno_tls::TlsKeys,
+  #[cppgc] tls_keys: &TlsKeysHolder,
 ) -> Result<ResourceId, AnyError>
 where
   FP: FetchPermissions + 'static,
@@ -852,7 +853,7 @@ where
       unsafely_ignore_certificate_errors: options
         .unsafely_ignore_certificate_errors
         .clone(),
-      client_cert_chain_and_key: tls_keys.clone().try_into().unwrap(),
+      client_cert_chain_and_key: tls_keys.take().try_into().unwrap(),
       pool_max_idle_per_host: args.pool_max_idle_per_host,
       pool_idle_timeout: args.pool_idle_timeout.and_then(
         |timeout| match timeout {
