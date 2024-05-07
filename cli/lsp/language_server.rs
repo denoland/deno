@@ -316,10 +316,17 @@ impl LanguageServer {
 
       // now get the lock back to update with the new information
       let mut inner = self.0.write().await;
-      let lockfile = inner.config.tree.root_lockfile().cloned();
-      inner.documents.refresh_lockfile(lockfile);
+      inner.resolver.did_cache();
       inner.refresh_npm_specifiers().await;
-      inner.post_cache(result.mark).await;
+      inner.diagnostics_server.invalidate_all();
+      inner.project_changed([], false);
+      inner
+        .ts_server
+        .cleanup_semantic_cache(inner.snapshot())
+        .await;
+      inner.send_diagnostics_update();
+      inner.send_testing_update();
+      inner.performance.measure(result.mark);
     }
     Ok(Some(json!(true)))
   }
@@ -689,7 +696,6 @@ impl Inner {
       .clone()
       .map(|c| c as Arc<dyn HttpCache>)
       .unwrap_or(self.global_cache.clone());
-    self.documents.set_cache(self.cache.clone());
     self.cache_metadata.set_cache(self.cache.clone());
     self.performance.measure(mark);
   }
@@ -780,8 +786,6 @@ impl Inner {
       self.config.set_workspace_folders(workspace_folders);
       self.config.update_capabilities(&params.capabilities);
     }
-
-    self.documents.initialize(&self.config);
 
     if let Err(e) = self
       .ts_server
@@ -986,10 +990,14 @@ impl Inner {
         }
       }
     }
+  }
+
+  async fn refresh_resolver(&mut self) {
     self.resolver = self
       .resolver
       .with_new_config(
         &self.config,
+        self.cache.clone(),
         self.maybe_global_cache_path.as_deref(),
         Some(&self.http_client),
       )
@@ -1000,6 +1008,7 @@ impl Inner {
     self.documents.update_config(
       &self.config,
       &self.resolver,
+      self.cache.clone(),
       &self.workspace_files,
     );
 
@@ -1133,6 +1142,7 @@ impl Inner {
     self.refresh_workspace_files();
     self.refresh_config_tree().await;
     self.update_cache();
+    self.refresh_resolver().await;
     self.refresh_documents_config().await;
     self.diagnostics_server.invalidate_all();
     self.send_diagnostics_update();
@@ -1181,6 +1191,7 @@ impl Inner {
       self.workspace_files_hash = 0;
       self.refresh_workspace_files();
       self.refresh_config_tree().await;
+      self.refresh_resolver().await;
       deno_config_changes.extend(changes.iter().filter_map(|(s, e)| {
         self.config.tree.watched_file_type(s).and_then(|t| {
           let configuration_type = match t.1 {
@@ -1482,10 +1493,7 @@ impl Inner {
             if let Ok(jsr_req_ref) =
               JsrPackageReqReference::from_specifier(specifier)
             {
-              if let Some(url) = self
-                .documents
-                .get_jsr_resolver()
-                .jsr_to_registry_url(&jsr_req_ref)
+              if let Some(url) = self.resolver.jsr_to_registry_url(&jsr_req_ref)
               {
                 result = format!("{result} (<{url}>)");
               }
@@ -2961,6 +2969,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     {
       let mut ls = self.0.write().await;
       init_log_file(ls.config.log_file());
+      ls.refresh_resolver().await;
       ls.refresh_documents_config().await;
       ls.diagnostics_server.invalidate_all();
       ls.send_diagnostics_update();
@@ -3095,6 +3104,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
       let mut ls = self.0.write().await;
       ls.refresh_workspace_files();
       ls.refresh_config_tree().await;
+      ls.refresh_resolver().await;
       ls.refresh_documents_config().await;
       ls.diagnostics_server.invalidate_all();
       ls.send_diagnostics_update();
@@ -3352,20 +3362,6 @@ impl Inner {
       roots,
       mark,
     }))
-  }
-
-  async fn post_cache(&mut self, mark: PerformanceMark) {
-    // Now that we have dependencies loaded, we need to re-analyze all the files.
-    // For that we're invalidating all the existing diagnostics and restarting
-    // the language server for TypeScript (as it might hold to some stale
-    // documents).
-    self.diagnostics_server.invalidate_all();
-    self.project_changed([], false);
-    self.ts_server.cleanup_semantic_cache(self.snapshot()).await;
-    self.send_diagnostics_update();
-    self.send_testing_update();
-
-    self.performance.measure(mark);
   }
 
   fn get_performance(&self) -> Value {
