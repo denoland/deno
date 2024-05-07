@@ -24,6 +24,7 @@ export async function checkCopyright() {
     "*.js",
     "*.ts",
     ":!:.github/mtime_cache/action.js",
+    ":!:tests/registry/**",
     ":!:tests/specs/**",
     ":!:tests/testdata/**",
     ":!:cli/bench/testdata/**",

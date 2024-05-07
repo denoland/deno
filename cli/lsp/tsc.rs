@@ -511,7 +511,7 @@ impl TsServer {
     snapshot: Arc<StateSnapshot>,
     specifier: ModuleSpecifier,
     range: Range<u32>,
-    codes: Vec<String>,
+    codes: Vec<i32>,
     format_code_settings: FormatCodeSettings,
     preferences: UserPreferences,
   ) -> Vec<CodeFixAction> {
@@ -4130,9 +4130,9 @@ fn op_script_names(state: &mut OpState) -> Vec<String> {
   }
 
   // inject these next because they're global
-  for import in documents.module_graph_imports() {
-    if seen.insert(import.as_str()) {
-      result.push(import.to_string());
+  for specifier in state.state_snapshot.resolver.graph_import_specifiers() {
+    if seen.insert(specifier.as_str()) {
+      result.push(specifier.to_string());
     }
   }
 
@@ -4817,7 +4817,7 @@ pub enum TscRequest {
       String,
       u32,
       u32,
-      Vec<String>,
+      Vec<i32>,
       FormatCodeSettings,
       UserPreferences,
     )>,
@@ -5110,7 +5110,7 @@ mod tests {
       )
       .await;
     let resolver = LspResolver::default()
-      .with_new_config(&config, None, None)
+      .with_new_config(&config, cache.clone(), None, None)
       .await;
     StateSnapshot {
       project_version: 0,

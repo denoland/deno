@@ -975,12 +975,11 @@ fn lock_redirects() {
     .new_command()
     .args("run main.ts Hi there")
     .run()
-    .assert_matches_text(
-      concat!(
-        "Download http://localhost:4545/echo.ts\n",
-        "Download http://localhost:4545/npm/registry/@denotest/esm-basic\n",
-        "Download http://localhost:4545/npm/registry/@denotest/esm-basic/1.0.0.tgz\n",
-        "Hi, there",
+    .assert_matches_text(concat!(
+      "Download http://localhost:4545/echo.ts\n",
+      "Download http://localhost:4558/@denotest/esm-basic\n",
+      "Download http://localhost:4558/@denotest/esm-basic/1.0.0.tgz\n",
+      "Hi, there",
     ));
   util::assertions::assert_wildcard_match(
     &temp_dir.read_to_string("deno.lock"),
@@ -5217,7 +5216,7 @@ fn code_cache_npm_test() {
     output
       .assert_stdout_matches_text("Hello World[WILDCARD]")
       .assert_stderr_matches_text("[WILDCARD]Updating V8 code cache for ES module: file:///[WILDCARD]/main.js[WILDCARD]")
-      .assert_stderr_matches_text("[WILDCARD]Updating V8 code cache for ES module: file:///[WILDCARD]/npm/registry/chalk/5.[WILDCARD]/source/index.js[WILDCARD]");
+      .assert_stderr_matches_text("[WILDCARD]Updating V8 code cache for ES module: file:///[WILDCARD]/chalk/5.[WILDCARD]/source/index.js[WILDCARD]");
     assert!(!output.stderr().contains("V8 code cache hit"));
 
     // Check that the code cache database exists.
@@ -5241,7 +5240,7 @@ fn code_cache_npm_test() {
     output
       .assert_stdout_matches_text("Hello World[WILDCARD]")
       .assert_stderr_matches_text("[WILDCARD]V8 code cache hit for ES module: file:///[WILDCARD]/main.js[WILDCARD]")
-      .assert_stderr_matches_text("[WILDCARD]V8 code cache hit for ES module: file:///[WILDCARD]/npm/registry/chalk/5.[WILDCARD]/source/index.js[WILDCARD]");
+      .assert_stderr_matches_text("[WILDCARD]V8 code cache hit for ES module: file:///[WILDCARD]/chalk/5.[WILDCARD]/source/index.js[WILDCARD]");
     assert!(!output.stderr().contains("Updating V8 code cache"));
   }
 }
@@ -5275,9 +5274,9 @@ fn code_cache_npm_with_require_test() {
     output
       .assert_stdout_matches_text("function[WILDCARD]")
       .assert_stderr_matches_text("[WILDCARD]Updating V8 code cache for ES module: file:///[WILDCARD]/main.js[WILDCARD]")
-      .assert_stderr_matches_text("[WILDCARD]Updating V8 code cache for ES module: file:///[WILDCARD]/npm/registry/autoprefixer/[WILDCARD]/autoprefixer.js[WILDCARD]")
-      .assert_stderr_matches_text("[WILDCARD]Updating V8 code cache for script: file:///[WILDCARD]/npm/registry/autoprefixer/[WILDCARD]/autoprefixer.js[WILDCARD]")
-      .assert_stderr_matches_text("[WILDCARD]Updating V8 code cache for script: file:///[WILDCARD]/npm/registry/browserslist/[WILDCARD]/index.js[WILDCARD]");
+      .assert_stderr_matches_text("[WILDCARD]Updating V8 code cache for ES module: file:///[WILDCARD]/autoprefixer/[WILDCARD]/autoprefixer.js[WILDCARD]")
+      .assert_stderr_matches_text("[WILDCARD]Updating V8 code cache for script: file:///[WILDCARD]/autoprefixer/[WILDCARD]/autoprefixer.js[WILDCARD]")
+      .assert_stderr_matches_text("[WILDCARD]Updating V8 code cache for script: file:///[WILDCARD]/browserslist/[WILDCARD]/index.js[WILDCARD]");
     assert!(!output.stderr().contains("V8 code cache hit"));
 
     // Check that the code cache database exists.
@@ -5301,9 +5300,9 @@ fn code_cache_npm_with_require_test() {
     output
       .assert_stdout_matches_text("function[WILDCARD]")
       .assert_stderr_matches_text("[WILDCARD]V8 code cache hit for ES module: file:///[WILDCARD]/main.js[WILDCARD]")
-      .assert_stderr_matches_text("[WILDCARD]V8 code cache hit for ES module: file:///[WILDCARD]/npm/registry/autoprefixer/[WILDCARD]/autoprefixer.js[WILDCARD]")
-      .assert_stderr_matches_text("[WILDCARD]V8 code cache hit for script: file:///[WILDCARD]/npm/registry/autoprefixer/[WILDCARD]/autoprefixer.js[WILDCARD]")
-      .assert_stderr_matches_text("[WILDCARD]V8 code cache hit for script: file:///[WILDCARD]/npm/registry/browserslist/[WILDCARD]/index.js[WILDCARD]");
+      .assert_stderr_matches_text("[WILDCARD]V8 code cache hit for ES module: file:///[WILDCARD]/autoprefixer/[WILDCARD]/autoprefixer.js[WILDCARD]")
+      .assert_stderr_matches_text("[WILDCARD]V8 code cache hit for script: file:///[WILDCARD]/autoprefixer/[WILDCARD]/autoprefixer.js[WILDCARD]")
+      .assert_stderr_matches_text("[WILDCARD]V8 code cache hit for script: file:///[WILDCARD]/browserslist/[WILDCARD]/index.js[WILDCARD]");
     assert!(!output.stderr().contains("Updating V8 code cache"));
   }
 }
