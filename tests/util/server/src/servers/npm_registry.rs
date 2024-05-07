@@ -4,51 +4,83 @@ use crate::npm;
 
 use super::custom_headers;
 use super::empty_body;
+use super::hyper_utils::HandlerOutput;
 use super::run_server;
 use super::string_body;
 use super::ServerKind;
 use super::ServerOptions;
 use bytes::Bytes;
+use futures::future::LocalBoxFuture;
+use futures::Future;
+use futures::FutureExt;
 use http_body_util::combinators::UnsyncBoxBody;
 use hyper::body::Incoming;
 use hyper::Request;
 use hyper::Response;
 use hyper::StatusCode;
 use std::convert::Infallible;
+use std::net::Ipv6Addr;
 use std::net::SocketAddr;
+use std::net::SocketAddrV6;
 use std::path::PathBuf;
 
-pub async fn public_npm_registry(port: u16) {
-  let registry_server_addr = SocketAddr::from(([127, 0, 0, 1], port));
-
-  run_server(
-    ServerOptions {
-      addr: registry_server_addr,
-      error_msg: "npm registry server error",
-      kind: ServerKind::Auto,
-    },
-    {
-      move |req| async move {
-        handle_req_for_registry(req, &npm::PUBLIC_TEST_NPM_REGISTRY).await
-      }
-    },
-  )
-  .await
+pub fn public_npm_registry(port: u16) -> Vec<LocalBoxFuture<'static, ()>> {
+  run_npm_server(port, "npm registry server error", {
+    move |req| async move {
+      handle_req_for_registry(req, &npm::PUBLIC_TEST_NPM_REGISTRY).await
+    }
+  })
 }
 
 const PRIVATE_NPM_REGISTRY_AUTH_TOKEN: &str = "private-reg-token";
 
-pub async fn private_npm_registry1(port: u16) {
-  let npm_registry_addr = SocketAddr::from(([127, 0, 0, 1], port));
-  run_server(
-    ServerOptions {
-      addr: npm_registry_addr,
-      kind: ServerKind::Auto,
-      error_msg: "HTTP server error",
-    },
+pub fn private_npm_registry1(port: u16) -> Vec<LocalBoxFuture<'static, ()>> {
+  run_npm_server(
+    port,
+    "npm private registry server error",
     private_npm_registry1_handler,
   )
-  .await;
+}
+
+fn run_npm_server<F, S>(
+  port: u16,
+  error_msg: &'static str,
+  handler: F,
+) -> Vec<LocalBoxFuture<()>>
+where
+  F: Fn(Request<hyper::body::Incoming>) -> S + Copy + 'static,
+  S: Future<Output = HandlerOutput> + 'static,
+{
+  let npm_registry_addr = SocketAddr::from(([127, 0, 0, 1], port));
+  let ipv6_loopback = Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1);
+  let npm_registry_ipv6_addr =
+    SocketAddr::V6(SocketAddrV6::new(ipv6_loopback, port, 0, 0));
+  vec![
+    run_npm_server_for_addr(npm_registry_addr, error_msg, handler)
+      .boxed_local(),
+    // necessary because the npm binary will sometimes resolve localhost to ::1
+    run_npm_server_for_addr(npm_registry_ipv6_addr, error_msg, handler)
+      .boxed_local(),
+  ]
+}
+
+async fn run_npm_server_for_addr<F, S>(
+  addr: SocketAddr,
+  error_msg: &'static str,
+  handler: F,
+) where
+  F: Fn(Request<hyper::body::Incoming>) -> S + Copy + 'static,
+  S: Future<Output = HandlerOutput> + 'static,
+{
+  run_server(
+    ServerOptions {
+      addr,
+      kind: ServerKind::Auto,
+      error_msg,
+    },
+    handler,
+  )
+  .await
 }
 
 async fn private_npm_registry1_handler(

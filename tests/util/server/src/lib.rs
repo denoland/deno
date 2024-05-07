@@ -304,6 +304,8 @@ async fn get_tcp_listener_stream(
   futures::stream::select_all(listeners)
 }
 
+pub const TEST_SERVERS_COUNT: usize = 28;
+
 #[derive(Default)]
 struct HttpServerCount {
   count: usize,
@@ -358,7 +360,7 @@ impl Default for HttpServerStarter {
         if line.starts_with("ready:") {
           ready_count += 1;
         }
-        if ready_count == 27 {
+        if ready_count == TEST_SERVERS_COUNT {
           break;
         }
       } else {

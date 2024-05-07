@@ -30,9 +30,7 @@ use prost::Message;
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::env;
-use std::net::Ipv6Addr;
 use std::net::SocketAddr;
-use std::net::SocketAddrV6;
 use std::result::Result;
 use std::time::Duration;
 use tokio::io::AsyncWriteExt;
@@ -48,6 +46,8 @@ use hyper_utils::run_server;
 use hyper_utils::run_server_with_acceptor;
 use hyper_utils::ServerKind;
 use hyper_utils::ServerOptions;
+
+use crate::TEST_SERVERS_COUNT;
 
 use super::https::get_tls_listener_stream;
 use super::https::SupportedHttpVersions;
@@ -122,7 +122,6 @@ pub async fn run_all_servers() {
   let client_auth_server_https_fut =
     wrap_client_auth_https_server(HTTPS_CLIENT_AUTH_PORT);
   let main_server_fut = wrap_main_server(PORT);
-  let main_server_ipv6_fut = wrap_main_ipv6_server(PORT);
   let main_server_https_fut = wrap_main_https_server(HTTPS_PORT);
   let h1_only_server_tls_fut = wrap_https_h1_only_tls_server(H1_ONLY_TLS_PORT);
   let h2_only_server_tls_fut = wrap_https_h2_only_tls_server(H2_ONLY_TLS_PORT);
@@ -130,52 +129,49 @@ pub async fn run_all_servers() {
   let h2_only_server_fut = wrap_http_h2_only_server(H2_ONLY_PORT);
   let h2_grpc_server_fut = grpc::h2_grpc_server(H2_GRPC_PORT, H2S_GRPC_PORT);
 
-  let npm_registry_server_fut =
-    npm_registry::public_npm_registry(PUBLIC_NPM_REGISTRY_PORT);
-  let private_npm_registry_1_server_fut =
-    npm_registry::private_npm_registry1(PRIVATE_NPM_REGISTRY_1_PORT);
-
   let registry_server_fut =
     jsr_registry::registry_server(JSR_REGISTRY_SERVER_PORT);
   let provenance_mock_server_fut =
     jsr_registry::provenance_mock_server(PROVENANCE_MOCK_SERVER_PORT);
 
-  let server_fut = async {
-    futures::join!(
-      redirect_server_fut,
-      ws_server_fut,
-      ws_ping_server_fut,
-      wss_server_fut,
-      wss2_server_fut,
-      tls_server_fut,
-      tls_client_auth_server_fut,
-      ws_close_server_fut,
-      another_redirect_server_fut,
-      auth_redirect_server_fut,
-      basic_auth_redirect_server_fut,
-      inf_redirects_server_fut,
-      double_redirects_server_fut,
-      abs_redirect_server_fut,
-      main_server_fut,
-      main_server_ipv6_fut,
-      main_server_https_fut,
-      client_auth_server_https_fut,
-      h1_only_server_tls_fut,
-      h2_only_server_tls_fut,
-      h1_only_server_fut,
-      h2_only_server_fut,
-      h2_grpc_server_fut,
-      npm_registry_server_fut,
-      private_npm_registry_1_server_fut,
-      registry_server_fut,
-      provenance_mock_server_fut,
-      // when adding new servers here, make sure to update tests/util/server/src/lib.rs
-      // to wait
-    )
-  }
-  .boxed_local();
+  let npm_registry_server_futs =
+    npm_registry::public_npm_registry(PUBLIC_NPM_REGISTRY_PORT);
+  let private_npm_registry_1_server_futs =
+    npm_registry::private_npm_registry1(PRIVATE_NPM_REGISTRY_1_PORT);
 
-  server_fut.await;
+  let mut futures = vec![
+    redirect_server_fut.boxed_local(),
+    ws_server_fut.boxed_local(),
+    ws_ping_server_fut.boxed_local(),
+    wss_server_fut.boxed_local(),
+    wss2_server_fut.boxed_local(),
+    tls_server_fut.boxed_local(),
+    tls_client_auth_server_fut.boxed_local(),
+    ws_close_server_fut.boxed_local(),
+    another_redirect_server_fut.boxed_local(),
+    auth_redirect_server_fut.boxed_local(),
+    basic_auth_redirect_server_fut.boxed_local(),
+    inf_redirects_server_fut.boxed_local(),
+    double_redirects_server_fut.boxed_local(),
+    abs_redirect_server_fut.boxed_local(),
+    main_server_fut.boxed_local(),
+    main_server_https_fut.boxed_local(),
+    client_auth_server_https_fut.boxed_local(),
+    h1_only_server_tls_fut.boxed_local(),
+    h2_only_server_tls_fut.boxed_local(),
+    h1_only_server_fut.boxed_local(),
+    h2_only_server_fut.boxed_local(),
+    h2_grpc_server_fut.boxed_local(),
+    registry_server_fut.boxed_local(),
+    provenance_mock_server_fut.boxed_local(),
+  ];
+  futures.extend(npm_registry_server_futs);
+  futures.extend(private_npm_registry_1_server_futs);
+
+  // update this constant when not equal
+  assert_eq!(futures.len(), TEST_SERVERS_COUNT);
+
+  futures::future::join_all(futures).await;
 }
 
 fn empty_body() -> UnsyncBoxBody<Bytes, Infallible> {
@@ -1257,21 +1253,9 @@ async fn wrap_abs_redirect_server(port: u16) {
 
 async fn wrap_main_server(port: u16) {
   let main_server_addr = SocketAddr::from(([127, 0, 0, 1], port));
-  wrap_main_server_for_addr(&main_server_addr).await
-}
-
-// necessary because on Windows the npm binary will resolve localhost to ::1
-async fn wrap_main_ipv6_server(port: u16) {
-  let ipv6_loopback = Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1);
-  let main_server_addr =
-    SocketAddr::V6(SocketAddrV6::new(ipv6_loopback, port, 0, 0));
-  wrap_main_server_for_addr(&main_server_addr).await
-}
-
-async fn wrap_main_server_for_addr(main_server_addr: &SocketAddr) {
   run_server(
     ServerOptions {
-      addr: *main_server_addr,
+      addr: main_server_addr,
       kind: ServerKind::Auto,
       error_msg: "HTTP server error",
     },

@@ -31,7 +31,7 @@ pub struct ServerOptions {
   pub kind: ServerKind,
 }
 
-type HandlerOutput =
+pub type HandlerOutput =
   Result<Response<UnsyncBoxBody<Bytes, Infallible>>, anyhow::Error>;
 
 pub async fn run_server<F, S>(options: ServerOptions, handler: F)
