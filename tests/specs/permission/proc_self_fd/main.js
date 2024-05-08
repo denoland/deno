@@ -13,5 +13,5 @@ const cmd = new Deno.Command("/usr/bin/env", {
   ],
 }).spawn();
 
-await cmd.status;
+console.log((await cmd.status).code);
 Deno.exit(123);
