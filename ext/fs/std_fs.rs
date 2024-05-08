@@ -890,7 +890,7 @@ fn open_with_access_check(
   access_check: Option<AccessCheckCb>,
 ) -> FsResult<std::fs::File> {
   if let Some(access_check) = access_check {
-    let path_bytes =  path.as_os_str().as_encoded_bytes();
+    let path_bytes = path.as_os_str().as_encoded_bytes();
     let is_windows_device_path = cfg!(windows)
       && path_bytes.starts_with(br"\\.\")
       && !path_bytes.contains(&b':');
