@@ -155,7 +155,6 @@ impl DiagnosticsPublisher {
         .update(&record.specifier, version, &all_specifier_diagnostics);
       self
         .client
-        .when_outside_lsp_lock()
         .publish_diagnostics(
           url_map
             .normalize_specifier(&record.specifier)
@@ -186,7 +185,6 @@ impl DiagnosticsPublisher {
           self.state.update(specifier, removed_value.version, &[]);
           self
             .client
-            .when_outside_lsp_lock()
             .publish_diagnostics(
               url_map
                 .normalize_specifier(specifier)
