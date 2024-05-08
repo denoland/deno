@@ -23,19 +23,25 @@ use super::urls::INVALID_SPECIFIER;
 
 use crate::args::jsr_url;
 use crate::args::FmtOptionsConfig;
+use crate::cache::HttpCache;
+use crate::lsp::logging::lsp_log;
 use crate::lsp::logging::lsp_warn;
 use crate::tsc;
 use crate::tsc::ResolveArgs;
 use crate::tsc::MISSING_DEPENDENCY_SPECIFIER;
 use crate::util::path::relative_specifier;
 use crate::util::path::to_percent_decoded_str;
+use crate::util::result::InfallibleResultExt;
+use crate::util::v8::convert;
+use deno_core::convert::Smi;
+use deno_core::convert::ToV8;
+use deno_core::error::StdAnyError;
 use deno_runtime::fs_util::specifier_to_file_path;
 
 use dashmap::DashMap;
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context as _;
-use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::located_script_name;
@@ -68,6 +74,7 @@ use std::cell::RefCell;
 use std::cmp;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::convert::Infallible;
 use std::net::SocketAddr;
 use std::ops::Range;
 use std::path::Path;
@@ -246,6 +253,16 @@ pub enum ChangeKind {
   Closed = 2,
 }
 
+impl<'a> ToV8<'a> for ChangeKind {
+  type Error = Infallible;
+  fn to_v8(
+    self,
+    scope: &mut v8::HandleScope<'a>,
+  ) -> Result<v8::Local<'a, v8::Value>, Self::Error> {
+    Smi(self as u8).to_v8(scope)
+  }
+}
+
 impl Serialize for ChangeKind {
   fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
   where
@@ -262,17 +279,18 @@ pub struct PendingChange {
   pub config_changed: bool,
 }
 
-impl PendingChange {
-  fn to_v8<'s>(
-    &self,
-    scope: &mut v8::HandleScope<'s>,
-  ) -> v8::Local<'s, v8::Value> {
+impl<'a> ToV8<'a> for PendingChange {
+  type Error = Infallible;
+  fn to_v8(
+    self,
+    scope: &mut v8::HandleScope<'a>,
+  ) -> Result<v8::Local<'a, v8::Value>, Self::Error> {
     let modified_scripts = {
       let mut modified_scripts_v8 =
         Vec::with_capacity(self.modified_scripts.len());
       for (specifier, kind) in &self.modified_scripts {
         let specifier = v8::String::new(scope, specifier).unwrap().into();
-        let kind = v8::Integer::new(scope, *kind as u8 as i32).into();
+        let kind = kind.to_v8(scope).unwrap_infallible();
         let pair =
           v8::Array::new_with_elements(scope, &[specifier, kind]).into();
         modified_scripts_v8.push(pair);
@@ -283,13 +301,17 @@ impl PendingChange {
       v8::Integer::new_from_unsigned(scope, self.project_version as u32).into();
     let config_changed = v8::Boolean::new(scope, self.config_changed).into();
 
-    v8::Array::new_with_elements(
-      scope,
-      &[modified_scripts, project_version, config_changed],
+    Ok(
+      v8::Array::new_with_elements(
+        scope,
+        &[modified_scripts, project_version, config_changed],
+      )
+      .into(),
     )
-    .into()
   }
+}
 
+impl PendingChange {
   fn coalesce(
     &mut self,
     new_version: usize,
@@ -1080,6 +1102,8 @@ impl TsServer {
     let droppable_token = DroppableToken(token.clone());
     let (tx, mut rx) = oneshot::channel::<Result<String, AnyError>>();
     let change = self.pending_change.lock().take();
+
+    let method = req.method();
     if self
       .sender
       .send((req, snapshot, tx, token.clone(), change))
@@ -1087,6 +1111,7 @@ impl TsServer {
     {
       return Err(anyhow!("failed to send request to tsc thread"));
     }
+    lsp_log!("Sent request to tsc thread: {}", method);
     tokio::select! {
       value = &mut rx => {
         let value = value??;
@@ -4107,45 +4132,64 @@ fn op_resolve(
   op_resolve_inner(state, ResolveArgs { base, specifiers })
 }
 
+struct TscRequestArray {
+  request: TscRequest,
+  id: Smi<usize>,
+  change: convert::OptionNull<PendingChange>,
+}
+
+impl<'a> ToV8<'a> for TscRequestArray {
+  type Error = StdAnyError;
+
+  fn to_v8(
+    self,
+    scope: &mut v8::HandleScope<'a>,
+  ) -> Result<v8::Local<'a, v8::Value>, Self::Error> {
+    let id = self.id.to_v8(scope).unwrap_infallible();
+
+    let (method_name, args) = self.request.to_server_request(scope)?;
+
+    let method_name = deno_core::FastString::from_static(method_name)
+      .v8_string(scope)
+      .into();
+    let args = args.unwrap_or_else(|| v8::Array::new(scope, 0).into());
+
+    let change = self.change.to_v8(scope).unwrap_infallible();
+
+    Ok(
+      v8::Array::new_with_elements(scope, &[id, method_name, args, change])
+        .into(),
+    )
+  }
+}
+
 #[op2(async)]
-async fn op_poll_requests<'a>(
-  scope: &mut v8::HandleScope<'a>,
+#[to_v8]
+async fn op_poll_requests(
   state: Rc<RefCell<OpState>>,
-) -> Option<v8::Local<'a, v8::Array>> {
+) -> convert::OptionNull<TscRequestArray> {
   let mut state = state.borrow_mut();
   let state = state.try_borrow_mut::<State>().unwrap();
-  let (request, snapshot, response_tx, token, change) =
-    state.pending_requests.recv().await?;
+
+  let Some((request, snapshot, response_tx, token, change)) =
+    state.pending_requests.recv().await
+  else {
+    return None.into();
+  };
 
   state.state_snapshot = snapshot;
   state.token = token;
   state.response_tx = Some(response_tx);
   let id = state.last_id;
   state.last_id += 1;
-  // (u32, &'static str, Vec<Value>, )
-  let (method_name, args) = request
-    .to_server_request(scope)
-    .inspect_err(|err| {
-      super::logging::lsp_warn!("Failed to serialize tsc request: {err}")
-    })
-    .ok()?;
 
-  let id = v8::Integer::new_from_unsigned(scope, id as u32).into();
-  let method_name = deno_core::FastString::from_static(method_name)
-    .v8_string(scope)
-    .into();
-  let args = args.unwrap_or_else(|| v8::Array::new(scope, 0).into());
-
-  let change = change
-    .map(|t| t.to_v8(scope))
-    .unwrap_or_else(|| v8::null(scope).into());
-
-  todo!("doesn't work bc can't return v8::Local directly from async op");
-//   Some(v8::Array::new_with_elements(
-//     scope,
-//     &[id, method_name, args, change],
-//   ))
-// }
+  Some(TscRequestArray {
+    request,
+    id: Smi(id),
+    change: change.into(),
+  })
+  .into()
+}
 
 #[inline]
 fn op_resolve_inner(
@@ -4288,27 +4332,29 @@ fn op_project_version(state: &mut OpState) -> usize {
 
 struct TscRuntime {
   js_runtime: JsRuntime,
-  server_request_fn_global: v8::Global<v8::Function>,
+  server_main_loop_fn_global: v8::Global<v8::Function>,
 }
 
 impl TscRuntime {
   fn new(mut js_runtime: JsRuntime) -> Self {
-    let server_request_fn_global = {
+    let server_main_loop_fn_global = {
       let context = js_runtime.main_context();
       let scope = &mut js_runtime.handle_scope();
       let context_local = v8::Local::new(scope, context);
       let global_obj = context_local.global(scope);
-      let server_request_fn_str =
-        v8::String::new_external_onebyte_static(scope, b"serverRequest")
+      let server_main_loop_fn_str =
+        v8::String::new_external_onebyte_static(scope, b"serverMainLoop")
           .unwrap();
-      let server_request_fn = v8::Local::try_from(
-        global_obj.get(scope, server_request_fn_str.into()).unwrap(),
+      let server_main_loop_fn = v8::Local::try_from(
+        global_obj
+          .get(scope, server_main_loop_fn_str.into())
+          .unwrap(),
       )
       .unwrap();
-      v8::Global::new(scope, server_request_fn)
+      v8::Global::new(scope, server_main_loop_fn)
     };
     Self {
-      server_request_fn_global,
+      server_main_loop_fn_global,
       js_runtime,
     }
   }
@@ -4402,7 +4448,7 @@ impl TscRuntime {
 }
 
 fn run_tsc_thread(
-  mut request_rx: UnboundedReceiver<Request>,
+  request_rx: UnboundedReceiver<Request>,
   performance: Arc<Performance>,
   specifier_map: Arc<TscSpecifierMap>,
   maybe_inspector_server: Option<Arc<InspectorServer>>,
@@ -4418,7 +4464,7 @@ fn run_tsc_thread(
       request_rx,
     )],
     startup_snapshot: Some(tsc::compiler_snapshot()),
-    inspector: maybe_inspector_server.is_some(),
+    inspector: has_inspector_server,
     ..Default::default()
   });
 
@@ -4431,33 +4477,42 @@ fn run_tsc_thread(
   }
 
   let tsc_future = async {
-    start_tsc(&mut tsc_runtime, false).unwrap();
-    let (request_signal_tx, mut request_signal_rx) =
-      mpsc::unbounded_channel::<()>();
+    // start_tsc(&mut tsc_runtime, false).unwrap();
     let tsc_runtime =
       Rc::new(tokio::sync::Mutex::new(TscRuntime::new(tsc_runtime)));
     let tsc_runtime_ = tsc_runtime.clone();
+
     let event_loop_fut = async {
       loop {
-        if has_inspector_server {
-          tsc_runtime_
-            .lock()
-            .await
-            .js_runtime
-            .run_event_loop(PollEventLoopOptions {
-              wait_for_inspector: false,
-              pump_v8_message_loop: true,
-            })
-            .await
-            .ok();
+        if let Err(e) = tsc_runtime_
+          .lock()
+          .await
+          .js_runtime
+          .run_event_loop(PollEventLoopOptions {
+            wait_for_inspector: false,
+            pump_v8_message_loop: true,
+          })
+          .await
+        {
+          log::error!("Error in TSC event loop: {e}");
         }
       }
     };
-    tokio::pin!(event_loop_fut);
-    loop {
-      tokio::select! {
-        biased;
-        _ = &mut event_loop_fut => {}
+    let main_loop_fut = {
+      let mut runtime = tsc_runtime.lock().await;
+      lsp_log!("Starting TSC main loop.");
+      let global = runtime.server_main_loop_fn_global.clone();
+      runtime.js_runtime.call(&global)
+    };
+
+    tokio::select! {
+      biased;
+      _ = event_loop_fut => {},
+      res = main_loop_fut => {
+        if let Err(err) = res {
+          log::error!("Error in TSC main loop: {err}");
+          return;
+        }
       }
     }
   }
@@ -4479,6 +4534,7 @@ deno_core::extension!(deno_tsc,
     op_script_version,
     op_ts_config,
     op_project_version,
+    op_poll_requests,
   ],
   options = {
     performance: Arc<Performance>,

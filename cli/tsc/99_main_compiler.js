@@ -1092,11 +1092,36 @@ delete Object.prototype.__proto__;
     }
   }
 
+  /** @typedef {[[string, number][], number, boolean] } PendingChange */
+
+  /** @returns {Promise<[number, string, any[], PendingChange | null]>} */
+  async function pollRequests() {
+    return await ops.op_poll_requests();
+  }
+
+  let hasStarted = false;
+
+  /** @param {{ debug: boolean; }} init */
+  async function serverMainLoop() {
+    if (hasStarted) {
+      throw new Error("The language server has already been initialized.");
+    }
+    hasStarted = true;
+    languageService = ts.createLanguageService(host, documentRegistry);
+    setLogDebug(true, "TSLS");
+    debug("serverInit()");
+
+    while (true) {
+      const request = await pollRequests();
+      serverRequest(request[0], request[1], request[2], request[3]);
+    }
+  }
+
   /**
    * @param {number} id
    * @param {string} method
    * @param {any[]} args
-   * @param {[[string, number][], number, boolean] | null} maybeChange
+   * @param {PendingChange | null} maybeChange
    */
   function serverRequest(id, method, args, maybeChange) {
     if (logDebug) {
@@ -1203,21 +1228,6 @@ delete Object.prototype.__proto__;
     }
   }
 
-  let hasStarted = false;
-  /** @param {{ debug: boolean; }} init */
-  function serverInit({ debug: debugFlag }) {
-    if (hasStarted) {
-      throw new Error("The language server has already been initialized.");
-    }
-    hasStarted = true;
-    languageService = ts.createLanguageService(host, documentRegistry);
-    setLogDebug(debugFlag, "TSLS");
-    debug("serverInit()");
-    // while (true) {
-
-    // }
-  }
-
   // A build time only op that provides some setup information that is used to
   // ensure the snapshot is setup properly.
   /** @type {{ buildSpecifier: string; libs: string[]; nodeBuiltInModuleNames: string[] }} */
@@ -1308,6 +1318,6 @@ delete Object.prototype.__proto__;
 
   // exposes the functions that are called when the compiler is used as a
   // language service.
-  global.serverInit = serverInit;
+  global.serverMainLoop = serverMainLoop;
   global.serverRequest = serverRequest;
 })(this);
