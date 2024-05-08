@@ -4182,6 +4182,10 @@ async fn op_poll_requests(
   state.response_tx = Some(response_tx);
   let id = state.last_id;
   state.last_id += 1;
+  let mark = state
+    .performance
+    .mark_with_args(format!("tsc.host.{}", request.method()), &request);
+  state.mark = Some(mark);
 
   Some(TscRequestArray {
     request,
@@ -4225,6 +4229,7 @@ fn op_respond(
   #[string] error: String,
 ) {
   let state = state.borrow_mut::<State>();
+  state.performance.measure(state.mark.take().unwrap());
   let response = if !error.is_empty() {
     Err(anyhow!("tsc error: {error}"))
   } else {
