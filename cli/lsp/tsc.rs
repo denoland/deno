@@ -4504,10 +4504,23 @@ fn run_tsc_thread(
       }
     };
     let main_loop_fut = {
+      let enable_debug = std::env::var("DENO_TSC_DEBUG")
+        .map(|s| {
+          let s = s.trim();
+          s == "1" || s.eq_ignore_ascii_case("true")
+        })
+        .unwrap_or(false);
       let mut runtime = tsc_runtime.lock().await;
       lsp_log!("Starting TSC main loop.");
-      let global = runtime.server_main_loop_fn_global.clone();
-      runtime.js_runtime.call(&global)
+      let main_loop = runtime.server_main_loop_fn_global.clone();
+      let args = {
+        let scope = &mut runtime.js_runtime.handle_scope();
+        let enable_debug_local =
+          v8::Local::<v8::Value>::from(v8::Boolean::new(scope, enable_debug));
+        [v8::Global::new(scope, enable_debug_local)]
+      };
+
+      runtime.js_runtime.call_with_args(&main_loop, &args)
     };
 
     tokio::select! {

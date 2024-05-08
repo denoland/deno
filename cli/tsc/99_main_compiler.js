@@ -1101,14 +1101,14 @@ delete Object.prototype.__proto__;
 
   let hasStarted = false;
 
-  /** @param {{ debug: boolean; }} init */
-  async function serverMainLoop() {
+  /** @param {boolean} enableDebugLogging */
+  async function serverMainLoop(enableDebugLogging) {
     if (hasStarted) {
       throw new Error("The language server has already been initialized.");
     }
     hasStarted = true;
     languageService = ts.createLanguageService(host, documentRegistry);
-    setLogDebug(true, "TSLS");
+    setLogDebug(enableDebugLogging, "TSLS");
     debug("serverInit()");
 
     while (true) {
