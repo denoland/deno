@@ -1079,14 +1079,14 @@ delete Object.prototype.__proto__;
   /**
    * @param {number} _id
    * @param {any} data
-   * @param {any | null} data
+   * @param {any | null} error
    */
   // TODO(bartlomieju): this feels needlessly generic, both type chcking
   // and language server use it with inefficient serialization. Id is not used
   // anyway...
   function respond(_id, data = null, error = null) {
     if (error) {
-      ops.op_respond("", error);
+      ops.op_respond("error", "stack" in error ? error.stack.toString() : error.toString());
     } else {
       ops.op_respond(JSON.stringify(data), "");
     }
@@ -1113,7 +1113,12 @@ delete Object.prototype.__proto__;
 
     while (true) {
       const request = await pollRequests();
-      serverRequest(request[0], request[1], request[2], request[3]);
+      try {
+        serverRequest(request[0], request[1], request[2], request[3]);
+      } catch (err) {
+        const reqString = "[" + request.map((v) => JSON.stringify(v)).join(", ") + "]";
+        error(`Error occurred processing request ${reqString} : ${"stack" in err ? err.stack : err}`);
+      }
     }
   }
 
@@ -1190,11 +1195,7 @@ delete Object.prototype.__proto__;
           if (
             !isCancellationError(e)
           ) {
-            if ("stack" in e) {
-              error(e.stack);
-            } else {
-              error(e);
-            }
+            respond(id, {}, e);
             throw e;
           }
           return respond(id, {});
@@ -1211,11 +1212,7 @@ delete Object.prototype.__proto__;
             return respond(id, languageService[method](...args));
           } catch (e) {
             if (!isCancellationError(e)) {
-              if ("stack" in e) {
-                error(e.stack);
-              } else {
-                error(e);
-              }
+              respond(id, null, e);
               throw e;
             }
             return respond(id);
