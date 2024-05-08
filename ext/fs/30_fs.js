@@ -16,17 +16,13 @@ import {
   op_fs_copy_file_sync,
   op_fs_cwd,
   op_fs_fdatasync_async,
-  op_fs_fdatasync_async_unstable,
   op_fs_fdatasync_sync,
-  op_fs_fdatasync_sync_unstable,
   op_fs_file_stat_async,
   op_fs_file_stat_sync,
   op_fs_flock_async,
   op_fs_flock_sync,
   op_fs_fsync_async,
-  op_fs_fsync_async_unstable,
   op_fs_fsync_sync,
-  op_fs_fsync_sync_unstable,
   op_fs_ftruncate_async,
   op_fs_ftruncate_sync,
   op_fs_funlock_async,
@@ -732,11 +728,11 @@ class FsFile {
   }
 
   async syncData() {
-    await op_fs_fdatasync_async_unstable(this.#rid);
+    await op_fs_fdatasync_async(this.#rid);
   }
 
   syncDataSync() {
-    op_fs_fdatasync_sync_unstable(this.#rid);
+    op_fs_fdatasync_sync(this.#rid);
   }
 
   close() {
@@ -758,11 +754,11 @@ class FsFile {
   }
 
   async sync() {
-    await op_fs_fsync_async_unstable(this.#rid);
+    await op_fs_fsync_async(this.#rid);
   }
 
   syncSync() {
-    op_fs_fsync_sync_unstable(this.#rid);
+    op_fs_fsync_sync(this.#rid);
   }
 
   async utime(atime, mtime) {
