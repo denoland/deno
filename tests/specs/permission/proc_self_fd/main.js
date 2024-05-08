@@ -1,5 +1,6 @@
 // This test is Linux/Darwin only
 if (Deno.build.os !== "linux" && Deno.build.os !== "darwin") {
+  console.log("hi\n\n0");
   Deno.exit(123);
 }
 
