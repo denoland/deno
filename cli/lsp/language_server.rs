@@ -3051,7 +3051,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: DidChangeWorkspaceFoldersParams,
   ) {
-    let (performance, mark) = {
+    let mark = {
       let mut inner = self.0.write().await;
       let mark = inner
         .performance
@@ -3076,7 +3076,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
         workspace_folders.push((specifier.clone(), folder.clone()));
       }
       inner.config.set_workspace_folders(workspace_folders);
-      (inner.performance.clone(), mark)
+      mark
     };
     self.refresh_configuration().await;
     let mut inner = self.0.write().await;
@@ -3087,7 +3087,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     inner.diagnostics_server.invalidate_all();
     inner.send_diagnostics_update();
     inner.send_testing_update();
-    performance.measure(mark);
+    inner.performance.measure(mark);
   }
 
   async fn document_symbol(
