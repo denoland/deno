@@ -1452,31 +1452,19 @@ declare namespace Deno {
     fn: (b: BenchContext) => void | Promise<void>,
   ): void;
 
-  /** An interface containing methods to iteract with the process exit state.
+  /** Exit the Deno process with optional exit code.
    *
-   * @category Runtime
-   */
-  export interface Exit {
-    /** Exit the Deno process with optional exit code.
-     *
-     * If no exit code is supplied then Deno will exit with return code of `0`.
-     *
-     * In worker contexts this is an alias to `self.close();`.
-     *
-     * ```ts
-     * Deno.exit(5);
-     * ```
-     *
-     * @category Runtime Environment
-     */
-    (code?: number): never;
-  }
-
-  /** An interface containing methods to iteract with the process exit state.
+   * If no exit code is supplied then Deno will exit with return code of `0`.
+   *
+   * In worker contexts this is an alias to `self.close();`.
+   *
+   * ```ts
+   * Deno.exit(5);
+   * ```
    *
    * @category Runtime Environment
    */
-  export const exit: Exit;
+  export function exit(code?: number): never;
 
   /** The exit code for the Deno process.
    *
