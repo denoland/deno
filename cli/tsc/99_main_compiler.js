@@ -1319,5 +1319,4 @@ delete Object.prototype.__proto__;
   // exposes the functions that are called when the compiler is used as a
   // language service.
   global.serverMainLoop = serverMainLoop;
-  global.serverRequest = serverRequest;
 })(this);

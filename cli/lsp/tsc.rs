@@ -44,7 +44,6 @@ use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context as _;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
-use deno_core::located_script_name;
 use deno_core::op2;
 use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url;
@@ -4363,93 +4362,6 @@ impl TscRuntime {
       js_runtime,
     }
   }
-
-  // /// Send a request into the runtime and return the JSON string containing the response.
-  // fn request(
-  //   &mut self,
-  //   state_snapshot: Arc<StateSnapshot>,
-  //   request: TscRequest,
-  //   change: Option<PendingChange>,
-  //   token: CancellationToken,
-  // ) -> Result<String, AnyError> {
-  //   if token.is_cancelled() {
-  //     return Err(anyhow!("Operation was cancelled."));
-  //   }
-  //   let (performance, id) = {
-  //     let op_state = self.js_runtime.op_state();
-  //     let mut op_state = op_state.borrow_mut();
-  //     let state = op_state.borrow_mut::<State>();
-  //     state.state_snapshot = state_snapshot;
-  //     state.token = token;
-  //     state.last_id += 1;
-  //     let id = state.last_id;
-  //     (state.performance.clone(), id)
-  //   };
-  //   let mark = performance
-  //     .mark_with_args(format!("tsc.host.{}", request.method()), &request);
-
-  //   {
-  //     let scope = &mut self.js_runtime.handle_scope();
-  //     let tc_scope = &mut v8::TryCatch::new(scope);
-  //     let server_request_fn =
-  //       v8::Local::new(tc_scope, &self.server_request_fn_global);
-  //     let undefined = v8::undefined(tc_scope).into();
-
-  //     let change = if let Some(change) = change {
-  //       change.to_v8(tc_scope)
-  //     } else {
-  //       v8::null(tc_scope).into()
-  //     };
-
-  //     let (method, req_args) = request.to_server_request(tc_scope)?;
-  //     let args = vec![
-  //       v8::Integer::new(tc_scope, id as i32).into(),
-  //       v8::String::new(tc_scope, method).unwrap().into(),
-  //       req_args.unwrap_or_else(|| v8::Array::new(tc_scope, 0).into()),
-  //       change,
-  //     ];
-
-  //     server_request_fn.call(tc_scope, undefined, &args);
-  //     if tc_scope.has_caught() && !tc_scope.has_terminated() {
-  //       if let Some(stack_trace) = tc_scope.stack_trace() {
-  //         lsp_warn!(
-  //           "Error during TS request \"{method}\":\n  {}",
-  //           stack_trace.to_rust_string_lossy(tc_scope),
-  //         );
-  //      } else if let Some(message) = tc_scope.message() {
-  //        lsp_warn!(
-  //          "Error during TS request \"{method}\":\n  {}\n  {}",
-  //          message.get(tc_scope).to_rust_string_lossy(tc_scope),
-  //          tc_scope
-  //            .exception()
-  //            .map(|exc| exc.to_rust_string_lossy(tc_scope))
-  //            .unwrap_or_default()
-  //        );
-  //       } else {
-  //         lsp_warn!(
-  //           "Error during TS request \"{method}\":\n  {}",
-  //           tc_scope
-  //             .exception()
-  //             .map(|exc| exc.to_rust_string_lossy(tc_scope))
-  //             .unwrap_or_default(),
-  //         );
-  //       }
-  //       tc_scope.rethrow();
-  //     }
-  //   }
-
-  //   let op_state = self.js_runtime.op_state();
-  //   let mut op_state = op_state.borrow_mut();
-  //   let state = op_state.borrow_mut::<State>();
-
-  //   performance.measure(mark);
-  //   state.response.take().ok_or_else(|| {
-  //     custom_error(
-  //       "RequestError",
-  //       "The response was not received for the request.",
-  //     )
-  //   })
-  // }
 }
 
 fn run_tsc_thread(
@@ -4568,16 +4480,6 @@ deno_core::extension!(deno_tsc,
     ));
   },
 );
-
-/// Instruct a language server runtime to start the language server and provide
-/// it with a minimal bootstrap configuration.
-fn start_tsc(runtime: &mut JsRuntime, debug: bool) -> Result<(), AnyError> {
-  let init_config = json!({ "debug": debug });
-  let init_src = format!("globalThis.serverInit({init_config});");
-
-  runtime.execute_script(located_script_name!(), init_src)?;
-  Ok(())
-}
 
 #[derive(Debug, Deserialize_repr, Serialize_repr)]
 #[repr(u32)]
