@@ -1,11 +1,11 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::serde_json;
-use std::fs;
 use test_util as util;
 use test_util::TempDir;
 use util::assert_starts_with;
 use util::env_vars_for_npm_tests;
+use util::PathRef;
 use util::TestContext;
 use util::TestContextBuilder;
 
@@ -60,9 +60,9 @@ fn error_if_invalid_cache() {
   let mod_test_temp_path = temp_dir_path.join("mod.test.ts");
 
   // Write the initial mod.ts file
-  std::fs::copy(mod_before_path, &mod_temp_path).unwrap();
+  mod_before_path.copy(&mod_temp_path);
   // And the test file
-  std::fs::copy(mod_test_path, mod_test_temp_path).unwrap();
+  mod_test_path.copy(&mod_test_temp_path);
 
   // Generate coverage
   let output = context
@@ -78,7 +78,7 @@ fn error_if_invalid_cache() {
   output.skip_output_check();
 
   // Modify the file between deno test and deno coverage, thus invalidating the cache
-  std::fs::copy(mod_after_path, mod_temp_path).unwrap();
+  mod_after_path.copy(&mod_temp_path);
 
   let output = context
     .new_command()
@@ -126,18 +126,9 @@ fn run_coverage_text(test_name: &str, extension: &str) {
   // Verify there's no "Check" being printed
   assert!(output.stderr().is_empty());
 
-  let actual = util::strip_ansi_codes(output.stdout()).to_string();
-
-  let expected = fs::read_to_string(
+  output.assert_stdout_matches_file(
     util::testdata_path().join(format!("coverage/{test_name}_expected.out")),
-  )
-  .unwrap();
-
-  if !util::wildcard_match(&expected, &actual) {
-    println!("OUTPUT\n{actual}\nOUTPUT");
-    println!("EXPECTED\n{expected}\nEXPECTED");
-    panic!("pattern match failed");
-  }
+  );
 
   output.assert_exit_code(0);
 
@@ -151,18 +142,9 @@ fn run_coverage_text(test_name: &str, extension: &str) {
     ])
     .run();
 
-  let actual = util::strip_ansi_codes(output.combined_output()).to_string();
-
-  let expected = fs::read_to_string(
+  output.assert_matches_file(
     util::testdata_path().join(format!("coverage/{test_name}_expected.lcov")),
-  )
-  .unwrap();
-
-  if !util::wildcard_match(&expected, &actual) {
-    println!("OUTPUT\n{actual}\nOUTPUT");
-    println!("EXPECTED\n{expected}\nEXPECTED");
-    panic!("pattern match failed");
-  }
+  );
 
   output.assert_exit_code(0);
 }
@@ -199,18 +181,9 @@ fn multifile_coverage() {
   // Verify there's no "Check" being printed
   assert!(output.stderr().is_empty());
 
-  let actual = util::strip_ansi_codes(output.stdout()).to_string();
-
-  let expected = fs::read_to_string(
+  output.assert_stdout_matches_file(
     util::testdata_path().join("coverage/multifile/expected.out"),
-  )
-  .unwrap();
-
-  if !util::wildcard_match(&expected, &actual) {
-    println!("OUTPUT\n{actual}\nOUTPUT");
-    println!("EXPECTED\n{expected}\nEXPECTED");
-    panic!("pattern match failed");
-  }
+  );
   output.assert_exit_code(0);
 
   let output = context
@@ -223,18 +196,9 @@ fn multifile_coverage() {
     ])
     .run();
 
-  let actual = util::strip_ansi_codes(output.combined_output()).to_string();
-
-  let expected = fs::read_to_string(
+  output.assert_matches_file(
     util::testdata_path().join("coverage/multifile/expected.lcov"),
-  )
-  .unwrap();
-
-  if !util::wildcard_match(&expected, &actual) {
-    println!("OUTPUT\n{actual}\nOUTPUT");
-    println!("EXPECTED\n{expected}\nEXPECTED");
-    panic!("pattern match failed");
-  }
+  );
 
   output.assert_exit_code(0);
 }
@@ -272,18 +236,9 @@ fn no_snaps_included(test_name: &str, extension: &str) {
   // Verify there's no "Check" being printed
   assert!(output.stderr().is_empty());
 
-  let actual = util::strip_ansi_codes(output.stdout()).to_string();
-
-  let expected = fs::read_to_string(
+  output.assert_stdout_matches_file(
     util::testdata_path().join("coverage/no_snaps_included/expected.out"),
-  )
-  .unwrap();
-
-  if !util::wildcard_match(&expected, &actual) {
-    println!("OUTPUT\n{actual}\nOUTPUT");
-    println!("EXPECTED\n{expected}\nEXPECTED");
-    panic!("pattern match failed");
-  }
+  );
 
   output.assert_exit_code(0);
 }
@@ -321,18 +276,9 @@ fn no_tests_included(test_name: &str, extension: &str) {
   // Verify there's no "Check" being printed
   assert!(output.stderr().is_empty());
 
-  let actual = util::strip_ansi_codes(output.stdout()).to_string();
-
-  let expected = fs::read_to_string(
+  output.assert_stdout_matches_file(
     util::testdata_path().join("coverage/no_tests_included/expected.out"),
-  )
-  .unwrap();
-
-  if !util::wildcard_match(&expected, &actual) {
-    println!("OUTPUT\n{actual}\nOUTPUT");
-    println!("EXPECTED\n{expected}\nEXPECTED");
-    panic!("pattern match failed");
-  }
+  );
 
   output.assert_exit_code(0);
 }
@@ -371,18 +317,9 @@ fn no_npm_cache_coverage() {
   // Verify there's no "Check" being printed
   assert!(output.stderr().is_empty());
 
-  let actual = util::strip_ansi_codes(output.stdout()).to_string();
-
-  let expected = fs::read_to_string(
+  output.assert_stdout_matches_file(
     util::testdata_path().join("coverage/no_npm_coverage/expected.out"),
-  )
-  .unwrap();
-
-  if !util::wildcard_match(&expected, &actual) {
-    println!("OUTPUT\n{actual}\nOUTPUT");
-    println!("EXPECTED\n{expected}\nEXPECTED");
-    panic!("pattern match failed");
-  }
+  );
 
   output.assert_exit_code(0);
 }
@@ -416,18 +353,9 @@ fn no_transpiled_lines() {
     ])
     .run();
 
-  let actual = util::strip_ansi_codes(output.combined_output()).to_string();
-
-  let expected = fs::read_to_string(
+  output.assert_matches_file(
     util::testdata_path().join("coverage/no_transpiled_lines/expected.out"),
-  )
-  .unwrap();
-
-  if !util::wildcard_match(&expected, &actual) {
-    println!("OUTPUT\n{actual}\nOUTPUT");
-    println!("EXPECTED\n{expected}\nEXPECTED");
-    panic!("pattern match failed");
-  }
+  );
 
   output.assert_exit_code(0);
 
@@ -441,19 +369,9 @@ fn no_transpiled_lines() {
     ])
     .run();
 
-  let actual = util::strip_ansi_codes(output.combined_output()).to_string();
-
-  let expected = fs::read_to_string(
+  output.assert_matches_file(
     util::testdata_path().join("coverage/no_transpiled_lines/expected.lcov"),
-  )
-  .unwrap();
-
-  if !util::wildcard_match(&expected, &actual) {
-    println!("OUTPUT\n{actual}\nOUTPUT");
-    println!("EXPECTED\n{expected}\nEXPECTED");
-    panic!("pattern match failed");
-  }
-
+  );
   output.assert_exit_code(0);
 }
 
@@ -477,10 +395,10 @@ fn no_internal_code() {
   output.skip_output_check();
 
   // Check that coverage files contain no internal urls
-  let paths = fs::read_dir(tempdir).unwrap();
+  let paths = tempdir.read_dir();
   for path in paths {
-    let unwrapped = path.unwrap().path();
-    let data = fs::read_to_string(&unwrapped.clone()).unwrap();
+    let unwrapped = PathRef::new(path.unwrap().path());
+    let data = unwrapped.read_to_string();
 
     let value: serde_json::Value = serde_json::from_str(&data).unwrap();
     let url = value["url"].as_str().unwrap();
@@ -509,10 +427,10 @@ fn no_internal_node_code() {
   output.skip_output_check();
 
   // Check that coverage files contain no internal urls
-  let paths = fs::read_dir(tempdir).unwrap();
+  let paths = tempdir.read_dir();
   for path in paths {
-    let unwrapped = path.unwrap().path();
-    let data = fs::read_to_string(&unwrapped.clone()).unwrap();
+    let unwrapped = PathRef::new(path.unwrap().path());
+    let data = unwrapped.read_to_string();
 
     let value: serde_json::Value = serde_json::from_str(&data).unwrap();
     let url = value["url"].as_str().unwrap();
@@ -551,8 +469,7 @@ fn test_html_reporter() {
   output.assert_exit_code(0);
   output.assert_matches_text("HTML coverage report has been generated at [WILDCARD]/cov/html/index.html\n");
 
-  let index_html =
-    fs::read_to_string(tempdir.join("html").join("index.html")).unwrap();
+  let index_html = tempdir.join("html").join("index.html").read_to_string();
   assert!(index_html.contains("<h1>Coverage report for all files</h1>"));
   assert!(index_html.contains("baz/"));
   assert!(index_html.contains("href='baz/index.html'"));
@@ -561,33 +478,37 @@ fn test_html_reporter() {
   assert!(index_html.contains("bar.ts"));
   assert!(index_html.contains("href='bar.ts.html'"));
 
-  let foo_ts_html =
-    fs::read_to_string(tempdir.join("html").join("foo.ts.html")).unwrap();
+  let foo_ts_html = tempdir.join("html").join("foo.ts.html").read_to_string();
   assert!(foo_ts_html.contains("<h1>Coverage report for foo.ts</h1>"));
 
-  let bar_ts_html =
-    fs::read_to_string(tempdir.join("html").join("bar.ts.html")).unwrap();
+  let bar_ts_html = tempdir.join("html").join("bar.ts.html").read_to_string();
   assert!(bar_ts_html.contains("<h1>Coverage report for bar.ts</h1>"));
   // Check <T> in source code is escaped to &lt;T&gt;
   assert!(bar_ts_html.contains("&lt;T&gt;"));
 
-  let baz_index_html =
-    fs::read_to_string(tempdir.join("html").join("baz").join("index.html"))
-      .unwrap();
+  let baz_index_html = tempdir
+    .join("html")
+    .join("baz")
+    .join("index.html")
+    .read_to_string();
   assert!(baz_index_html.contains("<h1>Coverage report for baz/</h1>"));
   assert!(baz_index_html.contains("qux.ts"));
   assert!(baz_index_html.contains("href='qux.ts.html'"));
   assert!(baz_index_html.contains("quux.ts"));
   assert!(baz_index_html.contains("href='quux.ts.html'"));
 
-  let baz_qux_ts_html =
-    fs::read_to_string(tempdir.join("html").join("baz").join("qux.ts.html"))
-      .unwrap();
+  let baz_qux_ts_html = tempdir
+    .join("html")
+    .join("baz")
+    .join("qux.ts.html")
+    .read_to_string();
   assert!(baz_qux_ts_html.contains("<h1>Coverage report for baz/qux.ts</h1>"));
 
-  let baz_quux_ts_html =
-    fs::read_to_string(tempdir.join("html").join("baz").join("quux.ts.html"))
-      .unwrap();
+  let baz_quux_ts_html = tempdir
+    .join("html")
+    .join("baz")
+    .join("quux.ts.html")
+    .read_to_string();
   assert!(baz_quux_ts_html.contains("<h1>Coverage report for baz/quux.ts</h1>"));
 }
 
