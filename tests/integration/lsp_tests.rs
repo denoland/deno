@@ -13,6 +13,7 @@ use test_util::assertions::assert_json_subset;
 use test_util::deno_cmd_with_deno_dir;
 use test_util::env_vars_for_npm_tests;
 use test_util::lsp::range_of;
+use test_util::lsp::source_file;
 use test_util::lsp::LspClient;
 use test_util::testdata_path;
 use test_util::TestContextBuilder;
@@ -12618,4 +12619,61 @@ fn lsp_ts_code_fix_any_param() {
   }
 
   panic!("failed to find 'Infer parameter types from usage' fix in fixes: {fixes:#?}");
+}
+
+#[test]
+fn lsp_sloppy_imports_prefers_original() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  let temp_dir = temp_dir.path();
+
+  temp_dir
+    .join("deno.json")
+    .write(r#"{ "unstable": ["sloppy-imports"] }"#);
+
+  let mut client: LspClient = context
+    .new_lsp_command()
+    .set_root_dir(temp_dir.clone())
+    .build();
+  client.initialize_default();
+
+  temp_dir.join("a.d.ts").write("export const foo: number;");
+
+  let a_js = source_file(temp_dir.join("a.js"), "export const foo = 3;");
+  let file = source_file(
+    temp_dir.join("file.ts"),
+    "import { foo } from './a.js';\nconsole.log(foo);",
+  );
+  let diagnostics = client.did_open_file(&file);
+  // no warnings because "a.js" exists
+  assert_eq!(diagnostics.all().len(), 0);
+
+  let diagnostics = client.did_open_file(&a_js);
+  assert_eq!(diagnostics.all().len(), 0, "Got {:#?}", diagnostics.all());
+
+  let response = client.write_request(
+    "textDocument/references",
+    json!({
+      "textDocument": a_js.identifier(),
+      "position": a_js.range_of("foo").start,
+      "context": {
+        "includeDeclaration": false
+      }
+    }),
+  );
+  assert_json_subset(
+    response,
+    json!([
+      {
+        "uri": file.uri(),
+        // the import
+        "range": file.range_of("foo"),
+      },
+      {
+        "uri": file.uri(),
+        // the usage
+        "range": file.range_of_nth(1, "foo"),
+      }
+    ]),
+  );
 }

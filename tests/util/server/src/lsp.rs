@@ -1174,6 +1174,9 @@ impl SourceFile {
   pub fn range_of(&self, text: &str) -> lsp::Range {
     range_of(text, &self.src)
   }
+  pub fn range_of_nth(&self, n: usize, text: &str) -> lsp::Range {
+    range_of_nth(n, text, &self.src)
+  }
   pub fn uri(&self) -> lsp::Url {
     self.path.uri_file()
   }
