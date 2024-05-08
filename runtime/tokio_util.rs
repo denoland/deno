@@ -81,11 +81,9 @@ where
       let handle = tokio::runtime::Handle::current();
       let runtime_monitor = RuntimeMonitor::new(&handle);
       tokio::spawn(async move {
+        #[allow(clippy::print_stderr)]
         for interval in runtime_monitor.intervals() {
-          #[allow(clippy::print_stderr)]
-          {
-            eprintln!("{:#?}", interval);
-          }
+          eprintln!("{:#?}", interval);
           // wait 500ms
           tokio::time::sleep(std::time::Duration::from_millis(
             metrics_interval,

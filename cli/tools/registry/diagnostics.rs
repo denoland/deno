@@ -38,6 +38,7 @@ impl PublishDiagnosticsCollector {
     diagnostics.sort_by_cached_key(|d| d.sorting_key());
 
     for diagnostic in diagnostics {
+      // todo(https://github.com/denoland/deno_ast/issues/245): use log crate here
       #[allow(clippy::print_stderr)]
       {
         eprint!("{}", diagnostic.display());
@@ -51,18 +52,18 @@ impl PublishDiagnosticsCollector {
     }
     if errors > 0 {
       if has_slow_types_errors {
-        log::warn!(
+        log::error!(
           "This package contains errors for slow types. Fixing these errors will:\n"
         );
-        log::warn!(
+        log::error!(
           "  1. Significantly improve your package users' type checking performance."
         );
-        log::warn!("  2. Improve the automatic documentation generation.");
-        log::warn!("  3. Enable automatic .d.ts generation for Node.js.");
-        log::warn!(
+        log::error!("  2. Improve the automatic documentation generation.");
+        log::error!("  3. Enable automatic .d.ts generation for Node.js.");
+        log::error!(
           "\nDon't want to bother? You can choose to skip this step by"
         );
-        log::warn!("providing the --allow-slow-types flag.\n");
+        log::error!("providing the --allow-slow-types flag.\n");
       }
 
       Err(anyhow!(

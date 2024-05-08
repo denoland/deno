@@ -280,13 +280,11 @@ impl PermissionPrompter for TtyPrompter {
       return PromptResponse::Deny;
     };
 
+    #[allow(clippy::print_stderr)]
     if message.len() > MAX_PERMISSION_PROMPT_LENGTH {
-      #[allow(clippy::print_stderr)]
-      {
-        eprintln!("❌ Permission prompt length ({} bytes) was larger than the configured maximum length ({} bytes): denying request.", message.len(), MAX_PERMISSION_PROMPT_LENGTH);
-        eprintln!("❌ WARNING: This may indicate that code is trying to bypass or hide permission check requests.");
-        eprintln!("❌ Run again with --allow-{name} to bypass this check if this is really what you want to do.");
-      }
+      eprintln!("❌ Permission prompt length ({} bytes) was larger than the configured maximum length ({} bytes): denying request.", message.len(), MAX_PERMISSION_PROMPT_LENGTH);
+      eprintln!("❌ WARNING: This may indicate that code is trying to bypass or hide permission check requests.");
+      eprintln!("❌ Run again with --allow-{name} to bypass this check if this is really what you want to do.");
       return PromptResponse::Deny;
     }
 
@@ -301,11 +299,9 @@ impl PermissionPrompter for TtyPrompter {
 
     // For security reasons we must consume everything in stdin so that previously
     // buffered data cannot affect the prompt.
+    #[allow(clippy::print_stderr)]
     if let Err(err) = clear_stdin(&mut stdin_lock, &mut stderr_lock) {
-      #[allow(clippy::print_stderr)]
-      {
-        eprintln!("Error clearing stdin for permission prompt. {err:#}");
-      }
+      eprintln!("Error clearing stdin for permission prompt. {err:#}");
       return PromptResponse::Deny; // don't grant permission if this fails
     }
 
@@ -342,6 +338,7 @@ impl PermissionPrompter for TtyPrompter {
       // Clear stdin each time we loop around in case the user accidentally pasted
       // multiple lines or otherwise did something silly to generate a torrent of
       // input. This doesn't work on Windows because `clear_stdin` has other side-effects.
+      #[allow(clippy::print_stderr)]
       #[cfg(unix)]
       if let Err(err) = clear_stdin(&mut stdin_lock, &mut stderr_lock) {
         eprintln!("Error clearing stdin for permission prompt. {err:#}");
