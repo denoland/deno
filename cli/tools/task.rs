@@ -145,7 +145,7 @@ pub async fn execute_script(
 
     Ok(0)
   } else {
-    eprintln!("Task not found: {task_name}");
+    log::error!("Task not found: {task_name}");
     print_available_tasks(&tasks_config, &package_json_scripts);
     Ok(1)
   }
@@ -243,7 +243,7 @@ fn print_available_tasks(
   tasks_config: &IndexMap<String, deno_config::Task>,
   package_json_scripts: &IndexMap<String, String>,
 ) {
-  eprintln!("{}", colors::green("Available tasks:"));
+  log::info!("{}", colors::green("Available tasks:"));
 
   let mut had_task = false;
   for (is_deno, (key, task)) in tasks_config
@@ -256,7 +256,7 @@ fn print_available_tasks(
         .map(|(k, v)| (false, (k, deno_config::Task::Definition(v.clone())))),
     )
   {
-    eprintln!(
+    log::info!(
       "- {}{}",
       colors::cyan(key),
       if is_deno {
@@ -272,14 +272,14 @@ fn print_available_tasks(
     if let deno_config::Task::Commented { comments, .. } = &task {
       let slash_slash = colors::italic_gray("//");
       for comment in comments {
-        eprintln!("    {slash_slash} {}", colors::italic_gray(comment));
+        log::info!("    {slash_slash} {}", colors::italic_gray(comment));
       }
     }
-    eprintln!("    {definition}");
+    log::info!("    {definition}");
     had_task = true;
   }
   if !had_task {
-    eprintln!("  {}", colors::red("No tasks found in configuration file"));
+    log::error!("  {}", colors::red("No tasks found in configuration file"));
   }
 }
 

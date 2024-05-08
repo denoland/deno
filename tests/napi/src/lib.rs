@@ -1,5 +1,8 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
 #![allow(clippy::all)]
+#![allow(clippy::print_stdout)]
+#![allow(clippy::print_stderr)]
 #![allow(clippy::undocumented_unsafe_blocks)]
 
 use std::ffi::c_void;

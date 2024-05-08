@@ -810,7 +810,7 @@ impl WebWorker {
             "coding error: either js is polling or the worker is terminated"
           );
         } else {
-          eprintln!("classic worker terminated unexpectedly");
+          log::error!("classic worker terminated unexpectedly");
           Poll::Ready(Ok(()))
         }
       }
@@ -890,7 +890,7 @@ fn print_worker_error(
     },
     None => error.to_string(),
   };
-  eprintln!(
+  log::error!(
     "{}: Uncaught (in worker \"{}\") {}",
     colors::red_bold("error"),
     name,

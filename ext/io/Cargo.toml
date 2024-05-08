@@ -18,6 +18,7 @@ async-trait.workspace = true
 deno_core.workspace = true
 filetime.workspace = true
 fs3.workspace = true
+log.workspace = true
 once_cell.workspace = true
 tokio.workspace = true
 

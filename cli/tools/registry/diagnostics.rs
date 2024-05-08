@@ -38,7 +38,10 @@ impl PublishDiagnosticsCollector {
     diagnostics.sort_by_cached_key(|d| d.sorting_key());
 
     for diagnostic in diagnostics {
-      eprint!("{}", diagnostic.display());
+      #[allow(clippy::print_stderr)]
+      {
+        eprint!("{}", diagnostic.display());
+      }
       if matches!(diagnostic.level(), DiagnosticLevel::Error) {
         errors += 1;
       }
@@ -48,18 +51,18 @@ impl PublishDiagnosticsCollector {
     }
     if errors > 0 {
       if has_slow_types_errors {
-        eprintln!(
+        log::warn!(
           "This package contains errors for slow types. Fixing these errors will:\n"
         );
-        eprintln!(
+        log::warn!(
           "  1. Significantly improve your package users' type checking performance."
         );
-        eprintln!("  2. Improve the automatic documentation generation.");
-        eprintln!("  3. Enable automatic .d.ts generation for Node.js.");
-        eprintln!(
+        log::warn!("  2. Improve the automatic documentation generation.");
+        log::warn!("  3. Enable automatic .d.ts generation for Node.js.");
+        log::warn!(
           "\nDon't want to bother? You can choose to skip this step by"
         );
-        eprintln!("providing the --allow-slow-types flag.\n");
+        log::warn!("providing the --allow-slow-types flag.\n");
       }
 
       Err(anyhow!(

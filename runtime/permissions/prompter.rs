@@ -281,9 +281,12 @@ impl PermissionPrompter for TtyPrompter {
     };
 
     if message.len() > MAX_PERMISSION_PROMPT_LENGTH {
-      eprintln!("❌ Permission prompt length ({} bytes) was larger than the configured maximum length ({} bytes): denying request.", message.len(), MAX_PERMISSION_PROMPT_LENGTH);
-      eprintln!("❌ WARNING: This may indicate that code is trying to bypass or hide permission check requests.");
-      eprintln!("❌ Run again with --allow-{name} to bypass this check if this is really what you want to do.");
+      #[allow(clippy::print_stderr)]
+      {
+        eprintln!("❌ Permission prompt length ({} bytes) was larger than the configured maximum length ({} bytes): denying request.", message.len(), MAX_PERMISSION_PROMPT_LENGTH);
+        eprintln!("❌ WARNING: This may indicate that code is trying to bypass or hide permission check requests.");
+        eprintln!("❌ Run again with --allow-{name} to bypass this check if this is really what you want to do.");
+      }
       return PromptResponse::Deny;
     }
 
@@ -299,7 +302,10 @@ impl PermissionPrompter for TtyPrompter {
     // For security reasons we must consume everything in stdin so that previously
     // buffered data cannot affect the prompt.
     if let Err(err) = clear_stdin(&mut stdin_lock, &mut stderr_lock) {
-      eprintln!("Error clearing stdin for permission prompt. {err:#}");
+      #[allow(clippy::print_stderr)]
+      {
+        eprintln!("Error clearing stdin for permission prompt. {err:#}");
+      }
       return PromptResponse::Deny; // don't grant permission if this fails
     }
 
