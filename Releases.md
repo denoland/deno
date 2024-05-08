@@ -8,7 +8,6 @@ https://github.com/denoland/deno_install
 
 ### 1.43.2 / 2024.05.08
 
-- FUTURE: `deno install` changes (#23498)
 - feat(runtime): allow adding custom extensions to snapshot (#23569)
 - fix(compile): relative permissions should be retained as relative (#23719)
 - fix(ext/node): check resource exists before close (#23655)
