@@ -997,12 +997,22 @@ impl Documents {
     specifier: &ModuleSpecifier,
   ) -> Option<ModuleSpecifier> {
     if self.unstable_sloppy_imports && specifier.scheme() == "file" {
-      Some(
-        self
-          .resolve_unstable_sloppy_import(specifier)
-          .into_specifier()
-          .into_owned(),
-      )
+      // specifier exists?
+      if self.open_docs.contains_key(specifier)
+        || specifier_to_file_path(specifier)
+          .map(|p| p.is_file())
+          .unwrap_or(false)
+      {
+        // if the original specifier exists, always prefer it
+        Some(specifier.clone())
+      } else {
+        Some(
+          self
+            .resolve_unstable_sloppy_import(specifier)
+            .into_specifier()
+            .into_owned(),
+        )
+      }
     } else {
       let specifier = if let Ok(jsr_req_ref) =
         JsrPackageReqReference::from_specifier(specifier)
