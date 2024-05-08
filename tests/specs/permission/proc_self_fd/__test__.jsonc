@@ -1,0 +1,5 @@
+{
+  "args": "run -A main.js",
+  "output": "[WILDCARD]",
+  "exitCode": 123
+}
