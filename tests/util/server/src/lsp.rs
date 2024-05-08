@@ -481,7 +481,7 @@ impl LspClientBuilder {
   pub fn new_with_dir(deno_dir: TempDir) -> Self {
     Self {
       print_stderr: false,
-      capture_stderr: false,
+      capture_stderr: true,
       log_debug: false,
       deno_exe: deno_exe_path(),
       root_dir: deno_dir.path().clone(),
@@ -577,7 +577,9 @@ impl LspClientBuilder {
     let stdin = child.stdin.take().unwrap();
     let writer = io::BufWriter::new(stdin);
 
+    let error_on_stderr = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let stderr_lines_rx = if self.capture_stderr {
+      let error_on_stderr = error_on_stderr.clone();
       let stderr = child.stderr.take().unwrap();
       let print_stderr = self.print_stderr;
       let (tx, rx) = mpsc::channel::<String>();
@@ -586,6 +588,11 @@ impl LspClientBuilder {
         for line in stderr.lines() {
           match line {
             Ok(line) => {
+              if line.trim().contains("ERROR") || line.trim().contains("Error")
+              {
+                error_on_stderr
+                  .store(true, std::sync::atomic::Ordering::SeqCst);
+              }
               if print_stderr {
                 eprintln!("{}", line);
               }
@@ -613,6 +620,7 @@ impl LspClientBuilder {
       stderr_lines_rx,
       config: json!("{}"),
       supports_workspace_configuration: false,
+      error_on_stderr,
     })
   }
 }
@@ -628,6 +636,7 @@ pub struct LspClient {
   stderr_lines_rx: Option<mpsc::Receiver<String>>,
   config: serde_json::Value,
   supports_workspace_configuration: bool,
+  error_on_stderr: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl Drop for LspClient {
@@ -636,6 +645,18 @@ impl Drop for LspClient {
       Ok(None) => {
         self.child.kill().unwrap();
         let _ = self.child.wait();
+        if self
+          .error_on_stderr
+          .load(std::sync::atomic::Ordering::SeqCst)
+        {
+          eprintln!("==== STDERR OUTPUT ====");
+          while let Ok(line) = self.stderr_lines_rx.as_ref().unwrap().try_recv()
+          {
+            eprintln!("{}", line)
+          }
+          eprintln!("== END STDERR OUTPUT ==");
+          panic!("deno lsp emitted errors");
+        }
       }
       Ok(Some(status)) => panic!("deno lsp exited unexpectedly {status}"),
       Err(e) => panic!("pebble error: {e}"),
