@@ -165,6 +165,10 @@ impl LspResolver {
     })
   }
 
+  pub fn did_cache(&self) {
+    self.jsr_resolver.as_ref().inspect(|r| r.did_cache());
+  }
+
   pub async fn set_npm_package_reqs(
     &self,
     reqs: &[PackageReq],

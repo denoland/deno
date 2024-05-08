@@ -1,4 +1,4 @@
-Download http://localhost:4545/npm/registry/ws%3A
+Download http://localhost:4260/ws%3A
 FAILED
 TypeError: npm package 'ws:' does not exist.
     at async file:///[WILDCARD]/dynamic_import_invalid_package_name/main.ts:2:3 {

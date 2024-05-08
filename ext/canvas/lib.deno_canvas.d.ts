@@ -5,22 +5,22 @@
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
 
-/** @category Web APIs */
+/** @category Canvas */
 declare type ColorSpaceConversion = "default" | "none";
 
-/** @category Web APIs */
+/** @category Canvas */
 declare type ImageOrientation = "flipY" | "from-image" | "none";
 
-/** @category Web APIs */
+/** @category Canvas */
 declare type PremultiplyAlpha = "default" | "none" | "premultiply";
 
-/** @category Web APIs */
+/** @category Canvas */
 declare type ResizeQuality = "high" | "low" | "medium" | "pixelated";
 
-/** @category Web APIs */
+/** @category Canvas */
 declare type ImageBitmapSource = Blob | ImageData;
 
-/** @category Web APIs */
+/** @category Canvas */
 declare interface ImageBitmapOptions {
   colorSpaceConversion?: ColorSpaceConversion;
   imageOrientation?: ImageOrientation;
@@ -30,12 +30,12 @@ declare interface ImageBitmapOptions {
   resizeWidth?: number;
 }
 
-/** @category Web APIs */
+/** @category Canvas */
 declare function createImageBitmap(
   image: ImageBitmapSource,
   options?: ImageBitmapOptions,
 ): Promise<ImageBitmap>;
-/** @category Web APIs */
+/** @category Canvas */
 declare function createImageBitmap(
   image: ImageBitmapSource,
   sx: number,
@@ -45,14 +45,14 @@ declare function createImageBitmap(
   options?: ImageBitmapOptions,
 ): Promise<ImageBitmap>;
 
-/** @category Web APIs */
+/** @category Canvas */
 declare interface ImageBitmap {
   readonly height: number;
   readonly width: number;
   close(): void;
 }
 
-/** @category Web APIs */
+/** @category Canvas */
 declare var ImageBitmap: {
   prototype: ImageBitmap;
   new (): ImageBitmap;

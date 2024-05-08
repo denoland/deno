@@ -499,7 +499,9 @@ pub async fn run(
   };
 
   let permissions = {
-    let mut permissions = metadata.permissions;
+    let maybe_cwd = std::env::current_dir().ok();
+    let mut permissions =
+      metadata.permissions.to_options(maybe_cwd.as_deref())?;
     // if running with an npm vfs, grant read access to it
     if let Some(vfs_root) = maybe_vfs_root {
       match &mut permissions.allow_read {
@@ -565,6 +567,7 @@ pub async fn run(
         .ok()
         .map(|req_ref| npm_pkg_req_ref_to_binary_command(&req_ref))
         .or(std::env::args().next()),
+      node_debug: std::env::var("NODE_DEBUG").ok(),
       origin_data_folder_path: None,
       seed: metadata.seed,
       unsafely_ignore_certificate_errors: metadata

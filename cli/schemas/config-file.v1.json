@@ -76,6 +76,12 @@
           "default": "react",
           "markdownDescription": "Specify module specifier used to import the JSX factory functions when using jsx: `react-jsx*`.\n\nSee more: https://www.typescriptlang.org/tsconfig/#jsxImportSource"
         },
+        "jsxImportSourceTypes": {
+          "description": "Specify module specifier used to import the types for the JSX factory functions when using jsx: 'react-jsx*'. This is the logical equivalent of prefixing an import to the jsxImportSource with `// @deno-types=\"...\"`.",
+          "type": "string",
+          "default": "@types/react",
+          "markdownDescription": "Specify module specifier used to import the types for the JSX factory functions when using jsx: `react-jsx*`. This is the logical equivalent of prefixing an import to the jsxImportSource with `// @deno-types=\"...\"`."
+        },
         "jsxPrecompileSkipElements": {
           "description": "Specify list of elements that should be exempt from being precompiled when the jsx 'precompile' transform is used.",
           "type": "array",

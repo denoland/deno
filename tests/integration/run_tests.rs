@@ -1,14 +1,21 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use bytes::Bytes;
-use deno_core::serde_json::json;
-use deno_core::url;
-use deno_fetch::reqwest;
-use pretty_assertions::assert_eq;
+use std::io::BufReader;
+use std::io::Cursor;
 use std::io::Read;
 use std::io::Write;
 use std::process::Command;
 use std::process::Stdio;
+use std::sync::Arc;
+
+use bytes::Bytes;
+use deno_core::serde_json::json;
+use deno_core::url;
+use deno_fetch::reqwest;
+use deno_tls::rustls;
+use deno_tls::rustls_pemfile;
+use deno_tls::TlsStream;
+use pretty_assertions::assert_eq;
 use test_util as util;
 use test_util::itest;
 use test_util::TempDir;
@@ -968,12 +975,11 @@ fn lock_redirects() {
     .new_command()
     .args("run main.ts Hi there")
     .run()
-    .assert_matches_text(
-      concat!(
-        "Download http://localhost:4545/echo.ts\n",
-        "Download http://localhost:4545/npm/registry/@denotest/esm-basic\n",
-        "Download http://localhost:4545/npm/registry/@denotest/esm-basic/1.0.0.tgz\n",
-        "Hi, there",
+    .assert_matches_text(concat!(
+      "Download http://localhost:4545/echo.ts\n",
+      "Download http://localhost:4260/@denotest/esm-basic\n",
+      "Download http://localhost:4260/@denotest/esm-basic/1.0.0.tgz\n",
+      "Hi, there",
     ));
   util::assertions::assert_wildcard_match(
     &temp_dir.read_to_string("deno.lock"),
@@ -2824,6 +2830,9 @@ mod permissions {
 
   #[test]
   fn net_fetch_allow_localhost_4545() {
+    // ensure the http server is running for those tests so they run
+    // deterministically whether the http server is running or not
+    let _http_guard = util::http_server();
     let (_, err) = util::run_and_collect_output(
       true,
         "run --allow-net=localhost:4545 run/complex_permissions_test.ts netFetch http://localhost:4545/",
@@ -2836,6 +2845,7 @@ mod permissions {
 
   #[test]
   fn net_fetch_allow_deno_land() {
+    let _http_guard = util::http_server();
     let (_, err) = util::run_and_collect_output(
       false,
         "run --allow-net=deno.land run/complex_permissions_test.ts netFetch http://localhost:4545/",
@@ -2848,6 +2858,7 @@ mod permissions {
 
   #[test]
   fn net_fetch_localhost_4545_fail() {
+    let _http_guard = util::http_server();
     let (_, err) = util::run_and_collect_output(
       false,
         "run --allow-net=localhost:4545 run/complex_permissions_test.ts netFetch http://localhost:4546/",
@@ -2860,6 +2871,7 @@ mod permissions {
 
   #[test]
   fn net_fetch_localhost() {
+    let _http_guard = util::http_server();
     let (_, err) = util::run_and_collect_output(
       true,
         "run --allow-net=localhost run/complex_permissions_test.ts netFetch http://localhost:4545/ http://localhost:4546/ http://localhost:4547/",
@@ -2872,6 +2884,7 @@ mod permissions {
 
   #[test]
   fn net_connect_allow_localhost_ip_4555() {
+    let _http_guard = util::http_server();
     let (_, err) = util::run_and_collect_output(
       true,
         "run --allow-net=127.0.0.1:4545 run/complex_permissions_test.ts netConnect 127.0.0.1:4545",
@@ -2884,6 +2897,7 @@ mod permissions {
 
   #[test]
   fn net_connect_allow_deno_land() {
+    let _http_guard = util::http_server();
     let (_, err) = util::run_and_collect_output(
       false,
         "run --allow-net=deno.land run/complex_permissions_test.ts netConnect 127.0.0.1:4546",
@@ -2896,6 +2910,7 @@ mod permissions {
 
   #[test]
   fn net_connect_allow_localhost_ip_4545_fail() {
+    let _http_guard = util::http_server();
     let (_, err) = util::run_and_collect_output(
       false,
         "run --allow-net=127.0.0.1:4545 run/complex_permissions_test.ts netConnect 127.0.0.1:4546",
@@ -2908,6 +2923,7 @@ mod permissions {
 
   #[test]
   fn net_connect_allow_localhost_ip() {
+    let _http_guard = util::http_server();
     let (_, err) = util::run_and_collect_output(
       true,
         "run --allow-net=127.0.0.1 run/complex_permissions_test.ts netConnect 127.0.0.1:4545 127.0.0.1:4546 127.0.0.1:4547",
@@ -2920,9 +2936,10 @@ mod permissions {
 
   #[test]
   fn net_listen_allow_localhost_4555() {
+    let _http_guard = util::http_server();
     let (_, err) = util::run_and_collect_output(
       true,
-        "run --allow-net=localhost:4558 run/complex_permissions_test.ts netListen localhost:4558",
+        "run --allow-net=localhost:4588 run/complex_permissions_test.ts netListen localhost:4588",
         None,
         None,
         false,
@@ -2932,6 +2949,7 @@ mod permissions {
 
   #[test]
   fn net_listen_allow_deno_land() {
+    let _http_guard = util::http_server();
     let (_, err) = util::run_and_collect_output(
       false,
         "run --allow-net=deno.land run/complex_permissions_test.ts netListen localhost:4545",
@@ -2944,6 +2962,7 @@ mod permissions {
 
   #[test]
   fn net_listen_allow_localhost_4555_fail() {
+    let _http_guard = util::http_server();
     let (_, err) = util::run_and_collect_output(
       false,
         "run --allow-net=localhost:4555 run/complex_permissions_test.ts netListen localhost:4556",
@@ -2956,6 +2975,7 @@ mod permissions {
 
   #[test]
   fn net_listen_allow_localhost() {
+    let _http_guard = util::http_server();
     // Port 4600 is chosen to not collide with those used by
     // target/debug/test_server
     let (_, err) = util::run_and_collect_output(
@@ -5210,7 +5230,7 @@ fn code_cache_npm_test() {
     output
       .assert_stdout_matches_text("Hello World[WILDCARD]")
       .assert_stderr_matches_text("[WILDCARD]Updating V8 code cache for ES module: file:///[WILDCARD]/main.js[WILDCARD]")
-      .assert_stderr_matches_text("[WILDCARD]Updating V8 code cache for ES module: file:///[WILDCARD]/npm/registry/chalk/5.[WILDCARD]/source/index.js[WILDCARD]");
+      .assert_stderr_matches_text("[WILDCARD]Updating V8 code cache for ES module: file:///[WILDCARD]/chalk/5.[WILDCARD]/source/index.js[WILDCARD]");
     assert!(!output.stderr().contains("V8 code cache hit"));
 
     // Check that the code cache database exists.
@@ -5234,7 +5254,7 @@ fn code_cache_npm_test() {
     output
       .assert_stdout_matches_text("Hello World[WILDCARD]")
       .assert_stderr_matches_text("[WILDCARD]V8 code cache hit for ES module: file:///[WILDCARD]/main.js[WILDCARD]")
-      .assert_stderr_matches_text("[WILDCARD]V8 code cache hit for ES module: file:///[WILDCARD]/npm/registry/chalk/5.[WILDCARD]/source/index.js[WILDCARD]");
+      .assert_stderr_matches_text("[WILDCARD]V8 code cache hit for ES module: file:///[WILDCARD]/chalk/5.[WILDCARD]/source/index.js[WILDCARD]");
     assert!(!output.stderr().contains("Updating V8 code cache"));
   }
 }
@@ -5268,9 +5288,9 @@ fn code_cache_npm_with_require_test() {
     output
       .assert_stdout_matches_text("function[WILDCARD]")
       .assert_stderr_matches_text("[WILDCARD]Updating V8 code cache for ES module: file:///[WILDCARD]/main.js[WILDCARD]")
-      .assert_stderr_matches_text("[WILDCARD]Updating V8 code cache for ES module: file:///[WILDCARD]/npm/registry/autoprefixer/[WILDCARD]/autoprefixer.js[WILDCARD]")
-      .assert_stderr_matches_text("[WILDCARD]Updating V8 code cache for script: file:///[WILDCARD]/npm/registry/autoprefixer/[WILDCARD]/autoprefixer.js[WILDCARD]")
-      .assert_stderr_matches_text("[WILDCARD]Updating V8 code cache for script: file:///[WILDCARD]/npm/registry/browserslist/[WILDCARD]/index.js[WILDCARD]");
+      .assert_stderr_matches_text("[WILDCARD]Updating V8 code cache for ES module: file:///[WILDCARD]/autoprefixer/[WILDCARD]/autoprefixer.js[WILDCARD]")
+      .assert_stderr_matches_text("[WILDCARD]Updating V8 code cache for script: file:///[WILDCARD]/autoprefixer/[WILDCARD]/autoprefixer.js[WILDCARD]")
+      .assert_stderr_matches_text("[WILDCARD]Updating V8 code cache for script: file:///[WILDCARD]/browserslist/[WILDCARD]/index.js[WILDCARD]");
     assert!(!output.stderr().contains("V8 code cache hit"));
 
     // Check that the code cache database exists.
@@ -5294,9 +5314,9 @@ fn code_cache_npm_with_require_test() {
     output
       .assert_stdout_matches_text("function[WILDCARD]")
       .assert_stderr_matches_text("[WILDCARD]V8 code cache hit for ES module: file:///[WILDCARD]/main.js[WILDCARD]")
-      .assert_stderr_matches_text("[WILDCARD]V8 code cache hit for ES module: file:///[WILDCARD]/npm/registry/autoprefixer/[WILDCARD]/autoprefixer.js[WILDCARD]")
-      .assert_stderr_matches_text("[WILDCARD]V8 code cache hit for script: file:///[WILDCARD]/npm/registry/autoprefixer/[WILDCARD]/autoprefixer.js[WILDCARD]")
-      .assert_stderr_matches_text("[WILDCARD]V8 code cache hit for script: file:///[WILDCARD]/npm/registry/browserslist/[WILDCARD]/index.js[WILDCARD]");
+      .assert_stderr_matches_text("[WILDCARD]V8 code cache hit for ES module: file:///[WILDCARD]/autoprefixer/[WILDCARD]/autoprefixer.js[WILDCARD]")
+      .assert_stderr_matches_text("[WILDCARD]V8 code cache hit for script: file:///[WILDCARD]/autoprefixer/[WILDCARD]/autoprefixer.js[WILDCARD]")
+      .assert_stderr_matches_text("[WILDCARD]V8 code cache hit for script: file:///[WILDCARD]/browserslist/[WILDCARD]/index.js[WILDCARD]");
     assert!(!output.stderr().contains("Updating V8 code cache"));
   }
 }
@@ -5328,4 +5348,100 @@ fn node_process_stdin_unref_with_pty() {
       // if process.stdin.unref is called, the program immediately ends by skipping reading from stdin.
       console.expect("START\r\nEND\r\n");
     });
+}
+
+#[tokio::test]
+async fn listen_tls_alpn() {
+  let mut child = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--unstable")
+    .arg("--quiet")
+    .arg("--allow-net")
+    .arg("--allow-read")
+    .arg("./cert/listen_tls_alpn.ts")
+    .arg("4504")
+    .stdout_piped()
+    .spawn()
+    .unwrap();
+  let stdout = child.stdout.as_mut().unwrap();
+  let mut msg = [0; 5];
+  let read = stdout.read(&mut msg).unwrap();
+  assert_eq!(read, 5);
+  assert_eq!(&msg, b"READY");
+
+  let mut reader = &mut BufReader::new(Cursor::new(include_bytes!(
+    "../testdata/tls/RootCA.crt"
+  )));
+  let certs = rustls_pemfile::certs(&mut reader).unwrap();
+  let mut root_store = rustls::RootCertStore::empty();
+  root_store.add_parsable_certificates(&certs);
+  let mut cfg = rustls::ClientConfig::builder()
+    .with_safe_defaults()
+    .with_root_certificates(root_store)
+    .with_no_client_auth();
+  cfg.alpn_protocols.push(b"foobar".to_vec());
+  let cfg = Arc::new(cfg);
+
+  let hostname = rustls::ServerName::try_from("localhost").unwrap();
+
+  let tcp_stream = tokio::net::TcpStream::connect("localhost:4504")
+    .await
+    .unwrap();
+  let mut tls_stream =
+    TlsStream::new_client_side(tcp_stream, cfg, hostname, None);
+
+  let handshake = tls_stream.handshake().await.unwrap();
+
+  assert_eq!(handshake.alpn, Some(b"foobar".to_vec()));
+
+  let status = child.wait().unwrap();
+  assert!(status.success());
+}
+
+#[tokio::test]
+async fn listen_tls_alpn_fail() {
+  let mut child = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--unstable")
+    .arg("--quiet")
+    .arg("--allow-net")
+    .arg("--allow-read")
+    .arg("./cert/listen_tls_alpn_fail.ts")
+    .arg("4505")
+    .stdout_piped()
+    .spawn()
+    .unwrap();
+  let stdout = child.stdout.as_mut().unwrap();
+  let mut msg = [0; 5];
+  let read = stdout.read(&mut msg).unwrap();
+  assert_eq!(read, 5);
+  assert_eq!(&msg, b"READY");
+
+  let mut reader = &mut BufReader::new(Cursor::new(include_bytes!(
+    "../testdata/tls/RootCA.crt"
+  )));
+  let certs = rustls_pemfile::certs(&mut reader).unwrap();
+  let mut root_store = rustls::RootCertStore::empty();
+  root_store.add_parsable_certificates(&certs);
+  let mut cfg = rustls::ClientConfig::builder()
+    .with_safe_defaults()
+    .with_root_certificates(root_store)
+    .with_no_client_auth();
+  cfg.alpn_protocols.push(b"boofar".to_vec());
+  let cfg = Arc::new(cfg);
+
+  let hostname = rustls::ServerName::try_from("localhost").unwrap();
+
+  let tcp_stream = tokio::net::TcpStream::connect("localhost:4505")
+    .await
+    .unwrap();
+  let mut tls_stream =
+    TlsStream::new_client_side(tcp_stream, cfg, hostname, None);
+
+  tls_stream.handshake().await.unwrap_err();
+
+  let status = child.wait().unwrap();
+  assert!(status.success());
 }

@@ -1,21 +1,24 @@
 {
-  "steps": [{
-    "args": "run --allow-read --allow-env main.js",
-    "output": "main.out"
-  }, {
-    "cleanDenoDir": true,
-    "args": "test --allow-read --allow-env test.js",
-    "output": "test.out"
-  }, {
-    "cleanDenoDir": true,
-    "args": [
-      "eval",
-      "import chalk from 'npm:chalk@5'; console.log(chalk.green('chalk esm loads'));"
-    ],
-    "output": "main.out"
-  }, {
-    "args": "bundle --quiet main.js",
-    "output": "bundle.out",
-    "exitCode": 1
-  }]
+  "tests": {
+    "run": {
+      "args": "run --allow-read --allow-env main.js",
+      "output": "main.out"
+    },
+    "test": {
+      "args": "test --allow-read --allow-env test.js",
+      "output": "test.out"
+    },
+    "eval": {
+      "args": [
+        "eval",
+        "import chalk from 'npm:chalk@5'; console.log(chalk.green('chalk esm loads'));"
+      ],
+      "output": "main.out"
+    },
+    "bundle": {
+      "args": "bundle --quiet main.js",
+      "output": "bundle.out",
+      "exitCode": 1
+    }
+  }
 }
