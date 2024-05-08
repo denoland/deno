@@ -1716,6 +1716,7 @@ impl PermissionsContainer {
     if cfg!(target_os = "linux") {
       // On Linux, we also allow opening /proc/self/fd/XXX for valid FDs that
       // are pipes.
+      #[cfg(unix)]
       if path.starts_with("/proc/self/fd") && is_fd_file_is_pipe(path) {
         return Ok(());
       }
