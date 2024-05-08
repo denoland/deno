@@ -167,7 +167,12 @@ ObjectDefineProperty(DOMException.prototype, "stack", {
 // hack doesn't apply. This patches it in.
 ObjectDefineProperty(DOMException.prototype, "__callSiteEvals", {
   get() {
-    return ArrayPrototypeSlice(this[_error].__callSiteEvals, 1);
+    // Call the stack getter so `__callSiteEvals` get populated.
+    this[_error].stack;
+    // To be extra sure, use an empty array if `__callSiteEvals` is still not there,
+    // eg. if the user overrides `Error.prepareStackTrace`.
+    const callSiteEvals = this[_error].__callSiteEvals ?? [];
+    return ArrayPrototypeSlice(callSiteEvals, 1);
   },
   configurable: true,
 });

@@ -235,7 +235,7 @@ async fn try_serve_npm_registry(
 }
 
 // Replaces URL of public npm registry (`https://registry.npmjs.org/`) with
-// the test registry (`http://localhost:4558`).
+// the test registry (`http://localhost:4260`).
 //
 // These strings end up in `registry.json` files for each downloaded package
 // that are stored in `tests/testdata/` directory.

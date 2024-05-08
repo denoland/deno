@@ -69,10 +69,10 @@ const REDIRECT_ABSOLUTE_PORT: u16 = 4550;
 const AUTH_REDIRECT_PORT: u16 = 4551;
 const TLS_CLIENT_AUTH_PORT: u16 = 4552;
 const BASIC_AUTH_REDIRECT_PORT: u16 = 4554;
-// 4555 is used by the proxy server, and 4556 is used by net_listen_allow_localhost_4555_fail
+// 4555 is used by the proxy server
+// 4556 is used by net_listen_allow_localhost_4555_fail
 const TLS_PORT: u16 = 4557;
-pub(crate) const PUBLIC_NPM_REGISTRY_PORT: u16 = 4558;
-pub(crate) const PRIVATE_NPM_REGISTRY_1_PORT: u16 = 4559;
+// 4558 is used by net_listen_allow_localhost_4555
 const HTTPS_PORT: u16 = 5545;
 const H1_ONLY_TLS_PORT: u16 = 5546;
 const H2_ONLY_TLS_PORT: u16 = 5547;
@@ -88,6 +88,8 @@ const H2_GRPC_PORT: u16 = 4246;
 const H2S_GRPC_PORT: u16 = 4247;
 const JSR_REGISTRY_SERVER_PORT: u16 = 4250;
 const PROVENANCE_MOCK_SERVER_PORT: u16 = 4251;
+pub(crate) const PUBLIC_NPM_REGISTRY_PORT: u16 = 4260;
+pub(crate) const PRIVATE_NPM_REGISTRY_1_PORT: u16 = 4261;
 
 // Use the single-threaded scheduler. The hyper server is used as a point of
 // comparison for the (single-threaded!) benchmarks in cli/bench. We're not
