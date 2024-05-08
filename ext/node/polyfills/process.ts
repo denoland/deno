@@ -10,7 +10,6 @@ import {
   op_geteuid,
   op_node_process_kill,
   op_process_abort,
-  op_set_exit_code,
 } from "ext:core/ops";
 
 import { warnNotImplemented } from "ext:deno_node/_utils.ts";
@@ -74,17 +73,16 @@ const notImplementedEvents = [
 ];
 
 export const argv: string[] = ["", ""];
-let globalProcessExitCode: number | undefined = undefined;
+
+// In Node, `process.exitCode` is initially `undefined` until set.
+// And retains any value as long as it's nullish or number-ish.
+let ProcessExitCode: undefined | null | string | number;
 
 /** https://nodejs.org/api/process.html#process_process_exit_code */
 export const exit = (code?: number | string) => {
   if (code || code === 0) {
-    if (typeof code === "string") {
-      const parsedCode = parseInt(code);
-      globalProcessExitCode = isNaN(parsedCode) ? undefined : parsedCode;
-    } else {
-      globalProcessExitCode = code;
-    }
+    // @ts-expect-error; Deno.exitCode setter parses string
+    Deno.exitCode = code;
   }
 
   if (!process._exiting) {
@@ -92,10 +90,12 @@ export const exit = (code?: number | string) => {
     // FIXME(bartlomieju): this is wrong, we won't be using syscall to exit
     // and thus the `unload` event will not be emitted to properly trigger "emit"
     // event on `process`.
-    process.emit("exit", process.exitCode || 0);
+    process.emit("exit", ProcessExitCode || Deno.exitCode);
   }
 
-  process.reallyExit(process.exitCode || 0);
+  // Any valid thing `process.exitCode` set is already held in Deno.exitCode.
+  // At this point, we don't have to pass around Node's raw/string exit value.
+  process.reallyExit(Deno.exitCode);
 };
 
 /** https://nodejs.org/api/process.html#processumaskmask */
@@ -401,15 +401,14 @@ class Process extends EventEmitter {
 
   /** https://nodejs.org/api/process.html#processexitcode_1 */
   get exitCode() {
-    return globalProcessExitCode;
+    return ProcessExitCode;
   }
 
-  set exitCode(code: number | undefined) {
-    globalProcessExitCode = code;
-    code = parseInt(code) || 0;
-    if (!isNaN(code)) {
-      op_set_exit_code(code);
-    }
+  set exitCode(code: number | string | null | undefined) {
+    // @ts-expect-error; Deno.exitCode parses string
+    if (code != null) Deno.exitCode = code;
+    // invalid string would have thrown
+    ProcessExitCode = code;
   }
 
   // Typed as any to avoid importing "module" module for types

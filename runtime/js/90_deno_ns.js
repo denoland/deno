@@ -117,6 +117,12 @@ const denoNs = {
   inspect: console.inspect,
   env: os.env,
   exit: os.exit,
+  get exitCode() {
+    return os.getExitCode();
+  },
+  set exitCode(value) {
+    os.setExitCode(value);
+  },
   execPath: os.execPath,
   Buffer: buffer.Buffer,
   readAll: buffer.readAll,

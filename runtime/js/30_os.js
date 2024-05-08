@@ -21,7 +21,6 @@ import {
 const {
   Error,
   FunctionPrototypeBind,
-  ObjectDefineProperty,
   NumberParseInt,
   SymbolFor,
   TypeError,
@@ -98,21 +97,18 @@ function exit(code) {
   throw new Error("Code not reachable");
 }
 
-ObjectDefineProperty(exit, "code", {
-  get() {
-    return _exitCode;
-  },
-  set(value) {
-    const code = NumberParseInt(value, 10) || undefined;
-    if (typeof code !== "number") {
-      throw new TypeError("Exit code must be a number.");
-    }
-    _exitCode = code;
-    op_set_exit_code(code);
-  },
-  enumerable: true,
-  configurable: true,
-});
+function getExitCode() {
+  return _exitCode;
+}
+
+function setExitCode(value) {
+  const code = NumberParseInt(value, 10) || undefined;
+  if (typeof code !== "number") {
+    throw new TypeError("Exit code must be a number.");
+  }
+  _exitCode = code;
+  op_set_exit_code(code);
+}
 
 function setEnv(key, value) {
   op_set_env(key, value);
@@ -146,12 +142,14 @@ export {
   env,
   execPath,
   exit,
+  getExitCode,
   gid,
   hostname,
   loadavg,
   networkInterfaces,
   osRelease,
   osUptime,
+  setExitCode,
   setExitHandler,
   systemMemoryInfo,
   uid,
