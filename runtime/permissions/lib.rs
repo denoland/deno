@@ -1693,10 +1693,10 @@ impl PermissionsContainer {
               // SAFETY: This is proper use of the stat syscall
               unsafe {
                 let mut stat = std::mem::zeroed::<libc::stat>();
-                if libc::fstat(n, &mut stat as _) == 0 {
-                  if ((stat.st_mode & libc::S_IFMT) & libc::S_IFIFO) != 0 {
-                    return true;
-                  }
+                if libc::fstat(n, &mut stat as _) == 0
+                  && ((stat.st_mode & libc::S_IFMT) & libc::S_IFIFO) != 0
+                {
+                  return true;
                 }
               };
             }
