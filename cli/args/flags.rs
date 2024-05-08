@@ -38,6 +38,7 @@ use crate::args::resolve_no_prompt;
 use crate::util::fs::canonicalize_path;
 
 use super::flags_net;
+use super::DENO_FUTURE;
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct FileFlags {
@@ -195,7 +196,7 @@ pub struct InstallFlagsGlobal {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum InstallKind {
   #[allow(unused)]
-  Local,
+  Local(Option<AddFlags>),
   Global(InstallFlagsGlobal),
 }
 
@@ -913,11 +914,18 @@ impl Flags {
       }
       Task(_) | Check(_) | Coverage(_) | Cache(_) | Info(_) | Eval(_)
       | Test(_) | Bench(_) | Repl(_) | Compile(_) | Publish(_) => {
-        std::env::current_dir().ok()
+        Some(current_dir.to_path_buf())
       }
       Add(_) | Bundle(_) | Completions(_) | Doc(_) | Fmt(_) | Init(_)
-      | Install(_) | Uninstall(_) | Jupyter(_) | Lsp | Lint(_) | Types
-      | Upgrade(_) | Vendor(_) => None,
+      | Uninstall(_) | Jupyter(_) | Lsp | Lint(_) | Types | Upgrade(_)
+      | Vendor(_) => None,
+      Install(_) => {
+        if *DENO_FUTURE {
+          Some(current_dir.to_path_buf())
+        } else {
+          None
+        }
+      }
     }
   }
 
@@ -1313,7 +1321,11 @@ fn clap_root() -> Command {
         .subcommand(fmt_subcommand())
         .subcommand(init_subcommand())
         .subcommand(info_subcommand())
-        .subcommand(install_subcommand())
+        .subcommand(if *DENO_FUTURE {
+          future_install_subcommand()
+        } else {
+          install_subcommand()
+        })
         .subcommand(jupyter_subcommand())
         .subcommand(uninstall_subcommand())
         .subcommand(lsp_subcommand())
@@ -2047,11 +2059,73 @@ TypeScript compiler cache: Subdirectory containing TS compiler output.",
       ))
 }
 
-fn install_subcommand() -> Command {
+fn install_args(cmd: Command, deno_future: bool) -> Command {
+  let cmd = if deno_future {
+    cmd.arg(
+      Arg::new("cmd")
+        .required_if_eq("global", "true")
+        .num_args(1..)
+        .value_hint(ValueHint::FilePath),
+    )
+  } else {
+    cmd.arg(
+      Arg::new("cmd")
+        .required(true)
+        .num_args(1..)
+        .value_hint(ValueHint::FilePath),
+    )
+  };
+  cmd
+    .arg(
+      Arg::new("name")
+        .long("name")
+        .short('n')
+        .help("Executable file name")
+        .required(false),
+    )
+    .arg(
+      Arg::new("root")
+        .long("root")
+        .help("Installation root")
+        .value_hint(ValueHint::DirPath),
+    )
+    .arg(
+      Arg::new("force")
+        .long("force")
+        .short('f')
+        .help("Forcefully overwrite existing installation")
+        .action(ArgAction::SetTrue),
+    )
+    .arg(
+      Arg::new("global")
+        .long("global")
+        .short('g')
+        .help("Install a package or script as a globally available executable")
+        .action(ArgAction::SetTrue),
+    )
+    .arg(env_file_arg())
+}
+
+fn future_install_subcommand() -> Command {
   Command::new("install")
-    .about("Install script as an executable")
+    .visible_alias("i")
+    .about("Install dependencies")
     .long_about(
-        "Installs a script as an executable in the installation root's bin directory.
+"Installs dependencies either in the local project or globally to a bin directory.
+
+Local installation
+-------------------
+If the --global flag is not set, adds dependencies to the local project's configuration
+(package.json / deno.json) and installs them in the package cache. If no dependency
+is specified, installs all dependencies listed in package.json.
+
+  deno install
+  deno install @std/bytes
+  deno install npm:chalk
+
+Global installation
+-------------------
+If the --global flag is set, installs a script as an executable in the installation root's bin directory.
 
   deno install --global --allow-net --allow-read jsr:@std/http/file-server
   deno install -g https://examples.deno.land/color-logging.ts
@@ -2078,34 +2152,47 @@ The installation root is determined, in order of precedence:
   - $HOME/.deno
 
 These must be added to the path manually if required.")
-    .defer(|cmd| runtime_args(cmd, true, true).arg(Arg::new("cmd").required(true).num_args(1..).value_hint(ValueHint::FilePath))
-      .arg(check_arg(true))
-      .arg(
-        Arg::new("name")
-          .long("name")
-          .short('n')
-          .help("Executable file name")
-          .required(false))
-      .arg(
-        Arg::new("root")
-          .long("root")
-          .help("Installation root")
-          .value_hint(ValueHint::DirPath))
-      .arg(
-        Arg::new("force")
-          .long("force")
-          .short('f')
-          .help("Forcefully overwrite existing installation")
-          .action(ArgAction::SetTrue))
-      )
-      .arg(
-        Arg::new("global")
-          .long("global")
-          .short('g')
-          .help("Install a package or script as a globally available executable")
-          .action(ArgAction::SetTrue)
-      )
-      .arg(env_file_arg())
+    .defer(|cmd| {
+      let cmd = runtime_args(cmd, true, true).arg(check_arg(true));
+      install_args(cmd, true)
+    })
+}
+
+fn install_subcommand() -> Command {
+  Command::new("install")
+    .about("Install script as an executable")
+    .long_about(
+"Installs a script as an executable in the installation root's bin directory.
+
+  deno install --global --allow-net --allow-read jsr:@std/http/file-server
+  deno install -g https://examples.deno.land/color-logging.ts
+
+To change the executable name, use -n/--name:
+
+  deno install -g --allow-net --allow-read -n serve jsr:@std/http/file-server
+
+The executable name is inferred by default:
+  - Attempt to take the file stem of the URL path. The above example would
+    become 'file_server'.
+  - If the file stem is something generic like 'main', 'mod', 'index' or 'cli',
+    and the path has no parent, take the file name of the parent path. Otherwise
+    settle with the generic name.
+  - If the resulting name has an '@...' suffix, strip it.
+
+To change the installation root, use --root:
+
+  deno install -g --allow-net --allow-read --root /usr/local jsr:@std/http/file-server
+
+The installation root is determined, in order of precedence:
+  - --root option
+  - DENO_INSTALL_ROOT environment variable
+  - $HOME/.deno
+
+These must be added to the path manually if required.")
+    .defer(|cmd| {
+      let cmd = runtime_args(cmd, true, true).arg(check_arg(true));
+      install_args(cmd, false)
+    })
 }
 
 fn jupyter_subcommand() -> Command {
@@ -3555,8 +3642,17 @@ fn unsafely_ignore_certificate_errors_arg() -> Arg {
 }
 
 fn add_parse(flags: &mut Flags, matches: &mut ArgMatches) {
-  let packages = matches.remove_many::<String>("packages").unwrap().collect();
-  flags.subcommand = DenoSubcommand::Add(AddFlags { packages });
+  flags.subcommand = DenoSubcommand::Add(add_parse_inner(matches, None));
+}
+
+fn add_parse_inner(
+  matches: &mut ArgMatches,
+  packages: Option<clap::parser::Values<String>>,
+) -> AddFlags {
+  let packages = packages
+    .unwrap_or_else(|| matches.remove_many::<String>("packages").unwrap())
+    .collect();
+  AddFlags { packages }
 }
 
 fn bench_parse(flags: &mut Flags, matches: &mut ArgMatches) {
@@ -3871,28 +3967,37 @@ fn info_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 fn install_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   runtime_args_parse(flags, matches, true, true);
 
-  let root = matches.remove_one::<String>("root");
-
-  let force = matches.get_flag("force");
   let global = matches.get_flag("global");
-  let name = matches.remove_one::<String>("name");
-  let mut cmd_values = matches.remove_many::<String>("cmd").unwrap();
+  if global || !*DENO_FUTURE {
+    let root = matches.remove_one::<String>("root");
+    let force = matches.get_flag("force");
+    let name = matches.remove_one::<String>("name");
+    let mut cmd_values =
+      matches.remove_many::<String>("cmd").unwrap_or_default();
 
-  let module_url = cmd_values.next().unwrap();
-  let args = cmd_values.collect();
+    let module_url = cmd_values.next().unwrap();
+    let args = cmd_values.collect();
 
-  flags.subcommand = DenoSubcommand::Install(InstallFlags {
-    // TODO(bartlomieju): remove once `deno install` supports both local and
-    // global installs
-    global,
-    kind: InstallKind::Global(InstallFlagsGlobal {
-      name,
-      module_url,
-      args,
-      root,
-      force,
-    }),
-  });
+    flags.subcommand = DenoSubcommand::Install(InstallFlags {
+      // TODO(bartlomieju): remove for 2.0
+      global,
+      kind: InstallKind::Global(InstallFlagsGlobal {
+        name,
+        module_url,
+        args,
+        root,
+        force,
+      }),
+    });
+  } else {
+    let local_flags = matches
+      .remove_many("cmd")
+      .map(|packages| add_parse_inner(matches, Some(packages)));
+    flags.subcommand = DenoSubcommand::Install(InstallFlags {
+      global,
+      kind: InstallKind::Local(local_flags),
+    })
+  }
 }
 
 fn jupyter_parse(flags: &mut Flags, matches: &mut ArgMatches) {
