@@ -924,8 +924,6 @@ fn open_with_access_check(
     } else {
       path
     };
-    eprintln!("final {path:?}");
-
     (*access_check)(true, &path, &options)?;
 
     // For windows
