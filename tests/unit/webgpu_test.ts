@@ -100,11 +100,6 @@ Deno.test({
   stagingBuffer.unmap();
 
   device.destroy();
-
-  // TODO(lucacasonato): webgpu spec should add a explicit destroy method for
-  // adapters.
-  const resources = Object.keys(Deno.resources());
-  Deno.close(Number(resources[resources.length - 1]));
 });
 
 Deno.test({
@@ -210,11 +205,6 @@ Deno.test({
   outputBuffer.unmap();
 
   device.destroy();
-
-  // TODO(lucacasonato): webgpu spec should add a explicit destroy method for
-  // adapters.
-  const resources = Object.keys(Deno.resources());
-  Deno.close(Number(resources[resources.length - 1]));
 });
 
 Deno.test({
@@ -243,8 +233,6 @@ Deno.test({
   );
 
   device.destroy();
-  const resources = Object.keys(Deno.resources());
-  Deno.close(Number(resources[resources.length - 1]));
 });
 
 Deno.test(function getPreferredCanvasFormat() {
