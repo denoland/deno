@@ -41,6 +41,7 @@ for (const [oses, error, file] of testCases) {
         console.log(`Got an error (expected) for ${file}: ${e}`);
       } else {
         console.log(`*** Got an unexpected error for ${file}: ${e}`);
+        failed = true;
       }
     }
   }
