@@ -1241,7 +1241,7 @@ fn clap_root() -> Command {
     .arg(
       Arg::new("version")
         .short('V')
-        .short_alias('v') // support both -v and -V
+        .short_alias('v')
         .long("version")
         .action(ArgAction::Version)
         .help("Print version")
