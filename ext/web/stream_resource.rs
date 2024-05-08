@@ -649,10 +649,10 @@ mod tests {
 
     // Slightly slower reader
     let b = deno_core::unsync::spawn(async move {
-      for i in 0..BUFFER_CHANNEL_SIZE * 2 {
+      for _ in 0..BUFFER_CHANNEL_SIZE * 2 {
         if cfg!(windows) {
           // windows has ~15ms resolution on sleep, so just yield so
-          // this test doesn't take a long time to run
+          // this test doesn't take 30 seconds to run
           tokio::task::yield_now().await;
         } else {
           tokio::time::sleep(Duration::from_millis(1)).await;
