@@ -1680,6 +1680,10 @@ impl PermissionsContainer {
       return Ok(());
     }
 
+    /// We'll allow opening /proc/self/fd/{n} without additional permissions under the following conditions:
+    ///
+    /// 1. n > 2. This allows for opening bash-style redirections, but not stdio
+    /// 2. the fd referred to by n is a pipe
     #[cfg(unix)]
     fn is_fd_file_is_pipe(path: &Path) -> bool {
       if let Some(fd) = path.file_name() {
@@ -1710,10 +1714,8 @@ impl PermissionsContainer {
     }
 
     if cfg!(target_os = "linux") {
-      // We'll allow opening /proc/self/fd/{n} without additional permissions under the following conditions:
-      //
-      // 1. n > 2. This allows for opening bash-style redirections, but not stdio
-      // 2. the fd referred to by n is a pipe
+      // On unixy systems, we also allow opening /proc/self/fd/XXX for valid FDs that
+      // are pipes.
       if path.starts_with("/proc/self/fd") && is_fd_file_is_pipe(path) {
         return Ok(());
       }
