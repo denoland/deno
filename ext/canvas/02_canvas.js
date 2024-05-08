@@ -1,5 +1,7 @@
 import webidl from "ext:deno_webidl/00_webidl.js";
 import { DOMException } from "ext:deno_web/01_dom_exception.js";
+import { op_image_encode_png } from "ext:core/ops";
+
 
 const _width = Symbol("[[width]]");
 const _height = Symbol("[[height]]");
@@ -39,6 +41,7 @@ class OffscreenCanvas extends EventTarget {
     this[_width] = width;
     this[_height] = height;
 
+
     // TODO: internal bitmap
   }
 
@@ -59,10 +62,8 @@ class OffscreenCanvas extends EventTarget {
           const settings = webidl.converters.ImageBitmapRenderingContextSettings(options, prefix, "Argument 2");
           const context = webidl.createBranded(ImageBitmapRenderingContext);
           context[_canvas] = this;
-
-          // TODO Set context's output bitmap to the same bitmap as target's bitmap (so that they are shared).
-          // TODO Run the steps to set an ImageBitmapRenderingContext's output bitmap with context.
-
+          context; // TODO Set context's output bitmap to the same bitmap as target's bitmap (so that they are shared).
+          setOutputBitmap(context);
           context[_alpha] = settings.alpha;
 
           this[_contextMode] = "bitmaprenderer";
@@ -79,7 +80,7 @@ class OffscreenCanvas extends EventTarget {
     } else if (contextId === "webgpu") {
       switch (this[_contextMode]) {
         case null: {
-          // TODO  Let context be the result of following the instructions given in WebGPU's Canvas Rendering section. [WEBGPU]
+          // TODO Let context be the result of following the instructions given in WebGPU's Canvas Rendering section. [WEBGPU]
           this[_contextMode] = "bitmaprenderer";
           this[_context] = context;
           return context;
@@ -98,8 +99,14 @@ class OffscreenCanvas extends EventTarget {
 
   transferToImageBitmap() {
     webidl.assertBranded(this, OffscreenCanvasPrototype);
+    // TODO: If the value of this OffscreenCanvas object's [[Detached]] internal slot is set to true, then throw an "InvalidStateError" DOMException.
 
-    // TODO
+    if (!this[_contextMode]) {
+      throw new DOMException("Cannot get bitmap from canvas without a context", "InvalidStateError");
+    }
+
+    // TODO: Let image be a newly created ImageBitmap object that references the same underlying bitmap data as this OffscreenCanvas object's bitmap.
+    // TODO: Set this OffscreenCanvas object's bitmap to reference a newly created bitmap of the same dimensions and color space as the previous bitmap, and with its pixels initialized to transparent black, or opaque black if the rendering context's alpha flag is set to false.
   }
 
   convertToBlob(options = {}) {
@@ -107,12 +114,20 @@ class OffscreenCanvas extends EventTarget {
     const prefix = "Failed to call 'getContext' on 'OffscreenCanvas'";
     options = webidl.converters.ImageEncodeOptions(options, prefix, "Argument 1");
 
-    // TODO
+    // TODO: If the value of this OffscreenCanvas object's [[Detached]] internal slot is set to true, then return a promise rejected with an "InvalidStateError" DOMException.
+    // TODO: If this OffscreenCanvas object's context mode is 2d and the rendering context's bitmap's origin-clean flag is set to false, then return a promise rejected with a "SecurityError" DOMException.
+    // TODO: If this OffscreenCanvas object's bitmap has no pixels (i.e., either its horizontal dimension or its vertical dimension is zero) then return a promise rejected with an "IndexSizeError" DOMException.
+    // TODO: Let bitmap be a copy of this OffscreenCanvas object's bitmap.
+
+
+    op_image_encode_png(, this[_width], this[_height]);
+
   }
 }
 const OffscreenCanvasPrototype = OffscreenCanvas.prototype;
 
 const _canvas = Symbol("[[canvas]]");
+const _bitmapMode = Symbol("[[bitmapMode]]");
 const _alpha = Symbol("[[alpha]]");
 class ImageBitmapRenderingContext {
   [_canvas];
@@ -121,6 +136,8 @@ class ImageBitmapRenderingContext {
     return this[_canvas];
   }
 
+  [_bitmapMode];
+
   constructor() {
     webidl.illegalConstructor();
   }
@@ -128,12 +145,29 @@ class ImageBitmapRenderingContext {
   transferFromImageBitmap(bitmap) {
     webidl.assertBranded(this, ImageBitmapRenderingContextPrototype);
     const prefix = "Failed to call 'getContext' on 'OffscreenCanvas'";
-    bitmap = webidl.converters.ImageEncodeOptions(bitmap, prefix, "Argument 1");
+    bitmap = webidl.converters["ImageBitmap?"](bitmap, prefix, "Argument 1");
 
-    // TODO
+    if (bitmap === null) {
+      setOutputBitmap(this);
+    } else {
+      // TODO: If the value of bitmap's [[Detached]] internal slot is set to true, then throw an "InvalidStateError" DOMException.
+      setOutputBitmap(this, bitmap);
+      // TODO: Set the value of bitmap's [[Detached]] internal slot to true.
+      // TODO: Unset bitmap's bitmap data.
+    }
   }
 }
 const ImageBitmapRenderingContextPrototype = ImageBitmapRenderingContext.prototype;
+
+function setOutputBitmap(context, data) {
+  if (!data) {
+    context[_bitmapMode] = "blank";
+    context[_canvas]; // TODO: Set context's output bitmap to be transparent black with a natural width equal to the numeric value of canvas's width attribute and a natural height equal to the numeric value of canvas's height attribute, those values being interpreted in CSS pixels.
+  } else {
+    context[_bitmapMode] = "valid";
+    context; // TODO: Set context's output bitmap to refer to the same underlying bitmap data as bitmap, without making a copy.
+  }
+}
 
 // ENUM: OffscreenRenderingContextId
 webidl.converters["OffscreenRenderingContextId"] = webidl.createEnumConverter(
@@ -156,6 +190,8 @@ webidl.converters["ImageEncodeOptions"] = webidl
     "ImageEncodeOptions",
     dictImageEncodeOptions,
   );
+
+webidl.converters["ImageBitmap?"] = webidl.createNullableConverter(webidl.converters["ImageBitmap"]);
 
 // DICT: ImageBitmapRenderingContextSettings
 const dictImageBitmapRenderingContextSettings = [

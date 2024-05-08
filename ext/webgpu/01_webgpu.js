@@ -472,6 +472,7 @@ class GPUAdapter {
       requiredFeatures,
       descriptor.requiredLimits,
     );
+    core.close(this[_adapter].rid);
 
     const inner = new InnerGPUDevice({
       rid,

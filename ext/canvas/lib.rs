@@ -7,6 +7,7 @@ use deno_core::ToJsBuffer;
 use image::imageops::FilterType;
 use image::ColorType;
 use image::ImageDecoder;
+use image::ImageEncoder;
 use image::Pixel;
 use image::RgbaImage;
 use serde::Deserialize;
@@ -141,10 +142,23 @@ fn op_image_decode_png(#[buffer] buf: &[u8]) -> Result<DecodedPng, AnyError> {
   })
 }
 
+#[op2]
+#[serde]
+fn op_image_encode_png(
+  #[buffer] buf: &[u8],
+  width: u32,
+  height: u32,
+) -> Result<ToJsBuffer, AnyError> {
+  let mut out = vec![];
+  let png = image::codecs::png::PngEncoder::new(&out);
+  png.write_image(buf, width, height, ColorType::Rgb8)?;
+  Ok(out.into())
+}
+
 deno_core::extension!(
   deno_canvas,
   deps = [deno_webidl, deno_web, deno_webgpu],
-  ops = [op_image_process, op_image_decode_png],
+  ops = [op_image_process, op_image_decode_png, op_image_encode_png],
   lazy_loaded_esm = ["01_image.js"],
 );
 
