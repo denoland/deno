@@ -2,14 +2,12 @@
 
 use crate::args::package_json;
 use crate::args::CacheSetting;
-use crate::cache::DenoDir;
 use crate::cache::FastInsecureHasher;
 use crate::graph_util::CliJsrUrlProvider;
 use crate::http_util::HttpClient;
 use crate::jsr::JsrCacheResolver;
 use crate::lsp::config::Config;
 use crate::lsp::config::ConfigData;
-use crate::lsp::logging::lsp_warn;
 use crate::npm::create_cli_npm_resolver_for_lsp;
 use crate::npm::CliNpmResolver;
 use crate::npm::CliNpmResolverByonmCreateOptions;
@@ -23,9 +21,9 @@ use crate::resolver::CliGraphResolverOptions;
 use crate::resolver::CliNodeResolver;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
+use dashmap::DashMap;
 use deno_cache_dir::HttpCache;
 use deno_core::error::AnyError;
-use deno_core::parking_lot::Mutex;
 use deno_graph::source::NpmResolver;
 use deno_graph::source::Resolver;
 use deno_graph::GraphImport;
@@ -45,10 +43,13 @@ use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use indexmap::IndexMap;
 use package_json::PackageJsonDepsProvider;
+use std::borrow::Cow;
 use std::collections::HashMap;
-use std::path::Path;
+use std::collections::HashSet;
 use std::rc::Rc;
 use std::sync::Arc;
+
+use super::cache::LspCache;
 
 #[derive(Debug, Clone)]
 pub struct LspResolver {
@@ -81,11 +82,10 @@ impl LspResolver {
   pub async fn with_new_config(
     &self,
     config: &Config,
-    cache: Arc<dyn HttpCache>,
-    global_cache_path: Option<&Path>,
+    cache: &LspCache,
     http_client: Option<&Arc<HttpClient>>,
   ) -> Arc<Self> {
-    let npm_config_hash = LspNpmConfigHash::new(config, global_cache_path);
+    let npm_config_hash = LspNpmConfigHash::new(config, cache);
     let config_data = config.tree.root_data();
     let mut npm_resolver = None;
     let mut node_resolver = None;
@@ -93,8 +93,7 @@ impl LspResolver {
       if let (Some(http_client), Some(config_data)) = (http_client, config_data)
       {
         npm_resolver =
-          create_npm_resolver(config_data, global_cache_path, http_client)
-            .await;
+          create_npm_resolver(config_data, cache, http_client).await;
         node_resolver = create_node_resolver(npm_resolver.as_ref());
       }
     } else {
@@ -107,10 +106,12 @@ impl LspResolver {
       node_resolver.as_ref(),
     );
     let jsr_resolver = Some(Arc::new(JsrCacheResolver::new(
-      cache.clone(),
+      cache.root_vendor_or_global(),
       config_data.and_then(|d| d.lockfile.clone()),
     )));
-    let redirect_resolver = Some(Arc::new(RedirectResolver::new(cache)));
+    let redirect_resolver = Some(Arc::new(RedirectResolver::new(
+      cache.root_vendor_or_global(),
+    )));
     let graph_imports = config_data
       .and_then(|d| d.config_file.as_ref())
       .and_then(|cf| cf.to_maybe_imports().ok())
@@ -305,18 +306,27 @@ impl LspResolver {
     };
     redirect_resolver.resolve(specifier)
   }
+
+  pub fn redirect_chain_headers(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Vec<(ModuleSpecifier, Arc<HashMap<String, String>>)> {
+    let Some(redirect_resolver) = self.redirect_resolver.as_ref() else {
+      return vec![];
+    };
+    redirect_resolver
+      .chain(specifier)
+      .into_iter()
+      .map(|(s, e)| (s, e.headers.clone()))
+      .collect()
+  }
 }
 
 async fn create_npm_resolver(
   config_data: &ConfigData,
-  global_cache_path: Option<&Path>,
+  cache: &LspCache,
   http_client: &Arc<HttpClient>,
 ) -> Option<Arc<dyn CliNpmResolver>> {
-  let deno_dir = DenoDir::new(global_cache_path.map(|p| p.to_owned()))
-    .inspect_err(|err| {
-      lsp_warn!("Error getting deno dir: {:#}", err);
-    })
-    .ok()?;
   let node_modules_dir = config_data
     .node_modules_dir
     .clone()
@@ -341,7 +351,7 @@ async fn create_npm_resolver(
       // updating it. Only the cache request should update the lockfile.
       maybe_lockfile: None,
       fs: Arc::new(deno_fs::RealFs),
-      npm_global_cache_dir: deno_dir.npm_folder_path(),
+      npm_global_cache_dir: cache.deno_dir().npm_folder_path(),
       // Use an "only" cache setting in order to make the
       // user do an explicit "cache" command and prevent
       // the cache from being filled with lots of packages while
@@ -410,7 +420,7 @@ fn create_graph_resolver(
 struct LspNpmConfigHash(u64);
 
 impl LspNpmConfigHash {
-  pub fn new(config: &Config, global_cache_path: Option<&Path>) -> Self {
+  pub fn new(config: &Config, cache: &LspCache) -> Self {
     let config_data = config.tree.root_data();
     let scope = config_data.map(|d| &d.scope);
     let node_modules_dir =
@@ -419,26 +429,32 @@ impl LspNpmConfigHash {
     let mut hasher = FastInsecureHasher::new();
     hasher.write_hashable(scope);
     hasher.write_hashable(node_modules_dir);
-    hasher.write_hashable(global_cache_path);
     if let Some(lockfile) = lockfile {
       hasher.write_hashable(&*lockfile.lock());
     }
-    hasher.write_hashable(global_cache_path);
+    hasher.write_hashable(cache.deno_dir().npm_folder_path());
     Self(hasher.finish())
   }
 }
 
 #[derive(Debug)]
+struct RedirectEntry {
+  target: ModuleSpecifier,
+  headers: Arc<HashMap<String, String>>,
+  destination: Option<ModuleSpecifier>,
+}
+
+#[derive(Debug)]
 struct RedirectResolver {
   cache: Arc<dyn HttpCache>,
-  redirects: Mutex<HashMap<ModuleSpecifier, ModuleSpecifier>>,
+  entries: DashMap<ModuleSpecifier, Option<Arc<RedirectEntry>>>,
 }
 
 impl RedirectResolver {
   pub fn new(cache: Arc<dyn HttpCache>) -> Self {
     Self {
       cache,
-      redirects: Mutex::new(HashMap::new()),
+      entries: Default::default(),
     }
   }
 
@@ -446,37 +462,78 @@ impl RedirectResolver {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<ModuleSpecifier> {
-    if matches!(specifier.scheme(), "http" | "https") {
-      let mut redirects = self.redirects.lock();
-      if let Some(specifier) = redirects.get(specifier) {
-        Some(specifier.clone())
-      } else {
-        let redirect = self.resolve_remote(specifier, 10)?;
-        redirects.insert(specifier.clone(), redirect.clone());
-        Some(redirect)
-      }
-    } else {
-      Some(specifier.clone())
+    if !matches!(specifier.scheme(), "http" | "https") {
+      return Some(specifier.clone());
     }
+    let mut current = specifier.clone();
+    let mut chain = vec![];
+    let destination = loop {
+      if let Some(maybe_entry) = self.entries.get(&current) {
+        break match maybe_entry.as_ref() {
+          Some(entry) => entry.destination.clone(),
+          None => Some(current),
+        };
+      }
+      let Some(cache_key) = self.cache.cache_item_key(&current).ok() else {
+        break None;
+      };
+      let Some(headers) = self.cache.read_headers(&cache_key).ok().flatten()
+      else {
+        break None;
+      };
+      let headers = Arc::new(headers);
+      if let Some(location) = headers.get("location") {
+        if chain.len() > 10 {
+          break None;
+        }
+        let Ok(target) =
+          deno_core::resolve_import(location, specifier.as_str())
+        else {
+          break None;
+        };
+        chain.push((
+          current.clone(),
+          RedirectEntry {
+            headers,
+            target: target.clone(),
+            destination: None,
+          },
+        ));
+        current = target;
+      } else {
+        self.entries.insert(current.clone(), None);
+        break Some(current);
+      }
+    };
+    for (specifier, mut entry) in chain {
+      entry.destination = destination.clone();
+      self.entries.insert(specifier, Some(Arc::new(entry)));
+    }
+    destination
   }
 
-  fn resolve_remote(
+  fn chain(
     &self,
     specifier: &ModuleSpecifier,
-    redirect_limit: usize,
-  ) -> Option<ModuleSpecifier> {
-    if redirect_limit > 0 {
-      let cache_key = self.cache.cache_item_key(specifier).ok()?;
-      let headers = self.cache.read_headers(&cache_key).ok().flatten()?;
-      if let Some(location) = headers.get("location") {
-        let redirect =
-          deno_core::resolve_import(location, specifier.as_str()).ok()?;
-        self.resolve_remote(&redirect, redirect_limit - 1)
-      } else {
-        Some(specifier.clone())
+  ) -> impl IntoIterator<Item = (ModuleSpecifier, Arc<RedirectEntry>)> {
+    self.resolve(specifier);
+    let mut result = vec![];
+    let mut seen = HashSet::new();
+    let mut current = Cow::Borrowed(specifier);
+    loop {
+      let Some(maybe_entry) = self.entries.get(&current) else {
+        break;
+      };
+      let Some(entry) = maybe_entry.as_ref() else {
+        break;
+      };
+      result.push((current.as_ref().clone(), entry.clone()));
+      seen.insert(current.as_ref().clone());
+      if seen.contains(&entry.target) {
+        break;
       }
-    } else {
-      None
+      current = Cow::Owned(entry.target.clone())
     }
+    result
   }
 }

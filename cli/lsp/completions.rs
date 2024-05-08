@@ -799,8 +799,8 @@ fn get_workspace_completions(
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::cache::GlobalHttpCache;
   use crate::cache::HttpCache;
+  use crate::lsp::cache::LspCache;
   use crate::lsp::documents::Documents;
   use crate::lsp::documents::LanguageId;
   use crate::lsp::search::tests::TestPackageSearchApi;
@@ -808,7 +808,6 @@ mod tests {
   use deno_graph::Range;
   use std::collections::HashMap;
   use std::path::Path;
-  use std::sync::Arc;
   use test_util::TempDir;
 
   fn mock_documents(
@@ -816,24 +815,20 @@ mod tests {
     source_fixtures: &[(&str, &str)],
     location: &Path,
   ) -> Documents {
-    let cache = Arc::new(GlobalHttpCache::new(
-      location.to_path_buf(),
-      crate::cache::RealDenoCacheEnv,
+    let cache = LspCache::new(Some(
+      ModuleSpecifier::from_directory_path(location).unwrap(),
     ));
-    let mut documents = Documents::new(cache);
+    let mut documents = Documents::new(&cache);
     for (specifier, source, version, language_id) in fixtures {
       let specifier =
         resolve_url(specifier).expect("failed to create specifier");
       documents.open(specifier, *version, *language_id, (*source).into());
     }
-    let http_cache = GlobalHttpCache::new(
-      location.to_path_buf(),
-      crate::cache::RealDenoCacheEnv,
-    );
     for (specifier, source) in source_fixtures {
       let specifier =
         resolve_url(specifier).expect("failed to create specifier");
-      http_cache
+      cache
+        .global()
         .set(&specifier, HashMap::default(), source.as_bytes())
         .expect("could not cache file");
       assert!(
@@ -849,7 +844,7 @@ mod tests {
     documents: &[(&str, &str, i32, LanguageId)],
     sources: &[(&str, &str)],
   ) -> Documents {
-    let location = temp_dir.path().join("deps");
+    let location = temp_dir.path();
     mock_documents(documents, sources, location.as_path())
   }
 

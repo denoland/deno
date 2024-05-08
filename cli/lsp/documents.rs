@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use super::cache::calculate_fs_version;
+use super::cache::LspCache;
 use super::cache::LSP_DISALLOW_GLOBAL_TO_LOCAL_COPY;
 use super::config::Config;
 use super::resolver::LspResolver;
@@ -10,7 +11,6 @@ use super::text::LineIndex;
 use super::tsc;
 use super::tsc::AssetDocument;
 
-use crate::cache::HttpCache;
 use crate::graph_util::CliJsrUrlProvider;
 use crate::lsp::logging::lsp_warn;
 use crate::resolver::SloppyImportsFsEntry;
@@ -289,7 +289,7 @@ impl Document {
     maybe_headers: Option<HashMap<String, String>>,
     resolver: Arc<LspResolver>,
     config: Arc<Config>,
-    cache: &Arc<dyn HttpCache>,
+    cache: &Arc<LspCache>,
   ) -> Arc<Self> {
     let text_info = SourceTextInfo::new(content);
     let media_type = resolve_media_type(
@@ -509,7 +509,7 @@ impl Document {
     }))
   }
 
-  pub fn closed(&self, cache: &Arc<dyn HttpCache>) -> Arc<Self> {
+  pub fn closed(&self, cache: &Arc<LspCache>) -> Arc<Self> {
     Arc::new(Self {
       config: self.config.clone(),
       specifier: self.specifier.clone(),
@@ -530,7 +530,7 @@ impl Document {
     })
   }
 
-  pub fn saved(&self, cache: &Arc<dyn HttpCache>) -> Arc<Self> {
+  pub fn saved(&self, cache: &Arc<LspCache>) -> Arc<Self> {
     Arc::new(Self {
       config: self.config.clone(),
       specifier: self.specifier.clone(),
@@ -565,6 +565,10 @@ impl Document {
 
   pub fn line_index(&self) -> Arc<LineIndex> {
     self.line_index.clone()
+  }
+
+  pub fn maybe_headers(&self) -> Option<&HashMap<String, String>> {
+    self.maybe_headers.as_ref()
   }
 
   fn maybe_fs_version(&self) -> Option<&str> {
@@ -714,7 +718,7 @@ impl FileSystemDocuments {
     specifier: &ModuleSpecifier,
     resolver: &Arc<LspResolver>,
     config: &Arc<Config>,
-    cache: &Arc<dyn HttpCache>,
+    cache: &Arc<LspCache>,
   ) -> Option<Arc<Document>> {
     let new_fs_version = calculate_fs_version(cache, specifier);
     let old_doc = self.docs.get(specifier).map(|v| v.value().clone());
@@ -744,7 +748,7 @@ impl FileSystemDocuments {
     specifier: &ModuleSpecifier,
     resolver: &Arc<LspResolver>,
     config: &Arc<Config>,
-    cache: &Arc<dyn HttpCache>,
+    cache: &Arc<LspCache>,
   ) -> Option<Arc<Document>> {
     let doc = if specifier.scheme() == "file" {
       let path = specifier_to_file_path(specifier).ok()?;
@@ -777,11 +781,12 @@ impl FileSystemDocuments {
         cache,
       )
     } else {
-      let cache_key = cache.cache_item_key(specifier).ok()?;
-      let bytes = cache
+      let http_cache = cache.root_vendor_or_global();
+      let cache_key = http_cache.cache_item_key(specifier).ok()?;
+      let bytes = http_cache
         .read_file_bytes(&cache_key, None, LSP_DISALLOW_GLOBAL_TO_LOCAL_COPY)
         .ok()??;
-      let specifier_headers = cache.read_headers(&cache_key).ok()??;
+      let specifier_headers = http_cache.read_headers(&cache_key).ok()??;
       let (_, maybe_charset) =
         deno_graph::source::resolve_media_type_and_charset_from_headers(
           specifier,
@@ -837,7 +842,7 @@ pub enum DocumentsFilter {
 #[derive(Debug, Clone)]
 pub struct Documents {
   /// The DENO_DIR that the documents looks for non-file based modules.
-  cache: Arc<dyn HttpCache>,
+  cache: Arc<LspCache>,
   config: Arc<Config>,
   /// A flag that indicates that stated data is potentially invalid and needs to
   /// be recalculated before being considered valid.
@@ -859,9 +864,9 @@ pub struct Documents {
 }
 
 impl Documents {
-  pub fn new(cache: Arc<dyn HttpCache>) -> Self {
+  pub fn new(cache: &LspCache) -> Self {
     Self {
-      cache: cache.clone(),
+      cache: Arc::new(cache.clone()),
       config: Default::default(),
       dirty: true,
       open_docs: HashMap::default(),
@@ -1028,7 +1033,7 @@ impl Documents {
       |path| {
         if let Ok(specifier) = ModuleSpecifier::from_file_path(path) {
           if self.open_docs.contains_key(&specifier)
-            || self.cache.contains(&specifier)
+            || self.cache.root_vendor_or_global().contains(&specifier)
           {
             return Some(SloppyImportsFsEntry::File);
           }
@@ -1061,7 +1066,7 @@ impl Documents {
           .map(|p| p.is_file())
           .unwrap_or(false);
       }
-      if self.cache.contains(&specifier) {
+      if self.cache.root_vendor_or_global().contains(&specifier) {
         return true;
       }
     }
@@ -1221,11 +1226,11 @@ impl Documents {
     &mut self,
     config: &Config,
     resolver: &Arc<LspResolver>,
-    cache: Arc<dyn HttpCache>,
+    cache: &LspCache,
     workspace_files: &BTreeSet<ModuleSpecifier>,
   ) {
     self.config = Arc::new(config.clone());
-    self.cache = cache;
+    self.cache = Arc::new(cache.clone());
     let config_data = config.tree.root_data();
     let config_file = config_data.and_then(|d| d.config_file.as_deref());
     self.resolver = resolver.clone();
@@ -1543,10 +1548,8 @@ fn analyze_module(
 
 #[cfg(test)]
 mod tests {
-  use crate::cache::GlobalHttpCache;
-  use crate::cache::RealDenoCacheEnv;
-
   use super::*;
+  use crate::lsp::cache::LspCache;
   use deno_config::ConfigFile;
   use deno_core::serde_json;
   use deno_core::serde_json::json;
@@ -1554,13 +1557,12 @@ mod tests {
   use test_util::PathRef;
   use test_util::TempDir;
 
-  fn setup(temp_dir: &TempDir) -> (Documents, PathRef, Arc<dyn HttpCache>) {
-    let location = temp_dir.path().join("deps");
-    let cache = Arc::new(GlobalHttpCache::new(
-      location.to_path_buf(),
-      RealDenoCacheEnv,
+  fn setup(temp_dir: &TempDir) -> (Documents, PathRef, LspCache) {
+    let location = temp_dir.path().clone();
+    let cache = LspCache::new(Some(
+      ModuleSpecifier::from_directory_path(&location).unwrap(),
     ));
-    let documents = Documents::new(cache.clone());
+    let documents = Documents::new(&cache);
     (documents, location, cache)
   }
 
@@ -1714,14 +1716,9 @@ console.log(b, "hello deno");
         .await;
 
       let resolver = LspResolver::default()
-        .with_new_config(&config, cache.clone(), None, None)
+        .with_new_config(&config, &cache, None)
         .await;
-      documents.update_config(
-        &config,
-        &resolver,
-        cache.clone(),
-        &workspace_files,
-      );
+      documents.update_config(&config, &resolver, &cache, &workspace_files);
 
       // open the document
       let document = documents.open(
@@ -1763,9 +1760,9 @@ console.log(b, "hello deno");
         .await;
 
       let resolver = LspResolver::default()
-        .with_new_config(&config, cache.clone(), None, None)
+        .with_new_config(&config, &cache, None)
         .await;
-      documents.update_config(&config, &resolver, cache, &workspace_files);
+      documents.update_config(&config, &resolver, &cache, &workspace_files);
 
       // check the document's dependencies
       let document = documents.get(&file1_specifier).unwrap();

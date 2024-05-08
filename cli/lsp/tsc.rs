@@ -22,8 +22,7 @@ use super::urls::INVALID_SPECIFIER;
 
 use crate::args::jsr_url;
 use crate::args::FmtOptionsConfig;
-use crate::cache::HttpCache;
-use crate::lsp::cache::CacheMetadata;
+use crate::lsp::cache::LspCache;
 use crate::lsp::documents::Documents;
 use crate::lsp::logging::lsp_warn;
 use crate::tsc;
@@ -220,7 +219,6 @@ fn normalize_diagnostic(
 
 pub struct TsServer {
   performance: Arc<Performance>,
-  cache: Arc<dyn HttpCache>,
   sender: mpsc::UnboundedSender<Request>,
   receiver: Mutex<Option<mpsc::UnboundedReceiver<Request>>>,
   specifier_map: Arc<TscSpecifierMap>,
@@ -232,7 +230,6 @@ impl std::fmt::Debug for TsServer {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     f.debug_struct("TsServer")
       .field("performance", &self.performance)
-      .field("cache", &self.cache)
       .field("sender", &self.sender)
       .field("receiver", &self.receiver)
       .field("specifier_map", &self.specifier_map)
@@ -331,11 +328,10 @@ impl PendingChange {
 }
 
 impl TsServer {
-  pub fn new(performance: Arc<Performance>, cache: Arc<dyn HttpCache>) -> Self {
+  pub fn new(performance: Arc<Performance>) -> Self {
     let (tx, request_rx) = mpsc::unbounded_channel::<Request>();
     Self {
       performance,
-      cache,
       sender: tx,
       receiver: Mutex::new(Some(request_rx)),
       specifier_map: Arc::new(TscSpecifierMap::new()),
@@ -363,13 +359,11 @@ impl TsServer {
     // on the `TsServer` struct.
     let receiver = self.receiver.lock().take().unwrap();
     let performance = self.performance.clone();
-    let cache = self.cache.clone();
     let specifier_map = self.specifier_map.clone();
     let _join_handle = thread::spawn(move || {
       run_tsc_thread(
         receiver,
         performance.clone(),
-        cache.clone(),
         specifier_map.clone(),
         maybe_inspector_server,
       )
@@ -4321,7 +4315,6 @@ impl TscRuntime {
 fn run_tsc_thread(
   mut request_rx: UnboundedReceiver<Request>,
   performance: Arc<Performance>,
-  cache: Arc<dyn HttpCache>,
   specifier_map: Arc<TscSpecifierMap>,
   maybe_inspector_server: Option<Arc<InspectorServer>>,
 ) {
@@ -4330,7 +4323,7 @@ fn run_tsc_thread(
   // supplied snapshot is an isolate that contains the TypeScript language
   // server.
   let mut tsc_runtime = JsRuntime::new(RuntimeOptions {
-    extensions: vec![deno_tsc::init_ops(performance, cache, specifier_map)],
+    extensions: vec![deno_tsc::init_ops(performance, specifier_map)],
     startup_snapshot: Some(tsc::compiler_snapshot()),
     inspector: maybe_inspector_server.is_some(),
     ..Default::default()
@@ -4403,7 +4396,6 @@ deno_core::extension!(deno_tsc,
   ],
   options = {
     performance: Arc<Performance>,
-    cache: Arc<dyn HttpCache>,
     specifier_map: Arc<TscSpecifierMap>,
   },
   state = |state, options| {
@@ -4411,9 +4403,8 @@ deno_core::extension!(deno_tsc,
       Arc::new(StateSnapshot {
         project_version: 0,
         assets: Default::default(),
-        cache_metadata: CacheMetadata::new(options.cache.clone()),
         config: Default::default(),
-        documents: Documents::new(options.cache.clone()),
+        documents: Documents::new(&LspCache::new(None)),
         resolver: Default::default(),
       }),
       options.specifier_map,
@@ -5059,11 +5050,9 @@ impl TscRequest {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::cache::GlobalHttpCache;
   use crate::cache::HttpCache;
-  use crate::cache::RealDenoCacheEnv;
   use crate::http_util::HeadersMap;
-  use crate::lsp::cache::CacheMetadata;
+  use crate::lsp::cache::LspCache;
   use crate::lsp::config::Config;
   use crate::lsp::config::WorkspaceSettings;
   use crate::lsp::documents::Documents;
@@ -5071,19 +5060,14 @@ mod tests {
   use crate::lsp::resolver::LspResolver;
   use crate::lsp::text::LineIndex;
   use pretty_assertions::assert_eq;
-  use std::path::Path;
   use test_util::TempDir;
 
   async fn mock_state_snapshot(
     fixtures: &[(&str, &str, i32, LanguageId)],
-    location: &Path,
     ts_config: Value,
+    cache: LspCache,
   ) -> StateSnapshot {
-    let cache = Arc::new(GlobalHttpCache::new(
-      location.to_path_buf(),
-      RealDenoCacheEnv,
-    ));
-    let mut documents = Documents::new(cache.clone());
+    let mut documents = Documents::new(&cache);
     for (specifier, source, version, language_id) in fixtures {
       let specifier =
         resolve_url(specifier).expect("failed to create specifier");
@@ -5110,13 +5094,12 @@ mod tests {
       )
       .await;
     let resolver = LspResolver::default()
-      .with_new_config(&config, cache.clone(), None, None)
+      .with_new_config(&config, &cache, None)
       .await;
     StateSnapshot {
       project_version: 0,
       documents,
       assets: Default::default(),
-      cache_metadata: CacheMetadata::new(cache),
       config: Arc::new(config),
       resolver,
     }
@@ -5126,14 +5109,15 @@ mod tests {
     temp_dir: &TempDir,
     config: Value,
     sources: &[(&str, &str, i32, LanguageId)],
-  ) -> (TsServer, Arc<StateSnapshot>, Arc<GlobalHttpCache>) {
-    let location = temp_dir.path().join("deps").to_path_buf();
-    let cache =
-      Arc::new(GlobalHttpCache::new(location.clone(), RealDenoCacheEnv));
+  ) -> (TsServer, Arc<StateSnapshot>, LspCache) {
+    let location = temp_dir.path().to_path_buf();
+    let cache = LspCache::new(Some(
+      ModuleSpecifier::from_directory_path(&location).unwrap(),
+    ));
     let snapshot =
-      Arc::new(mock_state_snapshot(sources, &location, config).await);
+      Arc::new(mock_state_snapshot(sources, config, cache.clone()).await);
     let performance = Arc::new(Performance::default());
-    let ts_server = TsServer::new(performance, cache.clone());
+    let ts_server = TsServer::new(performance);
     ts_server.start(None).unwrap();
     (ts_server, snapshot, cache)
   }
@@ -5528,6 +5512,7 @@ mod tests {
     let specifier_dep =
       resolve_url("https://deno.land/x/example/a.ts").unwrap();
     cache
+      .global()
       .set(
         &specifier_dep,
         HeadersMap::default(),
@@ -5562,6 +5547,7 @@ mod tests {
       })
     );
     cache
+      .global()
       .set(
         &specifier_dep,
         HeadersMap::default(),
