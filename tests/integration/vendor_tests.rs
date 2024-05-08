@@ -579,8 +579,8 @@ fn vendor_npm_node_specifiers() {
   output.assert_matches_text(format!(
     concat!(
       "Download http://localhost:4545/vendor/npm_and_node_specifier.ts\n",
-      "Download http://localhost:4558/@denotest/esm-basic\n",
-      "Download http://localhost:4558/@denotest/esm-basic/1.0.0.tgz\n",
+      "Download http://localhost:4260/@denotest/esm-basic\n",
+      "Download http://localhost:4260/@denotest/esm-basic/1.0.0.tgz\n",
       "{}\n",
       "Initialize @denotest/esm-basic@1.0.0\n",
       "{}\n\n",
@@ -652,8 +652,8 @@ fn vendor_only_npm_specifiers() {
   let output = context.new_command().args("vendor my_app.ts").run();
   output.assert_matches_text(format!(
     concat!(
-      "Download http://localhost:4558/@denotest/esm-basic\n",
-      "Download http://localhost:4558/@denotest/esm-basic/1.0.0.tgz\n",
+      "Download http://localhost:4260/@denotest/esm-basic\n",
+      "Download http://localhost:4260/@denotest/esm-basic/1.0.0.tgz\n",
       "{}\n",
       "Initialize @denotest/esm-basic@1.0.0\n",
       "{}\n",
