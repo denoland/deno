@@ -3,6 +3,7 @@
 use deno_core::serde_json;
 use test_util as util;
 use test_util::TempDir;
+use util::assert_contains;
 use util::assert_starts_with;
 use util::env_vars_for_npm_tests;
 use util::PathRef;
@@ -90,8 +91,8 @@ fn error_if_invalid_cache() {
 
   // Expect error
   let error = util::strip_ansi_codes(out).to_string();
-  assert!(error.contains("error: Missing transpiled source code"));
-  assert!(error.contains("Before generating coverage report, run `deno test --coverage` to ensure consistent state."));
+  assert_contains!(error, "error: Missing transpiled source code");
+  assert_contains!(error, "Before generating coverage report, run `deno test --coverage` to ensure consistent state.");
 }
 
 fn run_coverage_text(test_name: &str, extension: &str) {
@@ -470,46 +471,49 @@ fn test_html_reporter() {
   output.assert_matches_text("HTML coverage report has been generated at [WILDCARD]/cov/html/index.html\n");
 
   let index_html = tempdir.join("html").join("index.html").read_to_string();
-  assert!(index_html.contains("<h1>Coverage report for all files</h1>"));
-  assert!(index_html.contains("baz/"));
-  assert!(index_html.contains("href='baz/index.html'"));
-  assert!(index_html.contains("foo.ts"));
-  assert!(index_html.contains("href='foo.ts.html'"));
-  assert!(index_html.contains("bar.ts"));
-  assert!(index_html.contains("href='bar.ts.html'"));
+  assert_contains!(index_html, "<h1>Coverage report for all files</h1>");
+  assert_contains!(index_html, "baz/");
+  assert_contains!(index_html, "href='baz/index.html'");
+  assert_contains!(index_html, "foo.ts");
+  assert_contains!(index_html, "href='foo.ts.html'");
+  assert_contains!(index_html, "bar.ts");
+  assert_contains!(index_html, "href='bar.ts.html'");
 
   let foo_ts_html = tempdir.join("html").join("foo.ts.html").read_to_string();
-  assert!(foo_ts_html.contains("<h1>Coverage report for foo.ts</h1>"));
+  assert_contains!(foo_ts_html, "<h1>Coverage report for foo.ts</h1>");
 
   let bar_ts_html = tempdir.join("html").join("bar.ts.html").read_to_string();
-  assert!(bar_ts_html.contains("<h1>Coverage report for bar.ts</h1>"));
+  assert_contains!(bar_ts_html, "<h1>Coverage report for bar.ts</h1>");
   // Check <T> in source code is escaped to &lt;T&gt;
-  assert!(bar_ts_html.contains("&lt;T&gt;"));
+  assert_contains!(bar_ts_html, "&lt;T&gt;");
 
   let baz_index_html = tempdir
     .join("html")
     .join("baz")
     .join("index.html")
     .read_to_string();
-  assert!(baz_index_html.contains("<h1>Coverage report for baz/</h1>"));
-  assert!(baz_index_html.contains("qux.ts"));
-  assert!(baz_index_html.contains("href='qux.ts.html'"));
-  assert!(baz_index_html.contains("quux.ts"));
-  assert!(baz_index_html.contains("href='quux.ts.html'"));
+  assert_contains!(baz_index_html, "<h1>Coverage report for baz/</h1>");
+  assert_contains!(baz_index_html, "qux.ts");
+  assert_contains!(baz_index_html, "href='qux.ts.html'");
+  assert_contains!(baz_index_html, "quux.ts");
+  assert_contains!(baz_index_html, "href='quux.ts.html'");
 
   let baz_qux_ts_html = tempdir
     .join("html")
     .join("baz")
     .join("qux.ts.html")
     .read_to_string();
-  assert!(baz_qux_ts_html.contains("<h1>Coverage report for baz/qux.ts</h1>"));
+  assert_contains!(baz_qux_ts_html, "<h1>Coverage report for baz/qux.ts</h1>");
 
   let baz_quux_ts_html = tempdir
     .join("html")
     .join("baz")
     .join("quux.ts.html")
     .read_to_string();
-  assert!(baz_quux_ts_html.contains("<h1>Coverage report for baz/quux.ts</h1>"));
+  assert_contains!(
+    baz_quux_ts_html,
+    "<h1>Coverage report for baz/quux.ts</h1>"
+  );
 }
 
 #[test]
