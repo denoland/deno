@@ -737,6 +737,7 @@ impl FromStr for NetDescriptor {
     // and don't care about the scheme.
     let url = url::Url::parse(&format!("unknown://{s}"))
       .with_context(|| format!("Failed to parse {}", s))?;
+
     let hostname = url
       .host_str()
       .ok_or(url::ParseError::EmptyHost)?
