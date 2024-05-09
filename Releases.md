@@ -6,6 +6,35 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.43.2 / 2024.05.08
+
+- feat(runtime): allow adding custom extensions to snapshot (#23569)
+- fix(compile): relative permissions should be retained as relative (#23719)
+- fix(ext/node): check resource exists before close (#23655)
+- fix(ext/node): don't rely on Deno.env to read NODE_DEBUG (#23694)
+- fix(ext/node): napi_get_element and napi_set_element work with objects
+  (#23713)
+- fix(ext/node): support delete process.env.var (#23647)
+- fix(ext/web): properly handle `Blob` case for `createImageBitmap` (#23518)
+- fix(ext/webgpu): correctly validate GPUExtent3D, GPUOrigin3D, GPUOrigin2D &
+  GPUColor (#23413)
+- fix(fmt/js): `else` was moved to wrong `if` sometimes when formatting minified
+  code (#23706)
+- fix(jsr): panic when importing jsr package with deps via https (#23728)
+- fix(lsp): Catch cancellation exceptions thrown by TSC, stop waiting for TS
+  result upon cancellation (#23645)
+- fix(lsp): Pass diagnostic codes to TSC as numbers (#23720)
+- fix(lsp): always cache all npm packages (#23679)
+- fix(lsp): handle multiline semantic tokens (#23691)
+- fix(publish): public api - trace parent classes & interfaces when following a
+  method (#23661)
+- fix(runtime): allow r/w access to /etc without --allow-all (#23718)
+- fix(test): proper type checking for files with doc tests (#23654)
+- fix(workers): `importScripts` concurrently and use a new `reqwest::Client` per
+  importScripts (#23699)
+- fix: DOMException doesn't throw on __callSitesEvals (#23729)
+- fix: upgrade TypeScript from 5.4.3 to 5.4.5 (#23740)
+
 ### 1.43.0 / 2024.05.01
 
 - FUTURE(ext/net): remove

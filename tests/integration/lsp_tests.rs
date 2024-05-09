@@ -12,69 +12,12 @@ use test_util::assert_starts_with;
 use test_util::assertions::assert_json_subset;
 use test_util::deno_cmd_with_deno_dir;
 use test_util::env_vars_for_npm_tests;
+use test_util::lsp::range_of;
+use test_util::lsp::source_file;
 use test_util::lsp::LspClient;
 use test_util::testdata_path;
 use test_util::TestContextBuilder;
 use tower_lsp::lsp_types as lsp;
-
-/// Helper to get the `lsp::Range` of the `n`th occurrence of
-/// `text` in `src`. `n` is zero-based, like most indexes.
-fn range_of_nth(
-  n: usize,
-  text: impl AsRef<str>,
-  src: impl AsRef<str>,
-) -> lsp::Range {
-  let text = text.as_ref();
-
-  let src = src.as_ref();
-
-  let start = src
-    .match_indices(text)
-    .nth(n)
-    .map(|(i, _)| i)
-    .unwrap_or_else(|| panic!("couldn't find text {text} in source {src}"));
-  let end = start + text.len();
-  let mut line = 0;
-  let mut col = 0;
-  let mut byte_idx = 0;
-
-  let pos = |line, col| lsp::Position {
-    line,
-    character: col,
-  };
-
-  let mut start_pos = None;
-  let mut end_pos = None;
-  for c in src.chars() {
-    if byte_idx == start {
-      start_pos = Some(pos(line, col));
-    }
-    if byte_idx == end {
-      end_pos = Some(pos(line, col));
-      break;
-    }
-    if c == '\n' {
-      line += 1;
-      col = 0;
-    } else {
-      col += c.len_utf16() as u32;
-    }
-    byte_idx += c.len_utf8();
-  }
-  if start_pos.is_some() && end_pos.is_none() {
-    // range extends to end of string
-    end_pos = Some(pos(line, col));
-  }
-
-  let (start, end) = (start_pos.unwrap(), end_pos.unwrap());
-  lsp::Range { start, end }
-}
-
-/// Helper to get the `lsp::Range` of the first occurrence of
-/// `text` in `src`. Equivalent to `range_of_nth(0, text, src)`.
-fn range_of(text: impl AsRef<str>, src: impl AsRef<str>) -> lsp::Range {
-  range_of_nth(0, text, src)
-}
 
 #[test]
 fn lsp_startup_shutdown() {
@@ -12106,15 +12049,19 @@ fn lsp_deno_future_env_byonm() {
 }
 
 #[test]
-fn lsp_sloppy_imports_warn() {
+fn lsp_sloppy_imports() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
   let temp_dir = temp_dir.path();
   temp_dir
     .join("deno.json")
     .write(r#"{ "unstable": ["sloppy-imports"] }"#);
-  // should work when exists on the fs and when doesn't
+  // for sloppy imports, the file must exist on the file system
+  // to be resolved correctly
   temp_dir.join("a.ts").write("export class A {}");
+  temp_dir.join("b.ts").write("export class B {}");
+  temp_dir.join("c.js").write("export class C {}");
+  temp_dir.join("c.d.ts").write("export class C {}");
   let mut client = context.new_lsp_command().build();
   client.initialize(|builder| {
     builder.set_root_uri(temp_dir.uri_dir());
@@ -12161,137 +12108,67 @@ fn lsp_sloppy_imports_warn() {
       ),
     },
   }));
-  assert_eq!(
-    diagnostics.messages_with_source("deno"),
-    lsp::PublishDiagnosticsParams {
-      uri: temp_dir.join("file.ts").uri_file(),
-      diagnostics: vec![
-        lsp::Diagnostic {
-          range: lsp::Range {
-            start: lsp::Position {
-              line: 0,
-              character: 19
-            },
-            end: lsp::Position {
-              line: 0,
-              character: 24
-            }
-          },
-          severity: Some(lsp::DiagnosticSeverity::INFORMATION),
-          code: Some(lsp::NumberOrString::String("redirect".to_string())),
-          source: Some("deno".to_string()),
-          message: format!(
-            "The import of \"{}\" was redirected to \"{}\".",
-            temp_dir.join("a").uri_file(),
-            temp_dir.join("a.ts").uri_file()
-          ),
-          data: Some(json!({
-            "specifier": temp_dir.join("a").uri_file(),
-            "redirect": temp_dir.join("a.ts").uri_file()
-          })),
-          ..Default::default()
-        },
-        lsp::Diagnostic {
-          range: lsp::Range {
-            start: lsp::Position {
-              line: 1,
-              character: 19
-            },
-            end: lsp::Position {
-              line: 1,
-              character: 27
-            }
-          },
-          severity: Some(lsp::DiagnosticSeverity::INFORMATION),
-          code: Some(lsp::NumberOrString::String("redirect".to_string())),
-          source: Some("deno".to_string()),
-          message: format!(
-            "The import of \"{}\" was redirected to \"{}\".",
-            temp_dir.join("b.js").uri_file(),
-            temp_dir.join("b.ts").uri_file()
-          ),
-          data: Some(json!({
-            "specifier": temp_dir.join("b.js").uri_file(),
-            "redirect": temp_dir.join("b.ts").uri_file()
-          })),
-          ..Default::default()
-        }
-      ],
-      version: Some(1),
-    }
-  );
 
-  let res = client.write_request(
-    "textDocument/codeAction",
+  assert_eq!(json!(diagnostics.all()), json!([]));
+
+  client.shutdown();
+}
+
+#[test]
+fn lsp_sloppy_imports_prefers_dts() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  let temp_dir = temp_dir.path();
+
+  temp_dir
+    .join("deno.json")
+    .write(r#"{ "unstable": ["sloppy-imports"] }"#);
+
+  let mut client: LspClient = context
+    .new_lsp_command()
+    .set_root_dir(temp_dir.clone())
+    .build();
+  client.initialize_default();
+
+  temp_dir.join("a.js").write("export const foo: number;");
+
+  let a_dts = source_file(temp_dir.join("a.d.ts"), "export const foo = 3;");
+  let file = source_file(
+    temp_dir.join("file.ts"),
+    "import { foo } from './a.js';\nconsole.log(foo);",
+  );
+  let diagnostics = client.did_open_file(&file);
+  // no warnings because "a.js" exists
+  assert_eq!(diagnostics.all().len(), 0);
+
+  let diagnostics = client.did_open_file(&a_dts);
+  assert_eq!(diagnostics.all().len(), 0, "Got {:#?}", diagnostics.all());
+
+  let response = client.write_request(
+    "textDocument/references",
     json!({
-      "textDocument": {
-        "uri": temp_dir.join("file.ts").uri_file()
-      },
-      "range": {
-        "start": { "line": 0, "character": 19 },
-        "end": { "line": 0, "character": 24 }
-      },
+      "textDocument": a_dts.identifier(),
+      "position": a_dts.range_of("foo").start,
       "context": {
-        "diagnostics": [{
-          "range": {
-            "start": { "line": 0, "character": 19 },
-            "end": { "line": 0, "character": 24 }
-          },
-          "severity": 3,
-          "code": "redirect",
-          "source": "deno",
-          "message": format!(
-            "The import of \"{}\" was redirected to \"{}\".",
-            temp_dir.join("a").uri_file(),
-            temp_dir.join("a.ts").uri_file()
-          ),
-          "data": {
-            "specifier": temp_dir.join("a").uri_file(),
-            "redirect": temp_dir.join("a.ts").uri_file(),
-          },
-        }],
-        "only": ["quickfix"]
+        "includeDeclaration": false
       }
     }),
   );
-  assert_eq!(
-    res,
-    json!([{
-      "title": "Update specifier to its redirected specifier.",
-      "kind": "quickfix",
-      "diagnostics": [{
-        "range": {
-          "start": { "line": 0, "character": 19 },
-          "end": { "line": 0, "character": 24 }
-        },
-        "severity": 3,
-        "code": "redirect",
-        "source": "deno",
-        "message": format!(
-          "The import of \"{}\" was redirected to \"{}\".",
-          temp_dir.join("a").uri_file(),
-          temp_dir.join("a.ts").uri_file()
-        ),
-        "data": {
-          "specifier": temp_dir.join("a").uri_file(),
-          "redirect": temp_dir.join("a.ts").uri_file()
-        },
-      }],
-      "edit": {
-        "changes": {
-          temp_dir.join("file.ts").uri_file(): [{
-            "range": {
-              "start": { "line": 0, "character": 19 },
-              "end": { "line": 0, "character": 24 }
-            },
-            "newText": "\"./a.ts\""
-          }]
-        }
+  assert_json_subset(
+    response,
+    json!([
+      {
+        "uri": file.uri(),
+        // the import
+        "range": file.range_of("foo"),
+      },
+      {
+        "uri": file.uri(),
+        // the usage
+        "range": file.range_of_nth(1, "foo"),
       }
-    }])
+    ]),
   );
-
-  client.shutdown();
 }
 
 #[test]
