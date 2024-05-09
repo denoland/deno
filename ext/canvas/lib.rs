@@ -148,11 +148,16 @@ fn op_image_encode_png(
   #[buffer] buf: &[u8],
   width: u32,
   height: u32,
-) -> Result<ToJsBuffer, AnyError> {
+) -> Result<Option<ToJsBuffer>, AnyError> {
   let mut out = vec![];
-  let png = image::codecs::png::PngEncoder::new(&out);
-  png.write_image(buf, width, height, ColorType::Rgb8)?;
-  Ok(out.into())
+  let png = image::codecs::png::PngEncoder::new(&mut out);
+  if png
+    .write_image(buf, width, height, ColorType::Rgb8)
+    .is_err()
+  {
+    return Ok(None);
+  };
+  Ok(Some(out.into()))
 }
 
 deno_core::extension!(
