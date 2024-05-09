@@ -223,7 +223,8 @@ pub struct TlsKeyLookup {
 }
 
 impl TlsKeyLookup {
-  /// Only one poll call may be active at any time. This method holds a `RefCell` lock.
+  /// Multiple `poll` calls are safe, but this method is not starvation-safe. Generally
+  /// only one `poll`er should be active at any time.
   pub async fn poll(&self) -> Option<String> {
     if let Some((sni, sender)) =
       poll_fn(|cx| self.resolution_rx.borrow_mut().poll_recv(cx)).await
