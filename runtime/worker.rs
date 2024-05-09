@@ -279,6 +279,7 @@ pub fn create_op_metrics(
       max_len.set(max_len.get().max(decl.name.len()));
       let max_len = max_len.clone();
       Some(Rc::new(
+        #[allow(clippy::print_stderr)]
         move |op: &deno_core::_ops::OpCtx, event, source| {
           eprintln!(
             "[{: >10.3}] {name:max_len$}: {event:?} {source:?}",
@@ -518,7 +519,7 @@ impl MainWorker {
       if !has_notified_of_inspector_disconnect
         .swap(true, std::sync::atomic::Ordering::SeqCst)
       {
-        println!("Program finished. Waiting for inspector to disconnect to exit the process...");
+        log::info!("Program finished. Waiting for inspector to disconnect to exit the process...");
       }
     });
 

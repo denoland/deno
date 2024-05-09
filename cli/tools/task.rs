@@ -44,7 +44,11 @@ pub async fn execute_script(
   let task_name = match &task_flags.task {
     Some(task) => task,
     None => {
-      print_available_tasks(&tasks_config, &package_json_scripts);
+      print_available_tasks(
+        &mut std::io::stdout(),
+        &tasks_config,
+        &package_json_scripts,
+      )?;
       return Ok(1);
     }
   };
@@ -145,8 +149,14 @@ pub async fn execute_script(
 
     Ok(0)
   } else {
-    eprintln!("Task not found: {task_name}");
-    print_available_tasks(&tasks_config, &package_json_scripts);
+    log::error!("Task not found: {task_name}");
+    if log::log_enabled!(log::Level::Error) {
+      print_available_tasks(
+        &mut std::io::stderr(),
+        &tasks_config,
+        &package_json_scripts,
+      )?;
+    }
     Ok(1)
   }
 }
@@ -239,48 +249,58 @@ fn collect_env_vars() -> HashMap<String, String> {
 }
 
 fn print_available_tasks(
-  // order can be important, so these use an index map
+  writer: &mut dyn std::io::Write,
   tasks_config: &IndexMap<String, deno_config::Task>,
   package_json_scripts: &IndexMap<String, String>,
-) {
-  eprintln!("{}", colors::green("Available tasks:"));
+) -> Result<(), std::io::Error> {
+  writeln!(writer, "{}", colors::green("Available tasks:"))?;
 
-  let mut had_task = false;
-  for (is_deno, (key, task)) in tasks_config
-    .iter()
-    .map(|(k, t)| (true, (k, t.clone())))
-    .chain(
-      package_json_scripts
-        .iter()
-        .filter(|(key, _)| !tasks_config.contains_key(*key))
-        .map(|(k, v)| (false, (k, deno_config::Task::Definition(v.clone())))),
-    )
-  {
-    eprintln!(
-      "- {}{}",
-      colors::cyan(key),
-      if is_deno {
-        "".to_string()
-      } else {
-        format!(" {}", colors::italic_gray("(package.json)"))
+  if tasks_config.is_empty() && package_json_scripts.is_empty() {
+    writeln!(
+      writer,
+      "  {}",
+      colors::red("No tasks found in configuration file")
+    )?;
+  } else {
+    for (is_deno, (key, task)) in tasks_config
+      .iter()
+      .map(|(k, t)| (true, (k, t.clone())))
+      .chain(
+        package_json_scripts
+          .iter()
+          .filter(|(key, _)| !tasks_config.contains_key(*key))
+          .map(|(k, v)| (false, (k, deno_config::Task::Definition(v.clone())))),
+      )
+    {
+      writeln!(
+        writer,
+        "- {}{}",
+        colors::cyan(key),
+        if is_deno {
+          "".to_string()
+        } else {
+          format!(" {}", colors::italic_gray("(package.json)"))
+        }
+      )?;
+      let definition = match &task {
+        deno_config::Task::Definition(definition) => definition,
+        deno_config::Task::Commented { definition, .. } => definition,
+      };
+      if let deno_config::Task::Commented { comments, .. } = &task {
+        let slash_slash = colors::italic_gray("//");
+        for comment in comments {
+          writeln!(
+            writer,
+            "    {slash_slash} {}",
+            colors::italic_gray(comment)
+          )?;
+        }
       }
-    );
-    let definition = match &task {
-      deno_config::Task::Definition(definition) => definition,
-      deno_config::Task::Commented { definition, .. } => definition,
-    };
-    if let deno_config::Task::Commented { comments, .. } = &task {
-      let slash_slash = colors::italic_gray("//");
-      for comment in comments {
-        eprintln!("    {slash_slash} {}", colors::italic_gray(comment));
-      }
+      writeln!(writer, "    {definition}")?;
     }
-    eprintln!("    {definition}");
-    had_task = true;
   }
-  if !had_task {
-    eprintln!("  {}", colors::red("No tasks found in configuration file"));
-  }
+
+  Ok(())
 }
 
 struct NpxCommand;
