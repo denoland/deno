@@ -23,8 +23,6 @@ use super::urls::INVALID_SPECIFIER;
 
 use crate::args::jsr_url;
 use crate::args::FmtOptionsConfig;
-use crate::cache::HttpCache;
-use crate::lsp::logging::lsp_log;
 use crate::lsp::logging::lsp_warn;
 use crate::tsc;
 use crate::tsc::ResolveArgs;
