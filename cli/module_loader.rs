@@ -8,6 +8,7 @@ use crate::cache::CodeCache;
 use crate::cache::ModuleInfoCache;
 use crate::cache::ParsedSourceCache;
 use crate::emit::Emitter;
+use crate::factory::CliFactory;
 use crate::graph_util::graph_lock_or_exit;
 use crate::graph_util::CreateGraphOptions;
 use crate::graph_util::ModuleGraphBuilder;
@@ -63,6 +64,40 @@ use std::pin::Pin;
 use std::rc::Rc;
 use std::str;
 use std::sync::Arc;
+
+pub async fn load_top_level_deps(factory: &CliFactory) -> Result<(), AnyError> {
+  let npm_resolver = factory.npm_resolver().await?;
+  if let Some(npm_resolver) = npm_resolver.as_managed() {
+    npm_resolver.ensure_top_level_package_json_install().await?;
+    npm_resolver.resolve_pending().await?;
+  }
+  // cache as many entries in the import map as we can
+  if let Some(import_map) = factory.maybe_import_map().await? {
+    let roots = import_map
+      .imports()
+      .entries()
+      .filter_map(|entry| {
+        if entry.key.ends_with('/') {
+          None
+        } else {
+          entry.value.cloned()
+        }
+      })
+      .collect();
+    factory
+      .module_load_preparer()
+      .await?
+      .prepare_module_load(
+        roots,
+        false,
+        factory.cli_options().ts_type_lib_window(),
+        deno_runtime::permissions::PermissionsContainer::allow_all(),
+      )
+      .await?;
+  }
+
+  Ok(())
+}
 
 pub struct ModuleLoadPreparer {
   options: Arc<CliOptions>,

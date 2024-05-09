@@ -76,13 +76,13 @@ pub fn op_print(
 
   if is_err {
     if let Err(err) = sender.send(StdioMsg::Stderr(msg.into())) {
-      eprintln!("Failed to send stderr message: {}", err);
+      log::error!("Failed to send stderr message: {}", err);
     }
     return Ok(());
   }
 
   if let Err(err) = sender.send(StdioMsg::Stdout(msg.into())) {
-    eprintln!("Failed to send stdout message: {}", err);
+    log::error!("Failed to send stdout message: {}", err);
   }
   Ok(())
 }
