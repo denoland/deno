@@ -196,15 +196,15 @@ impl LspResolver {
     Ok(())
   }
 
-  pub fn as_graph_resolver<'a>(
-    &self,
+  pub fn as_graph_resolver<'a, 'b>(
+    &'a self,
     // this really only needs a HashSet<ModuleSpecifier>, but it's provided
     // the entire HashMap to avoid cloning all the time
-    open_docs: &'a HashMap<ModuleSpecifier, Arc<Document>>,
-  ) -> LspGraphResolver<'a> {
+    open_docs: &'b HashMap<ModuleSpecifier, Arc<Document>>,
+  ) -> LspGraphResolver<'a, 'b> {
     LspGraphResolver {
-      resolver: self.graph_resolver.clone(),
-      cache: self.cache.clone(),
+      resolver: &self.graph_resolver,
+      cache: self.cache.as_ref(),
       unstable_sloppy_imports: self.unstable_sloppy_imports,
       open_docs,
     }
@@ -333,14 +333,14 @@ impl LspResolver {
 }
 
 #[derive(Debug)]
-pub struct LspGraphResolver<'a> {
-  cache: Arc<dyn HttpCache>,
-  resolver: Arc<CliGraphResolver>,
-  open_docs: &'a HashMap<ModuleSpecifier, Arc<Document>>,
+pub struct LspGraphResolver<'a, 'b> {
+  cache: &'a dyn HttpCache,
+  resolver: &'a CliGraphResolver,
+  open_docs: &'b HashMap<ModuleSpecifier, Arc<Document>>,
   unstable_sloppy_imports: bool,
 }
 
-impl<'a> Resolver for LspGraphResolver<'a> {
+impl<'a, 'b> Resolver for LspGraphResolver<'a, 'b> {
   fn default_jsx_import_source(&self) -> Option<String> {
     self.resolver.default_jsx_import_source()
   }
