@@ -14,6 +14,10 @@ class OffscreenCanvas extends EventTarget {
     return this[_width];
   }
 
+
+
+
+
   [_height];
   get height() {
     webidl.assertBranded(this, OffscreenCanvasPrototype);
