@@ -75,7 +75,7 @@ impl JupyterServer {
 
     let handle1 = deno_core::unsync::spawn(async move {
       if let Err(err) = Self::handle_heartbeat(&mut heartbeat).await {
-        eprintln!("Heartbeat error: {}", err);
+        log::error!("Heartbeat error: {}", err);
       }
     });
 
@@ -85,14 +85,14 @@ impl JupyterServer {
         if let Err(err) =
           Self::handle_control(control_socket, cancel_handle).await
         {
-          eprintln!("Control error: {}", err);
+          log::error!("Control error: {}", err);
         }
       }
     });
 
     let handle3 = deno_core::unsync::spawn(async move {
       if let Err(err) = server.handle_shell(shell_socket).await {
-        eprintln!("Shell error: {}", err);
+        log::error!("Shell error: {}", err);
       }
     });
 
@@ -137,7 +137,7 @@ impl JupyterServer {
         .await;
 
       if let Err(err) = result {
-        eprintln!("Output {} error: {}", name, err);
+        log::error!("Output {} error: {}", name, err);
       }
     }
   }
@@ -166,10 +166,10 @@ impl JupyterServer {
           cancel_handle.cancel();
         }
         "interrupt_request" => {
-          eprintln!("Interrupt request currently not supported");
+          log::error!("Interrupt request currently not supported");
         }
         _ => {
-          eprintln!(
+          log::error!(
             "Unrecognized control message type: {}",
             msg.message_type()
           );
@@ -307,7 +307,7 @@ impl JupyterServer {
         // We don't handle these messages
       }
       _ => {
-        eprintln!("Unrecognized shell message type: {}", msg.message_type());
+        log::error!("Unrecognized shell message type: {}", msg.message_type());
       }
     }
 
@@ -386,12 +386,13 @@ impl JupyterServer {
       tokio::time::sleep(std::time::Duration::from_millis(5)).await;
     } else if let Some(exception_details) = exception_details {
       // Determine the exception value and name
-      let (name, message, stack) =
-        if let Some(exception) = exception_details.exception {
-          let result = self
-            .repl_session
-            .call_function_on_args(
-              r#"
+      let (name, message, stack) = if let Some(exception) =
+        exception_details.exception
+      {
+        let result = self
+          .repl_session
+          .call_function_on_args(
+            r#"
           function(object) {
             if (object instanceof Error) {
               const name = "name" in object ? String(object.name) : "";
@@ -404,32 +405,32 @@ impl JupyterServer {
             }
           }
         "#
-              .into(),
-              &[exception],
-            )
-            .await?;
+            .into(),
+            &[exception],
+          )
+          .await?;
 
-          match result.result.value {
-            Some(serde_json::Value::String(str)) => {
-              if let Ok(object) =
-                serde_json::from_str::<HashMap<String, String>>(&str)
-              {
-                let get = |k| object.get(k).cloned().unwrap_or_default();
-                (get("name"), get("message"), get("stack"))
-              } else {
-                eprintln!("Unexpected result while parsing JSON {str}");
-                ("".into(), "".into(), "".into())
-              }
-            }
-            _ => {
-              eprintln!("Unexpected result while parsing exception {result:?}");
+        match result.result.value {
+          Some(serde_json::Value::String(str)) => {
+            if let Ok(object) =
+              serde_json::from_str::<HashMap<String, String>>(&str)
+            {
+              let get = |k| object.get(k).cloned().unwrap_or_default();
+              (get("name"), get("message"), get("stack"))
+            } else {
+              log::error!("Unexpected result while parsing JSON {str}");
               ("".into(), "".into(), "".into())
             }
           }
-        } else {
-          eprintln!("Unexpectedly missing exception {exception_details:?}");
-          ("".into(), "".into(), "".into())
-        };
+          _ => {
+            log::error!("Unexpected result while parsing exception {result:?}");
+            ("".into(), "".into(), "".into())
+          }
+        }
+      } else {
+        log::error!("Unexpectedly missing exception {exception_details:?}");
+        ("".into(), "".into(), "".into())
+      };
 
       let stack = if stack.is_empty() {
         format!(
@@ -546,7 +547,7 @@ async fn publish_result(
   if let Some(exception_details) = &response.exception_details {
     // If the object doesn't have a Jupyter.display method or it throws an
     // exception, we just ignore it and let the caller handle it.
-    eprintln!("Exception encountered: {}", exception_details.text);
+    log::error!("Exception encountered: {}", exception_details.text);
     return Ok(None);
   }
 

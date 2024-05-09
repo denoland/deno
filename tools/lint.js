@@ -162,6 +162,12 @@ async function clippy() {
       "warnings",
       "--deny",
       "clippy::unused_async",
+      // generally prefer the `log` crate, but ignore
+      // these print_* rules if necessary
+      "--deny",
+      "clippy::print_stderr",
+      "--deny",
+      "clippy::print_stdout",
     ],
     stdout: "inherit",
     stderr: "inherit",
