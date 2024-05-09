@@ -1691,20 +1691,17 @@ impl PermissionsContainer {
           self.check_was_allow_all_flag_passed().map_err(error_all)?;
         }
       }
-      if path.starts_with("/etc") {
-        self.check_was_allow_all_flag_passed().map_err(error_all)?;
-      }
     } else if cfg!(unix) {
       if path.starts_with("/dev") {
         self.check_was_allow_all_flag_passed().map_err(error_all)?;
       }
-      if path.starts_with("/etc") {
-        self.check_was_allow_all_flag_passed().map_err(error_all)?;
-      }
-      if path.starts_with("/private/etc") {
-        self.check_was_allow_all_flag_passed().map_err(error_all)?;
-      }
     } else if cfg!(target_os = "windows") {
+      // \\.\nul is allowed
+      let s = path.as_os_str().as_encoded_bytes();
+      if s.eq_ignore_ascii_case(br#"\\.\nul"#) {
+        return Ok(());
+      }
+
       fn is_normalized_windows_drive_path(path: &Path) -> bool {
         let s = path.as_os_str().as_encoded_bytes();
         // \\?\X:\

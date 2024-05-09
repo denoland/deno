@@ -316,10 +316,17 @@ impl LanguageServer {
 
       // now get the lock back to update with the new information
       let mut inner = self.0.write().await;
-      let lockfile = inner.config.tree.root_lockfile().cloned();
-      inner.documents.refresh_lockfile(lockfile);
+      inner.resolver.did_cache();
       inner.refresh_npm_specifiers().await;
-      inner.post_cache(result.mark).await;
+      inner.diagnostics_server.invalidate_all();
+      inner.project_changed([], false);
+      inner
+        .ts_server
+        .cleanup_semantic_cache(inner.snapshot())
+        .await;
+      inner.send_diagnostics_update();
+      inner.send_testing_update();
+      inner.performance.measure(result.mark);
     }
     Ok(Some(json!(true)))
   }
@@ -689,7 +696,6 @@ impl Inner {
       .clone()
       .map(|c| c as Arc<dyn HttpCache>)
       .unwrap_or(self.global_cache.clone());
-    self.documents.set_cache(self.cache.clone());
     self.cache_metadata.set_cache(self.cache.clone());
     self.performance.measure(mark);
   }
@@ -741,12 +747,6 @@ impl Inner {
     }
 
     {
-      if let Some(options) = params.initialization_options {
-        self.config.set_workspace_settings(
-          WorkspaceSettings::from_initialization_options(options),
-          vec![],
-        );
-      }
       let mut workspace_folders = vec![];
       if let Some(folders) = params.workspace_folders {
         workspace_folders = folders
@@ -778,11 +778,16 @@ impl Inner {
         }
       }
       self.config.set_workspace_folders(workspace_folders);
+      if let Some(options) = params.initialization_options {
+        self.config.set_workspace_settings(
+          WorkspaceSettings::from_initialization_options(options),
+          vec![],
+        );
+      }
       self.config.update_capabilities(&params.capabilities);
     }
 
-    self.documents.initialize(&self.config);
-
+    self.diagnostics_server.start();
     if let Err(e) = self
       .ts_server
       .start(self.config.internal_inspect().to_address())
@@ -986,10 +991,14 @@ impl Inner {
         }
       }
     }
+  }
+
+  async fn refresh_resolver(&mut self) {
     self.resolver = self
       .resolver
       .with_new_config(
         &self.config,
+        self.cache.clone(),
         self.maybe_global_cache_path.as_deref(),
         Some(&self.http_client),
       )
@@ -1000,6 +1009,7 @@ impl Inner {
     self.documents.update_config(
       &self.config,
       &self.resolver,
+      self.cache.clone(),
       &self.workspace_files,
     );
 
@@ -1014,12 +1024,14 @@ impl Inner {
     Ok(())
   }
 
-  fn did_open(
-    &mut self,
-    specifier: &ModuleSpecifier,
-    params: DidOpenTextDocumentParams,
-  ) -> Arc<Document> {
+  async fn did_open(&mut self, params: DidOpenTextDocumentParams) {
     let mark = self.performance.mark_with_args("lsp.did_open", &params);
+    if params.text_document.uri.scheme() == "deno" {
+      // we can ignore virtual text documents opening, as they don't need to
+      // be tracked in memory, as they are static assets that won't change
+      // already managed by the language service
+      return;
+    }
     let language_id =
       params
         .text_document
@@ -1036,6 +1048,9 @@ impl Inner {
         params.text_document.uri
       );
     }
+    let specifier = self
+      .url_map
+      .normalize_url(&params.text_document.uri, LspUrlKind::File);
     let document = self.documents.open(
       specifier.clone(),
       params.text_document.version,
@@ -1043,9 +1058,13 @@ impl Inner {
       params.text_document.text.into(),
     );
     self.project_changed([(document.specifier(), ChangeKind::Opened)], false);
-
+    if document.is_diagnosable() {
+      self.refresh_npm_specifiers().await;
+      self.diagnostics_server.invalidate(&[specifier]);
+      self.send_diagnostics_update();
+      self.send_testing_update();
+    }
     self.performance.measure(mark);
-    document
   }
 
   async fn did_change(&mut self, params: DidChangeTextDocumentParams) {
@@ -1073,6 +1092,34 @@ impl Inner {
       Err(err) => error!("{:#}", err),
     }
     self.performance.measure(mark);
+  }
+
+  fn did_save(&mut self, params: DidSaveTextDocumentParams) {
+    let _mark = self.performance.measure_scope("lsp.did_save");
+    let specifier = self
+      .url_map
+      .normalize_url(&params.text_document.uri, LspUrlKind::File);
+    self.documents.save(&specifier);
+    if !self
+      .config
+      .workspace_settings_for_specifier(&specifier)
+      .cache_on_save
+      || !self.config.specifier_enabled(&specifier)
+      || !self.diagnostics_state.has_no_cache_diagnostics(&specifier)
+    {
+      return;
+    }
+    match specifier_to_file_path(&specifier) {
+      Ok(path) if is_importable_ext(&path) => {}
+      _ => return,
+    }
+    self.task_queue.queue_task(Box::new(|ls: LanguageServer| {
+      spawn(async move {
+        if let Err(err) = ls.cache(vec![], specifier.clone(), false).await {
+          lsp_warn!("Failed to cache \"{}\" on save: {:#}", &specifier, err);
+        }
+      });
+    }));
   }
 
   async fn refresh_npm_specifiers(&mut self) {
@@ -1107,36 +1154,6 @@ impl Inner {
     self.documents.close(&specifier);
     self.project_changed([(&specifier, ChangeKind::Closed)], false);
     self.performance.measure(mark);
-  }
-
-  async fn did_change_configuration(
-    &mut self,
-    params: DidChangeConfigurationParams,
-  ) {
-    if !self.config.client_capabilities.workspace_configuration {
-      let config = params.settings.as_object().map(|settings| {
-        let deno =
-          serde_json::to_value(settings.get(SETTINGS_SECTION)).unwrap();
-        let javascript =
-          serde_json::to_value(settings.get("javascript")).unwrap();
-        let typescript =
-          serde_json::to_value(settings.get("typescript")).unwrap();
-        WorkspaceSettings::from_raw_settings(deno, javascript, typescript)
-      });
-      if let Some(settings) = config {
-        self.config.set_workspace_settings(settings, vec![]);
-      }
-    };
-
-    self.update_debug_flag();
-    self.update_global_cache().await;
-    self.refresh_workspace_files();
-    self.refresh_config_tree().await;
-    self.update_cache();
-    self.refresh_documents_config().await;
-    self.diagnostics_server.invalidate_all();
-    self.send_diagnostics_update();
-    self.send_testing_update();
   }
 
   async fn did_change_watched_files(
@@ -1181,6 +1198,7 @@ impl Inner {
       self.workspace_files_hash = 0;
       self.refresh_workspace_files();
       self.refresh_config_tree().await;
+      self.refresh_resolver().await;
       deno_config_changes.extend(changes.iter().filter_map(|(s, e)| {
         self.config.tree.watched_file_type(s).and_then(|t| {
           let configuration_type = match t.1 {
@@ -1220,32 +1238,6 @@ impl Inner {
       self.send_testing_update();
     }
     self.performance.measure(mark);
-  }
-
-  fn did_change_workspace_folders(
-    &mut self,
-    params: DidChangeWorkspaceFoldersParams,
-  ) {
-    let mut workspace_folders = params
-      .event
-      .added
-      .into_iter()
-      .map(|folder| {
-        (
-          self.url_map.normalize_url(&folder.uri, LspUrlKind::Folder),
-          folder,
-        )
-      })
-      .collect::<Vec<(ModuleSpecifier, WorkspaceFolder)>>();
-    for (specifier, folder) in &self.config.workspace_folders {
-      if !params.event.removed.is_empty()
-        && params.event.removed.iter().any(|f| f.uri == folder.uri)
-      {
-        continue;
-      }
-      workspace_folders.push((specifier.clone(), folder.clone()));
-    }
-    self.config.set_workspace_folders(workspace_folders);
   }
 
   async fn document_symbol(
@@ -1482,10 +1474,7 @@ impl Inner {
             if let Ok(jsr_req_ref) =
               JsrPackageReqReference::from_specifier(specifier)
             {
-              if let Some(url) = self
-                .documents
-                .get_jsr_resolver()
-                .jsr_to_registry_url(&jsr_req_ref)
+              if let Some(url) = self.resolver.jsr_to_registry_url(&jsr_req_ref)
               {
                 result = format!("{result} (<{url}>)");
               }
@@ -1550,8 +1539,14 @@ impl Inner {
         match diagnostic.source.as_deref() {
           Some("deno-ts") => {
             let code = match diagnostic.code.as_ref().unwrap() {
-              NumberOrString::String(code) => code.to_string(),
-              NumberOrString::Number(code) => code.to_string(),
+              NumberOrString::String(code) => match code.parse() {
+                Ok(c) => c,
+                Err(e) => {
+                  lsp_warn!("Invalid diagnostic code {code}: {e}");
+                  continue;
+                }
+              },
+              NumberOrString::Number(code) => *code,
             };
             let codes = vec![code];
             let actions = self
@@ -2852,9 +2847,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: InitializeParams,
   ) -> LspResult<InitializeResult> {
-    let mut language_server = self.0.write().await;
-    language_server.diagnostics_server.start();
-    language_server.initialize(params).await
+    self.0.write().await.initialize(params).await
   }
 
   async fn initialized(&self, _: InitializedParams) {
@@ -2955,6 +2948,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     {
       let mut ls = self.0.write().await;
       init_log_file(ls.config.log_file());
+      ls.refresh_resolver().await;
       ls.refresh_documents_config().await;
       ls.diagnostics_server.invalidate_all();
       ls.send_diagnostics_update();
@@ -2992,24 +2986,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
   }
 
   async fn did_open(&self, params: DidOpenTextDocumentParams) {
-    if params.text_document.uri.scheme() == "deno" {
-      // we can ignore virtual text documents opening, as they don't need to
-      // be tracked in memory, as they are static assets that won't change
-      // already managed by the language service
-      return;
-    }
-
-    let mut inner = self.0.write().await;
-    let specifier = inner
-      .url_map
-      .normalize_url(&params.text_document.uri, LspUrlKind::File);
-    let document = inner.did_open(&specifier, params);
-    if document.is_diagnosable() {
-      inner.refresh_npm_specifiers().await;
-      inner.diagnostics_server.invalidate(&[specifier]);
-      inner.send_diagnostics_update();
-      inner.send_testing_update();
-    }
+    self.0.write().await.did_open(params).await;
   }
 
   async fn did_change(&self, params: DidChangeTextDocumentParams) {
@@ -3017,29 +2994,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
   }
 
   async fn did_save(&self, params: DidSaveTextDocumentParams) {
-    let uri = &params.text_document.uri;
-    let specifier = {
-      let mut inner = self.0.write().await;
-      let specifier = inner.url_map.normalize_url(uri, LspUrlKind::File);
-      inner.documents.save(&specifier);
-      if !inner
-        .config
-        .workspace_settings_for_specifier(&specifier)
-        .cache_on_save
-        || !inner.config.specifier_enabled(&specifier)
-        || !inner.diagnostics_state.has_no_cache_diagnostics(&specifier)
-      {
-        return;
-      }
-      match specifier_to_file_path(&specifier) {
-        Ok(path) if is_importable_ext(&path) => {}
-        _ => return,
-      }
-      specifier
-    };
-    if let Err(err) = self.cache(vec![], specifier.clone(), false).await {
-      lsp_warn!("Failed to cache \"{}\" on save: {:#}", &specifier, err);
-    }
+    self.0.write().await.did_save(params);
   }
 
   async fn did_close(&self, params: DidCloseTextDocumentParams) {
@@ -3056,11 +3011,32 @@ impl tower_lsp::LanguageServer for LanguageServer {
         .performance
         .mark_with_args("lsp.did_change_configuration", &params)
     };
-
     self.refresh_configuration().await;
-
     let mut inner = self.0.write().await;
-    inner.did_change_configuration(params).await;
+    if !inner.config.client_capabilities.workspace_configuration {
+      let config = params.settings.as_object().map(|settings| {
+        let deno =
+          serde_json::to_value(settings.get(SETTINGS_SECTION)).unwrap();
+        let javascript =
+          serde_json::to_value(settings.get("javascript")).unwrap();
+        let typescript =
+          serde_json::to_value(settings.get("typescript")).unwrap();
+        WorkspaceSettings::from_raw_settings(deno, javascript, typescript)
+      });
+      if let Some(settings) = config {
+        inner.config.set_workspace_settings(settings, vec![]);
+      }
+    };
+    inner.update_debug_flag();
+    inner.update_global_cache().await;
+    inner.refresh_workspace_files();
+    inner.refresh_config_tree().await;
+    inner.update_cache();
+    inner.refresh_resolver().await;
+    inner.refresh_documents_config().await;
+    inner.diagnostics_server.invalidate_all();
+    inner.send_diagnostics_update();
+    inner.send_testing_update();
     inner.performance.measure(mark);
   }
 
@@ -3075,25 +3051,43 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: DidChangeWorkspaceFoldersParams,
   ) {
-    let (performance, mark) = {
-      let mut ls = self.0.write().await;
-      let mark = ls
+    let mark = {
+      let mut inner = self.0.write().await;
+      let mark = inner
         .performance
         .mark_with_args("lsp.did_change_workspace_folders", &params);
-      ls.did_change_workspace_folders(params);
-      (ls.performance.clone(), mark)
+      let mut workspace_folders = params
+        .event
+        .added
+        .into_iter()
+        .map(|folder| {
+          (
+            inner.url_map.normalize_url(&folder.uri, LspUrlKind::Folder),
+            folder,
+          )
+        })
+        .collect::<Vec<(ModuleSpecifier, WorkspaceFolder)>>();
+      for (specifier, folder) in &inner.config.workspace_folders {
+        if !params.event.removed.is_empty()
+          && params.event.removed.iter().any(|f| f.uri == folder.uri)
+        {
+          continue;
+        }
+        workspace_folders.push((specifier.clone(), folder.clone()));
+      }
+      inner.config.set_workspace_folders(workspace_folders);
+      mark
     };
-
     self.refresh_configuration().await;
-    {
-      let mut ls = self.0.write().await;
-      ls.refresh_workspace_files();
-      ls.refresh_config_tree().await;
-      ls.refresh_documents_config().await;
-      ls.diagnostics_server.invalidate_all();
-      ls.send_diagnostics_update();
-    }
-    performance.measure(mark);
+    let mut inner = self.0.write().await;
+    inner.refresh_workspace_files();
+    inner.refresh_config_tree().await;
+    inner.refresh_resolver().await;
+    inner.refresh_documents_config().await;
+    inner.diagnostics_server.invalidate_all();
+    inner.send_diagnostics_update();
+    inner.send_testing_update();
+    inner.performance.measure(mark);
   }
 
   async fn document_symbol(
@@ -3346,20 +3340,6 @@ impl Inner {
       roots,
       mark,
     }))
-  }
-
-  async fn post_cache(&mut self, mark: PerformanceMark) {
-    // Now that we have dependencies loaded, we need to re-analyze all the files.
-    // For that we're invalidating all the existing diagnostics and restarting
-    // the language server for TypeScript (as it might hold to some stale
-    // documents).
-    self.diagnostics_server.invalidate_all();
-    self.project_changed([], false);
-    self.ts_server.cleanup_semantic_cache(self.snapshot()).await;
-    self.send_diagnostics_update();
-    self.send_testing_update();
-
-    self.performance.measure(mark);
   }
 
   fn get_performance(&self) -> Value {

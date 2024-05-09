@@ -163,6 +163,12 @@ impl JsrCacheResolver {
     self.info_by_nv.insert(nv.clone(), info.clone());
     info
   }
+
+  pub fn did_cache(&self) {
+    self.nv_by_req.retain(|_, nv| nv.is_some());
+    self.info_by_nv.retain(|_, info| info.is_some());
+    self.info_by_name.retain(|_, info| info.is_some());
+  }
 }
 
 fn read_cached_url(
