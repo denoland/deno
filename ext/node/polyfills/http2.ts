@@ -120,7 +120,7 @@ const SESSION_FLAGS_DESTROYED = 0x4;
 const ENCODER = new TextEncoder();
 type Http2Headers = Record<string, string | string[]>;
 
-const debugHttp2Enabled = false;
+const debugHttp2Enabled = true;
 function debugHttp2(...args) {
   if (debugHttp2Enabled) {
     console.log(...args);
@@ -831,7 +831,7 @@ export class ClientHttp2Stream extends Duplex {
         ...Object.fromEntries(response.headers),
       };
       debugHttp2(">>> emitting response", headers);
-      this.emit("response", headers, 0);
+      this.emit("response", headers, 5);
       this[kDenoResponse] = response;
       this.emit("ready");
     })();
@@ -1010,6 +1010,7 @@ export class ClientHttp2Stream extends Duplex {
         const trailerList = await op_http2_client_get_response_trailers(
           this[kDenoResponse].bodyRid,
         );
+        debugHttp2(">>> trailers", trailerList);
         if (trailerList) {
           const trailers = Object.fromEntries(trailerList);
           this.emit("trailers", trailers);

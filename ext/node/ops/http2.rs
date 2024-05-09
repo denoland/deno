@@ -440,6 +440,8 @@ pub async fn op_http2_client_get_response(
     res_headers.push((key.as_str().into(), val.as_bytes().into()));
   }
 
+  eprintln!("op_http2_client_get_response: parts={:?}", parts);
+  eprintln!("op_http2_client_get_response: is_end_stream={}", body.is_end_stream());
   let (trailers_tx, trailers_rx) = tokio::sync::oneshot::channel();
   let body_rid =
     state
@@ -468,15 +470,19 @@ fn poll_data_or_trailers(
   body: &mut RecvStream,
 ) -> Poll<Result<DataOrTrailers, h2::Error>> {
   loop {
+    eprintln!("poll_data_or_trailers: is_end_stream={}", body.is_end_stream());
     if let Poll::Ready(trailers) = body.poll_trailers(cx) {
       if let Some(trailers) = trailers? {
+        eprintln!("return trailers");
         return Poll::Ready(Ok(DataOrTrailers::Trailers(trailers)));
       } else {
+        eprintln!("return eof");
         return Poll::Ready(Ok(DataOrTrailers::Eof));
       }
     }
     if let Poll::Ready(data) = body.poll_data(cx) {
       if let Some(data) = data {
+        eprintln!("return data");
         return Poll::Ready(Ok(DataOrTrailers::Data(data?)));
       }
       // If data is None, loop one more time to check for trailers
