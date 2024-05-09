@@ -1,11 +1,16 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use crate::cache::DenoDir;
+use crate::cache::GlobalHttpCache;
 use crate::cache::HttpCache;
+use crate::cache::LocalLspHttpCache;
+use crate::lsp::config::Config;
+use crate::lsp::logging::lsp_log;
+use crate::lsp::logging::lsp_warn;
 use deno_runtime::fs_util::specifier_to_file_path;
 
-use deno_core::parking_lot::Mutex;
+use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
-use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use std::sync::Arc;
@@ -22,7 +27,7 @@ pub const LSP_DISALLOW_GLOBAL_TO_LOCAL_COPY: deno_cache_dir::GlobalToLocalCopy =
   deno_cache_dir::GlobalToLocalCopy::Disallow;
 
 pub fn calculate_fs_version(
-  cache: &Arc<dyn HttpCache>,
+  cache: &LspCache,
   specifier: &ModuleSpecifier,
 ) -> Option<String> {
   match specifier.scheme() {
@@ -49,13 +54,14 @@ pub fn calculate_fs_version_at_path(path: &Path) -> Option<String> {
 }
 
 fn calculate_fs_version_in_cache(
-  cache: &Arc<dyn HttpCache>,
+  cache: &LspCache,
   specifier: &ModuleSpecifier,
 ) -> Option<String> {
-  let Ok(cache_key) = cache.cache_item_key(specifier) else {
+  let http_cache = cache.root_vendor_or_global();
+  let Ok(cache_key) = http_cache.cache_item_key(specifier) else {
     return Some("1".to_string());
   };
-  match cache.read_modified_time(&cache_key) {
+  match http_cache.read_modified_time(&cache_key) {
     Ok(Some(modified)) => {
       match modified.duration_since(SystemTime::UNIX_EPOCH) {
         Ok(n) => Some(n.as_millis().to_string()),
@@ -67,83 +73,71 @@ fn calculate_fs_version_in_cache(
   }
 }
 
-/// Populate the metadata map based on the supplied headers
-fn parse_metadata(
-  headers: &HashMap<String, String>,
-) -> HashMap<MetadataKey, String> {
-  let mut metadata = HashMap::new();
-  if let Some(warning) = headers.get("x-deno-warning").cloned() {
-    metadata.insert(MetadataKey::Warning, warning);
+#[derive(Debug, Clone)]
+pub struct LspCache {
+  deno_dir: DenoDir,
+  global: Arc<GlobalHttpCache>,
+  root_vendor: Option<Arc<LocalLspHttpCache>>,
+}
+
+impl Default for LspCache {
+  fn default() -> Self {
+    Self::new(None)
   }
-  metadata
 }
 
-#[derive(Debug, PartialEq, Eq, Hash)]
-pub enum MetadataKey {
-  /// Represent the `x-deno-warning` header associated with the document
-  Warning,
-}
-
-#[derive(Debug, Clone)]
-struct Metadata {
-  values: Arc<HashMap<MetadataKey, String>>,
-  version: Option<String>,
-}
-
-#[derive(Debug, Clone)]
-pub struct CacheMetadata {
-  cache: Arc<dyn HttpCache>,
-  metadata: Arc<Mutex<HashMap<ModuleSpecifier, Metadata>>>,
-}
-
-impl CacheMetadata {
-  pub fn new(cache: Arc<dyn HttpCache>) -> Self {
+impl LspCache {
+  pub fn new(global_cache_url: Option<Url>) -> Self {
+    let global_cache_path = global_cache_url.and_then(|s| {
+      specifier_to_file_path(&s)
+        .inspect(|p| {
+          lsp_log!("Resolved global cache path: \"{}\"", p.to_string_lossy());
+        })
+        .inspect_err(|err| {
+          lsp_warn!("Failed to resolve custom cache path: {err}");
+        })
+        .ok()
+    });
+    let deno_dir = DenoDir::new(global_cache_path)
+      .expect("should be infallible with absolute custom root");
+    let global = Arc::new(GlobalHttpCache::new(
+      deno_dir.deps_folder_path(),
+      crate::cache::RealDenoCacheEnv,
+    ));
     Self {
-      cache,
-      metadata: Default::default(),
+      deno_dir,
+      global,
+      root_vendor: None,
     }
   }
 
-  /// Return the meta data associated with the specifier. Unlike the `get()`
-  /// method, redirects of the supplied specifier will not be followed.
-  pub fn get(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Option<Arc<HashMap<MetadataKey, String>>> {
-    if matches!(
-      specifier.scheme(),
-      "file" | "npm" | "node" | "data" | "blob"
-    ) {
-      return None;
-    }
-    let version = calculate_fs_version_in_cache(&self.cache, specifier);
-    let metadata = self.metadata.lock().get(specifier).cloned();
-    if metadata.as_ref().and_then(|m| m.version.clone()) != version {
-      self.refresh(specifier).map(|m| m.values)
-    } else {
-      metadata.map(|m| m.values)
-    }
+  pub fn update_config(&mut self, config: &Config) {
+    self.root_vendor = config.tree.root_data().and_then(|data| {
+      let vendor_dir = data.vendor_dir.as_ref()?;
+      Some(Arc::new(LocalLspHttpCache::new(
+        vendor_dir.clone(),
+        self.global.clone(),
+      )))
+    });
   }
 
-  fn refresh(&self, specifier: &ModuleSpecifier) -> Option<Metadata> {
-    if matches!(
-      specifier.scheme(),
-      "file" | "npm" | "node" | "data" | "blob"
-    ) {
-      return None;
-    }
-    let cache_key = self.cache.cache_item_key(specifier).ok()?;
-    let headers = self.cache.read_headers(&cache_key).ok()??;
-    let values = Arc::new(parse_metadata(&headers));
-    let version = calculate_fs_version_in_cache(&self.cache, specifier);
-    let mut metadata_map = self.metadata.lock();
-    let metadata = Metadata { values, version };
-    metadata_map.insert(specifier.clone(), metadata.clone());
-    Some(metadata)
+  pub fn deno_dir(&self) -> &DenoDir {
+    &self.deno_dir
   }
 
-  pub fn set_cache(&mut self, cache: Arc<dyn HttpCache>) {
-    self.cache = cache;
-    self.metadata.lock().clear();
+  pub fn global(&self) -> &Arc<GlobalHttpCache> {
+    &self.global
+  }
+
+  pub fn root_vendor(&self) -> Option<&Arc<LocalLspHttpCache>> {
+    self.root_vendor.as_ref()
+  }
+
+  pub fn root_vendor_or_global(&self) -> Arc<dyn HttpCache> {
+    self
+      .root_vendor
+      .as_ref()
+      .map(|v| v.clone() as _)
+      .unwrap_or(self.global.clone() as _)
   }
 }

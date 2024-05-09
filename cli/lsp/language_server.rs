@@ -42,7 +42,7 @@ use super::analysis::ts_changes_to_edit;
 use super::analysis::CodeActionCollection;
 use super::analysis::CodeActionData;
 use super::analysis::TsResponseImportMapper;
-use super::cache;
+use super::cache::LspCache;
 use super::capabilities;
 use super::client::Client;
 use super::code_lens;
@@ -88,10 +88,6 @@ use crate::args::CaData;
 use crate::args::CacheSetting;
 use crate::args::CliOptions;
 use crate::args::Flags;
-use crate::cache::DenoDir;
-use crate::cache::GlobalHttpCache;
-use crate::cache::HttpCache;
-use crate::cache::LocalLspHttpCache;
 use crate::factory::CliFactory;
 use crate::file_fetcher::FileFetcher;
 use crate::graph_util;
@@ -121,11 +117,10 @@ impl RootCertStoreProvider for LspRootCertStoreProvider {
 pub struct LanguageServer(Arc<tokio::sync::RwLock<Inner>>, CancellationToken);
 
 /// Snapshot of the state used by TSC.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct StateSnapshot {
   pub project_version: usize,
   pub assets: AssetsSnapshot,
-  pub cache_metadata: cache::CacheMetadata,
   pub config: Arc<Config>,
   pub documents: Documents,
   pub resolver: Arc<LspResolver>,
@@ -174,12 +169,7 @@ pub struct Inner {
   /// Cached versions of "fixed" assets that can either be inlined in Rust or
   /// are part of the TypeScript snapshot and have to be fetched out.
   assets: Assets,
-  /// This may be a copy of `self.global_cache`, or a vendor dir if one is
-  /// configured.
-  cache: Arc<dyn HttpCache>,
-  /// A representation of metadata associated with specifiers in the DENO_DIR
-  /// or vendor dir which is used by the language server.
-  cache_metadata: cache::CacheMetadata,
+  cache: LspCache,
   /// The LSP client that this LSP server is connected to.
   pub client: Client,
   /// Configuration information.
@@ -189,16 +179,11 @@ pub struct Inner {
   /// The collection of documents that the server is currently handling, either
   /// on disk or "open" within the client.
   pub documents: Documents,
-  global_cache: Arc<GlobalHttpCache>,
+  http_client: Arc<HttpClient>,
   initial_cwd: PathBuf,
   jsr_search_api: CliJsrSearchApi,
-  http_client: Arc<HttpClient>,
-  task_queue: LanguageServerTaskQueue,
   /// Handles module registries, which allow discovery of modules
   module_registry: ModuleRegistry,
-  /// An optional path to the DENO_DIR which has been specified in the client
-  /// options.
-  maybe_global_cache_path: Option<PathBuf>,
   /// A lazily create "server" for handling test run requests.
   maybe_testing_server: Option<testing::TestServer>,
   npm_search_api: CliNpmSearchApi,
@@ -206,6 +191,7 @@ pub struct Inner {
   /// A collection of measurements which instrument that performance of the LSP.
   performance: Arc<Performance>,
   resolver: Arc<LspResolver>,
+  task_queue: LanguageServerTaskQueue,
   /// A memoized version of fixable diagnostic codes retrieved from TypeScript.
   ts_fixable_diagnostics: Vec<String>,
   /// An abstraction that handles interactions with TypeScript.
@@ -450,24 +436,20 @@ impl LanguageServer {
 
 impl Inner {
   fn new(client: Client) -> Self {
-    let dir = DenoDir::new(None).expect("could not access DENO_DIR");
+    let cache = LspCache::default();
     let http_client = Arc::new(HttpClient::new(None, None));
-    let module_registry =
-      ModuleRegistry::new(dir.registries_folder_path(), http_client.clone());
+    let module_registry = ModuleRegistry::new(
+      cache.deno_dir().registries_folder_path(),
+      http_client.clone(),
+    );
     let jsr_search_api =
       CliJsrSearchApi::new(module_registry.file_fetcher.clone());
     let npm_search_api =
       CliNpmSearchApi::new(module_registry.file_fetcher.clone());
-    let global_cache = Arc::new(GlobalHttpCache::new(
-      dir.deps_folder_path(),
-      crate::cache::RealDenoCacheEnv,
-    ));
-    let cache = global_cache.clone();
-    let documents = Documents::new(cache.clone());
-    let cache_metadata = cache::CacheMetadata::new(cache.clone());
+    let documents = Documents::default();
     let performance = Arc::new(Performance::default());
     let config = Config::default();
-    let ts_server = Arc::new(TsServer::new(performance.clone(), cache.clone()));
+    let ts_server = Arc::new(TsServer::new(performance.clone()));
     let diagnostics_state = Arc::new(DiagnosticsState::default());
     let diagnostics_server = DiagnosticsServer::new(
       client.clone(),
@@ -483,17 +465,14 @@ impl Inner {
     Self {
       assets,
       cache,
-      cache_metadata,
       client,
       config,
       diagnostics_state,
       diagnostics_server,
       documents,
-      global_cache,
       http_client,
       initial_cwd: initial_cwd.clone(),
       jsr_search_api,
-      maybe_global_cache_path: None,
       project_version: 0,
       task_queue: Default::default(),
       maybe_testing_server: None,
@@ -598,7 +577,6 @@ impl Inner {
     Arc::new(StateSnapshot {
       project_version: self.project_version,
       assets: self.assets.snapshot(),
-      cache_metadata: self.cache_metadata.clone(),
       config: Arc::new(self.config.clone()),
       documents: self.documents.clone(),
       resolver: self.resolver.snapshot(),
@@ -607,36 +585,21 @@ impl Inner {
 
   pub async fn update_global_cache(&mut self) {
     let mark = self.performance.mark("lsp.update_global_cache");
-    let maybe_cache = &self.config.workspace_settings().cache;
-    self.maybe_global_cache_path = if let Some(cache_str) = maybe_cache {
-      let cache_url = if let Ok(url) = Url::from_file_path(cache_str) {
-        Ok(url)
+    let maybe_cache = self.config.workspace_settings().cache.as_ref();
+    let global_cache_url = maybe_cache.and_then(|cache_str| {
+      if let Ok(url) = Url::from_file_path(cache_str) {
+        Some(url)
       } else if let Some(root_uri) = self.config.root_uri() {
-        root_uri.join(cache_str).map_err(|e| e.into())
+        root_uri.join(cache_str).inspect_err(|err| lsp_warn!("Failed to resolve custom cache path: {err}")).ok()
       } else {
-        Err(anyhow!(
+        lsp_warn!(
           "The configured cache path \"{cache_str}\" is not resolvable outside of a workspace.",
-        ))
-      };
-      cache_url
-        .and_then(|s| specifier_to_file_path(&s))
-        .inspect(|p| {
-          lsp_log!("Resolved global cache path: \"{}\"", p.to_string_lossy());
-        })
-        .inspect_err(|err| {
-          lsp_warn!("Failed to resolve custom cache path: {err}");
-        })
-        .ok()
-    } else {
-      None
-    };
-    let deno_dir = match DenoDir::new(self.maybe_global_cache_path.clone()) {
-      Ok(d) => d,
-      Err(err) => {
-        lsp_warn!("Couldn't access DENO_DIR: {err}");
-        return;
+        );
+        None
       }
-    };
+    });
+    self.cache = LspCache::new(global_cache_url);
+    let deno_dir = self.cache.deno_dir();
     let workspace_settings = self.config.workspace_settings();
     let maybe_root_path = self
       .config
@@ -674,28 +637,13 @@ impl Inner {
       CliJsrSearchApi::new(self.module_registry.file_fetcher.clone());
     self.npm_search_api =
       CliNpmSearchApi::new(self.module_registry.file_fetcher.clone());
-    self.global_cache = Arc::new(GlobalHttpCache::new(
-      deno_dir.deps_folder_path(),
-      crate::cache::RealDenoCacheEnv,
-    ));
     self.performance.measure(mark);
   }
 
   pub fn update_cache(&mut self) {
     let mark = self.performance.mark("lsp.update_cache");
-    let maybe_local_cache =
-      self.config.tree.root_vendor_dir().map(|local_path| {
-        Arc::new(LocalLspHttpCache::new(
-          local_path.clone(),
-          self.global_cache.clone(),
-        ))
-      });
-    self.url_map.set_cache(maybe_local_cache.clone());
-    self.cache = maybe_local_cache
-      .clone()
-      .map(|c| c as Arc<dyn HttpCache>)
-      .unwrap_or(self.global_cache.clone());
-    self.cache_metadata.set_cache(self.cache.clone());
+    self.cache.update_config(&self.config);
+    self.url_map.set_cache(self.cache.root_vendor().cloned());
     self.performance.measure(mark);
   }
 
@@ -950,7 +898,7 @@ impl Inner {
 
   async fn refresh_config_tree(&mut self) {
     let mut file_fetcher = FileFetcher::new(
-      self.global_cache.clone(),
+      self.cache.global().clone(),
       CacheSetting::RespectHeaders,
       true,
       self.http_client.clone(),
@@ -995,12 +943,7 @@ impl Inner {
   async fn refresh_resolver(&mut self) {
     self.resolver = self
       .resolver
-      .with_new_config(
-        &self.config,
-        self.cache.clone(),
-        self.maybe_global_cache_path.as_deref(),
-        Some(&self.http_client),
-      )
+      .with_new_config(&self.config, &self.cache, Some(&self.http_client))
       .await;
   }
 
@@ -1008,7 +951,7 @@ impl Inner {
     self.documents.update_config(
       &self.config,
       &self.resolver,
-      self.cache.clone(),
+      &self.cache,
       &self.workspace_files,
     );
 
@@ -3304,7 +3247,7 @@ impl Inner {
     let workspace_settings = self.config.workspace_settings();
     let cli_options = CliOptions::new(
       Flags {
-        cache_path: self.maybe_global_cache_path.clone(),
+        cache_path: Some(self.cache.deno_dir().root.clone()),
         ca_stores: workspace_settings.certificate_stores.clone(),
         ca_data: workspace_settings.tls_certificate.clone().map(CaData::File),
         unsafely_ignore_certificate_errors: workspace_settings
