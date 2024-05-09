@@ -352,7 +352,9 @@ async fn sync_resolution_with_fs(
         fs::write(initialized_file, "")?;
 
         if package.bin.is_some() {
-          bin_entries_to_setup.lock().push((package.clone(), package_path));
+          bin_entries_to_setup
+            .lock()
+            .push((package.clone(), package_path));
         }
 
         // finally stop showing the progress bar
@@ -484,7 +486,6 @@ async fn sync_resolution_with_fs(
       )?;
     }
   }
-
 
   // 6. Set up `node_modules/.bin` entries for packages that need it.
   for (package, package_path) in &*bin_entries_to_setup.lock() {
@@ -707,8 +708,8 @@ fn symlink_bin_entry(
         log::warn!(
           "{} Trying to set up '{}' bin for \"{}\", but an entry pointing to \"{}\" already exists. Skipping...", 
           deno_terminal::colors::yellow("Warning"), 
-          bin_name, 
-          resolved.display(), 
+          bin_name,
+          resolved.display(),
           original.display()
         );
         return Ok(());
