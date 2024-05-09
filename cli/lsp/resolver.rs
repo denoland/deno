@@ -24,6 +24,7 @@ use crate::util::progress_bar::ProgressBarStyle;
 use dashmap::DashMap;
 use deno_cache_dir::HttpCache;
 use deno_core::error::AnyError;
+use deno_core::url::Url;
 use deno_graph::source::NpmResolver;
 use deno_graph::source::Resolver;
 use deno_graph::GraphImport;
@@ -437,31 +438,50 @@ impl LspNpmConfigHash {
   }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 struct RedirectEntry {
-  target: ModuleSpecifier,
   headers: Arc<HashMap<String, String>>,
-  destination: Option<ModuleSpecifier>,
+  target: Url,
+  destination: Option<Url>,
 }
 
-#[derive(Debug)]
+type GetHeadersFn =
+  Box<dyn Fn(&Url) -> Option<HashMap<String, String>> + Send + Sync>;
+
 struct RedirectResolver {
-  cache: Arc<dyn HttpCache>,
-  entries: DashMap<ModuleSpecifier, Option<Arc<RedirectEntry>>>,
+  get_headers: GetHeadersFn,
+  entries: DashMap<Url, Option<Arc<RedirectEntry>>>,
+}
+
+impl std::fmt::Debug for RedirectResolver {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.debug_struct("RedirectResolver")
+      .field("get_headers", &"Box(|_| { ... })")
+      .field("entries", &self.entries)
+      .finish()
+  }
 }
 
 impl RedirectResolver {
-  pub fn new(cache: Arc<dyn HttpCache>) -> Self {
+  fn new(cache: Arc<dyn HttpCache>) -> Self {
     Self {
-      cache,
+      get_headers: Box::new(move |specifier| {
+        let cache_key = cache.cache_item_key(specifier).ok()?;
+        cache.read_headers(&cache_key).ok().flatten()
+      }),
       entries: Default::default(),
     }
   }
 
-  pub fn resolve(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Option<ModuleSpecifier> {
+  #[cfg(test)]
+  fn mock(get_headers: GetHeadersFn) -> Self {
+    Self {
+      get_headers,
+      entries: Default::default(),
+    }
+  }
+
+  fn resolve(&self, specifier: &Url) -> Option<Url> {
     if !matches!(specifier.scheme(), "http" | "https") {
       return Some(specifier.clone());
     }
@@ -474,11 +494,7 @@ impl RedirectResolver {
           None => Some(current),
         };
       }
-      let Some(cache_key) = self.cache.cache_item_key(&current).ok() else {
-        break None;
-      };
-      let Some(headers) = self.cache.read_headers(&cache_key).ok().flatten()
-      else {
+      let Some(headers) = (self.get_headers)(&current) else {
         break None;
       };
       let headers = Arc::new(headers);
@@ -512,10 +528,7 @@ impl RedirectResolver {
     destination
   }
 
-  fn chain(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> impl IntoIterator<Item = (ModuleSpecifier, Arc<RedirectEntry>)> {
+  fn chain(&self, specifier: &Url) -> Vec<(Url, Arc<RedirectEntry>)> {
     self.resolve(specifier);
     let mut result = vec![];
     let mut seen = HashSet::new();
@@ -535,5 +548,77 @@ impl RedirectResolver {
       current = Cow::Owned(entry.target.clone())
     }
     result
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn test_redirect_resolver() {
+    let redirect_resolver =
+      RedirectResolver::mock(Box::new(|specifier| match specifier.as_str() {
+        "https://foo/redirect_2.js" => Some(
+          [("location".to_string(), "./redirect_1.js".to_string())]
+            .into_iter()
+            .collect(),
+        ),
+        "https://foo/redirect_1.js" => Some(
+          [("location".to_string(), "./file.js".to_string())]
+            .into_iter()
+            .collect(),
+        ),
+        "https://foo/file.js" => Some([].into_iter().collect()),
+        _ => None,
+      }));
+    assert_eq!(
+      redirect_resolver.resolve(&Url::parse("https://foo/file.js").unwrap()),
+      Some(Url::parse("https://foo/file.js").unwrap())
+    );
+    assert_eq!(
+      redirect_resolver
+        .resolve(&Url::parse("https://foo/redirect_1.js").unwrap()),
+      Some(Url::parse("https://foo/file.js").unwrap())
+    );
+    assert_eq!(
+      redirect_resolver
+        .resolve(&Url::parse("https://foo/redirect_2.js").unwrap()),
+      Some(Url::parse("https://foo/file.js").unwrap())
+    );
+    assert_eq!(
+      redirect_resolver.resolve(&Url::parse("https://foo/unknown").unwrap()),
+      None
+    );
+    assert_eq!(
+      redirect_resolver
+        .chain(&Url::parse("https://foo/redirect_2.js").unwrap()),
+      vec![
+        (
+          Url::parse("https://foo/redirect_2.js").unwrap(),
+          Arc::new(RedirectEntry {
+            headers: Arc::new(
+              [("location".to_string(), "./redirect_1.js".to_string())]
+                .into_iter()
+                .collect()
+            ),
+            target: Url::parse("https://foo/redirect_1.js").unwrap(),
+            destination: Some(Url::parse("https://foo/file.js").unwrap()),
+          })
+        ),
+        (
+          Url::parse("https://foo/redirect_1.js").unwrap(),
+          Arc::new(RedirectEntry {
+            headers: Arc::new(
+              [("location".to_string(), "./file.js".to_string())]
+                .into_iter()
+                .collect()
+            ),
+            target: Url::parse("https://foo/file.js").unwrap(),
+            destination: Some(Url::parse("https://foo/file.js").unwrap()),
+          })
+        ),
+      ]
+    );
   }
 }
