@@ -16,7 +16,7 @@ use flate2::read::GzDecoder;
 use tar::Archive;
 use tar::EntryType;
 
-use super::cache::with_folder_sync_lock;
+use crate::util::path::get_atomic_dir_path;
 
 pub fn verify_and_extract_tarball(
   package: &PackageNv,
@@ -26,9 +26,19 @@ pub fn verify_and_extract_tarball(
 ) -> Result<(), AnyError> {
   verify_tarball_integrity(package, data, &dist_info.integrity())?;
 
-  with_folder_sync_lock(package, output_folder, || {
-    extract_tarball(data, output_folder)
-  })
+  let temp_dir = get_atomic_dir_path(output_folder);
+  extract_tarball(data, &temp_dir)?;
+  match std::fs::rename(&temp_dir, output_folder) {
+    Ok(_) => {}
+    Err(err) => {
+      let _ = fs::remove_dir_all(&temp_dir);
+      if err.kind() != std::io::ErrorKind::AlreadyExists {
+        bail!("Failed to extract tarball: {:#}", err)
+      }
+    }
+  }
+
+  Ok(())
 }
 
 fn verify_tarball_integrity(

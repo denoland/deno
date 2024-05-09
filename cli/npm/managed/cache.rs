@@ -69,7 +69,7 @@ impl NpmCache {
   /// to ensure a package is only downloaded once per run of the CLI. This
   /// prevents downloads from re-occurring when someone has `--reload` and
   /// and imports a dynamic import that imports the same package again for example.
-  fn should_use_global_cache_for_package(&self, package: &PackageNv) -> bool {
+  fn should_use_cache_for_package(&self, package: &PackageNv) -> bool {
     self.cache_setting.should_use_for_npm_package(&package.name)
       || !self
         .previously_reloaded_packages
@@ -98,12 +98,8 @@ impl NpmCache {
     let package_folder = self
       .cache_dir
       .package_folder_for_name_and_version(package, registry_url);
-    if self.should_use_global_cache_for_package(package)
-      && self.fs.exists_sync(&package_folder)
-      // if this file exists, then the package didn't successfully extract
-      // the first time, or another process is currently extracting the zip file
-      && !self.fs.exists_sync(&package_folder.join(NPM_PACKAGE_SYNC_LOCK_FILENAME))
-    {
+    let should_use_cache = self.should_use_cache_for_package(package);
+    if should_use_cache && self.fs.exists_sync(&package_folder) {
       return Ok(());
     } else if self.cache_setting == CacheSetting::Only {
       return Err(custom_error(
@@ -127,6 +123,15 @@ impl NpmCache {
       .await?;
     match maybe_bytes {
       Some(bytes) => {
+        // the user ran with `--reload`, so remove the existing directory
+        if !should_use_cache && self.fs.exists_sync(&package_folder) {
+          self
+            .fs
+            .remove_sync(&package_folder, true)
+            .map_err(AnyError::from)
+            .context("Failed removing package directory.")?;
+        }
+
         verify_and_extract_tarball(package, &bytes, dist, &package_folder)
       }
       None => {
@@ -150,7 +155,7 @@ impl NpmCache {
       .package_folder_for_id(folder_id, registry_url);
 
     if package_folder.exists()
-      // if this file exists, then the package didn't successfully extract
+      // if this file exists, then the package didn't successfully initialize
       // the first time, or another process is currently extracting the zip file
       && !package_folder.join(NPM_PACKAGE_SYNC_LOCK_FILENAME).exists()
       && self.cache_setting.should_use_for_npm_package(&folder_id.nv.name)
@@ -161,6 +166,9 @@ impl NpmCache {
     let original_package_folder = self
       .cache_dir
       .package_folder_for_name_and_version(&folder_id.nv, registry_url);
+
+    // it seems Windows does an "AccessDenied" error when moving a
+    // directory with hard links, so that's why this solution is done
     with_folder_sync_lock(&folder_id.nv, &package_folder, || {
       hard_link_dir_recursive(&original_package_folder, &package_folder)
     })?;
@@ -206,7 +214,7 @@ impl NpmCache {
 
 const NPM_PACKAGE_SYNC_LOCK_FILENAME: &str = ".deno_sync_lock";
 
-pub fn with_folder_sync_lock(
+fn with_folder_sync_lock(
   package: &PackageNv,
   output_folder: &Path,
   action: impl FnOnce() -> Result<(), AnyError>,
