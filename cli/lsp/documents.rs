@@ -855,14 +855,14 @@ pub struct Documents {
 }
 
 impl Documents {
-  pub fn new(cache: Arc<dyn HttpCache>, resolver: Arc<LspResolver>) -> Self {
+  pub fn new(cache: Arc<dyn HttpCache>) -> Self {
     Self {
       cache: cache.clone(),
       config: Default::default(),
       dirty: true,
       open_docs: HashMap::default(),
       file_system_docs: Default::default(),
-      resolver,
+      resolver: Default::default(),
       npm_specifier_reqs: Default::default(),
       has_injected_types_node_package: false,
     }
@@ -1478,8 +1478,7 @@ mod tests {
       location.to_path_buf(),
       RealDenoCacheEnv,
     ));
-    let resolver = Arc::new(LspResolver::new(cache.clone()));
-    let documents = Documents::new(cache.clone(), resolver);
+    let documents = Documents::new(cache.clone());
     (documents, location, cache)
   }
 
@@ -1632,7 +1631,7 @@ console.log(b, "hello deno");
         )
         .await;
 
-      let resolver = LspResolver::new(cache.clone())
+      let resolver = LspResolver::default()
         .with_new_config(&config, cache.clone(), None, None)
         .await;
       documents.update_config(
@@ -1681,7 +1680,7 @@ console.log(b, "hello deno");
         )
         .await;
 
-      let resolver = LspResolver::new(cache.clone())
+      let resolver = LspResolver::default()
         .with_new_config(&config, cache.clone(), None, None)
         .await;
       documents.update_config(&config, &resolver, cache, &workspace_files);

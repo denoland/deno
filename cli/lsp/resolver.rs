@@ -65,13 +65,11 @@ pub struct LspResolver {
   unstable_sloppy_imports: bool,
 }
 
-impl LspResolver {
-  pub fn new(cache: Arc<dyn HttpCache>) -> Self {
-    let jsr_resolver = Arc::new(JsrCacheResolver::new(cache.clone(), None));
+impl Default for LspResolver {
+  fn default() -> Self {
     Self {
-      cache,
       graph_resolver: create_graph_resolver(None, None, None),
-      jsr_resolver,
+      jsr_resolver: None,
       npm_resolver: None,
       node_resolver: None,
       npm_config_hash: LspNpmConfigHash(0),
@@ -81,7 +79,9 @@ impl LspResolver {
       unstable_sloppy_imports: false,
     }
   }
+}
 
+impl LspResolver {
   pub async fn with_new_config(
     &self,
     config: &Config,
@@ -110,12 +110,11 @@ impl LspResolver {
       npm_resolver.as_ref(),
       node_resolver.as_ref(),
     );
-    let jsr_resolver = Arc::new(JsrCacheResolver::new(
+    let jsr_resolver = Some(Arc::new(JsrCacheResolver::new(
       cache.clone(),
       config_data.and_then(|d| d.lockfile.clone()),
-    ));
-    let redirect_resolver =
-      Some(Arc::new(RedirectResolver::new(cache.clone())));
+    )));
+    let redirect_resolver = Some(Arc::new(RedirectResolver::new(cache)));
     let graph_imports = config_data
       .and_then(|d| d.config_file.as_ref())
       .and_then(|cf| cf.to_maybe_imports().ok())
@@ -138,7 +137,6 @@ impl LspResolver {
       })
       .unwrap_or_default();
     Arc::new(Self {
-      cache,
       graph_resolver,
       jsr_resolver,
       npm_resolver,
@@ -164,7 +162,6 @@ impl LspResolver {
       node_resolver.as_ref(),
     );
     Arc::new(Self {
-      cache: self.cache.clone(),
       graph_resolver,
       jsr_resolver: self.jsr_resolver.clone(),
       npm_resolver,
@@ -178,7 +175,7 @@ impl LspResolver {
   }
 
   pub fn did_cache(&self) {
-    self.jsr_resolver.did_cache()
+    self.jsr_resolver.as_ref().inspect(|r| r.did_cache());
   }
 
   pub async fn set_npm_package_reqs(
@@ -208,7 +205,7 @@ impl LspResolver {
     &self,
     req_ref: &JsrPackageReqReference,
   ) -> Option<ModuleSpecifier> {
-    self.jsr_resolver.jsr_to_registry_url(req_ref)
+    self.jsr_resolver.as_ref()?.jsr_to_registry_url(req_ref)
   }
 
   pub fn jsr_lookup_export_for_path(
@@ -216,11 +213,11 @@ impl LspResolver {
     nv: &PackageNv,
     path: &str,
   ) -> Option<String> {
-    self.jsr_resolver.lookup_export_for_path(nv, path)
+    self.jsr_resolver.as_ref()?.lookup_export_for_path(nv, path)
   }
 
   pub fn jsr_lookup_req_for_nv(&self, nv: &PackageNv) -> Option<PackageReq> {
-    self.jsr_resolver.lookup_req_for_nv(nv)
+    self.jsr_resolver.as_ref()?.lookup_req_for_nv(nv)
   }
 
   pub fn maybe_managed_npm_resolver(&self) -> Option<&ManagedCliNpmResolver> {

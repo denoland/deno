@@ -803,7 +803,6 @@ mod tests {
   use crate::cache::HttpCache;
   use crate::lsp::documents::Documents;
   use crate::lsp::documents::LanguageId;
-  use crate::lsp::resolver::LspResolver;
   use crate::lsp::search::tests::TestPackageSearchApi;
   use deno_core::resolve_url;
   use deno_graph::Range;
@@ -821,8 +820,7 @@ mod tests {
       location.to_path_buf(),
       crate::cache::RealDenoCacheEnv,
     ));
-    let resolver = Arc::new(LspResolver::new(cache.clone()));
-    let mut documents = Documents::new(cache, resolver);
+    let mut documents = Documents::new(cache);
     for (specifier, source, version, language_id) in fixtures {
       let specifier =
         resolve_url(specifier).expect("failed to create specifier");

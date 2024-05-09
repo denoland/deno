@@ -1589,8 +1589,7 @@ mod tests {
       location.to_path_buf(),
       RealDenoCacheEnv,
     ));
-    let resolver = Arc::new(LspResolver::new(cache.clone()));
-    let mut documents = Documents::new(cache.clone(), resolver);
+    let mut documents = Documents::new(cache.clone());
     for (specifier, source, version, language_id) in fixtures {
       let specifier =
         resolve_url(specifier).expect("failed to create specifier");
@@ -1612,7 +1611,7 @@ mod tests {
       .unwrap();
       config.tree.inject_config_file(config_file).await;
     }
-    let resolver = LspResolver::new(cache.clone())
+    let resolver = LspResolver::default()
       .with_new_config(&config, cache, None, None)
       .await;
     StateSnapshot {

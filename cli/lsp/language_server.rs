@@ -463,8 +463,7 @@ impl Inner {
       crate::cache::RealDenoCacheEnv,
     ));
     let cache = global_cache.clone();
-    let resolver = Arc::new(LspResolver::new(cache.clone()));
-    let documents = Documents::new(cache.clone(), resolver.clone());
+    let documents = Documents::new(cache.clone());
     let cache_metadata = cache::CacheMetadata::new(cache.clone());
     let performance = Arc::new(Performance::default());
     let config = Config::default();
@@ -501,7 +500,7 @@ impl Inner {
       module_registry,
       npm_search_api,
       performance,
-      resolver,
+      resolver: Default::default(),
       ts_fixable_diagnostics: Default::default(),
       ts_server,
       url_map: Default::default(),
