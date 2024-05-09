@@ -1096,8 +1096,11 @@ delete Object.prototype.__proto__;
   }
 
   /** @typedef {[[string, number][], number, boolean] } PendingChange */
+  /**
+   * @template T
+   * @typedef {T | null} Option<T> */
 
-  /** @returns {Promise<[number, string, any[], PendingChange | null]>} */
+  /** @returns {Promise<[number, string, any[], Option<PendingChange>] | null>} */
   async function pollRequests() {
     return await ops.op_poll_requests();
   }
@@ -1116,6 +1119,9 @@ delete Object.prototype.__proto__;
 
     while (true) {
       const request = await pollRequests();
+      if (request === null) {
+        break;
+      }
       try {
         serverRequest(request[0], request[1], request[2], request[3]);
       } catch (err) {
