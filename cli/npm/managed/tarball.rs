@@ -41,20 +41,22 @@ fn rename_with_retries(
 ) -> Result<(), std::io::Error> {
   let mut count = 0;
   // renaming might be flaky if a lot of processes are trying
-  // to do this, so try again a few times
+  // to do this, so retry a few times
   loop {
     match fs::rename(temp_dir, output_folder) {
       Ok(_) => return Ok(()),
       Err(err) if err.kind() == ErrorKind::AlreadyExists => {
         // another process copied here, just cleanup
-        let _ = fs::remove_dir_all(&temp_dir);
+        let _ = fs::remove_dir_all(temp_dir);
       }
       Err(err) => {
         count += 1;
-        if count >= 3 {
-          let _ = fs::remove_dir_all(&temp_dir);
+        if count >= 5 {
+          // too many tries, cleanup and return the error
+          let _ = fs::remove_dir_all(temp_dir);
           return Err(err);
         }
+
         // wait a bit before retrying
         std::thread::sleep(std::time::Duration::from_millis(10));
       }
