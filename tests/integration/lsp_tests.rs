@@ -12056,8 +12056,12 @@ fn lsp_sloppy_imports() {
   temp_dir
     .join("deno.json")
     .write(r#"{ "unstable": ["sloppy-imports"] }"#);
-  // should work when exists on the fs and when doesn't
+  // for sloppy imports, the file must exist on the file system
+  // to be resolved correctly
   temp_dir.join("a.ts").write("export class A {}");
+  temp_dir.join("b.ts").write("export class B {}");
+  temp_dir.join("c.js").write("export class C {}");
+  temp_dir.join("c.d.ts").write("export class C {}");
   let mut client = context.new_lsp_command().build();
   client.initialize(|builder| {
     builder.set_root_uri(temp_dir.uri_dir());

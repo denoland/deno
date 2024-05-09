@@ -52,13 +52,10 @@ use std::path::Path;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use super::documents::Document;
-
 #[derive(Debug, Clone)]
 pub struct LspResolver {
-  cache: Arc<dyn HttpCache>,
   graph_resolver: Arc<CliGraphResolver>,
-  jsr_resolver: Arc<JsrCacheResolver>,
+  jsr_resolver: Option<Arc<JsrCacheResolver>>,
   npm_resolver: Option<Arc<dyn CliNpmResolver>>,
   node_resolver: Option<Arc<CliNodeResolver>>,
   npm_config_hash: LspNpmConfigHash,
@@ -196,17 +193,10 @@ impl LspResolver {
     Ok(())
   }
 
-  pub fn as_graph_resolver<'a, 'b>(
-    &'a self,
-    // this really only needs a HashSet<ModuleSpecifier>, but it's provided
-    // the entire HashMap to avoid cloning all the time
-    open_docs: &'b HashMap<ModuleSpecifier, Arc<Document>>,
-  ) -> LspGraphResolver<'a, 'b> {
+  pub fn as_graph_resolver(&self) -> LspGraphResolver {
     LspGraphResolver {
-      resolver: &self.graph_resolver,
-      cache: self.cache.as_ref(),
+      inner: &self.graph_resolver,
       unstable_sloppy_imports: self.unstable_sloppy_imports,
-      open_docs,
     }
   }
 
@@ -333,24 +323,22 @@ impl LspResolver {
 }
 
 #[derive(Debug)]
-pub struct LspGraphResolver<'a, 'b> {
-  cache: &'a dyn HttpCache,
-  resolver: &'a CliGraphResolver,
-  open_docs: &'b HashMap<ModuleSpecifier, Arc<Document>>,
+pub struct LspGraphResolver<'a> {
+  inner: &'a CliGraphResolver,
   unstable_sloppy_imports: bool,
 }
 
-impl<'a, 'b> Resolver for LspGraphResolver<'a, 'b> {
+impl<'a> Resolver for LspGraphResolver<'a> {
   fn default_jsx_import_source(&self) -> Option<String> {
-    self.resolver.default_jsx_import_source()
+    self.inner.default_jsx_import_source()
   }
 
   fn default_jsx_import_source_types(&self) -> Option<String> {
-    self.resolver.default_jsx_import_source_types()
+    self.inner.default_jsx_import_source_types()
   }
 
   fn jsx_import_source_module(&self) -> &str {
-    self.resolver.jsx_import_source_module()
+    self.inner.jsx_import_source_module()
   }
 
   fn resolve(
@@ -359,23 +347,13 @@ impl<'a, 'b> Resolver for LspGraphResolver<'a, 'b> {
     referrer_range: &deno_graph::Range,
     mode: deno_graph::source::ResolutionMode,
   ) -> Result<deno_ast::ModuleSpecifier, deno_graph::source::ResolveError> {
-    let specifier =
-      self
-        .resolver
-        .resolve(specifier_text, referrer_range, mode)?;
+    let specifier = self.inner.resolve(specifier_text, referrer_range, mode)?;
     if self.unstable_sloppy_imports && specifier.scheme() == "file" {
       Ok(
         SloppyImportsResolver::resolve_with_stat_sync(
           &specifier,
           mode,
           |path| {
-            if let Ok(specifier) = ModuleSpecifier::from_file_path(path) {
-              if self.open_docs.contains_key(&specifier)
-                || self.cache.contains(&specifier)
-              {
-                return Some(SloppyImportsFsEntry::File);
-              }
-            }
             path.metadata().ok().and_then(|m| {
               if m.is_file() {
                 Some(SloppyImportsFsEntry::File)
@@ -402,7 +380,7 @@ impl<'a, 'b> Resolver for LspGraphResolver<'a, 'b> {
     Option<(deno_ast::ModuleSpecifier, Option<deno_graph::Range>)>,
     deno_graph::source::ResolveError,
   > {
-    self.resolver.resolve_types(specifier)
+    self.inner.resolve_types(specifier)
   }
 }
 
