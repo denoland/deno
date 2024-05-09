@@ -9,8 +9,11 @@ use deno_core::url::Url;
 use pretty_assertions::assert_eq;
 use std::fs;
 use test_util::assert_starts_with;
+use test_util::assertions::assert_json_subset;
 use test_util::deno_cmd_with_deno_dir;
 use test_util::env_vars_for_npm_tests;
+use test_util::lsp::range_of;
+use test_util::lsp::source_file;
 use test_util::lsp::LspClient;
 use test_util::testdata_path;
 use test_util::TestContextBuilder;
@@ -1401,7 +1404,7 @@ fn lsp_hover() {
           "value": "const Deno.args: string[]"
         },
         "Returns the script arguments to the program.\n\nGive the following command line invocation of Deno:\n\n```sh\ndeno run --allow-read https://examples.deno.land/command-line-arguments.ts Sushi\n```\n\nThen `Deno.args` will contain:\n\n```ts\n[ \"Sushi\" ]\n```\n\nIf you are looking for a structured way to parse arguments, there is\n[`parseArgs()`](https://jsr.io/@std/cli/doc/parse-args/~/parseArgs) from\nthe Deno Standard Library.",
-        "\n\n*@category* - Runtime Environment",
+        "\n\n*@category* - Runtime",
       ],
       "range": {
         "start": { "line": 0, "character": 17 },
@@ -1459,7 +1462,8 @@ fn lsp_hover_asset() {
           "language": "typescript",
           "value": "interface Date",
         },
-        "Enables basic storage and retrieval of dates and times."
+        "Enables basic storage and retrieval of dates and times.",
+        "\n\n*@category* - Temporal  \n\n*@tags* - unstable"
       ],
       "range": {
         "start": { "line": 111, "character": 10, },
@@ -2035,7 +2039,7 @@ fn lsp_hover_unstable_always_enabled() {
           "value":"interface Deno.ForeignLibraryInterface"
         },
         "**UNSTABLE**: New API, yet to be vetted.\n\nA foreign library interface descriptor.",
-        "\n\n*@category* - FFI",
+        "\n\n*@category* - FFI  \n\n*@tags* - unstable",
       ],
       "range":{
         "start":{ "line":0, "character":14 },
@@ -2080,7 +2084,7 @@ fn lsp_hover_unstable_enabled() {
           "value":"interface Deno.ForeignLibraryInterface"
         },
         "**UNSTABLE**: New API, yet to be vetted.\n\nA foreign library interface descriptor.",
-        "\n\n*@category* - FFI",
+        "\n\n*@category* - FFI  \n\n*@tags* - unstable",
       ],
       "range":{
         "start":{ "line":0, "character":14 },
@@ -5144,7 +5148,7 @@ fn lsp_jsr_auto_import_completion() {
     json!({ "triggerKind": 1 }),
   );
   assert!(!list.is_incomplete);
-  assert_eq!(list.items.len(), 264);
+  assert_eq!(list.items.len(), 267);
   let item = list.items.iter().find(|i| i.label == "add").unwrap();
   assert_eq!(&item.label, "add");
   assert_eq!(
@@ -5224,7 +5228,7 @@ fn lsp_jsr_auto_import_completion_import_map() {
     json!({ "triggerKind": 1 }),
   );
   assert!(!list.is_incomplete);
-  assert_eq!(list.items.len(), 264);
+  assert_eq!(list.items.len(), 267);
   let item = list.items.iter().find(|i| i.label == "add").unwrap();
   assert_eq!(&item.label, "add");
   assert_eq!(json!(&item.label_details), json!({ "description": "add" }));
@@ -5390,7 +5394,8 @@ fn lsp_code_actions_deno_cache_all() {
 
   let res =
     client
-    .write_request(      "textDocument/codeAction",
+    .write_request(
+      "textDocument/codeAction",
       json!({
         "textDocument": {
           "uri": "file:///a/file.ts",
@@ -5416,8 +5421,7 @@ fn lsp_code_actions_deno_cache_all() {
           "only": ["quickfix"],
         }
       }),
-    )
-    ;
+    );
   assert_eq!(
     res,
     json!([
@@ -6609,7 +6613,7 @@ fn lsp_completions() {
       "detail": "const Deno.build: {\n    target: string;\n    arch: \"x86_64\" | \"aarch64\";\n    os: \"darwin\" | \"linux\" | \"android\" | \"windows\" | \"freebsd\" | \"netbsd\" | \"aix\" | \"solaris\" | \"illumos\";\n    vendor: string;\n    env?: string | undefined;\n}",
       "documentation": {
         "kind": "markdown",
-        "value": "Information related to the build of the current Deno runtime.\n\nUsers are discouraged from code branching based on this information, as\nassumptions about what is available in what build environment might change\nover time. Developers should specifically sniff out the features they\nintend to use.\n\nThe intended use for the information is for logging and debugging purposes.\n\n*@category* - Runtime Environment"
+        "value": "Information related to the build of the current Deno runtime.\n\nUsers are discouraged from code branching based on this information, as\nassumptions about what is available in what build environment might change\nover time. Developers should specifically sniff out the features they\nintend to use.\n\nThe intended use for the information is for logging and debugging purposes.\n\n*@category* - Runtime"
       },
       "sortText": "1",
       "insertTextFormat": 1
@@ -7074,6 +7078,108 @@ fn lsp_npm_completions_auto_import_and_quick_fix_no_import_map() {
       }
     }])
   );
+  client.shutdown();
+}
+
+#[test]
+fn lsp_completions_using_decl() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"function makeResource() {
+  return {
+    [Symbol.dispose]() {
+    },
+  };
+}
+
+using resource = makeResource();
+
+res"#
+    }
+  }));
+
+  let list = client.get_completion_list(
+    "file:///a/file.ts",
+    (9, 3),
+    json!({
+      "triggerKind": 2,
+      "triggerCharacter": "."
+    }),
+  );
+  assert!(list.items.iter().any(|i| i.label == "resource"));
+  assert!(!list.is_incomplete);
+
+  client.shutdown();
+}
+
+#[test]
+fn lsp_npm_always_caches() {
+  // npm specifiers should always be cached even when not specified
+  // because they affect the resolution of each other
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir_path = context.temp_dir().path();
+
+  // this file should be auto-discovered by the lsp
+  let not_opened_file = temp_dir_path.join("not_opened.ts");
+  not_opened_file.write("import chalk from 'npm:chalk@5.0';\n");
+
+  // create the lsp and cache a different npm specifier
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let opened_file_uri = temp_dir_path.join("file.ts").uri_file();
+  client.did_open(
+    json!({
+      "textDocument": {
+        "uri": opened_file_uri,
+        "languageId": "typescript",
+        "version": 1,
+        "text": "import {getClient} from 'npm:@denotest/types-exports-subpaths@1/client';\n",
+      }
+    }),
+  );
+  client.write_request(
+    "workspace/executeCommand",
+    json!({
+      "command": "deno.cache",
+      "arguments": [
+        ["npm:@denotest/types-exports-subpaths@1/client"],
+        opened_file_uri,
+      ],
+    }),
+  );
+
+  // now open a new file and chalk should be working
+  let new_file_uri = temp_dir_path.join("new_file.ts").uri_file();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": new_file_uri,
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import chalk from 'npm:chalk@5.0';\nchalk.",
+    }
+  }));
+
+  let list = client.get_completion_list(
+    new_file_uri,
+    (1, 6),
+    json!({
+      "triggerKind": 2,
+      "triggerCharacter": "."
+    }),
+  );
+  assert!(!list.is_incomplete);
+  assert!(list.items.iter().any(|i| i.label == "green"));
+  assert!(list.items.iter().any(|i| i.label == "red"));
+
   client.shutdown();
 }
 
@@ -9040,7 +9146,7 @@ fn lsp_performance() {
       "lsp.update_diagnostics_deps",
       "lsp.update_diagnostics_lint",
       "lsp.update_diagnostics_ts",
-      "lsp.update_registries",
+      "lsp.update_global_cache",
       "tsc.host.$getAssets",
       "tsc.host.$getDiagnostics",
       "tsc.host.$getSupportedCodeFixes",
@@ -10524,6 +10630,10 @@ export function B() {
       }
     })
   );
+
+  let diagnostics = client.read_diagnostics();
+  println!("{:?}", diagnostics);
+
   client.shutdown();
 }
 
@@ -10580,6 +10690,74 @@ fn lsp_jsx_import_source_config_file_automatic_cache() {
     }));
   }
   assert_eq!(diagnostics.all(), vec![]);
+  client.shutdown();
+}
+
+#[test]
+fn lsp_jsx_import_source_types_pragma() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.tsx",
+      "languageId": "typescriptreact",
+      "version": 1,
+      "text":
+"/** @jsxImportSource http://localhost:4545/jsx */
+/** @jsxImportSourceTypes http://localhost:4545/jsx-types */
+/** @jsxRuntime automatic */
+
+function A() {
+  return <a>Hello</a>;
+}
+
+export function B() {
+  return <A></A>;
+}
+",
+    }
+  }));
+  client.write_request(
+    "workspace/executeCommand",
+    json!({
+      "command": "deno.cache",
+      "arguments": [
+        [],
+        "file:///a/file.tsx",
+      ],
+    }),
+  );
+
+  let diagnostics = client.read_diagnostics();
+  assert_eq!(json!(diagnostics.all()), json!([]));
+
+  let res = client.write_request(
+    "textDocument/hover",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.tsx"
+      },
+      "position": { "line": 0, "character": 25 }
+    }),
+  );
+  assert_eq!(
+    res,
+    json!({
+      "contents": {
+        "kind": "markdown",
+        "value": "**Resolved Dependency**\n\n**Code**: http&#8203;://localhost:4545/jsx/jsx-runtime\n\n**Types**: http&#8203;://localhost:4545/jsx-types/jsx-runtime\n",
+      },
+      "range": {
+        "start": { "line": 0, "character": 21 },
+        "end": { "line": 0, "character": 46 }
+      }
+    })
+  );
+
   client.shutdown();
 }
 
@@ -11908,15 +12086,19 @@ fn lsp_deno_future_env_byonm() {
 }
 
 #[test]
-fn lsp_sloppy_imports_warn() {
+fn lsp_sloppy_imports() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
   let temp_dir = temp_dir.path();
   temp_dir
     .join("deno.json")
     .write(r#"{ "unstable": ["sloppy-imports"] }"#);
-  // should work when exists on the fs and when doesn't
+  // for sloppy imports, the file must exist on the file system
+  // to be resolved correctly
   temp_dir.join("a.ts").write("export class A {}");
+  temp_dir.join("b.ts").write("export class B {}");
+  temp_dir.join("c.js").write("export class C {}");
+  temp_dir.join("c.d.ts").write("export class C {}");
   let mut client = context.new_lsp_command().build();
   client.initialize(|builder| {
     builder.set_root_uri(temp_dir.uri_dir());
@@ -11963,137 +12145,67 @@ fn lsp_sloppy_imports_warn() {
       ),
     },
   }));
-  assert_eq!(
-    diagnostics.messages_with_source("deno"),
-    lsp::PublishDiagnosticsParams {
-      uri: temp_dir.join("file.ts").uri_file(),
-      diagnostics: vec![
-        lsp::Diagnostic {
-          range: lsp::Range {
-            start: lsp::Position {
-              line: 0,
-              character: 19
-            },
-            end: lsp::Position {
-              line: 0,
-              character: 24
-            }
-          },
-          severity: Some(lsp::DiagnosticSeverity::INFORMATION),
-          code: Some(lsp::NumberOrString::String("redirect".to_string())),
-          source: Some("deno".to_string()),
-          message: format!(
-            "The import of \"{}\" was redirected to \"{}\".",
-            temp_dir.join("a").uri_file(),
-            temp_dir.join("a.ts").uri_file()
-          ),
-          data: Some(json!({
-            "specifier": temp_dir.join("a").uri_file(),
-            "redirect": temp_dir.join("a.ts").uri_file()
-          })),
-          ..Default::default()
-        },
-        lsp::Diagnostic {
-          range: lsp::Range {
-            start: lsp::Position {
-              line: 1,
-              character: 19
-            },
-            end: lsp::Position {
-              line: 1,
-              character: 27
-            }
-          },
-          severity: Some(lsp::DiagnosticSeverity::INFORMATION),
-          code: Some(lsp::NumberOrString::String("redirect".to_string())),
-          source: Some("deno".to_string()),
-          message: format!(
-            "The import of \"{}\" was redirected to \"{}\".",
-            temp_dir.join("b.js").uri_file(),
-            temp_dir.join("b.ts").uri_file()
-          ),
-          data: Some(json!({
-            "specifier": temp_dir.join("b.js").uri_file(),
-            "redirect": temp_dir.join("b.ts").uri_file()
-          })),
-          ..Default::default()
-        }
-      ],
-      version: Some(1),
-    }
-  );
 
-  let res = client.write_request(
-    "textDocument/codeAction",
+  assert_eq!(json!(diagnostics.all()), json!([]));
+
+  client.shutdown();
+}
+
+#[test]
+fn lsp_sloppy_imports_prefers_dts() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  let temp_dir = temp_dir.path();
+
+  temp_dir
+    .join("deno.json")
+    .write(r#"{ "unstable": ["sloppy-imports"] }"#);
+
+  let mut client: LspClient = context
+    .new_lsp_command()
+    .set_root_dir(temp_dir.clone())
+    .build();
+  client.initialize_default();
+
+  temp_dir.join("a.js").write("export const foo: number;");
+
+  let a_dts = source_file(temp_dir.join("a.d.ts"), "export const foo = 3;");
+  let file = source_file(
+    temp_dir.join("file.ts"),
+    "import { foo } from './a.js';\nconsole.log(foo);",
+  );
+  let diagnostics = client.did_open_file(&file);
+  // no warnings because "a.js" exists
+  assert_eq!(diagnostics.all().len(), 0);
+
+  let diagnostics = client.did_open_file(&a_dts);
+  assert_eq!(diagnostics.all().len(), 0, "Got {:#?}", diagnostics.all());
+
+  let response = client.write_request(
+    "textDocument/references",
     json!({
-      "textDocument": {
-        "uri": temp_dir.join("file.ts").uri_file()
-      },
-      "range": {
-        "start": { "line": 0, "character": 19 },
-        "end": { "line": 0, "character": 24 }
-      },
+      "textDocument": a_dts.identifier(),
+      "position": a_dts.range_of("foo").start,
       "context": {
-        "diagnostics": [{
-          "range": {
-            "start": { "line": 0, "character": 19 },
-            "end": { "line": 0, "character": 24 }
-          },
-          "severity": 3,
-          "code": "redirect",
-          "source": "deno",
-          "message": format!(
-            "The import of \"{}\" was redirected to \"{}\".",
-            temp_dir.join("a").uri_file(),
-            temp_dir.join("a.ts").uri_file()
-          ),
-          "data": {
-            "specifier": temp_dir.join("a").uri_file(),
-            "redirect": temp_dir.join("a.ts").uri_file(),
-          },
-        }],
-        "only": ["quickfix"]
+        "includeDeclaration": false
       }
     }),
   );
-  assert_eq!(
-    res,
-    json!([{
-      "title": "Update specifier to its redirected specifier.",
-      "kind": "quickfix",
-      "diagnostics": [{
-        "range": {
-          "start": { "line": 0, "character": 19 },
-          "end": { "line": 0, "character": 24 }
-        },
-        "severity": 3,
-        "code": "redirect",
-        "source": "deno",
-        "message": format!(
-          "The import of \"{}\" was redirected to \"{}\".",
-          temp_dir.join("a").uri_file(),
-          temp_dir.join("a.ts").uri_file()
-        ),
-        "data": {
-          "specifier": temp_dir.join("a").uri_file(),
-          "redirect": temp_dir.join("a.ts").uri_file()
-        },
-      }],
-      "edit": {
-        "changes": {
-          temp_dir.join("file.ts").uri_file(): [{
-            "range": {
-              "start": { "line": 0, "character": 19 },
-              "end": { "line": 0, "character": 24 }
-            },
-            "newText": "\"./a.ts\""
-          }]
-        }
+  assert_json_subset(
+    response,
+    json!([
+      {
+        "uri": file.uri(),
+        // the import
+        "range": file.range_of("foo"),
+      },
+      {
+        "uri": file.uri(),
+        // the usage
+        "range": file.range_of_nth(1, "foo"),
       }
-    }])
+    ]),
   );
-
-  client.shutdown();
 }
 
 #[test]
@@ -12409,4 +12521,73 @@ fn lsp_cjs_internal_types_default_export() {
   );
   // previously, diagnostic about `add` not being callable
   assert_eq!(json!(diagnostics.all()), json!([]));
+}
+
+#[test]
+fn lsp_ts_code_fix_any_param() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+
+  let src = "export function foo(param) { console.log(param); }";
+
+  let param_def = range_of("param", src);
+
+  let main_url = temp_dir.path().join("main.ts").uri_file();
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": main_url,
+      "languageId": "typescript",
+      "version": 1,
+      "text": src,
+    }
+  }));
+  // make sure the "implicit any type" diagnostic is there for "param"
+  assert_json_subset(
+    json!(diagnostics.all()),
+    json!([{
+      "range": param_def,
+      "code": 7006,
+      "message": "Parameter 'param' implicitly has an 'any' type."
+    }]),
+  );
+
+  // response is array of fixes
+  let response = client.write_request(
+    "textDocument/codeAction",
+    json!({
+      "textDocument": {
+        "uri": main_url,
+      },
+      "range": lsp::Range {
+        start: param_def.end,
+        ..param_def
+      },
+      "context": {
+        "diagnostics": diagnostics.all(),
+      }
+    }),
+  );
+  let fixes = response.as_array().unwrap();
+
+  // we're looking for the quick fix that pertains to our diagnostic,
+  // specifically the "Infer parameter types from usage" fix
+  for fix in fixes {
+    let Some(diags) = fix.get("diagnostics") else {
+      continue;
+    };
+    let Some(fix_title) = fix.get("title").and_then(|s| s.as_str()) else {
+      continue;
+    };
+    if diags == &json!(diagnostics.all())
+      && fix_title == "Infer parameter types from usage"
+    {
+      // found it!
+      return;
+    }
+  }
+
+  panic!("failed to find 'Infer parameter types from usage' fix in fixes: {fixes:#?}");
 }

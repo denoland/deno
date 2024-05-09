@@ -50,12 +50,16 @@ pub async fn op_jupyter_broadcast(
 
   let maybe_last_request = last_execution_request.borrow().clone();
   if let Some(last_request) = maybe_last_request {
-    last_request
-      .new_message(&message_type)
-      .with_content(content)
-      .with_metadata(metadata)
-      .with_buffers(buffers.into_iter().map(|b| b.to_vec().into()).collect())
-      .send(&mut *iopub_socket.lock().await)
+    (*iopub_socket.lock().await)
+      .send(
+        &last_request
+          .new_message(&message_type)
+          .with_content(content)
+          .with_metadata(metadata)
+          .with_buffers(
+            buffers.into_iter().map(|b| b.to_vec().into()).collect(),
+          ),
+      )
       .await?;
   }
 
@@ -72,13 +76,13 @@ pub fn op_print(
 
   if is_err {
     if let Err(err) = sender.send(StdioMsg::Stderr(msg.into())) {
-      eprintln!("Failed to send stderr message: {}", err);
+      log::error!("Failed to send stderr message: {}", err);
     }
     return Ok(());
   }
 
   if let Err(err) = sender.send(StdioMsg::Stdout(msg.into())) {
-    eprintln!("Failed to send stdout message: {}", err);
+    log::error!("Failed to send stdout message: {}", err);
   }
   Ok(())
 }

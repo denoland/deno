@@ -6,14 +6,46 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
-### 1.43.0 / 2024.04.25
+### 1.43.2 / 2024.05.08
+
+- feat(runtime): allow adding custom extensions to snapshot (#23569)
+- fix(compile): relative permissions should be retained as relative (#23719)
+- fix(ext/node): check resource exists before close (#23655)
+- fix(ext/node): don't rely on Deno.env to read NODE_DEBUG (#23694)
+- fix(ext/node): napi_get_element and napi_set_element work with objects
+  (#23713)
+- fix(ext/node): support delete process.env.var (#23647)
+- fix(ext/web): properly handle `Blob` case for `createImageBitmap` (#23518)
+- fix(ext/webgpu): correctly validate GPUExtent3D, GPUOrigin3D, GPUOrigin2D &
+  GPUColor (#23413)
+- fix(fmt/js): `else` was moved to wrong `if` sometimes when formatting minified
+  code (#23706)
+- fix(jsr): panic when importing jsr package with deps via https (#23728)
+- fix(lsp): Catch cancellation exceptions thrown by TSC, stop waiting for TS
+  result upon cancellation (#23645)
+- fix(lsp): Pass diagnostic codes to TSC as numbers (#23720)
+- fix(lsp): always cache all npm packages (#23679)
+- fix(lsp): handle multiline semantic tokens (#23691)
+- fix(publish): public api - trace parent classes & interfaces when following a
+  method (#23661)
+- fix(runtime): allow r/w access to /etc without --allow-all (#23718)
+- fix(test): proper type checking for files with doc tests (#23654)
+- fix(workers): `importScripts` concurrently and use a new `reqwest::Client` per
+  importScripts (#23699)
+- fix: DOMException doesn't throw on __callSitesEvals (#23729)
+- fix: upgrade TypeScript from 5.4.3 to 5.4.5 (#23740)
+
+### 1.43.0 / 2024.05.01
 
 - FUTURE(ext/net): remove
   `Deno.ConnectTlsOptions.(certFile|certChain|privateKey)` (#23270)
 - FUTURE(ext/net): remove `Deno.ListenTlsOptions.(keyFile|certFile)` (#23271)
 - FUTURE: remove `Deno.customInspect` (#23453)
+- FUTURE: remove import assertions support for JavaScript (#23541)
 - feat(check): allow using side effect imports with unknown module kinds (ex.
   css modules) (#23392)
+- feat(ci): category & unstable tags checker (#23568)
+- feat(cli): add support for jsxImportSourceTypes (#23419)
 - feat(ext/http): Add `addr` to HttpServer (#23442)
 - feat(ext/http): Implement request.signal for Deno.serve (#23425)
 - feat(ext/net): extract TLS key and certificate from interfaces (#23327)
@@ -34,35 +66,51 @@ https://github.com/denoland/deno_install
 - fix(cli): TestEventSender should be !Clone (#23405)
 - fix(cli): avoid `deno add` and `deno vendor` errors when deno.json is empty
   (#23439)
+- fix(compile): certain jsr specifiers sometimes can't load (#23567)
 - fix(config): move json schema unstable examples to item (#23506)
+- fix(ext/http): ensure signal is created iff requested (#23601)
 - fix(ext/net): check for TLS using undefined rather than using ReflectHas
   (#23538)
 - fix(ext/node): Correctly send ALPN on node TLS connections (#23434)
 - fix(ext/node): Support `env` option in worker_thread (#23462)
 - fix(ext/node): `cp` into non-existent parent directory (#23469)
+- fix(ext/node): add support for MessagePort.removeListener/off (#23598)
 - fix(ext/node): define http.maxHeaderSize (#23479)
 - fix(ext/node): dispatch beforeExit/exit events irrespective of listeners
   (#23382)
+- fix(ext/node): exporting rsa public keys (#23596)
 - fix(ext/node): implement process.kill in Rust (#23130)
+- fix(ext/node): read(0) before destroying http2stream (#23505)
 - fix(ext/node): remove unwraps from fallible conversions (#23447)
+- fix(ext/node): support NODE_DEBUG env (#23583)
+- fix(ext/node): support multiple message listeners on MessagePort (#23600)
+- fix(ext/node): support process.stdin.unref() (#22865)
 - fix(ext/node): worker_threads copies env object (#23536)
 - fix(ext/node): worker_threads.receiveMessageOnPort doesn't panic (#23406)
 - fix(fmt): error for more unterminated nodes (#23449)
+- fix(fmt/md): better handling of lists in block quotes (#23604)
 - fix(lsp): Fix logic for coalescing pending changes + clear script names cache
   when file is closed (#23517)
 - fix(lsp): inherit missing fmt and lint config from parent scopes (#23547)
 - fix(lsp): remove Document::open_data on close (#23483)
+- fix(node): require.resolve - fallback to global cache when bare specifier from
+  paths not found (#23618)
+- fix(npm): do not panic hitting root dir while resolving npm package (#23556)
 - fix(publish): --dry-publish should error for gitignored excluded files
   (#23540)
+- fix(publish): handle variable declarations with a declare keyword (#23616)
 - fix(publish): support import equals (#23421)
 - fix(workspace): provide workspace members as 'imports' in import map (#23492)
 - fix: Fix some typos in comments (#23470)
 - fix: Float16Array support (#23512)
 - fix: add `DENO_FUTURE` to `deno --help` (#23368)
 - fix: allow WPT to successfully exit using `--exit-zero` (#23418)
+- fix: handle specifying an import map in an ancestor dir of deno.json (#23602)
+- fix: reenable syntax highlighting for doc html generator (#23570)
 - fix: unref stdin read (#23534)
 - fix: update CLI flags for WPT (#23501)
 - perf(ext/http): cache abort signal error (#23548)
+- perf(ext/http): recover memory for serve and optimize AbortController (#23559)
 - perf(lsp): Avoid passing struct into op_resolve (#23452)
 - perf(lsp): Batch "$projectChanged" notification in with the next JS request
   (#23451)

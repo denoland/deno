@@ -408,7 +408,8 @@ impl CliFactory {
       .npm_resolver
       .get_or_try_init_async(async {
         let fs = self.fs();
-        create_cli_npm_resolver(if self.options.use_byonm() {
+        // For `deno install` we want to force the managed resolver so it can set up `node_modules/` directory.
+        create_cli_npm_resolver(if self.options.use_byonm() && !matches!(self.options.sub_command(), DenoSubcommand::Install(_)) {
           CliNpmResolverCreateOptions::Byonm(CliNpmResolverByonmCreateOptions {
             fs: fs.clone(),
             root_node_modules_dir: match self.options.node_modules_dir_path() {
@@ -885,6 +886,7 @@ impl CliFactory {
         .options
         .take_binary_npm_command_name()
         .or(std::env::args().next()),
+      node_debug: std::env::var("NODE_DEBUG").ok(),
       origin_data_folder_path: Some(self.deno_dir()?.origin_data_folder_path()),
       seed: self.options.seed(),
       unsafely_ignore_certificate_errors: self

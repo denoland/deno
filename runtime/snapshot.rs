@@ -213,11 +213,13 @@ impl deno_kv::sqlite::SqliteDbHandlerPermissions for Permissions {
 pub fn create_runtime_snapshot(
   snapshot_path: PathBuf,
   snapshot_options: SnapshotOptions,
+  // NOTE: For embedders that wish to add additional extensions to the snapshot
+  custom_extensions: Vec<Extension>,
 ) {
   // NOTE(bartlomieju): ordering is important here, keep it in sync with
   // `runtime/worker.rs`, `runtime/web_worker.rs` and `runtime/snapshot.rs`!
   let fs = std::sync::Arc::new(deno_fs::RealFs);
-  let extensions: Vec<Extension> = vec![
+  let mut extensions: Vec<Extension> = vec![
     deno_webidl::deno_webidl::init_ops_and_esm(),
     deno_console::deno_console::init_ops_and_esm(),
     deno_url::deno_url::init_ops_and_esm(),
@@ -269,6 +271,7 @@ pub fn create_runtime_snapshot(
     ops::bootstrap::deno_bootstrap::init_ops(Some(snapshot_options)),
     ops::web_worker::deno_web_worker::init_ops(),
   ];
+  extensions.extend(custom_extensions);
 
   let output = create_snapshot(
     CreateSnapshotOptions {
@@ -293,6 +296,7 @@ pub fn create_runtime_snapshot(
   let mut snapshot = std::fs::File::create(snapshot_path).unwrap();
   snapshot.write_all(&output.output).unwrap();
 
+  #[allow(clippy::print_stdout)]
   for path in output.files_loaded_during_snapshot {
     println!("cargo:rerun-if-changed={}", path.display());
   }

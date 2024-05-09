@@ -12,6 +12,7 @@ pub mod gitignore;
 pub mod logger;
 pub mod path;
 pub mod progress_bar;
+pub mod result;
 pub mod sync;
 pub mod text_encoding;
 pub mod time;

@@ -50,6 +50,18 @@ impl Client {
     OutsideLockClient(self.0.clone())
   }
 
+  pub async fn publish_diagnostics(
+    &self,
+    uri: LspClientUrl,
+    diags: Vec<lsp::Diagnostic>,
+    version: Option<i32>,
+  ) {
+    self
+      .0
+      .publish_diagnostics(uri.into_url(), diags, version)
+      .await;
+  }
+
   pub fn send_registry_state_notification(
     &self,
     params: lsp_custom::RegistryStateNotificationParams,
@@ -140,18 +152,6 @@ impl OutsideLockClient {
     scopes: Vec<Option<lsp::Url>>,
   ) -> Result<Vec<WorkspaceSettings>, AnyError> {
     self.0.workspace_configuration(scopes).await
-  }
-
-  pub async fn publish_diagnostics(
-    &self,
-    uri: LspClientUrl,
-    diags: Vec<lsp::Diagnostic>,
-    version: Option<i32>,
-  ) {
-    self
-      .0
-      .publish_diagnostics(uri.into_url(), diags, version)
-      .await;
   }
 }
 

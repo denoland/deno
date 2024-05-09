@@ -473,19 +473,51 @@ class NodeMessageChannel {
   }
 }
 
+const listeners = new SafeWeakMap<
+  // deno-lint-ignore no-explicit-any
+  (...args: any[]) => void,
+  // deno-lint-ignore no-explicit-any
+  (ev: any) => any
+>();
 function webMessagePortToNodeMessagePort(port: MessagePort) {
   port.on = port.addListener = function (this: MessagePort, name, listener) {
     // deno-lint-ignore no-explicit-any
     const _listener = (ev: any) => listener(ev.data);
     if (name == "message") {
-      port.onmessage = _listener;
+      if (port.onmessage === null) {
+        port.onmessage = _listener;
+      } else {
+        port.addEventListener("message", _listener);
+      }
     } else if (name == "messageerror") {
-      port.onmessageerror = _listener;
+      if (port.onmessageerror === null) {
+        port.onmessageerror = _listener;
+      } else {
+        port.addEventListener("messageerror", _listener);
+      }
     } else if (name == "close") {
       port.addEventListener("close", _listener);
     } else {
       throw new Error(`Unknown event: "${name}"`);
     }
+    listeners.set(listener, _listener);
+    return this;
+  };
+  port.off = port.removeListener = function (
+    this: MessagePort,
+    name,
+    listener,
+  ) {
+    if (name == "message") {
+      port.removeEventListener("message", listeners.get(listener)!);
+    } else if (name == "messageerror") {
+      port.removeEventListener("messageerror", listeners.get(listener)!);
+    } else if (name == "close") {
+      port.removeEventListener("close", listeners.get(listener)!);
+    } else {
+      throw new Error(`Unknown event: "${name}"`);
+    }
+    listeners.delete(listener);
     return this;
   };
   port[nodeWorkerThreadCloseCb] = () => {

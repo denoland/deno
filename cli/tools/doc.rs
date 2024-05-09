@@ -169,7 +169,7 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
       ));
 
       deno_doc::html::compute_namespaced_symbols(
-        deno_ns
+        &deno_ns
           .into_iter()
           .map(|node| deno_doc::html::DocNodeWithContext {
             origin: short_path.clone(),
@@ -179,8 +179,7 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
             inner: std::sync::Arc::new(node),
             drilldown_parent_kind: None,
           })
-          .collect(),
-        &[],
+          .collect::<Vec<_>>(),
       )
     } else {
       Default::default()

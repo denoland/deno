@@ -1,0 +1,5 @@
+{
+  "args": "bench --quiet -A explicit_start_and_end.ts",
+  "output": "explicit_start_and_end.out",
+  "exitCode": 1
+}
