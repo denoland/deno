@@ -1518,6 +1518,8 @@ pub async fn report_tests(
           &tests,
           &test_steps,
         );
+
+        #[allow(clippy::print_stderr)]
         if let Err(err) = reporter.flush_report(&elapsed, &tests, &test_steps) {
           eprint!("Test reporter failed to flush: {}", err)
         }
