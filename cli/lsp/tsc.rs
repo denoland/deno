@@ -1102,7 +1102,6 @@ impl TsServer {
     let (tx, mut rx) = oneshot::channel::<Result<String, AnyError>>();
     let change = self.pending_change.lock().take();
 
-    let method = req.method();
     if self
       .sender
       .send((req, snapshot, tx, token.clone(), change))
@@ -1110,7 +1109,6 @@ impl TsServer {
     {
       return Err(anyhow!("failed to send request to tsc thread"));
     }
-    lsp_log!("Sent request to tsc thread: {}", method);
     tokio::select! {
       value = &mut rx => {
         let value = value??;
@@ -3991,7 +3989,7 @@ struct State {
   state_snapshot: Arc<StateSnapshot>,
   specifier_map: Arc<TscSpecifierMap>,
   token: CancellationToken,
-  pending_requests: UnboundedReceiver<Request>,
+  pending_requests: Option<UnboundedReceiver<Request>>,
   mark: Option<PerformanceMark>,
 }
 
@@ -4010,7 +4008,7 @@ impl State {
       specifier_map,
       token: Default::default(),
       mark: None,
-      pending_requests,
+      pending_requests: Some(pending_requests),
     }
   }
 
@@ -4167,15 +4165,21 @@ impl<'a> ToV8<'a> for TscRequestArray {
 async fn op_poll_requests(
   state: Rc<RefCell<OpState>>,
 ) -> convert::OptionNull<TscRequestArray> {
-  let mut state = state.borrow_mut();
-  let state = state.try_borrow_mut::<State>().unwrap();
+  let mut pending_requests = {
+    let mut state = state.borrow_mut();
+    let state = state.try_borrow_mut::<State>().unwrap();
+    state.pending_requests.take().unwrap()
+  };
 
   let Some((request, snapshot, response_tx, token, change)) =
-    state.pending_requests.recv().await
+    pending_requests.recv().await
   else {
     return None.into();
   };
 
+  let mut state = state.borrow_mut();
+  let state = state.try_borrow_mut::<State>().unwrap();
+  state.pending_requests = Some(pending_requests);
   state.state_snapshot = snapshot;
   state.token = token;
   state.response_tx = Some(response_tx);
@@ -4423,7 +4427,6 @@ fn run_tsc_thread(
         })
         .unwrap_or(false);
       let mut runtime = tsc_runtime.lock().await;
-      lsp_log!("Starting TSC main loop.");
       let main_loop = runtime.server_main_loop_fn_global.clone();
       let args = {
         let scope = &mut runtime.js_runtime.handle_scope();
@@ -4441,7 +4444,6 @@ fn run_tsc_thread(
       res = main_loop_fut => {
         if let Err(err) = res {
           log::error!("Error in TSC main loop: {err}");
-          return;
         }
       }
     }

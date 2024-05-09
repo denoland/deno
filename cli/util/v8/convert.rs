@@ -1,3 +1,5 @@
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
 use deno_core::v8;
 use deno_core::FromV8;
 use deno_core::ToV8;
@@ -13,9 +15,9 @@ impl<T> From<Option<T>> for OptionNull<T> {
   }
 }
 
-impl<T> Into<Option<T>> for OptionNull<T> {
-  fn into(self) -> Option<T> {
-    self.0
+impl<T> From<OptionNull<T>> for Option<T> {
+  fn from(value: OptionNull<T>) -> Self {
+    value.0
   }
 }
 
