@@ -13,9 +13,7 @@ use super::tsc::AssetDocument;
 use crate::cache::HttpCache;
 use crate::graph_util::CliJsrUrlProvider;
 use crate::lsp::logging::lsp_warn;
-use crate::resolver::SloppyImportsFsEntry;
-use crate::resolver::SloppyImportsResolution;
-use crate::resolver::SloppyImportsResolver;
+use deno_graph::source::Resolver;
 use deno_runtime::fs_util::specifier_to_file_path;
 
 use dashmap::DashMap;
@@ -390,7 +388,7 @@ impl Document {
               d.with_new_resolver(
                 s,
                 &CliJsrUrlProvider,
-                Some(graph_resolver),
+                Some(&graph_resolver),
                 Some(npm_resolver),
               ),
             )
@@ -400,7 +398,7 @@ impl Document {
       maybe_types_dependency = self.maybe_types_dependency.as_ref().map(|d| {
         Arc::new(d.with_new_resolver(
           &CliJsrUrlProvider,
-          Some(graph_resolver),
+          Some(&graph_resolver),
           Some(npm_resolver),
         ))
       });
@@ -854,8 +852,6 @@ pub struct Documents {
   /// Gets if any document had a node: specifier such that a @types/node package
   /// should be injected.
   has_injected_types_node_package: bool,
-  /// If --unstable-sloppy-imports is enabled.
-  unstable_sloppy_imports: bool,
 }
 
 impl Documents {
@@ -869,7 +865,6 @@ impl Documents {
       resolver: Default::default(),
       npm_specifier_reqs: Default::default(),
       has_injected_types_node_package: false,
-      unstable_sloppy_imports: false,
     }
   }
 
@@ -996,54 +991,17 @@ impl Documents {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<ModuleSpecifier> {
-    if self.unstable_sloppy_imports && specifier.scheme() == "file" {
-      Some(
-        self
-          .resolve_unstable_sloppy_import(specifier)
-          .into_specifier()
-          .into_owned(),
-      )
+    let specifier = if let Ok(jsr_req_ref) =
+      JsrPackageReqReference::from_specifier(specifier)
+    {
+      Cow::Owned(self.resolver.jsr_to_registry_url(&jsr_req_ref)?)
     } else {
-      let specifier = if let Ok(jsr_req_ref) =
-        JsrPackageReqReference::from_specifier(specifier)
-      {
-        Cow::Owned(self.resolver.jsr_to_registry_url(&jsr_req_ref)?)
-      } else {
-        Cow::Borrowed(specifier)
-      };
-      if !DOCUMENT_SCHEMES.contains(&specifier.scheme()) {
-        return None;
-      }
-      self.resolver.resolve_redirects(&specifier)
+      Cow::Borrowed(specifier)
+    };
+    if !DOCUMENT_SCHEMES.contains(&specifier.scheme()) {
+      return None;
     }
-  }
-
-  fn resolve_unstable_sloppy_import<'a>(
-    &self,
-    specifier: &'a ModuleSpecifier,
-  ) -> SloppyImportsResolution<'a> {
-    SloppyImportsResolver::resolve_with_stat_sync(
-      specifier,
-      ResolutionMode::Types,
-      |path| {
-        if let Ok(specifier) = ModuleSpecifier::from_file_path(path) {
-          if self.open_docs.contains_key(&specifier)
-            || self.cache.contains(&specifier)
-          {
-            return Some(SloppyImportsFsEntry::File);
-          }
-        }
-        path.metadata().ok().and_then(|m| {
-          if m.is_file() {
-            Some(SloppyImportsFsEntry::File)
-          } else if m.is_dir() {
-            Some(SloppyImportsFsEntry::Dir)
-          } else {
-            None
-          }
-        })
-      },
-    )
+    self.resolver.resolve_redirects(&specifier)
   }
 
   /// Return `true` if the specifier can be resolved to a document.
@@ -1226,12 +1184,7 @@ impl Documents {
   ) {
     self.config = Arc::new(config.clone());
     self.cache = cache;
-    let config_data = config.tree.root_data();
-    let config_file = config_data.and_then(|d| d.config_file.as_deref());
     self.resolver = resolver.clone();
-    self.unstable_sloppy_imports = config_file
-      .map(|c| c.has_unstable("sloppy-imports"))
-      .unwrap_or(false);
     {
       let fs_docs = &self.file_system_docs;
       // Clean up non-existent documents.
@@ -1404,7 +1357,6 @@ fn node_resolve_npm_req_ref(
 pub struct OpenDocumentsGraphLoader<'a> {
   pub inner_loader: &'a mut dyn deno_graph::source::Loader,
   pub open_docs: &'a HashMap<ModuleSpecifier, Arc<Document>>,
-  pub unstable_sloppy_imports: bool,
 }
 
 impl<'a> OpenDocumentsGraphLoader<'a> {
@@ -1426,32 +1378,6 @@ impl<'a> OpenDocumentsGraphLoader<'a> {
     }
     None
   }
-
-  fn resolve_unstable_sloppy_import<'b>(
-    &self,
-    specifier: &'b ModuleSpecifier,
-  ) -> SloppyImportsResolution<'b> {
-    SloppyImportsResolver::resolve_with_stat_sync(
-      specifier,
-      ResolutionMode::Types,
-      |path| {
-        if let Ok(specifier) = ModuleSpecifier::from_file_path(path) {
-          if self.open_docs.contains_key(&specifier) {
-            return Some(SloppyImportsFsEntry::File);
-          }
-        }
-        path.metadata().ok().and_then(|m| {
-          if m.is_file() {
-            Some(SloppyImportsFsEntry::File)
-          } else if m.is_dir() {
-            Some(SloppyImportsFsEntry::Dir)
-          } else {
-            None
-          }
-        })
-      },
-    )
-  }
 }
 
 impl<'a> deno_graph::source::Loader for OpenDocumentsGraphLoader<'a> {
@@ -1460,17 +1386,9 @@ impl<'a> deno_graph::source::Loader for OpenDocumentsGraphLoader<'a> {
     specifier: &ModuleSpecifier,
     options: deno_graph::source::LoadOptions,
   ) -> deno_graph::source::LoadFuture {
-    let specifier = if self.unstable_sloppy_imports {
-      self
-        .resolve_unstable_sloppy_import(specifier)
-        .into_specifier()
-    } else {
-      Cow::Borrowed(specifier)
-    };
-
-    match self.load_from_docs(&specifier) {
+    match self.load_from_docs(specifier) {
       Some(fut) => fut,
-      None => self.inner_loader.load(&specifier, options),
+      None => self.inner_loader.load(specifier, options),
     }
   }
 
@@ -1531,7 +1449,7 @@ fn analyze_module(
         // dynamic imports like import(`./dir/${something}`) in the LSP
         file_system: &deno_graph::source::NullFileSystem,
         jsr_url_provider: &CliJsrUrlProvider,
-        maybe_resolver: Some(resolver.as_graph_resolver()),
+        maybe_resolver: Some(&resolver.as_graph_resolver()),
         maybe_npm_resolver: Some(resolver.as_graph_npm_resolver()),
       },
     )),
