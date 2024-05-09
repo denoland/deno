@@ -557,6 +557,10 @@ fn discover_npmrc(
   maybe_package_json_path: Option<PathBuf>,
   maybe_deno_json_path: Option<PathBuf>,
 ) -> Result<Arc<ResolvedNpmRc>, AnyError> {
+  if !*DENO_FUTURE {
+    return Ok(create_default_npmrc());
+  }
+
   const NPMRC_NAME: &str = ".npmrc";
 
   fn get_env_var(var_name: &str) -> Option<String> {

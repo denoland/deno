@@ -1,5 +1,9 @@
 {
+  "envs": {
+    "DENO_FUTURE": "1"
+  },
   "tempDir": true,
-  "args": "run -A -L debug subdir/main.js",
-  "output": "main.out"
+  "args": "install -A -L debug",
+  "output": "main.out",
+  "cwd": "subdir"
 }
