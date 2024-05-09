@@ -630,3 +630,43 @@ File         | Branch % | Line % |
 ",
   );
 }
+
+#[test]
+fn test_collect_summary_with_no_matches() {
+  let context: TestContext = TestContext::default();
+  let temp_dir: &TempDir = context.temp_dir();
+  let temp_dir: util::PathRef = temp_dir.path().join("cov");
+
+  let output: util::TestCommandOutput = context
+    .new_command()
+    .args_vec(vec![
+      "test".to_string(),
+      "--quiet".to_string(),
+      "--allow-read".to_string(),
+      format!("--coverage={}", temp_dir),
+      "--include=non_matching_regex".to_string(),
+      format!("coverage/no_match_test.ts"),
+    ])
+    .run();
+
+  output.assert_exit_code(0);
+  output.skip_output_check();
+
+  let output: util::TestCommandOutput = context
+    .new_command()
+    .args_vec(vec![
+      "coverage".to_string(),
+      "--detailed".to_string(),
+      format!("{}/", tempdir),
+    ])
+    .split_output()
+    .run();
+
+  assert!(output.stderr().is_empty());
+
+  let actual: String = util::strip_ansi_codes(output.stdout()).to_string();
+  let expected: &str = "No coverage data available for these files.\n";
+
+  assert!(actual.contains(expected), "Expected the output to indicate no coverage data was found, but found:\n{actual}");
+  output.assert_exit_code(0);
+}
