@@ -8,6 +8,7 @@ use super::documents::DocumentsFilter;
 use super::language_server;
 use super::language_server::StateSnapshot;
 use super::performance::Performance;
+use super::performance::PerformanceMark;
 use super::refactor::RefactorCodeActionData;
 use super::refactor::ALL_KNOWN_REFACTOR_ACTION_KINDS;
 use super::refactor::EXTRACT_CONSTANT;
@@ -28,16 +29,19 @@ use crate::tsc::ResolveArgs;
 use crate::tsc::MISSING_DEPENDENCY_SPECIFIER;
 use crate::util::path::relative_specifier;
 use crate::util::path::to_percent_decoded_str;
+use crate::util::result::InfallibleResultExt;
+use crate::util::v8::convert;
+use deno_core::convert::Smi;
+use deno_core::convert::ToV8;
+use deno_core::error::StdAnyError;
 use deno_runtime::fs_util::specifier_to_file_path;
 
 use dashmap::DashMap;
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context as _;
-use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
-use deno_core::located_script_name;
 use deno_core::op2;
 use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url;
@@ -63,9 +67,11 @@ use regex::Captures;
 use regex::Regex;
 use serde_repr::Deserialize_repr;
 use serde_repr::Serialize_repr;
+use std::cell::RefCell;
 use std::cmp;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::convert::Infallible;
 use std::net::SocketAddr;
 use std::ops::Range;
 use std::path::Path;
@@ -244,6 +250,16 @@ pub enum ChangeKind {
   Closed = 2,
 }
 
+impl<'a> ToV8<'a> for ChangeKind {
+  type Error = Infallible;
+  fn to_v8(
+    self,
+    scope: &mut v8::HandleScope<'a>,
+  ) -> Result<v8::Local<'a, v8::Value>, Self::Error> {
+    Smi(self as u8).to_v8(scope)
+  }
+}
+
 impl Serialize for ChangeKind {
   fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
   where
@@ -260,15 +276,28 @@ pub struct PendingChange {
   pub config_changed: bool,
 }
 
-impl PendingChange {
-  fn to_v8<'s>(
-    &self,
-    scope: &mut v8::HandleScope<'s>,
-  ) -> Result<v8::Local<'s, v8::Value>, AnyError> {
-    let modified_scripts = serde_v8::to_v8(scope, &self.modified_scripts)?;
+impl<'a> ToV8<'a> for PendingChange {
+  type Error = Infallible;
+  fn to_v8(
+    self,
+    scope: &mut v8::HandleScope<'a>,
+  ) -> Result<v8::Local<'a, v8::Value>, Self::Error> {
+    let modified_scripts = {
+      let mut modified_scripts_v8 =
+        Vec::with_capacity(self.modified_scripts.len());
+      for (specifier, kind) in &self.modified_scripts {
+        let specifier = v8::String::new(scope, specifier).unwrap().into();
+        let kind = kind.to_v8(scope).unwrap_infallible();
+        let pair =
+          v8::Array::new_with_elements(scope, &[specifier, kind]).into();
+        modified_scripts_v8.push(pair);
+      }
+      v8::Array::new_with_elements(scope, &modified_scripts_v8).into()
+    };
     let project_version =
       v8::Integer::new_from_unsigned(scope, self.project_version as u32).into();
     let config_changed = v8::Boolean::new(scope, self.config_changed).into();
+
     Ok(
       v8::Array::new_with_elements(
         scope,
@@ -277,7 +306,9 @@ impl PendingChange {
       .into(),
     )
   }
+}
 
+impl PendingChange {
   fn coalesce(
     &mut self,
     new_version: usize,
@@ -1068,6 +1099,7 @@ impl TsServer {
     let droppable_token = DroppableToken(token.clone());
     let (tx, mut rx) = oneshot::channel::<Result<String, AnyError>>();
     let change = self.pending_change.lock().take();
+
     if self
       .sender
       .send((req, snapshot, tx, token.clone(), change))
@@ -3951,10 +3983,12 @@ struct State {
   last_id: usize,
   performance: Arc<Performance>,
   // the response from JS, as a JSON string
-  response: Option<String>,
+  response_tx: Option<oneshot::Sender<Result<String, AnyError>>>,
   state_snapshot: Arc<StateSnapshot>,
   specifier_map: Arc<TscSpecifierMap>,
   token: CancellationToken,
+  pending_requests: Option<UnboundedReceiver<Request>>,
+  mark: Option<PerformanceMark>,
 }
 
 impl State {
@@ -3962,14 +3996,17 @@ impl State {
     state_snapshot: Arc<StateSnapshot>,
     specifier_map: Arc<TscSpecifierMap>,
     performance: Arc<Performance>,
+    pending_requests: UnboundedReceiver<Request>,
   ) -> Self {
     Self {
       last_id: 1,
       performance,
-      response: None,
+      response_tx: None,
       state_snapshot,
       specifier_map,
       token: Default::default(),
+      mark: None,
+      pending_requests: Some(pending_requests),
     }
   }
 
@@ -4090,6 +4127,75 @@ fn op_resolve(
   op_resolve_inner(state, ResolveArgs { base, specifiers })
 }
 
+struct TscRequestArray {
+  request: TscRequest,
+  id: Smi<usize>,
+  change: convert::OptionNull<PendingChange>,
+}
+
+impl<'a> ToV8<'a> for TscRequestArray {
+  type Error = StdAnyError;
+
+  fn to_v8(
+    self,
+    scope: &mut v8::HandleScope<'a>,
+  ) -> Result<v8::Local<'a, v8::Value>, Self::Error> {
+    let id = self.id.to_v8(scope).unwrap_infallible();
+
+    let (method_name, args) = self.request.to_server_request(scope)?;
+
+    let method_name = deno_core::FastString::from_static(method_name)
+      .v8_string(scope)
+      .into();
+    let args = args.unwrap_or_else(|| v8::Array::new(scope, 0).into());
+
+    let change = self.change.to_v8(scope).unwrap_infallible();
+
+    Ok(
+      v8::Array::new_with_elements(scope, &[id, method_name, args, change])
+        .into(),
+    )
+  }
+}
+
+#[op2(async)]
+#[to_v8]
+async fn op_poll_requests(
+  state: Rc<RefCell<OpState>>,
+) -> convert::OptionNull<TscRequestArray> {
+  let mut pending_requests = {
+    let mut state = state.borrow_mut();
+    let state = state.try_borrow_mut::<State>().unwrap();
+    state.pending_requests.take().unwrap()
+  };
+
+  let Some((request, snapshot, response_tx, token, change)) =
+    pending_requests.recv().await
+  else {
+    return None.into();
+  };
+
+  let mut state = state.borrow_mut();
+  let state = state.try_borrow_mut::<State>().unwrap();
+  state.pending_requests = Some(pending_requests);
+  state.state_snapshot = snapshot;
+  state.token = token;
+  state.response_tx = Some(response_tx);
+  let id = state.last_id;
+  state.last_id += 1;
+  let mark = state
+    .performance
+    .mark_with_args(format!("tsc.host.{}", request.method()), &request);
+  state.mark = Some(mark);
+
+  Some(TscRequestArray {
+    request,
+    id: Smi(id),
+    change: change.into(),
+  })
+  .into()
+}
+
 #[inline]
 fn op_resolve_inner(
   state: &mut OpState,
@@ -4118,9 +4224,25 @@ fn op_resolve_inner(
 }
 
 #[op2(fast)]
-fn op_respond(state: &mut OpState, #[string] response: String) {
+fn op_respond(
+  state: &mut OpState,
+  #[string] response: String,
+  #[string] error: String,
+) {
   let state = state.borrow_mut::<State>();
-  state.response = Some(response);
+  state.performance.measure(state.mark.take().unwrap());
+  let response = if !error.is_empty() {
+    Err(anyhow!("tsc error: {error}"))
+  } else {
+    Ok(response)
+  };
+
+  let was_sent = state.response_tx.take().unwrap().send(response).is_ok();
+  // Don't print the send error if the token is cancelled, it's expected
+  // to fail in that case and this commonly occurs.
+  if !was_sent && !state.token.is_cancelled() {
+    lsp_warn!("Unable to send result to client.");
+  }
 }
 
 #[op2]
@@ -4216,121 +4338,36 @@ fn op_project_version(state: &mut OpState) -> usize {
 
 struct TscRuntime {
   js_runtime: JsRuntime,
-  server_request_fn_global: v8::Global<v8::Function>,
+  server_main_loop_fn_global: v8::Global<v8::Function>,
 }
 
 impl TscRuntime {
   fn new(mut js_runtime: JsRuntime) -> Self {
-    let server_request_fn_global = {
+    let server_main_loop_fn_global = {
       let context = js_runtime.main_context();
       let scope = &mut js_runtime.handle_scope();
       let context_local = v8::Local::new(scope, context);
       let global_obj = context_local.global(scope);
-      let server_request_fn_str =
-        v8::String::new_external_onebyte_static(scope, b"serverRequest")
+      let server_main_loop_fn_str =
+        v8::String::new_external_onebyte_static(scope, b"serverMainLoop")
           .unwrap();
-      let server_request_fn = v8::Local::try_from(
-        global_obj.get(scope, server_request_fn_str.into()).unwrap(),
+      let server_main_loop_fn = v8::Local::try_from(
+        global_obj
+          .get(scope, server_main_loop_fn_str.into())
+          .unwrap(),
       )
       .unwrap();
-      v8::Global::new(scope, server_request_fn)
+      v8::Global::new(scope, server_main_loop_fn)
     };
     Self {
-      server_request_fn_global,
+      server_main_loop_fn_global,
       js_runtime,
     }
-  }
-
-  /// Send a request into the runtime and return the JSON string containing the response.
-  fn request(
-    &mut self,
-    state_snapshot: Arc<StateSnapshot>,
-    request: TscRequest,
-    change: Option<PendingChange>,
-    token: CancellationToken,
-  ) -> Result<String, AnyError> {
-    if token.is_cancelled() {
-      return Err(anyhow!("Operation was cancelled."));
-    }
-    let (performance, id) = {
-      let op_state = self.js_runtime.op_state();
-      let mut op_state = op_state.borrow_mut();
-      let state = op_state.borrow_mut::<State>();
-      state.state_snapshot = state_snapshot;
-      state.token = token;
-      state.last_id += 1;
-      let id = state.last_id;
-      (state.performance.clone(), id)
-    };
-    let mark = performance
-      .mark_with_args(format!("tsc.host.{}", request.method()), &request);
-
-    {
-      let scope = &mut self.js_runtime.handle_scope();
-      let tc_scope = &mut v8::TryCatch::new(scope);
-      let server_request_fn =
-        v8::Local::new(tc_scope, &self.server_request_fn_global);
-      let undefined = v8::undefined(tc_scope).into();
-
-      let change = if let Some(change) = change {
-        change.to_v8(tc_scope)?
-      } else {
-        v8::null(tc_scope).into()
-      };
-
-      let (method, req_args) = request.to_server_request(tc_scope)?;
-      let args = vec![
-        v8::Integer::new(tc_scope, id as i32).into(),
-        v8::String::new(tc_scope, method).unwrap().into(),
-        req_args.unwrap_or_else(|| v8::Array::new(tc_scope, 0).into()),
-        change,
-      ];
-
-      server_request_fn.call(tc_scope, undefined, &args);
-      if tc_scope.has_caught() && !tc_scope.has_terminated() {
-        if let Some(stack_trace) = tc_scope.stack_trace() {
-          lsp_warn!(
-            "Error during TS request \"{method}\":\n  {}",
-            stack_trace.to_rust_string_lossy(tc_scope),
-          );
-        } else if let Some(message) = tc_scope.message() {
-          lsp_warn!(
-            "Error during TS request \"{method}\":\n  {}\n  {}",
-            message.get(tc_scope).to_rust_string_lossy(tc_scope),
-            tc_scope
-              .exception()
-              .map(|exc| exc.to_rust_string_lossy(tc_scope))
-              .unwrap_or_default()
-          );
-        } else {
-          lsp_warn!(
-            "Error during TS request \"{method}\":\n  {}",
-            tc_scope
-              .exception()
-              .map(|exc| exc.to_rust_string_lossy(tc_scope))
-              .unwrap_or_default(),
-          );
-        }
-        tc_scope.rethrow();
-      }
-    }
-
-    let op_state = self.js_runtime.op_state();
-    let mut op_state = op_state.borrow_mut();
-    let state = op_state.borrow_mut::<State>();
-
-    performance.measure(mark);
-    state.response.take().ok_or_else(|| {
-      custom_error(
-        "RequestError",
-        "The response was not received for the request.",
-      )
-    })
   }
 }
 
 fn run_tsc_thread(
-  mut request_rx: UnboundedReceiver<Request>,
+  request_rx: UnboundedReceiver<Request>,
   performance: Arc<Performance>,
   specifier_map: Arc<TscSpecifierMap>,
   maybe_inspector_server: Option<Arc<InspectorServer>>,
@@ -4340,9 +4377,13 @@ fn run_tsc_thread(
   // supplied snapshot is an isolate that contains the TypeScript language
   // server.
   let mut tsc_runtime = JsRuntime::new(RuntimeOptions {
-    extensions: vec![deno_tsc::init_ops(performance, specifier_map)],
+    extensions: vec![deno_tsc::init_ops(
+      performance,
+      specifier_map,
+      request_rx,
+    )],
     startup_snapshot: Some(tsc::compiler_snapshot()),
-    inspector: maybe_inspector_server.is_some(),
+    inspector: has_inspector_server,
     ..Default::default()
   });
 
@@ -4355,40 +4396,53 @@ fn run_tsc_thread(
   }
 
   let tsc_future = async {
-    start_tsc(&mut tsc_runtime, false).unwrap();
-    let (request_signal_tx, mut request_signal_rx) = mpsc::unbounded_channel::<()>();
-    let tsc_runtime = Rc::new(tokio::sync::Mutex::new(TscRuntime::new(tsc_runtime)));
+    // start_tsc(&mut tsc_runtime, false).unwrap();
+    let tsc_runtime =
+      Rc::new(tokio::sync::Mutex::new(TscRuntime::new(tsc_runtime)));
     let tsc_runtime_ = tsc_runtime.clone();
+
     let event_loop_fut = async {
       loop {
-        if has_inspector_server {
-          tsc_runtime_.lock().await.js_runtime.run_event_loop(PollEventLoopOptions {
+        if let Err(e) = tsc_runtime_
+          .lock()
+          .await
+          .js_runtime
+          .run_event_loop(PollEventLoopOptions {
             wait_for_inspector: false,
             pump_v8_message_loop: true,
-          }).await.ok();
+          })
+          .await
+        {
+          log::error!("Error in TSC event loop: {e}");
         }
-        request_signal_rx.recv_many(&mut vec![], 1000).await;
       }
     };
-    tokio::pin!(event_loop_fut);
-    loop {
-      tokio::select! {
-        biased;
-        (maybe_request, mut tsc_runtime) = async { (request_rx.recv().await, tsc_runtime.lock().await) } => {
-          if let Some((req, state_snapshot, tx, token, pending_change)) = maybe_request {
-            let value = tsc_runtime.request(state_snapshot, req, pending_change, token.clone());
-            request_signal_tx.send(()).unwrap();
-            let was_sent = tx.send(value).is_ok();
-            // Don't print the send error if the token is cancelled, it's expected
-            // to fail in that case and this commonly occurs.
-            if !was_sent && !token.is_cancelled() {
-              lsp_warn!("Unable to send result to client.");
-            }
-          } else {
-            break;
-          }
-        },
-        _ = &mut event_loop_fut => {}
+    let main_loop_fut = {
+      let enable_debug = std::env::var("DENO_TSC_DEBUG")
+        .map(|s| {
+          let s = s.trim();
+          s == "1" || s.eq_ignore_ascii_case("true")
+        })
+        .unwrap_or(false);
+      let mut runtime = tsc_runtime.lock().await;
+      let main_loop = runtime.server_main_loop_fn_global.clone();
+      let args = {
+        let scope = &mut runtime.js_runtime.handle_scope();
+        let enable_debug_local =
+          v8::Local::<v8::Value>::from(v8::Boolean::new(scope, enable_debug));
+        [v8::Global::new(scope, enable_debug_local)]
+      };
+
+      runtime.js_runtime.call_with_args(&main_loop, &args)
+    };
+
+    tokio::select! {
+      biased;
+      _ = event_loop_fut => {},
+      res = main_loop_fut => {
+        if let Err(err) = res {
+          log::error!("Error in TSC main loop: {err}");
+        }
       }
     }
   }
@@ -4410,29 +4464,22 @@ deno_core::extension!(deno_tsc,
     op_script_version,
     op_ts_config,
     op_project_version,
+    op_poll_requests,
   ],
   options = {
     performance: Arc<Performance>,
     specifier_map: Arc<TscSpecifierMap>,
+    request_rx: UnboundedReceiver<Request>,
   },
   state = |state, options| {
     state.put(State::new(
       Default::default(),
       options.specifier_map,
       options.performance,
+      options.request_rx,
     ));
   },
 );
-
-/// Instruct a language server runtime to start the language server and provide
-/// it with a minimal bootstrap configuration.
-fn start_tsc(runtime: &mut JsRuntime, debug: bool) -> Result<(), AnyError> {
-  let init_config = json!({ "debug": debug });
-  let init_src = format!("globalThis.serverInit({init_config});");
-
-  runtime.execute_script(located_script_name!(), init_src)?;
-  Ok(())
-}
 
 #[derive(Debug, Deserialize_repr, Serialize_repr)]
 #[repr(u32)]
@@ -5123,8 +5170,9 @@ mod tests {
   }
 
   fn setup_op_state(state_snapshot: Arc<StateSnapshot>) -> OpState {
+    let (_tx, rx) = mpsc::unbounded_channel();
     let state =
-      State::new(state_snapshot, Default::default(), Default::default());
+      State::new(state_snapshot, Default::default(), Default::default(), rx);
     let mut op_state = OpState::new(None);
     op_state.put(state);
     op_state
