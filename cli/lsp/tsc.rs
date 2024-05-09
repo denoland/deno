@@ -26,6 +26,7 @@ use crate::cache::HttpCache;
 use crate::lsp::cache::CacheMetadata;
 use crate::lsp::documents::Documents;
 use crate::lsp::logging::lsp_warn;
+use crate::lsp::resolver::LspResolver;
 use crate::tsc;
 use crate::tsc::ResolveArgs;
 use crate::tsc::MISSING_DEPENDENCY_SPECIFIER;
@@ -4407,14 +4408,15 @@ deno_core::extension!(deno_tsc,
     specifier_map: Arc<TscSpecifierMap>,
   },
   state = |state, options| {
+    let resolver = Arc::new(LspResolver::new(options.cache.clone()));
     state.put(State::new(
       Arc::new(StateSnapshot {
         project_version: 0,
         assets: Default::default(),
         cache_metadata: CacheMetadata::new(options.cache.clone()),
         config: Default::default(),
-        documents: Documents::new(options.cache.clone()),
-        resolver: Default::default(),
+        documents: Documents::new(options.cache.clone(), resolver.clone()),
+        resolver,
       }),
       options.specifier_map,
       options.performance,
@@ -5083,7 +5085,8 @@ mod tests {
       location.to_path_buf(),
       RealDenoCacheEnv,
     ));
-    let mut documents = Documents::new(cache.clone());
+    let resolver = Arc::new(LspResolver::new(cache.clone()));
+    let mut documents = Documents::new(cache.clone(), resolver);
     for (specifier, source, version, language_id) in fixtures {
       let specifier =
         resolve_url(specifier).expect("failed to create specifier");
@@ -5109,7 +5112,7 @@ mod tests {
         .unwrap(),
       )
       .await;
-    let resolver = LspResolver::default()
+    let resolver = LspResolver::new(cache.clone())
       .with_new_config(&config, cache.clone(), None, None)
       .await;
     StateSnapshot {

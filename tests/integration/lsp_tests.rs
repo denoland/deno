@@ -12049,7 +12049,7 @@ fn lsp_deno_future_env_byonm() {
 }
 
 #[test]
-fn lsp_sloppy_imports_warn() {
+fn lsp_sloppy_imports() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
   let temp_dir = temp_dir.path();
@@ -12104,137 +12104,67 @@ fn lsp_sloppy_imports_warn() {
       ),
     },
   }));
-  assert_eq!(
-    diagnostics.messages_with_source("deno"),
-    lsp::PublishDiagnosticsParams {
-      uri: temp_dir.join("file.ts").uri_file(),
-      diagnostics: vec![
-        lsp::Diagnostic {
-          range: lsp::Range {
-            start: lsp::Position {
-              line: 0,
-              character: 19
-            },
-            end: lsp::Position {
-              line: 0,
-              character: 24
-            }
-          },
-          severity: Some(lsp::DiagnosticSeverity::INFORMATION),
-          code: Some(lsp::NumberOrString::String("redirect".to_string())),
-          source: Some("deno".to_string()),
-          message: format!(
-            "The import of \"{}\" was redirected to \"{}\".",
-            temp_dir.join("a").uri_file(),
-            temp_dir.join("a.ts").uri_file()
-          ),
-          data: Some(json!({
-            "specifier": temp_dir.join("a").uri_file(),
-            "redirect": temp_dir.join("a.ts").uri_file()
-          })),
-          ..Default::default()
-        },
-        lsp::Diagnostic {
-          range: lsp::Range {
-            start: lsp::Position {
-              line: 1,
-              character: 19
-            },
-            end: lsp::Position {
-              line: 1,
-              character: 27
-            }
-          },
-          severity: Some(lsp::DiagnosticSeverity::INFORMATION),
-          code: Some(lsp::NumberOrString::String("redirect".to_string())),
-          source: Some("deno".to_string()),
-          message: format!(
-            "The import of \"{}\" was redirected to \"{}\".",
-            temp_dir.join("b.js").uri_file(),
-            temp_dir.join("b.ts").uri_file()
-          ),
-          data: Some(json!({
-            "specifier": temp_dir.join("b.js").uri_file(),
-            "redirect": temp_dir.join("b.ts").uri_file()
-          })),
-          ..Default::default()
-        }
-      ],
-      version: Some(1),
-    }
-  );
 
-  let res = client.write_request(
-    "textDocument/codeAction",
+  assert_eq!(json!(diagnostics.all()), json!([]));
+
+  client.shutdown();
+}
+
+#[test]
+fn lsp_sloppy_imports_prefers_dts() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  let temp_dir = temp_dir.path();
+
+  temp_dir
+    .join("deno.json")
+    .write(r#"{ "unstable": ["sloppy-imports"] }"#);
+
+  let mut client: LspClient = context
+    .new_lsp_command()
+    .set_root_dir(temp_dir.clone())
+    .build();
+  client.initialize_default();
+
+  temp_dir.join("a.js").write("export const foo: number;");
+
+  let a_dts = source_file(temp_dir.join("a.d.ts"), "export const foo = 3;");
+  let file = source_file(
+    temp_dir.join("file.ts"),
+    "import { foo } from './a.js';\nconsole.log(foo);",
+  );
+  let diagnostics = client.did_open_file(&file);
+  // no warnings because "a.js" exists
+  assert_eq!(diagnostics.all().len(), 0);
+
+  let diagnostics = client.did_open_file(&a_dts);
+  assert_eq!(diagnostics.all().len(), 0, "Got {:#?}", diagnostics.all());
+
+  let response = client.write_request(
+    "textDocument/references",
     json!({
-      "textDocument": {
-        "uri": temp_dir.join("file.ts").uri_file()
-      },
-      "range": {
-        "start": { "line": 0, "character": 19 },
-        "end": { "line": 0, "character": 24 }
-      },
+      "textDocument": a_dts.identifier(),
+      "position": a_dts.range_of("foo").start,
       "context": {
-        "diagnostics": [{
-          "range": {
-            "start": { "line": 0, "character": 19 },
-            "end": { "line": 0, "character": 24 }
-          },
-          "severity": 3,
-          "code": "redirect",
-          "source": "deno",
-          "message": format!(
-            "The import of \"{}\" was redirected to \"{}\".",
-            temp_dir.join("a").uri_file(),
-            temp_dir.join("a.ts").uri_file()
-          ),
-          "data": {
-            "specifier": temp_dir.join("a").uri_file(),
-            "redirect": temp_dir.join("a.ts").uri_file(),
-          },
-        }],
-        "only": ["quickfix"]
+        "includeDeclaration": false
       }
     }),
   );
-  assert_eq!(
-    res,
-    json!([{
-      "title": "Update specifier to its redirected specifier.",
-      "kind": "quickfix",
-      "diagnostics": [{
-        "range": {
-          "start": { "line": 0, "character": 19 },
-          "end": { "line": 0, "character": 24 }
-        },
-        "severity": 3,
-        "code": "redirect",
-        "source": "deno",
-        "message": format!(
-          "The import of \"{}\" was redirected to \"{}\".",
-          temp_dir.join("a").uri_file(),
-          temp_dir.join("a.ts").uri_file()
-        ),
-        "data": {
-          "specifier": temp_dir.join("a").uri_file(),
-          "redirect": temp_dir.join("a.ts").uri_file()
-        },
-      }],
-      "edit": {
-        "changes": {
-          temp_dir.join("file.ts").uri_file(): [{
-            "range": {
-              "start": { "line": 0, "character": 19 },
-              "end": { "line": 0, "character": 24 }
-            },
-            "newText": "\"./a.ts\""
-          }]
-        }
+  assert_json_subset(
+    response,
+    json!([
+      {
+        "uri": file.uri(),
+        // the import
+        "range": file.range_of("foo"),
+      },
+      {
+        "uri": file.uri(),
+        // the usage
+        "range": file.range_of_nth(1, "foo"),
       }
-    }])
+    ]),
   );
-
-  client.shutdown();
 }
 
 #[test]
@@ -12619,61 +12549,4 @@ fn lsp_ts_code_fix_any_param() {
   }
 
   panic!("failed to find 'Infer parameter types from usage' fix in fixes: {fixes:#?}");
-}
-
-#[test]
-fn lsp_sloppy_imports_prefers_original() {
-  let context = TestContextBuilder::new().use_temp_cwd().build();
-  let temp_dir = context.temp_dir();
-  let temp_dir = temp_dir.path();
-
-  temp_dir
-    .join("deno.json")
-    .write(r#"{ "unstable": ["sloppy-imports"] }"#);
-
-  let mut client: LspClient = context
-    .new_lsp_command()
-    .set_root_dir(temp_dir.clone())
-    .build();
-  client.initialize_default();
-
-  temp_dir.join("a.d.ts").write("export const foo: number;");
-
-  let a_js = source_file(temp_dir.join("a.js"), "export const foo = 3;");
-  let file = source_file(
-    temp_dir.join("file.ts"),
-    "import { foo } from './a.js';\nconsole.log(foo);",
-  );
-  let diagnostics = client.did_open_file(&file);
-  // no warnings because "a.js" exists
-  assert_eq!(diagnostics.all().len(), 0);
-
-  let diagnostics = client.did_open_file(&a_js);
-  assert_eq!(diagnostics.all().len(), 0, "Got {:#?}", diagnostics.all());
-
-  let response = client.write_request(
-    "textDocument/references",
-    json!({
-      "textDocument": a_js.identifier(),
-      "position": a_js.range_of("foo").start,
-      "context": {
-        "includeDeclaration": false
-      }
-    }),
-  );
-  assert_json_subset(
-    response,
-    json!([
-      {
-        "uri": file.uri(),
-        // the import
-        "range": file.range_of("foo"),
-      },
-      {
-        "uri": file.uri(),
-        // the usage
-        "range": file.range_of_nth(1, "foo"),
-      }
-    ]),
-  );
 }

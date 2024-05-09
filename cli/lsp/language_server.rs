@@ -251,7 +251,6 @@ impl LanguageServer {
       let mut loader = crate::lsp::documents::OpenDocumentsGraphLoader {
         inner_loader: &mut inner_loader,
         open_docs: &open_docs,
-        unstable_sloppy_imports: cli_options.unstable_sloppy_imports(),
       };
       let graph = module_graph_creator
         .create_graph_with_loader(GraphKind::All, roots.clone(), &mut loader)
@@ -464,7 +463,8 @@ impl Inner {
       crate::cache::RealDenoCacheEnv,
     ));
     let cache = global_cache.clone();
-    let documents = Documents::new(cache.clone());
+    let resolver = Arc::new(LspResolver::new(cache.clone()));
+    let documents = Documents::new(cache.clone(), resolver.clone());
     let cache_metadata = cache::CacheMetadata::new(cache.clone());
     let performance = Arc::new(Performance::default());
     let config = Config::default();
@@ -501,7 +501,7 @@ impl Inner {
       module_registry,
       npm_search_api,
       performance,
-      resolver: Default::default(),
+      resolver,
       ts_fixable_diagnostics: Default::default(),
       ts_server,
       url_map: Default::default(),

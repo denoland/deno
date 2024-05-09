@@ -1157,6 +1157,7 @@ impl SourceFile {
     path.write(&src);
     Self::new_in_mem(path, src)
   }
+
   pub fn new_in_mem(path: PathRef, src: String) -> Self {
     let lang = match path.as_path().extension().unwrap().to_str().unwrap() {
       "js" => "javascript",
@@ -1171,15 +1172,19 @@ impl SourceFile {
       version: 1,
     }
   }
+
   pub fn range_of(&self, text: &str) -> lsp::Range {
     range_of(text, &self.src)
   }
+
   pub fn range_of_nth(&self, n: usize, text: &str) -> lsp::Range {
     range_of_nth(n, text, &self.src)
   }
+
   pub fn uri(&self) -> lsp::Url {
     self.path.uri_file()
   }
+
   pub fn text_document(&self) -> lsp::TextDocumentItem {
     lsp::TextDocumentItem {
       uri: self.uri(),
@@ -1188,6 +1193,7 @@ impl SourceFile {
       text: self.src.clone(),
     }
   }
+
   pub fn identifier(&self) -> lsp::TextDocumentIdentifier {
     lsp::TextDocumentIdentifier { uri: self.uri() }
   }
