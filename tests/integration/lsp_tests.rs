@@ -7082,6 +7082,43 @@ fn lsp_npm_completions_auto_import_and_quick_fix_no_import_map() {
 }
 
 #[test]
+fn lsp_completions_using_decl() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"function makeResource() {
+  return {
+    [Symbol.dispose]() {
+    },
+  };
+}
+
+using resource = makeResource();
+
+res"#
+    }
+  }));
+
+  let list = client.get_completion_list(
+    "file:///a/file.ts",
+    (9, 3),
+    json!({
+      "triggerKind": 2,
+      "triggerCharacter": "."
+    }),
+  );
+  assert!(list.items.iter().any(|i| i.label == "resource"));
+  assert!(!list.is_incomplete);
+
+  client.shutdown();
+}
+
+#[test]
 fn lsp_npm_always_caches() {
   // npm specifiers should always be cached even when not specified
   // because they affect the resolution of each other

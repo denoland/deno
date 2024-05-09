@@ -1372,6 +1372,7 @@ pub enum OneOrMany<T> {
   Many(Vec<T>),
 }
 
+/// Aligns with ts.ScriptElementKind
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub enum ScriptElementKind {
   #[serde(rename = "")]
@@ -1400,6 +1401,10 @@ pub enum ScriptElementKind {
   VariableElement,
   #[serde(rename = "local var")]
   LocalVariableElement,
+  #[serde(rename = "using")]
+  VariableUsingElement,
+  #[serde(rename = "await using")]
+  VariableAwaitUsingElement,
   #[serde(rename = "function")]
   FunctionElement,
   #[serde(rename = "local function")]
@@ -1412,6 +1417,8 @@ pub enum ScriptElementKind {
   MemberSetAccessorElement,
   #[serde(rename = "property")]
   MemberVariableElement,
+  #[serde(rename = "accessor")]
+  MemberAccessorVariableElement,
   #[serde(rename = "constructor")]
   ConstructorImplementationElement,
   #[serde(rename = "call")]
@@ -1456,7 +1463,8 @@ impl Default for ScriptElementKind {
   }
 }
 
-/// This mirrors the method `convertKind` in `completions.ts` in vscode
+/// This mirrors the method `convertKind` in `completions.ts` in vscode (extensions/typescript-language-features)
+/// https://github.com/microsoft/vscode/blob/bd2df940d74b51105aefb11304e028d2fb56a9dc/extensions/typescript-language-features/src/languageFeatures/completions.ts#L440
 impl From<ScriptElementKind> for lsp::CompletionItemKind {
   fn from(kind: ScriptElementKind) -> Self {
     match kind {
@@ -1502,7 +1510,18 @@ impl From<ScriptElementKind> for lsp::CompletionItemKind {
       ScriptElementKind::ScriptElement => lsp::CompletionItemKind::FILE,
       ScriptElementKind::Directory => lsp::CompletionItemKind::FOLDER,
       ScriptElementKind::String => lsp::CompletionItemKind::CONSTANT,
-      _ => lsp::CompletionItemKind::PROPERTY,
+      ScriptElementKind::LocalClassElement
+      | ScriptElementKind::ConstructorImplementationElement
+      | ScriptElementKind::TypeParameterElement
+      | ScriptElementKind::Label
+      | ScriptElementKind::JsxAttribute
+      | ScriptElementKind::Link
+      | ScriptElementKind::LinkName
+      | ScriptElementKind::LinkText
+      | ScriptElementKind::VariableUsingElement
+      | ScriptElementKind::VariableAwaitUsingElement
+      | ScriptElementKind::MemberAccessorVariableElement
+      | ScriptElementKind::Unknown => lsp::CompletionItemKind::PROPERTY,
     }
   }
 }
