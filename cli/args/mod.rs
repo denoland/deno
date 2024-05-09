@@ -747,9 +747,12 @@ impl CliOptions {
         format!("for: {}", insecure_allowlist.join(", "))
       };
       let msg =
-        format!("DANGER: TLS certificate validation is disabled {domains}");
-      // use eprintln instead of log::warn so this always gets shown
-      eprintln!("{}", colors::yellow(msg));
+        format!("DANGER: TLS certificate validation is disabled {}", domains);
+      #[allow(clippy::print_stderr)]
+      {
+        // use eprintln instead of log::warn so this always gets shown
+        eprintln!("{}", colors::yellow(msg));
+      }
     }
 
     let maybe_lockfile = maybe_lockfile.filter(|_| !force_global_cache);
