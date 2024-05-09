@@ -657,7 +657,7 @@ fn test_collect_summary_with_no_matches() {
     .args_vec(vec![
       "coverage".to_string(),
       "--detailed".to_string(),
-      format!("{}/", tempdir),
+      format!("{}/", temp_dir),
     ])
     .split_output()
     .run();
