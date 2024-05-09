@@ -2,12 +2,14 @@
 
 use std::collections::HashSet;
 use std::fs;
+use std::io::ErrorKind;
 use std::path::Path;
 use std::path::PathBuf;
 
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
 use deno_core::anyhow::bail;
+use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_npm::registry::NpmPackageVersionDistInfo;
 use deno_npm::registry::NpmPackageVersionDistInfoIntegrity;
@@ -19,26 +21,45 @@ use tar::EntryType;
 use crate::util::path::get_atomic_dir_path;
 
 pub fn verify_and_extract_tarball(
-  package: &PackageNv,
+  package_nv: &PackageNv,
   data: &[u8],
   dist_info: &NpmPackageVersionDistInfo,
   output_folder: &Path,
 ) -> Result<(), AnyError> {
-  verify_tarball_integrity(package, data, &dist_info.integrity())?;
+  verify_tarball_integrity(package_nv, data, &dist_info.integrity())?;
 
   let temp_dir = get_atomic_dir_path(output_folder);
   extract_tarball(data, &temp_dir)?;
-  match std::fs::rename(&temp_dir, output_folder) {
-    Ok(_) => {}
-    Err(err) => {
-      let _ = fs::remove_dir_all(&temp_dir);
-      if err.kind() != std::io::ErrorKind::AlreadyExists {
-        bail!("Failed to extract tarball: {:#}", err)
+  rename_with_retries(&temp_dir, output_folder)
+    .map_err(AnyError::from)
+    .context("Failed moving extracted tarball to final destination.")
+}
+
+fn rename_with_retries(
+  temp_dir: &Path,
+  output_folder: &Path,
+) -> Result<(), std::io::Error> {
+  let mut count = 0;
+  // renaming might be flaky if a lot of processes are trying
+  // to do this, so try again a few times
+  loop {
+    match fs::rename(temp_dir, output_folder) {
+      Ok(_) => return Ok(()),
+      Err(err) if err.kind() == ErrorKind::AlreadyExists => {
+        // another process copied here, just cleanup
+        let _ = fs::remove_dir_all(&temp_dir);
+      }
+      Err(err) => {
+        count += 1;
+        if count >= 3 {
+          let _ = fs::remove_dir_all(&temp_dir);
+          return Err(err);
+        }
+        // wait a bit before retrying
+        std::thread::sleep(std::time::Duration::from_millis(10));
       }
     }
   }
-
-  Ok(())
 }
 
 fn verify_tarball_integrity(

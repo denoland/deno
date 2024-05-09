@@ -91,14 +91,14 @@ impl NpmCache {
 
   async fn ensure_package_inner(
     &self,
-    package: &PackageNv,
+    package_nv: &PackageNv,
     dist: &NpmPackageVersionDistInfo,
     registry_url: &Url,
   ) -> Result<(), AnyError> {
     let package_folder = self
       .cache_dir
-      .package_folder_for_name_and_version(package, registry_url);
-    let should_use_cache = self.should_use_cache_for_package(package);
+      .package_folder_for_name_and_version(package_nv, registry_url);
+    let should_use_cache = self.should_use_cache_for_package(package_nv);
     if should_use_cache && self.fs.exists_sync(&package_folder) {
       return Ok(());
     } else if self.cache_setting == CacheSetting::Only {
@@ -106,7 +106,7 @@ impl NpmCache {
         "NotCached",
         format!(
           "An npm specifier not found in cache: \"{}\", --cached-only is specified.",
-          &package.name
+          &package_nv.name
         )
       )
       );
@@ -132,7 +132,17 @@ impl NpmCache {
             .context("Failed removing package directory.")?;
         }
 
-        verify_and_extract_tarball(package, &bytes, dist, &package_folder)
+        let dist = dist.clone();
+        let package_nv = package_nv.clone();
+        deno_core::unsync::spawn_blocking(move || {
+          verify_and_extract_tarball(
+            &package_nv,
+            &bytes,
+            &dist,
+            &package_folder,
+          )
+        })
+        .await?
       }
       None => {
         bail!("Could not find npm package tarball at: {}", dist.tarball);
