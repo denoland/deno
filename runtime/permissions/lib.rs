@@ -1124,7 +1124,7 @@ impl UnaryPermission<NetDescriptor> {
       }
 
       Err(err) => {
-        eprintln!("Error creating NetDescriptor: {}", err);
+        log::error!("Error creating NetDescriptor: {}", err);
         PermissionState::Prompt
       }
     }
@@ -1143,7 +1143,7 @@ impl UnaryPermission<NetDescriptor> {
     match net_desc_result {
       Ok(net_desc) => self.request_desc(Some(&net_desc), || None),
       Err(err) => {
-        eprintln!("Error creating NetDescriptor: {}", err);
+        log::error!("Error creating NetDescriptor: {}", err);
         PermissionState::Prompt
       }
     }
@@ -1162,7 +1162,7 @@ impl UnaryPermission<NetDescriptor> {
     match net_desc_result {
       Ok(net_desc) => self.revoke_desc(Some(&net_desc)),
       Err(err) => {
-        eprintln!("Error creating NetDescriptor: {}", err);
+        log::error!("Error creating NetDescriptor: {}", err);
         PermissionState::Prompt
       }
     }
@@ -1180,7 +1180,7 @@ impl UnaryPermission<NetDescriptor> {
         self.check_desc(Some(&net_desc), false, api_name, || None)
       }
       Err(err) => {
-        eprintln!("Error creating NetDescriptor: {}", err);
+        log::error!("Error creating NetDescriptor: {}", err);
         Err(err)
       }
     }
@@ -1213,7 +1213,7 @@ impl UnaryPermission<NetDescriptor> {
         })
       }
       Err(err) => {
-        eprintln!("Error creating NetDescriptor: {}", err);
+        log::error!("Error creating NetDescriptor: {}", err);
         Err(err)
       }
     }
@@ -3388,7 +3388,7 @@ mod tests {
     let permission = UnaryPermission::<NetDescriptor>::default();
     let invalid_host: (String, Option<u16>) =
       ("foo@bar.com.".to_string(), Some(443));
-    let state = permission.query(Some(&&invalid_host));
+    let state = permission.query(Some(&invalid_host));
     assert_eq!(state, PermissionState::Prompt);
   }
 
@@ -3397,7 +3397,7 @@ mod tests {
     let mut permission = UnaryPermission::<NetDescriptor>::default();
     let invalid_host: (String, Option<u16>) =
       ("foo@bar.com.".to_string(), Some(443));
-    let result = permission.request(Some(&&invalid_host));
+    let result = permission.request(Some(&invalid_host));
     assert_eq!(result, PermissionState::Prompt);
   }
 
@@ -3406,7 +3406,7 @@ mod tests {
     let mut permission = UnaryPermission::<NetDescriptor>::default();
     let invalid_host: (String, Option<u16>) =
       ("foo@bar.com.".to_string(), Some(443));
-    let result = permission.revoke(Some(&&invalid_host));
+    let result = permission.revoke(Some(&invalid_host));
     assert_eq!(result, PermissionState::Prompt);
   }
 }
