@@ -22,8 +22,6 @@ use super::urls::INVALID_SPECIFIER;
 
 use crate::args::jsr_url;
 use crate::args::FmtOptionsConfig;
-use crate::lsp::cache::LspCache;
-use crate::lsp::documents::Documents;
 use crate::lsp::logging::lsp_warn;
 use crate::tsc;
 use crate::tsc::ResolveArgs;
@@ -4400,13 +4398,7 @@ deno_core::extension!(deno_tsc,
   },
   state = |state, options| {
     state.put(State::new(
-      Arc::new(StateSnapshot {
-        project_version: 0,
-        assets: Default::default(),
-        config: Default::default(),
-        documents: Documents::new(&LspCache::new(None)),
-        resolver: Default::default(),
-      }),
+      Default::default(),
       options.specifier_map,
       options.performance,
     ));
@@ -5062,22 +5054,12 @@ mod tests {
   use pretty_assertions::assert_eq;
   use test_util::TempDir;
 
-  async fn mock_state_snapshot(
-    fixtures: &[(&str, &str, i32, LanguageId)],
+  async fn setup(
     ts_config: Value,
-    cache: LspCache,
-  ) -> StateSnapshot {
-    let mut documents = Documents::new(&cache);
-    for (specifier, source, version, language_id) in fixtures {
-      let specifier =
-        resolve_url(specifier).expect("failed to create specifier");
-      documents.open(
-        specifier.clone(),
-        *version,
-        *language_id,
-        (*source).into(),
-      );
-    }
+    sources: &[(&str, &str, i32, LanguageId)],
+  ) -> (TsServer, Arc<StateSnapshot>, LspCache) {
+    let temp_dir = TempDir::new();
+    let cache = LspCache::new(Some(temp_dir.uri()));
     let mut config = Config::default();
     config
       .tree
@@ -5096,26 +5078,25 @@ mod tests {
     let resolver = LspResolver::default()
       .with_new_config(&config, &cache, None)
       .await;
-    StateSnapshot {
+    let mut documents = Documents::default();
+    documents.update_config(&config, &resolver, &cache, &Default::default());
+    for (specifier, source, version, language_id) in sources {
+      let specifier =
+        resolve_url(specifier).expect("failed to create specifier");
+      documents.open(
+        specifier.clone(),
+        *version,
+        *language_id,
+        (*source).into(),
+      );
+    }
+    let snapshot = Arc::new(StateSnapshot {
       project_version: 0,
       documents,
       assets: Default::default(),
       config: Arc::new(config),
       resolver,
-    }
-  }
-
-  async fn setup(
-    temp_dir: &TempDir,
-    config: Value,
-    sources: &[(&str, &str, i32, LanguageId)],
-  ) -> (TsServer, Arc<StateSnapshot>, LspCache) {
-    let location = temp_dir.path().to_path_buf();
-    let cache = LspCache::new(Some(
-      ModuleSpecifier::from_directory_path(&location).unwrap(),
-    ));
-    let snapshot =
-      Arc::new(mock_state_snapshot(sources, config, cache.clone()).await);
+    });
     let performance = Arc::new(Performance::default());
     let ts_server = TsServer::new(performance);
     ts_server.start(None).unwrap();
@@ -5147,9 +5128,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_get_diagnostics() {
-    let temp_dir = TempDir::new();
     let (ts_server, snapshot, _) = setup(
-      &temp_dir,
       json!({
         "target": "esnext",
         "module": "esnext",
@@ -5195,9 +5174,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_get_diagnostics_lib() {
-    let temp_dir = TempDir::new();
     let (ts_server, snapshot, _) = setup(
-      &temp_dir,
       json!({
         "target": "esnext",
         "module": "esnext",
@@ -5223,9 +5200,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_module_resolution() {
-    let temp_dir = TempDir::new();
     let (ts_server, snapshot, _) = setup(
-      &temp_dir,
       json!({
         "target": "esnext",
         "module": "esnext",
@@ -5256,9 +5231,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_bad_module_specifiers() {
-    let temp_dir = TempDir::new();
     let (ts_server, snapshot, _) = setup(
-      &temp_dir,
       json!({
         "target": "esnext",
         "module": "esnext",
@@ -5304,9 +5277,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_remote_modules() {
-    let temp_dir = TempDir::new();
     let (ts_server, snapshot, _) = setup(
-      &temp_dir,
       json!({
         "target": "esnext",
         "module": "esnext",
@@ -5337,9 +5308,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_partial_modules() {
-    let temp_dir = TempDir::new();
     let (ts_server, snapshot, _) = setup(
-      &temp_dir,
       json!({
         "target": "esnext",
         "module": "esnext",
@@ -5406,9 +5375,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_no_debug_failure() {
-    let temp_dir = TempDir::new();
     let (ts_server, snapshot, _) = setup(
-      &temp_dir,
       json!({
         "target": "esnext",
         "module": "esnext",
@@ -5454,8 +5421,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_request_assets() {
-    let temp_dir = TempDir::new();
-    let (ts_server, snapshot, _) = setup(&temp_dir, json!({}), &[]).await;
+    let (ts_server, snapshot, _) = setup(json!({}), &[]).await;
     let assets = get_isolate_assets(&ts_server, snapshot).await;
     let mut asset_names = assets
       .iter()
@@ -5487,9 +5453,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_modify_sources() {
-    let temp_dir = TempDir::new();
     let (ts_server, snapshot, cache) = setup(
-      &temp_dir,
       json!({
         "target": "esnext",
         "module": "esnext",
@@ -5623,9 +5587,7 @@ mod tests {
         character: 16,
       })
       .unwrap();
-    let temp_dir = TempDir::new();
     let (ts_server, snapshot, _) = setup(
-      &temp_dir,
       json!({
         "target": "esnext",
         "module": "esnext",
@@ -5774,9 +5736,7 @@ mod tests {
         character: 33,
       })
       .unwrap();
-    let temp_dir = TempDir::new();
     let (ts_server, snapshot, _) = setup(
-      &temp_dir,
       json!({
         "target": "esnext",
         "module": "esnext",
@@ -5883,9 +5843,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_get_edits_for_file_rename() {
-    let temp_dir = TempDir::new();
     let (ts_server, snapshot, _) = setup(
-      &temp_dir,
       json!({
         "target": "esnext",
         "module": "esnext",
@@ -5961,9 +5919,7 @@ mod tests {
 
   #[tokio::test]
   async fn resolve_unknown_dependency() {
-    let temp_dir = TempDir::new();
     let (_, snapshot, _) = setup(
-      &temp_dir,
       json!({
         "target": "esnext",
         "module": "esnext",

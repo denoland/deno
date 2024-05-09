@@ -807,24 +807,27 @@ mod tests {
   use deno_core::resolve_url;
   use deno_graph::Range;
   use std::collections::HashMap;
-  use std::path::Path;
   use test_util::TempDir;
 
-  fn mock_documents(
-    fixtures: &[(&str, &str, i32, LanguageId)],
-    source_fixtures: &[(&str, &str)],
-    location: &Path,
+  fn setup(
+    open_sources: &[(&str, &str, i32, LanguageId)],
+    fs_sources: &[(&str, &str)],
   ) -> Documents {
-    let cache = LspCache::new(Some(
-      ModuleSpecifier::from_directory_path(location).unwrap(),
-    ));
-    let mut documents = Documents::new(&cache);
-    for (specifier, source, version, language_id) in fixtures {
+    let temp_dir = TempDir::new();
+    let cache = LspCache::new(Some(temp_dir.uri()));
+    let mut documents = Documents::default();
+    documents.update_config(
+      &Default::default(),
+      &Default::default(),
+      &cache,
+      &Default::default(),
+    );
+    for (specifier, source, version, language_id) in open_sources {
       let specifier =
         resolve_url(specifier).expect("failed to create specifier");
       documents.open(specifier, *version, *language_id, (*source).into());
     }
-    for (specifier, source) in source_fixtures {
+    for (specifier, source) in fs_sources {
       let specifier =
         resolve_url(specifier).expect("failed to create specifier");
       cache
@@ -837,15 +840,6 @@ mod tests {
       );
     }
     documents
-  }
-
-  fn setup(
-    temp_dir: &TempDir,
-    documents: &[(&str, &str, i32, LanguageId)],
-    sources: &[(&str, &str)],
-  ) -> Documents {
-    let location = temp_dir.path();
-    mock_documents(documents, sources, location.as_path())
   }
 
   #[test]
@@ -931,9 +925,7 @@ mod tests {
         character: 21,
       },
     };
-    let temp_dir = TempDir::new();
     let documents = setup(
-      &temp_dir,
       &[
         (
           "file:///a/b/c.ts",

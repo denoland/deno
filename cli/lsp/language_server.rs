@@ -117,7 +117,7 @@ impl RootCertStoreProvider for LspRootCertStoreProvider {
 pub struct LanguageServer(Arc<tokio::sync::RwLock<Inner>>, CancellationToken);
 
 /// Snapshot of the state used by TSC.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct StateSnapshot {
   pub project_version: usize,
   pub assets: AssetsSnapshot,
@@ -436,18 +436,17 @@ impl LanguageServer {
 
 impl Inner {
   fn new(client: Client) -> Self {
-    let cache = LspCache::new(None);
-    let deno_dir = cache.deno_dir();
+    let cache = LspCache::default();
     let http_client = Arc::new(HttpClient::new(None, None));
     let module_registry = ModuleRegistry::new(
-      deno_dir.registries_folder_path(),
+      cache.deno_dir().registries_folder_path(),
       http_client.clone(),
     );
     let jsr_search_api =
       CliJsrSearchApi::new(module_registry.file_fetcher.clone());
     let npm_search_api =
       CliNpmSearchApi::new(module_registry.file_fetcher.clone());
-    let documents = Documents::new(&cache);
+    let documents = Documents::default();
     let performance = Arc::new(Performance::default());
     let config = Config::default();
     let ts_server = Arc::new(TsServer::new(performance.clone()));

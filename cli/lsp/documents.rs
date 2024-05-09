@@ -837,7 +837,7 @@ pub enum DocumentsFilter {
   OpenDiagnosable,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Default, Clone)]
 pub struct Documents {
   /// The DENO_DIR that the documents looks for non-file based modules.
   cache: Arc<LspCache>,
@@ -860,19 +860,6 @@ pub struct Documents {
 }
 
 impl Documents {
-  pub fn new(cache: &LspCache) -> Self {
-    Self {
-      cache: Arc::new(cache.clone()),
-      config: Default::default(),
-      dirty: true,
-      open_docs: HashMap::default(),
-      file_system_docs: Default::default(),
-      resolver: Default::default(),
-      npm_specifier_reqs: Default::default(),
-      has_injected_types_node_package: false,
-    }
-  }
-
   /// "Open" a document from the perspective of the editor, meaning that
   /// requests for information from the document will come from the in-memory
   /// representation received from the language server client, versus reading
@@ -1472,22 +1459,23 @@ mod tests {
   use deno_core::serde_json;
   use deno_core::serde_json::json;
   use pretty_assertions::assert_eq;
-  use test_util::PathRef;
   use test_util::TempDir;
 
-  fn setup(temp_dir: &TempDir) -> (Documents, PathRef, LspCache) {
-    let location = temp_dir.path().clone();
-    let cache = LspCache::new(Some(
-      ModuleSpecifier::from_directory_path(&location).unwrap(),
-    ));
-    let documents = Documents::new(&cache);
-    (documents, location, cache)
+  async fn setup() -> (Documents, LspCache, TempDir) {
+    let temp_dir = TempDir::new();
+    let cache = LspCache::new(Some(temp_dir.uri()));
+    let config = Config::default();
+    let resolver = LspResolver::default()
+      .with_new_config(&config, &cache, None)
+      .await;
+    let mut documents = Documents::default();
+    documents.update_config(&config, &resolver, &cache, &Default::default());
+    (documents, cache, temp_dir)
   }
 
-  #[test]
-  fn test_documents_open_close() {
-    let temp_dir = TempDir::new();
-    let (mut documents, _, _) = setup(&temp_dir);
+  #[tokio::test]
+  async fn test_documents_open_close() {
+    let (mut documents, _, _) = setup().await;
     let specifier = ModuleSpecifier::parse("file:///a.ts").unwrap();
     let content = r#"import * as b from "./b.ts";
 console.log(b);
@@ -1510,10 +1498,9 @@ console.log(b);
     assert!(document.maybe_lsp_version().is_none());
   }
 
-  #[test]
-  fn test_documents_change() {
-    let temp_dir = TempDir::new();
-    let (mut documents, _, _) = setup(&temp_dir);
+  #[tokio::test]
+  async fn test_documents_change() {
+    let (mut documents, _, _) = setup().await;
     let specifier = ModuleSpecifier::parse("file:///a.ts").unwrap();
     let content = r#"import * as b from "./b.ts";
 console.log(b);
@@ -1552,15 +1539,13 @@ console.log(b, "hello deno");
     );
   }
 
-  #[test]
-  fn test_documents_ensure_no_duplicates() {
+  #[tokio::test]
+  async fn test_documents_ensure_no_duplicates() {
     // it should never happen that a user of this API causes this to happen,
     // but we'll guard against it anyway
-    let temp_dir = TempDir::new();
-    let (mut documents, documents_path, _) = setup(&temp_dir);
-    let file_path = documents_path.join("file.ts");
-    let file_specifier = ModuleSpecifier::from_file_path(&file_path).unwrap();
-    documents_path.create_dir_all();
+    let (mut documents, _, temp_dir) = setup().await;
+    let file_path = temp_dir.path().join("file.ts");
+    let file_specifier = temp_dir.uri().join("file.ts").unwrap();
     file_path.write("");
 
     // open the document
@@ -1584,27 +1569,21 @@ console.log(b, "hello deno");
   async fn test_documents_refresh_dependencies_config_change() {
     // it should never happen that a user of this API causes this to happen,
     // but we'll guard against it anyway
-    let temp_dir = TempDir::new();
-    let (mut documents, documents_path, cache) = setup(&temp_dir);
-    fs::create_dir_all(&documents_path).unwrap();
+    let (mut documents, cache, temp_dir) = setup().await;
 
-    let file1_path = documents_path.join("file1.ts");
-    let file1_specifier = ModuleSpecifier::from_file_path(&file1_path).unwrap();
+    let file1_path = temp_dir.path().join("file1.ts");
+    let file1_specifier = temp_dir.uri().join("file1.ts").unwrap();
     fs::write(&file1_path, "").unwrap();
 
-    let file2_path = documents_path.join("file2.ts");
-    let file2_specifier = ModuleSpecifier::from_file_path(&file2_path).unwrap();
+    let file2_path = temp_dir.path().join("file2.ts");
+    let file2_specifier = temp_dir.uri().join("file2.ts").unwrap();
     fs::write(&file2_path, "").unwrap();
 
-    let file3_path = documents_path.join("file3.ts");
-    let file3_specifier = ModuleSpecifier::from_file_path(&file3_path).unwrap();
+    let file3_path = temp_dir.path().join("file3.ts");
+    let file3_specifier = temp_dir.uri().join("file3.ts").unwrap();
     fs::write(&file3_path, "").unwrap();
 
-    let mut config =
-      Config::new_with_roots(vec![ModuleSpecifier::from_directory_path(
-        &documents_path,
-      )
-      .unwrap()]);
+    let mut config = Config::new_with_roots([temp_dir.uri()]);
     let workspace_settings =
       serde_json::from_str(r#"{ "enable": true }"#).unwrap();
     config.set_workspace_settings(workspace_settings, vec![]);

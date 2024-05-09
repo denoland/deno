@@ -1578,45 +1578,6 @@ mod tests {
   use std::sync::Arc;
   use test_util::TempDir;
 
-  async fn mock_state_snapshot(
-    fixtures: &[(&str, &str, i32, LanguageId)],
-    maybe_import_map: Option<(&str, &str)>,
-    cache: LspCache,
-  ) -> StateSnapshot {
-    let mut documents = Documents::new(&cache);
-    for (specifier, source, version, language_id) in fixtures {
-      let specifier =
-        resolve_url(specifier).expect("failed to create specifier");
-      documents.open(
-        specifier.clone(),
-        *version,
-        *language_id,
-        (*source).into(),
-      );
-    }
-    let mut config = Config::new_with_roots([resolve_url("file:///").unwrap()]);
-    if let Some((base_url, json_string)) = maybe_import_map {
-      let base_url = resolve_url(base_url).unwrap();
-      let config_file = ConfigFile::new(
-        json_string,
-        base_url,
-        &deno_config::ParseOptions::default(),
-      )
-      .unwrap();
-      config.tree.inject_config_file(config_file).await;
-    }
-    let resolver = LspResolver::default()
-      .with_new_config(&config, &cache, None)
-      .await;
-    StateSnapshot {
-      project_version: 0,
-      documents,
-      assets: Default::default(),
-      config: Arc::new(config),
-      resolver,
-    }
-  }
-
   fn mock_config() -> Config {
     let root_uri = resolve_url("file:///").unwrap();
     Config {
@@ -1640,22 +1601,49 @@ mod tests {
   }
 
   async fn setup(
-    temp_dir: &TempDir,
     sources: &[(&str, &str, i32, LanguageId)],
     maybe_import_map: Option<(&str, &str)>,
   ) -> StateSnapshot {
-    let location = temp_dir.path().to_path_buf();
-    let cache = LspCache::new(Some(
-      ModuleSpecifier::from_directory_path(&location).unwrap(),
-    ));
-    mock_state_snapshot(sources, maybe_import_map, cache).await
+    let temp_dir = TempDir::new();
+    let cache = LspCache::new(Some(temp_dir.uri()));
+    let mut config = Config::new_with_roots([resolve_url("file:///").unwrap()]);
+    if let Some((base_url, json_string)) = maybe_import_map {
+      let base_url = resolve_url(base_url).unwrap();
+      let config_file = ConfigFile::new(
+        json_string,
+        base_url,
+        &deno_config::ParseOptions::default(),
+      )
+      .unwrap();
+      config.tree.inject_config_file(config_file).await;
+    }
+    let resolver = LspResolver::default()
+      .with_new_config(&config, &cache, None)
+      .await;
+    let mut documents = Documents::default();
+    documents.update_config(&config, &resolver, &cache, &Default::default());
+    for (specifier, source, version, language_id) in sources {
+      let specifier =
+        resolve_url(specifier).expect("failed to create specifier");
+      documents.open(
+        specifier.clone(),
+        *version,
+        *language_id,
+        (*source).into(),
+      );
+    }
+    StateSnapshot {
+      project_version: 0,
+      documents,
+      assets: Default::default(),
+      config: Arc::new(config),
+      resolver,
+    }
   }
 
   #[tokio::test]
   async fn test_enabled_then_disabled_specifier() {
-    let temp_dir = TempDir::new();
     let snapshot = setup(
-      &temp_dir,
       &[(
         "file:///a.ts",
         r#"import * as b from "./b.ts";
@@ -1747,9 +1735,7 @@ let c: number = "a";
 
   #[tokio::test]
   async fn test_deno_diagnostics_with_import_map() {
-    let temp_dir = TempDir::new();
     let snapshot = setup(
-      &temp_dir,
       &[
         (
           "file:///std/assert/mod.ts",
@@ -1885,9 +1871,7 @@ let c: number = "a";
 
   #[tokio::test]
   async fn duplicate_diagnostics_for_duplicate_imports() {
-    let temp_dir = TempDir::new();
     let snapshot = setup(
-      &temp_dir,
       &[(
         "file:///a.ts",
         r#"
@@ -1963,9 +1947,7 @@ let c: number = "a";
 
   #[tokio::test]
   async fn unable_to_load_a_local_module() {
-    let temp_dir = TempDir::new();
     let snapshot = setup(
-      &temp_dir,
       &[(
         "file:///a.ts",
         r#"

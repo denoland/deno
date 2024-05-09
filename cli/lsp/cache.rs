@@ -80,6 +80,12 @@ pub struct LspCache {
   root_vendor: Option<Arc<LocalLspHttpCache>>,
 }
 
+impl Default for LspCache {
+  fn default() -> Self {
+    Self::new(None)
+  }
+}
+
 impl LspCache {
   pub fn new(global_cache_url: Option<Url>) -> Self {
     let global_cache_path = global_cache_url.and_then(|s| {
@@ -93,7 +99,7 @@ impl LspCache {
         .ok()
     });
     let deno_dir = DenoDir::new(global_cache_path)
-      .expect("should be infallible with no custom root");
+      .expect("should be infallible with absolute custom root");
     let global = Arc::new(GlobalHttpCache::new(
       deno_dir.deps_folder_path(),
       crate::cache::RealDenoCacheEnv,
