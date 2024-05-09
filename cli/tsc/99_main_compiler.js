@@ -1086,7 +1086,10 @@ delete Object.prototype.__proto__;
   // anyway...
   function respond(_id, data = null, error = null) {
     if (error) {
-      ops.op_respond("error", "stack" in error ? error.stack.toString() : error.toString());
+      ops.op_respond(
+        "error",
+        "stack" in error ? error.stack.toString() : error.toString(),
+      );
     } else {
       ops.op_respond(JSON.stringify(data), "");
     }
@@ -1116,8 +1119,14 @@ delete Object.prototype.__proto__;
       try {
         serverRequest(request[0], request[1], request[2], request[3]);
       } catch (err) {
-        const reqString = "[" + request.map((v) => JSON.stringify(v)).join(", ") + "]";
-        error(`Error occurred processing request ${reqString} : ${"stack" in err ? err.stack : err}`);
+        const reqString = "[" + request.map((v) =>
+          JSON.stringify(v)
+        ).join(", ") + "]";
+        error(
+          `Error occurred processing request ${reqString} : ${
+            "stack" in err ? err.stack : err
+          }`,
+        );
       }
     }
   }
