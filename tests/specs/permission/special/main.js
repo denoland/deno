@@ -5,6 +5,7 @@ const testCases = [
   // Allowed, safe
   [["darwin", "linux"], null, "/dev/null"],
   [["darwin", "linux"], null, "/etc/passwd"],
+  [["windows"], null, "\\\\.\\nul"],
   // Denied, requires `--allow-all`
   [["darwin", "linux"], /PermissionDenied/, "/dev/ptmx"],
   [["linux"], /PermissionDenied/, "/proc/self/environ"],
@@ -40,6 +41,7 @@ for (const [oses, error, file] of testCases) {
         console.log(`Got an error (expected) for ${file}: ${e}`);
       } else {
         console.log(`*** Got an unexpected error for ${file}: ${e}`);
+        failed = true;
       }
     }
   }
