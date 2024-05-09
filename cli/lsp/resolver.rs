@@ -21,6 +21,8 @@ use crate::npm::ManagedCliNpmResolver;
 use crate::resolver::CliGraphResolver;
 use crate::resolver::CliGraphResolverOptions;
 use crate::resolver::CliNodeResolver;
+use crate::resolver::SloppyImportsFsEntry;
+use crate::resolver::SloppyImportsResolver;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 use deno_cache_dir::HttpCache;
@@ -60,6 +62,7 @@ pub struct LspResolver {
   redirect_resolver: Option<Arc<RedirectResolver>>,
   graph_imports: Arc<IndexMap<ModuleSpecifier, GraphImport>>,
   config: Arc<Config>,
+  unstable_sloppy_imports: bool,
 }
 
 impl Default for LspResolver {
@@ -73,6 +76,7 @@ impl Default for LspResolver {
       redirect_resolver: None,
       graph_imports: Default::default(),
       config: Default::default(),
+      unstable_sloppy_imports: false,
     }
   }
 }
@@ -140,6 +144,10 @@ impl LspResolver {
       npm_config_hash,
       redirect_resolver,
       graph_imports,
+      unstable_sloppy_imports: config_data
+        .and_then(|d| d.config_file.as_ref())
+        .map(|cf| cf.has_unstable("sloppy-imports"))
+        .unwrap_or(false),
       config: Arc::new(config.clone()),
     })
   }
@@ -162,6 +170,7 @@ impl LspResolver {
       redirect_resolver: self.redirect_resolver.clone(),
       graph_imports: self.graph_imports.clone(),
       config: self.config.clone(),
+      unstable_sloppy_imports: self.unstable_sloppy_imports,
     })
   }
 
@@ -181,8 +190,11 @@ impl LspResolver {
     Ok(())
   }
 
-  pub fn as_graph_resolver(&self) -> &dyn Resolver {
-    self.graph_resolver.as_ref()
+  pub fn as_graph_resolver(&self) -> LspGraphResolver {
+    LspGraphResolver {
+      inner: &self.graph_resolver,
+      unstable_sloppy_imports: self.unstable_sloppy_imports,
+    }
   }
 
   pub fn as_graph_npm_resolver(&self) -> &dyn NpmResolver {
@@ -307,6 +319,68 @@ impl LspResolver {
   }
 }
 
+#[derive(Debug)]
+pub struct LspGraphResolver<'a> {
+  inner: &'a CliGraphResolver,
+  unstable_sloppy_imports: bool,
+}
+
+impl<'a> Resolver for LspGraphResolver<'a> {
+  fn default_jsx_import_source(&self) -> Option<String> {
+    self.inner.default_jsx_import_source()
+  }
+
+  fn default_jsx_import_source_types(&self) -> Option<String> {
+    self.inner.default_jsx_import_source_types()
+  }
+
+  fn jsx_import_source_module(&self) -> &str {
+    self.inner.jsx_import_source_module()
+  }
+
+  fn resolve(
+    &self,
+    specifier_text: &str,
+    referrer_range: &deno_graph::Range,
+    mode: deno_graph::source::ResolutionMode,
+  ) -> Result<deno_ast::ModuleSpecifier, deno_graph::source::ResolveError> {
+    let specifier = self.inner.resolve(specifier_text, referrer_range, mode)?;
+    if self.unstable_sloppy_imports && specifier.scheme() == "file" {
+      Ok(
+        SloppyImportsResolver::resolve_with_stat_sync(
+          &specifier,
+          mode,
+          |path| {
+            path.metadata().ok().and_then(|m| {
+              if m.is_file() {
+                Some(SloppyImportsFsEntry::File)
+              } else if m.is_dir() {
+                Some(SloppyImportsFsEntry::Dir)
+              } else {
+                None
+              }
+            })
+          },
+        )
+        .into_specifier()
+        .into_owned(),
+      )
+    } else {
+      Ok(specifier)
+    }
+  }
+
+  fn resolve_types(
+    &self,
+    specifier: &deno_ast::ModuleSpecifier,
+  ) -> Result<
+    Option<(deno_ast::ModuleSpecifier, Option<deno_graph::Range>)>,
+    deno_graph::source::ResolveError,
+  > {
+    self.inner.resolve_types(specifier)
+  }
+}
+
 async fn create_npm_resolver(
   config_data: &ConfigData,
   global_cache_path: Option<&Path>,
@@ -399,9 +473,7 @@ fn create_graph_resolver(
     bare_node_builtins_enabled: config_file
       .map(|cf| cf.has_unstable("bare-node-builtins"))
       .unwrap_or(false),
-    // Don't set this for the LSP because instead we'll use the OpenDocumentsLoader
-    // because it's much easier and we get diagnostics/quick fixes about a redirected
-    // specifier for free.
+    // not used in the LSP as the LspGraphResolver handles this
     sloppy_imports_resolver: None,
   }))
 }
