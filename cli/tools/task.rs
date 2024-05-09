@@ -16,6 +16,7 @@ use deno_core::futures;
 use deno_core::futures::future::LocalBoxFuture;
 use deno_runtime::deno_node::NodeResolver;
 use deno_semver::package::PackageNv;
+use deno_task_shell::ExecutableCommand;
 use deno_task_shell::ExecuteResult;
 use deno_task_shell::ShellCommand;
 use deno_task_shell::ShellCommandContext;
@@ -236,7 +237,15 @@ fn prepend_to_path(env_vars: &mut HashMap<String, String>, value: String) {
 
 fn collect_env_vars() -> HashMap<String, String> {
   // get the starting env vars (the PWD env var will be set by deno_task_shell)
-  let mut env_vars = std::env::vars().collect::<HashMap<String, String>>();
+  let mut env_vars = std::env::vars()
+    .map(|(k, v)| {
+      if cfg!(windows) {
+        (k.to_uppercase(), v)
+      } else {
+        (k, v)
+      }
+    })
+    .collect::<HashMap<String, String>>();
   const INIT_CWD_NAME: &str = "INIT_CWD";
   if !env_vars.contains_key(INIT_CWD_NAME) {
     if let Ok(cwd) = std::env::current_dir() {
@@ -318,10 +327,17 @@ impl ShellCommand for NpxCommand {
         };
         command.execute(context)
       } else {
-        let _ = context
-          .stderr
-          .write_line(&format!("npx: could not resolve command '{first_arg}'"));
-        Box::pin(futures::future::ready(ExecuteResult::from_exit_code(1)))
+        // can't find the command, so fallback to running the real npx command
+        let npx_path = match context.resolve_command_path("npx") {
+          Ok(npx) => npx,
+          Err(err) => {
+            let _ = context.stderr.write_line(&format!("{}", err));
+            return Box::pin(futures::future::ready(
+              ExecuteResult::from_exit_code(err.exit_code()),
+            ));
+          }
+        };
+        ExecutableCommand::new("npx".to_string(), npx_path).execute(context)
       }
     } else {
       let _ = context.stderr.write_line("npx: missing command");
