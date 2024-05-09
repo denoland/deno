@@ -16,6 +16,7 @@ use deno_core::futures;
 use deno_core::futures::future::LocalBoxFuture;
 use deno_runtime::deno_node::NodeResolver;
 use deno_semver::package::PackageNv;
+use deno_task_shell::ExecutableCommand;
 use deno_task_shell::ExecuteResult;
 use deno_task_shell::ShellCommand;
 use deno_task_shell::ShellCommandContext;
@@ -44,10 +45,16 @@ pub async fn execute_script(
   let task_name = match &task_flags.task {
     Some(task) => task,
     None => {
-      print_available_tasks(&tasks_config, &package_json_scripts);
+      print_available_tasks(
+        &mut std::io::stdout(),
+        &tasks_config,
+        &package_json_scripts,
+      )?;
       return Ok(1);
     }
   };
+  let npm_resolver = factory.npm_resolver().await?;
+  let node_resolver = factory.node_resolver().await?;
 
   if let Some(
     deno_config::Task::Definition(script)
@@ -66,20 +73,20 @@ pub async fn execute_script(
       Some(path) => canonicalize_path(&PathBuf::from(path))?,
       None => config_file_path.parent().unwrap().to_owned(),
     };
-    let script = get_script_with_args(script, cli_options);
-    output_task(task_name, &script);
-    let seq_list = deno_task_shell::parser::parse(&script)
-      .with_context(|| format!("Error parsing script '{task_name}'."))?;
-    let env_vars = collect_env_vars();
-    let local = LocalSet::new();
-    let future =
-      deno_task_shell::execute(seq_list, env_vars, &cwd, Default::default());
-    let exit_code = local.run_until(future).await;
-    Ok(exit_code)
+
+    let npm_commands =
+      resolve_npm_commands(npm_resolver.as_ref(), node_resolver)?;
+    run_task(
+      task_name,
+      script,
+      &cwd,
+      cli_options,
+      npm_commands,
+      npm_resolver.as_ref(),
+    )
+    .await
   } else if package_json_scripts.contains_key(task_name) {
     let package_json_deps_provider = factory.package_json_deps_provider();
-    let npm_resolver = factory.npm_resolver().await?;
-    let node_resolver = factory.node_resolver().await?;
 
     if let Some(package_deps) = package_json_deps_provider.deps() {
       for (key, value) in package_deps {
@@ -122,30 +129,19 @@ pub async fn execute_script(
       task_name.clone(),
       format!("post{}", task_name),
     ];
+    let npm_commands =
+      resolve_npm_commands(npm_resolver.as_ref(), node_resolver)?;
     for task_name in task_names {
       if let Some(script) = package_json_scripts.get(&task_name) {
-        let script = get_script_with_args(script, cli_options);
-        output_task(&task_name, &script);
-        let seq_list = deno_task_shell::parser::parse(&script)
-          .with_context(|| format!("Error parsing script '{task_name}'."))?;
-        let npx_commands = match npm_resolver.as_inner() {
-          InnerCliNpmResolverRef::Managed(npm_resolver) => {
-            resolve_npm_commands(npm_resolver, node_resolver)?
-          }
-          InnerCliNpmResolverRef::Byonm(npm_resolver) => {
-            let node_modules_dir =
-              npm_resolver.root_node_modules_path().unwrap();
-            resolve_npm_commands_from_bin_dir(node_modules_dir)?
-          }
-        };
-        let env_vars = match npm_resolver.root_node_modules_path() {
-          Some(dir_path) => collect_env_vars_with_node_modules_dir(dir_path),
-          None => collect_env_vars(),
-        };
-        let local = LocalSet::new();
-        let future =
-          deno_task_shell::execute(seq_list, env_vars, &cwd, npx_commands);
-        let exit_code = local.run_until(future).await;
+        let exit_code = run_task(
+          &task_name,
+          script,
+          &cwd,
+          cli_options,
+          npm_commands.clone(),
+          npm_resolver.as_ref(),
+        )
+        .await?;
         if exit_code > 0 {
           return Ok(exit_code);
         }
@@ -154,10 +150,37 @@ pub async fn execute_script(
 
     Ok(0)
   } else {
-    eprintln!("Task not found: {task_name}");
-    print_available_tasks(&tasks_config, &package_json_scripts);
+    log::error!("Task not found: {task_name}");
+    if log::log_enabled!(log::Level::Error) {
+      print_available_tasks(
+        &mut std::io::stderr(),
+        &tasks_config,
+        &package_json_scripts,
+      )?;
+    }
     Ok(1)
   }
+}
+
+async fn run_task(
+  task_name: &str,
+  script: &str,
+  cwd: &Path,
+  cli_options: &CliOptions,
+  npm_commands: HashMap<String, Rc<dyn ShellCommand>>,
+  npm_resolver: &dyn CliNpmResolver,
+) -> Result<i32, AnyError> {
+  let script = get_script_with_args(script, cli_options);
+  output_task(task_name, &script);
+  let seq_list = deno_task_shell::parser::parse(&script)
+    .with_context(|| format!("Error parsing script '{}'.", task_name))?;
+  let env_vars = match npm_resolver.root_node_modules_path() {
+    Some(dir_path) => collect_env_vars_with_node_modules_dir(dir_path),
+    None => collect_env_vars(),
+  };
+  let local = LocalSet::new();
+  let future = deno_task_shell::execute(seq_list, env_vars, cwd, npm_commands);
+  Ok(local.run_until(future).await)
 }
 
 fn get_script_with_args(script: &str, options: &CliOptions) -> String {
@@ -214,7 +237,15 @@ fn prepend_to_path(env_vars: &mut HashMap<String, String>, value: String) {
 
 fn collect_env_vars() -> HashMap<String, String> {
   // get the starting env vars (the PWD env var will be set by deno_task_shell)
-  let mut env_vars = std::env::vars().collect::<HashMap<String, String>>();
+  let mut env_vars = std::env::vars()
+    .map(|(k, v)| {
+      if cfg!(windows) {
+        (k.to_uppercase(), v)
+      } else {
+        (k, v)
+      }
+    })
+    .collect::<HashMap<String, String>>();
   const INIT_CWD_NAME: &str = "INIT_CWD";
   if !env_vars.contains_key(INIT_CWD_NAME) {
     if let Ok(cwd) = std::env::current_dir() {
@@ -227,48 +258,58 @@ fn collect_env_vars() -> HashMap<String, String> {
 }
 
 fn print_available_tasks(
-  // order can be important, so these use an index map
+  writer: &mut dyn std::io::Write,
   tasks_config: &IndexMap<String, deno_config::Task>,
   package_json_scripts: &IndexMap<String, String>,
-) {
-  eprintln!("{}", colors::green("Available tasks:"));
+) -> Result<(), std::io::Error> {
+  writeln!(writer, "{}", colors::green("Available tasks:"))?;
 
-  let mut had_task = false;
-  for (is_deno, (key, task)) in tasks_config
-    .iter()
-    .map(|(k, t)| (true, (k, t.clone())))
-    .chain(
-      package_json_scripts
-        .iter()
-        .filter(|(key, _)| !tasks_config.contains_key(*key))
-        .map(|(k, v)| (false, (k, deno_config::Task::Definition(v.clone())))),
-    )
-  {
-    eprintln!(
-      "- {}{}",
-      colors::cyan(key),
-      if is_deno {
-        "".to_string()
-      } else {
-        format!(" {}", colors::italic_gray("(package.json)"))
+  if tasks_config.is_empty() && package_json_scripts.is_empty() {
+    writeln!(
+      writer,
+      "  {}",
+      colors::red("No tasks found in configuration file")
+    )?;
+  } else {
+    for (is_deno, (key, task)) in tasks_config
+      .iter()
+      .map(|(k, t)| (true, (k, t.clone())))
+      .chain(
+        package_json_scripts
+          .iter()
+          .filter(|(key, _)| !tasks_config.contains_key(*key))
+          .map(|(k, v)| (false, (k, deno_config::Task::Definition(v.clone())))),
+      )
+    {
+      writeln!(
+        writer,
+        "- {}{}",
+        colors::cyan(key),
+        if is_deno {
+          "".to_string()
+        } else {
+          format!(" {}", colors::italic_gray("(package.json)"))
+        }
+      )?;
+      let definition = match &task {
+        deno_config::Task::Definition(definition) => definition,
+        deno_config::Task::Commented { definition, .. } => definition,
+      };
+      if let deno_config::Task::Commented { comments, .. } = &task {
+        let slash_slash = colors::italic_gray("//");
+        for comment in comments {
+          writeln!(
+            writer,
+            "    {slash_slash} {}",
+            colors::italic_gray(comment)
+          )?;
+        }
       }
-    );
-    let definition = match &task {
-      deno_config::Task::Definition(definition) => definition,
-      deno_config::Task::Commented { definition, .. } => definition,
-    };
-    if let deno_config::Task::Commented { comments, .. } = &task {
-      let slash_slash = colors::italic_gray("//");
-      for comment in comments {
-        eprintln!("    {slash_slash} {}", colors::italic_gray(comment));
-      }
+      writeln!(writer, "    {definition}")?;
     }
-    eprintln!("    {definition}");
-    had_task = true;
   }
-  if !had_task {
-    eprintln!("  {}", colors::red("No tasks found in configuration file"));
-  }
+
+  Ok(())
 }
 
 struct NpxCommand;
@@ -286,10 +327,17 @@ impl ShellCommand for NpxCommand {
         };
         command.execute(context)
       } else {
-        let _ = context
-          .stderr
-          .write_line(&format!("npx: could not resolve command '{first_arg}'"));
-        Box::pin(futures::future::ready(ExecuteResult::from_exit_code(1)))
+        // can't find the command, so fallback to running the real npx command
+        let npx_path = match context.resolve_command_path("npx") {
+          Ok(npx) => npx,
+          Err(err) => {
+            let _ = context.stderr.write_line(&format!("{}", err));
+            return Box::pin(futures::future::ready(
+              ExecuteResult::from_exit_code(err.exit_code()),
+            ));
+          }
+        };
+        ExecutableCommand::new("npx".to_string(), npx_path).execute(context)
       }
     } else {
       let _ = context.stderr.write_line("npx: missing command");
@@ -358,9 +406,24 @@ impl ShellCommand for NodeModulesFileRunCommand {
   }
 }
 
+fn resolve_npm_commands(
+  npm_resolver: &dyn CliNpmResolver,
+  node_resolver: &NodeResolver,
+) -> Result<HashMap<String, Rc<dyn ShellCommand>>, AnyError> {
+  match npm_resolver.as_inner() {
+    InnerCliNpmResolverRef::Byonm(npm_resolver) => {
+      let node_modules_dir = npm_resolver.root_node_modules_path().unwrap();
+      Ok(resolve_npm_commands_from_bin_dir(node_modules_dir))
+    }
+    InnerCliNpmResolverRef::Managed(npm_resolver) => {
+      resolve_managed_npm_commands(npm_resolver, node_resolver)
+    }
+  }
+}
+
 fn resolve_npm_commands_from_bin_dir(
   node_modules_dir: &Path,
-) -> Result<HashMap<String, Rc<dyn ShellCommand>>, AnyError> {
+) -> HashMap<String, Rc<dyn ShellCommand>> {
   let mut result = HashMap::<String, Rc<dyn ShellCommand>>::new();
   let bin_dir = node_modules_dir.join(".bin");
   log::debug!("Resolving commands in '{}'.", bin_dir.display());
@@ -379,7 +442,7 @@ fn resolve_npm_commands_from_bin_dir(
       log::debug!("Failed read_dir for '{}': {:#}", bin_dir.display(), err);
     }
   }
-  Ok(result)
+  result
 }
 
 fn resolve_bin_dir_entry_command(
@@ -436,7 +499,7 @@ fn resolve_execution_path_from_npx_shim(
   }
 }
 
-fn resolve_npm_commands(
+fn resolve_managed_npm_commands(
   npm_resolver: &ManagedCliNpmResolver,
   node_resolver: &NodeResolver,
 ) -> Result<HashMap<String, Rc<dyn ShellCommand>>, AnyError> {

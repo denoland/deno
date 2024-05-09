@@ -163,6 +163,12 @@ impl JsrCacheResolver {
     self.info_by_nv.insert(nv.clone(), info.clone());
     info
   }
+
+  pub fn did_cache(&self) {
+    self.nv_by_req.retain(|_, nv| nv.is_some());
+    self.info_by_nv.retain(|_, info| info.is_some());
+    self.info_by_name.retain(|_, info| info.is_some());
+  }
 }
 
 fn read_cached_url(
@@ -234,7 +240,7 @@ impl JsrFetchResolver {
       let meta_url = jsr_url().join(&format!("{}/meta.json", name)).ok()?;
       let file = self
         .file_fetcher
-        .fetch(&meta_url, PermissionsContainer::allow_all())
+        .fetch(&meta_url, &PermissionsContainer::allow_all())
         .await
         .ok()?;
       serde_json::from_slice::<JsrPackageInfo>(&file.source).ok()
@@ -257,7 +263,7 @@ impl JsrFetchResolver {
         .ok()?;
       let file = self
         .file_fetcher
-        .fetch(&meta_url, PermissionsContainer::allow_all())
+        .fetch(&meta_url, &PermissionsContainer::allow_all())
         .await
         .ok()?;
       partial_jsr_package_version_info_from_slice(&file.source).ok()
@@ -304,6 +310,7 @@ fn partial_jsr_package_version_info_from_slice(
       .as_object_mut()
       .and_then(|o| o.remove("exports"))
       .unwrap_or_default(),
-    module_graph: None,
+    module_graph_1: None,
+    module_graph_2: None,
   })
 }

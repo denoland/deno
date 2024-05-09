@@ -27,6 +27,7 @@ use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_node::NpmResolver as DenoNodeNpmResolver;
 use deno_runtime::deno_node::PackageJson;
+use deno_runtime::fs_util::specifier_to_file_path;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
@@ -48,7 +49,6 @@ use crate::node::CliNodeCodeTranslator;
 use crate::npm::ByonmCliNpmResolver;
 use crate::npm::CliNpmResolver;
 use crate::npm::InnerCliNpmResolverRef;
-use crate::util::path::specifier_to_file_path;
 use crate::util::sync::AtomicFlag;
 
 pub fn format_range_with_colors(range: &deno_graph::Range) -> String {
@@ -223,6 +223,13 @@ impl CliNodeResolver {
     Ok(specifier)
   }
 
+  pub fn url_to_node_resolution(
+    &self,
+    specifier: ModuleSpecifier,
+  ) -> Result<NodeResolution, AnyError> {
+    self.node_resolver.url_to_node_resolution(specifier)
+  }
+
   fn handle_node_resolve_result(
     &self,
     result: Result<Option<NodeResolution>, AnyError>,
@@ -298,7 +305,7 @@ impl NpmModuleLoader {
     let file_path = specifier.to_file_path().unwrap();
     let code = self
       .fs
-      .read_text_file_sync(&file_path)
+      .read_text_file_sync(&file_path, None)
       .map_err(AnyError::from)
       .with_context(|| {
         if file_path.is_dir() {
@@ -440,6 +447,7 @@ pub struct CliGraphResolver {
   sloppy_imports_resolver: Option<SloppyImportsResolver>,
   mapped_specifier_resolver: MappedSpecifierResolver,
   maybe_default_jsx_import_source: Option<String>,
+  maybe_default_jsx_import_source_types: Option<String>,
   maybe_jsx_import_source_module: Option<String>,
   maybe_vendor_specifier: Option<ModuleSpecifier>,
   node_resolver: Option<Arc<CliNodeResolver>>,
@@ -481,6 +489,10 @@ impl CliGraphResolver {
         .maybe_jsx_import_source_config
         .as_ref()
         .and_then(|c| c.default_specifier.clone()),
+      maybe_default_jsx_import_source_types: options
+        .maybe_jsx_import_source_config
+        .as_ref()
+        .and_then(|c| c.default_types_specifier.clone()),
       maybe_jsx_import_source_module: options
         .maybe_jsx_import_source_config
         .map(|c| c.module),
@@ -545,6 +557,10 @@ impl CliGraphResolver {
 impl Resolver for CliGraphResolver {
   fn default_jsx_import_source(&self) -> Option<String> {
     self.maybe_default_jsx_import_source.clone()
+  }
+
+  fn default_jsx_import_source_types(&self) -> Option<String> {
+    self.maybe_default_jsx_import_source_types.clone()
   }
 
   fn jsx_import_source_module(&self) -> &str {

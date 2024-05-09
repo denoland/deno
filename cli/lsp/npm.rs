@@ -34,6 +34,12 @@ impl CliNpmSearchApi {
       versions_cache: Default::default(),
     }
   }
+
+  pub fn clear_cache(&self) {
+    self.file_fetcher.clear_memory_files();
+    self.search_cache.clear();
+    self.versions_cache.clear();
+  }
 }
 
 #[async_trait::async_trait]
@@ -48,7 +54,7 @@ impl PackageSearchApi for CliNpmSearchApi {
       .append_pair("text", &format!("{} boost-exact:false", query));
     let file = self
       .file_fetcher
-      .fetch(&search_url, PermissionsContainer::allow_all())
+      .fetch(&search_url, &PermissionsContainer::allow_all())
       .await?
       .into_text_decoded()?;
     let names = Arc::new(parse_npm_search_response(&file.source)?);

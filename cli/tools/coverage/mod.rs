@@ -71,6 +71,7 @@ impl crate::worker::CoverageCollector for CoverageCollector {
       // Filter out internal JS files from being included in coverage reports
       if script_coverage.url.starts_with("ext:")
         || script_coverage.url.starts_with("[ext:")
+        || script_coverage.url.starts_with("node:")
       {
         continue;
       }
@@ -528,7 +529,7 @@ pub async fn cover_files(
       file_fetcher.get_source(&module_specifier)
     } else {
       file_fetcher
-        .fetch_cached(&module_specifier, None, 10)
+        .fetch_cached(&module_specifier, 10)
         .with_context(|| {
           format!("Failed to fetch \"{module_specifier}\" from cache.")
         })?

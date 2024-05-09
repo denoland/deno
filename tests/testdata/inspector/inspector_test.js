@@ -1,3 +1,6 @@
 Deno.test("basic test", () => {
-  console.log("test has finished running");
+  const value = 1 + 1;
+  if (value !== 2) {
+    throw new Error("failed");
+  }
 });

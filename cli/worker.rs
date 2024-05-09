@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::num::NonZeroU16;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -10,7 +11,6 @@ use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
-use deno_core::located_script_name;
 use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
 use deno_core::v8;
@@ -23,6 +23,7 @@ use deno_core::PollEventLoopOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::SourceMapGetter;
 use deno_lockfile::Lockfile;
+use deno_runtime::code_cache;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node;
@@ -40,6 +41,7 @@ use deno_runtime::web_worker::WebWorkerOptions;
 use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
 use deno_runtime::BootstrapOptions;
+use deno_runtime::WorkerExecutionMode;
 use deno_runtime::WorkerLogLevel;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReqReference;
@@ -110,6 +112,7 @@ pub struct CliMainWorkerOptions {
   pub is_npm_main: bool,
   pub location: Option<Url>,
   pub argv0: Option<String>,
+  pub node_debug: Option<String>,
   pub origin_data_folder_path: Option<PathBuf>,
   pub seed: Option<u64>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
@@ -141,6 +144,9 @@ struct SharedWorkerState {
   enable_future_features: bool,
   disable_deprecated_api_warning: bool,
   verbose_deprecated_api_warning: bool,
+  code_cache: Option<Arc<dyn code_cache::CodeCache>>,
+  serve_port: Option<NonZeroU16>,
+  serve_host: Option<String>,
 }
 
 impl SharedWorkerState {
@@ -182,7 +188,7 @@ impl CliMainWorker {
       self.execute_main_module_possibly_with_npm().await?;
     }
 
-    self.worker.dispatch_load_event(located_script_name!())?;
+    self.worker.dispatch_load_event()?;
 
     loop {
       if let Some(hmr_runner) = maybe_hmr_runner.as_mut() {
@@ -213,15 +219,17 @@ impl CliMainWorker {
           .await?;
       }
 
-      if !self
-        .worker
-        .dispatch_beforeunload_event(located_script_name!())?
-      {
-        break;
+      let web_continue = self.worker.dispatch_beforeunload_event()?;
+      if !web_continue {
+        let node_continue = self.worker.dispatch_process_beforeexit_event()?;
+        if !node_continue {
+          break;
+        }
       }
     }
 
-    self.worker.dispatch_unload_event(located_script_name!())?;
+    self.worker.dispatch_unload_event()?;
+    self.worker.dispatch_process_exit_event()?;
 
     if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
       self
@@ -268,10 +276,7 @@ impl CliMainWorker {
       /// respectively.
       pub async fn execute(&mut self) -> Result<(), AnyError> {
         self.inner.execute_main_module_possibly_with_npm().await?;
-        self
-          .inner
-          .worker
-          .dispatch_load_event(located_script_name!())?;
+        self.inner.worker.dispatch_load_event()?;
         self.pending_unload = true;
 
         let result = loop {
@@ -279,24 +284,21 @@ impl CliMainWorker {
             Ok(()) => {}
             Err(error) => break Err(error),
           }
-          match self
-            .inner
-            .worker
-            .dispatch_beforeunload_event(located_script_name!())
-          {
-            Ok(default_prevented) if default_prevented => {} // continue loop
-            Ok(_) => break Ok(()),
-            Err(error) => break Err(error),
+          let web_continue = self.inner.worker.dispatch_beforeunload_event()?;
+          if !web_continue {
+            let node_continue =
+              self.inner.worker.dispatch_process_beforeexit_event()?;
+            if !node_continue {
+              break Ok(());
+            }
           }
         };
         self.pending_unload = false;
 
         result?;
 
-        self
-          .inner
-          .worker
-          .dispatch_unload_event(located_script_name!())?;
+        self.inner.worker.dispatch_unload_event()?;
+        self.inner.worker.dispatch_process_exit_event()?;
 
         Ok(())
       }
@@ -305,10 +307,7 @@ impl CliMainWorker {
     impl Drop for FileWatcherModuleExecutor {
       fn drop(&mut self) {
         if self.pending_unload {
-          let _ = self
-            .inner
-            .worker
-            .dispatch_unload_event(located_script_name!());
+          let _ = self.inner.worker.dispatch_unload_event();
         }
       }
     }
@@ -416,9 +415,12 @@ impl CliMainWorkerFactory {
     feature_checker: Arc<FeatureChecker>,
     options: CliMainWorkerOptions,
     node_ipc: Option<i64>,
+    serve_port: Option<NonZeroU16>,
+    serve_host: Option<String>,
     enable_future_features: bool,
     disable_deprecated_api_warning: bool,
     verbose_deprecated_api_warning: bool,
+    code_cache: Option<Arc<dyn code_cache::CodeCache>>,
   ) -> Self {
     Self {
       shared: Arc::new(SharedWorkerState {
@@ -439,20 +441,25 @@ impl CliMainWorkerFactory {
         maybe_lockfile,
         feature_checker,
         node_ipc,
+        serve_port,
+        serve_host,
         enable_future_features,
         disable_deprecated_api_warning,
         verbose_deprecated_api_warning,
+        code_cache,
       }),
     }
   }
 
   pub async fn create_main_worker(
     &self,
+    mode: WorkerExecutionMode,
     main_module: ModuleSpecifier,
     permissions: PermissionsContainer,
   ) -> Result<CliMainWorker, AnyError> {
     self
       .create_custom_worker(
+        mode,
         main_module,
         permissions,
         vec![],
@@ -463,6 +470,7 @@ impl CliMainWorkerFactory {
 
   pub async fn create_custom_worker(
     &self,
+    mode: WorkerExecutionMode,
     main_module: ModuleSpecifier,
     permissions: PermissionsContainer,
     custom_extensions: Vec<Extension>,
@@ -549,7 +557,7 @@ impl CliMainWorkerFactory {
     let maybe_inspector_server = shared.maybe_inspector_server.clone();
 
     let create_web_worker_cb =
-      create_web_worker_callback(shared.clone(), stdio.clone());
+      create_web_worker_callback(mode, shared.clone(), stdio.clone());
 
     let maybe_storage_key = shared
       .storage_key_resolver
@@ -600,10 +608,14 @@ impl CliMainWorkerFactory {
         inspect: shared.options.is_inspecting,
         has_node_modules_dir: shared.options.has_node_modules_dir,
         argv0: shared.options.argv0.clone(),
+        node_debug: shared.options.node_debug.clone(),
         node_ipc_fd: shared.node_ipc,
         disable_deprecated_api_warning: shared.disable_deprecated_api_warning,
         verbose_deprecated_api_warning: shared.verbose_deprecated_api_warning,
         future: shared.enable_future_features,
+        mode,
+        serve_port: shared.serve_port,
+        serve_host: shared.serve_host.clone(),
       },
       extensions: custom_extensions,
       startup_snapshot: crate::js::deno_isolate_init(),
@@ -636,6 +648,7 @@ impl CliMainWorkerFactory {
       stdio,
       feature_checker,
       skip_op_registration: shared.options.skip_op_registration,
+      v8_code_cache: shared.code_cache.clone(),
     };
 
     let mut worker = MainWorker::bootstrap_from_options(
@@ -748,6 +761,7 @@ impl CliMainWorkerFactory {
 }
 
 fn create_web_worker_callback(
+  mode: WorkerExecutionMode,
   shared: Arc<SharedWorkerState>,
   stdio: deno_runtime::deno_io::Stdio,
 ) -> Arc<CreateWebWorkerCb> {
@@ -761,7 +775,7 @@ fn create_web_worker_callback(
     let maybe_source_map_getter =
       shared.module_loader_factory.create_source_map_getter();
     let create_web_worker_cb =
-      create_web_worker_callback(shared.clone(), stdio.clone());
+      create_web_worker_callback(mode, shared.clone(), stdio.clone());
 
     let maybe_storage_key = shared
       .storage_key_resolver
@@ -804,10 +818,14 @@ fn create_web_worker_callback(
         inspect: shared.options.is_inspecting,
         has_node_modules_dir: shared.options.has_node_modules_dir,
         argv0: shared.options.argv0.clone(),
+        node_debug: shared.options.node_debug.clone(),
         node_ipc_fd: None,
         disable_deprecated_api_warning: shared.disable_deprecated_api_warning,
         verbose_deprecated_api_warning: shared.verbose_deprecated_api_warning,
         future: shared.enable_future_features,
+        mode,
+        serve_port: shared.serve_port,
+        serve_host: shared.serve_host.clone(),
       },
       extensions: vec![],
       startup_snapshot: crate::js::deno_isolate_init(),
@@ -850,6 +868,8 @@ fn create_web_worker_callback(
   })
 }
 
+#[allow(clippy::print_stdout)]
+#[allow(clippy::print_stderr)]
 #[cfg(test)]
 mod tests {
   use super::*;

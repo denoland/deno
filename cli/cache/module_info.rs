@@ -39,6 +39,7 @@ pub static MODULE_INFO_CACHE_DB: CacheDBConfiguration = CacheDBConfiguration {
   on_failure: CacheFailure::InMemory,
 };
 
+#[derive(Debug)]
 pub struct ModuleInfoCacheSourceHash(String);
 
 impl ModuleInfoCacheSourceHash {
@@ -52,6 +53,12 @@ impl ModuleInfoCacheSourceHash {
 
   pub fn as_str(&self) -> &str {
     &self.0
+  }
+}
+
+impl From<ModuleInfoCacheSourceHash> for String {
+  fn from(source_hash: ModuleInfoCacheSourceHash) -> String {
+    source_hash.0
   }
 }
 
@@ -78,6 +85,23 @@ impl ModuleInfoCache {
     Self {
       conn: self.conn.recreate_with_version(version),
     }
+  }
+
+  pub fn get_module_source_hash(
+    &self,
+    specifier: &ModuleSpecifier,
+    media_type: MediaType,
+  ) -> Result<Option<ModuleInfoCacheSourceHash>, AnyError> {
+    let query = "SELECT source_hash FROM moduleinfocache WHERE specifier=?1 AND media_type=?2";
+    let res = self.conn.query_row(
+      query,
+      params![specifier.as_str(), serialize_media_type(media_type)],
+      |row| {
+        let source_hash: String = row.get(0)?;
+        Ok(ModuleInfoCacheSourceHash(source_hash))
+      },
+    )?;
+    Ok(res)
   }
 
   pub fn get_module_info(

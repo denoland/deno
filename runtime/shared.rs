@@ -45,7 +45,6 @@ extension!(runtime,
     "13_buffer.js",
     "30_os.js",
     "40_fs_events.js",
-    "40_http.js",
     "40_process.js",
     "40_signals.js",
     "40_tty.js",
@@ -95,20 +94,22 @@ pub fn maybe_transpile_source(
     scope_analysis: false,
     maybe_syntax: None,
   })?;
-  let transpiled_source = parsed.transpile(
-    &deno_ast::TranspileOptions {
-      imports_not_used_as_values: deno_ast::ImportsNotUsedAsValues::Remove,
-      ..Default::default()
-    },
-    &deno_ast::EmitOptions {
-      source_map: if cfg!(debug_assertions) {
-        SourceMapOption::Separate
-      } else {
-        SourceMapOption::None
+  let transpiled_source = parsed
+    .transpile(
+      &deno_ast::TranspileOptions {
+        imports_not_used_as_values: deno_ast::ImportsNotUsedAsValues::Remove,
+        ..Default::default()
       },
-      ..Default::default()
-    },
-  )?;
+      &deno_ast::EmitOptions {
+        source_map: if cfg!(debug_assertions) {
+          SourceMapOption::Separate
+        } else {
+          SourceMapOption::None
+        },
+        ..Default::default()
+      },
+    )?
+    .into_source();
 
   let maybe_source_map: Option<SourceMapData> = transpiled_source
     .source_map

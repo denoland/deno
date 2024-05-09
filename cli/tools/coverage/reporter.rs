@@ -108,6 +108,7 @@ struct SummaryCoverageReporter {
   file_reports: Vec<(CoverageReport, String)>,
 }
 
+#[allow(clippy::print_stdout)]
 impl SummaryCoverageReporter {
   pub fn new() -> SummaryCoverageReporter {
     SummaryCoverageReporter {
@@ -171,6 +172,7 @@ impl SummaryCoverageReporter {
   }
 }
 
+#[allow(clippy::print_stdout)]
 impl CoverageReporter for SummaryCoverageReporter {
   fn report(
     &mut self,
@@ -317,6 +319,7 @@ impl DetailedCoverageReporter {
   }
 }
 
+#[allow(clippy::print_stdout)]
 impl CoverageReporter for DetailedCoverageReporter {
   fn report(
     &mut self,
@@ -421,7 +424,7 @@ impl CoverageReporter for HtmlCoverageReporter {
     )
     .unwrap();
 
-    println!("HTML coverage report has been generated at {}", root_report);
+    log::info!("HTML coverage report has been generated at {}", root_report);
   }
 }
 

@@ -9,6 +9,7 @@ use crate::args::PackageJsonDepsProvider;
 use crate::args::StorageKeyResolver;
 use crate::args::TsConfigType;
 use crate::cache::Caches;
+use crate::cache::CodeCache;
 use crate::cache::DenoDir;
 use crate::cache::DenoDirProvider;
 use crate::cache::EmitCache;
@@ -178,6 +179,7 @@ struct CliFactoryServices {
   cjs_resolutions: Deferred<Arc<CjsResolutionStore>>,
   cli_node_resolver: Deferred<Arc<CliNodeResolver>>,
   feature_checker: Deferred<Arc<FeatureChecker>>,
+  code_cache: Deferred<Arc<CodeCache>>,
 }
 
 pub struct CliFactory {
@@ -217,6 +219,7 @@ impl CliFactory {
       // Warm up the caches we know we'll likely need based on the CLI mode
       match self.options.sub_command() {
         DenoSubcommand::Run(_)
+        | DenoSubcommand::Serve(_)
         | DenoSubcommand::Bench(_)
         | DenoSubcommand::Test(_)
         | DenoSubcommand::Check(_) => {
@@ -225,6 +228,9 @@ impl CliFactory {
           if self.options.type_check_mode().is_true() {
             _ = caches.fast_check_db();
             _ = caches.type_checking_cache_db();
+          }
+          if self.options.code_cache_enabled() {
+            _ = caches.code_cache_db();
           }
         }
         _ => {}
@@ -402,7 +408,8 @@ impl CliFactory {
       .npm_resolver
       .get_or_try_init_async(async {
         let fs = self.fs();
-        create_cli_npm_resolver(if self.options.use_byonm() {
+        // For `deno install` we want to force the managed resolver so it can set up `node_modules/` directory.
+        create_cli_npm_resolver(if self.options.use_byonm() && !matches!(self.options.sub_command(), DenoSubcommand::Install(_)) {
           CliNpmResolverCreateOptions::Byonm(CliNpmResolverByonmCreateOptions {
             fs: fs.clone(),
             root_node_modules_dir: match self.options.node_modules_dir_path() {
@@ -534,6 +541,12 @@ impl CliFactory {
     })
   }
 
+  pub fn code_cache(&self) -> Result<&Arc<CodeCache>, AnyError> {
+    self.services.code_cache.get_or_try_init(|| {
+      Ok(Arc::new(CodeCache::new(self.caches()?.code_cache_db())))
+    })
+  }
+
   pub fn parsed_source_cache(&self) -> &Arc<ParsedSourceCache> {
     self
       .services
@@ -552,7 +565,7 @@ impl CliFactory {
       let (transpile_options, emit_options) =
         crate::args::ts_config_to_transpile_and_emit_options(
           ts_config_result.ts_config,
-        );
+        )?;
       Ok(Arc::new(Emitter::new(
         self.emit_cache()?.clone(),
         self.parsed_source_cache().clone(),
@@ -666,6 +679,7 @@ impl CliFactory {
         // todo(dsherret): ideally the graph container would not be used
         // for deno cache because it doesn't dynamically load modules
         DenoSubcommand::Cache(_) => GraphKind::All,
+        DenoSubcommand::Check(_) => GraphKind::TypesOnly,
         _ => self.options.type_check_mode().as_graph_kind(),
       };
       Arc::new(ModuleGraphContainer::new(graph_kind))
@@ -789,6 +803,12 @@ impl CliFactory {
           fs.clone(),
           cli_node_resolver.clone(),
         ),
+        if self.options.code_cache_enabled() {
+          Some(self.code_cache()?.clone())
+        } else {
+          None
+        },
+        self.module_info_cache()?.clone(),
       )),
       self.root_cert_store_provider().clone(),
       self.fs().clone(),
@@ -798,11 +818,18 @@ impl CliFactory {
       self.feature_checker().clone(),
       self.create_cli_main_worker_options()?,
       self.options.node_ipc_fd(),
+      self.options.serve_port(),
+      self.options.serve_host(),
       self.options.enable_future_features(),
       // TODO(bartlomieju): temporarily disabled
       // self.options.disable_deprecated_api_warning,
       true,
       self.options.verbose_deprecated_api_warning,
+      if self.options.code_cache_enabled() {
+        Some(self.code_cache()?.clone())
+      } else {
+        None
+      },
     ))
   }
 
@@ -859,6 +886,7 @@ impl CliFactory {
         .options
         .take_binary_npm_command_name()
         .or(std::env::args().next()),
+      node_debug: std::env::var("NODE_DEBUG").ok(),
       origin_data_folder_path: Some(self.deno_dir()?.origin_data_folder_path()),
       seed: self.options.seed(),
       unsafely_ignore_certificate_errors: self

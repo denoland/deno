@@ -185,6 +185,10 @@ impl LineIndex {
     }
   }
 
+  pub fn line_length_utf16(&self, line: u32) -> TextSize {
+    self.utf16_offsets[(line + 1) as usize] - self.utf16_offsets[line as usize]
+  }
+
   pub fn text_content_length_utf16(&self) -> TextSize {
     *self.utf16_offsets.last().unwrap()
   }

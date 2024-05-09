@@ -1995,6 +1995,10 @@ function readableByteStreamControllerPullInto(
       case "Uint32Array":
         ctor = Uint32Array;
         break;
+      case "Float16Array":
+        // TODO(petamoriken): add Float16Array to primordials
+        ctor = Float16Array;
+        break;
       case "Float32Array":
         ctor = Float32Array;
         break;

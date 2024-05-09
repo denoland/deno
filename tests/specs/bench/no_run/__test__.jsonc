@@ -1,0 +1,5 @@
+{
+  "args": "bench --no-run no_run.ts",
+  "output": "no_run.out",
+  "exitCode": 1
+}

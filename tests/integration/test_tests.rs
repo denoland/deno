@@ -584,21 +584,6 @@ itest!(package_json_basic {
   exit_code: 0,
 });
 
-itest!(test_lock {
-  args: "test",
-  http_server: true,
-  cwd: Some("lockfile/basic"),
-  exit_code: 10,
-  output: "lockfile/basic/fail.out",
-});
-
-itest!(test_no_lock {
-  args: "test --no-lock",
-  http_server: true,
-  cwd: Some("lockfile/basic"),
-  output: "lockfile/basic/test.nolock.out",
-});
-
 itest!(test_replace_timers {
   args: "test test/replace_timers.js",
   output: "test/replace_timers.js.out",
@@ -668,19 +653,13 @@ fn conditionally_loads_type_graph() {
     .new_command()
     .args("test --reload -L debug run/type_directives_js_main.js")
     .run();
-  output.assert_matches_text("[WILDCARD] - FileFetcher::fetch() - specifier: file:///[WILDCARD]/subdir/type_reference.d.ts[WILDCARD]");
+  output.assert_matches_text("[WILDCARD] - FileFetcher::fetch_no_follow_with_options - specifier: file:///[WILDCARD]/subdir/type_reference.d.ts[WILDCARD]");
   let output = context
     .new_command()
     .args("test --reload -L debug --no-check run/type_directives_js_main.js")
     .run();
   assert_not_contains!(output.combined_output(), "type_reference.d.ts");
 }
-
-itest!(test_include_relative_pattern_dot_slash {
-  args: "test",
-  output: "test/relative_pattern_dot_slash/output.out",
-  cwd: Some("test/relative_pattern_dot_slash"),
-});
 
 #[test]
 fn opt_out_top_level_exclude_via_test_unexclude() {

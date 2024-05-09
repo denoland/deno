@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::resolve_no_prompt;
+use crate::args::AddFlags;
 use crate::args::CaData;
 use crate::args::Flags;
 use crate::args::InstallFlags;
@@ -253,6 +254,20 @@ pub fn uninstall(uninstall_flags: UninstallFlags) -> Result<(), AnyError> {
   Ok(())
 }
 
+async fn install_local(
+  flags: Flags,
+  maybe_add_flags: Option<AddFlags>,
+) -> Result<(), AnyError> {
+  if let Some(add_flags) = maybe_add_flags {
+    return super::registry::add(flags, add_flags).await;
+  }
+
+  let factory = CliFactory::from_flags(flags)?;
+  crate::module_loader::load_top_level_deps(&factory).await?;
+
+  Ok(())
+}
+
 pub async fn install_command(
   flags: Flags,
   install_flags: InstallFlags,
@@ -263,7 +278,9 @@ pub async fn install_command(
 
   let install_flags_global = match install_flags.kind {
     InstallKind::Global(flags) => flags,
-    InstallKind::Local => unreachable!(),
+    InstallKind::Local(maybe_add_flags) => {
+      return install_local(flags, maybe_add_flags).await
+    }
   };
 
   // ensure the module is cached
@@ -426,7 +443,7 @@ async fn resolve_shim_data(
     executable_args.push("--cached-only".to_string());
   }
 
-  if resolve_no_prompt(flags) {
+  if resolve_no_prompt(&flags.permissions) {
     executable_args.push("--no-prompt".to_string());
   }
 
@@ -527,6 +544,7 @@ fn is_in_path(dir: &Path) -> bool {
 mod tests {
   use super::*;
 
+  use crate::args::PermissionFlags;
   use crate::args::UninstallFlagsGlobal;
   use crate::args::UnstableConfig;
   use crate::util::fs::canonicalize_path;
@@ -878,8 +896,11 @@ mod tests {
   async fn install_with_flags() {
     let shim_data = resolve_shim_data(
       &Flags {
-        allow_net: Some(vec![]),
-        allow_read: Some(vec![]),
+        permissions: PermissionFlags {
+          allow_net: Some(vec![]),
+          allow_read: Some(vec![]),
+          ..Default::default()
+        },
         type_check_mode: TypeCheckMode::None,
         log_level: Some(Level::Error),
         ..Flags::default()
@@ -914,7 +935,10 @@ mod tests {
   async fn install_prompt() {
     let shim_data = resolve_shim_data(
       &Flags {
-        no_prompt: true,
+        permissions: PermissionFlags {
+          no_prompt: true,
+          ..Default::default()
+        },
         ..Flags::default()
       },
       &InstallFlagsGlobal {
@@ -943,7 +967,10 @@ mod tests {
   async fn install_allow_all() {
     let shim_data = resolve_shim_data(
       &Flags {
-        allow_all: true,
+        permissions: PermissionFlags {
+          allow_all: true,
+          ..Default::default()
+        },
         ..Flags::default()
       },
       &InstallFlagsGlobal {
@@ -973,7 +1000,10 @@ mod tests {
     let temp_dir = canonicalize_path(&env::temp_dir()).unwrap();
     let shim_data = resolve_shim_data(
       &Flags {
-        allow_all: true,
+        permissions: PermissionFlags {
+          allow_all: true,
+          ..Default::default()
+        },
         ..Flags::default()
       },
       &InstallFlagsGlobal {
@@ -1006,7 +1036,10 @@ mod tests {
   async fn install_npm_no_lock() {
     let shim_data = resolve_shim_data(
       &Flags {
-        allow_all: true,
+        permissions: PermissionFlags {
+          allow_all: true,
+          ..Default::default()
+        },
         no_lock: true,
         ..Flags::default()
       },

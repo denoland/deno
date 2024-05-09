@@ -5,7 +5,7 @@ import { stringify } from "jsr:@std/yaml@^0.221/stringify";
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 84;
+const cacheVersion = 88;
 
 const ubuntuX86Runner = "ubuntu-22.04";
 const ubuntuX86XlRunner = "ubuntu-22.04-xl";
@@ -458,6 +458,10 @@ const ci = {
           if: "matrix.job == 'lint' && matrix.os == 'linux'",
         },
         {
+          ...submoduleStep("./cli/bench/testdata/lsp_benchdata"),
+          if: "matrix.job == 'bench'",
+        },
+        {
           name: "Create source tarballs (release, linux)",
           if: [
             "matrix.os == 'linux' &&",
@@ -485,8 +489,7 @@ const ci = {
           )
         ),
         {
-          // only necessary for benchmarks
-          if: "matrix.job == 'bench'",
+          if: "matrix.job == 'bench' || matrix.job == 'test'",
           ...installNodeStep,
         },
         installProtocStep,
@@ -659,6 +662,12 @@ const ci = {
           if: "matrix.job == 'lint'",
           run:
             "deno run --unstable --allow-write --allow-read --allow-run --allow-net ./tools/lint.js",
+        },
+        {
+          name: "jsdoc_checker.js",
+          if: "matrix.job == 'lint'",
+          run:
+            "deno run --allow-read --allow-env --allow-sys ./tools/jsdoc_checker.js",
         },
         {
           name: "node_compat/setup.ts --check",
@@ -858,13 +867,9 @@ const ci = {
             DENO_BIN: "./target/debug/deno",
           },
           run: [
-            "deno run --allow-env --allow-net --allow-read --allow-run \\",
-            "        --allow-write --unstable                         \\",
-            "        --lock=tools/deno.lock.json                      \\",
+            "deno run -A --unstable --lock=tools/deno.lock.json       \\",
             "        ./tests/wpt/wpt.ts setup",
-            "deno run --allow-env --allow-net --allow-read --allow-run \\",
-            "         --allow-write --unstable                         \\",
-            "         --lock=tools/deno.lock.json              \\",
+            "deno run -A --unstable --lock=tools/deno.lock.json       \\",
             '         ./tests/wpt/wpt.ts run --quiet --binary="$DENO_BIN"',
           ].join("\n"),
         },
@@ -875,14 +880,10 @@ const ci = {
             DENO_BIN: "./target/release/deno",
           },
           run: [
-            "deno run --allow-env --allow-net --allow-read --allow-run \\",
-            "         --allow-write --unstable                         \\",
-            "         --lock=tools/deno.lock.json                      \\",
+            "deno run -A --unstable --lock=tools/deno.lock.json        \\",
             "         ./tests/wpt/wpt.ts setup",
-            "deno run --allow-env --allow-net --allow-read --allow-run \\",
-            "         --allow-write --unstable                         \\",
-            "         --lock=tools/deno.lock.json                      \\",
-            "         ./tests/wpt/wpt.ts run --quiet --release             \\",
+            "deno run -A --unstable --lock=tools/deno.lock.json        \\",
+            "         ./tests/wpt/wpt.ts run --quiet --release         \\",
             '                            --binary="$DENO_BIN"          \\',
             "                            --json=wpt.json               \\",
             "                            --wptreport=wptreport.json",

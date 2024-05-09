@@ -9,7 +9,10 @@ const {
 } = core;
 
 import { ERR_INVALID_FD } from "ext:deno_node/internal/errors.ts";
-import { LibuvStreamWrap } from "ext:deno_node/internal_binding/stream_wrap.ts";
+import {
+  kStreamBaseField,
+  LibuvStreamWrap,
+} from "ext:deno_node/internal_binding/stream_wrap.ts";
 import { providerType } from "ext:deno_node/internal_binding/async_wrap.ts";
 import { Socket } from "node:net";
 import { setReadStream } from "ext:deno_node/_process/streams.mjs";
@@ -35,6 +38,14 @@ function isatty(fd) {
 class TTY extends LibuvStreamWrap {
   constructor(handle) {
     super(providerType.TTYWRAP, handle);
+  }
+
+  ref() {
+    this[kStreamBaseField][io.REF]();
+  }
+
+  unref() {
+    this[kStreamBaseField][io.UNREF]();
   }
 }
 
@@ -80,7 +91,7 @@ export class WriteStream extends Socket {
     if (fd > 2) throw new Error("Only fd 0, 1 and 2 are supported.");
 
     const tty = new TTY(
-      fd === 0 ? Deno.stdin : fd === 1 ? Deno.stdout : Deno.stderr,
+      fd === 0 ? io.stdin : fd === 1 ? io.stdout : io.stderr,
     );
 
     super({

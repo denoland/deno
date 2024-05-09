@@ -1,10 +1,10 @@
 [UNORDERED_START]
-Download http://localhost:4545/npm/registry/@types/node
-Download http://localhost:4545/npm/registry/@denotest/globals
+Download http://localhost:4260/@types/node
+Download http://localhost:4260/@denotest/globals
 [UNORDERED_END]
 [UNORDERED_START]
-Download http://localhost:4545/npm/registry/@denotest/globals/1.0.0.tgz
-Download http://localhost:4545/npm/registry/@types/node/node-18.16.19.tgz
+Download http://localhost:4260/@denotest/globals/1.0.0.tgz
+Download http://localhost:4260/@types/node/node-18.16.19.tgz
 [UNORDERED_END]
 Check file:///[WILDCARD]/npm/compare_globals/main.ts
 true

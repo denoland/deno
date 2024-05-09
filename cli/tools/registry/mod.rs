@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::io::IsTerminal;
 use std::path::Path;
 use std::process::Stdio;
@@ -68,11 +69,13 @@ use unfurl::SpecifierUnfurler;
 
 use super::check::TypeChecker;
 
+use self::paths::CollectedPublishPath;
 use self::tar::PublishableTarball;
 
+#[allow(clippy::print_stderr)]
 fn ring_bell() {
   // ASCII code for the bell character.
-  print!("\x07");
+  eprint!("\x07");
 }
 
 struct PreparedPublishPackage {
@@ -105,7 +108,7 @@ async fn prepare_publish(
   diagnostics_collector: &PublishDiagnosticsCollector,
 ) -> Result<Rc<PreparedPublishPackage>, AnyError> {
   let config_path = deno_json.specifier.to_file_path().unwrap();
-  let dir_path = config_path.parent().unwrap().to_path_buf();
+  let root_dir = config_path.parent().unwrap().to_path_buf();
   let Some(version) = deno_json.json.version.clone() else {
     bail!("{} is missing 'version' field", deno_json.specifier);
   };
@@ -113,7 +116,7 @@ async fn prepare_publish(
     let mut suggested_entrypoint = None;
 
     for entrypoint in SUGGESTED_ENTRYPOINTS {
-      if dir_path.join(entrypoint).exists() {
+      if root_dir.join(entrypoint).exists() {
         suggested_entrypoint = Some(entrypoint);
         break;
       }
@@ -143,7 +146,10 @@ async fn prepare_publish(
   let Some((scope, name_no_scope)) = name_no_at.split_once('/') else {
     bail!("Invalid package name, use '@<scope_name>/<package_name> format");
   };
-  let file_patterns = deno_json.to_publish_config()?.map(|c| c.files);
+  let file_patterns = deno_json
+    .to_publish_config()?
+    .map(|c| c.files)
+    .unwrap_or_else(|| FilePatterns::new_with_base(root_dir.to_path_buf()));
 
   let diagnostics_collector = diagnostics_collector.clone();
   let tarball = deno_core::unsync::spawn_blocking(move || {
@@ -154,20 +160,24 @@ async fn prepare_publish(
       bare_node_builtins,
     );
     let root_specifier =
-      ModuleSpecifier::from_directory_path(&dir_path).unwrap();
+      ModuleSpecifier::from_directory_path(&root_dir).unwrap();
+    let publish_paths = paths::collect_publish_paths(
+      &root_dir,
+      &cli_options,
+      &diagnostics_collector,
+      file_patterns,
+    )?;
     collect_excluded_module_diagnostics(
       &root_specifier,
       &graph,
-      file_patterns.as_ref(),
+      &publish_paths,
       &diagnostics_collector,
     );
     tar::create_gzipped_tarball(
-      &dir_path,
-      &cli_options,
+      &publish_paths,
       LazyGraphSourceParser::new(&source_cache, &graph),
       &diagnostics_collector,
       &unfurler,
-      file_patterns,
     )
     .context("Failed to create a tarball")
   })
@@ -205,13 +215,14 @@ async fn prepare_publish(
 fn collect_excluded_module_diagnostics(
   root: &ModuleSpecifier,
   graph: &deno_graph::ModuleGraph,
-  file_patterns: Option<&FilePatterns>,
+  publish_paths: &[CollectedPublishPath],
   diagnostics_collector: &PublishDiagnosticsCollector,
 ) {
-  let Some(file_patterns) = file_patterns else {
-    return;
-  };
-  let specifiers = graph
+  let publish_specifiers = publish_paths
+    .iter()
+    .map(|path| &path.specifier)
+    .collect::<HashSet<_>>();
+  let graph_specifiers = graph
     .modules()
     .filter_map(|m| match m {
       deno_graph::Module::Js(_) | deno_graph::Module::Json(_) => {
@@ -222,8 +233,8 @@ fn collect_excluded_module_diagnostics(
       | deno_graph::Module::External(_) => None,
     })
     .filter(|s| s.as_str().starts_with(root.as_str()));
-  for specifier in specifiers {
-    if !file_patterns.matches_specifier(specifier) {
+  for specifier in graph_specifiers {
+    if !publish_specifiers.contains(specifier) {
       diagnostics_collector.push(PublishDiagnostic::ExcludedModule {
         specifier: specifier.clone(),
       });
@@ -281,18 +292,19 @@ async fn get_auth_headers(
           .context("Failed to create interactive authorization")?;
 
       let auth_url = format!("{}?code={}", auth.verification_url, auth.code);
-      print!(
-        "Visit {} to authorize publishing of",
-        colors::cyan(&auth_url)
-      );
-      if packages.len() > 1 {
-        println!(" {} packages", packages.len());
+      let pkgs_text = if packages.len() > 1 {
+        format!("{} packages", packages.len())
       } else {
-        println!(" @{}/{}", packages[0].scope, packages[0].package);
-      }
+        format!("@{}/{}", packages[0].scope, packages[0].package)
+      };
+      log::warn!(
+        "Visit {} to authorize publishing of {}",
+        colors::cyan(&auth_url),
+        pkgs_text,
+      );
 
       ring_bell();
-      println!("{}", colors::gray("Waiting..."));
+      log::info!("{}", colors::gray("Waiting..."));
       let _ = open::that_detached(&auth_url);
 
       let interval = std::time::Duration::from_secs(auth.poll_interval);
@@ -313,7 +325,7 @@ async fn get_auth_headers(
             .await;
         match res {
           Ok(res) => {
-            println!(
+            log::info!(
               "{} {} {}",
               colors::green("Authorization successful."),
               colors::gray("Authenticated as"),
@@ -480,13 +492,13 @@ async fn ensure_scopes_and_packages_exist(
     };
 
     ring_bell();
-    println!(
+    log::warn!(
       "'@{}/{}' doesn't exist yet. Visit {} to create the package",
       &package.scope,
       &package.package,
       colors::cyan_with_underline(&create_package_url)
     );
-    println!("{}", colors::gray("Waiting..."));
+    log::warn!("{}", colors::gray("Waiting..."));
     let _ = open::that_detached(&create_package_url);
 
     let package_api_url = api::get_package_api_url(
@@ -500,7 +512,7 @@ async fn ensure_scopes_and_packages_exist(
       let response = client.get(&package_api_url).send().await?;
       if response.status() == 200 {
         let name = format!("@{}/{}", package.scope, package.package);
-        println!("Package {} created", colors::green(name));
+        log::info!("Package {} created", colors::green(name));
         break;
       }
     }
@@ -605,7 +617,7 @@ async fn publish_package(
   provenance: bool,
 ) -> Result<(), AnyError> {
   let client = http_client.client()?;
-  println!(
+  log::info!(
     "{} @{}/{}@{} ...",
     colors::intense_blue("Publishing"),
     package.scope,
@@ -639,7 +651,7 @@ async fn publish_package(
       )
       .unwrap();
       if task.status == "success" {
-        println!(
+        log::info!(
           "{} @{}/{}@{}",
           colors::yellow("Warning: Skipping, already published"),
           package.scope,
@@ -648,7 +660,7 @@ async fn publish_package(
         );
         return Ok(());
       }
-      println!(
+      log::info!(
         "{} @{}/{}@{}",
         colors::yellow("Already uploaded, waiting for publishing"),
         package.scope,
@@ -701,7 +713,7 @@ async fn publish_package(
     );
   }
 
-  println!(
+  log::info!(
     "{} @{}/{}@{}",
     colors::green("Successfully published"),
     package.scope,
@@ -738,7 +750,7 @@ async fn publish_package(
     let bundle = provenance::generate_provenance(subject).await?;
 
     let tlog_entry = &bundle.verification_material.tlog_entries[0];
-    println!("{}",
+    log::info!("{}",
       colors::green(format!(
         "Provenance transparency log available at https://search.sigstore.dev/?logIndex={}",
         tlog_entry.log_index
@@ -758,7 +770,7 @@ async fn publish_package(
       .await?;
   }
 
-  println!(
+  log::info!(
     "{}",
     colors::gray(format!(
       "Visit {}@{}/{}@{} for details",
@@ -788,7 +800,7 @@ async fn prepare_packages_for_publishing(
   let cli_options = cli_factory.cli_options();
 
   if members.len() > 1 {
-    println!("Publishing a workspace...");
+    log::info!("Publishing a workspace...");
   }
 
   // create the module graph

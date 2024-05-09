@@ -1,9 +1,11 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::borrow::Cow;
 use std::path::Path;
 
 use deno_core::error::AnyError;
 use deno_core::url::Url;
+pub use deno_io::fs::FsError;
 pub use deno_permissions::create_child_permissions;
 pub use deno_permissions::parse_sys_kind;
 pub use deno_permissions::set_prompt_callbacks;
@@ -142,6 +144,34 @@ impl deno_websocket::WebSocketPermissions for PermissionsContainer {
 }
 
 impl deno_fs::FsPermissions for PermissionsContainer {
+  fn check_open<'a>(
+    &mut self,
+    resolved: bool,
+    read: bool,
+    write: bool,
+    path: &'a Path,
+    api_name: &str,
+  ) -> Result<Cow<'a, Path>, FsError> {
+    if resolved {
+      self.check_special_file(path, api_name).map_err(|_| {
+        std::io::Error::from(std::io::ErrorKind::PermissionDenied)
+      })?;
+      return Ok(Cow::Borrowed(path));
+    }
+
+    // If somehow read or write aren't specified, use read
+    let read = read || !write;
+    if read {
+      deno_fs::FsPermissions::check_read(self, path, api_name)
+        .map_err(|_| FsError::PermissionDenied("read"))?;
+    }
+    if write {
+      deno_fs::FsPermissions::check_write(self, path, api_name)
+        .map_err(|_| FsError::PermissionDenied("write"))?;
+    }
+    Ok(Cow::Borrowed(path))
+  }
+
   fn check_read(
     &mut self,
     path: &Path,

@@ -42,6 +42,7 @@ use rsa::Oaep;
 use rsa::Pkcs1v15Encrypt;
 use rsa::RsaPrivateKey;
 use rsa::RsaPublicKey;
+use spki::EncodePublicKey;
 
 mod cipher;
 mod dh;
@@ -681,13 +682,32 @@ pub async fn op_node_generate_rsa_async(
   spawn_blocking(move || generate_rsa(modulus_length, public_exponent)).await?
 }
 
+#[op2]
+#[string]
+pub fn op_node_export_rsa_public_pem(
+  #[buffer] pkcs1_der: &[u8],
+) -> Result<String, AnyError> {
+  let public_key = RsaPublicKey::from_pkcs1_der(pkcs1_der)?;
+  let export = public_key.to_public_key_pem(Default::default())?;
+  Ok(export)
+}
+
+#[op2]
+#[serde]
+pub fn op_node_export_rsa_spki_der(
+  #[buffer] pkcs1_der: &[u8],
+) -> Result<ToJsBuffer, AnyError> {
+  let public_key = RsaPublicKey::from_pkcs1_der(pkcs1_der)?;
+  let export = public_key.to_public_key_der()?.to_vec();
+  Ok(export.into())
+}
+
 fn dsa_generate(
   modulus_length: usize,
   divisor_length: usize,
 ) -> Result<(ToJsBuffer, ToJsBuffer), AnyError> {
   let mut rng = rand::thread_rng();
   use dsa::pkcs8::EncodePrivateKey;
-  use dsa::pkcs8::EncodePublicKey;
   use dsa::Components;
   use dsa::KeySize;
   use dsa::SigningKey;

@@ -235,6 +235,18 @@ Deno.test({
   },
 });
 
+Deno.test(
+  { permissions: { run: true, read: true } },
+  async function processKill() {
+    const p = new Deno.Command(Deno.execPath(), {
+      args: ["eval", "setTimeout(() => {}, 10000)"],
+    }).spawn();
+
+    process.kill(p.pid);
+    await p.status;
+  },
+);
+
 Deno.test({
   name: "process.off signal",
   ignore: Deno.build.os == "windows",
@@ -404,6 +416,9 @@ Deno.test({
     assertEquals(process.env.HELLO, "false");
     process.env.HELLO = "WORLD";
     assertEquals(process.env.HELLO, "WORLD");
+
+    delete process.env.HELLO;
+    assertEquals(process.env.HELLO, undefined);
   },
 });
 

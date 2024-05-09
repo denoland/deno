@@ -5,7 +5,6 @@ use std::io;
 use std::os::windows::io::RawHandle;
 use std::sync::atomic::AtomicU32;
 use std::sync::atomic::Ordering;
-use std::time::Duration;
 use winapi::shared::minwindef::DWORD;
 use winapi::um::errhandlingapi::GetLastError;
 use winapi::um::fileapi::CreateFileA;
@@ -31,12 +30,6 @@ use winapi::um::winnt::GENERIC_WRITE;
 /// well as offering a complex NTAPI solution if we decide to try to make these pipes truely
 /// anonymous: https://stackoverflow.com/questions/60645/overlapped-i-o-on-anonymous-pipe
 pub fn create_named_pipe() -> io::Result<(RawHandle, RawHandle)> {
-  // Silently retry up to 10 times.
-  for _ in 0..10 {
-    if let Ok(res) = create_named_pipe_inner() {
-      return Ok(res);
-    }
-  }
   create_named_pipe_inner()
 }
 
@@ -44,7 +37,7 @@ fn create_named_pipe_inner() -> io::Result<(RawHandle, RawHandle)> {
   static NEXT_ID: AtomicU32 = AtomicU32::new(0);
   // Create an extremely-likely-unique pipe name from randomness, identity and a serial counter.
   let pipe_name = format!(
-    r#"\\.\pipe\deno_pipe_{:x}.{:x}.{:x}\0"#,
+    concat!(r#"\\.\pipe\deno_pipe_{:x}.{:x}.{:x}"#, "\0"),
     thread_rng().next_u64(),
     std::process::id(),
     NEXT_ID.fetch_add(1, Ordering::SeqCst),
@@ -81,7 +74,7 @@ fn create_named_pipe_inner() -> io::Result<(RawHandle, RawHandle)> {
     // This should not happen, so we would like to get some better diagnostics here.
     // SAFETY: Printing last error for diagnostics
     unsafe {
-      eprintln!(
+      log::error!(
         "*** Unexpected server pipe failure '{pipe_name:?}': {:x}",
         GetLastError()
       );
@@ -89,56 +82,36 @@ fn create_named_pipe_inner() -> io::Result<(RawHandle, RawHandle)> {
     return Err(io::Error::last_os_error());
   }
 
-  // The pipe might not be ready yet in rare cases, so we loop for a bit
-  for i in 0..10 {
-    // SAFETY: Create the pipe client with non-inheritable handle
-    let client_handle = unsafe {
-      CreateFileA(
-        pipe_name.as_ptr() as *const i8,
-        GENERIC_READ | GENERIC_WRITE,
-        0,
-        &mut security_attributes,
-        OPEN_EXISTING,
-        FILE_FLAG_OVERLAPPED,
-        std::ptr::null_mut(),
-      )
-    };
+  // SAFETY: Create the pipe client with non-inheritable handle
+  let client_handle = unsafe {
+    CreateFileA(
+      pipe_name.as_ptr() as *const i8,
+      GENERIC_READ | GENERIC_WRITE,
+      0,
+      &mut security_attributes,
+      OPEN_EXISTING,
+      FILE_FLAG_OVERLAPPED,
+      std::ptr::null_mut(),
+    )
+  };
 
-    // There is a very rare case where the pipe is not ready to open. If we get `ERROR_PATH_NOT_FOUND`,
-    // we spin and try again in 1-10ms.
-    if client_handle == INVALID_HANDLE_VALUE {
-      // SAFETY: Getting last error for diagnostics
-      let error = unsafe { GetLastError() };
-      if error == winapi::shared::winerror::ERROR_FILE_NOT_FOUND
-        || error == winapi::shared::winerror::ERROR_PATH_NOT_FOUND
-      {
-        // Exponential backoff, but don't sleep longer than 10ms
-        eprintln!(
-          "*** Unexpected client pipe not found failure '{pipe_name:?}': {:x}",
-          error
-        );
-        std::thread::sleep(Duration::from_millis(10.min(2_u64.pow(i) + 1)));
-        continue;
-      }
-
-      // This should not happen, so we would like to get some better diagnostics here.
-      eprintln!(
-        "*** Unexpected client pipe failure '{pipe_name:?}': {:x}",
-        error
-      );
-      let err = io::Error::last_os_error();
-      // SAFETY: Close the handles if we failed
-      unsafe {
-        CloseHandle(server_handle);
-      }
-      return Err(err);
+  if client_handle == INVALID_HANDLE_VALUE {
+    // SAFETY: Getting last error for diagnostics
+    let error = unsafe { GetLastError() };
+    // This should not happen, so we would like to get some better diagnostics here.
+    log::error!(
+      "*** Unexpected client pipe failure '{pipe_name:?}': {:x}",
+      error
+    );
+    let err = io::Error::last_os_error();
+    // SAFETY: Close the handles if we failed
+    unsafe {
+      CloseHandle(server_handle);
     }
-
-    return Ok((server_handle, client_handle));
+    return Err(err);
   }
 
-  // We failed to open the pipe despite sleeping
-  Err(std::io::ErrorKind::NotFound.into())
+  Ok((server_handle, client_handle))
 }
 
 #[cfg(test)]

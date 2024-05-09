@@ -5,6 +5,7 @@ use crate::cache::FastInsecureHasher;
 use crate::cache::ParsedSourceCache;
 
 use deno_ast::SourceMapOption;
+use deno_ast::TranspileResult;
 use deno_core::error::AnyError;
 use deno_core::ModuleCodeString;
 use deno_core::ModuleSpecifier;
@@ -32,7 +33,7 @@ impl Emitter {
     let transpile_and_emit_options_hash = {
       let mut hasher = FastInsecureHasher::default();
       hasher.write_hashable(&transpile_options);
-      hasher.write_hashable(emit_options);
+      hasher.write_hashable(&emit_options);
       hasher.finish()
     };
     Self {
@@ -93,14 +94,22 @@ impl Emitter {
     {
       Ok(emit_code.into())
     } else {
-      // this will use a cached version if it exists
-      let parsed_source = self.parsed_source_cache.get_or_parse_module(
+      // nothing else needs the parsed source at this point, so remove from
+      // the cache in order to not transpile owned
+      let parsed_source = self.parsed_source_cache.remove_or_parse_module(
         specifier,
         source.clone(),
         media_type,
       )?;
-      let transpiled_source =
-        parsed_source.transpile(&self.transpile_options, &self.emit_options)?;
+      let transpiled_source = match parsed_source
+        .transpile(&self.transpile_options, &self.emit_options)?
+      {
+        TranspileResult::Owned(source) => source,
+        TranspileResult::Cloned(source) => {
+          debug_assert!(false, "Transpile owned failed.");
+          source
+        }
+      };
       debug_assert!(transpiled_source.source_map.is_none());
       self.emit_cache.set_emit_code(
         specifier,
@@ -124,11 +133,12 @@ impl Emitter {
     let source_arc: Arc<str> = source_code.into();
     let parsed_source = self
       .parsed_source_cache
-      .get_or_parse_module(specifier, source_arc, media_type)?;
-    let mut options = self.emit_options;
+      .remove_or_parse_module(specifier, source_arc, media_type)?;
+    let mut options = self.emit_options.clone();
     options.source_map = SourceMapOption::None;
-    let transpiled_source =
-      parsed_source.transpile(&self.transpile_options, &options)?;
+    let transpiled_source = parsed_source
+      .transpile(&self.transpile_options, &options)?
+      .into_source();
     Ok(transpiled_source.text)
   }
 
