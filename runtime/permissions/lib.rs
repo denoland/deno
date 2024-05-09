@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::anyhow::{anyhow, Context};
+use deno_core::anyhow::anyhow;
+use deno_core::anyhow::Context;
 use deno_core::error::custom_error;
 use deno_core::error::type_error;
 use deno_core::error::uri_error;
@@ -691,7 +692,7 @@ impl Descriptor for WriteDescriptor {
 pub struct NetDescriptor(pub FQDN, pub Option<u16>);
 
 impl NetDescriptor {
-    fn new<T: AsRef<str>>(host: &&(T, Option<u16>)) -> Result<Self, AnyError> {
+  fn new<T: AsRef<str>>(host: &&(T, Option<u16>)) -> Result<Self, AnyError> {
     let fqdn = FQDN::from_str(host.0.as_ref())
       .with_context(|| format!("Failed to parse {}", host.0.as_ref()))?;
     Ok(NetDescriptor(fqdn, host.1))
@@ -734,7 +735,8 @@ impl FromStr for NetDescriptor {
     // Set the scheme to `unknown` to parse the URL, as we really don't know
     // what the scheme is. We only using Url::parse to parse the host and port
     // and don't care about the scheme.
-    let url = url::Url::parse(&format!("unknown://{s}")).with_context(|| format!("Failed to parse {}", s))?;
+    let url = url::Url::parse(&format!("unknown://{s}"))
+      .with_context(|| format!("Failed to parse {}", s))?;
     let hostname = url
       .host_str()
       .ok_or(url::ParseError::EmptyHost)?
@@ -3384,7 +3386,8 @@ mod tests {
   #[test]
   fn test_permission_query_invalid_hostname() {
     let permission = UnaryPermission::<NetDescriptor>::default();
-    let invalid_host: (String, Option<u16>) = ("foo@bar.com.".to_string(), Some(443));
+    let invalid_host: (String, Option<u16>) =
+      ("foo@bar.com.".to_string(), Some(443));
     let state = permission.query(Some(&&invalid_host));
     assert_eq!(state, PermissionState::Prompt);
   }
@@ -3392,7 +3395,8 @@ mod tests {
   #[test]
   fn test_request_invalid_domain() {
     let mut permission = UnaryPermission::<NetDescriptor>::default();
-    let invalid_host: (String, Option<u16>) = ("foo@bar.com.".to_string(), Some(443));
+    let invalid_host: (String, Option<u16>) =
+      ("foo@bar.com.".to_string(), Some(443));
     let result = permission.request(Some(&&invalid_host));
     assert_eq!(result, PermissionState::Prompt);
   }
@@ -3400,7 +3404,8 @@ mod tests {
   #[test]
   fn test_revoke_invalid_domain() {
     let mut permission = UnaryPermission::<NetDescriptor>::default();
-    let invalid_host: (String, Option<u16>) = ("foo@bar.com.".to_string(), Some(443));
+    let invalid_host: (String, Option<u16>) =
+      ("foo@bar.com.".to_string(), Some(443));
     let result = permission.revoke(Some(&&invalid_host));
     assert_eq!(result, PermissionState::Prompt);
   }
