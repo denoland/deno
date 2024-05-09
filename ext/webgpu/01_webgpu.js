@@ -470,7 +470,9 @@ class GPUAdapter {
     }
 
     if (this[_invalid]) {
-      throw new TypeError("The adapter cannot be reused, as it has been invalidated by a device creation");
+      throw new TypeError(
+        "The adapter cannot be reused, as it has been invalidated by a device creation",
+      );
     }
 
     const { rid, queueRid, features, limits } = op_webgpu_request_device(
@@ -506,7 +508,9 @@ class GPUAdapter {
     webidl.assertBranded(this, GPUAdapterPrototype);
 
     if (this[_invalid]) {
-      throw new TypeError("The adapter cannot be reused, as it has been invalidated by a device creation");
+      throw new TypeError(
+        "The adapter cannot be reused, as it has been invalidated by a device creation",
+      );
     }
 
     const {
