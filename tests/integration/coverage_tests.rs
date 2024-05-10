@@ -589,12 +589,13 @@ fn test_collect_summary_with_no_matches() {
 
   // Check the contents of the coverage directory, ignoring 'empty_dir'
   let mut unexpected_contents: Vec<std::path::PathBuf> = Vec::new();
-  for entry in std::fs::read_dir(temp_dir_path.as_path()).unwrap() {
-    if let Ok(entry) = entry {
-      if entry.file_name() != "empty_dir" {
-        // Ignore the 'empty_dir'
-        unexpected_contents.push(entry.path());
-      }
+  for entry in std::fs::read_dir(temp_dir_path.as_path())
+    .unwrap()
+    .flatten()
+  {
+    if entry.file_name() != "empty_dir" {
+      // Ignore the 'empty_dir'
+      unexpected_contents.push(entry.path());
     }
   }
 
