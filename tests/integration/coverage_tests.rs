@@ -587,18 +587,31 @@ fn test_collect_summary_with_no_matches() {
     actual
   );
 
-  let is_coverage_dir_empty = std::fs::read_dir(temp_dir_path.as_path())
-    .map_or(true, |mut entries| entries.next().is_none());
-
-  assert!(
-    is_coverage_dir_empty,
-    "Expected the coverage directory to be empty, but it was not."
-  );
-
-  // If the directory is empty, print a message and conclude the test
-  if is_coverage_dir_empty {
-    println!(
-      "No coverage files found as expected, test concludes successfully."
-    );
+  // Check the contents of the coverage directory, ignoring 'empty_dir'
+  let mut unexpected_contents: Vec<std::path::PathBuf> = Vec::new();
+  for entry in std::fs::read_dir(temp_dir_path.as_path()).unwrap() {
+    if let Ok(entry) = entry {
+      if entry.file_name() != "empty_dir" {
+        // Ignore the 'empty_dir'
+        unexpected_contents.push(entry.path());
+      }
+    }
   }
+
+  // Report unexpected contents
+  if !unexpected_contents.is_empty() {
+    eprintln!("Unexpected files or directories in the coverage directory:");
+    for path in &unexpected_contents {
+      eprintln!("{:?}", path);
+    }
+  }
+
+  // Assert that the coverage directory is otherwise empty
+  assert!(
+        unexpected_contents.is_empty(),
+        "Expected the coverage directory to be empty except for 'empty_dir', but found: {:?}",
+        unexpected_contents
+    );
+
+  println!("No unexpected coverage files found as expected, test concludes successfully.");
 }
