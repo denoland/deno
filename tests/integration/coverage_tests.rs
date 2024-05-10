@@ -603,8 +603,8 @@ fn test_collect_summary_with_no_matches() {
 
   let matched: bool = expected_patterns.iter().any(|&msg| actual.contains(msg));
   assert!(
-  matched,
-  "Expected output to indicate no coverage data was found, but found:\n{actual}"
-);
+    matched,
+    "Expected output to indicate no coverage data was found, but found:\n{actual}"
+  );
   coverage_output.skip_exit_code_check();
 }
