@@ -20,19 +20,37 @@ use tar::EntryType;
 
 use crate::util::path::get_atomic_dir_path;
 
+#[derive(Debug, Copy, Clone)]
+pub enum TarballExtractionMode {
+  /// Overwrites the destination directory without deleting any files.
+  Overwrite,
+  /// Creates and writes to a sibling temporary directory. When done, moves
+  /// it to the final destination.
+  ///
+  /// This is more robust than `Overwrite` as it better handles multiple
+  /// processes writing to the directory at the same time.
+  SiblingTempDir,
+}
+
 pub fn verify_and_extract_tarball(
   package_nv: &PackageNv,
   data: &[u8],
   dist_info: &NpmPackageVersionDistInfo,
   output_folder: &Path,
+  extraction_mode: TarballExtractionMode,
 ) -> Result<(), AnyError> {
   verify_tarball_integrity(package_nv, data, &dist_info.integrity())?;
 
-  let temp_dir = get_atomic_dir_path(output_folder);
-  extract_tarball(data, &temp_dir)?;
-  rename_with_retries(&temp_dir, output_folder)
-    .map_err(AnyError::from)
-    .context("Failed moving extracted tarball to final destination.")
+  match extraction_mode {
+    TarballExtractionMode::Overwrite => extract_tarball(data, output_folder),
+    TarballExtractionMode::SiblingTempDir => {
+      let temp_dir = get_atomic_dir_path(output_folder);
+      extract_tarball(data, &temp_dir)?;
+      rename_with_retries(&temp_dir, output_folder)
+        .map_err(AnyError::from)
+        .context("Failed moving extracted tarball to final destination.")
+    }
+  }
 }
 
 fn rename_with_retries(
@@ -51,7 +69,7 @@ fn rename_with_retries(
       }
       Err(err) => {
         count += 1;
-        if count >= 5 {
+        if count > 5 {
           // too many tries, cleanup and return the error
           let _ = fs::remove_dir_all(temp_dir);
           return Err(err);

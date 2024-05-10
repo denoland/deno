@@ -25,6 +25,7 @@ use crate::util::fs::hard_link_dir_recursive;
 use crate::util::progress_bar::ProgressBar;
 
 use super::tarball::verify_and_extract_tarball;
+use super::tarball::TarballExtractionMode;
 
 /// Stores a single copy of npm packages in a cache.
 #[derive(Debug)]
@@ -123,15 +124,14 @@ impl NpmCache {
       .await?;
     match maybe_bytes {
       Some(bytes) => {
-        // the user ran with `--reload`, so remove the existing directory
-        if !should_use_cache && self.fs.exists_sync(&package_folder) {
-          self
-            .fs
-            .remove_sync(&package_folder, true)
-            .map_err(AnyError::from)
-            .context("Failed removing package directory.")?;
-        }
-
+        let extraction_mode = if should_use_cache {
+          TarballExtractionMode::SiblingTempDir
+        } else {
+          // the user ran with `--reload`, so overwrite the package instead of
+          // deleting it since the package might get corrupted if a user kills
+          // their deno process while it's deleting a package directory
+          TarballExtractionMode::Overwrite
+        };
         let dist = dist.clone();
         let package_nv = package_nv.clone();
         deno_core::unsync::spawn_blocking(move || {
@@ -140,6 +140,7 @@ impl NpmCache {
             &bytes,
             &dist,
             &package_folder,
+            extraction_mode,
           )
         })
         .await?
