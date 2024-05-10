@@ -576,8 +576,16 @@ fn test_collect_summary_with_no_matches() {
     ])
     .run();
 
-  output.assert_exit_code(0);
-  output.skip_output_check();
+  output.assert_exit_code(1);
+
+  let actual: &str = output.combined_output();
+  let expected_message: &str = "error: No test modules found";
+  assert!(
+    actual.contains(expected_message),
+    "Expected output to contain '{}', but found:\n{}",
+    expected_message,
+    actual
+  );
 
   let coverage_output: util::TestCommandOutput = context
     .new_command()
@@ -592,7 +600,6 @@ fn test_collect_summary_with_no_matches() {
   coverage_output.skip_stdout_check();
 
   let actual: &str = coverage_output.combined_output();
-
   let expected_patterns: [&str; 5] = [
     "No matching coverage profiles found",
     "No coverage files found",
@@ -604,7 +611,7 @@ fn test_collect_summary_with_no_matches() {
   let matched: bool = expected_patterns.iter().any(|&msg| actual.contains(msg));
   assert!(
     matched,
-    "Expected output to indicate no coverage data was found, but found:\n{actual}"
+    "Expected output to indicate no coverage data was found, but found:\n{}",
+    actual
   );
-  coverage_output.skip_exit_code_check();
 }
