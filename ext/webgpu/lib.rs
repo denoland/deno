@@ -673,7 +673,7 @@ pub fn op_webgpu_request_device(
 ) -> Result<GpuDeviceRes, AnyError> {
   let mut state = state.borrow_mut();
   let adapter_resource =
-    state.resource_table.get::<WebGpuAdapter>(adapter_rid)?;
+    state.resource_table.take::<WebGpuAdapter>(adapter_rid)?;
   let adapter = adapter_resource.1;
   let instance = state.borrow::<Instance>();
 
@@ -690,6 +690,7 @@ pub fn op_webgpu_request_device(
     None,
     None
   ));
+  adapter_resource.close();
   if let Some(err) = maybe_err {
     return Err(DomExceptionOperationError::new(&err.to_string()).into());
   }
@@ -731,13 +732,14 @@ pub fn op_webgpu_request_adapter_info(
   state: Rc<RefCell<OpState>>,
   #[smi] adapter_rid: ResourceId,
 ) -> Result<GPUAdapterInfo, AnyError> {
-  let state = state.borrow_mut();
+  let mut state = state.borrow_mut();
   let adapter_resource =
-    state.resource_table.get::<WebGpuAdapter>(adapter_rid)?;
+    state.resource_table.take::<WebGpuAdapter>(adapter_rid)?;
   let adapter = adapter_resource.1;
   let instance = state.borrow::<Instance>();
 
   let info = gfx_select!(adapter => instance.adapter_get_info(adapter))?;
+  adapter_resource.close();
 
   Ok(GPUAdapterInfo {
     vendor: info.vendor.to_string(),
