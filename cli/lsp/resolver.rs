@@ -2,12 +2,12 @@
 
 use crate::args::package_json;
 use crate::args::CacheSetting;
-use crate::cache::DenoDir;
 use crate::cache::FastInsecureHasher;
+use crate::graph_util::CliJsrUrlProvider;
 use crate::http_util::HttpClient;
+use crate::jsr::JsrCacheResolver;
 use crate::lsp::config::Config;
 use crate::lsp::config::ConfigData;
-use crate::lsp::logging::lsp_warn;
 use crate::npm::create_cli_npm_resolver_for_lsp;
 use crate::npm::CliNpmResolver;
 use crate::npm::CliNpmResolverByonmCreateOptions;
@@ -19,12 +19,19 @@ use crate::npm::ManagedCliNpmResolver;
 use crate::resolver::CliGraphResolver;
 use crate::resolver::CliGraphResolverOptions;
 use crate::resolver::CliNodeResolver;
+use crate::resolver::SloppyImportsFsEntry;
+use crate::resolver::SloppyImportsResolver;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
+use dashmap::DashMap;
+use deno_cache_dir::HttpCache;
 use deno_core::error::AnyError;
+use deno_core::url::Url;
 use deno_graph::source::NpmResolver;
 use deno_graph::source::Resolver;
+use deno_graph::GraphImport;
 use deno_graph::ModuleSpecifier;
+use deno_graph::Resolution;
 use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::NodeResolution;
@@ -33,30 +40,45 @@ use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::fs_util::specifier_to_file_path;
 use deno_runtime::permissions::PermissionsContainer;
+use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
+use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
+use indexmap::IndexMap;
 use package_json::PackageJsonDepsProvider;
-use std::path::Path;
+use std::borrow::Cow;
+use std::collections::HashMap;
+use std::collections::HashSet;
 use std::rc::Rc;
 use std::sync::Arc;
+
+use super::cache::LspCache;
 
 #[derive(Debug, Clone)]
 pub struct LspResolver {
   graph_resolver: Arc<CliGraphResolver>,
+  jsr_resolver: Option<Arc<JsrCacheResolver>>,
   npm_resolver: Option<Arc<dyn CliNpmResolver>>,
   node_resolver: Option<Arc<CliNodeResolver>>,
   npm_config_hash: LspNpmConfigHash,
+  redirect_resolver: Option<Arc<RedirectResolver>>,
+  graph_imports: Arc<IndexMap<ModuleSpecifier, GraphImport>>,
   config: Arc<Config>,
+  unstable_sloppy_imports: bool,
 }
 
 impl Default for LspResolver {
   fn default() -> Self {
     Self {
-      graph_resolver: create_graph_resolver(&Default::default(), None, None),
+      graph_resolver: create_graph_resolver(None, None, None),
+      jsr_resolver: None,
       npm_resolver: None,
       node_resolver: None,
       npm_config_hash: LspNpmConfigHash(0),
+      redirect_resolver: None,
+      graph_imports: Default::default(),
       config: Default::default(),
+      unstable_sloppy_imports: false,
     }
   }
 }
@@ -65,19 +87,18 @@ impl LspResolver {
   pub async fn with_new_config(
     &self,
     config: &Config,
-    global_cache_path: Option<&Path>,
+    cache: &LspCache,
     http_client: Option<&Arc<HttpClient>>,
   ) -> Arc<Self> {
-    let npm_config_hash = LspNpmConfigHash::new(config, global_cache_path);
+    let npm_config_hash = LspNpmConfigHash::new(config, cache);
+    let config_data = config.tree.root_data();
     let mut npm_resolver = None;
     let mut node_resolver = None;
     if npm_config_hash != self.npm_config_hash {
-      if let (Some(http_client), Some(config_data)) =
-        (http_client, config.tree.root_data())
+      if let (Some(http_client), Some(config_data)) = (http_client, config_data)
       {
         npm_resolver =
-          create_npm_resolver(config_data, global_cache_path, http_client)
-            .await;
+          create_npm_resolver(config_data, cache, http_client).await;
         node_resolver = create_node_resolver(npm_resolver.as_ref());
       }
     } else {
@@ -85,15 +106,50 @@ impl LspResolver {
       node_resolver = self.node_resolver.clone();
     }
     let graph_resolver = create_graph_resolver(
-      config,
+      config_data,
       npm_resolver.as_ref(),
       node_resolver.as_ref(),
     );
+    let jsr_resolver = Some(Arc::new(JsrCacheResolver::new(
+      cache.root_vendor_or_global(),
+      config_data.and_then(|d| d.lockfile.clone()),
+    )));
+    let redirect_resolver = Some(Arc::new(RedirectResolver::new(
+      cache.root_vendor_or_global(),
+    )));
+    let graph_imports = config_data
+      .and_then(|d| d.config_file.as_ref())
+      .and_then(|cf| cf.to_maybe_imports().ok())
+      .map(|imports| {
+        Arc::new(
+          imports
+            .into_iter()
+            .map(|(referrer, imports)| {
+              let graph_import = GraphImport::new(
+                &referrer,
+                imports,
+                &CliJsrUrlProvider,
+                Some(graph_resolver.as_ref()),
+                Some(graph_resolver.as_ref()),
+              );
+              (referrer, graph_import)
+            })
+            .collect(),
+        )
+      })
+      .unwrap_or_default();
     Arc::new(Self {
       graph_resolver,
+      jsr_resolver,
       npm_resolver,
       node_resolver,
       npm_config_hash,
+      redirect_resolver,
+      graph_imports,
+      unstable_sloppy_imports: config_data
+        .and_then(|d| d.config_file.as_ref())
+        .map(|cf| cf.has_unstable("sloppy-imports"))
+        .unwrap_or(false),
       config: Arc::new(config.clone()),
     })
   }
@@ -103,17 +159,25 @@ impl LspResolver {
       self.npm_resolver.as_ref().map(|r| r.clone_snapshotted());
     let node_resolver = create_node_resolver(npm_resolver.as_ref());
     let graph_resolver = create_graph_resolver(
-      &self.config,
+      self.config.tree.root_data(),
       npm_resolver.as_ref(),
       node_resolver.as_ref(),
     );
     Arc::new(Self {
       graph_resolver,
+      jsr_resolver: self.jsr_resolver.clone(),
       npm_resolver,
       node_resolver,
       npm_config_hash: self.npm_config_hash.clone(),
+      redirect_resolver: self.redirect_resolver.clone(),
+      graph_imports: self.graph_imports.clone(),
       config: self.config.clone(),
+      unstable_sloppy_imports: self.unstable_sloppy_imports,
     })
+  }
+
+  pub fn did_cache(&self) {
+    self.jsr_resolver.as_ref().inspect(|r| r.did_cache());
   }
 
   pub async fn set_npm_package_reqs(
@@ -128,16 +192,58 @@ impl LspResolver {
     Ok(())
   }
 
-  pub fn as_graph_resolver(&self) -> &dyn Resolver {
-    self.graph_resolver.as_ref()
+  pub fn as_graph_resolver(&self) -> LspGraphResolver {
+    LspGraphResolver {
+      inner: &self.graph_resolver,
+      unstable_sloppy_imports: self.unstable_sloppy_imports,
+    }
   }
 
   pub fn as_graph_npm_resolver(&self) -> &dyn NpmResolver {
     self.graph_resolver.as_ref()
   }
 
+  pub fn jsr_to_registry_url(
+    &self,
+    req_ref: &JsrPackageReqReference,
+  ) -> Option<ModuleSpecifier> {
+    self.jsr_resolver.as_ref()?.jsr_to_registry_url(req_ref)
+  }
+
+  pub fn jsr_lookup_export_for_path(
+    &self,
+    nv: &PackageNv,
+    path: &str,
+  ) -> Option<String> {
+    self.jsr_resolver.as_ref()?.lookup_export_for_path(nv, path)
+  }
+
+  pub fn jsr_lookup_req_for_nv(&self, nv: &PackageNv) -> Option<PackageReq> {
+    self.jsr_resolver.as_ref()?.lookup_req_for_nv(nv)
+  }
+
   pub fn maybe_managed_npm_resolver(&self) -> Option<&ManagedCliNpmResolver> {
     self.npm_resolver.as_ref().and_then(|r| r.as_managed())
+  }
+
+  pub fn graph_import_specifiers(
+    &self,
+  ) -> impl Iterator<Item = &ModuleSpecifier> {
+    self
+      .graph_imports
+      .values()
+      .flat_map(|i| i.dependencies.values())
+      .flat_map(|value| value.get_type().or_else(|| value.get_code()))
+  }
+
+  pub fn resolve_graph_import(&self, specifier: &str) -> Option<&Resolution> {
+    for graph_imports in self.graph_imports.values() {
+      let maybe_dep = graph_imports.dependencies.get(specifier);
+      if maybe_dep.is_some() {
+        return maybe_dep.map(|d| &d.maybe_type);
+      }
+    }
+    None
   }
 
   pub fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool {
@@ -203,18 +309,99 @@ impl LspResolver {
     node_resolver
       .get_closest_package_json(referrer, &PermissionsContainer::allow_all())
   }
+
+  pub fn resolve_redirects(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<ModuleSpecifier> {
+    let Some(redirect_resolver) = self.redirect_resolver.as_ref() else {
+      return Some(specifier.clone());
+    };
+    redirect_resolver.resolve(specifier)
+  }
+
+  pub fn redirect_chain_headers(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Vec<(ModuleSpecifier, Arc<HashMap<String, String>>)> {
+    let Some(redirect_resolver) = self.redirect_resolver.as_ref() else {
+      return vec![];
+    };
+    redirect_resolver
+      .chain(specifier)
+      .into_iter()
+      .map(|(s, e)| (s, e.headers.clone()))
+      .collect()
+  }
+}
+
+#[derive(Debug)]
+pub struct LspGraphResolver<'a> {
+  inner: &'a CliGraphResolver,
+  unstable_sloppy_imports: bool,
+}
+
+impl<'a> Resolver for LspGraphResolver<'a> {
+  fn default_jsx_import_source(&self) -> Option<String> {
+    self.inner.default_jsx_import_source()
+  }
+
+  fn default_jsx_import_source_types(&self) -> Option<String> {
+    self.inner.default_jsx_import_source_types()
+  }
+
+  fn jsx_import_source_module(&self) -> &str {
+    self.inner.jsx_import_source_module()
+  }
+
+  fn resolve(
+    &self,
+    specifier_text: &str,
+    referrer_range: &deno_graph::Range,
+    mode: deno_graph::source::ResolutionMode,
+  ) -> Result<deno_ast::ModuleSpecifier, deno_graph::source::ResolveError> {
+    let specifier = self.inner.resolve(specifier_text, referrer_range, mode)?;
+    if self.unstable_sloppy_imports && specifier.scheme() == "file" {
+      Ok(
+        SloppyImportsResolver::resolve_with_stat_sync(
+          &specifier,
+          mode,
+          |path| {
+            path.metadata().ok().and_then(|m| {
+              if m.is_file() {
+                Some(SloppyImportsFsEntry::File)
+              } else if m.is_dir() {
+                Some(SloppyImportsFsEntry::Dir)
+              } else {
+                None
+              }
+            })
+          },
+        )
+        .into_specifier()
+        .into_owned(),
+      )
+    } else {
+      Ok(specifier)
+    }
+  }
+
+  fn resolve_types(
+    &self,
+    specifier: &deno_ast::ModuleSpecifier,
+  ) -> Result<
+    Option<(deno_ast::ModuleSpecifier, Option<deno_graph::Range>)>,
+    deno_graph::source::ResolveError,
+  > {
+    self.inner.resolve_types(specifier)
+  }
 }
 
 async fn create_npm_resolver(
   config_data: &ConfigData,
-  global_cache_path: Option<&Path>,
+  cache: &LspCache,
   http_client: &Arc<HttpClient>,
 ) -> Option<Arc<dyn CliNpmResolver>> {
-  let deno_dir = DenoDir::new(global_cache_path.map(|p| p.to_owned()))
-    .inspect_err(|err| {
-      lsp_warn!("Error getting deno dir: {:#}", err);
-    })
-    .ok()?;
   let node_modules_dir = config_data
     .node_modules_dir
     .clone()
@@ -239,7 +426,7 @@ async fn create_npm_resolver(
       // updating it. Only the cache request should update the lockfile.
       maybe_lockfile: None,
       fs: Arc::new(deno_fs::RealFs),
-      npm_global_cache_dir: deno_dir.npm_folder_path(),
+      npm_global_cache_dir: cache.deno_dir().npm_folder_path(),
       // Use an "only" cache setting in order to make the
       // user do an explicit "cache" command and prevent
       // the cache from being filled with lots of packages while
@@ -275,11 +462,10 @@ fn create_node_resolver(
 }
 
 fn create_graph_resolver(
-  config: &Config,
+  config_data: Option<&ConfigData>,
   npm_resolver: Option<&Arc<dyn CliNpmResolver>>,
   node_resolver: Option<&Arc<CliNodeResolver>>,
 ) -> Arc<CliGraphResolver> {
-  let config_data = config.tree.root_data();
   let config_file = config_data.and_then(|d| d.config_file.as_deref());
   Arc::new(CliGraphResolver::new(CliGraphResolverOptions {
     node_resolver: node_resolver.cloned(),
@@ -296,11 +482,9 @@ fn create_graph_resolver(
     maybe_import_map: config_data.and_then(|d| d.import_map.clone()),
     maybe_vendor_dir: config_data.and_then(|d| d.vendor_dir.as_ref()),
     bare_node_builtins_enabled: config_file
-      .map(|config| config.has_unstable("bare-node-builtins"))
+      .map(|cf| cf.has_unstable("bare-node-builtins"))
       .unwrap_or(false),
-    // Don't set this for the LSP because instead we'll use the OpenDocumentsLoader
-    // because it's much easier and we get diagnostics/quick fixes about a redirected
-    // specifier for free.
+    // not used in the LSP as the LspGraphResolver handles this
     sloppy_imports_resolver: None,
   }))
 }
@@ -309,7 +493,7 @@ fn create_graph_resolver(
 struct LspNpmConfigHash(u64);
 
 impl LspNpmConfigHash {
-  pub fn new(config: &Config, global_cache_path: Option<&Path>) -> Self {
+  pub fn new(config: &Config, cache: &LspCache) -> Self {
     let config_data = config.tree.root_data();
     let scope = config_data.map(|d| &d.scope);
     let node_modules_dir =
@@ -318,11 +502,195 @@ impl LspNpmConfigHash {
     let mut hasher = FastInsecureHasher::new();
     hasher.write_hashable(scope);
     hasher.write_hashable(node_modules_dir);
-    hasher.write_hashable(global_cache_path);
     if let Some(lockfile) = lockfile {
       hasher.write_hashable(&*lockfile.lock());
     }
-    hasher.write_hashable(global_cache_path);
+    hasher.write_hashable(cache.deno_dir().npm_folder_path());
     Self(hasher.finish())
+  }
+}
+
+#[derive(Debug, Eq, PartialEq)]
+struct RedirectEntry {
+  headers: Arc<HashMap<String, String>>,
+  target: Url,
+  destination: Option<Url>,
+}
+
+type GetHeadersFn =
+  Box<dyn Fn(&Url) -> Option<HashMap<String, String>> + Send + Sync>;
+
+struct RedirectResolver {
+  get_headers: GetHeadersFn,
+  entries: DashMap<Url, Option<Arc<RedirectEntry>>>,
+}
+
+impl std::fmt::Debug for RedirectResolver {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.debug_struct("RedirectResolver")
+      .field("get_headers", &"Box(|_| { ... })")
+      .field("entries", &self.entries)
+      .finish()
+  }
+}
+
+impl RedirectResolver {
+  fn new(cache: Arc<dyn HttpCache>) -> Self {
+    Self {
+      get_headers: Box::new(move |specifier| {
+        let cache_key = cache.cache_item_key(specifier).ok()?;
+        cache.read_headers(&cache_key).ok().flatten()
+      }),
+      entries: Default::default(),
+    }
+  }
+
+  #[cfg(test)]
+  fn mock(get_headers: GetHeadersFn) -> Self {
+    Self {
+      get_headers,
+      entries: Default::default(),
+    }
+  }
+
+  fn resolve(&self, specifier: &Url) -> Option<Url> {
+    if !matches!(specifier.scheme(), "http" | "https") {
+      return Some(specifier.clone());
+    }
+    let mut current = specifier.clone();
+    let mut chain = vec![];
+    let destination = loop {
+      if let Some(maybe_entry) = self.entries.get(&current) {
+        break match maybe_entry.as_ref() {
+          Some(entry) => entry.destination.clone(),
+          None => Some(current),
+        };
+      }
+      let Some(headers) = (self.get_headers)(&current) else {
+        break None;
+      };
+      let headers = Arc::new(headers);
+      if let Some(location) = headers.get("location") {
+        if chain.len() > 10 {
+          break None;
+        }
+        let Ok(target) =
+          deno_core::resolve_import(location, specifier.as_str())
+        else {
+          break None;
+        };
+        chain.push((
+          current.clone(),
+          RedirectEntry {
+            headers,
+            target: target.clone(),
+            destination: None,
+          },
+        ));
+        current = target;
+      } else {
+        self.entries.insert(current.clone(), None);
+        break Some(current);
+      }
+    };
+    for (specifier, mut entry) in chain {
+      entry.destination = destination.clone();
+      self.entries.insert(specifier, Some(Arc::new(entry)));
+    }
+    destination
+  }
+
+  fn chain(&self, specifier: &Url) -> Vec<(Url, Arc<RedirectEntry>)> {
+    self.resolve(specifier);
+    let mut result = vec![];
+    let mut seen = HashSet::new();
+    let mut current = Cow::Borrowed(specifier);
+    loop {
+      let Some(maybe_entry) = self.entries.get(&current) else {
+        break;
+      };
+      let Some(entry) = maybe_entry.as_ref() else {
+        break;
+      };
+      result.push((current.as_ref().clone(), entry.clone()));
+      seen.insert(current.as_ref().clone());
+      if seen.contains(&entry.target) {
+        break;
+      }
+      current = Cow::Owned(entry.target.clone())
+    }
+    result
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn test_redirect_resolver() {
+    let redirect_resolver =
+      RedirectResolver::mock(Box::new(|specifier| match specifier.as_str() {
+        "https://foo/redirect_2.js" => Some(
+          [("location".to_string(), "./redirect_1.js".to_string())]
+            .into_iter()
+            .collect(),
+        ),
+        "https://foo/redirect_1.js" => Some(
+          [("location".to_string(), "./file.js".to_string())]
+            .into_iter()
+            .collect(),
+        ),
+        "https://foo/file.js" => Some([].into_iter().collect()),
+        _ => None,
+      }));
+    assert_eq!(
+      redirect_resolver.resolve(&Url::parse("https://foo/file.js").unwrap()),
+      Some(Url::parse("https://foo/file.js").unwrap())
+    );
+    assert_eq!(
+      redirect_resolver
+        .resolve(&Url::parse("https://foo/redirect_1.js").unwrap()),
+      Some(Url::parse("https://foo/file.js").unwrap())
+    );
+    assert_eq!(
+      redirect_resolver
+        .resolve(&Url::parse("https://foo/redirect_2.js").unwrap()),
+      Some(Url::parse("https://foo/file.js").unwrap())
+    );
+    assert_eq!(
+      redirect_resolver.resolve(&Url::parse("https://foo/unknown").unwrap()),
+      None
+    );
+    assert_eq!(
+      redirect_resolver
+        .chain(&Url::parse("https://foo/redirect_2.js").unwrap()),
+      vec![
+        (
+          Url::parse("https://foo/redirect_2.js").unwrap(),
+          Arc::new(RedirectEntry {
+            headers: Arc::new(
+              [("location".to_string(), "./redirect_1.js".to_string())]
+                .into_iter()
+                .collect()
+            ),
+            target: Url::parse("https://foo/redirect_1.js").unwrap(),
+            destination: Some(Url::parse("https://foo/file.js").unwrap()),
+          })
+        ),
+        (
+          Url::parse("https://foo/redirect_1.js").unwrap(),
+          Arc::new(RedirectEntry {
+            headers: Arc::new(
+              [("location".to_string(), "./file.js".to_string())]
+                .into_iter()
+                .collect()
+            ),
+            target: Url::parse("https://foo/file.js").unwrap(),
+            destination: Some(Url::parse("https://foo/file.js").unwrap()),
+          })
+        ),
+      ]
+    );
   }
 }

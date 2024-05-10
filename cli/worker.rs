@@ -868,6 +868,8 @@ fn create_web_worker_callback(
   })
 }
 
+#[allow(clippy::print_stdout)]
+#[allow(clippy::print_stderr)]
 #[cfg(test)]
 mod tests {
   use super::*;

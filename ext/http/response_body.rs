@@ -625,6 +625,7 @@ impl PollFrame for BrotliResponseStream {
   }
 }
 
+#[allow(clippy::print_stderr)]
 #[cfg(test)]
 mod tests {
   use super::*;
