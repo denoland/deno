@@ -300,23 +300,6 @@ impl LspResolver {
       .get_closest_package_json(referrer, &PermissionsContainer::allow_all())
   }
 
-  pub fn resolve_specifier(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Option<ModuleSpecifier> {
-    let specifier = if let Ok(jsr_req_ref) =
-      JsrPackageReqReference::from_specifier(specifier)
-    {
-      Cow::Owned(self.jsr_to_registry_url(&jsr_req_ref)?)
-    } else {
-      Cow::Borrowed(specifier)
-    };
-    if !DOCUMENT_SCHEMES.contains(&specifier.scheme()) {
-      return None;
-    }
-    self.resolve_redirects(&specifier)
-  }
-
   pub fn resolve_redirects(
     &self,
     specifier: &ModuleSpecifier,
@@ -580,9 +563,6 @@ impl RedirectResolver {
     result
   }
 }
-
-pub const DOCUMENT_SCHEMES: [&str; 5] =
-  ["data", "blob", "file", "http", "https"];
 
 #[cfg(test)]
 mod tests {
