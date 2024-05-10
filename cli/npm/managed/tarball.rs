@@ -57,20 +57,26 @@ fn rename_with_retries(
   temp_dir: &Path,
   output_folder: &Path,
 ) -> Result<(), std::io::Error> {
+  fn already_exists(err: &std::io::Error, output_folder: &Path) -> bool {
+    // Windows will do an "Access is denied" error
+    err.kind() == ErrorKind::AlreadyExists || output_folder.exists()
+  }
+
   let mut count = 0;
   // renaming might be flaky if a lot of processes are trying
   // to do this, so retry a few times
   loop {
     match fs::rename(temp_dir, output_folder) {
       Ok(_) => return Ok(()),
-      Err(err) if err.kind() == ErrorKind::AlreadyExists => {
+      Err(err) if already_exists(&err, output_folder) => {
         // another process copied here, just cleanup
         let _ = fs::remove_dir_all(temp_dir);
+        return Ok(());
       }
       Err(err) => {
         count += 1;
         if count > 5 {
-          // too many tries, cleanup and return the error
+          // too many retries, cleanup and return the error
           let _ = fs::remove_dir_all(temp_dir);
           return Err(err);
         }
@@ -203,6 +209,7 @@ fn extract_tarball(data: &[u8], output_folder: &Path) -> Result<(), AnyError> {
 #[cfg(test)]
 mod test {
   use deno_semver::Version;
+  use test_util::TempDir;
 
   use super::*;
 
@@ -292,5 +299,26 @@ mod test {
       &NpmPackageVersionDistInfoIntegrity::LegacySha1Hex(actual_hex),
     )
     .is_ok());
+  }
+
+  #[test]
+  fn rename_with_retries_succeeds_exists() {
+    let temp_dir = TempDir::new();
+    let folder_1 = temp_dir.path().join("folder_1");
+    let folder_2 = temp_dir.path().join("folder_2");
+
+    folder_1.create_dir_all();
+    folder_1.join("a.txt").write("test");
+    folder_2.create_dir_all();
+    // this will not end up in the output as rename_with_retries assumes
+    // the folders ending up at the destination are the same
+    folder_2.join("b.txt").write("test2");
+
+    let dest_folder = temp_dir.path().join("dest_folder");
+
+    rename_with_retries(folder_1.as_path(), dest_folder.as_path()).unwrap();
+    rename_with_retries(folder_2.as_path(), dest_folder.as_path()).unwrap();
+    assert!(dest_folder.join("a.txt").exists());
+    assert!(!dest_folder.join("b.txt").exists());
   }
 }
