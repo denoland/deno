@@ -488,7 +488,7 @@ impl CliFactory {
         async {
           Ok(Arc::new(CliGraphResolver::new(CliGraphResolverOptions {
             sloppy_imports_resolver: if self.options.unstable_sloppy_imports() {
-              Some(SloppyImportsResolver::new(self.fs().clone()))
+              Some(SloppyImportsResolver::from_fs(self.fs().clone()))
             } else {
               None
             },

@@ -370,7 +370,7 @@ mod tests {
     );
 
     let fs = Arc::new(RealFs);
-    let sloppy_imports_resolver = SloppyImportsResolver::new(fs);
+    let sloppy_imports_resolver = SloppyImportsResolver::from_fs(fs);
 
     let unfurler = SpecifierUnfurler::new(
       &mapped_resolver,

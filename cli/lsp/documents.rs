@@ -13,7 +13,6 @@ use super::tsc::AssetDocument;
 
 use crate::graph_util::CliJsrUrlProvider;
 use crate::lsp::logging::lsp_warn;
-use deno_graph::source::Resolver;
 use deno_runtime::fs_util::specifier_to_file_path;
 
 use dashmap::DashMap;
@@ -33,11 +32,9 @@ use deno_graph::Resolution;
 use deno_runtime::deno_node;
 use deno_runtime::deno_node::NodeResolution;
 use deno_runtime::deno_node::NodeResolutionMode;
-use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
 use indexmap::IndexMap;
-use std::borrow::Cow;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -50,9 +47,6 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use tower_lsp::lsp_types as lsp;
-
-pub const DOCUMENT_SCHEMES: [&str; 5] =
-  ["data", "blob", "file", "http", "https"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LanguageId {
@@ -388,7 +382,7 @@ impl Document {
               d.with_new_resolver(
                 s,
                 &CliJsrUrlProvider,
-                Some(&graph_resolver),
+                Some(graph_resolver),
                 Some(npm_resolver),
               ),
             )
@@ -398,7 +392,7 @@ impl Document {
       maybe_types_dependency = self.maybe_types_dependency.as_ref().map(|d| {
         Arc::new(d.with_new_resolver(
           &CliJsrUrlProvider,
-          Some(&graph_resolver),
+          Some(graph_resolver),
           Some(npm_resolver),
         ))
       });
@@ -979,26 +973,9 @@ impl Documents {
     }
   }
 
-  pub fn resolve_specifier(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Option<ModuleSpecifier> {
-    let specifier = if let Ok(jsr_req_ref) =
-      JsrPackageReqReference::from_specifier(specifier)
-    {
-      Cow::Owned(self.resolver.jsr_to_registry_url(&jsr_req_ref)?)
-    } else {
-      Cow::Borrowed(specifier)
-    };
-    if !DOCUMENT_SCHEMES.contains(&specifier.scheme()) {
-      return None;
-    }
-    self.resolver.resolve_redirects(&specifier)
-  }
-
   /// Return `true` if the specifier can be resolved to a document.
   pub fn exists(&self, specifier: &ModuleSpecifier) -> bool {
-    let specifier = self.resolve_specifier(specifier);
+    let specifier = self.resolver.resolve_specifier(specifier);
     if let Some(specifier) = specifier {
       if self.open_docs.contains_key(&specifier) {
         return true;
@@ -1035,7 +1012,7 @@ impl Documents {
     &self,
     original_specifier: &ModuleSpecifier,
   ) -> Option<Arc<Document>> {
-    let specifier = self.resolve_specifier(original_specifier)?;
+    let specifier = self.resolver.resolve_specifier(original_specifier)?;
     if let Some(document) = self.open_docs.get(&specifier) {
       Some(document.clone())
     } else {
@@ -1046,13 +1023,6 @@ impl Documents {
         &self.cache,
       )
     }
-  }
-
-  pub fn is_open(&self, specifier: &ModuleSpecifier) -> bool {
-    let Some(specifier) = self.resolve_specifier(specifier) else {
-      return false;
-    };
-    self.open_docs.contains_key(&specifier)
   }
 
   /// Return a collection of documents that are contained in the document store
@@ -1441,7 +1411,7 @@ fn analyze_module(
         // dynamic imports like import(`./dir/${something}`) in the LSP
         file_system: &deno_graph::source::NullFileSystem,
         jsr_url_provider: &CliJsrUrlProvider,
-        maybe_resolver: Some(&resolver.as_graph_resolver()),
+        maybe_resolver: Some(resolver.as_graph_resolver()),
         maybe_npm_resolver: Some(resolver.as_graph_npm_resolver()),
       },
     )),
