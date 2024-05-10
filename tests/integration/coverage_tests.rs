@@ -560,10 +560,10 @@ File         | Branch % | Line % |
 fn test_collect_summary_with_no_matches() {
   let context: TestContext = TestContext::default();
   let temp_dir: &TempDir = context.temp_dir();
-  let temp_dir: util::PathRef = temp_dir.path().join("cov");
+  let temp_dir_path: PathRef = PathRef::new(temp_dir.path().join("cov"));
 
-  let empty_test_dir = temp_dir.join("empty_dir");
-  std::fs::create_dir_all(&empty_test_dir).unwrap();
+  let empty_test_dir: PathRef = temp_dir_path.join("empty_dir");
+  empty_test_dir.create_dir_all();
 
   let output: util::TestCommandOutput = context
     .new_command()
@@ -571,8 +571,8 @@ fn test_collect_summary_with_no_matches() {
       "test".to_string(),
       "--quiet".to_string(),
       "--allow-read".to_string(),
-      format!("--coverage={}", tempdir),
-      empty_test_dir.to_str().unwrap(),
+      format!("--coverage={}", temp_dir_path.as_path().display()),
+      empty_test_dir.as_path().to_str().unwrap().to_string(),
     ])
     .run();
 
@@ -584,7 +584,7 @@ fn test_collect_summary_with_no_matches() {
     .args_vec(vec![
       "coverage".to_string(),
       "--detailed".to_string(),
-      format!("{}/", tempdir),
+      format!("{}/", temp_dir_path.as_path().display()),
     ])
     .run();
 
