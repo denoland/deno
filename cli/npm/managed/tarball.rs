@@ -59,7 +59,7 @@ fn rename_with_retries(
 
         // wait a bit before retrying... this should be very rare or only
         // in error cases, so ok to sleep a bit
-        let sleep_ms = std::cmp::min(50, 10 * count);
+        let sleep_ms = std::cmp::min(100, 20 * count);
         std::thread::sleep(std::time::Duration::from_millis(sleep_ms));
       }
     }
