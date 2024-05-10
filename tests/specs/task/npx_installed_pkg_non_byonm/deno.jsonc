@@ -1,0 +1,7 @@
+{
+  // not byonm
+  "nodeModulesDir": true,
+  "tasks": {
+    "say": "npx cowsay moo"
+  }
+}

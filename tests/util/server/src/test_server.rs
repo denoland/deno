@@ -1,5 +1,8 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+#![allow(clippy::print_stdout)]
+#![allow(clippy::print_stderr)]
+
 fn main() {
   setup_panic_hook();
   test_server::servers::run_all_servers();

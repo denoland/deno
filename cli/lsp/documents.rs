@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use super::cache::calculate_fs_version;
+use super::cache::LspCache;
 use super::cache::LSP_DISALLOW_GLOBAL_TO_LOCAL_COPY;
 use super::config::Config;
 use super::resolver::LspResolver;
@@ -10,12 +11,9 @@ use super::text::LineIndex;
 use super::tsc;
 use super::tsc::AssetDocument;
 
-use crate::cache::HttpCache;
 use crate::graph_util::CliJsrUrlProvider;
 use crate::lsp::logging::lsp_warn;
-use crate::resolver::SloppyImportsFsEntry;
-use crate::resolver::SloppyImportsResolution;
-use crate::resolver::SloppyImportsResolver;
+use deno_graph::source::Resolver;
 use deno_runtime::fs_util::specifier_to_file_path;
 
 use dashmap::DashMap;
@@ -289,7 +287,7 @@ impl Document {
     maybe_headers: Option<HashMap<String, String>>,
     resolver: Arc<LspResolver>,
     config: Arc<Config>,
-    cache: &Arc<dyn HttpCache>,
+    cache: &Arc<LspCache>,
   ) -> Arc<Self> {
     let text_info = SourceTextInfo::new(content);
     let media_type = resolve_media_type(
@@ -390,7 +388,7 @@ impl Document {
               d.with_new_resolver(
                 s,
                 &CliJsrUrlProvider,
-                Some(graph_resolver),
+                Some(&graph_resolver),
                 Some(npm_resolver),
               ),
             )
@@ -400,7 +398,7 @@ impl Document {
       maybe_types_dependency = self.maybe_types_dependency.as_ref().map(|d| {
         Arc::new(d.with_new_resolver(
           &CliJsrUrlProvider,
-          Some(graph_resolver),
+          Some(&graph_resolver),
           Some(npm_resolver),
         ))
       });
@@ -509,7 +507,7 @@ impl Document {
     }))
   }
 
-  pub fn closed(&self, cache: &Arc<dyn HttpCache>) -> Arc<Self> {
+  pub fn closed(&self, cache: &Arc<LspCache>) -> Arc<Self> {
     Arc::new(Self {
       config: self.config.clone(),
       specifier: self.specifier.clone(),
@@ -530,7 +528,7 @@ impl Document {
     })
   }
 
-  pub fn saved(&self, cache: &Arc<dyn HttpCache>) -> Arc<Self> {
+  pub fn saved(&self, cache: &Arc<LspCache>) -> Arc<Self> {
     Arc::new(Self {
       config: self.config.clone(),
       specifier: self.specifier.clone(),
@@ -565,6 +563,10 @@ impl Document {
 
   pub fn line_index(&self) -> Arc<LineIndex> {
     self.line_index.clone()
+  }
+
+  pub fn maybe_headers(&self) -> Option<&HashMap<String, String>> {
+    self.maybe_headers.as_ref()
   }
 
   fn maybe_fs_version(&self) -> Option<&str> {
@@ -714,7 +716,7 @@ impl FileSystemDocuments {
     specifier: &ModuleSpecifier,
     resolver: &Arc<LspResolver>,
     config: &Arc<Config>,
-    cache: &Arc<dyn HttpCache>,
+    cache: &Arc<LspCache>,
   ) -> Option<Arc<Document>> {
     let new_fs_version = calculate_fs_version(cache, specifier);
     let old_doc = self.docs.get(specifier).map(|v| v.value().clone());
@@ -744,7 +746,7 @@ impl FileSystemDocuments {
     specifier: &ModuleSpecifier,
     resolver: &Arc<LspResolver>,
     config: &Arc<Config>,
-    cache: &Arc<dyn HttpCache>,
+    cache: &Arc<LspCache>,
   ) -> Option<Arc<Document>> {
     let doc = if specifier.scheme() == "file" {
       let path = specifier_to_file_path(specifier).ok()?;
@@ -777,11 +779,12 @@ impl FileSystemDocuments {
         cache,
       )
     } else {
-      let cache_key = cache.cache_item_key(specifier).ok()?;
-      let bytes = cache
+      let http_cache = cache.root_vendor_or_global();
+      let cache_key = http_cache.cache_item_key(specifier).ok()?;
+      let bytes = http_cache
         .read_file_bytes(&cache_key, None, LSP_DISALLOW_GLOBAL_TO_LOCAL_COPY)
         .ok()??;
-      let specifier_headers = cache.read_headers(&cache_key).ok()??;
+      let specifier_headers = http_cache.read_headers(&cache_key).ok()??;
       let (_, maybe_charset) =
         deno_graph::source::resolve_media_type_and_charset_from_headers(
           specifier,
@@ -834,10 +837,10 @@ pub enum DocumentsFilter {
   OpenDiagnosable,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Default, Clone)]
 pub struct Documents {
   /// The DENO_DIR that the documents looks for non-file based modules.
-  cache: Arc<dyn HttpCache>,
+  cache: Arc<LspCache>,
   config: Arc<Config>,
   /// A flag that indicates that stated data is potentially invalid and needs to
   /// be recalculated before being considered valid.
@@ -854,25 +857,9 @@ pub struct Documents {
   /// Gets if any document had a node: specifier such that a @types/node package
   /// should be injected.
   has_injected_types_node_package: bool,
-  /// If --unstable-sloppy-imports is enabled.
-  unstable_sloppy_imports: bool,
 }
 
 impl Documents {
-  pub fn new(cache: Arc<dyn HttpCache>) -> Self {
-    Self {
-      cache: cache.clone(),
-      config: Default::default(),
-      dirty: true,
-      open_docs: HashMap::default(),
-      file_system_docs: Default::default(),
-      resolver: Default::default(),
-      npm_specifier_reqs: Default::default(),
-      has_injected_types_node_package: false,
-      unstable_sloppy_imports: false,
-    }
-  }
-
   /// "Open" a document from the perspective of the editor, meaning that
   /// requests for information from the document will come from the in-memory
   /// representation received from the language server client, versus reading
@@ -996,54 +983,17 @@ impl Documents {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<ModuleSpecifier> {
-    if self.unstable_sloppy_imports && specifier.scheme() == "file" {
-      Some(
-        self
-          .resolve_unstable_sloppy_import(specifier)
-          .into_specifier()
-          .into_owned(),
-      )
+    let specifier = if let Ok(jsr_req_ref) =
+      JsrPackageReqReference::from_specifier(specifier)
+    {
+      Cow::Owned(self.resolver.jsr_to_registry_url(&jsr_req_ref)?)
     } else {
-      let specifier = if let Ok(jsr_req_ref) =
-        JsrPackageReqReference::from_specifier(specifier)
-      {
-        Cow::Owned(self.resolver.jsr_to_registry_url(&jsr_req_ref)?)
-      } else {
-        Cow::Borrowed(specifier)
-      };
-      if !DOCUMENT_SCHEMES.contains(&specifier.scheme()) {
-        return None;
-      }
-      self.resolver.resolve_redirects(&specifier)
+      Cow::Borrowed(specifier)
+    };
+    if !DOCUMENT_SCHEMES.contains(&specifier.scheme()) {
+      return None;
     }
-  }
-
-  fn resolve_unstable_sloppy_import<'a>(
-    &self,
-    specifier: &'a ModuleSpecifier,
-  ) -> SloppyImportsResolution<'a> {
-    SloppyImportsResolver::resolve_with_stat_sync(
-      specifier,
-      ResolutionMode::Types,
-      |path| {
-        if let Ok(specifier) = ModuleSpecifier::from_file_path(path) {
-          if self.open_docs.contains_key(&specifier)
-            || self.cache.contains(&specifier)
-          {
-            return Some(SloppyImportsFsEntry::File);
-          }
-        }
-        path.metadata().ok().and_then(|m| {
-          if m.is_file() {
-            Some(SloppyImportsFsEntry::File)
-          } else if m.is_dir() {
-            Some(SloppyImportsFsEntry::Dir)
-          } else {
-            None
-          }
-        })
-      },
-    )
+    self.resolver.resolve_redirects(&specifier)
   }
 
   /// Return `true` if the specifier can be resolved to a document.
@@ -1061,7 +1011,7 @@ impl Documents {
           .map(|p| p.is_file())
           .unwrap_or(false);
       }
-      if self.cache.contains(&specifier) {
+      if self.cache.root_vendor_or_global().contains(&specifier) {
         return true;
       }
     }
@@ -1221,17 +1171,12 @@ impl Documents {
     &mut self,
     config: &Config,
     resolver: &Arc<LspResolver>,
-    cache: Arc<dyn HttpCache>,
+    cache: &LspCache,
     workspace_files: &BTreeSet<ModuleSpecifier>,
   ) {
     self.config = Arc::new(config.clone());
-    self.cache = cache;
-    let config_data = config.tree.root_data();
-    let config_file = config_data.and_then(|d| d.config_file.as_deref());
+    self.cache = Arc::new(cache.clone());
     self.resolver = resolver.clone();
-    self.unstable_sloppy_imports = config_file
-      .map(|c| c.has_unstable("sloppy-imports"))
-      .unwrap_or(false);
     {
       let fs_docs = &self.file_system_docs;
       // Clean up non-existent documents.
@@ -1404,7 +1349,6 @@ fn node_resolve_npm_req_ref(
 pub struct OpenDocumentsGraphLoader<'a> {
   pub inner_loader: &'a mut dyn deno_graph::source::Loader,
   pub open_docs: &'a HashMap<ModuleSpecifier, Arc<Document>>,
-  pub unstable_sloppy_imports: bool,
 }
 
 impl<'a> OpenDocumentsGraphLoader<'a> {
@@ -1426,32 +1370,6 @@ impl<'a> OpenDocumentsGraphLoader<'a> {
     }
     None
   }
-
-  fn resolve_unstable_sloppy_import<'b>(
-    &self,
-    specifier: &'b ModuleSpecifier,
-  ) -> SloppyImportsResolution<'b> {
-    SloppyImportsResolver::resolve_with_stat_sync(
-      specifier,
-      ResolutionMode::Types,
-      |path| {
-        if let Ok(specifier) = ModuleSpecifier::from_file_path(path) {
-          if self.open_docs.contains_key(&specifier) {
-            return Some(SloppyImportsFsEntry::File);
-          }
-        }
-        path.metadata().ok().and_then(|m| {
-          if m.is_file() {
-            Some(SloppyImportsFsEntry::File)
-          } else if m.is_dir() {
-            Some(SloppyImportsFsEntry::Dir)
-          } else {
-            None
-          }
-        })
-      },
-    )
-  }
 }
 
 impl<'a> deno_graph::source::Loader for OpenDocumentsGraphLoader<'a> {
@@ -1460,17 +1378,9 @@ impl<'a> deno_graph::source::Loader for OpenDocumentsGraphLoader<'a> {
     specifier: &ModuleSpecifier,
     options: deno_graph::source::LoadOptions,
   ) -> deno_graph::source::LoadFuture {
-    let specifier = if self.unstable_sloppy_imports {
-      self
-        .resolve_unstable_sloppy_import(specifier)
-        .into_specifier()
-    } else {
-      Cow::Borrowed(specifier)
-    };
-
-    match self.load_from_docs(&specifier) {
+    match self.load_from_docs(specifier) {
       Some(fut) => fut,
-      None => self.inner_loader.load(&specifier, options),
+      None => self.inner_loader.load(specifier, options),
     }
   }
 
@@ -1531,7 +1441,7 @@ fn analyze_module(
         // dynamic imports like import(`./dir/${something}`) in the LSP
         file_system: &deno_graph::source::NullFileSystem,
         jsr_url_provider: &CliJsrUrlProvider,
-        maybe_resolver: Some(resolver.as_graph_resolver()),
+        maybe_resolver: Some(&resolver.as_graph_resolver()),
         maybe_npm_resolver: Some(resolver.as_graph_npm_resolver()),
       },
     )),
@@ -1543,31 +1453,29 @@ fn analyze_module(
 
 #[cfg(test)]
 mod tests {
-  use crate::cache::GlobalHttpCache;
-  use crate::cache::RealDenoCacheEnv;
-
   use super::*;
+  use crate::lsp::cache::LspCache;
   use deno_config::ConfigFile;
   use deno_core::serde_json;
   use deno_core::serde_json::json;
   use pretty_assertions::assert_eq;
-  use test_util::PathRef;
   use test_util::TempDir;
 
-  fn setup(temp_dir: &TempDir) -> (Documents, PathRef, Arc<dyn HttpCache>) {
-    let location = temp_dir.path().join("deps");
-    let cache = Arc::new(GlobalHttpCache::new(
-      location.to_path_buf(),
-      RealDenoCacheEnv,
-    ));
-    let documents = Documents::new(cache.clone());
-    (documents, location, cache)
+  async fn setup() -> (Documents, LspCache, TempDir) {
+    let temp_dir = TempDir::new();
+    let cache = LspCache::new(Some(temp_dir.uri()));
+    let config = Config::default();
+    let resolver = LspResolver::default()
+      .with_new_config(&config, &cache, None)
+      .await;
+    let mut documents = Documents::default();
+    documents.update_config(&config, &resolver, &cache, &Default::default());
+    (documents, cache, temp_dir)
   }
 
-  #[test]
-  fn test_documents_open_close() {
-    let temp_dir = TempDir::new();
-    let (mut documents, _, _) = setup(&temp_dir);
+  #[tokio::test]
+  async fn test_documents_open_close() {
+    let (mut documents, _, _) = setup().await;
     let specifier = ModuleSpecifier::parse("file:///a.ts").unwrap();
     let content = r#"import * as b from "./b.ts";
 console.log(b);
@@ -1590,10 +1498,9 @@ console.log(b);
     assert!(document.maybe_lsp_version().is_none());
   }
 
-  #[test]
-  fn test_documents_change() {
-    let temp_dir = TempDir::new();
-    let (mut documents, _, _) = setup(&temp_dir);
+  #[tokio::test]
+  async fn test_documents_change() {
+    let (mut documents, _, _) = setup().await;
     let specifier = ModuleSpecifier::parse("file:///a.ts").unwrap();
     let content = r#"import * as b from "./b.ts";
 console.log(b);
@@ -1632,15 +1539,13 @@ console.log(b, "hello deno");
     );
   }
 
-  #[test]
-  fn test_documents_ensure_no_duplicates() {
+  #[tokio::test]
+  async fn test_documents_ensure_no_duplicates() {
     // it should never happen that a user of this API causes this to happen,
     // but we'll guard against it anyway
-    let temp_dir = TempDir::new();
-    let (mut documents, documents_path, _) = setup(&temp_dir);
-    let file_path = documents_path.join("file.ts");
-    let file_specifier = ModuleSpecifier::from_file_path(&file_path).unwrap();
-    documents_path.create_dir_all();
+    let (mut documents, _, temp_dir) = setup().await;
+    let file_path = temp_dir.path().join("file.ts");
+    let file_specifier = temp_dir.uri().join("file.ts").unwrap();
     file_path.write("");
 
     // open the document
@@ -1664,27 +1569,21 @@ console.log(b, "hello deno");
   async fn test_documents_refresh_dependencies_config_change() {
     // it should never happen that a user of this API causes this to happen,
     // but we'll guard against it anyway
-    let temp_dir = TempDir::new();
-    let (mut documents, documents_path, cache) = setup(&temp_dir);
-    fs::create_dir_all(&documents_path).unwrap();
+    let (mut documents, cache, temp_dir) = setup().await;
 
-    let file1_path = documents_path.join("file1.ts");
-    let file1_specifier = ModuleSpecifier::from_file_path(&file1_path).unwrap();
+    let file1_path = temp_dir.path().join("file1.ts");
+    let file1_specifier = temp_dir.uri().join("file1.ts").unwrap();
     fs::write(&file1_path, "").unwrap();
 
-    let file2_path = documents_path.join("file2.ts");
-    let file2_specifier = ModuleSpecifier::from_file_path(&file2_path).unwrap();
+    let file2_path = temp_dir.path().join("file2.ts");
+    let file2_specifier = temp_dir.uri().join("file2.ts").unwrap();
     fs::write(&file2_path, "").unwrap();
 
-    let file3_path = documents_path.join("file3.ts");
-    let file3_specifier = ModuleSpecifier::from_file_path(&file3_path).unwrap();
+    let file3_path = temp_dir.path().join("file3.ts");
+    let file3_specifier = temp_dir.uri().join("file3.ts").unwrap();
     fs::write(&file3_path, "").unwrap();
 
-    let mut config =
-      Config::new_with_roots(vec![ModuleSpecifier::from_directory_path(
-        &documents_path,
-      )
-      .unwrap()]);
+    let mut config = Config::new_with_roots([temp_dir.uri()]);
     let workspace_settings =
       serde_json::from_str(r#"{ "enable": true }"#).unwrap();
     config.set_workspace_settings(workspace_settings, vec![]);
@@ -1714,14 +1613,9 @@ console.log(b, "hello deno");
         .await;
 
       let resolver = LspResolver::default()
-        .with_new_config(&config, cache.clone(), None, None)
+        .with_new_config(&config, &cache, None)
         .await;
-      documents.update_config(
-        &config,
-        &resolver,
-        cache.clone(),
-        &workspace_files,
-      );
+      documents.update_config(&config, &resolver, &cache, &workspace_files);
 
       // open the document
       let document = documents.open(
@@ -1763,9 +1657,9 @@ console.log(b, "hello deno");
         .await;
 
       let resolver = LspResolver::default()
-        .with_new_config(&config, cache.clone(), None, None)
+        .with_new_config(&config, &cache, None)
         .await;
-      documents.update_config(&config, &resolver, cache, &workspace_files);
+      documents.update_config(&config, &resolver, &cache, &workspace_files);
 
       // check the document's dependencies
       let document = documents.get(&file1_specifier).unwrap();

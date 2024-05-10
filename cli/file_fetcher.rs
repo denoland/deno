@@ -739,6 +739,8 @@ async fn fetch_no_follow<'a>(
   Ok(FetchOnceResult::Code(body, result_headers))
 }
 
+#[allow(clippy::print_stdout)]
+#[allow(clippy::print_stderr)]
 #[cfg(test)]
 mod tests {
   use crate::cache::GlobalHttpCache;

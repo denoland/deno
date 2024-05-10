@@ -417,9 +417,12 @@ function createGPUAdapter(inner) {
   return adapter;
 }
 
+const _invalid = Symbol("[[invalid]]");
 class GPUAdapter {
   /** @type {InnerGPUAdapter} */
   [_adapter];
+  /** @type {bool} */
+  [_invalid];
 
   /** @returns {GPUSupportedFeatures} */
   get features() {
@@ -466,6 +469,12 @@ class GPUAdapter {
       }
     }
 
+    if (this[_invalid]) {
+      throw new TypeError(
+        "The adapter cannot be reused, as it has been invalidated by a device creation",
+      );
+    }
+
     const { rid, queueRid, features, limits } = op_webgpu_request_device(
       this[_adapter].rid,
       descriptor.label,
@@ -473,6 +482,8 @@ class GPUAdapter {
       descriptor.requiredLimits,
     );
     core.close(this[_adapter].rid);
+
+    this[_invalid] = true;
 
     const inner = new InnerGPUDevice({
       rid,
@@ -496,6 +507,12 @@ class GPUAdapter {
    */
   requestAdapterInfo() {
     webidl.assertBranded(this, GPUAdapterPrototype);
+
+    if (this[_invalid]) {
+      throw new TypeError(
+        "The adapter cannot be reused, as it has been invalidated by a device creation",
+      );
+    }
 
     const {
       vendor,
