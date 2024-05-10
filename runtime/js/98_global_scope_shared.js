@@ -36,6 +36,7 @@ import * as webgpuSurface from "ext:deno_webgpu/02_surface.js";
 import { unstableIds } from "ext:runtime/90_deno_ns.js";
 
 const loadImage = core.createLazyLoader("ext:deno_canvas/01_image.js");
+const loadCanvas = core.createLazyLoader("ext:deno_canvas/02_canvas.js");
 
 // https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope
 const windowOrWorkerGlobalScope = {
@@ -65,6 +66,10 @@ const windowOrWorkerGlobalScope = {
   ImageBitmap: core.propNonEnumerableLazyLoaded(
     (image) => image.ImageBitmap,
     loadImage,
+  ),
+  OffscreenCanvas: core.propNonEnumerableLazyLoaded(
+    (canvas) => canvas.OffscreenCanvas,
+    loadCanvas,
   ),
   MessageEvent: core.propNonEnumerable(event.MessageEvent),
   Performance: core.propNonEnumerable(performance.Performance),

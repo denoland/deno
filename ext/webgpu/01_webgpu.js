@@ -481,7 +481,6 @@ class GPUAdapter {
       requiredFeatures,
       descriptor.requiredLimits,
     );
-    core.close(this[_adapter].rid);
 
     this[_invalid] = true;
 
@@ -7410,6 +7409,15 @@ const dictMembersGPUCanvasConfiguration = [
     defaultValue: GPUTextureUsage.RENDER_ATTACHMENT,
   },
   {
+    key: "viewFormats",
+    converter: webidl.createSequenceConverter(
+      webidl.converters["GPUTextureFormat"],
+    ),
+    get defaultValue() {
+      return [];
+    },
+  },
+  {
     key: "alphaMode",
     converter: webidl.converters["GPUCanvasAlphaMode"],
     defaultValue: "opaque",
@@ -7419,25 +7427,6 @@ const dictMembersGPUCanvasConfiguration = [
   {
     key: "presentMode",
     converter: webidl.converters["GPUPresentMode"],
-  },
-  {
-    key: "width",
-    converter: webidl.converters["long"],
-    required: true,
-  },
-  {
-    key: "height",
-    converter: webidl.converters["long"],
-    required: true,
-  },
-  {
-    key: "viewFormats",
-    converter: webidl.createSequenceConverter(
-      webidl.converters["GPUTextureFormat"],
-    ),
-    get defaultValue() {
-      return [];
-    },
   },
 ];
 webidl.converters["GPUCanvasConfiguration"] = webidl

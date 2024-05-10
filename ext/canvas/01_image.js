@@ -351,4 +351,11 @@ function getBitmapData(imageBitmap) {
 
 internals.getBitmapData = getBitmapData;
 
-export { _bitmapData, _width, _height, _detached, createImageBitmap, ImageBitmap };
+export {
+  _bitmapData,
+  _detached,
+  _height,
+  _width,
+  createImageBitmap,
+  ImageBitmap,
+};
