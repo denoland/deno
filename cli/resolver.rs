@@ -987,29 +987,16 @@ impl<'a> SloppyImportsResolution<'a> {
   }
 }
 
-pub type StatSyncFn =
-  Box<dyn Fn(&Path) -> Option<SloppyImportsFsEntry> + Send + Sync>;
-
+#[derive(Debug)]
 pub struct SloppyImportsResolver {
-  stat_sync_fn: StatSyncFn,
-}
-
-impl std::fmt::Debug for SloppyImportsResolver {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    f.debug_struct("SloppyImportsResolver")
-      .field("stat_sync_fn", &"Box(|_| { ... })")
-      .finish()
-  }
+  stat_cache: SloppyImportsStatCache,
 }
 
 impl SloppyImportsResolver {
-  pub fn from_stat_sync_fn(stat_sync_fn: StatSyncFn) -> Self {
-    Self { stat_sync_fn }
-  }
-
-  pub fn from_fs(fs: Arc<dyn FileSystem>) -> Self {
-    let stat_cache = SloppyImportsStatCache::new(fs.clone());
-    Self::from_stat_sync_fn(Box::new(move |path| stat_cache.stat_sync(path)))
+  pub fn new(fs: Arc<dyn FileSystem>) -> Self {
+    Self {
+      stat_cache: SloppyImportsStatCache::new(fs),
+    }
   }
 
   pub fn resolve<'a>(
@@ -1066,7 +1053,7 @@ impl SloppyImportsResolver {
     }
 
     let probe_paths: Vec<(PathBuf, SloppyImportsResolutionReason)> =
-      match (self.stat_sync_fn)(&path) {
+      match self.stat_cache.stat_sync(&path) {
         Some(SloppyImportsFsEntry::File) => {
           if mode.is_types() {
             let media_type = MediaType::from_specifier(specifier);
@@ -1244,7 +1231,9 @@ impl SloppyImportsResolver {
       };
 
     for (probe_path, reason) in probe_paths {
-      if (self.stat_sync_fn)(&probe_path) == Some(SloppyImportsFsEntry::File) {
+      if self.stat_cache.stat_sync(&probe_path)
+        == Some(SloppyImportsFsEntry::File)
+      {
         if let Ok(specifier) = ModuleSpecifier::from_file_path(probe_path) {
           match reason {
             SloppyImportsResolutionReason::JsToTs => {
@@ -1269,7 +1258,6 @@ impl SloppyImportsResolver {
 mod test {
   use std::collections::BTreeMap;
 
-  use deno_runtime::deno_fs::RealFs;
   use test_util::TestContext;
 
   use super::*;
@@ -1337,18 +1325,8 @@ mod test {
   #[test]
   fn test_unstable_sloppy_imports() {
     fn resolve(specifier: &ModuleSpecifier) -> SloppyImportsResolution {
-      SloppyImportsResolver::from_stat_sync_fn(Box::new(|path| {
-        RealFs.stat_sync(path).ok().and_then(|stat| {
-          if stat.is_file {
-            Some(SloppyImportsFsEntry::File)
-          } else if stat.is_directory {
-            Some(SloppyImportsFsEntry::Dir)
-          } else {
-            None
-          }
-        })
-      }))
-      .resolve(specifier, ResolutionMode::Execution)
+      SloppyImportsResolver::new(Arc::new(deno_fs::RealFs))
+        .resolve(specifier, ResolutionMode::Execution)
     }
 
     let context = TestContext::default();

@@ -19,7 +19,6 @@ use crate::npm::ManagedCliNpmResolver;
 use crate::resolver::CliGraphResolver;
 use crate::resolver::CliGraphResolverOptions;
 use crate::resolver::CliNodeResolver;
-use crate::resolver::SloppyImportsFsEntry;
 use crate::resolver::SloppyImportsResolver;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
@@ -414,19 +413,8 @@ fn create_graph_resolver(
     bare_node_builtins_enabled: config_file
       .map(|cf| cf.has_unstable("bare-node-builtins"))
       .unwrap_or(false),
-    sloppy_imports_resolver: unstable_sloppy_imports.then(|| {
-      SloppyImportsResolver::from_stat_sync_fn(Box::new(|path| {
-        path.metadata().ok().and_then(|m| {
-          if m.is_file() {
-            Some(SloppyImportsFsEntry::File)
-          } else if m.is_dir() {
-            Some(SloppyImportsFsEntry::Dir)
-          } else {
-            None
-          }
-        })
-      }))
-    }),
+    sloppy_imports_resolver: unstable_sloppy_imports
+      .then(|| SloppyImportsResolver::new(Arc::new(deno_fs::RealFs))),
   }))
 }
 
