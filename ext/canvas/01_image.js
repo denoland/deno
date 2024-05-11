@@ -103,6 +103,7 @@ webidl.converters["ImageBitmapOptions"] = webidl.createDictionaryConverter(
   ],
 );
 
+/** images are stored as RGBA8 */
 const _bitmapData = Symbol("[[bitmapData]]");
 const _detached = Symbol("[[detached]]");
 class ImageBitmap {

@@ -28,6 +28,7 @@ webidl.converters["ImageDataSettings"] = webidl.createDictionaryConverter(
   ],
 );
 
+/** images are stored as RGBA8 */
 const _data = Symbol("[[data]]");
 const _width = Symbol("[[width]]");
 const _height = Symbol("[[height]]");

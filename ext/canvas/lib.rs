@@ -1,16 +1,13 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::ToJsBuffer;
 use image::imageops::FilterType;
 use image::ColorType;
 use image::GenericImageView;
-use image::ImageDecoder;
 use image::ImageEncoder;
 use image::Pixel;
-use image::RgbImage;
 use image::RgbaImage;
 use serde::Deserialize;
 use serde::Serialize;
@@ -47,14 +44,15 @@ fn op_image_process(
   #[buffer] buf: &[u8],
   #[serde] args: ImageProcessArgs,
 ) -> Result<ToJsBuffer, AnyError> {
-  let view = RgbImage::from_vec(args.width, args.height, buf.to_vec()).unwrap();
+  let view =
+    RgbaImage::from_vec(args.width, args.height, buf.to_vec()).unwrap();
 
   let surface = if !(args.width == args.surface_width
     && args.height == args.surface_height
     && args.input_x == 0
     && args.input_y == 0)
   {
-    let mut surface = RgbImage::new(args.surface_width, args.surface_height);
+    let mut surface = RgbaImage::new(args.surface_width, args.surface_height);
 
     image::imageops::overlay(&mut surface, &view, args.input_x, args.input_y);
 
@@ -107,7 +105,7 @@ fn op_image_process(
     }
   }
 
-  Ok(image_out.to_vec().into())
+  Ok(image_out.into_raw().into())
 }
 
 #[derive(Debug, Serialize)]
@@ -126,7 +124,7 @@ fn op_image_decode_png(#[buffer] buf: &[u8]) -> Result<DecodedPng, AnyError> {
   let (width, height) = image.dimensions();
 
   Ok(DecodedPng {
-    data: image.to_rgb8().into_raw().into(),
+    data: image.into_rgba8().into_raw().into(),
     width,
     height,
   })
@@ -142,7 +140,7 @@ fn op_image_encode_png(
   let mut out = vec![];
   let png = image::codecs::png::PngEncoder::new(&mut out);
   if png
-    .write_image(buf, width, height, ColorType::Rgb8)
+    .write_image(buf, width, height, ColorType::Rgba8)
     .is_err()
   {
     return Ok(None);
