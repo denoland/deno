@@ -414,7 +414,7 @@ fn create_graph_resolver(
       .map(|cf| cf.has_unstable("bare-node-builtins"))
       .unwrap_or(false),
     sloppy_imports_resolver: unstable_sloppy_imports
-      .then(|| SloppyImportsResolver::new(Arc::new(deno_fs::RealFs))),
+      .then(|| SloppyImportsResolver::new(Arc::new(deno_fs::RealFs), false)),
   }))
 }
 

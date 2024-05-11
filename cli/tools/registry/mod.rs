@@ -823,7 +823,7 @@ async fn prepare_packages_for_publishing(
     .map(|member| {
       let mapped_resolver = mapped_resolver.clone();
       let sloppy_imports_resolver = if cli_options.unstable_sloppy_imports() {
-        Some(SloppyImportsResolver::new(fs.clone()))
+        Some(SloppyImportsResolver::new(fs.clone(), true))
       } else {
         None
       };

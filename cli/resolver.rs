@@ -858,38 +858,6 @@ impl NpmResolver for CliGraphResolver {
   }
 }
 
-#[derive(Debug)]
-struct SloppyImportsStatCache {
-  fs: Arc<dyn FileSystem>,
-  cache: Mutex<HashMap<PathBuf, Option<SloppyImportsFsEntry>>>,
-}
-
-impl SloppyImportsStatCache {
-  pub fn new(fs: Arc<dyn FileSystem>) -> Self {
-    Self {
-      fs,
-      cache: Default::default(),
-    }
-  }
-
-  pub fn stat_sync(&self, path: &Path) -> Option<SloppyImportsFsEntry> {
-    // there will only ever be one thread in here at a
-    // time, so it's ok to hold the lock for so long
-    let mut cache = self.cache.lock();
-    if let Some(entry) = cache.get(path) {
-      return *entry;
-    }
-
-    let entry = self
-      .fs
-      .stat_sync(path)
-      .ok()
-      .and_then(|stat| SloppyImportsFsEntry::from_fs_stat(&stat));
-    cache.insert(path.to_owned(), entry);
-    entry
-  }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SloppyImportsFsEntry {
   File,
@@ -989,13 +957,15 @@ impl<'a> SloppyImportsResolution<'a> {
 
 #[derive(Debug)]
 pub struct SloppyImportsResolver {
-  stat_cache: SloppyImportsStatCache,
+  fs: Arc<dyn FileSystem>,
+  cache: Option<Mutex<HashMap<PathBuf, Option<SloppyImportsFsEntry>>>>,
 }
 
 impl SloppyImportsResolver {
-  pub fn new(fs: Arc<dyn FileSystem>) -> Self {
+  pub fn new(fs: Arc<dyn FileSystem>, use_cache: bool) -> Self {
     Self {
-      stat_cache: SloppyImportsStatCache::new(fs),
+      fs,
+      cache: use_cache.then(Default::default),
     }
   }
 
@@ -1053,7 +1023,7 @@ impl SloppyImportsResolver {
     }
 
     let probe_paths: Vec<(PathBuf, SloppyImportsResolutionReason)> =
-      match self.stat_cache.stat_sync(&path) {
+      match self.stat_sync(&path) {
         Some(SloppyImportsFsEntry::File) => {
           if mode.is_types() {
             let media_type = MediaType::from_specifier(specifier);
@@ -1231,9 +1201,7 @@ impl SloppyImportsResolver {
       };
 
     for (probe_path, reason) in probe_paths {
-      if self.stat_cache.stat_sync(&probe_path)
-        == Some(SloppyImportsFsEntry::File)
-      {
+      if self.stat_sync(&probe_path) == Some(SloppyImportsFsEntry::File) {
         if let Ok(specifier) = ModuleSpecifier::from_file_path(probe_path) {
           match reason {
             SloppyImportsResolutionReason::JsToTs => {
@@ -1251,6 +1219,26 @@ impl SloppyImportsResolver {
     }
 
     SloppyImportsResolution::None(specifier)
+  }
+
+  fn stat_sync(&self, path: &Path) -> Option<SloppyImportsFsEntry> {
+    // there will only ever be one thread in here at a
+    // time, so it's ok to hold the lock for so long
+    if let Some(cache) = &self.cache {
+      if let Some(entry) = cache.lock().get(path) {
+        return *entry;
+      }
+    }
+
+    let entry = self
+      .fs
+      .stat_sync(path)
+      .ok()
+      .and_then(|stat| SloppyImportsFsEntry::from_fs_stat(&stat));
+    if let Some(cache) = &self.cache {
+      cache.lock().insert(path.to_owned(), entry);
+    }
+    entry
   }
 }
 
@@ -1325,7 +1313,7 @@ mod test {
   #[test]
   fn test_unstable_sloppy_imports() {
     fn resolve(specifier: &ModuleSpecifier) -> SloppyImportsResolution {
-      SloppyImportsResolver::new(Arc::new(deno_fs::RealFs))
+      SloppyImportsResolver::new(Arc::new(deno_fs::RealFs), false)
         .resolve(specifier, ResolutionMode::Execution)
     }
 
