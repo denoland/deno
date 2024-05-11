@@ -233,6 +233,8 @@ function setOutputBitmap(context, bitmap) {
   } else {
     context[_bitmapMode] = "valid";
     context[_canvasBitmap].data = bitmap[_bitmapData];
+    context[_canvas][_width] = bitmap[_width];
+    context[_canvas][_height] = bitmap[_height];
   }
 }
 
