@@ -23,6 +23,7 @@ use crate::resolver::SloppyImportsResolver;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 use dashmap::DashMap;
+use deno_ast::MediaType;
 use deno_cache_dir::HttpCache;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
@@ -192,25 +193,6 @@ impl LspResolver {
     self.graph_resolver.as_ref()
   }
 
-  pub fn jsr_to_registry_url(
-    &self,
-    req_ref: &JsrPackageReqReference,
-  ) -> Option<ModuleSpecifier> {
-    self.jsr_resolver.as_ref()?.jsr_to_registry_url(req_ref)
-  }
-
-  pub fn jsr_lookup_export_for_path(
-    &self,
-    nv: &PackageNv,
-    path: &str,
-  ) -> Option<String> {
-    self.jsr_resolver.as_ref()?.lookup_export_for_path(nv, path)
-  }
-
-  pub fn jsr_lookup_req_for_nv(&self, nv: &PackageNv) -> Option<PackageReq> {
-    self.jsr_resolver.as_ref()?.lookup_req_for_nv(nv)
-  }
-
   pub fn maybe_managed_npm_resolver(&self) -> Option<&ManagedCliNpmResolver> {
     self.npm_resolver.as_ref().and_then(|r| r.as_managed())
   }
@@ -235,7 +217,45 @@ impl LspResolver {
     None
   }
 
-  pub fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool {
+  pub fn jsr_to_registry_url(
+    &self,
+    req_ref: &JsrPackageReqReference,
+  ) -> Option<ModuleSpecifier> {
+    self.jsr_resolver.as_ref()?.jsr_to_registry_url(req_ref)
+  }
+
+  pub fn jsr_lookup_export_for_path(
+    &self,
+    nv: &PackageNv,
+    path: &str,
+  ) -> Option<String> {
+    self.jsr_resolver.as_ref()?.lookup_export_for_path(nv, path)
+  }
+
+  pub fn jsr_lookup_req_for_nv(&self, nv: &PackageNv) -> Option<PackageReq> {
+    self.jsr_resolver.as_ref()?.lookup_req_for_nv(nv)
+  }
+
+  pub fn npm_to_file_url(
+    &self,
+    req_ref: &NpmPackageReqReference,
+    referrer: &ModuleSpecifier,
+    mode: NodeResolutionMode,
+  ) -> Option<(ModuleSpecifier, MediaType)> {
+    let node_resolver = self.node_resolver.as_ref()?;
+    Some(NodeResolution::into_specifier_and_media_type(
+      node_resolver
+        .resolve_req_reference(
+          req_ref,
+          &PermissionsContainer::allow_all(),
+          referrer,
+          mode,
+        )
+        .ok(),
+    ))
+  }
+
+  pub fn in_node_modules(&self, specifier: &ModuleSpecifier) -> bool {
     if let Some(npm_resolver) = &self.npm_resolver {
       return npm_resolver.in_npm_package(specifier);
     }
@@ -247,45 +267,29 @@ impl LspResolver {
     specifier: &str,
     referrer: &ModuleSpecifier,
     mode: NodeResolutionMode,
-  ) -> Result<Option<NodeResolution>, AnyError> {
-    let Some(node_resolver) = self.node_resolver.as_ref() else {
-      return Ok(None);
-    };
-    node_resolver.resolve(
-      specifier,
-      referrer,
-      mode,
-      &PermissionsContainer::allow_all(),
-    )
-  }
-
-  pub fn resolve_npm_req_reference(
-    &self,
-    req_ref: &NpmPackageReqReference,
-    referrer: &ModuleSpecifier,
-    mode: NodeResolutionMode,
-  ) -> Result<Option<NodeResolution>, AnyError> {
-    let Some(node_resolver) = self.node_resolver.as_ref() else {
-      return Ok(None);
-    };
-    node_resolver
-      .resolve_req_reference(
-        req_ref,
-        &PermissionsContainer::allow_all(),
+  ) -> Option<(ModuleSpecifier, MediaType)> {
+    let node_resolver = self.node_resolver.as_ref()?;
+    let resolution = node_resolver
+      .resolve(
+        specifier,
         referrer,
         mode,
+        &PermissionsContainer::allow_all(),
       )
-      .map(Some)
+      .ok()
+      .flatten();
+    Some(NodeResolution::into_specifier_and_media_type(resolution))
   }
 
-  pub fn url_to_node_resolution(
+  pub fn node_media_type(
     &self,
-    specifier: ModuleSpecifier,
-  ) -> Result<Option<NodeResolution>, AnyError> {
-    let Some(node_resolver) = self.node_resolver.as_ref() else {
-      return Ok(None);
-    };
-    node_resolver.url_to_node_resolution(specifier).map(Some)
+    specifier: &ModuleSpecifier,
+  ) -> Option<MediaType> {
+    let node_resolver = self.node_resolver.as_ref()?;
+    let resolution = node_resolver
+      .url_to_node_resolution(specifier.clone())
+      .ok()?;
+    Some(NodeResolution::into_specifier_and_media_type(Some(resolution)).1)
   }
 
   pub fn get_closest_package_json(

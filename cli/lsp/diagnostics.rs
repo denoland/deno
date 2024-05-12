@@ -800,7 +800,7 @@ fn generate_lint_diagnostics(
       break;
     }
     // ignore any npm package files
-    if snapshot.resolver.in_npm_package(specifier) {
+    if snapshot.resolver.in_node_modules(specifier) {
       continue;
     }
     let version = document.maybe_lsp_version();
@@ -1434,7 +1434,7 @@ fn diagnose_dependency(
   dependency_key: &str,
   dependency: &deno_graph::Dependency,
 ) {
-  if snapshot.resolver.in_npm_package(referrer) {
+  if snapshot.resolver.in_node_modules(referrer) {
     return; // ignore, surface typescript errors instead
   }
 

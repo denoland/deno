@@ -12,7 +12,6 @@ use super::tsc;
 use super::tsc::AssetDocument;
 
 use crate::graph_util::CliJsrUrlProvider;
-use crate::lsp::logging::lsp_warn;
 use deno_runtime::fs_util::specifier_to_file_path;
 
 use dashmap::DashMap;
@@ -30,7 +29,6 @@ use deno_core::ModuleSpecifier;
 use deno_graph::source::ResolutionMode;
 use deno_graph::Resolution;
 use deno_runtime::deno_node;
-use deno_runtime::deno_node::NodeResolution;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
@@ -662,17 +660,9 @@ fn resolve_media_type(
   maybe_language_id: Option<LanguageId>,
   resolver: &LspResolver,
 ) -> MediaType {
-  if resolver.in_npm_package(specifier) {
-    match resolver.url_to_node_resolution(specifier.clone()) {
-      Ok(Some(resolution)) => {
-        let (_, media_type) =
-          NodeResolution::into_specifier_and_media_type(Some(resolution));
-        return media_type;
-      }
-      Err(err) => {
-        lsp_warn!("Node resolution failed for '{}': {}", specifier, err);
-      }
-      _ => {}
+  if resolver.in_node_modules(specifier) {
+    if let Some(media_type) = resolver.node_media_type(specifier) {
+      return media_type;
     }
   }
 
@@ -1100,15 +1090,13 @@ impl Documents {
     let dependencies = document.as_ref().map(|d| d.dependencies());
     let mut results = Vec::new();
     for specifier in specifiers {
-      if self.resolver.in_npm_package(referrer) {
+      if self.resolver.in_node_modules(referrer) {
         // we're in an npm package, so use node resolution
-        results.push(Some(NodeResolution::into_specifier_and_media_type(
-          self
-            .resolver
-            .node_resolve(specifier, referrer, NodeResolutionMode::Types)
-            .ok()
-            .flatten(),
-        )));
+        results.push(self.resolver.node_resolve(
+          specifier,
+          referrer,
+          NodeResolutionMode::Types,
+        ));
         continue;
       }
       if specifier.starts_with("asset:") {
@@ -1137,10 +1125,10 @@ impl Documents {
       } else if let Ok(npm_req_ref) =
         NpmPackageReqReference::from_str(specifier)
       {
-        results.push(node_resolve_npm_req_ref(
+        results.push(self.resolver.npm_to_file_url(
           &npm_req_ref,
           referrer,
-          &self.resolver,
+          NodeResolutionMode::Types,
         ));
       } else if let Ok(specifier) = self.resolver.as_graph_resolver().resolve(
         specifier,
@@ -1306,7 +1294,11 @@ impl Documents {
     }
 
     if let Ok(npm_ref) = NpmPackageReqReference::from_specifier(specifier) {
-      return node_resolve_npm_req_ref(&npm_ref, referrer, &self.resolver);
+      return self.resolver.npm_to_file_url(
+        &npm_ref,
+        referrer,
+        NodeResolutionMode::Types,
+      );
     }
     let Some(doc) = self.get(specifier) else {
       return Some((specifier.clone(), MediaType::from_specifier(specifier)));
@@ -1318,23 +1310,6 @@ impl Documents {
       Some((doc.specifier().clone(), media_type))
     }
   }
-}
-
-fn node_resolve_npm_req_ref(
-  npm_req_ref: &NpmPackageReqReference,
-  referrer: &ModuleSpecifier,
-  resolver: &LspResolver,
-) -> Option<(ModuleSpecifier, MediaType)> {
-  Some(NodeResolution::into_specifier_and_media_type(
-    resolver
-      .resolve_npm_req_reference(
-        npm_req_ref,
-        referrer,
-        NodeResolutionMode::Types,
-      )
-      .ok()
-      .flatten(),
-  ))
 }
 
 /// Loader that will look at the open documents.
