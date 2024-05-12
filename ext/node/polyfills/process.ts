@@ -58,6 +58,8 @@ export let platform = "";
 
 export let pid = 0;
 
+let startTime = (new Date()).valueOf();
+
 let stdin, stdout, stderr;
 
 export { stderr, stdin, stdout };
@@ -668,14 +670,9 @@ class Process extends EventEmitter {
     execPath = path;
   }
 
-  setStartTime(t: number) {
-    this.#startTime = t;
-  }
-
-  #startTime = 0;
   /** https://nodejs.org/api/process.html#processuptime */
   uptime() {
-    return (Date.now() - this.#startTime) / 1000;
+    return (Date.now() - startTime) / 1000;
   }
 
   #allowedFlags = buildAllowedFlags();
@@ -887,7 +884,7 @@ internals.__bootstrapNodeProcess = function (
       );
     }
 
-    process.setStartTime(Date.now());
+    startTime = (Date.now()).valueOf();
 
     arch = arch_();
     platform = isWindows ? "win32" : Deno.build.os;
@@ -895,8 +892,6 @@ internals.__bootstrapNodeProcess = function (
 
     initializeDebugEnv(nodeDebug);
 
-    // @ts-ignore Remove setStartTime and #startTime is not modifiable
-    delete process.setStartTime;
     delete internals.__bootstrapNodeProcess;
   } else {
     // Warmup, assuming stdin/stdout/stderr are all terminals
