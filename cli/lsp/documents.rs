@@ -1116,14 +1116,6 @@ impl Documents {
         } else {
           results.push(None);
         }
-      } else if let Ok(npm_req_ref) =
-        NpmPackageReqReference::from_str(specifier)
-      {
-        results.push(self.resolver.npm_to_file_url(
-          &npm_req_ref,
-          referrer,
-          NodeResolutionMode::Types,
-        ));
       } else if let Ok(specifier) = self.resolver.as_graph_resolver().resolve(
         specifier,
         &deno_graph::Range {
