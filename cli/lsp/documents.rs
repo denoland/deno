@@ -1090,15 +1090,6 @@ impl Documents {
     let dependencies = document.as_ref().map(|d| d.dependencies());
     let mut results = Vec::new();
     for specifier in specifiers {
-      if self.resolver.in_node_modules(referrer) {
-        // we're in an npm package, so use node resolution
-        results.push(self.resolver.node_resolve(
-          specifier,
-          referrer,
-          NodeResolutionMode::Types,
-        ));
-        continue;
-      }
       if specifier.starts_with("asset:") {
         if let Ok(specifier) = ModuleSpecifier::parse(specifier) {
           let media_type = MediaType::from_specifier(&specifier);

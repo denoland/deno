@@ -251,25 +251,6 @@ impl LspResolver {
     false
   }
 
-  pub fn node_resolve(
-    &self,
-    specifier: &str,
-    referrer: &ModuleSpecifier,
-    mode: NodeResolutionMode,
-  ) -> Option<(ModuleSpecifier, MediaType)> {
-    let node_resolver = self.node_resolver.as_ref()?;
-    let resolution = node_resolver
-      .resolve(
-        specifier,
-        referrer,
-        mode,
-        &PermissionsContainer::allow_all(),
-      )
-      .ok()
-      .flatten();
-    Some(NodeResolution::into_specifier_and_media_type(resolution))
-  }
-
   pub fn node_media_type(
     &self,
     specifier: &ModuleSpecifier,
