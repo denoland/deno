@@ -1386,9 +1386,9 @@ dependencies = [
 
 [[package]]
 name = "deno_doc"
-version = "0.129.0"
+version = "0.133.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "38dc17660505a70f007a71d1550e2357662ca2083f9136eedcd53ccbac7537a6"
+checksum = "2309018eabdec1f6e88b0c8c1793825bb56eae13a4942cbec8cfe7caeb2be97f"
 dependencies = [
  "ammonia",
  "anyhow",
@@ -1747,9 +1747,9 @@ dependencies = [
 
 [[package]]
 name = "deno_npm"
-version = "0.18.0"
+version = "0.20.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bcd4f91bb7139c031791f135aa1785e08a828795d5daaefe981b9f9292f66e91"
+checksum = "9db4bc4de6c0d2935662dcd99542b03a0db5f1778bada7ef2afc074e7819068d"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1760,6 +1760,7 @@ dependencies = [
  "monch",
  "serde",
  "thiserror",
+ "url",
 ]
 
 [[package]]
@@ -2539,9 +2540,9 @@ dependencies = [
 
 [[package]]
 name = "eszip"
-version = "0.68.2"
+version = "0.68.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e478354842a7ee02c685221da61b7ecee919283e65818167d0f8ce60cca70798"
+checksum = "14cbb0e1910cd068e7c946e0d9a4d9e1859fc5596acdf99baca404e24e728136"
 dependencies = [
  "anyhow",
  "base64",
@@ -2652,9 +2653,9 @@ checksum = "c007b1ae3abe1cb6f85a16305acd418b7ca6343b953633fee2b76d8f108b830f"
 
 [[package]]
 name = "file_test_runner"
-version = "0.5.0"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cc644d2903f00e5f0e5d34dca805c7a100b09a1d257e07697101d90eb10d3351"
+checksum = "1eab6c1529960afefbd3c4e3021f23ba8030360aa6465e21cacb8e5c634f4854"
 dependencies = [
  "anyhow",
  "crossbeam-channel",
