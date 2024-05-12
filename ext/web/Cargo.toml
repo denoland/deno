@@ -24,7 +24,6 @@ futures.workspace = true
 serde = "1.0.149"
 tokio.workspace = true
 uuid = { workspace = true, features = ["serde"] }
-windows-sys.workspace = true
 
 [dev-dependencies]
 deno_bench_util.workspace = true

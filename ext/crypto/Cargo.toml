@@ -42,3 +42,6 @@ signature.workspace = true
 spki.workspace = true
 uuid.workspace = true
 x25519-dalek = "2.0.0"
+
+[package.metadata.cargo-machete]
+ignored = ["serde_bytes"]

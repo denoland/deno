@@ -152,7 +152,6 @@ zeromq.workspace = true
 zstd.workspace = true
 
 [target.'cfg(windows)'.dependencies]
-fwdansi.workspace = true
 junction.workspace = true
 winapi = { workspace = true, features = ["knownfolders", "mswsock", "objbase", "shlobj", "tlhelp32", "winbase", "winerror", "winsock2"] }
 
