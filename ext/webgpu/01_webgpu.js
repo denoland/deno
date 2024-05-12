@@ -128,6 +128,8 @@ import {
 } from "ext:deno_web/02_event.js";
 import { DOMException } from "ext:deno_web/01_dom_exception.js";
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
+import { _bitmapData, ImageBitmap } from "ext:deno_canvas/01_image.js";
+import { ImageData } from "ext:web/16_image_data.js";
 
 const _rid = Symbol("[[rid]]");
 const _size = Symbol("[[size]]");
@@ -2045,6 +2047,37 @@ class GPUQueue {
       new Uint8Array(abLike),
     );
     device.pushError(err);
+  }
+
+  /**
+   * @param {GPUImageCopyExternalImage} source
+   * @param {GPUImageCopyTextureTagged} destination
+   * @param {GPUExtent3D} copySize
+   */
+  copyExternalImageToTexture(source, destination, copySize) {
+    const dataSource = source.source;
+    let rgbaData, width, height;
+    if (ObjectPrototypeIsPrototypeOf(ImageBitmap.prototype, dataSource)) {
+      width = dataSource.width;
+      height = dataSource.height;
+      rgbaData = dataSource[_bitmapData];
+    } else if (ObjectPrototypeIsPrototypeOf(ImageData.prototype, dataSource)) {
+      width = dataSource.width;
+      height = dataSource.height;
+      rgbaData = dataSource.data;
+    } else {
+      throw new TypeError(
+        "not support call GPUQueue.copyExternalImageToTexture with that source",
+      );
+    }
+
+    // TODO: consider source.flipY, source.origin, destination.colorSpace, destination.premultipliedAlpha
+
+    this.writeTexture(destination, rgbaData, {
+      offset: 0,
+      bytesPerRow: 4 * width,
+      rowsPerImage: height,
+    }, copySize);
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
