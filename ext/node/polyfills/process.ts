@@ -58,8 +58,6 @@ export let platform = "";
 
 export let pid = 0;
 
-let startTime = (new Date()).valueOf();
-
 let stdin, stdout, stderr;
 
 export { stderr, stdin, stdout };
@@ -672,7 +670,7 @@ class Process extends EventEmitter {
 
   /** https://nodejs.org/api/process.html#processuptime */
   uptime() {
-    return (Date.now() - startTime) / 1000;
+    return Number((performance.now() / 1000).toFixed(9));
   }
 
   #allowedFlags = buildAllowedFlags();
@@ -883,8 +881,6 @@ internals.__bootstrapNodeProcess = function (
         "stderr",
       );
     }
-
-    startTime = (Date.now()).valueOf();
 
     arch = arch_();
     platform = isWindows ? "win32" : Deno.build.os;
