@@ -31,7 +31,6 @@ use deno_graph::source::NpmResolver;
 use deno_graph::source::Resolver;
 use deno_graph::GraphImport;
 use deno_graph::ModuleSpecifier;
-use deno_graph::Resolution;
 use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::NodeResolution;
@@ -205,16 +204,6 @@ impl LspResolver {
       .values()
       .flat_map(|i| i.dependencies.values())
       .flat_map(|value| value.get_type().or_else(|| value.get_code()))
-  }
-
-  pub fn resolve_graph_import(&self, specifier: &str) -> Option<&Resolution> {
-    for graph_imports in self.graph_imports.values() {
-      let maybe_dep = graph_imports.dependencies.get(specifier);
-      if maybe_dep.is_some() {
-        return maybe_dep.map(|d| &d.maybe_type);
-      }
-    }
-    None
   }
 
   pub fn jsr_to_registry_url(

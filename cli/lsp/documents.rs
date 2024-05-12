@@ -1116,12 +1116,6 @@ impl Documents {
         } else {
           results.push(None);
         }
-      } else if let Some(specifier) = self
-        .resolver
-        .resolve_graph_import(specifier)
-        .and_then(|r| r.maybe_specifier())
-      {
-        results.push(self.resolve_dependency(specifier, referrer));
       } else if let Ok(npm_req_ref) =
         NpmPackageReqReference::from_str(specifier)
       {
