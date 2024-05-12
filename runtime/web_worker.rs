@@ -47,6 +47,7 @@ use deno_io::Stdio;
 use deno_kv::dynamic::MultiBackendDbHandler;
 use deno_terminal::colors;
 use deno_tls::RootCertStoreProvider;
+use deno_tls::TlsKeys;
 use deno_web::create_entangled_message_port;
 use deno_web::serialize_transferables;
 use deno_web::BlobStore;
@@ -477,7 +478,7 @@ impl WebWorker {
             unsafely_ignore_certificate_errors: options
               .unsafely_ignore_certificate_errors
               .clone(),
-            client_cert_chain_and_key: None,
+            client_cert_chain_and_key: TlsKeys::Null,
             proxy: None,
           },
         ),
