@@ -235,6 +235,7 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
   handle.await?
 }
 
+#[allow(clippy::print_stderr)]
 fn setup_panic_hook() {
   // This function does two things inside of the panic hook:
   // - Tokio does not exit the process when a task panics, so we define a custom
@@ -259,6 +260,7 @@ fn setup_panic_hook() {
   }));
 }
 
+#[allow(clippy::print_stderr)]
 fn exit_with_message(message: &str, code: i32) -> ! {
   eprintln!(
     "{}: {}",
@@ -289,6 +291,7 @@ fn exit_for_error(error: AnyError) -> ! {
   exit_with_message(&error_string, error_code);
 }
 
+#[allow(clippy::print_stderr)]
 pub(crate) fn unstable_exit_cb(feature: &str, api_name: &str) {
   eprintln!(
     "Unstable API '{api_name}'. The `--unstable-{}` flag must be provided.",
@@ -298,6 +301,7 @@ pub(crate) fn unstable_exit_cb(feature: &str, api_name: &str) {
 }
 
 // TODO(bartlomieju): remove when `--unstable` flag is removed.
+#[allow(clippy::print_stderr)]
 pub(crate) fn unstable_warn_cb(feature: &str, api_name: &str) {
   eprintln!(
     "⚠️  {}",
@@ -369,7 +373,9 @@ fn resolve_flags_and_init(
 
   // TODO(bartlomieju): remove when `--unstable` flag is removed.
   if flags.unstable_config.legacy_flag_enabled {
+    #[allow(clippy::print_stderr)]
     if matches!(flags.subcommand, DenoSubcommand::Check(_)) {
+      // can't use log crate because that's not setup yet
       eprintln!(
         "⚠️  {}",
         colors::yellow(

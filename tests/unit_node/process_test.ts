@@ -1083,3 +1083,12 @@ Deno.test({
     process.setSourceMapsEnabled(true); // noop
   },
 });
+
+// Regression test for https://github.com/denoland/deno/issues/23761
+Deno.test({
+  name: "process.uptime without this",
+  fn() {
+    const v = (0, process.uptime)();
+    assert(v >= 0);
+  },
+});

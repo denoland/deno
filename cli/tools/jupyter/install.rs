@@ -27,13 +27,13 @@ pub fn status() -> Result<(), AnyError> {
   if let Some(specs) = json_output.get("kernelspecs") {
     if let Some(specs_obj) = specs.as_object() {
       if specs_obj.contains_key("deno") {
-        println!("✅ Deno kernel already installed");
+        log::info!("✅ Deno kernel already installed");
         return Ok(());
       }
     }
   }
 
-  println!("ℹ️ Deno kernel is not yet installed, run `deno jupyter --install` to set it up");
+  log::warn!("ℹ️ Deno kernel is not yet installed, run `deno jupyter --install` to set it up");
   Ok(())
 }
 
@@ -108,6 +108,6 @@ pub fn install() -> Result<(), AnyError> {
   }
 
   let _ = std::fs::remove_dir(temp_dir);
-  println!("✅ Deno kernelspec installed successfully.");
+  log::info!("✅ Deno kernelspec installed successfully.");
   Ok(())
 }

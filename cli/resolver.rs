@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use dashmap::DashMap;
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
@@ -33,7 +34,6 @@ use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
 use import_map::ImportMap;
 use std::borrow::Cow;
-use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
@@ -858,38 +858,6 @@ impl NpmResolver for CliGraphResolver {
   }
 }
 
-#[derive(Debug)]
-struct SloppyImportsStatCache {
-  fs: Arc<dyn FileSystem>,
-  cache: Mutex<HashMap<PathBuf, Option<SloppyImportsFsEntry>>>,
-}
-
-impl SloppyImportsStatCache {
-  pub fn new(fs: Arc<dyn FileSystem>) -> Self {
-    Self {
-      fs,
-      cache: Default::default(),
-    }
-  }
-
-  pub fn stat_sync(&self, path: &Path) -> Option<SloppyImportsFsEntry> {
-    // there will only ever be one thread in here at a
-    // time, so it's ok to hold the lock for so long
-    let mut cache = self.cache.lock();
-    if let Some(entry) = cache.get(path) {
-      return *entry;
-    }
-
-    let entry = self
-      .fs
-      .stat_sync(path)
-      .ok()
-      .and_then(|stat| SloppyImportsFsEntry::from_fs_stat(&stat));
-    cache.insert(path.to_owned(), entry);
-    entry
-  }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SloppyImportsFsEntry {
   File,
@@ -989,33 +957,27 @@ impl<'a> SloppyImportsResolution<'a> {
 
 #[derive(Debug)]
 pub struct SloppyImportsResolver {
-  stat_cache: SloppyImportsStatCache,
+  fs: Arc<dyn FileSystem>,
+  cache: Option<DashMap<PathBuf, Option<SloppyImportsFsEntry>>>,
 }
 
 impl SloppyImportsResolver {
   pub fn new(fs: Arc<dyn FileSystem>) -> Self {
     Self {
-      stat_cache: SloppyImportsStatCache::new(fs),
+      fs,
+      cache: Some(Default::default()),
     }
   }
 
-  pub fn resolve_with_fs<'a>(
-    fs: &dyn FileSystem,
+  pub fn new_without_stat_cache(fs: Arc<dyn FileSystem>) -> Self {
+    Self { fs, cache: None }
+  }
+
+  pub fn resolve<'a>(
+    &self,
     specifier: &'a ModuleSpecifier,
     mode: ResolutionMode,
   ) -> SloppyImportsResolution<'a> {
-    Self::resolve_with_stat_sync(specifier, mode, |path| {
-      fs.stat_sync(path)
-        .ok()
-        .and_then(|stat| SloppyImportsFsEntry::from_fs_stat(&stat))
-    })
-  }
-
-  pub fn resolve_with_stat_sync(
-    specifier: &ModuleSpecifier,
-    mode: ResolutionMode,
-    stat_sync: impl Fn(&Path) -> Option<SloppyImportsFsEntry>,
-  ) -> SloppyImportsResolution {
     fn path_without_ext(
       path: &Path,
       media_type: MediaType,
@@ -1065,7 +1027,7 @@ impl SloppyImportsResolver {
     }
 
     let probe_paths: Vec<(PathBuf, SloppyImportsResolutionReason)> =
-      match (stat_sync)(&path) {
+      match self.stat_sync(&path) {
         Some(SloppyImportsFsEntry::File) => {
           if mode.is_types() {
             let media_type = MediaType::from_specifier(specifier);
@@ -1243,7 +1205,7 @@ impl SloppyImportsResolver {
       };
 
     for (probe_path, reason) in probe_paths {
-      if (stat_sync)(&probe_path) == Some(SloppyImportsFsEntry::File) {
+      if self.stat_sync(&probe_path) == Some(SloppyImportsFsEntry::File) {
         if let Ok(specifier) = ModuleSpecifier::from_file_path(probe_path) {
           match reason {
             SloppyImportsResolutionReason::JsToTs => {
@@ -1263,14 +1225,22 @@ impl SloppyImportsResolver {
     SloppyImportsResolution::None(specifier)
   }
 
-  pub fn resolve<'a>(
-    &self,
-    specifier: &'a ModuleSpecifier,
-    mode: ResolutionMode,
-  ) -> SloppyImportsResolution<'a> {
-    Self::resolve_with_stat_sync(specifier, mode, |path| {
-      self.stat_cache.stat_sync(path)
-    })
+  fn stat_sync(&self, path: &Path) -> Option<SloppyImportsFsEntry> {
+    if let Some(cache) = &self.cache {
+      if let Some(entry) = cache.get(path) {
+        return *entry;
+      }
+    }
+
+    let entry = self
+      .fs
+      .stat_sync(path)
+      .ok()
+      .and_then(|stat| SloppyImportsFsEntry::from_fs_stat(&stat));
+    if let Some(cache) = &self.cache {
+      cache.insert(path.to_owned(), entry);
+    }
+    entry
   }
 }
 
@@ -1278,7 +1248,6 @@ impl SloppyImportsResolver {
 mod test {
   use std::collections::BTreeMap;
 
-  use deno_runtime::deno_fs::RealFs;
   use test_util::TestContext;
 
   use super::*;
@@ -1346,21 +1315,8 @@ mod test {
   #[test]
   fn test_unstable_sloppy_imports() {
     fn resolve(specifier: &ModuleSpecifier) -> SloppyImportsResolution {
-      SloppyImportsResolver::resolve_with_stat_sync(
-        specifier,
-        ResolutionMode::Execution,
-        |path| {
-          RealFs.stat_sync(path).ok().and_then(|stat| {
-            if stat.is_file {
-              Some(SloppyImportsFsEntry::File)
-            } else if stat.is_directory {
-              Some(SloppyImportsFsEntry::Dir)
-            } else {
-              None
-            }
-          })
-        },
-      )
+      SloppyImportsResolver::new(Arc::new(deno_fs::RealFs))
+        .resolve(specifier, ResolutionMode::Execution)
     }
 
     let context = TestContext::default();
