@@ -110,7 +110,7 @@ fi
 # Configure the build environment. Both Rust and Clang will produce
 # llvm bitcode only, so we can use lld's incremental LTO support.
 . /sysroot/.env
-cat >> $GITHUB_ENV << __0
+echo "
 CARGO_PROFILE_BENCH_INCREMENTAL=false
 CARGO_PROFILE_BENCH_LTO=false
 CARGO_PROFILE_RELEASE_INCREMENTAL=false
@@ -123,20 +123,11 @@ RUSTFLAGS<<__1
   -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
   -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
   --cfg tokio_unstable
-  \${{ env.RUSTFLAGS }}
-__1
-RUSTDOCFLAGS<<__1
-  -C linker-plugin-lto=true
-  -C linker=clang-${llvmVersion}
-  -C link-arg=-fuse-ld=lld-${llvmVersion}
-  -C link-arg=-Wl,--allow-shlib-undefined
-  -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
-  -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
-  \${{ env.RUSTFLAGS }}
+  $RUSTFLAGS
 __1
 CC=/usr/bin/clang-${llvmVersion}
-CFLAGS=-flto=thin \${{ env.CFLAGS }}
-__0`,
+CFLAGS=-flto=thin $CFLAGS
+" > $GITHUB_ENV`,
 };
 
 const installBenchTools = "./tools/install_prebuilt.js wrk hyperfine";

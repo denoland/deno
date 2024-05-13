@@ -296,7 +296,8 @@ jobs:
 
           # Configure the build environment. Both Rust and Clang will produce
           # llvm bitcode only, so we can use lld's incremental LTO support.
-          cat >> $GITHUB_ENV << __0
+          . /sysroot/.env
+          echo "
           CARGO_PROFILE_BENCH_INCREMENTAL=false
           CARGO_PROFILE_BENCH_LTO=false
           CARGO_PROFILE_RELEASE_INCREMENTAL=false
@@ -305,28 +306,15 @@ jobs:
             -C linker-plugin-lto=true
             -C linker=clang-17
             -C link-arg=-fuse-ld=lld-17
-            -C link-arg=--sysroot=/sysroot
-            -C link-arg=-ldl
             -C link-arg=-Wl,--allow-shlib-undefined
             -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
             -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
             --cfg tokio_unstable
-            ${{ env.RUSTFLAGS }}
-          __1
-          RUSTDOCFLAGS<<__1
-            -C linker-plugin-lto=true
-            -C linker=clang-17
-            -C link-arg=-fuse-ld=lld-17
-            -C link-arg=--sysroot=/sysroot
-            -C link-arg=-ldl
-            -C link-arg=-Wl,--allow-shlib-undefined
-            -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
-            -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
-            ${{ env.RUSTFLAGS }}
+            $RUSTFLAGS
           __1
           CC=/usr/bin/clang-17
-          CFLAGS=-flto=thin --sysroot=/sysroot
-          __0
+          CFLAGS=-flto=thin $CFLAGS
+          " > $GITHUB_ENV
       - name: Remove macOS cURL --ipv4 flag
         run: |-
           curl --version
