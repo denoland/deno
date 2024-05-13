@@ -128,8 +128,9 @@ import {
 } from "ext:deno_web/02_event.js";
 import { DOMException } from "ext:deno_web/01_dom_exception.js";
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
-import { _bitmapData, ImageBitmap } from "ext:deno_canvas/01_image.js";
-import { ImageData } from "ext:web/16_image_data.js";
+import { ImageData } from "ext:deno_web/16_image_data.js";
+
+const loadImageBitmap = core.createLazyLoader("ext:deno_canvas/01_image.js");
 
 const _rid = Symbol("[[rid]]");
 const _size = Symbol("[[size]]");
@@ -2057,6 +2058,7 @@ class GPUQueue {
   copyExternalImageToTexture(source, destination, copySize) {
     const dataSource = source.source;
     let rgbaData, width, height;
+    const { _bitmapData, ImageBitmap } = loadImageBitmap();
     if (ObjectPrototypeIsPrototypeOf(ImageBitmap.prototype, dataSource)) {
       width = dataSource.width;
       height = dataSource.height;
