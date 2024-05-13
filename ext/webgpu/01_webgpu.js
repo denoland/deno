@@ -417,9 +417,12 @@ function createGPUAdapter(inner) {
   return adapter;
 }
 
+const _invalid = Symbol("[[invalid]]");
 class GPUAdapter {
   /** @type {InnerGPUAdapter} */
   [_adapter];
+  /** @type {bool} */
+  [_invalid];
 
   /** @returns {GPUSupportedFeatures} */
   get features() {
@@ -466,12 +469,20 @@ class GPUAdapter {
       }
     }
 
+    if (this[_invalid]) {
+      throw new TypeError(
+        "The adapter cannot be reused, as it has been invalidated by a device creation",
+      );
+    }
+
     const { rid, queueRid, features, limits } = op_webgpu_request_device(
       this[_adapter].rid,
       descriptor.label,
       requiredFeatures,
       descriptor.requiredLimits,
     );
+
+    this[_invalid] = true;
 
     const inner = new InnerGPUDevice({
       rid,
@@ -495,6 +506,12 @@ class GPUAdapter {
    */
   requestAdapterInfo() {
     webidl.assertBranded(this, GPUAdapterPrototype);
+
+    if (this[_invalid]) {
+      throw new TypeError(
+        "The adapter cannot be reused, as it has been invalidated by a device creation",
+      );
+    }
 
     const {
       vendor,
@@ -1136,10 +1153,11 @@ class GPUDevice extends EventTarget {
       "Argument 1",
     );
     const device = assertDevice(this, prefix, "this");
+    // assign normalized size to descriptor due to createGPUTexture needs it
+    descriptor.size = normalizeGPUExtent3D(descriptor.size);
     const { rid, err } = op_webgpu_create_texture({
       deviceRid: device.rid,
       ...descriptor,
-      size: normalizeGPUExtent3D(descriptor.size),
     });
     device.pushError(err);
 
@@ -5501,6 +5519,16 @@ webidl.converters["GPUExtent3D"] = (V, opts) => {
   if (typeof V === "object") {
     const method = V[SymbolIterator];
     if (method !== undefined) {
+      // validate length of GPUExtent3D
+      const min = 1;
+      const max = 3;
+      if (V.length < min || V.length > max) {
+        throw webidl.makeException(
+          TypeError,
+          `A sequence of number used as a GPUExtent3D must have between ${min} and ${max} elements.`,
+          opts,
+        );
+      }
       return webidl.converters["sequence<GPUIntegerCoordinate>"](V, opts);
     }
     return webidl.converters["GPUExtent3DDict"](V, opts);
@@ -6836,6 +6864,15 @@ webidl.converters["GPUOrigin3D"] = (V, opts) => {
   if (typeof V === "object") {
     const method = V[SymbolIterator];
     if (method !== undefined) {
+      // validate length of GPUOrigin3D
+      const length = 3;
+      if (V.length > length) {
+        throw webidl.makeException(
+          TypeError,
+          `A sequence of number used as a GPUOrigin3D must have at most ${length} elements.`,
+          opts,
+        );
+      }
       return webidl.converters["sequence<GPUIntegerCoordinate>"](V, opts);
     }
     return webidl.converters["GPUOrigin3DDict"](V, opts);
@@ -6904,6 +6941,15 @@ webidl.converters["GPUOrigin2D"] = (V, opts) => {
   if (typeof V === "object") {
     const method = V[SymbolIterator];
     if (method !== undefined) {
+      // validate length of GPUOrigin2D
+      const length = 2;
+      if (V.length > length) {
+        throw webidl.makeException(
+          TypeError,
+          `A sequence of number used as a GPUOrigin2D must have at most ${length} elements.`,
+          opts,
+        );
+      }
       return webidl.converters["sequence<GPUIntegerCoordinate>"](V, opts);
     }
     return webidl.converters["GPUOrigin2DDict"](V, opts);
@@ -6989,6 +7035,15 @@ webidl.converters["GPUColor"] = (V, opts) => {
   if (typeof V === "object") {
     const method = V[SymbolIterator];
     if (method !== undefined) {
+      // validate length of GPUColor
+      const length = 4;
+      if (V.length !== length) {
+        throw webidl.makeException(
+          TypeError,
+          `A sequence of number used as a GPUColor must have exactly ${length} elements.`,
+          opts,
+        );
+      }
       return webidl.converters["sequence<double>"](V, opts);
     }
     return webidl.converters["GPUColorDict"](V, opts);
