@@ -295,6 +295,7 @@ jobs:
           RUSTFLAGS<<__1
             -C linker-plugin-lto=true
             -C linker=clang-17
+            -C link-arg=-ldl
             -C link-arg=-fuse-ld=lld-17
             -C link-arg=-Wl,--allow-shlib-undefined
             -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
