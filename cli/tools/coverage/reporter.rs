@@ -52,7 +52,12 @@ pub trait CoverageReporter {
     file_reports: &'a Vec<(CoverageReport, String)>,
   ) -> CoverageSummary {
     let urls = file_reports.iter().map(|rep| &rep.0.url).collect();
-    let root = util::find_root(urls).unwrap().to_file_path().unwrap();
+    let root = match util::find_root(urls)
+      .and_then(|root_path| root_path.to_file_path().ok())
+    {
+      Some(path) => path,
+      None => return HashMap::new(),
+    };
     // summary by file or directory
     // tuple of (line hit, line miss, branch hit, branch miss, parent)
     let mut summary = HashMap::new();
