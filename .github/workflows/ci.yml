@@ -283,17 +283,7 @@ jobs:
           sudo mount -t proc /proc /sysroot/proc
           cd
 
-          if [[ `uname -m` == "aarch64" ]]; then
-            echo "Copying libdl.a"
-            sudo cp /sysroot/usr/lib/aarch64-linux-gnu/libdl.a /sysroot/lib/aarch64-linux-gnu/libdl.a
-            echo "Copying libdl.so"
-            sudo cp /sysroot/lib/aarch64-linux-gnu/libdl.so.2 /sysroot/lib/aarch64-linux-gnu/libdl.so
-          else
-            echo "Copying libdl.a"
-            sudo cp /sysroot/usr/lib/x86_64-linux-gnu/libdl.a /sysroot/lib/x86_64-linux-gnu/libdl.a
-            echo "Copying libdl.so"
-            sudo cp /sysroot/lib/x86_64-linux-gnu/libdl.so.2 /sysroot/lib/x86_64-linux-gnu/libdl.so
-          fi
+          echo "Done."
 
           # Configure the build environment. Both Rust and Clang will produce
           # llvm bitcode only, so we can use lld's incremental LTO support.
