@@ -1,6 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::TaskFlags;
 use crate::colors;
@@ -55,6 +54,7 @@ pub async fn execute_script(
   };
   let npm_resolver = factory.npm_resolver().await?;
   let node_resolver = factory.node_resolver().await?;
+  let env_vars = real_env_vars();
 
   if let Some(
     deno_config::Task::Definition(script)
@@ -74,15 +74,17 @@ pub async fn execute_script(
       None => config_file_path.parent().unwrap().to_owned(),
     };
 
-    let npm_commands =
-      resolve_npm_commands(npm_resolver.as_ref(), node_resolver)?;
+    let custom_commands =
+      resolve_custom_commands(npm_resolver.as_ref(), node_resolver)?;
     run_task(
       task_name,
       script,
       &cwd,
-      cli_options,
-      npm_commands,
-      npm_resolver.as_ref(),
+      cli_options.initial_cwd(),
+      env_vars,
+      cli_options.argv(),
+      custom_commands,
+      npm_resolver.root_node_modules_path().map(|p| p.as_path()),
     )
     .await
   } else if package_json_scripts.contains_key(task_name) {
@@ -129,17 +131,19 @@ pub async fn execute_script(
       task_name.clone(),
       format!("post{}", task_name),
     ];
-    let npm_commands =
-      resolve_npm_commands(npm_resolver.as_ref(), node_resolver)?;
+    let custom_commands =
+      resolve_custom_commands(npm_resolver.as_ref(), node_resolver)?;
     for task_name in task_names {
       if let Some(script) = package_json_scripts.get(&task_name) {
         let exit_code = run_task(
           &task_name,
           script,
           &cwd,
-          cli_options,
-          npm_commands.clone(),
-          npm_resolver.as_ref(),
+          cli_options.initial_cwd(),
+          env_vars.clone(),
+          cli_options.argv(),
+          custom_commands.clone(),
+          npm_resolver.root_node_modules_path().map(|p| p.as_path()),
         )
         .await?;
         if exit_code > 0 {
@@ -162,30 +166,30 @@ pub async fn execute_script(
   }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn run_task(
   task_name: &str,
   script: &str,
   cwd: &Path,
-  cli_options: &CliOptions,
-  npm_commands: HashMap<String, Rc<dyn ShellCommand>>,
-  npm_resolver: &dyn CliNpmResolver,
+  init_cwd: &Path,
+  env_vars: HashMap<String, String>,
+  argv: &[String],
+  custom_commands: HashMap<String, Rc<dyn ShellCommand>>,
+  root_node_modules_dir: Option<&Path>,
 ) -> Result<i32, AnyError> {
-  let script = get_script_with_args(script, cli_options);
+  let script = get_script_with_args(script, argv);
   output_task(task_name, &script);
   let seq_list = deno_task_shell::parser::parse(&script)
     .with_context(|| format!("Error parsing script '{}'.", task_name))?;
-  let env_vars = match npm_resolver.root_node_modules_path() {
-    Some(dir_path) => collect_env_vars_with_node_modules_dir(dir_path),
-    None => collect_env_vars(),
-  };
+  let env_vars = prepare_env_vars(env_vars, init_cwd, root_node_modules_dir);
   let local = LocalSet::new();
-  let future = deno_task_shell::execute(seq_list, env_vars, cwd, npm_commands);
+  let future =
+    deno_task_shell::execute(seq_list, env_vars, cwd, custom_commands);
   Ok(local.run_until(future).await)
 }
 
-fn get_script_with_args(script: &str, options: &CliOptions) -> String {
-  let additional_args = options
-    .argv()
+fn get_script_with_args(script: &str, argv: &[String]) -> String {
+  let additional_args = argv
     .iter()
     // surround all the additional arguments in double quotes
     // and sanitize any command substitution
@@ -200,22 +204,30 @@ fn output_task(task_name: &str, script: &str) {
   log::info!(
     "{} {} {}",
     colors::green("Task"),
-    colors::cyan(&task_name),
+    colors::cyan(task_name),
     script,
   );
 }
 
-fn collect_env_vars_with_node_modules_dir(
-  node_modules_dir_path: &Path,
+fn prepare_env_vars(
+  mut env_vars: HashMap<String, String>,
+  initial_cwd: &Path,
+  node_modules_dir: Option<&Path>,
 ) -> HashMap<String, String> {
-  let mut env_vars = collect_env_vars();
-  prepend_to_path(
-    &mut env_vars,
-    node_modules_dir_path
-      .join(".bin")
-      .to_string_lossy()
-      .to_string(),
-  );
+  const INIT_CWD_NAME: &str = "INIT_CWD";
+  if !env_vars.contains_key(INIT_CWD_NAME) {
+    // if not set, set an INIT_CWD env var that has the cwd
+    env_vars.insert(
+      INIT_CWD_NAME.to_string(),
+      initial_cwd.to_string_lossy().to_string(),
+    );
+  }
+  if let Some(node_modules_dir) = node_modules_dir {
+    prepend_to_path(
+      &mut env_vars,
+      node_modules_dir.join(".bin").to_string_lossy().to_string(),
+    );
+  }
   env_vars
 }
 
@@ -235,9 +247,8 @@ fn prepend_to_path(env_vars: &mut HashMap<String, String>, value: String) {
   }
 }
 
-fn collect_env_vars() -> HashMap<String, String> {
-  // get the starting env vars (the PWD env var will be set by deno_task_shell)
-  let mut env_vars = std::env::vars()
+fn real_env_vars() -> HashMap<String, String> {
+  std::env::vars()
     .map(|(k, v)| {
       if cfg!(windows) {
         (k.to_uppercase(), v)
@@ -245,16 +256,7 @@ fn collect_env_vars() -> HashMap<String, String> {
         (k, v)
       }
     })
-    .collect::<HashMap<String, String>>();
-  const INIT_CWD_NAME: &str = "INIT_CWD";
-  if !env_vars.contains_key(INIT_CWD_NAME) {
-    if let Ok(cwd) = std::env::current_dir() {
-      // if not set, set an INIT_CWD env var that has the cwd
-      env_vars
-        .insert(INIT_CWD_NAME.to_string(), cwd.to_string_lossy().to_string());
-    }
-  }
-  env_vars
+    .collect::<HashMap<String, String>>()
 }
 
 fn print_available_tasks(
@@ -406,7 +408,7 @@ impl ShellCommand for NodeModulesFileRunCommand {
   }
 }
 
-fn resolve_npm_commands(
+fn resolve_custom_commands(
   npm_resolver: &dyn CliNpmResolver,
   node_resolver: &NodeResolver,
 ) -> Result<HashMap<String, Rc<dyn ShellCommand>>, AnyError> {
