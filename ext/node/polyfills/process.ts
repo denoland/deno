@@ -668,14 +668,9 @@ class Process extends EventEmitter {
     execPath = path;
   }
 
-  setStartTime(t: number) {
-    this.#startTime = t;
-  }
-
-  #startTime = 0;
   /** https://nodejs.org/api/process.html#processuptime */
   uptime() {
-    return (Date.now() - this.#startTime) / 1000;
+    return Number((performance.now() / 1000).toFixed(9));
   }
 
   #allowedFlags = buildAllowedFlags();
@@ -887,16 +882,12 @@ internals.__bootstrapNodeProcess = function (
       );
     }
 
-    process.setStartTime(Date.now());
-
     arch = arch_();
     platform = isWindows ? "win32" : Deno.build.os;
     pid = Deno.pid;
 
     initializeDebugEnv(nodeDebug);
 
-    // @ts-ignore Remove setStartTime and #startTime is not modifiable
-    delete process.setStartTime;
     delete internals.__bootstrapNodeProcess;
   } else {
     // Warmup, assuming stdin/stdout/stderr are all terminals

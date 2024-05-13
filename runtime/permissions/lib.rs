@@ -1680,7 +1680,46 @@ impl PermissionsContainer {
       return Ok(());
     }
 
+    /// We'll allow opening /proc/self/fd/{n} without additional permissions under the following conditions:
+    ///
+    /// 1. n > 2. This allows for opening bash-style redirections, but not stdio
+    /// 2. the fd referred to by n is a pipe
+    #[cfg(unix)]
+    fn is_fd_file_is_pipe(path: &Path) -> bool {
+      if let Some(fd) = path.file_name() {
+        if let Ok(s) = std::str::from_utf8(fd.as_encoded_bytes()) {
+          if let Ok(n) = s.parse::<i32>() {
+            if n > 2 {
+              // SAFETY: This is proper use of the stat syscall
+              unsafe {
+                let mut stat = std::mem::zeroed::<libc::stat>();
+                if libc::fstat(n, &mut stat as _) == 0
+                  && ((stat.st_mode & libc::S_IFMT) & libc::S_IFIFO) != 0
+                {
+                  return true;
+                }
+              };
+            }
+          }
+        }
+      }
+      false
+    }
+
+    // On unixy systems, we allow opening /dev/fd/XXX for valid FDs that
+    // are pipes.
+    #[cfg(unix)]
+    if path.starts_with("/dev/fd") && is_fd_file_is_pipe(path) {
+      return Ok(());
+    }
+
     if cfg!(target_os = "linux") {
+      // On Linux, we also allow opening /proc/self/fd/XXX for valid FDs that
+      // are pipes.
+      #[cfg(unix)]
+      if path.starts_with("/proc/self/fd") && is_fd_file_is_pipe(path) {
+        return Ok(());
+      }
       if path.starts_with("/dev")
         || path.starts_with("/proc")
         || path.starts_with("/sys")
