@@ -711,7 +711,7 @@ pub fn enhanced_module_error_message(
   let additional_message = match error {
     ModuleError::LoadingErr(specifier, _, _) // ex. "Is a directory" error
     | ModuleError::Missing(specifier, _) => {
-      SloppyImportsResolver::new(fs, false).resolve(
+      SloppyImportsResolver::new(fs).resolve(
         specifier,
         ResolutionMode::Execution,
       )

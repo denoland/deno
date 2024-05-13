@@ -387,8 +387,9 @@ fn create_graph_resolver(
     bare_node_builtins_enabled: config_file
       .map(|cf| cf.has_unstable("bare-node-builtins"))
       .unwrap_or(false),
-    sloppy_imports_resolver: unstable_sloppy_imports
-      .then(|| SloppyImportsResolver::new(Arc::new(deno_fs::RealFs), false)),
+    sloppy_imports_resolver: unstable_sloppy_imports.then(|| {
+      SloppyImportsResolver::new_without_stat_cache(Arc::new(deno_fs::RealFs))
+    }),
   }))
 }
 

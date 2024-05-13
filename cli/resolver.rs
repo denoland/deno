@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use dashmap::DashMap;
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
@@ -33,7 +34,6 @@ use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
 use import_map::ImportMap;
 use std::borrow::Cow;
-use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
@@ -958,15 +958,19 @@ impl<'a> SloppyImportsResolution<'a> {
 #[derive(Debug)]
 pub struct SloppyImportsResolver {
   fs: Arc<dyn FileSystem>,
-  cache: Option<Mutex<HashMap<PathBuf, Option<SloppyImportsFsEntry>>>>,
+  cache: Option<DashMap<PathBuf, Option<SloppyImportsFsEntry>>>,
 }
 
 impl SloppyImportsResolver {
-  pub fn new(fs: Arc<dyn FileSystem>, use_cache: bool) -> Self {
+  pub fn new(fs: Arc<dyn FileSystem>) -> Self {
     Self {
       fs,
-      cache: use_cache.then(Default::default),
+      cache: Some(Default::default()),
     }
+  }
+
+  pub fn new_without_stat_cache(fs: Arc<dyn FileSystem>) -> Self {
+    Self { fs, cache: None }
   }
 
   pub fn resolve<'a>(
@@ -1225,7 +1229,7 @@ impl SloppyImportsResolver {
     // there will only ever be one thread in here at a
     // time, so it's ok to hold the lock for so long
     if let Some(cache) = &self.cache {
-      if let Some(entry) = cache.lock().get(path) {
+      if let Some(entry) = cache.get(path) {
         return *entry;
       }
     }
@@ -1236,7 +1240,7 @@ impl SloppyImportsResolver {
       .ok()
       .and_then(|stat| SloppyImportsFsEntry::from_fs_stat(&stat));
     if let Some(cache) = &self.cache {
-      cache.lock().insert(path.to_owned(), entry);
+      cache.insert(path.to_owned(), entry);
     }
     entry
   }
@@ -1313,7 +1317,7 @@ mod test {
   #[test]
   fn test_unstable_sloppy_imports() {
     fn resolve(specifier: &ModuleSpecifier) -> SloppyImportsResolution {
-      SloppyImportsResolver::new(Arc::new(deno_fs::RealFs), false)
+      SloppyImportsResolver::new(Arc::new(deno_fs::RealFs))
         .resolve(specifier, ResolutionMode::Execution)
     }
 
