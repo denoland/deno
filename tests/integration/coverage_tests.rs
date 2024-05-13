@@ -580,12 +580,7 @@ fn test_collect_summary_with_no_matches() {
 
   let actual: &str = output.combined_output();
   let expected_message: &str = "error: No test modules found";
-  assert!(
-    actual.contains(expected_message),
-    "Expected output to contain '{}', but found:\n{}",
-    expected_message,
-    actual
-  );
+  assert_contains!(actual, expected_message);
 
   // Check the contents of the coverage directory, ignoring 'empty_dir'
   let mut unexpected_contents: Vec<std::path::PathBuf> = Vec::new();
@@ -609,10 +604,8 @@ fn test_collect_summary_with_no_matches() {
 
   // Assert that the coverage directory is otherwise empty
   assert!(
-        unexpected_contents.is_empty(),
-        "Expected the coverage directory to be empty except for 'empty_dir', but found: {:?}",
-        unexpected_contents
-    );
-
-  println!("No unexpected coverage files found as expected, test concludes successfully.");
+    unexpected_contents.is_empty(),
+    "Expected the coverage directory to be empty except for 'empty_dir', but found: {:?}",
+    unexpected_contents
+  );
 }
