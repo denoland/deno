@@ -17,7 +17,6 @@ path = "lib.rs"
 [dependencies]
 bencher.workspace = true
 deno_core.workspace = true
-once_cell.workspace = true
 tokio.workspace = true
 
 [[bench]]

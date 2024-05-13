@@ -706,10 +706,8 @@ dependencies = [
  "os_pipe",
  "pretty_assertions",
  "serde",
- "serde_repr",
  "test_server",
  "tokio",
- "tokio-util",
  "tower-lsp",
  "trust-dns-client",
  "trust-dns-server",
@@ -1111,7 +1109,6 @@ dependencies = [
  "faster-hex",
  "flate2",
  "fs3",
- "fwdansi",
  "glibc_version",
  "glob",
  "ignore",
@@ -1131,11 +1128,9 @@ dependencies = [
  "notify",
  "once_cell",
  "open",
- "os_pipe",
  "p256",
  "percent-encoding",
  "phf 0.11.2",
- "pin-project",
  "pretty_assertions",
  "quick-junit",
  "rand",
@@ -1161,7 +1156,6 @@ dependencies = [
  "tower-lsp",
  "twox-hash",
  "typed-arena",
- "unicode-width",
  "uuid",
  "walkdir",
  "winapi",
@@ -1220,7 +1214,6 @@ version = "0.145.0"
 dependencies = [
  "bencher",
  "deno_core",
- "once_cell",
  "tokio",
 ]
 
@@ -1273,7 +1266,6 @@ dependencies = [
  "deno_webgpu",
  "image",
  "serde",
- "tokio",
 ]
 
 [[package]]
@@ -1379,7 +1371,6 @@ dependencies = [
  "sha2",
  "signature",
  "spki",
- "tokio",
  "uuid",
  "x25519-dalek",
 ]
@@ -1436,7 +1427,6 @@ dependencies = [
  "deno_tls",
  "dyn-clone",
  "http 0.2.12",
- "pin-project",
  "reqwest",
  "serde",
  "serde_json",
@@ -1457,7 +1447,6 @@ dependencies = [
  "serde",
  "serde-value",
  "serde_json",
- "tokio",
  "winapi",
 ]
 
@@ -1470,15 +1459,12 @@ dependencies = [
  "deno_core",
  "deno_io",
  "filetime",
- "fs3",
  "junction",
  "libc",
- "log",
  "nix 0.26.2",
  "rand",
  "rayon",
  "serde",
- "tokio",
  "winapi",
 ]
 
@@ -1587,14 +1573,9 @@ dependencies = [
  "prost",
  "prost-build",
  "rand",
- "reqwest",
  "rusqlite",
  "serde",
- "serde_json",
- "termcolor",
- "tokio",
  "url",
- "uuid",
 ]
 
 [[package]]
@@ -1664,8 +1645,6 @@ version = "0.143.0"
 dependencies = [
  "deno_core",
  "deno_tls",
- "enum-as-inner",
- "log",
  "pin-project",
  "rustls-tokio-stream",
  "serde",
@@ -1710,7 +1689,6 @@ dependencies = [
  "libz-sys",
  "md-5",
  "md4",
- "nix 0.26.2",
  "num-bigint",
  "num-bigint-dig",
  "num-integer",
@@ -1737,7 +1715,6 @@ dependencies = [
  "simd-json",
  "spki",
  "tokio",
- "typenum",
  "url",
  "winapi",
  "windows-sys 0.48.0",
@@ -1782,7 +1759,6 @@ dependencies = [
 name = "deno_permissions"
 version = "0.11.0"
 dependencies = [
- "console_static_text",
  "deno_core",
  "deno_terminal",
  "fqdn",
@@ -1790,7 +1766,6 @@ dependencies = [
  "log",
  "once_cell",
  "serde",
- "termcolor",
  "which 4.4.2",
  "winapi",
 ]
@@ -1799,7 +1774,6 @@ dependencies = [
 name = "deno_runtime"
 version = "0.159.0"
 dependencies = [
- "console_static_text",
  "deno_ast",
  "deno_broadcast_channel",
  "deno_cache",
@@ -1829,10 +1803,7 @@ dependencies = [
  "dlopen2",
  "encoding_rs",
  "fastwebsockets",
- "filetime",
  "flate2",
- "fs3",
- "fwdansi",
  "http 1.1.0",
  "http-body-util",
  "hyper 0.14.28",
@@ -1847,7 +1818,6 @@ dependencies = [
  "once_cell",
  "percent-encoding",
  "regex",
- "ring",
  "rustyline",
  "serde",
  "signal-hook",
@@ -1859,7 +1829,6 @@ dependencies = [
  "which 4.4.2",
  "winapi",
  "windows-sys 0.48.0",
- "winres",
 ]
 
 [[package]]
@@ -1908,7 +1877,6 @@ version = "0.138.0"
 dependencies = [
  "deno_core",
  "deno_native_certs",
- "once_cell",
  "rustls",
  "rustls-pemfile",
  "rustls-tokio-stream",
@@ -1935,7 +1903,6 @@ dependencies = [
  "deno_console",
  "deno_core",
  "deno_webidl",
- "serde",
  "urlpattern",
 ]
 
@@ -1957,7 +1924,6 @@ dependencies = [
  "serde",
  "tokio",
  "uuid",
- "windows-sys 0.48.0",
 ]
 
 [[package]]
@@ -1969,7 +1935,6 @@ dependencies = [
  "serde",
  "tokio",
  "wgpu-core",
- "wgpu-hal",
  "wgpu-types",
 ]
 
@@ -2008,7 +1973,6 @@ dependencies = [
  "deno_core",
  "deno_web",
  "rusqlite",
- "serde",
 ]
 
 [[package]]
@@ -2909,16 +2873,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "fwdansi"
-version = "1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "08c1f5787fe85505d1f7777268db5103d80a7a374d2316a7ce262e57baf8f208"
-dependencies = [
- "memchr",
- "termcolor",
-]
-
-[[package]]
 name = "generic-array"
 version = "0.14.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3035,19 +2989,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "98ff03b468aa837d70984d55f5d3f846f6ec31fe34bbb97c4f85219caeee1ca4"
 dependencies = [
  "bitflags 2.5.0",
-]
-
-[[package]]
-name = "gpu-allocator"
-version = "0.25.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6f56f6318968d03c18e1bcf4857ff88c61157e9da8e47c5f29055d60e1228884"
-dependencies = [
- "log",
- "presser",
- "thiserror",
- "winapi",
- "windows",
 ]
 
 [[package]]
@@ -4170,7 +4111,6 @@ dependencies = [
 name = "napi_sym"
 version = "0.81.0"
 dependencies = [
- "proc-macro2",
  "quote",
  "serde",
  "serde_json",
@@ -4872,12 +4812,6 @@ name = "precomputed-hash"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "925383efa346730478fb4838dbe9137d2a47675ad789c546d150a6e1dd4ab31c"
-
-[[package]]
-name = "presser"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e8cf8e6a8aa66ce33f63993ffc4ea4271eb5b0530a9002db8455ea6050c77bfa"
 
 [[package]]
 name = "pretty_assertions"
@@ -7497,7 +7431,6 @@ dependencies = [
  "glow",
  "glutin_wgl_sys",
  "gpu-alloc",
- "gpu-allocator",
  "gpu-descriptor",
  "js-sys",
  "khronos-egl",
