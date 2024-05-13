@@ -118,7 +118,6 @@ jobs:
             runner: ubicloud-standard-16-arm
             job: test
             profile: debug
-            use_sysroot: true
           - os: linux
             arch: aarch64
             runner: ubicloud-standard-16-arm
