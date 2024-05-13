@@ -4053,7 +4053,7 @@ fn op_is_node_file(state: &mut OpState, #[string] path: String) -> bool {
   let state = state.borrow::<State>();
   let mark = state.performance.mark("tsc.op.op_is_node_file");
   let r = match ModuleSpecifier::parse(&path) {
-    Ok(specifier) => state.state_snapshot.resolver.in_npm_package(&specifier),
+    Ok(specifier) => state.state_snapshot.resolver.in_node_modules(&specifier),
     Err(_) => false,
   };
   state.performance.measure(mark);
@@ -4250,12 +4250,14 @@ fn op_respond(
 fn op_script_names(state: &mut OpState) -> Vec<String> {
   let state = state.borrow_mut::<State>();
   let mark = state.performance.mark("tsc.op.op_script_names");
-  let documents = &state.state_snapshot.documents;
-  let all_docs = documents.documents(DocumentsFilter::AllDiagnosable);
   let mut seen = HashSet::new();
   let mut result = Vec::new();
 
-  if documents.has_injected_types_node_package() {
+  if state
+    .state_snapshot
+    .documents
+    .has_injected_types_node_package()
+  {
     // ensure this is first so it resolves the node types first
     let specifier = "asset:///node_types.d.ts";
     result.push(specifier.to_string());
@@ -4269,25 +4271,17 @@ fn op_script_names(state: &mut OpState) -> Vec<String> {
     }
   }
 
-  // finally include the documents and all their dependencies
-  for doc in &all_docs {
-    let specifiers = std::iter::once(doc.specifier()).chain(
-      doc
-        .dependencies()
-        .values()
-        .filter_map(|dep| dep.get_type().or_else(|| dep.get_code())),
-    );
-    for specifier in specifiers {
-      if seen.insert(specifier.as_str()) {
-        if let Some(specifier) = documents.resolve_specifier(specifier) {
-          // only include dependencies we know to exist otherwise typescript will error
-          if documents.exists(&specifier)
-            && (specifier.scheme() == "file" || documents.is_open(&specifier))
-          {
-            result.push(specifier.to_string());
-          }
-        }
-      }
+  // finally include the documents
+  let docs = state
+    .state_snapshot
+    .documents
+    .documents(DocumentsFilter::AllDiagnosable);
+  for doc in &docs {
+    let specifier = doc.specifier();
+    if seen.insert(specifier.as_str())
+      && (doc.is_open() || specifier.scheme() == "file")
+    {
+      result.push(specifier.to_string());
     }
   }
 
