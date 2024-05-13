@@ -1226,8 +1226,6 @@ impl SloppyImportsResolver {
   }
 
   fn stat_sync(&self, path: &Path) -> Option<SloppyImportsFsEntry> {
-    // there will only ever be one thread in here at a
-    // time, so it's ok to hold the lock for so long
     if let Some(cache) = &self.cache {
       if let Some(entry) = cache.get(path) {
         return *entry;
