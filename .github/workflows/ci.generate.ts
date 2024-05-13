@@ -689,6 +689,24 @@ const ci = {
           ].join("\n"),
         },
         {
+          // Since all tests are skipped when we're building a tagged commit
+          // this is a minimal check to ensure that binary is not corrupted
+          name: "Check deno binary",
+          if: "startsWith(github.ref, 'refs/tags/')",
+          run:
+            'target/${{ matrix.profile }}/deno eval "console.log(1+2)" | grep 3',
+          env: {
+            NO_COLOR: 1,
+          },
+        },
+        {
+          // Verify that the binary actually works in the Ubuntu-16.04 sysroot.
+          name: "Check deno binary (in sysroot)",
+          if: "matrix.use_sysroot",
+          run:
+            'sudo chroot /sysroot "$(pwd)/target/${{ matrix.profile }}/deno" --version',
+        },
+        {
           name: "Upload PR artifact (linux)",
           if: [
             "matrix.job == 'test' &&",
@@ -822,23 +840,6 @@ const ci = {
             "!startsWith(github.ref, 'refs/tags/')))",
           ].join("\n"),
           run: "cargo test --release --locked",
-        },
-        {
-          // Since all tests are skipped when we're building a tagged commit
-          // this is a minimal check to ensure that binary is not corrupted
-          name: "Check deno binary",
-          if:
-            "matrix.profile == 'release' && startsWith(github.ref, 'refs/tags/')",
-          run: 'target/release/deno eval "console.log(1+2)" | grep 3',
-          env: {
-            NO_COLOR: 1,
-          },
-        },
-        {
-          // Verify that the binary actually works in the Ubuntu-16.04 sysroot.
-          name: "Check deno binary (in sysroot)",
-          if: "matrix.profile == 'release' && matrix.use_sysroot",
-          run: 'sudo chroot /sysroot "$(pwd)/target/release/deno" --version',
         },
         {
           name: "Configure hosts file for WPT",

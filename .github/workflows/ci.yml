@@ -407,6 +407,14 @@ jobs:
           df -h
           cargo build --release --locked --all-targets
           df -h
+      - name: Check deno binary
+        if: '!(matrix.skip) && (startsWith(github.ref, ''refs/tags/''))'
+        run: 'target/${{ matrix.profile }}/deno eval "console.log(1+2)" | grep 3'
+        env:
+          NO_COLOR: 1
+      - name: Check deno binary (in sysroot)
+        if: '!(matrix.skip) && (matrix.use_sysroot)'
+        run: 'sudo chroot /sysroot "$(pwd)/target/${{ matrix.profile }}/deno" --version'
       - name: Upload PR artifact (linux)
         if: |-
           !(matrix.skip) && (matrix.job == 'test' &&
@@ -500,14 +508,6 @@ jobs:
           github.repository == 'denoland/deno' &&
           !startsWith(github.ref, 'refs/tags/'))))
         run: cargo test --release --locked
-      - name: Check deno binary
-        if: '!(matrix.skip) && (matrix.profile == ''release'' && startsWith(github.ref, ''refs/tags/''))'
-        run: target/release/deno eval "console.log(1+2)" | grep 3
-        env:
-          NO_COLOR: 1
-      - name: Check deno binary (in sysroot)
-        if: '!(matrix.skip) && (matrix.profile == ''release'' && matrix.use_sysroot)'
-        run: sudo chroot /sysroot "$(pwd)/target/release/deno" --version
       - name: Configure hosts file for WPT
         if: '!(matrix.skip) && (matrix.wpt)'
         run: ./wpt make-hosts-file | sudo tee -a /etc/hosts
