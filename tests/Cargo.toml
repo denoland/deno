@@ -53,10 +53,8 @@ once_cell.workspace = true
 os_pipe.workspace = true
 pretty_assertions.workspace = true
 serde.workspace = true
-serde_repr.workspace = true
 test_util.workspace = true
 tokio.workspace = true
-tokio-util.workspace = true
 tower-lsp.workspace = true
 trust-dns-client = "=0.22.0"
 trust-dns-server = "=0.22.1"
