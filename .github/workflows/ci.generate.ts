@@ -109,6 +109,7 @@ fi
 
 # Configure the build environment. Both Rust and Clang will produce
 # llvm bitcode only, so we can use lld's incremental LTO support.
+. /sysroot/.env
 cat >> $GITHUB_ENV << __0
 CARGO_PROFILE_BENCH_INCREMENTAL=false
 CARGO_PROFILE_BENCH_LTO=false
@@ -118,8 +119,6 @@ RUSTFLAGS<<__1
   -C linker-plugin-lto=true
   -C linker=clang-${llvmVersion}
   -C link-arg=-fuse-ld=lld-${llvmVersion}
-  -C link-arg=--sysroot=/sysroot
-  -C link-arg=-ldl
   -C link-arg=-Wl,--allow-shlib-undefined
   -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
   -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
@@ -130,15 +129,13 @@ RUSTDOCFLAGS<<__1
   -C linker-plugin-lto=true
   -C linker=clang-${llvmVersion}
   -C link-arg=-fuse-ld=lld-${llvmVersion}
-  -C link-arg=--sysroot=/sysroot
-  -C link-arg=-ldl
   -C link-arg=-Wl,--allow-shlib-undefined
   -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
   -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
   \${{ env.RUSTFLAGS }}
 __1
 CC=/usr/bin/clang-${llvmVersion}
-CFLAGS=-flto=thin --sysroot=/sysroot
+CFLAGS=-flto=thin \${{ env.CFLAGS }}
 __0`,
 };
 
