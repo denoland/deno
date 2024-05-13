@@ -7,6 +7,7 @@ import {
   op_exec_path,
   op_exit,
   op_get_env,
+  op_get_exit_code,
   op_gid,
   op_hostname,
   op_loadavg,
@@ -72,13 +73,12 @@ function setExitHandler(fn) {
   exitHandler = fn;
 }
 
-let _exitCode = 0;
 function exit(code) {
   // Set exit code first so unload event listeners can override it.
   if (typeof code === "number") {
     op_set_exit_code(code);
   } else {
-    code = _exitCode;
+    code = op_get_exit_code();
   }
 
   // Dispatches `unload` only when it's not dispatched yet.
@@ -98,7 +98,7 @@ function exit(code) {
 }
 
 function getExitCode() {
-  return _exitCode;
+  return op_get_exit_code();
 }
 
 function setExitCode(value) {
@@ -106,7 +106,6 @@ function setExitCode(value) {
   if (typeof code !== "number") {
     throw new TypeError("Exit code must be a number.");
   }
-  _exitCode = code;
   op_set_exit_code(code);
 }
 

@@ -48,6 +48,7 @@ import {
 } from "ext:deno_node/_next_tick.ts";
 import { isWindows } from "ext:deno_node/_util/os.ts";
 import * as io from "ext:deno_io/12_io.js";
+import * as denoOs from "ext:runtime/30_os.js";
 
 export let argv0 = "";
 
@@ -81,21 +82,21 @@ let ProcessExitCode: undefined | null | string | number;
 /** https://nodejs.org/api/process.html#process_process_exit_code */
 export const exit = (code?: number | string) => {
   if (code || code === 0) {
-    // @ts-expect-error; Deno.exitCode setter parses string
-    Deno.exitCode = code;
+    denoOs.setExitCode(code);
   }
 
+  const exitCode = ProcessExitCode || denoOs.getExitCode();
   if (!process._exiting) {
     process._exiting = true;
     // FIXME(bartlomieju): this is wrong, we won't be using syscall to exit
     // and thus the `unload` event will not be emitted to properly trigger "emit"
     // event on `process`.
-    process.emit("exit", ProcessExitCode || Deno.exitCode);
+    process.emit("exit", exitCode);
   }
 
   // Any valid thing `process.exitCode` set is already held in Deno.exitCode.
   // At this point, we don't have to pass around Node's raw/string exit value.
-  process.reallyExit(Deno.exitCode);
+  process.reallyExit(exitCode);
 };
 
 /** https://nodejs.org/api/process.html#processumaskmask */
@@ -405,8 +406,12 @@ class Process extends EventEmitter {
   }
 
   set exitCode(code: number | string | null | undefined) {
-    // @ts-expect-error; Deno.exitCode parses string
-    if (code != null) Deno.exitCode = code;
+    if (code != null) {
+      // This is looser than `denoOs.setExitCode` which requires exit code
+      // to be decimal or string of a decimal, but Node accept eg. 0x10.
+      code = parseInt(code) || 0;
+      denoOs.setExitCode(code);
+    }
     // invalid string would have thrown
     ProcessExitCode = code;
   }
