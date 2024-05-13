@@ -28,7 +28,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use tokio::task::LocalSet;
 
-// WARNING: Do not depend on this env var in user code. It's not stable API
+// WARNING: Do not depend on this env var in user code. It's not stable API.
 const USE_PKG_JSON_HIDDEN_ENV_VAR_NAME: &str =
   "DENO_INTERNAL_TASK_USE_PKG_JSON";
 
