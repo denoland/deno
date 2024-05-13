@@ -555,3 +555,57 @@ File         | Branch % | Line % |
 ",
   );
 }
+
+#[test]
+fn test_collect_summary_with_no_matches() {
+  let context: TestContext = TestContext::default();
+  let temp_dir: &TempDir = context.temp_dir();
+  let temp_dir_path: PathRef = PathRef::new(temp_dir.path().join("cov"));
+
+  let empty_test_dir: PathRef = temp_dir_path.join("empty_dir");
+  empty_test_dir.create_dir_all();
+
+  let output: util::TestCommandOutput = context
+    .new_command()
+    .args_vec(vec![
+      "test".to_string(),
+      "--quiet".to_string(),
+      "--allow-read".to_string(),
+      format!("--coverage={}", temp_dir_path.as_path().display()),
+      empty_test_dir.as_path().to_str().unwrap().to_string(),
+    ])
+    .run();
+
+  output.assert_exit_code(1);
+
+  let actual: &str = output.combined_output();
+  let expected_message: &str = "error: No test modules found";
+  assert_contains!(actual, expected_message);
+
+  // Check the contents of the coverage directory, ignoring 'empty_dir'
+  let mut unexpected_contents: Vec<std::path::PathBuf> = Vec::new();
+  for entry in std::fs::read_dir(temp_dir_path.as_path())
+    .unwrap()
+    .flatten()
+  {
+    if entry.file_name() != "empty_dir" {
+      // Ignore the 'empty_dir'
+      unexpected_contents.push(entry.path());
+    }
+  }
+
+  // Report unexpected contents
+  if !unexpected_contents.is_empty() {
+    eprintln!("Unexpected files or directories in the coverage directory:");
+    for path in &unexpected_contents {
+      eprintln!("{:?}", path);
+    }
+  }
+
+  // Assert that the coverage directory is otherwise empty
+  assert!(
+    unexpected_contents.is_empty(),
+    "Expected the coverage directory to be empty except for 'empty_dir', but found: {:?}",
+    unexpected_contents
+  );
+}
