@@ -121,11 +121,9 @@ monch.workspace = true
 notify.workspace = true
 once_cell.workspace = true
 open = "5.0.1"
-os_pipe.workspace = true
 p256.workspace = true
 percent-encoding.workspace = true
 phf.workspace = true
-pin-project.workspace = true
 quick-junit = "^0.3.5"
 rand = { workspace = true, features = ["small_rng"] }
 regex.workspace = true
@@ -148,14 +146,12 @@ tokio-util.workspace = true
 tower-lsp.workspace = true
 twox-hash = "=1.6.3"
 typed-arena = "=2.0.1"
-unicode-width = "0.1"
 uuid = { workspace = true, features = ["serde"] }
 walkdir = "=2.3.2"
 zeromq.workspace = true
 zstd.workspace = true
 
 [target.'cfg(windows)'.dependencies]
-fwdansi.workspace = true
 junction.workspace = true
 winapi = { workspace = true, features = ["knownfolders", "mswsock", "objbase", "shlobj", "tlhelp32", "winbase", "winerror", "winsock2"] }
 

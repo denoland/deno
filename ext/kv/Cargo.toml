@@ -30,14 +30,9 @@ log.workspace = true
 num-bigint.workspace = true
 prost.workspace = true
 rand.workspace = true
-reqwest.workspace = true
 rusqlite.workspace = true
 serde.workspace = true
-serde_json.workspace = true
-termcolor.workspace = true
-tokio.workspace = true
 url.workspace = true
-uuid = { workspace = true, features = ["serde"] }
 
 [build-dependencies]
 prost-build.workspace = true
