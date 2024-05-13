@@ -152,6 +152,7 @@ async fn prepare_publish(
     .unwrap_or_else(|| FilePatterns::new_with_base(root_dir.to_path_buf()));
 
   let diagnostics_collector = diagnostics_collector.clone();
+  let deno_json_specifier = deno_json.specifier.clone();
   let tarball = deno_core::unsync::spawn_blocking(move || {
     let bare_node_builtins = cli_options.unstable_bare_node_builtins();
     let unfurler = SpecifierUnfurler::new(
@@ -169,6 +170,7 @@ async fn prepare_publish(
     )?;
     collect_excluded_module_diagnostics(
       &root_specifier,
+      &deno_json_specifier,
       &graph,
       &publish_paths,
       &diagnostics_collector,
@@ -214,6 +216,7 @@ async fn prepare_publish(
 
 fn collect_excluded_module_diagnostics(
   root: &ModuleSpecifier,
+  config_file_specifier: &ModuleSpecifier,
   graph: &deno_graph::ModuleGraph,
   publish_paths: &[CollectedPublishPath],
   diagnostics_collector: &PublishDiagnosticsCollector,
@@ -232,6 +235,7 @@ fn collect_excluded_module_diagnostics(
       | deno_graph::Module::Node(_)
       | deno_graph::Module::External(_) => None,
     })
+    .chain(std::iter::once(config_file_specifier))
     .filter(|s| s.as_str().starts_with(root.as_str()));
   for specifier in graph_specifiers {
     if !publish_specifiers.contains(specifier) {
