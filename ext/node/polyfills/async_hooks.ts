@@ -207,6 +207,8 @@ export class AsyncResource {
     }
   }
 
+  emitDestroy() {}
+
   bind(fn: (...args: unknown[]) => unknown, thisArg = this) {
     validateFunction(fn, "fn");
     const frame = AsyncContextFrame.current();
