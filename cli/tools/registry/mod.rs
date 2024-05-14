@@ -439,39 +439,44 @@ impl PublishPreparer {
       .map(|c| c.files)
       .unwrap_or_else(|| FilePatterns::new_with_base(root_dir.to_path_buf()));
 
-    let diagnostics_collector = diagnostics_collector.clone();
-    let mapped_resolver = self.mapped_resolver.clone();
-    let sloppy_imports_resolver = self.sloppy_imports_resolver.clone();
-    let cli_options = self.cli_options.clone();
-    let source_cache = self.source_cache.clone();
-    let tarball = deno_core::unsync::spawn_blocking(move || {
-      let bare_node_builtins = cli_options.unstable_bare_node_builtins();
-      let unfurler = SpecifierUnfurler::new(
-        &mapped_resolver,
-        sloppy_imports_resolver.as_deref(),
-        bare_node_builtins,
-      );
-      let root_specifier =
-        ModuleSpecifier::from_directory_path(&root_dir).unwrap();
-      let publish_paths = paths::collect_publish_paths(
-        &root_dir,
-        &cli_options,
-        &diagnostics_collector,
-        file_patterns,
-      )?;
-      collect_excluded_module_diagnostics(
-        &root_specifier,
-        &graph,
-        &publish_paths,
-        &diagnostics_collector,
-      );
-      tar::create_gzipped_tarball(
-        &publish_paths,
-        LazyGraphSourceParser::new(&source_cache, &graph),
-        &diagnostics_collector,
-        &unfurler,
-      )
-      .context("Failed to create a tarball")
+    let tarball = deno_core::unsync::spawn_blocking({
+      let diagnostics_collector = diagnostics_collector.clone();
+      let mapped_resolver = self.mapped_resolver.clone();
+      let sloppy_imports_resolver = self.sloppy_imports_resolver.clone();
+      let cli_options = self.cli_options.clone();
+      let source_cache = self.source_cache.clone();
+      let config_path = config_path.clone();
+      move || {
+        let bare_node_builtins = cli_options.unstable_bare_node_builtins();
+        let unfurler = SpecifierUnfurler::new(
+          &mapped_resolver,
+          sloppy_imports_resolver.as_deref(),
+          bare_node_builtins,
+        );
+        let root_specifier =
+          ModuleSpecifier::from_directory_path(&root_dir).unwrap();
+        let publish_paths =
+          paths::collect_publish_paths(paths::CollectPublishPathsOptions {
+            root_dir: &root_dir,
+            cli_options: &cli_options,
+            diagnostics_collector: &diagnostics_collector,
+            file_patterns,
+            force_include_paths: vec![config_path],
+          })?;
+        collect_excluded_module_diagnostics(
+          &root_specifier,
+          &graph,
+          &publish_paths,
+          &diagnostics_collector,
+        );
+        tar::create_gzipped_tarball(
+          &publish_paths,
+          LazyGraphSourceParser::new(&source_cache, &graph),
+          &diagnostics_collector,
+          &unfurler,
+        )
+        .context("Failed to create a tarball")
+      }
     })
     .await??;
 
