@@ -101,6 +101,8 @@ echo "Done."
 # llvm bitcode only, so we can use lld's incremental LTO support.
 
 # Load the sysroot's env vars
+echo "sysroot env:"
+cat /sysroot/.env
 . /sysroot/.env
 
 # Important notes:
