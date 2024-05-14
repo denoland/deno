@@ -231,13 +231,15 @@ pub fn collect_publish_paths(
   let diagnostics_collector = opts.diagnostics_collector;
   let publish_paths =
     collect_paths(opts.cli_options, diagnostics_collector, opts.file_patterns)?;
+  let publish_paths_set = publish_paths.iter().cloned().collect::<HashSet<_>>();
   let capacity = publish_paths.len() + opts.force_include_paths.len();
   let mut paths = HashSet::with_capacity(capacity);
   let mut result = Vec::with_capacity(capacity);
-  for path in publish_paths
+  let force_include_paths = opts
+    .force_include_paths
     .into_iter()
-    .chain(opts.force_include_paths.into_iter())
-  {
+    .filter(|path| !publish_paths_set.contains(path));
+  for path in publish_paths.into_iter().chain(force_include_paths) {
     let Ok(specifier) = ModuleSpecifier::from_file_path(&path) else {
       diagnostics_collector
         .to_owned()
