@@ -99,39 +99,37 @@ echo "Done."
 
 # Configure the build environment. Both Rust and Clang will produce
 # llvm bitcode only, so we can use lld's incremental LTO support.
-
-# We need to use the flags from the sysroot
 . /sysroot/.env
-
-# Generate the RUSTFLAGS that will be used for rustc and rustdoc
-RUSTFLAGS="
--C linker-plugin-lto=true
--C linker=clang-${llvmVersion}
--C link-arg=-ldl
--C link-arg=-fuse-ld=lld-${llvmVersion}
--C link-arg=-Wl,--allow-shlib-undefined
--C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
--C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
---cfg tokio_unstable
-$RUSTFLAGS"
-
-# All the env vars
-echo "CARGO_PROFILE_BENCH_INCREMENTAL=false
+echo "
+CARGO_PROFILE_BENCH_INCREMENTAL=false
 CARGO_PROFILE_BENCH_LTO=false
 CARGO_PROFILE_RELEASE_INCREMENTAL=false
 CARGO_PROFILE_RELEASE_LTO=false
 RUSTFLAGS<<__1
-$RUSTFLAGS
+  -C linker-plugin-lto=true
+  -C linker=clang-${llvmVersion}
+  -C link-arg=-ldl
+  -C link-arg=-fuse-ld=lld-${llvmVersion}
+  -C link-arg=-Wl,--allow-shlib-undefined
+  -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
+  -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
+  --cfg tokio_unstable
+  $RUSTFLAGS
 __1
 RUSTDOCFLAGS<<__1
-$RUSTFLAGS
+  -C linker-plugin-lto=true
+  -C linker=clang-${llvmVersion}
+  -C link-arg=-ldl
+  -C link-arg=-fuse-ld=lld-${llvmVersion}
+  -C link-arg=-Wl,--allow-shlib-undefined
+  -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
+  -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
+  --cfg tokio_unstable
+  $RUSTFLAGS
 __1
 CC=/usr/bin/clang-${llvmVersion}
 CFLAGS=-flto=thin $CFLAGS
-" > $GITHUB_ENV
-
-cat $GITHUB_ENV
-`,
+" > $GITHUB_ENV`,
 };
 
 const installBenchTools = "./tools/install_prebuilt.js wrk hyperfine";
