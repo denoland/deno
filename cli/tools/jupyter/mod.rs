@@ -3,7 +3,6 @@
 use crate::args::Flags;
 use crate::args::JupyterFlags;
 use crate::ops;
-use crate::tools::jupyter::server::StdioMsg;
 use crate::tools::repl;
 use crate::tools::test::create_single_test_event_channel;
 use crate::tools::test::reporters::PrettyTestReporter;
@@ -24,11 +23,11 @@ use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::WorkerExecutionMode;
 use deno_terminal::colors;
+use runtimelib::messaging::StreamContent;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::UnboundedSender;
 
 mod install;
-pub mod jupyter_msg;
 pub mod server;
 
 pub async fn kernel(
@@ -119,12 +118,14 @@ pub async fn kernel(
     test_event_receiver,
   )
   .await?;
-  struct TestWriter(UnboundedSender<StdioMsg>);
+  struct TestWriter(UnboundedSender<StreamContent>);
   impl std::io::Write for TestWriter {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
       self
         .0
-        .send(StdioMsg::Stdout(String::from_utf8_lossy(buf).into_owned()))
+        .send(StreamContent::stdout(
+          String::from_utf8_lossy(buf).into_owned(),
+        ))
         .ok();
       Ok(buf.len())
     }

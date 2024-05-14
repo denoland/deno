@@ -19,14 +19,22 @@ use deno_core::CancelHandle;
 use tokio::sync::mpsc;
 use tokio::sync::Mutex;
 
-use super::jupyter_msg::Connection;
-use super::jupyter_msg::JupyterMessage;
 use super::ConnectionSpec;
 
-pub enum StdioMsg {
-  Stdout(String),
-  Stderr(String),
-}
+use runtimelib::messaging;
+use runtimelib::messaging::content::HelpLink;
+use runtimelib::messaging::content::LanguageInfo;
+use runtimelib::messaging::content::ReplyError;
+use runtimelib::messaging::content::ReplyStatus;
+use runtimelib::messaging::AsChildOf;
+use runtimelib::messaging::CompleteReply;
+use runtimelib::messaging::Connection;
+use runtimelib::messaging::ExecuteInput;
+use runtimelib::messaging::ExecuteRequest;
+use runtimelib::messaging::JupyterMessage;
+use runtimelib::messaging::JupyterMessageContent;
+use runtimelib::messaging::KernelInfoReply;
+use runtimelib::messaging::StreamContent;
 
 pub struct JupyterServer {
   execution_count: usize,
@@ -40,7 +48,7 @@ pub struct JupyterServer {
 impl JupyterServer {
   pub async fn start(
     spec: ConnectionSpec,
-    mut stdio_rx: mpsc::UnboundedReceiver<StdioMsg>,
+    mut stdio_rx: mpsc::UnboundedReceiver<StreamContent>,
     mut repl_session: repl::ReplSession,
   ) -> Result<(), AnyError> {
     let mut heartbeat =
@@ -75,7 +83,11 @@ impl JupyterServer {
 
     let handle1 = deno_core::unsync::spawn(async move {
       if let Err(err) = Self::handle_heartbeat(&mut heartbeat).await {
-        log::error!("Heartbeat error: {}", err);
+        log::error!(
+          "Heartbeat error: {}\nBacktrace:\n{}",
+          err,
+          err.backtrace()
+        );
       }
     });
 
@@ -85,14 +97,18 @@ impl JupyterServer {
         if let Err(err) =
           Self::handle_control(control_socket, cancel_handle).await
         {
-          log::error!("Control error: {}", err);
+          log::error!(
+            "Control error: {}\nBacktrace:\n{}",
+            err,
+            err.backtrace()
+          );
         }
       }
     });
 
     let handle3 = deno_core::unsync::spawn(async move {
       if let Err(err) = server.handle_shell(shell_socket).await {
-        log::error!("Shell error: {}", err);
+        log::error!("Shell error: {}\nBacktrace:\n{}", err, err.backtrace());
       }
     });
 
@@ -120,24 +136,16 @@ impl JupyterServer {
   async fn handle_stdio_msg<S: zeromq::SocketSend>(
     iopub_socket: Arc<Mutex<Connection<S>>>,
     last_execution_request: Rc<RefCell<Option<JupyterMessage>>>,
-    stdio_msg: StdioMsg,
+    stdio_msg: StreamContent,
   ) {
     let maybe_exec_result = last_execution_request.borrow().clone();
     if let Some(exec_request) = maybe_exec_result {
-      let (name, text) = match stdio_msg {
-        StdioMsg::Stdout(text) => ("stdout", text),
-        StdioMsg::Stderr(text) => ("stderr", text),
-      };
-
-      let result = (*iopub_socket.lock().await)
-        .send(&exec_request.new_message("stream").with_content(json!({
-            "name": name,
-            "text": text
-        })))
+      let result = (iopub_socket.lock().await)
+        .send(stdio_msg.as_child_of(&exec_request))
         .await;
 
       if let Err(err) = result {
-        log::error!("Output {} error: {}", name, err);
+        log::error!("Output error: {}", err);
       }
     }
   }
@@ -156,16 +164,15 @@ impl JupyterServer {
   ) -> Result<(), AnyError> {
     loop {
       let msg = connection.read().await?;
-      match msg.message_type() {
-        "kernel_info_request" => {
-          connection
-            .send(&msg.new_reply().with_content(kernel_info()))
-            .await?;
+
+      match msg.content {
+        JupyterMessageContent::KernelInfoRequest(_) => {
+          connection.send(kernel_info().as_child_of(&msg)).await?;
         }
-        "shutdown_request" => {
+        JupyterMessageContent::ShutdownRequest(_) => {
           cancel_handle.cancel();
         }
-        "interrupt_request" => {
+        JupyterMessageContent::InterruptRequest(_) => {
           log::error!("Interrupt request currently not supported");
         }
         _ => {
@@ -193,41 +200,26 @@ impl JupyterServer {
     msg: JupyterMessage,
     connection: &mut Connection<zeromq::RouterSocket>,
   ) -> Result<(), AnyError> {
+    let parent = &msg.clone();
+
     self
-      .send_iopub(
-        &msg
-          .new_message("status")
-          .with_content(json!({"execution_state": "busy"})),
-      )
+      .send_iopub(messaging::Status::busy().as_child_of(parent))
       .await?;
 
-    match msg.message_type() {
-      "kernel_info_request" => {
-        connection
-          .send(&msg.new_reply().with_content(kernel_info()))
-          .await?;
-      }
-      "is_complete_request" => {
-        connection
-          .send(&msg.new_reply().with_content(json!({"status": "complete"})))
-          .await?;
-      }
-      "execute_request" => {
+    match msg.content {
+      JupyterMessageContent::ExecuteRequest(execute_request) => {
         self
-          .handle_execution_request(msg.clone(), connection)
+          .handle_execution_request(execute_request, parent, connection)
           .await?;
       }
-      "comm_open" => {
-        self.send_iopub(&msg.comm_close_message()).await?;
-      }
-      "complete_request" => {
-        let user_code = msg.code();
-        let cursor_pos = msg.cursor_pos();
+      JupyterMessageContent::CompleteRequest(req) => {
+        let user_code = req.code;
+        let cursor_pos = req.cursor_pos;
 
         let lsp_completions = self
           .repl_session
           .language_server
-          .completions(user_code, cursor_pos)
+          .completions(&user_code, cursor_pos)
           .await;
 
         if !lsp_completions.is_empty() {
@@ -247,16 +239,19 @@ impl JupyterServer {
             .unwrap_or(cursor_pos);
 
           connection
-            .send(&msg.new_reply().with_content(json!({
-              "status": "ok",
-              "matches": matches,
-              "cursor_start": cursor_start,
-              "cursor_end": cursor_end,
-              "metadata": {},
-            })))
+            .send(
+              CompleteReply {
+                matches,
+                cursor_start,
+                cursor_end,
+                metadata: Default::default(),
+                error: None,
+              }
+              .as_child_of(parent),
+            )
             .await?;
         } else {
-          let expr = get_expr_from_line_at_pos(user_code, cursor_pos);
+          let expr = get_expr_from_line_at_pos(&user_code, cursor_pos);
           // check if the expression is in the form `obj.prop`
           let (completions, cursor_start) = if let Some(index) = expr.rfind('.')
           {
@@ -292,72 +287,144 @@ impl JupyterServer {
 
             (candidates, cursor_pos - expr.len())
           };
+
           connection
-            .send(&msg.new_reply().with_content(json!({
-              "status": "ok",
-              "matches": completions,
-              "cursor_start": cursor_start,
-              "cursor_end": cursor_pos,
-              "metadata": {},
-            })))
+            .send(
+              CompleteReply {
+                matches: completions,
+                cursor_start,
+                cursor_end: cursor_pos,
+                metadata: Default::default(),
+                error: None,
+              }
+              .as_child_of(parent),
+            )
             .await?;
         }
       }
-      "comm_msg" | "comm_info_request" | "history_request" => {
-        // We don't handle these messages
+      JupyterMessageContent::IsCompleteRequest(_) => {
+        connection
+          .send(messaging::IsCompleteReply::complete().as_child_of(parent))
+          .await?;
       }
+      JupyterMessageContent::KernelInfoRequest(_) => {
+        connection.send(kernel_info().as_child_of(parent)).await?;
+      }
+      JupyterMessageContent::CommOpen(comm) => {
+        connection
+          .send(
+            messaging::CommClose {
+              comm_id: comm.comm_id,
+              data: Default::default(),
+            }
+            .as_child_of(parent),
+          )
+          .await?;
+      }
+      JupyterMessageContent::HistoryRequest(_req) => {
+        connection
+          .send(
+            messaging::HistoryReply {
+              history: vec![],
+              error: None,
+            }
+            .as_child_of(parent),
+          )
+          .await?;
+      }
+      JupyterMessageContent::InputRequest(_req) => {
+        connection
+          .send(
+            messaging::InputReply {
+              value: Default::default(),
+              error: None,
+            }
+            .as_child_of(parent),
+          )
+          .await?;
+      }
+      JupyterMessageContent::CommInfoRequest(_req) => {
+        connection
+          .send(
+            messaging::CommInfoReply {
+              comms: Default::default(),
+              status: ReplyStatus::Ok,
+              error: None,
+            }
+            .as_child_of(parent),
+          )
+          .await?;
+      }
+      JupyterMessageContent::CommMsg(_)
+      | JupyterMessageContent::CommClose(_) => {
+        // Do nothing with regular comm messages
+      }
+      // Any unknown message type is ignored
       _ => {
-        log::error!("Unrecognized shell message type: {}", msg.message_type());
+        log::error!(
+          "Unrecognized shell message type: {}",
+          msg.content.message_type()
+        );
       }
     }
 
     self
-      .send_iopub(
-        &msg
-          .new_message("status")
-          .with_content(json!({"execution_state": "idle"})),
-      )
+      .send_iopub(messaging::Status::idle().as_child_of(parent))
       .await?;
+
     Ok(())
   }
 
   async fn handle_execution_request(
     &mut self,
-    msg: JupyterMessage,
+    execute_request: ExecuteRequest,
+    parent_message: &JupyterMessage,
     connection: &mut Connection<zeromq::RouterSocket>,
   ) -> Result<(), AnyError> {
-    if !msg.silent() && msg.store_history() {
+    if !execute_request.silent && execute_request.store_history {
       self.execution_count += 1;
     }
-    *self.last_execution_request.borrow_mut() = Some(msg.clone());
+    *self.last_execution_request.borrow_mut() = Some(parent_message.clone());
 
     self
-      .send_iopub(&msg.new_message("execute_input").with_content(json!({
-          "execution_count": self.execution_count,
-          "code": msg.code()
-      })))
+      .send_iopub(
+        ExecuteInput {
+          execution_count: self.execution_count,
+          code: execute_request.code.clone(),
+        }
+        .as_child_of(parent_message),
+      )
       .await?;
 
     let result = self
       .repl_session
-      .evaluate_line_with_object_wrapping(msg.code())
+      .evaluate_line_with_object_wrapping(&execute_request.code)
       .await;
 
     let evaluate_response = match result {
       Ok(eval_response) => eval_response,
       Err(err) => {
         self
-          .send_iopub(&msg.new_message("error").with_content(json!({
-            "ename": err.to_string(),
-            "evalue": " ", // Fake value, otherwise old Jupyter frontends don't show the error
-            "traceback": [],
-          })))
+          .send_iopub(
+            messaging::ErrorOutput {
+              ename: err.to_string(),
+              evalue: err.to_string(),
+              traceback: vec![],
+            }
+            .as_child_of(parent_message),
+          )
           .await?;
         connection
-          .send(&msg.new_reply().with_content(json!({
-            "status": "error",
-            "execution_count": self.execution_count,
-          })))
+          .send(
+            messaging::ExecuteReply {
+              execution_count: self.execution_count,
+              status: ReplyStatus::Error,
+              payload: None,
+              user_expressions: None,
+              error: None,
+            }
+            .as_child_of(parent_message),
+          )
           .await?;
         return Ok(());
       }
@@ -373,11 +440,16 @@ impl JupyterServer {
         .await?;
 
       connection
-        .send(&msg.new_reply().with_content(json!({
-            "status": "ok",
-            "execution_count": self.execution_count,
-            // FIXME: also include user_expressions
-        })))
+        .send(
+          messaging::ExecuteReply {
+            execution_count: self.execution_count,
+            status: ReplyStatus::Ok,
+            user_expressions: None,
+            payload: None,
+            error: None,
+          }
+          .as_child_of(parent_message),
+        )
         .await?;
       // Let's sleep here for a few ms, so we give a chance to the task that is
       // handling stdout and stderr streams to receive and flush the content.
@@ -458,17 +530,30 @@ impl JupyterServer {
       };
 
       self
-        .send_iopub(&msg.new_message("error").with_content(json!({
-          "ename": ename,
-          "evalue": evalue,
-          "traceback": traceback,
-        })))
+        .send_iopub(
+          messaging::ErrorOutput {
+            ename: ename.clone(),
+            evalue: evalue.clone(),
+            traceback: traceback.clone(),
+          }
+          .as_child_of(parent_message),
+        )
         .await?;
       connection
-        .send(&msg.new_reply().with_content(json!({
-          "status": "error",
-          "execution_count": self.execution_count,
-        })))
+        .send(
+          messaging::ExecuteReply {
+            execution_count: self.execution_count,
+            status: ReplyStatus::Error,
+            error: Some(ReplyError {
+              ename,
+              evalue,
+              traceback,
+            }),
+            user_expressions: None,
+            payload: None,
+          }
+          .as_child_of(parent_message),
+        )
         .await?;
     }
 
@@ -477,7 +562,7 @@ impl JupyterServer {
 
   async fn send_iopub(
     &mut self,
-    message: &JupyterMessage,
+    message: JupyterMessage,
   ) -> Result<(), AnyError> {
     self.iopub_socket.lock().await.send(message).await
   }
@@ -493,26 +578,29 @@ async fn bind_socket<S: zeromq::Socket>(
   Ok(Connection::new(socket, &config.key))
 }
 
-fn kernel_info() -> serde_json::Value {
-  json!({
-    "status": "ok",
-    "protocol_version": "5.3",
-    "implementation_version": crate::version::deno(),
-    "implementation": "Deno kernel",
-    "language_info": {
-      "name": "typescript",
-      "version": crate::version::TYPESCRIPT,
-      "mimetype": "text/x.typescript",
-      "file_extension": ".ts",
-      "pygments_lexer": "typescript",
-      "nb_converter": "script"
+fn kernel_info() -> KernelInfoReply {
+  KernelInfoReply {
+    status: ReplyStatus::Ok,
+    protocol_version: "5.3".to_string(),
+    implementation: "Deno kernel".to_string(),
+    implementation_version: crate::version::deno().to_string(),
+    language_info: LanguageInfo {
+      name: "typescript".to_string(),
+      version: crate::version::TYPESCRIPT.to_string(),
+      mimetype: "text/x.typescript".to_string(),
+      file_extension: ".ts".to_string(),
+      pygments_lexer: "typescript".to_string(),
+      codemirror_mode: serde_json::Value::Null,
+      nbconvert_exporter: "script".to_string(),
     },
-    "help_links": [{
-      "text": "Visit Deno manual",
-      "url": "https://deno.land/manual"
+    banner: "Welcome to Deno kernel".to_string(),
+    help_links: vec![HelpLink {
+      text: "Visit Deno manual".to_string(),
+      url: "https://deno.land/manual".to_string(),
     }],
-    "banner": "Welcome to Deno kernel",
-  })
+    debugger: false,
+    error: None,
+  }
 }
 
 async fn publish_result(
