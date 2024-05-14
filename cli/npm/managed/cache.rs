@@ -100,7 +100,8 @@ impl NpmCache {
       .cache_dir
       .package_folder_for_name_and_version(package_nv, registry_url);
     let should_use_cache = self.should_use_cache_for_package(package_nv);
-    if should_use_cache && self.fs.exists_sync(&package_folder) {
+    let package_folder_exists = self.fs.exists_sync(&package_folder);
+    if should_use_cache && package_folder_exists {
       return Ok(());
     } else if self.cache_setting == CacheSetting::Only {
       return Err(custom_error(
@@ -124,12 +125,17 @@ impl NpmCache {
       .await?;
     match maybe_bytes {
       Some(bytes) => {
-        let extraction_mode = if should_use_cache {
+        let extraction_mode = if should_use_cache || !package_folder_exists {
           TarballExtractionMode::SiblingTempDir
         } else {
-          // the user ran with `--reload`, so overwrite the package instead of
+          // The user ran with `--reload`, so overwrite the package instead of
           // deleting it since the package might get corrupted if a user kills
           // their deno process while it's deleting a package directory
+          //
+          // We can't rename this folder and delete it because the folder
+          // may be in use by another process or may now contain hardlinks,
+          // which will cause windows to throw an "AccessDenied" error when
+          // renaming. So we settle for overwriting.
           TarballExtractionMode::Overwrite
         };
         let dist = dist.clone();
