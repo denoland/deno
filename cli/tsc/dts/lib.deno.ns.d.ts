@@ -5344,16 +5344,16 @@ declare namespace Deno {
    *
    * @category File System */
   export interface SymlinkOptions {
-    /** If the symbolic link should be either a file or directory. This option
-     * only applies to Windows and is ignored on other operating systems. */
-    type: "file" | "dir";
+    /** Specify the symbolic link type as file, directory or NTFS junction. This
+     * option only applies to Windows and is ignored on other operating systems. */
+    type: "file" | "dir" | "junction";
   }
 
   /**
    * Creates `newpath` as a symbolic link to `oldpath`.
    *
-   * The `options.type` parameter can be set to `"file"` or `"dir"`. This
-   * argument is only available on Windows and ignored on other platforms.
+   * The `options.type` parameter can be set to `"file"`, `"dir"` or `"junction"`.
+   * This argument is only available on Windows and ignored on other platforms.
    *
    * ```ts
    * await Deno.symlink("old/name", "new/name");
@@ -5373,8 +5373,8 @@ declare namespace Deno {
   /**
    * Creates `newpath` as a symbolic link to `oldpath`.
    *
-   * The `options.type` parameter can be set to `"file"` or `"dir"`. This
-   * argument is only available on Windows and ignored on other platforms.
+   * The `options.type` parameter can be set to `"file"`, `"dir"` or `"junction"`.
+   * This argument is only available on Windows and ignored on other platforms.
    *
    * ```ts
    * Deno.symlinkSync("old/name", "new/name");

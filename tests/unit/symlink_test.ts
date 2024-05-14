@@ -40,6 +40,24 @@ Deno.test(
 );
 
 Deno.test(
+  {
+    ignore: Deno.build.os !== "windows",
+    permissions: { read: true, write: true },
+  },
+  function symlinkSyncJunction() {
+    const testDir = Deno.makeTempDirSync();
+    const oldname = testDir + "/oldname";
+    const newname = testDir + "/newname";
+    Deno.mkdirSync(oldname);
+    Deno.symlinkSync(oldname, newname, { type: "junction" });
+    const newNameInfoLStat = Deno.lstatSync(newname);
+    const newNameInfoStat = Deno.statSync(newname);
+    assert(newNameInfoLStat.isSymlink);
+    assert(newNameInfoStat.isDirectory);
+  },
+);
+
+Deno.test(
   { permissions: { read: false, write: false } },
   function symlinkSyncPerm() {
     assertThrows(() => {
@@ -89,6 +107,24 @@ Deno.test(
       pathToAbsoluteFileUrl(oldname),
       pathToAbsoluteFileUrl(newname),
     );
+    const newNameInfoLStat = Deno.lstatSync(newname);
+    const newNameInfoStat = Deno.statSync(newname);
+    assert(newNameInfoLStat.isSymlink, "NOT SYMLINK");
+    assert(newNameInfoStat.isDirectory, "NOT DIRECTORY");
+  },
+);
+
+Deno.test(
+  {
+    ignore: Deno.build.os !== "windows",
+    permissions: { read: true, write: true },
+  },
+  async function symlinkJunction() {
+    const testDir = Deno.makeTempDirSync();
+    const oldname = testDir + "/oldname";
+    const newname = testDir + "/newname";
+    Deno.mkdirSync(oldname);
+    await Deno.symlink(oldname, newname, { type: "junction" });
     const newNameInfoLStat = Deno.lstatSync(newname);
     const newNameInfoStat = Deno.statSync(newname);
     assert(newNameInfoLStat.isSymlink, "NOT SYMLINK");
