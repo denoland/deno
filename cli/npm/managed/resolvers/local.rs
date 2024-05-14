@@ -488,27 +488,40 @@ async fn sync_resolution_with_fs(
   }
 
   // 6. Set up `node_modules/.bin` entries for packages that need it.
-  for (package, package_path) in &*bin_entries_to_setup.lock() {
-    let package = snapshot.package_from_id(&package.id).unwrap();
-    if let Some(bin_entries) = &package.bin {
-      match bin_entries {
-        deno_npm::registry::NpmPackageVersionBinEntry::String(script) => {
-          let name = &package.id.nv.name;
-          symlink_bin_entry(
-            name,
-            script,
-            &package_path,
-            &bin_node_modules_dir_path,
-          )?;
-        }
-        deno_npm::registry::NpmPackageVersionBinEntry::Map(entries) => {
-          for (name, script) in entries {
+  {
+    let bin_entries = bin_entries_to_setup.lock();
+    if !bin_entries.is_empty() && !bin_node_modules_dir_path.exists() {
+      fs::create_dir_all(&bin_node_modules_dir_path).with_context(|| {
+        format!("Creating '{}'", bin_node_modules_dir_path.display())
+      })?;
+    }
+    for (package, package_path) in &*bin_entries {
+      let package = snapshot.package_from_id(&package.id).unwrap();
+      if let Some(bin_entries) = &package.bin {
+        match bin_entries {
+          deno_npm::registry::NpmPackageVersionBinEntry::String(script) => {
+            let name = package
+              .id
+              .nv
+              .name
+              .rsplit_once('/')
+              .map_or(package.id.nv.name.as_str(), |(_, name)| name);
             symlink_bin_entry(
               name,
               script,
               &package_path,
               &bin_node_modules_dir_path,
             )?;
+          }
+          deno_npm::registry::NpmPackageVersionBinEntry::Map(entries) => {
+            for (name, script) in entries {
+              symlink_bin_entry(
+                name,
+                script,
+                &package_path,
+                &bin_node_modules_dir_path,
+              )?;
+            }
           }
         }
       }
@@ -717,10 +730,25 @@ fn symlink_bin_entry(
     }
   }
 
-  // TODO: handle Windows
-  symlink(&original, &link).with_context(|| {
-    format!("Can't set up '{}' bin at {}", bin_name, link.display())
-  })?;
+  #[cfg(target_family = "windows")]
+  {
+    todo!();
+  }
+  #[cfg(target_family = "unix")]
+  {
+    use std::os::unix::fs::PermissionsExt;
+    let mut perms = std::fs::metadata(&original).unwrap().permissions();
+    if perms.mode() & 0o111 == 0 {
+      // if the original file is not executable, make it executable
+      perms.set_mode(perms.mode() | 0o111);
+      std::fs::set_permissions(&original, perms).with_context(|| {
+        format!("Setting permissions on '{}'", original.display())
+      })?;
+    }
+    symlink(&original, &link).with_context(|| {
+      format!("Can't set up '{}' bin at {}", bin_name, link.display())
+    })?;
+  }
   Ok(())
 }
 
