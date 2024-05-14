@@ -120,7 +120,7 @@ const SESSION_FLAGS_DESTROYED = 0x4;
 const ENCODER = new TextEncoder();
 type Http2Headers = Record<string, string | string[]>;
 
-const debugHttp2Enabled = true;
+const debugHttp2Enabled = false;
 function debugHttp2(...args) {
   if (debugHttp2Enabled) {
     console.log(...args);
@@ -822,7 +822,7 @@ export class ClientHttp2Stream extends Duplex {
         session[kDenoClientRid],
         this.#rid,
       );
-      const response = await op_http2_client_get_response(
+      const [response, endOfStream] = await op_http2_client_get_response(
         this.#rid,
       );
       debugHttp2(">>> after get response", response);
@@ -831,7 +831,13 @@ export class ClientHttp2Stream extends Duplex {
         ...Object.fromEntries(response.headers),
       };
       debugHttp2(">>> emitting response", headers);
-      this.emit("response", headers, 5);
+      this.emit(
+        "response",
+        headers,
+        endOfStream
+          ? constants.NGHTTP2_FLAG_END_STREAM
+          : constants.NGHTTP2_FLAG_NONE,
+      );
       this[kDenoResponse] = response;
       this.emit("ready");
     })();
@@ -1010,7 +1016,6 @@ export class ClientHttp2Stream extends Duplex {
         const trailerList = await op_http2_client_get_response_trailers(
           this[kDenoResponse].bodyRid,
         );
-        debugHttp2(">>> trailers", trailerList);
         if (trailerList) {
           const trailers = Object.fromEntries(trailerList);
           this.emit("trailers", trailers);

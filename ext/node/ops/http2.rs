@@ -423,7 +423,7 @@ pub struct Http2ClientResponse {
 pub async fn op_http2_client_get_response(
   state: Rc<RefCell<OpState>>,
   #[smi] stream_rid: ResourceId,
-) -> Result<Http2ClientResponse, AnyError> {
+) -> Result<(Http2ClientResponse, bool), AnyError> {
   let resource = state
     .borrow()
     .resource_table
@@ -439,9 +439,8 @@ pub async fn op_http2_client_get_response(
   for (key, val) in parts.headers.iter() {
     res_headers.push((key.as_str().into(), val.as_bytes().into()));
   }
+  let end_of_stream = body.is_end_stream();
 
-  eprintln!("op_http2_client_get_response: parts={:?}", parts);
-  eprintln!("op_http2_client_get_response: is_end_stream={}", body.is_end_stream());
   let (trailers_tx, trailers_rx) = tokio::sync::oneshot::channel();
   let body_rid =
     state
@@ -452,11 +451,14 @@ pub async fn op_http2_client_get_response(
         trailers_rx: AsyncRefCell::new(Some(trailers_rx)),
         trailers_tx: AsyncRefCell::new(Some(trailers_tx)),
       });
-  Ok(Http2ClientResponse {
-    headers: res_headers,
-    body_rid,
-    status_code: status.into(),
-  })
+  Ok((
+    Http2ClientResponse {
+      headers: res_headers,
+      body_rid,
+      status_code: status.into(),
+    },
+    end_of_stream,
+  ))
 }
 
 enum DataOrTrailers {
@@ -470,19 +472,15 @@ fn poll_data_or_trailers(
   body: &mut RecvStream,
 ) -> Poll<Result<DataOrTrailers, h2::Error>> {
   loop {
-    eprintln!("poll_data_or_trailers: is_end_stream={}", body.is_end_stream());
     if let Poll::Ready(trailers) = body.poll_trailers(cx) {
       if let Some(trailers) = trailers? {
-        eprintln!("return trailers");
         return Poll::Ready(Ok(DataOrTrailers::Trailers(trailers)));
       } else {
-        eprintln!("return eof");
         return Poll::Ready(Ok(DataOrTrailers::Eof));
       }
     }
     if let Poll::Ready(data) = body.poll_data(cx) {
       if let Some(data) = data {
-        eprintln!("return data");
         return Poll::Ready(Ok(DataOrTrailers::Data(data?)));
       }
       // If data is None, loop one more time to check for trailers
