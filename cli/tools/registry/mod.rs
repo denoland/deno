@@ -151,37 +151,40 @@ async fn prepare_publish(
     .map(|c| c.files)
     .unwrap_or_else(|| FilePatterns::new_with_base(root_dir.to_path_buf()));
 
-  let diagnostics_collector = diagnostics_collector.clone();
-  let deno_json_specifier = deno_json.specifier.clone();
-  let tarball = deno_core::unsync::spawn_blocking(move || {
-    let bare_node_builtins = cli_options.unstable_bare_node_builtins();
-    let unfurler = SpecifierUnfurler::new(
-      &mapped_resolver,
-      sloppy_imports_resolver.as_ref(),
-      bare_node_builtins,
-    );
-    let root_specifier =
-      ModuleSpecifier::from_directory_path(&root_dir).unwrap();
-    let publish_paths = paths::collect_publish_paths(
-      &root_dir,
-      &cli_options,
-      &diagnostics_collector,
-      file_patterns,
-    )?;
-    collect_excluded_module_diagnostics(
-      &root_specifier,
-      &deno_json_specifier,
-      &graph,
-      &publish_paths,
-      &diagnostics_collector,
-    );
-    tar::create_gzipped_tarball(
-      &publish_paths,
-      LazyGraphSourceParser::new(&source_cache, &graph),
-      &diagnostics_collector,
-      &unfurler,
-    )
-    .context("Failed to create a tarball")
+  let tarball = deno_core::unsync::spawn_blocking({
+    let diagnostics_collector = diagnostics_collector.clone();
+    let config_path = config_path.clone();
+    move || {
+      let bare_node_builtins = cli_options.unstable_bare_node_builtins();
+      let unfurler = SpecifierUnfurler::new(
+        &mapped_resolver,
+        sloppy_imports_resolver.as_ref(),
+        bare_node_builtins,
+      );
+      let root_specifier =
+        ModuleSpecifier::from_directory_path(&root_dir).unwrap();
+      let publish_paths =
+        paths::collect_publish_paths(paths::CollectPublishPathsOptions {
+          root_dir: &root_dir,
+          cli_options: &cli_options,
+          diagnostics_collector: &diagnostics_collector,
+          file_patterns,
+          force_include_paths: vec![config_path],
+        })?;
+      collect_excluded_module_diagnostics(
+        &root_specifier,
+        &graph,
+        &publish_paths,
+        &diagnostics_collector,
+      );
+      tar::create_gzipped_tarball(
+        &publish_paths,
+        LazyGraphSourceParser::new(&source_cache, &graph),
+        &diagnostics_collector,
+        &unfurler,
+      )
+      .context("Failed to create a tarball")
+    }
   })
   .await??;
 
@@ -216,7 +219,6 @@ async fn prepare_publish(
 
 fn collect_excluded_module_diagnostics(
   root: &ModuleSpecifier,
-  config_file_specifier: &ModuleSpecifier,
   graph: &deno_graph::ModuleGraph,
   publish_paths: &[CollectedPublishPath],
   diagnostics_collector: &PublishDiagnosticsCollector,
@@ -235,7 +237,6 @@ fn collect_excluded_module_diagnostics(
       | deno_graph::Module::Node(_)
       | deno_graph::Module::External(_) => None,
     })
-    .chain(std::iter::once(config_file_specifier))
     .filter(|s| s.as_str().starts_with(root.as_str()));
   for specifier in graph_specifiers {
     if !publish_specifiers.contains(specifier) {

@@ -1,10 +1,6 @@
-Check file:///[WILDLINE]/mod.ts
+Check file:///[WILDLINE]mod.ts
 Checking for slow types in the public API...
-error[excluded-module]: module in package's module graph was excluded from publishing
- --> [WILDLINE]deno.jsonc
-  = hint: remove the module from 'exclude' and/or 'publish.exclude' in the config file or use 'publish.exclude' with a negative glob to unexclude from gitignore
-
-  info: excluded modules referenced via a package export will error at runtime due to not existing in the package
-  docs: https://jsr.io/go/excluded-module
-
-error: Found 1 problem
+Simulating publish of @scope/pkg@1.0.0 with files:
+   file:///[WILDLINE]/deno.jsonc (74B)
+   file:///[WILDLINE]/mod.ts (22B)
+Warning Aborting due to --dry-run

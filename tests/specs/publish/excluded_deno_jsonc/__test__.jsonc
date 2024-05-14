@@ -9,6 +9,6 @@
   }, {
     "args": "publish --dry-run",
     "output": "mod.out",
-    "exitCode": 1
+    "exitCode": 0
   }]
 }
