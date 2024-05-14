@@ -98,8 +98,8 @@ impl NpmCache {
     package_nv: &PackageNv,
     dist: &NpmPackageVersionDistInfo,
   ) -> Result<(), AnyError> {
-    let registry_url = self.npmrc.get_registry_url(&package.name);
-    let registry_config = self.npmrc.get_registry_config(&package.name);
+    let registry_url = self.npmrc.get_registry_url(&package_nv.name);
+    let registry_config = self.npmrc.get_registry_config(&package_nv.name);
 
     let package_folder = self
       .cache_dir
