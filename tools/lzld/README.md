@@ -1,10 +1,11 @@
 # `lzld`
 
-This tools implements an alternative of the (deprecated) `ld -lazy_framework` to lazy load frameworks as needed. Symbols used are manually
-added to `lzld.m`.
+This tools implements an alternative of the (deprecated) `ld -lazy_framework` to
+lazy load frameworks as needed. Symbols used are manually added to `lzld.m`.
 
-The purpose of this ld wrapper is to improve startup time on Mac. Because Deno includes WebGPU, it needs to link to Metal and QuartzCore.
-We've observed that loading frameworks during startup can cost as much as 8ms of startup time.
+The purpose of this ld wrapper is to improve startup time on Mac. Because Deno
+includes WebGPU, it needs to link to Metal and QuartzCore. We've observed that
+loading frameworks during startup can cost as much as 8ms of startup time.
 
 ## Adding a new symbol binding
 
@@ -63,4 +64,3 @@ arguments and links a static library (`liblzld.a`) that will lazy load the
 framework via `dlopen` when needed.
 
 Rest of the arguments are passed as-is to `lld`.
-
