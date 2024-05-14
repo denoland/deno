@@ -303,8 +303,7 @@ jobs:
           $RUSTFLAGS"
 
           # All the env vars
-          echo " 
-          CARGO_PROFILE_BENCH_INCREMENTAL=false
+          echo "CARGO_PROFILE_BENCH_INCREMENTAL=false
           CARGO_PROFILE_BENCH_LTO=false
           CARGO_PROFILE_RELEASE_INCREMENTAL=false
           CARGO_PROFILE_RELEASE_LTO=false
