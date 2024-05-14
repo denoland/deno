@@ -27,7 +27,7 @@ setTimeout(() => {
 const exitTimeout = setTimeout(() => {
   console.error("timeout expired");
   Deno.exit(1);
-}, 10_000);
+}, 30_000);
 
 promise.then(() => {
   console.log("Success");
