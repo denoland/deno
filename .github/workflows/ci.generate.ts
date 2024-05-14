@@ -407,8 +407,6 @@ const ci = {
             ...Runners.linuxArm,
             job: "test",
             profile: "debug",
-            // Fails an FFI test?
-            // use_sysroot: true,
           }, {
             ...Runners.linuxArm,
             job: "test",
