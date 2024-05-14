@@ -10,7 +10,7 @@ error[missing-constraint]: specifier 'npm:preact/jsx-runtime' is missing a versi
   docs: https://jsr.io/go/missing-constraint
 
 warning[unsupported-jsx-tsx]: JSX and TSX files are currently not supported
- --> V:\deno\tests\specs\publish\missing_constraint_jsx_import_source\foo.tsx
+ --> [WILDLINE]foo.tsx
 
   info: follow https://github.com/jsr-io/jsr/issues/24 for updates
 
