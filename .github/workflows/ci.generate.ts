@@ -105,15 +105,15 @@ echo "Done."
 
 # Generate the RUSTFLAGS that will be used for rustc and rustdoc
 RUSTFLAGS="
-  -C linker-plugin-lto=true
-  -C linker=clang-${llvmVersion}
-  -C link-arg=-ldl
-  -C link-arg=-fuse-ld=lld-${llvmVersion}
-  -C link-arg=-Wl,--allow-shlib-undefined
-  -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
-  -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
-  --cfg tokio_unstable
-  $RUSTFLAGS"
+-C linker-plugin-lto=true
+-C linker=clang-${llvmVersion}
+-C link-arg=-ldl
+-C link-arg=-fuse-ld=lld-${llvmVersion}
+-C link-arg=-Wl,--allow-shlib-undefined
+-C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
+-C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
+--cfg tokio_unstable
+$RUSTFLAGS"
 
 # All the env vars
 echo " 
