@@ -99,7 +99,16 @@ echo "Done."
 
 # Configure the build environment. Both Rust and Clang will produce
 # llvm bitcode only, so we can use lld's incremental LTO support.
+
+# Load the sysroot's env vars
 . /sysroot/.env
+
+# Important notes:
+#   1. -ldl seems to be required to avoid a failure in FFI tests. This flag seems
+#      to be in the Rust default flags in the smoketest, so uncertain why we need
+#      to be explicit here.
+#   2. RUSTFLAGS and RUSTDOCFLAGS must be specified, otherwise the doctests fail
+#      to build because the object formats are not compatible.
 echo "
 CARGO_PROFILE_BENCH_INCREMENTAL=false
 CARGO_PROFILE_BENCH_LTO=false
@@ -108,8 +117,8 @@ CARGO_PROFILE_RELEASE_LTO=false
 RUSTFLAGS<<__1
   -C linker-plugin-lto=true
   -C linker=clang-${llvmVersion}
-  -C link-arg=-ldl
   -C link-arg=-fuse-ld=lld-${llvmVersion}
+  -C link-arg=-ldl
   -C link-arg=-Wl,--allow-shlib-undefined
   -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
   -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
@@ -119,8 +128,8 @@ __1
 RUSTDOCFLAGS<<__1
   -C linker-plugin-lto=true
   -C linker=clang-${llvmVersion}
-  -C link-arg=-ldl
   -C link-arg=-fuse-ld=lld-${llvmVersion}
+  -C link-arg=-ldl
   -C link-arg=-Wl,--allow-shlib-undefined
   -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
   -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
