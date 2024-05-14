@@ -20,8 +20,9 @@ pub struct NpmCacheDir {
   root_dir: PathBuf,
   // cached url representation of the root directory
   root_dir_url: Url,
-  // A list of all registry URLs that were discovered via `.npmrc` files
-  known_registries_urls: Vec<Url>,
+  // A list of all registry that were discovered via `.npmrc` files
+  // turned into a safe directory names.
+  known_registries_dirnames: Vec<String>,
 }
 
 impl NpmCacheDir {
@@ -40,10 +41,20 @@ impl NpmCacheDir {
     let root_dir =
       try_get_canonicalized_root_dir(&root_dir).unwrap_or(root_dir);
     let root_dir_url = Url::from_directory_path(&root_dir).unwrap();
+
+    let known_registries_dirnames: Vec<_> = known_registries_urls
+      .into_iter()
+      .map(|url| {
+        root_url_to_safe_local_dirname(&url)
+          .to_string_lossy()
+          .replace('\\', "/")
+      })
+      .collect();
+
     Self {
       root_dir,
       root_dir_url,
-      known_registries_urls,
+      known_registries_dirnames,
     }
   }
 
@@ -107,16 +118,14 @@ impl NpmCacheDir {
   ) -> Option<NpmPackageCacheFolderId> {
     let mut maybe_relative_url = None;
 
+    // let _relative_url = self.root_dir_url.make_relative(specifier).unwrap();
+    // panic!("relative url {}", _relative_url);
+
     // Iterate through known registries and try to get a match.
-    for registry_url in &self.known_registries_urls {
+    for registry_dirname in &self.known_registries_dirnames {
       let registry_root_dir = self
         .root_dir_url
-        .join(&format!(
-          "{}/",
-          root_url_to_safe_local_dirname(registry_url)
-            .to_string_lossy()
-            .replace('\\', "/")
-        ))
+        .join(&format!("{}/", registry_dirname))
         // this not succeeding indicates a fatal issue, so unwrap
         .unwrap();
 
