@@ -521,7 +521,8 @@ Deno.test({
   async fn() {
     const deferred = Promise.withResolvers<void>();
     const worker = new workerThreads.Worker(
-      `parentPort.postMessage("ok");`,
+      `import { parentPort } from "node:worker_threads";
+        parentPort.postMessage("ok");`,
       {
         eval: true,
       },
