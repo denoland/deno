@@ -1,0 +1,25 @@
+{
+  "tests": [
+    
+  ]
+  "tempDir": true,
+  "steps": [
+    // {"commandName": "npm", "args": "install", "output": "\nadded 1 package in [WILDCARD]\n"},
+    {
+      "args": "task sayhi",
+      "output": "task.out"
+    },
+    {
+      "if": "unix",
+      "commandName": "./node_modules/.bin/cli-esm",
+      "args": "hi hello",
+      "output": "hi\nhello\n"
+    },
+
+    {
+      "commandName": "npm",
+      "args": "run sayhi",
+      "output": "npm-run.out"
+    }
+  ]
+}
