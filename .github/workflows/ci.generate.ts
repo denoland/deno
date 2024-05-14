@@ -99,18 +99,20 @@ echo "Done."
 
 # Configure the build environment. Both Rust and Clang will produce
 # llvm bitcode only, so we can use lld's incremental LTO support.
+
+# Note that we need to use 
 . /sysroot/.env
-RUSTFLAGS="
-  -C linker-plugin-lto=true
-  -C linker=clang-${llvmVersion}
-  -C link-arg=-ldl
-  -C link-arg=-fuse-ld=lld-${llvmVersion}
-  -C link-arg=-Wl,--allow-shlib-undefined
-  -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
-  -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
-  --cfg tokio_unstable
+RUSTFLAGS=" \
+  -C linker-plugin-lto=true \
+  -C linker=clang-${llvmVersion} \
+  -C link-arg=-ldl \
+  -C link-arg=-fuse-ld=lld-${llvmVersion} \
+  -C link-arg=-Wl,--allow-shlib-undefined \
+  -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache \
+  -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m \
+  --cfg tokio_unstable \
   $RUSTFLAGS"
-echo "
+echo " 
 CARGO_PROFILE_BENCH_INCREMENTAL=false
 CARGO_PROFILE_BENCH_LTO=false
 CARGO_PROFILE_RELEASE_INCREMENTAL=false
