@@ -6,6 +6,6 @@
   },
   "compilerOptions": {
     "jsx": "react-jsx",
-    "jsxImportSource": "npm:preact@10"
+    "jsxImportSource": "npm:preact"
   }
 }
