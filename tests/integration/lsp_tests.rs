@@ -12591,3 +12591,64 @@ fn lsp_ts_code_fix_any_param() {
 
   panic!("failed to find 'Infer parameter types from usage' fix in fixes: {fixes:#?}");
 }
+
+#[test]
+fn lsp_semantic_token_caching() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir().path();
+
+  let mut client: LspClient = context
+    .new_lsp_command()
+    .set_root_dir(temp_dir.clone())
+    .build();
+  client.initialize_default();
+
+  let a = source_file(
+    temp_dir.join("a.ts"),
+    r#"
+    export const a = 1;
+    export const b = 2;
+    export const bar = () => "bar";
+    function foo(fun: (number, number, number) => number, c: number) {
+      const double = (x) => x * 2;
+      return fun(double(a), b, c);
+    }"#,
+  );
+
+  client.did_open_file(&a);
+
+  // requesting a range won't cache the tokens, so this will
+  // be computed
+  let res = client.write_request(
+    "textDocument/semanticTokens/range",
+    json!({
+      "textDocument": a.identifier(),
+      "range": {
+        "start": a.range_of("const bar").start,
+        "end": a.range_of("}").end,
+      }
+    }),
+  );
+
+  // requesting for the full doc will cache the tokens
+  let _full = client.write_request(
+    "textDocument/semanticTokens/full",
+    json!({
+      "textDocument": a.identifier(),
+    }),
+  );
+
+  // use the cached tokens
+  let res_cached = client.write_request(
+    "textDocument/semanticTokens/range",
+    json!({
+      "textDocument": a.identifier(),
+      "range": {
+        "start": a.range_of("const bar").start,
+        "end": a.range_of("}").end,
+      }
+    }),
+  );
+
+  assert_eq!(res, res_cached);
+}
