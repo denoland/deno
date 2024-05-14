@@ -1511,6 +1511,8 @@ pub async fn report_tests(
           &tests,
           &test_steps,
         );
+
+        #[allow(clippy::print_stderr)]
         if let Err(err) = reporter.flush_report(&elapsed, &tests, &test_steps) {
           eprint!("Test reporter failed to flush: {}", err)
         }
@@ -1696,7 +1698,7 @@ pub async fn run_tests(
   // `PermissionsContainer` - otherwise granting/revoking permissions in one
   // file would have impact on other files, which is undesirable.
   let permissions =
-    Permissions::from_options(&cli_options.permissions_options())?;
+    Permissions::from_options(&cli_options.permissions_options()?)?;
   let log_level = cli_options.log_level();
 
   let specifiers_with_mode = fetch_specifiers_with_test_mode(
@@ -1827,7 +1829,7 @@ pub async fn run_tests_with_watch(
         }?;
 
         let permissions =
-          Permissions::from_options(&cli_options.permissions_options())?;
+          Permissions::from_options(&cli_options.permissions_options()?)?;
         let graph = module_graph_creator
           .create_graph(graph_kind, test_modules)
           .await?;

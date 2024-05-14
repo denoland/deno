@@ -7,6 +7,31 @@ use std::rc::Rc;
 use std::str;
 use std::sync::Arc;
 
+use crate::args::jsr_url;
+use crate::args::CliOptions;
+use crate::args::DenoSubcommand;
+use crate::args::TsTypeLib;
+use crate::cache::CodeCache;
+use crate::cache::ModuleInfoCache;
+use crate::cache::ParsedSourceCache;
+use crate::emit::Emitter;
+use crate::factory::CliFactory;
+use crate::graph_util::graph_lock_or_exit;
+use crate::graph_util::CreateGraphOptions;
+use crate::graph_util::ModuleGraphBuilder;
+use crate::graph_util::ModuleGraphContainer;
+use crate::node;
+use crate::resolver::CliGraphResolver;
+use crate::resolver::CliNodeResolver;
+use crate::resolver::ModuleCodeStringSource;
+use crate::resolver::NpmModuleLoader;
+use crate::tools::check;
+use crate::tools::check::TypeChecker;
+use crate::util::progress_bar::ProgressBar;
+use crate::util::text_encoding::code_without_source_map;
+use crate::util::text_encoding::source_map_from_code;
+use crate::worker::ModuleLoaderFactory;
+
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
@@ -42,32 +67,39 @@ use deno_runtime::fs_util::code_timestamp;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
 
-use crate::args::jsr_url;
-use crate::args::CliOptions;
-use crate::args::DenoSubcommand;
-use crate::args::TsTypeLib;
-use crate::cache::CodeCache;
-use crate::cache::ModuleInfoCache;
-use crate::cache::ParsedSourceCache;
-use crate::emit::Emitter;
-use crate::graph_container::MainModuleGraphContainer;
-use crate::graph_container::ModuleGraphContainer;
-use crate::graph_container::ModuleGraphUpdatePermit;
-use crate::graph_util::graph_lock_or_exit;
-use crate::graph_util::CreateGraphOptions;
-use crate::graph_util::ModuleGraphBuilder;
-use crate::node;
-use crate::resolver::CliGraphResolver;
-use crate::resolver::CliNodeResolver;
-use crate::resolver::ModuleCodeStringSource;
-use crate::resolver::NpmModuleLoader;
-use crate::tools::check;
-use crate::tools::check::TypeChecker;
-use crate::util::progress_bar::ProgressBar;
-use crate::util::text_encoding::code_without_source_map;
-use crate::util::text_encoding::source_map_from_code;
-use crate::worker::ModuleLoaderAndSourceMapGetter;
-use crate::worker::ModuleLoaderFactory;
+pub async fn load_top_level_deps(factory: &CliFactory) -> Result<(), AnyError> {
+  let npm_resolver = factory.npm_resolver().await?;
+  if let Some(npm_resolver) = npm_resolver.as_managed() {
+    npm_resolver.ensure_top_level_package_json_install().await?;
+    npm_resolver.resolve_pending().await?;
+  }
+  // cache as many entries in the import map as we can
+  if let Some(import_map) = factory.maybe_import_map().await? {
+    let roots = import_map
+      .imports()
+      .entries()
+      .filter_map(|entry| {
+        if entry.key.ends_with('/') {
+          None
+        } else {
+          entry.value.cloned()
+        }
+      })
+      .collect();
+    factory
+      .module_load_preparer()
+      .await?
+      .prepare_module_load(
+        roots,
+        false,
+        factory.cli_options().ts_type_lib_window(),
+        deno_runtime::permissions::PermissionsContainer::allow_all(),
+      )
+      .await?;
+  }
+
+  Ok(())
+}
 
 pub struct ModuleLoadPreparer {
   options: Arc<CliOptions>,

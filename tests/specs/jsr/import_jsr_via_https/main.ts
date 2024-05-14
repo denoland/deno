@@ -1,3 +1,3 @@
-import { add } from "http://127.0.0.1:4250/@denotest/add/1.0.0/mod.ts";
+import deps from "http://127.0.0.1:4250/@denotest/deps/1.0.0/mod.ts";
 
-console.log(add(1, 2));
+console.log(deps.version);

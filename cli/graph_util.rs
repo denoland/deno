@@ -62,7 +62,7 @@ pub struct GraphValidOptions {
 /// for the CLI.
 pub fn graph_valid(
   graph: &ModuleGraph,
-  fs: &dyn FileSystem,
+  fs: Arc<dyn FileSystem>,
   roots: &[ModuleSpecifier],
   options: GraphValidOptions,
 ) -> Result<(), AnyError> {
@@ -96,7 +96,7 @@ pub fn graph_valid(
           )
         }
         ModuleGraphError::ModuleError(e) => {
-          enhanced_module_error_message(fs, e)
+          enhanced_module_error_message(fs.clone(), e)
         }
       };
 
@@ -658,7 +658,7 @@ impl ModuleGraphBuilder {
   ) -> Result<(), AnyError> {
     graph_valid(
       graph,
-      self.fs.as_ref(),
+      self.fs.clone(),
       roots,
       GraphValidOptions {
         is_vendoring: false,
@@ -702,14 +702,13 @@ pub fn enhanced_resolution_error_message(error: &ResolutionError) -> String {
 }
 
 pub fn enhanced_module_error_message(
-  fs: &dyn FileSystem,
+  fs: Arc<dyn FileSystem>,
   error: &ModuleError,
 ) -> String {
   let additional_message = match error {
     ModuleError::LoadingErr(specifier, _, _) // ex. "Is a directory" error
     | ModuleError::Missing(specifier, _) => {
-      SloppyImportsResolver::resolve_with_fs(
-        fs,
+      SloppyImportsResolver::new(fs).resolve(
         specifier,
         ResolutionMode::Execution,
       )

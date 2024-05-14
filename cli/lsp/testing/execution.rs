@@ -218,7 +218,7 @@ impl TestRun {
     // `PermissionsContainer` - otherwise granting/revoking permissions in one
     // file would have impact on other files, which is undesirable.
     let permissions =
-      Permissions::from_options(&factory.cli_options().permissions_options())?;
+      Permissions::from_options(&factory.cli_options().permissions_options()?)?;
     let main_graph_container = factory.main_module_graph_container().await?;
     test::check_specifiers(
       factory.file_fetcher()?,

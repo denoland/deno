@@ -9,7 +9,7 @@
  * session or local storage. It allows, for example, the addition, modification,
  * or deletion of stored data items.
  *
- * @category Web Storage API
+ * @category Storage
  */
 declare interface Storage {
   /**
@@ -41,7 +41,7 @@ declare interface Storage {
   [name: string]: any;
 }
 
-/** @category Web Storage API */
+/** @category Storage */
 declare var Storage: {
   readonly prototype: Storage;
   new (): never;

@@ -1,4 +1,4 @@
-Download http://localhost:4545/npm/registry/@denotest/no-types-in-conditional-exports
-Download http://localhost:4545/npm/registry/@denotest/no-types-in-conditional-exports/1.0.0.tgz
+Download http://localhost:4260/@denotest/no-types-in-conditional-exports
+Download http://localhost:4260/@denotest/no-types-in-conditional-exports/1.0.0.tgz
 Check [WILDCARD]npm/no_types_in_conditional_exports/main.ts
 { foo: "bar" }

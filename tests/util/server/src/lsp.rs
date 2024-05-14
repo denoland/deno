@@ -778,6 +778,12 @@ impl LspClient {
     }
   }
 
+  pub fn did_open_file(&mut self, file: &SourceFile) -> CollectedDiagnostics {
+    self.did_open(json!({
+        "textDocument": file.text_document(),
+    }))
+  }
+
   pub fn did_open(&mut self, params: Value) -> CollectedDiagnostics {
     self.did_open_raw(params);
     self.read_diagnostics()
@@ -1136,6 +1142,130 @@ impl CollectedDiagnostics {
       .map(ToOwned::to_owned)
       .unwrap()
   }
+}
+
+#[derive(Debug, Clone)]
+pub struct SourceFile {
+  path: PathRef,
+  src: String,
+  lang: &'static str,
+  version: i32,
+}
+
+impl SourceFile {
+  pub fn new(path: PathRef, src: String) -> Self {
+    path.write(&src);
+    Self::new_in_mem(path, src)
+  }
+
+  pub fn new_in_mem(path: PathRef, src: String) -> Self {
+    let lang = match path.as_path().extension().unwrap().to_str().unwrap() {
+      "js" => "javascript",
+      "ts" | "d.ts" => "typescript",
+      "json" => "json",
+      other => panic!("unsupported file extension: {other}"),
+    };
+    Self {
+      path,
+      src,
+      lang,
+      version: 1,
+    }
+  }
+
+  pub fn range_of(&self, text: &str) -> lsp::Range {
+    range_of(text, &self.src)
+  }
+
+  pub fn range_of_nth(&self, n: usize, text: &str) -> lsp::Range {
+    range_of_nth(n, text, &self.src)
+  }
+
+  pub fn uri(&self) -> lsp::Url {
+    self.path.uri_file()
+  }
+
+  pub fn text_document(&self) -> lsp::TextDocumentItem {
+    lsp::TextDocumentItem {
+      uri: self.uri(),
+      language_id: self.lang.to_string(),
+      version: self.version,
+      text: self.src.clone(),
+    }
+  }
+
+  pub fn identifier(&self) -> lsp::TextDocumentIdentifier {
+    lsp::TextDocumentIdentifier { uri: self.uri() }
+  }
+}
+
+/// Helper to create a `SourceFile` and write its contents to disk.
+pub fn source_file(path: PathRef, src: impl AsRef<str>) -> SourceFile {
+  SourceFile::new(path, src.as_ref().to_string())
+}
+
+/// Helper to create a `SourceFile` in memory without writing to disk.
+pub fn source_file_in_mem(path: PathRef, src: impl AsRef<str>) -> SourceFile {
+  SourceFile::new_in_mem(path, src.as_ref().to_string())
+}
+
+/// Helper to get the `lsp::Range` of the `n`th occurrence of
+/// `text` in `src`. `n` is zero-based, like most indexes.
+pub fn range_of_nth(
+  n: usize,
+  text: impl AsRef<str>,
+  src: impl AsRef<str>,
+) -> lsp::Range {
+  let text = text.as_ref();
+
+  let src = src.as_ref();
+
+  let start = src
+    .match_indices(text)
+    .nth(n)
+    .map(|(i, _)| i)
+    .unwrap_or_else(|| panic!("couldn't find text {text} in source {src}"));
+  let end = start + text.len();
+  let mut line = 0;
+  let mut col = 0;
+  let mut byte_idx = 0;
+
+  let pos = |line, col| lsp::Position {
+    line,
+    character: col,
+  };
+
+  let mut start_pos = None;
+  let mut end_pos = None;
+  for c in src.chars() {
+    if byte_idx == start {
+      start_pos = Some(pos(line, col));
+    }
+    if byte_idx == end {
+      end_pos = Some(pos(line, col));
+      break;
+    }
+    if c == '\n' {
+      line += 1;
+      col = 0;
+    } else {
+      col += c.len_utf16() as u32;
+    }
+    byte_idx += c.len_utf8();
+  }
+  if start_pos.is_some() && end_pos.is_none() {
+    // range extends to end of string
+    end_pos = Some(pos(line, col));
+  }
+
+  let (start, end) = (start_pos.unwrap(), end_pos.unwrap());
+  lsp::Range { start, end }
+}
+
+/// Helper to get the `lsp::Range` of the first occurrence of
+/// `text` in `src`. Equivalent to `range_of_nth(0, text, src)`.
+pub fn range_of(text: impl AsRef<str>, src: impl AsRef<str>) -> lsp::Range {
+  range_of_nth(0, text, src)
 }
 
 #[cfg(test)]
