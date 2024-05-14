@@ -146,6 +146,16 @@ impl AssetOrDocument {
     }
   }
 
+  pub fn maybe_semantic_tokens(&self) -> Option<lsp::SemanticTokens> {
+    match self {
+      AssetOrDocument::Asset(_) => None,
+      AssetOrDocument::Document(d) => d
+        .open_data
+        .as_ref()
+        .and_then(|d| d.maybe_semantic_tokens.lock().clone()),
+    }
+  }
+
   pub fn text(&self) -> Arc<str> {
     match self {
       AssetOrDocument::Asset(a) => a.text(),
@@ -252,6 +262,7 @@ fn get_maybe_test_module_fut(
 pub struct DocumentOpenData {
   lsp_version: i32,
   maybe_parsed_source: Option<ParsedSourceResult>,
+  maybe_semantic_tokens: Arc<Mutex<Option<lsp::SemanticTokens>>>,
 }
 
 #[derive(Debug)]
@@ -333,6 +344,7 @@ impl Document {
       open_data: maybe_lsp_version.map(|v| DocumentOpenData {
         lsp_version: v,
         maybe_parsed_source,
+        maybe_semantic_tokens: Default::default(),
       }),
       resolver,
       specifier,
@@ -424,6 +436,8 @@ impl Document {
       open_data: self.open_data.as_ref().map(|d| DocumentOpenData {
         lsp_version: d.lsp_version,
         maybe_parsed_source,
+        // reset semantic tokens
+        maybe_semantic_tokens: Default::default(),
       }),
       resolver,
       specifier: self.specifier.clone(),
@@ -502,6 +516,7 @@ impl Document {
       open_data: self.open_data.is_some().then_some(DocumentOpenData {
         lsp_version: version,
         maybe_parsed_source,
+        maybe_semantic_tokens: Default::default(),
       }),
       resolver: self.resolver.clone(),
     }))
@@ -654,6 +669,15 @@ impl Document {
     navigation_tree: Arc<tsc::NavigationTree>,
   ) {
     *self.maybe_navigation_tree.lock() = Some(navigation_tree);
+  }
+
+  pub fn cache_semantic_tokens_full(
+    &self,
+    semantic_tokens: lsp::SemanticTokens,
+  ) {
+    if let Some(open_data) = self.open_data.as_ref() {
+      *open_data.maybe_semantic_tokens.lock() = Some(semantic_tokens);
+    }
   }
 }
 

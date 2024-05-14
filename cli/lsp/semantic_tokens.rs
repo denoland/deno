@@ -7,6 +7,7 @@
 
 use std::ops::Index;
 use std::ops::IndexMut;
+use tower_lsp::lsp_types as lsp;
 use tower_lsp::lsp_types::SemanticToken;
 use tower_lsp::lsp_types::SemanticTokenModifier;
 use tower_lsp::lsp_types::SemanticTokenType;
@@ -244,6 +245,54 @@ impl SemanticTokensBuilder {
         self.data_is_sorted_and_delta_encoded,
       ),
     }
+  }
+}
+
+pub fn tokens_within_range(
+  tokens: &SemanticTokens,
+  range: lsp::Range,
+) -> SemanticTokens {
+  let mut line = 0;
+  let mut character = 0;
+
+  let mut start_line = 0;
+  let mut start_char = 0;
+  let mut keep_start_idx = tokens.data.len();
+  let mut keep_end_idx = keep_start_idx;
+  for (i, token) in tokens.data.iter().enumerate() {
+    if token.delta_line != 0 {
+      character = 0;
+    }
+    line += token.delta_line;
+    character += token.delta_start;
+    let token_start = lsp::Position::new(line, character);
+    if i < keep_start_idx && token_start >= range.start {
+      keep_start_idx = i;
+      start_line = line;
+      start_char = character;
+    }
+    if token_start > range.end {
+      keep_end_idx = i;
+      break;
+    }
+  }
+  if keep_end_idx == keep_start_idx {
+    return SemanticTokens {
+      result_id: None,
+      data: Vec::new(),
+    };
+  }
+
+  let mut data = tokens.data[keep_start_idx..keep_end_idx].to_vec();
+  // we need to adjust the delta_line and delta_start on the first token
+  // as it is relative to 0 now, not the previous token
+  let first_token = &mut data[0];
+  first_token.delta_line = start_line;
+  first_token.delta_start = start_char;
+
+  SemanticTokens {
+    result_id: None,
+    data,
   }
 }
 

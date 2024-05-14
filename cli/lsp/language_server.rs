@@ -2529,6 +2529,16 @@ impl Inner {
       .performance
       .mark_with_args("lsp.semantic_tokens_full", &params);
     let asset_or_doc = self.get_asset_or_document(&specifier)?;
+    if let Some(tokens) = asset_or_doc.maybe_semantic_tokens() {
+      let response = if !tokens.data.is_empty() {
+        Some(SemanticTokensResult::Tokens(tokens.clone()))
+      } else {
+        None
+      };
+      self.performance.measure(mark);
+      return Ok(response);
+    }
+
     let line_index = asset_or_doc.line_index();
 
     let semantic_classification = self
@@ -2542,6 +2552,11 @@ impl Inner {
 
     let semantic_tokens =
       semantic_classification.to_semantic_tokens(line_index)?;
+
+    if let Some(doc) = asset_or_doc.document() {
+      doc.cache_semantic_tokens_full(semantic_tokens.clone());
+    }
+
     let response = if !semantic_tokens.data.is_empty() {
       Some(SemanticTokensResult::Tokens(semantic_tokens))
     } else {
@@ -2566,6 +2581,18 @@ impl Inner {
       .performance
       .mark_with_args("lsp.semantic_tokens_range", &params);
     let asset_or_doc = self.get_asset_or_document(&specifier)?;
+    if let Some(tokens) = asset_or_doc.maybe_semantic_tokens() {
+      let tokens =
+        super::semantic_tokens::tokens_within_range(&tokens, params.range);
+      let response = if !tokens.data.is_empty() {
+        Some(SemanticTokensRangeResult::Tokens(tokens))
+      } else {
+        None
+      };
+      self.performance.measure(mark);
+      return Ok(response);
+    }
+
     let line_index = asset_or_doc.line_index();
 
     let semantic_classification = self
