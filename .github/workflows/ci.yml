@@ -287,9 +287,13 @@ jobs:
           # Configure the build environment. Both Rust and Clang will produce
           # llvm bitcode only, so we can use lld's incremental LTO support.
 
-          # Note that we need to use 
+          # We need to use the flags from the sysroot
           . /sysroot/.env
+
+          # Generate the RUSTFLAGS that will be used for rustc and rustdoc
           RUSTFLAGS="   -C linker-plugin-lto=true   -C linker=clang-17   -C link-arg=-ldl   -C link-arg=-fuse-ld=lld-17   -C link-arg=-Wl,--allow-shlib-undefined   -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache   -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m   --cfg tokio_unstable   $RUSTFLAGS"
+
+          # All the env vars
           echo " 
           CARGO_PROFILE_BENCH_INCREMENTAL=false
           CARGO_PROFILE_BENCH_LTO=false
