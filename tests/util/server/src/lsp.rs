@@ -707,8 +707,9 @@ impl LspClient {
         "cache": null,
         "certificateStores": null,
         "codeLens": {
-          "implementations": true,
-          "references": true,
+          "implementations": false,
+          "references": false,
+          "referencesAllFunctions": false,
           "test": true,
         },
         "config": null,

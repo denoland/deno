@@ -3509,10 +3509,18 @@ fn lsp_semantic_tokens() {
 }
 
 #[test]
-fn lsp_code_lens() {
+fn lsp_code_lens_references() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
+  client.change_configuration(json!({
+    "deno": {
+      "enable": true,
+      "codeLens": {
+        "references": true,
+      }
+    },
+  }));
   client.did_open(json!({
     "textDocument": {
       "uri": "file:///a/file.ts",
@@ -3562,6 +3570,24 @@ fn lsp_code_lens() {
       "range": {
         "start": { "line": 1, "character": 2 },
         "end": { "line": 1, "character": 3 }
+      },
+      "data": {
+        "specifier": "file:///a/file.ts",
+        "source": "references"
+      }
+    }, {
+      "range": {
+        "start": { "line": 3, "character": 2 },
+        "end": { "line": 3, "character": 3 }
+      },
+      "data": {
+        "specifier": "file:///a/file.ts",
+        "source": "references"
+      }
+    }, {
+      "range": {
+        "start": { "line": 7, "character": 2 },
+        "end": { "line": 7, "character": 3 }
       },
       "data": {
         "specifier": "file:///a/file.ts",
@@ -3684,10 +3710,19 @@ fn lsp_code_lens() {
 }
 
 #[test]
-fn lsp_code_lens_impl() {
+fn lsp_code_lens_implementations() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
+  client.change_configuration(json!({
+    "deno": {
+      "enable": true,
+      "codeLens": {
+        "implementations": true,
+        "references": true,
+      }
+    },
+  }));
   client.did_open(
     json!({
       "textDocument": {
@@ -3728,8 +3763,26 @@ fn lsp_code_lens_impl() {
       }
     }, {
       "range": {
+        "start": { "line": 1, "character": 2 },
+        "end": { "line": 1, "character": 3 }
+      },
+      "data": {
+        "specifier": "file:///a/file.ts",
+        "source": "references"
+      }
+    }, {
+      "range": {
         "start": { "line": 4, "character": 6 },
         "end": { "line": 4, "character": 7 }
+      },
+      "data": {
+        "specifier": "file:///a/file.ts",
+        "source": "references"
+      }
+    }, {
+      "range": {
+        "start": { "line": 5, "character": 2 },
+        "end": { "line": 5, "character": 3 }
       },
       "data": {
         "specifier": "file:///a/file.ts",
@@ -4130,6 +4183,15 @@ fn lsp_code_lens_non_doc_nav_tree() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
+  client.change_configuration(json!({
+    "deno": {
+      "enable": true,
+      "codeLens": {
+        "implementations": true,
+        "references": true,
+      }
+    },
+  }));
   client.did_open(json!({
     "textDocument": {
       "uri": "file:///a/file.ts",
@@ -4188,6 +4250,15 @@ fn lsp_nav_tree_updates() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
+  client.change_configuration(json!({
+    "deno": {
+      "enable": true,
+      "codeLens": {
+        "implementations": true,
+        "references": true,
+      }
+    },
+  }));
   client.did_open(
     json!({
       "textDocument": {
@@ -4228,8 +4299,26 @@ fn lsp_nav_tree_updates() {
       }
     }, {
       "range": {
+        "start": { "line": 1, "character": 2 },
+        "end": { "line": 1, "character": 3 }
+      },
+      "data": {
+        "specifier": "file:///a/file.ts",
+        "source": "references"
+      }
+    }, {
+      "range": {
         "start": { "line": 4, "character": 6 },
         "end": { "line": 4, "character": 7 }
+      },
+      "data": {
+        "specifier": "file:///a/file.ts",
+        "source": "references"
+      }
+    }, {
+      "range": {
+        "start": { "line": 5, "character": 2 },
+        "end": { "line": 5, "character": 3 }
       },
       "data": {
         "specifier": "file:///a/file.ts",
@@ -4312,8 +4401,26 @@ fn lsp_nav_tree_updates() {
       }
     }, {
       "range": {
+        "start": { "line": 1, "character": 2 },
+        "end": { "line": 1, "character": 3 }
+      },
+      "data": {
+        "specifier": "file:///a/file.ts",
+        "source": "references"
+      }
+    }, {
+      "range": {
         "start": { "line": 4, "character": 6 },
         "end": { "line": 4, "character": 7 }
+      },
+      "data": {
+        "specifier": "file:///a/file.ts",
+        "source": "references"
+      }
+    }, {
+      "range": {
+        "start": { "line": 5, "character": 2 },
+        "end": { "line": 5, "character": 3 }
       },
       "data": {
         "specifier": "file:///a/file.ts",
