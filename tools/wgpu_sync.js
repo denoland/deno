@@ -77,8 +77,7 @@ async function patchCargo() {
     (data) =>
       data
         .replace(/^wgpu-core = .*/m, `wgpu-core = "${V_WGPU}"`)
-        .replace(/^wgpu-types = .*/m, `wgpu-types = "${V_WGPU}"`)
-        .replace(/^wgpu-hal = .*/m, `wgpu-hal = "${V_WGPU}"`),
+        .replace(/^wgpu-types = .*/m, `wgpu-types = "${V_WGPU}"`),
   );
 }
 

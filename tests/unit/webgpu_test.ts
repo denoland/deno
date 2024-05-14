@@ -100,11 +100,6 @@ Deno.test({
   stagingBuffer.unmap();
 
   device.destroy();
-
-  // TODO(lucacasonato): webgpu spec should add a explicit destroy method for
-  // adapters.
-  const resources = Object.keys(Deno.resources());
-  Deno.close(Number(resources[resources.length - 1]));
 });
 
 Deno.test({
@@ -210,11 +205,6 @@ Deno.test({
   outputBuffer.unmap();
 
   device.destroy();
-
-  // TODO(lucacasonato): webgpu spec should add a explicit destroy method for
-  // adapters.
-  const resources = Object.keys(Deno.resources());
-  Deno.close(Number(resources[resources.length - 1]));
 });
 
 Deno.test({
@@ -223,8 +213,8 @@ Deno.test({
   const adapter = await navigator.gpu.requestAdapter();
   assert(adapter);
   assert(adapter.features);
-  const resources = Object.keys(Deno.resources());
-  Deno.close(Number(resources[resources.length - 1]));
+  const device = await adapter.requestDevice();
+  device.destroy();
 });
 
 Deno.test({
@@ -243,8 +233,6 @@ Deno.test({
   );
 
   device.destroy();
-  const resources = Object.keys(Deno.resources());
-  Deno.close(Number(resources[resources.length - 1]));
 });
 
 Deno.test(function getPreferredCanvasFormat() {
@@ -313,8 +301,6 @@ Deno.test({
   );
 
   device.destroy();
-  const resources = Object.keys(Deno.resources());
-  Deno.close(Number(resources[resources.length - 1]));
 });
 
 Deno.test({
@@ -409,8 +395,6 @@ Deno.test({
   // NOTE: GPUQueue.copyExternalImageToTexture needs to be validated the argument of copySize property's length when its a sequence, but it is not implemented yet
 
   device.destroy();
-  const resources = Object.keys(Deno.resources());
-  Deno.close(Number(resources[resources.length - 1]));
 });
 
 Deno.test({
@@ -510,8 +494,6 @@ Deno.test({
   // NOTE: GPUQueue.copyExternalImageToTexture needs to be validated the argument of destination.origin property's length when its a sequence, but it is not implemented yet
 
   device.destroy();
-  const resources = Object.keys(Deno.resources());
-  Deno.close(Number(resources[resources.length - 1]));
 });
 
 async function checkIsWsl() {
