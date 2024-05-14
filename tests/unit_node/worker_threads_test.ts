@@ -535,7 +535,7 @@ Deno.test({
     await deferred.promise;
     const promise = worker.terminate();
     assertEquals(typeof promise.then, "function");
-    assertEquals(await promise, 1);
+    assertEquals(await promise, 0);
   },
 });
 

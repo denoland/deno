@@ -282,7 +282,7 @@ class NodeWorker extends EventEmitter {
       op_host_terminate_worker(this.#id);
     }
     this.emit("exit", 1);
-    return PromiseResolve(1);
+    return PromiseResolve(0);
   }
 
   ref() {
