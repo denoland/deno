@@ -17,4 +17,3 @@ path = "lib.rs"
 deno_core.workspace = true
 deno_web.workspace = true
 rusqlite.workspace = true
-serde.workspace = true

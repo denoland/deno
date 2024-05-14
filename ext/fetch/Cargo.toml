@@ -20,7 +20,6 @@ deno_core.workspace = true
 deno_tls.workspace = true
 dyn-clone = "1"
 http_v02.workspace = true
-pin-project.workspace = true
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
