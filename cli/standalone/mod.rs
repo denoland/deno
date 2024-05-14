@@ -394,7 +394,7 @@ pub async fn run(
                 package_json_deps_provider.clone(),
               ),
             npm_system_info: Default::default(),
-            // Package from different registries are already inlined in the ESZip,
+            // Packages from different registries are already inlined in the ESZip,
             // so no need to create actual `.npmrc` configuration.
             npmrc: create_default_npmrc(),
           }),
@@ -452,7 +452,7 @@ pub async fn run(
                 package_json_deps_provider.clone(),
               ),
             npm_system_info: Default::default(),
-            // Package from different registries are already inlined in the ESZip,
+            // Packages from different registries are already inlined in the ESZip,
             // so no need to create actual `.npmrc` configuration.
             npmrc: create_default_npmrc(),
           }),
