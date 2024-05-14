@@ -129,7 +129,10 @@ $RUSTFLAGS
 __1
 CC=/usr/bin/clang-${llvmVersion}
 CFLAGS=-flto=thin $CFLAGS
-" > $GITHUB_ENV`,
+" > $GITHUB_ENV
+
+cat $GITHUB_ENV
+`,
 };
 
 const installBenchTools = "./tools/install_prebuilt.js wrk hyperfine";

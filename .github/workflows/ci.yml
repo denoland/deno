@@ -251,7 +251,7 @@ jobs:
         run: echo "DENO_CANARY=true" >> $GITHUB_ENV
       - if: '!(matrix.skip) && (matrix.use_sysroot)'
         name: Set up incremental LTO and sysroot build
-        run: |-
+        run: |
           # Setting up sysroot
           export DEBIAN_FRONTEND=noninteractive
           # Avoid running man-db triggers, which sometimes takes several minutes
@@ -317,6 +317,8 @@ jobs:
           CC=/usr/bin/clang-17
           CFLAGS=-flto=thin $CFLAGS
           " > $GITHUB_ENV
+
+          cat $GITHUB_ENV
       - name: Remove macOS cURL --ipv4 flag
         run: |-
           curl --version
