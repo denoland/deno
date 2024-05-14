@@ -1,6 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-import { Server } from "../../../tests/util/std/http/server.ts";
-import { assertEquals } from "../../../tests/util/std/assert/mod.ts";
+import { Server } from "../../../util/std/http/server.ts";
 
 const addr = Deno.args[1] || "localhost:4555";
 
@@ -30,25 +29,33 @@ async function handler(req: Request): Promise<Response> {
   });
 }
 
+function assertSuccessOutput(output: Deno.CommandOutput) {
+  if (output.code !== 0) {
+    console.error("STDOUT", new TextDecoder().decode(output.stdout));
+    console.error("STDERR", new TextDecoder().decode(output.stderr));
+    throw new Error(`Expected exit code 0, was ${output.code}`);
+  }
+}
+
 async function testFetch() {
-  const { code } = await new Deno.Command(Deno.execPath(), {
+  const output = await new Deno.Command(Deno.execPath(), {
     args: [
       "run",
       "--quiet",
       "--reload",
       "--allow-net",
-      "run/045_proxy_client.ts",
+      "proxy_client.ts",
     ],
     env: {
       HTTP_PROXY: `http://${addr}`,
     },
   }).output();
 
-  assertEquals(code, 0);
+  assertSuccessOutput(output);
 }
 
 async function testModuleDownload() {
-  const { code } = await new Deno.Command(Deno.execPath(), {
+  const output = await new Deno.Command(Deno.execPath(), {
     args: [
       "cache",
       "--reload",
@@ -60,17 +67,17 @@ async function testModuleDownload() {
     },
   }).output();
 
-  assertEquals(code, 0);
+  assertSuccessOutput(output);
 }
 
 async function testFetchNoProxy() {
-  const { code } = await new Deno.Command(Deno.execPath(), {
+  const output = await new Deno.Command(Deno.execPath(), {
     args: [
       "run",
       "--quiet",
       "--reload",
       "--allow-net",
-      "run/045_proxy_client.ts",
+      "proxy_client.ts",
     ],
     env: {
       HTTP_PROXY: "http://not.exising.proxy.server",
@@ -78,11 +85,11 @@ async function testFetchNoProxy() {
     },
   }).output();
 
-  assertEquals(code, 0);
+  assertSuccessOutput(output);
 }
 
 async function testModuleDownloadNoProxy() {
-  const { code } = await new Deno.Command(Deno.execPath(), {
+  const output = await new Deno.Command(Deno.execPath(), {
     args: [
       "cache",
       "--reload",
@@ -95,21 +102,22 @@ async function testModuleDownloadNoProxy() {
     },
   }).output();
 
-  assertEquals(code, 0);
+  assertSuccessOutput(output);
 }
 
 async function testFetchProgrammaticProxy() {
-  const { code } = await new Deno.Command(Deno.execPath(), {
+  const output = await new Deno.Command(Deno.execPath(), {
     args: [
       "run",
       "--quiet",
       "--reload",
       "--allow-net=localhost:4545,localhost:4555",
       "--unstable",
-      "run/045_programmatic_proxy_client.ts",
+      "programmatic_proxy_client.ts",
     ],
   }).output();
-  assertEquals(code, 0);
+
+  assertSuccessOutput(output);
 }
 
 proxyServer();
