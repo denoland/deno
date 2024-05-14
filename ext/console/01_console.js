@@ -156,14 +156,20 @@ const {
   Uint8Array,
 } = primordials;
 
-let noColor = () => false;
+let noColorStdout = () => false;
+let noColorStderr = () => false;
 
-function setNoColorFn(fn) {
-  noColor = fn;
+function setNoColorFns(stdoutFn, stderrFn) {
+  noColorStdout = stdoutFn;
+  noColorStderr = stderrFn;
 }
 
-function getNoColor() {
-  return noColor();
+function getStdoutNoColor() {
+  return noColorStdout();
+}
+
+function getStderrNoColor() {
+  return noColorStderr();
 }
 
 function assert(cond, msg = "Assertion failed.") {
@@ -2927,6 +2933,7 @@ function cssToAnsi(css, prevCss = null) {
 function inspectArgs(args, inspectOptions = {}) {
   const ctx = {
     ...getDefaultInspectOptions(),
+    colors: inspectOptions.colors ?? !noColorStdout(),
     ...inspectOptions,
   };
   if (inspectOptions.iterableLimit !== undefined) {
@@ -2939,7 +2946,7 @@ function inspectArgs(args, inspectOptions = {}) {
   if (ctx.maxArrayLength === null) ctx.maxArrayLength = Infinity;
   if (ctx.maxStringLength === null) ctx.maxStringLength = Infinity;
 
-  const noColor = getNoColor();
+  const noColor = !ctx.colors;
   const first = args[0];
   let a = 0;
   let string = "";
@@ -3053,12 +3060,12 @@ const countMap = new SafeMap();
 const timerMap = new SafeMap();
 const isConsoleInstance = Symbol("isConsoleInstance");
 
-function getConsoleInspectOptions() {
-  const color = !getNoColor();
+/** @param noColor {boolean} */
+function getConsoleInspectOptions(noColor) {
   return {
     ...getDefaultInspectOptions(),
-    colors: color,
-    stylize: color ? createStylizeWithColor(styles, colors) : stylizeNoColor,
+    colors: !noColor,
+    stylize: noColor ? stylizeNoColor : createStylizeWithColor(styles, colors),
   };
 }
 
@@ -3090,7 +3097,7 @@ class Console {
   log = (...args) => {
     this.#printFunc(
       inspectArgs(args, {
-        ...getConsoleInspectOptions(),
+        ...getConsoleInspectOptions(noColorStdout()),
         indentLevel: this.indentLevel,
       }) + "\n",
       1,
@@ -3100,7 +3107,7 @@ class Console {
   debug = (...args) => {
     this.#printFunc(
       inspectArgs(args, {
-        ...getConsoleInspectOptions(),
+        ...getConsoleInspectOptions(noColorStdout()),
         indentLevel: this.indentLevel,
       }) + "\n",
       0,
@@ -3110,7 +3117,7 @@ class Console {
   info = (...args) => {
     this.#printFunc(
       inspectArgs(args, {
-        ...getConsoleInspectOptions(),
+        ...getConsoleInspectOptions(noColorStdout()),
         indentLevel: this.indentLevel,
       }) + "\n",
       1,
@@ -3119,8 +3126,10 @@ class Console {
 
   dir = (obj = undefined, options = {}) => {
     this.#printFunc(
-      inspectArgs([obj], { ...getConsoleInspectOptions(), ...options }) +
-        "\n",
+      inspectArgs([obj], {
+        ...getConsoleInspectOptions(noColorStdout()),
+        ...options,
+      }) + "\n",
       1,
     );
   };
@@ -3130,7 +3139,7 @@ class Console {
   warn = (...args) => {
     this.#printFunc(
       inspectArgs(args, {
-        ...getConsoleInspectOptions(),
+        ...getConsoleInspectOptions(noColorStderr()),
         indentLevel: this.indentLevel,
       }) + "\n",
       2,
@@ -3140,7 +3149,7 @@ class Console {
   error = (...args) => {
     this.#printFunc(
       inspectArgs(args, {
-        ...getConsoleInspectOptions(),
+        ...getConsoleInspectOptions(noColorStderr()),
         indentLevel: this.indentLevel,
       }) + "\n",
       3,
@@ -3353,7 +3362,10 @@ class Console {
   trace = (...args) => {
     const message = inspectArgs(
       args,
-      { ...getConsoleInspectOptions(), indentLevel: 0 },
+      {
+        ...getConsoleInspectOptions(noColorStderr()),
+        indentLevel: 0,
+      },
     );
     const err = {
       name: "Trace",
@@ -3473,10 +3485,11 @@ export {
   formatNumber,
   formatValue,
   getDefaultInspectOptions,
-  getNoColor,
+  getStderrNoColor,
+  getStdoutNoColor,
   inspect,
   inspectArgs,
   quoteString,
-  setNoColorFn,
+  setNoColorFns,
   styles,
 };
