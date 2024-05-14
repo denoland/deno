@@ -216,7 +216,7 @@ async function ensureNoNewITests() {
     // Read the comment above. Please don't increase these numbers!
     "lsp_tests.rs": 0,
     "node_compat_tests.rs": 4,
-    "node_unit_tests.rs": 3,
+    "node_unit_tests.rs": 2,
     "npm_tests.rs": 98,
     "pm_tests.rs": 0,
     "publish_tests.rs": 0,
