@@ -133,5 +133,5 @@ Deno.test(function asyncResourceStub() {
 
 Deno.test(function emitDestroyStub() {
   const resource = new AsyncResource("foo");
-  assert(typeof resource.emitDestroy() === "function");
+  assert(typeof resource.emitDestroy === "function");
 });
