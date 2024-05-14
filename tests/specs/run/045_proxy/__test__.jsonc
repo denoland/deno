@@ -1,0 +1,4 @@
+{
+  "args": "run -L debug --allow-net --allow-env --allow-run --allow-read --reload --quiet proxy_test.ts",
+  "output": "proxy_test.ts.out"
+}
