@@ -1,3 +1,15 @@
+/*
+    lzld - lazy loading of OSX frmeworks
+
+    This is compiled as a static library and linked against the binary via `lzld` script.
+    This code dynamically load frameworks when symbol is called using dlopen and dlsym.
+
+    Dependencies:
+    - dlfcn.h: Header file providing functions for dynamic linking.
+    - QuartzCore.framework: Provides graphics rendering support. (WebGPU)
+    - Metal.framework: Framework for high-performance GPU-accelerated graphics and computing. (WebGPU)
+*/
+
 #import <dlfcn.h>
 
 // -- QuartzCore.framework

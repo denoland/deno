@@ -1,4 +1,40 @@
-A `ld -lazy_framework` for macOS. Designed to build Deno.
+# `lzld`
+
+This tools implements an alternative of the (deprecated) `ld -lazy_framework` to lazy load frameworks as needed. Symbols used are manually
+added to `lzld.m`.
+
+The purpose of this ld wrapper is to improve startup time on Mac. Because Deno includes WebGPU, it needs to link to Metal and QuartzCore.
+We've observed that loading frameworks during startup can cost as much as 8ms of startup time.
+
+## Adding a new symbol binding
+
+Add a binding for the used symbol in `lzld.m`, eg:
+
+```diff
+void *(*MTLCopyAllDevices_)(void) = 0;
++void *(*MTLSomethingSomething_)(void) = 0;
+
+void loadMetalFramework() {
+    void *handle = dlopen("/System/Library/Frameworks/Metal.framework/Metal", RTLD_LAZY);
+    if (handle) {
+        MTLCopyAllDevices_ = dlsym(handle, "MTLCopyAllDevices");
++       MTLSomethingSomething_ = dlsym(handle, "MTLSomethingSomething");
+    }
+}
+
+
++extern void *MTLSomethingSomething(void) {
++   if (MTLSomethingSomething_ == 0) {
++       loadMetalFramework();
++   }
++
++   return MTLSomethingSomething_();
++}
+
+extern void *MTLCopyAllDevices(void) {
+```
+
+then build the static library with `make liblzld_arm64.a`.
 
 ## Usage
 
@@ -28,9 +64,3 @@ framework via `dlopen` when needed.
 
 Rest of the arguments are passed as-is to `lld`.
 
-<!--
-Supported frameworks:
-- QuartzCore
-- CoreFoundation
-- TODO
--->
