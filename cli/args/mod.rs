@@ -194,7 +194,7 @@ pub fn ts_config_to_transpile_and_emit_options(
     },
     deno_ast::EmitOptions {
       inline_sources: options.inline_sources,
-      keep_comments: false,
+      keep_comments: true,
       source_map,
       source_map_file: None,
     },
