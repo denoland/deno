@@ -12599,6 +12599,7 @@ fn lsp_semantic_token_caching() {
 
   let mut client: LspClient = context
     .new_lsp_command()
+    .collect_perf()
     .set_root_dir(temp_dir.clone())
     .build();
   client.initialize_default();
@@ -12630,12 +12631,26 @@ fn lsp_semantic_token_caching() {
     }),
   );
 
-  // requesting for the full doc will cache the tokens
+  assert_eq!(
+    client
+      .perf()
+      .measure_count("tsc.request.getEncodedSemanticClassifications"),
+    1,
+  );
+
+  // requesting for the full doc should compute and cache the tokens
   let _full = client.write_request(
     "textDocument/semanticTokens/full",
     json!({
       "textDocument": a.identifier(),
     }),
+  );
+
+  assert_eq!(
+    client
+      .perf()
+      .measure_count("tsc.request.getEncodedSemanticClassifications"),
+    2,
   );
 
   // use the cached tokens
@@ -12648,6 +12663,14 @@ fn lsp_semantic_token_caching() {
         "end": a.range_of("}").end,
       }
     }),
+  );
+
+  // make sure we actually used the cache
+  assert_eq!(
+    client
+      .perf()
+      .measure_count("tsc.request.getEncodedSemanticClassifications"),
+    2,
   );
 
   assert_eq!(res, res_cached);
