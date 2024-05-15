@@ -1133,6 +1133,7 @@ dependencies = [
  "open",
  "os_pipe",
  "p256",
+ "pathdiff",
  "percent-encoding",
  "phf 0.11.2",
  "pin-project",

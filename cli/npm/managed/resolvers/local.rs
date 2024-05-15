@@ -745,8 +745,15 @@ fn symlink_bin_entry(
         format!("Setting permissions on '{}'", original.display())
       })?;
     }
-    symlink(&original, &link).with_context(|| {
-      format!("Can't set up '{}' bin at {}", bin_name, link.display())
+    let original_relative =
+      pathdiff::diff_paths(&original, bin_node_modules_dir_path)
+        .unwrap_or(original);
+    symlink(&original_relative, &link).with_context(|| {
+      format!(
+        "Can't set up '{}' bin at {}",
+        bin_name,
+        original_relative.display()
+      )
     })?;
   }
   Ok(())
