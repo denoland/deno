@@ -11,7 +11,7 @@ use std::ffi::c_void;
   target_os = "macos",
   target_os = "freebsd",
   target_os = "openbsd"
-)]
+))]
 use std::ptr::NonNull;
 
 use crate::surface::WebGpuSurface;
