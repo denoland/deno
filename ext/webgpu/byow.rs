@@ -6,7 +6,12 @@ use deno_core::op2;
 use deno_core::OpState;
 use deno_core::ResourceId;
 use std::ffi::c_void;
-#[cfg(any(target_os = "linux", target_os = "macos"))]
+[cfg(any(
+  target_os = "linux",
+  target_os = "macos",
+  target_os = "freebsd",
+  target_os = "openbsd"
+)]
 use std::ptr::NonNull;
 
 use crate::surface::WebGpuSurface;
@@ -103,7 +108,7 @@ fn raw_window(
   Ok((win_handle, display_handle))
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd"))]
 fn raw_window(
   system: &str,
   window: *const c_void,
@@ -136,7 +141,7 @@ fn raw_window(
       ),
     );
   } else {
-    return Err(type_error("Invalid system on Linux"));
+    return Err(type_error("Invalid system on Linux/BSD"));
   }
 
   Ok((win_handle, display_handle))
