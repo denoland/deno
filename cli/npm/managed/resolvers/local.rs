@@ -509,7 +509,7 @@ async fn sync_resolution_with_fs(
             symlink_bin_entry(
               name,
               script,
-              &package_path,
+              package_path,
               &bin_node_modules_dir_path,
             )?;
           }
@@ -518,7 +518,7 @@ async fn sync_resolution_with_fs(
               symlink_bin_entry(
                 name,
                 script,
-                &package_path,
+                package_path,
                 &bin_node_modules_dir_path,
               )?;
             }
