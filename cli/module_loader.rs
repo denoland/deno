@@ -60,6 +60,7 @@ use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_terminal::colors;
 use std::borrow::Cow;
+use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::str;
@@ -342,6 +343,7 @@ impl PreparedModuleLoader {
 struct SharedCliModuleLoaderState {
   lib_window: TsTypeLib,
   lib_worker: TsTypeLib,
+  initial_cwd: PathBuf,
   is_inspecting: bool,
   is_repl: bool,
   graph_container: Arc<ModuleGraphContainer>,
@@ -376,6 +378,7 @@ impl CliModuleLoaderFactory {
       shared: Arc::new(SharedCliModuleLoaderState {
         lib_window: options.ts_type_lib_window(),
         lib_worker: options.ts_type_lib_worker(),
+        initial_cwd: options.initial_cwd().to_path_buf(),
         is_inspecting: options.is_inspecting(),
         is_repl: matches!(
           options.sub_command(),
@@ -544,16 +547,15 @@ impl CliModuleLoader {
     &self,
     referrer: &str,
   ) -> Result<ModuleSpecifier, AnyError> {
-    // TODO(bartlomieju): ideally we shouldn't need to call `current_dir()` on each
-    // call - maybe it should be caller's responsibility to pass it as an arg?
-    let cwd = std::env::current_dir().context("Unable to get CWD")?;
     if referrer.is_empty() && self.shared.is_repl {
       // FIXME(bartlomieju): this is a hacky way to provide compatibility with REPL
       // and `Deno.core.evalContext` API. Ideally we should always have a referrer filled
       // but sadly that's not the case due to missing APIs in V8.
+      let cwd = std::env::current_dir().context("Unable to get CWD")?;
       deno_core::resolve_path("./$deno$repl.ts", &cwd).map_err(|e| e.into())
     } else {
-      deno_core::resolve_url_or_path(referrer, &cwd).map_err(|e| e.into())
+      deno_core::resolve_url_or_path(referrer, &self.shared.initial_cwd)
+        .map_err(|e| e.into())
     }
   }
 
