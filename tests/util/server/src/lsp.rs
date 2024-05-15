@@ -689,15 +689,33 @@ impl Perf {
       rx,
     }
   }
-  fn drain(&mut self) {
-    while let Ok(record) = self.rx.try_recv() {
-      if let PerfRecord::Measure(measure) = &record {
-        *self
-          .measures_counts
-          .entry(measure.name.clone())
-          .or_default() += 1;
+  fn drain_until(&mut self, f: impl Fn(&PerfRecord) -> bool) {
+    let timeout_time =
+      Instant::now().checked_add(Duration::from_secs(5)).unwrap();
+    let mut found = false;
+    loop {
+      while let Ok(record) = self.rx.try_recv() {
+        if let PerfRecord::Measure(measure) = &record {
+          *self
+            .measures_counts
+            .entry(measure.name.clone())
+            .or_default() += 1;
+        }
+        if f(&record) {
+          found = true;
+        }
+        self.records.push(record);
       }
-      self.records.push(record);
+
+      if found {
+        break;
+      }
+
+      std::thread::sleep(Duration::from_millis(20));
+
+      if Instant::now() > timeout_time {
+        panic!("timed out waiting for perf record");
+      }
     }
   }
   pub fn measures(&self) -> impl IntoIterator<Item = &PerfMeasure> {
@@ -757,12 +775,14 @@ impl LspClient {
     self.reader.pending_len()
   }
 
-  pub fn perf(&mut self) -> &Perf {
+  /// Collects performance records until a measure with the given name is
+  /// emitted.
+  pub fn perf_wait_for_measure(&mut self, name: &str) -> &Perf {
     let perf = self
       .perf
       .as_mut()
       .expect("must setup with client_builder.collect_perf()");
-    perf.drain();
+    perf.drain_until(|record| matches!(record, PerfRecord::Measure(measure) if measure.name == name));
     perf
   }
 
