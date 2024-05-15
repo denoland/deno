@@ -5,7 +5,7 @@ import { stringify } from "jsr:@std/yaml@^0.221/stringify";
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 89;
+const cacheVersion = 90;
 
 const ubuntuX86Runner = "ubuntu-22.04";
 const ubuntuX86XlRunner = "ubuntu-22.04-xl";
@@ -86,7 +86,7 @@ ${installPkgsCommand} || echo 'Failed. Trying again.' && sudo apt-get clean && s
 (yes '' | sudo update-alternatives --force --all) > /dev/null 2> /dev/null || true
 
 echo "Decompressing sysroot..."
-wget -q https://github.com/denoland/deno_sysroot_build/releases/download/sysroot-20240527/sysroot-\`uname -m\`.tar.xz -O /tmp/sysroot.tar.xz
+wget -q https://github.com/denoland/deno_sysroot_build/releases/download/sysroot-20240528/sysroot-\`uname -m\`.tar.xz -O /tmp/sysroot.tar.xz
 cd /
 xzcat /tmp/sysroot.tar.xz | sudo tar -x
 sudo mount --rbind /dev /sysroot/dev
