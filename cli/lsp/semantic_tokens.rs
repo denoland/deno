@@ -255,8 +255,8 @@ pub fn tokens_within_range(
   let mut line = 0;
   let mut character = 0;
 
-  let mut start_line = 0;
-  let mut start_char = 0;
+  let mut first_token_line = 0;
+  let mut first_token_char = 0;
   let mut keep_start_idx = tokens.data.len();
   let mut keep_end_idx = keep_start_idx;
   for (i, token) in tokens.data.iter().enumerate() {
@@ -268,8 +268,8 @@ pub fn tokens_within_range(
     let token_start = lsp::Position::new(line, character);
     if i < keep_start_idx && token_start >= range.start {
       keep_start_idx = i;
-      start_line = line;
-      start_char = character;
+      first_token_line = line;
+      first_token_char = character;
     }
     if token_start > range.end {
       keep_end_idx = i;
@@ -287,8 +287,8 @@ pub fn tokens_within_range(
   // we need to adjust the delta_line and delta_start on the first token
   // as it is relative to 0 now, not the previous token
   let first_token = &mut data[0];
-  first_token.delta_line = start_line;
-  first_token.delta_start = start_char;
+  first_token.delta_line = first_token_line;
+  first_token.delta_start = first_token_char;
 
   SemanticTokens {
     result_id: None,
@@ -399,6 +399,131 @@ mod tests {
           token_modifiers_bitset: 1
         }
       ]
+    );
+  }
+
+  #[test]
+  fn test_tokens_within_range() {
+    let mut builder = SemanticTokensBuilder::new();
+    builder.push(1, 0, 5, 0, 0);
+    builder.push(2, 1, 1, 1, 0);
+    builder.push(2, 2, 3, 2, 0);
+    builder.push(2, 5, 5, 3, 0);
+    builder.push(3, 0, 4, 4, 0);
+    builder.push(5, 2, 3, 5, 0);
+    let tokens = builder.build(None);
+    let range = lsp::Range {
+      start: lsp::Position {
+        line: 2,
+        character: 2,
+      },
+      end: lsp::Position {
+        line: 4,
+        character: 0,
+      },
+    };
+
+    let result = tokens_within_range(&tokens, range);
+
+    assert_eq!(
+      result.data,
+      vec![
+        // line 2 char 2
+        SemanticToken {
+          delta_line: 2,
+          delta_start: 2,
+          length: 3,
+          token_type: 2,
+          token_modifiers_bitset: 0
+        },
+        // line 2 char 5
+        SemanticToken {
+          delta_line: 0,
+          delta_start: 3,
+          length: 5,
+          token_type: 3,
+          token_modifiers_bitset: 0
+        },
+        // line 3 char 0
+        SemanticToken {
+          delta_line: 1,
+          delta_start: 0,
+          length: 4,
+          token_type: 4,
+          token_modifiers_bitset: 0
+        }
+      ]
+    );
+  }
+
+  #[test]
+  fn test_tokens_within_range_include_end() {
+    let mut builder = SemanticTokensBuilder::new();
+    builder.push(1, 0, 1, 0, 0);
+    builder.push(2, 1, 2, 1, 0);
+    builder.push(2, 3, 3, 2, 0);
+    builder.push(3, 0, 4, 3, 0);
+    let tokens = builder.build(None);
+    let range = lsp::Range {
+      start: lsp::Position {
+        line: 2,
+        character: 2,
+      },
+      end: lsp::Position {
+        line: 3,
+        character: 4,
+      },
+    };
+    let result = tokens_within_range(&tokens, range);
+
+    assert_eq!(
+      result.data,
+      vec![
+        // line 2 char 3
+        SemanticToken {
+          delta_line: 2,
+          delta_start: 3,
+          length: 3,
+          token_type: 2,
+          token_modifiers_bitset: 0
+        },
+        // line 3 char 0
+        SemanticToken {
+          delta_line: 1,
+          delta_start: 0,
+          length: 4,
+          token_type: 3,
+          token_modifiers_bitset: 0
+        }
+      ]
+    );
+  }
+
+  #[test]
+  fn test_tokens_within_range_empty() {
+    let mut builder = SemanticTokensBuilder::new();
+    builder.push(1, 0, 1, 0, 0);
+    builder.push(2, 1, 2, 1, 0);
+    builder.push(2, 3, 3, 2, 0);
+    builder.push(3, 0, 4, 3, 0);
+    let tokens = builder.build(None);
+    let range = lsp::Range {
+      start: lsp::Position {
+        line: 3,
+        character: 2,
+      },
+      end: lsp::Position {
+        line: 3,
+        character: 4,
+      },
+    };
+    let result = tokens_within_range(&tokens, range);
+
+    assert_eq!(result.data, vec![]);
+
+    assert_eq!(
+      tokens_within_range(&SemanticTokens::default(), range).data,
+      vec![]
     );
   }
 }
