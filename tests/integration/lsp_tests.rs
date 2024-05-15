@@ -12740,7 +12740,7 @@ fn lsp_semantic_token_caching() {
 
   assert_eq!(
     client
-      .perf()
+      .perf_wait_for_measure("lsp.semantic_tokens_range")
       .measure_count("tsc.request.getEncodedSemanticClassifications"),
     1,
   );
@@ -12755,7 +12755,7 @@ fn lsp_semantic_token_caching() {
 
   assert_eq!(
     client
-      .perf()
+      .perf_wait_for_measure("lsp.semantic_tokens_full")
       .measure_count("tsc.request.getEncodedSemanticClassifications"),
     2,
   );
@@ -12775,7 +12775,7 @@ fn lsp_semantic_token_caching() {
   // make sure we actually used the cache
   assert_eq!(
     client
-      .perf()
+      .perf_wait_for_measure("lsp.semantic_tokens_range")
       .measure_count("tsc.request.getEncodedSemanticClassifications"),
     2,
   );
