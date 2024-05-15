@@ -281,7 +281,7 @@ class NodeWorker extends EventEmitter {
       this.#status = "TERMINATED";
       op_host_terminate_worker(this.#id);
     }
-    this.emit("exit", 1);
+    this.emit("exit", 0);
     return PromiseResolve(0);
   }
 
