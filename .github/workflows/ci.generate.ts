@@ -86,7 +86,7 @@ ${installPkgsCommand} || echo 'Failed. Trying again.' && sudo apt-get clean && s
 (yes '' | sudo update-alternatives --force --all) > /dev/null 2> /dev/null || true
 
 echo "Decompressing sysroot..."
-wget -q https://github.com/denoland/deno_sysroot_build/releases/download/sysroot-20240527/sysroot-\`uname -m\`.tar.xz -O /tmp/sysroot.tar.xz
+wget -q https://github.com/denoland/deno_sysroot_build/releases/download/sysroot-20240528/sysroot-\`uname -m\`.tar.xz -O /tmp/sysroot.tar.xz
 cd /
 xzcat /tmp/sysroot.tar.xz | sudo tar -x
 sudo mount --rbind /dev /sysroot/dev
