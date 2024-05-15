@@ -380,7 +380,12 @@ Deno.test("[node/http] send request with non-chunked body", async () => {
   req.write("world");
   req.end();
 
-  await servePromise;
+  await Promise.all([
+    servePromise,
+    // wait 100ms because of the socket.setTimeout(100) above
+    // in order to not cause a flaky test sanitizer failure
+    await new Promise((resolve) => setTimeout(resolve, 100)),
+  ]);
 });
 
 Deno.test("[node/http] send request with chunked body", async () => {
