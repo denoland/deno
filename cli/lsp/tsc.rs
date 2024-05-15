@@ -3291,7 +3291,7 @@ impl CompletionEntryDetails {
           .collect::<Vec<String>>()
           .join("  \n\n");
         if !tags_preview.is_empty() {
-          value = format!("\n\n{tags_preview}");
+          value = format!("{value}\n\n{tags_preview}");
         }
       }
       Some(lsp::Documentation::MarkupContent(lsp::MarkupContent {
