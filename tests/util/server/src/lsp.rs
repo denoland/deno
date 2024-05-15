@@ -758,7 +758,10 @@ impl LspClient {
   }
 
   pub fn perf(&mut self) -> &Perf {
-    let perf = self.perf.as_mut().expect("must setup with client_builder.collect_perf()");
+    let perf = self
+      .perf
+      .as_mut()
+      .expect("must setup with client_builder.collect_perf()");
     perf.drain();
     perf
   }
