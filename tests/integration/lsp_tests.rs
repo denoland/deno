@@ -6908,9 +6908,7 @@ fn lsp_completions_auto_import() {
   assert_eq!(item_value, req);
 
   let res = client.write_request("completionItem/resolve", req);
-  // NOTE: temporarily to use assert_ne due to the issue below
-  // https://github.com/denoland/deno/issues/23820
-  assert_ne!(
+  assert_eq!(
     res,
     json!({
       "label": "add",
@@ -6921,7 +6919,7 @@ fn lsp_completions_auto_import() {
       "detail": "function add(a: number, b: number): number",
       "documentation": {
         "kind": "markdown",
-        "value": "\n\n*@example*  \n```ts\nconst result = add(1, 2);\nconsole.log(result); // 3\n```  \n\n*@param* `a` - The first number  \n\n*@param* `b` - The second number"
+        "value": "\n\n*@example*  \n```ts\nconst result = add(1, 2);\nconsole.log(result); // 3\n```  \n\n*@param* - a - The first number  \n\n*@param* - b - The second number"
       },
       "sortText": "￿16_0",
       "additionalTextEdits": [
