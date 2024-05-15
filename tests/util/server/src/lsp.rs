@@ -470,6 +470,7 @@ pub struct LspClientBuilder {
   use_diagnostic_sync: bool,
   deno_dir: TempDir,
   envs: HashMap<OsString, OsString>,
+  collect_perf: bool,
 }
 
 impl LspClientBuilder {
@@ -488,6 +489,7 @@ impl LspClientBuilder {
       use_diagnostic_sync: true,
       deno_dir,
       envs: Default::default(),
+      collect_perf: false,
     }
   }
 
@@ -511,6 +513,15 @@ impl LspClientBuilder {
 
   pub fn log_debug(mut self) -> Self {
     self.log_debug = true;
+    self
+  }
+
+  /// Whether to collect performance records (marks / measures, as emitted
+  /// by the lsp in the `performance` module).
+  /// Implies `capture_stderr`.
+  pub fn collect_perf(mut self) -> Self {
+    self.capture_stderr = true;
+    self.collect_perf = true;
     self
   }
 
@@ -577,10 +588,12 @@ impl LspClientBuilder {
     let stdin = child.stdin.take().unwrap();
     let writer = io::BufWriter::new(stdin);
 
-    let stderr_lines_rx = if self.capture_stderr {
+    let (stderr_lines_rx, perf_rx) = if self.capture_stderr {
       let stderr = child.stderr.take().unwrap();
       let print_stderr = self.print_stderr;
       let (tx, rx) = mpsc::channel::<String>();
+      let (perf_tx, perf_rx) =
+        self.collect_perf.then(mpsc::channel::<PerfRecord>).unzip();
       std::thread::spawn(move || {
         let stderr = BufReader::new(stderr);
         for line in stderr.lines() {
@@ -588,6 +601,22 @@ impl LspClientBuilder {
             Ok(line) => {
               if print_stderr {
                 eprintln!("{}", line);
+              }
+              if let Some(tx) = perf_tx.as_ref() {
+                // look for perf records
+                if line.starts_with('{') && line.ends_with("},") {
+                  match serde_json::from_str::<PerfRecord>(
+                    line.trim_end_matches(','),
+                  ) {
+                    Ok(record) => {
+                      tx.send(record).unwrap();
+                      continue;
+                    }
+                    Err(err) => {
+                      eprintln!("failed to parse perf record: {:#}", err);
+                    }
+                  }
+                }
               }
               tx.send(line).unwrap();
             }
@@ -597,9 +626,9 @@ impl LspClientBuilder {
           }
         }
       });
-      Some(rx)
+      (Some(rx), perf_rx)
     } else {
-      None
+      (None, None)
     };
 
     Ok(LspClient {
@@ -613,7 +642,73 @@ impl LspClientBuilder {
       stderr_lines_rx,
       config: json!("{}"),
       supports_workspace_configuration: false,
+      perf: perf_rx.map(Perf::new),
     })
+  }
+}
+
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase", tag = "type")]
+/// A performance record, emitted by the `lsp::performance`
+/// module.
+pub enum PerfRecord {
+  Mark(PerfMark),
+  Measure(PerfMeasure),
+}
+
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PerfMeasure {
+  name: String,
+  count: u32,
+  duration: f64,
+}
+
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PerfMark {
+  name: String,
+  #[serde(default)]
+  count: Option<u32>,
+  #[serde(default)]
+  args: Option<Value>,
+}
+
+#[derive(Debug)]
+pub struct Perf {
+  records: Vec<PerfRecord>,
+  measures_counts: HashMap<String, u32>,
+  rx: mpsc::Receiver<PerfRecord>,
+}
+
+impl Perf {
+  fn new(rx: mpsc::Receiver<PerfRecord>) -> Self {
+    Self {
+      records: Default::default(),
+      measures_counts: Default::default(),
+      rx,
+    }
+  }
+  fn drain(&mut self) {
+    while let Ok(record) = self.rx.try_recv() {
+      if let PerfRecord::Measure(measure) = &record {
+        *self
+          .measures_counts
+          .entry(measure.name.clone())
+          .or_default() += 1;
+      }
+      self.records.push(record);
+    }
+  }
+  pub fn measures(&self) -> impl IntoIterator<Item = &PerfMeasure> {
+    self.records.iter().filter_map(|record| match record {
+      PerfRecord::Measure(measure) => Some(measure),
+      _ => None,
+    })
+  }
+
+  pub fn measure_count(&self, name: &str) -> u32 {
+    self.measures_counts.get(name).copied().unwrap_or_default()
   }
 }
 
@@ -628,6 +723,7 @@ pub struct LspClient {
   stderr_lines_rx: Option<mpsc::Receiver<String>>,
   config: serde_json::Value,
   supports_workspace_configuration: bool,
+  perf: Option<Perf>,
 }
 
 impl Drop for LspClient {
@@ -659,6 +755,15 @@ impl LspClient {
   pub fn queue_len(&self) -> usize {
     self.reader.output_pending_messages();
     self.reader.pending_len()
+  }
+
+  pub fn perf(&mut self) -> &Perf {
+    let perf = self
+      .perf
+      .as_mut()
+      .expect("must setup with client_builder.collect_perf()");
+    perf.drain();
+    perf
   }
 
   #[track_caller]
@@ -733,6 +838,9 @@ impl LspClient {
         "tlsCertificate": null,
         "unsafelyIgnoreCertificateErrors": null,
         "unstable": false,
+        // setting this causes performance records to be logged
+        // to stderr
+        "internalDebug": self.perf.is_some(),
       } }),
     )
   }
