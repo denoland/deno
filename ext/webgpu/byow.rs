@@ -6,7 +6,7 @@ use deno_core::op2;
 use deno_core::OpState;
 use deno_core::ResourceId;
 use std::ffi::c_void;
-[cfg(any(
+#[cfg(any(
   target_os = "linux",
   target_os = "macos",
   target_os = "freebsd",
