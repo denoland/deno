@@ -6,6 +6,41 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.43.4 / 2024.05.16
+
+- fix(cli): panic with `deno coverage` (#23353)
+- fix(doc): --lint - private ref diagnostic was displaying incorrect information
+  (#23834)
+- fix(doc/publish): support expando properties (#23795)
+- fix(emit): regression - keep comments in emit (#23815)
+- fix(ext/node): export geteuid from node:process (#23840)
+- fix(ext/node): fix grpc error_handling example (#23755)
+- fix(ext/node): homedir() `getpwuid`/`SHGetKnownFolderPath` fallback (#23841)
+- fix(ext/node): process.uptime works without this (#23786)
+- fix(ext/web): update ongoing promise in async iterator `return()` method
+  (#23642)
+- fix(lsp): respect types dependencies for tsc roots (#23825)
+- fix(lsp): show reference code lens on methods (#23804)
+- fix(node): error when throwing `FS_EISDIR` (#23829)
+- fix(node): seperate worker module cache (#23634)
+- fix(node): stub `AsyncResource.emitDestroy()` (#23802)
+- fix(node): wrong `worker_threads.terminate()` return value (#23803)
+- fix(npm): handle null fields in npm registry JSON (#23785)
+- fix(npm): make tarball extraction more reliable (#23759)
+- fix(publish): always include config file when publishing (#23797)
+- fix(publish): error for missing version constraints on dry-publish instead of
+  just publish (#23798)
+- fix(runtime): output to stderr with colors if a tty and stdout is piped
+  (#23813)
+- fix: Add missing `"junction"` type for `SymlinkOptions.types` (#23756)
+- fix: update swc_ecma_parser to 0.114.1 (#23816)
+- fix: widen aarch64 linux minimum GLIBC version by improving sysroot build
+  (#23791)
+- perf(compile): Do not checksum eszip content (#23839)
+- perf(jsr): download metadata files as soon as possible and in parallel
+  (#23836)
+- perf(lsp): Cache semantic tokens for open documents (#23799)
+
 ### 1.43.3 / 2024.05.10
 
 - fix(ext/webgpu): invalidate GPUAdapter when a device is created (#23752)
