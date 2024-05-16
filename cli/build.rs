@@ -189,6 +189,7 @@ mod ts {
       "es2015.symbol",
       "es2015.symbol.wellknown",
       "es2016.array.include",
+      "es2016.intl",
       "es2016",
       "es2017",
       "es2017.date",
@@ -236,10 +237,12 @@ mod ts {
       "es2023.collection",
       "esnext",
       "esnext.array",
+      "esnext.collection",
       "esnext.decorators",
       "esnext.disposable",
       "esnext.intl",
       "esnext.object",
+      "esnext.promise",
     ];
 
     let path_dts = cwd.join("tsc/dts");
@@ -276,6 +279,7 @@ mod ts {
           build_libs,
           path_dts,
         )],
+        extension_transpiler: None,
         with_runtime_cb: None,
         skip_op_registration: false,
       },
@@ -285,7 +289,7 @@ mod ts {
 
     // NOTE(bartlomieju): Compressing the TSC snapshot in debug build took
     // ~45s on M1 MacBook Pro; without compression it took ~1s.
-    // Thus we're not not using compressed snapshot, trading off
+    // Thus we're not using compressed snapshot, trading off
     // a lot of build time for some startup time in debug build.
     let mut file = std::fs::File::create(snapshot_path).unwrap();
     if cfg!(debug_assertions) {
@@ -342,6 +346,7 @@ fn create_cli_snapshot(snapshot_path: PathBuf) {
   deno_runtime::snapshot::create_runtime_snapshot(
     snapshot_path,
     snapshot_options,
+    vec![],
   );
 }
 
@@ -383,7 +388,9 @@ fn main() {
   }
 
   let symbols_file_name = match env::consts::OS {
-    "android" => "generated_symbol_exports_list_linux.def".to_string(),
+    "android" | "freebsd" | "openbsd" => {
+      "generated_symbol_exports_list_linux.def".to_string()
+    }
     os => format!("generated_symbol_exports_list_{}.def", os),
   };
   let symbols_path = std::path::Path::new("napi")
@@ -446,7 +453,7 @@ fn main() {
   );
 
   let ts_version = ts::version();
-  debug_assert_eq!(ts_version, "5.3.3"); // bump this assertion when it changes
+  debug_assert_eq!(ts_version, "5.4.5"); // bump this assertion when it changes
   println!("cargo:rustc-env=TS_VERSION={}", ts_version);
   println!("cargo:rerun-if-env-changed=TS_VERSION");
 

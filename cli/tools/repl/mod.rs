@@ -15,6 +15,7 @@ use deno_core::serde_json;
 use deno_core::unsync::spawn_blocking;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
+use deno_runtime::WorkerExecutionMode;
 use rustyline::error::ReadlineError;
 
 mod channel;
@@ -39,6 +40,7 @@ struct Repl {
   message_handler: RustylineSyncMessageHandler,
 }
 
+#[allow(clippy::print_stdout)]
 impl Repl {
   async fn run(&mut self) -> Result<(), AnyError> {
     loop {
@@ -60,7 +62,7 @@ impl Repl {
             break;
           }
 
-          println!("{output}");
+          println!("{}", output);
         }
         Err(ReadlineError::Interrupted) => {
           if self.editor.should_exit_on_interrupt() {
@@ -74,7 +76,7 @@ impl Repl {
           break;
         }
         Err(err) => {
-          println!("Error: {err:?}");
+          println!("Error: {:?}", err);
           break;
         }
       }
@@ -84,6 +86,7 @@ impl Repl {
   }
 }
 
+#[allow(clippy::print_stdout)]
 async fn read_line_and_poll(
   repl_session: &mut ReplSession,
   message_handler: &mut RustylineSyncMessageHandler,
@@ -145,18 +148,19 @@ async fn read_eval_file(
     deno_core::resolve_url_or_path(eval_file, cli_options.initial_cwd())?;
 
   let file = file_fetcher
-    .fetch(&specifier, PermissionsContainer::allow_all())
+    .fetch(&specifier, &PermissionsContainer::allow_all())
     .await?;
 
   Ok(file.into_text_decoded()?.source)
 }
 
+#[allow(clippy::print_stdout)]
 pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
-  let factory = CliFactory::from_flags(flags).await?;
+  let factory = CliFactory::from_flags(flags)?;
   let cli_options = factory.cli_options();
   let main_module = cli_options.resolve_main_module()?;
   let permissions = PermissionsContainer::new(Permissions::from_options(
-    &cli_options.permissions_options(),
+    &cli_options.permissions_options()?,
   )?);
   let npm_resolver = factory.npm_resolver().await?.clone();
   let resolver = factory.resolver().await?.clone();
@@ -170,11 +174,10 @@ pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
   let test_event_sender = worker.sender;
   let mut worker = worker_factory
     .create_custom_worker(
+      WorkerExecutionMode::Repl,
       main_module.clone(),
       permissions,
-      vec![crate::ops::testing::deno_test::init_ops(
-        test_event_sender.clone(),
-      )],
+      vec![crate::ops::testing::deno_test::init_ops(test_event_sender)],
       Default::default(),
     )
     .await?;
@@ -186,7 +189,6 @@ pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
     resolver,
     worker,
     main_module,
-    test_event_sender,
     test_event_receiver,
   )
   .await?;

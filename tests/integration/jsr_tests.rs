@@ -4,86 +4,10 @@ use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_lockfile::Lockfile;
 use test_util as util;
-use test_util::itest;
 use url::Url;
 use util::assert_contains;
 use util::assert_not_contains;
-use util::env_vars_for_jsr_npm_tests;
-use util::env_vars_for_jsr_tests;
 use util::TestContextBuilder;
-
-itest!(no_module_graph_run {
-  args: "run jsr/no_module_graph/main.ts",
-  output: "jsr/no_module_graph/main.out",
-  envs: env_vars_for_jsr_tests(),
-  http_server: true,
-});
-
-itest!(no_module_graph_info {
-  args: "info jsr/no_module_graph/main.ts",
-  output: "jsr/no_module_graph/main_info.out",
-  envs: env_vars_for_jsr_tests(),
-  http_server: true,
-});
-
-itest!(same_package_multiple_versions {
-  args: "run --quiet jsr/no_module_graph/multiple.ts",
-  output: "jsr/no_module_graph/multiple.out",
-  envs: env_vars_for_jsr_tests(),
-  http_server: true,
-});
-
-itest!(module_graph_run {
-  args: "run jsr/module_graph/main.ts",
-  output: "jsr/module_graph/main.out",
-  envs: env_vars_for_jsr_tests(),
-  http_server: true,
-});
-
-itest!(module_graph_info {
-  args: "info jsr/module_graph/main.ts",
-  output: "jsr/module_graph/main_info.out",
-  envs: env_vars_for_jsr_tests(),
-  http_server: true,
-});
-
-itest!(deps_run {
-  args: "run jsr/deps/main.ts",
-  output: "jsr/deps/main.out",
-  envs: env_vars_for_jsr_tests(),
-  http_server: true,
-});
-
-itest!(deps_info {
-  args: "info jsr/deps/main.ts",
-  output: "jsr/deps/main_info.out",
-  envs: env_vars_for_jsr_tests(),
-  http_server: true,
-});
-
-itest!(import_https_url_analyzable {
-  args: "run -A jsr/import_https_url/analyzable.ts",
-  output: "jsr/import_https_url/analyzable.out",
-  envs: env_vars_for_jsr_tests(),
-  http_server: true,
-  exit_code: 1,
-});
-
-itest!(import_https_url_unanalyzable {
-  args: "run -A jsr/import_https_url/unanalyzable.ts",
-  output: "jsr/import_https_url/unanalyzable.out",
-  envs: env_vars_for_jsr_tests(),
-  http_server: true,
-  exit_code: 1,
-});
-
-itest!(subset_type_graph {
-  args: "check --all jsr/subset_type_graph/main.ts",
-  output: "jsr/subset_type_graph/main.check.out",
-  envs: env_vars_for_jsr_tests(),
-  http_server: true,
-  exit_code: 1,
-});
 
 #[test]
 fn fast_check_cache() {
@@ -197,14 +121,6 @@ export function asdf(a: number) { let err: number = ''; return Math.random(); }
   );
 }
 
-itest!(version_not_found {
-  args: "run jsr/version_not_found/main.ts",
-  output: "jsr/version_not_found/main.out",
-  envs: env_vars_for_jsr_tests(),
-  http_server: true,
-  exit_code: 1,
-});
-
 #[test]
 fn specifiers_in_lockfile() {
   let test_context = TestContextBuilder::for_jsr().use_temp_cwd().build();
@@ -212,7 +128,7 @@ fn specifiers_in_lockfile() {
 
   temp_dir.write(
     "main.ts",
-    r#"import version from "jsr:@denotest/no_module_graph@0.1";
+    r#"import version from "jsr:@denotest/no-module-graph@0.1";
 
 console.log(version);"#,
   );
@@ -230,8 +146,8 @@ console.log(version);"#,
     .content
     .packages
     .specifiers
-    .get_mut("jsr:@denotest/no_module_graph@0.1")
-    .unwrap() = "jsr:@denotest/no_module_graph@0.1.0".to_string();
+    .get_mut("jsr:@denotest/no-module-graph@0.1")
+    .unwrap() = "jsr:@denotest/no-module-graph@0.1.0".to_string();
   lockfile_path.write(lockfile.as_json_string());
 
   test_context
@@ -322,7 +238,7 @@ fn lockfile_bad_package_integrity() {
 
   temp_dir.write(
     "main.ts",
-    r#"import version from "jsr:@denotest/no_module_graph@0.1";
+    r#"import version from "jsr:@denotest/no-module-graph@0.1";
 
 console.log(version);"#,
   );
@@ -336,14 +252,14 @@ console.log(version);"#,
 
   let lockfile_path = temp_dir.path().join("deno.lock");
   let mut lockfile = Lockfile::new(lockfile_path.to_path_buf(), false).unwrap();
-  let pkg_name = "@denotest/no_module_graph@0.1.1";
+  let pkg_name = "@denotest/no-module-graph@0.1.1";
   let original_integrity = get_lockfile_pkg_integrity(&lockfile, pkg_name);
   set_lockfile_pkg_integrity(&mut lockfile, pkg_name, "bad_integrity");
   lockfile_path.write(lockfile.as_json_string());
 
   let actual_integrity =
-    test_context.get_jsr_package_integrity("@denotest/no_module_graph/0.1.1");
-  let integrity_check_failed_msg = format!("error: Integrity check failed for http://127.0.0.1:4250/@denotest/no_module_graph/0.1.1_meta.json
+    test_context.get_jsr_package_integrity("@denotest/no-module-graph/0.1.1");
+  let integrity_check_failed_msg = format!("error: Integrity check failed for http://127.0.0.1:4250/@denotest/no-module-graph/0.1.1_meta.json
 
 Actual: {}
 Expected: bad_integrity
@@ -478,19 +394,3 @@ fn set_lockfile_pkg_integrity(
     .unwrap()
     .integrity = integrity.to_string();
 }
-
-itest!(jsx_with_no_pragmas {
-  args: "run jsr/jsx_with_no_pragmas/main.ts",
-  output: "jsr/jsx_with_no_pragmas/main.out",
-  envs: env_vars_for_jsr_npm_tests(),
-  http_server: true,
-  exit_code: 1,
-});
-
-itest!(jsx_with_pragmas {
-  args: "run jsr/jsx_with_pragmas/main.ts",
-  output: "jsr/jsx_with_pragmas/main.out",
-  envs: env_vars_for_jsr_npm_tests(),
-  http_server: true,
-  exit_code: 0,
-});

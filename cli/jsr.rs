@@ -163,6 +163,12 @@ impl JsrCacheResolver {
     self.info_by_nv.insert(nv.clone(), info.clone());
     info
   }
+
+  pub fn did_cache(&self) {
+    self.nv_by_req.retain(|_, nv| nv.is_some());
+    self.info_by_nv.retain(|_, info| info.is_some());
+    self.info_by_name.retain(|_, info| info.is_some());
+  }
 }
 
 fn read_cached_url(
@@ -207,14 +213,18 @@ impl JsrFetchResolver {
     let maybe_get_nv = || async {
       let name = req.name.clone();
       let package_info = self.package_info(&name).await?;
-      // Find the first matching version of the package which is cached.
-      let mut versions = package_info.versions.keys().collect::<Vec<_>>();
-      versions.sort();
+      // Find the first matching version of the package.
+      let mut versions = package_info.versions.iter().collect::<Vec<_>>();
+      versions.sort_by_key(|(v, _)| *v);
       let version = versions
         .into_iter()
         .rev()
-        .find(|v| req.version_req.tag().is_none() && req.version_req.matches(v))
-        .cloned()?;
+        .find(|(v, i)| {
+          !i.yanked
+            && req.version_req.tag().is_none()
+            && req.version_req.matches(v)
+        })
+        .map(|(v, _)| v.clone())?;
       Some(PackageNv { name, version })
     };
     let nv = maybe_get_nv().await;
@@ -226,16 +236,16 @@ impl JsrFetchResolver {
     if let Some(info) = self.info_by_name.get(name) {
       return info.value().clone();
     }
-    let read_cached_package_info = || async {
+    let fetch_package_info = || async {
       let meta_url = jsr_url().join(&format!("{}/meta.json", name)).ok()?;
       let file = self
         .file_fetcher
-        .fetch(&meta_url, PermissionsContainer::allow_all())
+        .fetch(&meta_url, &PermissionsContainer::allow_all())
         .await
         .ok()?;
       serde_json::from_slice::<JsrPackageInfo>(&file.source).ok()
     };
-    let info = read_cached_package_info().await.map(Arc::new);
+    let info = fetch_package_info().await.map(Arc::new);
     self.info_by_name.insert(name.to_string(), info.clone());
     info
   }
@@ -247,18 +257,18 @@ impl JsrFetchResolver {
     if let Some(info) = self.info_by_nv.get(nv) {
       return info.value().clone();
     }
-    let read_cached_package_version_info = || async {
+    let fetch_package_version_info = || async {
       let meta_url = jsr_url()
         .join(&format!("{}/{}_meta.json", &nv.name, &nv.version))
         .ok()?;
       let file = self
         .file_fetcher
-        .fetch(&meta_url, PermissionsContainer::allow_all())
+        .fetch(&meta_url, &PermissionsContainer::allow_all())
         .await
         .ok()?;
       partial_jsr_package_version_info_from_slice(&file.source).ok()
     };
-    let info = read_cached_package_version_info().await.map(Arc::new);
+    let info = fetch_package_version_info().await.map(Arc::new);
     self.info_by_nv.insert(nv.clone(), info.clone());
     info
   }
@@ -300,6 +310,7 @@ fn partial_jsr_package_version_info_from_slice(
       .as_object_mut()
       .and_then(|o| o.remove("exports"))
       .unwrap_or_default(),
-    module_graph: None,
+    module_graph_1: None,
+    module_graph_2: None,
   })
 }

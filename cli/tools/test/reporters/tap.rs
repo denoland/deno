@@ -22,10 +22,11 @@ pub struct TapTestReporter {
   step_results: HashMap<usize, Vec<(TestStepDescription, TestStepResult)>>,
 }
 
+#[allow(clippy::print_stdout)]
 impl TapTestReporter {
-  pub fn new(is_concurrent: bool) -> TapTestReporter {
+  pub fn new(cwd: Url, is_concurrent: bool) -> TapTestReporter {
     TapTestReporter {
-      cwd: Url::from_directory_path(std::env::current_dir().unwrap()).unwrap(),
+      cwd,
       is_concurrent,
       header: false,
       planned: 0,
@@ -113,6 +114,7 @@ impl TapTestReporter {
   }
 }
 
+#[allow(clippy::print_stdout)]
 impl TestReporter for TapTestReporter {
   fn report_register(&mut self, _description: &TestDescription) {}
 

@@ -7,7 +7,6 @@ use crate::colors;
 use crate::display::write_json_to_stdout;
 use crate::factory::CliFactory;
 use crate::factory::CliFactoryBuilder;
-use crate::graph_util::graph_valid_with_cli_options;
 use crate::graph_util::has_graph_root_local_dependent_changed;
 use crate::module_loader::ModuleLoadPreparer;
 use crate::ops;
@@ -15,19 +14,18 @@ use crate::tools::test::format_test_error;
 use crate::tools::test::TestFilter;
 use crate::util::file_watcher;
 use crate::util::fs::collect_specifiers;
+use crate::util::fs::WalkEntry;
 use crate::util::path::is_script_ext;
+use crate::util::path::matches_pattern_or_exact_path;
 use crate::version::get_user_agent;
 use crate::worker::CliMainWorkerFactory;
 
-use deno_config::glob::FilePatterns;
-use deno_config::glob::PathOrPattern;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::futures::future;
 use deno_core::futures::stream;
 use deno_core::futures::StreamExt;
-use deno_core::located_script_name;
 use deno_core::serde_v8;
 use deno_core::unsync::spawn;
 use deno_core::unsync::spawn_blocking;
@@ -37,6 +35,7 @@ use deno_core::PollEventLoopOptions;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::tokio_util::create_and_run_current_thread;
+use deno_runtime::WorkerExecutionMode;
 use indexmap::IndexMap;
 use indexmap::IndexSet;
 use log::Level;
@@ -206,6 +205,7 @@ async fn bench_specifier_inner(
 ) -> Result<(), AnyError> {
   let mut worker = worker_factory
     .create_custom_worker(
+      WorkerExecutionMode::Bench,
       specifier.clone(),
       PermissionsContainer::new(permissions),
       vec![ops::bench::deno_bench::init_ops(sender.clone())],
@@ -221,7 +221,7 @@ async fn bench_specifier_inner(
   // Ensure that there are no pending exceptions before we start running tests
   worker.run_up_to_duration(Duration::from_millis(0)).await?;
 
-  worker.dispatch_load_event(located_script_name!())?;
+  worker.dispatch_load_event()?;
 
   let benchmarks = {
     let state_rc = worker.js_runtime.op_state();
@@ -234,7 +234,7 @@ async fn bench_specifier_inner(
   let benchmarks = if used_only { only } else { no_only };
   let mut benchmarks = benchmarks
     .into_iter()
-    .filter(|(d, _)| filter.includes(&d.name) && !d.ignore)
+    .filter(|(d, _)| d.warmup || filter.includes(&d.name) && !d.ignore)
     .collect::<Vec<_>>();
   let mut groups = IndexSet::<Option<String>>::new();
   // make sure ungrouped benchmarks are placed above grouped
@@ -270,8 +270,10 @@ async fn bench_specifier_inner(
 
   // Ignore `defaultPrevented` of the `beforeunload` event. We don't allow the
   // event loop to continue beyond what's needed to await results.
-  worker.dispatch_beforeunload_event(located_script_name!())?;
-  worker.dispatch_unload_event(located_script_name!())?;
+  worker.dispatch_beforeunload_event()?;
+  worker.dispatch_process_beforeexit_event()?;
+  worker.dispatch_unload_event()?;
+  worker.dispatch_process_exit_event()?;
 
   // Ensure the worker has settled so we can catch any remaining unhandled rejections. We don't
   // want to wait forever here.
@@ -395,25 +397,16 @@ async fn bench_specifiers(
 }
 
 /// Checks if the path has a basename and extension Deno supports for benches.
-fn is_supported_bench_path(path: &Path, patterns: &FilePatterns) -> bool {
-  if !is_script_ext(path) {
+fn is_supported_bench_path(entry: WalkEntry) -> bool {
+  if !is_script_ext(entry.path) {
     false
-  } else if has_supported_bench_path_name(path) {
+  } else if has_supported_bench_path_name(entry.path) {
     true
-  } else {
+  } else if let Some(include) = &entry.patterns.include {
     // allow someone to explicitly specify a path
-    let matches_exact_path_or_pattern = patterns
-      .include
-      .as_ref()
-      .map(|p| {
-        p.inner().iter().any(|p| match p {
-          PathOrPattern::Path(p) => p == path,
-          PathOrPattern::RemoteUrl(_) => true,
-          PathOrPattern::Pattern(p) => p.matches_path(path),
-        })
-      })
-      .unwrap_or(false);
-    matches_exact_path_or_pattern
+    matches_pattern_or_exact_path(include, entry.path)
+  } else {
+    false
   }
 }
 
@@ -440,10 +433,13 @@ pub async fn run_benchmarks(
   // `PermissionsContainer` - otherwise granting/revoking permissions in one
   // file would have impact on other files, which is undesirable.
   let permissions =
-    Permissions::from_options(&cli_options.permissions_options())?;
+    Permissions::from_options(&cli_options.permissions_options()?)?;
 
-  let specifiers =
-    collect_specifiers(bench_options.files, is_supported_bench_path)?;
+  let specifiers = collect_specifiers(
+    bench_options.files,
+    cli_options.vendor_dir_path().map(ToOwned::to_owned),
+    is_supported_bench_path,
+  )?;
 
   if specifiers.is_empty() {
     return Err(generic_error("No bench modules found"));
@@ -497,8 +493,7 @@ pub async fn run_benchmarks_with_watch(
       let bench_flags = bench_flags.clone();
       Ok(async move {
         let factory = CliFactoryBuilder::new()
-          .build_from_flags_for_watcher(flags, watcher_communicator.clone())
-          .await?;
+          .build_from_flags_for_watcher(flags, watcher_communicator.clone())?;
         let cli_options = factory.cli_options();
         let bench_options = cli_options.resolve_bench_options(bench_flags)?;
 
@@ -516,6 +511,7 @@ pub async fn run_benchmarks_with_watch(
 
         let bench_modules = collect_specifiers(
           bench_options.files.clone(),
+          cli_options.vendor_dir_path().map(ToOwned::to_owned),
           is_supported_bench_path,
         )?;
 
@@ -523,17 +519,13 @@ pub async fn run_benchmarks_with_watch(
         // `PermissionsContainer` - otherwise granting/revoking permissions in one
         // file would have impact on other files, which is undesirable.
         let permissions =
-          Permissions::from_options(&cli_options.permissions_options())?;
+          Permissions::from_options(&cli_options.permissions_options()?)?;
 
         let graph = module_graph_creator
-          .create_graph(graph_kind, bench_modules.clone())
+          .create_graph(graph_kind, bench_modules)
           .await?;
-        graph_valid_with_cli_options(
-          &graph,
-          factory.fs().as_ref(),
-          &bench_modules,
-          cli_options,
-        )?;
+        module_graph_creator.graph_valid(&graph)?;
+        let bench_modules = &graph.roots;
 
         let bench_modules_to_reload = if let Some(changed_paths) = changed_paths
         {
@@ -542,7 +534,7 @@ pub async fn run_benchmarks_with_watch(
           for bench_module_specifier in bench_modules {
             if has_graph_root_local_dependent_changed(
               &graph,
-              &bench_module_specifier,
+              bench_module_specifier,
               &changed_paths,
             ) {
               result.push(bench_module_specifier.clone());
@@ -556,13 +548,16 @@ pub async fn run_benchmarks_with_watch(
         let worker_factory =
           Arc::new(factory.create_cli_main_worker_factory().await?);
 
-        // todo(THIS PR): why are we collecting specifiers twice in a row?
+        // todo(dsherret): why are we collecting specifiers twice in a row?
         // Seems like a perf bug.
-        let specifiers =
-          collect_specifiers(bench_options.files, is_supported_bench_path)?
-            .into_iter()
-            .filter(|specifier| bench_modules_to_reload.contains(specifier))
-            .collect::<Vec<ModuleSpecifier>>();
+        let specifiers = collect_specifiers(
+          bench_options.files,
+          cli_options.vendor_dir_path().map(ToOwned::to_owned),
+          is_supported_bench_path,
+        )?
+        .into_iter()
+        .filter(|specifier| bench_modules_to_reload.contains(specifier))
+        .collect::<Vec<ModuleSpecifier>>();
 
         check_specifiers(cli_options, module_load_preparer, specifiers.clone())
           .await?;

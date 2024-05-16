@@ -23,8 +23,10 @@ use deno_core::ToJsBuffer;
 use deno_net::raw::NetworkStream;
 use deno_tls::create_client_config;
 use deno_tls::rustls::ClientConfig;
+use deno_tls::rustls::ClientConnection;
 use deno_tls::RootCertStoreProvider;
 use deno_tls::SocketUse;
+use deno_tls::TlsKeys;
 use http::header::CONNECTION;
 use http::header::UPGRADE;
 use http::HeaderName;
@@ -236,8 +238,7 @@ async fn handshake_http1_wss(
     ServerName::try_from(domain).map_err(|_| invalid_hostname(domain))?;
   let mut tls_connector = TlsStream::new_client_side(
     tcp_socket,
-    tls_config.into(),
-    dnsname,
+    ClientConnection::new(tls_config.into(), dnsname)?,
     NonZeroUsize::new(65536),
   );
   // If we can bail on an http/1.1 ALPN mismatch here, we can avoid doing extra work
@@ -261,8 +262,11 @@ async fn handshake_http2_wss(
   let dnsname =
     ServerName::try_from(domain).map_err(|_| invalid_hostname(domain))?;
   // We need to better expose the underlying errors here
-  let mut tls_connector =
-    TlsStream::new_client_side(tcp_socket, tls_config.into(), dnsname, None);
+  let mut tls_connector = TlsStream::new_client_side(
+    tcp_socket,
+    ClientConnection::new(tls_config.into(), dnsname)?,
+    None,
+  );
   let handshake = tls_connector.handshake().await?;
   if handshake.alpn.is_none() {
     bail!("Didn't receive h2 alpn, aborting connection");
@@ -332,7 +336,7 @@ pub fn create_ws_client_config(
     root_cert_store,
     vec![],
     unsafely_ignore_certificate_errors,
-    None,
+    TlsKeys::Null,
     socket_use,
   )
 }
@@ -703,9 +707,11 @@ pub async fn op_ws_close(
 pub fn op_ws_get_buffer(
   state: &mut OpState,
   #[smi] rid: ResourceId,
-) -> Result<ToJsBuffer, AnyError> {
-  let resource = state.resource_table.get::<ServerWebSocket>(rid)?;
-  Ok(resource.buffer.take().unwrap().into())
+) -> Option<ToJsBuffer> {
+  let Ok(resource) = state.resource_table.get::<ServerWebSocket>(rid) else {
+    return None;
+  };
+  resource.buffer.take().map(ToJsBuffer::from)
 }
 
 #[op2]
@@ -713,9 +719,11 @@ pub fn op_ws_get_buffer(
 pub fn op_ws_get_buffer_as_string(
   state: &mut OpState,
   #[smi] rid: ResourceId,
-) -> Result<String, AnyError> {
-  let resource = state.resource_table.get::<ServerWebSocket>(rid)?;
-  Ok(resource.string.take().unwrap())
+) -> Option<String> {
+  let Ok(resource) = state.resource_table.get::<ServerWebSocket>(rid) else {
+    return None;
+  };
+  resource.string.take()
 }
 
 #[op2]

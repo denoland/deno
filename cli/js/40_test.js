@@ -198,6 +198,11 @@ function testInner(
   maybeFn,
   overrides = {},
 ) {
+  // No-op if we're not running in `deno test` subcommand.
+  if (typeof op_register_test !== "function") {
+    return;
+  }
+
   let testDesc;
   const defaults = {
     ignore: false,

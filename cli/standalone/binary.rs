@@ -1,8 +1,11 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::env::current_exe;
+use std::ffi::OsString;
 use std::fs;
+use std::future::Future;
 use std::io::Read;
 use std::io::Seek;
 use std::io::SeekFrom;
@@ -21,7 +24,6 @@ use deno_core::futures::AsyncSeekExt;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_npm::NpmSystemInfo;
-use deno_runtime::permissions::PermissionsOptions;
 use deno_semver::package::PackageReq;
 use deno_semver::VersionReqSpecifierParseError;
 use log::Level;
@@ -34,6 +36,7 @@ use crate::args::CaData;
 use crate::args::CliOptions;
 use crate::args::CompileFlags;
 use crate::args::PackageJsonDepsProvider;
+use crate::args::PermissionFlags;
 use crate::args::UnstableConfig;
 use crate::cache::DenoDir;
 use crate::file_fetcher::FileFetcher;
@@ -131,7 +134,7 @@ pub enum NodeModules {
 pub struct Metadata {
   pub argv: Vec<String>,
   pub seed: Option<u64>,
-  pub permissions: PermissionsOptions,
+  pub permissions: PermissionFlags,
   pub location: Option<Url>,
   pub v8_flags: Vec<String>,
   pub log_level: Option<Level>,
@@ -236,49 +239,58 @@ pub fn is_standalone_binary(exe_path: &Path) -> bool {
 /// binary by skipping over the trailer width at the end of the file,
 /// then checking for the magic trailer string `d3n0l4nd`. If found,
 /// the bundle is executed. If not, this function exits with `Ok(None)`.
-pub async fn extract_standalone(
+pub fn extract_standalone(
   exe_path: &Path,
-  cli_args: Vec<String>,
-) -> Result<Option<(Metadata, eszip::EszipV2)>, AnyError> {
-  let file = std::fs::File::open(exe_path)?;
-
-  let mut bufreader =
-    deno_core::futures::io::BufReader::new(AllowStdIo::new(file));
-
-  let _trailer_pos = bufreader
-    .seek(SeekFrom::End(-(TRAILER_SIZE as i64)))
-    .await?;
+  cli_args: Cow<Vec<OsString>>,
+) -> Result<
+  Option<impl Future<Output = Result<(Metadata, eszip::EszipV2), AnyError>>>,
+  AnyError,
+> {
+  // We do the first part sync so it can complete quickly
+  let mut file = std::fs::File::open(exe_path)?;
+  file.seek(SeekFrom::End(-(TRAILER_SIZE as i64)))?;
   let mut trailer = [0; TRAILER_SIZE];
-  bufreader.read_exact(&mut trailer).await?;
+  file.read_exact(&mut trailer)?;
   let trailer = match Trailer::parse(&trailer)? {
     None => return Ok(None),
     Some(trailer) => trailer,
   };
 
-  bufreader.seek(SeekFrom::Start(trailer.eszip_pos)).await?;
+  file.seek(SeekFrom::Start(trailer.eszip_pos))?;
 
-  let (eszip, loader) = eszip::EszipV2::parse(bufreader)
-    .await
-    .context("Failed to parse eszip header")?;
+  let cli_args = cli_args.into_owned();
+  // If we have an eszip, read it out
+  Ok(Some(async move {
+    let bufreader =
+      deno_core::futures::io::BufReader::new(AllowStdIo::new(file));
 
-  let mut bufreader = loader.await.context("Failed to parse eszip archive")?;
+    let (eszip, loader) = eszip::EszipV2::parse(bufreader)
+      .await
+      .context("Failed to parse eszip header")?;
 
-  bufreader
-    .seek(SeekFrom::Start(trailer.metadata_pos))
-    .await?;
+    let mut bufreader =
+      loader.await.context("Failed to parse eszip archive")?;
 
-  let mut metadata = String::new();
+    bufreader
+      .seek(SeekFrom::Start(trailer.metadata_pos))
+      .await?;
 
-  bufreader
-    .take(trailer.metadata_len())
-    .read_to_string(&mut metadata)
-    .await
-    .context("Failed to read metadata from the current executable")?;
+    let mut metadata = String::new();
 
-  let mut metadata: Metadata = serde_json::from_str(&metadata).unwrap();
-  metadata.argv.append(&mut cli_args[1..].to_vec());
+    bufreader
+      .take(trailer.metadata_len())
+      .read_to_string(&mut metadata)
+      .await
+      .context("Failed to read metadata from the current executable")?;
 
-  Ok(Some((metadata, eszip)))
+    let mut metadata: Metadata = serde_json::from_str(&metadata).unwrap();
+    metadata.argv.reserve(cli_args.len() - 1);
+    for arg in cli_args.into_iter().skip(1) {
+      metadata.argv.push(arg.into_string().unwrap());
+    }
+
+    Ok((metadata, eszip))
+  }))
 }
 
 const TRAILER_SIZE: usize = std::mem::size_of::<Trailer>() + 8; // 8 bytes for the magic trailer string
@@ -476,7 +488,9 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     // Phase 2 of the 'min sized' deno compile RFC talks
     // about adding this as a flag.
     if let Some(path) = std::env::var_os("DENORT_BIN") {
-      return Ok(std::fs::read(path)?);
+      return std::fs::read(&path).with_context(|| {
+        format!("Could not find denort at '{}'", path.to_string_lossy())
+      });
     }
 
     let target = compile_flags.resolve_target();
@@ -607,7 +621,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       argv: compile_flags.args.clone(),
       seed: cli_options.seed(),
       location: cli_options.location_flag().clone(),
-      permissions: cli_options.permissions_options(),
+      permissions: cli_options.permission_flags().clone(),
       v8_flags: cli_options.v8_flags().clone(),
       unsafely_ignore_certificate_errors: cli_options
         .unsafely_ignore_certificate_errors()
@@ -623,7 +637,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       unstable_config: UnstableConfig {
         legacy_flag_enabled: cli_options.legacy_unstable_flag(),
         bare_node_builtins: cli_options.unstable_bare_node_builtins(),
-        byonm: cli_options.unstable_byonm(),
+        byonm: cli_options.use_byonm(),
         sloppy_imports: cli_options.unstable_sloppy_imports(),
         features: cli_options.unstable_features(),
       },

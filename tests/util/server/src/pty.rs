@@ -77,6 +77,12 @@ impl Pty {
     self.pty.flush().unwrap();
   }
 
+  /// Pause for a human-like delay to read or react to something (human responses are ~100ms).
+  #[track_caller]
+  pub fn human_delay(&mut self) {
+    std::thread::sleep(Duration::from_millis(250));
+  }
+
   #[track_caller]
   pub fn write_line(&mut self, line: impl AsRef<str>) {
     self.write_line_raw(&line);
@@ -161,6 +167,23 @@ impl Pty {
     });
   }
 
+  /// Expects the raw text to be found next.
+  #[track_caller]
+  pub fn expect_raw_next(&mut self, text: impl AsRef<str>) {
+    let expected = text.as_ref();
+    let last_index = self.read_bytes.len();
+    self.read_until_condition(|pty| {
+      if pty.read_bytes.len() >= last_index + expected.len() {
+        let data = String::from_utf8_lossy(
+          &pty.read_bytes[last_index..last_index + expected.len()],
+        );
+        data == expected
+      } else {
+        false
+      }
+    });
+  }
+
   pub fn all_output(&self) -> Cow<str> {
     String::from_utf8_lossy(&self.read_bytes)
   }
@@ -186,7 +209,12 @@ impl Pty {
 
   #[track_caller]
   fn read_until_condition(&mut self, condition: impl FnMut(&mut Self) -> bool) {
-    self.read_until_condition_with_timeout(condition, Duration::from_secs(15));
+    let duration = if std::env::var_os("CI").is_some() {
+      Duration::from_secs(30)
+    } else {
+      Duration::from_secs(15)
+    };
+    self.read_until_condition_with_timeout(condition, duration);
   }
 
   #[track_caller]

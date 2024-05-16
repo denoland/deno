@@ -34,7 +34,7 @@ use std::task::Poll;
 static THREAD_ID_COUNTER: AtomicU32 = AtomicU32::new(1);
 
 thread_local! {
-  static LOCAL_THREAD_ID: RefCell<u32> = RefCell::new(0);
+  static LOCAL_THREAD_ID: RefCell<u32> = const { RefCell::new(0) };
 }
 
 #[derive(Clone)]
@@ -176,7 +176,7 @@ unsafe extern "C" fn deno_ffi_callback(
         let tc_scope = &mut TryCatch::new(scope);
         args.run(tc_scope);
         if tc_scope.exception().is_some() {
-          eprintln!("Illegal unhandled exception in nonblocking callback.");
+          log::error!("Illegal unhandled exception in nonblocking callback.");
         }
       });
     }

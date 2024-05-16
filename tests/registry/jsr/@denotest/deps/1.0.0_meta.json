@@ -1,0 +1,22 @@
+{
+  "exports": {
+    ".": "./mod.ts"
+  },
+  "moduleGraph1": {
+    "/mod.ts": {
+      "dependencies": [{
+        "type": "static",
+        "kind": "import",
+        "range": [[0, 0], [0, 59]],
+        "specifier": "jsr:@denotest/module-graph@1/other",
+        "specifierRange": [[0, 22], [0, 58]]
+      }, {
+        "type": "static",
+        "kind": "import",
+        "range": [[1, 0], [1, 57]],
+        "specifier": "jsr:@denotest/no-module-graph@^0.1",
+        "specifierRange": [[1, 20], [1, 56]]
+      }]
+    }
+  }
+}

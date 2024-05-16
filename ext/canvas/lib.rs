@@ -130,7 +130,8 @@ fn op_image_decode_png(#[buffer] buf: &[u8]) -> Result<DecodedPng, AnyError> {
     )));
   }
 
-  let mut png_data = Vec::with_capacity(png.total_bytes() as usize);
+  // read_image will assert that the buffer is the correct size, so we need to fill it with zeros
+  let mut png_data = vec![0_u8; png.total_bytes() as usize];
 
   png.read_image(&mut png_data)?;
 

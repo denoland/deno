@@ -11,22 +11,25 @@ use crate::tools::test::TestEventWorkerSender;
 use crate::util::logger;
 use crate::CliFactory;
 use deno_core::anyhow::Context;
+use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::located_script_name;
 use deno_core::resolve_url_or_path;
 use deno_core::serde::Deserialize;
 use deno_core::serde_json;
+use deno_core::url::Url;
 use deno_runtime::deno_io::Stdio;
 use deno_runtime::deno_io::StdioPipe;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
+use deno_runtime::WorkerExecutionMode;
 use deno_terminal::colors;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::UnboundedSender;
 
 mod install;
-pub(crate) mod jupyter_msg;
-pub(crate) mod server;
+pub mod jupyter_msg;
+pub mod server;
 
 pub async fn kernel(
   flags: Flags,
@@ -54,7 +57,7 @@ pub async fn kernel(
     logger::init(Some(log::Level::Debug));
   }
 
-  let factory = CliFactory::from_flags(flags).await?;
+  let factory = CliFactory::from_flags(flags)?;
   let cli_options = factory.cli_options();
   let main_module =
     resolve_url_or_path("./$deno$jupyter.ts", cli_options.initial_cwd())
@@ -86,11 +89,12 @@ pub async fn kernel(
 
   let mut worker = worker_factory
     .create_custom_worker(
+      WorkerExecutionMode::Jupyter,
       main_module.clone(),
       permissions,
       vec![
         ops::jupyter::deno_jupyter::init_ops(stdio_tx.clone()),
-        ops::testing::deno_test::init_ops(test_event_sender.clone()),
+        ops::testing::deno_test::init_ops(test_event_sender),
       ],
       // FIXME(nayeemrmn): Test output capturing currently doesn't work.
       Stdio {
@@ -112,7 +116,6 @@ pub async fn kernel(
     resolver,
     worker,
     main_module,
-    test_event_sender,
     test_event_receiver,
   )
   .await?;
@@ -129,9 +132,16 @@ pub async fn kernel(
       Ok(())
     }
   }
+  let cwd_url =
+    Url::from_directory_path(cli_options.initial_cwd()).map_err(|_| {
+      generic_error(format!(
+        "Unable to construct URL from the path of cwd: {}",
+        cli_options.initial_cwd().to_string_lossy(),
+      ))
+    })?;
   repl_session.set_test_reporter_factory(Box::new(move || {
     Box::new(
-      PrettyTestReporter::new(false, true, false, true)
+      PrettyTestReporter::new(false, true, false, true, cwd_url.clone())
         .with_writer(Box::new(TestWriter(stdio_tx.clone()))),
     )
   }));

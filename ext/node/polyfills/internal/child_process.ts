@@ -275,7 +275,11 @@ export class ChildProcess extends EventEmitter {
         });
       })();
     } catch (err) {
-      this.#_handleError(err);
+      let e = err;
+      if (e instanceof Deno.errors.NotFound) {
+        e = _createSpawnSyncError("ENOENT", command, args);
+      }
+      this.#_handleError(e);
     }
   }
 
@@ -499,9 +503,18 @@ function normalizeStdioOption(
   if (Array.isArray(stdio)) {
     // `[0, 1, 2]` is equivalent to `"inherit"`
     if (
-      stdio.length === 3 && stdio[0] === 0 && stdio[1] === 1 && stdio[2] === 2
+      stdio.length === 3 &&
+      (stdio[0] === 0 && stdio[1] === 1 && stdio[2] === 2)
     ) {
       return ["inherit", "inherit", "inherit"];
+    }
+
+    // `[null, null, null]` is equivalent to `"pipe"
+    if (
+      stdio.length === 3 &&
+        stdio[0] === null || stdio[1] === null || stdio[2] === null
+    ) {
+      return ["pipe", "pipe", "pipe"];
     }
 
     // At least 3 stdio must be created to match node
@@ -853,7 +866,7 @@ export function spawnSync(
     windowsVerbatimArguments = false,
   } = options;
   const [
-    _stdin_ = "pipe", // TODO(bartlomieju): use this?
+    stdin_ = "pipe",
     stdout_ = "pipe",
     stderr_ = "pipe",
     _channel, // TODO(kt3k): handle this correctly
@@ -868,6 +881,7 @@ export function spawnSync(
       env: mapValues(env, (value) => value.toString()),
       stdout: toDenoStdio(stdout_),
       stderr: toDenoStdio(stderr_),
+      stdin: stdin_ == "inherit" ? "inherit" : "null",
       uid,
       gid,
       windowsRawArguments: windowsVerbatimArguments,

@@ -2,25 +2,20 @@
 
 use bytes::Bytes;
 use deno_ast::MediaType;
-use deno_config::glob::FilePatterns;
-use deno_config::glob::PathOrPattern;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
-use ignore::overrides::OverrideBuilder;
-use ignore::WalkBuilder;
 use sha2::Digest;
-use std::collections::HashSet;
 use std::fmt::Write as FmtWrite;
 use std::io::Write;
 use std::path::Path;
 use tar::Header;
 
 use crate::cache::LazyGraphSourceParser;
-use crate::tools::registry::paths::PackagePath;
 
 use super::diagnostics::PublishDiagnostic;
 use super::diagnostics::PublishDiagnosticsCollector;
+use super::paths::CollectedPublishPath;
 use super::unfurl::SpecifierUnfurler;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -39,151 +34,39 @@ pub struct PublishableTarball {
 }
 
 pub fn create_gzipped_tarball(
-  dir: &Path,
+  publish_paths: &[CollectedPublishPath],
   source_parser: LazyGraphSourceParser,
   diagnostics_collector: &PublishDiagnosticsCollector,
   unfurler: &SpecifierUnfurler,
-  file_patterns: Option<FilePatterns>,
 ) -> Result<PublishableTarball, AnyError> {
   let mut tar = TarGzArchive::new();
   let mut files = vec![];
 
-  let mut paths = HashSet::new();
+  for path in publish_paths {
+    let path_str = &path.relative_path;
+    let specifier = &path.specifier;
+    let path = &path.path;
 
-  let mut ob = OverrideBuilder::new(dir);
-  ob.add("!.git")?.add("!node_modules")?.add("!.DS_Store")?;
+    let content = resolve_content_maybe_unfurling(
+      path,
+      specifier,
+      unfurler,
+      source_parser,
+      diagnostics_collector,
+    )?;
 
-  for pattern in file_patterns.as_ref().iter().flat_map(|p| p.include.iter()) {
-    for path_or_pat in pattern.inner() {
-      match path_or_pat {
-        PathOrPattern::Path(p) => ob.add(p.to_str().unwrap())?,
-        PathOrPattern::Pattern(p) => ob.add(p.as_str())?,
-        PathOrPattern::RemoteUrl(_) => continue,
-      };
-    }
-  }
-
-  let overrides = ob.build()?;
-
-  let iterator = WalkBuilder::new(dir)
-    .follow_links(false)
-    .require_git(false)
-    .git_ignore(true)
-    .git_global(true)
-    .git_exclude(true)
-    .overrides(overrides)
-    .filter_entry(move |entry| {
-      let matches_pattern = file_patterns
-        .as_ref()
-        .map(|p| p.matches_path(entry.path()))
-        .unwrap_or(true);
-      matches_pattern
-    })
-    .build();
-
-  for entry in iterator {
-    let entry = entry?;
-
-    let path = entry.path();
-    let Some(file_type) = entry.file_type() else {
-      // entry doesn’t have a file type if it corresponds to stdin.
-      continue;
-    };
-
-    let Ok(specifier) = Url::from_file_path(path) else {
-      diagnostics_collector
-        .to_owned()
-        .push(PublishDiagnostic::InvalidPath {
-          path: path.to_path_buf(),
-          message: "unable to convert path to url".to_string(),
-        });
-      continue;
-    };
-
-    if file_type.is_file() {
-      let Ok(relative_path) = path.strip_prefix(dir) else {
-        diagnostics_collector
-          .to_owned()
-          .push(PublishDiagnostic::InvalidPath {
-            path: path.to_path_buf(),
-            message: "path is not in publish directory".to_string(),
-          });
-        continue;
-      };
-
-      let path_str = relative_path.components().fold(
-        "".to_string(),
-        |mut path, component| {
-          path.push('/');
-          match component {
-            std::path::Component::Normal(normal) => {
-              path.push_str(&normal.to_string_lossy())
-            }
-            std::path::Component::CurDir => path.push('.'),
-            std::path::Component::ParentDir => path.push_str(".."),
-            _ => unreachable!(),
-          }
-          path
-        },
-      );
-
-      match PackagePath::new(path_str.clone()) {
-        Ok(package_path) => {
-          if !paths.insert(package_path) {
-            diagnostics_collector.to_owned().push(
-              PublishDiagnostic::DuplicatePath {
-                path: path.to_path_buf(),
-              },
-            );
-          }
-        }
-        Err(err) => {
-          diagnostics_collector.to_owned().push(
-            PublishDiagnostic::InvalidPath {
-              path: path.to_path_buf(),
-              message: err.to_string(),
-            },
-          );
-        }
-      }
-
-      let content = resolve_content_maybe_unfurling(
-        path,
-        &specifier,
-        unfurler,
-        source_parser,
-        diagnostics_collector,
-      )?;
-
-      let media_type = MediaType::from_specifier(&specifier);
-      if matches!(media_type, MediaType::Jsx | MediaType::Tsx) {
-        diagnostics_collector.push(PublishDiagnostic::UnsupportedJsxTsx {
-          specifier: specifier.clone(),
-        });
-      }
-
-      files.push(PublishableTarballFile {
-        path_str: path_str.clone(),
-        specifier: specifier.clone(),
-        // This hash string matches the checksum computed by registry
-        hash: format!("sha256-{:x}", sha2::Sha256::digest(&content)),
-        size: content.len(),
-      });
-      tar
-        .add_file(format!(".{}", path_str), &content)
-        .with_context(|| {
-          format!("Unable to add file to tarball '{}'", entry.path().display())
-        })?;
-    } else if !file_type.is_dir() {
-      diagnostics_collector.push(PublishDiagnostic::UnsupportedFileType {
-        specifier,
-        kind: if file_type.is_symlink() {
-          "symlink".to_owned()
-        } else {
-          format!("{file_type:?}")
-        },
-      });
-    }
+    files.push(PublishableTarballFile {
+      path_str: path_str.clone(),
+      specifier: specifier.clone(),
+      // This hash string matches the checksum computed by registry
+      hash: format!("sha256-{:x}", sha2::Sha256::digest(&content)),
+      size: content.len(),
+    });
+    tar
+      .add_file(format!(".{}", path_str), &content)
+      .with_context(|| {
+        format!("Unable to add file to tarball '{}'", path.display())
+      })?;
   }
 
   let v = tar.finish().context("Unable to finish tarball")?;

@@ -1,5 +1,8 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+#![allow(clippy::print_stdout)]
+#![allow(clippy::print_stderr)]
+
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
@@ -431,7 +434,11 @@ async fn main() -> Result<()> {
   println!("Starting Deno benchmark");
 
   let target_dir = test_util::target_dir();
-  let deno_exe = test_util::deno_exe_path().to_path_buf();
+  let deno_exe = if let Ok(p) = std::env::var("DENO_BENCH_EXE") {
+    PathBuf::from(p)
+  } else {
+    test_util::deno_exe_path().to_path_buf()
+  };
   env::set_current_dir(test_util::root_path())?;
 
   let mut new_data = BenchResult {

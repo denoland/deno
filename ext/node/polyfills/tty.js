@@ -1,16 +1,22 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const {
   Error,
 } = primordials;
-import { op_is_terminal } from "ext:core/ops";
+const {
+  isTerminal,
+} = core;
 
 import { ERR_INVALID_FD } from "ext:deno_node/internal/errors.ts";
-import { LibuvStreamWrap } from "ext:deno_node/internal_binding/stream_wrap.ts";
+import {
+  kStreamBaseField,
+  LibuvStreamWrap,
+} from "ext:deno_node/internal_binding/stream_wrap.ts";
 import { providerType } from "ext:deno_node/internal_binding/async_wrap.ts";
 import { Socket } from "node:net";
 import { setReadStream } from "ext:deno_node/_process/streams.mjs";
+import * as io from "ext:deno_io/12_io.js";
 
 // Returns true when the given numeric fd is associated with a TTY and false otherwise.
 function isatty(fd) {
@@ -23,7 +29,7 @@ function isatty(fd) {
      * correspond to `fd` 0, 1, 2 (stdin, stdout, stderr). This may change in
      * the future.
      */
-    return op_is_terminal(fd);
+    return isTerminal(fd);
   } catch (_) {
     return false;
   }
@@ -32,6 +38,14 @@ function isatty(fd) {
 class TTY extends LibuvStreamWrap {
   constructor(handle) {
     super(providerType.TTYWRAP, handle);
+  }
+
+  ref() {
+    this[kStreamBaseField][io.REF]();
+  }
+
+  unref() {
+    this[kStreamBaseField][io.UNREF]();
   }
 }
 
@@ -44,7 +58,7 @@ export class ReadStream extends Socket {
     // We only support `stdin`.
     if (fd != 0) throw new Error("Only fd 0 is supported.");
 
-    const tty = new TTY(Deno.stdin);
+    const tty = new TTY(io.stdin);
     super({
       readableHighWaterMark: 0,
       handle: tty,
@@ -77,7 +91,7 @@ export class WriteStream extends Socket {
     if (fd > 2) throw new Error("Only fd 0, 1 and 2 are supported.");
 
     const tty = new TTY(
-      fd === 0 ? Deno.stdin : fd === 1 ? Deno.stdout : Deno.stderr,
+      fd === 0 ? io.stdin : fd === 1 ? io.stdout : io.stderr,
     );
 
     super({

@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+pub mod deno_json;
 mod flags;
 mod flags_net;
 mod import_map;
@@ -9,6 +10,7 @@ pub mod package_json;
 pub use self::import_map::resolve_import_map;
 use self::package_json::PackageJsonDeps;
 use ::import_map::ImportMap;
+use deno_ast::SourceMapOption;
 use deno_core::resolve_url_or_path;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmSystemInfo;
@@ -59,12 +61,14 @@ use std::env;
 use std::io::BufReader;
 use std::io::Cursor;
 use std::net::SocketAddr;
+use std::num::NonZeroU16;
 use std::num::NonZeroUsize;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 use thiserror::Error;
 
+use crate::args::import_map::enhance_import_map_value_with_workspace_members;
 use crate::file_fetcher::FileFetcher;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::version;
@@ -74,7 +78,7 @@ use deno_config::FmtConfig;
 use deno_config::LintConfig;
 use deno_config::TestConfig;
 
-pub fn npm_registry_default_url() -> &'static Url {
+pub fn npm_registry_url() -> &'static Url {
   static NPM_REGISTRY_DEFAULT_URL: Lazy<Url> = Lazy::new(|| {
     let env_var_name = "NPM_CONFIG_REGISTRY";
     if let Ok(registry_url) = std::env::var(env_var_name) {
@@ -99,6 +103,15 @@ pub fn npm_registry_default_url() -> &'static Url {
 
   &NPM_REGISTRY_DEFAULT_URL
 }
+
+pub static DENO_DISABLE_PEDANTIC_NODE_WARNINGS: Lazy<bool> = Lazy::new(|| {
+  std::env::var("DENO_DISABLE_PEDANTIC_NODE_WARNINGS")
+    .ok()
+    .is_some()
+});
+
+pub static DENO_FUTURE: Lazy<bool> =
+  Lazy::new(|| std::env::var("DENO_FUTURE").ok().is_some());
 
 pub fn jsr_url() -> &'static Url {
   static JSR_URL: Lazy<Url> = Lazy::new(|| {
@@ -136,11 +149,12 @@ pub fn jsr_api_url() -> &'static Url {
   &JSR_API_URL
 }
 
-pub fn ts_config_to_emit_options(
+pub fn ts_config_to_transpile_and_emit_options(
   config: deno_config::TsConfig,
-) -> deno_ast::EmitOptions {
+) -> Result<(deno_ast::TranspileOptions, deno_ast::EmitOptions), AnyError> {
   let options: deno_config::EmitConfigOptions =
-    serde_json::from_value(config.0).unwrap();
+    serde_json::from_value(config.0)
+      .context("Failed to parse compilerOptions")?;
   let imports_not_used_as_values =
     match options.imports_not_used_as_values.as_str() {
       "preserve" => deno_ast::ImportsNotUsedAsValues::Preserve,
@@ -155,23 +169,36 @@ pub fn ts_config_to_emit_options(
       "precompile" => (false, false, false, true),
       _ => (false, false, false, false),
     };
-  deno_ast::EmitOptions {
-    use_ts_decorators: options.experimental_decorators,
-    use_decorators_proposal: !options.experimental_decorators,
-    emit_metadata: options.emit_decorator_metadata,
-    imports_not_used_as_values,
-    inline_source_map: options.inline_source_map,
-    inline_sources: options.inline_sources,
-    source_map: options.source_map,
-    jsx_automatic,
-    jsx_development,
-    jsx_factory: options.jsx_factory,
-    jsx_fragment_factory: options.jsx_fragment_factory,
-    jsx_import_source: options.jsx_import_source,
-    precompile_jsx,
-    transform_jsx,
-    var_decl_imports: false,
-  }
+  let source_map = if options.inline_source_map {
+    SourceMapOption::Inline
+  } else if options.source_map {
+    SourceMapOption::Separate
+  } else {
+    SourceMapOption::None
+  };
+  Ok((
+    deno_ast::TranspileOptions {
+      use_ts_decorators: options.experimental_decorators,
+      use_decorators_proposal: !options.experimental_decorators,
+      emit_metadata: options.emit_decorator_metadata,
+      imports_not_used_as_values,
+      jsx_automatic,
+      jsx_development,
+      jsx_factory: options.jsx_factory,
+      jsx_fragment_factory: options.jsx_fragment_factory,
+      jsx_import_source: options.jsx_import_source,
+      precompile_jsx,
+      precompile_jsx_skip_elements: options.jsx_precompile_skip_elements,
+      transform_jsx,
+      var_decl_imports: false,
+    },
+    deno_ast::EmitOptions {
+      inline_sources: options.inline_sources,
+      keep_comments: true,
+      source_map,
+      source_map_file: None,
+    },
+  ))
 }
 
 /// Indicates how cached source files should be handled.
@@ -184,8 +211,8 @@ pub enum CacheSetting {
   /// This is the equivalent of `--reload` in the CLI.
   ReloadAll,
   /// Only some cached resources should be used.  This is the equivalent of
-  /// `--reload=https://deno.land/std` or
-  /// `--reload=https://deno.land/std,https://deno.land/x/example`.
+  /// `--reload=jsr:@std/http/file-server` or
+  /// `--reload=jsr:@std/http/file-server,jsr:@std/assert/assert-equals`.
   ReloadSome(Vec<String>),
   /// The usability of a cached value is determined by analyzing the cached
   /// headers and other metadata associated with a cached response, reloading
@@ -248,6 +275,12 @@ pub struct FmtOptions {
   pub check: bool,
   pub options: FmtOptionsConfig,
   pub files: FilePatterns,
+}
+
+impl Default for FmtOptions {
+  fn default() -> Self {
+    Self::new_with_base(PathBuf::from("/"))
+  }
 }
 
 impl FmtOptions {
@@ -381,6 +414,13 @@ pub struct LintOptions {
   pub rules: LintRulesConfig,
   pub files: FilePatterns,
   pub reporter_kind: LintReporterKind,
+  pub fix: bool,
+}
+
+impl Default for LintOptions {
+  fn default() -> Self {
+    Self::new_with_base(PathBuf::from("/"))
+  }
 }
 
 impl LintOptions {
@@ -389,6 +429,7 @@ impl LintOptions {
       rules: Default::default(),
       files: FilePatterns::new_with_base(base),
       reporter_kind: Default::default(),
+      fix: false,
     }
   }
 
@@ -397,6 +438,7 @@ impl LintOptions {
     maybe_lint_flags: Option<LintFlags>,
     initial_cwd: &Path,
   ) -> Result<Self, AnyError> {
+    let fix = maybe_lint_flags.as_ref().map(|f| f.fix).unwrap_or(false);
     let mut maybe_reporter_kind =
       maybe_lint_flags.as_ref().and_then(|lint_flags| {
         if lint_flags.json {
@@ -454,6 +496,7 @@ impl LintOptions {
         maybe_rules_include,
         maybe_rules_exclude,
       ),
+      fix,
     })
   }
 }
@@ -704,9 +747,12 @@ impl CliOptions {
         format!("for: {}", insecure_allowlist.join(", "))
       };
       let msg =
-        format!("DANGER: TLS certificate validation is disabled {domains}");
-      // use eprintln instead of log::warn so this always gets shown
-      eprintln!("{}", colors::yellow(msg));
+        format!("DANGER: TLS certificate validation is disabled {}", domains);
+      #[allow(clippy::print_stderr)]
+      {
+        // use eprintln instead of log::warn so this always gets shown
+        eprintln!("{}", colors::yellow(msg));
+      }
     }
 
     let maybe_lockfile = maybe_lockfile.filter(|_| !force_global_cache);
@@ -770,11 +816,18 @@ impl CliOptions {
       } else {
         None
       };
+    let parse_options = deno_config::ParseOptions {
+      include_task_comments: matches!(
+        flags.subcommand,
+        DenoSubcommand::Task(..)
+      ),
+    };
     let maybe_config_file = ConfigFile::discover(
       &flags.config_flag,
       flags.config_path_args(&initial_cwd),
       &initial_cwd,
       additional_config_file_names,
+      &parse_options,
     )?;
 
     let mut maybe_package_json = None;
@@ -894,7 +947,7 @@ impl CliOptions {
     &self,
   ) -> Result<Option<ModuleSpecifier>, AnyError> {
     match self.overrides.import_map_specifier.clone() {
-      Some(maybe_path) => Ok(maybe_path),
+      Some(maybe_url) => Ok(maybe_url),
       None => resolve_import_map_specifier(
         self.flags.import_map_path.as_deref(),
         self.maybe_config_file.as_ref(),
@@ -929,6 +982,10 @@ impl CliOptions {
           base_import_map_config,
           children_configs,
         );
+      let import_map = enhance_import_map_value_with_workspace_members(
+        import_map,
+        &workspace_config.members,
+      );
       log::debug!(
         "Workspace config generated this import map {}",
         serde_json::to_string_pretty(&import_map).unwrap()
@@ -970,8 +1027,24 @@ impl CliOptions {
     }
   }
 
+  pub fn serve_port(&self) -> Option<NonZeroU16> {
+    if let DenoSubcommand::Serve(flags) = self.sub_command() {
+      Some(flags.port)
+    } else {
+      None
+    }
+  }
+
+  pub fn serve_host(&self) -> Option<String> {
+    if let DenoSubcommand::Serve(flags) = self.sub_command() {
+      Some(flags.host.clone())
+    } else {
+      None
+    }
+  }
+
   pub fn enable_future_features(&self) -> bool {
-    std::env::var("DENO_FUTURE").is_ok()
+    *DENO_FUTURE
   }
 
   pub fn resolve_main_module(&self) -> Result<ModuleSpecifier, AnyError> {
@@ -1009,6 +1082,10 @@ impl CliOptions {
           resolve_url_or_path(&run_flags.script, self.initial_cwd())
             .map_err(AnyError::from)
         }
+      }
+      DenoSubcommand::Serve(run_flags) => {
+        resolve_url_or_path(&run_flags.script, self.initial_cwd())
+          .map_err(AnyError::from)
       }
       _ => {
         bail!("No main module.")
@@ -1069,11 +1146,11 @@ impl CliOptions {
   }
 
   pub fn has_node_modules_dir(&self) -> bool {
-    self.maybe_node_modules_folder.is_some() || self.unstable_byonm()
+    self.maybe_node_modules_folder.is_some()
   }
 
-  pub fn node_modules_dir_path(&self) -> Option<PathBuf> {
-    self.maybe_node_modules_folder.clone()
+  pub fn node_modules_dir_path(&self) -> Option<&PathBuf> {
+    self.maybe_node_modules_folder.as_ref()
   }
 
   pub fn with_node_modules_dir_path(&self, path: PathBuf) -> Self {
@@ -1141,14 +1218,20 @@ impl CliOptions {
     }
   }
 
-  pub fn resolve_inspector_server(&self) -> Option<InspectorServer> {
+  pub fn resolve_inspector_server(
+    &self,
+  ) -> Result<Option<InspectorServer>, AnyError> {
     let maybe_inspect_host = self
       .flags
       .inspect
       .or(self.flags.inspect_brk)
       .or(self.flags.inspect_wait);
-    maybe_inspect_host
-      .map(|host| InspectorServer::new(host, version::get_user_agent()))
+
+    let Some(host) = maybe_inspect_host else {
+      return Ok(None);
+    };
+
+    Ok(Some(InspectorServer::new(host, version::get_user_agent())?))
   }
 
   pub fn maybe_lockfile(&self) -> Option<Arc<Mutex<Lockfile>>> {
@@ -1157,7 +1240,7 @@ impl CliOptions {
 
   pub fn resolve_tasks_config(
     &self,
-  ) -> Result<IndexMap<String, String>, AnyError> {
+  ) -> Result<IndexMap<String, deno_config::Task>, AnyError> {
     if let Some(config_file) = &self.maybe_config_file {
       config_file.resolve_tasks_config()
     } else if self.maybe_package_json.is_some() {
@@ -1251,7 +1334,7 @@ impl CliOptions {
   pub fn resolve_config_excludes(&self) -> Result<PathOrPatternSet, AnyError> {
     let maybe_config_files = if let Some(config_file) = &self.maybe_config_file
     {
-      config_file.to_files_config()?
+      Some(config_file.to_files_config()?)
     } else {
       None
     };
@@ -1444,10 +1527,6 @@ impl CliOptions {
     &self.flags.cache_path
   }
 
-  pub fn no_prompt(&self) -> bool {
-    resolve_no_prompt(&self.flags)
-  }
-
   pub fn no_remote(&self) -> bool {
     self.flags.no_remote
   }
@@ -1460,26 +1539,12 @@ impl CliOptions {
     self.flags.config_flag == deno_config::ConfigFlag::Disabled
   }
 
-  pub fn permissions_options(&self) -> PermissionsOptions {
-    PermissionsOptions {
-      allow_env: self.flags.allow_env.clone(),
-      deny_env: self.flags.deny_env.clone(),
-      allow_hrtime: self.flags.allow_hrtime,
-      deny_hrtime: self.flags.deny_hrtime,
-      allow_net: self.flags.allow_net.clone(),
-      deny_net: self.flags.deny_net.clone(),
-      allow_ffi: self.flags.allow_ffi.clone(),
-      deny_ffi: self.flags.deny_ffi.clone(),
-      allow_read: self.flags.allow_read.clone(),
-      deny_read: self.flags.deny_read.clone(),
-      allow_run: self.flags.allow_run.clone(),
-      deny_run: self.flags.deny_run.clone(),
-      allow_sys: self.flags.allow_sys.clone(),
-      deny_sys: self.flags.deny_sys.clone(),
-      allow_write: self.flags.allow_write.clone(),
-      deny_write: self.flags.deny_write.clone(),
-      prompt: !self.no_prompt(),
-    }
+  pub fn permission_flags(&self) -> &PermissionFlags {
+    &self.flags.permissions
+  }
+
+  pub fn permissions_options(&self) -> Result<PermissionsOptions, AnyError> {
+    self.flags.permissions.to_options(Some(&self.initial_cwd))
   }
 
   pub fn reload_flag(&self) -> bool {
@@ -1538,7 +1603,15 @@ impl CliOptions {
         .unwrap_or(false)
   }
 
-  pub fn unstable_byonm(&self) -> bool {
+  pub fn use_byonm(&self) -> bool {
+    if self.enable_future_features()
+      && self.node_modules_dir_enablement().is_none()
+      && self.maybe_package_json.is_some()
+    {
+      return true;
+    }
+
+    // check if enabled via unstable
     self.flags.unstable_config.byonm
       || NPM_PROCESS_STATE
         .as_ref()
@@ -1575,30 +1648,34 @@ impl CliOptions {
     &self.flags.v8_flags
   }
 
+  pub fn code_cache_enabled(&self) -> bool {
+    self.flags.code_cache_enabled
+  }
+
   pub fn watch_paths(&self) -> Vec<PathBuf> {
-    let mut paths = if let DenoSubcommand::Run(RunFlags {
+    let mut full_paths = Vec::new();
+    if let DenoSubcommand::Run(RunFlags {
       watch: Some(WatchFlagsWithPaths { paths, .. }),
       ..
     }) = &self.flags.subcommand
     {
-      paths.clone()
-    } else {
-      Vec::with_capacity(2)
-    };
+      full_paths.extend(paths.iter().map(|path| self.initial_cwd.join(path)));
+    }
+
     if let Ok(Some(import_map_path)) = self
       .resolve_specified_import_map_specifier()
       .map(|ms| ms.and_then(|ref s| s.to_file_path().ok()))
     {
-      paths.push(import_map_path);
+      full_paths.push(import_map_path);
     }
     if let Some(specifier) = self.maybe_config_file_specifier() {
       if specifier.scheme() == "file" {
         if let Ok(path) = specifier.to_file_path() {
-          paths.push(path);
+          full_paths.push(path);
         }
       }
     }
-    paths
+    full_paths
   }
 }
 
@@ -1743,14 +1820,14 @@ fn resolve_files(
   if let Some(file_flags) = maybe_file_flags {
     if !file_flags.include.is_empty() {
       maybe_files_config.include =
-        Some(PathOrPatternSet::from_relative_path_or_patterns(
+        Some(PathOrPatternSet::from_include_relative_path_or_patterns(
           initial_cwd,
           &file_flags.include,
         )?);
     }
     if !file_flags.ignore.is_empty() {
       maybe_files_config.exclude =
-        PathOrPatternSet::from_relative_path_or_patterns(
+        PathOrPatternSet::from_exclude_relative_path_or_patterns(
           initial_cwd,
           &file_flags.ignore,
         )?;
@@ -1760,7 +1837,7 @@ fn resolve_files(
 }
 
 /// Resolves the no_prompt value based on the cli flags and environment.
-pub fn resolve_no_prompt(flags: &Flags) -> bool {
+pub fn resolve_no_prompt(flags: &PermissionFlags) -> bool {
   flags.no_prompt || has_flag_env_var("DENO_NO_PROMPT")
 }
 
@@ -1791,7 +1868,12 @@ mod test {
     let cwd = &std::env::current_dir().unwrap();
     let config_specifier =
       ModuleSpecifier::parse("file:///deno/deno.jsonc").unwrap();
-    let config_file = ConfigFile::new(config_text, config_specifier).unwrap();
+    let config_file = ConfigFile::new(
+      config_text,
+      config_specifier,
+      &deno_config::ParseOptions::default(),
+    )
+    .unwrap();
     let actual = resolve_import_map_specifier(
       Some("import-map.json"),
       Some(&config_file),
@@ -1810,7 +1892,12 @@ mod test {
     let config_text = r#"{}"#;
     let config_specifier =
       ModuleSpecifier::parse("file:///deno/deno.jsonc").unwrap();
-    let config_file = ConfigFile::new(config_text, config_specifier).unwrap();
+    let config_file = ConfigFile::new(
+      config_text,
+      config_specifier,
+      &deno_config::ParseOptions::default(),
+    )
+    .unwrap();
     let actual = resolve_import_map_specifier(
       None,
       Some(&config_file),
@@ -1879,7 +1966,7 @@ mod test {
     temp_dir.write("pages/[id].ts", "");
 
     let temp_dir_path = temp_dir.path().as_path();
-    let error = PathOrPatternSet::from_relative_path_or_patterns(
+    let error = PathOrPatternSet::from_include_relative_path_or_patterns(
       temp_dir_path,
       &["data/**********.ts".to_string()],
     )
@@ -1890,7 +1977,7 @@ mod test {
       Some(FilePatterns {
         base: temp_dir_path.to_path_buf(),
         include: Some(
-          PathOrPatternSet::from_relative_path_or_patterns(
+          PathOrPatternSet::from_include_relative_path_or_patterns(
             temp_dir_path,
             &[
               "data/test1.?s".to_string(),
@@ -1901,7 +1988,7 @@ mod test {
           )
           .unwrap(),
         ),
-        exclude: PathOrPatternSet::from_relative_path_or_patterns(
+        exclude: PathOrPatternSet::from_exclude_relative_path_or_patterns(
           temp_dir_path,
           &["nested/**/*bazz.ts".to_string()],
         )
@@ -1912,10 +1999,9 @@ mod test {
     )
     .unwrap();
 
-    let mut files = FileCollector::new(|_, _| true)
+    let mut files = FileCollector::new(|_| true)
       .ignore_git_folder()
       .ignore_node_modules()
-      .ignore_vendor_folder()
       .collect_file_patterns(resolved_files)
       .unwrap();
 

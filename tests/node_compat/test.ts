@@ -24,7 +24,7 @@ import {
 } from "./common.ts";
 
 // If the test case is invoked like
-// deno test -A cli/tests/node_compat/test.ts -- <test-names>
+// deno test -A tests/node_compat/test.ts -- <test-names>
 // Use the <test-names> as filters
 const filters = Deno.args;
 const hasFilters = filters.length > 0;
@@ -76,17 +76,24 @@ async function runTest(t: Deno.TestContext, path: string): Promise<void> {
         // contain actual JS objects, not strings :)).
         envVars["NODE_TEST_KNOWN_GLOBALS"] = "0";
       }
-
+      // TODO(nathanwhit): once we match node's behavior on executing
+      // `node:test` tests when we run a file, we can remove this
+      const usesNodeTest = testSource.includes("node:test");
       const args = [
-        "run",
+        usesNodeTest ? "test" : "run",
         "-A",
         "--quiet",
         //"--unsafely-ignore-certificate-errors",
+        "--unstable-unsafe-proto",
         "--unstable-bare-node-builtins",
         "--v8-flags=" + v8Flags.join(),
-        "runner.ts",
-        testCase,
       ];
+      if (usesNodeTest) {
+        // deno test typechecks by default + we want to pass script args
+        args.push("--no-check", "runner.ts", "--", testCase);
+      } else {
+        args.push("runner.ts", testCase);
+      }
 
       // Pipe stdout in order to output each test result as Deno.test output
       // That way the tests will respect the `--quiet` option when provided
@@ -108,7 +115,7 @@ async function runTest(t: Deno.TestContext, path: string): Promise<void> {
         }
         const stderrOutput = decoder.decode(stderr);
         const repeatCmd = magenta(
-          `./target/debug/deno test -A cli/tests/node_compat/test.ts -- ${path}`,
+          `./target/debug/deno test -A tests/node_compat/test.ts -- ${path}`,
         );
         const msg = `"${magenta(path)}" failed:
 

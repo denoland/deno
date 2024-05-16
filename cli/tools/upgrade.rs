@@ -274,23 +274,17 @@ pub fn check_for_upgrades(
   if let Some(upgrade_version) = update_checker.should_prompt() {
     if log::log_enabled!(log::Level::Info) && std::io::stderr().is_terminal() {
       if version::is_canary() {
-        eprint!(
-          "{} ",
-          colors::green("A new canary release of Deno is available.")
-        );
-        eprintln!(
-          "{}",
+        log::info!(
+          "{} {}",
+          colors::green("A new canary release of Deno is available."),
           colors::italic_gray("Run `deno upgrade --canary` to install it.")
         );
       } else {
-        eprint!(
-          "{} {} → {} ",
+        log::info!(
+          "{} {} → {} {}",
           colors::green("A new release of Deno is available:"),
           colors::cyan(version::deno()),
-          colors::cyan(&upgrade_version)
-        );
-        eprintln!(
-          "{}",
+          colors::cyan(&upgrade_version),
           colors::italic_gray("Run `deno upgrade` to install it.")
         );
       }
@@ -376,11 +370,14 @@ pub async fn upgrade(
   flags: Flags,
   upgrade_flags: UpgradeFlags,
 ) -> Result<(), AnyError> {
-  let factory = CliFactory::from_flags(flags).await?;
+  let factory = CliFactory::from_flags(flags)?;
   let client = factory.http_client();
   let current_exe_path = std::env::current_exe()?;
+  let full_path_output_flag = upgrade_flags
+    .output
+    .map(|output| factory.cli_options().initial_cwd().join(output));
   let output_exe_path =
-    upgrade_flags.output.as_ref().unwrap_or(&current_exe_path);
+    full_path_output_flag.as_ref().unwrap_or(&current_exe_path);
 
   let permissions = if let Ok(metadata) = fs::metadata(output_exe_path) {
     let permissions = metadata.permissions();
@@ -430,7 +427,7 @@ pub async fn upgrade(
       };
 
       if !upgrade_flags.force
-        && upgrade_flags.output.is_none()
+        && full_path_output_flag.is_none()
         && current_is_passed
       {
         log::info!("Version {} is already installed", crate::version::deno());
@@ -464,7 +461,7 @@ pub async fn upgrade(
       };
 
       if !upgrade_flags.force
-        && upgrade_flags.output.is_none()
+        && full_path_output_flag.is_none()
         && current_is_most_recent
       {
         log::info!(
@@ -520,7 +517,7 @@ pub async fn upgrade(
     }
   } else {
     let output_exe_path =
-      upgrade_flags.output.as_ref().unwrap_or(&current_exe_path);
+      full_path_output_flag.as_ref().unwrap_or(&current_exe_path);
     let output_result = if *output_exe_path == current_exe_path {
       replace_exe(&new_exe_path, output_exe_path)
     } else {

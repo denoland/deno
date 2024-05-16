@@ -9,7 +9,6 @@ import { assertSpyCalls, spy } from "@std/testing/mock.ts";
 
 import { gzip } from "node:zlib";
 import { Buffer } from "node:buffer";
-import { serve } from "@std/http/server.ts";
 import { execCode } from "../unit/test_util.ts";
 
 Deno.test("[node/http listen]", async () => {
@@ -27,7 +26,9 @@ Deno.test("[node/http listen]", async () => {
     const { promise, resolve } = Promise.withResolvers<void>();
     const server = http.createServer();
 
-    server.listen(() => {
+    server.listen(42453, "localhost", () => {
+      // @ts-ignore address() is not a string
+      assertEquals(server.address()!.address, "127.0.0.1");
       server.close();
     });
     server.on("close", () => {
@@ -336,20 +337,18 @@ Deno.test("[node/http] send request with non-chunked body", async () => {
   const hostname = "localhost";
   const port = 4505;
 
-  // NOTE: Instead of node/http.createServer(), serve() in std/http/server.ts is used.
-  // https://github.com/denoland/deno_std/pull/2755#discussion_r1005592634
   const handler = async (req: Request) => {
     requestHeaders = req.headers;
     requestBody = await req.text();
     return new Response("ok");
   };
   const abortController = new AbortController();
-  const servePromise = serve(handler, {
+  const servePromise = Deno.serve({
     hostname,
     port,
     signal: abortController.signal,
     onListen: undefined,
-  });
+  }, handler).finished;
 
   const opts: RequestOptions = {
     host: hostname,
@@ -381,7 +380,12 @@ Deno.test("[node/http] send request with non-chunked body", async () => {
   req.write("world");
   req.end();
 
-  await servePromise;
+  await Promise.all([
+    servePromise,
+    // wait 100ms because of the socket.setTimeout(100) above
+    // in order to not cause a flaky test sanitizer failure
+    await new Promise((resolve) => setTimeout(resolve, 100)),
+  ]);
 });
 
 Deno.test("[node/http] send request with chunked body", async () => {
@@ -391,20 +395,18 @@ Deno.test("[node/http] send request with chunked body", async () => {
   const hostname = "localhost";
   const port = 4505;
 
-  // NOTE: Instead of node/http.createServer(), serve() in std/http/server.ts is used.
-  // https://github.com/denoland/deno_std/pull/2755#discussion_r1005592634
   const handler = async (req: Request) => {
     requestHeaders = req.headers;
     requestBody = await req.text();
     return new Response("ok");
   };
   const abortController = new AbortController();
-  const servePromise = serve(handler, {
+  const servePromise = Deno.serve({
     hostname,
     port,
     signal: abortController.signal,
     onListen: undefined,
-  });
+  }, handler).finished;
 
   const opts: RequestOptions = {
     host: hostname,
@@ -440,20 +442,18 @@ Deno.test("[node/http] send request with chunked body as default", async () => {
   const hostname = "localhost";
   const port = 4505;
 
-  // NOTE: Instead of node/http.createServer(), serve() in std/http/server.ts is used.
-  // https://github.com/denoland/deno_std/pull/2755#discussion_r1005592634
   const handler = async (req: Request) => {
     requestHeaders = req.headers;
     requestBody = await req.text();
     return new Response("ok");
   };
   const abortController = new AbortController();
-  const servePromise = serve(handler, {
+  const servePromise = Deno.serve({
     hostname,
     port,
     signal: abortController.signal,
     onListen: undefined,
-  });
+  }, handler).finished;
 
   const opts: RequestOptions = {
     host: hostname,
@@ -1002,4 +1002,8 @@ Deno.test("[node/http] ServerResponse getHeaders", () => {
   res.setHeader("bar", "baz");
   assertEquals(res.getHeaderNames(), ["bar", "foo"]);
   assertEquals(res.getHeaders(), { "bar": "baz", "foo": "bar" });
+});
+
+Deno.test("[node/http] maxHeaderSize is defined", () => {
+  assertEquals(http.maxHeaderSize, 16_384);
 });

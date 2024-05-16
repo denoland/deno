@@ -1,0 +1,17 @@
+{
+  "exports": {
+    ".": "./mod.ts",
+    "./other": "./other.ts"
+  },
+  "moduleGraph2": {
+    "/mod.ts": {
+      "dependencies": [{
+        "kind": "import",
+        "type": "static",
+        "specifier": "./other.ts",
+        "specifierRange": [[0, 22], [0, 34]]
+      }]
+    },
+    "/other.ts": {}
+  }
+}

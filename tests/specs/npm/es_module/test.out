@@ -1,0 +1,11 @@
+Download http://localhost:4260/chalk
+Download http://localhost:4260/chalk/chalk-5.0.1.tgz
+running 1 test from ./test.js
+test ...
+------- output -------
+test
+----- output end -----
+test ... ok ([WILDCARD]s)
+
+ok | 1 passed | 0 failed ([WILDCARD]s)
+
