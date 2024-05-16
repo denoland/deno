@@ -48,6 +48,14 @@ Deno.test({
 });
 
 Deno.test({
+  name: "home directory when HOME is not set",
+  fn() {
+    Deno.env.delete("HOME");
+    assertEquals(typeof os.homedir(), "string");
+  },
+});
+
+Deno.test({
   name: "tmp directory is a string",
   fn() {
     assertEquals(typeof os.tmpdir(), "string");

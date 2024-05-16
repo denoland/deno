@@ -301,6 +301,16 @@ export function kill(pid: number, sig: string | number = "SIGTERM") {
   return true;
 }
 
+let getgid, getuid, geteuid;
+
+if (!isWindows) {
+  getgid = () => Deno.gid();
+  getuid = () => Deno.uid();
+  geteuid = () => op_geteuid();
+}
+
+export { geteuid, getgid, getuid };
+
 // deno-lint-ignore no-explicit-any
 function uncaughtExceptionHandler(err: any, origin: string) {
   // The origin parameter can be 'unhandledRejection' or 'uncaughtException'
@@ -638,19 +648,13 @@ class Process extends EventEmitter {
   }
 
   /** This method is removed on Windows */
-  getgid?(): number {
-    return Deno.gid()!;
-  }
+  getgid = getgid;
 
   /** This method is removed on Windows */
-  getuid?(): number {
-    return Deno.uid()!;
-  }
+  getuid = getuid;
 
   /** This method is removed on Windows */
-  geteuid?(): number {
-    return op_geteuid();
-  }
+  geteuid = geteuid;
 
   // TODO(kt3k): Implement this when we added -e option to node compat mode
   _eval: string | undefined = undefined;
@@ -668,14 +672,9 @@ class Process extends EventEmitter {
     execPath = path;
   }
 
-  setStartTime(t: number) {
-    this.#startTime = t;
-  }
-
-  #startTime = 0;
   /** https://nodejs.org/api/process.html#processuptime */
   uptime() {
-    return (Date.now() - this.#startTime) / 1000;
+    return Number((performance.now() / 1000).toFixed(9));
   }
 
   #allowedFlags = buildAllowedFlags();
@@ -887,16 +886,12 @@ internals.__bootstrapNodeProcess = function (
       );
     }
 
-    process.setStartTime(Date.now());
-
     arch = arch_();
     platform = isWindows ? "win32" : Deno.build.os;
     pid = Deno.pid;
 
     initializeDebugEnv(nodeDebug);
 
-    // @ts-ignore Remove setStartTime and #startTime is not modifiable
-    delete process.setStartTime;
     delete internals.__bootstrapNodeProcess;
   } else {
     // Warmup, assuming stdin/stdout/stderr are all terminals

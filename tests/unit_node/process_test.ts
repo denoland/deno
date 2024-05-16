@@ -6,6 +6,7 @@ import process, {
   argv,
   argv0 as importedArgv0,
   env,
+  geteuid,
   pid as importedPid,
   platform as importedPlatform,
 } from "node:process";
@@ -879,6 +880,7 @@ Deno.test("process.geteuid", () => {
   if (Deno.build.os === "windows") {
     assertEquals(process.geteuid, undefined);
   } else {
+    assert(geteuid);
     assert(typeof process.geteuid?.() === "number");
   }
 });
@@ -1081,5 +1083,14 @@ Deno.test({
     process.setSourceMapsEnabled(false); // noop
     // @ts-ignore: setSourceMapsEnabled is not available in the types yet.
     process.setSourceMapsEnabled(true); // noop
+  },
+});
+
+// Regression test for https://github.com/denoland/deno/issues/23761
+Deno.test({
+  name: "process.uptime without this",
+  fn() {
+    const v = (0, process.uptime)();
+    assert(v >= 0);
   },
 });

@@ -1,5 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+pub mod convert;
+
 #[inline(always)]
 pub fn get_v8_flags_from_env() -> Vec<String> {
   std::env::var("DENO_V8_FLAGS")
