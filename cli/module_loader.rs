@@ -16,10 +16,12 @@ use crate::cache::ModuleInfoCache;
 use crate::cache::ParsedSourceCache;
 use crate::emit::Emitter;
 use crate::factory::CliFactory;
+use crate::graph_container::MainModuleGraphContainer;
+use crate::graph_container::ModuleGraphContainer;
+use crate::graph_container::ModuleGraphUpdatePermit;
 use crate::graph_util::graph_lock_or_exit;
 use crate::graph_util::CreateGraphOptions;
 use crate::graph_util::ModuleGraphBuilder;
-use crate::graph_util::ModuleGraphContainer;
 use crate::node;
 use crate::resolver::CliGraphResolver;
 use crate::resolver::CliNodeResolver;
@@ -30,6 +32,7 @@ use crate::tools::check::TypeChecker;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::text_encoding::code_without_source_map;
 use crate::util::text_encoding::source_map_from_code;
+use crate::worker::ModuleLoaderAndSourceMapGetter;
 use crate::worker::ModuleLoaderFactory;
 
 use deno_ast::MediaType;
@@ -85,12 +88,19 @@ pub async fn load_top_level_deps(factory: &CliFactory) -> Result<(), AnyError> {
           entry.value.cloned()
         }
       })
-      .collect();
+      .collect::<Vec<_>>();
+    let mut graph_permit = factory
+      .main_module_graph_container()
+      .await?
+      .acquire_update_permit()
+      .await;
+    let graph = graph_permit.graph_mut();
     factory
       .module_load_preparer()
       .await?
       .prepare_module_load(
-        roots,
+        graph,
+        &roots,
         false,
         factory.cli_options().ts_type_lib_window(),
         deno_runtime::permissions::PermissionsContainer::allow_all(),
