@@ -301,17 +301,15 @@ export function kill(pid: number, sig: string | number = "SIGTERM") {
   return true;
 }
 
-export function getgid(): number {
-  return Deno.gid()!;
+let getgid, getuid, geteuid;
+
+if (!isWindows) {
+  getgid = () => Deno.gid();
+  getuid = () => Deno.uid();
+  geteuid = () => op_geteuid();
 }
 
-export function getuid(): number {
-  return Deno.uid()!;
-}
-
-export function geteuid(): number {
-  return op_geteuid();
-}
+export { geteuid, getgid, getuid };
 
 // deno-lint-ignore no-explicit-any
 function uncaughtExceptionHandler(err: any, origin: string) {
