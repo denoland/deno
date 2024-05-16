@@ -1,1 +1,0 @@
-import "./test.js";
