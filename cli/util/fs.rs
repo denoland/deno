@@ -2,7 +2,6 @@
 
 use std::collections::HashSet;
 use std::env::current_dir;
-use std::fmt::Write as FmtWrite;
 use std::fs::FileType;
 use std::fs::OpenOptions;
 use std::io::Error;
@@ -23,12 +22,12 @@ use deno_core::error::AnyError;
 pub use deno_core::normalize_path;
 use deno_core::unsync::spawn_blocking;
 use deno_core::ModuleSpecifier;
-use deno_runtime::deno_crypto::rand;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::PathClean;
 
 use crate::util::gitignore::DirGitIgnores;
 use crate::util::gitignore::GitIgnoreTree;
+use crate::util::path::get_atomic_file_path;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 use crate::util::progress_bar::ProgressMessagePrompt;
@@ -56,14 +55,7 @@ pub fn atomic_write_file<T: AsRef<[u8]>>(
   }
 
   fn inner(file_path: &Path, data: &[u8], mode: u32) -> std::io::Result<()> {
-    let temp_file_path = {
-      let rand: String = (0..4).fold(String::new(), |mut output, _| {
-        let _ = write!(output, "{:02x}", rand::random::<u8>());
-        output
-      });
-      let extension = format!("{rand}.tmp");
-      file_path.with_extension(extension)
-    };
+    let temp_file_path = get_atomic_file_path(file_path);
 
     if let Err(write_err) =
       atomic_write_file_raw(&temp_file_path, file_path, data, mode)

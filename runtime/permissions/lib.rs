@@ -913,7 +913,7 @@ impl Descriptor for SysDescriptor {
 pub fn parse_sys_kind(kind: &str) -> Result<&str, AnyError> {
   match kind {
     "hostname" | "osRelease" | "osUptime" | "loadavg" | "networkInterfaces"
-    | "systemMemoryInfo" | "uid" | "gid" | "cpus" => Ok(kind),
+    | "systemMemoryInfo" | "uid" | "gid" | "cpus" | "homedir" => Ok(kind),
     _ => Err(type_error(format!("unknown system info kind \"{kind}\""))),
   }
 }

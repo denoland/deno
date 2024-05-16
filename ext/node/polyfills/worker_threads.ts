@@ -32,6 +32,7 @@ import process from "node:process";
 const { JSONParse, JSONStringify, ObjectPrototypeIsPrototypeOf } = primordials;
 const {
   Error,
+  PromiseResolve,
   Symbol,
   SymbolFor,
   SymbolIterator,
@@ -280,7 +281,8 @@ class NodeWorker extends EventEmitter {
       this.#status = "TERMINATED";
       op_host_terminate_worker(this.#id);
     }
-    this.emit("exit", 1);
+    this.emit("exit", 0);
+    return PromiseResolve(0);
   }
 
   ref() {

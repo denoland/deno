@@ -3509,10 +3509,18 @@ fn lsp_semantic_tokens() {
 }
 
 #[test]
-fn lsp_code_lens() {
+fn lsp_code_lens_references() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
+  client.change_configuration(json!({
+    "deno": {
+      "enable": true,
+      "codeLens": {
+        "references": true,
+      }
+    },
+  }));
   client.did_open(json!({
     "textDocument": {
       "uri": "file:///a/file.ts",
@@ -3562,6 +3570,24 @@ fn lsp_code_lens() {
       "range": {
         "start": { "line": 1, "character": 2 },
         "end": { "line": 1, "character": 3 }
+      },
+      "data": {
+        "specifier": "file:///a/file.ts",
+        "source": "references"
+      }
+    }, {
+      "range": {
+        "start": { "line": 3, "character": 2 },
+        "end": { "line": 3, "character": 3 }
+      },
+      "data": {
+        "specifier": "file:///a/file.ts",
+        "source": "references"
+      }
+    }, {
+      "range": {
+        "start": { "line": 7, "character": 2 },
+        "end": { "line": 7, "character": 3 }
       },
       "data": {
         "specifier": "file:///a/file.ts",
@@ -3684,10 +3710,19 @@ fn lsp_code_lens() {
 }
 
 #[test]
-fn lsp_code_lens_impl() {
+fn lsp_code_lens_implementations() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
+  client.change_configuration(json!({
+    "deno": {
+      "enable": true,
+      "codeLens": {
+        "implementations": true,
+        "references": true,
+      }
+    },
+  }));
   client.did_open(
     json!({
       "textDocument": {
@@ -3728,8 +3763,26 @@ fn lsp_code_lens_impl() {
       }
     }, {
       "range": {
+        "start": { "line": 1, "character": 2 },
+        "end": { "line": 1, "character": 3 }
+      },
+      "data": {
+        "specifier": "file:///a/file.ts",
+        "source": "references"
+      }
+    }, {
+      "range": {
         "start": { "line": 4, "character": 6 },
         "end": { "line": 4, "character": 7 }
+      },
+      "data": {
+        "specifier": "file:///a/file.ts",
+        "source": "references"
+      }
+    }, {
+      "range": {
+        "start": { "line": 5, "character": 2 },
+        "end": { "line": 5, "character": 3 }
       },
       "data": {
         "specifier": "file:///a/file.ts",
@@ -4130,6 +4183,15 @@ fn lsp_code_lens_non_doc_nav_tree() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
+  client.change_configuration(json!({
+    "deno": {
+      "enable": true,
+      "codeLens": {
+        "implementations": true,
+        "references": true,
+      }
+    },
+  }));
   client.did_open(json!({
     "textDocument": {
       "uri": "file:///a/file.ts",
@@ -4188,6 +4250,15 @@ fn lsp_nav_tree_updates() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
+  client.change_configuration(json!({
+    "deno": {
+      "enable": true,
+      "codeLens": {
+        "implementations": true,
+        "references": true,
+      }
+    },
+  }));
   client.did_open(
     json!({
       "textDocument": {
@@ -4228,8 +4299,26 @@ fn lsp_nav_tree_updates() {
       }
     }, {
       "range": {
+        "start": { "line": 1, "character": 2 },
+        "end": { "line": 1, "character": 3 }
+      },
+      "data": {
+        "specifier": "file:///a/file.ts",
+        "source": "references"
+      }
+    }, {
+      "range": {
         "start": { "line": 4, "character": 6 },
         "end": { "line": 4, "character": 7 }
+      },
+      "data": {
+        "specifier": "file:///a/file.ts",
+        "source": "references"
+      }
+    }, {
+      "range": {
+        "start": { "line": 5, "character": 2 },
+        "end": { "line": 5, "character": 3 }
       },
       "data": {
         "specifier": "file:///a/file.ts",
@@ -4312,8 +4401,26 @@ fn lsp_nav_tree_updates() {
       }
     }, {
       "range": {
+        "start": { "line": 1, "character": 2 },
+        "end": { "line": 1, "character": 3 }
+      },
+      "data": {
+        "specifier": "file:///a/file.ts",
+        "source": "references"
+      }
+    }, {
+      "range": {
         "start": { "line": 4, "character": 6 },
         "end": { "line": 4, "character": 7 }
+      },
+      "data": {
+        "specifier": "file:///a/file.ts",
+        "source": "references"
+      }
+    }, {
+      "range": {
+        "start": { "line": 5, "character": 2 },
+        "end": { "line": 5, "character": 3 }
       },
       "data": {
         "specifier": "file:///a/file.ts",
@@ -12590,4 +12697,88 @@ fn lsp_ts_code_fix_any_param() {
   }
 
   panic!("failed to find 'Infer parameter types from usage' fix in fixes: {fixes:#?}");
+}
+
+#[test]
+fn lsp_semantic_token_caching() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir().path();
+
+  let mut client: LspClient = context
+    .new_lsp_command()
+    .collect_perf()
+    .set_root_dir(temp_dir.clone())
+    .build();
+  client.initialize_default();
+
+  let a = source_file(
+    temp_dir.join("a.ts"),
+    r#"
+    export const a = 1;
+    export const b = 2;
+    export const bar = () => "bar";
+    function foo(fun: (number, number, number) => number, c: number) {
+      const double = (x) => x * 2;
+      return fun(double(a), b, c);
+    }"#,
+  );
+
+  client.did_open_file(&a);
+
+  // requesting a range won't cache the tokens, so this will
+  // be computed
+  let res = client.write_request(
+    "textDocument/semanticTokens/range",
+    json!({
+      "textDocument": a.identifier(),
+      "range": {
+        "start": a.range_of("const bar").start,
+        "end": a.range_of("}").end,
+      }
+    }),
+  );
+
+  assert_eq!(
+    client
+      .perf_wait_for_measure("lsp.semantic_tokens_range")
+      .measure_count("tsc.request.getEncodedSemanticClassifications"),
+    1,
+  );
+
+  // requesting for the full doc should compute and cache the tokens
+  let _full = client.write_request(
+    "textDocument/semanticTokens/full",
+    json!({
+      "textDocument": a.identifier(),
+    }),
+  );
+
+  assert_eq!(
+    client
+      .perf_wait_for_measure("lsp.semantic_tokens_full")
+      .measure_count("tsc.request.getEncodedSemanticClassifications"),
+    2,
+  );
+
+  // use the cached tokens
+  let res_cached = client.write_request(
+    "textDocument/semanticTokens/range",
+    json!({
+      "textDocument": a.identifier(),
+      "range": {
+        "start": a.range_of("const bar").start,
+        "end": a.range_of("}").end,
+      }
+    }),
+  );
+
+  // make sure we actually used the cache
+  assert_eq!(
+    client
+      .perf_wait_for_measure("lsp.semantic_tokens_range")
+      .measure_count("tsc.request.getEncodedSemanticClassifications"),
+    2,
+  );
+
+  assert_eq!(res, res_cached);
 }
