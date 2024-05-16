@@ -301,6 +301,18 @@ export function kill(pid: number, sig: string | number = "SIGTERM") {
   return true;
 }
 
+export function getgid(): number {
+  return Deno.gid()!;
+}
+
+export function getuid(): number {
+  return Deno.uid()!;
+}
+
+export function geteuid(): number {
+  return op_geteuid();
+}
+
 // deno-lint-ignore no-explicit-any
 function uncaughtExceptionHandler(err: any, origin: string) {
   // The origin parameter can be 'unhandledRejection' or 'uncaughtException'
@@ -638,19 +650,13 @@ class Process extends EventEmitter {
   }
 
   /** This method is removed on Windows */
-  getgid?(): number {
-    return Deno.gid()!;
-  }
+  getgid = getgid;
 
   /** This method is removed on Windows */
-  getuid?(): number {
-    return Deno.uid()!;
-  }
+  getuid = getuid;
 
   /** This method is removed on Windows */
-  geteuid?(): number {
-    return op_geteuid();
-  }
+  geteuid = geteuid;
 
   // TODO(kt3k): Implement this when we added -e option to node compat mode
   _eval: string | undefined = undefined;
