@@ -457,7 +457,7 @@ impl<TGraphContainer: ModuleGraphContainer> CliModuleLoader<TGraphContainer> {
       deno_core::resolve_url(referrer).map_err(|e| e.into())
     } else if referrer == "." {
       // main module, use the initial cwd
-      deno_core::resolve_url_or_path(referrer, &self.shared.initial_cwd)
+      deno_core::resolve_path(referrer, &self.shared.initial_cwd)
         .map_err(|e| e.into())
     } else {
       // this cwd check is slow, so try to avoid it
