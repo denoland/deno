@@ -1280,7 +1280,7 @@ impl Documents {
     self.dirty = false;
   }
 
-  fn resolve_dependency(
+  pub fn resolve_dependency(
     &self,
     specifier: &ModuleSpecifier,
     referrer: &ModuleSpecifier,
