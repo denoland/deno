@@ -822,7 +822,7 @@ export class ClientHttp2Stream extends Duplex {
         session[kDenoClientRid],
         this.#rid,
       );
-      const [response, endOfStream] = await op_http2_client_get_response(
+      const [response, endStream] = await op_http2_client_get_response(
         this.#rid,
       );
       debugHttp2(">>> after get response", response);
@@ -834,7 +834,7 @@ export class ClientHttp2Stream extends Duplex {
       this.emit(
         "response",
         headers,
-        endOfStream
+        endStream
           ? constants.NGHTTP2_FLAG_END_STREAM
           : constants.NGHTTP2_FLAG_NONE,
       );

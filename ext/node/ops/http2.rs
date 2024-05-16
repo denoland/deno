@@ -439,7 +439,7 @@ pub async fn op_http2_client_get_response(
   for (key, val) in parts.headers.iter() {
     res_headers.push((key.as_str().into(), val.as_bytes().into()));
   }
-  let end_of_stream = body.is_end_stream();
+  let end_stream = body.is_end_stream();
 
   let (trailers_tx, trailers_rx) = tokio::sync::oneshot::channel();
   let body_rid =
@@ -457,7 +457,7 @@ pub async fn op_http2_client_get_response(
       body_rid,
       status_code: status.into(),
     },
-    end_of_stream,
+    end_stream,
   ))
 }
 
