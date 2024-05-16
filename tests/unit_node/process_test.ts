@@ -6,6 +6,7 @@ import process, {
   argv,
   argv0 as importedArgv0,
   env,
+  geteuid,
   pid as importedPid,
   platform as importedPlatform,
 } from "node:process";
@@ -879,6 +880,7 @@ Deno.test("process.geteuid", () => {
   if (Deno.build.os === "windows") {
     assertEquals(process.geteuid, undefined);
   } else {
+    assert(geteuid);
     assert(typeof process.geteuid?.() === "number");
   }
 });
