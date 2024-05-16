@@ -2,12 +2,13 @@
 
 //! Code for local node_modules resolution.
 
+mod bin_entries;
+
 use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fs;
-use std::os::unix::fs::symlink;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -500,13 +501,15 @@ async fn sync_resolution_with_fs(
       if let Some(bin_entries) = &package.bin {
         match bin_entries {
           deno_npm::registry::NpmPackageVersionBinEntry::String(script) => {
+            // the default bin name doesn't include the organization
             let name = package
               .id
               .nv
               .name
               .rsplit_once('/')
               .map_or(package.id.nv.name.as_str(), |(_, name)| name);
-            symlink_bin_entry(
+            bin_entries::set_up_bin_entry(
+              package,
               name,
               script,
               package_path,
@@ -515,7 +518,8 @@ async fn sync_resolution_with_fs(
           }
           deno_npm::registry::NpmPackageVersionBinEntry::Map(entries) => {
             for (name, script) in entries {
-              symlink_bin_entry(
+              bin_entries::set_up_bin_entry(
+                package,
                 name,
                 script,
                 package_path,
@@ -702,61 +706,6 @@ fn get_package_folder_id_from_folder_name(
     nv: PackageNv { name, version },
     copy_index,
   })
-}
-
-fn symlink_bin_entry(
-  bin_name: &str,
-  bin_script: &str,
-  package_path: &Path,
-  bin_node_modules_dir_path: &Path,
-) -> Result<(), AnyError> {
-  let link = bin_node_modules_dir_path.join(bin_name);
-  let original = package_path.join(bin_script);
-
-  // Don't bother setting up another link if it already exists
-  if link.exists() {
-    let resolved = std::fs::read_link(&link).ok();
-    if let Some(resolved) = resolved {
-      if resolved != original {
-        log::warn!(
-          "{} Trying to set up '{}' bin for \"{}\", but an entry pointing to \"{}\" already exists. Skipping...", 
-          deno_terminal::colors::yellow("Warning"), 
-          bin_name,
-          resolved.display(),
-          original.display()
-        );
-        return Ok(());
-      }
-    }
-  }
-
-  #[cfg(target_family = "windows")]
-  {
-    todo!();
-  }
-  #[cfg(target_family = "unix")]
-  {
-    use std::os::unix::fs::PermissionsExt;
-    let mut perms = std::fs::metadata(&original).unwrap().permissions();
-    if perms.mode() & 0o111 == 0 {
-      // if the original file is not executable, make it executable
-      perms.set_mode(perms.mode() | 0o111);
-      std::fs::set_permissions(&original, perms).with_context(|| {
-        format!("Setting permissions on '{}'", original.display())
-      })?;
-    }
-    let original_relative =
-      pathdiff::diff_paths(&original, bin_node_modules_dir_path)
-        .unwrap_or(original);
-    symlink(&original_relative, &link).with_context(|| {
-      format!(
-        "Can't set up '{}' bin at {}",
-        bin_name,
-        original_relative.display()
-      )
-    })?;
-  }
-  Ok(())
 }
 
 fn symlink_package_dir(

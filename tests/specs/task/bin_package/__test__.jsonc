@@ -12,7 +12,12 @@
       "args": "hi hello",
       "output": "hi\nhello\n"
     },
-
+    {
+      "if": "windows",
+      "commandName": "./node_modules/.bin/cli-esm.cmd",
+      "args": "hi hello",
+      "output": "hi\nhello\n"
+    },
     {
       "commandName": "npm",
       "args": "run sayhi",
