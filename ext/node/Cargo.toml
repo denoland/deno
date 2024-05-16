@@ -36,6 +36,7 @@ errno = "0.2.8"
 faster-hex.workspace = true
 h2 = { version = "0.3.26", features = ["unstable"] }
 hkdf.workspace = true
+home = "0.5.9"
 http_v02.workspace = true
 idna = "0.3.0"
 indexmap.workspace = true
