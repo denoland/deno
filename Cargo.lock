@@ -1066,7 +1066,11 @@ dependencies = [
 
 [[package]]
 name = "deno"
+<<<<<<< HEAD
 version = "1.43.3"
+=======
+version = "1.43.4"
+>>>>>>> d64921c19 (1.43.4 (#23853))
 dependencies = [
  "async-trait",
  "base32",
@@ -1210,7 +1214,11 @@ dependencies = [
 
 [[package]]
 name = "deno_bench_util"
+<<<<<<< HEAD
 version = "0.145.0"
+=======
+version = "0.146.0"
+>>>>>>> d64921c19 (1.43.4 (#23853))
 dependencies = [
  "bencher",
  "deno_core",
@@ -1219,7 +1227,11 @@ dependencies = [
 
 [[package]]
 name = "deno_broadcast_channel"
+<<<<<<< HEAD
 version = "0.145.0"
+=======
+version = "0.146.0"
+>>>>>>> d64921c19 (1.43.4 (#23853))
 dependencies = [
  "async-trait",
  "deno_core",
@@ -1229,7 +1241,11 @@ dependencies = [
 
 [[package]]
 name = "deno_cache"
+<<<<<<< HEAD
 version = "0.83.0"
+=======
+version = "0.84.0"
+>>>>>>> d64921c19 (1.43.4 (#23853))
 dependencies = [
  "async-trait",
  "deno_core",
@@ -1260,7 +1276,11 @@ dependencies = [
 
 [[package]]
 name = "deno_canvas"
+<<<<<<< HEAD
 version = "0.20.0"
+=======
+version = "0.21.0"
+>>>>>>> d64921c19 (1.43.4 (#23853))
 dependencies = [
  "deno_core",
  "deno_webgpu",
@@ -1288,7 +1308,11 @@ dependencies = [
 
 [[package]]
 name = "deno_console"
+<<<<<<< HEAD
 version = "0.151.0"
+=======
+version = "0.152.0"
+>>>>>>> d64921c19 (1.43.4 (#23853))
 dependencies = [
  "deno_core",
 ]
@@ -1332,7 +1356,11 @@ checksum = "a13951ea98c0a4c372f162d669193b4c9d991512de9f2381dd161027f34b26b1"
 
 [[package]]
 name = "deno_cron"
+<<<<<<< HEAD
 version = "0.31.0"
+=======
+version = "0.32.0"
+>>>>>>> d64921c19 (1.43.4 (#23853))
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1344,7 +1372,11 @@ dependencies = [
 
 [[package]]
 name = "deno_crypto"
+<<<<<<< HEAD
 version = "0.165.0"
+=======
+version = "0.166.0"
+>>>>>>> d64921c19 (1.43.4 (#23853))
 dependencies = [
  "aes",
  "aes-gcm",
@@ -1419,7 +1451,11 @@ dependencies = [
 
 [[package]]
 name = "deno_fetch"
+<<<<<<< HEAD
 version = "0.175.0"
+=======
+version = "0.176.0"
+>>>>>>> d64921c19 (1.43.4 (#23853))
 dependencies = [
  "bytes",
  "data-url",
@@ -1436,7 +1472,11 @@ dependencies = [
 
 [[package]]
 name = "deno_ffi"
+<<<<<<< HEAD
 version = "0.138.0"
+=======
+version = "0.139.0"
+>>>>>>> d64921c19 (1.43.4 (#23853))
 dependencies = [
  "deno_core",
  "dlopen2",
@@ -1452,7 +1492,11 @@ dependencies = [
 
 [[package]]
 name = "deno_fs"
+<<<<<<< HEAD
 version = "0.61.0"
+=======
+version = "0.62.0"
+>>>>>>> d64921c19 (1.43.4 (#23853))
 dependencies = [
  "async-trait",
  "base32",
@@ -1499,7 +1543,11 @@ dependencies = [
 
 [[package]]
 name = "deno_http"
+<<<<<<< HEAD
 version = "0.148.0"
+=======
+version = "0.149.0"
+>>>>>>> d64921c19 (1.43.4 (#23853))
 dependencies = [
  "async-compression",
  "async-trait",
@@ -1538,7 +1586,11 @@ dependencies = [
 
 [[package]]
 name = "deno_io"
+<<<<<<< HEAD
 version = "0.61.0"
+=======
+version = "0.62.0"
+>>>>>>> d64921c19 (1.43.4 (#23853))
 dependencies = [
  "async-trait",
  "deno_core",
@@ -1554,7 +1606,11 @@ dependencies = [
 
 [[package]]
 name = "deno_kv"
+<<<<<<< HEAD
 version = "0.59.0"
+=======
+version = "0.60.0"
+>>>>>>> d64921c19 (1.43.4 (#23853))
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1620,7 +1676,11 @@ dependencies = [
 
 [[package]]
 name = "deno_napi"
+<<<<<<< HEAD
 version = "0.81.0"
+=======
+version = "0.82.0"
+>>>>>>> d64921c19 (1.43.4 (#23853))
 dependencies = [
  "deno_core",
  "libloading 0.7.4",
@@ -1641,7 +1701,11 @@ dependencies = [
 
 [[package]]
 name = "deno_net"
+<<<<<<< HEAD
 version = "0.143.0"
+=======
+version = "0.144.0"
+>>>>>>> d64921c19 (1.43.4 (#23853))
 dependencies = [
  "deno_core",
  "deno_tls",
@@ -1656,7 +1720,11 @@ dependencies = [
 
 [[package]]
 name = "deno_node"
+<<<<<<< HEAD
 version = "0.88.0"
+=======
+version = "0.89.0"
+>>>>>>> d64921c19 (1.43.4 (#23853))
 dependencies = [
  "aead-gcm-stream",
  "aes",
@@ -1758,7 +1826,11 @@ dependencies = [
 
 [[package]]
 name = "deno_permissions"
+<<<<<<< HEAD
 version = "0.11.0"
+=======
+version = "0.12.0"
+>>>>>>> d64921c19 (1.43.4 (#23853))
 dependencies = [
  "deno_core",
  "deno_terminal",
@@ -1773,7 +1845,11 @@ dependencies = [
 
 [[package]]
 name = "deno_runtime"
+<<<<<<< HEAD
 version = "0.159.0"
+=======
+version = "0.160.0"
+>>>>>>> d64921c19 (1.43.4 (#23853))
 dependencies = [
  "deno_ast",
  "deno_broadcast_channel",
@@ -1874,7 +1950,11 @@ dependencies = [
 
 [[package]]
 name = "deno_tls"
+<<<<<<< HEAD
 version = "0.138.0"
+=======
+version = "0.139.0"
+>>>>>>> d64921c19 (1.43.4 (#23853))
 dependencies = [
  "deno_core",
  "deno_native_certs",
@@ -1898,7 +1978,11 @@ dependencies = [
 
 [[package]]
 name = "deno_url"
+<<<<<<< HEAD
 version = "0.151.0"
+=======
+version = "0.152.0"
+>>>>>>> d64921c19 (1.43.4 (#23853))
 dependencies = [
  "deno_bench_util",
  "deno_console",
@@ -1909,7 +1993,11 @@ dependencies = [
 
 [[package]]
 name = "deno_web"
+<<<<<<< HEAD
 version = "0.182.0"
+=======
+version = "0.183.0"
+>>>>>>> d64921c19 (1.43.4 (#23853))
 dependencies = [
  "async-trait",
  "base64-simd 0.8.0",
@@ -1929,7 +2017,11 @@ dependencies = [
 
 [[package]]
 name = "deno_webgpu"
+<<<<<<< HEAD
 version = "0.118.0"
+=======
+version = "0.119.0"
+>>>>>>> d64921c19 (1.43.4 (#23853))
 dependencies = [
  "deno_core",
  "raw-window-handle",
@@ -1941,7 +2033,11 @@ dependencies = [
 
 [[package]]
 name = "deno_webidl"
+<<<<<<< HEAD
 version = "0.151.0"
+=======
+version = "0.152.0"
+>>>>>>> d64921c19 (1.43.4 (#23853))
 dependencies = [
  "deno_bench_util",
  "deno_core",
@@ -1949,7 +2045,11 @@ dependencies = [
 
 [[package]]
 name = "deno_websocket"
+<<<<<<< HEAD
 version = "0.156.0"
+=======
+version = "0.157.0"
+>>>>>>> d64921c19 (1.43.4 (#23853))
 dependencies = [
  "bytes",
  "deno_core",
@@ -1969,7 +2069,11 @@ dependencies = [
 
 [[package]]
 name = "deno_webstorage"
+<<<<<<< HEAD
 version = "0.146.0"
+=======
+version = "0.147.0"
+>>>>>>> d64921c19 (1.43.4 (#23853))
 dependencies = [
  "deno_core",
  "deno_web",
@@ -4110,7 +4214,11 @@ dependencies = [
 
 [[package]]
 name = "napi_sym"
+<<<<<<< HEAD
 version = "0.81.0"
+=======
+version = "0.82.0"
+>>>>>>> d64921c19 (1.43.4 (#23853))
 dependencies = [
  "quote",
  "serde",

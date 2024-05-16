@@ -5,7 +5,11 @@ import { stringify } from "jsr:@std/yaml@^0.221/stringify";
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
+<<<<<<< HEAD
 const cacheVersion = 90;
+=======
+const cacheVersion = 91;
+>>>>>>> d64921c19 (1.43.4 (#23853))
 
 const ubuntuX86Runner = "ubuntu-22.04";
 const ubuntuX86XlRunner = "ubuntu-22.04-xl";
