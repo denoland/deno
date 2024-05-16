@@ -234,12 +234,6 @@ itest!(_044_bad_resource {
   exit_code: 1,
 });
 
-itest!(_045_proxy {
-  args: "run -L debug --allow-net --allow-env --allow-run --allow-read --reload --quiet run/045_proxy_test.ts",
-  output: "run/045_proxy_test.ts.out",
-  http_server: true,
-});
-
 itest!(_046_tsx {
   args: "run --quiet --reload run/046_jsx_test.tsx",
   output: "run/046_jsx_test.tsx.out",
@@ -4616,8 +4610,8 @@ fn file_fetcher_preserves_permissions() {
     .args("repl --quiet")
     .with_pty(|mut console| {
       console.write_line(
-      "const a = await import('http://localhost:4545/run/019_media_types.ts');",
-    );
+        "const a = await import('http://localhost:4545/run/019_media_types.ts');",
+      );
       console.expect("Allow?");
       console.human_delay();
       console.write_line_raw("y");

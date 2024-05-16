@@ -517,6 +517,32 @@ Deno.test({
 });
 
 Deno.test({
+  name: "[node/worker_threads] Returns terminate promise with exit code",
+  async fn() {
+    const deferred = Promise.withResolvers<void>();
+    const worker = new workerThreads.Worker(
+      `
+      import { parentPort } from "node:worker_threads";
+      parentPort.postMessage("ok");
+      `,
+      {
+        eval: true,
+      },
+    );
+
+    worker.on("message", (data) => {
+      assertEquals(data, "ok");
+      deferred.resolve();
+    });
+
+    await deferred.promise;
+    const promise = worker.terminate();
+    assertEquals(typeof promise.then, "function");
+    assertEquals(await promise, 0);
+  },
+});
+
+Deno.test({
   name:
     "[node/worker_threads] MessagePort.on all message listeners are invoked",
   async fn() {
