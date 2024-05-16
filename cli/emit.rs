@@ -89,87 +89,62 @@ impl Emitter {
     media_type: MediaType,
     source: &Arc<str>,
   ) -> Result<ModuleCodeString, AnyError> {
-    let source_hash = self.get_source_hash(source);
-
-    if let Some(emit_code) =
-      self.emit_cache.get_emit_code(specifier, source_hash)
-    {
-      Ok(emit_code.into())
-    } else {
-      // nothing else needs the parsed source at this point, so remove from
-      // the cache in order to not transpile owned
-      let parsed_source_cache = self.parsed_source_cache.clone();
-      let transpile_and_emit_options = self.transpile_and_emit_options.clone();
-      let transpile_result = deno_core::unsync::spawn_blocking({
-        let specifier = specifier.clone();
-        let source = source.clone();
-        move || -> Result<_, AnyError> {
-          let parsed_source = parsed_source_cache
-            .remove_or_parse_module(&specifier, source, media_type)?;
-          let (transpile_options, emit_options) =
-            transpile_and_emit_options.as_ref();
-          Ok(parsed_source.transpile(transpile_options, emit_options)?)
-        }
-      })
-      .await
-      .unwrap()?;
-      let transpiled_source = match transpile_result {
-        TranspileResult::Owned(source) => source,
-        TranspileResult::Cloned(source) => {
-          debug_assert!(false, "Transpile owned failed.");
-          source
-        }
-      };
-      debug_assert!(transpiled_source.source_map.is_none());
-      self.emit_cache.set_emit_code(
-        specifier,
-        source_hash,
-        &transpiled_source.text,
-      );
-      Ok(transpiled_source.text.into())
+    let helper = EmitParsedSourceHelper(self);
+    match helper.pre_emit_parsed_source(specifier, source) {
+      PreEmitResult::Cached(emitted_text) => Ok(emitted_text),
+      PreEmitResult::NotCached { source_hash } => {
+        let parsed_source_cache = self.parsed_source_cache.clone();
+        let transpile_and_emit_options =
+          self.transpile_and_emit_options.clone();
+        let transpile_result = deno_core::unsync::spawn_blocking({
+          let specifier = specifier.clone();
+          let source = source.clone();
+          move || -> Result<_, AnyError> {
+            EmitParsedSourceHelper::transpile(
+              &parsed_source_cache,
+              &specifier,
+              source.clone(),
+              media_type,
+              &transpile_and_emit_options.0,
+              &transpile_and_emit_options.1,
+            )
+          }
+        })
+        .await
+        .unwrap()?;
+        Ok(helper.post_emit_parsed_source(
+          specifier,
+          transpile_result,
+          source_hash,
+        ))
+      }
     }
   }
 
-  // todo(THIS PR): consolidate with above
   pub fn emit_parsed_source_sync(
     &self,
     specifier: &ModuleSpecifier,
     media_type: MediaType,
     source: &Arc<str>,
   ) -> Result<ModuleCodeString, AnyError> {
-    let source_hash = self.get_source_hash(source);
-
-    if let Some(emit_code) =
-      self.emit_cache.get_emit_code(specifier, source_hash)
-    {
-      Ok(emit_code.into())
-    } else {
-      // nothing else needs the parsed source at this point, so remove from
-      // the cache in order to not transpile owned
-      let transpile_and_emit_options = self.transpile_and_emit_options.clone();
-      let parsed_source = self.parsed_source_cache.remove_or_parse_module(
-        &specifier,
-        source.clone(),
-        media_type,
-      )?;
-      let (transpile_options, emit_options) =
-        transpile_and_emit_options.as_ref();
-      let transpile_result =
-        parsed_source.transpile(transpile_options, emit_options)?;
-      let transpiled_source = match transpile_result {
-        TranspileResult::Owned(source) => source,
-        TranspileResult::Cloned(source) => {
-          debug_assert!(false, "Transpile owned failed.");
-          source
-        }
-      };
-      debug_assert!(transpiled_source.source_map.is_none());
-      self.emit_cache.set_emit_code(
-        specifier,
-        source_hash,
-        &transpiled_source.text,
-      );
-      Ok(transpiled_source.text.into())
+    let helper = EmitParsedSourceHelper(self);
+    match helper.pre_emit_parsed_source(specifier, source) {
+      PreEmitResult::Cached(emitted_text) => Ok(emitted_text),
+      PreEmitResult::NotCached { source_hash } => {
+        let transpile_result = EmitParsedSourceHelper::transpile(
+          &self.parsed_source_cache,
+          specifier,
+          source.clone(),
+          media_type,
+          &self.transpile_and_emit_options.0,
+          &self.transpile_and_emit_options.1,
+        )?;
+        Ok(helper.post_emit_parsed_source(
+          specifier,
+          transpile_result,
+          source_hash,
+        ))
+      }
     }
   }
 
@@ -203,5 +178,68 @@ impl Emitter {
       .write_str(source_text)
       .write_u64(self.transpile_and_emit_options_hash)
       .finish()
+  }
+}
+
+enum PreEmitResult {
+  Cached(ModuleCodeString),
+  NotCached { source_hash: u64 },
+}
+
+/// Helper to share code between async and sync emit_parsed_source methods.
+struct EmitParsedSourceHelper<'a>(&'a Emitter);
+
+impl<'a> EmitParsedSourceHelper<'a> {
+  pub fn pre_emit_parsed_source(
+    &self,
+    specifier: &ModuleSpecifier,
+    source: &Arc<str>,
+  ) -> PreEmitResult {
+    let source_hash = self.0.get_source_hash(source);
+
+    if let Some(emit_code) =
+      self.0.emit_cache.get_emit_code(specifier, source_hash)
+    {
+      PreEmitResult::Cached(emit_code.into())
+    } else {
+      PreEmitResult::NotCached { source_hash }
+    }
+  }
+
+  pub fn transpile(
+    parsed_source_cache: &ParsedSourceCache,
+    specifier: &ModuleSpecifier,
+    source: Arc<str>,
+    media_type: MediaType,
+    transpile_options: &deno_ast::TranspileOptions,
+    emit_options: &deno_ast::EmitOptions,
+  ) -> Result<TranspileResult, AnyError> {
+    // nothing else needs the parsed source at this point, so remove from
+    // the cache in order to not transpile owned
+    let parsed_source = parsed_source_cache
+      .remove_or_parse_module(specifier, source, media_type)?;
+    Ok(parsed_source.transpile(transpile_options, emit_options)?)
+  }
+
+  pub fn post_emit_parsed_source(
+    &self,
+    specifier: &ModuleSpecifier,
+    transpile_result: TranspileResult,
+    source_hash: u64,
+  ) -> ModuleCodeString {
+    let transpiled_source = match transpile_result {
+      TranspileResult::Owned(source) => source,
+      TranspileResult::Cloned(source) => {
+        debug_assert!(false, "Transpile owned failed.");
+        source
+      }
+    };
+    debug_assert!(transpiled_source.source_map.is_none());
+    self.0.emit_cache.set_emit_code(
+      specifier,
+      source_hash,
+      &transpiled_source.text,
+    );
+    transpiled_source.text.into()
   }
 }
