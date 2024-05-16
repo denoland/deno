@@ -767,3 +767,15 @@ Deno.test({
     assert(result >= 1000);
   },
 });
+
+// Regression test for https://github.com/denoland/deno/issues/20663
+Deno.test({
+  name: "regression for #20663",
+  fn: async () => {
+    const signal = AbortSignal.timeout(2000);
+    const t = setTimeout(() => {
+      assert(signal.aborted);
+    }, 3000);
+    clearTimeout(t);
+  },
+});
