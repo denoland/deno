@@ -2504,9 +2504,9 @@ dependencies = [
 
 [[package]]
 name = "eszip"
-version = "0.68.5"
+version = "0.69.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bd4261ccce6111115c5b536e7f76222a779d69a038bb4c13958575f12ffe5606"
+checksum = "8f606daca1ce18c69ccdabc59aa1c7e077356b8ffcd74e12c7646f545320a2fd"
 dependencies = [
  "anyhow",
  "base64",
