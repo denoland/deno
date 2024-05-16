@@ -128,6 +128,7 @@ class AbortSignal extends EventTarget {
       millis,
     );
     unrefTimer(signal[timerId]);
+    clearTimeout(signal[timerId]);
     return signal;
   }
 
