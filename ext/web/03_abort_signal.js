@@ -33,7 +33,7 @@ import {
   listenerCount,
   setIsTrusted,
 } from "./02_event.js";
-import { refTimer, setTimeout, unrefTimer } from "./02_timers.js";
+import { refTimer, setTimeout, unrefTimer, clearTimeout } from "./02_timers.js";
 
 // Since WeakSet is not a iterable, WeakRefSet class is provided to store and
 // iterate objects.
@@ -120,6 +120,7 @@ class AbortSignal extends EventTarget {
     const signal = new AbortSignal(illegalConstructorKey);
     signal[timerId] = setTimeout(
       () => {
+        clearTimeout(signal[timerId]);
         signal[timerId] = null;
         signal[signalAbort](
           new DOMException("Signal timed out.", "TimeoutError"),
@@ -128,7 +129,6 @@ class AbortSignal extends EventTarget {
       millis,
     );
     unrefTimer(signal[timerId]);
-    clearTimeout(signal[timerId]);
     return signal;
   }
 
