@@ -8739,9 +8739,7 @@
               "blob-url.any.worker-module.html": [
                 "Revoking a blob URL immediately after calling import will not fail"
               ],
-              "blob-url-workers.window.html": [
-                "A revoked blob URL will not resolve in a worker even if it's in the window's module graph"
-              ],
+              "blob-url-workers.window.html": [],
               "microtasks": {
                 "basic.any.html": [
                   "import() should not drain the microtask queue if it fails during specifier resolution",

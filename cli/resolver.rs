@@ -91,8 +91,8 @@ impl CliNodeResolver {
     }
   }
 
-  pub fn in_npm_package(&self, referrer: &ModuleSpecifier) -> bool {
-    self.npm_resolver.in_npm_package(referrer)
+  pub fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool {
+    self.npm_resolver.in_npm_package(specifier)
   }
 
   pub fn get_closest_package_json(
@@ -249,6 +249,7 @@ impl CliNodeResolver {
   }
 }
 
+#[derive(Clone)]
 pub struct NpmModuleLoader {
   cjs_resolutions: Arc<CjsResolutionStore>,
   node_code_translator: Arc<CliNodeCodeTranslator>,
@@ -268,18 +269,6 @@ impl NpmModuleLoader {
       node_code_translator,
       fs,
       node_resolver,
-    }
-  }
-
-  pub fn maybe_prepare_load(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Option<Result<(), AnyError>> {
-    if self.node_resolver.in_npm_package(specifier) {
-      // nothing to prepare
-      Some(Ok(()))
-    } else {
-      None
     }
   }
 
