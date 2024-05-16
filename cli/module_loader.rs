@@ -547,15 +547,43 @@ impl CliModuleLoader {
     &self,
     referrer: &str,
   ) -> Result<ModuleSpecifier, AnyError> {
-    if referrer.is_empty() && self.shared.is_repl {
+    // todo(https://github.com/denoland/deno_core/pull/741): use function from deno_core
+    fn specifier_has_uri_scheme(specifier: &str) -> bool {
+      let mut chars = specifier.chars();
+      let mut len = 0usize;
+      // The first character must be a letter.
+      match chars.next() {
+        Some(c) if c.is_ascii_alphabetic() => len += 1,
+        _ => return false,
+      }
+      // Second and following characters must be either a letter, number,
+      // plus sign, minus sign, or dot.
+      loop {
+        match chars.next() {
+          Some(c) if c.is_ascii_alphanumeric() || "+-.".contains(c) => len += 1,
+          Some(':') if len >= 2 => return true,
+          _ => return false,
+        }
+      }
+    }
+
+    let referrer = if referrer.is_empty() && self.shared.is_repl {
       // FIXME(bartlomieju): this is a hacky way to provide compatibility with REPL
       // and `Deno.core.evalContext` API. Ideally we should always have a referrer filled
-      // but sadly that's not the case due to missing APIs in V8.
-      let cwd = std::env::current_dir().context("Unable to get CWD")?;
-      deno_core::resolve_path("./$deno$repl.ts", &cwd).map_err(|e| e.into())
+      "./$deno$repl.ts"
     } else {
+      referrer
+    };
+
+    if referrer == "." {
+      // main module, use the initial cwd
       deno_core::resolve_url_or_path(referrer, &self.shared.initial_cwd)
         .map_err(|e| e.into())
+    } else if specifier_has_uri_scheme(referrer) {
+      deno_core::resolve_url(referrer).map_err(|e| e.into())
+    } else {
+      let cwd = std::env::current_dir().context("Unable to get CWD")?;
+      deno_core::resolve_path(referrer, &cwd).map_err(|e| e.into())
     }
   }
 
