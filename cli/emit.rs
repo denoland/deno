@@ -17,8 +17,8 @@ use std::sync::Arc;
 pub struct Emitter {
   emit_cache: EmitCache,
   parsed_source_cache: Arc<ParsedSourceCache>,
-  transpile_options: deno_ast::TranspileOptions,
-  emit_options: deno_ast::EmitOptions,
+  transpile_and_emit_options:
+    Arc<(deno_ast::TranspileOptions, deno_ast::EmitOptions)>,
   // cached hash of the transpile and emit options
   transpile_and_emit_options_hash: u64,
 }
@@ -39,16 +39,16 @@ impl Emitter {
     Self {
       emit_cache,
       parsed_source_cache,
-      emit_options,
-      transpile_options,
+      transpile_and_emit_options: Arc::new((transpile_options, emit_options)),
       transpile_and_emit_options_hash,
     }
   }
 
-  pub fn cache_module_emits(
+  pub async fn cache_module_emits(
     &self,
     graph: &ModuleGraph,
   ) -> Result<(), AnyError> {
+    // todo(dsherret): we could do this concurrently
     for module in graph.modules() {
       if let Module::Js(module) = module {
         let is_emittable = matches!(
@@ -60,11 +60,13 @@ impl Emitter {
             | MediaType::Tsx
         );
         if is_emittable {
-          self.emit_parsed_source(
-            &module.specifier,
-            module.media_type,
-            &module.source,
-          )?;
+          self
+            .emit_parsed_source(
+              &module.specifier,
+              module.media_type,
+              &module.source,
+            )
+            .await?;
         }
       }
     }
@@ -81,7 +83,7 @@ impl Emitter {
     self.emit_cache.get_emit_code(specifier, source_hash)
   }
 
-  pub fn emit_parsed_source(
+  pub async fn emit_parsed_source(
     &self,
     specifier: &ModuleSpecifier,
     media_type: MediaType,
@@ -96,14 +98,65 @@ impl Emitter {
     } else {
       // nothing else needs the parsed source at this point, so remove from
       // the cache in order to not transpile owned
-      let parsed_source = self.parsed_source_cache.remove_or_parse_module(
+      let parsed_source_cache = self.parsed_source_cache.clone();
+      let transpile_and_emit_options = self.transpile_and_emit_options.clone();
+      let transpile_result = deno_core::unsync::spawn_blocking({
+        let specifier = specifier.clone();
+        let source = source.clone();
+        move || -> Result<_, AnyError> {
+          let parsed_source = parsed_source_cache
+            .remove_or_parse_module(&specifier, source, media_type)?;
+          let (transpile_options, emit_options) =
+            transpile_and_emit_options.as_ref();
+          Ok(parsed_source.transpile(transpile_options, emit_options)?)
+        }
+      })
+      .await
+      .unwrap()?;
+      let transpiled_source = match transpile_result {
+        TranspileResult::Owned(source) => source,
+        TranspileResult::Cloned(source) => {
+          debug_assert!(false, "Transpile owned failed.");
+          source
+        }
+      };
+      debug_assert!(transpiled_source.source_map.is_none());
+      self.emit_cache.set_emit_code(
         specifier,
+        source_hash,
+        &transpiled_source.text,
+      );
+      Ok(transpiled_source.text.into())
+    }
+  }
+
+  // todo(THIS PR): consolidate with above
+  pub fn emit_parsed_source_sync(
+    &self,
+    specifier: &ModuleSpecifier,
+    media_type: MediaType,
+    source: &Arc<str>,
+  ) -> Result<ModuleCodeString, AnyError> {
+    let source_hash = self.get_source_hash(source);
+
+    if let Some(emit_code) =
+      self.emit_cache.get_emit_code(specifier, source_hash)
+    {
+      Ok(emit_code.into())
+    } else {
+      // nothing else needs the parsed source at this point, so remove from
+      // the cache in order to not transpile owned
+      let transpile_and_emit_options = self.transpile_and_emit_options.clone();
+      let parsed_source = self.parsed_source_cache.remove_or_parse_module(
+        &specifier,
         source.clone(),
         media_type,
       )?;
-      let transpiled_source = match parsed_source
-        .transpile(&self.transpile_options, &self.emit_options)?
-      {
+      let (transpile_options, emit_options) =
+        transpile_and_emit_options.as_ref();
+      let transpile_result =
+        parsed_source.transpile(transpile_options, emit_options)?;
+      let transpiled_source = match transpile_result {
         TranspileResult::Owned(source) => source,
         TranspileResult::Cloned(source) => {
           debug_assert!(false, "Transpile owned failed.");
@@ -134,10 +187,10 @@ impl Emitter {
     let parsed_source = self
       .parsed_source_cache
       .remove_or_parse_module(specifier, source_arc, media_type)?;
-    let mut options = self.emit_options.clone();
+    let mut options = self.transpile_and_emit_options.1.clone();
     options.source_map = SourceMapOption::None;
     let transpiled_source = parsed_source
-      .transpile(&self.transpile_options, &options)?
+      .transpile(&self.transpile_and_emit_options.0, &options)?
       .into_source();
     Ok(transpiled_source.text)
   }
