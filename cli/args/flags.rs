@@ -2463,7 +2463,7 @@ fn serve_subcommand() -> Command {
     .arg(
       Arg::new("port")
         .long("port")
-        .help("The TCP port to serve on, defaulting to 8000.")
+        .help("The TCP port to serve on, defaulting to 8000. Pass 0 to pick a random free port.")
         .value_parser(value_parser!(u16)),
     )
     .arg(
