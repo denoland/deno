@@ -352,8 +352,8 @@ fn console_size_from_fd(
       return Err(Error::last_os_error());
     }
     Ok(ConsoleSize {
-      cols: bufinfo.dwSize.X as u32,
-      rows: bufinfo.dwSize.Y as u32,
+      cols: bufinfo.srWindow.Right as u32 - bufinfo.srWindow.Left as u32 + 1,
+      rows: bufinfo.srWindow.Bottom as u32 - bufinfo.srWindow.Top as u32 + 1,
     })
   }
 }
