@@ -793,9 +793,9 @@ internals.serveHttpOnConnection = serveHttpOnConnection;
 
 function registerDeclarativeServer(exports) {
   if (ObjectHasOwn(exports, "fetch")) {
-    if (typeof exports.fetch !== "function" || exports.fetch.length !== 1) {
+    if (typeof exports.fetch !== "function") {
       throw new TypeError(
-        "Invalid type for fetch: must be a function with a single parameter",
+        "Invalid type for fetch: must be a function with a single or no parameter",
       );
     }
     return ({ servePort, serveHost }) => {
