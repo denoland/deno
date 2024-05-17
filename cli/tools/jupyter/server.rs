@@ -19,56 +19,54 @@ use deno_core::CancelHandle;
 use tokio::sync::mpsc;
 use tokio::sync::Mutex;
 
-use super::ConnectionSpec;
+use runtimelib::ConnectionInfo;
+use runtimelib::KernelControlConnection;
+use runtimelib::KernelHeartbeatConnection;
+use runtimelib::KernelIoPubConnection;
+use runtimelib::KernelShellConnection;
 
 use runtimelib::messaging;
-use runtimelib::messaging::content::HelpLink;
-use runtimelib::messaging::content::LanguageInfo;
-use runtimelib::messaging::content::ReplyError;
-use runtimelib::messaging::content::ReplyStatus;
-use runtimelib::messaging::AsChildOf;
-use runtimelib::messaging::CompleteReply;
-use runtimelib::messaging::Connection;
-use runtimelib::messaging::ExecuteInput;
-use runtimelib::messaging::ExecuteRequest;
-use runtimelib::messaging::JupyterMessage;
-use runtimelib::messaging::JupyterMessageContent;
-use runtimelib::messaging::KernelInfoReply;
-use runtimelib::messaging::StreamContent;
+use runtimelib::AsChildOf;
+use runtimelib::JupyterMessage;
+use runtimelib::JupyterMessageContent;
+use runtimelib::ReplyError;
+use runtimelib::ReplyStatus;
+use runtimelib::StreamContent;
 
 pub struct JupyterServer {
   execution_count: usize,
   last_execution_request: Rc<RefCell<Option<JupyterMessage>>>,
   // This is Arc<Mutex<>>, so we don't hold RefCell borrows across await
   // points.
-  iopub_socket: Arc<Mutex<Connection<zeromq::PubSocket>>>,
+  iopub_connection: Arc<Mutex<KernelIoPubConnection>>,
   repl_session: repl::ReplSession,
 }
 
 impl JupyterServer {
   pub async fn start(
-    spec: ConnectionSpec,
+    connection_info: ConnectionInfo,
     mut stdio_rx: mpsc::UnboundedReceiver<StreamContent>,
     mut repl_session: repl::ReplSession,
   ) -> Result<(), AnyError> {
     let mut heartbeat =
-      bind_socket::<zeromq::RepSocket>(&spec, spec.hb_port).await?;
-    let shell_socket =
-      bind_socket::<zeromq::RouterSocket>(&spec, spec.shell_port).await?;
-    let control_socket =
-      bind_socket::<zeromq::RouterSocket>(&spec, spec.control_port).await?;
-    let _stdin_socket =
-      bind_socket::<zeromq::RouterSocket>(&spec, spec.stdin_port).await?;
-    let iopub_socket =
-      bind_socket::<zeromq::PubSocket>(&spec, spec.iopub_port).await?;
-    let iopub_socket = Arc::new(Mutex::new(iopub_socket));
+      connection_info.create_kernel_heartbeat_connection().await?;
+    let shell_connection =
+      connection_info.create_kernel_shell_connection().await?;
+    let control_connection =
+      connection_info.create_kernel_control_connection().await?;
+    let _stdin_connection =
+      connection_info.create_kernel_stdin_connection().await?;
+    let iopub_connection =
+      connection_info.create_kernel_iopub_connection().await?;
+
+    let iopub_connection = Arc::new(Mutex::new(iopub_connection));
     let last_execution_request = Rc::new(RefCell::new(None));
 
-    // Store `iopub_socket` in the op state so it's accessible to the runtime API.
+    // Store `iopub_connection` in the op state so it's accessible to the runtime API.
     {
       let op_state_rc = repl_session.worker.js_runtime.op_state();
       let mut op_state = op_state_rc.borrow_mut();
-      op_state.put(iopub_socket.clone());
+      op_state.put(iopub_connection.clone());
       op_state.put(last_execution_request.clone());
     }
 
@@ -76,7 +74,7 @@ impl JupyterServer {
 
     let mut server = Self {
       execution_count: 0,
-      iopub_socket: iopub_socket.clone(),
+      iopub_connection: iopub_connection.clone(),
       last_execution_request: last_execution_request.clone(),
       repl_session,
     };
@@ -95,7 +93,7 @@ impl JupyterServer {
       let cancel_handle = cancel_handle.clone();
       async move {
         if let Err(err) =
-          Self::handle_control(control_socket, cancel_handle).await
+          Self::handle_control(control_connection, cancel_handle).await
         {
           log::error!(
             "Control error: {}\nBacktrace:\n{}",
@@ -107,7 +105,7 @@ impl JupyterServer {
     });
 
     let handle3 = deno_core::unsync::spawn(async move {
-      if let Err(err) = server.handle_shell(shell_socket).await {
+      if let Err(err) = server.handle_shell(shell_connection).await {
         log::error!("Shell error: {}\nBacktrace:\n{}", err, err.backtrace());
       }
     });
@@ -115,7 +113,7 @@ impl JupyterServer {
     let handle4 = deno_core::unsync::spawn(async move {
       while let Some(stdio_msg) = stdio_rx.recv().await {
         Self::handle_stdio_msg(
-          iopub_socket.clone(),
+          iopub_connection.clone(),
           last_execution_request.clone(),
           stdio_msg,
         )
@@ -133,14 +131,14 @@ impl JupyterServer {
     Ok(())
   }
 
-  async fn handle_stdio_msg<S: zeromq::SocketSend>(
-    iopub_socket: Arc<Mutex<Connection<S>>>,
+  async fn handle_stdio_msg(
+    iopub_connection: Arc<Mutex<KernelIoPubConnection>>,
     last_execution_request: Rc<RefCell<Option<JupyterMessage>>>,
     stdio_msg: StreamContent,
   ) {
     let maybe_exec_result = last_execution_request.borrow().clone();
     if let Some(exec_request) = maybe_exec_result {
-      let result = (iopub_socket.lock().await)
+      let result = (iopub_connection.lock().await)
         .send(stdio_msg.as_child_of(&exec_request))
         .await;
 
@@ -151,7 +149,7 @@ impl JupyterServer {
   }
 
   async fn handle_heartbeat(
-    connection: &mut Connection<zeromq::RepSocket>,
+    connection: &mut KernelHeartbeatConnection,
   ) -> Result<(), AnyError> {
     loop {
       connection.single_heartbeat().await?;
@@ -159,7 +157,7 @@ impl JupyterServer {
   }
 
   async fn handle_control(
-    mut connection: Connection<zeromq::RouterSocket>,
+    mut connection: KernelControlConnection,
     cancel_handle: Rc<CancelHandle>,
   ) -> Result<(), AnyError> {
     loop {
@@ -167,6 +165,9 @@ impl JupyterServer {
 
       match msg.content {
         JupyterMessageContent::KernelInfoRequest(_) => {
+          // normally kernel info is sent from the shell channel
+          // however, some frontends will send it on the control channel
+          // and it's no harm to send a kernel info reply on control
           connection.send(kernel_info().as_child_of(&msg)).await?;
         }
         JupyterMessageContent::ShutdownRequest(_) => {
@@ -174,6 +175,11 @@ impl JupyterServer {
         }
         JupyterMessageContent::InterruptRequest(_) => {
           log::error!("Interrupt request currently not supported");
+        }
+        JupyterMessageContent::DebugRequest(_) => {
+          log::error!("Debug request currently not supported");
+          // See https://jupyter-client.readthedocs.io/en/latest/messaging.html#debug-request
+          // and https://microsoft.github.io/debug-adapter-protocol/
         }
         _ => {
           log::error!(
@@ -187,7 +193,7 @@ impl JupyterServer {
 
   async fn handle_shell(
     &mut self,
-    mut connection: Connection<zeromq::RouterSocket>,
+    mut connection: KernelShellConnection,
   ) -> Result<(), AnyError> {
     loop {
       let msg = connection.read().await?;
@@ -198,7 +204,7 @@ impl JupyterServer {
   async fn handle_shell_message(
     &mut self,
     msg: JupyterMessage,
-    connection: &mut Connection<zeromq::RouterSocket>,
+    connection: &mut KernelShellConnection,
   ) -> Result<(), AnyError> {
     let parent = &msg.clone();
 
@@ -240,11 +246,12 @@ impl JupyterServer {
 
           connection
             .send(
-              CompleteReply {
+              messaging::CompleteReply {
                 matches,
                 cursor_start,
                 cursor_end,
                 metadata: Default::default(),
+                status: ReplyStatus::Ok,
                 error: None,
               }
               .as_child_of(parent),
@@ -290,11 +297,12 @@ impl JupyterServer {
 
           connection
             .send(
-              CompleteReply {
+              messaging::CompleteReply {
                 matches: completions,
                 cursor_start,
                 cursor_end: cursor_pos,
                 metadata: Default::default(),
+                status: ReplyStatus::Ok,
                 error: None,
               }
               .as_child_of(parent),
@@ -302,6 +310,40 @@ impl JupyterServer {
             .await?;
         }
       }
+
+      JupyterMessageContent::InspectRequest(_req) => {
+        // TODO(bartlomieju?): implement introspection request
+        // The inspect request is used to get information about an object at cursor position.
+        // There are two detail levels: 0 is typically documentation, 1 is typically source code
+
+        // The response includes a MimeBundle to render the object:
+        // {
+        //   "status": "ok",
+        //   "found": true,
+        //   "data": {
+        //     "text/plain": "Plain documentation here",
+        //     "text/html": "<div>Rich documentation here</div>",
+        //     "application/json": {
+        //       "key1": "value1",
+        //       "key2": "value2"
+        //     }
+        //   },
+        // }
+
+        connection
+          .send(
+            messaging::InspectReply {
+              status: ReplyStatus::Ok,
+              found: false,
+              data: Default::default(),
+              metadata: Default::default(),
+              error: None,
+            }
+            .as_child_of(parent),
+          )
+          .await?;
+      }
+
       JupyterMessageContent::IsCompleteRequest(_) => {
         connection
           .send(messaging::IsCompleteReply::complete().as_child_of(parent))
@@ -327,21 +369,15 @@ impl JupyterServer {
             messaging::HistoryReply {
               history: vec![],
               error: None,
+              status: ReplyStatus::Ok,
             }
             .as_child_of(parent),
           )
           .await?;
       }
-      JupyterMessageContent::InputRequest(_req) => {
-        connection
-          .send(
-            messaging::InputReply {
-              value: Default::default(),
-              error: None,
-            }
-            .as_child_of(parent),
-          )
-          .await?;
+      JupyterMessageContent::InputReply(_rep) => {
+        // TODO(@zph): implement input reply from https://github.com/denoland/deno/pull/23592
+        // NOTE: This will belong on the stdin channel, not the shell channel
       }
       JupyterMessageContent::CommInfoRequest(_req) => {
         connection
@@ -377,9 +413,9 @@ impl JupyterServer {
 
   async fn handle_execution_request(
     &mut self,
-    execute_request: ExecuteRequest,
+    execute_request: messaging::ExecuteRequest,
     parent_message: &JupyterMessage,
-    connection: &mut Connection<zeromq::RouterSocket>,
+    connection: &mut KernelShellConnection,
   ) -> Result<(), AnyError> {
     if !execute_request.silent && execute_request.store_history {
       self.execution_count += 1;
@@ -388,7 +424,7 @@ impl JupyterServer {
 
     self
       .send_iopub(
-        ExecuteInput {
+        messaging::ExecuteInput {
           execution_count: self.execution_count,
           code: execute_request.code.clone(),
         }
@@ -564,37 +600,27 @@ impl JupyterServer {
     &mut self,
     message: JupyterMessage,
   ) -> Result<(), AnyError> {
-    self.iopub_socket.lock().await.send(message).await
+    self.iopub_connection.lock().await.send(message).await
   }
 }
 
-async fn bind_socket<S: zeromq::Socket>(
-  config: &ConnectionSpec,
-  port: u32,
-) -> Result<Connection<S>, AnyError> {
-  let endpoint = format!("{}://{}:{}", config.transport, config.ip, port);
-  let mut socket = S::new();
-  socket.bind(&endpoint).await?;
-  Ok(Connection::new(socket, &config.key))
-}
-
-fn kernel_info() -> KernelInfoReply {
-  KernelInfoReply {
+fn kernel_info() -> messaging::KernelInfoReply {
+  messaging::KernelInfoReply {
     status: ReplyStatus::Ok,
     protocol_version: "5.3".to_string(),
     implementation: "Deno kernel".to_string(),
     implementation_version: crate::version::deno().to_string(),
-    language_info: LanguageInfo {
+    language_info: messaging::LanguageInfo {
       name: "typescript".to_string(),
       version: crate::version::TYPESCRIPT.to_string(),
       mimetype: "text/x.typescript".to_string(),
       file_extension: ".ts".to_string(),
       pygments_lexer: "typescript".to_string(),
-      codemirror_mode: serde_json::Value::Null,
+      codemirror_mode: messaging::CodeMirrorMode::typescript(),
       nbconvert_exporter: "script".to_string(),
     },
     banner: "Welcome to Deno kernel".to_string(),
-    help_links: vec![HelpLink {
+    help_links: vec![messaging::HelpLink {
       text: "Visit Deno manual".to_string(),
       url: "https://deno.land/manual".to_string(),
     }],

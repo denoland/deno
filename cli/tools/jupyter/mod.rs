@@ -14,7 +14,6 @@ use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::located_script_name;
 use deno_core::resolve_url_or_path;
-use deno_core::serde::Deserialize;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_runtime::deno_io::Stdio;
@@ -23,6 +22,8 @@ use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::WorkerExecutionMode;
 use deno_terminal::colors;
+
+use runtimelib::jupyter::ConnectionInfo;
 use runtimelib::messaging::StreamContent;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::UnboundedSender;
@@ -72,7 +73,7 @@ pub async fn kernel(
     std::fs::read_to_string(&connection_filepath).with_context(|| {
       format!("Couldn't read connection file: {:?}", connection_filepath)
     })?;
-  let spec: ConnectionSpec =
+  let spec: ConnectionInfo =
     serde_json::from_str(&conn_file).with_context(|| {
       format!(
         "Connection file is not a valid JSON: {:?}",
@@ -150,16 +151,4 @@ pub async fn kernel(
   server::JupyterServer::start(spec, stdio_rx, repl_session).await?;
 
   Ok(())
-}
-
-#[derive(Debug, Deserialize)]
-pub struct ConnectionSpec {
-  ip: String,
-  transport: String,
-  control_port: u32,
-  shell_port: u32,
-  stdin_port: u32,
-  hb_port: u32,
-  iopub_port: u32,
-  key: String,
 }

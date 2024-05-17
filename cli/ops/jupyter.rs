@@ -4,10 +4,10 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use runtimelib::messaging::Connection;
-use runtimelib::messaging::JupyterMessage;
-use runtimelib::messaging::JupyterMessageContent;
-use runtimelib::messaging::StreamContent;
+use runtimelib::JupyterMessage;
+use runtimelib::JupyterMessageContent;
+use runtimelib::KernelIoPubConnection;
+use runtimelib::StreamContent;
 
 use deno_core::error::AnyError;
 use deno_core::op2;
@@ -40,12 +40,11 @@ pub async fn op_jupyter_broadcast(
   #[serde] metadata: serde_json::Value,
   #[serde] buffers: Vec<deno_core::JsBuffer>,
 ) -> Result<(), AnyError> {
-  let (iopub_socket, last_execution_request) = {
+  let (iopub_connection, last_execution_request) = {
     let s = state.borrow();
 
     (
-      s.borrow::<Arc<Mutex<Connection<zeromq::PubSocket>>>>()
-        .clone(),
+      s.borrow::<Arc<Mutex<KernelIoPubConnection>>>().clone(),
       s.borrow::<Rc<RefCell<Option<JupyterMessage>>>>().clone(),
     )
   };
@@ -73,7 +72,9 @@ pub async fn op_jupyter_broadcast(
       buffers.into_iter().map(|b| b.to_vec().into()).collect();
     jupyter_message.set_parent(last_request);
 
-    (iopub_socket.lock().await).send(jupyter_message).await?;
+    (iopub_connection.lock().await)
+      .send(jupyter_message)
+      .await?;
   }
 
   Ok(())
