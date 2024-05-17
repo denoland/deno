@@ -72,7 +72,7 @@ deno_emit = "=0.40.3"
 deno_graph = { version = "=0.75.2", features = ["tokio_executor"] }
 deno_lint = { version = "=0.58.4", features = ["docs"] }
 deno_lockfile.workspace = true
-deno_npm = "=0.20.1"
+deno_npm = "=0.20.2"
 deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting"] }
 deno_semver = "=0.5.4"
 deno_task_shell = "=0.16.1"
