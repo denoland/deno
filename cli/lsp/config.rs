@@ -1454,10 +1454,6 @@ impl ConfigTree {
       .unwrap_or_default()
   }
 
-  pub fn root_vendor_dir(&self) -> Option<&PathBuf> {
-    self.root_data().and_then(|d| d.vendor_dir.as_ref())
-  }
-
   pub fn root_lockfile(&self) -> Option<&Arc<Mutex<Lockfile>>> {
     self.root_data().and_then(|d| d.lockfile.as_ref())
   }

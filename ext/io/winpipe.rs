@@ -74,7 +74,7 @@ fn create_named_pipe_inner() -> io::Result<(RawHandle, RawHandle)> {
     // This should not happen, so we would like to get some better diagnostics here.
     // SAFETY: Printing last error for diagnostics
     unsafe {
-      eprintln!(
+      log::error!(
         "*** Unexpected server pipe failure '{pipe_name:?}': {:x}",
         GetLastError()
       );
@@ -99,7 +99,7 @@ fn create_named_pipe_inner() -> io::Result<(RawHandle, RawHandle)> {
     // SAFETY: Getting last error for diagnostics
     let error = unsafe { GetLastError() };
     // This should not happen, so we would like to get some better diagnostics here.
-    eprintln!(
+    log::error!(
       "*** Unexpected client pipe failure '{pipe_name:?}': {:x}",
       error
     );

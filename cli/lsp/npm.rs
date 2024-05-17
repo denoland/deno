@@ -34,6 +34,12 @@ impl CliNpmSearchApi {
       versions_cache: Default::default(),
     }
   }
+
+  pub fn clear_cache(&self) {
+    self.file_fetcher.clear_memory_files();
+    self.search_cache.clear();
+    self.versions_cache.clear();
+  }
 }
 
 #[async_trait::async_trait]

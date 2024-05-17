@@ -799,41 +799,39 @@ fn get_workspace_completions(
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::cache::GlobalHttpCache;
   use crate::cache::HttpCache;
+  use crate::lsp::cache::LspCache;
   use crate::lsp::documents::Documents;
   use crate::lsp::documents::LanguageId;
   use crate::lsp::search::tests::TestPackageSearchApi;
   use deno_core::resolve_url;
   use deno_graph::Range;
   use std::collections::HashMap;
-  use std::path::Path;
-  use std::sync::Arc;
   use test_util::TempDir;
 
-  fn mock_documents(
-    fixtures: &[(&str, &str, i32, LanguageId)],
-    source_fixtures: &[(&str, &str)],
-    location: &Path,
+  fn setup(
+    open_sources: &[(&str, &str, i32, LanguageId)],
+    fs_sources: &[(&str, &str)],
   ) -> Documents {
-    let cache = Arc::new(GlobalHttpCache::new(
-      location.to_path_buf(),
-      crate::cache::RealDenoCacheEnv,
-    ));
-    let mut documents = Documents::new(cache);
-    for (specifier, source, version, language_id) in fixtures {
+    let temp_dir = TempDir::new();
+    let cache = LspCache::new(Some(temp_dir.uri()));
+    let mut documents = Documents::default();
+    documents.update_config(
+      &Default::default(),
+      &Default::default(),
+      &cache,
+      &Default::default(),
+    );
+    for (specifier, source, version, language_id) in open_sources {
       let specifier =
         resolve_url(specifier).expect("failed to create specifier");
       documents.open(specifier, *version, *language_id, (*source).into());
     }
-    let http_cache = GlobalHttpCache::new(
-      location.to_path_buf(),
-      crate::cache::RealDenoCacheEnv,
-    );
-    for (specifier, source) in source_fixtures {
+    for (specifier, source) in fs_sources {
       let specifier =
         resolve_url(specifier).expect("failed to create specifier");
-      http_cache
+      cache
+        .global()
         .set(&specifier, HashMap::default(), source.as_bytes())
         .expect("could not cache file");
       assert!(
@@ -842,15 +840,6 @@ mod tests {
       );
     }
     documents
-  }
-
-  fn setup(
-    temp_dir: &TempDir,
-    documents: &[(&str, &str, i32, LanguageId)],
-    sources: &[(&str, &str)],
-  ) -> Documents {
-    let location = temp_dir.path().join("deps");
-    mock_documents(documents, sources, location.as_path())
   }
 
   #[test]
@@ -936,9 +925,7 @@ mod tests {
         character: 21,
       },
     };
-    let temp_dir = TempDir::new();
     let documents = setup(
-      &temp_dir,
       &[
         (
           "file:///a/b/c.ts",

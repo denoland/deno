@@ -1083,8 +1083,8 @@ console.log(getValue());"#,
     .run();
   output.assert_exit_code(0);
   output.assert_matches_text(
-    r#"Download http://localhost:4545/npm/registry/@denotest/esm-basic
-Download http://localhost:4545/npm/registry/@denotest/esm-basic/1.0.0.tgz
+    r#"Download http://localhost:4260/@denotest/esm-basic
+Download http://localhost:4260/@denotest/esm-basic/1.0.0.tgz
 Initialize @denotest/esm-basic@1.0.0
 Check file:///[WILDCARD]/main.ts
 Compile file:///[WILDCARD]/main.ts to [WILDCARD]

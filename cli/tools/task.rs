@@ -1,6 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::TaskFlags;
 use crate::colors;
@@ -16,6 +15,7 @@ use deno_core::futures;
 use deno_core::futures::future::LocalBoxFuture;
 use deno_runtime::deno_node::NodeResolver;
 use deno_semver::package::PackageNv;
+use deno_task_shell::ExecutableCommand;
 use deno_task_shell::ExecuteResult;
 use deno_task_shell::ShellCommand;
 use deno_task_shell::ShellCommandContext;
@@ -44,12 +44,17 @@ pub async fn execute_script(
   let task_name = match &task_flags.task {
     Some(task) => task,
     None => {
-      print_available_tasks(&tasks_config, &package_json_scripts);
+      print_available_tasks(
+        &mut std::io::stdout(),
+        &tasks_config,
+        &package_json_scripts,
+      )?;
       return Ok(1);
     }
   };
   let npm_resolver = factory.npm_resolver().await?;
   let node_resolver = factory.node_resolver().await?;
+  let env_vars = real_env_vars();
 
   if let Some(
     deno_config::Task::Definition(script)
@@ -69,15 +74,17 @@ pub async fn execute_script(
       None => config_file_path.parent().unwrap().to_owned(),
     };
 
-    let npm_commands =
-      resolve_npm_commands(npm_resolver.as_ref(), node_resolver)?;
+    let custom_commands =
+      resolve_custom_commands(npm_resolver.as_ref(), node_resolver)?;
     run_task(
       task_name,
       script,
       &cwd,
-      cli_options,
-      npm_commands,
-      npm_resolver.as_ref(),
+      cli_options.initial_cwd(),
+      env_vars,
+      cli_options.argv(),
+      custom_commands,
+      npm_resolver.root_node_modules_path().map(|p| p.as_path()),
     )
     .await
   } else if package_json_scripts.contains_key(task_name) {
@@ -124,17 +131,19 @@ pub async fn execute_script(
       task_name.clone(),
       format!("post{}", task_name),
     ];
-    let npm_commands =
-      resolve_npm_commands(npm_resolver.as_ref(), node_resolver)?;
+    let custom_commands =
+      resolve_custom_commands(npm_resolver.as_ref(), node_resolver)?;
     for task_name in task_names {
       if let Some(script) = package_json_scripts.get(&task_name) {
         let exit_code = run_task(
           &task_name,
           script,
           &cwd,
-          cli_options,
-          npm_commands.clone(),
-          npm_resolver.as_ref(),
+          cli_options.initial_cwd(),
+          env_vars.clone(),
+          cli_options.argv(),
+          custom_commands.clone(),
+          npm_resolver.root_node_modules_path().map(|p| p.as_path()),
         )
         .await?;
         if exit_code > 0 {
@@ -145,36 +154,42 @@ pub async fn execute_script(
 
     Ok(0)
   } else {
-    eprintln!("Task not found: {task_name}");
-    print_available_tasks(&tasks_config, &package_json_scripts);
+    log::error!("Task not found: {task_name}");
+    if log::log_enabled!(log::Level::Error) {
+      print_available_tasks(
+        &mut std::io::stderr(),
+        &tasks_config,
+        &package_json_scripts,
+      )?;
+    }
     Ok(1)
   }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn run_task(
   task_name: &str,
   script: &str,
   cwd: &Path,
-  cli_options: &CliOptions,
-  npm_commands: HashMap<String, Rc<dyn ShellCommand>>,
-  npm_resolver: &dyn CliNpmResolver,
+  init_cwd: &Path,
+  env_vars: HashMap<String, String>,
+  argv: &[String],
+  custom_commands: HashMap<String, Rc<dyn ShellCommand>>,
+  root_node_modules_dir: Option<&Path>,
 ) -> Result<i32, AnyError> {
-  let script = get_script_with_args(script, cli_options);
+  let script = get_script_with_args(script, argv);
   output_task(task_name, &script);
   let seq_list = deno_task_shell::parser::parse(&script)
     .with_context(|| format!("Error parsing script '{}'.", task_name))?;
-  let env_vars = match npm_resolver.root_node_modules_path() {
-    Some(dir_path) => collect_env_vars_with_node_modules_dir(dir_path),
-    None => collect_env_vars(),
-  };
+  let env_vars = prepare_env_vars(env_vars, init_cwd, root_node_modules_dir);
   let local = LocalSet::new();
-  let future = deno_task_shell::execute(seq_list, env_vars, cwd, npm_commands);
+  let future =
+    deno_task_shell::execute(seq_list, env_vars, cwd, custom_commands);
   Ok(local.run_until(future).await)
 }
 
-fn get_script_with_args(script: &str, options: &CliOptions) -> String {
-  let additional_args = options
-    .argv()
+fn get_script_with_args(script: &str, argv: &[String]) -> String {
+  let additional_args = argv
     .iter()
     // surround all the additional arguments in double quotes
     // and sanitize any command substitution
@@ -189,22 +204,30 @@ fn output_task(task_name: &str, script: &str) {
   log::info!(
     "{} {} {}",
     colors::green("Task"),
-    colors::cyan(&task_name),
+    colors::cyan(task_name),
     script,
   );
 }
 
-fn collect_env_vars_with_node_modules_dir(
-  node_modules_dir_path: &Path,
+fn prepare_env_vars(
+  mut env_vars: HashMap<String, String>,
+  initial_cwd: &Path,
+  node_modules_dir: Option<&Path>,
 ) -> HashMap<String, String> {
-  let mut env_vars = collect_env_vars();
-  prepend_to_path(
-    &mut env_vars,
-    node_modules_dir_path
-      .join(".bin")
-      .to_string_lossy()
-      .to_string(),
-  );
+  const INIT_CWD_NAME: &str = "INIT_CWD";
+  if !env_vars.contains_key(INIT_CWD_NAME) {
+    // if not set, set an INIT_CWD env var that has the cwd
+    env_vars.insert(
+      INIT_CWD_NAME.to_string(),
+      initial_cwd.to_string_lossy().to_string(),
+    );
+  }
+  if let Some(node_modules_dir) = node_modules_dir {
+    prepend_to_path(
+      &mut env_vars,
+      node_modules_dir.join(".bin").to_string_lossy().to_string(),
+    );
+  }
   env_vars
 }
 
@@ -224,63 +247,71 @@ fn prepend_to_path(env_vars: &mut HashMap<String, String>, value: String) {
   }
 }
 
-fn collect_env_vars() -> HashMap<String, String> {
-  // get the starting env vars (the PWD env var will be set by deno_task_shell)
-  let mut env_vars = std::env::vars().collect::<HashMap<String, String>>();
-  const INIT_CWD_NAME: &str = "INIT_CWD";
-  if !env_vars.contains_key(INIT_CWD_NAME) {
-    if let Ok(cwd) = std::env::current_dir() {
-      // if not set, set an INIT_CWD env var that has the cwd
-      env_vars
-        .insert(INIT_CWD_NAME.to_string(), cwd.to_string_lossy().to_string());
-    }
-  }
-  env_vars
+fn real_env_vars() -> HashMap<String, String> {
+  std::env::vars()
+    .map(|(k, v)| {
+      if cfg!(windows) {
+        (k.to_uppercase(), v)
+      } else {
+        (k, v)
+      }
+    })
+    .collect::<HashMap<String, String>>()
 }
 
 fn print_available_tasks(
-  // order can be important, so these use an index map
+  writer: &mut dyn std::io::Write,
   tasks_config: &IndexMap<String, deno_config::Task>,
   package_json_scripts: &IndexMap<String, String>,
-) {
-  eprintln!("{}", colors::green("Available tasks:"));
+) -> Result<(), std::io::Error> {
+  writeln!(writer, "{}", colors::green("Available tasks:"))?;
 
-  let mut had_task = false;
-  for (is_deno, (key, task)) in tasks_config
-    .iter()
-    .map(|(k, t)| (true, (k, t.clone())))
-    .chain(
-      package_json_scripts
-        .iter()
-        .filter(|(key, _)| !tasks_config.contains_key(*key))
-        .map(|(k, v)| (false, (k, deno_config::Task::Definition(v.clone())))),
-    )
-  {
-    eprintln!(
-      "- {}{}",
-      colors::cyan(key),
-      if is_deno {
-        "".to_string()
-      } else {
-        format!(" {}", colors::italic_gray("(package.json)"))
+  if tasks_config.is_empty() && package_json_scripts.is_empty() {
+    writeln!(
+      writer,
+      "  {}",
+      colors::red("No tasks found in configuration file")
+    )?;
+  } else {
+    for (is_deno, (key, task)) in tasks_config
+      .iter()
+      .map(|(k, t)| (true, (k, t.clone())))
+      .chain(
+        package_json_scripts
+          .iter()
+          .filter(|(key, _)| !tasks_config.contains_key(*key))
+          .map(|(k, v)| (false, (k, deno_config::Task::Definition(v.clone())))),
+      )
+    {
+      writeln!(
+        writer,
+        "- {}{}",
+        colors::cyan(key),
+        if is_deno {
+          "".to_string()
+        } else {
+          format!(" {}", colors::italic_gray("(package.json)"))
+        }
+      )?;
+      let definition = match &task {
+        deno_config::Task::Definition(definition) => definition,
+        deno_config::Task::Commented { definition, .. } => definition,
+      };
+      if let deno_config::Task::Commented { comments, .. } = &task {
+        let slash_slash = colors::italic_gray("//");
+        for comment in comments {
+          writeln!(
+            writer,
+            "    {slash_slash} {}",
+            colors::italic_gray(comment)
+          )?;
+        }
       }
-    );
-    let definition = match &task {
-      deno_config::Task::Definition(definition) => definition,
-      deno_config::Task::Commented { definition, .. } => definition,
-    };
-    if let deno_config::Task::Commented { comments, .. } = &task {
-      let slash_slash = colors::italic_gray("//");
-      for comment in comments {
-        eprintln!("    {slash_slash} {}", colors::italic_gray(comment));
-      }
+      writeln!(writer, "    {definition}")?;
     }
-    eprintln!("    {definition}");
-    had_task = true;
   }
-  if !had_task {
-    eprintln!("  {}", colors::red("No tasks found in configuration file"));
-  }
+
+  Ok(())
 }
 
 struct NpxCommand;
@@ -298,10 +329,17 @@ impl ShellCommand for NpxCommand {
         };
         command.execute(context)
       } else {
-        let _ = context
-          .stderr
-          .write_line(&format!("npx: could not resolve command '{first_arg}'"));
-        Box::pin(futures::future::ready(ExecuteResult::from_exit_code(1)))
+        // can't find the command, so fallback to running the real npx command
+        let npx_path = match context.resolve_command_path("npx") {
+          Ok(npx) => npx,
+          Err(err) => {
+            let _ = context.stderr.write_line(&format!("{}", err));
+            return Box::pin(futures::future::ready(
+              ExecuteResult::from_exit_code(err.exit_code()),
+            ));
+          }
+        };
+        ExecutableCommand::new("npx".to_string(), npx_path).execute(context)
       }
     } else {
       let _ = context.stderr.write_line("npx: missing command");
@@ -370,7 +408,7 @@ impl ShellCommand for NodeModulesFileRunCommand {
   }
 }
 
-fn resolve_npm_commands(
+fn resolve_custom_commands(
   npm_resolver: &dyn CliNpmResolver,
   node_resolver: &NodeResolver,
 ) -> Result<HashMap<String, Rc<dyn ShellCommand>>, AnyError> {

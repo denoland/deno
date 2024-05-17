@@ -27,6 +27,7 @@ use crate::util::progress_bar::ProgressBarStyle;
 use crate::util::v8::construct_v8_flags;
 use crate::worker::CliMainWorkerFactory;
 use crate::worker::CliMainWorkerOptions;
+use crate::worker::ModuleLoaderAndSourceMapGetter;
 use crate::worker::ModuleLoaderFactory;
 use deno_ast::MediaType;
 use deno_core::anyhow::Context;
@@ -282,30 +283,30 @@ impl ModuleLoaderFactory for StandaloneModuleLoaderFactory {
     &self,
     root_permissions: PermissionsContainer,
     dynamic_permissions: PermissionsContainer,
-  ) -> Rc<dyn ModuleLoader> {
-    Rc::new(EmbeddedModuleLoader {
-      shared: self.shared.clone(),
-      root_permissions,
-      dynamic_permissions,
-    })
+  ) -> ModuleLoaderAndSourceMapGetter {
+    ModuleLoaderAndSourceMapGetter {
+      module_loader: Rc::new(EmbeddedModuleLoader {
+        shared: self.shared.clone(),
+        root_permissions,
+        dynamic_permissions,
+      }),
+      source_map_getter: None,
+    }
   }
 
   fn create_for_worker(
     &self,
     root_permissions: PermissionsContainer,
     dynamic_permissions: PermissionsContainer,
-  ) -> Rc<dyn ModuleLoader> {
-    Rc::new(EmbeddedModuleLoader {
-      shared: self.shared.clone(),
-      root_permissions,
-      dynamic_permissions,
-    })
-  }
-
-  fn create_source_map_getter(
-    &self,
-  ) -> Option<Rc<dyn deno_core::SourceMapGetter>> {
-    None
+  ) -> ModuleLoaderAndSourceMapGetter {
+    ModuleLoaderAndSourceMapGetter {
+      module_loader: Rc::new(EmbeddedModuleLoader {
+        shared: self.shared.clone(),
+        root_permissions,
+        dynamic_permissions,
+      }),
+      source_map_getter: None,
+    }
   }
 }
 
@@ -499,7 +500,9 @@ pub async fn run(
   };
 
   let permissions = {
-    let mut permissions = metadata.permissions;
+    let maybe_cwd = std::env::current_dir().ok();
+    let mut permissions =
+      metadata.permissions.to_options(maybe_cwd.as_deref())?;
     // if running with an npm vfs, grant read access to it
     if let Some(vfs_root) = maybe_vfs_root {
       match &mut permissions.allow_read {
@@ -565,6 +568,7 @@ pub async fn run(
         .ok()
         .map(|req_ref| npm_pkg_req_ref_to_binary_command(&req_ref))
         .or(std::env::args().next()),
+      node_debug: std::env::var("NODE_DEBUG").ok(),
       origin_data_folder_path: None,
       seed: metadata.seed,
       unsafely_ignore_certificate_errors: metadata

@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import {
+  assert,
   assertEquals,
   assertNotEquals,
   assertStringIncludes,
@@ -20,4 +21,10 @@ Deno.test(function nameToCodeMappingPrototypeAccess() {
   objectPrototype.pollution = newCode;
   assertNotEquals(newCode, new DOMException("test", "pollution").code);
   Reflect.deleteProperty(objectPrototype, "pollution");
+});
+
+Deno.test(function callSitesEvalsDoesntThrow() {
+  const e2 = new DOMException("asdf");
+  // @ts-ignore no types for `__callSiteEvals` but it's observable.
+  assert(Array.isArray(e2.__callSiteEvals));
 });

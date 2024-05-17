@@ -130,3 +130,8 @@ Deno.test(function asyncResourceStub() {
   const resource = new AsyncResource("dbquery");
   assert(typeof resource.asyncId() === "number");
 });
+
+Deno.test(function emitDestroyStub() {
+  const resource = new AsyncResource("foo");
+  assert(typeof resource.emitDestroy === "function");
+});
