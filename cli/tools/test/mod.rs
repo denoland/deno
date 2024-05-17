@@ -454,6 +454,7 @@ pub enum TestEvent {
   Plan(TestPlan),
   Wait(usize),
   Output(TestStdioStream, Vec<u8>),
+  Slow(usize, u64),
   Result(usize, TestResult, u64),
   UncaughtError(String, Box<JsError>),
   StepRegister(TestStepDescription),
@@ -1457,6 +1458,9 @@ pub async fn report_tests(
       }
       TestEvent::Output(_, output) => {
         reporter.report_output(&output);
+      }
+      TestEvent::Slow(id, elapsed) => {
+        reporter.report_slow(tests.get(&id).unwrap(), elapsed);
       }
       TestEvent::Result(id, result, elapsed) => {
         if tests_with_result.insert(id) {
