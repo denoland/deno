@@ -311,6 +311,8 @@ if (!isWindows) {
 
 export { geteuid, getgid, getuid };
 
+const ALLOWED_FLAGS = buildAllowedFlags();
+
 // deno-lint-ignore no-explicit-any
 function uncaughtExceptionHandler(err: any, origin: string) {
   // The origin parameter can be 'unhandledRejection' or 'uncaughtException'
@@ -326,13 +328,21 @@ function uncaughtExceptionHandler(err: any, origin: string) {
 
 let execPath: string | null = null;
 
-class Process extends EventEmitter {
-  constructor() {
-    super();
-  }
+// The process class needs to be an ES5 class because it can be instantiated
+// in Node without the `new` keyword. It's not a true class in Node. Popular
+// test runners like Jest rely on this.
+// deno-lint-ignore no-explicit-any
+function Process(this: any) {
+  // deno-lint-ignore no-explicit-any
+  if (!(this instanceof Process)) return new (Process as any)();
 
-  /** https://nodejs.org/api/process.html#processrelease */
-  get release() {
+  EventEmitter.call(this);
+}
+Process.prototype = Object.create(EventEmitter.prototype);
+
+/** https://nodejs.org/api/process.html#processrelease */
+Object.defineProperty(Process.prototype, "release", {
+  get() {
     return {
       name: "node",
       sourceUrl:
@@ -340,354 +350,353 @@ class Process extends EventEmitter {
       headersUrl:
         `https://nodejs.org/download/release/${version}/node-${version}-headers.tar.gz`,
     };
-  }
+  },
+});
 
-  /** https://nodejs.org/api/process.html#process_process_arch */
-  get arch() {
+/** https://nodejs.org/api/process.html#process_process_arch */
+Object.defineProperty(Process.prototype, "arch", {
+  get() {
     return arch;
-  }
+  },
+});
 
-  get report() {
+Object.defineProperty(Process.prototype, "report", {
+  get() {
     return report;
-  }
+  },
+});
 
-  get title() {
+Object.defineProperty(Process.prototype, "title", {
+  get() {
     return "deno";
-  }
-
-  set title(_value) {
+  },
+  set(_value) {
     // NOTE(bartlomieju): this is a noop. Node.js doesn't guarantee that the
     // process name will be properly set and visible from other tools anyway.
     // Might revisit in the future.
-  }
+  },
+});
 
-  /**
-   * https://nodejs.org/api/process.html#process_process_argv
-   * Read permissions are required in order to get the executable route
-   */
-  argv = argv;
+/**
+ * https://nodejs.org/api/process.html#process_process_argv
+ * Read permissions are required in order to get the executable route
+ */
+Process.prototype.argv = argv;
 
-  get argv0() {
+Object.defineProperty(Process.prototype, "argv0", {
+  get() {
     return argv0;
-  }
+  },
+  set(_val) {},
+});
 
-  set argv0(_val) {}
+/** https://nodejs.org/api/process.html#process_process_chdir_directory */
+Process.prototype.chdir = chdir;
 
-  /** https://nodejs.org/api/process.html#process_process_chdir_directory */
-  chdir = chdir;
+/** https://nodejs.org/api/process.html#processconfig */
+Process.prototype.config = {
+  target_defaults: {},
+  variables: {},
+};
 
-  /** https://nodejs.org/api/process.html#processconfig */
-  config = {
-    target_defaults: {},
-    variables: {},
-  };
+/** https://nodejs.org/api/process.html#process_process_cwd */
+Process.prototype.cwd = cwd;
 
-  /** https://nodejs.org/api/process.html#process_process_cwd */
-  cwd = cwd;
+/**
+ * https://nodejs.org/api/process.html#process_process_env
+ * Requires env permissions
+ */
+Process.prototype.env = env;
 
-  /**
-   * https://nodejs.org/api/process.html#process_process_env
-   * Requires env permissions
-   */
-  env = env;
+/** https://nodejs.org/api/process.html#process_process_execargv */
+Process.prototype.execArgv = [];
 
-  /** https://nodejs.org/api/process.html#process_process_execargv */
-  execArgv: string[] = [];
+/** https://nodejs.org/api/process.html#process_process_exit_code */
+Process.prototype.exit = exit;
 
-  /** https://nodejs.org/api/process.html#process_process_exit_code */
-  exit = exit;
+/** https://nodejs.org/api/process.html#processabort */
+Process.prototype.abort = abort;
 
-  /** https://nodejs.org/api/process.html#processabort */
-  abort = abort;
+// Undocumented Node API that is used by `signal-exit` which in turn
+// is used by `node-tap`. It was marked for removal a couple of years
+// ago. See https://github.com/nodejs/node/blob/6a6b3c54022104cc110ab09044a2a0cecb8988e7/lib/internal/bootstrap/node.js#L172
+Process.prototype.reallyExit = (code: number) => {
+  return Deno.exit(code || 0);
+};
 
-  // Undocumented Node API that is used by `signal-exit` which in turn
-  // is used by `node-tap`. It was marked for removal a couple of years
-  // ago. See https://github.com/nodejs/node/blob/6a6b3c54022104cc110ab09044a2a0cecb8988e7/lib/internal/bootstrap/node.js#L172
-  reallyExit = (code: number) => {
-    return Deno.exit(code || 0);
-  };
+Process.prototype._exiting = _exiting;
 
-  _exiting = _exiting;
-
-  /** https://nodejs.org/api/process.html#processexitcode_1 */
-  get exitCode() {
+/** https://nodejs.org/api/process.html#processexitcode_1 */
+Object.defineProperty(Process.prototype, "exitCode", {
+  get() {
     return globalProcessExitCode;
-  }
-
-  set exitCode(code: number | undefined) {
+  },
+  set(code: number | undefined) {
     globalProcessExitCode = code;
     code = parseInt(code) || 0;
     if (!isNaN(code)) {
       op_set_exit_code(code);
     }
-  }
+  },
+});
 
-  // Typed as any to avoid importing "module" module for types
+// Typed as any to avoid importing "module" module for types
+Process.prototype.mainModule = undefined;
+
+/** https://nodejs.org/api/process.html#process_process_nexttick_callback_args */
+Process.prototype.nextTick = _nextTick;
+
+Process.prototype.dlopen = dlopen;
+
+/** https://nodejs.org/api/process.html#process_process_events */
+Process.prototype.on = function (
   // deno-lint-ignore no-explicit-any
-  mainModule: any = undefined;
-
-  /** https://nodejs.org/api/process.html#process_process_nexttick_callback_args */
-  nextTick = _nextTick;
-
-  dlopen = dlopen;
-
-  /** https://nodejs.org/api/process.html#process_process_events */
-  override on(event: "exit", listener: (code: number) => void): this;
-  override on(
-    event: typeof notImplementedEvents[number],
-    // deno-lint-ignore ban-types
-    listener: Function,
-  ): this;
+  this: any,
+  event: string,
   // deno-lint-ignore no-explicit-any
-  override on(event: string, listener: (...args: any[]) => void): this {
-    if (notImplementedEvents.includes(event)) {
-      warnNotImplemented(`process.on("${event}")`);
-      super.on(event, listener);
-    } else if (event.startsWith("SIG")) {
-      if (event === "SIGBREAK" && Deno.build.os !== "windows") {
-        // Ignores SIGBREAK if the platform is not windows.
-      } else if (event === "SIGTERM" && Deno.build.os === "windows") {
-        // Ignores SIGTERM on windows.
-      } else {
-        Deno.addSignalListener(event as Deno.Signal, listener);
-      }
+  listener: (...args: any[]) => void,
+) {
+  if (notImplementedEvents.includes(event)) {
+    warnNotImplemented(`process.on("${event}")`);
+    EventEmitter.prototype.on.call(this, event, listener);
+  } else if (event.startsWith("SIG")) {
+    if (event === "SIGBREAK" && Deno.build.os !== "windows") {
+      // Ignores SIGBREAK if the platform is not windows.
+    } else if (event === "SIGTERM" && Deno.build.os === "windows") {
+      // Ignores SIGTERM on windows.
     } else {
-      super.on(event, listener);
+      Deno.addSignalListener(event as Deno.Signal, listener);
     }
-
-    return this;
+  } else {
+    EventEmitter.prototype.on.call(this, event, listener);
   }
 
-  override off(event: "exit", listener: (code: number) => void): this;
-  override off(
-    event: typeof notImplementedEvents[number],
-    // deno-lint-ignore ban-types
-    listener: Function,
-  ): this;
+  return this;
+};
+
+Process.prototype.off = function (
   // deno-lint-ignore no-explicit-any
-  override off(event: string, listener: (...args: any[]) => void): this {
-    if (notImplementedEvents.includes(event)) {
-      warnNotImplemented(`process.off("${event}")`);
-      super.off(event, listener);
-    } else if (event.startsWith("SIG")) {
-      if (event === "SIGBREAK" && Deno.build.os !== "windows") {
-        // Ignores SIGBREAK if the platform is not windows.
-      } else if (event === "SIGTERM" && Deno.build.os === "windows") {
-        // Ignores SIGTERM on windows.
-      } else {
-        Deno.removeSignalListener(event as Deno.Signal, listener);
-      }
-    } else {
-      super.off(event, listener);
-    }
-
-    return this;
-  }
-
+  this: any,
+  event: string,
   // deno-lint-ignore no-explicit-any
-  override emit(event: string, ...args: any[]): boolean {
-    if (event.startsWith("SIG")) {
-      if (event === "SIGBREAK" && Deno.build.os !== "windows") {
-        // Ignores SIGBREAK if the platform is not windows.
-      } else {
-        Deno.kill(Deno.pid, event as Deno.Signal);
-      }
+  listener: (...args: any[]) => void,
+) {
+  if (notImplementedEvents.includes(event)) {
+    warnNotImplemented(`process.off("${event}")`);
+    EventEmitter.prototype.off.call(this, event, listener);
+  } else if (event.startsWith("SIG")) {
+    if (event === "SIGBREAK" && Deno.build.os !== "windows") {
+      // Ignores SIGBREAK if the platform is not windows.
+    } else if (event === "SIGTERM" && Deno.build.os === "windows") {
+      // Ignores SIGTERM on windows.
     } else {
-      return super.emit(event, ...args);
+      Deno.removeSignalListener(event as Deno.Signal, listener);
     }
-
-    return true;
+  } else {
+    EventEmitter.prototype.off.call(this, event, listener);
   }
 
-  override prependListener(
-    event: "exit",
-    listener: (code: number) => void,
-  ): this;
-  override prependListener(
-    event: typeof notImplementedEvents[number],
-    // deno-lint-ignore ban-types
-    listener: Function,
-  ): this;
-  override prependListener(
-    event: string,
-    // deno-lint-ignore no-explicit-any
-    listener: (...args: any[]) => void,
-  ): this {
-    if (notImplementedEvents.includes(event)) {
-      warnNotImplemented(`process.prependListener("${event}")`);
-      super.prependListener(event, listener);
-    } else if (event.startsWith("SIG")) {
-      if (event === "SIGBREAK" && Deno.build.os !== "windows") {
-        // Ignores SIGBREAK if the platform is not windows.
-      } else {
-        Deno.addSignalListener(event as Deno.Signal, listener);
-      }
-    } else {
-      super.prependListener(event, listener);
-    }
+  return this;
+};
 
-    return this;
+Process.prototype.emit = function (
+  // deno-lint-ignore no-explicit-any
+  this: any,
+  event: string,
+  // deno-lint-ignore no-explicit-any
+  ...args: any[]
+): boolean {
+  if (event.startsWith("SIG")) {
+    if (event === "SIGBREAK" && Deno.build.os !== "windows") {
+      // Ignores SIGBREAK if the platform is not windows.
+    } else {
+      Deno.kill(Deno.pid, event as Deno.Signal);
+    }
+  } else {
+    return EventEmitter.prototype.emit.call(this, event, ...args);
   }
 
-  /** https://nodejs.org/api/process.html#process_process_pid */
-  get pid() {
+  return true;
+};
+
+Process.prototype.prependListener = function (
+  // deno-lint-ignore no-explicit-any
+  this: any,
+  event: string,
+  // deno-lint-ignore no-explicit-any
+  listener: (...args: any[]) => void,
+) {
+  if (notImplementedEvents.includes(event)) {
+    warnNotImplemented(`process.prependListener("${event}")`);
+    EventEmitter.prototype.prependListener.call(this, event, listener);
+  } else if (event.startsWith("SIG")) {
+    if (event === "SIGBREAK" && Deno.build.os !== "windows") {
+      // Ignores SIGBREAK if the platform is not windows.
+    } else {
+      Deno.addSignalListener(event as Deno.Signal, listener);
+    }
+  } else {
+    EventEmitter.prototype.prependListener.call(this, event, listener);
+  }
+
+  return this;
+};
+
+/** https://nodejs.org/api/process.html#process_process_pid */
+Object.defineProperty(Process.prototype, "pid", {
+  get() {
     return pid;
-  }
+  },
+});
 
-  /** https://nodejs.org/api/process.html#processppid */
-  get ppid() {
+/** https://nodejs.org/api/process.html#processppid */
+Object.defineProperty(Process.prototype, "ppid", {
+  get() {
     return Deno.ppid;
-  }
+  },
+});
 
-  /** https://nodejs.org/api/process.html#process_process_platform */
-  get platform() {
+/** https://nodejs.org/api/process.html#process_process_platform */
+Object.defineProperty(Process.prototype, "platform", {
+  get() {
     return platform;
+  },
+});
+
+// https://nodejs.org/api/process.html#processsetsourcemapsenabledval
+Process.prototype.setSourceMapsEnabled = (_val: boolean) => {
+  // This is a no-op in Deno. Source maps are always enabled.
+  // TODO(@satyarohith): support disabling source maps if needed.
+};
+
+Process.prototype.addListener = function (
+  // deno-lint-ignore no-explicit-any
+  this: any,
+  event: string,
+  // deno-lint-ignore no-explicit-any
+  listener: (...args: any[]) => void,
+) {
+  if (notImplementedEvents.includes(event)) {
+    warnNotImplemented(`process.addListener("${event}")`);
   }
 
-  // https://nodejs.org/api/process.html#processsetsourcemapsenabledval
-  setSourceMapsEnabled(_val: boolean) {
-    // This is a no-op in Deno. Source maps are always enabled.
-    // TODO(@satyarohith): support disabling source maps if needed.
+  return this.on(event, listener);
+};
+
+Process.prototype.removeListener = function (
+  // deno-lint-ignore no-explicit-any
+  this: any,
+  event: string, // deno-lint-ignore no-explicit-any
+  listener: (...args: any[]) => void,
+) {
+  if (notImplementedEvents.includes(event)) {
+    warnNotImplemented(`process.removeListener("${event}")`);
   }
 
-  override addListener(event: "exit", listener: (code: number) => void): this;
-  override addListener(
-    event: typeof notImplementedEvents[number],
-    // deno-lint-ignore ban-types
-    listener: Function,
-  ): this;
-  override addListener(
-    event: string,
-    // deno-lint-ignore no-explicit-any
-    listener: (...args: any[]) => void,
-  ): this {
-    if (notImplementedEvents.includes(event)) {
-      warnNotImplemented(`process.addListener("${event}")`);
-    }
+  return this.off(event, listener);
+};
 
-    return this.on(event, listener);
-  }
+/**
+ * Returns the current high-resolution real time in a [seconds, nanoseconds]
+ * tuple.
+ *
+ * Note: You need to give --allow-hrtime permission to Deno to actually get
+ * nanoseconds precision values. If you don't give 'hrtime' permission, the returned
+ * values only have milliseconds precision.
+ *
+ * `time` is an optional parameter that must be the result of a previous process.hrtime() call to diff with the current time.
+ *
+ * These times are relative to an arbitrary time in the past, and not related to the time of day and therefore not subject to clock drift. The primary use is for measuring performance between intervals.
+ * https://nodejs.org/api/process.html#process_process_hrtime_time
+ */
+Process.prototype.hrtime = hrtime;
 
-  override removeListener(
-    event: "exit",
-    listener: (code: number) => void,
-  ): this;
-  override removeListener(
-    event: typeof notImplementedEvents[number],
-    // deno-lint-ignore ban-types
-    listener: Function,
-  ): this;
-  override removeListener(
-    event: string,
-    // deno-lint-ignore no-explicit-any
-    listener: (...args: any[]) => void,
-  ): this {
-    if (notImplementedEvents.includes(event)) {
-      warnNotImplemented(`process.removeListener("${event}")`);
-    }
+/**
+ * @private
+ *
+ * NodeJS internal, use process.kill instead
+ */
+Process.prototype._kill = _kill;
 
-    return this.off(event, listener);
-  }
+/** https://nodejs.org/api/process.html#processkillpid-signal */
+Process.prototype.kill = kill;
 
-  /**
-   * Returns the current high-resolution real time in a [seconds, nanoseconds]
-   * tuple.
-   *
-   * Note: You need to give --allow-hrtime permission to Deno to actually get
-   * nanoseconds precision values. If you don't give 'hrtime' permission, the returned
-   * values only have milliseconds precision.
-   *
-   * `time` is an optional parameter that must be the result of a previous process.hrtime() call to diff with the current time.
-   *
-   * These times are relative to an arbitrary time in the past, and not related to the time of day and therefore not subject to clock drift. The primary use is for measuring performance between intervals.
-   * https://nodejs.org/api/process.html#process_process_hrtime_time
-   */
-  hrtime = hrtime;
+Process.prototype.memoryUsage = memoryUsage;
 
-  /**
-   * @private
-   *
-   * NodeJS internal, use process.kill instead
-   */
-  _kill = _kill;
+/** https://nodejs.org/api/process.html#process_process_stderr */
+Process.prototype.stderr = stderr;
 
-  /** https://nodejs.org/api/process.html#processkillpid-signal */
-  kill = kill;
+/** https://nodejs.org/api/process.html#process_process_stdin */
+Process.prototype.stdin = stdin;
 
-  memoryUsage = memoryUsage;
+/** https://nodejs.org/api/process.html#process_process_stdout */
+Process.prototype.stdout = stdout;
 
-  /** https://nodejs.org/api/process.html#process_process_stderr */
-  stderr = stderr;
+/** https://nodejs.org/api/process.html#process_process_version */
+Process.prototype.version = version;
 
-  /** https://nodejs.org/api/process.html#process_process_stdin */
-  stdin = stdin;
+/** https://nodejs.org/api/process.html#process_process_versions */
+Process.prototype.versions = versions;
 
-  /** https://nodejs.org/api/process.html#process_process_stdout */
-  stdout = stdout;
+/** https://nodejs.org/api/process.html#process_process_emitwarning_warning_options */
+Process.prototype.emitWarning = emitWarning;
 
-  /** https://nodejs.org/api/process.html#process_process_version */
-  version = version;
+Process.prototype.binding = (name: BindingName) => {
+  return getBinding(name);
+};
 
-  /** https://nodejs.org/api/process.html#process_process_versions */
-  versions = versions;
+/** https://nodejs.org/api/process.html#processumaskmask */
+Process.prototype.umask = () => {
+  // Always return the system default umask value.
+  // We don't use Deno.umask here because it has a race
+  // condition bug.
+  // See https://github.com/denoland/deno_std/issues/1893#issuecomment-1032897779
+  return 0o22;
+};
 
-  /** https://nodejs.org/api/process.html#process_process_emitwarning_warning_options */
-  emitWarning = emitWarning;
+/** This method is removed on Windows */
+Process.prototype.getgid = getgid;
 
-  binding(name: BindingName) {
-    return getBinding(name);
-  }
+/** This method is removed on Windows */
+Process.prototype.getuid = getuid;
 
-  /** https://nodejs.org/api/process.html#processumaskmask */
-  umask() {
-    // Always return the system default umask value.
-    // We don't use Deno.umask here because it has a race
-    // condition bug.
-    // See https://github.com/denoland/deno_std/issues/1893#issuecomment-1032897779
-    return 0o22;
-  }
+/** This method is removed on Windows */
+Process.prototype.geteuid = geteuid;
 
-  /** This method is removed on Windows */
-  getgid = getgid;
+// TODO(kt3k): Implement this when we added -e option to node compat mode
+Process.prototype._eval = undefined;
 
-  /** This method is removed on Windows */
-  getuid = getuid;
+/** https://nodejs.org/api/process.html#processexecpath */
 
-  /** This method is removed on Windows */
-  geteuid = geteuid;
-
-  // TODO(kt3k): Implement this when we added -e option to node compat mode
-  _eval: string | undefined = undefined;
-
-  /** https://nodejs.org/api/process.html#processexecpath */
-  get execPath() {
+Object.defineProperty(Process.prototype, "execPath", {
+  get() {
     if (execPath) {
       return execPath;
     }
     execPath = Deno.execPath();
     return execPath;
-  }
-
-  set execPath(path: string) {
+  },
+  set(path: string) {
     execPath = path;
-  }
+  },
+});
 
-  /** https://nodejs.org/api/process.html#processuptime */
-  uptime() {
-    return Number((performance.now() / 1000).toFixed(9));
-  }
+/** https://nodejs.org/api/process.html#processuptime */
+Process.prototype.uptime = () => {
+  return Number((performance.now() / 1000).toFixed(9));
+};
 
-  #allowedFlags = buildAllowedFlags();
-  /** https://nodejs.org/api/process.html#processallowednodeenvironmentflags */
-  get allowedNodeEnvironmentFlags() {
-    return this.#allowedFlags;
-  }
+/** https://nodejs.org/api/process.html#processallowednodeenvironmentflags */
+Object.defineProperty(Process.prototype, "allowedNodeEnvironmentFlags", {
+  get() {
+    return ALLOWED_FLAGS;
+  },
+});
 
-  features = { inspector: false };
+Process.prototype.features = { inspector: false };
 
-  // TODO(kt3k): Get the value from --no-deprecation flag.
-  noDeprecation = false;
-}
+// TODO(kt3k): Get the value from --no-deprecation flag.
+Process.prototype.noDeprecation = false;
 
 if (isWindows) {
   delete Process.prototype.getgid;
@@ -696,6 +705,7 @@ if (isWindows) {
 }
 
 /** https://nodejs.org/api/process.html#process_process */
+// @ts-ignore TS doesn't work well with ES5 classes
 const process = new Process();
 
 Object.defineProperty(process, Symbol.toStringTag, {
