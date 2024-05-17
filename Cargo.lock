@@ -705,6 +705,7 @@ dependencies = [
  "once_cell",
  "os_pipe",
  "pretty_assertions",
+ "regex",
  "serde",
  "test_server",
  "tokio",
