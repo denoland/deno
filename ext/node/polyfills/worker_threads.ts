@@ -32,7 +32,9 @@ import process from "node:process";
 const { JSONParse, JSONStringify, ObjectPrototypeIsPrototypeOf } = primordials;
 const {
   Error,
+  ObjectHasOwn,
   PromiseResolve,
+  SafeSet,
   Symbol,
   SymbolFor,
   SymbolIterator,
@@ -537,11 +539,12 @@ function webMessagePortToNodeMessagePort(port: MessagePort) {
   return port;
 }
 
-// TODO: Recursively iterating over all message properties seems slow.
+// TODO(@marvinhagemeister): Recursively iterating over all message
+// properties seems slow.
 // Maybe there is a way we can patch the prototype of MessagePort _only_
 // inside worker_threads? For now correctness is more important than perf.
 // deno-lint-ignore no-explicit-any
-function patchMessagePortIfFound(data: any, seen = new Set<any>()) {
+function patchMessagePortIfFound(data: any, seen = new SafeSet<any>()) {
   if (data === null || typeof data !== "object" || seen.has(data)) {
     return;
   }
@@ -551,7 +554,9 @@ function patchMessagePortIfFound(data: any, seen = new Set<any>()) {
     webMessagePortToNodeMessagePort(data);
   } else {
     for (const obj in data as Record<string, unknown>) {
-      patchMessagePortIfFound(data[obj], seen);
+      if (ObjectHasOwn(data, obj)) {
+        patchMessagePortIfFound(data[obj], seen);
+      }
     }
   }
 }
