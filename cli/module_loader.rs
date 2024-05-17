@@ -582,99 +582,93 @@ impl<TGraphContainer: ModuleGraphContainer>
     specifier: &ModuleSpecifier,
     maybe_referrer: Option<&ModuleSpecifier>,
   ) -> Result<ModuleCodeStringSource, AnyError> {
-    if specifier.scheme() == "node" {
-      unreachable!(); // Node built-in modules should be handled internally.
-    }
-
+    // Note: keep this in sync with the sync version below
     let graph = self.graph_container.graph();
-    match graph.get(specifier) {
-      Some(deno_graph::Module::Json(JsonModule {
-        source,
-        media_type,
+    match self.load_prepared_module_or_defer_emit(
+      &graph,
+      specifier,
+      maybe_referrer,
+    ) {
+      Ok(CodeOrDeferredEmit::Code(code_source)) => Ok(code_source),
+      Ok(CodeOrDeferredEmit::DeferredEmit {
         specifier,
-        ..
-      })) => Ok(ModuleCodeStringSource {
-        code: source.clone().into(),
-        found_url: specifier.clone(),
-        media_type: *media_type,
-      }),
-      Some(deno_graph::Module::Js(JsModule {
-        source,
         media_type,
-        specifier,
-        ..
-      })) => {
-        let code: ModuleCodeString = match media_type {
-          MediaType::JavaScript
-          | MediaType::Unknown
-          | MediaType::Cjs
-          | MediaType::Mjs
-          | MediaType::Json => source.clone().into(),
-          MediaType::Dts | MediaType::Dcts | MediaType::Dmts => {
-            Default::default()
-          }
-          MediaType::TypeScript
-          | MediaType::Mts
-          | MediaType::Cts
-          | MediaType::Jsx
-          | MediaType::Tsx => {
-            // get emit text
-            self
-              .emitter
-              .emit_parsed_source(specifier, *media_type, source)
-              .await?
-          }
-          MediaType::TsBuildInfo | MediaType::Wasm | MediaType::SourceMap => {
-            panic!("Unexpected media type {media_type} for {specifier}")
-          }
-        };
+        source,
+      }) => {
+        let transpile_result = self
+          .emitter
+          .emit_parsed_source(specifier, media_type, source)
+          .await?;
 
         // at this point, we no longer need the parsed source in memory, so free it
         self.parsed_source_cache.free(specifier);
 
         Ok(ModuleCodeStringSource {
-          code,
+          code: transpile_result,
           found_url: specifier.clone(),
-          media_type: *media_type,
+          media_type,
         })
       }
-      Some(
-        deno_graph::Module::External(_)
-        | deno_graph::Module::Node(_)
-        | deno_graph::Module::Npm(_),
-      )
-      | None => {
-        let mut msg = format!("Loading unprepared module: {specifier}");
-        if let Some(referrer) = maybe_referrer {
-          msg = format!("{}, imported from: {}", msg, referrer.as_str());
-        }
-        Err(anyhow!(msg))
-      }
+      Err(err) => Err(err),
     }
   }
 
-  // todo(THIS PR): add a private method that consolidates the duplicate code with the above
   fn load_prepared_module_sync(
     &self,
     specifier: &ModuleSpecifier,
     maybe_referrer: Option<&ModuleSpecifier>,
   ) -> Result<ModuleCodeStringSource, AnyError> {
+    // Note: keep this in sync with the async version above
+    let graph = self.graph_container.graph();
+    match self.load_prepared_module_or_defer_emit(
+      &graph,
+      specifier,
+      maybe_referrer,
+    ) {
+      Ok(CodeOrDeferredEmit::Code(code_source)) => Ok(code_source),
+      Ok(CodeOrDeferredEmit::DeferredEmit {
+        specifier,
+        media_type,
+        source,
+      }) => {
+        let transpile_result = self
+          .emitter
+          .emit_parsed_source_sync(specifier, media_type, source)?;
+
+        // at this point, we no longer need the parsed source in memory, so free it
+        self.parsed_source_cache.free(specifier);
+
+        Ok(ModuleCodeStringSource {
+          code: transpile_result,
+          found_url: specifier.clone(),
+          media_type,
+        })
+      }
+      Err(err) => Err(err),
+    }
+  }
+
+  fn load_prepared_module_or_defer_emit<'graph>(
+    &self,
+    graph: &'graph ModuleGraph,
+    specifier: &ModuleSpecifier,
+    maybe_referrer: Option<&ModuleSpecifier>,
+  ) -> Result<CodeOrDeferredEmit<'graph>, AnyError> {
     if specifier.scheme() == "node" {
       unreachable!(); // Node built-in modules should be handled internally.
     }
 
-    let graph = self.graph_container.graph();
     match graph.get(specifier) {
       Some(deno_graph::Module::Json(JsonModule {
         source,
         media_type,
         specifier,
         ..
-      })) => Ok(ModuleCodeStringSource {
+      })) => Ok(CodeOrDeferredEmit::Code(ModuleCodeStringSource {
         code: source.clone().into(),
         found_url: specifier.clone(),
         media_type: *media_type,
-      }),
+      })),
       Some(deno_graph::Module::Js(JsModule {
         source,
         media_type,
@@ -695,12 +689,11 @@ impl<TGraphContainer: ModuleGraphContainer>
           | MediaType::Cts
           | MediaType::Jsx
           | MediaType::Tsx => {
-            // get emit text
-            self.emitter.emit_parsed_source_sync(
+            return Ok(CodeOrDeferredEmit::DeferredEmit {
               specifier,
-              *media_type,
+              media_type: *media_type,
               source,
-            )?
+            });
           }
           MediaType::TsBuildInfo | MediaType::Wasm | MediaType::SourceMap => {
             panic!("Unexpected media type {media_type} for {specifier}")
@@ -710,11 +703,11 @@ impl<TGraphContainer: ModuleGraphContainer>
         // at this point, we no longer need the parsed source in memory, so free it
         self.parsed_source_cache.free(specifier);
 
-        Ok(ModuleCodeStringSource {
+        Ok(CodeOrDeferredEmit::Code(ModuleCodeStringSource {
           code,
           found_url: specifier.clone(),
           media_type: *media_type,
-        })
+        }))
       }
       Some(
         deno_graph::Module::External(_)
@@ -730,6 +723,15 @@ impl<TGraphContainer: ModuleGraphContainer>
       }
     }
   }
+}
+
+enum CodeOrDeferredEmit<'a> {
+  Code(ModuleCodeStringSource),
+  DeferredEmit {
+    specifier: &'a ModuleSpecifier,
+    media_type: MediaType,
+    source: &'a Arc<str>,
+  },
 }
 
 // todo(dsherret): this double Rc boxing is not ideal

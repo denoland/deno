@@ -89,6 +89,7 @@ impl Emitter {
     media_type: MediaType,
     source: &Arc<str>,
   ) -> Result<ModuleCodeString, AnyError> {
+    // Note: keep this in sync with the sync version below
     let helper = EmitParsedSourceHelper(self);
     match helper.pre_emit_parsed_source(specifier, source) {
       PreEmitResult::Cached(emitted_text) => Ok(emitted_text),
@@ -127,6 +128,7 @@ impl Emitter {
     media_type: MediaType,
     source: &Arc<str>,
   ) -> Result<ModuleCodeString, AnyError> {
+    // Note: keep this in sync with the async version above
     let helper = EmitParsedSourceHelper(self);
     match helper.pre_emit_parsed_source(specifier, source) {
       PreEmitResult::Cached(emitted_text) => Ok(emitted_text),
