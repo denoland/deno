@@ -1094,3 +1094,12 @@ Deno.test({
     assert(v >= 0);
   },
 });
+
+// Test for https://github.com/denoland/deno/issues/23863
+Deno.test({
+  name: "instantiate process constructor without 'new' keyword",
+  fn() {
+    // This would throw
+    process.constructor.call({});
+  },
+});
