@@ -12809,7 +12809,9 @@
     "dedicated-worker": {
       "eventsource-eventtarget.worker.html": true,
       "eventsource-constructor-no-new.any.html": true,
-      "eventsource-constructor-no-new.any.worker.html": true
+      "eventsource-constructor-no-new.any.worker.html": true,
+      "eventsource-request-cancellation.window.any.html": true,
+      "eventsource-request-cancellation.window.any.worker.html": true
     },
     "event-data.any.html": true,
     "event-data.any.worker.html": true,
