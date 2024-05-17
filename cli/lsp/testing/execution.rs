@@ -613,7 +613,7 @@ impl LspTestReporter {
     self.progress(lsp_custom::TestRunProgressMessage::Started { test });
   }
 
-  fn report_slow(&mut self, desc: &test::TestDescription, elapsed: u64) {}
+  fn report_slow(&mut self, _desc: &test::TestDescription, _elapsed: u64) {}
 
   fn report_output(&mut self, output: &[u8]) {
     let test = self

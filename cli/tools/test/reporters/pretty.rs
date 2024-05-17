@@ -202,7 +202,7 @@ impl TestReporter for PrettyTestReporter {
       &mut self.writer,
       "{}",
       colors::yellow_bold(format!(
-        "{} is running very slowly {}",
+        "'{}' is running very slowly {}",
         description.name,
         colors::gray(format!("({})", display::human_elapsed(elapsed.into()))),
       ))
