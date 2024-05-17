@@ -86,7 +86,7 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
     permissions: &dyn NodePermissions,
   ) -> Result<String, AnyError> {
     let mut temp_var_count = 0;
-    let mut handled_reexports: HashSet<String> = HashSet::default();
+    let mut handled_reexports: HashSet<ModuleSpecifier> = HashSet::default();
 
     let analysis = self.cjs_code_analyzer.analyze_cjs(specifier, source)?;
 
@@ -114,12 +114,6 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
     }
 
     while let Some((reexport, referrer)) = reexports_to_handle.pop_front() {
-      if handled_reexports.contains(&reexport) {
-        continue;
-      }
-
-      handled_reexports.insert(reexport.to_string());
-
       // First, resolve the reexport specifier
       let reexport_specifier = self.resolve(
         &reexport,
@@ -130,6 +124,10 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
         NodeResolutionMode::Execution,
         permissions,
       )?;
+
+      if !handled_reexports.insert(reexport_specifier.clone()) {
+        continue;
+      }
 
       // Second, resolve its exports and re-exports
       let analysis = self

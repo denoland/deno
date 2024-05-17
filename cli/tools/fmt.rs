@@ -396,8 +396,8 @@ async fn format_source_files(
         }
         Err(e) => {
           let _g = output_lock.lock();
-          eprintln!("Error formatting: {}", file_path.to_string_lossy());
-          eprintln!("   {e}");
+          log::error!("Error formatting: {}", file_path.to_string_lossy());
+          log::error!("   {e}");
         }
       }
       Ok(())
@@ -495,6 +495,7 @@ fn format_stdin(fmt_options: FmtOptions, ext: &str) -> Result<(), AnyError> {
   let file_path = PathBuf::from(format!("_stdin.{ext}"));
   let formatted_text = format_file(&file_path, &source, &fmt_options.options)?;
   if fmt_options.check {
+    #[allow(clippy::print_stdout)]
     if formatted_text.is_some() {
       println!("Not formatted stdin");
     }

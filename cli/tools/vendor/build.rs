@@ -126,7 +126,7 @@ pub async fn build<
   // surface any errors
   graph_util::graph_valid(
     &graph,
-    &deno_fs::RealFs,
+    Arc::new(deno_fs::RealFs),
     &graph.roots,
     graph_util::GraphValidOptions {
       is_vendoring: true,

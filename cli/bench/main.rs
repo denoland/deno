@@ -1,5 +1,8 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+#![allow(clippy::print_stdout)]
+#![allow(clippy::print_stderr)]
+
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
