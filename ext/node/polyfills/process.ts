@@ -311,6 +311,8 @@ if (!isWindows) {
 
 export { geteuid, getgid, getuid };
 
+const ALLOWED_FLAGS = buildAllowedFlags();
+
 // deno-lint-ignore no-explicit-any
 function uncaughtExceptionHandler(err: any, origin: string) {
   // The origin parameter can be 'unhandledRejection' or 'uncaughtException'
@@ -687,7 +689,7 @@ Process.prototype.uptime = () => {
 /** https://nodejs.org/api/process.html#processallowednodeenvironmentflags */
 Object.defineProperty(Process.prototype, "allowedNodeEnvironmentFlags", {
   get() {
-    return buildAllowedFlags();
+    return ALLOWED_FLAGS;
   },
 });
 
