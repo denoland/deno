@@ -1294,6 +1294,7 @@ fn diagnose_resolution(
   resolution: &Resolution,
   is_dynamic: bool,
   maybe_assert_type: Option<&str>,
+  referrer: &ModuleSpecifier,
   import_map: Option<&ImportMap>,
 ) -> Vec<DenoDiagnostic> {
   fn check_redirect_diagnostic(
@@ -1333,7 +1334,7 @@ fn diagnose_resolution(
           diagnostics.push(DenoDiagnostic::DenoWarn(message.clone()));
         }
       }
-      if let Some(doc) = snapshot.documents.get(specifier) {
+      if let Some(doc) = snapshot.documents.get_or_load(specifier, referrer) {
         if let Some(headers) = doc.maybe_headers() {
           if let Some(message) = headers.get("x-deno-warning") {
             diagnostics.push(DenoDiagnostic::DenoWarn(message.clone()));
@@ -1488,6 +1489,7 @@ fn diagnose_dependency(
       },
       dependency.is_dynamic,
       dependency.maybe_attribute_type.as_deref(),
+      referrer,
       import_map.map(|i| i.as_ref()),
     )
     .iter()
@@ -1511,6 +1513,7 @@ fn diagnose_dependency(
         &dependency.maybe_type,
         dependency.is_dynamic,
         dependency.maybe_attribute_type.as_deref(),
+        referrer,
         import_map.map(|i| i.as_ref()),
       )
       .iter()
@@ -1630,11 +1633,12 @@ mod tests {
         *version,
         *language_id,
         (*source).into(),
+        None,
       );
     }
     StateSnapshot {
       project_version: 0,
-      documents,
+      documents: Arc::new(documents),
       assets: Default::default(),
       config: Arc::new(config),
       resolver,

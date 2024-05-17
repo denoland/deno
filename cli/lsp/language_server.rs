@@ -114,7 +114,10 @@ impl RootCertStoreProvider for LspRootCertStoreProvider {
 }
 
 #[derive(Debug, Clone)]
-pub struct LanguageServer(Arc<tokio::sync::RwLock<Inner>>, CancellationToken);
+pub struct LanguageServer(
+  pub Arc<tokio::sync::RwLock<Inner>>,
+  CancellationToken,
+);
 
 /// Snapshot of the state used by TSC.
 #[derive(Clone, Debug, Default)]
@@ -122,7 +125,7 @@ pub struct StateSnapshot {
   pub project_version: usize,
   pub assets: AssetsSnapshot,
   pub config: Arc<Config>,
-  pub documents: Documents,
+  pub documents: Arc<Documents>,
   pub resolver: Arc<LspResolver>,
 }
 
@@ -149,7 +152,7 @@ impl Default for LanguageServerTaskQueue {
 }
 
 impl LanguageServerTaskQueue {
-  fn queue_task(&self, task_fn: LanguageServerTaskFn) -> bool {
+  pub fn queue_task(&self, task_fn: LanguageServerTaskFn) -> bool {
     self.task_tx.send(task_fn).is_ok()
   }
 
@@ -578,7 +581,7 @@ impl Inner {
       project_version: self.project_version,
       assets: self.assets.snapshot(),
       config: Arc::new(self.config.clone()),
-      documents: self.documents.clone(),
+      documents: Arc::new(self.documents.clone()),
       resolver: self.resolver.snapshot(),
     })
   }
@@ -990,6 +993,8 @@ impl Inner {
         params.text_document.uri
       );
     }
+    let file_referrer = (params.text_document.uri.scheme() == "file")
+      .then(|| params.text_document.uri.clone());
     let specifier = self
       .url_map
       .normalize_url(&params.text_document.uri, LspUrlKind::File);
@@ -998,6 +1003,7 @@ impl Inner {
       params.text_document.version,
       params.text_document.language_id.parse().unwrap(),
       params.text_document.text.into(),
+      file_referrer,
     );
     self.project_changed([(document.specifier(), ChangeKind::Opened)], false);
     if document.is_diagnosable() {
@@ -1332,7 +1338,9 @@ impl Inner {
     let hover = if let Some((_, dep, range)) = asset_or_doc
       .get_maybe_dependency(&params.text_document_position_params.position)
     {
-      let dep_doc = dep.get_code().and_then(|s| self.documents.get(s));
+      let dep_doc = dep
+        .get_code()
+        .and_then(|s| self.documents.get_or_load(s, &specifier));
       let dep_maybe_types_dependency =
         dep_doc.as_ref().map(|d| d.maybe_types_dependency());
       let value = match (dep.maybe_code.is_none(), dep.maybe_type.is_none(), &dep_maybe_types_dependency) {

@@ -825,7 +825,7 @@ mod tests {
     for (specifier, source, version, language_id) in open_sources {
       let specifier =
         resolve_url(specifier).expect("failed to create specifier");
-      documents.open(specifier, *version, *language_id, (*source).into());
+      documents.open(specifier, *version, *language_id, (*source).into(), None);
     }
     for (specifier, source) in fs_sources {
       let specifier =
@@ -834,10 +834,9 @@ mod tests {
         .global()
         .set(&specifier, HashMap::default(), source.as_bytes())
         .expect("could not cache file");
-      assert!(
-        documents.get(&specifier).is_some(),
-        "source could not be setup"
-      );
+      let document =
+        documents.get_or_load(&specifier, &temp_dir.uri().join("$").unwrap());
+      assert!(document.is_some(), "source could not be setup");
     }
     documents
   }

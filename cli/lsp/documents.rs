@@ -267,6 +267,9 @@ pub struct Document {
   /// Contains the last-known-good set of dependencies from parsing the module.
   config: Arc<Config>,
   dependencies: Arc<IndexMap<String, deno_graph::Dependency>>,
+  // TODO(nayeemrmn): This is unused, use it for scope attribution for remote
+  // modules.
+  file_referrer: Option<ModuleSpecifier>,
   maybe_types_dependency: Option<Arc<deno_graph::TypesDependency>>,
   maybe_fs_version: Option<String>,
   line_index: Arc<LineIndex>,
@@ -296,6 +299,7 @@ impl Document {
     resolver: Arc<LspResolver>,
     config: Arc<Config>,
     cache: &Arc<LspCache>,
+    file_referrer: Option<ModuleSpecifier>,
   ) -> Arc<Self> {
     let text_info = SourceTextInfo::new(content);
     let media_type = resolve_media_type(
@@ -330,6 +334,7 @@ impl Document {
     Arc::new(Self {
       config,
       dependencies,
+      file_referrer: file_referrer.filter(|_| specifier.scheme() != "file"),
       maybe_types_dependency,
       maybe_fs_version: calculate_fs_version(cache, &specifier),
       line_index,
@@ -421,6 +426,7 @@ impl Document {
       config,
       // updated properties
       dependencies,
+      file_referrer: self.file_referrer.clone(),
       maybe_types_dependency,
       maybe_navigation_tree: Mutex::new(None),
       // maintain - this should all be copies/clones
@@ -500,6 +506,7 @@ impl Document {
     Ok(Arc::new(Self {
       config: self.config.clone(),
       specifier: self.specifier.clone(),
+      file_referrer: self.file_referrer.clone(),
       maybe_fs_version: self.maybe_fs_version.clone(),
       maybe_language_id: self.maybe_language_id,
       dependencies,
@@ -523,6 +530,7 @@ impl Document {
     Arc::new(Self {
       config: self.config.clone(),
       specifier: self.specifier.clone(),
+      file_referrer: self.file_referrer.clone(),
       maybe_fs_version: calculate_fs_version(cache, &self.specifier),
       maybe_language_id: self.maybe_language_id,
       dependencies: self.dependencies.clone(),
@@ -544,6 +552,7 @@ impl Document {
     Arc::new(Self {
       config: self.config.clone(),
       specifier: self.specifier.clone(),
+      file_referrer: self.file_referrer.clone(),
       maybe_fs_version: calculate_fs_version(cache, &self.specifier),
       maybe_language_id: self.maybe_language_id,
       dependencies: self.dependencies.clone(),
@@ -730,6 +739,7 @@ impl FileSystemDocuments {
     resolver: &Arc<LspResolver>,
     config: &Arc<Config>,
     cache: &Arc<LspCache>,
+    file_referrer: Option<ModuleSpecifier>,
   ) -> Option<Arc<Document>> {
     let new_fs_version = calculate_fs_version(cache, specifier);
     let old_doc = self.docs.get(specifier).map(|v| v.value().clone());
@@ -746,7 +756,7 @@ impl FileSystemDocuments {
     };
     if dirty {
       // attempt to update the file on the file system
-      self.refresh_document(specifier, resolver, config, cache)
+      self.refresh_document(specifier, resolver, config, cache, file_referrer)
     } else {
       old_doc
     }
@@ -760,6 +770,7 @@ impl FileSystemDocuments {
     resolver: &Arc<LspResolver>,
     config: &Arc<Config>,
     cache: &Arc<LspCache>,
+    file_referrer: Option<ModuleSpecifier>,
   ) -> Option<Arc<Document>> {
     let doc = if specifier.scheme() == "file" {
       let path = specifier_to_file_path(specifier).ok()?;
@@ -775,6 +786,7 @@ impl FileSystemDocuments {
         resolver.clone(),
         config.clone(),
         cache,
+        file_referrer,
       )
     } else if specifier.scheme() == "data" {
       let source = deno_graph::source::RawDataUrl::parse(specifier)
@@ -790,6 +802,7 @@ impl FileSystemDocuments {
         resolver.clone(),
         config.clone(),
         cache,
+        file_referrer,
       )
     } else {
       let http_cache = cache.root_vendor_or_global();
@@ -819,6 +832,7 @@ impl FileSystemDocuments {
         resolver.clone(),
         config.clone(),
         cache,
+        file_referrer,
       )
     };
     self.docs.insert(specifier.clone(), doc.clone());
@@ -883,6 +897,7 @@ impl Documents {
     version: i32,
     language_id: LanguageId,
     content: Arc<str>,
+    file_referrer: Option<ModuleSpecifier>,
   ) -> Arc<Document> {
     let document = Document::new(
       specifier.clone(),
@@ -896,6 +911,7 @@ impl Documents {
       self.resolver.clone(),
       self.config.clone(),
       &self.cache,
+      file_referrer,
     );
 
     self.file_system_docs.remove_document(&specifier);
@@ -1044,11 +1060,42 @@ impl Documents {
   }
 
   /// Return a document for the specifier.
-  pub fn get(
+  pub fn get(&self, specifier: &ModuleSpecifier) -> Option<Arc<Document>> {
+    let specifier = self.resolve_document_specifier(specifier)?;
+    if let Some(document) = self.open_docs.get(&specifier) {
+      Some(document.clone())
+    } else {
+      let old_doc = self
+        .file_system_docs
+        .docs
+        .get(&specifier)
+        .map(|d| d.value().clone());
+      if let Some(old_doc) = old_doc {
+        self.file_system_docs.get(
+          &specifier,
+          &self.resolver,
+          &self.config,
+          &self.cache,
+          old_doc.file_referrer.clone(),
+        )
+      } else {
+        None
+      }
+    }
+  }
+
+  /// Return a document for the specifier.
+  pub fn get_or_load(
     &self,
-    original_specifier: &ModuleSpecifier,
+    specifier: &ModuleSpecifier,
+    referrer: &ModuleSpecifier,
   ) -> Option<Arc<Document>> {
-    let specifier = self.resolve_document_specifier(original_specifier)?;
+    let specifier = self.resolve_document_specifier(specifier)?;
+    let file_referrer = if referrer.scheme() == "file" {
+      Some(referrer.clone())
+    } else {
+      self.get(referrer).and_then(|d| d.file_referrer.clone())
+    };
     if let Some(document) = self.open_docs.get(&specifier) {
       Some(document.clone())
     } else {
@@ -1057,6 +1104,7 @@ impl Documents {
         &self.resolver,
         &self.config,
         &self.cache,
+        file_referrer.clone(),
       )
     }
   }
@@ -1204,6 +1252,7 @@ impl Documents {
             &self.resolver,
             &self.config,
             &self.cache,
+            None,
           );
         }
       }
@@ -1301,7 +1350,7 @@ impl Documents {
         NodeResolutionMode::Types,
       );
     }
-    let Some(doc) = self.get(specifier) else {
+    let Some(doc) = self.get_or_load(specifier, referrer) else {
       return Some((specifier.clone(), MediaType::from_specifier(specifier)));
     };
     if let Some(specifier) = doc.maybe_types_dependency().maybe_specifier() {
@@ -1453,6 +1502,7 @@ console.log(b);
       1,
       "javascript".parse().unwrap(),
       content.into(),
+      None,
     );
     assert!(document.is_diagnosable());
     assert!(document.is_open());
@@ -1478,6 +1528,7 @@ console.log(b);
       1,
       "javascript".parse().unwrap(),
       content.into(),
+      None,
     );
     documents
       .change(
@@ -1522,6 +1573,7 @@ console.log(b, "hello deno");
       1,
       LanguageId::TypeScript,
       "".into(),
+      None,
     );
 
     // make a clone of the document store and close the document in that one
@@ -1591,6 +1643,7 @@ console.log(b, "hello deno");
         1,
         LanguageId::TypeScript,
         "import {} from 'test';".into(),
+        None,
       );
 
       assert_eq!(

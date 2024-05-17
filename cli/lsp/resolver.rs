@@ -196,14 +196,22 @@ impl LspResolver {
     self.npm_resolver.as_ref().and_then(|r| r.as_managed())
   }
 
-  pub fn graph_import_specifiers(
+  pub fn graph_imports_by_referrer(
     &self,
-  ) -> impl Iterator<Item = &ModuleSpecifier> {
+  ) -> IndexMap<&ModuleSpecifier, Vec<&ModuleSpecifier>> {
     self
       .graph_imports
-      .values()
-      .flat_map(|i| i.dependencies.values())
-      .flat_map(|value| value.get_type().or_else(|| value.get_code()))
+      .iter()
+      .map(|(s, i)| {
+        (
+          s,
+          i.dependencies
+            .values()
+            .flat_map(|d| d.get_type().or_else(|| d.get_code()))
+            .collect(),
+        )
+      })
+      .collect()
   }
 
   pub fn jsr_to_registry_url(
