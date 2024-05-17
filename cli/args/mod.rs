@@ -62,7 +62,6 @@ use std::env;
 use std::io::BufReader;
 use std::io::Cursor;
 use std::net::SocketAddr;
-use std::num::NonZeroU16;
 use std::num::NonZeroUsize;
 use std::path::Path;
 use std::path::PathBuf;
@@ -1036,7 +1035,7 @@ impl CliOptions {
     }
   }
 
-  pub fn serve_port(&self) -> Option<NonZeroU16> {
+  pub fn serve_port(&self) -> Option<u16> {
     if let DenoSubcommand::Serve(flags) = self.sub_command() {
       Some(flags.port)
     } else {
