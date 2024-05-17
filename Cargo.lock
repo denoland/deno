@@ -1500,7 +1500,7 @@ dependencies = [
 
 [[package]]
 name = "deno_http"
-version = "0.149.0"
+version = "0.150.0"
 dependencies = [
  "async-compression",
  "async-trait",
