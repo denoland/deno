@@ -230,7 +230,7 @@ function createImageBitmap(
   }
   if (ObjectPrototypeIsPrototypeOf(BlobPrototype, image)) {
     return (async () => {
-      const data = await image.bytes();
+      const data = await image.arrayBuffer();
       const mimetype = sniffImage(image.type);
       if (mimetype !== "image/png") {
         throw new DOMException(
@@ -238,7 +238,9 @@ function createImageBitmap(
           "InvalidStateError",
         );
       }
-      const { data: imageData, width, height } = op_image_decode_png(data);
+      const { data: imageData, width, height } = op_image_decode_png(
+        new Uint8Array(data),
+      );
       const processedImage = processImage(
         imageData,
         width,
