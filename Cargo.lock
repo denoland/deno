@@ -1661,6 +1661,7 @@ version = "0.89.0"
 dependencies = [
  "aead-gcm-stream",
  "aes",
+ "async-trait",
  "brotli 3.5.0",
  "bytes",
  "cbc",
