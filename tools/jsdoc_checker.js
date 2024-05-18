@@ -76,7 +76,7 @@ for (const file of project.getSourceFiles()) {
           tagsTag.getCommentText().includes("unstable"))
       ) {
         errors.push(
-          getErrorPrefix(node) + "JSDoc @tags tag with value 'unstable'",
+          getErrorPrefix(node) + "JSDoc @experimental tag",
         );
       }
     }
