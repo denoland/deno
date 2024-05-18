@@ -36,6 +36,7 @@ pub struct CjsAnalysisExports {
 }
 
 /// Code analyzer for CJS and ESM files.
+#[async_trait::async_trait(?Send)]
 pub trait CjsCodeAnalyzer {
   /// Analyzes CommonJs code for exports and reexports, which is
   /// then used to determine the wrapper ESM module exports.
@@ -44,7 +45,7 @@ pub trait CjsCodeAnalyzer {
   /// already has it. If the source is needed by the implementation,
   /// then it can use the provided source, or otherwise load it if
   /// necessary.
-  fn analyze_cjs(
+  async fn analyze_cjs(
     &self,
     specifier: &ModuleSpecifier,
     maybe_source: Option<String>,
@@ -79,7 +80,7 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
   /// For all discovered reexports the analysis will be performed recursively.
   ///
   /// If successful a source code for equivalent ES module is returned.
-  pub fn translate_cjs_to_esm(
+  pub async fn translate_cjs_to_esm(
     &self,
     specifier: &ModuleSpecifier,
     source: Option<String>,
@@ -88,7 +89,10 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
     let mut temp_var_count = 0;
     let mut handled_reexports: HashSet<ModuleSpecifier> = HashSet::default();
 
-    let analysis = self.cjs_code_analyzer.analyze_cjs(specifier, source)?;
+    let analysis = self
+      .cjs_code_analyzer
+      .analyze_cjs(specifier, source)
+      .await?;
 
     let analysis = match analysis {
       CjsAnalysis::Esm(source) => return Ok(source),
@@ -113,6 +117,7 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
       reexports_to_handle.push_back((reexport, specifier.clone()));
     }
 
+    // todo(dsherret): we could run this analysis concurrently in a FuturesOrdered
     while let Some((reexport, referrer)) = reexports_to_handle.pop_front() {
       // First, resolve the reexport specifier
       let reexport_specifier = self.resolve(
@@ -133,6 +138,7 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
       let analysis = self
         .cjs_code_analyzer
         .analyze_cjs(&reexport_specifier, None)
+        .await
         .with_context(|| {
           format!(
             "Could not load '{}' ({}) referenced from {}",
