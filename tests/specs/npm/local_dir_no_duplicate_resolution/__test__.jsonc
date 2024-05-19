@@ -1,5 +1,5 @@
 {
   "tempDir": true,
-  "args": "run -A --log-level=debug main.tsx",
+  "args": "run -A run_main_sorted_lines.ts",
   "output": "main.out"
 }

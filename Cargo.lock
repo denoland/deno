@@ -1067,7 +1067,7 @@ dependencies = [
 
 [[package]]
 name = "deno"
-version = "1.43.4"
+version = "1.43.5"
 dependencies = [
  "async-trait",
  "base32",
@@ -1661,6 +1661,7 @@ version = "0.89.0"
 dependencies = [
  "aead-gcm-stream",
  "aes",
+ "async-trait",
  "brotli 3.5.0",
  "bytes",
  "cbc",
@@ -1726,9 +1727,9 @@ dependencies = [
 
 [[package]]
 name = "deno_npm"
-version = "0.20.1"
+version = "0.20.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9db4bc4de6c0d2935662dcd99542b03a0db5f1778bada7ef2afc074e7819068d"
+checksum = "ab92fbe02da596534ae84e2efca2f7dc5e26ca5fc972bf17701f0899784c2a8f"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1738,6 +1739,7 @@ dependencies = [
  "log",
  "monch",
  "serde",
+ "serde_json",
  "thiserror",
  "url",
 ]
