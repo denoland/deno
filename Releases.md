@@ -6,6 +6,10 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.43.5 / 2024.05.18
+
+- fix(npm): regression deserializing JSON for some npm packages (#23868)
+
 ### 1.43.4 / 2024.05.16
 
 - fix(cli): panic with `deno coverage` (#23353)
