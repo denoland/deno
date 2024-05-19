@@ -23,9 +23,6 @@ use zeromq::SocketRecv;
 use zeromq::SocketSend;
 use zeromq::ZmqMessage;
 
-// for the `utc_now` function
-include!("../../cli/util/time.rs");
-
 /// Jupyter connection file format
 #[derive(Serialize)]
 struct ConnectionSpec {
