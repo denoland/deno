@@ -126,6 +126,7 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
     while !reexports_to_handle_rx.is_empty() || !analyze_futures.is_empty() {
       tokio::select! {
         message = reexports_to_handle_rx.recv() => {
+          // 1. Resolve the re-exports and start a future to analyze it
           let (referrer, reexports) = message.unwrap();
           for reexport in reexports {
             let reexport_specifier = self.resolve(
@@ -161,9 +162,9 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
             );
           }
         }
-        future_result = analyze_futures.select_next_some() => {
-          let (reexport_specifier, referrer, analysis) = future_result?;
-          // Second, resolve its exports and re-exports
+        analysis_result = analyze_futures.select_next_some() => {
+          // 2. Look at the analysis result and resolve its exports and re-exports
+          let (reexport_specifier, referrer, analysis) = analysis_result?;
           let analysis = match analysis {
             CjsAnalysis::Esm(_) => {
               // todo(dsherret): support this once supporting requiring ES modules
