@@ -243,6 +243,11 @@ Deno.test(
       args: ["eval", "setTimeout(() => {}, 10000)"],
     }).spawn();
 
+    // kill with signal 0 should keep the process alive in linux (true means no error happened)
+    // windows ignore signals
+    if (Deno.build.os !== "windows") {
+      assertEquals(process.kill(p.pid, 0), true);
+    }
     process.kill(p.pid);
     await p.status;
   },
