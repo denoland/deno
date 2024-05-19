@@ -4,7 +4,6 @@ pub mod dynamic;
 mod interface;
 pub mod remote;
 pub mod sqlite;
-mod time;
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -56,7 +55,6 @@ use denokv_proto::WatchStream;
 use log::debug;
 use serde::Deserialize;
 use serde::Serialize;
-use time::utc_now;
 
 pub use crate::interface::*;
 

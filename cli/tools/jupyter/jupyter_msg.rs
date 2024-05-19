@@ -14,8 +14,6 @@ use ring::hmac;
 use std::fmt;
 use uuid::Uuid;
 
-use crate::util::time::utc_now;
-
 pub struct Connection<S> {
   socket: S,
   /// Will be None if our key was empty (digest authentication disabled).
