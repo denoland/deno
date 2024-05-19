@@ -1,14 +1,15 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::HashSet;
-use std::collections::VecDeque;
 use std::path::Path;
 use std::path::PathBuf;
 
 use deno_core::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::futures::future::LocalBoxFuture;
+use deno_core::futures::stream::FuturesUnordered;
 use deno_core::futures::FutureExt;
+use deno_core::futures::StreamExt;
 use deno_core::ModuleSpecifier;
 use once_cell::sync::Lazy;
 
@@ -89,7 +90,6 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
     permissions: &dyn NodePermissions,
   ) -> Result<String, AnyError> {
     let mut temp_var_count = 0;
-    let mut handled_reexports: HashSet<ModuleSpecifier> = HashSet::default();
 
     let analysis = self
       .cjs_code_analyzer
@@ -113,75 +113,81 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
       .map(|s| s.to_string())
       .collect::<HashSet<_>>();
 
-    let mut reexports_to_handle = VecDeque::new();
-    reexports_to_handle
-      .push_back((entry_specifier.clone(), analysis.reexports));
+    let mut handled_reexports: HashSet<ModuleSpecifier> = HashSet::default();
+    handled_reexports.insert(entry_specifier.clone());
+    let (reexports_to_handle_tx, mut reexports_to_handle_rx) =
+      deno_core::unsync::mpsc::unbounded_channel();
+    reexports_to_handle_tx
+      .send((entry_specifier.clone(), analysis.reexports))
+      .unwrap();
+    let mut analyze_futures: FuturesUnordered<
+      LocalBoxFuture<Result<_, AnyError>>,
+    > = FuturesUnordered::new();
+    while !reexports_to_handle_rx.is_empty() || !analyze_futures.is_empty() {
+      tokio::select! {
+        message = reexports_to_handle_rx.recv() => {
+          let (referrer, reexports) = message.unwrap();
+          for reexport in reexports {
+            let reexport_specifier = self.resolve(
+              &reexport,
+              &referrer,
+              // FIXME(bartlomieju): check if these conditions are okay, probably
+              // should be `deno-require`, because `deno` is already used in `esm_resolver.rs`
+              &["deno", "require", "default"],
+              NodeResolutionMode::Execution,
+              permissions,
+            )?;
+            if !handled_reexports.insert(reexport_specifier.clone()) {
+              continue;
+            }
 
-    while let Some((referrer, reexports)) = reexports_to_handle.pop_back() {
-      let mut resolved_exports = Vec::with_capacity(reexports.len());
-      for reexport in reexports {
-        let reexport_specifier = self.resolve(
-          &reexport,
-          &referrer,
-          // FIXME(bartlomieju): check if these conditions are okay, probably
-          // should be `deno-require`, because `deno` is already used in `esm_resolver.rs`
-          &["deno", "require", "default"],
-          NodeResolutionMode::Execution,
-          permissions,
-        )?;
-        if !handled_reexports.insert(reexport_specifier.clone()) {
-          continue;
+            let cjs_code_analyzer = &self.cjs_code_analyzer;
+            let referrer = referrer.clone();
+            analyze_futures.push(
+              async move {
+                let analysis = cjs_code_analyzer
+                  .analyze_cjs(&reexport_specifier, None)
+                  .await
+                  .with_context(|| {
+                    format!(
+                      "Could not load '{}' ({}) referenced from {}",
+                      reexport, reexport_specifier, referrer
+                    )
+                  })?;
+
+                Ok((reexport_specifier, referrer, analysis))
+              }
+              .boxed_local(),
+            );
+          }
         }
+        future_result = analyze_futures.select_next_some() => {
+          let (reexport_specifier, referrer, analysis) = future_result?;
+          // Second, resolve its exports and re-exports
+          let analysis = match analysis {
+            CjsAnalysis::Esm(_) => {
+              // todo(dsherret): support this once supporting requiring ES modules
+              return Err(anyhow::anyhow!(
+                "Cannot require ES module '{}' from '{}'",
+                reexport_specifier,
+                referrer,
+              ));
+            }
+            CjsAnalysis::Cjs(analysis) => analysis,
+          };
 
-        resolved_exports.push((reexport_specifier, reexport, referrer.clone()));
-      }
-
-      let mut futures: Vec<LocalBoxFuture<Result<_, anyhow::Error>>> =
-        Vec::with_capacity(resolved_exports.len());
-      for (reexport_specifier, reexport, referrer) in resolved_exports {
-        let cjs_code_analyzer = &self.cjs_code_analyzer;
-        futures.push(
-          async move {
-            let analysis = cjs_code_analyzer
-              .analyze_cjs(&reexport_specifier, None)
-              .await
-              .with_context(|| {
-                format!(
-                  "Could not load '{}' ({}) referenced from {}",
-                  reexport, reexport_specifier, referrer
-                )
-              })?;
-
-            Ok((reexport_specifier, analysis))
+          if !analysis.reexports.is_empty() {
+            reexports_to_handle_tx
+              .send((reexport_specifier.clone(), analysis.reexports)).unwrap();
           }
-          .boxed_local(),
-        );
-      }
 
-      let results = deno_core::futures::future::try_join_all(futures).await?;
-      for (reexport_specifier, analysis) in results {
-        // Second, resolve its exports and re-exports
-        let analysis = match analysis {
-          CjsAnalysis::Esm(_) => {
-            // todo(dsherret): support this once supporting requiring ES modules
-            return Err(anyhow::anyhow!(
-              "Cannot require ES module '{}' from '{}'",
-              reexport_specifier,
-              referrer,
-            ));
-          }
-          CjsAnalysis::Cjs(analysis) => analysis,
-        };
-
-        reexports_to_handle
-          .push_back((reexport_specifier.clone(), analysis.reexports));
-
-        all_exports.extend(
-          analysis
-            .exports
-            .into_iter()
-            .filter(|e| e.as_str() != "default"),
-        );
+          all_exports.extend(
+            analysis
+              .exports
+              .into_iter()
+              .filter(|e| e.as_str() != "default"),
+          );
+        }
       }
     }
 
