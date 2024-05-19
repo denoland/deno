@@ -399,7 +399,7 @@ impl CoverageReporter for HtmlCoverageReporter {
 
   fn done(&mut self, coverage_root: &Path) {
     let summary = self.collect_summary(&self.file_reports);
-    let now = crate::util::time::utc_now().to_rfc2822();
+    let now = chrono::Utc::now().to_rfc2822();
 
     for (node, stats) in &summary {
       let report_path =

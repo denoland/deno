@@ -442,7 +442,7 @@ async fn main() -> Result<()> {
   env::set_current_dir(test_util::root_path())?;
 
   let mut new_data = BenchResult {
-    created_at: utc_now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+    created_at: chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
     sha1: test_util::run_collect(
       &["git", "rev-parse", "HEAD"],
       None,

@@ -231,7 +231,7 @@ impl JupyterMessage {
     header["msg_type"] = serde_json::Value::String(msg_type.to_owned());
     header["username"] = serde_json::Value::String("kernel".to_owned());
     header["msg_id"] = serde_json::Value::String(Uuid::new_v4().to_string());
-    header["date"] = serde_json::Value::String(utc_now().to_rfc3339());
+    header["date"] = serde_json::Value::String(chrono::Utc::now().to_rfc3339());
 
     JupyterMessage {
       zmq_identities: Vec::new(),

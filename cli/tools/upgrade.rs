@@ -10,7 +10,6 @@ use crate::http_util::HttpClient;
 use crate::standalone::binary::unpack_into_dir;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
-use crate::util::time;
 use crate::version;
 
 use async_trait::async_trait;
@@ -60,7 +59,7 @@ impl RealUpdateCheckerEnvironment {
     Self {
       cache_file_path,
       // cache the current time
-      current_time: time::utc_now(),
+      current_time: chrono::Utc::now(),
     }
   }
 }
@@ -785,7 +784,7 @@ mod test {
         current_version: Default::default(),
         is_canary: Default::default(),
         latest_version: Rc::new(RefCell::new(Ok("".to_string()))),
-        time: Rc::new(RefCell::new(crate::util::time::utc_now())),
+        time: Rc::new(RefCell::new(chrono::Utc::now())),
       }
     }
 

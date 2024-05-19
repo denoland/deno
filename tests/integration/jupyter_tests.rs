@@ -136,7 +136,7 @@ impl Default for MsgHeader {
     Self {
       msg_id: Uuid::new_v4(),
       session: Uuid::new_v4(),
-      date: utc_now().to_rfc3339(),
+      date: chrono::Utc::now().to_rfc3339(),
       username: "test".into(),
       msg_type: "kernel_info_request".into(),
       version: "5.3".into(),

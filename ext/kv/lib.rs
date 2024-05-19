@@ -772,7 +772,7 @@ async fn op_kv_atomic_write<DBH>(
 where
   DBH: DatabaseHandler + 'static,
 {
-  let current_timestamp = utc_now();
+  let current_timestamp = chrono::Utc::now();
   let db = {
     let state = state.borrow();
     let resource =
