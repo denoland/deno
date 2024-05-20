@@ -107,88 +107,24 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
         .to_string(),
     ];
 
-    let mut all_exports = analysis
-      .exports
-      .iter()
-      .map(|s| s.to_string())
-      .collect::<HashSet<_>>();
+    let mut all_exports = analysis.exports.into_iter().collect::<HashSet<_>>();
 
-    let mut handled_reexports: HashSet<ModuleSpecifier> = HashSet::default();
-    handled_reexports.insert(entry_specifier.clone());
-    let (reexports_to_handle_tx, mut reexports_to_handle_rx) =
-      deno_core::unsync::mpsc::unbounded_channel();
-    reexports_to_handle_tx
-      .send((entry_specifier.clone(), analysis.reexports))
-      .unwrap();
-    let mut analyze_futures: FuturesUnordered<
-      LocalBoxFuture<Result<_, AnyError>>,
-    > = FuturesUnordered::new();
-    while !reexports_to_handle_rx.is_empty() || !analyze_futures.is_empty() {
-      tokio::select! {
-        message = reexports_to_handle_rx.recv() => {
-          // 1. Resolve the re-exports and start a future to analyze it
-          let (referrer, reexports) = message.unwrap();
-          for reexport in reexports {
-            let reexport_specifier = self.resolve(
-              &reexport,
-              &referrer,
-              // FIXME(bartlomieju): check if these conditions are okay, probably
-              // should be `deno-require`, because `deno` is already used in `esm_resolver.rs`
-              &["deno", "require", "default"],
-              NodeResolutionMode::Execution,
-              permissions,
-            )?;
-            if !handled_reexports.insert(reexport_specifier.clone()) {
-              continue;
-            }
+    if !analysis.reexports.is_empty() {
+      let mut errors = Vec::new();
+      self
+        .analyze_reexports(
+          entry_specifier,
+          analysis.reexports,
+          permissions,
+          &mut all_exports,
+          &mut errors,
+        )
+        .await;
 
-            let cjs_code_analyzer = &self.cjs_code_analyzer;
-            let referrer = referrer.clone();
-            analyze_futures.push(
-              async move {
-                let analysis = cjs_code_analyzer
-                  .analyze_cjs(&reexport_specifier, None)
-                  .await
-                  .with_context(|| {
-                    format!(
-                      "Could not load '{}' ({}) referenced from {}",
-                      reexport, reexport_specifier, referrer
-                    )
-                  })?;
-
-                Ok((reexport_specifier, referrer, analysis))
-              }
-              .boxed_local(),
-            );
-          }
-        }
-        analysis_result = analyze_futures.select_next_some() => {
-          // 2. Look at the analysis result and resolve its exports and re-exports
-          let (reexport_specifier, referrer, analysis) = analysis_result?;
-          let analysis = match analysis {
-            CjsAnalysis::Esm(_) => {
-              // todo(dsherret): support this once supporting requiring ES modules
-              return Err(anyhow::anyhow!(
-                "Cannot require ES module '{}' from '{}'",
-                reexport_specifier,
-                referrer,
-              ));
-            }
-            CjsAnalysis::Cjs(analysis) => analysis,
-          };
-
-          if !analysis.reexports.is_empty() {
-            reexports_to_handle_tx
-              .send((reexport_specifier.clone(), analysis.reexports)).unwrap();
-          }
-
-          all_exports.extend(
-            analysis
-              .exports
-              .into_iter()
-              .filter(|e| e.as_str() != "default"),
-          );
-        }
+      // surface errors afterwards in a deterministic way
+      if !errors.is_empty() {
+        errors.sort_by_cached_key(|e| e.to_string());
+        return Err(errors.remove(0));
       }
     }
 
@@ -219,6 +155,130 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
 
     let translated_source = source.join("\n");
     Ok(translated_source)
+  }
+
+  async fn analyze_reexports<'a>(
+    &'a self,
+    entry_specifier: &url::Url,
+    reexports: Vec<String>,
+    permissions: &dyn NodePermissions,
+    all_exports: &mut HashSet<String>,
+    // this goes through the modules concurrently, so collect
+    // the errors in order to be deterministic
+    errors: &mut Vec<anyhow::Error>,
+  ) {
+    struct Analysis {
+      reexport_specifier: url::Url,
+      referrer: url::Url,
+      analysis: CjsAnalysis,
+    }
+
+    type AnalysisFuture<'a> = LocalBoxFuture<'a, Result<Analysis, AnyError>>;
+
+    let mut handled_reexports: HashSet<ModuleSpecifier> = HashSet::default();
+    handled_reexports.insert(entry_specifier.clone());
+    let mut analyze_futures: FuturesUnordered<AnalysisFuture<'a>> =
+      FuturesUnordered::new();
+    let cjs_code_analyzer = &self.cjs_code_analyzer;
+    let mut handle_reexports =
+      |referrer: url::Url,
+       reexports: Vec<String>,
+       analyze_futures: &mut FuturesUnordered<AnalysisFuture<'a>>,
+       errors: &mut Vec<anyhow::Error>| {
+        // 1. Resolve the re-exports and start a future to analyze each one
+        for reexport in reexports {
+          let result = self.resolve(
+            &reexport,
+            &referrer,
+            // FIXME(bartlomieju): check if these conditions are okay, probably
+            // should be `deno-require`, because `deno` is already used in `esm_resolver.rs`
+            &["deno", "require", "default"],
+            NodeResolutionMode::Execution,
+            permissions,
+          );
+          let reexport_specifier = match result {
+            Ok(specifier) => specifier,
+            Err(err) => {
+              errors.push(err);
+              continue;
+            }
+          };
+
+          if !handled_reexports.insert(reexport_specifier.clone()) {
+            continue;
+          }
+
+          let referrer = referrer.clone();
+          let future = async move {
+            let analysis = cjs_code_analyzer
+              .analyze_cjs(&reexport_specifier, None)
+              .await
+              .with_context(|| {
+                format!(
+                  "Could not load '{}' ({}) referenced from {}",
+                  reexport, reexport_specifier, referrer
+                )
+              })?;
+
+            Ok(Analysis {
+              reexport_specifier,
+              referrer,
+              analysis,
+            })
+          }
+          .boxed_local();
+          analyze_futures.push(future);
+        }
+      };
+
+    handle_reexports(
+      entry_specifier.clone(),
+      reexports,
+      &mut analyze_futures,
+      errors,
+    );
+
+    while let Some(analysis_result) = analyze_futures.next().await {
+      // 2. Look at the analysis result and resolve its exports and re-exports
+      let Analysis {
+        reexport_specifier,
+        referrer,
+        analysis,
+      } = match analysis_result {
+        Ok(analysis) => analysis,
+        Err(err) => {
+          errors.push(err);
+          continue;
+        }
+      };
+      match analysis {
+        CjsAnalysis::Esm(_) => {
+          // todo(dsherret): support this once supporting requiring ES modules
+          errors.push(anyhow::anyhow!(
+            "Cannot require ES module '{}' from '{}'",
+            reexport_specifier,
+            referrer,
+          ));
+        }
+        CjsAnalysis::Cjs(analysis) => {
+          if !analysis.reexports.is_empty() {
+            handle_reexports(
+              reexport_specifier.clone(),
+              analysis.reexports,
+              &mut analyze_futures,
+              errors,
+            );
+          }
+
+          all_exports.extend(
+            analysis
+              .exports
+              .into_iter()
+              .filter(|e| e.as_str() != "default"),
+          );
+        }
+      }
+    }
   }
 
   fn resolve(
