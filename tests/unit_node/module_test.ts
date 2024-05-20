@@ -1,6 +1,12 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { builtinModules, createRequire, isBuiltin, Module, findSourceMap } from "node:module";
+import {
+  builtinModules,
+  createRequire,
+  findSourceMap,
+  isBuiltin,
+  Module,
+} from "node:module";
 import { assert, assertEquals } from "@std/assert/mod.ts";
 import process from "node:process";
 import * as path from "node:path";
