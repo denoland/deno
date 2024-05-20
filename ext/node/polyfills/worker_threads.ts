@@ -32,7 +32,9 @@ import process from "node:process";
 const { JSONParse, JSONStringify, ObjectPrototypeIsPrototypeOf } = primordials;
 const {
   Error,
+  ObjectHasOwn,
   PromiseResolve,
+  SafeSet,
   Symbol,
   SymbolFor,
   SymbolIterator,
@@ -369,7 +371,7 @@ internals.__initWorkerThreads = (
     defaultExport.parentPort = parentPort;
     defaultExport.threadId = threadId;
 
-    workerData = patchMessagePortIfFound(workerData);
+    patchMessagePortIfFound(workerData);
 
     parentPort.off = parentPort.removeListener = function (
       this: ParentPort,
@@ -387,8 +389,8 @@ internals.__initWorkerThreads = (
     ) {
       // deno-lint-ignore no-explicit-any
       const _listener = (ev: any) => {
-        let message = ev.data;
-        message = patchMessagePortIfFound(message);
+        const message = ev.data;
+        patchMessagePortIfFound(message);
         return listener(message);
       };
       listeners.set(listener, _listener);
@@ -484,7 +486,10 @@ const listeners = new SafeWeakMap<
 function webMessagePortToNodeMessagePort(port: MessagePort) {
   port.on = port.addListener = function (this: MessagePort, name, listener) {
     // deno-lint-ignore no-explicit-any
-    const _listener = (ev: any) => listener(ev.data);
+    const _listener = (ev: any) => {
+      patchMessagePortIfFound(ev.data);
+      listener(ev.data);
+    };
     if (name == "message") {
       if (port.onmessage === null) {
         port.onmessage = _listener;
@@ -534,19 +539,26 @@ function webMessagePortToNodeMessagePort(port: MessagePort) {
   return port;
 }
 
+// TODO(@marvinhagemeister): Recursively iterating over all message
+// properties seems slow.
+// Maybe there is a way we can patch the prototype of MessagePort _only_
+// inside worker_threads? For now correctness is more important than perf.
 // deno-lint-ignore no-explicit-any
-function patchMessagePortIfFound(data: any) {
+function patchMessagePortIfFound(data: any, seen = new SafeSet<any>()) {
+  if (data === null || typeof data !== "object" || seen.has(data)) {
+    return;
+  }
+  seen.add(data);
+
   if (ObjectPrototypeIsPrototypeOf(MessagePortPrototype, data)) {
-    data = webMessagePortToNodeMessagePort(data);
+    webMessagePortToNodeMessagePort(data);
   } else {
     for (const obj in data as Record<string, unknown>) {
-      if (ObjectPrototypeIsPrototypeOf(MessagePortPrototype, data[obj])) {
-        data[obj] = webMessagePortToNodeMessagePort(data[obj] as MessagePort);
-        break;
+      if (ObjectHasOwn(data, obj)) {
+        patchMessagePortIfFound(data[obj], seen);
       }
     }
   }
-  return data;
 }
 
 export {
