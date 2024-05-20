@@ -243,6 +243,11 @@ Deno.test(
       args: ["eval", "setTimeout(() => {}, 10000)"],
     }).spawn();
 
+    // kill with signal 0 should keep the process alive in linux (true means no error happened)
+    // windows ignore signals
+    if (Deno.build.os !== "windows") {
+      assertEquals(process.kill(p.pid, 0), true);
+    }
     process.kill(p.pid);
     await p.status;
   },
@@ -1093,4 +1098,29 @@ Deno.test({
     const v = (0, process.uptime)();
     assert(v >= 0);
   },
+});
+
+// Test for https://github.com/denoland/deno/issues/23863
+Deno.test({
+  name: "instantiate process constructor without 'new' keyword",
+  fn() {
+    // This would throw
+    process.constructor.call({});
+  },
+});
+
+// Test for https://github.com/denoland/deno/issues/22892
+Deno.test("process.listeners - include SIG* events", () => {
+  const listener = () => console.log("SIGINT");
+  process.on("SIGINT", listener);
+  assertEquals(process.listeners("SIGINT").length, 1);
+
+  const listener2 = () => console.log("SIGINT");
+  process.prependListener("SIGINT", listener2);
+  assertEquals(process.listeners("SIGINT").length, 2);
+
+  process.off("SIGINT", listener);
+  assertEquals(process.listeners("SIGINT").length, 1);
+  process.off("SIGINT", listener2);
+  assertEquals(process.listeners("SIGINT").length, 0);
 });

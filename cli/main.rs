@@ -120,7 +120,7 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
       main_graph_container
         .load_and_type_check_files(&cache_flags.files)
         .await?;
-      emitter.cache_module_emits(&main_graph_container.graph())
+      emitter.cache_module_emits(&main_graph_container.graph()).await
     }),
     DenoSubcommand::Check(check_flags) => spawn_subcommand(async move {
       let factory = CliFactory::from_flags(flags)?;
