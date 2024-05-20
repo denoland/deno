@@ -5100,7 +5100,7 @@ function getIterator(obj, async = false) {
       if (obj[SymbolIterator] === undefined) {
         throw new TypeError("No iterator found");
       }
-      return createAsyncFromSyncIterator(obj[SymbolIterator]());
+      return createAsyncFromSyncIterator(obj);
     } else {
       return obj[SymbolAsyncIterator]();
     }
