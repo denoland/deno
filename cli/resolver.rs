@@ -691,7 +691,13 @@ impl Resolver for CliGraphResolver {
       }
     }
 
-    result
+    let specifier = result?;
+    match &self.node_resolver {
+      Some(node_resolver) => node_resolver
+        .handle_if_in_node_modules(specifier)
+        .map_err(|e| e.into()),
+      None => Ok(specifier),
+    }
   }
 }
 
