@@ -1108,3 +1108,19 @@ Deno.test({
     process.constructor.call({});
   },
 });
+
+// Test for https://github.com/denoland/deno/issues/22892
+Deno.test("process.listeners - include SIG* events", () => {
+  const listener = () => console.log("SIGINT");
+  process.on("SIGINT", listener);
+  assertEquals(process.listeners("SIGINT").length, 1);
+
+  const listener2 = () => console.log("SIGINT");
+  process.prependListener("SIGINT", listener2);
+  assertEquals(process.listeners("SIGINT").length, 2);
+
+  process.off("SIGINT", listener);
+  assertEquals(process.listeners("SIGINT").length, 1);
+  process.off("SIGINT", listener2);
+  assertEquals(process.listeners("SIGINT").length, 0);
+});
