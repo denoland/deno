@@ -469,6 +469,7 @@ Process.prototype.on = function (
     } else if (event === "SIGTERM" && Deno.build.os === "windows") {
       // Ignores SIGTERM on windows.
     } else {
+      EventEmitter.prototype.on.call(this, event, listener);
       Deno.addSignalListener(event as Deno.Signal, listener);
     }
   } else {
@@ -494,6 +495,7 @@ Process.prototype.off = function (
     } else if (event === "SIGTERM" && Deno.build.os === "windows") {
       // Ignores SIGTERM on windows.
     } else {
+      EventEmitter.prototype.off.call(this, event, listener);
       Deno.removeSignalListener(event as Deno.Signal, listener);
     }
   } else {
@@ -537,6 +539,7 @@ Process.prototype.prependListener = function (
     if (event === "SIGBREAK" && Deno.build.os !== "windows") {
       // Ignores SIGBREAK if the platform is not windows.
     } else {
+      EventEmitter.prototype.prependListener.call(this, event, listener);
       Deno.addSignalListener(event as Deno.Signal, listener);
     }
   } else {
