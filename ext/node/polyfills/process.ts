@@ -259,6 +259,10 @@ memoryUsage.rss = function (): number {
 
 // Returns a negative error code than can be recognized by errnoException
 function _kill(pid: number, sig: number): number {
+  // signal 0 does not exist in constants.os.signals, thats why it have to be handled explicitly
+  if (sig === 0) {
+    return op_node_process_kill(pid, 0);
+  }
   const maybeSignal = Object.entries(constants.os.signals).find((
     [_, numericCode],
   ) => numericCode === sig);
@@ -465,6 +469,7 @@ Process.prototype.on = function (
     } else if (event === "SIGTERM" && Deno.build.os === "windows") {
       // Ignores SIGTERM on windows.
     } else {
+      EventEmitter.prototype.on.call(this, event, listener);
       Deno.addSignalListener(event as Deno.Signal, listener);
     }
   } else {
@@ -490,6 +495,7 @@ Process.prototype.off = function (
     } else if (event === "SIGTERM" && Deno.build.os === "windows") {
       // Ignores SIGTERM on windows.
     } else {
+      EventEmitter.prototype.off.call(this, event, listener);
       Deno.removeSignalListener(event as Deno.Signal, listener);
     }
   } else {
@@ -533,6 +539,7 @@ Process.prototype.prependListener = function (
     if (event === "SIGBREAK" && Deno.build.os !== "windows") {
       // Ignores SIGBREAK if the platform is not windows.
     } else {
+      EventEmitter.prototype.prependListener.call(this, event, listener);
       Deno.addSignalListener(event as Deno.Signal, listener);
     }
   } else {
