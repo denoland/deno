@@ -2039,7 +2039,7 @@ fn lsp_hover_unstable_always_enabled() {
           "value":"interface Deno.ForeignLibraryInterface"
         },
         "**UNSTABLE**: New API, yet to be vetted.\n\nA foreign library interface descriptor.",
-        "\n\n*@category* - FFI  \n\n*@tags* - unstable",
+        "\n\n*@category* - FFI  \n\n*@experimental*",
       ],
       "range":{
         "start":{ "line":0, "character":14 },
@@ -2084,7 +2084,7 @@ fn lsp_hover_unstable_enabled() {
           "value":"interface Deno.ForeignLibraryInterface"
         },
         "**UNSTABLE**: New API, yet to be vetted.\n\nA foreign library interface descriptor.",
-        "\n\n*@category* - FFI  \n\n*@tags* - unstable",
+        "\n\n*@category* - FFI  \n\n*@experimental*",
       ],
       "range":{
         "start":{ "line":0, "character":14 },
