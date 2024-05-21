@@ -19,11 +19,13 @@ land until the release is finished.**
 
 @channel
 
+Deno v$VERSION is now getting released.
+
 [`denoland/deno`](https://github.com/denoland/deno) is now locked.
 
 **DO NOT LAND ANY PRs** 
 
-Deno v$VERSION release checklist: <LINK TO THIS FORKED GIST GOES HERE>
+Release checklist: <LINK TO THIS FORKED GIST GOES HERE>
 ```
 
 ## Patch release preparation
