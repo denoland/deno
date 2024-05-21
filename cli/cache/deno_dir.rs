@@ -33,11 +33,10 @@ impl DenoDirProvider {
 
 /// `DenoDir` serves as coordinator for multiple `DiskCache`s containing them
 /// in single directory that can be controlled with `$DENO_DIR` env variable.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct DenoDir {
   /// Example: /Users/rld/.deno/
-  /// Note: This is not exposed in order to encourage using re-usable methods.
-  root: PathBuf,
+  pub root: PathBuf,
   /// Used by TsCompiler to cache compiler output.
   pub gen_cache: DiskCache,
 }
@@ -98,6 +97,12 @@ impl DenoDir {
     self.root.join("dep_analysis_cache_v1")
   }
 
+  /// Path for the cache used for fast check.
+  pub fn fast_check_cache_db_file_path(&self) -> PathBuf {
+    // bump this version name to invalidate the entire cache
+    self.root.join("fast_check_cache_v1")
+  }
+
   /// Path for caching node analysis.
   pub fn node_analysis_db_file_path(&self) -> PathBuf {
     // bump this version name to invalidate the entire cache
@@ -134,6 +139,12 @@ impl DenoDir {
   /// Folder used for the npm cache.
   pub fn npm_folder_path(&self) -> PathBuf {
     self.root.join("npm")
+  }
+
+  /// Path for the V8 code cache.
+  pub fn code_cache_db_file_path(&self) -> PathBuf {
+    // bump this version name to invalidate the entire cache
+    self.root.join("v8_code_cache_v1")
   }
 
   /// Path used for the REPL history file.

@@ -8,6 +8,7 @@
 // They have to be split this way to prevent a circular dependency
 
 import { core } from "ext:core/mod.js";
+
 import { nextTick as _nextTick } from "ext:deno_node/_next_tick.ts";
 import { _exiting } from "ext:deno_node/_process/exiting.ts";
 import * as fs from "ext:deno_fs/30_fs.js";
@@ -18,6 +19,8 @@ export function arch(): string {
     return "x64";
   } else if (core.build.arch == "aarch64") {
     return "arm64";
+  } else if (core.build.arch == "riscv64gc") {
+    return "riscv64";
   } else {
     throw Error("unreachable");
   }
@@ -35,17 +38,10 @@ export const nextTick = _nextTick;
 /** Wrapper of Deno.env.get, which doesn't throw type error when
  * the env name has "=" or "\0" in it. */
 function denoEnvGet(name: string) {
-  const perm =
-    Deno.permissions.querySync?.({ name: "env", variable: name }).state ??
-      "granted"; // for Deno Deploy
-  // Returns undefined if the env permission is unavailable
-  if (perm !== "granted") {
-    return undefined;
-  }
   try {
     return Deno.env.get(name);
   } catch (e) {
-    if (e instanceof TypeError) {
+    if (e instanceof TypeError || e instanceof Deno.errors.PermissionDenied) {
       return undefined;
     }
     throw e;
@@ -92,6 +88,10 @@ export const env: InstanceType<ObjectConstructor> & Record<string, string> =
       return true; // success
     },
     has: (_target, prop) => typeof denoEnvGet(String(prop)) === "string",
+    deleteProperty(_target, key) {
+      Deno.env.delete(String(key));
+      return true;
+    },
   });
 
 /**
@@ -102,7 +102,7 @@ export const env: InstanceType<ObjectConstructor> & Record<string, string> =
  * it pointed to Deno version, but that led to incompability
  * with some packages.
  */
-export const version = "v18.18.0";
+export const version = "v20.11.1";
 
 /**
  * https://nodejs.org/api/process.html#process_process_versions
@@ -113,7 +113,7 @@ export const version = "v18.18.0";
  * with some packages. Value of `v8` field is still taken from `Deno.version`.
  */
 export const versions = {
-  node: "18.17.1",
+  node: "20.11.1",
   uv: "1.43.0",
   zlib: "1.2.11",
   brotli: "1.0.9",

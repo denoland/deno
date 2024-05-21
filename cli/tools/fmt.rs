@@ -8,7 +8,6 @@
 //! the same functions as ops available in JS runtime.
 
 use crate::args::CliOptions;
-use crate::args::FilesConfig;
 use crate::args::Flags;
 use crate::args::FmtFlags;
 use crate::args::FmtOptions;
@@ -18,10 +17,11 @@ use crate::colors;
 use crate::factory::CliFactory;
 use crate::util::diff::diff;
 use crate::util::file_watcher;
+use crate::util::fs::canonicalize_path;
 use crate::util::fs::FileCollector;
 use crate::util::path::get_extension;
-use crate::util::text_encoding;
 use deno_ast::ParsedSource;
+use deno_config::glob::FilePatterns;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
@@ -68,11 +68,11 @@ pub async fn format(flags: Flags, fmt_flags: FmtFlags) -> Result<(), AnyError> {
       move |flags, watcher_communicator, changed_paths| {
         let fmt_flags = fmt_flags.clone();
         Ok(async move {
-          let factory = CliFactory::from_flags(flags).await?;
+          let factory = CliFactory::from_flags(flags)?;
           let cli_options = factory.cli_options();
           let fmt_options = cli_options.resolve_fmt_options(fmt_flags)?;
-          let files =
-            collect_fmt_files(&fmt_options.files).and_then(|files| {
+          let files = collect_fmt_files(cli_options, fmt_options.files.clone())
+            .and_then(|files| {
               if files.is_empty() {
                 Err(generic_error("No target files found."))
               } else {
@@ -85,13 +85,21 @@ pub async fn format(flags: Flags, fmt_flags: FmtFlags) -> Result<(), AnyError> {
               // check all files on any changed (https://github.com/denoland/deno/issues/12446)
               files
                 .iter()
-                .any(|path| paths.contains(path))
+                .any(|path| {
+                  canonicalize_path(path)
+                    .map(|path| paths.contains(&path))
+                    .unwrap_or(false)
+                })
                 .then_some(files)
                 .unwrap_or_else(|| [].to_vec())
             } else {
               files
                 .into_iter()
-                .filter(|path| paths.contains(path))
+                .filter(|path| {
+                  canonicalize_path(path)
+                    .map(|path| paths.contains(&path))
+                    .unwrap_or(false)
+                })
                 .collect::<Vec<_>>()
             }
           } else {
@@ -105,16 +113,17 @@ pub async fn format(flags: Flags, fmt_flags: FmtFlags) -> Result<(), AnyError> {
     )
     .await?;
   } else {
-    let factory = CliFactory::from_flags(flags).await?;
+    let factory = CliFactory::from_flags(flags)?;
     let cli_options = factory.cli_options();
     let fmt_options = cli_options.resolve_fmt_options(fmt_flags)?;
-    let files = collect_fmt_files(&fmt_options.files).and_then(|files| {
-      if files.is_empty() {
-        Err(generic_error("No target files found."))
-      } else {
-        Ok(files)
-      }
-    })?;
+    let files = collect_fmt_files(cli_options, fmt_options.files.clone())
+      .and_then(|files| {
+        if files.is_empty() {
+          Err(generic_error("No target files found."))
+        } else {
+          Ok(files)
+        }
+      })?;
     format_files(factory, fmt_options, files).await?;
   }
 
@@ -144,13 +153,15 @@ async fn format_files(
   Ok(())
 }
 
-fn collect_fmt_files(files: &FilesConfig) -> Result<Vec<PathBuf>, AnyError> {
-  FileCollector::new(is_supported_ext_fmt)
+fn collect_fmt_files(
+  cli_options: &CliOptions,
+  files: FilePatterns,
+) -> Result<Vec<PathBuf>, AnyError> {
+  FileCollector::new(|e| is_supported_ext_fmt(e.path))
     .ignore_git_folder()
     .ignore_node_modules()
-    .ignore_vendor_folder()
-    .add_ignore_paths(&files.exclude)
-    .collect_files(files.include.as_deref())
+    .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
+    .collect_file_patterns(files)
 }
 
 /// Formats markdown (using <https://github.com/dprint/dprint-plugin-markdown>) and its code blocks
@@ -385,8 +396,8 @@ async fn format_source_files(
         }
         Err(e) => {
           let _g = output_lock.lock();
-          eprintln!("Error formatting: {}", file_path.to_string_lossy());
-          eprintln!("   {e}");
+          log::error!("Error formatting: {}", file_path.to_string_lossy());
+          log::error!("   {e}");
         }
       }
       Ok(())
@@ -484,6 +495,7 @@ fn format_stdin(fmt_options: FmtOptions, ext: &str) -> Result<(), AnyError> {
   let file_path = PathBuf::from(format!("_stdin.{ext}"));
   let formatted_text = format_file(&file_path, &source, &fmt_options.options)?;
   if fmt_options.check {
+    #[allow(clippy::print_stdout)]
     if formatted_text.is_some() {
       println!("Not formatted stdin");
     }
@@ -598,28 +610,24 @@ struct FileContents {
 fn read_file_contents(file_path: &Path) -> Result<FileContents, AnyError> {
   let file_bytes = fs::read(file_path)
     .with_context(|| format!("Error reading {}", file_path.display()))?;
-  let charset = text_encoding::detect_charset(&file_bytes);
-  let file_text = text_encoding::convert_to_utf8(&file_bytes, charset)
-    .map_err(|_| {
+  let had_bom = file_bytes.starts_with(&[0xEF, 0xBB, 0xBF]);
+  // will have the BOM stripped
+  let text = deno_graph::source::decode_owned_file_source(file_bytes)
+    .with_context(|| {
       anyhow!("{} is not a valid UTF-8 file", file_path.display())
     })?;
-  let had_bom = file_text.starts_with(text_encoding::BOM_CHAR);
-  let text = if had_bom {
-    text_encoding::strip_bom(&file_text).to_string()
-  } else {
-    file_text.to_string()
-  };
 
   Ok(FileContents { text, had_bom })
 }
 
 fn write_file_contents(
   file_path: &Path,
-  file_contents: FileContents,
+  mut file_contents: FileContents,
 ) -> Result<(), AnyError> {
   let file_text = if file_contents.had_bom {
     // add back the BOM
-    format!("{}{}", text_encoding::BOM_CHAR, file_contents.text)
+    file_contents.text.insert(0, '\u{FEFF}');
+    file_contents.text
   } else {
     file_contents.text
   };

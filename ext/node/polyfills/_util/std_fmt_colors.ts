@@ -18,7 +18,6 @@ const noColor = false;
 interface Code {
   open: string;
   close: string;
-  // deno-lint-ignore prefer-primordials
   regexp: RegExp;
 }
 

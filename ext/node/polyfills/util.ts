@@ -1,21 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { promisify } from "ext:deno_node/internal/util.mjs";
-import { callbackify } from "ext:deno_node/_util/_util_callbackify.ts";
-import { debuglog } from "ext:deno_node/internal/util/debuglog.ts";
-import {
-  format,
-  formatWithOptions,
-  inspect,
-  stripVTControlCharacters,
-} from "ext:deno_node/internal/util/inspect.mjs";
-import { codes } from "ext:deno_node/internal/error_codes.ts";
-import types from "node:util/types";
-import { Buffer } from "node:buffer";
-import { isDeepStrictEqual } from "ext:deno_node/internal/util/comparisons.ts";
-import process from "node:process";
-import { validateString } from "ext:deno_node/internal/validators.mjs";
-import { parseArgs } from "ext:deno_node/internal/util/parse_args/parse_args.js";
 import { primordials } from "ext:core/mod.js";
 const {
   ArrayIsArray,
@@ -42,6 +26,23 @@ const {
   StringPrototypePadStart,
   StringPrototypeToWellFormed,
 } = primordials;
+
+import { promisify } from "ext:deno_node/internal/util.mjs";
+import { callbackify } from "ext:deno_node/_util/_util_callbackify.js";
+import { debuglog } from "ext:deno_node/internal/util/debuglog.ts";
+import {
+  format,
+  formatWithOptions,
+  inspect,
+  stripVTControlCharacters,
+} from "ext:deno_node/internal/util/inspect.mjs";
+import { codes } from "ext:deno_node/internal/error_codes.ts";
+import types from "node:util/types";
+import { Buffer } from "node:buffer";
+import { isDeepStrictEqual } from "ext:deno_node/internal/util/comparisons.ts";
+import process from "node:process";
+import { validateString } from "ext:deno_node/internal/validators.mjs";
+import { parseArgs } from "ext:deno_node/internal/util/parse_args/parse_args.js";
 
 export {
   callbackify,

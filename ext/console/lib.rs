@@ -5,17 +5,12 @@ use std::path::PathBuf;
 
 deno_core::extension!(
   deno_console,
-  ops = [op_is_any_arraybuffer, op_preview_entries,],
+  ops = [op_preview_entries],
   esm = ["01_console.js"],
 );
 
 pub fn get_declaration() -> PathBuf {
   PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_console.d.ts")
-}
-
-#[op2(fast)]
-fn op_is_any_arraybuffer(value: &v8::Value) -> bool {
-  value.is_array_buffer() || value.is_shared_array_buffer()
 }
 
 #[op2]

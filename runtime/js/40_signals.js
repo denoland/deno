@@ -1,7 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import { core, primordials } from "ext:core/mod.js";
-const ops = core.ops;
+import { op_signal_bind, op_signal_poll, op_signal_unbind } from "ext:core/ops";
 const {
   SafeSet,
   SafeSetIterator,
@@ -9,12 +9,9 @@ const {
   SetPrototypeDelete,
   TypeError,
 } = primordials;
-const {
-  op_signal_poll,
-} = core.ensureFastOps();
 
 function bindSignal(signo) {
-  return ops.op_signal_bind(signo);
+  return op_signal_bind(signo);
 }
 
 function pollSignal(rid) {
@@ -24,7 +21,7 @@ function pollSignal(rid) {
 }
 
 function unbindSignal(rid) {
-  ops.op_signal_unbind(rid);
+  op_signal_unbind(rid);
 }
 
 // Stores signal listeners and resource data. This has type of

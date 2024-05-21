@@ -25,6 +25,7 @@
 
 import {
   validateObject,
+  validateOneOf,
   validateString,
 } from "ext:deno_node/internal/validators.mjs";
 import { codes } from "ext:deno_node/internal/error_codes.ts";
@@ -345,7 +346,7 @@ function hasBuiltInToString(value) {
     return true;
   }
 
-  // The object has a own `toString` property. Thus it's not not a built-in one.
+  // The object has a own `toString` property. Thus it's not a built-in one.
   if (Object.prototype.hasOwnProperty.call(value, "toString")) {
     return false;
   }
@@ -562,10 +563,20 @@ export function stripVTControlCharacters(str) {
   return str.replace(ansi, "");
 }
 
+export function styleText(format, text) {
+  validateString(text, "text");
+  const formatCodes = inspect.colors[format];
+  if (formatCodes == null) {
+    validateOneOf(format, "format", Object.keys(inspect.colors));
+  }
+  return `\u001b[${formatCodes[0]}m${text}\u001b[${formatCodes[1]}m`;
+}
+
 export default {
   format,
   getStringWidth,
   inspect,
   stripVTControlCharacters,
   formatWithOptions,
+  styleText,
 };

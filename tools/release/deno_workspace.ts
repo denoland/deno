@@ -35,7 +35,7 @@ export class DenoWorkspace {
   getCliDependencyCrates() {
     return this.getCliCrate()
       .descendantDependenciesInRepo()
-      .filter((c) => c.name !== "test_util");
+      .filter((c) => c.name !== "test_server");
   }
 
   getCliCrate() {
@@ -54,7 +54,7 @@ export class DenoWorkspace {
 
   async runFormatter() {
     await this.#repo.command(
-      "deno run --unstable --allow-write --allow-read --allow-net --allow-run ./tools/format.js",
+      "deno run --allow-write --allow-read --allow-net --allow-run ./tools/format.js",
     );
   }
 }

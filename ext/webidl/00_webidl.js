@@ -8,7 +8,12 @@
 
 import { core, primordials } from "ext:core/mod.js";
 const {
-  ArrayBufferPrototype,
+  isArrayBuffer,
+  isDataView,
+  isSharedArrayBuffer,
+  isTypedArray,
+} = core;
+const {
   ArrayBufferIsView,
   ArrayPrototypeForEach,
   ArrayPrototypePush,
@@ -24,7 +29,6 @@ const {
   Int16Array,
   Int32Array,
   Int8Array,
-  isNaN,
   MathFloor,
   MathFround,
   MathMax,
@@ -67,7 +71,7 @@ const {
   SetPrototypeDelete,
   SetPrototypeAdd,
   // TODO(lucacasonato): add SharedArrayBuffer to primordials
-  // SharedArrayBufferPrototype
+  // SharedArrayBufferPrototype,
   String,
   StringPrototypeCharCodeAt,
   StringPrototypeToWellFormed,
@@ -350,7 +354,7 @@ converters.float = (V, prefix, context, _opts) => {
 converters["unrestricted float"] = (V, _prefix, _context, _opts) => {
   const x = toNumber(V);
 
-  if (isNaN(x)) {
+  if (NumberIsNaN(x)) {
     return x;
   }
 
@@ -456,27 +460,13 @@ function convertCallbackFunction(V, prefix, context, _opts) {
   return V;
 }
 
-function isDataView(V) {
-  return ArrayBufferIsView(V) &&
-    TypedArrayPrototypeGetSymbolToStringTag(V) === undefined;
-}
-
-function isNonSharedArrayBuffer(V) {
-  return ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, V);
-}
-
-function isSharedArrayBuffer(V) {
-  // deno-lint-ignore prefer-primordials
-  return ObjectPrototypeIsPrototypeOf(SharedArrayBuffer.prototype, V);
-}
-
 converters.ArrayBuffer = (
   V,
   prefix = undefined,
   context = undefined,
   opts = {},
 ) => {
-  if (!isNonSharedArrayBuffer(V)) {
+  if (!isArrayBuffer(V)) {
     if (opts.allowShared && !isSharedArrayBuffer(V)) {
       throw makeException(
         TypeError,
@@ -511,7 +501,10 @@ converters.DataView = (
     );
   }
 
-  if (!opts.allowShared && isSharedArrayBuffer(DataViewPrototypeGetBuffer(V))) {
+  if (
+    !opts.allowShared &&
+    isSharedArrayBuffer(DataViewPrototypeGetBuffer(V))
+  ) {
     throw makeException(
       TypeError,
       "is backed by a SharedArrayBuffer, which is not allowed",
@@ -532,6 +525,8 @@ ArrayPrototypeForEach(
     Uint16Array,
     Uint32Array,
     Uint8ClampedArray,
+    // TODO(petamoriken): add Float16Array converter
+    // Float16Array,
     Float32Array,
     Float64Array,
   ],
@@ -588,7 +583,7 @@ converters.ArrayBufferView = (
     );
   }
   let buffer;
-  if (TypedArrayPrototypeGetSymbolToStringTag(V) !== undefined) {
+  if (isTypedArray(V)) {
     buffer = TypedArrayPrototypeGetBuffer(V);
   } else {
     buffer = DataViewPrototypeGetBuffer(V);
@@ -613,7 +608,7 @@ converters.BufferSource = (
 ) => {
   if (ArrayBufferIsView(V)) {
     let buffer;
-    if (TypedArrayPrototypeGetSymbolToStringTag(V) !== undefined) {
+    if (isTypedArray(V)) {
       buffer = TypedArrayPrototypeGetBuffer(V);
     } else {
       buffer = DataViewPrototypeGetBuffer(V);
@@ -630,7 +625,7 @@ converters.BufferSource = (
     return V;
   }
 
-  if (!opts.allowShared && !isNonSharedArrayBuffer(V)) {
+  if (!opts.allowShared && !isArrayBuffer(V)) {
     throw makeException(
       TypeError,
       "is not an ArrayBuffer or a view on one",
@@ -641,7 +636,7 @@ converters.BufferSource = (
   if (
     opts.allowShared &&
     !isSharedArrayBuffer(V) &&
-    !isNonSharedArrayBuffer(V)
+    !isArrayBuffer(V)
   ) {
     throw makeException(
       TypeError,

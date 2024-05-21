@@ -4,14 +4,15 @@ mod args;
 mod auth_tokens;
 mod cache;
 mod cdp;
-mod deno_std;
 mod emit;
 mod errors;
 mod factory;
 mod file_fetcher;
+mod graph_container;
 mod graph_util;
 mod http_util;
 mod js;
+mod jsr;
 mod lsp;
 mod module_loader;
 mod napi;
@@ -29,19 +30,26 @@ mod worker;
 use crate::args::flags_from_vec;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
+use crate::args::DENO_FUTURE;
+use crate::graph_container::ModuleGraphContainer;
 use crate::util::display;
 use crate::util::v8::get_v8_flags_from_env;
 use crate::util::v8::init_v8_flags;
+
+use deno_runtime::WorkerExecutionMode;
+pub use deno_runtime::UNSTABLE_GRANULAR_FLAGS;
 
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::futures::FutureExt;
 use deno_core::unsync::JoinHandle;
-use deno_runtime::colors;
+use deno_npm::resolution::SnapshotFromLockfileError;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::tokio_util::create_and_run_current_thread_with_maybe_metrics;
+use deno_terminal::colors;
 use factory::CliFactory;
+use std::borrow::Cow;
 use std::env;
 use std::env::current_exe;
 use std::future::Future;
@@ -85,6 +93,9 @@ fn spawn_subcommand<F: Future<Output = T> + 'static, T: SubcommandOutput>(
 
 async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
   let handle = match flags.subcommand.clone() {
+    DenoSubcommand::Add(add_flags) => spawn_subcommand(async {
+      tools::registry::add(flags, add_flags).await
+    }),
     DenoSubcommand::Bench(bench_flags) => spawn_subcommand(async {
       if bench_flags.watch.is_some() {
         tools::bench::run_benchmarks_with_watch(flags, bench_flags).await
@@ -102,19 +113,20 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
       tools::run::eval_command(flags, eval_flags).await
     }),
     DenoSubcommand::Cache(cache_flags) => spawn_subcommand(async move {
-      let factory = CliFactory::from_flags(flags).await?;
-      let module_load_preparer = factory.module_load_preparer().await?;
+      let factory = CliFactory::from_flags(flags)?;
       let emitter = factory.emitter()?;
-      let graph_container = factory.graph_container();
-      module_load_preparer
+      let main_graph_container =
+        factory.main_module_graph_container().await?;
+      main_graph_container
         .load_and_type_check_files(&cache_flags.files)
         .await?;
-      emitter.cache_module_emits(&graph_container.graph())
+      emitter.cache_module_emits(&main_graph_container.graph()).await
     }),
     DenoSubcommand::Check(check_flags) => spawn_subcommand(async move {
-      let factory = CliFactory::from_flags(flags).await?;
-      let module_load_preparer = factory.module_load_preparer().await?;
-      module_load_preparer
+      let factory = CliFactory::from_flags(flags)?;
+      let main_graph_container =
+        factory.main_module_graph_container().await?;
+      main_graph_container
         .load_and_type_check_files(&check_flags.files)
         .await
     }),
@@ -130,7 +142,11 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
       )
     }
     DenoSubcommand::Init(init_flags) => {
-      spawn_subcommand(async { tools::init::init_project(init_flags).await })
+      spawn_subcommand(async {
+        // make compiler happy since init_project is sync
+        tokio::task::yield_now().await;
+        tools::init::init_project(init_flags)
+      })
     }
     DenoSubcommand::Info(info_flags) => {
       spawn_subcommand(async { tools::info::info(flags, info_flags).await })
@@ -142,7 +158,7 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
       tools::jupyter::kernel(flags, jupyter_flags).await
     }),
     DenoSubcommand::Uninstall(uninstall_flags) => spawn_subcommand(async {
-      tools::installer::uninstall(uninstall_flags.name, uninstall_flags.root)
+      tools::installer::uninstall(uninstall_flags)
     }),
     DenoSubcommand::Lsp => spawn_subcommand(async { lsp::start().await }),
     DenoSubcommand::Lint(lint_flags) => spawn_subcommand(async {
@@ -163,8 +179,11 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
       if run_flags.is_stdin() {
         tools::run::run_from_stdin(flags).await
       } else {
-        tools::run::run_script(flags, run_flags).await
+        tools::run::run_script(WorkerExecutionMode::Run, flags, run_flags.watch).await
       }
+    }),
+    DenoSubcommand::Serve(serve_flags) => spawn_subcommand(async move {
+      tools::run::run_script(WorkerExecutionMode::Serve, flags, serve_flags.watch).await
     }),
     DenoSubcommand::Task(task_flags) => spawn_subcommand(async {
       tools::task::execute_script(flags, task_flags).await
@@ -195,7 +214,7 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
       })
     }
     DenoSubcommand::Types => spawn_subcommand(async move {
-      let types = tsc::get_types_declaration_file_text(flags.unstable);
+      let types = tsc::get_types_declaration_file_text();
       display::write_to_stdout_ignore_sigpipe(types.as_bytes())
     }),
     #[cfg(feature = "upgrade")]
@@ -219,6 +238,7 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
   handle.await?
 }
 
+#[allow(clippy::print_stderr)]
 fn setup_panic_hook() {
   // This function does two things inside of the panic hook:
   // - Tokio does not exit the process when a task panics, so we define a custom
@@ -243,6 +263,7 @@ fn setup_panic_hook() {
   }));
 }
 
+#[allow(clippy::print_stderr)]
 fn exit_with_message(message: &str, code: i32) -> ! {
   eprintln!(
     "{}: {}",
@@ -252,107 +273,61 @@ fn exit_with_message(message: &str, code: i32) -> ! {
   std::process::exit(code);
 }
 
-fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
-  match result {
-    Ok(value) => value,
-    Err(error) => {
-      let mut error_string = format!("{error:?}");
-      let mut error_code = 1;
-
-      if let Some(e) = error.downcast_ref::<JsError>() {
-        // eprintln!("is js error! {:?}", e);
-        error_string = format_js_error(e);
-
-        if e.name == Some("ReferenceError".to_string()) {
-          if let Some(msg) = &e.message {
-            if msg.contains("module is not defined") {
-              error_string = format!("{}\n\n    {} Deno doesn't support CommonJS modules, change problematic module into an ES module.", error_string, colors::cyan("hint:"))
-            }
-          }
-        }
-      } else if let Some(e) = error.downcast_ref::<args::LockfileError>() {
-        error_string = e.to_string();
-        error_code = 10;
+fn maybe_format_commonjs_error(e: &JsError) -> Option<String> {
+  if e.name == Some("ReferenceError".to_string()) {
+    if let Some(msg) = &e.message {
+      if msg.contains("module is not defined") {
+        return Some(format!("{} Deno doesn't support CommonJS modules, change problematic module into an ES module.", colors::cyan("hint:")));
       }
-
-      exit_with_message(&error_string, error_code);
     }
   }
+
+  None
 }
 
-// NOTE(bartlomieju): keep IDs in sync with `runtime/90_deno_ns.js` (search for `unstableFeatures`)
-pub(crate) static UNSTABLE_GRANULAR_FLAGS: &[(
-  // flag name
-  &str,
-  // help text
-  &str,
-  // id to enable it in runtime/99_main.js
-  i32,
-)] = &[
-  (
-    deno_runtime::deno_broadcast_channel::UNSTABLE_FEATURE_NAME,
-    "Enable unstable `BroadcastChannel` API",
-    1,
-  ),
-  (
-    deno_runtime::deno_cron::UNSTABLE_FEATURE_NAME,
-    "Enable unstable Deno.cron API",
-    2,
-  ),
-  (
-    deno_runtime::deno_ffi::UNSTABLE_FEATURE_NAME,
-    "Enable unstable FFI APIs",
-    3,
-  ),
-  (
-    deno_runtime::deno_fs::UNSTABLE_FEATURE_NAME,
-    "Enable unstable file system APIs",
-    4,
-  ),
-  (
-    deno_runtime::ops::http::UNSTABLE_FEATURE_NAME,
-    "Enable unstable HTTP APIs",
-    5,
-  ),
-  (
-    deno_runtime::deno_kv::UNSTABLE_FEATURE_NAME,
-    "Enable unstable Key-Value store APIs",
-    6,
-  ),
-  (
-    deno_runtime::deno_net::UNSTABLE_FEATURE_NAME,
-    "Enable unstable net APIs",
-    7,
-  ),
-  (
-    "unsafe-proto",
-    "Enable unsafe __proto__ support. This is a security risk.",
-    // This number is used directly in the JS code. Search
-    // for "unstableFeatures" to see where it's used.
-    8,
-  ),
-  (
-    deno_runtime::deno_webgpu::UNSTABLE_FEATURE_NAME,
-    "Enable unstable `WebGPU` API",
-    9,
-  ),
-  (
-    deno_runtime::ops::worker_host::UNSTABLE_FEATURE_NAME,
-    "Enable unstable Web Worker APIs",
-    10,
-  ),
-];
+fn exit_for_error(error: AnyError) -> ! {
+  let mut error_string = format!("{error:?}");
+  let mut error_code = 1;
 
-pub(crate) fn unstable_exit_cb(_feature: &str, api_name: &str) {
-  // TODO(bartlomieju): change to "The `--unstable-{feature}` flag must be provided.".
-  eprintln!("Unstable API '{api_name}'. The --unstable flag must be provided.");
+  if let Some(e) = error.downcast_ref::<JsError>() {
+    error_string = format_js_error(e);
+    // TODO(bartlomieju): there must be a smarter way to add hint to `JsError`.
+    if let Some(commonjs_error) = maybe_format_commonjs_error(e) {
+      error_string = format!("{}\n\n    {}", error_string, commonjs_error);
+    }
+  } else if let Some(args::LockfileError::IntegrityCheckFailed(e)) =
+    error.downcast_ref::<args::LockfileError>()
+  {
+    error_string = e.to_string();
+    error_code = 10;
+  } else if let Some(SnapshotFromLockfileError::IntegrityCheckFailed(e)) =
+    error.downcast_ref::<SnapshotFromLockfileError>()
+  {
+    error_string = e.to_string();
+    error_code = 10;
+  }
+
+  exit_with_message(&error_string, error_code);
+}
+
+#[allow(clippy::print_stderr)]
+pub(crate) fn unstable_exit_cb(feature: &str, api_name: &str) {
+  eprintln!(
+    "Unstable API '{api_name}'. The `--unstable-{}` flag must be provided.",
+    feature
+  );
   std::process::exit(70);
 }
 
-#[allow(dead_code)]
-pub(crate) fn unstable_warn_cb(feature: &str) {
+// TODO(bartlomieju): remove when `--unstable` flag is removed.
+#[allow(clippy::print_stderr)]
+pub(crate) fn unstable_warn_cb(feature: &str, api_name: &str) {
   eprintln!(
-    "The `--unstable` flag is deprecated, use --unstable-{feature} instead."
+    "⚠️  {}",
+    colors::yellow(format!(
+      "The `{}` API was used with `--unstable` flag. The `--unstable` flag is deprecated and will be removed in Deno 2.0. Use granular `--unstable-{}` instead.\nLearn more at: https://docs.deno.com/runtime/manual/tools/unstable_flags",
+      api_name, feature
+    ))
   );
 }
 
@@ -368,70 +343,95 @@ pub fn main() {
     Box::new(util::draw_thread::DrawThread::show),
   );
 
-  let args: Vec<String> = env::args().collect();
-
-  // NOTE(lucacasonato): due to new PKU feature introduced in V8 11.6 we need to
-  // initalize the V8 platform on a parent thread of all threads that will spawn
-  // V8 isolates.
-
-  let future = async move {
-    let current_exe_path = current_exe()?;
-    let standalone_res =
-      match standalone::extract_standalone(&current_exe_path, args.clone())
-        .await
-      {
-        Ok(Some((metadata, eszip))) => standalone::run(eszip, metadata).await,
-        Ok(None) => Ok(()),
-        Err(err) => Err(err),
-      };
-    // TODO(bartlomieju): doesn't handle exit code set by the runtime properly
-    unwrap_or_exit(standalone_res);
-
-    let flags = match flags_from_vec(args) {
-      Ok(flags) => flags,
-      Err(err @ clap::Error { .. })
-        if err.kind() == clap::error::ErrorKind::DisplayHelp
-          || err.kind() == clap::error::ErrorKind::DisplayVersion =>
-      {
-        err.print().unwrap();
-        std::process::exit(0);
-      }
-      Err(err) => unwrap_or_exit(Err(AnyError::from(err))),
-    };
-
-    let default_v8_flags = match flags.subcommand {
-      // Using same default as VSCode:
-      // https://github.com/microsoft/vscode/blob/48d4ba271686e8072fc6674137415bc80d936bc7/extensions/typescript-language-features/src/configuration/configuration.ts#L213-L214
-      DenoSubcommand::Lsp => vec!["--max-old-space-size=3072".to_string()],
-      _ => vec![],
-    };
-    init_v8_flags(&default_v8_flags, &flags.v8_flags, get_v8_flags_from_env());
-    deno_core::JsRuntime::init_platform(None);
-
-    util::logger::init(flags.log_level);
-
-    run_subcommand(flags).await
+  let args: Vec<_> = env::args_os().collect();
+  let current_exe_path = current_exe().unwrap();
+  let maybe_standalone = match standalone::extract_standalone(
+    &current_exe_path,
+    Cow::Borrowed(&args),
+  ) {
+    Ok(standalone) => standalone,
+    Err(err) => exit_for_error(err),
   };
 
-  let exit_code =
-    unwrap_or_exit(create_and_run_current_thread_with_maybe_metrics(future));
+  let future = async move {
+    match maybe_standalone {
+      Some(future) => {
+        let (metadata, eszip) = future.await?;
+        standalone::run(eszip, metadata).await
+      }
+      None => {
+        // NOTE(lucacasonato): due to new PKU feature introduced in V8 11.6 we need to
+        // initialize the V8 platform on a parent thread of all threads that will spawn
+        // V8 isolates.
+        let flags = resolve_flags_and_init(args)?;
+        run_subcommand(flags).await
+      }
+    }
+  };
 
-  std::process::exit(exit_code);
+  match create_and_run_current_thread_with_maybe_metrics(future) {
+    Ok(exit_code) => std::process::exit(exit_code),
+    Err(err) => exit_for_error(err),
+  }
 }
 
-#[cfg(test)]
-mod test {
-  use super::*;
+fn resolve_flags_and_init(
+  args: Vec<std::ffi::OsString>,
+) -> Result<Flags, AnyError> {
+  let flags = match flags_from_vec(args) {
+    Ok(flags) => flags,
+    Err(err @ clap::Error { .. })
+      if err.kind() == clap::error::ErrorKind::DisplayHelp
+        || err.kind() == clap::error::ErrorKind::DisplayVersion =>
+    {
+      err.print().unwrap();
+      std::process::exit(0);
+    }
+    Err(err) => exit_for_error(AnyError::from(err)),
+  };
 
-  #[test]
-  fn unstable_granular_flag_names_sorted() {
-    let flags = UNSTABLE_GRANULAR_FLAGS
-      .iter()
-      .map(|(name, _, _)| name.to_string())
-      .collect::<Vec<_>>();
-    let mut sorted_flags = flags.clone();
-    sorted_flags.sort();
-    // sort the flags by name so they appear nicely in the help text
-    assert_eq!(flags, sorted_flags);
+  // TODO(bartlomieju): remove when `--unstable` flag is removed.
+  if flags.unstable_config.legacy_flag_enabled {
+    #[allow(clippy::print_stderr)]
+    if matches!(flags.subcommand, DenoSubcommand::Check(_)) {
+      // can't use log crate because that's not setup yet
+      eprintln!(
+        "⚠️  {}",
+        colors::yellow(
+          "The `--unstable` flag is not needed for `deno check` anymore."
+        )
+      );
+    } else {
+      eprintln!(
+        "⚠️  {}",
+        colors::yellow(
+          "The `--unstable` flag is deprecated and will be removed in Deno 2.0. Use granular `--unstable-*` flags instead.\nLearn more at: https://docs.deno.com/runtime/manual/tools/unstable_flags"
+        )
+      );
+    }
   }
+
+  let default_v8_flags = match flags.subcommand {
+    // Using same default as VSCode:
+    // https://github.com/microsoft/vscode/blob/48d4ba271686e8072fc6674137415bc80d936bc7/extensions/typescript-language-features/src/configuration/configuration.ts#L213-L214
+    DenoSubcommand::Lsp => vec!["--max-old-space-size=3072".to_string()],
+    _ => {
+      if *DENO_FUTURE {
+        // deno_ast removes TypeScript `assert` keywords, so this flag only affects JavaScript
+        // TODO(petamoriken): Need to check TypeScript `assert` keywords in deno_ast
+        vec!["--no-harmony-import-assertions".to_string()]
+      } else {
+        // If we're still in v1.X version we want to support import assertions.
+        // V8 12.6 unshipped the support by default, so force it by passing a
+        // flag.
+        vec!["--harmony-import-assertions".to_string()]
+      }
+    }
+  };
+
+  init_v8_flags(&default_v8_flags, &flags.v8_flags, get_v8_flags_from_env());
+  deno_core::JsRuntime::init_platform(None);
+  util::logger::init(flags.log_level);
+
+  Ok(flags)
 }

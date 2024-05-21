@@ -7,6 +7,19 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { core, internals } from "ext:core/mod.js";
+import { op_node_ipc_read, op_node_ipc_write } from "ext:core/ops";
+import {
+  ArrayIsArray,
+  ArrayPrototypeFilter,
+  ArrayPrototypeJoin,
+  ArrayPrototypePush,
+  ArrayPrototypeSlice,
+  ArrayPrototypeSort,
+  ArrayPrototypeUnshift,
+  ObjectHasOwn,
+  StringPrototypeToUpperCase,
+} from "ext:deno_node/internal/primordials.mjs";
+
 import { assert } from "ext:deno_node/_util/asserts.ts";
 import { EventEmitter } from "node:events";
 import { os } from "ext:deno_node/internal_binding/constants.ts";
@@ -30,26 +43,9 @@ import {
   validateObject,
   validateString,
 } from "ext:deno_node/internal/validators.mjs";
-import {
-  ArrayIsArray,
-  ArrayPrototypeFilter,
-  ArrayPrototypeJoin,
-  ArrayPrototypePush,
-  ArrayPrototypeSlice,
-  ArrayPrototypeSort,
-  ArrayPrototypeUnshift,
-  ObjectHasOwn,
-  StringPrototypeToUpperCase,
-} from "ext:deno_node/internal/primordials.mjs";
 import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
 import { getValidatedPath } from "ext:deno_node/internal/fs/utils.mjs";
 import process from "node:process";
-
-const core = globalThis.__bootstrap.core;
-const {
-  op_node_ipc_read,
-  op_node_ipc_write,
-} = core.ensureFastOps();
 
 export function mapValues<T, O>(
   record: Readonly<Record<string, T>>,
@@ -279,7 +275,11 @@ export class ChildProcess extends EventEmitter {
         });
       })();
     } catch (err) {
-      this.#_handleError(err);
+      let e = err;
+      if (e instanceof Deno.errors.NotFound) {
+        e = _createSpawnSyncError("ENOENT", command, args);
+      }
+      this.#_handleError(e);
     }
   }
 
@@ -304,7 +304,9 @@ export class ChildProcess extends EventEmitter {
     }
 
     /* Cancel any pending IPC I/O */
-    this.disconnect?.();
+    if (this.implementsDisconnect) {
+      this.disconnect?.();
+    }
 
     this.killed = true;
     this.signalCode = denoSignal;
@@ -501,9 +503,18 @@ function normalizeStdioOption(
   if (Array.isArray(stdio)) {
     // `[0, 1, 2]` is equivalent to `"inherit"`
     if (
-      stdio.length === 3 && stdio[0] === 0 && stdio[1] === 1 && stdio[2] === 2
+      stdio.length === 3 &&
+      (stdio[0] === 0 && stdio[1] === 1 && stdio[2] === 2)
     ) {
       return ["inherit", "inherit", "inherit"];
+    }
+
+    // `[null, null, null]` is equivalent to `"pipe"
+    if (
+      stdio.length === 3 &&
+        stdio[0] === null || stdio[1] === null || stdio[2] === null
+    ) {
+      return ["pipe", "pipe", "pipe"];
     }
 
     // At least 3 stdio must be created to match node
@@ -855,7 +866,7 @@ export function spawnSync(
     windowsVerbatimArguments = false,
   } = options;
   const [
-    _stdin_ = "pipe", // TODO(bartlomieju): use this?
+    stdin_ = "pipe",
     stdout_ = "pipe",
     stderr_ = "pipe",
     _channel, // TODO(kt3k): handle this correctly
@@ -870,6 +881,7 @@ export function spawnSync(
       env: mapValues(env, (value) => value.toString()),
       stdout: toDenoStdio(stdout_),
       stderr: toDenoStdio(stderr_),
+      stdin: stdin_ == "inherit" ? "inherit" : "null",
       uid,
       gid,
       windowsRawArguments: windowsVerbatimArguments,
@@ -1152,6 +1164,7 @@ export function setupChannel(target, ipc) {
       target.emit("disconnect");
     });
   };
+  target.implementsDisconnect = true;
 
   // Start reading messages from the channel.
   readLoop();

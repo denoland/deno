@@ -1,9 +1,10 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use deno_ast::CjsAnalysis;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_runtime::deno_webstorage::rusqlite::params;
+
+use crate::node::CliCjsAnalysis;
 
 use super::cache_db::CacheDB;
 use super::cache_db::CacheDBConfiguration;
@@ -59,7 +60,7 @@ impl NodeAnalysisCache {
     &self,
     specifier: &str,
     expected_source_hash: &str,
-  ) -> Option<CjsAnalysis> {
+  ) -> Option<CliCjsAnalysis> {
     Self::ensure_ok(
       self.inner.get_cjs_analysis(specifier, expected_source_hash),
     )
@@ -69,7 +70,7 @@ impl NodeAnalysisCache {
     &self,
     specifier: &str,
     source_hash: &str,
-    cjs_analysis: &CjsAnalysis,
+    cjs_analysis: &CliCjsAnalysis,
   ) {
     Self::ensure_ok(self.inner.set_cjs_analysis(
       specifier,
@@ -93,7 +94,7 @@ impl NodeAnalysisCacheInner {
     &self,
     specifier: &str,
     expected_source_hash: &str,
-  ) -> Result<Option<CjsAnalysis>, AnyError> {
+  ) -> Result<Option<CliCjsAnalysis>, AnyError> {
     let query = "
       SELECT
         data
@@ -118,7 +119,7 @@ impl NodeAnalysisCacheInner {
     &self,
     specifier: &str,
     source_hash: &str,
-    cjs_analysis: &CjsAnalysis,
+    cjs_analysis: &CliCjsAnalysis,
   ) -> Result<(), AnyError> {
     let sql = "
       INSERT OR REPLACE INTO
@@ -147,7 +148,7 @@ mod test {
     let cache = NodeAnalysisCacheInner::new(conn);
 
     assert!(cache.get_cjs_analysis("file.js", "2").unwrap().is_none());
-    let cjs_analysis = CjsAnalysis {
+    let cjs_analysis = CliCjsAnalysis::Cjs {
       exports: vec!["export1".to_string()],
       reexports: vec!["re-export1".to_string()],
     };
@@ -157,8 +158,7 @@ mod test {
     assert!(cache.get_cjs_analysis("file.js", "3").unwrap().is_none()); // different hash
     let actual_cjs_analysis =
       cache.get_cjs_analysis("file.js", "2").unwrap().unwrap();
-    assert_eq!(actual_cjs_analysis.exports, cjs_analysis.exports);
-    assert_eq!(actual_cjs_analysis.reexports, cjs_analysis.reexports);
+    assert_eq!(actual_cjs_analysis, cjs_analysis);
 
     // adding when already exists should not cause issue
     cache
@@ -170,8 +170,7 @@ mod test {
     let cache = NodeAnalysisCacheInner::new(conn);
     let actual_analysis =
       cache.get_cjs_analysis("file.js", "2").unwrap().unwrap();
-    assert_eq!(actual_analysis.exports, cjs_analysis.exports);
-    assert_eq!(actual_analysis.reexports, cjs_analysis.reexports);
+    assert_eq!(actual_analysis, cjs_analysis);
 
     // now changing the cli version should clear it
     let conn = cache.conn.recreate_with_version("2.0.0");

@@ -24,7 +24,7 @@ jobs:
 
     steps:
       - name: Clone repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           submodules: true
           persist-credentials: false
@@ -35,7 +35,7 @@ jobs:
           deno-version: ${{ matrix.deno-version }}
 
       - name: Install Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
@@ -45,7 +45,7 @@ jobs:
           deno --version
 
       - name: Switch WPT submodule to epochs/daily
-        working-directory: test_util/wpt/
+        working-directory: tests/wpt/suite/
         shell: bash
         run: |
           git remote set-branches origin '*'
@@ -55,24 +55,22 @@ jobs:
 
       - name: Configure hosts file for WPT (unix)
         if: runner.os != 'Windows'
-        working-directory: test_util/wpt/
+        working-directory: tests/wpt/suite/
         run: ./wpt make-hosts-file | sudo tee -a /etc/hosts
 
       - name: Configure hosts file for WPT (windows)
         if: runner.os == 'Windows'
-        working-directory: test_util/wpt/
+        working-directory: tests/wpt/suite/
         run: python wpt make-hosts-file | Out-File $env:SystemRoot\System32\drivers\etc\hosts -Encoding ascii -Append
 
       - name: Run web platform tests
         shell: bash
         run: |
-          deno run --unstable --allow-write --allow-read --allow-net           \
-            --allow-env --allow-run --lock=tools/deno.lock.json                \
-            ./tools/wpt.ts setup
-          deno run --unstable --allow-write --allow-read --allow-net           \
-            --allow-env --allow-run --lock=tools/deno.lock.json                \
-            ./tools/wpt.ts run                                                 \
-            --binary=$(which deno) --quiet --release --no-ignore --json=wpt.json --wptreport=wptreport.json || true
+          deno run --unstable -A --lock=tools/deno.lock.json                   \
+            ./tests/wpt/wpt.ts setup
+          deno run --unstable -A --lock=tools/deno.lock.json                   \
+            ./tests/wpt/wpt.ts run                                             \                                                \
+            --binary=$(which deno) --quiet --release --no-ignore --json=wpt.json --wptreport=wptreport.json --exit-zero
 
       - name: Upload wpt results to wpt.fyi
         env:

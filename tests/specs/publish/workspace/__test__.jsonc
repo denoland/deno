@@ -1,0 +1,10 @@
+{
+  "steps": [{
+    "args": "publish --token 'sadfasdf'",
+    "output": "workspace.out"
+  }, {
+    "cwd": "./bar",
+    "args": "publish --token 'sadfasdf'",
+    "output": "workspace_individual.out"
+  }]
+}

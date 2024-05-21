@@ -1,0 +1,67 @@
+# Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
+[package]
+name = "cli_tests"
+version = "0.0.0"
+authors.workspace = true
+autotests = false
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+path = "lib.rs"
+
+[features]
+run = []
+
+[[test]]
+name = "integration_tests"
+path = "integration/mod.rs"
+required-features = ["run"]
+
+[[test]]
+name = "specs"
+path = "specs/mod.rs"
+required-features = ["run"]
+harness = false
+
+[[test]]
+name = "node_compat_tests"
+path = "node_compat/test_runner.rs"
+required-features = ["run"]
+
+[dev-dependencies]
+bytes.workspace = true
+chrono.workspace = true
+deno_ast.workspace = true
+deno_bench_util.workspace = true
+deno_cache_dir = { workspace = true }
+deno_core = { workspace = true, features = ["include_js_files_for_snapshotting", "unsafe_use_unprotected_platform"] }
+deno_fetch.workspace = true
+deno_lockfile.workspace = true
+deno_terminal.workspace = true
+deno_tls.workspace = true
+fastwebsockets = { workspace = true, features = ["upgrade", "unstable-split"] }
+file_test_runner = "0.7.0"
+flaky_test = "=0.1.0"
+http.workspace = true
+http-body-util.workspace = true
+hyper.workspace = true
+hyper-util.workspace = true
+once_cell.workspace = true
+os_pipe.workspace = true
+pretty_assertions.workspace = true
+regex.workspace = true
+serde.workspace = true
+test_util.workspace = true
+tokio.workspace = true
+tower-lsp.workspace = true
+trust-dns-client = "=0.22.0"
+trust-dns-server = "=0.22.1"
+url.workspace = true
+uuid = { workspace = true, features = ["serde"] }
+zeromq.workspace = true
+
+[target.'cfg(unix)'.dev-dependencies]
+nix.workspace = true

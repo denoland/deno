@@ -1,0 +1,20 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "commandName": "npm",
+    "args": "install",
+    "output": "[WILDCARD]"
+  }, {
+    "args": "task say",
+    "output": "package_json_say.out"
+  }, {
+    "args": "task think",
+    "output": "package_json_think.out"
+  }, {
+    "args": "task deno-say",
+    "output": "deno_json_say.out"
+  }, {
+    "args": "task deno-think",
+    "output": "deno_json_think.out"
+  }]
+}

@@ -24,7 +24,7 @@ use crate::tools::fmt::format_json;
 use crate::util::fs::canonicalize_path;
 use crate::util::fs::resolve_from_cwd;
 use crate::util::path::relative_specifier;
-use crate::util::path::specifier_to_file_path;
+use deno_runtime::fs_util::specifier_to_file_path;
 
 mod analyze;
 mod build;
@@ -40,7 +40,7 @@ pub async fn vendor(
 ) -> Result<(), AnyError> {
   let mut cli_options = CliOptions::from_flags(flags)?;
   let raw_output_dir = match &vendor_flags.output_path {
-    Some(output_path) => output_path.to_owned(),
+    Some(output_path) => PathBuf::from(output_path).to_owned(),
     None => PathBuf::from("vendor/"),
   };
   let output_dir = resolve_from_cwd(&raw_output_dir)?;
@@ -51,12 +51,12 @@ pub async fn vendor(
   let entry_points =
     resolve_entry_points(&vendor_flags, cli_options.initial_cwd())?;
   let jsx_import_source = cli_options.to_maybe_jsx_import_source_config()?;
-  let module_graph_builder = factory.module_graph_builder().await?.clone();
+  let module_graph_creator = factory.module_graph_creator().await?.clone();
   let output = build::build(build::BuildInput {
     entry_points,
     build_graph: move |entry_points| {
       async move {
-        module_graph_builder
+        module_graph_creator
           .create_graph(GraphKind::All, entry_points)
           .await
       }
@@ -99,13 +99,14 @@ pub async fn vendor(
 
   // cache the node_modules folder when it's been added to the config file
   if modified_result.added_node_modules_dir {
-    let node_modules_path = cli_options.node_modules_dir_path().or_else(|| {
-      cli_options
-        .maybe_config_file_specifier()
-        .filter(|c| c.scheme() == "file")
-        .and_then(|c| c.to_file_path().ok())
-        .map(|config_path| config_path.parent().unwrap().join("node_modules"))
-    });
+    let node_modules_path =
+      cli_options.node_modules_dir_path().cloned().or_else(|| {
+        cli_options
+          .maybe_config_file_specifier()
+          .filter(|c| c.scheme() == "file")
+          .and_then(|c| c.to_file_path().ok())
+          .map(|config_path| config_path.parent().unwrap().join("node_modules"))
+      });
     if let Some(node_modules_path) = node_modules_path {
       let cli_options =
         cli_options.with_node_modules_dir_path(node_modules_path);
@@ -173,9 +174,24 @@ fn validate_options(
   options: &mut CliOptions,
   output_dir: &Path,
 ) -> Result<(), AnyError> {
+  let import_map_specifier = options
+    .resolve_specified_import_map_specifier()?
+    .or_else(|| {
+      let config_file = options.maybe_config_file().as_ref()?;
+      config_file
+        .to_import_map_specifier()
+        .ok()
+        .flatten()
+        .or_else(|| {
+          if config_file.is_an_import_map() {
+            Some(config_file.specifier.clone())
+          } else {
+            None
+          }
+        })
+    });
   // check the import map
-  if let Some(import_map_path) = options
-    .resolve_import_map_specifier()?
+  if let Some(import_map_path) = import_map_specifier
     .and_then(|p| specifier_to_file_path(&p).ok())
     .and_then(|p| canonicalize_path(&p).ok())
   {
@@ -227,14 +243,15 @@ fn maybe_update_config_file(
     return ModifiedResult::default();
   }
 
-  let fmt_config = config_file
+  let fmt_config_options = config_file
     .to_fmt_config()
     .ok()
-    .unwrap_or_default()
+    .flatten()
+    .map(|config| config.options)
     .unwrap_or_default();
   let result = update_config_file(
     config_file,
-    &fmt_config.options,
+    &fmt_config_options,
     if try_add_import_map {
       Some(
         ModuleSpecifier::from_file_path(output_dir.join("import_map.json"))
@@ -293,6 +310,7 @@ fn update_config_text(
 ) -> Result<ModifiedResult, AnyError> {
   use jsonc_parser::ast::ObjectProp;
   use jsonc_parser::ast::Value;
+  let text = if text.trim().is_empty() { "{}\n" } else { text };
   let ast =
     jsonc_parser::parse_to_ast(text, &Default::default(), &Default::default())?;
   let obj = match ast.value {

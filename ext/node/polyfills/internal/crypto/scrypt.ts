@@ -28,12 +28,7 @@ SOFTWARE.
 
 import { Buffer } from "node:buffer";
 import { HASH_DATA } from "ext:deno_node/internal/crypto/types.ts";
-
-const { core } = globalThis.__bootstrap;
-const { ops } = core;
-const {
-  op_node_scrypt_async,
-} = core.ensureFastOps();
+import { op_node_scrypt_async, op_node_scrypt_sync } from "ext:core/ops";
 
 type Opts = Partial<{
   N: number;
@@ -78,7 +73,7 @@ export function scryptSync(
   }
 
   const buf = Buffer.alloc(keylen);
-  ops.op_node_scrypt_sync(
+  op_node_scrypt_sync(
     password,
     salt,
     keylen,

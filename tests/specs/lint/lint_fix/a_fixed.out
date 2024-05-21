@@ -1,0 +1,4 @@
+import type { Type } from "./test.ts";
+export type MyType = Type;
+console.log(globalThis.value);
+globalThis.fetch;

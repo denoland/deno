@@ -10,7 +10,6 @@ use deno_core::parking_lot::RwLock;
 use deno_lockfile::NpmPackageDependencyLockfileInfo;
 use deno_lockfile::NpmPackageLockfileInfo;
 use deno_npm::registry::NpmPackageInfo;
-use deno_npm::registry::NpmPackageVersionDistInfoIntegrity;
 use deno_npm::registry::NpmRegistryApi;
 use deno_npm::resolution::NpmPackageVersionResolutionError;
 use deno_npm::resolution::NpmPackagesPartitioned;
@@ -311,9 +310,15 @@ async fn add_package_reqs_to_snapshot(
       .iter()
       .all(|req| snapshot.package_reqs().contains_key(req))
   {
-    log::debug!("Snapshot already up to date. Skipping pending resolution.");
+    log::debug!(
+      "Snapshot already up to date. Skipping pending npm resolution."
+    );
     snapshot
   } else {
+    log::debug!(
+      /* this string is used in tests!! */
+      "Running pending npm resolution."
+    );
     let pending_resolver = get_npm_pending_resolver(api);
     let result = pending_resolver
       .resolve_pending(snapshot, package_reqs)
@@ -388,21 +393,6 @@ fn populate_lockfile_from_snapshot(
 fn npm_package_to_lockfile_info(
   pkg: &NpmResolutionPackage,
 ) -> NpmPackageLockfileInfo {
-  fn integrity_for_lockfile(
-    integrity: NpmPackageVersionDistInfoIntegrity,
-  ) -> String {
-    match integrity {
-      NpmPackageVersionDistInfoIntegrity::Integrity {
-        algorithm,
-        base64_hash,
-      } => format!("{}-{}", algorithm, base64_hash),
-      NpmPackageVersionDistInfoIntegrity::UnknownIntegrity(integrity) => {
-        integrity.to_string()
-      }
-      NpmPackageVersionDistInfoIntegrity::LegacySha1Hex(hex) => hex.to_string(),
-    }
-  }
-
   let dependencies = pkg
     .dependencies
     .iter()
@@ -415,7 +405,7 @@ fn npm_package_to_lockfile_info(
   NpmPackageLockfileInfo {
     display_id: pkg.id.nv.to_string(),
     serialized_id: pkg.id.as_serialized(),
-    integrity: integrity_for_lockfile(pkg.dist.integrity()),
+    integrity: pkg.dist.integrity().for_lockfile(),
     dependencies,
   }
 }

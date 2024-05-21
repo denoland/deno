@@ -1,0 +1,20 @@
+# Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
+[package]
+name = "deno_canvas"
+version = "0.21.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+readme = "README.md"
+repository.workspace = true
+description = "OffscreenCanvas implementation for Deno"
+
+[lib]
+path = "lib.rs"
+
+[dependencies]
+deno_core.workspace = true
+deno_webgpu.workspace = true
+image = { version = "0.24.7", default-features = false, features = ["png"] }
+serde = { workspace = true, features = ["derive"] }

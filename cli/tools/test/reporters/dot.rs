@@ -11,8 +11,9 @@ pub struct DotTestReporter {
   summary: TestSummary,
 }
 
+#[allow(clippy::print_stdout)]
 impl DotTestReporter {
-  pub fn new() -> DotTestReporter {
+  pub fn new(cwd: Url) -> DotTestReporter {
     let console_width = if let Some(size) = crate::util::console::console_size()
     {
       size.cols as usize
@@ -23,7 +24,7 @@ impl DotTestReporter {
     DotTestReporter {
       n: 0,
       width: console_width,
-      cwd: Url::from_directory_path(std::env::current_dir().unwrap()).unwrap(),
+      cwd,
       summary: TestSummary::new(),
     }
   }
@@ -80,6 +81,7 @@ fn fmt_cancelled() -> String {
   colors::gray("!").to_string()
 }
 
+#[allow(clippy::print_stdout)]
 impl TestReporter for DotTestReporter {
   fn report_register(&mut self, _description: &TestDescription) {}
 
@@ -113,7 +115,7 @@ impl TestReporter for DotTestReporter {
         self
           .summary
           .failures
-          .push((description.clone(), failure.clone()));
+          .push((description.into(), failure.clone()));
       }
       TestResult::Cancelled => {
         self.summary.failed += 1;
@@ -162,11 +164,9 @@ impl TestReporter for DotTestReporter {
       TestStepResult::Failed(failure) => {
         self.summary.failed_steps += 1;
         self.summary.failures.push((
-          TestDescription {
+          TestFailureDescription {
             id: desc.id,
             name: common::format_test_step_ancestry(desc, tests, test_steps),
-            ignore: false,
-            only: false,
             origin: desc.origin.clone(),
             location: desc.location.clone(),
           },
@@ -207,6 +207,8 @@ impl TestReporter for DotTestReporter {
       test_steps,
     );
   }
+
+  fn report_completed(&mut self) {}
 
   fn flush_report(
     &mut self,

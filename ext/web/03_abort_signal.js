@@ -3,22 +3,12 @@
 // @ts-check
 /// <reference path="../../core/internal.d.ts" />
 
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { assert } from "ext:deno_web/00_infra.js";
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
-import {
-  defineEventHandler,
-  Event,
-  EventTarget,
-  listenerCount,
-  setIsTrusted,
-} from "ext:deno_web/02_event.js";
 import { primordials } from "ext:core/mod.js";
 const {
   ArrayPrototypeEvery,
   ArrayPrototypePush,
+  FunctionPrototypeApply,
   ObjectPrototypeIsPrototypeOf,
-  SafeArrayIterator,
   SafeSet,
   SafeSetIterator,
   SafeWeakRef,
@@ -32,7 +22,18 @@ const {
   WeakSetPrototypeAdd,
   WeakSetPrototypeHas,
 } = primordials;
-import { refTimer, setTimeout, unrefTimer } from "ext:deno_web/02_timers.js";
+
+import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { assert } from "./00_infra.js";
+import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
+import {
+  defineEventHandler,
+  Event,
+  EventTarget,
+  listenerCount,
+  setIsTrusted,
+} from "./02_event.js";
+import { refTimer, setTimeout, unrefTimer } from "./02_timers.js";
 
 // Since WeakSet is not a iterable, WeakRefSet class is provided to store and
 // iterate objects.
@@ -81,8 +82,16 @@ const timerId = Symbol("[[timerId]]");
 const illegalConstructorKey = Symbol("illegalConstructorKey");
 
 class AbortSignal extends EventTarget {
+  [abortReason] = undefined;
+  [abortAlgos] = null;
+  [dependent] = false;
+  [sourceSignals] = null;
+  [dependentSignals] = null;
+  [timerId] = null;
+  [webidl.brand] = webidl.brand;
+
   static any(signals) {
-    const prefix = "Failed to call 'AbortSignal.any'";
+    const prefix = "Failed to execute 'AbortSignal.any'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     return createDependentAbortSignal(signals, prefix);
   }
@@ -97,7 +106,7 @@ class AbortSignal extends EventTarget {
   }
 
   static timeout(millis) {
-    const prefix = "Failed to call 'AbortSignal.timeout'";
+    const prefix = "Failed to execute 'AbortSignal.timeout'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     millis = webidl.converters["unsigned long long"](
       millis,
@@ -140,9 +149,11 @@ class AbortSignal extends EventTarget {
     const algos = this[abortAlgos];
     this[abortAlgos] = null;
 
-    const event = new Event("abort");
-    setIsTrusted(event, true);
-    super.dispatchEvent(event);
+    if (listenerCount(this, "abort") > 0) {
+      const event = new Event("abort");
+      setIsTrusted(event, true);
+      super.dispatchEvent(event);
+    }
     if (algos !== null) {
       for (const algorithm of new SafeSetIterator(algos)) {
         algorithm();
@@ -167,13 +178,6 @@ class AbortSignal extends EventTarget {
       throw new TypeError("Illegal constructor.");
     }
     super();
-    this[abortReason] = undefined;
-    this[abortAlgos] = null;
-    this[dependent] = false;
-    this[sourceSignals] = null;
-    this[dependentSignals] = null;
-    this[timerId] = null;
-    this[webidl.brand] = webidl.brand;
   }
 
   get aborted() {
@@ -198,8 +202,8 @@ class AbortSignal extends EventTarget {
   // `[add]` and `[remove]` don't ref and unref the timer because they can
   // only be used by Deno internals, which use it to essentially cancel async
   // ops which would block the event loop.
-  addEventListener(...args) {
-    super.addEventListener(...new SafeArrayIterator(args));
+  addEventListener() {
+    FunctionPrototypeApply(super.addEventListener, this, arguments);
     if (listenerCount(this, "abort") > 0) {
       if (this[timerId] !== null) {
         refTimer(this[timerId]);
@@ -215,8 +219,8 @@ class AbortSignal extends EventTarget {
     }
   }
 
-  removeEventListener(...args) {
-    super.removeEventListener(...new SafeArrayIterator(args));
+  removeEventListener() {
+    FunctionPrototypeApply(super.removeEventListener, this, arguments);
     if (listenerCount(this, "abort") === 0) {
       if (this[timerId] !== null) {
         unrefTimer(this[timerId]);
