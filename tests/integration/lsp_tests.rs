@@ -12979,3 +12979,55 @@ fn lsp_semantic_token_caching() {
 
   assert_eq!(res, res_cached);
 }
+
+#[test]
+fn lsp_jsdoc_named_example() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir().path();
+  let mut client = context
+    .new_lsp_command()
+    .set_root_dir(temp_dir.clone())
+    .build();
+  client.initialize_default();
+
+  let main = source_file(
+    temp_dir.join("main.ts"),
+    r#"
+    /**
+     * @example Example1
+     * ```ts
+     * foo();
+     * ```
+     */
+    export function foo(): number {
+      return 1;
+    }
+    "#,
+  );
+
+  let diagnostics = client.did_open_file(&main);
+  assert_eq!(diagnostics.all().len(), 0);
+
+  let hover = client.write_request(
+    "textDocument/hover",
+    json!({
+      "textDocument": main.identifier(),
+      "position": main.range_of_nth(1, "foo").start,
+    }),
+  );
+
+  assert_json_subset(
+    hover,
+    json!({
+      "contents": [
+        {
+          "language": "typescript",
+          "value": "function foo(): number"
+        },
+        "",
+        // The example name `Example1` should not be enclosed in backticks
+        "\n\n*@example*  \nExample1\n```ts\nfoo();\n```"
+      ]
+    }),
+  );
+}
