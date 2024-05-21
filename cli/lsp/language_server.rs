@@ -1234,6 +1234,8 @@ impl Inner {
     &self,
     params: DocumentFormattingParams,
   ) -> LspResult<Option<Vec<TextEdit>>> {
+    let file_referrer = (params.text_document.uri.scheme() == "file")
+      .then(|| params.text_document.uri.clone());
     let mut specifier = self
       .url_map
       .normalize_url(&params.text_document.uri, LspUrlKind::File);
@@ -1247,7 +1249,9 @@ impl Inner {
     {
       return Ok(None);
     }
-    let document = match self.documents.get(&specifier) {
+    let document =
+      file_referrer.and_then(|r| self.documents.get_or_load(&specifier, &r));
+    let document = match document {
       Some(doc) if doc.is_open() => doc,
       _ => return Ok(None),
     };

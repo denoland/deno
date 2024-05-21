@@ -4311,7 +4311,7 @@ fn op_script_names(state: &mut OpState) -> Vec<String> {
         let documents = &state.state_snapshot.documents;
         let types = doc.maybe_types_dependency().maybe_specifier()?;
         let (types, _) = documents.resolve_dependency(types, specifier)?;
-        let types_doc = documents.get(&types)?;
+        let types_doc = documents.get_or_load(&types, specifier)?;
         Some(types_doc.specifier().clone())
       })();
       // If there is a types dep, use that as the root instead. But if the doc
