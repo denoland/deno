@@ -5,10 +5,7 @@
       "npm:@denotest/esm-basic": "npm:@denotest/esm-basic@1.0.0"
     },
     "npm": {
-      "@denotest/esm-basic@1.0.0": {
-        "integrity": "sha512-6cFJKkXt8V7WcD+z8Lke/PikbJcPfQSJsJX6tQIR5GjHjzn2MenMiTOZaNRifvPKcZNXhZKpol8SmH0H380aQA==",
-        "dependencies": {}
-      }
+      "@denotest/esm-basic@1.0.0": [WILDCARD]
     }
   },
   "remote": {},

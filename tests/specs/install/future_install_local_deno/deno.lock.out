@@ -6,23 +6,13 @@
       "npm:@denotest/esm-basic@^1.0.0": "npm:@denotest/esm-basic@1.0.0"
     },
     "jsr": {
-      "@denotest/add@1.0.0": {
-        "integrity": "3b2e675c1ad7fba2a45bc251992e01aff08a3c974ac09079b11e6a5b95d4bfcb"
-      }
+      "@denotest/add@1.0.0": [WILDCARD]
     },
     "npm": {
-      "@denotest/esm-basic@1.0.0": {
-        "integrity": "sha512-6cFJKkXt8V7WcD+z8Lke/PikbJcPfQSJsJX6tQIR5GjHjzn2MenMiTOZaNRifvPKcZNXhZKpol8SmH0H380aQA==",
-        "dependencies": {}
-      }
+      "@denotest/esm-basic@1.0.0": [WILDCARD]
     }
   },
-  "remote": {
-    "http://localhost:4545/subdir/mod1.ts": "bfc1037b02c99abc20367f739bca7455813a5950066abd77965bff33b6eece0f",
-    "http://localhost:4545/subdir/print_hello.ts": "fa6692c8f9ff3fb107e773c3ece5274e9d08be282867a1e3ded1d9c00fcaa63c",
-    "http://localhost:4545/subdir/subdir2/mod2.ts": "8b3b670d25d238dfa72df119140406b96766a00fee635f3606429fe065b18fd1",
-    "http://localhost:4545/v1/extensionless": "414562d4bbc267d00f9a81323a7ae889e64b07d316d4451945a11ffcd628079e"
-  },
+  "remote": [WILDCARD],
   "workspace": {
     "dependencies": [
       "jsr:@denotest/add",
