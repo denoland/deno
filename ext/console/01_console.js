@@ -3390,7 +3390,7 @@ const customInspect = SymbolFor("Deno.customInspect");
 
 function inspect(
   value,
-  inspectOptions = { __proto__: null},
+  inspectOptions = { __proto__: null },
 ) {
   // Default options
   const ctx = {

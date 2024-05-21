@@ -192,7 +192,12 @@ function createIntegerConversion(bitLength, typeOpts) {
   const twoToTheBitLength = MathPow(2, bitLength);
   const twoToOneLessThanTheBitLength = MathPow(2, bitLength - 1);
 
-  return (V, prefix = undefined, context = undefined, opts = { __proto__: null }) => {
+  return (
+    V,
+    prefix = undefined,
+    context = undefined,
+    opts = { __proto__: null },
+  ) => {
     let x = toNumber(V);
     x = censorNegativeZero(x);
 
@@ -251,7 +256,12 @@ function createLongLongConversion(bitLength, { unsigned }) {
   const lowerBound = unsigned ? 0 : NumberMIN_SAFE_INTEGER;
   const asBigIntN = unsigned ? BigIntAsUintN : BigIntAsIntN;
 
-  return (V, prefix = undefined, context = undefined, opts = { __proto__: null }) => {
+  return (
+    V,
+    prefix = undefined,
+    context = undefined,
+    opts = { __proto__: null },
+  ) => {
     let x = toNumber(V);
     x = censorNegativeZero(x);
 
@@ -386,7 +396,12 @@ converters["unrestricted double"] = (V, _prefix, _context, _opts) => {
   return x;
 };
 
-converters.DOMString = function (V, prefix, context, opts = { __proto__: null }) {
+converters.DOMString = function (
+  V,
+  prefix,
+  context,
+  opts = { __proto__: null },
+) {
   if (typeof V === "string") {
     return V;
   } else if (V === null && opts.treatNullAsEmptyString) {
@@ -747,7 +762,12 @@ function createDictionaryConverter(name, ...dictionaries) {
     }
   }
 
-  return function (V, prefix = undefined, context = undefined, opts = { __proto__: null }) {
+  return function (
+    V,
+    prefix = undefined,
+    context = undefined,
+    opts = { __proto__: null },
+  ) {
     const typeV = type(V);
     switch (typeV) {
       case "Undefined":
@@ -812,7 +832,12 @@ function createDictionaryConverter(name, ...dictionaries) {
 function createEnumConverter(name, values) {
   const E = new SafeSet(values);
 
-  return function (V, prefix = undefined, _context = undefined, _opts = { __proto__: null }) {
+  return function (
+    V,
+    prefix = undefined,
+    _context = undefined,
+    _opts = { __proto__: null },
+  ) {
     const S = String(V);
 
     if (!E.has(S)) {
@@ -828,7 +853,12 @@ function createEnumConverter(name, values) {
 }
 
 function createNullableConverter(converter) {
-  return (V, prefix = undefined, context = undefined, opts = { __proto__: null }) => {
+  return (
+    V,
+    prefix = undefined,
+    context = undefined,
+    opts = { __proto__: null },
+  ) => {
     // FIXME: If Type(V) is not Object, and the conversion to an IDL value is
     // being performed due to V being assigned to an attribute whose type is a
     // nullable callback function that is annotated with
@@ -842,7 +872,12 @@ function createNullableConverter(converter) {
 
 // https://heycam.github.io/webidl/#es-sequence
 function createSequenceConverter(converter) {
-  return function (V, prefix = undefined, context = undefined, opts = { __proto__: null }) {
+  return function (
+    V,
+    prefix = undefined,
+    context = undefined,
+    opts = { __proto__: null },
+  ) {
     if (type(V) !== "Object") {
       throw makeException(
         TypeError,
