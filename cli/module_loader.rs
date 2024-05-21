@@ -2,6 +2,7 @@
 
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::str;
@@ -214,6 +215,7 @@ struct SharedCliModuleLoaderState {
   graph_kind: GraphKind,
   lib_window: TsTypeLib,
   lib_worker: TsTypeLib,
+  initial_cwd: PathBuf,
   is_inspecting: bool,
   is_repl: bool,
   code_cache: Option<Arc<CodeCache>>,
@@ -250,6 +252,7 @@ impl CliModuleLoaderFactory {
         graph_kind: options.graph_kind(),
         lib_window: options.ts_type_lib_window(),
         lib_worker: options.ts_type_lib_worker(),
+        initial_cwd: options.initial_cwd().to_path_buf(),
         is_inspecting: options.is_inspecting(),
         is_repl: matches!(
           options.sub_command(),
@@ -425,16 +428,44 @@ impl<TGraphContainer: ModuleGraphContainer>
     &self,
     referrer: &str,
   ) -> Result<ModuleSpecifier, AnyError> {
-    // TODO(bartlomieju): ideally we shouldn't need to call `current_dir()` on each
-    // call - maybe it should be caller's responsibility to pass it as an arg?
-    let cwd = std::env::current_dir().context("Unable to get CWD")?;
-    if referrer.is_empty() && self.shared.is_repl {
+    // todo(https://github.com/denoland/deno_core/pull/741): use function from deno_core
+    fn specifier_has_uri_scheme(specifier: &str) -> bool {
+      let mut chars = specifier.chars();
+      let mut len = 0usize;
+      // The first character must be a letter.
+      match chars.next() {
+        Some(c) if c.is_ascii_alphabetic() => len += 1,
+        _ => return false,
+      }
+      // Second and following characters must be either a letter, number,
+      // plus sign, minus sign, or dot.
+      loop {
+        match chars.next() {
+          Some(c) if c.is_ascii_alphanumeric() || "+-.".contains(c) => len += 1,
+          Some(':') if len >= 2 => return true,
+          _ => return false,
+        }
+      }
+    }
+
+    let referrer = if referrer.is_empty() && self.shared.is_repl {
       // FIXME(bartlomieju): this is a hacky way to provide compatibility with REPL
       // and `Deno.core.evalContext` API. Ideally we should always have a referrer filled
-      // but sadly that's not the case due to missing APIs in V8.
-      deno_core::resolve_path("./$deno$repl.ts", &cwd).map_err(|e| e.into())
+      "./$deno$repl.ts"
     } else {
-      deno_core::resolve_url_or_path(referrer, &cwd).map_err(|e| e.into())
+      referrer
+    };
+
+    if specifier_has_uri_scheme(referrer) {
+      deno_core::resolve_url(referrer).map_err(|e| e.into())
+    } else if referrer == "." {
+      // main module, use the initial cwd
+      deno_core::resolve_path(referrer, &self.shared.initial_cwd)
+        .map_err(|e| e.into())
+    } else {
+      // this cwd check is slow, so try to avoid it
+      let cwd = std::env::current_dir().context("Unable to get CWD")?;
+      deno_core::resolve_path(referrer, &cwd).map_err(|e| e.into())
     }
   }
 
