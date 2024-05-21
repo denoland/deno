@@ -677,6 +677,18 @@ impl Resolver for CliGraphResolver {
           }
         }
       }
+    } else if referrer.scheme() == "file" {
+      if let Some(node_resolver) = &self.node_resolver {
+        let node_result = node_resolver.resolve_if_in_npm_package(
+          specifier,
+          referrer,
+          to_node_mode(mode),
+          &PermissionsContainer::allow_all(),
+        );
+        if let Some(Ok(Some(res))) = node_result {
+          return Ok(res.into_url());
+        }
+      }
     }
 
     let specifier = result?;
