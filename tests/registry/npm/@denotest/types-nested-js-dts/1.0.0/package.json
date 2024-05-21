@@ -1,0 +1,5 @@
+{
+  "name": "@denotest/types-nested-js-dts",
+  "version": "1.0.0",
+  "types": "./index.d.mts"
+}
