@@ -1073,7 +1073,7 @@ dependencies = [
 
 [[package]]
 name = "deno"
-version = "1.43.4"
+version = "1.43.5"
 dependencies = [
  "async-trait",
  "base32",
@@ -1668,6 +1668,7 @@ version = "0.89.0"
 dependencies = [
  "aead-gcm-stream",
  "aes",
+ "async-trait",
  "brotli 3.5.0",
  "bytes",
  "cbc",
@@ -1898,9 +1899,9 @@ dependencies = [
 
 [[package]]
 name = "deno_unsync"
-version = "0.3.2"
+version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "30dff7e03584dbae188dae96a0f1876740054809b2ad0cf7c9fc5d361f20e739"
+checksum = "7557a5e9278b9a5cc8056dc37062ea4344770bda4eeb5973c7cbb7ebf636b9a4"
 dependencies = [
  "tokio",
 ]

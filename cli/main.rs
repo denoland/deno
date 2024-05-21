@@ -120,7 +120,7 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
       main_graph_container
         .load_and_type_check_files(&cache_flags.files)
         .await?;
-      emitter.cache_module_emits(&main_graph_container.graph())
+      emitter.cache_module_emits(&main_graph_container.graph()).await
     }),
     DenoSubcommand::Check(check_flags) => spawn_subcommand(async move {
       let factory = CliFactory::from_flags(flags)?;
@@ -405,7 +405,10 @@ fn resolve_flags_and_init(
         // TODO(petamoriken): Need to check TypeScript `assert` keywords in deno_ast
         vec!["--no-harmony-import-assertions".to_string()]
       } else {
-        vec![]
+        // If we're still in v1.X version we want to support import assertions.
+        // V8 12.6 unshipped the support by default, so force it by passing a
+        // flag.
+        vec!["--harmony-import-assertions".to_string()]
       }
     }
   };
