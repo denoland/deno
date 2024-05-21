@@ -129,6 +129,7 @@ rand = { workspace = true, features = ["small_rng"] }
 regex.workspace = true
 reqwest.workspace = true
 ring.workspace = true
+runtimelib = "=0.9.0"
 rustyline.workspace = true
 rustyline-derive = "=0.7.0"
 serde.workspace = true
