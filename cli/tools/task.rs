@@ -70,7 +70,8 @@ pub async fn execute_script(
       bail!("Only local configuration files are supported")
     };
     let cwd = match task_flags.cwd {
-      Some(path) => canonicalize_path(&PathBuf::from(path))?,
+      Some(path) => canonicalize_path(&PathBuf::from(path))
+        .context("failed canonicalizing --cwd")?,
       None => config_file_path.parent().unwrap().to_owned(),
     };
 
