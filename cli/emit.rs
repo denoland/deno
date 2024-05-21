@@ -7,6 +7,9 @@ use crate::cache::ParsedSourceCache;
 use deno_ast::SourceMapOption;
 use deno_ast::TranspileResult;
 use deno_core::error::AnyError;
+use deno_core::futures::stream::FuturesUnordered;
+use deno_core::futures::FutureExt;
+use deno_core::futures::StreamExt;
 use deno_core::ModuleCodeString;
 use deno_core::ModuleSpecifier;
 use deno_graph::MediaType;
@@ -48,28 +51,37 @@ impl Emitter {
     &self,
     graph: &ModuleGraph,
   ) -> Result<(), AnyError> {
-    // todo(dsherret): we could do this concurrently
+    let mut futures = FuturesUnordered::new();
     for module in graph.modules() {
-      if let Module::Js(module) = module {
-        let is_emittable = matches!(
-          module.media_type,
-          MediaType::TypeScript
-            | MediaType::Mts
-            | MediaType::Cts
-            | MediaType::Jsx
-            | MediaType::Tsx
-        );
-        if is_emittable {
+      let Module::Js(module) = module else {
+        continue;
+      };
+
+      let is_emittable = matches!(
+        module.media_type,
+        MediaType::TypeScript
+          | MediaType::Mts
+          | MediaType::Cts
+          | MediaType::Jsx
+          | MediaType::Tsx
+      );
+      if is_emittable {
+        futures.push(
           self
             .emit_parsed_source(
               &module.specifier,
               module.media_type,
               &module.source,
             )
-            .await?;
-        }
+            .boxed_local(),
+        );
       }
     }
+
+    while let Some(result) = futures.next().await {
+      result?; // surface errors
+    }
+
     Ok(())
   }
 
