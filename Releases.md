@@ -8,7 +8,6 @@ https://github.com/denoland/deno_install
 
 ### 1.43.6 / 2024.05.21
 
-- feat(serve): support `--port 0` to use an open port (#23846)
 - fix(cli): use CliNodeResolver::resolve() for managed node_modules (#23902)
 - fix(cli/coverage): invalid line id in html reporter (#23908)
 - fix(ext/web): fix potential leak of unread buffers (#23923)
