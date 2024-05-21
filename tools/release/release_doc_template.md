@@ -25,7 +25,7 @@ cut.**
 
 **DO NOT LAND ANY PRs** 
 
-Release checklist: <LINK TO THIS FORKED GIST GOES HERE>
+Deno v$VERSION release checklist: <LINK TO THIS FORKED GIST GOES HERE>
 ```
 
 ## Patch release preparation
@@ -185,4 +185,6 @@ script generates the symbols based on the latest tags.
 [`denoland/deno`](https://github.com/denoland/deno) is now unlocked.
 
 **You can land PRs now**
+
+Deno v$VERSION has been released.
 ```
