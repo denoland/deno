@@ -88,3 +88,8 @@ itest!(env_file_missing {
   args: "eval --env=missing console.log(Deno.env.get(\"ANOTHER_FOO\"))",
   output: "eval/env_file_missing.out",
 });
+
+itest!(env_unparsable_file {
+  args: "eval --env=env_unparsable console.log(Deno.env.get(\"Another_FOO\"))",
+  output: "eval/env_unparsable_file.out",
+});
