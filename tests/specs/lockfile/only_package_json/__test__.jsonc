@@ -6,7 +6,10 @@
       "output": "cache.out"
     },
     {
-      "args": ["eval", "console.log(Deno.readTextFileSync('./deno.lock').trim())"],
+      "args": [
+        "eval",
+        "console.log(Deno.readTextFileSync('./deno.lock').trim())"
+      ],
       "output": "deno.lock.out"
     }
   ]
