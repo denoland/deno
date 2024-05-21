@@ -1,7 +1,8 @@
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
 use crate::npm::managed::NpmResolutionPackage;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use std::fs;
 use std::path::Path;
 
 pub(super) fn set_up_bin_entry(
@@ -34,6 +35,7 @@ fn set_up_bin_shim(
   bin_name: &str,
   bin_node_modules_dir_path: &Path,
 ) -> Result<(), AnyError> {
+  use std::fs;
   let mut cmd_shim = bin_node_modules_dir_path.join(bin_name);
 
   cmd_shim.set_extension("cmd");
@@ -56,7 +58,7 @@ fn set_up_bin_shim(
 
 #[cfg(unix)]
 fn symlink_bin_entry(
-  package: &NpmResolutionPackage,
+  _package: &NpmResolutionPackage,
   bin_name: &str,
   bin_script: &str,
   package_path: &Path,
