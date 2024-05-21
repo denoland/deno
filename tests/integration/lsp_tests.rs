@@ -7188,6 +7188,55 @@ fn lsp_npm_completions_auto_import_and_quick_fix_no_import_map() {
   client.shutdown();
 }
 
+// Regression test for https://github.com/denoland/deno/issues/23895.
+#[test]
+fn lsp_npm_types_nested_js_dts() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  let file = source_file(
+    temp_dir.path().join("file.ts"),
+    r#"
+      import { someString } from "npm:@denotest/types-nested-js-dts";
+      const someNumber: number = someString;
+      console.log(someNumber);
+    "#,
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.write_request(
+    "workspace/executeCommand",
+    json!({
+      "command": "deno.cache",
+      "arguments": [[], file.uri()],
+    }),
+  );
+  let diagnostics = client.did_open_file(&file);
+  assert_eq!(
+    json!(diagnostics.all()),
+    json!([
+      {
+        "range": {
+          "start": {
+            "line": 2,
+            "character": 12,
+          },
+          "end": {
+            "line": 2,
+            "character": 22,
+          },
+        },
+        "severity": 1,
+        "code": 2322,
+        "source": "deno-ts",
+        "message": "Type 'string' is not assignable to type 'number'.",
+      },
+    ])
+  );
+}
+
 #[test]
 fn lsp_completions_using_decl() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
