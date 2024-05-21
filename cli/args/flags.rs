@@ -26,7 +26,6 @@ use serde::Serialize;
 use std::env;
 use std::ffi::OsString;
 use std::net::SocketAddr;
-use std::num::NonZeroU16;
 use std::num::NonZeroU32;
 use std::num::NonZeroU8;
 use std::num::NonZeroUsize;
@@ -283,7 +282,7 @@ impl RunFlags {
 pub struct ServeFlags {
   pub script: String,
   pub watch: Option<WatchFlagsWithPaths>,
-  pub port: NonZeroU16,
+  pub port: u16,
   pub host: String,
 }
 
@@ -293,7 +292,7 @@ impl ServeFlags {
     Self {
       script,
       watch: None,
-      port: NonZeroU16::new(port).unwrap(),
+      port,
       host: host.to_owned(),
     }
   }
@@ -2464,8 +2463,8 @@ fn serve_subcommand() -> Command {
     .arg(
       Arg::new("port")
         .long("port")
-        .help("The TCP port to serve on, defaulting to 8000.")
-        .value_parser(value_parser!(NonZeroU16)),
+        .help("The TCP port to serve on, defaulting to 8000. Pass 0 to pick a random free port.")
+        .value_parser(value_parser!(u16)),
     )
     .arg(
       Arg::new("host")
@@ -4127,9 +4126,7 @@ fn serve_parse(
   app: Command,
 ) -> clap::error::Result<()> {
   // deno serve implies --allow-net=host:port
-  let port = matches
-    .remove_one::<NonZeroU16>("port")
-    .unwrap_or(NonZeroU16::new(8000).unwrap());
+  let port = matches.remove_one::<u16>("port").unwrap_or(8000);
   let host = matches
     .remove_one::<String>("host")
     .unwrap_or_else(|| "0.0.0.0".to_owned());
@@ -5316,6 +5313,32 @@ mod tests {
         )),
         permissions: PermissionFlags {
           allow_net: Some(vec!["example.com:5000".to_owned()]),
+          ..Default::default()
+        },
+        code_cache_enabled: true,
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "serve",
+      "--port",
+      "0",
+      "--host",
+      "example.com",
+      "main.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Serve(ServeFlags::new_default(
+          "main.ts".to_string(),
+          0,
+          "example.com"
+        )),
+        permissions: PermissionFlags {
+          allow_net: Some(vec!["example.com:0".to_owned()]),
           ..Default::default()
         },
         code_cache_enabled: true,

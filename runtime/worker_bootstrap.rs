@@ -4,7 +4,6 @@ use deno_core::v8;
 use deno_core::ModuleSpecifier;
 use serde::Serialize;
 use std::cell::RefCell;
-use std::num::NonZeroU16;
 use std::thread;
 
 use deno_terminal::colors;
@@ -93,7 +92,7 @@ pub struct BootstrapOptions {
   pub future: bool,
   pub mode: WorkerExecutionMode,
   // Used by `deno serve`
-  pub serve_port: Option<NonZeroU16>,
+  pub serve_port: Option<u16>,
   pub serve_host: Option<String>,
 }
 
@@ -198,7 +197,7 @@ impl BootstrapOptions {
       self.verbose_deprecated_api_warning,
       self.future,
       self.mode as u8 as _,
-      self.serve_port.map(|x| x.into()).unwrap_or_default(),
+      self.serve_port.unwrap_or_default(),
       self.serve_host.as_deref(),
     );
 
