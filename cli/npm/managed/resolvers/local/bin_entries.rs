@@ -95,7 +95,7 @@ fn symlink_bin_entry(
     })?;
   }
   let original_relative =
-    pathdiff::diff_paths(&original, bin_node_modules_dir_path)
+    crate::util::path::relative_path(bin_node_modules_dir_path, &original)
       .unwrap_or(original);
   symlink(&original_relative, &link).with_context(|| {
     format!(
